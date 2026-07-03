@@ -368,6 +368,10 @@ def test_valid_backend(value: str, ok: bool) -> None:
         ("A,B", True),  # comma pool
         ("A B", False),  # space -> reject
         ("A;rm -rf /", False),  # metacharacters -> reject
+        ("-rf", False),  # leading hyphen -> reject (could look like a flag)
+        ("--help", False),  # leading hyphen -> reject
+        ("--config", False),  # leading hyphen -> reject
+        ("booted,-rf", False),  # one leading-hyphen token in the pool -> reject
     ],
 )
 def test_valid_udid(value: str, ok: bool) -> None:

@@ -1,113 +1,33 @@
-"""An S3-compatible ObjectStore for the hosted backend (BE-0015 server phase).
+"""Server-side object-storage helpers for the hosted backend (BE-0015 server phase).
 
 `ObjectStorageArtifactStore` reads run artifacts through the injected `ObjectStore` slice
-(``exists`` / ``get_bytes`` / ``presigned_url`` / ``list_keys``); this is its real backing: an
+(``exists`` / ``get_bytes`` / ``presigned_url`` / ``list_keys``); its real backing is an
 S3-compatible client over one bucket — Cloudflare R2 (the roadmap's choice), AWS S3, or MinIO,
-which differ only in endpoint/credentials. The boto3 client is **injected** into `S3ObjectStore`
-(so a fake drives the gate), and `s3_client_from_env` imports boto3 **lazily** — so this module is
-safe to import without the ``server`` extra and the default path stays SDK-free (#117 import guard).
+which differ only in endpoint/credentials.
+
+`ObjectStore` and `S3ObjectStore` were promoted to the top-level `bajutsu.object_store` (BE-0110) so
+``run`` and ``serve`` share one seam; they are re-exported here for the existing server imports. This
+module keeps the server-specific env/prefix helpers (`s3_client_from_env` builds the boto3 client
+**lazily**, so importing it needs no ``server`` extra and the default path stays SDK-free — #117
+import guard).
 """
 
 from __future__ import annotations
 
 import os
-from pathlib import Path
-from typing import Any, Protocol
+from typing import Any
 
+from bajutsu.object_store import ObjectStore, S3ObjectStore
 
-class ObjectStore(Protocol):
-    """The slice of an S3-compatible client the server seams use (so a fake fits): artifact reads
-    (exists / get_bytes / presigned_url / list_keys) plus scenario writes (put_bytes)."""
-
-    def exists(self, key: str) -> bool:
-        """Whether an object exists at *key* (without downloading it)."""
-
-    def get_bytes(self, key: str) -> bytes | None:
-        """The object's bytes at *key*, or None if absent."""
-
-    def put_bytes(self, key: str, data: bytes) -> None:
-        """Write *data* to the object at *key* (creating or overwriting)."""
-
-    def put_file(self, key: str, path: Path) -> None:
-        """Upload the file at *path* to *key*, streaming from disk (no full read into memory) — for
-        large run artifacts like videos."""
-
-    def presigned_url(self, key: str) -> str:
-        """A short-lived signed GET URL for *key*."""
-
-    def list_keys(self, prefix: str) -> list[str]:
-        """Every object key under *prefix*."""
-
-
-_PRESIGN_TTL = 900  # seconds a signed GET URL stays valid (15 min)
-# S3/R2 error codes that mean "no such object" — treated as absent; anything else is surfaced.
-_NOT_FOUND = frozenset({"404", "NoSuchKey", "NotFound"})
-
-
-def _is_not_found(error: Any) -> bool:
-    return str(error.response.get("Error", {}).get("Code", "")) in _NOT_FOUND
-
-
-class S3ObjectStore:
-    """`ObjectStore` over one S3-compatible bucket via an injected boto3 S3 client."""
-
-    def __init__(self, client: Any, bucket: str, *, presign_ttl: int = _PRESIGN_TTL) -> None:
-        self._client = client
-        self._bucket = bucket
-        self._ttl = presign_ttl
-
-    def exists(self, key: str) -> bool:
-        from botocore.exceptions import ClientError
-
-        try:
-            self._client.head_object(Bucket=self._bucket, Key=key)
-        except ClientError as e:
-            if _is_not_found(e):
-                return False
-            raise  # a real error (auth, throttling, …) — don't mask it as "absent"
-        return True
-
-    def get_bytes(self, key: str) -> bytes | None:
-        from botocore.exceptions import ClientError
-
-        try:
-            resp = self._client.get_object(Bucket=self._bucket, Key=key)
-        except ClientError as e:
-            if _is_not_found(e):
-                return None
-            raise
-        stream = resp["Body"]
-        try:
-            body: bytes = stream.read()
-        finally:
-            stream.close()  # release the HTTP connection/fd rather than leaking it under load
-        return body
-
-    def put_bytes(self, key: str, data: bytes) -> None:
-        self._client.put_object(Bucket=self._bucket, Key=key, Body=data)
-
-    def put_file(self, key: str, path: Path) -> None:
-        # upload_file streams from disk (multipart for large files) — no full read into memory.
-        self._client.upload_file(str(path), self._bucket, key)
-
-    def presigned_url(self, key: str) -> str:
-        url: str = self._client.generate_presigned_url(
-            "get_object", Params={"Bucket": self._bucket, "Key": key}, ExpiresIn=self._ttl
-        )
-        return url
-
-    def list_keys(self, prefix: str) -> list[str]:
-        keys: list[str] = []
-        token: str | None = None
-        while True:
-            kw: dict[str, Any] = {"Bucket": self._bucket, "Prefix": prefix}
-            if token:
-                kw["ContinuationToken"] = token
-            resp = self._client.list_objects_v2(**kw)
-            keys.extend(str(o["Key"]) for o in resp.get("Contents", []))
-            if not resp.get("IsTruncated"):
-                return keys
-            token = resp.get("NextContinuationToken")
+__all__ = [
+    "ObjectStore",
+    "S3ObjectStore",
+    "artifact_prefix",
+    "object_store_from_env",
+    "org_prefix",
+    "s3_client_from_env",
+    "s3_prefix",
+]
 
 
 def s3_client_from_env() -> Any:

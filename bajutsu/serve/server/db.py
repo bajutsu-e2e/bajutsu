@@ -8,16 +8,23 @@ past the seam."""
 
 from __future__ import annotations
 
+import math
 import os
 import uuid
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
 if TYPE_CHECKING:
     from sqlalchemy.engine import Engine
 
     from bajutsu.serve.server.models import Run
+
+# A lease with no heartbeat for this long is treated as a dead worker and reclaimed; a job that is
+# reclaimed this many times is failed rather than re-queued forever (BE-0016 worker liveness). The
+# worker's heartbeat interval must stay well under the timeout so a live long run is never reclaimed.
+DEFAULT_LEASE_TIMEOUT_SECONDS = 120.0
+DEFAULT_LEASE_MAX_ATTEMPTS = 3
 
 
 @dataclass
@@ -82,11 +89,36 @@ class Repository(Protocol):
     def lease_job(self, worker_id: str) -> LeasedJob | None:
         """Atomically lease the oldest queued job to *worker_id*, or return None."""
 
-    def complete_job(self, job_id: str, result: dict[str, Any]) -> None:
-        """Mark a leased job as ``done`` and store its *result*."""
+    def heartbeat_job(self, job_id: str, worker_id: str) -> bool:
+        """Renew a lease's timer, returning False when *worker_id* no longer owns the live lease.
 
-    def fail_job(self, job_id: str, error: str) -> None:
-        """Mark a leased job as ``failed`` with an error message."""
+        The worker calls this on an interval during a run so a legitimately long run is not
+        reclaimed; a False answer tells the worker its lease was reclaimed (or the job finished) and
+        it should stop.
+        """
+
+    def reclaim_expired_leases(
+        self, timeout: timedelta, *, max_attempts: int = DEFAULT_LEASE_MAX_ATTEMPTS
+    ) -> list[str]:
+        """Re-queue leases with no heartbeat within *timeout*; fail the ones past *max_attempts*.
+
+        Returns the ids re-queued (available again). A worker that dies mid-run stops heart-beating,
+        so its lease ages past the timeout and returns to ``queued`` for another worker — but a
+        poison job that keeps killing its worker is failed once it hits the attempt cap.
+        """
+
+    def complete_job(
+        self, job_id: str, result: dict[str, Any], *, worker_id: str | None = None
+    ) -> bool:
+        """Mark a still-leased job ``done`` with its *result*; False if it is no longer leasable.
+
+        A reclaimed, re-leased, or already-finished job rejects the write (when *worker_id* is
+        given, only that leaseholder may complete it), so a stale worker never overwrites the winner.
+        """
+
+    def fail_job(self, job_id: str, error: str, *, worker_id: str | None = None) -> bool:
+        """Mark a still-leased job ``failed`` with *error*; False if it is no longer leasable (see
+        `complete_job`)."""
 
     def get_job(self, job_id: str) -> dict[str, Any] | None:
         """Return the job's status, result, and org_id, or None if it does not exist."""
@@ -109,8 +141,16 @@ class SqlRepository:
     """A SQLAlchemy-backed `Repository`. Works against any engine SQLAlchemy supports — SQLite on
     the gate, Postgres in production — since the models pick JSONB only on Postgres."""
 
-    def __init__(self, engine: Engine) -> None:
+    def __init__(
+        self,
+        engine: Engine,
+        *,
+        lease_timeout: timedelta | None = None,
+        max_attempts: int = DEFAULT_LEASE_MAX_ATTEMPTS,
+    ) -> None:
         self._engine = engine
+        self._lease_timeout = lease_timeout or timedelta(seconds=DEFAULT_LEASE_TIMEOUT_SECONDS)
+        self._max_attempts = max_attempts
 
     def record_run(self, run: RunRecord) -> None:
         from sqlalchemy.orm import Session
@@ -260,6 +300,9 @@ class SqlRepository:
 
         from bajutsu.serve.server.models import JobRecord
 
+        # Sweep dead workers' leases back into the queue before serving, so a stuck job is picked up
+        # on the next poll without a separate reaper process.
+        self.reclaim_expired_leases(self._lease_timeout, max_attempts=self._max_attempts)
         with Session(self._engine) as session:
             stmt = (
                 select(JobRecord)
@@ -278,29 +321,93 @@ class SqlRepository:
             session.commit()
             return LeasedJob(id=row.id, org_id=row.org_id, spec=dict(row.spec))
 
-    def complete_job(self, job_id: str, result: dict[str, Any]) -> None:
+    def heartbeat_job(self, job_id: str, worker_id: str) -> bool:
+        from sqlalchemy import select
         from sqlalchemy.orm import Session
 
         from bajutsu.serve.server.models import JobRecord
 
         with Session(self._engine) as session:
-            row = session.get(JobRecord, job_id)
-            if row is not None:
-                row.status = "done"
-                row.result = result
-                session.commit()
+            # Lock the row so a heartbeat and a concurrent reclaim serialize instead of racing: the
+            # loser re-reads fresh state under the lock, so a heartbeat that lands after a reclaim
+            # sees `queued` and returns False rather than resurrecting `leased_at` on a re-queued job.
+            stmt = select(JobRecord).where(JobRecord.id == job_id)
+            if self._engine.dialect.name != "sqlite":
+                stmt = stmt.with_for_update()
+            row = session.scalars(stmt).first()
+            if row is None or row.status != "leased" or row.leased_by != worker_id:
+                return False
+            row.leased_at = datetime.now(UTC)
+            session.commit()
+            return True
 
-    def fail_job(self, job_id: str, error: str) -> None:
+    def reclaim_expired_leases(
+        self, timeout: timedelta, *, max_attempts: int = DEFAULT_LEASE_MAX_ATTEMPTS
+    ) -> list[str]:
+        from sqlalchemy import select
+        from sqlalchemy.orm import Session
+
+        from bajutsu.serve.server.models import JobRecord
+
+        cutoff = datetime.now(UTC) - timeout
+        requeued: list[str] = []
+        with Session(self._engine) as session:
+            stmt = select(JobRecord).where(
+                JobRecord.status == "leased", JobRecord.leased_at < cutoff
+            )
+            # Skip rows a concurrent heartbeat is holding: that worker is alive and just renewed its
+            # lease, so leave it be rather than reclaiming a job out from under it (lost update).
+            if self._engine.dialect.name != "sqlite":
+                stmt = stmt.with_for_update(skip_locked=True)
+            for row in session.scalars(stmt):
+                row.attempts += 1
+                row.leased_by = None
+                row.leased_at = None
+                if row.attempts >= max_attempts:
+                    row.status = "failed"
+                    row.result = {"error": f"lease expired after {row.attempts} attempts"}
+                else:
+                    row.status = "queued"
+                    requeued.append(row.id)
+            session.commit()
+        return requeued
+
+    def complete_job(
+        self, job_id: str, result: dict[str, Any], *, worker_id: str | None = None
+    ) -> bool:
+        return self._finish_job(job_id, status="done", payload=result, worker_id=worker_id)
+
+    def fail_job(self, job_id: str, error: str, *, worker_id: str | None = None) -> bool:
+        return self._finish_job(
+            job_id, status="failed", payload={"error": error}, worker_id=worker_id
+        )
+
+    def _finish_job(
+        self, job_id: str, *, status: str, payload: dict[str, Any], worker_id: str | None
+    ) -> bool:
+        """Transition a still-leased job to a terminal *status*, returning False when it may not.
+
+        Only a job still ``leased`` (by *worker_id*, when given) accepts its result; a reclaimed,
+        re-leased, or already-finished job rejects the stale write so the winning run is never
+        overwritten. Locks the row on non-SQLite so the check-and-write is atomic against reclaim."""
+        from sqlalchemy import select
         from sqlalchemy.orm import Session
 
         from bajutsu.serve.server.models import JobRecord
 
         with Session(self._engine) as session:
-            row = session.get(JobRecord, job_id)
-            if row is not None:
-                row.status = "failed"
-                row.result = {"error": error}
-                session.commit()
+            stmt = select(JobRecord).where(JobRecord.id == job_id)
+            if self._engine.dialect.name != "sqlite":
+                stmt = stmt.with_for_update()
+            row = session.scalars(stmt).first()
+            if row is None or row.status != "leased":
+                return False
+            if worker_id is not None and row.leased_by != worker_id:
+                return False
+            row.status = status
+            row.result = payload
+            session.commit()
+            return True
 
     def get_job(self, job_id: str) -> dict[str, Any] | None:
         from sqlalchemy.orm import Session
@@ -322,6 +429,22 @@ def engine_from_url(url: str) -> Engine:
     return create_engine(url)
 
 
+def _positive_env(name: str, raw: str, *, cast: Any) -> Any:
+    """Parse an operator-facing positive-number env var defensively — a clear, variable-named error
+    rather than a bare ValueError/TypeError. Non-numeric or non-positive values are rejected."""
+    try:
+        value = cast(raw)
+    except ValueError:
+        raise ValueError(f"{name} must be a positive number, got {raw!r}") from None
+    # NaN/inf slip past `<= 0` (NaN compares False, inf is "positive"), so reject them explicitly —
+    # a timedelta(seconds=nan) or an infinite cap is not a well-defined operator setting.
+    if not math.isfinite(value):
+        raise ValueError(f"{name} must be a finite number, got {raw!r}")
+    if value <= 0:
+        raise ValueError(f"{name} must be positive, got {value}")
+    return value
+
+
 def repository_from_env() -> SqlRepository | None:
     """A `SqlRepository` from ``BAJUTSU_DATABASE_URL``, or ``None`` when it is unset — so the
     server backend runs without a database until one is configured, and local never has one. The
@@ -329,4 +452,11 @@ def repository_from_env() -> SqlRepository | None:
     url = os.environ.get("BAJUTSU_DATABASE_URL")
     if not url:
         return None
-    return SqlRepository(engine_from_url(url))
+    kwargs: dict[str, Any] = {}
+    if timeout := os.environ.get("BAJUTSU_LEASE_TIMEOUT_SECONDS"):
+        kwargs["lease_timeout"] = timedelta(
+            seconds=_positive_env("BAJUTSU_LEASE_TIMEOUT_SECONDS", timeout, cast=float)
+        )
+    if attempts := os.environ.get("BAJUTSU_LEASE_MAX_ATTEMPTS"):
+        kwargs["max_attempts"] = _positive_env("BAJUTSU_LEASE_MAX_ATTEMPTS", attempts, cast=int)
+    return SqlRepository(engine_from_url(url), **kwargs)

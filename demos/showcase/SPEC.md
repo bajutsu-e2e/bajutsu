@@ -31,8 +31,9 @@ Bajutsu's whole design rests on visible:
 > same app, same flows, identifiers the only difference. Run the same goal through `record`
 > against both and the diff *is* the value of accessibility work.
 
-## 2. App matrix (2 codebases × 2 build variants = 4 products)
+## 2. App matrix
 
+The iOS matrix below is 2 codebases × 2 build variants = 4 products; §2.1 adds the 4 Android twins.
 Each toolkit is **one codebase, two build targets**. The variant difference is a single Swift
 active-compilation condition, `ACCESSIBLE`; there is no forked source. (See §8.)
 
@@ -46,6 +47,50 @@ active-compilation condition, `ACCESSIBLE`; there is no forked source. (See §8.
 The two `-a11y` apps MUST expose **byte-for-byte identical** identifier sets, launch-env hooks,
 and deeplinks, so `demos/showcase/scenarios/*.yaml` runs unchanged against either. The UIKit and
 SwiftUI views may differ in construction but never in the contract below.
+
+### 2.1 Android twins ([`android/`](android/), BE-0007 preparation)
+
+The same fixture exists for Android — built ahead of the
+[BE-0007 Android backend](../../roadmaps/proposals/BE-0007-android-backend/BE-0007-android-backend.md)
+as the app pair that backend will drive. **Jetpack Compose** mirrors the SwiftUI codebase,
+**Android Views** mirrors UIKit, and the a11y/noax pair is one Gradle flavor switch
+(`BuildConfig.ACCESSIBLE`) — no forked source, exactly like `ACCESSIBLE` on iOS.
+
+| App name (`targets.<name>`) | Toolkit | `ACCESSIBLE` | Application id | Deeplink scheme | Display name |
+|---|---|---|---|---|---|
+| `showcase-compose` | Compose | true | `com.bajutsu.showcase.compose` | `showcasecompose` | Showcase Compose |
+| `showcase-compose-noax` | Compose | false | `com.bajutsu.showcase.compose.noax` | `showcasecomposenoax` | Showcase Compose (no a11y) |
+| `showcase-views` | Views | true | `com.bajutsu.showcase.views` | `showcaseviews` | Showcase Views |
+| `showcase-views-noax` | Views | false | `com.bajutsu.showcase.views.noax` | `showcaseviewsnoax` | Showcase Views (no a11y) |
+
+The §5 contract is the shared **logical** inventory; how each platform surfaces it differs only
+in the channel (the BE-0007 selector mapping):
+
+| iOS (§5, §8) | Android Compose | Android Views |
+|---|---|---|
+| `accessibilityIdentifier` | `testTag` → `resource-id` (`testTagsAsResourceId`), dotted ids **verbatim** | `android:id` → `resource-id`, ids with `.`/`-` → `_` (`stable.refresh` → `stable_refresh`) |
+| `accessibilityValue` mirror | `content-desc` | `content-desc` |
+| `launchEnv` via `ProcessInfo` | intent extras | intent extras |
+| deeplink scheme + host | VIEW intent-filter, same host grammar (§4) | same |
+| SpringBoard alerts (§7) | runtime-permission dialogs (`POST_NOTIFICATIONS`, `ACCESS_FINE_LOCATION`) | same |
+| `UIPasteboard` round-trip (§5.4) | `ClipboardManager` | same |
+
+Both Android toolkits mirror the state value to `content-desc` (not Compose's `stateDescription`,
+which a `uiautomator dump` does not expose). Two Android-only carve-outs from the shared contract:
+
+- **`SHOWCASE_UITEST` (disable animations, §3).** On iOS the app itself disables animations; on Android
+  animations are disabled device-wide by the driver (`adb shell settings put global
+  animator_duration_scale 0`), so the app reads the hook but takes no in-app action.
+- **The notification prompt (§7) needs API 33+.** `POST_NOTIFICATIONS` is a runtime permission only on
+  Android 13 (API 33) and later; on older emulators the prompt never appears. Run the fixture on an
+  API 33+ emulator so the alert-guard flow has a prompt to guard.
+
+Because Compose testTags reproduce the dotted ids verbatim, the shared [`scenarios/`](scenarios)
+set drives `showcase-compose` unchanged. The Views ids are underscore-mapped (an `android:id`
+name allows neither `.` nor `-`); whether the adb driver normalizes `.` ↔ `_` on match or the
+Views targets get a scenario variant is a BE-0007 design decision. Networking is plain
+`HttpURLConnection` (no Android BajutsuKit yet — the `network` evidence/mock story is BE-0007's,
+§6 applies to iOS); everything else below holds for all four Android products.
 
 ## 3. Launch environment hooks
 

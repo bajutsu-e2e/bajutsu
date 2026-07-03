@@ -29,6 +29,12 @@ showcase は Bajutsu の次世代 dogfood 対象です。**同じアプリを 2 
 `-noax` ビルドは識別子を **持たない** ツリーにコンパイルされます。アクセシビリティを省いたチームが
 出荷するアプリを、そのままテスト可能にしたものです。
 
+**Android 版**（[`android/`](android/)、SPEC §2.1）：同じフィクスチャの Android 版も、BE-0007 の
+adb バックエンドに先行して用意してあります。Jetpack Compose 版が SwiftUI に、Android Views 版が
+UIKit に対応し、それぞれ同じ a11y/noax の flavor ペアでビルドします（プロダクトが 4 つ増え、
+`make -C demos/showcase/android build-all` でビルドできます）。BE-0007 が実装されるまではビルドのみ
+可能で、実行はできません（`--backend android` は「not implemented yet」と報告します）。
+
 ## ビルド
 
 [XcodeGen](https://github.com/yonsm/XcodeGen)（`brew install xcodegen`）と Xcode が必要です。
