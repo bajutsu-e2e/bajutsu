@@ -227,7 +227,7 @@ defaults:
 
 targets:
   showcase-swiftui:         # iOS アプリ — idb 経由で Simulator を操作
-    bundleId: com.bajutsu.showcase.swiftui
+    bundleId: com.bajutsu.showcase.ios.swiftui
     deeplinkScheme: showcaseswiftui
     launchEnv: { SHOWCASE_UITEST: "1" }
     idNamespaces: [stable, horse, search, log, notice, perm, sys, net]

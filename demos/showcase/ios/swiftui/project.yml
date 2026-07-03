@@ -14,7 +14,7 @@ settings:
     TARGETED_DEVICE_FAMILY: "1,2"
 packages:
   BajutsuKit:
-    path: ../../../BajutsuKit
+    path: ../../../../BajutsuKit
 targets:
   # The a11y build: ACCESSIBLE is defined, so every aid(...) attaches an identifier
   # and state mirrors to accessibilityValue. doctor --target grades this Ready.
@@ -35,11 +35,11 @@ targets:
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
         CFBundleURLTypes:
-          - CFBundleURLName: com.bajutsu.showcase.swiftui
+          - CFBundleURLName: com.bajutsu.showcase.ios.swiftui
             CFBundleURLSchemes: [showcaseswiftui]
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.bajutsu.showcase.swiftui
+        PRODUCT_BUNDLE_IDENTIFIER: com.bajutsu.showcase.ios.swiftui
         SWIFT_ACTIVE_COMPILATION_CONDITIONS: ACCESSIBLE
   # The no-a11y twin: same Sources/, but ACCESSIBLE is absent, so aid(...) is a no-op
   # and no identifiers or mirrored values reach the tree. doctor --target grades it Blocked.
@@ -60,11 +60,11 @@ targets:
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
         CFBundleURLTypes:
-          - CFBundleURLName: com.bajutsu.showcase.swiftui.noax
+          - CFBundleURLName: com.bajutsu.showcase.ios.swiftui.noax
             CFBundleURLSchemes: [showcaseswiftuinoax]
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.bajutsu.showcase.swiftui.noax
+        PRODUCT_BUNDLE_IDENTIFIER: com.bajutsu.showcase.ios.swiftui.noax
   # Native XCUITest host for the codegen output (SPEC §5.4): `bajutsu codegen` writes
   # UITests/ComponentsUITests.swift, which runs against the a11y app via the `UITests`
   # scheme below — no bajutsu runtime, idb, or AI at test time.
@@ -77,7 +77,7 @@ targets:
       - target: BajutsuShowcaseSwiftUI
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.bajutsu.showcase.swiftui.uitests
+        PRODUCT_BUNDLE_IDENTIFIER: com.bajutsu.showcase.ios.swiftui.uitests
         GENERATE_INFOPLIST_FILE: YES
 schemes:
   BajutsuShowcaseSwiftUI:

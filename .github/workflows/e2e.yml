@@ -64,7 +64,7 @@ jobs:
           changed=$(git diff --name-only "$BASE_SHA" "$HEAD_SHA")
           echo "Changed files:"
           echo "$changed"
-          if echo "$changed" | grep -qE '^(bajutsu/(runner|scenario|drivers|orchestrator)/|bajutsu/[^/]+\.py$|bajutsu/cli/__init__\.py$|bajutsu/cli/_shared\.py$|bajutsu/cli/commands/__init__\.py$|bajutsu/cli/commands/(run|codegen|record)\.py$|BajutsuKit/|demos/showcase/swiftui/|demos/showcase/uikit/|demos/showcase/showcase\.config\.yaml$|demos/showcase/scenarios/|pyproject\.toml$|uv\.lock$|Makefile$|\.github/workflows/e2e\.yml$|\.github/actions/bajutsu-e2e/|\.github/actions/boot-simulator/)'; then
+          if echo "$changed" | grep -qE '^(bajutsu/(runner|scenario|drivers|orchestrator)/|bajutsu/[^/]+\.py$|bajutsu/cli/__init__\.py$|bajutsu/cli/_shared\.py$|bajutsu/cli/commands/__init__\.py$|bajutsu/cli/commands/(run|codegen|record)\.py$|BajutsuKit/|demos/showcase/ios/swiftui/|demos/showcase/ios/uikit/|demos/showcase/showcase\.config\.yaml$|demos/showcase/scenarios/|pyproject\.toml$|uv\.lock$|Makefile$|\.github/workflows/e2e\.yml$|\.github/actions/bajutsu-e2e/|\.github/actions/boot-simulator/)'; then
             echo "relevant=true" >> "$GITHUB_OUTPUT"
           else
             echo "relevant=false" >> "$GITHUB_OUTPUT"
@@ -135,7 +135,7 @@ jobs:
         run: xcrun simctl bootstatus "${{ steps.sim.outputs.udid }}" -b
 
       - name: Install the app
-        run: xcrun simctl install "${{ steps.sim.outputs.udid }}" "demos/showcase/swiftui/build/dd/Build/Products/Debug-iphonesimulator/BajutsuShowcaseSwiftUI.app"
+        run: xcrun simctl install "${{ steps.sim.outputs.udid }}" "demos/showcase/ios/swiftui/build/dd/Build/Products/Debug-iphonesimulator/BajutsuShowcaseSwiftUI.app"
 
       - name: Run smoke scenarios
         uses: ./.github/actions/bajutsu-e2e
@@ -197,8 +197,8 @@ jobs:
       - name: Cache DerivedData
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
         with:
-          path: demos/showcase/swiftui/build/dd
-          key: xcode-dd-${{ runner.os }}-${{ steps.xcode.outputs.ver }}-${{ hashFiles('BajutsuKit/**/*.swift', 'demos/showcase/swiftui/**/*.swift', 'demos/showcase/swiftui/**/project.yml') }}
+          path: demos/showcase/ios/swiftui/build/dd
+          key: xcode-dd-${{ runner.os }}-${{ steps.xcode.outputs.ver }}-${{ hashFiles('BajutsuKit/**/*.swift', 'demos/showcase/ios/swiftui/**/*.swift', 'demos/showcase/ios/swiftui/**/project.yml') }}
           restore-keys: |
             xcode-dd-${{ runner.os }}-${{ steps.xcode.outputs.ver }}-
 
@@ -223,7 +223,7 @@ jobs:
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
         with:
           name: xcuitest-result
-          path: demos/showcase/swiftui/build/dd/Logs/Test/*.xcresult
+          path: demos/showcase/ios/swiftui/build/dd/Logs/Test/*.xcresult
           if-no-files-found: ignore
 
   # Single required status check for E2E. Always runs so it reports even when the macOS

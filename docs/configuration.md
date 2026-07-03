@@ -29,7 +29,7 @@ defaults:                       # shared across all targets
 
 targets:
   showcase-swiftui:             # ← selected by --target showcase-swiftui
-    bundleId:       com.bajutsu.showcase.swiftui     # iOS target (required unless baseUrl is set for web)
+    bundleId:       com.bajutsu.showcase.ios.swiftui     # iOS target (required unless baseUrl is set for web)
     deeplinkScheme: showcaseswiftui
     idNamespaces:   [stable, horse, search, log, notice, perm, sys, net]
     launchEnv:      { SHOWCASE_UITEST: "1" }

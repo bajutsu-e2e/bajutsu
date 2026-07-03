@@ -230,7 +230,7 @@ defaults:
 
 targets:
   showcase-swiftui:         # iOS app — driven on the Simulator via idb
-    bundleId: com.bajutsu.showcase.swiftui
+    bundleId: com.bajutsu.showcase.ios.swiftui
     deeplinkScheme: showcaseswiftui
     launchEnv: { SHOWCASE_UITEST: "1" }
     idNamespaces: [stable, horse, search, log, notice, perm, sys, net]

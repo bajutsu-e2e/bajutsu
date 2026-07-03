@@ -17,10 +17,10 @@ flavor の違いは Gradle の product flavor（`a11y` / `noax`）が定める `
 
 | Gradle タスク | ツールキット | `ACCESSIBLE` | Application id | 表示名 | ディープリンクのスキーム |
 |---|---|---|---|---|---|
-| `:compose:assembleA11yDebug` | Compose | true | `com.bajutsu.showcase.compose` | Showcase Compose | `showcasecompose` |
-| `:compose:assembleNoaxDebug` | Compose | false | `com.bajutsu.showcase.compose.noax` | Showcase Compose (no a11y) | `showcasecomposenoax` |
-| `:views:assembleA11yDebug` | Views | true | `com.bajutsu.showcase.views` | Showcase Views | `showcaseviews` |
-| `:views:assembleNoaxDebug` | Views | false | `com.bajutsu.showcase.views.noax` | Showcase Views (no a11y) | `showcaseviewsnoax` |
+| `:compose:assembleA11yDebug` | Compose | true | `com.bajutsu.showcase.android.compose` | Showcase Compose | `showcasecompose` |
+| `:compose:assembleNoaxDebug` | Compose | false | `com.bajutsu.showcase.android.compose.noax` | Showcase Compose (no a11y) | `showcasecomposenoax` |
+| `:views:assembleA11yDebug` | Views | true | `com.bajutsu.showcase.android.views` | Showcase Views | `showcaseviews` |
+| `:views:assembleNoaxDebug` | Views | false | `com.bajutsu.showcase.android.views.noax` | Showcase Views (no a11y) | `showcaseviewsnoax` |
 
 `a11y` ビルドは SPEC §5 の要素一覧を UI Automator の `resource-id` として公開し、`noax` ビルドは
 identifier の無いツリーになります。アクセシビリティ対応を省いたときのコストを具体的に示すものです

@@ -16,8 +16,8 @@ flag is set.
 
 | Target | `ACCESSIBLE` | Bundle id | Display name | Deeplink scheme |
 |---|---|---|---|---|
-| `BajutsuShowcaseSwiftUI` | defined | `com.bajutsu.showcase.swiftui` | Showcase SwiftUI | `showcaseswiftui` |
-| `BajutsuShowcaseSwiftUINoAx` | — | `com.bajutsu.showcase.swiftui.noax` | Showcase SwiftUI (no a11y) | `showcaseswiftuinoax` |
+| `BajutsuShowcaseSwiftUI` | defined | `com.bajutsu.showcase.ios.swiftui` | Showcase SwiftUI | `showcaseswiftui` |
+| `BajutsuShowcaseSwiftUINoAx` | — | `com.bajutsu.showcase.ios.swiftui.noax` | Showcase SwiftUI (no a11y) | `showcaseswiftuinoax` |
 
 The `-a11y` build exposes every identifier in SPEC §5 (`doctor --target` grades it **Ready**);
 the no-a11y build compiles to a tree with none (graded **Blocked**) — the cost of skipping
@@ -25,11 +25,11 @@ accessibility, made concrete.
 
 ## Build
 
-Requires Xcode and [XcodeGen](https://github.com/yonyz/XcodeGen) (`brew install xcodegen`).
+Requires Xcode and [XcodeGen](https://github.com/yonaskolb/XcodeGen) (`brew install xcodegen`).
 Both targets share the same `Sources/` directory.
 
 ```bash
-cd demos/showcase/swiftui
+cd demos/showcase/ios/swiftui
 xcodegen generate          # -> BajutsuShowcaseSwiftUI.xcodeproj
 xcodebuild -scheme BajutsuShowcaseSwiftUI \
   -destination 'generic/platform=iOS Simulator' build        # the a11y build

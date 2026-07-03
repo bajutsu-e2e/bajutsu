@@ -33,7 +33,7 @@ showcase は、Bajutsu の設計が依って立つ 2 つの軸を可視化しま
 ## ビルドと実行
 
 4 つの `targets.<name>` として [`demos/showcase/showcase.config.yaml`](../../demos/showcase/showcase.config.yaml)
-に登録しています（bundle id は `com.bajutsu.showcase.{swiftui,uikit}[.noax]`、deeplink scheme は
+に登録しています（bundle id は `com.bajutsu.showcase.ios.{swiftui,uikit}[.noax]`、deeplink scheme は
 `showcase{swiftui,uikit}[noax]`）。XcodeGen ＋ xcodebuild でビルドします（`project.yml` が真実の源で、
 `.xcodeproj` / `build/` は gitignore 対象です）。
 

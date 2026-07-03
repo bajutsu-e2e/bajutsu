@@ -1,5 +1,5 @@
 # Codegen source (SPEC §5.4): a representative slice that `bajutsu codegen` transpiles into
-# a native XCUITest (demos/showcase/swiftui/UITests/ComponentsUITests.swift, run by
+# a native XCUITest (demos/showcase/ios/swiftui/UITests/ComponentsUITests.swift, run by
 # `make -C demos/showcase ui-test`). Every step maps structurally to XCUITest — tap / type /
 # wait / assert exists / assert value — so the generated test needs no bajutsu runtime, idb,
 # or AI at test time.

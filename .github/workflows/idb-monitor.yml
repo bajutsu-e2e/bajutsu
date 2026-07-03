@@ -60,7 +60,7 @@ jobs:
         uses: ./.github/actions/boot-simulator
 
       - name: Install the app
-        run: xcrun simctl install "${{ steps.sim.outputs.udid }}" "demos/showcase/swiftui/build/dd/Build/Products/Debug-iphonesimulator/BajutsuShowcaseSwiftUI.app"
+        run: xcrun simctl install "${{ steps.sim.outputs.udid }}" "demos/showcase/ios/swiftui/build/dd/Build/Products/Debug-iphonesimulator/BajutsuShowcaseSwiftUI.app"
 
       # Record the versions this run was driven against, before the smoke run, so the summary
       # states them even if the run then fails. `idb_companion` is brewed here (idempotent; the

@@ -39,10 +39,10 @@ active-compilation condition, `ACCESSIBLE`; there is no forked source. (See §8.
 
 | App name (`targets.<name>`) | Toolkit | `ACCESSIBLE` | Bundle id | Deeplink scheme | Display name |
 |---|---|---|---|---|---|
-| `showcase-swiftui` | SwiftUI | defined | `com.bajutsu.showcase.swiftui` | `showcaseswiftui` | Showcase SwiftUI |
-| `showcase-swiftui-noax` | SwiftUI | — | `com.bajutsu.showcase.swiftui.noax` | `showcaseswiftuinoax` | Showcase SwiftUI (no a11y) |
-| `showcase-uikit` | UIKit | defined | `com.bajutsu.showcase.uikit` | `showcaseuikit` | Showcase UIKit |
-| `showcase-uikit-noax` | UIKit | — | `com.bajutsu.showcase.uikit.noax` | `showcaseuikitnoax` | Showcase UIKit (no a11y) |
+| `showcase-swiftui` | SwiftUI | defined | `com.bajutsu.showcase.ios.swiftui` | `showcaseswiftui` | Showcase SwiftUI |
+| `showcase-swiftui-noax` | SwiftUI | — | `com.bajutsu.showcase.ios.swiftui.noax` | `showcaseswiftuinoax` | Showcase SwiftUI (no a11y) |
+| `showcase-uikit` | UIKit | defined | `com.bajutsu.showcase.ios.uikit` | `showcaseuikit` | Showcase UIKit |
+| `showcase-uikit-noax` | UIKit | — | `com.bajutsu.showcase.ios.uikit.noax` | `showcaseuikitnoax` | Showcase UIKit (no a11y) |
 
 The two `-a11y` apps MUST expose **byte-for-byte identical** identifier sets, launch-env hooks,
 and deeplinks, so `demos/showcase/scenarios/*.yaml` runs unchanged against either. The UIKit and
@@ -58,10 +58,10 @@ as the app pair that backend will drive. **Jetpack Compose** mirrors the SwiftUI
 
 | App name (`targets.<name>`) | Toolkit | `ACCESSIBLE` | Application id | Deeplink scheme | Display name |
 |---|---|---|---|---|---|
-| `showcase-compose` | Compose | true | `com.bajutsu.showcase.compose` | `showcasecompose` | Showcase Compose |
-| `showcase-compose-noax` | Compose | false | `com.bajutsu.showcase.compose.noax` | `showcasecomposenoax` | Showcase Compose (no a11y) |
-| `showcase-views` | Views | true | `com.bajutsu.showcase.views` | `showcaseviews` | Showcase Views |
-| `showcase-views-noax` | Views | false | `com.bajutsu.showcase.views.noax` | `showcaseviewsnoax` | Showcase Views (no a11y) |
+| `showcase-compose` | Compose | true | `com.bajutsu.showcase.android.compose` | `showcasecompose` | Showcase Compose |
+| `showcase-compose-noax` | Compose | false | `com.bajutsu.showcase.android.compose.noax` | `showcasecomposenoax` | Showcase Compose (no a11y) |
+| `showcase-views` | Views | true | `com.bajutsu.showcase.android.views` | `showcaseviews` | Showcase Views |
+| `showcase-views-noax` | Views | false | `com.bajutsu.showcase.android.views.noax` | `showcaseviewsnoax` | Showcase Views (no a11y) |
 
 The §5 contract is the shared **logical** inventory; how each platform surfaces it differs only
 in the channel (the BE-0007 selector mapping):

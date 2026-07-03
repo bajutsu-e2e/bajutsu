@@ -37,10 +37,10 @@ showcase は Bajutsu の **次世代 dogfood 対象** です。`record`（Tier 1
 
 | アプリ名（`targets.<name>`） | ツールキット | `ACCESSIBLE` | Bundle id | Deeplink scheme | 表示名 |
 |---|---|---|---|---|---|
-| `showcase-swiftui` | SwiftUI | 定義 | `com.bajutsu.showcase.swiftui` | `showcaseswiftui` | Showcase SwiftUI |
-| `showcase-swiftui-noax` | SwiftUI | — | `com.bajutsu.showcase.swiftui.noax` | `showcaseswiftuinoax` | Showcase SwiftUI (no a11y) |
-| `showcase-uikit` | UIKit | 定義 | `com.bajutsu.showcase.uikit` | `showcaseuikit` | Showcase UIKit |
-| `showcase-uikit-noax` | UIKit | — | `com.bajutsu.showcase.uikit.noax` | `showcaseuikitnoax` | Showcase UIKit (no a11y) |
+| `showcase-swiftui` | SwiftUI | 定義 | `com.bajutsu.showcase.ios.swiftui` | `showcaseswiftui` | Showcase SwiftUI |
+| `showcase-swiftui-noax` | SwiftUI | — | `com.bajutsu.showcase.ios.swiftui.noax` | `showcaseswiftuinoax` | Showcase SwiftUI (no a11y) |
+| `showcase-uikit` | UIKit | 定義 | `com.bajutsu.showcase.ios.uikit` | `showcaseuikit` | Showcase UIKit |
+| `showcase-uikit-noax` | UIKit | — | `com.bajutsu.showcase.ios.uikit.noax` | `showcaseuikitnoax` | Showcase UIKit (no a11y) |
 
 2 つの `-a11y` アプリは、識別子集合、launch-env フック、deeplink を **完全に同一**（byte-for-byte）に
 露出しなければなりません。これにより `demos/showcase/scenarios/*.yaml` がどちらにも無改変で通ります。
@@ -56,10 +56,10 @@ flavor 切り替え（`BuildConfig.ACCESSIBLE`）1 つです。iOS の `ACCESSIB
 
 | アプリ名（`targets.<name>`） | ツールキット | `ACCESSIBLE` | Application id | Deeplink scheme | 表示名 |
 |---|---|---|---|---|---|
-| `showcase-compose` | Compose | true | `com.bajutsu.showcase.compose` | `showcasecompose` | Showcase Compose |
-| `showcase-compose-noax` | Compose | false | `com.bajutsu.showcase.compose.noax` | `showcasecomposenoax` | Showcase Compose (no a11y) |
-| `showcase-views` | Views | true | `com.bajutsu.showcase.views` | `showcaseviews` | Showcase Views |
-| `showcase-views-noax` | Views | false | `com.bajutsu.showcase.views.noax` | `showcaseviewsnoax` | Showcase Views (no a11y) |
+| `showcase-compose` | Compose | true | `com.bajutsu.showcase.android.compose` | `showcasecompose` | Showcase Compose |
+| `showcase-compose-noax` | Compose | false | `com.bajutsu.showcase.android.compose.noax` | `showcasecomposenoax` | Showcase Compose (no a11y) |
+| `showcase-views` | Views | true | `com.bajutsu.showcase.android.views` | `showcaseviews` | Showcase Views |
+| `showcase-views-noax` | Views | false | `com.bajutsu.showcase.android.views.noax` | `showcaseviewsnoax` | Showcase Views (no a11y) |
 
 §5 の契約は、共有する**論理的な**要素一覧です。各プラットフォームでそれをどう露出するかは、
 チャネル（BE-0007 のセレクタ対応）だけが違います。

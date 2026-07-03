@@ -5,11 +5,11 @@ plugins {
 }
 
 android {
-    namespace = "com.bajutsu.showcase.compose"
+    namespace = "com.bajutsu.showcase.android.compose"
     compileSdk = 35
 
     defaultConfig {
-        applicationId = "com.bajutsu.showcase.compose"
+        applicationId = "com.bajutsu.showcase.android.compose"
         minSdk = 26
         targetSdk = 35
         versionCode = 1
