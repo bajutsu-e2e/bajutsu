@@ -1,11 +1,11 @@
-[English](BE-XXXX-serve-audit.md) · **日本語**
+[English](BE-0145-serve-audit.md) · **日本語**
 
-# BE-XXXX — serve Web UI で決定性監査を見る
+# BE-0145 — serve Web UI で決定性監査を見る
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
 |---|---|
-| 提案 | [BE-XXXX](BE-XXXX-serve-audit-ja.md) |
+| 提案 | [BE-0145](BE-0145-serve-audit-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **提案** |
 | トピック | serve Web UI への CLI 機能の取り込み |

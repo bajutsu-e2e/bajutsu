@@ -1,11 +1,11 @@
-**English** · [日本語](BE-XXXX-serve-audit-ja.md)
+**English** · [日本語](BE-0145-serve-audit-ja.md)
 
-# BE-XXXX — Determinism audit in the serve Web UI
+# BE-0145 — Determinism audit in the serve Web UI
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-serve-audit.md) |
+| Proposal | [BE-0145](BE-0145-serve-audit.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
 | Topic | Surfacing CLI features in the serve Web UI |
