@@ -1,11 +1,11 @@
-**English** · [日本語](BE-XXXX-run-command-decomposition-ja.md)
+**English** · [日本語](BE-0143-run-command-decomposition-ja.md)
 
-# BE-XXXX — Decompose the run command god-function
+# BE-0143 — Decompose the run command god-function
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-run-command-decomposition.md) |
+| Proposal | [BE-0143](BE-0143-run-command-decomposition.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
 | Topic | Development infrastructure (contributor workflow) |

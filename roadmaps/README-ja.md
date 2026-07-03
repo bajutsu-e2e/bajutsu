@@ -575,6 +575,7 @@ Web（Playwright）backend とその完成（リッチな capability、並列実
 | [BE-0139](proposals/BE-0139-roadmap-dashboard-issue-links/BE-0139-roadmap-dashboard-issue-links-ja.md) | ロードマップのダッシュボードと項目ファイルからトラッキング Issue へリンクする | 提案 |
 | [BE-0140](proposals/BE-0140-dedupe-claude-client-init/BE-0140-dedupe-claude-client-init-ja.md) | Claude クライアント初期化の重複をなくす | 提案 |
 | [BE-0142](proposals/BE-0142-cli-command-coverage/BE-0142-cli-command-coverage-ja.md) | CLI コマンド層にテストを追加する | 提案 |
+| [BE-0143](proposals/BE-0143-run-command-decomposition/BE-0143-run-command-decomposition-ja.md) | run コマンドの巨大関数を分解する | 提案 |
 <!-- /GENERATED:proposals-dev-infra -->
 
 ### 外部サービスとの連携
