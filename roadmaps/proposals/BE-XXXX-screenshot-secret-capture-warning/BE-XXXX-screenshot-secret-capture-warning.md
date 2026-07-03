@@ -14,9 +14,10 @@
 ## Introduction
 
 Screenshots and video captured during `record`/`enrich`/`triage` are not redacted — a typed
-password, an OTP, or on-screen PII stays in the image, is written to disk, and is sent to the
-Anthropic API on every turn. This item adds a clear, up-front warning when secrets are bound, so
-the author knows this before it happens, rather than silently masking pixels.
+password, an OTP, or on-screen PII stays in the image, is written to disk under `runs/`, and the
+current screenshot is sent to the configured AI provider as image content on every turn. This item
+adds a clear, up-front warning when secrets are bound, so the author knows this before it happens,
+rather than silently masking pixels.
 
 ## Motivation
 
