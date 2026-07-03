@@ -31,7 +31,7 @@ for exactly that case. This item renames the grammar from `apps` to `targets` (a
   the target by bundleId; web apps by baseUrl instead"* — and its validator rejects a malformed
   entry with *"app needs bundleId (iOS) or baseUrl (web)"*. The code reaches for the word
   **target** to describe the concept while the key stays `apps`.
-- With Android planned ([BE-0007](../../proposals/BE-0007-android-backend/BE-0007-android-backend.md)) and the
+- With Android planned ([BE-0007](../../in-progress/BE-0007-android-backend/BE-0007-android-backend.md)) and the
   scope statement itself due to move to multi-platform
   ([BE-0010](../BE-0010-update-scope-statement/BE-0010-update-scope-statement.md)), calling a
   website or an Android package an "app" only gets more strained.

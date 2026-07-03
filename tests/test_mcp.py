@@ -9,6 +9,11 @@ from typing import Any
 
 import pytest
 from conftest import el
+from typer.testing import CliRunner
+
+from bajutsu.cli import app
+
+runner = CliRunner()
 
 
 def _run(coro: Any) -> Any:
@@ -373,3 +378,41 @@ def test_latest_manifest_finds_newest(tmp_path: Path) -> None:
     result = _run(mcp.read_resource("bajutsu://runs/latest/manifest.json"))
     data = json.loads(result.contents[0].content)
     assert data["runId"] == "20260616T120000"
+
+
+# --- `bajutsu mcp` CLI command (BE-0117) ---
+
+
+def test_cli_mcp_unsupported_transport() -> None:
+    r = runner.invoke(app, ["mcp", "--transport", "carrier-pigeon"])
+    assert r.exit_code == 2
+    assert "unsupported transport" in r.output
+    assert "stdio" in r.output and "sse" in r.output
+
+
+def test_cli_mcp_fastmcp_not_installed(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Simulate the optional `mcp` extra (fastmcp) being absent: the import guard exits 2 with a hint.
+    import sys
+
+    monkeypatch.setitem(sys.modules, "bajutsu.mcp", None)
+    r = runner.invoke(app, ["mcp"])
+    assert r.exit_code == 2
+    assert "fastmcp is not installed" in r.output
+
+
+@pytest.mark.parametrize("transport", ["stdio", "sse"])
+def test_cli_mcp_starts_server(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, transport: str
+) -> None:
+    started: dict[str, Any] = {}
+
+    class _FakeServer:
+        def run(self, *, transport: str) -> None:
+            started["transport"] = transport  # record instead of blocking on a real server
+
+    monkeypatch.setattr("bajutsu.mcp.create_server", lambda _cfg, _runs: _FakeServer())
+    config = tmp_path / "bajutsu.config.yaml"
+    config.write_text("defaults: {}\ntargets: {}\n", encoding="utf-8")
+    r = runner.invoke(app, ["mcp", "--config", str(config), "--transport", transport])
+    assert r.exit_code == 0
+    assert started["transport"] == transport

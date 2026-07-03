@@ -235,7 +235,6 @@ Reduce friction for the many parallel sessions working this repo — treat merge
 | [BE-0074](implemented/BE-0074-be-template-standardization/BE-0074-be-template-standardization.md) | Standardize the BE item template (EN / JA) | Implemented |
 | [BE-0078](implemented/BE-0078-roadmap-status-folders/BE-0078-roadmap-status-folders.md) | Status-driven roadmap folders (proposals / deferred / in-progress / implemented) | Implemented |
 | [BE-0089](implemented/BE-0089-merge-time-be-id-allocation/BE-0089-merge-time-be-id-allocation.md) | Merge-time BE-ID allocation on main | Implemented |
-| [BE-0092](implemented/BE-0092-crawl-coordinator-extraction/BE-0092-crawl-coordinator-extraction.md) | Extract the crawl coordinator into a class | Implemented |
 | [BE-0093](implemented/BE-0093-public-docs-site/BE-0093-public-docs-site.md) | Public project website & documentation portal (GitHub Pages) | Implemented |
 | [BE-0094](implemented/BE-0094-roadmap-status-dashboard/BE-0094-roadmap-status-dashboard.md) | Generated roadmap status dashboard on GitHub Pages | Implemented |
 | [BE-0096](implemented/BE-0096-docs-roadmap-link-integrity/BE-0096-docs-roadmap-link-integrity.md) | Keep docs links to roadmap items from rotting on promotion | Implemented |
@@ -244,6 +243,16 @@ Reduce friction for the many parallel sessions working this repo — treat merge
 | [BE-0109](implemented/BE-0109-roadmap-tracking-issues/BE-0109-roadmap-tracking-issues.md) | GitHub Issues as the ownership tracker for open roadmap items | Implemented |
 | [BE-0113](implemented/BE-0113-design-doc-realignment/BE-0113-design-doc-realignment.md) | Realign DESIGN.md with the current implementation | Implemented |
 <!-- /GENERATED:implemented-dev-infra -->
+
+### Codebase quality & technical debt
+
+Behavior-preserving cleanup inside `bajutsu/` itself — deduplication, decomposition of oversized functions/modules, and naming clarity — as distinct from *Development infrastructure (contributor workflow)* above, which covers the tooling contributors use to work on this repo (CI, hooks, roadmap automation).
+
+<!-- GENERATED:implemented-quality-debt -->
+| ID | Item | Status |
+|---|---|---|
+| [BE-0092](implemented/BE-0092-crawl-coordinator-extraction/BE-0092-crawl-coordinator-extraction.md) | Extract the crawl coordinator into a class | Implemented |
+<!-- /GENERATED:implemented-quality-debt -->
 
 ### Dogfood fixtures (demo apps)
 
@@ -290,6 +299,16 @@ Standing up `bajutsu serve` beyond loopback. The hardening that makes the existi
 | [BE-0090](implemented/BE-0090-uploaded-config-command-execution/BE-0090-uploaded-config-command-execution.md) | Govern and sandbox command execution from uploaded bundle configs | Implemented |
 | [BE-0106](implemented/BE-0106-post-completion-worker-model/BE-0106-post-completion-worker-model.md) | Post-completion worker model (eliminate Redis dependency) | Implemented |
 <!-- /GENERATED:implemented-hosting -->
+
+### Security hardening
+
+Closing the edges the deterministic core does not touch — `serve`'s HTTP surface, how secrets flow through capture / record / artifacts, driver argument hygiene, and the CI supply chain. These items keep the tool safe to run on a shared machine and safe to hand a scenario from an untrusted source, without weakening the prime directives.
+
+<!-- GENERATED:implemented-security -->
+| ID | Item | Status |
+|---|---|---|
+| [BE-0116](implemented/BE-0116-udid-argument-validation/BE-0116-udid-argument-validation.md) | Tighten UDID validation against argument injection | Implemented |
+<!-- /GENERATED:implemented-security -->
 
 ### Configuration sourcing
 
@@ -369,7 +388,9 @@ The Web (Playwright) backend and its completion (rich capabilities, parallel run
 ### Platform expansion (Android / Web / Flutter)
 
 <!-- GENERATED:in-progress-platform -->
-
+| ID | Item | Status |
+|---|---|---|
+| [BE-0007](in-progress/BE-0007-android-backend/BE-0007-android-backend.md) | Android backend | In progress |
 <!-- /GENERATED:in-progress-platform -->
 
 ### Candidates from competitive research (MagicPod / Autify)
@@ -394,6 +415,16 @@ The Web (Playwright) backend and its completion (rich capabilities, parallel run
 |---|---|---|
 | [BE-0019](in-progress/BE-0019-xcuitest-backend/BE-0019-xcuitest-backend.md) | XCUITest backend | In progress |
 <!-- /GENERATED:in-progress-backend -->
+
+### Development infrastructure (contributor workflow)
+
+Reduce friction for the many parallel sessions working this repo — treat merge conflicts as a design smell and reshape the file flow so independent changes touch disjoint files.
+
+<!-- GENERATED:in-progress-dev-infra -->
+| ID | Item | Status |
+|---|---|---|
+| [BE-0117](in-progress/BE-0117-coverage-floor-ratchet/BE-0117-coverage-floor-ratchet.md) | Cover the rest of the CLI command layer, then ratchet the coverage floor | In progress |
+<!-- /GENERATED:in-progress-dev-infra -->
 
 ### Dogfood fixtures (demo apps)
 
@@ -450,7 +481,6 @@ The scope is currently **limited to the iOS Simulator** ([DESIGN §1](../DESIGN.
 <!-- GENERATED:proposals-platform -->
 | ID | Item | Status |
 |---|---|---|
-| [BE-0007](proposals/BE-0007-android-backend/BE-0007-android-backend.md) | Android backend | Proposal |
 | [BE-0008](proposals/BE-0008-flutter-support/BE-0008-flutter-support.md) | Flutter support | Proposal |
 | [BE-0114](proposals/BE-0114-driver-conformance-suite/BE-0114-driver-conformance-suite.md) | Driver conformance suite for backend-agnostic behavior | Proposal |
 | [BE-0118](proposals/BE-0118-wait-for-contract-unification/BE-0118-wait-for-contract-unification.md) | Unify the wait_for polling contract across drivers | Proposal |
@@ -519,7 +549,6 @@ Closing the edges the deterministic core does not touch — `serve`'s HTTP surfa
 | ID | Item | Status |
 |---|---|---|
 | [BE-0115](proposals/BE-0115-inprocess-collector-auth/BE-0115-inprocess-collector-auth.md) | Authenticate the in-process iOS network collector | Proposal |
-| [BE-0116](proposals/BE-0116-udid-argument-validation/BE-0116-udid-argument-validation.md) | Tighten UDID validation against argument injection | Proposal |
 | [BE-0120](proposals/BE-0120-recorded-scenario-secret-tokenization/BE-0120-recorded-scenario-secret-tokenization.md) | Tokenize secrets in recorded scenario YAML | Proposal |
 | [BE-0121](proposals/BE-0121-serve-csrf-host-allowlist/BE-0121-serve-csrf-host-allowlist.md) | Unconditional CSRF and Host-allowlist defenses for serve | Proposal |
 | [BE-0123](proposals/BE-0123-composite-action-input-indirection/BE-0123-composite-action-input-indirection.md) | Route composite-action inputs through env indirection | Proposal |
@@ -530,6 +559,11 @@ Closing the edges the deterministic core does not touch — `serve`'s HTTP surfa
 | [BE-0133](proposals/BE-0133-pin-actionlint-installer/BE-0133-pin-actionlint-installer.md) | Pin the actionlint installer by SHA | Proposal |
 | [BE-0136](proposals/BE-0136-serve-write-once-secrets/BE-0136-serve-write-once-secrets.md) | Write-once secrets store for serve | Proposal |
 | [BE-0144](proposals/BE-0144-automerge-stale-approval-race/BE-0144-automerge-stale-approval-race.md) | Close the auto-merge stale-approval race | Proposal |
+| [BE-0151](proposals/BE-0151-screenshot-secret-capture-warning/BE-0151-screenshot-secret-capture-warning.md) | Warn when screenshots and video may capture on-screen secrets | Proposal |
+| [BE-0152](proposals/BE-0152-totp-seed-artifact-leak/BE-0152-totp-seed-artifact-leak.md) | Keep literal TOTP seeds out of run artifacts | Proposal |
+| [BE-0153](proposals/BE-0153-encode-aware-secret-redaction/BE-0153-encode-aware-secret-redaction.md) | Encode-aware secret redaction | Proposal |
+| [BE-0154](proposals/BE-0154-roadmap-promote-base-sha/BE-0154-roadmap-promote-base-sha.md) | Run roadmap-promote from the base SHA | Proposal |
+| [BE-0155](proposals/BE-0155-idb-input-text-via-stdin/BE-0155-idb-input-text-via-stdin.md) | Pass idb input text via stdin to keep secrets out of argv | Proposal |
 <!-- /GENERATED:proposals-security -->
 
 ### Configuration sourcing
@@ -555,9 +589,7 @@ Turning a passing scenario into a native test in a destination framework's idiom
 Keeping the autonomous crawl fast and its code lean as it grows.
 
 <!-- GENERATED:proposals-crawl -->
-| ID | Item | Status |
-|---|---|---|
-| [BE-0132](proposals/BE-0132-dedupe-crawl-screenshot-helpers/BE-0132-dedupe-crawl-screenshot-helpers.md) | Deduplicate crawl screenshot helpers | Proposal |
+
 <!-- /GENERATED:proposals-crawl -->
 
 ### Backend expansion (iOS actuators)
@@ -580,17 +612,26 @@ Keeping the autonomous crawl fast and its code lean as it grows.
 | ID | Item | Status |
 |---|---|---|
 | [BE-0112](proposals/BE-0112-layer-boundary-enforcement/BE-0112-layer-boundary-enforcement.md) | Enforce core / contract / periphery layer boundaries in the gate | Proposal |
-| [BE-0117](proposals/BE-0117-coverage-floor-ratchet/BE-0117-coverage-floor-ratchet.md) | Cover the rest of the CLI command layer, then ratchet the coverage floor | Proposal |
 | [BE-0122](proposals/BE-0122-workflow-name-legibility/BE-0122-workflow-name-legibility.md) | Legible GitHub Actions workflow and job names | Proposal |
+| [BE-0139](proposals/BE-0139-roadmap-dashboard-issue-links/BE-0139-roadmap-dashboard-issue-links.md) | Link the roadmap dashboard and item files to their tracking issue | Proposal |
+| [BE-0149](proposals/BE-0149-roadmap-placeholder-format-guardrail/BE-0149-roadmap-placeholder-format-guardrail.md) | Close the roadmap-placeholder format-guardrail gap | Proposal |
+<!-- /GENERATED:proposals-dev-infra -->
+
+### Codebase quality & technical debt
+
+Behavior-preserving cleanup inside `bajutsu/` itself — deduplication, decomposition of oversized functions/modules, and naming clarity — as distinct from *Development infrastructure (contributor workflow)* above, which covers the tooling contributors use to work on this repo (CI, hooks, roadmap automation).
+
+<!-- GENERATED:proposals-quality-debt -->
+| ID | Item | Status |
+|---|---|---|
+| [BE-0132](proposals/BE-0132-dedupe-crawl-screenshot-helpers/BE-0132-dedupe-crawl-screenshot-helpers.md) | Deduplicate crawl screenshot helpers | Proposal |
 | [BE-0134](proposals/BE-0134-serve-cli-flag-mirror-drift/BE-0134-serve-cli-flag-mirror-drift.md) | Eliminate serve-to-CLI flag-mirror drift | Proposal |
 | [BE-0135](proposals/BE-0135-module-naming-debt/BE-0135-module-naming-debt.md) | Resolve top-level module naming debt | Proposal |
-| [BE-0139](proposals/BE-0139-roadmap-dashboard-issue-links/BE-0139-roadmap-dashboard-issue-links.md) | Link the roadmap dashboard and item files to their tracking issue | Proposal |
 | [BE-0140](proposals/BE-0140-dedupe-claude-client-init/BE-0140-dedupe-claude-client-init.md) | Deduplicate Claude client initialization | Proposal |
 | [BE-0142](proposals/BE-0142-cli-command-coverage/BE-0142-cli-command-coverage.md) | Cover the CLI command layer | Proposal |
 | [BE-0143](proposals/BE-0143-run-command-decomposition/BE-0143-run-command-decomposition.md) | Decompose the run command god-function | Proposal |
-| [BE-0149](proposals/BE-0149-roadmap-placeholder-format-guardrail/BE-0149-roadmap-placeholder-format-guardrail.md) | Close the roadmap-placeholder format-guardrail gap | Proposal |
 | [BE-0150](proposals/BE-0150-scenario-load-yaml-error-handling/BE-0150-scenario-load-yaml-error-handling.md) | Fail cleanly on a malformed scenario in `trace --explain` and `audit` | Proposal |
-<!-- /GENERATED:proposals-dev-infra -->
+<!-- /GENERATED:proposals-quality-debt -->
 
 ### Integration with external services
 

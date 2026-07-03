@@ -9,7 +9,7 @@
 | Author | [@hirosassa](https://github.com/hirosassa) |
 | Status | **Implemented** |
 | Implementing PR | [#321](https://github.com/bajutsu-e2e/bajutsu/pull/321) |
-| Topic | Development infrastructure (contributor workflow) |
+| Topic | Codebase quality & technical debt |
 <!-- /BE-METADATA -->
 
 ## Introduction
@@ -22,9 +22,12 @@ gate), screen identity / transitions / crashes are decided exactly as today, and
 `test_crawl*` suite is the regression net. Nothing in the public API or the on-disk screen map
 changes. It is the maintainability counterpart to [BE-0064](../../implemented/BE-0064-parallel-crawl/BE-0064-parallel-crawl.md)
 and [BE-0077](../../implemented/BE-0077-parallel-web-crawl/BE-0077-parallel-web-crawl.md), which added
-the concurrency this proposal reorganizes. Because it is a contributor-facing maintainability change
-rather than a behavior or performance change, it is filed under *Development infrastructure*,
-following [BE-0067](../../implemented/BE-0067-code-quality-gate-hardening/BE-0067-code-quality-gate-hardening.md);
+the concurrency this proposal reorganizes. Because it is a behavior-preserving internal refactor of
+production code rather than a behavior or performance change, it is filed under *Codebase quality &
+technical debt* — distinct from *Development infrastructure*
+([BE-0067](../../implemented/BE-0067-code-quality-gate-hardening/BE-0067-code-quality-gate-hardening.md)),
+which covers the tooling contributors use to work on this repo, not `bajutsu/`'s own internal
+structure.
 [BE-0083](../../implemented/BE-0083-codegen-emitter-unification/BE-0083-codegen-emitter-unification.md)
 is a comparable internal-structure refactor.
 
@@ -164,4 +167,4 @@ it lands as **one focused PR** announced up front, not folded into unrelated wor
 - [BE-0064 — Parallel crawl across multiple simulators](../../implemented/BE-0064-parallel-crawl/BE-0064-parallel-crawl.md) — added the multi-worker frontier this reorganizes.
 - [BE-0077 — Parallel web crawl across multiple browsers](../../implemented/BE-0077-parallel-web-crawl/BE-0077-parallel-web-crawl.md) — added the in-thread worker factories and `recover`.
 - [BE-0083 — Unify the codegen emitters behind a shared scenario walk](../../implemented/BE-0083-codegen-emitter-unification/BE-0083-codegen-emitter-unification.md) — a comparable behavior-preserving internal-structure refactor.
-- [BE-0067 — Code-quality gate hardening](../../implemented/BE-0067-code-quality-gate-hardening/BE-0067-code-quality-gate-hardening.md) — precedent for a maintainability item filed under *Development infrastructure*.
+- [BE-0067 — Code-quality gate hardening](../../implemented/BE-0067-code-quality-gate-hardening/BE-0067-code-quality-gate-hardening.md) — the contributor-workflow counterpart this item is distinct from.
