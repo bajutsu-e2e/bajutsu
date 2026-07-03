@@ -64,7 +64,7 @@ def test_worker_result_marks_job_done(tmp_path: Path) -> None:
     repo.enqueue_job("j1", org_id="o1", spec={"cmd": []})
     repo.lease_job("w1")
     result = {"ok": True, "runId": "r1", "summary": {"passed": 3}}
-    _payload, code = ops.worker_result(state, {"job_id": "j1", "result": result})
+    _payload, code = ops.worker_result(state, {"job_id": "j1", "worker_id": "w1", "result": result})
     assert code == 200
     info = repo.get_job("j1")
     assert info is not None
@@ -74,8 +74,16 @@ def test_worker_result_marks_job_done(tmp_path: Path) -> None:
 
 def test_worker_result_rejects_missing_job(tmp_path: Path) -> None:
     state, _repo = _state_with_db(tmp_path)
-    _payload, code = ops.worker_result(state, {"job_id": "nope", "result": {}})
+    _payload, code = ops.worker_result(state, {"job_id": "nope", "worker_id": "w1", "result": {}})
     assert code == 404
+
+
+def test_worker_result_requires_worker_id(tmp_path: Path) -> None:
+    state, repo = _state_with_db(tmp_path)
+    repo.enqueue_job("j1", org_id="o1", spec={"cmd": []})
+    repo.lease_job("w1")
+    _payload, code = ops.worker_result(state, {"job_id": "j1", "result": {"ok": True}})
+    assert code == 400
 
 
 def test_worker_result_returns_503_without_repository(tmp_path: Path) -> None:
@@ -86,7 +94,9 @@ def test_worker_result_returns_503_without_repository(tmp_path: Path) -> None:
 
 def test_worker_result_rejects_non_dict_result(tmp_path: Path) -> None:
     state, _repo = _state_with_db(tmp_path)
-    _payload, code = ops.worker_result(state, {"job_id": "j1", "result": "not a dict"})
+    _payload, code = ops.worker_result(
+        state, {"job_id": "j1", "worker_id": "w1", "result": "not a dict"}
+    )
     assert code == 400
 
 
@@ -95,7 +105,7 @@ def test_worker_result_marks_error_as_failed(tmp_path: Path) -> None:
     repo.enqueue_job("j1", org_id="o1", spec={"cmd": []})
     repo.lease_job("w1")
     _payload, code = ops.worker_result(
-        state, {"job_id": "j1", "result": {"ok": False, "error": "crash"}}
+        state, {"job_id": "j1", "worker_id": "w1", "result": {"ok": False, "error": "crash"}}
     )
     assert code == 200
     info = repo.get_job("j1")
@@ -110,7 +120,7 @@ def test_worker_lease_then_result_round_trip(tmp_path: Path) -> None:
     assert lease_code == 200
     result = {"ok": True, "runId": "20260702-1"}
     _result_payload, result_code = ops.worker_result(
-        state, {"job_id": lease_payload["job_id"], "result": result}
+        state, {"job_id": lease_payload["job_id"], "worker_id": "w1", "result": result}
     )
     assert result_code == 200
     info = repo.get_job("j1")
