@@ -1,0 +1,165 @@
+**English** · [日本語](BE-XXXX-serve-scope-boundary-ja.md)
+
+# BE-XXXX — Bound serve scope and keep host concerns out of shared config
+
+<!-- BE-METADATA -->
+| Field | Value |
+|---|---|
+| Proposal | [BE-XXXX](BE-XXXX-serve-scope-boundary.md) |
+| Author | [@0x0c](https://github.com/0x0c) |
+| Status | **Proposal** |
+| Topic | Hosting the web UI (cloud / self-hosted) |
+<!-- /BE-METADATA -->
+
+## Introduction
+
+`serve` has grown from a local preview server into the repository's largest, fastest-growing
+subsystem. Its host-facing concerns (organizations, roles) have started leaking into
+`bajutsu/config.py`, the schema the CLI's deterministic core also depends on.
+
+This proposal draws an explicit boundary around `serve`'s scope and keeps multi-tenant hosting
+concerns out of the config schema the rest of the tool shares.
+
+## Motivation
+
+| Component | Size | Note |
+|---|---|---|
+| `bajutsu/serve/` (incl. `server/`) | 6,920 lines / ~30 modules | SQLAlchemy, Alembic, OAuth, RBAC, an object store, a Redis-backed worker |
+| `bajutsu/templates/serve.js` | 1,575 lines | vanilla JS, no build step, no tests |
+| `bajutsu/serve/operations.py` | 1,376 lines | tracked separately by a planned follow-up proposal to split this module (TBD) |
+| `bajutsu/` (whole core, Python) | ~30,000 lines | `serve` + `serve.js` together are roughly a fifth of this |
+
+None of that infrastructure is something a local CLI tool's core has a reason to know about.
+
+The growth reaches into the core, too. `bajutsu/config.py:339` defines `OrgConfig`, and `Config`
+itself carries an `orgs: dict[str, OrgConfig]` field (`config.py:357`) plus four resolution helpers
+(`config.py:380-415`). None of this means anything to a solo developer running `bajutsu run`
+against a local Simulator — it exists purely to support `serve`'s hosted, multi-tenant deployment
+(BE-0015).
+
+`Config` is the schema every entry point parses, so this hosting concern has become a permanent tax
+on the shared config surface — directly contradicting the "app-agnostic" and "keep the deterministic
+core unchanged" premise `Effective`/`Config` are supposed to serve.
+
+Severity: High. This is architectural drift, not a bug, but each new hosting feature (BE-0015,
+BE-0016, BE-0051) makes the boundary harder to draw retroactively, and the config schema is the
+part of the codebase every backend and every target depends on.
+
+## Detailed design
+
+The boundary is drawn with one concrete move plus a machine-checked rule, not a size cap or a
+package split.
+
+| # | Track | Concrete action |
+|---|---|---|
+| 1 | Document the rule | Short architecture note in `docs/` + `docs/ja/` naming the boundary |
+| 2 | Enforce it with a gate test | `tests/test_serve_boundary.py`, an AST import check wired into `make check` |
+| 3 | Move `OrgConfig` out of `config.py` | New `bajutsu/serve/orgs.py`; split `load_config` |
+| 4 | Guardrail for `serve.js` | `node --check` + minimal ESLint in `make lint`; defer Jest/Vitest |
+
+### 1. Document the rule
+
+`bajutsu/config.py`, `bajutsu/drivers/`, `bajutsu/runner/`, and `bajutsu/scenario/` stay
+host-agnostic: no organization, role, tenancy, or billing concept enters them, and neither does the
+`db` (SQLAlchemy/Alembic/psycopg) or `oauth` (Authlib) extra. `bajutsu/serve/` — and only
+`bajutsu/serve/` — owns hosting concerns.
+
+The note points at the enforcement test below instead of asking reviewers to hold the rule in their
+head.
+
+### 2. Enforce it with a gate test, not a size ceiling
+
+The boundary already holds today: a check of every core module finds zero imports of
+`bajutsu.serve` or of the `db`/`oauth` extras. `bajutsu/serve/server/logbus.py` and `sessions.py`
+already take their Redis client through an injected `RedisLike` protocol rather than importing
+`redis` directly, so `serve` doesn't even carry a hard Redis dependency.
+
+`tests/test_serve_boundary.py` walks the AST of `bajutsu/config.py`, `bajutsu/drivers/**`,
+`bajutsu/runner/**`, and `bajutsu/scenario/**`, and fails if any of them imports `bajutsu.serve` or
+a `db`/`oauth`-extra package. Running this in `make check` turns "serve stays bounded" into a
+regression the gate catches — no separate installable distribution (e.g. `bajutsu-serve`) is
+needed, since the isolation is already dependency-level.
+
+### 3. Move `OrgConfig` and the org helpers into `bajutsu/serve/orgs.py`
+
+Every current caller already lives under `bajutsu/serve/` (`serve/__init__.py`, `authz.py`,
+`jobs.py`, `operations.py`, `server/worker_job.py`) — nothing in the core calls them today, so the
+move is mechanical, not exploratory:
+
+| Symbol | Today | After the move |
+|---|---|---|
+| `OrgConfig` | `config.py:339-348` | `bajutsu/serve/orgs.py` |
+| `DEFAULT_ORG` | `config.py:376-378` | `bajutsu/serve/orgs.py` |
+| `org_for_user` / `org_for_target` / `org_for_identity` / `targets_for_org` | `config.py:380-415` | `bajutsu/serve/orgs.py`, signature narrowed from `config: Config` to `orgs: dict[str, OrgConfig]` |
+| `Config.orgs` field | `config.py:357` | removed |
+| `load_config` | `config.py:649-652` | split into `parse_config_dict` (validation) + `load_config` (I/O) |
+
+`_Model` sets `extra="forbid"` (`config.py:27`) as a deliberate typo guard. Once `orgs` is gone,
+`Config.model_validate` rejects any YAML that still declares a top-level `orgs:` key, so `serve`
+can no longer hand it the raw document unmodified.
+
+`bajutsu/serve/orgs.py` gets a new `load_serve_config(text: str) -> tuple[Config, dict[str,
+OrgConfig]]`: it parses the raw YAML once, pops `orgs` before handing the remainder to
+`parse_config_dict`, and validates the popped block locally. The five callers above switch their
+`org_for_*`/`load_config` imports from `bajutsu.config` to `bajutsu.serve.orgs`.
+
+A local `bajutsu run` / `bajutsu record` keeps calling the plain `load_config` and never constructs
+or sees an `OrgConfig`.
+
+### 4. Give `serve.js` lint and a syntax gate, not a full test framework yet
+
+1,575 lines of untested vanilla JavaScript is itself a scope-creep symptom, but the proportionate
+first step is a lighter guardrail: a minimal ESLint flat config scoped to
+`bajutsu/templates/serve.js`, with `node --check` plus `npx eslint` wired into `make lint`. Both are
+skipped with a notice when Node isn't present — the same pattern `make` already uses for
+`actionlint`.
+
+A full component/unit-test harness (Jest or Vitest) is explicitly deferred until `serve.js`
+accumulates enough branching logic to need one. Recording that trigger here keeps the deferral a
+decision, not an oversight.
+
+---
+
+This is scoping and gate work, not a runtime behavior change: `serve`'s behavior toward users is
+untouched, only where its code, config, and dependencies are allowed to live. It stays compliant
+with all three prime directives by construction — the two new gate checks run alongside `make
+check`, not inside `run`.
+
+## Alternatives considered
+
+| Alternative | Verdict | Why |
+|---|---|---|
+| Do nothing, keep growing `serve` in place | Rejected | The config leak compounds — every future hosting feature (SSO, billing, audit log retention) gets a precedent for landing in `config.py` |
+| Split `serve` into a separate distribution (e.g. `bajutsu-serve`) or repository | Rejected for now | The `db`/`oauth` extras and the injected `RedisLike` protocol already isolate `serve`'s heavy dependencies; a split adds real versioning/CI/release cost without solving a problem the gate test doesn't already solve. Revisit if `serve` needs its own release cadence |
+| Freeze `serve` feature work until the boundary lands | Rejected | `serve` hardening and hosting (BE-0015, BE-0016, BE-0051) are active, valuable tracks; the boundary should be drawn incrementally alongside them |
+
+## Progress
+
+> Keep this current as work proceeds. The checklist mirrors the MECE work breakdown in
+> *Detailed design* (one box per unit of work); the log records what changed and when
+> (oldest first), linking the PRs.
+
+- [ ] Document the `serve`/core boundary rule (host concerns confined to `bajutsu/serve/`)
+- [ ] Add `tests/test_serve_boundary.py`, an AST-based import check wired into `make check`
+- [ ] Move `OrgConfig` / `DEFAULT_ORG` / `org_for_*` helpers into `bajutsu/serve/orgs.py`, splitting
+      `load_config` into `parse_config_dict` + `load_config`
+- [ ] Wire `node --check` + a minimal ESLint config for `bajutsu/templates/serve.js` into `make lint`
+
+No PR has landed yet.
+
+## References
+
+| Location | What it is |
+|---|---|
+| `bajutsu/config.py:27` | `_Model`'s `extra="forbid"` — the typo guard that turns dropping `orgs` into a breaking change unless `serve` pops the key first |
+| `bajutsu/config.py:339` | `OrgConfig`, host-facing multi-tenancy config |
+| `bajutsu/config.py:357` | `Config.orgs` field |
+| `bajutsu/config.py:375-416` | `DEFAULT_ORG`, `org_for_user` / `org_for_target` / `org_for_identity` / `targets_for_org` |
+| `bajutsu/config.py:649-652` | `load_config`, the seam to split into `parse_config_dict` + `load_config` |
+| `bajutsu/serve/__init__.py`, `authz.py`, `jobs.py`, `operations.py`, `server/worker_job.py` | every current caller of the org helpers; all already under `bajutsu/serve/` |
+| `bajutsu/serve/server/logbus.py`, `sessions.py` | existing `RedisLike`-protocol injection, keeping `redis` out of a hard dependency |
+| `pyproject.toml:39-42` | the `db` (SQLAlchemy/Alembic/psycopg) and `oauth` (Authlib) optional extras that already keep those dependencies out of the core install |
+
+- Related: BE-0011 (local web UI serve), BE-0051 (serve hardening for hosting), BE-0015 (web UI
+  public hosting), BE-0016 (web UI self-hosting)
+- Originates from the 2026-07-02 codebase-analysis report (design).
