@@ -45,8 +45,8 @@ currently cannot pass through. The design has two parts:
 
 - **A single source of truth for the flag surface.** Rather than a manual `cmd += [...]` per
   flag, `run_command` and `record_command` build their argv from the same option metadata `typer`
-  already holds for the `run`/`record` commands (e.g. by iterating the command's `click.Params`
-  via `typer`'s underlying `click` object, or by having `run`/`record` accept a shared,
+  already holds for the `run`/`record` commands (e.g. by iterating the command's `click.Command.params`
+  (a list of `click.Parameter`) via `typer`'s underlying `click` object, or by having `run`/`record` accept a shared,
   declarative option-bundle — see the run-command-decomposition item's option-grouping work,
   which this item can build on if it lands first — that both the `typer` command and
   `run_command`/`record_command` consume). Whichever mechanism is chosen, adding a flag to the
