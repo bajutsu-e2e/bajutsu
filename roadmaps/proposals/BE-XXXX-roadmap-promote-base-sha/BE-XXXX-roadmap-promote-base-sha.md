@@ -36,7 +36,7 @@ already limits who can reach it.
 
 ## Detailed design
 
-1. **Check out the base ref (`github.base_ref` / the merge base), not `github.head_ref`,** for
+1. **Check out the base branch ref (`github.base_ref`) / base SHA (`github.event.pull_request.base.sha`), not `github.head_ref`,** for
    the step that runs `scripts/promote_roadmap_items.py`. The script's job — moving a proposal's
    directory to match its `Status:` field and regenerating the index — reads the PR's changed
    roadmap files from the working tree, so the checkout still needs the PR's content; the fix is
