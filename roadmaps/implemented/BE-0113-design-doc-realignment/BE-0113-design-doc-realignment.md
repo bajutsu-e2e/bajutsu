@@ -8,6 +8,7 @@
 | Proposal | [BE-0113](BE-0113-design-doc-realignment.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
+| Implementing PR | [#565](https://github.com/bajutsu-e2e/bajutsu/pull/565) |
 | Topic | Development infrastructure (contributor workflow) |
 | Related | [BE-0010](../../implemented/BE-0010-update-scope-statement/BE-0010-update-scope-statement.md), [BE-0027](../../deferred/BE-0027-mock-server-external/BE-0027-mock-server-external.md), [BE-0019](../../in-progress/BE-0019-xcuitest-backend/BE-0019-xcuitest-backend.md) |
 <!-- /BE-METADATA -->
