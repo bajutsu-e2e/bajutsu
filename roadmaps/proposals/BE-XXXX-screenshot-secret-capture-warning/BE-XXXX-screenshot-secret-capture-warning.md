@@ -58,7 +58,8 @@ disk under `runs/`. The current screenshot is sent to the configured AI provider
 every turn where the app is visible.
 2. **State what "secrets" redaction does and does not cover.** The warning names the boundary
    precisely: `${secrets.*}` values are redacted from the *text* evidence (network, element tree,
-   logs) via `Redactor`, but never from *images* — screenshots and video are sent and stored as-is.
+   logs) via `Redactor`, but never from *images* — screenshots are sent as-is to the configured AI
+   provider, and screenshots/video artifacts are stored as-is under `runs/`.
 3. **No silent behavior change.** No new flag suppresses the screenshot capture or the AI call;
    this item is a disclosure, not a mitigation of the underlying exposure (visual evidence is the
    product). An author who wants to avoid the exposure entirely already can (skip AI-driven
