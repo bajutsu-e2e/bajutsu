@@ -1,11 +1,11 @@
-**English** · [日本語](BE-XXXX-dedupe-claude-client-init-ja.md)
+**English** · [日本語](BE-0140-dedupe-claude-client-init-ja.md)
 
-# BE-XXXX — Deduplicate Claude client initialization
+# BE-0140 — Deduplicate Claude client initialization
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-dedupe-claude-client-init.md) |
+| Proposal | [BE-0140](BE-0140-dedupe-claude-client-init.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
 | Topic | Development infrastructure (contributor workflow) |

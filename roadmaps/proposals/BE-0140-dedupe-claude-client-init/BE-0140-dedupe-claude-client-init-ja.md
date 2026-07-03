@@ -1,11 +1,11 @@
-[English](BE-XXXX-dedupe-claude-client-init.md) · **日本語**
+[English](BE-0140-dedupe-claude-client-init.md) · **日本語**
 
-# BE-XXXX — Claude クライアント初期化の重複をなくす
+# BE-0140 — Claude クライアント初期化の重複をなくす
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
 |---|---|
-| 提案 | [BE-XXXX](BE-XXXX-dedupe-claude-client-init-ja.md) |
+| 提案 | [BE-0140](BE-0140-dedupe-claude-client-init-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **提案** |
 | トピック | 開発基盤（コントリビュータ体験） |
