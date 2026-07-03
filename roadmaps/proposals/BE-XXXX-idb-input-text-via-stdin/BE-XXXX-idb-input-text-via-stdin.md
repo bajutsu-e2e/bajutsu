@@ -45,10 +45,10 @@ Change how `type_text` gets the value to `idb`, not what the value is or how it 
 resolved:
 
 - Pass the text to `idb ui text` over stdin instead of argv, so the literal value
-  never appears in the process's command line. `idb`'s `ui text` subcommand already
-  reads from stdin when no positional text argument is given (falling back to argv
-  only when stdin is empty), so this is a drop-in change to how the subprocess is
-  invoked, not a new idb capability.
+  never appears in the process's command line. This design assumes `idb`'s `ui text`
+  subcommand reads from stdin when no positional text argument is given (falling back to
+  argv only when stdin is empty), so this should be a drop-in change to how the
+  subprocess is invoked, not a new idb capability.
 - Confine the change to the idb backend: `text_cmd` stops taking `text` as an argv
   element, and the driver's `_run` call (or a small idb-specific wrapper) supplies the
   text as the subprocess's `input=` instead. The `Driver.type_text` interface (used by
