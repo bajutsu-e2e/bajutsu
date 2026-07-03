@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0150](BE-0150-scenario-load-yaml-error-handling.md) |
 | Author | [@hirosassa](https://github.com/hirosassa) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0150") |
+| Implementing PR | [#603](https://github.com/bajutsu-e2e/bajutsu/pull/603) |
 | Topic | Codebase quality & technical debt |
 | Origin | Found while scoping BE-0117 (CLI command-layer coverage) |
 <!-- /BE-METADATA -->
@@ -84,13 +85,19 @@ The work is mutually exclusive and collectively exhaustive across the loader and
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Choose the boundary (loader normalization vs per-caller catch) and record the decision
-- [ ] Implement the fix so a `yaml.YAMLError` becomes a clean `exit 2` (with the docstring updated)
-- [ ] Add regression tests for `trace --explain` and `audit` on malformed YAML (keeping the existing
+- [x] Choose the boundary (loader normalization vs per-caller catch) and record the decision
+- [x] Implement the fix so a `yaml.YAMLError` becomes a clean `exit 2` (with the docstring updated)
+- [x] Add regression tests for `trace --explain` and `audit` on malformed YAML (keeping the existing
       `ValueError` branch tests)
-- [ ] Confirm the `trace` / `audit` happy paths and other branches are unchanged and the gate is green
+- [x] Confirm the `trace` / `audit` happy paths and other branches are unchanged and the gate is green
 
-No PR has landed yet.
+- Chose **option 1 (normalize at the loader)**: `load_expanded_scenarios` in `bajutsu/cli/_shared.py`
+  now wraps its parse/expand body and re-raises a `yaml.YAMLError` as `ValueError(...) from e`, so a
+  malformed scenario (or referenced component) fails with the documented `exit 2` and a `failed to
+  load scenario` message instead of an uncaught traceback. Regression tests cover both
+  `trace --explain` and `audit`; the existing `ValueError` (structurally-invalid) tests stay. As a
+  bonus, `coverage` — which shares the loader and the same `except (OSError, ValueError)` guard —
+  gets the clean behavior for free, which is the argument for fixing it once in the loader.
 
 ## References
 
