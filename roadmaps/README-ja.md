@@ -606,7 +606,6 @@ Web（Playwright）backend とその完成（リッチな capability、並列実
 |---|---|---|
 | [BE-0112](proposals/BE-0112-layer-boundary-enforcement/BE-0112-layer-boundary-enforcement-ja.md) | コア・契約・周辺のレイヤ境界をゲートで検査する | 提案 |
 | [BE-0122](proposals/BE-0122-workflow-name-legibility/BE-0122-workflow-name-legibility-ja.md) | Legible GitHub Actions workflow and job names | 提案 |
-| [BE-0149](proposals/BE-0149-roadmap-placeholder-format-guardrail/BE-0149-roadmap-placeholder-format-guardrail-ja.md) | ロードマッププレースホルダーを見逃すフォーマットガードレールの穴を塞ぐ | 提案 |
 | [BE-0156](proposals/BE-0156-roadmap-topic-label-sync/BE-0156-roadmap-topic-label-sync-ja.md) | ロードマップ項目 PR のラベルを Topic と同期させる | 提案 |
 <!-- /GENERATED:proposals-dev-infra -->
 

@@ -95,8 +95,11 @@ jobs:
 
           git add -A
           git commit -m "docs(roadmap): allocate BE IDs for merged placeholder items"
-          # Cap the bypass token's blast radius: the committed renumber must touch only roadmaps/
-          # (BE-0089). Runs on the commit, so it guards exactly what gets pushed.
+          # Gate the bypass-token commit before it lands on main: cap its blast radius to roadmaps/
+          # (BE-0089) and, on the renumbered tree, run the stdlib roadmap format check — the first
+          # point a once-placeholder item's shape is checkable, on a path with no PR or required
+          # check of its own (BE-0149). Runs on the commit, so it guards exactly what gets pushed;
+          # a failure aborts before `git push`, leaving main untouched.
           python3 scripts/check_renumber_diff.py
 
           # main may have moved between checkout and push; rebase onto it and retry a few times,

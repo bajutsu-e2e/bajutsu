@@ -42,8 +42,9 @@ from dataclasses import dataclass
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from build_roadmap_index import NUMBERED_DIR_RE, TITLE_RE
+from build_roadmap_index import TITLE_RE
 from promote_roadmap_items import CATEGORIES, read_status
+from roadmap_ids import numbered_match
 
 ROADMAP = Path("roadmaps")
 # Only these statuses are "open" and get a tracking issue; the other two are shipped / shelved.
@@ -88,8 +89,8 @@ def _parse_english(item_dir: Path) -> tuple[str, str]:
 def scan_items(roadmap: Path) -> list[Item]:
     """Every numbered ``BE-NNNN`` item across the four folders, sorted by id.
 
-    Placeholders (``BE-XXXX``) don't match ``NUMBERED_DIR_RE``, so they're skipped — a tracking
-    issue is only ever titled with a permanent id. Items without a readable Status are skipped.
+    Placeholders (``BE-XXXX``) aren't numbered, so they're skipped — a tracking issue is only ever
+    titled with a permanent id. Items without a readable Status are skipped.
     """
     items: list[Item] = []
     for category in CATEGORIES:
@@ -97,7 +98,7 @@ def scan_items(roadmap: Path) -> list[Item]:
         if not category_dir.is_dir():
             continue
         for d in sorted(category_dir.iterdir()):
-            match = NUMBERED_DIR_RE.match(d.name) if d.is_dir() else None
+            match = numbered_match(d.name) if d.is_dir() else None
             if not match:
                 continue
             status = read_status(d)
