@@ -11,7 +11,7 @@
 # no-op when the set is already consistent. It runs on `main` (not the PR) because a new proposal
 # still carries the `BE-XXXX` placeholder on its PR; only after `roadmap-id` allocates the real
 # number — itself a `roadmaps/**` push to `main` — can the now-numbered item get its issue here.
-name: roadmap-tracking-issues
+name: "Roadmap: sync tracking issues"
 
 on:
   push:

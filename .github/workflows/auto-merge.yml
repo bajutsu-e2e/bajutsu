@@ -1,4 +1,4 @@
-name: auto-merge
+name: Auto-merge (bypass App)
 
 # Enable GitHub's native auto-merge on every PR so it merges automatically
 # once branch protection is satisfied (CI green + an approving review).

@@ -12,7 +12,7 @@
 # ruleset bypass list, whose id/private-key are stored as the `AUTOMATION_BOT_APP_ID` /
 # `AUTOMATION_BOT_PRIVATE_KEY` secrets. Until those secrets exist the job is a green no-op (the gate step
 # below), so `main` is never red while the App is being set up.
-name: roadmap-id
+name: "Roadmap: allocate BE IDs"
 
 on:
   push:

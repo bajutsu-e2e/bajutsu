@@ -7,7 +7,7 @@
 |---|---|
 | Proposal | [BE-0122](BE-0122-workflow-name-legibility.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0122") |
 | Topic | Development infrastructure (contributor workflow) |
 <!-- /BE-METADATA -->
@@ -125,12 +125,26 @@ or permission changes.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Rename ambiguous top-level workflow `name:` fields (item 1)
-- [ ] Rename ambiguous job-level `name:` fields, excluding protected checks (item 2)
-- [ ] Leave the three ruleset-protected job names untouched (item 3 — no code change, tracked
+- [x] Rename ambiguous top-level workflow `name:` fields (item 1)
+- [x] Rename ambiguous job-level `name:` fields, excluding protected checks (item 2)
+- [x] Leave the three ruleset-protected job names untouched (item 3 — no code change, tracked
       so it isn't silently swept into item 2)
-- [ ] Document the naming convention in `docs/ai-development.md` (EN + JA) (item 4)
-- [ ] Manually verify the Actions tab / PR checks list read clearly after the rename (item 5)
+- [x] Document the naming convention in `docs/ai-development.md` (EN + JA) (item 4)
+- [ ] Manually verify the Actions tab / PR checks list read clearly after the rename (item 5 —
+      done after the branch is pushed, since the check names only render on a real run)
+
+Log:
+
+- Renamed ten top-level workflow `name:` fields (`docs`, `pr-title`, the four `roadmap-*`,
+  `dependency audit`, `idb monitor`, `web e2e`, `auto-merge`) and the redundant/bare job names in
+  `docs.yml`, `dependency-audit.yml`, and `web-e2e.yml` to the `E2E (Simulator)` / `Swift
+  (BajutsuKit)` shape. The four `Roadmap: …` names carry a colon-space, so they are quoted to stay
+  valid YAML. Left the three ruleset-protected job names (`check`, `E2E`, `require two approvals for
+  BE proposals`) exactly as-is. `codeql.yml` — added after this item was authored — already reads
+  clearly, so it is left untouched alongside `ci.yml`/`e2e.yml`/`swift.yml`. Documented the
+  convention and the required-status-check constraint in `docs/ai-development.md` and its Japanese
+  mirror. Verified with `make check`; the naming legibility (item 5) is confirmed by reading the
+  Actions tab once the branch is pushed.
 
 ## References
 

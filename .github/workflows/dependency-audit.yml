@@ -10,7 +10,7 @@
 # runner's Python. A known CVE fails the job; accept a reviewed advisory with
 # `--ignore-vuln <GHSA-or-CVE>` (with a comment) on the pip-audit call. pip-audit is version-pinned
 # (Dependabot doesn't track uvx pins) — bump it here manually.
-name: dependency audit
+name: Dependency audit (pip-audit)
 
 on:
   workflow_dispatch:
@@ -34,7 +34,7 @@ concurrency:
 
 jobs:
   audit:
-    name: dependency audit (pip-audit)
+    name: pip-audit
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
