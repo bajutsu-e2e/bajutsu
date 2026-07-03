@@ -279,6 +279,21 @@ def test_cli_trace_explain_malformed_yaml(tmp_path: Path) -> None:
     assert "failed to load scenario" in r.output
 
 
+def test_cli_trace_explain_malformed_component_names_the_component(tmp_path: Path) -> None:
+    # A syntax error in a *referenced component* is attributed to the component file, not the
+    # top-level scenario: the loader names each file it parses, so it can't misreport which one is
+    # malformed (BE-0150).
+    (tmp_path / "comp.yaml").write_text("steps: { tap\n", encoding="utf-8")  # unclosed flow mapping
+    scenario = tmp_path / "s.yaml"
+    scenario.write_text(
+        "- name: a\n  steps:\n    - use: { component: comp.yaml }\n", encoding="utf-8"
+    )
+    r = runner.invoke(app, ["trace", "--explain", str(scenario)])
+    assert r.exit_code == 2
+    assert "failed to load scenario" in r.output
+    assert "comp.yaml" in r.output  # the component, not the scenario, is named as malformed
+
+
 def test_cli_trace_explain_renders_valid_scenario(tmp_path: Path) -> None:
     good = tmp_path / "good.yaml"
     good.write_text("- name: a\n  steps:\n    - tap: { id: ok }\n", encoding="utf-8")
