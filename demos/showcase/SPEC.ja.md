@@ -29,10 +29,11 @@ showcase は Bajutsu の **次世代 dogfood 対象** です。`record`（Tier 1
 > `-a11y` ↔ `-noax` の双子は対照実験です。アプリもフローも同じで、識別子だけが違います。同じゴールを
 > `record` に両方へ通せば、その差分こそがアクセシビリティ作業の価値です。
 
-## 2. アプリマトリクス（2 コードベース × 2 ビルド変種 = 4 プロダクト）
+## 2. アプリマトリクス
 
-各ツールキットは **1 コードベース、2 ビルドターゲット** です。変種の差は Swift のアクティブコンパイル
-条件 `ACCESSIBLE` ただ 1 つで、ソースの分岐はありません（§8）。
+以下の iOS マトリクスは 2 コードベース × 2 ビルド変種 = 4 プロダクトで、§2.1 が Android 版の 4
+プロダクトを加えます。各ツールキットは **1 コードベース、2 ビルドターゲット** です。変種の差は Swift
+のアクティブコンパイル条件 `ACCESSIBLE` ただ 1 つで、ソースの分岐はありません（§8）。
 
 | アプリ名（`targets.<name>`） | ツールキット | `ACCESSIBLE` | Bundle id | Deeplink scheme | 表示名 |
 |---|---|---|---|---|---|
@@ -44,6 +45,52 @@ showcase は Bajutsu の **次世代 dogfood 対象** です。`record`（Tier 1
 2 つの `-a11y` アプリは、識別子集合、launch-env フック、deeplink を **完全に同一**（byte-for-byte）に
 露出しなければなりません。これにより `demos/showcase/scenarios/*.yaml` がどちらにも無改変で通ります。
 UIKit と SwiftUI のビュー構築は違ってよいですが、以下の契約は違えてはいけません。
+
+### 2.1 Android 版（[`android/`](android/)、BE-0007 の準備）
+
+同じフィクスチャの Android 版があります。[BE-0007 Android バックエンド](../../roadmaps/proposals/BE-0007-android-backend/BE-0007-android-backend-ja.md)
+に先行して、そのバックエンドが駆動するアプリのペアとして用意したものです。**Jetpack Compose** 版が
+SwiftUI のコードベースに、**Android Views** 版が UIKit に対応し、a11y/noax のペアは Gradle の
+flavor 切り替え（`BuildConfig.ACCESSIBLE`）1 つです。iOS の `ACCESSIBLE` と同じく、ソースの分岐は
+ありません。
+
+| アプリ名（`targets.<name>`） | ツールキット | `ACCESSIBLE` | Application id | Deeplink scheme | 表示名 |
+|---|---|---|---|---|---|
+| `showcase-compose` | Compose | true | `com.bajutsu.showcase.compose` | `showcasecompose` | Showcase Compose |
+| `showcase-compose-noax` | Compose | false | `com.bajutsu.showcase.compose.noax` | `showcasecomposenoax` | Showcase Compose (no a11y) |
+| `showcase-views` | Views | true | `com.bajutsu.showcase.views` | `showcaseviews` | Showcase Views |
+| `showcase-views-noax` | Views | false | `com.bajutsu.showcase.views.noax` | `showcaseviewsnoax` | Showcase Views (no a11y) |
+
+§5 の契約は、共有する**論理的な**要素一覧です。各プラットフォームでそれをどう露出するかは、
+チャネル（BE-0007 のセレクタ対応）だけが違います。
+
+| iOS（§5、§8） | Android Compose | Android Views |
+|---|---|---|
+| `accessibilityIdentifier` | `testTag` → `resource-id`（`testTagsAsResourceId`）。ドット区切り id を**そのまま**再現 | `android:id` → `resource-id`。id の `.`/`-` は `_` に対応（`stable.refresh` → `stable_refresh`） |
+| `accessibilityValue` の反映 | `content-desc` | `content-desc` |
+| `ProcessInfo` 経由の `launchEnv` | intent extras | intent extras |
+| deeplink のスキーム + ホスト | VIEW の intent-filter、ホスト文法は共通（§4） | 同じ |
+| SpringBoard アラート（§7） | 実行時パーミッションのダイアログ（`POST_NOTIFICATIONS`、`ACCESS_FINE_LOCATION`） | 同じ |
+| `UIPasteboard` の往復（§5.4） | `ClipboardManager` | 同じ |
+
+Android では、どちらのツールキットも状態の値を `content-desc` に反映します（Compose の
+`stateDescription` は `uiautomator dump` に現れないため使いません）。共有の契約から外れる Android
+固有の例外が 2 つあります。
+
+- **`SHOWCASE_UITEST`（アニメーション無効化、§3）**：iOS ではアプリ自身がアニメーションを無効に
+  しますが、Android ではドライバーがデバイス全体で無効にします（`adb shell settings put global
+  animator_duration_scale 0`）。そのためアプリはフックを読むだけで、アプリ側では何もしません。
+- **通知プロンプト（§7）には API 33 以上が必要です**：`POST_NOTIFICATIONS` は Android 13（API 33）
+  以降でのみ実行時パーミッションになります。それより古いエミュレータではプロンプトが出ないため、
+  アラートガードの流れを試すには API 33 以上のエミュレータで動かしてください。
+
+Compose の testTag はドット区切り id をそのまま再現するので、共有の [`scenarios/`](scenarios)
+一式が `showcase-compose` に無改変で通ります。Views の id はアンダースコアへの対応づけです
+（`android:id` の名前には `.` も `-` も使えません）。ドライバーが照合時に `.` と `_` を同一視
+するか、Views 用のシナリオ variant を用意するかは BE-0007 側の設計判断です。ネットワークは素の
+`HttpURLConnection` で、Android 版 BajutsuKit はまだありません（`network` の証跡とモックは
+BE-0007 が担当し、§6 は iOS に適用されます）。それ以外の以下の記述は、Android の 4 プロダクト
+すべてに当てはまります。
 
 ## 3. 起動環境フック
 
