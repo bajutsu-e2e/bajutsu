@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- Networking (SPEC §6) and the two deliberate runtime-permission prompts (SPEC §5.4 / §7):
+         Android's runtime dialogs are the out-of-process alert-guard fixture, the analog of iOS's
+         SpringBoard notification/location prompts. -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+
+    <application
+        android:allowBackup="true"
+        android:label="${appLabel}"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.Showcase">
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:launchMode="singleTask">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+            <!-- Deeplink (SPEC §4): scheme is per-flavor; the host selects a tab. `am start -a VIEW
+                 -d <scheme>://<tab>` is BE-0007's deeplink actuation. -->
+            <intent-filter android:autoVerify="false">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="${deeplinkScheme}" />
+            </intent-filter>
+        </activity>
+    </application>
+</manifest>

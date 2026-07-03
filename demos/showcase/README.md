@@ -30,6 +30,12 @@ The variant difference is a single Swift compile flag, `ACCESSIBLE` (SPEC §8); 
 forked source. The `-noax` builds compile to a tree with **no** identifiers — the app a team
 that skipped accessibility ships, made testable.
 
+**Android twins** ([`android/`](android/), SPEC §2.1): the same fixture also exists for Android
+ahead of the BE-0007 adb backend — Jetpack Compose mirroring SwiftUI, Android Views mirroring
+UIKit, each in the same a11y/noax flavor pair (four more products,
+`make -C demos/showcase/android build-all`). Until BE-0007 lands they build but cannot be run
+(`--backend android` reports "not implemented yet").
+
 ## Build
 
 Needs [XcodeGen](https://github.com/yonsm/XcodeGen) (`brew install xcodegen`) and Xcode.

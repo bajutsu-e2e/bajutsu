@@ -1,12 +1,15 @@
-# Bajutsu config for the showcase dogfood suite — four products from two codebases
-# (UIKit × SwiftUI, each in an accessibility-on / -off variant). See SPEC.md.
+# Bajutsu config for the showcase dogfood suite — four iOS products from two codebases
+# (UIKit × SwiftUI) plus their four Android twins (Views × Compose, BE-0007 preparation),
+# each in an accessibility-on / -off variant. See SPEC.md.
 #
-# The two `-a11y` apps expose an identical identifier contract, so the shared
-# `scenarios/` directory runs unchanged against either toolkit:
+# The two iOS `-a11y` apps expose an identical identifier contract, so the shared
+# `scenarios/` directory runs unchanged against either iOS toolkit:
 #   bajutsu run --target showcase-swiftui --config demos/showcase/showcase.config.yaml ...
 #   bajutsu run --target showcase-uikit   --config demos/showcase/showcase.config.yaml ...
 # The `-noax` apps carry no identifiers (idNamespaces: []) — the `record` / `doctor`
 # "missing accessibility" demo. `make -C demos/showcase <target>-build` builds each.
+# The four Android twins (below, BE-0007 preparation) share the same id contract, but only the
+# Compose targets reproduce the dotted ids verbatim; showcase-views uses underscore ids (SPEC §2.1).
 defaults:
   backend: [idb]
   device: "iPhone 17 Pro"
@@ -64,3 +67,58 @@ targets:
     xcuitest:
       testRunner: BajutsuKit/Runner/build/dd/Build/Products/BajutsuRunner.xctestrun
       build: make -C demos/showcase runner-build
+
+  # ==== Android (BE-0007 preparation) =============================================
+  # The Android twins of the four iOS products (demos/showcase/android). `backend: [android]`
+  # resolves to `adb`, which is registered but not implemented yet — a `run` against these fails
+  # with the registry's "not implemented yet" until the BE-0007 driver lands; the targets exist
+  # so that driver has a wired fixture from day one. `package` carries the applicationId; launchEnv
+  # arrives as intent extras.
+
+  # ---- Compose, accessibility ON — testTags surface the dotted SPEC ids verbatim
+  # (testTagsAsResourceId), so the shared id-based scenarios drive this app unchanged.
+  showcase-compose:
+    package: com.bajutsu.showcase.compose
+    deeplinkScheme: showcasecompose
+    launchEnv: { SHOWCASE_UITEST: "1" }
+    idNamespaces: [stable, horse, search, log, notice, perm, sys, net]
+    appPath: demos/showcase/android/compose/build/outputs/apk/a11y/debug/compose-a11y-debug.apk
+    build: make -C demos/showcase/android compose-build
+    backend: [android]
+    scenarios: demos/showcase/scenarios
+
+  # ---- Compose, accessibility OFF ------------------------------------------------
+  showcase-compose-noax:
+    package: com.bajutsu.showcase.compose.noax
+    deeplinkScheme: showcasecomposenoax
+    launchEnv: { SHOWCASE_UITEST: "1" }
+    idNamespaces: []   # honest: this build exposes no identifiers
+    appPath: demos/showcase/android/compose/build/outputs/apk/noax/debug/compose-noax-debug.apk
+    build: make -C demos/showcase/android compose-noax-build
+    backend: [android]
+    scenarios: demos/showcase/scenarios
+
+  # ---- Views, accessibility ON — native android:id, which allows neither '.' nor '-', so the
+  # ids are the SPEC ids with both mapped to '_' (stable.refresh → stable_refresh). Whether the
+  # adb driver normalizes '.' ↔ '_' on match or these targets get a scenario variant is a
+  # BE-0007 design decision (see demos/showcase/android/README.md).
+  showcase-views:
+    package: com.bajutsu.showcase.views
+    deeplinkScheme: showcaseviews
+    launchEnv: { SHOWCASE_UITEST: "1" }
+    idNamespaces: [stable, horse, search, log, notice, perm, sys, net]
+    appPath: demos/showcase/android/views/build/outputs/apk/a11y/debug/views-a11y-debug.apk
+    build: make -C demos/showcase/android views-build
+    backend: [android]
+    scenarios: demos/showcase/scenarios
+
+  # ---- Views, accessibility OFF ---------------------------------------------------
+  showcase-views-noax:
+    package: com.bajutsu.showcase.views.noax
+    deeplinkScheme: showcaseviewsnoax
+    launchEnv: { SHOWCASE_UITEST: "1" }
+    idNamespaces: []
+    appPath: demos/showcase/android/views/build/outputs/apk/noax/debug/views-noax-debug.apk
+    build: make -C demos/showcase/android views-noax-build
+    backend: [android]
+    scenarios: demos/showcase/scenarios
