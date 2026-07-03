@@ -23,7 +23,7 @@
 |---|---|---|
 | `bajutsu/serve/`（`server/` を含む） | 約30モジュール、6,920行 | SQLAlchemy、Alembic、OAuth、RBAC、オブジェクトストア、Redis ベースのワーカー |
 | `bajutsu/templates/serve.js` | 1,575行 | バニラ JavaScript、ビルドもテストもなし |
-| `bajutsu/serve/operations.py` | 1,376行 | 姉妹提案 `split-serve-operations-module` で別途扱う |
+| `bajutsu/serve/operations.py` | 1,376行 | 別途、`operations.py` を分割する後続提案（ID未確定）で扱う |
 | `bajutsu/`（コア全体、Python） | 約30,000行 | `serve` と `serve.js` を合わせるとこの5分の1程度 |
 
 これらはいずれも、ローカル CLI ツールのコアが本来知る必要のないインフラです。
