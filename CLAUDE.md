@@ -119,6 +119,12 @@ colliding or regressing each other. Full guide: [`docs/ai-development.md`](docs/
   Japanese, not after.
 - Docs are **bilingual**: English in `docs/`, Japanese mirror in `docs/ja/`. Update both when
   you change a documented behavior.
+- **Keep DESIGN.md and `docs/architecture.md` in step with behavior (BE-0113).** A PR that changes
+  behavior described by [`DESIGN.md`](DESIGN.md) or [`docs/architecture.md`](docs/architecture.md)
+  must update the affected document in the same change. This stays a review-time norm, not a CI
+  gate: checking that a paragraph of prose still matches the code needs semantic judgment, which
+  would put an LLM on the `run` / CI verdict path (prime directive 1) — so it holds the same way as
+  the bilingual-docs rule above.
 - **Documentation style (both languages, every doc and every update).** Write natural prose —
   natural Japanese in `docs/ja/`, natural English in `docs/` — and report the same way. **No coined
   terms:** use established, widely-used technical terms and ordinary words. **No forced

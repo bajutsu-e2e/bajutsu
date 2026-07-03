@@ -7,7 +7,8 @@
 |---|---|
 | Proposal | [BE-0113](BE-0113-design-doc-realignment.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **Implemented** |
+| Implementing PR | [#565](https://github.com/bajutsu-e2e/bajutsu/pull/565) |
 | Topic | Development infrastructure (contributor workflow) |
 | Related | [BE-0010](../../implemented/BE-0010-update-scope-statement/BE-0010-update-scope-statement.md), [BE-0027](../../deferred/BE-0027-mock-server-external/BE-0027-mock-server-external.md), [BE-0019](../../in-progress/BE-0019-xcuitest-backend/BE-0019-xcuitest-backend.md) |
 <!-- /BE-METADATA -->
@@ -127,12 +128,12 @@ could mislead a reader about how determinism and evidence actually work today.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Reposition the opening (record of design decisions; point to architecture.md for status)
-- [ ] Reconcile the network evidence source (§3.2, §9) with in-scenario `mocks`; cite BE-0027
-- [ ] Reconcile the module layout (§4) with the current package structure (or note architecture.md is authoritative)
-- [ ] Reconcile the backend status (§3) — XCUITest is In progress (BE-0019)
-- [ ] Bounded sweep for further divergences; fix / annotate in the same change
-- [ ] Add a CLAUDE.md norm requiring DESIGN.md/architecture.md updates alongside behavior changes
+- [x] Reposition the opening (record of design decisions; point to architecture.md for status)
+- [x] Reconcile the network evidence source (§3.2, §9) with in-scenario `mocks`; cite BE-0027
+- [x] Reconcile the module layout (§4) with the current package structure (or note architecture.md is authoritative)
+- [x] Reconcile the backend status (§3) — XCUITest is In progress (BE-0019)
+- [x] Bounded sweep for further divergences; fix / annotate in the same change
+- [x] Add a CLAUDE.md norm requiring DESIGN.md/architecture.md updates alongside behavior changes
 
 ## References
 

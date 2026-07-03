@@ -235,6 +235,7 @@ Bajutsu の「契約としての決定性」という立場を、Maestro の fla
 | [BE-0100](implemented/BE-0100-roadmap-progress-tracking-template/BE-0100-roadmap-progress-tracking-template-ja.md) | BE テンプレートへの進捗管理と項目間の関連の追加 | 実装済み |
 | [BE-0103](implemented/BE-0103-dev-model-effort-tiering/BE-0103-dev-model-effort-tiering-ja.md) | 開発タスクごとにモデルと推論エフォートを適正化する | 実装済み |
 | [BE-0109](implemented/BE-0109-roadmap-tracking-issues/BE-0109-roadmap-tracking-issues-ja.md) | GitHub Issues as the ownership tracker for open roadmap items | 実装済み |
+| [BE-0113](implemented/BE-0113-design-doc-realignment/BE-0113-design-doc-realignment-ja.md) | DESIGN.md を現状の実装に合わせる | 実装済み |
 <!-- /GENERATED:implemented-dev-infra -->
 
 ### Dogfood フィクスチャ（デモアプリ）
@@ -566,7 +567,6 @@ Web（Playwright）backend とその完成（リッチな capability、並列実
 | ID | 項目 | 状態 |
 |---|---|---|
 | [BE-0112](proposals/BE-0112-layer-boundary-enforcement/BE-0112-layer-boundary-enforcement-ja.md) | コア・契約・周辺のレイヤ境界をゲートで検査する | 提案 |
-| [BE-0113](proposals/BE-0113-design-doc-realignment/BE-0113-design-doc-realignment-ja.md) | DESIGN.md を現状の実装に合わせる | 提案 |
 | [BE-0117](proposals/BE-0117-coverage-floor-ratchet/BE-0117-coverage-floor-ratchet-ja.md) | CLI コマンド層の残りをテストしてから、カバレッジフロアをラチェットする | 提案 |
 | [BE-0122](proposals/BE-0122-workflow-name-legibility/BE-0122-workflow-name-legibility-ja.md) | Legible GitHub Actions workflow and job names | 提案 |
 | [BE-0134](proposals/BE-0134-serve-cli-flag-mirror-drift/BE-0134-serve-cli-flag-mirror-drift-ja.md) | serve と CLI のフラグ二重管理による drift をなくす | 提案 |
