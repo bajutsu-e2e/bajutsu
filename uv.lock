@@ -259,7 +259,7 @@ dev = [
 requires-dist = [
     { name = "alembic", marker = "extra == 'db'", specifier = ">=1.13" },
     { name = "anthropic", marker = "extra == 'ai'", specifier = ">=0.50" },
-    { name = "anthropic", extras = ["bedrock"], marker = "extra == 'bedrock'", specifier = ">=0.50" },
+    { name = "anthropic", extras = ["bedrock"], marker = "extra == 'bedrock'" },
     { name = "authlib", marker = "extra == 'oauth'", specifier = ">=1.3" },
     { name = "bajutsu", extras = ["ai"], marker = "extra == 'bedrock'" },
     { name = "bajutsu", extras = ["s3", "gcs"], marker = "extra == 'cloud'" },

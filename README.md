@@ -195,7 +195,7 @@ uv sync --group dev      # creates .venv (Python 3.13) and installs deps + dev t
 
 Installing from PyPI instead? The base package is AI-free: `pip install bajutsu` gets the
 deterministic authoring / running paths with no AI SDK, and `pip install bajutsu[ai]` (or
-`[bedrock]`) adds the SDK for the Claude paths — see
+`bajutsu[bedrock]`) adds the SDK for the Claude paths — see
 [What uses Claude](docs/ai-boundary.md#installing-the-claude-paths).
 
 ## Usage

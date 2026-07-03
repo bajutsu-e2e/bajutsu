@@ -7,6 +7,8 @@ branch is skipped when the anthropic[bedrock] extra (boto3) isn't installed.
 
 from __future__ import annotations
 
+import sys
+
 import pytest
 
 from bajutsu import anthropic_client as ac
@@ -55,6 +57,19 @@ def test_make_client_anthropic(monkeypatch: pytest.MonkeyPatch) -> None:
     import anthropic
 
     assert isinstance(ac.make_client(), anthropic.Anthropic)
+
+
+def test_make_client_anthropic_missing_sdk_raises_actionable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # On a base install (no `ai` extra, BE-0111) the SDK is absent; a Claude-using command must fail
+    # with an install hint, not a raw ModuleNotFoundError. Setting sys.modules['anthropic'] = None
+    # makes `import anthropic` raise ImportError without uninstalling the SDK from the gate's venv.
+    monkeypatch.delenv(ac.PROVIDER_ENV, raising=False)
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test")
+    monkeypatch.setitem(sys.modules, "anthropic", None)
+    with pytest.raises(RuntimeError, match=r"bajutsu\[ai\]"):
+        ac.make_client()
 
 
 def test_make_client_bedrock(monkeypatch: pytest.MonkeyPatch) -> None:

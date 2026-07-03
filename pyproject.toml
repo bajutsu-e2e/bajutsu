@@ -29,8 +29,9 @@ web = ["playwright>=1.49"]
 visual = ["pillow>=10.0"]
 mcp = ["fastmcp>=2.0.0"]
 # Amazon Bedrock provider for the AI paths (BAJUTSU_AI_PROVIDER=bedrock); pulls in boto3 for SigV4.
-# Layers the Bedrock variant onto the `ai` extra so the `anthropic` version is pinned once (BE-0111).
-bedrock = ["bajutsu[ai]", "anthropic[bedrock]>=0.50"]
+# Layers the Bedrock variant onto the `ai` extra, which is the single source of the `anthropic`
+# version pin — so the Bedrock line only adds the `[bedrock]` extra, never a second version (BE-0111).
+bedrock = ["bajutsu[ai]", "anthropic[bedrock]"]
 # The hosted-backend worker (`bajutsu worker`): polls the control plane over HTTP (BE-0106).
 # No extra dependencies needed (stdlib urllib); kept as an empty extra for backwards compatibility.
 worker = []
