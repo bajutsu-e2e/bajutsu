@@ -150,6 +150,30 @@ MECE work breakdown, all touching the tooling BE-0078 introduced and BE-0096/BE-
     against whatever remains) once this item lands, rather than implemented against code this item
     retires.
 
+### Performance and scale
+
+A fair question is whether regenerating the index (and syncing tracking issues) on a `Status` change
+grows costly as the item count climbs. It does not, for three reasons, and this item does not make it
+worse:
+
+- **The regeneration cost already exists today; this item removes work, not adds it.** The index is
+  *already* rebuilt from scratch on every roadmap change — `roadmap-promote` runs
+  `build_roadmap_index.py` after each move. What this item removes is the per-promotion `git mv`; the
+  reindex that remains is the same one that runs now. A status change goes from "move the directory
+  **and** reindex" to "reindex only," so the per-change work strictly shrinks.
+- **The rebuild is a cheap O(N) pass.** Both the index (`build_roadmap_index.py`) and the dashboard
+  (`build_roadmap_dashboard.py`) are a single linear scan that reads each item's small metadata block
+  and re-emits the tables. At the current 151 items the actual work is on the order of tens of
+  milliseconds (the wall-clock is dominated by Python startup, not the scan); a 10× larger roadmap is
+  still well under a second. The gate already runs a full index build on every `make check`, so this
+  cost is exercised continuously and is not a regression risk.
+- **Tracking-issue sync is diff-based, not a full regeneration, so it does not grow with the total
+  item count.** `sync_roadmap_tracking_issues.py`'s `plan()` computes only the delta (`to_create` /
+  `to_close`) and touches just the issues that changed; a single promotion is typically zero or one
+  API write. The only quantity that scales with the roadmap is one local file scan (cheap) and one
+  `gh issue list` call bounded by the *open*-issue count (`--limit 1000`), neither of which this item
+  changes.
+
 ### Prime-directive compliance
 
 Documentation, roadmap-tooling scripts, and their gate tests only. No LLM enters any path; `run` and
@@ -176,6 +200,15 @@ CI stay deterministic; nothing app- or backend-specific is touched.
   conceding rot is expected. Rejected because the tracking-issue bug shows the cost is not bounded to
   the two surfaces already patched, and it recurs on every future promotion of every currently open
   item, with no repair in place today.
+- **Incrementally patch the index/dashboard on each change instead of the current full rebuild** (to
+  pre-empt any growth in reindex time as the item count climbs). Rejected, and out of scope for this
+  item: a full rebuild from each item's metadata is precisely the single-source-of-truth guarantee
+  the project already relies on ([BE-0043](../../implemented/BE-0043-conflict-resistant-file-flow/BE-0043-conflict-resistant-file-flow.md),
+  [BE-0094](../../implemented/BE-0094-roadmap-status-dashboard/BE-0094-roadmap-status-dashboard.md)) —
+  an incremental patch reintroduces a stateful drift surface for a speed the roadmap does not need
+  (the O(N) rebuild is tens of milliseconds at today's scale; see *Performance and scale*). This item
+  neither adds nor removes that rebuild, so if incremental generation is ever wanted it is an
+  orthogonal follow-up, not a reason to keep the folders.
 
 ## Progress
 
