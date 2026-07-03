@@ -14,7 +14,7 @@ settings:
     TARGETED_DEVICE_FAMILY: "1,2"
 packages:
   BajutsuKit:
-    path: ../../../BajutsuKit
+    path: ../../../../BajutsuKit
 targets:
   # The a11y build: ACCESSIBLE is defined, so every aid(...) attaches an identifier
   # and state mirrors to accessibilityValue. doctor --target grades this Ready.

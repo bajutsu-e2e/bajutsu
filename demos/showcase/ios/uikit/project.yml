@@ -13,7 +13,7 @@ settings:
     SUPPORTS_MACCATALYST: NO
 packages:
   BajutsuKit:
-    path: ../../../BajutsuKit
+    path: ../../../../BajutsuKit
 targets:
   # a11y target: ACCESSIBLE defined → every aid(...) sets an identifier and state
   # mirrors to accessibilityValue. The deterministic-run / doctor-Ready variant.

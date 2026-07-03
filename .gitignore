@@ -40,8 +40,8 @@ demos/tour/generated.yaml
 demos/tour/scenario.yaml
 
 # iOS showcase suite (XcodeGen-generated projects + build output)
-demos/showcase/*/*.xcodeproj/
-demos/showcase/*/build/
+demos/showcase/ios/*/*.xcodeproj/
+demos/showcase/ios/*/build/
 BajutsuKit/Runner/*.xcodeproj/
 .claude/launch.json
 DerivedData/
