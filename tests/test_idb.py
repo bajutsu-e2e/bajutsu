@@ -7,6 +7,7 @@ from bajutsu.drivers.idb import (
     IdbDriver,
     parse_describe_all,
     tap_cmd,
+    text_cmd,
 )
 
 FIXTURE = """
@@ -256,6 +257,27 @@ def test_settle_polls_until_frames_stabilize() -> None:
     assert len(tree) == 3
     # 1 (initial read: ANIMATING, mismatches cache) + 1 (poll: ANIMATING again, matches prev)
     assert calls[0] == 2
+
+
+# --- type_text: value goes via stdin, never argv (BE-0155) ---
+
+
+def test_type_text_passes_value_over_stdin_not_argv(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    # A secret or OTP typed into a field must not land in the idb process's argv, where
+    # any local user could read it via ps/proc; the value is handed to idb on stdin.
+    calls: list[tuple[list[str], str]] = []
+
+    def fake_run_text(cmd: list[str], text: str) -> None:
+        calls.append((cmd, text))
+
+    monkeypatch.setattr(IdbDriver, "_run_text", staticmethod(fake_run_text))
+    IdbDriver("U", run=lambda a: "").type_text("${secrets.password}")
+
+    ((cmd, text),) = calls
+    assert cmd == text_cmd("U")
+    assert cmd == ["idb", "ui", "text", "--udid", "U"]
+    assert "${secrets.password}" not in cmd  # the secret never appears in argv
+    assert text == "${secrets.password}"  # it is passed on stdin instead
 
 
 def test_settle_gives_up_after_max_polls() -> None:
