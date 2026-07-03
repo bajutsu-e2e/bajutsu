@@ -8,7 +8,7 @@
 | Proposal | [BE-0150](BE-0150-scenario-load-yaml-error-handling.md) |
 | Author | [@hirosassa](https://github.com/hirosassa) |
 | Status | **Proposal** |
-| Topic | Development infrastructure (contributor workflow) |
+| Topic | Codebase quality & technical debt |
 | Origin | Found while scoping BE-0117 (CLI command-layer coverage) |
 <!-- /BE-METADATA -->
 

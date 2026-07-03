@@ -228,7 +228,6 @@ Bajutsu の「契約としての決定性」という立場を、Maestro の fla
 | [BE-0074](implemented/BE-0074-be-template-standardization/BE-0074-be-template-standardization-ja.md) | BE 項目テンプレートの標準化（EN / JA） | 実装済み |
 | [BE-0078](implemented/BE-0078-roadmap-status-folders/BE-0078-roadmap-status-folders-ja.md) | 状態ごとのロードマップフォルダ（提案 / 保留 / 実装中 / 実装済み） | 実装済み |
 | [BE-0089](implemented/BE-0089-merge-time-be-id-allocation/BE-0089-merge-time-be-id-allocation-ja.md) | マージ後に main で BE ID を採番する | 実装済み |
-| [BE-0092](implemented/BE-0092-crawl-coordinator-extraction/BE-0092-crawl-coordinator-extraction-ja.md) | クロール調整役をクラスに切り出す | 実装済み |
 | [BE-0093](implemented/BE-0093-public-docs-site/BE-0093-public-docs-site-ja.md) | 公式サイトとドキュメントポータルの公開（GitHub Pages） | 実装済み |
 | [BE-0094](implemented/BE-0094-roadmap-status-dashboard/BE-0094-roadmap-status-dashboard-ja.md) | GitHub Pages で公開するロードマップ状況ダッシュボード | 実装済み |
 | [BE-0096](implemented/BE-0096-docs-roadmap-link-integrity/BE-0096-docs-roadmap-link-integrity-ja.md) | 項目昇格で docs のロードマップリンクが腐るのを防ぐ | 実装済み |
@@ -237,6 +236,16 @@ Bajutsu の「契約としての決定性」という立場を、Maestro の fla
 | [BE-0109](implemented/BE-0109-roadmap-tracking-issues/BE-0109-roadmap-tracking-issues-ja.md) | GitHub Issues as the ownership tracker for open roadmap items | 実装済み |
 | [BE-0113](implemented/BE-0113-design-doc-realignment/BE-0113-design-doc-realignment-ja.md) | DESIGN.md を現状の実装に合わせる | 実装済み |
 <!-- /GENERATED:implemented-dev-infra -->
+
+### コードベース品質・技術的負債
+
+`bajutsu/` 内部のコードを対象にした、振る舞いを変えないクリーンアップです。重複コードの解消、肥大化した関数・モジュールの分割、命名の明確化などが含まれます。上記の「開発基盤（コントリビュータ体験）」がこのリポジトリで作業するためのツール（CI、フック、ロードマップ自動化）を指すのに対し、こちらは `bajutsu/` 自体のコード品質を扱う点で区別されます。
+
+<!-- GENERATED:implemented-quality-debt -->
+| ID | 項目 | 状態 |
+|---|---|---|
+| [BE-0092](implemented/BE-0092-crawl-coordinator-extraction/BE-0092-crawl-coordinator-extraction-ja.md) | クロール調整役をクラスに切り出す | 実装済み |
+<!-- /GENERATED:implemented-quality-debt -->
 
 ### Dogfood フィクスチャ（デモアプリ）
 
@@ -573,9 +582,7 @@ Web（Playwright）backend とその完成（リッチな capability、並列実
 自律クロールを高速に保ち、成長に合わせてコードを簡潔に保つ取り組みです。
 
 <!-- GENERATED:proposals-crawl -->
-| ID | 項目 | 状態 |
-|---|---|---|
-| [BE-0132](proposals/BE-0132-dedupe-crawl-screenshot-helpers/BE-0132-dedupe-crawl-screenshot-helpers-ja.md) | クロールのスクリーンショットヘルパーを重複排除する | 提案 |
+
 <!-- /GENERATED:proposals-crawl -->
 
 ### バックエンド拡張（iOS actuator）
@@ -599,15 +606,25 @@ Web（Playwright）backend とその完成（リッチな capability、並列実
 |---|---|---|
 | [BE-0112](proposals/BE-0112-layer-boundary-enforcement/BE-0112-layer-boundary-enforcement-ja.md) | コア・契約・周辺のレイヤ境界をゲートで検査する | 提案 |
 | [BE-0122](proposals/BE-0122-workflow-name-legibility/BE-0122-workflow-name-legibility-ja.md) | Legible GitHub Actions workflow and job names | 提案 |
+| [BE-0139](proposals/BE-0139-roadmap-dashboard-issue-links/BE-0139-roadmap-dashboard-issue-links-ja.md) | ロードマップのダッシュボードと項目ファイルからトラッキング Issue へリンクする | 提案 |
+| [BE-0149](proposals/BE-0149-roadmap-placeholder-format-guardrail/BE-0149-roadmap-placeholder-format-guardrail-ja.md) | ロードマッププレースホルダーを見逃すフォーマットガードレールの穴を塞ぐ | 提案 |
+<!-- /GENERATED:proposals-dev-infra -->
+
+### コードベース品質・技術的負債
+
+`bajutsu/` 内部のコードを対象にした、振る舞いを変えないクリーンアップです。重複コードの解消、肥大化した関数・モジュールの分割、命名の明確化などが含まれます。上記の「開発基盤（コントリビュータ体験）」がこのリポジトリで作業するためのツール（CI、フック、ロードマップ自動化）を指すのに対し、こちらは `bajutsu/` 自体のコード品質を扱う点で区別されます。
+
+<!-- GENERATED:proposals-quality-debt -->
+| ID | 項目 | 状態 |
+|---|---|---|
+| [BE-0132](proposals/BE-0132-dedupe-crawl-screenshot-helpers/BE-0132-dedupe-crawl-screenshot-helpers-ja.md) | クロールのスクリーンショットヘルパーを重複排除する | 提案 |
 | [BE-0134](proposals/BE-0134-serve-cli-flag-mirror-drift/BE-0134-serve-cli-flag-mirror-drift-ja.md) | serve と CLI のフラグ二重管理による drift をなくす | 提案 |
 | [BE-0135](proposals/BE-0135-module-naming-debt/BE-0135-module-naming-debt-ja.md) | トップレベルモジュールの命名の負債を解消する | 提案 |
-| [BE-0139](proposals/BE-0139-roadmap-dashboard-issue-links/BE-0139-roadmap-dashboard-issue-links-ja.md) | ロードマップのダッシュボードと項目ファイルからトラッキング Issue へリンクする | 提案 |
 | [BE-0140](proposals/BE-0140-dedupe-claude-client-init/BE-0140-dedupe-claude-client-init-ja.md) | Claude クライアント初期化の重複をなくす | 提案 |
 | [BE-0142](proposals/BE-0142-cli-command-coverage/BE-0142-cli-command-coverage-ja.md) | CLI コマンド層にテストを追加する | 提案 |
 | [BE-0143](proposals/BE-0143-run-command-decomposition/BE-0143-run-command-decomposition-ja.md) | run コマンドの巨大関数を分解する | 提案 |
-| [BE-0149](proposals/BE-0149-roadmap-placeholder-format-guardrail/BE-0149-roadmap-placeholder-format-guardrail-ja.md) | ロードマッププレースホルダーを見逃すフォーマットガードレールの穴を塞ぐ | 提案 |
 | [BE-0150](proposals/BE-0150-scenario-load-yaml-error-handling/BE-0150-scenario-load-yaml-error-handling-ja.md) | `trace --explain` と `audit` で壊れたシナリオを綺麗に失敗させる | 提案 |
-<!-- /GENERATED:proposals-dev-infra -->
+<!-- /GENERATED:proposals-quality-debt -->
 
 ### 外部サービスとの連携
 

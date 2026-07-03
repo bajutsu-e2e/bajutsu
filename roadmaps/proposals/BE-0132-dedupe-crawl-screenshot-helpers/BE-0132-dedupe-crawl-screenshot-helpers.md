@@ -8,7 +8,7 @@
 | Proposal | [BE-0132](BE-0132-dedupe-crawl-screenshot-helpers.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
-| Topic | Crawl performance / scale-out |
+| Topic | Codebase quality & technical debt |
 <!-- /BE-METADATA -->
 
 ## Introduction

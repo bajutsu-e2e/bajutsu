@@ -8,7 +8,7 @@
 | 提案 | [BE-0150](BE-0150-scenario-load-yaml-error-handling-ja.md) |
 | 提案者 | [@hirosassa](https://github.com/hirosassa) |
 | 状態 | **提案** |
-| トピック | 開発基盤（コントリビュータ体験） |
+| トピック | コードベース品質・技術的負債 |
 | 由来 | BE-0117（CLI コマンド層のカバレッジ）の作業中に発見 |
 <!-- /BE-METADATA -->
 
