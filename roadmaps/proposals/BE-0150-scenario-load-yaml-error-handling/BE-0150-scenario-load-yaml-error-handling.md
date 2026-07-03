@@ -34,7 +34,7 @@ stack trace instead of a one-line message, and the exit code is `1` rather than 
 
 This is a small correctness gap with user-facing impact: the tool should give a deterministic,
 readable error for the input a human is most likely to get wrong, not a traceback. It was found while
-writing the CLI-layer tests for [BE-0117](../BE-0117-coverage-floor-ratchet/BE-0117-coverage-floor-ratchet.md);
+writing the CLI-layer tests for [BE-0117](../../in-progress/BE-0117-coverage-floor-ratchet/BE-0117-coverage-floor-ratchet.md);
 that item's tests deliberately use the reachable `ValueError` branch and left this gap for a focused
 fix, since closing it changes behavior (a new exception is caught) rather than only adding tests.
 
@@ -98,5 +98,5 @@ No PR has landed yet.
 - `bajutsu/cli/commands/trace.py:49-53` (`_explain`) — `except (OSError, ValueError)` that a
   `yaml.YAMLError` escapes.
 - `bajutsu/cli/commands/audit.py:87-91` (`audit`) — the same guard, same gap.
-- [BE-0117 — Cover the rest of the CLI command layer, then ratchet the coverage floor](../BE-0117-coverage-floor-ratchet/BE-0117-coverage-floor-ratchet.md)
+- [BE-0117 — Cover the rest of the CLI command layer, then ratchet the coverage floor](../../in-progress/BE-0117-coverage-floor-ratchet/BE-0117-coverage-floor-ratchet.md)
   — the item during whose testing this gap was found.

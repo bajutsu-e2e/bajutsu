@@ -35,7 +35,7 @@
 
 これは小さな正しさの欠落ですが、利用者への影響があります。人が最も間違えやすい入力に対してこそ、
 ツールはトレースバックではなく、決定的で読みやすいエラーを返すべきです。この欠落は
-[BE-0117](../BE-0117-coverage-floor-ratchet/BE-0117-coverage-floor-ratchet-ja.md) の CLI 層テストを
+[BE-0117](../../in-progress/BE-0117-coverage-floor-ratchet/BE-0117-coverage-floor-ratchet-ja.md) の CLI 層テストを
 書いている最中に見つかりました。BE-0117 のテストは意図的に到達可能な `ValueError` 分岐を使い、この
 欠落は独立した修正に委ねています。欠落を塞ぐには（新しい例外を捕捉するという）挙動の変更が必要で、
 テストの追加だけでは済まないからです。
@@ -102,5 +102,5 @@
 - `bajutsu/cli/commands/trace.py:49-53`（`_explain`）— `yaml.YAMLError` がすり抜ける
   `except (OSError, ValueError)` です。
 - `bajutsu/cli/commands/audit.py:87-91`（`audit`）— 同じガード、同じ欠落です。
-- [BE-0117 — CLI コマンド層の残りをテストしてから、カバレッジフロアをラチェットする](../BE-0117-coverage-floor-ratchet/BE-0117-coverage-floor-ratchet-ja.md)
+- [BE-0117 — CLI コマンド層の残りをテストしてから、カバレッジフロアをラチェットする](../../in-progress/BE-0117-coverage-floor-ratchet/BE-0117-coverage-floor-ratchet-ja.md)
   — この欠落が見つかった、テスト作業中の項目です。
