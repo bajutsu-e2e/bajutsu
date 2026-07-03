@@ -212,6 +212,9 @@ def parse_store_uri(uri: str) -> StoreURI:
     bucket, _, raw_prefix = rest.partition("/")
     if not bucket:
         raise ValueError(f"evidence-store URI {uri!r} is missing a bucket name")
+    # Strip leading slashes (an extra `/` after the bucket, e.g. `s3://b//evidence/`) so keys never
+    # start with `/` — a leading slash makes an empty-named segment and defeats prefix lifecycle rules.
+    raw_prefix = raw_prefix.lstrip("/")
     prefix = raw_prefix if (not raw_prefix or raw_prefix.endswith("/")) else raw_prefix + "/"
     return StoreURI(backend=_SCHEME_BACKEND[scheme], bucket=bucket, prefix=prefix)
 

@@ -34,6 +34,13 @@ def test_bucket_only_uri_has_an_empty_prefix() -> None:
     assert parse_store_uri("s3://b/").prefix == ""
 
 
+def test_extra_slash_after_bucket_does_not_leak_into_the_prefix() -> None:
+    # A leading `/` in the key defeats prefix-based lifecycle rules, so it is stripped.
+    assert parse_store_uri("s3://b//evidence/").prefix == "evidence/"
+    assert parse_store_uri("gs://b///evidence").prefix == "evidence/"
+    assert parse_store_uri("s3://b//").prefix == ""
+
+
 @pytest.mark.parametrize("uri", ["file:///tmp/x", "https://b/x", "b/x", "s3:/b/x", ""])
 def test_unsupported_scheme_is_rejected(uri: str) -> None:
     with pytest.raises(ValueError, match="s3://bucket/prefix or gs://bucket/prefix"):
