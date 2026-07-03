@@ -7,10 +7,11 @@
 |---|---|
 | 提案 | [BE-0052](BE-0052-device-state-timezone-clipboard-shake-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **実装中** |
+| 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0052") |
 | 実装 PR | [#206](https://github.com/bajutsu-e2e/bajutsu/pull/206), [#257](https://github.com/bajutsu-e2e/bajutsu/pull/257), [#378](https://github.com/bajutsu-e2e/bajutsu/pull/378) |
 | トピック | 競合調査（MagicPod / Autify）由来の候補 |
+| 関連 | [BE-0157](../../deferred/BE-0157-shake-device-primitive/BE-0157-shake-device-primitive-ja.md)、[BE-0158](../../deferred/BE-0158-timezone-device-primitive/BE-0158-timezone-device-primitive-ja.md) |
 | 由来 | MagicPod |
 <!-- /BE-METADATA -->
 
@@ -104,12 +105,15 @@ prime directive の保持：
 
 - [x] `setClipboard` と `foreground`（バックグラウンドのアプリの再開）。最初のスライス（[#206](https://github.com/bajutsu-e2e/bajutsu/pull/206)）。
 - [x] クリップボードの読み戻しアサーション。`simctl pbpaste` による `expect: - clipboard: { equals | matches }`（[#257](https://github.com/bajutsu-e2e/bajutsu/pull/257)）。
-- [x] `setTimezone`。信頼できる `simctl` の作動手段が見つかるまで保留します（実際には効かないコマンドの出荷は決定性優先の原則に反します）。実装トリアージで、そうした作動手段が今のところ存在しないことを確認しました。`simctl` にも `idb` にも `timezone` サブコマンドがなく、シミュレータのタイムゾーンはデバイスごとに設定できず、ホスト Mac から継承します。launch 時の `SIMCTL_CHILD_TZ` はアプリプロセスの libc の `localtime` だけを動かし、iOS の日付 UI の多くが読む `TimeZone.current` には効きません。成功したように見えて、検証対象の UI は変わらないことになります。ホスト Mac 自体のタイムゾーンを変えれば動きますが、これはグローバルで `sudo` を要し、起動中のすべてのシミュレータにわたって開発機や CI の時計を書き換えるため、デバイスごとのプリミティブとしては契約外です。
-- [x] `shake`。`simctl` / `idb` に shake コマンドがないため保留します（ハードウェアメニューのジェスチャーです）。AppleScript でシミュレータの Device ▸ Shake メニューを操作する、あるいは RocketSim のような第三者ツールを使う GUI 自動化であれば決定的にトリガできます。ただし、シミュレータの GUI が起動していることと、操作するプロセスへのアクセシビリティ権限が必要で、フォーカス中のシミュレータに限られ、ヘッドレス CI では動きません。そのため、`simctl` レベルのプリミティブとしては今のところ成立しません。RocketSim 自身の CLI も shake（やタイムゾーン）を公開しておらず、スクリプト化できるのは `tap` / `swipe` / `type` / `button` / inspect 系のコマンドだけです。
+- [x] `setTimezone`。実装トリアージで、信頼できる `simctl` の作動手段が今のところ存在しないことを確認しました（実際には効かないコマンドの出荷は決定性優先の原則に反します）。`simctl` にも `idb` にも `timezone` サブコマンドがなく、シミュレータのタイムゾーンはデバイスごとに設定できず、ホスト Mac から継承します。launch 時の `SIMCTL_CHILD_TZ` はアプリプロセスの libc の `localtime` だけを動かし、iOS の日付 UI の多くが読む `TimeZone.current` には効きません。成功したように見えて、検証対象の UI は変わらないことになります。ホスト Mac 自体のタイムゾーンを変えれば動きますが、これはグローバルで `sudo` を要し、起動中のすべてのシミュレータにわたって開発機や CI の時計を書き換えるため、デバイスごとのプリミティブとしては契約外です。検証済みの手段を待つ独立した項目、[BE-0158](../../deferred/BE-0158-timezone-device-primitive/BE-0158-timezone-device-primitive-ja.md) として切り出しました。
+- [x] `shake`。実装トリアージで、`simctl` / `idb` に shake コマンドがないことを確認しました（ハードウェアメニューのジェスチャーです）。AppleScript でシミュレータの Device ▸ Shake メニューを操作する、あるいは RocketSim のような第三者ツールを使う GUI 自動化であれば決定的にトリガできます。ただし、シミュレータの GUI が起動していることと、操作するプロセスへのアクセシビリティ権限が必要で、フォーカス中のシミュレータに限られ、ヘッドレス CI では動きません。そのため、`simctl` レベルのプリミティブとしては今のところ成立しません。RocketSim 自身の CLI も shake（やタイムゾーン）を公開しておらず、スクリプト化できるのは `tap` / `swipe` / `type` / `button` / inspect 系のコマンドだけです。検証済みの手段を待つ独立した項目、[BE-0157](../../deferred/BE-0157-shake-device-primitive/BE-0157-shake-device-primitive-ja.md) として切り出しました。
 
-[#206](https://github.com/bajutsu-e2e/bajutsu/pull/206) / [#257](https://github.com/bajutsu-e2e/bajutsu/pull/257) / [#378](https://github.com/bajutsu-e2e/bajutsu/pull/378) で出荷しました。`setTimezone` と `shake` は検証済みの手段を待ちます。
+[#206](https://github.com/bajutsu-e2e/bajutsu/pull/206) / [#257](https://github.com/bajutsu-e2e/bajutsu/pull/257) / [#378](https://github.com/bajutsu-e2e/bajutsu/pull/378) で出荷しました。`setTimezone` と `shake` は信頼できる作動手段がなく、それぞれ独立した項目 [BE-0158](../../deferred/BE-0158-timezone-device-primitive/BE-0158-timezone-device-primitive-ja.md) と [BE-0157](../../deferred/BE-0157-shake-device-primitive/BE-0157-shake-device-primitive-ja.md) へ切り出したため、この項目は出荷できた範囲で完了です。
 
 ## 参考
 
 [BE-0035 — デバイス制御ステップ](../../implemented/BE-0035-device-control-primitives/BE-0035-device-control-primitives-ja.md)
-から分割。[DESIGN §6.2](../../../DESIGN.md)、`bajutsu/orchestrator/actions/handlers/device.py`
+から分割。`setTimezone` と `shake` は、さらに
+[BE-0158 — タイムゾーンのデバイスプリミティブ](../../deferred/BE-0158-timezone-device-primitive/BE-0158-timezone-device-primitive-ja.md)と
+[BE-0157 — シェイクのデバイスプリミティブ](../../deferred/BE-0157-shake-device-primitive/BE-0157-shake-device-primitive-ja.md)へ分割しました。
+[DESIGN §6.2](../../../DESIGN.md)、`bajutsu/orchestrator/actions/handlers/device.py`
