@@ -1,11 +1,11 @@
-[English](BE-XXXX-serve-doctor.md) · **日本語**
+[English](BE-0148-serve-doctor.md) · **日本語**
 
-# BE-XXXX — serve Web UI の doctor 準備状況パネル
+# BE-0148 — serve Web UI の doctor 準備状況パネル
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
 |---|---|
-| 提案 | [BE-XXXX](BE-XXXX-serve-doctor-ja.md) |
+| 提案 | [BE-0148](BE-0148-serve-doctor-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **提案** |
 | トピック | serve Web UI への CLI 機能の取り込み |

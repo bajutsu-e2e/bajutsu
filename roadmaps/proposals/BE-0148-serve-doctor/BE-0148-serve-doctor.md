@@ -1,11 +1,11 @@
-**English** · [日本語](BE-XXXX-serve-doctor-ja.md)
+**English** · [日本語](BE-0148-serve-doctor-ja.md)
 
-# BE-XXXX — Doctor readiness panel in the serve Web UI
+# BE-0148 — Doctor readiness panel in the serve Web UI
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-serve-doctor.md) |
+| Proposal | [BE-0148](BE-0148-serve-doctor.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
 | Topic | Surfacing CLI features in the serve Web UI |

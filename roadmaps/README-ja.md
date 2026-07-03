@@ -472,6 +472,7 @@ Web（Playwright）backend とその完成（リッチな capability、並列実
 | [BE-0145](proposals/BE-0145-serve-audit/BE-0145-serve-audit-ja.md) | serve Web UI で決定性監査を見る | 提案 |
 | [BE-0146](proposals/BE-0146-serve-coverage/BE-0146-serve-coverage-ja.md) | serve Web UI で E2E カバレッジマップを見る | 提案 |
 | [BE-0147](proposals/BE-0147-serve-triage/BE-0147-serve-triage-ja.md) | serve Web UI で失敗 run をトリアージする | 提案 |
+| [BE-0148](proposals/BE-0148-serve-doctor/BE-0148-serve-doctor-ja.md) | serve Web UI の doctor 準備状況パネル | 提案 |
 <!-- /GENERATED:proposals-serve-cli-features -->
 
 ### Dogfood フィクスチャ（デモアプリ）

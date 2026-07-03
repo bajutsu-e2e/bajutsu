@@ -479,6 +479,7 @@ The scope is currently **limited to the iOS Simulator** ([DESIGN §1](../DESIGN.
 | [BE-0145](proposals/BE-0145-serve-audit/BE-0145-serve-audit.md) | Determinism audit in the serve Web UI | Proposal |
 | [BE-0146](proposals/BE-0146-serve-coverage/BE-0146-serve-coverage.md) | E2E coverage map in the serve Web UI | Proposal |
 | [BE-0147](proposals/BE-0147-serve-triage/BE-0147-serve-triage.md) | Triage failed runs in the serve Web UI | Proposal |
+| [BE-0148](proposals/BE-0148-serve-doctor/BE-0148-serve-doctor.md) | Doctor readiness panel in the serve Web UI | Proposal |
 <!-- /GENERATED:proposals-serve-cli-features -->
 
 ### Dogfood fixtures (demo apps)
