@@ -1,6 +1,6 @@
 [English](BE-XXXX-module-naming-debt.md) · **日本語**
 
-# BE-XXXX — environment と config のモジュール命名の負債を解消する
+# BE-XXXX — トップレベルモジュールの命名の負債を解消する
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
