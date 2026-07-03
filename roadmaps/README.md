@@ -369,7 +369,9 @@ The Web (Playwright) backend and its completion (rich capabilities, parallel run
 ### Platform expansion (Android / Web / Flutter)
 
 <!-- GENERATED:in-progress-platform -->
-
+| ID | Item | Status |
+|---|---|---|
+| [BE-0007](in-progress/BE-0007-android-backend/BE-0007-android-backend.md) | Android backend | In progress |
 <!-- /GENERATED:in-progress-platform -->
 
 ### Candidates from competitive research (MagicPod / Autify)

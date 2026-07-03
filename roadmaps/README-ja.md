@@ -362,7 +362,9 @@ Web（Playwright）backend とその完成（リッチな capability、並列実
 ### プラットフォーム拡張（Android / Web / Flutter）
 
 <!-- GENERATED:in-progress-platform -->
-
+| ID | 項目 | 状態 |
+|---|---|---|
+| [BE-0007](in-progress/BE-0007-android-backend/BE-0007-android-backend-ja.md) | Android backend | 実装中 |
 <!-- /GENERATED:in-progress-platform -->
 
 ### 競合調査（MagicPod / Autify）由来の候補
