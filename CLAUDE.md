@@ -98,6 +98,10 @@ colliding or regressing each other. Full guide: [`docs/ai-development.md`](docs/
   task→capability matrix and the phase/subagent guidance live in
   [`docs/ai-development.md`](docs/ai-development.md#right-sizing-the-model-and-reasoning-effort-be-0103).
 - **Don't create PRs unless asked.** Push to your branch; let the human open the PR.
+- **PRs created by Claude Code always start as Draft.** When asked to open a PR, create it with
+  `gh pr create --draft`, then keep pushing fixes until `make check` and CI are both green before
+  marking it ready for review (`gh pr ready`). Never mark a Claude-Code-created PR ready while any
+  check is red.
 
 ## Conventions
 
