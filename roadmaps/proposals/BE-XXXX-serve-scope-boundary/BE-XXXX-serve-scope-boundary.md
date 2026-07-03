@@ -152,9 +152,9 @@ No PR has landed yet.
 | Location | What it is |
 |---|---|
 | `bajutsu/config.py:27` | `_Model`'s `extra="forbid"` — the typo guard that turns dropping `orgs` into a breaking change unless `serve` pops the key first |
-| `bajutsu/config.py:340` | `OrgConfig`, host-facing multi-tenancy config |
+| `bajutsu/config.py:339` | `OrgConfig`, host-facing multi-tenancy config |
 | `bajutsu/config.py:357` | `Config.orgs` field |
-| `bajutsu/config.py:376-415` | `DEFAULT_ORG`, `org_for_user` / `org_for_target` / `org_for_identity` / `targets_for_org` |
+| `bajutsu/config.py:375-416` | `DEFAULT_ORG`, `org_for_user` / `org_for_target` / `org_for_identity` / `targets_for_org` |
 | `bajutsu/config.py:649-652` | `load_config`, the seam to split into `parse_config_dict` + `load_config` |
 | `bajutsu/serve/__init__.py`, `authz.py`, `jobs.py`, `operations.py`, `server/worker_job.py` | every current caller of the org helpers; all already under `bajutsu/serve/` |
 | `bajutsu/serve/server/logbus.py`, `sessions.py` | existing `RedisLike`-protocol injection, keeping `redis` out of a hard dependency |
