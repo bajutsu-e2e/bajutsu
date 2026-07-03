@@ -1,11 +1,11 @@
-**English** · [日本語](BE-XXXX-roadmap-topic-label-sync-ja.md)
+**English** · [日本語](BE-0156-roadmap-topic-label-sync-ja.md)
 
-# BE-XXXX — Keep roadmap-item PR labels in sync with Topic
+# BE-0156 — Keep roadmap-item PR labels in sync with Topic
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-roadmap-topic-label-sync.md) |
+| Proposal | [BE-0156](BE-0156-roadmap-topic-label-sync.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
 | Topic | Development infrastructure (contributor workflow) |
