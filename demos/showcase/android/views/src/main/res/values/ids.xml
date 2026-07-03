@@ -1,0 +1,112 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The SPEC §5 identifier contract as android:id resources, one per element. An android:id name
+     allows neither '.' nor '-', so the dotted SPEC ids map mechanically: both become '_'
+     (stable.refresh → stable_refresh, search.results-empty → search_results_empty). View.aid(name)
+     (Accessibility.kt) resolves these by name and assigns them in the a11y flavor only, where UI
+     Automator surfaces them as `resource-id`. Data-derived rows are pre-declared over the fixture's
+     fixed ranges (horses 1–5, notices 1–20; log rows over a bounded 1–10). -->
+<resources>
+    <!-- stable -->
+    <item name="stable_refresh" type="id" />
+    <item name="stable_status" type="id" />
+    <item name="stable_empty" type="id" />
+    <item name="stable_row_1" type="id" />
+    <item name="stable_row_2" type="id" />
+    <item name="stable_row_3" type="id" />
+    <item name="stable_row_4" type="id" />
+    <item name="stable_row_5" type="id" />
+
+    <!-- horse -->
+    <item name="horse_title" type="id" />
+    <item name="horse_id_value" type="id" />
+    <item name="horse_fetch" type="id" />
+    <item name="horse_status" type="id" />
+    <item name="horse_favorite" type="id" />
+    <item name="horse_favorite_value" type="id" />
+
+    <!-- search -->
+    <item name="search_field" type="id" />
+    <item name="search_clear" type="id" />
+    <item name="search_count" type="id" />
+    <item name="search_results_empty" type="id" />
+    <item name="search_row_1" type="id" />
+    <item name="search_row_2" type="id" />
+    <item name="search_row_3" type="id" />
+    <item name="search_row_4" type="id" />
+    <item name="search_row_5" type="id" />
+
+    <!-- log -->
+    <item name="log_note" type="id" />
+    <item name="log_count" type="id" />
+    <item name="log_count_value" type="id" />
+    <item name="log_intense" type="id" />
+    <item name="log_intense_value" type="id" />
+    <item name="log_segment_one" type="id" />
+    <item name="log_segment_two" type="id" />
+    <item name="log_segment_three" type="id" />
+    <item name="log_segment_value" type="id" />
+    <item name="log_submit" type="id" />
+    <item name="log_status" type="id" />
+    <item name="log_longpress" type="id" />
+    <item name="log_longpress_value" type="id" />
+    <item name="log_doubletap" type="id" />
+    <item name="log_doubletap_value" type="id" />
+    <item name="log_openFilter" type="id" />
+    <item name="log_openGallery" type="id" />
+    <item name="log_openDelete" type="id" />
+    <item name="log_sheet_title" type="id" />
+    <item name="log_sheet_apply" type="id" />
+    <item name="log_sheet_close" type="id" />
+    <item name="log_cover_title" type="id" />
+    <item name="log_cover_close" type="id" />
+    <item name="log_dialog_title" type="id" />
+    <item name="log_dialog_archive" type="id" />
+    <item name="log_dialog_delete" type="id" />
+    <item name="log_dialog_cancel" type="id" />
+    <item name="log_dialog_value" type="id" />
+    <item name="log_toast" type="id" />
+    <item name="log_row_1" type="id" />
+    <item name="log_row_2" type="id" />
+    <item name="log_row_3" type="id" />
+    <item name="log_row_4" type="id" />
+    <item name="log_row_5" type="id" />
+    <item name="log_row_6" type="id" />
+    <item name="log_row_7" type="id" />
+    <item name="log_row_8" type="id" />
+    <item name="log_row_9" type="id" />
+    <item name="log_row_10" type="id" />
+
+    <!-- notice -->
+    <item name="notice_detail_title" type="id" />
+    <item name="notice_detail_body" type="id" />
+    <item name="notice_row_1" type="id" />
+    <item name="notice_row_2" type="id" />
+    <item name="notice_row_3" type="id" />
+    <item name="notice_row_4" type="id" />
+    <item name="notice_row_5" type="id" />
+    <item name="notice_row_6" type="id" />
+    <item name="notice_row_7" type="id" />
+    <item name="notice_row_8" type="id" />
+    <item name="notice_row_9" type="id" />
+    <item name="notice_row_10" type="id" />
+    <item name="notice_row_11" type="id" />
+    <item name="notice_row_12" type="id" />
+    <item name="notice_row_13" type="id" />
+    <item name="notice_row_14" type="id" />
+    <item name="notice_row_15" type="id" />
+    <item name="notice_row_16" type="id" />
+    <item name="notice_row_17" type="id" />
+    <item name="notice_row_18" type="id" />
+    <item name="notice_row_19" type="id" />
+    <item name="notice_row_20" type="id" />
+
+    <!-- perm / sys -->
+    <item name="perm_requestNotif" type="id" />
+    <item name="perm_notif_value" type="id" />
+    <item name="perm_notif_authorized" type="id" />
+    <item name="perm_requestLocation" type="id" />
+    <item name="perm_location_value" type="id" />
+    <item name="sys_copy" type="id" />
+    <item name="sys_paste" type="id" />
+    <item name="sys_paste_value" type="id" />
+</resources>

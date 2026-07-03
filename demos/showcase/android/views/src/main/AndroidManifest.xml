@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- Networking (SPEC §6) and the two deliberate runtime-permission prompts (SPEC §5.4 / §7):
+         Android's runtime dialogs are the out-of-process alert-guard fixture, the analog of iOS's
+         SpringBoard notification/location prompts. -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+
+    <application
+        android:allowBackup="true"
+        android:label="${appLabel}"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.Showcase">
+        <!-- singleTask so a deeplink lands in the running instance via onNewIntent — and finishes any
+             pushed detail Activity above it, matching iOS's "a deeplink pops to root" (SPEC §4). -->
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:launchMode="singleTask">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+            <intent-filter android:autoVerify="false">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="${deeplinkScheme}" />
+            </intent-filter>
+        </activity>
+        <!-- Pushed details (SPEC §5.1 / §5.5): reached only by tapping a catalog row; the system Back
+             pops (BE-0007 drives it with the OS back keyevent — no app-defined back id). -->
+        <activity android:name=".HorseDetailActivity" android:exported="false" />
+        <activity android:name=".NoticeDetailActivity" android:exported="false" />
+    </application>
+</manifest>

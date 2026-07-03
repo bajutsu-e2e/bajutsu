@@ -23,8 +23,11 @@ from bajutsu.scenario import load_scenario_file
 
 # Tokens a `--backend` may name: a platform (ios/android/web/fake) or a known actuator (idb/…).
 _VALID_BACKENDS = frozenset(PLATFORMS) | frozenset(KNOWN_ACTUATORS)
-# A udid token: hex groups + hyphens, or the literal "booted". No spaces/metacharacters.
-_UDID_RE = re.compile(r"^[A-Za-z0-9-]+$")
+# A udid token: alphanumeric, optionally hyphenated (covers simctl's UUIDs and the literal
+# "booted"). No spaces/metacharacters, and the first character must be alphanumeric so a
+# client-supplied udid can never start with a hyphen and be mistaken for a subprocess flag
+# (e.g. `-rf`, `--config`) by idb/xcrun.
+_UDID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9-]*$")
 # A run id is a single safe path segment (timestamps like 20260610-153045): alphanumeric start,
 # then [A-Za-z0-9._-]. Blocks "..", path separators, and absolute paths, so a client-supplied run
 # id (a resumed crawl) can't redirect a run's --out dir outside runs_dir.
