@@ -8,6 +8,7 @@
 | Proposal | [BE-0013](BE-0013-scenario-gui-editor.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0013") |
 | Implementing PR | [#385](https://github.com/bajutsu-e2e/bajutsu/pull/385), [#387](https://github.com/bajutsu-e2e/bajutsu/pull/387) |
 | Topic | Authoring experience (record / GUI editor) |
 <!-- /BE-METADATA -->

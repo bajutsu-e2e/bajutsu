@@ -8,6 +8,7 @@
 | 提案 | [BE-0103](BE-0103-dev-model-effort-tiering-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装済み** |
+| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0103") |
 | 実装 PR | [#441](https://github.com/bajutsu-e2e/bajutsu/pull/441) |
 | トピック | 開発基盤（コントリビュータ体験） |
 | 関連 | [BE-0069](../../implemented/BE-0069-executable-contributor-guardrails/BE-0069-executable-contributor-guardrails-ja.md), [BE-0043](../../implemented/BE-0043-conflict-resistant-file-flow/BE-0043-conflict-resistant-file-flow-ja.md) |

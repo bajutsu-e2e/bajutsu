@@ -8,6 +8,7 @@
 | 提案 | [BE-0025](BE-0025-coordinate-swipe-generation-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装済み** |
+| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0025") |
 | 実装 PR | [#217](https://github.com/bajutsu-e2e/bajutsu/pull/217) |
 | トピック | codegen 網羅性 |
 <!-- /BE-METADATA -->

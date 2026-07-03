@@ -8,6 +8,7 @@
 | Proposal | [BE-0039](BE-0039-self-healing-propose-optin.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0039") |
 | Implementing PR | predates the per-PR history (squashed into the initial import; no single PR) |
 | Topic | Candidates from competitive research (MagicPod / Autify) |
 | Origin | Both |

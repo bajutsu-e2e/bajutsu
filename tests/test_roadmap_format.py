@@ -14,7 +14,11 @@ headings), not the rendered index.
 from __future__ import annotations
 
 import re
+import sys
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
+from build_roadmap_index import tracking_issue_url
 
 ROADMAP = Path(__file__).resolve().parent.parent / "roadmaps"
 CATEGORIES = ("implemented", "in-progress", "proposals", "deferred")
@@ -23,20 +27,32 @@ NUMBERED_DIR_RE = re.compile(r"^BE-(\d{4})-(.+)$")
 # Canonical metadata field order, per language. Required fields are always present; the optional
 # ones (Implementing PR, Related, Superseded by, Origin) may be absent but, when present, keep their
 # slot. Related / Superseded by record cross-item links (BE-0100); Track was retired in BE-0078 —
-# the index bucket is now derived from Status, the lone hand-set lifecycle field.
+# the index bucket is now derived from Status, the lone hand-set lifecycle field. Tracking issue
+# (BE-0139) is required and mechanical — a pure function of the id — sitting right after Status.
 ORDER_EN = [
     "Proposal",
     "Author",
     "Status",
+    "Tracking issue",
     "Implementing PR",
     "Topic",
     "Related",
     "Superseded by",
     "Origin",
 ]
-ORDER_JA = ["提案", "提案者", "状態", "実装 PR", "トピック", "関連", "無効化", "由来"]
-REQUIRED_EN = {"Proposal", "Author", "Status", "Topic"}
-REQUIRED_JA = {"提案", "提案者", "状態", "トピック"}
+ORDER_JA = [
+    "提案",
+    "提案者",
+    "状態",
+    "トラッキング Issue",
+    "実装 PR",
+    "トピック",
+    "関連",
+    "無効化",
+    "由来",
+]
+REQUIRED_EN = {"Proposal", "Author", "Status", "Tracking issue", "Topic"}
+REQUIRED_JA = {"提案", "提案者", "状態", "トラッキング Issue", "トピック"}
 
 # The block opens with a ``| Field | Value |`` header (``| 項目 | 値 |`` in Japanese) and its
 # delimiter, so it renders as a real table; both are skipped when reading fields.
@@ -152,6 +168,18 @@ def _check_file(be_id: str, slug: str, text: str, *, lang: str) -> tuple[list[st
         status_field = "状態" if lang == "ja" else "Status"
         if status_field in values and (m := STATUS_RE.match(values[status_field])):
             status_raw = m.group(1)
+
+        # Tracking issue is purely mechanical (a function of the id), so its one failure mode is a
+        # stale value copy-pasted from another item; pin it to exactly the URL this id predicts.
+        tracking_field = "トラッキング Issue" if lang == "ja" else "Tracking issue"
+        if tracking_field in values:
+            label = "検索" if lang == "ja" else "Search"
+            expected = f"[{label}]({tracking_issue_url(be_id)})"
+            if values[tracking_field] != expected:
+                problems.append(
+                    f"{tracking_field} must be exactly {expected!r} (a search URL derived from "
+                    f"the item's own id), got {values[tracking_field]!r}"
+                )
 
     # Headings that are real headings, not lines inside a fenced code block (e.g. a skeleton).
     headings = _headings_outside_code(text)

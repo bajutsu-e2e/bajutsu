@@ -8,6 +8,7 @@
 | Proposal | [BE-0129](BE-0129-serve-scope-boundary.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0129") |
 | Topic | Hosting the web UI (cloud / self-hosted) |
 <!-- /BE-METADATA -->
 

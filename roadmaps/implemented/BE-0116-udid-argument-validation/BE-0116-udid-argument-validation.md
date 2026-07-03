@@ -8,6 +8,7 @@
 | Proposal | [BE-0116](BE-0116-udid-argument-validation.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0116") |
 | Implementing PR | [#550](https://github.com/bajutsu-e2e/bajutsu/pull/550) |
 | Topic | Security hardening |
 <!-- /BE-METADATA -->

@@ -8,6 +8,7 @@
 | 提案 | [BE-0016](BE-0016-web-ui-self-hosting-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装中** |
+| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0016") |
 | 実装 PR | [#103](https://github.com/bajutsu-e2e/bajutsu/pull/103), [#154](https://github.com/bajutsu-e2e/bajutsu/pull/154), [#365](https://github.com/bajutsu-e2e/bajutsu/pull/365), [#367](https://github.com/bajutsu-e2e/bajutsu/pull/367), [#507](https://github.com/bajutsu-e2e/bajutsu/pull/507) |
 | トピック | Web UI のホスティング（クラウド / セルフホスト） |
 | 関連 | [BE-0106](../../implemented/BE-0106-post-completion-worker-model/BE-0106-post-completion-worker-model-ja.md) |

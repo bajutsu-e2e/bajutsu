@@ -8,6 +8,7 @@
 | 提案 | [BE-0102](BE-0102-run-stats-dashboard-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **提案** |
+| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0102") |
 | トピック | オーサリング体験（record / GUI エディタ） |
 <!-- /BE-METADATA -->
 

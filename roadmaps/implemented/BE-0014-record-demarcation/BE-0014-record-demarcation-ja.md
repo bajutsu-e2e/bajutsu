@@ -8,6 +8,7 @@
 | 提案 | [BE-0014](BE-0014-record-demarcation-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装済み** |
+| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0014") |
 | 実装 PR | [#390](https://github.com/bajutsu-e2e/bajutsu/pull/390), [#392](https://github.com/bajutsu-e2e/bajutsu/pull/392) |
 | トピック | オーサリング体験（record / GUI エディタ） |
 <!-- /BE-METADATA -->

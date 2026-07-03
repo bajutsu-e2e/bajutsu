@@ -8,6 +8,7 @@
 | Proposal | [BE-0048](BE-0048-behavioral-protocol-assertions.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0048") |
 | Implementing PR | [#205](https://github.com/bajutsu-e2e/bajutsu/pull/205) · [#208](https://github.com/bajutsu-e2e/bajutsu/pull/208) · [#212](https://github.com/bajutsu-e2e/bajutsu/pull/212) |
 | Topic | Candidates from competitive research (Maestro) |
 | Origin | Maestro |

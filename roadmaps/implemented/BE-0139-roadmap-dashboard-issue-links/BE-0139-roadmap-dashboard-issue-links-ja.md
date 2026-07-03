@@ -7,7 +7,9 @@
 |---|---|
 | 提案 | [BE-0139](BE-0139-roadmap-dashboard-issue-links-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **提案** |
+| 状態 | **実装済み** |
+| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0139") |
+| 実装 PR | [#597](https://github.com/bajutsu-e2e/bajutsu/pull/597) |
 | トピック | Development infrastructure (contributor workflow) |
 <!-- /BE-METADATA -->
 
@@ -143,16 +145,24 @@ BE-0094 はすでに各カードから 1 本のリンクを出しています。
 > 作業分解（作業の単位ごとに 1 つ）に対応し、ログには変更内容と時期（古い順）を PR へのリンクと
 > ともに記録します。
 
-- [ ] 1. `scripts/build_roadmap_dashboard.py` に、機械的に組み立てるトラッキング Issue 検索 URL
+- [x] 1. `scripts/build_roadmap_dashboard.py` に、機械的に組み立てるトラッキング Issue 検索 URL
   のヘルパーと、カードの副リンクを追加する。`tests/test_roadmap_dashboard.py` を更新し、新しい
   リンクをカバーする。
-- [ ] 2. 「トラッキング Issue」フィールドを正規のスキーマ（`tests/test_roadmap_format.py` の
+- [x] 2. 「トラッキング Issue」フィールドを正規のスキーマ（`tests/test_roadmap_format.py` の
   `ORDER_EN` / `ORDER_JA` と必須フィールドの集合、および値が自身の ID と一致するかのチェック）と
   `scripts/new_roadmap_item.py` の生成内容に追加する。CLAUDE.md のフィールド順の一文を更新する。
-- [ ] 3. 一度きりの反映用スクリプトを実行し、既存の番号を持つすべての項目（両言語のファイル）に
+- [x] 3. 一度きりの反映用スクリプトを実行し、既存の番号を持つすべての項目（両言語のファイル）に
   「トラッキング Issue」の行を追加する。
-- [ ] 4. BE-0109 の `参考` 節から本項目を相互参照する（「読み取り専用の `gh issue list` から
+- [x] 4. BE-0109 の `参考` 節から本項目を相互参照する（「読み取り専用の `gh issue list` から
   描画できる」という記述を置き換える形で）。
+
+ログ:
+
+- 一つの変更でこの項目をまるごと出荷しました。`scripts/build_roadmap_index.py` の
+  `tracking_issue_url` ヘルパー（共有の一次情報）、ダッシュボードの各カードに追加した「Issue」の
+  ピル、値が自身の ID と一致するかのチェックを伴う必須フィールド「トラッキング Issue」、生成時の
+  ひな形への行の追加、既存の全項目への一度きりの反映、そして CLAUDE.md と BE-0109 のドキュメント
+  更新です。項目は `implemented/` に置きました。
 
 ## 参考
 

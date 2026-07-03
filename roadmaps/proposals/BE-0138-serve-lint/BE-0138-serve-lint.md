@@ -8,6 +8,7 @@
 | Proposal | [BE-0138](BE-0138-serve-lint.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0138") |
 | Topic | Surfacing CLI features in the serve Web UI |
 <!-- /BE-METADATA -->
 

@@ -8,6 +8,7 @@
 | 提案 | [BE-0074](BE-0074-be-template-standardization-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装済み** |
+| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0074") |
 | 実装 PR | [#197](https://github.com/bajutsu-e2e/bajutsu/pull/197) |
 | トピック | 開発基盤（コントリビュータ体験） |
 | 関連 | [BE-0100](../BE-0100-roadmap-progress-tracking-template/BE-0100-roadmap-progress-tracking-template-ja.md) |
