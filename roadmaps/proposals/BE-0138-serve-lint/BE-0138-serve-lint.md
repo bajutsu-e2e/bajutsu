@@ -8,7 +8,6 @@
 | Proposal | [BE-0138](BE-0138-serve-lint.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
-| Track | [Proposals](../../README.md#proposals) |
 | Topic | Surfacing CLI features in the serve Web UI |
 <!-- /BE-METADATA -->
 
@@ -60,6 +59,21 @@ Tier-1, deterministic; the UI only shells out to the existing validators.
   is the structured-editing layer.
 * **Re-implement validation in client-side JS.** Rejected: the lint rules and the schema are defined
   once in Python; reusing them server-side keeps a single source of truth and avoids drift.
+
+## Progress
+
+> Keep this current as work proceeds. The checklist mirrors the MECE work breakdown in
+> *Detailed design* (one box per unit of work); the log records what changed and when
+> (oldest first), linking the PRs.
+
+- [ ] Add the `POST /api/lint` endpoint (`{yaml}`) returning line-anchored diagnostics from
+      `bajutsu/lint.py`
+- [ ] Provide the scenario JSON Schema (`lint.scenario_json_schema`) to the client and validate
+      against it
+- [ ] Render diagnostics inline (gutter markers + problems list), debounced as you edit and on demand
+- [ ] Add schema-driven completion / hover for the scenario grammar
+
+No PR has landed yet.
 
 ## References
 
