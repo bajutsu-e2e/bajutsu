@@ -52,10 +52,10 @@ sits on the pass/fail path.
 
 1. **Warn when a command that both uses AI and binds secrets starts.** In `record`/`enrich`/
    `triage`, when the resolved `Effective.secrets` list (`bajutsu/cli/_shared.py:37`) is non-empty,
-   print a one-time, explicit warning before the AI loop starts: on-screen secrets (typed
-   passwords, OTPs, PII the app displays) are not redacted from screenshots or video, persist on
-   disk under `runs/`, and are sent to the configured AI provider on every turn where they are
-   visible.
+print a one-time, explicit warning before the AI loop starts: on-screen secrets (typed
+passwords, OTPs, PII the app displays) are not redacted from screenshots or video, and persist on
+disk under `runs/`. The current screenshot is sent to the configured AI provider as image content on
+every turn where the app is visible.
 2. **State what "secrets" redaction does and does not cover.** The warning names the boundary
    precisely: `${secrets.*}` values are redacted from the *text* evidence (network, element tree,
    logs) via `Redactor`, but never from *images* — screenshots and video are sent and stored as-is.
