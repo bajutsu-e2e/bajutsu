@@ -16,7 +16,7 @@
 | 目的 | 必要なもの |
 |---|---|
 | 決定的コア + ユニットテスト | macOS or Linux、Python 3.13（[uv](https://github.com/astral-sh/uv) で管理） |
-| Simulator 上でアプリを操作 | **Xcode** 入り macOS（iOS Simulator）、[XcodeGen](https://github.com/yonwoo9/XcodeGen)（showcase のビルド用）、**idb** バックエンド（`brew install facebook/fb/idb-companion`） |
+| Simulator 上でアプリを操作 | **Xcode** 入り macOS（iOS Simulator）、[XcodeGen](https://github.com/yonaskolb/XcodeGen)（showcase のビルド用）、**idb** バックエンド（`brew install facebook/fb/idb-companion`） |
 | web アプリを操作（Playwright） | 任意の OS。`uv sync --extra web` + `uv run playwright install chromium`（Mac / Simulator 不要。[`demos/web`](../../demos/web/README.md) 参照） |
 | AI オーサリング（`record` / `crawl`）/ `--dismiss-alerts` | `ANTHROPIC_API_KEY`（または `--agent claude-code` で Claude Code ログイン） |
 

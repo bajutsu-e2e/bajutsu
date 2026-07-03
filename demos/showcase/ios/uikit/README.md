@@ -27,7 +27,7 @@ accessibility, made concrete.
 
 ## Build
 
-Requires Xcode and [XcodeGen](https://github.com/yonyz/XcodeGen) (`brew install xcodegen`).
+Requires Xcode and [XcodeGen](https://github.com/yonaskolb/XcodeGen) (`brew install xcodegen`).
 Both targets share the same `Sources/` directory.
 
 ```bash

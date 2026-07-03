@@ -27,7 +27,7 @@ no-a11y ビルドは identifier の無いツリーになります（**Blocked** 
 
 ## ビルド
 
-Xcode と [XcodeGen](https://github.com/yonyz/XcodeGen)（`brew install xcodegen`）が必要です。
+Xcode と [XcodeGen](https://github.com/yonaskolb/XcodeGen)（`brew install xcodegen`）が必要です。
 2 つのターゲットは同じ `Sources/` ディレクトリを共有します。
 
 ```bash

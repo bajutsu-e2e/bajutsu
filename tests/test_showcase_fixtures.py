@@ -36,6 +36,11 @@ def test_showcase_config_resolves() -> None:
     assert eff.deeplink_scheme == "showcaseswiftui"
     assert set(eff.id_namespaces) == NAMESPACES
 
+    # Guard the platform-scoped id rename (com.bajutsu.showcase.<platform>.<toolkit>) on the
+    # other two toolkits, not just showcase-swiftui above.
+    assert resolve(cfg, "showcase-uikit").bundle_id == "com.bajutsu.showcase.ios.uikit"
+    assert resolve(cfg, "showcase-compose").package == "com.bajutsu.showcase.android.compose"
+
 
 def test_demo_menu_config_declares_the_features_secret() -> None:
     # The menu's `features` tour types `${secrets.PASSWORD}`; the demo config must declare it
