@@ -1,0 +1,127 @@
+# CodeQL code scanning (advanced setup). Replaces GitHub's default setup so we can
+# path-filter the heavy Swift analysis: on pull requests, Swift is only analysed when
+# Swift sources actually change, while the lightweight languages always run. Non-PR
+# events (push to main, merge queue, the weekly schedule) always run the full matrix so
+# the default-branch alert baseline stays complete.
+#
+# The required branch-protection status check is the aggregation job `CodeQL` below,
+# not the per-language `Analyze (...)` jobs — that keeps a single stable required check
+# regardless of which languages are skipped.
+name: CodeQL
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  merge_group:
+  schedule:
+    - cron: "18 4 * * 1" # weekly, Monday 04:18 UTC (mirrors default setup's weekly cadence)
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: codeql-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  changes:
+    name: Detect changed languages
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      swift: ${{ steps.filter.outputs.swift }}
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: dorny/paths-filter@7b450fff21473bca461d4b92ce414b9d0420d706 # v4.0.2
+        id: filter
+        with:
+          filters: |
+            swift:
+              - "BajutsuKit/**"
+              - "**/*.swift"
+              - ".github/workflows/codeql.yml"
+
+  analyze:
+    name: Analyze
+    needs: changes
+    runs-on: ubuntu-latest
+    permissions:
+      security-events: write
+      packages: read
+      actions: read
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        language: [actions, javascript-typescript, python]
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@c35d1b164463ee62a100735382aaaa525c5d3496 # codeql-bundle-v2.25.6
+        with:
+          languages: ${{ matrix.language }}
+          build-mode: none
+      - name: Perform CodeQL analysis
+        uses: github/codeql-action/analyze@c35d1b164463ee62a100735382aaaa525c5d3496 # codeql-bundle-v2.25.6
+        with:
+          category: "/language:${{ matrix.language }}"
+
+  analyze-swift:
+    name: Analyze (swift)
+    needs: changes
+    # Skip Swift only on pull requests that do not touch Swift sources. Every other event
+    # (push to main, merge_group, schedule, manual dispatch) runs the full Swift analysis.
+    if: >-
+      needs.changes.outputs.swift == 'true' ||
+      github.event_name != 'pull_request'
+    runs-on: macos-latest
+    permissions:
+      security-events: write
+      packages: read
+      actions: read
+      contents: read
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - name: Select Xcode
+        uses: maxim-lobanov/setup-xcode@ed7a3b1fda3918c0306d1b724322adc0b8cc0a90 # v1.7.0
+        with:
+          xcode-version: latest-stable
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@c35d1b164463ee62a100735382aaaa525c5d3496 # codeql-bundle-v2.25.6
+        with:
+          languages: swift
+          build-mode: manual
+      - name: Build
+        run: swift build --package-path BajutsuKit
+      - name: Perform CodeQL analysis
+        uses: github/codeql-action/analyze@c35d1b164463ee62a100735382aaaa525c5d3496 # codeql-bundle-v2.25.6
+        with:
+          category: "/language:swift"
+
+  # Aggregation gate wired to the required "CodeQL" branch-protection check. Passes when
+  # every analysis job that ran succeeded; a skipped Swift job (PR without Swift changes)
+  # is treated as OK. This keeps one stable required check independent of language skips.
+  codeql:
+    name: CodeQL
+    needs: [analyze, analyze-swift]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify analysis results
+        env:
+          ANALYZE_RESULT: ${{ needs.analyze.result }}
+          SWIFT_RESULT: ${{ needs.analyze-swift.result }}
+        run: |
+          echo "analyze=$ANALYZE_RESULT swift=$SWIFT_RESULT"
+          if [ "$ANALYZE_RESULT" != "success" ]; then
+            echo "::error::CodeQL analysis failed for core languages ($ANALYZE_RESULT)"
+            exit 1
+          fi
+          if [ "$SWIFT_RESULT" != "success" ] && [ "$SWIFT_RESULT" != "skipped" ]; then
+            echo "::error::CodeQL analysis failed for Swift ($SWIFT_RESULT)"
+            exit 1
+          fi
