@@ -61,7 +61,7 @@ resolved:
 - **Leave it on argv and rely on CI isolation.** Rejected: it depends on every CI
   environment being single-tenant, which Bajutsu cannot guarantee or verify from the
   driver layer, and the fix is cheap and idb-backend-local.
-- **Redact the value in bajutsu's own subprocess logging only.** Rejected: bajutsu
+- **Redact the value in Bajutsu's own subprocess logging only.** Rejected: Bajutsu
   already avoids logging raw secrets; the leak here is the OS-level argv table, which
   application-side log redaction cannot mask.
 - **Push the concern to the config/secrets layer (e.g. warn if a target types
