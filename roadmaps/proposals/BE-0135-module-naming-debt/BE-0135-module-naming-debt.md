@@ -1,11 +1,11 @@
-**English** · [日本語](BE-XXXX-module-naming-debt-ja.md)
+**English** · [日本語](BE-0135-module-naming-debt-ja.md)
 
-# BE-XXXX — Resolve top-level module naming debt
+# BE-0135 — Resolve top-level module naming debt
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-module-naming-debt.md) |
+| Proposal | [BE-0135](BE-0135-module-naming-debt.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
 | Topic | Development infrastructure (contributor workflow) |

@@ -506,6 +506,7 @@ Web（Playwright）backend とその完成（リッチな capability、並列実
 | [BE-0130](proposals/BE-0130-default-network-secret-redaction/BE-0130-default-network-secret-redaction-ja.md) | ネットワークの機密ヘッダーと Cookie を既定で redact する | 提案 |
 | [BE-0131](proposals/BE-0131-run-artifact-permissions/BE-0131-run-artifact-permissions-ja.md) | 実行証跡ファイルのパーミッションを制限する | 提案 |
 | [BE-0133](proposals/BE-0133-pin-actionlint-installer/BE-0133-pin-actionlint-installer-ja.md) | actionlint インストーラを SHA で固定する | 提案 |
+| [BE-0136](proposals/BE-0136-serve-write-once-secrets/BE-0136-serve-write-once-secrets-ja.md) | serve の秘密情報ストアを書き込み専用にする | 提案 |
 <!-- /GENERATED:proposals-security -->
 
 ### config の取得元
@@ -560,6 +561,7 @@ Web（Playwright）backend とその完成（リッチな capability、並列実
 | [BE-0117](proposals/BE-0117-coverage-floor-ratchet/BE-0117-coverage-floor-ratchet-ja.md) | CLI コマンド層の残りをテストしてから、カバレッジフロアをラチェットする | 提案 |
 | [BE-0122](proposals/BE-0122-workflow-name-legibility/BE-0122-workflow-name-legibility-ja.md) | Legible GitHub Actions workflow and job names | 提案 |
 | [BE-0134](proposals/BE-0134-serve-cli-flag-mirror-drift/BE-0134-serve-cli-flag-mirror-drift-ja.md) | serve と CLI のフラグ二重管理による drift をなくす | 提案 |
+| [BE-0135](proposals/BE-0135-module-naming-debt/BE-0135-module-naming-debt-ja.md) | トップレベルモジュールの命名の負債を解消する | 提案 |
 <!-- /GENERATED:proposals-dev-infra -->
 
 ### 外部サービスとの連携

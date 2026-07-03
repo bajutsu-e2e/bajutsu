@@ -513,6 +513,7 @@ Closing the edges the deterministic core does not touch — `serve`'s HTTP surfa
 | [BE-0130](proposals/BE-0130-default-network-secret-redaction/BE-0130-default-network-secret-redaction.md) | Redact sensitive network headers and cookies by default | Proposal |
 | [BE-0131](proposals/BE-0131-run-artifact-permissions/BE-0131-run-artifact-permissions.md) | Restrict run-artifact file permissions | Proposal |
 | [BE-0133](proposals/BE-0133-pin-actionlint-installer/BE-0133-pin-actionlint-installer.md) | Pin the actionlint installer by SHA | Proposal |
+| [BE-0136](proposals/BE-0136-serve-write-once-secrets/BE-0136-serve-write-once-secrets.md) | Write-once secrets store for serve | Proposal |
 <!-- /GENERATED:proposals-security -->
 
 ### Configuration sourcing
@@ -567,6 +568,7 @@ Keeping the autonomous crawl fast and its code lean as it grows.
 | [BE-0117](proposals/BE-0117-coverage-floor-ratchet/BE-0117-coverage-floor-ratchet.md) | Cover the rest of the CLI command layer, then ratchet the coverage floor | Proposal |
 | [BE-0122](proposals/BE-0122-workflow-name-legibility/BE-0122-workflow-name-legibility.md) | Legible GitHub Actions workflow and job names | Proposal |
 | [BE-0134](proposals/BE-0134-serve-cli-flag-mirror-drift/BE-0134-serve-cli-flag-mirror-drift.md) | Eliminate serve-to-CLI flag-mirror drift | Proposal |
+| [BE-0135](proposals/BE-0135-module-naming-debt/BE-0135-module-naming-debt.md) | Resolve top-level module naming debt | Proposal |
 <!-- /GENERATED:proposals-dev-infra -->
 
 ### Integration with external services

@@ -1,11 +1,11 @@
-**English** · [日本語](BE-XXXX-serve-write-once-secrets-ja.md)
+**English** · [日本語](BE-0136-serve-write-once-secrets-ja.md)
 
-# BE-XXXX — Write-once secrets store for serve
+# BE-0136 — Write-once secrets store for serve
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-serve-write-once-secrets.md) |
+| Proposal | [BE-0136](BE-0136-serve-write-once-secrets.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
 | Topic | Security hardening |
