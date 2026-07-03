@@ -31,7 +31,7 @@ concerns out of the config schema the rest of the tool shares.
 
 None of that infrastructure is something a local CLI tool's core has a reason to know about.
 
-The growth reaches into the core, too. `bajutsu/config.py:340` defines `OrgConfig`, and `Config`
+The growth reaches into the core, too. `bajutsu/config.py:339` defines `OrgConfig`, and `Config`
 itself carries an `orgs: dict[str, OrgConfig]` field (`config.py:357`) plus four resolution helpers
 (`config.py:380-415`). None of this means anything to a solo developer running `bajutsu run`
 against a local Simulator — it exists purely to support `serve`'s hosted, multi-tenant deployment
