@@ -252,6 +252,53 @@ def test_start_run_on_the_server_backend_materializes_scenario_and_config(tmp_pa
     assert "targets:" in spec["materials"]["bajutsu.config.yaml"]
 
 
+def test_start_run_passes_safe_backfilled_flags_and_withholds_host_paths(tmp_path: Path) -> None:
+    # BE-0134: the flags run_command couldn't previously pass through now flow from the request
+    # body — except client-supplied host directory paths (schemas/goldens), which BE-0051 keeps out
+    # of a serve-driven argv (baselines is serve-computed for the same reason).
+    from bajutsu.serve.server.scenarios import StorageScenarioStore
+
+    scn_dir, cfg, runs = project(tmp_path)
+    scenario_text = (scn_dir / "smoke.yaml").read_text()
+    q = _FakeQueue()
+    state = srv.ServeState(config=cfg, runs_dir=runs, cwd=tmp_path, executor=QueueExecutor(q))
+    state.scenarios = StorageScenarioStore(
+        FakeScenarioStorage({"demo": {"smoke.yaml": scenario_text}})
+    )
+    _payload, code = ops.start_run(
+        state,
+        {
+            "scenario": "smoke.yaml",
+            "target": "demo",
+            "tag": "smoke",
+            "exclude": "slow",
+            "browser": "firefox",
+            "browsers": "chromium,firefox",
+            "network": False,
+            "zip": True,
+            "alertInstruction": "tap Allow",
+            "logPredicate": "subsystem == 'x'",
+            "logSubsystem": "com.example",
+            "schemas": "/etc",  # host path — must be withheld (BE-0051)
+            "goldens": "/tmp/g",  # host path — must be withheld (BE-0051)
+        },
+    )
+    assert code == 200
+    cmd = q.enqueued[0][1][0]["cmd"]
+    assert cmd[cmd.index("--tag") + 1] == "smoke"
+    assert cmd[cmd.index("--exclude") + 1] == "slow"
+    assert cmd[cmd.index("--browser") + 1] == "firefox"
+    assert cmd[cmd.index("--browsers") + 1] == "chromium,firefox"
+    assert "--no-network" in cmd  # network=False forces the off side of the pair
+    assert "--zip" in cmd
+    assert cmd[cmd.index("--alert-instruction") + 1] == "tap Allow"
+    assert cmd[cmd.index("--log-predicate") + 1] == "subsystem == 'x'"
+    assert cmd[cmd.index("--log-subsystem") + 1] == "com.example"
+    assert "--schemas" not in cmd and "--goldens" not in cmd
+    # Git-config knobs stay config-driven too — start_run never sources them from the client body.
+    assert "--config-offline" not in cmd and "--require-pinned-config" not in cmd
+
+
 class FakeScenarioStorage:
     """Per-project scenario storage, in memory: {app: {ref: yaml}} (for the start_run test)."""
 

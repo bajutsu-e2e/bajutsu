@@ -20,6 +20,7 @@ from bajutsu import env
 from bajutsu.backends import KNOWN_ACTUATORS, PLATFORMS
 from bajutsu.config import Config, load_config, resolve
 from bajutsu.scenario import load_scenario_file
+from bajutsu.serve._cli_flags import flag_args
 
 # Tokens a `--backend` may name: a platform (ios/android/web/fake) or a known actuator (idb/…).
 _VALID_BACKENDS = frozenset(PLATFORMS) | frozenset(KNOWN_ACTUATORS)
@@ -260,14 +261,30 @@ def run_command(
     headed: bool | None = None,
     runs_dir: str = "",
     upload_exec: str = "",
+    browser: str = "",
+    browsers: str = "",
+    tag: str = "",
+    exclude: str = "",
+    schemas: str = "",
+    goldens: str = "",
+    network: bool | None = None,
+    log_predicate: str = "",
+    log_subsystem: str = "",
+    alert_instruction: str = "",
+    zip_run: bool | None = None,
+    config_offline: bool | None = None,
+    require_pinned_config: bool | None = None,
 ) -> list[str]:
     """The ``python -m bajutsu run ...`` argv for a launch request.  ``udid`` may be a comma
     list and ``workers > 1`` runs those devices as a parallel pool (capped to the pool size by
-    the CLI).  ``erase`` / ``dismiss_alerts`` / ``headed`` are overrides: True/False force the
-    flag on/off, None leaves the target's own config (each scenario's preconditions.erase /
-    dismissAlerts, or the target's headless) to decide.  ``runs_dir`` (when set) points the run's
-    output tree elsewhere via ``--runs-dir`` — an uploaded bundle runs from its own extracted dir
-    (the working directory) but must still write its run into serve's runs store (BE-0073)."""
+    the CLI).  ``erase`` / ``dismiss_alerts`` / ``headed`` / ``network`` are overrides: True/False
+    force the flag on/off, None omits it so the CLI's own default applies — for ``erase`` /
+    ``dismiss_alerts`` that means each scenario's preconditions.erase / dismissAlerts, for
+    ``headed`` the target's ``headless`` config, and for ``network`` the ``--network`` default (on).
+    ``runs_dir`` (when set) points the run's output tree elsewhere via ``--runs-dir`` — an uploaded
+    bundle runs from its own extracted dir (the working directory) but must still write its run into
+    serve's runs store (BE-0073).  Every flag is rendered from ``run``'s own option metadata
+    (BE-0134), so this argv can't drift from the CLI."""
     cmd = [
         sys.executable,
         "-m",
@@ -281,30 +298,34 @@ def run_command(
         config,
         "--progress",
     ]  # stream per-scenario/step progress into the run log
-    if backend:
-        cmd += ["--backend", backend]
-    if udid:
-        cmd += ["--udid", udid]
-    if workers > 1:
-        cmd += ["--workers", str(workers)]
-    if erase is True:
-        cmd += ["--erase"]
-    elif erase is False:
-        cmd += ["--no-erase"]
-    if dismiss_alerts is True:
-        cmd += ["--dismiss-alerts"]
-    elif dismiss_alerts is False:
-        cmd += ["--no-dismiss-alerts"]
-    if headed is True:
-        cmd += ["--headed"]
-    elif headed is False:
-        cmd += ["--no-headed"]
-    if baselines:
-        cmd += ["--baselines", baselines]
-    if runs_dir:
-        cmd += ["--runs-dir", runs_dir]
-    if upload_exec:
-        cmd += ["--upload-exec", upload_exec]
+    cmd += flag_args(
+        "run",
+        {
+            "backend": backend,
+            "udid": udid,
+            # --workers 1 is the CLI default; omit it (a single device isn't a pool).
+            "workers": workers if workers > 1 else None,
+            "erase": erase,
+            "dismiss_alerts": dismiss_alerts,
+            "headed": headed,
+            "baselines": baselines,
+            "runs_dir": runs_dir,
+            "upload_exec": upload_exec,
+            "browser": browser,
+            "browsers": browsers,
+            "tag": tag,
+            "exclude": exclude,
+            "schemas": schemas,
+            "goldens": goldens,
+            "network": network,
+            "log_predicate": log_predicate,
+            "log_subsystem": log_subsystem,
+            "alert_instruction": alert_instruction,
+            "zip_run": zip_run,
+            "config_offline": config_offline,
+            "require_pinned_config": require_pinned_config,
+        },
+    )
     return cmd
 
 
@@ -341,26 +362,18 @@ def record_command(
         "--config",
         config,
     ]
-    if agent:
-        cmd += ["--agent", agent]
-    if backend:
-        cmd += ["--backend", backend]
-    if udid:
-        cmd += ["--udid", udid]
-    if erase is True:
-        cmd += ["--erase"]
-    elif erase is False:
-        cmd += ["--no-erase"]
-    if dismiss_alerts is True:
-        cmd += ["--dismiss-alerts"]
-    elif dismiss_alerts is False:
-        cmd += ["--no-dismiss-alerts"]
-    if headed is True:
-        cmd += ["--headed"]
-    elif headed is False:
-        cmd += ["--no-headed"]
-    if upload_exec:
-        cmd += ["--upload-exec", upload_exec]
+    cmd += flag_args(
+        "record",
+        {
+            "agent": agent,
+            "backend": backend,
+            "udid": udid,
+            "erase": erase,
+            "dismiss_alerts": dismiss_alerts,
+            "headed": headed,
+            "upload_exec": upload_exec,
+        },
+    )
     return cmd
 
 
@@ -408,31 +421,24 @@ def crawl_command(
         "--max-steps",
         str(max_steps),
     ]
-    if agent:
-        cmd += ["--agent", agent]
-    if backend:
-        cmd += ["--backend", backend]
-    if udid:
-        cmd += ["--udid", udid]
-    if workers > 1:
-        cmd += ["--workers", str(workers)]
-    if erase is True:
-        cmd += ["--erase"]
-    elif erase is False:
-        cmd += ["--no-erase"]
-    if dismiss_alerts is True:
-        cmd += ["--dismiss-alerts"]
-    elif dismiss_alerts is False:
-        cmd += ["--no-dismiss-alerts"]
-    if headed is True:
-        cmd += ["--headed"]
-    elif headed is False:
-        cmd += ["--no-headed"]
-    if resume_src and resume_key:
-        # Resuming appends to the existing run: don't erase the device's app state mid-walk.
-        cmd += ["--resume-src", resume_src, "--resume-key", resume_key, "--no-erase"]
-    if upload_exec:
-        cmd += ["--upload-exec", upload_exec]
+    # Resuming appends to the existing run, so force --no-erase (don't wipe the app state mid-walk)
+    # and carry the resume keys; a fresh crawl leaves erase to the override and omits them.
+    resuming = bool(resume_src and resume_key)
+    cmd += flag_args(
+        "crawl",
+        {
+            "agent": agent,
+            "backend": backend,
+            "udid": udid,
+            "workers": workers if workers > 1 else None,
+            "erase": False if resuming else erase,
+            "dismiss_alerts": dismiss_alerts,
+            "headed": headed,
+            "upload_exec": upload_exec,
+            "resume_src": resume_src if resuming else "",
+            "resume_key": resume_key if resuming else "",
+        },
+    )
     return cmd
 
 
