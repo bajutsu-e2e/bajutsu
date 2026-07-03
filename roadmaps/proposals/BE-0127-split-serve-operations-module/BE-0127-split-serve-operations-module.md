@@ -1,11 +1,11 @@
-**English** · [日本語](BE-XXXX-split-serve-operations-module-ja.md)
+**English** · [日本語](BE-0127-split-serve-operations-module-ja.md)
 
-# BE-XXXX — Split the serve operations god-module
+# BE-0127 — Split the serve operations god-module
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-split-serve-operations-module.md) |
+| Proposal | [BE-0127](BE-0127-split-serve-operations-module.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
 | Topic | Hosting the web UI (cloud / self-hosted) |

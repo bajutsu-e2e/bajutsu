@@ -1,11 +1,11 @@
-[English](BE-XXXX-split-serve-operations-module.md) · **日本語**
+[English](BE-0127-split-serve-operations-module.md) · **日本語**
 
-# BE-XXXX — serve operations の巨大モジュールを分割する
+# BE-0127 — serve operations の巨大モジュールを分割する
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
 |---|---|
-| 提案 | [BE-XXXX](BE-XXXX-split-serve-operations-module-ja.md) |
+| 提案 | [BE-0127](BE-0127-split-serve-operations-module-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **提案** |
 | トピック | Web UI のホスティング（クラウド / セルフホスト） |

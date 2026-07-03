@@ -484,6 +484,7 @@ Web（Playwright）backend とその完成（リッチな capability、並列実
 |---|---|---|
 | [BE-0108](proposals/BE-0108-hosted-config-source-restriction/BE-0108-hosted-config-source-restriction-ja.md) | ホスティング時は config の取得元をアップロードと Git だけに絞る | 提案 |
 | [BE-0110](proposals/BE-0110-evidence-store-uri/BE-0110-evidence-store-uri-ja.md) | URI 指定によるオブジェクトストレージへの証跡アップロード | 提案 |
+| [BE-0127](proposals/BE-0127-split-serve-operations-module/BE-0127-split-serve-operations-module-ja.md) | serve operations の巨大モジュールを分割する | 提案 |
 <!-- /GENERATED:proposals-hosting -->
 
 ### セキュリティ強化

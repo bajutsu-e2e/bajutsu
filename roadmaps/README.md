@@ -491,6 +491,7 @@ Turn the local `bajutsu serve` launcher into a shared service. The runner drives
 |---|---|---|
 | [BE-0108](proposals/BE-0108-hosted-config-source-restriction/BE-0108-hosted-config-source-restriction.md) | Restrict config sources to upload and Git when hosted | Proposal |
 | [BE-0110](proposals/BE-0110-evidence-store-uri/BE-0110-evidence-store-uri.md) | Evidence upload to object storage via URI | Proposal |
+| [BE-0127](proposals/BE-0127-split-serve-operations-module/BE-0127-split-serve-operations-module.md) | Split the serve operations god-module | Proposal |
 <!-- /GENERATED:proposals-hosting -->
 
 ### Security hardening
