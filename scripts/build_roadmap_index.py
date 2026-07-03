@@ -132,6 +132,7 @@ TOPICS: tuple[tuple[str, str, bool], ...] = (
     ("Backend expansion (iOS actuators)", "backend", False),
     ("doctor / onboarding", "doctor", False),
     ("Development infrastructure (contributor workflow)", "dev-infra", False),
+    ("Codebase quality & technical debt", "quality-debt", False),
     ("Dogfood fixtures (demo apps)", "dogfood", True),
     ("Dogfood fixtures (web UI)", "dogfood-web-ui", True),
     ("AI provider configuration", "ai-provider", False),
