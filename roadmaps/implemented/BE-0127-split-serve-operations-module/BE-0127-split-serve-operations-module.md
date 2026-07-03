@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0127") |
-| Implementing PR | _(pending)_ |
+| Implementing PR | [#619](https://github.com/bajutsu-e2e/bajutsu/pull/619) |
 | Topic | Hosting the web UI (cloud / self-hosted) |
 <!-- /BE-METADATA -->
 
@@ -131,7 +131,7 @@ once.
   Behavior-preserving: every function's signature and body are unchanged, so both HTTP shells and
   all tests reach the surface through `ops.<name>` as before. Tightened `_primary_backend`'s
   `config: Any` to `config: Config` as the reads module was extracted. Added
-  `tests/serve/test_operations_package.py` pinning the facade contract. (#TBD)
+  `tests/serve/test_operations_package.py` pinning the facade contract. ([#619](https://github.com/bajutsu-e2e/bajutsu/pull/619))
 
 ## References
 
