@@ -76,46 +76,76 @@ where a non-conformant item can reach `main` undetected.
 
 ### 1. Check a placeholder's structural shape during review
 
-Extend `_items()` in `tests/test_roadmap_format.py` to also collect `BE-XXXX-<slug>` directories
-alongside numbered ones, and run the existing `_check_file` heading/metadata checks against them
-unchanged in substance. The only adjustment needed is to the handful of regexes that currently assume
-a 4-digit id (`TITLE_RE`, the bilingual header link, the `Proposal`/`提案` metadata value): for a
-`BE-XXXX` directory, `BE-XXXX` is itself the expected, legitimate self-reference (exactly as
-`test_no_unresolved_be_xxxx_references` already treats it), so those checks accept `BE-XXXX` in place
+`^BE-(\d{4})-` is not a single check but a pattern independently hardcoded in four places:
+`tests/test_roadmap_format.py`'s `_items()`, [`scripts/build_roadmap_index.py`](../../../scripts/build_roadmap_index.py)
+(which already carries three separate copies — `NUMBERED_DIR_RE`, `ITEM_DIR_RE`, `TITLE_RE` — and
+they already disagree, since only `ITEM_DIR_RE` accepts `XXXX` today), [`scripts/allocate_roadmap_ids.py`](../../../scripts/allocate_roadmap_ids.py),
+and [`scripts/promote_roadmap_items.py`](../../../scripts/promote_roadmap_items.py). Patching only
+`test_roadmap_format.py` would leave the other three to keep drifting independently — `promote_roadmap_items.py`'s
+`misfiled_items()` is a live instance: it skips `BE-XXXX` placeholders the same way, so a placeholder
+whose `Status` changes while still unallocated can sit in the wrong category folder undetected, the
+same root cause surfacing as folder-drift instead of template-format drift.
+
+So the fix is one shared, stdlib-only predicate — e.g. a single `roadmap_ids.py` helper exposing the
+id-shape regex(es) and an `is_placeholder_dir` / `is_numbered_dir` pair — that all four scripts import,
+rather than a fifth ad hoc regex. `tests/test_roadmap_format.py`'s `_items()` then also collects
+`BE-XXXX-<slug>` directories alongside numbered ones, and runs the existing `_check_file` heading/metadata
+checks against them unchanged in substance. The only adjustment needed there is to the handful of regexes
+that currently assume a 4-digit id (`TITLE_RE`, the bilingual header link, the `Proposal`/`提案` metadata
+value): for a `BE-XXXX` directory, `BE-XXXX` is itself the expected, legitimate self-reference (exactly
+as `test_no_unresolved_be_xxxx_references` already treats it), so those checks accept `BE-XXXX` in place
 of `BE-\d{4}` only for items still living in a `BE-XXXX-<slug>` directory. Heading set and order, the
 `Track` ban, and the required `Progress` section apply identically to placeholders and numbered items
 alike. With this in place, a placeholder that drifts out of shape fails `make check` the next time CI
-runs on it — the same review-time signal a numbered item already gets today.
+runs on it — the same review-time signal a numbered item already gets today — and `promote_roadmap_items.py`
+gains the same placeholder awareness for free through the shared predicate.
 
 ### 2. Periodically re-check open roadmap PRs against the moving `main`
 
-Change alone does not help a PR that receives no further pushes, which is exactly what happened here:
+Item 1 alone does not help a PR that receives no further pushes, which is exactly what happened here:
 BE-0078 and BE-0100 both landed while BE-0137/BE-0138 sat idle in review, and nothing re-triggered
-their CI to notice. Add a scheduled workflow (daily, plus `workflow_dispatch` for an on-demand run)
-that:
+their CI to notice. Add a workflow, triggered by a `push: main` that touches the shared id-shape
+predicate or the BE template checks (plus `workflow_dispatch` for an on-demand run — not an
+unconditional daily cron, since the triggering hazard is a template change, not the calendar), that:
 
 - Lists open PRs touching `roadmaps/**`.
 - For each, computes the PR head merged with the current `main` tip **without pushing anything to the
-  branch** — a read-only, local merge simulation — and runs the (now placeholder-aware) format and
-  index checks against that merged tree.
+  branch** — a read-only, local merge simulation — and runs the (now placeholder-aware, per item 1)
+  format and index checks against that merged tree.
 - On failure, posts or updates a single marker comment on the PR naming the drift, so the author sees
   it while it is still cheap to fix.
 
-The no-push constraint is load-bearing: BE-0089 established that a commit pushed to a PR branch after
-approval trips branch protection's "dismiss stale approvals" and stalls auto-merge, which is why
-allocation itself was moved off the approval-time path. A read-only merge simulation reports drift
-without ever touching the branch, so it cannot dismiss a review.
+This item depends on item 1: re-checking a still-unallocated PR's merged tree only catches
+placeholder-shape drift once the placeholder-aware format check exists, so item 2 should ship after or
+together with item 1, not before it. The no-push constraint is load-bearing: BE-0089 established that a
+commit pushed to a PR branch after approval trips branch protection's "dismiss stale approvals" and
+stalls auto-merge, which is why allocation itself was moved off the approval-time path. A read-only
+merge simulation reports drift without ever touching the branch, so it cannot dismiss a review.
+
+Item 2's contribution is feedback latency, not the core safety property: items 1 and 3 together already
+guarantee that no non-conformant item reaches `main`, since item 3 validates unconditionally at the one
+truly gate-free moment regardless of how stale the source branch was. Item 2 only shortens the days a
+stale PR can sit undetected before that final check catches it.
 
 ### 3. Make the merge-time allocator self-validate before landing on `main`
 
-Harden `allocate_roadmap_ids.py` (or the surrounding `roadmap-id.yml` steps) to run the same format
-check against its own output — after the `BE-XXXX` → `BE-NNNN` rename and index rebuild, before the
-`git commit`/push. On failure, abort the push (`main` is left exactly as the merge already left it —
-no broken commit lands) and fail the workflow loudly, naming the offending item and violations, so a
-human fixes the format via a follow-up PR immediately rather than `main` sitting silently red. This is
-defense in depth for the one path that bypasses review entirely: the allocator's commit lands on
-protected `main` through a bypass identity with no PR and no required check, so it must carry its own
-gate.
+`.github/workflows/roadmap-id.yml` already runs a guard between the renumber commit and the push —
+[`scripts/check_renumber_diff.py`](../../../scripts/check_renumber_diff.py), which caps the commit's
+blast radius to `roadmaps/**` (BE-0089). Extend that same guard, rather than adding a second, parallel
+one, to also call the shared predicate/checker item 1 introduces against the renumbered item, run
+right after `check_renumber_diff.py` and before `git push`. On failure, abort the push (`main` is left
+exactly as the merge already left it — no broken commit lands) and fail the workflow loudly, naming the
+offending item and violations, so a human fixes the format via a follow-up PR immediately rather than
+`main` sitting silently red.
+
+The check called here must stay the stdlib-only function item 1 factors out of `test_roadmap_format.py`,
+not a `pytest` invocation: `roadmap-id.yml` deliberately runs no dependency install today (every script
+it calls — `allocate_roadmap_ids.py`, `build_roadmap_index.py`, `check_renumber_diff.py` — is stdlib-only),
+matching BE-0089's "Securing the bypass identity" goal of keeping the privileged, bypass-token-holding
+job's footprint minimal. Wiring in `uv sync` plus `pytest` just to re-run the test file would reintroduce
+the third-party-code-alongside-the-token surface BE-0089 deliberately excluded. This is defense in depth
+for the one path that bypasses review entirely: the allocator's commit lands on protected `main` through
+a bypass identity with no PR and no required check, so it must carry its own gate.
 
 ## Alternatives considered
 
@@ -123,10 +153,12 @@ gate.
   push to the PR branch trips the same "dismiss stale approvals" problem BE-0089 designed around when
   it moved id allocation off the approval-time path — it would stall exactly the auto-merge flow the
   roadmap process depends on.
-- **Rely only on the format check extension (item 1), skip the periodic re-check (item 2).**
-  Insufficient on its own: it does not address the failure mode that actually occurred, where the
-  branch received no push at all for the days it sat in review while the template changed underneath
-  it.
+- **Rely only on the format check extension and the allocator gate (items 1 and 3), skip the periodic
+  re-check (item 2).** Items 1 and 3 alone already guarantee the core safety property — no
+  non-conformant item reaches `main` undetected — since item 3 validates unconditionally at merge time
+  regardless of branch staleness. What this alternative gives up is feedback latency: without item 2, a
+  branch like BE-0137/BE-0138's can still sit silently out of shape for days before item 3 catches it at
+  merge time. Kept as a real, separable improvement rather than folded into "required to close the gap."
 - **Drop the placeholder exemption altogether and require a real 4-digit id shape everywhere.**
   Rejected: this is precisely what BE-0089 designed against — a placeholder is legitimately
   unallocated, and forcing numbered-item shape onto it would reintroduce the "red window" between
@@ -143,9 +175,13 @@ gate.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Extend `tests/test_roadmap_format.py` to check `BE-XXXX` placeholders' structural shape
-- [ ] Add a scheduled workflow that re-checks open roadmap PRs against the current `main`, read-only
-- [ ] Harden `allocate_roadmap_ids.py` / `roadmap-id.yml` to self-validate before pushing to `main`
+- [ ] Extract a shared, stdlib-only id-shape predicate and adopt it (placeholder-aware) in
+      `tests/test_roadmap_format.py`, `scripts/build_roadmap_index.py`, `scripts/allocate_roadmap_ids.py`,
+      and `scripts/promote_roadmap_items.py`
+- [ ] Add a workflow, triggered when a template-affecting commit lands on `main`, that re-checks open
+      roadmap PRs against current `main` read-only (depends on the item above)
+- [ ] Extend `scripts/check_renumber_diff.py`'s invocation in `roadmap-id.yml` to also run the shared
+      check before `git push`
 
 No PR has landed yet.
 
@@ -158,9 +194,12 @@ No PR has landed yet.
   template
 - [BE-0089](../../implemented/BE-0089-merge-time-be-id-allocation/BE-0089-merge-time-be-id-allocation.md)
   — merge-time id allocation; its *Feasibility* section is the source of the placeholder exemption
-  this item narrows
+  this item narrows, and its *Securing the bypass identity* section is why item 3 must stay
+  dependency-free
 - [BE-0078](../../implemented/BE-0078-roadmap-status-folders/BE-0078-roadmap-status-folders.md),
   [BE-0100](../../implemented/BE-0100-roadmap-progress-tracking-template/BE-0100-roadmap-progress-tracking-template.md)
   — the two template changes the stale branches missed
-- `tests/test_roadmap_format.py`, `scripts/allocate_roadmap_ids.py`,
-  `.github/workflows/roadmap-id.yml` — the code this item extends
+- `tests/test_roadmap_format.py`, `scripts/build_roadmap_index.py`, `scripts/allocate_roadmap_ids.py`,
+  `scripts/promote_roadmap_items.py` — the four places the id-shape pattern is duplicated today
+- `scripts/check_renumber_diff.py`, `.github/workflows/roadmap-id.yml` — the existing commit-then-push
+  guard item 3 extends
