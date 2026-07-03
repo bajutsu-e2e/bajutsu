@@ -8,7 +8,7 @@
 | Proposal | [BE-0143](BE-0143-run-command-decomposition.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
-| Topic | Development infrastructure (contributor workflow) |
+| Topic | Codebase quality & technical debt |
 <!-- /BE-METADATA -->
 
 ## Introduction
