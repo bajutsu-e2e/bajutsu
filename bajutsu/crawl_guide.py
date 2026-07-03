@@ -21,7 +21,7 @@ from dataclasses import dataclass, field
 from typing import Any, Protocol
 
 from bajutsu import crawl, crawl_tabs
-from bajutsu.anthropic_client import AiConfig, make_client, resolve_model
+from bajutsu.anthropic_client import AiConfig, ensure_client, resolve_model
 from bajutsu.drivers import base
 from bajutsu.record import _screenshot_bytes
 from bajutsu.redaction import Redactor
@@ -350,9 +350,7 @@ class ClaudeActionProposer:
         self._max_actions = max_actions
 
     def _ensure_client(self) -> Any:
-        if self._client is None:
-            self._client = make_client(ai=self._ai)
-        return self._client
+        return ensure_client(self)
 
     def propose(
         self,

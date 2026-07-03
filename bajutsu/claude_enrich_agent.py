@@ -16,7 +16,7 @@ from typing import Any
 
 from bajutsu import usage
 from bajutsu.agent import EnrichmentProposal, StepContext
-from bajutsu.anthropic_client import AiConfig, make_client, resolve_model
+from bajutsu.anthropic_client import AiConfig, ensure_client, resolve_model
 from bajutsu.claude_agent import _TARGET_PROPS, _to_assertion
 from bajutsu.record import _describe_step, _settle_step
 from bajutsu.redaction import Redactor
@@ -185,9 +185,7 @@ class ClaudeEnrichmentAgent:
         self._max_tokens = max_tokens
 
     def _ensure_client(self) -> Any:
-        if self._client is None:
-            self._client = make_client(ai=self._ai)
-        return self._client
+        return ensure_client(self)
 
     def propose_assertions(
         self,

@@ -16,7 +16,7 @@ import base64
 from typing import Any
 
 from bajutsu import usage
-from bajutsu.anthropic_client import AiConfig, make_client, resolve_model
+from bajutsu.anthropic_client import AiConfig, ensure_client, resolve_model
 from bajutsu.redaction import Redactor
 from bajutsu.triage import FIX_KINDS, Fix, Triage, TriageContext, fix_summary
 
@@ -214,9 +214,7 @@ class ClaudeTriageAgent:
         self._max_tokens = max_tokens
 
     def _ensure_client(self) -> Any:
-        if self._client is None:
-            self._client = make_client(ai=self._ai)
-        return self._client
+        return ensure_client(self)
 
     def triage(self, context: TriageContext) -> Triage:
         client = self._ensure_client()

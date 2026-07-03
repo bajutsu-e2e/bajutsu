@@ -248,6 +248,7 @@ Bajutsu の「契約としての決定性」という立場を、Maestro の fla
 | ID | 項目 | 状態 |
 |---|---|---|
 | [BE-0092](implemented/BE-0092-crawl-coordinator-extraction/BE-0092-crawl-coordinator-extraction-ja.md) | クロール調整役をクラスに切り出す | 実装済み |
+| [BE-0140](implemented/BE-0140-dedupe-claude-client-init/BE-0140-dedupe-claude-client-init-ja.md) | Claude クライアント初期化の重複をなくす | 実装済み |
 | [BE-0150](implemented/BE-0150-scenario-load-yaml-error-handling/BE-0150-scenario-load-yaml-error-handling-ja.md) | `trace --explain` と `audit` で壊れたシナリオを綺麗に失敗させる | 実装済み |
 <!-- /GENERATED:implemented-quality-debt -->
 
@@ -622,7 +623,6 @@ Web（Playwright）backend とその完成（リッチな capability、並列実
 | [BE-0132](proposals/BE-0132-dedupe-crawl-screenshot-helpers/BE-0132-dedupe-crawl-screenshot-helpers-ja.md) | クロールのスクリーンショットヘルパーを重複排除する | 提案 |
 | [BE-0134](proposals/BE-0134-serve-cli-flag-mirror-drift/BE-0134-serve-cli-flag-mirror-drift-ja.md) | serve と CLI のフラグ二重管理による drift をなくす | 提案 |
 | [BE-0135](proposals/BE-0135-module-naming-debt/BE-0135-module-naming-debt-ja.md) | トップレベルモジュールの命名の負債を解消する | 提案 |
-| [BE-0140](proposals/BE-0140-dedupe-claude-client-init/BE-0140-dedupe-claude-client-init-ja.md) | Claude クライアント初期化の重複をなくす | 提案 |
 | [BE-0142](proposals/BE-0142-cli-command-coverage/BE-0142-cli-command-coverage-ja.md) | CLI コマンド層にテストを追加する | 提案 |
 | [BE-0143](proposals/BE-0143-run-command-decomposition/BE-0143-run-command-decomposition-ja.md) | run コマンドの巨大関数を分解する | 提案 |
 <!-- /GENERATED:proposals-quality-debt -->

@@ -21,7 +21,7 @@ from pathlib import Path
 from typing import Any, Protocol
 
 from bajutsu import usage
-from bajutsu.anthropic_client import AiConfig, make_client, resolve_model
+from bajutsu.anthropic_client import AiConfig, ensure_client, resolve_model
 from bajutsu.drivers import base
 from bajutsu.orchestrator import AlertEvent
 from bajutsu.redaction import Redactor
@@ -180,9 +180,7 @@ class ClaudeAlertLocator:
         self._model = resolve_model(LOCATOR_MODEL, ai) if model is None else model
 
     def _ensure_client(self) -> Any:
-        if self._client is None:
-            self._client = make_client(ai=self._ai)
-        return self._client
+        return ensure_client(self)
 
     def locate(self, screenshot_png: bytes, instruction: str | None) -> AlertDecision:
         client = self._ensure_client()

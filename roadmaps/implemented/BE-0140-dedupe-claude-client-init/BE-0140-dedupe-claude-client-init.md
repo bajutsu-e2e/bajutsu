@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0140](BE-0140-dedupe-claude-client-init.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0140") |
+| Implementing PR | [#613](https://github.com/bajutsu-e2e/bajutsu/pull/613) |
 | Topic | Codebase quality & technical debt |
 <!-- /BE-METADATA -->
 
@@ -108,14 +109,17 @@ copies:
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Add the shared client-init-and-cache implementation to `bajutsu/anthropic_client.py`
-- [ ] Replace the six `_ensure_client` copies (`claude_agent.py`, `claude_triage.py`,
+- [x] Add the shared client-init-and-cache implementation to `bajutsu/anthropic_client.py`
+- [x] Replace the six `_ensure_client` copies (`claude_agent.py`, `claude_triage.py`,
       `claude_enrich_agent.py`, `alerts.py`, `crawl_guide.py`, `crawl_tabs.py`) with calls to
       the shared implementation
-- [ ] Add a unit test for the shared implementation (injection short-circuit, build-once
+- [x] Add a unit test for the shared implementation (injection short-circuit, build-once
       caching) covering the behavior the six copies relied on
 
-No PR has landed yet.
+- 2026-07-03 ([#613](https://github.com/bajutsu-e2e/bajutsu/pull/613)): Added `ensure_client` +
+  the `CachesClient` structural Protocol next to `make_client`, memoizing the built client on the
+  instance; replaced the six byte-identical `_ensure_client` bodies with `return ensure_client(self)`;
+  covered the shared helper with injection-short-circuit and build-once-and-reuse tests.
 
 ## References
 
