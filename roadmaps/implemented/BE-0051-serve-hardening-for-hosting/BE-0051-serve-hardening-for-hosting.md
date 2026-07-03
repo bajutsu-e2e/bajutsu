@@ -8,6 +8,7 @@
 | Proposal | [BE-0051](BE-0051-serve-hardening-for-hosting.md) |
 | Author | [@hirosassa](https://github.com/hirosassa) |
 | Status | **Implemented** |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0051") |
 | Implementing PR | [#92](https://github.com/bajutsu-e2e/bajutsu/pull/92) (slice 1), [#94](https://github.com/bajutsu-e2e/bajutsu/pull/94) (slice 2), [#95](https://github.com/bajutsu-e2e/bajutsu/pull/95) (slice 3), [#96](https://github.com/bajutsu-e2e/bajutsu/pull/96) (slice 4), [#97](https://github.com/bajutsu-e2e/bajutsu/pull/97) (slice 5), [#114](https://github.com/bajutsu-e2e/bajutsu/pull/114) (crawl parity for slices 3 & 5) |
 | Topic | Hosting the web UI (cloud / self-hosted) |
 | Related | [BE-0108](../../proposals/BE-0108-hosted-config-source-restriction/BE-0108-hosted-config-source-restriction.md) |

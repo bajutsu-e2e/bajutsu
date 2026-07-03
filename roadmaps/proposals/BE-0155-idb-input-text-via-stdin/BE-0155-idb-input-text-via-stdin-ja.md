@@ -8,6 +8,7 @@
 | 提案 | [BE-0155](BE-0155-idb-input-text-via-stdin-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **提案** |
+| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0155") |
 | トピック | セキュリティ強化 |
 <!-- /BE-METADATA -->
 

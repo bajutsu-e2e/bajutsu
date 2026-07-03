@@ -8,6 +8,7 @@
 | Proposal | [BE-0098](BE-0098-unified-authoring-surface.md) |
 | Author | [@hirosassa](https://github.com/hirosassa) |
 | Status | **Proposal** |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0098") |
 | Topic | Authoring experience (record / GUI editor) |
 | Origin | [BE-0014](../../implemented/BE-0014-record-demarcation/BE-0014-record-demarcation.md) |
 <!-- /BE-METADATA -->

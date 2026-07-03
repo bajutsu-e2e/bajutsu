@@ -8,6 +8,7 @@
 | 提案 | [BE-0140](BE-0140-dedupe-claude-client-init-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **提案** |
+| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0140") |
 | トピック | コードベース品質・技術的負債 |
 <!-- /BE-METADATA -->
 

@@ -8,6 +8,7 @@
 | Proposal | [BE-0005](BE-0005-idb-companion-version-monitoring.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0005") |
 | Implementing PR | [#227](https://github.com/bajutsu-e2e/bajutsu/pull/227) |
 | Topic | On-device validation (M1 close-out) |
 <!-- /BE-METADATA -->

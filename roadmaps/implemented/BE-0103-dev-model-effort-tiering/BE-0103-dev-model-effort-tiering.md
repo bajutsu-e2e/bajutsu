@@ -8,6 +8,7 @@
 | Proposal | [BE-0103](BE-0103-dev-model-effort-tiering.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0103") |
 | Implementing PR | [#441](https://github.com/bajutsu-e2e/bajutsu/pull/441) |
 | Topic | Development infrastructure (contributor workflow) |
 | Related | [BE-0069](../../implemented/BE-0069-executable-contributor-guardrails/BE-0069-executable-contributor-guardrails.md), [BE-0043](../../implemented/BE-0043-conflict-resistant-file-flow/BE-0043-conflict-resistant-file-flow.md) |

@@ -166,9 +166,11 @@ colliding or regressing each other. Full guide: [`docs/ai-development.md`](docs/
   Motivation / Detailed design / Alternatives considered / Progress / References), with the metadata
   as a fenced `| Field | Value |` table — `<!-- BE-METADATA -->` … `<!-- /BE-METADATA -->`, opening
   with a `| Field | Value |` header row (`| 項目 | 値 |` on the Japanese side) and holding
-  `Proposal` / `Author` / `Status` / `Topic` (plus `Implementing PR` once shipped, the optional
-  cross-item links `Related` / `Superseded by`, and `Origin` last, when applicable); the Japanese
-  mirror uses `提案` / `提案者` / `状態` / `トピック` / `関連` / `無効化` / `由来`. **`Detailed
+  `Proposal` / `Author` / `Status` / `Tracking issue` / `Topic` (`Tracking issue`, BE-0139, is a
+  GitHub issue-search URL computed purely from the item's id — added automatically by the scaffold,
+  never hand-written; plus `Implementing PR` once shipped, the optional cross-item links `Related` /
+  `Superseded by`, and `Origin` last, when applicable); the Japanese mirror uses
+  `提案` / `提案者` / `状態` / `トラッキング Issue` / `トピック` / `関連` / `無効化` / `由来`. **`Detailed
   design` enumerates the work MECE** (mutually exclusive, collectively exhaustive), and **`Progress`
   is a living section kept current as work proceeds** (BE-0100): a checklist mirroring that breakdown
   (one `- [ ]` box per unit, ticked as it lands) plus a short chronological PR-linked log. Every PR

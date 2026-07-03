@@ -8,6 +8,7 @@
 | 提案 | [BE-0061](BE-0061-be-id-allocation-hardening-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装済み** |
+| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0061") |
 | 実装 PR | [#175](https://github.com/bajutsu-e2e/bajutsu/pull/175)、[#436](https://github.com/bajutsu-e2e/bajutsu/pull/436)（撤去） |
 | トピック | 開発基盤（コントリビュータ体験） |
 <!-- /BE-METADATA -->

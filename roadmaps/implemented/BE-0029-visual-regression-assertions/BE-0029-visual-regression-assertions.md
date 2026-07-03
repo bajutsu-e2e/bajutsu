@@ -8,6 +8,7 @@
 | Proposal | [BE-0029](BE-0029-visual-regression-assertions.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0029") |
 | Implementing PR | [#30](https://github.com/bajutsu-e2e/bajutsu/pull/30), [#34](https://github.com/bajutsu-e2e/bajutsu/pull/34) |
 | Topic | Candidates from competitive research (MagicPod / Autify) |
 | Origin | Both |

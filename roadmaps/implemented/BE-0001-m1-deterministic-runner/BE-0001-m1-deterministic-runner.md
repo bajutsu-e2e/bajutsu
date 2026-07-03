@@ -8,6 +8,7 @@
 | Proposal | [BE-0001](BE-0001-m1-deterministic-runner.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0001") |
 | Implementing PR | predates the per-PR history (squashed into the initial import; no single PR) |
 | Topic | Milestones (M1–M4) |
 <!-- /BE-METADATA -->

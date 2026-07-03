@@ -8,6 +8,7 @@
 | 提案 | [BE-0073](BE-0073-serve-zip-bundle-upload-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装済み** |
+| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0073") |
 | 実装 PR | [#216](https://github.com/bajutsu-e2e/bajutsu/pull/216) |
 | トピック | config の取得元 |
 | 関連 | [BE-0108](../../proposals/BE-0108-hosted-config-source-restriction/BE-0108-hosted-config-source-restriction-ja.md) |

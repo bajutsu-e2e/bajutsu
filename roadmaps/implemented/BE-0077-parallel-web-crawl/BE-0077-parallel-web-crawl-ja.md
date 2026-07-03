@@ -8,6 +8,7 @@
 | 提案 | [BE-0077](BE-0077-parallel-web-crawl-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装済み** |
+| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0077") |
 | 実装 PR | [#209](https://github.com/bajutsu-e2e/bajutsu/pull/209) |
 | トピック | クロール性能 / スケールアウト |
 | 由来 | ユーザー要望（並列 Web クロール） |

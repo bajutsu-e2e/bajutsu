@@ -8,6 +8,7 @@
 | Proposal | [BE-0077](BE-0077-parallel-web-crawl.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0077") |
 | Implementing PR | [#209](https://github.com/bajutsu-e2e/bajutsu/pull/209) |
 | Topic | Crawl performance / scale-out |
 | Origin | User request (parallel web crawl) |

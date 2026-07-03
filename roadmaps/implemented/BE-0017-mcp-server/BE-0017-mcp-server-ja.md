@@ -8,6 +8,7 @@
 | 提案 | [BE-0017](BE-0017-mcp-server-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装済み** |
+| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0017") |
 | 実装 PR | [#44](https://github.com/bajutsu-e2e/bajutsu/pull/44) |
 | トピック | 統合と自動化（MCP 化） |
 <!-- /BE-METADATA -->

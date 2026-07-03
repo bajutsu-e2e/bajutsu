@@ -8,6 +8,7 @@
 | Proposal | [BE-0042](BE-0042-platform-backend-registry.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0042") |
 | Implementing PR | predates the per-PR history (part of the initial import; no single PR) |
 | Topic | Platform expansion (landed slices) |
 <!-- /BE-METADATA -->
