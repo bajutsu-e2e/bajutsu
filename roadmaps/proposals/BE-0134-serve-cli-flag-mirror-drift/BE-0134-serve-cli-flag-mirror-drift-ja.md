@@ -1,11 +1,11 @@
-[English](BE-XXXX-serve-cli-flag-mirror-drift.md) · **日本語**
+[English](BE-0134-serve-cli-flag-mirror-drift.md) · **日本語**
 
-# BE-XXXX — serve と CLI のフラグ二重管理による drift をなくす
+# BE-0134 — serve と CLI のフラグ二重管理による drift をなくす
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
 |---|---|
-| 提案 | [BE-XXXX](BE-XXXX-serve-cli-flag-mirror-drift-ja.md) |
+| 提案 | [BE-0134](BE-0134-serve-cli-flag-mirror-drift-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **提案** |
 | トピック | 開発基盤（コントリビュータ体験） |

@@ -1,11 +1,11 @@
-**English** · [日本語](BE-XXXX-serve-cli-flag-mirror-drift-ja.md)
+**English** · [日本語](BE-0134-serve-cli-flag-mirror-drift-ja.md)
 
-# BE-XXXX — Eliminate serve-to-CLI flag-mirror drift
+# BE-0134 — Eliminate serve-to-CLI flag-mirror drift
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-serve-cli-flag-mirror-drift.md) |
+| Proposal | [BE-0134](BE-0134-serve-cli-flag-mirror-drift.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
 | Topic | Development infrastructure (contributor workflow) |
