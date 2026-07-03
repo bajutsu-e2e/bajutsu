@@ -1,13 +1,13 @@
-"""Containment guardrail for the BE-0015 server phase.
+"""Containment guardrail for optional dependencies on the default path.
 
-The hosted server backend (FastAPI / Redis / SQLAlchemy / object storage / OAuth) is being added
-behind optional dependency groups and a `bajutsu/serve/server/` subpackage, imported only when a
-server backend is explicitly selected. This test locks the invariant *before* those heavy deps
-exist: importing the default `bajutsu serve` / CLI path must pull in **none** of them, so the
-default install and the Linux gate stay server-free and `make serve` stays single-process.
+Every opt-in subsystem — the hosted server backend (FastAPI / Redis / SQLAlchemy / object storage /
+OAuth), the web backend's Playwright, and the AI SDK (`anthropic`, BE-0111) — must stay off the
+default `bajutsu serve` / CLI / `run` path, imported only when that subsystem is explicitly used.
+These tests lock that invariant: importing the default path must pull in **none** of those deps, so
+the base (AI-free) install and the Linux gate stay lean, and `make serve` stays single-process.
 
-It runs in a clean child interpreter so the result can't be contaminated by other tests in the
-session that may import server packages.
+Each test runs in a clean child interpreter so the result can't be contaminated by other tests in
+the session that may import those packages.
 """
 
 from __future__ import annotations
@@ -34,6 +34,11 @@ FORBIDDEN = sorted(
 )
 
 
+def _run_in_child(code: str) -> subprocess.CompletedProcess[str]:
+    """Run `code` in a clean child interpreter so no in-session import can contaminate the result."""
+    return subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, timeout=60)
+
+
 def test_default_serve_and_cli_import_no_server_deps() -> None:
     # Importing bajutsu.cli runs the command scan (every commands/<name>.py), so a command that
     # imported a server dep at module load — instead of lazily — would surface here too.
@@ -46,9 +51,7 @@ def test_default_serve_and_cli_import_no_server_deps() -> None:
         "sys.stdout.write(','.join(leaked))\n"
         "sys.exit(1 if leaked else 0)\n"
     )
-    result = subprocess.run(
-        [sys.executable, "-c", code], capture_output=True, text=True, timeout=60
-    )
+    result = _run_in_child(code)
     # exit 1 = server deps leaked (listed on stdout); any other non-zero = the import itself failed
     # (traceback on stderr) — surface both so a failure is actionable rather than just "non-zero".
     assert result.returncode == 0, (
@@ -57,4 +60,62 @@ def test_default_serve_and_cli_import_no_server_deps() -> None:
         f"leaked server deps: {result.stdout.strip() or '(none)'}\n"
         f"stderr: {result.stderr.strip() or '(none)'}\n"
         "Keep server imports lazy / inside bajutsu/serve/server/ behind the backend selection."
+    )
+
+
+def test_default_path_does_not_import_anthropic() -> None:
+    """The AI SDK (`anthropic`, BE-0111) must stay off the default path.
+
+    Importing the CLI, serve, and the deterministic run pipeline must not pull in `anthropic` — the
+    SDK is reached only lazily on the Tier-1 authoring / investigation paths, so the base (AI-free)
+    install carries no AI SDK.
+    """
+    code = (
+        "import sys\n"
+        "import bajutsu.cli\n"
+        "import bajutsu.serve\n"
+        "import bajutsu.runner.pipeline\n"
+        "leaked = sorted(m for m in sys.modules if m.split('.')[0] == 'anthropic')\n"
+        "sys.stdout.write(','.join(leaked))\n"
+        "sys.exit(1 if leaked else 0)\n"
+    )
+    result = _run_in_child(code)
+    assert result.returncode == 0, (
+        "importing the default CLI/serve/run path pulled in the AI SDK "
+        f"(exit {result.returncode}).\n"
+        f"leaked AI modules: {result.stdout.strip() or '(none)'}\n"
+        f"stderr: {result.stderr.strip() or '(none)'}\n"
+        "Keep `import anthropic` lazy (inside the function that reaches the model) so the base "
+        "install stays AI-free."
+    )
+
+
+def test_default_path_runs_with_anthropic_absent() -> None:
+    """A base install (no `ai` / `bedrock` extra) imports and runs the deterministic subset.
+
+    The gate's venv has `anthropic` installed (via the dev group), so we simulate the base install
+    by blocking `import anthropic` in a child interpreter, then confirm the CLI imports and a real
+    deterministic assertion evaluates — proving the default path never needs the SDK. No LLM is
+    involved; the check is fully static / deterministic (BE-0111).
+    """
+    code = (
+        "import sys\n"
+        "import importlib.abc\n"
+        "class _Blocker(importlib.abc.MetaPathFinder):\n"
+        "    def find_spec(self, name, path, target=None):\n"
+        "        if name == 'anthropic' or name.startswith('anthropic.'):\n"
+        "            raise ModuleNotFoundError(f'blocked (BE-0111 base-install sim): {name}')\n"
+        "        return None\n"
+        "sys.meta_path.insert(0, _Blocker())\n"
+        "import bajutsu.cli\n"
+        "from bajutsu.assertions import evaluate\n"
+        "assert evaluate([], []) == [], 'deterministic no-op assertion should return []'\n"
+        "assert 'anthropic' not in sys.modules, 'anthropic must stay unimported'\n"
+    )
+    result = _run_in_child(code)
+    assert result.returncode == 0, (
+        "the default path failed with the AI SDK absent "
+        f"(exit {result.returncode}).\n"
+        f"stderr: {result.stderr.strip() or '(none)'}\n"
+        "The base (AI-free) install must import and run the deterministic subset without `anthropic`."
     )

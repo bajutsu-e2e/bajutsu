@@ -17,9 +17,10 @@ through the env):
   not a valid Bedrock model id.
 
 Keys never live in config: ``ai.keyEnv`` names the env var, the value is read here at call time
-(BE-0047). Nothing here runs in the deterministic ``run`` / CI gate (DESIGN §2 / §3.1). The Bedrock
-SDK extra (``anthropic[bedrock]``, which pulls in boto3) is optional and only imported on the
-Bedrock path.
+(BE-0047). Nothing here runs in the deterministic ``run`` / CI gate (DESIGN §2 / §3.1). The SDK
+itself is the optional ``ai`` extra (BE-0111) — imported lazily here, only when a model is actually
+called — and the Bedrock variant (``anthropic[bedrock]``, which pulls in boto3) layers on top for
+the Bedrock path. A base install without the extra raises an actionable error rather than crashing.
 """
 
 from __future__ import annotations
@@ -94,7 +95,13 @@ def make_client(client: Any = None, ai: AiConfig | None = None) -> Any:
                 "install it with `uv sync --extra bedrock`."
             ) from e
         return AnthropicBedrock()
-    from anthropic import Anthropic
+    try:
+        from anthropic import Anthropic
+    except ImportError as e:  # the anthropic SDK (the `ai` extra, BE-0111) isn't installed
+        raise RuntimeError(
+            "the AI paths need the anthropic SDK; install it with `uv sync --extra ai` "
+            "(or `pip install bajutsu[ai]`)."
+        ) from e
 
     name = key_env(ai)
     api_key = os.environ.get(name)

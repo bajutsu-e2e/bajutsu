@@ -66,6 +66,24 @@ surfaces can never disagree:
   explanation when Claude is unreachable, pointing at the in-UI key field; they re-enable the moment
   a key is set, a provider is configured, or the Claude Code CLI is available.
 
+## Installing the Claude paths
+
+The split is a packaging boundary too, not only a runtime one
+([BE-0111](../roadmaps/implemented/BE-0111-ai-sdk-optional-dependency/BE-0111-ai-sdk-optional-dependency.md)):
+the AI software development kit (SDK) is an opt-in extra, so the base install carries no AI
+dependency at all.
+
+- `pip install bajutsu` — the deterministic authoring / running paths (`run`, `doctor`, `lint`,
+  `codegen`, `trace`, `approve`, and the rest of the Claude-free column above). No AI SDK is
+  installed, and nothing here reaches a model.
+- `pip install bajutsu[ai]` — adds the Anthropic SDK for the Claude paths (`record`, `crawl`,
+  `triage --ai`, `run --dismiss-alerts`). Use `bajutsu[bedrock]` instead for the Amazon Bedrock
+  provider; it layers the Bedrock variant onto the same SDK.
+
+Contributors get every extra at once through `uv sync --group dev`, so the gate keeps testing the
+Claude paths regardless — the AI-free guarantee is about the *base* install, not about dropping test
+coverage.
+
 ## Reaching Claude, when you want it
 
 Any one of these satisfies the "uses Claude" paths (details in [self-hosting](self-hosting.md) and
