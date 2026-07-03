@@ -1,11 +1,11 @@
-[English](BE-XXXX-roadmap-placeholder-format-guardrail.md) · **日本語**
+[English](BE-0149-roadmap-placeholder-format-guardrail.md) · **日本語**
 
-# BE-XXXX — ロードマッププレースホルダーを見逃すフォーマットガードレールの穴を塞ぐ
+# BE-0149 — ロードマッププレースホルダーを見逃すフォーマットガードレールの穴を塞ぐ
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
 |---|---|
-| 提案 | [BE-XXXX](BE-XXXX-roadmap-placeholder-format-guardrail-ja.md) |
+| 提案 | [BE-0149](BE-0149-roadmap-placeholder-format-guardrail-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **提案** |
 | トピック | 開発基盤（コントリビュータ体験） |
@@ -13,13 +13,13 @@
 
 ## はじめに
 
-[PR #568](https://github.com/bajutsu-e2e/bajutsu/pull/568)は、**BE-0137**と**BE-0138**を修復するものでした。両項目は、廃止済みの`Track`メタデータフィールドを残し、`Progress`セクションを欠いた、BE-0078／BE-0100より前のテンプレートのままマージされており、`main`は`tests/test_roadmap_format.py`の検査に落ちていました。これは一度限りの見落としではありません。フォーマットのガードレールには`BE-XXXX`プレースホルダーをめぐる構造的な死角があり、それが今回の事態を許しました。同じ穴は、テンプレートが今後変わるたびに再現しえます。この項目では、互いに補い合う3つの変更でこの穴を塞ぎます。レビュー中にプレースホルダーの形を検査すること、テンプレートが変わったのに誰も push しないまま放置される open な PR のドリフトを捉えること、そして`main`への合流経路のうちレビューを一切経ない採番処理そのものを堅牢にすることです。
+[PR #568](https://github.com/bajutsu-e2e/bajutsu/pull/568)は、**BE-0137**と**BE-0138**を修復するものでした。両項目は、廃止済みの`Track`メタデータフィールドを残し、`Progress`セクションを欠いた、BE-0078／BE-0100より前のテンプレートのままマージされており、`main`は`tests/test_roadmap_format.py`の検査に落ちていました。これは一度限りの見落としではありません。フォーマットのガードレールには`BE-0149`プレースホルダーをめぐる構造的な死角があり、それが今回の事態を許しました。同じ穴は、テンプレートが今後変わるたびに再現しえます。この項目では、互いに補い合う3つの変更でこの穴を塞ぎます。レビュー中にプレースホルダーの形を検査すること、テンプレートが変わったのに誰も push しないまま放置される open な PR のドリフトを捉えること、そして`main`への合流経路のうちレビューを一切経ない採番処理そのものを堅牢にすることです。
 
 ## 動機
 
 ### フォーマット検査は設計上プレースホルダーを見ていない
 
-`tests/test_roadmap_format.py`の`_items()`は、`^BE-(\d{4})-`にマッチするディレクトリだけを集めます。`BE-XXXX-<slug>`というプレースホルダーはこの正規表現にマッチしないため、フォーマット検査にもインデックス生成にも現れません。これは意図的な設計です。[BE-0089](../../implemented/BE-0089-merge-time-be-id-allocation/BE-0089-merge-time-be-id-allocation-ja.md)のFeasibility節は、`BE-XXXX`のまま`main`にマージされてから採番コミットが`BE-NNNN`にリネームするまでの間に赤くなる窓を作らないことを、まさにこの性質によって保証しています。
+`tests/test_roadmap_format.py`の`_items()`は、`^BE-(\d{4})-`にマッチするディレクトリだけを集めます。`BE-0149-<slug>`というプレースホルダーはこの正規表現にマッチしないため、フォーマット検査にもインデックス生成にも現れません。これは意図的な設計です。[BE-0089](../../implemented/BE-0089-merge-time-be-id-allocation/BE-0089-merge-time-be-id-allocation-ja.md)のFeasibility節は、`BE-0149`のまま`main`にマージされてから採番コミットが`BE-NNNN`にリネームするまでの間に赤くなる窓を作らないことを、まさにこの性質によって保証しています。
 
 同じ除外には、BE-0089が想定していなかった副作用があります。プレースホルダーの構造（見出しの集合と順序、許可されるメタデータフィールド）は、scaffold された瞬間からレビューを経てマージされるまで一度も検査されません。正準なテンプレートが提案の作業中に変わり、そのブランチに二度と push が行われなければ、プレースホルダーでなくなるまで誰もそのズレを検査し直さないのです。
 
@@ -27,7 +27,7 @@
 
 BE-0137（[PR #530](https://github.com/bajutsu-e2e/bajutsu/pull/530)）とBE-0138（[PR #536](https://github.com/bajutsu-e2e/bajutsu/pull/536)）は、[BE-0078](../../implemented/BE-0078-roadmap-status-folders/BE-0078-roadmap-status-folders-ja.md)（2026-06-23、`Track`を廃止）と[BE-0100](../../implemented/BE-0100-roadmap-progress-tracking-template/BE-0100-roadmap-progress-tracking-template-ja.md)（2026-06-30、`Progress`を追加）が`main`に着地するより前に着手されており、その後どちらのブランチも`main`に追随して push し直されることはありませんでした。`make check`は両方のPRで終始 green のままでした。プレースホルダー除外のせいで、検査すべき対象がそもそも存在しなかったからです。両方とも2026-07-03に、旧いテンプレートのままマージされました。
 
-その後、採番ワークフロー（[`roadmap-id.yml`](../../../.github/workflows/roadmap-id.yml)が実行する[`scripts/allocate_roadmap_ids.py`](../../../scripts/allocate_roadmap_ids.py)）が`BE-XXXX`を`BE-0137`／`BE-0138`にリネームし、インデックスを再構築しました。これは純粋に機械的なリネームであり、フォーマット検証は含まれません。BE-0089自身の設計にも、リネームコミットが再トリガーする`roadmap-id`の実行は「プレースホルダーが見つからず no-op で終わる」と明記されており、フォーマット検査を呼び直すという発想はそもそもありません。このリネームコミットは、採番処理の bypass App アイデンティティを通じて、保護された`main`に直接 push されます。PR も required status check もこの経路を止めません。項目の形が初めて検査可能になる瞬間こそが、違反が`main`に着地するのを誰も止められない瞬間でもあるのです。`ci.yml`の`check`ジョブはこの`push: main`に対しても再実行されますが、そこで結果が赤くなっても誰にも通知されません。今回は@hirosassaが別件の提案を書いている最中に、たまたま8分後に手元で`make check`を実行して発覚しただけでした。
+その後、採番ワークフロー（[`roadmap-id.yml`](../../../.github/workflows/roadmap-id.yml)が実行する[`scripts/allocate_roadmap_ids.py`](../../../scripts/allocate_roadmap_ids.py)）が`BE-0149`を`BE-0137`／`BE-0138`にリネームし、インデックスを再構築しました。これは純粋に機械的なリネームであり、フォーマット検証は含まれません。BE-0089自身の設計にも、リネームコミットが再トリガーする`roadmap-id`の実行は「プレースホルダーが見つからず no-op で終わる」と明記されており、フォーマット検査を呼び直すという発想はそもそもありません。このリネームコミットは、採番処理の bypass App アイデンティティを通じて、保護された`main`に直接 push されます。PR も required status check もこの経路を止めません。項目の形が初めて検査可能になる瞬間こそが、違反が`main`に着地するのを誰も止められない瞬間でもあるのです。`ci.yml`の`check`ジョブはこの`push: main`に対しても再実行されますが、そこで結果が赤くなっても誰にも通知されません。今回は@hirosassaが別件の提案を書いている最中に、たまたま8分後に手元で`make check`を実行して発覚しただけでした。
 
 ### 穴の所在
 
@@ -39,9 +39,9 @@ BE-0137（[PR #530](https://github.com/bajutsu-e2e/bajutsu/pull/530)）とBE-013
 
 ### 1. レビュー中にプレースホルダーの構造を検査する
 
-`^BE-(\d{4})-`という検査は単一ではなく、4か所に独立してハードコードされたパターンです。`tests/test_roadmap_format.py`の`_items()`、[`scripts/build_roadmap_index.py`](../../../scripts/build_roadmap_index.py)（すでに`NUMBERED_DIR_RE`・`ITEM_DIR_RE`・`TITLE_RE`という3種類の正規表現を抱えており、しかも`ITEM_DIR_RE`だけが`XXXX`を受け付けるというズレがすでに生じています）、[`scripts/allocate_roadmap_ids.py`](../../../scripts/allocate_roadmap_ids.py)、[`scripts/promote_roadmap_items.py`](../../../scripts/promote_roadmap_items.py)です。`test_roadmap_format.py`だけを直しても、残り3つは独立してズレ続けます。`promote_roadmap_items.py`の`misfiled_items()`はその実例です。同じ理由で`BE-XXXX`プレースホルダーを除外しているため、未採番のまま`Status`が変わったプレースホルダーは、誤ったカテゴリのフォルダに置かれたまま検知されません。
+`^BE-(\d{4})-`という検査は単一ではなく、4か所に独立してハードコードされたパターンです。`tests/test_roadmap_format.py`の`_items()`、[`scripts/build_roadmap_index.py`](../../../scripts/build_roadmap_index.py)（すでに`NUMBERED_DIR_RE`・`ITEM_DIR_RE`・`TITLE_RE`という3種類の正規表現を抱えており、しかも`ITEM_DIR_RE`だけが`XXXX`を受け付けるというズレがすでに生じています）、[`scripts/allocate_roadmap_ids.py`](../../../scripts/allocate_roadmap_ids.py)、[`scripts/promote_roadmap_items.py`](../../../scripts/promote_roadmap_items.py)です。`test_roadmap_format.py`だけを直しても、残り3つは独立してズレ続けます。`promote_roadmap_items.py`の`misfiled_items()`はその実例です。同じ理由で`BE-0149`プレースホルダーを除外しているため、未採番のまま`Status`が変わったプレースホルダーは、誤ったカテゴリのフォルダに置かれたまま検知されません。
 
-そこで直すべきは、4つのスクリプトが共通で import する、stdlib のみで動く単一の述語（例えば `roadmap_ids.py` のようなヘルパーが、id の形を表す正規表現と`is_placeholder_dir`／`is_numbered_dir`を公開する）です。5個目の場当たり的な正規表現を増やすのではなく、これを共通化します。そのうえで`tests/test_roadmap_format.py`の`_items()`を拡張し、番号付きディレクトリと並べて`BE-XXXX-<slug>`も収集します。既存の`_check_file`による見出しとメタデータの検査は、実質的な内容を変えずにそのまま適用します。調整が必要なのは、4桁の番号を前提にしているいくつかの正規表現（`TITLE_RE`、二言語ヘッダーリンク、`Proposal`／`提案`メタデータの値）だけです。`BE-XXXX`ディレクトリにとって`BE-XXXX`自体が正当な自己参照である点は、`test_no_unresolved_be_xxxx_references`がすでに同じ扱いをしています。そこでこれらの検査は、`BE-XXXX-<slug>`ディレクトリに置かれている項目に限って、`BE-\d{4}`の代わりに`BE-XXXX`を許容します。見出しの集合と順序、`Track`の禁止、`Progress`セクションの必須化は、プレースホルダーにも番号付き項目にも同じ基準を適用します。これにより、形が崩れたプレースホルダーは、次にCIが走った時点で`make check`に失敗するようになります。番号付き項目が今日すでに得ているのと同じレビュー時点のシグナルです。共通の述語を介して、`promote_roadmap_items.py`も同じプレースホルダー対応を追加コストなしで得られます。
+そこで直すべきは、4つのスクリプトが共通で import する、stdlib のみで動く単一の述語（例えば `roadmap_ids.py` のようなヘルパーが、id の形を表す正規表現と`is_placeholder_dir`／`is_numbered_dir`を公開する）です。5個目の場当たり的な正規表現を増やすのではなく、これを共通化します。そのうえで`tests/test_roadmap_format.py`の`_items()`を拡張し、番号付きディレクトリと並べて`BE-0149-<slug>`も収集します。既存の`_check_file`による見出しとメタデータの検査は、実質的な内容を変えずにそのまま適用します。調整が必要なのは、4桁の番号を前提にしているいくつかの正規表現（`TITLE_RE`、二言語ヘッダーリンク、`Proposal`／`提案`メタデータの値）だけです。`BE-0149`ディレクトリにとって`BE-0149`自体が正当な自己参照である点は、`test_no_unresolved_be_xxxx_references`がすでに同じ扱いをしています。そこでこれらの検査は、`BE-0149-<slug>`ディレクトリに置かれている項目に限って、`BE-\d{4}`の代わりに`BE-0149`を許容します。見出しの集合と順序、`Track`の禁止、`Progress`セクションの必須化は、プレースホルダーにも番号付き項目にも同じ基準を適用します。これにより、形が崩れたプレースホルダーは、次にCIが走った時点で`make check`に失敗するようになります。番号付き項目が今日すでに得ているのと同じレビュー時点のシグナルです。共通の述語を介して、`promote_roadmap_items.py`も同じプレースホルダー対応を追加コストなしで得られます。
 
 ### 2. open な roadmap PR を、main の変化に合わせて再検査し、修正 PR を開く
 

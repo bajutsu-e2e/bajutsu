@@ -1,11 +1,11 @@
-**English** · [日本語](BE-XXXX-roadmap-placeholder-format-guardrail-ja.md)
+**English** · [日本語](BE-0149-roadmap-placeholder-format-guardrail-ja.md)
 
-# BE-XXXX — Close the roadmap-placeholder format-guardrail gap
+# BE-0149 — Close the roadmap-placeholder format-guardrail gap
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-roadmap-placeholder-format-guardrail.md) |
+| Proposal | [BE-0149](BE-0149-roadmap-placeholder-format-guardrail.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
 | Topic | Development infrastructure (contributor workflow) |
@@ -16,7 +16,7 @@
 [PR #568](https://github.com/bajutsu-e2e/bajutsu/pull/568) repaired **BE-0137** and **BE-0138**,
 which had merged carrying the pre-BE-0078/BE-0100 template — the retired `Track` metadata field and
 no `Progress` section — leaving `main` failing `tests/test_roadmap_format.py`. That was not a one-off
-slip: the format guardrail has a structural blind spot around `BE-XXXX` placeholders that let it
+slip: the format guardrail has a structural blind spot around `BE-0149` placeholders that let it
 happen, and the same gap can reopen on any future template change. This item closes that gap with
 three complementary changes: checking a placeholder's shape while it is still in review, catching
 drift on long-lived open PRs that the template outgrows while nobody pushes to them, and hardening
@@ -27,11 +27,11 @@ the one path — merge-time id allocation — that lands content on `main` with 
 ### The format check is blind to placeholders by design
 
 [`tests/test_roadmap_format.py`](../../../tests/test_roadmap_format.py)'s `_items()` collects
-directories matching `^BE-(\d{4})-`; a `BE-XXXX-<slug>` placeholder never matches, so it is invisible
+directories matching `^BE-(\d{4})-`; a `BE-0149-<slug>` placeholder never matches, so it is invisible
 to both the format check and the index build. This is deliberate:
 [BE-0089](../../implemented/BE-0089-merge-time-be-id-allocation/BE-0089-merge-time-be-id-allocation.md)'s
 *Feasibility* section relies on exactly this property to guarantee "no red window" between a merge
-landing `BE-XXXX` intact and the follow-up allocator commit renaming it to `BE-NNNN`.
+landing `BE-0149` intact and the follow-up allocator commit renaming it to `BE-NNNN`.
 
 The same exemption has a side effect BE-0089 did not account for: a placeholder's structural shape —
 heading set and order, allowed metadata fields — is never checked at all, from the moment it is
@@ -52,7 +52,7 @@ exemption meant there was nothing for it to catch — and both merged on 2026-07
 old template.
 
 The merge-time allocator ([`scripts/allocate_roadmap_ids.py`](../../../scripts/allocate_roadmap_ids.py),
-run by [`roadmap-id.yml`](../../../.github/workflows/roadmap-id.yml)) then renamed `BE-XXXX` to
+run by [`roadmap-id.yml`](../../../.github/workflows/roadmap-id.yml)) then renamed `BE-0149` to
 `BE-0137`/`BE-0138` and rebuilt the index — a purely mechanical rename with no format validation of
 its own; BE-0089's own design notes that the re-triggered `roadmap-id` run "finds no placeholders and
 exits as a no-op," never re-invoking the format check. That rename commit lands by pushing directly
@@ -82,19 +82,19 @@ where a non-conformant item can reach `main` undetected.
 they already disagree, since only `ITEM_DIR_RE` accepts `XXXX` today), [`scripts/allocate_roadmap_ids.py`](../../../scripts/allocate_roadmap_ids.py),
 and [`scripts/promote_roadmap_items.py`](../../../scripts/promote_roadmap_items.py). Patching only
 `test_roadmap_format.py` would leave the other three to keep drifting independently — `promote_roadmap_items.py`'s
-`misfiled_items()` is a live instance: it skips `BE-XXXX` placeholders the same way, so a placeholder
+`misfiled_items()` is a live instance: it skips `BE-0149` placeholders the same way, so a placeholder
 whose `Status` changes while still unallocated can sit in the wrong category folder undetected, the
 same root cause surfacing as folder-drift instead of template-format drift.
 
 So the fix is one shared, stdlib-only predicate — e.g. a single `roadmap_ids.py` helper exposing the
 id-shape regex(es) and an `is_placeholder_dir` / `is_numbered_dir` pair — that all four scripts import,
 rather than a fifth ad hoc regex. `tests/test_roadmap_format.py`'s `_items()` then also collects
-`BE-XXXX-<slug>` directories alongside numbered ones, and runs the existing `_check_file` heading/metadata
+`BE-0149-<slug>` directories alongside numbered ones, and runs the existing `_check_file` heading/metadata
 checks against them unchanged in substance. The only adjustment needed there is to the handful of regexes
 that currently assume a 4-digit id (`TITLE_RE`, the bilingual header link, the `Proposal`/`提案` metadata
-value): for a `BE-XXXX` directory, `BE-XXXX` is itself the expected, legitimate self-reference (exactly
-as `test_no_unresolved_be_xxxx_references` already treats it), so those checks accept `BE-XXXX` in place
-of `BE-\d{4}` only for items still living in a `BE-XXXX-<slug>` directory. Heading set and order, the
+value): for a `BE-0149` directory, `BE-0149` is itself the expected, legitimate self-reference (exactly
+as `test_no_unresolved_be_xxxx_references` already treats it), so those checks accept `BE-0149` in place
+of `BE-\d{4}` only for items still living in a `BE-0149-<slug>` directory. Heading set and order, the
 `Track` ban, and the required `Progress` section apply identically to placeholders and numbered items
 alike. With this in place, a placeholder that drifts out of shape fails `make check` the next time CI
 runs on it — the same review-time signal a numbered item already gets today — and `promote_roadmap_items.py`
