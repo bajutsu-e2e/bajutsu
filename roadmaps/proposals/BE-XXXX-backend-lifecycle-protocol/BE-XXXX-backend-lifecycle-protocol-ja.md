@@ -37,9 +37,9 @@ environment 側を driver の型についてジェネリックにするか、い
 - `driver.await_ready()` — `environment.py:486`、`# type: ignore[attr-defined]  # xcuitest-only
   lifecycle`。
 
-この 4 箇所は、`PlaywrightDriver` 上の `navigate`／`reset_context`／`close`
-（`drivers/playwright.py:383,388,434`）と、`XcuitestDriver` 上の `await_ready`
-（`drivers/xcuitest.py:259`）を実装している箇所とちょうど対応します。本リポジトリの
+この 5 箇所は、`PlaywrightDriver` 上の `navigate`／`reset_context`／`close`
+（`bajutsu/drivers/playwright.py:383,388,434`）と、`XcuitestDriver` 上の `await_ready`
+（`bajutsu/drivers/xcuitest.py:259`）を実装している箇所とちょうど対応します。本リポジトリの
 `bajutsu/` 配下のソース（`tests/` を除く）には `type: ignore` コメントが 16 個あり、**その
 うち 5 個、実に 3 割近くが、この 1 ファイルに集中した 4 つのライフサイクル呼び出し**です。
 これはコードベース分析レポートが技術的負債の指摘 #5 として別途取り上げている箇所でもあります。
