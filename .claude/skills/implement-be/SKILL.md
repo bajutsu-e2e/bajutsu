@@ -5,11 +5,12 @@ description: >-
   Implement a Bajutsu roadmap (BE) item end to end, starting from its ID. Use when the
   user names a roadmap item to build — "/implement-be BE-0066", "implement BE-0041",
   "start on BE-0007", a bare number, or a slug — or otherwise asks to turn an existing BE
-  proposal into shipped code. Treats the item's proposal as the spec, grounds the work in
-  the prime directives, sets up a focused branch, plans and confirms before writing,
-  implements with tests, reviews and refines the diff, flips the item to Implemented (Status + roadmap-promote +
-  reindex), and proves the gate is green. The deterministic counterpart to the `ideation`
-  skill: ideation authors proposals, this one ships them.
+  proposal into shipped code. Treats the item's proposal as the spec, self-assigns the item's
+  GitHub tracking issue, grounds the work in the prime directives, sets up a focused branch,
+  plans and confirms before writing, implements with tests, reviews and refines the diff,
+  flips the item to Implemented (Status + roadmap-promote + reindex), and proves the gate is
+  green. The deterministic counterpart to the `ideation` skill: ideation authors proposals,
+  this one ships them.
 ---
 
 # Implement a BE item
@@ -59,7 +60,25 @@ spec, the `-ja.md` mirror is supporting context. Then branch on where it sits:
 - **`Proposal (deferred)`** — surface that it was deliberately parked; confirm the user
   wants to un-defer and build it now.
 
-### 2. Ground yourself in the spec and the code
+### 2. Claim the tracking issue
+
+Every open item (`Status: Proposal` or `Status: In progress`) has a GitHub tracking issue —
+opened and labeled `roadmap-tracking` by the BE-0109 sync, titled `[BE-NNNN] <title>`. Its
+body says "self-assign this issue when you pick it up; leave it unassigned if it's up for
+grabs." Do that now, before you branch, so ownership is visible the moment you start:
+
+```bash
+gh issue list --label roadmap-tracking --state open --search "BE-NNNN in:title" --json number --jq '.[0].number'
+gh issue edit <number> --add-assignee @me
+```
+
+`--add-assignee @me` assigns the human account `gh` is authenticated as — the same account
+commits and PRs are attributed to. It's idempotent (re-assigning yourself is a no-op), so
+running it again on a resumed session is harmless. If no matching open issue turns up (the
+sync lags `main` by one run, or you're un-deferring a `Proposal (deferred)` item per step 1),
+don't block on it — note it and continue.
+
+### 3. Ground yourself in the spec and the code
 
 Don't start typing from the title. Build the real picture first:
 
@@ -79,7 +98,7 @@ For a large item, fan this reading out to the `Explore` agent, and use the `Plan
 draft the implementation strategy, so the main thread keeps the synthesis, not the file
 dumps.
 
-### 3. Set up a focused workspace
+### 4. Set up a focused workspace
 
 Follow the parallel-work rules ([`docs/ai-development.md`](../../../docs/ai-development.md)):
 
@@ -89,7 +108,7 @@ Follow the parallel-work rules ([`docs/ai-development.md`](../../../docs/ai-deve
 - **Stay in your lane.** Touch only the files this item needs. If the design forces a
   cross-cutting change (e.g. a driver-API change), say so up front.
 
-### 4. Plan, then confirm before writing code
+### 5. Plan, then confirm before writing code
 
 Implementing a whole roadmap item is large and hard to reverse, so **get the user's
 go-ahead on a concrete plan first** (consider `EnterPlanMode`). The plan should name:
@@ -105,7 +124,7 @@ go-ahead on a concrete plan first** (consider `EnterPlanMode`). The plan should 
 
 Only implement once the user is happy with the plan.
 
-### 5. Implement
+### 6. Implement
 
 Build to the Detailed design, matching the codebase's grain:
 
@@ -122,12 +141,12 @@ Build to the Detailed design, matching the codebase's grain:
   [`japanese-tech-writing`](../japanese-tech-writing/SKILL.md) skill — natural Japanese, not
   a literal rendering of the English.
 
-### 6. Review and refine the diff
+### 7. Review and refine the diff
 
 `make check` proves the change is green — it does **not** judge design, simplicity, or
 logic. Close that gap on the diff you just wrote, with official review tooling as
 **authoring aids**. This stays inside directive #1: they advise the author and never
-judge — the gate (step 8) is still the only verdict, and no LLM touches the `run`/CI path.
+judge — the gate (step 9) is still the only verdict, and no LLM touches the `run`/CI path.
 
 Built-in skills, on the diff, every time:
 
@@ -152,14 +171,14 @@ drop anything that fights the codebase grain. Prefer the built-in `simplify` / `
 over pr-review-toolkit's own `code-simplifier` / `code-reviewer` — they overlap, and the
 simplifier leans on JS/React idioms foreign to this Python core.
 
-### 7. Flip the roadmap item to Implemented
+### 8. Flip the roadmap item to Implemented
 
 The implementing PR is what ships the item, so promote it in this same change:
 
 1. In **both** language files, set `* Status: **Implemented**` and change the `Track` line
    to **Accepted** (`../../README.md#accepted`). Add an `* Implementing PR:
    [#NNN](https://github.com/bajutsu-e2e/bajutsu/pull/NNN)` line right under `Status` once
-   the PR number exists (fill it at step 9 if you don't have it yet).
+   the PR number exists (fill it at step 10 if you don't have it yet).
 2. Move the directory and regenerate the index:
    ```bash
    make roadmap-promote   # moves proposals/BE-NNNN-… → implemented/BE-NNNN-…
@@ -169,7 +188,7 @@ The implementing PR is what ships the item, so promote it in this same change:
    index drifts — so these two commands keep the gate honest. **Never renumber the item**;
    its ID is permanent.
 
-### 8. Verify — the gate
+### 9. Verify — the gate
 
 ```bash
 make check    # lock-check + format + lint + lint-sh + lint-actions + typecheck + test
@@ -182,7 +201,7 @@ item's correctness genuinely depends on a Simulator/browser run, drive that run 
 `verify` skill (launch the app, exercise the behavior, report what you saw) rather than
 claiming it works untested.
 
-### 9. PR only when asked
+### 10. PR only when asked
 
 Push to your branch. **Don't open a PR unless the user asks** — the human usually opens it.
 When you do:
@@ -201,6 +220,6 @@ When you do:
 - [`roadmaps/README.md`](../../../roadmaps/README.md) — the index and the per-item format.
 - [`ideation`](../ideation/SKILL.md) — the upstream skill that authors the proposal this one builds.
 - The built-in **`simplify`** / **`code-review`** / **`verify`** skills — the authoring aids
-  steps 6 and 8 lean on. They advise the author; only `make check` judges.
+  steps 7 and 9 lean on. They advise the author; only `make check` judges.
 - **pr-review-toolkit** (`@claude-plugins-official`, Anthropic-official) — the specialized
-  review agents step 6 launches; enabled repo-wide in [`.claude/settings.json`](../../settings.json).
+  review agents step 7 launches; enabled repo-wide in [`.claude/settings.json`](../../settings.json).
