@@ -8,6 +8,7 @@
 | Proposal | [BE-0028](BE-0028-evidence-rule-overmatch-guard.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0028") |
 | Implementing PR | [#90](https://github.com/bajutsu-e2e/bajutsu/pull/90) · [#91](https://github.com/bajutsu-e2e/bajutsu/pull/91) |
 | Topic | Miscellaneous / on hold |
 <!-- /BE-METADATA -->

@@ -8,6 +8,7 @@
 | Proposal | [BE-0065](BE-0065-docstring-standard-api-reference.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0065") |
 | Implementing PR | [#232](https://github.com/bajutsu-e2e/bajutsu/pull/232) |
 | Topic | Development infrastructure (contributor workflow) |
 <!-- /BE-METADATA -->

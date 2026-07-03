@@ -8,6 +8,7 @@
 | 提案 | [BE-0042](BE-0042-platform-backend-registry-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装済み** |
+| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0042") |
 | 実装 PR | PR 単位の履歴より前（初期インポートの一部、単一 PR なし） |
 | トピック | プラットフォーム拡張（着手済みスライス） |
 <!-- /BE-METADATA -->

@@ -76,9 +76,17 @@ def _card(item: Any) -> str:
     color = BUCKET_COLOR[item.bucket]
     label = BUCKET_LABEL[item.bucket]
     origin = f'<span class="be-origin">{html.escape(en.origin)}</span>' if en.origin else ""
+    # The card's primary click target stays the proposal file (the whole main link); the Issue pill is
+    # an additive second link to the item's BE-0109 tracking issue, built from its id alone. The two
+    # are sibling <a>s under a <div> rather than one nested in the other, since nested anchors are
+    # invalid HTML. The link is a search that can legitimately return zero results (a "born
+    # implemented" item never opened a tracking issue), so it is labelled "Issue" and titled as a
+    # search, not a guaranteed issue (BE-0139).
+    issue_url = html.escape(bri.tracking_issue_url(en.id))
     return (
-        f'<a class="be-card" data-status="{html.escape(item.bucket)}" '
-        f'style="border-left-color:{color}" href="{_item_href(item)}">'
+        f'<div class="be-card" data-status="{html.escape(item.bucket)}" '
+        f'style="border-left-color:{color}">'
+        f'<a class="be-card-main" href="{_item_href(item)}">'
         '<span class="be-card-top">'
         f'<span class="be-id" style="color:{color}">{html.escape(en.id)}</span>'
         f'<span class="be-badge" style="color:{color};border-color:{color}">{html.escape(label)}</span>'
@@ -86,6 +94,9 @@ def _card(item: Any) -> str:
         f'<span class="be-title">{html.escape(en.title)}</span>'
         f"{origin}"
         "</a>"
+        f'<a class="be-issue" href="{issue_url}" title="Search GitHub for this item&#39;s '
+        'tracking issue (may have no results)">Issue</a>'
+        "</div>"
     )
 
 
@@ -202,13 +213,17 @@ _STYLE = """
 .be-bar>span{display:block;height:100%}
 .be-cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:.55rem}
 .be-card{display:flex;flex-direction:column;gap:.3rem;border:1px solid rgba(128,128,128,.25);
-  border-left:3px solid;border-radius:8px;padding:.5rem .65rem;text-decoration:none;color:inherit}
+  border-left:3px solid;border-radius:8px;padding:.5rem .65rem}
 .be-card:hover{background:rgba(128,128,128,.08)}
+.be-card-main{display:flex;flex-direction:column;gap:.3rem;text-decoration:none;color:inherit}
 .be-card-top{display:flex;align-items:center;justify-content:space-between;gap:.4rem}
 .be-id{font-size:12px;font-weight:600}
 .be-badge{font-size:10px;border:1px solid;border-radius:4px;padding:0 .35rem;white-space:nowrap}
 .be-title{font-size:13px;line-height:1.35}
 .be-origin{font-size:11px;color:#888}
+.be-issue{align-self:flex-start;font-size:10px;color:#888;text-decoration:none;
+  border:1px solid rgba(128,128,128,.3);border-radius:4px;padding:0 .35rem}
+.be-issue:hover{color:inherit;border-color:currentColor}
 </style>
 """
 

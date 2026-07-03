@@ -8,6 +8,7 @@
 | 提案 | [BE-0063](BE-0063-git-config-source-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装済み** |
+| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0063") |
 | 実装 PR | [#277](https://github.com/bajutsu-e2e/bajutsu/pull/277)（BE-0063 の複数 PR の最後） |
 | トピック | config の取得元 |
 | 関連 | [BE-0108](../../proposals/BE-0108-hosted-config-source-restriction/BE-0108-hosted-config-source-restriction-ja.md) |

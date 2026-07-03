@@ -7,7 +7,8 @@
 |---|---|
 | Proposal | [BE-0139](BE-0139-roadmap-dashboard-issue-links.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **Implemented** |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0139") |
 | Topic | Development infrastructure (contributor workflow) |
 <!-- /BE-METADATA -->
 
@@ -137,15 +138,23 @@ next to the proposal link it already shows.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] 1. Add the deterministic tracking-issue search-URL helper and the card's secondary link in
+- [x] 1. Add the deterministic tracking-issue search-URL helper and the card's secondary link in
   `scripts/build_roadmap_dashboard.py`; update `tests/test_roadmap_dashboard.py` to cover it.
-- [ ] 2. Add the `Tracking issue` field to the canonical schema (`tests/test_roadmap_format.py`'s
+- [x] 2. Add the `Tracking issue` field to the canonical schema (`tests/test_roadmap_format.py`'s
   `ORDER_EN` / `ORDER_JA` and required-field sets, plus the value-matches-its-own-id check) and to
   `scripts/new_roadmap_item.py`'s scaffold; update CLAUDE.md's field-order sentence.
-- [ ] 3. Run the one-time backfill script adding the `Tracking issue` row to every existing numbered
+- [x] 3. Run the one-time backfill script adding the `Tracking issue` row to every existing numbered
   item (both language files).
-- [ ] 4. Cross-reference this item from BE-0109's References (superseding its "could render item →
+- [x] 4. Cross-reference this item from BE-0109's References (superseding its "could render item →
   issue links from a read-only `gh issue list`" note).
+
+Log:
+
+- Shipped the whole item in one change: the `tracking_issue_url` helper in
+  `scripts/build_roadmap_index.py` (the shared source of truth), the additive "Issue" pill on each
+  dashboard card, the required `Tracking issue` metadata field with its value-matches-own-id check,
+  the scaffold row, the one-time backfill of all existing items, and the CLAUDE.md / BE-0109 doc
+  updates. Filed the item under `implemented/`.
 
 ## References
 

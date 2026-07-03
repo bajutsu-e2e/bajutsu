@@ -8,6 +8,7 @@
 | Proposal | [BE-0024](BE-0024-doctor-onboarding.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0024") |
 | Implementing PR | [#236](https://github.com/bajutsu-e2e/bajutsu/pull/236), [#337](https://github.com/bajutsu-e2e/bajutsu/pull/337), [#361](https://github.com/bajutsu-e2e/bajutsu/pull/361), [#405](https://github.com/bajutsu-e2e/bajutsu/pull/405), [#406](https://github.com/bajutsu-e2e/bajutsu/pull/406), [#407](https://github.com/bajutsu-e2e/bajutsu/pull/407), [#408](https://github.com/bajutsu-e2e/bajutsu/pull/408) |
 | Topic | doctor / onboarding |
 <!-- /BE-METADATA -->

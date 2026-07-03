@@ -8,6 +8,7 @@
 | Proposal | [BE-0100](BE-0100-roadmap-progress-tracking-template.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0100") |
 | Implementing PR | [#415](https://github.com/bajutsu-e2e/bajutsu/pull/415) |
 | Topic | Development infrastructure (contributor workflow) |
 | Related | [BE-0074](../../implemented/BE-0074-be-template-standardization/BE-0074-be-template-standardization.md) |

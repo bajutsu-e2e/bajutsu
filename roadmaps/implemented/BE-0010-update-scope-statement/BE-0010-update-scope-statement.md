@@ -8,6 +8,7 @@
 | Proposal | [BE-0010](BE-0010-update-scope-statement.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0010") |
 | Implementing PR | [#327](https://github.com/bajutsu-e2e/bajutsu/pull/327) |
 | Topic | Platform expansion (Android / Web / Flutter) |
 <!-- /BE-METADATA -->

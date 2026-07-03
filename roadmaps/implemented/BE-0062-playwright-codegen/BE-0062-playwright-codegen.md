@@ -8,6 +8,7 @@
 | Proposal | [BE-0062](BE-0062-playwright-codegen.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0062") |
 | Implementing PR | [#183](https://github.com/bajutsu-e2e/bajutsu/pull/183) |
 | Topic | codegen coverage |
 <!-- /BE-METADATA -->

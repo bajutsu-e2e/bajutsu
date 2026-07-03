@@ -8,6 +8,7 @@
 | Proposal | [BE-0023](BE-0023-self-healing-guards.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0023") |
 | Implementing PR | predates the per-PR history (squashed into the initial import; no single PR) |
 | Topic | Self-healing triage (M4) |
 <!-- /BE-METADATA -->

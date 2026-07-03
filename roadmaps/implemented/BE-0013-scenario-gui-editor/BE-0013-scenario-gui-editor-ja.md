@@ -8,6 +8,7 @@
 | 提案 | [BE-0013](BE-0013-scenario-gui-editor-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装済み** |
+| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0013") |
 | 実装 PR | [#385](https://github.com/bajutsu-e2e/bajutsu/pull/385), [#387](https://github.com/bajutsu-e2e/bajutsu/pull/387) |
 | トピック | オーサリング体験（record / GUI エディタ） |
 <!-- /BE-METADATA -->
