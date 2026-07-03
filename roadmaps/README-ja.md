@@ -416,7 +416,9 @@ Web（Playwright）backend とその完成（リッチな capability、並列実
 このリポジトリで並行作業する多数のセッションの摩擦を減らします。マージコンフリクトを設計の臭いとして扱い、独立した変更が互いに素なファイルだけに触れるようファイル流動を見直します。
 
 <!-- GENERATED:in-progress-dev-infra -->
-
+| ID | 項目 | 状態 |
+|---|---|---|
+| [BE-0149](in-progress/BE-0149-roadmap-placeholder-format-guardrail/BE-0149-roadmap-placeholder-format-guardrail-ja.md) | ロードマッププレースホルダーを見逃すフォーマットガードレールの穴を塞ぐ | 実装中 |
 <!-- /GENERATED:in-progress-dev-infra -->
 
 ### Dogfood フィクスチャ（デモアプリ）

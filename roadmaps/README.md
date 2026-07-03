@@ -423,7 +423,9 @@ The Web (Playwright) backend and its completion (rich capabilities, parallel run
 Reduce friction for the many parallel sessions working this repo — treat merge conflicts as a design smell and reshape the file flow so independent changes touch disjoint files.
 
 <!-- GENERATED:in-progress-dev-infra -->
-
+| ID | Item | Status |
+|---|---|---|
+| [BE-0149](in-progress/BE-0149-roadmap-placeholder-format-guardrail/BE-0149-roadmap-placeholder-format-guardrail.md) | Close the roadmap-placeholder format-guardrail gap | In progress |
 <!-- /GENERATED:in-progress-dev-infra -->
 
 ### Dogfood fixtures (demo apps)
