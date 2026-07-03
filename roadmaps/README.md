@@ -314,6 +314,7 @@ Closing the edges the deterministic core does not touch — `serve`'s HTTP surfa
 | [BE-0116](implemented/BE-0116-udid-argument-validation/BE-0116-udid-argument-validation.md) | Tighten UDID validation against argument injection | Implemented |
 | [BE-0133](implemented/BE-0133-pin-actionlint-installer/BE-0133-pin-actionlint-installer.md) | Pin the actionlint installer by SHA | Implemented |
 | [BE-0152](implemented/BE-0152-totp-seed-artifact-leak/BE-0152-totp-seed-artifact-leak.md) | Keep literal TOTP seeds out of run artifacts | Implemented |
+| [BE-0155](implemented/BE-0155-idb-input-text-via-stdin/BE-0155-idb-input-text-via-stdin.md) | Pass idb input text via stdin to keep secrets out of argv | Implemented |
 <!-- /GENERATED:implemented-security -->
 
 ### Configuration sourcing
@@ -566,7 +567,6 @@ Closing the edges the deterministic core does not touch — `serve`'s HTTP surfa
 | [BE-0151](proposals/BE-0151-screenshot-secret-capture-warning/BE-0151-screenshot-secret-capture-warning.md) | Warn when screenshots and video may capture on-screen secrets | Proposal |
 | [BE-0153](proposals/BE-0153-encode-aware-secret-redaction/BE-0153-encode-aware-secret-redaction.md) | Encode-aware secret redaction | Proposal |
 | [BE-0154](proposals/BE-0154-roadmap-promote-base-sha/BE-0154-roadmap-promote-base-sha.md) | Run roadmap-promote from the base SHA | Proposal |
-| [BE-0155](proposals/BE-0155-idb-input-text-via-stdin/BE-0155-idb-input-text-via-stdin.md) | Pass idb input text via stdin to keep secrets out of argv | Proposal |
 <!-- /GENERATED:proposals-security -->
 
 ### Configuration sourcing

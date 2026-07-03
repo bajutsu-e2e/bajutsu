@@ -7,7 +7,7 @@
 |---|---|
 | 提案 | [BE-0155](BE-0155-idb-input-text-via-stdin-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **提案** |
+| 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0155") |
 | トピック | セキュリティ強化 |
 <!-- /BE-METADATA -->
@@ -48,10 +48,16 @@ def text_cmd(udid: str, text: str) -> list[str]:
 > 作業分解（作業の単位ごとに 1 つ）に対応し、ログには変更内容と時期（古い順）を PR へのリンクと
 > ともに記録します。
 
-- [ ] `text_cmd`／idb ドライバのテキスト入力パスを、argv ではなく stdin 経由に切り替える。
-- [ ] 入力したテキストが構築後の argv に一切現れないことを検証する、ドライバ層のテストを追加・調整する。
+- [x] `text_cmd`／idb ドライバのテキスト入力パスを、argv ではなく stdin 経由に切り替える。
+- [x] 入力したテキストが構築後の argv に一切現れないことを検証する、ドライバ層のテストを追加・調整する。
 
-まだ着手した PR はありません。
+- idb ドライバで実装した。`text_cmd` は argv にテキストを載せなくなり、`IdbDriver.type_text` は
+  `_run_text` staticmethod（`simctl pbcopy` の `Env._run_pbcopy` に倣ったもの）を通じて値を
+  `idb ui text` の stdin へ渡す。これによりシークレットや OTP がプロセスのコマンドラインに現れなく
+  なった。ドライバのテストで、値が構築後の argv に存在せず stdin 側に渡ることを検証している。
+  `Driver.type_text` インターフェースは不変。なお本変更は「位置引数のテキストを渡さないとき
+  `idb ui text` が stdin を読む」という挙動に依存する。これは決定的ゲートではなく E2E（実機）
+  パスで確認される。
 
 ## 参考
 

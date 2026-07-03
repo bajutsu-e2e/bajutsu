@@ -75,9 +75,16 @@ def swipe_cmd(udid: str, x1: float, y1: float, x2: float, y2: float) -> list[str
     ]
 
 
-def text_cmd(udid: str, text: str) -> list[str]:
-    """The `idb` argv that types text into the focused field."""
-    return ["idb", "ui", "text", "--udid", udid, text]
+def text_cmd(udid: str) -> list[str]:
+    """The `idb` argv that types text into the focused field.
+
+    The text itself is deliberately absent from the argv: it is fed to `idb ui text`
+    over stdin (see `IdbDriver._run_text`), so a secret or OTP value never appears in
+    the process command line, where any local user could read it via `ps`/`/proc`
+    (BE-0155). This relies on `idb ui text` reading stdin when no positional text
+    argument is given.
+    """
+    return ["idb", "ui", "text", "--udid", udid]
 
 
 def screenshot_cmd(udid: str, path: str) -> list[str]:
@@ -301,7 +308,14 @@ class IdbDriver:
         self._run(swipe_cmd(self.udid, frm[0], frm[1], to[0], to[1]))
 
     def type_text(self, text: str) -> None:
-        self._run(text_cmd(self.udid, text))
+        # Pass the value on stdin, not argv, so a secret/OTP never lands in the idb
+        # process command line (BE-0155). Routed through a class-level attribute so
+        # tests can patch it, mirroring Env._run_pbcopy for simctl pbcopy.
+        self._run_text(text_cmd(self.udid), text)
+
+    @staticmethod
+    def _run_text(cmd: list[str], text: str) -> None:
+        subprocess.run(cmd, input=text, capture_output=True, text=True, check=True)
 
     def wait_for(self, sel: base.Selector, timeout: float, poll: float = 0.2) -> bool:
         """Poll until at least one element matches `sel`, or `timeout` elapses.

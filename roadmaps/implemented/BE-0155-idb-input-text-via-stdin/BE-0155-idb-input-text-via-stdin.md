@@ -7,7 +7,7 @@
 |---|---|
 | Proposal | [BE-0155](BE-0155-idb-input-text-via-stdin.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0155") |
 | Topic | Security hardening |
 <!-- /BE-METADATA -->
@@ -75,12 +75,18 @@ resolved:
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Switch `text_cmd`/the idb driver's text-input path to pass the value via stdin
+- [x] Switch `text_cmd`/the idb driver's text-input path to pass the value via stdin
       instead of argv.
-- [ ] Add/adjust a driver-level test asserting the typed text never appears in the
+- [x] Add/adjust a driver-level test asserting the typed text never appears in the
       built argv list.
 
-No PR has landed yet.
+- Implemented at the idb driver: `text_cmd` no longer carries the text in argv, and
+  `IdbDriver.type_text` feeds the value to `idb ui text` on stdin through a `_run_text`
+  staticmethod (mirroring `Env._run_pbcopy` for `simctl pbcopy`), so a secret/OTP never
+  appears in the process command line. A driver test asserts the value is absent from the
+  built argv and present on stdin; `Driver.type_text` is unchanged. This relies on
+  `idb ui text` reading stdin when given no positional text argument — an on-device
+  behavior confirmed by the E2E path, not by the deterministic gate.
 
 ## References
 
