@@ -65,11 +65,8 @@ lands). Work breaks down by module:
   on-device suite is a separate, heavier path (`make -C demos/features e2e`) that is not part of
   the fast gate and does not run on every change; command-layer bugs would surface late, if at
   all, for contributors who cannot run the Simulator-backed suite (e.g. on Linux).
-- **Raise the coverage floor first, then backfill tests to satisfy it.** Rejected: ratcheting the
-  floor before the tests exist would either block unrelated work or force rushed, low-value tests
-  written just to hit a number. The floor ratchet (tracked separately as the
-  coverage-floor-ratchet item) is sequenced to follow this work, once real coverage gains are
-  banked.
+  written just to hit a number. A follow-up item to ratchet the coverage floor (TBD) should be
+  sequenced after this work, once real coverage gains are banked.
 - **Rewrite the command layer to be thinner (extract all logic out of `cli/commands/`) before
   testing it.** Rejected as the immediate step: reshaping the surface first without a test net
   risks silently changing behavior. Coverage lands first so any subsequent restructuring (see the
