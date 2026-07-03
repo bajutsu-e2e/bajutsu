@@ -126,5 +126,5 @@ until the two native trees are solid.
 
 [DESIGN](../../../DESIGN.md), `bajutsu/drivers/`, `bajutsu/backends.py`,
 [BE-0037 — WebView / hybrid support](../../implemented/BE-0037-webview-hybrid-support/BE-0037-webview-hybrid-support.md),
-[BE-0007 — Android backend](../../proposals/BE-0007-android-backend/BE-0007-android-backend.md),
+[BE-0007 — Android backend](../../in-progress/BE-0007-android-backend/BE-0007-android-backend.md),
 [BE-0041 — Web (Playwright) backend](../../implemented/BE-0041-web-playwright-backend/BE-0041-web-playwright-backend.md)

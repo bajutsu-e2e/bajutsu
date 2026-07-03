@@ -7,6 +7,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from pathlib import Path
 
+import pytest
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
 
@@ -177,6 +178,27 @@ def test_repository_from_env_is_none_without_a_url(monkeypatch) -> None:
 def test_repository_from_env_builds_a_sql_repository(monkeypatch) -> None:
     monkeypatch.setenv("BAJUTSU_DATABASE_URL", "sqlite://")
     assert isinstance(repository_from_env(), SqlRepository)
+
+
+def test_repository_from_env_rejects_a_non_numeric_lease_timeout(monkeypatch) -> None:
+    monkeypatch.setenv("BAJUTSU_DATABASE_URL", "sqlite://")
+    monkeypatch.setenv("BAJUTSU_LEASE_TIMEOUT_SECONDS", "soon")
+    with pytest.raises(ValueError, match="BAJUTSU_LEASE_TIMEOUT_SECONDS"):
+        repository_from_env()
+
+
+def test_repository_from_env_rejects_a_non_positive_attempt_cap(monkeypatch) -> None:
+    monkeypatch.setenv("BAJUTSU_DATABASE_URL", "sqlite://")
+    monkeypatch.setenv("BAJUTSU_LEASE_MAX_ATTEMPTS", "0")
+    with pytest.raises(ValueError, match="BAJUTSU_LEASE_MAX_ATTEMPTS"):
+        repository_from_env()
+
+
+def test_repository_from_env_rejects_a_non_finite_lease_timeout(monkeypatch) -> None:
+    monkeypatch.setenv("BAJUTSU_DATABASE_URL", "sqlite://")
+    monkeypatch.setenv("BAJUTSU_LEASE_TIMEOUT_SECONDS", "inf")  # slips past a bare `<= 0` check
+    with pytest.raises(ValueError, match="finite"):
+        repository_from_env()
 
 
 # ---------------------------------------------------------------------------

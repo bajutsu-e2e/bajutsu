@@ -9,6 +9,7 @@ drives the contract here — no real bucket or network on the gate.
 from __future__ import annotations
 
 import io
+from pathlib import Path
 
 import pytest
 from botocore.exceptions import ClientError
@@ -29,6 +30,7 @@ class _FakeS3:
     def __init__(self, objects: dict[str, bytes], *, page: int = 1000) -> None:
         self._objects = objects
         self._page = page  # max keys per list_objects_v2 page, to exercise pagination
+        self.content_types: dict[str, str] = {}  # Key -> ContentType tagged on write
 
     @staticmethod
     def _missing(op: str) -> ClientError:
@@ -44,12 +46,30 @@ class _FakeS3:
             raise self._missing("GetObject")
         return {"Body": io.BytesIO(self._objects[Key])}
 
-    def put_object(self, Bucket: str, Key: str, Body: bytes) -> dict[str, object]:  # noqa: N803
+    def put_object(
+        self,
+        Bucket: str,  # noqa: N803
+        Key: str,  # noqa: N803
+        Body: bytes,  # noqa: N803
+        ContentType: str = "",  # noqa: N803
+    ) -> dict[str, object]:
         self._objects[Key] = Body
+        self.content_types[Key] = ContentType
         return {}
 
+    def upload_file(
+        self,
+        Filename: str,  # noqa: N803
+        Bucket: str,  # noqa: N803
+        Key: str,  # noqa: N803
+        ExtraArgs: dict[str, str] | None = None,  # noqa: N803
+    ) -> None:
+        self._objects[Key] = Path(Filename).read_bytes()
+        self.content_types[Key] = (ExtraArgs or {}).get("ContentType", "")
+
     def generate_presigned_url(self, op: str, Params: dict[str, str], ExpiresIn: int) -> str:  # noqa: N803
-        return f"https://signed.example/{Params['Bucket']}/{Params['Key']}?exp={ExpiresIn}"
+        ct = f"&ct={Params['ContentType']}" if "ContentType" in Params else ""
+        return f"https://signed.example/{op}/{Params['Bucket']}/{Params['Key']}?exp={ExpiresIn}{ct}"
 
     def list_objects_v2(
         self,
@@ -87,7 +107,23 @@ def test_put_bytes_writes_then_reads_back() -> None:
 def test_presigned_url_signs_a_time_limited_get() -> None:
     store = S3ObjectStore(_FakeS3({"k": b"x"}), "bkt", presign_ttl=60)
     url = store.presigned_url("k")
-    assert url == "https://signed.example/bkt/k?exp=60"
+    assert url == "https://signed.example/get_object/bkt/k?exp=60"
+
+
+def test_presigned_put_url_signs_a_time_limited_put() -> None:
+    store = S3ObjectStore(_FakeS3({}), "bkt")
+    url = store.presigned_put_url("k", content_type="image/png", ttl=120)
+    assert url == "https://signed.example/put_object/bkt/k?exp=120&ct=image/png"
+
+
+def test_put_bytes_and_put_file_tag_the_content_type(tmp_path: Path) -> None:
+    fake = _FakeS3({})
+    store = S3ObjectStore(fake, "bucket")
+    store.put_bytes("scenarios/smoke.yaml", b"- a\n", content_type="text/yaml")
+    src = tmp_path / "after.png"
+    src.write_bytes(b"\x89PNG")
+    store.put_file("r1/after.png", src, content_type="image/png")
+    assert fake.content_types == {"scenarios/smoke.yaml": "text/yaml", "r1/after.png": "image/png"}
 
 
 def test_list_keys_paginates() -> None:

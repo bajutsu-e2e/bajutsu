@@ -1,0 +1,42 @@
+package com.bajutsu.showcase.compose
+
+import android.content.Intent
+import android.os.Bundle
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.setContent
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
+
+/**
+ * The single launcher Activity. Reads the `SHOWCASE_*` launch-env hooks from intent extras (BE-0007:
+ * `launchEnv` → intent extras) and routes the VIEW deeplink to the model. `launchMode="singleTask"` so
+ * a deeplink re-selects a tab in the running app via `onNewIntent` rather than starting a second task.
+ */
+class MainActivity : ComponentActivity() {
+    private lateinit var model: AppModel
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        model = AppModel(readLaunchEnv(intent))
+        // A launch via `am start -a VIEW -d <scheme>://<tab>` carries the tab in the intent data.
+        intent?.data?.let { model.handleDeepLink(it) }
+        setContent {
+            MaterialTheme {
+                Surface { RootScreen(model) }
+            }
+        }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        intent.data?.let { model.handleDeepLink(it) }
+    }
+
+    // launchEnv (SPEC §3) arrives as string intent extras; read once, defaults live in AppModel.
+    private fun readLaunchEnv(intent: Intent?): Map<String, String> {
+        val extras = intent?.extras ?: return emptyMap()
+        val keys = listOf("SHOWCASE_UITEST", "SHOWCASE_TAB", "SHOWCASE_API_URL", "SHOWCASE_HTTP_BASE")
+        return keys.mapNotNull { key -> extras.getString(key)?.let { key to it } }.toMap()
+    }
+}

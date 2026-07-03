@@ -15,7 +15,8 @@ UIKIT   := $(HERE)/uikit
 RUNNER  := $(ROOT)/BajutsuKit/Runner
 
 # A built scheme lands at build/dd/Build/Products/Debug-iphonesimulator/<Scheme>.app,
-# which is exactly the appPath each targets.<name> entry in showcase.config.yaml points to.
+# which is exactly the appPath each iOS targets.<name> entry in showcase.config.yaml points to.
+# (The Android targets' APKs are built by demos/showcase/android/Makefile — see SPEC §2.1.)
 define build_scheme
 	cd $(1) && xcodegen generate
 	cd $(1) && xcodebuild -project $(2).xcodeproj -scheme $(3) \

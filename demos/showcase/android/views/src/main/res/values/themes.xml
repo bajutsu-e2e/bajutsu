@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Material3 no-action-bar theme: the UI is built in code (a header TextView per screen), and
+         BottomSheetDialog needs a Material Components ancestor theme. -->
+    <style name="Theme.Showcase" parent="Theme.Material3.Light.NoActionBar" />
+</resources>
