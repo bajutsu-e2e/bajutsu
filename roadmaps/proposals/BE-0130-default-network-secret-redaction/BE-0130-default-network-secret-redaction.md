@@ -1,11 +1,11 @@
-**English** · [日本語](BE-XXXX-default-network-secret-redaction-ja.md)
+**English** · [日本語](BE-0130-default-network-secret-redaction-ja.md)
 
-# BE-XXXX — Redact sensitive network headers and cookies by default
+# BE-0130 — Redact sensitive network headers and cookies by default
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-default-network-secret-redaction.md) |
+| Proposal | [BE-0130](BE-0130-default-network-secret-redaction.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
 | Topic | Security hardening |

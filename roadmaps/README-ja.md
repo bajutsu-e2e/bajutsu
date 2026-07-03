@@ -503,6 +503,7 @@ Web（Playwright）backend とその完成（リッチな capability、並列実
 | [BE-0123](proposals/BE-0123-composite-action-input-indirection/BE-0123-composite-action-input-indirection-ja.md) | composite action の入力を env 経由の間接参照にする | 提案 |
 | [BE-0124](proposals/BE-0124-config-source-owner-repo-validation/BE-0124-config-source-owner-repo-validation-ja.md) | config-source の owner・repo 検証を厳格化する | 提案 |
 | [BE-0125](proposals/BE-0125-authoring-agent-tool-restriction/BE-0125-authoring-agent-tool-restriction-ja.md) | claude-code オーサリングエージェントのツールを制限する | 提案 |
+| [BE-0130](proposals/BE-0130-default-network-secret-redaction/BE-0130-default-network-secret-redaction-ja.md) | ネットワークの機密ヘッダーと Cookie を既定で redact する | 提案 |
 <!-- /GENERATED:proposals-security -->
 
 ### config の取得元
