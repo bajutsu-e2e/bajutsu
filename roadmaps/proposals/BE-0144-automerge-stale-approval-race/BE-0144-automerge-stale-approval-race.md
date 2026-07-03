@@ -1,11 +1,11 @@
-**English** · [日本語](BE-XXXX-automerge-stale-approval-race-ja.md)
+**English** · [日本語](BE-0144-automerge-stale-approval-race-ja.md)
 
-# BE-XXXX — Close the auto-merge stale-approval race
+# BE-0144 — Close the auto-merge stale-approval race
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-automerge-stale-approval-race.md) |
+| Proposal | [BE-0144](BE-0144-automerge-stale-approval-race.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
 | Topic | Security hardening |

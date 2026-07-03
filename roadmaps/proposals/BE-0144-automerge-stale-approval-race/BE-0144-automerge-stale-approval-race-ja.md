@@ -1,11 +1,11 @@
-[English](BE-XXXX-automerge-stale-approval-race.md) · **日本語**
+[English](BE-0144-automerge-stale-approval-race.md) · **日本語**
 
-# BE-XXXX — auto-merge の stale-approval レースを解消する
+# BE-0144 — auto-merge の stale-approval レースを解消する
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
 |---|---|
-| 提案 | [BE-XXXX](BE-XXXX-automerge-stale-approval-race-ja.md) |
+| 提案 | [BE-0144](BE-0144-automerge-stale-approval-race-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **提案** |
 | トピック | セキュリティ強化 |
