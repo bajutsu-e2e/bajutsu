@@ -73,7 +73,7 @@
 
 ```
 make check
-  <format-check / ruff / mypy Success / N passed, coverage X% (floor 87%)>
+  <format-check / ruff / mypy Success / N passed, coverage X% (floor 89%)>
 ```
 
 <!--

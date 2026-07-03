@@ -8,6 +8,7 @@
 | Proposal | [BE-0033](BE-0033-scenario-variables-control-flow.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0033") |
 | Implementing PR | [#42](https://github.com/bajutsu-e2e/bajutsu/pull/42), [#67](https://github.com/bajutsu-e2e/bajutsu/pull/67) |
 | Topic | Candidates from competitive research (MagicPod / Autify) |
 | Origin | MagicPod |

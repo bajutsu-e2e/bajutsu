@@ -8,6 +8,7 @@
 | Proposal | [BE-0105](BE-0105-xcuitest-single-snapshot-query.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0105") |
 | Topic | Backend expansion (iOS actuators) |
 | Related | [BE-0019](../../in-progress/BE-0019-xcuitest-backend/BE-0019-xcuitest-backend.md) |
 <!-- /BE-METADATA -->

@@ -8,6 +8,7 @@
 | 提案 | [BE-0107](BE-0107-showcase-tab-navigation-no-launch-shortcut-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **提案** |
+| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0107") |
 | トピック | Dogfood フィクスチャ（デモアプリ） |
 | 関連 | [BE-0079](../../implemented/BE-0079-consolidate-demos-on-showcase/BE-0079-consolidate-demos-on-showcase-ja.md), [BE-0019](../../in-progress/BE-0019-xcuitest-backend/BE-0019-xcuitest-backend-ja.md) |
 | 由来 | Dogfooding |

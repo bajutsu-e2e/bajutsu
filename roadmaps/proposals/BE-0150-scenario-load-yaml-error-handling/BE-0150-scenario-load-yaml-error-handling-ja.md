@@ -8,7 +8,8 @@
 | 提案 | [BE-0150](BE-0150-scenario-load-yaml-error-handling-ja.md) |
 | 提案者 | [@hirosassa](https://github.com/hirosassa) |
 | 状態 | **提案** |
-| トピック | 開発基盤（コントリビュータ体験） |
+| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0150") |
+| トピック | コードベース品質・技術的負債 |
 | 由来 | BE-0117（CLI コマンド層のカバレッジ）の作業中に発見 |
 <!-- /BE-METADATA -->
 
@@ -35,7 +36,7 @@
 
 これは小さな正しさの欠落ですが、利用者への影響があります。人が最も間違えやすい入力に対してこそ、
 ツールはトレースバックではなく、決定的で読みやすいエラーを返すべきです。この欠落は
-[BE-0117](../BE-0117-coverage-floor-ratchet/BE-0117-coverage-floor-ratchet-ja.md) の CLI 層テストを
+[BE-0117](../../in-progress/BE-0117-coverage-floor-ratchet/BE-0117-coverage-floor-ratchet-ja.md) の CLI 層テストを
 書いている最中に見つかりました。BE-0117 のテストは意図的に到達可能な `ValueError` 分岐を使い、この
 欠落は独立した修正に委ねています。欠落を塞ぐには（新しい例外を捕捉するという）挙動の変更が必要で、
 テストの追加だけでは済まないからです。
@@ -102,5 +103,5 @@
 - `bajutsu/cli/commands/trace.py:49-53`（`_explain`）— `yaml.YAMLError` がすり抜ける
   `except (OSError, ValueError)` です。
 - `bajutsu/cli/commands/audit.py:87-91`（`audit`）— 同じガード、同じ欠落です。
-- [BE-0117 — CLI コマンド層の残りをテストしてから、カバレッジフロアをラチェットする](../BE-0117-coverage-floor-ratchet/BE-0117-coverage-floor-ratchet-ja.md)
+- [BE-0117 — CLI コマンド層の残りをテストしてから、カバレッジフロアをラチェットする](../../in-progress/BE-0117-coverage-floor-ratchet/BE-0117-coverage-floor-ratchet-ja.md)
   — この欠落が見つかった、テスト作業中の項目です。

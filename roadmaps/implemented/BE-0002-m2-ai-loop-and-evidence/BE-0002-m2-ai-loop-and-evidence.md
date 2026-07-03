@@ -8,6 +8,7 @@
 | Proposal | [BE-0002](BE-0002-m2-ai-loop-and-evidence.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0002") |
 | Implementing PR | predates the per-PR history (squashed into the initial import; no single PR) |
 | Topic | Milestones (M1–M4) |
 <!-- /BE-METADATA -->

@@ -8,6 +8,7 @@
 | Proposal | [BE-0008](BE-0008-flutter-support.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0008") |
 | Topic | Platform expansion (Android / Web / Flutter) |
 <!-- /BE-METADATA -->
 
@@ -126,5 +127,5 @@ until the two native trees are solid.
 
 [DESIGN](../../../DESIGN.md), `bajutsu/drivers/`, `bajutsu/backends.py`,
 [BE-0037 — WebView / hybrid support](../../implemented/BE-0037-webview-hybrid-support/BE-0037-webview-hybrid-support.md),
-[BE-0007 — Android backend](../../proposals/BE-0007-android-backend/BE-0007-android-backend.md),
+[BE-0007 — Android backend](../../in-progress/BE-0007-android-backend/BE-0007-android-backend.md),
 [BE-0041 — Web (Playwright) backend](../../implemented/BE-0041-web-playwright-backend/BE-0041-web-playwright-backend.md)

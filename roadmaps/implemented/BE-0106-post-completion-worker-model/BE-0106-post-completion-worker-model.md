@@ -8,6 +8,7 @@
 | Proposal | [BE-0106](BE-0106-post-completion-worker-model.md) |
 | Author | [@hirosassa](https://github.com/hirosassa) |
 | Status | **Implemented** |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0106") |
 | Topic | Hosting the web UI (cloud / self-hosted) |
 | Related | [BE-0015](../../in-progress/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md), [BE-0016](../../in-progress/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md), [BE-0070](../../deferred/BE-0070-live-run-artifacts-across-split/BE-0070-live-run-artifacts-across-split.md) |
 <!-- /BE-METADATA -->

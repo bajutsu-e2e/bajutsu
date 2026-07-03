@@ -26,14 +26,31 @@ import sys
 from pathlib import Path
 
 
-def _known_topics() -> frozenset[str]:
-    """The index's known topics, used to validate ``TOPIC``. Imported here (a sibling script under
-    scripts/, added to the path) so the dependency is local to where it's used, not a module-level
-    import after a sys.path tweak."""
+def _put_scripts_on_path() -> None:
+    """Add scripts/ (this file's own directory) to the path so a sibling script can be imported.
+
+    Shared by every lazy import from build_roadmap_index below, so the dependency stays local to
+    where it's used — not a module-level import after a sys.path tweak — without duplicating the
+    path tweak itself. Each caller still imports its own names directly, so mypy resolves their
+    real types instead of the ``Any`` a module-object return would carry.
+    """
     sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+
+def _known_topics() -> frozenset[str]:
+    """The index's known topics, used to validate ``TOPIC``."""
+    _put_scripts_on_path()
     from build_roadmap_index import KNOWN_TOPICS
 
     return KNOWN_TOPICS
+
+
+def _tracking_issue_url(be_id: str) -> str:
+    """The item's BE-0109 tracking-issue search URL (BE-0139)."""
+    _put_scripts_on_path()
+    from build_roadmap_index import tracking_issue_url
+
+    return tracking_issue_url(be_id)
 
 
 ROADMAP = Path(__file__).resolve().parent.parent / "roadmaps"
@@ -121,6 +138,7 @@ def _en_body(slug: str, title: str, status: str, topic: str, handle: str) -> str
             f"| Proposal | [{PLACEHOLDER}]({PLACEHOLDER}-{slug}.md) |",
             f"| Author | [@{handle}](https://github.com/{handle}) |",
             f"| Status | **{status}** |",
+            f"| Tracking issue | [Search]({_tracking_issue_url(PLACEHOLDER)}) |",
             f"| Topic | {topic} |",
             "<!-- /BE-METADATA -->",
         ]
@@ -141,6 +159,7 @@ def _ja_body(slug: str, title: str, status: str, topic: str, handle: str) -> str
             f"| 提案 | [{PLACEHOLDER}]({PLACEHOLDER}-{slug}-ja.md) |",
             f"| 提案者 | [@{handle}](https://github.com/{handle}) |",
             f"| 状態 | **{STATUS_JA[status]}** |",
+            f"| トラッキング Issue | [検索]({_tracking_issue_url(PLACEHOLDER)}) |",
             f"| トピック | {topic} |",
             "<!-- /BE-METADATA -->",
         ]

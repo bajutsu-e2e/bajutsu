@@ -7,7 +7,8 @@
 |---|---|
 | 提案 | [BE-0007](BE-0007-android-backend-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **提案** |
+| 状態 | **実装中** |
+| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0007") |
 | トピック | プラットフォーム拡張（Android / Web / Flutter） |
 <!-- /BE-METADATA -->
 
@@ -162,6 +163,15 @@ Linux CI で動き、`capabilities()` の **小さい端**を行使します。
 - [ ] doctor と開示：idb の隣に `doctor --target` の可用性、マニフェストに `backend: "adb"` を記録。
 - [ ] codegen 変換先：Espresso / UI Automator ジェネレータ（後続スライス）。
 - [ ] 検証：dump フィクスチャに対する高速ゲートの driver/レジストリテスト、KVM 経由の実機エミュレータ e2e。
+
+ログ：
+
+- 2026-07-03：着手しました。driver が駆動するための showcase の Android 版フィクスチャが先に
+  着地しました（[#552](https://github.com/bajutsu-e2e/bajutsu/pull/552)）。`demos/showcase` の
+  Compose + Views 双子（a11y/noax の flavor）で、上記の `testTag`/`android:id` → `resource-id` 規約と
+  セレクタ対応をアプリ側から検証し、`showcase.config.yaml` に `backend: [android]` の 4 ターゲットを
+  配線しました。これは準備であり、上記の作業分解のボックスはまだ 1 つも消化していません。driver の
+  スライス（レジストリ配線以降）が次です。
 
 ## 参考
 

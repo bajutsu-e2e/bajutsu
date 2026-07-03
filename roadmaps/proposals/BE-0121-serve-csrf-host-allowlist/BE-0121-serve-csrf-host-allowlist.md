@@ -8,6 +8,7 @@
 | Proposal | [BE-0121](BE-0121-serve-csrf-host-allowlist.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0121") |
 | Topic | Security hardening |
 <!-- /BE-METADATA -->
 

@@ -49,6 +49,22 @@ META_HEADER_KEYS = frozenset({"Field", "項目"})
 # Legacy form (unmigrated items): ``* Field: value`` bullet lines. Read when no fence is present.
 FIELD_RE = re.compile(r"^\* ([^:]+): (.+)$", re.MULTILINE)
 
+# The GitHub search that finds an item's BE-0109 tracking issue from its id alone (BE-0139). The
+# issue title is always ``[BE-NNNN] …`` and carries the ``roadmap-tracking`` label, so the id is
+# enough to locate it without its issue number. No ``is:open`` filter, so it matches whether the
+# issue is still open or was closed after the item shipped. Purely a function of the id — no ``gh``
+# call, token, or network at build or authoring time — and the literal ``BE-XXXX`` placeholder flows
+# through it unchanged until CI allocates the real id (BE-0089 rewrites it with the rest of the file).
+_TRACKING_ISSUE_SEARCH = (
+    "https://github.com/bajutsu-e2e/bajutsu/issues"
+    '?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"{id}"'
+)
+
+
+def tracking_issue_url(be_id: str) -> str:
+    """The GitHub issue-search URL for an item's tracking issue, built from its id alone (BE-0139)."""
+    return _TRACKING_ISSUE_SEARCH.format(id=be_id)
+
 
 @dataclass(frozen=True)
 class Lang:
@@ -132,6 +148,7 @@ TOPICS: tuple[tuple[str, str, bool], ...] = (
     ("Backend expansion (iOS actuators)", "backend", False),
     ("doctor / onboarding", "doctor", False),
     ("Development infrastructure (contributor workflow)", "dev-infra", False),
+    ("Codebase quality & technical debt", "quality-debt", False),
     ("Dogfood fixtures (demo apps)", "dogfood", True),
     ("Dogfood fixtures (web UI)", "dogfood-web-ui", True),
     ("AI provider configuration", "ai-provider", False),

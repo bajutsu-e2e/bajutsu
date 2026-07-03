@@ -8,6 +8,7 @@
 | Proposal | [BE-0109](BE-0109-roadmap-tracking-issues.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0109") |
 | Implementing PR | [#490](https://github.com/bajutsu-e2e/bajutsu/pull/490) |
 | Topic | Development infrastructure (contributor workflow) |
 <!-- /BE-METADATA -->
@@ -118,11 +119,14 @@ write` on the default token.
   for information GitHub already tracks natively and for free. Keying ownership *and* issue
   existence off GitHub is what lets the sync avoid touching the repo at all.
 - **A `Tracking issue` back-reference row in the BE metadata.** Tempting as a convenience (a
-  human reading the file sees the issue link), but writing it back would force a commit to
-  protected `main` and thus the bypass App, re-introducing exactly the dependency the
-  GitHub-as-source-of-truth design removes. The backlink is better carried the other direction —
-  from the issue body to the file — and the generated dashboard (BE-0094) can render item → issue
-  links from a read-only `gh issue list`.
+  human reading the file sees the issue link), but writing the resolved issue *number* back would
+  force a commit to protected `main` and thus the bypass App, re-introducing exactly the dependency
+  the GitHub-as-source-of-truth design removes. The backlink is better carried the other direction —
+  from the issue body to the file. BE-0139 later added a `Tracking issue` row that sidesteps this: its
+  value is a GitHub issue-*search* URL computed from the item's immutable id, so it needs no live
+  lookup and never changes as the issue is opened, assigned, or closed — and the same search URL is
+  what the generated dashboard (BE-0094) surfaces per card, without the read-only `gh issue list`
+  once anticipated here.
 - **A GitHub Projects board instead of Issues.** A project board gives a kanban view "for free,"
   but needs its own item ↔ project sync, the heavier Projects v2 GraphQL API, and a `read:project`
   OAuth scope this environment doesn't currently have (`gh project list` fails on a missing scope,
@@ -169,6 +173,9 @@ Log:
   merge-time ID allocation on `main`, which is why the sync runs on `main` and skips `BE-0109`.
 - [BE-0094](../../implemented/BE-0094-roadmap-status-dashboard/BE-0094-roadmap-status-dashboard.md) —
   the generated dashboard that could render item → tracking-issue links.
+- [BE-0139](../../implemented/BE-0139-roadmap-dashboard-issue-links/BE-0139-roadmap-dashboard-issue-links.md) —
+  the item that links back to these tracking issues from every item file and dashboard card, using a
+  deterministic issue-search URL built from the id (no live `gh issue list`).
 - [BE-0043](../../implemented/BE-0043-conflict-resistant-file-flow/BE-0043-conflict-resistant-file-flow.md) —
   the conflict-resistant / self-healing file-flow precedent this design follows.
 - [BE-0061](../../implemented/BE-0061-be-id-allocation-hardening/BE-0061-be-id-allocation-hardening.md) —

@@ -8,6 +8,7 @@
 | Proposal | [BE-0040](BE-0040-ai-assertions.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal (deferred)** |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0040") |
 | Topic | Candidates from competitive research (MagicPod / Autify) |
 | Origin | MagicPod |
 <!-- /BE-METADATA -->

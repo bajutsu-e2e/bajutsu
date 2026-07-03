@@ -50,6 +50,9 @@ def test_english_file_has_canonical_shape(tmp_path: Path) -> None:
     assert "| Proposal | [BE-XXXX](BE-XXXX-demo-feature.md) |" in text
     assert "| Author | [@octocat](https://github.com/octocat) |" in text
     assert "| Status | **Proposal** |" in text
+    # Tracking issue (BE-0139): a search URL computed from the literal BE-XXXX placeholder, which
+    # the CI allocator rewrites to the real id alongside the rest of the file.
+    assert f"| Tracking issue | [Search]({nri._tracking_issue_url('BE-XXXX')}) |" in text
     assert f"| Topic | {_TOPIC} |" in text
     for section in (
         "Introduction",
@@ -75,6 +78,7 @@ def test_japanese_file_has_canonical_shape(tmp_path: Path) -> None:
     assert text.startswith("[English](BE-XXXX-demo-feature.md) · **日本語**\n")
     assert "| 提案者 | [@octocat](https://github.com/octocat) |" in text
     assert "| 状態 | **提案** |" in text  # Proposal -> 提案
+    assert f"| トラッキング Issue | [検索]({nri._tracking_issue_url('BE-XXXX')}) |" in text
     for section in ("はじめに", "動機", "詳細設計", "検討した代替案", "参考"):
         assert f"## {section}\n\nTBD" in text
     assert "## 進捗\n\n> 開発の進行に合わせて常に最新の状態に保ってください。" in text

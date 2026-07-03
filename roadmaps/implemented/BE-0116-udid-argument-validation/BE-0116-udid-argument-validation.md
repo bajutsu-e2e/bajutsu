@@ -7,7 +7,9 @@
 |---|---|
 | Proposal | [BE-0116](BE-0116-udid-argument-validation.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **Implemented** |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0116") |
+| Implementing PR | [#550](https://github.com/bajutsu-e2e/bajutsu/pull/550) |
 | Topic | Security hardening |
 <!-- /BE-METADATA -->
 
@@ -63,10 +65,12 @@ argument confusion in the downstream tool, not arbitrary command execution.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Tighten `_UDID_RE` to `^[A-Za-z0-9][A-Za-z0-9-]*$`.
-- [ ] Add a unit test covering leading-hyphen rejection and legitimate UDID/`booted` acceptance.
+- [x] Tighten `_UDID_RE` to `^[A-Za-z0-9][A-Za-z0-9-]*$`.
+- [x] Add a unit test covering leading-hyphen rejection and legitimate UDID/`booted` acceptance.
 
-No PR has landed yet.
+- 2026-07-02: Tightened `_UDID_RE` to require an alphanumeric first character and extended
+  `test_valid_udid` with leading-hyphen rejection cases
+  ([#550](https://github.com/bajutsu-e2e/bajutsu/pull/550)).
 
 ## References
 
