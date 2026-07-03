@@ -254,6 +254,7 @@ Behavior-preserving cleanup inside `bajutsu/` itself — deduplication, decompos
 | ID | Item | Status |
 |---|---|---|
 | [BE-0092](implemented/BE-0092-crawl-coordinator-extraction/BE-0092-crawl-coordinator-extraction.md) | Extract the crawl coordinator into a class | Implemented |
+| [BE-0150](implemented/BE-0150-scenario-load-yaml-error-handling/BE-0150-scenario-load-yaml-error-handling.md) | Fail cleanly on a malformed scenario in `trace --explain` and `audit` | Implemented |
 <!-- /GENERATED:implemented-quality-debt -->
 
 ### Dogfood fixtures (demo apps)
@@ -631,7 +632,6 @@ Behavior-preserving cleanup inside `bajutsu/` itself — deduplication, decompos
 | [BE-0140](proposals/BE-0140-dedupe-claude-client-init/BE-0140-dedupe-claude-client-init.md) | Deduplicate Claude client initialization | Proposal |
 | [BE-0142](proposals/BE-0142-cli-command-coverage/BE-0142-cli-command-coverage.md) | Cover the CLI command layer | Proposal |
 | [BE-0143](proposals/BE-0143-run-command-decomposition/BE-0143-run-command-decomposition.md) | Decompose the run command god-function | Proposal |
-| [BE-0150](proposals/BE-0150-scenario-load-yaml-error-handling/BE-0150-scenario-load-yaml-error-handling.md) | Fail cleanly on a malformed scenario in `trace --explain` and `audit` | Proposal |
 <!-- /GENERATED:proposals-quality-debt -->
 
 ### Integration with external services

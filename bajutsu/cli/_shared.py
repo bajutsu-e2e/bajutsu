@@ -11,6 +11,7 @@ from dataclasses import replace
 from pathlib import Path
 
 import typer
+import yaml
 
 from bajutsu import anthropic_client
 from bajutsu.config import WEB_ENGINES, Effective, load_config, resolve
@@ -80,14 +81,22 @@ def load_expanded_scenarios(path: Path) -> list[Scenario]:
 
     Raises:
         OSError: The scenario file or a referenced component / CSV cannot be read.
-        ValueError: The file parses but its content is invalid.
+        ValueError: The content is invalid, or the YAML does not parse. A `yaml.YAMLError`
+            (a syntax error, not a `ValueError` subclass) is normalized to `ValueError` here so
+            both callers' `except (OSError, ValueError)` guard a malformed file as cleanly as a
+            structurally-invalid one, rather than leaking a traceback (BE-0150).
     """
     base = path.parent
-    scenarios = load_scenario_file(path.read_text(encoding="utf-8")).scenarios
-    expand_components(
-        scenarios, lambda ref: load_component((base / ref).read_text(encoding="utf-8"))
-    )
-    return expand_data(scenarios, lambda ref: read_csv((base / ref).read_text(encoding="utf-8")))
+    try:
+        scenarios = load_scenario_file(path.read_text(encoding="utf-8")).scenarios
+        expand_components(
+            scenarios, lambda ref: load_component((base / ref).read_text(encoding="utf-8"))
+        )
+        return expand_data(
+            scenarios, lambda ref: read_csv((base / ref).read_text(encoding="utf-8"))
+        )
+    except yaml.YAMLError as e:
+        raise ValueError(f"invalid YAML: {e}") from e
 
 
 def resolve_run_dir(run: str, runs_root: str) -> Path:

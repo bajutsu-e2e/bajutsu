@@ -7,7 +7,7 @@
 |---|---|
 | 提案 | [BE-0150](BE-0150-scenario-load-yaml-error-handling-ja.md) |
 | 提案者 | [@hirosassa](https://github.com/hirosassa) |
-| 状態 | **提案** |
+| 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0150") |
 | トピック | コードベース品質・技術的負債 |
 | 由来 | BE-0117（CLI コマンド層のカバレッジ）の作業中に発見 |
@@ -88,13 +88,19 @@
 > 作業分解（作業の単位ごとに 1 つ）に対応し、ログには変更内容と時期（古い順）を PR へのリンクと
 > ともに記録します。
 
-- [ ] 境界（ローダーでの正規化か、呼び出し元での捕捉か）を選び、その判断を記録する
-- [ ] `yaml.YAMLError` が綺麗な `exit 2` になるよう修正を実装する（docstring も更新する）
-- [ ] `trace --explain` と `audit` の壊れた YAML に対するリグレッションテストを追加する（既存の
+- [x] 境界（ローダーでの正規化か、呼び出し元での捕捉か）を選び、その判断を記録する
+- [x] `yaml.YAMLError` が綺麗な `exit 2` になるよう修正を実装する（docstring も更新する）
+- [x] `trace --explain` と `audit` の壊れた YAML に対するリグレッションテストを追加する（既存の
       `ValueError` 分岐のテストは残す）
-- [ ] `trace` / `audit` の正常系と他の分岐が変わっていないこと、ゲートが緑であることを確認する
+- [x] `trace` / `audit` の正常系と他の分岐が変わっていないこと、ゲートが緑であることを確認する
 
-まだ着手した PR はありません。
+- **選択肢 1（ローダーで正規化）**を採用した。`bajutsu/cli/_shared.py` の `load_expanded_scenarios`
+  が解析・展開の本体を囲み、`yaml.YAMLError` を `ValueError(...) from e` として送出し直すように
+  なった。これにより、壊れたシナリオ（または参照コンポーネント）は、トレースバックではなく、
+  掲げた `exit 2` と `failed to load scenario` メッセージで失敗する。`trace --explain` と `audit`
+  の両方にリグレッションテストを追加し、既存の `ValueError`（構造的に不正）のテストは残した。
+  副次的に、同じローダーと同じ `except (OSError, ValueError)` を共有する `coverage` も、綺麗な
+  挙動をそのまま得られる。これはローダー 1 か所で直すことの根拠でもある。
 
 ## 参考
 

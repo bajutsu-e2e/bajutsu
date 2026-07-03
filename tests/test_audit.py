@@ -380,6 +380,17 @@ def test_cli_scenario_load_failure_exits_two(tmp_path: Path) -> None:
     assert "failed to load scenario" in result.output
 
 
+def test_cli_audit_malformed_yaml_exits_two(tmp_path: Path) -> None:
+    # YAML that does not parse at all (unclosed flow mapping): the loader raises a yaml.YAMLError,
+    # which audit must turn into the same clean exit 2 as a structurally-invalid scenario — not an
+    # uncaught traceback with exit 1 (BE-0150).
+    bad = tmp_path / "broken.yaml"
+    bad.write_text("- name: a\n  steps: { id\n", encoding="utf-8")
+    result = runner.invoke(app, ["audit", str(bad)])
+    assert result.exit_code == 2
+    assert "failed to load scenario" in result.output
+
+
 def test_read_manifests_skips_non_dirs_missing_and_non_dict(tmp_path: Path) -> None:
     from bajutsu.cli.commands.audit import _read_manifests
 
