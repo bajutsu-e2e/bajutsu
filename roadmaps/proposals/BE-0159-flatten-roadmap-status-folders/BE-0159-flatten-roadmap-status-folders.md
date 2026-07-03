@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-flatten-roadmap-status-folders-ja.md)
+**English** · [日本語](BE-0159-flatten-roadmap-status-folders-ja.md)
 
-# BE-XXXX — Flatten roadmap items into one directory (retire status-driven folders)
+# BE-0159 — Flatten roadmap items into one directory (retire status-driven folders)
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-flatten-roadmap-status-folders.md) |
+| Proposal | [BE-0159](BE-0159-flatten-roadmap-status-folders.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0159") |
 | Topic | Development infrastructure (contributor workflow) |
 | Related | [BE-0078](../../implemented/BE-0078-roadmap-status-folders/BE-0078-roadmap-status-folders.md), [BE-0096](../../implemented/BE-0096-docs-roadmap-link-integrity/BE-0096-docs-roadmap-link-integrity.md), [BE-0109](../../implemented/BE-0109-roadmap-tracking-issues/BE-0109-roadmap-tracking-issues.md), [BE-0149](../../in-progress/BE-0149-roadmap-placeholder-format-guardrail/BE-0149-roadmap-placeholder-format-guardrail.md) |
 <!-- /BE-METADATA -->
@@ -101,7 +101,7 @@ BE-0078 actually needed.
 
 MECE work breakdown, all touching the tooling BE-0078 introduced and BE-0096/BE-0149 extended:
 
-1. **One flat directory.** Every item lives at `roadmaps/BE-NNNN-<slug>/` (or `BE-XXXX-<slug>/`
+1. **One flat directory.** Every item lives at `roadmaps/BE-NNNN-<slug>/` (or `BE-0159-<slug>/`
    while unallocated); the `{implemented,in-progress,proposals,deferred}/` segment is dropped. An
    item's path becomes permanent the moment its ID is allocated
    ([BE-0089](../../implemented/BE-0089-merge-time-be-id-allocation/BE-0089-merge-time-be-id-allocation.md))
