@@ -1,11 +1,11 @@
-[English](BE-XXXX-totp-seed-artifact-leak.md) · **日本語**
+[English](BE-0152-totp-seed-artifact-leak.md) · **日本語**
 
-# BE-XXXX — TOTP のシード値を run 成果物に含めない
+# BE-0152 — TOTP のシード値を run 成果物に含めない
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
 |---|---|
-| 提案 | [BE-XXXX](BE-XXXX-totp-seed-artifact-leak-ja.md) |
+| 提案 | [BE-0152](BE-0152-totp-seed-artifact-leak-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **提案** |
 | トピック | セキュリティ強化 |

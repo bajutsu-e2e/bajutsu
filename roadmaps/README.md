@@ -541,6 +541,7 @@ Closing the edges the deterministic core does not touch — `serve`'s HTTP surfa
 | [BE-0136](proposals/BE-0136-serve-write-once-secrets/BE-0136-serve-write-once-secrets.md) | Write-once secrets store for serve | Proposal |
 | [BE-0144](proposals/BE-0144-automerge-stale-approval-race/BE-0144-automerge-stale-approval-race.md) | Close the auto-merge stale-approval race | Proposal |
 | [BE-0151](proposals/BE-0151-screenshot-secret-capture-warning/BE-0151-screenshot-secret-capture-warning.md) | Warn when screenshots and video may capture on-screen secrets | Proposal |
+| [BE-0152](proposals/BE-0152-totp-seed-artifact-leak/BE-0152-totp-seed-artifact-leak.md) | Keep literal TOTP seeds out of run artifacts | Proposal |
 <!-- /GENERATED:proposals-security -->
 
 ### Configuration sourcing

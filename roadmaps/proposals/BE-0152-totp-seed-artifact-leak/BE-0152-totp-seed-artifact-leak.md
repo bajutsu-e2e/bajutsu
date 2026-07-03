@@ -1,11 +1,11 @@
-**English** · [日本語](BE-XXXX-totp-seed-artifact-leak-ja.md)
+**English** · [日本語](BE-0152-totp-seed-artifact-leak-ja.md)
 
-# BE-XXXX — Keep literal TOTP seeds out of run artifacts
+# BE-0152 — Keep literal TOTP seeds out of run artifacts
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-totp-seed-artifact-leak.md) |
+| Proposal | [BE-0152](BE-0152-totp-seed-artifact-leak.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
 | Topic | Security hardening |
