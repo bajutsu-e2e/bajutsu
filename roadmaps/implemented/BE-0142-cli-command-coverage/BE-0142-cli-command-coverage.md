@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0142](BE-0142-cli-command-coverage.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0142") |
+| Implementing PR | [#618](https://github.com/bajutsu-e2e/bajutsu/pull/618) |
 | Topic | Codebase quality & technical debt |
 <!-- /BE-METADATA -->
 
@@ -79,16 +80,23 @@ lands). Work breaks down by module:
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Unit-test `doctor.py`'s helpers (`check_scenarios`, `_claude_readiness`, `_current_screen`)
+- [x] Unit-test `doctor.py`'s helpers (`check_scenarios`, `_claude_readiness`, `_current_screen`)
       and the `doctor` command's branches
-- [ ] Unit-test `record.py`'s `_record_out_path` and the `record` command's option handling
-- [ ] Unit-test `run.py`'s isolated helpers (`_parse_browsers`, `_resolve_lanes`,
+- [x] Unit-test `record.py`'s `_record_out_path` and the `record` command's option handling
+- [x] Unit-test `run.py`'s isolated helpers (`_parse_browsers`, `_resolve_lanes`,
       `_resolve_baselines_dir`, `_resolve_schemas_dir`, `_resolve_goldens_dir`,
       `_scenario_files`, `_expand_file`)
-- [ ] Add `CliRunner`-level tests for the `run` command's option-parsing and dispatch surface
+- [x] Add `CliRunner`-level tests for the `run` command's option-parsing and dispatch surface
       against the `fake` backend
 
-No PR has landed yet.
+- 2026-07-03: Added Simulator-free tests across the three command modules. `run.py`'s directory
+  helpers (`_resolve_baselines_dir` / `_resolve_schemas_dir` / `_resolve_goldens_dir`) and
+  `_expand_file`'s setup/component/data error branches get direct unit tests; `doctor.py`'s
+  `check_scenarios` / `_claude_readiness` / `_current_screen` and the `record`/`run` command bodies
+  get `CliRunner` tests driven by the `fake` backend (device/AI boundaries stubbed only). The
+  `run` matrix-execution branch (`run_matrix_and_report`) stays out of scope — a non-web backend
+  can't reach it and it is exercised at the pipeline layer (`tests/runner/`). Verified with
+  `make check`. PR: [#618](https://github.com/bajutsu-e2e/bajutsu/pull/618).
 
 ## References
 
