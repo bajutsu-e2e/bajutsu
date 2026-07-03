@@ -61,9 +61,19 @@ jobs:
         run: make lint-sh
 
       # actionlint is a standalone Go binary, not pip/uv-installable — the one gate check
-      # not covered by `uv sync`. Pinned to a tagged release of the official installer.
+      # not covered by `uv sync`. The installer script is pinned by commit SHA (not the
+      # mutable v1.7.12 tag) so its fetched-and-executed content is immutable, matching the
+      # SHA-pinned `uses:` steps above (BE-0133). The trailing SHA is the commit v1.7.12
+      # points at; bump the SHA, the version arg, and the checksum below together on upgrade.
       - name: Install actionlint
-        run: bash <(curl -fsSL https://raw.githubusercontent.com/rhysd/actionlint/v1.7.12/scripts/download-actionlint.bash) 1.7.12
+        run: bash <(curl -fsSL https://raw.githubusercontent.com/rhysd/actionlint/914e7df21a07ef503a81201c76d2b11c789d3fca/scripts/download-actionlint.bash) 1.7.12  # v1.7.12
+
+      # The installer fetches the binary tarball from a mutable release asset, so pinning the
+      # script alone leaves the executed binary unverified. Pin the extracted linux/amd64
+      # binary's sha256 (runner is ubuntu-latest) to make it tamper-evident. Derivation:
+      # actionlint_1.7.12_linux_amd64.tar.gz (release checksums.txt: 8aca8db9…) extracted → this.
+      - name: Verify actionlint binary checksum
+        run: echo "c872d6db8c6bf83a8eaa704fc93999f027d55dffbc63b8a6abdccb47df5f4cd4  actionlint" | sha256sum -c -
 
       - name: Lint workflows (actionlint)
         run: ./actionlint -color

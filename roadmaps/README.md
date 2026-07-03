@@ -310,6 +310,7 @@ Closing the edges the deterministic core does not touch — `serve`'s HTTP surfa
 | ID | Item | Status |
 |---|---|---|
 | [BE-0116](implemented/BE-0116-udid-argument-validation/BE-0116-udid-argument-validation.md) | Tighten UDID validation against argument injection | Implemented |
+| [BE-0133](implemented/BE-0133-pin-actionlint-installer/BE-0133-pin-actionlint-installer.md) | Pin the actionlint installer by SHA | Implemented |
 <!-- /GENERATED:implemented-security -->
 
 ### Configuration sourcing
@@ -556,7 +557,6 @@ Closing the edges the deterministic core does not touch — `serve`'s HTTP surfa
 | [BE-0125](proposals/BE-0125-authoring-agent-tool-restriction/BE-0125-authoring-agent-tool-restriction.md) | Restrict the claude-code authoring agent tools | Proposal |
 | [BE-0130](proposals/BE-0130-default-network-secret-redaction/BE-0130-default-network-secret-redaction.md) | Redact sensitive network headers and cookies by default | Proposal |
 | [BE-0131](proposals/BE-0131-run-artifact-permissions/BE-0131-run-artifact-permissions.md) | Restrict run-artifact file permissions | Proposal |
-| [BE-0133](proposals/BE-0133-pin-actionlint-installer/BE-0133-pin-actionlint-installer.md) | Pin the actionlint installer by SHA | Proposal |
 | [BE-0136](proposals/BE-0136-serve-write-once-secrets/BE-0136-serve-write-once-secrets.md) | Write-once secrets store for serve | Proposal |
 | [BE-0144](proposals/BE-0144-automerge-stale-approval-race/BE-0144-automerge-stale-approval-race.md) | Close the auto-merge stale-approval race | Proposal |
 | [BE-0151](proposals/BE-0151-screenshot-secret-capture-warning/BE-0151-screenshot-secret-capture-warning.md) | Warn when screenshots and video may capture on-screen secrets | Proposal |
