@@ -1,8 +1,8 @@
 # CodeQL code scanning (advanced setup). Replaces GitHub's default setup so we can
 # path-filter the heavy Swift analysis: on pull requests, Swift is only analysed when
-# Swift sources actually change, while the lightweight languages always run. Non-PR
-# events (push to main, merge queue, the weekly schedule) always run the full matrix so
-# the default-branch alert baseline stays complete.
+# Swift sources (or this workflow itself) change, while the lightweight languages always
+# run. Non-PR events (push to main, merge queue, the weekly schedule) always run the full
+# matrix so the default-branch alert baseline stays complete.
 #
 # The required branch-protection status check is the aggregation job `CodeQL` below,
 # not the per-language `Analyze (...)` jobs — that keeps a single stable required check
@@ -35,8 +35,14 @@ jobs:
     outputs:
       swift: ${{ steps.filter.outputs.swift }}
     steps:
+      # The path filter is only consumed to skip Swift on pull requests; every other event
+      # forces the full matrix (see analyze-swift's `if`). Running paths-filter only for
+      # pull_request keeps this job cheap and avoids relying on git diff data that may be
+      # unavailable for push/merge_group/schedule/dispatch.
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        if: github.event_name == 'pull_request'
       - uses: dorny/paths-filter@7b450fff21473bca461d4b92ce414b9d0420d706 # v4.0.2
+        if: github.event_name == 'pull_request'
         id: filter
         with:
           filters: |
@@ -73,8 +79,9 @@ jobs:
   analyze-swift:
     name: Analyze (swift)
     needs: changes
-    # Skip Swift only on pull requests that do not touch Swift sources. Every other event
-    # (push to main, merge_group, schedule, manual dispatch) runs the full Swift analysis.
+    # Skip Swift only on pull requests that touch neither Swift sources nor this workflow.
+    # Every other event (push to main, merge_group, schedule, manual dispatch) runs the
+    # full Swift analysis.
     if: >-
       needs.changes.outputs.swift == 'true' ||
       github.event_name != 'pull_request'
