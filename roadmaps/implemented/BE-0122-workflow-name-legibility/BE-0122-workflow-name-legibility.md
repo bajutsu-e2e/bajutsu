@@ -76,7 +76,7 @@ or permission changes.
    |---|---|---|---|
    | `docs.yml` | build | `build` | `build site` |
    | `docs.yml` | deploy | `deploy` | `deploy to GitHub Pages` |
-   | `dependency-audit.yml` | audit | `dependency audit (pip-audit)` | `pip-audit` |
+   | `dependency-audit.yml` | audit | `dependency audit (pip-audit)` | `audit (pip-audit)` |
    | `web-e2e.yml` | smoke | `web e2e (playwright)` | `smoke (playwright)` (mirrors `e2e.yml`'s `smoke (idb)`) |
 
 3. **Leave three job names untouched, and document why.** The repository's branch-protection
@@ -145,6 +145,10 @@ Log:
   convention and the required-status-check constraint in `docs/ai-development.md` and its Japanese
   mirror. Verified with `make check`; the naming legibility (item 5) is confirmed by reading the
   Actions tab once the branch is pushed.
+- Review follow-up: renamed the `dependency-audit.yml` job from the tool-only `pip-audit` to
+  `audit (pip-audit)` — a plain-language phrase plus tool parenthetical that follows this item's own
+  convention and mirrors `smoke (idb)` / `smoke (playwright)`, rather than restating the workflow
+  name. Also reflowed the Japanese convention section so no line break splits a word.
 
 ## References
 

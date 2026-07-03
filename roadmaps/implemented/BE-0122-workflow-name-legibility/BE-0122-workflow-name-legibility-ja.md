@@ -78,7 +78,7 @@ Bajutsu の CI は 13 本のワークフロー（`.github/workflows/*.yml`）ま
    |---|---|---|---|
    | `docs.yml` | build | `build` | `build site` |
    | `docs.yml` | deploy | `deploy` | `deploy to GitHub Pages` |
-   | `dependency-audit.yml` | audit | `dependency audit (pip-audit)` | `pip-audit` |
+   | `dependency-audit.yml` | audit | `dependency audit (pip-audit)` | `audit (pip-audit)` |
    | `web-e2e.yml` | smoke | `web e2e (playwright)` | `smoke (playwright)`（`e2e.yml` の `smoke (idb)` に合わせた形） |
 
 3. **3 つのジョブ名だけは変更せず、その理由を明文化します。** 本リポジトリのブランチ保護
@@ -149,6 +149,10 @@ Bajutsu の CI は 13 本のワークフロー（`.github/workflows/*.yml`）ま
   命名の慣例と required status check の制約は `docs/ai-development.md` とその日本語版に明文化しました。
   検証は `make check` で行い、読みやすさそのもの（項目 5）はブランチを push したあとに Actions タブを
   読んで確認します。
+- レビューを受けた追随。`dependency-audit.yml` のジョブ名を、ツール名だけの `pip-audit` から
+  `audit (pip-audit)` に変更しました。平易な句にツールの括弧書きを添えた形で、本項目の命名の慣例に沿い、
+  ワークフロー名をなぞるのではなく `smoke (idb)` や `smoke (playwright)` と同じ形にそろえたものです。
+  あわせて、日本語の命名の慣例の節を、語中で改行が入らないよう整形し直しました。
 
 ## 参考
 
