@@ -12,47 +12,10 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from scripts.build_roadmap_index import tracking_issue_url
+from conftest import valid_roadmap_item_en as _valid_en
+from conftest import valid_roadmap_item_ja as _valid_ja
+
 from scripts.check_roadmap_format import format_problems, unresolved_be_xxxx_references
-
-_HEADINGS = ("Introduction", "Motivation", "Detailed design", "Alternatives considered")
-_HEADINGS_JA = ("はじめに", "動機", "詳細設計", "検討した代替案")
-
-
-def _valid_en(id_token: str, slug: str) -> str:
-    body = "\n\n".join(f"## {h}\n\nTBD" for h in _HEADINGS)
-    return (
-        f"**English** · [日本語]({id_token}-{slug}-ja.md)\n\n"
-        f"# {id_token} — A test item\n\n"
-        "<!-- BE-METADATA -->\n"
-        "| Field | Value |\n"
-        "|---|---|\n"
-        f"| Proposal | [{id_token}]({id_token}-{slug}.md) |\n"
-        "| Author | [@0x0c](https://github.com/0x0c) |\n"
-        "| Status | **Proposal** |\n"
-        f"| Tracking issue | [Search]({tracking_issue_url(id_token)}) |\n"
-        "| Topic | Development infrastructure (contributor workflow) |\n"
-        "<!-- /BE-METADATA -->\n\n"
-        f"{body}\n\n## Progress\n\nTBD\n\n## References\n\nTBD\n"
-    )
-
-
-def _valid_ja(id_token: str, slug: str) -> str:
-    body = "\n\n".join(f"## {h}\n\nTBD" for h in _HEADINGS_JA)
-    return (
-        f"[English]({id_token}-{slug}.md) · **日本語**\n\n"
-        f"# {id_token} — A test item\n\n"
-        "<!-- BE-METADATA -->\n"
-        "| 項目 | 値 |\n"
-        "|---|---|\n"
-        f"| 提案 | [{id_token}]({id_token}-{slug}-ja.md) |\n"
-        "| 提案者 | [@0x0c](https://github.com/0x0c) |\n"
-        "| 状態 | **提案** |\n"
-        f"| トラッキング Issue | [検索]({tracking_issue_url(id_token)}) |\n"
-        "| トピック | 開発基盤（コントリビュータ体験） |\n"
-        "<!-- /BE-METADATA -->\n\n"
-        f"{body}\n\n## 進捗\n\nTBD\n\n## 参考\n\nTBD\n"
-    )
 
 
 def _write_item(

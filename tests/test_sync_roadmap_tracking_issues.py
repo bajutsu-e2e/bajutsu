@@ -164,7 +164,7 @@ def test_existing_open_issues_parses_ids_and_ignores_issues_without_a_be_id(
             {"number": 13, "title": "a manual issue with no BE id"},
         ]
     )
-    monkeypatch.setattr(sync, "_gh", lambda args, capture=False: payload)
+    monkeypatch.setattr(sync.gh_cli, "run", lambda args, capture=False: payload)
     assert sync.existing_open_issues() == {"BE-0007": 12}
 
 
