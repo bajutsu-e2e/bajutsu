@@ -20,7 +20,7 @@ A roadmap item records *what* to build and *why*, but not *how far along* the wo
 an item — which slices have shipped, what remains, what changed when — lives outside the file: in the
 `Implementing PR` row, in commit history, in a contributor's head. Two items
 ([BE-0087](../BE-0087-idb-action-settle/BE-0087-idb-action-settle.md),
-[BE-0052](../../in-progress/BE-0052-device-state-timezone-clipboard-shake/BE-0052-device-state-timezone-clipboard-shake.md))
+[BE-0052](../BE-0052-device-state-timezone-clipboard-shake/BE-0052-device-state-timezone-clipboard-shake.md))
 grew an ad-hoc `### Implementation status` subsection to fill the gap, but the shape was theirs alone
 and nothing kept it current.
 
