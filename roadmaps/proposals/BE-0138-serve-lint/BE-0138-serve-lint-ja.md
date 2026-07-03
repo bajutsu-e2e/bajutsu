@@ -1,11 +1,11 @@
-[English](BE-XXXX-serve-lint.md) · **日本語**
+[English](BE-0138-serve-lint.md) · **日本語**
 
-# BE-XXXX — serve エディタでのシナリオ検証（lint / schema）
+# BE-0138 — serve エディタでのシナリオ検証（lint / schema）
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
 |---|---|
-| 提案 | [BE-XXXX](BE-XXXX-serve-lint-ja.md) |
+| 提案 | [BE-0138](BE-0138-serve-lint-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **提案** |
 | トラック | [提案](../../README-ja.md#提案) |

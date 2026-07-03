@@ -463,7 +463,10 @@ Web（Playwright）backend とその完成（リッチな capability、並列実
 ### serve Web UI への CLI 機能の取り込み
 
 <!-- GENERATED:proposals-serve-cli-features -->
-
+| ID | 項目 | 状態 |
+|---|---|---|
+| [BE-0137](proposals/BE-0137-serve-codegen/BE-0137-serve-codegen-ja.md) | serve Web UI からネイティブテストコードを生成する | 提案 |
+| [BE-0138](proposals/BE-0138-serve-lint/BE-0138-serve-lint-ja.md) | serve エディタでのシナリオ検証（lint / schema） | 提案 |
 <!-- /GENERATED:proposals-serve-cli-features -->
 
 ### Dogfood フィクスチャ（デモアプリ）

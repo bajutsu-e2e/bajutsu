@@ -1,11 +1,11 @@
-**English** · [日本語](BE-XXXX-serve-lint-ja.md)
+**English** · [日本語](BE-0138-serve-lint-ja.md)
 
-# BE-XXXX — Inline scenario validation in the serve editor
+# BE-0138 — Inline scenario validation in the serve editor
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-serve-lint.md) |
+| Proposal | [BE-0138](BE-0138-serve-lint.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
 | Track | [Proposals](../../README.md#proposals) |

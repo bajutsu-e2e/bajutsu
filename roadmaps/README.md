@@ -470,7 +470,10 @@ The scope is currently **limited to the iOS Simulator** ([DESIGN §1](../DESIGN.
 ### Surfacing CLI features in the serve Web UI
 
 <!-- GENERATED:proposals-serve-cli-features -->
-
+| ID | Item | Status |
+|---|---|---|
+| [BE-0137](proposals/BE-0137-serve-codegen/BE-0137-serve-codegen.md) | Generate native test code from the serve Web UI | Proposal |
+| [BE-0138](proposals/BE-0138-serve-lint/BE-0138-serve-lint.md) | Inline scenario validation in the serve editor | Proposal |
 <!-- /GENERATED:proposals-serve-cli-features -->
 
 ### Dogfood fixtures (demo apps)

@@ -1,11 +1,11 @@
-**English** · [日本語](BE-XXXX-serve-codegen-ja.md)
+**English** · [日本語](BE-0137-serve-codegen-ja.md)
 
-# BE-XXXX — Generate native test code from the serve Web UI
+# BE-0137 — Generate native test code from the serve Web UI
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-serve-codegen.md) |
+| Proposal | [BE-0137](BE-0137-serve-codegen.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
 | Track | [Proposals](../../README.md#proposals) |

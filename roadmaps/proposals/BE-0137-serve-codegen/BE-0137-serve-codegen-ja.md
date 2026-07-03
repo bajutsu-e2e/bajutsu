@@ -1,11 +1,11 @@
-[English](BE-XXXX-serve-codegen.md) · **日本語**
+[English](BE-0137-serve-codegen.md) · **日本語**
 
-# BE-XXXX — serve Web UI からネイティブテストコードを生成する
+# BE-0137 — serve Web UI からネイティブテストコードを生成する
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
 |---|---|
-| 提案 | [BE-XXXX](BE-XXXX-serve-codegen-ja.md) |
+| 提案 | [BE-0137](BE-0137-serve-codegen-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **提案** |
 | トラック | [提案](../../README-ja.md#提案) |
