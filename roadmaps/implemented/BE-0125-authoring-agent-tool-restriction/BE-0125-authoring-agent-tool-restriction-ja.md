@@ -9,7 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0125") |
-| 実装 PR | [#TBD](https://github.com/bajutsu-e2e/bajutsu/pull/TBD) |
+| 実装 PR | [#620](https://github.com/bajutsu-e2e/bajutsu/pull/620) |
 | トピック | セキュリティ強化 |
 <!-- /BE-METADATA -->
 
@@ -64,7 +64,7 @@ def _command(self, prompt: str, schema: dict[str, Any], system: str) -> list[str
 - [x] デフォルト拒否・非対話の `--permission-mode` を追加する。
 - [x] 構築されたコマンドに常にこれらの制限フラグが含まれることを検証するテストを追加する。
 
-- #TBD — `ClaudeCodeAgent._command` に `--disallowedTools`
+- [#620](https://github.com/bajutsu-e2e/bajutsu/pull/620) — `ClaudeCodeAgent._command` に `--disallowedTools`
   （`Bash,Read,Write,Edit,NotebookEdit,Glob,Grep`）と `--permission-mode default` を追加しました。
   `next_action` と `plan` はどちらも共通ヘルパー経由のため同時にカバーされ、これらのフラグが常に
   含まれることを検証するテストを添えています。

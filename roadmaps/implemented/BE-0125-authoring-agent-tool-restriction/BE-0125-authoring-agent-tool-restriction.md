@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0125") |
-| Implementing PR | [#TBD](https://github.com/bajutsu-e2e/bajutsu/pull/TBD) |
+| Implementing PR | [#620](https://github.com/bajutsu-e2e/bajutsu/pull/620) |
 | Topic | Security hardening |
 <!-- /BE-METADATA -->
 
@@ -98,7 +98,7 @@ protocol, the JSON-schema action contract, or the deterministic run/CI path chan
 - [x] Add `--permission-mode` set to a deny-by-default, non-interactive mode.
 - [x] Add a test asserting the built command always carries the restriction flags.
 
-- #TBD — Add `--disallowedTools` (`Bash,Read,Write,Edit,NotebookEdit,Glob,Grep`) and
+- [#620](https://github.com/bajutsu-e2e/bajutsu/pull/620) — Add `--disallowedTools` (`Bash,Read,Write,Edit,NotebookEdit,Glob,Grep`) and
   `--permission-mode default` to `ClaudeCodeAgent._command`; both `next_action` and `plan`
   are covered through the shared helper, with tests asserting the flags are always present.
 
