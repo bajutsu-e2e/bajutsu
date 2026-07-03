@@ -28,12 +28,15 @@ living only in process memory.
 field are asymmetric in a way a secrets manager should never be:
 
 - **Setting** the key (`POST /api/apikey`) requires the `admin` role — `/api/apikey` is one of
-  `authz.py:122`'s `_ADMIN_PATHS`.
-- **Reading** the key back in plaintext (`GET /api/apikey?reveal=1`) requires *no role at all* —
-  `authz.py:147`'s `required_role` returns `None` for every `GET`, so any authenticated session
-  (including a `viewer`, the read-only role from BE-0015 7c-2) can retrieve the live credential a
-  higher-privileged admin configured. Anyone who can reach an authenticated `serve` session can pull
-  the org's Claude/Bedrock credential.
+  `authz.py:122`'s `_ADMIN_PATHS` — but only for an OAuth session with a database-backed
+  `Repository` wired (`authz.py:164`'s `forbidden_for_role`); a Bearer-token request has no
+  identity and stays full-access by design (it is the operator credential), and with no database
+  wired at all (local `serve`) the role gate is a no-op.
+- **Reading** the key back in plaintext (`GET /api/apikey?reveal=1`) requires *no role at all*,
+  regardless of how the caller authenticated — `authz.py:147`'s `required_role` returns `None` for
+  every `GET`, so an OAuth session with the read-only `viewer` role (BE-0015 7c-2) can retrieve the
+  live credential a higher-privileged admin configured, something the mutating side of the same
+  endpoint would refuse.
 - **Storage** is `os.environ[var] = value` (`set_api_key`) — held only in the `serve` process's
   memory, so it does not survive a restart, is not shared across the control-plane replicas BE-0015
   §4 ("Control-plane scale-out") plans, and cannot be scoped per org.
@@ -57,8 +60,8 @@ the whole process shares and any viewer can echo back.
 **1. A `SecretStore` seam, following the existing pattern.** `bajutsu/serve/` already swaps in five
 seams behind `ServeState` (`RunExecutor`, `LogBus`, `ArtifactStore`, `ScenarioStore`, `Repository`) —
 a `Protocol` with a local implementation and a hosted one, selected by `_build_server_state`. Add a
-sixth: `SecretStore`, with two operations only — `set(name, value)` and `describe(name) ->
-masked-preview | None`. There is deliberately **no `get(name) -> value`** in the interface an HTTP
+sixth: `SecretStore`, with two operations only — `set(name, value)` and `describe(name)`, returning a
+masked preview or `None`. There is deliberately **no `get(name) -> value`** in the interface an HTTP
 handler can reach; the plaintext exists only inside the code path that consumes it (spawning a
 `record`/`run`/`crawl` subprocess), never on a response path.
 
@@ -70,8 +73,9 @@ future named secret) go through one interface.
 **3. Hosted implementation — encrypted at rest, per org.** On the `server` backend
 (`bajutsu/serve/server/db.py`), add a `secrets` table (`org_id`, `name`, `ciphertext`, `updated_at`,
 `updated_by`), scoped by `org_id` exactly like the existing `projects`/`runs` tables — the same column
-that lets BE-0015 §8's per-org storage resolve today. Values are encrypted with an AEAD cipher (the
-`cryptography` package's `Fernet`, added as a new dependency behind the existing `db` extra) keyed by
+that lets BE-0015 §8's per-org storage resolve today. Values are encrypted with authenticated
+encryption (the `cryptography` package's `Fernet`, added as a new dependency behind the existing
+`db` extra) keyed by
 an operator-provided master key (`BAJUTSU_SECRETS_KEY`, analogous to `BAJUTSU_DATABASE_URL` — a
 deployment secret provisioned outside the database, e.g. via the platform's own secret store). This
 directly resolves BE-0015's "per-org BYO API key" gap: the same table and seam that hold today's
