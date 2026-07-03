@@ -7,7 +7,7 @@
 |---|---|
 | Proposal | [BE-0143](BE-0143-run-command-decomposition.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0143") |
 | Topic | Codebase quality & technical debt |
 <!-- /BE-METADATA -->
@@ -94,19 +94,25 @@ into two independent axes:
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Group `run`'s ~118 lines of option declarations into clearer clusters (or option bundles)
+- [x] Group `run`'s ~118 lines of option declarations into clearer clusters (or option bundles)
       without changing the flag surface
-- [ ] Extract config/build resolution into a helper
-- [ ] Extract browser/engine resolution into a helper (building on the existing
+- [x] Extract config/build resolution into a helper
+- [x] Extract browser/engine resolution into a helper (building on the existing
       `_resolve_browser`/`_parse_browsers`)
-- [ ] Extract scenario loading + `--tag`/`--exclude` filtering + `--erase` override into a helper
-- [ ] Extract backend/actuator selection + `--browsers`-matrix validation into a helper
-- [ ] Extract device-lane resolution + `--dismiss-alerts` override into a helper
-- [ ] Extract the alert-guard factory construction into a helper
-- [ ] Extract the single-engine vs. cross-browser-matrix dispatch into a helper
-- [ ] Extract post-run reporting (verdict, webhook, `--zip`, usage summary) into a helper
+- [x] Extract scenario loading + `--tag`/`--exclude` filtering + `--erase` override into a helper
+- [x] Extract backend/actuator selection + `--browsers`-matrix validation into a helper
+- [x] Extract device-lane resolution + `--dismiss-alerts` override into a helper
+- [x] Extract the alert-guard factory construction into a helper
+- [x] Extract the single-engine vs. cross-browser-matrix dispatch into a helper
+- [x] Extract post-run reporting (verdict, webhook, `--zip`, usage summary) into a helper
 
-No PR has landed yet.
+- 2026-07-04: Decomposed `run` into plain-data helpers (`_resolve_config_and_engines`,
+  `_resolve_secrets`, `_load_scenarios`, `_filter_scenarios`, `_select_actuator`,
+  `_apply_dismiss_alerts`, `_alert_guard_factory`, `_apply_mocks`, `_resolve_evidence_dirs`), a
+  frozen `_RunPlan` record, and `_dispatch`/`_finish` (with `_write_zip`/`_upload_evidence`); grouped
+  the option signature with section comments (bundles were rejected because serve introspects `run`'s
+  exact `typer` option metadata — BE-0134). Behavior-preserving; added unit tests for the new pure
+  helpers alongside BE-0142's coverage.
 
 ## References
 
