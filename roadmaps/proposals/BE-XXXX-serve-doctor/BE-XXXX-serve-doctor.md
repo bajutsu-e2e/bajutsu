@@ -8,7 +8,6 @@
 | Proposal | [BE-XXXX](BE-XXXX-serve-doctor.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
-| Track | [Proposals](../../README.md#proposals) |
 | Topic | Surfacing CLI features in the serve Web UI |
 <!-- /BE-METADATA -->
 
@@ -63,6 +62,19 @@ Tier-1, read-only; the UI only shells out to the existing checks.
   Implemented. A Web UI surface for doctor is a distinct, sizeable surface that was never in scope
   for that catch-all, so it stands as its own item and references BE-0024 rather than living inside
   it.
+
+## Progress
+
+> Keep this current as work proceeds. The checklist mirrors the MECE work breakdown in
+> *Detailed design* (one box per unit of work); the log records what changed and when
+> (oldest first), linking the PRs.
+
+- [ ] Add the `POST /api/doctor` endpoint (`{target, udid?, backend?}`) running the check as a
+      serve job and returning the runnability result and the convention score
+- [ ] Add the readiness panel, reachable standalone and as a pre-run check in Record and Replay
+- [ ] Make the panel platform-aware (hide simulator-only controls for a web target)
+
+No PR has landed yet.
 
 ## References
 
