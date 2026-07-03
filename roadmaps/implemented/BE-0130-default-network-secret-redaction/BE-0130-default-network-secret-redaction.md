@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0130](BE-0130-default-network-secret-redaction.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0130") |
+| Implementing PR | [#NNN](https://github.com/bajutsu-e2e/bajutsu/pull/NNN) |
 | Topic | Security hardening |
 <!-- /BE-METADATA -->
 
@@ -91,14 +92,17 @@ the evidence-writing path.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Built-in default sensitive-header set masked unconditionally
-- [ ] Explicit, visible escape hatch to disable a specific default (no silent opt-out)
-- [ ] Header-name matching normalized (case-insensitive; `cookie` ↔ `set-cookie` linked)
-- [ ] Tests: default masking with no `redact:`, `cookie` also masks `Set-Cookie`, escape hatch
+- [x] Built-in default sensitive-header set masked unconditionally
+- [x] Explicit, visible escape hatch to disable a specific default (no silent opt-out)
+- [x] Header-name matching normalized (case-insensitive; `cookie` ↔ `set-cookie` linked)
+- [x] Tests: default masking with no `redact:`, `cookie` also masks `Set-Cookie`, escape hatch
       opt-out
-- [ ] Docs updated (both languages)
+- [x] Docs updated (both languages)
 
-No PR has landed yet.
+- 2026-07-04: [#NNN](https://github.com/bajutsu-e2e/bajutsu/pull/NNN) — added the built-in
+  default sensitive-header set, the `unmaskHeaders` escape hatch, and `cookie`/`set-cookie`
+  linkage in `Redactor`; masked default headers unconditionally in `redact_exchange`; updated
+  the redaction docs (both languages).
 
 ## References
 

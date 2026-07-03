@@ -17,6 +17,28 @@ from bajutsu.scenario import Redact
 
 PLACEHOLDER = "[REDACTED]"
 
+# BE-0130: credential-bearing headers masked by name even when a scenario omits `redact:`,
+# so a shared/AI-bound network.json never hands over a live token by default. An author who
+# genuinely needs a raw value opts out visibly via `redact.unmaskHeaders`.
+DEFAULT_SENSITIVE_HEADERS = frozenset(
+    {
+        "authorization",
+        "proxy-authorization",
+        "cookie",
+        "set-cookie",
+        "x-api-key",
+        "x-auth-token",
+    }
+)
+
+# `cookie` (client→server) and `set-cookie` (server→client) carry the same secret in
+# opposite directions, so naming — or unmasking — either covers both.
+_COOKIE_HEADERS = frozenset({"cookie", "set-cookie"})
+
+
+def _with_cookie_linkage(names: set[str]) -> set[str]:
+    return names | _COOKIE_HEADERS if names & _COOKIE_HEADERS else names
+
 
 def _patterns(keys: list[str]) -> list[re.Pattern[str]]:
     """For each key, patterns that capture the key (group 1) and consume its value."""
@@ -44,7 +66,11 @@ class Redactor:
     def __init__(self, redact: Redact | None, values: list[str] | None = None) -> None:
         redact = redact or Redact()
         self._keys: list[str] = [*redact.headers, *redact.fields]
-        self._header_names: set[str] = {h.lower() for h in redact.headers}
+        masked = set(DEFAULT_SENSITIVE_HEADERS) | _with_cookie_linkage(
+            {h.lower() for h in redact.headers}
+        )
+        unmasked = _with_cookie_linkage({h.lower() for h in redact.unmask_headers})
+        self._header_names: set[str] = masked - unmasked
         self._labels: set[str] = set(redact.labels)
         self._patterns = _patterns(self._keys)
         self._values: list[str] = sorted({v for v in (values or []) if v}, key=len, reverse=True)
@@ -88,12 +114,15 @@ class Redactor:
     def redact_exchange(self, exchange: dict[str, Any]) -> dict[str, Any]:
         """Mask secrets in one network-exchange dict.
 
-        A header value is masked whole when its name is a configured header (else
-        scrubbed as free text), and the url / bodies are scrubbed as free text so query
-        params and body fields (token / password) are caught — which a whole-JSON text
-        pass misses, since bodies are escaped strings.
+        A header value is masked whole when its name is a sensitive header — the built-in
+        default set plus any the scenario named (BE-0130), so header masking runs even when
+        the redactor is otherwise inactive — else scrubbed as free text, and the url / bodies
+        are scrubbed as free text so query params and body fields (token / password) are
+        caught — which a whole-JSON text pass misses, since bodies are escaped strings.
         """
-        if not self.active:
+        # Default sensitive headers mask regardless of `active`, so this is only a no-op
+        # when the built-in set has been fully unmasked and nothing else is configured.
+        if not self.active and not self._header_names:
             return exchange
         out = dict(exchange)
         for key in ("requestHeaders", "responseHeaders"):

@@ -169,9 +169,18 @@ Screenshots, logs, and network data can capture PII (personally identifiable inf
 ```yaml
 redact:
   labels: ["Card Number"]               # accessibility labels
-  headers: ["Authorization", "Cookie"]  # HTTP header names
+  headers: ["X-Session"]                # extra HTTP header names (on top of the defaults)
   fields: ["token", "password"]         # JSON/body field names
+  unmaskHeaders: ["authorization"]      # opt out of a default (visible, deliberate)
 ```
+
+> **Sensitive headers are masked by default** (a scenario needs no `redact:` for this): the
+> built-in set is `authorization`, `proxy-authorization`, `cookie`, `set-cookie`, `x-api-key`,
+> and `x-auth-token`, matched case-insensitively. `cookie` and `set-cookie` are treated as one
+> concern — naming (or unmasking) either covers both. Header names in `redact.headers` add to
+> this set; they never replace it. If you genuinely need a default header's raw value (e.g.
+> debugging an auth failure), name it under `unmaskHeaders` — turning off protection is an
+> explicit, visible choice, never the mere absence of `redact:`.
 
 > Redaction **is applied** before evidence is written (`redaction.py` `Redactor`): the device log /
 > app trace are scrubbed by key→value patterns, the element tree masks a value when its label is
