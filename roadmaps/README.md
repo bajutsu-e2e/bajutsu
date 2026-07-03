@@ -245,6 +245,7 @@ Reduce friction for the many parallel sessions working this repo — treat merge
 | [BE-0113](implemented/BE-0113-design-doc-realignment/BE-0113-design-doc-realignment.md) | Realign DESIGN.md with the current implementation | Implemented |
 | [BE-0117](implemented/BE-0117-coverage-floor-ratchet/BE-0117-coverage-floor-ratchet.md) | Cover the rest of the CLI command layer, then ratchet the coverage floor | Implemented |
 | [BE-0139](implemented/BE-0139-roadmap-dashboard-issue-links/BE-0139-roadmap-dashboard-issue-links.md) | Link the roadmap dashboard and item files to their tracking issue | Implemented |
+| [BE-0156](implemented/BE-0156-roadmap-topic-label-sync/BE-0156-roadmap-topic-label-sync.md) | Keep roadmap-item PR labels in sync with Topic | Implemented |
 <!-- /GENERATED:implemented-dev-infra -->
 
 ### Codebase quality & technical debt
@@ -617,7 +618,6 @@ Keeping the autonomous crawl fast and its code lean as it grows.
 |---|---|---|
 | [BE-0112](proposals/BE-0112-layer-boundary-enforcement/BE-0112-layer-boundary-enforcement.md) | Enforce core / contract / periphery layer boundaries in the gate | Proposal |
 | [BE-0122](proposals/BE-0122-workflow-name-legibility/BE-0122-workflow-name-legibility.md) | Legible GitHub Actions workflow and job names | Proposal |
-| [BE-0156](proposals/BE-0156-roadmap-topic-label-sync/BE-0156-roadmap-topic-label-sync.md) | Keep roadmap-item PR labels in sync with Topic | Proposal |
 | [BE-0159](proposals/BE-0159-flatten-roadmap-status-folders/BE-0159-flatten-roadmap-status-folders.md) | Flatten roadmap items into one directory (retire status-driven folders) | Proposal |
 <!-- /GENERATED:proposals-dev-infra -->
 

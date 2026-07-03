@@ -1,0 +1,104 @@
+# Keep an open roadmap item's PR labeled with a `topic:<key>` label matching its `Topic` (BE-0156).
+#
+# The roadmap groups every item under one of the canonical topics, but that grouping is invisible on
+# the GitHub PR list where reviewers triage. This stamps each roadmap-item PR with a `topic:<key>`
+# label so a reviewer can filter to the area they own. It covers a brand new item (label its topic)
+# and a `Topic` edit on an already-numbered item (relabel: drop the old, add the new), so a mid-review
+# reclassification never leaves a stale label.
+#
+# Scoped to the three open-status folders — deliberately not `roadmaps/implemented/**`: a shipped item
+# has no open PR left to triage, mirroring the open/shipped boundary `roadmap-tracking-issues.yml`
+# (BE-0109) already draws. A PR touching no in-scope item file produces no actions and the job is a
+# green no-op, the same discipline `roadmap-promote` / `roadmap-proposal-approvals` follow.
+#
+# Pure PR-triage tooling: it never influences `run`, the deterministic gate, or any pass/fail verdict.
+name: roadmap-topic-labels
+
+on:
+  pull_request:
+    paths:
+      - 'roadmaps/proposals/**'
+      - 'roadmaps/in-progress/**'
+      - 'roadmaps/deferred/**'
+
+permissions:
+  contents: read        # checkout + `git show` against the base commit
+  pull-requests: write  # list changed files, add/remove PR labels
+  issues: write         # label creation lives under the Issues REST surface, even for a PR
+
+concurrency:
+  group: roadmap-topic-labels-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  label:
+    name: sync topic labels
+    runs-on: ubuntu-latest
+    # A fork PR gets a read-only token, so label edits would fail; skip like `roadmap-promote`.
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+
+      - name: Compute and apply topic-label actions
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          # One fixed color for the whole `topic:*` family, so they read as a group distinct from
+          # `bug` / `documentation` / etc.
+          TOPIC_LABEL_COLOR: 5319e7
+        run: |
+          # Fetch just the base commit so `git show <base>:<path>` can read each edited item's
+          # previous Topic — a single commit, not a full-history checkout (BE-0156). Non-fatal:
+          # if the base SHA is unreachable (e.g. the base branch was force-pushed after this run
+          # queued), skip the sync green rather than red — this is pure triage tooling.
+          if ! git fetch --no-tags --depth=1 origin "$BASE_SHA"; then
+            echo "::warning::could not fetch base commit ${BASE_SHA}; skipping topic-label sync this run."
+            exit 0
+          fi
+
+          # The changed files, trimmed to the fields the script needs. `--paginate` streams one
+          # array per page; `-q '.[]'` flattens to a stream of objects; `jq -sc` reslurps to a
+          # single JSON array for stdin.
+          files="$(gh api --paginate "repos/${REPO}/pulls/${PR}/files" \
+            -q '.[] | {status, filename, previous_filename}' | jq -sc '.')"
+
+          # The PR's current topic labels, so the script reconciles toward the desired set (add the
+          # missing, remove the stale) instead of replaying a non-convergent base→head delta.
+          current="$(gh pr view "$PR" --json labels -q '[.labels[].name] | join(",")')"
+
+          actions="$(printf '%s' "$files" \
+            | CURRENT_TOPIC_LABELS="$current" python3 scripts/sync_roadmap_topic_labels.py)"
+          if [ -z "$actions" ]; then
+            echo "::notice::PR #${PR} changed no roadmap Topic; no label to (re)sync. No-op."
+            exit 0
+          fi
+          echo "Label actions:"
+          echo "$actions"
+
+          # Collect the add / remove labels so the PR is edited in two calls (one --add-label, one
+          # --remove-label) instead of one round-trip per label. Labels are created individually,
+          # since `gh label create` is inherently per-label.
+          adds=""
+          removes=""
+          while read -r kind label; do
+            case "$kind" in
+              add)
+                # `--force` makes creation idempotent: it creates the label on a topic's first use
+                # and harmlessly refreshes its color if it already exists.
+                gh label create "$label" --color "$TOPIC_LABEL_COLOR" --force >/dev/null
+                adds="${adds:+$adds,}$label"
+                ;;
+              remove) removes="${removes:+$removes,}$label" ;;
+            esac
+          done <<< "$actions"
+
+          if [ -n "$adds" ]; then
+            gh pr edit "$PR" --add-label "$adds"
+          fi
+          if [ -n "$removes" ]; then
+            # Best-effort: a label already absent (e.g. removed by hand) is not an error.
+            gh pr edit "$PR" --remove-label "$removes" \
+              || echo "::notice::one or more of [${removes}] was already absent from PR #${PR}."
+          fi

@@ -7,7 +7,7 @@
 |---|---|
 | Proposal | [BE-0156](BE-0156-roadmap-topic-label-sync.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0156") |
 | Topic | Development infrastructure (contributor workflow) |
 <!-- /BE-METADATA -->
@@ -70,60 +70,67 @@ The work is three independent pieces:
    separate label-mapping update.
 
 2. **A script that turns "how this PR changed roadmap items" into "labels to add / remove".**
-   A new `scripts/sync_roadmap_topic_labels.py` takes the PR's changed-file entries (path,
-   status, and — for a rename — the previous path) restricted to item files (the
-   non-`-ja` file per item directory) under `roadmaps/proposals/`, `roadmaps/in-progress/`,
-   and `roadmaps/deferred/`, and classifies each:
-   - **Added** (a brand new item): read its `Topic` from the working tree (the PR head) →
-     emit an *add* action for that topic's label. No prior state to compare against.
+   A new `scripts/sync_roadmap_topic_labels.py` is **reconciling, not a diff replay**. From the
+   PR's changed-file entries (path, status, and — for a rename — the previous path), restricted
+   to item files (the non-`-ja` file per item directory) under `roadmaps/proposals/`,
+   `roadmaps/in-progress/`, and `roadmaps/deferred/`, it first computes the PR's **desired**
+   `topic:<key>` set:
+   - **Added** (a brand new item): read its `Topic` from the working tree (the PR head) → its
+     label is desired.
    - **Modified or renamed** (an edit to an already-numbered item, including a slug rename):
      read the current `Topic` from the working tree, and the previous `Topic` from the base
      commit — `git show <base-sha>:<old-path>` (the old path is the same as the current one
      unless the entry is a rename) — via the same `<!-- BE-METADATA -->` parsing
-     (`META_BLOCK_RE` / `META_ROW_RE`) already in `build_roadmap_index.py`, reused rather
-     than reimplemented. If the two `Topic` values are equal (the common case — most edits
-     don't touch `Topic`), no action. If they differ, emit a *remove* action for the old
-     topic's label and an *add* action for the new one. A `Status` change alone (e.g.
-     `Proposal` → `In progress`) is not itself a trigger — only a `Topic` value change is.
+     (`META_BLOCK_RE` / `META_ROW_RE`) already in `build_roadmap_index.py`, reused rather than
+     reimplemented. If the two `Topic` values are equal (the common case — most edits don't
+     touch `Topic`), the item contributes nothing, so a prose-only edit never labels a PR on its
+     own; a `Status` change alone is likewise not a trigger. If they differ, the **new** topic's
+     label is desired.
    - A `Topic` value absent from `TOPIC_KEY_BY_NAME` (an item authored by hand, bypassing
-     `make new-roadmap-item`'s validation) is not an error: the script emits an
-     `::warning::` line for that file and produces no action for it, so a labeling gap never
-     blocks or fails the PR.
-   The script prints one `add <label>` or `remove <label>` line per action (deduplicated) to
-   stdout for the workflow to execute.
+     `make new-roadmap-item`'s validation) is not an error: the script emits an `::warning::`
+     line for that file and leaves it out of the desired set, so a labeling gap never blocks or
+     fails the PR.
 
-3. **A workflow, `.github/workflows/roadmap-topic-labels.yml`.** Triggers on
-   `pull_request: [opened, reopened, synchronize]` path-filtered to `roadmaps/proposals/**`,
+   It then **reconciles** that desired set against the PR's *current* `topic:*` labels (passed in
+   by the workflow): it prints one `add <label>` line per desired-but-absent label and one
+   `remove <label>` line per present-but-no-longer-desired label. Because GitHub's
+   `pulls/{pr}/files` is the whole base→head diff, the desired set is a pure function of the
+   current head and is recomputed in full on every push — so reconciliation **converges** where a
+   naive "remove old, add new" delta would not (see *Alternatives considered*).
+
+3. **A workflow, `.github/workflows/roadmap-topic-labels.yml`.** Triggers on `pull_request`
+   (defaulting to `opened` / `reopened` / `synchronize`) path-filtered to `roadmaps/proposals/**`,
    `roadmaps/in-progress/**`, and `roadmaps/deferred/**` — deliberately not
-   `roadmaps/implemented/**` (see *Motivation*). Steps:
-   - Check out the PR head normally (default `actions/checkout` behavior gives the working
-     tree needed to read each changed file's current `Topic`).
+   `roadmaps/implemented/**` (see *Motivation*). It skips fork PRs (whose token is read-only),
+   mirroring `roadmap-promote`. Steps:
+   - Check out the PR head normally (default `actions/checkout` behavior gives the working tree
+     needed to read each changed file's current `Topic`).
+   - Fetch the PR's base commit
+     (`git fetch --depth=1 origin ${{ github.event.pull_request.base.sha }}`) so `git show` can
+     read each modified/renamed file's previous content. This is **non-fatal**: if the base SHA is
+     unreachable (e.g. the base branch was force-pushed after the run queued), the job warns and
+     exits green rather than red — pure triage tooling never gates a PR.
    - List the PR's changed files via `gh api pulls/{pr}/files` (`status`, `filename`,
-     `previous_filename`), keeping only entries under the three included path prefixes that
-     are item files.
-   - If that set is empty, exit green as a no-op (a PR touching only the generated index, or
-     one that doesn't touch an item file, has nothing to (re)label) — the same no-op
-     discipline `roadmap-proposal-approvals.yml` and `roadmap-tracking-issues.yml` already
-     follow for out-of-scope PRs.
-   - Fetch the PR's base commit (`git fetch origin ${{ github.event.pull_request.base.sha }}`)
-     so `git show` can read each modified/renamed file's previous content, then run
-     `scripts/sync_roadmap_topic_labels.py` on the changed-file list to get the add/remove
-     actions.
+     `previous_filename`), and read the PR's current labels via `gh pr view --json labels`; feed
+     both to `scripts/sync_roadmap_topic_labels.py` to get the add/remove actions.
+   - If it prints nothing (a PR touching only the generated index, or one already in sync), exit
+     green as a no-op — the same discipline `roadmap-proposal-approvals.yml` and
+     `roadmap-tracking-issues.yml` already follow for out-of-scope PRs.
    - For each *add* action's label, `gh label create <name> --color <fixed-color> --force`
-     (idempotent — creates it on first use of a topic, updates harmlessly if it already
-     exists) so a brand new topic never needs a manual label-creation step; every `topic:*`
-     label shares one fixed color so they read as a family distinct from `bug` /
-     `documentation` / etc. Then `gh pr edit <pr> --add-label <name>`.
-   - For each *remove* action's label, `gh pr edit <pr> --remove-label <name>`
-     (best-effort — a label already absent from the PR, e.g. a maintainer removed it by
-     hand, is not an error).
+     (idempotent — creates it on first use of a topic, updates harmlessly if it already exists) so
+     a brand new topic never needs a manual label-creation step; every `topic:*` label shares one
+     fixed color so they read as a family distinct from `bug` / `documentation` / etc. The
+     add/remove labels are then applied in **two** `gh pr edit` calls (one `--add-label`, one
+     `--remove-label`), not one round-trip per label; the remove is best-effort — a label already
+     absent (e.g. a maintainer removed it by hand) is not an error.
    - Needed permissions: `contents: read` (checkout and `git show` against the base commit),
-     `pull-requests: write` (list files, edit labels), `issues: write` (label creation lives
+     `pull-requests: write` (list files, read/edit labels), `issues: write` (label creation lives
      under the Issues REST surface even for a PR, per GitHub's API — mirroring what
      `roadmap-tracking-issues.yml` already declares for issue/label writes).
 
-A PR that touches more than one item (rare, but not forbidden) gets the union of every
-item's add/remove actions — one label change per distinct topic transition, not per item.
+A PR that touches more than one item (rare, but not forbidden) reconciles toward the union of
+every touched item's desired topic, so a topic still held by any in-scope item stays labeled even
+when another item is reclassified away from it.
 
 ## Alternatives considered
 
@@ -146,6 +153,17 @@ item's add/remove actions — one label change per distinct topic transition, no
   the old topic's label in place after a `Topic` change would leave the PR carrying two
   labels — one accurate, one stale — actively misleading exactly the topic-based filtering
   this item exists to support.
+- **Emit a base→head delta (`remove old`, `add new`) per changed item, without reading the PR's
+  current labels.** The first design, and the one this proposal originally described. Rejected
+  during implementation once its per-push behavior was traced: `pull_request` fires on every
+  `synchronize`, but a label set is stateful, and a base→head delta is not convergent. A *new*
+  item keeps status `added` across pushes, so a delta only ever *adds* — reclassifying it
+  mid-review (the marquee case in *Motivation*) leaves the PR carrying **both** the old and new
+  topic label. Reverting a `Topic` edit drops the file from the diff, stranding the label an
+  earlier push added. The fix is to make the operation declarative: recompute the desired set from
+  the whole base→head diff each run and reconcile it against the PR's current `topic:*` labels
+  (piece 2). This converges regardless of prior label state, at the cost of one extra read
+  (`gh pr view --json labels`).
 - **Also relabel PRs touching `roadmaps/implemented/**`.** Rejected: see *Motivation* — an
   implemented item has no open PR left to triage, so there is nothing for a label to route.
 - **Recompute the previous `Topic` with a full-history checkout (`fetch-depth: 0`) instead
@@ -159,11 +177,20 @@ item's add/remove actions — one label change per distinct topic transition, no
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] `scripts/sync_roadmap_topic_labels.py`: changed-file entries → add/remove `topic:<key>`
+- [x] `scripts/sync_roadmap_topic_labels.py`: changed-file entries → add/remove `topic:<key>`
       actions, reusing `build_roadmap_index.py`'s metadata parsing and `TOPIC_KEY_BY_NAME`.
-- [ ] `.github/workflows/roadmap-topic-labels.yml`: detect added/modified/renamed item files
+- [x] `.github/workflows/roadmap-topic-labels.yml`: detect added/modified/renamed item files
       under the open-status roadmap directories, ensure each needed topic label exists, and
       apply the add/remove actions to the PR.
+
+Log:
+
+- Implemented both units in one change: the reconciling classifier
+  (`scripts/sync_roadmap_topic_labels.py`, unit-tested in `tests/test_sync_roadmap_topic_labels.py`)
+  and the `roadmap-topic-labels.yml` workflow that applies its actions to the PR. Pre-merge review
+  found the originally-specified base→head delta was not convergent across pushes (it accumulated
+  both labels when a new item was reclassified mid-review); reshaped piece 2 to reconcile a desired
+  set against the PR's current `topic:*` labels instead (see *Alternatives considered*).
 
 ## References
 
