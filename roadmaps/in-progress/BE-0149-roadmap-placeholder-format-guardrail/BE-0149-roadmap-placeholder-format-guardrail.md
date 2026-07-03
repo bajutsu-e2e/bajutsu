@@ -9,6 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0149") |
+| Implementing PR | [#600](https://github.com/bajutsu-e2e/bajutsu/pull/600) |
 | Topic | Development infrastructure (contributor workflow) |
 <!-- /BE-METADATA -->
 
