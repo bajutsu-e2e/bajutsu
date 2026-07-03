@@ -9,6 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0133") |
+| Implementing PR | [#606](https://github.com/bajutsu-e2e/bajutsu/pull/606) |
 | Topic | Security hardening |
 <!-- /BE-METADATA -->
 
@@ -94,7 +95,7 @@ unaffected. There is no product-code surface here — this is a CI supply-chain 
 - [x] Pin the `actionlint` installer script URL in `ci.yml` by commit SHA (keep the version as a comment)
 - [x] Investigate and, if feasible, add checksum verification for the downloaded `actionlint` binary
 
-- _(PR pending)_ — Pin the installer script to commit `914e7df` (the commit `v1.7.12` points at)
+- [#606](https://github.com/bajutsu-e2e/bajutsu/pull/606) — Pin the installer script to commit `914e7df` (the commit `v1.7.12` points at)
   in `ci.yml`, keeping `# v1.7.12` for readability. The installer script has no checksum
   verification of its own and fetches the binary from a mutable release asset, so a follow-on
   `Verify actionlint binary checksum` step pins the extracted linux/amd64 binary's sha256

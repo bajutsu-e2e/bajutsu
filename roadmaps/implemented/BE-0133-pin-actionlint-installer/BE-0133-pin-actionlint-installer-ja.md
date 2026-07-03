@@ -9,6 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0133") |
+| 実装 PR | [#606](https://github.com/bajutsu-e2e/bajutsu/pull/606) |
 | トピック | セキュリティ強化 |
 <!-- /BE-METADATA -->
 
@@ -96,7 +97,7 @@
 - [x] `ci.yml` の `actionlint` インストーラスクリプトの URL をコミット SHA で固定する（バージョンはコメントとして残す）
 - [x] ダウンロードした `actionlint` バイナリのチェックサム検証を調査し、可能であれば追加する
 
-- _(PR 準備中)_ — インストーラスクリプトを、`v1.7.12` タグが指すコミット `914e7df` に固定し
+- [#606](https://github.com/bajutsu-e2e/bajutsu/pull/606) — インストーラスクリプトを、`v1.7.12` タグが指すコミット `914e7df` に固定し
   （可読性のため `# v1.7.12` を併記）ました。このスクリプト自体はチェックサム検証を持たず、可変
   な release asset からバイナリを取得します。そこで後続の `Verify actionlint binary checksum`
   ステップで、展開後の linux/amd64 バイナリの sha256（`c872d6db…`。release のチェックサムが
