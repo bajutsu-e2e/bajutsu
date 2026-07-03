@@ -269,9 +269,9 @@ def test_cli_trace_explain_invalid_scenario(tmp_path: Path) -> None:
 
 
 def test_cli_trace_explain_malformed_yaml(tmp_path: Path) -> None:
-    # YAML that does not parse at all (unclosed flow mapping): the loader raises a yaml.YAMLError,
-    # which _explain must turn into the same clean exit 2 as a structurally-invalid scenario — not
-    # an uncaught traceback with exit 1 (BE-0150).
+    # YAML that does not parse at all (unclosed flow mapping): the loader normalizes the parse's
+    # yaml.YAMLError into a ValueError, so _explain's guard turns it into the same clean exit 2 as a
+    # structurally-invalid scenario — not an uncaught traceback with exit 1 (BE-0150).
     bad = tmp_path / "broken.yaml"
     bad.write_text("- name: a\n  steps: { id\n", encoding="utf-8")
     r = runner.invoke(app, ["trace", "--explain", str(bad)])

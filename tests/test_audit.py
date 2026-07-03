@@ -381,9 +381,9 @@ def test_cli_scenario_load_failure_exits_two(tmp_path: Path) -> None:
 
 
 def test_cli_audit_malformed_yaml_exits_two(tmp_path: Path) -> None:
-    # YAML that does not parse at all (unclosed flow mapping): the loader raises a yaml.YAMLError,
-    # which audit must turn into the same clean exit 2 as a structurally-invalid scenario — not an
-    # uncaught traceback with exit 1 (BE-0150).
+    # YAML that does not parse at all (unclosed flow mapping): the loader normalizes the parse's
+    # yaml.YAMLError into a ValueError, so audit's guard turns it into the same clean exit 2 as a
+    # structurally-invalid scenario — not an uncaught traceback with exit 1 (BE-0150).
     bad = tmp_path / "broken.yaml"
     bad.write_text("- name: a\n  steps: { id\n", encoding="utf-8")
     result = runner.invoke(app, ["audit", str(bad)])

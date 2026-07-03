@@ -76,15 +76,15 @@ def _require_ai_credential(eff: Effective) -> None:
 def load_expanded_scenarios(path: Path) -> list[Scenario]:
     """Load a scenario file and expand its components + data rows, resolving refs relative to the file.
 
-    The shared device-free loader behind `trace --explain` and `audit` (setup-prefixing
+    The shared device-free loader behind `trace --explain`, `audit`, and `coverage` (setup-prefixing
     `run` keeps its own loader).
 
     Raises:
         OSError: The scenario file or a referenced component / CSV cannot be read.
         ValueError: The content is invalid, or the YAML does not parse. A `yaml.YAMLError`
-            (a syntax error, not a `ValueError` subclass) is normalized to `ValueError` here so
-            both callers' `except (OSError, ValueError)` guard a malformed file as cleanly as a
-            structurally-invalid one, rather than leaking a traceback (BE-0150).
+            (a syntax error, not a `ValueError` subclass) is normalized to `ValueError` here — named
+            with *path* — so its callers' `except (OSError, ValueError)` guard a malformed file as
+            cleanly as a structurally-invalid one, rather than leaking a traceback (BE-0150).
     """
     base = path.parent
     try:
@@ -96,7 +96,10 @@ def load_expanded_scenarios(path: Path) -> list[Scenario]:
             scenarios, lambda ref: read_csv((base / ref).read_text(encoding="utf-8"))
         )
     except yaml.YAMLError as e:
-        raise ValueError(f"invalid YAML: {e}") from e
+        # Name the file (callers like `coverage` load many) and collapse PyYAML's multi-line
+        # message so the one-line CLI error stays readable.
+        detail = " ".join(str(e).split())
+        raise ValueError(f"invalid YAML in {path}: {detail}") from e
 
 
 def resolve_run_dir(run: str, runs_root: str) -> Path:
