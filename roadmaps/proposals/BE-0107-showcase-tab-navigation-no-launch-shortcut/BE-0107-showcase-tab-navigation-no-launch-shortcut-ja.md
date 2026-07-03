@@ -37,7 +37,7 @@
 
 **[BE-0019](../../in-progress/BE-0019-xcuitest-backend/BE-0019-xcuitest-backend-ja.md) がその backend です。**
 その XCUITest runner はネイティブの各タブをラベルで指定できるボタンとして列挙するので、
-`tap: {label: "Log", traits: [button]}` でネイティブのタブバー上のタブを切り替えられます（`demos/showcase/ios/scenarios-xcuitest/tabs.yaml`
+`tap: {label: "Log", traits: [button]}` でネイティブのタブバー上のタブを切り替えられます（`demos/showcase/scenarios-xcuitest/tabs.yaml`
 が `-noax` プロダクトで既に実演しています）。本アイテムは、BE-0019 が showcase の機能シナリオを走らせられる程度に
 安定していることを前提とします。BE-0079 の時点では runner の `/elements` クエリが遅く、環境によってはタイムアウトや
 接続切断が起きました。これは BE-0019 自身が残課題として挙げている性能・安定性の作業です。安定する前にこれへ乗ると
