@@ -421,10 +421,11 @@ def test_type_text() -> None:
     assert page.keyboard.typed == ["hello"]
 
 
-def test_wait_for() -> None:
+def test_wait_for_is_single_shot() -> None:
+    # BE-0118: single-shot check of the current DOM; the deadline poll lives in base.wait_until.
     drv, _ = _driver([_rec(identifier="home.title")])
-    assert drv.wait_for({"id": "home.title"}, 1.0) is True
-    assert drv.wait_for({"id": "nope"}, 1.0) is False
+    assert drv.wait_for({"id": "home.title"}) is True
+    assert drv.wait_for({"id": "nope"}) is False
 
 
 def _touch_points(params: Any) -> list[tuple[float, float]]:

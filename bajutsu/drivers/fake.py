@@ -95,7 +95,7 @@ class FakeDriver:
     def type_text(self, text: str) -> None:
         self._record("type", text)
 
-    def wait_for(self, sel: base.Selector, timeout: float) -> bool:
+    def wait_for(self, sel: base.Selector) -> bool:
         return len(base.find_all(self.screen, sel)) >= 1
 
     def screenshot(self, path: str) -> None:

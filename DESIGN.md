@@ -155,7 +155,7 @@ class Driver(Protocol):
     def long_press(self, sel: Selector, duration: float) -> None: ...
     def swipe(self, frm: Point, to: Point) -> None: ...
     def type_text(self, text: str) -> None: ...
-    def wait_for(self, sel: Selector, timeout: float) -> bool: ...
+    def wait_for(self, sel: Selector) -> bool: ...  # 単発チェック：現在の画面に一致するか（締め切りは共有 wait_until が担う）
     def screenshot(self, path: str) -> None: ...
     def capabilities(self) -> set[str]: ...        # 提供能力（network 等）。actuator/フォールバック解決用（§9）
 ```
@@ -175,7 +175,7 @@ class Driver(Protocol):
 
 `query()` で取得した要素ツリーに、Selector の各フィールドを **AND** で適用して候補を絞ります。
 
-- **0 件** → 要素不在です。`wait_for` 経由ならタイムアウト、即時アクションなら失敗です
+- **0 件** → 要素不在です。待機（`wait_until`）経由ならタイムアウト、即時アクションなら失敗です
 - **1 件** → 解決成功です
 - **2 件以上** → 既定で **ambiguous エラー**です。`within`（親スコープ）か `index` で一意化を要求します。「たまたま最初の一致を叩く」非決定性を構造的に排除します
 - `idMatches` / `labelMatches` は **複数マッチ前提**です。capturePolicy のトリガー（§9 A）や `count` アサーション（§6.4）専用で、`tap` 等の単一アクションでは一意性を要求します
