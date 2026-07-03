@@ -83,19 +83,26 @@ def used_ids() -> set[int]:
 
 
 def placeholder_dirs() -> list[Path]:
-    """Placeholder item directories across every status folder, sorted by name for deterministic
-    allocation.
+    """Placeholder item directories across every status folder, sorted by directory name (the
+    slug) for deterministic allocation.
 
     Scans all of ``CATEGORIES``, not just ``proposals/``: a placeholder is authored there, but
     ``promote_roadmap_items`` can move one whose ``Status`` was set to something else before
-    allocation — a placeholder stuck in ``proposals/`` only would never be numbered.
+    allocation — a placeholder stuck in ``proposals/`` only would never be numbered. Sorting by
+    ``d.name`` rather than the full path keeps allocation order a pure function of the slug,
+    independent of which folder a placeholder currently lives in — sorting the ``Path`` objects
+    directly would order by folder first (e.g. ``deferred/`` before ``proposals/``), so a
+    relocated placeholder could jump ahead of or behind another one for no reason tied to its name.
     """
     return sorted(
-        d
-        for category in CATEGORIES
-        if (ROADMAP / category).is_dir()
-        for d in (ROADMAP / category).iterdir()
-        if d.is_dir() and is_placeholder_dir(d.name)
+        (
+            d
+            for category in CATEGORIES
+            if (ROADMAP / category).is_dir()
+            for d in (ROADMAP / category).iterdir()
+            if d.is_dir() and is_placeholder_dir(d.name)
+        ),
+        key=lambda d: d.name,
     )
 
 

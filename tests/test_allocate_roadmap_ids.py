@@ -132,6 +132,23 @@ def test_allocate_finds_a_placeholder_relocated_out_of_proposals(
     assert not (roadmap / "in-progress" / "BE-XXXX-relocated-feature").exists()
 
 
+def test_placeholder_dirs_orders_by_slug_not_by_folder(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Placeholders can live in any status folder (BE-0149). Sorting the Path objects directly would
+    # order by folder name first (e.g. "deferred" before "proposals"), so a placeholder relocated to
+    # an earlier-sorting folder would jump the allocation queue for no reason tied to its own name.
+    # Allocation order must depend only on the slug.
+    roadmap = tmp_path / "roadmaps"
+    monkeypatch.setattr(ari, "ROADMAP", roadmap)
+    _make_item(roadmap, "deferred", "BE-XXXX-zzz-last-by-slug")
+    _make_item(roadmap, "proposals", "BE-XXXX-aaa-first-by-slug")
+
+    names = [d.name for d in ari.placeholder_dirs()]
+
+    assert names == ["BE-XXXX-aaa-first-by-slug", "BE-XXXX-zzz-last-by-slug"]
+
+
 def test_allocate_noop_without_placeholders(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
