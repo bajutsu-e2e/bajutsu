@@ -1,11 +1,11 @@
-[English](BE-XXXX-scenario-load-yaml-error-handling.md) · **日本語**
+[English](BE-0150-scenario-load-yaml-error-handling.md) · **日本語**
 
-# BE-XXXX — `trace --explain` と `audit` で壊れたシナリオを綺麗に失敗させる
+# BE-0150 — `trace --explain` と `audit` で壊れたシナリオを綺麗に失敗させる
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
 |---|---|
-| 提案 | [BE-XXXX](BE-XXXX-scenario-load-yaml-error-handling-ja.md) |
+| 提案 | [BE-0150](BE-0150-scenario-load-yaml-error-handling-ja.md) |
 | 提案者 | [@hirosassa](https://github.com/hirosassa) |
 | 状態 | **提案** |
 | トピック | 開発基盤（コントリビュータ体験） |

@@ -1,11 +1,11 @@
-**English** · [日本語](BE-XXXX-scenario-load-yaml-error-handling-ja.md)
+**English** · [日本語](BE-0150-scenario-load-yaml-error-handling-ja.md)
 
-# BE-XXXX — Fail cleanly on a malformed scenario in `trace --explain` and `audit`
+# BE-0150 — Fail cleanly on a malformed scenario in `trace --explain` and `audit`
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-scenario-load-yaml-error-handling.md) |
+| Proposal | [BE-0150](BE-0150-scenario-load-yaml-error-handling.md) |
 | Author | [@hirosassa](https://github.com/hirosassa) |
 | Status | **Proposal** |
 | Topic | Development infrastructure (contributor workflow) |
