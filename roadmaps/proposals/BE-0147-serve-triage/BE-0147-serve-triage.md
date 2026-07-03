@@ -1,11 +1,11 @@
-**English** · [日本語](BE-XXXX-serve-triage-ja.md)
+**English** · [日本語](BE-0147-serve-triage-ja.md)
 
-# BE-XXXX — Triage failed runs in the serve Web UI
+# BE-0147 — Triage failed runs in the serve Web UI
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-serve-triage.md) |
+| Proposal | [BE-0147](BE-0147-serve-triage.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
 | Topic | Surfacing CLI features in the serve Web UI |

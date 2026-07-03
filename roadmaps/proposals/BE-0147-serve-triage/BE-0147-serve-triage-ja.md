@@ -1,11 +1,11 @@
-[English](BE-XXXX-serve-triage.md) · **日本語**
+[English](BE-0147-serve-triage.md) · **日本語**
 
-# BE-XXXX — serve Web UI で失敗 run をトリアージする
+# BE-0147 — serve Web UI で失敗 run をトリアージする
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
 |---|---|
-| 提案 | [BE-XXXX](BE-XXXX-serve-triage-ja.md) |
+| 提案 | [BE-0147](BE-0147-serve-triage-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **提案** |
 | トピック | serve Web UI への CLI 機能の取り込み |
