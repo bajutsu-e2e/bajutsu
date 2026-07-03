@@ -537,6 +537,7 @@ Web（Playwright）backend とその完成（リッチな capability、並列実
 | [BE-0152](proposals/BE-0152-totp-seed-artifact-leak/BE-0152-totp-seed-artifact-leak-ja.md) | TOTP のシード値を run 成果物に含めない | 提案 |
 | [BE-0153](proposals/BE-0153-encode-aware-secret-redaction/BE-0153-encode-aware-secret-redaction-ja.md) | エンコードを考慮した秘密情報の redaction | 提案 |
 | [BE-0154](proposals/BE-0154-roadmap-promote-base-sha/BE-0154-roadmap-promote-base-sha-ja.md) | roadmap-promote をベース SHA から実行する | 提案 |
+| [BE-0155](proposals/BE-0155-idb-input-text-via-stdin/BE-0155-idb-input-text-via-stdin-ja.md) | idb への入力テキストを argv でなく stdin 経由で渡す | 提案 |
 <!-- /GENERATED:proposals-security -->
 
 ### config の取得元

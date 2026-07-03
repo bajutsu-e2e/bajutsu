@@ -1,11 +1,11 @@
-**English** · [日本語](BE-XXXX-idb-input-text-via-stdin-ja.md)
+**English** · [日本語](BE-0155-idb-input-text-via-stdin-ja.md)
 
-# BE-XXXX — Pass idb input text via stdin to keep secrets out of argv
+# BE-0155 — Pass idb input text via stdin to keep secrets out of argv
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-idb-input-text-via-stdin.md) |
+| Proposal | [BE-0155](BE-0155-idb-input-text-via-stdin.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
 | Topic | Security hardening |
