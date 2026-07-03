@@ -1,14 +1,14 @@
-[English](BE-XXXX-shake-device-primitive.md) · **日本語**
+[English](BE-0157-shake-device-primitive.md) · **日本語**
 
-# BE-XXXX — シェイクのデバイスプリミティブ
+# BE-0157 — シェイクのデバイスプリミティブ
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
 |---|---|
-| 提案 | [BE-XXXX](BE-XXXX-shake-device-primitive-ja.md) |
+| 提案 | [BE-0157](BE-0157-shake-device-primitive-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **提案（保留）** |
-| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0157") |
 | トピック | Candidates from competitive research (MagicPod / Autify) |
 | 関連 | [BE-0052](../../in-progress/BE-0052-device-state-timezone-clipboard-shake/BE-0052-device-state-timezone-clipboard-shake-ja.md) |
 | 由来 | MagicPod |

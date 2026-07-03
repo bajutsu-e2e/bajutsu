@@ -659,6 +659,8 @@ Maestro（mobile.dev）はオープンソースのクロスプラットフォー
 | ID | 項目 | 状態 | 由来 |
 |---|---|---|---|
 | [BE-0040](deferred/BE-0040-ai-assertions/BE-0040-ai-assertions-ja.md) | AI アサーション | 保留 | MagicPod |
+| [BE-0157](deferred/BE-0157-shake-device-primitive/BE-0157-shake-device-primitive-ja.md) | シェイクのデバイスプリミティブ | 保留 | MagicPod |
+| [BE-0158](deferred/BE-0158-timezone-device-primitive/BE-0158-timezone-device-primitive-ja.md) | タイムゾーンのデバイスプリミティブ | 保留 | MagicPod |
 <!-- /GENERATED:deferred-competitive -->
 
 ### Web UI のホスティング（クラウド / セルフホスト）

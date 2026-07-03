@@ -666,6 +666,8 @@ Parked proposals — considered, then shelved for now. Kept here (not deleted) s
 | ID | Item | Status | Origin |
 |---|---|---|---|
 | [BE-0040](deferred/BE-0040-ai-assertions/BE-0040-ai-assertions.md) | AI assertions | Deferred | MagicPod |
+| [BE-0157](deferred/BE-0157-shake-device-primitive/BE-0157-shake-device-primitive.md) | Shake device primitive | Deferred | MagicPod |
+| [BE-0158](deferred/BE-0158-timezone-device-primitive/BE-0158-timezone-device-primitive.md) | Timezone device primitive | Deferred | MagicPod |
 <!-- /GENERATED:deferred-competitive -->
 
 ### Hosting the web UI (cloud / self-hosted)
