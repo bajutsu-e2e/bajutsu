@@ -50,10 +50,12 @@ class AiConfig:
 
 
 def provider(ai: AiConfig | None = None) -> str:
-    """The configured AI provider, defaulting to ``anthropic`` for any unset or unknown value.
+    """Which Anthropic-family client to build — ``anthropic`` (default) or ``bedrock``.
 
-    The resolved `ai.provider` wins; otherwise ``BAJUTSU_AI_PROVIDER`` (BE-0047 config-first,
-    env fallback).
+    Resolves *within* this adapter: `ai.provider` wins, else ``BAJUTSU_AI_PROVIDER`` (BE-0047
+    config-first, env fallback), and anything outside the family normalizes to ``anthropic``. This
+    is not the cross-provider authority — that is `bajutsu.ai` (BE-0104), whose registry dispatches a
+    provider name to its adapter; a non-Anthropic provider is routed there and never reaches here.
     """
     raw = (ai and ai.provider) or os.environ.get(PROVIDER_ENV) or "anthropic"
     value = raw.strip().lower()

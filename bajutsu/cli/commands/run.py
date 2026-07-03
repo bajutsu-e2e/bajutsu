@@ -14,7 +14,7 @@ import typer
 from bajutsu import env as _env
 from bajutsu import github
 from bajutsu import usage as _usage
-from bajutsu.anthropic_client import credential_gap
+from bajutsu.ai import credential_gap
 from bajutsu.anthropic_client import key_env as ac_key_env
 from bajutsu.assertions import GoldenContext
 from bajutsu.backends import ensure_web_runtime, select_actuator

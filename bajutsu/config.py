@@ -15,6 +15,7 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from bajutsu import _yaml, idb_version
+from bajutsu.ai import known_providers
 from bajutsu.anthropic_client import AiConfig
 from bajutsu.drivers import base
 from bajutsu.scenario import Redact
@@ -106,7 +107,7 @@ class AiSettings(_Model):
     a literal key into config.
     """
 
-    provider: str | None = None  # anthropic (default) | bedrock
+    provider: str | None = None  # a registered provider name (BE-0104); anthropic is the default
     model: str | None = None  # override the path's default model
     base_url: str | None = Field(default=None, alias="baseUrl")  # self-hosted gateway / proxy
     key_env: str | None = Field(default=None, alias="keyEnv")  # NAME of the env var (never the key)
@@ -114,8 +115,12 @@ class AiSettings(_Model):
     @field_validator("provider")
     @classmethod
     def _known_provider(cls, v: str | None) -> str | None:
-        if v is not None and v not in ("anthropic", "bedrock"):
-            raise ValueError(f"unknown ai.provider {v!r}: use 'anthropic' or 'bedrock'")
+        # Open, registry-validated (BE-0104): a name is valid iff an adapter registered it. Unknown
+        # fails closed here at load, so no AI path ever reaches an unregistered provider.
+        registered = known_providers()
+        if v is not None and v not in registered:
+            allowed = ", ".join(repr(p) for p in registered)
+            raise ValueError(f"unknown ai.provider {v!r}: registered providers are {allowed}")
         return v
 
 

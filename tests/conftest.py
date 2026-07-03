@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from bajutsu.ai.base import MessageRequest, MessageResponse, ToolUseBlock
 from bajutsu.drivers import base
 
 
@@ -70,7 +71,8 @@ class FakeAnthropic:
 
     Each positional block is returned as its own single-block message on successive
     `create()` calls (the last repeats once exhausted). With no blocks, `create()` returns
-    an empty message — the "model proposed no tool call" path.
+    an empty message — the "model proposed no tool call" path. Used by the Anthropic-adapter
+    tests, which drive the raw SDK shape; call-site tests use `FakeBackend` instead.
     """
 
     def __init__(self, *blocks: FakeBlock) -> None:
@@ -84,3 +86,27 @@ class FakeAnthropic:
         message = self._messages[min(self._i, len(self._messages) - 1)]
         self._i += 1
         return message
+
+
+class FakeBackend:
+    """A vendor-neutral `AiBackend` for call-site tests (BE-0104).
+
+    Each scripted `FakeBlock` tool-use is returned as its own single-block `MessageResponse` on
+    successive `create_message()` calls (the last repeats once exhausted). With none, returns an
+    empty response — the "model proposed no tool call" path. Records each `MessageRequest` so tests
+    assert on the neutral request the call site built (not any vendor's wire shape).
+    """
+
+    def __init__(self, *blocks: FakeBlock) -> None:
+        self.requests: list[MessageRequest] = []
+        self._responses = [
+            MessageResponse(content=[ToolUseBlock(name=b.name, input=b.input)], usage=FakeUsage())
+            for b in blocks
+        ] or [MessageResponse(content=[], usage=FakeUsage())]
+        self._i = 0
+
+    def create_message(self, request: MessageRequest) -> MessageResponse:
+        self.requests.append(request)
+        response = self._responses[min(self._i, len(self._responses) - 1)]
+        self._i += 1
+        return response

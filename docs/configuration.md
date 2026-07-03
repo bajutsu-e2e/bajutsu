@@ -112,12 +112,21 @@ deterministic `run` gate still calls no model at all
 ```yaml
 defaults:
   ai:
-    provider: anthropic                      # anthropic (default) | bedrock
+    provider: anthropic                      # a registered provider name; anthropic (default) or bedrock ship today
     model:    claude-opus-4-8                 # optional: override the path's default model
     baseUrl:  https://ai-gateway.internal/v1  # optional: a self-hosted gateway / enterprise proxy (anthropic provider)
     keyEnv:   ANTHROPIC_API_KEY               # the NAME of the env var holding the key — never the key itself
 ```
 
+- **A provider is a backend behind one interface**
+  ([BE-0104](../roadmaps/implemented/BE-0104-vendor-neutral-ai-backend/BE-0104-vendor-neutral-ai-backend.md)).
+  The AI paths reach a model only through a vendor-neutral seam (`bajutsu/ai`), mirroring how a
+  platform is a backend behind the `Driver` interface. `provider` is therefore an **open,
+  registry-validated** value, not a fixed pair: `anthropic` and `bedrock` are the adapters that ship
+  today (Bedrock lives inside the Anthropic adapter, an Anthropic-SDK variant), and an unknown name
+  fails closed at config load with a clear error. Adding a model family (e.g. an OpenAI-compatible
+  endpoint) is *registering an adapter*, and it inherits the redaction and fail-closed guarantees
+  below by construction.
 - **Keys never live in config.** `keyEnv` names an environment variable; the value is read from the
   environment at call time, so a secret never lands in the repo or an uploaded bundle. `baseUrl`
   points the Anthropic SDK at a self-hosted gateway / proxy (`Anthropic(base_url=…,

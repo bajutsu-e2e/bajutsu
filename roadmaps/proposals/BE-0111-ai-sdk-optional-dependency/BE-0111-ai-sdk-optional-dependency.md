@@ -10,7 +10,7 @@
 | Status | **Proposal** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0111") |
 | Topic | AI provider configuration |
-| Related | [BE-0047](../../implemented/BE-0047-ai-data-sovereignty/BE-0047-ai-data-sovereignty.md), [BE-0053](../../implemented/BE-0053-bedrock-ai-provider/BE-0053-bedrock-ai-provider.md), [BE-0101](../../implemented/BE-0101-ai-free-zero-config/BE-0101-ai-free-zero-config.md), [BE-0104](../BE-0104-vendor-neutral-ai-backend/BE-0104-vendor-neutral-ai-backend.md) |
+| Related | [BE-0047](../../implemented/BE-0047-ai-data-sovereignty/BE-0047-ai-data-sovereignty.md), [BE-0053](../../implemented/BE-0053-bedrock-ai-provider/BE-0053-bedrock-ai-provider.md), [BE-0101](../../implemented/BE-0101-ai-free-zero-config/BE-0101-ai-free-zero-config.md), [BE-0104](../../implemented/BE-0104-vendor-neutral-ai-backend/BE-0104-vendor-neutral-ai-backend.md) |
 <!-- /BE-METADATA -->
 
 ## Introduction
@@ -143,7 +143,7 @@ edits), `tests/serve/test_import_guard.py` (the import-guard pattern this item e
 `bajutsu/crawl_guide.py` · `bajutsu/crawl_tabs.py` — the code that needs the `ai` extra),
 [BE-0101](../../implemented/BE-0101-ai-free-zero-config/BE-0101-ai-free-zero-config.md) (the
 runtime Claude-using / Claude-free split this completes at the packaging layer),
-[BE-0104](../BE-0104-vendor-neutral-ai-backend/BE-0104-vendor-neutral-ai-backend.md) (the
+[BE-0104](../../implemented/BE-0104-vendor-neutral-ai-backend/BE-0104-vendor-neutral-ai-backend.md) (the
 vendor-neutral interface this composes with),
 [BE-0047](../../implemented/BE-0047-ai-data-sovereignty/BE-0047-ai-data-sovereignty.md) and
 [BE-0053](../../implemented/BE-0053-bedrock-ai-provider/BE-0053-bedrock-ai-provider.md) (the

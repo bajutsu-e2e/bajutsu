@@ -1333,7 +1333,7 @@ def start_enrich(
 
     if agent_factory is None:
         from bajutsu.agents import make_enrichment_agent
-        from bajutsu.anthropic_client import credential_gap
+        from bajutsu.ai import credential_gap
 
         eff = resolve(config, target)
         gap = credential_gap(eff.ai)

@@ -92,12 +92,13 @@ AI 経路、すなわち `record`、`triage --ai`、`--dismiss-alerts` のガー
 ```yaml
 defaults:
   ai:
-    provider: anthropic                      # anthropic（既定） | bedrock
+    provider: anthropic                      # 登録済みのプロバイダ名。現状は anthropic（既定）か bedrock
     model:    claude-opus-4-8                 # 任意: その経路の既定モデルを上書き
     baseUrl:  https://ai-gateway.internal/v1  # 任意: 自己ホストのゲートウェイ / 社内プロキシ（anthropic プロバイダ）
     keyEnv:   ANTHROPIC_API_KEY               # キーを保持する環境変数の「名前」。キーの値そのものは置かない
 ```
 
+- **プロバイダは単一のインターフェースの背後に置かれたバックエンドです**（[BE-0104](../../roadmaps/implemented/BE-0104-vendor-neutral-ai-backend/BE-0104-vendor-neutral-ai-backend-ja.md)）。AI 経路は、プラットフォームが `Driver` インターフェースの背後のバックエンドであるのと同じように、ベンダー中立なシーム（`bajutsu/ai`）を通じてのみモデルへ到達します。そのため `provider` は固定された 2 値ではなく、**レジストリで検証される開放型**の値です。現在は `anthropic` と `bedrock` のアダプタが同梱されており（Bedrock は Anthropic SDK の一変種なので、Anthropic アダプタの内側に収まります）、未知の名前は config の読み込み時に明確なエラーで fail closed になります。モデルファミリ（たとえば OpenAI 互換エンドポイント）の追加はアダプタの登録にあたり、下記の秘匿化とフェイルクローズの保証を構造上そのまま受け継ぎます。
 - **キーは設定ファイルに置きません。** `keyEnv` は環境変数の名前を指すだけで、値は呼び出し時に環境から読みます。これにより秘密がリポジトリやアップロードされたバンドルに入りません。`baseUrl` は Anthropic SDK を自己ホストのゲートウェイやプロキシへ向けます（`Anthropic(base_url=…, api_key=os.environ[keyEnv])`）。スクリーンショットや要素ツリーは、ベンダーの既定先ではなく、あなたが設定したエンドポイントにだけ届きます。Bedrock は標準の AWS 資格情報チェーン（`AWS_REGION` と、環境変数 / 共有プロファイル / インスタンスまたはタスクロール）のままで、プロバイダ接頭辞付きの `model` を必要とします。
 - **設定が先、環境変数はフォールバック。** 省略したフィールドは現状の環境変数（`BAJUTSU_AI_PROVIDER`、`ANTHROPIC_API_KEY`、`BAJUTSU_BEDROCK_MODEL`）へフォールバックするので、`ai` ブロックの無い config はこれまでどおり動きます。
 - **フェイルクローズ。** `record`、`triage --ai`、明示的に要求した `--dismiss-alerts` は、選択したプロバイダに使える資格情報が無いとき、プロバイダ別の明確なエラーで終了します。ホストされた既定先へ黙ってフォールバックするクライアントは決して構築しません。

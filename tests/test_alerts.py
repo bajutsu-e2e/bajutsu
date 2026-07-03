@@ -5,9 +5,10 @@ from __future__ import annotations
 import struct
 from pathlib import Path
 
-from conftest import FakeAnthropic, FakeBlock
+from conftest import FakeBackend, FakeBlock
 
 from bajutsu.agent import Proposal
+from bajutsu.ai.base import AnyTool, ImagePart, TextPart
 from bajutsu.alerts import AlertDecision, ClaudeAlertLocator, SystemAlertGuard
 from bajutsu.drivers import base
 from bajutsu.drivers.fake import FakeDriver
@@ -93,12 +94,12 @@ def test_guard_noop_when_no_screenshot() -> None:
     assert locator.seen == []  # never reached the locator
 
 
-# --- ClaudeAlertLocator (fake Anthropic client) ---
+# --- ClaudeAlertLocator (fake AI backend, BE-0104) ---
 
 
-def _resolve_alert(inp: dict[str, object]) -> FakeAnthropic:
-    """A fake client whose single tool call is the alert locator's `resolve_alert`."""
-    return FakeAnthropic(FakeBlock("resolve_alert", dict(inp)))
+def _resolve_alert(inp: dict[str, object]) -> FakeBackend:
+    """A fake backend whose single tool call is the alert locator's `resolve_alert`."""
+    return FakeBackend(FakeBlock("resolve_alert", dict(inp)))
 
 
 def _png(width: int, height: int) -> bytes:
@@ -108,21 +109,21 @@ def _png(width: int, height: int) -> bytes:
 
 
 def test_locator_normalizes_pixel_coordinates() -> None:
-    client = _resolve_alert({"present": True, "x": 374, "y": 1611, "label": "Not Now"})
-    decision = ClaudeAlertLocator(client=client).locate(_png(1206, 2622), "tap Save")
+    backend = _resolve_alert({"present": True, "x": 374, "y": 1611, "label": "Not Now"})
+    decision = ClaudeAlertLocator(backend=backend).locate(_png(1206, 2622), "tap Save")
     assert decision.present is True and decision.label == "Not Now"
     assert abs(decision.x - 374 / 1206) < 1e-6
     assert abs(decision.y - 1611 / 2622) < 1e-6
-    call = client.calls[0]
-    assert call["tool_choice"] == {"type": "any"}
-    content = call["messages"][0]["content"]
-    assert any(c["type"] == "image" for c in content)
-    text = next(c["text"] for c in content if c["type"] == "text")
+    request = backend.requests[0]
+    assert isinstance(request.tool_choice, AnyTool)
+    content = request.messages[0].content
+    assert any(isinstance(c, ImagePart) for c in content)
+    text = next(c.text for c in content if isinstance(c, TextPart))
     assert "1206x2622" in text and "tap Save" in text
 
 
 def test_locator_absent_decision() -> None:
-    decision = ClaudeAlertLocator(client=_resolve_alert({"present": False})).locate(
+    decision = ClaudeAlertLocator(backend=_resolve_alert({"present": False})).locate(
         _png(10, 10), None
     )
     assert decision.present is False
@@ -134,12 +135,12 @@ def test_locator_redacts_instruction_before_send() -> None:
     from bajutsu.redaction import Redactor
     from bajutsu.scenario import Redact
 
-    client = _resolve_alert({"present": False})
+    backend = _resolve_alert({"present": False})
     redactor = Redactor(Redact(), values=["sk-secret-token"])
-    ClaudeAlertLocator(client=client, redactor=redactor).locate(
+    ClaudeAlertLocator(backend=backend, redactor=redactor).locate(
         _png(10, 10), "tap Save then enter sk-secret-token"
     )
-    text = next(c["text"] for c in client.calls[0]["messages"][0]["content"] if c["type"] == "text")
+    text = next(c.text for c in backend.requests[0].messages[0].content if isinstance(c, TextPart))
     assert "sk-secret-token" not in text
     assert "[REDACTED]" in text
 

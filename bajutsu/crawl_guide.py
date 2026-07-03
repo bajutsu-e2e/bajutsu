@@ -14,14 +14,24 @@ still advances if the model proposes nothing useful.
 
 from __future__ import annotations
 
-import base64
 import json
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any, Protocol
 
 from bajutsu import crawl, crawl_tabs
-from bajutsu.anthropic_client import AiConfig, make_client, resolve_model
+from bajutsu.ai import (
+    AiBackend,
+    ContentPart,
+    ImagePart,
+    Message,
+    MessageRequest,
+    NamedTool,
+    TextPart,
+    ToolDef,
+    create_backend,
+)
+from bajutsu.anthropic_client import AiConfig, resolve_model
 from bajutsu.drivers import base
 from bajutsu.record import _screenshot_bytes
 from bajutsu.redaction import Redactor
@@ -173,10 +183,10 @@ common rules, a plausible name/number) — this is how you enable a control the 
 the app asked for something (a permission, to save a password); pick what makes sense next.
 - You only choose what to TRY. You never decide pass/fail and never judge results."""
 
-_PROPOSE_TOOL: dict[str, Any] = {
-    "name": "propose_actions",
-    "description": "Propose the operations to try from this screen, most promising first.",
-    "input_schema": {
+_PROPOSE_TOOL: ToolDef = ToolDef(
+    name="propose_actions",
+    description="Propose the operations to try from this screen, most promising first.",
+    input_schema={
         "type": "object",
         "properties": {
             "thought": {
@@ -224,7 +234,7 @@ _PROPOSE_TOOL: dict[str, Any] = {
         },
         "required": ["thought", "actions"],
     },
-}
+)
 
 
 def _render_elements(elements: list[base.Element]) -> str:
@@ -268,20 +278,15 @@ def _content(
     screenshot: bytes | None,
     candidates: list[crawl.Action],
     dismissed: tuple[str, ...],
-) -> list[dict[str, Any]]:
-    content: list[dict[str, Any]] = []
+    redactor: Redactor | None = None,
+) -> list[ContentPart]:
+    content: list[ContentPart] = []
     if screenshot:
-        content.append(
-            {
-                "type": "image",
-                "source": {
-                    "type": "base64",
-                    "media_type": "image/png",
-                    "data": base64.standard_b64encode(screenshot).decode("ascii"),
-                },
-            }
-        )
-    content.append({"type": "text", "text": _text_block(elements, candidates, dismissed)})
+        content.append(ImagePart(data=screenshot))
+    text = _text_block(elements, candidates, dismissed)
+    if redactor is not None:
+        text = redactor.redact_text(text)
+    content.append(TextPart(text=text))
     return content
 
 
@@ -327,14 +332,14 @@ def _proposal_from(payload: dict[str, Any], cap: int) -> Proposal:
 
 
 class ClaudeActionProposer:
-    """Asks Claude (Anthropic SDK) for the screen's candidate operations via a forced tool call.
+    """Asks Claude for the screen's candidate operations via a forced tool call.
 
-    `anthropic` is lazy-imported so the module loads without the SDK or an API key.
+    Talks to the model through the vendor-neutral backend (BE-0104).
     """
 
     def __init__(
         self,
-        client: Any = None,
+        backend: AiBackend | None = None,
         model: str | None = None,
         max_tokens: int = 1024,
         max_actions: int = 8,
@@ -342,17 +347,17 @@ class ClaudeActionProposer:
         ai: AiConfig | None = None,
         redactor: Redactor | None = None,
     ) -> None:
-        self._client = client
+        self._backend = backend
         self._ai = ai
         self._redactor = redactor
         self._model = resolve_model(MODEL, ai) if model is None else model
         self._max_tokens = max_tokens
         self._max_actions = max_actions
 
-    def _ensure_client(self) -> Any:
-        if self._client is None:
-            self._client = make_client(ai=self._ai)
-        return self._client
+    def _ensure_backend(self) -> AiBackend:
+        if self._backend is None:
+            self._backend = create_backend(ai=self._ai)
+        return self._backend
 
     def propose(
         self,
@@ -363,20 +368,18 @@ class ClaudeActionProposer:
     ) -> Proposal:
         if self._redactor is not None:
             elements = self._redactor.redact_elements(elements)
-        content = _content(elements, screenshot, candidates, dismissed)
-        if self._redactor is not None:
-            for part in content:
-                if part.get("type") == "text":
-                    part["text"] = self._redactor.redact_text(part["text"])
-        message = self._ensure_client().messages.create(
-            model=self._model,
-            max_tokens=self._max_tokens,
-            system=[{"type": "text", "text": _SYSTEM, "cache_control": {"type": "ephemeral"}}],
-            tools=[_PROPOSE_TOOL],
-            tool_choice={"type": "tool", "name": "propose_actions"},
-            messages=[{"role": "user", "content": content}],
+        content = _content(elements, screenshot, candidates, dismissed, self._redactor)
+        response = self._ensure_backend().create_message(
+            MessageRequest(
+                system=_SYSTEM,
+                messages=[Message(role="user", content=content)],
+                tools=[_PROPOSE_TOOL],
+                tool_choice=NamedTool(name="propose_actions"),
+                model=self._model,
+                max_tokens=self._max_tokens,
+            )
         )
-        block = next((b for b in message.content if b.type == "tool_use"), None)
+        block = response.first_tool_use()
         if block is None:
             return Proposal()
         return _proposal_from(block.input, self._max_actions)
@@ -436,7 +439,7 @@ class ClaudeCodeActionProposer:
             "--output-format",
             "json",
             "--json-schema",
-            json.dumps(_PROPOSE_TOOL["input_schema"]),
+            json.dumps(_PROPOSE_TOOL.input_schema),
             "--append-system-prompt",
             _SYSTEM + _CC_NOTE,
         ]

@@ -10,7 +10,7 @@
 | 状態 | **提案** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0111") |
 | トピック | AI provider configuration |
-| 関連 | [BE-0047](../../implemented/BE-0047-ai-data-sovereignty/BE-0047-ai-data-sovereignty-ja.md), [BE-0053](../../implemented/BE-0053-bedrock-ai-provider/BE-0053-bedrock-ai-provider-ja.md), [BE-0101](../../implemented/BE-0101-ai-free-zero-config/BE-0101-ai-free-zero-config-ja.md), [BE-0104](../BE-0104-vendor-neutral-ai-backend/BE-0104-vendor-neutral-ai-backend-ja.md) |
+| 関連 | [BE-0047](../../implemented/BE-0047-ai-data-sovereignty/BE-0047-ai-data-sovereignty-ja.md), [BE-0053](../../implemented/BE-0053-bedrock-ai-provider/BE-0053-bedrock-ai-provider-ja.md), [BE-0101](../../implemented/BE-0101-ai-free-zero-config/BE-0101-ai-free-zero-config-ja.md), [BE-0104](../../implemented/BE-0104-vendor-neutral-ai-backend/BE-0104-vendor-neutral-ai-backend-ja.md) |
 <!-- /BE-METADATA -->
 
 ## はじめに
@@ -144,7 +144,7 @@ AI extra を引き続きインストールします（`bajutsu[bedrock,server,wo
 `bajutsu/crawl_guide.py`、`bajutsu/crawl_tabs.py`。`ai` extra を要するコード）、
 [BE-0101](../../implemented/BE-0101-ai-free-zero-config/BE-0101-ai-free-zero-config-ja.md)（本項目が
 パッケージング層で仕上げる、実行時の Claude 利用と非利用の分離）、
-[BE-0104](../BE-0104-vendor-neutral-ai-backend/BE-0104-vendor-neutral-ai-backend-ja.md)（本項目が
+[BE-0104](../../implemented/BE-0104-vendor-neutral-ai-backend/BE-0104-vendor-neutral-ai-backend-ja.md)（本項目が
 組み合わさる中立な界面）、
 [BE-0047](../../implemented/BE-0047-ai-data-sovereignty/BE-0047-ai-data-sovereignty-ja.md) と
 [BE-0053](../../implemented/BE-0053-bedrock-ai-provider/BE-0053-bedrock-ai-provider-ja.md)（本項目が

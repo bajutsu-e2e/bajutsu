@@ -89,6 +89,7 @@ The `bajutsu/` package (Python 3.13+, pydantic v2 / typer / anthropic / pyyaml /
 | `runner/` | config + scenarios → report; device pool + launch sequence (package: `pipeline` / `pool` / `launch`) | [run-loop](run-loop.md#runner-the-run-pipeline) |
 | `doctor.py` | Convention score (id coverage, etc.) | [configuration](configuration.md#doctor-the-convention-score) |
 | `agent.py` · `agents.py` | Authoring Agent abstraction (`Observation`/`Proposal`/`Agent`) + backend selection (`--agent api` / `claude-code`) | [recording](recording.md) |
+| `ai/` | Vendor-neutral AI backend seam (BE-0104): `AiBackend` protocol + normalized request/response types (`base`), provider registry (`registry`), Anthropic reference adapter over `anthropic_client` (`anthropic`) | [configuration](configuration.md#ai-provider-ai-be-0047) |
 | `claude_agent.py` | Anthropic API agent (forced tool use · prompt cache) | [recording](recording.md#claude-agents-api-and-claude-code) |
 | `claude_code_agent.py` | Claude Code agent (drives the Claude Code CLI) | [recording](recording.md) |
 | `record.py` | The record loop (observe → propose → execute → emit) | [recording](recording.md#the-record-loop) |

@@ -1,7 +1,8 @@
 """Is Claude reachable? — one answer across every provider and agent backend (BE-0101).
 
-`anthropic_client.credential_gap()` answers availability for the **SDK** path (the Anthropic key, or
-a Bedrock model id). But the `--agent claude-code` backend reaches Claude through the `claude` CLI,
+The provider registry's `credential_gap()` (BE-0104) answers availability for the **SDK** path (the
+resolved provider's credential — the Anthropic key, or a Bedrock model id). But the `--agent
+claude-code` backend reaches Claude through the `claude` CLI,
 whose availability condition is different (the binary present). This module unifies the two behind
 one resolver so the `serve` and `doctor` surfaces gate on a single helper and stay correct whichever
 backend / provider a target selects — a thin generalization of the existing seam, not a new
@@ -17,7 +18,8 @@ import shutil
 from collections.abc import Callable, Mapping
 
 from bajutsu.agents import AGENT_ENV
-from bajutsu.anthropic_client import AiConfig, credential_gap, key_env
+from bajutsu.ai import credential_gap
+from bajutsu.anthropic_client import AiConfig, key_env
 
 Which = Callable[[str], str | None]
 
