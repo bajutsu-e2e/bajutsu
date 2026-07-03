@@ -17,7 +17,7 @@
 
 [BE-0078](../../implemented/BE-0078-roadmap-status-folders/BE-0078-roadmap-status-folders.md) gave
 each of the four `Status` values its own directory
-(`roadmaps/{implemented,in-progress,proposals,deferred}/`), so a promotion `git mv`\\s an item's
+(`roadmaps/{implemented,in-progress,proposals,deferred}/`), so a promotion `git mv`s an item's
 directory every time its `Status` changes. This item proposes retiring that half of BE-0078: flatten
 every item into a single `roadmaps/BE-NNNN-<slug>/`, so an item's path is fixed forever from the
 moment its ID is allocated ([BE-0089](../../implemented/BE-0089-merge-time-be-id-allocation/BE-0089-merge-time-be-id-allocation.md))

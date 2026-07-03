@@ -260,4 +260,3 @@ BE-0078 が導入し、BE-0096・BE-0149 が拡張したツール群に触れる
   [`scripts/new_roadmap_item.py`](../../../scripts/new_roadmap_item.py)、
   [`scripts/check_roadmap_format.py`](../../../scripts/check_roadmap_format.py)、
   [`scripts/roadmap_ids.py`](../../../scripts/roadmap_ids.py):本項目が触れるツール群です。
-</content>
