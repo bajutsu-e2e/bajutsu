@@ -157,3 +157,5 @@ redact:
 > redact は証跡の書き出し前に **適用されます**（`redaction.py` `Redactor`）。device log と app trace は key→value パターンでスクラブし、要素ツリーは label が設定済みなら value をマスクします（または埋め込まれた secret をスクラブします）。各 network exchange は構造的にマスクします。ヘッダ値は名前で処理し、url / request / response の body はフリーテキストとして処理するので、クエリパラメータや `token` / `password` の body フィールドも捕捉します。画像（スクリーンショット / video）はマスクできず、そのまま残ります。
 >
 > redact は **secret の入力値** にも及びます。`${secrets.X}` の背後にある実値（環境から解決し、config の `secrets:` で宣言します。[configuration](configuration.md#シークレットsecrets)）は、設定済みの `labels` / `headers` / `fields` だけでなく、証跡に現れる箇所すべてでマスクします。長い値から先にマスクするため、ある値が別の値の部分文字列であっても、部分的な漏れは起きません。
+>
+> 実行したシナリオは run ディレクトリにもスナップショットとして保存されます（`scenario.yaml`、およびレポートの生 YAML 表示）。`totp` ステップの `secret` は使い捨てのコードではなく恒久的な base32 シードなので、シナリオに **リテラル** で書かれたシードは、このスナップショット内で `<redacted>` にマスクします。`${secrets.X}` 参照はそのまま残します（参照自体はシードではなく、解決後の実値は上記の secret 入力値のルールでマスクされるためです）。`totp` のシードは `${secrets.X}` で渡し、シナリオファイルにシードが残らないようにするのが望ましい方法です。

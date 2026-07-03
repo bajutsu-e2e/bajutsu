@@ -4,8 +4,11 @@ from __future__ import annotations
 
 from typing import Any, cast
 
-from bajutsu import _yaml
+from bajutsu import _yaml, interp
 from bajutsu.scenario.models import Mock, Scenario
+
+# Placeholder a literal `totp.secret` seed is masked with in an evidence snapshot (BE-0152).
+_TOTP_PLACEHOLDER = "<redacted>"
 
 
 def _prune(obj: Any) -> Any:
@@ -21,6 +24,38 @@ def _prune(obj: Any) -> Any:
     if isinstance(obj, list):
         return [_prune(v) for v in obj]
     return obj
+
+
+def _mask_totp_secrets(node: Any) -> Any:
+    """Deep-copy a serialized scenario, masking any literal `totp.secret` seed (BE-0152).
+
+    Walks nested step lists (`if` / `forEach` / `web`) so a `totp` anywhere is reached. A
+    `${...}` reference is kept — it is not the seed, and its resolved value is scrubbed by the
+    run-level secret pass — while any literal seed becomes the fixed placeholder.
+    """
+    if isinstance(node, dict):
+        masked = {key: _mask_totp_secrets(value) for key, value in node.items()}
+        totp = masked.get("totp")
+        if isinstance(totp, dict):
+            secret = totp.get("secret")
+            if isinstance(secret, str) and not interp.is_reference(secret):
+                totp["secret"] = _TOTP_PLACEHOLDER
+        return masked
+    if isinstance(node, list):
+        return [_mask_totp_secrets(item) for item in node]
+    return node
+
+
+def redact_totp_secrets(scenario: Scenario) -> Scenario:
+    """A copy of `scenario` with literal `totp.secret` seeds masked, for on-disk evidence (BE-0152).
+
+    The executed scenario is snapshotted into the run's artifacts; a literal base32 seed there is
+    durable credential material, so it is replaced with a placeholder before the snapshot is
+    written. A `${secrets.*}` reference is left intact (its resolved value never reaches the
+    snapshot — BE-0032). Round-trips through the model so the result stays a valid scenario.
+    """
+    data = scenario.model_dump(by_alias=True, exclude_none=True)
+    return Scenario.model_validate(_mask_totp_secrets(data))
 
 
 def scenario_dict(scenario: Scenario) -> dict[str, Any]:

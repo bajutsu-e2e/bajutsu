@@ -35,7 +35,7 @@ from bajutsu.redaction import Redactor
 from bajutsu.report import run_provenance, scenario_render_inputs, write_report
 from bajutsu.runner.mailbox import build_mailbox_reader
 from bajutsu.runner.types import LeaseFn, OnBlockedFor, _no_net
-from bajutsu.scenario import Scenario, dump_scenario_file
+from bajutsu.scenario import Scenario, dump_scenario_file, redact_totp_secrets
 
 
 def _write_network(
@@ -394,12 +394,15 @@ def _assemble_report(
     `scenario.yaml`, the idb/provenance stamps, and `manifest.json` / `junit.xml` / `report.html`,
     then the final secret-value scrub.
     """
+    # Snapshot for evidence with literal `totp.secret` seeds masked (BE-0152) — a `${secrets.*}`
+    # reference is kept and its resolved value is scrubbed by the secret-value pass below.
+    snapshot = [redact_totp_secrets(s) for s in scenarios]
     # The merged Result tab renders each scenario as a structured view (definitions) with a toggle
     # to the raw YAML (sources). The same helper feeds the offline re-render, so the two match.
-    definitions, sources = scenario_render_inputs(scenarios)
+    definitions, sources = scenario_render_inputs(snapshot)
     run_dir.mkdir(parents=True, exist_ok=True)
     # Keep the executed scenario alongside its results (re-runnable / reviewable).
-    scenario_yaml = dump_scenario_file(scenarios, description)
+    scenario_yaml = dump_scenario_file(snapshot, description)
     (run_dir / "scenario.yaml").write_text(scenario_yaml, encoding="utf-8")
     # Record the idb versions this run was driven against, but only when idb actually drove it —
     # provenance for the artifact set, never a pass/fail input (BE-0005). Non-idb runs probe nothing.

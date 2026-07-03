@@ -7,7 +7,7 @@
 |---|---|
 | Proposal | [BE-0152](BE-0152-totp-seed-artifact-leak.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0152") |
 | Topic | Security hardening |
 <!-- /BE-METADATA -->
@@ -72,11 +72,14 @@ carries the seed into every subsequent run's artifacts.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Redact `totp.secret` in the scenario snapshot copied into run artifacts.
-- [ ] Confirm (or extend) BE-0032's secret-variable redaction covers a resolved `totp.secret`.
-- [ ] Add a regression test covering both the literal and `${secrets.*}`-resolved cases.
+- [x] Redact `totp.secret` in the scenario snapshot copied into run artifacts.
+- [x] Confirm (or extend) BE-0032's secret-variable redaction covers a resolved `totp.secret`.
+- [x] Add a regression test covering both the literal and `${secrets.*}`-resolved cases.
 
-No PR has landed yet.
+- 2026-07-03: `redact_totp_secrets` masks a literal `totp.secret` seed in the evidence snapshot
+  (`scenario.yaml` and the report's raw-YAML view / `manifest.json`), keeping a `${secrets.*}`
+  reference intact; confirmed the run-level secret-value scrub (BE-0032) already covers the
+  resolved value; added regression tests (unit + `run_and_report`) and bilingual evidence docs.
 
 ## References
 
