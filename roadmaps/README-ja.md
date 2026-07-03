@@ -574,6 +574,7 @@ Web（Playwright）backend とその完成（リッチな capability、並列実
 | [BE-0135](proposals/BE-0135-module-naming-debt/BE-0135-module-naming-debt-ja.md) | トップレベルモジュールの命名の負債を解消する | 提案 |
 | [BE-0139](proposals/BE-0139-roadmap-dashboard-issue-links/BE-0139-roadmap-dashboard-issue-links-ja.md) | ロードマップのダッシュボードと項目ファイルからトラッキング Issue へリンクする | 提案 |
 | [BE-0140](proposals/BE-0140-dedupe-claude-client-init/BE-0140-dedupe-claude-client-init-ja.md) | Claude クライアント初期化の重複をなくす | 提案 |
+| [BE-0142](proposals/BE-0142-cli-command-coverage/BE-0142-cli-command-coverage-ja.md) | CLI コマンド層にテストを追加する | 提案 |
 <!-- /GENERATED:proposals-dev-infra -->
 
 ### 外部サービスとの連携

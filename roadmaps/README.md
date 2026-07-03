@@ -581,6 +581,7 @@ Keeping the autonomous crawl fast and its code lean as it grows.
 | [BE-0135](proposals/BE-0135-module-naming-debt/BE-0135-module-naming-debt.md) | Resolve top-level module naming debt | Proposal |
 | [BE-0139](proposals/BE-0139-roadmap-dashboard-issue-links/BE-0139-roadmap-dashboard-issue-links.md) | Link the roadmap dashboard and item files to their tracking issue | Proposal |
 | [BE-0140](proposals/BE-0140-dedupe-claude-client-init/BE-0140-dedupe-claude-client-init.md) | Deduplicate Claude client initialization | Proposal |
+| [BE-0142](proposals/BE-0142-cli-command-coverage/BE-0142-cli-command-coverage.md) | Cover the CLI command layer | Proposal |
 <!-- /GENERATED:proposals-dev-infra -->
 
 ### Integration with external services

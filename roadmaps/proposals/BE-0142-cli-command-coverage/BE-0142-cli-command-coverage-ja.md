@@ -1,11 +1,11 @@
-[English](BE-XXXX-cli-command-coverage.md) · **日本語**
+[English](BE-0142-cli-command-coverage.md) · **日本語**
 
-# BE-XXXX — CLI コマンド層にテストを追加する
+# BE-0142 — CLI コマンド層にテストを追加する
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
 |---|---|
-| 提案 | [BE-XXXX](BE-XXXX-cli-command-coverage-ja.md) |
+| 提案 | [BE-0142](BE-0142-cli-command-coverage-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **提案** |
 | トピック | 開発基盤（コントリビュータ体験） |

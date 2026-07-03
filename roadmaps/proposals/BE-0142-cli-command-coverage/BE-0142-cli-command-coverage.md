@@ -1,11 +1,11 @@
-**English** · [日本語](BE-XXXX-cli-command-coverage-ja.md)
+**English** · [日本語](BE-0142-cli-command-coverage-ja.md)
 
-# BE-XXXX — Cover the CLI command layer
+# BE-0142 — Cover the CLI command layer
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-cli-command-coverage.md) |
+| Proposal | [BE-0142](BE-0142-cli-command-coverage.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
 | Topic | Development infrastructure (contributor workflow) |
