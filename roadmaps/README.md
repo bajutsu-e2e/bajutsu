@@ -242,6 +242,7 @@ Reduce friction for the many parallel sessions working this repo — treat merge
 | [BE-0103](implemented/BE-0103-dev-model-effort-tiering/BE-0103-dev-model-effort-tiering.md) | Right-size the model and reasoning effort per development task | Implemented |
 | [BE-0109](implemented/BE-0109-roadmap-tracking-issues/BE-0109-roadmap-tracking-issues.md) | GitHub Issues as the ownership tracker for open roadmap items | Implemented |
 | [BE-0113](implemented/BE-0113-design-doc-realignment/BE-0113-design-doc-realignment.md) | Realign DESIGN.md with the current implementation | Implemented |
+| [BE-0117](implemented/BE-0117-coverage-floor-ratchet/BE-0117-coverage-floor-ratchet.md) | Cover the rest of the CLI command layer, then ratchet the coverage floor | Implemented |
 | [BE-0139](implemented/BE-0139-roadmap-dashboard-issue-links/BE-0139-roadmap-dashboard-issue-links.md) | Link the roadmap dashboard and item files to their tracking issue | Implemented |
 <!-- /GENERATED:implemented-dev-infra -->
 
@@ -422,9 +423,7 @@ The Web (Playwright) backend and its completion (rich capabilities, parallel run
 Reduce friction for the many parallel sessions working this repo — treat merge conflicts as a design smell and reshape the file flow so independent changes touch disjoint files.
 
 <!-- GENERATED:in-progress-dev-infra -->
-| ID | Item | Status |
-|---|---|---|
-| [BE-0117](in-progress/BE-0117-coverage-floor-ratchet/BE-0117-coverage-floor-ratchet.md) | Cover the rest of the CLI command layer, then ratchet the coverage floor | In progress |
+
 <!-- /GENERATED:in-progress-dev-infra -->
 
 ### Dogfood fixtures (demo apps)

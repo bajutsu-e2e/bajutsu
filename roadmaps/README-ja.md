@@ -235,6 +235,7 @@ Bajutsu の「契約としての決定性」という立場を、Maestro の fla
 | [BE-0103](implemented/BE-0103-dev-model-effort-tiering/BE-0103-dev-model-effort-tiering-ja.md) | 開発タスクごとにモデルと推論エフォートを適正化する | 実装済み |
 | [BE-0109](implemented/BE-0109-roadmap-tracking-issues/BE-0109-roadmap-tracking-issues-ja.md) | GitHub Issues as the ownership tracker for open roadmap items | 実装済み |
 | [BE-0113](implemented/BE-0113-design-doc-realignment/BE-0113-design-doc-realignment-ja.md) | DESIGN.md を現状の実装に合わせる | 実装済み |
+| [BE-0117](implemented/BE-0117-coverage-floor-ratchet/BE-0117-coverage-floor-ratchet-ja.md) | CLI コマンド層の残りをテストしてから、カバレッジフロアをラチェットする | 実装済み |
 | [BE-0139](implemented/BE-0139-roadmap-dashboard-issue-links/BE-0139-roadmap-dashboard-issue-links-ja.md) | ロードマップのダッシュボードと項目ファイルからトラッキング Issue へリンクする | 実装済み |
 <!-- /GENERATED:implemented-dev-infra -->
 
@@ -415,9 +416,7 @@ Web（Playwright）backend とその完成（リッチな capability、並列実
 このリポジトリで並行作業する多数のセッションの摩擦を減らします。マージコンフリクトを設計の臭いとして扱い、独立した変更が互いに素なファイルだけに触れるようファイル流動を見直します。
 
 <!-- GENERATED:in-progress-dev-infra -->
-| ID | 項目 | 状態 |
-|---|---|---|
-| [BE-0117](in-progress/BE-0117-coverage-floor-ratchet/BE-0117-coverage-floor-ratchet-ja.md) | CLI コマンド層の残りをテストしてから、カバレッジフロアをラチェットする | 実装中 |
+
 <!-- /GENERATED:in-progress-dev-infra -->
 
 ### Dogfood フィクスチャ（デモアプリ）
