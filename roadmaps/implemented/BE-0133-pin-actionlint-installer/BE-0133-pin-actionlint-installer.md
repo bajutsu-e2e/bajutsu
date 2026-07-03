@@ -7,7 +7,7 @@
 |---|---|
 | Proposal | [BE-0133](BE-0133-pin-actionlint-installer.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0133") |
 | Topic | Security hardening |
 <!-- /BE-METADATA -->
@@ -91,10 +91,15 @@ unaffected. There is no product-code surface here — this is a CI supply-chain 
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Pin the `actionlint` installer script URL in `ci.yml:66` by commit SHA (keep the version as a comment)
-- [ ] Investigate and, if feasible, add checksum verification for the downloaded `actionlint` binary
+- [x] Pin the `actionlint` installer script URL in `ci.yml` by commit SHA (keep the version as a comment)
+- [x] Investigate and, if feasible, add checksum verification for the downloaded `actionlint` binary
 
-No PR has landed yet.
+- _(PR pending)_ — Pin the installer script to commit `914e7df` (the commit `v1.7.12` points at)
+  in `ci.yml`, keeping `# v1.7.12` for readability. The installer script has no checksum
+  verification of its own and fetches the binary from a mutable release asset, so a follow-on
+  `Verify actionlint binary checksum` step pins the extracted linux/amd64 binary's sha256
+  (`c872d6db…`, derived from `actionlint_1.7.12_linux_amd64.tar.gz` whose release checksum is
+  `8aca8db9…`) — closing both the script and binary trust surfaces.
 
 ## References
 
