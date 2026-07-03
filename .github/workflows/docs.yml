@@ -10,7 +10,7 @@
 # manual re-publishing. One-time setup before the first deploy can succeed: enable GitHub Pages
 # (Settings → Pages → source "GitHub Actions"); until then the deploy step fails with "Ensure GitHub
 # Pages has been enabled".
-name: docs
+name: Docs site (build & deploy)
 
 on:
   push:
@@ -43,7 +43,7 @@ concurrency:
 
 jobs:
   build:
-    name: build
+    name: build site
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
@@ -83,7 +83,7 @@ jobs:
           path: site
 
   deploy:
-    name: deploy
+    name: deploy to GitHub Pages
     needs: build
     runs-on: ubuntu-latest
     environment:

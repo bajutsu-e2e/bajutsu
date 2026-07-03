@@ -7,7 +7,7 @@
 # fails it loudly here — on a cadence we control — instead of surfacing later as a confusing run
 # failure. It also records the versions it ran against in the job summary. This is monitoring, not
 # a gate: it never feeds a run's pass/fail (the verdict stays deterministic and LLM-free).
-name: idb monitor
+name: idb compatibility monitor
 
 on:
   workflow_dispatch:

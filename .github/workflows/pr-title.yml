@@ -9,7 +9,7 @@
 # gating it only wedges dependency PRs. The exemption is a *step*-level guard, not a job `if:`, so the
 # job still completes green — keeping the required-check contract satisfied even when the check is
 # skipped for the bot's PRs.
-name: pr-title
+name: PR title lint
 
 on:
   pull_request:

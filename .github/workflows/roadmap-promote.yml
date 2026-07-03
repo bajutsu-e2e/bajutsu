@@ -4,7 +4,7 @@
 # pushes the fixup back onto the branch. The same invariant is a gate test
 # (tests/test_promote_roadmap_items.py), so the move is enforced even where this can't run
 # (a fork PR can't be pushed to); there the gate keeps the PR red until the move lands.
-name: roadmap-promote
+name: "Roadmap: promote shipped items"
 
 on:
   pull_request:

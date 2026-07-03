@@ -135,6 +135,26 @@ conflict in behavior — the merge is where they meet, which is exactly why the 
 suite (not an LLM, not a human eyeball) is the arbiter. Keep the suite meaningful and your branch
 rebased, and parallel work composes.
 
+## Naming GitHub Actions workflows and jobs
+
+A workflow's `name:` and each job's `name:` are all a reviewer sees in the Actions tab and a PR's
+checks list — the YAML behind them is a click away, so each name has to stand on its own. Name both
+in one shape: a short plain-language phrase for what the check does, plus a parenthetical for the
+tool or scope when that adds information — `E2E (Simulator)`, `Swift (BajutsuKit)`,
+`Web E2E (Playwright)`, `Dependency audit (pip-audit)`. Never leave a bare single word (`docs`,
+`build`, `deploy`) that only makes sense once you open the run. `e2e.yml` and `swift.yml` are the
+canonical examples (BE-0122). A `name:` that itself contains a colon-space needs quoting so YAML
+doesn't read it as a nested mapping — `name: "Roadmap: allocate BE IDs"`.
+
+One constraint bounds any rename. A required status check's context is the **job's** `name:`
+verbatim — not the workflow's — and `main`'s branch-protection ruleset pins a few of these by exact
+string: `check` (`ci.yml`), `E2E` (`e2e.yml`), and `require two approvals for BE proposals`
+(`roadmap-proposal-approvals.yml`). Renaming one of those job names without editing the ruleset's
+`required_status_checks` in the same instant strands every open PR on a check that no longer
+reports, silently blocking merges. Ruleset edits are out-of-repo admin state a normal PR can't
+carry, so leave those three names as they are; a deliberate rename must be paired with a human admin
+edit to the ruleset.
+
 ## Right-sizing the model and reasoning effort (BE-0103)
 
 This repository is agent-driven, so a session's **model** and **reasoning effort** are a real,
