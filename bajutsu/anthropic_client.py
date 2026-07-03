@@ -106,14 +106,14 @@ def make_client(client: Any = None, ai: AiConfig | None = None) -> Any:
     return Anthropic(**kwargs)
 
 
-class _CachesClient(Protocol):
+class CachesClient(Protocol):
     """The shape ensure_client memoizes onto — the two attrs every Claude* AI class already holds."""
 
     _client: Any
     _ai: AiConfig | None
 
 
-def ensure_client(agent: _CachesClient) -> Any:
+def ensure_client(agent: CachesClient) -> Any:
     """Return the agent's SDK client, building and caching it on ``_client`` on first use.
 
     The lazy-build-then-cache wrapper the AI authoring/investigation classes share (BE-0140).

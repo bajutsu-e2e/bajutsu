@@ -159,7 +159,7 @@ def test_credential_gap_bedrock_model_from_config(monkeypatch: pytest.MonkeyPatc
 class _CacheHolder:
     """A minimal stand-in for the six Claude* classes: just the two attrs ensure_client touches."""
 
-    def __init__(self, client: object = None, ai: ac.AiConfig | None = None) -> None:
+    def __init__(self, client: object | None = None, ai: ac.AiConfig | None = None) -> None:
         self._client = client
         self._ai = ai
 

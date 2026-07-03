@@ -116,10 +116,10 @@ copies:
 - [x] Add a unit test for the shared implementation (injection short-circuit, build-once
       caching) covering the behavior the six copies relied on
 
-- 2026-07-03: Added `ensure_client` + the `_CachesClient` structural Protocol next to
-  `make_client`, memoizing the built client on the instance; replaced the six byte-identical
-  `_ensure_client` bodies with `return ensure_client(self)`; covered the shared helper with
-  injection-short-circuit and build-once-and-reuse tests.
+- 2026-07-03 ([#613](https://github.com/bajutsu-e2e/bajutsu/pull/613)): Added `ensure_client` +
+  the `CachesClient` structural Protocol next to `make_client`, memoizing the built client on the
+  instance; replaced the six byte-identical `_ensure_client` bodies with `return ensure_client(self)`;
+  covered the shared helper with injection-short-circuit and build-once-and-reuse tests.
 
 ## References
 
