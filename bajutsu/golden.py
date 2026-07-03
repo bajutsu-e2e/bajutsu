@@ -12,7 +12,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from bajutsu.drivers.base import Driver, Element, Frame, Selector, _contains
+from bajutsu.drivers.base import Driver, Element, Frame, Selector, _contains, wait_until
 
 _ELEMENT_FIELDS = frozenset(Element.__required_keys__ | Element.__optional_keys__)
 
@@ -187,7 +187,7 @@ def assert_golden_tree(
     Raises:
         TimeoutError: The anchor element did not appear within *timeout*.
     """
-    if not driver.wait_for(anchor, timeout):
+    if not wait_until(driver, anchor, timeout):
         raise TimeoutError(f"anchor {anchor!r} did not appear within {timeout}s")
     elements = driver.query()
     golden = load_golden(golden_path)

@@ -7,7 +7,7 @@
 |---|---|
 | Proposal | [BE-0118](BE-0118-wait-for-contract-unification.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0118") |
 | Topic | Platform expansion (Android / Web / Flutter) |
 <!-- /BE-METADATA -->
@@ -99,13 +99,28 @@ real seconds regardless of which backend is driving.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Redefine `Driver.wait_for` as a documented single-shot contract
-- [ ] Add a shared deadline-polling helper (`wait_until` or equivalent) in `bajutsu/drivers/base.py`
-- [ ] Simplify `bajutsu/drivers/idb.py`'s `wait_for` to single-shot, deleting its bespoke loop
-- [ ] Point `bajutsu/golden.py:190` at the shared helper instead of calling `driver.wait_for` directly
-- [ ] Add a regression test with a fake driver that resolves late, covering the shared helper
+- [x] Redefine `Driver.wait_for` as a documented single-shot contract (`timeout` dropped from the
+      signature, not silently ignored)
+- [x] Add a shared deadline-polling helper (`wait_until`) in `bajutsu/drivers/base.py`
+- [x] Simplify every backend's `wait_for` to single-shot, deleting its bespoke loop — `idb.py`,
+      `xcuitest.py`, and `webview.py` each carried their own deadline loop, so unifying all three
+      (plus `playwright.py`/`fake.py`, already single-shot) fulfils the item's "no backend
+      reimplements the loop" goal
+- [x] Point `bajutsu/golden.py:190` at the shared helper instead of calling `driver.wait_for` directly
+- [x] Add a regression test with a fake driver that resolves late, covering the shared helper (plus
+      per-backend `wait_until` polling tests through idb / xcuitest / webview)
 
-No PR has landed yet.
+Log:
+
+- **Single slice — contract unification.** Made `Driver.wait_for` single-shot by contract (dropped
+  `timeout` from the signature), added the shared `base.wait_until` deadline poll, and simplified
+  `idb`, `xcuitest`, `webview`, `playwright`, and `fake` to single-shot checks. Pointed
+  `golden_assert` at `wait_until` so its timeout is now honoured identically on every backend
+  (Playwright previously ignored it, raising a false `TimeoutError`). The audit found five `wait_for`
+  implementations, not the two the proposal named (xcuitest and the WebView driver landed after it
+  was written), so the fix unifies all of them. Updated `docs/drivers.md`, `DESIGN.md`, and the
+  selector-count docs (both languages) to describe the single-shot contract. No LLM enters this path
+  (directive 1 untouched); a `timeout` now means the same real seconds on every backend (directive 2).
 
 ## References
 

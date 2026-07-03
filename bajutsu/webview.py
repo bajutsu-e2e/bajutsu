@@ -7,7 +7,6 @@ The server exposes the WebView's DOM as normalized elements and dispatches tap a
 from __future__ import annotations
 
 import json
-import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -102,9 +101,6 @@ class DomSource(Protocol):
     def scroll_to(self, webview_id: str, element_id: str) -> None: ...
 
 
-_POLL_INTERVAL = 0.05
-
-
 class WebContextDriver:
     """Driver wrapper that resolves selectors against a WebView's DOM instead of the native tree.
 
@@ -156,15 +152,13 @@ class WebContextDriver:
     def type_text(self, text: str) -> None:
         self._bridge.type_text(self._webview_id, text)
 
-    def wait_for(self, sel: Selector, timeout: float) -> bool:
-        deadline = time.monotonic() + timeout
-        while True:
-            elements = self.query()
-            if find_all(elements, sel):
-                return True
-            if time.monotonic() >= deadline:
-                return False
-            time.sleep(min(_POLL_INTERVAL, max(0, deadline - time.monotonic())))
+    def wait_for(self, sel: Selector) -> bool:
+        """Single-shot: whether `sel` matches the WebView's current DOM (BE-0118).
+
+        The deadline poll lives in the shared `base.wait_until`, so the timeout is honoured
+        identically on every backend.
+        """
+        return bool(find_all(self.query(), sel))
 
     def screenshot(self, path: str) -> None:
         raise UnsupportedAction("screenshot is not supported in web context (first slice)")

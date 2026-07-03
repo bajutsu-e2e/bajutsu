@@ -7,7 +7,7 @@
 |---|---|
 | 提案 | [BE-0118](BE-0118-wait-for-contract-unification-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **提案** |
+| 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0118") |
 | トピック | プラットフォーム拡張（Android / Web / Flutter） |
 <!-- /BE-METADATA -->
@@ -58,13 +58,15 @@ def wait_for(self, sel: base.Selector, timeout: float) -> bool:
 > 作業分解（作業の単位ごとに 1 つ）に対応し、ログには変更内容と時期（古い順）を PR へのリンクと
 > ともに記録します。
 
-- [ ] `Driver.wait_for` を単発チェックの契約として明文化する
-- [ ] `bajutsu/drivers/base.py` に共有のデッドラインポーリングヘルパー（`wait_until` など）を追加する
-- [ ] `bajutsu/drivers/idb.py` の `wait_for` を単発チェックに簡略化し、独自ループを削除する
-- [ ] `bajutsu/golden.py:190` を `driver.wait_for` の直接呼び出しから共有ヘルパー呼び出しに変更する
-- [ ] 要素が遅れて解決するフェイクドライバによるリグレッションテストを追加し、共有ヘルパーを検証する
+- [x] `Driver.wait_for` を単発チェックの契約として明文化する（`timeout` は黙って無視せず、シグネチャから外した）
+- [x] `bajutsu/drivers/base.py` に共有のデッドラインポーリングヘルパー `wait_until` を追加する
+- [x] 各バックエンドの `wait_for` を単発チェックに簡略化し、独自ループを削除する。`idb.py`・`xcuitest.py`・`webview.py` はいずれも独自のデッドラインループを抱えていたため、この 3 つ（および既に単発だった `playwright.py`・`fake.py`）をまとめて統一し、「どのバックエンドもループを再実装しない」という項目の狙いを満たした
+- [x] `bajutsu/golden.py:190` を `driver.wait_for` の直接呼び出しから共有ヘルパー呼び出しに変更する
+- [x] 要素が遅れて解決するフェイクドライバによるリグレッションテストを追加し、共有ヘルパーを検証する（あわせて idb / xcuitest / webview を通した `wait_until` のポーリングテストも追加）
 
-まだ着手した PR はありません。
+ログ:
+
+- **単一スライス（契約の統一）。** `Driver.wait_for` を契約上の単発チェックにし（`timeout` をシグネチャから外し）、共有のデッドラインポーリング `base.wait_until` を追加して、`idb`・`xcuitest`・`webview`・`playwright`・`fake` を単発チェックに簡略化しました。`golden_assert` を `wait_until` に向けたことで、そのタイムアウトはどのバックエンドでも同一に守られます（Playwright は以前これを無視し、偽の `TimeoutError` を送出していました）。調査の結果、`wait_for` の実装は提案が挙げた 2 つではなく 5 つ見つかったため（xcuitest と WebView ドライバは提案の執筆後に着地したもの）、そのすべてを統一しました。単発チェックの契約を説明するよう `docs/drivers.md`・`DESIGN.md`・セレクタ件数のドキュメント（両言語）を更新しました。この経路に LLM は入りません（ディレクティブ 1 は不変）。`timeout` はどのバックエンドでも同じ実時間を意味するようになりました（ディレクティブ 2）。
 
 ## 参考
 
