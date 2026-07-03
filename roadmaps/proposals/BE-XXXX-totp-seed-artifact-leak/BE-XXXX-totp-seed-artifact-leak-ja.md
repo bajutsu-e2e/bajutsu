@@ -1,6 +1,6 @@
 [English](BE-XXXX-totp-seed-artifact-leak.md) · **日本語**
 
-# BE-XXXX — TOTP のシード値を run 成果物から締め出す
+# BE-XXXX — TOTP のシード値を run 成果物に含めない
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
