@@ -29,8 +29,8 @@ URL エンコード、Basic 認証の base64、HTML・JSON エスケープ、あ
 1. **パーセントエンコーディング。** URL のクエリパラメータやフォームエンコードされたボディとして
    渡された秘密情報（`token=p%40ssw0rd`）は、`p@ssw0rd` という値をそのまま含んでいません。
    エンコードされた形式は別の文字列であり、完全一致では決してマッチしません。
-2. **`Basic base64(user:pass)`。** HTTP の Basic 認証は `Authorization: Basic
-   <base64(username:password)>` を送信します。パスワードの生の値はヘッダーのテキストに
+2. **`Basic base64(user:pass)`。** HTTP の Basic 認証は
+   `Authorization: Basic <base64(username:password)>` を送信します。パスワードの生の値はヘッダーのテキストに
    一切現れず、base64 でエンコードされコロンで結合された形式だけが現れるため、完全一致のパスは
    一切これに触れません。捕捉された `network.json` の exchange には、容易にデコードできる
    認証情報がそのまま残ります。
