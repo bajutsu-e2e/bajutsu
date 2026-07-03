@@ -8,7 +8,6 @@
 | Proposal | [BE-XXXX](BE-XXXX-serve-triage.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
-| Track | [Proposals](../../README.md#proposals) |
 | Topic | Surfacing CLI features in the serve Web UI |
 <!-- /BE-METADATA -->
 
@@ -73,6 +72,20 @@ human accepts, never an automatic edit.
 * **Run triage inline in the request rather than as a job.** Rejected: AI triage can take many
   seconds and must be cancelable and streamable like the other long actions; reusing the job model
   keeps the UX consistent and the server responsive.
+
+## Progress
+
+> Keep this current as work proceeds. The checklist mirrors the MECE work breakdown in
+> *Detailed design* (one box per unit of work); the log records what changed and when
+> (oldest first), linking the PRs.
+
+- [ ] Add the `POST /api/triage` endpoint (`{runId, scenario, ai?}`), running triage as a serve job
+      that reuses the existing job / SSE / cancel machinery
+- [ ] Add the "Triage" action on a failed run's Replay report and History list, with a diff preview
+      for any proposed fix
+- [ ] Wire the AI (`--ai`) path as opt-in, defaulting to the deterministic heuristic agent
+
+No PR has landed yet.
 
 ## References
 
