@@ -14,7 +14,7 @@ from pathlib import Path
 
 import pytest
 
-from scripts.e2e_changes import changed_files, is_relevant
+from scripts.e2e_changes import changed_files, is_relevant, main
 
 
 def test_roadmap_only_change_is_not_relevant() -> None:
@@ -110,3 +110,37 @@ def test_changed_files_uses_merge_base_not_branch_tips(
     changed = changed_files(main_tip, pr_tip)
     assert changed == ["roadmaps/proposals/BE-XXXX-foo/BE-XXXX-foo.md"]
     assert is_relevant(changed) is False
+
+
+def test_main_workflow_dispatch_is_always_relevant(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # No PR context (a manual workflow_dispatch): with no base to diff against, main() emits
+    # relevant=true to GITHUB_OUTPUT without touching git. Pins the contract the docstring states
+    # and the workflow's `changes` job relies on.
+    monkeypatch.delenv("BASE_SHA", raising=False)
+    monkeypatch.delenv("HEAD_SHA", raising=False)
+    output = tmp_path / "github_output"
+    monkeypatch.setenv("GITHUB_OUTPUT", str(output))
+    assert main() == 0
+    assert output.read_text(encoding="utf-8") == "relevant=true\n"
+
+
+def test_main_emits_false_for_a_roadmap_only_pr(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # main() end to end over the base-advanced scenario: it reads BASE_SHA/HEAD_SHA, runs the
+    # merge-base diff, and writes relevant=false to GITHUB_OUTPUT for a roadmap-only PR.
+    _init_repo(tmp_path, monkeypatch)
+    _commit(tmp_path, "README.md", "seed")
+    _git(tmp_path, "branch", "pr")
+    main_tip = _commit(tmp_path, "bajutsu/runner/pipeline.py", "unrelated on main")
+    _git(tmp_path, "checkout", "-q", "pr")
+    pr_tip = _commit(tmp_path, "roadmaps/proposals/BE-XXXX-foo/BE-XXXX-foo.md", "roadmap only")
+
+    output = tmp_path / "github_output"
+    monkeypatch.setenv("BASE_SHA", main_tip)
+    monkeypatch.setenv("HEAD_SHA", pr_tip)
+    monkeypatch.setenv("GITHUB_OUTPUT", str(output))
+    assert main() == 0
+    assert output.read_text(encoding="utf-8") == "relevant=false\n"
