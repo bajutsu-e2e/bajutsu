@@ -34,7 +34,7 @@ from bajutsu.serve.helpers import target_scenarios_dir, valid_run_id
 from bajutsu.serve.logbus import InMemoryLogBus, LogBus
 from bajutsu.serve.scenarios import LocalScenarioStore, ScenarioStore
 from bajutsu.serve.sessions import InMemorySessionStore, SessionStore
-from bajutsu.serve.sso import NativeSsoEngine, SsoEngine
+from bajutsu.serve.sso import SsoEngine, default_sso_engine
 from bajutsu.serve.uploads import Upload
 
 logger = logging.getLogger(__name__)
@@ -189,10 +189,11 @@ class ServeState:
     # unchanged without one. Annotated as a string (lazy) so the default path never loads SQLAlchemy.
     repository: Repository | None = None
     simctl: env.RunFn = env._real_run  # runs `xcrun simctl …` (booting devices, listing them)
-    # AWS SSO sign-in for the Bedrock provider (BE-0056). Injectable seam: the gate drives a fake; the
-    # default native engine drives boto3 sso-oidc lazily (only when used) and holds in-flight device
-    # authorizations. Sign-in sets AWS_PROFILE in os.environ, inherited by spawned jobs (_spawn_env).
-    sso_engine: SsoEngine = field(default_factory=NativeSsoEngine)
+    # AWS SSO sign-in for the Bedrock provider (BE-0056). Injectable seam: the gate drives a fake; by
+    # default the CLI-delegation engine is used when `aws` is on PATH, else the native boto3
+    # sso-oidc flow (both lazily, only when used). Sign-in sets AWS_PROFILE in os.environ, inherited
+    # by spawned jobs (_spawn_env).
+    sso_engine: SsoEngine = field(default_factory=default_sso_engine)
     jobs: dict[str, Job] = field(default_factory=dict)
     # Cap on concurrently-running run/record jobs so one caller can't monopolize the scarce device
     # (BE-0051). <= 0 means unlimited; serve() sets it from --max-concurrent-runs (default 4).

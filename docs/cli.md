@@ -583,7 +583,7 @@ bajutsu serve [--port 8765] [--config bajutsu.config.yaml] [--root .] [--runs ru
   the `idb` client resolves). Run it from the project root so `bajutsu.config.yaml` resolves.
 - The **Settings** panel selects the AI provider (Anthropic API or Amazon Bedrock) and holds the
   Claude API key (Anthropic path). For Bedrock it also offers an **AWS SSO sign-in**
-  ([BE-0056](../roadmaps/proposals/BE-0056-web-ui-aws-sso-login/BE-0056-web-ui-aws-sso-login.md)):
+  ([BE-0056](../roadmaps/in-progress/BE-0056-web-ui-aws-sso-login/BE-0056-web-ui-aws-sso-login.md)):
   enter a profile, click **Sign in**, and approve the verification link in your browser; on
   completion `serve` sets `AWS_PROFILE` (in memory, never to disk) so spawned `record` / `crawl`
   jobs resolve Bedrock credentials through that SSO session. Re-signing-in needs no `serve` restart

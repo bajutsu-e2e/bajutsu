@@ -424,6 +424,14 @@ Web（Playwright）backend とその完成（リッチな capability、並列実
 
 <!-- /GENERATED:in-progress-authoring -->
 
+### AI プロバイダ設定
+
+<!-- GENERATED:in-progress-ai-provider -->
+| ID | 項目 | 状態 |
+|---|---|---|
+| [BE-0056](in-progress/BE-0056-web-ui-aws-sso-login/BE-0056-web-ui-aws-sso-login-ja.md) | Web UI からの AWS SSO サインイン（Bedrock 認証情報の取得） | 実装中 |
+<!-- /GENERATED:in-progress-ai-provider -->
+
 ## 提案
 
 検討中で、まだ決定していません。着手したら *実装中* に、出荷したら *実装済み* に昇格してください。
@@ -485,7 +493,6 @@ Web（Playwright）backend とその完成（リッチな capability、並列実
 <!-- GENERATED:proposals-ai-provider -->
 | ID | 項目 | 状態 |
 |---|---|---|
-| [BE-0056](proposals/BE-0056-web-ui-aws-sso-login/BE-0056-web-ui-aws-sso-login-ja.md) | Web UI からの AWS SSO サインイン（Bedrock 認証情報の取得） | 提案 |
 | [BE-0104](proposals/BE-0104-vendor-neutral-ai-backend/BE-0104-vendor-neutral-ai-backend-ja.md) | ベンダー中立な AI バックエンドインターフェース | 提案 |
 | [BE-0111](proposals/BE-0111-ai-sdk-optional-dependency/BE-0111-ai-sdk-optional-dependency-ja.md) | AI SDK を extra へ降ろし、決定的ゲートを AI 非依存でインストールできるようにする | 提案 |
 <!-- /GENERATED:proposals-ai-provider -->

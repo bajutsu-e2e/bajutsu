@@ -479,7 +479,7 @@ bajutsu serve [--port 8765] [--config bajutsu.config.yaml] [--root .] [--runs ru
   `bajutsu.config.yaml` が解決するようプロジェクトルートから実行してください。
 - **Settings** パネルで AI provider（Anthropic API か Amazon Bedrock）を選び、Anthropic 経路では
   Claude API キーを保持します。Bedrock では **AWS SSO サインイン**も行えます
-  （[BE-0056](../../roadmaps/proposals/BE-0056-web-ui-aws-sso-login/BE-0056-web-ui-aws-sso-login-ja.md)）。
+  （[BE-0056](../../roadmaps/in-progress/BE-0056-web-ui-aws-sso-login/BE-0056-web-ui-aws-sso-login-ja.md)）。
   profile を入力して **Sign in** を押し、ブラウザで検証リンクを承認すると、`serve` が `AWS_PROFILE` を
   設定し（メモリ上のみ、ディスクには書かない）、起動される `record` / `crawl` ジョブがその SSO セッション
   経由で Bedrock の認証情報を解決します。再サインインに `serve` の再起動は要りません（各ジョブは認証情報

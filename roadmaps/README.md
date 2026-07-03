@@ -431,6 +431,14 @@ Consolidating the demo and dogfood apps onto the showcase suite: bringing it to 
 
 <!-- /GENERATED:in-progress-authoring -->
 
+### AI provider configuration
+
+<!-- GENERATED:in-progress-ai-provider -->
+| ID | Item | Status |
+|---|---|---|
+| [BE-0056](in-progress/BE-0056-web-ui-aws-sso-login/BE-0056-web-ui-aws-sso-login.md) | AWS SSO sign-in from the web UI for Bedrock | In progress |
+<!-- /GENERATED:in-progress-ai-provider -->
+
 ## Proposals
 
 Under consideration — not yet decided. Promote an item to *In progress* once work starts, or to *Implemented* when it ships.
@@ -492,7 +500,6 @@ The scope is currently **limited to the iOS Simulator** ([DESIGN §1](../DESIGN.
 <!-- GENERATED:proposals-ai-provider -->
 | ID | Item | Status |
 |---|---|---|
-| [BE-0056](proposals/BE-0056-web-ui-aws-sso-login/BE-0056-web-ui-aws-sso-login.md) | AWS SSO sign-in from the web UI for Bedrock | Proposal |
 | [BE-0104](proposals/BE-0104-vendor-neutral-ai-backend/BE-0104-vendor-neutral-ai-backend.md) | Vendor-neutral AI backend interface | Proposal |
 | [BE-0111](proposals/BE-0111-ai-sdk-optional-dependency/BE-0111-ai-sdk-optional-dependency.md) | Make the AI SDK an optional extra so the deterministic gate installs AI-free | Proposal |
 <!-- /GENERATED:proposals-ai-provider -->
