@@ -9,7 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0111") |
-| 実装 PR | [#NNN](https://github.com/bajutsu-e2e/bajutsu/pull/NNN) |
+| 実装 PR | [#623](https://github.com/bajutsu-e2e/bajutsu/pull/623) |
 | トピック | AI provider configuration |
 | 関連 | [BE-0047](../../implemented/BE-0047-ai-data-sovereignty/BE-0047-ai-data-sovereignty-ja.md), [BE-0053](../../implemented/BE-0053-bedrock-ai-provider/BE-0053-bedrock-ai-provider-ja.md), [BE-0101](../../implemented/BE-0101-ai-free-zero-config/BE-0101-ai-free-zero-config-ja.md), [BE-0104](../../proposals/BE-0104-vendor-neutral-ai-backend/BE-0104-vendor-neutral-ai-backend-ja.md) |
 <!-- /BE-METADATA -->
@@ -135,7 +135,7 @@ AI extra を引き続きインストールします（`bajutsu[bedrock,server,wo
 - [x] AI 経路のテスト網を `dev` グループで維持し、基本インストールが AI 非依存で決定的サブセットを走らせられることを検査する
 - [x] `pip install bajutsu` と `bajutsu[ai]` の分岐を文書化する（両言語）
 
-- [#NNN](https://github.com/bajutsu-e2e/bajutsu/pull/NNN)：`anthropic` を `ai` extra へ移し（基本
+- [#623](https://github.com/bajutsu-e2e/bajutsu/pull/623)：`anthropic` を `ai` extra へ移し（基本
   インストールを AI-free に）、`bedrock` をその上に再構成し、`dev` グループに `ai` を追加。import
   guard に「既定の経路で `anthropic` を import しない」検査と、基本インストール（`anthropic` 不在）を
   模したシミュレーションを追加し、`bajutsu` / `bajutsu[ai]` のインストール分岐を両言語で文書化しました。

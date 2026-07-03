@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0111") |
-| Implementing PR | [#NNN](https://github.com/bajutsu-e2e/bajutsu/pull/NNN) |
+| Implementing PR | [#623](https://github.com/bajutsu-e2e/bajutsu/pull/623) |
 | Topic | AI provider configuration |
 | Related | [BE-0047](../../implemented/BE-0047-ai-data-sovereignty/BE-0047-ai-data-sovereignty.md), [BE-0053](../../implemented/BE-0053-bedrock-ai-provider/BE-0053-bedrock-ai-provider.md), [BE-0101](../../implemented/BE-0101-ai-free-zero-config/BE-0101-ai-free-zero-config.md), [BE-0104](../../proposals/BE-0104-vendor-neutral-ai-backend/BE-0104-vendor-neutral-ai-backend.md) |
 <!-- /BE-METADATA -->
@@ -134,7 +134,7 @@ untouched — this is a packaging change only.
 - [x] Keep AI-path test coverage via the `dev` group; assert a base install runs the deterministic subset AI-free
 - [x] Document the `pip install bajutsu` vs `bajutsu[ai]` split (both languages)
 
-- [#NNN](https://github.com/bajutsu-e2e/bajutsu/pull/NNN): move `anthropic` into an `ai` extra
+- [#623](https://github.com/bajutsu-e2e/bajutsu/pull/623): move `anthropic` into an `ai` extra
   (base install AI-free), recompose `bedrock` on top of it, add `ai` to the `dev` group, extend the
   import guard with an anthropic-off-the-default-path check plus a base-install (anthropic-absent)
   simulation, and document the `bajutsu` / `bajutsu[ai]` install split in both languages.
