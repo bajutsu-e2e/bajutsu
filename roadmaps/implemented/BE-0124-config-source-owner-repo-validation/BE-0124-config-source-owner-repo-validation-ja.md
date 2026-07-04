@@ -9,6 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0124") |
+| 実装 PR | [#627](https://github.com/bajutsu-e2e/bajutsu/pull/627) |
 | トピック | セキュリティ強化 |
 <!-- /BE-METADATA -->
 
