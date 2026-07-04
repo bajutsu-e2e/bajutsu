@@ -42,8 +42,8 @@
    `zip -r runs/<id>` を打つしかなく、これは間違えやすく（誤ったルートから固めれば相対リンクが壊れます）、その
    シェルの前にいない人には使えません。
 3. **ホスト型やリモートの `serve` では、ブラウザからファイルシステムに触れません。** `serve` をリモートの worker や
-   共有ホストで動かす場合（[BE-0015](../in-progress/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting-ja.md)、
-   [BE-0016](../in-progress/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting-ja.md)）、`runs/` ディレクトリは
+   共有ホストで動かす場合（[BE-0015](../BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting-ja.md)、
+   [BE-0016](../BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting-ja.md)）、`runs/` ディレクトリは
    そのマシン上にあり、利用者の手元にはありません。ブラウザの利用者には、完全な run を取り出す手段がありません。
    埋め込まれたレポートを見ることはできても、持ち帰れないのです。これを塞げるのは、ダウンロード用のエンドポイント
    だけです。
@@ -127,8 +127,8 @@ UI では、ダウンロードボタンを History の一覧と Replay の結果
 
 複数 run の一括梱包、軽量な「レポートと参照資産だけ」の部分集合（「検討した代替案」を参照）、クラウドへの
 アップロードや共有リンク（ホスティングの関心事、
-[BE-0015](../in-progress/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting-ja.md) /
-[BE-0016](../in-progress/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting-ja.md)）、古い run の保持や掃除は
+[BE-0015](../BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting-ja.md) /
+[BE-0016](../BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting-ja.md)）、古い run の保持や掃除は
 対象外です。
 
 ## 検討した代替案
@@ -163,8 +163,8 @@ UI では、ダウンロードボタンを History の一覧と Replay の結果
   LLM を足さず、合否のあとに走ります。
 * [BE-0011 — ローカル Web UI（`bajutsu serve`）](../BE-0011-local-web-ui-serve/BE-0011-local-web-ui-serve-ja.md)：
   本項目が拡張する、埋め込みレポートと相対リンクの証跡配信。ダウンロードボタンの置き場所。
-* [BE-0015 — Web UI の公開ホスティング](../in-progress/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting-ja.md)、
-  [BE-0016 — Web UI のセルフホスティング](../in-progress/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting-ja.md)：
+* [BE-0015 — Web UI の公開ホスティング](../BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting-ja.md)、
+  [BE-0016 — Web UI のセルフホスティング](../BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting-ja.md)：
   ブラウザから worker のファイルシステムに触れない状況で、ダウンロード用エンドポイントが重要になる理由。
 * [BE-0032 — Secret 変数](../BE-0032-secret-variables/BE-0032-secret-variables-ja.md)：zip が引き継ぐ、
   既存の成果物スクラブ。

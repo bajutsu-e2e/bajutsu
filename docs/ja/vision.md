@@ -62,9 +62,9 @@ Bajutsu は 3 つの独立した軸に沿って広がります。これらは合
 コントロールプレーン（認証、履歴、キュー、レポートビューア）を、高価なデバイスワーカープールから
 切り離し、チームがブラウザから実行とレビューを行えるようにします。
 
-- **[BE-0015（公開 / クラウドホスティング）](../../roadmaps/in-progress/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting-ja.md)**：公開とマルチテナントを扱います。control-plane ⇄ macOS ワーカープールの
+- **[BE-0015（公開 / クラウドホスティング）](../../roadmaps/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting-ja.md)**：公開とマルチテナントを扱います。control-plane ⇄ macOS ワーカープールの
   分離、`subprocess.Popen` からジョブキューへのリファクタ、そして公開時に必須となるセキュリティ堅牢化です。
-- **[BE-0016（セルフホスティング）](../../roadmaps/in-progress/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting-ja.md)**：自前の Mac を扱います。今日すぐ使える単一 Mac 構成と、完全にセルフホストする
+- **[BE-0016（セルフホスティング）](../../roadmaps/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting-ja.md)**：自前の Mac を扱います。今日すぐ使える単一 Mac 構成と、完全にセルフホストする
   マルチテナント構成です。
 - **MCP（Model Context Protocol）統合**（[roadmap → 統合と自動化](../../roadmaps/README-ja.md#統合と自動化mcp-化)）：`run`/`doctor`/`record`/`codegen` を MCP ツールとして、
   証跡を MCP リソースとして公開し、エージェントが直接 Bajutsu を駆動できるようにします。これは Tier-1 の境界の内側に収まります。
@@ -116,7 +116,7 @@ Bajutsu は 3 つの独立した軸に沿って広がります。これらは合
 3. **ビジュアル回帰アサーション**（[roadmap: BE-0029](../../roadmaps/BE-0029-visual-regression-assertions/BE-0029-visual-regression-assertions-ja.md)）。競合が
    AI でゲートしている決定的な能力であり、directive を緊張させるどころか、むしろ強める差別化要素です。
 
-ホスティング軸（[BE-0015](../../roadmaps/in-progress/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting-ja.md) / [BE-0016](../../roadmaps/in-progress/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting-ja.md)）は、より大きく、
+ホスティング軸（[BE-0015](../../roadmaps/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting-ja.md) / [BE-0016](../../roadmaps/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting-ja.md)）は、より大きく、
 切り離して進められる投資です。需要が個人のものではなく協働のものになったときに進めます。
 
 > **[roadmap](../../roadmaps/README-ja.md) との関係：** 本ページは根拠と全体的な方向を扱い、ロードマップは

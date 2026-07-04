@@ -33,7 +33,7 @@ LLM は使わず、pass/fail には影響しません。
 スイート全体で集計すると、これがカバレッジマップになります。スイートが到達する `id` 名前空間と画面
 の集合、観測するエンドポイント、そして何より**ギャップ**です。ギャップとは、どのシナリオも触れて
 いない宣言済み名前空間、一度も訪れていない画面を指します。自律クロール
-（[BE-0038](../in-progress/BE-0038-autonomous-crawl-exploration/BE-0038-autonomous-crawl-exploration-ja.md)）
+（[BE-0038](../BE-0038-autonomous-crawl-exploration/BE-0038-autonomous-crawl-exploration-ja.md)）
 と組み合わせれば、クローラが発見した表面が第二の分母になり、「探索が見つけた画面のうち、スイート
 はいくつ訪れるか」を測れます。これはテストのギャップを可読にする支援ツールであり、UI 専用の競合が
 提供していない能力です。
@@ -46,7 +46,7 @@ LLM は使わず、pass/fail には影響しません。
   経由）、アサート対象エンドポイントを得ます。(2) run セット全体の証跡。実際に描画された要素ツリー、
   実際に到達した画面、`network.json` の交信を得ます。
 - **分母。** アプリが宣言した `idNamespaces`、および利用可能なら
-  [BE-0038](../in-progress/BE-0038-autonomous-crawl-exploration/BE-0038-autonomous-crawl-exploration-ja.md)
+  [BE-0038](../BE-0038-autonomous-crawl-exploration/BE-0038-autonomous-crawl-exploration-ja.md)
   のクロールが発見した表面です。アプリ非依存であり、分母はハードコードした知識ではなく `apps.<name>`
   config から得ます。
 - **出力。** HTML ／ JSON のカバレッジレポートです。名前空間ごとのカバレッジ、既知／発見済みに対する
@@ -78,6 +78,6 @@ LLM は使わず、pass/fail には影響しません。
 ## 参考
 
 `bajutsu/doctor.py`（id 名前空間／規約スコア）、
-[BE-0038](../in-progress/BE-0038-autonomous-crawl-exploration/BE-0038-autonomous-crawl-exploration-ja.md)、
+[BE-0038](../BE-0038-autonomous-crawl-exploration/BE-0038-autonomous-crawl-exploration-ja.md)、
 [evidence.md](../../../docs/ja/evidence.md)、[configuration.md](../../../docs/ja/configuration.md)、
 [DESIGN §2 / §7](../../../DESIGN.md)

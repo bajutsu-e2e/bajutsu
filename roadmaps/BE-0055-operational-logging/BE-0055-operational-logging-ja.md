@@ -16,7 +16,7 @@
 ## はじめに
 
 永続化、identity、マルチテナントの実装が着地し
-（[BE-0015](../in-progress/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting-ja.md)）、ホスト型の
+（[BE-0015](../BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting-ja.md)）、ホスト型の
 `bajutsu serve` は**複数プロセスのマルチテナント**サービスになりました。制御プレーンとリモートの macOS
 worker から成り、org でスコープされます。ところが、ツール自身の**運用ログはほぼ存在しません**。コードベース
 全体で `getLogger` の呼び出しは 1 箇所だけで、stdlib のリクエストハンドラはリクエストごとのログを意図的に
@@ -43,7 +43,7 @@ worker から成り、org でスコープされます。ところが、ツール
 - **運用出力に機密マスクの保証がない。** その場しのぎの `print`／ログ呼び出しは、解決済みの `${secrets.X}` 値、
   オペレータトークン、OAuth の session id、`ANTHROPIC_API_KEY` を漏らしかねません。証跡には redaction の仕組みが
   ありますが、運用チャネルには同じ保証がありません。
-- **設計の担当が不在。** [BE-0015](../in-progress/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting-ja.md)
+- **設計の担当が不在。** [BE-0015](../BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting-ja.md)
   は可観測性の行で「構造化 JSON ログ」に触れていますが、設計は先送りで、契約を所有する項目がありません。
 - **読み手は将来の SRE。** ホスト型サービスを運用する人には、grep でき、アラートを張れ、相関の取れるログが
   必要です。テスト対象の証跡をかき分けて探す形にはしたくありません。
@@ -148,7 +148,7 @@ worker から成り、org でスコープされます。ところが、ツール
 ### スコープ外
 
 - **メトリクス／エラートラッキング／分散トレーシング**（Prometheus、Sentry、OpenTelemetry）：デプロイ／可観測性
-  の領域で、[BE-0015](../in-progress/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting-ja.md) が所有します。
+  の領域で、[BE-0015](../BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting-ja.md) が所有します。
 - **監査ログの閲覧 UI**：`audit_log` テーブルは存在します（BE-0015）。それを見せるのは別の関心事です。
 - **証跡と run 出力**：すでに所有されています（evidence サブシステム／LogBus）。
 - **ファイル出力／プロセス内ローテーション**：stdout のみ。「検討した代替案」を参照。
@@ -173,7 +173,7 @@ worker から成り、org でスコープされます。ところが、ツール
 ## 参考
 
 - [DESIGN.md](../../../DESIGN.md) §2 — 決定性優先、機密マスク。
-- [BE-0015 — Web UI の公開ホスティング](../in-progress/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting-ja.md) — ホスト型トポロジと、本項目が実体化する「構造化 JSON ログ」の可観測性行。
+- [BE-0015 — Web UI の公開ホスティング](../BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting-ja.md) — ホスト型トポロジと、本項目が実体化する「構造化 JSON ログ」の可観測性行。
 - [BE-0032 — Secret 変数](../BE-0032-secret-variables/BE-0032-secret-variables-ja.md) — 本項目と共有する機密マスクの仕組み。
 - [BE-0047 — AI データ主権](../BE-0047-ai-data-sovereignty/BE-0047-ai-data-sovereignty-ja.md) — 本項目が運用ログへ広げる「redact された経路」の思想。
 - [BE-0011 — ローカル Web UI（`bajutsu serve`）](../BE-0011-local-web-ui-serve/BE-0011-local-web-ui-serve-ja.md)、[BE-0051 — serve のハードニング](../BE-0051-serve-hardening-for-hosting/BE-0051-serve-hardening-for-hosting-ja.md) — 本ログが計装する serve。

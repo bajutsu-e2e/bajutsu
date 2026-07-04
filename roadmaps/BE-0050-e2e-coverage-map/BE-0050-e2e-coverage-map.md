@@ -33,7 +33,7 @@ assert on). The app config already declares its stable-id namespaces
 Aggregating across a suite turns that into a coverage map: the set of `id` namespaces and screens
 the suite reaches, the endpoints it observes, and — crucially — the **gaps**: declared namespaces
 with no scenario touching them, screens never visited. Paired with autonomous crawl
-([BE-0038](../in-progress/BE-0038-autonomous-crawl-exploration/BE-0038-autonomous-crawl-exploration.md)),
+([BE-0038](../BE-0038-autonomous-crawl-exploration/BE-0038-autonomous-crawl-exploration.md)),
 the crawler's discovered surface becomes a second denominator: "of the screens exploration found,
 how many does the suite visit?" This is a support tool that makes test gaps legible, and a
 capability the UI-only competitors do not offer.
@@ -46,7 +46,7 @@ Proposal altitude.
   asserted endpoints each scenario references. (2) Run evidence across a run set — element trees
   actually rendered, screens actually reached, exchanges in `network.json`.
 - **Denominator.** The app's declared `idNamespaces` and, when available, the discovered surface
-  from a [BE-0038](../in-progress/BE-0038-autonomous-crawl-exploration/BE-0038-autonomous-crawl-exploration.md)
+  from a [BE-0038](../BE-0038-autonomous-crawl-exploration/BE-0038-autonomous-crawl-exploration.md)
   crawl. App-agnostic: the denominator comes from `apps.<name>` config, not hard-coded knowledge.
 - **Output.** An HTML / JSON coverage report: per-namespace coverage, screens visited vs known /
   discovered, endpoints observed vs declared, and an explicit gap list (untested namespaces /
@@ -77,6 +77,6 @@ Proposal altitude.
 ## References
 
 `bajutsu/doctor.py` (id namespaces / convention score),
-[BE-0038](../in-progress/BE-0038-autonomous-crawl-exploration/BE-0038-autonomous-crawl-exploration.md),
+[BE-0038](../BE-0038-autonomous-crawl-exploration/BE-0038-autonomous-crawl-exploration.md),
 [evidence.md](../../../docs/evidence.md), [configuration.md](../../../docs/configuration.md),
 [DESIGN §2 / §7](../../../DESIGN.md)

@@ -18,7 +18,7 @@
 
 A purpose-built fixture suite that becomes Bajutsu's primary dogfood target — the practice
 ground where `record` (Tier 1 authoring), `crawl` (Tier 1 exploration,
-[BE-0038](../in-progress/BE-0038-autonomous-crawl-exploration/BE-0038-autonomous-crawl-exploration.md)),
+[BE-0038](../BE-0038-autonomous-crawl-exploration/BE-0038-autonomous-crawl-exploration.md)),
 and `run` (Tier 2 deterministic gate) are all exercised against one realistic app. The suite
 ships **the same app written twice** — once in UIKit, once in SwiftUI — and **each in two
 accessibility variants** (identifiers on / off), for four installable products from two
@@ -110,7 +110,7 @@ The shape:
   set, and the demo wiring (`Makefile`, READMEs). `run` and `doctor` work against this fixture
   today; `record` works today against the `-noax` apps.
 - **Forward-looking:** `crawl` is itself a proposal
-  ([BE-0038](../in-progress/BE-0038-autonomous-crawl-exploration/BE-0038-autonomous-crawl-exploration.md))
+  ([BE-0038](../BE-0038-autonomous-crawl-exploration/BE-0038-autonomous-crawl-exploration.md))
   and not yet implemented — the showcase is built to be its first real target (the seed config
   and expected screen-map notes ship as `crawl/` test data), but the crawl demo lands when
   BE-0038 does.
@@ -143,7 +143,7 @@ The shape:
 
 - [`demos/showcase/SPEC.md`](../../../demos/showcase/SPEC.md) ([ja](../../../demos/showcase/SPEC.ja.md)) — the screen-by-screen contract
 - [DESIGN §2 / §5 / §7.1 / §7.3 / §8 / §11](../../../DESIGN.md) — determinism, stability ladder, per-app onboarding, identifier naming, config, risks
-- [BE-0038](../in-progress/BE-0038-autonomous-crawl-exploration/BE-0038-autonomous-crawl-exploration.md) — autonomous crawl exploration (this fixture's forward-looking target)
+- [BE-0038](../BE-0038-autonomous-crawl-exploration/BE-0038-autonomous-crawl-exploration.md) — autonomous crawl exploration (this fixture's forward-looking target)
 - [BE-0024](../BE-0024-doctor-onboarding/BE-0024-doctor-onboarding.md) — doctor / onboarding (consumes this fixture's coverage)
 - [BE-0006](../BE-0006-idb-element-tree-normalization/BE-0006-idb-element-tree-normalization.md) — idb element-tree normalization (the toolkit axis stresses this)
 - [`demos/features/app`](../../../demos/features/app) — the `sample` fixture this supersedes

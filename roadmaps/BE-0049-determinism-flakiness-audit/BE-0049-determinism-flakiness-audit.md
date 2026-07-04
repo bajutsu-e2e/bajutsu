@@ -42,7 +42,7 @@ well-named" to "is this suite reproducible".
 
 Repeat-and-diff proves determinism *at a point in time*. A second, longitudinal signal becomes
 available now that runs accumulate in a system of record (the DB-backed run records from
-[BE-0015](../in-progress/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md)): the same
+[BE-0015](../BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md)): the same
 scenario's verdict over its own history. But "the same scenario" is only meaningful if each run is
 stamped with a **stable scenario identity** and the **versions of the moving parts** — otherwise a
 verdict that flips is indistinguishable from a scenario that was edited, or an app/tool that
@@ -75,7 +75,7 @@ Proposal altitude; the design constraint is that the audit is purely observation
   id-coverage score (`bajutsu/doctor.py`).
 - **Run provenance & version stamping (longitudinal prerequisite).** Stamp each run — in
   `manifest.json` and the serve run record
-  ([BE-0015](../in-progress/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md) 7c-4) —
+  ([BE-0015](../BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md) 7c-4) —
   with a **scenario content hash** (a stable fingerprint of the executed `scenario.yaml`, which is
   already saved verbatim), the **tool version** (`bajutsu.__version__`), and, when resolvable, the
   **scenario's git revision** and the **app build id** (both optional — not every run is under git
@@ -107,13 +107,13 @@ may simply extend it.
 - [x] Stability score (static) and repeat-and-diff (dynamic) — both under `bajutsu audit`; advisory and read-only, never gating CI.
 - [x] Run provenance & version stamping — each `manifest.json` carries a `provenance` block (`scenarioHash`, `toolVersion`, `gitRevision`).
 - [x] Longitudinal view — `bajutsu audit --history` classifies each scenario (`flaky` / `deterministic` / `unproven`) by `(scenarioHash, name)`.
-- Follow-up: stamp the same provenance onto the serve DB run record (tracked under [BE-0015](../in-progress/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md)).
+- Follow-up: stamp the same provenance onto the serve DB run record (tracked under [BE-0015](../BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md)).
 
 ## References
 
 `bajutsu/doctor.py`, [selectors.md](../../../docs/selectors.md),
 [BE-0024](../BE-0024-doctor-onboarding/BE-0024-doctor-onboarding.md),
-[BE-0015](../in-progress/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md) — the
+[BE-0015](../BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md) — the
 DB-backed run records the longitudinal view mines (run provenance is stamped onto them);
 [BE-0044](../BE-0044-scenario-provenance/BE-0044-scenario-provenance.md) — a *different*
 provenance axis (step ↔ natural-language origin), not run versioning;

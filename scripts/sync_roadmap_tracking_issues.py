@@ -43,7 +43,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from build_roadmap_index import TITLE_RE, metadata_fields
-from roadmap_ids import LEGACY_CATEGORIES, iter_item_dirs, numbered_match
+from roadmap_ids import iter_item_dirs, numbered_match
 
 ROADMAP = Path("roadmaps")
 # Only these statuses are "open" and get a tracking issue; the other two are shipped / shelved.
@@ -65,7 +65,6 @@ class Item:
 
     be_id: str  # "BE-0042"
     slug: str
-    category: str
     status: str
     title: str  # H1 title text after the em dash
     intro: str  # Introduction section body (may be empty)
@@ -90,11 +89,10 @@ def _parse_english(item_dir: Path) -> tuple[str, str, str | None]:
 
 
 def scan_items(roadmap: Path) -> list[Item]:
-    """Every numbered ``BE-NNNN`` item — flat root and legacy status folders (BE-0159), sorted by id.
+    """Every numbered ``BE-NNNN`` item under ``roadmaps/``, sorted by id.
 
     Placeholders (``BE-XXXX``) aren't numbered, so they're skipped — a tracking issue is only ever
-    titled with a permanent id. Items without a readable Status are skipped. Each item's ``category``
-    reflects where it currently lives (``''`` once flattened), so its issue link points at the file.
+    titled with a permanent id. Items without a readable Status are skipped.
     """
     items: list[Item] = []
     for d in iter_item_dirs(roadmap):
@@ -105,10 +103,7 @@ def scan_items(roadmap: Path) -> list[Item]:
         if status is None:
             continue
         be_id, slug = f"BE-{match.group(1)}", match.group(2)
-        category = d.parent.name if d.parent.name in LEGACY_CATEGORIES else ""
-        items.append(
-            Item(be_id=be_id, slug=slug, category=category, status=status, title=title, intro=intro)
-        )
+        items.append(Item(be_id=be_id, slug=slug, status=status, title=title, intro=intro))
     return sorted(items, key=lambda item: item.be_id)
 
 
@@ -208,13 +203,12 @@ def ensure_label() -> None:
 def issue_body(item: Item) -> str:
     """The issue body: a link back to the item's English file and a quote of its Introduction.
 
-    The link uses the item's current location — a status-folder prefix until it is flattened, none
-    afterwards (BE-0159). Once an item is flat its path is permanent, so the link stops rotting on
-    each promotion; the folder-prefixed form here is the transitional case while the migration runs.
+    The link is a flat ``roadmaps/BE-NNNN-<slug>/`` path (BE-0159), permanent for the item's whole
+    life — so an issue created while the item is a ``Proposal`` still resolves after it is promoted,
+    closing the stale-link bug the status folders caused (a promotion no longer moves the file).
     """
     stem = f"{item.be_id}-{item.slug}"
-    prefix = f"{item.category}/" if item.category else ""
-    href = f"{REPO_BLOB_ROOT}/roadmaps/{prefix}{stem}/{stem}.md"
+    href = f"{REPO_BLOB_ROOT}/roadmaps/{stem}/{stem}.md"
     lines = [
         f"Tracking issue for roadmap item **[{item.be_id}]({href})**.",
         "",

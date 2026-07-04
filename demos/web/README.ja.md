@@ -2,7 +2,7 @@
 
 [English](README.md)
 
-Bajutsu の **Playwright** backend（[BE-0041](../../roadmaps/in-progress/BE-0041-web-playwright-backend/BE-0041-web-playwright-backend-ja.md)）で駆動する、小さな静的 web アプリです。iOS のデモと違い **Mac も Simulator も不要**で、`make check` と同じツールチェーンの Linux 上で動きます。
+Bajutsu の **Playwright** backend（[BE-0041](../../roadmaps/BE-0041-web-playwright-backend/BE-0041-web-playwright-backend-ja.md)）で駆動する、小さな静的 web アプリです。iOS のデモと違い **Mac も Simulator も不要**で、`make check` と同じツールチェーンの Linux 上で動きます。
 
 ## 構成
 

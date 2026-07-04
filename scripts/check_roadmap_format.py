@@ -121,7 +121,7 @@ class _Item:
 
 
 def _items(roadmap: Path) -> list[_Item]:
-    """Every BE item — flat root and legacy status folders (BE-0159), numbered and placeholder alike.
+    """Every BE item under ``roadmaps/`` — numbered and unallocated placeholders alike (BE-0159).
 
     A placeholder carries the literal ``BE-XXXX`` token as its id, so the id-bearing checks know to
     accept its self-reference (BE-0149).
