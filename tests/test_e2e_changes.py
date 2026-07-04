@@ -50,6 +50,14 @@ def test_only_listed_cli_commands_are_relevant() -> None:
     assert is_relevant(["bajutsu/cli/commands/trace.py"]) is False
 
 
+def test_conformance_suite_is_relevant_but_other_tests_are_not() -> None:
+    # The on-device conformance suite (BE-0114) runs in these jobs, so a change to its contract or
+    # its harness must re-run them; an ordinary unit test the E2E never executes must not.
+    assert is_relevant(["tests/driver_conformance.py"]) is True
+    assert is_relevant(["tests/test_driver_conformance_ondevice.py"]) is True
+    assert is_relevant(["tests/test_e2e_changes.py"]) is False
+
+
 def test_only_e2e_workflow_is_relevant() -> None:
     assert is_relevant([".github/workflows/e2e.yml"]) is True
     assert is_relevant([".github/workflows/ci.yml"]) is False

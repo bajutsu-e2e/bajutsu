@@ -42,6 +42,8 @@ _RELEVANT = re.compile(
     r"|bajutsu/cli/_shared\.py$"
     r"|bajutsu/cli/commands/__init__\.py$"
     r"|bajutsu/cli/commands/(?:run|codegen|record)\.py$"
+    r"|tests/driver_conformance\.py$"
+    r"|tests/test_driver_conformance_ondevice\.py$"
     r"|BajutsuKit/"
     r"|demos/showcase/ios/swiftui/"
     r"|demos/showcase/ios/uikit/"

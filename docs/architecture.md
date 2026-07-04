@@ -218,7 +218,17 @@ The contract (`tests/driver_conformance.py`) is the "done" definition a new back
 To add a backend to the suite, implement a `ConformanceHarness` (given a screen, return a driver
 showing it) and subclass `DriverConformanceContract`; pytest then runs the inherited contract
 against it. `FakeDriver` runs on the fast Linux gate (`make check`); Playwright runs in the web CI
-job and idb / XCUITest under the on-device E2E path — the same contract, no second spec.
+job and idb / XCUITest under the on-device E2E path (`e2e.yml`) — the same contract, no second spec.
+Each harness realizes a screen its own way: `FakeDriver` takes the elements directly, Playwright
+renders them as HTML, and the on-device harness launches the showcase app into conformance mode
+once (`SHOWCASE_CONFORMANCE`) and then reseeds each screen by writing a spec file the app polls
+(`conformance-spec.txt` in its Documents directory) — so the real idb / XCUITest query and act code
+is exercised, not the shared base alone. A file write is used rather than a per-screen relaunch or
+deeplink: `simctl openurl` raises iOS's "Open in app?" dialog, and relaunching per screen crashes
+the resident XCUITest runner after a handful of `app.launch()` cycles. The suite carries an
+`ondevice` pytest marker (deselected by the gate's default) so it never runs in `make check`, and
+runs serially on a single Simulator (the shared device is reseeded via one spec file, so parallel
+workers would collide).
 
 ---
 

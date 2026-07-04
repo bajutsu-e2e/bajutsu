@@ -212,13 +212,85 @@ jobs:
           path: demos/showcase/ios/swiftui/build/dd/Logs/Test/*.xcresult
           if-no-files-found: ignore
 
+  # The driver conformance suite (BE-0114): one backend-agnostic contract, run on-device against
+  # BOTH iOS backends — idb (idb_companion) and XCUITest (the resident BajutsuRunner). It proves
+  # the determinism-core invariants (ambiguous selector fails, zero-match fails, capabilities()
+  # matches behavior, condition-backed waits) hold identically on the real actuators, not just
+  # FakeDriver (fast gate) and Playwright (web CI). `launch_driver` brings each backend up itself,
+  # so this job only needs the app + runner built and a booted Simulator; the `ondevice` pytest
+  # marker (deselected by the gate's default) means the same contract file runs here unchanged.
+  conformance:
+    name: conformance (idb + xcuitest)
+    needs: changes
+    if: needs.changes.outputs.relevant == 'true'
+    runs-on: macos-latest
+    # Cap the metered macOS job (10x billing): a hung Simulator/runner would otherwise run to the
+    # 6h default. Two backends end-to-end is ~12min, so 25 catches a real hang with headroom.
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+
+      - name: Select Xcode
+        uses: maxim-lobanov/setup-xcode@ed7a3b1fda3918c0306d1b724322adc0b8cc0a90  # v1.7.0
+        with:
+          xcode-version: latest-stable
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39  # v8.2.0
+        with:
+          enable-cache: true
+
+      - name: Install xcodegen
+        env:
+          HOMEBREW_NO_AUTO_UPDATE: "1"
+          HOMEBREW_NO_INSTALL_CLEANUP: "1"
+        run: brew install xcodegen
+
+      - name: Boot a Simulator
+        id: sim
+        uses: ./.github/actions/boot-simulator
+        with:
+          wait: "false"
+
+      # Build the a11y app AND the resident XCUITest runner; fetch idb's deps concurrently. Unlike
+      # the smoke job, the venv here keeps the dev group (pytest) — this job runs the suite through
+      # pytest, not the codegen CLI. The trap stops the background fetches if a build fails first.
+      - name: Build the app + runner (fetch idb deps concurrently)
+        env:
+          HOMEBREW_NO_AUTO_UPDATE: "1"
+          HOMEBREW_NO_INSTALL_CLEANUP: "1"
+        run: |
+          brew list facebook/fb/idb-companion >/dev/null 2>&1 || brew install facebook/fb/idb-companion &
+          brew_pid=$!
+          uv sync --extra idb &
+          sync_pid=$!
+          trap 'kill "$brew_pid" "$sync_pid" 2>/dev/null || true' EXIT
+          make -C demos/showcase swiftui-build
+          make -C demos/showcase runner-build
+          wait "$brew_pid"
+          wait "$sync_pid"
+          trap - EXIT
+
+      - name: Wait for the Simulator
+        run: xcrun simctl bootstatus "${{ steps.sim.outputs.udid }}" -b
+
+      # `launch_driver` erases/installs/launches per backend, so no explicit install here. `-m
+      # ondevice` overrides the repo default (`-m 'not web and not ondevice'`) to select exactly the
+      # on-device suite; BAJUTSU_CONFORMANCE_UDID both routes the backends and un-skips the module.
+      # `-n0` overrides the default `-n auto`: the suite reseeds one shared Simulator via a single
+      # spec file the app polls, so parallel workers would clobber each other's screen — run serially.
+      - name: Run the conformance suite (idb + xcuitest)
+        env:
+          BAJUTSU_CONFORMANCE_UDID: ${{ steps.sim.outputs.udid }}
+        run: uv run pytest tests/test_driver_conformance_ondevice.py -m ondevice -n0 -v
+
   # Single required status check for E2E. Always runs so it reports even when the macOS
   # jobs are skipped (docs-only PRs) — a skipped dependency is a pass; only a real
   # failure or cancellation fails the gate. Make `E2E` the required check, not the
   # path-gated macOS jobs.
   e2e:
     name: E2E
-    needs: [changes, smoke, xcuitest]
+    needs: [changes, smoke, xcuitest, conformance]
     if: always()
     runs-on: ubuntu-latest
     steps:
@@ -226,9 +298,10 @@ jobs:
         env:
           SMOKE: ${{ needs.smoke.result }}
           XCUITEST: ${{ needs.xcuitest.result }}
+          CONFORMANCE: ${{ needs.conformance.result }}
         run: |
-          echo "smoke=$SMOKE xcuitest=$XCUITEST"
-          for result in "$SMOKE" "$XCUITEST"; do
+          echo "smoke=$SMOKE xcuitest=$XCUITEST conformance=$CONFORMANCE"
+          for result in "$SMOKE" "$XCUITEST" "$CONFORMANCE"; do
             if [ "$result" = "failure" ] || [ "$result" = "cancelled" ]; then
               echo "E2E failed"
               exit 1

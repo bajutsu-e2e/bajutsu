@@ -7,9 +7,9 @@
 |---|---|
 | 提案 | [BE-0114](BE-0114-driver-conformance-suite-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **実装中** |
+| 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0114") |
-| 実装 PR | [#632](https://github.com/bajutsu-e2e/bajutsu/pull/632), [#644](https://github.com/bajutsu-e2e/bajutsu/pull/644) |
+| 実装 PR | [#632](https://github.com/bajutsu-e2e/bajutsu/pull/632), [#644](https://github.com/bajutsu-e2e/bajutsu/pull/644), [#669](https://github.com/bajutsu-e2e/bajutsu/pull/669) |
 | トピック | プラットフォーム拡張（Android / Web / Flutter） |
 | 関連 | [BE-0009](../BE-0009-cross-platform-abstractions/BE-0009-cross-platform-abstractions-ja.md), [BE-0042](../BE-0042-platform-backend-registry/BE-0042-platform-backend-registry-ja.md), [BE-0082](../BE-0082-capability-preflight-check/BE-0082-capability-preflight-check-ja.md), [BE-0019](../BE-0019-xcuitest-backend/BE-0019-xcuitest-backend-ja.md), [BE-0007](../BE-0007-android-backend/BE-0007-android-backend-ja.md) |
 <!-- /BE-METADATA -->
@@ -109,7 +109,7 @@ preflight と結び付けます）、conformance の契約を、新しい backen
 - [x] backend 非依存の契約を列挙する（曖昧 / 0 件 / `capabilities()` / 待機 / 証跡の不変条件）
 - [x] `Driver` の界面に対して parametrize した conformance suite を作る
 - [x] FakeDriver を高速な Linux ゲート（`make check`）で走らせ、Playwright は別の web CI ジョブで走らせる
-- [ ] idb と XCUITest をオンデバイスの E2E 経路で走らせる（同じスイート）
+- [x] idb と XCUITest をオンデバイスの E2E 経路で走らせる（同じスイート）
 - [x] `capabilities()` の適合を検査し、契約を新しい backend の「完了」定義として文書化する
 
 ログ:
@@ -124,6 +124,17 @@ preflight と結び付けます）、conformance の契約を、新しい backen
   ジョブで実行し、高速ゲートでは走らせません。`web` という pytest マーカーと `-m 'not web'` で
   除外するため、`web` extra が入っていてもゲートはブラウザなしのままです。idb / XCUITest
   （オンデバイス E2E）は残ります。
+- 2026-07-04: オンデバイススライス。同じ契約を実際の iOS backend である idb と XCUITest に対しても
+  走らせるようにしました（`tests/test_driver_conformance_ondevice.py`、`ConformanceView.swift`）。
+  `SHOWCASE_CONFORMANCE` で showcase アプリを一度だけ conformance モードで起動し、以降はアプリが
+  ポーリングする spec ファイル（Documents ディレクトリの `conformance-spec.txt`）を書き換えて画面ごとに
+  再シードします。画面ごとの再起動や deeplink を使わないのは、`simctl openurl` が iOS の
+  「アプリで開きますか?」というダイアログを出し、画面ごとの再起動は数回の `app.launch()` で常駐 XCUITest
+  ランナーをクラッシュさせるためです。`e2e.yml` に新設した `conformance` ジョブがアプリと常駐ランナーを
+  ビルドし、`launch_driver` を通じて両 backend を直列（`-n0`）で走らせます。`ondevice` という pytest
+  マーカー（`-m 'not web and not ondevice'`）で高速ゲートからは除外します。pristine な Simulator 上で
+  検証し、全 18 ケース（backend ごとに 9 ケース）が通ることを確認しました。これで 5 つのピースの作業分解が
+  完了します。
 
 ## 参考
 

@@ -7,9 +7,9 @@
 |---|---|
 | Proposal | [BE-0114](BE-0114-driver-conformance-suite.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **In progress** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0114") |
-| Implementing PR | [#632](https://github.com/bajutsu-e2e/bajutsu/pull/632), [#644](https://github.com/bajutsu-e2e/bajutsu/pull/644) |
+| Implementing PR | [#632](https://github.com/bajutsu-e2e/bajutsu/pull/632), [#644](https://github.com/bajutsu-e2e/bajutsu/pull/644), [#669](https://github.com/bajutsu-e2e/bajutsu/pull/669) |
 | Topic | Platform expansion (Android / Web / Flutter) |
 | Related | [BE-0009](../BE-0009-cross-platform-abstractions/BE-0009-cross-platform-abstractions.md), [BE-0042](../BE-0042-platform-backend-registry/BE-0042-platform-backend-registry.md), [BE-0082](../BE-0082-capability-preflight-check/BE-0082-capability-preflight-check.md), [BE-0019](../BE-0019-xcuitest-backend/BE-0019-xcuitest-backend.md), [BE-0007](../BE-0007-android-backend/BE-0007-android-backend.md) |
 <!-- /BE-METADATA -->
@@ -111,7 +111,7 @@ backend.
 - [x] Enumerate the backend-agnostic contract (ambiguous / zero-match / `capabilities()` / wait / evidence invariants)
 - [x] Build the parametrized conformance suite against the `Driver` interface
 - [x] Run FakeDriver in the fast Linux gate (`make check`); run Playwright in the separate web CI job
-- [ ] Run idb + XCUITest under the on-device E2E path (same suite)
+- [x] Run idb + XCUITest under the on-device E2E path (same suite)
 - [x] `capabilities()` conformance check + document the contract as the "done" definition for a new backend
 
 Log:
@@ -125,6 +125,16 @@ Log:
   HTML on the real `PlaywrightDriver`. It runs in a new `web-conformance` job in `web-e2e.yml`
   (never the fast gate: a `web` pytest marker + `-m 'not web'` deselects it, so the gate stays
   browser-free even when the `web` extra is installed). idb / XCUITest (on-device E2E) remain.
+- 2026-07-04: On-device slice — the same contract now runs against the real iOS backends, idb and
+  XCUITest (`tests/test_driver_conformance_ondevice.py`, `ConformanceView.swift`). The app enters
+  conformance mode once via `SHOWCASE_CONFORMANCE`, then each screen is reseeded by writing a spec
+  file the app polls (`conformance-spec.txt` in its Documents dir) — not a per-screen relaunch or
+  deeplink: `simctl openurl` raises iOS's "Open in app?" dialog, and relaunching per screen crashes
+  the resident XCUITest runner after a handful of `app.launch()` cycles. A dedicated `conformance`
+  job in `e2e.yml` builds the app + resident runner and runs both backends serially (`-n0`) through
+  `launch_driver`; an `ondevice` pytest marker (`-m 'not web and not ondevice'`) keeps it out of the
+  fast gate. Verified on a pristine Simulator: all 18 cases (9 per backend) pass. This completes the
+  five-piece breakdown.
 
 ## References
 

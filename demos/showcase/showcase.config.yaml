@@ -25,6 +25,12 @@ targets:
     appPath: demos/showcase/ios/swiftui/build/dd/Build/Products/Debug-iphonesimulator/BajutsuShowcaseSwiftUI.app
     build: make -C demos/showcase swiftui-build
     scenarios: demos/showcase/scenarios
+    # XCUITest backend (BE-0019): the same generic runner also drives this a11y app, so the driver
+    # conformance suite (BE-0114) can run its contract against XCUITest on identifier-bearing
+    # elements — `bajutsu run --target showcase-swiftui --backend xcuitest ...`, idb staying default.
+    xcuitest:
+      testRunner: BajutsuKit/Runner/build/dd/Build/Products/BajutsuRunner.xctestrun
+      build: make -C demos/showcase runner-build
 
   # ---- SwiftUI, accessibility OFF (the `record` / `doctor`-Blocked target) -------
   showcase-swiftui-noax:
