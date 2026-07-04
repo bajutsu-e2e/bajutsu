@@ -38,7 +38,13 @@ jobs:
     # only ones this can act on).
     if: github.event.pull_request.head.repo.full_name == github.repository
     steps:
+      # Check out the PR *head*, not the default `pull_request` merge ref (head merged onto base):
+      # the changed-file list (`gh api pulls/{pr}/files`) and the base comparison are both relative
+      # to the head, so the script must read each item's current Topic from the head tree. The merge
+      # ref would blend in concurrent base edits and misclassify a Topic change.
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
 
       - name: Compute and apply topic-label actions
         env:

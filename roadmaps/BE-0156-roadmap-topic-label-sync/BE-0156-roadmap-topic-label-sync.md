@@ -106,8 +106,9 @@ The work is three independent pieces:
    `roadmaps/**` tree — the script narrows to English item files and skips `Implemented` ones
    (see *Motivation*), so no folder-level path filter is needed. It skips fork PRs (whose token is
    read-only). Steps:
-   - Check out the PR head normally (default `actions/checkout` behavior gives the working tree
-     needed to read each changed file's current `Topic`).
+   - Check out the PR **head** (`ref: <head.sha>`), not the default `pull_request` merge ref: the
+     changed-file list and the base comparison are both relative to the head, so the working tree
+     the script reads each item's current `Topic` from must be the head, not head-merged-onto-base.
    - Fetch the PR's base commit
      (`git fetch --depth=1 origin ${{ github.event.pull_request.base.sha }}`) so `git show` can
      read each modified/renamed file's previous content. This is **non-fatal**: if the base SHA is
