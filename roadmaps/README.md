@@ -247,6 +247,7 @@ Reduce friction for the many parallel sessions working this repo — treat merge
 | [BE-0117](BE-0117-coverage-floor-ratchet/BE-0117-coverage-floor-ratchet.md) | Cover the rest of the CLI command layer, then ratchet the coverage floor | Implemented |
 | [BE-0122](BE-0122-workflow-name-legibility/BE-0122-workflow-name-legibility.md) | Legible GitHub Actions workflow and job names | Implemented |
 | [BE-0139](BE-0139-roadmap-dashboard-issue-links/BE-0139-roadmap-dashboard-issue-links.md) | Link the roadmap dashboard and item files to their tracking issue | Implemented |
+| [BE-0149](BE-0149-roadmap-placeholder-format-guardrail/BE-0149-roadmap-placeholder-format-guardrail.md) | Close the roadmap-placeholder format-guardrail gap | Implemented |
 | [BE-0159](BE-0159-flatten-roadmap-status-folders/BE-0159-flatten-roadmap-status-folders.md) | Flatten roadmap items into one directory (retire status-driven folders) | Implemented |
 <!-- /GENERATED:implemented-dev-infra -->
 
@@ -441,9 +442,7 @@ The Web (Playwright) backend and its completion (rich capabilities, parallel run
 Reduce friction for the many parallel sessions working this repo — treat merge conflicts as a design smell and reshape the file flow so independent changes touch disjoint files.
 
 <!-- GENERATED:in-progress-dev-infra -->
-| ID | Item | Status |
-|---|---|---|
-| [BE-0149](BE-0149-roadmap-placeholder-format-guardrail/BE-0149-roadmap-placeholder-format-guardrail.md) | Close the roadmap-placeholder format-guardrail gap | In progress |
+
 <!-- /GENERATED:in-progress-dev-infra -->
 
 ### Dogfood fixtures (demo apps)

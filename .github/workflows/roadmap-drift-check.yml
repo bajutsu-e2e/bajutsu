@@ -25,7 +25,8 @@ on:
 
 permissions:
   contents: write       # push a roadmap-fix/pr-<n> branch
-  pull-requests: write  # open the fix PR, comment on the original
+  pull-requests: write  # open the fix PR
+  issues: write         # create/update the marker comment (issues-comments API, incl. PATCH by id)
 
 concurrency:
   group: roadmap-drift-check

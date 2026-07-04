@@ -23,7 +23,7 @@ def _assert_valid_shape(text: str, *, lang: str) -> None:
     from tempfile import TemporaryDirectory
 
     with TemporaryDirectory() as tmp:
-        d = Path(tmp) / "proposals" / "BE-XXXX-a-thing"
+        d = Path(tmp) / "BE-XXXX-a-thing"
         d.mkdir(parents=True)
         en = text if lang == "en" else _valid_en()
         ja = text if lang == "ja" else _valid_ja()

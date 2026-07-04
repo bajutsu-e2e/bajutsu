@@ -8,12 +8,12 @@ one place. Plain functions/classes (not fixtures) so they can be used at module 
 
 from __future__ import annotations
 
-import sys
 from pathlib import Path
 from typing import Any
 
 from bajutsu.drivers import base
 from bajutsu.drivers.fake import FakeDriver
+from scripts.build_roadmap_index import tracking_issue_url
 
 
 class ShotDriver(FakeDriver):
@@ -24,8 +24,6 @@ class ShotDriver(FakeDriver):
         Path(path).write_bytes(b"\x89PNG\r\n\x1a\n fake")
         self.actions.append(("screenshot", path))
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
-from build_roadmap_index import tracking_issue_url
 
 ROADMAP_HEADINGS_EN = ("Introduction", "Motivation", "Detailed design", "Alternatives considered")
 ROADMAP_HEADINGS_JA = ("はじめに", "動機", "詳細設計", "検討した代替案")
