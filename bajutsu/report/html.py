@@ -15,6 +15,7 @@ from jinja2 import Environment, FileSystemLoader
 
 from bajutsu.idb_version import IdbVersions
 from bajutsu.orchestrator import RunResult
+from bajutsu.report.ctrf import ctrf_json
 from bajutsu.report.format import _fmt_duration
 from bajutsu.report.manifest import _matrix, _run_backend, junit_xml, manifest_dict
 from bajutsu.report.panels import _scenario_data
@@ -124,14 +125,21 @@ def write_html_and_junit(
     sources: list[str] | None = None,
     source_name: str | None = None,
     description: str | None = None,
+    provenance: dict[str, object] | None = None,
 ) -> None:
-    """Write (or rewrite) report.html + junit.xml under run_dir, leaving manifest.json untouched.
+    """Write (or rewrite) report.html + junit.xml + ctrf.json under run_dir, leaving manifest.json untouched.
 
     The renderable half of the report: the initial bake calls it after the manifest, and the
     offline re-render (BE-0068) calls it alone to refresh a finished run from its stored model.
+    `provenance` (the manifest's run-identity stamp) only feeds the CTRF export's tool/environment
+    fields; None omits them.
     """
     run_dir.mkdir(parents=True, exist_ok=True)
     (run_dir / "junit.xml").write_text(junit_xml(results), encoding="utf-8")
+    (run_dir / "ctrf.json").write_text(
+        json.dumps(ctrf_json(run_id, results, provenance=provenance), ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
     (run_dir / "report.html").write_text(
         html_report(run_id, results, run_dir, definitions, sources, source_name, description),
         encoding="utf-8",
@@ -174,5 +182,7 @@ def write_report(
         ),
         encoding="utf-8",
     )
-    write_html_and_junit(run_dir, run_id, results, definitions, sources, source_name, description)
+    write_html_and_junit(
+        run_dir, run_id, results, definitions, sources, source_name, description, provenance
+    )
     return manifest_path
