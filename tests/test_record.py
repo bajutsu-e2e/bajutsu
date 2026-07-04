@@ -12,7 +12,7 @@ from bajutsu.agent import Observation, Proposal
 from bajutsu.drivers import base
 from bajutsu.drivers.fake import FakeDriver
 from bajutsu.elements import shows_app_ui
-from bajutsu.record import _screenshot_bytes, record
+from bajutsu.record import _screenshot_bytes, _tokenize_secrets, record
 from bajutsu.scenario import Assertion, Step, dump_scenarios, load_scenarios
 
 
@@ -240,6 +240,118 @@ def test_no_settle_wait_for_negated_assertion() -> None:
     agent = FakeAgent([Proposal(step=Step.model_validate({"tap": {"id": "go"}})), finish])
     scenario = record(driver, "g", agent)
     assert all(step.wait is None for step in scenario.steps)  # nothing positive to wait for
+
+
+# --- secret tokenization (BE-0120) ---
+
+
+def _field(identifier: str, label: str) -> base.Element:
+    return {
+        "identifier": identifier,
+        "label": label,
+        "traits": ["textField"],
+        "value": None,
+        "frame": (0.0, 0.0, 10.0, 10.0),
+    }
+
+
+def test_record_tokenizes_a_typed_secret_but_types_the_real_value() -> None:
+    """A recorded secret lands as ${secrets.X} in the scenario, yet the app is driven with the
+    real value so the agent still reaches the authenticated screen."""
+    driver = FakeDriver([_field("password", "Password")])
+    agent = FakeAgent(
+        [
+            Proposal(
+                step=Step.model_validate({"type": {"text": "hunter2", "into": {"id": "password"}}})
+            ),
+            Proposal(done=True),
+        ]
+    )
+    scenario = record(driver, "log in", agent, secret_tokens=[("hunter2", "${secrets.PASSWORD}")])
+
+    # The written scenario carries the token, not the literal — and it round-trips through YAML.
+    assert scenario.steps[0].type is not None
+    assert scenario.steps[0].type.text == "${secrets.PASSWORD}"
+    assert scenario.steps[0].type.into is not None and scenario.steps[0].type.into.id == "password"
+    reloaded = load_scenarios(dump_scenarios([scenario]))
+    assert reloaded[0].steps[0].type is not None
+    assert reloaded[0].steps[0].type.text == "${secrets.PASSWORD}"
+    assert "hunter2" not in dump_scenarios([scenario])
+
+    # But the device was driven with the real credential (execution uses the unmodified value).
+    assert ("type", "hunter2") in driver.actions
+
+
+def test_record_leaves_non_secret_text_unchanged() -> None:
+    """Ordinary typed text (the common case) is recorded verbatim even with secrets configured."""
+    driver = FakeDriver([_field("username", "Username")])
+    agent = FakeAgent(
+        [
+            Proposal(
+                step=Step.model_validate({"type": {"text": "alice", "into": {"id": "username"}}})
+            ),
+            Proposal(done=True),
+        ]
+    )
+    scenario = record(driver, "log in", agent, secret_tokens=[("hunter2", "${secrets.PASSWORD}")])
+    assert scenario.steps[0].type is not None and scenario.steps[0].type.text == "alice"
+
+
+def test_record_narrates_a_tokenization_without_leaking_the_literal() -> None:
+    """The author is told a field was tokenized, and the raw secret never appears in the stream —
+    not in the step line, nor in the agent's free-text reasoning (`note`)."""
+    driver = FakeDriver([_field("password", "Password")])
+    agent = FakeAgent(
+        [
+            Proposal(
+                step=Step.model_validate({"type": {"text": "hunter2", "into": {"id": "password"}}}),
+                note="typing hunter2 into the password field",  # reasoning echoes the literal
+            ),
+            Proposal(done=True),
+        ]
+    )
+    msgs: list[str] = []
+    record(
+        driver,
+        "log in",
+        agent,
+        secret_tokens=[("hunter2", "${secrets.PASSWORD}")],
+        report=msgs.append,
+    )
+    joined = "\n".join(msgs)
+    assert "${secrets.PASSWORD}" in joined  # the substitution is surfaced
+    assert "hunter2" not in joined  # not in the step line, nor in the echoed note
+
+
+def test_record_without_secrets_records_the_literal_as_before() -> None:
+    """No secret bindings => today's behavior: the typed text is recorded exactly as entered."""
+    driver = FakeDriver([_field("password", "Password")])
+    agent = FakeAgent(
+        [
+            Proposal(
+                step=Step.model_validate({"type": {"text": "hunter2", "into": {"id": "password"}}})
+            ),
+            Proposal(done=True),
+        ]
+    )
+    scenario = record(driver, "log in", agent)  # secret_tokens defaults to None
+    assert scenario.steps[0].type is not None and scenario.steps[0].type.text == "hunter2"
+
+
+def test_tokenize_secrets_replaces_longest_value_first() -> None:
+    """A secret that is a substring of another is replaced first, so no partial literal remains."""
+    step = Step.model_validate({"type": {"text": "abcdef", "into": {"id": "f"}}})
+    # "abc" alone would leave "def"; ordering longest-first substitutes the full match cleanly.
+    tokens = [("abcdef", "${secrets.FULL}"), ("abc", "${secrets.PART}")]
+    tokenized, substituted = _tokenize_secrets(step, tokens)
+    assert tokenized.type is not None and tokenized.type.text == "${secrets.FULL}"
+    assert substituted == ["${secrets.FULL}"]
+
+
+def test_tokenize_secrets_is_a_no_op_for_non_type_steps() -> None:
+    step = Step.model_validate({"tap": {"id": "go"}})
+    tokenized, substituted = _tokenize_secrets(step, [("hunter2", "${secrets.PASSWORD}")])
+    assert tokenized is step and substituted == []
 
 
 # --- _screenshot_bytes (the unified best-effort capture helper, BE-0132) ---

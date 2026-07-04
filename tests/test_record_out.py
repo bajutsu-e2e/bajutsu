@@ -8,7 +8,7 @@ import pytest
 import typer
 
 from bajutsu.cli._shared import _refuse_out_in_checkout
-from bajutsu.cli.commands.record import _record_out_path
+from bajutsu.cli.commands.record import _record_out_path, _secret_tokens
 from bajutsu.config import load_config, resolve
 
 
@@ -73,3 +73,29 @@ def test_record_auto_name_inside_the_checkout_is_refused(tmp_path: Path, monkeyp
     with pytest.raises(typer.Exit) as exc:
         _record_out_path(_eff("e2e"), "", "n", "g", "x", checkout_root=checkout)
     assert exc.value.exit_code == 2
+
+
+# --- _secret_tokens: resolving declared secrets from the environment (BE-0120) ---
+
+
+def _eff_with_secrets(*names: str):  # type: ignore[no-untyped-def]
+    decl = "".join(f"      - {n}\n" for n in names)
+    return resolve(load_config(f"targets:\n  x:\n    bundleId: com.x\n    secrets:\n{decl}"), "x")
+
+
+def test_secret_tokens_maps_set_env_vars_to_their_tokens(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    monkeypatch.setenv("PASSWORD", "hunter2")
+    monkeypatch.delenv("API_KEY", raising=False)  # declared but unset: not bindable, so skipped
+    assert _secret_tokens(_eff_with_secrets("PASSWORD", "API_KEY")) == [
+        ("hunter2", "${secrets.PASSWORD}")
+    ]
+
+
+def test_secret_tokens_orders_longest_value_first(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    # Longest value first so a value that is a substring of another is substituted before it.
+    monkeypatch.setenv("SHORT", "abc")
+    monkeypatch.setenv("LONG", "abcdef")
+    assert _secret_tokens(_eff_with_secrets("SHORT", "LONG")) == [
+        ("abcdef", "${secrets.LONG}"),
+        ("abc", "${secrets.SHORT}"),
+    ]
