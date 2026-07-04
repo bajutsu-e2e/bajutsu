@@ -22,6 +22,7 @@ from urllib.request import Request, urlopen
 import typer
 
 from bajutsu import env
+from bajutsu.object_store import content_type_for
 from bajutsu.serve import InMemoryLogBus
 from bajutsu.serve.server.worker_job import execute_job_spec
 
@@ -121,6 +122,16 @@ def worker(
         run_id = result.get("runId")
         if run_id:
             _write_console_log(work, run_id, bus, job_id)
+            # Upload the run's evidence via presigned URLs the control plane signs (BE-0110): the
+            # worker holds no cloud credentials of its own. Best-effort — a failure warns and never
+            # touches the result. After console.log so it uploads too.
+            _upload_evidence(
+                work,
+                run_id,
+                url=url,
+                auth_token=auth_token,
+                evidence_prefix=str(spec.get("evidence_prefix") or ""),
+            )
 
         try:
             _post_json(
@@ -214,6 +225,77 @@ def _write_console_log(work: Path, run_id: str, bus: InMemoryLogBus, job_id: str
         "".join(line for line in lines if line is not None),
         encoding="utf-8",
     )
+
+
+def _evidence_files(run_dir: Path) -> list[str]:
+    """Relative POSIX paths of every real file under *run_dir* (the keys the endpoint signs).
+
+    Symlinks and non-files are skipped, and each resolved path must stay under the run dir, so
+    nothing outside the tree is offered for upload (mirrors `_upload_runs`).
+    """
+    base = run_dir.resolve()
+    files: list[str] = []
+    for path in sorted(run_dir.rglob("*")):
+        if path.is_symlink() or not path.is_file():
+            continue
+        resolved = path.resolve()
+        if not resolved.is_relative_to(base):
+            continue
+        files.append(resolved.relative_to(base).as_posix())
+    return files
+
+
+def _put_file(url: str, path: Path, content_type: str) -> None:
+    """Upload one file to a presigned PUT *url*.
+
+    The Content-Type must match what the control plane signed into the URL (the presigned signature
+    covers it), so send the same value.
+    """
+    headers = {"Content-Type": content_type} if content_type else {}
+    req = Request(url, data=path.read_bytes(), method="PUT", headers=headers)  # noqa: S310
+    with urlopen(req):  # noqa: S310
+        pass
+
+
+def _upload_evidence(
+    work: Path, run_id: str, *, url: str, auth_token: str | None, evidence_prefix: str
+) -> None:
+    """Ask the control plane for presigned PUT URLs for this run's tree and upload each file.
+
+    Best-effort by design (BE-0110): the verdict is already final and the result post still to come
+    must not be skipped, so any failure here is logged and dropped, never raised (a broad catch, like
+    `upload_tree`, so even a malformed URL can't crash the worker). When no evidence store is
+    configured the endpoint returns no URLs and this uploads nothing.
+    """
+    run_dir = work / "runs" / run_id
+    if not run_dir.is_dir():
+        return
+    files = _evidence_files(run_dir)
+    if not files:
+        return
+    try:
+        code, body = _post_json(
+            f"{url}/api/runs/{run_id}/upload-urls",
+            {"files": files, "evidence_prefix": evidence_prefix},
+            token=auth_token,
+        )
+    except Exception as e:
+        _logger.warning("evidence upload-urls request failed for run %s: %s", run_id, e)
+        return
+    if code != 200:
+        _logger.warning("evidence upload-urls returned %s for run %s", code, run_id)
+        return
+    urls = body.get("urls") or {}
+    uploaded = 0
+    for rel, put_url in urls.items():
+        try:
+            _put_file(put_url, run_dir / rel, content_type_for(rel))
+        except Exception as e:
+            _logger.warning("evidence upload failed for %s: %s", rel, e)
+        else:
+            uploaded += 1
+    if uploaded:
+        typer.echo(f"  uploaded {uploaded} evidence file(s) for run {run_id}")
 
 
 def register(app: typer.Typer) -> None:

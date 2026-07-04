@@ -21,7 +21,14 @@ import pytest
 import typer
 
 from bajutsu.cli.commands import worker as worker_mod
-from bajutsu.cli.commands.worker import _object_store, _post_json, _write_console_log, worker
+from bajutsu.cli.commands.worker import (
+    _evidence_files,
+    _object_store,
+    _post_json,
+    _upload_evidence,
+    _write_console_log,
+    worker,
+)
 from bajutsu.serve import InMemoryLogBus
 
 
@@ -363,3 +370,118 @@ def test_run_with_heartbeat_survives_heartbeat_error(
     monkeypatch.setattr(worker_mod, "_post_json", hb_error)
     _result, abandoned = _run_hb(tmp_path)
     assert abandoned is False
+
+
+# --- evidence upload (presigned PUT) ------------------------------------------------------------
+
+
+class _EvidenceHandler(BaseHTTPRequestHandler):
+    """A control plane + object store in one: POST upload-urls signs URLs pointing back here, and
+    PUT stores the body. `put_fail` keys respond 500 so the best-effort path is exercised."""
+
+    def do_POST(self) -> None:
+        length = int(self.headers.get("Content-Length", 0))
+        body = json.loads(self.rfile.read(length) or b"{}")
+        self.server.url_requests.append(body)  # type: ignore[attr-defined]
+        base = f"http://127.0.0.1:{self.server.server_address[1]}"
+        override = self.server.url_override  # type: ignore[attr-defined]
+        urls = {rel: (override or f"{base}/put/{rel}") for rel in body.get("files", [])}
+        data = json.dumps({"urls": urls}).encode()
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(data)))
+        self.end_headers()
+        self.wfile.write(data)
+
+    def do_PUT(self) -> None:
+        length = int(self.headers.get("Content-Length", 0))
+        data = self.rfile.read(length)
+        key = self.path[len("/put/") :]
+        if key in self.server.put_fail:  # type: ignore[attr-defined]
+            self.send_response(500)
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+            return
+        self.server.puts[key] = {  # type: ignore[attr-defined]
+            "body": data,
+            "content_type": self.headers.get("Content-Type"),
+        }
+        self.send_response(200)
+        self.send_header("Content-Length", "0")
+        self.end_headers()
+
+    def log_message(self, *args: Any) -> None:
+        pass
+
+
+@contextmanager
+def _evidence_server(
+    put_fail: set[str] | None = None, url_override: str | None = None
+) -> Iterator[tuple[Any, str]]:
+    httpd = ThreadingHTTPServer(("127.0.0.1", 0), _EvidenceHandler)
+    httpd.puts = {}  # type: ignore[attr-defined]
+    httpd.url_requests = []  # type: ignore[attr-defined]
+    httpd.put_fail = put_fail or set()  # type: ignore[attr-defined]
+    httpd.url_override = url_override  # type: ignore[attr-defined]
+    thread = threading.Thread(target=httpd.serve_forever, daemon=True)
+    thread.start()
+    try:
+        _host, port = httpd.server_address
+        yield httpd, f"http://127.0.0.1:{port}"
+    finally:
+        httpd.shutdown()
+        thread.join()
+
+
+def _run_tree(work: Path, run_id: str) -> Path:
+    run = work / "runs" / run_id
+    (run / "00-login").mkdir(parents=True)
+    (run / "00-login" / "after.png").write_bytes(b"\x89PNG")
+    (run / "manifest.json").write_text("{}", encoding="utf-8")
+    return run
+
+
+def test_evidence_files_lists_relative_paths_and_skips_symlinks(tmp_path: Path) -> None:
+    run = _run_tree(tmp_path, "r1")
+    secret = tmp_path / "secret.txt"
+    secret.write_text("nope")
+    (run / "link.txt").symlink_to(secret)
+    assert _evidence_files(run) == ["00-login/after.png", "manifest.json"]
+
+
+def test_upload_evidence_puts_each_file_with_its_content_type(tmp_path: Path) -> None:
+    _run_tree(tmp_path, "r1")
+    with _evidence_server() as (httpd, base):
+        _upload_evidence(tmp_path, "r1", url=base, auth_token=None, evidence_prefix="main/")
+    puts = httpd.puts  # type: ignore[attr-defined]
+    assert set(puts) == {"00-login/after.png", "manifest.json"}
+    assert puts["00-login/after.png"]["body"] == b"\x89PNG"
+    assert puts["00-login/after.png"]["content_type"] == "image/png"
+    assert puts["manifest.json"]["content_type"] == "application/json"
+    # The worker relays the run's file list and the per-run prefix to the endpoint.
+    req = httpd.url_requests[0]  # type: ignore[attr-defined]
+    assert req["evidence_prefix"] == "main/"
+    assert sorted(req["files"]) == ["00-login/after.png", "manifest.json"]
+
+
+def test_upload_evidence_is_a_noop_without_a_run_dir(tmp_path: Path) -> None:
+    with _evidence_server() as (httpd, base):
+        _upload_evidence(tmp_path, "missing", url=base, auth_token=None, evidence_prefix="")
+    assert httpd.url_requests == []  # type: ignore[attr-defined]
+
+
+def test_upload_evidence_survives_a_per_file_put_failure(tmp_path: Path) -> None:
+    # A failed PUT must warn and move on — the run's verdict is already final (BE-0110).
+    _run_tree(tmp_path, "r1")
+    with _evidence_server(put_fail={"00-login/after.png"}) as (httpd, base):
+        _upload_evidence(tmp_path, "r1", url=base, auth_token=None, evidence_prefix="")
+    puts = httpd.puts  # type: ignore[attr-defined]
+    assert set(puts) == {"manifest.json"}  # the good file still uploaded
+
+
+def test_upload_evidence_does_not_raise_on_a_malformed_signed_url(tmp_path: Path) -> None:
+    # A malformed URL from the endpoint raises ValueError in urlopen; the upload runs before the
+    # result post, so it must be caught, not crash the worker (BE-0110 best-effort).
+    _run_tree(tmp_path, "r1")
+    with _evidence_server(url_override="not a url") as (_httpd, base):
+        _upload_evidence(tmp_path, "r1", url=base, auth_token=None, evidence_prefix="")  # no raise

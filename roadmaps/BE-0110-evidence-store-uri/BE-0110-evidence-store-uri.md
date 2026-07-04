@@ -7,9 +7,9 @@
 |---|---|
 | Proposal | [BE-0110](BE-0110-evidence-store-uri.md) |
 | Author | [@hirosassa](https://github.com/hirosassa) |
-| Status | **In progress** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0110") |
-| Implementing PR | [#531](https://github.com/bajutsu-e2e/bajutsu/pull/531), [#636](https://github.com/bajutsu-e2e/bajutsu/pull/636) |
+| Implementing PR | [#531](https://github.com/bajutsu-e2e/bajutsu/pull/531), [#636](https://github.com/bajutsu-e2e/bajutsu/pull/636), [#638](https://github.com/bajutsu-e2e/bajutsu/pull/638) |
 | Topic | Hosting the web UI (cloud / self-hosted) |
 | Related | [BE-0015](../BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md), [BE-0106](../BE-0106-post-completion-worker-model/BE-0106-post-completion-worker-model.md) |
 <!-- /BE-METADATA -->
@@ -282,21 +282,22 @@ old runs) without conflicting with this design.
 - [x] `S3ObjectStore` implementation (reuse existing code, add `presigned_put_url` + `content_type`)
 - [x] `GCSObjectStore` implementation (including V4 signed PUT URLs)
 - [x] Presigned URL upload endpoint (`POST /api/runs/<run_id>/upload-urls`)
-- [ ] Worker-side HTTP PUT uploader (presigned URL mode)
+- [x] Worker-side HTTP PUT uploader (presigned URL mode)
 - [x] Direct SDK upload fallback (standalone `bajutsu run` mode)
-- [ ] Post-run upload step in `runner/pipeline.py` (mode selection) — standalone is wired at the CLI
-      layer (`run.py`, after the verdict, mirroring `--zip`); the worker's presigned upload is wired in
-      the `bajutsu worker` HTTP loop after the run, alongside `console.log` (not the pipeline)
+- [x] Post-run upload step (mode selection) — landed at the seam each mode actually uses, not in
+      `runner/pipeline.py`: standalone at the CLI layer (`run.py`, after the verdict, mirroring
+      `--zip`), and the serve/presigned mode in the `bajutsu worker` HTTP loop after the run,
+      alongside `console.log`
 - [x] `serve` `--evidence-store` flag and `BAJUTSU_EVIDENCE_STORE` env
 - [x] `bajutsu run` `--evidence-store` CLI flag (with `BAJUTSU_EVIDENCE_STORE` env)
 - [x] `evidence_prefix` parameter on the `/api/runs` endpoint
 - [x] Optional dependency declarations (`s3` / `gcs` / `cloud` extras)
-- [ ] Tests — done for the standalone slice (URI parsing, S3/GCS stores incl. `content_type` +
-      presigned GET/PUT generation, `upload_tree`) and the serve endpoint (`generate_upload_urls`
-      keying/validation, both HTTP shells, `evidence_prefix` carry, store wiring); worker HTTP PUT
-      uploader tests land with the worker slice
-- [ ] Documentation — `run --evidence-store` documented (English + Japanese `docs/cli.md`); the serve
-      topology docs land with the worker slice
+- [x] Tests — standalone (URI parsing, S3/GCS stores incl. `content_type` + presigned GET/PUT
+      generation, `upload_tree`), the serve endpoint (`generate_upload_urls` keying/validation, both
+      HTTP shells, `evidence_prefix` carry, store wiring), and the worker uploader (file enumeration,
+      presigned PUT with matching content-type, best-effort per-file failure) against a real HTTP server
+- [x] Documentation — `run --evidence-store` and `serve --evidence-store` in `docs/cli.md`, and the
+      presigned serve topology in `docs/self-hosting.md` (English + Japanese mirrors)
 
 Log:
 
@@ -318,6 +319,12 @@ Log:
   `evidence_prefix` parameter on `/api/run` (validated, carried onto the `Job` and the job spec), and
   the `EvidenceTarget` + `evidence_target_from_uri` / `content_type_for` helpers. The worker-side
   HTTP PUT uploader and the serve-topology docs are the next slice.
+- **Slice 2b — worker presigned uploader + docs** (completes the item): wired the `bajutsu worker`
+  loop to upload a finished run's evidence via the presigned endpoint — after the run and
+  `console.log`, it enumerates the run tree, requests one PUT URL per file, and uploads over plain
+  HTTP with the matching content-type (no cloud credentials of its own), best-effort so a failure only
+  warns. Documented `serve --evidence-store` and the presigned serve topology in `docs/cli.md` and
+  `docs/self-hosting.md` (English + Japanese). This completes BE-0110.
 
 ## References
 
