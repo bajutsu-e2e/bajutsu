@@ -21,12 +21,6 @@ struct LogView: View {
     @State private var longPressed = false
     @State private var doubleTaps = 0
 
-    // Two-finger gesture targets (BE-0019): pinch and rotate. Only an XCUITest-class actuator
-    // can drive these; idb is single-touch and raises UnsupportedAction. Each flips its a11y
-    // value once the gesture lands, so a scenario can assert the two-finger actuation happened.
-    @State private var pinched = false
-    @State private var rotated = false
-
     // Modal state
     @State private var showSheet = false
     @State private var showCover = false
@@ -105,31 +99,6 @@ struct LogView: View {
                         .foregroundStyle(.secondary)
                         .accessibilityID("log.doubletap.value")
                         .accessibilityStateValue(String(doubleTaps))
-
-                    // Two-finger gestures (BE-0019): XCUITest-only — idb is single-touch. The hit
-                    // area is deliberately tall: XCUITest drives a pinch/rotate as two touch points,
-                    // which need real room, and the gesture degenerates on an intrinsically-sized view.
-                    Text("Pinch me")
-                        .frame(maxWidth: .infinity, minHeight: 120)
-                        .background(Color.gray.opacity(0.15))
-                        .contentShape(Rectangle())
-                        .gesture(MagnifyGesture().onChanged { _ in pinched = true })
-                        .accessibilityID("log.pinch")
-                    Text(pinched ? "pinched" : "idle")
-                        .foregroundStyle(.secondary)
-                        .accessibilityID("log.pinch.value")
-                        .accessibilityStateValue(pinched ? "pinched" : "idle")
-
-                    Text("Rotate me")
-                        .frame(maxWidth: .infinity, minHeight: 120)
-                        .background(Color.gray.opacity(0.15))
-                        .contentShape(Rectangle())
-                        .gesture(RotateGesture().onChanged { _ in rotated = true })
-                        .accessibilityID("log.rotate")
-                    Text(rotated ? "rotated" : "idle")
-                        .foregroundStyle(.secondary)
-                        .accessibilityID("log.rotate.value")
-                        .accessibilityStateValue(rotated ? "rotated" : "idle")
                 }
 
                 // A button-backed segmented control (not a SwiftUI Picker(.segmented): idb's

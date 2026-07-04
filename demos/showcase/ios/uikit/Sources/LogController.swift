@@ -18,10 +18,6 @@ final class LogController: UIViewController {
     private let longPressValueLabel = UILabel()
     private let doubleTapTarget = UILabel()
     private let doubleTapValueLabel = UILabel()
-    private let pinchTarget = UILabel()
-    private let pinchValueLabel = UILabel()
-    private let rotateTarget = UILabel()
-    private let rotateValueLabel = UILabel()
     private let entriesStack = UIStackView()
 
     private var count = 0
@@ -113,10 +109,7 @@ final class LogController: UIViewController {
             makeSectionHeader("Modals"),
             makeSectionCard([filter, gallery, delete, dialogResultLabel]),
             makeSectionHeader("Gestures"),
-            makeSectionCard([
-                longPressTarget, longPressValueLabel, doubleTapTarget, doubleTapValueLabel,
-                pinchTarget, pinchValueLabel, rotateTarget, rotateValueLabel,
-            ]),
+            makeSectionCard([longPressTarget, longPressValueLabel, doubleTapTarget, doubleTapValueLabel]),
             makeSectionHeader("Controls"),
             makeSectionCard([segmentRow, segmentValueLabel]),
             makeSectionHeader("Entries"),
@@ -172,34 +165,6 @@ final class LogController: UIViewController {
         doubleTapValueLabel.text = "Double-taps: 0"
         doubleTapValueLabel.accessibilityID("log.doubletap.value")
         doubleTapValueLabel.accessibilityStateValue("0")
-
-        // Two-finger gestures (BE-0019): XCUITest-only — idb is single-touch. Each target gets a
-        // tall hit area (XCUITest drives a pinch/rotate as two touch points that need real room,
-        // and the gesture degenerates on an intrinsically-sized view) and flips its a11y value once.
-        configureTwoFingerTarget(pinchTarget, valueLabel: pinchValueLabel, title: "Pinch me", id: "log.pinch")
-        pinchTarget.addGestureRecognizer(UIPinchGestureRecognizer(target: self, action: #selector(pinched)))
-        configureTwoFingerTarget(rotateTarget, valueLabel: rotateValueLabel, title: "Rotate me", id: "log.rotate")
-        rotateTarget.addGestureRecognizer(UIRotationGestureRecognizer(target: self, action: #selector(rotated)))
-    }
-
-    /// Shared setup for the two-finger targets: a tall, tappable label with a subtle backdrop and
-    /// an "idle" value mirror below it.
-    private func configureTwoFingerTarget(_ target: UILabel, valueLabel: UILabel, title: String, id: String) {
-        target.text = title
-        target.textAlignment = .center
-        target.isUserInteractionEnabled = true
-        target.backgroundColor = .secondarySystemBackground
-        target.layer.cornerRadius = 10
-        target.layer.masksToBounds = true
-        target.translatesAutoresizingMaskIntoConstraints = false
-        target.heightAnchor.constraint(equalToConstant: 120).isActive = true
-        target.accessibilityID(id)
-
-        valueLabel.font = .preferredFont(forTextStyle: .footnote)
-        valueLabel.textColor = .secondaryLabel
-        valueLabel.text = "idle"
-        valueLabel.accessibilityID("\(id).value")
-        valueLabel.accessibilityStateValue("idle")
     }
 
     @objc private func longPressed(_ gesture: UILongPressGestureRecognizer) {
@@ -212,16 +177,6 @@ final class LogController: UIViewController {
         doubleTaps += 1
         doubleTapValueLabel.text = "Double-taps: \(doubleTaps)"
         doubleTapValueLabel.accessibilityStateValue(String(doubleTaps))
-    }
-
-    @objc private func pinched() {
-        pinchValueLabel.text = "pinched"
-        pinchValueLabel.accessibilityStateValue("pinched")
-    }
-
-    @objc private func rotated() {
-        rotateValueLabel.text = "rotated"
-        rotateValueLabel.accessibilityStateValue("rotated")
     }
 
     // MARK: - Controls

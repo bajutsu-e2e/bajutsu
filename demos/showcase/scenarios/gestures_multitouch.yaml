@@ -1,24 +1,20 @@
-# Multi-touch gestures (SPEC §5.3): pinch and rotate on the Log tab's dedicated two-finger
-# targets. These are XCUITest-only — idb is single-touch and raises UnsupportedAction (BE-0019),
-# so this scenario is NOT part of the idb smoke path; the e2e `xcuitest (multi-touch)` job runs
-# it with `--backend xcuitest`. Each target flips its a11y value once the two-finger gesture is
-# recognized, so the run can assert the actuation actually landed rather than merely not erroring.
+# Multi-touch gestures (SPEC §5.3): pinch and rotate. These are XCUITest-only — idb is single-touch
+# and raises UnsupportedAction (BE-0019), so this scenario is NOT part of the idb smoke path; the
+# e2e `xcuitest (multi-touch)` job runs it with `--backend xcuitest`.
 #
-# The targets sit below the long-press / double-tap pair in the Log form, and a SwiftUI List
-# renders off-screen rows lazily (absent from the accessibility tree until scrolled in), so the
-# scenario swipes them into view first — each swipe anchored on an element that stays visible as
-# the form scrolls up, and a condition wait stops once the target appears.
+# The SHOWCASE_GESTURES launch env swaps the app for a flat, scroll-free pinch/rotate screen (see
+# GestureView / AppModel), mirroring the SHOWCASE_CONFORMANCE affordance. Both targets are therefore
+# always in the accessibility tree — no scroll-to-element — which matters because XCUITest's
+# swipe-to-scroll on a deep Form row is unreliable, and a two-finger target must be fully on-screen
+# for its touch points anyway. Each target flips its mirrored a11y value once the gesture is
+# recognized, so the run asserts the actuation actually landed rather than merely not erroring.
 - name: pinch and rotate targets mirror their result
   preconditions:
-    launchEnv: { SHOWCASE_UITEST: "1", SHOWCASE_TAB: log }
+    launchEnv: { SHOWCASE_UITEST: "1", SHOWCASE_GESTURES: "1" }
   steps:
-    - wait: { for: { id: log.submit }, timeout: 10 }
+    - wait: { for: { id: log.pinch }, timeout: 10 }
       capture: [video]
-    - swipe: { on: { id: log.submit }, direction: up }
-    - swipe: { on: { id: log.dialog.value }, direction: up }
-    - wait: { for: { id: log.doubletap }, timeout: 5 }
-    - swipe: { on: { id: log.doubletap }, direction: up }
-    - wait: { for: { id: log.pinch }, timeout: 5 }
+    - wait: { for: { id: log.rotate }, timeout: 10 }
     - assert:
         - value: { sel: { id: log.pinch.value }, equals: "idle" }
         - value: { sel: { id: log.rotate.value }, equals: "idle" }
