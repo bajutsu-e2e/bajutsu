@@ -84,8 +84,10 @@ so no backend needs the token) or `network` (idb captures traffic through the ap
 despite not advertising `network`, so `request` / `event` / `requestSequence` / `responseSchema`
 assertions and `until: { request }` waits run on idb). `gestures.py`'s `_require_multi_touch` stays
 as a defense-in-depth check at gesture time, and `_need_control` stays as the equivalent for
-device-control steps — catching the case where the capability is advertised but no `DeviceControl`
-is wired for the run (the fake driver, or a parallel run with no pinned device).
+device-control steps — catching the case where a backend advertises `deviceControl` (so the
+preflight lets the scenario through) but the specific run still has no `DeviceControl` wired, e.g.
+a parallel run with no pinned device. A backend that does not advertise `deviceControl` (Playwright,
+`fake`) never reaches this path: the preflight rejects its device-control scenarios first.
 
 ## idb
 

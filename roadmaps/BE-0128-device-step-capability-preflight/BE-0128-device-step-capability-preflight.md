@@ -68,7 +68,7 @@ directive 2 ("fail loudly", the very concern BE-0082 was written to close).
    xcuitest scenarios that would actually run. Playwright's `CAPABILITIES`
    (`bajutsu/drivers/playwright.py:566-576`) does not gain it, matching today's reality that
    Playwright scenarios have no `DeviceControl` wired in; the `fake` backend likewise does not
-   declare it (its runtime is covered by the `_need_control` safety net in step 4).
+   declare it, so the preflight rejects device-control scenarios on it up front.
 3. **Extend `capability_preflight.py`'s requirement table.** Add a `_Requirement` entry (or one per
    device-control step kind, depending on the token granularity chosen in step 1) to `_REQUIREMENTS`
    in `bajutsu/capability_preflight.py`, with a `locations` function that walks the step tree
