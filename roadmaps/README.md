@@ -412,6 +412,7 @@ The Web (Playwright) backend and its completion (rich capabilities, parallel run
 | ID | Item | Status |
 |---|---|---|
 | [BE-0007](BE-0007-android-backend/BE-0007-android-backend.md) | Android backend | In progress |
+| [BE-0114](BE-0114-driver-conformance-suite/BE-0114-driver-conformance-suite.md) | Driver conformance suite for backend-agnostic behavior | In progress |
 <!-- /GENERATED:in-progress-platform -->
 
 ### Candidates from competitive research (MagicPod / Autify)
@@ -502,7 +503,6 @@ The scope is currently **limited to the iOS Simulator** ([DESIGN §1](../DESIGN.
 | ID | Item | Status |
 |---|---|---|
 | [BE-0008](BE-0008-flutter-support/BE-0008-flutter-support.md) | Flutter support | Proposal |
-| [BE-0114](BE-0114-driver-conformance-suite/BE-0114-driver-conformance-suite.md) | Driver conformance suite for backend-agnostic behavior | Proposal |
 | [BE-0126](BE-0126-per-platform-effective-config/BE-0126-per-platform-effective-config.md) | Split Effective into per-platform configs | Proposal |
 | [BE-0128](BE-0128-device-step-capability-preflight/BE-0128-device-step-capability-preflight.md) | Preflight-gate device-control steps by capability | Proposal |
 | [BE-0141](BE-0141-backend-lifecycle-protocol/BE-0141-backend-lifecycle-protocol.md) | Bring backend lifecycle into the type system | Proposal |
