@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0153](BE-0153-encode-aware-secret-redaction.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0153") |
+| Implementing PR | [#634](https://github.com/bajutsu-e2e/bajutsu/pull/634) |
 | Topic | Security hardening |
 <!-- /BE-METADATA -->
 
@@ -99,14 +100,17 @@ evidence-writing path.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Percent-encoded forms of known secret values matched
-- [ ] Basic-auth base64 forms of known secret values matched
-- [ ] HTML/JSON-escaped forms of known secret values matched
-- [ ] Chunk-boundary limitation documented where full-text redaction cannot see a fragmented value
-- [ ] Tests: percent-encoding, Basic-auth base64, HTML/JSON escaping all correctly masked
-- [ ] Docs updated (both languages)
+- [x] Percent-encoded forms of known secret values matched
+- [x] Basic-auth base64 forms of known secret values matched
+- [x] HTML/JSON-escaped forms of known secret values matched
+- [x] Chunk-boundary limitation documented where full-text redaction cannot see a fragmented value
+- [x] Tests: percent-encoding, Basic-auth base64, HTML/JSON escaping all correctly masked
+- [x] Docs updated (both languages)
 
-No PR has landed yet.
+- 2026-07-04: Implemented encode-aware value matching in `Redactor` — `_encoded_variants`
+  precomputes percent / HTML / JSON forms into the masked-terms list, and `redact_text` decodes
+  `Basic <base64>` tokens to mask credentials whose plaintext carries a known secret. Docs
+  (`evidence.md` + `ja`) note the encoding-aware matching and the chunk-boundary limit.
 
 ## References
 
