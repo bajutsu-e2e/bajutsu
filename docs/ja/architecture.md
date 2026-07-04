@@ -168,7 +168,7 @@ assertions.py  evidence.py ── intervals.py · network.py · visual.py · red
 - `capabilities()` が観測される挙動と一致します。`QUERY` / `ELEMENTS` の baseline を申告し、multi-touch のジェスチャは `MULTI_TOUCH` を申告したときに限り動作します（そうでなければ `UnsupportedAction` を送出します）。
 - `wait_for` は現在の画面を 1 回だけ判定し、共有の `wait_until` ループがそれを固定 sleep なしの条件待ちに変えます。
 
-backend をこのスイートに加えるには、`ConformanceHarness`（画面を渡すと、それを表示するドライバを返すもの）を実装し、`DriverConformanceContract` を継承します。すると pytest が、継承した契約をその backend に対して走らせます。`FakeDriver` は高速な Linux ゲート（`make check`）で、Playwright は web CI ジョブで、idb と XCUITest はオンデバイスの E2E 経路で走ります。契約は同じで、第 2 の仕様はありません。
+backend をこのスイートに加えるには、`ConformanceHarness`（画面を渡すと、それを表示するドライバを返すもの）を実装し、`DriverConformanceContract` を継承します。すると pytest が、継承した契約をその backend に対して走らせます。`FakeDriver` は高速な Linux ゲート（`make check`）で、Playwright は web CI ジョブで、idb と XCUITest はオンデバイスの E2E 経路（`e2e.yml`）で走ります。契約は同じで、第 2 の仕様はありません。各 harness は画面をそれぞれの方法で実体化します。`FakeDriver` は要素をそのまま受け取り、Playwright は HTML として描画し、オンデバイスの harness は指定した識別子を並べた `SHOWCASE_CONFORMANCE` の起動 env を渡して showcase アプリを再起動します。これにより、共有の base だけでなく、実際の idb と XCUITest の query と操作のコードを駆動します。このスイートには `ondevice` の pytest マーカーが付いており（ゲートの既定で除外されます）、`make check` では決して走りません。共有する 1 台の Simulator を画面ごとに再シードするため、並列ワーカーどうしが衝突しないよう直列で実行します。
 
 ---
 

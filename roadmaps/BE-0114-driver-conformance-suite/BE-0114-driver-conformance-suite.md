@@ -111,7 +111,7 @@ backend.
 - [x] Enumerate the backend-agnostic contract (ambiguous / zero-match / `capabilities()` / wait / evidence invariants)
 - [x] Build the parametrized conformance suite against the `Driver` interface
 - [x] Run FakeDriver in the fast Linux gate (`make check`); run Playwright in the separate web CI job
-- [ ] Run idb + XCUITest under the on-device E2E path (same suite)
+- [x] Run idb + XCUITest under the on-device E2E path (same suite)
 - [x] `capabilities()` conformance check + document the contract as the "done" definition for a new backend
 
 Log:
@@ -125,6 +125,14 @@ Log:
   HTML on the real `PlaywrightDriver`. It runs in a new `web-conformance` job in `web-e2e.yml`
   (never the fast gate: a `web` pytest marker + `-m 'not web'` deselects it, so the gate stays
   browser-free even when the `web` extra is installed). idb / XCUITest (on-device E2E) remain.
+- 2026-07-04: On-device slice — the same contract now runs against the real iOS backends, idb and
+  XCUITest, by relaunching the showcase app with a `SHOWCASE_CONFORMANCE` launch env that renders
+  exactly the seeded identifiers (`tests/test_driver_conformance_ondevice.py`,
+  `ConformanceView.swift`; a launch env, not a deeplink, since `simctl openurl` raises iOS's "Open
+  in app?" dialog). A dedicated `conformance` job in `e2e.yml` builds the app + resident runner and
+  runs both backends serially through `launch_driver`; an `ondevice` pytest marker (`-m 'not web and
+  not ondevice'`) keeps it out of the fast gate. Verified locally on a booted Simulator: all 18
+  cases (9 per backend) pass. This completes the five-piece breakdown.
 
 ## References
 

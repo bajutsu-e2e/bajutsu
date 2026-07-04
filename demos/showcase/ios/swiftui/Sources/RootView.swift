@@ -1,8 +1,16 @@
 import SwiftUI
 
 struct RootView: View {
+    @EnvironmentObject var model: AppModel
+
     var body: some View {
-        MainTabView()
+        // BE-0114: the SHOWCASE_CONFORMANCE launch env swaps the whole UI for the flat conformance
+        // screen; otherwise the normal tab app (BE-0079) is untouched.
+        if let identifiers = model.conformanceIDs {
+            ConformanceView(identifiers: identifiers)
+        } else {
+            MainTabView()
+        }
     }
 }
 

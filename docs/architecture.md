@@ -218,7 +218,13 @@ The contract (`tests/driver_conformance.py`) is the "done" definition a new back
 To add a backend to the suite, implement a `ConformanceHarness` (given a screen, return a driver
 showing it) and subclass `DriverConformanceContract`; pytest then runs the inherited contract
 against it. `FakeDriver` runs on the fast Linux gate (`make check`); Playwright runs in the web CI
-job and idb / XCUITest under the on-device E2E path — the same contract, no second spec.
+job and idb / XCUITest under the on-device E2E path (`e2e.yml`) — the same contract, no second spec.
+Each harness realizes a screen its own way: `FakeDriver` takes the elements directly, Playwright
+renders them as HTML, and the on-device harness relaunches the showcase app with a
+`SHOWCASE_CONFORMANCE` launch env naming exactly those identifiers — so the real idb / XCUITest
+query and act code is exercised, not the shared base alone. The suite carries an `ondevice` pytest
+marker (deselected by the gate's default) so it never runs in `make check`, and runs serially on a
+single Simulator (the shared device is reseeded per screen, so parallel workers would collide).
 
 ---
 

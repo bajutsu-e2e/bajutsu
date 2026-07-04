@@ -41,6 +41,12 @@ final class AppModel: ObservableObject {
     // knob (BE-0079): a scenario cannot inject a data state, only observe the app's own.
     @Published var horses: [Horse] = (1 ... 5).map { Horse(id: $0, name: "Horse \($0)") }
 
+    // Driver-conformance mode (BE-0114): a test-only affordance, entirely gated on the
+    // SHOWCASE_CONFORMANCE launch env. nil = the normal observe-only app (BE-0079, untouched);
+    // non-nil = render exactly these identifiers (duplicates / the empty set included) so the
+    // conformance suite can seed arbitrary screens on-device by relaunching. See ConformanceView.
+    let conformanceIDs: [String]?
+
     let animationsDisabled: Bool
 
     private let env: [String: String]
@@ -50,6 +56,14 @@ final class AppModel: ObservableObject {
         animationsDisabled = env["SHOWCASE_UITEST"] != nil
 
         selectedTab = Self.tab(env["SHOWCASE_TAB"])
+        conformanceIDs = Self.conformanceIDs(env["SHOWCASE_CONFORMANCE"])
+    }
+
+    /// Parse a conformance id spec (from the env var or the deeplink's `ids` query). nil leaves
+    /// conformance mode off; a present-but-empty spec is the empty (zero-match) screen.
+    private static func conformanceIDs(_ spec: String?) -> [String]? {
+        guard let spec else { return nil }
+        return spec.isEmpty ? [] : spec.components(separatedBy: ",")
     }
 
     /// Map a `SHOWCASE_TAB` value (and deeplink host) to a tab.
