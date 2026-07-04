@@ -250,6 +250,7 @@ Bajutsu の「契約としての決定性」という立場を、Maestro の fla
 | ID | 項目 | 状態 |
 |---|---|---|
 | [BE-0092](implemented/BE-0092-crawl-coordinator-extraction/BE-0092-crawl-coordinator-extraction-ja.md) | クロール調整役をクラスに切り出す | 実装済み |
+| [BE-0132](implemented/BE-0132-dedupe-crawl-screenshot-helpers/BE-0132-dedupe-crawl-screenshot-helpers-ja.md) | クロールのスクリーンショットヘルパーを重複排除する | 実装済み |
 | [BE-0134](implemented/BE-0134-serve-cli-flag-mirror-drift/BE-0134-serve-cli-flag-mirror-drift-ja.md) | serve と CLI のフラグ二重管理による drift をなくす | 実装済み |
 | [BE-0140](implemented/BE-0140-dedupe-claude-client-init/BE-0140-dedupe-claude-client-init-ja.md) | Claude クライアント初期化の重複をなくす | 実装済み |
 | [BE-0142](implemented/BE-0142-cli-command-coverage/BE-0142-cli-command-coverage-ja.md) | CLI コマンド層にテストを追加する | 実装済み |
@@ -624,7 +625,6 @@ Web（Playwright）backend とその完成（リッチな capability、並列実
 <!-- GENERATED:proposals-quality-debt -->
 | ID | 項目 | 状態 |
 |---|---|---|
-| [BE-0132](proposals/BE-0132-dedupe-crawl-screenshot-helpers/BE-0132-dedupe-crawl-screenshot-helpers-ja.md) | クロールのスクリーンショットヘルパーを重複排除する | 提案 |
 | [BE-0135](proposals/BE-0135-module-naming-debt/BE-0135-module-naming-debt-ja.md) | トップレベルモジュールの命名の負債を解消する | 提案 |
 <!-- /GENERATED:proposals-quality-debt -->
 

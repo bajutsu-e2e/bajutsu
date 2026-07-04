@@ -2,10 +2,16 @@
 
 from __future__ import annotations
 
+import logging
+from pathlib import Path
+
+import pytest
+from conftest import ShotDriver
+
 from bajutsu.agent import Observation, Proposal
 from bajutsu.drivers import base
 from bajutsu.drivers.fake import FakeDriver
-from bajutsu.record import record, shows_app_ui
+from bajutsu.record import _screenshot_bytes, record, shows_app_ui
 from bajutsu.scenario import Assertion, Step, dump_scenarios, load_scenarios
 
 
@@ -233,3 +239,42 @@ def test_no_settle_wait_for_negated_assertion() -> None:
     agent = FakeAgent([Proposal(step=Step.model_validate({"tap": {"id": "go"}})), finish])
     scenario = record(driver, "g", agent)
     assert all(step.wait is None for step in scenario.steps)  # nothing positive to wait for
+
+
+# --- _screenshot_bytes (the unified best-effort capture helper, BE-0132) ---
+
+
+class _RaisingShotDriver(FakeDriver):
+    """A FakeDriver whose screenshot fails — the stale-simulator / full-disk case."""
+
+    attempted_path: str | None = None
+
+    def screenshot(self, path: str) -> None:
+        self.attempted_path = path  # record it so the test can assert the temp file was cleaned up
+        raise RuntimeError("simulator gone")
+
+
+def test_screenshot_bytes_returns_captured_png() -> None:
+    assert _screenshot_bytes(ShotDriver([_el("go", "Go")])) == b"\x89PNG\r\n\x1a\n fake"
+
+
+def test_screenshot_bytes_none_when_nothing_captured(caplog: pytest.LogCaptureFixture) -> None:
+    # The base FakeDriver writes no bytes: a genuine empty capture, not a failure — so it
+    # returns None without logging a warning (the empty case must stay distinct from failure).
+    with caplog.at_level(logging.WARNING, logger="bajutsu.record"):
+        assert _screenshot_bytes(FakeDriver([_el("go", "Go")])) is None
+    assert not caplog.records
+
+
+def test_screenshot_bytes_surfaces_failure_instead_of_swallowing(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    # A real capture failure must not be indistinguishable from an empty capture: it returns
+    # None (best-effort, callers continue) but leaves a warning in the log so it is visible.
+    driver = _RaisingShotDriver([_el("go", "Go")])
+    with caplog.at_level(logging.WARNING, logger="bajutsu.record"):
+        assert _screenshot_bytes(driver) is None
+    assert any(r.levelno == logging.WARNING for r in caplog.records)
+    assert "simulator gone" in caplog.text
+    # The temp file is cleaned up even on failure, so repeated failures don't leak PNGs.
+    assert driver.attempted_path is not None and not Path(driver.attempted_path).exists()

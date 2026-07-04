@@ -8,9 +8,8 @@ deterministic baseline (proposer wins), the tool-call parsing, and guide selecti
 from __future__ import annotations
 
 import json
-from pathlib import Path
 
-from conftest import FakeAnthropic, FakeBlock, el
+from conftest import FakeAnthropic, FakeBlock, ShotDriver, el
 
 from bajutsu import crawl, crawl_tabs
 from bajutsu.anthropic_client import AiConfig
@@ -26,14 +25,6 @@ from bajutsu.crawl_guide import (
 from bajutsu.drivers.fake import FakeDriver
 from bajutsu.redaction import Redactor
 from bajutsu.scenario import Redact
-
-
-class _ShotDriver(FakeDriver):
-    """FakeDriver whose screenshot writes real bytes, so the guide's vision path has an image."""
-
-    def screenshot(self, path: str) -> None:
-        Path(path).write_bytes(b"\x89PNG\r\n\x1a\n fake")
-        self.actions.append(("screenshot", path))
 
 
 class _FakeProposer:
@@ -127,7 +118,7 @@ def test_ai_guide_uses_vision_tabs_only_for_an_unaddressable_tab_bar() -> None:
     locator = _FakeTabLocator(
         [crawl_tabs.TabTarget(0.2, 0.95, "Home"), crawl_tabs.TabTarget(0.8, 0.95, "Me")]
     )
-    actions = ai_guide(_FakeProposer([]), tab_locator=locator)(_ShotDriver(screen=bar), bar, _ctx())
+    actions = ai_guide(_FakeProposer([]), tab_locator=locator)(ShotDriver(screen=bar), bar, _ctx())
     assert locator.calls == 1
     taps = [a for a in actions if a.kind == "tap_point"]
     assert [a.label for a in taps] == ["Home", "Me"]  # both tabs, left to right
@@ -138,7 +129,7 @@ def test_ai_guide_uses_vision_tabs_only_for_an_unaddressable_tab_bar() -> None:
     addr = [el(identifier="tab.home", traits=["tab"]), el(identifier="tab.me", traits=["tab"])]
     locator2 = _FakeTabLocator([crawl_tabs.TabTarget(0.5, 0.95, "X")])
     actions2 = ai_guide(_FakeProposer([]), tab_locator=locator2)(
-        _ShotDriver(screen=addr), addr, _ctx()
+        ShotDriver(screen=addr), addr, _ctx()
     )
     assert locator2.calls == 0
     assert not any(a.kind == "tap_point" for a in actions2)
@@ -146,7 +137,7 @@ def test_ai_guide_uses_vision_tabs_only_for_an_unaddressable_tab_bar() -> None:
     # No tab bar at all -> vision never fires on an ordinary screen.
     plain = [el(identifier="only", traits=["button"])]
     locator3 = _FakeTabLocator([crawl_tabs.TabTarget(0.5, 0.95, "X")])
-    ai_guide(_FakeProposer([]), tab_locator=locator3)(_ShotDriver(screen=plain), plain, _ctx())
+    ai_guide(_FakeProposer([]), tab_locator=locator3)(ShotDriver(screen=plain), plain, _ctx())
     assert locator3.calls == 0
 
 
