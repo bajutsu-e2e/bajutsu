@@ -7,12 +7,34 @@ from bajutsu.scenario.models import Component, Scenario, ScenarioFile
 from bajutsu.scenario.models.scenario import SCHEMA_VERSION
 
 
+def _as_schema_int(value: object) -> int | None:
+    """Interpret a declared schema the way the non-strict `schema` field's int coercion would.
+
+    Mirrors pydantic's lax int coercion (int, integral float, numeric string) so the version gate
+    sees the same value validation will — otherwise `schema: "2"` or `schema: 2.0` would coerce to a
+    valid int *after* the gate and slip an out-of-range version through. A value pydantic can't coerce
+    (or a bool, which is not a version) is left for validation to reject with a type error.
+    """
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        return value
+    if isinstance(value, float):
+        return int(value) if value.is_integer() else None
+    if isinstance(value, str):
+        try:
+            return int(value.strip())
+        except ValueError:
+            return None
+    return None
+
+
 def _check_schema_version(data: dict[str, object]) -> None:
     """Reject an out-of-range schema before full validation, so the mismatch is what's reported (BE-0119)."""
-    # `schema` is the on-disk key; `schema_version` is its populate_by_name spelling. A non-int
-    # (or bool) is left for model validation to reject; an absent key means the implicit version 1.
-    declared = data.get("schema", data.get("schema_version"))
-    if declared is None or not isinstance(declared, int) or isinstance(declared, bool):
+    # `schema` is the on-disk key; `schema_version` is its populate_by_name spelling. An absent key
+    # means the implicit version 1.
+    declared = _as_schema_int(data.get("schema", data.get("schema_version")))
+    if declared is None:
         return
     if declared > SCHEMA_VERSION:
         raise ValueError(

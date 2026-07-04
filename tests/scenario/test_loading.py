@@ -96,6 +96,23 @@ def test_future_schema_raises_actionable_error() -> None:
     assert "upgrade" in message.lower()  # tells the user what to do
 
 
+def test_future_schema_as_coercible_string_or_float_is_still_gated() -> None:
+    # The `schema` field is non-strict, so pydantic would coerce `"2"` / `2.0` to int during
+    # validation — the gate must apply the same coercion first, or an out-of-range version slips
+    # through as a string/float (BE-0119).
+    future = SCHEMA_VERSION + 1
+    for value in (f'"{future}"', f"{future}.0"):
+        text = f"schema: {value}\nscenarios:\n  - name: a\n    steps:\n      - tap: {{ id: x }}\n"
+        with pytest.raises(ValueError, match=rf"schema {future}"):
+            load_scenario_file(text)
+
+
+def test_in_range_string_schema_loads() -> None:
+    # A coercible in-range value (a quoted current version) passes the gate and validates normally.
+    text = f'schema: "{SCHEMA_VERSION}"\nscenarios:\n  - name: a\n    steps:\n      - tap: {{ id: x }}\n'
+    assert load_scenario_file(text).scenarios[0].name == "a"
+
+
 def test_below_one_schema_is_rejected() -> None:
     # No schema below 1 has ever existed, so `schema: 0` is a malformed version, not an implicit v1
     # — it fails loudly rather than being stored verbatim (BE-0119).
