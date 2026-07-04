@@ -35,7 +35,7 @@ The goal is deliberately modest and bounded: the **same UI and the same features
 
 ### Scope and constraints
 
-A frontend-only change confined to `bajutsu/templates/serve.css`, with a small companion change in `bajutsu/templates/serve.js` for the one genuinely interactive gap (touch panning of the crawl graph). No server route, job model, or config key changes; the UI keeps shelling out to the deterministic CLI exactly as today. Two constraints from [BE-0011](../../implemented/BE-0011-local-web-ui-serve/BE-0011-local-web-ui-serve.md) are kept: the response stays **one self-contained HTML document** with CSS/JS inlined (no `/static` routes, no asset pipeline), and the CSS stays **hand-written with no build step** (no framework).
+A frontend-only change confined to `bajutsu/templates/serve.css`, with a small companion change in `bajutsu/templates/serve.js` for the one genuinely interactive gap (touch panning of the crawl graph). No server route, job model, or config key changes; the UI keeps shelling out to the deterministic CLI exactly as today. Two constraints from [BE-0011](../../BE-0011-local-web-ui-serve/BE-0011-local-web-ui-serve.md) are kept: the response stays **one self-contained HTML document** with CSS/JS inlined (no `/static` routes, no asset pipeline), and the CSS stays **hand-written with no build step** (no framework).
 
 ### Breakpoint strategy
 
@@ -73,7 +73,7 @@ The screenshot modal is already viewport-relative (`.shotbox{width:min(960px,94v
 
 ### The test contract (machine-checkable)
 
-[BE-0058](../../implemented/BE-0058-dogfood-web-ui/BE-0058-dogfood-web-ui.md) already drives the `serve` UI with the Web (Playwright) backend as a deterministic Tier-2 regression net. Responsiveness is naturally machine-checkable there, because Playwright sets the `viewport` and the assertions stay structural — never an LLM judgment of "looks good":
+[BE-0058](../../BE-0058-dogfood-web-ui/BE-0058-dogfood-web-ui.md) already drives the `serve` UI with the Web (Playwright) backend as a deterministic Tier-2 regression net. Responsiveness is naturally machine-checkable there, because Playwright sets the `viewport` and the assertions stay structural — never an LLM judgment of "looks good":
 
 * **No horizontal overflow at phone width** — at a phone viewport (e.g. 390×844) the document's scroll width does not exceed its client width, the deterministic statement of "nothing spills off the side".
 * **Key controls are reachable** — the run button, the top tabs, and the per-view switcher are visible and not clipped at phone width (existing assertions, re-run at the narrow viewport).
@@ -100,8 +100,8 @@ A broader desktop redesign of the resizable/collapsible tiling (this item only h
 ## References
 
 * [CLAUDE.md](../../../CLAUDE.md), [DESIGN.md](../../../DESIGN.md) — the prime directives this respects: AI never judges, determinism first, app-agnostic. The change adds no LLM and never computes a verdict; it only rearranges a Tier-1 convenience.
-* [BE-0011 — Local web UI (`bajutsu serve`)](../../implemented/BE-0011-local-web-ui-serve/BE-0011-local-web-ui-serve.md) — the UI this reshapes, and its stdlib-only, single-self-contained-HTML, no-build-step constraints that bound the design.
-* [BE-0013 — Scenario GUI editor](../BE-0013-scenario-gui-editor/BE-0013-scenario-gui-editor.md) — the future structured-editing surface that will live in the same UI and must also behave on a small screen.
+* [BE-0011 — Local web UI (`bajutsu serve`)](../../BE-0011-local-web-ui-serve/BE-0011-local-web-ui-serve.md) — the UI this reshapes, and its stdlib-only, single-self-contained-HTML, no-build-step constraints that bound the design.
+* [BE-0013 — Scenario GUI editor](../../BE-0013-scenario-gui-editor/BE-0013-scenario-gui-editor.md) — the future structured-editing surface that will live in the same UI and must also behave on a small screen.
 * [BE-0015 — Public hosting of the web UI](../../in-progress/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md), [BE-0016 — Self-hosting of the web UI](../../in-progress/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md) — the hosting direction that turns phone access into a realistic, desirable entry point.
-* [BE-0058 — Dogfood the serve Web UI](../../implemented/BE-0058-dogfood-web-ui/BE-0058-dogfood-web-ui.md) — the Web-backend regression net that asserts the responsive layout deterministically at a phone viewport.
+* [BE-0058 — Dogfood the serve Web UI](../../BE-0058-dogfood-web-ui/BE-0058-dogfood-web-ui.md) — the Web-backend regression net that asserts the responsive layout deterministically at a phone viewport.
 * `bajutsu/templates/serve.css`, `bajutsu/templates/serve.html.j2`, `bajutsu/templates/serve.js` — the frontend this item changes; `bajutsu/templates/report.css` — the already-responsive embedded report this item leaves untouched.

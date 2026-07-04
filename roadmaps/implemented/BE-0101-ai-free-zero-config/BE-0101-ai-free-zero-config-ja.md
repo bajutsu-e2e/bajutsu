@@ -11,7 +11,7 @@
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0101") |
 | 実装 PR | [#432](https://github.com/bajutsu-e2e/bajutsu/pull/432) |
 | トピック | AI provider configuration |
-| 関連 | [BE-0047](../../implemented/BE-0047-ai-data-sovereignty/BE-0047-ai-data-sovereignty-ja.md), [BE-0053](../../implemented/BE-0053-bedrock-ai-provider/BE-0053-bedrock-ai-provider-ja.md), [BE-0024](../../implemented/BE-0024-doctor-onboarding/BE-0024-doctor-onboarding-ja.md) |
+| 関連 | [BE-0047](../../BE-0047-ai-data-sovereignty/BE-0047-ai-data-sovereignty-ja.md), [BE-0053](../../BE-0053-bedrock-ai-provider/BE-0053-bedrock-ai-provider-ja.md), [BE-0024](../../BE-0024-doctor-onboarding/BE-0024-doctor-onboarding-ja.md) |
 <!-- /BE-METADATA -->
 
 ## はじめに
@@ -25,7 +25,7 @@ Claude を使わない側のすべてが**設定ゼロで動く**ことを保証
 
 軸は、特定の資格情報があるかどうかではなく、**そもそも Claude を呼ぶかどうか**です。Claude へは
 複数のプロバイダと複数のエージェントバックエンドから到達できます。Anthropic API
-（`ANTHROPIC_API_KEY`）、Amazon Bedrock（AWS 資格情報。[BE-0053](../../implemented/BE-0053-bedrock-ai-provider/BE-0053-bedrock-ai-provider-ja.md)）、
+（`ANTHROPIC_API_KEY`）、Amazon Bedrock（AWS 資格情報。[BE-0053](../../BE-0053-bedrock-ai-provider/BE-0053-bedrock-ai-provider-ja.md)）、
 あるいはサブスクリプションでログインした Claude Code CLI（`--agent claude-code`）です。「API キー」は
 そのうちの一つの手段にすぎず、見えるようにすべきはモデル呼び出しそのものです。したがって
 「Claude を使わない」とは Claude をまったく使わないことであり、AI の資格情報もログインもランタイムも
@@ -38,9 +38,9 @@ Tier 1 と Tier 2 の分離そのものであり、`run` / CI ゲートにモデ
 ## 動機
 
 Bajutsu のアーキテクチャは、すでに明確な線を引いています。決定論的な `run` / CI ゲートはモデルを
-呼ばず、Claude に到達するのは Tier 1 の作成・調査の経路だけです。[BE-0047](../../implemented/BE-0047-ai-data-sovereignty/BE-0047-ai-data-sovereignty-ja.md)
+呼ばず、Claude に到達するのは Tier 1 の作成・調査の経路だけです。[BE-0047](../../BE-0047-ai-data-sovereignty/BE-0047-ai-data-sovereignty-ja.md)
 は AI 側を「強制された約束」に変えました。解決されたプロバイダに使える資格情報が無ければ AI の入口は
-fail-closed で停止し（`anthropic_client.credential_gap()`）、[BE-0053](../../implemented/BE-0053-bedrock-ai-provider/BE-0053-bedrock-ai-provider-ja.md)
+fail-closed で停止し（`anthropic_client.credential_gap()`）、[BE-0053](../../BE-0053-bedrock-ai-provider/BE-0053-bedrock-ai-provider-ja.md)
 はプロバイダを差し替え可能にしました。つまり配管と強制の仕組みは揃っています。
 
 足りないのは、**境界が利用者から見えること**と、**Claude を使わない側が何も要らないという明示的な
@@ -144,7 +144,7 @@ fail-closed で停止し（`anthropic_client.credential_gap()`）、[BE-0053](..
 - **`doctor`** は、**Claude の準備状況を独立した、明らかに任意の節として**報告します。すでに採点して
   いる端末や規約の準備状況とは切り離します。AI の準備が無い利用者には、決定論的な経路について環境が
   `Ready` と採点されたうえで、Claude は別立ての「未設定（任意）」の行として示され、阻害要因と混同
-  されることはありません。これは [BE-0024](../../implemented/BE-0024-doctor-onboarding/BE-0024-doctor-onboarding-ja.md)
+  されることはありません。これは [BE-0024](../../BE-0024-doctor-onboarding/BE-0024-doctor-onboarding-ja.md)
   のオンボーディング表示面を拡張するもので、決定論的で LLM を使いません（`ai_availability` を見るだけ
   です）。
 
@@ -210,7 +210,7 @@ fail-closed で停止し（`anthropic_client.credential_gap()`）、[BE-0053](..
 （`api_key_info` / `set_api_key`。制御の基にするキーの表示面）、`bajutsu/doctor.py`・
 `bajutsu/preflight.py`（オンボーディングの表示面）、[DESIGN §2 / §3.1](../../../DESIGN.md)、
 [CLAUDE.md](../../../CLAUDE.md)（本項目が見えるようにする境界の散文での記述）、
-[BE-0047](../../implemented/BE-0047-ai-data-sovereignty/BE-0047-ai-data-sovereignty-ja.md)
-（AI 側の強制の相方）、[BE-0053](../../implemented/BE-0053-bedrock-ai-provider/BE-0053-bedrock-ai-provider-ja.md)
-（差し替え可能なプロバイダ）、[BE-0024](../../implemented/BE-0024-doctor-onboarding/BE-0024-doctor-onboarding-ja.md)
+[BE-0047](../../BE-0047-ai-data-sovereignty/BE-0047-ai-data-sovereignty-ja.md)
+（AI 側の強制の相方）、[BE-0053](../../BE-0053-bedrock-ai-provider/BE-0053-bedrock-ai-provider-ja.md)
+（差し替え可能なプロバイダ）、[BE-0024](../../BE-0024-doctor-onboarding/BE-0024-doctor-onboarding-ja.md)
 （Claude 準備状況の節が拡張する doctor / オンボーディングの表示面）。

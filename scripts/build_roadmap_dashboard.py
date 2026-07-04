@@ -65,10 +65,11 @@ BUCKET_LABEL: dict[str, str] = {
 
 
 def _item_href(item: Any) -> str:
-    """The GitHub URL of an item's English markdown file."""
+    """The GitHub URL of an item's English markdown file (status-folder prefix until flattened)."""
     en = item.by_lang["en"]
     name = f"{en.id}-{en.slug}"
-    return f"{REPO_BLOB}/roadmaps/{en.category}/{name}/{name}.md"
+    prefix = f"{en.category}/" if en.category else ""  # BE-0159: no prefix once the item is flat
+    return f"{REPO_BLOB}/roadmaps/{prefix}{name}/{name}.md"
 
 
 def _card(item: Any) -> str:

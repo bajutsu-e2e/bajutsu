@@ -11,7 +11,7 @@
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0101") |
 | Implementing PR | [#432](https://github.com/bajutsu-e2e/bajutsu/pull/432) |
 | Topic | AI provider configuration |
-| Related | [BE-0047](../../implemented/BE-0047-ai-data-sovereignty/BE-0047-ai-data-sovereignty.md), [BE-0053](../../implemented/BE-0053-bedrock-ai-provider/BE-0053-bedrock-ai-provider.md), [BE-0024](../../implemented/BE-0024-doctor-onboarding/BE-0024-doctor-onboarding.md) |
+| Related | [BE-0047](../../BE-0047-ai-data-sovereignty/BE-0047-ai-data-sovereignty.md), [BE-0053](../../BE-0053-bedrock-ai-provider/BE-0053-bedrock-ai-provider.md), [BE-0024](../../BE-0024-doctor-onboarding/BE-0024-doctor-onboarding.md) |
 <!-- /BE-METADATA -->
 
 ## Introduction
@@ -25,7 +25,7 @@ deterministic parts of `serve`) immediately, while the Claude paths (`record` / 
 
 The axis is **whether Claude is invoked at all**, not whether a particular credential is present.
 Claude can be reached by more than one provider and more than one agent backend — the Anthropic API
-(`ANTHROPIC_API_KEY`), Amazon Bedrock (AWS credentials, [BE-0053](../../implemented/BE-0053-bedrock-ai-provider/BE-0053-bedrock-ai-provider.md)),
+(`ANTHROPIC_API_KEY`), Amazon Bedrock (AWS credentials, [BE-0053](../../BE-0053-bedrock-ai-provider/BE-0053-bedrock-ai-provider.md)),
 or the Claude Code CLI under a subscription login (`--agent claude-code`). An "API key" is only one
 of those mechanisms; the property worth surfacing is the model call itself. "Claude-free" therefore
 means no Claude at all, and so no AI credential, login, or runtime of any kind is needed.
@@ -37,9 +37,9 @@ by design. It changes nothing about the prime directives: the Claude/Claude-free
 ## Motivation
 
 Bajutsu's architecture already draws a hard line: the deterministic `run` / CI gate calls no model,
-and only the Tier-1 authoring / investigation paths reach Claude. [BE-0047](../../implemented/BE-0047-ai-data-sovereignty/BE-0047-ai-data-sovereignty.md)
+and only the Tier-1 authoring / investigation paths reach Claude. [BE-0047](../../BE-0047-ai-data-sovereignty/BE-0047-ai-data-sovereignty.md)
 turned the AI side into an *enforced* promise — the AI entry points fail closed when the resolved
-provider has no usable credential (`anthropic_client.credential_gap()`), and [BE-0053](../../implemented/BE-0053-bedrock-ai-provider/BE-0053-bedrock-ai-provider.md)
+provider has no usable credential (`anthropic_client.credential_gap()`), and [BE-0053](../../BE-0053-bedrock-ai-provider/BE-0053-bedrock-ai-provider.md)
 made the provider pluggable. So the *plumbing* and the *enforcement* are done.
 
 What is missing is the **user-facing legibility of the boundary** and an **explicit guarantee that
@@ -146,7 +146,7 @@ Make the boundary visible at the three points a user meets it:
   the device / convention readiness it already grades. A user with no AI setup sees their
   environment graded `Ready` for the deterministic path, with Claude shown as a distinct
   "not configured (optional)" line — never conflated with a blocking problem. This extends the
-  [BE-0024](../../implemented/BE-0024-doctor-onboarding/BE-0024-doctor-onboarding.md) onboarding surface and stays
+  [BE-0024](../../BE-0024-doctor-onboarding/BE-0024-doctor-onboarding.md) onboarding surface and stays
   deterministic and LLM-free (it only inspects `ai_availability`).
 
 ### Prime-directive compliance
@@ -207,7 +207,7 @@ registry), `bajutsu/claude_code_agent.py` (the subscription-login CLI backend), 
 (per-command registry the `uses_claude` flag attaches to), `bajutsu/serve/` (`api_key_info` /
 `set_api_key` — the key surface to gate on), `bajutsu/doctor.py` · `bajutsu/preflight.py` (the
 onboarding surface), [DESIGN §2 / §3.1](../../../DESIGN.md), [CLAUDE.md](../../../CLAUDE.md) (the
-prose statement of the boundary this item makes legible), [BE-0047](../../implemented/BE-0047-ai-data-sovereignty/BE-0047-ai-data-sovereignty.md)
-(the enforcement counterpart on the AI side), [BE-0053](../../implemented/BE-0053-bedrock-ai-provider/BE-0053-bedrock-ai-provider.md)
-(pluggable provider), [BE-0024](../../implemented/BE-0024-doctor-onboarding/BE-0024-doctor-onboarding.md) (the
+prose statement of the boundary this item makes legible), [BE-0047](../../BE-0047-ai-data-sovereignty/BE-0047-ai-data-sovereignty.md)
+(the enforcement counterpart on the AI side), [BE-0053](../../BE-0053-bedrock-ai-provider/BE-0053-bedrock-ai-provider.md)
+(pluggable provider), [BE-0024](../../BE-0024-doctor-onboarding/BE-0024-doctor-onboarding.md) (the
 doctor / onboarding surface the Claude-readiness section extends).

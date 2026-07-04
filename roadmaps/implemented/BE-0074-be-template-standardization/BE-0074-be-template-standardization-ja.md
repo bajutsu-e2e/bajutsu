@@ -54,7 +54,7 @@ Alternatives considered / References）です。この形は [`CLAUDE.md`](../..
 
 どれも単独では小さいものです。まとめて見れば、「隣をコピーして目視で揃える」やり方が生む当然の帰結です。散文の
 指針は逸脱を防ぎません。コミット時にその散文を読み直す者がいないからです。衝突に強いファイルフロー
-（[BE-0043](../../implemented/BE-0043-conflict-resistant-file-flow/BE-0043-conflict-resistant-file-flow-ja.md)）
+（[BE-0043](../../BE-0043-conflict-resistant-file-flow/BE-0043-conflict-resistant-file-flow-ja.md)）
 は、この種の問題に対する本プロジェクトの答えをすでに確立しています。不変条件を機械検査にかけ、「ローカルで
 緑なら CI も緑」を成り立たせることです。ロードマップの索引はそのように守られていますが、項目の本体は守られて
 いません。本項目は同じ扱いを本体へ広げます。
@@ -234,7 +234,7 @@ H1 のタイトル行は両ファイルとも `# BE-NNNN — <タイトル>` と
   [`scripts/promote_roadmap_items.py`](../../../scripts/promote_roadmap_items.py)、
   `tests/test_roadmap_index.py` —— 本項目が囲みブロックを軸に再定義するメタデータパーサと、本体に対して倣う
   索引への既存の「生成して検査する」扱い。
-- [BE-0043 —— 衝突に強いファイルフロー](../../implemented/BE-0043-conflict-resistant-file-flow/BE-0043-conflict-resistant-file-flow-ja.md)
+- [BE-0043 —— 衝突に強いファイルフロー](../../BE-0043-conflict-resistant-file-flow/BE-0043-conflict-resistant-file-flow-ja.md)
   —— 「不変条件を機械検査にかける」を確立した、コントリビュータ体験の兄弟項目。
 - [BE-0069 —— 実行可能なコントリビュータガードレール](../BE-0069-executable-contributor-guardrails/BE-0069-executable-contributor-guardrails-ja.md)
   —— 近縁の手続きのコマンド化の項目。別物として保ちます。

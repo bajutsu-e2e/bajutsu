@@ -22,7 +22,7 @@
 CI ゲートには決して入りません）であり、スクリーンの同一性、遷移、クラッシュの判定は今とまったく同じで、
 既存の `test_crawl*` のテスト群が回帰の歯止めになります。公開 API もディスク上のスクリーンマップも
 変わりません。本提案は、ここで再編する並行処理を導入した
-[BE-0064](../../implemented/BE-0064-parallel-crawl/BE-0064-parallel-crawl-ja.md) と
+[BE-0064](../../BE-0064-parallel-crawl/BE-0064-parallel-crawl-ja.md) と
 [BE-0077](../../implemented/BE-0077-parallel-web-crawl/BE-0077-parallel-web-crawl-ja.md) の保守性面での
 対になる提案です。挙動や性能の変更ではなく、プロダクトコードの挙動を変えない内部リファクタリングなので、
 「コードベース品質・技術的負債」のトピックの下に置きます。これは
@@ -160,7 +160,7 @@ class _Coordinator:
 ## 参考
 
 - [`bajutsu/crawl.py`](../../../bajutsu/crawl.py) — `crawl()` とそのネストしたクロージャ。
-- [BE-0064 — 複数シミュレータにまたがる並行クロール](../../implemented/BE-0064-parallel-crawl/BE-0064-parallel-crawl-ja.md) — ここで再編するマルチワーカーのフロンティアを導入。
+- [BE-0064 — 複数シミュレータにまたがる並行クロール](../../BE-0064-parallel-crawl/BE-0064-parallel-crawl-ja.md) — ここで再編するマルチワーカーのフロンティアを導入。
 - [BE-0077 — 複数ブラウザにまたがる並行 Web クロール](../../implemented/BE-0077-parallel-web-crawl/BE-0077-parallel-web-crawl-ja.md) — スレッド内ワーカーファクトリと `recover` を導入。
 - [BE-0083 — codegen エミッタを共有のシナリオ走査の背後に統合する](../../implemented/BE-0083-codegen-emitter-unification/BE-0083-codegen-emitter-unification-ja.md) — これと同種の、挙動を変えない内部構造リファクタリング。
 - [BE-0067 — コード品質ゲートの強化](../../implemented/BE-0067-code-quality-gate-hardening/BE-0067-code-quality-gate-hardening-ja.md) — 本項目と区別される、コントリビュータ体験（開発基盤）側の対比先。

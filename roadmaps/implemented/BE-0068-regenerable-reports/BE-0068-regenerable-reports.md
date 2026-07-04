@@ -50,7 +50,7 @@ and the coupling bites in several concrete ways:
    one-off, the app build or backend state has moved on, or the run is a release record that must
    not change. Refreshing the presentation should not require re-execution.
 3. **A hosted or shared `serve` shows stale reports.** When `serve`
-   ([BE-0011](../../implemented/BE-0011-local-web-ui-serve/BE-0011-local-web-ui-serve.md)) is
+   ([BE-0011](../../BE-0011-local-web-ui-serve/BE-0011-local-web-ui-serve.md)) is
    upgraded, every report it serves is still the HTML baked by whatever version ran each scenario.
    A browser user comparing two runs sees two different report layouts for no reason other than
    *when* each was run.
@@ -92,7 +92,7 @@ template. `bajutsu report <run-id|path>` rewrites `runs/<id>/report.html` in pla
 `junit.xml`); `bajutsu report --all` (or a glob) re-bakes every run under `runs/`. It launches no
 device and calls no model — it reads the persisted model and renders. This is the path for
 refreshing the portable, self-contained `report.html` that CI uploads and that
-[BE-0060](../../implemented/BE-0060-run-report-zip-export/BE-0060-run-report-zip-export.md) packages
+[BE-0060](../../BE-0060-run-report-zip-export/BE-0060-run-report-zip-export.md) packages
 as a zip. (The exact command spelling is a small open detail; the load-bearing decision is that it
 shares the one renderer with `serve` and `run`.)
 
@@ -156,7 +156,7 @@ captures.
   run is an immutable release record.
 * **serve renders dynamically, but no offline command.** Refreshes the browser view, but leaves
   the portable `report.html` — the artifact CI uploads and
-  [BE-0060](../../implemented/BE-0060-run-report-zip-export/BE-0060-run-report-zip-export.md) zips —
+  [BE-0060](../../BE-0060-run-report-zip-export/BE-0060-run-report-zip-export.md) zips —
   frozen at its baked version. Rejected as half a solution; the offline re-render is what keeps
   shared and archived reports current.
 * **An offline command, but serve keeps serving the baked file.** Refreshes artifacts on demand,
@@ -169,8 +169,8 @@ captures.
   a `schemaVersion`.
 * **Ship raw JSON plus a client-side JS app (render in the browser).** The report is deliberately a
   self-contained static HTML with inline assets and relative links, so it opens by double-click
-  and zips cleanly ([BE-0011](../../implemented/BE-0011-local-web-ui-serve/BE-0011-local-web-ui-serve.md),
-  [BE-0060](../../implemented/BE-0060-run-report-zip-export/BE-0060-run-report-zip-export.md)). A
+  and zips cleanly ([BE-0011](../../BE-0011-local-web-ui-serve/BE-0011-local-web-ui-serve.md),
+  [BE-0060](../../BE-0060-run-report-zip-export/BE-0060-run-report-zip-export.md)). A
   JSON + SPA would break that portability. The renderer stays server-side / offline and keeps
   emitting self-contained HTML.
 * **Auto-rebake on a template-version mismatch.** Tempting, but silently rewriting a past run's
@@ -178,7 +178,7 @@ captures.
   `bajutsu report` command plus serve's render-on-view cover the need without mutating old runs
   behind the user's back; an opt-in auto-refresh could be revisited later.
 * **A dedicated "Reporting" roadmap topic.** Deferred. Filed under *Authoring experience* alongside
-  [BE-0060](../../implemented/BE-0060-run-report-zip-export/BE-0060-run-report-zip-export.md),
+  [BE-0060](../../BE-0060-run-report-zip-export/BE-0060-run-report-zip-export.md),
   following the precedent BE-0060 itself set (one topic until siblings accumulate). This item and
   BE-0060 are the first two report-subsystem proposals; if more arrive, a "Reporting" topic can be
   carved out then.
@@ -196,10 +196,10 @@ captures.
   and CI; this proposal makes it literally the render input.
 * [DESIGN §10](../../../DESIGN.md) — being explicit about skipped / absent evidence; the model for
   the graceful-degradation boundary above.
-* [BE-0011 — Local web UI (`bajutsu serve`)](../../implemented/BE-0011-local-web-ui-serve/BE-0011-local-web-ui-serve.md)
+* [BE-0011 — Local web UI (`bajutsu serve`)](../../BE-0011-local-web-ui-serve/BE-0011-local-web-ui-serve.md)
   — the embedded report this makes render-on-view, and the relative-link, self-contained report it
   must keep emitting.
-* [BE-0060 — Download / export a run report as a zip](../../implemented/BE-0060-run-report-zip-export/BE-0060-run-report-zip-export.md)
+* [BE-0060 — Download / export a run report as a zip](../../BE-0060-run-report-zip-export/BE-0060-run-report-zip-export.md)
   — complementary: BE-0060 packages a run dir; regeneration keeps the report inside it current, and
   a bundled versioned model keeps an exported zip re-renderable later.
 * `bajutsu/report/` (`html.py`, `manifest.py`, `panels.py`, `templates/report.html.j2`),

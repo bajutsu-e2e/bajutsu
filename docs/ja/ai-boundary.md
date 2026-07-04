@@ -6,7 +6,7 @@
 > ツールの一級の性質であり、テストで保証されています
 > （[BE-0101](../../roadmaps/implemented/BE-0101-ai-free-zero-config/BE-0101-ai-free-zero-config-ja.md)）。
 > 同じ線の反対側にある「あなたの AI、あなたのキー、あなたのデータ」という保証
-> （[self-hosting](self-hosting.md)、[BE-0047](../../roadmaps/implemented/BE-0047-ai-data-sovereignty/BE-0047-ai-data-sovereignty-ja.md)）
+> （[self-hosting](self-hosting.md)、[BE-0047](../../roadmaps/BE-0047-ai-data-sovereignty/BE-0047-ai-data-sovereignty-ja.md)）
 > の、開発体験の面での相方にあたります。
 
 関連: [cli](cli.md) · [concepts](concepts.md) · [recording](recording.md) · [self-hosting](self-hosting.md)
@@ -95,6 +95,6 @@ Claude の経路をテストし続けます。AI-free の保証はあくまで**
 - **Claude Code CLI**：`--agent claude-code`。キーの代わりに Claude のサブスクリプションログインを
   使います。
 
-どの手段で認証するかは設定の問題です（[BE-0047](../../roadmaps/implemented/BE-0047-ai-data-sovereignty/BE-0047-ai-data-sovereignty-ja.md)
-と [BE-0053](../../roadmaps/implemented/BE-0053-bedrock-ai-provider/BE-0053-bedrock-ai-provider-ja.md)
+どの手段で認証するかは設定の問題です（[BE-0047](../../roadmaps/BE-0047-ai-data-sovereignty/BE-0047-ai-data-sovereignty-ja.md)
+と [BE-0053](../../roadmaps/BE-0053-bedrock-ai-provider/BE-0053-bedrock-ai-provider-ja.md)
 に従います）。どれを選んでも、上記の分類は変わりません。

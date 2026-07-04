@@ -25,7 +25,7 @@ infrastructure: it adds no LLM, never runs inside `run`, and does not touch the 
 so the Prime directives ([CLAUDE.md](../../../CLAUDE.md)) hold by construction.
 
 This continues the *Development infrastructure* line.
-[BE-0043](../../implemented/BE-0043-conflict-resistant-file-flow/BE-0043-conflict-resistant-file-flow.md)
+[BE-0043](../../BE-0043-conflict-resistant-file-flow/BE-0043-conflict-resistant-file-flow.md)
 turned a hand-edited **shared ledger** (the roadmap index) into a generated artifact;
 [BE-0067](../../implemented/BE-0067-code-quality-gate-hardening/BE-0067-code-quality-gate-hardening.md)
 made **CI mirror `make check` by construction**, removing duplication that had silently drifted.
@@ -96,7 +96,7 @@ Four mechanisms, in order of leverage.
   seeded with `TBD`.
 - **Always emits the literal `BE-0069` placeholder** — never a number. IDs are permanent and
   monotonic, and allocation is CI's atomic job
-  ([BE-0061](../../implemented/BE-0061-be-id-allocation-hardening/BE-0061-be-id-allocation-hardening.md));
+  ([BE-0061](../../BE-0061-be-id-allocation-hardening/BE-0061-be-id-allocation-hardening.md));
   a scaffolder that guessed a number would reintroduce the race the placeholder exists to avoid.
 - Validates `TOPIC` against the known section map in
   [`scripts/build_roadmap_index.py`](../../../scripts/build_roadmap_index.py) so the item lands in a
@@ -197,7 +197,7 @@ Each phase is a small, independent PR (the parallel-work model, BE-0043).
   not.
 - **Make the scaffolder allocate a real BE number.** Rejected: it violates the placeholder rule — IDs
   are permanent and monotonic, and allocation is CI's atomic, race-free job
-  ([BE-0061](../../implemented/BE-0061-be-id-allocation-hardening/BE-0061-be-id-allocation-hardening.md)).
+  ([BE-0061](../../BE-0061-be-id-allocation-hardening/BE-0061-be-id-allocation-hardening.md)).
   The scaffolder must emit `BE-0069`.
 - **Make `preflight` a second hard gate (a pre-commit hook running `make check`).** Rejected: the
   pre-push hook already gates `make check`; a per-commit gate slows the inner loop for no added
@@ -223,12 +223,12 @@ Each phase is a small, independent PR (the parallel-work model, BE-0043).
 
 - [CLAUDE.md](../../../CLAUDE.md) — the prose procedures these commands replace, and the Prime
   directives this respects (no LLM in the gate; developer-facing only).
-- [BE-0043 — Conflict-resistant file flow](../../implemented/BE-0043-conflict-resistant-file-flow/BE-0043-conflict-resistant-file-flow.md)
+- [BE-0043 — Conflict-resistant file flow](../../BE-0043-conflict-resistant-file-flow/BE-0043-conflict-resistant-file-flow.md)
   — turning a hand-edited ledger into a generated artifact; the *Development infrastructure*
   precedent.
 - [BE-0067 — Code-quality gate hardening](../../implemented/BE-0067-code-quality-gate-hardening/BE-0067-code-quality-gate-hardening.md)
   — CI mirrors `make check` by construction (single source of truth); `scripts/` under `mypy`.
-- [BE-0061 — Collision-proof BE-ID allocation](../../implemented/BE-0061-be-id-allocation-hardening/BE-0061-be-id-allocation-hardening.md)
+- [BE-0061 — Collision-proof BE-ID allocation](../../BE-0061-be-id-allocation-hardening/BE-0061-be-id-allocation-hardening.md)
   — why the scaffolder must emit `BE-0069`, not a number.
 - [`docs/ai-development.md`](../../../docs/ai-development.md) — the worktree / preflight / BE-ID
   recipes C and A convert.

@@ -42,9 +42,8 @@ from dataclasses import dataclass
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from build_roadmap_index import TITLE_RE
-from promote_roadmap_items import CATEGORIES, read_status
-from roadmap_ids import numbered_match
+from build_roadmap_index import TITLE_RE, metadata_fields
+from roadmap_ids import LEGACY_CATEGORIES, iter_item_dirs, numbered_match
 
 ROADMAP = Path("roadmaps")
 # Only these statuses are "open" and get a tracking issue; the other two are shipped / shelved.
@@ -72,50 +71,44 @@ class Item:
     intro: str  # Introduction section body (may be empty)
 
 
-def _parse_english(item_dir: Path) -> tuple[str, str]:
-    """Return (H1 title, Introduction body) from the item's English file; ('', '') if unreadable."""
+def _parse_english(item_dir: Path) -> tuple[str, str, str | None]:
+    """Return (H1 title, Introduction body, Status) from the item's English file.
+
+    Title and intro default to ``''``; Status is ``None`` if the file is unreadable or carries no
+    ``Status`` field — those items are skipped, since there is nothing to track against.
+    """
     english = item_dir / f"{item_dir.name}.md"
     try:
         text = english.read_text(encoding="utf-8")
     except OSError:
-        return "", ""
+        return "", "", None
     title_match = TITLE_RE.search(text)
     intro_match = INTRO_RE.search(text)
     title = title_match.group(1).strip() if title_match else ""
     intro = intro_match.group(1).strip() if intro_match else ""
-    return title, intro
+    return title, intro, metadata_fields(text).get("Status")
 
 
 def scan_items(roadmap: Path) -> list[Item]:
-    """Every numbered ``BE-NNNN`` item across the four folders, sorted by id.
+    """Every numbered ``BE-NNNN`` item — flat root and legacy status folders (BE-0159), sorted by id.
 
     Placeholders (``BE-XXXX``) aren't numbered, so they're skipped — a tracking issue is only ever
-    titled with a permanent id. Items without a readable Status are skipped.
+    titled with a permanent id. Items without a readable Status are skipped. Each item's ``category``
+    reflects where it currently lives (``''`` once flattened), so its issue link points at the file.
     """
     items: list[Item] = []
-    for category in CATEGORIES:
-        category_dir = roadmap / category
-        if not category_dir.is_dir():
+    for d in iter_item_dirs(roadmap):
+        match = numbered_match(d.name)
+        if not match:
             continue
-        for d in sorted(category_dir.iterdir()):
-            match = numbered_match(d.name) if d.is_dir() else None
-            if not match:
-                continue
-            status = read_status(d)
-            if status is None:
-                continue
-            be_id, slug = f"BE-{match.group(1)}", match.group(2)
-            title, intro = _parse_english(d)
-            items.append(
-                Item(
-                    be_id=be_id,
-                    slug=slug,
-                    category=category,
-                    status=status,
-                    title=title,
-                    intro=intro,
-                )
-            )
+        title, intro, status = _parse_english(d)
+        if status is None:
+            continue
+        be_id, slug = f"BE-{match.group(1)}", match.group(2)
+        category = d.parent.name if d.parent.name in LEGACY_CATEGORIES else ""
+        items.append(
+            Item(be_id=be_id, slug=slug, category=category, status=status, title=title, intro=intro)
+        )
     return sorted(items, key=lambda item: item.be_id)
 
 
@@ -213,9 +206,15 @@ def ensure_label() -> None:
 
 
 def issue_body(item: Item) -> str:
-    """The issue body: a link back to the item's English file and a quote of its Introduction."""
+    """The issue body: a link back to the item's English file and a quote of its Introduction.
+
+    The link uses the item's current location — a status-folder prefix until it is flattened, none
+    afterwards (BE-0159). Once an item is flat its path is permanent, so the link stops rotting on
+    each promotion; the folder-prefixed form here is the transitional case while the migration runs.
+    """
     stem = f"{item.be_id}-{item.slug}"
-    href = f"{REPO_BLOB_ROOT}/roadmaps/{item.category}/{stem}/{stem}.md"
+    prefix = f"{item.category}/" if item.category else ""
+    href = f"{REPO_BLOB_ROOT}/roadmaps/{prefix}{stem}/{stem}.md"
     lines = [
         f"Tracking issue for roadmap item **[{item.be_id}]({href})**.",
         "",

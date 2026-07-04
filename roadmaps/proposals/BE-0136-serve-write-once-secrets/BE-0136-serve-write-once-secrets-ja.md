@@ -10,7 +10,7 @@
 | 状態 | **提案** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0136") |
 | トピック | Security hardening |
-| 関連 | [BE-0015](../../in-progress/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting-ja.md)、[BE-0016](../../in-progress/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting-ja.md)、[BE-0032](../../implemented/BE-0032-secret-variables/BE-0032-secret-variables-ja.md) |
+| 関連 | [BE-0015](../../in-progress/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting-ja.md)、[BE-0016](../../in-progress/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting-ja.md)、[BE-0032](../../BE-0032-secret-variables/BE-0032-secret-variables-ja.md) |
 <!-- /BE-METADATA -->
 
 ## はじめに
@@ -168,6 +168,6 @@ UI（`serve.js`）の reveal 用の操作を取り除きます。
 （本提案が解決する「組織ごとに持ち込む API キー」というギャップを名指ししています）、
 [BE-0016](../../in-progress/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting-ja.md)
 （セルフホストの Secrets を、管理されていない `.env` のままだとしています）、
-[BE-0032](../../implemented/BE-0032-secret-variables/BE-0032-secret-variables-ja.md)
+[BE-0032](../../BE-0032-secret-variables/BE-0032-secret-variables-ja.md)
 （別の層の話です。こちらは *シナリオ* が実行時に秘密情報をどう使うかであり、`serve` が
 オペレーターの認証情報をどう保存するかではありません）。

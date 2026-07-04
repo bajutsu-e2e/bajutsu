@@ -15,7 +15,7 @@
 
 ## Introduction
 
-Extend the AI data-sovereignty guarantees that [BE-0047](../../implemented/BE-0047-ai-data-sovereignty/BE-0047-ai-data-sovereignty.md)
+Extend the AI data-sovereignty guarantees that [BE-0047](../../BE-0047-ai-data-sovereignty/BE-0047-ai-data-sovereignty.md)
 shipped for `record` / `triage` / `--dismiss-alerts` to the **`crawl --guide ai`** path (and its
 alert guard), and pin down how the guarantee reaches AI runs launched by **`serve`**. After BE-0047
 the authoring/investigation paths run under the user's configured provider, redact their textual
@@ -103,7 +103,7 @@ All fast-gate, no live API (the SDK client is injectable, as BE-0047's tests rel
 
 ## References
 
-- [BE-0047 — AI data sovereignty](../../implemented/BE-0047-ai-data-sovereignty/BE-0047-ai-data-sovereignty.md)
+- [BE-0047 — AI data sovereignty](../../BE-0047-ai-data-sovereignty/BE-0047-ai-data-sovereignty.md)
   — the shipped guarantee this extends; reuse its `ai` config, `Redactor` threading, and fail-closed pattern.
 - `bajutsu/anthropic_client.py` (`AiConfig` / `make_client` / `resolve_model` / `credential_gap`),
   `bajutsu/cli/commands/crawl.py` (`_ai_credential_gap`, the guide agent + alert guard construction),

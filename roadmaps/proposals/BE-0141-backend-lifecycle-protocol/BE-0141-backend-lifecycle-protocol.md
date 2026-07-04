@@ -10,7 +10,7 @@
 | Status | **Proposal** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0141") |
 | Topic | Platform expansion (Android / Web / Flutter) |
-| Related | [BE-0009](../../implemented/BE-0009-cross-platform-abstractions/BE-0009-cross-platform-abstractions.md), [BE-0042](../../implemented/BE-0042-platform-backend-registry/BE-0042-platform-backend-registry.md), [BE-0007](../../in-progress/BE-0007-android-backend/BE-0007-android-backend.md) |
+| Related | [BE-0009](../../BE-0009-cross-platform-abstractions/BE-0009-cross-platform-abstractions.md), [BE-0042](../../BE-0042-platform-backend-registry/BE-0042-platform-backend-registry.md), [BE-0007](../../in-progress/BE-0007-android-backend/BE-0007-android-backend.md) |
 <!-- /BE-METADATA -->
 
 ## Introduction
@@ -137,8 +137,8 @@ No PR has landed yet.
   `close`.
 - `bajutsu/drivers/xcuitest.py:259` — `XcuitestDriver.await_ready`.
 - 16 `type: ignore` comments total in `bajutsu/` source (excluding `tests/`); 5 are the sites above.
-- Related roadmap items: [BE-0009](../../implemented/BE-0009-cross-platform-abstractions/BE-0009-cross-platform-abstractions.md)
-  (cross-platform abstractions), [BE-0042](../../implemented/BE-0042-platform-backend-registry/BE-0042-platform-backend-registry.md)
+- Related roadmap items: [BE-0009](../../BE-0009-cross-platform-abstractions/BE-0009-cross-platform-abstractions.md)
+  (cross-platform abstractions), [BE-0042](../../BE-0042-platform-backend-registry/BE-0042-platform-backend-registry.md)
   (platform backend registry), [BE-0007](../../in-progress/BE-0007-android-backend/BE-0007-android-backend.md)
   (Android backend).
 - Originates from the 2026-07-02 codebase-analysis report (design); also tech-debt finding #5 in

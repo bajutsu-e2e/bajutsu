@@ -19,7 +19,7 @@ A roadmap item's permanent `BE-NNNN` id is assigned the moment its pull request 
 [`roadmap-id`](../../../.github/workflows/roadmap-id.yml) workflow runs on `pull_request`,
 allocates the next free number, claims it atomically as a `refs/be-claims/*` ref, pushes the rename
 back onto the branch, and rewrites the PR title's `BE-XXXX` to the allocated id.
-[BE-0061](../../implemented/BE-0061-be-id-allocation-hardening/BE-0061-be-id-allocation-hardening.md)
+[BE-0061](../../BE-0061-be-id-allocation-hardening/BE-0061-be-id-allocation-hardening.md)
 hardened that path so two branches can never take the same number. The consequence is that a number
 is **spent at PR-open time — before the proposal is accepted.**
 
@@ -256,7 +256,7 @@ are therefore redundant under this model. They were initially kept in place as d
 merge-time allocation had proven out they were **retired** — the ledger, both workflows, their
 supporting scripts, and the allocator's `--repair` path were removed, leaving only the pure allocator
 and the merge-time `roadmap-id` workflow (see
-[BE-0061](../../implemented/BE-0061-be-id-allocation-hardening/BE-0061-be-id-allocation-hardening.md)'s
+[BE-0061](../../BE-0061-be-id-allocation-hardening/BE-0061-be-id-allocation-hardening.md)'s
 *Progress*).
 
 ### Prime-directive compliance
@@ -264,7 +264,7 @@ and the merge-time `roadmap-id` workflow (see
 Contributor-workflow infrastructure only. No LLM is added to any path; `run` and CI stay
 deterministic; nothing app-specific moves into the tool, drivers, or runner. It sits in the same
 family as
-[BE-0043](../../implemented/BE-0043-conflict-resistant-file-flow/BE-0043-conflict-resistant-file-flow.md),
+[BE-0043](../../BE-0043-conflict-resistant-file-flow/BE-0043-conflict-resistant-file-flow.md),
 BE-0061,
 [BE-0074](../../implemented/BE-0074-be-template-standardization/BE-0074-be-template-standardization.md),
 and [BE-0078](../../implemented/BE-0078-roadmap-status-folders/BE-0078-roadmap-status-folders.md).
@@ -304,7 +304,7 @@ and [BE-0078](../../implemented/BE-0078-roadmap-status-folders/BE-0078-roadmap-s
 
 ## References
 
-- [BE-0061 — Collision-proof BE-ID allocation](../../implemented/BE-0061-be-id-allocation-hardening/BE-0061-be-id-allocation-hardening.md)
+- [BE-0061 — Collision-proof BE-ID allocation](../../BE-0061-be-id-allocation-hardening/BE-0061-be-id-allocation-hardening.md)
   — the item this extends; its *Alternatives considered* records the "assign id at merge time" option
   this realizes, and its hardening (atomic claims, repair, claims-gc) was later retired once this
   model proved out (see its *Progress*).

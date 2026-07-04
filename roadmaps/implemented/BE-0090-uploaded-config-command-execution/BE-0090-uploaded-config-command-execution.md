@@ -35,7 +35,7 @@ Three config fields name a shell command, but they are not all live today:
 
 - `build` — the on-demand build of `appPath` (`bajutsu/serve/jobs.py` `_build_app`). Executed for a
   local config; **already denied** for an uploaded one.
-- `launchServer.cmd` ([BE-0059](../../implemented/BE-0059-launch-target-server/BE-0059-launch-target-server.md)) —
+- `launchServer.cmd` ([BE-0059](../../BE-0059-launch-target-server/BE-0059-launch-target-server.md)) —
   brings up the host behind `baseUrl` for the run. **Executed today** on the `serve` host
   (`bajutsu/runner/launch_server.py`: `subprocess.Popen(shlex.split(ls.cmd), env={**os.environ, …},
   start_new_session=True)`), in its own process group.
@@ -200,10 +200,10 @@ extend.
 
 - [BE-0073 — Upload a config + scenarios + app-binary bundle and bind it as the active config](../../implemented/BE-0073-serve-zip-bundle-upload/BE-0073-serve-zip-bundle-upload.md)
   — the upload path; where `build` is denied for uploads and `launchServer` is not.
-- [BE-0059 — Bring up the target server for a run (`launchServer`)](../../implemented/BE-0059-launch-target-server/BE-0059-launch-target-server.md)
+- [BE-0059 — Bring up the target server for a run (`launchServer`)](../../BE-0059-launch-target-server/BE-0059-launch-target-server.md)
   — the run-time server bring-up that carries `cmd` and the `readyUrl` reuse this builds on; `sandbox`
   replaces its host `Popen` with a container while keeping the probe.
-- [BE-0051 — Serve hardening for hosting](../../implemented/BE-0051-serve-hardening-for-hosting/BE-0051-serve-hardening-for-hosting.md)
+- [BE-0051 — Serve hardening for hosting](../../BE-0051-serve-hardening-for-hosting/BE-0051-serve-hardening-for-hosting.md)
   — token auth + path confinement this extends with a command-execution policy and sandbox.
 - [BE-0015 — Public hosting of the web UI](../../in-progress/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md),
   [BE-0016 — Self-hosting of the web UI](../../in-progress/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md)

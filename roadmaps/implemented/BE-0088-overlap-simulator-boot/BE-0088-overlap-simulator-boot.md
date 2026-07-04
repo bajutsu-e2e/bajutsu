@@ -71,5 +71,5 @@ territory, not boot.
 
 - [BE-0087](../BE-0087-idb-action-settle/BE-0087-idb-action-settle.md) — idb action
   timing robustness (the Run-scenarios cost, separate from boot).
-- [BE-0049](../BE-0049-determinism-flakiness-audit/BE-0049-determinism-flakiness-audit.md) —
+- [BE-0049](../../BE-0049-determinism-flakiness-audit/BE-0049-determinism-flakiness-audit.md) —
   determinism / flakiness audit.

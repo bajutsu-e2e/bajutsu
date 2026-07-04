@@ -34,10 +34,9 @@ from pathlib import Path
 # already on the path) or loaded under its bare name by a test — add scripts/ so the sibling import
 # resolves either way.
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from roadmap_ids import is_numbered_dir
+from roadmap_ids import is_numbered_dir, iter_item_dirs
 
 ROADMAP = Path(__file__).resolve().parent.parent / "roadmaps"
-CATEGORIES = ("implemented", "in-progress", "proposals", "deferred")
 # Markdown outside roadmaps/ that links *into* it and so rots on promotion the same way item bodies
 # do (BE-0096): every page under docs/, plus the repo-root README/CLAUDE files.
 TOP_LEVEL_DOCS = ("README.md", "README.ja.md", "CLAUDE.md")
@@ -63,16 +62,13 @@ class BrokenLink:
 
 
 def _item_dirs(roadmap: Path) -> dict[str, Path]:
-    """Map each item's ``BE-NNNN-slug`` directory name to its current absolute path."""
-    dirs: dict[str, Path] = {}
-    for category in CATEGORIES:
-        category_dir = roadmap / category
-        if not category_dir.is_dir():
-            continue
-        for d in sorted(category_dir.iterdir()):
-            if d.is_dir() and is_numbered_dir(d.name):
-                dirs[d.name] = d
-    return dirs
+    """Map each item's ``BE-NNNN-slug`` directory name to its current absolute path.
+
+    Scans the flat root and the legacy status folders (BE-0159's migrating tree), so a link is
+    resolved against where its target file actually is — the ``--fix`` suggestion (an ``os.path``
+    relative path from the source) then points at the real location whether flat or still foldered.
+    """
+    return {d.name: d for d in iter_item_dirs(roadmap) if is_numbered_dir(d.name)}
 
 
 def _dirs_by_id(item_dirs: dict[str, Path]) -> dict[str, Path]:

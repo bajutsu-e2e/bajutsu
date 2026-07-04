@@ -19,7 +19,7 @@
 
 ## 動機
 
-ロードマップにはすでに唯一の出典があります。`roadmaps/<category>/BE-NNNN-<slug>/` の各項目が持つメタデータブロックです。そして [BE-0043](../BE-0043-conflict-resistant-file-flow/BE-0043-conflict-resistant-file-flow-ja.md) の生成器が、そのメタデータから `roadmaps/README.md` の索引表を再生成します。この索引は網羅的ですが密度が高く、上から順に読み下す平坦な表の集まりです。コントリビュータが最もよく抱く問い、すなわち「いま何が進行中か」と「作業はトピックごとにどう分かれているか」に、この索引は答えるのが遅いのです。今は複数の表を走査し、自分で数える必要があります。
+ロードマップにはすでに唯一の出典があります。`roadmaps/<category>/BE-NNNN-<slug>/` の各項目が持つメタデータブロックです。そして [BE-0043](../../BE-0043-conflict-resistant-file-flow/BE-0043-conflict-resistant-file-flow-ja.md) の生成器が、そのメタデータから `roadmaps/README.md` の索引表を再生成します。この索引は網羅的ですが密度が高く、上から順に読み下す平坦な表の集まりです。コントリビュータが最もよく抱く問い、すなわち「いま何が進行中か」と「作業はトピックごとにどう分かれているか」に、この索引は答えるのが遅いのです。今は複数の表を走査し、自分で数える必要があります。
 
 ダッシュボードはこの二つの問いに一目で答えます。上部に区分ごとの件数を置き、続いてライフサイクルとトピックでまとめたカードを並べ、各カードが提案本体へのリンクになります。これは索引がすでに管理しているのと同じデータに対する、もう一つの見せ方です。新しい出典を増やすのではなく、既存の出典を「ロードマップの全体像を眺める」用途に合わせて描き直すだけです。
 
@@ -32,7 +32,7 @@
 **ビルド生成物であり、コミットしません。** `scripts/build_roadmap_dashboard.py` は `docs/api/roadmap.md` を書き出します。これはインラインスタイルとデータを埋め込んだ自己完結の HTML ページで、生成される API リファレンスの `site/` と同じく gitignore します。この選択が設計の要です。
 
 - **古くなりません。** `make docs` と `make docs-serve` は先にこのページを再生成し、`docs` ワークフローも公開前に再生成するので、公開されるページは常にコミットされたロードマップと一致します。
-- **BE ID の採番と切り離せます。** プレースホルダの項目は、CI がプルリクエストで本番の番号を割り当てる（[BE-0061](../BE-0061-be-id-allocation-hardening/BE-0061-be-id-allocation-hardening-ja.md)）まで、文字どおりの `BE-0094` という ID を持ちます。ディレクトリ名の正規表現（`^BE-\d{4}-`）は `BE-0094` を弾くので、索引と同様にプレースホルダはダッシュボードからも除外されます。さらにページはコミットしないため、採番が後から `BE-0094` を `BE-NNNN` に書き換えても、再描画すべきものは何もありません。
+- **BE ID の採番と切り離せます。** プレースホルダの項目は、CI がプルリクエストで本番の番号を割り当てる（[BE-0061](../../BE-0061-be-id-allocation-hardening/BE-0061-be-id-allocation-hardening-ja.md)）まで、文字どおりの `BE-0094` という ID を持ちます。ディレクトリ名の正規表現（`^BE-\d{4}-`）は `BE-0094` を弾くので、索引と同様にプレースホルダはダッシュボードからも除外されます。さらにページはコミットしないため、採番が後から `BE-0094` を `BE-NNNN` に書き換えても、再描画すべきものは何もありません。
 
 **描画。** カードはカテゴリ（トピック）を主としてまとめ、並び順は索引のトピック順に従います。各カードは自分の状態を色とバッジ（実装済み、実装中、提案、保留）で示し、メタデータが `Origin` を持つ項目にはその注記を添え、項目の英語ファイルへ GitHub 上でリンクします。各カテゴリの見出しには、進捗の数値と状態構成の積み上げバーを置きます（次項を参照）。項目がすべて実装済みのカテゴリは、ほかと分けて下部の「Completed」グループにまとめるので、主な表示は進行中の作業になります。ページは MkDocs の `nav` に追加するので、新しいホスティングを立てずに既存の Pages サイトに収まります。
 
@@ -64,6 +64,6 @@
 [`roadmaps/README.md`](../../README-ja.md), `scripts/build_roadmap_dashboard.py`,
 `scripts/build_roadmap_index.py`, [`mkdocs.yml`](../../../mkdocs.yml),
 [`.github/workflows/docs.yml`](../../../.github/workflows/docs.yml),
-[BE-0043 — 競合に強いファイルフロー](../BE-0043-conflict-resistant-file-flow/BE-0043-conflict-resistant-file-flow-ja.md),
-[BE-0061 — BE ID 採番の堅牢化](../BE-0061-be-id-allocation-hardening/BE-0061-be-id-allocation-hardening-ja.md),
+[BE-0043 — 競合に強いファイルフロー](../../BE-0043-conflict-resistant-file-flow/BE-0043-conflict-resistant-file-flow-ja.md),
+[BE-0061 — BE ID 採番の堅牢化](../../BE-0061-be-id-allocation-hardening/BE-0061-be-id-allocation-hardening-ja.md),
 [BE-0078 — 状態ごとのロードマップフォルダ](../BE-0078-roadmap-status-folders/BE-0078-roadmap-status-folders-ja.md)

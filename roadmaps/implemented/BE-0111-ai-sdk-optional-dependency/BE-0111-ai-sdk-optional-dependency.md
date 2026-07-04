@@ -11,7 +11,7 @@
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0111") |
 | Implementing PR | [#623](https://github.com/bajutsu-e2e/bajutsu/pull/623) |
 | Topic | AI provider configuration |
-| Related | [BE-0047](../../implemented/BE-0047-ai-data-sovereignty/BE-0047-ai-data-sovereignty.md), [BE-0053](../../implemented/BE-0053-bedrock-ai-provider/BE-0053-bedrock-ai-provider.md), [BE-0101](../../implemented/BE-0101-ai-free-zero-config/BE-0101-ai-free-zero-config.md), [BE-0104](../../proposals/BE-0104-vendor-neutral-ai-backend/BE-0104-vendor-neutral-ai-backend.md) |
+| Related | [BE-0047](../../BE-0047-ai-data-sovereignty/BE-0047-ai-data-sovereignty.md), [BE-0053](../../BE-0053-bedrock-ai-provider/BE-0053-bedrock-ai-provider.md), [BE-0101](../../implemented/BE-0101-ai-free-zero-config/BE-0101-ai-free-zero-config.md), [BE-0104](../../proposals/BE-0104-vendor-neutral-ai-backend/BE-0104-vendor-neutral-ai-backend.md) |
 <!-- /BE-METADATA -->
 
 ## Introduction
@@ -151,6 +151,6 @@ edits), `tests/serve/test_import_guard.py` (the import-guard pattern this item e
 runtime Claude-using / Claude-free split this completes at the packaging layer),
 [BE-0104](../../proposals/BE-0104-vendor-neutral-ai-backend/BE-0104-vendor-neutral-ai-backend.md) (the
 vendor-neutral interface this composes with),
-[BE-0047](../../implemented/BE-0047-ai-data-sovereignty/BE-0047-ai-data-sovereignty.md) and
-[BE-0053](../../implemented/BE-0053-bedrock-ai-provider/BE-0053-bedrock-ai-provider.md) (the
+[BE-0047](../../BE-0047-ai-data-sovereignty/BE-0047-ai-data-sovereignty.md) and
+[BE-0053](../../BE-0053-bedrock-ai-provider/BE-0053-bedrock-ai-provider.md) (the
 provider / Bedrock configuration whose `bedrock` extra this recomposes).

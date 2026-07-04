@@ -166,7 +166,7 @@ now "swap the local implementation for a server one behind the existing seam," n
 - **`ArtifactStore`** — run-artifact reads (local: filesystem, confined to `runs_dir`).
 - **`ScenarioStore`** — scenario resolution (local: confined to the app's scenarios dir).
 
-[BE-0051](../../implemented/BE-0051-serve-hardening-for-hosting/BE-0051-serve-hardening-for-hosting.md)
+[BE-0051](../../BE-0051-serve-hardening-for-hosting/BE-0051-serve-hardening-for-hosting.md)
 also shipped the auth + input validation, and the pure helpers (`list_scenarios`, `list_runs`,
 `run_command`, the `Job` model) are already isolated in `bajutsu/serve/helpers.py`. So:
 
@@ -230,7 +230,7 @@ allowlist** (`BAJUTSU_OAUTH_ALLOWED_USERS`), with the login bound to the session
 identity. It coexists with the shared token (BE-0051): the token stays the operator credential (full
 access, e.g. for CI), OAuth is the per-user browser login. `operations` stays provider-agnostic;
 auth lives in the handler/app middleware, where
-[BE-0051](../../implemented/BE-0051-serve-hardening-for-hosting/BE-0051-serve-hardening-for-hosting.md)
+[BE-0051](../../BE-0051-serve-hardening-for-hosting/BE-0051-serve-hardening-for-hosting.md)
 put it. An `authlib` extra carries the dependency.
 
 #### 7c — identity, RBAC, audit, and quotas (single-tenant) (#150, #151, #152)
@@ -337,5 +337,5 @@ The single-tenant groundwork has landed (across #105–#159); the multi-tenant p
 `bajutsu/serve/`, [ci](../../../docs/ci.md), [architecture](../../../docs/architecture.md),
 [reporting](../../../docs/reporting.md), [cli](../../../docs/cli.md#serve), the self-hosting counterpart
 [BE-0016](../BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md), and
-[BE-0055](../../implemented/BE-0055-operational-logging/BE-0055-operational-logging.md) — which designs
+[BE-0055](../../BE-0055-operational-logging/BE-0055-operational-logging.md) — which designs
 the operational logging that realizes the "structured JSON logs" observability row above.

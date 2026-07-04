@@ -10,7 +10,7 @@
 | 状態 | **提案** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0098") |
 | トピック | オーサリング体験（record / GUI エディタ） |
-| 由来 | [BE-0014](../../implemented/BE-0014-record-demarcation/BE-0014-record-demarcation-ja.md) |
+| 由来 | [BE-0014](../../BE-0014-record-demarcation/BE-0014-record-demarcation-ja.md) |
 <!-- /BE-METADATA -->
 
 ## はじめに
@@ -67,4 +67,4 @@ BE-0014 の設計書は、著者が 1 つのシナリオを開き、そのまま
 
 ## 参考
 
-[BE-0014](../../implemented/BE-0014-record-demarcation/BE-0014-record-demarcation-ja.md)（この統合を想定した棲み分け設計）、[BE-0012](../../implemented/BE-0012-action-capture-record/BE-0012-action-capture-record-ja.md)（Capture）、[BE-0013](../../implemented/BE-0013-scenario-gui-editor/BE-0013-scenario-gui-editor-ja.md)（Editor）。
+[BE-0014](../../BE-0014-record-demarcation/BE-0014-record-demarcation-ja.md)（この統合を想定した棲み分け設計）、[BE-0012](../../BE-0012-action-capture-record/BE-0012-action-capture-record-ja.md)（Capture）、[BE-0013](../../BE-0013-scenario-gui-editor/BE-0013-scenario-gui-editor-ja.md)（Editor）。

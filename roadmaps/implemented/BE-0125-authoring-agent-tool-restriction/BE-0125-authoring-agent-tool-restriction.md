@@ -105,6 +105,6 @@ protocol, the JSON-schema action contract, or the deterministic run/CI path chan
 ## References
 
 - `bajutsu/claude_code_agent.py:148` (`ClaudeCodeAgent._command`)
-- Related: [BE-0047](../../implemented/BE-0047-ai-data-sovereignty/BE-0047-ai-data-sovereignty.md)
+- Related: [BE-0047](../../BE-0047-ai-data-sovereignty/BE-0047-ai-data-sovereignty.md)
   (AI data sovereignty)
 - Originates from the 2026-07-02 codebase-analysis report (security).

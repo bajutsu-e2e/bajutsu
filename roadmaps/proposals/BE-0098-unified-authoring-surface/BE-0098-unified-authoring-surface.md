@@ -10,7 +10,7 @@
 | Status | **Proposal** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0098") |
 | Topic | Authoring experience (record / GUI editor) |
-| Origin | [BE-0014](../../implemented/BE-0014-record-demarcation/BE-0014-record-demarcation.md) |
+| Origin | [BE-0014](../../BE-0014-record-demarcation/BE-0014-record-demarcation.md) |
 <!-- /BE-METADATA -->
 
 ## Introduction
@@ -65,4 +65,4 @@ The existing Capture and Editor tabs remain functional during the transition. Th
 
 ## References
 
-[BE-0014](../../implemented/BE-0014-record-demarcation/BE-0014-record-demarcation.md) (the demarcation design that anticipated this unification), [BE-0012](../../implemented/BE-0012-action-capture-record/BE-0012-action-capture-record.md) (Capture), [BE-0013](../../implemented/BE-0013-scenario-gui-editor/BE-0013-scenario-gui-editor.md) (Editor).
+[BE-0014](../../BE-0014-record-demarcation/BE-0014-record-demarcation.md) (the demarcation design that anticipated this unification), [BE-0012](../../BE-0012-action-capture-record/BE-0012-action-capture-record.md) (Capture), [BE-0013](../../BE-0013-scenario-gui-editor/BE-0013-scenario-gui-editor.md) (Editor).

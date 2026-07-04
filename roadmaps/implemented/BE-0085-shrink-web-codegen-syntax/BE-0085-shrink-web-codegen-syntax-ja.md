@@ -15,11 +15,11 @@
 
 ## はじめに
 
-**Playwright（web）codegen エミッタ**が素の `// TODO` に落とす構文の範囲を減らします。XCUITest エミッタについて同じことを行う [BE-0026](../BE-0026-shrink-unsupported-syntax/BE-0026-shrink-unsupported-syntax-ja.md) の web 版です。
+**Playwright（web）codegen エミッタ**が素の `// TODO` に落とす構文の範囲を減らします。XCUITest エミッタについて同じことを行う [BE-0026](../../BE-0026-shrink-unsupported-syntax/BE-0026-shrink-unsupported-syntax-ja.md) の web 版です。
 
 ## 動機
 
-`codegen` は、通過したシナリオを出力先フレームワークの流儀のネイティブテストに変換します。XCUITest（Swift）と、[BE-0062](../../implemented/BE-0062-playwright-codegen/BE-0062-playwright-codegen-ja.md) 以降は Playwright（TypeScript）で、いまは 1 つの共有シナリオウォークの背後にあります（[BE-0083](../../implemented/BE-0083-codegen-emitter-unification/BE-0083-codegen-emitter-unification-ja.md)）。エミッタが翻訳できない構文は失敗ではなく `// TODO` になるので、出力は常にコンパイルでき、レビュー可能です。ただし `// TODO` の 1 行ごとに人手の移植が発生します。
+`codegen` は、通過したシナリオを出力先フレームワークの流儀のネイティブテストに変換します。XCUITest（Swift）と、[BE-0062](../../BE-0062-playwright-codegen/BE-0062-playwright-codegen-ja.md) 以降は Playwright（TypeScript）で、いまは 1 つの共有シナリオウォークの背後にあります（[BE-0083](../../implemented/BE-0083-codegen-emitter-unification/BE-0083-codegen-emitter-unification-ja.md)）。エミッタが翻訳できない構文は失敗ではなく `// TODO` になるので、出力は常にコンパイルでき、レビュー可能です。ただし `// TODO` の 1 行ごとに人手の移植が発生します。
 
 XCUITest エミッタのフォールバック処理は磨かれました（BE-0026）。複合セレクタは構造的に写され、忠実な形が無い構文はエンドポイントと理由を明記した**ラベル付き** `// TODO` を出します。Playwright エミッタ（`bajutsu/codegen_playwright.py`）は同じ面で遅れています。
 
@@ -58,5 +58,5 @@ XCUITest エミッタのフォールバック処理は磨かれました（BE-00
 ## 参考
 
 - [`bajutsu/codegen_playwright.py`](../../../bajutsu/codegen_playwright.py) — web エミッタと現在の `// TODO` 箇所。`bajutsu/assertions.py` の `request_label`（共有のマッチャ記述）。
-- [BE-0026](../BE-0026-shrink-unsupported-syntax/BE-0026-shrink-unsupported-syntax-ja.md)（XCUITest 版と統制ルール）、[BE-0062](../../implemented/BE-0062-playwright-codegen/BE-0062-playwright-codegen-ja.md)（Playwright ターゲット）、[BE-0083](../../implemented/BE-0083-codegen-emitter-unification/BE-0083-codegen-emitter-unification-ja.md)（共有エミッタウォーク）。
+- [BE-0026](../../BE-0026-shrink-unsupported-syntax/BE-0026-shrink-unsupported-syntax-ja.md)（XCUITest 版と統制ルール）、[BE-0062](../../BE-0062-playwright-codegen/BE-0062-playwright-codegen-ja.md)（Playwright ターゲット）、[BE-0083](../../implemented/BE-0083-codegen-emitter-unification/BE-0083-codegen-emitter-unification-ja.md)（共有エミッタウォーク）。
 - [docs/codegen.md](../../../docs/ja/codegen.md)。

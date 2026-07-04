@@ -33,7 +33,7 @@ of those verdicts. The proposal sits entirely inside the prime directives ([CLAU
 
 ### The backend is Chromium-only today
 
-The Web backend that landed with [BE-0041](../../implemented/BE-0041-web-playwright-backend/BE-0041-web-playwright-backend.md)
+The Web backend that landed with [BE-0041](../../BE-0041-web-playwright-backend/BE-0041-web-playwright-backend.md)
 is hard-wired to one engine: `bajutsu/drivers/playwright.py` starts the browser through
 `_start_chromium`, which calls `pw.chromium.launch(...)`, and `bajutsu/backends.py`
 `ensure_web_runtime` installs only the `chromium` browser. BE-0041's own seam table promised a
@@ -58,7 +58,7 @@ The detection is **machine-checkable, not an AI judgment**. "The scenario passes
 fails on WebKit" is two deterministic `run` verdicts — each computed from machine assertions alone,
 exactly as today. The matrix is a table of those verdicts; nothing in the gate consults a model, so
 prime directive #1 (AI never judges) holds by construction. AI's role is unchanged and advisory:
-`triage` ([BE-0021](../../implemented/BE-0021-ai-triage/BE-0021-ai-triage.md)) can *investigate*
+`triage` ([BE-0021](../../BE-0021-ai-triage/BE-0021-ai-triage.md)) can *investigate*
 why only WebKit failed, but never decides pass/fail. Determinism (#2) is preserved because each
 per-engine run is an independent deterministic run with condition waits, never a fixed sleep. And
 because the engine is an execution axis carried by a flag/config and never written into the
@@ -155,7 +155,7 @@ so a single-engine run never pays for the matrix machinery.
 inside one device pool. The reason is concrete: `device_pool` selects exactly one actuator
 (`select_actuator(backends)`) and builds one kind of lane, and `_resolve_lanes` already turns
 `--workers N` into N near-free `web-{i}` `BrowserContext` lanes *for one engine*. Reusing
-[BE-0054](../../implemented/BE-0054-web-backend-completion/BE-0054-web-backend-completion.md)'s
+[BE-0054](../../BE-0054-web-backend-completion/BE-0054-web-backend-completion.md)'s
 parallel lanes **within** an engine (so `--workers` still parallelizes scenarios) while iterating
 engines **around** that pool keeps each engine's pool homogeneous and avoids threading a per-lane
 engine through `device_pool` / `launch_driver` / the collector wiring. Each engine pass leases its
@@ -241,16 +241,16 @@ a required check, so it adds the real cross-engine signal without slowing the fa
 
 ### Relationship to existing items
 
-* **Builds on [BE-0041](../../implemented/BE-0041-web-playwright-backend/BE-0041-web-playwright-backend.md)** (the
-  web backend) and **reuses [BE-0054](../../implemented/BE-0054-web-backend-completion/BE-0054-web-backend-completion.md)'s
+* **Builds on [BE-0041](../../BE-0041-web-playwright-backend/BE-0041-web-playwright-backend.md)** (the
+  web backend) and **reuses [BE-0054](../../BE-0054-web-backend-completion/BE-0054-web-backend-completion.md)'s
   parallel lanes** for the fan-out. It is *distinct* from BE-0054, whose scope is explicitly the
   rich-end capabilities (native network, video/console evidence, emulated multi-touch, parallel
   runs) on a single engine — it does not address engine selection or a cross-engine matrix. This
   item adds the engine axis on top.
-* **[BE-0021](../../implemented/BE-0021-ai-triage/BE-0021-ai-triage.md) (AI triage)** extends
+* **[BE-0021](../../BE-0021-ai-triage/BE-0021-ai-triage.md) (AI triage)** extends
   naturally: a failure seen on only one engine is a strong, structured hint for the advisory
   root-cause investigation — still never a verdict.
-* **[BE-0062](../../implemented/BE-0062-playwright-codegen/BE-0062-playwright-codegen.md)
+* **[BE-0062](../../BE-0062-playwright-codegen/BE-0062-playwright-codegen.md)
   (Playwright codegen)** could later emit per-engine project configuration; out of scope here.
 
 ## Alternatives considered
@@ -274,7 +274,7 @@ a required check, so it adds the real cross-engine signal without slowing the fa
   cross-engine pixel diff is noisy and risks drifting toward "does it look the same", which is not a
   clean machine verdict. This item is about **functional** pass/fail per engine. Per-engine visual
   baselines via the existing visual-regression assertion
-  ([BE-0029](../../implemented/BE-0029-visual-regression-assertions/BE-0029-visual-regression-assertions.md))
+  ([BE-0029](../../BE-0029-visual-regression-assertions/BE-0029-visual-regression-assertions.md))
   remain available as a separate, opt-in path.
 * **Mark some engines "advisory / non-blocking".** A reasonable refinement (track a known WebKit gap
   without failing CI), but it adds verdict-policy surface; v1 keeps the simple all-must-pass rule and
@@ -289,14 +289,14 @@ a required check, so it adds the real cross-engine signal without slowing the fa
 * [CLAUDE.md](../../../CLAUDE.md), [DESIGN.md](../../../DESIGN.md) — the prime directives this
   respects: AI never judges (the matrix aggregates deterministic verdicts), determinism first
   (per-engine condition-waited runs), app-agnostic (engine is an execution axis, not scenario content).
-* [BE-0041 — Web (Playwright) backend](../../implemented/BE-0041-web-playwright-backend/BE-0041-web-playwright-backend.md)
+* [BE-0041 — Web (Playwright) backend](../../BE-0041-web-playwright-backend/BE-0041-web-playwright-backend.md)
   — the backend this extends, and its "cross-browser" seam promise.
-* [BE-0054 — Web backend completion](../../implemented/BE-0054-web-backend-completion/BE-0054-web-backend-completion.md)
+* [BE-0054 — Web backend completion](../../BE-0054-web-backend-completion/BE-0054-web-backend-completion.md)
   — the parallel-lane pool this fan-out reuses; distinct (single-engine rich capabilities) in scope.
-* [BE-0021 — AI triage](../../implemented/BE-0021-ai-triage/BE-0021-ai-triage.md) — advisory
+* [BE-0021 — AI triage](../../BE-0021-ai-triage/BE-0021-ai-triage.md) — advisory
   investigation of an engine-specific failure.
-* [BE-0029 — Visual-regression assertions](../../implemented/BE-0029-visual-regression-assertions/BE-0029-visual-regression-assertions.md),
-  [BE-0062 — Playwright codegen](../../implemented/BE-0062-playwright-codegen/BE-0062-playwright-codegen.md)
+* [BE-0029 — Visual-regression assertions](../../BE-0029-visual-regression-assertions/BE-0029-visual-regression-assertions.md),
+  [BE-0062 — Playwright codegen](../../BE-0062-playwright-codegen/BE-0062-playwright-codegen.md)
   — adjacent, out-of-scope follow-ups.
 * The seams this changes: `bajutsu/drivers/playwright.py` (`_start_chromium`, the `Starter` type,
   `PlaywrightDriver.__init__`), `bajutsu/backends.py` (`make_driver`, `ensure_web_runtime`,

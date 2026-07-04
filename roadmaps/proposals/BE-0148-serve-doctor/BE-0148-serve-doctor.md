@@ -57,7 +57,7 @@ Tier-1, read-only; the UI only shells out to the existing checks.
 * **Show only the runnability gate, not the convention score.** Rejected as half the value: "my
   environment is fine but my app isn't addressable" is the more common and more confusing failure,
   and the score already exists.
-* **Fold this into [BE-0024](../../implemented/BE-0024-doctor-onboarding/BE-0024-doctor-onboarding.md)
+* **Fold this into [BE-0024](../../BE-0024-doctor-onboarding/BE-0024-doctor-onboarding.md)
   instead of a new item.** BE-0024 was a placeholder that absorbed small, CLI-side doctor /
   onboarding improvements; that catch-all practice has since ended, and the item now stands
   Implemented. A Web UI surface for doctor is a distinct, sizeable surface that was never in scope
@@ -83,9 +83,9 @@ No PR has landed yet.
   surfaces.
 * `bajutsu/serve/` — the job plumbing reused; `GET /api/simulators` — the existing device-listing
   endpoint this panel sits beside.
-* [BE-0024 — doctor / onboarding](../../implemented/BE-0024-doctor-onboarding/BE-0024-doctor-onboarding.md)
+* [BE-0024 — doctor / onboarding](../../BE-0024-doctor-onboarding/BE-0024-doctor-onboarding.md)
   — the implemented CLI-side doctor / onboarding checks this Web UI surface complements.
-* [BE-0011 — Local web UI (`bajutsu serve`)](../../implemented/BE-0011-local-web-ui-serve/BE-0011-local-web-ui-serve.md),
+* [BE-0011 — Local web UI (`bajutsu serve`)](../../BE-0011-local-web-ui-serve/BE-0011-local-web-ui-serve.md),
   [BE-0072 — Responsive serve Web UI](../../implemented/BE-0072-responsive-web-ui/BE-0072-responsive-web-ui.md)
   — the UI this extends and the small-screen layout it inherits.
 * [configuration.md](../../../docs/configuration.md) — the `doctor` score and runnability gate;

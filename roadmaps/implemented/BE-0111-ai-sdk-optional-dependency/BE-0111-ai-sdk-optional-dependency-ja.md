@@ -11,7 +11,7 @@
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0111") |
 | 実装 PR | [#623](https://github.com/bajutsu-e2e/bajutsu/pull/623) |
 | トピック | AI provider configuration |
-| 関連 | [BE-0047](../../implemented/BE-0047-ai-data-sovereignty/BE-0047-ai-data-sovereignty-ja.md), [BE-0053](../../implemented/BE-0053-bedrock-ai-provider/BE-0053-bedrock-ai-provider-ja.md), [BE-0101](../../implemented/BE-0101-ai-free-zero-config/BE-0101-ai-free-zero-config-ja.md), [BE-0104](../../proposals/BE-0104-vendor-neutral-ai-backend/BE-0104-vendor-neutral-ai-backend-ja.md) |
+| 関連 | [BE-0047](../../BE-0047-ai-data-sovereignty/BE-0047-ai-data-sovereignty-ja.md), [BE-0053](../../BE-0053-bedrock-ai-provider/BE-0053-bedrock-ai-provider-ja.md), [BE-0101](../../implemented/BE-0101-ai-free-zero-config/BE-0101-ai-free-zero-config-ja.md), [BE-0104](../../proposals/BE-0104-vendor-neutral-ai-backend/BE-0104-vendor-neutral-ai-backend-ja.md) |
 <!-- /BE-METADATA -->
 
 ## はじめに
@@ -152,6 +152,6 @@ AI extra を引き続きインストールします（`bajutsu[bedrock,server,wo
 パッケージング層で仕上げる、実行時の Claude 利用と非利用の分離）、
 [BE-0104](../../proposals/BE-0104-vendor-neutral-ai-backend/BE-0104-vendor-neutral-ai-backend-ja.md)（本項目が
 組み合わさる中立な界面）、
-[BE-0047](../../implemented/BE-0047-ai-data-sovereignty/BE-0047-ai-data-sovereignty-ja.md) と
-[BE-0053](../../implemented/BE-0053-bedrock-ai-provider/BE-0053-bedrock-ai-provider-ja.md)（本項目が
+[BE-0047](../../BE-0047-ai-data-sovereignty/BE-0047-ai-data-sovereignty-ja.md) と
+[BE-0053](../../BE-0053-bedrock-ai-provider/BE-0053-bedrock-ai-provider-ja.md)（本項目が
 再構成する `bedrock` extra に関わる、プロバイダと Bedrock の設定）。

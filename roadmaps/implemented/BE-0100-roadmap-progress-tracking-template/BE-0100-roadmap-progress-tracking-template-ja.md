@@ -20,7 +20,7 @@
 項目の状態、つまりどのスライスが出荷済みで、何が残り、何がいつ変わったかは、ファイルの外にあります。
 `実装 PR` 行や、コミット履歴や、貢献者の頭のなかです。実際に二つの項目
 （[BE-0087](../BE-0087-idb-action-settle/BE-0087-idb-action-settle-ja.md)、
-[BE-0052](../BE-0052-device-state-timezone-clipboard-shake/BE-0052-device-state-timezone-clipboard-shake-ja.md)）
+[BE-0052](../../BE-0052-device-state-timezone-clipboard-shake/BE-0052-device-state-timezone-clipboard-shake-ja.md)）
 は、この空白を埋めるために即席の `### Implementation status` サブセクションを育てましたが、その形は
 それぞれ独自のもので、最新の状態に保つ仕組みもありませんでした。
 
@@ -151,7 +151,7 @@
 ## 参考
 
 - [BE-0074 — BE 項目テンプレートの標準化（EN / JA）](../../implemented/BE-0074-be-template-standardization/BE-0074-be-template-standardization-ja.md)：本項目が五セクションから六セクションへ拡張する、テンプレートを固定した項目。BE-0074 には逆方向の `関連` リンクを張っています。
-- [BE-0043 — 競合に強いファイルフロー](../../implemented/BE-0043-conflict-resistant-file-flow/BE-0043-conflict-resistant-file-flow-ja.md)：「不変条件を機械で検査する」という先例。
+- [BE-0043 — 競合に強いファイルフロー](../../BE-0043-conflict-resistant-file-flow/BE-0043-conflict-resistant-file-flow-ja.md)：「不変条件を機械で検査する」という先例。
 - [BE-0078 — 状態駆動のロードマップフォルダ](../../implemented/BE-0078-roadmap-status-folders/BE-0078-roadmap-status-folders-ja.md)：ライフサイクルの真実の源としての `状態`。`進捗` はより細かい状態でこれを補完します。
 - [`scripts/new_roadmap_item.py`](../../../scripts/new_roadmap_item.py) · [`tests/test_roadmap_format.py`](../../../tests/test_roadmap_format.py)：実装 PR が拡張するスカフォルダーとゲート。
 </content>

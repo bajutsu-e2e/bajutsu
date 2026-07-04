@@ -17,7 +17,7 @@
 
 ## Introduction
 
-[BE-0045](../../implemented/BE-0045-dogfood-showcase-apps/BE-0045-dogfood-showcase-apps.md) shipped
+[BE-0045](../../BE-0045-dogfood-showcase-apps/BE-0045-dogfood-showcase-apps.md) shipped
 the **showcase** suite — the same app in UIKit and SwiftUI, each in an accessibility-on / -off
 variant (four products from two codebases) — as Bajutsu's next-generation dogfood target. But it
 deliberately scoped the migration *out*: its own design note says the older `sample` fixture
@@ -75,7 +75,7 @@ keeps the tool / drivers / runner unchanged — the showcase is onboarded entire
 legacy app directories are gone, with their configs, scenarios, harnesses, and READMEs, and every
 reference to them across the repo is updated. [`demos/web`](../../../demos/web) (the Playwright
 fixture) and [`demos/serve-ui`](../../../demos/serve-ui) (the web-UI dogfood,
-[BE-0058](../../implemented/BE-0058-dogfood-web-ui/BE-0058-dogfood-web-ui.md)) are a different
+[BE-0058](../../BE-0058-dogfood-web-ui/BE-0058-dogfood-web-ui.md)) are a different
 platform / subject and are **not** touched.
 
 ### A. What the showcase already covers (the honest baseline)
@@ -216,8 +216,8 @@ on-device path the local gate cannot run:
 
 ## References
 
-- [BE-0045 — Dogfood showcase apps](../../implemented/BE-0045-dogfood-showcase-apps/BE-0045-dogfood-showcase-apps.md) — the suite this completes (and whose deferred "Migration" note this item discharges)
-- [BE-0058 — Dogfood the serve Web UI](../../implemented/BE-0058-dogfood-web-ui/BE-0058-dogfood-web-ui.md) — the web-side dogfood counterpart
+- [BE-0045 — Dogfood showcase apps](../../BE-0045-dogfood-showcase-apps/BE-0045-dogfood-showcase-apps.md) — the suite this completes (and whose deferred "Migration" note this item discharges)
+- [BE-0058 — Dogfood the serve Web UI](../../BE-0058-dogfood-web-ui/BE-0058-dogfood-web-ui.md) — the web-side dogfood counterpart
 - [BE-0038 — Autonomous crawl exploration](../../in-progress/BE-0038-autonomous-crawl-exploration/BE-0038-autonomous-crawl-exploration.md) — the showcase is its first real target
 - [`demos/showcase/SPEC.md`](../../../demos/showcase/SPEC.md) — the screen-by-screen contract · [`demos/README.md`](../../../demos/README.md) — the demo menu
 - [`.github/workflows/e2e.yml`](../../../.github/workflows/e2e.yml) — the on-device CI to re-point

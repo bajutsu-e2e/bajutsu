@@ -10,7 +10,7 @@
 | Status | **Proposal** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0136") |
 | Topic | Security hardening |
-| Related | [BE-0015](../../in-progress/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md), [BE-0016](../../in-progress/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md), [BE-0032](../../implemented/BE-0032-secret-variables/BE-0032-secret-variables.md) |
+| Related | [BE-0015](../../in-progress/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md), [BE-0016](../../in-progress/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md), [BE-0032](../../BE-0032-secret-variables/BE-0032-secret-variables.md) |
 <!-- /BE-METADATA -->
 
 ## Introduction
@@ -156,6 +156,6 @@ No PR has landed yet.
 `bajutsu/serve/server/db.py` (the `Repository` seam this proposal extends). Related:
 [BE-0015](../../in-progress/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md) (names
 the "per-org BYO API key" gap this closes), [BE-0016](../../in-progress/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md)
-(marks self-hosted Secrets as unmanaged `.env` today), [BE-0032](../../implemented/BE-0032-secret-variables/BE-0032-secret-variables.md)
+(marks self-hosted Secrets as unmanaged `.env` today), [BE-0032](../../BE-0032-secret-variables/BE-0032-secret-variables.md)
 (a different layer — how a *scenario* consumes a secret at run time, not how `serve` stores an
 operator credential).

@@ -19,7 +19,7 @@
 [`roadmap-id`](../../../.github/workflows/roadmap-id.yml) ワークフローが `pull_request` を契機に走り、
 次の空き番号を採番し、`refs/be-claims/*` ref として原子的に確保し、リネームをブランチへ push し、PR
 タイトルの `BE-XXXX` を実 ID に書き換える。
-[BE-0061](../../implemented/BE-0061-be-id-allocation-hardening/BE-0061-be-id-allocation-hardening.md)
+[BE-0061](../../BE-0061-be-id-allocation-hardening/BE-0061-be-id-allocation-hardening.md)
 はこの経路を堅牢にし、2 つのブランチが同じ番号を取ることを防いだ。その帰結として、番号は提案が受理
 される前、PR を開いた時点で消費される。
 
@@ -242,14 +242,14 @@ bypass する ID は専用の GitHub App とし、admin 権限を持つメンテ
 `refs/be-claims/*` 台帳、`roadmap-id-repair`、`roadmap-claims-gc` は、このモデルでは冗長である。当初は
 多層防御としてそのまま残していたが、マージ時採番が実証できたので撤去した。台帳、両ワークフロー、その補助
 スクリプト、採番器の `--repair` 経路を削除し、純粋な採番器とマージ時の `roadmap-id` ワークフローだけを
-残した（[BE-0061](../../implemented/BE-0061-be-id-allocation-hardening/BE-0061-be-id-allocation-hardening.md)
+残した（[BE-0061](../../BE-0061-be-id-allocation-hardening/BE-0061-be-id-allocation-hardening.md)
 の「進捗」を参照）。
 
 ### prime directive への適合
 
 開発インフラ（contributor workflow）にとどまる。どの経路にも LLM を足さず、`run` と CI は決定的なまま、
 アプリ固有の事情がツール、ドライバ、ランナーへ移ることもない。
-[BE-0043](../../implemented/BE-0043-conflict-resistant-file-flow/BE-0043-conflict-resistant-file-flow.md)、
+[BE-0043](../../BE-0043-conflict-resistant-file-flow/BE-0043-conflict-resistant-file-flow.md)、
 BE-0061、
 [BE-0074](../../implemented/BE-0074-be-template-standardization/BE-0074-be-template-standardization.md)、
 [BE-0078](../../implemented/BE-0078-roadmap-status-folders/BE-0078-roadmap-status-folders.md) と同じ系譜にある。
@@ -286,7 +286,7 @@ BE-0061、
 
 ## 参考
 
-- [BE-0061 — Collision-proof BE-ID allocation](../../implemented/BE-0061-be-id-allocation-hardening/BE-0061-be-id-allocation-hardening.md)：
+- [BE-0061 — Collision-proof BE-ID allocation](../../BE-0061-be-id-allocation-hardening/BE-0061-be-id-allocation-hardening.md)：
   本項目が拡張する項目。その「検討した代替案」が、本項目で実現する「マージ時に採番する」案を記録して
   おり、その堅牢化（原子的 claim、repair、claims-gc）は、本モデルが実証できたのちに撤去した（その
   「進捗」を参照）。

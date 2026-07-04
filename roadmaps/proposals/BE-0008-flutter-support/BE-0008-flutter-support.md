@@ -41,7 +41,7 @@ elements in the OS a11y tree. These need a **semantics bridge** rather than a ne
   consumes.
 - **WebView / embedded-web hybrids** — a WebView→DOM (Document Object Model) bridge for the
   embedded-web case, so DOM nodes inside the WebView become resolvable elements. This overlaps with
-  the dedicated WebView/hybrid item [BE-0037](../../implemented/BE-0037-webview-hybrid-support/BE-0037-webview-hybrid-support.md);
+  the dedicated WebView/hybrid item [BE-0037](../../BE-0037-webview-hybrid-support/BE-0037-webview-hybrid-support.md);
   the two should be designed together so the bridge story is shared rather than duplicated.
 
 The key design stance: this is a **semantics bridge layered onto the existing native backends**,
@@ -82,7 +82,7 @@ Resolution stays Python-side (`resolve_unique`), so the bridge is a read source 
    normalizes it into `Element`s; wired as a read source behind the selected native actuator, not a new
    actuator.
 3. **WebView / embedded-web hybrid bridge** — reuse the existing WebView→DOM bridge (`bajutsu/webview.py`
-   + the BajutsuKit bridge server, [BE-0037](../../implemented/BE-0037-webview-hybrid-support/BE-0037-webview-hybrid-support.md))
+   + the BajutsuKit bridge server, [BE-0037](../../BE-0037-webview-hybrid-support/BE-0037-webview-hybrid-support.md))
    so DOM nodes inside a WebView become resolvable, extended to the Android WebView case; designed together
    with BE-0037 so the bridge story is shared, not duplicated.
 4. **Capabilities and disclosure** — the bridge advertises no new actuator capability; the selector model,
@@ -126,6 +126,6 @@ until the two native trees are solid.
 ## References
 
 [DESIGN](../../../DESIGN.md), `bajutsu/drivers/`, `bajutsu/backends.py`,
-[BE-0037 — WebView / hybrid support](../../implemented/BE-0037-webview-hybrid-support/BE-0037-webview-hybrid-support.md),
+[BE-0037 — WebView / hybrid support](../../BE-0037-webview-hybrid-support/BE-0037-webview-hybrid-support.md),
 [BE-0007 — Android backend](../../in-progress/BE-0007-android-backend/BE-0007-android-backend.md),
-[BE-0041 — Web (Playwright) backend](../../implemented/BE-0041-web-playwright-backend/BE-0041-web-playwright-backend.md)
+[BE-0041 — Web (Playwright) backend](../../BE-0041-web-playwright-backend/BE-0041-web-playwright-backend.md)

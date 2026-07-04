@@ -40,7 +40,7 @@ Android は **idb の構造的双子**です。subprocess 駆動、座標 actuat
 | **証跡 provider** | screenshot = `adb exec-out screencap`、video = `adb shell screenrecord`、`deviceLog` = `adb logcat`（tag/pid で絞る）、`network` = ネイティブ監視なし → iOS と同じモック方式 |
 | **codegen 変換先** | Espresso または UI Automator（Kotlin/Java） |
 
-**環境**の行は、[BE-0009](../../implemented/BE-0009-cross-platform-abstractions/BE-0009-cross-platform-abstractions-ja.md) のクロスプラットフォーム `Environment` プロトコルを実装する `AndroidEnvironment` として着地します。その `start` は adb 列（クリーン状態のための `pm clear` → 起動の `am start` → deeplink の `am start -a android.intent.action.VIEW -d <url>`）を実行し、`adb` driver を返します。アクチュエータと環境は、iOS が idb と simctl で埋める 2 つの継ぎ目の Android 版にあたります。したがって Android は runner に新しい形を持ち込まず、BE-0009 が抽出する継ぎ目に差し込まれます。
+**環境**の行は、[BE-0009](../../BE-0009-cross-platform-abstractions/BE-0009-cross-platform-abstractions-ja.md) のクロスプラットフォーム `Environment` プロトコルを実装する `AndroidEnvironment` として着地します。その `start` は adb 列（クリーン状態のための `pm clear` → 起動の `am start` → deeplink の `am start -a android.intent.action.VIEW -d <url>`）を実行し、`adb` driver を返します。アクチュエータと環境は、iOS が idb と simctl で埋める 2 つの継ぎ目の Android 版にあたります。したがって Android は runner に新しい形を持ち込まず、BE-0009 が抽出する継ぎ目に差し込まれます。
 
 ### idb の構造的双子
 
@@ -134,7 +134,7 @@ Android を idb の双子たらしめています。
 
 ### 展開順：Web の後の第 2 段階
 
-Android は **第 2 段階**で、Web（Playwright）バックエンド（[BE-0041](../../implemented/BE-0041-web-playwright-backend/BE-0041-web-playwright-backend-ja.md)）の
+Android は **第 2 段階**で、Web（Playwright）バックエンド（[BE-0041](../../BE-0041-web-playwright-backend/BE-0041-web-playwright-backend-ja.md)）の
 *後*に着手します。Web を先にするのは、macOS もデバイスエミュレータも不要な唯一のプラットフォームであり、
 動いた日から既存の Linux `make check` / CI ゲートに収まって、コアがプラットフォーム中立であることを最低コストで
 証明できるからです。Android はその後、すでに一般化されたコアの上で *小さい / 座標* 経路を確認します。座標
@@ -148,7 +148,7 @@ Linux CI で動き、`capabilities()` の **小さい端**を行使します。
   最も近い双子なので、最も新しい形を持ち込まずに抽象を実証できます。意味的な Android actuator は、iOS で idb と
   並んで XCUITest が見込まれているのと同様、後から 2 つ目のバックエンドとして追加できます。
 - **Web より先に Android を作る。** 展開順の理由で却下: Android が構造的に近い双子であっても、Web は macOS も
-  エミュレータも不要で、現行 Linux ゲートに最低コストで収まります。[BE-0041](../../implemented/BE-0041-web-playwright-backend/BE-0041-web-playwright-backend-ja.md) を参照。
+  エミュレータも不要で、現行 Linux ゲートに最低コストで収まります。[BE-0041](../../BE-0041-web-playwright-backend/BE-0041-web-playwright-backend-ja.md) を参照。
 
 ## 進捗
 
@@ -177,5 +177,5 @@ Linux CI で動き、`capabilities()` の **小さい端**を行使します。
 
 [DESIGN](../../../DESIGN.md)、`bajutsu/drivers/`、`bajutsu/backends.py`、
 [drivers.md](../../../docs/ja/drivers.md)、
-[BE-0041 — Web (Playwright) backend](../../implemented/BE-0041-web-playwright-backend/BE-0041-web-playwright-backend-ja.md)、
+[BE-0041 — Web (Playwright) backend](../../BE-0041-web-playwright-backend/BE-0041-web-playwright-backend-ja.md)、
 [BE-0008 — Flutter support](../../proposals/BE-0008-flutter-support/BE-0008-flutter-support-ja.md)

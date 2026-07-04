@@ -114,6 +114,6 @@ redact.headers}` という集合）は、指定された名前そのものにし
 - `bajutsu/runner/pipeline.py:49` — `_write_network`。`<sid>/network.json` を書き出す。
 - `bajutsu/redaction.py:88` — `redact_exchange` 内の `active` による no-op ガード。
 - `bajutsu/redaction.py:104` — `_header_names`。完全一致のヘッダー名集合。
-- [BE-0047 — AI data sovereignty](../../implemented/BE-0047-ai-data-sovereignty/BE-0047-ai-data-sovereignty-ja.md)
-- [BE-0032 — Secret variables](../../implemented/BE-0032-secret-variables/BE-0032-secret-variables-ja.md)
+- [BE-0047 — AI data sovereignty](../../BE-0047-ai-data-sovereignty/BE-0047-ai-data-sovereignty-ja.md)
+- [BE-0032 — Secret variables](../../BE-0032-secret-variables/BE-0032-secret-variables-ja.md)
 - 2026-07-02 のコードベース分析レポート（セキュリティ）に由来します。

@@ -33,7 +33,7 @@ the run knows its `serve` base URL.
 The roadmap currently parks this whole area under **Not adopting**: *"Scheduling / Slack /
 TestRail integration — the domain of the CI / notification layer."* That call holds for a run
 inside a CI pipeline: GitHub Actions already turns the exit code, `junit.xml`, and the check
-annotations ([BE-0003](../../implemented/BE-0003-m3-codegen-traces-network-ci/BE-0003-m3-codegen-traces-network-ci.md))
+annotations ([BE-0003](../../BE-0003-m3-codegen-traces-network-ci/BE-0003-m3-codegen-traces-network-ci.md))
 into whatever Slack message the team has wired up. The CI layer owns notification, and Bajutsu
 should not reimplement it.
 
@@ -80,7 +80,7 @@ notify:
 ```
 
 `url` is resolved through the existing secret machinery
-([BE-0032](../../implemented/BE-0032-secret-variables/BE-0032-secret-variables.md)) so the webhook
+([BE-0032](../../BE-0032-secret-variables/BE-0032-secret-variables.md)) so the webhook
 URL — itself a credential for an Incoming Webhook — never lands in the config file or any artifact.
 
 ### When it fires (the event model)
@@ -106,8 +106,8 @@ so a 200-scenario run does not produce a 200-line message:
 
 - **Run identity** — `runId`, tool version, `sourceName`, `backend` / `engine`, trigger source
   (`cli` / `serve` / `crawl`), and the git provenance (branch, commit) when the config came from a
-  git source ([BE-0044](../../implemented/BE-0044-scenario-provenance/BE-0044-scenario-provenance.md),
-  [BE-0063](../../implemented/BE-0063-git-config-source/BE-0063-git-config-source.md)).
+  git source ([BE-0044](../../BE-0044-scenario-provenance/BE-0044-scenario-provenance.md),
+  [BE-0063](../../BE-0063-git-config-source/BE-0063-git-config-source.md)).
 - **Verdict** — overall `ok`, counts (total / passed / failed / skipped), total duration.
 - **Scenario rollup** — failures are listed (name, duration, first line of the failure, the failing
   step); passes are collapsed to a count. The failure list is capped, with an "and N more" tail, so
@@ -115,12 +115,12 @@ so a 200-scenario run does not produce a 200-line message:
 - **Report link** — a `reportUrl` to the hosted report, included **only when the run knows its
   `serve` base URL** (a hosted/served run). A purely local `bajutsu run` omits it rather than
   emitting a dead `file://` link; the report still travels by the existing `--zip` export
-  ([BE-0060](../../implemented/BE-0060-run-report-zip-export/BE-0060-run-report-zip-export.md)).
+  ([BE-0060](../../BE-0060-run-report-zip-export/BE-0060-run-report-zip-export.md)).
 - **Failure evidence pointers** — for each listed failure, a link to its failure screenshot, again
   only when a base URL makes the link resolvable.
 
 The summary inherits the run's redaction
-([BE-0047](../../implemented/BE-0047-ai-data-sovereignty/BE-0047-ai-data-sovereignty.md)) — it is
+([BE-0047](../../BE-0047-ai-data-sovereignty/BE-0047-ai-data-sovereignty.md)) — it is
 built from the already-scrubbed manifest, so no raw secret reaches the webhook. The Slack renderer
 turns this model into a Block Kit message; adding generic JSON / Teams / Discord later is a new
 renderer over the same model, touching no run logic.
@@ -134,7 +134,7 @@ The whole feature lives strictly after the verdict, which is what keeps it insid
 - **Delivery cannot change the verdict or the exit code.** The POST happens after `run` has decided
   pass/fail and written the manifest. A non-2xx response, a timeout, or an unreachable host is
   logged through operational logging
-  ([BE-0055](../../implemented/BE-0055-operational-logging/BE-0055-operational-logging.md)) and
+  ([BE-0055](../../BE-0055-operational-logging/BE-0055-operational-logging.md)) and
   surfaced as a warning, but the run's result and exit code are already fixed and never move.
 - **Bounded, non-blocking delivery** — a short timeout and a small, bounded retry with backoff, so
   a slow webhook cannot stall or hang the run. (No fixed `sleep` in the run path; retry backoff is a
@@ -175,10 +175,10 @@ before the first scenario.
 ## References
 
 - [BE-0068 — Regenerable reports](../../implemented/BE-0068-regenerable-reports/BE-0068-regenerable-reports.md) — `manifest.json` as the canonical run model the summary projects from.
-- [BE-0060 — Download / export a run report as a zip](../../implemented/BE-0060-run-report-zip-export/BE-0060-run-report-zip-export.md) — how a local run still moves a complete report when no `reportUrl` is available.
-- [BE-0055 — Operational logging for the hosted serve](../../implemented/BE-0055-operational-logging/BE-0055-operational-logging.md) — where delivery failures are recorded.
+- [BE-0060 — Download / export a run report as a zip](../../BE-0060-run-report-zip-export/BE-0060-run-report-zip-export.md) — how a local run still moves a complete report when no `reportUrl` is available.
+- [BE-0055 — Operational logging for the hosted serve](../../BE-0055-operational-logging/BE-0055-operational-logging.md) — where delivery failures are recorded.
 - [BE-0015](../../in-progress/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md) / [BE-0016](../../in-progress/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md) — hosted `serve`, the surface that gives a run a `reportUrl` and that most needs an out-of-band notification.
-- [BE-0044 — Scenario provenance](../../implemented/BE-0044-scenario-provenance/BE-0044-scenario-provenance.md) / [BE-0063 — Git config source](../../implemented/BE-0063-git-config-source/BE-0063-git-config-source.md) — the branch/commit identity carried in the payload.
-- [BE-0032 — Secret variables](../../implemented/BE-0032-secret-variables/BE-0032-secret-variables.md) — sourcing the webhook URL as a secret.
-- [BE-0034 — Tags / selective runs](../../implemented/BE-0034-tags-selective-runs/BE-0034-tags-selective-runs.md) — the selector reused to scope a sink to certain scenarios.
+- [BE-0044 — Scenario provenance](../../BE-0044-scenario-provenance/BE-0044-scenario-provenance.md) / [BE-0063 — Git config source](../../BE-0063-git-config-source/BE-0063-git-config-source.md) — the branch/commit identity carried in the payload.
+- [BE-0032 — Secret variables](../../BE-0032-secret-variables/BE-0032-secret-variables.md) — sourcing the webhook URL as a secret.
+- [BE-0034 — Tags / selective runs](../../BE-0034-tags-selective-runs/BE-0034-tags-selective-runs.md) — the selector reused to scope a sink to certain scenarios.
 - `roadmaps/README.md` "Not adopting" → *Scheduling / Slack / TestRail integration* — the prior decision this item bounds and partially reverses.

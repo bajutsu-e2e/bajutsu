@@ -105,6 +105,6 @@ written or how pass/fail is decided:
 
 - `bajutsu/evidence.py` (run/scenario/step directory creation and artifact writes)
 - `bajutsu/network.py` (`network.json` output)
-- Related: [BE-0032](../../implemented/BE-0032-secret-variables/BE-0032-secret-variables.md)
+- Related: [BE-0032](../../BE-0032-secret-variables/BE-0032-secret-variables.md)
   (secret variables)
 - Originates from the 2026-07-02 codebase-analysis report (security).

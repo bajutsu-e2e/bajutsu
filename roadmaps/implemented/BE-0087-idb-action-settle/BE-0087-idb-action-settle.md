@@ -46,13 +46,13 @@ All changes live in `bajutsu/drivers/idb.py` (the idb backend). The web (Playwri
 
 - **Determinism preserved.** Selector strictness is untouched: ambiguous still fails immediately, missing still fails. Settle and backoff only change *when* the screen is read, never *which* element a selector matches. No part of this adds an LLM to the run/CI gate.
 
-This is deliberately **not** tree repair. [BE-0006](../../implemented/BE-0006-idb-element-tree-normalization/BE-0006-idb-element-tree-normalization.md) covers asserting the *steady-state* normalized shape of SwiftUI controls against a golden; this proposal only governs *when* the driver reads a settled tree. The two stay separate: BE-0006's golden is asserted after settle has done its job, and neither masks the other.
+This is deliberately **not** tree repair. [BE-0006](../../BE-0006-idb-element-tree-normalization/BE-0006-idb-element-tree-normalization.md) covers asserting the *steady-state* normalized shape of SwiftUI controls against a golden; this proposal only governs *when* the driver reads a settled tree. The two stay separate: BE-0006's golden is asserted after settle has done its job, and neither masks the other.
 
 ### Validation
 
 - **Unit tests (the gate).** Following the existing `IdbDriver` test style — inject a fake `run` returning a scripted sequence of trees, with the poll interval set to zero — assert that settle waits for stability then proceeds, that it gives up at the bound, that an actuation resolves against the settled tree, that the empty-retry backoff series and its bound hold, and that `wait_for` polls until timeout.
 - **On-device.** The heavier e2e path (`e2e.yml` smoke / xcuitest) exercises the change against a real Simulator.
-- **Before/after flakiness.** Use [BE-0049](../../implemented/BE-0049-determinism-flakiness-audit/BE-0049-determinism-flakiness-audit.md)'s repeat-and-diff audit on a representative scenario to quantify the reduction in non-determinism.
+- **Before/after flakiness.** Use [BE-0049](../../BE-0049-determinism-flakiness-audit/BE-0049-determinism-flakiness-audit.md)'s repeat-and-diff audit on a representative scenario to quantify the reduction in non-determinism.
 
 ### Delivery
 
@@ -76,5 +76,5 @@ Small, focused PRs. (1) `wait_for` / `_resolve` hygiene (PR #295), (2) exponenti
 ## References
 
 - [DESIGN §11](../../../DESIGN.md) — idb normalization and the transient-empty note
-- [BE-0006](../../implemented/BE-0006-idb-element-tree-normalization/BE-0006-idb-element-tree-normalization.md) — steady-state golden normalization (complementary)
-- [BE-0049](../../implemented/BE-0049-determinism-flakiness-audit/BE-0049-determinism-flakiness-audit.md) — determinism / flakiness audit (before/after measurement)
+- [BE-0006](../../BE-0006-idb-element-tree-normalization/BE-0006-idb-element-tree-normalization.md) — steady-state golden normalization (complementary)
+- [BE-0049](../../BE-0049-determinism-flakiness-audit/BE-0049-determinism-flakiness-audit.md) — determinism / flakiness audit (before/after measurement)

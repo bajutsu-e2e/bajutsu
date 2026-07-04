@@ -10,14 +10,14 @@
 | Status | **Proposal (deferred)** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0157") |
 | Topic | Candidates from competitive research (MagicPod / Autify) |
-| Related | [BE-0052](../../implemented/BE-0052-device-state-timezone-clipboard-shake/BE-0052-device-state-timezone-clipboard-shake.md) |
+| Related | [BE-0052](../../BE-0052-device-state-timezone-clipboard-shake/BE-0052-device-state-timezone-clipboard-shake.md) |
 | Origin | MagicPod |
 <!-- /BE-METADATA -->
 
 ## Introduction
 
 Triggering the **shake** gesture — one of the device-state primitives
-[BE-0052](../../implemented/BE-0052-device-state-timezone-clipboard-shake/BE-0052-device-state-timezone-clipboard-shake.md)
+[BE-0052](../../BE-0052-device-state-timezone-clipboard-shake/BE-0052-device-state-timezone-clipboard-shake.md)
 proposed. BE-0052's implementation triage found no reliable, deterministic, headless actuator for
 it, so it moves here as its own deferred item, separate from the timezone primitive (a different
 blocker, tracked in its own item), to wait on a verified mechanism.
@@ -64,7 +64,7 @@ is absent (like the existing device-control steps on the fake driver and in para
 must be documented as unavailable in headless CI.
 
 **Codegen.** Shake remains `simctl`-less (or GUI-only), so — like the other device-control steps and
-consistent with [BE-0026](../../implemented/BE-0026-shrink-unsupported-syntax/BE-0026-shrink-unsupported-syntax.md)
+consistent with [BE-0026](../../BE-0026-shrink-unsupported-syntax/BE-0026-shrink-unsupported-syntax.md)
 — a future implementation would emit a labeled `// TODO` naming the command rather than a faithful
 XCUITest step.
 
@@ -92,11 +92,11 @@ introduce no per-app code (directive #3).
 
 - [ ] A verified headless shake actuator that targets a specific device (or an explicit, clean-failing, local-only GUI-automation escape hatch, documented as CI-unavailable).
 
-Carved out of [BE-0052](../../implemented/BE-0052-device-state-timezone-clipboard-shake/BE-0052-device-state-timezone-clipboard-shake.md)
+Carved out of [BE-0052](../../BE-0052-device-state-timezone-clipboard-shake/BE-0052-device-state-timezone-clipboard-shake.md)
 during its implementation triage; waits on a verified mechanism.
 
 ## References
 
-Split out of [BE-0052 — Device-state primitives: timezone, clipboard, shake](../../implemented/BE-0052-device-state-timezone-clipboard-shake/BE-0052-device-state-timezone-clipboard-shake.md),
-itself split from [BE-0035 — Device-control steps](../../implemented/BE-0035-device-control-primitives/BE-0035-device-control-primitives.md).
+Split out of [BE-0052 — Device-state primitives: timezone, clipboard, shake](../../BE-0052-device-state-timezone-clipboard-shake/BE-0052-device-state-timezone-clipboard-shake.md),
+itself split from [BE-0035 — Device-control steps](../../BE-0035-device-control-primitives/BE-0035-device-control-primitives.md).
 [DESIGN §6.2](../../../DESIGN.md), `bajutsu/orchestrator/actions/handlers/device.py`, `bajutsu/env.py`

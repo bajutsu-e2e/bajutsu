@@ -170,6 +170,38 @@ def test_render_row_japanese_links_to_ja_file() -> None:
     )
 
 
+def test_dual_layout_walk_and_link_prefix(tmp_path: Path) -> None:
+    """During the BE-0159 flatten the tree is mixed: ``iter_item_dirs`` finds items in the flat root
+    *and* the legacy status folders, ``_category_of`` reads each item's actual location, and a
+    flattened item's link carries no folder prefix while a foldered one keeps its category."""
+    roadmap = tmp_path / "roadmaps"
+    (roadmap / "BE-0001-flat").mkdir(parents=True)
+    (roadmap / "implemented" / "BE-0002-foldered").mkdir(parents=True)
+
+    assert {d.name for d in bri.iter_item_dirs(roadmap)} == {"BE-0001-flat", "BE-0002-foldered"}
+    assert bri._category_of(roadmap / "BE-0001-flat") == ""
+    assert bri._category_of(roadmap / "implemented" / "BE-0002-foldered") == "implemented"
+
+    flat = bri.Entry(
+        id="BE-0001", slug="flat", category="", title="t", status="Implemented", origin=None
+    )
+    fold = bri.Entry(
+        id="BE-0002",
+        slug="fold",
+        category="implemented",
+        title="t",
+        status="Implemented",
+        origin=None,
+    )
+    assert (
+        bri.render_row(flat, "en", has_origin=False)
+        == "| [BE-0001](BE-0001-flat/BE-0001-flat.md) | t | Implemented |"
+    )
+    assert bri.render_row(fold, "en", has_origin=False) == (
+        "| [BE-0002](implemented/BE-0002-fold/BE-0002-fold.md) | t | Implemented |"
+    )
+
+
 def test_replace_region_swaps_only_marked_body() -> None:
     text = (
         "intro prose\n"

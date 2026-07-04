@@ -120,8 +120,8 @@ transport 層の穴を塞ぐものです。
   とするコメント。
 - `bajutsu/serve/operations.py:761` — アップロードされたバンドルに対する既存の `build = None` 防御。
 - `bajutsu/serve/jobs.py:451` — 本項目がゲーティングする `shlex.split(job.build)` によるコマンド実行。
-- [BE-0051 — Serve hardening for hosting](../../implemented/BE-0051-serve-hardening-for-hosting/BE-0051-serve-hardening-for-hosting-ja.md)
+- [BE-0051 — Serve hardening for hosting](../../BE-0051-serve-hardening-for-hosting/BE-0051-serve-hardening-for-hosting-ja.md)
 - [BE-0090 — Uploaded-config command execution](../../implemented/BE-0090-uploaded-config-command-execution/BE-0090-uploaded-config-command-execution-ja.md)
-- [BE-0063 — Git config source](../../implemented/BE-0063-git-config-source/BE-0063-git-config-source-ja.md)
+- [BE-0063 — Git config source](../../BE-0063-git-config-source/BE-0063-git-config-source-ja.md)
 - [BE-0108 — Hosted config source restriction](../BE-0108-hosted-config-source-restriction/BE-0108-hosted-config-source-restriction-ja.md)
 - 2026-07-02 のコードベース分析レポート（セキュリティ）に由来します。

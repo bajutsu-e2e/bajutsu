@@ -68,6 +68,6 @@ Bajutsu は実行の証跡（スクリーンショット、アクセシビリテ
 
 - `bajutsu/evidence.py`（実行・シナリオ・ステップディレクトリの作成と証跡の書き込み）
 - `bajutsu/network.py`（`network.json` の出力）
-- 関連: [BE-0032](../../implemented/BE-0032-secret-variables/BE-0032-secret-variables-ja.md)
+- 関連: [BE-0032](../../BE-0032-secret-variables/BE-0032-secret-variables-ja.md)
   （シークレット変数）
 - 2026-07-02 のコードベース分析レポート（セキュリティ）に由来します。
