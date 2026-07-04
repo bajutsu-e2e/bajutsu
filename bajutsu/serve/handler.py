@@ -116,10 +116,11 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
             if not self._host_ok():
                 # DNS-rebinding defense (BE-0121): a Host that names no bound interface is refused
                 # ahead of everything else, so a rebound hostname reaches no endpoint at all
-                # (including GET /api/apikey?reveal=1), regardless of the token/CSRF posture.
-                length = int(self.headers.get("Content-Length") or 0)
-                if length:
-                    self.rfile.read(length)
+                # (including GET /api/apikey?reveal=1), regardless of the token/CSRF posture. Close
+                # the connection rather than draining the body: a rejected request needs no
+                # keep-alive, and this is the one gate an unbounded /api/upload body can hit, so
+                # draining Content-Length here would read the whole upload just to discard it.
+                self.close_connection = True
                 self._json({"error": "host not allowed"}, 403)
                 return False
             if state.token is None:
