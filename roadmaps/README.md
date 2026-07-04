@@ -257,6 +257,7 @@ Behavior-preserving cleanup inside `bajutsu/` itself — deduplication, decompos
 | ID | Item | Status |
 |---|---|---|
 | [BE-0092](implemented/BE-0092-crawl-coordinator-extraction/BE-0092-crawl-coordinator-extraction.md) | Extract the crawl coordinator into a class | Implemented |
+| [BE-0132](implemented/BE-0132-dedupe-crawl-screenshot-helpers/BE-0132-dedupe-crawl-screenshot-helpers.md) | Deduplicate crawl screenshot helpers | Implemented |
 | [BE-0134](implemented/BE-0134-serve-cli-flag-mirror-drift/BE-0134-serve-cli-flag-mirror-drift.md) | Eliminate serve-to-CLI flag-mirror drift | Implemented |
 | [BE-0140](implemented/BE-0140-dedupe-claude-client-init/BE-0140-dedupe-claude-client-init.md) | Deduplicate Claude client initialization | Implemented |
 | [BE-0142](implemented/BE-0142-cli-command-coverage/BE-0142-cli-command-coverage.md) | Cover the CLI command layer | Implemented |
@@ -631,7 +632,6 @@ Behavior-preserving cleanup inside `bajutsu/` itself — deduplication, decompos
 <!-- GENERATED:proposals-quality-debt -->
 | ID | Item | Status |
 |---|---|---|
-| [BE-0132](proposals/BE-0132-dedupe-crawl-screenshot-helpers/BE-0132-dedupe-crawl-screenshot-helpers.md) | Deduplicate crawl screenshot helpers | Proposal |
 | [BE-0135](proposals/BE-0135-module-naming-debt/BE-0135-module-naming-debt.md) | Resolve top-level module naming debt | Proposal |
 <!-- /GENERATED:proposals-quality-debt -->
 

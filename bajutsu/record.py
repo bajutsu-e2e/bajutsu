@@ -7,6 +7,7 @@ scenario that `run` later replays with no AI.
 
 from __future__ import annotations
 
+import logging
 import tempfile
 from collections.abc import Callable
 from pathlib import Path
@@ -15,6 +16,8 @@ from bajutsu.agent import Agent, Observation
 from bajutsu.drivers import base
 from bajutsu.orchestrator import BlockedHandler, Clock, RealClock, _action_of, _do_action, _wait
 from bajutsu.scenario import Assertion, Scenario, Selector, Step
+
+_logger = logging.getLogger(__name__)
 
 # A live-progress sink: each turn's decision is handed to it as a one-line string.
 Reporter = Callable[[str], None]
@@ -50,7 +53,13 @@ def _describe_step(step: Step) -> str:
 
 
 def _screenshot_bytes(driver: base.Driver) -> bytes | None:
-    """Capture a PNG of the current screen as bytes (best-effort)."""
+    """Capture a PNG of the current screen as bytes (best-effort).
+
+    Returns None on both a genuinely empty capture and a failure — callers treat the
+    screenshot as optional and continue either way — but logs a warning when the capture
+    *fails* (a stale simulator, a permissions error, a full disk), so a real failure stays
+    distinguishable from "there was nothing to capture" instead of vanishing into None.
+    """
     try:
         with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
             path = tmp.name
@@ -58,7 +67,8 @@ def _screenshot_bytes(driver: base.Driver) -> bytes | None:
         data = Path(path).read_bytes()
         Path(path).unlink(missing_ok=True)
         return data or None
-    except Exception:
+    except Exception as exc:
+        _logger.warning("screenshot capture failed: %s", exc)
         return None
 
 

@@ -7,7 +7,7 @@
 |---|---|
 | 提案 | [BE-0132](BE-0132-dedupe-crawl-screenshot-helpers-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **提案** |
+| 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0132") |
 | トピック | コードベース品質・技術的負債 |
 <!-- /BE-METADATA -->
@@ -85,12 +85,18 @@
 > 作業分解（作業の単位ごとに 1 つ）に対応し、ログには変更内容と時期（古い順）を PR へのリンクと
 > ともに記録します。
 
-- [ ] `_screenshot_bytes` と `_screenshot_png` を一つのヘルパーに統合し、重複を削除する。
-- [ ] 素の `except Exception: return None` を、エラーを表面化させる失敗パスに置き換える。
-- [ ] 四つの呼び出し元（`record.py`、`alerts.py`、`crawl_guide.py`、`enrich.py`）とそのインポートを更新する。
-- [ ] 統合後のヘルパーの成功パス・失敗パス双方をカバーするユニットテストを追加する。
+- [x] `_screenshot_bytes` と `_screenshot_png` を一つのヘルパーに統合し、重複を削除する。
+- [x] 素の `except Exception: return None` を、エラーを表面化させる失敗パスに置き換える。
+- [x] 四つの呼び出し元（`record.py`、`alerts.py`、`crawl_guide.py`、`enrich.py`）とそのインポートを更新する。
+- [x] 統合後のヘルパーの成功パス・失敗パス双方をカバーするユニットテストを追加する。
 
-まだ着手した PR はありません。
+- 2026-07-04: `alerts.py` の `_screenshot_png` を削除し、その呼び出し元を `record.py` の
+  `_screenshot_bytes` 一つに向けました。ヘルパーは、キャプチャに失敗したとき素の
+  `except: return None` で握りつぶすのではなく警告をログに出すようになり、実際の失敗を空の
+  キャプチャと区別できるようになりました。四つの呼び出し元はいずれもベストエフォートのままな
+  ので、インポートの変更以外に呼び出し元の修正は要りませんでした。あわせて、同じ重複排除の
+  趣旨から、`test_alerts.py` と `test_crawl_guide.py` に散らばっていたバイト単位で同一の
+  テスト用フェイク `ShotDriver` を `tests/conftest.py` に一本化しました。
 
 ## 参考
 

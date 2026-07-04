@@ -15,15 +15,14 @@ the device's point-space screen regardless of the screenshot's pixel scale.
 from __future__ import annotations
 
 import base64
-import tempfile
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Any, Protocol
 
 from bajutsu import usage
 from bajutsu.anthropic_client import AiConfig, ensure_client, resolve_model
 from bajutsu.drivers import base
 from bajutsu.orchestrator import AlertEvent
+from bajutsu.record import _screenshot_bytes
 from bajutsu.redaction import Redactor
 
 LOCATOR_MODEL = "claude-opus-4-8"
@@ -43,19 +42,6 @@ class AlertLocator(Protocol):
     """Given a screenshot, decide whether a blocking prompt is up and where to tap."""
 
     def locate(self, screenshot_png: bytes, instruction: str | None) -> AlertDecision: ...
-
-
-def _screenshot_png(driver: base.Driver) -> bytes | None:
-    """Capture a PNG of the current screen as bytes (best-effort)."""
-    try:
-        with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
-            path = tmp.name
-        driver.screenshot(path)
-        data = Path(path).read_bytes()
-        Path(path).unlink(missing_ok=True)
-        return data or None
-    except Exception:
-        return None
 
 
 def _screen_points(driver: base.Driver) -> base.Point:
@@ -83,7 +69,7 @@ class SystemAlertGuard:
         Returns the AlertEvent it dismissed (the button it tapped), or None when nothing
         on screen needed clearing.
         """
-        png = _screenshot_png(driver)
+        png = _screenshot_bytes(driver)
         if png is None:
             return None
         try:

@@ -7,7 +7,7 @@
 |---|---|
 | Proposal | [BE-0132](BE-0132-dedupe-crawl-screenshot-helpers.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0132") |
 | Topic | Codebase quality & technical debt |
 <!-- /BE-METADATA -->
@@ -85,12 +85,17 @@ unifying the helper is the natural place to also fix how it fails:
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Unify `_screenshot_bytes` and `_screenshot_png` into one helper and delete the duplicate.
-- [ ] Replace the bare `except Exception: return None` with a failure path that surfaces the error.
-- [ ] Update the four call sites (`record.py`, `alerts.py`, `crawl_guide.py`, `enrich.py`) and their imports.
-- [ ] Add unit tests covering both the success and the failure path of the unified helper.
+- [x] Unify `_screenshot_bytes` and `_screenshot_png` into one helper and delete the duplicate.
+- [x] Replace the bare `except Exception: return None` with a failure path that surfaces the error.
+- [x] Update the four call sites (`record.py`, `alerts.py`, `crawl_guide.py`, `enrich.py`) and their imports.
+- [x] Add unit tests covering both the success and the failure path of the unified helper.
 
-No PR has landed yet.
+- 2026-07-04: Deleted `_screenshot_png` from `alerts.py` and pointed its call site at the single
+  `_screenshot_bytes` in `record.py`; the helper now logs a warning on a capture failure (instead
+  of a bare `except: return None`) so a real failure stays distinguishable from an empty capture.
+  All four call sites remain best-effort, so no caller changes were needed beyond the import. As a
+  reuse follow-through in the same theme, the byte-identical test `ShotDriver` fakes (duplicated
+  across `test_alerts.py` and `test_crawl_guide.py`) were consolidated into `tests/conftest.py`.
 
 ## References
 
