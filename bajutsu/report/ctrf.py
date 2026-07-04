@@ -156,7 +156,9 @@ def _environment(provenance: dict[str, object] | None) -> dict[str, object] | No
 
 def _summary(started: datetime | None, results: list[RunResult]) -> dict[str, object]:
     passed = sum(1 for r in results if r.ok)
-    duration = sum(_ms(r.duration_s) for r in results)
+    # Convert the summed seconds to ms once (not per-scenario), so the total isn't undercounted by
+    # the per-scenario truncation each `tests[].duration` incurs.
+    duration = _ms(sum(r.duration_s for r in results))
     start = int(started.timestamp() * 1000) if started else 0
     return {
         "tests": len(results),

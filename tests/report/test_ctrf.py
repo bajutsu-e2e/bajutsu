@@ -87,6 +87,15 @@ def test_summary_counts_and_duration() -> None:
     assert summary["stop"] == summary["start"] + summary["duration"]
 
 
+def test_summary_duration_sums_seconds_before_truncating() -> None:
+    # duration is Σ(duration_s) x 1000, computed once — not Σ(per-scenario truncated ms), which would
+    # lose up to ~1ms per scenario. Two sub-millisecond scenarios must still contribute their sum.
+    r1 = RunResult(scenario="a", ok=True, steps=[], backend="fake", duration_s=0.0006)
+    r2 = RunResult(scenario="b", ok=True, steps=[], backend="fake", duration_s=0.0007)
+    summary = ctrf_json("20260704-101500", [r1, r2])["results"]["summary"]  # type: ignore[index]
+    assert summary["duration"] == 1  # int(0.0013 * 1000); per-scenario truncation would give 0
+
+
 def test_summary_start_from_run_id() -> None:
     # The runId is a UTC wall-clock stamp, so it must be parsed as UTC (not the host timezone) —
     # otherwise summary.start is off by the host's offset. An unparseable id falls back to 0.
