@@ -6,6 +6,7 @@ genuinely cross-command pieces belong here, so adding a command rarely edits thi
 
 from __future__ import annotations
 
+import json
 import os
 from collections.abc import Callable
 from dataclasses import replace
@@ -120,6 +121,27 @@ def resolve_run_dir(run: str, runs_root: str) -> Path:
     """
     p = Path(run)
     return p if p.is_absolute() or len(p.parts) > 1 else Path(runs_root) / run
+
+
+def read_manifests(runs_dir: Path) -> list[dict[str, object]]:
+    """The parsed `manifest.json` of each run under *runs_dir*; unreadable/malformed ones are skipped.
+
+    Shared by the read-only run-history readers (`audit --history`, `stats`): a run that can't be
+    parsed carries no usable outcome, so dropping it here matches those tools' advisory tolerance —
+    they never gate on completeness.
+    """
+    manifests: list[dict[str, object]] = []
+    for d in sorted(runs_dir.iterdir()):
+        manifest = d / "manifest.json"
+        if not (d.is_dir() and manifest.is_file()):
+            continue
+        try:
+            data = json.loads(manifest.read_text(encoding="utf-8"))
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+            continue
+        if isinstance(data, dict):
+            manifests.append(data)
+    return manifests
 
 
 def _load_effective(config: str, target_name: str) -> Effective:

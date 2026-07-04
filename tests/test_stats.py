@@ -1,0 +1,394 @@
+"""Aggregate run-stats dashboard (BE-0102) — the deterministic aggregator over run manifests."""
+
+from __future__ import annotations
+
+from typing import Any
+
+from bajutsu import stats as _stats
+
+
+def _manifest(
+    run_id: str,
+    *,
+    ok: bool | None = None,
+    scenario_hash: str | None = None,
+    backend: str = "",
+    scenarios: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
+    """A minimal manifest.json mapping — only the fields the aggregator reads."""
+    scen = scenarios if scenarios is not None else [{"scenario": "s", "ok": bool(ok)}]
+    m: dict[str, Any] = {
+        "runId": run_id,
+        "ok": all(s.get("ok") for s in scen) if ok is None else ok,
+        "scenarios": scen,
+    }
+    if backend:
+        m["backend"] = backend
+    if scenario_hash is not None:
+        m["provenance"] = {"scenarioHash": scenario_hash}
+    return m
+
+
+def test_pass_rate_over_runs() -> None:
+    stats = _stats.aggregate_runs(
+        [
+            _manifest("20260101-000000", ok=True),
+            _manifest("20260102-000000", ok=False),
+            _manifest("20260103-000000", ok=True),
+        ]
+    )
+    assert stats.runs == 3
+    assert stats.passed_runs == 2
+    assert stats.failed_runs == 1
+    assert stats.pass_rate == 2 / 3
+
+
+def test_empty_run_set() -> None:
+    stats = _stats.aggregate_runs([])
+    assert stats.runs == 0
+    assert stats.pass_rate == 0.0
+    assert stats.by_run == []
+    assert stats.scenarios == []
+
+
+def test_non_manifests_and_missing_scenarios_are_ignored() -> None:
+    stats = _stats.aggregate_runs(
+        [
+            "not a manifest",  # type: ignore[list-item]
+            {"runId": "x", "ok": True},  # no scenarios list
+            _manifest("20260101-000000", ok=True),
+        ]
+    )
+    assert stats.runs == 1
+
+
+def test_by_run_is_chronological_and_carries_the_point() -> None:
+    stats = _stats.aggregate_runs(
+        [
+            _manifest("20260103-000000", ok=True, backend="fake"),
+            _manifest("20260101-000000", ok=False, backend="idb"),
+        ]
+    )
+    assert [p.run_id for p in stats.by_run] == ["20260101-000000", "20260103-000000"]
+    first = stats.by_run[0]
+    assert first.day == "2026-01-01"
+    assert first.ok is False
+    assert first.backend == "idb"
+
+
+def test_by_day_rolls_up_pass_rate() -> None:
+    stats = _stats.aggregate_runs(
+        [
+            _manifest("20260101-090000", ok=True),
+            _manifest("20260101-100000", ok=False),
+            _manifest("20260102-090000", ok=True),
+        ]
+    )
+    by_day = {d.day: d for d in stats.by_day}
+    assert by_day["2026-01-01"].runs == 2
+    assert by_day["2026-01-01"].pass_rate == 0.5
+    assert by_day["2026-01-02"].pass_rate == 1.0
+
+
+def test_custom_run_id_has_no_day() -> None:
+    stats = _stats.aggregate_runs([_manifest("audit-run", ok=True)])
+    assert stats.by_run[0].day == ""
+    assert stats.by_day[0].day == ""
+
+
+def test_volume_by_backend() -> None:
+    stats = _stats.aggregate_runs(
+        [
+            _manifest("20260101-000000", ok=True, backend="idb"),
+            _manifest("20260102-000000", ok=True, backend="idb"),
+            _manifest("20260103-000000", ok=True, backend="fake"),
+        ]
+    )
+    assert stats.by_backend == {"fake": 1, "idb": 2}
+
+
+def test_run_duration_sums_scenario_durations() -> None:
+    stats = _stats.aggregate_runs(
+        [
+            _manifest(
+                "20260101-000000",
+                scenarios=[
+                    {"scenario": "a", "ok": True, "duration_s": 1.5},
+                    {"scenario": "b", "ok": True, "duration_s": 2.0},
+                ],
+            )
+        ]
+    )
+    assert stats.by_run[0].duration_s == 3.5
+    assert stats.total_duration_s == 3.5
+
+
+def test_scenario_stat_folds_duration_and_flakiness() -> None:
+    # Same fingerprint, verdict flips across runs → flaky (BE-0049 classifier, reused).
+    stats = _stats.aggregate_runs(
+        [
+            _manifest(
+                "20260101-000000",
+                scenario_hash="sha256:aaa",
+                scenarios=[{"scenario": "login", "ok": True, "duration_s": 2.0}],
+            ),
+            _manifest(
+                "20260102-000000",
+                scenario_hash="sha256:aaa",
+                scenarios=[{"scenario": "login", "ok": False, "duration_s": 4.0}],
+            ),
+        ]
+    )
+    assert len(stats.scenarios) == 1
+    sc = stats.scenarios[0]
+    assert sc.name == "login"
+    assert sc.scenario_hash == "sha256:aaa"
+    assert sc.runs == 2
+    assert sc.pass_rate == 0.5
+    assert sc.classification == "flaky"
+    assert sc.avg_duration_s == 3.0
+    assert sc.max_duration_s == 4.0
+
+
+def test_edited_scenario_starts_a_new_series() -> None:
+    # A content edit gives a new fingerprint, so it is a separate series, not a flake.
+    stats = _stats.aggregate_runs(
+        [
+            _manifest(
+                "20260101-000000",
+                scenario_hash="sha256:aaa",
+                scenarios=[{"scenario": "login", "ok": True}],
+            ),
+            _manifest(
+                "20260102-000000",
+                scenario_hash="sha256:bbb",
+                scenarios=[{"scenario": "login", "ok": False}],
+            ),
+        ]
+    )
+    hashes = {sc.scenario_hash for sc in stats.scenarios}
+    assert hashes == {"sha256:aaa", "sha256:bbb"}
+
+
+def test_runs_without_fingerprint_are_skipped_for_scenario_series() -> None:
+    stats = _stats.aggregate_runs(
+        [
+            _manifest("20260101-000000", ok=True),  # no scenarioHash
+            _manifest(
+                "20260102-000000",
+                scenario_hash="sha256:aaa",
+                scenarios=[{"scenario": "s", "ok": True}],
+            ),
+        ]
+    )
+    assert stats.scenarios_skipped == 1
+    assert len(stats.scenarios) == 1
+    # The un-fingerprinted run still counts toward the run-level trend.
+    assert stats.runs == 2
+
+
+def test_failing_scenarios_ranked_with_top_reason() -> None:
+    stats = _stats.aggregate_runs(
+        [
+            _manifest(
+                "20260101-000000",
+                scenarios=[{"scenario": "checkout", "ok": False, "failure": "timeout"}],
+            ),
+            _manifest(
+                "20260102-000000",
+                scenarios=[{"scenario": "checkout", "ok": False, "failure": "timeout"}],
+            ),
+            _manifest(
+                "20260103-000000",
+                scenarios=[{"scenario": "search", "ok": False, "failure": "no match"}],
+            ),
+        ]
+    )
+    assert stats.failing_scenarios[0].key == "checkout"
+    assert stats.failing_scenarios[0].failures == 2
+    assert stats.failing_scenarios[0].reason == "timeout"
+    assert stats.failing_scenarios[1].key == "search"
+
+
+def test_failing_steps_keyed_by_scenario_and_action() -> None:
+    stats = _stats.aggregate_runs(
+        [
+            _manifest(
+                "20260101-000000",
+                scenarios=[
+                    {
+                        "scenario": "login",
+                        "ok": False,
+                        "steps": [
+                            {"index": 0, "action": "tap", "ok": True},
+                            {"index": 1, "action": "type", "ok": False, "reason": "not found"},
+                        ],
+                    }
+                ],
+            )
+        ]
+    )
+    assert stats.failing_steps == [
+        _stats.Hotspot(key="login > type", failures=1, reason="not found")
+    ]
+
+
+def test_failing_assertions_span_step_and_scenario_level() -> None:
+    stats = _stats.aggregate_runs(
+        [
+            _manifest(
+                "20260101-000000",
+                scenarios=[
+                    {
+                        "scenario": "s",
+                        "ok": False,
+                        "expect_results": [
+                            {"ok": False, "kind": "text", "reason": "missing"},
+                        ],
+                        "steps": [
+                            {
+                                "index": 0,
+                                "action": "tap",
+                                "ok": False,
+                                "assertion_results": [
+                                    {"ok": False, "kind": "text", "reason": "missing"},
+                                ],
+                            }
+                        ],
+                    }
+                ],
+            )
+        ]
+    )
+    assert stats.failing_assertions == [_stats.Hotspot(key="text", failures=2, reason="missing")]
+
+
+def test_render_text_summarizes_headline() -> None:
+    text = _stats.render(
+        _stats.aggregate_runs(
+            [
+                _manifest("20260101-000000", ok=True, backend="idb"),
+                _manifest("20260102-000000", ok=False, backend="idb"),
+            ]
+        )
+    )
+    assert "runs: 2" in text
+    assert "50%" in text
+
+
+def test_render_text_empty() -> None:
+    assert _stats.render(_stats.aggregate_runs([])) == "no runs to aggregate"
+
+
+def test_render_html_is_self_contained() -> None:
+    html = _stats.render_html(
+        _stats.aggregate_runs(
+            [
+                _manifest(
+                    "20260101-000000",
+                    scenario_hash="sha256:aaa",
+                    scenarios=[{"scenario": "login", "ok": True, "duration_s": 2.0}],
+                )
+            ]
+        )
+    )
+    assert html.startswith("<!DOCTYPE html>")
+    assert "Run stats" in html
+    assert "login" in html
+    # No external assets / JS: the page must work opened straight from disk.
+    assert "<script" not in html
+    assert "http://" not in html and "https://" not in html
+
+
+def test_render_html_escapes_scenario_names() -> None:
+    html = _stats.render_html(
+        _stats.aggregate_runs(
+            [
+                _manifest(
+                    "20260101-000000",
+                    scenario_hash="sha256:aaa",
+                    scenarios=[{"scenario": "<img src=x>", "ok": False, "failure": "boom"}],
+                )
+            ]
+        )
+    )
+    assert "<img src=x>" not in html
+    assert "&lt;img" in html
+
+
+def test_render_text_includes_flaky_scenarios() -> None:
+    text = _stats.render(
+        _stats.aggregate_runs(
+            [
+                _manifest(
+                    "20260101-000000",
+                    scenario_hash="sha256:aaa",
+                    scenarios=[{"scenario": "login", "ok": True, "duration_s": 1.0}],
+                ),
+                _manifest(
+                    "20260102-000000",
+                    scenario_hash="sha256:aaa",
+                    scenarios=[{"scenario": "login", "ok": False, "duration_s": 1.0}],
+                ),
+            ]
+        )
+    )
+    assert "flaky scenarios:" in text
+    assert "login" in text
+    assert "1/2 passed" in text
+
+
+def test_render_html_empty_state() -> None:
+    # A fresh runs directory aggregates to zero runs; the HTML must still render cleanly (no Jinja
+    # UndefinedError, no divide-by-zero in a filter) with empty slowest/flaky lists.
+    html = _stats.render_html(_stats.aggregate_runs([]))
+    assert html.startswith("<!DOCTYPE html>")
+    assert "<script" not in html
+
+
+def test_failing_steps_fall_back_to_question_marks() -> None:
+    stats = _stats.aggregate_runs(
+        [
+            _manifest(
+                "20260101-000000",
+                scenarios=[{"ok": False, "steps": [{"index": 0, "ok": False}]}],
+            )
+        ]
+    )
+    assert stats.failing_steps[0].key == "? > ?"
+
+
+def test_non_mapping_scenario_entries_are_skipped() -> None:
+    stats = _stats.aggregate_runs(
+        [
+            _manifest(
+                "20260101-000000",
+                ok=False,
+                scenario_hash="sha256:aaa",
+                scenarios=["not a scenario", {"scenario": "s", "ok": False}],  # type: ignore[list-item]
+            )
+        ]
+    )
+    assert stats.runs == 1
+    assert [sc.name for sc in stats.scenarios] == ["s"]
+    assert [h.key for h in stats.failing_scenarios] == ["s"]
+
+
+def test_non_numeric_duration_is_excluded_from_average() -> None:
+    # A null/missing duration_s must not count as a 0.0 sample that drags the average down.
+    stats = _stats.aggregate_runs(
+        [
+            _manifest(
+                "20260101-000000",
+                scenario_hash="sha256:aaa",
+                scenarios=[{"scenario": "s", "ok": True, "duration_s": 2.0}],
+            ),
+            _manifest(
+                "20260102-000000",
+                scenario_hash="sha256:aaa",
+                scenarios=[{"scenario": "s", "ok": True, "duration_s": None}],
+            ),
+        ]
+    )
+    assert stats.scenarios[0].avg_duration_s == 2.0
+    assert stats.scenarios[0].max_duration_s == 2.0

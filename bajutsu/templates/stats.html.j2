@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+{#- Self-contained run-stats dashboard (BE-0102). stats.py builds the context; all markup lives
+    here. CSS is inlined and the trend is inline SVG (no external asset, no JS chart library) so the
+    page works opened straight from disk, mirroring the coverage report. -#}
+{%- macro bar(fraction) -%}
+<div class="bar"><div class="fill" style="width: {{ (fraction * 100) | round(1) }}%"></div></div>
+{%- endmacro -%}
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Run stats</title>
+<style>
+:root { color-scheme: light dark; }
+body { font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  margin: 0; padding: 2rem; max-width: 880px; margin: 0 auto; color: #1d1d1f; background: #fff; }
+h1 { font-size: 1.5rem; margin: 0 0 .25rem; }
+h2 { font-size: 1.1rem; margin: 2rem 0 .75rem; border-bottom: 1px solid #e0e0e0; padding-bottom: .35rem; }
+.sub { color: #6e6e73; margin: 0 0 1.5rem; }
+section { margin-bottom: 1.5rem; }
+.score { font-size: 1.05rem; font-weight: 600; margin: 0 0 .5rem; }
+.bar { background: #e8e8ed; border-radius: 5px; height: 10px; overflow: hidden; margin: .25rem 0 1rem; }
+.fill { background: #34c759; height: 100%; }
+table { border-collapse: collapse; width: 100%; }
+th, td { text-align: left; padding: .4rem .6rem; border-bottom: 1px solid #ececec; vertical-align: top; }
+th { color: #6e6e73; font-weight: 600; font-size: .85rem; }
+td.num { text-align: right; font-variant-numeric: tabular-nums; }
+code { background: #f2f2f7; border-radius: 4px; padding: .1rem .35rem; font-size: .85em; }
+.empty { color: #6e6e73; font-style: italic; }
+.tag { display: inline-block; border-radius: 4px; padding: .1rem .4rem; font-size: .85em; }
+.flaky { background: #fde8e8; color: #b00020; }
+.trend { width: 100%; height: 120px; }
+.trend polyline { fill: none; stroke: #34c759; stroke-width: 2; }
+.trend .axis { stroke: #d0d0d5; stroke-width: 1; }
+@media (prefers-color-scheme: dark) {
+  body { color: #f5f5f7; background: #1c1c1e; }
+  h2 { border-color: #3a3a3c; }
+  .sub, th { color: #98989d; }
+  .bar { background: #3a3a3c; }
+  code { background: #2c2c2e; }
+  th, td { border-color: #2c2c2e; }
+  .flaky { background: #3a1f1f; color: #ff6961; }
+  .trend .axis { stroke: #48484a; }
+}
+</style>
+</head>
+<body>
+<h1>Run stats</h1>
+<p class="sub">Read-only trend across {{ stats.runs }} run(s). No verdict — advisory only.</p>
+
+<section>
+<h2>Pass-rate</h2>
+<p class="score">{{ (stats.pass_rate * 100) | round(1) }}% — {{ stats.passed_runs }}/{{ stats.runs }} runs passed</p>
+{{ bar(stats.pass_rate) }}
+<p class="sub">Total duration {{ stats.total_duration_s | round(1) }}s across the run set.</p>
+{%- if stats.by_day | length > 1 %}
+{#- Trend polyline over the per-day pass-rate: x by index, y inverted (0% at the bottom). -#}
+<svg class="trend" viewBox="0 0 100 40" preserveAspectRatio="none" role="img" aria-label="pass-rate trend">
+<line class="axis" x1="0" y1="40" x2="100" y2="40" />
+<polyline points="
+{%- for d in stats.by_day -%}
+{{ (loop.index0 / (stats.by_day | length - 1) * 100) | round(2) }},{{ (40 - d.pass_rate * 40) | round(2) }}{{ " " }}
+{%- endfor -%}
+" />
+</svg>
+{%- endif %}
+</section>
+
+<section>
+<h2>Pass-rate by day</h2>
+{%- if stats.by_day %}
+<table><thead><tr><th>day</th><th>runs</th><th>passed</th><th>pass-rate</th></tr></thead><tbody>
+{%- for d in stats.by_day %}
+<tr><td>{{ d.day or "(no date)" }}</td><td class="num">{{ d.runs }}</td><td class="num">{{ d.passed_runs }}</td><td class="num">{{ (d.pass_rate * 100) | round(0) }}%</td></tr>
+{%- endfor %}
+</tbody></table>
+{%- else %}
+<p class="empty">No runs to chart.</p>
+{%- endif %}
+</section>
+
+<section>
+<h2>Volume by backend</h2>
+{%- if stats.by_backend %}
+<table><thead><tr><th>backend</th><th>runs</th></tr></thead><tbody>
+{%- for backend, n in stats.by_backend.items() %}
+<tr><td><code>{{ backend or "(unknown)" }}</code></td><td class="num">{{ n }}</td></tr>
+{%- endfor %}
+</tbody></table>
+{%- else %}
+<p class="empty">No runs recorded a backend.</p>
+{%- endif %}
+</section>
+
+<section>
+<h2>Slowest scenarios</h2>
+{%- if slowest %}
+<table><thead><tr><th>scenario</th><th>avg</th><th>max</th><th>runs</th><th>class</th></tr></thead><tbody>
+{%- for sc in slowest[:20] %}
+<tr><td>{{ sc.name }}</td><td class="num">{{ sc.avg_duration_s | round(2) }}s</td><td class="num">{{ sc.max_duration_s | round(2) }}s</td><td class="num">{{ sc.runs }}</td>
+<td>{% if sc.classification == "flaky" %}<span class="tag flaky">flaky</span>{% else %}{{ sc.classification }}{% endif %}</td></tr>
+{%- endfor %}
+</tbody></table>
+{%- else %}
+<p class="empty">No fingerprinted scenarios to rank{% if stats.scenarios_skipped %} ({{ stats.scenarios_skipped }} run(s) had no scenario fingerprint){% endif %}.</p>
+{%- endif %}
+</section>
+
+{%- if flaky %}
+<section>
+<h2>Flaky scenarios</h2>
+<table><thead><tr><th>scenario</th><th>passed</th><th>runs</th><th>pass-rate</th></tr></thead><tbody>
+{%- for sc in flaky %}
+<tr><td>{{ sc.name }}</td><td class="num">{{ sc.passed }}</td><td class="num">{{ sc.runs }}</td><td class="num">{{ (sc.pass_rate * 100) | round(0) }}%</td></tr>
+{%- endfor %}
+</tbody></table>
+</section>
+{%- endif %}
+
+<section>
+<h2>Failure hotspots</h2>
+{%- if stats.failing_scenarios %}
+<h3>Scenarios</h3>
+<table><thead><tr><th>scenario</th><th>failures</th><th>top reason</th></tr></thead><tbody>
+{%- for h in stats.failing_scenarios[:20] %}
+<tr><td>{{ h.key }}</td><td class="num">{{ h.failures }}</td><td>{{ h.reason }}</td></tr>
+{%- endfor %}
+</tbody></table>
+{%- endif %}
+{%- if stats.failing_steps %}
+<h3>Steps</h3>
+<table><thead><tr><th>step</th><th>failures</th><th>top reason</th></tr></thead><tbody>
+{%- for h in stats.failing_steps[:20] %}
+<tr><td>{{ h.key }}</td><td class="num">{{ h.failures }}</td><td>{{ h.reason }}</td></tr>
+{%- endfor %}
+</tbody></table>
+{%- endif %}
+{%- if stats.failing_assertions %}
+<h3>Assertions</h3>
+<table><thead><tr><th>kind</th><th>failures</th><th>top reason</th></tr></thead><tbody>
+{%- for h in stats.failing_assertions[:20] %}
+<tr><td><code>{{ h.key }}</code></td><td class="num">{{ h.failures }}</td><td>{{ h.reason }}</td></tr>
+{%- endfor %}
+</tbody></table>
+{%- endif %}
+{%- if not stats.failing_scenarios and not stats.failing_steps and not stats.failing_assertions %}
+<p class="empty">No failures recorded across the run set.</p>
+{%- endif %}
+</section>
+</body>
+</html>

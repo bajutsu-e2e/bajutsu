@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0102](BE-0102-run-stats-dashboard.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0102") |
+| Implementing PR | _pending_ |
 | Topic | Authoring experience (record / GUI editor) |
 <!-- /BE-METADATA -->
 
@@ -135,15 +136,26 @@ would settle; the recommendation is in brackets and the alternatives are real:
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] 1. The aggregator (`aggregate_runs`) over a run set, grouping by the BE-0049 `scenarioHash`,
-  reusing `report.load` and the BE-0049 flakiness classifier.
-- [ ] 2. The metric set — pass-rate over time, duration / performance, failure hotspots, flakiness,
+- [x] 1. The aggregator (`aggregate_runs`) over a run set, grouping by the BE-0049 `scenarioHash`,
+  reusing the BE-0049 flakiness classifier (`audit.longitudinal`) and reading manifests directly (the
+  aggregator needs only a handful of fields, so it consumes the manifest mappings like the audit does
+  rather than reconstructing full `RunResult`s through `report.load`).
+- [x] 2. The metric set — pass-rate over time, duration / performance, failure hotspots, flakiness,
   volume.
-- [ ] 3. The CLI surface — `bajutsu stats` with `--runs` / `--html` (self-contained) and text/JSON
+- [x] 3. The CLI surface — `bajutsu stats` with `--runs` / `--html` (self-contained) and text/JSON
   output.
 - [ ] 4. The serve **Stats** tab reusing the aggregator through the existing serve seams
-  (Repository / ArtifactStore).
-- [ ] 5. Scope guards — read-only, no verdict change, no LLM, not a CI gate.
+  (Repository / ArtifactStore) — deferred to a follow-on slice (the CLI-first ordering the *Detailed
+  design* recommends).
+- [x] 5. Scope guards — read-only, no verdict change, no LLM, not a CI gate.
+
+**Log**
+
+- _pending PR_ — Shipped the CLI-first slice: the deterministic aggregator `bajutsu/stats.py`
+  (`aggregate_runs` + text/JSON/HTML renderers, flakiness reused from the BE-0049 longitudinal audit)
+  and the `bajutsu stats --runs/--json/--html` command, with `tests/test_stats.py` /
+  `tests/test_cli_stats.py` on the Linux gate and bilingual `cli.md` docs. The serve Stats tab
+  (unit 4) is deferred to a follow-on.
 
 ## References
 
