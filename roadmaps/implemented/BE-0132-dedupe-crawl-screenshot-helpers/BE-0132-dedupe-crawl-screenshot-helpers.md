@@ -9,6 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0132") |
+| Implementing PR | [#629](https://github.com/bajutsu-e2e/bajutsu/pull/629) |
 | Topic | Codebase quality & technical debt |
 <!-- /BE-METADATA -->
 
