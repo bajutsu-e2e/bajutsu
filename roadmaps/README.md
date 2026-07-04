@@ -247,7 +247,7 @@ Reduce friction for the many parallel sessions working this repo — treat merge
 | [BE-0117](BE-0117-coverage-floor-ratchet/BE-0117-coverage-floor-ratchet.md) | Cover the rest of the CLI command layer, then ratchet the coverage floor | Implemented |
 | [BE-0122](BE-0122-workflow-name-legibility/BE-0122-workflow-name-legibility.md) | Legible GitHub Actions workflow and job names | Implemented |
 | [BE-0139](BE-0139-roadmap-dashboard-issue-links/BE-0139-roadmap-dashboard-issue-links.md) | Link the roadmap dashboard and item files to their tracking issue | Implemented |
-| [BE-0156](implemented/BE-0156-roadmap-topic-label-sync/BE-0156-roadmap-topic-label-sync.md) | Keep roadmap-item PR labels in sync with Topic | Implemented |
+| [BE-0156](BE-0156-roadmap-topic-label-sync/BE-0156-roadmap-topic-label-sync.md) | Keep roadmap-item PR labels in sync with Topic | Implemented |
 | [BE-0159](BE-0159-flatten-roadmap-status-folders/BE-0159-flatten-roadmap-status-folders.md) | Flatten roadmap items into one directory (retire status-driven folders) | Implemented |
 <!-- /GENERATED:implemented-dev-infra -->
 

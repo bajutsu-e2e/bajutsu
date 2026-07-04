@@ -24,7 +24,7 @@ status other than `Implemented`) gets relabeled to match.
 ## Motivation
 
 The roadmap already groups every item under one of 23 topics
-([`scripts/build_roadmap_index.py`](../../../scripts/build_roadmap_index.py)'s `TOPICS`
+([`scripts/build_roadmap_index.py`](../../scripts/build_roadmap_index.py)'s `TOPICS`
 tuple — e.g. "Backend expansion (iOS actuators)", "Integration & automation (MCP)",
 "Security hardening"), and the index pages render items grouped by topic. But that grouping
 only becomes visible once someone opens the item file and reads its metadata block, or
@@ -39,8 +39,8 @@ closed.
 
 A `Topic` is not fixed at proposal time — reclassifying an item (moving it from one topic
 to a better-fitting one, splitting a catch-all topic once it grows) is a normal part of
-shaping the roadmap, and it happens on already-numbered items in `roadmaps/in-progress/`
-and `roadmaps/deferred/`, not only brand-new proposals. If labeling only ever ran once at
+shaping the roadmap, and it happens on already-numbered items at any `Status` short of
+`Implemented`, not only brand-new proposals. If labeling only ever ran once at
 PR-open time, a PR whose `Topic` changes mid-review would carry a stale label for the rest
 of its life, actively misleading the same triage the label exists to help. So the
 labeling has to track edits, not just additions.
@@ -48,7 +48,7 @@ labeling has to track edits, not just additions.
 `Implemented` items are out of scope for the relabel side: once an item has shipped, there
 is no more open PR left to triage by topic, and further prose edits to a shipped item's
 file are not the kind of routing decision this label exists to surface. This mirrors the
-open/shipped boundary [`roadmap-tracking-issues.yml`](../../../.github/workflows/roadmap-tracking-issues.yml)
+open/shipped boundary [`roadmap-tracking-issues.yml`](../../.github/workflows/roadmap-tracking-issues.yml)
 (BE-0109) already draws: it keeps a tracking issue open for `Proposal` / `In progress`
 items and closes it once an item ships, never touching `Implemented` items.
 
@@ -62,7 +62,7 @@ The work is three independent pieces:
 
 1. **Topic → label mapping, reusing the existing canonical topic list.** The 23 `(name,
    key, has_origin)` tuples in `TOPICS`
-   ([`scripts/build_roadmap_index.py`](../../../scripts/build_roadmap_index.py)) are
+   ([`scripts/build_roadmap_index.py`](../../scripts/build_roadmap_index.py)) are
    already the single source of truth mapping a human-readable `Topic` value (as it
    appears in a BE item's metadata block) to a short, stable key (e.g. `"Backend expansion
    (iOS actuators)"` → `backend`). The label name is `topic:<key>` (e.g. `topic:backend`,
@@ -73,9 +73,11 @@ The work is three independent pieces:
 2. **A script that turns "how this PR changed roadmap items" into "labels to add / remove".**
    A new `scripts/sync_roadmap_topic_labels.py` is **reconciling, not a diff replay**. From the
    PR's changed-file entries (path, status, and — for a rename — the previous path), restricted
-   to item files (the non-`-ja` file per item directory) under `roadmaps/proposals/`,
-   `roadmaps/in-progress/`, and `roadmaps/deferred/`, it first computes the PR's **desired**
-   `topic:<key>` set:
+   to English item files (the non-`-ja` file per item directory) in the flat
+   `roadmaps/BE-NNNN-<slug>/` tree (BE-0159 retired the per-`Status` folders), it first computes
+   the PR's **desired** `topic:<key>` set. An item whose head `Status` is `Implemented` is skipped
+   — a shipped item has no open PR left to triage; since there is no longer an `implemented/`
+   folder to key on, this reads the item's `Status` from the same head content:
    - **Added** (a brand new item): read its `Topic` from the working tree (the PR head) → its
      label is desired.
    - **Modified or renamed** (an edit to an already-numbered item, including a slug rename):
@@ -100,10 +102,10 @@ The work is three independent pieces:
    naive "remove old, add new" delta would not (see *Alternatives considered*).
 
 3. **A workflow, `.github/workflows/roadmap-topic-labels.yml`.** Triggers on `pull_request`
-   (defaulting to `opened` / `reopened` / `synchronize`) path-filtered to `roadmaps/proposals/**`,
-   `roadmaps/in-progress/**`, and `roadmaps/deferred/**` — deliberately not
-   `roadmaps/implemented/**` (see *Motivation*). It skips fork PRs (whose token is read-only),
-   mirroring `roadmap-promote`. Steps:
+   (defaulting to `opened` / `reopened` / `synchronize`) path-filtered to the whole flat
+   `roadmaps/**` tree — the script narrows to English item files and skips `Implemented` ones
+   (see *Motivation*), so no folder-level path filter is needed. It skips fork PRs (whose token is
+   read-only). Steps:
    - Check out the PR head normally (default `actions/checkout` behavior gives the working tree
      needed to read each changed file's current `Topic`).
    - Fetch the PR's base commit
@@ -138,10 +140,10 @@ when another item is reclassified away from it.
 - **`actions/labeler` (path-glob → label mapping).** The standard off-the-shelf action
   matches file *paths* against glob patterns. It can't fit here because the topic isn't
   encoded in the path — every item lives at the same shape,
-  `roadmaps/<category>/BE-NNNN-<slug>/BE-NNNN-<slug>.md`, regardless of topic. The topic
+  `roadmaps/BE-NNNN-<slug>/BE-NNNN-<slug>.md`, regardless of topic. The topic
   only exists inside the file's metadata, which `actions/labeler` never reads. Rejected.
 - **Label the PR from the merge-time `roadmap-id` workflow instead of at PR-open time.**
-  [`roadmap-id.yml`](../../../.github/workflows/roadmap-id.yml) runs on `push: main` *after*
+  [`roadmap-id.yml`](../../.github/workflows/roadmap-id.yml) runs on `push: main` *after*
   merge. Labeling there would arrive too late to help the stated goal — a reviewer
   triaging which *open* PRs to look at — since by then the PR is already closed. Rejected.
 - **Ask the item's author to add or update the label by hand** (document the convention,
@@ -165,8 +167,10 @@ when another item is reclassified away from it.
   the whole base→head diff each run and reconcile it against the PR's current `topic:*` labels
   (piece 2). This converges regardless of prior label state, at the cost of one extra read
   (`gh pr view --json labels`).
-- **Also relabel PRs touching `roadmaps/implemented/**`.** Rejected: see *Motivation* — an
-  implemented item has no open PR left to triage, so there is nothing for a label to route.
+- **Also label items whose `Status` is `Implemented`.** Rejected: see *Motivation* — a shipped
+  item has no open PR left to triage, so there is nothing for a label to route. (Before BE-0159
+  flattened the layout this exclusion was a path check against `roadmaps/implemented/`; it is now
+  the same decision read from the item's `Status`.)
 - **Recompute the previous `Topic` with a full-history checkout (`fetch-depth: 0`) instead
   of a single `git show` against the base commit.** Both give the same answer; a full
   checkout is unnecessary cost when fetching just the one base commit already needed is
@@ -181,8 +185,8 @@ when another item is reclassified away from it.
 - [x] `scripts/sync_roadmap_topic_labels.py`: changed-file entries → add/remove `topic:<key>`
       actions, reusing `build_roadmap_index.py`'s metadata parsing and `TOPIC_KEY_BY_NAME`.
 - [x] `.github/workflows/roadmap-topic-labels.yml`: detect added/modified/renamed item files
-      under the open-status roadmap directories, ensure each needed topic label exists, and
-      apply the add/remove actions to the PR.
+      in the flat roadmap tree (skipping `Implemented` items by `Status`), ensure each needed
+      topic label exists, and apply the add/remove actions to the PR.
 
 Log:
 
@@ -192,16 +196,20 @@ Log:
   found the originally-specified base→head delta was not convergent across pushes (it accumulated
   both labels when a new item was reclassified mid-review); reshaped piece 2 to reconcile a desired
   set against the PR's current `topic:*` labels instead (see *Alternatives considered*).
+- Reworked onto the BE-0159 flat roadmap layout before merge: the item moved to
+  `roadmaps/BE-0156-roadmap-topic-label-sync/`, the workflow's path filter widened to `roadmaps/**`,
+  and the shipped-item exclusion moved from an `implemented/` path check to reading each item's
+  `Status` (skipping `Implemented`) — since the per-`Status` folders no longer exist.
 
 ## References
 
-- [`scripts/build_roadmap_index.py`](../../../scripts/build_roadmap_index.py) — canonical
+- [`scripts/build_roadmap_index.py`](../../scripts/build_roadmap_index.py) — canonical
   `TOPICS` tuple and BE-METADATA parsing this item reuses.
-- [`.github/workflows/roadmap-proposal-approvals.yml`](../../../.github/workflows/roadmap-proposal-approvals.yml) —
+- [`.github/workflows/roadmap-proposal-approvals.yml`](../../.github/workflows/roadmap-proposal-approvals.yml) —
   precedent for a roadmap-scoped PR workflow with the same no-op-when-out-of-scope shape.
-- [`.github/workflows/roadmap-tracking-issues.yml`](../../../.github/workflows/roadmap-tracking-issues.yml) —
+- [`.github/workflows/roadmap-tracking-issues.yml`](../../.github/workflows/roadmap-tracking-issues.yml) —
   precedent (BE-0109) for the open/`Implemented` boundary this item reuses, and for reading
   metadata via the same parsing utilities.
-- [`.github/workflows/roadmap-id.yml`](../../../.github/workflows/roadmap-id.yml) — the
+- [`.github/workflows/roadmap-id.yml`](../../.github/workflows/roadmap-id.yml) — the
   merge-time workflow considered and rejected as the labeling point (see *Alternatives
   considered*).

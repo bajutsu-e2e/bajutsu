@@ -6,10 +6,12 @@
 # and a `Topic` edit on an already-numbered item (relabel: drop the old, add the new), so a mid-review
 # reclassification never leaves a stale label.
 #
-# Scoped to the three open-status folders — deliberately not `roadmaps/implemented/**`: a shipped item
-# has no open PR left to triage, mirroring the open/shipped boundary `roadmap-tracking-issues.yml`
-# (BE-0109) already draws. A PR touching no in-scope item file produces no actions and the job is a
-# green no-op, the same discipline `roadmap-promote` / `roadmap-proposal-approvals` follow.
+# Since BE-0159 flattened the per-Status folders, every item lives in one `roadmaps/BE-NNNN-<slug>/`
+# directory, so the trigger is the whole `roadmaps/**` tree and the script narrows to English item
+# files. A shipped item (`Status: Implemented`) has no open PR left to triage and is skipped by the
+# script reading its Status — the open/shipped boundary `roadmap-tracking-issues.yml` (BE-0109) also
+# draws, now folder-free. A PR touching no in-scope item file produces no actions and the job is a
+# green no-op, the same discipline `roadmap-proposal-approvals` follows for out-of-scope PRs.
 #
 # Pure PR-triage tooling: it never influences `run`, the deterministic gate, or any pass/fail verdict.
 name: roadmap-topic-labels
@@ -17,9 +19,7 @@ name: roadmap-topic-labels
 on:
   pull_request:
     paths:
-      - 'roadmaps/proposals/**'
-      - 'roadmaps/in-progress/**'
-      - 'roadmaps/deferred/**'
+      - 'roadmaps/**'
 
 permissions:
   contents: read        # checkout + `git show` against the base commit
@@ -34,7 +34,8 @@ jobs:
   label:
     name: sync topic labels
     runs-on: ubuntu-latest
-    # A fork PR gets a read-only token, so label edits would fail; skip like `roadmap-promote`.
+    # A fork PR gets a read-only token, so label edits would fail; skip (the repo-owned PRs are the
+    # only ones this can act on).
     if: github.event.pull_request.head.repo.full_name == github.repository
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0

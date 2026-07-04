@@ -55,24 +55,23 @@ def _changed(status: str, filename: str, previous_filename: str | None = None) -
 @pytest.mark.parametrize(
     "path",
     [
-        "roadmaps/proposals/BE-0156-x/BE-0156-x.md",
-        "roadmaps/in-progress/BE-0156-x/BE-0156-x.md",
-        "roadmaps/deferred/BE-0156-x/BE-0156-x.md",
-        "roadmaps/proposals/BE-XXXX-x/BE-XXXX-x.md",  # placeholder is still an item file
+        "roadmaps/BE-0156-roadmap-topic-label-sync/BE-0156-roadmap-topic-label-sync.md",
+        "roadmaps/BE-0001-x/BE-0001-x.md",
+        "roadmaps/BE-XXXX-x/BE-XXXX-x.md",  # placeholder is still an item file
     ],
 )
-def test_scoped_item_file_accepts_english_item_files_in_open_folders(path: str) -> None:
+def test_scoped_item_file_accepts_flat_english_item_files(path: str) -> None:
     assert labels.is_scoped_item_file(path)
 
 
 @pytest.mark.parametrize(
     "path",
     [
-        "roadmaps/implemented/BE-0156-x/BE-0156-x.md",  # shipped -> out of scope
-        "roadmaps/proposals/BE-0156-x/BE-0156-x-ja.md",  # the Japanese mirror
+        "roadmaps/BE-0156-x/BE-0156-x-ja.md",  # the Japanese mirror
         "roadmaps/README.md",  # the generated index
-        "roadmaps/proposals/BE-0156-x/notes.md",  # not the item file
-        "roadmaps/proposals/not-an-item/not-an-item.md",  # not a BE dir
+        "roadmaps/BE-0156-x/notes.md",  # not the item file
+        "roadmaps/not-an-item/not-an-item.md",  # not a BE dir
+        "roadmaps/proposals/BE-0156-x/BE-0156-x.md",  # a retired status-folder path (now 4 parts)
         "scripts/build_roadmap_index.py",  # unrelated path
     ],
 )
@@ -114,20 +113,20 @@ def _actions(
 
 
 def test_added_item_emits_a_single_add() -> None:
-    path = "roadmaps/proposals/BE-9001-x/BE-9001-x.md"
+    path = "roadmaps/BE-9001-x/BE-9001-x.md"
     plan = _actions([_changed("added", path)], {path: _item_text(_KNOWN_TOPIC)})
     assert (plan.adds, plan.removes, plan.warnings) == ([_KNOWN_LABEL], [], [])
 
 
 def test_added_item_with_unknown_topic_warns_and_emits_nothing() -> None:
-    path = "roadmaps/proposals/BE-9001-x/BE-9001-x.md"
+    path = "roadmaps/BE-9001-x/BE-9001-x.md"
     plan = _actions([_changed("added", path)], {path: _item_text("Bogus Topic")})
     assert plan.adds == [] and plan.removes == []
     assert len(plan.warnings) == 1 and "Bogus Topic" in plan.warnings[0]
 
 
 def test_modified_with_unchanged_topic_is_a_noop() -> None:
-    path = "roadmaps/proposals/BE-9001-x/BE-9001-x.md"
+    path = "roadmaps/BE-9001-x/BE-9001-x.md"
     plan = _actions(
         [_changed("modified", path)],
         {path: _item_text(_KNOWN_TOPIC)},
@@ -138,7 +137,7 @@ def test_modified_with_unchanged_topic_is_a_noop() -> None:
 
 def test_modified_with_changed_topic_relabels() -> None:
     # base topic KNOWN is on the PR; the head changes it to OTHER -> add OTHER, drop the stale KNOWN.
-    path = "roadmaps/in-progress/BE-9001-x/BE-9001-x.md"
+    path = "roadmaps/BE-9001-x/BE-9001-x.md"
     plan = _actions(
         [_changed("modified", path)],
         {path: _item_text(_OTHER_TOPIC)},
@@ -149,8 +148,8 @@ def test_modified_with_changed_topic_relabels() -> None:
 
 
 def test_renamed_reads_the_base_topic_from_the_previous_path() -> None:
-    old = "roadmaps/proposals/BE-9001-old/BE-9001-old.md"
-    new = "roadmaps/proposals/BE-9001-new/BE-9001-new.md"
+    old = "roadmaps/BE-9001-old/BE-9001-old.md"
+    new = "roadmaps/BE-9001-new/BE-9001-new.md"
     # The new Topic lives at the new (head) path; the old Topic must be read at the previous path.
     plan = _actions(
         [_changed("renamed", new, previous_filename=old)],
@@ -162,8 +161,8 @@ def test_renamed_reads_the_base_topic_from_the_previous_path() -> None:
 
 
 def test_pure_slug_rename_without_topic_change_is_a_noop() -> None:
-    old = "roadmaps/proposals/BE-9001-old/BE-9001-old.md"
-    new = "roadmaps/proposals/BE-9001-new/BE-9001-new.md"
+    old = "roadmaps/BE-9001-old/BE-9001-old.md"
+    new = "roadmaps/BE-9001-new/BE-9001-new.md"
     plan = _actions(
         [_changed("renamed", new, previous_filename=old)],
         {new: _item_text(_KNOWN_TOPIC)},
@@ -173,19 +172,41 @@ def test_pure_slug_rename_without_topic_change_is_a_noop() -> None:
 
 
 def test_out_of_scope_entries_are_ignored() -> None:
-    ja = "roadmaps/proposals/BE-9001-x/BE-9001-x-ja.md"
-    impl = "roadmaps/implemented/BE-9002-y/BE-9002-y.md"
-    index = "roadmaps/README.md"
+    ja = "roadmaps/BE-9001-x/BE-9001-x-ja.md"  # the Japanese mirror
+    index = "roadmaps/README.md"  # the generated index
     plan = _actions(
-        [_changed("added", ja), _changed("modified", impl), _changed("modified", index)],
-        {ja: _item_text(_KNOWN_TOPIC), impl: _item_text(_OTHER_TOPIC), index: "x"},
+        [_changed("added", ja), _changed("modified", index)],
+        {ja: _item_text(_KNOWN_TOPIC), index: "x"},
     )
     assert plan.adds == [] and plan.removes == []
 
 
+def test_implemented_item_is_skipped_by_status() -> None:
+    # BE-0159 retired the implemented/ folder; a shipped item is excluded by reading its Status, not
+    # its path. An added Implemented item (e.g. an item that ships with its code) gets no label.
+    path = "roadmaps/BE-9001-x/BE-9001-x.md"
+    plan = _actions(
+        [_changed("added", path)], {path: _item_text(_KNOWN_TOPIC, status="Implemented")}
+    )
+    assert plan.adds == [] and plan.removes == []
+
+
+def test_shipping_an_item_reconciles_its_label_off() -> None:
+    # A PR that flips an item to Implemented at head: it drops out of the desired set (Status skip),
+    # so a topic label an earlier push added is reconciled away.
+    path = "roadmaps/BE-9001-x/BE-9001-x.md"
+    plan = _actions(
+        [_changed("modified", path)],
+        {path: _item_text(_KNOWN_TOPIC, status="Implemented")},
+        {path: _item_text(_KNOWN_TOPIC)},
+        current={_KNOWN_LABEL},
+    )
+    assert plan.adds == [] and plan.removes == [_KNOWN_LABEL]
+
+
 def test_two_items_sharing_a_new_topic_dedup_to_one_add() -> None:
-    a = "roadmaps/proposals/BE-9001-a/BE-9001-a.md"
-    b = "roadmaps/proposals/BE-9002-b/BE-9002-b.md"
+    a = "roadmaps/BE-9001-a/BE-9001-a.md"
+    b = "roadmaps/BE-9002-b/BE-9002-b.md"
     plan = _actions(
         [_changed("added", a), _changed("added", b)],
         {a: _item_text(_KNOWN_TOPIC), b: _item_text(_KNOWN_TOPIC)},
@@ -195,7 +216,7 @@ def test_two_items_sharing_a_new_topic_dedup_to_one_add() -> None:
 
 def test_desired_already_matches_current_is_a_noop() -> None:
     # A later push whose head still calls for the label the PR already carries does nothing.
-    path = "roadmaps/proposals/BE-9001-x/BE-9001-x.md"
+    path = "roadmaps/BE-9001-x/BE-9001-x.md"
     plan = _actions(
         [_changed("added", path)], {path: _item_text(_KNOWN_TOPIC)}, current={_KNOWN_LABEL}
     )
@@ -205,7 +226,7 @@ def test_desired_already_matches_current_is_a_noop() -> None:
 def test_reclassified_new_item_replaces_its_stale_label() -> None:
     # Regression: a *new* item (status stays `added` across pushes) reclassified mid-review must not
     # accumulate both labels. Push 1 added it as KNOWN (PR now carries KNOWN); push 2 makes it OTHER.
-    path = "roadmaps/proposals/BE-9001-x/BE-9001-x.md"
+    path = "roadmaps/BE-9001-x/BE-9001-x.md"
     plan = _actions(
         [_changed("added", path)], {path: _item_text(_OTHER_TOPIC)}, current={_KNOWN_LABEL}
     )
@@ -222,8 +243,8 @@ def test_reverted_topic_drops_out_of_the_diff_and_the_label_is_removed() -> None
 def test_a_sibling_still_holding_a_topic_keeps_its_label() -> None:
     # One new item claims KNOWN; a second item is reclassified KNOWN -> OTHER. Both KNOWN (from the
     # new item) and OTHER (the reclassified item's new topic) are desired; nothing is removed.
-    added = "roadmaps/proposals/BE-9001-new/BE-9001-new.md"
-    moved = "roadmaps/proposals/BE-9002-moved/BE-9002-moved.md"
+    added = "roadmaps/BE-9001-new/BE-9001-new.md"
+    moved = "roadmaps/BE-9002-moved/BE-9002-moved.md"
     plan = _actions(
         [_changed("added", added), _changed("modified", moved)],
         {added: _item_text(_KNOWN_TOPIC), moved: _item_text(_OTHER_TOPIC)},
@@ -259,7 +280,7 @@ def test_parse_current_labels_keeps_only_topic_labels() -> None:
 def test_main_prints_actions_from_stdin(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    path = "roadmaps/proposals/BE-9001-x/BE-9001-x.md"
+    path = "roadmaps/BE-9001-x/BE-9001-x.md"
     monkeypatch.setattr(labels, "read_working_tree", lambda p: _item_text(_KNOWN_TOPIC))
     monkeypatch.setattr(labels, "git_show", lambda base, p: None)
     monkeypatch.setattr(

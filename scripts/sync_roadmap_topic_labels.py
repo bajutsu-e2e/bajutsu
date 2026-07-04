@@ -21,9 +21,11 @@ the network. The ``git show`` against the base commit is the one seam, injected 
 ``gh`` label mutations live in the workflow (``roadmap-topic-labels.yml``); this script only prints
 ``add <label>`` / ``remove <label>`` lines for it to execute.
 
-Scope mirrors BE-0109's shipped boundary: only English item files under ``roadmaps/proposals/``,
-``roadmaps/in-progress/``, and ``roadmaps/deferred/`` count — a shipped item under
-``roadmaps/implemented/`` has no open PR left to triage, so it is deliberately excluded.
+Scope mirrors BE-0109's shipped boundary: only an English item file (``roadmaps/BE-NNNN-<slug>/
+BE-NNNN-<slug>.md``) counts, and an item whose head ``Status`` is ``Implemented`` is skipped — a
+shipped item has no open PR left to triage. Since BE-0159 flattened the per-``Status`` folders, that
+exclusion reads the item's ``Status`` from its head content rather than keying on an ``implemented/``
+path prefix.
 
 Usage::
 
@@ -48,11 +50,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from build_roadmap_index import TOPIC_KEY_BY_NAME, metadata_fields
 from roadmap_ids import is_item_dir
 
-# The status folders whose PRs get a topic label — every one except ``implemented/`` (BE-0156): a
-# shipped item has no open PR left to triage, the same shipped-side exclusion BE-0109 draws. Unlike
-# BE-0109 (which tracks only Proposal / In progress), ``deferred`` is *included* here — a deferred
-# item can still be un-deferred, and its PR is worth triaging by topic.
-INCLUDED_CATEGORIES = frozenset({"proposals", "in-progress", "deferred"})
+# The Status that gets no topic label (BE-0156): a shipped item has no open PR left to triage, the
+# shipped-side boundary BE-0109 also draws. Since BE-0159 retired the per-Status folders this is read
+# from the item's head metadata, not an ``implemented/`` path — every other Status (Proposal /
+# In progress / Proposal (deferred)) is in scope, since a deferred item can still be un-deferred.
+SHIPPED_STATUS = "Implemented"
 # ``topic:<key>`` — the same key ``build_roadmap_index`` already assigns each topic, so a 24th topic
 # never needs a separate label-mapping update. Short enough to scan in the PR list's label row.
 LABEL_PREFIX = "topic:"
@@ -81,22 +83,19 @@ class Plan:
 
 
 def is_scoped_item_file(path: str) -> bool:
-    """Whether ``path`` is an English BE item file under an open-status roadmap folder.
+    """Whether ``path`` is an English BE item file in the flat roadmap tree.
 
-    True only for ``roadmaps/<open-category>/BE-*-<slug>/BE-*-<slug>.md`` — the non-``-ja`` file
-    per item directory. This naturally excludes the Japanese mirror (its name ends ``-ja.md``, not
-    ``<dir>.md``), the generated index pages, and anything under ``roadmaps/implemented/``.
+    True only for ``roadmaps/BE-*-<slug>/BE-*-<slug>.md`` — the non-``-ja`` file per item directory
+    (BE-0159 flattened the per-Status folders, so an item is one level below ``roadmaps/``). This
+    naturally excludes the Japanese mirror (its name ends ``-ja.md``, not ``<dir>.md``) and the
+    generated index pages. The shipped-item exclusion is Status-based (see :func:`desired_labels`),
+    not a path check, since there is no longer an ``implemented/`` folder to key on.
     """
     parts = PurePosixPath(path).parts
-    if len(parts) != 4:
+    if len(parts) != 3:
         return False
-    root, category, item_dir, filename = parts
-    return (
-        root == "roadmaps"
-        and category in INCLUDED_CATEGORIES
-        and is_item_dir(item_dir)
-        and filename == f"{item_dir}.md"
-    )
+    root, item_dir, filename = parts
+    return root == "roadmaps" and is_item_dir(item_dir) and filename == f"{item_dir}.md"
 
 
 def topic_of(text: str | None) -> str | None:
@@ -128,7 +127,9 @@ def desired_labels(
 
     A label is desired when an in-scope item file is added (its head topic), or is modified/renamed
     with a head ``Topic`` that differs from the base (its new topic). An edit that leaves ``Topic``
-    unchanged contributes nothing, so a prose-only edit never labels a PR on its own.
+    unchanged contributes nothing, so a prose-only edit never labels a PR on its own. An item whose
+    head ``Status`` is ``Implemented`` is skipped — a shipped item has no open PR left to triage
+    (BE-0159 made this a Status read rather than an ``implemented/`` folder check).
 
     Returns:
         The desired label set and any ``::warning::`` lines for a head ``Topic`` outside the
@@ -139,14 +140,18 @@ def desired_labels(
     for entry in entries:
         if not is_scoped_item_file(entry.filename):
             continue
-        if entry.status == "added":
-            head_topic = topic_of(read_head(entry.filename))
-        elif entry.status in EDIT_STATUSES:
-            head_topic = topic_of(read_head(entry.filename))
+        head_text = read_head(entry.filename)
+        if head_text is None:
+            continue
+        head_fields = metadata_fields(head_text)
+        if head_fields.get("Status") == SHIPPED_STATUS:
+            continue  # shipped item — no open PR left to triage
+        head_topic = head_fields.get("Topic")
+        if entry.status in EDIT_STATUSES:
             old_path = entry.previous_filename or entry.filename
             if head_topic == topic_of(read_base(old_path)):
                 continue  # the common case: an edit that doesn't touch Topic
-        else:
+        elif entry.status != "added":
             continue  # removed / copied / unchanged — never a Topic change to label
         if head_topic is None:
             continue

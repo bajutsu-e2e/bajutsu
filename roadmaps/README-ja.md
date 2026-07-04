@@ -240,7 +240,7 @@ Bajutsu の「契約としての決定性」という立場を、Maestro の fla
 | [BE-0117](BE-0117-coverage-floor-ratchet/BE-0117-coverage-floor-ratchet-ja.md) | CLI コマンド層の残りをテストしてから、カバレッジフロアをラチェットする | 実装済み |
 | [BE-0122](BE-0122-workflow-name-legibility/BE-0122-workflow-name-legibility-ja.md) | Legible GitHub Actions workflow and job names | 実装済み |
 | [BE-0139](BE-0139-roadmap-dashboard-issue-links/BE-0139-roadmap-dashboard-issue-links-ja.md) | ロードマップのダッシュボードと項目ファイルからトラッキング Issue へリンクする | 実装済み |
-| [BE-0156](implemented/BE-0156-roadmap-topic-label-sync/BE-0156-roadmap-topic-label-sync-ja.md) | ロードマップ項目 PR のラベルを Topic と同期させる | 実装済み |
+| [BE-0156](BE-0156-roadmap-topic-label-sync/BE-0156-roadmap-topic-label-sync-ja.md) | ロードマップ項目 PR のラベルを Topic と同期させる | 実装済み |
 | [BE-0159](BE-0159-flatten-roadmap-status-folders/BE-0159-flatten-roadmap-status-folders-ja.md) | ロードマップ項目を単一ディレクトリにまとめ、状態別フォルダをやめる | 実装済み |
 <!-- /GENERATED:implemented-dev-infra -->
 
