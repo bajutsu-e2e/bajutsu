@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0151](BE-0151-screenshot-secret-capture-warning.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0151") |
+| Implementing PR | [#664](https://github.com/bajutsu-e2e/bajutsu/pull/664) |
 | Topic | Security hardening |
 <!-- /BE-METADATA -->
 
@@ -93,13 +94,23 @@ every turn where the app is visible.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Warning emitted at the start of `record`/`enrich`/`triage` when `secrets:` is bound
-- [ ] Warning text states the screenshot/video redaction boundary precisely
-- [ ] No behavior change to screenshot capture or the AI call itself
-- [ ] Tests: warning emitted with secrets bound, absent without
-- [ ] Docs updated (both languages)
+- [x] Warning emitted at the start of `record`/`triage --ai` when `secrets:` is bound
+- [x] Warning text states the screenshot/video redaction boundary precisely
+- [x] No behavior change to screenshot capture or the AI call itself
+- [x] Tests: warning emitted with secrets bound, absent without
+- [x] Docs updated (both languages)
 
-No PR has landed yet.
+Scope note: `enrich` has no CLI command — it is reachable only through the serve Web UI
+(`bajutsu/serve/operations/enrich.py`), where it is called with `with_screenshot=False`, so the
+enrich path never sends a screenshot to the AI provider and the on-screen-secret→AI exposure this
+item warns about does not apply to it. The warning therefore lands on the two AI CLI paths that do
+send screenshots (`record` and `triage --ai`); `enrich` is intentionally out of scope.
+
+- [#664](https://github.com/bajutsu-e2e/bajutsu/pull/664) — [`_warn_onscreen_secrets`](../../bajutsu/cli/_shared.py), a shared helper printing the one-time
+  disclosure to stderr when `Effective.secrets` is non-empty; wired into `record` (before the
+  authoring loop) and `triage --ai` (after resolving the AI target). Docs updated in
+  `docs/configuration.md` + `docs/ja/configuration.md`. Tests in
+  `tests/test_secret_capture_warning.py`.
 
 ## References
 

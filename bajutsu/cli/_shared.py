@@ -41,6 +41,33 @@ def _secret_values(eff: Effective) -> list[str]:
     return [os.environ[n] for n in eff.secrets if n in os.environ]
 
 
+def _warn_onscreen_secrets(eff: Effective) -> None:
+    """Disclose that on-screen secrets leak into images before an AI path that binds them starts (BE-0151).
+
+    `record` sends the live screenshot to the AI each turn; `triage --ai` sends the captured failure
+    screenshot (if any), read from the run's `runs/` evidence. The image goes to the AI provider
+    resolved from config, except `record --agent claude-code`, which reaches the model through the
+    `claude` CLI. `${secrets.X}` values are masked in *text* evidence (network, element tree, logs)
+    by `Redactor`, but images cannot be pixel-masked — so a secret the app *displays* (a typed
+    password, an OTP, PII) stays in the raw pixels. This warns plainly at the point secrets are
+    bound; it changes no behavior (visual evidence is the point) — an author who wants to avoid the
+    exposure skips AI authoring for the flow, or keeps the secret off-screen. A no-op when the target
+    declares no `secrets:`.
+    """
+    if not eff.secrets:
+        return
+    names = ", ".join(eff.secrets)
+    typer.echo(
+        f"⚠️  on-screen secrets are not redacted from images: {names} are masked in text evidence "
+        "(network, element tree, logs), but a secret the app shows on screen (a typed password, an "
+        "OTP, displayed PII) stays in the raw pixels of the screenshot sent to the AI — the live "
+        "screen each turn under record, the captured failure screenshot under triage --ai. That "
+        "image goes to the AI provider you configured (record --agent claude-code instead reaches "
+        "the model through the claude CLI).",
+        err=True,
+    )
+
+
 def _ai_redactor(eff: Effective) -> Redactor:
     """The run-scoped redactor for AI inputs (BE-0047), built like evidence's.
 
