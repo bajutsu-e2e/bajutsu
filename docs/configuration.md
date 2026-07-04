@@ -148,15 +148,16 @@ defaults:
   are images and `redaction` masks text, not pixels — so the second guarantee carries them: every
   input, screenshots included, goes only to the provider/endpoint you configured.
 - **On-screen secrets stay in the pixels (BE-0151).** Because images cannot be masked, a secret the
-  app *displays* — a typed password, an OTP, PII on screen — is captured verbatim in the screenshots
-  and video stored under `runs/`, and the screenshot the AI sees is sent to the configured provider
-  as image content: the live screen every turn during `record`, and the captured failure screenshot
-  (if any) during `triage --ai`. Redaction covers the
-  `${secrets.X}` *value* wherever it appears in text (network, element tree, logs), not what the app
-  renders on screen. So that this is never a surprise, `record` and `triage --ai` print a one-time
-  warning when the target binds `secrets:`. This is a disclosure, not a mitigation (visual evidence is
-  the point): to avoid the exposure entirely, skip AI-driven authoring for a secret-bearing flow, or
-  keep the secret off-screen in the app under test.
+  app *displays* — a typed password, an OTP, PII on screen — stays verbatim in the raw pixels of the
+  screenshot the AI sees: the live screen every turn during `record`, and the captured failure
+  screenshot (if any) during `triage --ai`, read from the run's `runs/` evidence. That image goes to
+  the AI provider you configured — except `record --agent claude-code`, which reaches the model
+  through the `claude` CLI rather than the SDK provider/endpoint. Redaction covers the `${secrets.X}`
+  *value* wherever it appears in text (network, element tree, logs), not what the app renders on
+  screen. So that this is never a surprise, `record` and `triage --ai` print a one-time warning when
+  the target binds `secrets:`. This is a disclosure, not a mitigation (visual evidence is the point):
+  to avoid the exposure entirely, skip AI-driven authoring for a secret-bearing flow, or keep the
+  secret off-screen in the app under test.
 
 ### Mailbox (the `email` step)
 

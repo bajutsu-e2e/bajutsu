@@ -1,9 +1,9 @@
 """Tests for the on-screen-secret capture warning (BE-0151).
 
-`record` / `triage --ai` send the current screenshot to the AI provider as-is and persist
-screenshots/video under `runs/`. When a target binds `secrets:`, a value the app displays on
-screen is not redacted from those images. `_warn_onscreen_secrets` discloses that at the moment
-secrets are bound; it is a disclosure, not a behavior change (no LLM, no effect on `run`/CI).
+`record` sends the live screenshot to the AI each turn; `triage --ai` sends the captured failure
+screenshot from the run's `runs/` evidence. Either way, a value the app displays on screen is not
+redacted from those images. `_warn_onscreen_secrets` discloses that at the moment secrets are
+bound; it is a disclosure, not a behavior change (no LLM, no effect on `run`/CI).
 """
 
 from __future__ import annotations
@@ -30,11 +30,11 @@ def test_warns_when_secrets_bound(capsys) -> None:
     _warn_onscreen_secrets(eff)
     captured = capsys.readouterr()
     err = captured.err
-    # The warning names the boundary precisely: images are never redacted, they persist under
-    # runs/, and the screenshot reaches the AI provider — and it names the bound secrets.
+    # The warning names the boundary precisely: images are never redacted, the screenshot reaches
+    # the AI provider, and it distinguishes the two callers — and it names the bound secrets.
     assert "screenshot" in err
-    assert "runs/" in err
     assert "provider" in err
+    assert "record" in err and "triage --ai" in err
     assert "LOGIN_PASSWORD" in err and "LOGIN_OTP" in err
     # It also states what IS masked, so the author does not read it as "secrets leak everywhere".
     assert "text evidence" in err
