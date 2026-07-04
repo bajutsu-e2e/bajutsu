@@ -360,7 +360,7 @@ header .cfgname{color:var(--mut);font-size:.82em;max-width:32vw;overflow:hidden;
   .gutter,.tile-divider,.tile-grip{display:none}
 
   /* Comfortable touch targets for the surviving controls. */
-  button.run,button.stop,.tab,.vstab{min-height:44px}
+  button.run,button.stop,.tab,.vstab,.modetab{min-height:44px}
   .history li,.fslist li,.sims label{min-height:44px}
   .scnlist,.sims{max-height:40vh}
 
@@ -375,32 +375,32 @@ header .cfgname{color:var(--mut);font-size:.82em;max-width:32vw;overflow:hidden;
   .shotside{overflow:visible}
 }
 
-/* ---- Capture (BE-0012) ---- */
-.cap-screen-wrap{position:relative;display:flex;flex-direction:column;align-items:center;gap:.5em}
-.cap-screenshot{max-width:100%;max-height:70vh;cursor:crosshair;border:1px solid var(--border);border-radius:6px}
-.cap-placeholder{padding:2em;text-align:center;color:var(--muted);font-size:.9em}
-.cap-feedback{display:flex;gap:.5em;align-items:center;font-size:.85em}
-.cap-rung{padding:2px 8px;border-radius:4px;font-weight:600;font-size:.8em}
+/* ---- Author (BE-0098): unified Capture / Edit / Enrich surface ---- */
+/* Mode switcher: a secondary control inside the view, distinct from the top-level .toptab nav. */
+.modeswitch{display:flex;gap:.3rem;margin-bottom:.2rem}
+.modetab{flex:1;background:var(--bg2);border:1px solid var(--line);color:var(--mut);padding:.35rem .6rem;font:inherit;font-weight:600;font-size:.85em;cursor:pointer;border-radius:8px}
+.modetab:hover{color:var(--fg)}
+.modetab.active{color:var(--on-acc);background:var(--acc);border-color:var(--acc)}
+.au-screen-wrap{position:relative;display:flex;flex-direction:column;align-items:center;gap:.5em}
+.au-screenshot{max-width:100%;max-height:70vh;cursor:crosshair;border:1px solid var(--border);border-radius:6px}
+.au-placeholder{padding:2em;text-align:center;color:var(--muted);font-size:.9em}
+.au-feedback{display:flex;gap:.5em;align-items:center;font-size:.85em}
+.au-rung{padding:2px 8px;border-radius:4px;font-weight:600;font-size:.8em}
 .rung-id{background:#2a6;color:#fff}
 .rung-label{background:#da3;color:#fff}
 .rung-label\+index{background:#c73;color:#fff}
-.cap-steplist{margin:0;padding:0 0 0 1.4em;font-size:.85em;font-family:var(--mono)}
-.cap-steplist li{padding:2px 0}
-.cap-steps-card{margin-top:.5em}
-/* ---- Editor (BE-0013) ---- */
-.edt-screen-wrap{position:relative;display:flex;flex-direction:column;align-items:center;gap:.5em}
-.edt-screenshot{max-width:100%;max-height:70vh;cursor:crosshair;border:1px solid var(--border);border-radius:6px}
-.edt-placeholder{padding:2em;text-align:center;color:var(--muted);font-size:.9em}
-.edt-feedback{display:flex;gap:.5em;align-items:center;font-size:.85em}
-.edt-step-nav{display:flex;align-items:center;gap:.5em;margin-bottom:.5em}
-.edt-step-label{flex:1;text-align:center;font-size:.85em;font-weight:600}
-.edt-nav-btn{min-width:5em}
-.edt-steplist{margin:0;padding:0 0 0 1.4em;font-size:.85em;font-family:var(--mono)}
-.edt-steplist li{padding:2px 0;cursor:pointer;border-radius:3px}
-.edt-steplist li:hover{background:var(--bg2)}
-.edt-steplist li.active{background:var(--accent);color:#fff}
-.edt-steps-card{margin-top:.5em}
-.edt-screen-card{display:flex;flex-direction:column}
+.au-btnrow{display:flex;gap:.5em;margin-bottom:.5em}
+/* Mode-group visibility: the [hidden] attribute must beat the display rules above, so make it explicit. */
+.au-cap[hidden],.au-edit[hidden],.au-enrich[hidden],.au-loadrow[hidden]{display:none}
+.au-step-nav{display:flex;align-items:center;gap:.5em;margin-bottom:.5em}
+.au-step-label{flex:1;text-align:center;font-size:.85em;font-weight:600}
+.au-nav-btn{min-width:5em}
+.au-steplist{margin:0;padding:0 0 0 1.4em;font-size:.85em;font-family:var(--mono)}
+.au-steplist li{padding:2px 0;cursor:pointer;border-radius:3px}
+.au-steplist li:hover{background:var(--bg2)}
+.au-steplist li.active{background:var(--accent);color:#fff}
+.au-steps-card{margin-top:.5em}
+.au-screen-card{display:flex;flex-direction:column}
 /* Enrichment panel (BE-0014) */
 .enrich-panel{border-top:1px solid var(--border);margin-top:.5em;padding-top:.5em}
 .enrich-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:.4em}
