@@ -44,10 +44,11 @@ def _secret_values(eff: Effective) -> list[str]:
 def _warn_onscreen_secrets(eff: Effective) -> None:
     """Disclose that on-screen secrets leak into images before an AI path that binds them starts (BE-0151).
 
-    `record` / `triage --ai` send the current screenshot to the configured AI provider as-is and
-    persist screenshots/video under `runs/`. `${secrets.*}` values are masked in *text* evidence
-    (network, element tree, logs) by `Redactor`, but images cannot be pixel-masked — so a secret the
-    app *displays* (a typed password, an OTP, PII) stays in the raw pixels. This warns plainly at the
+    `record` and `triage --ai` send a screenshot to the configured AI provider as-is (`record` the
+    live screen each turn, `triage --ai` the captured failure screenshot, if any) and persist
+    screenshots/video under `runs/`. `${secrets.X}` values are masked in *text* evidence (network,
+    element tree, logs) by `Redactor`, but images cannot be pixel-masked — so a secret the app
+    *displays* (a typed password, an OTP, PII) stays in the raw pixels. This warns plainly at the
     point secrets are bound; it changes no behavior (visual evidence is the point) — an author who
     wants to avoid the exposure skips AI authoring for the flow, or keeps the secret off-screen. A
     no-op when the target declares no `secrets:`.
@@ -59,8 +60,8 @@ def _warn_onscreen_secrets(eff: Effective) -> None:
         f"⚠️  on-screen secrets are not redacted from images: {names} are masked in text evidence "
         "(network, element tree, logs), but a secret the app shows on screen (a typed password, an "
         "OTP, displayed PII) stays in the raw pixels — saved in screenshots/video under runs/, and "
-        "the current screenshot is sent to the configured AI provider as image content on every turn "
-        "the app is visible.",
+        "sent to the configured AI provider as image content (record sends the live screen each "
+        "turn; triage --ai sends the captured failure screenshot, if any).",
         err=True,
     )
 

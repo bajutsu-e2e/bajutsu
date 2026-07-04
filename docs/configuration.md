@@ -149,8 +149,9 @@ defaults:
   input, screenshots included, goes only to the provider/endpoint you configured.
 - **On-screen secrets stay in the pixels (BE-0151).** Because images cannot be masked, a secret the
   app *displays* — a typed password, an OTP, PII on screen — is captured verbatim in the screenshots
-  and video stored under `runs/`, and the current screenshot is sent to the configured AI provider as
-  image content on every `record` / `triage --ai` turn the app is visible. Redaction covers the
+  and video stored under `runs/`, and the screenshot the AI sees is sent to the configured provider
+  as image content: the live screen every turn during `record`, and the captured failure screenshot
+  (if any) during `triage --ai`. Redaction covers the
   `${secrets.X}` *value* wherever it appears in text (network, element tree, logs), not what the app
   renders on screen. So that this is never a surprise, `record` and `triage --ai` print a one-time
   warning when the target binds `secrets:`. This is a disclosure, not a mitigation (visual evidence is
