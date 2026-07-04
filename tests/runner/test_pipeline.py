@@ -459,6 +459,41 @@ def test_run_and_report_keeps_totp_reference_and_scrubs_the_resolved_seed(tmp_pa
         assert seed not in (run_dir / name).read_text(encoding="utf-8")
 
 
+def test_run_and_report_writes_owner_only_artifacts(tmp_path: Path) -> None:
+    # BE-0131: a fresh run's directory and its sensitive files (scenario.yaml, network.json) must
+    # land owner-only (0700 dir, 0600 files), not world-readable under the ambient umask — evidence
+    # can carry secrets, and a shared CI runner is exactly where another local account can read it.
+    import stat
+
+    from bajutsu.evidence import FileSink
+
+    run_dir = tmp_path / "runs" / "run1"
+    ex = NetworkExchange(method="GET", path="/items", status=200)
+    scn = Scenario.model_validate(
+        {"name": "net", "steps": [{"assert": [{"request": {"method": "GET", "path": "/items"}}]}]}
+    )
+
+    def lease(eff: Effective, s: Scenario) -> Lease:
+        return Lease(
+            driver=FakeDriver([_el("ok", "OK")]),
+            sink=FileSink(run_dir),
+            relaunch=None,
+            control=None,
+            collector=_ConstantCollector([ex]),
+            release=lambda: None,
+        )
+
+    run_and_report(_eff(), [scn], lease, tmp_path / "runs", "run1")
+
+    def mode(p: Path) -> int:
+        return stat.S_IMODE(p.stat().st_mode)
+
+    assert mode(run_dir) == 0o700
+    assert mode(run_dir / "scenario.yaml") == 0o600
+    net = run_dir / "00-net" / "network.json"
+    assert net.exists() and mode(net) == 0o600
+
+
 def test_write_network_stamps_the_given_provider(tmp_path: Path) -> None:
     from bajutsu.redaction import Redactor
     from bajutsu.runner.pipeline import _write_network
