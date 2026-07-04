@@ -616,7 +616,10 @@ def parse_config_dict(data: dict[str, Any]) -> Config:
     reject it under `extra="forbid"`. `bajutsu.serve.orgs` parses the org block separately. Every
     other unknown key still fails loudly, preserving the typo guard.
     """
-    if "orgs" in data:
+    # Only drop `orgs` from an actual mapping; a non-dict document (a YAML scalar/list) flows
+    # unchanged into model_validate, which raises a pydantic ValidationError (a ValueError) rather
+    # than the AttributeError a `.items()` on a scalar would throw and escape the callers' handling.
+    if isinstance(data, dict) and "orgs" in data:
         data = {k: v for k, v in data.items() if k != "orgs"}
     return Config.model_validate(data)
 

@@ -106,6 +106,20 @@ def test_malformed_orgs_block_fails_loudly() -> None:
         load_serve_config("targets:\n  demo: { bundleId: com.x }\norgs:\n  - not-a-mapping\n")
 
 
+def test_present_but_falsy_orgs_block_fails_loudly() -> None:
+    # A present-but-non-mapping scalar (e.g. `orgs: ""`) must not silently collapse to single-tenant;
+    # only a missing/null block or an empty mapping is treated as "no orgs".
+    with pytest.raises(ValueError, match="orgs: must be a mapping"):
+        load_serve_config('targets:\n  demo: { bundleId: com.x }\norgs: ""\n')
+
+
+def test_empty_orgs_mapping_is_single_tenant() -> None:
+    # An empty mapping (`orgs: {}`) is a legitimate "no orgs", not an error.
+    cfg, orgs = load_serve_config("targets:\n  demo: { bundleId: com.x }\norgs: {}\n")
+    assert orgs == {}
+    assert targets_for_org(orgs, cfg.targets, "default") == ["demo"]
+
+
 def test_no_orgs_block_is_single_tenant() -> None:
     cfg, orgs = load_serve_config("targets:\n  demo: { bundleId: com.example.demo }\n")
     assert orgs == {}

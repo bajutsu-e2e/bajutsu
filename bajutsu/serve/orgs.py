@@ -74,8 +74,13 @@ def targets_for_org(orgs: dict[str, OrgConfig], targets: Iterable[str], org: str
 
 
 def parse_orgs(orgs_block: object) -> dict[str, OrgConfig]:
-    """Validate a raw `orgs:` mapping into `{name: OrgConfig}` (empty when absent or empty)."""
-    if not orgs_block:
+    """Validate a raw `orgs:` mapping into `{name: OrgConfig}`.
+
+    A missing/`null` block (or an empty mapping) yields `{}`. Any other present-but-non-mapping
+    value (a string, number, or list) is a config error, not silently ignored — so a malformed
+    `orgs:` fails loudly rather than collapsing to single-tenant.
+    """
+    if orgs_block is None:
         return {}
     if not isinstance(orgs_block, dict):
         raise ValueError("orgs: must be a mapping of org name to its config")

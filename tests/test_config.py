@@ -623,3 +623,11 @@ def test_unknown_top_level_key_still_rejected() -> None:
     # Dropping `orgs` must not loosen the typo guard: any other stray top-level key still fails.
     with pytest.raises(ValidationError):
         load_config("targetz:\n  demo: { bundleId: com.example.demo }\n")
+
+
+def test_scalar_root_containing_orgs_raises_validationerror_not_attributeerror() -> None:
+    # A YAML scalar root that happens to contain "orgs" must not trip the orgs-drop into an
+    # AttributeError (which would escape callers that normalize config errors); it fails as a
+    # ValidationError (a ValueError) like any other malformed document.
+    with pytest.raises(ValidationError):
+        load_config("orgs\n")
