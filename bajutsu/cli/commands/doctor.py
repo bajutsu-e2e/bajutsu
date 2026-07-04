@@ -11,7 +11,14 @@ from bajutsu import agents, ai_availability, capability_preflight, idb_version, 
 from bajutsu import simctl as _simctl
 from bajutsu.backends import capabilities_for, make_driver, select_actuator
 from bajutsu.cli._shared import DEFAULT_CONFIG, _backends, _load_effective
-from bajutsu.config import Effective
+from bajutsu.config import (
+    Effective,
+    IosConfig,
+    ios_bundle_id,
+    require_web,
+    web_base_url,
+    web_engine,
+)
 from bajutsu.doctor import render, score
 from bajutsu.drivers import base
 from bajutsu.scenario import load_scenario_file
@@ -62,7 +69,10 @@ def doctor(
     # (BE-0024). `_need_target` rejects a target with neither field at parse time; this catches the
     # wrong field for the selected backend.
     cfg_checks = preflight.config_checks(
-        actuator, target=target_name, bundle_id=eff.bundle_id, base_url=eff.base_url
+        actuator,
+        target=target_name,
+        bundle_id=ios_bundle_id(eff),
+        base_url=web_base_url(eff),
     )
     if not preflight.passed(cfg_checks):
         typer.echo("environment:")
@@ -91,7 +101,9 @@ def doctor(
     def booted_count() -> int:
         return len(_simctl.booted_udids())
 
-    env_checks = preflight.runnability(actuator, booted_count=booted_count, web_engine=eff.browser)
+    env_checks = preflight.runnability(
+        actuator, booted_count=booted_count, web_engine=web_engine(eff)
+    )
     if actuator == "xcuitest":
         idb_checks = preflight.runnability("idb", booted_count=booted_count)
         seen = {c.name for c in env_checks}
@@ -102,8 +114,11 @@ def doctor(
     # reports a missing companion, so probing it would only spawn a doomed subprocess and print a
     # redundant "installed unknown" line.
     companion_ok = any(c.name == "idb_companion" and c.ok for c in env_checks)
-    if actuator == "idb" and eff.idb_version is not None and companion_ok:
-        version_check = preflight.idb_version_check(eff.idb_version, idb_version.probe())
+    ios_pin = (
+        eff.platform_config.idb_version if isinstance(eff.platform_config, IosConfig) else None
+    )
+    if actuator == "idb" and ios_pin is not None and companion_ok:
+        version_check = preflight.idb_version_check(ios_pin, idb_version.probe())
         if version_check is not None:
             env_checks.append(version_check)
     checks = cfg_checks + env_checks
@@ -155,13 +170,18 @@ def _current_screen(actuator: str, udid: str, eff: Effective) -> list[base.Eleme
     is on the booted Simulator at the resolved udid.
     """
     if actuator == "playwright":
-        if not eff.base_url:
+        # A missing baseUrl (or a non-web target forced onto playwright) is a clean, fixable
+        # config error, not a crash — `web_base_url` is None for both, so this exits before the
+        # require_web narrowing below (which a present baseUrl guarantees is a WebConfig).
+        base_url = web_base_url(eff)
+        if not base_url:
             typer.echo("web target needs baseUrl (set targets.<name>.baseUrl)")
             raise typer.Exit(2)
+        web = require_web(eff)
         # Lazy import keeps Playwright (a heavy optional dep) off the default path.
         from bajutsu.drivers.playwright import PlaywrightDriver, _playwright_error_types
 
-        driver = PlaywrightDriver(eff.base_url, headless=eff.headless, browser=eff.browser)
+        driver = PlaywrightDriver(base_url, headless=web.headless, browser=web.browser)
         try:
             driver.navigate()
             return driver.query()

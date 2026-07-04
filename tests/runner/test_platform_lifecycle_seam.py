@@ -7,11 +7,10 @@ single-fork refactor folded behind the Protocol.
 
 from __future__ import annotations
 
-from dataclasses import replace
 from pathlib import Path
 
 import pytest
-from _runner import _eff
+from _runner import _eff, _ios_eff, _web_eff
 
 from bajutsu import simctl
 from bajutsu.drivers import base
@@ -33,7 +32,7 @@ def test_environment_for_selects_by_actuator() -> None:
 
 
 def test_web_environment_requires_base_url() -> None:
-    eff = replace(_eff(), base_url=None)
+    eff = _web_eff(base_url=None)
     with pytest.raises(simctl.DeviceError, match="baseUrl"):
         WebEnvironment("playwright").start(eff, Preconditions())
 
@@ -53,7 +52,7 @@ def test_web_environment_navigates_then_returns_the_driver(monkeypatch: pytest.M
 
     web = _WebDriver()
     monkeypatch.setattr("bajutsu.platform_lifecycle.make_driver", lambda *a, **k: web)
-    eff = replace(_eff(), base_url="https://app.test")
+    eff = _web_eff(base_url="https://app.test")
     driver = WebEnvironment("playwright").start(eff, Preconditions())
     assert driver is web
     assert web.navigated is True  # the web "launch" is navigate()
@@ -305,7 +304,6 @@ def test_xcuitest_environment_requires_test_runner_in_config() -> None:
 def test_xcuitest_environment_start_launches_runner_and_creates_driver(
     monkeypatch: pytest.MonkeyPatch, tmp_path: object
 ) -> None:
-    from dataclasses import replace as dc_replace
 
     from bajutsu.config import XcuitestConfig
 
@@ -359,7 +357,7 @@ def test_xcuitest_environment_start_launches_runner_and_creates_driver(
     with tempfile.NamedTemporaryFile(suffix=".xctestrun") as f:
         plistlib.dump({"__xctestrun_metadata__": {"FormatVersion": 1}, "T": {}}, f)
         f.flush()
-        eff = dc_replace(_eff(), xcuitest=XcuitestConfig(test_runner=f.name), app_path=None)
+        eff = _ios_eff(xcuitest=XcuitestConfig(test_runner=f.name), app_path=None)
         xe = XcuitestEnvironment("xcuitest", "UDID-1", env_run=fake_run)
         driver = xe.start(eff, Preconditions())
 
@@ -445,9 +443,7 @@ def test_xcuitest_environment_forwards_preconditions_to_runner_env(
         )
         f.flush()
         eff = dc_replace(
-            _eff(),
-            xcuitest=XcuitestConfig(test_runner=f.name),
-            app_path=None,
+            _ios_eff(xcuitest=XcuitestConfig(test_runner=f.name), app_path=None),
             launch_env={"APP_ENV": "test", "DEBUG": "1"},
             launch_args=["-verbose"],
             locale="ja_JP",

@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0126](BE-0126-per-platform-effective-config.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0126") |
+| Implementing PR | _pending_ |
 | Topic | Platform expansion (Android / Web / Flutter) |
 | Related | [BE-0009](../BE-0009-cross-platform-abstractions/BE-0009-cross-platform-abstractions.md), [BE-0042](../BE-0042-platform-backend-registry/BE-0042-platform-backend-registry.md), [BE-0057](../BE-0057-rename-apps-to-targets/BE-0057-rename-apps-to-targets.md), [BE-0007](../BE-0007-android-backend/BE-0007-android-backend.md) |
 <!-- /BE-METADATA -->
@@ -105,14 +106,17 @@ compile-time check rather than a runtime surprise.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Common core: trim `Effective` to genuinely shared fields.
-- [ ] iOS sub-config (`IosConfig`): `bundle_id`, `deeplink_scheme`, `app_path`, `build`, `xcuitest`, `idb_version`.
-- [ ] Web sub-config (`WebConfig`): `base_url`, `headless`, `browser`.
-- [ ] Android placeholder sub-config (`AndroidConfig`): `package`.
-- [ ] Update `resolve()` and `Effective.rebased()` to build/rebase through the sub-configs.
-- [ ] Migrate all call sites (e.g. `environment.py`) to the new per-platform accessors.
+- [x] Common core: trim `Effective` to genuinely shared fields.
+- [x] iOS sub-config (`IosConfig`): `bundle_id`, `deeplink_scheme`, `app_path`, `build`, `xcuitest`, `idb_version`.
+- [x] Web sub-config (`WebConfig`): `base_url`, `headless`, `browser`.
+- [x] Android placeholder sub-config (`AndroidConfig`): `package`.
+- [x] Update `resolve()` and `Effective.rebased()` to build/rebase through the sub-configs.
+- [x] Migrate all call sites (`platform_lifecycle.py`, the CLI commands, serve, runner) to the new per-platform accessors.
 
-No PR has landed yet.
+- Reshaped `Effective` into a common core plus a `platform_config: IosConfig | WebConfig | AndroidConfig`
+  discriminated union, with a derived `platform` property; added `require_ios` / `require_web` narrowing
+  helpers for platform-committed call sites and `isinstance` narrowing elsewhere, so reading a platform's
+  knobs on the wrong platform is a `mypy` error. Migrated every call site and its tests; `make check` green.
 
 ## References
 

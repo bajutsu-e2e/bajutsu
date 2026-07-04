@@ -377,12 +377,57 @@ class Config(_Model):
 
 
 @dataclass(frozen=True)
+class IosConfig:
+    """iOS (idb / XCUITest) target knobs (BE-0126). On `Effective` only when `platform == "ios"`."""
+
+    bundle_id: str = ""
+    deeplink_scheme: str | None = None
+    # Built .app to install on each device before launch (if missing). None = manual install.
+    app_path: str | None = None
+    # Shell command that builds `app_path`; `bajutsu serve` runs it on demand if the binary is
+    # missing. None = no on-demand build.
+    build: str | None = None
+    # XCUITest runner config (BE-0019): prebuilt test runner path and/or build command.
+    xcuitest: XcuitestConfig | None = None
+    # Expected idb version range (e.g. ">=1.1.8"); `doctor` checks the installed companion against
+    # it. None = no pin declared. Environment-level, so resolved straight from defaults (BE-0005).
+    idb_version: str | None = None
+
+
+@dataclass(frozen=True)
+class WebConfig:
+    """Web (Playwright) target knobs (BE-0126). On `Effective` only when `platform == "web"`."""
+
+    # Web (Playwright) target URL. None when unset (the config gate then fails cleanly).
+    base_url: str | None = None
+    # Run headless (default) or headed (visible browser). The `--headed` flag overrides per run.
+    headless: bool = True
+    # The rendering engine to drive — chromium (default) / firefox / webkit. The `--browser` flag
+    # overrides per run (BE-0076).
+    browser: str = "chromium"
+
+
+@dataclass(frozen=True)
+class AndroidConfig:
+    """Android (adb) target knobs (BE-0126). On `Effective` only when `platform == "android"`."""
+
+    # Android target identifier (peer of iOS bundle_id / web base_url). "" when unset.
+    package: str = ""
+
+
+# The resolved platform-specific config, keyed by platform (BE-0126). The concrete type *is* the
+# discriminator, so a caller must narrow (isinstance / match) before reading a platform's knobs —
+# reading a web field on an iOS target is a type error, not a silently-meaningless value.
+PlatformConfig = IosConfig | WebConfig | AndroidConfig
+
+
+@dataclass(frozen=True)
 class Effective:
     """The resolved config for one target."""
 
     target: str
-    bundle_id: str
-    deeplink_scheme: str | None
+    # The platform-specific knobs (BE-0126); its concrete type is the platform discriminator.
+    platform_config: PlatformConfig
     backend: list[str]
     device: str
     locale: str
@@ -400,11 +445,6 @@ class Effective:
     # Generic HTTP mailbox the `email` step polls (`targets.<name>.mailbox`, BE-0046). None = no
     # mailbox configured, so an `email` step fails cleanly.
     mailbox: Mailbox | None = None
-    # Built .app to install on each device before launch (if missing). None = manual install.
-    app_path: str | None = None
-    # Shell command that builds `app_path`; `bajutsu serve` runs it on demand if the binary
-    # is missing. None = no on-demand build.
-    build: str | None = None
     # Directory of this target's scenario *.yaml files (config-driven `run`/`record`). None =
     # unset (the caller must pass an explicit scenario path).
     scenarios: str | None = None
@@ -417,28 +457,11 @@ class Effective:
     # Golden JSON directory for `golden` assertions (BE-0006). None = fall back to
     # goldens/ beside the scenario file (or --goldens CLI flag).
     goldens: str | None = None
-    # The resolved platform (ios / android / web): explicit, else from defaults, else derived from
-    # the backend (BE-0009 Slice 4). The discriminator a platform-specific path keys off.
-    platform: str = "ios"
-    # Android target identifier (peer of bundle_id / base_url). "" for non-Android targets.
-    package: str = ""
-    # Web (Playwright) target URL. None for iOS apps (which use bundle_id instead).
-    base_url: str | None = None
-    # Web (Playwright): run headless (default) or headed (visible browser). iOS ignores it.
-    headless: bool = True
-    # Web (Playwright): the rendering engine to drive — chromium (default) / firefox / webkit.
-    # iOS ignores it (BE-0076).
-    browser: str = "chromium"
     # How to bring up baseUrl's host for the run (start/probe/teardown). None = assume it's running.
     launch_server: LaunchServer | None = None
     # Selector the launch waits for before a run starts (BE: smoke flake). None = the default
     # element-count readiness heuristic.
     ready_when: base.Selector | None = None
-    # XCUITest runner config (BE-0019): prebuilt test runner path and/or build command.
-    xcuitest: XcuitestConfig | None = None
-    # Expected idb version range (e.g. ">=1.1.8"); `doctor` checks the installed companion against
-    # it. None = no pin declared. Environment-level, so resolved straight from defaults (BE-0005).
-    idb_version: str | None = None
     # Configurable doctor id-coverage thresholds (BE-0024). Teams with many decorative elements
     # can tune thresholds (often lowering ok and/or fail for leniency) without changing the tool.
     doctor_ok_coverage: float = 0.9
@@ -446,14 +469,23 @@ class Effective:
     # Webhook notification sinks (BE-0099). Empty when no `notify:` is configured.
     notify: list[NotifyEndpoint] = field(default_factory=list)
 
+    @property
+    def platform(self) -> str:
+        """The resolved platform (ios / android / web), derived from the sub-config's type (BE-0126)."""
+        if isinstance(self.platform_config, IosConfig):
+            return "ios"
+        if isinstance(self.platform_config, WebConfig):
+            return "web"
+        return "android"
+
     def rebased(self, root: Path) -> Effective:
         """A copy with the relative path fields resolved against `root` (a Git checkout, BE-0063).
 
-        The path fields — `scenarios` / `baselines` / `schemas` / `goldens` / `app_path` — are listed
-        beside the type so a future path field is rebased by adding it here. `build` (a shell command)
-        and `setup` (resolved relative to the scenario, not the cwd) are intentionally absent. Local
-        configs keep their cwd-relative paths; only a Git source calls this, so the caller's working
-        directory no longer has anything to do with the fetched tree.
+        The common path fields — `scenarios` / `baselines` / `schemas` / `goldens` — and the iOS
+        sub-config's `app_path` are rebased; a future path field is rebased by adding it here. `build`
+        (a shell command) and `setup` (resolved relative to the scenario, not the cwd) are
+        intentionally absent. Local configs keep their cwd-relative paths; only a Git source calls
+        this, so the caller's working directory no longer has anything to do with the fetched tree.
 
         Each field is **confined** to the checkout: an absolute or `../` value that would escape `root`
         is rejected (a fetched config can't reach outside its own tree — mirroring the serve-hardening
@@ -469,7 +501,18 @@ class Effective:
                 raise ValueError(f"config field {field!r} escapes the checkout root: {value!r}")
             return str(candidate)
 
-        rebased_xcuitest = self.xcuitest
+        common = replace(
+            self,
+            scenarios=at("scenarios", self.scenarios),
+            baselines=at("baselines", self.baselines),
+            schemas=at("schemas", self.schemas),
+            goldens=at("goldens", self.goldens),
+        )
+        if not isinstance(self.platform_config, IosConfig):
+            return common  # only the iOS sub-config carries rebasable path fields
+
+        ios = self.platform_config
+        rebased_xcuitest = ios.xcuitest
         if rebased_xcuitest is not None and rebased_xcuitest.test_runner is not None:
             rebased_xcuitest = XcuitestConfig.model_validate(
                 {
@@ -477,16 +520,60 @@ class Effective:
                     "build": rebased_xcuitest.build,
                 }
             )
-
         return replace(
-            self,
-            scenarios=at("scenarios", self.scenarios),
-            baselines=at("baselines", self.baselines),
-            schemas=at("schemas", self.schemas),
-            goldens=at("goldens", self.goldens),
-            app_path=at("appPath", self.app_path),
-            xcuitest=rebased_xcuitest,
+            common,
+            platform_config=replace(
+                ios, app_path=at("appPath", ios.app_path), xcuitest=rebased_xcuitest
+            ),
         )
+
+
+def require_ios(eff: Effective) -> IosConfig:
+    """The iOS sub-config, narrowed for the type checker, or a loud failure (BE-0126).
+
+    For code already committed to an iOS-only path (the iOS/XCUITest environment, the idb doctor
+    probe): it narrows the platform union to `IosConfig` and fails fast rather than silently reading
+    a default if a non-iOS target ever reaches it. Code that has *not* committed to a platform must
+    narrow with `isinstance` / `match` instead — reading a platform's knobs off `platform_config`
+    without narrowing is a type error, which is the point of the split.
+    """
+    cfg = eff.platform_config
+    if not isinstance(cfg, IosConfig):
+        raise TypeError(f"target {eff.target!r} is not an iOS target (platform {eff.platform})")
+    return cfg
+
+
+def require_web(eff: Effective) -> WebConfig:
+    """The web sub-config, narrowed for the type checker, or a loud failure (BE-0126).
+
+    The web counterpart of `require_ios`, for code already on a web-only path (the web environment,
+    the Playwright doctor probe).
+    """
+    cfg = eff.platform_config
+    if not isinstance(cfg, WebConfig):
+        raise TypeError(f"target {eff.target!r} is not a web target (platform {eff.platform})")
+    return cfg
+
+
+# "Soft" per-platform accessors (BE-0126): the platform's knob, or a safe default for another
+# platform. Unlike `require_ios` / `require_web`, these don't fail — they're for code that reads a
+# platform-specific value defensively across platforms (a common-core field whose meaningful value
+# only exists on one platform, e.g. launchServer's baseUrl probe; or a config gate that inspects
+# every platform's handle). One definition each, shared by every layer, instead of an inline
+# `isinstance` at each call site.
+def web_base_url(eff: Effective) -> str | None:
+    """The web target's base URL, or None for a non-web target."""
+    return eff.platform_config.base_url if isinstance(eff.platform_config, WebConfig) else None
+
+
+def web_engine(eff: Effective) -> str:
+    """The web target's rendering engine, or the chromium default for a non-web target."""
+    return eff.platform_config.browser if isinstance(eff.platform_config, WebConfig) else "chromium"
+
+
+def ios_bundle_id(eff: Effective) -> str:
+    """The iOS target's bundle id, or "" for a non-iOS target."""
+    return eff.platform_config.bundle_id if isinstance(eff.platform_config, IosConfig) else ""
 
 
 def _merge_redact(base: Redact, over: Redact) -> Redact:
@@ -561,6 +648,25 @@ _PLATFORM_IDENTIFIER: dict[str, tuple[str, str]] = {
 }
 
 
+def _platform_config(platform: str, a: TargetConfig, d: Defaults) -> PlatformConfig:
+    """Build the platform-specific sub-config for the resolved platform (BE-0126).
+
+    iOS knobs come from the target except `idb_version`, an environment-level default (BE-0005).
+    """
+    if platform == "web":
+        return WebConfig(base_url=a.base_url, headless=a.headless, browser=a.browser)
+    if platform == "android":
+        return AndroidConfig(package=a.package)
+    return IosConfig(
+        bundle_id=a.bundle_id,
+        deeplink_scheme=a.deeplink_scheme,
+        app_path=a.app_path,
+        build=a.build,
+        xcuitest=a.xcuitest,
+        idb_version=d.idb_version,
+    )
+
+
 def resolve(config: Config, target: str) -> Effective:
     """Resolve the effective config for one target (the target entry overrides defaults)."""
     if target not in config.targets:
@@ -570,15 +676,9 @@ def resolve(config: Config, target: str) -> Effective:
     backend = a.backend or d.backend
     return Effective(
         target=target,
-        platform=_effective_platform(a, d, backend),
-        package=a.package,
-        bundle_id=a.bundle_id,
-        base_url=a.base_url,
-        headless=a.headless,
-        browser=a.browser,
+        platform_config=_platform_config(_effective_platform(a, d, backend), a, d),
         launch_server=a.launch_server,
         ready_when=a.ready_when,
-        deeplink_scheme=a.deeplink_scheme,
         backend=backend,
         device=a.device or d.device,
         locale=a.locale or d.locale,
@@ -593,14 +693,10 @@ def resolve(config: Config, target: str) -> Effective:
         redact=_merge_redact(d.redact, a.redact),
         secrets=list(dict.fromkeys([*d.secrets, *a.secrets])),
         ai=_merge_ai(d.ai, a.ai),
-        app_path=a.app_path,
-        build=a.build,
-        xcuitest=a.xcuitest,
         scenarios=a.scenarios,
         baselines=a.baselines,
         schemas=a.schemas,
         goldens=a.goldens,
-        idb_version=d.idb_version,
         doctor_ok_coverage=d.doctor.id_coverage_ok,
         doctor_fail_coverage=d.doctor.id_coverage_fail,
         notify=a.notify if a.notify is not None else list(config.notify),

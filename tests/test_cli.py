@@ -13,7 +13,7 @@ from typer.testing import CliRunner
 
 from bajutsu.cli import app
 from bajutsu.cli._shared import _resolve_browser
-from bajutsu.config import Effective, load_config, resolve
+from bajutsu.config import Effective, IosConfig, WebConfig, load_config, resolve
 
 runner = CliRunner()
 
@@ -573,21 +573,26 @@ def _web_eff(browser: str) -> Effective:
     return resolve(cfg, "web")
 
 
+def _browser_of(eff: Effective) -> str:
+    assert isinstance(eff.platform_config, WebConfig)
+    return eff.platform_config.browser
+
+
 def test_resolve_browser_flag_overrides_config() -> None:
     # Precedence (BE-0076): an explicit --browser flag wins over the target's config.
     eff = _web_eff("firefox")  # config says firefox
-    assert _resolve_browser(eff, "webkit").browser == "webkit"  # flag wins
+    assert _browser_of(_resolve_browser(eff, "webkit")) == "webkit"  # flag wins
 
 
 def test_resolve_browser_empty_flag_keeps_config() -> None:
     # No flag: the resolved config value (here firefox) stands.
-    assert _resolve_browser(_web_eff("firefox"), "").browser == "firefox"
+    assert _browser_of(_resolve_browser(_web_eff("firefox"), "")) == "firefox"
 
 
 def test_resolve_browser_default_is_chromium() -> None:
     # No flag and no config: chromium, today's behaviour.
     eff = resolve(load_config("targets: { web: { baseUrl: 'http://x/' } }"), "web")
-    assert _resolve_browser(eff, "").browser == "chromium"
+    assert _browser_of(_resolve_browser(eff, "")) == "chromium"
 
 
 @pytest.mark.parametrize("command", ["run", "record"])
@@ -634,13 +639,39 @@ def test_doctor_web_target_requires_base_url() -> None:
     import typer
 
     from bajutsu.cli.commands.doctor import _current_screen
-    from bajutsu.config import Effective
     from bajutsu.scenario import Redact
 
     eff = Effective(
         target="web",
-        bundle_id="com.example.demo",  # iOS-shaped target: no baseUrl
-        deeplink_scheme=None,
+        platform_config=WebConfig(base_url=None),  # web target missing its baseUrl
+        backend=["playwright"],
+        device="",
+        locale="en_US",
+        launch_env={},
+        launch_args=[],
+        id_namespaces=[],
+        reserved_namespaces=[],
+        mock_server=None,
+        setup=None,
+        capture=[],
+        redact=Redact(),
+    )
+    with pytest.raises(typer.Exit) as exc:
+        _current_screen("playwright", "booted", eff)
+    assert exc.value.exit_code == 2
+
+
+def test_doctor_non_web_target_on_playwright_exits_cleanly() -> None:
+    # An iOS-shaped target forced onto the playwright screen query exits 2 (fixable config error),
+    # not an uncaught TypeError from the web narrowing (BE-0126: the base_url gate runs first).
+    import typer
+
+    from bajutsu.cli.commands.doctor import _current_screen
+    from bajutsu.scenario import Redact
+
+    eff = Effective(
+        target="app",
+        platform_config=IosConfig(bundle_id="com.example.demo"),
         backend=["playwright"],
         device="",
         locale="en_US",
@@ -662,14 +693,12 @@ def test_doctor_xcuitest_falls_back_to_idb_for_screen_query(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     from bajutsu.cli.commands.doctor import _current_screen
-    from bajutsu.config import Effective
     from bajutsu.drivers import base
     from bajutsu.scenario import Redact
 
     eff = Effective(
         target="app",
-        bundle_id="com.example.demo",
-        deeplink_scheme=None,
+        platform_config=IosConfig(bundle_id="com.example.demo"),
         backend=["ios"],
         device="booted",
         locale="en_US",

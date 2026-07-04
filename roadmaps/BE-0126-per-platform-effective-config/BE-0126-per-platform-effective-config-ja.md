@@ -7,8 +7,9 @@
 |---|---|
 | 提案 | [BE-0126](BE-0126-per-platform-effective-config-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **提案** |
+| 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0126") |
+| 実装 PR | _pending_ |
 | トピック | プラットフォーム拡張（Android / Web / Flutter） |
 | 関連 | [BE-0009](../BE-0009-cross-platform-abstractions/BE-0009-cross-platform-abstractions-ja.md), [BE-0042](../BE-0042-platform-backend-registry/BE-0042-platform-backend-registry-ja.md), [BE-0057](../BE-0057-rename-apps-to-targets/BE-0057-rename-apps-to-targets-ja.md), [BE-0007](../BE-0007-android-backend/BE-0007-android-backend-ja.md) |
 <!-- /BE-METADATA -->
@@ -110,14 +111,17 @@ directive 3）を型のレベルで侵食しており、プラットフォーム
 > 作業分解（作業の単位ごとに 1 つ）に対応し、ログには変更内容と時期（古い順）を PR へのリンクと
 > ともに記録します。
 
-- [ ] 共通コア：`Effective` を本当に共有されるフィールドだけに絞る。
-- [ ] iOS 用サブ設定（`IosConfig`）：`bundle_id`、`deeplink_scheme`、`app_path`、`build`、`xcuitest`、`idb_version`。
-- [ ] web 用サブ設定（`WebConfig`）：`base_url`、`headless`、`browser`。
-- [ ] Android 用の受け皿サブ設定（`AndroidConfig`）：`package`。
-- [ ] `resolve()` と `Effective.rebased()` をサブ設定越しに構築・再配置するよう更新する。
-- [ ] `environment.py` などのすべての呼び出し箇所を、新しいプラットフォームごとのアクセサに移行する。
+- [x] 共通コア：`Effective` を本当に共有されるフィールドだけに絞る。
+- [x] iOS 用サブ設定（`IosConfig`）：`bundle_id`、`deeplink_scheme`、`app_path`、`build`、`xcuitest`、`idb_version`。
+- [x] web 用サブ設定（`WebConfig`）：`base_url`、`headless`、`browser`。
+- [x] Android 用の受け皿サブ設定（`AndroidConfig`）：`package`。
+- [x] `resolve()` と `Effective.rebased()` をサブ設定越しに構築・再配置するよう更新する。
+- [x] すべての呼び出し箇所（`platform_lifecycle.py`、各 CLI コマンド、serve、runner）を、新しいプラットフォームごとのアクセサに移行する。
 
-まだ着手した PR はありません。
+- `Effective` を共通コアと `platform_config: IosConfig | WebConfig | AndroidConfig` の判別付きユニオンに作り替え、
+  `platform` は型から導出するプロパティにしました。プラットフォームが確定している呼び出し箇所には `require_ios` /
+  `require_web` の絞り込みヘルパーを、それ以外では `isinstance` による絞り込みを使い、別プラットフォームのフィールドを
+  読むと `mypy` エラーになるようにしています。全呼び出し箇所とテストを移行し、`make check` は緑です。
 
 ## 参考
 

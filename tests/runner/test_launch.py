@@ -3,11 +3,10 @@
 from __future__ import annotations
 
 import subprocess
-from dataclasses import replace
 from pathlib import Path
 
 import pytest
-from _runner import _eff, _el
+from _runner import _eff, _el, _ios_eff
 
 from bajutsu import simctl
 from bajutsu.drivers import base
@@ -77,9 +76,7 @@ def _launch_recording(
         "bajutsu.platform_lifecycle.make_driver",
         lambda actuator, udid: FakeDriver([_el("home.title", "H"), _el("ok", "OK")]),
     )
-    launch_driver(
-        "UDID-1", replace(_eff(), app_path=app_path), "idb", pre, env_run=_recording_run(calls)
-    )
+    launch_driver("UDID-1", _ios_eff(app_path=app_path), "idb", pre, env_run=_recording_run(calls))
     return calls
 
 
@@ -122,7 +119,7 @@ def test_launch_driver_erase_skips_uninstall(
 
 def test_launch_driver_errors_on_missing_app_path(monkeypatch: pytest.MonkeyPatch) -> None:
     """A configured appPath that doesn't exist fails with a clear, actionable DeviceError."""
-    eff = replace(_eff(), app_path="/nope/X.app")
+    eff = _ios_eff(app_path="/nope/X.app")
     monkeypatch.setattr(
         "bajutsu.platform_lifecycle.make_driver", lambda actuator, udid: FakeDriver([])
     )

@@ -9,6 +9,7 @@ import typer
 from bajutsu.cli._shared import DEFAULT_CONFIG, _load_effective
 from bajutsu.codegen import class_name_for, to_xcuitest
 from bajutsu.codegen_playwright import describe_name_for, to_playwright
+from bajutsu.config import web_base_url
 from bajutsu.scenario import load_scenarios
 
 _EMIT_TARGETS = ("xcuitest", "playwright")
@@ -33,10 +34,11 @@ def codegen(
     scenarios = load_scenarios(scenario_path.read_text(encoding="utf-8"))
     stem = Path(out).stem if out != "-" else scenario_path.stem
     if emit == "playwright":
-        if not eff.base_url:
+        base_url = web_base_url(eff)
+        if not base_url:
             typer.echo(f"--emit playwright needs targets.{target_name}.baseUrl (a web target)")
             raise typer.Exit(2)
-        code = to_playwright(scenarios, describe_name_for(stem), eff.base_url, eff.launch_env)
+        code = to_playwright(scenarios, describe_name_for(stem), base_url, eff.launch_env)
     else:
         code = to_xcuitest(scenarios, class_name_for(stem), eff.launch_env)
     if out == "-":
