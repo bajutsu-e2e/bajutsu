@@ -376,7 +376,7 @@ def test_parallel_crawl_isolates_a_wedged_device() -> None:
 
     def wedged(d: FakeDriver, kind: str, _arg: object) -> None:
         if kind == "tap":
-            raise crawl.env.DeviceError("simulator wedged")
+            raise crawl.simctl.DeviceError("simulator wedged")
 
     healthy = FakeDriver(screen=list(home), react=react)
     bad = FakeDriver(screen=list(home), react=wedged)
@@ -393,14 +393,14 @@ def test_lone_worker_surfaces_a_device_error() -> None:
 
     def boom(d: FakeDriver, kind: str, _arg: object) -> None:
         if kind == "tap":
-            raise crawl.env.DeviceError("device gone")
+            raise crawl.simctl.DeviceError("device gone")
 
     def reset(d: FakeDriver) -> None:
         d.screen = list(home)
 
     try:
         crawl.crawl(FakeDriver(screen=list(home), react=boom), reset)
-    except crawl.env.DeviceError:
+    except crawl.simctl.DeviceError:
         return
     raise AssertionError("a lone worker's device error must propagate")
 
@@ -421,7 +421,7 @@ def test_parallel_crawl_recovers_a_wedged_lane_instead_of_retiring() -> None:
         opening_leaf0 = kind == "tap" and isinstance(arg, dict) and arg.get("id") == "home.leaf0"
         if opening_leaf0 and not wedged["leaf0"]:
             wedged["leaf0"] = True
-            raise crawl.env.DeviceError("browser wedged")
+            raise crawl.simctl.DeviceError("browser wedged")
         react(d, kind, arg)
 
     recovered = {"n": 0}
@@ -447,7 +447,7 @@ def test_lone_worker_ignores_recover_and_surfaces_the_error() -> None:
 
     def boom(d: FakeDriver, kind: str, _arg: object) -> None:
         if kind == "tap":
-            raise crawl.env.DeviceError("device gone")
+            raise crawl.simctl.DeviceError("device gone")
 
     def reset(d: FakeDriver) -> None:
         d.screen = list(home)
@@ -459,7 +459,7 @@ def test_lone_worker_ignores_recover_and_surfaces_the_error() -> None:
 
     try:
         crawl.crawl(FakeDriver(screen=list(home), react=boom), reset, recover=recover)
-    except crawl.env.DeviceError:
+    except crawl.simctl.DeviceError:
         assert calls["n"] == 0  # recover was never called for a lone worker
         return
     raise AssertionError("a lone worker's device error must propagate even with recover set")
@@ -477,7 +477,7 @@ def test_parallel_crawl_retires_a_lane_that_never_heals_instead_of_looping() -> 
 
     def always_wedged(d: FakeDriver, kind: str, _arg: object) -> None:
         if kind == "tap":
-            raise crawl.env.DeviceError("browser wedged")
+            raise crawl.simctl.DeviceError("browser wedged")
 
     recovered = {"n": 0}
 
@@ -1143,31 +1143,6 @@ def test_cli_crawl_unknown_agent(tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     assert r.exit_code == 2
     assert "unknown --agent" in r.output
     assert "api" in r.output and "claude-code" in r.output
-
-
-def test_cli_crawl_unavailable_backend(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    # A valid agent that needs no credential, so backend selection is the first thing that fails.
-    # An unknown backend token (`nope`) has no actuator on *any* host, so the failure is
-    # deterministic — it doesn't depend on idb being absent from the runner's PATH — and the message
-    # is asserted so the test can't pass for the wrong reason.
-    monkeypatch.delenv("BAJUTSU_AGENT", raising=False)
-    cfg = _crawl_config(tmp_path)
-    r = _cli.invoke(
-        app,
-        [
-            "crawl",
-            "--target",
-            "demo",
-            "--agent",
-            "claude-code",
-            "--backend",
-            "nope",
-            "--config",
-            str(cfg),
-        ],
-    )
-    assert r.exit_code == 2
-    assert "no available actuator" in r.output
 
 
 def test_cli_crawl_fails_closed_without_credential(

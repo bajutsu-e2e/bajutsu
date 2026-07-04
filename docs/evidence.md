@@ -195,6 +195,17 @@ redact:
 > evidence — not just the configured `labels` / `headers` / `fields`. Longest values are masked
 > first so a value that is a substring of another never leaves a partial leak.
 >
+> Value matching is **encoding-aware**: the same secret reaches evidence verbatim but often
+> encoded, so its literal bytes never appear. Alongside the raw value, redaction masks its
+> common encodings — percent-encoded (a URL query or form field, e.g. `p@ss` as `p%40ss`),
+> HTML-escaped and JSON-escaped forms, and an `Authorization: Basic <base64(user:pass)>` token
+> whose decoded credential carries the value. This is a fixed set of transforms applied to
+> *known* values (the value is encoded, then searched for), not a decode-everything scan, so
+> the cost and false-positive surface stay bounded. One limitation remains: where evidence is
+> genuinely fragmented before redaction runs (a value split across streamed chunks that
+> redaction never sees as one contiguous string), matching is best-effort — assembled full-text
+> evidence, the common case, is unaffected.
+>
 > The executed scenario is also snapshotted into the run directory (`scenario.yaml`, and the raw
 > YAML view in the report). A `totp` step's `secret` is a durable base32 seed, not a one-time code,
 > so a **literal** seed written straight into the scenario is masked to `<redacted>` in that

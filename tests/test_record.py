@@ -11,7 +11,8 @@ from conftest import ShotDriver
 from bajutsu.agent import Observation, Proposal
 from bajutsu.drivers import base
 from bajutsu.drivers.fake import FakeDriver
-from bajutsu.record import _screenshot_bytes, record, shows_app_ui
+from bajutsu.elements import shows_app_ui
+from bajutsu.record import _screenshot_bytes, record
 from bajutsu.scenario import Assertion, Step, dump_scenarios, load_scenarios
 
 

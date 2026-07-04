@@ -24,7 +24,7 @@ Bajutsu's core was built behind a backend-agnostic `Driver` interface intentiona
 evidence subsystem, the reporter — never names iOS. Only **three seams** are iOS-specific today:
 
 1. **The actuator** (`drivers/idb.py`) — drives the UI via `idb` + frame-center coordinate taps.
-2. **The environment manager** (`env.py`) — `simctl` boot / erase / launch / openurl.
+2. **The environment manager** (`simctl.py`) — `simctl` boot / erase / launch / openurl.
 3. **The stable-id convention** (`accessibilityIdentifier`, [DESIGN §7](../DESIGN.md)) — the app-side
    source that makes `Selector.id` resolution deterministic.
 

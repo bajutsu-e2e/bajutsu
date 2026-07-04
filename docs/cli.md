@@ -511,7 +511,7 @@ links (and the crawl's `screenmap.json`) resolve. Stdlib only (no web framework)
 
 ```bash
 bajutsu serve [--port 8765] [--config bajutsu.config.yaml] [--root .] [--runs runs] [--baselines <dir>]
-              [--host 127.0.0.1] [--token <t>] [--max-concurrent-runs 4]
+              [--host 127.0.0.1] [--token <t>] [--max-concurrent-runs 4] [--evidence-store <uri>]
 ```
 
 - **`--token` (or `$BAJUTSU_SERVE_TOKEN`) — authentication (BE-0051).** With a token set, every
@@ -590,6 +590,18 @@ bajutsu serve [--port 8765] [--config bajutsu.config.yaml] [--root .] [--runs ru
 - **`--max-concurrent-runs` (default 4)** caps how many run/record jobs may run at once so one
   caller can't monopolize the scarce device (BE-0051); dispatch over the cap returns **429**. Set
   `0` for unlimited.
+- **`--evidence-store <uri>` (or `$BAJUTSU_EVIDENCE_STORE`) — upload each run's evidence
+  ([BE-0110](../roadmaps/BE-0110-evidence-store-uri/BE-0110-evidence-store-uri.md)).** Point it at
+  `s3://bucket/prefix` or `gs://bucket/prefix` and every completed run's tree is uploaded there,
+  keyed `<prefix><evidence_prefix><runId>/…` so the path selects the cloud lifecycle policy. Unlike
+  the standalone `run --evidence-store` (which uploads directly with the runner's own credentials),
+  **`serve` holds the credentials and never hands them to a worker**: the control plane signs a
+  presigned PUT URL per file, and the worker uploads over plain HTTP with no cloud SDK or credentials
+  of its own. A caller picks the per-run path by passing `evidence_prefix` in the `POST /api/run`
+  body (validated as a safe relative segment); the server prepends its own bucket + base prefix, so
+  the run id is always in the key and runs never collide. Upload runs after the verdict, so a failure
+  only warns. Needs the `s3` or `gcs` extra **on the server** (the worker needs neither). See
+  [self-hosting](self-hosting.md) for the topology.
 - **Hosting flags (advanced).** `--emit-launchagent` prints a launchd plist to run `serve` as a
   token-authenticated LaunchAgent on a single Mac; `--backend server` (with `--asgi`) switches to
   the hosted FastAPI control plane. Both are covered in [self-hosting](self-hosting.md).

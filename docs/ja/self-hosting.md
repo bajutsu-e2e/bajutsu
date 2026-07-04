@@ -112,6 +112,15 @@ API クライアントは `Authorization: Bearer $TOKEN` を送ります。
 に限定して `backend`/`udid` を検証すること、CSRF Origin チェックとセキュリティヘッダ、run dispatch の同時実行上限です。
 トークンは秘匿し、Mac は tailnet 上に置き、OS は更新し続けてください。
 
+CSRF の Origin チェックと **`Host` ヘッダの許可リスト**は、トークンが設定されているときだけでなく**無条件で**動きます
+（[BE-0121](../../roadmaps/BE-0121-serve-csrf-host-allowlist/BE-0121-serve-csrf-host-allowlist-ja.md)）。これがいちばん
+効くのは `make serve` の既定（ループバック、トークンなし）です。別タブで開いたページからのクロスオリジンの `POST` は
+ブロックされ、`Host` がバインド済みのインタフェースを指さないリクエストは拒否されるので、リバインドされたホスト名では
+`GET /api/apikey?reveal=1` のようなループバックのエンドポイントに到達できません。`Origin` ヘッダを持たない非ブラウザの
+クライアントは影響を受けません。`Host` の許可リストは `serve` がバインドするインタフェースから導かれます。ループバックに
+バインドすればループバックの名前、それ以外はそのホストです。ワイルドカードのバインド（`0.0.0.0` や `::`）は到達しうる
+名前を列挙できないため `Host` チェックを無効化し、クロスオリジンの防御は CSRF が担います。
+
 ## アップロードされた config のコマンド実行（BE-0090）
 
 アップロードされた `.zip` バンドルは、テスト対象アプリを起動するシェルコマンドを `launchServer.cmd`
@@ -135,6 +144,17 @@ API クライアントは `Authorization: Bearer $TOKEN` を送ります。
 ありません。ブロックされた、あるいは設定の誤った `launchServer` は、flaky に見える run ではなく明確なエラーで
 失敗します。その判断（denied / reused / sandboxed、sandbox のときは使ったイメージ）は run の `manifest.json` の
 provenance に記録されるので、「この run は何を実行し、何を抑止したのか」をあとから answerable に保てます。
+
+## リモート config のコマンド実行（BE-0121）
+
+起動時に `--config` でバインドした config（自分で入力したローカルパスや `github:` の spec）は**運用者が信頼している**ため、
+`serve` はその `build:` コマンドを通常どおり実行します。あとから **UI の「from Git」ピッカー**でバインドした Git config
+（`git` の spec を伴う `POST /api/config`）は信頼のレベルが違います。クロスオリジンのリクエストがそれをバインドした
+可能性があるので、アップロードされたバンドルと同じ扱いにし、その `build:` コマンドは**既定ではホスト上で実行しません**。
+UI からバインドした Git config でその build を信頼して run を回したいときは、`--allow-remote-build`（または環境変数
+`BAJUTSU_ALLOW_REMOTE_BUILD=1`）で明示的に opt-in してください。opt-in がなければ、アップロードされたバンドルの build が
+抑止されるのと同じように build を抑止したまま run が進みます。ネットワーク越しに届いた config から、こっそりホスト側で
+コマンドが実行されることはありません。
 
 ## Tier B、サーバ backend のセルフホスティング
 
@@ -215,6 +235,39 @@ Tier A と同様に前段を置きます。`tailscale serve --bg 8765`（tailnet
 （`docker compose --profile caddy up -d`、`BAJUTSU_PUBLIC_HOST` を設定）。ワーカーは tailnet 越しに
 コントロールプレーン（`:8765`）と MinIO（`:9000`）へ到達するので、ノードはプライベートな tailnet 上に置いて
 ください。
+
+### オブジェクトストレージへの証跡アップロード（任意、BE-0110）
+
+上記のワーカーのアップロードは、コントロールプレーンがレポートを配信する**アーティファクトストア**に各 run
+ツリーを書き込むものです。これとは別に、各 run の**証跡**をライフサイクル管理されたバケットへアーカイブでき
+ます。main ブランチの証跡は監査のために保持し、feature ブランチの証跡は数日で失効させる、といった運用です。
+コントロールプレーンに URI を一つ設定するだけです。
+
+```bash
+# コントロールプレーン側（docker compose の環境変数、または serve プロセス）
+export BAJUTSU_EVIDENCE_STORE=s3://audit-bucket/evidence/   # gs://… も可。--evidence-store でも指定できます
+```
+
+アーティファクトのアップロードとの違いは、**認証情報がどこにあるか**です。コントロールプレーンが証跡バケット
+の認証情報を保持し、ファイルごとに **presigned PUT URL** を発行します。ワーカーは平文 HTTP でアップロードし、
+証跡バケットの認証情報を**一切持ちません**。持つのはコントロールプレーンだけです。したがって証跡バケットは、
+ワーカーのアーティファクトストアとは別のアカウントや、より厳しい権限のバケットにでき、エフェメラルなワーカーが
+その秘密を抱えることはありません。`s3` または `gcs` extra は**コントロールプレーン側**に入れます
+（`uv sync --extra s3` または `--extra gcs`）。ワーカーにはどちらも不要です。
+
+CI ジョブは run を開始するときに `evidence_prefix` を渡して、run ごとのパス、つまりライフサイクルポリシーを
+選びます。
+
+```bash
+curl -X POST "$SERVER/api/run" -H "Authorization: Bearer $TOKEN" \
+  -d '{"scenario": "smoke.yaml", "target": "demo", "evidence_prefix": "main/abc1234/"}'
+```
+
+コントロールプレーンは `evidence_prefix` を安全な相対セグメントとして検証し、自分のバケットとベースプレフィッ
+クスを前置します。最終的なキーは `evidence/main/abc1234/<runId>/…` となり、run ID が必ずパスに含まれるので run
+同士が衝突せず、呼び出し元がベースプレフィックスの外へ出ることもできません。アップロードは判定の**後**に走るの
+で、失敗してもログに記録するだけで pass/fail は変わりません。`BAJUTSU_EVIDENCE_STORE` が未設定なら、ワーカーは
+問い合わせるだけで何もアップロードしません。
 
 ### 複数 org
 

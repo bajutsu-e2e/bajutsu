@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import base64
+import html
 import json
 from pathlib import Path
 
@@ -32,6 +34,54 @@ def test_redact_text_masks_known_keys() -> None:
     # untouched: non-secret content and keys
     assert '"keep":"ok"' in out
     assert "page=2" in out and "nothing here" in out
+
+
+def test_redact_text_masks_percent_encoded_secret_value() -> None:
+    # BE-0153: a secret carried as a URL query / form field is percent-encoded, so its
+    # literal bytes never appear — the encoded form must be masked too.
+    red = Redactor(Redact(), values=["s3cr@t/v!"])
+    out = red.redact_text(
+        "GET /login?token=s3cr%40t/v%21 HTTP/1.1\n"  # quote (default safe='/')
+        "body: token=s3cr%40t%2Fv%21\n"  # quote_plus / safe=''
+        "literal: s3cr@t/v!\n"
+    )
+    assert "s3cr%40t/v%21" not in out
+    assert "s3cr%40t%2Fv%21" not in out
+    assert "s3cr@t/v!" not in out
+    assert out.count(PLACEHOLDER) == 3
+
+
+def test_redact_text_masks_basic_auth_base64_secret_value() -> None:
+    # BE-0153: HTTP Basic auth sends base64(user:pass); the literal password never appears
+    # in the header text, only its base64-joined form — so a `Basic ...` token echoed into a
+    # log or body (where header-name masking does not reach) must be decoded and masked.
+    token = base64.b64encode(b"admin:hunter2").decode()
+    red = Redactor(Redact(), values=["hunter2"])
+    # The same secret appears both base64-encoded in the token and as a plain literal; the
+    # Basic-auth decode and the literal-value pass must both fire without corrupting each other.
+    out = red.redact_text(
+        f"curl -H 'Authorization: Basic {token}' https://api.example.com\nlogged password: hunter2\n"
+    )
+    assert token not in out
+    assert "hunter2" not in out
+    assert f"Authorization: Basic {PLACEHOLDER}" in out
+    # A Basic token that decodes to no known secret is left legible.
+    other = base64.b64encode(b"guest:public").decode()
+    assert other in red.redact_text(f"Authorization: Basic {other}\n")
+
+
+def test_redact_text_masks_html_and_json_escaped_secret_value() -> None:
+    # BE-0153: a secret embedded in an HTML attribute or a JSON string is escaped, so its
+    # raw bytes never appear — the escaped forms must be masked too.
+    value = 'a<b"c&d'
+    red = Redactor(Redact(), values=[value])
+    html_form = html.escape(value)  # a&lt;b&quot;c&amp;d
+    json_form = json.dumps(value)[1:-1]  # a<b\"c&d
+    out = red.redact_text(f'<input value=\'{html_form}\'>\n{{"note":"{json_form}"}}\n')
+    assert html_form not in out
+    assert json_form not in out
+    assert value not in out
+    assert out.count(PLACEHOLDER) == 2
 
 
 def test_redact_exchange_masks_headers_url_and_body() -> None:

@@ -1,4 +1,4 @@
-"""Provenance display grouping (bajutsu/provenance.py, BE-0044).
+"""Provenance display grouping (bajutsu/from_grouping.py, BE-0044).
 
 Pure: given each step's `from:` in order, decide where to *show* the label so a run of identical
 consecutive values is labeled once (the emergent grouping BE-0044 specifies). No I/O, no scenario.
@@ -6,7 +6,7 @@ consecutive values is labeled once (the emergent grouping BE-0044 specifies). No
 
 from __future__ import annotations
 
-from bajutsu.provenance import grouped_provenance
+from bajutsu.from_grouping import grouped_provenance
 
 
 def test_consecutive_equal_values_are_labeled_once() -> None:

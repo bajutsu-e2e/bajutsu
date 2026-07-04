@@ -7,8 +7,9 @@
 |---|---|
 | 提案 | [BE-0114](BE-0114-driver-conformance-suite-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **提案** |
+| 状態 | **実装中** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0114") |
+| 実装 PR | [#632](https://github.com/bajutsu-e2e/bajutsu/pull/632) |
 | トピック | プラットフォーム拡張（Android / Web / Flutter） |
 | 関連 | [BE-0009](../BE-0009-cross-platform-abstractions/BE-0009-cross-platform-abstractions-ja.md), [BE-0042](../BE-0042-platform-backend-registry/BE-0042-platform-backend-registry-ja.md), [BE-0082](../BE-0082-capability-preflight-check/BE-0082-capability-preflight-check-ja.md), [BE-0019](../BE-0019-xcuitest-backend/BE-0019-xcuitest-backend-ja.md), [BE-0007](../BE-0007-android-backend/BE-0007-android-backend-ja.md) |
 <!-- /BE-METADATA -->
@@ -105,11 +106,18 @@ preflight と結び付けます）、conformance の契約を、新しい backen
 > 作業分解（作業の単位ごとに 1 つ）に対応し、ログには変更内容と時期（古い順）を PR へのリンクと
 > ともに記録します。
 
-- [ ] backend 非依存の契約を列挙する（曖昧 / 0 件 / `capabilities()` / 待機 / 証跡の不変条件）
-- [ ] `Driver` の界面に対して parametrize した conformance suite を作る
-- [ ] FakeDriver を高速な Linux ゲート（`make check`）で走らせ、Playwright は別の web CI ジョブで走らせる
+- [x] backend 非依存の契約を列挙する（曖昧 / 0 件 / `capabilities()` / 待機 / 証跡の不変条件）
+- [x] `Driver` の界面に対して parametrize した conformance suite を作る
+- [ ] FakeDriver を高速な Linux ゲート（`make check`）で走らせ、Playwright は別の web CI ジョブで走らせる — *FakeDriver は完了、Playwright の web CI は未着手*
 - [ ] idb と XCUITest をオンデバイスの E2E 経路で走らせる（同じスイート）
-- [ ] `capabilities()` の適合を検査し、契約を新しい backend の「完了」定義として文書化する
+- [x] `capabilities()` の適合を検査し、契約を新しい backend の「完了」定義として文書化する
+
+ログ:
+
+- 2026-07-04: 第 1 スライス。実行可能な契約（`tests/driver_conformance.py`）と FakeDriver の
+  conformance suite（`tests/test_driver_conformance.py`）を高速な Linux ゲートに載せ、契約を
+  `docs/architecture.md` に文書化しました。Playwright（web CI）と idb / XCUITest（オンデバイス
+  E2E）はこの項目で追跡します。
 
 ## 参考
 

@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0135](BE-0135-module-naming-debt.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0135") |
+| Implementing PR | [#640](https://github.com/bajutsu-e2e/bajutsu/pull/640) |
 | Topic | Codebase quality & technical debt |
 | Related | [BE-0063](../BE-0063-git-config-source/BE-0063-git-config-source.md), [BE-0044](../BE-0044-scenario-provenance/BE-0044-scenario-provenance.md) |
 <!-- /BE-METADATA -->
@@ -125,22 +126,24 @@ found not to need one, so a future reader doesn't re-raise the same question.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Rename `bajutsu/env.py` → `bajutsu/simctl.py`.
-- [ ] Rename `bajutsu/environment.py` → `bajutsu/lifecycle.py` (name coordinated with the sibling `Lifecycle` Protocol item).
-- [ ] Confirm `bajutsu/dotenv.py` and `bajutsu/config_source.py` need no rename (documented, no action).
-- [ ] Rename `bajutsu/capture.py` → `bajutsu/record_capture.py`.
-- [ ] Rename `bajutsu/provenance.py` → `bajutsu/from_grouping.py`.
+- [x] Rename `bajutsu/env.py` → `bajutsu/simctl.py`.
+- [x] Rename `bajutsu/environment.py` → `bajutsu/platform_lifecycle.py` — chose `platform_lifecycle.py` over the bare `lifecycle.py` to leave the `Lifecycle` Protocol name free for the sibling [BE-0141](../BE-0141-backend-lifecycle-protocol/BE-0141-backend-lifecycle-protocol.md) (still a proposal, so this item lands first).
+- [x] Confirm `bajutsu/dotenv.py` and `bajutsu/config_source.py` need no rename (documented, no action).
+- [x] Rename `bajutsu/capture.py` → `bajutsu/record_capture.py`.
+- [x] Rename `bajutsu/provenance.py` → `bajutsu/from_grouping.py`.
 
-No PR has landed yet.
+Log:
+
+- All four renames landed together as a pure `git mv` + import-path update with no behavior change. The mirror test files were renamed to match (`test_env.py` → `test_simctl.py`, `test_capture.py` → `test_record_capture.py`, `test_provenance.py` → `test_from_grouping.py`, `test_environment_seam.py` → `test_platform_lifecycle_seam.py`), the `simctl` module was aliased as `_simctl` in the three `serve` files whose injectable runner parameter is itself named `simctl`, and the documented references in `docs/` (both languages), `DESIGN.md`, and the one live link in [BE-0038](../BE-0038-autonomous-crawl-exploration/BE-0038-autonomous-crawl-exploration.md) were updated in step.
 
 ## References
 
-- `bajutsu/env.py:1-5` — module docstring: the `simctl` command-builder wrapper.
-- `bajutsu/environment.py:1-11` — module docstring: the per-platform `Environment` Protocol.
+- `bajutsu/simctl.py:1-5` (was `bajutsu/env.py`) — module docstring: the `simctl` command-builder wrapper.
+- `bajutsu/platform_lifecycle.py:1-11` (was `bajutsu/environment.py`) — module docstring: the per-platform `Environment` Protocol.
 - `bajutsu/dotenv.py:1-7` — module docstring: the `.env` loader.
 - `bajutsu/config_source.py:1-11` — module docstring: Git config acquisition (BE-0063).
-- `bajutsu/capture.py:1-5` — module docstring: record-time action capture (BE-0012).
-- `bajutsu/provenance.py:1-7` — module docstring: `from:` display grouping (BE-0044).
+- `bajutsu/record_capture.py:1-5` (was `bajutsu/capture.py`) — module docstring: record-time action capture (BE-0012).
+- `bajutsu/from_grouping.py:1-7` (was `bajutsu/provenance.py`) — module docstring: `from:` display grouping (BE-0044).
 - `bajutsu/audit.py:351,368,374,383,393`, `bajutsu/config_source.py:127-128`,
   `bajutsu/idb_version.py:7,31,95` — other, unrelated uses of "provenance" elsewhere in the
   codebase that `provenance.py`'s name collides with.

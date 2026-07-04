@@ -11,8 +11,8 @@ from pathlib import Path
 
 import typer
 
-from bajutsu import env as _env
 from bajutsu import github
+from bajutsu import simctl as _simctl
 from bajutsu import usage as _usage
 from bajutsu.anthropic_client import credential_gap
 from bajutsu.anthropic_client import key_env as ac_key_env
@@ -474,7 +474,7 @@ def _dispatch(plan: _RunPlan) -> tuple[list[RunResult], Path]:
         if len(plan.engines) > 1:
             return _dispatch_matrix(plan, progress_fn, exec_decision)
         return _dispatch_single(plan, progress_fn, exec_decision)
-    except _env.DeviceError as e:
+    except _simctl.DeviceError as e:
         typer.echo(str(e))
         raise typer.Exit(2) from None
     finally:
@@ -822,7 +822,7 @@ def run(
     actuator, backends = _select_actuator(backend, eff, engines)
     # Web has no simctl udid: `--workers N` is N near-free BrowserContext lanes (BE-0054); for idb,
     # `--udid` is a concrete comma list capped to the pool size. (The "booted" default is unused on web.)
-    udids, workers = _resolve_lanes(actuator, udid, workers, _env.resolve_udid)
+    udids, workers = _resolve_lanes(actuator, udid, workers, _simctl.resolve_udid)
     _apply_dismiss_alerts(scenarios, dismiss_alerts)
     on_blocked_for = _alert_guard_factory(scenarios, eff, alert_instruction)
     _apply_mocks(scenarios, network)

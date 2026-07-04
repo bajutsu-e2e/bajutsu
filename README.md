@@ -291,7 +291,7 @@ bajutsu/
 ├── visual.py             # visual-regression image comparison
 ├── redaction.py          # mask secrets in captured evidence
 ├── config.py             # team defaults × per-target resolution (iOS bundleId / web baseUrl)
-├── env.py                # simctl command layer (iOS environment)
+├── simctl.py             # simctl command layer (iOS environment)
 ├── preflight.py          # environment runnability gate for doctor / CI
 ├── doctor.py             # convention score
 ├── agent.py · agents.py  # authoring Agent abstraction + backend selection (Tier 1)

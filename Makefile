@@ -1,4 +1,4 @@
-.PHONY: setup hooks deps deps-check serve worktree preflight test lint lint-docstrings format format-check typecheck \
+.PHONY: setup hooks deps deps-check serve worktree preflight test lint lint-docstrings lint-imports format format-check typecheck \
         lock-check lint-sh lint-actions lint-roadmap lint-pr check new-roadmap-item roadmap-index \
         roadmap-dashboard docs docs-serve
 
@@ -61,7 +61,7 @@ SHELL_SCRIPTS := .githooks/pre-push .githooks/commit-msg scripts/serve.sh script
 # Modules whose public surface has migrated to the Google-style docstring standard (BE-0065),
 # enforced by `lint-docstrings`. This list GROWS module-by-module as more migrate; keep it the
 # allowlist (not an ignore list) so an unmigrated module never accidentally falls under the gate.
-DOCSTRING_PATHS := bajutsu/drivers bajutsu/assertions.py bajutsu/network.py bajutsu/runner bajutsu/scenario bajutsu/mcp bajutsu/cli bajutsu/doctor.py bajutsu/audit.py bajutsu/coverage.py bajutsu/trace.py bajutsu/triage.py bajutsu/report bajutsu/evidence.py bajutsu/idb_version.py bajutsu/intervals.py bajutsu/redaction.py bajutsu/config.py bajutsu/config_source.py bajutsu/codegen.py bajutsu/codegen_common.py bajutsu/codegen_playwright.py bajutsu/backends.py bajutsu/capability_preflight.py bajutsu/crawl.py bajutsu/crawl_guide.py bajutsu/crawl_tabs.py bajutsu/agent.py bajutsu/agents.py bajutsu/claude_agent.py bajutsu/claude_code_agent.py bajutsu/claude_triage.py bajutsu/alerts.py bajutsu/anthropic_client.py bajutsu/record.py bajutsu/visual.py bajutsu/web_network.py bajutsu/provenance.py
+DOCSTRING_PATHS := bajutsu/drivers bajutsu/assertions.py bajutsu/network.py bajutsu/runner bajutsu/scenario bajutsu/mcp bajutsu/cli bajutsu/doctor.py bajutsu/audit.py bajutsu/coverage.py bajutsu/trace.py bajutsu/triage.py bajutsu/report bajutsu/evidence.py bajutsu/idb_version.py bajutsu/intervals.py bajutsu/redaction.py bajutsu/config.py bajutsu/config_source.py bajutsu/codegen.py bajutsu/codegen_common.py bajutsu/codegen_playwright.py bajutsu/backends.py bajutsu/capability_preflight.py bajutsu/crawl.py bajutsu/crawl_guide.py bajutsu/crawl_tabs.py bajutsu/agent.py bajutsu/agents.py bajutsu/claude_agent.py bajutsu/claude_code_agent.py bajutsu/claude_triage.py bajutsu/alerts.py bajutsu/anthropic_client.py bajutsu/record.py bajutsu/visual.py bajutsu/web_network.py bajutsu/from_grouping.py
 
 # Run the suite with a coverage floor — a regression that quietly drops coverage fails the gate.
 # The JSON report is a gitignored side artifact CI renders into its job summary (scripts/coverage_summary.py).
@@ -78,6 +78,13 @@ lint:
 # (magic methods / __init__) are noise. The google convention is set in pyproject's pydocstyle.
 lint-docstrings:
 	uv run ruff check --select D --ignore D102,D105,D107 $(DOCSTRING_PATHS)
+
+# BE-0112: enforce the core / contract / periphery layer model as a static import contract
+# ([tool.importlinter] in pyproject). Fails when a deterministic-core module imports the periphery,
+# keeping the verdict/evidence path free of the serve / AI / codegen stacks. Static analysis on the
+# import graph — no Simulator, no model, nothing on the run/CI verdict path (prime directives 1 & 3).
+lint-imports:
+	uv run lint-imports
 
 # Apply the formatter; `format-check` (in the gate) only verifies, never rewrites.
 format:
@@ -137,7 +144,7 @@ roadmap-index:
 # The full gate. CI (.github/workflows/ci.yml) mirrors these steps so "green locally"
 # predicts "green in CI". The uv-native checks run identically everywhere; actionlint is
 # the lone exception (see lint-actions above).
-check: hooks format-check lint lint-docstrings lint-sh lint-actions lint-roadmap lock-check typecheck test
+check: hooks format-check lint lint-docstrings lint-imports lint-sh lint-actions lint-roadmap lock-check typecheck test
 
 # Generated API reference (BE-0065). Deliberately NOT in `check`: like on-device E2E, the
 # reference build is a separate, heavier path (it pulls the `docs` extra) and must not slow the

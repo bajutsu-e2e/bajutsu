@@ -16,6 +16,7 @@ import pytest
 from bajutsu.object_store import (
     S3ObjectStore,
     StoreURI,
+    evidence_target_from_uri,
     object_store_from_uri,
     upload_tree,
 )
@@ -112,3 +113,15 @@ def test_from_uri_names_the_install_command_when_the_sdk_is_missing(
     monkeypatch.setitem(sys.modules, "boto3", None)  # force `import boto3` to raise
     with pytest.raises(ImportError, match="uv sync --extra s3"):
         object_store_from_uri(StoreURI(backend="s3", bucket="b", prefix=""))
+
+
+def test_evidence_target_from_uri_builds_the_store_and_normalizes_the_prefix() -> None:
+    # The serve control plane resolves --evidence-store to a credentialed store + normalized prefix.
+    target = evidence_target_from_uri("s3://my-bucket/evidence")
+    assert isinstance(target.store, S3ObjectStore)
+    assert target.base_prefix == "evidence/"
+
+
+def test_evidence_target_from_uri_rejects_a_malformed_uri() -> None:
+    with pytest.raises(ValueError, match="s3://bucket/prefix or gs://bucket/prefix"):
+        evidence_target_from_uri("not-a-uri")

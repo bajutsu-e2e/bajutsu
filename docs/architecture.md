@@ -84,7 +84,7 @@ The `bajutsu/` package (Python 3.13+, pydantic v2 / typer / anthropic / pyyaml /
 | `interp.py` | `${ns.key}` interpolation primitive (`params.` / `row.` / `secrets.` / `vars.`) | [scenarios](scenarios.md) |
 | `config.py` | Team defaults × per-target resolution (`Effective`) | [configuration](configuration.md) |
 | `backends.py` | Backend availability check · actuator selection (platform-aware registry: `ios` / `web` / `fake`) · driver construction | [drivers](drivers.md#backend-selection-and-the-actuator) |
-| `env.py` | `simctl` wrapper (erase/boot/launch/openurl/io) | [drivers](drivers.md#environment-management-simctl) |
+| `simctl.py` | `simctl` wrapper (erase/boot/launch/openurl/io) | [drivers](drivers.md#environment-management-simctl) |
 | `preflight.py` | Runnability gate, per backend (iOS: required CLIs + a booted Simulator; web: Playwright + its Chromium browser) | [configuration](configuration.md) |
 | `runner/` | config + scenarios → report; device pool + launch sequence (package: `pipeline` / `pool` / `launch`) | [run-loop](run-loop.md#runner-the-run-pipeline) |
 | `doctor.py` | Convention score (id coverage, etc.) | [configuration](configuration.md#doctor-the-convention-score) |
@@ -122,7 +122,7 @@ Lower layers are more stable; upper layers depend on lower ones. The core is `dr
    ┌────┼────────┬────────┘
 assertions.py  evidence.py ── intervals.py · network.py · visual.py · redaction.py
         │         │
-   scenario/    report/      config.py · preflight.py   backends.py   env.py
+   scenario/    report/      config.py · preflight.py   backends.py   simctl.py
         │ (interp.py)             │              │            │
         └──────────────┬─────────────┴──────────────┴────────────┘
                        ▼
@@ -140,12 +140,75 @@ assertions.py  evidence.py ── intervals.py · network.py · visual.py · red
 - `scenario/` (the pydantic authoring model) and `drivers/base.py` (the runtime TypedDict)
   are different things. `Selector.as_selector()` converts the former to the latter.
 
+### Enforced layer boundaries (BE-0112)
+
+The layering above is not only a convention — it is an **executable contract in the gate**.
+`make lint-imports` (part of `make check`, and a CI step) runs [import-linter](https://import-linter.readthedocs.io/)
+against the declared layers, so a forbidden import fails the gate instead of surviving until someone
+notices. The configuration lives in `[tool.importlinter]` in `pyproject.toml`. Three layers are
+declared:
+
+1. **Deterministic core** — the path that derives a verdict and evidence with no model and no
+   periphery stack: `orchestrator/`, `runner/`, `drivers/base.py`, `assertions.py`, `evidence.py`,
+   `report/`, `config.py`, `scenario/`, `preflight.py` / `capability_preflight.py` /
+   `capabilities.py`, `doctor.py`, `lint.py`. It carries the prime directives.
+2. **Contract** — the stable surfaces a consumer depends on: the scenario schema (`scenario/`) and
+   the `Driver` Protocol (`drivers/base.py`).
+3. **Periphery** — the consumers of the contract, each removable behind an optional extra:
+   `serve/`, `mcp/`, the codegen emitters, the AI / agent paths (`agent.py`, `anthropic_client.py`,
+   `record.py`, `enrich.py`, `triage.py`, `crawl_guide.py`, …), and the `github.py` / `notify.py` /
+   `alerts.py` helpers.
+
+Two contracts are enforced:
+
+- **The deterministic core must not import the periphery.** This is prime directives #1 and #3 as a
+  static contract: the verdict/evidence path stays free of the serve, AI and codegen stacks, and
+  cannot silently grow a dependency on them. A pure element-tree helper a core module needs (e.g.
+  `screen_size_from_elements`, `shows_app_ui`) lives in the core (`bajutsu/elements.py`), not in a
+  periphery module such as `record.py`; likewise the resolved `ai` block (`AiConfig`) lives in
+  `config.py`, so the core reads it without importing the AI client.
+- **The scenario schema and `Driver` Protocol stay a portable inner contract** — independent of the
+  runtime core (`orchestrator/`, `runner/`, `config.py`, …) as well as the periphery. This keeps the
+  contract a stable layer a consumer can depend on without pulling the runtime, underpinning
+  cross-version schema reads (BE-0119) and any future split of the periphery from the core.
+
+The check is static analysis on the import graph — no model, nothing on the `run` / CI verdict path
+beyond a deterministic pass/fail. When a new module is added, its layer decides where it belongs: if
+it is on the verdict/evidence path it is core and must not reach the periphery; if it consumes the
+contract it is periphery and belongs behind an extra.
+
 ## Test layout
 
 `tests/` holds the **unit-test suite** (`uv run pytest -q`). None require a real Simulator: command
 builders are verified as pure functions, and execution paths are tested with `FakeDriver` /
 injected runners (`RunFn` · `Spawn` · `Clock`). Real-device E2E against the showcase app is
 `make -C demos/showcase run-swiftui` / `make -C demos/showcase ui-test` ([showcase](showcase.md)).
+
+### Driver conformance suite (BE-0114)
+
+Prime directive #3 says every backend sits behind one `Driver` interface, so the determinism-core
+invariants must hold identically on all of them. Per-backend tests alone cannot guarantee that: a
+backend that tapped the first match on an ambiguous selector, or returned success on a zero-match,
+would pass its own tests and fail no shared one. The **driver conformance suite** closes that gap —
+one executable contract (a TCK, a technology compatibility kit) that runs the *same* test body
+against every backend, driving the real driver instance (including code that bypasses
+`drivers/base`), not the shared base alone.
+
+The contract (`tests/driver_conformance.py`) is the "done" definition a new backend meets:
+
+- an ambiguous selector (2+ matches) fails rather than acting on the first match;
+- a zero-match selector fails rather than reporting success;
+- selector failures share one error type (`SelectorError`), uniform across backends;
+- a unique match acts without error, and `query()` reports the on-screen elements;
+- `capabilities()` matches observed behavior — the `QUERY` / `ELEMENTS` baseline is declared, and
+  multi-touch gestures work exactly when `MULTI_TOUCH` is declared (else raise `UnsupportedAction`);
+- `wait_for` is a single-shot check of the current screen, with the shared `wait_until` loop
+  turning it into a condition wait with no fixed sleep.
+
+To add a backend to the suite, implement a `ConformanceHarness` (given a screen, return a driver
+showing it) and subclass `DriverConformanceContract`; pytest then runs the inherited contract
+against it. `FakeDriver` runs on the fast Linux gate (`make check`); Playwright runs in the web CI
+job and idb / XCUITest under the on-device E2E path — the same contract, no second spec.
 
 ---
 

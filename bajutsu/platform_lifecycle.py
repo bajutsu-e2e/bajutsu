@@ -24,7 +24,7 @@ from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import Protocol, cast, runtime_checkable
 
-from bajutsu import env
+from bajutsu import simctl
 from bajutsu.backends import make_driver
 from bajutsu.config import Effective
 from bajutsu.crawl import AliveCheck, ClearBlocking, Recover, Reset
@@ -129,13 +129,13 @@ class _DeviceEnvironment:
     method (catalog, relaunch, control, teardown, the external-receiver network strategy) lives here.
     """
 
-    def __init__(self, actuator: str, udid: str, env_run: env.RunFn = env._real_run) -> None:
+    def __init__(self, actuator: str, udid: str, env_run: simctl.RunFn = simctl._real_run) -> None:
         self._actuator = actuator
         self._udid = udid
         self._run = env_run
 
     def device_catalog(self) -> dict[str, dict[str, str]]:
-        return env.device_catalog(self._run)
+        return simctl.device_catalog(self._run)
 
     def observes_network_via_driver(self) -> bool:
         return False  # the app reports to an external collector via BAJUTSU_COLLECTOR
@@ -160,24 +160,26 @@ class _DeviceEnvironment:
         return device_control(self._udid, eff.bundle_id, self._run)
 
     def teardown(self, driver: base.Driver, eff: Effective) -> None:
-        env.Env(self._udid, run=self._run).terminate(eff.bundle_id)
+        simctl.Env(self._udid, run=self._run).terminate(eff.bundle_id)
 
     def has_devices(self) -> bool:
         return True
 
     def plan_lanes(self, udid_arg: str, workers: int) -> list[str]:
-        udids = [env.resolve_udid(u.strip(), self._run) for u in udid_arg.split(",") if u.strip()]
+        udids = [
+            simctl.resolve_udid(u.strip(), self._run) for u in udid_arg.split(",") if u.strip()
+        ]
         return udids[: max(1, min(workers, len(udids)))]
 
     def crawl_reset(self, eff: Effective) -> Reset:
         # Return to a clean start the way `run` reaches any state: relaunch (not a full erase) so each
         # frontier revisit stays fast; the engine then replays the shortest path from the entry.
-        e = env.Env(self._udid, run=self._run)
+        e = simctl.Env(self._udid, run=self._run)
 
         def reset(driver: base.Driver) -> None:
             e.terminate(eff.bundle_id)
             e.launch(
-                eff.bundle_id, [*eff.launch_args, *env.locale_args(eff.locale)], eff.launch_env
+                eff.bundle_id, [*eff.launch_args, *simctl.locale_args(eff.locale)], eff.launch_env
             )
             _await_ready(driver, ready_sel=eff.ready_when)
 
@@ -197,7 +199,7 @@ class IosEnvironment(_DeviceEnvironment):
     """The iOS Simulator lifecycle via `simctl` (the idb backend's environment).
 
     `erase` needs a shut-down device, so an erase run shuts down first (shutdown → erase → boot);
-    any `simctl` step that fails is surfaced as a clean `env.DeviceError` so the CLI exits 2 instead
+    any `simctl` step that fails is surfaced as a clean `simctl.DeviceError` so the CLI exits 2 instead
     of dumping a traceback.
     """
 
@@ -209,7 +211,7 @@ class IosEnvironment(_DeviceEnvironment):
         extra_env: Mapping[str, str] | None = None,
         record_video_dir: Path | None = None,
     ) -> base.Driver:
-        e = env.Env(self._udid, run=self._run)
+        e = simctl.Env(self._udid, run=self._run)
         try:
             if pre.erase:
                 e.shutdown()  # erase only works on a shut-down device
@@ -220,7 +222,7 @@ class IosEnvironment(_DeviceEnvironment):
             # installs over the existing app. After an `erase` the app is gone, so skip the uninstall.
             if eff.app_path:
                 if not Path(eff.app_path).exists():
-                    raise env.DeviceError(
+                    raise simctl.DeviceError(
                         f"appPath not found: {eff.app_path} (build the app first)"
                     )
                 if pre.reinstall == "clean" and not pre.erase:
@@ -235,13 +237,13 @@ class IosEnvironment(_DeviceEnvironment):
             locale = pre.locale or eff.locale  # scenario locale overrides the app/config default
             e.launch(
                 eff.bundle_id,
-                [*eff.launch_args, *pre.launch_args, *env.locale_args(locale)],
+                [*eff.launch_args, *pre.launch_args, *simctl.locale_args(locale)],
                 launch_env,
             )
             if pre.deeplink is not None:
                 e.openurl(pre.deeplink)
         except subprocess.CalledProcessError as exc:
-            raise env.device_error(exc) from exc
+            raise simctl.device_error(exc) from exc
         return make_driver(self._actuator, self._udid)
 
 
@@ -264,7 +266,7 @@ class WebEnvironment:
         record_video_dir: Path | None = None,
     ) -> base.Driver:
         if not eff.base_url:
-            raise env.DeviceError("web backend requires baseUrl (set apps.<app>.baseUrl)")
+            raise simctl.DeviceError("web backend requires baseUrl (set apps.<app>.baseUrl)")
         driver = make_driver(
             self._actuator,
             "",
@@ -392,7 +394,7 @@ class XcuitestEnvironment(_DeviceEnvironment):
     `XcuitestDriver` channel.
     """
 
-    def __init__(self, actuator: str, udid: str, env_run: env.RunFn = env._real_run) -> None:
+    def __init__(self, actuator: str, udid: str, env_run: simctl.RunFn = simctl._real_run) -> None:
         super().__init__(actuator, udid, env_run)
         self._runner_proc: subprocess.Popen[bytes] | None = None
         self._runner_port: int = 0
@@ -406,7 +408,7 @@ class XcuitestEnvironment(_DeviceEnvironment):
         extra_env: Mapping[str, str] | None = None,
         record_video_dir: Path | None = None,
     ) -> base.Driver:
-        e = env.Env(self._udid, run=self._run)
+        e = simctl.Env(self._udid, run=self._run)
         try:
             if pre.erase:
                 e.shutdown()
@@ -414,14 +416,14 @@ class XcuitestEnvironment(_DeviceEnvironment):
             e.boot()
             if eff.app_path:
                 if not Path(eff.app_path).exists():
-                    raise env.DeviceError(
+                    raise simctl.DeviceError(
                         f"appPath not found: {eff.app_path} (build the app first)"
                     )
                 if pre.reinstall == "clean" and not pre.erase:
                     e.uninstall(eff.bundle_id)
                 e.install(eff.app_path)
         except subprocess.CalledProcessError as exc:
-            raise env.device_error(exc) from exc
+            raise simctl.device_error(exc) from exc
 
         # The runner launches the app via XCUIApplication.launch(). Preconditions are forwarded
         # through env vars: the runner reads BAJUTSU_LAUNCH_ENV_* and sets them on
@@ -432,11 +434,11 @@ class XcuitestEnvironment(_DeviceEnvironment):
             **(extra_env or {}),
         }
         locale = pre.locale or eff.locale
-        launch_args = [*eff.launch_args, *pre.launch_args, *env.locale_args(locale)]
+        launch_args = [*eff.launch_args, *pre.launch_args, *simctl.locale_args(locale)]
 
         xcfg = eff.xcuitest
         if xcfg is None or xcfg.test_runner is None:
-            raise env.DeviceError(
+            raise simctl.DeviceError(
                 "xcuitest backend requires xcuitest.testRunner in the target config"
             )
         runner_path = xcfg.test_runner
@@ -445,9 +447,11 @@ class XcuitestEnvironment(_DeviceEnvironment):
                 try:
                     subprocess.run(shlex.split(xcfg.build), check=True)
                 except (subprocess.CalledProcessError, OSError) as exc:
-                    raise env.DeviceError(f"xcuitest build command failed: {xcfg.build}") from exc
+                    raise simctl.DeviceError(
+                        f"xcuitest build command failed: {xcfg.build}"
+                    ) from exc
             if not Path(runner_path).exists():
-                raise env.DeviceError(f"xcuitest testRunner not found: {runner_path}")
+                raise simctl.DeviceError(f"xcuitest testRunner not found: {runner_path}")
 
         self._runner_port = _allocate_port()
         forwarded = {
@@ -480,7 +484,7 @@ class XcuitestEnvironment(_DeviceEnvironment):
                 stderr=subprocess.DEVNULL,
             )
         except OSError as exc:
-            raise env.DeviceError(f"failed to start xcodebuild: {exc}") from exc
+            raise simctl.DeviceError(f"failed to start xcodebuild: {exc}") from exc
 
         driver = make_driver(self._actuator, self._udid, runner_port=self._runner_port)
         driver.await_ready()  # type: ignore[attr-defined]  # xcuitest-only lifecycle
@@ -524,7 +528,9 @@ def _patch_xctestrun_env(runner_path: Path, forwarded: Mapping[str, str]) -> Pat
     return Path(path)
 
 
-def environment_for(actuator: str, udid: str, env_run: env.RunFn = env._real_run) -> Environment:
+def environment_for(
+    actuator: str, udid: str, env_run: simctl.RunFn = simctl._real_run
+) -> Environment:
     """The `Environment` for *actuator* — the seam that ends per-actuator branching in the runner."""
     if actuator == "playwright":
         return WebEnvironment(actuator)
@@ -593,7 +599,7 @@ def _web_relauncher(driver: base.Driver, ready_sel: base.Selector | None = None)
 
 
 def device_relauncher(
-    udid: str, env_run: env.RunFn = env._real_run, extra_env: Mapping[str, str] | None = None
+    udid: str, env_run: simctl.RunFn = simctl._real_run, extra_env: Mapping[str, str] | None = None
 ) -> RelaunchFactory:
     """A relauncher factory for the `relaunch` step.
 
@@ -610,7 +616,7 @@ def device_relauncher(
     Returns:
         A factory that, given a scenario + driver, yields that scenario's `relaunch` function.
     """
-    e = env.Env(udid, run=env_run)
+    e = simctl.Env(udid, run=env_run)
 
     def for_scenario(eff: Effective, scenario: Scenario, driver: base.Driver) -> RelaunchFn:
         pre = scenario.preconditions
@@ -628,7 +634,7 @@ def device_relauncher(
                 *eff.launch_args,
                 *pre.launch_args,
                 *(opts.args or []),
-                *env.locale_args(locale),
+                *simctl.locale_args(locale),
             ]
             e.launch(eff.bundle_id, launch_args, launch_env)
             _await_ready(driver, ready_sel=eff.ready_when)
@@ -638,7 +644,9 @@ def device_relauncher(
     return for_scenario
 
 
-def device_control(udid: str, bundle_id: str, env_run: env.RunFn = env._real_run) -> DeviceControl:
+def device_control(
+    udid: str, bundle_id: str, env_run: simctl.RunFn = simctl._real_run
+) -> DeviceControl:
     """A `DeviceControl` bound to one device.
 
     Backs the `setLocation` / `push` / `clearKeychain` / `clearClipboard` / `setClipboard` /
@@ -650,7 +658,7 @@ def device_control(udid: str, bundle_id: str, env_run: env.RunFn = env._real_run
         bundle_id: The app the control acts on (e.g. for `push` / `foreground`).
         env_run: The subprocess runner for simctl, injectable for tests.
     """
-    e = env.Env(udid, run=env_run)
+    e = simctl.Env(udid, run=env_run)
 
     class _Control:
         def set_location(self, lat: float, lon: float) -> None:
