@@ -65,8 +65,12 @@ class ConformanceHarness(Protocol):
     backend: str
 
     def with_screen(self, elements: list[base.Element]) -> base.Driver:
-        """Return a driver whose `query()` reports exactly `elements`."""
-        ...
+        """Return a driver whose `query()` reports at least `elements`.
+
+        A real backend may also surface chrome or container elements it was not asked to
+        seed (a browser document, an app's navigation bar), so the contract requires the
+        seeded elements to be present, not that the screen equals them exactly.
+        """
 
 
 class DriverConformanceContract:

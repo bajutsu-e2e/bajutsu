@@ -405,7 +405,7 @@ Web（Playwright）backend とその完成（リッチな capability、並列実
 | ID | 項目 | 状態 |
 |---|---|---|
 | [BE-0007](BE-0007-android-backend/BE-0007-android-backend-ja.md) | Android backend | 実装中 |
-| [BE-0114](in-progress/BE-0114-driver-conformance-suite/BE-0114-driver-conformance-suite-ja.md) | backend 非依存の挙動を検査する driver conformance suite | 実装中 |
+| [BE-0114](BE-0114-driver-conformance-suite/BE-0114-driver-conformance-suite-ja.md) | backend 非依存の挙動を検査する driver conformance suite | 実装中 |
 <!-- /GENERATED:in-progress-platform -->
 
 ### 競合調査（MagicPod / Autify）由来の候補
