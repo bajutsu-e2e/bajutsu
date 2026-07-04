@@ -57,8 +57,11 @@ class DbSecretStore:
                 )
             else:  # overwrite in place — rotating a key never needs to read the old one back
                 row.ciphertext = ciphertext
-                row.updated_by = updated_by
                 row.updated_at = datetime.now(UTC)
+                # Keep the last known writer when this caller has no identity (a token/Bearer
+                # request): a rotation by an unidentified caller shouldn't erase the audit trail.
+                if updated_by is not None:
+                    row.updated_by = updated_by
             session.commit()
             return mask_secret(value)
 
@@ -85,4 +88,13 @@ def fernet_from_env() -> Fernet | None:
         return None
     from cryptography.fernet import Fernet
 
-    return Fernet(key.encode("ascii"))
+    try:
+        return Fernet(key.encode("ascii"))
+    except ValueError as e:
+        # Name the offending variable so a malformed key is diagnosable at startup — still fails
+        # loud, just with a message that points at BAJUTSU_SECRETS_KEY rather than a bare Fernet one.
+        raise ValueError(
+            "BAJUTSU_SECRETS_KEY must be a url-safe base64-encoded 32-byte Fernet key "
+            "(generate one with `python3 -c 'from cryptography.fernet import Fernet; "
+            "print(Fernet.generate_key().decode())'`)"
+        ) from e

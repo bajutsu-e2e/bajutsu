@@ -276,7 +276,7 @@ class ServeState:
         self.baselines = LocalBaselineStore(self.baselines_dir)
         # The local secret store holds the value in this process's env; the name->env-var mapping is
         # resolved lazily so a config bound later (its `ai.keyEnv`, BE-0097) is reflected.
-        self.secrets = EnvSecretStore(lambda name: self._env_var_for_secret(name))
+        self.secrets = EnvSecretStore(self._env_var_for_secret)
 
     def org_of(self, actor: str | None) -> str:
         """The org of *actor*, read from their persisted user row (assigned at login). The single

@@ -84,7 +84,15 @@ def test_set_persists_the_updated_by_audit_provenance() -> None:
     with Session(engine) as session:
         row = session.get(Secret, {"org_id": "acme", "name": "aiApiKey"})
         assert row is not None
-        assert row.updated_by == "bob"  # the latest writer wins
+        assert row.updated_by == "bob"  # the latest identified writer wins
+
+    # An overwrite by an unidentified caller (token/Bearer request, no actor) rotates the value but
+    # keeps the last known writer, rather than erasing the audit trail with None.
+    store.set("aiApiKey", "sk-ant-third-33333", updated_by=None)
+    with Session(engine) as session:
+        row = session.get(Secret, {"org_id": "acme", "name": "aiApiKey"})
+        assert row is not None
+        assert row.updated_by == "bob"
 
 
 def test_describe_fails_loud_when_the_key_cannot_decrypt() -> None:
@@ -109,6 +117,14 @@ def test_fernet_from_env_requires_the_key(monkeypatch) -> None:
     assert fernet_from_env() is None
     monkeypatch.setenv("BAJUTSU_SECRETS_KEY", Fernet.generate_key().decode("ascii"))
     assert fernet_from_env() is not None
+
+
+def test_fernet_from_env_rejects_a_malformed_key_with_a_named_error(monkeypatch) -> None:
+    # A malformed key fails loud, but the message names the offending variable so a startup failure
+    # is diagnosable rather than a bare cryptography error.
+    monkeypatch.setenv("BAJUTSU_SECRETS_KEY", "not-a-valid-fernet-key")
+    with pytest.raises(ValueError, match="BAJUTSU_SECRETS_KEY"):
+        fernet_from_env()
 
 
 def test_engine_from_url_is_the_shared_helper() -> None:
