@@ -107,14 +107,21 @@ def _eff() -> Effective:
     return _effective()
 
 
+# Boot the fixture straight into the (empty) conformance screen, not the normal tab app: the
+# launch readiness probe then snapshots a trivial screen (one marker element), which matters for
+# XCUITest — its first snapshot waits for the app to be idle, and quiescing the heavy 5-tab UI on a
+# cold CI Simulator can exceed the channel timeout. `with_screen` reseeds from here as usual.
+_CONFORMANCE_ENV = {"SHOWCASE_CONFORMANCE": ""}
+
+
 @pytest.fixture(scope="module")
 def _idb_driver(_eff: Effective) -> base.Driver:
-    return launch_driver(UDID, _eff, "idb")
+    return launch_driver(UDID, _eff, "idb", extra_env=_CONFORMANCE_ENV)
 
 
 @pytest.fixture(scope="module")
 def _xcuitest_driver(_eff: Effective) -> base.Driver:
-    return launch_driver(UDID, _eff, "xcuitest")
+    return launch_driver(UDID, _eff, "xcuitest", extra_env=_CONFORMANCE_ENV)
 
 
 class TestIdbDriverConformance(DriverConformanceContract):
