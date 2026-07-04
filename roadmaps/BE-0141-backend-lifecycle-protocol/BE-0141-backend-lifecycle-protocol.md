@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0141") |
-| Implementing PR | _pending_ |
+| Implementing PR | [#671](https://github.com/bajutsu-e2e/bajutsu/pull/671) |
 | Topic | Platform expansion (Android / Web / Flutter) |
 | Related | [BE-0009](../BE-0009-cross-platform-abstractions/BE-0009-cross-platform-abstractions.md), [BE-0042](../BE-0042-platform-backend-registry/BE-0042-platform-backend-registry.md), [BE-0007](../BE-0007-android-backend/BE-0007-android-backend.md) |
 <!-- /BE-METADATA -->
@@ -124,7 +124,7 @@ targets a different half of the problem (the missing type versus the awkward cal
 - [x] Evaluate `Environment[D]` generic over the driver type — **not adopted**. The four hooks split disjointly across backends (web owns `navigate`/`close`/`reset_context`, XCUITest owns `await_ready`), and making the `Environment` classes generic would ripple into `environment_for`'s return type and every consumer in the runner/pool — well outside a type-only fix. The opt-in Protocol plus the file's existing `cast(PlaywrightDriver, driver)` idiom keeps the change focused and precise.
 - [x] Confirm `make check` (mypy strict + full test suite) passes with no behavior change.
 
-- 2026-07-05: Added the `@runtime_checkable BackendLifecycle` Protocol, migrated the five call sites, and added Protocol-conformance tests (_pending_).
+- 2026-07-05: Added the `@runtime_checkable BackendLifecycle` Protocol, migrated the five call sites, and added Protocol-conformance tests ([#671](https://github.com/bajutsu-e2e/bajutsu/pull/671)).
 
 ## References
 
