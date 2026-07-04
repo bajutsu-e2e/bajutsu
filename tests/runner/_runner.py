@@ -3,7 +3,10 @@ over it with no per-device resources."""
 
 from __future__ import annotations
 
-from bajutsu.config import Effective
+from dataclasses import replace
+from typing import Any
+
+from bajutsu.config import Effective, IosConfig, WebConfig
 from bajutsu.drivers import base
 from bajutsu.drivers.fake import FakeDriver
 from bajutsu.evidence import NullSink
@@ -14,8 +17,7 @@ from bajutsu.scenario import Redact, Scenario
 def _eff() -> Effective:
     return Effective(
         target="demo",
-        bundle_id="com.example.demo",
-        deeplink_scheme=None,
+        platform_config=IosConfig(bundle_id="com.example.demo"),
         backend=["fake"],
         device="iPhone 15",
         locale="en_US",
@@ -28,6 +30,16 @@ def _eff() -> Effective:
         capture=["screenshot.after"],
         redact=Redact(),
     )
+
+
+def _ios_eff(**kwargs: Any) -> Effective:
+    """`_eff()` with iOS sub-config fields overridden (e.g. `app_path=`, `xcuitest=`)."""
+    return replace(_eff(), platform_config=IosConfig(bundle_id="com.example.demo", **kwargs))
+
+
+def _web_eff(base_url: str | None = "https://app.test") -> Effective:
+    """A web-shaped `_eff()`: a WebConfig on the `web` backend."""
+    return replace(_eff(), platform_config=WebConfig(base_url=base_url), backend=["web"])
 
 
 def _el(identifier: str, label: str, traits: list[str] | None = None) -> base.Element:

@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import atexit
 import os
-from dataclasses import replace
 from pathlib import Path
 
 import typer
@@ -22,8 +21,9 @@ from bajutsu.cli._shared import (
     _require_ai_credential,
     _resolve_browser,
     _warn_onscreen_secrets,
+    _with_headed,
 )
-from bajutsu.config import WEB_ENGINES, Effective
+from bajutsu.config import WEB_ENGINES, Effective, web_engine
 from bajutsu.record import record as record_loop
 from bajutsu.runner import launch_driver
 from bajutsu.runner.launch_server import start_launch_server
@@ -145,8 +145,7 @@ def record(
     """
     eff, _source, checkout_root = _load_effective_with_source(config, target_name)
     # --headed/--no-headed overrides the target's `headless` config (web backend only; iOS ignores it).
-    if headed is not None:
-        eff = replace(eff, headless=not headed)
+    eff = _with_headed(eff, headed)
     # --browser overrides the target's `browser` config (web backend only; flag > config > chromium).
     eff = _resolve_browser(eff, browser)
     out_path = _record_out_path(eff, out, name, goal, target_name, checkout_root=checkout_root)
@@ -172,7 +171,7 @@ def record(
     backends = _backends(backend, eff.backend)
     try:
         # Auto-install Playwright (and the selected engine's browser) if a web record needs it.
-        ensure_web_runtime(backends, eff.browser)
+        ensure_web_runtime(backends, web_engine(eff))
         actuator = select_actuator(backends)
     except RuntimeError as e:
         typer.echo(str(e))

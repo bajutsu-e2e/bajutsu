@@ -2,12 +2,11 @@
 
 from __future__ import annotations
 
-import dataclasses
 import json
 from pathlib import Path
 
 import pytest
-from _runner import _eff, _el
+from _runner import _eff, _el, _web_eff
 
 from bajutsu import simctl
 from bajutsu.config import Effective
@@ -291,7 +290,7 @@ class _FakeWeb(FakeDriver):
 
 
 def _eff_web() -> Effective:
-    return dataclasses.replace(_eff(), base_url="http://x/index.html", backend=["web"])
+    return _web_eff(base_url="http://x/index.html")
 
 
 def test_device_pool_web_lease(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -380,7 +379,7 @@ def test_device_pool_web_requires_base_url(monkeypatch: pytest.MonkeyPatch) -> N
         "bajutsu.platform_lifecycle.make_driver",
         lambda actuator, udid, base_url=None: FakeDriver([]),
     )
-    eff_no_url = dataclasses.replace(_eff(), base_url=None, backend=["web"])
+    eff_no_url = _web_eff(base_url=None)
     lease, shutdown = device_pool(
         ["web"], ["web"], eff_no_url, Path("runs"), network=False, available=lambda b: True
     )

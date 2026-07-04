@@ -12,6 +12,7 @@ from pathlib import Path
 
 import pytest
 
+from bajutsu.config import IosConfig
 from bajutsu.config_source import (
     GitConfigSpec,
     Materialized,
@@ -268,7 +269,8 @@ def test_load_effective_rebases_paths_against_git_checkout(tmp_path, monkeypatch
     eff = _shared._load_effective("github:acme/mobile-tests@main:e2e/bajutsu.config.yaml", "demo")
     # relative config entries are now absolute under the checkout root, not the caller's cwd
     assert eff.scenarios == str(root / "e2e/scenarios")
-    assert eff.app_path == str(root / "build/Demo.app")
+    assert isinstance(eff.platform_config, IosConfig)
+    assert eff.platform_config.app_path == str(root / "build/Demo.app")
 
 
 def test_load_effective_git_wrong_path_exits_cleanly(tmp_path, monkeypatch) -> None:  # type: ignore[no-untyped-def]

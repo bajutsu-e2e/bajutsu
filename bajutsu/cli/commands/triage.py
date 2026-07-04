@@ -20,7 +20,7 @@ from bajutsu.cli._shared import (
     _require_ai_credential,
     _warn_onscreen_secrets,
 )
-from bajutsu.config import Effective
+from bajutsu.config import Effective, IosConfig
 
 
 def triage(
@@ -117,8 +117,7 @@ def _ai_effective(config: str, target_name: str) -> Effective:
 
     return Effective(
         target="",
-        bundle_id="",
-        deeplink_scheme=None,
+        platform_config=IosConfig(),
         backend=["idb"],
         device="",
         locale="",

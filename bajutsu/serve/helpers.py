@@ -18,7 +18,7 @@ import yaml
 
 from bajutsu import simctl as _simctl
 from bajutsu.backends import KNOWN_ACTUATORS, PLATFORMS
-from bajutsu.config import Config, resolve
+from bajutsu.config import Config, IosConfig, resolve
 from bajutsu.scenario import load_scenario_file
 from bajutsu.serve._cli_flags import flag_args
 from bajutsu.serve.orgs import OrgConfig, load_serve_config
@@ -148,7 +148,9 @@ def target_build_info(config_path: Path, target: str) -> tuple[str | None, str |
         eff = resolve(_load_config_cached(config_path), target)
     except (OSError, ValueError, KeyError):
         return (None, None)
-    return (eff.app_path, eff.build)
+    ios = eff.platform_config
+    # Only an iOS target carries an on-demand build; other platforms have no .app to build.
+    return (ios.app_path, ios.build) if isinstance(ios, IosConfig) else (None, None)
 
 
 def target_scenarios_dir(config_path: Path, target: str) -> Path | None:

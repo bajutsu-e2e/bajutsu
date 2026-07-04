@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 import sys
 from collections.abc import Callable
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -24,9 +24,11 @@ from bajutsu.cli._shared import (
     _ai_redactor,
     _backends,
     _load_effective_with_source,
+    _log_subsystem_default,
     _resolve_browser,
+    _with_headed,
 )
-from bajutsu.config import WEB_ENGINES, Effective
+from bajutsu.config import WEB_ENGINES, Effective, IosConfig, web_engine
 from bajutsu.orchestrator import BlockedHandler, RunResult
 from bajutsu.report.archive import archive_run_dir
 from bajutsu.runner import device_pool, run_all, run_and_report, run_matrix_and_report
@@ -209,15 +211,16 @@ def _resolve_config_and_engines(
     # with no chance to build it by hand first — so build it on demand from the checkout root (where
     # the config's `build` command is rooted). Local configs keep today's behavior: launch errors if
     # the binary is missing (BE-0063).
-    if checkout_root is not None:
+    if checkout_root is not None and isinstance(eff.platform_config, IosConfig):
         try:
-            build_if_missing(eff.build, eff.app_path, cwd=checkout_root)
+            build_if_missing(
+                eff.platform_config.build, eff.platform_config.app_path, cwd=checkout_root
+            )
         except BuildError as e:
             typer.echo(str(e))
             raise typer.Exit(2) from None
     # --headed/--no-headed overrides the target's `headless` config (web backend only; iOS ignores it).
-    if headed is not None:
-        eff = replace(eff, headless=not headed)
+    eff = _with_headed(eff, headed)
     # --browser overrides the target's `browser` config (web backend only; flag > config > chromium).
     eff = _resolve_browser(eff, browser)
     # --browsers is the multi-engine spelling of the same axis: a comma list fans the run out across
@@ -225,7 +228,7 @@ def _resolve_config_and_engines(
     # >1 takes the matrix branch. Validated up front (unknown → 2).
     engines = _parse_browsers(browsers)
     if len(engines) == 1:
-        eff = replace(eff, browser=engines[0])
+        eff = _resolve_browser(eff, engines[0])
     return eff, config_source, engines
 
 
@@ -297,9 +300,9 @@ def _select_actuator(backend: str, eff: Effective, engines: list[str]) -> tuple[
     backends = _backends(backend, eff.backend)
     try:
         # Auto-install Playwright and the requested engine(s) if a web run needs them — the matrix
-        # provisions every listed engine (each install is idempotent), else just `eff.browser`
-        # (with one engine, `eff.browser` already equals it; with none, it's the resolved default).
-        for engine in engines or [eff.browser]:
+        # provisions every listed engine (each install is idempotent), else just the resolved engine
+        # (with one engine, it already equals that; with none, it's the resolved default).
+        for engine in engines or [web_engine(eff)]:
             ensure_web_runtime(backends, engine)
         actuator = select_actuator(backends)
     except RuntimeError as e:
@@ -497,7 +500,7 @@ def _dispatch_single(
         plan.runs_dir / plan.run_id,
         network=plan.network,
         log_predicate=plan.log_predicate or None,
-        log_subsystem=plan.log_subsystem or plan.eff.bundle_id,
+        log_subsystem=plan.log_subsystem or _log_subsystem_default(plan.eff),
         secret_values=plan.secret_values,
     )
     try:
@@ -542,7 +545,7 @@ def _dispatch_matrix(
     def run_pass(engine: str, engine_run_dir: Path) -> list[RunResult]:
         if progress_fn is not None:
             progress_fn(f"━ engine {engine}")
-        eff_e = replace(plan.eff, browser=engine)
+        eff_e = _resolve_browser(plan.eff, engine)
         lease, shutdown = device_pool(
             plan.udids,
             plan.backends,
@@ -550,7 +553,7 @@ def _dispatch_matrix(
             engine_run_dir,
             network=plan.network,
             log_predicate=plan.log_predicate or None,
-            log_subsystem=plan.log_subsystem or eff_e.bundle_id,
+            log_subsystem=plan.log_subsystem or _log_subsystem_default(eff_e),
             secret_values=plan.secret_values,
         )
         try:

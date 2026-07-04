@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from bajutsu.backends import IMPLEMENTED, resolve_actuators
-from bajutsu.config import load_config, resolve
+from bajutsu.config import ios_bundle_id, load_config, resolve, web_base_url, web_engine
 from bajutsu.serve.jobs import ServeState
 
 
@@ -48,9 +48,12 @@ def doctor_check(
     from bajutsu import preflight
 
     cfg_checks = preflight.config_checks(
-        actuator, target=target, bundle_id=eff.bundle_id, base_url=eff.base_url
+        actuator,
+        target=target,
+        bundle_id=ios_bundle_id(eff),
+        base_url=web_base_url(eff),
     )
-    env_checks = preflight.runnability(actuator, web_engine=eff.browser)
+    env_checks = preflight.runnability(actuator, web_engine=web_engine(eff))
     all_checks = cfg_checks + env_checks
 
     serialized = [{"name": c.name, "ok": c.ok, "detail": c.detail} for c in all_checks]

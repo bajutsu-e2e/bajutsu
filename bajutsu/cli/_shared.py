@@ -17,7 +17,14 @@ import yaml
 
 from bajutsu import anthropic_client
 from bajutsu.ai import credential_gap
-from bajutsu.config import WEB_ENGINES, Effective, load_config, resolve
+from bajutsu.config import (
+    WEB_ENGINES,
+    Effective,
+    WebConfig,
+    ios_bundle_id,
+    load_config,
+    resolve,
+)
 from bajutsu.config_source import is_full_sha, materialize, parse_config_spec, source_provenance
 from bajutsu.redaction import Redactor
 from bajutsu.scenario import (
@@ -274,4 +281,24 @@ def _resolve_browser(eff: Effective, browser: str) -> Effective:
     if browser not in WEB_ENGINES:
         typer.echo(f"unknown --browser {browser!r}: use one of {', '.join(WEB_ENGINES)}")
         raise typer.Exit(2)
-    return replace(eff, browser=browser)
+    if not isinstance(eff.platform_config, WebConfig):
+        return eff  # `browser` is a web-only knob; a non-web target ignores the flag
+    return replace(eff, platform_config=replace(eff.platform_config, browser=browser))
+
+
+def _with_headed(eff: Effective, headed: bool | None) -> Effective:
+    """Apply `--headed`/`--no-headed` to a web target's `headless` (BE-0126).
+
+    Web-only, like `--browser`: a non-web target has no `headless` knob and ignores the flag.
+    """
+    if headed is None or not isinstance(eff.platform_config, WebConfig):
+        return eff
+    return replace(eff, platform_config=replace(eff.platform_config, headless=not headed))
+
+
+def _log_subsystem_default(eff: Effective) -> str:
+    """The default idb log subsystem — the iOS bundle id, or empty for a non-iOS target (BE-0126).
+
+    The device-log predicate scopes to the app's bundle id; a web target has no such subsystem.
+    """
+    return ios_bundle_id(eff)

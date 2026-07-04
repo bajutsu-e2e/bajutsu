@@ -35,6 +35,7 @@ from bajutsu.cli._shared import (
     load_expanded_scenarios,
     read_manifests,
 )
+from bajutsu.config import web_engine
 from bajutsu.runner import device_pool, run_all
 from bajutsu.runner.launch_server import start_launch_server
 from bajutsu.scenario import Scenario
@@ -144,7 +145,7 @@ def _repeat_audit(
     # Mirror `run`/`doctor`: validate the backend before touching device CLIs, so an unknown /
     # unavailable actuator exits cleanly instead of crashing later.
     try:
-        ensure_web_runtime(backends, eff.browser)
+        ensure_web_runtime(backends, web_engine(eff))
         actuator = select_actuator(backends)
     except RuntimeError as e:
         typer.echo(str(e))

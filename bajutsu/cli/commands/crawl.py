@@ -15,7 +15,6 @@ from __future__ import annotations
 import atexit
 import json
 import subprocess
-from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -35,7 +34,9 @@ from bajutsu.cli._shared import (
     _load_effective_with_source,
     _refuse_out_in_checkout,
     _require_ai_credential,
+    _with_headed,
 )
+from bajutsu.config import web_base_url, web_engine
 from bajutsu.crawl_guide import make_guide
 from bajutsu.drivers import base
 from bajutsu.platform_lifecycle import environment_for
@@ -135,8 +136,7 @@ def crawl(
     """
     eff, _source, checkout_root = _load_effective_with_source(config, target_name)
     # --headed/--no-headed overrides the target's `headless` config (web backend only; iOS ignores it).
-    if headed is not None:
-        eff = replace(eff, headless=not headed)
+    eff = _with_headed(eff, headed)
 
     # Progress (device work + the AI guide's reasoning) goes to stderr, like record's stream; the
     # web UI merges it into the crawl log so a watcher sees what the AI is thinking, turn by turn.
@@ -151,7 +151,7 @@ def crawl(
     backends = _backends(backend, eff.backend)
     try:
         # Auto-install Playwright (and the selected engine's browser) if a web crawl needs it.
-        ensure_web_runtime(backends, eff.browser)
+        ensure_web_runtime(backends, web_engine(eff))
         actuator = select_actuator(backends)
     except RuntimeError as e:
         typer.echo(str(e))
@@ -225,7 +225,7 @@ def crawl(
 
     if not environment.has_devices():
         browsers = f"{workers} browsers" if workers > 1 else "the browser"
-        say(f"⚙️  preparing {browsers} — navigating to {eff.base_url} …")
+        say(f"⚙️  preparing {browsers} — navigating to {web_base_url(eff)} …")
     elif workers > 1:
         say(
             f"⚙️  preparing {workers} simulators — installing and launching {target_name} on each "
