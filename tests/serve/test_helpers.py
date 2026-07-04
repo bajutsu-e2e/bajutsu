@@ -54,12 +54,12 @@ def test_load_config_cached_reparses_when_the_file_changes(tmp_path: Path) -> No
     assert sorted(helpers._load_config_cached(cfg).targets) == ["demo", "other"]
 
 
-def test_load_config_file_returns_none_on_malformed_yaml(tmp_path: Path) -> None:
+def test_load_serve_config_file_returns_none_on_malformed_yaml(tmp_path: Path) -> None:
     # A YAML syntax error (yaml.YAMLError, not a ValueError) is normalized so the helpers' broad
     # except still turns it into None rather than escaping and crashing request handling.
     cfg = tmp_path / "bajutsu.config.yaml"
     cfg.write_text("targets: [unbalanced\n", encoding="utf-8")
-    assert srv.load_config_file(cfg) is None
+    assert srv.load_serve_config_file(cfg) is None
     assert srv.list_targets(cfg) == []
 
 

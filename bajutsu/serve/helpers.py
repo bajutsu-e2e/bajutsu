@@ -18,9 +18,10 @@ import yaml
 
 from bajutsu import simctl as _simctl
 from bajutsu.backends import KNOWN_ACTUATORS, PLATFORMS
-from bajutsu.config import Config, load_config, resolve
+from bajutsu.config import Config, resolve
 from bajutsu.scenario import load_scenario_file
 from bajutsu.serve._cli_flags import flag_args
+from bajutsu.serve.orgs import OrgConfig, load_serve_config
 
 # Tokens a `--backend` may name: a platform (ios/android/web/fake) or a known actuator (idb/…).
 _VALID_BACKENDS = frozenset(PLATFORMS) | frozenset(KNOWN_ACTUATORS)
@@ -87,13 +88,14 @@ def list_scenarios(scenarios_dir: Path) -> list[dict[str, Any]]:
 # size changes; an edit that preserves both (a same-size rewrite that also keeps the timestamp) won't
 # be noticed, which is acceptable for an operator-edited config. A lock guards the dict since serve
 # handles requests on multiple threads.
-_config_cache: dict[str, tuple[tuple[int, int], Config]] = {}
+_config_cache: dict[str, tuple[tuple[int, int], Config, dict[str, OrgConfig]]] = {}
 _config_cache_lock = threading.Lock()
 
 
-def _load_config_cached(config_path: Path) -> Config:
-    """The parsed config at *config_path*, cached by resolved path + file mtime/size so a request
-    parses it at most once and unchanged files aren't re-parsed across requests. Raises on a
+def _load_serve_config_cached(config_path: Path) -> tuple[Config, dict[str, OrgConfig]]:
+    """The parsed config *and* its org model at *config_path*, cached by resolved path + file
+    mtime/size so a request parses it at most once and unchanged files aren't re-parsed across
+    requests. The core `Config` drops `orgs:`; the org model is recovered here (BE-0129). Raises on a
     read/validation error (callers handle it); a malformed-YAML error is normalized to `ValueError`
     so the callers' `except (OSError, ValueError)` covers it. Only successful parses are cached, so a
     fix to a bad config is picked up at once."""
@@ -104,23 +106,28 @@ def _load_config_cached(config_path: Path) -> Config:
     with _config_cache_lock:
         cached = _config_cache.get(key)
         if cached is not None and cached[0] == stamp:
-            return cached[1]
+            return cached[1], cached[2]
     try:
-        config = load_config(config_path.read_text(encoding="utf-8"))
+        config, orgs = load_serve_config(config_path.read_text(encoding="utf-8"))
     except yaml.YAMLError as e:
         raise ValueError(str(e)) from e  # so callers catching ValueError handle a malformed config
     with _config_cache_lock:
-        _config_cache[key] = (stamp, config)
-    return config
+        _config_cache[key] = (stamp, config, orgs)
+    return config, orgs
 
 
-def load_config_file(config_path: Path | None) -> Config | None:
-    """The parsed config, or None if there is none or it can't be read/validated. Used where the
-    org model is needed (resolving a user/target to its org)."""
+def _load_config_cached(config_path: Path) -> Config:
+    """The parsed config at *config_path* (org model discarded); see `_load_serve_config_cached`."""
+    return _load_serve_config_cached(config_path)[0]
+
+
+def load_serve_config_file(config_path: Path | None) -> tuple[Config, dict[str, OrgConfig]] | None:
+    """The parsed config and its org model, or None if there is none or it can't be read/validated.
+    Used where the org model is needed (resolving a user/target to its org)."""
     if config_path is None:
         return None
     try:
-        return _load_config_cached(config_path)
+        return _load_serve_config_cached(config_path)
     except (OSError, ValueError):
         return None
 

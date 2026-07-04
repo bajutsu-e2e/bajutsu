@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0129](BE-0129-serve-scope-boundary.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0129") |
+| Implementing PR | [#665](https://github.com/bajutsu-e2e/bajutsu/pull/665) |
 | Topic | Hosting the web UI (cloud / self-hosted) |
 <!-- /BE-METADATA -->
 
@@ -65,9 +66,9 @@ package split.
 | # | Track | Concrete action |
 |---|---|---|
 | 1 | Document the rule | Short architecture note in `docs/` + `docs/ja/` naming the boundary |
-| 2 | Enforce it with a gate test | `tests/test_serve_boundary.py`, an AST import check wired into `make check` |
+| 2 | Enforce it in the gate | An import-linter forbidden contract (BE-0112) keeps the core off the `db`/`oauth` extras, via `make lint-imports` |
 | 3 | Move `OrgConfig` out of `config.py` | New `bajutsu/serve/orgs.py`; split `load_config` |
-| 4 | Guardrail for `serve.js` | `node --check` + minimal ESLint in `make lint`; defer Jest/Vitest |
+| 4 | Guardrail for `serve.js` | `node --check` + minimal ESLint via a `make lint-js` step in `make check`; defer Jest/Vitest |
 
 ### 1. Document the rule
 
@@ -76,21 +77,26 @@ host-agnostic: no organization, role, tenancy, or billing concept enters them, a
 `db` (SQLAlchemy/Alembic/psycopg) or `oauth` (Authlib) extra. `bajutsu/serve/` — and only
 `bajutsu/serve/` — owns hosting concerns.
 
-The note points at the enforcement test below instead of asking reviewers to hold the rule in their
-head.
+The note points at the enforcement contract below instead of asking reviewers to hold the rule in
+their head.
 
-### 2. Enforce it with a gate test, not a size ceiling
+### 2. Enforce it in the gate, not with a size ceiling
 
 The boundary already holds today: a check of every core module finds zero imports of
 `bajutsu.serve` or of the `db`/`oauth` extras. `bajutsu/serve/server/logbus.py` and `sessions.py`
 already take their Redis client through an injected `RedisLike` protocol rather than importing
 `redis` directly, so `serve` doesn't even carry a hard Redis dependency.
 
-`tests/test_serve_boundary.py` walks the AST of `bajutsu/config.py`, `bajutsu/drivers/**`,
-`bajutsu/runner/**`, and `bajutsu/scenario/**`, and fails if any of them imports `bajutsu.serve` or
-a `db`/`oauth`-extra package. Running this in `make check` turns "serve stays bounded" into a
-regression the gate catches — no separate installable distribution (e.g. `bajutsu-serve`) is
-needed, since the isolation is already dependency-level.
+BE-0112 landed an import-linter layer model (`[tool.importlinter]` in `pyproject.toml`, run by `make
+lint-imports` inside `make check`) whose periphery contract *already* forbids the core from importing
+`bajutsu.serve`. So rather than add a parallel AST test that would duplicate that half, a new
+forbidden contract, "Deterministic core stays free of the db/oauth hosting extras", covers the part
+the layer graph can't express: it forbids `bajutsu.config` / `bajutsu.drivers` / `bajutsu.runner` /
+`bajutsu.scenario` from importing the external `db`/`oauth` packages (`sqlalchemy`, `alembic`,
+`psycopg`, `cryptography`, `authlib`), with `include_external_packages` so import-linter sees the
+external import. Together the two contracts turn "serve stays bounded" into a regression the gate
+catches — no separate installable distribution (e.g. `bajutsu-serve`) is needed, since the isolation
+is already dependency-level.
 
 ### 3. Move `OrgConfig` and the org helpers into `bajutsu/serve/orgs.py`
 
@@ -135,10 +141,11 @@ core loader drops the key rather than rejecting it.
 ### 4. Give `serve.js` lint and a syntax gate, not a full test framework yet
 
 1,575 lines of untested vanilla JavaScript is itself a scope-creep symptom, but the proportionate
-first step is a lighter guardrail: a minimal ESLint flat config scoped to
-`bajutsu/templates/serve.js`, with `node --check` plus `npx eslint` wired into `make lint`. Both are
-skipped with a notice when Node isn't present — the same pattern `make` already uses for
-`actionlint`.
+first step is a lighter guardrail: a minimal ESLint flat config (`eslint.config.mjs`) scoped to
+`bajutsu/templates/serve.js`, with `node --check` plus eslint wired into `make check` through a
+`make lint-js` step. `node --check` runs wherever Node is present (including CI runners); eslint runs
+only when it is already resolvable, so the gate never downloads it. Node absence skips with a notice,
+the same pattern `make` already uses for `actionlint`, so `make check` still runs anywhere.
 
 A full component/unit-test harness (Jest or Vitest) is explicitly deferred until `serve.js`
 accumulates enough branching logic to need one. Recording that trigger here keeps the deferral a
@@ -167,17 +174,25 @@ check`, not inside `run`.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Document the `serve`/core boundary rule (host concerns confined to `bajutsu/serve/`)
-- [ ] Add `tests/test_serve_boundary.py`, an AST-based import check wired into `make check`
-- [ ] Move `OrgConfig` / `DEFAULT_ORG` / `org_for_*` / `targets_for_org` into `bajutsu/serve/orgs.py`
+- [x] Document the `serve`/core boundary rule (host concerns confined to `bajutsu/serve/`)
+- [x] Enforce it in the gate. BE-0112's import-linter already forbids the core from importing
+      `bajutsu.serve`, so instead of a parallel AST test, a new forbidden contract keeps
+      `config.py` / `drivers/` / `runner/` / `scenario/` off the `db`/`oauth` extras
+      (`include_external_packages` sees the external import), via `make lint-imports` in `make check`
+- [x] Move `OrgConfig` / `DEFAULT_ORG` / `org_for_*` / `targets_for_org` into `bajutsu/serve/orgs.py`
       (signatures narrowed to `dict[str, OrgConfig]`), splitting `load_config` into `parse_config_dict`
       + `load_config`, and add `load_serve_config`
-- [ ] Core loader **drops** a top-level `orgs:` (keeps `run` reading an org-bearing config working;
+- [x] Core loader **drops** a top-level `orgs:` (keeps `run` reading an org-bearing config working;
       `extra="forbid"` still catches other typos), and serve consumers take orgs from
       `load_serve_config` rather than `Config.orgs`
-- [ ] Wire `node --check` + a minimal ESLint config for `bajutsu/templates/serve.js` into `make lint`
+- [x] Wire `node --check` + a minimal ESLint config (`eslint.config.mjs`) for
+      `bajutsu/templates/serve.js` into the gate via a `make lint-js` step in `make check`
 
-No PR has landed yet.
+Log:
+
+- [#665](https://github.com/bajutsu-e2e/bajutsu/pull/665) — Draw the core/`serve` boundary: move the org model to `bajutsu/serve/orgs.py`, drop
+  `orgs:` in the core loader, add the db/oauth import-linter contract, document the rule in
+  `architecture.md` (both languages), and add the `serve.js` `lint-js` guardrail.
 
 ## References
 

@@ -20,10 +20,10 @@ from pathlib import Path
 from typing import Any, Protocol
 
 from bajutsu import simctl as _simctl
-from bajutsu.config import DEFAULT_ORG as _DEFAULT_ORG
 from bajutsu.serve import oplog
 from bajutsu.serve.jobs import Job, ServeState, run_job
 from bajutsu.serve.logbus import InMemoryLogBus, LogBus
+from bajutsu.serve.orgs import DEFAULT_ORG as _DEFAULT_ORG
 
 
 class WorkerIO(Protocol):

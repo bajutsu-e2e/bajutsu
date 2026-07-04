@@ -160,7 +160,7 @@ declared:
    `record.py`, `enrich.py`, `triage.py`, `crawl_guide.py`, …), and the `github.py` / `notify.py` /
    `alerts.py` helpers.
 
-Two contracts are enforced:
+Three contracts are enforced:
 
 - **The deterministic core must not import the periphery.** This is prime directives #1 and #3 as a
   static contract: the verdict/evidence path stays free of the serve, AI and codegen stacks, and
@@ -168,6 +168,15 @@ Two contracts are enforced:
   `screen_size_from_elements`, `shows_app_ui`) lives in the core (`bajutsu/elements.py`), not in a
   periphery module such as `record.py`; likewise the resolved `ai` block (`AiConfig`) lives in
   `config.py`, so the core reads it without importing the AI client.
+- **The core must stay host-agnostic (BE-0129).** Multi-tenant hosting concerns — organizations,
+  roles, tenancy — and the `db` (SQLAlchemy/Alembic/psycopg/cryptography) and `oauth` (Authlib)
+  extras belong to `bajutsu/serve/` alone. The org model (`OrgConfig`, `org_for_*`,
+  `targets_for_org`, `load_serve_config`) lives in `bajutsu/serve/orgs.py`, not `config.py`; `Config`
+  carries no `orgs` field, and the core loader drops a top-level `orgs:` before validation so a run
+  in the hosted topology (which reads an org-bearing config) keeps working while the core never
+  models orgs. A forbidden import-linter contract keeps `config.py`, `drivers/`, `runner/`, and
+  `scenario/` off those extras (`include_external_packages` lets it see the external import), on top
+  of the periphery contract that already keeps them off `bajutsu.serve`.
 - **The scenario schema and `Driver` Protocol stay a portable inner contract** — independent of the
   runtime core (`orchestrator/`, `runner/`, `config.py`, …) as well as the periphery. This keeps the
   contract a stable layer a consumer can depend on without pulling the runtime, underpinning

@@ -1,5 +1,5 @@
 .PHONY: setup hooks deps deps-check serve worktree preflight test lint lint-docstrings lint-imports format format-check typecheck \
-        lock-check lint-sh lint-actions lint-roadmap lint-pr check new-roadmap-item roadmap-index \
+        lock-check lint-sh lint-actions lint-js lint-roadmap lint-pr check new-roadmap-item roadmap-index \
         roadmap-status roadmap-dashboard docs docs-serve
 
 # One-command bootstrap for a fresh clone (cross-platform; the dev gate needs no
@@ -111,6 +111,25 @@ lint-sh:
 lint-actions:
 	@command -v actionlint >/dev/null 2>&1 && actionlint -color || echo "lint-actions: actionlint not installed — skipping (CI enforces it)"
 
+# BE-0129: a proportionate guardrail for the serve Web UI's vanilla JS (bajutsu/templates/serve.js),
+# ~1.5k lines with no build step. `node --check` catches syntax errors and runs wherever Node is
+# present (including CI runners); the flat-config eslint (eslint.config.mjs) adds a few structural
+# checks and runs only when eslint is already resolvable, so the gate never downloads it. Node
+# absence skips with a notice — the same pattern lint-actions uses for actionlint — so `check` runs
+# anywhere.
+lint-js:
+	@set -e; \
+	if ! command -v node >/dev/null 2>&1; then \
+		echo "lint-js: node not installed — skipping (CI enforces it)"; \
+	else \
+		node --check bajutsu/templates/serve.js; \
+		if npx --no-install eslint --version >/dev/null 2>&1; then \
+			npx --no-install eslint bajutsu/templates/serve.js; \
+		else \
+			echo "lint-js: eslint not installed — skipping (ran node --check; install eslint for the structural checks)"; \
+		fi; \
+	fi
+
 # Lint roadmap items: every item-to-item markdown link resolves, and each Author is a handle link
 # (BE-0069). Folded into `check` so a broken cross-reference fails the gate, not a reader's click.
 # Pass flags through ARGS, e.g. `make lint-roadmap ARGS="--fix"` rewrites broken item links to the
@@ -151,7 +170,7 @@ roadmap-status:
 # The full gate. CI (.github/workflows/ci.yml) mirrors these steps so "green locally"
 # predicts "green in CI". The uv-native checks run identically everywhere; actionlint is
 # the lone exception (see lint-actions above).
-check: hooks format-check lint lint-docstrings lint-imports lint-sh lint-actions lint-roadmap lock-check typecheck test
+check: hooks format-check lint lint-docstrings lint-imports lint-sh lint-actions lint-js lint-roadmap lock-check typecheck test
 
 # Generated API reference (BE-0065). Deliberately NOT in `check`: like on-device E2E, the
 # reference build is a separate, heavier path (it pulls the `docs` extra) and must not slow the

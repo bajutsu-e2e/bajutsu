@@ -5,8 +5,8 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from bajutsu.config import DEFAULT_ORG
 from bajutsu.serve.jobs import ServeState
+from bajutsu.serve.orgs import DEFAULT_ORG
 from bajutsu.serve.server.object_store import baseline_prefix, org_prefix
 
 

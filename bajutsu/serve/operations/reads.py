@@ -9,7 +9,7 @@ from typing import Any
 import yaml
 
 from bajutsu import stats as _stats
-from bajutsu.config import Config, load_config, targets_for_org
+from bajutsu.config import Config, load_config
 from bajutsu.drivers import base as driver_base
 from bajutsu.scenario import load_scenario_file
 from bajutsu.scenario.models import STEP_ACTIONS, Step
@@ -20,13 +20,14 @@ from bajutsu.serve.helpers import (
     list_fs,
     list_simulators,
     list_targets,
-    load_config_file,
+    load_serve_config_file,
     valid_run_id,
     valid_scenario_ref,
 )
 from bajutsu.serve.jobs import ServeState
 from bajutsu.serve.operations._common import _resolve_org_or_forbid
 from bajutsu.serve.operations.config import FS_DISABLED_ERROR
+from bajutsu.serve.orgs import targets_for_org
 
 _REPORT_SUFFIX = "/report.html"
 
@@ -73,15 +74,16 @@ def list_targets_payload(state: ServeState, *, actor: str | None = None) -> tupl
     # (and show the headed toggle) without the user typing the backend by hand.
     if state.config is None:
         return [], 200
-    config = load_config_file(state.config)
-    if config is None:
+    parsed = load_serve_config_file(state.config)
+    if parsed is None:
         return [], 200
+    config, orgs = parsed
     # Org scoping applies only on a server backend with a system of record; local serve / token mode
     # ignores `orgs:` and lists every target (BE-0015 multi-tenancy).
     if state.repository is None:
         names = list_targets(state.config)
     else:
-        names = sorted(targets_for_org(config, state.org_of(actor)))
+        names = sorted(targets_for_org(orgs, config.targets, state.org_of(actor)))
     return [{"name": n, "backend": _primary_backend(config, n)} for n in names], 200
 
 
