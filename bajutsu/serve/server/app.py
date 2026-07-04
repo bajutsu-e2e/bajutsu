@@ -335,4 +335,12 @@ def make_app(state: ServeState) -> FastAPI:
     async def worker_result(body: dict[str, Any]) -> JSONResponse:
         return _result(ops.worker_result(state, body))
 
+    @app.post("/api/worker/artifact-urls")
+    async def worker_artifact_urls(body: dict[str, Any]) -> JSONResponse:
+        return _result(ops.worker_artifact_urls(state, body))
+
+    @app.post("/api/worker/scenario-url")
+    async def worker_scenario_url(body: dict[str, Any]) -> JSONResponse:
+        return _result(ops.worker_scenario_url(state, body))
+
     return app

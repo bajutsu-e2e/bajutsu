@@ -233,18 +233,22 @@ On each Mac (the same Aqua-session setup as Tier A — auto-login, `caffeinate`/
 ```bash
 export BAJUTSU_SERVER_URL=http://<linux-node>.<tailnet>.ts.net:8765
 export BAJUTSU_TOKEN=…         # the same operator token the control plane uses
-export BAJUTSU_S3_BUCKET=bajutsu
-export BAJUTSU_S3_ENDPOINT=http://<linux-node>.<tailnet>.ts.net:9000
-export AWS_ACCESS_KEY_ID=… AWS_SECRET_ACCESS_KEY=…
 export ANTHROPIC_API_KEY=…     # only if scenarios use the AI paths (record / --dismiss-alerts)
 bajutsu worker
 ```
 
+The worker holds **no object-store credentials** (BE-0160): no `BAJUTSU_S3_BUCKET` /
+`BAJUTSU_S3_ENDPOINT` / `AWS_*`, and no cloud SDK. It downloads the run's baselines, uploads the
+finished `runs/<id>/` tree, and persists a `record` job's authored scenario over **presigned URLs
+the control plane signs** — the control plane is the only place the object store's credentials live.
+The bytes still flow worker→storage directly (the signed URL points at MinIO), so the worker needs
+network reachability to the object store, just not its secrets.
+
 Wrap it in a `LaunchAgent` (as in Tier A) so it survives reboots. The worker polls the control
 plane's `/api/worker/lease` endpoint over HTTP (no Redis needed), runs each job on a fresh
-Simulator, uploads the `runs/<id>/` tree (including `console.log`) to MinIO, and posts the result
-back to `/api/worker/result`. The control plane records the finished run into Postgres — the worker
-needs no database access.
+Simulator, uploads the `runs/<id>/` tree (including `console.log`), and posts the result back to
+`/api/worker/result`. The control plane records the finished run into Postgres — the worker needs no
+database access.
 
 ### 4. Expose it
 
@@ -265,12 +269,12 @@ on the control plane:
 export BAJUTSU_EVIDENCE_STORE=s3://audit-bucket/evidence/   # or gs://…; --evidence-store also works
 ```
 
-The key difference from the artifact upload is **where the credentials live**. The control plane holds
-the evidence bucket's credentials and signs a **presigned PUT URL per file**; the worker uploads over
-plain HTTP and needs **no credentials for the evidence bucket** — only the control plane does. So the
-evidence bucket can be a separate account or a stricter-permissioned bucket than the workers' artifact
-store, and ephemeral workers never carry its secrets. Install the `s3` or `gcs` extra **on the control
-plane** (`uv sync --extra s3` or `--extra gcs`); the worker needs neither.
+The evidence store is a **second, independent destination** from the artifact store: it can be a
+separate account or a stricter-permissioned, lifecycle-managed bucket. Both are credential-free for
+the worker — the control plane holds each bucket's credentials and signs a **presigned PUT URL per
+file**, and the worker uploads over plain HTTP (BE-0110 for evidence, BE-0160 for the artifact
+store). Install the `s3` or `gcs` extra **on the control plane** (`uv sync --extra s3` or
+`--extra gcs`); the worker needs neither.
 
 A CI job picks the per-run path — and thus the lifecycle policy — by passing `evidence_prefix` when it
 starts a run:

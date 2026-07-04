@@ -24,7 +24,7 @@ from typing import Any, Protocol
 
 from bajutsu.serve.helpers import scenario_out_name, summarize_scenario, valid_scenario_ref
 from bajutsu.serve.scenarios import Authored, Runnable
-from bajutsu.serve.server.object_store import ObjectStore
+from bajutsu.serve.server.object_store import ObjectStore, scenario_prefix
 
 # Where a materialized scenario lands in the worker's workspace (and the `--scenario` arg used).
 _WORKSPACE_SCENARIOS = "scenarios"
@@ -122,7 +122,7 @@ class ObjectScenarioStorage:
         self._prefix = prefix
 
     def _dir(self, app: str) -> str:
-        return f"{self._prefix}{_WORKSPACE_SCENARIOS}/{app}/"
+        return f"{scenario_prefix(self._prefix)}{app}/"
 
     def has_app(self, app: str) -> bool:
         return app in self._apps()

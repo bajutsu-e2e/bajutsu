@@ -88,6 +88,10 @@ from bajutsu.serve.operations.worker import (
     worker_lease,
     worker_result,
 )
+from bajutsu.serve.operations.worker_uploads import (
+    worker_artifact_urls,
+    worker_scenario_url,
+)
 
 __all__ = [
     "_active_key_env",
@@ -148,7 +152,9 @@ __all__ = [
     "start_record",
     "start_run",
     "stats_html",
+    "worker_artifact_urls",
     "worker_heartbeat",
     "worker_lease",
     "worker_result",
+    "worker_scenario_url",
 ]
