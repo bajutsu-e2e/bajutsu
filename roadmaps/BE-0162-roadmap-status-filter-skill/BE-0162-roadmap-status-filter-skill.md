@@ -9,6 +9,7 @@
 | Author | [@hirosassa](https://github.com/hirosassa) |
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0162") |
+| Implementing PR | [#650](https://github.com/bajutsu-e2e/bajutsu/pull/650) |
 | Topic | Development infrastructure (contributor workflow) |
 <!-- /BE-METADATA -->
 
