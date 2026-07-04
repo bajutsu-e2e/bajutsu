@@ -19,7 +19,7 @@ if [ -z "$refs" ] || ! awk '$2 !~ /^0+$/ { found=1 } END { exit !found }' <<<"$r
   exit 0
 fi
 
-echo "pre-push: running 'make check' (ruff + mypy + pytest)…" >&2
+echo "pre-push: running 'make check'…" >&2
 
 # The gate is defined once, in `make check`. A hand-rolled fallback drifts from it silently
 # (it used to run only ruff+mypy+pytest, skipping format/docstrings/imports/lock/roadmap/shell),
