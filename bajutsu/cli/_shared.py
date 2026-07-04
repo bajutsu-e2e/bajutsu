@@ -16,6 +16,7 @@ import typer
 import yaml
 
 from bajutsu import anthropic_client
+from bajutsu.ai import credential_gap
 from bajutsu.config import WEB_ENGINES, Effective, load_config, resolve
 from bajutsu.config_source import is_full_sha, materialize, parse_config_spec, source_provenance
 from bajutsu.redaction import Redactor
@@ -69,7 +70,7 @@ def _require_ai_credential(eff: Effective) -> None:
     Raises a clean exit-2 so an AI entry point never constructs a client that would round-trip to a
     hosted default. A no-op when a credential is present.
     """
-    gap = anthropic_client.credential_gap(eff.ai)
+    gap = credential_gap(eff.ai)
     if gap is not None:
         typer.echo(_credential_gap_message(gap, eff))
         raise typer.Exit(2)

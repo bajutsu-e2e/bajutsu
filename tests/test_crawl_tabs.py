@@ -1,17 +1,18 @@
 """Tests for the vision tab locator (bajutsu/crawl_tabs.py, BE-0038).
 
-No LLM: the Claude call is behind the Anthropic SDK shape, exercised here with a fake client — the
-same way the alert locator is tested. We check the tree-exposes-tabs gate and that pixel
-coordinates from the tool call are normalized to [0,1] against the screenshot size.
+No LLM: the Claude call is behind the vendor-neutral backend (BE-0104), exercised here with a fake
+backend — the same way the alert locator is tested. We check the tree-exposes-tabs gate and that
+pixel coordinates from the tool call are normalized to [0,1] against the screenshot size.
 """
 
 from __future__ import annotations
 
 import struct
 
-from conftest import FakeAnthropic, FakeBlock, el
+from conftest import FakeBackend, FakeBlock, el
 
 from bajutsu import crawl_tabs
+from bajutsu.ai.base import AnyTool, ImagePart, TextPart
 from bajutsu.anthropic_client import AiConfig
 
 
@@ -55,7 +56,7 @@ def test_uikit_tab_bar_is_provisional_and_routes_to_vision_for_now() -> None:
 
 
 def test_locator_normalizes_pixel_coordinates() -> None:
-    client = FakeAnthropic(
+    backend = FakeBackend(
         FakeBlock(
             "find_tabs",
             {
@@ -67,22 +68,22 @@ def test_locator_normalizes_pixel_coordinates() -> None:
             },
         )
     )
-    tabs = crawl_tabs.ClaudeTabLocator(client=client).locate(_png(600, 2000))
+    tabs = crawl_tabs.ClaudeTabLocator(backend=backend).locate(_png(600, 2000))
     assert [t.label for t in tabs] == ["Home", "Me"]
     assert abs(tabs[0].x - 100 / 600) < 1e-6 and abs(tabs[0].y - 1900 / 2000) < 1e-6
-    call = client.calls[0]
-    assert call["tool_choice"] == {"type": "any"}
-    content = call["messages"][0]["content"]
-    assert any(c["type"] == "image" for c in content)
-    text = next(c["text"] for c in content if c["type"] == "text")
+    request = backend.requests[0]
+    assert isinstance(request.tool_choice, AnyTool)
+    content = request.messages[0].content
+    assert any(isinstance(c, ImagePart) for c in content)
+    text = next(c.text for c in content if isinstance(c, TextPart))
     assert "600x2000" in text
 
 
 def test_locator_returns_empty_when_no_tab_bar() -> None:
-    tabs = crawl_tabs.ClaudeTabLocator(client=FakeAnthropic(FakeBlock("find_tabs", {"tabs": []})))
+    tabs = crawl_tabs.ClaudeTabLocator(backend=FakeBackend(FakeBlock("find_tabs", {"tabs": []})))
     assert tabs.locate(_png(10, 10)) == []
     # No tool call at all -> also empty (best-effort, never crashes the crawl).
-    assert crawl_tabs.ClaudeTabLocator(client=FakeAnthropic()).locate(_png(10, 10)) == []
+    assert crawl_tabs.ClaudeTabLocator(backend=FakeBackend()).locate(_png(10, 10)) == []
 
 
 # --- BE-0097: the tab locator honours the user's AI provider config ---
@@ -92,6 +93,6 @@ def test_locator_threads_ai_config_to_model() -> None:
     """BE-0097: a non-default AiConfig is threaded to resolve_model, so the tab locator talks to the
     user's configured provider."""
     ai = AiConfig(model="us.anthropic.claude-opus-4-8-v1")
-    client = FakeAnthropic(FakeBlock("find_tabs", {"tabs": []}))
-    crawl_tabs.ClaudeTabLocator(client=client, ai=ai).locate(_png(10, 10))
-    assert client.calls[0]["model"] == "us.anthropic.claude-opus-4-8-v1"
+    backend = FakeBackend(FakeBlock("find_tabs", {"tabs": []}))
+    crawl_tabs.ClaudeTabLocator(backend=backend, ai=ai).locate(_png(10, 10))
+    assert backend.requests[0].model == "us.anthropic.claude-opus-4-8-v1"

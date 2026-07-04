@@ -11,12 +11,24 @@ client is injectable for testing.
 
 from __future__ import annotations
 
-import base64
 from typing import Any
 
 from bajutsu import usage
 from bajutsu.agent import Observation, Proposal
-from bajutsu.anthropic_client import AiConfig, ensure_client, resolve_model
+from bajutsu.ai import (
+    AiBackend,
+    AnyTool,
+    ContentPart,
+    ImagePart,
+    Message,
+    MessageRequest,
+    MessageResponse,
+    NamedTool,
+    TextPart,
+    ToolDef,
+    create_backend,
+)
+from bajutsu.anthropic_client import AiConfig, resolve_model
 from bajutsu.redaction import Redactor
 from bajutsu.scenario import Assertion, Step
 
@@ -77,10 +89,10 @@ of truth — it is fine if the actual run deviates.
 
 Call the `plan` tool exactly once."""
 
-PLAN_TOOL: dict[str, Any] = {
-    "name": "plan",
-    "description": "Record the ordered, concrete steps to accomplish the goal.",
-    "input_schema": {
+PLAN_TOOL: ToolDef = ToolDef(
+    name="plan",
+    description="Record the ordered, concrete steps to accomplish the goal.",
+    input_schema={
         "type": "object",
         "properties": {
             "steps": {
@@ -91,7 +103,7 @@ PLAN_TOOL: dict[str, Any] = {
         },
         "required": ["steps"],
     },
-}
+)
 
 # A reusable selector fragment: address an element by id (preferred), else by any combination
 # of label / value / traits, with index as a last-resort disambiguator. Shared by every tool so
@@ -123,38 +135,38 @@ _REASON_PROP: dict[str, Any] = {
 }
 
 # Static tool definitions (cached together with the system prompt).
-TOOLS: list[dict[str, Any]] = [
-    {
-        "name": "tap",
-        "description": "Tap the element addressed by id or label.",
-        "input_schema": {
+TOOLS: list[ToolDef] = [
+    ToolDef(
+        name="tap",
+        description="Tap the element addressed by id or label.",
+        input_schema={
             "type": "object",
             "properties": {**_TARGET_PROPS, **_REASON_PROP},
             "required": ["reason"],
         },
-    },
-    {
-        "name": "type_text",
-        "description": "Focus the field (addressed by id or label) and type the given text.",
-        "input_schema": {
+    ),
+    ToolDef(
+        name="type_text",
+        description="Focus the field (addressed by id or label) and type the given text.",
+        input_schema={
             "type": "object",
             "properties": {**_TARGET_PROPS, "text": {"type": "string"}, **_REASON_PROP},
             "required": ["text", "reason"],
         },
-    },
-    {
-        "name": "wait_for",
-        "description": "Wait until the element (addressed by id or label) appears, up to timeout seconds.",
-        "input_schema": {
+    ),
+    ToolDef(
+        name="wait_for",
+        description="Wait until the element (addressed by id or label) appears, up to timeout seconds.",
+        input_schema={
             "type": "object",
             "properties": {**_TARGET_PROPS, "timeout": {"type": "number"}, **_REASON_PROP},
             "required": ["timeout", "reason"],
         },
-    },
-    {
-        "name": "finish",
-        "description": "The goal is reached; provide the assertions that verify it.",
-        "input_schema": {
+    ),
+    ToolDef(
+        name="finish",
+        description="The goal is reached; provide the assertions that verify it.",
+        input_schema={
             "type": "object",
             "properties": {
                 "assertions": {
@@ -184,7 +196,7 @@ TOOLS: list[dict[str, Any]] = [
             },
             "required": ["assertions", "reason"],
         },
-    },
+    ),
 ]
 
 
@@ -303,8 +315,8 @@ def steps_from_plan(raw: Any) -> list[str]:
     return [str(step).strip() for step in raw if str(step).strip()]
 
 
-def _to_proposal(message: Any) -> Proposal:
-    tool_use = next((b for b in message.content if b.type == "tool_use"), None)
+def _to_proposal(response: MessageResponse) -> Proposal:
+    tool_use = response.first_tool_use()
     if tool_use is None:
         return Proposal(done=True, note="model returned no tool call")
     return proposal_from_call(tool_use.name, tool_use.input)
@@ -315,77 +327,65 @@ class ClaudeAgent:
 
     def __init__(
         self,
-        client: Any = None,
+        backend: AiBackend | None = None,
         model: str | None = None,
         max_tokens: int = 1024,
         *,
         ai: AiConfig | None = None,
         redactor: Redactor | None = None,
     ) -> None:
-        self._client = client
+        self._backend = backend
         self._ai = ai
         self._redactor = redactor
         self._model = resolve_model(MODEL, ai) if model is None else model
         self._max_tokens = max_tokens
 
-    def _ensure_client(self) -> Any:
-        return ensure_client(self)
+    def _ensure_backend(self) -> AiBackend:
+        if self._backend is None:
+            self._backend = create_backend(ai=self._ai)
+        return self._backend
 
     def next_action(self, observation: Observation) -> Proposal:
-        client = self._ensure_client()
-        message = client.messages.create(
-            model=self._model,
-            max_tokens=self._max_tokens,
-            system=[
-                {
-                    "type": "text",
-                    "text": SYSTEM_PROMPT,
-                    "cache_control": {"type": "ephemeral"},
-                }
-            ],
-            tools=TOOLS,
-            tool_choice={"type": "any"},  # force one tool call; no thinking with forced choice
-            messages=[{"role": "user", "content": _user_content(observation, self._redactor)}],
+        # Force one tool call; no thinking with forced choice.
+        response = self._ensure_backend().create_message(
+            MessageRequest(
+                system=SYSTEM_PROMPT,
+                messages=[Message(role="user", content=_user_content(observation, self._redactor))],
+                tools=TOOLS,
+                tool_choice=AnyTool(),
+                model=self._model,
+                max_tokens=self._max_tokens,
+            )
         )
-        usage.record(getattr(message, "usage", None))
-        return _to_proposal(message)
+        usage.record(response.usage)
+        return _to_proposal(response)
 
     def plan(self, goal: str) -> list[str]:
-        client = self._ensure_client()
-        message = client.messages.create(
-            model=self._model,
-            max_tokens=self._max_tokens,
-            system=[{"type": "text", "text": PLAN_SYSTEM, "cache_control": {"type": "ephemeral"}}],
-            tools=[PLAN_TOOL],
-            tool_choice={"type": "tool", "name": "plan"},  # force the plan call
-            messages=[{"role": "user", "content": f"Goal: {goal}"}],
+        response = self._ensure_backend().create_message(
+            MessageRequest(
+                system=PLAN_SYSTEM,
+                messages=[Message(role="user", content=[TextPart(text=f"Goal: {goal}")])],
+                tools=[PLAN_TOOL],
+                tool_choice=NamedTool(name="plan"),  # force the plan call
+                model=self._model,
+                max_tokens=self._max_tokens,
+            )
         )
-        usage.record(getattr(message, "usage", None))
-        block = next((b for b in message.content if b.type == "tool_use"), None)
+        usage.record(response.usage)
+        block = response.first_tool_use()
         if block is None:
             return []
         return steps_from_plan(block.input.get("steps"))
 
 
-def _user_content(
-    observation: Observation, redactor: Redactor | None = None
-) -> list[dict[str, Any]]:
+def _user_content(observation: Observation, redactor: Redactor | None = None) -> list[ContentPart]:
     """The per-turn user message: the screenshot (if any) followed by the redacted text.
 
     The screenshot is sent as-is — images cannot be pixel-masked; the textual element tree is
     redacted via `redactor` (BE-0047). Both reach only the user-configured provider/endpoint.
     """
-    content: list[dict[str, Any]] = []
+    content: list[ContentPart] = []
     if observation.screenshot is not None:
-        content.append(
-            {
-                "type": "image",
-                "source": {
-                    "type": "base64",
-                    "media_type": "image/png",
-                    "data": base64.standard_b64encode(observation.screenshot).decode("ascii"),
-                },
-            }
-        )
-    content.append({"type": "text", "text": _render(observation, redactor)})
+        content.append(ImagePart(data=observation.screenshot))
+    content.append(TextPart(text=_render(observation, redactor)))
     return content

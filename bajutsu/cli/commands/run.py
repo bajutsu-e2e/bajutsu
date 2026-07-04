@@ -14,7 +14,7 @@ import typer
 from bajutsu import github
 from bajutsu import simctl as _simctl
 from bajutsu import usage as _usage
-from bajutsu.anthropic_client import credential_gap
+from bajutsu.ai import credential_gap
 from bajutsu.anthropic_client import key_env as ac_key_env
 from bajutsu.artifact_perms import make_run_dir
 from bajutsu.assertions import GoldenContext

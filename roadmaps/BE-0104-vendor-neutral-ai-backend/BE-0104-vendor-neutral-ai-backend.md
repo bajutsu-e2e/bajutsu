@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0104](BE-0104-vendor-neutral-ai-backend.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0104") |
+| Implementing PR | [#608](https://github.com/bajutsu-e2e/bajutsu/pull/608) |
 | Topic | AI provider configuration |
 | Related | [BE-0047](../BE-0047-ai-data-sovereignty/BE-0047-ai-data-sovereignty.md), [BE-0053](../BE-0053-bedrock-ai-provider/BE-0053-bedrock-ai-provider.md), [BE-0097](../BE-0097-crawl-ai-data-sovereignty/BE-0097-crawl-ai-data-sovereignty.md), [BE-0101](../BE-0101-ai-free-zero-config/BE-0101-ai-free-zero-config.md) |
 <!-- /BE-METADATA -->
@@ -143,8 +144,11 @@ step that actually removes the vendor coupling.
 
 Keep `AiSettings` / `AiConfig` as they are, but make `provider` an **open, registry-validated**
 value rather than the closed `anthropic | bedrock` pair. An unknown provider fails closed with a
-clear error (the same fail-closed discipline BE-0047 established). Document how a `provider` name
-maps to a registered adapter. No new config *fields* are required for this item.
+clear error (the same fail-closed discipline BE-0047 established). The check lives in the AI layer,
+not at config load: the deterministic core (`config`) must not import the AI provider registry
+(BE-0112), so config accepts the name and the registry rejects an unregistered one the first time an
+AI path resolves the provider. Document how a `provider` name maps to a registered adapter. No new
+config *fields* are required for this item.
 
 ### 7. Contract tests
 
@@ -195,13 +199,33 @@ ambiguous selector.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Capability audit — the minimal neutral surface the AI paths require (tool-use loop / vision / completion)
-- [ ] Vendor-neutral interface — `Protocol` + normalized request / response types
-- [ ] Provider registry — name → adapter-factory extension point, with the adapter contract documented
-- [ ] Anthropic reference adapter — wraps `make_client` (Anthropic + Bedrock), behavior-unchanged
-- [ ] Migrate call sites — `claude_agent` / `claude_triage` / `alerts` / `claude_enrich_agent` / `crawl_guide` / `crawl_tabs` off direct `anthropic` types
-- [ ] Config schema — `provider` becomes open, registry-validated, fail-closed on unknown
-- [ ] Contract tests — fake-adapter interface tests + Anthropic behavior-unchanged assertions + redaction-before-adapter check
+- [x] Capability audit — the minimal neutral surface the AI paths require (tool-use loop / vision / completion)
+- [x] Vendor-neutral interface — `Protocol` + normalized request / response types
+- [x] Provider registry — name → adapter-factory extension point, with the adapter contract documented
+- [x] Anthropic reference adapter — wraps `make_client` (Anthropic + Bedrock), behavior-unchanged
+- [x] Migrate call sites — `claude_agent` / `claude_triage` / `alerts` / `claude_enrich_agent` / `crawl_guide` / `crawl_tabs` off direct `anthropic` types
+- [x] Config schema — `provider` becomes open; the registry (AI layer) validates and fails closed on unknown, since the core can't import it (BE-0112)
+- [x] Contract tests — fake-adapter interface tests + Anthropic behavior-unchanged assertions + redaction-before-adapter check
+
+The capability audit found that every AI path is a *single-shot forced-tool* `create` call — no
+path feeds `tool_result` blocks back (the `record` loop drives many fresh single turns, not one
+multi-turn conversation), so the neutral surface is one `create_message` per turn and models no
+tool-result parts. The seam lives in `bajutsu/ai/` (`base` = `AiBackend` protocol + normalized
+types, `registry` = provider name → adapter, `anthropic` = the reference adapter over
+`anthropic_client.make_client`, covering the Anthropic API and Amazon Bedrock). `credential_gap` is
+now dispatched through the registry so a future adapter declares its own; `anthropic_client.provider`
+stays as the Anthropic-family sub-provider selector. Redaction is preserved exactly per call site
+(behavior-unchanged) rather than relocated into the seam, to keep `crawl_tabs`, which redacts
+nothing today, unchanged.
+
+Syncing this branch with `main` brought BE-0112's layer-boundary gate (import-linter), which forbids
+the deterministic core from importing the periphery AI stack — and BE-0112 moved `AiConfig` into
+`config`. The two items met at provider validation: the original design rejected an unknown provider
+in `AiSettings` at config load, but that made `config` import `bajutsu.ai` (transitively reaching
+`anthropic_client`), breaking the gate. The fail-closed check moved from config load into the
+registry's provider resolution (`_provider_name` now raises on an unregistered name), so `config`
+stops importing the AI stack and the guarantee is preserved, just at the first AI use rather than at
+load ([#608](https://github.com/bajutsu-e2e/bajutsu/pull/608)).
 
 ## References
 

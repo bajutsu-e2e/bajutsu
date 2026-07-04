@@ -17,12 +17,22 @@ deterministic fake, mirroring how the alert guard and the action proposer are te
 
 from __future__ import annotations
 
-import base64
 from dataclasses import dataclass
-from typing import Any, Protocol
+from typing import Protocol
 
+from bajutsu.ai import (
+    AiBackend,
+    AnyTool,
+    ImagePart,
+    Message,
+    MessageRequest,
+    MessageResponse,
+    TextPart,
+    ToolDef,
+    create_backend,
+)
 from bajutsu.alerts import _fraction, _png_size
-from bajutsu.anthropic_client import AiConfig, ensure_client, resolve_model
+from bajutsu.anthropic_client import AiConfig, resolve_model
 from bajutsu.drivers import base
 
 TAB_LOCATOR_MODEL = "claude-opus-4-8"
@@ -118,11 +128,11 @@ stated height — a bottom tab bar sits near the bottom. Include the tab's visib
 when it has one.
 - You only report where the tabs are. You never decide pass/fail."""
 
-_FIND_TABS_TOOL: list[dict[str, Any]] = [
-    {
-        "name": "find_tabs",
-        "description": "Report the app's tab bar items (empty when there is no tab bar).",
-        "input_schema": {
+_FIND_TABS_TOOL: list[ToolDef] = [
+    ToolDef(
+        name="find_tabs",
+        description="Report the app's tab bar items (empty when there is no tab bar).",
+        input_schema={
             "type": "object",
             "properties": {
                 "tabs": {
@@ -140,12 +150,12 @@ _FIND_TABS_TOOL: list[dict[str, Any]] = [
             },
             "required": ["tabs"],
         },
-    }
+    )
 ]
 
 
-def _targets_of(message: Any, width: int, height: int) -> list[TabTarget]:
-    tool_use = next((b for b in message.content if b.type == "tool_use"), None)
+def _targets_of(response: MessageResponse, width: int, height: int) -> list[TabTarget]:
+    tool_use = response.first_tool_use()
     if tool_use is None:
         return []
     out: list[TabTarget] = []
@@ -163,54 +173,43 @@ def _targets_of(message: Any, width: int, height: int) -> list[TabTarget]:
 
 
 class ClaudeTabLocator:
-    """TabLocator backed by Claude vision.
-
-    `anthropic` is lazy-imported so the module loads without the SDK or an API key, like the alert
-    locator.
-    """
+    """TabLocator backed by Claude vision, through the vendor-neutral backend (BE-0104)."""
 
     def __init__(
         self,
-        client: Any = None,
+        backend: AiBackend | None = None,
         model: str | None = None,
         *,
         ai: AiConfig | None = None,
     ) -> None:
-        self._client = client
+        self._backend = backend
         self._ai = ai
         self._model = resolve_model(TAB_LOCATOR_MODEL, ai) if model is None else model
 
-    def _ensure_client(self) -> Any:
-        return ensure_client(self)
+    def _ensure_backend(self) -> AiBackend:
+        if self._backend is None:
+            self._backend = create_backend(ai=self._ai)
+        return self._backend
 
     def locate(self, screenshot_png: bytes) -> list[TabTarget]:
-        client = self._ensure_client()
         width, height = _png_size(screenshot_png)
         text = (
             f"Find the tab bar. The screenshot is {width}x{height} pixels (width x height); give "
             "each tab center as pixel coordinates within that range."
         )
-        message = client.messages.create(
-            model=self._model,
-            max_tokens=512,
-            system=[{"type": "text", "text": _SYSTEM, "cache_control": {"type": "ephemeral"}}],
-            tools=_FIND_TABS_TOOL,
-            tool_choice={"type": "any"},
-            messages=[
-                {
-                    "role": "user",
-                    "content": [
-                        {
-                            "type": "image",
-                            "source": {
-                                "type": "base64",
-                                "media_type": "image/png",
-                                "data": base64.standard_b64encode(screenshot_png).decode("ascii"),
-                            },
-                        },
-                        {"type": "text", "text": text},
-                    ],
-                }
-            ],
+        response = self._ensure_backend().create_message(
+            MessageRequest(
+                system=_SYSTEM,
+                messages=[
+                    Message(
+                        role="user",
+                        content=[ImagePart(data=screenshot_png), TextPart(text=text)],
+                    )
+                ],
+                tools=_FIND_TABS_TOOL,
+                tool_choice=AnyTool(),
+                model=self._model,
+                max_tokens=512,
+            )
         )
-        return _targets_of(message, width, height)
+        return _targets_of(response, width, height)

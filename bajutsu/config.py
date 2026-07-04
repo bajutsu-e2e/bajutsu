@@ -122,17 +122,14 @@ class AiSettings(_Model):
     a literal key into config.
     """
 
-    provider: str | None = None  # anthropic (default) | bedrock
+    # A registered provider name (BE-0104); anthropic is the default. The name is *not* validated
+    # here: the deterministic core must not import the AI provider stack (BE-0112), and the registry
+    # that owns the valid names lives in the periphery (`bajutsu.ai`). An unknown name fails closed
+    # in that registry the first time an AI path resolves the provider, not at config load.
+    provider: str | None = None
     model: str | None = None  # override the path's default model
     base_url: str | None = Field(default=None, alias="baseUrl")  # self-hosted gateway / proxy
     key_env: str | None = Field(default=None, alias="keyEnv")  # NAME of the env var (never the key)
-
-    @field_validator("provider")
-    @classmethod
-    def _known_provider(cls, v: str | None) -> str | None:
-        if v is not None and v not in ("anthropic", "bedrock"):
-            raise ValueError(f"unknown ai.provider {v!r}: use 'anthropic' or 'bedrock'")
-        return v
 
 
 def _check_platform(v: str | None) -> str | None:

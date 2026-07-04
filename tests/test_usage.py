@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from conftest import FAKE_USAGE_PER_CALL, FakeAnthropic, FakeBlock, FakeUsage
+from conftest import FAKE_USAGE_PER_CALL, FakeBackend, FakeBlock, FakeUsage
 
 from bajutsu import usage
 from bajutsu.agent import Observation
@@ -67,7 +67,7 @@ def test_record_ignores_non_numeric_and_negative_counts() -> None:
 
 def test_claude_agent_records_each_call_into_the_tracker() -> None:
     before = usage.snapshot()
-    agent = ClaudeAgent(client=FakeAnthropic(FakeBlock("tap", {"id": "a"})))
+    agent = ClaudeAgent(backend=FakeBackend(FakeBlock("tap", {"id": "a"})))
     agent.next_action(_obs())
     spent = usage.snapshot() - before
     assert spent.calls == 1 and spent.total_tokens == FAKE_USAGE_PER_CALL

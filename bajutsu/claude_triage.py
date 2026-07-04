@@ -12,11 +12,22 @@ injectable for testing — mirroring `claude_agent.ClaudeAgent`.
 
 from __future__ import annotations
 
-import base64
 from typing import Any
 
 from bajutsu import usage
-from bajutsu.anthropic_client import AiConfig, ensure_client, resolve_model
+from bajutsu.ai import (
+    AiBackend,
+    AnyTool,
+    ContentPart,
+    ImagePart,
+    Message,
+    MessageRequest,
+    MessageResponse,
+    TextPart,
+    ToolDef,
+    create_backend,
+)
+from bajutsu.anthropic_client import AiConfig, resolve_model
 from bajutsu.redaction import Redactor
 from bajutsu.triage import FIX_KINDS, Fix, Triage, TriageContext, fix_summary
 
@@ -61,11 +72,11 @@ Omit `fix` for assertion failures, or whenever you cannot name an exact `find` f
 
 # Static tool definition (cached together with the system prompt). Its shape mirrors the
 # `Triage` dataclass so the tool input maps straight back to it.
-TOOLS: list[dict[str, Any]] = [
-    {
-        "name": "diagnose",
-        "description": "Report the root-cause diagnosis of the failed scenario and the minimal fixes.",
-        "input_schema": {
+TOOLS: list[ToolDef] = [
+    ToolDef(
+        name="diagnose",
+        description="Report the root-cause diagnosis of the failed scenario and the minimal fixes.",
+        input_schema={
             "type": "object",
             "properties": {
                 "summary": {
@@ -100,7 +111,7 @@ TOOLS: list[dict[str, Any]] = [
             },
             "required": ["summary", "category", "suggestions"],
         },
-    },
+    ),
 ]
 
 
@@ -151,21 +162,12 @@ def _render(context: TriageContext, redactor: Redactor | None = None) -> str:
     return "\n".join(lines)
 
 
-def _user_content(context: TriageContext, redactor: Redactor | None = None) -> list[dict[str, Any]]:
+def _user_content(context: TriageContext, redactor: Redactor | None = None) -> list[ContentPart]:
     """The user message: the failure screenshot (if any) followed by the redacted text context."""
-    content: list[dict[str, Any]] = []
+    content: list[ContentPart] = []
     if context.screenshot is not None:
-        content.append(
-            {
-                "type": "image",
-                "source": {
-                    "type": "base64",
-                    "media_type": "image/png",
-                    "data": base64.standard_b64encode(context.screenshot).decode("ascii"),
-                },
-            }
-        )
-    content.append({"type": "text", "text": _render(context, redactor)})
+        content.append(ImagePart(data=context.screenshot))
+    content.append(TextPart(text=_render(context, redactor)))
     return content
 
 
@@ -181,8 +183,8 @@ def _parse_fix(raw: Any) -> Fix | None:
     return Fix(kind, fix_summary(kind, find, replace), find, replace)
 
 
-def _to_triage(message: Any) -> Triage:
-    tool_use = next((b for b in message.content if b.type == "tool_use"), None)
+def _to_triage(response: MessageResponse) -> Triage:
+    tool_use = response.first_tool_use()
     if tool_use is None:
         return Triage("Claude returned no diagnosis.", "unknown", [])
     args = tool_use.input
@@ -200,39 +202,35 @@ class ClaudeTriageAgent:
 
     def __init__(
         self,
-        client: Any = None,
+        backend: AiBackend | None = None,
         model: str | None = None,
         max_tokens: int = 1024,
         *,
         ai: AiConfig | None = None,
         redactor: Redactor | None = None,
     ) -> None:
-        self._client = client
+        self._backend = backend
         self._ai = ai
         self._redactor = redactor
         self._model = resolve_model(MODEL, ai) if model is None else model
         self._max_tokens = max_tokens
 
-    def _ensure_client(self) -> Any:
-        return ensure_client(self)
+    def _ensure_backend(self) -> AiBackend:
+        if self._backend is None:
+            self._backend = create_backend(ai=self._ai)
+        return self._backend
 
     def triage(self, context: TriageContext) -> Triage:
-        client = self._ensure_client()
-        message = client.messages.create(
-            model=self._model,
-            max_tokens=self._max_tokens,
-            system=[
-                {
-                    "type": "text",
-                    "text": SYSTEM_PROMPT,
-                    "cache_control": {"type": "ephemeral"},
-                }
-            ],
-            tools=TOOLS,
-            tool_choice={
-                "type": "any"
-            },  # force the one diagnose call; no thinking with forced choice
-            messages=[{"role": "user", "content": _user_content(context, self._redactor)}],
+        # Force the one diagnose call; no thinking with forced choice.
+        response = self._ensure_backend().create_message(
+            MessageRequest(
+                system=SYSTEM_PROMPT,
+                messages=[Message(role="user", content=_user_content(context, self._redactor))],
+                tools=TOOLS,
+                tool_choice=AnyTool(),
+                model=self._model,
+                max_tokens=self._max_tokens,
+            )
         )
-        usage.record(getattr(message, "usage", None))
-        return _to_triage(message)
+        usage.record(response.usage)
+        return _to_triage(response)

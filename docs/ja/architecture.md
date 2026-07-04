@@ -88,6 +88,7 @@ flowchart TB
 | `runner/` | config + シナリオ → レポート。デバイスプール + launch 手順（パッケージ: `pipeline` / `pool` / `launch`） | [run-loop](run-loop.md#runner実行パイプライン) |
 | `doctor.py` | 規約充足度スコア（id カバレッジ等） | [configuration](configuration.md#doctor規約充足度スコア) |
 | `agent.py` · `agents.py` | オーサリング Agent 抽象（`Observation`/`Proposal`/`Agent`）+ backend 選択（`--agent api` / `claude-code`） | [recording](recording.md) |
+| `ai/` | ベンダー中立な AI バックエンドのシーム（BE-0104）。`AiBackend` プロトコルと正規化した request/response 型（`base`）、プロバイダレジストリ（`registry`）、`anthropic_client` の上に立つ Anthropic 参照アダプタ（`anthropic`） | [configuration](configuration.md#ai-プロバイダai-be-0047) |
 | `claude_agent.py` | Anthropic API エージェント（ツール強制呼び出し、prompt cache） | [recording](recording.md#claude-エージェント) |
 | `claude_code_agent.py` | Claude Code エージェント（Claude Code CLI を駆動） | [recording](recording.md) |
 | `record.py` | record ループ（observe → 提案 → 実行 → 書き出し） | [recording](recording.md#record-ループ) |

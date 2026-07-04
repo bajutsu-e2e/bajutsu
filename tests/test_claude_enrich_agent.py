@@ -1,12 +1,11 @@
-"""Tests for ClaudeEnrichmentAgent with an injected fake Anthropic client."""
+"""Tests for ClaudeEnrichmentAgent with an injected fake AI backend (BE-0104)."""
 
 from __future__ import annotations
 
-import base64
-
-from conftest import FakeAnthropic, FakeBlock
+from conftest import FakeBackend, FakeBlock
 
 from bajutsu.agent import StepContext
+from bajutsu.ai.base import ImagePart, NamedTool, TextPart
 from bajutsu.claude_enrich_agent import ClaudeEnrichmentAgent, _render_enrichment
 from bajutsu.drivers import base
 from bajutsu.redaction import Redactor
@@ -49,7 +48,7 @@ def test_propose_assertions_returns_enrichment_proposal() -> None:
             "reason": "the scenario reaches the done screen",
         },
     )
-    agent = ClaudeEnrichmentAgent(client=FakeAnthropic(block))
+    agent = ClaudeEnrichmentAgent(backend=FakeBackend(block))
     steps = [Step.model_validate({"tap": {"id": "go"}})]
     scenario = _scenario(steps, goal="reach done")
     contexts = [_ctx(steps[0], [_el("done", "Done")])]
@@ -73,7 +72,7 @@ def test_propose_assertions_value_equals() -> None:
             "reason": "counter shows 3",
         },
     )
-    agent = ClaudeEnrichmentAgent(client=FakeAnthropic(block))
+    agent = ClaudeEnrichmentAgent(backend=FakeBackend(block))
     steps = [Step.model_validate({"tap": {"id": "inc"}})]
     scenario = _scenario(steps)
     contexts = [_ctx(steps[0], [_el("counter", "Counter", ["staticText"])])]
@@ -95,7 +94,7 @@ def test_propose_assertions_label_contains() -> None:
             "reason": "count label shows 2",
         },
     )
-    agent = ClaudeEnrichmentAgent(client=FakeAnthropic(block))
+    agent = ClaudeEnrichmentAgent(backend=FakeBackend(block))
     steps = [Step.model_validate({"tap": {"id": "inc"}})]
     scenario = _scenario(steps)
     contexts = [_ctx(steps[0], [_el("inc", "+")])]
@@ -114,7 +113,7 @@ def test_propose_assertions_not_exists() -> None:
             "reason": "loading done",
         },
     )
-    agent = ClaudeEnrichmentAgent(client=FakeAnthropic(block))
+    agent = ClaudeEnrichmentAgent(backend=FakeBackend(block))
     steps = [Step.model_validate({"tap": {"id": "go"}})]
     scenario = _scenario(steps)
     contexts = [_ctx(steps[0], [_el("go", "Go")])]
@@ -138,7 +137,7 @@ def test_settle_step_derived_from_first_positive_assertion() -> None:
             "reason": "result visible",
         },
     )
-    agent = ClaudeEnrichmentAgent(client=FakeAnthropic(block))
+    agent = ClaudeEnrichmentAgent(backend=FakeBackend(block))
     steps = [Step.model_validate({"tap": {"id": "go"}})]
     scenario = _scenario(steps)
     contexts = [_ctx(steps[0], [_el("result", "Result")])]
@@ -159,7 +158,7 @@ def test_no_settle_for_negated_only_assertions() -> None:
             "reason": "nothing positive",
         },
     )
-    agent = ClaudeEnrichmentAgent(client=FakeAnthropic(block))
+    agent = ClaudeEnrichmentAgent(backend=FakeBackend(block))
     steps = [Step.model_validate({"tap": {"id": "go"}})]
     scenario = _scenario(steps)
     contexts = [_ctx(steps[0], [_el("go", "Go")])]
@@ -174,25 +173,25 @@ def test_no_settle_for_negated_only_assertions() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_request_uses_forced_tool_choice_and_cache() -> None:
-    client = FakeAnthropic(FakeBlock("propose_assertions", {"assertions": [], "reason": "ok"}))
-    agent = ClaudeEnrichmentAgent(client=client, model="claude-opus-4-8")
+def test_request_uses_forced_tool_choice() -> None:
+    backend = FakeBackend(FakeBlock("propose_assertions", {"assertions": [], "reason": "ok"}))
+    agent = ClaudeEnrichmentAgent(backend=backend, model="claude-opus-4-8")
     steps = [Step.model_validate({"tap": {"id": "go"}})]
     scenario = _scenario(steps)
     contexts = [_ctx(steps[0], [_el("go", "Go")])]
 
     agent.propose_assertions(scenario, contexts)
 
-    call = client.calls[0]
-    assert call["model"] == "claude-opus-4-8"
-    assert call["tool_choice"] == {"type": "tool", "name": "propose_assertions"}
-    assert call["system"][0]["cache_control"] == {"type": "ephemeral"}
-    assert {t["name"] for t in call["tools"]} == {"propose_assertions"}
+    request = backend.requests[0]
+    assert request.model == "claude-opus-4-8"
+    assert isinstance(request.tool_choice, NamedTool)
+    assert request.tool_choice.name == "propose_assertions"
+    assert {t.name for t in request.tools} == {"propose_assertions"}
 
 
-def test_screenshot_sent_as_image_block() -> None:
-    client = FakeAnthropic(FakeBlock("propose_assertions", {"assertions": [], "reason": "ok"}))
-    agent = ClaudeEnrichmentAgent(client=client)
+def test_screenshot_sent_as_image_part() -> None:
+    backend = FakeBackend(FakeBlock("propose_assertions", {"assertions": [], "reason": "ok"}))
+    agent = ClaudeEnrichmentAgent(backend=backend)
     steps = [Step.model_validate({"tap": {"id": "go"}})]
     scenario = _scenario(steps)
     png = b"\x89PNG\r\n\x1a\n fake-bytes"
@@ -200,23 +199,23 @@ def test_screenshot_sent_as_image_block() -> None:
 
     agent.propose_assertions(scenario, contexts)
 
-    content = client.calls[0]["messages"][0]["content"]
-    images = [c for c in content if c["type"] == "image"]
+    content = backend.requests[0].messages[0].content
+    images = [c for c in content if isinstance(c, ImagePart)]
     assert len(images) == 1
-    assert base64.standard_b64decode(images[0]["source"]["data"]) == png
+    assert images[0].data == png
 
 
 def test_no_screenshot_is_text_only() -> None:
-    client = FakeAnthropic(FakeBlock("propose_assertions", {"assertions": [], "reason": "ok"}))
-    agent = ClaudeEnrichmentAgent(client=client)
+    backend = FakeBackend(FakeBlock("propose_assertions", {"assertions": [], "reason": "ok"}))
+    agent = ClaudeEnrichmentAgent(backend=backend)
     steps = [Step.model_validate({"tap": {"id": "go"}})]
     scenario = _scenario(steps)
     contexts = [_ctx(steps[0], [_el("go", "Go")])]
 
     agent.propose_assertions(scenario, contexts)
 
-    content = client.calls[0]["messages"][0]["content"]
-    assert all(c["type"] == "text" for c in content)
+    content = backend.requests[0].messages[0].content
+    assert all(isinstance(c, TextPart) for c in content)
 
 
 # ---------------------------------------------------------------------------
@@ -242,9 +241,9 @@ def test_render_includes_goal_and_step_contexts() -> None:
 
 
 def test_secret_in_elements_is_masked() -> None:
-    client = FakeAnthropic(FakeBlock("propose_assertions", {"assertions": [], "reason": "ok"}))
+    backend = FakeBackend(FakeBlock("propose_assertions", {"assertions": [], "reason": "ok"}))
     redactor = Redactor(Redact(labels=["password"]), values=["s3cret"])
-    agent = ClaudeEnrichmentAgent(client=client, redactor=redactor)
+    agent = ClaudeEnrichmentAgent(backend=backend, redactor=redactor)
     steps = [Step.model_validate({"tap": {"id": "go"}})]
     scenario = _scenario(steps)
     screen: list[base.Element] = [
@@ -260,6 +259,6 @@ def test_secret_in_elements_is_masked() -> None:
 
     agent.propose_assertions(scenario, contexts)
 
-    text = next(c["text"] for c in client.calls[0]["messages"][0]["content"] if c["type"] == "text")
+    text = next(c.text for c in backend.requests[0].messages[0].content if isinstance(c, TextPart))
     assert "s3cret" not in text
     assert "[REDACTED]" in text
