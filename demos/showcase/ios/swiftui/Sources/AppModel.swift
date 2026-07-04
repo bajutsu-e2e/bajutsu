@@ -43,9 +43,12 @@ final class AppModel: ObservableObject {
 
     // Driver-conformance mode (BE-0114): a test-only affordance, entirely gated on the
     // SHOWCASE_CONFORMANCE launch env. nil = the normal observe-only app (BE-0079, untouched);
-    // non-nil = render exactly these identifiers (duplicates / the empty set included) so the
-    // conformance suite can seed arbitrary screens on-device by relaunching. See ConformanceView.
-    let conformanceIDs: [String]?
+    // non-nil = render exactly these identifiers (duplicates / the empty set included). The suite
+    // reseeds the screen by writing the spec file this polls (see startConformancePolling), never by
+    // relaunching — the resident XCUITest runner can't survive the suite's many app.launch() cycles.
+    @Published var conformanceIDs: [String]?
+
+    private var conformanceTimer: Timer?
 
     let animationsDisabled: Bool
 
@@ -57,6 +60,9 @@ final class AppModel: ObservableObject {
 
         selectedTab = Self.tab(env["SHOWCASE_TAB"])
         conformanceIDs = Self.conformanceIDs(env["SHOWCASE_CONFORMANCE"])
+        if conformanceIDs != nil {
+            startConformancePolling()
+        }
     }
 
     /// Parse the `SHOWCASE_CONFORMANCE` id spec. nil (env unset) leaves conformance mode off;
@@ -64,6 +70,26 @@ final class AppModel: ObservableObject {
     private static func conformanceIDs(_ spec: String?) -> [String]? {
         guard let spec else { return nil }
         return spec.isEmpty ? [] : spec.components(separatedBy: ",")
+    }
+
+    /// The file the conformance suite writes to reseed the on-screen identifiers, in the app's
+    /// Documents directory (the suite locates it via `simctl get_app_container … data`).
+    private static var conformanceSpecURL: URL {
+        FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("conformance-spec.txt")
+    }
+
+    /// Poll the spec file and re-render on change — the on-device reseed channel (BE-0114). Polling
+    /// (not a relaunch) is what lets the resident XCUITest runner survive the suite's many screens;
+    /// a missing/unreadable file just leaves the current screen in place.
+    private func startConformancePolling() {
+        conformanceTimer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
+            guard let self,
+                  let raw = try? String(contentsOf: Self.conformanceSpecURL, encoding: .utf8)
+            else { return }
+            let ids = Self.conformanceIDs(raw.trimmingCharacters(in: .whitespacesAndNewlines))
+            if self.conformanceIDs != ids { self.conformanceIDs = ids }
+        }
     }
 
     /// Map a `SHOWCASE_TAB` value (and deeplink host) to a tab.

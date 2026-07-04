@@ -7,14 +7,14 @@ import SwiftUI
 // contract as FakeDriver and Playwright, against each driver's real query / act code rather than
 // the shared base alone. Reached only when the SHOWCASE_CONFORMANCE launch env is set (see
 // AppModel), so the normal observe-only app (BE-0079) never renders it; the suite reseeds a new
-// screen by relaunching the app with a new spec.
+// screen by writing the spec file AppModel polls.
 struct ConformanceView: View {
     let identifiers: [String]
 
     /// A stable marker present on every conformance screen — including the empty (zero-match) one,
     /// which seeds no identifiers. The on-device harness waits on it to confirm the app is actually
     /// in conformance mode, rather than inferring it from the absence of ids (which a transient,
-    /// near-empty a11y tree during a relaunch could satisfy too early).
+    /// near-empty a11y tree could satisfy too early).
     static let readyID = "conformance.ready"
 
     var body: some View {
@@ -23,7 +23,14 @@ struct ConformanceView: View {
         VStack(spacing: 8) {
             Text("ready").accessibilityID(Self.readyID)
             ForEach(Array(identifiers.enumerated()), id: \.offset) { _, identifier in
+                // A generous, opaque hit area: the conformance contract pinches/rotates one of these
+                // (the MULTI_TOUCH case), and XCUITest's two-finger gestures need real room between
+                // touch points — on an intrinsically-sized text button they degenerate and crash the
+                // runner. `contentShape` makes the whole frame hittable for the tap cases too.
                 Button(identifier) {}
+                    .frame(width: 280, height: 90)
+                    .background(Color.gray.opacity(0.25))
+                    .contentShape(Rectangle())
                     .accessibilityID(identifier)
             }
         }

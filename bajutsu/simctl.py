@@ -159,6 +159,11 @@ def get_app_container_cmd(udid: str, bundle_id: str) -> list[str]:
     return ["xcrun", "simctl", "get_app_container", udid, bundle_id, "app"]
 
 
+def data_container_cmd(udid: str, bundle_id: str) -> list[str]:
+    """Path of the app's data container (its sandbox home) — succeeds only if the app is installed."""
+    return ["xcrun", "simctl", "get_app_container", udid, bundle_id, "data"]
+
+
 def child_env(env: Mapping[str, str]) -> dict[str, str]:
     """Launch env vars are passed to the app via SIMCTL_CHILD_<NAME> on the parent process."""
     return {f"SIMCTL_CHILD_{k}": v for k, v in env.items()}

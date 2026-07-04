@@ -6,7 +6,12 @@ import BajutsuRunner
 /// serves the loopback actuation endpoints, and stays alive until the Python side tears it down.
 final class RunnerUITest: XCTestCase {
     override func setUpWithError() throws {
-        continueAfterFailure = false
+        // The runner is a resident server handling many operations over one long-lived test method,
+        // so a single soft XCUITest failure (e.g. a pinch/rotate on a small element that XCUITest
+        // flags but still performs) must not end the test and tear the server down — that would
+        // leave every later request with "connection refused". Keep serving; a genuinely failed
+        // operation still surfaces to the Python side through its response status.
+        continueAfterFailure = true
     }
 
     func testServeUntilTornDown() throws {
