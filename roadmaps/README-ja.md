@@ -544,7 +544,9 @@ Web（Playwright）backend とその完成（リッチな capability、並列実
 ### AI プロバイダ設定
 
 <!-- GENERATED:proposals-ai-provider -->
-
+| ID | 項目 | 状態 |
+|---|---|---|
+| [BE-0163](BE-0163-ant-cli-oauth-provider/BE-0163-ant-cli-oauth-provider-ja.md) | Claude Code CLI バックエンドを `ant` CLI の OAuth プロバイダに置き換える | 提案 |
 <!-- /GENERATED:proposals-ai-provider -->
 
 ### Web UI のホスティング（クラウド / セルフホスト）

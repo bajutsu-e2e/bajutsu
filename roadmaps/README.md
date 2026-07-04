@@ -551,7 +551,9 @@ The scope is currently **limited to the iOS Simulator** ([DESIGN §1](../DESIGN.
 ### AI provider configuration
 
 <!-- GENERATED:proposals-ai-provider -->
-
+| ID | Item | Status |
+|---|---|---|
+| [BE-0163](BE-0163-ant-cli-oauth-provider/BE-0163-ant-cli-oauth-provider.md) | Replace the Claude Code CLI authoring backend with an `ant`-CLI OAuth AI provider | Proposal |
 <!-- /GENERATED:proposals-ai-provider -->
 
 ### Hosting the web UI (cloud / self-hosted)

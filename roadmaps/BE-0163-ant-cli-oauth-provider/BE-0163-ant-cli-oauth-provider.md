@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-ant-cli-oauth-provider-ja.md)
+**English** · [日本語](BE-0163-ant-cli-oauth-provider-ja.md)
 
-# BE-XXXX — Replace the Claude Code CLI authoring backend with an `ant`-CLI OAuth AI provider
+# BE-0163 — Replace the Claude Code CLI authoring backend with an `ant`-CLI OAuth AI provider
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-ant-cli-oauth-provider.md) |
+| Proposal | [BE-0163](BE-0163-ant-cli-oauth-provider.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0163") |
 | Topic | AI provider configuration |
 <!-- /BE-METADATA -->
 
