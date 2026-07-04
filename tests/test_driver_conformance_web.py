@@ -4,8 +4,9 @@ Unlike `test_driver_conformance.py` (FakeDriver, browser-free, on the fast Linux
 drives a real headless Chromium: the point of the suite is to catch drift on a backend's own
 query / action code, which only surfaces against the real browser, not the shared base alone.
 So it needs the `web` extra + a Chromium binary and runs in the separate web CI job, never in
-`make check` — `importorskip` skips the whole module when Playwright isn't installed (the fast
-gate's state, since the `web` extra is not in the dev group).
+`make check`: a `web` pytest marker (deselected by the gate's default `-m 'not web'`) keeps it
+out even when the extra is installed, and a `find_spec` module-skip drops it when Playwright is
+absent — the fast gate's state, since the `web` extra is not in the dev group.
 
 Each conformance screen is realized as real HTML: every seeded element becomes a visible,
 non-zero-size node tagged with `data-testid` (the id convention `QUERY_JS` reads), rendered via
@@ -76,13 +77,14 @@ def _browser() -> Iterator[Any]:
     # Imported here, not at module top, so collection stays free of the heavy dep (see the skip above).
     from playwright.sync_api import sync_playwright
 
-    pw = sync_playwright().start()
-    browser = pw.chromium.launch(headless=True)
-    try:
-        yield browser
-    finally:
-        browser.close()
-        pw.stop()
+    # The `with` form stops Playwright even if `launch()` raises — a bare `.start()` before the
+    # try/finally would leak the process on a launch failure.
+    with sync_playwright() as pw:
+        browser = pw.chromium.launch(headless=True)
+        try:
+            yield browser
+        finally:
+            browser.close()
 
 
 @pytest.mark.web
