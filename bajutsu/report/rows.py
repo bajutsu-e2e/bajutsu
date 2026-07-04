@@ -5,8 +5,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+from bajutsu.from_grouping import grouped_provenance
 from bajutsu.orchestrator import RunResult
-from bajutsu.provenance import grouped_provenance
 from bajutsu.report.format import (
     _ACTION_META,
     Part,

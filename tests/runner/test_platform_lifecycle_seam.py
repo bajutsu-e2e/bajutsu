@@ -13,9 +13,9 @@ from pathlib import Path
 import pytest
 from _runner import _eff
 
-from bajutsu import env
+from bajutsu import simctl
 from bajutsu.drivers import base
-from bajutsu.environment import (
+from bajutsu.platform_lifecycle import (
     FakeEnvironment,
     IosEnvironment,
     WebEnvironment,
@@ -34,7 +34,7 @@ def test_environment_for_selects_by_actuator() -> None:
 
 def test_web_environment_requires_base_url() -> None:
     eff = replace(_eff(), base_url=None)
-    with pytest.raises(env.DeviceError, match="baseUrl"):
+    with pytest.raises(simctl.DeviceError, match="baseUrl"):
         WebEnvironment("playwright").start(eff, Preconditions())
 
 
@@ -52,7 +52,7 @@ def test_web_environment_navigates_then_returns_the_driver(monkeypatch: pytest.M
             return []
 
     web = _WebDriver()
-    monkeypatch.setattr("bajutsu.environment.make_driver", lambda *a, **k: web)
+    monkeypatch.setattr("bajutsu.platform_lifecycle.make_driver", lambda *a, **k: web)
     eff = replace(_eff(), base_url="https://app.test")
     driver = WebEnvironment("playwright").start(eff, Preconditions())
     assert driver is web
@@ -73,7 +73,7 @@ def test_ios_environment_surfaces_a_failing_step_as_device_error() -> None:
             raise subprocess.CalledProcessError(1, args, output="", stderr="boom")
         return ""
 
-    with pytest.raises(env.DeviceError):
+    with pytest.raises(simctl.DeviceError):
         IosEnvironment("idb", "UDID", env_run=fake_run).start(_eff(), Preconditions(erase=True))
 
 
@@ -107,7 +107,7 @@ def test_device_catalog_is_empty_for_web_and_read_for_devices() -> None:
     seen = IosEnvironment(
         "idb",
         "U",
-        env_run=lambda args, extra_env=None: catalog if args == env.list_devices_cmd() else "",
+        env_run=lambda args, extra_env=None: catalog if args == simctl.list_devices_cmd() else "",
     ).device_catalog()
     assert seen.get("U") == {"name": "X", "runtime": "iOS 17.2"}
 
@@ -243,7 +243,7 @@ def test_web_crawl_seams_drive_the_web_driver() -> None:
 def test_web_crawl_reset_makes_a_fresh_context(monkeypatch: pytest.MonkeyPatch) -> None:
     # The web "reset to a clean start" is a fresh BrowserContext (the erase equivalent), then a
     # readiness wait. (_await_ready is stubbed so the test doesn't poll a fake driver.)
-    monkeypatch.setattr("bajutsu.environment._await_ready", lambda *a, **k: None)
+    monkeypatch.setattr("bajutsu.platform_lifecycle._await_ready", lambda *a, **k: None)
 
     class _WebDriver:
         name = "web"
@@ -261,7 +261,7 @@ def test_web_crawl_reset_makes_a_fresh_context(monkeypatch: pytest.MonkeyPatch) 
 
 def test_device_crawl_reset_relaunches_the_app(monkeypatch: pytest.MonkeyPatch) -> None:
     # The device "reset" is a relaunch (terminate then launch), not a full erase — fast per visit.
-    monkeypatch.setattr("bajutsu.environment._await_ready", lambda *a, **k: None)
+    monkeypatch.setattr("bajutsu.platform_lifecycle._await_ready", lambda *a, **k: None)
     calls: list[list[str]] = []
 
     def fake_run(args: list[str], extra_env: object = None) -> str:
@@ -298,7 +298,7 @@ def test_only_device_platforms_have_devices() -> None:
 
 def test_xcuitest_environment_requires_test_runner_in_config() -> None:
     xe = XcuitestEnvironment("xcuitest", "UDID", env_run=lambda a, extra_env=None: "")
-    with pytest.raises(env.DeviceError, match="testRunner"):
+    with pytest.raises(simctl.DeviceError, match="testRunner"):
         xe.start(_eff(), Preconditions())
 
 
@@ -315,7 +315,7 @@ def test_xcuitest_environment_start_launches_runner_and_creates_driver(
         simctl_calls.append(args)
         return ""
 
-    monkeypatch.setattr("bajutsu.environment._allocate_port", lambda: 54321)
+    monkeypatch.setattr("bajutsu.platform_lifecycle._allocate_port", lambda: 54321)
 
     popen_calls: list[dict[str, object]] = []
 
@@ -351,7 +351,7 @@ def test_xcuitest_environment_start_launches_runner_and_creates_driver(
         make_driver_calls.append({"args": a, "kwargs": k})
         return fake_driver
 
-    monkeypatch.setattr("bajutsu.environment.make_driver", mock_make_driver)
+    monkeypatch.setattr("bajutsu.platform_lifecycle.make_driver", mock_make_driver)
 
     import plistlib
     import tempfile
@@ -408,7 +408,7 @@ def test_xcuitest_environment_forwards_preconditions_to_runner_env(
 
     from bajutsu.config import XcuitestConfig
 
-    monkeypatch.setattr("bajutsu.environment._allocate_port", lambda: 11111)
+    monkeypatch.setattr("bajutsu.platform_lifecycle._allocate_port", lambda: 11111)
 
     popen_calls: list[dict[str, object]] = []
 
@@ -430,7 +430,7 @@ def test_xcuitest_environment_forwards_preconditions_to_runner_env(
         def await_ready(self, **kw: object) -> None:
             pass
 
-    monkeypatch.setattr("bajutsu.environment.make_driver", lambda *a, **k: FakeDriver())
+    monkeypatch.setattr("bajutsu.platform_lifecycle.make_driver", lambda *a, **k: FakeDriver())
 
     import plistlib
 

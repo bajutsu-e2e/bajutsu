@@ -605,7 +605,7 @@ def _eval_golden(
     if ctx.screen is not None:
         screen = ctx.screen
     else:
-        from bajutsu.capture import screen_size_from_elements
+        from bajutsu.elements import screen_size_from_elements
 
         sw, sh = screen_size_from_elements(elements)
         screen = (0.0, 0.0, sw, sh)

@@ -169,16 +169,26 @@ def test_completion_and_vision_shapes_reach_the_adapter(fake_provider: Recording
     assert [type(p) for p in content] == [TextPart]
 
 
-# --- fail closed on an unknown provider (config validation) ---
+# --- fail closed on an unknown provider (in the AI layer, not config) ---
 
 
-def test_unknown_provider_fails_closed_at_config_load() -> None:
+def test_unknown_provider_is_accepted_by_config() -> None:
+    # The deterministic core (config) must not import the AI provider registry (BE-0112), so it can't
+    # validate the name — an unknown provider passes config load and fails closed later, in the AI layer.
+    assert AiSettings(provider="no-such-provider").provider == "no-such-provider"
+
+
+def test_unknown_provider_fails_closed_when_the_ai_path_resolves_it() -> None:
+    unknown = AiConfig(provider="no-such-provider")
     with pytest.raises(ValueError, match=r"unknown ai\.provider"):
-        AiSettings(provider="no-such-provider")
+        create_backend(unknown)
+    with pytest.raises(ValueError, match=r"unknown ai\.provider"):
+        credential_gap(unknown)
 
 
-def test_registered_provider_passes_config_validation(fake_provider: RecordingBackend) -> None:
+def test_registered_provider_resolves(fake_provider: RecordingBackend) -> None:
     assert AiSettings(provider="test-fake").provider == "test-fake"
+    assert create_backend(AiConfig(provider="test-fake")) is fake_provider
 
 
 # --- redaction runs before any adapter is reached ---

@@ -66,16 +66,24 @@ def known_providers() -> tuple[str, ...]:
 
 
 def _provider_name(ai: AiConfig | None) -> str:
-    """The resolved provider name, validated against the registry (unknown → the ``anthropic`` default).
+    """The resolved provider name, validated against the registry — this is where BE-0104 fails closed.
 
-    Config (`AiSettings`) already rejects an unknown `ai.provider` at load (BE-0104 fail-closed), so
-    an unregistered name only reaches here from a stray ``BAJUTSU_AI_PROVIDER`` env value; falling
-    back to ``anthropic`` mirrors the pre-BE-0104 `anthropic_client.provider` normalization.
+    The deterministic core (`config`) can't validate the name at load: it must not import this AI
+    stack (BE-0112). So the registry is the single fail-closed point — the first time an AI path
+    resolves the provider, an unregistered name (from config or a stray ``BAJUTSU_AI_PROVIDER``)
+    raises here rather than silently falling back, so no path ever runs against a provider nobody
+    registered.
+
+    Raises:
+        ValueError: the resolved name has no registered adapter.
     """
     raw = (ai and ai.provider) or os.environ.get(PROVIDER_ENV) or "anthropic"
     value = raw.strip().lower()
     _ensure_builtins()
-    return value if value in _ADAPTERS else "anthropic"
+    if value not in _ADAPTERS:
+        allowed = ", ".join(repr(p) for p in _ADAPTERS)
+        raise ValueError(f"unknown ai.provider {value!r}: registered providers are {allowed}")
+    return value
 
 
 def _adapter(ai: AiConfig | None) -> Adapter:

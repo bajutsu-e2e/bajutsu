@@ -124,9 +124,12 @@ defaults:
   platform is a backend behind the `Driver` interface. `provider` is therefore an **open,
   registry-validated** value, not a fixed pair: `anthropic` and `bedrock` are the adapters that ship
   today (Bedrock lives inside the Anthropic adapter, an Anthropic-SDK variant), and an unknown name
-  fails closed at config load with a clear error. Adding a model family (e.g. an OpenAI-compatible
-  endpoint) is *registering an adapter*, and it inherits the redaction and fail-closed guarantees
-  below by construction.
+  fails closed with a clear error the first time an AI path resolves the provider. (The check lives
+  in the AI layer, not at config load: the deterministic core must not import the AI provider stack
+  ([BE-0112](../roadmaps/BE-0112-layer-boundary-enforcement/BE-0112-layer-boundary-enforcement.md)),
+  so config accepts the name and the registry that owns the valid names rejects an unregistered one.)
+  Adding a model family (e.g. an OpenAI-compatible endpoint) is *registering an adapter*, and it
+  inherits the redaction and fail-closed guarantees below by construction.
 - **Keys never live in config.** `keyEnv` names an environment variable; the value is read from the
   environment at call time, so a secret never lands in the repo or an uploaded bundle. `baseUrl`
   points the Anthropic SDK at a self-hosted gateway / proxy (`Anthropic(base_url=…,

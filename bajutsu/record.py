@@ -14,6 +14,7 @@ from pathlib import Path
 
 from bajutsu.agent import Agent, Observation
 from bajutsu.drivers import base
+from bajutsu.elements import shows_app_ui
 from bajutsu.orchestrator import BlockedHandler, Clock, RealClock, _action_of, _do_action, _wait
 from bajutsu.scenario import Assertion, Scenario, Selector, Step
 
@@ -114,21 +115,6 @@ def _execute(driver: base.Driver, step: Step, clock: Clock) -> None:
         return  # assertions are checks, not actions to perform while recording
     else:
         _do_action(driver, step)
-
-
-def shows_app_ui(elements: list[base.Element]) -> bool:
-    """Whether the tree shows the app's own UI (rather than being collapsed under a system overlay).
-
-    A SpringBoard alert collapses the app's tree to a bare window; a live app screen
-    has actionable content. "Actionable" = any non-application element carrying an `id` OR a
-    `label`, so apps WITHOUT accessibility identifiers (label/coordinate-driven, e.g. the
-    showcase `-noax` variants) are not mistaken for a blocked screen — the bug that made the
-    guard fire every turn.
-    """
-    return any(
-        (el.get("identifier") or el.get("label")) and "application" not in (el.get("traits") or [])
-        for el in elements
-    )
 
 
 def _clear_blocking(

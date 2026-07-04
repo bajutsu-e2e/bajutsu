@@ -674,9 +674,9 @@ def test_wedge_surfaces_as_device_error_but_selection_errors_pass_through(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """A wedged browser raises a Playwright error from a page op; the driver re-raises it as the
-    crawl's recoverable `env.DeviceError` (BE-0077), so a pool worker relaunches instead of the crawl
+    crawl's recoverable `simctl.DeviceError` (BE-0077), so a pool worker relaunches instead of the crawl
     aborting. A selection failure is not a wedge and still propagates unchanged."""
-    from bajutsu import env
+    from bajutsu import simctl
 
     class _PwError(Exception):
         pass
@@ -691,9 +691,9 @@ def test_wedge_surfaces_as_device_error_but_selection_errors_pass_through(
             raise _PwError("Target page, context or browser has been closed")
 
     wedged = PlaywrightDriver("http://app.test/", page=_WedgedPage([]))
-    with pytest.raises(env.DeviceError):
+    with pytest.raises(simctl.DeviceError):
         wedged.query()
-    with pytest.raises(env.DeviceError):
+    with pytest.raises(simctl.DeviceError):
         wedged.tap({"id": "anything"})  # tap → _center → query() wedges → DeviceError
 
     # A missing selector is a SelectorError, not a wedge — it must not be masked as a DeviceError.

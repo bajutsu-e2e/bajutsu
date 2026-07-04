@@ -8,7 +8,7 @@ from pathlib import Path
 
 import typer
 
-from bajutsu import env as _env
+from bajutsu import simctl as _simctl
 from bajutsu import usage as _usage
 from bajutsu.agents import make_agent, resolve_kind
 from bajutsu.backends import ensure_web_runtime, select_actuator
@@ -165,7 +165,7 @@ def record(
     # Web has no simctl udid (launch_driver ignores it for playwright); resolving "booted" would
     # shell out to simctl and crash off-macOS, so skip it for the web backend.
     if actuator != "playwright":
-        udid = _env.resolve_udid(udid)
+        udid = _simctl.resolve_udid(udid)
 
     # Bring up the app's target server (the web baseUrl host) if it declares launchServer — reused
     # if already serving, started otherwise. Stopped when this command exits (atexit).
@@ -187,7 +187,7 @@ def record(
     )
     try:
         driver = launch_driver(udid, eff, actuator, Preconditions(erase=erase))
-    except _env.DeviceError as e:
+    except _simctl.DeviceError as e:
         typer.echo(str(e))
         raise typer.Exit(2) from None
     say(f"✅ app is up — authoring toward the goal: {goal!r}")

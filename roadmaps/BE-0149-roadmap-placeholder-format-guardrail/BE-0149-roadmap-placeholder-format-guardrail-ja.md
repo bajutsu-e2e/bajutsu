@@ -7,9 +7,9 @@
 |---|---|
 | 提案 | [BE-0149](BE-0149-roadmap-placeholder-format-guardrail-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **実装中** |
+| 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0149") |
-| 実装 PR | [#600](https://github.com/bajutsu-e2e/bajutsu/pull/600) |
+| 実装 PR | [#600](https://github.com/bajutsu-e2e/bajutsu/pull/600)、[#610](https://github.com/bajutsu-e2e/bajutsu/pull/610) |
 | トピック | 開発基盤（コントリビュータ体験） |
 <!-- /BE-METADATA -->
 
@@ -80,10 +80,10 @@ BE-0137（[PR #530](https://github.com/bajutsu-e2e/bajutsu/pull/530)）とBE-013
 > ともに記録します。
 
 - [x] stdlib のみで動く共通の id 形状の述語を切り出し、`tests/test_roadmap_format.py`・`scripts/build_roadmap_index.py`・`scripts/allocate_roadmap_ids.py`・`scripts/promote_roadmap_items.py`に（プレースホルダー対応の形で）採用する
-- [ ] テンプレートに関わるコミットが`main`に着地したときに起動し、open な roadmap PR を現在の`main`に照らして読み取り専用で再検査し、ドリフトがあれば stale なブランチに対して修正PRを開くワークフローを追加する（上記に依存）
+- [x] テンプレートに関わるコミットが`main`に着地したときに起動し、open な roadmap PR を現在の`main`に照らして読み取り専用で再検査し、ドリフトがあれば stale なブランチに対して修正PRを開くワークフローを追加する（上記に依存）
 - [x] `roadmap-id.yml`における`scripts/check_renumber_diff.py`の呼び出しを拡張し、`git push`の前に共通の検査も実行する
 
-対策1と対策3、すなわち不適合な項目が`main`に到達しないことを合わせて保証する2つが着地しました。共通の id 形状の述語は`scripts/roadmap_ids.py`に置き、フォーマット検査は stdlib のみで動く`scripts/check_roadmap_format.py`へ移して（プレースホルダー対応済み）、採番ワークフローは push の前に`scripts/check_renumber_diff.py`で自己検証します。対策2（open な roadmap PR の定期的な再検査と修正PRの自動化）は、フィードバックの速さを改善する分離可能な項目であり、後続のPRに先送りします。そのため本項目は、対策2が着地するまで`実装中`のままです。
+対策1と対策3は先に着地しました（[#600](https://github.com/bajutsu-e2e/bajutsu/pull/600)）。共通の id 形状の述語は`scripts/roadmap_ids.py`に置き、フォーマット検査は stdlib のみで動く`scripts/check_roadmap_format.py`へ移して（プレースホルダー対応済み）、採番ワークフローは push の前に`scripts/check_renumber_diff.py`で自己検証します。続けて対策2も着地しました。`scripts/check_stale_roadmap_prs.py`が、open な同一リポジトリ内の roadmap PR ごとに、その PR 自身のファイルを現在のテンプレートに照らして読み取り専用のオーバーレイで再検査し（PR のブランチには push しません）、ドリフトを検知したら`scripts/fix_roadmap_drift.py`の機械的な修正（PR #568 が手作業で行ったのと同じ狭い形の修正）で、stale なブランチを base とする小さな修正PRを開きます。これらは`roadmap-drift-check`ワークフローが結びつけます。3つの対策がすべて揃い、この項目は完了しました。
 
 ## 参考
 
@@ -93,3 +93,5 @@ BE-0137（[PR #530](https://github.com/bajutsu-e2e/bajutsu/pull/530)）とBE-013
 - [BE-0078](../BE-0078-roadmap-status-folders/BE-0078-roadmap-status-folders-ja.md)、[BE-0100](../BE-0100-roadmap-progress-tracking-template/BE-0100-roadmap-progress-tracking-template-ja.md)：旧いブランチが追随できなかった2つのテンプレート変更
 - `tests/test_roadmap_format.py`、`scripts/build_roadmap_index.py`、`scripts/allocate_roadmap_ids.py`、`scripts/promote_roadmap_items.py`：id の形状のパターンが現在重複している4か所
 - `scripts/check_renumber_diff.py`、`.github/workflows/roadmap-id.yml`：対策3が拡張する、既存のコミット後・push前のガード
+- `scripts/check_stale_roadmap_prs.py`、`scripts/fix_roadmap_drift.py`、
+  `.github/workflows/roadmap-drift-check.yml`：対策2の定期的な再検査、機械的な修正、両者を結びつけるワークフロー

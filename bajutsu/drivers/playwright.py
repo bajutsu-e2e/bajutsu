@@ -25,7 +25,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, NamedTuple, Protocol, cast
 
-from bajutsu import env, intervals
+from bajutsu import intervals, simctl
 from bajutsu.dom import QUERY_JS, parse_dom
 from bajutsu.drivers import base
 
@@ -153,7 +153,7 @@ def _wedge_guard[F: Callable[..., Any]](method: F) -> F:
     """Turn a browser-side failure into the crawl's recoverable "lane wedged" signal (BE-0077).
 
     A renderer crash, a hung page, a navigation timeout — any Playwright error from a page operation —
-    re-raises as `env.DeviceError`, which a pool worker isolates (handing its frontier entry back and
+    re-raises as `simctl.DeviceError`, which a pool worker isolates (handing its frontier entry back and
     relaunching the browser) instead of sinking the crawl. Selection failures (`base.SelectorError`)
     are not wedges and pass through unchanged, as do real bugs (any non-Playwright exception).
     """
@@ -166,7 +166,7 @@ def _wedge_guard[F: Callable[..., Any]](method: F) -> F:
             raise
         except Exception as exc:
             if isinstance(exc, _playwright_error_types()):
-                raise env.DeviceError(f"web browser fault (recoverable wedge): {exc}") from exc
+                raise simctl.DeviceError(f"web browser fault (recoverable wedge): {exc}") from exc
             raise
 
     return cast(F, wrapper)
@@ -377,7 +377,7 @@ class PlaywrightDriver:
             kind="deviceLog", path=path, provider=self.name, _proc=_ConsoleCapture()
         )
 
-    # --- lifecycle (web equivalents of env.Env launch/erase/terminate) ---
+    # --- lifecycle (web equivalents of simctl.Env launch/erase/terminate) ---
 
     @_wedge_guard
     def navigate(self) -> None:

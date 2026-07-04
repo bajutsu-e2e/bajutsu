@@ -15,14 +15,29 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from bajutsu import _yaml, idb_version
-from bajutsu.ai import known_providers
-from bajutsu.anthropic_client import AiConfig
 from bajutsu.drivers import base
 from bajutsu.scenario import Redact
 
 # Playwright rendering engines a web target can drive (BE-0076). Chromium is the default,
 # preserving today's single-engine behaviour; all three run headless on Linux.
 WEB_ENGINES = ("chromium", "firefox", "webkit")
+
+
+@dataclass(frozen=True)
+class AiConfig:
+    """The resolved `ai` block (BE-0047): which provider/model/endpoint/key the AI paths use.
+
+    Lives with the rest of the resolved config (not the AI client) so the deterministic core can
+    read the block without importing the periphery AI stack (BE-0112). Every field is optional — an
+    absent field falls back to the environment in the AI-client factory, so a config with no `ai:`
+    block behaves exactly as before. `key_env` holds the NAME of the env var that carries the key,
+    never the key itself.
+    """
+
+    provider: str | None = None
+    model: str | None = None
+    base_url: str | None = None  # self-hosted gateway / proxy for the Anthropic provider
+    key_env: str | None = None  # name of the env var holding the API key (never the key)
 
 
 class _Model(BaseModel):
@@ -107,21 +122,14 @@ class AiSettings(_Model):
     a literal key into config.
     """
 
-    provider: str | None = None  # a registered provider name (BE-0104); anthropic is the default
+    # A registered provider name (BE-0104); anthropic is the default. The name is *not* validated
+    # here: the deterministic core must not import the AI provider stack (BE-0112), and the registry
+    # that owns the valid names lives in the periphery (`bajutsu.ai`). An unknown name fails closed
+    # in that registry the first time an AI path resolves the provider, not at config load.
+    provider: str | None = None
     model: str | None = None  # override the path's default model
     base_url: str | None = Field(default=None, alias="baseUrl")  # self-hosted gateway / proxy
     key_env: str | None = Field(default=None, alias="keyEnv")  # NAME of the env var (never the key)
-
-    @field_validator("provider")
-    @classmethod
-    def _known_provider(cls, v: str | None) -> str | None:
-        # Open, registry-validated (BE-0104): a name is valid iff an adapter registered it. Unknown
-        # fails closed here at load, so no AI path ever reaches an unregistered provider.
-        registered = known_providers()
-        if v is not None and v not in registered:
-            allowed = ", ".join(repr(p) for p in registered)
-            raise ValueError(f"unknown ai.provider {v!r}: registered providers are {allowed}")
-        return v
 
 
 def _check_platform(v: str | None) -> str | None:

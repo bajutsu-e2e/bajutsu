@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 
-from bajutsu import env
+from bajutsu import simctl
 from bajutsu.drivers.fake import FakeDriver
 from bajutsu.orchestrator import run_scenario
 from bajutsu.scenario import Foreground, Push, Scenario, SetClipboard, SetLocation, Step
@@ -13,7 +13,7 @@ from bajutsu.scenario import Foreground, Push, Scenario, SetClipboard, SetLocati
 
 
 def test_location_and_push_command_builders() -> None:
-    assert env.set_location_cmd("U", 35.6, 139.7) == [
+    assert simctl.set_location_cmd("U", 35.6, 139.7) == [
         "xcrun",
         "simctl",
         "location",
@@ -21,8 +21,8 @@ def test_location_and_push_command_builders() -> None:
         "set",
         "35.6,139.7",
     ]
-    assert env.clear_location_cmd("U") == ["xcrun", "simctl", "location", "U", "clear"]
-    assert env.push_cmd("U", "com.demo", "/tmp/p.apns") == [
+    assert simctl.clear_location_cmd("U") == ["xcrun", "simctl", "location", "U", "clear"]
+    assert simctl.push_cmd("U", "com.demo", "/tmp/p.apns") == [
         "xcrun",
         "simctl",
         "push",
@@ -43,25 +43,25 @@ def test_env_push_writes_payload_and_runs() -> None:
             written.update(json.load(f))
         return ""
 
-    env.Env("U", run=fake_run).push("com.demo", {"aps": {"alert": "hi"}})
+    simctl.Env("U", run=fake_run).push("com.demo", {"aps": {"alert": "hi"}})
     assert calls and calls[0][:5] == ["xcrun", "simctl", "push", "U", "com.demo"]
     assert written == {"aps": {"alert": "hi"}}
 
 
 def test_env_set_location_runs_command() -> None:
     calls: list[list[str]] = []
-    env.Env("U", run=lambda a, _e=None: calls.append(a) or "").set_location(1.0, 2.0)
+    simctl.Env("U", run=lambda a, _e=None: calls.append(a) or "").set_location(1.0, 2.0)
     assert calls == [["xcrun", "simctl", "location", "U", "set", "1.0,2.0"]]
 
 
 def test_foreground_command_builder() -> None:
     # resume a backgrounded app: launch WITHOUT --terminate (not a relaunch)
-    assert env.foreground_cmd("U", "com.demo") == ["xcrun", "simctl", "launch", "U", "com.demo"]
+    assert simctl.foreground_cmd("U", "com.demo") == ["xcrun", "simctl", "launch", "U", "com.demo"]
 
 
 def test_env_foreground_runs_command() -> None:
     calls: list[list[str]] = []
-    env.Env("U", run=lambda a, _e=None: calls.append(a) or "").foreground("com.demo")
+    simctl.Env("U", run=lambda a, _e=None: calls.append(a) or "").foreground("com.demo")
     assert calls == [["xcrun", "simctl", "launch", "U", "com.demo"]]
 
 
@@ -71,8 +71,8 @@ def test_env_set_clipboard_seeds_pasteboard_with_text(monkeypatch) -> None:  # t
     def fake_pbcopy(cmd: list[str], text: str = "") -> None:
         captured["cmd"], captured["text"] = cmd, text
 
-    monkeypatch.setattr(env.Env, "_run_pbcopy", staticmethod(fake_pbcopy))
-    env.Env("U").set_clipboard("COUPON123")
+    monkeypatch.setattr(simctl.Env, "_run_pbcopy", staticmethod(fake_pbcopy))
+    simctl.Env("U").set_clipboard("COUPON123")
     assert captured["cmd"] == ["xcrun", "simctl", "pbcopy", "U"]
     assert captured["text"] == "COUPON123"
 
@@ -202,7 +202,7 @@ def test_device_step_without_control_fails_cleanly() -> None:
 
 
 def test_pbpaste_command_builder() -> None:
-    assert env.pbpaste_cmd("U") == ["xcrun", "simctl", "pbpaste", "U"]
+    assert simctl.pbpaste_cmd("U") == ["xcrun", "simctl", "pbpaste", "U"]
 
 
 def test_env_get_clipboard_returns_stdout() -> None:
@@ -213,7 +213,7 @@ def test_env_get_clipboard_returns_stdout() -> None:
         calls.append(args)
         return "COUPON123"
 
-    assert env.Env("U", run=fake_run).get_clipboard() == "COUPON123"
+    assert simctl.Env("U", run=fake_run).get_clipboard() == "COUPON123"
     assert calls == [["xcrun", "simctl", "pbpaste", "U"]]
 
 

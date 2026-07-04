@@ -26,28 +26,17 @@ the Bedrock path. A base install without the extra raises an actionable error ra
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass
 from typing import Any, Protocol
+
+# AiConfig lives in `config` (the resolved `ai` block belongs with the rest of the config, and the
+# deterministic core must read it without importing this AI stack, BE-0112). Re-exported here so the
+# AI paths keep importing it alongside the client factory from one module.
+from bajutsu.config import AiConfig as AiConfig
 
 PROVIDER_ENV = "BAJUTSU_AI_PROVIDER"
 BEDROCK_MODEL_ENV = "BAJUTSU_BEDROCK_MODEL"
 ANTHROPIC_KEY_ENV = "ANTHROPIC_API_KEY"
 PROVIDERS = ("anthropic", "bedrock")
-
-
-@dataclass(frozen=True)
-class AiConfig:
-    """The resolved `ai` block (BE-0047): which provider/model/endpoint/key the AI paths use.
-
-    Every field is optional — an absent field falls back to the environment in the factory below, so
-    a config with no `ai:` block behaves exactly as before. `key_env` holds the NAME of the env var
-    that carries the key, never the key itself.
-    """
-
-    provider: str | None = None
-    model: str | None = None
-    base_url: str | None = None  # self-hosted gateway / proxy for the Anthropic provider
-    key_env: str | None = None  # name of the env var holding the API key (never the key)
 
 
 def provider(ai: AiConfig | None = None) -> str:

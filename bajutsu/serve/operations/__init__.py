@@ -50,6 +50,7 @@ from bajutsu.serve.operations.dispatch import (
 )
 from bajutsu.serve.operations.doctor import doctor_check
 from bajutsu.serve.operations.enrich import start_enrich
+from bajutsu.serve.operations.evidence import generate_upload_urls
 from bajutsu.serve.operations.reads import (
     _find_sid,
     _primary_backend,
@@ -118,6 +119,7 @@ __all__ = [
     "finish_capture",
     "forbidden_for_role",
     "format_sse",
+    "generate_upload_urls",
     "job_log_events",
     "job_sse",
     "job_view",

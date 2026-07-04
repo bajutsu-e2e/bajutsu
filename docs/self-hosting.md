@@ -114,6 +114,16 @@ token auth on every request, `/api/run` and `/api/record` confined to the app's 
 validated `backend`/`udid`, a CSRF Origin check plus security headers, and a concurrency cap on run
 dispatch. Keep the token secret, keep the Mac on a tailnet, and keep the OS patched.
 
+The CSRF/Origin check and a **`Host`-header allowlist** run **unconditionally**
+([BE-0121](../roadmaps/BE-0121-serve-csrf-host-allowlist/BE-0121-serve-csrf-host-allowlist.md)) —
+not only when a token is set. This matters most for the common `make serve` default (loopback, no
+token): a cross-origin `POST` from a page open in another tab is blocked, and a request whose `Host`
+does not name a bound interface is refused, so a rebound hostname can't reach a loopback endpoint
+such as `GET /api/apikey?reveal=1`. A non-browser client (no `Origin` header) is unaffected. The
+`Host` allowlist is derived from the interface `serve` binds — the loopback names for a loopback
+bind, that host otherwise; a wildcard bind (`0.0.0.0` / `::`), whose reachable names can't be
+enumerated, disables the `Host` check and leaves CSRF as the cross-origin guard.
+
 ## Uploaded-config command execution (BE-0090)
 
 An uploaded `.zip` bundle can carry a config whose `launchServer.cmd` (and, once wired,
@@ -139,6 +149,18 @@ No mode ever runs an uploaded command on the bare host, and none silently falls 
 blocked or misconfigured `launchServer` fails with a clear error, never a flaky-looking run. The
 decision (denied / reused / sandboxed, and the image when sandboxed) is recorded in the run's
 `manifest.json` provenance, so "what did this run execute, and what was suppressed?" stays answerable.
+
+## Remote-config command execution (BE-0121)
+
+A config bound at startup with `--config` (a local path or a `github:` spec you typed yourself) is
+**operator-trusted**: `serve` runs its `build:` command normally. A Git config bound **later,
+through the UI's "from Git" picker** (`POST /api/config` with a `git` spec), is a different trust
+level — a cross-origin request could have bound it — so it is treated like an uploaded bundle: its
+`build:` command is **never run on the host by default**. Pass `--allow-remote-build` (or set
+`BAJUTSU_ALLOW_REMOTE_BUILD=1`) to opt in when you deliberately drive runs off a UI-bound Git config
+whose build you trust. Without the opt-in the run proceeds with the build suppressed, exactly as an
+uploaded bundle's build is suppressed — no silent host-side command execution from a config that
+arrived over the network.
 
 ## Tier B — self-hosting the server backend
 
@@ -221,6 +243,39 @@ Front the control plane like Tier A: `tailscale serve --bg 8765` (tailnet-only, 
 Caddy for a real hostname (`docker compose --profile caddy up -d`, with `BAJUTSU_PUBLIC_HOST` set).
 The worker reaches the control plane (`:8765`) and MinIO (`:9000`) over the tailnet, so keep the
 node on the private tailnet.
+
+### Evidence upload to object storage (optional, BE-0110)
+
+The worker upload above writes each run tree to the **artifact store** the control plane serves reports
+from. Separately, you can archive every run's **evidence** to a lifecycle-managed bucket — retain
+main-branch evidence for audit, expire feature-branch evidence after a few days — by setting one URI
+on the control plane:
+
+```bash
+# on the control plane (docker compose env, or the serve process)
+export BAJUTSU_EVIDENCE_STORE=s3://audit-bucket/evidence/   # or gs://…; --evidence-store also works
+```
+
+The key difference from the artifact upload is **where the credentials live**. The control plane holds
+the evidence bucket's credentials and signs a **presigned PUT URL per file**; the worker uploads over
+plain HTTP and needs **no credentials for the evidence bucket** — only the control plane does. So the
+evidence bucket can be a separate account or a stricter-permissioned bucket than the workers' artifact
+store, and ephemeral workers never carry its secrets. Install the `s3` or `gcs` extra **on the control
+plane** (`uv sync --extra s3` or `--extra gcs`); the worker needs neither.
+
+A CI job picks the per-run path — and thus the lifecycle policy — by passing `evidence_prefix` when it
+starts a run:
+
+```bash
+curl -X POST "$SERVER/api/run" -H "Authorization: Bearer $TOKEN" \
+  -d '{"scenario": "smoke.yaml", "target": "demo", "evidence_prefix": "main/abc1234/"}'
+```
+
+The control plane validates `evidence_prefix` as a safe relative segment and prepends its own bucket +
+base prefix, so the final key is `evidence/main/abc1234/<runId>/…` — the run id is always in the path,
+so runs never collide, and a caller can't escape the base prefix. The upload runs **after** the verdict,
+so a failure is logged and never changes pass/fail. When `BAJUTSU_EVIDENCE_STORE` is unset the worker
+still asks and simply uploads nothing.
 
 ### Multiple orgs
 

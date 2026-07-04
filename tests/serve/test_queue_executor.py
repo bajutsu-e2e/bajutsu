@@ -61,6 +61,7 @@ def test_dispatch_enqueues_a_serializable_job_spec(tmp_path: Path) -> None:
         "materialize_baselines": False,
         "org": "default",  # single-tenant default org (BE-0015 multi-tenancy)
         "actor": None,  # no OAuth identity for this locally-built job
+        "evidence_prefix": "",  # no per-run evidence prefix requested (BE-0110)
     }
     json.dumps(spec)  # must carry no live objects (locks/Popen/bus) — JSON round-trips
 
@@ -79,6 +80,28 @@ def test_job_spec_carries_the_actor(tmp_path: Path) -> None:
     spec = job_spec(job)
     assert spec["actor"] == "alice"
     assert spec["org"] == "acme"
+
+
+def test_job_spec_carries_the_evidence_prefix(tmp_path: Path) -> None:
+    # The per-run evidence prefix travels so the worker relays it when requesting presigned PUT URLs,
+    # landing the run's evidence under the lifecycle path CI chose (BE-0110).
+    state = srv.ServeState(runs_dir=tmp_path / "runs")
+    job = state.register(srv.Job(cmd=["run"], evidence_prefix="main/abc1234/"))
+    assert job_spec(job)["evidence_prefix"] == "main/abc1234/"
+
+
+def test_start_run_carries_a_valid_evidence_prefix_end_to_end(tmp_path: Path) -> None:
+    # A valid evidence_prefix on /api/run reaches the enqueued job spec, so the worker can relay it.
+    scn_dir, cfg, runs = project(tmp_path)
+    q = _FakeQueue()
+    state = srv.ServeState(
+        scenarios_dir=scn_dir, config=cfg, runs_dir=runs, cwd=tmp_path, executor=QueueExecutor(q)
+    )
+    _, code = ops.start_run(
+        state, {"scenario": "smoke.yaml", "target": "demo", "evidence_prefix": "main/abc1234/"}
+    )
+    assert code == 200
+    assert q.enqueued[0][1][0]["evidence_prefix"] == "main/abc1234/"
 
 
 def test_execute_job_spec_records_the_run_into_an_injected_repository(tmp_path: Path) -> None:

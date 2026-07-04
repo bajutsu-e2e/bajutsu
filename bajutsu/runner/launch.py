@@ -5,13 +5,13 @@ from __future__ import annotations
 from collections.abc import Mapping
 from pathlib import Path
 
-from bajutsu import env
+from bajutsu import simctl
 from bajutsu.config import Effective
 from bajutsu.drivers import base
 
 # Readiness polling lives with the platform lifecycle now (BE-0009 Phase 0); re-exported here so
 # `from bajutsu.runner import _await_ready` and the crawl path keep their import unchanged.
-from bajutsu.environment import _await_ready, environment_for
+from bajutsu.platform_lifecycle import _await_ready, environment_for
 from bajutsu.scenario import Preconditions
 
 __all__ = ["_await_ready", "launch_driver"]
@@ -22,7 +22,7 @@ def launch_driver(
     eff: Effective,
     actuator: str,
     preconditions: Preconditions | None = None,
-    env_run: env.RunFn = env._real_run,
+    env_run: simctl.RunFn = simctl._real_run,
     extra_env: Mapping[str, str] | None = None,
     record_video_dir: Path | None = None,
 ) -> base.Driver:
@@ -30,7 +30,7 @@ def launch_driver(
 
     The iOS backend runs the simctl lifecycle (erase → boot → install → launch). simctl `erase`
     needs a shut-down device, so an erase run shuts down first (shutdown → erase → boot); any simctl
-    step that fails (e.g. the app isn't installed) is surfaced as a clean `env.DeviceError` so the
+    step that fails (e.g. the app isn't installed) is surfaced as a clean `simctl.DeviceError` so the
     CLI exits 2 instead of dumping a traceback. The web backend has no device to boot: a fresh
     browser context is the clean state and `navigate()` is the launch.
 
@@ -50,7 +50,7 @@ def launch_driver(
         A driver bound to the launched app, already polled until its UI has rendered.
 
     Raises:
-        env.DeviceError: A simctl step failed, or a web target declares no `baseUrl`.
+        simctl.DeviceError: A simctl step failed, or a web target declares no `baseUrl`.
     """
     pre = preconditions or Preconditions()
     # The per-platform startup (iOS simctl sequence, web browser context, …) lives behind the

@@ -54,6 +54,9 @@ jobs:
       - name: Lint docstrings (ruff D, migrated surface)
         run: make lint-docstrings
 
+      - name: Lint imports (core/contract/periphery boundaries)
+        run: make lint-imports
+
       - name: Lint roadmap (cross-links + author handle)
         run: make lint-roadmap
 

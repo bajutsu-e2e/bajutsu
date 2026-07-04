@@ -171,10 +171,3 @@ def _swipe_direction(
     if abs(dx) >= abs(dy):
         return "right" if dx > 0 else "left"
     return "down" if dy > 0 else "up"
-
-
-def screen_size_from_elements(elements: list[base.Element]) -> tuple[float, float]:
-    """Max frame width/height across all elements (the screen bounds)."""
-    w = max((el["frame"][0] + el["frame"][2] for el in elements), default=0.0)
-    h = max((el["frame"][1] + el["frame"][3] for el in elements), default=0.0)
-    return (w, h)

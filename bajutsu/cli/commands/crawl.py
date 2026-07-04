@@ -23,7 +23,7 @@ import typer
 
 from bajutsu import crawl as crawl_engine
 from bajutsu import crawl_report, crawl_repro
-from bajutsu import env as _env
+from bajutsu import simctl as _simctl
 from bajutsu.agents import AGENT_KINDS, resolve_kind
 from bajutsu.ai import credential_gap
 from bajutsu.anthropic_client import key_env
@@ -38,7 +38,7 @@ from bajutsu.cli._shared import (
 )
 from bajutsu.crawl_guide import make_guide
 from bajutsu.drivers import base
-from bajutsu.environment import environment_for
+from bajutsu.platform_lifecycle import environment_for
 from bajutsu.record import _clear_blocking
 from bajutsu.runner import launch_driver
 from bajutsu.runner.launch_server import start_launch_server
@@ -247,7 +247,7 @@ def crawl(
         # The primary lane is built here (on the main thread): it drives bootstrap and the in-place
         # walk, so its driver lives on this thread. A launch failure surfaces cleanly as exit 2.
         primary = build_lane(udids[0])
-    except _env.DeviceError as e:
+    except _simctl.DeviceError as e:
         typer.echo(str(e))
         raise typer.Exit(2) from None
 
@@ -273,7 +273,7 @@ def crawl(
         # resurfaces on the worker's next operation, where the engine relaunches the lane (BE-0077).
         try:
             d.screenshot(str(screens_dir / f"{node.fingerprint}.png"))
-        except (OSError, subprocess.CalledProcessError, _env.DeviceError) as exc:
+        except (OSError, subprocess.CalledProcessError, _simctl.DeviceError) as exc:
             say(f"⚠️  screenshot failed for {node.fingerprint[:7]}: {exc}")
 
     # Crash detection and blocking-overlay clearing are platform-specific, behind the Environment
@@ -336,7 +336,7 @@ def crawl(
             recover=recover,  # web: relaunch a wedged browser so its lane keeps crawling (BE-0077)
             extra_workers=extra_factories,  # built on their own threads (BE-0064 sims / BE-0077 browsers)
         )
-    except _env.DeviceError as e:
+    except _simctl.DeviceError as e:
         typer.echo(str(e))
         raise typer.Exit(2) from None
     _write_screenmap(screenmap_path, screen_map)
