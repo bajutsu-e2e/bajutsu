@@ -52,7 +52,7 @@ by one path every AI feature shares, not a bespoke `record`-only agent.
   registry vs. the CLI-agent duality) is exactly the kind of drift
   `bajutsu.ai_availability`'s own docstring flags as something to reconcile, not a stable
   design: every new AI path has to separately decide whether it "supports subscription
-  billing" the way `crawl` / `triage` / `alerts` currently don't.
+  billing" the way `triage --ai` / `--dismiss-alerts` / `enrich` currently don't.
 - `ant` closes the gap cleanly because it is a thin, literal wrapper over the Messages API
   (confirmed: `--system`, `--tool` / `--tool-choice`, image content blocks in `--message`,
   the same model catalog as the SDK) — folding it in needs no parallel translation layer, no
@@ -68,7 +68,7 @@ by one path every AI feature shares, not a bespoke `record`-only agent.
 ## Detailed design
 
 1. **`anthropic_client.py` — a third provider.** Add `"ant"` to `PROVIDERS`; `provider()`
-   recognizes it. `make_client()` gains a branch: instead of reading `ai.keyEnv` /
+   recognizes it. `make_client()` gains a branch: instead of reading `ai.key_env` /
    `ANTHROPIC_API_KEY`, resolve a bearer token by invoking the `ant` binary (e.g. `ant auth
    print-credentials --access-token`, honoring `--profile` / `ANTHROPIC_PROFILE`) and
    construct `anthropic.Anthropic(auth_token=token, base_url=ai.base_url or None)` —
