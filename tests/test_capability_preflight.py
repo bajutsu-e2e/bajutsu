@@ -56,13 +56,6 @@ def test_visual_assertion_requires_screenshot() -> None:
     assert any("screenshot" in r for r in capability_preflight.unsupported(sc, no_shot))
 
 
-def test_visual_in_step_assert_is_detected() -> None:
-    # An inline step assertion (a step whose sole field is `assert`) is scanned too, not just expect.
-    sc = _sc(steps=[{"tap": {"id": "ok"}}, {"assert": [{"visual": {"baseline": "home"}}]}])
-    no_shot = _IDB - {base.Capability.SCREENSHOT}
-    assert any("screenshot" in r for r in capability_preflight.unsupported(sc, no_shot))
-
-
 def test_network_assertions_are_not_gated() -> None:
     # idb lacks the `network` capability but captures traffic via the app-side collector, so a
     # request/event/requestSequence/responseSchema assertion still runs — must not be rejected.

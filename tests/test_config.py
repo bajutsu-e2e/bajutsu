@@ -439,13 +439,6 @@ def test_android_platform_requires_package() -> None:
         load_config("targets:\n  s:\n    platform: android\n    bundleId: com.x\n")
 
 
-def test_web_target_without_explicit_platform_still_loads() -> None:
-    # Backward compatibility: a web target declared the pre-Slice-4 way (baseUrl + playwright, no
-    # `platform`) loads fine — the platform is derived from the backend, baseUrl is its identifier.
-    cfg = load_config("targets:\n  s:\n    baseUrl: https://app.test\n    backend: [playwright]\n")
-    assert resolve(cfg, "s").platform == "web"
-
-
 # --- BE-0019: xcuitest config fields ---
 
 

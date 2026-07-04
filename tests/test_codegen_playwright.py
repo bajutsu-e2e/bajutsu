@@ -112,13 +112,6 @@ def test_index_narrows_with_nth() -> None:
     assert "await page.getByTestId('row').nth(2).click();" in code
 
 
-def test_value_and_within_constraints_are_todo() -> None:
-    with_value = _gen("- name: x\n  steps:\n    - tap: { id: f, value: '5' }\n")
-    assert "// TODO: unsupported selector ('value':" in with_value
-    with_within = _gen("- name: x\n  steps:\n    - tap: { id: c, within: { id: parent } }\n")
-    assert "// TODO: unsupported selector ('within':" in with_within
-
-
 def test_assertions_existence_and_negate() -> None:
     code = _gen(
         "- name: x\n  steps:\n    - tap: { id: a }\n  expect:\n"

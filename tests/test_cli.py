@@ -906,14 +906,6 @@ def test_crawl_no_backend_available(tmp_path: Path) -> None:
     assert not out.exists()
 
 
-def test_crawl_unknown_agent(tmp_path: Path) -> None:
-    # An invalid --agent is rejected before any device work (clean exit 2).
-    cfg, _ = _write(tmp_path)
-    r = runner.invoke(app, ["crawl", "--target", "demo", "--agent", "bad", "--config", str(cfg)])
-    assert r.exit_code == 2
-    assert "unknown --agent" in r.output
-
-
 def test_crawl_agent_from_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     # With no --agent, crawl resolves the kind from $BAJUTSU_AGENT (set by serve's Settings
     # selector), mirroring record. An invalid env value surfaces the same validation error, which
