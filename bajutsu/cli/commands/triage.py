@@ -79,7 +79,8 @@ def triage(
         # With no target it falls back to env-only provider config and a no-op redactor.
         eff = _ai_effective(config, target_name)
         _require_ai_credential(eff)
-        # The failure screenshot is sent to the AI as-is; on-screen secrets are not redacted (BE-0151).
+        # The failure screenshot, when one is attached, is sent to the AI as-is; on-screen secrets
+        # are not redacted (BE-0151).
         _warn_onscreen_secrets(eff)
         agent = ClaudeTriageAgent(ai=eff.ai, redactor=_ai_redactor(eff))
     else:

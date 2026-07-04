@@ -28,13 +28,18 @@ targets:
 def test_warns_when_secrets_bound(capsys) -> None:
     eff = resolve(load_config(_WITH_SECRETS), "app")
     _warn_onscreen_secrets(eff)
-    err = capsys.readouterr().err
+    captured = capsys.readouterr()
+    err = captured.err
     # The warning names the boundary precisely: images are never redacted, they persist under
     # runs/, and the screenshot reaches the AI provider — and it names the bound secrets.
     assert "screenshot" in err
     assert "runs/" in err
     assert "provider" in err
     assert "LOGIN_PASSWORD" in err and "LOGIN_OTP" in err
+    # It also states what IS masked, so the author does not read it as "secrets leak everywhere".
+    assert "text evidence" in err
+    # A disclosure belongs on stderr, leaving stdout for the command's own result output.
+    assert captured.out == ""
 
 
 def test_silent_when_no_secrets_bound(capsys) -> None:
