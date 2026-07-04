@@ -121,7 +121,8 @@ class Repository(Protocol):
         `complete_job`)."""
 
     def get_job(self, job_id: str) -> dict[str, Any] | None:
-        """Return the job's status, result, and org_id, or None if it does not exist."""
+        """Return the job's status, result, org_id, and current lease holder (``leased_by``), or None
+        if it does not exist."""
 
 
 def _to_record(row: Run) -> RunRecord:
@@ -418,7 +419,12 @@ class SqlRepository:
             row = session.get(JobRecord, job_id)
             if row is None:
                 return None
-            return {"status": row.status, "result": dict(row.result), "org_id": row.org_id}
+            return {
+                "status": row.status,
+                "result": dict(row.result),
+                "org_id": row.org_id,
+                "leased_by": row.leased_by,
+            }
 
 
 def engine_from_url(url: str) -> Engine:

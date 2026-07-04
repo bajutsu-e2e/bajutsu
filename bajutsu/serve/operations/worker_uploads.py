@@ -20,20 +20,26 @@ from bajutsu.serve.server.object_store import artifact_prefix, org_prefix, scena
 
 
 def _job_org(
-    state: ServeState, job_id: Any
+    state: ServeState, job_id: Any, worker_id: Any
 ) -> tuple[str | None, tuple[dict[str, Any], int] | None]:
-    """Resolve a leased job's org for signing, or an error response to return verbatim.
+    """Resolve the org to sign for from the job *worker_id* currently holds a lease on, or an error.
 
-    The org comes from the job the worker leased (looked up server-side), never a worker-supplied
-    value, so multi-tenant isolation holds even though the worker relays the job id.
+    The org comes from the leased job (looked up server-side), never a worker-supplied value, so
+    multi-tenant isolation holds even though the worker relays the job id. Signing is refused unless
+    the job is still ``leased`` *by this worker* (mirroring `worker_result`), so a leaked or stale
+    job id — a done/failed job, or one another worker holds — can't be replayed to push objects.
     """
     if not isinstance(job_id, str) or not job_id:
         return None, ({"error": "job_id is required"}, 400)
+    if not isinstance(worker_id, str) or not worker_id:
+        return None, ({"error": "worker_id is required"}, 400)
     if state.repository is None:
         return None, ({"error": "server backend has no database configured"}, 503)
     info = state.repository.get_job(job_id)
     if info is None:
         return None, ({"error": f"job {job_id} not found"}, 404)
+    if info.get("status") != "leased" or info.get("leased_by") != worker_id:
+        return None, ({"error": "job is not leased by this worker"}, 409)
     return (info.get("org_id") or DEFAULT_ORG), None
 
 
@@ -46,11 +52,12 @@ def worker_artifact_urls(state: ServeState, body: dict[str, Any]) -> tuple[dict[
     simply upload nothing.
 
     Args:
-        body: ``{"job_id": <leased job id>, "run_id": <run id>, "files": [<relative path>, ...]}``.
+        body: ``{"job_id", "worker_id", "run_id", "files": [<relative path>, ...]}`` — the worker's
+            leased job and id, the run id, and the relative file paths to sign.
     """
     if state.object_store is None:
         return {"urls": {}}, 200
-    org, err = _job_org(state, body.get("job_id"))
+    org, err = _job_org(state, body.get("job_id"), body.get("worker_id"))
     if err is not None:
         return err
     run_id = body.get("run_id")
@@ -71,11 +78,12 @@ def worker_scenario_url(state: ServeState, body: dict[str, Any]) -> tuple[dict[s
     no hosted object store is configured.
 
     Args:
-        body: ``{"job_id": <leased job id>, "app": <project>, "ref": <scenario ref, "*.yaml">}``.
+        body: ``{"job_id", "worker_id", "app": <project>, "ref": <scenario ref, "*.yaml">}`` — the
+            worker's leased job and id, and the project + scenario ref to sign for.
     """
     if state.object_store is None:
         return {"url": None}, 200
-    org, err = _job_org(state, body.get("job_id"))
+    org, err = _job_org(state, body.get("job_id"), body.get("worker_id"))
     if err is not None:
         return err
     app = body.get("app")

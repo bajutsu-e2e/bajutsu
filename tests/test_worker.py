@@ -580,7 +580,9 @@ def _worker_io_server(
 
 
 def _io(base: str, *, baseline_urls: Any = None) -> PresignedWorkerIO:
-    return PresignedWorkerIO(url=base, auth_token=None, job_id="j1", baseline_urls=baseline_urls)
+    return PresignedWorkerIO(
+        url=base, auth_token=None, job_id="j1", worker_id="w1", baseline_urls=baseline_urls
+    )
 
 
 def test_presigned_io_uploads_the_run_tree_over_signed_urls(tmp_path: Path) -> None:
@@ -627,7 +629,7 @@ def test_presigned_io_saves_the_authored_scenario(tmp_path: Path) -> None:
     assert httpd.puts["demo/login.yaml"] == b"- name: login\n  steps: []\n"  # type: ignore[attr-defined]
     path, body = httpd.requests[0]  # type: ignore[attr-defined]
     assert path == "/api/worker/scenario-url"
-    assert body == {"job_id": "j1", "app": "demo", "ref": "login.yaml"}
+    assert body == {"job_id": "j1", "worker_id": "w1", "app": "demo", "ref": "login.yaml"}
 
 
 def test_presigned_io_save_scenario_confines_to_the_workspace(tmp_path: Path) -> None:

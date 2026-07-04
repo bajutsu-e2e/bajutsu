@@ -118,6 +118,7 @@ def worker(
             url=url,
             auth_token=auth_token,
             job_id=job_id,
+            worker_id=wid,
             baseline_urls=body.get("baseline_urls"),
         )
         bus = InMemoryLogBus()
@@ -262,17 +263,20 @@ def _evidence_files(run_dir: Path) -> list[str]:
 
 
 def _put_file(url: str, path: Path, content_type: str, *, timeout: float | None = None) -> None:
-    """Upload one file to a presigned PUT *url*.
+    """Upload one file to a presigned PUT *url*, streaming it from disk.
 
     The Content-Type must match what the control plane signed into the URL (the presigned signature
-    covers it), so send the same value. *timeout* bounds a stalled connection. The file is read into
-    memory (a sequential, one-file-at-a-time upload); streaming a large artifact is a future
-    optimization the initial implementation doesn't need.
+    covers it), so send the same value. *timeout* bounds a stalled connection. The file is streamed
+    (``http.client`` reads the open handle in blocks) with an explicit Content-Length, so a large run
+    artifact like a video never loads wholly into memory.
     """
-    headers = {"Content-Type": content_type} if content_type else {}
-    req = Request(url, data=path.read_bytes(), method="PUT", headers=headers)  # noqa: S310
-    with urlopen(req, timeout=timeout):  # noqa: S310
-        pass
+    headers = {"Content-Length": str(path.stat().st_size)}
+    if content_type:
+        headers["Content-Type"] = content_type
+    with path.open("rb") as body:
+        req = Request(url, data=body, method="PUT", headers=headers)  # noqa: S310
+        with urlopen(req, timeout=timeout):  # noqa: S310
+            pass
 
 
 def _get_file(url: str, dest: Path, *, timeout: float | None = None) -> None:
@@ -366,11 +370,12 @@ class PresignedWorkerIO:
     """
 
     def __init__(
-        self, *, url: str, auth_token: str | None, job_id: str, baseline_urls: Any
+        self, *, url: str, auth_token: str | None, job_id: str, worker_id: str, baseline_urls: Any
     ) -> None:
         self._url = url
         self._token = auth_token
         self._job_id = job_id
+        self._worker_id = worker_id
         self._baseline_urls = baseline_urls if isinstance(baseline_urls, dict) else {}
 
     def download_baselines(self, work: Path) -> None:
@@ -386,7 +391,12 @@ class PresignedWorkerIO:
         urls = _request_upload_urls(
             self._url,
             "/api/worker/artifact-urls",
-            {"job_id": self._job_id, "run_id": run_id, "files": files},
+            {
+                "job_id": self._job_id,
+                "worker_id": self._worker_id,
+                "run_id": run_id,
+                "files": files,
+            },
             self._token,
         )
         _put_tree_files(run_dir, urls, best_effort=False)
@@ -403,7 +413,7 @@ class PresignedWorkerIO:
             raise RuntimeError(f"record job authored no scenario at {out_path!r}")
         code, resp = _post_json(
             f"{self._url}/api/worker/scenario-url",
-            {"job_id": self._job_id, "app": app, "ref": ref},
+            {"job_id": self._job_id, "worker_id": self._worker_id, "app": app, "ref": ref},
             token=self._token,
             timeout=_UPLOAD_HTTP_TIMEOUT,
         )
