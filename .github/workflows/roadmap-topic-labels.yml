@@ -47,8 +47,9 @@ jobs:
           PR: ${{ github.event.pull_request.number }}
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           # One fixed color for the whole `topic:*` family, so they read as a group distinct from
-          # `bug` / `documentation` / etc.
-          TOPIC_LABEL_COLOR: 5319e7
+          # `bug` / `documentation` / etc. Quoted so a YAML parser can't read the hex `5319e7` as a
+          # float in scientific notation (5319e7 -> 5.319e10), which would break `gh label --color`.
+          TOPIC_LABEL_COLOR: "5319e7"
         run: |
           # Fetch just the base commit so `git show <base>:<path>` can read each edited item's
           # previous Topic — a single commit, not a full-history checkout (BE-0156). Non-fatal:
