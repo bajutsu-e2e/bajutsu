@@ -385,6 +385,12 @@ def _allocate_port() -> int:
         return port
 
 
+# Cold `xcodebuild test-without-building` startup (XCTest host boot + app launch before the runner's
+# server answers /health) routinely exceeds the driver's 10s default on a loaded CI runner; a warm
+# start still returns as soon as /health is ready, so this only raises the ceiling for the cold case.
+_RUNNER_STARTUP_TIMEOUT = 120.0
+
+
 class XcuitestEnvironment(_DeviceEnvironment):
     """The XCUITest lifecycle: simctl device prep then a resident runner on the Simulator (BE-0019).
 
@@ -489,7 +495,10 @@ class XcuitestEnvironment(_DeviceEnvironment):
             raise simctl.DeviceError(f"failed to start xcodebuild: {exc}") from exc
 
         driver = make_driver(self._actuator, self._udid, runner_port=self._runner_port)
-        driver.await_ready()  # type: ignore[attr-defined]  # xcuitest-only lifecycle
+        # A cold `xcodebuild test-without-building` spins up the XCTest host and launches the app
+        # before the runner's server answers /health; on a loaded CI runner that first start well
+        # exceeds the 10s default, so give it generous headroom (a warm start still returns at once).
+        driver.await_ready(timeout=_RUNNER_STARTUP_TIMEOUT)  # type: ignore[attr-defined]  # xcuitest-only
         return driver
 
     def teardown(self, driver: base.Driver, eff: Effective) -> None:
