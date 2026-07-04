@@ -612,7 +612,9 @@ Web（Playwright）backend とその完成（リッチな capability、並列実
 ### doctor / オンボーディング
 
 <!-- GENERATED:proposals-doctor -->
-
+| ID | 項目 | 状態 |
+|---|---|---|
+| [BE-0164](BE-0164-config-aware-environment-installer/BE-0164-config-aware-environment-installer-ja.md) | config を踏まえた環境インストーラー | 提案 |
 <!-- /GENERATED:proposals-doctor -->
 
 ### 開発基盤（コントリビュータ体験）

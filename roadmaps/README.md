@@ -619,7 +619,9 @@ Keeping the autonomous crawl fast and its code lean as it grows.
 ### doctor / onboarding
 
 <!-- GENERATED:proposals-doctor -->
-
+| ID | Item | Status |
+|---|---|---|
+| [BE-0164](BE-0164-config-aware-environment-installer/BE-0164-config-aware-environment-installer.md) | Config-aware environment installer | Proposal |
 <!-- /GENERATED:proposals-doctor -->
 
 ### Development infrastructure (contributor workflow)
