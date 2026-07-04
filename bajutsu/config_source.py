@@ -26,13 +26,20 @@ from typing import Protocol
 
 DEFAULT_CONFIG = "bajutsu.config.yaml"
 
-# `github:owner/repo[@ref][:path]` — the headline shorthand. owner/repo exclude the @ and : delimiters.
+# owner/repo constrained to GitHub's real charset (BE-0124): an owner is alphanumeric + hyphen (a
+# username/org — no dot, so it can never be a `.`/`..` traversal token), a repo also allows `_`/`.`
+# but a bare `.`/`..` segment is rejected in `parse_config_spec`. Neither admits `%`, so a
+# percent-encoded segment simply fails to match — it never reaches the API URL or the cache path.
+_OWNER = r"[A-Za-z0-9-]+"
+_REPO = r"[A-Za-z0-9._-]+"
+# `github:owner/repo[@ref][:path]` — the headline shorthand.
 _GITHUB_RE = re.compile(
-    r"^github:(?P<owner>[^/@:]+)/(?P<repo>[^/@:]+)(?:@(?P<ref>[^:]+))?(?::(?P<path>.+))?$"
+    rf"^github:(?P<owner>{_OWNER})/(?P<repo>{_REPO})(?:@(?P<ref>[^:]+))?(?::(?P<path>.+))?$"
 )
-# `git+https://host/owner/repo(.git)[@ref][#path]` — the general form (any Git host).
+# `git+https://host/owner/repo(.git)[@ref][#path]` — the general form (any Git host). The repo class
+# stays non-greedy so a trailing `.git` is stripped rather than folded into the repo name.
 _GIT_URL_RE = re.compile(
-    r"^git\+https://(?P<host>[^/]+)/(?P<owner>[^/]+)/(?P<repo>[^/@#]+?)(?:\.git)?(?:@(?P<ref>[^#]+))?(?:#(?P<path>.+))?$"
+    rf"^git\+https://(?P<host>[^/]+)/(?P<owner>{_OWNER})/(?P<repo>{_REPO}?)(?:\.git)?(?:@(?P<ref>[^#]+))?(?:#(?P<path>.+))?$"
 )
 # A full 40-hex commit SHA — already immutable, so it needs no commits-API resolution.
 _FULL_SHA_RE = re.compile(r"^[0-9a-f]{40}$")
@@ -67,12 +74,18 @@ def parse_config_spec(value: str) -> GitConfigSpec | None:
     """Parse a `--config` value into a `GitConfigSpec`, or None when it is an ordinary local path.
 
     A value with no recognized Git scheme is a local path, so every existing invocation is unchanged.
+    A repo of exactly `.` or `..` is a same-segment traversal (BE-0124) and is refused here, so it
+    fails the same way an unparseable value does rather than reaching the cache path.
     """
     if m := _GITHUB_RE.match(value):
-        return GitConfigSpec("github.com", m["owner"], m["repo"], m["ref"], m["path"])
+        return _spec("github.com", m) if m["repo"] not in (".", "..") else None
     if m := _GIT_URL_RE.match(value):
-        return GitConfigSpec(m["host"], m["owner"], m["repo"], m["ref"], m["path"])
+        return _spec(m["host"], m) if m["repo"] not in (".", "..") else None
     return None
+
+
+def _spec(host: str, m: re.Match[str]) -> GitConfigSpec:
+    return GitConfigSpec(host, m["owner"], m["repo"], m["ref"], m["path"])
 
 
 class Transport(Protocol):

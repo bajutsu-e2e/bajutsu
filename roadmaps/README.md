@@ -319,6 +319,7 @@ Closing the edges the deterministic core does not touch — `serve`'s HTTP surfa
 | ID | Item | Status |
 |---|---|---|
 | [BE-0116](implemented/BE-0116-udid-argument-validation/BE-0116-udid-argument-validation.md) | Tighten UDID validation against argument injection | Implemented |
+| [BE-0124](implemented/BE-0124-config-source-owner-repo-validation/BE-0124-config-source-owner-repo-validation.md) | Tighten config-source owner and repo validation | Implemented |
 | [BE-0125](implemented/BE-0125-authoring-agent-tool-restriction/BE-0125-authoring-agent-tool-restriction.md) | Restrict the claude-code authoring agent tools | Implemented |
 | [BE-0130](implemented/BE-0130-default-network-secret-redaction/BE-0130-default-network-secret-redaction.md) | Redact sensitive network headers and cookies by default | Implemented |
 | [BE-0133](implemented/BE-0133-pin-actionlint-installer/BE-0133-pin-actionlint-installer.md) | Pin the actionlint installer by SHA | Implemented |
@@ -564,7 +565,6 @@ Closing the edges the deterministic core does not touch — `serve`'s HTTP surfa
 | [BE-0120](proposals/BE-0120-recorded-scenario-secret-tokenization/BE-0120-recorded-scenario-secret-tokenization.md) | Tokenize secrets in recorded scenario YAML | Proposal |
 | [BE-0121](proposals/BE-0121-serve-csrf-host-allowlist/BE-0121-serve-csrf-host-allowlist.md) | Unconditional CSRF and Host-allowlist defenses for serve | Proposal |
 | [BE-0123](proposals/BE-0123-composite-action-input-indirection/BE-0123-composite-action-input-indirection.md) | Route composite-action inputs through env indirection | Proposal |
-| [BE-0124](proposals/BE-0124-config-source-owner-repo-validation/BE-0124-config-source-owner-repo-validation.md) | Tighten config-source owner and repo validation | Proposal |
 | [BE-0131](proposals/BE-0131-run-artifact-permissions/BE-0131-run-artifact-permissions.md) | Restrict run-artifact file permissions | Proposal |
 | [BE-0136](proposals/BE-0136-serve-write-once-secrets/BE-0136-serve-write-once-secrets.md) | Write-once secrets store for serve | Proposal |
 | [BE-0144](proposals/BE-0144-automerge-stale-approval-race/BE-0144-automerge-stale-approval-race.md) | Close the auto-merge stale-approval race | Proposal |
