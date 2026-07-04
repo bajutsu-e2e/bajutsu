@@ -187,7 +187,7 @@ def test_dual_layout_walk_and_link_prefix(tmp_path: Path) -> None:
     )
     fold = bri.Entry(
         id="BE-0002",
-        slug="fold",
+        slug="foldered",
         category="implemented",
         title="t",
         status="Implemented",
@@ -198,7 +198,7 @@ def test_dual_layout_walk_and_link_prefix(tmp_path: Path) -> None:
         == "| [BE-0001](BE-0001-flat/BE-0001-flat.md) | t | Implemented |"
     )
     assert bri.render_row(fold, "en", has_origin=False) == (
-        "| [BE-0002](implemented/BE-0002-fold/BE-0002-fold.md) | t | Implemented |"
+        "| [BE-0002](implemented/BE-0002-foldered/BE-0002-foldered.md) | t | Implemented |"
     )
 
 
