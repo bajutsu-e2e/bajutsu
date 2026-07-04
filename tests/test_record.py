@@ -354,6 +354,16 @@ def test_tokenize_secrets_is_a_no_op_for_non_type_steps() -> None:
     assert tokenized is step and substituted == []
 
 
+def test_tokenize_secrets_does_not_corrupt_an_already_inserted_token() -> None:
+    # A later value ("secrets") appears inside the token inserted for the first value; a naive
+    # sequential replace would splice it into a malformed nested token. Two-pass masking must not.
+    step = Step.model_validate({"type": {"text": "verylongsecret", "into": {"id": "f"}}})
+    tokens = [("verylongsecret", "${secrets.X}"), ("secrets", "${secrets.Y}")]
+    tokenized, substituted = _tokenize_secrets(step, tokens)
+    assert tokenized.type is not None and tokenized.type.text == "${secrets.X}"
+    assert substituted == ["${secrets.X}"]
+
+
 # --- _screenshot_bytes (the unified best-effort capture helper, BE-0132) ---
 
 

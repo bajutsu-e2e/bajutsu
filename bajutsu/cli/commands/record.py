@@ -30,12 +30,14 @@ from bajutsu.scenario import Preconditions, dump_scenarios
 
 
 def _secret_tokens(eff: Effective) -> list[tuple[str, str]]:
-    """`(value, "${secrets.NAME}")` pairs for each declared secret present in the environment.
+    """`(value, "${secrets.NAME}")` pairs for each declared secret with a non-empty env value.
 
-    The reverse of `run`'s forward secret resolution (`_resolve_secrets`): `record` uses these to
-    rewrite a recorded literal back to its token (BE-0120). Only secrets actually set in the
-    environment can be matched. Longest value first so a value that is a substring of another is
-    substituted before it, never leaving a partial literal in the written scenario.
+    The counterpart to `run`'s forward secret resolution (`_resolve_secrets`): `record` uses these
+    to rewrite a recorded literal back to its token (BE-0120). An env var that is unset *or empty*
+    is skipped — an empty value has no literal to tokenize, and matching one would splice the token
+    between every character. (`run` keeps the empty binding but its redactor drops empty values the
+    same way, so the effect is identical.) Longest value first so a value that is a substring of
+    another is substituted before it, never leaving a partial literal in the written scenario.
     """
     pairs = [
         (os.environ[name], f"${{secrets.{name}}}") for name in eff.secrets if os.environ.get(name)

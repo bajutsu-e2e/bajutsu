@@ -59,12 +59,22 @@ def _mask_secrets(text: str, secret_tokens: list[tuple[str, str]]) -> tuple[str,
     `secret_tokens` is `(literal value, "${secrets.NAME}")` pairs; the caller passes them
     longest-value-first so a value that is a substring of another is replaced before it, never
     leaving a partial literal behind. Returns the masked text and the tokens substituted.
+
+    Done in two passes — each matched value is first swapped for a collision-proof sentinel, then
+    the sentinels are expanded to their tokens — so a later value can never match text *inside* a
+    token already inserted (e.g. a secret whose value equals another secret's env-var name), which
+    a single sequential pass would corrupt into a malformed nested token.
     """
     substituted: list[str] = []
-    for value, token in secret_tokens:
+    expansions: list[tuple[str, str]] = []
+    for i, (value, token) in enumerate(secret_tokens):
         if value and value in text:
-            text = text.replace(value, token)
+            sentinel = f"\x00{i}\x00"  # NUL-delimited: cannot occur in typed text or a token
+            text = text.replace(value, sentinel)
+            expansions.append((sentinel, token))
             substituted.append(token)
+    for sentinel, token in expansions:
+        text = text.replace(sentinel, token)
     return text, substituted
 
 

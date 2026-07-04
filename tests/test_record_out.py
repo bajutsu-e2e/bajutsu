@@ -91,6 +91,14 @@ def test_secret_tokens_maps_set_env_vars_to_their_tokens(monkeypatch) -> None:  
     ]
 
 
+def test_secret_tokens_skips_an_empty_value(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    # An empty env value has no literal to tokenize, and matching "" would splice the token
+    # between every character — so a present-but-empty secret is skipped, not bound.
+    monkeypatch.setenv("EMPTY", "")
+    monkeypatch.setenv("REAL", "hunter2")
+    assert _secret_tokens(_eff_with_secrets("EMPTY", "REAL")) == [("hunter2", "${secrets.REAL}")]
+
+
 def test_secret_tokens_orders_longest_value_first(monkeypatch) -> None:  # type: ignore[no-untyped-def]
     # Longest value first so a value that is a substring of another is substituted before it.
     monkeypatch.setenv("SHORT", "abc")
