@@ -16,6 +16,7 @@ import pytest
 
 from bajutsu.drivers import base
 from bajutsu.drivers.xcuitest import (
+    _SOCKET_TIMEOUT_SECONDS,
     TransportFn,
     XcuitestChannelError,
     XcuitestDriver,
@@ -270,3 +271,10 @@ def test_screenshot_fails_loudly_on_a_runner_error(tmp_path: Any) -> None:
     with pytest.raises(XcuitestChannelError):
         _driver(lambda m, p, b: _Reply(status="error", png=None)).screenshot(str(out))
     assert not out.exists()  # no bogus artifact written
+
+
+def test_socket_timeout_is_bounded_after_the_single_snapshot_query() -> None:
+    # BE-0105 replaced the ~10s+ per-attribute /elements walk with one app.snapshot(), so the
+    # generous 60s stopgap is no longer needed: the timeout must stay bounded to a reasonable window
+    # (it still covers a cold first snapshot) so a wedged runner fails loudly rather than hanging.
+    assert 0 < _SOCKET_TIMEOUT_SECONDS <= 30

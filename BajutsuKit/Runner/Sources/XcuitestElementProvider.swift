@@ -6,6 +6,13 @@ import BajutsuRunner
 /// Walks `XCUIApplication` into the normalized `Element` shape the Python driver expects
 /// (identifier / label / value / traits / frame, matching what `bajutsu/drivers/idb.py`
 /// produces) and actuates the exact `XCUIElement` a snapshot handle maps back to.
+///
+/// BE-0105 makes the query cheap: instead of materializing an `XCUIElement` per node and reading
+/// each attribute over its own XCUITest round-trip (elements × attributes ≈ 600 trips for one
+/// screen), `queryElements()` takes **one** `app.snapshot()` and reads every attribute from that
+/// tree. The trade-off is that snapshot nodes are values, not tappable elements, so each element's
+/// backing is its root-relative position path; `tap` / `gesture` re-derive the live `XCUIElement`
+/// from that path and re-verify its attributes, returning `.stale` if the screen has shifted under it.
 final class XcuitestElementProvider: ElementProviding {
     private let app: XCUIApplication
 
@@ -14,35 +21,17 @@ final class XcuitestElementProvider: ElementProviding {
     }
 
     func queryElements() -> [ElementSnapshot] {
-        // One flat walk of the tree; the tabs idb collapses into an opaque "Tab Bar" group
-        // surface here as individual buttons, which is the whole point of the richer actuator.
-        let all = app.descendants(matching: .any).allElementsBoundByIndex
-        var out: [ElementSnapshot] = []
-        out.reserveCapacity(all.count)
-        for el in all where el.exists {
-            let f = el.frame
-            out.append(
-                ElementSnapshot(
-                    identifier: nonEmpty(el.identifier),
-                    label: nonEmpty(el.label),
-                    value: el.value as? String,
-                    traits: traits(of: el),
-                    frame: (
-                        x: Double(f.origin.x),
-                        y: Double(f.origin.y),
-                        width: Double(f.size.width),
-                        height: Double(f.size.height)
-                    ),
-                    backingElement: el
-                )
-            )
-        }
-        return out
+        // One accessibility round-trip for the whole attribute-bearing tree; the tabs idb collapses
+        // into an opaque "Tab Bar" group surface here as individual buttons, the point of the richer
+        // actuator. A snapshot failure yields an empty screen rather than a crash — the run fails
+        // loudly downstream when nothing resolves.
+        guard let root = try? app.snapshot() else { return [] }
+        return flattenSnapshot(root: SnapshotNodeAdapter(root))
     }
 
     func tap(backingElement: AnyObject, taps: Int, duration: TimeInterval) -> TapResult {
-        guard let el = backingElement as? XCUIElement else { return .notFound }
-        guard el.exists else { return .stale }
+        guard let backing = backingElement as? PositionPathBacking else { return .notFound }
+        guard let el = liveElement(for: backing) else { return .stale }
         if duration > 0 {
             el.press(forDuration: duration)
         } else if taps >= 2 {
@@ -59,8 +48,8 @@ final class XcuitestElementProvider: ElementProviding {
     }
 
     func gesture(backingElement: AnyObject, kind: String, scale: Double, radians: Double) -> TapResult {
-        guard let el = backingElement as? XCUIElement else { return .notFound }
-        guard el.exists else { return .stale }
+        guard let backing = backingElement as? PositionPathBacking else { return .notFound }
+        guard let el = liveElement(for: backing) else { return .stale }
         switch kind {
         case "pinch":
             // velocity sign must match the scale direction (zoom in vs out) or XCUITest rejects it.
@@ -89,8 +78,29 @@ final class XcuitestElementProvider: ElementProviding {
 
     // MARK: - Helpers
 
-    private func nonEmpty(_ s: String) -> String? {
-        s.isEmpty ? nil : s
+    /// Re-derive the live `XCUIElement` for a snapshot backing, or nil if the screen no longer matches.
+    ///
+    /// Walking the recorded index path is one element resolution, not a re-walk of the whole tree; the
+    /// attribute re-check is what keeps it deterministic-safe — a sibling reordered into the same
+    /// position fails `attributesMatch`, so we return `.stale` rather than act on a different element.
+    private func liveElement(for backing: PositionPathBacking) -> XCUIElement? {
+        let el = element(at: backing.path)
+        guard el.exists else { return nil }
+        let current = RecordedAttributes(
+            identifier: nonEmpty(el.identifier),
+            label: nonEmpty(el.label),
+            traits: traitTokens(elementType: el.elementType, isEnabled: el.isEnabled, isSelected: el.isSelected),
+            frame: frameTuple(el.frame)
+        )
+        return attributesMatch(recorded: backing.recorded, current: current) ? el : nil
+    }
+
+    /// Resolve a root-relative index path back to an `XCUIElement` by descending direct children —
+    /// the inverse of the position path `flattenSnapshot` records over `app.snapshot()`.
+    private func element(at path: PositionPath) -> XCUIElement {
+        path.reduce(app as XCUIElement) { parent, index in
+            parent.children(matching: .any).element(boundBy: index)
+        }
     }
 
     /// An absolute screen point as an `XCUICoordinate` (offset from the app's origin).
@@ -98,44 +108,81 @@ final class XcuitestElementProvider: ElementProviding {
         app.coordinate(withNormalizedOffset: CGVector(dx: 0, dy: 0))
             .withOffset(CGVector(dx: x, dy: y))
     }
+}
 
-    private func traits(of el: XCUIElement) -> [String] {
-        var out = [typeName(el.elementType)]
-        if !el.isEnabled { out.append("notEnabled") }  // base.Trait.NOT_ENABLED
-        if el.isSelected { out.append("selected") }  // base.Trait.SELECTED
-        return out
+// MARK: - Snapshot bridging
+
+/// Bridge XCTest's snapshot into the pure `SnapshotNode` the flatten walk consumes, so the whole tree
+/// comes from a single `app.snapshot()` (BE-0105) with attributes normalized the same way the
+/// per-element walk did. `XCUIElementSnapshot` is a protocol, not a concrete type, so it is wrapped
+/// rather than conformed by extension.
+private struct SnapshotNodeAdapter: SnapshotNode {
+    private let snapshot: any XCUIElementSnapshot
+
+    init(_ snapshot: any XCUIElementSnapshot) {
+        self.snapshot = snapshot
     }
 
-    /// Map `XCUIElement.ElementType` to the same lower-camel token idb derives from its AX type
-    /// (`AXButton` -> `button`), so a `traits:` selector resolves identically across backends.
-    private func typeName(_ t: XCUIElement.ElementType) -> String {
-        switch t {
-        case .button: return "button"
-        case .staticText: return "staticText"
-        case .cell: return "cell"
-        case .tabBar: return "tabBar"
-        case .navigationBar: return "navigationBar"
-        case .toolbar: return "toolbar"
-        case .image: return "image"
-        case .textField: return "textField"
-        case .secureTextField: return "secureTextField"
-        case .searchField: return "searchField"
-        case .textView: return "textView"
-        case .switch: return "switch"
-        case .link: return "link"
-        case .slider: return "slider"
-        case .table: return "table"
-        case .collectionView: return "collectionView"
-        case .scrollView: return "scrollView"
-        case .alert: return "alert"
-        case .sheet: return "sheet"
-        case .pageIndicator: return "pageIndicator"
-        case .segmentedControl: return "segmentedControl"
-        case .picker: return "picker"
-        case .pickerWheel: return "pickerWheel"
-        case .keyboard: return "keyboard"
-        case .other: return "other"
-        default: return "other"
-        }
+    var nodeIdentifier: String? { nonEmpty(snapshot.identifier) }
+    var nodeLabel: String? { nonEmpty(snapshot.label) }
+    var nodeValue: String? { snapshot.value as? String }
+    var nodeTraits: [String] {
+        traitTokens(
+            elementType: snapshot.elementType, isEnabled: snapshot.isEnabled, isSelected: snapshot.isSelected
+        )
+    }
+    var nodeFrame: (x: Double, y: Double, width: Double, height: Double) { frameTuple(snapshot.frame) }
+    var nodeChildren: [SnapshotNode] { snapshot.children.map(SnapshotNodeAdapter.init) }
+}
+
+// MARK: - Attribute normalization (shared by the snapshot walk and the tap-time re-check)
+
+private func nonEmpty(_ s: String) -> String? {
+    s.isEmpty ? nil : s
+}
+
+private func frameTuple(_ f: CGRect) -> (x: Double, y: Double, width: Double, height: Double) {
+    (Double(f.origin.x), Double(f.origin.y), Double(f.size.width), Double(f.size.height))
+}
+
+private func traitTokens(
+    elementType: XCUIElement.ElementType, isEnabled: Bool, isSelected: Bool
+) -> [String] {
+    var out = [typeName(elementType)]
+    if !isEnabled { out.append("notEnabled") }  // base.Trait.NOT_ENABLED
+    if isSelected { out.append("selected") }  // base.Trait.SELECTED
+    return out
+}
+
+/// Map `XCUIElement.ElementType` to the same lower-camel token idb derives from its AX type
+/// (`AXButton` -> `button`), so a `traits:` selector resolves identically across backends.
+private func typeName(_ t: XCUIElement.ElementType) -> String {
+    switch t {
+    case .button: return "button"
+    case .staticText: return "staticText"
+    case .cell: return "cell"
+    case .tabBar: return "tabBar"
+    case .navigationBar: return "navigationBar"
+    case .toolbar: return "toolbar"
+    case .image: return "image"
+    case .textField: return "textField"
+    case .secureTextField: return "secureTextField"
+    case .searchField: return "searchField"
+    case .textView: return "textView"
+    case .switch: return "switch"
+    case .link: return "link"
+    case .slider: return "slider"
+    case .table: return "table"
+    case .collectionView: return "collectionView"
+    case .scrollView: return "scrollView"
+    case .alert: return "alert"
+    case .sheet: return "sheet"
+    case .pageIndicator: return "pageIndicator"
+    case .segmentedControl: return "segmentedControl"
+    case .picker: return "picker"
+    case .pickerWheel: return "pickerWheel"
+    case .keyboard: return "keyboard"
+    case .other: return "other"
+    default: return "other"
     }
 }

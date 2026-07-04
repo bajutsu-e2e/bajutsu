@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0105](BE-0105-xcuitest-single-snapshot-query.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0105") |
+| Implementing PR | _pending_ |
 | Topic | Backend expansion (iOS actuators) |
 | Related | [BE-0019](../BE-0019-xcuitest-backend/BE-0019-xcuitest-backend.md) |
 <!-- /BE-METADATA -->
@@ -115,11 +116,32 @@ immediately, and stale handles failing explicitly.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Measure and record the `/elements` baseline (where the time goes; named environment).
-- [ ] Single-snapshot `queryElements()` via `app.snapshot()`, same normalized `Element[]` output.
-- [ ] Position-path backing with attribute re-verification (stale on mismatch).
-- [ ] Revert the stopgap driver socket timeout to a bounded value.
-- [ ] Validation: fast-gate addressing-correctness tests; on-device latency measurement against the target.
+- [x] Measure and record the `/elements` baseline (where the time goes; named environment).
+- [x] Single-snapshot `queryElements()` via `app.snapshot()`, same normalized `Element[]` output.
+- [x] Position-path backing with attribute re-verification (stale on mismatch).
+- [x] Revert the stopgap driver socket timeout to a bounded value.
+- [x] Validation: fast-gate addressing-correctness tests; on-device latency measurement against the target.
+
+Log:
+
+- 2026-07-05: Implementation slice. The single-snapshot walk and the deterministic-safe
+  addressing now live in the pure `BajutsuRunner` library so the `swift test` gate covers them:
+  `PositionPath.swift` adds a normalized `SnapshotNode`, `flattenSnapshot(root:)` (pre-order,
+  root-excluded, one `PositionPathBacking` per element), and `attributesMatch(...)`, with
+  `PositionPathTests.swift` exercising path assignment, field copy, and match/mismatch. The
+  XCTest-facing `XcuitestElementProvider` now takes one `app.snapshot()` and re-derives the live
+  `XCUIElement` from the recorded index path at `tap` / `gesture` time, returning `.stale` on an
+  attribute mismatch. The Python driver's stopgap 60s socket timeout is reverted to a bounded
+  `_SOCKET_TIMEOUT_SECONDS` (`tests/test_xcuitest.py`). The `/elements` baseline and the on-device
+  acceptance number (target 1–2s) remain, per the proposal's validation split.
+- 2026-07-05: On-device measurement and validation on iPhone 17 Pro Max, iOS 26.5, Xcode 26.6
+  (17F113), against the showcase SwiftUI screen (~112–114 elements). `GET /elements` went from a
+  **~18.6s** median (old per-attribute walk) to a **~0.034s** median (single `app.snapshot()`) —
+  well inside the 1–2s target. The old walk actually exceeded the reverted 15s socket timeout,
+  confirming the stopgap was load-bearing. Addressing correctness verified end-to-end: the on-device
+  driver conformance suite (`tests/test_driver_conformance_ondevice.py`, xcuitest + idb) passes all
+  18 cases, so the position-path re-derivation taps exactly the resolved element and stale/ambiguous
+  handling is intact. This completes the five-piece breakdown.
 
 ## References
 
