@@ -26,6 +26,7 @@ from bajutsu.cli.commands.worker import (
     _download_baselines,
     _evidence_files,
     _post_json,
+    _put_tree_files,
     _upload_evidence,
     _write_console_log,
     worker,
@@ -696,11 +697,30 @@ def test_download_baselines_raises_on_a_name_that_escapes_the_dir(tmp_path: Path
 def test_download_baselines_raises_on_a_non_string_url(tmp_path: Path) -> None:
     # A non-string URL for a named baseline is a malformed lease: fail loud rather than silently drop
     # a baseline and leave the run comparing against nothing (BE-0160 / determinism-first).
-    with pytest.raises(RuntimeError, match="non-string URL"):
+    with pytest.raises(RuntimeError, match="non-string"):
         _download_baselines(tmp_path, {"home.png": None})
+
+
+def test_download_baselines_raises_on_a_non_string_name(tmp_path: Path) -> None:
+    # A non-string baseline name must raise the fail-loud RuntimeError, not a TypeError on the join.
+    with pytest.raises(RuntimeError, match="non-string"):
+        _download_baselines(tmp_path, {123: "https://signed.example/get/x"})  # type: ignore[dict-item]
 
 
 def test_download_baselines_raises_on_a_failed_get(tmp_path: Path) -> None:
     # A baseline whose signed GET fails must surface, not be swallowed into an empty baselines dir.
     with _worker_io_server() as (_httpd, base), pytest.raises(HTTPError):  # unseeded → 404
         _download_baselines(tmp_path, {"home.png": f"{base}/get/home.png"})
+
+
+def test_put_tree_files_skips_a_non_string_key_when_best_effort(tmp_path: Path) -> None:
+    # A malformed urls mapping with a non-string key must be skipped (best-effort), never crash the
+    # loop on the path-join (evidence uploads past the verdict must not die on a bad response).
+    run = _run_tree(tmp_path, "r1")
+    assert _put_tree_files(run, {123: "https://x/put"}, best_effort=True) == 0  # type: ignore[dict-item]
+
+
+def test_put_tree_files_raises_on_a_non_string_key_when_not_best_effort(tmp_path: Path) -> None:
+    run = _run_tree(tmp_path, "r1")
+    with pytest.raises(RuntimeError, match="unexpected upload entry"):
+        _put_tree_files(run, {123: "https://x/put"}, best_effort=False)  # type: ignore[dict-item]

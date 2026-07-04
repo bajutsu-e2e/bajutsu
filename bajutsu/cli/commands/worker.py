@@ -317,8 +317,12 @@ def _put_tree_files(run_dir: Path, urls: dict[str, Any], *, best_effort: bool) -
     base = run_dir.resolve()
     uploaded = 0
     for rel, put_url in urls.items():
-        src = (run_dir / rel).resolve()
-        if not isinstance(put_url, str) or not src.is_relative_to(base):
+        # Require a string key + URL and confine the key under the run dir, so a malformed or hostile
+        # response can neither crash the loop (a non-string key would blow up the path-join) nor read
+        # a file outside the tree. Check the types before the join so a bad key hits this guard.
+        ok = isinstance(rel, str) and isinstance(put_url, str)
+        src = (run_dir / rel).resolve() if ok else base
+        if not ok or not src.is_relative_to(base):
             if not best_effort:
                 raise RuntimeError(f"unexpected upload entry {rel!r}")
             _logger.warning("skipping unexpected upload entry %r under %s", rel, run_dir)
@@ -348,14 +352,15 @@ def _download_baselines(work: Path, baseline_urls: dict[str, Any]) -> None:
         return
     base = baselines.resolve()
     for name, get_url in baseline_urls.items():
+        # The control plane signs only safe baseline names, so a non-string name/URL or an escaping
+        # name is a broken/hostile lease: fail loudly rather than silently drop a baseline (which
+        # would leave the run comparing against nothing). Validate the types before the path-join so
+        # a bad name raises this RuntimeError, not a TypeError, and never place a file outside the dir.
+        if not isinstance(name, str) or not isinstance(get_url, str):
+            raise RuntimeError(f"baseline {name!r} has a non-string name or URL")
         dest = (baselines / name).resolve()
-        # The control plane signs only safe baseline names, so an escaping name or a non-string URL
-        # is a broken/hostile lease: fail loudly rather than silently drop a baseline (which would
-        # leave the run comparing against nothing), and never place a file outside the baselines dir.
         if base not in dest.parents:
             raise RuntimeError(f"baseline {name!r} escapes the baselines dir")
-        if not isinstance(get_url, str):
-            raise RuntimeError(f"baseline {name!r} has a non-string URL")
         dest.parent.mkdir(parents=True, exist_ok=True)
         _get_file(get_url, dest, timeout=_UPLOAD_HTTP_TIMEOUT)
 
