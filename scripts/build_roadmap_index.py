@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Generate the roadmap index tables in README.md / README-ja.md from per-item metadata.
 
-Every ``roadmaps/<category>/BE-NNNN-<slug>/`` item already carries the metadata an index row needs
+Every ``roadmaps/BE-NNNN-<slug>/`` item already carries the metadata an index row needs
 (``Status`` / ``Topic`` / ``Origin``) plus its H1 title. This reads metadata and regenerates the
 **marker-delimited** table bodies in both index pages, so a roadmap PR only ever touches its own
 directory — the shared index never needs a hand-edit, removing the single largest merge-conflict
@@ -9,8 +9,10 @@ source (BE-0043). The hand-written section prose outside the markers is preserve
 
 The index has four top-level buckets, ordered most-progressed first — Implemented / In progress /
 Proposals / Deferred — and each item's bucket is **derived from its ``Status``** (BE-0078), not a
-hand-set ``Track`` field. Inside a bucket, ``Topic`` is the secondary grouping; a topic that has
-items in more than one bucket appears once per bucket, each as its own marked section.
+hand-set ``Track`` field. Since BE-0159 the bucket is the *only* thing ``Status`` decides: every item
+lives in one flat ``roadmaps/`` directory, so its path never moves and the link an index row renders
+is stable for the item's whole life. Inside a bucket, ``Topic`` is the secondary grouping; a topic
+that has items in more than one bucket appears once per bucket, each as its own marked section.
 
 Usage::
 
@@ -35,11 +37,9 @@ from pathlib import Path
 # already on the path) or loaded under its bare name by a test — add scripts/ so the sibling import
 # resolves either way.
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from roadmap_ids import is_item_dir, numbered_match
+from roadmap_ids import iter_item_dirs, numbered_match
 
 ROADMAP = Path("roadmaps")
-# Each item lives under exactly one, by its Status (BE-0078); the folder prefixes its index links.
-CATEGORIES = ("implemented", "in-progress", "proposals", "deferred")
 TITLE_RE = re.compile(r"^# BE-\d{4} — (.+)$", re.MULTILINE)
 # Canonical metadata: a ``| Field | Value |`` table fenced by these markers, mirroring the index's
 # ``<!-- GENERATED:* -->`` regions. Fencing keeps the parser off same-shaped tables in the body.
@@ -207,9 +207,6 @@ class Entry:
 
     id: str
     slug: str
-    category: (
-        str  # status folder the item lives in (implemented / in-progress / proposals / deferred)
-    )
     title: str
     status: str  # raw status, before display mapping
     origin: str | None
@@ -272,7 +269,7 @@ def status_display(raw: str, lang_code: str) -> str:
 def render_row(entry: Entry, lang_code: str, has_origin: bool) -> str:
     """Render one Markdown table row for an item in the given language."""
     lang = LANG_BY_CODE[lang_code]
-    href = f"{entry.category}/{entry.id}-{entry.slug}/{entry.id}-{entry.slug}{lang.suffix}.md"
+    href = f"{entry.id}-{entry.slug}/{entry.id}-{entry.slug}{lang.suffix}.md"
     cells = [f"[{entry.id}]({href})", entry.title, status_display(entry.status, lang_code)]
     if has_origin:
         cells.append(entry.origin or "")
@@ -313,63 +310,50 @@ def duplicate_ids(roadmap: Path) -> dict[str, list[str]]:
     fail the build rather than silently render two index rows for one id. Empty when all unique.
     """
     by_id: dict[str, list[str]] = {}
-    for category in CATEGORIES:
-        category_dir = roadmap / category
-        if not category_dir.is_dir():
-            continue
-        for d in sorted(category_dir.iterdir()):
-            if d.is_dir() and (match := numbered_match(d.name)):
-                by_id.setdefault(f"BE-{match.group(1)}", []).append(f"{category}/{d.name}")
+    for d in iter_item_dirs(roadmap):
+        if match := numbered_match(d.name):
+            by_id.setdefault(f"BE-{match.group(1)}", []).append(d.name)
     return {be_id: paths for be_id, paths in by_id.items() if len(paths) > 1}
 
 
 def load_items(roadmap: Path) -> list[Item]:
     """Read every BE item directory into an Item with per-language render fields.
 
-    Items live under ``roadmaps/<category>/BE-NNNN-<slug>/`` — the category (the directory the
-    item was filed in by its Status) prefixes every link the index renders to it. Refuses a tree
-    with duplicate ids, so a number reused across two items fails the build.
+    Items live under one flat ``roadmaps/BE-NNNN-<slug>/`` directory (BE-0159), so the link the index
+    renders to an item is just its directory name — no status folder to prefix or keep in step.
+    Refuses a tree with duplicate ids, so a number reused across two items fails the build.
     """
     if dupes := duplicate_ids(roadmap):
         detail = "; ".join(f"{be_id}: {', '.join(paths)}" for be_id, paths in sorted(dupes.items()))
         raise ValueError(f"duplicate BE IDs (each id must be unique and permanent): {detail}")
     items: list[Item] = []
-    for category in CATEGORIES:
-        category_dir = roadmap / category
-        if not category_dir.is_dir():
+    for d in iter_item_dirs(roadmap):
+        match = numbered_match(d.name)
+        if not match:
             continue
-        for d in sorted(category_dir.iterdir()):
-            if not d.is_dir():
-                continue
-            match = numbered_match(d.name)
-            if not match:
-                continue
-            item_id, slug = f"BE-{match.group(1)}", match.group(2)
+        item_id, slug = f"BE-{match.group(1)}", match.group(2)
 
-            by_lang: dict[str, Entry] = {}
-            item_bucket = topic = ""
-            for lang in LANGS:
-                path = d / f"{item_id}-{slug}{lang.suffix}.md"
-                title, fields = parse_metadata(path.read_text(encoding="utf-8"))
-                by_lang[lang.code] = Entry(
-                    id=item_id,
-                    slug=slug,
-                    category=category,
-                    title=title,
-                    status=fields[lang.field_status],
-                    origin=fields.get(lang.field_origin),
-                )
-                if lang.code == "en":
-                    item_bucket = bucket(fields[lang.field_status])
-                    topic = fields[lang.field_topic]
-            if topic not in KNOWN_TOPICS:
-                raise ValueError(
-                    f"{item_id}: unknown Topic {topic!r}; add it to TOPICS (with a key) so it "
-                    "maps to a section"
-                )
-            items.append(
-                Item(id=item_id, slug=slug, bucket=item_bucket, topic=topic, by_lang=by_lang)
+        by_lang: dict[str, Entry] = {}
+        item_bucket = topic = ""
+        for lang in LANGS:
+            path = d / f"{item_id}-{slug}{lang.suffix}.md"
+            title, fields = parse_metadata(path.read_text(encoding="utf-8"))
+            by_lang[lang.code] = Entry(
+                id=item_id,
+                slug=slug,
+                title=title,
+                status=fields[lang.field_status],
+                origin=fields.get(lang.field_origin),
             )
+            if lang.code == "en":
+                item_bucket = bucket(fields[lang.field_status])
+                topic = fields[lang.field_topic]
+        if topic not in KNOWN_TOPICS:
+            raise ValueError(
+                f"{item_id}: unknown Topic {topic!r}; add it to TOPICS (with a key) so it "
+                "maps to a section"
+            )
+        items.append(Item(id=item_id, slug=slug, bucket=item_bucket, topic=topic, by_lang=by_lang))
     return items
 
 
@@ -446,22 +430,16 @@ def required_section_keys(roadmap: Path) -> dict[str, str]:
     *before* the ``roadmap-id`` automation numbers it and the reindex tries to fill the region.
     """
     required: dict[str, str] = {}
-    for category in CATEGORIES:
-        category_dir = roadmap / category
-        if not category_dir.is_dir():
-            continue
-        for d in sorted(category_dir.iterdir()):
-            if not (d.is_dir() and is_item_dir(d.name)):
-                continue
-            fields = metadata_fields((d / f"{d.name}.md").read_text(encoding="utf-8"))
-            topic = fields["Topic"]
-            if topic not in TOPIC_KEY_BY_NAME:
-                raise ValueError(
-                    f"{d.name}: unknown Topic {topic!r}; add it to TOPICS (with a key) so it "
-                    "maps to a section"
-                )
-            key = f"{BUCKET_KEY_BY_NAME[bucket(fields['Status'])]}-{TOPIC_KEY_BY_NAME[topic]}"
-            required.setdefault(key, d.name)
+    for d in iter_item_dirs(roadmap):
+        fields = metadata_fields((d / f"{d.name}.md").read_text(encoding="utf-8"))
+        topic = fields["Topic"]
+        if topic not in TOPIC_KEY_BY_NAME:
+            raise ValueError(
+                f"{d.name}: unknown Topic {topic!r}; add it to TOPICS (with a key) so it "
+                "maps to a section"
+            )
+        key = f"{BUCKET_KEY_BY_NAME[bucket(fields['Status'])]}-{TOPIC_KEY_BY_NAME[topic]}"
+        required.setdefault(key, d.name)
     return required
 
 

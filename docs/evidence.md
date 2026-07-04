@@ -157,7 +157,7 @@ class Artifact:
 | `"simctl"` | Interval evidence from `simctl` (video, device log, app trace). |
 | `"collector"` | The idb app-side network collector (`BAJUTSU_COLLECTOR`). |
 | `"playwright"` | Native Playwright network observation (web backend). |
-| `"<backend> (fallback)"` | A read-only evidence fallback supplied the artifact ([BE-0020](../roadmaps/implemented/BE-0020-multi-backend-evidence-fallback/BE-0020-multi-backend-evidence-fallback.md)). |
+| `"<backend> (fallback)"` | A read-only evidence fallback supplied the artifact ([BE-0020](../roadmaps/BE-0020-multi-backend-evidence-fallback/BE-0020-multi-backend-evidence-fallback.md)). |
 
 When an evidence kind cannot be supplied by any backend in the list, a `SkippedCapture(kind,
 reason)` is recorded per scenario and disclosed in the manifest — the gap is never silently empty.

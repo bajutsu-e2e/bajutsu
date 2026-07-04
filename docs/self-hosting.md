@@ -4,9 +4,9 @@
 
 > Run the bajutsu web UI ([cli](cli.md#serve)) on hardware you own, reachable by your team over a
 > private Tailscale network, from the self-hosting roadmap
-> ([BE-0016](../roadmaps/in-progress/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md)).
+> ([BE-0016](../roadmaps/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md)).
 > Two tiers are available today, both made safe to expose by
-> [BE-0051](../roadmaps/implemented/BE-0051-serve-hardening-for-hosting/BE-0051-serve-hardening-for-hosting.md)'s
+> [BE-0051](../roadmaps/BE-0051-serve-hardening-for-hosting/BE-0051-serve-hardening-for-hosting.md)'s
 > auth + input validation:
 >
 > - **Tier A — a single Mac.** One `bajutsu serve` process, token-authenticated, on one Mac. The
@@ -17,7 +17,7 @@
 >   *[Tier B — self-hosting the server backend](#tier-b--self-hosting-the-server-backend)*).
 >
 > The fully managed public cloud offering (a hosted MacStadium worker pool + IaC) remains future
-> ([BE-0015](../roadmaps/in-progress/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md)).
+> ([BE-0015](../roadmaps/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md)).
 
 ## The macOS constraint
 
@@ -109,7 +109,7 @@ session cookie). API clients send `Authorization: Bearer $TOKEN`.
 ## Security recap (BE-0051)
 
 A self-hosted serve relies on the hardening from
-[BE-0051](../roadmaps/implemented/BE-0051-serve-hardening-for-hosting/BE-0051-serve-hardening-for-hosting.md):
+[BE-0051](../roadmaps/BE-0051-serve-hardening-for-hosting/BE-0051-serve-hardening-for-hosting.md):
 token auth on every request, `/api/run` and `/api/record` confined to the app's scenarios dir with
 validated `backend`/`udid`, a CSRF Origin check plus security headers, and a concurrency cap on run
 dispatch. Keep the token secret, keep the Mac on a tailnet, and keep the OS patched.

@@ -24,10 +24,10 @@ sys.modules[_spec.name] = ari
 _spec.loader.exec_module(ari)
 
 
-def _make_item(roadmap: Path, category: str, name: str, body: str = "") -> Path:
+def _make_item(roadmap: Path, name: str, body: str = "") -> Path:
     """Create a minimal BE item (both language files) that self-references its id token."""
     be_id = "-".join(name.split("-")[:2])  # "BE-0054-foo" -> "BE-0054" (or "BE-XXXX")
-    item = roadmap / category / name
+    item = roadmap / name
     item.mkdir(parents=True)
     (item / f"{name}.md").write_text(
         f"# {be_id} — demo\n\n* Proposal: [{be_id}]({name}.md)\n{body}", encoding="utf-8"
@@ -74,8 +74,8 @@ def test_ids_on_git_ref_reads_ref_and_degrades(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     roadmap = tmp_path / "roadmaps"
-    _make_item(roadmap, "proposals", "BE-0007-alpha")
-    _make_item(roadmap, "implemented", "BE-0003-beta")
+    _make_item(roadmap, "BE-0007-alpha")
+    _make_item(roadmap, "BE-0003-beta")
     _git_init(tmp_path, monkeypatch)
     subprocess.run(["git", "commit", "-m", "seed", "-q"], cwd=tmp_path, check=True)
     assert ari.ids_on_git_ref("HEAD") == {7, 3}
@@ -88,10 +88,10 @@ def test_ids_on_git_ref_reads_ref_and_degrades(
 
 def test_allocate_rewrites_index(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     roadmap = tmp_path / "roadmaps"
-    _make_item(roadmap, "proposals", "BE-XXXX-demo-feature")  # the placeholder to allocate
-    _make_item(roadmap, "proposals", "BE-0003-existing")  # floor from the working tree
+    _make_item(roadmap, "BE-XXXX-demo-feature")  # the placeholder to allocate
+    _make_item(roadmap, "BE-0003-existing")  # floor from the working tree
     (roadmap / "README.md").write_text(
-        "| [demo](proposals/BE-XXXX-demo-feature/BE-XXXX-demo-feature.md) | Proposal |\n",
+        "| [demo](BE-XXXX-demo-feature/BE-XXXX-demo-feature.md) | Proposal |\n",
         encoding="utf-8",
     )
     (roadmap / "README-ja.md").write_text("no rows here\n", encoding="utf-8")
@@ -100,9 +100,9 @@ def test_allocate_rewrites_index(tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 
     assert ari.main() == 0
 
-    allocated = roadmap / "proposals" / "BE-0004-demo-feature" / "BE-0004-demo-feature.md"
+    allocated = roadmap / "BE-0004-demo-feature" / "BE-0004-demo-feature.md"
     assert allocated.is_file()
-    assert not (roadmap / "proposals" / "BE-XXXX-demo-feature").exists()
+    assert not (roadmap / "BE-XXXX-demo-feature").exists()
     assert "BE-0004" in allocated.read_text(encoding="utf-8")
     assert "BE-XXXX" not in allocated.read_text(encoding="utf-8")
     # The index row that named the placeholder path is renumbered (path + link text).
@@ -110,39 +110,13 @@ def test_allocate_rewrites_index(tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     assert "BE-0004-demo-feature" in index and "BE-XXXX" not in index
 
 
-def test_allocate_finds_a_placeholder_relocated_out_of_proposals(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    # promote_roadmap_items can move a BE-XXXX placeholder out of proposals/ before allocation, if
-    # its Status was set to something else while still unallocated (BE-0149). The allocator must
-    # still find and number it there, or it would be stranded as BE-XXXX forever.
-    roadmap = tmp_path / "roadmaps"
-    _make_item(roadmap, "in-progress", "BE-XXXX-relocated-feature")
-    _make_item(roadmap, "proposals", "BE-0003-existing")  # floor from the working tree
-    (roadmap / "README.md").write_text("no rows here\n", encoding="utf-8")
-    (roadmap / "README-ja.md").write_text("no rows here\n", encoding="utf-8")
-    _git_init(tmp_path, monkeypatch)
-
-    assert ari.main() == 0
-
-    allocated = (
-        roadmap / "in-progress" / "BE-0004-relocated-feature" / "BE-0004-relocated-feature.md"
-    )
-    assert allocated.is_file()
-    assert not (roadmap / "in-progress" / "BE-XXXX-relocated-feature").exists()
-
-
-def test_placeholder_dirs_orders_by_slug_not_by_folder(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    # Placeholders can live in any status folder (BE-0149). Sorting the Path objects directly would
-    # order by folder name first (e.g. "deferred" before "proposals"), so a placeholder relocated to
-    # an earlier-sorting folder would jump the allocation queue for no reason tied to its own name.
-    # Allocation order must depend only on the slug.
+def test_placeholder_dirs_orders_by_slug(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    # Every item lives directly under roadmaps/ (BE-0159), so allocation order is a pure function of
+    # the directory name (the slug) — the flat scan yields the placeholders sorted by name.
     roadmap = tmp_path / "roadmaps"
     monkeypatch.setattr(ari, "ROADMAP", roadmap)
-    _make_item(roadmap, "deferred", "BE-XXXX-zzz-last-by-slug")
-    _make_item(roadmap, "proposals", "BE-XXXX-aaa-first-by-slug")
+    _make_item(roadmap, "BE-XXXX-zzz-last-by-slug")
+    _make_item(roadmap, "BE-XXXX-aaa-first-by-slug")
 
     names = [d.name for d in ari.placeholder_dirs()]
 
@@ -153,7 +127,7 @@ def test_allocate_noop_without_placeholders(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     roadmap = tmp_path / "roadmaps"
-    _make_item(roadmap, "proposals", "BE-0003-existing")
+    _make_item(roadmap, "BE-0003-existing")
     monkeypatch.chdir(tmp_path)
     calls: list[str] = []
     monkeypatch.setattr(ari, "git_mv", lambda _s, _d: calls.append("mv"))
@@ -169,16 +143,12 @@ def test_committed_tree_has_no_duplicate_be_ids() -> None:
     roadmap = Path(__file__).resolve().parent.parent / "roadmaps"
     seen: dict[int, str] = {}
     duplicates: list[tuple[int, str, str]] = []
-    for category in ari.CATEGORIES:
-        category_dir = roadmap / category
-        if not category_dir.is_dir():
+    for d in ari.iter_item_dirs(roadmap):
+        if not (m := ari.numbered_match(d.name)):
             continue
-        for d in sorted(category_dir.iterdir()):
-            if not (d.is_dir() and (m := ari.numbered_match(d.name))):
-                continue
-            be_id = int(m.group(1))
-            if be_id in seen:
-                duplicates.append((be_id, seen[be_id], d.name))
-            else:
-                seen[be_id] = d.name
+        be_id = int(m.group(1))
+        if be_id in seen:
+            duplicates.append((be_id, seen[be_id], d.name))
+        else:
+            seen[be_id] = d.name
     assert duplicates == [], f"duplicate BE IDs in roadmaps/: {duplicates}"

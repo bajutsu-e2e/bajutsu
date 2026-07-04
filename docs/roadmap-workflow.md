@@ -21,16 +21,16 @@ the same whether a human or an agent walks it.
             │
             ▼
    ┌─────────────────┐   drafts BE-XXXX proposal    ┌──────────────────────┐
-   │  /ideation      │ ───────(both languages)─────▶ │  roadmaps/proposals/ │
+   │  /ideation      │ ───────(both languages)─────▶ │  roadmaps/            │
    │  author + think │                               │  BE-NNNN-<slug>/     │
    │  never judge    │ ◀──CI allocates the real ID── │  Status: Proposal    │
    └─────────────────┘    (scripts/allocate_…)       └──────────┬───────────┘
                                                                 │ the proposal is the spec
                                                                 ▼
    ┌─────────────────┐   plan → implement → test    ┌──────────────────────┐
-   │  /implement-be  │ ───────review → gate────────▶ │ roadmaps/implemented/│
-   │  implement      │                               │  BE-NNNN-<slug>/     │
-   │  gate is judge  │   flips Status to Implemented │  Status: Implemented │
+   │  /implement-be  │ ───────review → gate────────▶ │  roadmaps/           │
+   │  implement      │      flips Status only,       │  BE-NNNN-<slug>/     │
+   │  gate is judge  │      the path never moves     │  Status: Implemented │
    └─────────────────┘                               └──────────────────────┘
 ```
 
@@ -57,7 +57,7 @@ what is already planned, in progress, or deliberately not adopted.
    (draft a new item), or **still unformed** (a bullet under *Unsorted ideas* in both index READMEs,
    to promote later).
 4. **Draft the new item with a placeholder ID.** `make new-roadmap-item SLUG=… TITLE="…"` scaffolds
-   `roadmaps/proposals/BE-XXXX-<slug>/` with both language files in the canonical Swift-Evolution
+   `roadmaps/BE-XXXX-<slug>/` with both language files in the canonical Swift-Evolution
    format; the skill fills the `TBD` sections and rewrites the Japanese side into natural Japanese.
    The literal `BE-XXXX` placeholder is intentional — **IDs are never guessed by hand.**
 5. **Verify and (only if you ask) open the PR.** `make check` keeps the gate green even for a
@@ -98,8 +98,9 @@ deterministic gate (`make check`) is the judge — never an LLM.
    agents. These are *authoring aids*: they advise the author and never judge, so directive #1 holds
    and no LLM touches the `run`/CI path.
 7. **Flip the item to Implemented.** In both language files set `Status: Implemented` and add the
-   `Implementing PR` line; `make roadmap-promote` moves the directory to `roadmaps/implemented/` and
-   `make roadmap-index` regenerates the tables. `make test` fails if `Status` and folder disagree.
+   `Implementing PR` line, then `make roadmap-index` regenerates the tables. The directory never moves
+   (BE-0159) — only the `Status` and its index bucket change. `make test` fails if the committed index
+   drifts.
 8. **Verify — the gate.** `make check` must be green; never push red. If correctness genuinely
    depends on a Simulator/browser run, the [`verify`](../.claude/skills) skill drives it rather than
    claiming it works untested.
@@ -120,7 +121,7 @@ bounded by that spec is far easier to review than a freehand change. The loop is
 ## See also
 
 - [ai-development](ai-development.md) — the parallel-work rules, the gate, and the **strict BE-ID
-  lifecycle** (`Status` ⇒ folder, `roadmap-promote`, permanent IDs) both skills depend on.
+  lifecycle** (`Status` ⇒ index bucket, flat one-directory layout, permanent IDs) both skills depend on.
 - [roadmaps/README](../roadmaps/README.md) — the index of every BE item and the per-item proposal format.
 - [concepts](concepts.md) — the determinism and AI-boundary principles the prime directives encode.
 - [`CLAUDE.md`](../CLAUDE.md) — the working agreement the prime directives come from.

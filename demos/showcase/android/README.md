@@ -3,7 +3,7 @@
 # Showcase — Android (Compose + Views)
 
 The Android half of the Bajutsu showcase dogfood suite, built ahead of the
-[BE-0007 Android backend](../../../roadmaps/proposals/BE-0007-android-backend/BE-0007-android-backend.md)
+[BE-0007 Android backend](../../../roadmaps/BE-0007-android-backend/BE-0007-android-backend.md)
 as the fixture that backend will drive. The behavior, element inventory, launch-env hooks,
 deeplinks, and OS-alert placement are defined once in [`../SPEC.md`](../SPEC.md) and implemented
 here element-for-element, mirroring the iOS pair: **Jetpack Compose** is the SwiftUI twin,

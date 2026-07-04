@@ -5,7 +5,7 @@
 # lacks one, and close the issue of any item that has since shipped or been shelved. GitHub is the
 # source of truth for both ownership (the issue's Assignees) and issue existence, so nothing is
 # written back to the repo — the job needs only `issues: write`, no commit to `main` and no bypass
-# App (a strict subset of what `roadmap-id` / `roadmap-promote` require).
+# App (a strict subset of what `roadmap-id` requires).
 #
 # The sync is a pure function of each item's current Status and idempotent, so it stays green as a
 # no-op when the set is already consistent. It runs on `main` (not the PR) because a new proposal

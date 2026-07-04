@@ -38,7 +38,7 @@ def _scaffold(tmp_path: Path, **kw: str) -> Path:
 def test_creates_both_language_files_with_placeholder(tmp_path: Path) -> None:
     item = _scaffold(tmp_path)
     assert item.name == "BE-XXXX-demo-feature"
-    assert item.parent.name == "proposals"
+    assert item.parent.name == "roadmaps"  # flat layout (BE-0159): no status folder
     assert (item / "BE-XXXX-demo-feature.md").is_file()
     assert (item / "BE-XXXX-demo-feature-ja.md").is_file()
 
@@ -109,21 +109,17 @@ def test_handle_is_stripped_of_leading_at(tmp_path: Path) -> None:
     assert "| Author | [@octocat](https://github.com/octocat) |" in text
 
 
-def test_in_progress_item_lands_in_in_progress_folder(tmp_path: Path) -> None:
-    # Status is the source of truth for the folder; scaffolding into proposals/ regardless of
-    # Status would make the promote gate flag the item immediately after creation.
-    item = _scaffold(tmp_path, status="In progress")
-    assert item.parent.name == "in-progress"
-
-
-def test_implemented_item_lands_in_implemented_folder(tmp_path: Path) -> None:
-    item = _scaffold(tmp_path, status="Implemented")
-    assert item.parent.name == "implemented"
-
-
-def test_deferred_item_lands_in_deferred_folder(tmp_path: Path) -> None:
-    item = _scaffold(tmp_path, status="Proposal (deferred)")
-    assert item.parent.name == "deferred"
+@pytest.mark.parametrize(
+    "status", ["Proposal", "In progress", "Implemented", "Proposal (deferred)"]
+)
+def test_item_lands_directly_under_roadmaps_regardless_of_status(
+    tmp_path: Path, status: str
+) -> None:
+    # Since BE-0159 every item lives at roadmaps/BE-XXXX-<slug>/ — Status decides only the index
+    # bucket, never the directory — so the scaffold path is the same for every Status.
+    item = _scaffold(tmp_path, status=status)
+    assert item.parent.name == "roadmaps"
+    assert item.name == "BE-XXXX-demo-feature"
 
 
 def test_empty_title_is_rejected(tmp_path: Path) -> None:

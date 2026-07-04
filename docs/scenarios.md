@@ -279,7 +279,7 @@ later steps. Touching no device, it is the one device-independent action here.
 password locally — from the shared `secret` (base32; keep it in `${secrets.*}`, not in the YAML) and
 the current time — and stores the current code in `${vars.<var>}` for a later `type` / `assert`.
 This automates a 2FA sign-in without a scripting escape hatch or an LLM: the value is a deterministic
-function of the secret and the clock ([BE-0046](../roadmaps/implemented/BE-0046-otp-email-steps/BE-0046-otp-email-steps.md)).
+function of the secret and the clock ([BE-0046](../roadmaps/BE-0046-otp-email-steps/BE-0046-otp-email-steps.md)).
 
 ### `email` (poll a mailbox for a received code)
 
@@ -300,7 +300,7 @@ timeout, a matched message whose body the regex can't hit, or an unreachable / n
 clean step failure — never a silent wrong value. Only mail newer than the step's start counts (keyed
 on message id, so a stale code from an earlier run is never matched), and among new matches the
 newest wins. Deterministic and LLM-free; the endpoint and credentials live in config-referenced
-`${secrets.*}`, so the scenario stays app-agnostic ([BE-0046](../roadmaps/implemented/BE-0046-otp-email-steps/BE-0046-otp-email-steps.md)).
+`${secrets.*}`, so the scenario stays app-agnostic ([BE-0046](../roadmaps/BE-0046-otp-email-steps/BE-0046-otp-email-steps.md)).
 
 ### Device & system control (iOS)
 
@@ -319,7 +319,7 @@ channel and fail cleanly on the fake driver / in parallel runs. `overrideStatusB
 before a screenshot or a `visual` assertion, to freeze the clock and signal bars for a stable image.
 `background` / `foreground` are the two halves of a background/foreground transition; `foreground`
 resumes the app without any settle sleep, so wait for a concrete element afterward if you need one.
-`setClipboard` seeds the pasteboard for a paste flow ([BE-0052](../roadmaps/implemented/BE-0052-device-state-timezone-clipboard-shake/BE-0052-device-state-timezone-clipboard-shake.md)).
+`setClipboard` seeds the pasteboard for a paste flow ([BE-0052](../roadmaps/BE-0052-device-state-timezone-clipboard-shake/BE-0052-device-state-timezone-clipboard-shake.md)).
 
 ## Assertion DSL
 
@@ -351,7 +351,7 @@ are in [selectors](selectors.md#assertion-evaluation).
 - `requestSequence` checks a list of request matchers were **observed in order** ([details below](#requestsequence-ordered-requests)); needs the `--network` run flag.
 - `responseSchema` validates a captured **response body against a JSON Schema** ([details below](#responseschema-json-schema-of-a-response)); needs the `--network` run flag.
 - `visual` pixel-compares a screenshot against a baseline image ([details below](#visual-visual-regression)).
-- `clipboard` reads the device pasteboard (`simctl pbpaste`) and checks **exactly one** of `equals` / `matches` (regex) — the read-back half of `setClipboard`, for verifying a "copy" action. It needs the per-device control channel, so it is unavailable on the fake driver / in parallel runs and fails cleanly there ([BE-0052](../roadmaps/implemented/BE-0052-device-state-timezone-clipboard-shake/BE-0052-device-state-timezone-clipboard-shake.md)).
+- `clipboard` reads the device pasteboard (`simctl pbpaste`) and checks **exactly one** of `equals` / `matches` (regex) — the read-back half of `setClipboard`, for verifying a "copy" action. It needs the per-device control channel, so it is unavailable on the fake driver / in parallel runs and fails cleanly there ([BE-0052](../roadmaps/BE-0052-device-state-timezone-clipboard-shake/BE-0052-device-state-timezone-clipboard-shake.md)).
 
 > **Locale caveat**: string comparisons on `label`/`value` and assertions that look at visible
 > text break under translation. Write these against config's fixed locale, and write the selector
@@ -387,7 +387,7 @@ wait and `mocks` (below). At least one match field is required; the listed field
 ### `event` (analytics event assertion)
 
 `event` asserts on a behavior the screen never shows: an analytics / telemetry event the app **sent**
-([BE-0048](../roadmaps/implemented/BE-0048-behavioral-protocol-assertions/BE-0048-behavioral-protocol-assertions.md)).
+([BE-0048](../roadmaps/BE-0048-behavioral-protocol-assertions/BE-0048-behavioral-protocol-assertions.md)).
 It is a pure check over the same observed exchanges `request` reads (needs the `--network` run flag),
 so the verdict stays machine-only — no LLM. It filters the timeline by the event's **endpoint** (the
 same `method` / `url` / `urlMatches` / `path` / `pathMatches` matcher as `request`), then by structured
@@ -415,7 +415,7 @@ expect:
 ### `requestSequence` (ordered requests)
 
 `requestSequence` asserts that several requests happened **in a given order** — e.g. a token refresh
-*before* the protected call ([BE-0048](../roadmaps/implemented/BE-0048-behavioral-protocol-assertions/BE-0048-behavioral-protocol-assertions.md)).
+*before* the protected call ([BE-0048](../roadmaps/BE-0048-behavioral-protocol-assertions/BE-0048-behavioral-protocol-assertions.md)).
 It is a pure check over the observed timeline (needs the `--network` run flag), so the verdict stays
 machine-only. It takes a non-empty list of [`request` matchers](#request-network-assertion) (the same
 fields) and matches them as an **ordered subsequence**: each matcher must match a distinct exchange at
@@ -436,7 +436,7 @@ expect:
 ### `responseSchema` (JSON Schema of a response)
 
 `responseSchema` asserts that a captured **response body conforms to a JSON Schema** — a contract
-check the screen can't express ([BE-0048](../roadmaps/implemented/BE-0048-behavioral-protocol-assertions/BE-0048-behavioral-protocol-assertions.md)).
+check the screen can't express ([BE-0048](../roadmaps/BE-0048-behavioral-protocol-assertions/BE-0048-behavioral-protocol-assertions.md)).
 It is a pure, deterministic check over the observed timeline plus a stored schema file (needs the
 `--network` run flag), so the verdict stays machine-only. `request` selects the exchange (the same
 matcher fields) whose response is validated; `schema` is a file path resolved within the app's

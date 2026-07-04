@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Generate the roadmap status dashboard page for the docs site (BE-XXXX).
 
-The roadmap's source of truth is the per-item metadata under ``roadmaps/<category>/BE-NNNN-<slug>/``
+The roadmap's source of truth is the per-item metadata under ``roadmaps/BE-NNNN-<slug>/``
 — the same metadata the index generator (``build_roadmap_index.py``) reads. This renders that live
 metadata as a single self-contained HTML dashboard, ``docs/api/roadmap.md``, that the existing
 MkDocs site publishes to GitHub Pages: cards grouped by category (Topic), each card carrying its own
@@ -65,10 +65,10 @@ BUCKET_LABEL: dict[str, str] = {
 
 
 def _item_href(item: Any) -> str:
-    """The GitHub URL of an item's English markdown file."""
+    """The GitHub URL of an item's English markdown file (flat ``roadmaps/`` path, BE-0159)."""
     en = item.by_lang["en"]
     name = f"{en.id}-{en.slug}"
-    return f"{REPO_BLOB}/roadmaps/{en.category}/{name}/{name}.md"
+    return f"{REPO_BLOB}/roadmaps/{name}/{name}.md"
 
 
 def _card(item: Any) -> str:
@@ -290,7 +290,7 @@ _INTRO = (
     "[`roadmap-tracking`]"
     "(https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+is%3Aopen+label%3Aroadmap-tracking): "
     "`no:assignee` for the unclaimed backlog, `assignee:<user>` for one person's plate. See "
-    "[BE-0109](https://github.com/bajutsu-e2e/bajutsu/blob/main/roadmaps/implemented/"
+    "[BE-0109](https://github.com/bajutsu-e2e/bajutsu/blob/main/roadmaps/"
     "BE-0109-roadmap-tracking-issues/BE-0109-roadmap-tracking-issues.md) for how the sync works.\n\n"
     "Live view of every roadmap (BE) item, grouped by category — each category showing the share of "
     "its items already implemented, and each card its own status. Regenerated from item metadata on "

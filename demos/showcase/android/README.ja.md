@@ -2,7 +2,7 @@
 
 # Showcase：Android（Compose + Views）
 
-Bajutsu showcase ドッグフード一式の Android 版です。[BE-0007 Android バックエンド](../../../roadmaps/proposals/BE-0007-android-backend/BE-0007-android-backend-ja.md)
+Bajutsu showcase ドッグフード一式の Android 版です。[BE-0007 Android バックエンド](../../../roadmaps/BE-0007-android-backend/BE-0007-android-backend-ja.md)
 に先行して、そのバックエンドが駆動する対象アプリとして用意しました。挙動、要素の一覧、起動時の
 環境変数フック、ディープリンク、OS アラートを出す画面は、すべて [`../SPEC.md`](../SPEC.ja.md) に
 一度だけ定義され、ここでは要素単位でそのまま実装しています。iOS のペアと対をなす構成で、

@@ -58,7 +58,7 @@ def _valid_ja(id_token: str, slug: str) -> str:
 def _write_item(
     roadmap: Path, id_token: str, slug: str, *, en: str | None = None, ja: str | None = None
 ) -> Path:
-    d = roadmap / "proposals" / f"{id_token}-{slug}"
+    d = roadmap / f"{id_token}-{slug}"
     d.mkdir(parents=True)
     (d / f"{id_token}-{slug}.md").write_text(en or _valid_en(id_token, slug), encoding="utf-8")
     (d / f"{id_token}-{slug}-ja.md").write_text(ja or _valid_ja(id_token, slug), encoding="utf-8")
