@@ -59,8 +59,8 @@ final class AppModel: ObservableObject {
         conformanceIDs = Self.conformanceIDs(env["SHOWCASE_CONFORMANCE"])
     }
 
-    /// Parse a conformance id spec (from the env var or the deeplink's `ids` query). nil leaves
-    /// conformance mode off; a present-but-empty spec is the empty (zero-match) screen.
+    /// Parse the `SHOWCASE_CONFORMANCE` id spec. nil (env unset) leaves conformance mode off;
+    /// a present-but-empty spec is the empty (zero-match) screen.
     private static func conformanceIDs(_ spec: String?) -> [String]? {
         guard let spec else { return nil }
         return spec.isEmpty ? [] : spec.components(separatedBy: ",")
