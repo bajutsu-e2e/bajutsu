@@ -84,14 +84,18 @@ def config_sources(state: ServeState) -> list[str]:
 
 
 def config_info(state: ServeState) -> tuple[Any, int]:
+    sources = config_sources(state)
     return {
         "config": str(state.config) if state.config else None,
         "hasConfig": state.config is not None,
-        "root": str(state.root.resolve()),
+        # The file browser's browse ceiling — only meaningful to the fs source, so it is withheld
+        # when that source is not offered (hosted), where the absolute host path is dead information
+        # and needless exposure (BE-0108).
+        "root": str(state.root.resolve()) if "fs" in sources else None,
         # Whether GitHub OAuth login is available, so the login UI can offer a button (BE-0015 7b-2).
         "oauthEnabled": state.oauth is not None,
         # The config sources this deployment offers, so the UI renders only the usable ones (BE-0108).
-        "configSources": config_sources(state),
+        "configSources": sources,
     }, 200
 
 

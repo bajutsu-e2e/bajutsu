@@ -183,23 +183,29 @@ def test_http_config_rejects_absolute_traversal_outside_root(tmp_path: Path) -> 
 
 
 def test_http_config_sources_local_offers_all_three(tmp_path: Path) -> None:
-    # The local backend offers every config source, including the file browser (BE-0108).
+    # The local backend offers every config source, including the file browser, and surfaces the
+    # browse root the fs source needs (BE-0108).
     _, _, runs = project(tmp_path)
     server, port = _serve(srv.ServeState(runs_dir=runs, root=tmp_path, cwd=tmp_path))
     try:
-        assert _get_json(port, "/api/config")["configSources"] == ["git", "upload", "fs"]
+        info = _get_json(port, "/api/config")
+        assert info["configSources"] == ["git", "upload", "fs"]
+        assert info["root"] == str(tmp_path.resolve())
     finally:
         server.shutdown()
         server.server_close()
 
 
-def test_http_config_sources_hosted_omits_fs(tmp_path: Path) -> None:
+def test_http_config_sources_hosted_omits_fs_and_root(tmp_path: Path) -> None:
     # A hosted deployment (server backend) drops the file browser: the remote user has no
-    # filesystem relationship to the host, so only Git and upload are offered (BE-0108).
+    # filesystem relationship to the host, so only Git and upload are offered — and the browse root,
+    # dead information without the fs source, is withheld rather than leaking the host path (BE-0108).
     _, _, runs = project(tmp_path)
     server, port = _serve(srv.ServeState(runs_dir=runs, root=tmp_path, cwd=tmp_path, hosted=True))
     try:
-        assert _get_json(port, "/api/config")["configSources"] == ["git", "upload"]
+        info = _get_json(port, "/api/config")
+        assert info["configSources"] == ["git", "upload"]
+        assert info["root"] is None
     finally:
         server.shutdown()
         server.server_close()
