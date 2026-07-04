@@ -9,6 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0159") |
+| 実装 PR | [#625](https://github.com/bajutsu-e2e/bajutsu/pull/625) |
 | トピック | Development infrastructure (contributor workflow) |
 | 関連 | [BE-0078](../BE-0078-roadmap-status-folders/BE-0078-roadmap-status-folders-ja.md)、[BE-0096](../BE-0096-docs-roadmap-link-integrity/BE-0096-docs-roadmap-link-integrity-ja.md)、[BE-0109](../BE-0109-roadmap-tracking-issues/BE-0109-roadmap-tracking-issues-ja.md)、[BE-0149](../BE-0149-roadmap-placeholder-format-guardrail/BE-0149-roadmap-placeholder-format-guardrail-ja.md)、[BE-0154](../BE-0154-roadmap-promote-base-sha/BE-0154-roadmap-promote-base-sha-ja.md) |
 <!-- /BE-METADATA -->
@@ -245,7 +246,7 @@ BE-0078 が導入し、BE-0096・BE-0149 が拡張したツール群に触れる
 
 ログ:
 
-- フラット化 PR：151 項目すべてを `git mv` でフラットな `roadmaps/BE-NNNN-<slug>/` 構成へ移し、4
+- [#625](https://github.com/bajutsu-e2e/bajutsu/pull/625)：151 項目すべてを `git mv` でフラットな `roadmaps/BE-NNNN-<slug>/` 構成へ移し、4
   フォルダ走査を共有の `roadmap_ids.iter_item_dirs` に集約し、索引 / ダッシュボード / トラッキング
   Issue のリンクから `category` セグメントを取り除き、`promote_roadmap_items.py` とそのワークフロー、
   ゲートテスト、Make ターゲットを廃止し、提案承認ゲートを状態による判定へ切り替え、両言語の文章と 2 つの

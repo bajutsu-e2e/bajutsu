@@ -9,6 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0159") |
+| Implementing PR | [#625](https://github.com/bajutsu-e2e/bajutsu/pull/625) |
 | Topic | Development infrastructure (contributor workflow) |
 | Related | [BE-0078](../BE-0078-roadmap-status-folders/BE-0078-roadmap-status-folders.md), [BE-0096](../BE-0096-docs-roadmap-link-integrity/BE-0096-docs-roadmap-link-integrity.md), [BE-0109](../BE-0109-roadmap-tracking-issues/BE-0109-roadmap-tracking-issues.md), [BE-0149](../BE-0149-roadmap-placeholder-format-guardrail/BE-0149-roadmap-placeholder-format-guardrail.md), [BE-0154](../BE-0154-roadmap-promote-base-sha/BE-0154-roadmap-promote-base-sha.md) |
 <!-- /BE-METADATA -->
@@ -248,7 +249,7 @@ CI stay deterministic; nothing app- or backend-specific is touched.
 
 Log:
 
-- The flattening PR: `git mv`'d all 151 items to a flat `roadmaps/BE-NNNN-<slug>/` layout; collapsed
+- [#625](https://github.com/bajutsu-e2e/bajutsu/pull/625): `git mv`'d all 151 items to a flat `roadmaps/BE-NNNN-<slug>/` layout; collapsed
   every four-folder walk to the shared `roadmap_ids.iter_item_dirs`; dropped the `category` segment
   from the index / dashboard / tracking-issue links; retired `promote_roadmap_items.py`, its
   workflow, gate test, and Make target; switched the proposal-approvals gate to Status-based
