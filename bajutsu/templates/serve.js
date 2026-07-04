@@ -94,9 +94,10 @@ document.querySelectorAll('.viewswitch').forEach(sw=>{
 // ---- top-level Record / Replay / Crawl views ----
 function showView(name){
   document.querySelectorAll('.toptab').forEach(t=>t.classList.toggle('active',t.dataset.view===name));
-  $('#view-record').hidden=name!=='record';$('#view-replay').hidden=name!=='replay';$('#view-crawl').hidden=name!=='crawl';$('#view-author').hidden=name!=='author';
+  $('#view-record').hidden=name!=='record';$('#view-replay').hidden=name!=='replay';$('#view-crawl').hidden=name!=='crawl';$('#view-author').hidden=name!=='author';$('#view-stats').hidden=name!=='stats';
   if(name==='replay')loadHistory();
   if(name==='author')authorInit();
+  if(name==='stats')loadStats();
 }
 document.querySelectorAll('.toptab').forEach(t=>t.addEventListener('click',()=>showView(t.dataset.view)));
 
@@ -399,6 +400,24 @@ async function setReport(id,repSel){
   // the shadow via window.__bajutsuReportRoot); inline scripts run synchronously, so remove it after.
   const s=document.createElement('script');s.textContent=js;document.body.appendChild(s);s.remove();
 }
+// Stats (BE-0102): render the self-contained /stats dashboard into a shadow root so its inline
+// CSS stays isolated (same approach as setReport). The page has no scripts and no relative assets,
+// so no rewrite is needed — only retarget its :root/body rules to :host inside the shadow root.
+async function loadStats(){
+  const host=$('#stats-host');
+  // Reuse the host's shadow root on a refresh (unlike setReport, which recreates its host each time):
+  // this innerHTML replacement is idempotent and the page carries no scripts or listeners to leak.
+  const sh=host.shadowRoot||host.attachShadow({mode:'open'});
+  let html;
+  // Treat a network error or a non-2xx (e.g. 401/500) as unavailable, and render the error into the
+  // shadow root so a failed refresh replaces the stale dashboard instead of leaving it on screen.
+  try{const r=await fetch('/stats');if(!r.ok)throw 0;html=await r.text();}
+  catch(e){sh.innerHTML='<div style="color:#6e6e73;font-style:italic">stats unavailable</div>';return;}
+  const doc=new DOMParser().parseFromString(html,'text/html');
+  const css=((doc.querySelector('style')||{}).textContent||'').replace(/:root/g,':host')
+    .replace(/(^|[\s,>}])body([\s{])/g,'$1:host$2');
+  sh.innerHTML=`<style>:host{display:block}\n${css}</style>${doc.body.innerHTML}`;
+}
 async function loadHistory(){
   let runs;try{runs=await (await fetch('/api/runs')).json()}catch(e){return}
   const tab=$('#histtab');if(tab)tab.textContent='History'+(runs.length?` (${runs.length})`:'');
@@ -408,6 +427,7 @@ async function loadHistory(){
   ul.querySelectorAll('li[data-id]').forEach(li=>li.addEventListener('click',()=>{setReport(li.dataset.id);ul.querySelectorAll('li').forEach(x=>x.classList.remove('sel'));li.classList.add('sel')}));
 }
 $('#refresh').addEventListener('click',loadHistory);
+$('#stats-refresh').addEventListener('click',loadStats);
 function showTab(name){
   document.querySelectorAll('#view-replay .tab').forEach(t=>t.classList.toggle('active',t.dataset.tab===name));
   $('#panel-run').hidden=name!=='run';$('#panel-history').hidden=name!=='history';

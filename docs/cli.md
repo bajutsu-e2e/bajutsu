@@ -536,10 +536,11 @@ bajutsu approve [<run_dir>] --baselines <dir> [--scenario <id>] [--all] [--runs 
 ## `serve`
 
 A local web UI to **author, run, and explore** — a Tier-1 convenience, **not part of the CI
-gate**. Three top-level tabs over the CLI: **Record** authors a scenario from a goal
+gate**. Four top-level tabs over the CLI: **Record** authors a scenario from a goal
 (`python -m bajutsu record ...`), **Replay** runs a scenario and shows its report
-(`python -m bajutsu run ...`), and **Crawl** explores the app and draws its screen map live
-(`python -m bajutsu crawl ...`). All three run against the **active config**, which you open from
+(`python -m bajutsu run ...`), **Crawl** explores the app and draws its screen map live
+(`python -m bajutsu crawl ...`), and **Stats** shows the aggregate run-stats dashboard across the
+run history (`bajutsu stats`). All run against the **active config**, which you open from
 the file browser, a Git repository, or an uploaded `.zip` bundle (see "Open config" below).
 Each request spawns the CLI per request on a background thread,
 streams its output, and serves the produced `runs/<id>/` tree so the report's relative asset
@@ -585,6 +586,13 @@ bajutsu serve [--port 8765] [--config bajutsu.config.yaml] [--root .] [--runs ru
   and a budget (max screens / steps), then `POST /api/crawl` spawns the crawl; the returned run id
   lets the UI poll `runs/<id>/screenmap.json` and draw the screen map as it grows (screens laid out
   in breadth-first layers, transitions as arrows). The **Stop** button aborts it, like Replay.
+- The **Stats** tab renders the aggregate run-stats dashboard
+  ([BE-0102](../roadmaps/BE-0102-run-stats-dashboard/BE-0102-run-stats-dashboard.md)) — the same
+  read-only trend as `bajutsu stats`, live over the server's run history: pass-rate over time,
+  slowest and flakiest scenarios, failure hotspots, and run volume. It reuses the same deterministic
+  aggregator, reading each run's `manifest.json` from the artifact store (the run-id list comes from
+  the system of record when a database is wired, org-scoped, else the artifact store) — no device, no
+  AI, no verdict. It is served at `GET /stats` and refreshed with the tab's refresh button.
 - **Upload a bundle ([BE-0073](../roadmaps/BE-0073-serve-zip-bundle-upload/BE-0073-serve-zip-bundle-upload.md)).**
   The "Open config" dialog has a third source, **Upload a bundle**, that lets a browser user **bring
   their own suite** to a hosted `serve` with no file-system access to the host. Drop a `.zip` whose

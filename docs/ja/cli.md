@@ -420,9 +420,10 @@ bajutsu approve [<run_dir>] --baselines <dir> [--scenario <id>] [--all] [--runs 
 ## `serve`
 
 **オーサリング、実行、探索**のためのローカル Web UI です。Tier 1 の利便機能で、**CI ゲートには含まれません**。
-CLI を覆う 3 つのトップレベルタブがあります。**Record** はゴールからシナリオを著し（`python -m bajutsu
+CLI を覆う 4 つのトップレベルタブがあります。**Record** はゴールからシナリオを著し（`python -m bajutsu
 record ...`）、**Replay** はシナリオを実行してレポートを表示し（`python -m bajutsu run ...`）、**Crawl** は
-アプリを探索して画面マップをリアルタイムに描きます（`python -m bajutsu crawl ...`）。3 つとも**アクティブな
+アプリを探索して画面マップをリアルタイムに描き（`python -m bajutsu crawl ...`）、**Stats** は run 履歴を
+横断した集計 run 統計ダッシュボードを表示します（`bajutsu stats`）。いずれも**アクティブな
 config** に対して動きます。config はファイルブラウザ、Git リポジトリ、アップロードした `.zip` バンドルの
 いずれかから開きます（後述の「Open config」を参照）。リクエストごとに CLI を
 バックグラウンドスレッドで起動し、出力をストリームし、生成された `runs/<id>/` ツリーを配信します（report の
@@ -465,6 +466,12 @@ bajutsu serve [--port 8765] [--config bajutsu.config.yaml] [--root .] [--runs ru
   予算（max screens / steps）を選び、`POST /api/crawl` で crawl を起動します。返ってきた run id で UI が
   `runs/<id>/screenmap.json` をポーリングし、画面マップを成長に合わせて描きます（画面は幅優先の層に配置し、
   遷移は矢印で表示）。**Stop** ボタンで Replay と同様に中止できます。
+- **Stats** タブは集計 run 統計ダッシュボード（[BE-0102](../../roadmaps/BE-0102-run-stats-dashboard/BE-0102-run-stats-dashboard-ja.md)）を
+  描きます。`bajutsu stats` と同じ read-only の傾向を、サーバの run 履歴に対してライブで表示します。合格率の推移、
+  遅い／flaky なシナリオ、失敗ホットスポット、run のボリュームを示します。同じ決定的な集計器を再利用し、各 run の
+  `manifest.json` を artifact store から読みます（run-id の一覧は、データベースを配線しているときは system of record
+  から org スコープで、そうでなければ artifact store から取得）。デバイスも AI も判定も使いません。`GET /stats` で配信し、
+  タブの更新ボタンで再取得します。
 - **バンドルのアップロード（[BE-0073](../../roadmaps/BE-0073-serve-zip-bundle-upload/BE-0073-serve-zip-bundle-upload-ja.md)）。**
   「Open config」ダイアログには 3 つめのソース **Upload a bundle** があり、ホストのファイルシステムに触れない
   ブラウザ利用者が、ホスト型の `serve` に**自分のスイートを持ち込め**ます。レイアウトが動くローカル checkout

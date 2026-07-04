@@ -8,6 +8,7 @@ from typing import Any
 
 import yaml
 
+from bajutsu import stats as _stats
 from bajutsu.config import Config, load_config, targets_for_org
 from bajutsu.drivers import base as driver_base
 from bajutsu.scenario import load_scenario_file
@@ -107,6 +108,58 @@ def runs_payload(state: ServeState, *, actor: str | None = None) -> tuple[Any, i
     if state.repository is not None:
         return [r.summary for r in state.repository.list_runs(org_id=state.org_of(actor))], 200
     return state.artifacts.list_runs(), 200
+
+
+# The newest-N run window a serve `/stats` refresh aggregates. Bounds the per-refresh manifest reads
+# over object storage, and keeps the DB and artifact-store paths aggregating the same set (the DB
+# `list_runs` is itself limit-bounded). A large enough window to read a trend, not the whole history.
+_STATS_RUN_LIMIT = 200
+
+
+def stats_html(state: ServeState, *, actor: str | None = None) -> tuple[str, int]:
+    """The aggregate run-stats dashboard (BE-0102) as a self-contained HTML page, org-scoped.
+
+    Reuses the deterministic aggregator over the actor's org run history: read-only, no verdict, no
+    LLM. The run-id list comes from the same seam as `runs_payload` (the system of record when wired,
+    else the artifact store); each run's full `manifest.json` is read from the artifact store either
+    way, since the DB `summary` carries only the compact history-list shape.
+    """
+    return _stats.render_html(_stats.aggregate_runs(_run_manifests(state, actor))), 200
+
+
+def _run_manifests(state: ServeState, actor: str | None) -> list[dict[str, Any]]:
+    """The newest runs' parsed `manifest.json` for the actor's org; unreadable/malformed ones skipped.
+
+    The ids come from the recorded runs when a repository is wired (org-scoped), else the artifact
+    store's own listing; both are newest-first and bounded to the same `_STATS_RUN_LIMIT` window so a
+    `/stats` refresh over a large history stays cheap and the two backends aggregate the same set. The
+    manifests are always read from the org's artifact store — the seam that holds the full manifest
+    whether or not a database indexes the runs — keyed by the canonical run id.
+    """
+    org = state.org_of(actor)
+    artifacts = state.for_org(org).artifacts
+    ids: list[Any]
+    if state.repository is not None:
+        ids = [r.id for r in state.repository.list_runs(org_id=org, limit=_STATS_RUN_LIMIT)]
+    else:
+        ids = [r.get("id") for r in artifacts.list_runs()[:_STATS_RUN_LIMIT]]
+    manifests: list[dict[str, Any]] = []
+    for run_id in ids:
+        # Reject a non-string or a multi-segment id (e.g. "r1/sub") before it becomes a path, matching
+        # serve's containment model for run ids everywhere else (BE-0015).
+        if not isinstance(run_id, str) or not valid_run_id(run_id):
+            continue
+        try:
+            # `open_bytes` can raise (a run deleted between listing and read; a remote store's I/O
+            # error), so an OSError is a skip too — the same "unreadable ones are skipped" promise as
+            # malformed JSON, never a failed dashboard.
+            raw = artifacts.open_bytes(f"{run_id}/manifest.json")
+            data = json.loads(raw) if raw is not None else None
+        except (OSError, json.JSONDecodeError, ValueError):
+            continue
+        if isinstance(data, dict):
+            manifests.append(data)
+    return manifests
 
 
 def read_scenario(

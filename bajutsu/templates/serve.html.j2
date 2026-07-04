@@ -15,6 +15,7 @@
       <button class="toptab" data-view="replay" data-testid="nav.replay">Replay</button>
       <button class="toptab" data-view="crawl" data-testid="nav.crawl">Crawl</button>
       <button class="toptab" data-view="author" data-testid="nav.author">Author</button>
+      <button class="toptab" data-view="stats" data-testid="nav.stats">Stats</button>
       <button class="cfgbtn" id="opencfg" data-testid="nav.open-config">Open config</button>
       <span class="cfgname" id="cfgname" data-testid="nav.config-name"></span>
       <button class="cfgbtn" id="opensettings" data-testid="nav.settings">Settings</button>
@@ -295,6 +296,18 @@
         </div>
       </div>
     </div>
+  </div>
+</main>
+
+<!-- ===== Stats (BE-0102): the read-only aggregate run-stats dashboard across the run history ===== -->
+<main id="view-stats" data-testid="view.stats" hidden>
+  <div class="card statscard">
+    <div class="yamlhead">
+      <span class="ttl">Run stats</span>
+      <span class="muted" style="font-size:.8em">Read-only trend across the run history — no verdict, advisory only.</span>
+      <button class="refresh" id="stats-refresh" data-testid="stats.refresh" title="refresh">&#8635;</button>
+    </div>
+    <div class="statshost" id="stats-host" data-testid="stats.host"><div class="empty">Loading run stats…</div></div>
   </div>
 </main>
 

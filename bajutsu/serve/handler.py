@@ -197,6 +197,14 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
                     self._json(*ops.simulators_payload(state))
                 case "/api/runs":
                     self._json(*ops.runs_payload(state, actor=self._actor()))
+                case "/stats":
+                    html, code = ops.stats_html(state, actor=self._actor())
+                    body = html.encode("utf-8")
+                    self.send_response(code)
+                    self.send_header("Content-Type", "text/html; charset=utf-8")
+                    self.send_header("Content-Length", str(len(body)))
+                    self.end_headers()
+                    self.wfile.write(body)
                 case "/api/scenario":
                     self._json(
                         *ops.read_scenario(

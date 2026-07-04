@@ -166,6 +166,11 @@ def make_app(state: ServeState) -> FastAPI:
     async def runs(request: Request) -> JSONResponse:
         return _result(ops.runs_payload(state, actor=_actor(request)))
 
+    @app.get("/stats", response_class=HTMLResponse)
+    async def stats(request: Request) -> HTMLResponse:
+        html, code = ops.stats_html(state, actor=_actor(request))
+        return HTMLResponse(html, status_code=code)
+
     @app.get("/api/scenario")
     async def read_scenario(
         request: Request,
