@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0126") |
-| Implementing PR | _pending_ |
+| Implementing PR | [#666](https://github.com/bajutsu-e2e/bajutsu/pull/666) |
 | Topic | Platform expansion (Android / Web / Flutter) |
 | Related | [BE-0009](../BE-0009-cross-platform-abstractions/BE-0009-cross-platform-abstractions.md), [BE-0042](../BE-0042-platform-backend-registry/BE-0042-platform-backend-registry.md), [BE-0057](../BE-0057-rename-apps-to-targets/BE-0057-rename-apps-to-targets.md), [BE-0007](../BE-0007-android-backend/BE-0007-android-backend.md) |
 <!-- /BE-METADATA -->
