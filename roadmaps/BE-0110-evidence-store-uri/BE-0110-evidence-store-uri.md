@@ -281,20 +281,22 @@ old runs) without conflicting with this design.
 - [x] Promote `ObjectStore` protocol to top-level module
 - [x] `S3ObjectStore` implementation (reuse existing code, add `presigned_put_url` + `content_type`)
 - [x] `GCSObjectStore` implementation (including V4 signed PUT URLs)
-- [ ] Presigned URL upload endpoint (`POST /api/runs/<run_id>/upload-urls`)
-- [ ] Worker-side HTTP PUT uploader (presigned URL mode, httpx-based)
+- [x] Presigned URL upload endpoint (`POST /api/runs/<run_id>/upload-urls`)
+- [ ] Worker-side HTTP PUT uploader (presigned URL mode)
 - [x] Direct SDK upload fallback (standalone `bajutsu run` mode)
 - [ ] Post-run upload step in `runner/pipeline.py` (mode selection) — standalone is wired at the CLI
-      layer (`run.py`, after the verdict, mirroring `--zip`); the pipeline/mode-selection integration
-      lands with the presigned serve path
-- [ ] `serve` `--evidence-store` flag and `BAJUTSU_EVIDENCE_STORE` env
+      layer (`run.py`, after the verdict, mirroring `--zip`); the worker's presigned upload is wired in
+      the `bajutsu worker` HTTP loop after the run, alongside `console.log` (not the pipeline)
+- [x] `serve` `--evidence-store` flag and `BAJUTSU_EVIDENCE_STORE` env
 - [x] `bajutsu run` `--evidence-store` CLI flag (with `BAJUTSU_EVIDENCE_STORE` env)
-- [ ] `evidence_prefix` parameter on the `/api/runs` endpoint
+- [x] `evidence_prefix` parameter on the `/api/runs` endpoint
 - [x] Optional dependency declarations (`s3` / `gcs` / `cloud` extras)
 - [ ] Tests — done for the standalone slice (URI parsing, S3/GCS stores incl. `content_type` +
-      presigned GET/PUT generation, `upload_tree`); HTTP PUT upload + serve integration pending
+      presigned GET/PUT generation, `upload_tree`) and the serve endpoint (`generate_upload_urls`
+      keying/validation, both HTTP shells, `evidence_prefix` carry, store wiring); worker HTTP PUT
+      uploader tests land with the worker slice
 - [ ] Documentation — `run --evidence-store` documented (English + Japanese `docs/cli.md`); the serve
-      topology docs land with the presigned path
+      topology docs land with the worker slice
 
 Log:
 
@@ -306,6 +308,16 @@ Log:
   verdict (a failure only warns, never flips pass/fail). Added the `s3` / `gcs` / `cloud` extras. The
   presigned-URL serve path (endpoint, worker HTTP PUT uploader, `serve --evidence-store`,
   `evidence_prefix`) is a follow-up slice.
+- **Slice 2a — presigned serve endpoint (server side)** (in progress): added the
+  `POST /api/runs/<run_id>/upload-urls` operation (`generate_upload_urls`) — the server holds the
+  evidence store's credentials and returns one presigned PUT URL per file, re-validating the run id,
+  the per-run `evidence_prefix`, and every file path so a worker can't escape the run's key namespace
+  (empty URLs when no store is configured, so a worker can always ask). Wired the route into both the
+  stdlib handler and the FastAPI app. Added the `serve --evidence-store` flag / `BAJUTSU_EVIDENCE_STORE`
+  env (resolved to an `EvidenceTarget` in the CLI, failing fast on a bad URI / missing SDK), the
+  `evidence_prefix` parameter on `/api/run` (validated, carried onto the `Job` and the job spec), and
+  the `EvidenceTarget` + `evidence_target_from_uri` / `content_type_for` helpers. The worker-side
+  HTTP PUT uploader and the serve-topology docs are the next slice.
 
 ## References
 

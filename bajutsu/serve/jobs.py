@@ -25,6 +25,7 @@ if TYPE_CHECKING:
 from bajutsu import env
 from bajutsu.config import DEFAULT_ORG
 from bajutsu.drivers import base as driver_base
+from bajutsu.object_store import EvidenceTarget
 from bajutsu.redaction import Redactor
 from bajutsu.scenario.models import Step
 from bajutsu.serve.artifacts import ArtifactStore, LocalArtifactStore
@@ -86,6 +87,10 @@ class Job:
     # Provenance to record into the produced run's manifest.json after it finishes (the bound bundle's
     # filename + zip sha256 + size). None for a normal run. Set for a run off an uploaded bundle (BE-0073).
     provenance: dict[str, str] | None = None
+    # Per-run key prefix for evidence upload, under the server's --evidence-store base (BE-0110). CI
+    # sets it via the /api/run body to pick the cloud lifecycle policy; travels in the job spec so the
+    # worker relays it back when requesting presigned PUT URLs. Empty = key directly under the base.
+    evidence_prefix: str = ""
 
     def view(self, *, include_lines: bool = True) -> dict[str, Any]:
         """The job's state for the UI. `include_lines=False` omits the log buffer — used for the
@@ -225,6 +230,11 @@ class ServeState:
     # back to the default stores when unset, so local behavior is unchanged.
     org_stores: Callable[[str], StoreBundle] | None = None
     capture: CaptureSession | None = None
+    # Where completed runs' evidence is uploaded (BE-0110). None = no evidence store configured (the
+    # default; the upload-urls endpoint then hands back no URLs). serve() builds it from
+    # --evidence-store / BAJUTSU_EVIDENCE_STORE; the server holds the credentials so a worker uploads
+    # via presigned PUT URLs without any of its own.
+    evidence: EvidenceTarget | None = None
     _seq: int = 0
     _lock: threading.Lock = field(default_factory=threading.Lock)
 

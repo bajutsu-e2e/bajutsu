@@ -513,6 +513,19 @@ def valid_scenario_ref(ref: str | None, *, allow_absolute: bool = False) -> bool
     return allow_absolute or not pure.is_absolute()
 
 
+def valid_relative_key(key: str, *, allow_empty: bool = False) -> bool:
+    """Whether *key* is a safe relative object-storage key segment (BE-0110): NUL-free, relative
+    (no leading ``/``), and free of ``..`` traversal — so a client-supplied prefix or file path
+    can't escape the base prefix the server prepends. *allow_empty* accepts the empty string, used
+    for an optional per-run prefix (no extra segment)."""
+    if not key:
+        return allow_empty
+    if "\x00" in key or key.startswith("/"):
+        return False
+    pure = PurePosixPath(key.replace("\\", "/"))  # a Windows separator counts as traversal too
+    return ".." not in pure.parts and not pure.is_absolute()
+
+
 def _scenario_path(scenarios_dir: Path, p: str | None) -> Path | None:
     """Resolve *p* (the path the UI passes for a scenario to read or save) to a ``*.yaml`` file
     inside *scenarios_dir*, or None if it would escape the dir or isn't a scenario file.  The

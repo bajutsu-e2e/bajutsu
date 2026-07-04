@@ -53,6 +53,9 @@ def job_spec(job: Job) -> dict[str, Any]:
         "org": job.org,
         # Who started the run, so the worker can attribute the recorded run to the user (BE-0015).
         "actor": job.actor,
+        # Per-run evidence-upload prefix (BE-0110): the worker relays it when requesting presigned
+        # PUT URLs, so the run's evidence lands under the lifecycle path CI chose.
+        "evidence_prefix": job.evidence_prefix,
     }
 
 

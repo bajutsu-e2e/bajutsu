@@ -250,6 +250,28 @@ def object_store_from_uri(uri: StoreURI) -> ObjectStore:
 
 
 @dataclasses.dataclass(frozen=True)
+class EvidenceTarget:
+    """A configured evidence-upload destination the control plane holds (BE-0110): a credentialed
+    `ObjectStore` plus the base key prefix from the ``--evidence-store`` URI. The server issues
+    presigned PUT URLs against it so a worker uploads a run's evidence with no cloud credentials of
+    its own; the caller appends an optional per-run prefix and the run id under *base_prefix*."""
+
+    store: ObjectStore
+    base_prefix: str  # StoreURI.prefix — empty or ends with "/"
+
+
+def evidence_target_from_uri(uri: str) -> EvidenceTarget:
+    """Build an `EvidenceTarget` from an ``--evidence-store`` URI (parse it, then construct the store).
+
+    Raises:
+        ValueError: the URI is malformed (see `parse_store_uri`).
+        ImportError: the backend's optional SDK is missing (see `object_store_from_uri`).
+    """
+    parsed = parse_store_uri(uri)
+    return EvidenceTarget(store=object_store_from_uri(parsed), base_prefix=parsed.prefix)
+
+
+@dataclasses.dataclass(frozen=True)
 class UploadSummary:
     """The outcome of an `upload_tree` walk: how many files went up, and any that failed.
 
@@ -261,10 +283,14 @@ class UploadSummary:
     failures: list[tuple[str, str]]
 
 
-def _content_type(path: Path) -> str:
-    """The MIME type inferred from *path*'s extension, defaulting to ``application/octet-stream``."""
-    guessed, _ = mimetypes.guess_type(path.name)
+def content_type_for(name: str) -> str:
+    """The MIME type inferred from *name*'s extension, defaulting to ``application/octet-stream``."""
+    guessed, _ = mimetypes.guess_type(name)
     return guessed or "application/octet-stream"
+
+
+def _content_type(path: Path) -> str:
+    return content_type_for(path.name)
 
 
 def upload_tree(store: ObjectStore, root: Path, prefix: str) -> UploadSummary:

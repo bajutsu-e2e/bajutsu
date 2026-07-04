@@ -55,6 +55,25 @@ def test_get_reads_delegate_to_operations(tmp_path: Path) -> None:
     assert client.get("/api/nope").status_code == 404
 
 
+def test_upload_urls_route_signs_put_urls(tmp_path: Path) -> None:
+    # The FastAPI shell reaches the same evidence operation as the stdlib handler (BE-0110).
+    class _FakeStore:
+        def presigned_put_url(self, key: str, *, content_type: str = "", ttl: int = 3600) -> str:
+            return f"https://signed.example/{key}"
+
+    from bajutsu.object_store import EvidenceTarget
+
+    state = _state(tmp_path)
+    state.evidence = EvidenceTarget(store=_FakeStore(), base_prefix="evidence/")
+    resp = _client(state).post(
+        "/api/runs/20260101-000000/upload-urls", json={"files": ["manifest.json"]}
+    )
+    assert resp.status_code == 200
+    assert resp.json()["urls"]["manifest.json"] == (
+        "https://signed.example/evidence/20260101-000000/manifest.json"
+    )
+
+
 def test_legacy_apps_grammar_is_rejected(tmp_path: Path) -> None:
     # Hard cutover (BE-0057): the old `/api/apps` route and the `{"app": ...}` wire key are gone, so
     # a stale client fails loudly (404 / 400) rather than silently hitting a compatibility alias.
