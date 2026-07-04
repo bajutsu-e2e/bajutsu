@@ -186,6 +186,15 @@ user in one default org) and supports **multiple orgs** once you declare them in
 The Linux control plane is cheap; the **Mac workers** carry the Simulator runs and are the scarce
 part. The worker is **not** containerized — it needs the Aqua GUI session, exactly like Tier A.
 
+**Config sources are deployment-aware (BE-0108).** The "Open config" dialog binds the active config
+from up to three sources: a **Git repository**, an **uploaded `.zip` bundle**, and a **file browser
+over the serve host's `--root`**. On the server backend (this tier) the file browser is dropped —
+both hidden in the UI and refused server-side (`/api/fs` and the path branch of `POST /api/config`
+return `403`) — leaving only Git and upload. A hosted user has no filesystem relationship to the
+shared worker, so browsing the operator's `--root` could bind nothing they own; removing it also
+avoids handing every logged-in user a directory listing of that tree. The local backend (Tier A, a
+self-hosted single Mac) keeps all three: there the filesystem is the operator's own.
+
 ### 1. Bring up the control plane
 
 ```bash

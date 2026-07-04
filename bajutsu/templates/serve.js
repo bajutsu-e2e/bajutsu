@@ -101,8 +101,13 @@ function showView(name){
 document.querySelectorAll('.toptab').forEach(t=>t.addEventListener('click',()=>showView(t.dataset.view)));
 
 // ---- config: bound at startup or opened from the UI's file browser ----
+// Whether the file-browser source is offered — a hosted deployment omits `fs` from configSources
+// (BE-0108), so we hide that block and never call browseFs. Git + Upload are always offered.
+let fsSourceEnabled=true;
 async function loadConfig(){
   let c;try{c=await (await fetch('/api/config')).json()}catch(e){c={hasConfig:false}}
+  fsSourceEnabled=!c.configSources||c.configSources.includes('fs');
+  $('#fssrc').hidden=!fsSourceEnabled;
   $('#cfgname').textContent=c.hasConfig?c.config:'no config bound — open one →';
   if(c.hasConfig){await loadShared()}else{openFs()}
 }
@@ -120,7 +125,7 @@ async function browseFs(dir){
   $('#fslist').querySelectorAll('li[data-dir]').forEach(li=>li.addEventListener('click',()=>browseFs(li.dataset.dir)));
   $('#fslist').querySelectorAll('li[data-file]').forEach(li=>li.addEventListener('click',()=>chooseConfig(li.dataset.file)));
 }
-function openFs(){$('#fsmodal').hidden=false;browseFs('')}
+function openFs(){$('#fsmodal').hidden=false;if(fsSourceEnabled)browseFs('')}
 function closeFs(){$('#fsmodal').hidden=true}
 $('#opencfg').addEventListener('click',openFs);
 $('#fsclose').addEventListener('click',closeFs);

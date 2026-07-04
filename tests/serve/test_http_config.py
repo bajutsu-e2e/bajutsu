@@ -182,6 +182,63 @@ def test_http_config_rejects_absolute_traversal_outside_root(tmp_path: Path) -> 
         server.server_close()
 
 
+def test_http_config_sources_local_offers_all_three(tmp_path: Path) -> None:
+    # The local backend offers every config source, including the file browser, and surfaces the
+    # browse root the fs source needs (BE-0108).
+    _, _, runs = project(tmp_path)
+    server, port = _serve(srv.ServeState(runs_dir=runs, root=tmp_path, cwd=tmp_path))
+    try:
+        info = _get_json(port, "/api/config")
+        assert info["configSources"] == ["git", "upload", "fs"]
+        assert info["root"] == str(tmp_path.resolve())
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+def test_http_config_sources_hosted_omits_fs_and_root(tmp_path: Path) -> None:
+    # A hosted deployment (server backend) drops the file browser: the remote user has no
+    # filesystem relationship to the host, so only Git and upload are offered — and the browse root,
+    # dead information without the fs source, is withheld rather than leaking the host path (BE-0108).
+    _, _, runs = project(tmp_path)
+    server, port = _serve(srv.ServeState(runs_dir=runs, root=tmp_path, cwd=tmp_path, hosted=True))
+    try:
+        info = _get_json(port, "/api/config")
+        assert info["configSources"] == ["git", "upload"]
+        assert info["root"] is None
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+def test_http_hosted_refuses_path_bind_but_git_still_binds(tmp_path: Path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    # Server-side enforcement (defense in depth): when hosted, the path branch of POST /api/config is
+    # refused even by a hand-crafted request, while the Git branch is unaffected (BE-0108).
+    import bajutsu.serve.operations.config as ops
+    from bajutsu.config_source import Materialized
+
+    _, _, runs = project(tmp_path)
+    checkout = tmp_path / "gitsrc"
+    checkout.mkdir()
+    git_cfg = checkout / "bajutsu.config.yaml"
+    git_cfg.write_text("targets:\n  fromgit: { bundleId: com.example.fromgit }\n", encoding="utf-8")
+    monkeypatch.setattr(
+        ops, "materialize", lambda spec, **kw: Materialized(git_cfg, checkout, "sha")
+    )
+    state = srv.ServeState(runs_dir=runs, root=tmp_path, cwd=tmp_path, hosted=True)
+    server, port = _serve(state)
+    try:
+        status, resp = _post(port, "/api/config", {"path": "bajutsu.config.yaml"})
+        assert status == 403 and "file browser is disabled" in resp["error"]
+        assert state.config is None  # the refused path bind changed nothing
+        # The Git branch still binds — hosting keeps the two remote-usable sources.
+        status, resp = _post(port, "/api/config", {"git": "github:acme/repo@main"})
+        assert status == 200 and resp["ok"] is True and resp["targets"] == ["fromgit"]
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
 def test_http_scenarios_by_app_from_config(tmp_path: Path) -> None:
     _, cfg, runs = project(tmp_path)
     # Config-driven (no --scenarios override): the dir comes from the selected app.
