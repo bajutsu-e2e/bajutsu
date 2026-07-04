@@ -640,7 +640,9 @@ Behavior-preserving cleanup inside `bajutsu/` itself — deduplication, decompos
 Sending a run's result out to a service the team already lives in. These are post-verdict, deterministic transports — they carry the verdict the runner already computed, never an LLM's, and a delivery failure never moves the run's result.
 
 <!-- GENERATED:proposals-external-integration -->
-
+| ID | Item | Status |
+|---|---|---|
+| [BE-0161](BE-0161-ctrf-report-export/BE-0161-ctrf-report-export.md) | Export run results in Common Test Report Format (CTRF) | Proposal |
 <!-- /GENERATED:proposals-external-integration -->
 
 ### Candidates from competitive research (MagicPod / Autify)

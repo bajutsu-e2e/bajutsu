@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-ctrf-report-export-ja.md)
+**English** · [日本語](BE-0161-ctrf-report-export-ja.md)
 
-# BE-XXXX — Export run results in Common Test Report Format (CTRF)
+# BE-0161 — Export run results in Common Test Report Format (CTRF)
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-ctrf-report-export.md) |
+| Proposal | [BE-0161](BE-0161-ctrf-report-export.md) |
 | Author | [@hirosassa](https://github.com/hirosassa) |
 | Status | **Proposal** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0161") |
 | Topic | Integration with external services |
 <!-- /BE-METADATA -->
 
