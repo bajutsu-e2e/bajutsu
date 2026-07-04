@@ -35,9 +35,10 @@ ROADMAP = Path("roadmaps")
 # derive from. A CLI argument is matched case-insensitively against these.
 VALID_STATUSES: tuple[str, ...] = tuple(STATUS_TO_BUCKET)
 
-# The item's H1 title after the em dash. Accepts a numbered ``BE-NNNN`` or the ``BE-XXXX``
-# placeholder, so an in-flight item's title still reads.
-_TITLE_RE = re.compile(r"^# BE-\S+ — (.+)$", re.MULTILINE)
+# The item's H1 title after the em dash. Accepts only the two valid id shapes — a numbered
+# ``BE-NNNN`` or the ``BE-XXXX`` placeholder — so an in-flight item's title still reads while a
+# malformed heading fails loudly rather than being silently accepted.
+_TITLE_RE = re.compile(r"^# BE-(?:\d{4}|XXXX) — (.+)$", re.MULTILINE)
 
 
 @dataclass(frozen=True)
