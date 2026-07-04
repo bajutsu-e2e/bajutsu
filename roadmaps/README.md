@@ -355,6 +355,7 @@ Where a project's config and scenarios come from. A Git repository + ref is a to
 |---|---|---|
 | [BE-0063](BE-0063-git-config-source/BE-0063-git-config-source.md) | Load config (and its scenario tree) from a Git repository + ref | Implemented |
 | [BE-0073](BE-0073-serve-zip-bundle-upload/BE-0073-serve-zip-bundle-upload.md) | Upload a config + scenarios + app-binary bundle as a zip and run it from the web UI | Implemented |
+| [BE-0119](BE-0119-scenario-schema-versioning/BE-0119-scenario-schema-versioning.md) | Version the scenario schema for cross-version reads | Implemented |
 <!-- /GENERATED:implemented-config-sourcing -->
 
 ### codegen coverage
@@ -587,9 +588,7 @@ Closing the edges the deterministic core does not touch — `serve`'s HTTP surfa
 Where `bajutsu` reads its config and scenario tree from. Today that is a local path; the items here propose naming a **Git repository at a ref** (`github:owner/repo@ref:path`) or uploading a bundle, so a hosted or self-hosted `serve`, or a CI runner, can pull a team's test repo directly.
 
 <!-- GENERATED:proposals-config-sourcing -->
-| ID | Item | Status |
-|---|---|---|
-| [BE-0119](BE-0119-scenario-schema-versioning/BE-0119-scenario-schema-versioning.md) | Version the scenario schema for cross-version reads | Proposal |
+
 <!-- /GENERATED:proposals-config-sourcing -->
 
 ### codegen coverage

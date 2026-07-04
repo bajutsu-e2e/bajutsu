@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0119](BE-0119-scenario-schema-versioning.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0119") |
+| Implementing PR | _pending_ |
 | Topic | Configuration sourcing |
 <!-- /BE-METADATA -->
 
@@ -99,12 +100,15 @@ unaffected.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Add a `schema` field (default `1`) to `ScenarioFile`
-- [ ] Check `schema` in `load_scenario_file` before full validation, with a clear upgrade-path error
-- [ ] Keep `extra="forbid"` unchanged for same-version documents
-- [ ] Document the schema-bump discipline for scenario models
+- [x] Add a `schema` field (default `1`) to `ScenarioFile`
+- [x] Check `schema` in `load_scenario_file` before full validation, with a clear upgrade-path error
+- [x] Keep `extra="forbid"` unchanged for same-version documents
+- [x] Document the schema-bump discipline for scenario models
 
-No PR has landed yet.
+- _pending_ — Add the `SCHEMA_VERSION` constant and aliased `schema` field to `ScenarioFile`, a
+  pre-validation version gate in `load_scenario_file` (rejects a too-new or below-1 schema with an
+  actionable error, leaves `extra="forbid"` untouched for in-support documents), and the schema-bump
+  discipline in `docs/scenarios.md` (+ `docs/ja/`).
 
 ## References
 
