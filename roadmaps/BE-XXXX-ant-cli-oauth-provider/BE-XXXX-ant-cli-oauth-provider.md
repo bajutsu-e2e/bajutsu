@@ -100,10 +100,20 @@ by one path every AI feature shares, not a bespoke `record`-only agent.
    with tests for the new provider branch — `tests/test_anthropic_client.py`,
    `tests/test_ai_availability.py`, `tests/test_ai_backend.py` already carry Bedrock-shaped
    precedent to extend.
-7. **No new dependency.** `ant` is an external binary the user installs themselves (Homebrew /
-   release binary / `go install`), invoked via `subprocess`, exactly like the existing
-   `claude` CLI probe in `ai_availability.py` (`shutil.which`). Bajutsu does not vendor or
-   install it.
+7. **On-demand install when `ant` is absent.** `ant` is an external binary, probed via
+   `subprocess` / `shutil.which` exactly like the existing `claude` CLI check in
+   `ai_availability.py`. When it is missing, Bajutsu **installs it on demand** rather than only
+   erroring — mirroring how `make serve` ([scripts/serve.sh](../../../scripts/serve.sh)) installs
+   the idb backend's deps on demand, and how CI installs `actionlint`. The installer fetches the
+   host OS/arch release binary from the CLI's GitHub releases (the documented `curl` path),
+   **pinned by version and verified by SHA** (the [BE-0133](../BE-0133-pin-actionlint-installer/BE-0133-pin-actionlint-installer.md)
+   norm for the actionlint installer), into a Bajutsu-managed location on `PATH`; Homebrew /
+   `go install` stay manual alternatives a user may prefer. The install is surfaced through the
+   same seam as the `ant-cli-missing` gap token — a `make` target, and the `doctor` / `serve`
+   readiness surfaces that already report the gap gain an install action — so a missing binary
+   becomes an actionable one-step fix, not a dead end. It adds no *Python* dependency: `ant` never
+   enters `pyproject.toml`; it is a runtime tool fetched on demand, the way the idb client and
+   `idb_companion` already are.
 
 Open questions, left **TBD** for implementation time:
 
@@ -143,6 +153,8 @@ Open questions, left **TBD** for implementation time:
 - [ ] Remove `bajutsu/claude_code_agent.py` and the `claude-code` agent kind (`agents.py`,
       `ai_availability.py`)
 - [ ] Update `serve`'s AI-provider selector and settings UI
+- [ ] On-demand `ant` install when the binary is absent (pinned release binary + SHA, mirroring
+      `make serve` / actionlint), wired to the `ant-cli-missing` gap in `make` / `doctor` / `serve`
 - [ ] Update docs (`docs/configuration.md`, `docs/recording.md`, Japanese mirrors)
 - [ ] Tests for the new provider branch; remove/replace `claude_code_agent` tests
 
@@ -158,6 +170,8 @@ Open questions, left **TBD** for implementation time:
   — the pluggable-provider / fail-closed guarantee this item's provider must keep
 - [BE-0125 — Restrict the claude-code authoring agent tools](../BE-0125-authoring-agent-tool-restriction/BE-0125-authoring-agent-tool-restriction.md)
   — the tool denylist this item retires along with the agent it protects
+- [BE-0133 — Pin the actionlint installer by SHA](../BE-0133-pin-actionlint-installer/BE-0133-pin-actionlint-installer.md)
+  — the pinned-by-SHA norm the on-demand `ant` installer follows
 - Anthropic CLI docs: [CLI quickstart](https://platform.claude.com/docs/en/cli-sdks-libraries/cli/quickstart),
   [CLI authentication options](https://platform.claude.com/docs/en/cli-sdks-libraries/cli/authentication),
   [`ant messages create` reference](https://platform.claude.com/docs/en/api/cli/messages/create)
