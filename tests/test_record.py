@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from pathlib import Path
 
 import pytest
 from conftest import ShotDriver
@@ -246,7 +247,10 @@ def test_no_settle_wait_for_negated_assertion() -> None:
 class _RaisingShotDriver(FakeDriver):
     """A FakeDriver whose screenshot fails — the stale-simulator / full-disk case."""
 
+    attempted_path: str | None = None
+
     def screenshot(self, path: str) -> None:
+        self.attempted_path = path  # record it so the test can assert the temp file was cleaned up
         raise RuntimeError("simulator gone")
 
 
@@ -267,7 +271,10 @@ def test_screenshot_bytes_surfaces_failure_instead_of_swallowing(
 ) -> None:
     # A real capture failure must not be indistinguishable from an empty capture: it returns
     # None (best-effort, callers continue) but leaves a warning in the log so it is visible.
+    driver = _RaisingShotDriver([_el("go", "Go")])
     with caplog.at_level(logging.WARNING, logger="bajutsu.record"):
-        assert _screenshot_bytes(_RaisingShotDriver([_el("go", "Go")])) is None
+        assert _screenshot_bytes(driver) is None
     assert any(r.levelno == logging.WARNING for r in caplog.records)
     assert "simulator gone" in caplog.text
+    # The temp file is cleaned up even on failure, so repeated failures don't leak PNGs.
+    assert driver.attempted_path is not None and not Path(driver.attempted_path).exists()

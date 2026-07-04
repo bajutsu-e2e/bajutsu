@@ -97,6 +97,10 @@ unifying the helper is the natural place to also fix how it fails:
   All four call sites remain best-effort, so no caller changes were needed beyond the import. As a
   reuse follow-through in the same theme, the byte-identical test `ShotDriver` fakes (duplicated
   across `test_alerts.py` and `test_crawl_guide.py`) were consolidated into `tests/conftest.py`.
+- 2026-07-04: Review follow-up (#629) — moved the temp-file cleanup into a `finally` so a capture
+  failure no longer leaks the `delete=False` PNG into the temp dir, and logged the failure with
+  `exc_info=True` for a traceback; added a test asserting the temp file is removed on the failure
+  path.
 
 ## References
 

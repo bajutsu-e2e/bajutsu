@@ -60,16 +60,20 @@ def _screenshot_bytes(driver: base.Driver) -> bytes | None:
     *fails* (a stale simulator, a permissions error, a full disk), so a real failure stays
     distinguishable from "there was nothing to capture" instead of vanishing into None.
     """
+    path: str | None = None
     try:
         with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
             path = tmp.name
         driver.screenshot(path)
-        data = Path(path).read_bytes()
-        Path(path).unlink(missing_ok=True)
-        return data or None
+        return Path(path).read_bytes() or None
     except Exception as exc:
-        _logger.warning("screenshot capture failed: %s", exc)
+        _logger.warning("screenshot capture failed: %s", exc, exc_info=True)
         return None
+    finally:
+        # Clean up on both paths: on a capture failure the temp file is already created
+        # (delete=False), so without this a repeated failure leaks PNGs into the temp dir.
+        if path is not None:
+            Path(path).unlink(missing_ok=True)
 
 
 def _settle_target(assertion: Assertion) -> base.Selector | None:
