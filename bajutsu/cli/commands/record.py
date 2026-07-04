@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import atexit
+import os
 from dataclasses import replace
 from pathlib import Path
 
@@ -26,6 +27,22 @@ from bajutsu.record import record as record_loop
 from bajutsu.runner import launch_driver
 from bajutsu.runner.launch_server import start_launch_server
 from bajutsu.scenario import Preconditions, dump_scenarios
+
+
+def _secret_tokens(eff: Effective) -> list[tuple[str, str]]:
+    """`(value, "${secrets.NAME}")` pairs for each declared secret with a non-empty env value.
+
+    The counterpart to `run`'s forward secret resolution (`_resolve_secrets`): `record` uses these
+    to rewrite a recorded literal back to its token (BE-0120). An env var that is unset *or empty*
+    is skipped — an empty value has no literal to tokenize, and matching one would splice the token
+    between every character. (`run` keeps the empty binding but its redactor drops empty values the
+    same way, so the effect is identical.) Longest value first so a value that is a substring of
+    another is substituted before it, never leaving a partial literal in the written scenario.
+    """
+    pairs = [
+        (os.environ[name], f"${{secrets.{name}}}") for name in eff.secrets if os.environ.get(name)
+    ]
+    return sorted(pairs, key=lambda pair: len(pair[0]), reverse=True)
 
 
 def _record_out_path(
@@ -197,6 +214,7 @@ def record(
         authoring_agent,
         name=goal,
         alert_guard=alert_guard,
+        secret_tokens=_secret_tokens(eff),
         report=say,
     )
     out_path.parent.mkdir(parents=True, exist_ok=True)

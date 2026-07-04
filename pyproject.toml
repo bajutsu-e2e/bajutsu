@@ -161,7 +161,15 @@ ignore = [
 convention = "google"
 
 [tool.pytest.ini_options]
-addopts = "-n auto"
+# `not web` keeps the browser-driven conformance suite (BE-0114) out of the fast gate: it needs a
+# real Chromium + the `web` extra and runs in the separate web CI job (`web-e2e.yml`, `-m web`),
+# never here. Deselecting by marker (not just importorskip) means it stays out even when the `web`
+# extra happens to be installed locally — e.g. after `make -C demos/web e2e` — so the gate is
+# hermetic regardless of the venv's state.
+addopts = "-n auto -m 'not web'"
+markers = [
+    "web: browser-driven test requiring the Playwright web extra + a Chromium binary (web CI only)",
+]
 # Collect only the project's own suite; ignore local git worktrees under worktree/.
 testpaths = ["tests"]
 

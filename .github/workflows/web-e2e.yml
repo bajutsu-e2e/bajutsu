@@ -1,15 +1,16 @@
-# Real-browser E2E for the web (Playwright) backend (BE-0041): a headless Chromium drives the demo
-# web app end to end. Unlike the iOS E2E (e2e.yml) it runs on Linux — no Mac, no Simulator — but
-# installing Chromium + running a browser is heavy enough to gate. It is not a required check, so a
-# path filter is enough: it simply doesn't run on a PR that can't affect the web path, and an
-# unrelated PR isn't blocked.
+# Real-browser CI for the web (Playwright) backend, on a headless Chromium — two jobs: the demo
+# smoke (BE-0041) drives the demo web app end to end, and the driver conformance suite (BE-0114)
+# runs the backend-agnostic contract against the real driver. Unlike the iOS E2E (e2e.yml) both run
+# on Linux — no Mac, no Simulator — but installing Chromium + running a browser is heavy enough to
+# gate. Neither is a required check, so a path filter is enough: they simply don't run on a PR that
+# can't affect the web path, and an unrelated PR isn't blocked.
 #
-# Positive-list filter: only paths the web E2E actually exercises. Subdirectories are listed
+# Positive-list filter: only paths the web jobs actually exercise. Subdirectories are listed
 # explicitly (runner, scenario, drivers, orchestrator); `bajutsu/*.py` covers the single-level
-# top-level modules (most are in the run path) while inherently excluding subpackages the web
-# smoke never touches (serve/, mcp/, templates/, report/). CLI commands are limited to the three
-# entry points the smoke invokes. A new subpackage or CLI command defaults to NOT triggering
-# this workflow — add it here when it becomes web-E2E-relevant.
+# top-level modules (most are in the run path) while inherently excluding subpackages the web jobs
+# never touch (serve/, mcp/, templates/, report/). CLI commands are limited to the three entry
+# points the smoke invokes, plus the conformance suite's own files. A new subpackage or CLI command
+# defaults to NOT triggering this workflow — add it here when it becomes web-CI-relevant.
 name: Web E2E (Playwright)
 
 on:
@@ -29,6 +30,8 @@ on:
       - 'bajutsu/cli/commands/codegen.py'
       - 'bajutsu/cli/commands/record.py'
       - 'demos/web/**'
+      - 'tests/driver_conformance.py'
+      - 'tests/test_driver_conformance_web.py'
       - 'pyproject.toml'
       - 'uv.lock'
       - 'Makefile'
@@ -78,3 +81,36 @@ jobs:
 
       - name: Web smoke (demos/web)
         run: make -C demos/web e2e
+
+  # The driver conformance suite (BE-0114) against the real Playwright backend: the same contract
+  # `make check` runs on FakeDriver, now driving a headless Chromium so drift in the driver's own
+  # query / action code (which bypasses the shared base) is caught. It needs pytest, so — unlike the
+  # smoke above — this job installs the dev group alongside the web extra (no UV_NO_DEV here).
+  web-conformance:
+    name: conformance (playwright)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39  # v8.2.0
+        with:
+          enable-cache: true
+
+      - name: Cache Playwright browsers
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('uv.lock') }}
+          restore-keys: |
+            playwright-${{ runner.os }}-
+
+      - name: Install the web backend + test tooling (Playwright + Chromium + pytest)
+        run: uv sync --extra web --group dev && uv run --no-sync playwright install --with-deps chromium
+
+      # `-m web` overrides the default `-m 'not web'` (pyproject addopts) so the browser-driven
+      # conformance suite — deselected everywhere else — actually runs here. `-n0` overrides the
+      # default `-n auto`: the suite shares one module-scoped Chromium, so a single process launches
+      # it once, rather than xdist relaunching a browser per worker for these few short tests.
+      - name: Driver conformance (Playwright)
+        run: uv run --no-sync pytest tests/test_driver_conformance_web.py -m web -n0

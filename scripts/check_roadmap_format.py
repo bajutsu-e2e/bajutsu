@@ -135,7 +135,7 @@ def _items(roadmap: Path) -> list[_Item]:
     return items
 
 
-def _is_subsequence(present: list[str], order: list[str]) -> bool:
+def is_subsequence(present: list[str], order: list[str]) -> bool:
     """True if ``present`` appears in ``order``'s relative order (every field known and in place)."""
     it = iter(order)
     return all(field in it for field in present)
@@ -194,7 +194,7 @@ def _check_file(
         if missing:
             problems.append(f"missing required metadata field(s): {', '.join(sorted(missing))}")
         known = [f for f in fields if f in order]
-        if known != sorted(known, key=order.index) or not _is_subsequence(known, order):
+        if known != sorted(known, key=order.index) or not is_subsequence(known, order):
             problems.append(f"metadata fields out of canonical order: {fields}")
         status_field = "状態" if lang == "ja" else "Status"
         if status_field in values and (m := STATUS_RE.match(values[status_field])):
@@ -214,7 +214,7 @@ def _check_file(
                 )
 
     # Headings that are real headings, not lines inside a fenced code block (e.g. a skeleton).
-    headings = _headings_outside_code(text)
+    headings = headings_outside_code(text)
     expected_headings = HEADINGS_JA if lang == "ja" else HEADINGS_EN
     if headings != expected_headings:
         problems.append(f"H2 headings must be exactly {expected_headings} in order, got {headings}")
@@ -222,17 +222,26 @@ def _check_file(
     return [f"{be_id}{suffix}: {p}" for p in problems], status_raw
 
 
-def _headings_outside_code(text: str) -> list[str]:
-    """``## `` headings that are real headings, not lines inside a fenced code block."""
-    headings: list[str] = []
+def heading_positions(text: str) -> list[tuple[str, int]]:
+    """``(name, line_index)`` for every ``## `` heading that is a real heading, not a line inside a
+    fenced code block (e.g. a skeleton). ``line_index`` is into ``text.splitlines()`` — the fixer
+    (BE-0149) reuses this so its span-finding walk agrees with the same fence-aware scan, rather
+    than re-deriving heading positions with a second, fence-naive pass that could disagree with it.
+    """
+    positions: list[tuple[str, int]] = []
     in_code = False
-    for line in text.splitlines():
+    for i, line in enumerate(text.splitlines()):
         if line.startswith("```"):
             in_code = not in_code
             continue
         if not in_code and line.startswith("## "):
-            headings.append(line[3:].strip())
-    return headings
+            positions.append((line[3:].strip(), i))
+    return positions
+
+
+def headings_outside_code(text: str) -> list[str]:
+    """``## `` headings that are real headings, not lines inside a fenced code block."""
+    return [name for name, _ in heading_positions(text)]
 
 
 def unresolved_be_xxxx_references(roadmap: Path = ROADMAP) -> list[str]:

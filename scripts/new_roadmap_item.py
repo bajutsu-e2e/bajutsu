@@ -77,14 +77,15 @@ _SECTIONS_JA = ["はじめに", "動機", "詳細設計", "検討した代替案
 
 # The Progress section (BE-0100) is the lone section seeded with content rather than ``TBD``: a
 # living-checklist skeleton — author guidance, then one placeholder box to enumerate the MECE work
-# breakdown once the item is scoped.
-_PROGRESS_BODY_EN = (
+# breakdown once the item is scoped. Public (not ``_``-prefixed): scripts/fix_roadmap_drift.py
+# (BE-0149) reuses the exact same skeleton when mechanically inserting a missing Progress section.
+PROGRESS_BODY_EN = (
     "> Keep this current as work proceeds. The checklist mirrors the MECE work breakdown in\n"
     "> *Detailed design* (one box per unit of work); the log records what changed and when\n"
     "> (oldest first), linking the PRs.\n\n"
     "- [ ] TBD — enumerate the work breakdown (MECE) here once scoped."
 )
-_PROGRESS_BODY_JA = (
+PROGRESS_BODY_JA = (
     "> 開発の進行に合わせて常に最新の状態に保ってください。チェックリストは *詳細設計* の MECE な\n"
     "> 作業分解（作業の単位ごとに 1 つ）に対応し、ログには変更内容と時期（古い順）を PR へのリンクと\n"
     "> ともに記録します。\n\n"
@@ -133,7 +134,7 @@ def _en_body(slug: str, title: str, status: str, topic: str, handle: str) -> str
             "<!-- /BE-METADATA -->",
         ]
     )
-    sections = _render_sections(_SECTIONS_EN, progress="Progress", progress_body=_PROGRESS_BODY_EN)
+    sections = _render_sections(_SECTIONS_EN, progress="Progress", progress_body=PROGRESS_BODY_EN)
     return (
         f"**English** · [日本語]({PLACEHOLDER}-{slug}-ja.md)\n\n"
         f"# {PLACEHOLDER} — {title}\n\n{meta}\n\n{sections}\n"
@@ -154,7 +155,7 @@ def _ja_body(slug: str, title: str, status: str, topic: str, handle: str) -> str
             "<!-- /BE-METADATA -->",
         ]
     )
-    sections = _render_sections(_SECTIONS_JA, progress="進捗", progress_body=_PROGRESS_BODY_JA)
+    sections = _render_sections(_SECTIONS_JA, progress="進捗", progress_body=PROGRESS_BODY_JA)
     return (
         f"[English]({PLACEHOLDER}-{slug}.md) · **日本語**\n\n"
         f"# {PLACEHOLDER} — {title}\n\n{meta}\n\n{sections}\n"
