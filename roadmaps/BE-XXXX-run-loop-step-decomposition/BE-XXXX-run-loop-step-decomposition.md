@@ -41,8 +41,9 @@ Two functions concentrate the run loop's control flow and are hard to read, test
   matters most.
 
 - **`bajutsu/runner/pipeline.py:run_one` — the per-scenario runner (≈140–229), nested inside
-  `run_all` (74–229).** It closes over the outer scope's `eff`, `mailbox`, `baselines_dir`,
-  `schemas_dir`, `actuator`, `golden_context`, `progress`, `total`, `on_blocked_for`, and `lease`.
+  `run_all` (74–229).** It closes over a broad swath of the outer scope — `eff`, `lease`, `mailbox`,
+  `redactor`, `caps`, `run_dir`, `bindings`, `clock`, `progress`, `total`, the baselines/schemas
+  directories, `golden_context`, and the alert-guard handlers, among others.
   Because it is a closure, it cannot be unit-tested without reconstructing all of `run_all`'s setup,
   and `run_all` runs it two ways — sequentially and through a `ThreadPoolExecutor`
   (`pool.map(lambda pair: run_one(*pair), …)`), so the implicit captured state is also shared across
@@ -81,8 +82,8 @@ to the `run`/CI path; this only reshapes deterministic code. The regression net 
   removes the second `[0]`-boxed variable and isolates the one branch with non-trivial lifecycle.
 
 - **Promote `run_one` to a top-level function with an explicit signature.** Turn the closure into a
-  standalone function (or a small callable dataclass/`_ScenarioRunner`) that takes its ten captured
-  values as parameters, and have both `run_all` call sites (the sequential comprehension and the
+  standalone function (or a small callable dataclass/`_ScenarioRunner`) that takes its captured
+  values as explicit parameters, and have both `run_all` call sites (the sequential comprehension and the
   `ThreadPoolExecutor.map`) pass them in. The threading model is unchanged; the shared state simply
   becomes an explicit parameter list, and `run_one` becomes unit-testable in isolation.
 
@@ -93,7 +94,7 @@ Each unit is independently landable in its own small PR, and each keeps the suit
 - **Leave both functions as-is and rely on comments.** Rejected for the same reason
   [BE-0143](../BE-0143-run-command-decomposition/BE-0143-run-command-decomposition.md) rejected it
   for `run`: the functions already carry stage comments, yet the `[0]`-boxed closure state and the
-  ten-variable capture are precisely what comments cannot make safe to edit. The risk lives in the
+  broad free-variable capture are precisely what comments cannot make safe to edit. The risk lives in the
   hidden mutable state, not in missing prose.
 
 - **Fold this into BE-0143.** Rejected: BE-0143 is scoped to `cli/commands/run.py`'s `run`
@@ -115,7 +116,7 @@ Each unit is independently landable in its own small PR, and each keeps the suit
 - [ ] Regression-net check: fast, Simulator-free branch tests for `_run_steps` and `run_one` land first.
 - [ ] Lift `_run_steps`'s step-index state out of the `[0]`-box into an explicit counter.
 - [ ] Extract the web-step driver swap into a named helper that passes the driver explicitly.
-- [ ] Promote `run_one` to a top-level function with an explicit ten-value signature.
+- [ ] Promote `run_one` to a top-level function with its captured values as explicit parameters.
 
 ## References
 
