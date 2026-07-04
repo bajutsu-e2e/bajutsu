@@ -152,9 +152,9 @@ def test_scenario_url_key_under_org_scenario_prefix(tmp_path: Path) -> None:
         state, {"job_id": "j1", "app": "demo", "ref": "login.yaml"}
     )
     assert status == 200
-    assert payload["url"] == (
-        "https://signed.example/put/acme/scenarios/demo/login.yaml?ct=application/octet-stream"
-    )
+    # Assert the key (the real contract); the signed-in Content-Type is `content_type_for(ref)`,
+    # whose value for `.yaml` depends on the runtime's mimetypes DB, so don't pin it here.
+    assert payload["url"].startswith("https://signed.example/put/acme/scenarios/demo/login.yaml")
 
 
 def test_scenario_url_rejects_an_unsafe_ref(tmp_path: Path) -> None:
