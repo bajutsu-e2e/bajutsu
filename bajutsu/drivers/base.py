@@ -140,22 +140,25 @@ class EvidenceProvider(Protocol):
 
 @runtime_checkable
 class BackendLifecycle(Protocol):
-    """The lifecycle hooks a backend runs around a single run (BE-0141).
+    """The full set of lifecycle hooks backends run around a single run (BE-0141).
 
-    A run needs to launch, tear down, and reset a backend, but those steps are platform-shaped:
-    the web (Playwright) backend navigates / closes / resets a browser context, the XCUITest
-    backend waits for its on-device runner to answer. idb needs none of them — its boot / erase /
-    install sequence lives outside the driver in `simctl` — so, like `EvidenceProvider`, this is a
-    narrow Protocol a backend *opts into* rather than a mandatory extension of `Driver`. A backend
-    adopts only the hooks it needs; the call sites in `platform_lifecycle.py` reach each one through
-    `cast(BackendLifecycle, driver)` under the same platform invariant that already scopes the
-    driver, so a renamed or dropped hook fails `make check` (mypy strict) instead of at runtime.
+    A run launches, tears down, and resets a backend, but those steps are platform-shaped: the web
+    (Playwright) backend navigates / closes / resets a browser context, the XCUITest backend waits
+    for its on-device runner to answer, and idb needs none of them (its boot / erase / install
+    sequence lives outside the driver in `simctl`). The four hooks are therefore split disjointly
+    across backends — no single driver implements all four — so this is a *typing umbrella* for the
+    call sites, not a conformance target: `platform_lifecycle.py` reaches each hook through
+    `cast(BackendLifecycle, driver)` under the platform invariant that already scopes the driver,
+    which turns "the hook exists" into a mypy-checked fact (a renamed or dropped hook fails
+    `make check` instead of at runtime) without forcing idb to stub no-op methods. `@runtime_checkable`
+    mirrors `EvidenceProvider`, but a structural `isinstance` holds only for a class implementing the
+    whole set — which the concrete drivers, owning disjoint subsets, deliberately do not.
     """
 
     def navigate(self) -> None: ...
     def close(self) -> None: ...
     def reset_context(self) -> None: ...
-    def await_ready(self, timeout: float = ..., poll: float = ...) -> None: ...
+    def await_ready(self, timeout: float = 10.0, poll: float = 0.1) -> None: ...
 
 
 # --- Selector resolution (the determinism core) ---

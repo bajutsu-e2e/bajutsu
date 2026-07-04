@@ -109,8 +109,9 @@ def test_idb_exposes_no_evidence_provider_surface() -> None:
 
 
 def test_backend_lifecycle_is_runtime_checkable() -> None:
-    # A backend that adopts every lifecycle hook is recognized at runtime; missing one is not — the
-    # @runtime_checkable Protocol makes "adopts the lifecycle surface" an isinstance-testable fact.
+    # BackendLifecycle is a typing umbrella over the full hook set — no single real driver owns all
+    # four (see the Protocol docstring). @runtime_checkable still lets isinstance verify the
+    # structural "has every hook" shape: a class with all four passes, one missing any does not.
     from bajutsu.drivers.base import BackendLifecycle
 
     class FullLifecycle:
