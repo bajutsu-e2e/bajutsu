@@ -212,6 +212,82 @@ jobs:
           path: demos/showcase/ios/swiftui/build/dd/Logs/Test/*.xcresult
           if-no-files-found: ignore
 
+  # A pinch/rotate scenario run through the full `bajutsu run` path on the XCUITest backend
+  # (BE-0019): two-finger gestures idb cannot actuate — idb is single-touch and raises
+  # UnsupportedAction. This exercises the actuator end to end (resident runner, /gesture endpoint,
+  # snapshot-handle addressing) via the run loop, not just the driver contract the conformance job
+  # runs. The idb graceful-degradation fallback is not re-proved on-device here: the registry's
+  # select-and-fall-through is covered deterministically by the fast-gate unit tests (an injected
+  # availability fn), and the idb actuation path by the `smoke (idb)` job above — a macOS runner
+  # always has xcodebuild, so xcuitest never actually degrades to idb here to observe.
+  xcuitest-gestures:
+    name: xcuitest (multi-touch)
+    needs: changes
+    if: needs.changes.outputs.relevant == 'true'
+    runs-on: macos-latest
+    # Cap the metered macOS job (10x billing): a hung Simulator/runner would otherwise run to the
+    # 6h default. Build + a single gesture run is ~12min, so 25 catches a real hang with headroom.
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+
+      - name: Select Xcode
+        uses: maxim-lobanov/setup-xcode@ed7a3b1fda3918c0306d1b724322adc0b8cc0a90  # v1.7.0
+        with:
+          xcode-version: latest-stable
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39  # v8.2.0
+        with:
+          enable-cache: true
+
+      - name: Install xcodegen
+        env:
+          HOMEBREW_NO_AUTO_UPDATE: "1"
+          HOMEBREW_NO_INSTALL_CLEANUP: "1"
+        run: brew install xcodegen
+
+      - name: Boot a Simulator
+        id: sim
+        uses: ./.github/actions/boot-simulator
+        with:
+          wait: "false"
+
+      # Build the a11y app AND the resident XCUITest runner; fetch idb's deps concurrently so the
+      # bajutsu-e2e action's idb_companion install / uv sync no-op. The trap stops the background
+      # fetches if a build fails first (mirrors the smoke / conformance jobs).
+      - name: Build the app + runner (fetch idb deps concurrently)
+        env:
+          HOMEBREW_NO_AUTO_UPDATE: "1"
+          HOMEBREW_NO_INSTALL_CLEANUP: "1"
+        run: |
+          brew list facebook/fb/idb-companion >/dev/null 2>&1 || brew install facebook/fb/idb-companion &
+          brew_pid=$!
+          uv sync --extra idb --no-dev &
+          sync_pid=$!
+          trap 'kill "$brew_pid" "$sync_pid" 2>/dev/null || true' EXIT
+          make -C demos/showcase swiftui-build
+          make -C demos/showcase runner-build
+          wait "$brew_pid"
+          wait "$sync_pid"
+          trap - EXIT
+
+      - name: Wait for the Simulator
+        run: xcrun simctl bootstatus "${{ steps.sim.outputs.udid }}" -b
+
+      - name: Install the app
+        run: xcrun simctl install "${{ steps.sim.outputs.udid }}" "demos/showcase/ios/swiftui/build/dd/Build/Products/Debug-iphonesimulator/BajutsuShowcaseSwiftUI.app"
+
+      - name: Run the multi-touch scenario (xcuitest)
+        uses: ./.github/actions/bajutsu-e2e
+        with:
+          scenarios: demos/showcase/scenarios/gestures_multitouch.yaml
+          target: showcase-swiftui
+          backend: xcuitest
+          config: demos/showcase/showcase.config.yaml
+          udid: ${{ steps.sim.outputs.udid }}
+          artifact-name: xcuitest-gestures-run
+
   # The driver conformance suite (BE-0114): one backend-agnostic contract, run on-device against
   # BOTH iOS backends — idb (idb_companion) and XCUITest (the resident BajutsuRunner). It proves
   # the determinism-core invariants (ambiguous selector fails, zero-match fails, capabilities()
@@ -290,7 +366,7 @@ jobs:
   # path-gated macOS jobs.
   e2e:
     name: E2E
-    needs: [changes, smoke, xcuitest, conformance]
+    needs: [changes, smoke, xcuitest, xcuitest-gestures, conformance]
     if: always()
     runs-on: ubuntu-latest
     steps:
@@ -298,10 +374,11 @@ jobs:
         env:
           SMOKE: ${{ needs.smoke.result }}
           XCUITEST: ${{ needs.xcuitest.result }}
+          GESTURES: ${{ needs.xcuitest-gestures.result }}
           CONFORMANCE: ${{ needs.conformance.result }}
         run: |
-          echo "smoke=$SMOKE xcuitest=$XCUITEST conformance=$CONFORMANCE"
-          for result in "$SMOKE" "$XCUITEST" "$CONFORMANCE"; do
+          echo "smoke=$SMOKE xcuitest=$XCUITEST gestures=$GESTURES conformance=$CONFORMANCE"
+          for result in "$SMOKE" "$XCUITEST" "$GESTURES" "$CONFORMANCE"; do
             if [ "$result" = "failure" ] || [ "$result" = "cancelled" ]; then
               echo "E2E failed"
               exit 1
