@@ -126,13 +126,15 @@ Log:
   (never the fast gate: a `web` pytest marker + `-m 'not web'` deselects it, so the gate stays
   browser-free even when the `web` extra is installed). idb / XCUITest (on-device E2E) remain.
 - 2026-07-04: On-device slice — the same contract now runs against the real iOS backends, idb and
-  XCUITest, by relaunching the showcase app with a `SHOWCASE_CONFORMANCE` launch env that renders
-  exactly the seeded identifiers (`tests/test_driver_conformance_ondevice.py`,
-  `ConformanceView.swift`; a launch env, not a deeplink, since `simctl openurl` raises iOS's "Open
-  in app?" dialog). A dedicated `conformance` job in `e2e.yml` builds the app + resident runner and
-  runs both backends serially through `launch_driver`; an `ondevice` pytest marker (`-m 'not web and
-  not ondevice'`) keeps it out of the fast gate. Verified locally on a booted Simulator: all 18
-  cases (9 per backend) pass. This completes the five-piece breakdown.
+  XCUITest (`tests/test_driver_conformance_ondevice.py`, `ConformanceView.swift`). The app enters
+  conformance mode once via `SHOWCASE_CONFORMANCE`, then each screen is reseeded by writing a spec
+  file the app polls (`conformance-spec.txt` in its Documents dir) — not a per-screen relaunch or
+  deeplink: `simctl openurl` raises iOS's "Open in app?" dialog, and relaunching per screen crashes
+  the resident XCUITest runner after a handful of `app.launch()` cycles. A dedicated `conformance`
+  job in `e2e.yml` builds the app + resident runner and runs both backends serially (`-n0`) through
+  `launch_driver`; an `ondevice` pytest marker (`-m 'not web and not ondevice'`) keeps it out of the
+  fast gate. Verified on a pristine Simulator: all 18 cases (9 per backend) pass. This completes the
+  five-piece breakdown.
 
 ## References
 

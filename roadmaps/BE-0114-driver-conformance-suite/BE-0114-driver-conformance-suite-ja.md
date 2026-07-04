@@ -125,14 +125,16 @@ preflight と結び付けます）、conformance の契約を、新しい backen
   除外するため、`web` extra が入っていてもゲートはブラウザなしのままです。idb / XCUITest
   （オンデバイス E2E）は残ります。
 - 2026-07-04: オンデバイススライス。同じ契約を実際の iOS backend である idb と XCUITest に対しても
-  走らせるようにしました。指定した識別子だけを描画する `SHOWCASE_CONFORMANCE` の起動 env を渡して
-  showcase アプリを再起動します（`tests/test_driver_conformance_ondevice.py`、`ConformanceView.swift`。
-  deeplink ではなく起動 env を使うのは、`simctl openurl` がカスタムスキームに対して iOS の
-  「アプリで開きますか?」という確認ダイアログを出すためです）。`e2e.yml` に新設した `conformance`
-  ジョブがアプリと常駐ランナーをビルドし、`launch_driver` を通じて両 backend を直列で走らせます。
-  `ondevice` という pytest マーカー（`-m 'not web and not ondevice'`）で高速ゲートからは除外します。
-  Simulator 上で検証し、全 18 ケース（backend ごとに 9 ケース）が通ることを確認しました。これで 5 つの
-  ピースの作業分解が完了します。
+  走らせるようにしました（`tests/test_driver_conformance_ondevice.py`、`ConformanceView.swift`）。
+  `SHOWCASE_CONFORMANCE` で showcase アプリを一度だけ conformance モードで起動し、以降はアプリが
+  ポーリングする spec ファイル（Documents ディレクトリの `conformance-spec.txt`）を書き換えて画面ごとに
+  再シードします。画面ごとの再起動や deeplink を使わないのは、`simctl openurl` が iOS の
+  「アプリで開きますか?」というダイアログを出し、画面ごとの再起動は数回の `app.launch()` で常駐 XCUITest
+  ランナーをクラッシュさせるためです。`e2e.yml` に新設した `conformance` ジョブがアプリと常駐ランナーを
+  ビルドし、`launch_driver` を通じて両 backend を直列（`-n0`）で走らせます。`ondevice` という pytest
+  マーカー（`-m 'not web and not ondevice'`）で高速ゲートからは除外します。pristine な Simulator 上で
+  検証し、全 18 ケース（backend ごとに 9 ケース）が通ることを確認しました。これで 5 つのピースの作業分解が
+  完了します。
 
 ## 参考
 

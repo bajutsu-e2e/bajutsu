@@ -277,8 +277,8 @@ jobs:
       # `launch_driver` erases/installs/launches per backend, so no explicit install here. `-m
       # ondevice` overrides the repo default (`-m 'not web and not ondevice'`) to select exactly the
       # on-device suite; BAJUTSU_CONFORMANCE_UDID both routes the backends and un-skips the module.
-      # `-n0` overrides the default `-n auto`: the suite reseeds one shared Simulator by relaunching
-      # the app, so parallel workers would clobber each other's screen — it must run serially.
+      # `-n0` overrides the default `-n auto`: the suite reseeds one shared Simulator via a single
+      # spec file the app polls, so parallel workers would clobber each other's screen — run serially.
       - name: Run the conformance suite (idb + xcuitest)
         env:
           BAJUTSU_CONFORMANCE_UDID: ${{ steps.sim.outputs.udid }}
