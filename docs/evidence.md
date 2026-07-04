@@ -201,3 +201,7 @@ redact:
 > snapshot — a `${secrets.X}` reference is kept as-is (it is not the seed, and its resolved value
 > is masked by the secret-value rule above). Prefer `${secrets.X}` for a `totp` seed so it never
 > sits in the scenario file to begin with.
+
+## File permissions
+
+Redaction reduces what a leaked artifact reveals, but it is a best-effort denylist, so who can read the artifact matters too. The runner creates each run directory owner-only (`0700`) and writes the sensitive files it may hold — `network.json`, the copied `scenario.yaml`, and screenshots — owner-only (`0600`), independent of the host's `umask` ([BE-0131](../roadmaps/implemented/BE-0131-run-artifact-permissions/BE-0131-run-artifact-permissions.md)). Everything else lands under the `0700` run directory, so a run's evidence is not readable by another local account on a shared host (a CI runner, say) by default. Implementation: `artifact_perms.py`.

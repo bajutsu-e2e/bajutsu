@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import Protocol
 
 from bajutsu import intervals
+from bajutsu.artifact_perms import restrict_file
 from bajutsu.drivers import base
 from bajutsu.redaction import Redactor
 from bajutsu.scenario import Redact
@@ -79,6 +80,8 @@ def write_screenshot(
         step_dir.mkdir(parents=True, exist_ok=True)
     path = step_dir / name
     driver.screenshot(str(path))
+    # A screenshot can capture on-screen secrets — lock it to the owner regardless of umask (BE-0131).
+    restrict_file(path)
     return path
 
 

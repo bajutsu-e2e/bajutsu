@@ -3,13 +3,14 @@
 from __future__ import annotations
 
 import json
+import stat
 from pathlib import Path
 
 import pytest
 
 from bajutsu.drivers import base
 from bajutsu.drivers.fake import FakeDriver
-from bajutsu.evidence import FileSink, capture, write_elements
+from bajutsu.evidence import FileSink, capture, write_elements, write_screenshot
 
 
 class _StubInterval:
@@ -72,6 +73,23 @@ def test_capture_elements_and_screenshot(tmp_path: Path) -> None:
     assert (tmp_path / "step0" / "elements.json").exists()
     # FakeDriver records the screenshot call with the path it was given.
     assert ("screenshot", str(tmp_path / "step0" / "after.png")) in driver.actions
+
+
+class _WritingDriver(FakeDriver):
+    """A driver whose `screenshot` actually writes bytes, unlike `FakeDriver` (which only records
+    the call). Needed to observe the file mode `write_screenshot` leaves behind (BE-0131)."""
+
+    def screenshot(self, path: str) -> None:
+        super().screenshot(path)
+        Path(path).write_bytes(b"\x89PNG\r\n")
+
+
+def test_write_screenshot_is_owner_only(tmp_path: Path) -> None:
+    # A screenshot can capture on-screen secrets, so it must land owner-only (0600), not
+    # world-readable under the ambient umask (BE-0131).
+    path = write_screenshot(_WritingDriver([_el("a", "A")]), tmp_path / "step0")
+    assert path.exists()
+    assert stat.S_IMODE(path.stat().st_mode) == 0o600
 
 
 def test_capture_no_writing_kinds_leaves_dir_uncreated(tmp_path: Path) -> None:

@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0131](BE-0131-run-artifact-permissions.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0131") |
+| Implementing PR | _(to be filled once the PR is opened)_ |
 | Topic | Security hardening |
 <!-- /BE-METADATA -->
 
@@ -79,13 +80,20 @@ written or how pass/fail is decided:
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Create the run directory (and its subdirectories) with `0700` permissions.
-- [ ] Write `network.json`, the copied scenario, and screenshots with `0600`
-      permissions.
-- [ ] Add a test asserting the created run directory and its sensitive files have the
-      restricted mode on a fresh run.
+- [x] Create the run directory `0700`. The top-level run dir is created owner-only up
+      front (`artifact_perms.make_run_dir`), so every subdirectory beneath it inherits a
+      non-world-readable parent without a per-subdir chmod.
+- [x] Write `network.json`, the copied scenario, and screenshots with `0600`
+      permissions (`artifact_perms.restrict_file`, called at each write site).
+- [x] Add a test asserting the created run directory and its sensitive files have the
+      restricted mode on a fresh run (`tests/test_artifact_perms.py`,
+      `tests/runner/test_pipeline.py`, `tests/test_evidence.py`).
 
-No PR has landed yet.
+- Introduced `bajutsu/artifact_perms.py` (`make_run_dir` / `restrict_file`, chmod after write so
+  the mode is umask-independent) and called it from the shared runner code
+  (`runner/pipeline.py` for the run dir + `scenario.yaml` + `network.json`, `evidence.py` for
+  screenshots), so idb and Playwright are covered once. Documented the behavior in
+  `docs/evidence.md` and its Japanese mirror.
 
 ## References
 
