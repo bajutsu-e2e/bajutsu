@@ -15,7 +15,7 @@
 ## Introduction
 
 Bajutsu's five Tier-1 AI entry points (`record`, `crawl`, `triage --ai`, `--dismiss-alerts`,
-enrich) reach Claude through one of two structurally different paths today. Four of them —
+`enrich`) reach Claude through one of two structurally different paths today. Four of them —
 plus `record`'s default agent — go through the SDK-based `bajutsu.ai` registry (BE-0104),
 whose only two registered providers, `anthropic` (BE-0047) and `bedrock` (BE-0053),
 authenticate with `ANTHROPIC_API_KEY` or AWS credentials. `record` and `crawl` can instead
@@ -25,7 +25,7 @@ out to the Claude Code CLI (`claude -p`) so a Claude Pro/Max subscription bills 
 instead of API credits. `bajutsu/ai_availability.py`'s own docstring already flags this as a
 wart: "a thin generalization of the existing seam, not a new subsystem". The subscription
 path is also narrower than it looks: it reaches only `record` and `crawl` — never
-`triage --ai`, `--dismiss-alerts`, or enrich — and even there it is text-only (no
+`triage --ai`, `--dismiss-alerts`, or `enrich` — and even there it is text-only (no
 screenshot), so `crawl`, which leans on vision, is degraded on it, because `claude -p`'s
 structured-output mode is not the raw Messages API.
 
@@ -47,7 +47,7 @@ by one path every AI feature shares, not a bespoke `record`-only agent.
   provisioning and rotating an `ANTHROPIC_API_KEY` can currently do so only for `record` and
   `crawl`, and only text-only — so `crawl` loses the vision it leans on to interpret a screen.
   `triage --ai` (vision-assisted root-cause), `--dismiss-alerts` (vision *is* the input), and
-  enrich have no subscription/SSO option at all today — a real capability gap, not a preference.
+  `enrich` have no subscription/SSO option at all today — a real capability gap, not a preference.
 - Maintaining two structurally different "reach Claude" code paths (the `bajutsu.ai`
   registry vs. the CLI-agent duality) is exactly the kind of drift
   `bajutsu.ai_availability`'s own docstring flags as something to reconcile, not a stable
