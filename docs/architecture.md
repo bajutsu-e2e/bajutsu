@@ -140,6 +140,43 @@ assertions.py  evidence.py ── intervals.py · network.py · visual.py · red
 - `scenario/` (the pydantic authoring model) and `drivers/base.py` (the runtime TypedDict)
   are different things. `Selector.as_selector()` converts the former to the latter.
 
+### Enforced layer boundaries (BE-0112)
+
+The layering above is not only a convention — it is an **executable contract in the gate**.
+`make lint-imports` (part of `make check`, and a CI step) runs [import-linter](https://import-linter.readthedocs.io/)
+against the declared layers, so a forbidden import fails the gate instead of surviving until someone
+notices. The configuration lives in `[tool.importlinter]` in `pyproject.toml`. Three layers are
+declared:
+
+1. **Deterministic core** — the path that derives a verdict and evidence with no model and no
+   periphery stack: `orchestrator/`, `runner/`, `drivers/base.py`, `assertions.py`, `evidence.py`,
+   `report/`, `config.py`, `scenario/`, `preflight.py` / `capability_preflight.py` /
+   `capabilities.py`, `doctor.py`, `lint.py`. It carries the prime directives.
+2. **Contract** — the stable surfaces a consumer depends on: the scenario schema (`scenario/`) and
+   the `Driver` Protocol (`drivers/base.py`).
+3. **Periphery** — the consumers of the contract, each removable behind an optional extra:
+   `serve/`, `mcp/`, the codegen emitters, the AI / agent paths (`agent.py`, `anthropic_client.py`,
+   `record.py`, `enrich.py`, `triage.py`, `crawl_guide.py`, …), and the `github.py` / `notify.py` /
+   `alerts.py` helpers.
+
+Two contracts are enforced:
+
+- **The deterministic core must not import the periphery.** This is prime directives #1 and #3 as a
+  static contract: the verdict/evidence path stays free of the serve, AI and codegen stacks, and
+  cannot silently grow a dependency on them. A pure element-tree helper a core module needs (e.g.
+  `screen_size_from_elements`, `shows_app_ui`) lives in the core (`bajutsu/elements.py`), not in a
+  periphery module such as `record.py`; likewise the resolved `ai` block (`AiConfig`) lives in
+  `config.py`, so the core reads it without importing the AI client.
+- **The scenario schema and `Driver` Protocol stay a portable inner contract** — independent of the
+  runtime core (`orchestrator/`, `runner/`, `config.py`, …) as well as the periphery. This keeps the
+  contract a stable layer a consumer can depend on without pulling the runtime, underpinning
+  cross-version schema reads (BE-0119) and any future split of the periphery from the core.
+
+The check is static analysis on the import graph — no model, nothing on the `run` / CI verdict path
+beyond a deterministic pass/fail. When a new module is added, its layer decides where it belongs: if
+it is on the verdict/evidence path it is core and must not reach the periphery; if it consumes the
+contract it is periphery and belongs behind an extra.
+
 ## Test layout
 
 `tests/` holds the **unit-test suite** (`uv run pytest -q`). None require a real Simulator: command

@@ -34,7 +34,7 @@ from typing import Any
 
 from bajutsu import simctl
 from bajutsu.drivers import base
-from bajutsu.record import shows_app_ui
+from bajutsu.elements import shows_app_ui
 
 # Controls a tap drives forward: navigation / activation, toggling a switch, or switching tabs.
 TAP_TRAITS = frozenset({"button", "link", "switch", "tab"})

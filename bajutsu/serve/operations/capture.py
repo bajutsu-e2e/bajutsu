@@ -55,7 +55,7 @@ def start_capture(
     driver = factory(target, backend, udid)
     elements = driver.query()
 
-    from bajutsu.record_capture import screen_size_from_elements
+    from bajutsu.elements import screen_size_from_elements
 
     screen_size = screen_size_from_elements(elements)
     namespaces: list[str] = list(target_cfg.id_namespaces)
