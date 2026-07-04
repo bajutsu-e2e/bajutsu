@@ -7,8 +7,9 @@
 |---|---|
 | 提案 | [BE-0128](BE-0128-device-step-capability-preflight-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **提案** |
+| 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0128") |
+| 実装 PR | (PR 作成時に記入) |
 | トピック | プラットフォーム拡張（Android / Web / Flutter） |
 <!-- /BE-METADATA -->
 
@@ -27,7 +28,7 @@
 ## 詳細設計
 
 1. **デバイス制御ステップ用のケイパビリティトークンを追加する。** `bajutsu/drivers/base.py` の `Capability` クラスに、simctl 的なデバイス制御を表すトークン（例えば `DEVICE_CONTROL = "deviceControl"`）を、既存のパターン（`MULTI_TOUCH`、`WEBVIEW`）に倣って追加します。デバイス制御ステップがバックエンドごとにオール・オア・ナッシングのケイパビリティである限り（idb は `DeviceControl` を通じてそのすべてを持ち、あるバックエンドはこのファミリー全体を対応するかしないかのどちらかである限り）、共有のトークンを 1 つ用意すれば十分です。既存の `DeviceControl` Protocol がまさにこの理由でこれらを 1 つの単位としてまとめています。将来のバックエンドが一部だけをサポートする場合は、操作ごとの細粒度なトークンに分割します。その判断は、部分的な対応を最初に必要とするバックエンドが現れたときまで先送りできます。
-2. **対応しているバックエンドでケイパビリティを宣言する。** idb は実体を持つ `DeviceControl` を裏付けとして持つため、idb の `CAPABILITIES` frozenset（`bajutsu/drivers/idb.py:326-328`）に新しいトークンを追加します。Playwright の `CAPABILITIES`（`bajutsu/drivers/playwright.py:566-576`）にはこのトークンを追加しません。これは、Playwright のシナリオには `DeviceControl` が配線されていないという現状と一致します。
+2. **対応しているバックエンドでケイパビリティを宣言する。** idb は実体を持つ `DeviceControl` を裏付けとして持つため、idb の `CAPABILITIES` frozenset（`bajutsu/drivers/idb.py:326-328`）に新しいトークンを追加します。**xcuitest の `CAPABILITIES`（`bajutsu/drivers/xcuitest.py`）にも追加します。** xcuitest は iOS Simulator ライフサイクル（`bajutsu/platform_lifecycle.py` の `_DeviceEnvironment.controller`）を共有しており、その run にも同じ実体を持つ simctl の `DeviceControl` が配線されます。ここでトークンを付けないと、実際には動く xcuitest のシナリオを preflight が誤って弾いてしまいます。Playwright の `CAPABILITIES`（`bajutsu/drivers/playwright.py:566-576`）にはこのトークンを追加しません。これは、Playwright のシナリオには `DeviceControl` が配線されていないという現状と一致します。`fake` バックエンドも同様に宣言しません（その実行時は手順 4 の `_need_control` の安全網が担います）。
 3. **`capability_preflight.py` の要求テーブルを拡張する。** `bajutsu/capability_preflight.py` の `_REQUIREMENTS` に `_Requirement` エントリを（手順 1 で選んだトークンの粒度に応じて、1 つ、あるいはデバイス制御ステップの種類ごとに）追加します。`locations` 関数は（`_walk_steps` を再利用して）ステップツリーを歩き、`step.set_location`、`step.push`、`step.clear_keychain` などが `None` でないステップを見つけます。これにより `unsupported()` は、対象のバックエンドが宣言していないケイパビリティを必要とするデバイス制御ステップの位置を、既存の `pinch`/`rotate`/`visual` のエントリとまったく同じように、デバイス操作が始まる前にすべて報告できるようになります。
 4. **実行時の `_need_control` チェックは、主要なゲートではなく安全網として残す。** preflight チェックが、シナリオを決定的かつ早期に失敗させる主要な仕組みになります。既存の `_need_control` による `UnsupportedAction` は、ケイパビリティ上はバックエンドがデバイス制御に対応していても、その実行時の環境（フェイクドライバ、あるいは単一デバイスに固定しない並列実行）が配線されていない場合に備える多層防御として残します。これはケイパビリティではなく環境の問題であり、preflight が解決すべき対象ではありません。
 
@@ -45,12 +46,12 @@
 > 作業分解（作業の単位ごとに 1 つ）に対応し、ログには変更内容と時期（古い順）を PR へのリンクと
 > ともに記録します。
 
-- [ ] `bajutsu/drivers/base.py` の `Capability` にデバイス制御用のケイパビリティトークンを追加する
-- [ ] 実体を持つ `DeviceControl` を提供するバックエンド（idb）でトークンを宣言する
-- [ ] `capability_preflight.py` の `_REQUIREMENTS` を拡張し、デバイス制御ステップをゲートする
-- [ ] `_need_control` の実行時チェックは、主要なゲートではなく多層防御のフォールバックとして残す
+- [x] `bajutsu/drivers/base.py` の `Capability` にデバイス制御用のケイパビリティトークンを追加する
+- [x] 実体を持つ `DeviceControl` を提供するバックエンド（idb、および同じ iOS Simulator ライフサイクルを共有する xcuitest）でトークンを宣言する
+- [x] `capability_preflight.py` の `_REQUIREMENTS` を拡張し、デバイス制御ステップをゲートする
+- [x] `_need_control` の実行時チェックは、主要なゲートではなく多層防御のフォールバックとして残す
 
-まだ着手した PR はありません。
+- 2026-07-04: `Capability.DEVICE_CONTROL` を追加し、idb と xcuitest の `CAPABILITIES` で宣言、`capability_preflight` の `_REQUIREMENTS` にデバイス制御ステップ（`relaunch` を除く 9 種）のゲートを追加しました。実行時の `_need_control` は多層防御として据え置きです。`docs/drivers.md`（両言語）も更新しました。
 
 ## 参考
 

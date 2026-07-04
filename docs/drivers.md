@@ -53,6 +53,7 @@ resolution, and the **preflight capability check** (below).
 | `conditionWait` | native condition waiting | — | ✅ | ✅ |
 | `network` | native network monitoring | — | ✅ | — |
 | `multiTouch` | two-finger gestures (pinch / rotate) | — | ✅ | ✅ |
+| `deviceControl` | simctl device operations (push / setLocation / clearKeychain / …) | ✅ | — | — |
 
 > idb actuates by **frame-center coordinates** — it exposes no semantic tap, so the run loop resolves
 > a unique element via `query()` and taps its center. `pinch` / `rotate` raise `UnsupportedAction`
@@ -74,12 +75,17 @@ through (prime directive #2: fail fast and clearly). It is a pure function of (s
 set) — no device, no clock — and per-scenario: only the offending scenarios fail, the rest run.
 
 The check gates only the **hard** requirements the capability set cleanly decides: `pinch` /
-`rotate` need `multiTouch`, a `visual` assertion needs `screenshot`, and every run needs `query` +
+`rotate` need `multiTouch`, a `visual` assertion needs `screenshot`, a device-control step
+(`setLocation` / `push` / `clearKeychain` / `clearClipboard` / `setClipboard` / `background` /
+`foreground` / `overrideStatusBar` / `clearStatusBar`) needs `deviceControl` (the whole
+simctl-backed `DeviceControl` family as one unit, BE-0128), and every run needs `query` +
 `elements`. It deliberately does **not** gate `conditionWait` (the run loop polls for every wait,
 so no backend needs the token) or `network` (idb captures traffic through the app-side collector
 despite not advertising `network`, so `request` / `event` / `requestSequence` / `responseSchema`
 assertions and `until: { request }` waits run on idb). `gestures.py`'s `_require_multi_touch` stays
-as a defense-in-depth check at gesture time.
+as a defense-in-depth check at gesture time, and `_need_control` stays as the equivalent for
+device-control steps — catching the case where the capability is advertised but no `DeviceControl`
+is wired for the run (the fake driver, or a parallel run with no pinned device).
 
 ## idb
 
