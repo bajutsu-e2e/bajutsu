@@ -618,6 +618,7 @@ Web（Playwright）backend とその完成（リッチな capability、並列実
 | ID | 項目 | 状態 |
 |---|---|---|
 | [BE-0156](BE-0156-roadmap-topic-label-sync/BE-0156-roadmap-topic-label-sync-ja.md) | ロードマップ項目 PR のラベルを Topic と同期させる | 提案 |
+| [BE-0162](BE-0162-roadmap-status-filter-skill/BE-0162-roadmap-status-filter-skill-ja.md) | AI セッション向けのロードマップ状態フィルタスキル | 提案 |
 <!-- /GENERATED:proposals-dev-infra -->
 
 ### コードベース品質・技術的負債

@@ -625,6 +625,7 @@ Keeping the autonomous crawl fast and its code lean as it grows.
 | ID | Item | Status |
 |---|---|---|
 | [BE-0156](BE-0156-roadmap-topic-label-sync/BE-0156-roadmap-topic-label-sync.md) | Keep roadmap-item PR labels in sync with Topic | Proposal |
+| [BE-0162](BE-0162-roadmap-status-filter-skill/BE-0162-roadmap-status-filter-skill.md) | Roadmap status-filter skill for AI sessions | Proposal |
 <!-- /GENERATED:proposals-dev-infra -->
 
 ### Codebase quality & technical debt

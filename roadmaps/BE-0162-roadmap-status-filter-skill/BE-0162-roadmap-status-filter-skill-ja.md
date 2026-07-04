@@ -1,14 +1,14 @@
-[English](BE-XXXX-roadmap-status-filter-skill.md) · **日本語**
+[English](BE-0162-roadmap-status-filter-skill.md) · **日本語**
 
-# BE-XXXX — AI セッション向けのロードマップ状態フィルタスキル
+# BE-0162 — AI セッション向けのロードマップ状態フィルタスキル
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
 |---|---|
-| 提案 | [BE-XXXX](BE-XXXX-roadmap-status-filter-skill-ja.md) |
+| 提案 | [BE-0162](BE-0162-roadmap-status-filter-skill-ja.md) |
 | 提案者 | [@hirosassa](https://github.com/hirosassa) |
 | 状態 | **提案** |
-| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0162") |
 | トピック | Development infrastructure (contributor workflow) |
 <!-- /BE-METADATA -->
 
@@ -66,7 +66,7 @@ AI セッションは `roadmaps/README.md` を全文読まなくても、「`Pro
 - 純粋かつオフラインで動きます。`gh` もネットワークも LLM も使わず、`roadmaps/` 以下のファイルを読むだけ
   です。
 
-プレースホルダ（`BE-XXXX`）の項目も他と同じく `Status` と `Topic` を読み取るので、進行中の提案も
+プレースホルダ（`BE-0162`）の項目も他と同じく `Status` と `Topic` を読み取るので、進行中の提案も
 フィルタに現れます（`ID` の欄にはプレースホルダが表示されます）。
 
 ### 2. スキルの定義

@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-roadmap-status-filter-skill-ja.md)
+**English** · [日本語](BE-0162-roadmap-status-filter-skill-ja.md)
 
-# BE-XXXX — Roadmap status-filter skill for AI sessions
+# BE-0162 — Roadmap status-filter skill for AI sessions
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-roadmap-status-filter-skill.md) |
+| Proposal | [BE-0162](BE-0162-roadmap-status-filter-skill.md) |
 | Author | [@hirosassa](https://github.com/hirosassa) |
 | Status | **Proposal** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0162") |
 | Topic | Development infrastructure (contributor workflow) |
 <!-- /BE-METADATA -->
 
@@ -67,7 +67,7 @@ The query:
   output.
 - Is pure and offline — no `gh`, no network, no LLM. It only reads files under `roadmaps/`.
 
-Placeholder (`BE-XXXX`) items are read for their `Status`/`Topic` like any other, so an
+Placeholder (`BE-0162`) items are read for their `Status`/`Topic` like any other, so an
 in-flight proposal shows up in the filter (its `ID` cell shows the placeholder).
 
 ### 2. The skill definition
