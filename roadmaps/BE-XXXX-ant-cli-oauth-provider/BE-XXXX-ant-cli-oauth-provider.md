@@ -18,14 +18,16 @@ Bajutsu's five Tier-1 AI entry points (`record`, `crawl`, `triage --ai`, `--dism
 enrich) reach Claude through one of two structurally different paths today. Four of them —
 plus `record`'s default agent — go through the SDK-based `bajutsu.ai` registry (BE-0104),
 whose only two registered providers, `anthropic` (BE-0047) and `bedrock` (BE-0053),
-authenticate with `ANTHROPIC_API_KEY` or AWS credentials. `record` alone can instead pick
-`--agent claude-code` (`bajutsu/claude_code_agent.py` + `bajutsu/agents.py`), a second,
-parallel path that shells out to the Claude Code CLI (`claude -p`) so a Claude Pro/Max
-subscription bills the usage instead of API credits. `bajutsu/ai_availability.py`'s own
-docstring already flags this as a wart: "a thin generalization of the existing seam, not a
-new subsystem". The duality is also narrower than it looks — only `record` gets
-subscription billing, and even there the CLI agent is documented as text-only (no
-screenshot), because `claude -p`'s structured-output mode is not the raw Messages API.
+authenticate with `ANTHROPIC_API_KEY` or AWS credentials. `record` and `crawl` can instead
+pick `--agent claude-code` (`bajutsu/claude_code_agent.py` and `bajutsu/crawl_guide.py`'s
+`ClaudeCodeActionProposer`, via `bajutsu/agents.py`), a second, parallel path that shells
+out to the Claude Code CLI (`claude -p`) so a Claude Pro/Max subscription bills the usage
+instead of API credits. `bajutsu/ai_availability.py`'s own docstring already flags this as a
+wart: "a thin generalization of the existing seam, not a new subsystem". The subscription
+path is also narrower than it looks: it reaches only `record` and `crawl` — never
+`triage --ai`, `--dismiss-alerts`, or enrich — and even there it is text-only (no
+screenshot), so `crawl`, which leans on vision, is degraded on it, because `claude -p`'s
+structured-output mode is not the raw Messages API.
 
 This item replaces the whole detour with one new AI provider, `ant`, backed by the official
 [Anthropic CLI](https://github.com/anthropics/anthropic-cli) (`ant auth login` — a
@@ -42,10 +44,10 @@ by one path every AI feature shares, not a bespoke `record`-only agent.
 ## Motivation
 
 - Teams that want to bill Claude usage against an existing Pro/Max/Console seat rather than
-  provisioning and rotating an `ANTHROPIC_API_KEY` can currently do so only for `record`, and
-  only text-only. `crawl` (which leans on vision to interpret a screen), `triage --ai`
-  (vision-assisted root-cause), and `--dismiss-alerts` (vision *is* the input) offer no such
-  option today — a real capability gap, not a preference.
+  provisioning and rotating an `ANTHROPIC_API_KEY` can currently do so only for `record` and
+  `crawl`, and only text-only — so `crawl` loses the vision it leans on to interpret a screen.
+  `triage --ai` (vision-assisted root-cause), `--dismiss-alerts` (vision *is* the input), and
+  enrich have no subscription/SSO option at all today — a real capability gap, not a preference.
 - Maintaining two structurally different "reach Claude" code paths (the `bajutsu.ai`
   registry vs. the CLI-agent duality) is exactly the kind of drift
   `bajutsu.ai_availability`'s own docstring flags as something to reconcile, not a stable
@@ -87,7 +89,11 @@ by one path every AI feature shares, not a bespoke `record`-only agent.
    from `--profile` / `ANTHROPIC_PROFILE`; bajutsu reuses that env var rather than inventing
    an `ai.profile` field.
 5. **Remove the `claude-code` agent kind.** Delete `bajutsu/claude_code_agent.py`; drop
-   `"claude-code"` from `agents.AGENT_KINDS` and its branch in `make_agent`; remove the
+   `"claude-code"` from `agents.AGENT_KINDS` and its branch in `make_agent`, and remove the
+   `ClaudeCodeActionProposer` + its `claude-code` branch in `bajutsu/crawl_guide.py`'s
+   `make_guide` (plus the `--agent` option `record` and `crawl` expose in
+   `bajutsu/cli/commands/record.py` / `crawl.py`), so both commands resolve through the
+   provider registry like every other AI path; remove the
    CLI-specific branch in `ai_availability.py` (`CLAUDE_CODE_MISSING`, `agent_kind` parameter)
    since every path now resolves through one `ai.provider`; update `serve`'s AI-provider
    selector (`bajutsu/templates/serve.html.j2` / `serve.js`,
@@ -141,7 +147,8 @@ Open questions, left **TBD** for implementation time:
       `credential_gap`, `resolve_model`)
 - [ ] Register `ant` in `ai/registry.py`
 - [ ] Remove `bajutsu/claude_code_agent.py` and the `claude-code` agent kind (`agents.py`,
-      `ai_availability.py`)
+      `crawl_guide.py`'s `ClaudeCodeActionProposer`, `ai_availability.py`, the `--agent` option
+      in `record` / `crawl`)
 - [ ] Update `serve`'s AI-provider selector and settings UI
 - [ ] Update docs (`docs/configuration.md`, `docs/recording.md`, Japanese mirrors)
 - [ ] Tests for the new provider branch; remove/replace `claude_code_agent` tests
