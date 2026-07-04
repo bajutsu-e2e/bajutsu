@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0102") |
-| Implementing PR | [#652](https://github.com/bajutsu-e2e/bajutsu/pull/652) |
+| Implementing PR | [#652](https://github.com/bajutsu-e2e/bajutsu/pull/652), [#654](https://github.com/bajutsu-e2e/bajutsu/pull/654) |
 | Topic | Authoring experience (record / GUI editor) |
 <!-- /BE-METADATA -->
 
@@ -157,7 +157,7 @@ would settle; the recommendation is in brackets and the alternatives are real:
   and the `bajutsu stats --runs/--json/--html` command, with `tests/test_stats.py` /
   `tests/test_cli_stats.py` on the Linux gate and bilingual `cli.md` docs. The serve Stats tab
   (unit 4) is deferred to a follow-on.
-- _pending PR_ — Added the serve **Stats** tab (unit 4): a new `stats_html` serve operation reusing
+- [#654](https://github.com/bajutsu-e2e/bajutsu/pull/654) — Added the serve **Stats** tab (unit 4): a new `stats_html` serve operation reusing
   the aggregator over the org's run history through the existing seams (DB-else-artifact for the id
   list, ArtifactStore for the manifests), served at `GET /stats` on both the stdlib and FastAPI
   backends and rendered in the SPA's new Stats tab. Covered by `tests/serve/test_stats_tab.py`.
