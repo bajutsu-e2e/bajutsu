@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0129") |
-| Implementing PR | _pending_ |
+| Implementing PR | [#665](https://github.com/bajutsu-e2e/bajutsu/pull/665) |
 | Topic | Hosting the web UI (cloud / self-hosted) |
 <!-- /BE-METADATA -->
 
@@ -190,7 +190,7 @@ check`, not inside `run`.
 
 Log:
 
-- _pending_ — Draw the core/`serve` boundary: move the org model to `bajutsu/serve/orgs.py`, drop
+- [#665](https://github.com/bajutsu-e2e/bajutsu/pull/665) — Draw the core/`serve` boundary: move the org model to `bajutsu/serve/orgs.py`, drop
   `orgs:` in the core loader, add the db/oauth import-linter contract, document the rule in
   `architecture.md` (both languages), and add the `serve.js` `lint-js` guardrail.
 
