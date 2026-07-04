@@ -21,7 +21,7 @@ from urllib.request import Request, urlopen
 
 import typer
 
-from bajutsu import env
+from bajutsu import simctl
 from bajutsu.object_store import content_type_for
 from bajutsu.serve import InMemoryLogBus
 from bajutsu.serve.server.worker_job import execute_job_spec
@@ -177,7 +177,7 @@ def _run_with_heartbeat(
             job = execute_job_spec(
                 spec,
                 popen=subprocess.Popen,
-                simctl=env._real_run,
+                simctl=simctl._real_run,
                 cwd=work,
                 bus=bus,
                 store=_object_store(),

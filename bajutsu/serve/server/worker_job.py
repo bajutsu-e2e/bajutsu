@@ -18,7 +18,7 @@ from contextlib import nullcontext
 from pathlib import Path
 from typing import Any
 
-from bajutsu import env
+from bajutsu import simctl as _simctl
 from bajutsu.config import DEFAULT_ORG as _DEFAULT_ORG
 from bajutsu.serve import oplog
 from bajutsu.serve.jobs import Job, ServeState, run_job
@@ -108,7 +108,7 @@ def execute_job_spec(
     spec: dict[str, Any],
     *,
     popen: Any = subprocess.Popen,
-    simctl: env.RunFn = env._real_run,
+    simctl: _simctl.RunFn = _simctl._real_run,
     cwd: Path | None = None,
     bus: LogBus | None = None,
     store: ObjectStore | None = None,

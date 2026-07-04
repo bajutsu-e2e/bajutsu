@@ -253,6 +253,7 @@ Bajutsu の「契約としての決定性」という立場を、Maestro の fla
 | [BE-0092](BE-0092-crawl-coordinator-extraction/BE-0092-crawl-coordinator-extraction-ja.md) | クロール調整役をクラスに切り出す | 実装済み |
 | [BE-0132](BE-0132-dedupe-crawl-screenshot-helpers/BE-0132-dedupe-crawl-screenshot-helpers-ja.md) | クロールのスクリーンショットヘルパーを重複排除する | 実装済み |
 | [BE-0134](BE-0134-serve-cli-flag-mirror-drift/BE-0134-serve-cli-flag-mirror-drift-ja.md) | serve と CLI のフラグ二重管理による drift をなくす | 実装済み |
+| [BE-0135](BE-0135-module-naming-debt/BE-0135-module-naming-debt-ja.md) | トップレベルモジュールの命名の負債を解消する | 実装済み |
 | [BE-0140](BE-0140-dedupe-claude-client-init/BE-0140-dedupe-claude-client-init-ja.md) | Claude クライアント初期化の重複をなくす | 実装済み |
 | [BE-0142](BE-0142-cli-command-coverage/BE-0142-cli-command-coverage-ja.md) | CLI コマンド層にテストを追加する | 実装済み |
 | [BE-0143](BE-0143-run-command-decomposition/BE-0143-run-command-decomposition-ja.md) | run コマンドの巨大関数を分解する | 実装済み |
@@ -623,9 +624,7 @@ Web（Playwright）backend とその完成（リッチな capability、並列実
 `bajutsu/` 内部のコードを対象にした、振る舞いを変えないクリーンアップです。重複コードの解消、肥大化した関数・モジュールの分割、命名の明確化などが含まれます。上記の「開発基盤（コントリビュータ体験）」がこのリポジトリで作業するためのツール（CI、フック、ロードマップ自動化）を指すのに対し、こちらは `bajutsu/` 自体のコード品質を扱う点で区別されます。
 
 <!-- GENERATED:proposals-quality-debt -->
-| ID | 項目 | 状態 |
-|---|---|---|
-| [BE-0135](BE-0135-module-naming-debt/BE-0135-module-naming-debt-ja.md) | トップレベルモジュールの命名の負債を解消する | 提案 |
+
 <!-- /GENERATED:proposals-quality-debt -->
 
 ### 外部サービスとの連携

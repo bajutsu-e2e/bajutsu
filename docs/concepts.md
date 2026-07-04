@@ -124,7 +124,7 @@ evidence reproduces without AI on the second run onward ([evidence](evidence.md)
 |---|---|
 | Ambiguous selector fails fast | `drivers/base.py` `resolve_unique` |
 | Condition waits only | `orchestrator/waits.py` `_wait` |
-| Clean environment | `runner/launch.py` `launch_driver` · `env.py` `Env.erase` |
+| Clean environment | `runner/launch.py` `launch_driver` · `simctl.py` `Env.erase` |
 | Machine assertions | `assertions.py` |
 | Stability order / actuator | `backends.py` `select_actuator` · each `drivers/*.py` `capabilities()` |
 | App-agnostic | `config.py` `resolve` → `Effective` |

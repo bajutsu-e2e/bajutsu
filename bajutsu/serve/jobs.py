@@ -22,7 +22,7 @@ if TYPE_CHECKING:
     from bajutsu.serve.server.db import Repository
     from bajutsu.serve.server.oauth import OAuthClient
 
-from bajutsu import env
+from bajutsu import simctl as _simctl
 from bajutsu.config import DEFAULT_ORG
 from bajutsu.drivers import base as driver_base
 from bajutsu.object_store import EvidenceTarget
@@ -192,7 +192,9 @@ class ServeState:
     # server backend assigns a SqlRepository only when BAJUTSU_DATABASE_URL is set, so behavior is
     # unchanged without one. Annotated as a string (lazy) so the default path never loads SQLAlchemy.
     repository: Repository | None = None
-    simctl: env.RunFn = env._real_run  # runs `xcrun simctl …` (booting devices, listing them)
+    simctl: _simctl.RunFn = (
+        _simctl._real_run
+    )  # runs `xcrun simctl …` (booting devices, listing them)
     jobs: dict[str, Job] = field(default_factory=dict)
     # Cap on concurrently-running run/record jobs so one caller can't monopolize the scarce device
     # (BE-0051). <= 0 means unlimited; serve() sets it from --max-concurrent-runs (default 4).
@@ -425,7 +427,7 @@ def _boot_devices(state: ServeState, job: Job) -> bool:
 
     def boot(udid: str) -> None:
         try:
-            state.simctl(env.bootstatus_cmd(udid), None)
+            state.simctl(_simctl.bootstatus_cmd(udid), None)
             _log(job, f"booted {udid}")
         except (OSError, subprocess.CalledProcessError) as e:
             with errlock:

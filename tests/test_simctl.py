@@ -5,14 +5,14 @@ from __future__ import annotations
 import subprocess
 from collections.abc import Mapping
 
-from bajutsu import env
+from bajutsu import simctl
 
 
 def test_command_builders() -> None:
-    assert env.erase_cmd("U") == ["xcrun", "simctl", "erase", "U"]
-    assert env.boot_cmd("U") == ["xcrun", "simctl", "boot", "U"]
-    assert env.openurl_cmd("U", "app://x") == ["xcrun", "simctl", "openurl", "U", "app://x"]
-    assert env.screenshot_cmd("U", "/p.png") == [
+    assert simctl.erase_cmd("U") == ["xcrun", "simctl", "erase", "U"]
+    assert simctl.boot_cmd("U") == ["xcrun", "simctl", "boot", "U"]
+    assert simctl.openurl_cmd("U", "app://x") == ["xcrun", "simctl", "openurl", "U", "app://x"]
+    assert simctl.screenshot_cmd("U", "/p.png") == [
         "xcrun",
         "simctl",
         "io",
@@ -20,7 +20,7 @@ def test_command_builders() -> None:
         "screenshot",
         "/p.png",
     ]
-    assert env.launch_cmd("U", "com.x", ["-flag", "1"]) == [
+    assert simctl.launch_cmd("U", "com.x", ["-flag", "1"]) == [
         "xcrun",
         "simctl",
         "launch",
@@ -30,11 +30,11 @@ def test_command_builders() -> None:
         "-flag",
         "1",
     ]
-    assert env.list_devices_cmd() == ["xcrun", "simctl", "list", "devices", "available", "-j"]
-    assert env.bootstatus_cmd("U") == ["xcrun", "simctl", "bootstatus", "U", "-b"]
-    assert env.install_cmd("U", "/p.app") == ["xcrun", "simctl", "install", "U", "/p.app"]
-    assert env.uninstall_cmd("U", "com.x") == ["xcrun", "simctl", "uninstall", "U", "com.x"]
-    assert env.get_app_container_cmd("U", "com.x") == [
+    assert simctl.list_devices_cmd() == ["xcrun", "simctl", "list", "devices", "available", "-j"]
+    assert simctl.bootstatus_cmd("U") == ["xcrun", "simctl", "bootstatus", "U", "-b"]
+    assert simctl.install_cmd("U", "/p.app") == ["xcrun", "simctl", "install", "U", "/p.app"]
+    assert simctl.uninstall_cmd("U", "com.x") == ["xcrun", "simctl", "uninstall", "U", "com.x"]
+    assert simctl.get_app_container_cmd("U", "com.x") == [
         "xcrun",
         "simctl",
         "get_app_container",
@@ -50,7 +50,7 @@ def test_uninstall_is_idempotent() -> None:
     def absent(args: list[str], e: object = None) -> str:
         raise subprocess.CalledProcessError(2, args, stderr="not installed")
 
-    env.Env("U", run=absent).uninstall("com.x")  # swallows the error
+    simctl.Env("U", run=absent).uninstall("com.x")  # swallows the error
 
 
 def test_is_installed_reflects_get_app_container() -> None:
@@ -62,8 +62,8 @@ def test_is_installed_reflects_get_app_container() -> None:
     def absent(args: list[str], e: object = None) -> str:
         raise subprocess.CalledProcessError(2, args, stderr="No such file or directory")
 
-    assert env.Env("U", run=present).is_installed("com.x") is True
-    assert env.Env("U", run=absent).is_installed("com.x") is False  # missing -> False, no raise
+    assert simctl.Env("U", run=present).is_installed("com.x") is True
+    assert simctl.Env("U", run=absent).is_installed("com.x") is False  # missing -> False, no raise
 
 
 def test_booted_udids_parses_simctl() -> None:
@@ -79,17 +79,17 @@ def test_booted_udids_parses_simctl() -> None:
             }
         }
     )
-    assert env.booted_udids(run=lambda args, e=None: payload) == ["AAA"]
+    assert simctl.booted_udids(run=lambda args, e=None: payload) == ["AAA"]
 
     def boom(args: list[str], e: object = None) -> str:
         raise OSError("simctl not found")
 
-    assert env.booted_udids(run=boom) == []  # failure -> empty, never raises
+    assert simctl.booted_udids(run=boom) == []  # failure -> empty, never raises
 
 
 def test_runtime_label_humanizes_identifier() -> None:
-    assert env.runtime_label("com.apple.CoreSimulator.SimRuntime.iOS-26-5") == "iOS 26.5"
-    assert env.runtime_label("com.apple.CoreSimulator.SimRuntime.watchOS-11-0") == "watchOS 11.0"
+    assert simctl.runtime_label("com.apple.CoreSimulator.SimRuntime.iOS-26-5") == "iOS 26.5"
+    assert simctl.runtime_label("com.apple.CoreSimulator.SimRuntime.watchOS-11-0") == "watchOS 11.0"
 
 
 def test_device_catalog_maps_udid_to_model_and_os() -> None:
@@ -105,22 +105,22 @@ def test_device_catalog_maps_udid_to_model_and_os() -> None:
             }
         }
     )
-    catalog = env.device_catalog(run=lambda args, e=None: payload)
+    catalog = simctl.device_catalog(run=lambda args, e=None: payload)
     assert catalog == {"AAA": {"name": "iPhone 15", "runtime": "iOS 17.2"}}
 
     def boom(args: list[str], e: object = None) -> str:
         raise OSError("simctl not found")
 
-    assert env.device_catalog(run=boom) == {}  # failure -> empty, never raises
+    assert simctl.device_catalog(run=boom) == {}  # failure -> empty, never raises
 
 
 def test_locale_args() -> None:
-    assert env.locale_args("ja_JP") == ["-AppleLocale", "ja_JP", "-AppleLanguages", "(ja)"]
-    assert env.locale_args("en") == ["-AppleLocale", "en", "-AppleLanguages", "(en)"]
+    assert simctl.locale_args("ja_JP") == ["-AppleLocale", "ja_JP", "-AppleLanguages", "(ja)"]
+    assert simctl.locale_args("en") == ["-AppleLocale", "en", "-AppleLanguages", "(en)"]
 
 
 def test_child_env_prefix() -> None:
-    assert env.child_env({"FOO": "1"}) == {"SIMCTL_CHILD_FOO": "1"}
+    assert simctl.child_env({"FOO": "1"}) == {"SIMCTL_CHILD_FOO": "1"}
 
 
 def test_env_uses_injected_runner() -> None:
@@ -130,7 +130,7 @@ def test_env_uses_injected_runner() -> None:
         calls.append((args, extra_env))
         return ""
 
-    e = env.Env("UDID", run=fake_run)
+    e = simctl.Env("UDID", run=fake_run)
     e.erase()
     e.launch("com.x", ["-a"], {"K": "v"})
     e.openurl("app://settings")
@@ -159,7 +159,7 @@ def test_shutdown_is_idempotent() -> None:
             1, args, stderr="Unable to shutdown device in current state: Shutdown"
         )
 
-    env.Env("UDID", run=fake_run).shutdown()  # swallows the error
+    simctl.Env("UDID", run=fake_run).shutdown()  # swallows the error
     assert calls == [["xcrun", "simctl", "shutdown", "UDID"]]
 
 
@@ -170,8 +170,8 @@ def test_device_error_keeps_command_and_simctl_stderr() -> None:
         output="",
         stderr="Unable to erase contents and settings in current state: Booted\n",
     )
-    err = env.device_error(exc)
-    assert isinstance(err, env.DeviceError)
+    err = simctl.device_error(exc)
+    assert isinstance(err, simctl.DeviceError)
     msg = str(err)
     assert "exit 149" in msg
     assert "xcrun simctl erase U" in msg

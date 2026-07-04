@@ -32,7 +32,7 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
-from bajutsu import env
+from bajutsu import simctl
 from bajutsu.drivers import base
 from bajutsu.record import shows_app_ui
 
@@ -899,7 +899,7 @@ def crawl(
                 coord.cancel_action()  # the selector no longer resolves — drop it, reset, move on
                 current_fp = None
                 continue
-            except env.DeviceError:
+            except simctl.DeviceError:
                 if not isolate:
                     raise  # a lone worker surfaces the device failure, as the serial engine did
                 current_fp = None

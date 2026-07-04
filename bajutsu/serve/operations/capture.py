@@ -55,7 +55,7 @@ def start_capture(
     driver = factory(target, backend, udid)
     elements = driver.query()
 
-    from bajutsu.capture import screen_size_from_elements
+    from bajutsu.record_capture import screen_size_from_elements
 
     screen_size = screen_size_from_elements(elements)
     namespaces: list[str] = list(target_cfg.id_namespaces)
@@ -97,7 +97,7 @@ def mark_capture(
     except (TypeError, ValueError):
         return {"error": "point values must be numeric"}, 400
 
-    from bajutsu.capture import resolve_capture, step_for_tap, step_for_type
+    from bajutsu.record_capture import resolve_capture, step_for_tap, step_for_type
 
     sw, sh = session.screen_size
     px, py = nx * sw, ny * sh

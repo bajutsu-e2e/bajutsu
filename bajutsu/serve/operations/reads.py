@@ -342,7 +342,7 @@ def resolve_scenario_pick(
     except (json.JSONDecodeError, OSError, AttributeError, TypeError):
         return {"error": "elements.json is corrupt or unreadable"}, 400
 
-    from bajutsu.capture import resolve_capture, screen_size_from_elements
+    from bajutsu.record_capture import resolve_capture, screen_size_from_elements
 
     sw, sh = screen_size_from_elements(elements)
     px, py = nx * sw, ny * sh
