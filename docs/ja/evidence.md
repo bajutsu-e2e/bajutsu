@@ -150,9 +150,18 @@ class Artifact:
 ```yaml
 redact:
   labels: ["カード番号"]            # accessibility ラベル
-  headers: ["Authorization", "Cookie"]  # HTTP ヘッダ名
+  headers: ["X-Session"]           # 追加の HTTP ヘッダ名（既定集合に上乗せ）
   fields: ["token", "password"]    # JSON/body フィールド名
+  unmaskHeaders: ["authorization"] # 既定の保護を外す（明示的で目に見える指定）
 ```
+
+> **機密ヘッダは既定でマスクされます**（この保護にシナリオ側の `redact:` は不要です）。組み込みの集合は
+> `authorization`・`proxy-authorization`・`cookie`・`set-cookie`・`x-api-key`・`x-auth-token` で、
+> 大文字小文字を区別せずに照合します。`cookie` と `set-cookie` は一つの関心事として扱い、どちらか一方を
+> 指定（または解除）すると両方に適用されます。`redact.headers` に書いたヘッダ名はこの集合に上乗せされる
+> だけで、集合を置き換えることはありません。既定ヘッダの生の値がどうしても必要なとき（認証失敗のデバッグ
+> など）は、そのヘッダ名を `unmaskHeaders` に書きます。保護を外すのは明示的で目に見える選択であり、
+> `redact:` を書かないだけで外れることはありません。
 
 > redact は証跡の書き出し前に **適用されます**（`redaction.py` `Redactor`）。device log と app trace は key→value パターンでスクラブし、要素ツリーは label が設定済みなら value をマスクします（または埋め込まれた secret をスクラブします）。各 network exchange は構造的にマスクします。ヘッダ値は名前で処理し、url / request / response の body はフリーテキストとして処理するので、クエリパラメータや `token` / `password` の body フィールドも捕捉します。画像（スクリーンショット / video）はマスクできず、そのまま残ります。
 >

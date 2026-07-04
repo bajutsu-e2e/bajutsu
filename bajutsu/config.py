@@ -537,6 +537,7 @@ def _merge_redact(base: Redact, over: Redact) -> Redact:
         labels=union(base.labels, over.labels),
         headers=union(base.headers, over.headers),
         fields=union(base.fields, over.fields),
+        unmaskHeaders=union(base.unmask_headers, over.unmask_headers),
     )
 
 
