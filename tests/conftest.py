@@ -1,4 +1,5 @@
-"""Shared test helpers: an element factory and a fake Anthropic client.
+"""Shared test helpers: an element factory, a fake Anthropic client, and a conformant BE-item body
+builder.
 
 These were copy-pasted across many test modules; centralising them keeps the fakes in
 one place. Plain functions/classes (not fixtures) so they can be used at module level
@@ -12,6 +13,7 @@ from typing import Any
 
 from bajutsu.drivers import base
 from bajutsu.drivers.fake import FakeDriver
+from scripts.build_roadmap_index import tracking_issue_url
 
 
 class ShotDriver(FakeDriver):
@@ -21,6 +23,49 @@ class ShotDriver(FakeDriver):
     def screenshot(self, path: str) -> None:
         Path(path).write_bytes(b"\x89PNG\r\n\x1a\n fake")
         self.actions.append(("screenshot", path))
+
+
+ROADMAP_HEADINGS_EN = ("Introduction", "Motivation", "Detailed design", "Alternatives considered")
+ROADMAP_HEADINGS_JA = ("はじめに", "動機", "詳細設計", "検討した代替案")
+
+
+def valid_roadmap_item_en(id_token: str = "BE-XXXX", slug: str = "a-thing") -> str:
+    """A canonically-shaped English BE item body — the fixture the format checker, the mechanical
+    fixer, and the stale-PR re-checker's tests all build drift on top of."""
+    body = "\n\n".join(f"## {h}\n\nTBD" for h in ROADMAP_HEADINGS_EN)
+    return (
+        f"**English** · [日本語]({id_token}-{slug}-ja.md)\n\n"
+        f"# {id_token} — A test item\n\n"
+        "<!-- BE-METADATA -->\n"
+        "| Field | Value |\n"
+        "|---|---|\n"
+        f"| Proposal | [{id_token}]({id_token}-{slug}.md) |\n"
+        "| Author | [@0x0c](https://github.com/0x0c) |\n"
+        "| Status | **Proposal** |\n"
+        f"| Tracking issue | [Search]({tracking_issue_url(id_token)}) |\n"
+        "| Topic | Development infrastructure (contributor workflow) |\n"
+        "<!-- /BE-METADATA -->\n\n"
+        f"{body}\n\n## Progress\n\nTBD\n\n## References\n\nTBD\n"
+    )
+
+
+def valid_roadmap_item_ja(id_token: str = "BE-XXXX", slug: str = "a-thing") -> str:
+    """The Japanese mirror of :func:`valid_roadmap_item_en`."""
+    body = "\n\n".join(f"## {h}\n\nTBD" for h in ROADMAP_HEADINGS_JA)
+    return (
+        f"[English]({id_token}-{slug}.md) · **日本語**\n\n"
+        f"# {id_token} — A test item\n\n"
+        "<!-- BE-METADATA -->\n"
+        "| 項目 | 値 |\n"
+        "|---|---|\n"
+        f"| 提案 | [{id_token}]({id_token}-{slug}-ja.md) |\n"
+        "| 提案者 | [@0x0c](https://github.com/0x0c) |\n"
+        "| 状態 | **提案** |\n"
+        f"| トラッキング Issue | [検索]({tracking_issue_url(id_token)}) |\n"
+        "| トピック | 開発基盤（コントリビュータ体験） |\n"
+        "<!-- /BE-METADATA -->\n\n"
+        f"{body}\n\n## 進捗\n\nTBD\n\n## 参考\n\nTBD\n"
+    )
 
 
 def el(

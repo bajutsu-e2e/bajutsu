@@ -241,6 +241,7 @@ Bajutsu の「契約としての決定性」という立場を、Maestro の fla
 | [BE-0117](BE-0117-coverage-floor-ratchet/BE-0117-coverage-floor-ratchet-ja.md) | CLI コマンド層の残りをテストしてから、カバレッジフロアをラチェットする | 実装済み |
 | [BE-0122](BE-0122-workflow-name-legibility/BE-0122-workflow-name-legibility-ja.md) | Legible GitHub Actions workflow and job names | 実装済み |
 | [BE-0139](BE-0139-roadmap-dashboard-issue-links/BE-0139-roadmap-dashboard-issue-links-ja.md) | ロードマップのダッシュボードと項目ファイルからトラッキング Issue へリンクする | 実装済み |
+| [BE-0149](BE-0149-roadmap-placeholder-format-guardrail/BE-0149-roadmap-placeholder-format-guardrail-ja.md) | ロードマッププレースホルダーを見逃すフォーマットガードレールの穴を塞ぐ | 実装済み |
 | [BE-0159](BE-0159-flatten-roadmap-status-folders/BE-0159-flatten-roadmap-status-folders-ja.md) | ロードマップ項目を単一ディレクトリにまとめ、状態別フォルダをやめる | 実装済み |
 <!-- /GENERATED:implemented-dev-infra -->
 
@@ -440,9 +441,7 @@ Web（Playwright）backend とその完成（リッチな capability、並列実
 このリポジトリで並行作業する多数のセッションの摩擦を減らします。マージコンフリクトを設計の臭いとして扱い、独立した変更が互いに素なファイルだけに触れるようファイル流動を見直します。
 
 <!-- GENERATED:in-progress-dev-infra -->
-| ID | 項目 | 状態 |
-|---|---|---|
-| [BE-0149](BE-0149-roadmap-placeholder-format-guardrail/BE-0149-roadmap-placeholder-format-guardrail-ja.md) | ロードマッププレースホルダーを見逃すフォーマットガードレールの穴を塞ぐ | 実装中 |
+
 <!-- /GENERATED:in-progress-dev-infra -->
 
 ### Dogfood フィクスチャ（デモアプリ）

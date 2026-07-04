@@ -42,6 +42,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+import gh_cli
 from build_roadmap_index import TITLE_RE, metadata_fields
 from roadmap_ids import iter_item_dirs, numbered_match
 
@@ -143,19 +144,13 @@ def plan(items: list[Item], existing_open_ids: set[str]) -> Plan:
     return Plan(to_create=to_create, to_close=to_close)
 
 
-def _gh(args: list[str], capture: bool = False) -> str:
-    """Run a ``gh`` command; return its stdout when ``capture`` is set."""
-    result = subprocess.run(["gh", *args], check=True, text=True, capture_output=capture)
-    return result.stdout if capture else ""
-
-
 def existing_open_issues() -> dict[str, int]:
     """Map each open tracking issue's BE id to its issue number, read from GitHub.
 
     One ``gh issue list`` for the whole label, so the sync is a single query regardless of item
     count. An issue whose title carries no ``BE-NNNN`` is ignored (it isn't a tracking issue).
     """
-    out = _gh(
+    out = gh_cli.run(
         [
             "issue",
             "list",
@@ -180,19 +175,8 @@ def existing_open_issues() -> dict[str, int]:
 
 def ensure_label() -> None:
     """Create the ``roadmap-tracking`` label if it's missing (idempotent — ignores 'already exists')."""
-    result = subprocess.run(
-        [
-            "gh",
-            "label",
-            "create",
-            LABEL,
-            "--color",
-            LABEL_COLOR,
-            "--description",
-            LABEL_DESCRIPTION,
-        ],
-        text=True,
-        capture_output=True,
+    result = gh_cli.run_allow_failure(
+        ["label", "create", LABEL, "--color", LABEL_COLOR, "--description", LABEL_DESCRIPTION]
     )
     if result.returncode != 0 and "already exists" not in (result.stderr or ""):
         raise subprocess.CalledProcessError(
@@ -221,7 +205,7 @@ def issue_body(item: Item) -> str:
 
 
 def create_issue(item: Item) -> None:
-    _gh(
+    gh_cli.run(
         [
             "issue",
             "create",
@@ -236,7 +220,7 @@ def create_issue(item: Item) -> None:
 
 
 def close_issue(number: int) -> None:
-    _gh(["issue", "close", str(number)])
+    gh_cli.run(["issue", "close", str(number)])
 
 
 def sync(roadmap: Path) -> Plan:

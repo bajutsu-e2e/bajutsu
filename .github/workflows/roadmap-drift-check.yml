@@ -1,0 +1,78 @@
+# Re-check open roadmap PRs against the current template, and open a fix PR on drift (BE-0149).
+#
+# Item 1's placeholder-aware format check only fires when a PR's branch is pushed to or merged; a
+# long-lived PR that receives no further pushes never re-runs it, so a template change (a new
+# required field, a new section) can land on `main` while an old PR's placeholder silently drifts out
+# of shape — the exact way BE-0137/BE-0138 slipped through. This workflow closes that latency gap:
+# whenever a commit changes the shared id-shape predicate or the format checker itself, it re-checks
+# every open, same-repo roadmap PR's own files against today's template (a read-only simulation —
+# nothing is pushed to the PR's own branch, so it can never dismiss a stale approval, BE-0089), and on
+# drift opens a small, separate fix PR whose base is the stale branch.
+#
+# Opening that fix PR needs the same bypass App identity `roadmap-id.yml` uses: a PR created with the
+# default `GITHUB_TOKEN` doesn't trigger other workflows (so the fix PR's own `check` CI would never
+# run), while the App's installation token doesn't carry that restriction. Until the App secrets exist
+# the job is a green no-op, matching BE-0089's "no red window while provisioning" contract.
+name: roadmap-drift-check
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'scripts/roadmap_ids.py'
+      - 'scripts/check_roadmap_format.py'
+  workflow_dispatch: {}  # on-demand re-check; not a daily cron — the hazard is a template change
+
+permissions:
+  contents: write       # push a roadmap-fix/pr-<n> branch
+  pull-requests: write  # open the fix PR
+  issues: write         # create/update the marker comment (issues-comments API, incl. PATCH by id)
+
+concurrency:
+  group: roadmap-drift-check
+  cancel-in-progress: false   # serialize; never drop a queued re-check
+
+jobs:
+  check:
+    name: re-check open roadmap PRs
+    runs-on: ubuntu-latest
+    steps:
+      - name: Gate on the bypass App being configured
+        id: gate
+        env:
+          APP_ID: ${{ secrets.AUTOMATION_BOT_APP_ID }}
+          APP_KEY: ${{ secrets.AUTOMATION_BOT_PRIVATE_KEY }}
+        run: |
+          # Enable only when BOTH the App id and its private key are present, matching roadmap-id.yml
+          # (BE-0089): a half-configured App must stay dormant rather than run and fail.
+          if [ -n "$APP_ID" ] && [ -n "$APP_KEY" ]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::AUTOMATION_BOT_APP_ID / AUTOMATION_BOT_PRIVATE_KEY are not both set — the roadmap drift re-check is dormant (BE-0149). No-op."
+          fi
+
+      - name: Mint a short-lived installation token for the bypass App
+        if: steps.gate.outputs.enabled == 'true'
+        id: app-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1  # v3.2.0
+        with:
+          app-id: ${{ secrets.AUTOMATION_BOT_APP_ID }}
+          private-key: ${{ secrets.AUTOMATION_BOT_PRIVATE_KEY }}
+
+      - name: Check out main with the App token
+        if: steps.gate.outputs.enabled == 'true'
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+        with:
+          ref: main
+          token: ${{ steps.app-token.outputs.token }}
+
+      - name: Re-check every open roadmap PR against today's template
+        if: steps.gate.outputs.enabled == 'true'
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          APP_SLUG: ${{ steps.app-token.outputs.app-slug }}
+        run: |
+          git config user.name "${APP_SLUG}[bot]"
+          git config user.email "${APP_SLUG}[bot]@users.noreply.github.com"
+          python3 scripts/check_stale_roadmap_prs.py
