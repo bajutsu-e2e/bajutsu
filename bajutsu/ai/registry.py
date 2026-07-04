@@ -42,16 +42,21 @@ def register(name: str, adapter: Adapter) -> None:
 
 
 def _ensure_builtins() -> None:
-    """Register the built-in Anthropic adapter on first use (lazy, to keep imports acyclic)."""
-    if _ADAPTERS:
+    """Register the built-in Anthropic adapter on first use (lazy, to keep imports acyclic).
+
+    Keyed on the built-in names, not on the registry being empty: a third-party or test adapter
+    registering first must not suppress `anthropic`/`bedrock` (that would `KeyError` when they
+    later resolve). `setdefault` also leaves an earlier explicit registration for those names intact.
+    """
+    if "anthropic" in _ADAPTERS and "bedrock" in _ADAPTERS:
         return
     from bajutsu.ai import anthropic
     from bajutsu.anthropic_client import credential_gap
 
     adapter = Adapter(factory=anthropic.factory, credential_gap=credential_gap)
     # Anthropic API and Amazon Bedrock are one adapter — Bedrock is an Anthropic-SDK variant (BE-0053).
-    register("anthropic", adapter)
-    register("bedrock", adapter)
+    _ADAPTERS.setdefault("anthropic", adapter)
+    _ADAPTERS.setdefault("bedrock", adapter)
 
 
 def known_providers() -> tuple[str, ...]:

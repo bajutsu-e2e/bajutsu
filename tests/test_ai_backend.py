@@ -88,6 +88,26 @@ def test_builtin_providers_are_registered() -> None:
     assert {"anthropic", "bedrock"} <= set(known_providers())
 
 
+def test_builtins_survive_an_adapter_registered_first() -> None:
+    # A third-party/test adapter registering before first use must not suppress the built-ins
+    # (the guard keys on the built-in names, not on the registry being non-empty).
+    from bajutsu.ai import registry
+
+    saved = dict(registry._ADAPTERS)
+    sentinel = Adapter(factory=lambda ai: object(), credential_gap=lambda ai: None)  # type: ignore[arg-type,return-value]
+    registry._ADAPTERS.clear()
+    try:
+        register("test-first", sentinel)
+        register("anthropic", sentinel)  # an explicit registration for a built-in name
+        providers = set(known_providers())
+        assert {"anthropic", "bedrock", "test-first"} <= providers
+        # setdefault leaves the earlier explicit `anthropic` registration intact.
+        assert registry._ADAPTERS["anthropic"] is sentinel
+    finally:
+        registry._ADAPTERS.clear()
+        registry._ADAPTERS.update(saved)
+
+
 def test_create_backend_defaults_to_the_anthropic_adapter() -> None:
     from bajutsu.ai.anthropic import AnthropicBackend
 
