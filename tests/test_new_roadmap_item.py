@@ -38,6 +38,8 @@ def _scaffold(tmp_path: Path, **kw: str) -> Path:
 def test_creates_both_language_files_with_placeholder(tmp_path: Path) -> None:
     item = _scaffold(tmp_path)
     assert item.name == "BE-XXXX-demo-feature"
+    # BE-0159 transition (part 1): a new Proposal is still filed under roadmaps/proposals/ so the
+    # path-prefix two-approval gate keeps applying; part 2 flips scaffolding to the flat root.
     assert item.parent.name == "proposals"
     assert (item / "BE-XXXX-demo-feature.md").is_file()
     assert (item / "BE-XXXX-demo-feature-ja.md").is_file()
@@ -109,21 +111,21 @@ def test_handle_is_stripped_of_leading_at(tmp_path: Path) -> None:
     assert "| Author | [@octocat](https://github.com/octocat) |" in text
 
 
-def test_in_progress_item_lands_in_in_progress_folder(tmp_path: Path) -> None:
-    # Status is the source of truth for the folder; scaffolding into proposals/ regardless of
-    # Status would make the promote gate flag the item immediately after creation.
-    item = _scaffold(tmp_path, status="In progress")
-    assert item.parent.name == "in-progress"
-
-
-def test_implemented_item_lands_in_implemented_folder(tmp_path: Path) -> None:
-    item = _scaffold(tmp_path, status="Implemented")
-    assert item.parent.name == "implemented"
-
-
-def test_deferred_item_lands_in_deferred_folder(tmp_path: Path) -> None:
-    item = _scaffold(tmp_path, status="Proposal (deferred)")
-    assert item.parent.name == "deferred"
+@pytest.mark.parametrize(
+    ("status", "folder"),
+    [
+        ("Proposal", "proposals"),
+        ("In progress", "in-progress"),
+        ("Implemented", "implemented"),
+        ("Proposal (deferred)", "deferred"),
+    ],
+)
+def test_item_lands_in_the_status_folder(tmp_path: Path, status: str, folder: str) -> None:
+    # BE-0159 transition (part 1): a new item is filed under the folder matching its Status, so the
+    # path-prefix proposal gate keeps applying. Part 2 flattens scaffolding to the flat root.
+    item = _scaffold(tmp_path, status=status)
+    assert item.parent.name == folder
+    assert item.name == "BE-XXXX-demo-feature"
 
 
 def test_empty_title_is_rejected(tmp_path: Path) -> None:

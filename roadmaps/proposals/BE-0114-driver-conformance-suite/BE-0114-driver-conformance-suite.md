@@ -10,7 +10,7 @@
 | Status | **Proposal** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0114") |
 | Topic | Platform expansion (Android / Web / Flutter) |
-| Related | [BE-0009](../../implemented/BE-0009-cross-platform-abstractions/BE-0009-cross-platform-abstractions.md), [BE-0042](../../implemented/BE-0042-platform-backend-registry/BE-0042-platform-backend-registry.md), [BE-0082](../../implemented/BE-0082-capability-preflight-check/BE-0082-capability-preflight-check.md), [BE-0019](../../in-progress/BE-0019-xcuitest-backend/BE-0019-xcuitest-backend.md), [BE-0007](../../in-progress/BE-0007-android-backend/BE-0007-android-backend.md) |
+| Related | [BE-0009](../../BE-0009-cross-platform-abstractions/BE-0009-cross-platform-abstractions.md), [BE-0042](../../BE-0042-platform-backend-registry/BE-0042-platform-backend-registry.md), [BE-0082](../../implemented/BE-0082-capability-preflight-check/BE-0082-capability-preflight-check.md), [BE-0019](../../in-progress/BE-0019-xcuitest-backend/BE-0019-xcuitest-backend.md), [BE-0007](../../in-progress/BE-0007-android-backend/BE-0007-android-backend.md) |
 <!-- /BE-METADATA -->
 
 ## Introduction
@@ -120,9 +120,9 @@ and the layer backends bypass), the existing per-backend driver tests (fake / id
 what this consolidates into one spec), [DESIGN.md](../../../DESIGN.md) and
 [docs/architecture.md](../../../docs/architecture.md) (the backend-agnostic philosophy and the
 implementation-status source of truth),
-[BE-0009](../../implemented/BE-0009-cross-platform-abstractions/BE-0009-cross-platform-abstractions.md)
+[BE-0009](../../BE-0009-cross-platform-abstractions/BE-0009-cross-platform-abstractions.md)
 (the cross-platform abstractions this checks),
-[BE-0042](../../implemented/BE-0042-platform-backend-registry/BE-0042-platform-backend-registry.md)
+[BE-0042](../../BE-0042-platform-backend-registry/BE-0042-platform-backend-registry.md)
 (the backend registry the suite parametrizes over),
 [BE-0082](../../implemented/BE-0082-capability-preflight-check/BE-0082-capability-preflight-check.md)
 (the capability preflight this `capabilities()` conformance ties into),

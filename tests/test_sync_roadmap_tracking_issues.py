@@ -99,7 +99,7 @@ def test_scan_sorts_by_id_across_categories(tmp_path: Path) -> None:
 
 
 def test_parse_english_missing_file_is_empty(tmp_path: Path) -> None:
-    assert sync._parse_english(tmp_path / "proposals" / "BE-9999-gone") == ("", "")
+    assert sync._parse_english(tmp_path / "proposals" / "BE-9999-gone") == ("", "", None)
 
 
 # --- plan (the pure lifecycle rule) ----------------------------------------------

@@ -169,16 +169,12 @@ def test_committed_tree_has_no_duplicate_be_ids() -> None:
     roadmap = Path(__file__).resolve().parent.parent / "roadmaps"
     seen: dict[int, str] = {}
     duplicates: list[tuple[int, str, str]] = []
-    for category in ari.CATEGORIES:
-        category_dir = roadmap / category
-        if not category_dir.is_dir():
+    for d in ari.iter_item_dirs(roadmap):
+        if not (m := ari.numbered_match(d.name)):
             continue
-        for d in sorted(category_dir.iterdir()):
-            if not (d.is_dir() and (m := ari.numbered_match(d.name))):
-                continue
-            be_id = int(m.group(1))
-            if be_id in seen:
-                duplicates.append((be_id, seen[be_id], d.name))
-            else:
-                seen[be_id] = d.name
+        be_id = int(m.group(1))
+        if be_id in seen:
+            duplicates.append((be_id, seen[be_id], d.name))
+        else:
+            seen[be_id] = d.name
     assert duplicates == [], f"duplicate BE IDs in roadmaps/: {duplicates}"

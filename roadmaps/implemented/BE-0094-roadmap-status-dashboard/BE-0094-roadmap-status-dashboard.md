@@ -24,7 +24,7 @@ it always reflects the committed roadmap and can never go stale.
 
 The roadmap already has a single source of truth — the metadata block in each
 `roadmaps/<category>/BE-NNNN-<slug>/` item — and a generated text index
-([BE-0043](../BE-0043-conflict-resistant-file-flow/BE-0043-conflict-resistant-file-flow.md) regenerates
+([BE-0043](../../BE-0043-conflict-resistant-file-flow/BE-0043-conflict-resistant-file-flow.md) regenerates
 the `roadmaps/README.md` tables from it. That index is exhaustive but dense: a flat set of tables you
 read top to bottom. Two questions it answers slowly are the ones contributors ask most — *what is in
 flight right now?* and *how is work distributed across topics?* Answering them today means scanning
@@ -57,7 +57,7 @@ gitignored, exactly like the generated API reference `site/`. This is the load-b
 - It **cannot drift.** `make docs` / `make docs-serve` regenerate it first, and the `docs` workflow
   regenerates it before publishing, so the published page always matches the committed roadmap.
 - It is **decoupled from BE-id allocation.** Placeholder items carry the literal `BE-0094` id until
-  CI assigns the real number on a PR ([BE-0061](../BE-0061-be-id-allocation-hardening/BE-0061-be-id-allocation-hardening.md)).
+  CI assigns the real number on a PR ([BE-0061](../../BE-0061-be-id-allocation-hardening/BE-0061-be-id-allocation-hardening.md)).
   The directory regex (`^BE-\d{4}-`) skips `BE-0094`, so the placeholder is excluded from the
   dashboard just as it is from the index — and because the page is never committed, nothing has to be
   re-rendered when allocation later rewrites `BE-0094` to `BE-NNNN`.
@@ -131,6 +131,6 @@ API reference — to be served. That one-time repository setting is outside this
 [`roadmaps/README.md`](../../README.md), `scripts/build_roadmap_dashboard.py`,
 `scripts/build_roadmap_index.py`, [`mkdocs.yml`](../../../mkdocs.yml),
 [`.github/workflows/docs.yml`](../../../.github/workflows/docs.yml),
-[BE-0043 — Roadmap index merge driver](../BE-0043-conflict-resistant-file-flow/BE-0043-conflict-resistant-file-flow.md),
-[BE-0061 — Atomic BE-id allocation](../BE-0061-be-id-allocation-hardening/BE-0061-be-id-allocation-hardening.md),
+[BE-0043 — Roadmap index merge driver](../../BE-0043-conflict-resistant-file-flow/BE-0043-conflict-resistant-file-flow.md),
+[BE-0061 — Atomic BE-id allocation](../../BE-0061-be-id-allocation-hardening/BE-0061-be-id-allocation-hardening.md),
 [BE-0078 — Status-derived roadmap folders](../BE-0078-roadmap-status-folders/BE-0078-roadmap-status-folders.md)

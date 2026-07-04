@@ -10,13 +10,13 @@
 | Status | **Proposal** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0108") |
 | Topic | Hosting the web UI (cloud / self-hosted) |
-| Related | [BE-0015](../../in-progress/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md), [BE-0051](../../implemented/BE-0051-serve-hardening-for-hosting/BE-0051-serve-hardening-for-hosting.md), [BE-0063](../../implemented/BE-0063-git-config-source/BE-0063-git-config-source.md), [BE-0073](../../implemented/BE-0073-serve-zip-bundle-upload/BE-0073-serve-zip-bundle-upload.md) |
+| Related | [BE-0015](../../in-progress/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md), [BE-0051](../../BE-0051-serve-hardening-for-hosting/BE-0051-serve-hardening-for-hosting.md), [BE-0063](../../BE-0063-git-config-source/BE-0063-git-config-source.md), [BE-0073](../../implemented/BE-0073-serve-zip-bundle-upload/BE-0073-serve-zip-bundle-upload.md) |
 <!-- /BE-METADATA -->
 
 ## Introduction
 
 The web UI's **"Open config"** dialog offers three ways to bind the active config: a **Git
-repository** ([BE-0063](../../implemented/BE-0063-git-config-source/BE-0063-git-config-source.md)),
+repository** ([BE-0063](../../BE-0063-git-config-source/BE-0063-git-config-source.md)),
 an **uploaded `.zip` bundle** ([BE-0073](../../implemented/BE-0073-serve-zip-bundle-upload/BE-0073-serve-zip-bundle-upload.md)),
 and a **file browser over the serve host's `--root`** (the original source,
 `bajutsu/serve/operations.py` `browse_fs` / `bind_config`). The file browser is the right default
@@ -126,6 +126,6 @@ entirely in the serve config-sourcing layer.
 ## References
 
 - [BE-0015 — Web UI public hosting](../../in-progress/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md) — the hosted (`server`) backend this item keys on.
-- [BE-0051 — Serve hardening for hosting](../../implemented/BE-0051-serve-hardening-for-hosting/BE-0051-serve-hardening-for-hosting.md) — confined the browser to `--root`; this item removes it entirely when hosted.
-- [BE-0063 — Git config source](../../implemented/BE-0063-git-config-source/BE-0063-git-config-source.md) — one of the two sources that survive hosting.
+- [BE-0051 — Serve hardening for hosting](../../BE-0051-serve-hardening-for-hosting/BE-0051-serve-hardening-for-hosting.md) — confined the browser to `--root`; this item removes it entirely when hosted.
+- [BE-0063 — Git config source](../../BE-0063-git-config-source/BE-0063-git-config-source.md) — one of the two sources that survive hosting.
 - [BE-0073 — Upload a config bundle as a zip](../../implemented/BE-0073-serve-zip-bundle-upload/BE-0073-serve-zip-bundle-upload.md) — the other surviving source.

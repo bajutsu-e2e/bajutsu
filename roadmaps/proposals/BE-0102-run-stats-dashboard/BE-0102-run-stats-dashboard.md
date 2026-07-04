@@ -16,12 +16,12 @@
 
 A read-only dashboard that aggregates **many** runs into one view: pass-rate over time, run and
 per-scenario durations, the scenarios and steps that fail most often, and (folded in from
-[BE-0049](../../implemented/BE-0049-determinism-flakiness-audit/BE-0049-determinism-flakiness-audit.md))
+[BE-0049](../../BE-0049-determinism-flakiness-audit/BE-0049-determinism-flakiness-audit.md))
 each scenario's flakiness classification. Today every run is reported richly on its own
 (`report.html`), but nothing renders the trend *across* runs. The dashboard is a deterministic
 aggregation over data the runner already writes — `manifest.json` per run, plus the serve run
 records — with no LLM and no effect on any verdict, in the same family as the coverage map
-([BE-0050](../../implemented/BE-0050-e2e-coverage-map/BE-0050-e2e-coverage-map.md)) and the
+([BE-0050](../../BE-0050-e2e-coverage-map/BE-0050-e2e-coverage-map.md)) and the
 flakiness audit (BE-0049).
 
 ## Motivation
@@ -149,9 +149,9 @@ would settle; the recommendation is in brackets and the alternatives are real:
 
 [`docs/reporting.md`](../../../docs/reporting.md) (`manifest.json` / `report.load` /
 `results_from_manifest`), `bajutsu/report/`, `bajutsu/serve/helpers.py` (`list_runs`),
-[BE-0049 — Determinism / flakiness audit](../../implemented/BE-0049-determinism-flakiness-audit/BE-0049-determinism-flakiness-audit.md)
+[BE-0049 — Determinism / flakiness audit](../../BE-0049-determinism-flakiness-audit/BE-0049-determinism-flakiness-audit.md)
 (the `scenarioHash` provenance and flakiness classification this dashboard consumes),
-[BE-0050 — E2E coverage map](../../implemented/BE-0050-e2e-coverage-map/BE-0050-e2e-coverage-map.md)
+[BE-0050 — E2E coverage map](../../BE-0050-e2e-coverage-map/BE-0050-e2e-coverage-map.md)
 (the sibling self-contained HTML report this mirrors),
 [BE-0068 — Regenerable reports](../../implemented/BE-0068-regenerable-reports/BE-0068-regenerable-reports.md)
 (the "re-present recorded outcomes, never re-run" discipline),

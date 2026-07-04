@@ -119,8 +119,8 @@ No PR has landed yet.
   and ungoverned."
 - `bajutsu/serve/operations.py:761` — the existing `build = None` guard for uploaded bundles.
 - `bajutsu/serve/jobs.py:451` — `shlex.split(job.build)`, the command execution this item gates.
-- [BE-0051 — Serve hardening for hosting](../../implemented/BE-0051-serve-hardening-for-hosting/BE-0051-serve-hardening-for-hosting.md)
+- [BE-0051 — Serve hardening for hosting](../../BE-0051-serve-hardening-for-hosting/BE-0051-serve-hardening-for-hosting.md)
 - [BE-0090 — Uploaded-config command execution](../../implemented/BE-0090-uploaded-config-command-execution/BE-0090-uploaded-config-command-execution.md)
-- [BE-0063 — Git config source](../../implemented/BE-0063-git-config-source/BE-0063-git-config-source.md)
+- [BE-0063 — Git config source](../../BE-0063-git-config-source/BE-0063-git-config-source.md)
 - [BE-0108 — Hosted config source restriction](../BE-0108-hosted-config-source-restriction/BE-0108-hosted-config-source-restriction.md)
 - Originates from the 2026-07-02 codebase-analysis report (security).

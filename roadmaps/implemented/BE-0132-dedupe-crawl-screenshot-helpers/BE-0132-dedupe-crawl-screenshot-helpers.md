@@ -111,7 +111,7 @@ unifying the helper is the natural place to also fix how it fails:
 - [`bajutsu/crawl_guide.py:82`](../../../bajutsu/crawl_guide.py),
   [`bajutsu/enrich.py:92`](../../../bajutsu/enrich.py) — the other two call sites already using
   `_screenshot_bytes`.
-- [BE-0064 — Parallel crawl across multiple simulators](../../implemented/BE-0064-parallel-crawl/BE-0064-parallel-crawl.md)
+- [BE-0064 — Parallel crawl across multiple simulators](../../BE-0064-parallel-crawl/BE-0064-parallel-crawl.md)
   — crawl code the unified helper's callers run under.
 - [BE-0066 — Web crawl (Playwright backend)](../../implemented/BE-0066-web-crawl/BE-0066-web-crawl.md)
   — the second backend this crawl code runs against.

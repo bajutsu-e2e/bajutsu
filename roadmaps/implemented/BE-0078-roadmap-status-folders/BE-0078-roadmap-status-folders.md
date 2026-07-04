@@ -56,7 +56,7 @@ the folder layout flattens it.
 
 This is the same class of problem the contributor-workflow line has been closing all along — make
 the structure carry the invariant rather than leaving it to prose.
-[BE-0043](../../implemented/BE-0043-conflict-resistant-file-flow/BE-0043-conflict-resistant-file-flow.md)
+[BE-0043](../../BE-0043-conflict-resistant-file-flow/BE-0043-conflict-resistant-file-flow.md)
 reshaped the file flow so independent changes touch disjoint files;
 [BE-0074](../../implemented/BE-0074-be-template-standardization/BE-0074-be-template-standardization.md)
 pinned the item template and the `Status` vocabulary with a gate test. This item continues that
@@ -214,8 +214,8 @@ contributor-workflow refactor, in the same family as BE-0043 / BE-0061 / BE-0074
   `tests/test_roadmap_index.py` / `tests/test_promote_roadmap_items.py` that gate it.
 - [BE-0074 — Standardize the BE item template](../../implemented/BE-0074-be-template-standardization/BE-0074-be-template-standardization.md)
   — pinned the `Status` vocabulary and the metadata schema (`Track` included) this item revises.
-- [BE-0043 — Conflict-resistant file flow](../../implemented/BE-0043-conflict-resistant-file-flow/BE-0043-conflict-resistant-file-flow.md),
-  [BE-0061 — Collision-proof BE-ID allocation](../../implemented/BE-0061-be-id-allocation-hardening/BE-0061-be-id-allocation-hardening.md)
+- [BE-0043 — Conflict-resistant file flow](../../BE-0043-conflict-resistant-file-flow/BE-0043-conflict-resistant-file-flow.md),
+  [BE-0061 — Collision-proof BE-ID allocation](../../BE-0061-be-id-allocation-hardening/BE-0061-be-id-allocation-hardening.md)
   — the contributor-workflow siblings whose "structure carries the invariant" approach this follows.
 - [BE-0069 — Executable contributor guardrails](../BE-0069-executable-contributor-guardrails/BE-0069-executable-contributor-guardrails.md)
   — where an optional roadmap-link check (to catch stale `proposals/…` paths after a move) would fit.

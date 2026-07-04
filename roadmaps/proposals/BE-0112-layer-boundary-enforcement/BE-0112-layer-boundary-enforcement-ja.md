@@ -10,7 +10,7 @@
 | 状態 | **提案** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0112") |
 | トピック | 開発基盤（コントリビュータ体験） |
-| 関連 | [BE-0051](../../implemented/BE-0051-serve-hardening-for-hosting/BE-0051-serve-hardening-for-hosting-ja.md), [BE-0067](../../implemented/BE-0067-code-quality-gate-hardening/BE-0067-code-quality-gate-hardening-ja.md), [BE-0015](../../in-progress/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting-ja.md), [BE-0016](../../in-progress/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting-ja.md) |
+| 関連 | [BE-0051](../../BE-0051-serve-hardening-for-hosting/BE-0051-serve-hardening-for-hosting-ja.md), [BE-0067](../../implemented/BE-0067-code-quality-gate-hardening/BE-0067-code-quality-gate-hardening-ja.md), [BE-0015](../../in-progress/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting-ja.md), [BE-0016](../../in-progress/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting-ja.md) |
 <!-- /BE-METADATA -->
 
 ## はじめに
@@ -136,7 +136,7 @@ import guard）、`Makefile` と [`.github/workflows/ci.yml`](../../../.github/w
 [architecture.md](../../../docs/ja/architecture.md)（本項目が符号化するコア / 契約 / 周辺のモデル）、
 [BE-0067](../../implemented/BE-0067-code-quality-gate-hardening/BE-0067-code-quality-gate-hardening-ja.md)
 （本項目が拡張する、これまでのゲート強化）、
-[BE-0051](../../implemented/BE-0051-serve-hardening-for-hosting/BE-0051-serve-hardening-for-hosting-ja.md)、
+[BE-0051](../../BE-0051-serve-hardening-for-hosting/BE-0051-serve-hardening-for-hosting-ja.md)、
 [BE-0015](../../in-progress/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting-ja.md)、
 [BE-0016](../../in-progress/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting-ja.md)（周辺を育て、
 境界の価値を高めるホスティングの作業）。

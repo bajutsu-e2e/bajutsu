@@ -22,7 +22,7 @@ The mapping is deterministic and structural — no AI, no device, no verdict.
 
 `codegen` turns a Bajutsu scenario into a native test in a destination framework's idiom
 (`bajutsu codegen --emit xcuitest|playwright`; `bajutsu/codegen.py` and the Playwright target from
-[BE-0062](../../implemented/BE-0062-playwright-codegen/BE-0062-playwright-codegen.md),
+[BE-0062](../../BE-0062-playwright-codegen/BE-0062-playwright-codegen.md),
 `bajutsu/codegen_playwright.py`). It is the bridge for teams whose canonical suite is XCUITest or
 Playwright but who want to author with Bajutsu. Yet the only way to get that output is the terminal
 — even though the browser is where the scenario was just authored (Record) and confirmed to pass
@@ -44,7 +44,7 @@ Tier-1, deterministic; the UI only shells out to the existing command.
 - **Honest about limits.** The emit options offered track the codegen targets available for the
   selected backend (XCUITest for iOS, Playwright for web), mirroring `--emit`; unsupported-syntax
   limits are codegen's own
-  ([BE-0026](../../implemented/BE-0026-shrink-unsupported-syntax/BE-0026-shrink-unsupported-syntax.md)),
+  ([BE-0026](../../BE-0026-shrink-unsupported-syntax/BE-0026-shrink-unsupported-syntax.md)),
   and the UI surfaces codegen's existing diagnostics rather than hiding them.
 - **App-agnostic.** The target and scenario path resolve from config (`targets.<name>`).
 
@@ -80,11 +80,11 @@ No PR has landed yet.
 
 * `bajutsu/codegen.py`, `bajutsu/codegen_playwright.py`, `bajutsu/cli/commands/codegen.py` — the
   generator this surfaces.
-* [BE-0062 — Playwright codegen target](../../implemented/BE-0062-playwright-codegen/BE-0062-playwright-codegen.md),
-  [BE-0026 — Shrink unsupported syntax](../../implemented/BE-0026-shrink-unsupported-syntax/BE-0026-shrink-unsupported-syntax.md),
-  [BE-0025 — Coordinate swipe generation](../../implemented/BE-0025-coordinate-swipe-generation/BE-0025-coordinate-swipe-generation.md)
+* [BE-0062 — Playwright codegen target](../../BE-0062-playwright-codegen/BE-0062-playwright-codegen.md),
+  [BE-0026 — Shrink unsupported syntax](../../BE-0026-shrink-unsupported-syntax/BE-0026-shrink-unsupported-syntax.md),
+  [BE-0025 — Coordinate swipe generation](../../BE-0025-coordinate-swipe-generation/BE-0025-coordinate-swipe-generation.md)
   — the codegen coverage this exposes and its known limits.
-* [BE-0011 — Local web UI (`bajutsu serve`)](../../implemented/BE-0011-local-web-ui-serve/BE-0011-local-web-ui-serve.md),
+* [BE-0011 — Local web UI (`bajutsu serve`)](../../BE-0011-local-web-ui-serve/BE-0011-local-web-ui-serve.md),
   [BE-0072 — Responsive serve Web UI](../../implemented/BE-0072-responsive-web-ui/BE-0072-responsive-web-ui.md)
   — the UI this extends and the small-screen layout it inherits.
 * [codegen.md](../../../docs/codegen.md); [CLAUDE.md](../../../CLAUDE.md), [DESIGN §2](../../../DESIGN.md)

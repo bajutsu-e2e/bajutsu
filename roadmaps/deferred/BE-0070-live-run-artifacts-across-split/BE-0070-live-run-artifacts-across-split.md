@@ -160,7 +160,7 @@ execution, this proposal can be revisited.
   this item makes the live artifact visible *before* that terminal upload.
 - [BE-0038 — Autonomous crawl exploration](../../in-progress/BE-0038-autonomous-crawl-exploration/BE-0038-autonomous-crawl-exploration.md)
   — the crawl and its local-mode live graph that this extends across the split; the first consumer.
-- [BE-0055 — Operational logging for the hosted serve](../../implemented/BE-0055-operational-logging/BE-0055-operational-logging.md)
+- [BE-0055 — Operational logging for the hosted serve](../../BE-0055-operational-logging/BE-0055-operational-logging.md)
   — sibling hosting item; notes that the LogBus already carries run *output* live, i.e. console logs
   already cross the split.
 - [architecture.md#implementation-status](../../../docs/architecture.md#implementation-status) — the

@@ -10,14 +10,14 @@
 | 状態 | **提案（保留）** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0158") |
 | トピック | Candidates from competitive research (MagicPod / Autify) |
-| 関連 | [BE-0052](../../implemented/BE-0052-device-state-timezone-clipboard-shake/BE-0052-device-state-timezone-clipboard-shake-ja.md) |
+| 関連 | [BE-0052](../../BE-0052-device-state-timezone-clipboard-shake/BE-0052-device-state-timezone-clipboard-shake-ja.md) |
 | 由来 | MagicPod |
 <!-- /BE-METADATA -->
 
 ## はじめに
 
 シミュレータの**タイムゾーン**の固定です。
-[BE-0052](../../implemented/BE-0052-device-state-timezone-clipboard-shake/BE-0052-device-state-timezone-clipboard-shake-ja.md)
+[BE-0052](../../BE-0052-device-state-timezone-clipboard-shake/BE-0052-device-state-timezone-clipboard-shake-ja.md)
 が提案したデバイス状態プリミティブのひとつでした。BE-0052 の実装トリアージで、信頼できる決定的な作動
 手段が見つからなかったため、本項目として切り出しました。シェイクジェスチャは塞がっている理由が別であ
 るため、別項目で扱い、本項目はタイムゾーンの検証済みの手段を待ちます。
@@ -85,11 +85,11 @@
 
 - [ ] ホストに依存せず、デバイスごとに、ヘッドレスで `TimeZone.current` を動かせる検証済みの作動手段。
 
-[BE-0052](../../implemented/BE-0052-device-state-timezone-clipboard-shake/BE-0052-device-state-timezone-clipboard-shake-ja.md)
+[BE-0052](../../BE-0052-device-state-timezone-clipboard-shake/BE-0052-device-state-timezone-clipboard-shake-ja.md)
 の実装トリアージで切り出しました。検証済みの手段を待ちます。
 
 ## 参考
 
-[BE-0052 — デバイス状態プリミティブ: タイムゾーン・クリップボード・シェイク](../../implemented/BE-0052-device-state-timezone-clipboard-shake/BE-0052-device-state-timezone-clipboard-shake-ja.md)
-から分割。BE-0052 自体は [BE-0035 — デバイス制御ステップ](../../implemented/BE-0035-device-control-primitives/BE-0035-device-control-primitives-ja.md)
+[BE-0052 — デバイス状態プリミティブ: タイムゾーン・クリップボード・シェイク](../../BE-0052-device-state-timezone-clipboard-shake/BE-0052-device-state-timezone-clipboard-shake-ja.md)
+から分割。BE-0052 自体は [BE-0035 — デバイス制御ステップ](../../BE-0035-device-control-primitives/BE-0035-device-control-primitives-ja.md)
 から分割したものです。[DESIGN §6.2](../../../DESIGN.md)、`bajutsu/orchestrator/actions/handlers/device.py`、`bajutsu/env.py`

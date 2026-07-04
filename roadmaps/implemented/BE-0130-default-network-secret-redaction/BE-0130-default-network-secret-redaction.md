@@ -110,6 +110,6 @@ the evidence-writing path.
 - `bajutsu/runner/pipeline.py:49` — `_write_network`, writing `<sid>/network.json`.
 - `bajutsu/redaction.py:88` — the `active` no-op guard in `redact_exchange`.
 - `bajutsu/redaction.py:104` — `_header_names`, the exact-match header-name set.
-- [BE-0047 — AI data sovereignty](../../implemented/BE-0047-ai-data-sovereignty/BE-0047-ai-data-sovereignty.md)
-- [BE-0032 — Secret variables](../../implemented/BE-0032-secret-variables/BE-0032-secret-variables.md)
+- [BE-0047 — AI data sovereignty](../../BE-0047-ai-data-sovereignty/BE-0047-ai-data-sovereignty.md)
+- [BE-0032 — Secret variables](../../BE-0032-secret-variables/BE-0032-secret-variables.md)
 - Originates from the 2026-07-02 codebase-analysis report (security).

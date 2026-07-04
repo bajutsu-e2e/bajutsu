@@ -14,14 +14,14 @@
 
 ## Introduction
 
-Surface the determinism / flakiness audit ([BE-0049](../../implemented/BE-0049-determinism-flakiness-audit/BE-0049-determinism-flakiness-audit.md))
+Surface the determinism / flakiness audit ([BE-0049](../../BE-0049-determinism-flakiness-audit/BE-0049-determinism-flakiness-audit.md))
 in the `serve` Web UI: show a scenario's static stability score — selectors graded on the stability
 ladder, waits without a timeout, raw-coordinate gestures — where the scenario is authored and
 viewed. Read-only, AI-free, never a gate.
 
 ## Motivation
 
-[BE-0049](../../implemented/BE-0049-determinism-flakiness-audit/BE-0049-determinism-flakiness-audit.md)
+[BE-0049](../../BE-0049-determinism-flakiness-audit/BE-0049-determinism-flakiness-audit.md)
 ships `bajutsu audit`: a read-only static score that grades each selector against the stability
 ladder (a uniquely resolving `id` beats `label` / `traits`, which beat `index` / raw coordinates),
 flags `wait` steps with no timeout, and flags coordinate gestures a stable `id` could replace
@@ -30,7 +30,7 @@ the CLI. The Web UI's scenario editor gives no determinism feedback at all, so a
 generated or hand-edited a scenario cannot see whether they picked a stable selector or a fragile
 one until much later, if ever. The browser is where scenarios are written and read, so it is where
 the stability signal is most useful — the same reason the GUI editor
-([BE-0013](../../implemented/BE-0013-scenario-gui-editor/BE-0013-scenario-gui-editor.md)) wants the
+([BE-0013](../../BE-0013-scenario-gui-editor/BE-0013-scenario-gui-editor.md)) wants the
 `doctor` score inline.
 
 ## Detailed design
@@ -55,7 +55,7 @@ Tier-1, read-only; the UI only shells out to the existing audit.
 * **Leave audit CLI-only.** Rejected: a determinism score the author never sees cannot shape the
   scenario as it is written; inline is where it changes behavior.
 * **Fold this into the GUI editor
-  ([BE-0013](../../implemented/BE-0013-scenario-gui-editor/BE-0013-scenario-gui-editor.md)).** BE-0013
+  ([BE-0013](../../BE-0013-scenario-gui-editor/BE-0013-scenario-gui-editor.md)).** BE-0013
   integrates the `doctor` convention score into structured editing; the audit score is a sibling
   signal that could land there, but it is a separable read-only panel that works on the current
   textarea today, so it stands as its own item and complements BE-0013.
@@ -79,13 +79,13 @@ No PR has landed yet.
 ## References
 
 * `bajutsu/audit.py`, `bajutsu/cli/commands/audit.py` — the audit this surfaces.
-* [BE-0049 — Determinism / flakiness audit](../../implemented/BE-0049-determinism-flakiness-audit/BE-0049-determinism-flakiness-audit.md)
+* [BE-0049 — Determinism / flakiness audit](../../BE-0049-determinism-flakiness-audit/BE-0049-determinism-flakiness-audit.md)
   — the feature this is the Web UI surface of;
-  [BE-0013 — Scenario GUI editor](../../implemented/BE-0013-scenario-gui-editor/BE-0013-scenario-gui-editor.md)
+  [BE-0013 — Scenario GUI editor](../../BE-0013-scenario-gui-editor/BE-0013-scenario-gui-editor.md)
   — the sibling inline-feedback surface (the `doctor` score);
-  [BE-0050 — E2E coverage map](../../implemented/BE-0050-e2e-coverage-map/BE-0050-e2e-coverage-map.md)
+  [BE-0050 — E2E coverage map](../../BE-0050-e2e-coverage-map/BE-0050-e2e-coverage-map.md)
   — reuses the audit's selector walk, and has its own Web UI surface alongside this one.
-* [BE-0011 — Local web UI (`bajutsu serve`)](../../implemented/BE-0011-local-web-ui-serve/BE-0011-local-web-ui-serve.md),
+* [BE-0011 — Local web UI (`bajutsu serve`)](../../BE-0011-local-web-ui-serve/BE-0011-local-web-ui-serve.md),
   [BE-0072 — Responsive serve Web UI](../../implemented/BE-0072-responsive-web-ui/BE-0072-responsive-web-ui.md)
   — the UI this extends and the small-screen layout it inherits.
 * [selectors.md](../../../docs/selectors.md) — the stability ladder the audit grades against;

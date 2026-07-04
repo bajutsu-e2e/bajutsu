@@ -15,7 +15,7 @@
 
 ## はじめに
 
-[BE-0047](../../implemented/BE-0047-ai-data-sovereignty/BE-0047-ai-data-sovereignty-ja.md) が
+[BE-0047](../../BE-0047-ai-data-sovereignty/BE-0047-ai-data-sovereignty-ja.md) が
 `record` ／ `triage` ／ `--dismiss-alerts` に与えた AI データ主権の保証を、**`crawl --guide ai`**
 の経路（とそのアラートガード）へ広げ、あわせて **`serve`** が起動する AI run にその保証がどう届くかを
 定めます。BE-0047 の後、オーサリング／調査の経路はユーザーが設定したプロバイダで動き、テキスト入力を
@@ -101,7 +101,7 @@ serve 経路を確認することです。
 
 ## 参考
 
-- [BE-0047 — AI データ主権](../../implemented/BE-0047-ai-data-sovereignty/BE-0047-ai-data-sovereignty-ja.md)
+- [BE-0047 — AI データ主権](../../BE-0047-ai-data-sovereignty/BE-0047-ai-data-sovereignty-ja.md)
   — 本項目が拡張する出荷済みの保証。`ai` 設定、`Redactor` の配線、フェイルクローズのパターンを再利用します。
 - `bajutsu/anthropic_client.py`（`AiConfig` ／ `make_client` ／ `resolve_model` ／ `credential_gap`）、
   `bajutsu/cli/commands/crawl.py`（`_ai_credential_gap`、ガイドエージェントとアラートガードの構築）、

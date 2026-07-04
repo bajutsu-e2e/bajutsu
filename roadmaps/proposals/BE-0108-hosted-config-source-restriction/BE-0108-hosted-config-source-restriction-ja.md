@@ -10,13 +10,13 @@
 | 状態 | **提案** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0108") |
 | トピック | Web UI のホスティング（クラウド / セルフホスト） |
-| 関連 | [BE-0015](../../in-progress/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting-ja.md), [BE-0051](../../implemented/BE-0051-serve-hardening-for-hosting/BE-0051-serve-hardening-for-hosting-ja.md), [BE-0063](../../implemented/BE-0063-git-config-source/BE-0063-git-config-source-ja.md), [BE-0073](../../implemented/BE-0073-serve-zip-bundle-upload/BE-0073-serve-zip-bundle-upload-ja.md) |
+| 関連 | [BE-0015](../../in-progress/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting-ja.md), [BE-0051](../../BE-0051-serve-hardening-for-hosting/BE-0051-serve-hardening-for-hosting-ja.md), [BE-0063](../../BE-0063-git-config-source/BE-0063-git-config-source-ja.md), [BE-0073](../../implemented/BE-0073-serve-zip-bundle-upload/BE-0073-serve-zip-bundle-upload-ja.md) |
 <!-- /BE-METADATA -->
 
 ## はじめに
 
 Web UI の「Open config」ダイアログには、実行対象の config を bind する経路が三つあります。**Git
-リポジトリ**（[BE-0063](../../implemented/BE-0063-git-config-source/BE-0063-git-config-source-ja.md)）、
+リポジトリ**（[BE-0063](../../BE-0063-git-config-source/BE-0063-git-config-source-ja.md)）、
 **アップロードした `.zip` バンドル**（[BE-0073](../../implemented/BE-0073-serve-zip-bundle-upload/BE-0073-serve-zip-bundle-upload-ja.md)）、
 そして **serve ホストの `--root` 以下を辿る**ファイルブラウザ（最初からある経路で、
 `bajutsu/serve/operations.py` の `browse_fs` / `bind_config`）です。ファイルブラウザは自分のマシンで
@@ -126,6 +126,6 @@ config 取得層に収まります。
 ## 参考
 
 - [BE-0015 — Web UI の公開ホスティング](../../in-progress/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting-ja.md)。この項目が判定に使うホスティング（`server`）バックエンド。
-- [BE-0051 — ホスティングのための serve ハードニング](../../implemented/BE-0051-serve-hardening-for-hosting/BE-0051-serve-hardening-for-hosting-ja.md)。ブラウザを `--root` に閉じ込めた項目。本項目はホスティング時にそれを完全に取り除く。
-- [BE-0063 — Git を config の取得元にする](../../implemented/BE-0063-git-config-source/BE-0063-git-config-source-ja.md)。ホスティング時にも残る取得元の一つ。
+- [BE-0051 — ホスティングのための serve ハードニング](../../BE-0051-serve-hardening-for-hosting/BE-0051-serve-hardening-for-hosting-ja.md)。ブラウザを `--root` に閉じ込めた項目。本項目はホスティング時にそれを完全に取り除く。
+- [BE-0063 — Git を config の取得元にする](../../BE-0063-git-config-source/BE-0063-git-config-source-ja.md)。ホスティング時にも残る取得元の一つ。
 - [BE-0073 — config バンドルを zip でアップロードする](../../implemented/BE-0073-serve-zip-bundle-upload/BE-0073-serve-zip-bundle-upload-ja.md)。もう一つの残る取得元。

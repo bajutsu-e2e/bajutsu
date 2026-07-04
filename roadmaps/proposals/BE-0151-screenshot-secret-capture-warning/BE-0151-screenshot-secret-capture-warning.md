@@ -107,7 +107,7 @@ No PR has landed yet.
 - `bajutsu/redaction.py:7` — `Redactor`'s module docstring: "Images (screenshots/video) cannot be
   masked and are left as-is."
 - `bajutsu/cli/_shared.py:37` — resolving `Effective.secrets` against the environment.
-- [BE-0047 — AI data sovereignty](../../implemented/BE-0047-ai-data-sovereignty/BE-0047-ai-data-sovereignty.md)
+- [BE-0047 — AI data sovereignty](../../BE-0047-ai-data-sovereignty/BE-0047-ai-data-sovereignty.md)
 - [BE-0097 — Crawl AI data sovereignty](../../implemented/BE-0097-crawl-ai-data-sovereignty/BE-0097-crawl-ai-data-sovereignty.md)
-- [BE-0032 — Secret variables](../../implemented/BE-0032-secret-variables/BE-0032-secret-variables.md)
+- [BE-0032 — Secret variables](../../BE-0032-secret-variables/BE-0032-secret-variables.md)
 - Originates from the 2026-07-02 codebase-analysis report (security).

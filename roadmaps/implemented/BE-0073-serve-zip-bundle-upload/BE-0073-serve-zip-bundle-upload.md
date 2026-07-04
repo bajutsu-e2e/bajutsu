@@ -26,12 +26,12 @@ to **acquire** a config-and-scenarios-and-binary bundle: the schema, the runner,
 deterministic gate are untouched, and no LLM is added anywhere.
 
 It is the natural counterpart to two existing items. It is the **import** mirror of
-[BE-0060](../../implemented/BE-0060-run-report-zip-export/BE-0060-run-report-zip-export.md) (which **exports** a
+[BE-0060](../../BE-0060-run-report-zip-export/BE-0060-run-report-zip-export.md) (which **exports** a
 finished run as a zip); and it is the **push** sibling of
-[BE-0063](../../implemented/BE-0063-git-config-source/BE-0063-git-config-source.md) (which **pulls** a config and
+[BE-0063](../../BE-0063-git-config-source/BE-0063-git-config-source.md) (which **pulls** a config and
 its scenario tree from a Git repository) — both answer "where does a hosted serve get the config and
 scenarios it runs?", one over Git, one over an upload. It sits on the serve hardening already shipped
-in [BE-0051](../../implemented/BE-0051-serve-hardening-for-hosting/BE-0051-serve-hardening-for-hosting.md)
+in [BE-0051](../../BE-0051-serve-hardening-for-hosting/BE-0051-serve-hardening-for-hosting.md)
 (token auth + path confinement), without which uploading and running an arbitrary binary would be
 unsafe to expose.
 
@@ -49,11 +49,11 @@ serve** it leaves a gap that neither hand-placement nor a Git source fully close
    and `runs/` all live on *that* machine. Today's UI config picker is a **file browser confined to
    `--root`** (`bajutsu/serve/operations.py` `_confined_config_path`), so it can only choose from
    what an operator has already hand-placed on the host. A browser user cannot bring their own suite.
-   This is the exact mirror of [BE-0060](../../implemented/BE-0060-run-report-zip-export/BE-0060-run-report-zip-export.md)'s
+   This is the exact mirror of [BE-0060](../../BE-0060-run-report-zip-export/BE-0060-run-report-zip-export.md)'s
    motivation #3 (no file-system access to *retrieve* a run) — here the missing direction is **putting
    a suite in**.
 
-2. **A Git source cannot carry the built binary.** [BE-0063](../../implemented/BE-0063-git-config-source/BE-0063-git-config-source.md)
+2. **A Git source cannot carry the built binary.** [BE-0063](../../BE-0063-git-config-source/BE-0063-git-config-source.md)
    materializes a repo subtree at a ref, which is ideal for the *text* (config + YAML scenarios) but
    not for the **compiled app**: teams do not commit `.app` / `.ipa` products to Git, and BE-0063's
    own design leans on the config's `build:` command to (re)produce the binary on the host — which
@@ -68,7 +68,7 @@ serve** it leaves a gap that neither hand-placement nor a Git source fully close
    turns "ask the operator to scp a build over and edit `--root`" into "drag a zip onto the page and
    press run".
 
-No archive *import* exists in the codebase today — [BE-0060](../../implemented/BE-0060-run-report-zip-export/BE-0060-run-report-zip-export.md)
+No archive *import* exists in the codebase today — [BE-0060](../../BE-0060-run-report-zip-export/BE-0060-run-report-zip-export.md)
 proposes the **export** half (stdlib `zipfile`, one archiver); this proposes the **import** half on
 the same stdlib foundation. Together they make a run bundle a portable unit in both directions.
 
@@ -76,7 +76,7 @@ the same stdlib foundation. Together they make a run bundle a portable unit in b
 
 ### The bundle is just a tree to materialize (no new layout to invent)
 
-The crux of [BE-0063](../../implemented/BE-0063-git-config-source/BE-0063-git-config-source.md) applies unchanged:
+The crux of [BE-0063](../../BE-0063-git-config-source/BE-0063-git-config-source.md) applies unchanged:
 **the config alone is not enough**, because `scenarios` / `baselines` / `setup` / `appPath` / `build`
 are paths relative to the run's working directory (`bajutsu/config.py` `AppConfig`). So an uploaded
 zip is treated exactly as BE-0063 treats a Git checkout — **a self-contained subtree the config lives
@@ -129,7 +129,7 @@ introduces the same seam. The two are designed to share it.)
   Crawl** tabs run from — the same job machinery (`bajutsu/serve/jobs.py`) as any other run, only the
   *source* differs. Runs from a bound bundle (whose cwd is the extracted tree) write into serve's own
   runs store via `--runs-dir`, so they show in **History**, and
-  [BE-0060](../../implemented/BE-0060-run-report-zip-export/BE-0060-run-report-zip-export.md)'s
+  [BE-0060](../../BE-0060-run-report-zip-export/BE-0060-run-report-zip-export.md)'s
   download closes the round trip (upload a suite → run → download the result). An uploaded config's
   `build` command is never executed on the host: the bundle ships a prebuilt binary
   ([DESIGN §1](../../../DESIGN.md)).
@@ -138,7 +138,7 @@ introduces the same seam. The two are designed to share it.)
 
 Uploading a binary and executing it on the host is, by construction, "run code the user supplied", so
 this item is only safe **on top of** the hardening in
-[BE-0051](../../implemented/BE-0051-serve-hardening-for-hosting/BE-0051-serve-hardening-for-hosting.md)
+[BE-0051](../../BE-0051-serve-hardening-for-hosting/BE-0051-serve-hardening-for-hosting.md)
 and adds upload-specific defenses. The scope here is **what runs safely today on the single-Mac
 Tier-A serve**; deeper multi-tenant isolation is deferred to BE-0015 / BE-0016 (below).
 
@@ -162,7 +162,7 @@ Tier-A serve**; deeper multi-tenant isolation is deferred to BE-0015 / BE-0016 (
   execute?" is always answerable after the fact, preserving [DESIGN §2](../../../DESIGN.md)'s "never
   silently run an unknown revision".
 - **Secrets.** The bundle carries config and scenarios but **not** secret values — `${secrets.*}`
-  resolve from the serve host's environment as today ([BE-0032](../../implemented/BE-0032-secret-variables/BE-0032-secret-variables.md)),
+  resolve from the serve host's environment as today ([BE-0032](../../BE-0032-secret-variables/BE-0032-secret-variables.md)),
   so an uploaded suite cannot smuggle or exfiltrate the host's secrets, and the run's artifact scrub
   applies unchanged.
 
@@ -183,7 +183,7 @@ The headline case is **iOS**: a `.app` directory, a zipped `.app`, or an `.ipa` 
 by the config's `appPath` and installed into the Simulator. The bundle *layout* is backend-neutral
 (it is just "a config tree"), so the mechanism does not hard-code iOS. The **web (Playwright)** backend
 has no "app binary"; its analogue is bundling a **static site** and serving it via
-[BE-0059](../../implemented/BE-0059-launch-target-server/BE-0059-launch-target-server.md)
+[BE-0059](../../BE-0059-launch-target-server/BE-0059-launch-target-server.md)
 (`launchServer`) with the config's `baseUrl` pointed at it. That web variant is **out of scope for
 the first slice** and noted here so the layout stays general; it can be a follow-up once the iOS path
 lands.
@@ -199,19 +199,19 @@ lands.
   [BE-0016](../../in-progress/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md); this item targets the
   single-Mac Tier-A serve.
 - **Retention / a library of uploaded bundles.** Uploads are ephemeral; persisting and versioning
-  them is the Git source's job ([BE-0063](../../implemented/BE-0063-git-config-source/BE-0063-git-config-source.md)),
+  them is the Git source's job ([BE-0063](../../BE-0063-git-config-source/BE-0063-git-config-source.md)),
   not this one.
 
 ## Alternatives considered
 
-- **Git source only ([BE-0063](../../implemented/BE-0063-git-config-source/BE-0063-git-config-source.md)).**
+- **Git source only ([BE-0063](../../BE-0063-git-config-source/BE-0063-git-config-source.md)).**
   Rejected as a complete substitute: Git carries the *text* well but not the *built binary*, which
   [DESIGN §1](../../../DESIGN.md) says Bajutsu consumes. Forcing the binary through Git means either
   committing build products or running a full build on the host — exactly what an upload avoids. The
   two are complementary, not redundant.
 - **Hand-place files on the host and use the existing file-browser picker.** Works on a local Mac but
   gives a *browser* user of a hosted serve no way to bring their own suite — the same gap
-  [BE-0060](../../implemented/BE-0060-run-report-zip-export/BE-0060-run-report-zip-export.md) closes for the
+  [BE-0060](../../BE-0060-run-report-zip-export/BE-0060-run-report-zip-export.md) closes for the
   download direction.
 - **Upload only the config YAML, not the tree.** Rejected for the same reason as in BE-0063: the
   config's `scenarios` / `appPath` are relative paths, so a config without its tree (and its binary)
@@ -221,10 +221,10 @@ lands.
   paths and BE-0063's path-base mechanism, inventing nothing.
 - **A tarball instead of a zip.** Rejected for symmetry and reach: `.ipa` and zipped `.app` are
   already zips, stdlib `zipfile` is the same foundation
-  [BE-0060](../../implemented/BE-0060-run-report-zip-export/BE-0060-run-report-zip-export.md) uses for export, and a
+  [BE-0060](../../BE-0060-run-report-zip-export/BE-0060-run-report-zip-export.md) uses for export, and a
   zip opens by double-click on every OS.
 - **Persist uploads as a reusable library.** Deferred: that is versioned storage, which Git
-  ([BE-0063](../../implemented/BE-0063-git-config-source/BE-0063-git-config-source.md)) already is. Uploads stay
+  ([BE-0063](../../BE-0063-git-config-source/BE-0063-git-config-source.md)) already is. Uploads stay
   ephemeral.
 
 ## Progress
@@ -236,20 +236,20 @@ lands.
 - [CLAUDE.md](../../../CLAUDE.md), [DESIGN §1](../../../DESIGN.md) (Bajutsu receives a prebuilt app,
   does not build it), [DESIGN §2](../../../DESIGN.md) (AI never judges; determinism first; clean
   environment per test).
-- [BE-0060 — Download / export a run report as a zip](../../implemented/BE-0060-run-report-zip-export/BE-0060-run-report-zip-export.md)
+- [BE-0060 — Download / export a run report as a zip](../../BE-0060-run-report-zip-export/BE-0060-run-report-zip-export.md)
   — the **export** mirror; the shared stdlib `zipfile` foundation and the round-trip partner.
-- [BE-0063 — Load config (and its scenario tree) from a Git repository + ref](../../implemented/BE-0063-git-config-source/BE-0063-git-config-source.md)
+- [BE-0063 — Load config (and its scenario tree) from a Git repository + ref](../../BE-0063-git-config-source/BE-0063-git-config-source.md)
   — the **pull** sibling; the `ConfigSource` seam and the "materialize a tree, resolve config against
   its root" mechanism this reuses.
-- [BE-0051 — Serve hardening for hosting](../../implemented/BE-0051-serve-hardening-for-hosting/BE-0051-serve-hardening-for-hosting.md)
+- [BE-0051 — Serve hardening for hosting](../../BE-0051-serve-hardening-for-hosting/BE-0051-serve-hardening-for-hosting.md)
   — token auth + path confinement this builds on; the `_confined_config_path` invariant extended to
   extraction.
 - [BE-0015 — Public hosting of the web UI](../../in-progress/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md),
   [BE-0016 — Self-hosting of the web UI](../../in-progress/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md)
   — why a browser user needs upload; where deeper multi-tenant isolation lives.
-- [BE-0059 — Bring up the target server for a run (`launchServer`)](../../implemented/BE-0059-launch-target-server/BE-0059-launch-target-server.md)
+- [BE-0059 — Bring up the target server for a run (`launchServer`)](../../BE-0059-launch-target-server/BE-0059-launch-target-server.md)
   — the web-backend analogue (serve a bundled static site) for a future slice.
-- [BE-0032 — Secret variables](../../implemented/BE-0032-secret-variables/BE-0032-secret-variables.md)
+- [BE-0032 — Secret variables](../../BE-0032-secret-variables/BE-0032-secret-variables.md)
   — secrets come from the host environment, not the bundle.
 - `bajutsu/config.py` (`AppConfig.appPath` / `build` / `bundleId` / `baseUrl`), `bajutsu/serve/handler.py`
   (the `do_POST` body handling that gains a raw-zip upload path), `bajutsu/serve/operations.py`

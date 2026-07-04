@@ -10,7 +10,7 @@
 | Status | **Proposal** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0104") |
 | Topic | AI provider configuration |
-| Related | [BE-0047](../../implemented/BE-0047-ai-data-sovereignty/BE-0047-ai-data-sovereignty.md), [BE-0053](../../implemented/BE-0053-bedrock-ai-provider/BE-0053-bedrock-ai-provider.md), [BE-0097](../../implemented/BE-0097-crawl-ai-data-sovereignty/BE-0097-crawl-ai-data-sovereignty.md), [BE-0101](../../implemented/BE-0101-ai-free-zero-config/BE-0101-ai-free-zero-config.md) |
+| Related | [BE-0047](../../BE-0047-ai-data-sovereignty/BE-0047-ai-data-sovereignty.md), [BE-0053](../../BE-0053-bedrock-ai-provider/BE-0053-bedrock-ai-provider.md), [BE-0097](../../implemented/BE-0097-crawl-ai-data-sovereignty/BE-0097-crawl-ai-data-sovereignty.md), [BE-0101](../../implemented/BE-0101-ai-free-zero-config/BE-0101-ai-free-zero-config.md) |
 <!-- /BE-METADATA -->
 
 ## Introduction
@@ -33,8 +33,8 @@ authoring / investigation paths, and never on the deterministic `run` / CI gate.
 
 ## Motivation
 
-[BE-0047](../../implemented/BE-0047-ai-data-sovereignty/BE-0047-ai-data-sovereignty.md) and
-[BE-0053](../../implemented/BE-0053-bedrock-ai-provider/BE-0053-bedrock-ai-provider.md) already made
+[BE-0047](../../BE-0047-ai-data-sovereignty/BE-0047-ai-data-sovereignty.md) and
+[BE-0053](../../BE-0053-bedrock-ai-provider/BE-0053-bedrock-ai-provider.md) already made
 the *provider* pluggable — every AI path reaches a model through the single factory in
 `anthropic_client.py`, and config chooses the Anthropic API, Amazon Bedrock, or a self-hosted
 gateway. But that factory returns `Anthropic | AnthropicBedrock` — **both are Anthropic SDK
@@ -67,7 +67,7 @@ not registering an adapter. This item creates the shape and proves it with Anthr
 motivations above become follow-up adapters rather than cross-cutting rewrites.
 
 A second, structural payoff: **redaction becomes a property of the seam.** Today
-[BE-0047](../../implemented/BE-0047-ai-data-sovereignty/BE-0047-ai-data-sovereignty.md) /
+[BE-0047](../../BE-0047-ai-data-sovereignty/BE-0047-ai-data-sovereignty.md) /
 [BE-0097](../../implemented/BE-0097-crawl-ai-data-sovereignty/BE-0097-crawl-ai-data-sovereignty.md)
 route inputs through `redaction.py` before they reach the Anthropic client. If every provider must
 pass through one neutral interface, that interface is the single chokepoint where the
@@ -212,8 +212,8 @@ ambiguous selector.
 that speak the Anthropic Messages API today), `bajutsu/config.py` (`AiSettings` / `Effective.ai` —
 the config surface), `bajutsu/redaction.py` (the guarantee the neutral seam would enforce
 uniformly), [DESIGN.md](../../../DESIGN.md) (the backend-agnostic Driver philosophy this mirrors on
-the AI side), [BE-0047](../../implemented/BE-0047-ai-data-sovereignty/BE-0047-ai-data-sovereignty.md)
-(enforced provider-agnostic, redacted AI path), [BE-0053](../../implemented/BE-0053-bedrock-ai-provider/BE-0053-bedrock-ai-provider.md)
+the AI side), [BE-0047](../../BE-0047-ai-data-sovereignty/BE-0047-ai-data-sovereignty.md)
+(enforced provider-agnostic, redacted AI path), [BE-0053](../../BE-0053-bedrock-ai-provider/BE-0053-bedrock-ai-provider.md)
 (Bedrock as the first pluggable provider — subsumed by the Anthropic adapter here),
 [BE-0097](../../implemented/BE-0097-crawl-ai-data-sovereignty/BE-0097-crawl-ai-data-sovereignty.md)
 (redaction extended to crawl / serve AI paths),

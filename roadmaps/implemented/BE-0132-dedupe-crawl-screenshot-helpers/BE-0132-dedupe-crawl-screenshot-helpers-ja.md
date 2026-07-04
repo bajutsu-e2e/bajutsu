@@ -112,7 +112,7 @@
 - [`bajutsu/crawl_guide.py:82`](../../../bajutsu/crawl_guide.py)、
   [`bajutsu/enrich.py:92`](../../../bajutsu/enrich.py) — すでに `_screenshot_bytes` を使っている
   残り二つの呼び出し元です。
-- [BE-0064 — Parallel crawl across multiple simulators](../../implemented/BE-0064-parallel-crawl/BE-0064-parallel-crawl.md)
+- [BE-0064 — Parallel crawl across multiple simulators](../../BE-0064-parallel-crawl/BE-0064-parallel-crawl.md)
   — 統合後のヘルパーの呼び出し元が動作するクロールコードです。
 - [BE-0066 — Web crawl (Playwright backend)](../../implemented/BE-0066-web-crawl/BE-0066-web-crawl.md)
   — このクロールコードが対応するもう一つのバックエンドです。

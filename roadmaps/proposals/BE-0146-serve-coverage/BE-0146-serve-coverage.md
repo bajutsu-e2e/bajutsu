@@ -14,14 +14,14 @@
 
 ## Introduction
 
-Surface the E2E coverage map ([BE-0050](../../implemented/BE-0050-e2e-coverage-map/BE-0050-e2e-coverage-map.md))
+Surface the E2E coverage map ([BE-0050](../../BE-0050-e2e-coverage-map/BE-0050-e2e-coverage-map.md))
 in the `serve` Web UI: show, in the browser, how much of an app's surface the scenario suite
 exercises — id namespaces covered vs declared, the gap list, off-namespace ids, and (with a run
 set) endpoints observed vs asserted. Read-only, AI-free, never a gate.
 
 ## Motivation
 
-[BE-0050](../../implemented/BE-0050-e2e-coverage-map/BE-0050-e2e-coverage-map.md) ships
+[BE-0050](../../BE-0050-e2e-coverage-map/BE-0050-e2e-coverage-map.md) ships
 `bajutsu coverage`: a read-only, deterministic aggregation that answers "what do our E2E tests
 actually cover?" — per-namespace id coverage measured against the app's declared `idNamespaces`, the gap
 list (declared namespaces no scenario touches), off-namespace ids, and, with `--runs`, endpoints
@@ -77,13 +77,13 @@ No PR has landed yet.
 ## References
 
 * `bajutsu/coverage.py`, `bajutsu/cli/commands/coverage.py` — the aggregation this surfaces.
-* [BE-0050 — E2E coverage map](../../implemented/BE-0050-e2e-coverage-map/BE-0050-e2e-coverage-map.md)
+* [BE-0050 — E2E coverage map](../../BE-0050-e2e-coverage-map/BE-0050-e2e-coverage-map.md)
   — the feature this is the Web UI surface of;
   [BE-0038 — Autonomous crawl exploration](../../in-progress/BE-0038-autonomous-crawl-exploration/BE-0038-autonomous-crawl-exploration.md)
   — the deferred screens-visited denominator;
-  [BE-0048 — Behavioral / protocol assertions](../../implemented/BE-0048-behavioral-protocol-assertions/BE-0048-behavioral-protocol-assertions.md)
+  [BE-0048 — Behavioral / protocol assertions](../../BE-0048-behavioral-protocol-assertions/BE-0048-behavioral-protocol-assertions.md)
   — the "declared endpoints" half of the endpoint dimension.
-* [BE-0011 — Local web UI (`bajutsu serve`)](../../implemented/BE-0011-local-web-ui-serve/BE-0011-local-web-ui-serve.md),
+* [BE-0011 — Local web UI (`bajutsu serve`)](../../BE-0011-local-web-ui-serve/BE-0011-local-web-ui-serve.md),
   [BE-0072 — Responsive serve Web UI](../../implemented/BE-0072-responsive-web-ui/BE-0072-responsive-web-ui.md)
   — the UI this extends and the small-screen layout it inherits.
 * [evidence.md](../../../docs/evidence.md), [configuration.md](../../../docs/configuration.md) — the

@@ -428,7 +428,7 @@ reservations and the `roadmap-id-repair` / `roadmap-claims-gc` workflows — has
 merge-time allocation runs at most one allocate at a time against the latest `main`, so the sequence
 is contiguous by construction and two branches can no longer contend for the same number, making the
 reservation ledger and its repair backstop redundant. See
-[BE-0061](../roadmaps/implemented/BE-0061-be-id-allocation-hardening/BE-0061-be-id-allocation-hardening.md).
+[BE-0061](../roadmaps/BE-0061-be-id-allocation-hardening/BE-0061-be-id-allocation-hardening.md).
 
 #### Setting up the merge-time allocation App
 

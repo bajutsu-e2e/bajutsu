@@ -10,7 +10,7 @@
 | Status | **Proposal** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0112") |
 | Topic | Development infrastructure (contributor workflow) |
-| Related | [BE-0051](../../implemented/BE-0051-serve-hardening-for-hosting/BE-0051-serve-hardening-for-hosting.md), [BE-0067](../../implemented/BE-0067-code-quality-gate-hardening/BE-0067-code-quality-gate-hardening.md), [BE-0015](../../in-progress/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md), [BE-0016](../../in-progress/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md) |
+| Related | [BE-0051](../../BE-0051-serve-hardening-for-hosting/BE-0051-serve-hardening-for-hosting.md), [BE-0067](../../implemented/BE-0067-code-quality-gate-hardening/BE-0067-code-quality-gate-hardening.md), [BE-0015](../../in-progress/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md), [BE-0016](../../in-progress/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md) |
 <!-- /BE-METADATA -->
 
 ## Introduction
@@ -144,7 +144,7 @@ per-subsystem runtime import guards this item complements with a static contract
 / contract / periphery model this encodes),
 [BE-0067](../../implemented/BE-0067-code-quality-gate-hardening/BE-0067-code-quality-gate-hardening.md)
 (prior gate-hardening this extends),
-[BE-0051](../../implemented/BE-0051-serve-hardening-for-hosting/BE-0051-serve-hardening-for-hosting.md),
+[BE-0051](../../BE-0051-serve-hardening-for-hosting/BE-0051-serve-hardening-for-hosting.md),
 [BE-0015](../../in-progress/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md),
 [BE-0016](../../in-progress/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md) (the hosting
 work that grows the periphery and raises the value of the boundary).

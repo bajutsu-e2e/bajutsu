@@ -10,7 +10,7 @@
 | 状態 | **提案** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0114") |
 | トピック | プラットフォーム拡張（Android / Web / Flutter） |
-| 関連 | [BE-0009](../../implemented/BE-0009-cross-platform-abstractions/BE-0009-cross-platform-abstractions-ja.md), [BE-0042](../../implemented/BE-0042-platform-backend-registry/BE-0042-platform-backend-registry-ja.md), [BE-0082](../../implemented/BE-0082-capability-preflight-check/BE-0082-capability-preflight-check-ja.md), [BE-0019](../../in-progress/BE-0019-xcuitest-backend/BE-0019-xcuitest-backend-ja.md), [BE-0007](../../in-progress/BE-0007-android-backend/BE-0007-android-backend-ja.md) |
+| 関連 | [BE-0009](../../BE-0009-cross-platform-abstractions/BE-0009-cross-platform-abstractions-ja.md), [BE-0042](../../BE-0042-platform-backend-registry/BE-0042-platform-backend-registry-ja.md), [BE-0082](../../implemented/BE-0082-capability-preflight-check/BE-0082-capability-preflight-check-ja.md), [BE-0019](../../in-progress/BE-0019-xcuitest-backend/BE-0019-xcuitest-backend-ja.md), [BE-0007](../../in-progress/BE-0007-android-backend/BE-0007-android-backend-ja.md) |
 <!-- /BE-METADATA -->
 
 ## はじめに
@@ -117,9 +117,9 @@ preflight と結び付けます）、conformance の契約を、新しい backen
 既存の backend ごとのドライバテスト（fake / idb / Playwright。本項目が 1 つの仕様に統合するもの）、
 [DESIGN.md](../../../DESIGN.md) と [architecture.md](../../../docs/ja/architecture.md)（backend
 非依存の思想と、実装状態の source of truth）、
-[BE-0009](../../implemented/BE-0009-cross-platform-abstractions/BE-0009-cross-platform-abstractions-ja.md)
+[BE-0009](../../BE-0009-cross-platform-abstractions/BE-0009-cross-platform-abstractions-ja.md)
 （本項目が検査するクロスプラットフォームの抽象）、
-[BE-0042](../../implemented/BE-0042-platform-backend-registry/BE-0042-platform-backend-registry-ja.md)
+[BE-0042](../../BE-0042-platform-backend-registry/BE-0042-platform-backend-registry-ja.md)
 （スイートが parametrize する backend レジストリ）、
 [BE-0082](../../implemented/BE-0082-capability-preflight-check/BE-0082-capability-preflight-check-ja.md)
 （この `capabilities()` の適合が結び付く capability preflight）、

@@ -181,7 +181,7 @@ style* rule already uses.
 3. Write the standard into `docs/ai-development.md` (+ `docs/ja/`) and `CLAUDE.md`.
 4. Migrate public-API docstrings to Google style **module by module, in small PRs** (small diffs
    merge fast and rarely conflict — the parallel-work model,
-   [BE-0043](../../implemented/BE-0043-conflict-resistant-file-flow/BE-0043-conflict-resistant-file-flow.md)).
+   [BE-0043](../../BE-0043-conflict-resistant-file-flow/BE-0043-conflict-resistant-file-flow.md)).
 5. Enable the scoped `ruff D` enforcement.
 6. Turn on Pages hosting.
 
@@ -205,7 +205,7 @@ style* rule already uses.
   surface. Rejected — the convention drifts, and the growing public API has no map for human or
   agent readers.
 - **A dedicated new roadmap topic.** Filed instead under *Development infrastructure (contributor
-  workflow)* — the [BE-0043](../../implemented/BE-0043-conflict-resistant-file-flow/BE-0043-conflict-resistant-file-flow.md)
+  workflow)* — the [BE-0043](../../BE-0043-conflict-resistant-file-flow/BE-0043-conflict-resistant-file-flow.md)
   topic — since it is about how contributors and agents understand the code, following the precedent
   of not splitting a topic for a single item.
 
@@ -217,7 +217,7 @@ style* rule already uses.
 
 - [CLAUDE.md](../../../CLAUDE.md) — Conventions (comments explain *why*; bilingual docs; code
   comments in English) and the Prime directives this respects (no LLM in the gate).
-- [BE-0043 — Conflict-resistant file flow](../../implemented/BE-0043-conflict-resistant-file-flow/BE-0043-conflict-resistant-file-flow.md)
+- [BE-0043 — Conflict-resistant file flow](../../BE-0043-conflict-resistant-file-flow/BE-0043-conflict-resistant-file-flow.md)
   — the *Development infrastructure* precedent: generated docs as artifacts, small conflict-free PRs.
 - [`docs/ai-development.md`](../../../docs/ai-development.md) — where the standard will live;
   [`docs/README.md`](../../../docs/README.md) — "code comments / docstrings are in English".

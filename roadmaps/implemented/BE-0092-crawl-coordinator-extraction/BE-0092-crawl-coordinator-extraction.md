@@ -21,7 +21,7 @@ small `_Coordinator` class, leaving `crawl()` itself as the device-walk that cal
 **behavior-preserving** internal refactor: the crawl stays a discovery tool (Tier 1, never a CI
 gate), screen identity / transitions / crashes are decided exactly as today, and the existing
 `test_crawl*` suite is the regression net. Nothing in the public API or the on-disk screen map
-changes. It is the maintainability counterpart to [BE-0064](../../implemented/BE-0064-parallel-crawl/BE-0064-parallel-crawl.md)
+changes. It is the maintainability counterpart to [BE-0064](../../BE-0064-parallel-crawl/BE-0064-parallel-crawl.md)
 and [BE-0077](../../implemented/BE-0077-parallel-web-crawl/BE-0077-parallel-web-crawl.md), which added
 the concurrency this proposal reorganizes. Because it is a behavior-preserving internal refactor of
 production code rather than a behavior or performance change, it is filed under *Codebase quality &
@@ -165,7 +165,7 @@ it lands as **one focused PR** announced up front, not folded into unrelated wor
 ## References
 
 - [`bajutsu/crawl.py`](../../../bajutsu/crawl.py) — `crawl()` and its nested closures.
-- [BE-0064 — Parallel crawl across multiple simulators](../../implemented/BE-0064-parallel-crawl/BE-0064-parallel-crawl.md) — added the multi-worker frontier this reorganizes.
+- [BE-0064 — Parallel crawl across multiple simulators](../../BE-0064-parallel-crawl/BE-0064-parallel-crawl.md) — added the multi-worker frontier this reorganizes.
 - [BE-0077 — Parallel web crawl across multiple browsers](../../implemented/BE-0077-parallel-web-crawl/BE-0077-parallel-web-crawl.md) — added the in-thread worker factories and `recover`.
 - [BE-0083 — Unify the codegen emitters behind a shared scenario walk](../../implemented/BE-0083-codegen-emitter-unification/BE-0083-codegen-emitter-unification.md) — a comparable behavior-preserving internal-structure refactor.
 - [BE-0067 — Code-quality gate hardening](../../implemented/BE-0067-code-quality-gate-hardening/BE-0067-code-quality-gate-hardening.md) — the contributor-workflow counterpart this item is distinct from.

@@ -10,7 +10,7 @@
 | Status | **Proposal** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0126") |
 | Topic | Platform expansion (Android / Web / Flutter) |
-| Related | [BE-0009](../../implemented/BE-0009-cross-platform-abstractions/BE-0009-cross-platform-abstractions.md), [BE-0042](../../implemented/BE-0042-platform-backend-registry/BE-0042-platform-backend-registry.md), [BE-0057](../../implemented/BE-0057-rename-apps-to-targets/BE-0057-rename-apps-to-targets.md), [BE-0007](../../in-progress/BE-0007-android-backend/BE-0007-android-backend.md) |
+| Related | [BE-0009](../../BE-0009-cross-platform-abstractions/BE-0009-cross-platform-abstractions.md), [BE-0042](../../BE-0042-platform-backend-registry/BE-0042-platform-backend-registry.md), [BE-0057](../../BE-0057-rename-apps-to-targets/BE-0057-rename-apps-to-targets.md), [BE-0007](../../in-progress/BE-0007-android-backend/BE-0007-android-backend.md) |
 <!-- /BE-METADATA -->
 
 ## Introduction
@@ -125,9 +125,9 @@ No PR has landed yet.
   `platform` discriminator and its derivation from `backend`.
 - `bajutsu/environment.py:266-273,437` — call sites that guard a platform-specific field at runtime
   instead of the type system ruling it out.
-- Related roadmap items: [BE-0009](../../implemented/BE-0009-cross-platform-abstractions/BE-0009-cross-platform-abstractions.md)
-  (cross-platform abstractions), [BE-0042](../../implemented/BE-0042-platform-backend-registry/BE-0042-platform-backend-registry.md)
-  (platform backend registry), [BE-0057](../../implemented/BE-0057-rename-apps-to-targets/BE-0057-rename-apps-to-targets.md)
+- Related roadmap items: [BE-0009](../../BE-0009-cross-platform-abstractions/BE-0009-cross-platform-abstractions.md)
+  (cross-platform abstractions), [BE-0042](../../BE-0042-platform-backend-registry/BE-0042-platform-backend-registry.md)
+  (platform backend registry), [BE-0057](../../BE-0057-rename-apps-to-targets/BE-0057-rename-apps-to-targets.md)
   (rename `apps` → `targets`), [BE-0007](../../in-progress/BE-0007-android-backend/BE-0007-android-backend.md)
   (Android backend).
 - Originates from the 2026-07-02 codebase-analysis report (design).

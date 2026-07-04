@@ -63,7 +63,7 @@ def text_cmd(udid: str, text: str) -> list[str]:
 ## 参考
 
 - `bajutsu/drivers/idb.py:78`（`text_cmd`）
-- 関連: [BE-0032](../../implemented/BE-0032-secret-variables/BE-0032-secret-variables-ja.md)
-  （シークレット変数）、[BE-0035](../../implemented/BE-0035-device-control-primitives/BE-0035-device-control-primitives-ja.md)
+- 関連: [BE-0032](../../BE-0032-secret-variables/BE-0032-secret-variables-ja.md)
+  （シークレット変数）、[BE-0035](../../BE-0035-device-control-primitives/BE-0035-device-control-primitives-ja.md)
   （デバイス制御ステップ）
 - 2026-07-02 のコードベース分析レポート（セキュリティ）に由来します。

@@ -112,6 +112,6 @@ No PR has landed yet.
 
 - `bajutsu/redaction.py:63` — `redact_text`'s literal `text.replace(value, PLACEHOLDER)`.
 - `bajutsu/redaction.py:21` — `_patterns`, the key-based matching this item does not change.
-- [BE-0032 — Secret variables](../../implemented/BE-0032-secret-variables/BE-0032-secret-variables.md)
-- [BE-0047 — AI data sovereignty](../../implemented/BE-0047-ai-data-sovereignty/BE-0047-ai-data-sovereignty.md)
+- [BE-0032 — Secret variables](../../BE-0032-secret-variables/BE-0032-secret-variables.md)
+- [BE-0047 — AI data sovereignty](../../BE-0047-ai-data-sovereignty/BE-0047-ai-data-sovereignty.md)
 - Originates from the 2026-07-02 codebase-analysis report (security).

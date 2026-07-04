@@ -20,7 +20,7 @@ A roadmap item records *what* to build and *why*, but not *how far along* the wo
 an item — which slices have shipped, what remains, what changed when — lives outside the file: in the
 `Implementing PR` row, in commit history, in a contributor's head. Two items
 ([BE-0087](../BE-0087-idb-action-settle/BE-0087-idb-action-settle.md),
-[BE-0052](../BE-0052-device-state-timezone-clipboard-shake/BE-0052-device-state-timezone-clipboard-shake.md))
+[BE-0052](../../BE-0052-device-state-timezone-clipboard-shake/BE-0052-device-state-timezone-clipboard-shake.md))
 grew an ad-hoc `### Implementation status` subsection to fill the gap, but the shape was theirs alone
 and nothing kept it current.
 
@@ -160,7 +160,7 @@ All four pieces shipped together in [#415](https://github.com/bajutsu-e2e/bajuts
 ## References
 
 - [BE-0074 — Standardize the BE item template (EN / JA)](../../implemented/BE-0074-be-template-standardization/BE-0074-be-template-standardization.md) — the template-pinning item this one extends from five sections to six; BE-0074 carries the reciprocal `Related` back-link.
-- [BE-0043 — Conflict-resistant file flow](../../implemented/BE-0043-conflict-resistant-file-flow/BE-0043-conflict-resistant-file-flow.md) — the "make the invariant machine-checked" precedent.
+- [BE-0043 — Conflict-resistant file flow](../../BE-0043-conflict-resistant-file-flow/BE-0043-conflict-resistant-file-flow.md) — the "make the invariant machine-checked" precedent.
 - [BE-0078 — Status-driven roadmap folders](../../implemented/BE-0078-roadmap-status-folders/BE-0078-roadmap-status-folders.md) — `Status` as the lifecycle source of truth, which `Progress` complements with finer-grained state.
 - [`scripts/new_roadmap_item.py`](../../../scripts/new_roadmap_item.py) · [`tests/test_roadmap_format.py`](../../../tests/test_roadmap_format.py) — the scaffolder and the gate the implementing PR extends.
 </content>

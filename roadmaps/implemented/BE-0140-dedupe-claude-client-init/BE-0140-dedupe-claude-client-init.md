@@ -131,7 +131,7 @@ copies:
 - `bajutsu/crawl_tabs.py:183` (`ClaudeTabLocator._ensure_client`)
 - `bajutsu/anthropic_client.py:72` (`make_client`) — the factory all six already call and
   where the shared implementation would live
-- Related: [BE-0021](../../implemented/BE-0021-ai-triage/BE-0021-ai-triage.md) (AI triage),
-  [BE-0047](../../implemented/BE-0047-ai-data-sovereignty/BE-0047-ai-data-sovereignty.md)
+- Related: [BE-0021](../../BE-0021-ai-triage/BE-0021-ai-triage.md) (AI triage),
+  [BE-0047](../../BE-0047-ai-data-sovereignty/BE-0047-ai-data-sovereignty.md)
   (AI data sovereignty)
 - Originates from the 2026-07-02 codebase-analysis report (technical debt).

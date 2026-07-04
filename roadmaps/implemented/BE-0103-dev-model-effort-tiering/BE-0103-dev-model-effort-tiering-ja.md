@@ -11,7 +11,7 @@
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0103") |
 | 実装 PR | [#441](https://github.com/bajutsu-e2e/bajutsu/pull/441) |
 | トピック | 開発基盤（コントリビュータ体験） |
-| 関連 | [BE-0069](../../implemented/BE-0069-executable-contributor-guardrails/BE-0069-executable-contributor-guardrails-ja.md), [BE-0043](../../implemented/BE-0043-conflict-resistant-file-flow/BE-0043-conflict-resistant-file-flow-ja.md) |
+| 関連 | [BE-0069](../../implemented/BE-0069-executable-contributor-guardrails/BE-0069-executable-contributor-guardrails-ja.md), [BE-0043](../../BE-0043-conflict-resistant-file-flow/BE-0043-conflict-resistant-file-flow-ja.md) |
 <!-- /BE-METADATA -->
 
 ## はじめに
@@ -146,5 +146,5 @@ frontmatter に**既定の `model:` を埋め込む**ことです。こうすれ
 `model:` frontmatter、Agent ツールの `model` 上書き、対話的な `/model` / `/fast`（エフォート）制御。
 関連として [BE-0069](../../implemented/BE-0069-executable-contributor-guardrails/BE-0069-executable-contributor-guardrails-ja.md)
 （実行可能なコントリビューターガードレール。「手順をコマンドに、ゲート強制ではなく指針」という先例）と
-[BE-0043](../../implemented/BE-0043-conflict-resistant-file-flow/BE-0043-conflict-resistant-file-flow-ja.md)
+[BE-0043](../../BE-0043-conflict-resistant-file-flow/BE-0043-conflict-resistant-file-flow-ja.md)
 （並行セッションを安く保つコンフリクト耐性のファイルフロー）。

@@ -10,7 +10,7 @@
 | Status | **Proposal** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0135") |
 | Topic | Codebase quality & technical debt |
-| Related | [BE-0063](../../implemented/BE-0063-git-config-source/BE-0063-git-config-source.md), [BE-0044](../../implemented/BE-0044-scenario-provenance/BE-0044-scenario-provenance.md) |
+| Related | [BE-0063](../../BE-0063-git-config-source/BE-0063-git-config-source.md), [BE-0044](../../BE-0044-scenario-provenance/BE-0044-scenario-provenance.md) |
 <!-- /BE-METADATA -->
 
 ## Introduction
@@ -144,7 +144,7 @@ No PR has landed yet.
 - `bajutsu/audit.py:351,368,374,383,393`, `bajutsu/config_source.py:127-128`,
   `bajutsu/idb_version.py:7,31,95` — other, unrelated uses of "provenance" elsewhere in the
   codebase that `provenance.py`'s name collides with.
-- Related roadmap items: [BE-0063](../../implemented/BE-0063-git-config-source/BE-0063-git-config-source.md)
-  (Git config source — names `config_source.py`), [BE-0044](../../implemented/BE-0044-scenario-provenance/BE-0044-scenario-provenance.md)
+- Related roadmap items: [BE-0063](../../BE-0063-git-config-source/BE-0063-git-config-source.md)
+  (Git config source — names `config_source.py`), [BE-0044](../../BE-0044-scenario-provenance/BE-0044-scenario-provenance.md)
   (scenario provenance — names `provenance.py`).
 - Originates from the 2026-07-02 codebase-analysis report (design).

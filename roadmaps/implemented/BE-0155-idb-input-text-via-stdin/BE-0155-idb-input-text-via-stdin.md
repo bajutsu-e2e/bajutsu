@@ -92,7 +92,7 @@ resolved:
 ## References
 
 - `bajutsu/drivers/idb.py:78` (`text_cmd`)
-- Related: [BE-0032](../../implemented/BE-0032-secret-variables/BE-0032-secret-variables.md)
-  (secret variables), [BE-0035](../../implemented/BE-0035-device-control-primitives/BE-0035-device-control-primitives.md)
+- Related: [BE-0032](../../BE-0032-secret-variables/BE-0032-secret-variables.md)
+  (secret variables), [BE-0035](../../BE-0035-device-control-primitives/BE-0035-device-control-primitives.md)
   (device-control primitives)
 - Originates from the 2026-07-02 codebase-analysis report (security).

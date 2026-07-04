@@ -16,9 +16,9 @@
 ## Introduction
 
 Bajutsu transpiles a scenario into a native test for two targets today: XCUITest
-(`bajutsu/codegen.py`, shipped in [BE-0003](../../implemented/BE-0003-m3-codegen-traces-network-ci/BE-0003-m3-codegen-traces-network-ci.md))
+(`bajutsu/codegen.py`, shipped in [BE-0003](../../BE-0003-m3-codegen-traces-network-ci/BE-0003-m3-codegen-traces-network-ci.md))
 and Playwright (`bajutsu/codegen_playwright.py`, shipped in
-[BE-0062](../../implemented/BE-0062-playwright-codegen/BE-0062-playwright-codegen.md)). The two
+[BE-0062](../../BE-0062-playwright-codegen/BE-0062-playwright-codegen.md)). The two
 modules share an identical *control flow* — walk the scenarios, for each one merge the launch
 environment, emit a launch line, emit each step, then emit the `expect` block — and differ only in
 the per-line target syntax. That skeleton is currently copy-pasted between the two files. This item
@@ -39,7 +39,7 @@ directives.
   gate proving the two stayed aligned.
 - **A third emitter would copy it a third time.** Adding an Android codegen target (the natural next
   step once an Android backend lands — see
-  [BE-0009](../BE-0009-cross-platform-abstractions/BE-0009-cross-platform-abstractions.md), whose
+  [BE-0009](../../BE-0009-cross-platform-abstractions/BE-0009-cross-platform-abstractions.md), whose
   per-platform table already lists a new `codegen.py` emitter per platform) would mean a third copy of
   the same skeleton. Unifying the walk now makes each new target the cost of *only* its line syntax,
   which is the part that genuinely differs.
@@ -90,9 +90,9 @@ Scope is the two codegen modules plus their tests; no runner, scenario model, or
 
 - `bajutsu/codegen.py` (XCUITest), `bajutsu/codegen_playwright.py` (Playwright) — the two emitters
   this unifies.
-- [BE-0003 — M3 codegen / traces / network / CI](../../implemented/BE-0003-m3-codegen-traces-network-ci/BE-0003-m3-codegen-traces-network-ci.md)
-  (XCUITest codegen), [BE-0062 — Playwright codegen](../../implemented/BE-0062-playwright-codegen/BE-0062-playwright-codegen.md)
+- [BE-0003 — M3 codegen / traces / network / CI](../../BE-0003-m3-codegen-traces-network-ci/BE-0003-m3-codegen-traces-network-ci.md)
+  (XCUITest codegen), [BE-0062 — Playwright codegen](../../BE-0062-playwright-codegen/BE-0062-playwright-codegen.md)
   (Playwright codegen) — the two shipped targets.
-- [BE-0009 — Cross-platform abstractions](../BE-0009-cross-platform-abstractions/BE-0009-cross-platform-abstractions.md)
+- [BE-0009 — Cross-platform abstractions](../../BE-0009-cross-platform-abstractions/BE-0009-cross-platform-abstractions.md)
   — its per-platform table lists a new `codegen.py` emitter per platform, the future caller this
   unification serves.

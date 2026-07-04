@@ -72,6 +72,6 @@ def _command(self, prompt: str, schema: dict[str, Any], system: str) -> list[str
 ## 参考
 
 - `bajutsu/claude_code_agent.py:148`（`ClaudeCodeAgent._command`）
-- 関連: [BE-0047](../../implemented/BE-0047-ai-data-sovereignty/BE-0047-ai-data-sovereignty-ja.md)
+- 関連: [BE-0047](../../BE-0047-ai-data-sovereignty/BE-0047-ai-data-sovereignty-ja.md)
   （AI データ主権）
 - 2026-07-02 のコードベース分析レポート（セキュリティ）に由来します。

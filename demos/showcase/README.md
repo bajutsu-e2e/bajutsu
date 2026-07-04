@@ -14,7 +14,7 @@ smallest app that still exercises `record`, `crawl`, and `run` together.
 - **The contract:** [`SPEC.md`](SPEC.md) ([ja](SPEC.ja.md)) — every screen, identifier,
   launch-env hook, deeplink, and the OS-alert placement. The two `-a11y` apps expose an
   identical identifier contract, so the one [`scenarios/`](scenarios) set drives both.
-- **The roadmap items:** [BE-0045](../../roadmaps/implemented/BE-0045-dogfood-showcase-apps/BE-0045-dogfood-showcase-apps.md)
+- **The roadmap items:** [BE-0045](../../roadmaps/BE-0045-dogfood-showcase-apps/BE-0045-dogfood-showcase-apps.md)
   records the rationale for the showcase suite; [BE-0079](../../roadmaps/implemented/BE-0079-consolidate-demos-on-showcase/BE-0079-consolidate-demos-on-showcase.md)
   completed the consolidation onto it (see [`roadmaps`](../../roadmaps/README.md) for the full index).
 

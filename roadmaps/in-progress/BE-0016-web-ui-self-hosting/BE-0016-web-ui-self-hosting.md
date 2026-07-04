@@ -21,9 +21,9 @@ self-hosted counterpart to the managed, multi-tenant public stack in
 [BE-0015](../BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md). It documents two tiers:
 
 - **Tier A — today-ready.** What runs *today* with the existing stdlib `bajutsu serve`
-  (`bajutsu/serve/`), already shipped as [BE-0011](../../implemented/BE-0011-local-web-ui-serve/BE-0011-local-web-ui-serve.md)
+  (`bajutsu/serve/`), already shipped as [BE-0011](../../BE-0011-local-web-ui-serve/BE-0011-local-web-ui-serve.md)
   and made safe to expose by the hardening in
-  [BE-0051](../../implemented/BE-0051-serve-hardening-for-hosting/BE-0051-serve-hardening-for-hosting.md)
+  [BE-0051](../../BE-0051-serve-hardening-for-hosting/BE-0051-serve-hardening-for-hosting.md)
   (token auth + input validation), plus operational configuration (LaunchAgent, auto-login,
   Tailscale). The one small piece of code it adds is `serve --emit-launchagent`, which prints the
   LaunchAgent plist for you. The step-by-step operator guide is
@@ -65,8 +65,8 @@ This is the operational difference between hosting bajutsu and hosting a normal 
 ### Tier A — run it today (single Mac, current `serve.py`)
 
 The only thing that actually runs today is the stdlib `bajutsu serve` + the CLI, already shipped as
-[BE-0011](../../implemented/BE-0011-local-web-ui-serve/BE-0011-local-web-ui-serve.md) and hardened for
-exposure by [BE-0051](../../implemented/BE-0051-serve-hardening-for-hosting/BE-0051-serve-hardening-for-hosting.md).
+[BE-0011](../../BE-0011-local-web-ui-serve/BE-0011-local-web-ui-serve.md) and hardened for
+exposure by [BE-0051](../../BE-0051-serve-hardening-for-hosting/BE-0051-serve-hardening-for-hosting.md).
 This tier makes it safely reachable for a team with **near-zero code change** (only the
 `--emit-launchagent` helper) — it is **runnable today** on the existing `bajutsu serve`. See
 [docs/self-hosting.md](../../../docs/self-hosting.md) for the full walkthrough.
@@ -262,7 +262,7 @@ on the deployment; no gate coverage.
 ```
 
 **6. Observability.** The serve backend already emits **structured JSON logs to stdout** with secrets
-redacted ([BE-0055](../../implemented/BE-0055-operational-logging/BE-0055-operational-logging.md)) —
+redacted ([BE-0055](../../BE-0055-operational-logging/BE-0055-operational-logging.md)) —
 shipping those to a log stack is the deployment's job. What is missing is **metrics**: a `/metrics`
 endpoint (queue depth, in-flight jobs per org, run durations, worker liveness) and `prometheus` +
 `grafana` containers in the compose to scrape and chart them. The `/metrics` endpoint is the only part
@@ -350,9 +350,9 @@ The single node is runnable now ([#103](https://github.com/bajutsu-e2e/bajutsu/p
 `bajutsu/serve/`, [docs/self-hosting.md](../../../docs/self-hosting.md) (the Tier A and Tier B
 operator guide), [`deploy/self-host/`](../../../deploy/self-host/) (the runnable single-node compose
 stack), [cli.md](../../../docs/cli.md#serve), [ci.md](../../../docs/ci.md),
-[BE-0051](../../implemented/BE-0051-serve-hardening-for-hosting/BE-0051-serve-hardening-for-hosting.md)
+[BE-0051](../../BE-0051-serve-hardening-for-hosting/BE-0051-serve-hardening-for-hosting.md)
 (the hardening that makes exposure safe),
-[BE-0055](../../implemented/BE-0055-operational-logging/BE-0055-operational-logging.md) (the structured
+[BE-0055](../../BE-0055-operational-logging/BE-0055-operational-logging.md) (the structured
 serve logs the observability work builds on),
 [BE-0015](../BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md) (the cloud-hosting
-counterpart), [BE-0011](../../implemented/BE-0011-local-web-ui-serve/BE-0011-local-web-ui-serve.md)
+counterpart), [BE-0011](../../BE-0011-local-web-ui-serve/BE-0011-local-web-ui-serve.md)

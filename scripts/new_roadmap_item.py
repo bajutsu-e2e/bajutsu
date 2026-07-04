@@ -9,8 +9,8 @@ into one command both a human and an AI invoke identically::
 
     make new-roadmap-item SLUG=<slug> TITLE="<title>" [TOPIC="<topic>"] [STATUS=Proposal] [HANDLE=<handle>]
 
-It writes ``roadmaps/proposals/BE-XXXX-<slug>/`` with ``BE-XXXX-<slug>.md`` and its ``-ja.md`` mirror,
-each pre-filled with the header link, the metadata block, and the six sections seeded with ``TBD`` —
+It writes ``roadmaps/<status-folder>/BE-XXXX-<slug>/`` with ``BE-XXXX-<slug>.md`` and its ``-ja.md``
+mirror, each pre-filled with the header link, the metadata block, and the six sections seeded with ``TBD`` —
 ``Progress`` (BE-0100) seeded with its living-checklist skeleton rather than a bare ``TBD``.
 It deliberately does **not** add an index row: the index generator skips ``BE-XXXX`` items, so the
 committed tables stay row-free for the placeholder and ``make check`` is green locally; the
@@ -60,6 +60,10 @@ SLUG_RE = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 # Status -> its folder (mirrors STATUS_TO_CATEGORY in promote_roadmap_items.py).
 # Defined locally to avoid a module-level import after the sys.path tweak that _known_topics()
 # applies — keeping every cross-script dependency scoped to the function that needs it.
+# BE-0159 is flattening these folders away, but does it in two batches: while part 1 is on `main`
+# without part 2, the two-approval proposal gate still keys on the `roadmaps/proposals/` path, so a
+# newly scaffolded proposal must land there to stay gated. Part 2 flips this to the flat layout in
+# lockstep with the Status-based gate.
 STATUS_TO_FOLDER = {
     "Proposal": "proposals",
     "In progress": "in-progress",
@@ -185,8 +189,8 @@ def scaffold(roadmap: Path, slug: str, title: str, *, topic: str, status: str, h
         raise SystemExit(f"unknown STATUS {status!r}. One of: {', '.join(STATUS_JA)}")
     handle = handle.lstrip("@")  # accept either "octocat" or "@octocat"
 
-    # Use the folder that matches Status (Status is the source of truth per BE-0078), so the item
-    # is filed correctly from creation and the promote gate never has to move it.
+    # File under the folder that matches Status (Status is the source of truth per BE-0078) so the
+    # path-prefix proposal gate keeps applying during the BE-0159 transition; part 2 flattens this.
     folder = STATUS_TO_FOLDER[status]
     item_dir = roadmap / folder / f"{PLACEHOLDER}-{slug}"
     if item_dir.exists():

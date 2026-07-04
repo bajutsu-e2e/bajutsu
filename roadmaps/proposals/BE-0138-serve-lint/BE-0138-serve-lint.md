@@ -18,7 +18,7 @@ Give the `serve` Web UI's YAML scenario editor inline validation: surface lint f
 JSON-Schema checks *as you edit*, instead of only failing on save. Deterministic and AI-free, it
 turns the raw textarea into a guided editor — and it can ship on today's textarea, ahead of and
 complementary to the richer structured editor
-([BE-0013](../../implemented/BE-0013-scenario-gui-editor/BE-0013-scenario-gui-editor.md)).
+([BE-0013](../../BE-0013-scenario-gui-editor/BE-0013-scenario-gui-editor.md)).
 
 ## Motivation
 
@@ -53,7 +53,7 @@ Tier-1, deterministic; the UI only shells out to the existing validators.
 * **Keep validate-on-save only (status quo).** Rejected: a single save-time exception with no
   location is the poorest possible feedback for an editor; the line-anchored lint already exists.
 * **Wait for the structured GUI editor
-  ([BE-0013](../../implemented/BE-0013-scenario-gui-editor/BE-0013-scenario-gui-editor.md)) to carry
+  ([BE-0013](../../BE-0013-scenario-gui-editor/BE-0013-scenario-gui-editor.md)) to carry
   validation.** Rejected as the gating choice: BE-0013 (element picker + structured fields +
   `doctor` score) is a larger build; inline lint / schema is separable, works on today's textarea,
   and should not wait behind it. The two are complementary — this is the validation layer, BE-0013
@@ -82,9 +82,9 @@ No PR has landed yet.
   `bajutsu/cli/commands/schema.py` — the validators this surfaces.
 * `bajutsu/serve/` — the scenario load / save path (`load_scenario_file`) this augments with early
   feedback.
-* [BE-0013 — Scenario GUI editor](../../implemented/BE-0013-scenario-gui-editor/BE-0013-scenario-gui-editor.md)
+* [BE-0013 — Scenario GUI editor](../../BE-0013-scenario-gui-editor/BE-0013-scenario-gui-editor.md)
   — the richer structured editor this validation layer complements and precedes;
-  [BE-0011 — Local web UI (`bajutsu serve`)](../../implemented/BE-0011-local-web-ui-serve/BE-0011-local-web-ui-serve.md),
+  [BE-0011 — Local web UI (`bajutsu serve`)](../../BE-0011-local-web-ui-serve/BE-0011-local-web-ui-serve.md),
   [BE-0072 — Responsive serve Web UI](../../implemented/BE-0072-responsive-web-ui/BE-0072-responsive-web-ui.md)
   — the UI this extends and the small-screen layout it inherits.
 * [scenarios.md](../../../docs/scenarios.md) — the scenario grammar lint and the schema validate

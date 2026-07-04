@@ -11,7 +11,7 @@
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0103") |
 | Implementing PR | [#441](https://github.com/bajutsu-e2e/bajutsu/pull/441) |
 | Topic | Development infrastructure (contributor workflow) |
-| Related | [BE-0069](../../implemented/BE-0069-executable-contributor-guardrails/BE-0069-executable-contributor-guardrails.md), [BE-0043](../../implemented/BE-0043-conflict-resistant-file-flow/BE-0043-conflict-resistant-file-flow.md) |
+| Related | [BE-0069](../../implemented/BE-0069-executable-contributor-guardrails/BE-0069-executable-contributor-guardrails.md), [BE-0043](../../BE-0043-conflict-resistant-file-flow/BE-0043-conflict-resistant-file-flow.md) |
 <!-- /BE-METADATA -->
 
 ## Introduction
@@ -161,5 +161,5 @@ validation.
 per-skill / per-subagent `model:` frontmatter, the Agent tool `model` override, and the interactive
 `/model` / `/fast` (effort) controls; [BE-0069](../../implemented/BE-0069-executable-contributor-guardrails/BE-0069-executable-contributor-guardrails.md)
 (executable contributor guardrails — the "procedures as commands, advisory not gate-enforced"
-precedent) and [BE-0043](../../implemented/BE-0043-conflict-resistant-file-flow/BE-0043-conflict-resistant-file-flow.md)
+precedent) and [BE-0043](../../BE-0043-conflict-resistant-file-flow/BE-0043-conflict-resistant-file-flow.md)
 (the conflict-resistant file-flow that keeps parallel sessions cheap).

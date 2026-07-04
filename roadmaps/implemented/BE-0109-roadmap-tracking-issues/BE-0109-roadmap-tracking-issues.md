@@ -176,7 +176,7 @@ Log:
 - [BE-0139](../../implemented/BE-0139-roadmap-dashboard-issue-links/BE-0139-roadmap-dashboard-issue-links.md) —
   the item that links back to these tracking issues from every item file and dashboard card, using a
   deterministic issue-search URL built from the id (no live `gh issue list`).
-- [BE-0043](../../implemented/BE-0043-conflict-resistant-file-flow/BE-0043-conflict-resistant-file-flow.md) —
+- [BE-0043](../../BE-0043-conflict-resistant-file-flow/BE-0043-conflict-resistant-file-flow.md) —
   the conflict-resistant / self-healing file-flow precedent this design follows.
-- [BE-0061](../../implemented/BE-0061-be-id-allocation-hardening/BE-0061-be-id-allocation-hardening.md) —
+- [BE-0061](../../BE-0061-be-id-allocation-hardening/BE-0061-be-id-allocation-hardening.md) —
   the atomic-allocation precedent for CI mutating roadmap state idempotently.

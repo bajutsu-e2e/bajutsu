@@ -66,9 +66,9 @@ human accepts, never an automatic edit.
   this fail?", and the job / stream / save plumbing to host it already exists.
 * **Auto-apply the proposed fix.** Rejected: it collides with the self-healing guard rule (AI
   proposes, the human opts in —
-  [BE-0039](../../implemented/BE-0039-self-healing-propose-optin/BE-0039-self-healing-propose-optin.md))
+  [BE-0039](../../BE-0039-self-healing-propose-optin/BE-0039-self-healing-propose-optin.md))
   and risks silently "making the test laxer"
-  ([BE-0023](../../implemented/BE-0023-self-healing-guards/BE-0023-self-healing-guards.md)). The fix
+  ([BE-0023](../../BE-0023-self-healing-guards/BE-0023-self-healing-guards.md)). The fix
   is always a diff the user accepts.
 * **Run triage inline in the request rather than as a job.** Rejected: AI triage can take many
   seconds and must be cancelable and streamable like the other long actions; reusing the job model
@@ -94,12 +94,12 @@ No PR has landed yet.
   investigator this surfaces.
 * `bajutsu/serve/` (`jobs.py`, `operations.py`, `handler.py`) — the job / stream / save plumbing
   reused.
-* [BE-0021 — AI triage](../../implemented/BE-0021-ai-triage/BE-0021-ai-triage.md),
-  [BE-0022 — structured fixes](../../implemented/BE-0022-update-structured-fixes/BE-0022-update-structured-fixes.md),
-  [BE-0039 — propose + opt-in apply](../../implemented/BE-0039-self-healing-propose-optin/BE-0039-self-healing-propose-optin.md),
-  [BE-0023 — guards against making tests laxer](../../implemented/BE-0023-self-healing-guards/BE-0023-self-healing-guards.md)
+* [BE-0021 — AI triage](../../BE-0021-ai-triage/BE-0021-ai-triage.md),
+  [BE-0022 — structured fixes](../../BE-0022-update-structured-fixes/BE-0022-update-structured-fixes.md),
+  [BE-0039 — propose + opt-in apply](../../BE-0039-self-healing-propose-optin/BE-0039-self-healing-propose-optin.md),
+  [BE-0023 — guards against making tests laxer](../../BE-0023-self-healing-guards/BE-0023-self-healing-guards.md)
   — the triage feature and its self-healing guards this UI surface reuses.
-* [BE-0011 — Local web UI (`bajutsu serve`)](../../implemented/BE-0011-local-web-ui-serve/BE-0011-local-web-ui-serve.md)
+* [BE-0011 — Local web UI (`bajutsu serve`)](../../BE-0011-local-web-ui-serve/BE-0011-local-web-ui-serve.md)
   — the UI this extends;
   [BE-0072 — Responsive serve Web UI](../../implemented/BE-0072-responsive-web-ui/BE-0072-responsive-web-ui.md)
   — the small-screen layout the panel inherits.

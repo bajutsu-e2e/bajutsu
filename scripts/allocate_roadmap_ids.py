@@ -34,27 +34,16 @@ from pathlib import Path
 # already on the path) or loaded under its bare name by a test — add scripts/ so the sibling import
 # resolves either way.
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from roadmap_ids import PLACEHOLDER, is_placeholder_dir, numbered_match
+from roadmap_ids import PLACEHOLDER, is_placeholder_dir, iter_item_dirs, numbered_match
 
 ROADMAP = Path("roadmaps")
-# IDs are global across all status folders. A placeholder is authored under proposals/, but
-# promote_roadmap_items can relocate one whose Status was set before allocation (BE-0149's own
-# placeholder-aware misfiled_items()) — so every folder must be scanned for placeholders too, the
-# same way used_ids() already scans every folder for numbered ids.
-CATEGORIES = ("implemented", "in-progress", "proposals", "deferred")
 PATH_ITEM_RE = re.compile(r"/BE-(\d{4})-[^/]+/")  # id of an item's directory in a path
 INDEX_FILES = ("README.md", "README-ja.md")
 
 
 def working_tree_ids() -> set[int]:
-    """BE numbers present in the working tree, across all status folders."""
-    return {
-        int(m.group(1))
-        for category in CATEGORIES
-        if (ROADMAP / category).is_dir()
-        for d in (ROADMAP / category).iterdir()
-        if d.is_dir() and (m := numbered_match(d.name))
-    }
+    """BE numbers present in the working tree (flat root and the legacy status folders, BE-0159)."""
+    return {int(m.group(1)) for d in iter_item_dirs(ROADMAP) if (m := numbered_match(d.name))}
 
 
 def ids_on_git_ref(ref: str) -> set[int]:
@@ -83,25 +72,16 @@ def used_ids() -> set[int]:
 
 
 def placeholder_dirs() -> list[Path]:
-    """Placeholder item directories across every status folder, sorted by directory name (the
-    slug) for deterministic allocation.
+    """Placeholder item directories, sorted by directory name (the slug) for deterministic allocation.
 
-    Scans all of ``CATEGORIES``, not just ``proposals/``: a placeholder is authored there, but
-    ``promote_roadmap_items`` can move one whose ``Status`` was set to something else before
-    allocation — a placeholder stuck in ``proposals/`` only would never be numbered. Sorting by
-    ``d.name`` rather than the full path keeps allocation order a pure function of the slug,
-    independent of which folder a placeholder currently lives in — sorting the ``Path`` objects
-    directly would order by folder first (e.g. ``deferred/`` before ``proposals/``), so a
-    relocated placeholder could jump ahead of or behind another one for no reason tied to its name.
+    Scans the flat root and every legacy status folder (BE-0159's migrating tree, via
+    ``iter_item_dirs``): a placeholder is authored flat now, but one may still sit under a status
+    folder until it is migrated. Sorting by ``d.name`` rather than the full path keeps allocation
+    order a pure function of the slug, independent of where a placeholder currently lives — sorting
+    the ``Path`` objects directly would order by parent folder first.
     """
     return sorted(
-        (
-            d
-            for category in CATEGORIES
-            if (ROADMAP / category).is_dir()
-            for d in (ROADMAP / category).iterdir()
-            if d.is_dir() and is_placeholder_dir(d.name)
-        ),
+        (d for d in iter_item_dirs(ROADMAP) if is_placeholder_dir(d.name)),
         key=lambda d: d.name,
     )
 

@@ -16,7 +16,7 @@
 ## Introduction
 
 Bring the autonomous crawl ([BE-0038](../../in-progress/BE-0038-autonomous-crawl-exploration/BE-0038-autonomous-crawl-exploration.md))
-to the Web (Playwright) backend ([BE-0041](../BE-0041-web-playwright-backend/BE-0041-web-playwright-backend.md)),
+to the Web (Playwright) backend ([BE-0041](../../BE-0041-web-playwright-backend/BE-0041-web-playwright-backend.md)),
 so `bajutsu crawl --backend web` explores a web app breadth-first and produces the *same* outputs the iOS crawl
 does — a screen map, crash repro scenarios, candidate scenarios, and a whole-app coverage feed — at full parity,
 including the optional AI guide (`--guide ai`). The crawl engine is already platform-neutral; what this item adds is
@@ -40,7 +40,7 @@ which is just another `navigate()` ([`runner/pool.py`](../../../bajutsu/runner/p
 the `erase` equivalent and is ~free. Crawl should reuse that seam instead of carrying its own iOS-only reset.
 
 **Web is the lowest-friction place to make crawl pay off.** Web needs no Mac and no emulator and runs on the
-existing Linux `make check` / CI gate ([BE-0041](../BE-0041-web-playwright-backend/BE-0041-web-playwright-backend.md)),
+existing Linux `make check` / CI gate ([BE-0041](../../BE-0041-web-playwright-backend/BE-0041-web-playwright-backend.md)),
 so a web crawl can run as a discovery step right inside CI. The three gaps BE-0038 fills apply verbatim to web apps:
 *discovery before authoring* (a screen map turns "I don't know this app" into "here are its screens, pick ones to
 author"), *whole-app coverage measurement* ([DESIGN §7.2](../../../DESIGN.md) — the crawl is the run that produces
@@ -143,11 +143,11 @@ blank DOM) that need no model.
 
 **Fold this into BE-0038.** Rejected: BE-0038 is framed entirely around iOS and is already in progress; the web crash
 semantics and the lifecycle seam are a distinct design surface. This mirrors how the web `run` path became its own
-item ([BE-0041](../BE-0041-web-playwright-backend/BE-0041-web-playwright-backend.md)) rather than an edit to `run`.
-It is also the same "same engine, new axis" relationship [BE-0064 (parallel crawl)](../BE-0064-parallel-crawl/BE-0064-parallel-crawl.md)
+item ([BE-0041](../../BE-0041-web-playwright-backend/BE-0041-web-playwright-backend.md)) rather than an edit to `run`.
+It is also the same "same engine, new axis" relationship [BE-0064 (parallel crawl)](../../BE-0064-parallel-crawl/BE-0064-parallel-crawl.md)
 has with BE-0038 (that one varies concurrency; this one varies platform).
 
-**Wait for [BE-0054](../BE-0054-web-backend-completion/BE-0054-web-backend-completion.md) (web backend
+**Wait for [BE-0054](../../BE-0054-web-backend-completion/BE-0054-web-backend-completion.md) (web backend
 completion).** Not required: the crawl needs only `query` / `tap` / `type` / `tap_point` / `screenshot`, the
 lifecycle seam, and the health signals — all present or small additions. BE-0054's rich capture (native network,
 video, parallel runs) enriches a later web crawl but does not block this one; parallel web crawl in particular is the
@@ -160,8 +160,8 @@ intersection of this item with the parallel-crawl axis and can follow once both 
 ## References
 
 - [BE-0038 — Autonomous crawl exploration](../../in-progress/BE-0038-autonomous-crawl-exploration/BE-0038-autonomous-crawl-exploration.md) — the platform-neutral engine this reaches a new backend.
-- [BE-0041 — Web (Playwright) backend](../BE-0041-web-playwright-backend/BE-0041-web-playwright-backend.md) — the web driver and the deterministic web `run` path.
-- [BE-0054 — Web backend completion](../BE-0054-web-backend-completion/BE-0054-web-backend-completion.md) — rich web capture (network / video / parallel) that enriches a web crawl later.
-- [BE-0064 — Parallel crawl across multiple simulators](../BE-0064-parallel-crawl/BE-0064-parallel-crawl.md) — the sibling crawl axis (concurrency); parallel web crawl is the intersection of the two.
+- [BE-0041 — Web (Playwright) backend](../../BE-0041-web-playwright-backend/BE-0041-web-playwright-backend.md) — the web driver and the deterministic web `run` path.
+- [BE-0054 — Web backend completion](../../BE-0054-web-backend-completion/BE-0054-web-backend-completion.md) — rich web capture (network / video / parallel) that enriches a web crawl later.
+- [BE-0064 — Parallel crawl across multiple simulators](../../BE-0064-parallel-crawl/BE-0064-parallel-crawl.md) — the sibling crawl axis (concurrency); parallel web crawl is the intersection of the two.
 - [`crawl.py`](../../../bajutsu/crawl.py), [`cli/commands/crawl.py`](../../../bajutsu/cli/commands/crawl.py), [`runner/launch.py`](../../../bajutsu/runner/launch.py), [`runner/pool.py`](../../../bajutsu/runner/pool.py), [`drivers/playwright.py`](../../../bajutsu/drivers/playwright.py), [`config.py`](../../../bajutsu/config.py).
 - [DESIGN §2 / §3.1 / §5 / §7.2 / §9](../../../DESIGN.md), [CLAUDE.md](../../../CLAUDE.md) prime directives #1 (AI never judges) and #2 (determinism first), [multi-platform.md](../../../docs/multi-platform.md).

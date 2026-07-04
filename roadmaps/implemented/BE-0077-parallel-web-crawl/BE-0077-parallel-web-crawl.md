@@ -16,7 +16,7 @@
 
 ## Introduction
 
-Run the [BE-0066 web crawl](../../implemented/BE-0066-web-crawl/BE-0066-web-crawl.md) across **N browsers at once**, so independent frontier work overlaps and one screen map is built in a fraction of the wall-clock time. This is the web counterpart of [BE-0064 (parallel crawl across simulators)](../BE-0064-parallel-crawl/BE-0064-parallel-crawl.md) — the intersection both that item and BE-0066 already flagged as a follow-on ("parallel web crawl … is the intersection of this item with the parallel-crawl axis and can follow once both land"). As on iOS, the crawl stays a Tier-1 discovery tool (never a CI gate); only its *scheduling* becomes concurrent, and screen identity, transitions, and crashes are decided exactly as before.
+Run the [BE-0066 web crawl](../../implemented/BE-0066-web-crawl/BE-0066-web-crawl.md) across **N browsers at once**, so independent frontier work overlaps and one screen map is built in a fraction of the wall-clock time. This is the web counterpart of [BE-0064 (parallel crawl across simulators)](../../BE-0064-parallel-crawl/BE-0064-parallel-crawl.md) — the intersection both that item and BE-0066 already flagged as a follow-on ("parallel web crawl … is the intersection of this item with the parallel-crawl axis and can follow once both land"). As on iOS, the crawl stays a Tier-1 discovery tool (never a CI gate); only its *scheduling* becomes concurrent, and screen identity, transitions, and crashes are decided exactly as before.
 
 Each worker owns its own **browser process** (a launched Playwright `Browser`), not a `BrowserContext` lane inside one shared browser. The goal here is **speed** — one shared screen map, built faster — not cross-engine coverage; running the same app on different engines (Chromium / Firefox / WebKit) to surface engine-specific differences is a distinct feature, kept out of scope below.
 
@@ -29,7 +29,7 @@ A web crawl is serial today: it explores one screen at a time in one browser. Th
 
 Both overlap cleanly across independent browsers, so wall-clock time falls roughly with the number of workers until AI rate limits or coordinator contention dominate.
 
-**Web is the lowest-friction place to make a parallel crawl pay off.** It needs no Mac and no emulator and runs on the existing Linux `make check` / CI gate ([BE-0041](../BE-0041-web-playwright-backend/BE-0041-web-playwright-backend.md)), so a fast crawl can run as a discovery step right inside CI. A browser process also starts in seconds with no device boot, so standing up N lanes is cheap. `run` already scales across lanes — [BE-0054](../BE-0054-web-backend-completion/BE-0054-web-backend-completion.md) generalizes the web branch of the pool to N — leaving crawl the one Tier-1 path still pinned to a single browser, which makes it slow to use as the front end to `record` and as the whole-app coverage run ([DESIGN §7.2](../../../DESIGN.md); [BE-0038](../../in-progress/BE-0038-autonomous-crawl-exploration/BE-0038-autonomous-crawl-exploration.md) motivation #2).
+**Web is the lowest-friction place to make a parallel crawl pay off.** It needs no Mac and no emulator and runs on the existing Linux `make check` / CI gate ([BE-0041](../../BE-0041-web-playwright-backend/BE-0041-web-playwright-backend.md)), so a fast crawl can run as a discovery step right inside CI. A browser process also starts in seconds with no device boot, so standing up N lanes is cheap. `run` already scales across lanes — [BE-0054](../../BE-0054-web-backend-completion/BE-0054-web-backend-completion.md) generalizes the web branch of the pool to N — leaving crawl the one Tier-1 path still pinned to a single browser, which makes it slow to use as the front end to `record` and as the whole-app coverage run ([DESIGN §7.2](../../../DESIGN.md); [BE-0038](../../in-progress/BE-0038-autonomous-crawl-exploration/BE-0038-autonomous-crawl-exploration.md) motivation #2).
 
 ## Detailed design
 
@@ -81,10 +81,10 @@ The web branch of [`runner/pool.py`](../../../bajutsu/runner/pool.py) that BE-00
 
 ## References
 
-* [BE-0064 — Parallel crawl across multiple simulators](../BE-0064-parallel-crawl/BE-0064-parallel-crawl.md) — the concurrency model this mirrors on web.
+* [BE-0064 — Parallel crawl across multiple simulators](../../BE-0064-parallel-crawl/BE-0064-parallel-crawl.md) — the concurrency model this mirrors on web.
 * [BE-0066 — Web crawl (Playwright backend)](../../implemented/BE-0066-web-crawl/BE-0066-web-crawl.md) — the serial web crawl this parallelizes; its reset seam, crash signals, and dialog handler carry over per worker.
-* [BE-0054 — Web backend completion](../BE-0054-web-backend-completion/BE-0054-web-backend-completion.md) — generalizes the web pool to N lanes; this item's lane is a browser process rather than a context.
+* [BE-0054 — Web backend completion](../../BE-0054-web-backend-completion/BE-0054-web-backend-completion.md) — generalizes the web pool to N lanes; this item's lane is a browser process rather than a context.
 * [BE-0038 — Autonomous crawl exploration](../../in-progress/BE-0038-autonomous-crawl-exploration/BE-0038-autonomous-crawl-exploration.md) — the platform-neutral crawl engine.
-* [BE-0041 — Web (Playwright) backend](../BE-0041-web-playwright-backend/BE-0041-web-playwright-backend.md) — the web driver and the deterministic web `run` path.
+* [BE-0041 — Web (Playwright) backend](../../BE-0041-web-playwright-backend/BE-0041-web-playwright-backend.md) — the web driver and the deterministic web `run` path.
 * [`bajutsu/runner/pool.py`](../../../bajutsu/runner/pool.py), [`bajutsu/crawl.py`](../../../bajutsu/crawl.py), [`bajutsu/cli/commands/crawl.py`](../../../bajutsu/cli/commands/crawl.py), [`bajutsu/drivers/playwright.py`](../../../bajutsu/drivers/playwright.py).
 * [CLAUDE.md](../../../CLAUDE.md) — prime directive #1 (AI never judges) and #2 (determinism first); [DESIGN §7.2](../../../DESIGN.md) — whole-app coverage from crawl dumps, which a faster crawl makes practical.
