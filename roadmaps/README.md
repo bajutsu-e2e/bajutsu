@@ -311,6 +311,7 @@ Standing up `bajutsu serve` beyond loopback. The hardening that makes the existi
 | [BE-0055](BE-0055-operational-logging/BE-0055-operational-logging.md) | Operational logging for the hosted serve | Implemented |
 | [BE-0090](BE-0090-uploaded-config-command-execution/BE-0090-uploaded-config-command-execution.md) | Govern and sandbox command execution from uploaded bundle configs | Implemented |
 | [BE-0106](BE-0106-post-completion-worker-model/BE-0106-post-completion-worker-model.md) | Post-completion worker model (eliminate Redis dependency) | Implemented |
+| [BE-0110](BE-0110-evidence-store-uri/BE-0110-evidence-store-uri.md) | Evidence upload to object storage via URI | Implemented |
 | [BE-0127](BE-0127-split-serve-operations-module/BE-0127-split-serve-operations-module.md) | Split the serve operations god-module | Implemented |
 <!-- /GENERATED:implemented-hosting -->
 
@@ -463,7 +464,6 @@ Consolidating the demo and dogfood apps onto the showcase suite: bringing it to 
 |---|---|---|
 | [BE-0015](BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md) | Public hosting of the web UI | In progress |
 | [BE-0016](BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md) | Self-hosting of the web UI | In progress |
-| [BE-0110](BE-0110-evidence-store-uri/BE-0110-evidence-store-uri.md) | Evidence upload to object storage via URI | In progress |
 <!-- /GENERATED:in-progress-hosting -->
 
 ### codegen coverage

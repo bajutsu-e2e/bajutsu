@@ -412,7 +412,7 @@ config** に対して動きます。config はファイルブラウザ、Git リ
 
 ```bash
 bajutsu serve [--port 8765] [--config bajutsu.config.yaml] [--root .] [--runs runs] [--baselines <dir>]
-              [--host 127.0.0.1] [--token <t>] [--max-concurrent-runs 4]
+              [--host 127.0.0.1] [--token <t>] [--max-concurrent-runs 4] [--evidence-store <uri>]
 ```
 
 - **`--token`（または `$BAJUTSU_SERVE_TOKEN`）による認証（BE-0051）。** トークン設定時は全リクエストが認証必須です。
@@ -485,6 +485,7 @@ bajutsu serve [--port 8765] [--config bajutsu.config.yaml] [--root .] [--runs ru
   現状は `127.0.0.1` バインドかつ認証なしなので、信頼できないネットワークにはまだ晒さないでください。
 - **`--max-concurrent-runs`（既定 4）** は同時実行できる run/record ジョブ数の上限です。1 呼び出し元が
   希少なデバイスを独占しないようにします（BE-0051）。上限超過の dispatch は **429** を返します。`0` で無制限。
+- **`--evidence-store <uri>`（または `$BAJUTSU_EVIDENCE_STORE`）— 各 run の証跡をアップロードします（[BE-0110](../../roadmaps/BE-0110-evidence-store-uri/BE-0110-evidence-store-uri-ja.md)）。** `s3://bucket/prefix` または `gs://bucket/prefix` を指定すると、完了した run のツリーがそこへアップロードされます。キーは `<prefix><evidence_prefix><runId>/…` の形になるので、パスによってクラウドのライフサイクルポリシーが切り替わります。スタンドアロンの `run --evidence-store`（Runner 自身の認証情報で直接アップロードする）と違い、**`serve` は認証情報を保持し、Worker には渡しません**。コントロールプレーンがファイルごとに presigned PUT URL を発行し、Worker はクラウド SDK も認証情報も持たずに平文 HTTP でアップロードします。呼び出し元は `POST /api/run` のボディに `evidence_prefix`（安全な相対セグメントとして検証されます）を渡して run ごとのパスを選びます。サーバが自分のバケットとベースプレフィックスを前置するので、run ID が必ずキーに含まれ、run 同士が衝突しません。アップロードは判定の後に走るため、失敗しても警告のみです。**サーバ側**に `s3` または `gcs` extra が必要です（Worker には不要）。トポロジは [self-hosting](self-hosting.md) を参照してください。
 - **ホスティング向けフラグ（応用）。** `--emit-launchagent` は `serve` を単一 Mac 上でトークン認証付きの LaunchAgent として動かす launchd plist を出力します。`--backend server`（と `--asgi`）はホスティング用の FastAPI コントロールプレーンに切り替えます。どちらも [self-hosting](self-hosting.md) で扱います。
 
 ## `mcp`
