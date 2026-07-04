@@ -30,16 +30,17 @@ DEFAULT_CONFIG = "bajutsu.config.yaml"
 # username/org — no dot, so it can never be a `.`/`..` traversal token), a repo also allows `_`/`.`
 # but a bare `.`/`..` segment is rejected in `parse_config_spec`. Neither admits `%`, so a
 # percent-encoded segment simply fails to match — it never reaches the API URL or the cache path.
-_OWNER = r"[A-Za-z0-9-]+"
-_REPO = r"[A-Za-z0-9._-]+"
+# These are single-character classes; each regex applies its own quantifier (`+`, or `+?` for the
+# git-url repo so a trailing `.git` is stripped rather than folded into the name).
+_OWNER = r"[A-Za-z0-9-]"
+_REPO = r"[A-Za-z0-9._-]"
 # `github:owner/repo[@ref][:path]` — the headline shorthand.
 _GITHUB_RE = re.compile(
-    rf"^github:(?P<owner>{_OWNER})/(?P<repo>{_REPO})(?:@(?P<ref>[^:]+))?(?::(?P<path>.+))?$"
+    rf"^github:(?P<owner>{_OWNER}+)/(?P<repo>{_REPO}+)(?:@(?P<ref>[^:]+))?(?::(?P<path>.+))?$"
 )
-# `git+https://host/owner/repo(.git)[@ref][#path]` — the general form (any Git host). The repo class
-# stays non-greedy so a trailing `.git` is stripped rather than folded into the repo name.
+# `git+https://host/owner/repo(.git)[@ref][#path]` — the general form (any Git host).
 _GIT_URL_RE = re.compile(
-    rf"^git\+https://(?P<host>[^/]+)/(?P<owner>{_OWNER})/(?P<repo>{_REPO}?)(?:\.git)?(?:@(?P<ref>[^#]+))?(?:#(?P<path>.+))?$"
+    rf"^git\+https://(?P<host>[^/]+)/(?P<owner>{_OWNER}+)/(?P<repo>{_REPO}+?)(?:\.git)?(?:@(?P<ref>[^#]+))?(?:#(?P<path>.+))?$"
 )
 # A full 40-hex commit SHA — already immutable, so it needs no commits-API resolution.
 _FULL_SHA_RE = re.compile(r"^[0-9a-f]{40}$")
