@@ -32,9 +32,9 @@ concerns out of the config schema the rest of the tool shares.
 
 None of that infrastructure is something a local CLI tool's core has a reason to know about.
 
-The growth reaches into the core, too. `bajutsu/config.py:339` defines `OrgConfig`, and `Config`
-itself carries an `orgs: dict[str, OrgConfig]` field (`config.py:357`) plus four resolution helpers
-(`config.py:380-415`). None of this means anything to a solo developer running `bajutsu run`
+The growth reaches into the core, too. `bajutsu/config.py:352` defines `OrgConfig`, and `Config`
+itself carries an `orgs: dict[str, OrgConfig]` field (`config.py:370`) plus four resolution helpers
+(`config.py:393-429`). None of this means anything to a solo developer running `bajutsu run`
 against a local Simulator — it exists purely to support `serve`'s hosted, multi-tenant deployment
 (BE-0015).
 
@@ -94,19 +94,20 @@ needed, since the isolation is already dependency-level.
 
 ### 3. Move `OrgConfig` and the org helpers into `bajutsu/serve/orgs.py`
 
-Every current caller already lives under `bajutsu/serve/` (`serve/__init__.py`, `authz.py`,
-`jobs.py`, `operations.py`, `server/worker_job.py`) — nothing in the core calls them today, so the
-move is mechanical, not exploratory:
+Every current caller already lives under `bajutsu/serve/` — the org helpers (`org_for_*` /
+`targets_for_org`) are called only from `serve/__init__.py`, `authz.py`, and `operations/reads.py`,
+and `DEFAULT_ORG` additionally from `jobs.py` and `server/worker_job.py`. Nothing in the core calls
+any of them today, so the move is mechanical, not exploratory:
 
 | Symbol | Today | After the move |
 |---|---|---|
-| `OrgConfig` | `config.py:339-348` | `bajutsu/serve/orgs.py` |
-| `DEFAULT_ORG` | `config.py:376-378` | `bajutsu/serve/orgs.py` |
-| `org_for_user` / `org_for_target` / `org_for_identity` / `targets_for_org` | `config.py:380-415` | `bajutsu/serve/orgs.py`, signature narrowed from `config: Config` to `orgs: dict[str, OrgConfig]` |
-| `Config.orgs` field | `config.py:357` | removed |
-| `load_config` | `config.py:649-652` | split into `parse_config_dict` (validation) + `load_config` (I/O) |
+| `OrgConfig` | `config.py:352-362` | `bajutsu/serve/orgs.py` |
+| `DEFAULT_ORG` | `config.py:390` | `bajutsu/serve/orgs.py` |
+| `org_for_user` / `org_for_target` / `org_for_identity` / `targets_for_org` | `config.py:393-429` | `bajutsu/serve/orgs.py`, signature narrowed from `config: Config` to `orgs: dict[str, OrgConfig]` |
+| `Config.orgs` field | `config.py:370` | removed |
+| `load_config` | `config.py:663` | split into `parse_config_dict` (validation) + `load_config` (I/O) |
 
-`_Model` sets `extra="forbid"` (`config.py:27`) as a deliberate typo guard, and it must stay on for
+`_Model` sets `extra="forbid"` (`config.py:44`) as a deliberate typo guard, and it must stay on for
 every other field. But `orgs` is different from a typo: the deterministic `run` legitimately reads an
 org-bearing config in the hosted topology (see Motivation), so once the `Config.orgs` field is gone,
 `Config.model_validate` would reject that config with "Extra inputs are not permitted: orgs" and break
@@ -182,12 +183,12 @@ No PR has landed yet.
 
 | Location | What it is |
 |---|---|
-| `bajutsu/config.py:27` | `_Model`'s `extra="forbid"` — the typo guard that turns dropping `orgs` into a breaking change unless `serve` pops the key first |
-| `bajutsu/config.py:339` | `OrgConfig`, host-facing multi-tenancy config |
-| `bajutsu/config.py:357` | `Config.orgs` field |
-| `bajutsu/config.py:375-416` | `DEFAULT_ORG`, `org_for_user` / `org_for_target` / `org_for_identity` / `targets_for_org` |
+| `bajutsu/config.py:44` | `_Model`'s `extra="forbid"` — the typo guard that stays on for every other field while the loader drops `orgs` |
+| `bajutsu/config.py:352` | `OrgConfig`, host-facing multi-tenancy config |
+| `bajutsu/config.py:370` | `Config.orgs` field |
+| `bajutsu/config.py:390-429` | `DEFAULT_ORG`, `org_for_user` / `org_for_target` / `org_for_identity` / `targets_for_org` |
 | `bajutsu/config.py:663` | `load_config`, the seam to split into `parse_config_dict` + `load_config` (the latter dropping a top-level `orgs`) |
-| `bajutsu/serve/__init__.py`, `authz.py`, `jobs.py`, `operations/reads.py`, `server/worker_job.py` | every current caller of the org helpers; all already under `bajutsu/serve/` |
+| `bajutsu/serve/__init__.py`, `authz.py`, `operations/reads.py` | the callers of the org helpers (`org_for_*` / `targets_for_org`); `DEFAULT_ORG` is additionally used by `jobs.py` and `server/worker_job.py` — all already under `bajutsu/serve/` |
 | `bajutsu/serve/helpers.py:94-125` | `_load_config_cached` / `load_config_file`, the cached serve-side loader the org consumers reach through — where `load_serve_config` is threaded so orgs travel with the cached `Config` |
 | `bajutsu/serve/operations/dispatch.py:117`, `bajutsu/cli/_shared.py:192`, `bajutsu/mcp/tools.py:21` | the `run` path that reads an org-bearing config in the hosted topology — why the core loader must drop `orgs` rather than reject it |
 | `bajutsu/serve/server/logbus.py`, `sessions.py` | existing `RedisLike`-protocol injection, keeping `redis` out of a hard dependency |
