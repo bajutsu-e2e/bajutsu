@@ -136,10 +136,11 @@ The document is `{ reportFormat: "CTRF", specVersion, generatedBy, timestamp, re
 ```
 
 - `summary.duration` and each `tests[].duration` are milliseconds (Σ / per-scenario `duration_s`),
-  the field CTRF consumers key on, and exact. `summary.start` derives from the `YYYYMMDD-HHMMSS`
-  runId (host timezone); `stop = start + duration`. Absolute per-test start/stop are deferred (they
-  need an absolute per-scenario epoch, an optional follow-up) so they are omitted rather than
-  approximated.
+  the field CTRF consumers key on, and exact. `summary.start` and the document `timestamp` derive
+  from the `YYYYMMDD-HHMMSS` runId, parsed as UTC (the runId is stamped in UTC); `stop = start +
+  duration`. Absolute per-test start/stop are deferred (they need an absolute per-scenario epoch, an
+  optional follow-up) so they are omitted rather than approximated. The export carries no live host
+  state, so `bajutsu report` regenerates the same run's `ctrf.json` byte-for-byte.
 - `tests[].status` is `passed` / `failed` — the only two states a Bajutsu run emits; the other CTRF
   counts stay `0`.
 - A CTRF `step` allows only `{ name, status, extra }`, so a step's richer data (duration, reason,

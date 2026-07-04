@@ -23,7 +23,11 @@ _SCHEMA = json.loads((Path(__file__).parent / "ctrf.schema.json").read_text(enco
 
 def _validate(doc: dict[str, object]) -> None:
     """Fail with every schema violation at once (clearer than the first-error default)."""
-    errors = sorted(Draft7Validator(_SCHEMA).iter_errors(doc), key=lambda e: e.path)
+    # `e.path` is a deque of mixed str keys / int indices; stringify each element so the sort key is
+    # always orderable (comparing a str to an int would raise and hide the real violations).
+    errors = sorted(
+        Draft7Validator(_SCHEMA).iter_errors(doc), key=lambda e: [str(p) for p in e.path]
+    )
     assert not errors, "\n".join(f"{list(e.path)}: {e.message}" for e in errors)
 
 
@@ -179,6 +183,28 @@ def test_environment_commit_from_provenance() -> None:
     doc = ctrf_json("20260704-101500", [_passing()], provenance={"gitRevision": "abc123"})
     _validate(doc)
     assert doc["results"]["environment"]["commit"] == "abc123"  # type: ignore[index]
+
+
+def test_environment_omitted_without_stored_commit() -> None:
+    # No live host info is injected, so with nothing stored the optional block is omitted entirely
+    # (keeping the export a pure function of stored data — reproducible across machines).
+    doc = ctrf_json("20260704-101500", [_passing()])
+    assert "environment" not in doc["results"]  # type: ignore[operator]
+
+
+def test_timestamp_derived_from_run_id_not_wall_clock() -> None:
+    # The document timestamp comes from the run's UTC start, not `now()`, so a re-render is stable;
+    # an unparseable runId omits the optional field rather than fabricating one.
+    doc = ctrf_json("20260704-101500", [_passing()])
+    assert doc["timestamp"] == datetime(2026, 7, 4, 10, 15, 0, tzinfo=UTC).isoformat()
+    assert "timestamp" not in ctrf_json("run1", [_passing()])
+
+
+def test_export_is_reproducible() -> None:
+    # A pure projection of the stored run: identical input yields byte-identical JSON, which is what
+    # lets `bajutsu report` regenerate ctrf.json deterministically (BE-0068).
+    args = ("20260704-101500", [_passing(), _failing()])
+    assert json.dumps(ctrf_json(*args)) == json.dumps(ctrf_json(*args))
 
 
 def test_attachment_content_type_maps_known_kinds_and_defaults_unknown() -> None:

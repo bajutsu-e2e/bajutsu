@@ -13,9 +13,7 @@ determinism-first contract by construction: no LLM, and writing it can't move th
 
 from __future__ import annotations
 
-import sys
 from datetime import UTC, datetime
-from platform import release
 
 from bajutsu import __version__
 from bajutsu.orchestrator import RunResult, StepOutcome
@@ -41,19 +39,17 @@ def _content_type(kind: str) -> str:
     return _ARTIFACT_MIME.get(kind, _DEFAULT_MIME)
 
 
-def _run_start_ms(run_id: str) -> int:
-    """The run's start as epoch milliseconds, parsed from the `YYYYmmdd-HHMMSS` runId.
+def _run_started(run_id: str) -> datetime | None:
+    """The run's start, parsed from the `YYYYmmdd-HHMMSS` runId, or None if it isn't a timestamp.
 
-    The runId is stamped in UTC (`bajutsu run`), so it is parsed as UTC — exact to the second for
-    a real run, and 0 when the id isn't a timestamp (e.g. a test runId), since CTRF requires
-    `summary.start`/`stop` as integers and a fabricated value would mislead.
+    The runId is stamped in UTC (`bajutsu run`), so it is parsed as UTC — exact to the second for a
+    real run. None (e.g. a test runId) leaves the derived `start`/`stop`/`timestamp` at their
+    fallbacks rather than fabricating a value.
     """
     try:
-        return int(
-            datetime.strptime(run_id, "%Y%m%d-%H%M%S").replace(tzinfo=UTC).timestamp() * 1000
-        )
+        return datetime.strptime(run_id, "%Y%m%d-%H%M%S").replace(tzinfo=UTC)
     except ValueError:
-        return 0
+        return None
 
 
 def _ms(seconds: float) -> int:
@@ -146,18 +142,22 @@ def _test(r: RunResult) -> dict[str, object]:
     return test
 
 
-def _environment(provenance: dict[str, object] | None) -> dict[str, object]:
-    """Best-effort run environment: the commit from provenance, plus the host OS at export time."""
-    env: dict[str, object] = {"osPlatform": sys.platform, "osRelease": release()}
+def _environment(provenance: dict[str, object] | None) -> dict[str, object] | None:
+    """The run environment, drawn only from stored data so the export stays reproducible.
+
+    Just the commit from provenance today — no live host info, which would make `ctrf.json` vary
+    across machines and re-renders of the same run. None when there's nothing to record, so the
+    optional block is omitted rather than emitted empty.
+    """
     if provenance and (commit := provenance.get("gitRevision")):
-        env["commit"] = commit
-    return env
+        return {"commit": commit}
+    return None
 
 
-def _summary(run_id: str, results: list[RunResult]) -> dict[str, object]:
+def _summary(started: datetime | None, results: list[RunResult]) -> dict[str, object]:
     passed = sum(1 for r in results if r.ok)
     duration = sum(_ms(r.duration_s) for r in results)
-    start = _run_start_ms(run_id)
+    start = int(started.timestamp() * 1000) if started else 0
     return {
         "tests": len(results),
         "passed": passed,
@@ -180,12 +180,13 @@ def ctrf_json(
     """Project the run's result model into a CTRF document (BE-0161).
 
     Reads the same in-memory model the JUnit/HTML reporters build, so iOS, web, and future
-    backends export identically with no per-app branching. `provenance` is the manifest's
-    run-identity stamp (BE-0049); its `toolVersion` / `gitRevision` feed `tool.version` and
-    `environment.commit`, and it is None for a run without the stamp.
+    backends export identically with no per-app branching. The output is a pure function of the
+    stored run — no live host state — so `bajutsu report` regenerates it byte-for-byte (BE-0068).
+    `provenance` is the manifest's run-identity stamp (BE-0049); its `toolVersion` / `gitRevision`
+    feed `tool.version` and `environment.commit`, and it is None for a run without the stamp.
 
     Args:
-        run_id: The run's `YYYYmmdd-HHMMSS` id, used for `summary.start`.
+        run_id: The run's `YYYYmmdd-HHMMSS` id (UTC), used for `summary.start` and `timestamp`.
         results: One `RunResult` per scenario — or per engine x scenario cell on a matrix run,
             each becoming a CTRF test with the engine in its name and `browser`.
         provenance: The manifest provenance block, or None.
@@ -193,22 +194,29 @@ def ctrf_json(
     Returns:
         The CTRF document as a plain dict, ready to serialize beside `manifest.json`.
     """
+    started = _run_started(run_id)
     tool: dict[str, object] = {"name": "bajutsu"}
     tool["version"] = (provenance or {}).get("toolVersion") or __version__
     inner: dict[str, object] = {
         "tool": tool,
-        "summary": _summary(run_id, results),
+        "summary": _summary(started, results),
         "tests": [_test(r) for r in results],
-        "environment": _environment(provenance),
     }
+    # Environment is optional; include it only when there is stored data to record (a commit).
+    if (environment := _environment(provenance)) is not None:
+        inner["environment"] = environment
     # The engine x scenario matrix (BE-0076) has no first-class CTRF home; carry the aggregate under
     # `results.extra`, omitted for a single-engine / iOS run (which keeps the plain shape).
     if (matrix := _matrix(results)) is not None:
         inner["extra"] = {"matrix": matrix}
-    return {
+    doc: dict[str, object] = {
         "reportFormat": "CTRF",
         "specVersion": SPEC_VERSION,
         "generatedBy": "bajutsu",
-        "timestamp": datetime.now(UTC).isoformat(),
         "results": inner,
     }
+    # `timestamp` (RFC 3339) is derived from the run's UTC start, not wall-clock now, so a re-render
+    # stays reproducible; omitted when the runId isn't a timestamp rather than fabricated.
+    if started is not None:
+        doc["timestamp"] = started.isoformat()
+    return doc
