@@ -97,7 +97,7 @@ def start_launch_server(
         return start_sandboxed_server(eff, log=log)
     ready_url = ls.ready_url or web_base_url(eff)
     if not ready_url:
-        raise RuntimeError("launchServer needs readyUrl (or set the app's baseUrl to probe)")
+        raise RuntimeError("launchServer needs readyUrl (or set the target's baseUrl to probe)")
 
     if upload_exec in ("deny", "reuse"):
         # Neither mode runs the uploaded command: only an externally-answering readyUrl is accepted,
