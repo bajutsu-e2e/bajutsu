@@ -32,15 +32,21 @@ _logger = logging.getLogger("bajutsu.worker")
 # a legitimately long run is never mistaken for a dead worker and reclaimed (BE-0016).
 DEFAULT_HEARTBEAT_INTERVAL = 30.0
 
+# Per-request timeout for the evidence upload path (BE-0110), so a stalled connection can't hang the
+# worker: heartbeats have stopped by then, so an unbounded wait would strand it on one file.
+_EVIDENCE_HTTP_TIMEOUT = 60.0
 
-def _post_json(url: str, body: dict[str, Any], *, token: str | None = None) -> tuple[int, Any]:
+
+def _post_json(
+    url: str, body: dict[str, Any], *, token: str | None = None, timeout: float | None = None
+) -> tuple[int, Any]:
     data = json.dumps(body).encode()
     headers: dict[str, str] = {"Content-Type": "application/json"}
     if token:
         headers["Authorization"] = f"Bearer {token}"
     req = Request(url, data=data, headers=headers)  # noqa: S310
     try:
-        with urlopen(req) as r:  # noqa: S310
+        with urlopen(req, timeout=timeout) as r:  # noqa: S310
             raw = r.read()
             return r.status, json.loads(raw) if raw else {}
     except HTTPError as e:
@@ -122,16 +128,6 @@ def worker(
         run_id = result.get("runId")
         if run_id:
             _write_console_log(work, run_id, bus, job_id)
-            # Upload the run's evidence via presigned URLs the control plane signs (BE-0110): the
-            # worker holds no cloud credentials of its own. Best-effort — a failure warns and never
-            # touches the result. After console.log so it uploads too.
-            _upload_evidence(
-                work,
-                run_id,
-                url=url,
-                auth_token=auth_token,
-                evidence_prefix=str(spec.get("evidence_prefix") or ""),
-            )
 
         try:
             _post_json(
@@ -141,6 +137,19 @@ def worker(
             )
         except (URLError, OSError) as e:
             _logger.error("result post failed for job %s: %s", job_id, e)
+
+        # Upload the run's evidence via presigned URLs the control plane signs (BE-0110): the worker
+        # holds no cloud credentials of its own. Runs *after* the result is posted — heartbeats stop
+        # once the run returns, so a slow upload must not delay the post and risk the lease being
+        # reclaimed. Best-effort and time-bounded: a failure or stall warns and never affects the run.
+        if run_id:
+            _upload_evidence(
+                work,
+                run_id,
+                url=url,
+                auth_token=auth_token,
+                evidence_prefix=str(spec.get("evidence_prefix") or ""),
+            )
 
         typer.echo(f"  completed job {job_id}")
 
@@ -245,15 +254,17 @@ def _evidence_files(run_dir: Path) -> list[str]:
     return files
 
 
-def _put_file(url: str, path: Path, content_type: str) -> None:
+def _put_file(url: str, path: Path, content_type: str, *, timeout: float | None = None) -> None:
     """Upload one file to a presigned PUT *url*.
 
     The Content-Type must match what the control plane signed into the URL (the presigned signature
-    covers it), so send the same value.
+    covers it), so send the same value. *timeout* bounds a stalled connection. The file is read into
+    memory (a sequential, one-file-at-a-time upload); streaming a large artifact is a future
+    optimization the initial implementation doesn't need.
     """
     headers = {"Content-Type": content_type} if content_type else {}
     req = Request(url, data=path.read_bytes(), method="PUT", headers=headers)  # noqa: S310
-    with urlopen(req):  # noqa: S310
+    with urlopen(req, timeout=timeout):  # noqa: S310
         pass
 
 
@@ -262,10 +273,10 @@ def _upload_evidence(
 ) -> None:
     """Ask the control plane for presigned PUT URLs for this run's tree and upload each file.
 
-    Best-effort by design (BE-0110): the verdict is already final and the result post still to come
-    must not be skipped, so any failure here is logged and dropped, never raised (a broad catch, like
-    `upload_tree`, so even a malformed URL can't crash the worker). When no evidence store is
-    configured the endpoint returns no URLs and this uploads nothing.
+    Best-effort by design (BE-0110): the run's result is already posted, so any failure here is
+    logged and dropped, never raised (a broad catch, like `upload_tree`, so even a malformed URL
+    can't crash the worker), and every HTTP call is time-bounded so a stall can't strand the worker.
+    When no evidence store is configured the endpoint returns no URLs and this uploads nothing.
     """
     run_dir = work / "runs" / run_id
     if not run_dir.is_dir():
@@ -278,6 +289,7 @@ def _upload_evidence(
             f"{url}/api/runs/{run_id}/upload-urls",
             {"files": files, "evidence_prefix": evidence_prefix},
             token=auth_token,
+            timeout=_EVIDENCE_HTTP_TIMEOUT,
         )
     except Exception as e:
         _logger.warning("evidence upload-urls request failed for run %s: %s", run_id, e)
@@ -299,7 +311,7 @@ def _upload_evidence(
             _logger.warning("skipping unexpected upload entry %r for run %s", rel, run_id)
             continue
         try:
-            _put_file(put_url, src, content_type_for(rel))
+            _put_file(put_url, src, content_type_for(rel), timeout=_EVIDENCE_HTTP_TIMEOUT)
         except Exception as e:
             _logger.warning("evidence upload failed for %s: %s", rel, e)
         else:

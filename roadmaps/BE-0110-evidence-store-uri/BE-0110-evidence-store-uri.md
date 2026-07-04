@@ -290,7 +290,7 @@ old runs) without conflicting with this design.
       alongside `console.log`
 - [x] `serve` `--evidence-store` flag and `BAJUTSU_EVIDENCE_STORE` env
 - [x] `bajutsu run` `--evidence-store` CLI flag (with `BAJUTSU_EVIDENCE_STORE` env)
-- [x] `evidence_prefix` parameter on the `/api/runs` endpoint
+- [x] `evidence_prefix` parameter on the `/api/run` endpoint
 - [x] Optional dependency declarations (`s3` / `gcs` / `cloud` extras)
 - [x] Tests — standalone (URI parsing, S3/GCS stores incl. `content_type` + presigned GET/PUT
       generation, `upload_tree`), the serve endpoint (`generate_upload_urls` keying/validation, both
