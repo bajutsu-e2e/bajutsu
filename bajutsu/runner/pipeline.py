@@ -475,7 +475,7 @@ def _scrub_secret_values(run_dir: Path, secret_values: list[str] | None) -> None
     if not secret_values:
         return
     scrub = Redactor(None, values=secret_values)
-    for name in ("manifest.json", "junit.xml", "report.html", "scenario.yaml"):
+    for name in ("manifest.json", "junit.xml", "ctrf.json", "report.html", "scenario.yaml"):
         path = run_dir / name
         if path.exists():
             path.write_text(scrub.redact_text(path.read_text(encoding="utf-8")), encoding="utf-8")

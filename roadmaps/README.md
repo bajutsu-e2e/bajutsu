@@ -131,6 +131,7 @@ The first slices of the multi-platform direction that have shipped: a **platform
 | [BE-0076](BE-0076-web-cross-browser-engines/BE-0076-web-cross-browser-engines.md) | Selectable browser engines & cross-browser compatibility matrix (web backend) | Implemented |
 | [BE-0082](BE-0082-capability-preflight-check/BE-0082-capability-preflight-check.md) | Preflight capability check before a run | Implemented |
 | [BE-0118](BE-0118-wait-for-contract-unification/BE-0118-wait-for-contract-unification.md) | Unify the wait_for polling contract across drivers | Implemented |
+| [BE-0128](BE-0128-device-step-capability-preflight/BE-0128-device-step-capability-preflight.md) | Preflight-gate device-control steps by capability | Implemented |
 <!-- /GENERATED:implemented-platform -->
 
 ### Backend expansion (iOS actuators)
@@ -164,6 +165,8 @@ The AI-driven `record` (Tier 1) is implemented ([recording.md](../docs/recording
 | [BE-0060](BE-0060-run-report-zip-export/BE-0060-run-report-zip-export.md) | Download / export a run report as a zip | Implemented |
 | [BE-0068](BE-0068-regenerable-reports/BE-0068-regenerable-reports.md) | Regenerable reports (render from stored run data) | Implemented |
 | [BE-0072](BE-0072-responsive-web-ui/BE-0072-responsive-web-ui.md) | Responsive serve Web UI (small-screen & touch layout) | Implemented |
+| [BE-0098](BE-0098-unified-authoring-surface/BE-0098-unified-authoring-surface.md) | Unified authoring surface in serve | Implemented |
+| [BE-0102](BE-0102-run-stats-dashboard/BE-0102-run-stats-dashboard.md) | Aggregate run-stats dashboard | Implemented |
 <!-- /GENERATED:implemented-authoring -->
 
 ### Self-healing triage (M4)
@@ -251,6 +254,7 @@ Reduce friction for the many parallel sessions working this repo — treat merge
 | [BE-0149](BE-0149-roadmap-placeholder-format-guardrail/BE-0149-roadmap-placeholder-format-guardrail.md) | Close the roadmap-placeholder format-guardrail gap | Implemented |
 | [BE-0156](BE-0156-roadmap-topic-label-sync/BE-0156-roadmap-topic-label-sync.md) | Keep roadmap-item PR labels in sync with Topic | Implemented |
 | [BE-0159](BE-0159-flatten-roadmap-status-folders/BE-0159-flatten-roadmap-status-folders.md) | Flatten roadmap items into one directory (retire status-driven folders) | Implemented |
+| [BE-0162](BE-0162-roadmap-status-filter-skill/BE-0162-roadmap-status-filter-skill.md) | Roadmap status-filter skill for AI sessions | Implemented |
 <!-- /GENERATED:implemented-dev-infra -->
 
 ### Codebase quality & technical debt
@@ -315,6 +319,7 @@ Standing up `bajutsu serve` beyond loopback. The hardening that makes the existi
 | [BE-0055](BE-0055-operational-logging/BE-0055-operational-logging.md) | Operational logging for the hosted serve | Implemented |
 | [BE-0090](BE-0090-uploaded-config-command-execution/BE-0090-uploaded-config-command-execution.md) | Govern and sandbox command execution from uploaded bundle configs | Implemented |
 | [BE-0106](BE-0106-post-completion-worker-model/BE-0106-post-completion-worker-model.md) | Post-completion worker model (eliminate Redis dependency) | Implemented |
+| [BE-0108](BE-0108-hosted-config-source-restriction/BE-0108-hosted-config-source-restriction.md) | Restrict config sources to upload and Git when hosted | Implemented |
 | [BE-0110](BE-0110-evidence-store-uri/BE-0110-evidence-store-uri.md) | Evidence upload to object storage via URI | Implemented |
 | [BE-0127](BE-0127-split-serve-operations-module/BE-0127-split-serve-operations-module.md) | Split the serve operations god-module | Implemented |
 <!-- /GENERATED:implemented-hosting -->
@@ -392,6 +397,7 @@ Running the autonomous crawl across more than one device so a full screen map is
 | ID | Item | Status |
 |---|---|---|
 | [BE-0099](BE-0099-webhook-run-notifications/BE-0099-webhook-run-notifications.md) | Webhook notifications for run results | Implemented |
+| [BE-0161](BE-0161-ctrf-report-export/BE-0161-ctrf-report-export.md) | Export run results in Common Test Report Format (CTRF) | Implemented |
 <!-- /GENERATED:implemented-external-integration -->
 
 ### Miscellaneous / on hold
@@ -509,7 +515,6 @@ The scope is currently **limited to the iOS Simulator** ([DESIGN §1](../DESIGN.
 |---|---|---|
 | [BE-0008](BE-0008-flutter-support/BE-0008-flutter-support.md) | Flutter support | Proposal |
 | [BE-0126](BE-0126-per-platform-effective-config/BE-0126-per-platform-effective-config.md) | Split Effective into per-platform configs | Proposal |
-| [BE-0128](BE-0128-device-step-capability-preflight/BE-0128-device-step-capability-preflight.md) | Preflight-gate device-control steps by capability | Proposal |
 | [BE-0141](BE-0141-backend-lifecycle-protocol/BE-0141-backend-lifecycle-protocol.md) | Bring backend lifecycle into the type system | Proposal |
 <!-- /GENERATED:proposals-platform -->
 
@@ -519,8 +524,6 @@ The scope is currently **limited to the iOS Simulator** ([DESIGN §1](../DESIGN.
 | ID | Item | Status |
 |---|---|---|
 | [BE-0095](BE-0095-interactive-crawl-graph/BE-0095-interactive-crawl-graph.md) | Interactive crawl graph (draggable nodes + realign) | Proposal |
-| [BE-0098](BE-0098-unified-authoring-surface/BE-0098-unified-authoring-surface.md) | Unified authoring surface in serve | Proposal |
-| [BE-0102](BE-0102-run-stats-dashboard/BE-0102-run-stats-dashboard.md) | Aggregate run-stats dashboard | Proposal |
 <!-- /GENERATED:proposals-authoring -->
 
 ### Surfacing CLI features in the serve Web UI
@@ -559,7 +562,6 @@ Turn the local `bajutsu serve` launcher into a shared service. The runner drives
 <!-- GENERATED:proposals-hosting -->
 | ID | Item | Status |
 |---|---|---|
-| [BE-0108](BE-0108-hosted-config-source-restriction/BE-0108-hosted-config-source-restriction.md) | Restrict config sources to upload and Git when hosted | Proposal |
 | [BE-0129](BE-0129-serve-scope-boundary/BE-0129-serve-scope-boundary.md) | Bound serve scope and keep host concerns out of shared config | Proposal |
 | [BE-0160](BE-0160-worker-credential-free-uploads/BE-0160-worker-credential-free-uploads.md) | Credential-free worker uploads via presigned URLs | Proposal |
 <!-- /GENERATED:proposals-hosting -->
@@ -622,9 +624,7 @@ Keeping the autonomous crawl fast and its code lean as it grows.
 ### Development infrastructure (contributor workflow)
 
 <!-- GENERATED:proposals-dev-infra -->
-| ID | Item | Status |
-|---|---|---|
-| [BE-0162](BE-0162-roadmap-status-filter-skill/BE-0162-roadmap-status-filter-skill.md) | Roadmap status-filter skill for AI sessions | Proposal |
+
 <!-- /GENERATED:proposals-dev-infra -->
 
 ### Codebase quality & technical debt
@@ -640,9 +640,7 @@ Behavior-preserving cleanup inside `bajutsu/` itself — deduplication, decompos
 Sending a run's result out to a service the team already lives in. These are post-verdict, deterministic transports — they carry the verdict the runner already computed, never an LLM's, and a delivery failure never moves the run's result.
 
 <!-- GENERATED:proposals-external-integration -->
-| ID | Item | Status |
-|---|---|---|
-| [BE-0161](BE-0161-ctrf-report-export/BE-0161-ctrf-report-export.md) | Export run results in Common Test Report Format (CTRF) | Proposal |
+
 <!-- /GENERATED:proposals-external-integration -->
 
 ### Candidates from competitive research (MagicPod / Autify)

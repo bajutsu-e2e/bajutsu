@@ -191,10 +191,15 @@ harness picks the right model when the skill runs — nothing to remember, still
 - [`implement-be`](../.claude/skills/implement-be/SKILL.md) → `opus` (Heavy)
 - [`ideation`](../.claude/skills/ideation/SKILL.md) → `sonnet` (Medium)
 - [`japanese-tech-writing`](../.claude/skills/japanese-tech-writing/SKILL.md) → `sonnet` (Medium)
+- [`roadmap-filter`](../.claude/skills/roadmap-filter/SKILL.md) → `haiku` (Light) — a read-only
+  survey of the roadmap by `Status` (BE-0162): it wraps `make roadmap-status STATUS="…"` so a
+  session lists just the items in one status (e.g. every open `Proposal`), with each item's file
+  path to open next, instead of reading the 700+-line `roadmaps/README.md` into context.
 
-A light-tier chore isn't a skill, so no skill pins `haiku`; that tier is reached interactively or by
-subagent delegation, below. `tests/test_skill_models.py` checks that each skill's `model:` is a
-known, valid id, so a typo fails the gate locally instead of silently falling back.
+Most light-tier chores aren't skills, so that tier is otherwise reached interactively or by subagent
+delegation, below — `roadmap-filter` is the exception, since its whole job is one light,
+deterministic lookup. `tests/test_skill_models.py` checks that each skill's `model:` is a known,
+valid id, so a typo fails the gate locally instead of silently falling back.
 
 ### Phases and subagent delegation
 

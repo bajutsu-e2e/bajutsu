@@ -87,6 +87,9 @@ class RenderModel:
     sources: list[str]
     source_name: str | None
     description: str | None
+    # The manifest's run-identity stamp (BE-0049), replayed into the regenerated CTRF export
+    # (BE-0161) so a re-render preserves the original run's tool version / commit; None if absent.
+    provenance: dict[str, object] | None
 
 
 def load_run(run_dir: Path) -> RenderModel:
@@ -112,6 +115,7 @@ def load_run(run_dir: Path) -> RenderModel:
             sources=sources,
             source_name=manifest.get("sourceName"),
             description=scenario_file.description,
+            provenance=manifest.get("provenance"),
         )
     except (yaml.YAMLError, TypeError, KeyError, AttributeError) as e:
         # json.JSONDecodeError and pydantic's ValidationError are already ValueErrors; normalize the
@@ -129,11 +133,18 @@ def rerender_html(run_dir: Path) -> str:
 
 
 def rebake(run_dir: Path) -> None:
-    """Rewrite a finished run's `report.html` and `junit.xml` in place from its stored model.
+    """Rewrite a finished run's `report.html`, `junit.xml`, and `ctrf.json` in place from its stored model.
 
     The manifest — the source of truth — is left untouched.
     """
     m = load_run(run_dir)
     write_html_and_junit(
-        run_dir, m.run_id, m.results, m.definitions, m.sources, m.source_name, m.description
+        run_dir,
+        m.run_id,
+        m.results,
+        m.definitions,
+        m.sources,
+        m.source_name,
+        m.description,
+        m.provenance,
     )

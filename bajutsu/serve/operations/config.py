@@ -69,13 +69,33 @@ def _active_key_env(state: jobs.ServeState) -> str:
     return ANTHROPIC_KEY_ENV
 
 
+# The message returned when the file browser is used on a hosted deployment — shared by the
+# browse and path-bind refusals so the UI and a hand-crafted request see the same wording (BE-0108).
+FS_DISABLED_ERROR = "the file browser is disabled on a hosted server"
+
+
+def config_sources(state: ServeState) -> list[str]:
+    """The config sources the UI may offer for *state* (BE-0108).
+
+    Git and upload work for any deployment; the file browser (``fs``) is a local affordance — a
+    hosted user has no filesystem relationship to the host — so it is dropped when hosted.
+    """
+    return ["git", "upload"] if state.hosted else ["git", "upload", "fs"]
+
+
 def config_info(state: ServeState) -> tuple[Any, int]:
+    sources = config_sources(state)
     return {
         "config": str(state.config) if state.config else None,
         "hasConfig": state.config is not None,
-        "root": str(state.root.resolve()),
+        # The file browser's browse ceiling — only meaningful to the fs source, so it is withheld
+        # when that source is not offered (hosted), where the absolute host path is dead information
+        # and needless exposure (BE-0108).
+        "root": str(state.root.resolve()) if "fs" in sources else None,
         # Whether GitHub OAuth login is available, so the login UI can offer a button (BE-0015 7b-2).
         "oauthEnabled": state.oauth is not None,
+        # The config sources this deployment offers, so the UI renders only the usable ones (BE-0108).
+        "configSources": sources,
     }, 200
 
 
@@ -125,6 +145,10 @@ def _confined_config_path(root: Path, raw: str) -> Path | None:
 def bind_config(state: ServeState, raw: str) -> tuple[Any, int]:
     """Bind a config.yml chosen in the UI's file browser.  The path is confined to ``--root``; we
     validate it loads, then re-point ``state.config`` so targets/scenarios come from it."""
+    if state.hosted:
+        # Defense in depth (BE-0108): the file browser is removed from the hosted UI, but a
+        # hand-crafted path-bind must be refused too, or hiding it would be merely cosmetic.
+        return {"error": FS_DISABLED_ERROR}, 403
     if not raw:
         return {"error": "path is required"}, 400
     target = _confined_config_path(state.root, raw)

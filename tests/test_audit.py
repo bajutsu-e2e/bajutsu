@@ -392,7 +392,7 @@ def test_cli_audit_malformed_yaml_exits_two(tmp_path: Path) -> None:
 
 
 def test_read_manifests_skips_non_dirs_missing_and_non_dict(tmp_path: Path) -> None:
-    from bajutsu.cli.commands.audit import _read_manifests
+    from bajutsu.cli._shared import read_manifests
 
     runs = tmp_path / "runs"
     runs.mkdir()
@@ -405,7 +405,7 @@ def test_read_manifests_skips_non_dirs_missing_and_non_dict(tmp_path: Path) -> N
     good.mkdir()
     (good / "manifest.json").write_text(json.dumps({"runId": "r1"}), encoding="utf-8")
 
-    assert _read_manifests(runs) == [{"runId": "r1"}]
+    assert read_manifests(runs) == [{"runId": "r1"}]
 
 
 def _audit(yaml: str):  # type: ignore[no-untyped-def]

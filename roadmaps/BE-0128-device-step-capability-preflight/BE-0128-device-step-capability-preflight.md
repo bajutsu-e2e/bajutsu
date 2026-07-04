@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0128](BE-0128-device-step-capability-preflight.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0128") |
+| Implementing PR | [#649](https://github.com/bajutsu-e2e/bajutsu/pull/649) |
 | Topic | Platform expansion (Android / Web / Flutter) |
 <!-- /BE-METADATA -->
 
@@ -60,9 +61,14 @@ directive 2 ("fail loudly", the very concern BE-0082 was written to close).
    this reason. If a future backend supports only a subset, split into per-operation tokens instead;
    that decision can be deferred to whichever backend first needs partial support.
 2. **Declare the capability on backends that support it.** Add the new token to idb's `CAPABILITIES`
-   frozenset (`bajutsu/drivers/idb.py:326-328`) since idb backs a real `DeviceControl`; Playwright's
-   `CAPABILITIES` (`bajutsu/drivers/playwright.py:566-576`) does not gain it, matching today's
-   reality that Playwright scenarios have no `DeviceControl` wired in.
+   frozenset (`bajutsu/drivers/idb.py:326-328`) since idb backs a real `DeviceControl`, **and to
+   xcuitest's** (`bajutsu/drivers/xcuitest.py`): xcuitest shares the iOS Simulator lifecycle
+   (`_DeviceEnvironment.controller` in `bajutsu/platform_lifecycle.py`), which wires the same real
+   simctl `DeviceControl` for its runs, so omitting it would make the preflight *falsely reject*
+   xcuitest scenarios that would actually run. Playwright's `CAPABILITIES`
+   (`bajutsu/drivers/playwright.py:566-576`) does not gain it, matching today's reality that
+   Playwright scenarios have no `DeviceControl` wired in; the `fake` backend likewise does not
+   declare it, so the preflight rejects device-control scenarios on it up front.
 3. **Extend `capability_preflight.py`'s requirement table.** Add a `_Requirement` entry (or one per
    device-control step kind, depending on the token granularity chosen in step 1) to `_REQUIREMENTS`
    in `bajutsu/capability_preflight.py`, with a `locations` function that walks the step tree
@@ -105,12 +111,17 @@ device-control operations the Android backend does or doesn't implement, with ze
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Add a device-control capability token to `Capability` in `bajutsu/drivers/base.py`
-- [ ] Declare the token on backends that provide a real `DeviceControl` (idb)
-- [ ] Extend `capability_preflight.py`'s `_REQUIREMENTS` to gate device-control steps
-- [ ] Keep `_need_control`'s runtime check as a defense-in-depth fallback, not the primary gate
+- [x] Add a device-control capability token to `Capability` in `bajutsu/drivers/base.py`
+- [x] Declare the token on backends that provide a real `DeviceControl` (idb, and xcuitest, which
+  shares the iOS Simulator lifecycle)
+- [x] Extend `capability_preflight.py`'s `_REQUIREMENTS` to gate device-control steps
+- [x] Keep `_need_control`'s runtime check as a defense-in-depth fallback, not the primary gate
 
-No PR has landed yet.
+- 2026-07-04 ([#649](https://github.com/bajutsu-e2e/bajutsu/pull/649)): Added
+  `Capability.DEVICE_CONTROL`, declared it on idb and xcuitest `CAPABILITIES`, and added a
+  `_REQUIREMENTS` entry gating the nine device-control steps (`relaunch` excluded — it is gated by
+  the injected relauncher, not `DeviceControl`). The runtime `_need_control` check stays as
+  defense-in-depth. Updated `docs/drivers.md` (both languages).
 
 ## References
 

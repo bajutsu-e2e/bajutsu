@@ -123,6 +123,25 @@ bajutsu coverage --target <name> [--config ...] [--runs <dir>] [--crawl <screenm
 - **`--html <path>`** を渡すと、同じ数値を **自己完結した HTML レポート**にも書き出します（CSS は埋め込み、JavaScript も外部アセットも無し。ディスクから直接開けます）。次元ごとにカバレッジバーを描き、gap、off-namespace、unvisited の一覧を目立たせます。エンドポイント、観測 id、screens-visited のセクションは `--runs`（screens は加えて `--crawl`）を渡したときだけ描画します。テキスト（または `--json`）の出力は変わらず、書き出し先は標準エラー出力で知らせます。
 - **助言的かつ read-only** です。シナリオを実行も編集もせず、**CI ゲートにもなりません**。**gap があっても終了 0**（config / scenarios ディレクトリが無い、またはシナリオが読めないときだけ終了 2）です。gap は埋めるべき namespace であって判定ではありません。
 
+## `stats`
+
+複数の run を**横断した傾向**を示す、**集計 run 統計ダッシュボード**です。run ごとの `report.html` を補完します（AI 非依存。[BE-0102](../../roadmaps/BE-0102-run-stats-dashboard/BE-0102-run-stats-dashboard-ja.md)）。`coverage` が「どの面をテストしているか」に、`audit` が「シナリオは再現可能か」に答えるのに対し、`stats` は「スイート全体は時間とともにどう推移しているか」に答えます。あるディレクトリ配下のすべての run の `manifest.json` を集計します。デバイスも AI も判定も使いません。
+
+```bash
+bajutsu stats --runs <dir> [--json] [--html <path>]
+```
+
+- **`--runs <dir>`** は集計する過去の run のディレクトリで、各 run の `manifest.json` を読み込みます（読めない、または壊れたものはスキップします）。ディレクトリが無いときは終了 2 です。
+- テキスト、または `--json` で機械可読に、次を報告します。
+  - **合格率の推移**: 全体と日別です（日付は run id のタイムスタンプ接頭辞から取り出します。独自ラベルの run id には日付が無く、`(no date)` にまとめます）。
+  - **所要時間 / 性能**: セット全体の合計実時間（各 run の所要時間はそのシナリオの `duration_s` を合算したもの）と、平均所要時間で並べた**遅いシナリオ**です。
+  - **失敗ホットスポット**: 最も多く失敗するシナリオ、ステップ（`scenario > action`）、アサーション種別を、それぞれ最頻の失敗理由とともに示します。
+  - **flakiness**: 各シナリオの分類（`flaky` / `deterministic` / `unproven`）を、[BE-0049](../../roadmaps/BE-0049-determinism-flakiness-audit/BE-0049-determinism-flakiness-audit-ja.md) の longitudinal 監査から再利用して取り込みます。
+  - **volume**: backend ごとの run 数で、合格率を読む際の分母になります。
+- シナリオの系列は BE-0049 の `(scenarioHash, name)` という同一性で束ねます。指紋が一定のまま判定が反転すれば真の flaky であり、シナリオを編集すれば新しい系列が始まります。`provenance.scenarioHash` を持たない run は run レベルの傾向には数えますが、シナリオの系列には加われません（スキップとして報告します）。
+- **`--html <path>`** を渡すと、同じ数値を**自己完結した HTML ダッシュボード**にも書き出します（CSS は埋め込み、推移は最小限のインライン SVG。JavaScript も外部アセットも無く、ディスクから直接開けます）。テキスト（または `--json`）の出力は変わらず、書き出し先は標準エラー出力で知らせます。
+- **助言的かつ read-only** です。シナリオを再実行せず、判定を再計算せず、**CI ゲートにもなりません**。新しいフィールドを欠く古い manifest は「未取得」として描画し、失敗としては扱いません。数値にチームが設けるしきい値は、そのチーム自身の参考用チェックです。
+
 ## `export`
 
 完了した run を1つの可搬な `.zip` にまとめます。`report.html` に加えて `manifest.json`、`junit.xml`、実行した `scenario.yaml`、**すべての**証跡（スクリーンショット、動画、`network.json` …）を含みます（[BE-0060](../../roadmaps/BE-0060-run-report-zip-export/BE-0060-run-report-zip-export-ja.md)）。`runs/<id>/` のツリー全体を単一の `<id>/` フォルダ直下に収めるので、`report.html` の**相対**リンクがオフラインで解決します。ダブルクリックで開け、サーバは要りません。

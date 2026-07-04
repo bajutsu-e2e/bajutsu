@@ -18,13 +18,21 @@ from bajutsu import capability_preflight
 from bajutsu.drivers import base
 from bajutsu.scenario import Scenario
 
-_IDB = {base.Capability.QUERY, base.Capability.ELEMENTS, base.Capability.SCREENSHOT}
+_IDB = {
+    base.Capability.QUERY,
+    base.Capability.ELEMENTS,
+    base.Capability.SCREENSHOT,
+    base.Capability.DEVICE_CONTROL,
+}
 _FULL = _IDB | {
     base.Capability.SEMANTIC_TAP,
     base.Capability.CONDITION_WAIT,
     base.Capability.MULTI_TOUCH,
     base.Capability.NETWORK,
 }
+# idb minus device control — a backend that advertises no `deviceControl` (e.g. Playwright, or a
+# future backend without a real DeviceControl wired), used to prove device-control steps are gated.
+_NO_CONTROL = _IDB - {base.Capability.DEVICE_CONTROL}
 
 
 def _sc(**body: object) -> Scenario:
@@ -130,6 +138,80 @@ def test_aggregates_every_unsupported_construct() -> None:
     )
     assert any("multiTouch" in r for r in reasons)
     assert any("screenshot" in r for r in reasons)
+
+
+# --- Device-control steps require deviceControl (BE-0128) ---
+
+# One representative step per DeviceControl operation. `relaunch` is excluded: it is gated by the
+# injected RelaunchFn, not DeviceControl, so it is not part of this capability family.
+_DEVICE_CONTROL_STEPS = (
+    {"setLocation": {"lat": 35.0, "lon": 139.0}},
+    {"push": {"payload": {"aps": {"alert": "hi"}}}},
+    {"clearKeychain": {}},
+    {"clearClipboard": {}},
+    {"setClipboard": {"text": "x"}},
+    {"background": {}},
+    {"foreground": {}},
+    {"overrideStatusBar": {"time": "9:41"}},
+    {"clearStatusBar": {}},
+)
+
+
+@pytest.mark.parametrize("step", _DEVICE_CONTROL_STEPS)
+def test_device_control_step_requires_device_control(step: dict[str, object]) -> None:
+    # Every device-control step needs `deviceControl`; a backend without it is rejected up front,
+    # and idb (which backs a real DeviceControl) runs it.
+    sc = _sc(steps=[step])
+    reasons = capability_preflight.unsupported(sc, _NO_CONTROL)
+    assert reasons and any("deviceControl" in r for r in reasons)
+    assert capability_preflight.unsupported(sc, _IDB) == []
+
+
+def test_device_control_reason_includes_step_index() -> None:
+    sc = _sc(steps=[{"tap": {"id": "ok"}}, {"push": {"payload": {"aps": {"alert": "hi"}}}}])
+    reasons = capability_preflight.unsupported(sc, _NO_CONTROL)
+    assert len(reasons) == 1
+    assert reasons[0].startswith("step 2: ")
+    assert "deviceControl" in reasons[0]
+
+
+def test_device_control_nested_in_for_each_is_detected() -> None:
+    sc = _sc(
+        steps=[
+            {
+                "forEach": {
+                    "sel": {"idMatches": "row.*"},
+                    "as": "row",
+                    "steps": [{"setLocation": {"lat": 1.0, "lon": 2.0}}],
+                }
+            }
+        ]
+    )
+    reasons = capability_preflight.unsupported(sc, _NO_CONTROL)
+    assert len(reasons) == 1
+    assert "step 1 > forEach[0]" in reasons[0]
+    assert "deviceControl" in reasons[0]
+
+
+def test_multiple_device_control_steps_yield_multiple_reasons() -> None:
+    sc = _sc(
+        steps=[
+            {"push": {"payload": {"aps": {"alert": "a"}}}},
+            {"tap": {"id": "ok"}},
+            {"clearKeychain": {}},
+        ]
+    )
+    reasons = capability_preflight.unsupported(sc, _NO_CONTROL)
+    paths = [r.split(":")[0] for r in reasons]
+    assert "step 1" in paths
+    assert "step 3" in paths
+
+
+def test_relaunch_is_not_gated_by_device_control() -> None:
+    # `relaunch` runs through the injected RelaunchFn, not DeviceControl, so a backend lacking
+    # deviceControl must not reject it.
+    sc = _sc(steps=[{"relaunch": {}}])
+    assert capability_preflight.unsupported(sc, _IDB - {base.Capability.DEVICE_CONTROL}) == []
 
 
 # --- Path hints in reason strings (BE-0024) ---

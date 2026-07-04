@@ -184,6 +184,11 @@ class ServeState:
     # Opt-in to run an API-bound Git config's `build:` command on the host (BE-0121). Off by default;
     # serve() sets it from --allow-remote-build / BAJUTSU_ALLOW_REMOTE_BUILD.
     allow_remote_build: bool = False
+    # Whether this is a hosted deployment (the server backend), the single source of truth for
+    # deployment-aware config sourcing (BE-0108). The server backend sets it True where it wires its
+    # hosted seams; the local backend (stdlib serve, including a self-hosted single Mac) never does,
+    # so the file browser stays offered locally and is removed — UI and server-side — when hosted.
+    hosted: bool = False
     popen: Popen = subprocess.Popen
     # How a created job gets executed. Defaults to in-process threads (LocalExecutor); a server
     # backend swaps in a queue-based executor without touching the handler or run_job (BE-0015).
