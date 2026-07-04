@@ -15,7 +15,7 @@ smallest app that still exercises `record`, `crawl`, and `run` together.
   launch-env hook, deeplink, and the OS-alert placement. The two `-a11y` apps expose an
   identical identifier contract, so the one [`scenarios/`](scenarios) set drives both.
 - **The roadmap items:** [BE-0045](../../roadmaps/BE-0045-dogfood-showcase-apps/BE-0045-dogfood-showcase-apps.md)
-  records the rationale for the showcase suite; [BE-0079](../../roadmaps/implemented/BE-0079-consolidate-demos-on-showcase/BE-0079-consolidate-demos-on-showcase.md)
+  records the rationale for the showcase suite; [BE-0079](../../roadmaps/BE-0079-consolidate-demos-on-showcase/BE-0079-consolidate-demos-on-showcase.md)
   completed the consolidation onto it (see [`roadmaps`](../../roadmaps/README.md) for the full index).
 
 ## The four products
@@ -87,7 +87,7 @@ bajutsu run --target showcase-swiftui --scenario demos/showcase/scenarios/modals
 | [`showcase.config.yaml`](showcase.config.yaml) | the eight iOS + Android `targets.<name>` entries |
 | [`scenarios/`](scenarios) | shared id-based `run` scenarios (drive every a11y app, iOS and Android alike) |
 | [`record/goals.txt`](record/goals.txt) | natural-language goals for the `record` A/B demo |
-| [`crawl/`](crawl/expected-screen-map.md) | the screen map `crawl` ([BE-0038](../../roadmaps/in-progress/BE-0038-autonomous-crawl-exploration/BE-0038-autonomous-crawl-exploration.md), in progress) should produce — validation test data |
+| [`crawl/`](crawl/expected-screen-map.md) | the screen map `crawl` ([BE-0038](../../roadmaps/BE-0038-autonomous-crawl-exploration/BE-0038-autonomous-crawl-exploration.md), in progress) should produce — validation test data |
 
 ## Deeplinks
 

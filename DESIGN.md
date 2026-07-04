@@ -94,12 +94,12 @@ Reporter (manifest.json + JUnit/HTML + スクショ/録画)
 
 ### 3.2 ネットワーク制御（in-scenario の mocks）
 
-決定的なネットワーク（§2「ネットワークをモックへ」）と、idb バックエンドの `network` 証跡源を、シナリオ内に宣言する **`mocks`（in-protocol の決定的スタブ）** で兼ねます。当初はアプリと外部ネットワークの間に立つ単一の外部モックサーバでこれを担う設計でしたが、外部サーバは [BE-0027](roadmaps/deferred/BE-0027-mock-server-external/BE-0027-mock-server-external-ja.md) で見送り、実装を in-protocol のスタブへ移しました。
+決定的なネットワーク（§2「ネットワークをモックへ」）と、idb バックエンドの `network` 証跡源を、シナリオ内に宣言する **`mocks`（in-protocol の決定的スタブ）** で兼ねます。当初はアプリと外部ネットワークの間に立つ単一の外部モックサーバでこれを担う設計でしたが、外部サーバは [BE-0027](roadmaps/BE-0027-mock-server-external/BE-0027-mock-server-external-ja.md) で見送り、実装を in-protocol のスタブへ移しました。
 
 - **居場所**：外部プロセスではなくプロトコル層のスタブです。アプリの発する各リクエストを、シナリオの `mocks` に宣言した `match` で照合し、一致すれば `respond` の定型応答をアプリ内で返します（§6.1）。ライブサーバに触れないため、テストはオフラインで安定します
 - **2 つの役割**：(a) **決定性** = 一致したリクエストへ事前定義のスタブ応答を返します。(b) **証跡** = 発受信したリクエストを in-protocol の network collector が記録し、`network` アーティファクト（`network.json`）の取得元になります（§9）
 - **証跡源**：idb はネイティブのネットワーク監視を持たないため、`network` は **in-protocol の collector から取得**します。取得できないときは `manifest` に skip 理由を明示します
-- **設定**：`mocks` はシナリオ単位に書きます（§6.1）。`bajutsu.config.yaml` の `mockServer`（起動コマンド / ポート）は当初の外部サーバ向けスキーマが残るのみで実装されておらず、`mocks` に置き換わっています（[BE-0027](roadmaps/deferred/BE-0027-mock-server-external/BE-0027-mock-server-external-ja.md)）
+- **設定**：`mocks` はシナリオ単位に書きます（§6.1）。`bajutsu.config.yaml` の `mockServer`（起動コマンド / ポート）は当初の外部サーバ向けスキーマが残るのみで実装されておらず、`mocks` に置き換わっています（[BE-0027](roadmaps/BE-0027-mock-server-external/BE-0027-mock-server-external-ja.md)）
 
 ### 3.3 並列実行とアイソレーション
 

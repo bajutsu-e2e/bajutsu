@@ -35,22 +35,10 @@ from pathlib import Path
 # already on the path) or loaded under its bare name by a test — add scripts/ so the sibling import
 # resolves either way.
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from roadmap_ids import LEGACY_CATEGORIES, iter_item_dirs, numbered_match
+from roadmap_ids import iter_item_dirs, numbered_match
 
 ROADMAP = Path("roadmaps")
 TITLE_RE = re.compile(r"^# BE-\d{4} — (.+)$", re.MULTILINE)
-
-
-def _category_of(item_dir: Path) -> str:
-    """The link path segment for an item at ``item_dir`` — its status folder, or ``''`` if flattened.
-
-    BE-0159 is moving items out of the ``roadmaps/<category>/`` folders into the flat root in two
-    batches, so during the migration an item may sit in either place. The index link must match where
-    the file actually is, so read it from the directory's parent rather than assume a layout.
-    """
-    parent = item_dir.parent.name
-    return parent if parent in LEGACY_CATEGORIES else ""
-
 
 # Canonical metadata: a ``| Field | Value |`` table fenced by these markers, mirroring the index's
 # ``<!-- GENERATED:* -->`` regions. Fencing keeps the parser off same-shaped tables in the body.
@@ -218,7 +206,6 @@ class Entry:
 
     id: str
     slug: str
-    category: str  # the item's status folder during the BE-0159 flatten, or "" once it is flattened
     title: str
     status: str  # raw status, before display mapping
     origin: str | None
@@ -281,10 +268,7 @@ def status_display(raw: str, lang_code: str) -> str:
 def render_row(entry: Entry, lang_code: str, has_origin: bool) -> str:
     """Render one Markdown table row for an item in the given language."""
     lang = LANG_BY_CODE[lang_code]
-    # A flattened item has no category segment (BE-0159); one still under a status folder keeps it,
-    # so the link points where the file actually is during the migration.
-    prefix = f"{entry.category}/" if entry.category else ""
-    href = f"{prefix}{entry.id}-{entry.slug}/{entry.id}-{entry.slug}{lang.suffix}.md"
+    href = f"{entry.id}-{entry.slug}/{entry.id}-{entry.slug}{lang.suffix}.md"
     cells = [f"[{entry.id}]({href})", entry.title, status_display(entry.status, lang_code)]
     if has_origin:
         cells.append(entry.origin or "")
@@ -327,19 +311,16 @@ def duplicate_ids(roadmap: Path) -> dict[str, list[str]]:
     by_id: dict[str, list[str]] = {}
     for d in iter_item_dirs(roadmap):
         if match := numbered_match(d.name):
-            cat = _category_of(d)
-            path = f"{cat}/{d.name}" if cat else d.name
-            by_id.setdefault(f"BE-{match.group(1)}", []).append(path)
+            by_id.setdefault(f"BE-{match.group(1)}", []).append(d.name)
     return {be_id: paths for be_id, paths in by_id.items() if len(paths) > 1}
 
 
 def load_items(roadmap: Path) -> list[Item]:
     """Read every BE item directory into an Item with per-language render fields.
 
-    During the BE-0159 flatten an item lives either directly under ``roadmaps/`` or (until it is
-    migrated) under ``roadmaps/<category>/`` — the actual location (:func:`_category_of`) prefixes the
-    link the index renders to it. Refuses a tree with duplicate ids, so a number reused across two
-    items fails the build.
+    Items live under one flat ``roadmaps/BE-NNNN-<slug>/`` directory (BE-0159), so the link the index
+    renders to an item is just its directory name. Refuses a tree with duplicate ids, so a number
+    reused across two items fails the build.
     """
     if dupes := duplicate_ids(roadmap):
         detail = "; ".join(f"{be_id}: {', '.join(paths)}" for be_id, paths in sorted(dupes.items()))
@@ -350,7 +331,6 @@ def load_items(roadmap: Path) -> list[Item]:
         if not match:
             continue
         item_id, slug = f"BE-{match.group(1)}", match.group(2)
-        category = _category_of(d)
 
         by_lang: dict[str, Entry] = {}
         item_bucket = topic = ""
@@ -360,7 +340,6 @@ def load_items(roadmap: Path) -> list[Item]:
             by_lang[lang.code] = Entry(
                 id=item_id,
                 slug=slug,
-                category=category,
                 title=title,
                 status=fields[lang.field_status],
                 origin=fields.get(lang.field_origin),

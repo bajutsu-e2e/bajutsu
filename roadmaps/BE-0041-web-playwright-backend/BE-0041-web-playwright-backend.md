@@ -96,7 +96,7 @@ Android. The rationale is decisive: Web is the only platform that needs **no mac
 emulator**, so it fits the *existing* Linux `make check` / CI gate ([ci](../../../docs/ci.md)) from day one.
 Native network + video + semantic actions exercise the **rich** end of `capabilities()`. It is the
 lowest friction, broadest reach, and cheapest proof that the core is platform-neutral. Android
-([BE-0007](../in-progress/BE-0007-android-backend/BE-0007-android-backend.md)) follows in Phase 2, confirming
+([BE-0007](../BE-0007-android-backend/BE-0007-android-backend.md)) follows in Phase 2, confirming
 the lean / coordinate path on top of an already-generalized core.
 
 **Why Web before Android**, even though Android is the closer architectural twin of idb: Web is the
@@ -112,7 +112,7 @@ then confirms the lean/coordinate path on an already-generalized core.
   exact capabilities that make Web the rich-end proof of the abstraction.
 - **Building Android first (the closer idb twin).** Rejected for phasing: Android needs an emulator
   (and KVM on CI), whereas Web needs neither a Mac nor an emulator and so fits the current Linux gate
-  at the lowest cost. See [BE-0007](../in-progress/BE-0007-android-backend/BE-0007-android-backend.md).
+  at the lowest cost. See [BE-0007](../BE-0007-android-backend/BE-0007-android-backend.md).
 
 ## Progress
 
@@ -122,5 +122,5 @@ then confirms the lean/coordinate path on an already-generalized core.
 
 [DESIGN](../../../DESIGN.md), `bajutsu/drivers/`, `bajutsu/backends.py`,
 [drivers.md](../../../docs/drivers.md), [ci.md](../../../docs/ci.md), [concepts.md](../../../docs/concepts.md),
-[BE-0007 — Android backend](../in-progress/BE-0007-android-backend/BE-0007-android-backend.md),
-[BE-0008 — Flutter support](../proposals/BE-0008-flutter-support/BE-0008-flutter-support.md)
+[BE-0007 — Android backend](../BE-0007-android-backend/BE-0007-android-backend.md),
+[BE-0008 — Flutter support](../BE-0008-flutter-support/BE-0008-flutter-support.md)

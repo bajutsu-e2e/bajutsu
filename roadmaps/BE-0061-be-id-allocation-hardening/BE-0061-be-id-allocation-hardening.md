@@ -37,7 +37,7 @@ a direct sibling of [BE-0043](../BE-0043-conflict-resistant-file-flow/BE-0043-co
 which made the *roadmap files* conflict-resistant; this makes their *ids* collision-proof.
 
 **Update:** the reservation ledger and the auto-repair backstop described below were later retired,
-once [BE-0089](../implemented/BE-0089-merge-time-be-id-allocation/BE-0089-merge-time-be-id-allocation.md) moved
+once [BE-0089](../BE-0089-merge-time-be-id-allocation/BE-0089-merge-time-be-id-allocation.md) moved
 allocation to merge time on `main`. Serialized merge-order allocation reads the latest `main` and
 hands out one number at a time, so two branches can no longer contend for a number — the ledger and
 its repair became redundant. Only the pure allocator (`allocate_roadmap_ids.py`, allocate-only now)

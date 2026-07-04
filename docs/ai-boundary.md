@@ -4,7 +4,7 @@
 
 > The canonical answer to "which parts of Bajutsu reach a model, and which run with nothing
 > configured at all". This is a first-class, tested property of the tool
-> ([BE-0101](../roadmaps/implemented/BE-0101-ai-free-zero-config/BE-0101-ai-free-zero-config.md)),
+> ([BE-0101](../roadmaps/BE-0101-ai-free-zero-config/BE-0101-ai-free-zero-config.md)),
 > the developer-experience companion to the "your AI, your key, your data" guarantee on the other
 > side of the line ([self-hosting](self-hosting.md),
 > [BE-0047](../roadmaps/BE-0047-ai-data-sovereignty/BE-0047-ai-data-sovereignty.md)).
@@ -69,7 +69,7 @@ surfaces can never disagree:
 ## Installing the Claude paths
 
 The split is a packaging boundary too, not only a runtime one
-([BE-0111](../roadmaps/implemented/BE-0111-ai-sdk-optional-dependency/BE-0111-ai-sdk-optional-dependency.md)):
+([BE-0111](../roadmaps/BE-0111-ai-sdk-optional-dependency/BE-0111-ai-sdk-optional-dependency.md)):
 the AI software development kit (SDK) is an opt-in extra, so the base install carries no AI
 dependency at all.
 

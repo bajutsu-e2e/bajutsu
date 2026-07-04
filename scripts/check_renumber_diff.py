@@ -54,10 +54,9 @@ def _format_problems(roadmap: Path | None = None) -> list[str]:
     """Format violations across the renumbered tree, via the shared stdlib checker (BE-0149).
 
     ``roadmap`` defaults to the real ``roadmaps/`` tree; a test passes a throwaway one to pin the
-    failure path without touching the committed tree. Imported lazily (as ``promote_roadmap_items``
-    imports ``lint_roadmap``) so the module-level surface this file exposes to its test stays just
-    ``disallowed_paths``, and so the sibling import resolves whether the file is run as a script or
-    loaded under its bare name.
+    failure path without touching the committed tree. Imported lazily so the module-level surface
+    this file exposes to its test stays just ``disallowed_paths``, and so the sibling import resolves
+    whether the file is run as a script or loaded under its bare name.
     """
     sys.path.insert(0, str(Path(__file__).resolve().parent))
     from check_roadmap_format import ROADMAP, all_problems

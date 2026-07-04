@@ -38,7 +38,7 @@ merge 後に *`main` に対する* 衝突を修復していました。
 あちらは *ロードマップのファイル* をコンフリクトに強くしました。本項目はその *ID* を衝突しないものにします。
 
 **追記**：以下で説明する予約台帳と自動修復のバックストップは、その後撤去しました。
-[BE-0089](../implemented/BE-0089-merge-time-be-id-allocation/BE-0089-merge-time-be-id-allocation-ja.md) が採番を
+[BE-0089](../BE-0089-merge-time-be-id-allocation/BE-0089-merge-time-be-id-allocation-ja.md) が採番を
 `main` 上のマージ時へ移したためです。マージ順に直列化された採番は最新の `main` を読み、番号を一度に
 1 つずつ渡すので、二つのブランチが同じ番号を争うことはなくなり、台帳とその修復は不要になりました。いまは
 純粋な採番器（`allocate_roadmap_ids.py`、現在は採番のみ）とマージ時の `roadmap-id` ワークフローだけが残ります。

@@ -77,7 +77,7 @@ verbatim.
   version block, it never enters `ok`. (`schemaVersion` is `3` or higher once this block can appear — it is `4` today.)
 - `idb` (top, optional): the `idb_companion` / client versions, when idb drove the run (BE-0005).
 - `matrix` (top, optional): the cross-browser engine × scenario grid, present only on a
-  `bajutsu run --browsers` run ([BE-0076](../roadmaps/implemented/BE-0076-web-cross-browser-engines/BE-0076-web-cross-browser-engines.md)).
+  `bajutsu run --browsers` run ([BE-0076](../roadmaps/BE-0076-web-cross-browser-engines/BE-0076-web-cross-browser-engines.md)).
   `scenarios` stays the flat result list, each entry tagged with its `engine`; `matrix` is
   `{ engines, scenarios, cells: { "<scenario>": { "<engine>": { ok, sid, failure } } } }` — a pure
   aggregation of those per-engine verdicts (the report renders it as a grid). `ok` is all-must-pass

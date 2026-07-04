@@ -5,9 +5,8 @@ The ``ideation`` skill drafts new roadmap items with the literal placeholder ID 
 authors never guess a number — IDs are permanent and monotonic, and picking by hand races between
 concurrent branches. This script, run by the ``roadmap-id`` workflow after a roadmap PR merges to
 ``main``, turns each placeholder into the next free ``BE-NNNN``. For each ``BE-XXXX-<slug>``
-placeholder — normally under ``roadmaps/proposals/``, but any status folder is scanned, since
-``promote_roadmap_items`` can relocate one before allocation (BE-0149) — (sorted by slug, so the
-order is stable across runs and machines) it:
+placeholder directly under ``roadmaps/`` (BE-0159 flattened the status folders away) — sorted by
+slug, so the order is stable across runs and machines — it:
 
 1. allocates the next ID — the smallest free number above every ID already taken (see ``used_ids``),
    incrementing per item;
@@ -42,7 +41,7 @@ INDEX_FILES = ("README.md", "README-ja.md")
 
 
 def working_tree_ids() -> set[int]:
-    """BE numbers present in the working tree (flat root and the legacy status folders, BE-0159)."""
+    """BE numbers present in the working tree."""
     return {int(m.group(1)) for d in iter_item_dirs(ROADMAP) if (m := numbered_match(d.name))}
 
 
@@ -74,11 +73,8 @@ def used_ids() -> set[int]:
 def placeholder_dirs() -> list[Path]:
     """Placeholder item directories, sorted by directory name (the slug) for deterministic allocation.
 
-    Scans the flat root and every legacy status folder (BE-0159's migrating tree, via
-    ``iter_item_dirs``): a placeholder is authored flat now, but one may still sit under a status
-    folder until it is migrated. Sorting by ``d.name`` rather than the full path keeps allocation
-    order a pure function of the slug, independent of where a placeholder currently lives — sorting
-    the ``Path`` objects directly would order by parent folder first.
+    ``iter_item_dirs`` yields the flat tree sorted by name, so allocation order is a stable
+    function of the slug across runs and machines (BE-0159).
     """
     return sorted(
         (d for d in iter_item_dirs(ROADMAP) if is_placeholder_dir(d.name)),
