@@ -30,7 +30,7 @@ import pytest
 from driver_conformance import ConformanceHarness, DriverConformanceContract
 
 from bajutsu import simctl
-from bajutsu.config import Effective, load_config, resolve
+from bajutsu.config import Effective, ios_bundle_id, load_config, resolve
 from bajutsu.drivers import base
 from bajutsu.runner.launch import launch_driver
 
@@ -76,19 +76,23 @@ class _OnDeviceHarness:
         self._await_screen(ids)
         return self._driver
 
-    def _await_screen(self, ids: list[str], timeout: float = 15.0, poll: float = 0.1) -> None:
+    def _await_screen(self, ids: list[str], timeout: float = 30.0, poll: float = 0.1) -> None:
         # Condition-backed (no fixed sleep): a relaunch settles asynchronously, so wait on the
-        # observed screen — every requested id present, or (the empty screen) the app back up — not
-        # on a guessed delay.
+        # observed screen, not on a guessed delay. For a non-empty spec, every requested id must be
+        # present. For the empty (zero-match) screen, the app must be back up *and* carry no
+        # identifiers — waiting on "no truthy ids" rides out the relaunch gap where the previous
+        # screen's ids linger, which a bare "any element present" check would accept too early.
         deadline = time.monotonic() + timeout
         while True:
             present = {el["identifier"] for el in self._driver.query()}
-            ready = all(i in present for i in ids) if ids else bool(present)
+            truthy = {p for p in present if p}
+            ready = all(i in truthy for i in ids) if ids else (bool(present) and not truthy)
             if ready:
                 return
             if time.monotonic() >= deadline:
-                seen = sorted(p for p in present if p)
-                raise AssertionError(f"conformance screen not ready: want {ids}, saw {seen}")
+                raise AssertionError(
+                    f"conformance screen not ready: want {ids}, saw {sorted(truthy)}"
+                )
             time.sleep(poll)
 
 
@@ -114,10 +118,10 @@ def _xcuitest_driver(_eff: Effective) -> base.Driver:
 class TestIdbDriverConformance(DriverConformanceContract):
     @pytest.fixture
     def harness(self, _eff: Effective, _idb_driver: base.Driver) -> ConformanceHarness:
-        return _OnDeviceHarness("idb", _idb_driver, _eff.bundle_id, simctl._real_run)
+        return _OnDeviceHarness("idb", _idb_driver, ios_bundle_id(_eff), simctl._real_run)
 
 
 class TestXcuitestDriverConformance(DriverConformanceContract):
     @pytest.fixture
     def harness(self, _eff: Effective, _xcuitest_driver: base.Driver) -> ConformanceHarness:
-        return _OnDeviceHarness("xcuitest", _xcuitest_driver, _eff.bundle_id, simctl._real_run)
+        return _OnDeviceHarness("xcuitest", _xcuitest_driver, ios_bundle_id(_eff), simctl._real_run)
