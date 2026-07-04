@@ -7,7 +7,7 @@
 |---|---|
 | Proposal | [BE-0121](BE-0121-serve-csrf-host-allowlist.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0121") |
 | Topic | Security hardening |
 <!-- /BE-METADATA -->
@@ -101,14 +101,25 @@ introduced anywhere.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] CSRF/Origin check (`_csrf_ok`) runs unconditionally in `do_POST`, regardless of token
-- [ ] `Host` header allowlist added and enforced on every request
-- [ ] Runtime-bound Git config's `build` ungoverned-by-default, gated behind explicit opt-in
-- [ ] Tests: cross-origin POST rejected with no token, mismatched Host rejected, ungoverned Git
+- [x] CSRF/Origin check (`_csrf_ok`) runs unconditionally in `do_POST`, regardless of token
+- [x] `Host` header allowlist added and enforced on every request
+- [x] Runtime-bound Git config's `build` ungoverned-by-default, gated behind explicit opt-in
+- [x] Tests: cross-origin POST rejected with no token, mismatched Host rejected, ungoverned Git
       `build` not executed without opt-in
-- [ ] Docs updated (both languages)
+- [x] Docs updated (both languages)
 
-No PR has landed yet.
+Log:
+
+- **Unconditional CSRF/Host defenses + Git-config build trust boundary**: moved the `_csrf_ok`
+  check out from under the token gate in `do_POST` and `_handle_upload`, so a cross-origin `POST` is
+  blocked on the no-token loopback default too. Added a `Host`-header allowlist derived from the
+  bound interface (`make_server` → `state.allowed_hosts`), enforced at the top of `_gate` on every
+  request, closing the DNS-rebinding path to `/api/apikey`. Marked a Git config bound at runtime via
+  the API untrusted (`state.git_config_from_api`) so the run/record/crawl dispatch nulls its
+  `build:` command unless `--allow-remote-build` / `BAJUTSU_ALLOW_REMOTE_BUILD` opts in — a single
+  `_governed_build` helper now gates all three dispatch paths, mirroring the uploaded-bundle guard.
+  Applied the same unconditional CSRF check and Host allowlist to the FastAPI/`--asgi` gate
+  (`server/app.py`, `make_asgi_server`), keeping the two transports' policy in lockstep.
 
 ## References
 

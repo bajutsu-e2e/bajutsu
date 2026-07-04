@@ -112,6 +112,15 @@ API クライアントは `Authorization: Bearer $TOKEN` を送ります。
 に限定して `backend`/`udid` を検証すること、CSRF Origin チェックとセキュリティヘッダ、run dispatch の同時実行上限です。
 トークンは秘匿し、Mac は tailnet 上に置き、OS は更新し続けてください。
 
+CSRF の Origin チェックと **`Host` ヘッダの許可リスト**は、トークンが設定されているときだけでなく**無条件で**動きます
+（[BE-0121](../../roadmaps/BE-0121-serve-csrf-host-allowlist/BE-0121-serve-csrf-host-allowlist-ja.md)）。これがいちばん
+効くのは `make serve` の既定（ループバック、トークンなし）です。別タブで開いたページからのクロスオリジンの `POST` は
+ブロックされ、`Host` がバインド済みのインタフェースを指さないリクエストは拒否されるので、リバインドされたホスト名では
+`GET /api/apikey?reveal=1` のようなループバックのエンドポイントに到達できません。`Origin` ヘッダを持たない非ブラウザの
+クライアントは影響を受けません。`Host` の許可リストは `serve` がバインドするインタフェースから導かれます。ループバックに
+バインドすればループバックの名前、それ以外はそのホストです。ワイルドカードのバインド（`0.0.0.0` や `::`）は到達しうる
+名前を列挙できないため `Host` チェックを無効化し、クロスオリジンの防御は CSRF が担います。
+
 ## アップロードされた config のコマンド実行（BE-0090）
 
 アップロードされた `.zip` バンドルは、テスト対象アプリを起動するシェルコマンドを `launchServer.cmd`
@@ -135,6 +144,17 @@ API クライアントは `Authorization: Bearer $TOKEN` を送ります。
 ありません。ブロックされた、あるいは設定の誤った `launchServer` は、flaky に見える run ではなく明確なエラーで
 失敗します。その判断（denied / reused / sandboxed、sandbox のときは使ったイメージ）は run の `manifest.json` の
 provenance に記録されるので、「この run は何を実行し、何を抑止したのか」をあとから answerable に保てます。
+
+## リモート config のコマンド実行（BE-0121）
+
+起動時に `--config` でバインドした config（自分で入力したローカルパスや `github:` の spec）は**運用者が信頼している**ため、
+`serve` はその `build:` コマンドを通常どおり実行します。あとから **UI の「from Git」ピッカー**でバインドした Git config
+（`git` の spec を伴う `POST /api/config`）は信頼のレベルが違います。クロスオリジンのリクエストがそれをバインドした
+可能性があるので、アップロードされたバンドルと同じ扱いにし、その `build:` コマンドは**既定ではホスト上で実行しません**。
+UI からバインドした Git config でその build を信頼して run を回したいときは、`--allow-remote-build`（または環境変数
+`BAJUTSU_ALLOW_REMOTE_BUILD=1`）で明示的に opt-in してください。opt-in がなければ、アップロードされたバンドルの build が
+抑止されるのと同じように build を抑止したまま run が進みます。ネットワーク越しに届いた config から、こっそりホスト側で
+コマンドが実行されることはありません。
 
 ## Tier B、サーバ backend のセルフホスティング
 

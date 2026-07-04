@@ -172,6 +172,18 @@ class ServeState:
     # never on the serve host; it applies only to upload-sourced configs (a local/Git config is
     # operator-trusted and ungoverned). serve() sets it from --upload-exec / BAJUTSU_UPLOAD_EXEC.
     upload_exec: str = "sandbox"
+    # Host-header allowlist (BE-0121): the hostnames a request's `Host` may name, set by
+    # `make_server` from the bound interface. Empty — a wildcard bind, whose reachable names can't be
+    # enumerated — disables the check; a loopback/named bind enforces its own names, closing the
+    # DNS-rebinding path to endpoints like /api/apikey.
+    allowed_hosts: frozenset[str] = frozenset()
+    # Whether the active config is a Git source bound at runtime via the API (BE-0121), rather than
+    # one the operator pre-configured at startup. An API-bound Git config is untrusted: its `build:`
+    # command is nulled like an uploaded bundle's (never run) unless `allow_remote_build` opts in.
+    git_config_from_api: bool = False
+    # Opt-in to run an API-bound Git config's `build:` command on the host (BE-0121). Off by default;
+    # serve() sets it from --allow-remote-build / BAJUTSU_ALLOW_REMOTE_BUILD.
+    allow_remote_build: bool = False
     popen: Popen = subprocess.Popen
     # How a created job gets executed. Defaults to in-process threads (LocalExecutor); a server
     # backend swaps in a queue-based executor without touching the handler or run_job (BE-0015).
@@ -328,6 +340,9 @@ class ServeState:
         self.upload = upload
         self.config = upload.config
         self.cwd = upload.root
+        self.git_config_from_api = (
+            False  # a bundle is governed by upload_exec, not the Git trust flag
+        )
 
     def release_upload(self) -> None:
         """Drop the currently bound bundle's sandbox, if any, and reset `cwd` to serve's launch

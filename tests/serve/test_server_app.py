@@ -346,6 +346,38 @@ def test_csrf_blocks_cross_origin_post(tmp_path: Path) -> None:
     assert resp.status_code == 403 and "cross-origin" in resp.json()["error"]
 
 
+def test_csrf_blocks_cross_origin_post_without_token(tmp_path: Path) -> None:
+    # BE-0121: the CSRF check is unconditional on the ASGI transport too — a cross-origin POST is
+    # blocked on the no-token default, matching the stdlib handler (not only when a token is set).
+    client = TestClient(make_app(_state(tmp_path)))
+    blocked = client.post(
+        "/api/config",
+        json={"git": "github:evil/repo@main"},
+        headers={"Origin": "http://evil.example"},
+    )
+    assert blocked.status_code == 403 and "cross-origin" in blocked.json()["error"]
+    # A non-browser client (no Origin) still reaches the operation.
+    assert client.post("/api/config", json={"path": "/nonexistent"}).status_code != 403
+
+
+def test_host_allowlist_rejects_mismatch(tmp_path: Path) -> None:
+    # BE-0121: the ASGI gate enforces the same Host allowlist as the stdlib handler, so a rebound
+    # hostname can't reach an endpoint like /api/apikey. `make_asgi_server` sets `allowed_hosts` from
+    # the bound interface; here we set a named bind's allowlist directly and drive both hosts.
+    state = _state(tmp_path)
+    state.allowed_hosts = frozenset({"myhost.example"})
+    app = make_app(state)
+    assert TestClient(app, base_url="http://attacker.example").get("/api/apikey").status_code == 403
+    assert TestClient(app, base_url="http://myhost.example").get("/api/apikey").status_code == 200
+
+
+def test_make_asgi_server_sets_host_allowlist(tmp_path: Path) -> None:
+    # The wiring that make_server does for the stdlib transport (BE-0121) also runs for --asgi.
+    state = _state(tmp_path)
+    srv.make_asgi_server(state, host="myhost.example", port=0)
+    assert "myhost.example" in state.allowed_hosts
+
+
 def test_auth_gate_mirrors_stdlib(tmp_path: Path) -> None:
     state = _state(tmp_path, token="s3cret")
     app = make_app(state)
