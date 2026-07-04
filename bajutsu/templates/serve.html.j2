@@ -377,12 +377,11 @@
       <label class="keylabel" for="apikey">New key</label>
       <div class="keyrow">
         <input type="password" id="apikey" data-testid="settings.apikey" class="keyinput" placeholder="sk-ant-…" autocomplete="off" spellcheck="false">
-        <button class="keyreveal" id="keyreveal" data-testid="settings.key-reveal" type="button" title="show / hide" aria-label="show / hide the key">&#128065;</button>
       </div>
       <div class="keyactions">
         <button class="keyclear" id="keyclear" data-testid="settings.key-clear">Clear</button>
       </div>
-      <div class="fshint">Used by the <b>Anthropic API</b> provider (Amazon Bedrock uses AWS credentials instead). Only the AI paths need it: <b>Record</b>, <b>Crawl</b>, and Replay with <code>--dismiss-alerts</code>.</div>
+      <div class="fshint">Write-once: set or replace the key here; it is shown only masked and never displayed again. Used by the <b>Anthropic API</b> provider (Amazon Bedrock uses AWS credentials instead). Only the AI paths need it: <b>Record</b>, <b>Crawl</b>, and Replay with <code>--dismiss-alerts</code>.</div>
     </div>
     <div class="keyactions">
       <button class="cfgbtn keysave" id="settingssave" data-testid="settings.save">Save</button>

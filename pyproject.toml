@@ -40,9 +40,10 @@ worker = []
 # on the default path (the import guard in tests/serve/test_import_guard.py locks this).
 server = ["fastapi>=0.110", "uvicorn>=0.27", "boto3>=1.34"]
 # The hosted-backend system of record (`serve --backend=server` with BAJUTSU_DATABASE_URL): the
-# SQLAlchemy `Repository` seam + Alembic migrations + the Postgres driver (BE-0015 7a). Imported
-# only when a database is wired, never on the default path (the import guard locks this).
-db = ["sqlalchemy>=2.0", "alembic>=1.13", "psycopg[binary]>=3.1"]
+# SQLAlchemy `Repository` seam + Alembic migrations + the Postgres driver (BE-0015 7a), plus
+# `cryptography` for the encrypted-at-rest operator secret store (BE-0136). Imported only when a
+# database is wired, never on the default path (the import guard locks this).
+db = ["sqlalchemy>=2.0", "alembic>=1.13", "psycopg[binary]>=3.1", "cryptography>=42.0"]
 # GitHub OAuth login for the hosted control plane (BE-0015 7b-2). Imported only when OAuth is
 # configured (BAJUTSU_OAUTH_GITHUB_*), never on the default path (the import guard locks this).
 oauth = ["authlib>=1.3"]

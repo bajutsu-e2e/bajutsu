@@ -24,9 +24,12 @@ from bajutsu.config_source import materialize, parse_config_spec, source_provena
 from bajutsu.serve import jobs
 from bajutsu.serve.helpers import (
     list_targets,
-    mask_secret,
 )
 from bajutsu.serve.jobs import ServeState
+
+# The logical name of the Claude API key in the secret store (BE-0136). One named secret today; a
+# future credential (e.g. a Bedrock AWS key) reuses the same store under its own name.
+AI_API_KEY_SECRET = "aiApiKey"  # noqa: S105 — a secret's logical name, not a secret value
 
 _UNSAFE_ENV_VARS = frozenset(
     {
@@ -52,7 +55,7 @@ def _valid_key_env_name(name: str) -> bool:
     return bool(name) and name.isidentifier() and name not in _UNSAFE_ENV_VARS
 
 
-def _active_key_env(state: jobs.ServeState) -> str:
+def active_key_env(state: jobs.ServeState) -> str:
     """The env var name the bound config's ``ai.keyEnv`` resolves to (BE-0097).
 
     Falls back to ``ANTHROPIC_API_KEY`` when no config is bound, the config has no ``keyEnv``,
@@ -99,16 +102,16 @@ def config_info(state: ServeState) -> tuple[Any, int]:
     }, 200
 
 
-def api_key_info(state: ServeState, reveal: bool) -> tuple[Any, int]:
-    """Whether a key is set in the serve process's environment, with a redacted preview.  ``reveal``
-    adds the full value — only on explicit request, and gated by the auth check when a token is
-    configured (the local backend additionally binds to localhost)."""
-    key = os.environ.get(_active_key_env(state)) or None
-    payload: dict[str, Any] = {"set": key is not None}
-    if key is not None:
-        payload["masked"] = mask_secret(key)
-        if reveal:
-            payload["value"] = key
+def api_key_info(state: ServeState, actor: str | None) -> tuple[Any, int]:
+    """Whether the Claude API key is set, with a masked preview — never the plaintext (BE-0136).
+
+    Write-once: there is no ``reveal`` and no ``value`` field, for any role. A masked preview is all
+    any caller ever gets back, matching how GitHub Actions Secrets disclose nothing after they are
+    set. Reads from the actor's org secret store, so a hosted deployment scopes it per org."""
+    masked = state.for_org(state.org_of(actor)).secrets.describe(AI_API_KEY_SECRET)
+    payload: dict[str, Any] = {"set": masked is not None}
+    if masked is not None:
+        payload["masked"] = masked
     return payload, 200
 
 
@@ -121,7 +124,7 @@ def provider_info(state: ServeState) -> tuple[Any, int]:
     # Claude reachability for the resolved backend/provider (BE-0101), so the front end disables the
     # Claude tabs (record/crawl) on data rather than only surfacing the failure on click. Honors the
     # bound config's `ai.keyEnv` (BE-0097) so the SDK-path check reads the right env var.
-    gap = ai_availability.from_env(os.environ, ai=AiConfig(key_env=_active_key_env(state)))
+    gap = ai_availability.from_env(os.environ, ai=AiConfig(key_env=active_key_env(state)))
     return {
         "provider": mode,
         "region": os.environ.get("AWS_REGION", ""),
@@ -215,18 +218,19 @@ def bind_git_config(state: ServeState, spec_str: str) -> tuple[Any, int]:
     }, 200
 
 
-def set_api_key(state: ServeState, value: str) -> tuple[Any, int]:
-    """Set the Claude API key in the serve process's environment for this session (empty clears
-    it).  Held in memory only — never written to disk — and inherited by spawned record/run jobs.
-    Honours the bound config's ``ai.keyEnv`` (BE-0097)."""
-    var = _active_key_env(state)
+def set_api_key(state: ServeState, value: str, actor: str | None) -> tuple[Any, int]:
+    """Set or replace the Claude API key (an empty *value* clears it), through the write-once secret
+    store (BE-0136). The response redacts what was stored — never the plaintext. Local serve holds it
+    in the process env for spawned jobs to inherit (honoring the config's ``ai.keyEnv``, BE-0097); a
+    hosted deployment encrypts it per org. Overwriting rotates a key — no read-back is ever needed."""
     value = value.strip()
     if value and any(c.isspace() for c in value):
         return {"error": "the API key must not contain whitespace"}, 400
-    if value:
-        os.environ[var] = value
-        return {"ok": True, "set": True, "masked": mask_secret(value)}, 200
-    os.environ.pop(var, None)
+    masked = state.for_org(state.org_of(actor)).secrets.set(
+        AI_API_KEY_SECRET, value, updated_by=actor
+    )
+    if masked is not None:
+        return {"ok": True, "set": True, "masked": masked}, 200
     return {"ok": True, "set": False}, 200
 
 

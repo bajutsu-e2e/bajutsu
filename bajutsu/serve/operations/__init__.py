@@ -29,9 +29,9 @@ from bajutsu.serve.operations.capture import (
     start_capture,
 )
 from bajutsu.serve.operations.config import (
-    _active_key_env,
     _confined_config_path,
     _valid_key_env_name,
+    active_key_env,
     api_key_info,
     bind_config,
     bind_git_config,
@@ -94,7 +94,6 @@ from bajutsu.serve.operations.worker_uploads import (
 )
 
 __all__ = [
-    "_active_key_env",
     "_bool_flag",
     "_boot_targets",
     "_confined_config_path",
@@ -112,6 +111,7 @@ __all__ = [
     "_terminal_payload",
     "_valid_key_env_name",
     "_valid_step_id",
+    "active_key_env",
     "api_key_info",
     "approve_baseline",
     "bind_config",

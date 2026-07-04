@@ -60,6 +60,7 @@ from bajutsu.serve.scenarios import (
     ScenarioScope,
     ScenarioStore,
 )
+from bajutsu.serve.secrets import SecretStore
 from bajutsu.serve.sessions import InMemorySessionStore
 
 __all__ = [
@@ -255,6 +256,7 @@ def _build_server_state(
     )
     from bajutsu.serve.server.post_completion_logbus import PostCompletionLogBus
     from bajutsu.serve.server.scenarios import ObjectScenarioStorage, StorageScenarioStore
+    from bajutsu.serve.server.secrets import DbSecretStore, fernet_from_env
     from bajutsu.serve.server.sessions import _DEFAULT_TTL, SqlSessionStore
 
     store = object_store_from_env()
@@ -263,6 +265,13 @@ def _build_server_state(
     prefix = s3_prefix()
     db_url = os.environ.get("BAJUTSU_DATABASE_URL")
     _db_engine = engine_from_url(db_url) if db_url else None
+    # The master key that encrypts operator secrets at rest (BE-0136). A database-backed server
+    # persists secrets in the `secrets` table, so it must be provisioned — fail loudly at startup
+    # rather than silently degrade to plaintext-in-memory. Without a database, secrets stay in the
+    # process env (the local shape), so no key is needed.
+    _secrets_fernet = fernet_from_env()
+    if _db_engine is not None and _secrets_fernet is None:
+        raise ValueError("BAJUTSU_SECRETS_KEY is required for --backend=server with a database")
     # GitHub OAuth login is optional: wired only when all three OAuth vars are set, else None (token
     # auth only). The allowlist is the GitHub logins permitted to log in (BE-0015 7b-2).
     cid = os.environ.get("BAJUTSU_OAUTH_GITHUB_CLIENT_ID")
@@ -344,22 +353,35 @@ def _build_server_state(
 
     def make_bundle(org: str) -> StoreBundle:
         base = org_prefix(prefix, org)
+        # Secrets are encrypted per org in the database when one is wired; without a database the
+        # server keeps the local shape (value in the process env), matching how the executor/logbus
+        # fall back to their in-process defaults above (BE-0136). The startup guard above already
+        # rejected "database wired but no master key", so the process-env fallback is only ever the
+        # no-database case — asserted here so softening that guard can't silently turn this into a
+        # plaintext-in-memory store for a database-backed deployment.
+        if _db_engine is not None:
+            assert _secrets_fernet is not None  # guaranteed by the BAJUTSU_SECRETS_KEY check above
+            secrets: SecretStore = DbSecretStore(_db_engine, org, _secrets_fernet)
+        else:
+            secrets = state.secrets  # the process-env local store built in __post_init__
         return StoreBundle(
             artifacts=ObjectStorageArtifactStore(store, prefix=artifact_prefix(base)),
             scenarios=StorageScenarioStore(
                 ObjectScenarioStorage(store, partial(_org_apps, org), prefix=base)
             ),
             baselines=ObjectBaselineStore(store, prefix=base),
+            secrets=secrets,
         )
 
     state.org_stores = make_bundle
     # The default-org bundle backs the bare ServeState fields, so code paths that don't resolve an
     # org (and local-parity tests) keep working.
     default = make_bundle(DEFAULT_ORG)
-    state.artifacts, state.scenarios, state.baselines = (
+    state.artifacts, state.scenarios, state.baselines, state.secrets = (
         default.artifacts,
         default.scenarios,
         default.baselines,
+        default.secrets,
     )
     return state
 

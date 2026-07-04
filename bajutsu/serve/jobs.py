@@ -34,6 +34,7 @@ from bajutsu.serve.executor import LocalExecutor, RunExecutor
 from bajutsu.serve.helpers import target_scenarios_dir, valid_run_id
 from bajutsu.serve.logbus import InMemoryLogBus, LogBus
 from bajutsu.serve.scenarios import LocalScenarioStore, ScenarioStore
+from bajutsu.serve.secrets import EnvSecretStore, SecretStore
 from bajutsu.serve.sessions import InMemorySessionStore, SessionStore
 from bajutsu.serve.uploads import Upload
 
@@ -123,6 +124,7 @@ class StoreBundle:
     artifacts: ArtifactStore
     scenarios: ScenarioStore
     baselines: BaselineStore
+    secrets: SecretStore
 
 
 @dataclass
@@ -205,6 +207,10 @@ class ServeState:
     # Visual-regression baselines. Filesystem-confined by default; a server backend swaps in an
     # object-storage store (set after construction) (BE-0015).
     baselines: BaselineStore = field(init=False)
+    # Operator secrets (the Claude API key today). Write-once: set/describe only, no plaintext read
+    # an HTTP handler can reach (BE-0136). Default holds the value in the process env (in memory, as
+    # before); a server backend with a database swaps in an encrypted per-org store.
+    secrets: SecretStore = field(init=False)
     # The system of record (BE-0015 7a). None until a database is wired: local never has one, and a
     # server backend assigns a SqlRepository only when BAJUTSU_DATABASE_URL is set, so behavior is
     # unchanged without one. Annotated as a string (lazy) so the default path never loads SQLAlchemy.
@@ -275,6 +281,9 @@ class ServeState:
         # Resolve the dir lazily through a closure so a config opened from the UI later is reflected.
         self.scenarios = LocalScenarioStore(lambda target: _scenarios_dir_for(self, target))
         self.baselines = LocalBaselineStore(self.baselines_dir)
+        # The local secret store holds the value in this process's env; the name->env-var mapping is
+        # resolved lazily so a config bound later (its `ai.keyEnv`, BE-0097) is reflected.
+        self.secrets = EnvSecretStore(self._env_var_for_secret)
 
     def org_of(self, actor: str | None) -> str:
         """The org of *actor*, read from their persisted user row (assigned at login). The single
@@ -283,12 +292,21 @@ class ServeState:
             return _DEFAULT_ORG
         return self.repository.user_org(actor) or _DEFAULT_ORG
 
+    def _env_var_for_secret(self, name: str) -> str:
+        """The env var the local secret store reads/writes for logical secret *name* (BE-0136).
+
+        Only the Claude API key exists today; it honors the bound config's ``ai.keyEnv`` (BE-0097).
+        Imported lazily to avoid a cycle with the operations layer, which imports this module."""
+        from bajutsu.serve.operations.config import active_key_env
+
+        return active_key_env(self)
+
     def for_org(self, org: str) -> StoreBundle:
         """The storage seams scoped to *org*. A server backend prefixes each org's objects; local
         serve has a single tenant, so this is just the default stores (BE-0015 multi-tenancy)."""
         if self.org_stores is not None:
             return self.org_stores(org)
-        return StoreBundle(self.artifacts, self.scenarios, self.baselines)
+        return StoreBundle(self.artifacts, self.scenarios, self.baselines, self.secrets)
 
     def check_token(self, candidate: str) -> bool:
         """Constant-time compare of a presented token against the configured one."""

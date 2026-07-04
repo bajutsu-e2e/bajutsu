@@ -151,8 +151,8 @@ def make_app(state: ServeState) -> FastAPI:
         return _result(ops.browse_fs(state, dir))
 
     @app.get("/api/apikey")
-    async def api_key(reveal: str | None = None) -> JSONResponse:
-        return _result(ops.api_key_info(state, bool(reveal)))
+    async def api_key(request: Request) -> JSONResponse:
+        return _result(ops.api_key_info(state, _actor(request)))
 
     @app.get("/api/provider")
     async def get_provider() -> JSONResponse:
@@ -278,8 +278,8 @@ def make_app(state: ServeState) -> FastAPI:
         return _result(ops.bind_config(state, str(body.get("path", "") or "")))
 
     @app.post("/api/apikey")
-    async def set_api_key(body: dict[str, Any]) -> JSONResponse:
-        return _result(ops.set_api_key(state, str(body.get("value", "") or "")))
+    async def set_api_key(body: dict[str, Any], request: Request) -> JSONResponse:
+        return _result(ops.set_api_key(state, str(body.get("value", "") or ""), _actor(request)))
 
     @app.post("/api/provider")
     async def set_provider(body: dict[str, Any]) -> JSONResponse:

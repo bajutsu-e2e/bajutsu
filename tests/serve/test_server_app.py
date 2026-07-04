@@ -234,6 +234,20 @@ def test_rbac_viewer_cannot_run(tmp_path: Path) -> None:
     )
 
 
+def test_rbac_viewer_gets_masked_key_never_plaintext(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # The vulnerability BE-0136 closes: a read-only viewer could previously read back the
+    # admin-configured key in plaintext via GET /api/apikey?reveal=1. Now a viewer's GET returns
+    # only a masked preview, never a `value`, for any query.
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-admin-secret-12345")
+    client = TestClient(make_app(_rbac_state(tmp_path, login="v", viewers=frozenset({"v"}))))
+    _oauth_signin(client)
+    body = client.get("/api/apikey").json()
+    assert body == {"set": True, "masked": "sk-a…2345"}
+    assert "value" not in client.get("/api/apikey?reveal=1").json()
+
+
 def test_rbac_editor_can_run_but_not_change_settings(tmp_path: Path) -> None:
     client = TestClient(make_app(_rbac_state(tmp_path, login="e")))  # default role = editor
     _oauth_signin(client)

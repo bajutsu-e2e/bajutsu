@@ -197,11 +197,11 @@ def test_cross_origin_post_blocked_even_without_token(tmp_path: Path) -> None:
 
 def test_mismatched_host_is_rejected(tmp_path: Path) -> None:
     # BE-0121: DNS-rebinding defense — a request whose Host isn't a bound interface is refused, so a
-    # rebound hostname can't reach /api/apikey to exfiltrate the API key even without the CSRF bypass.
+    # rebound hostname can't reach /api/apikey to probe the API key even without the CSRF bypass.
     server, port = _serve(_state(tmp_path, None))
     try:
         conn = http.client.HTTPConnection("127.0.0.1", port)
-        conn.request("GET", "/api/apikey?reveal=1", headers={"Host": "attacker.example"})
+        conn.request("GET", "/api/apikey", headers={"Host": "attacker.example"})
         assert conn.getresponse().status == 403
         conn.close()
         # The loopback Host a browser actually sends to `make serve` is accepted.

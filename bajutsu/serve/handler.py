@@ -116,7 +116,7 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
             if not self._host_ok():
                 # DNS-rebinding defense (BE-0121): a Host that names no bound interface is refused
                 # ahead of everything else, so a rebound hostname reaches no endpoint at all
-                # (including GET /api/apikey?reveal=1), regardless of the token/CSRF posture. Close
+                # (including GET /api/apikey), regardless of the token/CSRF posture. Close
                 # the connection rather than draining the body: a rejected request needs no
                 # keep-alive, and this is the one gate an unbounded /api/upload body can hit, so
                 # draining Content-Length here would read the whole upload just to discard it.
@@ -190,7 +190,7 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
                 case "/api/fs":
                     self._json(*ops.browse_fs(state, self._qs("dir")))
                 case "/api/apikey":
-                    self._json(*ops.api_key_info(state, bool(self._qs("reveal"))))
+                    self._json(*ops.api_key_info(state, self._actor()))
                 case "/api/provider":
                     self._json(*ops.provider_info(state))
                 case "/api/simulators":
@@ -293,7 +293,9 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
                     else:
                         self._json(*ops.bind_config(state, str(body.get("path", "") or "")))
                 case "/api/apikey":
-                    self._json(*ops.set_api_key(state, str(body.get("value", "") or "")))
+                    self._json(
+                        *ops.set_api_key(state, str(body.get("value", "") or ""), self._actor())
+                    )
                 case "/api/provider":
                     self._json(*ops.set_provider(state, body))
                 case "/api/run":
