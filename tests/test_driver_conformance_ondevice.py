@@ -50,6 +50,10 @@ UDID: str = _udid  # narrowed by the skip above; a plain str for the fixtures be
 
 _CONFIG_PATH = Path("demos/showcase/showcase.config.yaml")
 _TARGET = "showcase-swiftui"  # the a11y app: its identifiers surface for both idb and XCUITest
+# Mirrors ConformanceView.readyID: a marker present on every conformance screen (the empty one
+# included), so readiness is a positive check "conformance mode is active", not an inference from
+# the absence of seeded ids — which a transient near-empty a11y tree during a relaunch could meet.
+_READY_ID = "conformance.ready"
 
 
 class _OnDeviceHarness:
@@ -78,20 +82,18 @@ class _OnDeviceHarness:
 
     def _await_screen(self, ids: list[str], timeout: float = 30.0, poll: float = 0.1) -> None:
         # Condition-backed (no fixed sleep): a relaunch settles asynchronously, so wait on the
-        # observed screen, not on a guessed delay. For a non-empty spec, every requested id must be
-        # present. For the empty (zero-match) screen, the app must be back up *and* carry no
-        # identifiers — waiting on "no truthy ids" rides out the relaunch gap where the previous
-        # screen's ids linger, which a bare "any element present" check would accept too early.
+        # observed screen, not on a guessed delay. Readiness is positive — the conformance-mode
+        # marker present *and* every seeded id present — so the empty (zero-match) screen waits on
+        # the marker rather than on the absence of ids (which a transient near-empty tree during the
+        # relaunch could satisfy too early). None identifiers are ignored.
         deadline = time.monotonic() + timeout
         while True:
-            present = {el["identifier"] for el in self._driver.query()}
-            truthy = {p for p in present if p}
-            ready = all(i in truthy for i in ids) if ids else (bool(present) and not truthy)
-            if ready:
+            present = {el["identifier"] for el in self._driver.query() if el["identifier"]}
+            if _READY_ID in present and all(i in present for i in ids):
                 return
             if time.monotonic() >= deadline:
                 raise AssertionError(
-                    f"conformance screen not ready: want {ids}, saw {sorted(truthy)}"
+                    f"conformance screen not ready: want {ids}, saw {sorted(present)}"
                 )
             time.sleep(poll)
 

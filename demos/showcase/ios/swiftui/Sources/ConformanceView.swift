@@ -11,10 +11,17 @@ import SwiftUI
 struct ConformanceView: View {
     let identifiers: [String]
 
+    /// A stable marker present on every conformance screen — including the empty (zero-match) one,
+    /// which seeds no identifiers. The on-device harness waits on it to confirm the app is actually
+    /// in conformance mode, rather than inferring it from the absence of ids (which a transient,
+    /// near-empty a11y tree during a relaunch could satisfy too early).
+    static let readyID = "conformance.ready"
+
     var body: some View {
         // Duplicates are the point (the ambiguous-selector case), so the row identity is the
         // position, never the identifier — a `\.self` id would collapse repeated identifiers.
         VStack(spacing: 8) {
+            Text("ready").accessibilityID(Self.readyID)
             ForEach(Array(identifiers.enumerated()), id: \.offset) { _, identifier in
                 Button(identifier) {}
                     .accessibilityID(identifier)
