@@ -105,6 +105,43 @@ def test_idb_exposes_no_evidence_provider_surface() -> None:
     assert not hasattr(IdbDriver, "network_collector")
 
 
+# --- BE-0141: backend lifecycle Protocol conformance ---
+
+
+def test_backend_lifecycle_is_runtime_checkable() -> None:
+    # A backend that adopts every lifecycle hook is recognized at runtime; missing one is not — the
+    # @runtime_checkable Protocol makes "adopts the lifecycle surface" an isinstance-testable fact.
+    from bajutsu.drivers.base import BackendLifecycle
+
+    class FullLifecycle:
+        def navigate(self) -> None: ...
+        def close(self) -> None: ...
+        def reset_context(self) -> None: ...
+        def await_ready(self, timeout: float = 10.0, poll: float = 0.1) -> None: ...
+
+    class PartialLifecycle:
+        def navigate(self) -> None: ...
+
+    assert isinstance(FullLifecycle(), BackendLifecycle)
+    assert not isinstance(PartialLifecycle(), BackendLifecycle)
+
+
+def test_playwright_driver_provides_web_lifecycle() -> None:
+    # The three web-only lifecycle calls in platform_lifecycle.py resolve to these concrete methods,
+    # so the cast(BackendLifecycle, driver) sites there are backed by real implementations.
+    from bajutsu.drivers.playwright import PlaywrightDriver
+
+    for name in ("navigate", "close", "reset_context"):
+        assert callable(getattr(PlaywrightDriver, name))
+
+
+def test_xcuitest_driver_provides_await_ready() -> None:
+    # The xcuitest-only await_ready call resolves to this concrete method.
+    from bajutsu.drivers.xcuitest import XcuitestDriver
+
+    assert callable(XcuitestDriver.await_ready)
+
+
 @pytest.mark.parametrize(
     ("order", "expected"),
     [

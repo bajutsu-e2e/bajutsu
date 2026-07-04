@@ -138,6 +138,26 @@ class EvidenceProvider(Protocol):
     def network_collector(self, mocks: list[object] | None = None) -> Collector: ...
 
 
+@runtime_checkable
+class BackendLifecycle(Protocol):
+    """The lifecycle hooks a backend runs around a single run (BE-0141).
+
+    A run needs to launch, tear down, and reset a backend, but those steps are platform-shaped:
+    the web (Playwright) backend navigates / closes / resets a browser context, the XCUITest
+    backend waits for its on-device runner to answer. idb needs none of them — its boot / erase /
+    install sequence lives outside the driver in `simctl` — so, like `EvidenceProvider`, this is a
+    narrow Protocol a backend *opts into* rather than a mandatory extension of `Driver`. A backend
+    adopts only the hooks it needs; the call sites in `platform_lifecycle.py` reach each one through
+    `cast(BackendLifecycle, driver)` under the same platform invariant that already scopes the
+    driver, so a renamed or dropped hook fails `make check` (mypy strict) instead of at runtime.
+    """
+
+    def navigate(self) -> None: ...
+    def close(self) -> None: ...
+    def reset_context(self) -> None: ...
+    def await_ready(self, timeout: float = ..., poll: float = ...) -> None: ...
+
+
 # --- Selector resolution (the determinism core) ---
 
 

@@ -276,7 +276,7 @@ class WebEnvironment:
             browser=web.browser,
             record_video_dir=record_video_dir,
         )
-        driver.navigate()  # type: ignore[attr-defined]  # web-only lifecycle, confined to this env
+        cast(base.BackendLifecycle, driver).navigate()  # web-only lifecycle, confined to this env
         return driver
 
     def device_catalog(self) -> dict[str, dict[str, str]]:
@@ -309,7 +309,7 @@ class WebEnvironment:
         return None  # the driver owns the browser; no simctl device control
 
     def teardown(self, driver: base.Driver, eff: Effective) -> None:
-        driver.close()  # type: ignore[attr-defined]  # web-only lifecycle, confined to this env
+        cast(base.BackendLifecycle, driver).close()  # web-only lifecycle, confined to this env
 
     def has_devices(self) -> bool:
         return False  # one browser per lane, no simctl device behind it
@@ -323,7 +323,7 @@ class WebEnvironment:
         # A fresh BrowserContext is the clean start (the `erase` equivalent): no cookies / storage
         # carried across visits, so a path recorded in one worker's browser replays in another.
         def reset(driver: base.Driver) -> None:
-            driver.reset_context()  # type: ignore[attr-defined]  # web-only lifecycle (fresh context)
+            cast(base.BackendLifecycle, driver).reset_context()  # web-only (fresh context)
             _await_ready(driver, ready_sel=eff.ready_when)
 
         return reset
@@ -498,7 +498,7 @@ class XcuitestEnvironment(_DeviceEnvironment):
         # A cold `xcodebuild test-without-building` spins up the XCTest host and launches the app
         # before the runner's server answers /health; on a loaded CI runner that first start well
         # exceeds the 10s default, so give it generous headroom (a warm start still returns at once).
-        driver.await_ready(timeout=_RUNNER_STARTUP_TIMEOUT)  # type: ignore[attr-defined]  # xcuitest-only
+        cast(base.BackendLifecycle, driver).await_ready(timeout=_RUNNER_STARTUP_TIMEOUT)
         return driver
 
     def teardown(self, driver: base.Driver, eff: Effective) -> None:
@@ -603,7 +603,7 @@ def _web_relauncher(driver: base.Driver, ready_sel: base.Selector | None = None)
     """Web `relaunch`: re-navigate to the base URL and wait until ready (no device restart)."""
 
     def relaunch(opts: Relaunch) -> None:
-        driver.navigate()  # type: ignore[attr-defined]  # web-only lifecycle
+        cast(base.BackendLifecycle, driver).navigate()  # web-only lifecycle
         _await_ready(driver, ready_sel=ready_sel)
 
     return relaunch
