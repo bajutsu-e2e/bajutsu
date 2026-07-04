@@ -144,9 +144,10 @@ would settle; the recommendation is in brackets and the alternatives are real:
   volume.
 - [x] 3. The CLI surface — `bajutsu stats` with `--runs` / `--html` (self-contained) and text/JSON
   output.
-- [ ] 4. The serve **Stats** tab reusing the aggregator through the existing serve seams
-  (Repository / ArtifactStore) — deferred to a follow-on slice (the CLI-first ordering the *Detailed
-  design* recommends).
+- [x] 4. The serve **Stats** tab reusing the aggregator through the existing serve seams: the run-id
+  list comes from the system of record when a database is wired (org-scoped), else the artifact store,
+  and each run's full `manifest.json` is read from the artifact store either way (the DB `summary`
+  holds only the compact history-list shape).
 - [x] 5. Scope guards — read-only, no verdict change, no LLM, not a CI gate.
 
 **Log**
@@ -156,6 +157,10 @@ would settle; the recommendation is in brackets and the alternatives are real:
   and the `bajutsu stats --runs/--json/--html` command, with `tests/test_stats.py` /
   `tests/test_cli_stats.py` on the Linux gate and bilingual `cli.md` docs. The serve Stats tab
   (unit 4) is deferred to a follow-on.
+- _pending PR_ — Added the serve **Stats** tab (unit 4): a new `stats_html` serve operation reusing
+  the aggregator over the org's run history through the existing seams (DB-else-artifact for the id
+  list, ArtifactStore for the manifests), served at `GET /stats` on both the stdlib and FastAPI
+  backends and rendered in the SPA's new Stats tab. Covered by `tests/serve/test_stats_tab.py`.
 
 ## References
 

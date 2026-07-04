@@ -8,6 +8,7 @@ from typing import Any
 
 import yaml
 
+from bajutsu import stats as _stats
 from bajutsu.config import Config, load_config, targets_for_org
 from bajutsu.drivers import base as driver_base
 from bajutsu.scenario import load_scenario_file
@@ -107,6 +108,46 @@ def runs_payload(state: ServeState, *, actor: str | None = None) -> tuple[Any, i
     if state.repository is not None:
         return [r.summary for r in state.repository.list_runs(org_id=state.org_of(actor))], 200
     return state.artifacts.list_runs(), 200
+
+
+def stats_html(state: ServeState, *, actor: str | None = None) -> tuple[str, int]:
+    """The aggregate run-stats dashboard (BE-0102) as a self-contained HTML page, org-scoped.
+
+    Reuses the deterministic aggregator over the actor's org run history: read-only, no verdict, no
+    LLM. The run-id list comes from the same seam as `runs_payload` (the system of record when wired,
+    else the artifact store); each run's full `manifest.json` is read from the artifact store either
+    way, since the DB `summary` carries only the compact history-list shape.
+    """
+    return _stats.render_html(_stats.aggregate_runs(_run_manifests(state, actor))), 200
+
+
+def _run_manifests(state: ServeState, actor: str | None) -> list[dict[str, Any]]:
+    """Each run's parsed `manifest.json` for the actor's org; unreadable/malformed ones are skipped.
+
+    The ids come from the recorded runs when a repository is wired (org-scoped), else the artifact
+    store's own listing; the manifests are always read from the org's artifact store — the seam that
+    holds the full manifest whether or not a database indexes the runs.
+    """
+    org = state.org_of(actor)
+    artifacts = state.for_org(org).artifacts
+    if state.repository is not None:
+        ids = [r.summary.get("id") for r in state.repository.list_runs(org_id=org)]
+    else:
+        ids = [r.get("id") for r in artifacts.list_runs()]
+    manifests: list[dict[str, Any]] = []
+    for run_id in ids:
+        if not isinstance(run_id, str):
+            continue
+        raw = artifacts.open_bytes(f"{run_id}/manifest.json")
+        if raw is None:
+            continue
+        try:
+            data = json.loads(raw)
+        except (json.JSONDecodeError, ValueError):
+            continue
+        if isinstance(data, dict):
+            manifests.append(data)
+    return manifests
 
 
 def read_scenario(
