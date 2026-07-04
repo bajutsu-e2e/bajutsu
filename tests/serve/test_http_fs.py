@@ -31,6 +31,19 @@ def test_http_fs_lists_and_blocks_traversal(tmp_path: Path) -> None:
         server.server_close()
 
 
+def test_http_fs_refused_when_hosted(tmp_path: Path) -> None:
+    # On a hosted deployment the file browser is removed server-side, so /api/fs refuses even a
+    # hand-crafted request rather than listing the operator's --root (BE-0108).
+    _, _, runs = project(tmp_path)
+    server, port = _serve(srv.ServeState(runs_dir=runs, root=tmp_path, cwd=tmp_path, hosted=True))
+    try:
+        with pytest.raises(urllib.error.HTTPError, match="403"):
+            _get(port, "/api/fs")
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
 def test_http_serves_run_artifacts_and_blocks_traversal(tmp_path: Path) -> None:
     scn_dir, cfg, runs = project(tmp_path)
     (runs / "r1").mkdir()

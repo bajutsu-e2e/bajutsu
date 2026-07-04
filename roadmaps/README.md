@@ -315,6 +315,7 @@ Standing up `bajutsu serve` beyond loopback. The hardening that makes the existi
 | [BE-0055](BE-0055-operational-logging/BE-0055-operational-logging.md) | Operational logging for the hosted serve | Implemented |
 | [BE-0090](BE-0090-uploaded-config-command-execution/BE-0090-uploaded-config-command-execution.md) | Govern and sandbox command execution from uploaded bundle configs | Implemented |
 | [BE-0106](BE-0106-post-completion-worker-model/BE-0106-post-completion-worker-model.md) | Post-completion worker model (eliminate Redis dependency) | Implemented |
+| [BE-0108](BE-0108-hosted-config-source-restriction/BE-0108-hosted-config-source-restriction.md) | Restrict config sources to upload and Git when hosted | Implemented |
 | [BE-0110](BE-0110-evidence-store-uri/BE-0110-evidence-store-uri.md) | Evidence upload to object storage via URI | Implemented |
 | [BE-0127](BE-0127-split-serve-operations-module/BE-0127-split-serve-operations-module.md) | Split the serve operations god-module | Implemented |
 <!-- /GENERATED:implemented-hosting -->
@@ -558,7 +559,6 @@ Turn the local `bajutsu serve` launcher into a shared service. The runner drives
 <!-- GENERATED:proposals-hosting -->
 | ID | Item | Status |
 |---|---|---|
-| [BE-0108](BE-0108-hosted-config-source-restriction/BE-0108-hosted-config-source-restriction.md) | Restrict config sources to upload and Git when hosted | Proposal |
 | [BE-0129](BE-0129-serve-scope-boundary/BE-0129-serve-scope-boundary.md) | Bound serve scope and keep host concerns out of shared config | Proposal |
 | [BE-0160](BE-0160-worker-credential-free-uploads/BE-0160-worker-credential-free-uploads.md) | Credential-free worker uploads via presigned URLs | Proposal |
 <!-- /GENERATED:proposals-hosting -->

@@ -24,6 +24,7 @@ from bajutsu.serve.helpers import (
     valid_scenario_ref,
 )
 from bajutsu.serve.jobs import ServeState
+from bajutsu.serve.operations import config as config_ops
 from bajutsu.serve.operations._common import _resolve_org_or_forbid
 
 _REPORT_SUFFIX = "/report.html"
@@ -84,6 +85,10 @@ def list_targets_payload(state: ServeState, *, actor: str | None = None) -> tupl
 
 
 def browse_fs(state: ServeState, sub: str | None) -> tuple[Any, int]:
+    if state.hosted:
+        # The file browser is a local affordance; a hosted deployment removes it from the UI and
+        # refuses it here too, so a hand-crafted request can't list the operator's --root (BE-0108).
+        return {"error": config_ops.FS_DISABLED_ERROR}, 403
     try:
         return list_fs(state.root, sub), 200
     except (ValueError, OSError) as e:

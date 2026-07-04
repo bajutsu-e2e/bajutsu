@@ -342,10 +342,14 @@
       <div class="upmeta" id="up-meta" data-testid="upload.meta" hidden></div>
       <div class="gitsrcerr" id="up-error" data-testid="upload.error" hidden></div>
     </div>
-    <div class="fsor">or browse the server</div>
-    <div class="fspath" id="fspath" data-testid="config.path"></div>
-    <ul class="fslist" id="fslist" data-testid="config.list"></ul>
-    <div class="fshint">Pick a <code>.yml</code>/<code>.yaml</code> config file. Browsing is limited to the server's <code>--root</code>.</div>
+    <!-- The file browser is a local affordance; a hosted deployment hides this whole block, since a
+         remote user has no filesystem relationship to the host (BE-0108). -->
+    <div id="fssrc" data-testid="config.fs-source">
+      <div class="fsor">or browse the server</div>
+      <div class="fspath" id="fspath" data-testid="config.path"></div>
+      <ul class="fslist" id="fslist" data-testid="config.list"></ul>
+      <div class="fshint">Pick a <code>.yml</code>/<code>.yaml</code> config file. Browsing is limited to the server's <code>--root</code>.</div>
+    </div>
   </div>
 </div>
 
