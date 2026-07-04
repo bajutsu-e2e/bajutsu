@@ -19,14 +19,19 @@ if [ -z "$refs" ] || ! awk '$2 !~ /^0+$/ { found=1 } END { exit !found }' <<<"$r
   exit 0
 fi
 
-echo "pre-push: running 'make check' (ruff + mypy + pytest)…" >&2
+echo "pre-push: running 'make check'…" >&2
 
-if command -v make >/dev/null 2>&1; then
-  make check
-else
-  uv run --no-sync ruff check .
-  uv run --no-sync mypy bajutsu
-  uv run --no-sync pytest -q
+# The gate is defined once, in `make check`. A hand-rolled fallback drifts from it silently
+# (it used to run only ruff+mypy+pytest, skipping format/docstrings/imports/lock/roadmap/shell),
+# so a push could pass the hook yet fail CI — the exact "green locally predicts green in CI"
+# guarantee this hook exists to uphold. Require `make` rather than approximate the gate.
+if ! command -v make >/dev/null 2>&1; then
+  echo "pre-push: 'make' not found — the gate is 'make check' and can't be run without it." >&2
+  echo "pre-push: install make (macOS: 'xcode-select --install' or 'brew install make'; " \
+       "Debian/Ubuntu: 'apt-get install make') and retry, or bypass with 'git push --no-verify'." >&2
+  exit 1
 fi
+
+make check
 
 echo "pre-push: checks passed — pushing." >&2

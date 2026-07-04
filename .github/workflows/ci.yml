@@ -103,6 +103,8 @@ jobs:
       # Render coverage.json into the run's job summary. Runs even when the floor above fails,
       # so a coverage regression shows the numbers rather than only a red step. Presentation
       # only — pass/fail is already decided by --cov-fail-under; the script never fails the run.
+      # Keep --floor equal to the Makefile's `test` --cov-fail-under so the summary marks the same
+      # bar the gate enforces (both 89); a mismatch just misreports which lines are "below floor".
       - name: Coverage summary
         if: always()
-        run: uv run --no-sync python scripts/coverage_summary.py --floor 87 coverage.json
+        run: uv run --no-sync python scripts/coverage_summary.py --floor 89 coverage.json
