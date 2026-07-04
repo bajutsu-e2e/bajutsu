@@ -7,7 +7,7 @@
 |---|---|
 | Proposal | [BE-0162](BE-0162-roadmap-status-filter-skill.md) |
 | Author | [@hirosassa](https://github.com/hirosassa) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0162") |
 | Topic | Development infrastructure (contributor workflow) |
 <!-- /BE-METADATA -->
@@ -119,9 +119,18 @@ app-agnostic, touching only `roadmaps/` metadata (directive 3).
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Deterministic status-filter query (shared metadata parsing, validated status, table output)
-- [ ] Skill definition (`.claude/skills/…`, read-only, argument-driven)
-- [ ] Tests and a docs mention in `docs/ai-development.md`
+- [x] Deterministic status-filter query (shared metadata parsing, validated status, table output)
+- [x] Skill definition (`.claude/skills/…`, read-only, argument-driven)
+- [x] Tests and a docs mention in `docs/ai-development.md`
+
+Log:
+
+- `scripts/roadmap_query.py` adds the status filter, reusing `metadata_fields` / `iter_item_dirs`
+  from the index generator; `make roadmap-status STATUS="…"` wraps it. The read-only
+  `roadmap-filter` skill (`haiku`) surveys the roadmap by status and returns each item's path to
+  open next. `tests/test_roadmap_query.py` pins status resolution, the filter, table rendering, and
+  the CLI exit codes; `docs/ai-development.md` (both languages) documents the skill next to the
+  model/effort tiering (BE-0103).
 
 ## References
 

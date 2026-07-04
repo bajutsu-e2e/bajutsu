@@ -244,6 +244,7 @@ Bajutsu の「契約としての決定性」という立場を、Maestro の fla
 | [BE-0139](BE-0139-roadmap-dashboard-issue-links/BE-0139-roadmap-dashboard-issue-links-ja.md) | ロードマップのダッシュボードと項目ファイルからトラッキング Issue へリンクする | 実装済み |
 | [BE-0149](BE-0149-roadmap-placeholder-format-guardrail/BE-0149-roadmap-placeholder-format-guardrail-ja.md) | ロードマッププレースホルダーを見逃すフォーマットガードレールの穴を塞ぐ | 実装済み |
 | [BE-0159](BE-0159-flatten-roadmap-status-folders/BE-0159-flatten-roadmap-status-folders-ja.md) | ロードマップ項目を単一ディレクトリにまとめ、状態別フォルダをやめる | 実装済み |
+| [BE-0162](BE-0162-roadmap-status-filter-skill/BE-0162-roadmap-status-filter-skill-ja.md) | AI セッション向けのロードマップ状態フィルタスキル | 実装済み |
 <!-- /GENERATED:implemented-dev-infra -->
 
 ### コードベース品質・技術的負債
@@ -617,7 +618,6 @@ Web（Playwright）backend とその完成（リッチな capability、並列実
 | ID | 項目 | 状態 |
 |---|---|---|
 | [BE-0156](BE-0156-roadmap-topic-label-sync/BE-0156-roadmap-topic-label-sync-ja.md) | ロードマップ項目 PR のラベルを Topic と同期させる | 提案 |
-| [BE-0162](BE-0162-roadmap-status-filter-skill/BE-0162-roadmap-status-filter-skill-ja.md) | AI セッション向けのロードマップ状態フィルタスキル | 提案 |
 <!-- /GENERATED:proposals-dev-infra -->
 
 ### コードベース品質・技術的負債

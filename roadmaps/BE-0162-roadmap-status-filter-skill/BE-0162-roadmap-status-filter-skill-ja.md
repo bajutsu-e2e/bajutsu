@@ -7,7 +7,7 @@
 |---|---|
 | 提案 | [BE-0162](BE-0162-roadmap-status-filter-skill-ja.md) |
 | 提案者 | [@hirosassa](https://github.com/hirosassa) |
-| 状態 | **提案** |
+| 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0162") |
 | トピック | Development infrastructure (contributor workflow) |
 <!-- /BE-METADATA -->
@@ -114,9 +114,18 @@ AI セッションは `roadmaps/README.md` を全文読まなくても、「`Pro
 > 作業分解（作業の単位ごとに 1 つ）に対応し、ログには変更内容と時期（古い順）を PR へのリンクと
 > ともに記録します。
 
-- [ ] 決定論的な状態フィルタクエリ（共通のメタデータ解析、状態の検証、表の出力）
-- [ ] スキルの定義（`.claude/skills/…`、読み取り専用、引数駆動）
-- [ ] テストと `docs/ai-development.md` への記述
+- [x] 決定論的な状態フィルタクエリ（共通のメタデータ解析、状態の検証、表の出力）
+- [x] スキルの定義（`.claude/skills/…`、読み取り専用、引数駆動）
+- [x] テストと `docs/ai-development.md` への記述
+
+ログ：
+
+- `scripts/roadmap_query.py` が状態フィルタを追加します。索引生成器の `metadata_fields` と
+  `iter_item_dirs` を再利用し、`make roadmap-status STATUS="…"` がこれを包みます。読み取り専用の
+  `roadmap-filter` スキル（`haiku`）が状態でロードマップを見渡し、次に開くべき各項目のパスを返します。
+  `tests/test_roadmap_query.py` が状態の解決、フィルタ、表の出力、CLI の終了コードを固定します。
+  `docs/ai-development.md`（両言語）が、モデルとエフォートのティア分け（BE-0103）の隣にこのスキルを
+  記します。
 
 ## 参考
 
