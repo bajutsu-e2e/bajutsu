@@ -132,6 +132,31 @@ def test_stats_html_empty(tmp_path: Path) -> None:
     assert "No runs to aggregate" in html
 
 
+def test_stats_html_skips_unsafe_run_id_from_repository(tmp_path: Path) -> None:
+    # A repository id that isn't a single safe segment must never be turned into a path — it is
+    # skipped, so a nested/legacy id can't read outside its run dir (serve's containment model).
+    scn_dir, cfg, runs = project(tmp_path)
+    repo = _repo()
+    _write_manifest(runs, "20260101-000000", ok=True, scenario_hash="sha256:a", duration_s=2.0)
+    repo.record_run(
+        RunRecord(
+            id="20260101-000000/../secret",
+            org_id="default",
+            status="done",
+            ok=True,
+            summary={"id": "20260101-000000/../secret"},
+        )
+    )
+    state = srv.ServeState(
+        scenarios_dir=scn_dir, config=cfg, runs_dir=runs, cwd=tmp_path, repository=repo
+    )
+
+    html, status = stats_html(state)
+
+    assert status == 200
+    assert "No runs to aggregate" in html
+
+
 def test_stats_route_serves_html_over_http(tmp_path: Path) -> None:
     scn_dir, cfg, runs = project(tmp_path)
     _write_manifest(runs, "20260101-000000", ok=True, scenario_hash="sha256:a", duration_s=2.0)

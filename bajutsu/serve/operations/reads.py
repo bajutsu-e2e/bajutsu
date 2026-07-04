@@ -110,6 +110,12 @@ def runs_payload(state: ServeState, *, actor: str | None = None) -> tuple[Any, i
     return state.artifacts.list_runs(), 200
 
 
+# The newest-N run window a serve `/stats` refresh aggregates. Bounds the per-refresh manifest reads
+# over object storage, and keeps the DB and artifact-store paths aggregating the same set (the DB
+# `list_runs` is itself limit-bounded). A large enough window to read a trend, not the whole history.
+_STATS_RUN_LIMIT = 200
+
+
 def stats_html(state: ServeState, *, actor: str | None = None) -> tuple[str, int]:
     """The aggregate run-stats dashboard (BE-0102) as a self-contained HTML page, org-scoped.
 
@@ -122,21 +128,26 @@ def stats_html(state: ServeState, *, actor: str | None = None) -> tuple[str, int
 
 
 def _run_manifests(state: ServeState, actor: str | None) -> list[dict[str, Any]]:
-    """Each run's parsed `manifest.json` for the actor's org; unreadable/malformed ones are skipped.
+    """The newest runs' parsed `manifest.json` for the actor's org; unreadable/malformed ones skipped.
 
     The ids come from the recorded runs when a repository is wired (org-scoped), else the artifact
-    store's own listing; the manifests are always read from the org's artifact store — the seam that
-    holds the full manifest whether or not a database indexes the runs.
+    store's own listing; both are newest-first and bounded to the same `_STATS_RUN_LIMIT` window so a
+    `/stats` refresh over a large history stays cheap and the two backends aggregate the same set. The
+    manifests are always read from the org's artifact store — the seam that holds the full manifest
+    whether or not a database indexes the runs — keyed by the canonical run id.
     """
     org = state.org_of(actor)
     artifacts = state.for_org(org).artifacts
+    ids: list[Any]
     if state.repository is not None:
-        ids = [r.summary.get("id") for r in state.repository.list_runs(org_id=org)]
+        ids = [r.id for r in state.repository.list_runs(org_id=org, limit=_STATS_RUN_LIMIT)]
     else:
-        ids = [r.get("id") for r in artifacts.list_runs()]
+        ids = [r.get("id") for r in artifacts.list_runs()[:_STATS_RUN_LIMIT]]
     manifests: list[dict[str, Any]] = []
     for run_id in ids:
-        if not isinstance(run_id, str):
+        # Reject a non-string or a multi-segment id (e.g. "r1/sub") before it becomes a path, matching
+        # serve's containment model for run ids everywhere else (BE-0015).
+        if not isinstance(run_id, str) or not valid_run_id(run_id):
             continue
         raw = artifacts.open_bytes(f"{run_id}/manifest.json")
         if raw is None:

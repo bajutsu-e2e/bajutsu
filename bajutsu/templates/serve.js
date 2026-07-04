@@ -405,15 +405,17 @@ async function setReport(id,repSel){
 // so no rewrite is needed — only retarget its :root/body rules to :host inside the shadow root.
 async function loadStats(){
   const host=$('#stats-host');
-  let html;
-  try{html=await (await fetch('/stats')).text();}
-  catch(e){host.textContent='stats unavailable';return;}
-  const doc=new DOMParser().parseFromString(html,'text/html');
-  const css=((doc.querySelector('style')||{}).textContent||'').replace(/:root/g,':host')
-    .replace(/(^|[\s,>}])body([\s{])/g,'$1:host$2');
   // Reuse the host's shadow root on a refresh (unlike setReport, which recreates its host each time):
   // this innerHTML replacement is idempotent and the page carries no scripts or listeners to leak.
   const sh=host.shadowRoot||host.attachShadow({mode:'open'});
+  let html;
+  // Treat a network error or a non-2xx (e.g. 401/500) as unavailable, and render the error into the
+  // shadow root so a failed refresh replaces the stale dashboard instead of leaving it on screen.
+  try{const r=await fetch('/stats');if(!r.ok)throw 0;html=await r.text();}
+  catch(e){sh.innerHTML='<div style="color:#6e6e73;font-style:italic">stats unavailable</div>';return;}
+  const doc=new DOMParser().parseFromString(html,'text/html');
+  const css=((doc.querySelector('style')||{}).textContent||'').replace(/:root/g,':host')
+    .replace(/(^|[\s,>}])body([\s{])/g,'$1:host$2');
   sh.innerHTML=`<style>:host{display:block}\n${css}</style>${doc.body.innerHTML}`;
 }
 async function loadHistory(){
