@@ -110,7 +110,7 @@ backend.
 
 - [x] Enumerate the backend-agnostic contract (ambiguous / zero-match / `capabilities()` / wait / evidence invariants)
 - [x] Build the parametrized conformance suite against the `Driver` interface
-- [ ] Run FakeDriver in the fast Linux gate (`make check`); run Playwright in the separate web CI job — *FakeDriver done; Playwright web CI pending*
+- [x] Run FakeDriver in the fast Linux gate (`make check`); run Playwright in the separate web CI job
 - [ ] Run idb + XCUITest under the on-device E2E path (same suite)
 - [x] `capabilities()` conformance check + document the contract as the "done" definition for a new backend
 
@@ -120,6 +120,11 @@ Log:
   FakeDriver conformance suite (`tests/test_driver_conformance.py`) on the fast Linux gate, plus
   the contract documented in `docs/architecture.md`. Playwright (web CI) and idb / XCUITest
   (on-device E2E) remain, tracked here.
+- 2026-07-04: Playwright slice — the same contract now runs against a real headless Chromium
+  (`tests/test_driver_conformance_web.py`), realizing each conformance screen as `data-testid`
+  HTML on the real `PlaywrightDriver`. It runs in a new `web-conformance` job in `web-e2e.yml`
+  (never the fast gate: a `web` pytest marker + `-m 'not web'` deselects it, so the gate stays
+  browser-free even when the `web` extra is installed). idb / XCUITest (on-device E2E) remain.
 
 ## References
 

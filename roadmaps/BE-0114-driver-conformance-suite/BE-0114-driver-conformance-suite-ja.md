@@ -108,7 +108,7 @@ preflight と結び付けます）、conformance の契約を、新しい backen
 
 - [x] backend 非依存の契約を列挙する（曖昧 / 0 件 / `capabilities()` / 待機 / 証跡の不変条件）
 - [x] `Driver` の界面に対して parametrize した conformance suite を作る
-- [ ] FakeDriver を高速な Linux ゲート（`make check`）で走らせ、Playwright は別の web CI ジョブで走らせる — *FakeDriver は完了、Playwright の web CI は未着手*
+- [x] FakeDriver を高速な Linux ゲート（`make check`）で走らせ、Playwright は別の web CI ジョブで走らせる
 - [ ] idb と XCUITest をオンデバイスの E2E 経路で走らせる（同じスイート）
 - [x] `capabilities()` の適合を検査し、契約を新しい backend の「完了」定義として文書化する
 
@@ -118,6 +118,12 @@ preflight と結び付けます）、conformance の契約を、新しい backen
   conformance suite（`tests/test_driver_conformance.py`）を高速な Linux ゲートに載せ、契約を
   `docs/architecture.md` に文書化しました。Playwright（web CI）と idb / XCUITest（オンデバイス
   E2E）はこの項目で追跡します。
+- 2026-07-04: Playwright スライス。同じ契約を実際の headless Chromium に対しても走らせるように
+  しました（`tests/test_driver_conformance_web.py`）。各 conformance 画面を `data-testid` の HTML
+  として実際の `PlaywrightDriver` 上に描画します。`web-e2e.yml` に新設した `web-conformance`
+  ジョブで実行し、高速ゲートでは走らせません。`web` という pytest マーカーと `-m 'not web'` で
+  除外するため、`web` extra が入っていてもゲートはブラウザなしのままです。idb / XCUITest
+  （オンデバイス E2E）は残ります。
 
 ## 参考
 
