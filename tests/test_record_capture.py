@@ -5,7 +5,8 @@ Pure-core tests over literal Element lists — no Simulator, no mocks beyond Red
 
 from __future__ import annotations
 
-from bajutsu.capture import (
+from bajutsu.drivers import base
+from bajutsu.record_capture import (
     hit_test,
     resolve_capture,
     screen_size_from_elements,
@@ -14,7 +15,6 @@ from bajutsu.capture import (
     step_for_tap,
     step_for_type,
 )
-from bajutsu.drivers import base
 from bajutsu.redaction import Redactor
 from bajutsu.scenario import Redact, load_scenarios
 from bajutsu.scenario.models import Scenario, Selector

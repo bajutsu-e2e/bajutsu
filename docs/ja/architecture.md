@@ -83,7 +83,7 @@ flowchart TB
 | `interp.py` | `${ns.key}` 補間プリミティブ（`params.` / `row.` / `secrets.` / `vars.`） | [scenarios](scenarios.md) |
 | `config.py` | チーム既定 × アプリ別の解決（`Effective`） | [configuration](configuration.md) |
 | `backends.py` | バックエンド可用性判定、actuator 選択（プラットフォーム対応レジストリ: `ios` / `web` / `fake`）、Driver 生成 | [drivers](drivers.md#バックエンド選択と-actuator) |
-| `env.py` | `simctl` ラッパ（erase/boot/launch/openurl/io） | [drivers](drivers.md#環境管理simctl) |
+| `simctl.py` | `simctl` ラッパ（erase/boot/launch/openurl/io） | [drivers](drivers.md#環境管理simctl) |
 | `preflight.py` | バックエンド別の実行可能ゲート（iOS: 必須 CLI + 起動済みシミュレータ / web: Playwright とその Chromium ブラウザ） | [configuration](configuration.md) |
 | `runner/` | config + シナリオ → レポート。デバイスプール + launch 手順（パッケージ: `pipeline` / `pool` / `launch`） | [run-loop](run-loop.md#runner実行パイプライン) |
 | `doctor.py` | 規約充足度スコア（id カバレッジ等） | [configuration](configuration.md#doctor規約充足度スコア) |
@@ -120,7 +120,7 @@ flowchart TB
    ┌────┼────────┬────────┘
 assertions.py  evidence.py ── intervals.py · network.py · visual.py · redaction.py
         │         │
-   scenario/    report/      config.py · preflight.py   backends.py   env.py
+   scenario/    report/      config.py · preflight.py   backends.py   simctl.py
         │ （interp.py）            │              │            │
         └──────────────┬─────────────┴──────────────┴────────────┘
                        ▼

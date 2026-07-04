@@ -9,7 +9,7 @@ from pathlib import Path
 import pytest
 from _runner import _eff, _el
 
-from bajutsu import env
+from bajutsu import simctl
 from bajutsu.drivers import base
 from bajutsu.drivers.fake import FakeDriver
 from bajutsu.runner import (
@@ -28,7 +28,7 @@ def test_launch_driver_shuts_down_before_erase(monkeypatch: pytest.MonkeyPatch) 
         return ""
 
     ready = FakeDriver([_el("home.title", "H"), _el("ok", "OK")])  # 2 elems -> ready immediately
-    monkeypatch.setattr("bajutsu.environment.make_driver", lambda actuator, udid: ready)
+    monkeypatch.setattr("bajutsu.platform_lifecycle.make_driver", lambda actuator, udid: ready)
 
     launch_driver("UDID-1", _eff(), "idb", Preconditions(erase=True), env_run=fake_run)
 
@@ -46,7 +46,7 @@ def test_launch_driver_injects_extra_env(monkeypatch: pytest.MonkeyPatch) -> Non
         return ""
 
     ready = FakeDriver([_el("home.title", "H"), _el("ok", "OK")])
-    monkeypatch.setattr("bajutsu.environment.make_driver", lambda actuator, udid: ready)
+    monkeypatch.setattr("bajutsu.platform_lifecycle.make_driver", lambda actuator, udid: ready)
 
     launch_driver(
         "UDID-1",
@@ -74,7 +74,7 @@ def _launch_recording(
 ) -> list[list[str]]:
     calls: list[list[str]] = []
     monkeypatch.setattr(
-        "bajutsu.environment.make_driver",
+        "bajutsu.platform_lifecycle.make_driver",
         lambda actuator, udid: FakeDriver([_el("home.title", "H"), _el("ok", "OK")]),
     )
     launch_driver(
@@ -123,8 +123,10 @@ def test_launch_driver_erase_skips_uninstall(
 def test_launch_driver_errors_on_missing_app_path(monkeypatch: pytest.MonkeyPatch) -> None:
     """A configured appPath that doesn't exist fails with a clear, actionable DeviceError."""
     eff = replace(_eff(), app_path="/nope/X.app")
-    monkeypatch.setattr("bajutsu.environment.make_driver", lambda actuator, udid: FakeDriver([]))
-    with pytest.raises(env.DeviceError) as excinfo:
+    monkeypatch.setattr(
+        "bajutsu.platform_lifecycle.make_driver", lambda actuator, udid: FakeDriver([])
+    )
+    with pytest.raises(simctl.DeviceError) as excinfo:
         launch_driver("UDID-1", eff, "idb", Preconditions(erase=False), env_run=_recording_run([]))
     assert "appPath not found" in str(excinfo.value)
 
@@ -142,7 +144,7 @@ def test_launch_driver_surfaces_failing_erase_as_device_error() -> None:
             )
         return ""
 
-    with pytest.raises(env.DeviceError) as excinfo:
+    with pytest.raises(simctl.DeviceError) as excinfo:
         launch_driver("UDID-1", _eff(), "idb", Preconditions(erase=True), env_run=fake_run)
     msg = str(excinfo.value)
     assert "exit 149" in msg
@@ -160,8 +162,8 @@ def test_await_ready_uses_exponential_backoff(monkeypatch: pytest.MonkeyPatch) -
         sleeps.append(s)
         clock += s
 
-    monkeypatch.setattr("bajutsu.environment.time.sleep", fake_sleep)
-    monkeypatch.setattr("bajutsu.environment.time.monotonic", lambda: clock)
+    monkeypatch.setattr("bajutsu.platform_lifecycle.time.sleep", fake_sleep)
+    monkeypatch.setattr("bajutsu.platform_lifecycle.time.monotonic", lambda: clock)
 
     query_count = 0
 
@@ -194,7 +196,7 @@ def test_await_ready_returns_immediately_when_already_ready() -> None:
         def query(self) -> list[base.Element]:
             return [_el("a", "A"), _el("b", "B")]
 
-    import bajutsu.environment as launch_mod
+    import bajutsu.platform_lifecycle as launch_mod
 
     orig_sleep = launch_mod.time.sleep
     launch_mod.time.sleep = lambda s: sleeps.append(s)
@@ -216,8 +218,8 @@ def test_await_ready_respects_timeout_on_sleep(monkeypatch: pytest.MonkeyPatch) 
         sleeps.append(s)
         clock += s
 
-    monkeypatch.setattr("bajutsu.environment.time.sleep", fake_sleep)
-    monkeypatch.setattr("bajutsu.environment.time.monotonic", lambda: clock)
+    monkeypatch.setattr("bajutsu.platform_lifecycle.time.sleep", fake_sleep)
+    monkeypatch.setattr("bajutsu.platform_lifecycle.time.monotonic", lambda: clock)
 
     class NeverReadyDriver:
         name = "never"
@@ -241,8 +243,8 @@ def test_await_ready_caps_poll_init_to_poll_max(monkeypatch: pytest.MonkeyPatch)
         sleeps.append(s)
         clock += s
 
-    monkeypatch.setattr("bajutsu.environment.time.sleep", fake_sleep)
-    monkeypatch.setattr("bajutsu.environment.time.monotonic", lambda: clock)
+    monkeypatch.setattr("bajutsu.platform_lifecycle.time.sleep", fake_sleep)
+    monkeypatch.setattr("bajutsu.platform_lifecycle.time.monotonic", lambda: clock)
 
     query_count = 0
 
@@ -285,8 +287,8 @@ def _install_bounded_clock(monkeypatch: pytest.MonkeyPatch) -> None:
         nonlocal clock
         clock += s
 
-    monkeypatch.setattr("bajutsu.environment.time.sleep", fake_sleep)
-    monkeypatch.setattr("bajutsu.environment.time.monotonic", lambda: clock)
+    monkeypatch.setattr("bajutsu.platform_lifecycle.time.sleep", fake_sleep)
+    monkeypatch.setattr("bajutsu.platform_lifecycle.time.monotonic", lambda: clock)
 
 
 def test_await_ready_waits_for_ready_selector(monkeypatch: pytest.MonkeyPatch) -> None:

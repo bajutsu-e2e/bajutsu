@@ -16,7 +16,7 @@ from typing import Any
 
 import yaml
 
-from bajutsu import env
+from bajutsu import simctl as _simctl
 from bajutsu.backends import KNOWN_ACTUATORS, PLATFORMS
 from bajutsu.config import Config, load_config, resolve
 from bajutsu.scenario import load_scenario_file
@@ -181,11 +181,11 @@ def list_fs(root: Path, sub: str | None) -> dict[str, Any]:
     }
 
 
-def list_simulators(simctl: env.RunFn = env._real_run) -> list[dict[str, Any]]:
+def list_simulators(simctl: _simctl.RunFn = _simctl._real_run) -> list[dict[str, Any]]:
     """Available simulators for the device picker (booted first): udid, name, runtime, booted.
     A run boots any picked-but-shut-down device first, so the UI can start from a cold list."""
     try:
-        data = json.loads(simctl(env.list_devices_cmd(), None))
+        data = json.loads(simctl(_simctl.list_devices_cmd(), None))
     except (OSError, subprocess.CalledProcessError, json.JSONDecodeError, ValueError):
         return []
     sims: list[dict[str, Any]] = []

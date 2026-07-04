@@ -174,7 +174,7 @@ def run_all(
             gc_with_screen = golden_context
             if golden_context is not None and golden_context.screen is None:
                 try:
-                    from bajutsu.capture import screen_size_from_elements
+                    from bajutsu.record_capture import screen_size_from_elements
 
                     sw, sh = screen_size_from_elements(lz.driver.query())
                     gc_with_screen = GoldenContext(

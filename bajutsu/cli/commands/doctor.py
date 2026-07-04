@@ -8,7 +8,7 @@ from pathlib import Path
 import typer
 
 from bajutsu import agents, ai_availability, capability_preflight, idb_version, preflight
-from bajutsu import env as _env
+from bajutsu import simctl as _simctl
 from bajutsu.backends import capabilities_for, make_driver, select_actuator
 from bajutsu.cli._shared import DEFAULT_CONFIG, _backends, _load_effective
 from bajutsu.config import Effective
@@ -89,7 +89,7 @@ def doctor(
     # with a fixable checklist instead of crashing later on a missing tool / no device.
     # xcuitest falls back to idb for the screen query, so both tool sets must be present.
     def booted_count() -> int:
-        return len(_env.booted_udids())
+        return len(_simctl.booted_udids())
 
     env_checks = preflight.runnability(actuator, booted_count=booted_count, web_engine=eff.browser)
     if actuator == "xcuitest":
@@ -173,7 +173,7 @@ def _current_screen(actuator: str, udid: str, eff: Effective) -> list[base.Eleme
     # xcuitest needs a running runner to query, but doctor only scores the current screen —
     # idb can read the same accessibility tree without a runner (BE-0019).
     query_actuator = "idb" if actuator == "xcuitest" else actuator
-    return make_driver(query_actuator, _env.resolve_udid(udid)).query()
+    return make_driver(query_actuator, _simctl.resolve_udid(udid)).query()
 
 
 def register(app: typer.Typer) -> None:

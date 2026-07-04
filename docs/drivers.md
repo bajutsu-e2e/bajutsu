@@ -8,7 +8,7 @@
 > launching the app (boot/launch) is handled by a `simctl` wrapper.
 >
 > Implementation: `bajutsu/drivers/` (`base.py` / `idb.py` / `playwright.py` / `fake.py`) ·
-> `bajutsu/backends.py` · `bajutsu/env.py`.
+> `bajutsu/backends.py` · `bajutsu/simctl.py`.
 
 Related: [selectors](selectors.md) (resolution) · [the stability ladder](concepts.md#5-the-stability-ladder) · [run-loop](run-loop.md)
 
@@ -230,7 +230,7 @@ details.
 
 ## Environment management (simctl)
 
-Implementation: `bajutsu/env.py`. Command builders are pure functions (unit-tested); execution goes
+Implementation: `bajutsu/simctl.py`. Command builders are pure functions (unit-tested); execution goes
 through an injectable `RunFn`.
 
 | Method | Command | Notes |

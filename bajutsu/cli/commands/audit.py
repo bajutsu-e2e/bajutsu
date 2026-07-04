@@ -27,7 +27,7 @@ from typing import Any
 import typer
 
 from bajutsu import audit as _audit
-from bajutsu import env as _env
+from bajutsu import simctl as _simctl
 from bajutsu.backends import ensure_web_runtime, select_actuator
 from bajutsu.cli._shared import DEFAULT_CONFIG, _backends, _load_effective, load_expanded_scenarios
 from bajutsu.runner import device_pool, run_all
@@ -165,8 +165,8 @@ def _repeat_audit(
         typer.echo(str(e))
         raise typer.Exit(2) from None
     try:
-        udids = ["web"] if actuator == "playwright" else [_env.resolve_udid(udid)]
-    except _env.DeviceError as e:
+        udids = ["web"] if actuator == "playwright" else [_simctl.resolve_udid(udid)]
+    except _simctl.DeviceError as e:
         typer.echo(str(e))
         raise typer.Exit(2) from None
 
@@ -191,7 +191,7 @@ def _repeat_audit(
             _audit.repeat_diff(run_all(eff, [s] * repeat, lease, workers=1, actuator=actuator))
             for s in scenarios
         ]
-    except _env.DeviceError as e:
+    except _simctl.DeviceError as e:
         # Parity with `run`/`record`: a device failure (lease/launch) exits 2 cleanly, not a traceback.
         typer.echo(str(e))
         raise typer.Exit(2) from None

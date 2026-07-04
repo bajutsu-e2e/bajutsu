@@ -11,19 +11,19 @@ import queue
 from collections.abc import Callable
 from pathlib import Path
 
-from bajutsu import env
+from bajutsu import simctl
 from bajutsu.backends import default_available, resolve_evidence_providers, select_actuator
 from bajutsu.backends import make_driver as _make_driver
 from bajutsu.config import Effective
 from bajutsu.drivers import base
-
-# `device_control` / `device_relauncher` live with the platform lifecycle now; re-exported so
-# `from bajutsu.runner import device_control, device_relauncher` keeps its import unchanged.
-from bajutsu.environment import device_control, device_relauncher, environment_for
 from bajutsu.evidence import FileSink
 from bajutsu.network import Collector, NetworkCollector
 from bajutsu.orchestrator import DeviceControl, RelaunchFn
 from bajutsu.orchestrator.evidence_rules import requested_intervals
+
+# `device_control` / `device_relauncher` live with the platform lifecycle now; re-exported so
+# `from bajutsu.runner import device_control, device_relauncher` keeps its import unchanged.
+from bajutsu.platform_lifecycle import device_control, device_relauncher, environment_for
 from bajutsu.runner.launch import launch_driver
 from bajutsu.runner.types import Lease, LeaseFn
 from bajutsu.scenario import Scenario
@@ -60,7 +60,7 @@ def device_pool(
     log_subsystem: str | None = None,
     secret_values: list[str] | None = None,
     available: Callable[[str], bool] = default_available,
-    env_run: env.RunFn = env._real_run,
+    env_run: simctl.RunFn = simctl._real_run,
     make_driver: Callable[..., base.Driver] = _make_driver,
     evidence_providers: Callable[
         [list[str], str, Callable[[str], bool]], tuple[dict[str, str], dict[str, str]]

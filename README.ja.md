@@ -284,7 +284,7 @@ bajutsu/
 ├── visual.py             # ビジュアルリグレッションの画像比較
 ├── redaction.py          # 取得証跡内のシークレットをマスク
 ├── config.py             # チーム既定 × アプリ別の解決（iOS bundleId / web baseUrl）
-├── env.py                # simctl コマンド層（iOS 環境）
+├── simctl.py             # simctl コマンド層（iOS 環境）
 ├── preflight.py          # doctor / CI 向けの環境 runnability ゲート
 ├── doctor.py             # 規約スコア
 ├── agent.py · agents.py  # オーサリング Agent 抽象 + backend 選択（Tier 1）
