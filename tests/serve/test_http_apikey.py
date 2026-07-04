@@ -16,10 +16,12 @@ from _shared import (
 from bajutsu import serve as srv
 
 
-def test_http_api_key_set_reveal_and_clear(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """Round-trip the Claude API key through the WebUI: unset → set (redacted) → reveal → clear.
-    The key is held in the serve process's environment only (in memory) — never written to disk —
-    so a spawned job inherits it via os.environ."""
+def test_http_api_key_set_describe_and_clear(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Round-trip the Claude API key through the WebUI: unset → set (masked) → clear. Write-once
+    (BE-0136): no endpoint ever returns the plaintext, only a masked preview. The key is held in the
+    serve process's environment only (in memory) — never on disk — so a spawned job inherits it."""
     scn_dir, cfg, runs = project(tmp_path)
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)  # clean start + auto-restore at teardown
     server, port = _serve(
@@ -27,15 +29,16 @@ def test_http_api_key_set_reveal_and_clear(tmp_path: Path, monkeypatch: pytest.M
     )
     try:
         assert _get_json(port, "/api/apikey") == {"set": False}
-        # Set it: the response redacts the value, and it lands in the process env (not on disk).
+        # Set it: the response masks the value, and it lands in the process env (not on disk).
         code, body = _post(port, "/api/apikey", {"value": "sk-ant-secret-12345"})
         assert code == 200 and body["set"] is True
         assert body["masked"] == "sk-a…2345" and "secret" not in body["masked"]
+        assert "value" not in body  # the mutating side never echoes the plaintext back
         assert os.environ["ANTHROPIC_API_KEY"] == "sk-ant-secret-12345"
         assert not (tmp_path / ".env").exists()  # nothing is persisted to disk
-        # GET is redacted by default; ?reveal=1 returns the full value.
+        # GET is masked only — there is no reveal, and the plaintext is never a field, for any query.
         assert _get_json(port, "/api/apikey") == {"set": True, "masked": "sk-a…2345"}
-        assert _get_json(port, "/api/apikey?reveal=1")["value"] == "sk-ant-secret-12345"
+        assert "value" not in _get_json(port, "/api/apikey?reveal=1")
         # An empty value clears it.
         code, body = _post(port, "/api/apikey", {"value": ""})
         assert code == 200 and body["set"] is False

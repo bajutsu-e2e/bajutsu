@@ -198,7 +198,7 @@ def test_stats_html_skips_runs_whose_manifest_read_raises(tmp_path: Path) -> Non
     )
     # The org's artifact store raises on read; the recorded run must be skipped, not crash the page.
     state.org_stores = lambda org: StoreBundle(
-        _RaisingArtifactStore(), state.scenarios, state.baselines
+        _RaisingArtifactStore(), state.scenarios, state.baselines, state.secrets
     )
 
     html, status = stats_html(state)

@@ -100,6 +100,20 @@ class SessionRecord(Base):
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
 
 
+class Secret(Base):
+    """A per-org operator secret, encrypted at rest (BE-0136 write-once secrets). Keyed by
+    (org_id, name) — one value per named secret per org. Only the ciphertext is stored; the
+    plaintext exists only transiently inside the store that decrypts it, never in a column."""
+
+    __tablename__ = "secrets"
+
+    org_id: Mapped[str] = mapped_column(ForeignKey("orgs.id"), primary_key=True)
+    name: Mapped[str] = mapped_column(primary_key=True)  # the logical secret name, e.g. "aiApiKey"
+    ciphertext: Mapped[str]  # a Fernet token (authenticated encryption), never the plaintext
+    updated_by: Mapped[str | None] = mapped_column(ForeignKey("users.id"), default=None)
+    updated_at: Mapped[datetime] = _created_at()
+
+
 class AuditLog(Base):
     __tablename__ = "audit_log"
 

@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0136](BE-0136-serve-write-once-secrets.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0136") |
+| Implementing PR | _pending_ |
 | Topic | Security hardening |
 | Related | [BE-0015](../BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md), [BE-0016](../BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md), [BE-0032](../BE-0032-secret-variables/BE-0032-secret-variables.md) |
 <!-- /BE-METADATA -->
@@ -136,18 +137,29 @@ that nothing here can affect pass/fail.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] `SecretStore` Protocol (`set` / `describe`, no `get` reachable from an HTTP handler)
-- [ ] Local implementation — today's `os.environ` behavior, moved behind the seam
-- [ ] Hosted implementation — `secrets` table (`org_id`, `name`, `ciphertext`), `Fernet` encryption
+- [x] `SecretStore` Protocol (`set` / `describe`, no `get` reachable from an HTTP handler)
+- [x] Local implementation — today's `os.environ` behavior, moved behind the seam
+- [x] Hosted implementation — `secrets` table (`org_id`, `name`, `ciphertext`), `Fernet` encryption
       keyed by `BAJUTSU_SECRETS_KEY`, added behind the `db` extra
-- [ ] `GET /api/apikey` drops `reveal`; never returns a plaintext `value`, for any role
-- [ ] `api_key_info` / `set_api_key` generalized to `SecretStore.describe("aiApiKey")` /
+- [x] `GET /api/apikey` drops `reveal`; never returns a plaintext `value`, for any role
+- [x] `api_key_info` / `set_api_key` generalized to `SecretStore.describe("aiApiKey")` /
       `.set("aiApiKey", value)`
-- [ ] Tests: role/reveal removal, set-then-describe round trip, hosted ciphertext never holds
+- [x] Tests: role/reveal removal, set-then-describe round trip, hosted ciphertext never holds
       plaintext
-- [ ] Docs updated (`docs/getting-started.md`, `docs/self-hosting.md`), both languages
+- [x] Docs updated (`docs/getting-started.md`, `docs/self-hosting.md`), both languages
 
-No PR has landed yet.
+**Out of scope (follow-up).** Wiring the hosted worker to *consume* a stored secret is not part of
+this item and remains as-is: a worker runs in its own process and reads the credential from its own
+deployment environment, so the value set through the UI is stored write-once and encrypted per org
+here, but per-org injection into a worker's spawned job belongs to BE-0015's per-org key work.
+
+### Log
+
+- The implementing PR delivers the whole MECE breakdown in one change: the `SecretStore` seam
+  (`bajutsu/serve/secrets.py`) with the local `EnvSecretStore`, the hosted `DbSecretStore`
+  (`bajutsu/serve/server/secrets.py`) with the `secrets` table (migration `0006`) and `Fernet`
+  encryption, the `reveal` removal across `operations` / both HTTP shells / the web UI, and the
+  bilingual docs. `_pending_` until the PR number is assigned.
 
 ## References
 

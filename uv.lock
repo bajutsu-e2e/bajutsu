@@ -204,6 +204,7 @@ cloud = [
 ]
 db = [
     { name = "alembic" },
+    { name = "cryptography" },
     { name = "psycopg", extra = ["binary"] },
     { name = "sqlalchemy" },
 ]
@@ -266,6 +267,7 @@ requires-dist = [
     { name = "bajutsu", extras = ["s3", "gcs"], marker = "extra == 'cloud'" },
     { name = "boto3", marker = "extra == 's3'", specifier = ">=1.34" },
     { name = "boto3", marker = "extra == 'server'", specifier = ">=1.34" },
+    { name = "cryptography", marker = "extra == 'db'", specifier = ">=42.0" },
     { name = "fastapi", marker = "extra == 'server'", specifier = ">=0.110" },
     { name = "fastmcp", marker = "extra == 'mcp'", specifier = ">=2.0.0" },
     { name = "fb-idb", marker = "extra == 'idb'", specifier = ">=1.1.0" },

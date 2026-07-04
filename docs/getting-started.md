@@ -218,8 +218,9 @@ entry points use the same scenario format:
   ```bash
   uv run bajutsu record --target showcase-swiftui --goal "log in and increment the counter to 3"   # writes into the app's scenarios dir
   ```
-  In the web UI (`make serve`) the **API key** button sets the same key for the running session,
-  showing it redacted with a reveal toggle. It is kept in memory only (not written to disk), so a
+  In the web UI (`make serve`) the **API key** button sets the same key for the running session.
+  The key is write-once: it is shown only as a masked preview and never displayed again — to change
+  it, set a new one (there is no read-back). It is kept in memory only (not written to disk), so a
   `.env` is still the way to make it survive a restart. How the authoring loop and the system-alert
   guard work: [recording](recording.md).
 - **Emit a native XCUITest.** Convert a scenario to Swift (no Bajutsu runtime / AI at test time):

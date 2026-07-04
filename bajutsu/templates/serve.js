@@ -132,29 +132,19 @@ $('#opencfg').addEventListener('click',openFs);
 $('#fsclose').addEventListener('click',closeFs);
 $('#fsmodal').addEventListener('click',e=>{if(e.target===$('#fsmodal'))closeFs()});
 
-// ---- Claude API key: shown redacted; reveal fetches the full value on demand ----
-let keyState={set:false,masked:'',full:null,shown:false};
+// ---- Claude API key: write-once — shown masked only, never revealed (BE-0136) ----
+let keyState={set:false,masked:''};
 function setSettingsStatus(t,c){const st=$('#setstatus');st.textContent=t;st.className='keystatus '+(c||'')}
 function renderKey(){
   const cur=$('#keycur'),inp=$('#apikey');
   if(keyState.set){
-    const disp=(keyState.shown&&keyState.full!=null)?keyState.full:keyState.masked;
-    cur.innerHTML='Current key: <code>'+esc(disp)+'</code>';
+    cur.innerHTML='Current key: <code>'+esc(keyState.masked)+'</code>';
     inp.placeholder='Enter a new key to replace it';
   }else{cur.textContent='No key set yet.';inp.placeholder='sk-ant-…'}
-  inp.type=keyState.shown?'text':'password';
-  $('#keyreveal').classList.toggle('on',keyState.shown);
 }
 async function loadKey(){
   let d;try{d=await (await fetch('/api/apikey')).json()}catch(e){d={set:false}}
-  keyState={set:!!d.set,masked:d.masked||'',full:null,shown:false};
-  renderKey();
-}
-async function toggleReveal(){
-  keyState.shown=!keyState.shown;
-  if(keyState.shown&&keyState.set&&keyState.full==null){
-    try{const d=await (await fetch('/api/apikey?reveal=1')).json();keyState.full=d.value||''}catch(e){}
-  }
+  keyState={set:!!d.set,masked:d.masked||''};
   renderKey();
 }
 async function postKey(value){
@@ -166,10 +156,9 @@ async function clearKey(){
   setSettingsStatus('clearing…','');
   let d;try{d=await postKey('')}catch(e){d={error:'request failed'}}
   if(d.error){setSettingsStatus(d.error,'ng');return}
-  $('#apikey').value='';keyState={set:false,masked:'',full:null,shown:false};renderKey();
+  $('#apikey').value='';keyState={set:false,masked:''};renderKey();
   setSettingsStatus('cleared','ok');
 }
-$('#keyreveal').addEventListener('click',toggleReveal);
 $('#keyclear').addEventListener('click',clearKey);
 
 // ---- AI provider: Anthropic API (Claude API key), Amazon Bedrock (AWS creds), or Claude Code (CLI) ----
@@ -223,7 +212,7 @@ async function saveSettings(){
     if(v){
       let k;try{k=await postKey(v)}catch(e){k={error:'request failed'}}
       if(k.error){setSettingsStatus(k.error,'ng');return}
-      $('#apikey').value='';keyState={set:true,masked:k.masked||'',full:null,shown:false};renderKey();
+      $('#apikey').value='';keyState={set:true,masked:k.masked||''};renderKey();
     }
   }
   setSettingsStatus('saved','ok');

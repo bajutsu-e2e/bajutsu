@@ -119,7 +119,7 @@ The CSRF/Origin check and a **`Host`-header allowlist** run **unconditionally**
 not only when a token is set. This matters most for the common `make serve` default (loopback, no
 token): a cross-origin `POST` from a page open in another tab is blocked, and a request whose `Host`
 does not name a bound interface is refused, so a rebound hostname can't reach a loopback endpoint
-such as `GET /api/apikey?reveal=1`. A non-browser client (no `Origin` header) is unaffected. The
+such as `GET /api/apikey`. A non-browser client (no `Origin` header) is unaffected. The
 `Host` allowlist is derived from the interface `serve` binds — the loopback names for a loopback
 bind, that host otherwise; a wildcard bind (`0.0.0.0` / `::`), whose reachable names can't be
 enumerated, disables the `Host` check and leaves CSRF as the cross-origin guard.
@@ -224,6 +224,30 @@ Allowlisted users are **editors** by default (they can run); admins also change 
 Login always requests the `read:org` scope so a user can be mapped to an org by GitHub org
 membership (config `githubOrgs`), so the consent screen mentions organization access either way. A
 single-tenant deploy (no `orgs:` block) just ignores the org info.
+
+### Operator secrets (the Claude API key)
+
+The **API key** an admin sets through the settings panel is an *operator secret*, and on the hosted
+control plane it is **write-once and encrypted at rest**
+([BE-0136](../roadmaps/BE-0136-serve-write-once-secrets/BE-0136-serve-write-once-secrets.md)). No
+endpoint ever returns the plaintext again — for any role, admin included — only a masked preview; to
+rotate a key an admin overwrites it, never reading the old one back. The value is stored in the
+database's `secrets` table encrypted with authenticated encryption (Fernet) and scoped per org, so it
+survives a restart and is shared across control-plane replicas.
+
+That encryption needs a master key, provisioned outside the database like `BAJUTSU_DATABASE_URL`:
+
+```bash
+# generate once, then keep it in .env / your platform's own secret store
+python3 -c 'from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())'
+export BAJUTSU_SECRETS_KEY=…
+```
+
+A database-backed control plane **requires** `BAJUTSU_SECRETS_KEY` and refuses to start without one,
+rather than silently degrading to holding the secret only in process memory. Without a database,
+secrets stay in the serve process's environment (the local-backend shape) and no key is needed. Treat
+the key like the database password: losing it makes the stored secrets unrecoverable, and a rotated
+key cannot decrypt values written under the old one, so re-enter each secret after rotating.
 
 ### 3. Run a Mac worker
 
