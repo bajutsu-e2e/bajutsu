@@ -9,6 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0135") |
+| Implementing PR | [#640](https://github.com/bajutsu-e2e/bajutsu/pull/640) |
 | Topic | Codebase quality & technical debt |
 | Related | [BE-0063](../BE-0063-git-config-source/BE-0063-git-config-source.md), [BE-0044](../BE-0044-scenario-provenance/BE-0044-scenario-provenance.md) |
 <!-- /BE-METADATA -->
