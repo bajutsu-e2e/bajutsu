@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0102") |
-| Implementing PR | _pending_ |
+| Implementing PR | [#652](https://github.com/bajutsu-e2e/bajutsu/pull/652) |
 | Topic | Authoring experience (record / GUI editor) |
 <!-- /BE-METADATA -->
 
@@ -151,7 +151,7 @@ would settle; the recommendation is in brackets and the alternatives are real:
 
 **Log**
 
-- _pending PR_ — Shipped the CLI-first slice: the deterministic aggregator `bajutsu/stats.py`
+- [#652](https://github.com/bajutsu-e2e/bajutsu/pull/652) — Shipped the CLI-first slice: the deterministic aggregator `bajutsu/stats.py`
   (`aggregate_runs` + text/JSON/HTML renderers, flakiness reused from the BE-0049 longitudinal audit)
   and the `bajutsu stats --runs/--json/--html` command, with `tests/test_stats.py` /
   `tests/test_cli_stats.py` on the Linux gate and bilingual `cli.md` docs. The serve Stats tab
