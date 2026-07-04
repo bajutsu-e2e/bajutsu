@@ -11,9 +11,9 @@ from __future__ import annotations
 import secrets
 from typing import Any
 
-from bajutsu.config import org_for_identity, org_for_target
-from bajutsu.serve.helpers import load_config_file
+from bajutsu.serve.helpers import load_serve_config_file
 from bajutsu.serve.jobs import _DEFAULT_ORG, ServeState
+from bajutsu.serve.orgs import org_for_identity, org_for_target
 
 
 def login(state: ServeState, token: str) -> tuple[Any, int, str | None]:
@@ -79,8 +79,8 @@ def _org_for_login(state: ServeState, login: str, github_orgs: list[str]) -> str
     """The org to assign *login* at OAuth login, from the config-declared org model (BE-0015
     multi-tenancy): an explicit member listing or a matching GitHub org from *github_orgs*. The
     single `default` org when no `orgs:` block maps them."""
-    config = load_config_file(state.config)
-    return org_for_identity(config, login, github_orgs) if config is not None else _DEFAULT_ORG
+    parsed = load_serve_config_file(state.config)
+    return org_for_identity(parsed[1], login, github_orgs) if parsed is not None else _DEFAULT_ORG
 
 
 def _target_forbidden(state: ServeState, org: str, target: str) -> bool:
@@ -91,10 +91,10 @@ def _target_forbidden(state: ServeState, org: str, target: str) -> bool:
     as a missing target downstream. *org* is resolved once by the caller (via `ServeState.org_of`)."""
     if state.repository is None:
         return False
-    config = load_config_file(state.config)
-    if config is None or target not in config.targets:
+    parsed = load_serve_config_file(state.config)
+    if parsed is None or target not in parsed[0].targets:
         return False
-    return org_for_target(config, target) != org
+    return org_for_target(parsed[1], target) != org
 
 
 def _record_audit(

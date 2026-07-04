@@ -349,25 +349,16 @@ class TargetConfig(_Model):
         return self
 
 
-class OrgConfig(_Model):
-    """One tenant under `orgs.<name>` (BE-0015 multi-tenancy).
-
-    Holds the GitHub logins that belong to it (`members`) and/or the GitHub orgs whose members
-    belong to it (`github_orgs`), plus the targets it owns. A login or target named in no org falls
-    back to the single `default` org, so a config with no `orgs:` block stays single-tenant.
-    """
-
-    members: list[str] = Field(default_factory=list)
-    github_orgs: list[str] = Field(default_factory=list, alias="githubOrgs")
-    targets: list[str] = Field(default_factory=list)
-
-
 class Config(_Model):
-    """A parsed `bajutsu.config.yaml`: team `defaults`, per-target config, and (optional) `orgs`."""
+    """A parsed `bajutsu.config.yaml`: team `defaults` and per-target config.
+
+    The hosted multi-tenancy `orgs:` block is a `serve` concern the core does not model (BE-0129);
+    `parse_config_dict` drops it before validation so a run reading an org-bearing config keeps
+    working, and `bajutsu.serve.orgs` owns the org model.
+    """
 
     defaults: Defaults = Field(default_factory=Defaults)
     targets: dict[str, TargetConfig] = Field(default_factory=dict)
-    orgs: dict[str, OrgConfig] = Field(default_factory=dict)
     notify: list[NotifyEndpoint] = Field(default_factory=list)
 
     @model_validator(mode="after")
@@ -383,50 +374,6 @@ class Config(_Model):
             if identifier is not None and not getattr(t, identifier[1]):
                 raise ValueError(f"target {name!r} (platform {platform}) needs {identifier[0]}")
         return self
-
-
-# The single tenant every unassigned user and target falls into; keep in sync with serve's
-# `_DEFAULT_ORG`.
-DEFAULT_ORG = "default"
-
-
-def org_for_user(config: Config, login: str) -> str:
-    """The org whose members list *login*, or `default` if none do."""
-    return next((org for org, oc in config.orgs.items() if login in oc.members), DEFAULT_ORG)
-
-
-def org_for_target(config: Config, target: str) -> str:
-    """The org whose targets list *target*, or `default` if none do."""
-    return next((org for org, oc in config.orgs.items() if target in oc.targets), DEFAULT_ORG)
-
-
-def org_for_identity(config: Config, login: str, github_orgs: list[str]) -> str:
-    """The org for a user logging in as *login* with the given GitHub *github_orgs* memberships (BE-0015).
-
-    An explicit `members` listing wins; otherwise the first org whose `github_orgs` intersects the
-    user's GitHub orgs; otherwise `default`. Resolution is deterministic in config order.
-    """
-    explicit = org_for_user(config, login)
-    if explicit != DEFAULT_ORG:
-        return explicit
-    user_orgs = set(github_orgs)
-    return next(
-        (org for org, oc in config.orgs.items() if user_orgs.intersection(oc.github_orgs)),
-        DEFAULT_ORG,
-    )
-
-
-def targets_for_org(config: Config, org: str) -> list[str]:
-    """The targets belonging to *org*, restricted to targets actually declared under `targets:`.
-
-    An org that lists an undeclared target name doesn't conjure a runnable target. For `default`,
-    that's every declared target no org claims.
-    """
-    if org == DEFAULT_ORG:
-        claimed = {a for oc in config.orgs.values() for a in oc.targets}
-        return [a for a in config.targets if a not in claimed]
-    oc = config.orgs.get(org)
-    return [a for a in oc.targets if a in config.targets] if oc else []
 
 
 @dataclass(frozen=True)
@@ -660,7 +607,20 @@ def resolve(config: Config, target: str) -> Effective:
     )
 
 
-def load_config(text: str) -> Config:
-    """Parse a YAML config string."""
-    data = _yaml.safe_load(text) or {}
+def parse_config_dict(data: dict[str, Any]) -> Config:
+    """Validate an already-parsed config document into a `Config`.
+
+    A top-level `orgs:` key is dropped before validation: the hosted multi-tenancy org model is a
+    `serve` concern the deterministic core does not understand (BE-0129), and a run in the hosted
+    topology legitimately reads an org-bearing config, so the core must ignore the key rather than
+    reject it under `extra="forbid"`. `bajutsu.serve.orgs` parses the org block separately. Every
+    other unknown key still fails loudly, preserving the typo guard.
+    """
+    if "orgs" in data:
+        data = {k: v for k, v in data.items() if k != "orgs"}
     return Config.model_validate(data)
+
+
+def load_config(text: str) -> Config:
+    """Parse a YAML config string into a `Config` (see `parse_config_dict`)."""
+    return parse_config_dict(_yaml.safe_load(text) or {})

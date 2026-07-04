@@ -23,7 +23,6 @@ if TYPE_CHECKING:
     from bajutsu.serve.server.oauth import OAuthClient
 
 from bajutsu import simctl as _simctl
-from bajutsu.config import DEFAULT_ORG
 from bajutsu.drivers import base as driver_base
 from bajutsu.object_store import EvidenceTarget, ObjectStore
 from bajutsu.redaction import Redactor
@@ -33,6 +32,7 @@ from bajutsu.serve.baselines import BaselineStore, LocalBaselineStore
 from bajutsu.serve.executor import LocalExecutor, RunExecutor
 from bajutsu.serve.helpers import target_scenarios_dir, valid_run_id
 from bajutsu.serve.logbus import InMemoryLogBus, LogBus
+from bajutsu.serve.orgs import DEFAULT_ORG
 from bajutsu.serve.scenarios import LocalScenarioStore, ScenarioStore
 from bajutsu.serve.secrets import EnvSecretStore, SecretStore
 from bajutsu.serve.sessions import InMemorySessionStore, SessionStore
@@ -43,8 +43,8 @@ logger = logging.getLogger(__name__)
 # The run command prints "PASS/FAIL  runs/<id>/manifest.json"; pull <id> from it.
 _RUN_ID_RE = re.compile(r"runs/([0-9A-Za-z._-]+)/manifest\.json")
 
-# The org an unassigned user/app falls into. Re-exported from config (the org model's home) so job
-# persistence and the operations layer share one source of truth.
+# The org an unassigned user/app falls into. Re-exported from serve.orgs (the org model's home) so
+# job persistence and the operations layer share one source of truth.
 _DEFAULT_ORG = DEFAULT_ORG
 
 Popen = Callable[..., Any]

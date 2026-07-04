@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
-from bajutsu.config import load_config, resolve
+from bajutsu.config import load_config, parse_config_dict, resolve
 
 CONFIG_YAML = """
 defaults:
@@ -597,3 +597,29 @@ def test_notify_on_accepts_single_string() -> None:
         "targets:\n  s:\n    bundleId: com.x\n"
     )
     assert resolve(cfg, "s").notify[0].on == ["always"]
+
+
+def test_load_config_drops_top_level_orgs() -> None:
+    # The org model is a serve concern the deterministic core does not understand (BE-0129). A run
+    # in the hosted topology reads an org-bearing config, so the core loader must drop `orgs:` and
+    # keep resolving targets rather than reject the whole document.
+    cfg = load_config(
+        "targets:\n  demo: { bundleId: com.example.demo }\n"
+        "orgs:\n  acme:\n    members: [alice]\n    targets: [demo]\n"
+    )
+    assert not hasattr(cfg, "orgs")
+    assert resolve(cfg, "demo").bundle_id == "com.example.demo"
+
+
+def test_parse_config_dict_drops_orgs() -> None:
+    cfg = parse_config_dict(
+        {"targets": {"demo": {"bundleId": "com.example.demo"}}, "orgs": {"acme": {}}}
+    )
+    assert not hasattr(cfg, "orgs")
+    assert "demo" in cfg.targets
+
+
+def test_unknown_top_level_key_still_rejected() -> None:
+    # Dropping `orgs` must not loosen the typo guard: any other stray top-level key still fails.
+    with pytest.raises(ValidationError):
+        load_config("targetz:\n  demo: { bundleId: com.example.demo }\n")

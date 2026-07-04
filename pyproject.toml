@@ -205,6 +205,9 @@ ignore_missing_imports = true
 # The three layers, and where a new module belongs, are documented in docs/architecture.md.
 [tool.importlinter]
 root_package = "bajutsu"
+# Needed so a `forbidden` contract can name external packages (BE-0129 forbids the db/oauth extras
+# in the core). import-linter requires this at the top level, not per contract.
+include_external_packages = true
 
 # The deterministic core: the path that derives a verdict and evidence with no model and no
 # periphery stack. It carries the prime directives and can only live in Bajutsu.
@@ -248,6 +251,29 @@ forbidden_modules = [
     "bajutsu.github",
     "bajutsu.notify",
     "bajutsu.alerts",
+]
+
+# The deterministic core must also stay free of the hosting-only third-party extras (BE-0129): the
+# `db` (SQLAlchemy/Alembic/psycopg/cryptography) and `oauth` (Authlib) stacks belong to
+# `bajutsu/serve/` alone. The periphery contract above already keeps the core off `bajutsu.serve`;
+# this forbids a core module from reaching the extras *directly*, which the internal layer graph
+# can't express — so `include_external_packages` lets import-linter see the external import. The
+# whole `bajutsu.drivers` package is covered here, beyond the `bajutsu.drivers.base` above.
+[[tool.importlinter.contracts]]
+name = "Deterministic core stays free of the db/oauth hosting extras"
+type = "forbidden"
+source_modules = [
+    "bajutsu.config",
+    "bajutsu.drivers",
+    "bajutsu.runner",
+    "bajutsu.scenario",
+]
+forbidden_modules = [
+    "sqlalchemy",
+    "alembic",
+    "psycopg",
+    "authlib",
+    "cryptography",
 ]
 
 # The contract surface consumers depend on: the scenario schema and the `Driver` Protocol. Keeping

@@ -25,7 +25,6 @@ from functools import partial
 from pathlib import Path
 from typing import Any
 
-from bajutsu.config import DEFAULT_ORG, targets_for_org
 from bajutsu.object_store import EvidenceTarget
 from bajutsu.serve.artifacts import Artifact, ArtifactStore, LocalArtifactStore
 from bajutsu.serve.executor import LocalExecutor, RunExecutor
@@ -39,7 +38,7 @@ from bajutsu.serve.helpers import (
     list_scenarios,
     list_simulators,
     list_targets,
-    load_config_file,
+    load_serve_config_file,
     mask_secret,
     record_command,
     run_command,
@@ -54,6 +53,7 @@ from bajutsu.serve.helpers import (
 from bajutsu.serve.jobs import Job, Popen, ServeState, StoreBundle, cancel_job, run_job
 from bajutsu.serve.launchagent import launchagent_plist
 from bajutsu.serve.logbus import InMemoryLogBus, LogBus
+from bajutsu.serve.orgs import DEFAULT_ORG, targets_for_org
 from bajutsu.serve.scenarios import (
     LocalScenarioScope,
     LocalScenarioStore,
@@ -348,8 +348,8 @@ def _build_server_state(
     # the targets that org owns. The scenario targets are read from the live config, so a config
     # opened later is reflected.
     def _org_apps(org: str) -> list[str]:
-        cfg = load_config_file(state.config)
-        return targets_for_org(cfg, org) if cfg is not None else []
+        parsed = load_serve_config_file(state.config)
+        return targets_for_org(parsed[1], parsed[0].targets, org) if parsed is not None else []
 
     def make_bundle(org: str) -> StoreBundle:
         base = org_prefix(prefix, org)

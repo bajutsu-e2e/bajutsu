@@ -74,7 +74,7 @@ def baseline_prefix(base: str = "") -> str:
     return f"{base}baselines/"
 
 
-# Keep in sync with config.DEFAULT_ORG; duplicated to avoid importing config on this hot path.
+# Keep in sync with serve.orgs.DEFAULT_ORG; duplicated to avoid importing it on this hot path.
 _DEFAULT_ORG = "default"
 
 
