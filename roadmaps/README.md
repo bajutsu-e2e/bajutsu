@@ -243,6 +243,7 @@ Reduce friction for the many parallel sessions working this repo — treat merge
 | [BE-0100](BE-0100-roadmap-progress-tracking-template/BE-0100-roadmap-progress-tracking-template.md) | Progress tracking and cross-item relations in the BE template | Implemented |
 | [BE-0103](BE-0103-dev-model-effort-tiering/BE-0103-dev-model-effort-tiering.md) | Right-size the model and reasoning effort per development task | Implemented |
 | [BE-0109](BE-0109-roadmap-tracking-issues/BE-0109-roadmap-tracking-issues.md) | GitHub Issues as the ownership tracker for open roadmap items | Implemented |
+| [BE-0112](BE-0112-layer-boundary-enforcement/BE-0112-layer-boundary-enforcement.md) | Enforce core / contract / periphery layer boundaries in the gate | Implemented |
 | [BE-0113](BE-0113-design-doc-realignment/BE-0113-design-doc-realignment.md) | Realign DESIGN.md with the current implementation | Implemented |
 | [BE-0117](BE-0117-coverage-floor-ratchet/BE-0117-coverage-floor-ratchet.md) | Cover the rest of the CLI command layer, then ratchet the coverage floor | Implemented |
 | [BE-0122](BE-0122-workflow-name-legibility/BE-0122-workflow-name-legibility.md) | Legible GitHub Actions workflow and job names | Implemented |
@@ -622,7 +623,6 @@ Keeping the autonomous crawl fast and its code lean as it grows.
 <!-- GENERATED:proposals-dev-infra -->
 | ID | Item | Status |
 |---|---|---|
-| [BE-0112](BE-0112-layer-boundary-enforcement/BE-0112-layer-boundary-enforcement.md) | Enforce core / contract / periphery layer boundaries in the gate | Proposal |
 | [BE-0156](BE-0156-roadmap-topic-label-sync/BE-0156-roadmap-topic-label-sync.md) | Keep roadmap-item PR labels in sync with Topic | Proposal |
 <!-- /GENERATED:proposals-dev-infra -->
 

@@ -1,4 +1,4 @@
-.PHONY: setup hooks deps deps-check serve worktree preflight test lint lint-docstrings format format-check typecheck \
+.PHONY: setup hooks deps deps-check serve worktree preflight test lint lint-docstrings lint-imports format format-check typecheck \
         lock-check lint-sh lint-actions lint-roadmap lint-pr check new-roadmap-item roadmap-index \
         roadmap-dashboard docs docs-serve
 
@@ -79,6 +79,13 @@ lint:
 lint-docstrings:
 	uv run ruff check --select D --ignore D102,D105,D107 $(DOCSTRING_PATHS)
 
+# BE-0112: enforce the core / contract / periphery layer model as a static import contract
+# ([tool.importlinter] in pyproject). Fails when a deterministic-core module imports the periphery,
+# keeping the verdict/evidence path free of the serve / AI / codegen stacks. Static analysis on the
+# import graph — no Simulator, no model, nothing on the run/CI verdict path (prime directives 1 & 3).
+lint-imports:
+	uv run lint-imports
+
 # Apply the formatter; `format-check` (in the gate) only verifies, never rewrites.
 format:
 	uv run ruff format .
@@ -137,7 +144,7 @@ roadmap-index:
 # The full gate. CI (.github/workflows/ci.yml) mirrors these steps so "green locally"
 # predicts "green in CI". The uv-native checks run identically everywhere; actionlint is
 # the lone exception (see lint-actions above).
-check: hooks format-check lint lint-docstrings lint-sh lint-actions lint-roadmap lock-check typecheck test
+check: hooks format-check lint lint-docstrings lint-imports lint-sh lint-actions lint-roadmap lock-check typecheck test
 
 # Generated API reference (BE-0065). Deliberately NOT in `check`: like on-device E2E, the
 # reference build is a separate, heavier path (it pulls the `docs` extra) and must not slow the

@@ -7,7 +7,7 @@
 |---|---|
 | Proposal | [BE-0112](BE-0112-layer-boundary-enforcement.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0112") |
 | Topic | Development infrastructure (contributor workflow) |
 | Related | [BE-0051](../BE-0051-serve-hardening-for-hosting/BE-0051-serve-hardening-for-hosting.md), [BE-0067](../BE-0067-code-quality-gate-hardening/BE-0067-code-quality-gate-hardening.md), [BE-0015](../BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md), [BE-0016](../BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md) |
@@ -127,11 +127,22 @@ serve stacks.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] State the layers explicitly (core / contract / periphery membership)
-- [ ] Declare the forbidden dependency contracts (core ↛ periphery; periphery → core only via contract)
-- [ ] Wire the checker into a `make` target, `make check`, and CI
-- [ ] Baseline existing violations (fix, or record a commented allowlist)
-- [ ] Document the layer model and the enforced boundaries (both languages)
+- [x] State the layers explicitly (core / contract / periphery membership)
+- [x] Declare the forbidden dependency contracts (core ↛ periphery; the contract stays a portable inner layer)
+- [x] Wire the checker into a `make` target, `make check`, and CI
+- [x] Baseline existing violations (fixed the three misplaced helpers; no allowlist needed)
+- [x] Document the layer model and the enforced boundaries (both languages)
+
+Log:
+
+- 2026-07-04: Shipped the check — `import-linter` in `[tool.importlinter]` (pyproject) with two
+  contracts: the deterministic core does not import the periphery, and the scenario schema /
+  `Driver` Protocol stay a portable inner contract. Wired as `make lint-imports`, folded into
+  `make check` and CI. Baselining surfaced three misplaced helpers, fixed rather than allowlisted:
+  `screen_size_from_elements` / `shows_app_ui` moved from the record paths to the new core module
+  `bajutsu/elements.py`, and `AiConfig` moved from `anthropic_client` to `config` (re-exported for
+  the AI paths). Documented the three-layer model and the enforced boundaries in
+  `docs/architecture.md` (+ `docs/ja` mirror). Both contracts pass with no allowlist.
 
 ## References
 

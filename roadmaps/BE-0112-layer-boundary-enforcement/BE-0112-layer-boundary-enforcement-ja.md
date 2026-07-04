@@ -7,7 +7,7 @@
 |---|---|
 | 提案 | [BE-0112](BE-0112-layer-boundary-enforcement-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **提案** |
+| 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0112") |
 | トピック | 開発基盤（コントリビュータ体験） |
 | 関連 | [BE-0051](../BE-0051-serve-hardening-for-hosting/BE-0051-serve-hardening-for-hosting-ja.md), [BE-0067](../BE-0067-code-quality-gate-hardening/BE-0067-code-quality-gate-hardening-ja.md), [BE-0015](../BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting-ja.md), [BE-0016](../BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting-ja.md) |
@@ -120,11 +120,22 @@ verdict 経路に何も置きません。ディレクティブを構造で守り
 > 作業分解（作業の単位ごとに 1 つ）に対応し、ログには変更内容と時期（古い順）を PR へのリンクと
 > ともに記録します。
 
-- [ ] レイヤを明示的に記述する（コア / 契約 / 周辺の所属）
-- [ ] 禁止する依存契約を宣言する（コア ↛ 周辺、周辺 → コアは契約経由のみ）
-- [ ] 検査器を `make` ターゲット、`make check`、CI に組み込む
-- [ ] 既存の違反をベースライン化する（直すか、注記付きの許可リストに記録する）
-- [ ] レイヤモデルと強制する境界を文書化する（両言語）
+- [x] レイヤを明示的に記述する（コア / 契約 / 周辺の所属）
+- [x] 禁止する依存契約を宣言する（コア ↛ 周辺、契約は可搬なインナー層に保つ）
+- [x] 検査器を `make` ターゲット、`make check`、CI に組み込む
+- [x] 既存の違反をベースライン化する（誤配置のヘルパ 3 つを修正。許可リストは不要）
+- [x] レイヤモデルと強制する境界を文書化する（両言語）
+
+ログ：
+
+- 2026-07-04: 検査を出荷しました。`[tool.importlinter]`（pyproject）に `import-linter` を置き、
+  契約を 2 つ宣言します。決定性コアは周辺を import しないこと、そしてシナリオスキーマと `Driver`
+  Protocol を可搬なインナー契約に保つことです。`make lint-imports` として組み込み、`make check`
+  と CI に加えました。ベースライン化で誤配置のヘルパが 3 つ見つかり、許可リストにせず修正しました。
+  `screen_size_from_elements` と `shows_app_ui` を record 経路から新しいコアモジュール
+  `bajutsu/elements.py` へ移し、`AiConfig` を `anthropic_client` から `config` へ移しました（AI
+  経路のために再エクスポートします）。3 層モデルと強制する境界を `docs/architecture.md`（および
+  `docs/ja` のミラー）に記載しました。どちらの契約も許可リストなしで通過します。
 
 ## 参考
 

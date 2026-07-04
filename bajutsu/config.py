@@ -15,13 +15,29 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from bajutsu import _yaml, idb_version
-from bajutsu.anthropic_client import AiConfig
 from bajutsu.drivers import base
 from bajutsu.scenario import Redact
 
 # Playwright rendering engines a web target can drive (BE-0076). Chromium is the default,
 # preserving today's single-engine behaviour; all three run headless on Linux.
 WEB_ENGINES = ("chromium", "firefox", "webkit")
+
+
+@dataclass(frozen=True)
+class AiConfig:
+    """The resolved `ai` block (BE-0047): which provider/model/endpoint/key the AI paths use.
+
+    Lives with the rest of the resolved config (not the AI client) so the deterministic core can
+    read the block without importing the periphery AI stack (BE-0112). Every field is optional — an
+    absent field falls back to the environment in the AI-client factory, so a config with no `ai:`
+    block behaves exactly as before. `key_env` holds the NAME of the env var that carries the key,
+    never the key itself.
+    """
+
+    provider: str | None = None
+    model: str | None = None
+    base_url: str | None = None  # self-hosted gateway / proxy for the Anthropic provider
+    key_env: str | None = None  # name of the env var holding the API key (never the key)
 
 
 class _Model(BaseModel):
