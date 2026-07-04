@@ -9,7 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0128") |
-| 実装 PR | (PR 作成時に記入) |
+| 実装 PR | [#649](https://github.com/bajutsu-e2e/bajutsu/pull/649) |
 | トピック | プラットフォーム拡張（Android / Web / Flutter） |
 <!-- /BE-METADATA -->
 
@@ -51,7 +51,7 @@
 - [x] `capability_preflight.py` の `_REQUIREMENTS` を拡張し、デバイス制御ステップをゲートする
 - [x] `_need_control` の実行時チェックは、主要なゲートではなく多層防御のフォールバックとして残す
 
-- 2026-07-04: `Capability.DEVICE_CONTROL` を追加し、idb と xcuitest の `CAPABILITIES` で宣言、`capability_preflight` の `_REQUIREMENTS` にデバイス制御ステップ（`relaunch` を除く 9 種）のゲートを追加しました。実行時の `_need_control` は多層防御として据え置きです。`docs/drivers.md`（両言語）も更新しました。
+- 2026-07-04（[#649](https://github.com/bajutsu-e2e/bajutsu/pull/649)）: `Capability.DEVICE_CONTROL` を追加し、idb と xcuitest の `CAPABILITIES` で宣言、`capability_preflight` の `_REQUIREMENTS` にデバイス制御ステップ（`relaunch` を除く 9 種）のゲートを追加しました。実行時の `_need_control` は多層防御として据え置きです。`docs/drivers.md`（両言語）も更新しました。
 
 ## 参考
 

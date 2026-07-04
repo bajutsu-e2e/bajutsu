@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0128") |
-| Implementing PR | (filled on PR creation) |
+| Implementing PR | [#649](https://github.com/bajutsu-e2e/bajutsu/pull/649) |
 | Topic | Platform expansion (Android / Web / Flutter) |
 <!-- /BE-METADATA -->
 
@@ -117,10 +117,11 @@ device-control operations the Android backend does or doesn't implement, with ze
 - [x] Extend `capability_preflight.py`'s `_REQUIREMENTS` to gate device-control steps
 - [x] Keep `_need_control`'s runtime check as a defense-in-depth fallback, not the primary gate
 
-- 2026-07-04: Added `Capability.DEVICE_CONTROL`, declared it on idb and xcuitest `CAPABILITIES`,
-  and added a `_REQUIREMENTS` entry gating the nine device-control steps (`relaunch` excluded — it
-  is gated by the injected relauncher, not `DeviceControl`). The runtime `_need_control` check
-  stays as defense-in-depth. Updated `docs/drivers.md` (both languages).
+- 2026-07-04 ([#649](https://github.com/bajutsu-e2e/bajutsu/pull/649)): Added
+  `Capability.DEVICE_CONTROL`, declared it on idb and xcuitest `CAPABILITIES`, and added a
+  `_REQUIREMENTS` entry gating the nine device-control steps (`relaunch` excluded — it is gated by
+  the injected relauncher, not `DeviceControl`). The runtime `_need_control` check stays as
+  defense-in-depth. Updated `docs/drivers.md` (both languages).
 
 ## References
 
