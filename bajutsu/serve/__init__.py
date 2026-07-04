@@ -301,6 +301,11 @@ def _build_server_state(
         token=token,
         upload_exec=upload_exec,
         evidence=evidence,
+        # The hosted object store the control plane signs worker upload/download URLs against, and
+        # its tenant base prefix (BE-0160). The worker never receives these credentials — only signed
+        # URLs — so it needs no cloud SDK of its own.
+        object_store=store,
+        object_store_prefix=prefix,
         allow_remote_build=allow_remote_build,
         hosted=True,  # the server backend is a hosted deployment: drop the file browser (BE-0108)
         executor=DbQueueExecutor(repo) if repo is not None else LocalExecutor(),

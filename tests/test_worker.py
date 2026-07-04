@@ -15,16 +15,18 @@ from contextlib import contextmanager
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
-from urllib.error import URLError
+from urllib.error import HTTPError, URLError
 
 import pytest
 import typer
 
 from bajutsu.cli.commands import worker as worker_mod
 from bajutsu.cli.commands.worker import (
+    PresignedWorkerIO,
+    _download_baselines,
     _evidence_files,
-    _object_store,
     _post_json,
+    _put_tree_files,
     _upload_evidence,
     _write_console_log,
     worker,
@@ -108,31 +110,6 @@ def test_post_json_http_error_empty_body() -> None:
         code, body = _post_json(f"{base}/x", {})
         assert code == 503
         assert body == {}
-
-
-# --- _object_store ------------------------------------------------------------------------------
-
-
-def test_object_store_none_without_bucket(monkeypatch: pytest.MonkeyPatch) -> None:
-    # Import succeeds; with no BAJUTSU_S3_BUCKET configured the store is None.
-    monkeypatch.delenv("BAJUTSU_S3_BUCKET", raising=False)
-    assert _object_store() is None
-
-
-def test_object_store_built_when_bucket_set(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("BAJUTSU_S3_BUCKET", "test-bucket")
-    monkeypatch.setenv("AWS_DEFAULT_REGION", "us-east-1")
-    store = _object_store()
-    assert store is not None
-
-
-def test_object_store_import_error_returns_none(monkeypatch: pytest.MonkeyPatch) -> None:
-    # Simulate the optional object-store dependency being absent: importing the module raises
-    # ImportError, and the guard must swallow it and return None.
-    import sys
-
-    monkeypatch.setitem(sys.modules, "bajutsu.serve.server.object_store", None)
-    assert _object_store() is None
 
 
 # --- _write_console_log -------------------------------------------------------------------------
@@ -304,6 +281,7 @@ def _run_hb(tmp_path: Path) -> tuple[dict[str, Any], bool]:
         wid="w1",
         auth_token=None,
         heartbeat_interval=0.02,
+        io=None,
     )
 
 
@@ -514,3 +492,235 @@ def test_upload_evidence_skips_a_key_that_escapes_the_run_dir(tmp_path: Path) ->
         _upload_evidence(tmp_path, "r1", url=base, auth_token=None, evidence_prefix="")
     puts = httpd.puts  # type: ignore[attr-defined]
     assert set(puts) == {"manifest.json"}  # the escaping key was skipped
+
+
+# --- PresignedWorkerIO: artifact / scenario upload + baseline download (BE-0160) ----------------
+
+
+class _WorkerIOHandler(BaseHTTPRequestHandler):
+    """A control plane + object store in one for the worker-I/O paths: POST artifact-urls/scenario-url
+    signs URLs pointing back here, PUT stores the body, GET serves a seeded baseline. `put_fail` keys
+    respond 500 so the fail-loud artifact path is exercised."""
+
+    def do_POST(self) -> None:
+        length = int(self.headers.get("Content-Length", 0))
+        body = json.loads(self.rfile.read(length) or b"{}")
+        self.server.requests.append((self.path, body))  # type: ignore[attr-defined]
+        status = self.server.post_status  # type: ignore[attr-defined] — force a non-200 to test fail-loud
+        if status != 200:
+            self.send_response(status)
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+            return
+        base = f"http://127.0.0.1:{self.server.server_address[1]}"
+        if self.path.endswith("/scenario-url"):
+            # `scenario_url` None models a 200 response missing its `url` (a malformed control plane).
+            payload: Any = {"url": self.server.scenario_url}  # type: ignore[attr-defined]
+            if payload["url"] == "@self":
+                payload["url"] = f"{base}/put/{body['app']}/{body['ref']}"
+        else:  # artifact-urls
+            payload = {"urls": {rel: f"{base}/put/{rel}" for rel in body.get("files", [])}}
+        data = json.dumps(payload).encode()
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(data)))
+        self.end_headers()
+        self.wfile.write(data)
+
+    def do_PUT(self) -> None:
+        length = int(self.headers.get("Content-Length", 0))
+        data = self.rfile.read(length)
+        key = self.path[len("/put/") :]
+        if key in self.server.put_fail:  # type: ignore[attr-defined]
+            self.send_response(500)
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+            return
+        self.server.puts[key] = data  # type: ignore[attr-defined]
+        self.send_response(200)
+        self.send_header("Content-Length", "0")
+        self.end_headers()
+
+    def do_GET(self) -> None:
+        key = self.path[len("/get/") :]
+        data = self.server.gets.get(key)  # type: ignore[attr-defined]
+        if data is None:
+            self.send_response(404)
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+            return
+        self.send_response(200)
+        self.send_header("Content-Length", str(len(data)))
+        self.end_headers()
+        self.wfile.write(data)
+
+    def log_message(self, *args: Any) -> None:
+        pass
+
+
+@contextmanager
+def _worker_io_server(
+    put_fail: set[str] | None = None, *, post_status: int = 200, scenario_url: Any = "@self"
+) -> Iterator[tuple[Any, str]]:
+    httpd = ThreadingHTTPServer(("127.0.0.1", 0), _WorkerIOHandler)
+    httpd.requests = []  # type: ignore[attr-defined]
+    httpd.puts = {}  # type: ignore[attr-defined]
+    httpd.gets = {}  # type: ignore[attr-defined]
+    httpd.put_fail = put_fail or set()  # type: ignore[attr-defined]
+    httpd.post_status = post_status  # type: ignore[attr-defined]
+    httpd.scenario_url = scenario_url  # type: ignore[attr-defined] — "@self" = a live PUT URL
+    thread = threading.Thread(target=httpd.serve_forever, daemon=True)
+    thread.start()
+    try:
+        _host, port = httpd.server_address
+        yield httpd, f"http://127.0.0.1:{port}"
+    finally:
+        httpd.shutdown()
+        httpd.server_close()
+        thread.join()
+
+
+def _io(base: str, *, baseline_urls: Any = None) -> PresignedWorkerIO:
+    return PresignedWorkerIO(
+        url=base, auth_token=None, job_id="j1", worker_id="w1", baseline_urls=baseline_urls
+    )
+
+
+def test_presigned_io_uploads_the_run_tree_over_signed_urls(tmp_path: Path) -> None:
+    # The worker asks the control plane for artifact PUT URLs (relaying only its job + run ids and
+    # relative file list) and uploads each file — with no cloud credentials of its own (BE-0160).
+    _run_tree(tmp_path, "r1")
+    with _worker_io_server() as (httpd, base):
+        _io(base).upload_run(tmp_path, "r1")
+    assert set(httpd.puts) == {"00-login/after.png", "manifest.json"}  # type: ignore[attr-defined]
+    path, body = httpd.requests[0]  # type: ignore[attr-defined]
+    assert path == "/api/worker/artifact-urls"
+    assert body["job_id"] == "j1" and body["run_id"] == "r1"
+    assert sorted(body["files"]) == ["00-login/after.png", "manifest.json"]
+
+
+def test_presigned_io_upload_run_raises_on_a_put_failure(tmp_path: Path) -> None:
+    # Artifact upload feeds the report, so a failed PUT must fail the job loudly, not be swallowed
+    # (unlike the best-effort post-verdict evidence upload) — determinism-first (BE-0160). The failed
+    # PUT surfaces as the underlying HTTP error, not a swallowed no-op.
+    _run_tree(tmp_path, "r1")
+    with _worker_io_server(put_fail={"manifest.json"}) as (_httpd, base), pytest.raises(HTTPError):
+        _io(base).upload_run(tmp_path, "r1")
+
+
+def test_presigned_io_upload_run_is_a_noop_without_a_run_dir(tmp_path: Path) -> None:
+    with _worker_io_server() as (httpd, base):
+        _io(base).upload_run(tmp_path, "missing")
+    assert httpd.requests == []  # type: ignore[attr-defined]
+
+
+def test_presigned_io_upload_run_raises_on_a_non_200_urls_response(tmp_path: Path) -> None:
+    # A non-200 from the artifact-urls endpoint means the report can't be stored: fail loud.
+    _run_tree(tmp_path, "r1")
+    with _worker_io_server(post_status=500) as (_httpd, base), pytest.raises(RuntimeError):
+        _io(base).upload_run(tmp_path, "r1")
+
+
+def test_presigned_io_saves_the_authored_scenario(tmp_path: Path) -> None:
+    out = tmp_path / "scenarios" / "login.yaml"
+    out.parent.mkdir(parents=True)
+    out.write_text("- name: login\n  steps: []\n", encoding="utf-8")
+    with _worker_io_server() as (httpd, base):
+        _io(base).save_scenario(tmp_path, "scenarios/login.yaml", "demo", "login.yaml")
+    assert httpd.puts["demo/login.yaml"] == b"- name: login\n  steps: []\n"  # type: ignore[attr-defined]
+    path, body = httpd.requests[0]  # type: ignore[attr-defined]
+    assert path == "/api/worker/scenario-url"
+    assert body == {"job_id": "j1", "worker_id": "w1", "app": "demo", "ref": "login.yaml"}
+
+
+def test_presigned_io_save_scenario_confines_to_the_workspace(tmp_path: Path) -> None:
+    # A crafted out_path escaping the workspace must not read & upload a host file (defensive).
+    secret = tmp_path / "secret.yaml"
+    secret.write_text("secret", encoding="utf-8")
+    ws = tmp_path / "ws"
+    ws.mkdir()
+    with _worker_io_server() as (httpd, base):
+        _io(base).save_scenario(ws, "../secret.yaml", "demo", "stolen.yaml")
+    assert httpd.requests == []  # type: ignore[attr-defined] — nothing requested or uploaded
+
+
+def test_presigned_io_save_scenario_raises_when_the_authored_file_is_missing(
+    tmp_path: Path,
+) -> None:
+    # A `record` that reached save with no output file must fail loudly, not report a phantom success.
+    with (
+        _worker_io_server() as (httpd, base),
+        pytest.raises(RuntimeError, match="authored no scenario"),
+    ):
+        _io(base).save_scenario(tmp_path, "scenarios/login.yaml", "demo", "login.yaml")
+    assert httpd.requests == []  # type: ignore[attr-defined] — no URL requested for a phantom file
+
+
+def test_presigned_io_save_scenario_raises_on_a_non_200(tmp_path: Path) -> None:
+    out = tmp_path / "scenarios" / "login.yaml"
+    out.parent.mkdir(parents=True)
+    out.write_text("- name: login\n", encoding="utf-8")
+    with _worker_io_server(post_status=500) as (_httpd, base), pytest.raises(RuntimeError):
+        _io(base).save_scenario(tmp_path, "scenarios/login.yaml", "demo", "login.yaml")
+
+
+def test_presigned_io_save_scenario_raises_when_no_url_returned(tmp_path: Path) -> None:
+    # A 200 that omits the signed URL is a malformed control plane: fail loud, don't skip the save.
+    out = tmp_path / "scenarios" / "login.yaml"
+    out.parent.mkdir(parents=True)
+    out.write_text("- name: login\n", encoding="utf-8")
+    with _worker_io_server(scenario_url=None) as (_httpd, base), pytest.raises(RuntimeError):
+        _io(base).save_scenario(tmp_path, "scenarios/login.yaml", "demo", "login.yaml")
+
+
+def test_presigned_io_downloads_baselines_and_clears_stale(tmp_path: Path) -> None:
+    with _worker_io_server() as (httpd, base):
+        httpd.gets["home.png"] = b"\x89PNG"  # type: ignore[attr-defined]
+        # A stale baseline from a previous job in the reused workspace must be cleared first.
+        (tmp_path / "baselines").mkdir()
+        (tmp_path / "baselines" / "stale.png").write_bytes(b"old")
+        _io(base, baseline_urls={"home.png": f"{base}/get/home.png"}).download_baselines(tmp_path)
+    assert (tmp_path / "baselines" / "home.png").read_bytes() == b"\x89PNG"
+    assert not (tmp_path / "baselines" / "stale.png").exists()  # cleared before re-materialize
+
+
+def test_download_baselines_raises_on_a_name_that_escapes_the_dir(tmp_path: Path) -> None:
+    # A hostile baseline name resolving outside work/baselines is a broken/hostile lease: fail loud
+    # and never write outside the dir (the control plane only ever signs safe names).
+    with _worker_io_server() as (httpd, base):
+        httpd.gets["escape"] = b"nope"  # type: ignore[attr-defined]
+        with pytest.raises(RuntimeError, match="escapes"):
+            _download_baselines(tmp_path, {"../../escape.png": f"{base}/get/escape"})
+    assert not (tmp_path.parent / "escape.png").exists()  # confinement held
+
+
+def test_download_baselines_raises_on_a_non_string_url(tmp_path: Path) -> None:
+    # A non-string URL for a named baseline is a malformed lease: fail loud rather than silently drop
+    # a baseline and leave the run comparing against nothing (BE-0160 / determinism-first).
+    with pytest.raises(RuntimeError, match="non-string"):
+        _download_baselines(tmp_path, {"home.png": None})
+
+
+def test_download_baselines_raises_on_a_non_string_name(tmp_path: Path) -> None:
+    # A non-string baseline name must raise the fail-loud RuntimeError, not a TypeError on the join.
+    with pytest.raises(RuntimeError, match="non-string"):
+        _download_baselines(tmp_path, {123: "https://signed.example/get/x"})  # type: ignore[dict-item]
+
+
+def test_download_baselines_raises_on_a_failed_get(tmp_path: Path) -> None:
+    # A baseline whose signed GET fails must surface, not be swallowed into an empty baselines dir.
+    with _worker_io_server() as (_httpd, base), pytest.raises(HTTPError):  # unseeded → 404
+        _download_baselines(tmp_path, {"home.png": f"{base}/get/home.png"})
+
+
+def test_put_tree_files_skips_a_non_string_key_when_best_effort(tmp_path: Path) -> None:
+    # A malformed urls mapping with a non-string key must be skipped (best-effort), never crash the
+    # loop on the path-join (evidence uploads past the verdict must not die on a bad response).
+    run = _run_tree(tmp_path, "r1")
+    assert _put_tree_files(run, {123: "https://x/put"}, best_effort=True) == 0  # type: ignore[dict-item]
+
+
+def test_put_tree_files_raises_on_a_non_string_key_when_not_best_effort(tmp_path: Path) -> None:
+    run = _run_tree(tmp_path, "r1")
+    with pytest.raises(RuntimeError, match="unexpected upload entry"):
+        _put_tree_files(run, {123: "https://x/put"}, best_effort=False)  # type: ignore[dict-item]

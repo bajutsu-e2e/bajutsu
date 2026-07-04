@@ -23,10 +23,12 @@ __all__ = [
     "ObjectStore",
     "S3ObjectStore",
     "artifact_prefix",
+    "baseline_prefix",
     "object_store_from_env",
     "org_prefix",
     "s3_client_from_env",
     "s3_prefix",
+    "scenario_prefix",
 ]
 
 
@@ -56,6 +58,20 @@ def artifact_prefix(base: str = "") -> str:
     """The object-key prefix for run artifacts under *base*. Shared by the control plane's artifact
     store and the worker's upload so both agree on keys (``<base>artifacts/<runId>/…``)."""
     return f"{base}artifacts/"
+
+
+def scenario_prefix(base: str = "") -> str:
+    """The object-key prefix for authored scenarios under *base* (``<base>scenarios/<app>/<ref>``).
+    Shared by the control plane's scenario store and the URL the worker uploads a `record` job's
+    authored scenario to, so both agree on keys (BE-0160)."""
+    return f"{base}scenarios/"
+
+
+def baseline_prefix(base: str = "") -> str:
+    """The object-key prefix for visual baselines under *base* (``<base>baselines/<name>``). Shared
+    by the control plane's baseline store and the presigned GET URLs it signs for the worker to
+    download baselines before a run, so both agree on keys (BE-0160)."""
+    return f"{base}baselines/"
 
 
 # Keep in sync with config.DEFAULT_ORG; duplicated to avoid importing config on this hot path.

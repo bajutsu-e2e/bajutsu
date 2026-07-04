@@ -10,9 +10,9 @@ from __future__ import annotations
 
 from typing import Any
 
-from bajutsu.object_store import content_type_for
 from bajutsu.serve.helpers import valid_relative_key, valid_run_id
 from bajutsu.serve.jobs import ServeState
+from bajutsu.serve.operations.presign import sign_put_urls
 
 
 def generate_upload_urls(
@@ -46,13 +46,8 @@ def generate_upload_urls(
         return {"error": "invalid evidence_prefix"}, 400
     if evidence_prefix and not evidence_prefix.endswith("/"):
         evidence_prefix += "/"
-    files = body.get("files")
-    if not isinstance(files, list):
-        return {"error": "files must be a list"}, 400
-    urls: dict[str, str] = {}
-    for rel in files:
-        if not isinstance(rel, str) or not valid_relative_key(rel):
-            return {"error": f"invalid file path: {rel!r}"}, 400
-        key = f"{target.base_prefix}{evidence_prefix}{run_id}/{rel}"
-        urls[rel] = target.store.presigned_put_url(key, content_type=content_type_for(rel))
+    prefix = f"{target.base_prefix}{evidence_prefix}{run_id}/"
+    urls, err = sign_put_urls(target.store, prefix, body.get("files"))
+    if err is not None:
+        return err
     return {"urls": urls}, 200

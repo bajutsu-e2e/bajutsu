@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0160](BE-0160-worker-credential-free-uploads.md) |
 | Author | [@hirosassa](https://github.com/hirosassa) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0160") |
+| Implementing PR | [#655](https://github.com/bajutsu-e2e/bajutsu/pull/655) |
 | Topic | Hosting the web UI (cloud / self-hosted) |
 | Related | [BE-0110](../BE-0110-evidence-store-uri/BE-0110-evidence-store-uri.md), [BE-0106](../BE-0106-post-completion-worker-model/BE-0106-post-completion-worker-model.md), [BE-0015](../BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md) |
 <!-- /BE-METADATA -->
@@ -130,17 +131,26 @@ flowing worker→storage directly.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Generalize the presigned key-builder/validator to serve multiple destinations (evidence /
+- [x] Generalize the presigned key-builder/validator to serve multiple destinations (evidence /
       artifacts / scenarios) server-side
-- [ ] Artifact upload via presigned PUT (worker requests URLs under the org artifact prefix, PUTs)
-- [ ] Baseline download via presigned GET (control plane lists + signs; worker GETs before the run)
-- [ ] Authored-scenario save via presigned PUT (`record` jobs)
-- [ ] Remove `object_store_from_env()` / `_object_store()` from the worker so its runtime needs no
+- [x] Artifact upload via presigned PUT (worker requests URLs under the org artifact prefix, PUTs)
+- [x] Baseline download via presigned GET (control plane lists + signs; worker GETs before the run)
+- [x] Authored-scenario save via presigned PUT (`record` jobs)
+- [x] Remove `object_store_from_env()` / `_object_store()` from the worker so its runtime needs no
       cloud SDK (`boto3`); the `worker` extra stays dependency-free
-- [ ] Tests — presigned artifact/baseline/scenario paths against a real HTTP server (no worker
+- [x] Tests — presigned artifact/baseline/scenario paths against a real HTTP server (no worker
       credentials); org-boundary re-validation
-- [ ] Documentation — update `docs/self-hosting.md` (worker needs no `BAJUTSU_S3_*` / AWS creds) and
+- [x] Documentation — update `docs/self-hosting.md` (worker needs no `BAJUTSU_S3_*` / AWS creds) and
       its Japanese mirror
+
+### Log
+
+- Shipped in one change: factored the presigned PUT signer into `operations/presign.py` (shared by
+  evidence + artifacts); added the `worker_artifact_urls` / `worker_scenario_url` operations and
+  routes, org resolved from the leased job; embedded baseline GET URLs in `/api/worker/lease`;
+  replaced `execute_job_spec`'s object-store client with the injected `WorkerIO` seam and its
+  presigned-URL-backed `PresignedWorkerIO` in `bajutsu worker`, dropping `object_store_from_env()` /
+  `_object_store()` from the worker path; updated `docs/self-hosting.md` and its Japanese mirror.
 
 ## References
 

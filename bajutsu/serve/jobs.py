@@ -25,7 +25,7 @@ if TYPE_CHECKING:
 from bajutsu import simctl as _simctl
 from bajutsu.config import DEFAULT_ORG
 from bajutsu.drivers import base as driver_base
-from bajutsu.object_store import EvidenceTarget
+from bajutsu.object_store import EvidenceTarget, ObjectStore
 from bajutsu.redaction import Redactor
 from bajutsu.scenario.models import Step
 from bajutsu.serve.artifacts import ArtifactStore, LocalArtifactStore
@@ -254,6 +254,13 @@ class ServeState:
     # --evidence-store / BAJUTSU_EVIDENCE_STORE; the server holds the credentials so a worker uploads
     # via presigned PUT URLs without any of its own.
     evidence: EvidenceTarget | None = None
+    # The hosted object store + tenant base prefix the control plane signs worker upload/download
+    # URLs against (BE-0160): the worker holds no cloud credentials, so it asks for a presigned URL
+    # per file and reads/writes over plain HTTP. None/"" on local serve (no remote worker) — the
+    # worker signing endpoints and the lease then return no URLs, like `evidence` when unset. A
+    # server backend sets both where it wires its per-org object stores.
+    object_store: ObjectStore | None = None
+    object_store_prefix: str = ""
     _seq: int = 0
     _lock: threading.Lock = field(default_factory=threading.Lock)
 

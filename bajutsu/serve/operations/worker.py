@@ -5,11 +5,18 @@ from __future__ import annotations
 import json
 from typing import Any
 
+from bajutsu.config import DEFAULT_ORG
 from bajutsu.serve.jobs import ServeState
+from bajutsu.serve.server.object_store import baseline_prefix, org_prefix
 
 
 def worker_lease(state: ServeState, worker_id: str) -> tuple[dict[str, Any], int]:
-    """Lease the oldest queued job for *worker_id*, or return 204 when the queue is empty."""
+    """Lease the oldest queued job for *worker_id*, or return 204 when the queue is empty.
+
+    When the job materializes visual baselines and a hosted object store is configured, the response
+    also carries ``baseline_urls`` — one presigned GET URL per baseline under the *leased job's* org
+    prefix (BE-0160) — so the worker downloads them over plain HTTP, with no cloud credentials.
+    """
     if state.repository is None:
         return {"error": "server backend has no database configured"}, 503
     if not worker_id:
@@ -17,7 +24,28 @@ def worker_lease(state: ServeState, worker_id: str) -> tuple[dict[str, Any], int
     leased = state.repository.lease_job(worker_id)
     if leased is None:
         return {}, 204
-    return {"job_id": leased.id, "org_id": leased.org_id, "spec": leased.spec}, 200
+    resp: dict[str, Any] = {"job_id": leased.id, "org_id": leased.org_id, "spec": leased.spec}
+    if leased.spec.get("materialize_baselines") and state.object_store is not None:
+        resp["baseline_urls"] = _baseline_urls(state, leased.org_id or DEFAULT_ORG)
+    return resp, 200
+
+
+def _baseline_urls(state: ServeState, org: str) -> dict[str, str]:
+    """A presigned GET URL per visual baseline for *org*, keyed by baseline name.
+
+    The control plane lists the org's baselines (a credentialed LIST it can do) and signs each — the
+    worker never touches the object store directly. Reuses `ObjectBaselineStore.names()` for the
+    safe-name listing, so the baseline key scheme keeps one source of truth.
+    """
+    from bajutsu.serve.server.baselines import ObjectBaselineStore
+
+    assert state.object_store is not None  # caller guards; narrows the type for the signer below
+    base = org_prefix(state.object_store_prefix, org)
+    store = ObjectBaselineStore(state.object_store, prefix=base)
+    return {
+        name: state.object_store.presigned_url(f"{baseline_prefix(base)}{name}")
+        for name in store.names()
+    }
 
 
 def worker_heartbeat(state: ServeState, worker_id: str, job_id: str) -> tuple[dict[str, Any], int]:

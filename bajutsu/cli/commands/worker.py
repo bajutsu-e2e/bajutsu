@@ -2,8 +2,10 @@
 
 The hosted control plane (`serve --backend=server`) inserts a job row per run; this command polls
 the `/api/worker/lease` endpoint over HTTP, executes the unchanged `run_job`, uploads the run tree
-(including `console.log`), and posts the result back to `/api/worker/result`. No Redis or RQ —
-the worker needs only an HTTP client and (optionally) an object-store client.
+(including `console.log`), and posts the result back to `/api/worker/result`. No Redis or RQ, and
+**no cloud credentials** (BE-0160): every object-store touch — downloading baselines before a run,
+uploading the run tree and a `record` job's authored scenario after — goes through presigned URLs
+the control plane signs, so the worker needs only an HTTP client.
 """
 
 from __future__ import annotations
@@ -11,6 +13,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import shutil
 import subprocess
 import threading
 import time
@@ -24,7 +27,7 @@ import typer
 from bajutsu import simctl
 from bajutsu.object_store import content_type_for
 from bajutsu.serve import InMemoryLogBus
-from bajutsu.serve.server.worker_job import execute_job_spec
+from bajutsu.serve.server.worker_job import WorkerIO, execute_job_spec
 
 _logger = logging.getLogger("bajutsu.worker")
 
@@ -32,9 +35,9 @@ _logger = logging.getLogger("bajutsu.worker")
 # a legitimately long run is never mistaken for a dead worker and reclaimed (BE-0016).
 DEFAULT_HEARTBEAT_INTERVAL = 30.0
 
-# Per-request timeout for the evidence upload path (BE-0110), so a stalled connection can't hang the
-# worker: heartbeats have stopped by then, so an unbounded wait would strand it on one file.
-_EVIDENCE_HTTP_TIMEOUT = 60.0
+# Per-request timeout for the presigned upload/download paths (BE-0110/BE-0160), so a stalled
+# connection can't hang the worker on a single file (evidence upload runs after heartbeats stop).
+_UPLOAD_HTTP_TIMEOUT = 60.0
 
 
 def _post_json(
@@ -108,6 +111,16 @@ def worker(
         spec = body["spec"]
         typer.echo(f"  leased job {job_id}")
 
+        # The worker's object I/O is brokered by presigned URLs (BE-0160): the lease already carries
+        # signed GET URLs for this run's baselines, and this io asks the control plane for signed PUT
+        # URLs when uploading the run tree / authored scenario — so the worker holds no credentials.
+        io = PresignedWorkerIO(
+            url=url,
+            auth_token=auth_token,
+            job_id=job_id,
+            worker_id=wid,
+            baseline_urls=body.get("baseline_urls"),
+        )
         bus = InMemoryLogBus()
         result, abandoned = _run_with_heartbeat(
             spec,
@@ -118,6 +131,7 @@ def worker(
             wid=wid,
             auth_token=auth_token,
             heartbeat_interval=heartbeat_interval,
+            io=io,
         )
         if abandoned:
             # The control plane reclaimed and likely re-leased this job to another worker; posting a
@@ -164,11 +178,14 @@ def _run_with_heartbeat(
     wid: str,
     auth_token: str | None,
     heartbeat_interval: float,
+    io: WorkerIO | None = None,
 ) -> tuple[dict[str, Any], bool]:
     """Run the job on a background thread while heart-beating its lease from this one.
 
-    Returns ``(result, abandoned)``; *abandoned* is True when the control plane reclaimed the lease
-    mid-run (HTTP 409), meaning another worker now owns the job and this result should be dropped.
+    Object I/O (baseline download, run-tree/scenario upload) runs on that thread through *io*, so the
+    heartbeat keeps the lease alive while a large artifact uploads. Returns ``(result, abandoned)``;
+    *abandoned* is True when the control plane reclaimed the lease mid-run (HTTP 409), meaning another
+    worker now owns the job and this result should be dropped.
     """
     holder: dict[str, Any] = {}
 
@@ -180,7 +197,7 @@ def _run_with_heartbeat(
                 simctl=simctl._real_run,
                 cwd=work,
                 bus=bus,
-                store=_object_store(),
+                io=io,
             )
             result = job.view()
             result.pop("lines", None)
@@ -213,15 +230,6 @@ def _run_with_heartbeat(
     return holder.get("result", {"ok": False, "error": "worker produced no result"}), abandoned
 
 
-def _object_store() -> Any:
-    try:
-        from bajutsu.serve.server.object_store import object_store_from_env
-
-        return object_store_from_env()
-    except ImportError:
-        return None
-
-
 def _write_console_log(work: Path, run_id: str, bus: InMemoryLogBus, job_id: str) -> None:
     """Write the job's buffered log to runs/<run_id>/console.log for upload."""
     run_dir = work / "runs" / run_id
@@ -237,10 +245,10 @@ def _write_console_log(work: Path, run_id: str, bus: InMemoryLogBus, job_id: str
 
 
 def _evidence_files(run_dir: Path) -> list[str]:
-    """Relative POSIX paths of every real file under *run_dir* (the keys the endpoint signs).
+    """Relative POSIX paths of every real file under *run_dir* (the keys an upload endpoint signs).
 
-    Symlinks and non-files are skipped, and each resolved path must stay under the run dir, so
-    nothing outside the tree is offered for upload (mirrors `_upload_runs`).
+    Shared by the artifact and evidence uploads. Symlinks and non-files are skipped, and each
+    resolved path must stay under the run dir, so nothing outside the tree is offered for upload.
     """
     base = run_dir.resolve()
     files: list[str] = []
@@ -255,17 +263,171 @@ def _evidence_files(run_dir: Path) -> list[str]:
 
 
 def _put_file(url: str, path: Path, content_type: str, *, timeout: float | None = None) -> None:
-    """Upload one file to a presigned PUT *url*.
+    """Upload one file to a presigned PUT *url*, streaming it from disk.
 
     The Content-Type must match what the control plane signed into the URL (the presigned signature
-    covers it), so send the same value. *timeout* bounds a stalled connection. The file is read into
-    memory (a sequential, one-file-at-a-time upload); streaming a large artifact is a future
-    optimization the initial implementation doesn't need.
+    covers it), so send the same value. *timeout* bounds a stalled connection. The file is streamed
+    (``http.client`` reads the open handle in blocks) with an explicit Content-Length, so a large run
+    artifact like a video never loads wholly into memory.
     """
-    headers = {"Content-Type": content_type} if content_type else {}
-    req = Request(url, data=path.read_bytes(), method="PUT", headers=headers)  # noqa: S310
-    with urlopen(req, timeout=timeout):  # noqa: S310
-        pass
+    headers = {"Content-Length": str(path.stat().st_size)}
+    if content_type:
+        headers["Content-Type"] = content_type
+    with path.open("rb") as body:
+        req = Request(url, data=body, method="PUT", headers=headers)  # noqa: S310
+        with urlopen(req, timeout=timeout):  # noqa: S310
+            pass
+
+
+def _get_file(url: str, dest: Path, *, timeout: float | None = None) -> None:
+    """Download a presigned GET *url* into *dest* (read into memory — baselines are small images)."""
+    req = Request(url, method="GET")  # noqa: S310
+    with urlopen(req, timeout=timeout) as r:  # noqa: S310
+        dest.write_bytes(r.read())
+
+
+def _request_upload_urls(
+    url: str, endpoint: str, body: dict[str, Any], auth_token: str | None
+) -> dict[str, Any]:
+    """Ask the control plane for a presigned PUT URL per file (BE-0110 evidence, BE-0160 artifacts).
+
+    Returns the ``{rel: url}`` mapping. Raises on a transport/HTTP error or a malformed response, so
+    the caller decides whether to swallow it (evidence, uploaded after the verdict) or fail the run
+    (artifacts). An empty mapping means the destination isn't configured — nothing to upload.
+    """
+    code, resp = _post_json(
+        f"{url}{endpoint}", body, token=auth_token, timeout=_UPLOAD_HTTP_TIMEOUT
+    )
+    if code != 200:
+        raise RuntimeError(f"{endpoint} returned {code}")
+    urls = resp.get("urls")
+    if not isinstance(urls, dict):
+        raise RuntimeError(f"{endpoint} returned an unexpected response shape")
+    return urls
+
+
+def _put_tree_files(run_dir: Path, urls: dict[str, Any], *, best_effort: bool) -> int:
+    """PUT each ``rel -> presigned url`` file under *run_dir*, returning how many uploaded.
+
+    Each returned key is confined under *run_dir* and required to be a string URL, so a malformed or
+    hostile response can't read files outside the tree. With *best_effort* a bad entry or a failed
+    PUT is logged and skipped (evidence, already past the verdict); otherwise it raises — a report
+    artifact the control plane can't serve must fail the run loudly, not vanish (BE-0160).
+    """
+    base = run_dir.resolve()
+    uploaded = 0
+    for rel, put_url in urls.items():
+        # Require a string key + URL and confine the key under the run dir, so a malformed or hostile
+        # response can neither crash the loop (a non-string key would blow up the path-join) nor read
+        # a file outside the tree. Check the types before the join so a bad key hits this guard.
+        ok = isinstance(rel, str) and isinstance(put_url, str)
+        src = (run_dir / rel).resolve() if ok else base
+        if not ok or not src.is_relative_to(base):
+            if not best_effort:
+                raise RuntimeError(f"unexpected upload entry {rel!r}")
+            _logger.warning("skipping unexpected upload entry %r under %s", rel, run_dir)
+            continue
+        try:
+            _put_file(put_url, src, content_type_for(rel), timeout=_UPLOAD_HTTP_TIMEOUT)
+        except Exception:
+            if not best_effort:
+                raise
+            _logger.warning("upload failed for %s", rel)
+        else:
+            uploaded += 1
+    return uploaded
+
+
+def _download_baselines(work: Path, baseline_urls: dict[str, Any]) -> None:
+    """Download each ``name -> presigned GET url`` baseline into ``work/baselines`` before the run.
+
+    The dir is cleared first — the workspace is reused across jobs, so a baseline renamed/removed in
+    storage must not linger and skew the comparison — and each name is confined under it. A download
+    failure raises: a run that silently dropped its visual baselines would compare against nothing.
+    """
+    baselines = work / "baselines"
+    if baselines.exists():
+        shutil.rmtree(baselines, ignore_errors=True)
+    if not baseline_urls:
+        return
+    base = baselines.resolve()
+    for name, get_url in baseline_urls.items():
+        # The control plane signs only safe baseline names, so a non-string name/URL or an escaping
+        # name is a broken/hostile lease: fail loudly rather than silently drop a baseline (which
+        # would leave the run comparing against nothing). Validate the types before the path-join so
+        # a bad name raises this RuntimeError, not a TypeError, and never place a file outside the dir.
+        if not isinstance(name, str) or not isinstance(get_url, str):
+            raise RuntimeError(f"baseline {name!r} has a non-string name or URL")
+        dest = (baselines / name).resolve()
+        if base not in dest.parents:
+            raise RuntimeError(f"baseline {name!r} escapes the baselines dir")
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        _get_file(get_url, dest, timeout=_UPLOAD_HTTP_TIMEOUT)
+
+
+class PresignedWorkerIO:
+    """The worker's object I/O over the control plane's presigned URLs (BE-0160), the `WorkerIO` seam.
+
+    Holds no cloud credentials — only the control-plane URL, the operator token, the leased job id,
+    and the signed baseline GET URLs the lease returned. The org is fixed server-side from the leased
+    job, so this can never touch another tenant's prefix. Uploads fail loudly (they feed the report),
+    unlike the best-effort post-verdict evidence upload.
+    """
+
+    def __init__(
+        self, *, url: str, auth_token: str | None, job_id: str, worker_id: str, baseline_urls: Any
+    ) -> None:
+        self._url = url
+        self._token = auth_token
+        self._job_id = job_id
+        self._worker_id = worker_id
+        self._baseline_urls = baseline_urls if isinstance(baseline_urls, dict) else {}
+
+    def download_baselines(self, work: Path) -> None:
+        _download_baselines(work, self._baseline_urls)
+
+    def upload_run(self, work: Path, run_id: str) -> None:
+        run_dir = work / "runs" / run_id
+        if not run_dir.is_dir():
+            return
+        files = _evidence_files(run_dir)
+        if not files:
+            return
+        urls = _request_upload_urls(
+            self._url,
+            "/api/worker/artifact-urls",
+            {
+                "job_id": self._job_id,
+                "worker_id": self._worker_id,
+                "run_id": run_id,
+                "files": files,
+            },
+            self._token,
+        )
+        _put_tree_files(run_dir, urls, best_effort=False)
+
+    def save_scenario(self, work: Path, out_path: str, app: str, ref: str) -> None:
+        src = (work / out_path).resolve()
+        # Confine to the workspace: a crafted spec with an absolute / `..` out_path must not read &
+        # upload a host file outside it (the control plane never builds such a path).
+        if work.resolve() not in src.parents:
+            return
+        # A `record` job that reached here was expected to author a scenario; if the file is missing,
+        # fail loudly rather than report success having persisted nothing (BE-0160 / fail loud).
+        if not src.is_file():
+            raise RuntimeError(f"record job authored no scenario at {out_path!r}")
+        code, resp = _post_json(
+            f"{self._url}/api/worker/scenario-url",
+            {"job_id": self._job_id, "worker_id": self._worker_id, "app": app, "ref": ref},
+            token=self._token,
+            timeout=_UPLOAD_HTTP_TIMEOUT,
+        )
+        if code != 200:
+            raise RuntimeError(f"scenario-url returned {code}")
+        put_url = resp.get("url")
+        if not isinstance(put_url, str):
+            raise RuntimeError("scenario-url returned no URL")
+        _put_file(put_url, src, content_type_for(ref), timeout=_UPLOAD_HTTP_TIMEOUT)
 
 
 def _upload_evidence(
@@ -274,9 +436,8 @@ def _upload_evidence(
     """Ask the control plane for presigned PUT URLs for this run's tree and upload each file.
 
     Best-effort by design (BE-0110): the run's result is already posted, so any failure here is
-    logged and dropped, never raised (a broad catch, like `upload_tree`, so even a malformed URL
-    can't crash the worker), and every HTTP call is time-bounded so a stall can't strand the worker.
-    When no evidence store is configured the endpoint returns no URLs and this uploads nothing.
+    logged and dropped, never raised, and every HTTP call is time-bounded so a stall can't strand the
+    worker. When no evidence store is configured the endpoint returns no URLs and this uploads nothing.
     """
     run_dir = work / "runs" / run_id
     if not run_dir.is_dir():
@@ -285,37 +446,16 @@ def _upload_evidence(
     if not files:
         return
     try:
-        code, body = _post_json(
-            f"{url}/api/runs/{run_id}/upload-urls",
+        urls = _request_upload_urls(
+            url,
+            f"/api/runs/{run_id}/upload-urls",
             {"files": files, "evidence_prefix": evidence_prefix},
-            token=auth_token,
-            timeout=_EVIDENCE_HTTP_TIMEOUT,
+            auth_token,
         )
     except Exception as e:
-        _logger.warning("evidence upload-urls request failed for run %s: %s", run_id, e)
+        _logger.warning("evidence upload-urls failed for run %s: %s", run_id, e)
         return
-    if code != 200:
-        _logger.warning("evidence upload-urls returned %s for run %s", code, run_id)
-        return
-    urls = body.get("urls")
-    if not isinstance(urls, dict):  # a malformed response must not crash the worker
-        _logger.warning("evidence upload-urls returned an unexpected shape for run %s", run_id)
-        return
-    base = run_dir.resolve()
-    uploaded = 0
-    for rel, put_url in urls.items():
-        # Confine each returned key under the run dir and require a string URL, so a malformed or
-        # hostile response can neither read files outside the tree nor crash the loop.
-        src = (run_dir / rel).resolve()
-        if not isinstance(put_url, str) or not src.is_relative_to(base):
-            _logger.warning("skipping unexpected upload entry %r for run %s", rel, run_id)
-            continue
-        try:
-            _put_file(put_url, src, content_type_for(rel), timeout=_EVIDENCE_HTTP_TIMEOUT)
-        except Exception as e:
-            _logger.warning("evidence upload failed for %s: %s", rel, e)
-        else:
-            uploaded += 1
+    uploaded = _put_tree_files(run_dir, urls, best_effort=True)
     if uploaded:
         typer.echo(f"  uploaded {uploaded} evidence file(s) for run {run_id}")
 

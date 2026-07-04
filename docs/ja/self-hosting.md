@@ -226,16 +226,20 @@ GitHub OAuth アプリを作り（callback は `https://<your-host>/api/oauth/ca
 ```bash
 export BAJUTSU_SERVER_URL=http://<linux-node>.<tailnet>.ts.net:8765
 export BAJUTSU_TOKEN=…         # コントロールプレーンと同じ operator トークン
-export BAJUTSU_S3_BUCKET=bajutsu
-export BAJUTSU_S3_ENDPOINT=http://<linux-node>.<tailnet>.ts.net:9000
-export AWS_ACCESS_KEY_ID=… AWS_SECRET_ACCESS_KEY=…
 export ANTHROPIC_API_KEY=…     # シナリオが AI パス（record / --dismiss-alerts）を使う場合のみ
 bajutsu worker
 ```
 
+worker はオブジェクトストレージの認証情報を**一切持ちません**（BE-0160）。`BAJUTSU_S3_BUCKET` /
+`BAJUTSU_S3_ENDPOINT` / `AWS_*` も、クラウド SDK も不要です。run のベースラインのダウンロード、完了した
+`runs/<id>/` ツリーのアップロード、`record` ジョブが生成したシナリオの保存は、いずれもコントロールプレーンが
+署名した presigned URL 経由で行います。オブジェクトストレージの認証情報が置かれる場所はコントロールプレーン
+だけです。バイト列は worker からストレージへ直接流れます（署名済み URL は MinIO を指します）ので、worker には
+オブジェクトストレージへの到達性は必要ですが、その秘密は不要です。
+
 再起動を越えるよう、Tier A と同じく `LaunchAgent` で包みます。worker はコントロールプレーンの
 `/api/worker/lease` エンドポイントを HTTP でポーリングし（Redis は不要です）、各ジョブをクリーンな
-Simulator で実行し、`runs/<id>/` ツリー（`console.log` 含む）を MinIO にアップロードし、結果を
+Simulator で実行し、`runs/<id>/` ツリー（`console.log` 含む）をアップロードし、結果を
 `/api/worker/result` へ返します。コントロールプレーンが完了した run を Postgres に記録するので、
 worker はデータベースへのアクセスを必要としません。
 
@@ -258,12 +262,11 @@ Tier A と同様に前段を置きます。`tailscale serve --bg 8765`（tailnet
 export BAJUTSU_EVIDENCE_STORE=s3://audit-bucket/evidence/   # gs://… も可。--evidence-store でも指定できます
 ```
 
-アーティファクトのアップロードとの違いは、**認証情報がどこにあるか**です。コントロールプレーンが証跡バケット
-の認証情報を保持し、ファイルごとに **presigned PUT URL** を発行します。ワーカーは平文 HTTP でアップロードし、
-証跡バケットの認証情報を**一切持ちません**。持つのはコントロールプレーンだけです。したがって証跡バケットは、
-ワーカーのアーティファクトストアとは別のアカウントや、より厳しい権限のバケットにでき、エフェメラルなワーカーが
-その秘密を抱えることはありません。`s3` または `gcs` extra は**コントロールプレーン側**に入れます
-（`uv sync --extra s3` または `--extra gcs`）。ワーカーにはどちらも不要です。
+証跡ストアは、アーティファクトストアとは独立した2つ目の保存先です。別のアカウントにも、より厳しい権限で
+ライフサイクル管理したバケットにもできます。どちらのバケットも worker にとっては認証情報が不要です。
+コントロールプレーンが各バケットの認証情報を保持してファイルごとに **presigned PUT URL** を発行し、worker は
+平文 HTTP でアップロードします（証跡は BE-0110、アーティファクトストアは BE-0160）。`s3` または `gcs` extra は
+**コントロールプレーン側**に入れます（`uv sync --extra s3` または `--extra gcs`）。worker にはどちらも不要です。
 
 CI ジョブは run を開始するときに `evidence_prefix` を渡して、run ごとのパス、つまりライフサイクルポリシーを
 選びます。
