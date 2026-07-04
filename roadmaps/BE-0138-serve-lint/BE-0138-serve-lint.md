@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0138") |
-| Implementing PR | _pending_ |
+| Implementing PR | [#673](https://github.com/bajutsu-e2e/bajutsu/pull/673) |
 | Topic | Surfacing CLI features in the serve Web UI |
 <!-- /BE-METADATA -->
 
@@ -75,7 +75,7 @@ Tier-1, deterministic; the UI only shells out to the existing validators.
 - [x] Render diagnostics inline (gutter markers + problems list), debounced as you edit and on demand
 - [x] Add schema-driven completion / hover for the scenario grammar
 
-- _pending_ — Ships the whole item: `lint_diagnostics` (line-anchored findings; parse errors carry
+- [#673](https://github.com/bajutsu-e2e/bajutsu/pull/673) — Ships the whole item: `lint_diagnostics` (line-anchored findings; parse errors carry
   the exact mark, validation errors resolve their `loc` against the YAML node tree best-effort), the
   `POST /api/lint` + `GET /api/schema` routes on both the stdlib handler and the FastAPI control
   plane, and the Author-editor gutter / problems list / completion / hover.
