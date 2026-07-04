@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0114") |
-| Implementing PR | [#632](https://github.com/bajutsu-e2e/bajutsu/pull/632) |
+| Implementing PR | [#632](https://github.com/bajutsu-e2e/bajutsu/pull/632), [#644](https://github.com/bajutsu-e2e/bajutsu/pull/644) |
 | Topic | Platform expansion (Android / Web / Flutter) |
 | Related | [BE-0009](../BE-0009-cross-platform-abstractions/BE-0009-cross-platform-abstractions.md), [BE-0042](../BE-0042-platform-backend-registry/BE-0042-platform-backend-registry.md), [BE-0082](../BE-0082-capability-preflight-check/BE-0082-capability-preflight-check.md), [BE-0019](../BE-0019-xcuitest-backend/BE-0019-xcuitest-backend.md), [BE-0007](../BE-0007-android-backend/BE-0007-android-backend.md) |
 <!-- /BE-METADATA -->
@@ -110,7 +110,7 @@ backend.
 
 - [x] Enumerate the backend-agnostic contract (ambiguous / zero-match / `capabilities()` / wait / evidence invariants)
 - [x] Build the parametrized conformance suite against the `Driver` interface
-- [ ] Run FakeDriver in the fast Linux gate (`make check`); run Playwright in the separate web CI job — *FakeDriver done; Playwright web CI pending*
+- [x] Run FakeDriver in the fast Linux gate (`make check`); run Playwright in the separate web CI job
 - [ ] Run idb + XCUITest under the on-device E2E path (same suite)
 - [x] `capabilities()` conformance check + document the contract as the "done" definition for a new backend
 
@@ -120,6 +120,11 @@ Log:
   FakeDriver conformance suite (`tests/test_driver_conformance.py`) on the fast Linux gate, plus
   the contract documented in `docs/architecture.md`. Playwright (web CI) and idb / XCUITest
   (on-device E2E) remain, tracked here.
+- 2026-07-04: Playwright slice — the same contract now runs against a real headless Chromium
+  (`tests/test_driver_conformance_web.py`), realizing each conformance screen as `data-testid`
+  HTML on the real `PlaywrightDriver`. It runs in a new `web-conformance` job in `web-e2e.yml`
+  (never the fast gate: a `web` pytest marker + `-m 'not web'` deselects it, so the gate stays
+  browser-free even when the `web` extra is installed). idb / XCUITest (on-device E2E) remain.
 
 ## References
 
