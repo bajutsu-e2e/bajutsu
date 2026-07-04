@@ -87,8 +87,8 @@ that only shows up with an unusual step type.
 
 - [x] Resolve the target's declared `secrets:` bindings inside `record`, matching `run`'s existing
       environment-variable resolution.
-- [x] Detect a captured step value that equals a resolved secret binding and substitute
-      `${secrets.X}` for it before the step is added to the scenario.
+- [x] Detect a resolved secret binding occurring within a captured step's text and substitute
+      `${secrets.X}` for each occurrence before the step is added to the scenario.
 - [x] Leave non-matching captured input unchanged (no new behavior for the common case).
 - [x] Narrate a tokenization to the author via `record`'s existing progress output.
 - [x] Add a regression test covering a recorded secret ending up as `${secrets.X}`, not a literal,

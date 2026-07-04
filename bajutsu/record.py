@@ -81,7 +81,7 @@ def _mask_secrets(text: str, secret_tokens: list[tuple[str, str]]) -> tuple[str,
 def _tokenize_secrets(step: Step, secret_tokens: list[tuple[str, str]]) -> tuple[Step, list[str]]:
     """Rewrite a recorded secret literal in a `type` step's text as its `${secrets.X}` token.
 
-    A step with no `type` text, or text matching no declared secret, is returned unchanged.
+    A non-`type` step, or a `type` text containing no declared secret, is returned unchanged.
     Returns the (possibly rewritten) step and the tokens substituted, so the record loop can tell
     the author which fields were swapped.
     """
