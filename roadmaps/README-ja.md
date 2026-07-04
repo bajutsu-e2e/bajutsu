@@ -158,6 +158,7 @@ AI 駆動の `record`（Tier 1）は実装済みです（[recording.md](../docs/
 | [BE-0060](BE-0060-run-report-zip-export/BE-0060-run-report-zip-export-ja.md) | run の実行レポートの zip ダウンロードとエクスポート | 実装済み |
 | [BE-0068](BE-0068-regenerable-reports/BE-0068-regenerable-reports-ja.md) | 再生成できるレポート（保存済み run データから描画する） | 実装済み |
 | [BE-0072](BE-0072-responsive-web-ui/BE-0072-responsive-web-ui-ja.md) | serve Web UI のレスポンシブ対応（小さい画面・タッチ操作） | 実装済み |
+| [BE-0098](BE-0098-unified-authoring-surface/BE-0098-unified-authoring-surface-ja.md) | serve の統合オーサリングサーフェス | 実装済み |
 <!-- /GENERATED:implemented-authoring -->
 
 ### 自己修復トリアージ（M4）
@@ -512,7 +513,6 @@ Web（Playwright）backend とその完成（リッチな capability、並列実
 | ID | 項目 | 状態 |
 |---|---|---|
 | [BE-0095](BE-0095-interactive-crawl-graph/BE-0095-interactive-crawl-graph-ja.md) | クロールグラフのインタラクティブ操作（ノードのドラッグと再整列） | 提案 |
-| [BE-0098](BE-0098-unified-authoring-surface/BE-0098-unified-authoring-surface-ja.md) | serve の統合オーサリングサーフェス | 提案 |
 | [BE-0102](BE-0102-run-stats-dashboard/BE-0102-run-stats-dashboard-ja.md) | 実行結果の集計ダッシュボード | 提案 |
 <!-- /GENERATED:proposals-authoring -->
 

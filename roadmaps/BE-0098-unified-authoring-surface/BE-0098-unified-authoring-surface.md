@@ -7,7 +7,7 @@
 |---|---|
 | Proposal | [BE-0098](BE-0098-unified-authoring-surface.md) |
 | Author | [@hirosassa](https://github.com/hirosassa) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0098") |
 | Topic | Authoring experience (record / GUI editor) |
 | Origin | [BE-0014](../BE-0014-record-demarcation/BE-0014-record-demarcation.md) |
@@ -61,7 +61,29 @@ The existing Capture and Editor tabs remain functional during the transition. Th
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] TBD — enumerate the work breakdown (MECE) here once scoped.
+- [x] **Template** — replace the Capture and Editor top-level nav buttons and both `<main>`
+  view blocks with one `#view-author` tab hosting a Capture / Edit / Enrich mode switcher over
+  shared target / scenario / run / YAML / steps / Save controls (`bajutsu/templates/serve.html.j2`).
+- [x] **Styling** — add the `.modeswitch` / `.modetab` mode-switcher styling and unify the
+  former `.cap-*` / `.edt-*` classes into shared `.au-*` classes, with a `[hidden]` rule that
+  wins over the mode-group display rules (`bajutsu/templates/serve.css`).
+- [x] **Behavior** — merge the two front-end modules into one Author module: shared state,
+  `setMode()` that preserves the open scenario and unsaved YAML across mode switches, a shared
+  screenshot-click routed by mode, and a Capture-finish → Edit hand-off on the saved scenario
+  (`bajutsu/templates/serve.js`).
+- [x] **Migration** — remove the separate Capture and Editor tabs directly (no dead alongside
+  code); the reused backends (`/api/capture/*`, `/api/scenario`, `/api/scenario/resolve`,
+  `/api/enrich`) are unchanged.
+- [x] **Tests** — replace `test_http_editor_ui.py` with `test_http_author_ui.py` (unified markup,
+  removed old tabs, mode switcher, shared + per-mode controls, wired endpoints, the load-bearing
+  `[hidden]` visibility rule) and update the `viewswitch` count in `test_http_static.py`.
+
+Log:
+
+- Unified the three authoring surfaces into one Author tab with a mode switcher; ported the
+  Capture / Edit / Enrich handlers into a single module reusing the existing endpoints; hardened
+  the merged flows to surface (not swallow) the enrich-mode click, the capture→edit hand-off
+  miss, and the empty-path Save. `make check` green.
 
 ## References
 
