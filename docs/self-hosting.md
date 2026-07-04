@@ -222,6 +222,39 @@ Caddy for a real hostname (`docker compose --profile caddy up -d`, with `BAJUTSU
 The worker reaches the control plane (`:8765`) and MinIO (`:9000`) over the tailnet, so keep the
 node on the private tailnet.
 
+### Evidence upload to object storage (optional, BE-0110)
+
+The worker upload above writes each run tree to the **artifact store** the control plane serves reports
+from. Separately, you can archive every run's **evidence** to a lifecycle-managed bucket — retain
+main-branch evidence for audit, expire feature-branch evidence after a few days — by setting one URI
+on the control plane:
+
+```bash
+# on the control plane (docker compose env, or the serve process)
+export BAJUTSU_EVIDENCE_STORE=s3://audit-bucket/evidence/   # or gs://…; --evidence-store also works
+```
+
+The key difference from the artifact upload is **where the credentials live**. The control plane holds
+the evidence bucket's credentials and signs a **presigned PUT URL per file**; the worker uploads over
+plain HTTP and needs **no credentials for the evidence bucket** — only the control plane does. So the
+evidence bucket can be a separate account or a stricter-permissioned bucket than the workers' artifact
+store, and ephemeral workers never carry its secrets. Install the `s3` or `gcs` extra **on the control
+plane** (`uv sync --extra s3` or `--extra gcs`); the worker needs neither.
+
+A CI job picks the per-run path — and thus the lifecycle policy — by passing `evidence_prefix` when it
+starts a run:
+
+```bash
+curl -X POST "$SERVER/api/run" -H "Authorization: Bearer $TOKEN" \
+  -d '{"scenario": "smoke.yaml", "target": "demo", "evidence_prefix": "main/abc1234/"}'
+```
+
+The control plane validates `evidence_prefix` as a safe relative segment and prepends its own bucket +
+base prefix, so the final key is `evidence/main/abc1234/<runId>/…` — the run id is always in the path,
+so runs never collide, and a caller can't escape the base prefix. The upload runs **after** the verdict,
+so a failure is logged and never changes pass/fail. When `BAJUTSU_EVIDENCE_STORE` is unset the worker
+still asks and simply uploads nothing.
+
 ### Multiple orgs
 
 To host more than one team on one backend, declare orgs in the mounted config — each with its member

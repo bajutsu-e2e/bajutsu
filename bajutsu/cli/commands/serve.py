@@ -74,6 +74,15 @@ def serve(
         "deny | reuse | sandbox (default sandbox; or set BAJUTSU_UPLOAD_EXEC). A local/Git config "
         "is operator-trusted and unaffected.",
     ),
+    evidence_store: str = typer.Option(
+        "",
+        "--evidence-store",
+        envvar="BAJUTSU_EVIDENCE_STORE",
+        help="upload each completed run's evidence to object storage at this URI "
+        "(s3://bucket/prefix or gs://bucket/prefix); the upload path picks the cloud lifecycle "
+        "policy. The server holds the credentials and hands workers presigned PUT URLs, so a "
+        "worker uploads without any cloud credentials of its own (BE-0110). Needs the s3 or gcs extra",
+    ),
 ) -> None:
     """Launch a local web UI to run scenarios and view their reports (Tier 1; not for CI).
 
@@ -105,6 +114,19 @@ def serve(
     if resolved_upload_exec not in ("deny", "reuse", "sandbox"):
         typer.echo(f"unknown --upload-exec {resolved_upload_exec!r} (choose: deny, reuse, sandbox)")
         raise typer.Exit(2)
+
+    # Resolve --evidence-store to a credentialed store now (BE-0110), failing fast with a clean hint
+    # — not a traceback — on a malformed URI or a missing cloud SDK, mirroring the --asgi / --config
+    # handling below. The server holds the credentials; workers upload via presigned PUT URLs.
+    evidence = None
+    if evidence_store:
+        from bajutsu.object_store import evidence_target_from_uri
+
+        try:
+            evidence = evidence_target_from_uri(evidence_store)
+        except (ValueError, ImportError) as e:
+            typer.echo(f"--evidence-store {evidence_store}: {e}")
+            raise typer.Exit(2) from None
 
     # `--asgi` needs the optional `server` extra (FastAPI + uvicorn); fail with an install hint
     # rather than a raw ImportError traceback, mirroring `bajutsu worker`.
@@ -159,6 +181,7 @@ def serve(
             max_concurrent=max_concurrent_runs,
             token=resolved_token or None,
             upload_exec=resolved_upload_exec,
+            evidence=evidence,
             asgi=asgi,
             backend=backend,
             cwd=cwd,

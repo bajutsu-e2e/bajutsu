@@ -26,6 +26,7 @@ from pathlib import Path
 from typing import Any
 
 from bajutsu.config import DEFAULT_ORG, targets_for_org
+from bajutsu.object_store import EvidenceTarget
 from bajutsu.serve.artifacts import Artifact, ArtifactStore, LocalArtifactStore
 from bajutsu.serve.executor import LocalExecutor, RunExecutor
 from bajutsu.serve.handler import make_server
@@ -158,6 +159,7 @@ def _build_state(
     max_concurrent: int,
     token: str | None,
     upload_exec: str = "sandbox",
+    evidence: EvidenceTarget | None = None,
     backend: str = "local",
     cwd: Path | None = None,
 ) -> ServeState:
@@ -188,6 +190,7 @@ def _build_state(
                 max_concurrent=max_concurrent,
                 token=token,
                 upload_exec=upload_exec,
+                evidence=evidence,
             )
         except ImportError as e:
             # Only a missing third-party extra earns the install hint. A failed `bajutsu.*` import is
@@ -210,6 +213,7 @@ def _build_state(
         max_concurrent=max_concurrent,
         token=token,
         upload_exec=upload_exec,
+        evidence=evidence,
         cwd=cwd or Path.cwd(),
     )
 
@@ -224,6 +228,7 @@ def _build_server_state(
     max_concurrent: int,
     token: str | None,
     upload_exec: str = "sandbox",
+    evidence: EvidenceTarget | None = None,
 ) -> ServeState:
     """Wire the hosted seams from the environment (the single-tenant server backend, BE-0015/BE-0106).
 
@@ -291,6 +296,7 @@ def _build_server_state(
         ),
         token=token,
         upload_exec=upload_exec,
+        evidence=evidence,
         executor=DbQueueExecutor(repo) if repo is not None else LocalExecutor(),
         logbus=(
             PostCompletionLogBus(
@@ -401,6 +407,7 @@ def serve(
     token: str | None = None,
     *,
     upload_exec: str = "sandbox",
+    evidence: EvidenceTarget | None = None,
     asgi: bool = False,
     backend: str = "local",
     cwd: Path | None = None,
@@ -414,6 +421,7 @@ def serve(
         max_concurrent=max_concurrent,
         token=token,
         upload_exec=upload_exec,
+        evidence=evidence,
         backend=backend,
         cwd=cwd,
     )

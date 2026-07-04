@@ -301,6 +301,10 @@ def make_app(state: ServeState) -> FastAPI:
     async def cancel(job_id: str) -> JSONResponse:
         return _result(ops.cancel_job(state, job_id))
 
+    @app.post("/api/runs/{run_id}/upload-urls")
+    async def upload_urls(run_id: str, body: dict[str, Any]) -> JSONResponse:
+        return _result(ops.generate_upload_urls(state, run_id, body))
+
     @app.post("/api/worker/lease")
     async def worker_lease(body: dict[str, Any]) -> JSONResponse:
         return _result(ops.worker_lease(state, body.get("worker_id", "")))
