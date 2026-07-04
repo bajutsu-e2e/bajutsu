@@ -1,6 +1,6 @@
 .PHONY: setup hooks deps deps-check serve worktree preflight test lint lint-docstrings lint-imports format format-check typecheck \
         lock-check lint-sh lint-actions lint-roadmap lint-pr check new-roadmap-item roadmap-index \
-        roadmap-dashboard docs docs-serve
+        roadmap-status roadmap-dashboard docs docs-serve
 
 # One-command bootstrap for a fresh clone (cross-platform; the dev gate needs no
 # Simulator). Installs the Python toolchain and wires the tracked git hooks.
@@ -140,6 +140,13 @@ lint-pr:
 # enforced by tests/test_roadmap_index.py — part of `make test`, so the gate fails on drift.
 roadmap-index:
 	uv run python scripts/build_roadmap_index.py
+
+# Filter roadmap (BE) items by Status into one small table — ID / Item / Topic / Path — so an AI
+# session surveys just the rows it needs (e.g. every Proposal) without reading the 700+-line index
+# (BE-0162). Pure and offline: reads roadmaps/ metadata only. The `roadmap-filter` skill wraps this.
+#   make roadmap-status STATUS="Proposal"   # or "In progress" / "Implemented" / "Proposal (deferred)"
+roadmap-status:
+	uv run python scripts/roadmap_query.py --status "$(STATUS)"
 
 # The full gate. CI (.github/workflows/ci.yml) mirrors these steps so "green locally"
 # predicts "green in CI". The uv-native checks run identically everywhere; actionlint is

@@ -173,10 +173,15 @@ Actions タブや PR の checks 一覧でレビュアーの目に入るのは、
 - [`implement-be`](../../.claude/skills/implement-be/SKILL.md)：`opus`（重）
 - [`ideation`](../../.claude/skills/ideation/SKILL.md)：`sonnet`（中）
 - [`japanese-tech-writing`](../../.claude/skills/japanese-tech-writing/SKILL.md)：`sonnet`（中）
+- [`roadmap-filter`](../../.claude/skills/roadmap-filter/SKILL.md)：`haiku`（軽）。`Status` で
+  ロードマップを見渡す読み取り専用のスキルです（BE-0162）。`make roadmap-status STATUS="…"` を包み、
+  ある状態の項目だけ（たとえば未着手の `Proposal` すべて）を、次に開くファイルパス付きで一覧します。
+  700 行を超える `roadmaps/README.md` を文脈に読み込む必要がありません。
 
-軽い雑務はスキルではないので、`haiku` を固定するスキルはありません。その段階は、下の対話操作かサブエージェントへの
-委譲で使います。`tests/test_skill_models.py` が各スキルの `model:` を既知の妥当な id かどうか確認するので、
-打ち間違いは黙って握りつぶされず、ローカルのゲートが落とします。
+軽い雑務の多くはスキルではないので、その段階はふだん下の対話操作かサブエージェントへの委譲で使います。
+`roadmap-filter` は例外で、その仕事そのものが軽い決定論的な検索だからです。`tests/test_skill_models.py` が
+各スキルの `model:` を既知の妥当な id かどうか確認するので、打ち間違いは黙って握りつぶされず、ローカルの
+ゲートが落とします。
 
 ### フェーズとサブエージェントへの委譲
 
