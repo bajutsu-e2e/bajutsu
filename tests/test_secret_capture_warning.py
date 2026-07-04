@@ -1,0 +1,43 @@
+"""Tests for the on-screen-secret capture warning (BE-0151).
+
+`record` / `triage --ai` send the current screenshot to the AI provider as-is and persist
+screenshots/video under `runs/`. When a target binds `secrets:`, a value the app displays on
+screen is not redacted from those images. `_warn_onscreen_secrets` discloses that at the moment
+secrets are bound; it is a disclosure, not a behavior change (no LLM, no effect on `run`/CI).
+"""
+
+from __future__ import annotations
+
+from bajutsu.cli._shared import _warn_onscreen_secrets
+from bajutsu.config import load_config, resolve
+
+_WITH_SECRETS = """
+targets:
+  app:
+    bundleId: com.example.app
+    secrets: [LOGIN_PASSWORD, LOGIN_OTP]
+"""
+
+_NO_SECRETS = """
+targets:
+  app:
+    bundleId: com.example.app
+"""
+
+
+def test_warns_when_secrets_bound(capsys) -> None:
+    eff = resolve(load_config(_WITH_SECRETS), "app")
+    _warn_onscreen_secrets(eff)
+    err = capsys.readouterr().err
+    # The warning names the boundary precisely: images are never redacted, they persist under
+    # runs/, and the screenshot reaches the AI provider — and it names the bound secrets.
+    assert "screenshot" in err
+    assert "runs/" in err
+    assert "provider" in err
+    assert "LOGIN_PASSWORD" in err and "LOGIN_OTP" in err
+
+
+def test_silent_when_no_secrets_bound(capsys) -> None:
+    eff = resolve(load_config(_NO_SECRETS), "app")
+    _warn_onscreen_secrets(eff)
+    assert capsys.readouterr().err == ""

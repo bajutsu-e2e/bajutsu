@@ -21,6 +21,7 @@ from bajutsu.cli._shared import (
     _refuse_out_in_checkout,
     _require_ai_credential,
     _resolve_browser,
+    _warn_onscreen_secrets,
 )
 from bajutsu.config import WEB_ENGINES, Effective
 from bajutsu.record import record as record_loop
@@ -157,6 +158,9 @@ def record(
     # the alert guard is on.
     if kind == "api" or dismiss_alerts:
         _require_ai_credential(eff)
+    # Disclose that on-screen secrets are not redacted from the screenshots sent to the AI or
+    # stored under runs/ (BE-0151), before the authoring loop starts.
+    _warn_onscreen_secrets(eff)
     # Mask the textual model inputs (element trees, the alert instruction) before they leave the
     # process; the screenshot is sent as-is — images cannot be pixel-masked (BE-0047).
     redactor = _ai_redactor(eff)
