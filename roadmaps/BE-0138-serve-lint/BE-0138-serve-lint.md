@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0138](BE-0138-serve-lint.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0138") |
+| Implementing PR | _pending_ |
 | Topic | Surfacing CLI features in the serve Web UI |
 <!-- /BE-METADATA -->
 
@@ -67,14 +68,17 @@ Tier-1, deterministic; the UI only shells out to the existing validators.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Add the `POST /api/lint` endpoint (`{yaml}`) returning line-anchored diagnostics from
+- [x] Add the `POST /api/lint` endpoint (`{yaml}`) returning line-anchored diagnostics from
       `bajutsu/lint.py`
-- [ ] Provide the scenario JSON Schema (`lint.scenario_json_schema`) to the client and validate
+- [x] Provide the scenario JSON Schema (`lint.scenario_json_schema`) to the client and validate
       against it
-- [ ] Render diagnostics inline (gutter markers + problems list), debounced as you edit and on demand
-- [ ] Add schema-driven completion / hover for the scenario grammar
+- [x] Render diagnostics inline (gutter markers + problems list), debounced as you edit and on demand
+- [x] Add schema-driven completion / hover for the scenario grammar
 
-No PR has landed yet.
+- _pending_ — Ships the whole item: `lint_diagnostics` (line-anchored findings; parse errors carry
+  the exact mark, validation errors resolve their `loc` against the YAML node tree best-effort), the
+  `POST /api/lint` + `GET /api/schema` routes on both the stdlib handler and the FastAPI control
+  plane, and the Author-editor gutter / problems list / completion / hover.
 
 ## References
 

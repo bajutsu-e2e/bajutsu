@@ -1101,6 +1101,12 @@ if(!NARROW_MQ.matches)initTiling();
   let enrichResult=null;     // last enrichment response {expect, settle, note}
   // Capture state.
   let capActive=false;
+  // Inline validation + schema assistance (BE-0138).
+  let auSchema=null;         // scenario JSON Schema, fetched once for completion / hover
+  let auDiagnostics=[];      // last /api/lint findings [{line, column, message, severity}]
+  let auLintTimer=null;      // debounce handle for live validation
+  let auCharW=0;             // measured monospace char width, for caret ↔ pixel math
+  const AU_LH=18, AU_PADX=8, AU_PADY=6;  // must match textarea.yaml line-height / padding in serve.css
 
   // ---- mode switching ----
   function setMode(m){
@@ -1270,6 +1276,7 @@ if(!NARROW_MQ.matches)initTiling();
       if(d.error){$('#au-status').textContent=d.error;$('#au-status').className='status ng';return;}
       $('#au-yaml').value=d.yaml||'';
       $('#au-save').disabled=false;
+      auRenderGutter();auLint();
       auSteps=d.steps||[];
       auRenderStepList();
       if(auSteps.length>0){auShowStep(0);}
@@ -1382,6 +1389,7 @@ if(!NARROW_MQ.matches)initTiling();
       }
     }
     $('#au-yaml').value=lines.join('\n');
+    auRenderGutter();auLintSoon();
     // Update the in-memory step fields.
     if(action==='type'){
       s.fields={into:auResolvedSel,text:oldFields.text||''};
@@ -1393,6 +1401,139 @@ if(!NARROW_MQ.matches)initTiling();
     $('#au-status').textContent='Applied '+auSelectorYaml(auResolvedSel)+' to step '+(auIdx+1);
     $('#au-status').className='status ok';
   });
+
+  // ---- Inline validation + schema assistance (BE-0138) ----
+  // Static and AI-free: /api/lint and /api/schema wrap the same validators the CLI runs.
+
+  function auMeasureChar(){
+    // Width of one monospace glyph, for mapping caret column ↔ pixel x.
+    const span=document.createElement('span');
+    span.style.cssText='position:absolute;visibility:hidden;white-space:pre;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px';
+    span.textContent='0'.repeat(20);document.body.appendChild(span);
+    auCharW=span.getBoundingClientRect().width/20;span.remove();
+  }
+
+  function auGutterSync(){
+    $('#au-gutter-inner').style.transform='translateY('+(-$('#au-yaml').scrollTop)+'px)';
+  }
+
+  function auRenderGutter(){
+    const ta=$('#au-yaml');
+    const n=Math.max(1,ta.value.split('\n').length);
+    const errLines=new Set(auDiagnostics.filter(d=>d.line).map(d=>d.line));
+    let html='';
+    for(let i=1;i<=n;i++){html+='<div class="gl'+(errLines.has(i)?' err':'')+'">'+i+'</div>';}
+    $('#au-gutter-inner').innerHTML=html;
+    auGutterSync();
+  }
+
+  function auJumpToLine(line){
+    const ta=$('#au-yaml');
+    const lines=ta.value.split('\n');
+    let start=0;for(let i=0;i<line-1&&i<lines.length;i++){start+=lines[i].length+1;}
+    const end=start+(lines[line-1]?lines[line-1].length:0);
+    ta.focus();ta.setSelectionRange(start,end);
+    ta.scrollTop=Math.max(0,(line-1)*AU_LH-ta.clientHeight/2);
+    auGutterSync();
+  }
+
+  function auRenderProblems(){
+    const box=$('#au-problems');
+    if(!auDiagnostics.length){box.hidden=true;box.innerHTML='';return;}
+    box.hidden=false;
+    box.innerHTML='<div class="au-problems-head">'+auDiagnostics.length+' problem'+(auDiagnostics.length===1?'':'s')+'</div>'+
+      auDiagnostics.map((d,i)=>'<div class="au-problem" data-i="'+i+'">'+
+        (d.line?'<span class="pl">L'+d.line+(d.column?':'+d.column:'')+'</span>':'<span class="pl pl-none">—</span>')+
+        '<span class="pm">'+esc(d.message)+'</span></div>').join('');
+    box.querySelectorAll('.au-problem').forEach(el=>{
+      el.addEventListener('click',()=>{const d=auDiagnostics[+el.dataset.i];if(d&&d.line)auJumpToLine(d.line);});
+    });
+  }
+
+  async function auLint(){
+    try{
+      const r=await fetch('/api/lint',{method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({yaml:$('#au-yaml').value})});
+      const d=await r.json();
+      auDiagnostics=Array.isArray(d.diagnostics)?d.diagnostics:[];
+    }catch(e){auDiagnostics=[];}
+    auRenderGutter();auRenderProblems();
+  }
+
+  function auLintSoon(){clearTimeout(auLintTimer);auLintTimer=setTimeout(auLint,400);}
+
+  // ---- schema-driven completion / hover ----
+  function auSchemaKeys(){
+    // {name: description} for every property across the schema's defs — the grammar's key set.
+    const out={};
+    (function walk(node){
+      if(!node||typeof node!=='object')return;
+      if(node.properties){for(const k in node.properties){const v=node.properties[k];if(!(k in out))out[k]=(v&&v.description)||'';}}
+      for(const key in node){const v=node[key];if(v&&typeof v==='object')walk(v);}
+    })(auSchema);
+    return out;
+  }
+
+  function auCaretLineCol(){
+    const before=$('#au-yaml').value.slice(0,$('#au-yaml').selectionStart).split('\n');
+    return {line:before.length,col:before[before.length-1].length};
+  }
+
+  let auCompItems=[], auCompSel=0, auCompToken='';
+  function auHideComplete(){$('#au-complete').hidden=true;auCompItems=[];}
+
+  function auShowComplete(){
+    if(!auCharW)auMeasureChar();
+    const ta=$('#au-yaml'), pos=auCaretLineCol();
+    const lineText=ta.value.split('\n')[pos.line-1]||'';
+    auCompToken=(lineText.slice(0,pos.col).match(/[\w.-]*$/)||[''])[0];
+    const keys=auSchemaKeys();
+    auCompItems=Object.keys(keys).filter(k=>k.startsWith(auCompToken)&&k!==auCompToken).sort().slice(0,12);
+    if(!auCompItems.length){auHideComplete();return;}
+    auCompSel=0;
+    const box=$('#au-complete');
+    // Offsets are relative to .yamledit (the popup's offset parent), so add the textarea's own
+    // offset within it — the line-number gutter sits to its left.
+    box.style.left=(ta.offsetLeft+Math.max(0,AU_PADX+(pos.col*auCharW)-ta.scrollLeft))+'px';
+    box.style.top=(ta.offsetTop+AU_PADY+(pos.line*AU_LH)-ta.scrollTop)+'px';
+    auRenderComplete(keys);
+    box.hidden=false;
+  }
+
+  function auRenderComplete(keys){
+    $('#au-complete').innerHTML=auCompItems.map((k,i)=>
+      '<div class="ci'+(i===auCompSel?' sel':'')+'" data-k="'+esc(k)+'" title="'+esc(keys[k]||'')+'">'+esc(k)+'</div>').join('');
+    $('#au-complete').querySelectorAll('.ci').forEach(el=>{
+      el.addEventListener('mousedown',e=>{e.preventDefault();auAcceptComplete(el.dataset.k);});
+    });
+  }
+
+  function auAcceptComplete(key){
+    const ta=$('#au-yaml'), idx=ta.selectionStart;
+    const start=idx-auCompToken.length;
+    ta.value=ta.value.slice(0,start)+key+ta.value.slice(idx);
+    const caret=start+key.length;ta.setSelectionRange(caret,caret);
+    auHideComplete();ta.focus();
+    $('#au-save').disabled=false;auRenderGutter();auLintSoon();
+  }
+
+  function auHover(e){
+    const box=$('#au-hover');
+    if(!auCharW)auMeasureChar();
+    const ta=$('#au-yaml'), rect=ta.getBoundingClientRect();
+    const y=e.clientY-rect.top+ta.scrollTop-AU_PADY, x=e.clientX-rect.left+ta.scrollLeft-AU_PADX;
+    const lines=ta.value.split('\n'), li=Math.floor(y/AU_LH);
+    if(x<0||li<0||li>=lines.length){box.hidden=true;return;}
+    const col=Math.round(x/auCharW), text=lines[li];
+    const tok=(text.slice(0,col).match(/[\w.-]*$/)||[''])[0]+(text.slice(col).match(/^[\w.-]*/)||[''])[0];
+    const keys=auSchemaKeys();
+    if(!tok||!(tok in keys)||!keys[tok]){box.hidden=true;return;}
+    box.innerHTML='<span class="hk">'+esc(tok)+'</span> — '+esc(keys[tok]);
+    // Position within .yamledit (offset parent): add the textarea's offset past the gutter.
+    box.style.left=(ta.offsetLeft+Math.min(e.clientX-rect.left+8,ta.clientWidth-40))+'px';
+    box.style.top=(ta.offsetTop+e.clientY-rect.top+18)+'px';
+    box.hidden=false;
+  }
 
   // Save.
   $('#au-save').addEventListener('click',async()=>{
@@ -1555,6 +1696,7 @@ if(!NARROW_MQ.matches)initTiling();
     }
 
     $('#au-yaml').value=lines.join('\n');
+    auRenderGutter();auLintSoon();
     $('#au-save').disabled=false;
     $('#au-enrich-panel').hidden=true;
     enrichResult=null;
@@ -1594,8 +1736,26 @@ if(!NARROW_MQ.matches)initTiling();
   $('#au-load').addEventListener('click',auLoad);
   // Target change reloads scenarios.
   $('#au-target').addEventListener('change',auLoadScenarios);
-  // YAML textarea edits enable save.
-  $('#au-yaml').addEventListener('input',()=>{$('#au-save').disabled=false;});
+  // YAML textarea edits enable save and re-validate (BE-0138): gutter updates instantly, lint debounced.
+  $('#au-yaml').addEventListener('input',()=>{
+    $('#au-save').disabled=false;auRenderGutter();auLintSoon();
+    if(!$('#au-complete').hidden)auShowComplete();
+  });
+  $('#au-yaml').addEventListener('scroll',()=>{auGutterSync();auHideComplete();});
+  $('#au-yaml').addEventListener('blur',()=>{auHideComplete();$('#au-hover').hidden=true;});
+  $('#au-yaml').addEventListener('mousemove',auHover);
+  $('#au-yaml').addEventListener('mouseleave',()=>{$('#au-hover').hidden=true;});
+  // Completion: Ctrl/Cmd+Space opens; arrows/Enter/Tab drive it while open; Escape closes.
+  $('#au-yaml').addEventListener('keydown',e=>{
+    if((e.ctrlKey||e.metaKey)&&e.code==='Space'){e.preventDefault();auShowComplete();return;}
+    if($('#au-complete').hidden)return;
+    if(e.key==='Escape'){e.preventDefault();auHideComplete();}
+    else if(e.key==='ArrowDown'){e.preventDefault();auCompSel=(auCompSel+1)%auCompItems.length;auRenderComplete(auSchemaKeys());}
+    else if(e.key==='ArrowUp'){e.preventDefault();auCompSel=(auCompSel-1+auCompItems.length)%auCompItems.length;auRenderComplete(auSchemaKeys());}
+    else if(e.key==='Enter'||e.key==='Tab'){e.preventDefault();auAcceptComplete(auCompItems[auCompSel]);}
+  });
+  // Fetch the scenario schema once, for completion / hover.
+  fetch('/api/schema').then(r=>r.ok?r.json():null).then(s=>{auSchema=s;}).catch(()=>{});
 
   // Called by showView('author') — lazy init: default to Capture mode and load scenarios.
   window.authorInit=function(){

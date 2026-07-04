@@ -618,6 +618,15 @@ bajutsu serve [--port 8765] [--config bajutsu.config.yaml] [--root .] [--runs ru
   `BAJUTSU_BEDROCK_MODEL`), or **Claude Code** (the local `claude` CLI on your subscription — text
   only). `serve` applies it to spawned jobs via `BAJUTSU_AI_PROVIDER` / `BAJUTSU_AGENT`, so there is
   no per-tab agent picker. Under Claude Code, an API key (if set) still powers only the alert guard.
+- **Inline scenario validation in the editor ([BE-0138](../roadmaps/BE-0138-serve-lint/BE-0138-serve-lint.md)).**
+  The Author tab's YAML editor validates **as you type**, not only on Save: a debounced `POST /api/lint`
+  runs the same `bajutsu lint` checks and returns line-anchored diagnostics, shown as a gutter marker
+  on each offending line and a clickable problems list (click a finding to jump to its line). YAML
+  parse errors carry the exact line and column; schema/validation errors resolve to their line
+  best-effort. The scenario JSON Schema (`GET /api/schema`, the same output `bajutsu schema` prints)
+  also drives lightweight key completion (Ctrl/⌘+Space) and hover descriptions. Deterministic and
+  AI-free — no device or model runs; Save keeps its own validation guard, so the inline layer only
+  surfaces failures earlier.
 - If the app's built binary (config `appPath`) is missing, the app's `build` command runs first
   (its output streams into the job log); a build failure aborts the run before it spawns. Set
   `targets.<name>.build` to the shell command that produces `appPath` (e.g. `make -C demos/showcase
