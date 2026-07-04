@@ -7,7 +7,7 @@
 |---|---|
 | Proposal | [BE-0114](BE-0114-driver-conformance-suite.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0114") |
 | Topic | Platform expansion (Android / Web / Flutter) |
 | Related | [BE-0009](../BE-0009-cross-platform-abstractions/BE-0009-cross-platform-abstractions.md), [BE-0042](../BE-0042-platform-backend-registry/BE-0042-platform-backend-registry.md), [BE-0082](../BE-0082-capability-preflight-check/BE-0082-capability-preflight-check.md), [BE-0019](../BE-0019-xcuitest-backend/BE-0019-xcuitest-backend.md), [BE-0007](../BE-0007-android-backend/BE-0007-android-backend.md) |
@@ -107,11 +107,18 @@ backend.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Enumerate the backend-agnostic contract (ambiguous / zero-match / `capabilities()` / wait / evidence invariants)
-- [ ] Build the parametrized conformance suite against the `Driver` interface
-- [ ] Run FakeDriver in the fast Linux gate (`make check`); run Playwright in the separate web CI job
+- [x] Enumerate the backend-agnostic contract (ambiguous / zero-match / `capabilities()` / wait / evidence invariants)
+- [x] Build the parametrized conformance suite against the `Driver` interface
+- [ ] Run FakeDriver in the fast Linux gate (`make check`); run Playwright in the separate web CI job — *FakeDriver done; Playwright web CI pending*
 - [ ] Run idb + XCUITest under the on-device E2E path (same suite)
-- [ ] `capabilities()` conformance check + document the contract as the "done" definition for a new backend
+- [x] `capabilities()` conformance check + document the contract as the "done" definition for a new backend
+
+Log:
+
+- 2026-07-04: First slice — the executable contract (`tests/driver_conformance.py`) and the
+  FakeDriver conformance suite (`tests/test_driver_conformance.py`) on the fast Linux gate, plus
+  the contract documented in `docs/architecture.md`. Playwright (web CI) and idb / XCUITest
+  (on-device E2E) remain, tracked here.
 
 ## References
 

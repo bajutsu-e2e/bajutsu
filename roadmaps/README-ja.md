@@ -405,6 +405,7 @@ Web（Playwright）backend とその完成（リッチな capability、並列実
 | ID | 項目 | 状態 |
 |---|---|---|
 | [BE-0007](BE-0007-android-backend/BE-0007-android-backend-ja.md) | Android backend | 実装中 |
+| [BE-0114](in-progress/BE-0114-driver-conformance-suite/BE-0114-driver-conformance-suite-ja.md) | backend 非依存の挙動を検査する driver conformance suite | 実装中 |
 <!-- /GENERATED:in-progress-platform -->
 
 ### 競合調査（MagicPod / Autify）由来の候補
@@ -495,7 +496,6 @@ Web（Playwright）backend とその完成（リッチな capability、並列実
 | ID | 項目 | 状態 |
 |---|---|---|
 | [BE-0008](BE-0008-flutter-support/BE-0008-flutter-support-ja.md) | Flutter 対応 | 提案 |
-| [BE-0114](BE-0114-driver-conformance-suite/BE-0114-driver-conformance-suite-ja.md) | backend 非依存の挙動を検査する driver conformance suite | 提案 |
 | [BE-0126](BE-0126-per-platform-effective-config/BE-0126-per-platform-effective-config-ja.md) | Effective をプラットフォームごとの設定に分割する | 提案 |
 | [BE-0128](BE-0128-device-step-capability-preflight/BE-0128-device-step-capability-preflight-ja.md) | デバイス制御ステップをケイパビリティで preflight ゲートする | 提案 |
 | [BE-0141](BE-0141-backend-lifecycle-protocol/BE-0141-backend-lifecycle-protocol-ja.md) | backend のライフサイクルを型システムに載せる | 提案 |

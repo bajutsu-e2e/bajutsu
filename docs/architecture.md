@@ -147,6 +147,32 @@ builders are verified as pure functions, and execution paths are tested with `Fa
 injected runners (`RunFn` · `Spawn` · `Clock`). Real-device E2E against the showcase app is
 `make -C demos/showcase run-swiftui` / `make -C demos/showcase ui-test` ([showcase](showcase.md)).
 
+### Driver conformance suite (BE-0114)
+
+Prime directive #3 says every backend sits behind one `Driver` interface, so the determinism-core
+invariants must hold identically on all of them. Per-backend tests alone cannot guarantee that: a
+backend that tapped the first match on an ambiguous selector, or returned success on a zero-match,
+would pass its own tests and fail no shared one. The **driver conformance suite** closes that gap —
+one executable contract (a TCK, a technology compatibility kit) that runs the *same* test body
+against every backend, driving the real driver instance (including code that bypasses
+`drivers/base`), not the shared base alone.
+
+The contract (`tests/driver_conformance.py`) is the "done" definition a new backend meets:
+
+- an ambiguous selector (2+ matches) fails rather than acting on the first match;
+- a zero-match selector fails rather than reporting success;
+- selector failures share one error type (`SelectorError`), uniform across backends;
+- a unique match acts without error, and `query()` reports the on-screen elements;
+- `capabilities()` matches observed behavior — the `QUERY` / `ELEMENTS` baseline is declared, and
+  multi-touch gestures work exactly when `MULTI_TOUCH` is declared (else raise `UnsupportedAction`);
+- `wait_for` is a single-shot check of the current screen, with the shared `wait_until` loop
+  turning it into a condition wait with no fixed sleep.
+
+To add a backend to the suite, implement a `ConformanceHarness` (given a screen, return a driver
+showing it) and subclass `DriverConformanceContract`; pytest then runs the inherited contract
+against it. `FakeDriver` runs on the fast Linux gate (`make check`); Playwright runs in the web CI
+job and idb / XCUITest under the on-device E2E path — the same contract, no second spec.
+
 ---
 
 ## Implementation status
