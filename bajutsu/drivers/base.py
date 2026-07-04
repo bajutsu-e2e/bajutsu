@@ -47,6 +47,7 @@ class Capability:
     ELEMENTS = "elements"
     MULTI_TOUCH = "multiTouch"  # two-finger gestures (pinch / rotate); idb is single-touch
     WEBVIEW = "webView"  # DOM query/tap inside an embedded WKWebView (BE-0037)
+    DEVICE_CONTROL = "deviceControl"  # simctl DeviceControl family as one unit (BE-0128)
 
 
 class Element(TypedDict):
