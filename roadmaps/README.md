@@ -142,6 +142,7 @@ The first slices of the multi-platform direction that have shipped: a **platform
 | ID | Item | Status |
 |---|---|---|
 | [BE-0020](BE-0020-multi-backend-evidence-fallback/BE-0020-multi-backend-evidence-fallback.md) | Multi-backend evidence fallback | Implemented |
+| [BE-0105](BE-0105-xcuitest-single-snapshot-query/BE-0105-xcuitest-single-snapshot-query.md) | Single-snapshot element query for XCUITest | Implemented |
 <!-- /GENERATED:implemented-backend -->
 
 ### doctor / onboarding
@@ -609,9 +610,7 @@ Keeping the autonomous crawl fast and its code lean as it grows.
 ### Backend expansion (iOS actuators)
 
 <!-- GENERATED:proposals-backend -->
-| ID | Item | Status |
-|---|---|---|
-| [BE-0105](BE-0105-xcuitest-single-snapshot-query/BE-0105-xcuitest-single-snapshot-query.md) | Single-snapshot element query for XCUITest | Proposal |
+
 <!-- /GENERATED:proposals-backend -->
 
 ### doctor / onboarding

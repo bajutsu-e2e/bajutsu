@@ -62,6 +62,12 @@ _OK = "ok"
 _STALE = "stale"  # the resolved handle no longer maps to a live element (the screen changed)
 _NOT_FOUND = "not-found"  # the runner could not act on the handle (no matching live element)
 
+# Socket timeout for a single runner request. BE-0105 replaced the per-attribute `/elements` walk
+# (~10s+ per screen) with one `app.snapshot()`, so the 60s stopgap is reverted to a bounded window:
+# generous enough for a cold first snapshot (XCUITest waits for the app to idle), tight enough that a
+# wedged runner fails loudly rather than hanging.
+_SOCKET_TIMEOUT_SECONDS = 15
+
 
 def _to_element(item: Mapping[str, Any]) -> base.Element:
     """Normalize one `GET /elements` item into an `Element`.
@@ -101,10 +107,9 @@ def _http_transport(host: str, port: int) -> TransportFn:
     """The real transport: one short HTTP request to the runner's loopback server per call."""
 
     def transport(method: str, path: str, body: Mapping[str, Any] | None) -> _Reply:
-        # A full-tree `/elements` walk can take ~10s+ on the runner, and XCUITest's first snapshot
-        # on a cold Simulator (it waits for the app to idle) can be far slower still — so the socket
-        # timeout is generous; a genuinely wedged runner still fails, just not prematurely.
-        conn = http.client.HTTPConnection(host, port, timeout=60)
+        # One `app.snapshot()` per `/elements` (BE-0105), so the bounded `_SOCKET_TIMEOUT_SECONDS`
+        # still covers a cold first snapshot while failing a wedged runner in a reasonable window.
+        conn = http.client.HTTPConnection(host, port, timeout=_SOCKET_TIMEOUT_SECONDS)
         try:  # pragma: no cover - exercised on-device against the real runner, not on the gate
             payload = json.dumps(body).encode() if body is not None else None
             headers = {"Content-Type": "application/json"} if payload is not None else {}
