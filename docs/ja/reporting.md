@@ -1,8 +1,8 @@
 [English](../reporting.md) · **日本語**
 
-# レポート（manifest.json / JUnit / HTML）
+# レポート（manifest.json / JUnit / CTRF / HTML）
 
-> 1 回の run は、1 つ以上のシナリオ（`list[RunResult]`）を実行します。その結果を 3 つの形式で
+> 1 回の run は、1 つ以上のシナリオ（`list[RunResult]`）を実行します。その結果を 4 つの形式で
 > 書き出します。`manifest.json` が、レポートと CI（継続的インテグレーション）の **単一の真実**です。
 >
 > 実装: `bajutsu/report/`（パッケージ。段階で分割: `format` → `manifest` / `richtext` → `rows` / `panels` → `html`）。
@@ -17,6 +17,7 @@
 runs/<runId>/
 ├── manifest.json     # step → outcome の相関（単一の真実）
 ├── junit.xml         # CI 連携（1 シナリオ = 1 testcase）
+├── ctrf.json         # Common Test Report Format（PR コメントやダッシュボードなど、より豊かな CI の消費側向け）
 ├── report.html       # 自己完結 HTML（外部アセット無し）
 └── <stepId>/         # ステップごとの証跡（FileSink 使用時）
     ├── after.png     # screenshot
@@ -84,6 +85,49 @@ step 1 tap: FAIL 一致なし: {...}</failure>
 </testsuite>
 ```
 
+## ctrf.json
+
+[Common Test Report Format（CTRF）](https://ctrf.io/)への出力です（[BE-0161](../../roadmaps/BE-0161-ctrf-report-export/BE-0161-ctrf-report-export-ja.md)）。CTRF はオープン標準の JSON テストレポートで、`ctrf-io` の GitHub Actions（PR コメントやジョブサマリーの出力ツール）、ツールをまたぐダッシュボード、flaky なテストの分析といった、育ちつつある消費側のエコシステムが、ツールごとのアダプターなしに読めます。JUnit XML が run を名前・所要時間・失敗内容の塊まで削ぎ落とすのに対し、CTRF は Bajutsu の構造化された詳細（ステップごとの結果、エンジンとデバイス、第一級のアタッチメントとしてのアーティファクト）を運びます。これらは JUnit には収まる場所がありません。この出力は **`manifest.json` の純粋な射影**であり、同じデータを `junit.xml` の隣に別の形で並べるだけなので、新しい記帳は生じません。判定より後に書くので判定を動かすこともありません（LLM は関与せず、合否にも影響しません）。
+
+文書は `{ reportFormat: "CTRF", specVersion, generatedBy, timestamp, results }` で、`results` が `tool` / `summary` / `tests`（＋任意の `environment` / `extra`）を持ちます。
+
+```json
+{
+  "reportFormat": "CTRF",
+  "specVersion": "0.0.0",
+  "generatedBy": "bajutsu",
+  "results": {
+    "tool": { "name": "bajutsu", "version": "…" },
+    "summary": { "tests": 2, "passed": 1, "failed": 1, "skipped": 0, "pending": 0, "other": 0,
+                 "start": 1717581300000, "stop": 1717581302300, "duration": 2300 },
+    "tests": [
+      { "name": "login", "status": "passed", "duration": 1500,
+        "steps": [{ "name": "tap", "status": "passed", "extra": { "duration": 500 } }],
+        "browser": "chromium", "device": "iPhone 15 (iOS 17.2)",
+        "attachments": [{ "name": "00-login/scenario.mp4", "contentType": "video/mp4", "path": "00-login/scenario.mp4" }] }
+    ]
+  }
+}
+```
+
+- `summary.duration` と各 `tests[].duration` はミリ秒（Σ／シナリオごとの `duration_s`）で、CTRF の消費側が拠り所にするフィールドであり、正確です。`summary.start` は `YYYYMMDD-HHMMSS` の runId（ホストのタイムゾーン）から導出し、`stop = start + duration` です。テストごとの絶対 start/stop は、シナリオごとの絶対エポックが要る（オプションの後続作業）ため、近似せず省きます。
+- `tests[].status` は `passed` / `failed` です。Bajutsu の run が出す状態はこの二つだけで、他の CTRF の集計は `0` のままです。
+- CTRF の `step` は `{ name, status, extra }` しか許さないので、ステップのより豊かなデータ（duration、reason、ステップごとのアサーション、アーティファクト）は `step.extra` に入れます。name／status だけを描画する消費側にはきれいな一覧が見え、Bajutsu を理解するツールは extra を読めます。
+- アタッチメントの `contentType` は、アーティファクトの `kind` → MIME の対応表（`video`→`video/mp4`、`screenshot`→`image/png`、`deviceLog`→`text/plain`、`elements`／`network`／`appTrace`→`application/json`）から決め、未知の kind には `application/octet-stream` を充てます。`path` は manifest と同じく実行ディレクトリからの相対パスです。
+- `--browsers` のマトリクス run では、エンジン × シナリオの各セルが 1 つの CTRF テストになります。エンジンはテストの `name` と `browser` フィールドに入れ（JUnit の `classname` に倣います）、エンジン × シナリオのグリッドは `results.extra.matrix` に持ちます。Bajutsu のその他の余剰（`sid`、`expect` の結果、アラート、`skipped_captures`）は、テストごとの `extra` に入ります。
+- CTRF は秘匿処理済みの manifest から射影されるので、同じ秘匿処理を継承します（[BE-0047](../../roadmaps/BE-0047-ai-data-sovereignty/BE-0047-ai-data-sovereignty-ja.md)）。生のシークレットは届きません。
+
+### CI で ctrf.json を消費する
+
+`ctrf.json` は `junit.xml` の隣にあるので、CI ジョブへの組み込みは消費側の一手順で済みます。たとえば `ctrf-io/github-test-reporter` アクションは、これを PR コメントやジョブサマリーに変換します。
+
+```yaml
+- uses: ctrf-io/github-test-reporter@v1
+  with:
+    report-path: runs/*/ctrf.json
+  if: always()
+```
+
 ## report.html
 
 人間が見る自己完結 HTML（インライン CSS、外部アセット無し）です。ヘッダには run id と全体 PASS/FAIL、
@@ -120,10 +164,11 @@ baseline に重ねてクロスフェード）/ **Blend**（`mix-blend-mode: diff
 ## 書き出し API
 
 ```python
-def write_report(run_dir, run_id, results, definitions=None, sources=None, source_name=None, description=None, idb_versions=None, provenance=None) -> Path  # 3 形式を書く。definitions=シナリオ毎の dict、sources=生 YAML、source_name=シナリオファイル名、description=ファイルレベルの説明、idb_versions=idb の来歴（BE-0005）、provenance=run の同一性スタンプ（BE-0049）
-def write_html_and_junit(run_dir, run_id, results, definitions=None, sources=None, source_name=None, description=None) -> None  # 描画される側だけ（report.html + junit.xml）。manifest.json は触らない。再描画が使う
+def write_report(run_dir, run_id, results, definitions=None, sources=None, source_name=None, description=None, idb_versions=None, provenance=None) -> Path  # 4 形式を書く。definitions=シナリオ毎の dict、sources=生 YAML、source_name=シナリオファイル名、description=ファイルレベルの説明、idb_versions=idb の来歴（BE-0005）、provenance=run の同一性スタンプ（BE-0049）
+def write_html_and_junit(run_dir, run_id, results, definitions=None, sources=None, source_name=None, description=None, provenance=None) -> None  # 再生成できる側だけ（report.html + junit.xml + ctrf.json）。manifest.json は触らない。再描画が使う。provenance は CTRF の tool/environment フィールドに使う
 def manifest_dict(run_id, results, *, source_name=None, idb_versions=None, provenance=None) -> dict  # バージョン付き render モデル（schemaVersion）。manifest の素（テスト、検査用）
 def run_provenance(scenario_yaml, *, git_revision, config_source=None) -> dict  # run の同一性スタンプ: scenarioHash + toolVersion + 任意の gitRevision（BE-0049）+ 任意の configSource（BE-0063）
+def ctrf_json(run_id, results, *, provenance=None) -> dict  # 実行結果モデルの CTRF への射影（BE-0161）。provenance は tool.version / environment.commit に使う
 def junit_xml(results) -> str
 def html_report(run_id, results, run_dir=None, definitions=None, sources=None, source_name=None, description=None) -> str
 def scenario_render_inputs(scenarios) -> tuple[list[dict], list[str]]  # (definitions, sources)。初回 bake と再描画で共有
@@ -134,4 +179,4 @@ def scenario_render_inputs(scenarios) -> tuple[list[dict], list[str]]  # (defini
 
 ## レポートの再生成（BE-0068）
 
-レポートは **run dir に保存されたデータの純粋なレンダリング**です。そのため、完了した run を再実行せずに現行テンプレでオフライン再描画できます。`manifest.json` が**バージョン付き**（`schemaVersion`）で無損失の render モデルで、`report.load` がその逆変換です。`results_from_manifest()` が `RunResult` を復元し、`load_run(run_dir)` が render モデル全体（outcome は `manifest.json`、シナリオの plan は `scenario.yaml`）を復元します。`bajutsu report <run>`（[cli](cli.md#report)）がそれを使って `report.html`＋`junit.xml` を書き直します。再描画は記録済みの outcome を再提示するだけで、assertion を再実行したり verdict を変えたりしません。古い run も、新しいバージョンにしかないセクションを捏造せず「not captured」と表示して描画します。
+レポートは **run dir に保存されたデータの純粋なレンダリング**です。そのため、完了した run を再実行せずに現行テンプレでオフライン再描画できます。`manifest.json` が**バージョン付き**（`schemaVersion`）で無損失の render モデルで、`report.load` がその逆変換です。`results_from_manifest()` が `RunResult` を復元し、`load_run(run_dir)` が render モデル全体（outcome は `manifest.json`、シナリオの plan は `scenario.yaml`）を復元します。`bajutsu report <run>`（[cli](cli.md#report)）がそれを使って `report.html`＋`junit.xml`＋`ctrf.json` を書き直します。再描画は記録済みの outcome を再提示するだけで、assertion を再実行したり verdict を変えたりしません。古い run も、新しいバージョンにしかないセクションを捏造せず「not captured」と表示して描画します。

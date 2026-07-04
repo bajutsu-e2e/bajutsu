@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0161](BE-0161-ctrf-report-export.md) |
 | Author | [@hirosassa](https://github.com/hirosassa) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0161") |
+| Implementing PR | _pending_ |
 | Topic | Integration with external services |
 <!-- /BE-METADATA -->
 
@@ -172,12 +173,21 @@ emit one CTRF `test` per cell, with the engine in the test name and in `browser`
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] `kind → MIME` mapping for artifacts.
-- [ ] `ctrf_json()` builder (summary / tests / steps / attachments / environment / `extra`; serial + matrix).
-- [ ] Wire into report assembly (`run`) and `bajutsu report` regeneration.
-- [ ] Tests: schema-valid `ctrf.json` for a serial and a matrix run; field round-trip.
-- [ ] Bilingual docs: `ctrf.json` as a run artifact + a "consume it in CI" note.
+- [x] `kind → MIME` mapping for artifacts.
+- [x] `ctrf_json()` builder (summary / tests / steps / attachments / environment / `extra`; serial + matrix).
+- [x] Wire into report assembly (`run`) and `bajutsu report` regeneration.
+- [x] Tests: schema-valid `ctrf.json` for a serial and a matrix run; field round-trip.
+- [x] Bilingual docs: `ctrf.json` as a run artifact + a "consume it in CI" note.
 - [ ] *(Optional)* absolute epoch start on run/scenario for exact `start`/`stop`; `manifest.json` schema bump.
+
+**Log**
+
+- 2026-07-04 — Shipped the exporter: a `kind → MIME` map and a `ctrf_json()` projection in
+  `bajutsu/report/ctrf.py`, wired into `write_html_and_junit` so both `run` and `bajutsu report`
+  emit `ctrf.json` (provenance threaded through `RenderModel` for the regeneration path), with
+  `ctrf.json` added to the secret-value scrub. Tests validate a serial and a matrix run against the
+  vendored official CTRF schema and round-trip the mapped fields; bilingual docs added. The optional
+  absolute-epoch refinement is deferred.
 
 ## References
 
