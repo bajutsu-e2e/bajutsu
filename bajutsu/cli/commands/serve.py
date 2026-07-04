@@ -83,6 +83,14 @@ def serve(
         "policy. The server holds the credentials and hands workers presigned PUT URLs, so a "
         "worker uploads without any cloud credentials of its own (BE-0110). Needs the s3 or gcs extra",
     ),
+    allow_remote_build: bool = typer.Option(
+        False,
+        "--allow-remote-build",
+        envvar="BAJUTSU_ALLOW_REMOTE_BUILD",
+        help="run the `build:` command of a Git config bound at runtime through the UI (BE-0121). "
+        "Off by default: an API-bound Git config is untrusted, so its build is never run on the "
+        "host unless you opt in here. A local/startup config is operator-trusted and unaffected.",
+    ),
 ) -> None:
     """Launch a local web UI to run scenarios and view their reports (Tier 1; not for CI).
 
@@ -182,6 +190,7 @@ def serve(
             token=resolved_token or None,
             upload_exec=resolved_upload_exec,
             evidence=evidence,
+            allow_remote_build=allow_remote_build,
             asgi=asgi,
             backend=backend,
             cwd=cwd,

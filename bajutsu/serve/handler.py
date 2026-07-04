@@ -29,6 +29,26 @@ from bajutsu.serve.uploads import MAX_UPLOAD_BYTES
 # Stream an uploaded bundle to disk in 1 MiB chunks so a large app binary never loads into memory.
 _UPLOAD_CHUNK = 1024 * 1024
 
+# Host-header values that always name this machine (BE-0121 DNS-rebinding defense).
+_LOOPBACK_HOSTS = frozenset({"localhost", "127.0.0.1", "::1"})
+
+
+def _allowed_hosts(host: str) -> frozenset[str]:
+    """The `Host`-header hostnames a server bound to *host* accepts (BE-0121).
+
+    A loopback bind accepts every loopback name; a specific host adds that name (still reachable via
+    loopback locally). A wildcard bind (``0.0.0.0`` / ``::`` / empty) can't enumerate its reachable
+    names — the operator chose broad exposure, often behind a proxy with its own hostname — so it
+    returns an empty set, which disables Host enforcement (CSRF stays the cross-origin guard).
+    """
+    if host in ("", "0.0.0.0", "::"):  # noqa: S104 — matching a wildcard bind, not binding one
+        return frozenset()
+    normalized = host.lower()
+    if normalized in _LOOPBACK_HOSTS:
+        return _LOOPBACK_HOSTS
+    return _LOOPBACK_HOSTS | {normalized}
+
+
 # Session cookie set at login when a serve token is configured (BE-0051).
 _SESSION_COOKIE = "bajutsu_session"
 _OAUTH_STATE_COOKIE = (
@@ -93,6 +113,16 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
             (loopback-only legacy behavior). Otherwise every request must be authorized, except
             the index page (so the login UI can load) and the login endpoint itself. Sends 401
             and returns False when a required credential is missing."""
+            if not self._host_ok():
+                # DNS-rebinding defense (BE-0121): a Host that names no bound interface is refused
+                # ahead of everything else, so a rebound hostname reaches no endpoint at all
+                # (including GET /api/apikey?reveal=1), regardless of the token/CSRF posture. Close
+                # the connection rather than draining the body: a rejected request needs no
+                # keep-alive, and this is the one gate an unbounded /api/upload body can hit, so
+                # draining Content-Length here would read the whole upload just to discard it.
+                self.close_connection = True
+                self._json({"error": "host not allowed"}, 403)
+                return False
             if state.token is None:
                 return True
             path = urlparse(self.path).path
@@ -204,6 +234,16 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
                 return True
             return urlparse(origin).netloc == (self.headers.get("Host") or "")
 
+        def _host_ok(self) -> bool:
+            """DNS-rebinding defense (BE-0121): the request's `Host` must name an interface serve is
+            bound to. An empty allowlist (a wildcard bind, whose reachable names can't be enumerated)
+            accepts any Host; a loopback/named bind enforces its own names, so a page that rebinds a
+            hostname to 127.0.0.1 can't reach the loopback server through a same-origin request."""
+            if not state.allowed_hosts:
+                return True
+            host = urlparse(f"//{self.headers.get('Host', '')}").hostname
+            return host in state.allowed_hosts
+
         def do_POST(self) -> None:
             oplog.bind_request(oplog.new_request_id())
             if not self._gate():
@@ -215,8 +255,10 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
                 self._handle_upload()
                 return
             length = int(self.headers.get("Content-Length") or 0)
-            # Block cross-origin state-changing requests when auth (the cookie) is in play.
-            if state.token is not None and not self._csrf_ok():
+            # Block cross-origin state-changing requests unconditionally (BE-0121) — not only when a
+            # token is configured. The no-token loopback default is the common `make serve` case, and
+            # an unguarded POST there is the CSRF-to-arbitrary-config hole this closes.
+            if not self._csrf_ok():
                 if length:
                     self.rfile.read(length)  # drain so keep-alive isn't left with unread bytes
                 self._json({"error": "cross-origin request blocked"}, 403)
@@ -295,7 +337,7 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
             # These early returns don't read the (possibly huge) body, so the connection still holds
             # the unread upload bytes. Close it rather than draining gigabytes or leaving them to
             # corrupt the next request on a keep-alive connection.
-            if state.token is not None and not self._csrf_ok():
+            if not self._csrf_ok():  # unconditional cross-origin block (BE-0121)
                 self.close_connection = True
                 self._json({"error": "cross-origin request blocked"}, 403)
                 return
@@ -453,6 +495,9 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
 
 
 def make_server(state: ServeState, host: str = "127.0.0.1", port: int = 0) -> ThreadingHTTPServer:
+    # Derive the Host allowlist from the interface we actually bind, so `_gate` can reject a
+    # rebound hostname (BE-0121). A wildcard bind yields an empty allowlist (enforcement off).
+    state.allowed_hosts = _allowed_hosts(host)
     return ThreadingHTTPServer((host, port), _make_handler(state))
 
 

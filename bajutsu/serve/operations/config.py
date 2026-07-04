@@ -138,6 +138,7 @@ def bind_config(state: ServeState, raw: str) -> tuple[Any, int]:
         return {"error": f"invalid config: {e}"}, 400
     state.release_upload()  # a fresh config replaces any bound bundle and resets cwd to serve's launch dir
     state.config = target
+    state.git_config_from_api = False  # a local file config is operator-trusted (BE-0121)
     return {"ok": True, "config": str(target), "targets": list_targets(target)}, 200
 
 
@@ -179,6 +180,9 @@ def bind_git_config(state: ServeState, spec_str: str) -> tuple[Any, int]:
     state.release_upload()  # switching to a Git config drops any bound bundle's sandbox
     state.config = mat.config_path
     state.cwd = mat.root  # the checkout root: the config's relative paths resolve from here
+    # A Git config bound here came in over the API, not from the operator's startup flags, so its
+    # `build:` command is untrusted and stays ungoverned until --allow-remote-build opts in (BE-0121).
+    state.git_config_from_api = True
     return {
         "ok": True,
         "config": str(mat.config_path),

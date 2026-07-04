@@ -23,6 +23,22 @@ from bajutsu.serve.operations._common import _device_args, _resolve_org_or_forbi
 _logger = logging.getLogger("bajutsu.serve.operations")
 
 
+def _governed_build(state: ServeState, build: str | None) -> str | None:
+    """The `build:` command serve may run for the active config, or None when it's untrusted.
+
+    An uploaded bundle ships a prebuilt binary, so its build never runs on the host — DESIGN §1
+    "Bajutsu does not build the app" (BE-0073). A Git config bound at runtime via the API is equally
+    untrusted (a cross-origin request could have bound it), so its build is nulled too unless the
+    operator opted in with --allow-remote-build (BE-0121). A local or startup-bound config is
+    operator-trusted and keeps its build.
+    """
+    if state.upload is not None:
+        return None
+    if state.git_config_from_api and not state.allow_remote_build:
+        return None
+    return build
+
+
 def _boot_targets(udid: str) -> list[str]:
     """The concrete devices to boot before a run/record/crawl. Picked devices are booted (and
     waited on) first; the "booted" alias names whatever is already up, so it's not a boot target."""
@@ -151,11 +167,7 @@ def start_run(
         # can emit all four (the flag surface stays complete), but they stay config-driven here.
     )
     app_path, build = target_build_info(cfg, target)
-    if state.upload is not None:
-        # An uploaded bundle ships a prebuilt binary; never run its (untrusted) `build` command on the
-        # host — DESIGN §1 "Bajutsu does not build the app" (BE-0073). appPath was confined to the
-        # bundle at bind. The bundle's provenance is stamped into the run's manifest after it finishes.
-        build = None
+    build = _governed_build(state, build)
     # Per-run evidence-upload prefix (BE-0110): CI passes it to select the cloud lifecycle policy. It
     # becomes a storage key segment, so reject a non-string, a leading `/`, or `..` traversal here —
     # the same guard the upload-urls endpoint re-applies to the worker-relayed value.
@@ -234,6 +246,7 @@ def start_record(
         upload_exec=state.upload_exec if state.upload is not None else "",
     )
     app_path, build = target_build_info(cfg, body["target"])
+    build = _governed_build(state, build)
     job, capped = _register_and_dispatch(
         state,
         Job(
@@ -300,6 +313,7 @@ def start_crawl(
         upload_exec=state.upload_exec if state.upload is not None else "",
     )
     app_path, build = target_build_info(cfg, target)
+    build = _governed_build(state, build)
     # Cap concurrency like run/record: crawl is long and device-heavy (BE-0051 slice 5).
     job, capped = _register_and_dispatch(
         state,

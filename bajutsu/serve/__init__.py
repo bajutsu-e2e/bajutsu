@@ -29,7 +29,7 @@ from bajutsu.config import DEFAULT_ORG, targets_for_org
 from bajutsu.object_store import EvidenceTarget
 from bajutsu.serve.artifacts import Artifact, ArtifactStore, LocalArtifactStore
 from bajutsu.serve.executor import LocalExecutor, RunExecutor
-from bajutsu.serve.handler import make_server
+from bajutsu.serve.handler import _allowed_hosts, make_server
 from bajutsu.serve.helpers import (
     _int,
     _scenario_path,
@@ -160,6 +160,7 @@ def _build_state(
     token: str | None,
     upload_exec: str = "sandbox",
     evidence: EvidenceTarget | None = None,
+    allow_remote_build: bool = False,
     backend: str = "local",
     cwd: Path | None = None,
 ) -> ServeState:
@@ -191,6 +192,7 @@ def _build_state(
                 token=token,
                 upload_exec=upload_exec,
                 evidence=evidence,
+                allow_remote_build=allow_remote_build,
             )
         except ImportError as e:
             # Only a missing third-party extra earns the install hint. A failed `bajutsu.*` import is
@@ -214,6 +216,7 @@ def _build_state(
         token=token,
         upload_exec=upload_exec,
         evidence=evidence,
+        allow_remote_build=allow_remote_build,
         cwd=cwd or Path.cwd(),
     )
 
@@ -229,6 +232,7 @@ def _build_server_state(
     token: str | None,
     upload_exec: str = "sandbox",
     evidence: EvidenceTarget | None = None,
+    allow_remote_build: bool = False,
 ) -> ServeState:
     """Wire the hosted seams from the environment (the single-tenant server backend, BE-0015/BE-0106).
 
@@ -297,6 +301,7 @@ def _build_server_state(
         token=token,
         upload_exec=upload_exec,
         evidence=evidence,
+        allow_remote_build=allow_remote_build,
         executor=DbQueueExecutor(repo) if repo is not None else LocalExecutor(),
         logbus=(
             PostCompletionLogBus(
@@ -390,6 +395,9 @@ def make_asgi_server(state: ServeState, host: str = "127.0.0.1", port: int = 876
             "install with: pip install 'bajutsu[server]'"
         ) from e
 
+    # Derive the Host allowlist from the bound interface, exactly as make_server does for the stdlib
+    # transport, so the ASGI gate enforces the same DNS-rebinding defense (BE-0121).
+    state.allowed_hosts = _allowed_hosts(host)
     return uvicorn.Server(
         uvicorn.Config(make_app(state), host=host, port=port, log_level="warning")
     )
@@ -408,6 +416,7 @@ def serve(
     *,
     upload_exec: str = "sandbox",
     evidence: EvidenceTarget | None = None,
+    allow_remote_build: bool = False,
     asgi: bool = False,
     backend: str = "local",
     cwd: Path | None = None,
@@ -422,6 +431,7 @@ def serve(
         token=token,
         upload_exec=upload_exec,
         evidence=evidence,
+        allow_remote_build=allow_remote_build,
         backend=backend,
         cwd=cwd,
     )
@@ -431,6 +441,14 @@ def serve(
     shutil.rmtree(state.uploads_dir, ignore_errors=True)
     _configure_oplog(state)
     hint = str(config) if config else "open a config.yml in the UI"
+    if not _allowed_hosts(host):
+        # A wildcard bind can't enumerate its reachable hostnames, so the Host allowlist is off
+        # (BE-0121). Say so, rather than silently downgrading the DNS-rebinding defense — CSRF stays
+        # the cross-origin guard, and a non-loopback bind already requires a token.
+        print(  # noqa: T201
+            f"note: Host-header enforcement is off for the wildcard bind {host!r}; "
+            "CSRF remains the cross-origin defense (BE-0121)"
+        )
     if asgi:
         # The FastAPI app over uvicorn — the transport the hosted backend will use; runnable now
         # with the local backend (a single-process ASGI server) so the path is exercised before

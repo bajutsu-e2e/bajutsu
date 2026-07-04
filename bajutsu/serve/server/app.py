@@ -8,8 +8,8 @@ imported only when the server backend is selected (the import guard in
 ``server`` optional-dependency group.
 
 The transport-specific parts mirror the stdlib handler one-to-one: the auth gate (BE-0051), the
-CSRF Origin check, the session cookie, and the hardening response headers. Live-log SSE streaming
-arrives with a later slice; the rest of the API surface is here.
+unconditional CSRF Origin check and Host allowlist (BE-0121), the session cookie, and the hardening
+response headers. Live-log SSE streaming arrives with a later slice; the rest of the API surface is here.
 """
 
 from __future__ import annotations
@@ -66,9 +66,27 @@ def make_app(state: ServeState) -> FastAPI:
 
     @app.middleware("http")
     async def gate(request: Request, call_next: Any) -> Response:
-        """Auth + CSRF + hardening headers, mirroring the stdlib handler's `_gate`/`_csrf_ok`/
-        `end_headers` exactly so the two backends enforce the same policy."""
+        """Host allowlist + auth + CSRF + hardening headers, mirroring the stdlib handler's
+        `_gate`/`_host_ok`/`_csrf_ok`/`end_headers` exactly so the two backends enforce the same
+        policy (BE-0051/BE-0121)."""
         oplog.bind_request(oplog.new_request_id())
+        # DNS-rebinding defense (BE-0121): a Host that names no bound interface is refused ahead of
+        # everything else, regardless of the token/CSRF posture. An empty allowlist (a wildcard bind,
+        # set by make_asgi_server) accepts any Host, so this is off unless we bound a named interface.
+        if state.allowed_hosts:
+            host = urlparse(f"//{request.headers.get('host', '')}").hostname
+            if host not in state.allowed_hosts:
+                return _hardened(JSONResponse({"error": "host not allowed"}, status_code=403))
+        # Block cross-origin state-changing requests unconditionally (BE-0121) — not only when a token
+        # is configured. A no-token server would otherwise leave every POST as an unguarded CSRF
+        # surface (the CSRF-to-arbitrary-config hole this closes). No Origin (a non-browser client)
+        # passes, matching the stdlib `_csrf_ok`.
+        if request.method == "POST":
+            origin = request.headers.get("origin")
+            if origin and urlparse(origin).netloc != (request.headers.get("host") or ""):
+                return _hardened(
+                    JSONResponse({"error": "cross-origin request blocked"}, status_code=403)
+                )
         if state.token is not None:
             path, method = request.url.path, request.method
             open_path = (method == "GET" and path in _OPEN_GET) or (
@@ -85,13 +103,6 @@ def make_app(state: ServeState) -> FastAPI:
                 and ops.forbidden_for_role(state, login, method, path)
             ):
                 return _hardened(JSONResponse({"error": "forbidden"}, status_code=403))
-            # Block cross-origin state-changing requests when auth (the cookie) is in play.
-            if method == "POST":
-                origin = request.headers.get("origin")
-                if origin and urlparse(origin).netloc != (request.headers.get("host") or ""):
-                    return _hardened(
-                        JSONResponse({"error": "cross-origin request blocked"}, status_code=403)
-                    )
         return _hardened(await call_next(request))
 
     def _hardened(response: Response) -> Response:
