@@ -398,10 +398,10 @@
         <option value="" data-testid="settings.provider-placeholder" selected>Select an AI provider…</option>
         <option value="anthropic">Anthropic API (uses ANTHROPIC_API_KEY)</option>
         <option value="bedrock">Amazon Bedrock (uses AWS credentials)</option>
-        <option value="claude-code">Claude Code (the claude CLI, your subscription)</option>
+        <option value="ant">Anthropic CLI (ant, OAuth sign-in)</option>
       </select>
-      <div id="claudecodefields" hidden>
-        <div class="fshint"><b>Record</b> and <b>Crawl</b> author through the local <code>claude</code> CLI (Claude Code) on your Pro/Max subscription instead of the pay-per-token API. Install Claude Code and authenticate it (<code>claude setup-token</code>) in the environment that launched <code>serve</code>; an <code>ANTHROPIC_API_KEY</code>, if set, is stripped from the call so the subscription is billed. Authoring is text-only (no screenshot). The <b>alert guard</b> (Replay / Crawl with dismiss-alerts) still uses the Anthropic SDK; set <code>ANTHROPIC_API_KEY</code> in the environment for it, otherwise it no-ops.</div>
+      <div id="antfields" hidden>
+        <div class="fshint">Every AI path (<b>Record</b>, <b>Crawl</b>, and the <b>alert guard</b>) reaches Claude through the official Anthropic CLI (<code>ant</code>) on your Pro/Max/Console seat instead of an API key. Install <code>ant</code> and sign in with <code>ant auth login</code> (a browser-based OAuth/SSO flow against the Claude Console) in the environment that launched <code>serve</code>; <code>ANTHROPIC_PROFILE</code> selects a named profile. No API key is needed &mdash; the CLI's bearer token authenticates every request, with full vision (screenshots) on every path.</div>
       </div>
       <div id="bedrockfields" data-testid="settings.bedrock-fields" hidden>
         <label class="keylabel" for="bedrock-region">AWS region</label>

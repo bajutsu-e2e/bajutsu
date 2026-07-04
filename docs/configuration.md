@@ -112,7 +112,7 @@ deterministic `run` gate still calls no model at all
 ```yaml
 defaults:
   ai:
-    provider: anthropic                      # a registered provider name; anthropic (default) or bedrock ship today
+    provider: anthropic                      # a registered provider name; anthropic (default), bedrock, or ant ship today
     model:    claude-opus-4-8                 # optional: override the path's default model
     baseUrl:  https://ai-gateway.internal/v1  # optional: a self-hosted gateway / enterprise proxy (anthropic provider)
     keyEnv:   ANTHROPIC_API_KEY               # the NAME of the env var holding the key — never the key itself
@@ -122,9 +122,10 @@ defaults:
   ([BE-0104](../roadmaps/BE-0104-vendor-neutral-ai-backend/BE-0104-vendor-neutral-ai-backend.md)).
   The AI paths reach a model only through a vendor-neutral seam (`bajutsu/ai`), mirroring how a
   platform is a backend behind the `Driver` interface. `provider` is therefore an **open,
-  registry-validated** value, not a fixed pair: `anthropic` and `bedrock` are the adapters that ship
-  today (Bedrock lives inside the Anthropic adapter, an Anthropic-SDK variant), and an unknown name
-  fails closed with a clear error the first time an AI path resolves the provider. (The check lives
+  registry-validated** value, not a fixed set: `anthropic`, `bedrock`, and `ant` are the adapters
+  that ship today (all three share one Anthropic adapter — Bedrock is an Anthropic-SDK hosting
+  variant and `ant` an authentication variant, BE-0163), and an unknown name fails closed with a
+  clear error the first time an AI path resolves the provider. (The check lives
   in the AI layer, not at config load: the deterministic core must not import the AI provider stack
   ([BE-0112](../roadmaps/BE-0112-layer-boundary-enforcement/BE-0112-layer-boundary-enforcement.md)),
   so config accepts the name and the registry that owns the valid names rejects an unregistered one.)
@@ -136,9 +137,17 @@ defaults:
   api_key=os.environ[keyEnv])`), so your screenshots and element trees only ever reach the endpoint
   you set, never a vendor default. Bedrock keeps the standard AWS credential chain (`AWS_REGION` +
   env / shared profile / instance or task role) and needs a provider-prefixed `model`.
+- **`ant` bills a subscription/SSO seat, no API key (BE-0163).** The `ant` provider reaches the model
+  through the official [Anthropic CLI](https://github.com/anthropics/anthropic-cli): install it and
+  run `ant auth login` (a browser-based OAuth/SSO sign-in against the Claude Console). Bajutsu reads a
+  bearer token from the CLI at call time and passes it to the SDK as `auth_token` (rather than an API
+  key), so a Claude Pro/Max/Console seat is billed. `ANTHROPIC_PROFILE` selects a named CLI profile;
+  no API key is needed, and every AI path (authoring, the alert guard, `triage --ai`) keeps full
+  vision. `ant` is an external binary you install yourself — Bajutsu neither vendors nor installs it.
 - **Config first, environment fallback.** Any field you omit falls back to today's environment
-  variables — `BAJUTSU_AI_PROVIDER`, `ANTHROPIC_API_KEY`, `BAJUTSU_BEDROCK_MODEL` — so a config with
-  no `ai` block behaves exactly as before.
+  variables — `BAJUTSU_AI_PROVIDER`, `ANTHROPIC_API_KEY`, `BAJUTSU_BEDROCK_MODEL` (the `ant` provider
+  reads its credential from the CLI, honoring `ANTHROPIC_PROFILE`) — so a config with no `ai` block
+  behaves exactly as before.
 - **Fail closed.** `record`, `triage --ai`, and an explicitly-requested `--dismiss-alerts` exit with
   a clear, provider-specific error when the selected provider has no usable credential — they never
   construct a client that quietly falls back to a hosted default.
@@ -151,8 +160,7 @@ defaults:
   app *displays* — a typed password, an OTP, PII on screen — stays verbatim in the raw pixels of the
   screenshot the AI sees: the live screen every turn during `record`, and the captured failure
   screenshot (if any) during `triage --ai`, read from the run's `runs/` evidence. That image goes to
-  the AI provider you configured — except `record --agent claude-code`, which reaches the model
-  through the `claude` CLI rather than the SDK provider/endpoint. Redaction covers the `${secrets.X}`
+  the AI provider you configured. Redaction covers the `${secrets.X}`
   *value* wherever it appears in text (network, element tree, logs), not what the app renders on
   screen. So that this is never a surprise, `record` and `triage --ai` print a one-time warning when
   the target binds `secrets:`. This is a disclosure, not a mitigation (visual evidence is the point):

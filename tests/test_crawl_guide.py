@@ -7,8 +7,6 @@ deterministic baseline (proposer wins), the tool-call parsing, and guide selecti
 
 from __future__ import annotations
 
-import json
-
 from conftest import FakeBackend, FakeBlock, ShotDriver, el
 
 from bajutsu import crawl, crawl_tabs
@@ -16,7 +14,6 @@ from bajutsu.ai.base import TextPart
 from bajutsu.anthropic_client import AiConfig
 from bajutsu.crawl_guide import (
     ClaudeActionProposer,
-    ClaudeCodeActionProposer,
     Proposal,
     _actions_from,
     _proposal_from,
@@ -198,56 +195,11 @@ def test_proposal_from_parses_thought_and_actions() -> None:
     assert _proposal_from({"actions": []}, cap=10).thought == ""  # missing thought -> empty
 
 
-def test_make_guide_builds_the_ai_guide_for_either_backend() -> None:
-    # Crawl is AI-driven; the guide is always the AI guide, built lazily (no API key / CLI needed).
-    assert callable(make_guide())  # default API backend
-    assert callable(make_guide(agent="claude-code"))  # Claude Code CLI backend, lazy runner
-
-
-def test_claude_code_proposer_maps_structured_output_to_actions() -> None:
-    """The Claude Code proposer asks the CLI for structured output (text-only, no screenshot) and
-    maps its envelope to crawl Actions plus the model's thought — the same proposer contract."""
-    seen: list[list[str]] = []
-
-    def runner(cmd: list[str]) -> str:
-        seen.append(cmd)
-        return json.dumps(
-            {
-                "type": "result",
-                "is_error": False,
-                "structured_output": {
-                    "thought": "a login form",
-                    "actions": [
-                        {"action": "type", "id": "login.email", "value": "a@b.com"},
-                        {"action": "tap", "id": "login.submit"},
-                    ],
-                },
-            }
-        )
-
-    proposal = ClaudeCodeActionProposer(runner=runner).propose(
-        [el(identifier="login.email", traits=["textField"])],
-        None,
-        [crawl.Action("tap", target="login.submit")],
-        (),
-    )
-    assert proposal.thought == "a login form"
-    assert [(a.kind, a.target) for a in proposal.actions] == [
-        ("type", "login.email"),
-        ("tap", "login.submit"),
-    ]
-    argv = seen[0]
-    assert "--json-schema" in argv and "--output-format" in argv  # structured-output flags
-    assert "login.submit" in argv[-1]  # the prompt carries the screen + candidate text
-
-
-def test_claude_code_proposer_tolerates_a_bad_envelope() -> None:
-    assert (
-        ClaudeCodeActionProposer(runner=lambda _c: "not json").propose([], None, [], ()).actions
-        == []
-    )
-    err = json.dumps({"is_error": True, "structured_output": {"actions": []}})
-    assert ClaudeCodeActionProposer(runner=lambda _c: err).propose([], None, [], ()).actions == []
+def test_make_guide_builds_the_ai_guide() -> None:
+    # Crawl is AI-driven; the guide is always the SDK-backed AI guide, built lazily (no credential
+    # needed at construction). The resolved `ai` config picks the provider (BE-0163).
+    assert callable(make_guide())  # default provider
+    assert callable(make_guide(ai=AiConfig(provider="ant")))  # ant provider, lazy backend
 
 
 # --- BE-0097: the crawl guide's AI inputs are redacted and the provider config is threaded ---
@@ -294,24 +246,3 @@ def test_claude_proposer_no_redactor_leaves_text_unmasked() -> None:
     ClaudeActionProposer(backend=backend).propose(elements, None, [], ())
     text = _text_of(backend)
     assert "plain-label" in text
-
-
-def test_claude_code_proposer_redacts_elements_before_send() -> None:
-    """BE-0097: the Claude Code CLI path also redacts the element tree before sending."""
-    seen: list[str] = []
-
-    def runner(cmd: list[str]) -> str:
-        seen.append(cmd[-1])  # the prompt is the last arg
-        return json.dumps(
-            {
-                "type": "result",
-                "is_error": False,
-                "structured_output": {"thought": "ok", "actions": []},
-            }
-        )
-
-    redactor = Redactor(Redact(), values=["sk-secret-token"])
-    elements = [el(identifier="tok", label="token: sk-secret-token")]
-    ClaudeCodeActionProposer(runner=runner, redactor=redactor).propose(elements, None, [], ())
-    assert "sk-secret-token" not in seen[0]
-    assert "[REDACTED]" in seen[0]

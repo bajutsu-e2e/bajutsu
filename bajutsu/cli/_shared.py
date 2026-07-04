@@ -53,13 +53,12 @@ def _warn_onscreen_secrets(eff: Effective) -> None:
 
     `record` sends the live screenshot to the AI each turn; `triage --ai` sends the captured failure
     screenshot (if any), read from the run's `runs/` evidence. The image goes to the AI provider
-    resolved from config, except `record --agent claude-code`, which reaches the model through the
-    `claude` CLI. `${secrets.X}` values are masked in *text* evidence (network, element tree, logs)
-    by `Redactor`, but images cannot be pixel-masked — so a secret the app *displays* (a typed
-    password, an OTP, PII) stays in the raw pixels. This warns plainly at the point secrets are
-    bound; it changes no behavior (visual evidence is the point) — an author who wants to avoid the
-    exposure skips AI authoring for the flow, or keeps the secret off-screen. A no-op when the target
-    declares no `secrets:`.
+    resolved from config (Anthropic / Bedrock / ant). `${secrets.X}` values are masked in *text*
+    evidence (network, element tree, logs) by `Redactor`, but images cannot be pixel-masked — so a
+    secret the app *displays* (a typed password, an OTP, PII) stays in the raw pixels. This warns
+    plainly at the point secrets are bound; it changes no behavior (visual evidence is the point) —
+    an author who wants to avoid the exposure skips AI authoring for the flow, or keeps the secret
+    off-screen. A no-op when the target declares no `secrets:`.
     """
     if not eff.secrets:
         return
@@ -69,8 +68,7 @@ def _warn_onscreen_secrets(eff: Effective) -> None:
         "(network, element tree, logs), but a secret the app shows on screen (a typed password, an "
         "OTP, displayed PII) stays in the raw pixels of the screenshot sent to the AI — the live "
         "screen each turn under record, the captured failure screenshot under triage --ai. That "
-        "image goes to the AI provider you configured (record --agent claude-code instead reaches "
-        "the model through the claude CLI).",
+        "image goes to the AI provider you configured.",
         err=True,
     )
 
@@ -91,6 +89,15 @@ def _credential_gap_message(gap: str, eff: Effective) -> str:
         return (
             "no AI credential: the Bedrock provider needs a provider-prefixed model id "
             "(set ai.model in config, or $BAJUTSU_BEDROCK_MODEL); AWS credentials authenticate it."
+        )
+    if gap == anthropic_client.ANT_CLI_MISSING:
+        return (
+            "no AI credential: the ant provider needs the Anthropic CLI — install `ant` and run "
+            "`ant auth login`, or set ai.provider to anthropic / bedrock."
+        )
+    if gap == anthropic_client.ANT_CLI_UNAUTHENTICATED:
+        return (
+            "no AI credential: the Anthropic CLI (`ant`) is not signed in — run `ant auth login`."
         )
     return (
         f"no AI credential: set ${anthropic_client.key_env(eff.ai)} (the env var named by "

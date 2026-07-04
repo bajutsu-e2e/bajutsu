@@ -89,10 +89,9 @@ flowchart TB
 | `provision.py` | config 対応の環境インストーラ（BE-0164）。config の backend と AI プロバイダを解決し、必要な extra とツールだけを冪等に導入する（`make install`） | — |
 | `runner/` | config + シナリオ → レポート。デバイスプール + launch 手順（パッケージ: `pipeline` / `pool` / `launch`） | [run-loop](run-loop.md#runner実行パイプライン) |
 | `doctor.py` | 規約充足度スコア（id カバレッジ等） | [configuration](configuration.md#doctor規約充足度スコア) |
-| `agent.py` · `agents.py` | オーサリング Agent 抽象（`Observation`/`Proposal`/`Agent`）+ backend 選択（`--agent api` / `claude-code`） | [recording](recording.md) |
-| `ai/` | ベンダー中立な AI バックエンドのシーム（BE-0104）。`AiBackend` プロトコルと正規化した request/response 型（`base`）、プロバイダレジストリ（`registry`）、`anthropic_client` の上に立つ Anthropic 参照アダプタ（`anthropic`） | [configuration](configuration.md#ai-プロバイダai-be-0047) |
-| `claude_agent.py` | Anthropic API エージェント（ツール強制呼び出し、prompt cache） | [recording](recording.md#claude-エージェント) |
-| `claude_code_agent.py` | Claude Code エージェント（Claude Code CLI を駆動） | [recording](recording.md) |
+| `agent.py` · `agents.py` | オーサリング Agent 抽象（`Observation`/`Proposal`/`Agent`）+ 唯一の SDK エージェントの構築 | [recording](recording.md) |
+| `ai/` | ベンダー中立な AI バックエンドのシーム（BE-0104）。`AiBackend` プロトコルと正規化した request/response 型（`base`）、プロバイダレジストリ（`registry`）、`anthropic_client` の上に立つ Anthropic 参照アダプタ（`anthropic`）。Anthropic API、Amazon Bedrock、Anthropic CLI `ant`（BE-0163）を賄います | [configuration](configuration.md#ai-プロバイダai-be-0047) |
+| `claude_agent.py` | SDK オーサリングエージェント（ツール強制呼び出し、prompt cache）。プロバイダ非依存で anthropic / bedrock / `ant` を賄います | [recording](recording.md#claude-オーサリングエージェント) |
 | `record.py` | record ループ（observe → 提案 → 実行 → 書き出し） | [recording](recording.md#record-ループ) |
 | `crawl.py` | 自律的な幅優先クロール → スクリーンマップ（`crawl_guide` / `crawl_tabs` ヘルパ） | [recording](recording.md) |
 | `alerts.py` | システムアラートの検出と dismiss（視覚ロケータ） | [recording](recording.md#システムアラートの自動対処) |
@@ -118,7 +117,7 @@ flowchart TB
         ┌─────────────┬───┴───────┬───────────────┬───────────┐
      runner/    record.py / crawl.py  codegen.py   trace.py     triage.py / claude_triage.py
         │       （Tier 1 / AI） （構造マッピング）（タイムライン）（自己修復・助言）
-   orchestrator/   agent.py / agents.py / claude_agent.py / claude_code_agent.py / alerts.py   serve/ · github.py（Web UI・CI）
+   orchestrator/   agent.py / agents.py / claude_agent.py / alerts.py   serve/ · github.py（Web UI・CI）
         │                 │
    ┌────┼────────┬────────┘
 assertions.py  evidence.py ── intervals.py · network.py · visual.py · redaction.py

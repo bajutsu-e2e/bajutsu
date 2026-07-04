@@ -7,9 +7,9 @@
 > resulting YAML is AI-independent and is owned by the user from that point forward.
 >
 > Implementation: `bajutsu/record.py` (the loop) · `bajutsu/agent.py` + `bajutsu/agents.py`
-> (the abstraction + backend selection) · `bajutsu/claude_agent.py` (Anthropic API) /
-> `bajutsu/claude_code_agent.py` (Claude Code) · `bajutsu/alerts.py` (system-alert handling). The
-> breadth-first explorer `bajutsu/crawl.py` shares the same agents.
+> (the abstraction + construction) · `bajutsu/claude_agent.py` (the SDK authoring agent) ·
+> `bajutsu/alerts.py` (system-alert handling). The breadth-first explorer `bajutsu/crawl.py` shares
+> the same agent.
 
 Related: [the two tiers in concepts](concepts.md#2-two-tiers-tier-1--tier-2) · [scenarios](scenarios.md) · [run-loop](run-loop.md)
 
@@ -18,7 +18,7 @@ Related: [the two tiers in concepts](concepts.md#2-two-tiers-tier-1--tier-2) · 
 ## The Agent abstraction
 
 A thin Protocol that separates the loop from the model (`agent.py`). Tests use a scripted fake;
-production uses a Claude backend, picked with `--agent` (below).
+production uses the SDK-backed `ClaudeAgent` (below).
 
 ```python
 @dataclass
@@ -68,19 +68,24 @@ and may verify before an async transition (e.g. a sheet) has rendered. So it rec
 the first "must-be-present" element in expect**, just before the assertions. This makes the recorded
 scenario self-sufficient without adding implicit timing to `run`.
 
-## Claude agents (API and Claude Code)
+## The Claude authoring agent
 
-`record` / `crawl` pick a production `agent.Agent` implementation with `--agent`
-(`agents.py` resolves the choice):
+`record` / `crawl` construct one production `agent.Agent` implementation, `ClaudeAgent`
+(`claude_agent.py`, built by `agents.py`): it talks to the model through the vendor-neutral
+`AiBackend` seam (BE-0104), so the **provider** is a config detail, not a separate agent. The
+resolved `ai.provider` ([configuration](configuration.md#ai-provider-ai-be-0047)) picks:
 
-- **`api` — `ClaudeAgent`** (`claude_agent.py`): calls the **Anthropic API** directly
-  (pay-per-token). Needs `ANTHROPIC_API_KEY`, or Amazon Bedrock via `BAJUTSU_AI_PROVIDER=bedrock`
-  ([.env in cli](cli.md#environment-variables-env)). The model is `claude-opus-4-8`; `anthropic` is
-  lazy-imported (the module loads without a key) and the client is injectable for tests.
-- **`claude-code` — `ClaudeCodeAgent`** (`claude_code_agent.py`): drives the local **Claude Code**
-  CLI, so authoring runs on a Claude Code subscription with no API key.
+- **`anthropic`** (default) — the **Anthropic API**, keyed by `ANTHROPIC_API_KEY` (or the env var
+  named by `ai.keyEnv`).
+- **`bedrock`** — **Amazon Bedrock**, authenticated by AWS credentials with a provider-prefixed
+  model id (`BAJUTSU_BEDROCK_MODEL`).
+- **`ant`** — the official **Anthropic CLI** (`ant auth login`, a browser-based OAuth/SSO sign-in),
+  so authoring bills a Claude Pro/Max/Console seat instead of an API key, with full vision on every
+  AI path (BE-0163).
 
-Both share the same turn contract:
+The model is `claude-opus-4-8`; `anthropic` is lazy-imported (the module loads without a
+credential) and the client is injectable for tests. The turn contract is the same whichever
+provider is active:
 
 - **Forced tool use**: `tool_choice={"type": "any"}` forces **exactly one** tool call per turn —
   `tap(id)` / `type_text(id, text)` / `wait_for(id, timeout)` / `finish(assertions)`. `finish`'s

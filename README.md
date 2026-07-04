@@ -305,8 +305,8 @@ bajutsu/
 ├── simctl.py             # simctl command layer (iOS environment)
 ├── preflight.py          # environment runnability gate for doctor / CI
 ├── doctor.py             # convention score
-├── agent.py · agents.py  # authoring Agent abstraction + backend selection (Tier 1)
-├── claude_agent.py       # Anthropic-API agent · claude_code_agent.py — Claude Code agent
+├── agent.py · agents.py  # authoring Agent abstraction + construction (Tier 1)
+├── claude_agent.py       # the SDK authoring agent (Anthropic API / Bedrock / ant)
 ├── record.py             # record loop: explore -> emit a scenario
 ├── crawl.py              # autonomous breadth-first crawl -> screen map
 ├── alerts.py             # system-alert guard (vision locator)

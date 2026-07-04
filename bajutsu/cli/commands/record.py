@@ -10,7 +10,7 @@ import typer
 
 from bajutsu import simctl as _simctl
 from bajutsu import usage as _usage
-from bajutsu.agents import make_agent, resolve_kind
+from bajutsu.agents import make_agent
 from bajutsu.backends import ensure_web_runtime, select_actuator
 from bajutsu.cli._shared import (
     DEFAULT_CONFIG,
@@ -111,12 +111,6 @@ def record(
     alert_instruction: str = typer.Option(
         "", "--alert-instruction", help="how to handle a prompt instead of dismissing it"
     ),
-    agent: str = typer.Option(
-        "",
-        "--agent",
-        help="authoring agent: 'api' (Anthropic API, pay-per-token) or 'claude-code' "
-        "(the `claude` CLI, billed to your Claude subscription). Defaults to $BAJUTSU_AGENT or 'api'.",
-    ),
     headed: bool | None = typer.Option(
         None,
         "--headed/--no-headed",
@@ -150,24 +144,17 @@ def record(
     eff = _resolve_browser(eff, browser)
     out_path = _record_out_path(eff, out, name, goal, target_name, checkout_root=checkout_root)
     before = _usage.snapshot()
-    kind = resolve_kind(agent)
-    # Fail closed (BE-0047): the API authoring agent and the alert guard both reach the model via the
-    # SDK provider, so a missing credential is an actionable error here, not a quiet fallback. The
-    # claude-code agent reaches the model through the `claude` CLI, so it needs the SDK key only when
-    # the alert guard is on.
-    if kind == "api" or dismiss_alerts:
-        _require_ai_credential(eff)
+    # Fail closed (BE-0047): the authoring agent and the alert guard both reach the model via the
+    # resolved SDK provider (Anthropic / Bedrock / ant), so a missing credential is an actionable
+    # error here, not a quiet fallback.
+    _require_ai_credential(eff)
     # Disclose that on-screen secrets are not redacted from the screenshots sent to the AI or
     # stored under runs/ (BE-0151), before the authoring loop starts.
     _warn_onscreen_secrets(eff)
     # Mask the textual model inputs (element trees, the alert instruction) before they leave the
     # process; the screenshot is sent as-is — images cannot be pixel-masked (BE-0047).
     redactor = _ai_redactor(eff)
-    try:
-        authoring_agent = make_agent(kind, ai=eff.ai, redactor=redactor)
-    except ValueError as e:
-        typer.echo(str(e))
-        raise typer.Exit(2) from None
+    authoring_agent = make_agent(ai=eff.ai, redactor=redactor)
     backends = _backends(backend, eff.backend)
     try:
         # Auto-install Playwright (and the selected engine's browser) if a web record needs it.
@@ -222,10 +209,9 @@ def record(
     )
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text(dump_scenarios([scenario]), encoding="utf-8")
-    typer.echo(f"recorded {len(scenario.steps)} steps ({kind} agent) -> {out_path}")
+    typer.echo(f"recorded {len(scenario.steps)} steps -> {out_path}")
     # Report what the authoring (and alert-guard) AI consumed; to stderr, like the progress
-    # narration, so stdout stays the single result line. The claude-code agent bills no tokens
-    # here, so its delta is empty and nothing is shown.
+    # narration, so stdout stays the single result line.
     spent = _usage.snapshot() - before
     if spent.calls:
         typer.echo(spent.render(), err=True)

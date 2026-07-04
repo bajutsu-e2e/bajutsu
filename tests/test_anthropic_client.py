@@ -22,6 +22,8 @@ def test_provider_defaults_to_anthropic(monkeypatch: pytest.MonkeyPatch) -> None
 def test_provider_reads_env_and_normalizes(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv(ac.PROVIDER_ENV, "  BEDROCK ")
     assert ac.provider() == "bedrock"
+    monkeypatch.setenv(ac.PROVIDER_ENV, "  ANT ")
+    assert ac.provider() == "ant"
     monkeypatch.setenv(ac.PROVIDER_ENV, "nonsense")
     assert ac.provider() == "anthropic"  # unknown value falls back to the default
 
@@ -83,6 +85,38 @@ def test_make_client_bedrock(monkeypatch: pytest.MonkeyPatch) -> None:
     assert isinstance(ac.make_client(), AnthropicBedrock)
 
 
+# BE-0163: the `ant` provider reads a bearer token from the Anthropic CLI (probed via subprocess,
+# injected here so the tests need no real `ant` install) and passes it to the SDK as auth_token —
+# the `Authorization: Bearer` header — rather than an api_key.
+
+
+def test_make_client_ant_uses_the_cli_bearer_token(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv(ac.PROVIDER_ENV, "ant")
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.setattr(ac.shutil, "which", lambda _exe: "/usr/local/bin/ant")
+    monkeypatch.setattr(ac, "_ant_token_result", lambda: (0, "oauth-tok-test", ""))
+    client = ac.make_client()
+    import anthropic
+
+    assert isinstance(client, anthropic.Anthropic)
+    assert client.auth_token == "oauth-tok-test"  # bearer token, not api_key
+
+
+def test_make_client_ant_fails_closed_when_binary_absent(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv(ac.PROVIDER_ENV, "ant")
+    monkeypatch.setattr(ac.shutil, "which", lambda _exe: None)
+    with pytest.raises(RuntimeError, match=r"ant auth login"):
+        ac.make_client()
+
+
+def test_make_client_ant_fails_closed_when_unauthenticated(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv(ac.PROVIDER_ENV, "ant")
+    monkeypatch.setattr(ac.shutil, "which", lambda _exe: "/usr/local/bin/ant")
+    monkeypatch.setattr(ac, "_ant_token_result", lambda: (1, "", "not logged in"))
+    with pytest.raises(RuntimeError, match=r"no active credential"):
+        ac.make_client()
+
+
 # credential_gap reports the provider-specific credential the SDK AI path is missing, so crawl/run
 # can gate or warn appropriately. The Bedrock cases pin BE-0053: AWS auth, not ANTHROPIC_API_KEY.
 
@@ -115,6 +149,27 @@ def test_credential_gap_bedrock_needs_model(monkeypatch: pytest.MonkeyPatch) -> 
     monkeypatch.delenv(ac.BEDROCK_MODEL_ENV, raising=False)
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
     assert ac.credential_gap() == "bedrock-model"
+
+
+def test_credential_gap_ant_missing_binary(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv(ac.PROVIDER_ENV, "ant")
+    monkeypatch.setattr(ac.shutil, "which", lambda _exe: None)
+    assert ac.credential_gap() == ac.ANT_CLI_MISSING
+
+
+def test_credential_gap_ant_unauthenticated(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv(ac.PROVIDER_ENV, "ant")
+    monkeypatch.setattr(ac.shutil, "which", lambda _exe: "/usr/local/bin/ant")
+    monkeypatch.setattr(ac, "_ant_token_result", lambda: (1, "", "not logged in"))
+    assert ac.credential_gap() == ac.ANT_CLI_UNAUTHENTICATED
+
+
+def test_credential_gap_ant_authenticated_ok(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv(ac.PROVIDER_ENV, "ant")
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)  # ant ignores the API key
+    monkeypatch.setattr(ac.shutil, "which", lambda _exe: "/usr/local/bin/ant")
+    monkeypatch.setattr(ac, "_ant_token_result", lambda: (0, "oauth-tok-test", ""))
+    assert ac.credential_gap() is None
 
 
 # BE-0047: the resolved `ai` config drives the factory, config-first with the env fallback intact.

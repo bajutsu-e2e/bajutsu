@@ -23,9 +23,6 @@ import typer
 from bajutsu import crawl as crawl_engine
 from bajutsu import crawl_report, crawl_repro
 from bajutsu import simctl as _simctl
-from bajutsu.agents import AGENT_KINDS, resolve_kind
-from bajutsu.ai import credential_gap
-from bajutsu.anthropic_client import key_env
 from bajutsu.backends import ensure_web_runtime, select_actuator
 from bajutsu.cli._shared import (
     DEFAULT_CONFIG,
@@ -93,14 +90,6 @@ def crawl(
     alert_instruction: str = typer.Option(
         "", "--alert-instruction", help="how to handle a prompt instead of dismissing it"
     ),
-    agent: str = typer.Option(
-        "",
-        "--agent",
-        help="AI backend for the crawl guide: 'api' (the Anthropic SDK, pay-per-token; uses the "
-        "configured AI provider — ANTHROPIC_API_KEY for Anthropic, or AWS credentials + "
-        "BAJUTSU_BEDROCK_MODEL when BAJUTSU_AI_PROVIDER=bedrock) or 'claude-code' (the Claude Code "
-        "CLI, drawing on your subscription; text-only). Defaults to $BAJUTSU_AGENT or 'api'.",
-    ),
     out: str = typer.Option(
         "", "--out", help="run dir for the screen map (default: runs/<timestamp>)"
     ),
@@ -143,11 +132,6 @@ def crawl(
     def say(msg: str) -> None:
         typer.echo(msg, err=True)
 
-    # Explicit --agent wins, else $BAJUTSU_AGENT (set by serve's Settings selector), else api.
-    agent = resolve_kind(agent)
-    if agent not in AGENT_KINDS:
-        typer.echo(f"unknown --agent {agent!r} (use {' or '.join(AGENT_KINDS)})")
-        raise typer.Exit(2)
     backends = _backends(backend, eff.backend)
     try:
         # Auto-install Playwright (and the selected engine's browser) if a web crawl needs it.
@@ -156,13 +140,13 @@ def crawl(
     except RuntimeError as e:
         typer.echo(str(e))
         raise typer.Exit(2) from None
-    # Fail closed (BE-0097 / BE-0047): the API guide and the alert guard both reach the model via
-    # the SDK provider, so a missing credential is an actionable error, not a quiet fallback.
-    # Placed after backend selection so a config/backend error surfaces first.
-    if agent == "api":
-        _require_ai_credential(eff)
+    # Fail closed (BE-0097 / BE-0047): the guide and the alert guard both reach the model via the
+    # resolved SDK provider (Anthropic / Bedrock / ant), so a missing credential is an actionable
+    # error, not a quiet fallback. Placed after backend selection so a config/backend error surfaces
+    # first.
+    _require_ai_credential(eff)
     redactor = _ai_redactor(eff)
-    crawl_guide = make_guide(report=say, agent=agent, ai=eff.ai, redactor=redactor)
+    crawl_guide = make_guide(report=say, ai=eff.ai, redactor=redactor)
 
     out_dir = Path(out) if out else Path("runs") / datetime.now(tz=UTC).strftime("%Y%m%d-%H%M%S")
     # A Git source is read-only input: the screen map / screenshots go to a local run dir, never into
@@ -293,23 +277,11 @@ def crawl(
 
     if clear_blocking is None and dismiss_alerts:
         # The alert guard (Claude vision) dismisses unexpected OS prompts the crawl would otherwise
-        # read as a crash. Best-effort: with no API key it no-ops, so the crawl still runs.
+        # read as a crash. The guide and the guard share one provider, and `_require_ai_credential`
+        # already failed closed above, so the guard's credential is known-present here.
         from bajutsu.alerts import ClaudeAlertLocator, SystemAlertGuard
         from bajutsu.orchestrator import RealClock
 
-        # Provider-aware credential check (BE-0097): the alert guard always uses the SDK, so it
-        # needs the configured provider's credentials regardless of --agent.
-        guard_gap = credential_gap(eff.ai)
-        if guard_gap == "anthropic-key":
-            say(
-                f"note: dismiss-alerts is on but ${key_env(eff.ai)} is unset — "
-                "the alert guard no-ops"
-            )
-        elif guard_gap == "bedrock-model":
-            say(
-                "note: dismiss-alerts is on but BAJUTSU_BEDROCK_MODEL is unset — "
-                "the alert guard no-ops"
-            )
         locator = ClaudeAlertLocator(ai=eff.ai, redactor=redactor)
         guard = SystemAlertGuard(locator, alert_instruction or None).dismiss
         clock = RealClock()

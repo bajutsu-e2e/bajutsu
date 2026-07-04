@@ -3,7 +3,7 @@
 Generalizes the pre-BE-0104 two-value ``provider`` (`anthropic` / `bedrock`) into a registry keyed
 by provider name → adapter, so adding a provider is *register an adapter*, not *edit a factory
 `if`-chain*. This item ships the registry and its built-in Anthropic adapter (covering the Anthropic
-API and Amazon Bedrock); it registers no second vendor.
+API, Amazon Bedrock, and the Anthropic CLI `ant` — BE-0163); it registers no second vendor.
 
 **The adapter contract.** A provider adapter registers an `Adapter`: a ``factory`` that builds its
 `AiBackend` from the resolved `ai` config, and a ``credential_gap`` that reports what the provider
@@ -45,18 +45,21 @@ def _ensure_builtins() -> None:
     """Register the built-in Anthropic adapter on first use (lazy, to keep imports acyclic).
 
     Keyed on the built-in names, not on the registry being empty: a third-party or test adapter
-    registering first must not suppress `anthropic`/`bedrock` (that would `KeyError` when they
+    registering first must not suppress `anthropic`/`bedrock`/`ant` (that would `KeyError` when they
     later resolve). `setdefault` also leaves an earlier explicit registration for those names intact.
     """
-    if "anthropic" in _ADAPTERS and "bedrock" in _ADAPTERS:
+    if all(name in _ADAPTERS for name in ("anthropic", "bedrock", "ant")):
         return
     from bajutsu.ai import anthropic
     from bajutsu.anthropic_client import credential_gap
 
     adapter = Adapter(factory=anthropic.factory, credential_gap=credential_gap)
-    # Anthropic API and Amazon Bedrock are one adapter — Bedrock is an Anthropic-SDK variant (BE-0053).
+    # Anthropic API, Amazon Bedrock, and the Anthropic CLI (`ant`, BE-0163) share one adapter:
+    # Bedrock is an Anthropic-SDK hosting variant (BE-0053) and `ant` an authentication variant —
+    # `AnthropicBackend` is provider-agnostic once it holds a constructed SDK client.
     _ADAPTERS.setdefault("anthropic", adapter)
     _ADAPTERS.setdefault("bedrock", adapter)
+    _ADAPTERS.setdefault("ant", adapter)
 
 
 def known_providers() -> tuple[str, ...]:

@@ -18,7 +18,7 @@ Related: [cli](cli.md) · [scenarios](scenarios.md) · [showcase](showcase.md) �
 | The deterministic core + unit tests | macOS or Linux, Python 3.13 (managed via [uv](https://github.com/astral-sh/uv)) |
 | Driving an app on a Simulator | macOS with **Xcode** (the iOS Simulator), [XcodeGen](https://github.com/yonaskolb/XcodeGen) (to build the showcase), and the **idb** backend (`brew install facebook/fb/idb-companion`) |
 | Driving a web app (Playwright) | any OS — `uv sync --extra web` + `uv run playwright install chromium` (no Mac / Simulator; see [`demos/web`](../demos/web/README.md)) |
-| AI authoring (`record` / `crawl`) / `--dismiss-alerts` | an `ANTHROPIC_API_KEY` (or a Claude Code login with `--agent claude-code`) |
+| AI authoring (`record` / `crawl`) / `--dismiss-alerts` | an `ANTHROPIC_API_KEY` (or Amazon Bedrock, or the Anthropic CLI `ant` with `ai.provider: ant`) |
 
 You can do **Steps 1–3 on any machine** (no Simulator). Steps 4–6 need a Mac with Xcode.
 

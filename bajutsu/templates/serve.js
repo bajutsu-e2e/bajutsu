@@ -161,13 +161,13 @@ async function clearKey(){
 }
 $('#keyclear').addEventListener('click',clearKey);
 
-// ---- AI provider: Anthropic API (Claude API key), Amazon Bedrock (AWS creds), or Claude Code (CLI) ----
+// ---- AI provider: Anthropic API (Claude API key), Amazon Bedrock (AWS creds), or Anthropic CLI (ant, OAuth) ----
 // Show only the selected provider's own config block — nothing until one is explicitly picked.
 function renderProv(){
   const v=$('#provider').value;
   $('#apikeysection').hidden=v!=='anthropic';      // the Claude API key is the Anthropic provider's config
   $('#bedrockfields').hidden=v!=='bedrock';        // region + model id
-  $('#claudecodefields').hidden=v!=='claude-code'; // claude CLI prerequisites (no inputs)
+  $('#antfields').hidden=v!=='ant';                // ant CLI prerequisites (no inputs — OAuth sign-in)
 }
 async function loadProv(){
   // Explicit selection: don't pre-select a provider from the server's (env-derived) default —
@@ -185,7 +185,7 @@ async function loadProv(){
 // /api/provider (claudeAvailable / claudeHint), so the three surfaces never disagree.
 async function refreshAiAvailability(){
   let d;try{d=await (await fetch('/api/provider')).json()}catch(e){d={}}
-  const ok=d.claudeAvailable!==false, hint=d.claudeHint||'set an API key, configure Bedrock, or sign in to the Claude Code CLI.';
+  const ok=d.claudeAvailable!==false, hint=d.claudeHint||'set an API key, configure Bedrock, or sign in with `ant auth login`.';
   document.querySelectorAll('.toptab[data-view="record"],.toptab[data-view="crawl"]').forEach(t=>t.classList.toggle('disabled',!ok));
   [['#rec-aigate','#rec-go'],['#crawl-aigate','#crawl-go']].forEach(([gate,btn])=>{
     const g=$(gate);
@@ -207,7 +207,7 @@ async function saveSettings(){
   setSettingsStatus('saving…','');
   let d;try{d=await (await fetch('/api/provider',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)})).json()}catch(e){d={error:'request failed'}}
   if(d.error){setSettingsStatus(d.error,'ng');return}
-  if(provider!=='bedrock'){  // Anthropic API needs the key; Claude Code uses it only for the alert guard
+  if(provider==='anthropic'){  // only the Anthropic API provider needs the key (Bedrock uses AWS creds, ant uses its OAuth token)
     const v=$('#apikey').value.trim();
     if(v){
       let k;try{k=await postKey(v)}catch(e){k={error:'request failed'}}

@@ -298,8 +298,8 @@ bajutsu/
 ├── simctl.py             # simctl コマンド層（iOS 環境）
 ├── preflight.py          # doctor / CI 向けの環境 runnability ゲート
 ├── doctor.py             # 規約スコア
-├── agent.py · agents.py  # オーサリング Agent 抽象 + backend 選択（Tier 1）
-├── claude_agent.py       # Anthropic API エージェント · claude_code_agent.py — Claude Code エージェント
+├── agent.py · agents.py  # オーサリング Agent 抽象 + 構築（Tier 1）
+├── claude_agent.py       # SDK オーサリングエージェント（Anthropic API / Bedrock / ant）
 ├── record.py             # record ループ: 探索 -> シナリオ出力
 ├── crawl.py              # 自律的な幅優先クロール -> スクリーンマップ
 ├── alerts.py             # システムアラートガード（視覚ロケータ）
