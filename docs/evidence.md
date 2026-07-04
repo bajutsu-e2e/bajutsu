@@ -198,7 +198,7 @@ redact:
 > Value matching is **encoding-aware**: the same secret reaches evidence verbatim but often
 > encoded, so its literal bytes never appear. Alongside the raw value, redaction masks its
 > common encodings — percent-encoded (a URL query or form field, e.g. `p@ss` as `p%40ss`),
-> HTML-escaped and JSON-escaped forms, and a base64 `Authorization: Basic <user:pass>` token
+> HTML-escaped and JSON-escaped forms, and an `Authorization: Basic <base64(user:pass)>` token
 > whose decoded credential carries the value. This is a fixed set of transforms applied to
 > *known* values (the value is encoded, then searched for), not a decode-everything scan, so
 > the cost and false-positive surface stay bounded. One limitation remains: where evidence is
