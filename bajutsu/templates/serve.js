@@ -731,7 +731,7 @@ function resetView(){gview.x=0;gview.y=0;gview.k=1;applyView()}
   const mid=(a,b)=>({x:(a.clientX+b.clientX)/2,y:(a.clientY+b.clientY)/2});
   box.addEventListener('touchstart',e=>{if(!$('.graphwrap'))return;
     if(e.touches.length===1){const t=e.touches[0],gn=e.target.closest('.gnode');
-      if(gn&&gn.dataset.uid){nodeDrag={uid:gn.dataset.uid,el:gn,sx:t.clientX,sy:t.clientY,ox:parseFloat(gn.style.left),oy:parseFloat(gn.style.top)};pinch=null;tpan=null;moved=false;return}
+      if(gn&&gn.dataset.uid){nodeDrag={uid:gn.dataset.uid,el:gn,sx:t.clientX,sy:t.clientY,ox:parseFloat(gn.style.left),oy:parseFloat(gn.style.top)};pinch=null;tpan=null;moved=false;return;}
       tpan={x:t.clientX,y:t.clientY,ox:gview.x,oy:gview.y};pinch=null;moved=false;box.classList.add('panning');}
     else if(e.touches.length===2){const m=mid(e.touches[0],e.touches[1]);pinch={d:dist(e.touches[0],e.touches[1]),cx:m.x,cy:m.y};tpan=null;nodeDrag=null;moved=true;}
   },{passive:true});
@@ -746,7 +746,7 @@ function resetView(){gview.x=0;gview.y=0;gview.k=1;applyView()}
       if(Math.abs(dx)+Math.abs(dy)>3)moved=true;gview.x=tpan.ox+dx;gview.y=tpan.oy+dy;applyView();}
   },{passive:false});
   const endTouch=()=>{
-    if(nodeDrag&&moved){nodeOverrides.set(nodeDrag.uid,{x:parseFloat(nodeDrag.el.style.left),y:parseFloat(nodeDrag.el.style.top)});nodeDrag=null;redrawGraph();tpan=null;pinch=null;box.classList.remove('panning');return}
+    if(nodeDrag&&moved){nodeOverrides.set(nodeDrag.uid,{x:parseFloat(nodeDrag.el.style.left),y:parseFloat(nodeDrag.el.style.top)});nodeDrag=null;redrawGraph();tpan=null;pinch=null;box.classList.remove('panning');return;}
     nodeDrag=null;tpan=null;pinch=null;box.classList.remove('panning');};
   window.addEventListener('touchend',e=>{if(e.touches.length===0)endTouch();});
   // A touchcancel (gesture takeover, OS context switch) aborts the gesture outright — reset the same
