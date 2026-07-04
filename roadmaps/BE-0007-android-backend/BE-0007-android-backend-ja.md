@@ -9,6 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装中** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0007") |
+| 実装 PR | [#658](https://github.com/bajutsu-e2e/bajutsu/pull/658) |
 | トピック | プラットフォーム拡張（Android / Web / Flutter） |
 <!-- /BE-METADATA -->
 
