@@ -301,7 +301,7 @@ old runs) without conflicting with this design.
 
 Log:
 
-- **Slice 1 — foundation + standalone direct-SDK upload** (in progress): promoted the `ObjectStore`
+- **Slice 1 — foundation + standalone direct-SDK upload**: promoted the `ObjectStore`
   protocol and `S3ObjectStore` to the top-level `bajutsu/object_store.py` (`serve/server/object_store.py`
   now re-exports them), added `StoreURI` + `parse_store_uri`, a `GCSObjectStore`, `content_type` on
   the write methods, `presigned_put_url` (S3 + GCS V4), the `object_store_from_uri` factory, and an
@@ -309,7 +309,7 @@ Log:
   verdict (a failure only warns, never flips pass/fail). Added the `s3` / `gcs` / `cloud` extras. The
   presigned-URL serve path (endpoint, worker HTTP PUT uploader, `serve --evidence-store`,
   `evidence_prefix`) is a follow-up slice.
-- **Slice 2a — presigned serve endpoint (server side)** (in progress): added the
+- **Slice 2a — presigned serve endpoint (server side)**: added the
   `POST /api/runs/<run_id>/upload-urls` operation (`generate_upload_urls`) — the server holds the
   evidence store's credentials and returns one presigned PUT URL per file, re-validating the run id,
   the per-run `evidence_prefix`, and every file path so a worker can't escape the run's key namespace

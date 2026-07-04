@@ -239,7 +239,7 @@ the evidence bucket's credentials and signs a **presigned PUT URL per file**; th
 plain HTTP and needs **no credentials for the evidence bucket** — only the control plane does. So the
 evidence bucket can be a separate account or a stricter-permissioned bucket than the workers' artifact
 store, and ephemeral workers never carry its secrets. Install the `s3` or `gcs` extra **on the control
-plane** (`pip install 'bajutsu[server,s3]'`); the worker needs neither.
+plane** (`uv sync --extra s3` or `--extra gcs`); the worker needs neither.
 
 A CI job picks the per-run path — and thus the lifecycle policy — by passing `evidence_prefix` when it
 starts a run:

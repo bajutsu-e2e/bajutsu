@@ -385,7 +385,11 @@ class _EvidenceHandler(BaseHTTPRequestHandler):
         self.server.url_requests.append(body)  # type: ignore[attr-defined]
         base = f"http://127.0.0.1:{self.server.server_address[1]}"
         override = self.server.url_override  # type: ignore[attr-defined]
-        urls = {rel: (override or f"{base}/put/{rel}") for rel in body.get("files", [])}
+        urls_response = self.server.urls_response  # type: ignore[attr-defined]
+        if urls_response is not None:  # return a caller-fixed (possibly malformed) `urls` value
+            urls: Any = urls_response
+        else:
+            urls = {rel: (override or f"{base}/put/{rel}") for rel in body.get("files", [])}
         data = json.dumps({"urls": urls}).encode()
         self.send_response(200)
         self.send_header("Content-Type", "application/json")
@@ -416,13 +420,16 @@ class _EvidenceHandler(BaseHTTPRequestHandler):
 
 @contextmanager
 def _evidence_server(
-    put_fail: set[str] | None = None, url_override: str | None = None
+    put_fail: set[str] | None = None,
+    url_override: str | None = None,
+    urls_response: Any = None,
 ) -> Iterator[tuple[Any, str]]:
     httpd = ThreadingHTTPServer(("127.0.0.1", 0), _EvidenceHandler)
     httpd.puts = {}  # type: ignore[attr-defined]
     httpd.url_requests = []  # type: ignore[attr-defined]
     httpd.put_fail = put_fail or set()  # type: ignore[attr-defined]
     httpd.url_override = url_override  # type: ignore[attr-defined]
+    httpd.urls_response = urls_response  # type: ignore[attr-defined]
     thread = threading.Thread(target=httpd.serve_forever, daemon=True)
     thread.start()
     try:
@@ -430,6 +437,7 @@ def _evidence_server(
         yield httpd, f"http://127.0.0.1:{port}"
     finally:
         httpd.shutdown()
+        httpd.server_close()  # close the listening socket so tests don't leak file descriptors
         thread.join()
 
 
@@ -485,3 +493,24 @@ def test_upload_evidence_does_not_raise_on_a_malformed_signed_url(tmp_path: Path
     _run_tree(tmp_path, "r1")
     with _evidence_server(url_override="not a url") as (_httpd, base):
         _upload_evidence(tmp_path, "r1", url=base, auth_token=None, evidence_prefix="")  # no raise
+
+
+def test_upload_evidence_ignores_a_non_dict_urls_response(tmp_path: Path) -> None:
+    # A malformed `urls` (not a dict) must not crash the worker on `.items()`.
+    _run_tree(tmp_path, "r1")
+    with _evidence_server(urls_response=["nope"]) as (httpd, base):
+        _upload_evidence(tmp_path, "r1", url=base, auth_token=None, evidence_prefix="")
+    assert httpd.puts == {}  # type: ignore[attr-defined]
+
+
+def test_upload_evidence_skips_a_key_that_escapes_the_run_dir(tmp_path: Path) -> None:
+    # A returned key that resolves outside the run dir must be skipped, never PUT.
+    _run_tree(tmp_path, "r1")
+    with _evidence_server() as (httpd, base):
+        httpd.urls_response = {  # type: ignore[attr-defined]
+            "../../escape.txt": f"{base}/put/escape",
+            "manifest.json": f"{base}/put/manifest.json",
+        }
+        _upload_evidence(tmp_path, "r1", url=base, auth_token=None, evidence_prefix="")
+    puts = httpd.puts  # type: ignore[attr-defined]
+    assert set(puts) == {"manifest.json"}  # the escaping key was skipped

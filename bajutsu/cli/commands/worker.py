@@ -285,11 +285,21 @@ def _upload_evidence(
     if code != 200:
         _logger.warning("evidence upload-urls returned %s for run %s", code, run_id)
         return
-    urls = body.get("urls") or {}
+    urls = body.get("urls")
+    if not isinstance(urls, dict):  # a malformed response must not crash the worker
+        _logger.warning("evidence upload-urls returned an unexpected shape for run %s", run_id)
+        return
+    base = run_dir.resolve()
     uploaded = 0
     for rel, put_url in urls.items():
+        # Confine each returned key under the run dir and require a string URL, so a malformed or
+        # hostile response can neither read files outside the tree nor crash the loop.
+        src = (run_dir / rel).resolve()
+        if not isinstance(put_url, str) or not src.is_relative_to(base):
+            _logger.warning("skipping unexpected upload entry %r for run %s", rel, run_id)
+            continue
         try:
-            _put_file(put_url, run_dir / rel, content_type_for(rel))
+            _put_file(put_url, src, content_type_for(rel))
         except Exception as e:
             _logger.warning("evidence upload failed for %s: %s", rel, e)
         else:

@@ -108,6 +108,15 @@ def test_a_non_string_file_entry_is_rejected(tmp_path: Path) -> None:
     assert status == 400
 
 
+def test_a_non_string_evidence_prefix_is_rejected(tmp_path: Path) -> None:
+    # A non-string prefix (e.g. a JSON object) must fail loudly, not be str()-coerced into a key.
+    state = _state(tmp_path, evidence=EvidenceTarget(store=_FakeStore(), base_prefix="evidence/"))
+    _, status = ops.generate_upload_urls(
+        state, "20260702-143000", {"evidence_prefix": {"nested": 1}, "files": ["manifest.json"]}
+    )
+    assert status == 400
+
+
 def test_http_upload_urls_route_signs_urls(tmp_path: Path) -> None:
     # The route is reachable through the real stdlib handler, not just the operation (BE-0110).
     state = ServeState(runs_dir=tmp_path / "runs", cwd=tmp_path)

@@ -157,9 +157,12 @@ def start_run(
         # bundle at bind. The bundle's provenance is stamped into the run's manifest after it finishes.
         build = None
     # Per-run evidence-upload prefix (BE-0110): CI passes it to select the cloud lifecycle policy. It
-    # becomes a storage key segment, so reject a leading `/` or `..` traversal here — the same guard
-    # the upload-urls endpoint re-applies to the worker-relayed value.
-    evidence_prefix = str(body.get("evidence_prefix") or "")
+    # becomes a storage key segment, so reject a non-string, a leading `/`, or `..` traversal here —
+    # the same guard the upload-urls endpoint re-applies to the worker-relayed value.
+    raw_prefix = body.get("evidence_prefix")
+    if raw_prefix is not None and not isinstance(raw_prefix, str):
+        return {"error": "evidence_prefix must be a string"}, 400
+    evidence_prefix = raw_prefix or ""
     if not valid_relative_key(evidence_prefix, allow_empty=True):
         return {"error": "invalid evidence_prefix"}, 400
     job, capped = _register_and_dispatch(

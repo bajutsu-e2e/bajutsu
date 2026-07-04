@@ -38,7 +38,10 @@ def generate_upload_urls(
         return {"urls": {}}, 200
     if not valid_run_id(run_id):
         return {"error": "invalid runId"}, 400
-    evidence_prefix = str(body.get("evidence_prefix") or "")
+    raw_prefix = body.get("evidence_prefix")
+    if raw_prefix is not None and not isinstance(raw_prefix, str):
+        return {"error": "evidence_prefix must be a string"}, 400
+    evidence_prefix = raw_prefix or ""
     if not valid_relative_key(evidence_prefix, allow_empty=True):
         return {"error": "invalid evidence_prefix"}, 400
     if evidence_prefix and not evidence_prefix.endswith("/"):
