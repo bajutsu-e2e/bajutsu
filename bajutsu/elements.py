@@ -22,8 +22,8 @@ def shows_app_ui(elements: list[base.Element]) -> bool:
     """Whether the tree shows the app's own UI (rather than being collapsed under a system overlay).
 
     A SpringBoard alert collapses the app's tree to a bare window; a live app screen
-    has actionable content. "Actionable" = any non-application element carrying an `id` OR a
-    `label`, so apps WITHOUT accessibility identifiers (label/coordinate-driven, e.g. the
+    has actionable content. "Actionable" = any non-application element carrying an `identifier`
+    OR a `label`, so apps WITHOUT accessibility identifiers (label/coordinate-driven, e.g. the
     showcase `-noax` variants) are not mistaken for a blocked screen — the bug that made the
     guard fire every turn.
     """
