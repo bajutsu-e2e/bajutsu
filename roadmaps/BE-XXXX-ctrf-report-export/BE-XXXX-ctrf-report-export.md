@@ -18,8 +18,8 @@ Emit a run's results as a [Common Test Report Format (CTRF)](https://ctrf.io/) d
 `ctrf.json`, written into the run directory alongside the existing `manifest.json`, `junit.xml`,
 and `report.html`. CTRF is an open-standard JSON schema for test reports (`reportFormat: "CTRF"`,
 a `results` object holding `tool` / `summary` / `tests`), designed so that any framework can produce
-the same shape and a growing ecosystem of consumers — GitHub Actions PR-comment reporters,
-dashboards, flaky-test analytics — reads it without per-tool adapters. The exporter is a pure,
+the same shape and consumers across a growing ecosystem — GitHub Actions PR-comment reporters,
+dashboards, flaky-test analytics — read it without per-tool adapters. The exporter is a pure,
 deterministic projection of the run data Bajutsu already computes: same input as the existing
 `junit_xml()`, a new output format beside it. No LLM, no effect on the verdict.
 
