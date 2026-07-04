@@ -38,6 +38,25 @@ scenarios:
 Both the file description and each scenario's `description` appear in `report.html` (the
 summary header and each scenario card) and in the `bajutsu serve` UI.
 
+### Schema version
+
+The mapping form may carry a top-level `schema` integer marking the scenario schema version. A file
+that omits it is treated as version 1, so every existing scenario is valid unchanged:
+
+```yaml
+schema: 1
+scenarios:
+  - name: ...
+    steps: [...]
+```
+
+When a scenario declares a `schema` newer than the running `bajutsu` understands, the load fails
+with a clear upgrade-path message instead of an opaque "unknown field" error — the case that arises
+once a scenario tree is read across versions (for example, a config sourced from a pinned Git ref).
+The current version is `SCHEMA_VERSION` in `bajutsu/scenario/models/scenario.py`. Bump it only for a
+load-breaking change — removing a required field's meaning, or a change an older `bajutsu` would
+misinterpret rather than merely reject; a purely additive optional field needs no bump.
+
 ## Top-level structure (`Scenario`)
 
 | Key | Type | Default | Description |

@@ -7,8 +7,9 @@
 |---|---|
 | 提案 | [BE-0119](BE-0119-scenario-schema-versioning-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **提案** |
+| 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0119") |
+| 実装 PR | [#663](https://github.com/bajutsu-e2e/bajutsu/pull/663) |
 | トピック | config の取得元 |
 <!-- /BE-METADATA -->
 
@@ -45,12 +46,15 @@
 > 作業分解（作業の単位ごとに 1 つ）に対応し、ログには変更内容と時期（古い順）を PR へのリンクと
 > ともに記録します。
 
-- [ ] `ScenarioFile` に `schema` フィールド（デフォルト `1`）を追加する
-- [ ] `load_scenario_file` で完全な検証の前に `schema` をチェックし、明快なアップグレード手順のエラーを出す
-- [ ] 同一バージョンのドキュメントに対する `extra="forbid"` は変更しない
-- [ ] シナリオモデルのスキーマ版上げの運用ルールを文書化する
+- [x] `ScenarioFile` に `schema` フィールド（デフォルト `1`）を追加する
+- [x] `load_scenario_file` で完全な検証の前に `schema` をチェックし、明快なアップグレード手順のエラーを出す
+- [x] 同一バージョンのドキュメントに対する `extra="forbid"` は変更しない
+- [x] シナリオモデルのスキーマ版上げの運用ルールを文書化する
 
-まだ着手した PR はありません。
+- [#663](https://github.com/bajutsu-e2e/bajutsu/pull/663) — `SCHEMA_VERSION` 定数とエイリアス付きの `schema` フィールドを `ScenarioFile` に追加し、
+  `load_scenario_file` に検証前のバージョンゲート（新しすぎる、または 1 未満のスキーマを対処可能な
+  エラーで拒否し、サポート範囲内のドキュメントに対する `extra="forbid"` は変更しない）を追加。
+  スキーマ版上げの運用ルールを `docs/scenarios.md`（および `docs/ja/`）に記載しました。
 
 ## 参考
 

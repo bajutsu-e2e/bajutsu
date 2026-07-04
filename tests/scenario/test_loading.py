@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import pytest
+
 from bajutsu.scenario import (
     Scenario,
     Step,
@@ -12,6 +14,7 @@ from bajutsu.scenario import (
     load_scenarios,
     redact_totp_secrets,
 )
+from bajutsu.scenario.models.scenario import SCHEMA_VERSION
 
 # A valid base32 TOTP seed used across the redaction tests below.
 _TOTP_SEED = "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ"
@@ -63,6 +66,70 @@ def test_scenario_file_round_trips_with_descriptions() -> None:
     assert rt.description == "top" and rt.scenarios[0].description == "d"
     # without a file description, dump_scenario_file emits the bare list form
     assert load_scenario_file(dump_scenario_file(sf.scenarios)).description is None
+
+
+def test_explicit_current_schema_loads() -> None:
+    # A scenario declaring the schema this bajutsu supports parses like any other — the version
+    # field is not rejected by extra="forbid" (BE-0119).
+    text = (
+        f"schema: {SCHEMA_VERSION}\nscenarios:\n  - name: a\n    steps:\n      - tap: {{ id: x }}\n"
+    )
+    sf = load_scenario_file(text)
+    assert sf.scenarios[0].name == "a"
+
+
+def test_missing_schema_is_implicitly_version_one() -> None:
+    # Every existing scenario file has no `schema` key; it is treated as schema 1, unchanged (BE-0119).
+    sf = load_scenario_file("- name: a\n  steps:\n    - tap: { id: x }\n")
+    assert sf.scenarios[0].name == "a"
+
+
+def test_future_schema_raises_actionable_error() -> None:
+    # A scenario from a newer bajutsu fails with a clear upgrade-path message, not the opaque
+    # extra="forbid" "Extra inputs are not permitted" error (BE-0119).
+    future = SCHEMA_VERSION + 1
+    text = f"schema: {future}\nscenarios:\n  - name: a\n    steps:\n      - tap: {{ id: x }}\n"
+    with pytest.raises(ValueError, match=rf"schema {future}") as excinfo:
+        load_scenario_file(text)
+    message = str(excinfo.value)
+    assert f"schema {SCHEMA_VERSION}" in message  # names the supported ceiling
+    assert "upgrade" in message.lower()  # tells the user what to do
+
+
+def test_future_schema_as_coercible_string_or_float_is_still_gated() -> None:
+    # The `schema` field is non-strict, so pydantic would coerce `"2"` / `2.0` to int during
+    # validation — the gate must apply the same coercion first, or an out-of-range version slips
+    # through as a string/float (BE-0119).
+    future = SCHEMA_VERSION + 1
+    for value in (f'"{future}"', f"{future}.0"):
+        text = f"schema: {value}\nscenarios:\n  - name: a\n    steps:\n      - tap: {{ id: x }}\n"
+        with pytest.raises(ValueError, match=rf"schema {future}"):
+            load_scenario_file(text)
+
+
+def test_in_range_string_schema_loads() -> None:
+    # A coercible in-range value (a quoted current version) passes the gate and validates normally.
+    text = f'schema: "{SCHEMA_VERSION}"\nscenarios:\n  - name: a\n    steps:\n      - tap: {{ id: x }}\n'
+    assert load_scenario_file(text).scenarios[0].name == "a"
+
+
+def test_below_one_schema_is_rejected() -> None:
+    # No schema below 1 has ever existed, so `schema: 0` is a malformed version, not an implicit v1
+    # — it fails loudly rather than being stored verbatim (BE-0119).
+    text = "schema: 0\nscenarios:\n  - name: a\n    steps:\n      - tap: { id: x }\n"
+    with pytest.raises(ValueError, match="earliest schema is 1"):
+        load_scenario_file(text)
+
+
+def test_typo_in_supported_scenario_still_fails_loudly() -> None:
+    # The version check must not swallow a real typo in an in-support scenario: with a supported
+    # `schema` declared (so the version gate runs and passes), an unknown key keeps failing with
+    # pydantic's extra="forbid" error (BE-0119).
+    text = (
+        f"schema: {SCHEMA_VERSION}\nscenarios:\n  - name: a\n    stpes:\n      - tap: {{ id: x }}\n"
+    )
+    with pytest.raises(ValueError, match="Extra inputs are not permitted"):
+        load_scenario_file(text)
 
 
 def test_load_scenario_example() -> None:
