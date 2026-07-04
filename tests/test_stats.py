@@ -339,11 +339,19 @@ def test_render_text_includes_flaky_scenarios() -> None:
 
 
 def test_render_html_empty_state() -> None:
-    # A fresh runs directory aggregates to zero runs; the HTML must still render cleanly (no Jinja
-    # UndefinedError, no divide-by-zero in a filter) with empty slowest/flaky lists.
+    # A fresh runs directory aggregates to zero runs; the HTML shows an empty-state message rather
+    # than a meaningless "0/0 runs passed" pass-rate, and still renders cleanly (no Jinja error).
     html = _stats.render_html(_stats.aggregate_runs([]))
     assert html.startswith("<!DOCTYPE html>")
+    assert html.rstrip().endswith("</html>")
+    assert "No runs to aggregate" in html
+    assert "0/0 runs passed" not in html
     assert "<script" not in html
+
+
+def test_render_text_reports_unknown_backend() -> None:
+    stats = _stats.aggregate_runs([_manifest("20260101-000000", ok=True)])  # no backend recorded
+    assert "(unknown)=1" in _stats.render(stats)
 
 
 def test_failing_steps_fall_back_to_question_marks() -> None:

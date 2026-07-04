@@ -326,7 +326,11 @@ def render(s: Stats) -> str:
         f"total duration: {s.total_duration_s:.1f}s",
     ]
     if s.by_backend:
-        lines.append("volume by backend: " + ", ".join(f"{b}={n}" for b, n in s.by_backend.items()))
+        # Match the HTML view's "(unknown)" so a run with no recorded backend doesn't read as "=N".
+        lines.append(
+            "volume by backend: "
+            + ", ".join(f"{b or '(unknown)'}={n}" for b, n in s.by_backend.items())
+        )
     if s.by_day:
         lines.append("pass-rate by day:")
         lines.extend(

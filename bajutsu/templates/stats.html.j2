@@ -46,6 +46,9 @@ code { background: #f2f2f7; border-radius: 4px; padding: .1rem .35rem; font-size
 </head>
 <body>
 <h1>Run stats</h1>
+{%- if not stats.runs %}
+<p class="empty">No runs to aggregate — point <code>--runs</code> at a directory of runs (each with a <code>manifest.json</code>).</p>
+{%- else %}
 <p class="sub">Read-only trend across {{ stats.runs }} run(s). No verdict — advisory only.</p>
 
 <section>
@@ -147,5 +150,6 @@ code { background: #f2f2f7; border-radius: 4px; padding: .1rem .35rem; font-size
 <p class="empty">No failures recorded across the run set.</p>
 {%- endif %}
 </section>
+{%- endif %}
 </body>
 </html>
