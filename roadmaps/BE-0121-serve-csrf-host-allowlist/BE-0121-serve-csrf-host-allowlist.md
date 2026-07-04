@@ -9,6 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0121") |
+| Implementing PR | [#641](https://github.com/bajutsu-e2e/bajutsu/pull/641) |
 | Topic | Security hardening |
 <!-- /BE-METADATA -->
 
