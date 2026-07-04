@@ -92,6 +92,13 @@ def test_write_screenshot_is_owner_only(tmp_path: Path) -> None:
     assert stat.S_IMODE(path.stat().st_mode) == 0o600
 
 
+def test_write_elements_is_owner_only(tmp_path: Path) -> None:
+    # The element dump holds on-screen text (labels / values), redacted best-effort — owner-only,
+    # like the other sensitive artifacts (BE-0131, issue #558's accessibility-dump scope).
+    path = write_elements(FakeDriver([_el("a", "A")]), tmp_path / "step0")
+    assert stat.S_IMODE(path.stat().st_mode) == 0o600
+
+
 def test_capture_no_writing_kinds_leaves_dir_uncreated(tmp_path: Path) -> None:
     """capture() creates the step dir only when it actually writes a file; a kind it
     does not handle here (e.g. an interval kind) must leave the dir untouched, as before."""

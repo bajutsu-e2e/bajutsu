@@ -16,6 +16,7 @@ from bajutsu import github
 from bajutsu import usage as _usage
 from bajutsu.anthropic_client import credential_gap
 from bajutsu.anthropic_client import key_env as ac_key_env
+from bajutsu.artifact_perms import make_run_dir
 from bajutsu.assertions import GoldenContext
 from bajutsu.backends import ensure_web_runtime, select_actuator
 from bajutsu.cli._shared import (
@@ -486,6 +487,9 @@ def _dispatch_single(
     exec_decision: dict[str, str | None] | None,
 ) -> tuple[list[RunResult], Path]:
     """The single-engine path — exactly today's flow: one pool, one `run_and_report`, no matrix."""
+    # Own the run dir owner-only before the pool can create anything under it (e.g. Playwright's
+    # `_video_tmp`), so no world-readable window exists before the pipeline's own chmod (BE-0131).
+    make_run_dir(plan.runs_dir / plan.run_id)
     lease, shutdown = device_pool(
         plan.udids,
         plan.backends,
@@ -531,6 +535,9 @@ def _dispatch_matrix(
     Evidence lands under run_dir/<engine>/<sid>; the pipeline assembles ONE report whose matrix
     aggregates the per-engine verdicts (all-must-pass, machine-only).
     """
+    # Own the top run dir owner-only before any engine pool can create a subdir under it, so every
+    # engine's evidence sits beneath a non-world-readable parent from the first write (BE-0131).
+    make_run_dir(plan.runs_dir / plan.run_id)
 
     def run_pass(engine: str, engine_run_dir: Path) -> list[RunResult]:
         if progress_fn is not None:

@@ -25,7 +25,14 @@ def make_run_dir(path: Path) -> Path:
     chmods after creating so the mode is the umask-independent `0700`, not `0700 & ~umask`.
     Idempotent: an already-existing dir (e.g. created world-readable by an earlier step-dir
     write) is re-restricted rather than left as-is.
+
+    Raises:
+        ValueError: `path` is a symlink. The run id is a predictable timestamp, so on a
+            world-writable runs dir another local account could pre-plant a symlink there and
+            redirect the `chmod` onto its target; refuse it loudly rather than follow it.
     """
+    if path.is_symlink():
+        raise ValueError(f"refusing to use a symlinked run directory: {path}")
     path.mkdir(parents=True, exist_ok=True)
     os.chmod(path, RUN_DIR_MODE)
     return path

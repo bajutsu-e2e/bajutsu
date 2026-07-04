@@ -66,6 +66,8 @@ def write_elements(
         json.dumps(els, ensure_ascii=False, indent=2),
         encoding="utf-8",
     )
+    # The element dump holds on-screen text (redacted best-effort) — owner-only, umask-independent (BE-0131).
+    restrict_file(path)
     return path
 
 

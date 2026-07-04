@@ -171,4 +171,4 @@ redact:
 
 ## ファイルパーミッション
 
-マスキングは漏えいした証跡が明かす内容を減らしますが、ベストエフォートの denylist なので、証跡を誰が読めるかも同じく重要です。ランナーは各 run ディレクトリを所有者のみ（`0700`）で作成し、機微な内容を含み得るファイル（`network.json`、コピーした `scenario.yaml`、スクリーンショット）を、ホストの `umask` に依存せず所有者のみ（`0600`）で書き込みます（[BE-0131](../../roadmaps/implemented/BE-0131-run-artifact-permissions/BE-0131-run-artifact-permissions-ja.md)）。それ以外の証跡も `0700` の run ディレクトリ配下に置かれるため、共有ホスト（CI ランナーなど）の別のローカルアカウントからは既定で読めません。実装: `artifact_perms.py`。
+マスキングは漏えいした証跡が明かす内容を減らしますが、ベストエフォートの denylist なので、証跡を誰が読めるかも同じく重要です。ランナーは各 run ディレクトリを所有者のみ（`0700`）で作成し、機微な内容を含み得るファイル（`network.json`、コピーした `scenario.yaml`、要素ダンプ（`elements.json`）、スクリーンショット）を、ホストの `umask` に依存せず所有者のみ（`0600`）で書き込みます（[BE-0131](../../roadmaps/implemented/BE-0131-run-artifact-permissions/BE-0131-run-artifact-permissions-ja.md)）。それ以外の証跡も `0700` の run ディレクトリ配下に置かれるため、共有ホスト（CI ランナーなど）の別のローカルアカウントからは既定で読めません。実装: `artifact_perms.py`。

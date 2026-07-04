@@ -5,6 +5,8 @@ from __future__ import annotations
 import stat
 from pathlib import Path
 
+import pytest
+
 from bajutsu.artifact_perms import ARTIFACT_FILE_MODE, RUN_DIR_MODE, make_run_dir, restrict_file
 
 
@@ -26,6 +28,19 @@ def test_make_run_dir_re_restricts_an_existing_dir(tmp_path: Path) -> None:
     existing.chmod(0o755)
     make_run_dir(existing)
     assert _mode(existing) == 0o700
+
+
+def test_make_run_dir_rejects_a_symlinked_path(tmp_path: Path) -> None:
+    # The run id is a predictable timestamp, so on a world-writable runs dir another local account
+    # could pre-plant a symlink at the run path and redirect our chmod onto its target. Refuse a
+    # symlinked run dir loudly rather than follow it.
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    link = tmp_path / "runs" / "run1"
+    link.parent.mkdir(parents=True)
+    link.symlink_to(outside, target_is_directory=True)
+    with pytest.raises(ValueError, match="symlink"):
+        make_run_dir(link)
 
 
 def test_restrict_file_is_owner_only(tmp_path: Path) -> None:
