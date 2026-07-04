@@ -45,7 +45,7 @@ worker-side store for three things:
   per-project scenario prefix.
 
 Removing the worker's credentials for all three finishes the credential-free-worker goal, lets the
-worker extra drop `boto3` entirely (it needs only an HTTP client), and lets the object store's
+worker run without any cloud SDK (`boto3`) at all — only an HTTP client — and lets the object store's
 credentials live in exactly one place — the control plane — which can then use a stricter-permissioned
 or separate-account bucket without re-distributing secrets to the fleet.
 
@@ -85,8 +85,9 @@ the org's scenario prefix) and PUTs the file, replacing `_save_authored`'s direc
 
 With 1–3 in place, remove `_object_store()` / `object_store_from_env()` from the worker path
 (`worker.py`, `worker_job.py`), so the worker constructs no cloud client and reads no
-`BAJUTSU_S3_*` / AWS credentials. The `worker` extra drops `boto3`; the worker's only network
-dependency is its existing HTTP client. The **control plane** keeps the `server` extra (boto3 / GCS)
+`BAJUTSU_S3_*` / AWS credentials. The worker no longer needs a cloud SDK (`boto3`) at runtime — the
+`worker` extra is already empty, so this just makes that true in practice — and its only network
+dependency stays its existing HTTP client. The **control plane** keeps the `server` extra (boto3 / GCS)
 as today.
 
 ### 5. Endpoint + key-building generalization
@@ -134,8 +135,8 @@ flowing worker→storage directly.
 - [ ] Artifact upload via presigned PUT (worker requests URLs under the org artifact prefix, PUTs)
 - [ ] Baseline download via presigned GET (control plane lists + signs; worker GETs before the run)
 - [ ] Authored-scenario save via presigned PUT (`record` jobs)
-- [ ] Remove `object_store_from_env()` / `_object_store()` from the worker; drop `boto3` from the
-      `worker` extra
+- [ ] Remove `object_store_from_env()` / `_object_store()` from the worker so its runtime needs no
+      cloud SDK (`boto3`); the `worker` extra stays dependency-free
 - [ ] Tests — presigned artifact/baseline/scenario paths against a real HTTP server (no worker
       credentials); org-boundary re-validation
 - [ ] Documentation — update `docs/self-hosting.md` (worker needs no `BAJUTSU_S3_*` / AWS creds) and
