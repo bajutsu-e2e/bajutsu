@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0124](BE-0124-config-source-owner-repo-validation.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0124") |
+| Implementing PR | [#627](https://github.com/bajutsu-e2e/bajutsu/pull/627) |
 | Topic | Security hardening |
 <!-- /BE-METADATA -->
 
@@ -72,12 +73,14 @@ filesystem or shell surface, which caps the practical impact.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Tighten `_GITHUB_RE` and `_GIT_URL_RE`'s owner/repo character classes to GitHub's real
+- [x] Tighten `_GITHUB_RE` and `_GIT_URL_RE`'s owner/repo character classes to GitHub's real
       charset, rejecting `.`, `..`, and `%`.
-- [ ] Confirm the rejection surfaces as a parse failure, consistent with an unparseable source.
-- [ ] Add unit tests for the rejected shapes and the existing valid shapes.
+- [x] Confirm the rejection surfaces as a parse failure, consistent with an unparseable source.
+- [x] Add unit tests for the rejected shapes and the existing valid shapes.
 
-No PR has landed yet.
+- 2026-07-04: Constrained the owner class to `[A-Za-z0-9-]+` and the repo class to `[A-Za-z0-9._-]+`
+  (so `%` no longer matches) and rejected a bare `.`/`..` repo segment in `parse_config_spec`, with
+  unit tests for the rejected shapes and the dotted/`.git` shapes that must still parse.
 
 ## References
 

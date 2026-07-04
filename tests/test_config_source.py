@@ -65,6 +65,29 @@ def test_parse_general_git_url() -> None:
     )
 
 
+def test_parse_keeps_a_dotted_repo_name() -> None:
+    # A dot is legitimate inside a repo name (`repo.js`); only a bare `.`/`..` segment is a traversal.
+    spec = parse_config_spec("github:acme/my.repo.js")
+    assert spec is not None and (spec.owner, spec.repo) == ("acme", "my.repo.js")
+
+
+def test_parse_rejects_a_traversal_repo_segment() -> None:
+    # `.` / `..` as the whole repo segment would climb out of the `<host>/<owner>/<repo>/<sha>/` cache
+    # layout, so it fails to parse the same way an unrecognized string does (BE-0124).
+    assert parse_config_spec("github:acme/..") is None
+    assert parse_config_spec("github:acme/.") is None
+    assert parse_config_spec("git+https://git.example.com/acme/..") is None
+    assert parse_config_spec("git+https://git.example.com/acme/.") is None
+
+
+def test_parse_rejects_percent_in_owner_or_repo() -> None:
+    # Percent-encoding has no legitimate role in an owner/repo segment; reject it outright (BE-0124).
+    assert parse_config_spec("github:acme/repo%2e%2e") is None
+    assert parse_config_spec("github:ac%6de/repo") is None
+    assert parse_config_spec("git+https://git.example.com/acme/repo%2e%2e.git") is None
+    assert parse_config_spec("git+https://git.example.com/ac%6de/repo.git") is None
+
+
 # --- materialize (fake transport) ---
 
 
