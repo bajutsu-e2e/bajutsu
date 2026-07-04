@@ -87,20 +87,36 @@ def iter_rows(roadmap: Path, status: str) -> list[Row]:
         status: the status to filter by, matched via :func:`resolve_status`.
 
     Raises:
-        ValueError: if ``status`` is unknown (validated before any file is read).
+        ValueError: if ``status`` is unknown (validated before any file is read), or if a
+            status-matched item is malformed — a missing ``Topic`` or an unparseable heading.
+            The message names the offending file so a CLI failure is actionable, rather than a
+            bare ``KeyError`` with no clue which item is at fault.
     """
     canonical = resolve_status(status)
-    rows = [
-        Row(
-            id=_item_id(d.name),
-            title=_title(text),
-            topic=fields["Topic"],
-            path=f"{roadmap.name}/{d.name}/{d.name}.md",
+    rows: list[Row] = []
+    for d in iter_item_dirs(roadmap):
+        item = d / f"{d.name}.md"
+        try:
+            text = item.read_text(encoding="utf-8")
+        except OSError as exc:
+            raise ValueError(f"{item}: cannot read item file: {exc}") from exc
+        fields = metadata_fields(text)
+        if fields.get("Status") != canonical:
+            continue
+        if "Topic" not in fields:
+            raise ValueError(f"{item}: metadata is missing a 'Topic' field")
+        try:
+            title = _title(text)
+        except ValueError as exc:
+            raise ValueError(f"{item}: {exc}") from exc
+        rows.append(
+            Row(
+                id=_item_id(d.name),
+                title=title,
+                topic=fields["Topic"],
+                path=f"{roadmap.name}/{d.name}/{d.name}.md",
+            )
         )
-        for d in iter_item_dirs(roadmap)
-        if (text := (d / f"{d.name}.md").read_text(encoding="utf-8"))
-        and (fields := metadata_fields(text)).get("Status") == canonical
-    ]
     return sorted(rows, key=lambda row: (row.topic, row.id))
 
 

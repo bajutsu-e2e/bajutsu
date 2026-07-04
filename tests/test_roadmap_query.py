@@ -110,12 +110,24 @@ def test_iter_rows_includes_placeholder_item(tmp_path: Path) -> None:
 
 
 def test_iter_rows_rejects_malformed_heading_id(tmp_path: Path) -> None:
-    """A matching item whose H1 carries a malformed id (not BE-NNNN / BE-XXXX) fails loudly."""
+    """A matching item with a malformed id heading fails loudly, naming the offending file."""
     roadmap = tmp_path / "roadmaps"
     body = _item("Proposal", "MCP", "Bad", "bad", "BE-0013").replace("# BE-0013 —", "# BE-13 —")
     _write_item(roadmap, "BE-0013", "bad", body)
 
-    with pytest.raises(ValueError, match="heading"):
+    with pytest.raises(ValueError, match=r"BE-0013-bad\.md.*heading"):
+        rq.iter_rows(roadmap, "Proposal")
+
+
+def test_iter_rows_rejects_matching_item_missing_topic(tmp_path: Path) -> None:
+    """A status-matched item without a Topic field fails with the offending file named."""
+    roadmap = tmp_path / "roadmaps"
+    body = _item("Proposal", "MCP", "NoTopic", "notopic", "BE-0014").replace(
+        "| Topic | MCP |\n", ""
+    )
+    _write_item(roadmap, "BE-0014", "notopic", body)
+
+    with pytest.raises(ValueError, match=r"BE-0014-notopic\.md.*Topic"):
         rq.iter_rows(roadmap, "Proposal")
 
 

@@ -7,7 +7,7 @@ description: >-
   roadmaps/README.md. Use when you need an overview of the roadmap in one status — e.g. "what
   proposals are open?", "which items are in progress?", "list the deferred ones" — or to find the
   file path of items in a status before opening them. Takes one status argument and returns a table
-  of ID / title / Topic / path. Read-only: it surveys the roadmap, it never authors, implements, or
+  of ID / Item / Topic / Path. Read-only: it surveys the roadmap, it never authors, implements, or
   edits any item (ideation authors proposals; implement-be ships them).
 ---
 
