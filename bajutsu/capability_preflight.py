@@ -12,6 +12,10 @@ The map gates only the **true hard requirements** the capability set cleanly dec
 
 - `pinch` / `rotate` need `multiTouch`.
 - a `visual` assertion needs `screenshot`.
+- a device-control step (`setLocation` / `push` / `clearKeychain` / `clearClipboard` /
+  `setClipboard` / `background` / `foreground` / `overrideStatusBar` / `clearStatusBar`) needs
+  `deviceControl` (BE-0128) — the whole simctl-backed `DeviceControl` family as one unit.
+  `relaunch` is not here: it is gated by the injected relauncher, not `DeviceControl`.
 - every run needs `query` + `elements` (the baseline read path).
 
 Deliberately **not** gated (an audit of what each construct actually depends on, BE-0082):
@@ -89,6 +93,23 @@ def _visual_locations(sc: Scenario) -> list[str]:
     return [path for path, a in _assertions_with_path(sc) if a.visual is not None]
 
 
+def _device_control_locations(sc: Scenario) -> list[str]:
+    """The paths where a device-control step appears (any `DeviceControl` op; not `relaunch`)."""
+    return [
+        path
+        for path, step in _walk_steps(sc.steps)
+        if step.set_location is not None
+        or step.push is not None
+        or step.clear_keychain is not None
+        or step.clear_clipboard is not None
+        or step.set_clipboard is not None
+        or step.background is not None
+        or step.foreground is not None
+        or step.override_status_bar is not None
+        or step.clear_status_bar is not None
+    ]
+
+
 # Capabilities every run needs regardless of which constructs it uses (the baseline read path).
 _BASELINE = (base.Capability.QUERY, base.Capability.ELEMENTS)
 
@@ -102,6 +123,11 @@ _REQUIREMENTS = (
         base.Capability.SCREENSHOT,
         "visual assertion",
         _visual_locations,
+    ),
+    _Requirement(
+        base.Capability.DEVICE_CONTROL,
+        "device-control step (simctl-backed)",
+        _device_control_locations,
     ),
 )
 

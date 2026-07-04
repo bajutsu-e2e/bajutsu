@@ -302,6 +302,7 @@ def _build_server_state(
         upload_exec=upload_exec,
         evidence=evidence,
         allow_remote_build=allow_remote_build,
+        hosted=True,  # the server backend is a hosted deployment: drop the file browser (BE-0108)
         executor=DbQueueExecutor(repo) if repo is not None else LocalExecutor(),
         logbus=(
             PostCompletionLogBus(

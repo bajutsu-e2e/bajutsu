@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0108](BE-0108-hosted-config-source-restriction.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0108") |
+| Implementing PR | [#648](https://github.com/bajutsu-e2e/bajutsu/pull/648) |
 | Topic | Hosting the web UI (cloud / self-hosted) |
 | Related | [BE-0015](../BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md), [BE-0051](../BE-0051-serve-hardening-for-hosting/BE-0051-serve-hardening-for-hosting.md), [BE-0063](../BE-0063-git-config-source/BE-0063-git-config-source.md), [BE-0073](../BE-0073-serve-zip-bundle-upload/BE-0073-serve-zip-bundle-upload.md) |
 <!-- /BE-METADATA -->
@@ -116,12 +117,19 @@ entirely in the serve config-sourcing layer.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] `hosted: bool` on `ServeState`, set by the server backend
-- [ ] `configSources` advertised on `/api/config` (`config_info`)
-- [ ] Frontend hides the file-browser source when `fs` is not offered
-- [ ] `browse_fs` / `bind_config` path branch refuse when hosted (server-side enforcement)
-- [ ] Tests: hosted omits/refuses `fs`, local keeps all three
-- [ ] Docs updated (config sources are deployment-dependent), both languages
+- [x] `hosted: bool` on `ServeState`, set by the server backend
+- [x] `configSources` advertised on `/api/config` (`config_info`)
+- [x] Frontend hides the file-browser source when `fs` is not offered
+- [x] `browse_fs` / `bind_config` path branch refuse when hosted (server-side enforcement)
+- [x] Tests: hosted omits/refuses `fs`, local keeps all three
+- [x] Docs updated (config sources are deployment-dependent), both languages
+
+**Log**
+
+- Shipped in one PR: `ServeState.hosted` (set `True` only in `_build_server_state`), `configSources`
+  on `config_info`, `403` refusals in `browse_fs` and the path branch of `bind_config`, the
+  frontend gate on the `#fssrc` block, serve HTTP tests for both deployments, and the bilingual
+  self-hosting note.
 
 ## References
 

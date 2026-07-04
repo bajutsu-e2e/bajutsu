@@ -175,6 +175,43 @@ bajutsu coverage --target <name> [--config ...] [--runs <dir>] [--crawl <screenm
   it **exits 0 even with gaps** (only a missing config / scenarios dir or an unreadable scenario exits
   2). A gap is a namespace to cover, not a verdict.
 
+## `stats`
+
+An **aggregate run-stats dashboard** — the read-only trend *across* many runs, complementing the
+per-run `report.html` (AI-independent;
+[BE-0102](../roadmaps/BE-0102-run-stats-dashboard/BE-0102-run-stats-dashboard.md)). Where `coverage`
+answers *"what surface do we test?"* and `audit` answers *"is a scenario reproducible?"*, `stats`
+answers *"how is the whole suite doing over time?"* It aggregates the `manifest.json` of every run
+under a directory — no device, no AI, no verdict.
+
+```bash
+bajutsu stats --runs <dir> [--json] [--html <path>]
+```
+
+- **`--runs <dir>`** is the directory of past runs to aggregate; it reads each run's `manifest.json`
+  (unreadable / malformed ones are skipped). A missing directory exits 2.
+- Reports, as text or `--json` for tooling:
+  - **Pass-rate over time** — overall and per day (the day is parsed from the run id's timestamp
+    prefix; a custom-labelled run id has no day and buckets under `(no date)`).
+  - **Duration / performance** — total wall-clock across the set (each run's duration is summed from
+    its scenarios' `duration_s`) and the **slowest scenarios** by average duration.
+  - **Failure hotspots** — the scenarios, steps (`scenario > action`), and assertion kinds that fail
+    most, each with its most frequent failure reason.
+  - **Flakiness** — each scenario's classification (`flaky` / `deterministic` / `unproven`) reused
+    from the [BE-0049](../roadmaps/BE-0049-determinism-flakiness-audit/BE-0049-determinism-flakiness-audit.md)
+    longitudinal audit.
+  - **Volume** — run count per backend, the denominator the rates are read against.
+- Scenario series are keyed by the BE-0049 `(scenarioHash, name)` identity, so a verdict that flips at
+  a constant fingerprint is true flakiness while an edited scenario starts a fresh series. A run
+  without a `provenance.scenarioHash` still counts toward the run-level trend but can't join a
+  scenario series (reported as skipped).
+- **`--html <path>`** also writes a **self-contained HTML dashboard** of the same figures (inline CSS,
+  a minimal inline-SVG trend line, no JavaScript, no external asset — it opens straight from disk).
+  The text (or `--json`) output is unchanged; the path is confirmed on stderr.
+- **Advisory and read-only**: it never re-runs a scenario, never recomputes a verdict, and **never
+  gates CI** — an older manifest missing a newer field renders as "not captured", never as a failure.
+  Any threshold a team sets on its numbers is their own informational check.
+
 ## `export`
 
 Bundles a finished run into a single portable `.zip` — `report.html` together with `manifest.json`,

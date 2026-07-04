@@ -7,8 +7,9 @@
 |---|---|
 | 提案 | [BE-0098](BE-0098-unified-authoring-surface-ja.md) |
 | 提案者 | [@hirosassa](https://github.com/hirosassa) |
-| 状態 | **提案** |
+| 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0098") |
+| 実装 PR | [#651](https://github.com/bajutsu-e2e/bajutsu/pull/651) |
 | トピック | オーサリング体験（record / GUI エディタ） |
 | 由来 | [BE-0014](../BE-0014-record-demarcation/BE-0014-record-demarcation-ja.md) |
 <!-- /BE-METADATA -->
@@ -63,7 +64,31 @@ BE-0014 の設計書は、著者が 1 つのシナリオを開き、そのまま
 > 作業分解（作業の単位ごとに 1 つ）に対応し、ログには変更内容と時期（古い順）を PR へのリンクと
 > ともに記録します。
 
-- [ ] TBD — スコープが固まり次第、作業分解（MECE）をここに列挙します。
+- [x] **テンプレート** — Capture タブと Editor タブのナビゲーションボタン、および両方の
+  `<main>` ビューを、Capture / Edit / Enrich のモードスイッチャーを持つ 1 つの `#view-author`
+  タブに置き換えました。target・シナリオ・run・YAML・ステップ・Save を共有します
+  （`bajutsu/templates/serve.html.j2`）。
+- [x] **スタイル** — モードスイッチャーの `.modeswitch` / `.modetab` を追加し、従来の
+  `.cap-*` / `.edt-*` クラスを共通の `.au-*` クラスに統合しました。`[hidden]` がモードグループの
+  表示ルールに勝つようにしています（`bajutsu/templates/serve.css`）。
+- [x] **挙動** — 2 つのフロントエンドモジュールを 1 つの Author モジュールに統合しました。
+  状態を共有し、`setMode()` はモードを切り替えても開いているシナリオと未保存の YAML を保持します。
+  スクリーンショットのクリックはモードに応じて振り分け、Capture の Finish 後は保存したシナリオを
+  Edit モードへ引き継ぎます（`bajutsu/templates/serve.js`）。
+- [x] **移行** — Capture タブと Editor タブを直接削除しました（並存する不要コードは残しません）。
+  再利用するバックエンド（`/api/capture/*`・`/api/scenario`・`/api/scenario/resolve`・
+  `/api/enrich`）は変更していません。
+- [x] **テスト** — `test_http_editor_ui.py` を `test_http_author_ui.py` に置き換え、統合後の
+  マークアップ、旧タブの削除、モードスイッチャー、共有コントロールとモード別コントロール、
+  各エンドポイントの結線、そして要となる `[hidden]` の表示ルールを検証します。あわせて
+  `test_http_static.py` の `viewswitch` の数を更新しました。
+
+ログ：
+
+- 3 つのオーサリングサーフェスを 1 つの Author タブとモードスイッチャーに統合しました。
+  Capture / Edit / Enrich のハンドラを既存エンドポイントを再利用したまま 1 つのモジュールへ移し、
+  統合したフローで Enrich モードのクリック・Capture から Edit への引き継ぎ失敗・パス未設定の
+  Save を握りつぶさず通知するように強化しました。`make check` は green です。
 
 ## 参考
 

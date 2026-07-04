@@ -94,15 +94,20 @@ document.querySelectorAll('.viewswitch').forEach(sw=>{
 // ---- top-level Record / Replay / Crawl views ----
 function showView(name){
   document.querySelectorAll('.toptab').forEach(t=>t.classList.toggle('active',t.dataset.view===name));
-  $('#view-record').hidden=name!=='record';$('#view-replay').hidden=name!=='replay';$('#view-crawl').hidden=name!=='crawl';$('#view-capture').hidden=name!=='capture';$('#view-editor').hidden=name!=='editor';
+  $('#view-record').hidden=name!=='record';$('#view-replay').hidden=name!=='replay';$('#view-crawl').hidden=name!=='crawl';$('#view-author').hidden=name!=='author';
   if(name==='replay')loadHistory();
-  if(name==='editor')editorInit();
+  if(name==='author')authorInit();
 }
 document.querySelectorAll('.toptab').forEach(t=>t.addEventListener('click',()=>showView(t.dataset.view)));
 
 // ---- config: bound at startup or opened from the UI's file browser ----
+// Whether the file-browser source is offered — a hosted deployment omits `fs` from configSources
+// (BE-0108), so we hide that block and never call browseFs. Git + Upload are always offered.
+let fsSourceEnabled=true;
 async function loadConfig(){
   let c;try{c=await (await fetch('/api/config')).json()}catch(e){c={hasConfig:false}}
+  fsSourceEnabled=!c.configSources||c.configSources.includes('fs');
+  $('#fssrc').hidden=!fsSourceEnabled;
   $('#cfgname').textContent=c.hasConfig?c.config:'no config bound — open one →';
   if(c.hasConfig){await loadShared()}else{openFs()}
 }
@@ -120,7 +125,7 @@ async function browseFs(dir){
   $('#fslist').querySelectorAll('li[data-dir]').forEach(li=>li.addEventListener('click',()=>browseFs(li.dataset.dir)));
   $('#fslist').querySelectorAll('li[data-file]').forEach(li=>li.addEventListener('click',()=>chooseConfig(li.dataset.file)));
 }
-function openFs(){$('#fsmodal').hidden=false;browseFs('')}
+function openFs(){$('#fsmodal').hidden=false;if(fsSourceEnabled)browseFs('')}
 function closeFs(){$('#fsmodal').hidden=true}
 $('#opencfg').addEventListener('click',openFs);
 $('#fsclose').addEventListener('click',closeFs);
@@ -257,14 +262,13 @@ async function loadShared(){
   // each target carries its primary backend (data-backend) so picking a web target hides the iOS-only UI
   const opts=targets.map(a=>{const n=typeof a==='string'?a:a.name,b=typeof a==='string'?'':(a.backend||'');
     return `<option value="${esc(n)}" data-backend="${esc(b)}">${esc(n)}</option>`;}).join('');
-  $('#target').innerHTML=opts;$('#rec-target').innerHTML=opts;$('#crawl-target').innerHTML=opts;$('#cap-target').innerHTML=opts;$('#edt-target').innerHTML=opts;
+  $('#target').innerHTML=opts;$('#rec-target').innerHTML=opts;$('#crawl-target').innerHTML=opts;$('#au-target').innerHTML=opts;
   syncPlatform('#panel-run','#target');
   syncPlatform('#panel-record','#rec-target');
   syncPlatform('#panel-crawl','#crawl-target');
-  syncPlatform('#panel-capture','#cap-target');
-  syncPlatform('#panel-editor','#edt-target');
+  syncPlatform('#panel-author','#au-target');
   await loadScenarios();
-  if(!$('#view-editor').hidden)editorRefresh();
+  if(!$('#view-author').hidden)authorRefresh();
   refreshAiAvailability();  // a newly-bound config's ai.keyEnv can change reachability
 }
 // Scenarios come from the selected target's configured dir, so reload when the Replay target changes.
@@ -904,8 +908,7 @@ function wirePlatform(panelSel,appSel){
 wirePlatform('#panel-run','#target');
 wirePlatform('#panel-record','#rec-target');
 wirePlatform('#panel-crawl','#crawl-target');
-wirePlatform('#panel-capture','#cap-target');
-wirePlatform('#panel-editor','#edt-target');
+wirePlatform('#panel-author','#au-target');
 
 // Resizable panels: each view has gutter bars between its grid columns. Dragging one resizes the
 // column to its left via a CSS var on the <main>'s grid-template; widths persist in localStorage.
@@ -1070,134 +1073,162 @@ function initTiling(){
 // room on a phone; skip it at the narrow tier so the markup stays in its single-column stack form.
 if(!NARROW_MQ.matches)initTiling();
 
-// ---- Capture (BE-0012): record actions by clicking on a screenshot ----
+// ===========================================================================
+// Author tab (BE-0098) — one open scenario, three modes (Capture / Edit / Enrich)
+// Unifies the former Capture (BE-0012) and Editor (BE-0013) tabs and the Enrich
+// panel (BE-0014). Target / scenario / YAML / steps / Save are shared; a mode
+// switcher picks what a screenshot click does. Switching mode never reloads the
+// scenario or drops unsaved YAML edits — the mode-specific state is scoped to the
+// one open scenario.
+// ===========================================================================
 (function(){
-  const modeRadios=document.querySelectorAll('input[name="cap-mode"]');
-  modeRadios.forEach(r=>r.addEventListener('change',()=>{
-    $('#cap-type-field').hidden=r.value!=='type'||!r.checked;
+  let mode='capture';        // capture | edit | enrich
+  let auInited=false;
+  // Edit / Enrich state (scoped to the open scenario).
+  let auSteps=[];            // [{stepId, action, fields, screenshotUrl, elementsUrl}]
+  let auIdx=-1;              // currently displayed step index
+  let auPath='';             // scenario file path for save
+  let auResolvedSel=null;    // last resolved selector from picker
+  let enrichResult=null;     // last enrichment response {expect, settle, note}
+  // Capture state.
+  let capActive=false;
+
+  // ---- mode switching ----
+  function setMode(m){
+    mode=m;
+    document.querySelectorAll('.modetab').forEach(b=>b.classList.toggle('active',b.dataset.mode===m));
+    document.querySelectorAll('#view-author .au-cap').forEach(e=>e.hidden=m!=='capture');
+    document.querySelectorAll('#view-author .au-edit').forEach(e=>e.hidden=m!=='edit');
+    document.querySelectorAll('#view-author .au-enrich').forEach(e=>e.hidden=m!=='enrich');
+    document.querySelectorAll('#view-author .au-loadrow').forEach(e=>e.hidden=m==='capture');
+    // The proposal panel belongs to Enrich; leaving the mode hides any open proposal.
+    if(m!=='enrich')$('#au-enrich-panel').hidden=true;
+  }
+  document.querySelectorAll('.modetab').forEach(b=>b.addEventListener('click',()=>setMode(b.dataset.mode)));
+
+  // ---- Capture mode (BE-0012): record actions by clicking on a screenshot ----
+  document.querySelectorAll('input[name="au-mode"]').forEach(r=>r.addEventListener('change',()=>{
+    $('#au-type-field').hidden=r.value!=='type'||!r.checked;
   }));
 
   function capMode(){
-    const checked=document.querySelector('input[name="cap-mode"]:checked');
+    const checked=document.querySelector('input[name="au-mode"]:checked');
     return checked?checked.value:'tap';
   }
 
-  let capActive=false;
-
-  $('#cap-start').addEventListener('click',async()=>{
-    const target=$('#cap-target').value;
-    if(!target){$('#cap-status').textContent='Select a target first.';return;}
-    $('#cap-status').textContent='Starting capture…';$('#cap-status').className='status run';
+  $('#au-start').addEventListener('click',async()=>{
+    const target=$('#au-target').value;
+    if(!target){$('#au-status').textContent='Select a target first.';return;}
+    $('#au-status').textContent='Starting capture…';$('#au-status').className='status run';
     try{
       const r=await fetch('/api/capture/start',{method:'POST',headers:{'Content-Type':'application/json'},
         body:JSON.stringify({target})});
       const d=await r.json();
-      if(!r.ok||d.error){$('#cap-status').textContent=d.error||'failed';$('#cap-status').className='status ng';return;}
+      if(!r.ok||d.error){$('#au-status').textContent=d.error||'failed';$('#au-status').className='status ng';return;}
       capActive=true;
-      $('#cap-start').hidden=true;$('#cap-finish').hidden=false;
-      $('#cap-placeholder').hidden=true;$('#cap-screenshot').hidden=false;
-      $('#cap-screenshot').src='/api/capture/screenshot?t='+Date.now();
-      $('#cap-status').textContent='Click on the screenshot to capture actions.';$('#cap-status').className='status ok';
-      $('#cap-steplist').innerHTML='';$('#cap-count').textContent='0 steps';
-    }catch(e){$('#cap-status').textContent=String(e);$('#cap-status').className='status ng';}
+      $('#au-start').hidden=true;$('#au-finish').hidden=false;
+      $('#au-placeholder').hidden=true;$('#au-screenshot').hidden=false;
+      $('#au-screenshot').src='/api/capture/screenshot?t='+Date.now();
+      $('#au-status').textContent='Click on the screenshot to capture actions.';$('#au-status').className='status ok';
+      $('#au-steplist').innerHTML='';$('#au-step-count').textContent='0 steps';
+    }catch(e){$('#au-status').textContent=String(e);$('#au-status').className='status ng';}
   });
 
-  $('#cap-screenshot').addEventListener('click',async(e)=>{
+  async function capMark(nx,ny){
     if(!capActive)return;
-    const rect=e.target.getBoundingClientRect();
-    const nx=(e.clientX-rect.left)/rect.width;
-    const ny=(e.clientY-rect.top)/rect.height;
-    const mode=capMode();
-    const body={kind:mode,point:[nx,ny]};
-    if(mode==='type')body.text=$('#cap-text').value||'';
-    $('#cap-status').textContent='Resolving…';$('#cap-status').className='status run';
+    const m=capMode();
+    const body={kind:m,point:[nx,ny]};
+    if(m==='type')body.text=$('#au-text').value||'';
+    $('#au-status').textContent='Resolving…';$('#au-status').className='status run';
     try{
       const r=await fetch('/api/capture/mark',{method:'POST',headers:{'Content-Type':'application/json'},
         body:JSON.stringify(body)});
       const d=await r.json();
-      if(d.refused){
-        $('#cap-status').textContent='Refused: '+d.refused;$('#cap-status').className='status ng';
-        return;
-      }
+      if(d.refused){$('#au-status').textContent='Refused: '+d.refused;$('#au-status').className='status ng';return;}
       if(d.ambiguity){
         const ids=d.ambiguity.map(a=>a.identifier||a.label||'?').join(', ');
-        $('#cap-status').textContent='Ambiguous: '+ids;$('#cap-status').className='status ng';
+        $('#au-status').textContent='Ambiguous: '+ids;$('#au-status').className='status ng';
         return;
       }
-      if(d.error){$('#cap-status').textContent=d.error;$('#cap-status').className='status ng';return;}
+      if(d.error){$('#au-status').textContent=d.error;$('#au-status').className='status ng';return;}
       const sel=d.selector;
       const desc=sel.id?('#'+sel.id):(sel.label||'?');
       const li=document.createElement('li');
-      li.textContent=mode+' '+desc;
-      if(mode==='type')li.textContent+=' = "'+($('#cap-text').value||'')+'"';
-      $('#cap-steplist').appendChild(li);
-      const count=$('#cap-steplist').children.length;
-      $('#cap-count').textContent=count+' step'+(count===1?'':'s');
-      $('#cap-feedback').hidden=false;
-      $('#cap-rung').textContent=d.rung;$('#cap-rung').className='cap-rung rung-'+d.rung;
-      $('#cap-sel').textContent=desc;
-      $('#cap-screenshot').src='/api/capture/screenshot?t='+Date.now();
-      $('#cap-status').textContent='Captured: '+mode+' '+desc;$('#cap-status').className='status ok';
-    }catch(e){$('#cap-status').textContent=String(e);$('#cap-status').className='status ng';}
-  });
+      li.textContent=m+' '+desc;
+      if(m==='type')li.textContent+=' = "'+($('#au-text').value||'')+'"';
+      $('#au-steplist').appendChild(li);
+      const count=$('#au-steplist').children.length;
+      $('#au-step-count').textContent=count+' step'+(count===1?'':'s');
+      $('#au-feedback').hidden=false;
+      $('#au-rung').textContent=d.rung;$('#au-rung').className='au-rung rung-'+d.rung;
+      $('#au-sel').textContent=desc;
+      $('#au-screenshot').src='/api/capture/screenshot?t='+Date.now();
+      $('#au-status').textContent='Captured: '+m+' '+desc;$('#au-status').className='status ok';
+    }catch(e){$('#au-status').textContent=String(e);$('#au-status').className='status ng';}
+  }
 
-  $('#cap-finish').addEventListener('click',async()=>{
+  $('#au-finish').addEventListener('click',async()=>{
     if(!capActive)return;
-    $('#cap-status').textContent='Saving…';$('#cap-status').className='status run';
+    $('#au-status').textContent='Saving…';$('#au-status').className='status run';
     try{
       const r=await fetch('/api/capture/finish',{method:'POST',headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({target:$('#cap-target').value})});
+        body:JSON.stringify({target:$('#au-target').value})});
       const d=await r.json();
       capActive=false;
-      $('#cap-start').hidden=false;$('#cap-finish').hidden=true;
-      if(d.error){$('#cap-status').textContent=d.error;$('#cap-status').className='status ng';return;}
+      $('#au-start').hidden=false;$('#au-finish').hidden=true;
+      if(d.error){$('#au-status').textContent=d.error;$('#au-status').className='status ng';return;}
       const path=d.path||'(unsaved)';
-      $('#cap-status').textContent='Saved to '+path;$('#cap-status').className='status ok';
-    }catch(e){$('#cap-status').textContent=String(e);$('#cap-status').className='status ng';}
+      $('#au-status').textContent='Saved to '+path;$('#au-status').className='status ok';
+      // Flow the captured scenario into Edit mode so it can be refined without a tab switch.
+      if(d.path)await auOpenSaved(d.path);
+    }catch(e){$('#au-status').textContent=String(e);$('#au-status').className='status ng';}
   });
-})();
 
-// ===========================================================================
-// Editor tab (BE-0013) — offline two-pane scenario editor with screenshot picker
-// ===========================================================================
-(function(){
-  let edtSteps=[];   // [{stepId, action, fields, screenshotUrl, elementsUrl}]
-  let edtIdx=-1;     // currently displayed step index
-  let edtInited=false;
-  let edtPath='';    // scenario file path for save
-  let edtResolvedSel=null; // last resolved selector from picker
+  // Load a just-captured file into Edit state: refresh the scenario dropdown, select it, load it.
+  async function auOpenSaved(path){
+    await auLoadScenarios();
+    const opt=Array.from($('#au-scenario').options).find(o=>o.value.split('|')[0]===path);
+    if(!opt){
+      // The saved file didn't surface in the target's scenario list — keep the Finish success
+      // visible and let the author open it from Edit, rather than silently loading a stale pick.
+      $('#au-status').textContent='Saved to '+path+' — switch to Edit to refine it.';$('#au-status').className='status ok';
+      return;
+    }
+    $('#au-scenario').value=opt.value;
+    setMode('edit');
+    await auLoad();
+  }
 
-  // Populate scenario dropdown when editor target changes.
-  async function edtLoadScenarios(){
-    const target=$('#edt-target').value;
+  // ---- Edit mode (BE-0013): screenshot picker + structured YAML editing ----
+  async function auLoadScenarios(){
+    const target=$('#au-target').value;
     let files=[];
     try{files=target?await (await fetch('/api/scenarios?target='+encodeURIComponent(target))).json():[];}catch(e){files=[];}
     const opts=files.map(s=>
       (s.scenarios||[]).map(sc=>`<option value="${esc(s.path)}|${esc(sc.name)}">${esc(s.file)} — ${esc(sc.name)}</option>`)
     ).flat().join('');
-    $('#edt-scenario').innerHTML=opts||'<option value="">—</option>';
-    edtLoadRuns();
+    $('#au-scenario').innerHTML=opts||'<option value="">—</option>';
+    await auLoadRuns();
   }
 
-  // Populate run dropdown.
-  async function edtLoadRuns(){
+  async function auLoadRuns(){
     let runs=[];
     try{runs=await (await fetch('/api/runs')).json();}catch(e){runs=[];}
     const opts=runs.map(r=>{
       const label=r.id+' '+(r.ok?'✓':'✗');
       return `<option value="${esc(r.id)}">${esc(label)}</option>`;
     }).join('');
-    $('#edt-run').innerHTML=opts||'<option value="">—</option>';
+    $('#au-run').innerHTML=opts||'<option value="">—</option>';
   }
 
-  function edtSelectorYaml(sel){
+  function auSelectorYaml(sel){
     if(sel.id)return '{ id: '+sel.id+' }';
     if(sel.label&&sel.index!=null)return '{ label: '+sel.label+', index: '+sel.index+' }';
     if(sel.label)return '{ label: '+sel.label+' }';
     return JSON.stringify(sel);
   }
 
-  function edtStepLabel(s){
+  function auStepLabel(s){
     const a=s.action||'?';
     const f=s.fields||{};
     if(a==='tap'||a==='doubleTap'||a==='longPress'){
@@ -1214,102 +1245,106 @@ if(!NARROW_MQ.matches)initTiling();
     return a;
   }
 
-  // Load scenario + run artifacts.
-  async function edtLoad(){
-    const combo=$('#edt-scenario').value;
-    if(!combo){$('#edt-status').textContent='Select a scenario.';return;}
+  async function auLoad(){
+    const combo=$('#au-scenario').value;
+    if(!combo){$('#au-status').textContent='Select a scenario.';return;}
     const [path,scnName]=combo.split('|');
-    const target=$('#edt-target').value;
-    const runId=$('#edt-run').value;
-    edtPath=path;
-    $('#edt-status').textContent='Loading…';$('#edt-status').className='status run';
+    const target=$('#au-target').value;
+    const runId=$('#au-run').value;
+    auPath=path;
+    $('#au-status').textContent='Loading…';$('#au-status').className='status run';
     try{
       let url='/api/scenario?target='+encodeURIComponent(target)+'&path='+encodeURIComponent(path);
       if(runId)url+='&runId='+encodeURIComponent(runId)+'&scenario='+encodeURIComponent(scnName);
       const r=await fetch(url);
       const d=await r.json();
-      if(d.error){$('#edt-status').textContent=d.error;$('#edt-status').className='status ng';return;}
-      // Populate YAML textarea.
-      $('#edt-yaml').value=d.yaml||'';
-      $('#edt-save').disabled=false;
-      edtSteps=d.steps||[];
-      edtRenderStepList();
-      if(edtSteps.length>0){edtShowStep(0);}
-      else{edtIdx=-1;$('#edt-placeholder').hidden=false;$('#edt-placeholder').textContent=runId?'No steps in this run.':'No run selected — edit YAML directly.';$('#edt-screenshot').hidden=true;$('#edt-feedback').hidden=true;$('#edt-prev').disabled=true;$('#edt-next').disabled=true;$('#edt-step-label').textContent='No steps';}
-      const msg=edtSteps.length?edtSteps.length+' step'+(edtSteps.length===1?'':'s')+' loaded':'YAML loaded (no run selected)';
-      $('#edt-status').textContent=msg;$('#edt-status').className='status ok';
-      $('#edt-enrich').disabled=false;
-      $('#edt-enrich-panel').hidden=true;
-    }catch(e){$('#edt-status').textContent=String(e);$('#edt-status').className='status ng';}
+      if(d.error){$('#au-status').textContent=d.error;$('#au-status').className='status ng';return;}
+      $('#au-yaml').value=d.yaml||'';
+      $('#au-save').disabled=false;
+      auSteps=d.steps||[];
+      auRenderStepList();
+      if(auSteps.length>0){auShowStep(0);}
+      else{auIdx=-1;$('#au-placeholder').hidden=false;$('#au-placeholder').textContent=runId?'No steps in this run.':'No run selected — edit YAML directly.';$('#au-screenshot').hidden=true;$('#au-feedback').hidden=true;$('#au-prev').disabled=true;$('#au-next').disabled=true;$('#au-step-label').textContent='No steps';}
+      const msg=auSteps.length?auSteps.length+' step'+(auSteps.length===1?'':'s')+' loaded':'YAML loaded (no run selected)';
+      $('#au-status').textContent=msg;$('#au-status').className='status ok';
+      $('#au-enrich').disabled=false;
+      $('#au-enrich-panel').hidden=true;
+    }catch(e){$('#au-status').textContent=String(e);$('#au-status').className='status ng';}
   }
 
-  function edtRenderStepList(){
-    const ol=$('#edt-steplist');ol.innerHTML='';
-    edtSteps.forEach((s,i)=>{
+  function auRenderStepList(){
+    const ol=$('#au-steplist');ol.innerHTML='';
+    auSteps.forEach((s,i)=>{
       const li=document.createElement('li');
-      li.textContent=(i+1)+'. '+edtStepLabel(s);
-      li.addEventListener('click',()=>edtShowStep(i));
+      li.textContent=(i+1)+'. '+auStepLabel(s);
+      li.addEventListener('click',()=>auShowStep(i));
       ol.appendChild(li);
     });
-    $('#edt-step-count').textContent=edtSteps.length+' step'+(edtSteps.length===1?'':'s');
+    $('#au-step-count').textContent=auSteps.length+' step'+(auSteps.length===1?'':'s');
   }
 
-  function edtShowStep(idx){
-    if(idx<0||idx>=edtSteps.length)return;
-    edtIdx=idx;
-    const s=edtSteps[idx];
-    document.querySelectorAll('#edt-steplist li').forEach((li,i)=>li.classList.toggle('active',i===idx));
-    $('#edt-prev').disabled=idx===0;
-    $('#edt-next').disabled=idx===edtSteps.length-1;
-    $('#edt-step-label').textContent='Step '+(idx+1)+' / '+edtSteps.length;
+  function auShowStep(idx){
+    if(idx<0||idx>=auSteps.length)return;
+    auIdx=idx;
+    const s=auSteps[idx];
+    document.querySelectorAll('#au-steplist li').forEach((li,i)=>li.classList.toggle('active',i===idx));
+    $('#au-prev').disabled=idx===0;
+    $('#au-next').disabled=idx===auSteps.length-1;
+    $('#au-step-label').textContent='Step '+(idx+1)+' / '+auSteps.length;
     if(s.screenshotUrl){
-      $('#edt-screenshot').src=s.screenshotUrl;
-      $('#edt-screenshot').hidden=false;$('#edt-placeholder').hidden=true;
+      $('#au-screenshot').src=s.screenshotUrl;
+      $('#au-screenshot').hidden=false;$('#au-placeholder').hidden=true;
     }else{
-      $('#edt-screenshot').hidden=true;$('#edt-placeholder').hidden=false;
-      $('#edt-placeholder').textContent='No screenshot for this step.';
+      $('#au-screenshot').hidden=true;$('#au-placeholder').hidden=false;
+      $('#au-placeholder').textContent='No screenshot for this step.';
     }
-    $('#edt-feedback').hidden=true;
-    edtResolvedSel=null;
+    $('#au-feedback').hidden=true;
+    auResolvedSel=null;
   }
 
-  // Screenshot click → resolve.
-  $('#edt-screenshot').addEventListener('click',async(e)=>{
-    if(edtIdx<0||edtIdx>=edtSteps.length)return;
-    const rect=e.target.getBoundingClientRect();
-    const nx=(e.clientX-rect.left)/rect.width;
-    const ny=(e.clientY-rect.top)/rect.height;
-    const target=$('#edt-target').value;
-    const runId=$('#edt-run').value;
-    const s=edtSteps[edtIdx];
-    $('#edt-status').textContent='Resolving…';$('#edt-status').className='status run';
+  async function editResolve(nx,ny){
+    if(auIdx<0||auIdx>=auSteps.length)return;
+    const target=$('#au-target').value;
+    const runId=$('#au-run').value;
+    const s=auSteps[auIdx];
+    $('#au-status').textContent='Resolving…';$('#au-status').className='status run';
     try{
       const r=await fetch('/api/scenario/resolve',{method:'POST',headers:{'Content-Type':'application/json'},
         body:JSON.stringify({target:target,runId:runId,stepId:s.stepId,point:[nx,ny]})});
       const d=await r.json();
-      if(d.error){$('#edt-status').textContent=d.error;$('#edt-status').className='status ng';return;}
-      if(d.refused){$('#edt-status').textContent=d.refused;$('#edt-status').className='status ng';$('#edt-feedback').hidden=true;edtResolvedSel=null;return;}
+      if(d.error){$('#au-status').textContent=d.error;$('#au-status').className='status ng';return;}
+      if(d.refused){$('#au-status').textContent=d.refused;$('#au-status').className='status ng';$('#au-feedback').hidden=true;auResolvedSel=null;return;}
       if(d.ambiguous){
-        $('#edt-status').textContent='Ambiguous: '+d.candidates+' elements share this selector. Narrow with within/index.';
-        $('#edt-status').className='status ng';
+        $('#au-status').textContent='Ambiguous: '+d.candidates+' elements share this selector. Narrow with within/index.';
+        $('#au-status').className='status ng';
       }else{
-        $('#edt-status').textContent='Resolved — click Apply to update the YAML';$('#edt-status').className='status ok';
+        $('#au-status').textContent='Resolved — click Apply to update the YAML';$('#au-status').className='status ok';
       }
-      edtResolvedSel=d.selector;
+      auResolvedSel=d.selector;
       const desc=d.selector.id?('#'+d.selector.id):(d.selector.label||'?');
-      $('#edt-feedback').hidden=false;
-      $('#edt-rung').textContent=d.rung;$('#edt-rung').className='cap-rung rung-'+d.rung;
-      $('#edt-sel').textContent=desc;
-    }catch(e){$('#edt-status').textContent=String(e);$('#edt-status').className='status ng';}
+      $('#au-feedback').hidden=false;
+      $('#au-rung').textContent=d.rung;$('#au-rung').className='au-rung rung-'+d.rung;
+      $('#au-sel').textContent=desc;
+    }catch(e){$('#au-status').textContent=String(e);$('#au-status').className='status ng';}
+  }
+
+  // Shared screenshot click — routed by the active mode.
+  $('#au-screenshot').addEventListener('click',(e)=>{
+    const rect=e.target.getBoundingClientRect();
+    const nx=(e.clientX-rect.left)/rect.width;
+    const ny=(e.clientY-rect.top)/rect.height;
+    if(mode==='capture')capMark(nx,ny);
+    else if(mode==='edit')editResolve(nx,ny);
+    else{$('#au-status').textContent='Clicking the screenshot does nothing in Enrich mode — switch to Capture or Edit to pick elements.';$('#au-status').className='status';}
   });
 
   // Apply: write resolved selector into YAML at the current step.
-  $('#edt-apply').addEventListener('click',()=>{
-    if(!edtResolvedSel||edtIdx<0)return;
-    const s=edtSteps[edtIdx];
+  $('#au-apply').addEventListener('click',()=>{
+    if(!auResolvedSel||auIdx<0)return;
+    const s=auSteps[auIdx];
     const action=s.action||'tap';
-    const newSel=edtSelectorYaml(edtResolvedSel);
-    const yaml=$('#edt-yaml').value;
+    const newSel=auSelectorYaml(auResolvedSel);
+    const yaml=$('#au-yaml').value;
     const oldFields=s.fields||{};
     let oldPattern='';
     if(action==='tap'||action==='doubleTap'||action==='longPress'){
@@ -1325,7 +1360,7 @@ if(!NARROW_MQ.matches)initTiling();
     for(let i=0;i<lines.length;i++){
       const trimmed=lines[i].trimStart();
       if(trimmed.startsWith('- '+oldPattern)||trimmed.startsWith('- '+action+':')){
-        if(stepCount===edtIdx){
+        if(stepCount===auIdx){
           const indent=lines[i].match(/^(\s*)/)[1];
           if(action==='type'){
             lines[i]=indent+'- type: { into: '+newSel+', text: '+(oldFields.text||'""')+' }';
@@ -1337,39 +1372,37 @@ if(!NARROW_MQ.matches)initTiling();
         stepCount++;
       }
     }
-    $('#edt-yaml').value=lines.join('\n');
+    $('#au-yaml').value=lines.join('\n');
     // Update the in-memory step fields.
     if(action==='type'){
-      s.fields={into:edtResolvedSel,text:oldFields.text||''};
+      s.fields={into:auResolvedSel,text:oldFields.text||''};
     }else{
-      s.fields=edtResolvedSel;
+      s.fields=auResolvedSel;
     }
-    edtRenderStepList();
-    document.querySelectorAll('#edt-steplist li').forEach((li,j)=>li.classList.toggle('active',j===edtIdx));
-    $('#edt-status').textContent='Applied '+edtSelectorYaml(edtResolvedSel)+' to step '+(edtIdx+1);
-    $('#edt-status').className='status ok';
+    auRenderStepList();
+    document.querySelectorAll('#au-steplist li').forEach((li,j)=>li.classList.toggle('active',j===auIdx));
+    $('#au-status').textContent='Applied '+auSelectorYaml(auResolvedSel)+' to step '+(auIdx+1);
+    $('#au-status').className='status ok';
   });
 
   // Save.
-  $('#edt-save').addEventListener('click',async()=>{
-    if(!edtPath)return;
-    const target=$('#edt-target').value;
-    const yaml=$('#edt-yaml').value;
-    $('#edt-save').disabled=true;
-    $('#edt-status').textContent='Saving…';$('#edt-status').className='status run';
+  $('#au-save').addEventListener('click',async()=>{
+    if(!auPath){$('#au-status').textContent='Nothing to save yet — capture a flow or load a scenario first.';$('#au-status').className='status ng';return;}
+    const target=$('#au-target').value;
+    const yaml=$('#au-yaml').value;
+    $('#au-save').disabled=true;
+    $('#au-status').textContent='Saving…';$('#au-status').className='status run';
     try{
       const r=await fetch('/api/scenario',{method:'POST',headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({target:target,path:edtPath,yaml:yaml})});
+        body:JSON.stringify({target:target,path:auPath,yaml:yaml})});
       const d=await r.json();
-      if(d.error){$('#edt-status').textContent=d.error;$('#edt-status').className='status ng';}
-      else{$('#edt-status').textContent='Saved ✓';$('#edt-status').className='status ok';}
-    }catch(e){$('#edt-status').textContent=String(e);$('#edt-status').className='status ng';}
-    $('#edt-save').disabled=false;
+      if(d.error){$('#au-status').textContent=d.error;$('#au-status').className='status ng';}
+      else{$('#au-status').textContent='Saved ✓';$('#au-status').className='status ok';}
+    }catch(e){$('#au-status').textContent=String(e);$('#au-status').className='status ng';}
+    $('#au-save').disabled=false;
   });
 
-  // --- Enrichment (BE-0014) ---
-  let enrichResult=null; // last enrichment response {expect, settle, note}
-
+  // ---- Enrich mode (BE-0014): propose assertions over the open scenario ----
   function enrichAssertionLabel(a){
     if(a.exists){
       const sel=a.exists.sel||{};
@@ -1391,7 +1424,7 @@ if(!NARROW_MQ.matches)initTiling();
 
   function enrichRender(data){
     enrichResult=data;
-    const list=$('#edt-enrich-list');list.innerHTML='';
+    const list=$('#au-enrich-list');list.innerHTML='';
     (data.expect||[]).forEach(a=>{
       const li=document.createElement('li');
       li.innerHTML='<span class="enrich-check">✓</span>'+esc(enrichAssertionLabel(a));
@@ -1405,8 +1438,8 @@ if(!NARROW_MQ.matches)initTiling();
       li.innerHTML='<span class="enrich-check">⏳</span>settle wait for '+esc(id);
       list.appendChild(li);
     }
-    $('#edt-enrich-note').textContent=data.note||'';
-    $('#edt-enrich-panel').hidden=false;
+    $('#au-enrich-note').textContent=data.note||'';
+    $('#au-enrich-panel').hidden=false;
   }
 
   function enrichAssertionYaml(a,indent){
@@ -1438,8 +1471,8 @@ if(!NARROW_MQ.matches)initTiling();
 
   function enrichApply(){
     if(!enrichResult)return;
-    let yaml=$('#edt-yaml').value;
-    const combo=$('#edt-scenario').value;
+    let yaml=$('#au-yaml').value;
+    const combo=$('#au-scenario').value;
     if(!combo)return;
     const scnName=combo.split('|')[1]||'';
 
@@ -1512,58 +1545,59 @@ if(!NARROW_MQ.matches)initTiling();
       }
     }
 
-    $('#edt-yaml').value=lines.join('\n');
-    $('#edt-save').disabled=false;
-    $('#edt-enrich-panel').hidden=true;
+    $('#au-yaml').value=lines.join('\n');
+    $('#au-save').disabled=false;
+    $('#au-enrich-panel').hidden=true;
     enrichResult=null;
-    $('#edt-status').textContent='Assertions applied — review and Save';$('#edt-status').className='status ok';
+    $('#au-status').textContent='Assertions applied — review and Save';$('#au-status').className='status ok';
   }
 
-  $('#edt-enrich').addEventListener('click',async()=>{
-    const combo=$('#edt-scenario').value;
-    if(!combo){$('#edt-status').textContent='Load a scenario first.';return;}
+  $('#au-enrich').addEventListener('click',async()=>{
+    const combo=$('#au-scenario').value;
+    if(!combo){$('#au-status').textContent='Load a scenario first.';return;}
     const [path,scnName]=combo.split('|');
-    const target=$('#edt-target').value;
-    $('#edt-enrich').disabled=true;
-    $('#edt-enrich-panel').hidden=true;
-    $('#edt-status').textContent='Enriching — replaying steps and proposing assertions…';$('#edt-status').className='status run';
+    const target=$('#au-target').value;
+    $('#au-enrich').disabled=true;
+    $('#au-enrich-panel').hidden=true;
+    $('#au-status').textContent='Enriching — replaying steps and proposing assertions…';$('#au-status').className='status run';
     try{
       const r=await fetch('/api/enrich',{method:'POST',headers:{'Content-Type':'application/json'},
         body:JSON.stringify({target:target,scenario:path,name:scnName})});
       const d=await r.json();
-      if(d.error){$('#edt-status').textContent=d.error;$('#edt-status').className='status ng';return;}
+      if(d.error){$('#au-status').textContent=d.error;$('#au-status').className='status ng';return;}
       const count=(d.expect||[]).length;
-      $('#edt-status').textContent=count+' assertion'+(count===1?'':'s')+' proposed';$('#edt-status').className='status ok';
+      $('#au-status').textContent=count+' assertion'+(count===1?'':'s')+' proposed';$('#au-status').className='status ok';
       enrichRender(d);
-    }catch(e){$('#edt-status').textContent=String(e);$('#edt-status').className='status ng';}
-    finally{$('#edt-enrich').disabled=false;}
+    }catch(e){$('#au-status').textContent=String(e);$('#au-status').className='status ng';}
+    finally{$('#au-enrich').disabled=false;}
   });
 
-  $('#edt-enrich-accept').addEventListener('click',enrichApply);
-  $('#edt-enrich-dismiss').addEventListener('click',()=>{
-    $('#edt-enrich-panel').hidden=true;enrichResult=null;
-    $('#edt-status').textContent='Enrichment dismissed';$('#edt-status').className='status';
+  $('#au-enrich-accept').addEventListener('click',enrichApply);
+  $('#au-enrich-dismiss').addEventListener('click',()=>{
+    $('#au-enrich-panel').hidden=true;enrichResult=null;
+    $('#au-status').textContent='Enrichment dismissed';$('#au-status').className='status';
   });
 
   // Nav buttons.
-  $('#edt-prev').addEventListener('click',()=>{if(edtIdx>0)edtShowStep(edtIdx-1);});
-  $('#edt-next').addEventListener('click',()=>{if(edtIdx<edtSteps.length-1)edtShowStep(edtIdx+1);});
+  $('#au-prev').addEventListener('click',()=>{if(auIdx>0)auShowStep(auIdx-1);});
+  $('#au-next').addEventListener('click',()=>{if(auIdx<auSteps.length-1)auShowStep(auIdx+1);});
   // Load button.
-  $('#edt-load').addEventListener('click',edtLoad);
+  $('#au-load').addEventListener('click',auLoad);
   // Target change reloads scenarios.
-  $('#edt-target').addEventListener('change',edtLoadScenarios);
+  $('#au-target').addEventListener('change',auLoadScenarios);
   // YAML textarea edits enable save.
-  $('#edt-yaml').addEventListener('input',()=>{$('#edt-save').disabled=false;});
+  $('#au-yaml').addEventListener('input',()=>{$('#au-save').disabled=false;});
 
-  // Called by showView('editor') — lazy init.
-  window.editorInit=function(){
-    if(edtInited)return;
-    edtInited=true;
-    edtLoadScenarios();
+  // Called by showView('author') — lazy init: default to Capture mode and load scenarios.
+  window.authorInit=function(){
+    if(auInited)return;
+    auInited=true;
+    setMode('capture');
+    auLoadScenarios();
   };
-  // Called by loadShared() after targets arrive — re-populate if Editor is already visible.
-  window.editorRefresh=function(){
-    edtLoadScenarios();
+  // Called by loadShared() after targets arrive — re-populate if Author is already visible.
+  window.authorRefresh=function(){
+    auLoadScenarios();
   };
 })();
 

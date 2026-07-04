@@ -38,7 +38,7 @@ flowchart TB
     end
 
     verdict{"Pass / Fail<br/>machine assertions only"}
-    report["📊 Reporter<br/>manifest.json · JUnit · HTML"]
+    report["📊 Reporter<br/>manifest.json · JUnit · CTRF · HTML"]
     codegen["codegen<br/>→ XCUITest (Swift)"]
     triage["triage<br/>root cause + fixes · advisory"]
 
@@ -78,7 +78,7 @@ The `bajutsu/` package (Python 3.13+, pydantic v2 / typer / anthropic / pyyaml /
 | `orchestrator/` | The deterministic Tier 2 run loop (act → wait → verify) (package: `loop` / `waits` / `substitution` / `evidence_rules` / `actions`) | [run-loop](run-loop.md) |
 | `evidence.py` | Evidence capture (instant / interval) and Sinks | [evidence](evidence.md) |
 | `intervals.py` | Interval evidence (video / deviceLog) as simctl child processes | [evidence](evidence.md#interval-evidence-video--devicelog) |
-| `report/` | `manifest.json` + JUnit XML + interactive HTML (package: `format` / `manifest` / `rows` / `panels` / `html`) | [reporting](reporting.md) |
+| `report/` | `manifest.json` + JUnit XML + CTRF JSON + interactive HTML (package: `format` / `manifest` / `ctrf` / `rows` / `panels` / `html`) | [reporting](reporting.md) |
 | `network.py` | Network collector + in-protocol deterministic mocks | [evidence](evidence.md) |
 | `redaction.py` | Redaction of evidence (labels / headers / fields + secret values) | [evidence](evidence.md) |
 | `interp.py` | `${ns.key}` interpolation primitive (`params.` / `row.` / `secrets.` / `vars.`) | [scenarios](scenarios.md) |
@@ -247,7 +247,7 @@ job and idb / XCUITest under the on-device E2E path — the same contract, no se
   element trees / network exchanges before they are written
 - Network observation + **deterministic mocks** (scenario `mocks` → in-protocol stubs, validated
   on-device): `request` assertions, `wait: { until: request }`, and offline stubbed responses
-- Reporting (`manifest.json` / `junit.xml` / `report.html`)
+- Reporting (`manifest.json` / `junit.xml` / `ctrf.json` / `report.html`)
 - Config resolution (defaults × targets, redact merge) and actuator selection
 - The `simctl` command layer · the idb output parser · the `doctor` score + per-backend runnability
   gate (`preflight.py`: iOS needs the required CLIs + a booted Simulator; web needs Playwright + its

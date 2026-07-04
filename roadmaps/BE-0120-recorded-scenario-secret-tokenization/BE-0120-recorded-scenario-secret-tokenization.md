@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0120](BE-0120-recorded-scenario-secret-tokenization.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0120") |
+| Implementing PR | [#643](https://github.com/bajutsu-e2e/bajutsu/pull/643) |
 | Topic | Security hardening |
 <!-- /BE-METADATA -->
 
@@ -84,16 +85,23 @@ that only shows up with an unusual step type.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Resolve the target's declared `secrets:` bindings inside `record`, matching `run`'s existing
+- [x] Resolve the target's declared `secrets:` bindings inside `record`, matching `run`'s existing
       environment-variable resolution.
-- [ ] Detect a captured step value that equals a resolved secret binding and substitute
-      `${secrets.X}` for it before the step is added to the scenario.
-- [ ] Leave non-matching captured input unchanged (no new behavior for the common case).
-- [ ] Narrate a tokenization to the author via `record`'s existing progress output.
-- [ ] Add a regression test covering a recorded secret ending up as `${secrets.X}`, not a literal,
+- [x] Detect a resolved secret binding occurring within a captured step's text and substitute
+      `${secrets.X}` for each occurrence before the step is added to the scenario.
+- [x] Leave non-matching captured input unchanged (no new behavior for the common case).
+- [x] Narrate a tokenization to the author via `record`'s existing progress output.
+- [x] Add a regression test covering a recorded secret ending up as `${secrets.X}`, not a literal,
       in the written scenario file.
 
-No PR has landed yet.
+Log:
+
+- 2026-07-04: Tokenize a recorded secret at write time. `_secret_tokens`
+  (`bajutsu/cli/commands/record.py`) resolves the target's declared `secrets:` from the
+  environment (the reverse of `run`'s `_resolve_secrets`), and `record()` rewrites a matching
+  `type` step's text to its `${secrets.X}` token before recording it, while still driving the app
+  with the real value. The masking also covers the live progress narration — both the step line and
+  the agent's free-text reasoning (`note`) — so no literal reaches the stream or the file.
 
 ## References
 

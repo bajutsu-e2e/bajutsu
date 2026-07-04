@@ -1,6 +1,6 @@
 .PHONY: setup hooks deps deps-check serve worktree preflight test lint lint-docstrings lint-imports format format-check typecheck \
         lock-check lint-sh lint-actions lint-roadmap lint-pr check new-roadmap-item roadmap-index \
-        roadmap-dashboard docs docs-serve
+        roadmap-status roadmap-dashboard docs docs-serve
 
 # One-command bootstrap for a fresh clone (cross-platform; the dev gate needs no
 # Simulator). Installs the Python toolchain and wires the tracked git hooks.
@@ -61,7 +61,7 @@ SHELL_SCRIPTS := .githooks/pre-push .githooks/commit-msg scripts/serve.sh script
 # Modules whose public surface has migrated to the Google-style docstring standard (BE-0065),
 # enforced by `lint-docstrings`. This list GROWS module-by-module as more migrate; keep it the
 # allowlist (not an ignore list) so an unmigrated module never accidentally falls under the gate.
-DOCSTRING_PATHS := bajutsu/ai bajutsu/drivers bajutsu/assertions.py bajutsu/network.py bajutsu/runner bajutsu/scenario bajutsu/mcp bajutsu/cli bajutsu/doctor.py bajutsu/audit.py bajutsu/coverage.py bajutsu/trace.py bajutsu/triage.py bajutsu/report bajutsu/evidence.py bajutsu/idb_version.py bajutsu/intervals.py bajutsu/redaction.py bajutsu/config.py bajutsu/config_source.py bajutsu/codegen.py bajutsu/codegen_common.py bajutsu/codegen_playwright.py bajutsu/backends.py bajutsu/capability_preflight.py bajutsu/crawl.py bajutsu/crawl_guide.py bajutsu/crawl_tabs.py bajutsu/agent.py bajutsu/agents.py bajutsu/claude_agent.py bajutsu/claude_code_agent.py bajutsu/claude_triage.py bajutsu/alerts.py bajutsu/anthropic_client.py bajutsu/record.py bajutsu/visual.py bajutsu/web_network.py bajutsu/from_grouping.py
+DOCSTRING_PATHS := bajutsu/ai bajutsu/drivers bajutsu/assertions.py bajutsu/network.py bajutsu/runner bajutsu/scenario bajutsu/mcp bajutsu/cli bajutsu/doctor.py bajutsu/audit.py bajutsu/coverage.py bajutsu/stats.py bajutsu/trace.py bajutsu/triage.py bajutsu/report bajutsu/evidence.py bajutsu/idb_version.py bajutsu/intervals.py bajutsu/redaction.py bajutsu/config.py bajutsu/config_source.py bajutsu/codegen.py bajutsu/codegen_common.py bajutsu/codegen_playwright.py bajutsu/backends.py bajutsu/capability_preflight.py bajutsu/crawl.py bajutsu/crawl_guide.py bajutsu/crawl_tabs.py bajutsu/agent.py bajutsu/agents.py bajutsu/claude_agent.py bajutsu/claude_code_agent.py bajutsu/claude_triage.py bajutsu/alerts.py bajutsu/anthropic_client.py bajutsu/record.py bajutsu/visual.py bajutsu/web_network.py bajutsu/from_grouping.py
 
 # Run the suite with a coverage floor — a regression that quietly drops coverage fails the gate.
 # The JSON report is a gitignored side artifact CI renders into its job summary (scripts/coverage_summary.py).
@@ -140,6 +140,13 @@ lint-pr:
 # enforced by tests/test_roadmap_index.py — part of `make test`, so the gate fails on drift.
 roadmap-index:
 	uv run python scripts/build_roadmap_index.py
+
+# Filter roadmap (BE) items by Status into one small table — ID / Item / Topic / Path — so an AI
+# session surveys just the rows it needs (e.g. every Proposal) without reading the 700+-line index
+# (BE-0162). Pure and offline: reads roadmaps/ metadata only. The `roadmap-filter` skill wraps this.
+#   make roadmap-status STATUS="Proposal"   # or "In progress" / "Implemented" / "Proposal (deferred)"
+roadmap-status:
+	uv run python scripts/roadmap_query.py --status "$(STATUS)"
 
 # The full gate. CI (.github/workflows/ci.yml) mirrors these steps so "green locally"
 # predicts "green in CI". The uv-native checks run identically everywhere; actionlint is
