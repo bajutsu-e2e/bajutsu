@@ -45,14 +45,14 @@ to run. Pass `--scenario <file>` to run a single file instead.
 | `--log-predicate` | "" | an NSPredicate narrowing the `deviceLog` stream (e.g. subsystem) |
 | `--log-subsystem` | "" | the os_log subsystem for `appTrace` (defaults to the app's `bundleId`) |
 | `--network / --no-network` | `--network` | collect the app's network exchanges for `request` assertions (iOS needs BajutsuKit in the app; web observes natively via Playwright, and stubs scenario `mocks` in-process) |
-| `--workers` | 1 | parallel scenarios over a device pool. On iOS, needs `--udid u1,u2,…` and is capped to that pool size. On web, `--workers N` alone is N parallel browser-context lanes — no `--udid` needed ([BE-0054](../roadmaps/implemented/BE-0054-web-backend-completion/BE-0054-web-backend-completion.md)). Each lane carries its own network collector, interval recordings, and (iOS) device control, so network / video / `setLocation` / `push` work the same as a single-device run |
+| `--workers` | 1 | parallel scenarios over a device pool. On iOS, needs `--udid u1,u2,…` and is capped to that pool size. On web, `--workers N` alone is N parallel browser-context lanes — no `--udid` needed ([BE-0054](../roadmaps/BE-0054-web-backend-completion/BE-0054-web-backend-completion.md)). Each lane carries its own network collector, interval recordings, and (iOS) device control, so network / video / `setLocation` / `push` work the same as a single-device run |
 | `--baselines` | `baselines/` beside the scenario | directory of baseline images for `visual` assertions; `baseline: home.png` resolves inside it |
 | `--schemas` | `schemas/` beside the scenario | directory of JSON Schema files for `responseSchema` assertions; `schema: items.json` resolves inside it (needs the `schema` extra) |
 | `--headed / --no-headed` | app `headless` (headless) | web backend: show the run in a visible, slow-motion Chromium window instead of headless, so you can watch each step (the window opens on the machine running the command). Omit to use the app's `headless` config; iOS ignores it |
 | `--progress / --no-progress` | off | stream per-scenario / per-step progress lines to stderr (the `serve` UI consumes these) |
 | `--zip` | off | after the run, also write `runs/<id>.zip` — one portable artifact (report + evidence) for CI upload or sharing. Runs **after** the verdict, so it can't affect pass/fail; see [`export`](#export) |
-| `--runs-dir` | `runs` | directory to write the run tree into. Lets a caller run from one working directory but persist the run elsewhere — `serve` uses it when the active config is bound from a different tree (a Git checkout or an uploaded bundle) to run from that tree while keeping the run in `serve`'s store ([BE-0073](../roadmaps/implemented/BE-0073-serve-zip-bundle-upload/BE-0073-serve-zip-bundle-upload.md)) |
-| `--evidence-store` | "" (also `BAJUTSU_EVIDENCE_STORE`) | after the run, upload the whole run tree to object storage at this URI — `s3://bucket/prefix` (AWS / R2 / MinIO) or `gs://bucket/prefix` (Google Cloud Storage). The remote layout mirrors the local one under the prefix (`<prefix><runId>/…`), so the upload path selects the cloud lifecycle policy (retain main-branch evidence, expire feature-branch evidence). Runs **after** the verdict, so an upload failure is reported as a warning and can't affect pass/fail. Needs the `s3` or `gcs` extra ([BE-0110](../roadmaps/in-progress/BE-0110-evidence-store-uri/BE-0110-evidence-store-uri.md)) |
+| `--runs-dir` | `runs` | directory to write the run tree into. Lets a caller run from one working directory but persist the run elsewhere — `serve` uses it when the active config is bound from a different tree (a Git checkout or an uploaded bundle) to run from that tree while keeping the run in `serve`'s store ([BE-0073](../roadmaps/BE-0073-serve-zip-bundle-upload/BE-0073-serve-zip-bundle-upload.md)) |
+| `--evidence-store` | "" (also `BAJUTSU_EVIDENCE_STORE`) | after the run, upload the whole run tree to object storage at this URI — `s3://bucket/prefix` (AWS / R2 / MinIO) or `gs://bucket/prefix` (Google Cloud Storage). The remote layout mirrors the local one under the prefix (`<prefix><runId>/…`), so the upload path selects the cloud lifecycle policy (retain main-branch evidence, expire feature-branch evidence). Runs **after** the verdict, so an upload failure is reported as a warning and can't affect pass/fail. Needs the `s3` or `gcs` extra ([BE-0110](../roadmaps/BE-0110-evidence-store-uri/BE-0110-evidence-store-uri.md)) |
 | `--config` | `bajutsu.config.yaml` | the config file |
 
 - Evidence is written to `FileSink(runs/<runId>, udid=..., log_predicate=...)`
@@ -86,7 +86,7 @@ bajutsu doctor --target <name> [--udid booted] [--backend ...] [--config ...]
 ## `audit`
 
 A **static determinism score** for a scenario — the device-free cousin of `doctor`'s convention
-score (AI-independent; [selectors](selectors.md); [BE-0049](../roadmaps/implemented/BE-0049-determinism-flakiness-audit/BE-0049-determinism-flakiness-audit.md)).
+score (AI-independent; [selectors](selectors.md); [BE-0049](../roadmaps/BE-0049-determinism-flakiness-audit/BE-0049-determinism-flakiness-audit.md)).
 It reads a scenario file (expanding components / data, like `trace --explain`) and reports, per
 scenario, how reproducible it is — without running it.
 
@@ -128,7 +128,7 @@ bajutsu audit --history <runs-dir>                         # mine past runs for 
 ## `coverage`
 
 A **static e2e coverage map** for a suite — the read-only cousin of `doctor`'s convention score
-(AI-independent; [BE-0050](../roadmaps/implemented/BE-0050-e2e-coverage-map/BE-0050-e2e-coverage-map.md)).
+(AI-independent; [BE-0050](../roadmaps/BE-0050-e2e-coverage-map/BE-0050-e2e-coverage-map.md)).
 Where `doctor` grades the ids one screen *exposes*, this grades the ids a whole *suite* exercises:
 it walks every `*.yaml` in the app's configured `scenarios` dir (expanding components / data), groups
 the stable ids they reference by namespace, and measures them against the app's declared
@@ -159,7 +159,7 @@ bajutsu coverage --target <name> [--config ...] [--runs <dir>] [--crawl <screenm
 
   Omit `--runs` for the static id-namespace map only.
 - **`--crawl <screenmap>`** (with `--runs`) folds in a **screens-visited** dimension against an
-  autonomous crawl's discovered surface ([BE-0038](../roadmaps/in-progress/BE-0038-autonomous-crawl-exploration/BE-0038-autonomous-crawl-exploration.md)):
+  autonomous crawl's discovered surface ([BE-0038](../roadmaps/BE-0038-autonomous-crawl-exploration/BE-0038-autonomous-crawl-exploration.md)):
   the **denominator** is the screens the crawl found (`screenmap.json` nodes; pass the file or its
   run dir), the **numerator** is the screens the run set reached — each per-step `elements.json` is
   fingerprinted with the *same* `crawl.fingerprint`, so a visited screen matches a discovered one.
@@ -179,7 +179,7 @@ bajutsu coverage --target <name> [--config ...] [--runs <dir>] [--crawl <screenm
 
 Bundles a finished run into a single portable `.zip` — `report.html` together with `manifest.json`,
 `junit.xml`, the executed `scenario.yaml`, and **all** of its evidence (screenshots, video,
-`network.json`, …) ([BE-0060](../roadmaps/implemented/BE-0060-run-report-zip-export/BE-0060-run-report-zip-export.md)).
+`network.json`, …) ([BE-0060](../roadmaps/BE-0060-run-report-zip-export/BE-0060-run-report-zip-export.md)).
 The whole `runs/<id>/` tree is rooted under a single `<id>/` folder, so `report.html`'s **relative**
 links resolve offline — the report works by double-click, no server.
 
@@ -225,7 +225,7 @@ bajutsu trace --explain <scenario.yaml>     # pre-run dry run (no device)
 
 Re-renders a finished run's `report.html` (and re-emits `junit.xml`) from its **stored data**, with
 the **current** template — no device, no LLM, no re-run
-([BE-0068](../roadmaps/implemented/BE-0068-regenerable-reports/BE-0068-regenerable-reports.md)). So a
+([BE-0068](../roadmaps/BE-0068-regenerable-reports/BE-0068-regenerable-reports.md)). So a
 template improvement or a rendering-bug fix reaches past runs without re-executing them; the
 verdict is read from the stored model, never recomputed.
 
@@ -298,7 +298,7 @@ bajutsu record --target <name> --goal "<natural-language goal>" [--out <file.yam
 
 - Internally `launch_driver` → `record_loop(driver, goal, ClaudeAgent(), ...)` → `dump_scenarios`.
 - Output: `recorded <N> steps -> <path>`. **Needs `ANTHROPIC_API_KEY`** (`ClaudeAgent`).
-- **A Git `--config` is read-only input** ([BE-0063](../roadmaps/implemented/BE-0063-git-config-source/BE-0063-git-config-source.md)):
+- **A Git `--config` is read-only input** ([BE-0063](../roadmaps/BE-0063-git-config-source/BE-0063-git-config-source.md)):
   `record` reads the config from the fetched checkout, but the authored scenario goes **local** — with
   no `--out` it auto-names under the **current directory** (not the checkout's `scenarios` dir, which
   is the read-only SHA-keyed cache), and an `--out` inside the checkout is refused. Review the file
@@ -309,7 +309,7 @@ bajutsu record --target <name> --goal "<natural-language goal>" [--out <file.yam
 ## `crawl`
 
 Explores the app **breadth-first** and writes a **screen map** of the reachable screens and the
-transitions between them (Tier 1; [BE-0038](../roadmaps/in-progress/BE-0038-autonomous-crawl-exploration/BE-0038-autonomous-crawl-exploration.md)). Unlike `record`, which is
+transitions between them (Tier 1; [BE-0038](../roadmaps/BE-0038-autonomous-crawl-exploration/BE-0038-autonomous-crawl-exploration.md)). Unlike `record`, which is
 *goal-directed* — AI explores toward one natural-language goal and writes one scenario — `crawl`
 is *systematic discovery*: it visits the screens it can reach and reports what it found. The
 exploration engine is **deterministic** (a screen's identity and the order candidate actions are
@@ -327,7 +327,7 @@ bajutsu crawl --target <name> [--max-screens N] [--max-steps N] [--out <dir>] [o
 | `--max-steps` | `200` | stop after taking this many actions |
 | `--agent` | `$BAJUTSU_AGENT` or `api` | AI backend for the crawl guide: `api` (the Anthropic SDK, pay-per-token; uses the configured AI provider — `ANTHROPIC_API_KEY` for Anthropic, or AWS credentials + `BAJUTSU_BEDROCK_MODEL` when `BAJUTSU_AI_PROVIDER=bedrock`) or `claude-code` (the Claude Code CLI, drawing on your subscription — text-only, like `record --agent claude-code`). Omitted, it follows `$BAJUTSU_AGENT` (which `serve` sets from its Settings selector), then `api` |
 | `--udid` | `booted` | the target Simulator — or a comma list (`A,B,C`) for a parallel pool (see `--workers`) |
-| `--workers` | `1` | crawl with this many workers at once, sharing one screen map: across this many simulators on iOS ([BE-0064](../roadmaps/implemented/BE-0064-parallel-crawl/BE-0064-parallel-crawl.md), capped to the `--udid` devices) or this many browser processes on web ([BE-0077](../roadmaps/implemented/BE-0077-parallel-web-crawl/BE-0077-parallel-web-crawl.md)). `1` = single-worker crawl |
+| `--workers` | `1` | crawl with this many workers at once, sharing one screen map: across this many simulators on iOS ([BE-0064](../roadmaps/BE-0064-parallel-crawl/BE-0064-parallel-crawl.md), capped to the `--udid` devices) or this many browser processes on web ([BE-0077](../roadmaps/BE-0077-parallel-web-crawl/BE-0077-parallel-web-crawl.md)). `1` = single-worker crawl |
 | `--backend` | config | actuator order |
 | `--erase / --no-erase` | `--erase` | erase before launch (the app must be installed) |
 | `--dismiss-alerts / --no-dismiss-alerts` | `--dismiss-alerts` | dismiss unexpected OS prompts while crawling (so they aren't read as crashes; uses the configured AI provider — `ANTHROPIC_API_KEY`, or AWS credentials for Bedrock) |
@@ -335,7 +335,7 @@ bajutsu crawl --target <name> [--max-screens N] [--max-steps N] [--out <dir>] [o
 | `--out` | `runs/<timestamp>` | run dir the screen map is written into |
 | `--config` | `bajutsu.config.yaml` | config |
 
-- **A Git `--config` is read-only input** ([BE-0063](../roadmaps/implemented/BE-0063-git-config-source/BE-0063-git-config-source.md)):
+- **A Git `--config` is read-only input** ([BE-0063](../roadmaps/BE-0063-git-config-source/BE-0063-git-config-source.md)):
   `crawl` reads the config from the fetched checkout, but the screen map / screenshots go to the local
   `--out` run dir (default `runs/<timestamp>`), never into the read-only SHA-keyed cache; an `--out`
   inside the checkout is refused.
@@ -385,7 +385,7 @@ bajutsu crawl --target <name> [--max-screens N] [--max-steps N] [--out <dir>] [o
   pure, deterministic and model-free (`tap` / `type` / `fill` map to their steps). A path that taps a
   normalized coordinate (a vision-located control) has no selector to address, so it emits no
   scenario rather than a lossy one.
-- **Parallel pool** ([BE-0064](../roadmaps/implemented/BE-0064-parallel-crawl/BE-0064-parallel-crawl.md)):
+- **Parallel pool** ([BE-0064](../roadmaps/BE-0064-parallel-crawl/BE-0064-parallel-crawl.md)):
   with `--workers N` over a `--udid A,B,C` pool the crawl runs across N booted simulators at once,
   all sharing the one screen map and frontier — independent branches explore concurrently and the AI
   guide's round-trips overlap across devices, so wall-clock time falls roughly with the device count.
@@ -395,7 +395,7 @@ bajutsu crawl --target <name> [--max-screens N] [--max-steps N] [--out <dir>] [o
   tree (the crawl is still never a verdict). A wedged device drops its work and the others carry on.
   Default `--workers 1` is the single-worker crawl, unchanged. On **web** the same model runs N
   **browser processes** instead of simulators
-  ([BE-0077](../roadmaps/implemented/BE-0077-parallel-web-crawl/BE-0077-parallel-web-crawl.md)): the
+  ([BE-0077](../roadmaps/BE-0077-parallel-web-crawl/BE-0077-parallel-web-crawl.md)): the
   worker count alone sizes the lane set (the web has no devices), each reset is a fresh browser
   context (the clean-state `erase`), and a browser that wedges is torn down and relaunched so one bad
   browser can't sink the crawl.
@@ -441,7 +441,7 @@ engine is platform-neutral, so `bajutsu crawl --target <web-app> --backend web` 
 `screenmap.json`, screenshots, and crash list. The web app is identified by `baseUrl` (not
 `bundleId`), and because a browser needs no Mac or emulator a web crawl runs on the Linux
 `make check` / CI gate. Three things differ from iOS, and all stay deterministic
-([BE-0066](../roadmaps/implemented/BE-0066-web-crawl/BE-0066-web-crawl.md)):
+([BE-0066](../roadmaps/BE-0066-web-crawl/BE-0066-web-crawl.md)):
 
 - **Clean start = re-navigate.** There is no app process to relaunch; returning to a clean state
   is `page.goto(baseUrl)` against a fresh browser context (the `erase` equivalent, ~free), the
@@ -520,7 +520,7 @@ bajutsu serve [--port 8765] [--config bajutsu.config.yaml] [--root .] [--runs ru
   session cookie — the token is never put in a URL. **Binding a non-loopback `--host` (e.g. `0.0.0.0`)
   requires a token**, so the server is never exposed unauthenticated (it exits otherwise). With no
   token the server is open, as before — only safe on loopback. Full multi-user auth (OAuth/RBAC) is
-  out of scope here ([BE-0015](../roadmaps/in-progress/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md)).
+  out of scope here ([BE-0015](../roadmaps/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md)).
 - **CSRF + security headers (BE-0051).** When a token is set, a state-changing POST whose `Origin`
   doesn't match the `Host` is rejected (defense-in-depth atop the `SameSite=Strict` session cookie);
   non-browser clients (no `Origin`) are unaffected. Every response carries `X-Content-Type-Options:
@@ -528,27 +528,27 @@ bajutsu serve [--port 8765] [--config bajutsu.config.yaml] [--root .] [--runs ru
 - `--config` is **optional**. Omit it and open a `config.yml` from the UI's file browser (an
   "Open config" button); the browser is confined to `--root` (default: the current directory).
   `--scenarios <dir>` is available as an override of the selected app's configured dir.
-- **From a Git repository ([BE-0063](../roadmaps/implemented/BE-0063-git-config-source/BE-0063-git-config-source.md)).**
+- **From a Git repository ([BE-0063](../roadmaps/BE-0063-git-config-source/BE-0063-git-config-source.md)).**
   `--config` also accepts a Git source (`github:owner/repo@ref:path`), and the "Open config" dialog
   has a **From a Git repository** field for the same spec: serve materializes the repo subtree at the
   ref into its cache, binds that config, and serves from the checkout root — so the config's relative
   `scenarios` / `appPath` / `build` resolve against the fetched tree. This is the self-hosted payoff
-  ([BE-0016](../roadmaps/in-progress/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md) Tier A):
+  ([BE-0016](../roadmaps/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md) Tier A):
   point serve at the team's test repository instead of hand-syncing files, and switch branches in the
   UI rather than redeploying. The file browser stays confined to `--root`; the checkout is a managed
   content-addressed cache, and a Git-sourced run confines the config's path fields to the checkout
-  root ([BE-0063](../roadmaps/implemented/BE-0063-git-config-source/BE-0063-git-config-source.md)).
+  root ([BE-0063](../roadmaps/BE-0063-git-config-source/BE-0063-git-config-source.md)).
 - `--baselines` sets the visual-regression baselines dir (default: a `baselines/` folder under
   the app's scenarios dir); runs launched from the UI use it, and the report's **Approve** button
   promotes the captured screenshot into it via `POST /api/approve`.
 - Pick an app (its scenarios populate the dropdown), set backend / udid / erase / `disable
   alert-dismiss`, hit **Run**; the output streams live and the `report.html` embeds on completion.
 - The **Crawl** tab picks an app, a pool of simulators (multi-select, like Replay — two or more
-  crawl in parallel, sharing one screen map; [BE-0064](../roadmaps/implemented/BE-0064-parallel-crawl/BE-0064-parallel-crawl.md)),
+  crawl in parallel, sharing one screen map; [BE-0064](../roadmaps/BE-0064-parallel-crawl/BE-0064-parallel-crawl.md)),
   and a budget (max screens / steps), then `POST /api/crawl` spawns the crawl; the returned run id
   lets the UI poll `runs/<id>/screenmap.json` and draw the screen map as it grows (screens laid out
   in breadth-first layers, transitions as arrows). The **Stop** button aborts it, like Replay.
-- **Upload a bundle ([BE-0073](../roadmaps/implemented/BE-0073-serve-zip-bundle-upload/BE-0073-serve-zip-bundle-upload.md)).**
+- **Upload a bundle ([BE-0073](../roadmaps/BE-0073-serve-zip-bundle-upload/BE-0073-serve-zip-bundle-upload.md)).**
   The "Open config" dialog has a third source, **Upload a bundle**, that lets a browser user **bring
   their own suite** to a hosted `serve` with no file-system access to the host. Drop a `.zip` whose
   layout is just a working local checkout — a `bajutsu.config.yaml`, its `scenarios` tree, and the
@@ -561,7 +561,7 @@ bajutsu serve [--port 8765] [--config bajutsu.config.yaml] [--root .] [--runs ru
   recorded into each run's `manifest.json` (`provenance`), so "what did this run execute?" stays
   answerable. Only one bundle is bound at a time — opening another config (any source) removes the
   sandbox. The bundle carries **no secrets**: `${secrets.*}` resolve from the `serve` host's
-  environment as on any run ([BE-0032](../roadmaps/implemented/BE-0032-secret-variables/BE-0032-secret-variables.md)),
+  environment as on any run ([BE-0032](../roadmaps/BE-0032-secret-variables/BE-0032-secret-variables.md)),
   and an uploaded config's `build` command is **never** executed on the host (the bundle ships a
   prebuilt binary; DESIGN §1). Extraction is hardened against zip-slip (absolute / `..` / symlink
   entries are rejected) and zip-bombs (entry-count, total-uncompressed, and per-entry
@@ -585,7 +585,7 @@ bajutsu serve [--port 8765] [--config bajutsu.config.yaml] [--root .] [--runs ru
   selected app's scenarios dir** (no arbitrary host paths or `..` traversal), and `backend` / `udid`
   must be known tokens, not free text — so a request can't run an arbitrary file or smuggle
   surprising argv. This hardening is the prerequisite for hosting `serve` beyond loopback
-  ([BE-0015](../roadmaps/in-progress/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md) / [BE-0016](../roadmaps/in-progress/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md));
+  ([BE-0015](../roadmaps/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md) / [BE-0016](../roadmaps/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md));
   it still binds `127.0.0.1` and has no auth, so don't expose it to an untrusted network yet.
 - **`--max-concurrent-runs` (default 4)** caps how many run/record jobs may run at once so one
   caller can't monopolize the scarce device (BE-0051); dispatch over the cap returns **429**. Set
@@ -617,7 +617,7 @@ bajutsu mcp [--config bajutsu.config.yaml] [--runs runs] [--transport stdio]
 ## `worker`
 
 Leases queued runs from Redis and executes them — the execution half of the hosted server backend
-([BE-0015](../roadmaps/in-progress/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md);
+([BE-0015](../roadmaps/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md);
 [self-hosting](self-hosting.md)). Needs the optional `bajutsu[worker]` extra (`redis` / `rq`); not
 needed for local use.
 

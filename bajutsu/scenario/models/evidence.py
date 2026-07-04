@@ -48,11 +48,15 @@ class Redact(_Model):
     """Redaction config — element `labels`, network `headers`, and JSON `fields` to scrub from evidence.
 
     Each list names items that are zeroed out before evidence is written to the report.
+    A standard set of credential-bearing headers (`authorization`, `cookie`, `set-cookie`, …)
+    is masked by default (BE-0130); `unmask_headers` is the explicit, visible opt-out that
+    releases a specific default — turning off protection is never the mere absence of `redact:`.
     """
 
     labels: list[str] = Field(default_factory=list)
     headers: list[str] = Field(default_factory=list)
     fields: list[str] = Field(default_factory=list)
+    unmask_headers: list[str] = Field(default_factory=list, alias="unmaskHeaders")
 
 
 class NetworkFilter(_Model):

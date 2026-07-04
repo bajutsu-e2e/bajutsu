@@ -28,7 +28,7 @@ defaults:                       # 全ターゲット共通の既定
 
 targets:
   showcase-swiftui:             # ← --target showcase-swiftui で選択
-    bundleId:       com.bajutsu.showcase.swiftui     # iOS のターゲット（web で baseUrl を設定する場合を除き必須）
+    bundleId:       com.bajutsu.showcase.ios.swiftui     # iOS のターゲット（web で baseUrl を設定する場合を除き必須）
     deeplinkScheme: showcaseswiftui
     idNamespaces:   [stable, horse, search, log, notice, perm, sys, net]
     launchEnv:      { SHOWCASE_UITEST: "1" }
@@ -52,13 +52,13 @@ targets:
 
 | `Effective` フィールド | 由来 | 備考 |
 |---|---|---|
-| `platform` | app < defaults < 導出 | ターゲットのプラットフォーム（`ios`/`android`/`web`）。明示 `platform` が優先、なければターゲットの `backend` が含意、なければ存在する識別子、それも無ければ `ios`。どの識別子を必須にするかを選びます（[BE-0009](../../roadmaps/implemented/BE-0009-cross-platform-abstractions/BE-0009-cross-platform-abstractions-ja.md)） |
+| `platform` | app < defaults < 導出 | ターゲットのプラットフォーム（`ios`/`android`/`web`）。明示 `platform` が優先、なければターゲットの `backend` が含意、なければ存在する識別子、それも無ければ `ios`。どの識別子を必須にするかを選びます（[BE-0009](../../roadmaps/BE-0009-cross-platform-abstractions/BE-0009-cross-platform-abstractions-ja.md)） |
 | `bundle_id` | app | iOS のターゲット識別子。プラットフォームが `ios` のとき必須 |
 | `base_url` | app | web のターゲット URL（Playwright backend）。プラットフォームが `web` のとき必須 |
 | `package` | app | Android のターゲット識別子。プラットフォームが `android` のとき必須 |
 | `headless` | app | web backend のみ: `true`（既定）はヘッドレス、`false` はブラウザを画面に表示し低速再生する。`bajutsu run --headed / --no-headed` と Web UI の「show browser」トグルが実行ごとに上書きする。iOS は無視する |
-| `browser` | app | web backend のみ: 駆動する Playwright の描画エンジン。`chromium`（既定）、`firefox`、`webkit` から選びます。いずれも Linux 上でヘッドレス実行できます。`bajutsu run/record --browser <engine>` が実行ごとに上書きし（フラグ > config > 既定）、`bajutsu run --browsers <list>` はクロスブラウザマトリクスを実行します（後述）。エンジンのブラウザバイナリが無ければ実行時に取得します。未知の値は config 読み込み時に拒否されます。iOS は無視します（[BE-0076](../../roadmaps/implemented/BE-0076-web-cross-browser-engines/BE-0076-web-cross-browser-engines-ja.md)） |
-| `launch_server` | app | 任意の `launchServer: {cmd, readyUrl, readyTimeout, cwd, env}`。run のために `baseUrl` のホストを起動し、終わったら停止します。`readyUrl`（既定は `baseUrl`）をプローブし、すでに応答すれば再利用、しなければ `cmd` を起動して準備が整うまで待ちます（固定 sleep ではなく条件待ち）。iOS の `build` の web 版です（[BE-0059](../../roadmaps/implemented/BE-0059-launch-target-server/BE-0059-launch-target-server-ja.md)）。`serve` 上の**アップロードされた**バンドルでは、ホストが `cmd` を直接実行することはなく、`serve --upload-exec` が統制します（[セルフホスティング](self-hosting.md#アップロードされた-config-のコマンド実行be-0090)を参照）。`sandbox` での実行には、追加フィールドとして `dockerImage`（Docker イメージ参照。例 `node:20-slim`）か `dockerfile`（バンドル相対のパスで、`docker build` でビルドします）のどちらか一方、加えて `port`（コンテナ内の待ち受けポート。ループバックのホストポートへ publish します）が必要です（[BE-0090](../../roadmaps/implemented/BE-0090-uploaded-config-command-execution/BE-0090-uploaded-config-command-execution-ja.md)） |
+| `browser` | app | web backend のみ: 駆動する Playwright の描画エンジン。`chromium`（既定）、`firefox`、`webkit` から選びます。いずれも Linux 上でヘッドレス実行できます。`bajutsu run/record --browser <engine>` が実行ごとに上書きし（フラグ > config > 既定）、`bajutsu run --browsers <list>` はクロスブラウザマトリクスを実行します（後述）。エンジンのブラウザバイナリが無ければ実行時に取得します。未知の値は config 読み込み時に拒否されます。iOS は無視します（[BE-0076](../../roadmaps/BE-0076-web-cross-browser-engines/BE-0076-web-cross-browser-engines-ja.md)） |
+| `launch_server` | app | 任意の `launchServer: {cmd, readyUrl, readyTimeout, cwd, env}`。run のために `baseUrl` のホストを起動し、終わったら停止します。`readyUrl`（既定は `baseUrl`）をプローブし、すでに応答すれば再利用、しなければ `cmd` を起動して準備が整うまで待ちます（固定 sleep ではなく条件待ち）。iOS の `build` の web 版です（[BE-0059](../../roadmaps/BE-0059-launch-target-server/BE-0059-launch-target-server-ja.md)）。`serve` 上の**アップロードされた**バンドルでは、ホストが `cmd` を直接実行することはなく、`serve --upload-exec` が統制します（[セルフホスティング](self-hosting.md#アップロードされた-config-のコマンド実行be-0090)を参照）。`sandbox` での実行には、追加フィールドとして `dockerImage`（Docker イメージ参照。例 `node:20-slim`）か `dockerfile`（バンドル相対のパスで、`docker build` でビルドします）のどちらか一方、加えて `port`（コンテナ内の待ち受けポート。ループバックのホストポートへ publish します）が必要です（[BE-0090](../../roadmaps/BE-0090-uploaded-config-command-execution/BE-0090-uploaded-config-command-execution-ja.md)） |
 | `deeplink_scheme` | app | preconditions の deeplink で使う scheme |
 | `backend` | app ?? defaults | プラットフォーム(`ios`/`android`/`web`/`fake`)か actuator(`idb`)の安定度順リスト（単一文字列はリスト化）（[drivers](drivers.md#バックエンド選択と-actuator)） |
 | `device` / `locale` | app ?? defaults | `locale` は launch 時に適用される（`simctl` の launch 引数） |
@@ -87,7 +87,7 @@ config の `defaults.redact` と `targets.<name>.redact` は **union** されま
 
 ### AI プロバイダ（`ai:`、BE-0047）
 
-AI 経路、すなわち `record`、`triage --ai`、`--dismiss-alerts` のガードは、任意の `ai` ブロックで設定した一つのプロバイダを通じてモデルへ到達します。このブロックは `defaults` と `targets.<name>` の両方で宣言でき、**フィールドごと**にマージされます（同じフィールドはターゲット側の値が勝ちます）。解決結果は `Effective.ai` に入るので、CLI と `serve` が一つの真実を共有します。これが「あなたの AI、あなたのキー、あなたのデータ」を支える強制です。どの AI 経路も、あなたが設定したキーとエンドポイントの下で動き、決定的な `run` ゲートはモデルをまったく呼びません（[BE-0047](../../roadmaps/implemented/BE-0047-ai-data-sovereignty/BE-0047-ai-data-sovereignty-ja.md)）。
+AI 経路、すなわち `record`、`triage --ai`、`--dismiss-alerts` のガードは、任意の `ai` ブロックで設定した一つのプロバイダを通じてモデルへ到達します。このブロックは `defaults` と `targets.<name>` の両方で宣言でき、**フィールドごと**にマージされます（同じフィールドはターゲット側の値が勝ちます）。解決結果は `Effective.ai` に入るので、CLI と `serve` が一つの真実を共有します。これが「あなたの AI、あなたのキー、あなたのデータ」を支える強制です。どの AI 経路も、あなたが設定したキーとエンドポイントの下で動き、決定的な `run` ゲートはモデルをまったく呼びません（[BE-0047](../../roadmaps/BE-0047-ai-data-sovereignty/BE-0047-ai-data-sovereignty-ja.md)）。
 
 ```yaml
 defaults:
@@ -98,7 +98,7 @@ defaults:
     keyEnv:   ANTHROPIC_API_KEY               # キーを保持する環境変数の「名前」。キーの値そのものは置かない
 ```
 
-- **プロバイダは単一のインターフェースの背後に置かれたバックエンドです**（[BE-0104](../../roadmaps/implemented/BE-0104-vendor-neutral-ai-backend/BE-0104-vendor-neutral-ai-backend-ja.md)）。AI 経路は、プラットフォームが `Driver` インターフェースの背後のバックエンドであるのと同じように、ベンダー中立なシーム（`bajutsu/ai`）を通じてのみモデルへ到達します。そのため `provider` は固定された 2 値ではなく、**レジストリで検証される開放型**の値です。現在は `anthropic` と `bedrock` のアダプタが同梱されており（Bedrock は Anthropic SDK の一変種なので、Anthropic アダプタの内側に収まります）、未知の名前は config の読み込み時に明確なエラーで fail closed になります。モデルファミリ（たとえば OpenAI 互換エンドポイント）の追加はアダプタの登録にあたり、下記の秘匿化とフェイルクローズの保証を構造上そのまま受け継ぎます。
+- **プロバイダは単一のインターフェースの背後に置かれたバックエンドです**（[BE-0104](../../roadmaps/BE-0104-vendor-neutral-ai-backend/BE-0104-vendor-neutral-ai-backend-ja.md)）。AI 経路は、プラットフォームが `Driver` インターフェースの背後のバックエンドであるのと同じように、ベンダー中立なシーム（`bajutsu/ai`）を通じてのみモデルへ到達します。そのため `provider` は固定された 2 値ではなく、**レジストリで検証される開放型**の値です。現在は `anthropic` と `bedrock` のアダプタが同梱されており（Bedrock は Anthropic SDK の一変種なので、Anthropic アダプタの内側に収まります）、未知の名前は config の読み込み時に明確なエラーで fail closed になります。モデルファミリ（たとえば OpenAI 互換エンドポイント）の追加はアダプタの登録にあたり、下記の秘匿化とフェイルクローズの保証を構造上そのまま受け継ぎます。
 - **キーは設定ファイルに置きません。** `keyEnv` は環境変数の名前を指すだけで、値は呼び出し時に環境から読みます。これにより秘密がリポジトリやアップロードされたバンドルに入りません。`baseUrl` は Anthropic SDK を自己ホストのゲートウェイやプロキシへ向けます（`Anthropic(base_url=…, api_key=os.environ[keyEnv])`）。スクリーンショットや要素ツリーは、ベンダーの既定先ではなく、あなたが設定したエンドポイントにだけ届きます。Bedrock は標準の AWS 資格情報チェーン（`AWS_REGION` と、環境変数 / 共有プロファイル / インスタンスまたはタスクロール）のままで、プロバイダ接頭辞付きの `model` を必要とします。
 - **設定が先、環境変数はフォールバック。** 省略したフィールドは現状の環境変数（`BAJUTSU_AI_PROVIDER`、`ANTHROPIC_API_KEY`、`BAJUTSU_BEDROCK_MODEL`）へフォールバックするので、`ai` ブロックの無い config はこれまでどおり動きます。
 - **フェイルクローズ。** `record`、`triage --ai`、明示的に要求した `--dismiss-alerts` は、選択したプロバイダに使える資格情報が無いとき、プロバイダ別の明確なエラーで終了します。ホストされた既定先へ黙ってフォールバックするクライアントは決して構築しません。
@@ -119,11 +119,11 @@ targets:
       fields: { to: to, subject: subject, body: text, receivedAt: receivedAt, id: id }
 ```
 
-既定値はよくある形（`to` / `subject` / `body` / `receivedAt` / `id` を持つメッセージの配列）に合わせるので、準拠 API では `messages` / `fields` のマッピングは不要です。`email` ステップは受信箱を HTTP で読み、ステップ開始より新しいメッセージ（`id` で判定）だけを残し、一致するものを待ってコードを取り出します。決定的で LLM 非依存です（[BE-0046](../../roadmaps/implemented/BE-0046-otp-email-steps/BE-0046-otp-email-steps-ja.md)）。
+既定値はよくある形（`to` / `subject` / `body` / `receivedAt` / `id` を持つメッセージの配列）に合わせるので、準拠 API では `messages` / `fields` のマッピングは不要です。`email` ステップは受信箱を HTTP で読み、ステップ開始より新しいメッセージ（`id` で判定）だけを残し、一致するものを待ってコードを取り出します。決定的で LLM 非依存です（[BE-0046](../../roadmaps/BE-0046-otp-email-steps/BE-0046-otp-email-steps-ja.md)）。
 
 ### org（`orgs:`、マルチテナントのサーバ backend）
 
-`orgs:` は、ホスト型サーバ backend のテナントを宣言します（[BE-0015](../../roadmaps/in-progress/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting-ja.md)）。各 org は、所属メンバー（明示の GitHub login＝`members`、および／または GitHub org 全体＝`githubOrgs`）と、その org が持つ targets を列挙します。
+`orgs:` は、ホスト型サーバ backend のテナントを宣言します（[BE-0015](../../roadmaps/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting-ja.md)）。各 org は、所属メンバー（明示の GitHub login＝`members`、および／または GitHub org 全体＝`githubOrgs`）と、その org が持つ targets を列挙します。
 
 ```yaml
 orgs:

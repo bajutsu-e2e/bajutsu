@@ -7,7 +7,6 @@ requires-python = ">=3.13"
 license = "Apache-2.0"
 license-files = ["LICENSE", "NOTICE"]
 dependencies = [
-    "anthropic>=0.50",
     "jinja2>=3.1",
     "pydantic>=2.7",
     "pyyaml>=6.0",
@@ -15,6 +14,11 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+# The Anthropic SDK for the AI authoring / investigation paths (record / triage / crawl-guide /
+# alert-dismissal). The deterministic `run` / CI gate never reaches a model (BE-0101), so the SDK
+# is an opt-in extra, not a base dependency — the base install stays AI-free (BE-0111). Imported
+# lazily, only when a model is actually called; the import guard locks it off the default path.
+ai = ["anthropic>=0.50"]
 # The idb backend shells out to the `idb` client; idb_companion is a separate
 # `brew install facebook/fb/idb-companion`.
 idb = ["fb-idb>=1.1.0"]
@@ -25,7 +29,9 @@ web = ["playwright>=1.49"]
 visual = ["pillow>=10.0"]
 mcp = ["fastmcp>=2.0.0"]
 # Amazon Bedrock provider for the AI paths (BAJUTSU_AI_PROVIDER=bedrock); pulls in boto3 for SigV4.
-bedrock = ["anthropic[bedrock]>=0.50"]
+# Layers the Bedrock variant onto the `ai` extra, which is the single source of the `anthropic`
+# version pin — so the Bedrock line only adds the `[bedrock]` extra, never a second version (BE-0111).
+bedrock = ["bajutsu[ai]", "anthropic[bedrock]"]
 # The hosted-backend worker (`bajutsu worker`): polls the control plane over HTTP (BE-0106).
 # No extra dependencies needed (stdlib urllib); kept as an empty extra for backwards compatibility.
 worker = []
@@ -67,10 +73,12 @@ docs = [
 dev = [
     # The optional extras the gate imports and tests — referenced by name so each one's version is
     # declared once, in [project.optional-dependencies], and never duplicated here. The gate runs
-    # with all of them installed: bedrock (boto3 for the AI path), server (FastAPI/uvicorn/boto3),
-    # worker (empty since BE-0106), db (SQLAlchemy/Alembic/psycopg), oauth (Authlib), mcp,
-    # visual (Pillow), schema (jsonschema), and cloud (boto3 + google-cloud-storage for BE-0110).
-    "bajutsu[bedrock,server,worker,db,oauth,mcp,visual,schema,cloud]",
+    # with all of them installed: ai (the anthropic SDK for the AI paths, BE-0111), bedrock (its
+    # Bedrock variant + boto3), server (FastAPI/uvicorn/boto3), worker (empty since BE-0106),
+    # db (SQLAlchemy/Alembic/psycopg), oauth (Authlib), mcp, visual (Pillow), schema (jsonschema),
+    # and cloud (boto3 + google-cloud-storage for BE-0110). Keeping `ai` here means `make check`
+    # still imports and tests the AI paths; the AI-free guarantee is scoped to the *base* install.
+    "bajutsu[ai,bedrock,server,worker,db,oauth,mcp,visual,schema,cloud]",
     # Test/lint tooling — not part of any runtime extra, so declared directly here.
     "httpx>=0.27",  # FastAPI TestClient + real-uvicorn checks
     "mypy>=1.10",

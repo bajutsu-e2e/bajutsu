@@ -193,6 +193,11 @@ Android (`adb`) and Flutter backends (planned). See
 uv sync --group dev      # creates .venv (Python 3.13) and installs deps + dev tools
 ```
 
+Installing from PyPI instead? The base package is AI-free: `pip install bajutsu` gets the
+deterministic authoring / running paths with no AI SDK, and `pip install bajutsu[ai]` (or
+`bajutsu[bedrock]`) adds the SDK for the Claude paths — see
+[What uses Claude](docs/ai-boundary.md#installing-the-claude-paths).
+
 ## Usage
 
 The CLI surface (full reference in [`docs/cli.md`](docs/cli.md)):
@@ -230,7 +235,7 @@ defaults:
 
 targets:
   showcase-swiftui:         # iOS app — driven on the Simulator via idb
-    bundleId: com.bajutsu.showcase.swiftui
+    bundleId: com.bajutsu.showcase.ios.swiftui
     deeplinkScheme: showcaseswiftui
     launchEnv: { SHOWCASE_UITEST: "1" }
     idNamespaces: [stable, horse, search, log, notice, perm, sys, net]

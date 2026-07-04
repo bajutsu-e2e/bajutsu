@@ -146,17 +146,17 @@ colliding or regressing each other. Full guide: [`docs/ai-development.md`](docs/
   style, ですます調)**, never the plain *da/dearu* style (常体). Full guidance:
   [`docs/ai-development.md`](docs/ai-development.md).
 - **Roadmap items use BE IDs (strict).** Every roadmap item is a directory
-  `roadmaps/<category>/BE-NNNN-<slug>/` holding the English file `BE-NNNN-<slug>.md`
+  `roadmaps/BE-NNNN-<slug>/` holding the English file `BE-NNNN-<slug>.md`
   and its Japanese version `BE-NNNN-<slug>-ja.md` — `BE` = *Bajutsu Evolution*, `NNNN` a
-  zero-padded 4-digit monotonically increasing ID. Each item lives under one of **four** folders,
-  one per `Status` value (BE-0078): `roadmaps/implemented/` (`Implemented`),
-  `roadmaps/in-progress/` (`In progress`), `roadmaps/proposals/` (`Proposal`),
-  `roadmaps/deferred/` (`Proposal (deferred)`). When you add
+  zero-padded 4-digit monotonically increasing ID. Every item lives directly under `roadmaps/`; its
+  path is fixed the moment its ID is allocated and never moves (BE-0159 retired the per-`Status`
+  folders BE-0078 introduced — `Status` now decides only the index/dashboard bucket, not the
+  location). When you add
   one: name it with the `BE-XXXX` placeholder — the norm, since the number is allocated **on `main`
   after the PR merges** (contiguous in merge order; BE-0089) — or allocate the next ID by hand (`ls -d
-  roadmaps/{implemented,in-progress,proposals,deferred}/BE-*/ | sort | tail -1`, then +1; never
+  roadmaps/BE-*/ | sort | tail -1`, then +1; never
   reuse, skip, or guess) when you want it fixed up front. Create **both** language files in a new
-  directory under `roadmaps/proposals/` for a proposal, or under `roadmaps/implemented/` with `Status:
+  directory under `roadmaps/`, setting `Status: Proposal` for a proposal, or `Status:
   Implemented` when the **same PR ships the implementation** (a new item is a proposal first
   *unless* its code lands with it). Don't hand-edit the index
   tables — run `make roadmap-index` to regenerate the tables in **both** index pages
@@ -180,13 +180,12 @@ colliding or regressing each other. Full guide: [`docs/ai-development.md`](docs/
   must name the author by GitHub handle — `| Author |
   [@handle](https://github.com/handle) |`, the account of whoever first authored the item (for an
   AI-assisted draft, the person who drove and committed it). `tests/test_roadmap_format.py` checks
-  this shape (BE-0074). `Status` is the single source of truth for both an item's folder and its
+  this shape (BE-0074). `Status` is the single source of truth for an item's
   index bucket — one of `Implemented` / `In progress` / `Proposal` / `Proposal (deferred)`. When an
-  item's status changes (it starts being built, or it ships), set its `Status`; CI
-  (`roadmap-promote`) then **moves its directory** to the matching folder and regenerates the index —
-  or run `make roadmap-promote` locally to do it yourself. `make test`
-  fails if any item's directory doesn't match its `Status`. **IDs are permanent — never renumber an
-  existing item.** Full rule:
+  item's status changes (it starts being built, or it ships), set its `Status` and run `make
+  roadmap-index` to rebuild the bucket tables; the item's directory never moves (BE-0159). `make
+  test` fails if the committed index drifts from an item's `Status`. **IDs are permanent — never
+  renumber an existing item.** Full rule:
   [`roadmaps/README.md`](roadmaps/README.md) · [`docs/ai-development.md`](docs/ai-development.md).
 - Commit messages: imperative, scoped (`feat(run): …`, `fix(record): …`, `docs: …`).
 - **PR titles and bodies are always in English**, regardless of the language used in the

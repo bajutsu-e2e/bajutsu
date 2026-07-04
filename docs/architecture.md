@@ -213,7 +213,7 @@ injected runners (`RunFn` · `Spawn` · `Clock`). Real-device E2E against the sh
 - The Playwright web backend runs the `demos/web` scenarios deterministically inside the same
   `make check` gate as CI (the `web-e2e` job in `ci.yml`), confirming the deterministic core is
   platform-neutral. Rich-end web capture (network / video / multi-touch) is planned (BE-0054); a
-  parallel web crawl across N browser processes ([BE-0077](../roadmaps/implemented/BE-0077-parallel-web-crawl/BE-0077-parallel-web-crawl.md)) runs on this same gate.
+  parallel web crawl across N browser processes ([BE-0077](../roadmaps/BE-0077-parallel-web-crawl/BE-0077-parallel-web-crawl.md)) runs on this same gate.
 
 ### Not yet wired (schema/flags exist but have no runtime effect)
 

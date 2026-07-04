@@ -101,6 +101,14 @@ _PLAN_NOTE = (
 # A runner takes the argv and returns the CLI's stdout. Injectable for tests.
 Runner = Callable[[list[str]], str]
 
+# This agent's contract is "return one structured action" — it never legitimately runs a
+# shell command or touches a file, so the CLI is denied those tools outright. The observation
+# it reasons from includes on-screen text the agent didn't author, a prompt-injection surface;
+# an enforced denylist is the boundary the system prompt alone can't be (BE-0125). The
+# fail-closed --permission-mode default is the backstop for any tool this list doesn't name:
+# print mode can't prompt a human, so an unanticipated permission request is denied, not passed.
+_DISALLOWED_TOOLS = "Bash,Read,Write,Edit,NotebookEdit,Glob,Grep"
+
 
 def _subscription_env() -> dict[str, str]:
     """The child env with ANTHROPIC_API_KEY stripped.
@@ -155,6 +163,10 @@ class ClaudeCodeAgent:
             json.dumps(schema),
             "--append-system-prompt",
             system,
+            "--disallowedTools",
+            _DISALLOWED_TOOLS,
+            "--permission-mode",
+            "default",
         ]
         if self._model:
             cmd += ["--model", self._model]

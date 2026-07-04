@@ -17,16 +17,17 @@ through the env):
   not a valid Bedrock model id.
 
 Keys never live in config: ``ai.keyEnv`` names the env var, the value is read here at call time
-(BE-0047). Nothing here runs in the deterministic ``run`` / CI gate (DESIGN §2 / §3.1). The Bedrock
-SDK extra (``anthropic[bedrock]``, which pulls in boto3) is optional and only imported on the
-Bedrock path.
+(BE-0047). Nothing here runs in the deterministic ``run`` / CI gate (DESIGN §2 / §3.1). The SDK
+itself is the optional ``ai`` extra (BE-0111) — imported lazily here, only when a model is actually
+called — and the Bedrock variant (``anthropic[bedrock]``, which pulls in boto3) layers on top for
+the Bedrock path. A base install without the extra raises an actionable error rather than crashing.
 """
 
 from __future__ import annotations
 
 import os
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Protocol
 
 PROVIDER_ENV = "BAJUTSU_AI_PROVIDER"
 BEDROCK_MODEL_ENV = "BAJUTSU_BEDROCK_MODEL"
@@ -96,7 +97,13 @@ def make_client(client: Any = None, ai: AiConfig | None = None) -> Any:
                 "install it with `uv sync --extra bedrock`."
             ) from e
         return AnthropicBedrock()
-    from anthropic import Anthropic
+    try:
+        from anthropic import Anthropic
+    except ImportError as e:  # the anthropic SDK (the `ai` extra, BE-0111) isn't installed
+        raise RuntimeError(
+            "the AI paths need the anthropic SDK; install it with `uv sync --extra ai` "
+            "(or `pip install bajutsu[ai]`)."
+        ) from e
 
     name = key_env(ai)
     api_key = os.environ.get(name)
@@ -106,6 +113,26 @@ def make_client(client: Any = None, ai: AiConfig | None = None) -> Any:
     if ai and ai.base_url:
         kwargs["base_url"] = ai.base_url
     return Anthropic(**kwargs)
+
+
+class CachesClient(Protocol):
+    """The shape ensure_client memoizes onto — the two attrs every Claude* AI class already holds."""
+
+    _client: Any
+    _ai: AiConfig | None
+
+
+def ensure_client(agent: CachesClient) -> Any:
+    """Return the agent's SDK client, building and caching it on ``_client`` on first use.
+
+    The lazy-build-then-cache wrapper the AI authoring/investigation classes share (BE-0140).
+    ``make_client`` already short-circuits an injected client; the one thing this adds is
+    memoizing the built client on the instance, so a class doesn't reopen the SDK client (and
+    reread the key env var) on every call.
+    """
+    if agent._client is None:
+        agent._client = make_client(ai=agent._ai)
+    return agent._client
 
 
 def resolve_model(default: str, ai: AiConfig | None = None) -> str:

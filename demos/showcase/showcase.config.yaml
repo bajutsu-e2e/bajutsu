@@ -18,24 +18,24 @@ defaults:
 targets:
   # ---- SwiftUI, accessibility ON (the `run` / `doctor`-Ready target) -------------
   showcase-swiftui:
-    bundleId: com.bajutsu.showcase.swiftui
+    bundleId: com.bajutsu.showcase.ios.swiftui
     deeplinkScheme: showcaseswiftui
     launchEnv: { SHOWCASE_UITEST: "1" }
     idNamespaces: [stable, horse, search, log, notice, perm, sys, net]
-    appPath: demos/showcase/swiftui/build/dd/Build/Products/Debug-iphonesimulator/BajutsuShowcaseSwiftUI.app
+    appPath: demos/showcase/ios/swiftui/build/dd/Build/Products/Debug-iphonesimulator/BajutsuShowcaseSwiftUI.app
     build: make -C demos/showcase swiftui-build
     scenarios: demos/showcase/scenarios
 
   # ---- SwiftUI, accessibility OFF (the `record` / `doctor`-Blocked target) -------
   showcase-swiftui-noax:
-    bundleId: com.bajutsu.showcase.swiftui.noax
+    bundleId: com.bajutsu.showcase.ios.swiftui.noax
     deeplinkScheme: showcaseswiftuinoax
     launchEnv: { SHOWCASE_UITEST: "1" }
     idNamespaces: []   # honest: this build exposes no identifiers
-    appPath: demos/showcase/swiftui/build/dd/Build/Products/Debug-iphonesimulator/BajutsuShowcaseSwiftUINoAx.app
+    appPath: demos/showcase/ios/swiftui/build/dd/Build/Products/Debug-iphonesimulator/BajutsuShowcaseSwiftUINoAx.app
     build: make -C demos/showcase swiftui-noax-build
     backend: [ios]   # prefer xcuitest (reaches the tabs); idb stays the fallback
-    scenarios: demos/showcase/scenarios-xcuitest
+    scenarios: demos/showcase/ios/scenarios-xcuitest
     # XCUITest backend (BE-0019): the generic runner reaches elements idb's tree can't (e.g. a
     # TabView's tabs), so `--backend ios` drives this -noax app by label where idb would need vision.
     xcuitest:
@@ -44,24 +44,24 @@ targets:
 
   # ---- UIKit, accessibility ON (same identifier contract as showcase-swiftui) ----
   showcase-uikit:
-    bundleId: com.bajutsu.showcase.uikit
+    bundleId: com.bajutsu.showcase.ios.uikit
     deeplinkScheme: showcaseuikit
     launchEnv: { SHOWCASE_UITEST: "1" }
     idNamespaces: [stable, horse, search, log, notice, perm, sys, net]
-    appPath: demos/showcase/uikit/build/dd/Build/Products/Debug-iphonesimulator/BajutsuShowcaseUIKit.app
+    appPath: demos/showcase/ios/uikit/build/dd/Build/Products/Debug-iphonesimulator/BajutsuShowcaseUIKit.app
     build: make -C demos/showcase uikit-build
     scenarios: demos/showcase/scenarios
 
   # ---- UIKit, accessibility OFF -------------------------------------------------
   showcase-uikit-noax:
-    bundleId: com.bajutsu.showcase.uikit.noax
+    bundleId: com.bajutsu.showcase.ios.uikit.noax
     deeplinkScheme: showcaseuikitnoax
     launchEnv: { SHOWCASE_UITEST: "1" }
     idNamespaces: []
-    appPath: demos/showcase/uikit/build/dd/Build/Products/Debug-iphonesimulator/BajutsuShowcaseUIKitNoAx.app
+    appPath: demos/showcase/ios/uikit/build/dd/Build/Products/Debug-iphonesimulator/BajutsuShowcaseUIKitNoAx.app
     build: make -C demos/showcase uikit-noax-build
     backend: [ios]   # prefer xcuitest (reaches the tabs); idb stays the fallback
-    scenarios: demos/showcase/scenarios-xcuitest
+    scenarios: demos/showcase/ios/scenarios-xcuitest
     # XCUITest backend (BE-0019): one generic runner serves every target; here it lets `--backend ios`
     # drive the -noax UITabBar tabs by label, which idb's describe-all collapses into an opaque group.
     xcuitest:
@@ -78,7 +78,7 @@ targets:
   # ---- Compose, accessibility ON — testTags surface the dotted SPEC ids verbatim
   # (testTagsAsResourceId), so the shared id-based scenarios drive this app unchanged.
   showcase-compose:
-    package: com.bajutsu.showcase.compose
+    package: com.bajutsu.showcase.android.compose
     deeplinkScheme: showcasecompose
     launchEnv: { SHOWCASE_UITEST: "1" }
     idNamespaces: [stable, horse, search, log, notice, perm, sys, net]
@@ -89,7 +89,7 @@ targets:
 
   # ---- Compose, accessibility OFF ------------------------------------------------
   showcase-compose-noax:
-    package: com.bajutsu.showcase.compose.noax
+    package: com.bajutsu.showcase.android.compose.noax
     deeplinkScheme: showcasecomposenoax
     launchEnv: { SHOWCASE_UITEST: "1" }
     idNamespaces: []   # honest: this build exposes no identifiers
@@ -103,7 +103,7 @@ targets:
   # adb driver normalizes '.' ↔ '_' on match or these targets get a scenario variant is a
   # BE-0007 design decision (see demos/showcase/android/README.md).
   showcase-views:
-    package: com.bajutsu.showcase.views
+    package: com.bajutsu.showcase.android.views
     deeplinkScheme: showcaseviews
     launchEnv: { SHOWCASE_UITEST: "1" }
     idNamespaces: [stable, horse, search, log, notice, perm, sys, net]
@@ -114,7 +114,7 @@ targets:
 
   # ---- Views, accessibility OFF ---------------------------------------------------
   showcase-views-noax:
-    package: com.bajutsu.showcase.views.noax
+    package: com.bajutsu.showcase.android.views.noax
     deeplinkScheme: showcaseviewsnoax
     launchEnv: { SHOWCASE_UITEST: "1" }
     idNamespaces: []

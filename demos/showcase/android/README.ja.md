@@ -2,7 +2,7 @@
 
 # Showcase：Android（Compose + Views）
 
-Bajutsu showcase ドッグフード一式の Android 版です。[BE-0007 Android バックエンド](../../../roadmaps/proposals/BE-0007-android-backend/BE-0007-android-backend-ja.md)
+Bajutsu showcase ドッグフード一式の Android 版です。[BE-0007 Android バックエンド](../../../roadmaps/BE-0007-android-backend/BE-0007-android-backend-ja.md)
 に先行して、そのバックエンドが駆動する対象アプリとして用意しました。挙動、要素の一覧、起動時の
 環境変数フック、ディープリンク、OS アラートを出す画面は、すべて [`../SPEC.md`](../SPEC.ja.md) に
 一度だけ定義され、ここでは要素単位でそのまま実装しています。iOS のペアと対をなす構成で、
@@ -17,10 +17,10 @@ flavor の違いは Gradle の product flavor（`a11y` / `noax`）が定める `
 
 | Gradle タスク | ツールキット | `ACCESSIBLE` | Application id | 表示名 | ディープリンクのスキーム |
 |---|---|---|---|---|---|
-| `:compose:assembleA11yDebug` | Compose | true | `com.bajutsu.showcase.compose` | Showcase Compose | `showcasecompose` |
-| `:compose:assembleNoaxDebug` | Compose | false | `com.bajutsu.showcase.compose.noax` | Showcase Compose (no a11y) | `showcasecomposenoax` |
-| `:views:assembleA11yDebug` | Views | true | `com.bajutsu.showcase.views` | Showcase Views | `showcaseviews` |
-| `:views:assembleNoaxDebug` | Views | false | `com.bajutsu.showcase.views.noax` | Showcase Views (no a11y) | `showcaseviewsnoax` |
+| `:compose:assembleA11yDebug` | Compose | true | `com.bajutsu.showcase.android.compose` | Showcase Compose | `showcasecompose` |
+| `:compose:assembleNoaxDebug` | Compose | false | `com.bajutsu.showcase.android.compose.noax` | Showcase Compose (no a11y) | `showcasecomposenoax` |
+| `:views:assembleA11yDebug` | Views | true | `com.bajutsu.showcase.android.views` | Showcase Views | `showcaseviews` |
+| `:views:assembleNoaxDebug` | Views | false | `com.bajutsu.showcase.android.views.noax` | Showcase Views (no a11y) | `showcaseviewsnoax` |
 
 `a11y` ビルドは SPEC §5 の要素一覧を UI Automator の `resource-id` として公開し、`noax` ビルドは
 identifier の無いツリーになります。アクセシビリティ対応を省いたときのコストを具体的に示すものです

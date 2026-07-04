@@ -7,10 +7,21 @@ one place. Plain functions/classes (not fixtures) so they can be used at module 
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
 from bajutsu.ai.base import MessageRequest, MessageResponse, ToolUseBlock
 from bajutsu.drivers import base
+from bajutsu.drivers.fake import FakeDriver
+
+
+class ShotDriver(FakeDriver):
+    """A FakeDriver whose screenshot writes real PNG bytes, so callers that read the
+    capture back (the alert guard, the crawl guide's vision path) get an image."""
+
+    def screenshot(self, path: str) -> None:
+        Path(path).write_bytes(b"\x89PNG\r\n\x1a\n fake")
+        self.actions.append(("screenshot", path))
 
 
 def el(

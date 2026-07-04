@@ -4,9 +4,9 @@
 The ``ideation`` skill drafts new roadmap items with the literal placeholder ID ``BE-XXXX`` so
 authors never guess a number — IDs are permanent and monotonic, and picking by hand races between
 concurrent branches. This script, run by the ``roadmap-id`` workflow after a roadmap PR merges to
-``main``, turns each placeholder into the next free ``BE-NNNN``. For each
-``roadmaps/proposals/BE-XXXX-<slug>/`` placeholder (sorted by slug, so the order is stable across
-runs and machines) it:
+``main``, turns each placeholder into the next free ``BE-NNNN``. For each ``BE-XXXX-<slug>``
+placeholder directly under ``roadmaps/`` (BE-0159 flattened the status folders away) — sorted by
+slug, so the order is stable across runs and machines — it:
 
 1. allocates the next ID — the smallest free number above every ID already taken (see ``used_ids``),
    incrementing per item;
@@ -29,25 +29,20 @@ import subprocess
 import sys
 from pathlib import Path
 
+# Import the shared id-shape predicate whether this file is run as ``python3 scripts/…`` (scripts/
+# already on the path) or loaded under its bare name by a test — add scripts/ so the sibling import
+# resolves either way.
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from roadmap_ids import PLACEHOLDER, is_placeholder_dir, iter_item_dirs, numbered_match
+
 ROADMAP = Path("roadmaps")
-# New items are proposals, so placeholders land here; IDs are global across all status folders.
-CATEGORIES = ("implemented", "in-progress", "proposals", "deferred")
-PLACEHOLDER_CATEGORY = "proposals"
-PLACEHOLDER = "BE-XXXX"
-NUMBERED_DIR_RE = re.compile(r"^BE-(\d{4})-(.+)$")
 PATH_ITEM_RE = re.compile(r"/BE-(\d{4})-[^/]+/")  # id of an item's directory in a path
 INDEX_FILES = ("README.md", "README-ja.md")
 
 
 def working_tree_ids() -> set[int]:
-    """BE numbers present in the working tree, across all status folders."""
-    return {
-        int(m.group(1))
-        for category in CATEGORIES
-        if (ROADMAP / category).is_dir()
-        for d in (ROADMAP / category).iterdir()
-        if d.is_dir() and (m := NUMBERED_DIR_RE.match(d.name))
-    }
+    """BE numbers present in the working tree."""
+    return {int(m.group(1)) for d in iter_item_dirs(ROADMAP) if (m := numbered_match(d.name))}
 
 
 def ids_on_git_ref(ref: str) -> set[int]:
@@ -76,12 +71,14 @@ def used_ids() -> set[int]:
 
 
 def placeholder_dirs() -> list[Path]:
-    """Placeholder item directories, sorted by name for deterministic allocation."""
-    proposals = ROADMAP / PLACEHOLDER_CATEGORY
-    if not proposals.is_dir():
-        return []
+    """Placeholder item directories, sorted by directory name (the slug) for deterministic allocation.
+
+    ``iter_item_dirs`` yields the flat tree sorted by name, so allocation order is a stable
+    function of the slug across runs and machines (BE-0159).
+    """
     return sorted(
-        d for d in proposals.iterdir() if d.is_dir() and d.name.startswith(f"{PLACEHOLDER}-")
+        (d for d in iter_item_dirs(ROADMAP) if is_placeholder_dir(d.name)),
+        key=lambda d: d.name,
     )
 
 

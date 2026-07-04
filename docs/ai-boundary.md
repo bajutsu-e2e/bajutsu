@@ -4,10 +4,10 @@
 
 > The canonical answer to "which parts of Bajutsu reach a model, and which run with nothing
 > configured at all". This is a first-class, tested property of the tool
-> ([BE-0101](../roadmaps/implemented/BE-0101-ai-free-zero-config/BE-0101-ai-free-zero-config.md)),
+> ([BE-0101](../roadmaps/BE-0101-ai-free-zero-config/BE-0101-ai-free-zero-config.md)),
 > the developer-experience companion to the "your AI, your key, your data" guarantee on the other
 > side of the line ([self-hosting](self-hosting.md),
-> [BE-0047](../roadmaps/implemented/BE-0047-ai-data-sovereignty/BE-0047-ai-data-sovereignty.md)).
+> [BE-0047](../roadmaps/BE-0047-ai-data-sovereignty/BE-0047-ai-data-sovereignty.md)).
 
 Related: [cli](cli.md) · [concepts](concepts.md) · [recording](recording.md) · [self-hosting](self-hosting.md)
 
@@ -66,6 +66,24 @@ surfaces can never disagree:
   explanation when Claude is unreachable, pointing at the in-UI key field; they re-enable the moment
   a key is set, a provider is configured, or the Claude Code CLI is available.
 
+## Installing the Claude paths
+
+The split is a packaging boundary too, not only a runtime one
+([BE-0111](../roadmaps/BE-0111-ai-sdk-optional-dependency/BE-0111-ai-sdk-optional-dependency.md)):
+the AI software development kit (SDK) is an opt-in extra, so the base install carries no AI
+dependency at all.
+
+- `pip install bajutsu` — the deterministic authoring / running paths (`run`, `doctor`, `lint`,
+  `codegen`, `trace`, `approve`, and the rest of the Claude-free column above). No AI SDK is
+  installed, and nothing here reaches a model.
+- `pip install bajutsu[ai]` — adds the Anthropic SDK for the Claude paths (`record`, `crawl`,
+  `triage --ai`, `run --dismiss-alerts`). Use `bajutsu[bedrock]` instead for the Amazon Bedrock
+  provider; it layers the Bedrock variant onto the same SDK.
+
+Contributors get every extra at once through `uv sync --group dev`, so the gate keeps testing the
+Claude paths regardless — the AI-free guarantee is about the *base* install, not about dropping test
+coverage.
+
 ## Reaching Claude, when you want it
 
 Any one of these satisfies the "uses Claude" paths (details in [self-hosting](self-hosting.md) and
@@ -77,6 +95,6 @@ Any one of these satisfies the "uses Claude" paths (details in [self-hosting](se
 - **Claude Code CLI** — `--agent claude-code`, drawing on a Claude subscription login instead of a key.
 
 Which mechanism authenticates is config (per
-[BE-0047](../roadmaps/implemented/BE-0047-ai-data-sovereignty/BE-0047-ai-data-sovereignty.md) /
-[BE-0053](../roadmaps/implemented/BE-0053-bedrock-ai-provider/BE-0053-bedrock-ai-provider.md)); the
+[BE-0047](../roadmaps/BE-0047-ai-data-sovereignty/BE-0047-ai-data-sovereignty.md) /
+[BE-0053](../roadmaps/BE-0053-bedrock-ai-provider/BE-0053-bedrock-ai-provider.md)); the
 classification above is the same regardless of which you pick.

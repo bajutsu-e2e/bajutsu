@@ -13,6 +13,7 @@ from __future__ import annotations
 import fnmatch
 import functools
 import re
+import time
 from typing import TYPE_CHECKING, Protocol, TypedDict, cast, runtime_checkable
 
 if TYPE_CHECKING:
@@ -111,7 +112,10 @@ class Driver(Protocol):
     def pinch(self, sel: Selector, scale: float) -> None: ...
     def rotate(self, sel: Selector, radians: float) -> None: ...
     def type_text(self, text: str) -> None: ...
-    def wait_for(self, sel: Selector, timeout: float) -> bool: ...
+    # Single-shot by contract (BE-0118): whether `sel` matches the *current* screen,
+    # checked once. A backend never loops here — the shared `wait_until` owns the
+    # deadline poll, so a caller's timeout means the same real seconds on every backend.
+    def wait_for(self, sel: Selector) -> bool: ...
     def screenshot(self, path: str) -> None: ...
     def capabilities(self) -> set[str]: ...
 
@@ -238,6 +242,39 @@ def find_all(elements: list[Element], sel: Selector) -> list[Element]:
         scopes = [parent["frame"] for parent in find_all(elements, sel["within"])]
         found = [el for el in found if any(_contains(scope, el["frame"]) for scope in scopes)]
     return found
+
+
+def wait_until(driver: Driver, sel: Selector, timeout: float, poll: float = 0.2) -> bool:
+    """Poll `driver.wait_for(sel)` against a monotonic deadline until it matches.
+
+    The one deadline loop every backend shares (BE-0118). Each `wait_for` is a single-shot
+    check; this turns it into a timeout-honouring wait uniformly — a condition wait with no
+    fixed sleep, mirroring the orchestrator's discipline — so a `timeout` means the same real
+    seconds regardless of which backend drives.
+
+    Args:
+        driver: The backend whose single-shot `wait_for` is polled.
+        sel: The selector to wait for.
+        timeout: Seconds to keep polling before giving up.
+        poll: Seconds slept between checks.
+
+    Returns:
+        True once the selector matches; False if `timeout` elapses first.
+
+    Raises:
+        ValueError: `poll` is negative (a caller error surfaced loudly rather than left to
+            `time.sleep`'s opaque exception).
+    """
+    if poll < 0:
+        raise ValueError(f"poll must be non-negative, got {poll}")
+    deadline = time.monotonic() + timeout
+    while True:
+        if driver.wait_for(sel):
+            return True
+        now = time.monotonic()
+        if now >= deadline:
+            return False
+        time.sleep(min(poll, deadline - now))  # never sleep past the deadline
 
 
 def resolve_unique(elements: list[Element], sel: Selector) -> Element:

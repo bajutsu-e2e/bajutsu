@@ -59,6 +59,51 @@ def test_redact_exchange_masks_headers_url_and_body() -> None:
     )
 
 
+def test_default_headers_masked_without_redact_block() -> None:
+    # BE-0130: a scenario that never mentions `redact:` still masks the standard
+    # credential-bearing headers, so plaintext tokens never land in network.json.
+    ex = Redactor(Redact()).redact_exchange(
+        {
+            "requestHeaders": {"Authorization": "Bearer abc.def", "Accept": "application/json"},
+            "responseHeaders": {"Set-Cookie": "session=s3cret", "Content-Type": "text/html"},
+        }
+    )
+    assert ex["requestHeaders"]["Authorization"] == PLACEHOLDER
+    assert ex["responseHeaders"]["Set-Cookie"] == PLACEHOLDER
+    # Non-secret headers are still legible evidence.
+    assert ex["requestHeaders"]["Accept"] == "application/json"
+    assert ex["responseHeaders"]["Content-Type"] == "text/html"
+
+
+def test_cookie_and_set_cookie_are_one_concern() -> None:
+    # BE-0130: `cookie` and `set-cookie` carry the same secret in opposite directions;
+    # naming either masks both.
+    ex = _r(headers=["cookie"]).redact_exchange(
+        {
+            "requestHeaders": {"Cookie": "session=abc"},
+            "responseHeaders": {"Set-Cookie": "session=abc; Path=/"},
+        }
+    )
+    assert ex["requestHeaders"]["Cookie"] == PLACEHOLDER
+    assert ex["responseHeaders"]["Set-Cookie"] == PLACEHOLDER
+
+
+def test_unmask_headers_is_the_only_opt_out() -> None:
+    # BE-0130: turning off a default is a visible, deliberate choice — not the mere
+    # absence of `redact:`. Unmasking `cookie` releases `set-cookie` too (one concern).
+    ex = Redactor(Redact(unmaskHeaders=["authorization", "cookie"])).redact_exchange(
+        {
+            "requestHeaders": {"Authorization": "Bearer raw", "Cookie": "session=raw"},
+            "responseHeaders": {"Set-Cookie": "session=raw", "X-Api-Key": "still-secret"},
+        }
+    )
+    assert ex["requestHeaders"]["Authorization"] == "Bearer raw"
+    assert ex["requestHeaders"]["Cookie"] == "session=raw"
+    assert ex["responseHeaders"]["Set-Cookie"] == "session=raw"
+    # A default not named in unmaskHeaders stays masked.
+    assert ex["responseHeaders"]["X-Api-Key"] == PLACEHOLDER
+
+
 def test_redactor_inactive_when_unconfigured() -> None:
     red = Redactor(Redact())
     assert red.active is False

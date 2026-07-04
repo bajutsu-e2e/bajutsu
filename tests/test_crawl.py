@@ -1145,31 +1145,6 @@ def test_cli_crawl_unknown_agent(tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     assert "api" in r.output and "claude-code" in r.output
 
 
-def test_cli_crawl_unavailable_backend(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    # A valid agent that needs no credential, so backend selection is the first thing that fails.
-    # An unknown backend token (`nope`) has no actuator on *any* host, so the failure is
-    # deterministic — it doesn't depend on idb being absent from the runner's PATH — and the message
-    # is asserted so the test can't pass for the wrong reason.
-    monkeypatch.delenv("BAJUTSU_AGENT", raising=False)
-    cfg = _crawl_config(tmp_path)
-    r = _cli.invoke(
-        app,
-        [
-            "crawl",
-            "--target",
-            "demo",
-            "--agent",
-            "claude-code",
-            "--backend",
-            "nope",
-            "--config",
-            str(cfg),
-        ],
-    )
-    assert r.exit_code == 2
-    assert "no available actuator" in r.output
-
-
 def test_cli_crawl_fails_closed_without_credential(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

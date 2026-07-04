@@ -10,8 +10,8 @@
 ROOT   := $(abspath $(dir $(lastword $(MAKEFILE_LIST)))/../..)
 HERE   := $(ROOT)/demos/showcase
 CONFIG := $(HERE)/showcase.config.yaml
-SWIFTUI := $(HERE)/swiftui
-UIKIT   := $(HERE)/uikit
+SWIFTUI := $(HERE)/ios/swiftui
+UIKIT   := $(HERE)/ios/uikit
 RUNNER  := $(ROOT)/BajutsuKit/Runner
 
 # A built scheme lands at build/dd/Build/Products/Debug-iphonesimulator/<Scheme>.app,
@@ -76,7 +76,7 @@ record: swiftui-noax-build
 # Generates against the SwiftUI a11y app, whose identifiers the test queries by name.
 ui-test:
 	cd $(ROOT) && uv run bajutsu codegen demos/showcase/scenarios/components.yaml --target showcase-swiftui \
-		--config $(CONFIG) -o demos/showcase/swiftui/UITests/ComponentsUITests.swift
+		--config $(CONFIG) -o demos/showcase/ios/swiftui/UITests/ComponentsUITests.swift
 	cd $(SWIFTUI) && xcodegen generate
 	# -retry-tests-on-failure re-runs only a failed test (up to -test-iterations total, stopping
 	# on first pass) so a loaded CI Simulator's intermittent "Failed to terminate" between cases
@@ -90,8 +90,8 @@ ui-test:
 # locally). The first `vrt` reports missing baselines (exit 1) — that's expected; approve them
 # (`make -C demos/showcase vrt-approve`, or the Web UI's Approve button), then re-run `vrt` to
 # pixel-match and pass. `-` lets the first failure not abort make.
-BASELINES_SWIFTUI = $(HERE)/scenarios/baselines/swiftui
-BASELINES_UIKIT   = $(HERE)/scenarios/baselines/uikit
+BASELINES_SWIFTUI = $(HERE)/ios/scenarios/baselines/swiftui
+BASELINES_UIKIT   = $(HERE)/ios/scenarios/baselines/uikit
 
 # Both toolkits (run / approve). Use the per-toolkit targets to drive just one.
 # Each `-approve` re-runs its own toolkit first, so `approve` (which promotes the *latest*

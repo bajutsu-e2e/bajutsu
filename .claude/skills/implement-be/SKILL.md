@@ -8,7 +8,7 @@ description: >-
   proposal into shipped code. Treats the item's proposal as the spec, self-assigns the item's
   GitHub tracking issue, grounds the work in the prime directives, sets up a focused branch,
   plans and confirms before writing, implements with tests, reviews and refines the diff,
-  flips the item to Implemented (Status + roadmap-promote + reindex), and proves the gate is
+  flips the item to Implemented (Status + reindex), and proves the gate is
   green. The deterministic counterpart to the `ideation` skill: ideation authors proposals,
   this one ships them.
 ---
@@ -183,18 +183,17 @@ simplifier leans on JS/React idioms foreign to this Python core.
 
 The implementing PR is what ships the item, so promote it in this same change:
 
-1. In **both** language files, set `* Status: **Implemented**` and change the `Track` line
-   to **Accepted** (`../../README.md#accepted`). Add an `* Implementing PR:
-   [#NNN](https://github.com/bajutsu-e2e/bajutsu/pull/NNN)` line right under `Status` once
+1. In **both** language files, set the metadata `Status` to **Implemented**. Add an `Implementing PR:
+   [#NNN](https://github.com/bajutsu-e2e/bajutsu/pull/NNN)` row right under `Status` once
    the PR number exists (fill it at step 10 if you don't have it yet).
-2. Move the directory and regenerate the index:
+2. Regenerate the index:
    ```bash
-   make roadmap-promote   # moves proposals/BE-NNNN-… → implemented/BE-NNNN-…
    make roadmap-index     # regenerate the tables in both README index pages
    ```
-   `make test` fails if an item's `Status` and its directory disagree, or if the committed
-   index drifts — so these two commands keep the gate honest. **Never renumber the item**;
-   its ID is permanent.
+   The item's directory never moves (BE-0159) — every item lives at a permanent flat
+   `roadmaps/BE-NNNN-<slug>/` path, and `Status` decides only the index bucket. `make test` fails
+   if the committed index drifts from an item's `Status`, so this keeps the gate honest. **Never
+   renumber the item**; its ID is permanent.
 
 ### 9. Verify — the gate
 
@@ -224,7 +223,7 @@ When you do:
 - [`CLAUDE.md`](../../../CLAUDE.md) · [`DESIGN.md`](../../../DESIGN.md) — the prime
   directives every change must honor.
 - [`docs/ai-development.md`](../../../docs/ai-development.md) — parallel-work rules, the
-  gate, and the strict BE-ID lifecycle (Status ⇒ directory, `roadmap-promote`, permanent IDs).
+  gate, and the strict BE-ID lifecycle (Status ⇒ index bucket, flat one-directory layout, permanent IDs).
 - [`roadmaps/README.md`](../../../roadmaps/README.md) — the index and the per-item format.
 - [`ideation`](../ideation/SKILL.md) — the upstream skill that authors the proposal this one builds.
 - The built-in **`simplify`** / **`code-review`** / **`verify`** skills — the authoring aids

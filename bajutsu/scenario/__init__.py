@@ -79,6 +79,7 @@ from bajutsu.scenario.serialize import (
     dump_mocks,
     dump_scenario_file,
     dump_scenarios,
+    redact_totp_secrets,
     scenario_dict,
 )
 
@@ -150,6 +151,7 @@ __all__ = [
     "load_scenario_file",
     "load_scenarios",
     "read_csv",
+    "redact_totp_secrets",
     "scenario_dict",
     "select_scenarios",
 ]

@@ -16,7 +16,7 @@ Related: [cli](cli.md) · [scenarios](scenarios.md) · [showcase](showcase.md) �
 | For… | You need |
 |---|---|
 | The deterministic core + unit tests | macOS or Linux, Python 3.13 (managed via [uv](https://github.com/astral-sh/uv)) |
-| Driving an app on a Simulator | macOS with **Xcode** (the iOS Simulator), [XcodeGen](https://github.com/yonwoo9/XcodeGen) (to build the showcase), and the **idb** backend (`brew install facebook/fb/idb-companion`) |
+| Driving an app on a Simulator | macOS with **Xcode** (the iOS Simulator), [XcodeGen](https://github.com/yonaskolb/XcodeGen) (to build the showcase), and the **idb** backend (`brew install facebook/fb/idb-companion`) |
 | Driving a web app (Playwright) | any OS — `uv sync --extra web` + `uv run playwright install chromium` (no Mac / Simulator; see [`demos/web`](../demos/web/README.md)) |
 | AI authoring (`record` / `crawl`) / `--dismiss-alerts` | an `ANTHROPIC_API_KEY` (or a Claude Code login with `--agent claude-code`) |
 
@@ -43,6 +43,11 @@ uv sync --group dev                        # creates .venv (Python 3.13) + deps 
 
 `uv` reads `pyproject.toml` / `uv.lock` and builds an isolated `.venv`. Prefix project commands
 with `uv run` (e.g. `uv run bajutsu …`) so they use that environment.
+
+> **Installing from PyPI?** The base package is AI-free: `pip install bajutsu` gets the
+> deterministic authoring / running paths with no AI SDK, and `pip install bajutsu[ai]` (or
+> `bajutsu[bedrock]`) adds the SDK for the Claude paths. The split is detailed in
+> [What uses Claude](ai-boundary.md#installing-the-claude-paths).
 
 Confirm the CLI (command-line interface) is wired up:
 
@@ -121,7 +126,7 @@ accessibility product for the Simulator:
 make -C demos/showcase swiftui-build         # xcodegen generate -> xcodebuild for the iOS Simulator
 ```
 
-This produces `BajutsuShowcaseSwiftUI.app` under `demos/showcase/swiftui/build/…`. (The `.xcodeproj`
+This produces `BajutsuShowcaseSwiftUI.app` under `demos/showcase/ios/swiftui/build/…`. (The `.xcodeproj`
 and `build/` are gitignored — `project.yml` is the source of truth.) See [showcase](showcase.md) for
 the launch-env hooks and the identifier catalog.
 

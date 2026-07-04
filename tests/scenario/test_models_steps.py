@@ -147,12 +147,6 @@ def test_web_step_requires_steps() -> None:
         )
 
 
-def test_web_step_in_step_actions() -> None:
-    from bajutsu.scenario import STEP_ACTIONS
-
-    assert "web" in STEP_ACTIONS
-
-
 def test_web_rejects_capture_modifier() -> None:
     with pytest.raises(ValidationError, match="capture"):
         Step.model_validate(

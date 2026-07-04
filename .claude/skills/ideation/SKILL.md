@@ -91,7 +91,7 @@ the exact canonical format, and skips the index (so the gate stays green locally
 make new-roadmap-item SLUG=<slug> TITLE="<title>" [TOPIC="<topic>"] [STATUS=Proposal] [HANDLE=<handle>]
 ```
 
-This creates `roadmaps/proposals/BE-XXXX-<slug>/` with both `BE-XXXX-<slug>.md` and its `-ja.md`
+This creates `roadmaps/BE-XXXX-<slug>/` with both `BE-XXXX-<slug>.md` and its `-ja.md`
 mirror — the bilingual header link, the metadata block (`Proposal` / `Author` / `Status` /
 `Topic`), and the five sections (`Introduction` / `Motivation` / `Detailed design` /
 `Alternatives considered` / `References`) seeded with `TBD`. `TOPIC` is validated against the

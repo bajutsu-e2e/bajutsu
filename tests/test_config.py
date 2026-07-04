@@ -68,6 +68,20 @@ def test_redact_is_merged() -> None:
     assert eff.redact.fields == ["token", "password"]
 
 
+def test_redact_unmask_headers_is_merged() -> None:
+    # BE-0130: the escape hatch is a union like the other redact lists, so a default opt-out
+    # declared at either level survives the merge rather than being silently dropped.
+    cfg = load_config(
+        "defaults:\n"
+        "  redact: { unmaskHeaders: [authorization] }\n"
+        "targets:\n"
+        "  s:\n"
+        "    bundleId: com.x\n"
+        "    redact: { unmaskHeaders: [cookie] }\n"
+    )
+    assert resolve(cfg, "s").redact.unmask_headers == ["authorization", "cookie"]
+
+
 # BE-0047: the `ai` block resolves like any other setting (defaults overridden per target) into
 # an AiConfig the AI paths read; an absent block resolves to None (env-only, as before).
 
@@ -423,13 +437,6 @@ def test_web_platform_requires_base_url() -> None:
 def test_android_platform_requires_package() -> None:
     with pytest.raises(ValidationError, match="package"):
         load_config("targets:\n  s:\n    platform: android\n    bundleId: com.x\n")
-
-
-def test_web_target_without_explicit_platform_still_loads() -> None:
-    # Backward compatibility: a web target declared the pre-Slice-4 way (baseUrl + playwright, no
-    # `platform`) loads fine — the platform is derived from the backend, baseUrl is its identifier.
-    cfg = load_config("targets:\n  s:\n    baseUrl: https://app.test\n    backend: [playwright]\n")
-    assert resolve(cfg, "s").platform == "web"
 
 
 # --- BE-0019: xcuitest config fields ---

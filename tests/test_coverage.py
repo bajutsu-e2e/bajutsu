@@ -173,6 +173,25 @@ def test_cli_app_without_scenarios_dir_exits_2(tmp_path) -> None:  # type: ignor
     assert result.exit_code == 2
 
 
+def test_cli_malformed_scenario_exits_2_and_names_the_file(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    # `coverage` shares load_expanded_scenarios and the same `except (OSError, ValueError)` guard, so
+    # a scenario that does not parse as YAML must fail with a clean exit 2 naming the offending file —
+    # not an uncaught yaml.YAMLError traceback (BE-0150).
+    scn_dir = tmp_path / "scenarios"
+    scn_dir.mkdir()
+    (scn_dir / "broken.yaml").write_text("- name: a\n  steps: { id\n", encoding="utf-8")
+    config = tmp_path / "bajutsu.config.yaml"
+    config.write_text(
+        "targets:\n  demo:\n    bundleId: com.example.demo\n"
+        f"    scenarios: {scn_dir}\n    idNamespaces: [home]\n",
+        encoding="utf-8",
+    )
+    result = runner.invoke(app, ["coverage", "--target", "demo", "--config", str(config)])
+    assert result.exit_code == 2
+    assert "failed to load scenarios" in result.stdout
+    assert "broken.yaml" in result.stdout  # the message names which file is malformed
+
+
 # --- BE-0050: endpoint coverage (observed network.json vs declared assertion matchers) ---
 
 

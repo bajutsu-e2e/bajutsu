@@ -212,6 +212,51 @@ def test_run_command_includes_runs_dir() -> None:
     assert "--runs-dir" not in srv.run_command("s.yaml", "demo")
 
 
+def test_run_command_emits_the_backfilled_flags() -> None:
+    # BE-0134 backfill: run_command now passes through the flags it previously couldn't. This drives
+    # the real run_command path (not flag_args directly), so a param dropped from its dict is caught.
+    cmd = srv.run_command(
+        "s.yaml",
+        "demo",
+        browser="firefox",
+        browsers="chromium,firefox",
+        tag="smoke",
+        exclude="slow",
+        schemas="/s",
+        goldens="/g",
+        network=False,
+        log_predicate="subsystem == 'x'",
+        log_subsystem="com.example",
+        alert_instruction="tap Allow",
+        zip_run=True,
+        config_offline=True,
+        require_pinned_config=True,
+    )
+    assert cmd[cmd.index("--browser") + 1] == "firefox"
+    assert cmd[cmd.index("--browsers") + 1] == "chromium,firefox"
+    assert cmd[cmd.index("--tag") + 1] == "smoke"
+    assert cmd[cmd.index("--exclude") + 1] == "slow"
+    assert cmd[cmd.index("--schemas") + 1] == "/s"
+    assert cmd[cmd.index("--goldens") + 1] == "/g"
+    assert cmd[cmd.index("--log-predicate") + 1] == "subsystem == 'x'"
+    assert cmd[cmd.index("--log-subsystem") + 1] == "com.example"
+    assert cmd[cmd.index("--alert-instruction") + 1] == "tap Allow"
+    assert "--no-network" in cmd and "--zip" in cmd
+    assert "--config-offline" in cmd and "--require-pinned-config" in cmd
+    # All omitted when unset (defaults), so a normal run's argv is unchanged.
+    bare = srv.run_command("s.yaml", "demo")
+    for flag in (
+        "--browser",
+        "--tag",
+        "--schemas",
+        "--zip",
+        "--network",
+        "--no-network",
+        "--config-offline",
+    ):
+        assert flag not in bare
+
+
 def test_record_command_builder() -> None:
     cmd = srv.record_command(
         "out.yaml",

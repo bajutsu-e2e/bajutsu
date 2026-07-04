@@ -7,6 +7,7 @@ from bajutsu.drivers.idb import (
     IdbDriver,
     parse_describe_all,
     tap_cmd,
+    text_cmd,
 )
 
 FIXTURE = """
@@ -127,22 +128,21 @@ def test_empty_backoff_grows_exponentially_then_caps() -> None:
     assert sum(seq) <= 1.0  # no further than the previous fixed-0.2 * 5 bound
 
 
-def test_wait_for_returns_true_when_already_present() -> None:
-    driver = IdbDriver("U", run=lambda a: FIXTURE)
-    assert driver.wait_for({"id": "settings.open"}, timeout=1, poll=0) is True
+def test_wait_for_is_single_shot() -> None:
+    # BE-0118: wait_for checks the current screen once; the deadline poll lives in wait_until.
+    present = IdbDriver("U", run=lambda a: FIXTURE)
+    assert present.wait_for({"id": "settings.open"}) is True
+    absent = IdbDriver("U", run=lambda a: "[]")
+    assert absent.wait_for({"id": "nope"}) is False
 
 
-def test_wait_for_polls_until_the_element_appears() -> None:
-    # Absent on the first reads, then it shows up: wait_for must keep polling, not check once.
+def test_wait_until_polls_idb_until_the_element_appears() -> None:
+    # Absent on the first reads, then it shows up: wait_until must keep polling idb's
+    # single-shot wait_for, not give up after one check.
     run, calls = _scripted([EMPTY, EMPTY, FIXTURE])
     driver = IdbDriver("U", run=run)
-    assert driver.wait_for({"id": "settings.open"}, timeout=5, poll=0) is True
+    assert base.wait_until(driver, {"id": "settings.open"}, timeout=5, poll=0) is True
     assert calls[0] >= 3  # polled past the empty trees until the element appeared
-
-
-def test_wait_for_times_out_when_absent() -> None:
-    driver = IdbDriver("U", run=lambda a: "[]")
-    assert driver.wait_for({"id": "nope"}, timeout=0, poll=0) is False
 
 
 # --- _stable_key projection ---
@@ -256,6 +256,27 @@ def test_settle_polls_until_frames_stabilize() -> None:
     assert len(tree) == 3
     # 1 (initial read: ANIMATING, mismatches cache) + 1 (poll: ANIMATING again, matches prev)
     assert calls[0] == 2
+
+
+# --- type_text: value goes via stdin, never argv (BE-0155) ---
+
+
+def test_type_text_passes_value_over_stdin_not_argv(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    # A secret or OTP typed into a field must not land in the idb process's argv, where
+    # any local user could read it via ps/proc; the value is handed to idb on stdin.
+    calls: list[tuple[list[str], str]] = []
+
+    def fake_run_text(cmd: list[str], text: str) -> None:
+        calls.append((cmd, text))
+
+    monkeypatch.setattr(IdbDriver, "_run_text", staticmethod(fake_run_text))
+    IdbDriver("U", run=lambda a: "").type_text("${secrets.password}")
+
+    ((cmd, text),) = calls
+    assert cmd == text_cmd("U")
+    assert cmd == ["idb", "ui", "text", "--udid", "U"]
+    assert "${secrets.password}" not in cmd  # the secret never appears in argv
+    assert text == "${secrets.password}"  # it is passed on stdin instead
 
 
 def test_settle_gives_up_after_max_polls() -> None:

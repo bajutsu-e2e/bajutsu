@@ -3,9 +3,8 @@
 from __future__ import annotations
 
 import struct
-from pathlib import Path
 
-from conftest import FakeBackend, FakeBlock
+from conftest import FakeBackend, FakeBlock, ShotDriver
 
 from bajutsu.agent import Proposal
 from bajutsu.ai.base import AnyTool, ImagePart, TextPart
@@ -25,14 +24,6 @@ def _window(w: float = 402.0, h: float = 874.0) -> base.Element:
         "value": None,
         "frame": (0.0, 0.0, w, h),
     }
-
-
-class ShotDriver(FakeDriver):
-    """FakeDriver whose screenshot writes real bytes so the guard can read them."""
-
-    def screenshot(self, path: str) -> None:
-        Path(path).write_bytes(b"\x89PNG\r\n\x1a\n fake")
-        self.actions.append(("screenshot", path))
 
 
 class StubLocator:

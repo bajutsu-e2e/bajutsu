@@ -24,7 +24,7 @@
 
 ### 1.1 dogfood 対象（最初のテスト対象）
 
-Bajutsu の **dogfood 対象**は、リポジトリ同梱のショーケースアプリ `demos/showcase/`（`showcase-swiftui` なら `com.bajutsu.showcase.swiftui`）です。あらゆるプリミティブを試せるよう計装してあります。§6 の例（タブを開く env フック、再取得、通信のアサーション）は、このショーケースに実在する UI / フックに対応します。BE-0079 で旧来の `demo` / `sample` / `sample2` を退役させ、これを唯一の iOS フィクスチャにしました。詳細は [`demos/showcase/SPEC.md`](demos/showcase/SPEC.md) を参照してください。
+Bajutsu の **dogfood 対象**は、リポジトリ同梱のショーケースアプリ `demos/showcase/`（`showcase-swiftui` なら `com.bajutsu.showcase.ios.swiftui`）です。あらゆるプリミティブを試せるよう計装してあります。§6 の例（タブを開く env フック、再取得、通信のアサーション）は、このショーケースに実在する UI / フックに対応します。BE-0079 で旧来の `demo` / `sample` / `sample2` を退役させ、これを唯一の iOS フィクスチャにしました。詳細は [`demos/showcase/SPEC.md`](demos/showcase/SPEC.md) を参照してください。
 
 - **位置づけ**：同梱ショーケースは「現実的なテスト対象」であって Bajutsu のコア依存ではなく、汎用の E2E ツールとして他アプリにも使えます（iOS では idb、web では Playwright を backend にします）
 - **含意**：§7 の実装規約はまず同梱ショーケースに適用して検証します
@@ -94,12 +94,12 @@ Reporter (manifest.json + JUnit/HTML + スクショ/録画)
 
 ### 3.2 ネットワーク制御（in-scenario の mocks）
 
-決定的なネットワーク（§2「ネットワークをモックへ」）と、idb バックエンドの `network` 証跡源を、シナリオ内に宣言する **`mocks`（in-protocol の決定的スタブ）** で兼ねます。当初はアプリと外部ネットワークの間に立つ単一の外部モックサーバでこれを担う設計でしたが、外部サーバは [BE-0027](roadmaps/deferred/BE-0027-mock-server-external/BE-0027-mock-server-external-ja.md) で見送り、実装を in-protocol のスタブへ移しました。
+決定的なネットワーク（§2「ネットワークをモックへ」）と、idb バックエンドの `network` 証跡源を、シナリオ内に宣言する **`mocks`（in-protocol の決定的スタブ）** で兼ねます。当初はアプリと外部ネットワークの間に立つ単一の外部モックサーバでこれを担う設計でしたが、外部サーバは [BE-0027](roadmaps/BE-0027-mock-server-external/BE-0027-mock-server-external-ja.md) で見送り、実装を in-protocol のスタブへ移しました。
 
 - **居場所**：外部プロセスではなくプロトコル層のスタブです。アプリの発する各リクエストを、シナリオの `mocks` に宣言した `match` で照合し、一致すれば `respond` の定型応答をアプリ内で返します（§6.1）。ライブサーバに触れないため、テストはオフラインで安定します
 - **2 つの役割**：(a) **決定性** = 一致したリクエストへ事前定義のスタブ応答を返します。(b) **証跡** = 発受信したリクエストを in-protocol の network collector が記録し、`network` アーティファクト（`network.json`）の取得元になります（§9）
 - **証跡源**：idb はネイティブのネットワーク監視を持たないため、`network` は **in-protocol の collector から取得**します。取得できないときは `manifest` に skip 理由を明示します
-- **設定**：`mocks` はシナリオ単位に書きます（§6.1）。`bajutsu.config.yaml` の `mockServer`（起動コマンド / ポート）は当初の外部サーバ向けスキーマが残るのみで実装されておらず、`mocks` に置き換わっています（[BE-0027](roadmaps/deferred/BE-0027-mock-server-external/BE-0027-mock-server-external-ja.md)）
+- **設定**：`mocks` はシナリオ単位に書きます（§6.1）。`bajutsu.config.yaml` の `mockServer`（起動コマンド / ポート）は当初の外部サーバ向けスキーマが残るのみで実装されておらず、`mocks` に置き換わっています（[BE-0027](roadmaps/BE-0027-mock-server-external/BE-0027-mock-server-external-ja.md)）
 
 ### 3.3 並列実行とアイソレーション
 
@@ -155,7 +155,7 @@ class Driver(Protocol):
     def long_press(self, sel: Selector, duration: float) -> None: ...
     def swipe(self, frm: Point, to: Point) -> None: ...
     def type_text(self, text: str) -> None: ...
-    def wait_for(self, sel: Selector, timeout: float) -> bool: ...
+    def wait_for(self, sel: Selector) -> bool: ...  # 単発チェック：現在の画面に一致するか（締め切りは共有 wait_until が担う）
     def screenshot(self, path: str) -> None: ...
     def capabilities(self) -> set[str]: ...        # 提供能力（network 等）。actuator/フォールバック解決用（§9）
 ```
@@ -175,7 +175,7 @@ class Driver(Protocol):
 
 `query()` で取得した要素ツリーに、Selector の各フィールドを **AND** で適用して候補を絞ります。
 
-- **0 件** → 要素不在です。`wait_for` 経由ならタイムアウト、即時アクションなら失敗です
+- **0 件** → 要素不在です。待機（`wait_until`）経由ならタイムアウト、即時アクションなら失敗です
 - **1 件** → 解決成功です
 - **2 件以上** → 既定で **ambiguous エラー**です。`within`（親スコープ）か `index` で一意化を要求します。「たまたま最初の一致を叩く」非決定性を構造的に排除します
 - `idMatches` / `labelMatches` は **複数マッチ前提**です。capturePolicy のトリガー（§9 A）や `count` アサーション（§6.4）専用で、`tap` 等の単一アクションでは一意性を要求します
@@ -397,7 +397,7 @@ defaults:                       # 全アプリ共通の既定
 
 targets:
   showcase-swiftui:             # ← --target showcase-swiftui で選択
-    bundleId:       com.bajutsu.showcase.swiftui
+    bundleId:       com.bajutsu.showcase.ios.swiftui
     deeplinkScheme: showcaseswiftui
     launchEnv:      { SHOWCASE_UITEST: "1" }             # このアプリ既定のフック（§7）
     idNamespaces:   [stable, horse, search, log]       # 識別子の名前空間（§7 命名規約）

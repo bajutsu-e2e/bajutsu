@@ -29,7 +29,6 @@ _spec.loader.exec_module(sync)
 
 def _write_item(
     roadmap: Path,
-    category: str,
     name: str,
     status: str,
     *,
@@ -37,7 +36,7 @@ def _write_item(
     intro: str = "The one-line pitch.",
 ) -> Path:
     """Create a minimal BE item directory (both language files) with the given fields."""
-    item = roadmap / category / name
+    item = roadmap / name
     item.mkdir(parents=True)
     number = name.split("-")[1]
     (item / f"{name}.md").write_text(
@@ -60,55 +59,46 @@ def _write_item(
 
 def test_scan_reads_id_slug_status_title_and_intro(tmp_path: Path) -> None:
     roadmap = tmp_path / "roadmaps"
-    _write_item(
-        roadmap, "proposals", "BE-9001-foo-bar", "Proposal", title="A thing", intro="Do the thing."
-    )
+    _write_item(roadmap, "BE-9001-foo-bar", "Proposal", title="A thing", intro="Do the thing.")
     (item,) = sync.scan_items(roadmap)
-    assert (item.be_id, item.slug, item.category, item.status) == (
-        "BE-9001",
-        "foo-bar",
-        "proposals",
-        "Proposal",
-    )
+    assert (item.be_id, item.slug, item.status) == ("BE-9001", "foo-bar", "Proposal")
     assert item.title == "A thing"
     assert item.intro == "Do the thing."
 
 
 def test_scan_skips_placeholder_and_statusless(tmp_path: Path) -> None:
     roadmap = tmp_path / "roadmaps"
-    _write_item(roadmap, "proposals", "BE-9001-real", "Proposal")
+    _write_item(roadmap, "BE-9001-real", "Proposal")
     # A BE-XXXX placeholder has no permanent number; it must never be scanned.
-    placeholder = roadmap / "proposals" / "BE-XXXX-draft"
+    placeholder = roadmap / "BE-XXXX-draft"
     placeholder.mkdir(parents=True)
     (placeholder / "BE-XXXX-draft.md").write_text("# BE-XXXX — draft\n", encoding="utf-8")
     # A numbered item with no readable Status is skipped (nothing to reconcile against).
-    nostatus = roadmap / "proposals" / "BE-9002-nostatus"
+    nostatus = roadmap / "BE-9002-nostatus"
     nostatus.mkdir(parents=True)
     (nostatus / "BE-9002-nostatus.md").write_text("# BE-9002 — x\n\nno status\n", encoding="utf-8")
     assert [i.be_id for i in sync.scan_items(roadmap)] == ["BE-9001"]
 
 
-def test_scan_sorts_by_id_across_categories(tmp_path: Path) -> None:
-    # Items are written to different category folders in an order that would NOT sort by id if
-    # the scan merely concatenated per-category results in CATEGORIES order.
+def test_scan_sorts_by_id(tmp_path: Path) -> None:
+    # Items are created in an order that would NOT sort by id if the scan preserved insertion order;
+    # the flat scan sorts by directory name (id-major).
     roadmap = tmp_path / "roadmaps"
-    _write_item(roadmap, "deferred", "BE-9001-earliest", "Proposal (deferred)")
-    _write_item(roadmap, "implemented", "BE-9003-latest", "Implemented")
-    _write_item(roadmap, "proposals", "BE-9002-middle", "Proposal")
+    _write_item(roadmap, "BE-9001-earliest", "Proposal (deferred)")
+    _write_item(roadmap, "BE-9003-latest", "Implemented")
+    _write_item(roadmap, "BE-9002-middle", "Proposal")
     assert [i.be_id for i in sync.scan_items(roadmap)] == ["BE-9001", "BE-9002", "BE-9003"]
 
 
 def test_parse_english_missing_file_is_empty(tmp_path: Path) -> None:
-    assert sync._parse_english(tmp_path / "proposals" / "BE-9999-gone") == ("", "")
+    assert sync._parse_english(tmp_path / "BE-9999-gone") == ("", "", None)
 
 
 # --- plan (the pure lifecycle rule) ----------------------------------------------
 
 
 def _item(be_id: str, status: str) -> object:
-    return sync.Item(
-        be_id=be_id, slug="s", category="proposals", status=status, title="t", intro=""
-    )
+    return sync.Item(be_id=be_id, slug="s", status=status, title="t", intro="")
 
 
 def test_plan_creates_for_open_items_without_an_issue() -> None:
@@ -148,13 +138,13 @@ def test_issue_body_links_back_and_quotes_intro() -> None:
     item = sync.Item(
         be_id="BE-0042",
         slug="widget",
-        category="in-progress",
         status="In progress",
         title="A widget",
         intro="Line one.\n\nLine two.",
     )
     body = sync.issue_body(item)
-    assert "roadmaps/in-progress/BE-0042-widget/BE-0042-widget.md" in body
+    # The link is the flat, permanent path (BE-0159) — no status folder that a promotion could move.
+    assert "roadmaps/BE-0042-widget/BE-0042-widget.md" in body
     assert "[BE-0042]" in body
     assert "> Line one." in body
     assert "> Line two." in body
@@ -204,10 +194,8 @@ def test_ensure_label_reraises_other_failures(monkeypatch: pytest.MonkeyPatch) -
 
 def test_sync_creates_and_closes_via_seams(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     roadmap = tmp_path / "roadmaps"
-    _write_item(roadmap, "proposals", "BE-9001-open", "Proposal")  # open, no issue -> create
-    _write_item(
-        roadmap, "implemented", "BE-9002-done", "Implemented"
-    )  # shipped, has issue -> close
+    _write_item(roadmap, "BE-9001-open", "Proposal")  # open, no issue -> create
+    _write_item(roadmap, "BE-9002-done", "Implemented")  # shipped, has issue -> close
     created: list[str] = []
     closed: list[int] = []
     labels: list[bool] = []
@@ -225,7 +213,7 @@ def test_sync_creates_and_closes_via_seams(tmp_path: Path, monkeypatch: pytest.M
 
 def test_sync_noop_does_not_ensure_label(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     roadmap = tmp_path / "roadmaps"
-    _write_item(roadmap, "implemented", "BE-9002-done", "Implemented")  # closed, no open issue
+    _write_item(roadmap, "BE-9002-done", "Implemented")  # closed, no open issue
     monkeypatch.setattr(sync, "existing_open_issues", dict)
     monkeypatch.setattr(
         sync, "ensure_label", lambda: pytest.fail("label must not be touched on a no-op")
@@ -238,7 +226,7 @@ def test_sync_noop_does_not_ensure_label(tmp_path: Path, monkeypatch: pytest.Mon
 
 def test_check_exit_codes(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     roadmap = tmp_path / "roadmaps"
-    _write_item(roadmap, "proposals", "BE-9001-open", "Proposal")
+    _write_item(roadmap, "BE-9001-open", "Proposal")
     monkeypatch.setattr(sync, "ROADMAP", roadmap)
     monkeypatch.setattr(sync, "existing_open_issues", dict)
     assert sync.main(["--check"]) == 1  # BE-9001 open but no issue -> drift
@@ -248,7 +236,7 @@ def test_check_exit_codes(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> No
 
 def test_main_sync_runs_without_check(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     roadmap = tmp_path / "roadmaps"
-    _write_item(roadmap, "proposals", "BE-9001-open", "Proposal")
+    _write_item(roadmap, "BE-9001-open", "Proposal")
     monkeypatch.setattr(sync, "ROADMAP", roadmap)
     monkeypatch.setattr(sync, "existing_open_issues", lambda: {"BE-9001": 1})  # already consistent
     monkeypatch.setattr(sync, "ensure_label", lambda: None)

@@ -415,6 +415,85 @@ def test_run_and_report_scrubs_secret_values_from_artifacts(tmp_path: Path) -> N
         assert secret not in (run_dir / name).read_text(encoding="utf-8")
 
 
+def test_run_and_report_masks_literal_totp_seed_in_artifacts(tmp_path: Path) -> None:
+    # A literal base32 TOTP seed written into a scenario is durable credential material, not a
+    # one-time code — it must never survive into the run's evidence bundle (BE-0152).
+    seed = "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ"
+    scenarios = [
+        Scenario.model_validate(
+            {"name": "a", "steps": [{"totp": {"secret": seed, "into": {"var": "code"}}}]}
+        )
+    ]
+    run_and_report(_eff(), scenarios, _lease, tmp_path / "runs", "run1")
+    run_dir = tmp_path / "runs" / "run1"
+    for name in ("scenario.yaml", "manifest.json", "report.html"):
+        assert seed not in (run_dir / name).read_text(encoding="utf-8")
+    assert "<redacted>" in (run_dir / "scenario.yaml").read_text(encoding="utf-8")
+
+
+def test_run_and_report_keeps_totp_reference_and_scrubs_the_resolved_seed(tmp_path: Path) -> None:
+    # A `${secrets.*}` reference stays in the snapshot (reviewable, and not itself the seed), while
+    # its resolved value never reaches any artifact — confirming BE-0032 already covers the
+    # resolved case that BE-0152's snapshot masking complements.
+    seed = "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ"
+    scenarios = [
+        Scenario.model_validate(
+            {
+                "name": "a",
+                "steps": [{"totp": {"secret": "${secrets.SEED}", "into": {"var": "code"}}}],
+            }
+        )
+    ]
+    run_and_report(
+        _eff(),
+        scenarios,
+        _lease,
+        tmp_path / "runs",
+        "run1",
+        bindings={"secrets.SEED": seed},
+        secret_values=[seed],
+    )
+    run_dir = tmp_path / "runs" / "run1"
+    assert "${secrets.SEED}" in (run_dir / "scenario.yaml").read_text(encoding="utf-8")
+    for name in ("scenario.yaml", "manifest.json", "report.html"):
+        assert seed not in (run_dir / name).read_text(encoding="utf-8")
+
+
+def test_run_and_report_writes_owner_only_artifacts(tmp_path: Path) -> None:
+    # BE-0131: a fresh run's directory and its sensitive files (scenario.yaml, network.json) must
+    # land owner-only (0700 dir, 0600 files), not world-readable under the ambient umask — evidence
+    # can carry secrets, and a shared CI runner is exactly where another local account can read it.
+    import stat
+
+    from bajutsu.evidence import FileSink
+
+    run_dir = tmp_path / "runs" / "run1"
+    ex = NetworkExchange(method="GET", path="/items", status=200)
+    scn = Scenario.model_validate(
+        {"name": "net", "steps": [{"assert": [{"request": {"method": "GET", "path": "/items"}}]}]}
+    )
+
+    def lease(eff: Effective, s: Scenario) -> Lease:
+        return Lease(
+            driver=FakeDriver([_el("ok", "OK")]),
+            sink=FileSink(run_dir),
+            relaunch=None,
+            control=None,
+            collector=_ConstantCollector([ex]),
+            release=lambda: None,
+        )
+
+    run_and_report(_eff(), [scn], lease, tmp_path / "runs", "run1")
+
+    def mode(p: Path) -> int:
+        return stat.S_IMODE(p.stat().st_mode)
+
+    assert mode(run_dir) == 0o700
+    assert mode(run_dir / "scenario.yaml") == 0o600
+    net = run_dir / "00-net" / "network.json"
+    assert net.exists() and mode(net) == 0o600
+
+
 def test_write_network_stamps_the_given_provider(tmp_path: Path) -> None:
     from bajutsu.redaction import Redactor
     from bajutsu.runner.pipeline import _write_network
