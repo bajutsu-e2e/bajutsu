@@ -8,11 +8,14 @@ only through the `AiBackend` protocol and the normalized request / response type
 call site. `anthropic` is the reference adapter; `registry` is the name → adapter extension point.
 
 The seam's model call (`AiBackend.create_message`) never runs on the deterministic `run` / CI gate
-(DESIGN §2 / §3.1) — it is reached only from Tier-1 authoring / investigation paths. Two cheap,
-model-free lookups *are* imported more broadly: `bajutsu.config` validates `ai.provider` against
-`known_providers()` for every command, and `run --dismiss-alerts`'s alert guard (itself a Tier-1
-path within `run`) calls `credential_gap` to decide whether to construct the vision locator at all.
-Neither calls a model or bears on pass/fail.
+(DESIGN §2 / §3.1) — it is reached only from Tier-1 authoring / investigation paths. The
+deterministic core does not import this seam at all: the layer-boundary gate (BE-0112) forbids it,
+so `bajutsu.config` accepts an `ai.provider` name without validating it here. An unknown provider
+fails closed only when a Tier-1 path first resolves it through the registry (`create_backend` /
+`credential_gap`, via `registry._provider_name`), not at config load. The one broadly-imported entry
+point is that model-free `credential_gap` lookup — `run --dismiss-alerts`'s alert guard (itself a
+Tier-1 path within `run`) calls it to decide whether to construct the vision locator at all. It
+calls no model and bears on pass/fail nowhere.
 """
 
 from __future__ import annotations
