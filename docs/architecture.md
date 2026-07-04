@@ -83,7 +83,7 @@ The `bajutsu/` package (Python 3.13+, pydantic v2 / typer / anthropic / pyyaml /
 | `redaction.py` | Redaction of evidence (labels / headers / fields + secret values) | [evidence](evidence.md) |
 | `interp.py` | `${ns.key}` interpolation primitive (`params.` / `row.` / `secrets.` / `vars.`) | [scenarios](scenarios.md) |
 | `config.py` | Team defaults × per-target resolution (`Effective`) | [configuration](configuration.md) |
-| `backends.py` | Backend availability check · actuator selection (platform-aware registry: `ios` / `web` / `fake`) · driver construction | [drivers](drivers.md#backend-selection-and-the-actuator) |
+| `backends.py` | Backend availability check · actuator selection (platform-aware registry: `ios` / `android` / `web` / `fake`) · driver construction | [drivers](drivers.md#backend-selection-and-the-actuator) |
 | `simctl.py` | `simctl` wrapper (erase/boot/launch/openurl/io) | [drivers](drivers.md#environment-management-simctl) |
 | `preflight.py` | Runnability gate, per backend (iOS: required CLIs + a booted Simulator; web: Playwright + its Chromium browser) | [configuration](configuration.md) |
 | `requirements.py` | One declarative mapping: backend/capability → pip extra + external-tool probe + install method (BE-0164), shared by `preflight` and `provision` | — |
@@ -241,10 +241,15 @@ workers would collide).
 ### Implemented (tested; the path works end-to-end in code)
 
 - Selector resolution and ambiguity detection (the determinism core)
-- Platform-aware backend registry: `--backend` / `backend:` accept `ios` / `web` / `fake` tokens
-  (Android planned), each expanding to its actuator in stability order (`backends.py`)
+- Platform-aware backend registry: `--backend` / `backend:` accept `ios` / `android` / `web` /
+  `fake` tokens, each expanding to its actuator in stability order (`backends.py`)
 - The **Playwright web backend** (`drivers/playwright.py`): a first slice — a deterministic `run`
   against a browser, on the Linux gate (`demos/web`); rich-end web capture is planned (BE-0054)
+- The **Android adb backend** (`drivers/adb.py` + `adb.py`): a first slice — the coordinate driver
+  (`uiautomator dump` → frame-center tap), the `AndroidEnvironment` launch sequence, `doctor`
+  reporting, and fast-gate unit tests over captured XML fixtures; interval evidence (screenrecord /
+  logcat), device control, and codegen are follow-ups, and the on-device emulator e2e is a separate
+  heavier path (BE-0007)
 - Scenario schema (strict validation) and YAML round-trip
 - Evaluation of the assertion kinds (`exists` / `value` / `label` / `count` / `enabled` / `disabled` / `selected` / `request` / `visual`)
 - The Tier 2 run loop (act → wait → verify), verified with `FakeDriver`

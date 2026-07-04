@@ -37,9 +37,9 @@ KNOWN_ACTUATORS: tuple[str, ...] = tuple(
     dict.fromkeys(a for actuators in PLATFORMS.values() for a in actuators)
 )
 
-# Actuators with a driver today. Requesting a planned-but-absent one (adb) gives a
+# Actuators with a driver today. Requesting a planned-but-absent one gives a
 # "not implemented yet" error instead of a generic failure.
-IMPLEMENTED: frozenset[str] = frozenset({"idb", "fake", "playwright", "xcuitest"})
+IMPLEMENTED: frozenset[str] = frozenset({"idb", "fake", "playwright", "xcuitest", "adb"})
 
 # Which executable backs each actuator (the coarse availability check). `fake` needs none;
 # `playwright` is a Python package (probed by import), not a PATH executable.
@@ -164,6 +164,10 @@ def capabilities_for(actuator: str) -> frozenset[str]:
         from bajutsu.drivers.xcuitest import XcuitestDriver
 
         return XcuitestDriver.CAPABILITIES
+    if actuator == "adb":
+        from bajutsu.drivers.adb import AdbDriver
+
+        return AdbDriver.CAPABILITIES
     if actuator in KNOWN_ACTUATORS:
         raise NotImplementedError(
             f"backend {actuator!r} is planned but not implemented yet (see docs/multi-platform.md)"
@@ -184,6 +188,10 @@ def make_driver(
     """Construct the driver for an actuator, wiring up its backend-specific arguments."""
     if actuator == "idb":
         return IdbDriver(udid)
+    if actuator == "adb":
+        from bajutsu.drivers.adb import AdbDriver
+
+        return AdbDriver(udid)
     if actuator == "fake":
         return FakeDriver([])
     if actuator == "xcuitest":

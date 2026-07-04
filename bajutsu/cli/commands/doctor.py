@@ -7,6 +7,7 @@ from pathlib import Path
 
 import typer
 
+from bajutsu import adb as _adb
 from bajutsu import ai_availability, capability_preflight, idb_version, preflight
 from bajutsu import simctl as _simctl
 from bajutsu.backends import capabilities_for, make_driver, select_actuator
@@ -14,6 +15,7 @@ from bajutsu.cli._shared import DEFAULT_CONFIG, _backends, _load_effective
 from bajutsu.config import (
     Effective,
     IosConfig,
+    android_package,
     ios_bundle_id,
     require_web,
     web_base_url,
@@ -73,6 +75,7 @@ def doctor(
         target=target_name,
         bundle_id=ios_bundle_id(eff),
         base_url=web_base_url(eff),
+        package=android_package(eff),
     )
     if not preflight.passed(cfg_checks):
         typer.echo("environment:")
@@ -99,6 +102,9 @@ def doctor(
     # with a fixable checklist instead of crashing later on a missing tool / no device.
     # xcuitest falls back to idb for the screen query, so both tool sets must be present.
     def booted_count() -> int:
+        # Android counts attached adb devices; the iOS backends count booted Simulators.
+        if actuator == "adb":
+            return len(_adb.booted_serials())
         return len(_simctl.booted_udids())
 
     env_checks = preflight.runnability(
@@ -175,7 +181,7 @@ def _current_screen(actuator: str, udid: str, eff: Effective) -> list[base.Eleme
 
     Web (Playwright) has no simctl udid: it navigates a fresh browser to the target's baseUrl (the
     `launch` equivalent) and scores that page, tearing the browser down after. iOS scores whatever
-    is on the booted Simulator at the resolved udid.
+    is on the booted Simulator, and Android whatever is on the attached device, at the resolved udid.
     """
     if actuator == "playwright":
         # A missing baseUrl (or a non-web target forced onto playwright) is a clean, fixable
@@ -199,9 +205,11 @@ def _current_screen(actuator: str, udid: str, eff: Effective) -> list[base.Eleme
             with contextlib.suppress(*_playwright_error_types()):
                 driver.close()
     # xcuitest needs a running runner to query, but doctor only scores the current screen —
-    # idb can read the same accessibility tree without a runner (BE-0019).
+    # idb can read the same accessibility tree without a runner (BE-0019). Android resolves its
+    # serial via adb (the same parameterization the run pipeline uses), the rest via simctl.
     query_actuator = "idb" if actuator == "xcuitest" else actuator
-    return make_driver(query_actuator, _simctl.resolve_udid(udid)).query()
+    resolve = _adb.resolve_serial if actuator == "adb" else _simctl.resolve_udid
+    return make_driver(query_actuator, resolve(udid)).query()
 
 
 def register(app: typer.Typer) -> None:

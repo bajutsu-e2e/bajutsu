@@ -156,16 +156,25 @@ Linux CI で動き、`capabilities()` の **小さい端**を行使します。
 > 作業分解（作業の単位ごとに 1 つ）に対応し、ログには変更内容と時期（古い順）を PR へのリンクと
 > ともに記録します。
 
-- [ ] レジストリ配線：`adb` を `IMPLEMENTED` に、`capabilities_for`/`make_driver` の分岐（`bajutsu/backends.py`）。
-- [ ] `AdbDriver` actuator：`uiautomator dump` の解析、座標操作、一過性に空なツリーの retry、能力（`bajutsu/drivers/adb.py`）。
-- [ ] `AndroidEnvironment`：`pm clear` → boot → `am start` → deeplink の列とリース整形メソッド（`bajutsu/environment.py`）。
+- [x] レジストリ配線：`adb` を `IMPLEMENTED` に、`capabilities_for`/`make_driver` の分岐（`bajutsu/backends.py`）。
+- [x] `AdbDriver` actuator：`uiautomator dump` の解析、座標操作、一過性に空なツリーの retry、能力（`bajutsu/drivers/adb.py`）。
+- [x] `AndroidEnvironment`：起動完了待ち → `pm clear` → `am start` → deeplink の列とリース整形メソッド（`bajutsu/platform_lifecycle.py`、新設の `bajutsu/adb.py` コマンド層の上に）。
 - [ ] 証跡とデバイス制御：`logcat` の deviceLog、`screenrecord` の video、モックネットワーク、対応するデバイス状態のステップ。
-- [ ] doctor と開示：idb の隣に `doctor --target` の可用性、マニフェストに `backend: "adb"` を記録。
+- [x] doctor と開示：idb の隣に `doctor --target` の可用性、マニフェストに `backend: "adb"` を記録。
 - [ ] codegen 変換先：Espresso / UI Automator ジェネレータ（後続スライス）。
-- [ ] 検証：dump フィクスチャに対する高速ゲートの driver/レジストリテスト、KVM 経由の実機エミュレータ e2e。
+- [ ] 検証：dump フィクスチャに対する高速ゲートの driver/レジストリテスト**（完了）**、KVM 経由の実機エミュレータ e2e（後続）。
 
 ログ：
 
+- 2026-07-04：コアドライバのスライスが着地しました。`adb` コマンド層（`bajutsu/adb.py`、`simctl.py` の双子）、
+  `AdbDriver` 座標アクチュエータ（`bajutsu/drivers/adb.py` — `uiautomator dump` の XML → `Element` セレクタ対応、
+  frame 中心タップ、transient-empty のリトライ、ambiguity 即失敗、`CAPABILITIES = {query, elements, screenshot}`）、
+  `AndroidEnvironment` の起動シーケンス（`platform_lifecycle.py`）、レジストリの切り替え（`backends.py`）、
+  `doctor`/preflight の報告（`preflight.py`、`cli/commands/doctor.py`）です。取得済みの dump XML フィクスチャに対する
+  高速ゲートのユニットテストが、セレクタ対応、frame 中心タップ、transient-empty のリトライ、ambiguity 即失敗を
+  カバーします。ドキュメントも更新しました（`docs/drivers.md`、`docs/architecture.md`、`DESIGN.md`、日本語ミラー各種）。
+  interval 証跡（`screenrecord`/`logcat`）、デバイス制御、codegen、実機エミュレータ e2e は後続スライスとして残るため、
+  項目は **In progress** のままです。
 - 2026-07-03：着手しました。driver が駆動するための showcase の Android 版フィクスチャが先に
   着地しました（[#552](https://github.com/bajutsu-e2e/bajutsu/pull/552)）。`demos/showcase` の
   Compose + Views 双子（a11y/noax の flavor）で、上記の `testTag`/`android:id` → `resource-id` 規約と

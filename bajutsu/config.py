@@ -424,10 +424,16 @@ class WebConfig:
 
 @dataclass(frozen=True)
 class AndroidConfig:
-    """Android (adb) target knobs (BE-0126). On `Effective` only when `platform == "android"`."""
+    """Android (adb) target knobs (BE-0126 / BE-0007). On `Effective` only when `platform ==
+    "android"`."""
 
     # Android target identifier (peer of iOS bundle_id / web base_url). "" when unset.
     package: str = ""
+    # Built .apk to install on each device before launch (if missing). None = manual install.
+    app_path: str | None = None
+    # Shell command that builds `app_path`; `bajutsu serve` runs it on demand if the binary is
+    # missing. None = no on-demand build.
+    build: str | None = None
 
 
 # The resolved platform-specific config, keyed by platform (BE-0126). The concrete type *is* the
@@ -503,8 +509,8 @@ class Effective:
     def rebased(self, root: Path) -> Effective:
         """A copy with the relative path fields resolved against `root` (a Git checkout, BE-0063).
 
-        The common path fields — `scenarios` / `baselines` / `schemas` / `goldens` — and the iOS
-        sub-config's `app_path` are rebased; a future path field is rebased by adding it here. `build`
+        The common path fields — `scenarios` / `baselines` / `schemas` / `goldens` — and the iOS or
+        Android sub-config's `app_path` are rebased; a future path field is rebased by adding it here. `build`
         (a shell command) and `setup` (resolved relative to the scenario, not the cwd) are
         intentionally absent. Local configs keep their cwd-relative paths; only a Git source calls
         this, so the caller's working directory no longer has anything to do with the fetched tree.
@@ -530,8 +536,15 @@ class Effective:
             schemas=at("schemas", self.schemas),
             goldens=at("goldens", self.goldens),
         )
+        if isinstance(self.platform_config, AndroidConfig):
+            # The Android sub-config's only rebasable path is the APK (BE-0007).
+            android = self.platform_config
+            return replace(
+                common,
+                platform_config=replace(android, app_path=at("appPath", android.app_path)),
+            )
         if not isinstance(self.platform_config, IosConfig):
-            return common  # only the iOS sub-config carries rebasable path fields
+            return common  # only the iOS / Android sub-configs carry rebasable path fields
 
         ios = self.platform_config
         rebased_xcuitest = ios.xcuitest
@@ -577,6 +590,18 @@ def require_web(eff: Effective) -> WebConfig:
     return cfg
 
 
+def require_android(eff: Effective) -> AndroidConfig:
+    """The Android sub-config, narrowed for the type checker, or a loud failure (BE-0126 / BE-0007).
+
+    The Android counterpart of `require_ios` / `require_web`, for code already on an adb-only path
+    (the `AndroidEnvironment` lifecycle).
+    """
+    cfg = eff.platform_config
+    if not isinstance(cfg, AndroidConfig):
+        raise TypeError(f"target {eff.target!r} is not an Android target (platform {eff.platform})")
+    return cfg
+
+
 # "Soft" per-platform accessors (BE-0126): the platform's knob, or a safe default for another
 # platform. Unlike `require_ios` / `require_web`, these don't fail — they're for code that reads a
 # platform-specific value defensively across platforms (a common-core field whose meaningful value
@@ -596,6 +621,11 @@ def web_engine(eff: Effective) -> str:
 def ios_bundle_id(eff: Effective) -> str:
     """The iOS target's bundle id, or "" for a non-iOS target."""
     return eff.platform_config.bundle_id if isinstance(eff.platform_config, IosConfig) else ""
+
+
+def android_package(eff: Effective) -> str:
+    """The Android target's package, or "" for a non-Android target."""
+    return eff.platform_config.package if isinstance(eff.platform_config, AndroidConfig) else ""
 
 
 def _merge_redact(base: Redact, over: Redact) -> Redact:
@@ -679,7 +709,7 @@ def _platform_config(platform: str, a: TargetConfig, d: Defaults) -> PlatformCon
     if platform == "web":
         return WebConfig(base_url=a.base_url, headless=a.headless, browser=a.browser)
     if platform == "android":
-        return AndroidConfig(package=a.package)
+        return AndroidConfig(package=a.package, app_path=a.app_path, build=a.build)
     return IosConfig(
         bundle_id=a.bundle_id,
         deeplink_scheme=a.deeplink_scheme,

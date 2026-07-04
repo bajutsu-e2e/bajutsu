@@ -167,16 +167,26 @@ the **lean** end of `capabilities()`.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Registry wiring — `adb` in `IMPLEMENTED`, `capabilities_for`/`make_driver` branches (`bajutsu/backends.py`).
-- [ ] `AdbDriver` actuator — `uiautomator dump` parsing, coordinate actuation, transient-empty retry, capabilities (`bajutsu/drivers/adb.py`).
-- [ ] `AndroidEnvironment` — the `pm clear` → boot → `am start` → deeplink sequence and the lease-shaping methods (`bajutsu/environment.py`).
+- [x] Registry wiring — `adb` in `IMPLEMENTED`, `capabilities_for`/`make_driver` branches (`bajutsu/backends.py`).
+- [x] `AdbDriver` actuator — `uiautomator dump` parsing, coordinate actuation, transient-empty retry, capabilities (`bajutsu/drivers/adb.py`).
+- [x] `AndroidEnvironment` — the boot-readiness wait → `pm clear` → `am start` → deeplink sequence and the lease-shaping methods (`bajutsu/platform_lifecycle.py`, over the new `bajutsu/adb.py` command layer).
 - [ ] Evidence and device control — `logcat` deviceLog, `screenrecord` video, mocked network, supported device-state steps.
-- [ ] doctor and disclosure — `doctor --target` availability beside idb; manifest records `backend: "adb"`.
+- [x] doctor and disclosure — `doctor --target` availability beside idb; manifest records `backend: "adb"`.
 - [ ] codegen target — Espresso / UI Automator generator (follow-up slice).
-- [ ] Validation — fast-gate driver/registry tests over dump fixtures; on-device emulator e2e via KVM.
+- [ ] Validation — fast-gate driver/registry tests over dump fixtures **(done)**; on-device emulator e2e via KVM (follow-up).
 
 Log:
 
+- 2026-07-04 — Core driver slice landed: the `adb` command layer (`bajutsu/adb.py`, the twin of
+  `simctl.py`), the `AdbDriver` coordinate actuator (`bajutsu/drivers/adb.py` — `uiautomator dump`
+  XML → `Element` selector mapping, frame-centre taps, the transient-empty retry, ambiguity
+  fails-fast, `CAPABILITIES = {query, elements, screenshot}`), the `AndroidEnvironment` launch
+  sequence (`platform_lifecycle.py`), the registry flip (`backends.py`), and `doctor`/preflight
+  reporting (`preflight.py`, `cli/commands/doctor.py`). Fast-gate unit tests over captured dump XML
+  fixtures cover the selector mapping, frame-centre taps, the transient-empty retry, and
+  ambiguous-fails-fast. Docs updated (`docs/drivers.md`, `docs/architecture.md`, `DESIGN.md`, both
+  ja mirrors). Interval evidence (`screenrecord`/`logcat`), device control, codegen, and the
+  on-device emulator e2e remain follow-up slices, so the item stays **In progress**.
 - 2026-07-03 — Started. The Android showcase fixture the driver will drive landed first
   ([#552](https://github.com/bajutsu-e2e/bajutsu/pull/552)): the Compose + Views twins of
   `demos/showcase` (a11y/noax flavors), exercising the `testTag`/`android:id` → `resource-id`

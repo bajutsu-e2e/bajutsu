@@ -172,6 +172,32 @@ def test_xcuitest_missing_xcodebuild_fails() -> None:
     assert not xcodebuild.ok and "Xcode" in xcodebuild.detail
 
 
+# --- Android (adb) ---
+
+
+def test_config_checks_adb_requires_package() -> None:
+    ok = preflight.config_checks("adb", target="app", bundle_id="", base_url=None, package="com.x")
+    assert preflight.passed(ok)
+    missing = preflight.config_checks("adb", target="app", bundle_id="", base_url=None, package="")
+    assert not preflight.passed(missing)
+    assert "targets.app.package" in missing[0].detail
+
+
+def test_adb_needs_platform_tools_and_a_device() -> None:
+    checks = preflight.runnability("adb", which=_which({"adb"}), booted_count=lambda: 1)
+    assert [c.name for c in checks] == ["adb", "device attached"]
+    assert preflight.passed(checks)
+    # No Xcode dependency on the Android path.
+    assert "xcrun" not in {c.name for c in checks}
+
+
+def test_adb_missing_binary_or_device_fails() -> None:
+    no_adb = preflight.runnability("adb", which=_which(set()), booted_count=lambda: 1)
+    assert not preflight.passed(no_adb)
+    no_device = preflight.runnability("adb", which=_which({"adb"}), booted_count=lambda: 0)
+    assert not preflight.passed(no_device)
+
+
 def test_render_marks_pass_and_fail() -> None:
     out = preflight.render(
         preflight.runnability("idb", which=_which({"xcrun"}), booted_count=lambda: 0)
