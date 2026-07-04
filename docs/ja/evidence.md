@@ -139,7 +139,7 @@ class Artifact:
 | `"simctl"` | `simctl` による区間証跡です（動画、デバイスログ、アプリトレース）。 |
 | `"collector"` | idb のアプリ側ネットワークコレクタ（`BAJUTSU_COLLECTOR`）です。 |
 | `"playwright"` | Playwright のネイティブなネットワーク観測です（web バックエンド）。 |
-| `"<backend> (fallback)"` | read-only な証跡フォールバックが供給したアーティファクトです（[BE-0020](../../roadmaps/implemented/BE-0020-multi-backend-evidence-fallback/BE-0020-multi-backend-evidence-fallback-ja.md)）。 |
+| `"<backend> (fallback)"` | read-only な証跡フォールバックが供給したアーティファクトです（[BE-0020](../../roadmaps/BE-0020-multi-backend-evidence-fallback/BE-0020-multi-backend-evidence-fallback-ja.md)）。 |
 
 証跡の種別をリスト内のどのバックエンドも供給できない場合は、シナリオごとに `SkippedCapture(kind, reason)` を記録し、manifest で開示します。gap を黙って空にすることはありません。
 
@@ -150,12 +150,25 @@ class Artifact:
 ```yaml
 redact:
   labels: ["カード番号"]            # accessibility ラベル
-  headers: ["Authorization", "Cookie"]  # HTTP ヘッダ名
+  headers: ["X-Session"]           # 追加の HTTP ヘッダ名（既定集合に上乗せ）
   fields: ["token", "password"]    # JSON/body フィールド名
+  unmaskHeaders: ["authorization"] # 既定の保護を外す（明示的で目に見える指定）
 ```
+
+> **機密ヘッダは既定でマスクされます**（この保護にシナリオ側の `redact:` は不要です）。組み込みの集合は
+> `authorization`・`proxy-authorization`・`cookie`・`set-cookie`・`x-api-key`・`x-auth-token` で、
+> 大文字小文字を区別せずに照合します。`cookie` と `set-cookie` は一つの関心事として扱い、どちらか一方を
+> 指定（または解除）すると両方に適用されます。`redact.headers` に書いたヘッダ名はこの集合に上乗せされる
+> だけで、集合を置き換えることはありません。既定ヘッダの生の値がどうしても必要なとき（認証失敗のデバッグ
+> など）は、そのヘッダ名を `unmaskHeaders` に書きます。保護を外すのは明示的で目に見える選択であり、
+> `redact:` を書かないだけで外れることはありません。
 
 > redact は証跡の書き出し前に **適用されます**（`redaction.py` `Redactor`）。device log と app trace は key→value パターンでスクラブし、要素ツリーは label が設定済みなら value をマスクします（または埋め込まれた secret をスクラブします）。各 network exchange は構造的にマスクします。ヘッダ値は名前で処理し、url / request / response の body はフリーテキストとして処理するので、クエリパラメータや `token` / `password` の body フィールドも捕捉します。画像（スクリーンショット / video）はマスクできず、そのまま残ります。
 >
 > redact は **secret の入力値** にも及びます。`${secrets.X}` の背後にある実値（環境から解決し、config の `secrets:` で宣言します。[configuration](configuration.md#シークレットsecrets)）は、設定済みの `labels` / `headers` / `fields` だけでなく、証跡に現れる箇所すべてでマスクします。長い値から先にマスクするため、ある値が別の値の部分文字列であっても、部分的な漏れは起きません。
 >
 > 実行したシナリオは run ディレクトリにもスナップショットとして保存されます（`scenario.yaml`、およびレポートの生 YAML 表示）。`totp` ステップの `secret` は使い捨てのコードではなく恒久的な base32 シードなので、シナリオに **リテラル** で書かれたシードは、このスナップショット内で `<redacted>` にマスクします。`${secrets.X}` 参照はそのまま残します（参照自体はシードではなく、解決後の実値は上記の secret 入力値のルールでマスクされるためです）。`totp` のシードは `${secrets.X}` で渡し、シナリオファイルにシードが残らないようにするのが望ましい方法です。
+
+## ファイルパーミッション
+
+マスキングは漏えいした証跡が明かす内容を減らしますが、ベストエフォートの denylist なので、証跡を誰が読めるかも同じく重要です。ランナーは各 run ディレクトリを所有者のみ（`0700`）で作成し、機微な内容を含み得るファイル（`network.json`、コピーした `scenario.yaml`、要素ダンプ（`elements.json`）、スクリーンショット）を、ホストの `umask` に依存せず所有者のみ（`0600`）で書き込みます（[BE-0131](../../roadmaps/BE-0131-run-artifact-permissions/BE-0131-run-artifact-permissions-ja.md)）。それ以外の証跡も `0700` の run ディレクトリ配下に置かれるため、共有ホスト（CI ランナーなど）の別のローカルアカウントからは既定で読めません。実装: `artifact_perms.py`。

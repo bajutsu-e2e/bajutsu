@@ -22,16 +22,16 @@ Bajutsu のロードマップは、ざっと眺めて通り過ぎるバックロ
             │
             ▼
    ┌─────────────────┐   BE-XXXX 提案を起草        ┌──────────────────────┐
-   │  /ideation      │ ───────（両言語）─────────▶ │  roadmaps/proposals/ │
+   │  /ideation      │ ───────（両言語）─────────▶ │  roadmaps/           │
    │  起草と思考      │                            │  BE-NNNN-<slug>/     │
    │  判定はしない    │ ◀──CI が正式 ID を採番──── │  Status: Proposal    │
    └─────────────────┘   (scripts/allocate_…)      └──────────┬───────────┘
                                                               │ 提案が仕様になる
                                                               ▼
    ┌─────────────────┐   計画 → 実装 → テスト       ┌──────────────────────┐
-   │  /implement-be  │ ───────レビュー → ゲート────▶ │ roadmaps/implemented/│
-   │  実装           │                            │  BE-NNNN-<slug>/     │
-   │  ゲートが判定    │   Status を Implemented に  │  Status: Implemented │
+   │  /implement-be  │ ───────レビュー → ゲート────▶ │  roadmaps/           │
+   │  実装           │      Status だけを変え      │  BE-NNNN-<slug>/     │
+   │  ゲートが判定    │      パスは動かさない       │  Status: Implemented │
    └─────────────────┘                            └──────────────────────┘
 ```
 
@@ -56,7 +56,7 @@ Bajutsu のロードマップは、ざっと眺めて通り過ぎるバックロ
    重なる**（重複を作らずその項目を補強する）、**新規で範囲が定まっている**（新しい項目を起草する）、**まだ
    形になっていない**（両索引 README の *未整理のアイデア* に箇条書きで残し、後で昇格する）の 3 つです。
 4. **プレースホルダー ID で新項目を起草する**：`make new-roadmap-item SLUG=… TITLE="…"` が
-   `roadmaps/proposals/BE-XXXX-<slug>/` を、両言語のファイルとともに正規の Swift Evolution 形式で生成します。
+   `roadmaps/BE-XXXX-<slug>/` を、両言語のファイルとともに正規の Swift Evolution 形式で生成します。
    スキルは `TBD` の節を埋め、日本語側を自然な日本語に書き直します。`BE-XXXX` というプレースホルダーは意図的
    です。**ID を人手で当て推量することはありません。**
 5. **検証し、依頼されたときだけ PR を開く**：ドキュメントだけの変更でも `make check` でゲートを緑に保ちます。
@@ -98,8 +98,8 @@ Bajutsu のロードマップは、ざっと眺めて通り過ぎるバックロ
    を使います。これらは *起草の補助* です。著者に助言するだけで判定はしないので、指針 1 が保たれ、`run`/CI の
    経路に LLM が触れることはありません。
 7. **項目を Implemented に切り替える**：両言語のファイルで `Status: Implemented` にし、`Implementing PR` の行を
-   加えます。`make roadmap-promote` がディレクトリを `roadmaps/implemented/` へ移し、`make roadmap-index` が
-   表を再生成します。`Status` とフォルダが食い違うと `make test` が失敗します。
+   加えます。あとは `make roadmap-index` が表を再生成します。ディレクトリは移動しません（BE-0159）。変わるのは
+   `Status` とその index バケットだけです。コミット済みインデックスがズレると `make test` が失敗します。
 8. **検証（ゲート）**：`make check` は緑でなければなりません。赤のまま push しません。正しさが本当に
    Simulator やブラウザでの実行に依存する場合は、未検証で動くと主張せず、[`verify`](../../.claude/skills)
    スキルがそれを実行します。
@@ -119,7 +119,7 @@ Bajutsu のロードマップは、ざっと眺めて通り過ぎるバックロ
 ## 関連項目
 
 - [ai-development](ai-development.md)：並行作業の規則、ゲート、そして両スキルが依存する **BE ID の厳格な
-  ライフサイクル**（`Status` がフォルダを決め、`roadmap-promote`、永続 ID）。
+  ライフサイクル**（`Status` が index バケットを決める、1 ディレクトリのフラット構成、永続 ID）。
 - [roadmaps/README](../../roadmaps/README-ja.md)：すべての BE 項目の索引と、項目ごとの提案形式。
 - [concepts](concepts.md)：絶対指針が体現する、決定性と AI の境界の原則。
 - [`CLAUDE.md`](../../CLAUDE.md)：絶対指針の出どころである working agreement。

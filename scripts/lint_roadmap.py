@@ -6,19 +6,16 @@ item's shape cannot:
 
 - **Cross-link resolution.** Every markdown link to an item's file must resolve to a file that
   exists — both the links *between* items and the links *into* ``roadmaps/`` from ``docs/`` and the
-  top-level ``README*`` / ``CLAUDE.md`` (BE-0096). These links rot silently: BE-0078 files each item
-  under a status folder (``implemented`` / ``in-progress`` / ``proposals`` / ``deferred``) and
-  ``roadmap-promote`` *moves* an item between them when its Status changes — so a link written for
-  the old folder then points at the wrong folder (a GitHub 404). The index links are regenerated on
-  promote; the item *bodies* and the ``docs/`` links were not, until this.
+  top-level ``README*`` / ``CLAUDE.md`` (BE-0096). Since BE-0159 every item lives at a permanent flat
+  ``roadmaps/BE-NNNN-<slug>/`` path, so promotion no longer moves a file and cannot rot a link; this
+  still catches the plain mistakes a fixed layout doesn't prevent — a typo'd slug, a link to a
+  renamed item, or a reference to an id that never existed.
 - **Author handle-link.** The ``Author`` (``提案者``) value must be ``[@handle](https://github.com/handle)``.
 
-``--fix`` rewrites a broken item link to the target's *current* folder (located by its
-``BE-NNNN-slug`` directory name), across roadmap item bodies *and* ``docs/`` / the top-level files.
-A link whose target item does not exist anywhere is a genuine dangling reference: reported, never
-"fixed". Runnable mid-edit via ``make lint-roadmap`` (in ``make check``); ``promote_roadmap_items``
-calls :func:`fix_links` after moving an item so a folder move self-heals every link into and out of
-it, ``docs/`` included.
+``--fix`` rewrites a broken item link to its target's current ``BE-NNNN-slug`` path (located by
+directory name), across roadmap item bodies *and* ``docs/`` / the top-level files. A link whose
+target item does not exist anywhere is a genuine dangling reference: reported, never "fixed".
+Runnable mid-edit via ``make lint-roadmap`` (in ``make check``).
 """
 
 from __future__ import annotations
@@ -34,10 +31,9 @@ from pathlib import Path
 # already on the path) or loaded under its bare name by a test — add scripts/ so the sibling import
 # resolves either way.
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from roadmap_ids import is_numbered_dir
+from roadmap_ids import is_numbered_dir, iter_item_dirs
 
 ROADMAP = Path(__file__).resolve().parent.parent / "roadmaps"
-CATEGORIES = ("implemented", "in-progress", "proposals", "deferred")
 # Markdown outside roadmaps/ that links *into* it and so rots on promotion the same way item bodies
 # do (BE-0096): every page under docs/, plus the repo-root README/CLAUDE files.
 TOP_LEVEL_DOCS = ("README.md", "README.ja.md", "CLAUDE.md")
@@ -63,16 +59,12 @@ class BrokenLink:
 
 
 def _item_dirs(roadmap: Path) -> dict[str, Path]:
-    """Map each item's ``BE-NNNN-slug`` directory name to its current absolute path."""
-    dirs: dict[str, Path] = {}
-    for category in CATEGORIES:
-        category_dir = roadmap / category
-        if not category_dir.is_dir():
-            continue
-        for d in sorted(category_dir.iterdir()):
-            if d.is_dir() and is_numbered_dir(d.name):
-                dirs[d.name] = d
-    return dirs
+    """Map each item's ``BE-NNNN-slug`` directory name to its current absolute path.
+
+    Every item lives at a flat ``roadmaps/BE-NNNN-<slug>/`` path (BE-0159), so a link resolves
+    against the item's permanent location and ``--fix`` rewrites a stale one to that flat path.
+    """
+    return {d.name: d for d in iter_item_dirs(roadmap) if is_numbered_dir(d.name)}
 
 
 def _dirs_by_id(item_dirs: dict[str, Path]) -> dict[str, Path]:
@@ -170,7 +162,7 @@ def author_problems(roadmap: Path) -> list[str]:
 
 
 def fix_links(roadmap: Path) -> int:
-    """Rewrite every fixable broken item link to its target's current folder, in place.
+    """Rewrite every fixable broken item link to its target's current path, in place.
 
     Returns the number of links rewritten. A dangling reference (target item absent) is left
     untouched — there is nothing to point it at.
@@ -210,7 +202,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--fix",
         action="store_true",
-        help="rewrite broken item links to the target's current folder",
+        help="rewrite broken item links to the target's current path",
     )
     args = parser.parse_args(argv)
 

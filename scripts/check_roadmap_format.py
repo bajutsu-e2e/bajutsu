@@ -33,10 +33,9 @@ from pathlib import Path
 # resolves either way.
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from build_roadmap_index import tracking_issue_url
-from roadmap_ids import PLACEHOLDER, is_placeholder_dir, numbered_match
+from roadmap_ids import PLACEHOLDER, is_placeholder_dir, iter_item_dirs, numbered_match
 
 ROADMAP = Path(__file__).resolve().parent.parent / "roadmaps"
-CATEGORIES = ("implemented", "in-progress", "proposals", "deferred")
 
 # Canonical metadata field order, per language. Required fields are always present; the optional
 # ones (Implementing PR, Related, Superseded by, Origin) may be absent but, when present, keep their
@@ -122,25 +121,17 @@ class _Item:
 
 
 def _items(roadmap: Path) -> list[_Item]:
-    """Every BE item, across all status folders — numbered and unallocated placeholders alike.
+    """Every BE item under ``roadmaps/`` — numbered and unallocated placeholders alike (BE-0159).
 
     A placeholder carries the literal ``BE-XXXX`` token as its id, so the id-bearing checks know to
     accept its self-reference (BE-0149).
     """
     items: list[_Item] = []
-    for category in CATEGORIES:
-        category_dir = roadmap / category
-        if not category_dir.is_dir():
-            continue
-        for d in sorted(category_dir.iterdir()):
-            if not d.is_dir():
-                continue
-            if m := numbered_match(d.name):
-                items.append(_Item(f"BE-{m.group(1)}", m.group(2), d, is_placeholder=False))
-            elif is_placeholder_dir(d.name):
-                items.append(
-                    _Item(PLACEHOLDER, d.name[len(PLACEHOLDER) + 1 :], d, is_placeholder=True)
-                )
+    for d in iter_item_dirs(roadmap):
+        if m := numbered_match(d.name):
+            items.append(_Item(f"BE-{m.group(1)}", m.group(2), d, is_placeholder=False))
+        elif is_placeholder_dir(d.name):
+            items.append(_Item(PLACEHOLDER, d.name[len(PLACEHOLDER) + 1 :], d, is_placeholder=True))
     return items
 
 

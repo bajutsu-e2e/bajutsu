@@ -157,7 +157,7 @@ class Artifact:
 | `"simctl"` | Interval evidence from `simctl` (video, device log, app trace). |
 | `"collector"` | The idb app-side network collector (`BAJUTSU_COLLECTOR`). |
 | `"playwright"` | Native Playwright network observation (web backend). |
-| `"<backend> (fallback)"` | A read-only evidence fallback supplied the artifact ([BE-0020](../roadmaps/implemented/BE-0020-multi-backend-evidence-fallback/BE-0020-multi-backend-evidence-fallback.md)). |
+| `"<backend> (fallback)"` | A read-only evidence fallback supplied the artifact ([BE-0020](../roadmaps/BE-0020-multi-backend-evidence-fallback/BE-0020-multi-backend-evidence-fallback.md)). |
 
 When an evidence kind cannot be supplied by any backend in the list, a `SkippedCapture(kind,
 reason)` is recorded per scenario and disclosed in the manifest — the gap is never silently empty.
@@ -169,9 +169,18 @@ Screenshots, logs, and network data can capture PII (personally identifiable inf
 ```yaml
 redact:
   labels: ["Card Number"]               # accessibility labels
-  headers: ["Authorization", "Cookie"]  # HTTP header names
+  headers: ["X-Session"]                # extra HTTP header names (on top of the defaults)
   fields: ["token", "password"]         # JSON/body field names
+  unmaskHeaders: ["authorization"]      # opt out of a default (visible, deliberate)
 ```
+
+> **Sensitive headers are masked by default** (a scenario needs no `redact:` for this): the
+> built-in set is `authorization`, `proxy-authorization`, `cookie`, `set-cookie`, `x-api-key`,
+> and `x-auth-token`, matched case-insensitively. `cookie` and `set-cookie` are treated as one
+> concern — naming (or unmasking) either covers both. Header names in `redact.headers` add to
+> this set; they never replace it. If you genuinely need a default header's raw value (e.g.
+> debugging an auth failure), name it under `unmaskHeaders` — turning off protection is an
+> explicit, visible choice, never the mere absence of `redact:`.
 
 > Redaction **is applied** before evidence is written (`redaction.py` `Redactor`): the device log /
 > app trace are scrubbed by key→value patterns, the element tree masks a value when its label is
@@ -192,3 +201,7 @@ redact:
 > snapshot — a `${secrets.X}` reference is kept as-is (it is not the seed, and its resolved value
 > is masked by the secret-value rule above). Prefer `${secrets.X}` for a `totp` seed so it never
 > sits in the scenario file to begin with.
+
+## File permissions
+
+Redaction reduces what a leaked artifact reveals, but it is a best-effort denylist, so who can read the artifact matters too. The runner creates each run directory owner-only (`0700`) and writes the sensitive files it may hold — `network.json`, the copied `scenario.yaml`, the element dump (`elements.json`), and screenshots — owner-only (`0600`), independent of the host's `umask` ([BE-0131](../roadmaps/BE-0131-run-artifact-permissions/BE-0131-run-artifact-permissions.md)). Everything else lands under the `0700` run directory, so a run's evidence is not readable by another local account on a shared host (a CI runner, say) by default. Implementation: `artifact_perms.py`.

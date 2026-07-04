@@ -212,7 +212,7 @@ The frontmatter can't reach interactive and delegated work, so choose there by h
 Deliberately **not gate-enforced**: which model a session used isn't recoverable from the diff, and
 hard-pinning would remove the human's judgment to upshift when a "light" task turns out hard. This
 follows the same "procedures as commands, advisory not policy" precedent as the rest of the
-contributor workflow ([BE-0069](../roadmaps/implemented/BE-0069-executable-contributor-guardrails/BE-0069-executable-contributor-guardrails.md)).
+contributor workflow ([BE-0069](../roadmaps/BE-0069-executable-contributor-guardrails/BE-0069-executable-contributor-guardrails.md)).
 
 ## Pull requests: title and body
 
@@ -340,7 +340,7 @@ differences stay in config.
 `make check` green: format-check / ruff / mypy (Success) / test (N passed, coverage X%). New
 tests cover <…>.
 
-[BE-NNNN]: roadmaps/proposals/BE-NNNN-<slug>/BE-NNNN-<slug>.md
+[BE-NNNN]: roadmaps/BE-NNNN-<slug>/BE-NNNN-<slug>.md
 
 🤖 Generated with [Claude Code](https://claude.com/claude-code)
 ```
@@ -376,21 +376,21 @@ open until it is decided.
 The roadmap is **one directory per item** under [`roadmaps/`](../roadmaps/README.md). Each item lives in
 `roadmaps/<category>/BE-NNNN-<slug>/`, which holds the English file `BE-NNNN-<slug>.md` and its
 Japanese version `BE-NNNN-<slug>-ja.md` (same ID and slug). **BE** stands for *Bajutsu Evolution* and `NNNN`
-is a **zero-padded, 4-digit, monotonically increasing** ID. There are **four** folders, one per `Status`
-value (BE-0078): `roadmaps/implemented/` (`Implemented`), `roadmaps/in-progress/` (`In progress`),
-`roadmaps/proposals/` (`Proposal`), `roadmaps/deferred/` (`Proposal (deferred)`).
+is a **zero-padded, 4-digit, monotonically increasing** ID. Every item lives directly under `roadmaps/`
+in a flat layout: its path is fixed the moment its ID is allocated and never moves (BE-0159 retired the
+per-`Status` folders BE-0078 introduced — `Status` now decides only the index bucket, below).
 
 When you add a roadmap item:
 
-1. **Allocate the next ID** = the highest existing `BE-NNNN` + 1, counting all four folders. Find the current
-   max with:
+1. **Allocate the next ID** = the highest existing `BE-NNNN` + 1, over every item under `roadmaps/`. Find
+   the current max with:
    ```bash
-   ls -d roadmaps/{implemented,in-progress,proposals,deferred}/BE-*/ | sort | tail -1
+   ls -d roadmaps/BE-*/ | sort | tail -1
    ```
    Never reuse, skip, or guess a number.
-2. **Create the item directory and both language files** under `roadmaps/proposals/` (a new item is always a
-   proposal first) — `roadmaps/proposals/BE-NNNN-<slug>/BE-NNNN-<slug>.md`
-   (English) and `roadmaps/proposals/BE-NNNN-<slug>/BE-NNNN-<slug>-ja.md` (Japanese, same ID & slug). **Do not
+2. **Create the item directory and both language files** directly under `roadmaps/` with `Status: Proposal` (a new item is always a
+   proposal first) — `roadmaps/BE-NNNN-<slug>/BE-NNNN-<slug>.md`
+   (English) and `roadmaps/BE-NNNN-<slug>/BE-NNNN-<slug>-ja.md` (Japanese, same ID & slug). **Do not
    hand-edit the index tables** — they are generated from each item's own metadata. Run
    `make roadmap-index` (or `python scripts/build_roadmap_index.py`) to regenerate the tables between the
    `<!-- GENERATED:* -->` markers in **both** index pages ([en](../roadmaps/README.md), [ja](../roadmaps/README-ja.md)).
@@ -403,7 +403,7 @@ When you add a roadmap item:
    item forever.
 
 The number is allocated **on `main`, after the PR merges** — not at PR-open
-([BE-0089](../roadmaps/implemented/BE-0089-merge-time-be-id-allocation/BE-0089-merge-time-be-id-allocation.md)).
+([BE-0089](../roadmaps/BE-0089-merge-time-be-id-allocation/BE-0089-merge-time-be-id-allocation.md)).
 Drafting with the `BE-XXXX` placeholder is the norm: an item keeps `BE-XXXX` through authoring,
 review, and the merge itself, and a **BE-creation PR carries no `[BE-NNNN]` prefix at all** — its
 title stays a plain scoped subject, since the real number is not known until after the merge. The
@@ -428,7 +428,7 @@ reservations and the `roadmap-id-repair` / `roadmap-claims-gc` workflows — has
 merge-time allocation runs at most one allocate at a time against the latest `main`, so the sequence
 is contiguous by construction and two branches can no longer contend for the same number, making the
 reservation ledger and its repair backstop redundant. See
-[BE-0061](../roadmaps/implemented/BE-0061-be-id-allocation-hardening/BE-0061-be-id-allocation-hardening.md).
+[BE-0061](../roadmaps/BE-0061-be-id-allocation-hardening/BE-0061-be-id-allocation-hardening.md).
 
 #### Setting up the merge-time allocation App
 
@@ -495,27 +495,26 @@ fields keep their canonical order, but not that a breakdown is genuinely exhaust
 **Name the author by GitHub handle** —
 `* Author: [@handle](https://github.com/handle)`, the account of whoever first authored the item
 (for an AI-assisted draft, the person who drove and committed it). The **Status** field is the single
-source of truth for both the folder an item lives in and the index bucket it appears under — a
-bijection (BE-0078):
+source of truth for the index bucket an item appears under (BE-0078). It does **not** decide the item's
+location: since BE-0159 every item lives in one flat `roadmaps/BE-NNNN-<slug>/` directory whose path is
+permanent, so `Status` and directory can never disagree because the directory does not depend on `Status`
+at all.
 
-| Status | Folder / index bucket |
+| Status | Index bucket |
 |---|---|
-| `Implemented` | `roadmaps/implemented/` — shipped |
-| `In progress` | `roadmaps/in-progress/` — accepted, actively being built |
-| `Proposal` | `roadmaps/proposals/` — under consideration |
-| `Proposal (deferred)` | `roadmaps/deferred/` — parked |
+| `Implemented` | Implemented — shipped |
+| `In progress` | In progress — accepted, actively being built |
+| `Proposal` | Proposals — under consideration |
+| `Proposal (deferred)` | Deferred — parked |
 
-As an item advances, **update its Status** and regenerate the index (its row moves to the right bucket
-automatically). When its status changes — it starts being built, or it ships — the **`roadmap-promote`**
-workflow **moves its directory** to the matching folder (keeping the same ID and slug) and regenerates
-the index on your PR — or run `make roadmap-promote` to do it locally. `make test` fails if a folder
-and `Status` disagree, so an item can never merge while filed under the wrong folder. A promotion also
-**repairs the item-to-item cross-links** that the move would otherwise break (a sibling `../BE-NNNN/`
-link is wrong once the target sits in a different status folder) — the same self-healing the index
-already had (BE-0069). **`make lint-roadmap`** (in `make check`) is the gate for this: it fails if any
-item's markdown link to another item does not resolve, or if an `Author` is not a `[@handle](…)` link;
-`make lint-roadmap ARGS="--fix"` rewrites a broken item link to the target's current folder.
-Milestones M1–M4 are `BE-0001`–`BE-0004` (implemented).
+As an item advances, **update its Status** and run `make roadmap-index` to regenerate the index (its row
+moves to the right bucket automatically). The directory never moves (BE-0159): the same
+`roadmaps/BE-NNNN-<slug>/` path holds the item for its whole life, so a promotion no longer rots any link
+into or out of it — the concrete win over the folder scheme, which broke a link every time an item's
+`Status` changed. **`make lint-roadmap`** (in `make check`) still guards cross-links: it fails if any
+item's markdown link to another item does not resolve (a typo'd slug, a link to a renamed item), or if an
+`Author` is not a `[@handle](…)` link; `make lint-roadmap ARGS="--fix"` rewrites a broken item link to
+the target's current path. Milestones M1–M4 are `BE-0001`–`BE-0004` (implemented).
 
 This is a hard rule agents must follow; the short form is in [`CLAUDE.md`](../CLAUDE.md).
 
@@ -610,7 +609,7 @@ def _contains(outer: Frame, inner: Frame) -> bool:
     """Whether `inner`'s frame sits inside `outer`'s (edges inclusive)."""
 ```
 
-**Migration is phased and incremental** ([BE-0065](../roadmaps/implemented/BE-0065-docstring-standard-api-reference/BE-0065-docstring-standard-api-reference.md)):
+**Migration is phased and incremental** ([BE-0065](../roadmaps/BE-0065-docstring-standard-api-reference/BE-0065-docstring-standard-api-reference.md)):
 the site renders today from the existing prose docstrings (typed signatures already give a useful
 reference); public-API docstrings move to Google style module by module in small PRs, and the
 scoped `ruff` `D` enforcement and Pages hosting land after. **Don't rewrite a whole module's

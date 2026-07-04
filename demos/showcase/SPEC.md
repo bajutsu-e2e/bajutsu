@@ -10,7 +10,7 @@
 ## 1. Purpose
 
 The showcase is Bajutsu's **next-generation dogfood target** — the practice ground for
-`record` (Tier 1 authoring), `crawl` (Tier 1 exploration, [BE-0038](../../roadmaps/in-progress/BE-0038-autonomous-crawl-exploration/BE-0038-autonomous-crawl-exploration.md)),
+`record` (Tier 1 authoring), `crawl` (Tier 1 exploration, [BE-0038](../../roadmaps/BE-0038-autonomous-crawl-exploration/BE-0038-autonomous-crawl-exploration.md)),
 and `run` (Tier 2 deterministic gate). It deliberately packs the interaction surface a real
 app has — tabbed + navigation + modal screen transitions, text entry, gestures, async
 loading, networking (live + mockable), and a screen that intentionally raises OS-level
@@ -51,7 +51,7 @@ SwiftUI views may differ in construction but never in the contract below.
 ### 2.1 Android twins ([`android/`](android/), BE-0007 preparation)
 
 The same fixture exists for Android — built ahead of the
-[BE-0007 Android backend](../../roadmaps/proposals/BE-0007-android-backend/BE-0007-android-backend.md)
+[BE-0007 Android backend](../../roadmaps/BE-0007-android-backend/BE-0007-android-backend.md)
 as the app pair that backend will drive. **Jetpack Compose** mirrors the SwiftUI codebase,
 **Android Views** mirrors UIKit, and the a11y/noax pair is one Gradle flavor switch
 (`BuildConfig.ACCESSIBLE`) — no forked source, exactly like `ACCESSIBLE` on iOS.
@@ -339,4 +339,4 @@ exposes no identifiers, which is what makes `doctor --target showcase-…-noax` 
 | `run` | `-a11y` | Deterministic replay of every scenario in `scenarios/` — tabs, push nav, all four modal styles, networking (live + mocked), and the alert-guarded Permissions flow. |
 | `doctor --target` | both | `-a11y` → **Ready**; `-noax` → **Blocked** (`idCoverage` ≈ 0). The pair quantifies accessibility debt. |
 | `record` | `-noax` | AI authors a scenario for a natural-language goal against an app with no identifiers, falling to label/traits/coordinates — the stability-ladder cost made visible. The `-a11y` twin shows the clean id-based output for the same goal. |
-| `crawl` ([BE-0038](../../roadmaps/in-progress/BE-0038-autonomous-crawl-exploration/BE-0038-autonomous-crawl-exploration.md)) | `-a11y` | Breadth-first exploration over a genuinely branchy app (5 tabs × pushes × 4 modal styles) → a screen map; the id-based state fingerprint is stable because §5 identifiers are. (Forward-looking: lands when BE-0038 ships.) |
+| `crawl` ([BE-0038](../../roadmaps/BE-0038-autonomous-crawl-exploration/BE-0038-autonomous-crawl-exploration.md)) | `-a11y` | Breadth-first exploration over a genuinely branchy app (5 tabs × pushes × 4 modal styles) → a screen map; the id-based state fingerprint is stable because §5 identifiers are. (Forward-looking: lands when BE-0038 ships.) |

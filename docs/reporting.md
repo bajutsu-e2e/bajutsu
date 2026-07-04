@@ -67,17 +67,17 @@ verbatim.
 - `steps[].artifacts`: the provenance of evidence captured for that step
   ([evidence](evidence.md#artifact-provenance-provider)).
 - `failure`: a summary on failure (e.g. `"step 3 (tap): no match: {...}"`). null on success.
-- `provenance` (top, optional): a run-identity stamp ([BE-0049](../roadmaps/implemented/BE-0049-determinism-flakiness-audit/BE-0049-determinism-flakiness-audit.md))
+- `provenance` (top, optional): a run-identity stamp ([BE-0049](../roadmaps/BE-0049-determinism-flakiness-audit/BE-0049-determinism-flakiness-audit.md))
   — `scenarioHash` (a `sha256:` fingerprint of the executed `scenario.yaml`), `toolVersion`
   (`bajutsu.__version__`), `gitRevision` (the commit, present only when the run is inside a git
-  checkout), and — when the config came from a Git source ([BE-0063](../roadmaps/implemented/BE-0063-git-config-source/BE-0063-git-config-source.md)) —
+  checkout), and — when the config came from a Git source ([BE-0063](../roadmaps/BE-0063-git-config-source/BE-0063-git-config-source.md)) —
   `configSource` (`{ host, owner, repo, ref, sha }`, the exact commit a branch-based run executed).
   It lets accumulated runs be grouped by identity, so a verdict that flips while the fingerprint is
   unchanged is **true flakiness** rather than an edited scenario. Pure metadata — like the `idb`
   version block, it never enters `ok`. (`schemaVersion` is `3` or higher once this block can appear — it is `4` today.)
 - `idb` (top, optional): the `idb_companion` / client versions, when idb drove the run (BE-0005).
 - `matrix` (top, optional): the cross-browser engine × scenario grid, present only on a
-  `bajutsu run --browsers` run ([BE-0076](../roadmaps/implemented/BE-0076-web-cross-browser-engines/BE-0076-web-cross-browser-engines.md)).
+  `bajutsu run --browsers` run ([BE-0076](../roadmaps/BE-0076-web-cross-browser-engines/BE-0076-web-cross-browser-engines.md)).
   `scenarios` stays the flat result list, each entry tagged with its `engine`; `matrix` is
   `{ engines, scenarios, cells: { "<scenario>": { "<engine>": { ok, sid, failure } } } }` — a pure
   aggregation of those per-engine verdicts (the report renders it as a grid). `ok` is all-must-pass

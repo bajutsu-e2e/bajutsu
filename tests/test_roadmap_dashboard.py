@@ -32,7 +32,7 @@ def test_every_committed_item_is_rendered() -> None:
     for item in _ITEMS:
         en = item.by_lang["en"]
         assert f">{en.id}</span>" in _PAGE, f"{en.id} missing from the dashboard"
-        assert f"/roadmaps/{en.category}/{en.id}-{en.slug}/{en.id}-{en.slug}.md" in _PAGE
+        assert f"/roadmaps/{en.id}-{en.slug}/{en.id}-{en.slug}.md" in _PAGE
 
 
 def test_each_card_links_to_its_tracking_issue_search() -> None:
@@ -122,7 +122,6 @@ def test_html_is_escaped() -> None:
             "en": entry_cls(
                 id="BE-9999",
                 slug="x",
-                category="proposals",
                 title="a <script> & b",
                 status="Proposal",
                 origin=None,

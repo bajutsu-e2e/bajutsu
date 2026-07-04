@@ -13,8 +13,8 @@ showcase は Bajutsu の次世代 dogfood 対象です。**同じアプリを 2 
 - **契約：** [`SPEC.ja.md`](SPEC.ja.md)（[en](SPEC.md)）に、すべての画面、識別子、launch-env フック、
   deeplink、OS アラートの配置を記します。2 つの `-a11y` アプリは同一の識別子契約を露出するので、1 つの
   [`scenarios/`](scenarios) 集が両方を駆動します。
-- **ロードマップ項目：** [BE-0045](../../roadmaps/implemented/BE-0045-dogfood-showcase-apps/BE-0045-dogfood-showcase-apps-ja.md)
-  が showcase 群の根拠を記録しています。[BE-0079](../../roadmaps/implemented/BE-0079-consolidate-demos-on-showcase/BE-0079-consolidate-demos-on-showcase-ja.md)
+- **ロードマップ項目：** [BE-0045](../../roadmaps/BE-0045-dogfood-showcase-apps/BE-0045-dogfood-showcase-apps-ja.md)
+  が showcase 群の根拠を記録しています。[BE-0079](../../roadmaps/BE-0079-consolidate-demos-on-showcase/BE-0079-consolidate-demos-on-showcase-ja.md)
   が showcase への統合を完了させました（索引全体は [`roadmaps`](../../roadmaps/README-ja.md) を参照してください）。
 
 ## 4 つのプロダクト
@@ -86,7 +86,7 @@ bajutsu run --target showcase-swiftui --scenario demos/showcase/scenarios/modals
 | [`showcase.config.yaml`](showcase.config.yaml) | iOS と Android を合わせた 8 つの `targets.<name>` エントリ |
 | [`scenarios/`](scenarios) | 共有の id ベース `run` シナリオ（iOS と Android の両方の a11y アプリを駆動） |
 | [`record/goals.txt`](record/goals.txt) | `record` A/B デモ用の自然言語ゴール |
-| [`crawl/`](crawl/expected-screen-map.ja.md) | `crawl`（[BE-0038](../../roadmaps/in-progress/BE-0038-autonomous-crawl-exploration/BE-0038-autonomous-crawl-exploration-ja.md)、実装中）が生成すべき画面マップ。検証用テストデータ |
+| [`crawl/`](crawl/expected-screen-map.ja.md) | `crawl`（[BE-0038](../../roadmaps/BE-0038-autonomous-crawl-exploration/BE-0038-autonomous-crawl-exploration-ja.md)、実装中）が生成すべき画面マップ。検証用テストデータ |
 
 ## Deeplink
 
