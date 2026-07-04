@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import os
 import time
+from collections import Counter
 from pathlib import Path
 
 import pytest
@@ -83,17 +84,19 @@ class _OnDeviceHarness:
     def _await_screen(self, ids: list[str], timeout: float = 30.0, poll: float = 0.1) -> None:
         # Condition-backed (no fixed sleep): a relaunch settles asynchronously, so wait on the
         # observed screen, not on a guessed delay. Readiness is positive — the conformance-mode
-        # marker present *and* every seeded id present — so the empty (zero-match) screen waits on
-        # the marker rather than on the absence of ids (which a transient near-empty tree during the
-        # relaunch could satisfy too early). None identifiers are ignored.
+        # marker present *and* every seeded id present at its full multiplicity. The multiplicity
+        # matters for the ambiguous case (two `dup`s): waiting on set membership could proceed with
+        # only one rendered, so the contract would see a unique match. The empty (zero-match) screen
+        # waits on the marker alone, not the absence of ids. None identifiers are ignored.
+        want = Counter(ids)
         deadline = time.monotonic() + timeout
         while True:
-            present = {el["identifier"] for el in self._driver.query() if el["identifier"]}
-            if _READY_ID in present and all(i in present for i in ids):
+            have = Counter(el["identifier"] for el in self._driver.query() if el["identifier"])
+            if have[_READY_ID] and all(have[i] >= n for i, n in want.items()):
                 return
             if time.monotonic() >= deadline:
                 raise AssertionError(
-                    f"conformance screen not ready: want {ids}, saw {sorted(present)}"
+                    f"conformance screen not ready: want {ids}, saw {sorted(have)}"
                 )
             time.sleep(poll)
 
@@ -111,7 +114,9 @@ def _eff() -> Effective:
 # launch readiness probe then snapshots a trivial screen (one marker element), which matters for
 # XCUITest — its first snapshot waits for the app to be idle, and quiescing the heavy 5-tab UI on a
 # cold CI Simulator can exceed the channel timeout. `with_screen` reseeds from here as usual.
-_CONFORMANCE_ENV = {"SHOWCASE_CONFORMANCE": ""}
+# SHOWCASE_UITEST (also supplied by the target's launchEnv) is set explicitly so this initial launch
+# disables animations exactly like the relaunches, keeping the two launch paths consistent.
+_CONFORMANCE_ENV = {"SHOWCASE_UITEST": "1", "SHOWCASE_CONFORMANCE": ""}
 
 
 @pytest.fixture(scope="module")
