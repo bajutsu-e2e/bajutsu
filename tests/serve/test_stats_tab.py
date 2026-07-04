@@ -3,17 +3,21 @@
 The run-id list comes from the system of record when a repository is wired (org-scoped), else the
 artifact store; the full `manifest.json` of each run is read from the artifact store either way (the
 DB `summary` is only the compact history-list shape). Driven against a real SqlRepository on
-in-memory SQLite and a real LocalArtifactStore — no mocks."""
+in-memory SQLite and a real LocalArtifactStore; the one exception is a fake ArtifactStore used only
+to simulate a read failure at the storage I/O boundary."""
 
 from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import Any
 
 from _shared import _get, _serve, project
 from sqlalchemy import create_engine
 
 from bajutsu import serve as srv
+from bajutsu.serve.artifacts import Artifact
+from bajutsu.serve.jobs import StoreBundle
 from bajutsu.serve.operations import stats_html
 from bajutsu.serve.server.db import RunRecord, SqlRepository
 from bajutsu.serve.server.models import Base
@@ -149,6 +153,52 @@ def test_stats_html_skips_unsafe_run_id_from_repository(tmp_path: Path) -> None:
     )
     state = srv.ServeState(
         scenarios_dir=scn_dir, config=cfg, runs_dir=runs, cwd=tmp_path, repository=repo
+    )
+
+    html, status = stats_html(state)
+
+    assert status == 200
+    assert "No runs to aggregate" in html
+
+
+class _RaisingArtifactStore:
+    """An ArtifactStore whose reads fail — a run deleted between listing and read, or a remote I/O
+    error. Only the methods `_run_manifests` touches are exercised (the storage I/O boundary)."""
+
+    def open_bytes(self, rel: str) -> bytes | None:
+        raise OSError("gone")
+
+    def get(self, rel: str) -> Artifact | None:
+        return None
+
+    def list_runs(self) -> list[dict[str, Any]]:
+        return []
+
+    def render_report(self, run_id: str) -> Artifact | None:
+        return None
+
+    def archive(self, run_id: str) -> Artifact | None:
+        return None
+
+
+def test_stats_html_skips_runs_whose_manifest_read_raises(tmp_path: Path) -> None:
+    scn_dir, cfg, runs = project(tmp_path)
+    repo = _repo()
+    repo.record_run(
+        RunRecord(
+            id="20260101-000000",
+            org_id="default",
+            status="done",
+            ok=True,
+            summary={"id": "20260101-000000"},
+        )
+    )
+    state = srv.ServeState(
+        scenarios_dir=scn_dir, config=cfg, runs_dir=runs, cwd=tmp_path, repository=repo
+    )
+    # The org's artifact store raises on read; the recorded run must be skipped, not crash the page.
+    state.org_stores = lambda org: StoreBundle(
+        _RaisingArtifactStore(), state.scenarios, state.baselines
     )
 
     html, status = stats_html(state)

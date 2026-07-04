@@ -149,12 +149,13 @@ def _run_manifests(state: ServeState, actor: str | None) -> list[dict[str, Any]]
         # serve's containment model for run ids everywhere else (BE-0015).
         if not isinstance(run_id, str) or not valid_run_id(run_id):
             continue
-        raw = artifacts.open_bytes(f"{run_id}/manifest.json")
-        if raw is None:
-            continue
         try:
-            data = json.loads(raw)
-        except (json.JSONDecodeError, ValueError):
+            # `open_bytes` can raise (a run deleted between listing and read; a remote store's I/O
+            # error), so an OSError is a skip too — the same "unreadable ones are skipped" promise as
+            # malformed JSON, never a failed dashboard.
+            raw = artifacts.open_bytes(f"{run_id}/manifest.json")
+            data = json.loads(raw) if raw is not None else None
+        except (OSError, json.JSONDecodeError, ValueError):
             continue
         if isinstance(data, dict):
             manifests.append(data)
