@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 import sys
 from collections.abc import Callable
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -26,7 +26,7 @@ from bajutsu.cli._shared import (
     _resolve_browser,
 )
 from bajutsu.config import WEB_ENGINES, Effective
-from bajutsu.orchestrator import RunResult
+from bajutsu.orchestrator import BlockedHandler, RunResult
 from bajutsu.report.archive import archive_run_dir
 from bajutsu.runner import device_pool, run_all, run_and_report, run_matrix_and_report
 from bajutsu.runner.build import BuildError, build_if_missing
@@ -183,7 +183,483 @@ def _expand_file(path: Path, eff: Effective) -> tuple[list[Scenario], str | None
     return scenarios, scenario_file.description
 
 
+def _resolve_config_and_engines(
+    config: str,
+    target_name: str,
+    *,
+    offline: bool,
+    require_pinned: bool,
+    headed: bool | None,
+    browser: str,
+    browsers: str,
+) -> tuple[Effective, dict[str, str] | None, list[str]]:
+    """Resolve the effective config (building a Git-sourced app on demand) and the engine list.
+
+    Applies `--headed` and `--browser`, then parses `--browsers` into the cross-browser matrix axis
+    (BE-0076). Returns the resolved config, its Git source provenance (None for a local config), and
+    the requested engines exactly as `--browsers` gave them: empty when `--browsers` is absent, a
+    single entry — already collapsed onto `eff.browser`, the single-engine path — for one engine, or
+    every listed engine for several. Only `len(...) > 1` takes the matrix path downstream.
+    """
+    eff, config_source, checkout_root = _load_effective_with_source(
+        config, target_name, offline=offline, require_pinned=require_pinned
+    )
+    # A Git-sourced config is fetched into a content-addressed checkout that holds no built binary,
+    # with no chance to build it by hand first — so build it on demand from the checkout root (where
+    # the config's `build` command is rooted). Local configs keep today's behavior: launch errors if
+    # the binary is missing (BE-0063).
+    if checkout_root is not None:
+        try:
+            build_if_missing(eff.build, eff.app_path, cwd=checkout_root)
+        except BuildError as e:
+            typer.echo(str(e))
+            raise typer.Exit(2) from None
+    # --headed/--no-headed overrides the target's `headless` config (web backend only; iOS ignores it).
+    if headed is not None:
+        eff = replace(eff, headless=not headed)
+    # --browser overrides the target's `browser` config (web backend only; flag > config > chromium).
+    eff = _resolve_browser(eff, browser)
+    # --browsers is the multi-engine spelling of the same axis: a comma list fans the run out across
+    # engines into a matrix. One engine collapses to the single-engine path (set as --browser would);
+    # >1 takes the matrix branch. Validated up front (unknown → 2).
+    engines = _parse_browsers(browsers)
+    if len(engines) == 1:
+        eff = replace(eff, browser=engines[0])
+    return eff, config_source, engines
+
+
+def _resolve_secrets(eff: Effective) -> tuple[dict[str, str], list[str]]:
+    """Resolve declared secrets from the environment into ${secrets.X} bindings and mask values.
+
+    Only secrets actually present in the environment are bound. The literal values are collected so
+    evidence and run-level artifacts can mask them (the scenario definition keeps the token, never
+    the value).
+    """
+    bindings = {f"secrets.{n}": os.environ[n] for n in eff.secrets if n in os.environ}
+    return bindings, list(bindings.values())
+
+
+def _load_scenarios(
+    eff: Effective, scenario: str, target_name: str
+) -> tuple[list[Scenario], str | None, str, list[Path]]:
+    """Load and fully expand the run's scenarios: the `--scenario` file, or the target's dir.
+
+    Each file's setup/component/data refs resolve relative to its own directory, then the expanded
+    scenarios concatenate into one run. Returns the scenarios, the single-file description (None for
+    a directory run), the report's source label, and the source files (for directory resolution).
+    """
+    files, single = _scenario_files(eff, scenario, target_name)
+    scenarios: list[Scenario] = []
+    description: str | None = None
+    for path in files:
+        expanded, file_desc = _expand_file(path, eff)
+        scenarios.extend(expanded)
+        if single:
+            description = file_desc
+    # The report's source label: the single file's name, or the dir name for a config-driven run.
+    source_name = files[0].name if single else Path(eff.scenarios or "").name
+    return scenarios, description, source_name, files
+
+
+def _filter_scenarios(
+    scenarios: list[Scenario], tag: str, exclude: str, erase: bool | None
+) -> list[Scenario]:
+    """Apply `--tag`/`--exclude` selection and the `--erase` override across the expanded set.
+
+    Selection runs over the combined set; an empty result is a usage error (exit 2). `--erase` /
+    `--no-erase`, when given, overrides every scenario's `preconditions.erase`.
+    """
+    include = [t.strip() for t in tag.split(",") if t.strip()]
+    excluded = [t.strip() for t in exclude.split(",") if t.strip()]
+    if include or excluded:
+        scenarios = select_scenarios(scenarios, include, excluded)
+        if not scenarios:
+            typer.echo("no scenarios match --tag/--exclude")
+            raise typer.Exit(2)
+    # --erase / --no-erase, when given, overrides every scenario; otherwise each scenario's own
+    # preconditions.erase (default off) decides whether its device is wiped first.
+    if erase is not None:
+        for s in scenarios:
+            s.preconditions.erase = erase
+    return scenarios
+
+
+def _select_actuator(backend: str, eff: Effective, engines: list[str]) -> tuple[str, list[str]]:
+    """Select the actuator for the requested backends, provisioning any web runtime, then validate.
+
+    Validates the backend before touching the Simulator CLIs, so an unknown/unavailable actuator
+    exits cleanly (2) rather than crashing on a missing `xcrun`/`simctl` — mirroring `doctor`.
+    Auto-installs Playwright and each requested engine for a web run (idempotent). A multi-engine
+    `--browsers` matrix on a non-web actuator is a user error caught up front. Returns the resolved
+    actuator and the ordered backend list.
+    """
+    backends = _backends(backend, eff.backend)
+    try:
+        # Auto-install Playwright and the requested engine(s) if a web run needs them — the matrix
+        # provisions every listed engine (each install is idempotent), else just `eff.browser`
+        # (with one engine, `eff.browser` already equals it; with none, it's the resolved default).
+        for engine in engines or [eff.browser]:
+            ensure_web_runtime(backends, engine)
+        actuator = select_actuator(backends)
+    except RuntimeError as e:
+        typer.echo(str(e))
+        raise typer.Exit(2) from None
+    # --browsers is a web-only axis: a multi-engine matrix on a non-web actuator is a user error,
+    # caught up front rather than after building an iOS pool that ignores the engine list.
+    if len(engines) > 1 and actuator != "playwright":
+        typer.echo(f"--browsers is web-only; backend '{actuator}' has a single engine")
+        raise typer.Exit(2)
+    return actuator, backends
+
+
+def _apply_dismiss_alerts(scenarios: list[Scenario], dismiss_alerts: bool | None) -> None:
+    """Apply the `--dismiss-alerts` / `--no-dismiss-alerts` override to every scenario's guard.
+
+    Preserves any per-scenario instruction; a no-op when the flag is unset (each scenario's own
+    `dismissAlerts`, default on, decides). Mirrors the `--erase` override.
+    """
+    if dismiss_alerts is None:
+        return
+    for s in scenarios:
+        instr = s.dismiss_alerts.instruction if s.dismiss_alerts else None
+        s.dismiss_alerts = DismissAlerts(enabled=dismiss_alerts, instruction=instr)
+
+
+def _alert_guard_factory(
+    scenarios: list[Scenario], eff: Effective, alert_instruction: str
+) -> Callable[[Scenario], BlockedHandler | None] | None:
+    """Build a per-scenario alert-guard factory, or None when no scenario wants a guard.
+
+    The vision locator is shared (one client); each scenario gets its own guard so its instruction
+    applies. Best-effort: the vision guard reaches Claude through the configured AI provider
+    (BE-0053/BE-0047), so a missing/insufficient credential prints a note and no-ops — never a client
+    that would fall back to a hosted default, so the deterministic gate still runs Claude-free.
+    """
+    if not any(s.dismiss_alerts is None or s.dismiss_alerts.enabled for s in scenarios):
+        return None
+    from bajutsu.alerts import ClaudeAlertLocator, SystemAlertGuard
+
+    # The credential is provider-specific: the key named by ai.keyEnv (default ANTHROPIC_API_KEY) for
+    # Anthropic, a provider-prefixed model for Bedrock (AWS credentials authenticate there). When it's
+    # absent we don't construct the locator at all — the guard no-ops rather than falling back.
+    guard_gap = credential_gap(eff.ai)
+    if guard_gap == "anthropic-key":
+        typer.echo(
+            f"note: dismiss-alerts is on but ${ac_key_env(eff.ai)} is unset — "
+            "the alert guard will no-op"
+        )
+    elif guard_gap == "bedrock-model":
+        typer.echo(
+            "note: dismiss-alerts is on but no Bedrock model id is set "
+            "(ai.model / BAJUTSU_BEDROCK_MODEL) — the alert guard will no-op"
+        )
+    # Mask the (possibly user-supplied) alert instruction before it reaches the model (BE-0047).
+    redactor = _ai_redactor(eff)
+    locator = ClaudeAlertLocator(ai=eff.ai, redactor=redactor) if guard_gap is None else None
+    default_instruction = alert_instruction or None
+
+    def _guard_for(s: Scenario) -> BlockedHandler | None:
+        if locator is None:
+            return None  # no usable AI credential: the guard no-ops, never a hosted fallback
+        cfg = s.dismiss_alerts or DismissAlerts()
+        if not cfg.enabled:
+            return None
+        return SystemAlertGuard(locator, cfg.instruction or default_instruction).dismiss
+
+    return _guard_for
+
+
+def _apply_mocks(scenarios: list[Scenario], network: bool) -> None:
+    """Bake each scenario's mocks into its launch env so BajutsuKit stubs matching requests.
+
+    Mocks ride the network channel (so the network is deterministic, and still observed) — a no-op
+    under `--no-network`. They're per-scenario and device-independent; the per-device collector url
+    is injected by the pool at lease time.
+    """
+    if not network:
+        return
+    for s in scenarios:
+        if s.mocks:
+            s.preconditions.launch_env.setdefault("BAJUTSU_MOCKS", dump_mocks(s.mocks))
+
+
+def _resolve_evidence_dirs(
+    baselines: str, schemas: str, goldens: str, eff: Effective, scenario_file: Path
+) -> tuple[Path, Path, GoldenContext | None]:
+    """Resolve the baselines / schemas directories and the golden context (flag > config > default).
+
+    Each follows --flag > config > dir-beside-the-scenario. The golden context is built only when the
+    goldens dir exists, so `golden` assertions can resolve their `path` within it.
+    """
+    baselines_dir = _resolve_baselines_dir(baselines, eff, scenario_file)
+    schemas_dir = _resolve_schemas_dir(schemas, eff, scenario_file)
+    goldens_dir = _resolve_goldens_dir(goldens, eff, scenario_file)
+    gc = GoldenContext(goldens_dir=goldens_dir) if goldens_dir.is_dir() else None
+    return baselines_dir, schemas_dir, gc
+
+
+@dataclass(frozen=True)
+class _RunPlan:
+    """Everything a resolved `run` needs to dispatch and report — plain data, no behavior.
+
+    `run` fills this from the option flags via the `_resolve_*`/`_load_*` helpers, then hands it to
+    `_dispatch` and `_finish`. It carries resolved inputs only (no methods, no `self`-mutation), so
+    each helper stays unit-testable without a Simulator.
+    """
+
+    eff: Effective
+    config_source: dict[str, str] | None
+    target_name: str
+    scenarios: list[Scenario]
+    description: str | None
+    source_name: str
+    engines: list[str]
+    actuator: str
+    backends: list[str]
+    udids: list[str]
+    workers: int
+    on_blocked_for: Callable[[Scenario], BlockedHandler | None] | None
+    baselines_dir: Path
+    schemas_dir: Path
+    golden_context: GoldenContext | None
+    secret_bindings: dict[str, str]
+    secret_values: list[str]
+    run_id: str
+    runs_dir: Path
+    network: bool
+    log_predicate: str
+    log_subsystem: str
+    progress: bool
+    zip_run: bool
+    evidence_store: str
+    upload_exec: str
+
+
+def _dispatch(plan: _RunPlan) -> tuple[list[RunResult], Path]:
+    """Bring up the launch server and execute the run — single-engine or cross-browser matrix.
+
+    The launch server (if the target declares one) is brought up before the pool leases and torn
+    down in the finally; one server serves every engine in a matrix run. Returns the per-scenario
+    results and the report manifest path.
+    """
+    # --progress streams scenario/step lines to stderr (the web UI merges them into its run log);
+    # stdout stays the machine-readable final PASS/FAIL line.
+    progress_fn = (
+        (lambda msg: print(msg, file=sys.stderr, flush=True)) if plan.progress else None  # noqa: T201
+    )
+    # Webhook: 'start' notification for endpoints that subscribe to it (BE-0099).
+    if plan.eff.notify:
+        from bajutsu import notify
+
+        notify.emit_start(
+            run_id=plan.run_id,
+            source_name=plan.source_name,
+            target=plan.target_name,
+            scenario_count=len(plan.scenarios),
+            endpoints=plan.eff.notify,
+            bindings=plan.secret_bindings,
+        )
+    # Bring up the app's target server (the web baseUrl host) if it declares `launchServer`, waiting
+    # on its readiness probe; reused if already serving. The pool leases lazily (the web driver
+    # navigates at lease time), so the server only needs to be up before the run, not before the pool.
+    try:
+        stop_server, exec_decision = start_launch_server(
+            plan.eff, upload_exec=plan.upload_exec or None
+        )
+    except RuntimeError as e:
+        typer.echo(str(e))
+        raise typer.Exit(2) from None
+    try:
+        if len(plan.engines) > 1:
+            return _dispatch_matrix(plan, progress_fn, exec_decision)
+        return _dispatch_single(plan, progress_fn, exec_decision)
+    except _env.DeviceError as e:
+        typer.echo(str(e))
+        raise typer.Exit(2) from None
+    finally:
+        stop_server()
+
+
+def _dispatch_single(
+    plan: _RunPlan,
+    progress_fn: Callable[[str], None] | None,
+    exec_decision: dict[str, str | None] | None,
+) -> tuple[list[RunResult], Path]:
+    """The single-engine path — exactly today's flow: one pool, one `run_and_report`, no matrix."""
+    lease, shutdown = device_pool(
+        plan.udids,
+        plan.backends,
+        plan.eff,
+        plan.runs_dir / plan.run_id,
+        network=plan.network,
+        log_predicate=plan.log_predicate or None,
+        log_subsystem=plan.log_subsystem or plan.eff.bundle_id,
+        secret_values=plan.secret_values,
+    )
+    try:
+        return run_and_report(
+            plan.eff,
+            plan.scenarios,
+            lease,
+            plan.runs_dir,
+            plan.run_id,
+            on_blocked_for=plan.on_blocked_for,
+            workers=plan.workers,
+            bindings=plan.secret_bindings,
+            secret_values=plan.secret_values,
+            source_name=plan.source_name,
+            description=plan.description,
+            progress=progress_fn,
+            baselines_dir=plan.baselines_dir,
+            schemas_dir=plan.schemas_dir,
+            actuator=plan.actuator,
+            config_source=plan.config_source,
+            exec_provenance=exec_decision,
+            golden_context=plan.golden_context,
+        )
+    finally:
+        shutdown()
+
+
+def _dispatch_matrix(
+    plan: _RunPlan,
+    progress_fn: Callable[[str], None] | None,
+    exec_decision: dict[str, str | None] | None,
+) -> tuple[list[RunResult], Path]:
+    """The cross-browser matrix (BE-0076): one pass per engine against its own pool.
+
+    Evidence lands under run_dir/<engine>/<sid>; the pipeline assembles ONE report whose matrix
+    aggregates the per-engine verdicts (all-must-pass, machine-only).
+    """
+
+    def run_pass(engine: str, engine_run_dir: Path) -> list[RunResult]:
+        if progress_fn is not None:
+            progress_fn(f"━ engine {engine}")
+        eff_e = replace(plan.eff, browser=engine)
+        lease, shutdown = device_pool(
+            plan.udids,
+            plan.backends,
+            eff_e,
+            engine_run_dir,
+            network=plan.network,
+            log_predicate=plan.log_predicate or None,
+            log_subsystem=plan.log_subsystem or eff_e.bundle_id,
+            secret_values=plan.secret_values,
+        )
+        try:
+            return run_all(
+                eff_e,
+                plan.scenarios,
+                lease,
+                on_blocked_for=plan.on_blocked_for,
+                workers=plan.workers,
+                run_dir=engine_run_dir,
+                bindings=plan.secret_bindings,
+                secret_values=plan.secret_values,
+                progress=progress_fn,
+                baselines_dir=plan.baselines_dir,
+                schemas_dir=plan.schemas_dir,
+                actuator=plan.actuator,
+                golden_context=plan.golden_context,
+            )
+        finally:
+            shutdown()
+
+    return run_matrix_and_report(
+        plan.eff,
+        plan.scenarios,
+        plan.engines,
+        run_pass,
+        plan.runs_dir,
+        plan.run_id,
+        source_name=plan.source_name,
+        description=plan.description,
+        secret_values=plan.secret_values,
+        config_source=plan.config_source,
+        exec_provenance=exec_decision,
+    )
+
+
+def _write_zip(manifest: Path) -> None:
+    """Package the finished run into runs/<id>.zip, strictly after the verdict (BE-0060).
+
+    A write failure (disk full, permissions) must not flip the verdict, so it warns on stderr rather
+    than raising; stdout stays the PASS/FAIL line.
+    """
+    run_dir = manifest.parent
+    zip_path = run_dir.parent / f"{run_dir.name}.zip"
+    try:
+        zip_path.write_bytes(archive_run_dir(run_dir))
+        typer.echo(f"wrote {zip_path}", err=True)
+    except OSError as e:
+        typer.echo(f"warning: --zip failed ({e}); the run verdict stands", err=True)
+
+
+def _upload_evidence(manifest: Path, evidence_store: str) -> None:
+    """Upload the finished run tree to object storage, strictly after the verdict (BE-0110).
+
+    object_store is imported lazily so the default path never loads the cloud SDKs. Any failure — a
+    bad URI, a missing SDK, or missing/denied credentials — warns and never flips the exit code.
+    """
+    from bajutsu.object_store import object_store_from_uri, parse_store_uri, upload_tree
+
+    run_dir = manifest.parent
+    try:
+        uri = parse_store_uri(evidence_store)
+        summary = upload_tree(object_store_from_uri(uri), run_dir, uri.prefix)
+    except Exception as e:  # a bad URI, a missing SDK, or missing/denied credentials — any of these
+        # must warn, never flip the already-final verdict (BE-0110). Client construction (e.g. GCS
+        # ADC) can raise SDK-specific errors, not just ValueError/ImportError.
+        typer.echo(f"warning: --evidence-store failed ({e}); the run verdict stands", err=True)
+    else:
+        typer.echo(
+            f"uploaded {summary.uploaded} file(s) to {evidence_store}"
+            + (f"; {len(summary.failures)} failed" if summary.failures else ""),
+            err=True,
+        )
+        for key, reason in summary.failures:
+            typer.echo(f"  warning: upload failed for {key}: {reason}", err=True)
+
+
+def _finish(
+    plan: _RunPlan, results: list[RunResult], manifest: Path, before: _usage.TokenUsage
+) -> None:
+    """Emit the verdict and every post-verdict step, then exit with the machine-only code.
+
+    Order is load-bearing: the PASS/FAIL verdict and exit code are decided first (machine-only, no
+    LLM); `--zip`, `--evidence-store`, and the AI usage summary all run strictly after and can only
+    warn, never flip the verdict (BE-0060/BE-0110).
+    """
+    ok = all(r.ok for r in results)
+    github.emit(results, manifest.parent / "report.html")  # annotations + summary in CI
+    # Webhook: post-verdict notification (BE-0099).
+    if plan.eff.notify:
+        from bajutsu import notify
+
+        notify.emit(
+            results,
+            run_id=plan.run_id,
+            source_name=plan.source_name,
+            backend=plan.actuator,
+            endpoints=plan.eff.notify,
+            bindings=plan.secret_bindings,
+            runs_dir=plan.runs_dir,
+        )
+    typer.echo(f"{'PASS' if ok else 'FAIL'}  {manifest}")
+    if plan.zip_run:
+        _write_zip(manifest)
+    if plan.evidence_store:
+        _upload_evidence(manifest, plan.evidence_store)
+    # The only AI in `run` is the alert guard (when it actually fired). Report its token use on
+    # stderr so stdout stays the machine-readable PASS/FAIL line; silent when nothing fired.
+    spent = _usage.snapshot() - before
+    if spent.calls:
+        typer.echo(spent.render(), err=True)
+    raise typer.Exit(0 if ok else 1)
+
+
 def run(
+    # --- Target & scenario selection ---
     target_name: str = typer.Option(..., "--target"),
     scenario: str = typer.Option(
         "",
@@ -200,6 +676,7 @@ def run(
     exclude: str = typer.Option(
         "", "--exclude", help="comma list; skip scenarios with any of these tags"
     ),
+    # --- Backend & device selection ---
     udid: str = typer.Option("booted"),
     workers: int = typer.Option(1),
     erase: bool | None = typer.Option(
@@ -207,6 +684,7 @@ def run(
         "--erase/--no-erase",
         help="override every scenario's preconditions.erase (default: per-scenario)",
     ),
+    # --- Alerts, capture & logging ---
     dismiss_alerts: bool | None = typer.Option(
         None,
         "--dismiss-alerts/--no-dismiss-alerts",
@@ -233,6 +711,7 @@ def run(
         "--progress/--no-progress",
         help="stream per-scenario/step progress to stderr as the run advances (used by the web UI)",
     ),
+    # --- Baseline / schema / golden directory overrides ---
     baselines: str = typer.Option(
         "",
         "--baselines",
@@ -251,6 +730,7 @@ def run(
         help="directory of golden JSON files for `golden` assertions (BE-0006) "
         "(default: goldens/ beside the scenario)",
     ),
+    # --- Browser & engine selection ---
     headed: bool | None = typer.Option(
         None,
         "--headed/--no-headed",
@@ -270,6 +750,7 @@ def run(
         f"({','.join(WEB_ENGINES)}); each scenario runs once per engine and the run is green only "
         "if every engine passes (all-must-pass). A single engine equals --browser",
     ),
+    # --- Reporting & output ---
     zip_run: bool = typer.Option(
         False,
         "--zip",
@@ -299,6 +780,7 @@ def run(
         help="internal: serve sets this for an uploaded bundle to govern its launchServer command "
         "(deny | reuse | sandbox); empty = ungoverned local/Git run (BE-0090)",
     ),
+    # --- Config sourcing ---
     config: str = typer.Option(DEFAULT_CONFIG),
     config_offline: bool = typer.Option(
         False,
@@ -316,321 +798,63 @@ def run(
     Pass/fail is machine-only; the sole AI is the alert guard (on by default per scenario), which
     only fires to clear an OS prompt that blocked a step — see each scenario's `dismissAlerts`.
     """
-    eff, config_source, checkout_root = _load_effective_with_source(
-        config, target_name, offline=config_offline, require_pinned=require_pinned_config
+    # Resolve the run's inputs from the flags — each step is an independently testable helper — then
+    # assemble the plan and hand it to dispatch/finish. `run` itself stays a thin sequence.
+    eff, config_source, engines = _resolve_config_and_engines(
+        config,
+        target_name,
+        offline=config_offline,
+        require_pinned=require_pinned_config,
+        headed=headed,
+        browser=browser,
+        browsers=browsers,
     )
-    # A Git-sourced config is fetched into a content-addressed checkout that holds no built binary,
-    # with no chance to build it by hand first — so build it on demand from the checkout root (where
-    # the config's `build` command is rooted). Local configs keep today's behavior: launch errors if
-    # the binary is missing (BE-0063).
-    if checkout_root is not None:
-        try:
-            build_if_missing(eff.build, eff.app_path, cwd=checkout_root)
-        except BuildError as e:
-            typer.echo(str(e))
-            raise typer.Exit(2) from None
-    # --headed/--no-headed overrides the target's `headless` config (web backend only; iOS ignores it).
-    if headed is not None:
-        eff = replace(eff, headless=not headed)
-    # --browser overrides the target's `browser` config (web backend only; flag > config > chromium).
-    eff = _resolve_browser(eff, browser)
-    # --browsers is the multi-engine spelling of the same axis (BE-0076): a comma list fans the run
-    # out across engines into a cross-browser matrix. One engine collapses to the single-engine path
-    # (set as --browser would); >1 takes the matrix branch below. Validated up front (unknown → 2).
-    engines = _parse_browsers(browsers)
-    if len(engines) == 1:
-        eff = replace(eff, browser=engines[0])
-    before = _usage.snapshot()
-    # Resolve declared secrets from the environment. They reach the device as ${secrets.X}
-    # is interpolated at action time, while their literal values are masked in evidence and
-    # run-level artifacts (the scenario definition keeps the token, never the value).
-    secret_bindings = {f"secrets.{n}": os.environ[n] for n in eff.secrets if n in os.environ}
-    secret_values = list(secret_bindings.values())
-    # Either the explicit `--scenario` file, or every `*.yaml` in the target's configured dir.
-    # Each file's setup/component/data refs resolve relative to its own directory, then the
-    # expanded scenarios are concatenated into one run.
-    files, single = _scenario_files(eff, scenario, target_name)
-    scenarios: list[Scenario] = []
-    description: str | None = None
-    for path in files:
-        expanded, file_desc = _expand_file(path, eff)
-        scenarios.extend(expanded)
-        if single:
-            description = file_desc
-    # The report's source label: the single file's name, or the dir name for a config-driven run.
-    source_name = files[0].name if single else Path(eff.scenarios or "").name
-    # --tag/--exclude selects across the combined, fully-expanded set.
-    include = [t.strip() for t in tag.split(",") if t.strip()]
-    excluded = [t.strip() for t in exclude.split(",") if t.strip()]
-    if include or excluded:
-        scenarios = select_scenarios(scenarios, include, excluded)
-        if not scenarios:
-            typer.echo("no scenarios match --tag/--exclude")
-            raise typer.Exit(2)
-    # --erase / --no-erase, when given, overrides every scenario; otherwise each scenario's
-    # own preconditions.erase (default off) decides whether its device is wiped first.
-    if erase is not None:
-        for s in scenarios:
-            s.preconditions.erase = erase
-    # Validate the backend before touching the Simulator CLIs, so an unknown/unavailable
-    # actuator exits cleanly (2) instead of crashing on a missing `xcrun`/`simctl` (the
-    # `run` path mirrors `doctor`: backend check first, then resolve the udid).
-    backends = _backends(backend, eff.backend)
-    try:
-        # Auto-install Playwright and the requested engine(s) if a web run needs them — the matrix
-        # provisions every listed engine (each install is idempotent), else just `eff.browser`
-        # (with one engine, `eff.browser` already equals it; with none, it's the resolved default).
-        for engine in engines or [eff.browser]:
-            ensure_web_runtime(backends, engine)
-        actuator = select_actuator(backends)
-    except RuntimeError as e:
-        typer.echo(str(e))
-        raise typer.Exit(2) from None
-    # --browsers is a web-only axis: a multi-engine matrix on a non-web actuator is a user error,
-    # caught up front rather than after building an iOS pool that ignores the engine list.
-    if len(engines) > 1 and actuator != "playwright":
-        typer.echo(f"--browsers is web-only; backend '{actuator}' has a single engine")
-        raise typer.Exit(2)
-    # Web has no simctl udid: `--workers N` is N near-free BrowserContext lanes (BE-0054), each
-    # built on its own worker thread (Playwright's sync API is thread-affine). Network collection
-    # is native there, so `--network` works per lane. For idb, `--udid` is a concrete comma list
-    # capped to the pool size. (The `--udid` "booted" default is unused on web.)
+    secret_bindings, secret_values = _resolve_secrets(eff)
+    scenarios, description, source_name, files = _load_scenarios(eff, scenario, target_name)
+    scenarios = _filter_scenarios(scenarios, tag, exclude, erase)
+    actuator, backends = _select_actuator(backend, eff, engines)
+    # Web has no simctl udid: `--workers N` is N near-free BrowserContext lanes (BE-0054); for idb,
+    # `--udid` is a concrete comma list capped to the pool size. (The "booted" default is unused on web.)
     udids, workers = _resolve_lanes(actuator, udid, workers, _env.resolve_udid)
-    # --dismiss-alerts / --no-dismiss-alerts, when given, forces every scenario's guard on/off
-    # (preserving any per-scenario instruction); otherwise each scenario's own `dismissAlerts`
-    # (default on) decides. Mirrors the --erase override.
-    if dismiss_alerts is not None:
-        for s in scenarios:
-            instr = s.dismiss_alerts.instruction if s.dismiss_alerts else None
-            s.dismiss_alerts = DismissAlerts(enabled=dismiss_alerts, instruction=instr)
-    # Build a per-scenario alert-guard factory unless every scenario disabled it. The vision
-    # locator is shared (one Anthropic client); each scenario gets its own guard so its
-    # instruction applies. The guard is best-effort, so a missing key just no-ops per run.
-    on_blocked_for = None
-    if any(s.dismiss_alerts is None or s.dismiss_alerts.enabled for s in scenarios):
-        from bajutsu.alerts import ClaudeAlertLocator, SystemAlertGuard
-        from bajutsu.orchestrator import BlockedHandler
-
-        # The vision guard reaches Claude through the configured AI provider (BE-0053/BE-0047), so the
-        # credential it needs is provider-specific: the key named by ai.keyEnv (default
-        # ANTHROPIC_API_KEY) for Anthropic, a provider-prefixed model for Bedrock (AWS credentials
-        # authenticate there). The deterministic gate must still run with no key, so a missing
-        # credential here is a no-op (the guard is best-effort) — never a client that would fall back
-        # to a hosted default: when the credential is absent we don't construct the locator at all.
-        guard_gap = credential_gap(eff.ai)
-        if guard_gap == "anthropic-key":
-            typer.echo(
-                f"note: dismiss-alerts is on but ${ac_key_env(eff.ai)} is unset — "
-                "the alert guard will no-op"
-            )
-        elif guard_gap == "bedrock-model":
-            typer.echo(
-                "note: dismiss-alerts is on but no Bedrock model id is set "
-                "(ai.model / BAJUTSU_BEDROCK_MODEL) — the alert guard will no-op"
-            )
-        # Mask the (possibly user-supplied) alert instruction before it reaches the model (BE-0047).
-        redactor = _ai_redactor(eff)
-        locator = ClaudeAlertLocator(ai=eff.ai, redactor=redactor) if guard_gap is None else None
-        default_instruction = alert_instruction or None
-
-        def _guard_for(s: Scenario) -> BlockedHandler | None:
-            if locator is None:
-                return None  # no usable AI credential: the guard no-ops, never a hosted fallback
-            cfg = s.dismiss_alerts or DismissAlerts()
-            if not cfg.enabled:
-                return None
-            return SystemAlertGuard(locator, cfg.instruction or default_instruction).dismiss
-
-        on_blocked_for = _guard_for
-    # Mocks ride the network channel: BajutsuKit stubs matching requests instead of
-    # forwarding them (so the network is deterministic, and still observed). They are
-    # per-scenario and device-independent, so they're baked into the scenario's launch env;
-    # the per-device collector url is injected by the pool at lease time.
-    if network:
-        for s in scenarios:
-            if s.mocks:
-                s.preconditions.launch_env.setdefault("BAJUTSU_MOCKS", dump_mocks(s.mocks))
-    # Visual assertions resolve `baseline: <name>` within this directory.
-    # Resolution order: --baselines flag > config baselines > baselines/ beside the scenario.
-    baselines_dir = _resolve_baselines_dir(baselines, eff, files[0])
-    # responseSchema assertions resolve `schema: <path>` within this directory (same order).
-    schemas_dir = _resolve_schemas_dir(schemas, eff, files[0])
-    # golden assertions resolve `path` within this directory (--goldens flag > config goldens > goldens/ beside the scenario).
-    goldens_dir = _resolve_goldens_dir(goldens, eff, files[0])
-    gc = GoldenContext(goldens_dir=goldens_dir) if goldens_dir.is_dir() else None
-    run_id = datetime.now(tz=UTC).strftime("%Y%m%d-%H%M%S")
-    # Webhook: 'start' notification for endpoints that subscribe to it (BE-0099).
-    if eff.notify:
-        from bajutsu import notify
-
-        notify.emit_start(
-            run_id=run_id,
-            source_name=source_name,
-            target=target_name,
-            scenario_count=len(scenarios),
-            endpoints=eff.notify,
-            bindings=secret_bindings,
-        )
-    # --progress streams scenario/step lines to stderr (the web UI merges them into its run
-    # log); stdout stays the machine-readable final PASS/FAIL line.
-    progress_fn = (lambda msg: print(msg, file=sys.stderr, flush=True)) if progress else None  # noqa: T201
-    # Bring up the app's target server (the web baseUrl host) if it declares `launchServer`, waiting
-    # on its readiness probe; reused if already serving, torn down in the finally below. The pool
-    # leases lazily (the web driver navigates at lease time), so the server only needs to be up
-    # before the run, not before the pool — and one server serves every engine in a matrix run.
-    try:
-        stop_server, exec_decision = start_launch_server(eff, upload_exec=upload_exec or None)
-    except RuntimeError as e:
-        typer.echo(str(e))
-        raise typer.Exit(2) from None
-    try:
-        if len(engines) > 1:
-            # Cross-browser matrix (BE-0076): one pass per engine against its own pool, evidence
-            # under run_dir/<engine>/<sid>; the pipeline assembles ONE report whose matrix aggregates
-            # the per-engine verdicts (all-must-pass, machine-only). One launchServer serves all.
-            def run_pass(engine: str, engine_run_dir: Path) -> list[RunResult]:
-                if progress_fn is not None:
-                    progress_fn(f"━ engine {engine}")
-                eff_e = replace(eff, browser=engine)
-                lease, shutdown = device_pool(
-                    udids,
-                    backends,
-                    eff_e,
-                    engine_run_dir,
-                    network=network,
-                    log_predicate=log_predicate or None,
-                    log_subsystem=log_subsystem or eff_e.bundle_id,
-                    secret_values=secret_values,
-                )
-                try:
-                    return run_all(
-                        eff_e,
-                        scenarios,
-                        lease,
-                        on_blocked_for=on_blocked_for,
-                        workers=workers,
-                        run_dir=engine_run_dir,
-                        bindings=secret_bindings,
-                        secret_values=secret_values,
-                        progress=progress_fn,
-                        baselines_dir=baselines_dir,
-                        schemas_dir=schemas_dir,
-                        actuator=actuator,
-                        golden_context=gc,
-                    )
-                finally:
-                    shutdown()
-
-            results, manifest = run_matrix_and_report(
-                eff,
-                scenarios,
-                engines,
-                run_pass,
-                Path(runs_dir),
-                run_id,
-                source_name=source_name,
-                description=description,
-                secret_values=secret_values,
-                config_source=config_source,
-                exec_provenance=exec_decision,
-            )
-        else:
-            # Single-engine run — exactly today's path: one pool, one `run_and_report`, no matrix.
-            lease, shutdown = device_pool(
-                udids,
-                backends,
-                eff,
-                Path(runs_dir) / run_id,
-                network=network,
-                log_predicate=log_predicate or None,
-                log_subsystem=log_subsystem or eff.bundle_id,
-                secret_values=secret_values,
-            )
-            try:
-                results, manifest = run_and_report(
-                    eff,
-                    scenarios,
-                    lease,
-                    Path(runs_dir),
-                    run_id,
-                    on_blocked_for=on_blocked_for,
-                    workers=workers,
-                    bindings=secret_bindings,
-                    secret_values=secret_values,
-                    source_name=source_name,
-                    description=description,
-                    progress=progress_fn,
-                    baselines_dir=baselines_dir,
-                    schemas_dir=schemas_dir,
-                    actuator=actuator,
-                    config_source=config_source,
-                    exec_provenance=exec_decision,
-                    golden_context=gc,
-                )
-            finally:
-                shutdown()
-    except _env.DeviceError as e:
-        typer.echo(str(e))
-        raise typer.Exit(2) from None
-    finally:
-        stop_server()
-    ok = all(r.ok for r in results)
-    github.emit(results, manifest.parent / "report.html")  # annotations + summary in CI
-    # Webhook: post-verdict notification (BE-0099).
-    if eff.notify:
-        from bajutsu import notify
-
-        notify.emit(
-            results,
-            run_id=run_id,
-            source_name=source_name,
-            backend=actuator,
-            endpoints=eff.notify,
-            bindings=secret_bindings,
-            runs_dir=Path(runs_dir),
-        )
-    typer.echo(f"{'PASS' if ok else 'FAIL'}  {manifest}")
-    # --zip packages the finished run into one artifact, strictly *after* the verdict above, so it
-    # cannot influence pass/fail (BE-0060). A write failure (disk full, permissions) must not flip
-    # the run's exit code, so it's reported as a warning, never raised. Path/warning go to stderr;
-    # stdout stays the PASS/FAIL line.
-    if zip_run:
-        run_dir = manifest.parent
-        zip_path = run_dir.parent / f"{run_dir.name}.zip"
-        try:
-            zip_path.write_bytes(archive_run_dir(run_dir))
-            typer.echo(f"wrote {zip_path}", err=True)
-        except OSError as e:
-            typer.echo(f"warning: --zip failed ({e}); the run verdict stands", err=True)
-    # --evidence-store uploads the finished run tree to object storage, strictly *after* the verdict
-    # above (like --zip), so it cannot influence pass/fail (BE-0110). object_store is imported lazily
-    # so the default path never loads the cloud SDKs (the import guard). A parse/connection/upload
-    # failure is reported as a warning and never flips the exit code — the verdict already stands.
-    if evidence_store:
-        from bajutsu.object_store import object_store_from_uri, parse_store_uri, upload_tree
-
-        run_dir = manifest.parent
-        try:
-            uri = parse_store_uri(evidence_store)
-            summary = upload_tree(object_store_from_uri(uri), run_dir, uri.prefix)
-        except Exception as e:  # a bad URI, a missing SDK, or missing/denied credentials — any of
-            # these must warn, never flip the already-final verdict (BE-0110). Client construction
-            # (e.g. GCS ADC) can raise SDK-specific errors, not just ValueError/ImportError.
-            typer.echo(f"warning: --evidence-store failed ({e}); the run verdict stands", err=True)
-        else:
-            typer.echo(
-                f"uploaded {summary.uploaded} file(s) to {evidence_store}"
-                + (f"; {len(summary.failures)} failed" if summary.failures else ""),
-                err=True,
-            )
-            for key, reason in summary.failures:
-                typer.echo(f"  warning: upload failed for {key}: {reason}", err=True)
-    # The only AI in `run` is the alert guard (when it actually fired). Report its token use on
-    # stderr so stdout stays the machine-readable PASS/FAIL line; silent when nothing fired.
-    spent = _usage.snapshot() - before
-    if spent.calls:
-        typer.echo(spent.render(), err=True)
-    raise typer.Exit(0 if ok else 1)
+    _apply_dismiss_alerts(scenarios, dismiss_alerts)
+    on_blocked_for = _alert_guard_factory(scenarios, eff, alert_instruction)
+    _apply_mocks(scenarios, network)
+    baselines_dir, schemas_dir, gc = _resolve_evidence_dirs(
+        baselines, schemas, goldens, eff, files[0]
+    )
+    plan = _RunPlan(
+        eff=eff,
+        config_source=config_source,
+        target_name=target_name,
+        scenarios=scenarios,
+        description=description,
+        source_name=source_name,
+        engines=engines,
+        actuator=actuator,
+        backends=backends,
+        udids=udids,
+        workers=workers,
+        on_blocked_for=on_blocked_for,
+        baselines_dir=baselines_dir,
+        schemas_dir=schemas_dir,
+        golden_context=gc,
+        secret_bindings=secret_bindings,
+        secret_values=secret_values,
+        run_id=datetime.now(tz=UTC).strftime("%Y%m%d-%H%M%S"),
+        runs_dir=Path(runs_dir),
+        network=network,
+        log_predicate=log_predicate,
+        log_subsystem=log_subsystem,
+        progress=progress,
+        zip_run=zip_run,
+        evidence_store=evidence_store,
+        upload_exec=upload_exec,
+    )
+    # Snapshot AI usage before dispatch — the alert guard is the only thing that can spend tokens,
+    # and it fires during dispatch, so `_finish` reports exactly what this run used.
+    before = _usage.snapshot()
+    results, manifest = _dispatch(plan)
+    _finish(plan, results, manifest, before)
 
 
 def register(app: typer.Typer) -> None:
