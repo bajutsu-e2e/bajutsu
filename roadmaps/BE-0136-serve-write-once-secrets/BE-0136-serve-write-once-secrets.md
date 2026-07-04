@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0136") |
-| Implementing PR | _pending_ |
+| Implementing PR | [#661](https://github.com/bajutsu-e2e/bajutsu/pull/661) |
 | Topic | Security hardening |
 | Related | [BE-0015](../BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md), [BE-0016](../BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md), [BE-0032](../BE-0032-secret-variables/BE-0032-secret-variables.md) |
 <!-- /BE-METADATA -->
@@ -159,7 +159,7 @@ here, but per-org injection into a worker's spawned job belongs to BE-0015's per
   (`bajutsu/serve/secrets.py`) with the local `EnvSecretStore`, the hosted `DbSecretStore`
   (`bajutsu/serve/server/secrets.py`) with the `secrets` table (migration `0006`) and `Fernet`
   encryption, the `reveal` removal across `operations` / both HTTP shells / the web UI, and the
-  bilingual docs. `_pending_` until the PR number is assigned.
+  bilingual docs. Shipped in [#661](https://github.com/bajutsu-e2e/bajutsu/pull/661).
 
 ## References
 
