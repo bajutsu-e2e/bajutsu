@@ -9,7 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0119") |
-| 実装 PR | _pending_ |
+| 実装 PR | [#663](https://github.com/bajutsu-e2e/bajutsu/pull/663) |
 | トピック | config の取得元 |
 <!-- /BE-METADATA -->
 
@@ -51,7 +51,7 @@
 - [x] 同一バージョンのドキュメントに対する `extra="forbid"` は変更しない
 - [x] シナリオモデルのスキーマ版上げの運用ルールを文書化する
 
-- _pending_ — `SCHEMA_VERSION` 定数とエイリアス付きの `schema` フィールドを `ScenarioFile` に追加し、
+- [#663](https://github.com/bajutsu-e2e/bajutsu/pull/663) — `SCHEMA_VERSION` 定数とエイリアス付きの `schema` フィールドを `ScenarioFile` に追加し、
   `load_scenario_file` に検証前のバージョンゲート（新しすぎる、または 1 未満のスキーマを対処可能な
   エラーで拒否し、サポート範囲内のドキュメントに対する `extra="forbid"` は変更しない）を追加。
   スキーマ版上げの運用ルールを `docs/scenarios.md`（および `docs/ja/`）に記載しました。

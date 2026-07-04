@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0119") |
-| Implementing PR | _pending_ |
+| Implementing PR | [#663](https://github.com/bajutsu-e2e/bajutsu/pull/663) |
 | Topic | Configuration sourcing |
 <!-- /BE-METADATA -->
 
@@ -105,7 +105,7 @@ unaffected.
 - [x] Keep `extra="forbid"` unchanged for same-version documents
 - [x] Document the schema-bump discipline for scenario models
 
-- _pending_ — Add the `SCHEMA_VERSION` constant and aliased `schema` field to `ScenarioFile`, a
+- [#663](https://github.com/bajutsu-e2e/bajutsu/pull/663) — Add the `SCHEMA_VERSION` constant and aliased `schema` field to `ScenarioFile`, a
   pre-validation version gate in `load_scenario_file` (rejects a too-new or below-1 schema with an
   actionable error, leaves `extra="forbid"` untouched for in-support documents), and the schema-bump
   discipline in `docs/scenarios.md` (+ `docs/ja/`).
