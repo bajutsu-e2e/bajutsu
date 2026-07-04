@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0151") |
-| Implementing PR | _pending_ |
+| Implementing PR | [#664](https://github.com/bajutsu-e2e/bajutsu/pull/664) |
 | Topic | Security hardening |
 <!-- /BE-METADATA -->
 
@@ -106,7 +106,7 @@ enrich path never sends a screenshot to the AI provider and the on-screen-secret
 item warns about does not apply to it. The warning therefore lands on the two AI CLI paths that do
 send screenshots (`record` and `triage --ai`); `enrich` is intentionally out of scope.
 
-- [`_warn_onscreen_secrets`](../../bajutsu/cli/_shared.py) — shared helper printing the one-time
+- [#664](https://github.com/bajutsu-e2e/bajutsu/pull/664) — [`_warn_onscreen_secrets`](../../bajutsu/cli/_shared.py), a shared helper printing the one-time
   disclosure to stderr when `Effective.secrets` is non-empty; wired into `record` (before the
   authoring loop) and `triage --ai` (after resolving the AI target). Docs updated in
   `docs/configuration.md` + `docs/ja/configuration.md`. Tests in
