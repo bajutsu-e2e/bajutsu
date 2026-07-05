@@ -142,6 +142,7 @@ The first slices of the multi-platform direction that have shipped: a **platform
 <!-- GENERATED:implemented-backend -->
 | ID | Item | Status |
 |---|---|---|
+| [BE-0019](BE-0019-xcuitest-backend/BE-0019-xcuitest-backend.md) | XCUITest backend | Implemented |
 | [BE-0020](BE-0020-multi-backend-evidence-fallback/BE-0020-multi-backend-evidence-fallback.md) | Multi-backend evidence fallback | Implemented |
 | [BE-0105](BE-0105-xcuitest-single-snapshot-query/BE-0105-xcuitest-single-snapshot-query.md) | Single-snapshot element query for XCUITest | Implemented |
 <!-- /GENERATED:implemented-backend -->
@@ -466,9 +467,7 @@ The Web (Playwright) backend and its completion (rich capabilities, parallel run
 ### Backend expansion (iOS actuators)
 
 <!-- GENERATED:in-progress-backend -->
-| ID | Item | Status |
-|---|---|---|
-| [BE-0019](BE-0019-xcuitest-backend/BE-0019-xcuitest-backend.md) | XCUITest backend | In progress |
+
 <!-- /GENERATED:in-progress-backend -->
 
 ### Development infrastructure (contributor workflow)

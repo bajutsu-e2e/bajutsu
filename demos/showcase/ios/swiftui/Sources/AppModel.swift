@@ -50,6 +50,12 @@ final class AppModel: ObservableObject {
 
     private var conformanceTimer: Timer?
 
+    // Two-finger gesture mode (BE-0019): a test-only affordance gated on the SHOWCASE_GESTURES
+    // launch env, mirroring conformance above. When set, the app renders a flat, scroll-free
+    // pinch/rotate screen so the on-device `xcuitest (multi-touch)` run can resolve and actuate the
+    // targets without depending on scroll — two-finger gestures are the one class idb cannot drive.
+    let gesturesMode: Bool
+
     let animationsDisabled: Bool
 
     private let env: [String: String]
@@ -59,6 +65,7 @@ final class AppModel: ObservableObject {
         animationsDisabled = env["SHOWCASE_UITEST"] != nil
 
         selectedTab = Self.tab(env["SHOWCASE_TAB"])
+        gesturesMode = env["SHOWCASE_GESTURES"] != nil
         conformanceIDs = Self.conformanceIDs(env["SHOWCASE_CONFORMANCE"])
         if conformanceIDs != nil {
             startConformancePolling()
