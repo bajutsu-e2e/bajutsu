@@ -479,14 +479,30 @@ expect:
 ```yaml
 - assert:
     - visual: { baseline: "home.png", threshold: 0.02, exclude: [{ x: 0, y: 0, w: 390, h: 47 }] }
+    - visual: { baseline: "detail.png", compare: pixelmatch, colorTolerance: 0.1, antialiasing: true }
 ```
 
-`visual` captures a screenshot and pixel-compares it against `baseline` (a PNG resolved inside the run's
-baselines dir — `--baselines`, or `baselines/` beside the scenario). `threshold` is the allowed fraction
-of differing pixels (default `0.0` = exact match); `exclude` lists rectangles (screenshot pixels) to mask
-before comparing, e.g. a status bar or a clock. A baseline is created or updated with the `approve`
-command ([cli](cli.md#approve)) or the `serve` UI; a missing baseline fails the assertion. Pair it with
-`overrideStatusBar` to keep the clock / battery deterministic. Diffs are surfaced in `report.html`.
+`visual` captures a screenshot and compares it against `baseline` (a PNG resolved inside the run's
+baselines dir — `--baselines`, or `baselines/` beside the scenario).
+
+The comparison engine is selectable via `compare` (BE-0165):
+
+| Engine | Description | Default |
+|---|---|---|
+| `exact` | Pixel-perfect — any channel difference counts as a changed pixel. | Yes (backward-compatible) |
+| `pixelmatch` | Perceptual YIQ color distance with anti-aliasing detection. Tolerates sub-pixel rendering noise and one-pixel edge shifts. | No |
+
+When `compare` is omitted, the engine falls back to the target's `visual_compare` config
+(under `defaults:` or `targets.<name>`), and then to `exact`.
+
+`threshold` is the allowed percentage of differing pixels (default `0.0` = exact match), shared
+by all engines. `colorTolerance` (0–1, default `0.1`) sets the per-pixel perceptual color
+tolerance for `pixelmatch`; `antialiasing` (default `true`) discounts anti-aliased pixels from
+the diff. `exclude` lists rectangles (screenshot pixels) to mask before comparing, e.g. a
+status bar or a clock. A baseline is created or updated with the `approve` command
+([cli](cli.md#approve)) or the `serve` UI; a missing baseline fails the assertion. Pair it with
+`overrideStatusBar` to keep the clock / battery deterministic. Diffs are surfaced in
+`report.html`; for `pixelmatch`, only the surviving (non-discounted) pixels appear in the diff.
 
 ## Network mocks (deterministic stubs)
 

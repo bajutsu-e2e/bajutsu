@@ -207,6 +207,7 @@ MagicPod and Autify are built around **AI self-healing + no-code + cloud device 
 | [BE-0039](BE-0039-self-healing-propose-optin/BE-0039-self-healing-propose-optin.md) | Self-healing limited to "propose + opt-in apply" | Implemented | Both |
 | [BE-0046](BE-0046-otp-email-steps/BE-0046-otp-email-steps.md) | OTP & email side-channel steps | Implemented | MagicPod |
 | [BE-0052](BE-0052-device-state-timezone-clipboard-shake/BE-0052-device-state-timezone-clipboard-shake.md) | Device-state primitives: timezone, clipboard, shake | Implemented | MagicPod |
+| [BE-0165](BE-0165-visual-compare-engines/BE-0165-visual-compare-engines.md) | Selectable perceptual compare engines for visual regression | Implemented |  |
 <!-- /GENERATED:implemented-competitive -->
 
 ### Candidates from competitive research (Maestro)
@@ -673,7 +674,6 @@ Sending a run's result out to a service the team already lives in. These are pos
 <!-- GENERATED:proposals-competitive -->
 | ID | Item | Status | Origin |
 |---|---|---|---|
-| [BE-0165](BE-0165-visual-compare-engines/BE-0165-visual-compare-engines.md) | Selectable perceptual compare engines for visual regression | Proposal |  |
 | [BE-0171](BE-0171-element-scoped-visual-assertions/BE-0171-element-scoped-visual-assertions.md) | Element-scoped visual assertions and selector-based masking | Proposal |  |
 <!-- /GENERATED:proposals-competitive -->
 

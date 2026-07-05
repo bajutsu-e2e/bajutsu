@@ -162,6 +162,18 @@ class Artifact:
 When an evidence kind cannot be supplied by any backend in the list, a `SkippedCapture(kind,
 reason)` is recorded per scenario and disclosed in the manifest — the gap is never silently empty.
 
+## Visual evidence
+
+A `visual` assertion produces a `VisualEvidence` record carried into the manifest and the
+report. It contains the run-dir-relative paths to the baseline copy, the actual screenshot,
+and the diff visualization (when the comparison found differences), plus `diff_pct` (the
+percentage of pixels that differed) and `engine` — the comparison engine that produced the
+verdict (`"exact"` or `"pixelmatch"`; [BE-0165](../roadmaps/BE-0165-visual-compare-engines/BE-0165-visual-compare-engines.md)).
+
+The engine is selected per assertion (`compare:`) with a target-level config fallback
+(`visual_compare`), and is recorded in the evidence so the report can show which algorithm
+ran. Implementation: `bajutsu/assertions.py` `VisualEvidence`.
+
 ## Masking (redact)
 
 Screenshots, logs, and network data can capture PII (personally identifiable information) and tokens. Declare what to mask before writing. Implementation: `scenario/models/evidence.py` `Redact`. Config's `redact` and the scenario's `redact` are merged (union) ([configuration](configuration.md#merging-redact)).

@@ -208,8 +208,21 @@ class VisualMatch(_Model):
     """Visual regression assertion — compare a screenshot to a baseline image."""
 
     baseline: str
+    compare: Literal["exact", "pixelmatch"] | None = None
     threshold: float = 0.0  # allowed diff percentage (0.0 = exact match)
+    color_tolerance: float = Field(default=0.1, ge=0.0, le=1.0, alias="colorTolerance")
+    antialiasing: bool = True
     exclude: list[ExcludeRegion] | None = None
+
+    @model_validator(mode="after")
+    def _engine_fields(self) -> Self:
+        pm_fields = {"color_tolerance", "antialiasing"} & self.model_fields_set
+        if self.compare == "exact" and pm_fields:
+            raise ValueError(
+                "colorTolerance/antialiasing are pixelmatch-only; "
+                "remove them or set compare to 'pixelmatch'"
+            )
+        return self
 
 
 class ClipboardMatch(_Model):

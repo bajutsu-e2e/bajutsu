@@ -78,3 +78,112 @@ def test_size_mismatch_fails(tmp_path: Path) -> None:
     result = compare_images(actual, baseline)
     assert not result.ok
     assert "size" in result.reason
+
+
+# --- exact engine explicit (BE-0165) ---
+
+
+def test_exact_engine_explicit_identical(tmp_path: Path) -> None:
+    actual = _save(_solid((255, 0, 0, 255)), tmp_path / "actual.png")
+    baseline = _save(_solid((255, 0, 0, 255)), tmp_path / "baseline.png")
+    result = compare_images(actual, baseline, engine="exact")
+    assert result.ok
+    assert result.diff_pct == 0.0
+
+
+def test_exact_engine_explicit_different(tmp_path: Path) -> None:
+    actual = _save(_solid((255, 0, 0, 255)), tmp_path / "actual.png")
+    baseline = _save(_solid((0, 0, 255, 255)), tmp_path / "baseline.png")
+    result = compare_images(actual, baseline, engine="exact")
+    assert not result.ok
+
+
+# --- byte pre-check short-circuit (BE-0165 item 4) ---
+
+
+def test_byte_precheck_shortcircuits(tmp_path: Path) -> None:
+    actual = _save(_solid((100, 100, 100, 255)), tmp_path / "actual.png")
+    baseline = _save(_solid((100, 100, 100, 255)), tmp_path / "baseline.png")
+    for eng in ("exact", "pixelmatch"):
+        result = compare_images(actual, baseline, engine=eng)
+        assert result.ok
+        assert result.diff_pct == 0.0
+
+
+# --- pixelmatch engine (BE-0165) ---
+
+
+def test_pixelmatch_identical(tmp_path: Path) -> None:
+    actual = _save(_solid((255, 0, 0, 255)), tmp_path / "actual.png")
+    baseline = _save(_solid((255, 0, 0, 255)), tmp_path / "baseline.png")
+    result = compare_images(actual, baseline, engine="pixelmatch")
+    assert result.ok
+    assert result.diff_pct == 0.0
+
+
+def test_pixelmatch_subpixel_noise_passes(tmp_path: Path) -> None:
+    """Tiny RGB shifts within colorTolerance pass pixelmatch but fail exact."""
+    baseline_img = _solid((200, 100, 50, 255))
+    actual_img = _solid((200, 100, 50, 255))
+    for x in range(10):
+        actual_img.putpixel((x, 0), (202, 101, 51, 255))
+
+    actual = _save(actual_img, tmp_path / "actual.png")
+    baseline = _save(baseline_img, tmp_path / "baseline.png")
+
+    exact = compare_images(actual, baseline, engine="exact")
+    assert not exact.ok
+
+    pm = compare_images(actual, baseline, engine="pixelmatch", color_tolerance=0.1)
+    assert pm.ok
+
+
+def test_pixelmatch_large_diff_fails(tmp_path: Path) -> None:
+    actual = _save(_solid((255, 0, 0, 255)), tmp_path / "actual.png")
+    baseline = _save(_solid((0, 0, 255, 255)), tmp_path / "baseline.png")
+    result = compare_images(actual, baseline, engine="pixelmatch", color_tolerance=0.1)
+    assert not result.ok
+    assert result.diff_pct > 50
+
+
+def test_pixelmatch_antialiasing_edge_shift(tmp_path: Path) -> None:
+    """A black/white edge shifted by 1px is discounted with antialiasing=True."""
+    size = (20, 20)
+    baseline_img = Image.new("RGBA", size, (255, 255, 255, 255))
+    actual_img = Image.new("RGBA", size, (255, 255, 255, 255))
+
+    for y in range(20):
+        for x in range(10):
+            baseline_img.putpixel((x, y), (0, 0, 0, 255))
+        for x in range(11):
+            actual_img.putpixel((x, y), (0, 0, 0, 255))
+
+    actual = _save(actual_img, tmp_path / "actual.png")
+    baseline = _save(baseline_img, tmp_path / "baseline.png")
+
+    with_aa = compare_images(
+        actual, baseline, engine="pixelmatch", antialiasing=True, threshold=5.0
+    )
+    assert with_aa.ok
+
+    without_aa = compare_images(
+        actual, baseline, engine="pixelmatch", antialiasing=False, threshold=0.0
+    )
+    assert not without_aa.ok
+
+
+def test_pixelmatch_diff_image(tmp_path: Path) -> None:
+    """pixelmatch diff highlights surviving (non-discounted) different pixels."""
+    actual_img = _solid((255, 0, 0, 255), (10, 10))
+    baseline_img = _solid((0, 0, 255, 255), (10, 10))
+    actual = _save(actual_img, tmp_path / "actual.png")
+    baseline = _save(baseline_img, tmp_path / "baseline.png")
+    diff_path = tmp_path / "diff.png"
+
+    result = compare_images(actual, baseline, engine="pixelmatch", diff_path=diff_path)
+    assert not result.ok
+    assert diff_path.exists()
+    diff_img = Image.open(diff_path)
+    assert diff_img.size == (10, 10)
+    r, _g, _b, _a = diff_img.getpixel((5, 5))
+    assert r > 200

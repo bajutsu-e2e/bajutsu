@@ -190,7 +190,10 @@ ClipboardMatch ::= ( {equals:string} | {matches:string} )   # exactly one; match
 
 VisualMatch ::= {                  # pixel-compare the screen against a baseline image
   baseline:   string,             # filename resolved inside --baselines (default: baselines/ beside the scenario)
+  compare?:   "exact" | "pixelmatch",  # comparison engine (default: config or "exact"; BE-0165)
   threshold?: number,             # max allowed diff, % of pixels (default 0.0 = exact)
+  colorTolerance?: number,        # per-pixel perceptual color tolerance, 0–1 (pixelmatch; default 0.1)
+  antialiasing?: boolean,         # discount anti-aliased pixels from the diff (pixelmatch; default true)
   exclude?:   list(<ExcludeRegion>),  # regions masked before comparing (status bar, clock, …)
 }
 ExcludeRegion ::= { x: number, y: number, w: number, h: number }   # screenshot pixels
