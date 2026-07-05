@@ -423,9 +423,11 @@ def _post_report(port: int, token: str | None) -> int:
         f"http://127.0.0.1:{port}/report", data=body, method="POST", headers=headers
     )
     try:
-        return int(urllib.request.urlopen(req).status)
+        with urllib.request.urlopen(req) as resp:
+            return int(resp.status)
     except urllib.error.HTTPError as err:
-        return int(err.code)
+        with err:  # HTTPError is itself the response object — close its socket/FD
+            return int(err.code)
 
 
 def test_collector_accepts_matching_token() -> None:
