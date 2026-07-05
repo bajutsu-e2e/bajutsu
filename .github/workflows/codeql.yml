@@ -1,8 +1,14 @@
 # CodeQL code scanning (advanced setup). Replaces GitHub's default setup so we can
-# path-filter the heavy Swift analysis: on pull requests, Swift is only analysed when
-# Swift sources (or this workflow itself) change, while the lightweight languages always
-# run. Non-PR events (push to main, merge queue, the weekly schedule) always run the full
-# matrix so the default-branch alert baseline stays complete.
+# path-filter the heavier per-platform analyses: on pull requests, Swift (BajutsuKit) and
+# Android java-kotlin (the demos/showcase/android Compose + Views app) are each analysed
+# only when their own sources — or this workflow itself — change, while the lightweight
+# always-on languages (actions / javascript-typescript / python) run every time. Non-PR
+# events (push to main, merge queue, the weekly schedule) always run the full matrix so the
+# default-branch alert baseline stays complete.
+#
+# The Android job uses `build-mode: none` (buildless extraction), so it needs no Android SDK
+# or Gradle build on the runner — it stays on ubuntu alongside the core languages, unlike
+# Swift, which builds via `swift build` on macOS.
 #
 # The required branch-protection status check is the aggregation job `CodeQL` below,
 # not the per-language `Analyze (...)` jobs — that keeps a single stable required check
@@ -34,9 +40,10 @@ jobs:
       pull-requests: read
     outputs:
       swift: ${{ steps.filter.outputs.swift }}
+      android: ${{ steps.filter.outputs.android }}
     steps:
-      # The path filter is only consumed to skip Swift on pull requests; every other event
-      # forces the full matrix (see analyze-swift's `if`). Running paths-filter only for
+      # The path filter is only consumed to skip Swift / Android on pull requests; every other
+      # event forces the full matrix (see each analyze job's `if`). Running paths-filter only for
       # pull_request keeps this job cheap and avoids relying on git diff data that may be
       # unavailable for push/merge_group/schedule/dispatch.
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
@@ -49,6 +56,11 @@ jobs:
             swift:
               - "BajutsuKit/**"
               - "**/*.swift"
+              - ".github/workflows/codeql.yml"
+            android:
+              - "demos/showcase/android/**"
+              - "**/*.kt"
+              - "**/*.java"
               - ".github/workflows/codeql.yml"
 
   analyze:
@@ -109,12 +121,41 @@ jobs:
         with:
           category: "/language:swift"
 
+  analyze-java-kotlin:
+    name: Analyze (java-kotlin)
+    needs: changes
+    # Skip Android only on pull requests that touch neither Android/Kotlin/Java sources nor this
+    # workflow. Every other event (push to main, merge_group, schedule, manual dispatch) runs it.
+    if: >-
+      needs.changes.outputs.android == 'true' ||
+      github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      security-events: write
+      packages: read
+      actions: read
+      contents: read
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@c35d1b164463ee62a100735382aaaa525c5d3496 # codeql-bundle-v2.25.6
+        with:
+          # Java and Kotlin share one CodeQL language id; `build-mode: none` extracts the Android
+          # showcase sources without an Android SDK or Gradle build on the runner.
+          languages: java-kotlin
+          build-mode: none
+      - name: Perform CodeQL analysis
+        uses: github/codeql-action/analyze@c35d1b164463ee62a100735382aaaa525c5d3496 # codeql-bundle-v2.25.6
+        with:
+          category: "/language:java-kotlin"
+
   # Aggregation gate wired to the required "CodeQL" branch-protection check. Passes when
-  # every analysis job that ran succeeded; a skipped Swift job (PR without Swift changes)
-  # is treated as OK. This keeps one stable required check independent of language skips.
+  # every analysis job that ran succeeded; a skipped per-platform job (a PR without Swift or
+  # Android changes) is treated as OK. This keeps one stable required check independent of
+  # which languages are skipped.
   codeql:
     name: CodeQL
-    needs: [analyze, analyze-swift]
+    needs: [analyze, analyze-swift, analyze-java-kotlin]
     if: always()
     runs-on: ubuntu-latest
     steps:
@@ -122,13 +163,18 @@ jobs:
         env:
           ANALYZE_RESULT: ${{ needs.analyze.result }}
           SWIFT_RESULT: ${{ needs.analyze-swift.result }}
+          ANDROID_RESULT: ${{ needs.analyze-java-kotlin.result }}
         run: |
-          echo "analyze=$ANALYZE_RESULT swift=$SWIFT_RESULT"
+          echo "analyze=$ANALYZE_RESULT swift=$SWIFT_RESULT android=$ANDROID_RESULT"
           if [ "$ANALYZE_RESULT" != "success" ]; then
             echo "::error::CodeQL analysis failed for core languages ($ANALYZE_RESULT)"
             exit 1
           fi
           if [ "$SWIFT_RESULT" != "success" ] && [ "$SWIFT_RESULT" != "skipped" ]; then
             echo "::error::CodeQL analysis failed for Swift ($SWIFT_RESULT)"
+            exit 1
+          fi
+          if [ "$ANDROID_RESULT" != "success" ] && [ "$ANDROID_RESULT" != "skipped" ]; then
+            echo "::error::CodeQL analysis failed for Android java-kotlin ($ANDROID_RESULT)"
             exit 1
           fi
