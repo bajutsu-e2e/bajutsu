@@ -72,7 +72,7 @@ class Agent(Protocol):
 シーム（BE-0104）を通して話すため、**プロバイダは設定の細部**であって別のエージェントではありません。
 解決済みの `ai.provider`（[configuration](configuration.md#ai-プロバイダai-be-0047)）が次を選びます。
 
-- **`anthropic`**（既定）：**Anthropic API**。`ANTHROPIC_API_KEY`（または `ai.keyEnv` が指す環境変数）で認証します。
+- **`api-key`**（既定）：**Anthropic API**。`ANTHROPIC_API_KEY`（または `ai.keyEnv` が指す環境変数）で認証します。（旧称 `anthropic` も同じものとして解決されます。）
 - **`bedrock`**：**Amazon Bedrock**。AWS の資格情報と、プロバイダプレフィックス付きのモデル id
   （`BAJUTSU_BEDROCK_MODEL`）で認証します。
 - **`ant`**：公式の **Anthropic CLI**（`ant auth login`。ブラウザ経由の OAuth（SSO）サインイン）。

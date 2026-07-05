@@ -48,7 +48,7 @@ def test_plan_dedupes_across_targets() -> None:
 
 def test_plan_detects_a_configured_ai_provider() -> None:
     cfg = load_config(
-        "defaults:\n  ai:\n    provider: anthropic\n"
+        "defaults:\n  ai:\n    provider: api-key\n"
         "targets:\n  demo:\n    bundleId: com.example.demo\n    backend: [idb]\n"
     )
     assert "ai" in provision.plan(cfg).extras
@@ -71,7 +71,7 @@ def test_plan_with_no_targets_installs_no_backend() -> None:
 def test_plan_no_targets_still_detects_a_defaults_ai_provider() -> None:
     # AI is a config-level signal (defaults.ai), independent of any target — so it is installed
     # even when no target is declared, unlike backends.
-    cfg = load_config("defaults:\n  ai:\n    provider: anthropic\n")
+    cfg = load_config("defaults:\n  ai:\n    provider: api-key\n")
     assert provision.plan(cfg).extras == ("ai",)
 
 

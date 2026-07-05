@@ -23,7 +23,7 @@ defaults:                       # 全ターゲット共通の既定
   capture: [screenshot.after, elements, actionLog]
   redact:  { headers: [Authorization, Cookie], fields: [token, password] }
   secrets: [LOGIN_PASSWORD]         # ${secrets.X} に使える環境変数名（実値は証跡でマスク）
-  ai:      { provider: anthropic, keyEnv: ANTHROPIC_API_KEY }   # AI 経路のプロバイダ / モデル / エンドポイント / キー（下記）
+  ai:      { provider: api-key, keyEnv: ANTHROPIC_API_KEY }   # AI 経路のプロバイダ / モデル / エンドポイント / キー（下記）
   reservedNamespaces: [auth, nav]   # 共有フロー / コンポーネントの id 契約（情報用）
 
 targets:
@@ -92,13 +92,13 @@ AI 経路、すなわち `record`、`triage --ai`、`--dismiss-alerts` のガー
 ```yaml
 defaults:
   ai:
-    provider: anthropic                      # 登録済みのプロバイダ名。現状は anthropic（既定）/ bedrock / ant
+    provider: api-key                        # 登録済みのプロバイダ名。現状は api-key（既定）/ bedrock / ant
     model:    claude-opus-4-8                 # 任意: その経路の既定モデルを上書き
-    baseUrl:  https://ai-gateway.internal/v1  # 任意: 自己ホストのゲートウェイ / 社内プロキシ（anthropic プロバイダ）
+    baseUrl:  https://ai-gateway.internal/v1  # 任意: 自己ホストのゲートウェイ / 社内プロキシ（api-key プロバイダ）
     keyEnv:   ANTHROPIC_API_KEY               # キーを保持する環境変数の「名前」。キーの値そのものは置かない
 ```
 
-- **プロバイダは単一のインターフェースの背後に置かれたバックエンドです**（[BE-0104](../../roadmaps/BE-0104-vendor-neutral-ai-backend/BE-0104-vendor-neutral-ai-backend-ja.md)）。AI 経路は、プラットフォームが `Driver` インターフェースの背後のバックエンドであるのと同じように、ベンダー中立なシーム（`bajutsu/ai`）を通じてのみモデルへ到達します。そのため `provider` は固定された集合ではなく、**レジストリで検証される開放型**の値です。現在は `anthropic`、`bedrock`、`ant` のアダプタが同梱されており（三つとも Anthropic アダプタを共有します。Bedrock は Anthropic SDK のホスティング上の一変種、`ant` は認証上の一変種です。BE-0163）、未知の名前は AI 経路が最初にプロバイダを解決する時点で明確なエラーとともに fail closed になります。この検証は config の読み込み時ではなく AI 層で行います。決定論的なコアは AI プロバイダのスタックを import してはならないため（[BE-0112](../../roadmaps/BE-0112-layer-boundary-enforcement/BE-0112-layer-boundary-enforcement-ja.md)）、config は名前をそのまま受け取り、正当な名前を保持するレジストリが未登録の名前を拒否します。モデルファミリ（たとえば OpenAI 互換エンドポイント）の追加はアダプタの登録にあたり、下記の秘匿化とフェイルクローズの保証を構造上そのまま受け継ぎます。
+- **プロバイダは単一のインターフェースの背後に置かれたバックエンドです**（[BE-0104](../../roadmaps/BE-0104-vendor-neutral-ai-backend/BE-0104-vendor-neutral-ai-backend-ja.md)）。AI 経路は、プラットフォームが `Driver` インターフェースの背後のバックエンドであるのと同じように、ベンダー中立なシーム（`bajutsu/ai`）を通じてのみモデルへ到達します。そのため `provider` は固定された集合ではなく、**レジストリで検証される開放型**の値です。現在は `api-key`、`bedrock`、`ant` のアダプタが同梱されており（三つとも Anthropic アダプタを共有し、名前は認証手段を表します。直接の API キー、Bedrock の AWS 資格情報、`ant` CLI の OAuth トークンです。BE-0163。旧称 `anthropic` は今も `api-key` として解決されます）、未知の名前は AI 経路が最初にプロバイダを解決する時点で明確なエラーとともに fail closed になります。この検証は config の読み込み時ではなく AI 層で行います。決定論的なコアは AI プロバイダのスタックを import してはならないため（[BE-0112](../../roadmaps/BE-0112-layer-boundary-enforcement/BE-0112-layer-boundary-enforcement-ja.md)）、config は名前をそのまま受け取り、正当な名前を保持するレジストリが未登録の名前を拒否します。モデルファミリ（たとえば OpenAI 互換エンドポイント）の追加はアダプタの登録にあたり、下記の秘匿化とフェイルクローズの保証を構造上そのまま受け継ぎます。
 - **キーは設定ファイルに置きません。** `keyEnv` は環境変数の名前を指すだけで、値は呼び出し時に環境から読みます。これにより秘密がリポジトリやアップロードされたバンドルに入りません。`baseUrl` は Anthropic SDK を自己ホストのゲートウェイやプロキシへ向けます（`Anthropic(base_url=…, api_key=os.environ[keyEnv])`）。スクリーンショットや要素ツリーは、ベンダーの既定先ではなく、あなたが設定したエンドポイントにだけ届きます。Bedrock は標準の AWS 資格情報チェーン（`AWS_REGION` と、環境変数 / 共有プロファイル / インスタンスまたはタスクロール）のままで、プロバイダ接頭辞付きの `model` を必要とします。
 - **`ant` は API キー無しでサブスクリプション（SSO）のシートに課金します（BE-0163）。** `ant` プロバイダは公式の [Anthropic CLI](https://github.com/anthropics/anthropic-cli) 経由でモデルへ到達します。CLI を導入し、`ant auth login`（Claude Console に対するブラウザ経由の OAuth（SSO）サインイン）を実行してください。Bajutsu は呼び出し時に CLI からベアラートークンを読み、API キーではなく `auth_token` として SDK に渡すため、Claude の Pro / Max / Console のシートに課金されます。`ANTHROPIC_PROFILE` で名前付きの CLI プロファイルを選べます。API キーは不要で、すべての AI 経路（オーサリング、アラートガード、`triage --ai`）で画像もそのまま使えます。`ant` はユーザー自身が導入する外部バイナリで、Bajutsu が同梱・インストールすることはありません。
 - **設定が先、環境変数はフォールバック。** 省略したフィールドは現状の環境変数（`BAJUTSU_AI_PROVIDER`、`ANTHROPIC_API_KEY`、`BAJUTSU_BEDROCK_MODEL`。`ant` プロバイダは `ANTHROPIC_PROFILE` を尊重しつつ CLI から資格情報を読みます）へフォールバックするので、`ai` ブロックの無い config はこれまでどおり動きます。

@@ -16,6 +16,7 @@ from bajutsu.anthropic_client import (
     PROVIDER_ENV,
     PROVIDERS,
     AiConfig,
+    normalize_provider,
     provider,
 )
 from bajutsu.config import load_config, resolve
@@ -233,17 +234,17 @@ def set_api_key(state: ServeState, value: str, actor: str | None) -> tuple[Any, 
 
 
 def set_provider(state: ServeState, body: dict[str, Any]) -> tuple[Any, int]:
-    """Select the AI provider for spawned record/crawl jobs: the Anthropic API, Amazon Bedrock, or
-    the Anthropic CLI (`ant`, a browser-based OAuth/SSO sign-in — BE-0163). Written into the serve
-    process's environment (`BAJUTSU_AI_PROVIDER`) for this session only — never to disk — and
-    inherited by jobs, mirroring the API-key handler. All three are registered SDK providers, so
+    """Select the AI provider for spawned record/crawl jobs: the Anthropic API (`api-key`), Amazon
+    Bedrock, or the Anthropic CLI (`ant`, a browser-based OAuth/SSO sign-in — BE-0163). Written into
+    the serve process's environment (`BAJUTSU_AI_PROVIDER`) for this session only — never to disk —
+    and inherited by jobs, mirroring the API-key handler. All three are registered SDK providers, so
     every AI path (authoring, the alert guard, triage) resolves through the same seam."""
-    prov = str(body.get("provider", "") or "").strip().lower()
+    prov = normalize_provider(str(body.get("provider", "") or ""))
     if prov not in PROVIDERS:
         return {"error": f"unknown provider: {prov or '(empty)'}"}, 400
-    if prov in ("anthropic", "ant"):
-        # Anthropic authenticates with an API key; ant with the CLI's OAuth/SSO credential — neither
-        # takes a model/region here, so the selection is just the provider name.
+    if prov in ("api-key", "ant"):
+        # `api-key` authenticates with an Anthropic API key; `ant` with the CLI's OAuth/SSO
+        # credential — neither takes a model/region here, so the selection is just the provider name.
         os.environ[PROVIDER_ENV] = prov
         return {"ok": True, "provider": prov}, 200
     # Bedrock needs a provider-prefixed model id (the bare Anthropic id is invalid there); region is

@@ -24,7 +24,7 @@ defaults:                       # shared across all targets
   capture: [screenshot.after, elements, actionLog]
   redact:  { headers: [Authorization, Cookie], fields: [token, password] }
   secrets: [LOGIN_PASSWORD]         # env var names usable as ${secrets.X} (values masked in evidence)
-  ai:      { provider: anthropic, keyEnv: ANTHROPIC_API_KEY }   # the AI paths' provider/model/endpoint/key (below)
+  ai:      { provider: api-key, keyEnv: ANTHROPIC_API_KEY }   # the AI paths' provider/model/endpoint/key (below)
   reservedNamespaces: [auth, nav]   # the id contract for shared flows / components (informational)
 
 targets:
@@ -112,7 +112,7 @@ deterministic `run` gate still calls no model at all
 ```yaml
 defaults:
   ai:
-    provider: anthropic                      # a registered provider name; anthropic (default), bedrock, or ant ship today
+    provider: api-key                        # a registered provider name; api-key (default), bedrock, or ant ship today
     model:    claude-opus-4-8                 # optional: override the path's default model
     baseUrl:  https://ai-gateway.internal/v1  # optional: a self-hosted gateway / enterprise proxy (anthropic provider)
     keyEnv:   ANTHROPIC_API_KEY               # the NAME of the env var holding the key — never the key itself
@@ -122,9 +122,10 @@ defaults:
   ([BE-0104](../roadmaps/BE-0104-vendor-neutral-ai-backend/BE-0104-vendor-neutral-ai-backend.md)).
   The AI paths reach a model only through a vendor-neutral seam (`bajutsu/ai`), mirroring how a
   platform is a backend behind the `Driver` interface. `provider` is therefore an **open,
-  registry-validated** value, not a fixed set: `anthropic`, `bedrock`, and `ant` are the adapters
-  that ship today (all three share one Anthropic adapter — Bedrock is an Anthropic-SDK hosting
-  variant and `ant` an authentication variant, BE-0163), and an unknown name fails closed with a
+  registry-validated** value, not a fixed set: `api-key`, `bedrock`, and `ant` are the adapters
+  that ship today (all three share one Anthropic adapter — the name states the *auth method*: a
+  direct API key, AWS credentials for Bedrock, or the `ant` CLI's OAuth token, BE-0163; the legacy
+  name `anthropic` still resolves to `api-key`). An unknown name fails closed with a
   clear error the first time an AI path resolves the provider. (The check lives
   in the AI layer, not at config load: the deterministic core must not import the AI provider stack
   ([BE-0112](../roadmaps/BE-0112-layer-boundary-enforcement/BE-0112-layer-boundary-enforcement.md)),

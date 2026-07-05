@@ -45,7 +45,7 @@ def test_http_provider_select_bedrock_and_back(
         # No key set, so the record/crawl tabs would read disabled (BE-0101): the payload carries the
         # reachability the front end gates on, with an actionable hint.
         assert _get_json(port, "/api/provider") == {
-            "provider": "anthropic",
+            "provider": "api-key",
             "region": "",
             "model": "",
             "claudeAvailable": False,
@@ -72,11 +72,11 @@ def test_http_provider_select_bedrock_and_back(
             "claudeGap": None,
             "claudeHint": "",
         }
-        # Switch back to the Anthropic API.
-        code, body = _post(port, "/api/provider", {"provider": "anthropic"})
-        assert code == 200 and body["provider"] == "anthropic"
-        assert os.environ[ac.PROVIDER_ENV] == "anthropic"
-        assert _get_json(port, "/api/provider")["provider"] == "anthropic"
+        # Switch back to the Anthropic API (the `api-key` provider).
+        code, body = _post(port, "/api/provider", {"provider": "api-key"})
+        assert code == 200 and body["provider"] == "api-key"
+        assert os.environ[ac.PROVIDER_ENV] == "api-key"
+        assert _get_json(port, "/api/provider")["provider"] == "api-key"
     finally:
         server.shutdown()
         server.server_close()
@@ -126,11 +126,30 @@ def test_http_provider_select_ant_and_back(tmp_path: Path, monkeypatch: pytest.M
             "claudeGap": ac.ANT_CLI_MISSING,
             "claudeHint": ai_availability.message(ac.ANT_CLI_MISSING),
         }
-        # Switch back to the Anthropic API.
+        # Switch back to the Anthropic API (the `api-key` provider).
+        code, body = _post(port, "/api/provider", {"provider": "api-key"})
+        assert code == 200 and body["provider"] == "api-key"
+        assert os.environ[ac.PROVIDER_ENV] == "api-key"
+        assert _get_json(port, "/api/provider")["provider"] == "api-key"
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+def test_http_provider_accepts_the_legacy_anthropic_alias(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # BE-0047 shipped the direct-API provider as `anthropic`; a cached UI or old client still POSTs
+    # it, so the endpoint canonicalizes it to `api-key` rather than rejecting it as unknown.
+    scn_dir, cfg, runs = project(tmp_path)
+    _clean_provider_env(monkeypatch)
+    server, port = _serve(
+        srv.ServeState(scenarios_dir=scn_dir, config=cfg, runs_dir=runs, cwd=tmp_path)
+    )
+    try:
         code, body = _post(port, "/api/provider", {"provider": "anthropic"})
-        assert code == 200 and body["provider"] == "anthropic"
-        assert os.environ[ac.PROVIDER_ENV] == "anthropic"
-        assert _get_json(port, "/api/provider")["provider"] == "anthropic"
+        assert code == 200 and body["provider"] == "api-key"
+        assert os.environ[ac.PROVIDER_ENV] == "api-key"
     finally:
         server.shutdown()
         server.server_close()

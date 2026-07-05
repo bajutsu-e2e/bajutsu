@@ -165,7 +165,7 @@ $('#keyclear').addEventListener('click',clearKey);
 // Show only the selected provider's own config block — nothing until one is explicitly picked.
 function renderProv(){
   const v=$('#provider').value;
-  $('#apikeysection').hidden=v!=='anthropic';      // the Claude API key is the Anthropic provider's config
+  $('#apikeysection').hidden=v!=='api-key';        // the Claude API key is the api-key provider's config
   $('#bedrockfields').hidden=v!=='bedrock';        // region + model id
   $('#antfields').hidden=v!=='ant';                // ant CLI prerequisites (no inputs — OAuth sign-in)
 }
@@ -207,7 +207,7 @@ async function saveSettings(){
   setSettingsStatus('saving…','');
   let d;try{d=await (await fetch('/api/provider',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)})).json()}catch(e){d={error:'request failed'}}
   if(d.error){setSettingsStatus(d.error,'ng');return}
-  if(provider==='anthropic'){  // only the Anthropic API provider needs the key (Bedrock uses AWS creds, ant uses its OAuth token)
+  if(provider==='api-key'){  // only the api-key provider needs the key (Bedrock uses AWS creds, ant uses its OAuth token)
     const v=$('#apikey').value.trim();
     if(v){
       let k;try{k=await postKey(v)}catch(e){k={error:'request failed'}}

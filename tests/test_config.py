@@ -109,7 +109,7 @@ def test_ai_block_resolves_from_defaults() -> None:
     cfg = load_config(
         "defaults:\n"
         "  ai:\n"
-        "    provider: anthropic\n"
+        "    provider: api-key\n"
         "    model: claude-opus-4-8\n"
         "    baseUrl: https://gw.internal/v1\n"
         "    keyEnv: MY_KEY\n"
@@ -117,7 +117,7 @@ def test_ai_block_resolves_from_defaults() -> None:
     )
     ai = resolve(cfg, "s").ai
     assert ai is not None
-    assert ai.provider == "anthropic"
+    assert ai.provider == "api-key"
     assert ai.model == "claude-opus-4-8"
     assert ai.base_url == "https://gw.internal/v1"
     assert ai.key_env == "MY_KEY"
@@ -125,12 +125,12 @@ def test_ai_block_resolves_from_defaults() -> None:
 
 def test_ai_block_target_overrides_defaults() -> None:
     cfg = load_config(
-        "defaults:\n  ai: { provider: anthropic, model: claude-opus-4-8, keyEnv: TEAM_KEY }\n"
+        "defaults:\n  ai: { provider: api-key, model: claude-opus-4-8, keyEnv: TEAM_KEY }\n"
         "targets:\n  s:\n    bundleId: com.x\n    ai: { model: claude-sonnet-x, keyEnv: APP_KEY }\n"
     )
     ai = resolve(cfg, "s").ai
     assert ai is not None
-    assert ai.provider == "anthropic"  # falls through from defaults
+    assert ai.provider == "api-key"  # falls through from defaults
     assert ai.model == "claude-sonnet-x"  # target override
     assert ai.key_env == "APP_KEY"  # target override
 

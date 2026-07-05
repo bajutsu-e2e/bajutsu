@@ -14,9 +14,9 @@ import pytest
 from bajutsu import anthropic_client as ac
 
 
-def test_provider_defaults_to_anthropic(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_provider_defaults_to_api_key(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv(ac.PROVIDER_ENV, raising=False)
-    assert ac.provider() == "anthropic"
+    assert ac.provider() == "api-key"
 
 
 def test_provider_reads_env_and_normalizes(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -25,7 +25,15 @@ def test_provider_reads_env_and_normalizes(monkeypatch: pytest.MonkeyPatch) -> N
     monkeypatch.setenv(ac.PROVIDER_ENV, "  ANT ")
     assert ac.provider() == "ant"
     monkeypatch.setenv(ac.PROVIDER_ENV, "nonsense")
-    assert ac.provider() == "anthropic"  # unknown value falls back to the default
+    assert ac.provider() == "api-key"  # unknown value falls back to the default
+
+
+def test_provider_accepts_the_legacy_anthropic_alias(monkeypatch: pytest.MonkeyPatch) -> None:
+    # BE-0047 shipped the direct-API provider as `anthropic`; it now canonicalizes to `api-key` so
+    # an existing config / env value keeps resolving instead of falling back as "unknown".
+    monkeypatch.setenv(ac.PROVIDER_ENV, "  Anthropic ")
+    assert ac.provider() == "api-key"
+    assert ac.normalize_provider("anthropic") == "api-key"
 
 
 def test_resolve_model_anthropic_ignores_bedrock_override(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -176,7 +184,7 @@ def test_credential_gap_ant_authenticated_ok(monkeypatch: pytest.MonkeyPatch) ->
 
 
 def test_provider_config_wins_over_env(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv(ac.PROVIDER_ENV, "anthropic")
+    monkeypatch.setenv(ac.PROVIDER_ENV, "api-key")
     assert ac.provider(ac.AiConfig(provider="bedrock")) == "bedrock"
 
 

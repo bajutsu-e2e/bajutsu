@@ -75,8 +75,8 @@ scenario self-sufficient without adding implicit timing to `run`.
 `AiBackend` seam (BE-0104), so the **provider** is a config detail, not a separate agent. The
 resolved `ai.provider` ([configuration](configuration.md#ai-provider-ai-be-0047)) picks:
 
-- **`anthropic`** (default) — the **Anthropic API**, keyed by `ANTHROPIC_API_KEY` (or the env var
-  named by `ai.keyEnv`).
+- **`api-key`** (default) — the **Anthropic API**, keyed by `ANTHROPIC_API_KEY` (or the env var
+  named by `ai.keyEnv`). (The legacy name `anthropic` still resolves to this.)
 - **`bedrock`** — **Amazon Bedrock**, authenticated by AWS credentials with a provider-prefixed
   model id (`BAJUTSU_BEDROCK_MODEL`).
 - **`ant`** — the official **Anthropic CLI** (`ant auth login`, a browser-based OAuth/SSO sign-in),

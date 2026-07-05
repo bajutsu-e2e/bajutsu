@@ -160,8 +160,11 @@ Log:
 - [#689](https://github.com/bajutsu-e2e/bajutsu/pull/689) — the `ant` provider ships end to end: a third authentication path in `anthropic_client.py`
   (`auth_token` from `ant auth print-credentials`), registered on the shared Anthropic adapter, with
   the `claude-code` agent kind and its `--agent` option, denylist, and `ai_availability` CLI branch
-  removed; `serve`'s Settings selector now offers `anthropic` / `bedrock` / `ant`. Docs (both
+  removed; `serve`'s Settings selector now offers `api-key` / `bedrock` / `ant`. Docs (both
   languages) and tests updated; `make check` green.
+- Follow-up: renamed the direct-API provider from `anthropic` to `api-key` (the name now states the
+  *auth method*, since Bedrock and `ant` are Anthropic too). The legacy `anthropic` name still
+  resolves to `api-key` via `normalize_provider`, so existing configs keep working.
 
 ## References
 

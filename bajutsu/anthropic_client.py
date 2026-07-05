@@ -6,9 +6,9 @@ config block (`defaults.ai` / `targets.<name>.ai`, BE-0047) first, falling back 
 so existing setups keep working unchanged (and so `bajutsu serve` can hand settings to spawned jobs
 through the env):
 
-- ``provider`` (`ai.provider` / ``BAJUTSU_AI_PROVIDER``) = ``anthropic`` (default), ``bedrock``,
-  or ``ant``.
-  - ``anthropic`` → ``anthropic.Anthropic()``, authenticated by the key in ``ai.keyEnv`` (default
+- ``provider`` (`ai.provider` / ``BAJUTSU_AI_PROVIDER``) = ``api-key`` (default), ``bedrock``,
+  or ``ant`` — all Anthropic-SDK variants, so the name states the *authentication* method.
+  - ``api-key`` → ``anthropic.Anthropic()``, authenticated by the key in ``ai.keyEnv`` (default
     ``ANTHROPIC_API_KEY``); ``ai.baseUrl`` points the SDK at a self-hosted gateway / enterprise
     proxy, so a screenshot or element tree only ever reaches the user-configured endpoint.
   - ``bedrock``  → ``anthropic.AnthropicBedrock()``, authenticated by the standard AWS credential
@@ -20,7 +20,7 @@ through the env):
     profile (honored by ``ant`` itself), and ``ai.baseUrl`` points the SDK at a gateway as above.
 - ``ai.model`` / ``BAJUTSU_BEDROCK_MODEL`` overrides the model id; the Bedrock path needs a
   provider-prefixed id (e.g. ``global.anthropic.claude-opus-4-6-v1``) — the bare Anthropic id is
-  not a valid Bedrock model id. The ``ant`` path uses the bare Anthropic id, like ``anthropic``.
+  not a valid Bedrock model id. The ``ant`` path uses the bare Anthropic id, like ``api-key``.
 
 Keys never live in config: ``ai.keyEnv`` names the env var, the value is read here at call time
 (BE-0047). Nothing here runs in the deterministic ``run`` / CI gate (DESIGN §2 / §3.1). The SDK
@@ -44,7 +44,26 @@ from bajutsu.config import AiConfig as AiConfig
 PROVIDER_ENV = "BAJUTSU_AI_PROVIDER"
 BEDROCK_MODEL_ENV = "BAJUTSU_BEDROCK_MODEL"
 ANTHROPIC_KEY_ENV = "ANTHROPIC_API_KEY"
-PROVIDERS = ("anthropic", "bedrock", "ant")
+# Provider names state the authentication method — all three are Anthropic-SDK variants.
+PROVIDERS = ("api-key", "bedrock", "ant")
+DEFAULT_PROVIDER = "api-key"
+
+# Backward-compatible provider aliases. BE-0047 / BE-0053 shipped the direct-API provider as
+# ``anthropic``; it was renamed to ``api-key`` (the name now states the *auth method*, since Bedrock
+# and ``ant`` are Anthropic too), so an existing config or ``$BAJUTSU_AI_PROVIDER=anthropic`` keeps
+# resolving instead of failing closed on an "unknown provider".
+_PROVIDER_ALIASES = {"anthropic": "api-key"}
+
+
+def normalize_provider(raw: str) -> str:
+    """Canonicalize a provider name — trim, lowercase, and resolve a backward-compatible alias.
+
+    Shared by this adapter's `provider()` and the cross-provider registry (BE-0104), so both accept
+    the same spellings and the legacy ``anthropic`` name maps to ``api-key`` in one place.
+    """
+    value = raw.strip().lower()
+    return _PROVIDER_ALIASES.get(value, value)
+
 
 # The Anthropic CLI (BE-0163): the external binary whose OAuth/SSO credential backs the `ant`
 # provider, invoked via subprocess like the `claude` CLI probe once was. Not vendored or installed.
@@ -85,7 +104,7 @@ def _ant_access_token(ai: AiConfig | None = None) -> str:
         raise RuntimeError(
             "the `ant` provider needs the Anthropic CLI: install `ant` and run `ant auth login` "
             "(a browser-based sign-in against the Claude Console), or switch ai.provider to "
-            "anthropic / bedrock."
+            "api-key / bedrock."
         )
     try:
         code, token, err = _ant_token_result()
@@ -99,16 +118,16 @@ def _ant_access_token(ai: AiConfig | None = None) -> str:
 
 
 def provider(ai: AiConfig | None = None) -> str:
-    """Which Anthropic-family client to build — ``anthropic`` (default), ``bedrock``, or ``ant``.
+    """Which Anthropic-family client to build — ``api-key`` (default), ``bedrock``, or ``ant``.
 
     Resolves *within* this adapter: `ai.provider` wins, else ``BAJUTSU_AI_PROVIDER`` (BE-0047
-    config-first, env fallback), and anything outside the family normalizes to ``anthropic``. This
+    config-first, env fallback), and anything outside the family normalizes to ``api-key``. This
     is not the cross-provider authority — that is `bajutsu.ai` (BE-0104), whose registry dispatches a
     provider name to its adapter; a non-Anthropic provider is routed there and never reaches here.
     """
-    raw = (ai and ai.provider) or os.environ.get(PROVIDER_ENV) or "anthropic"
-    value = raw.strip().lower()
-    return value if value in PROVIDERS else "anthropic"
+    raw = (ai and ai.provider) or os.environ.get(PROVIDER_ENV) or DEFAULT_PROVIDER
+    value = normalize_provider(raw)
+    return value if value in PROVIDERS else DEFAULT_PROVIDER
 
 
 def key_env(ai: AiConfig | None) -> str:
@@ -124,7 +143,7 @@ def make_client(client: Any = None, ai: AiConfig | None = None) -> Any:
     """Return the Anthropic SDK client for the resolved provider.
 
     ``client`` short-circuits the factory — it is the injection seam the AI classes use in tests.
-    For the Anthropic provider the key is read from the env var named by ``ai.keyEnv`` (default
+    For the ``api-key`` provider the key is read from the env var named by ``ai.keyEnv`` (default
     ``ANTHROPIC_API_KEY``) and ``ai.baseUrl`` (when set) points the SDK at a self-hosted gateway,
     so input only ever reaches the user-configured endpoint (BE-0047). Bedrock resolves AWS
     credentials from the environment (the chain + ``AWS_REGION``). The ``ant`` provider (BE-0163)
