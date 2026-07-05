@@ -13,6 +13,9 @@ import Foundation
 /// no-op unless `BAJUTSU_COLLECTOR` is present.
 public enum BajutsuNet {
     static private(set) var collectorURL: URL?
+    /// Per-run shared token (`BAJUTSU_COLLECTOR_TOKEN`) attached to each report POST so the
+    /// collector accepts only this run's app; nil unless bajutsu injected one.
+    static private(set) var collectorToken: String?
 
     /// One JSON line per exchange is POSTed to the collector. The reporting session
     /// is kept separate so the report POST is never itself intercepted.
@@ -26,6 +29,7 @@ public enum BajutsuNet {
         BajutsuMocks.shared.load(environment)
         if let raw = environment["BAJUTSU_COLLECTOR"], let url = URL(string: raw) {
             collectorURL = url
+            collectorToken = environment["BAJUTSU_COLLECTOR_TOKEN"]
         }
         // Register the interceptor if there is anything to do: observe and/or stub.
         guard collectorURL != nil || !BajutsuMocks.shared.rules.isEmpty else { return }
@@ -71,6 +75,9 @@ public enum BajutsuNet {
         var req = URLRequest(url: collectorURL)
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        if let collectorToken {
+            req.setValue("Bearer \(collectorToken)", forHTTPHeaderField: "Authorization")
+        }
         req.httpBody = data
         reportSession.dataTask(with: req).resume()  // fire-and-forget
     }

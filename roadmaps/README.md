@@ -342,6 +342,7 @@ Closing the edges the deterministic core does not touch — `serve`'s HTTP surfa
 <!-- GENERATED:implemented-security -->
 | ID | Item | Status |
 |---|---|---|
+| [BE-0115](BE-0115-inprocess-collector-auth/BE-0115-inprocess-collector-auth.md) | Authenticate the in-process iOS network collector | Implemented |
 | [BE-0116](BE-0116-udid-argument-validation/BE-0116-udid-argument-validation.md) | Tighten UDID validation against argument injection | Implemented |
 | [BE-0120](BE-0120-recorded-scenario-secret-tokenization/BE-0120-recorded-scenario-secret-tokenization.md) | Tokenize secrets in recorded scenario YAML | Implemented |
 | [BE-0121](BE-0121-serve-csrf-host-allowlist/BE-0121-serve-csrf-host-allowlist.md) | Unconditional CSRF and Host-allowlist defenses for serve | Implemented |
@@ -591,9 +592,7 @@ Turn the local `bajutsu serve` launcher into a shared service. The runner drives
 Closing the edges the deterministic core does not touch — `serve`'s HTTP surface, how secrets flow through capture / record / artifacts, driver argument hygiene, and the CI supply chain. These items keep the tool safe to run on a shared machine and safe to hand a scenario from an untrusted source, without weakening the prime directives.
 
 <!-- GENERATED:proposals-security -->
-| ID | Item | Status |
-|---|---|---|
-| [BE-0115](BE-0115-inprocess-collector-auth/BE-0115-inprocess-collector-auth.md) | Authenticate the in-process iOS network collector | Proposal |
+
 <!-- /GENERATED:proposals-security -->
 
 ### Configuration sourcing

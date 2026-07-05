@@ -3,9 +3,11 @@
 How traffic is observed (DESIGN: network): a Simulator app runs as a host process
 and shares the Mac's loopback, so the app POSTs each request/response it makes to a
 small collector bajutsu runs on `127.0.0.1:<port>` (the port is injected into the app
-via launch env, `BAJUTSU_COLLECTOR`). The collector keeps the exchanges in memory so
-a step's `request` assertion can be evaluated in real time, and dumps them to
-`network.json` as scenario evidence.
+via launch env, `BAJUTSU_COLLECTOR`, and a per-run shared token via
+`BAJUTSU_COLLECTOR_TOKEN` — the collector accepts only POSTs bearing that token, so
+another local process can't inject fabricated exchanges). The collector keeps the
+exchanges in memory so a step's `request` assertion can be evaluated in real time, and
+dumps them to `network.json` as scenario evidence.
 
 The in-app side that captures and POSTs the exchanges is a separate Swift package
 (`BajutsuKit`); this module is only the bajutsu-side receiver and data model.
@@ -14,6 +16,7 @@ The in-app side that captures and POSTs the exchanges is a separate Swift packag
 from __future__ import annotations
 
 import json
+import secrets
 import threading
 import time
 from collections.abc import Callable
@@ -75,6 +78,9 @@ class NetworkCollector:
         self._server: ThreadingHTTPServer | None = None
         self._thread: threading.Thread | None = None
         self.port = 0
+        # Per-run shared token, minted in start(); the app attaches it to every POST and the
+        # handler rejects any request without it, so only the app this run launched can report.
+        self.token = ""
 
     # --- data ---
 
@@ -90,6 +96,13 @@ class NetworkCollector:
             return
         with self._lock:
             self._items.append((ex, self._now()))
+
+    def check_token(self, candidate: str) -> bool:
+        """Constant-time compare of a presented token against this run's token.
+
+        Mirrors `serve`'s own token check; false before `start()` mints a token.
+        """
+        return bool(self.token) and secrets.compare_digest(candidate, self.token)
 
     def snapshot(self) -> list[NetworkExchange]:
         """The exchanges received so far, in arrival order."""
@@ -118,6 +131,7 @@ class NetworkCollector:
             The actual bound port (resolved when `port` is `0`), to inject into the app via
             `BAJUTSU_COLLECTOR`.
         """
+        self.token = secrets.token_urlsafe()
         server = ThreadingHTTPServer(("127.0.0.1", port), _make_handler(self))
         self.port = server.server_address[1]
         self._server = server
@@ -144,6 +158,19 @@ class NetworkCollector:
 def _make_handler(collector: NetworkCollector) -> type[BaseHTTPRequestHandler]:
     class Handler(BaseHTTPRequestHandler):
         def do_POST(self) -> None:
+            # Authenticate before reading the body: reject a missing/mismatched token loudly
+            # (401) rather than dropping it silently, so a misconfigured client is visible and
+            # another local process can't inject fabricated exchanges (BE-0115).
+            auth = self.headers.get("Authorization", "")
+            presented = auth[len("Bearer ") :] if auth.startswith("Bearer ") else ""
+            if not collector.check_token(presented):
+                # Close rather than drain the unread body (mirrors serve's reject path). This
+                # server is HTTP/1.0, so connections already close per request; the explicit flag
+                # guards the reject path should the protocol ever be bumped to keep-alive.
+                self.close_connection = True
+                self.send_response(401)
+                self.end_headers()
+                return
             length = int(self.headers.get("Content-Length") or 0)
             raw = self.rfile.read(length) if length else b""
             try:
