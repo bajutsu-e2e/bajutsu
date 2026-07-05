@@ -20,11 +20,14 @@ Simulator のアプリはホストプロセスとして動作し、Mac のルー
 次の流れで観測します。
 
 1. `run` の開始時に、Bajutsu が `127.0.0.1:<port>` で**コレクタ**（`NetworkCollector`）を起動し、
-   その URL を `BAJUTSU_COLLECTOR` 起動環境変数としてアプリに注入します。
+   その URL を `BAJUTSU_COLLECTOR` 起動環境変数として、加えて run ごとの共有トークンを
+   `BAJUTSU_COLLECTOR_TOKEN` 起動環境変数としてアプリに注入します。
 2. アプリ（**BajutsuKit** をリンクしたもの）は `URLProtocol` を組み込み、各リクエストとレスポンスを
    記録してコレクタへ POST します。記録は **TLS（Transport Layer Security、トランスポート層セキュリティ）
    の後段**で行うため（プロキシも CA / certificate authority も使いません）、idb の下でも動作し、
-   プログラムから読み取れます。
+   プログラムから読み取れます。各 POST はトークンを `Authorization: Bearer` ヘッダとして添えます。
+   コレクタは一致するトークンを持たないリクエストを 401 で拒否するので、同じマシン上の別プロセスが
+   偽の通信を run の証跡に紛れ込ませることはできません。
 3. コレクタは通信をメモリ上に保持します。step の `request` アサーションはその通信に対してリアルタイムに
    評価され、通信はシナリオの証跡として `<sid>/network.json`（マスキング済み）に書き出されます。
 

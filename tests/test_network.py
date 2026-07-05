@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import json
+import urllib.error
 import urllib.request
 
 from bajutsu.assertions import evaluate, evaluate_one
@@ -399,11 +400,61 @@ def test_collector_receives_and_clears() -> None:
     try:
         body = json.dumps({"method": "GET", "path": "/items", "status": 200}).encode()
         urllib.request.urlopen(
-            urllib.request.Request(f"http://127.0.0.1:{port}/report", data=body, method="POST")
+            urllib.request.Request(
+                f"http://127.0.0.1:{port}/report",
+                data=body,
+                method="POST",
+                headers={"Authorization": f"Bearer {c.token}"},
+            )
         ).read()
         snap = c.snapshot()
         assert len(snap) == 1 and snap[0].path == "/items"
         c.clear()
+        assert c.snapshot() == []
+    finally:
+        c.stop()
+
+
+def _post_report(port: int, token: str | None) -> int:
+    """POST one exchange to the collector and return the HTTP status (401 on rejection)."""
+    body = json.dumps({"method": "GET", "path": "/items", "status": 200}).encode()
+    headers = {"Authorization": f"Bearer {token}"} if token is not None else {}
+    req = urllib.request.Request(
+        f"http://127.0.0.1:{port}/report", data=body, method="POST", headers=headers
+    )
+    try:
+        return int(urllib.request.urlopen(req).status)
+    except urllib.error.HTTPError as err:
+        return int(err.code)
+
+
+def test_collector_accepts_matching_token() -> None:
+    c = NetworkCollector()
+    port = c.start()
+    try:
+        assert _post_report(port, c.token) == 204
+        assert len(c.snapshot()) == 1
+    finally:
+        c.stop()
+
+
+def test_collector_rejects_unauthenticated_post() -> None:
+    """A POST with no token is rejected with 401 and never stored — the run's evidence
+    stream stays authenticated (BE-0115)."""
+    c = NetworkCollector()
+    port = c.start()
+    try:
+        assert _post_report(port, token=None) == 401
+        assert c.snapshot() == []
+    finally:
+        c.stop()
+
+
+def test_collector_rejects_mismatched_token() -> None:
+    c = NetworkCollector()
+    port = c.start()
+    try:
+        assert _post_report(port, token="wrong-token") == 401
         assert c.snapshot() == []
     finally:
         c.stop()

@@ -167,6 +167,7 @@ def device_pool(
             extra_env: dict[str, str] = {}
             if isinstance(collector, NetworkCollector):
                 extra_env["BAJUTSU_COLLECTOR"] = f"http://127.0.0.1:{collector.port}"
+                extra_env["BAJUTSU_COLLECTOR_TOKEN"] = collector.token
             webview_bridge, webview_port = _alloc_webview_bridge(lease_env)
             if webview_port is not None:
                 extra_env["BAJUTSU_WEBVIEW_PORT"] = str(webview_port)

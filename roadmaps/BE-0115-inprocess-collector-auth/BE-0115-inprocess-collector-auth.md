@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0115](BE-0115-inprocess-collector-auth.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0115") |
+| Implementing PR | _pending_ |
 | Topic | Security hardening |
 <!-- /BE-METADATA -->
 
@@ -71,12 +72,15 @@ pass or fail incorrectly, undermining the determinism the runner otherwise guara
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Generate and inject a per-run shared token alongside `BAJUTSU_COLLECTOR`.
-- [ ] Check the token in `NetworkCollector`'s `do_POST` with a constant-time comparison.
-- [ ] Update `BajutsuKit`'s HTTP sender to attach the token to each POST.
-- [ ] Add a regression test asserting an unauthenticated/mismatched POST is rejected.
+- [x] Generate and inject a per-run shared token alongside `BAJUTSU_COLLECTOR`.
+- [x] Check the token in `NetworkCollector`'s `do_POST` with a constant-time comparison.
+- [x] Update `BajutsuKit`'s HTTP sender to attach the token to each POST.
+- [x] Add a regression test asserting an unauthenticated/mismatched POST is rejected.
 
-No PR has landed yet.
+- _pending_ — implement the shared-token auth end to end (collector mints the token in
+  `start()`, `pool` injects `BAJUTSU_COLLECTOR_TOKEN`, `do_POST` verifies it with
+  `secrets.compare_digest`, `BajutsuKit` sends it as `Authorization: Bearer`), with
+  regression tests for the accept/reject paths.
 
 ## References
 
