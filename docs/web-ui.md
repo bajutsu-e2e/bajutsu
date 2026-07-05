@@ -216,6 +216,14 @@ also drives lightweight key completion (Ctrl/⌘+Space) and hover descriptions. 
 and AI-free. Click **Save** to write the scenario. The grammar these checks enforce:
 [scenarios](scenarios.md); how selectors are graded: [selectors](selectors.md).
 
+**Generate code** — export the loaded scenario as a native test, without leaving the browser. Load a
+scenario, then click **Generate code**: the result opens in a read-only viewer you can **Copy** or
+**Download** (the filename is derived from the scenario and destination, e.g. `LoginUITests.swift` /
+`login.spec.ts`). The destination follows the target's backend — **XCUITest** for iOS, **Playwright**
+for web — so only the format that target supports is offered. This is the [`codegen`](codegen.md)
+command surfaced in the UI: a structural mapping from the scenario to the target framework's idiom,
+so it runs no device, no AI, and computes no verdict; its known limits are `codegen`'s own.
+
 ## Stats — the run-history dashboard
 
 **What it does.** Renders the aggregate run-stats dashboard across the server's run history — the

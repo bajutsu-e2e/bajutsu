@@ -492,6 +492,16 @@ Web（Playwright）backend とその完成（リッチな capability、並列実
 | [BE-0015](BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting-ja.md) | Web UI の公開ホスティング | 実装中 |
 <!-- /GENERATED:in-progress-hosting -->
 
+### serve Web UI への CLI 機能の取り込み
+
+CLI が持つ道具を、オーサリングが起きる serve Web UI に取り込む取り組み。シナリオエディタのその場の lint / schema 検証がまず着地しました。
+
+<!-- GENERATED:in-progress-serve-cli-features -->
+| ID | 項目 | 状態 |
+|---|---|---|
+| [BE-0137](BE-0137-serve-codegen/BE-0137-serve-codegen-ja.md) | serve Web UI からネイティブテストコードを生成する | 実装中 |
+<!-- /GENERATED:in-progress-serve-cli-features -->
+
 ### codegen 網羅性
 
 <!-- GENERATED:in-progress-codegen -->
@@ -551,7 +561,6 @@ Web（Playwright）backend とその完成（リッチな capability、並列実
 <!-- GENERATED:proposals-serve-cli-features -->
 | ID | 項目 | 状態 |
 |---|---|---|
-| [BE-0137](BE-0137-serve-codegen/BE-0137-serve-codegen-ja.md) | serve Web UI からネイティブテストコードを生成する | 提案 |
 | [BE-0145](BE-0145-serve-audit/BE-0145-serve-audit-ja.md) | serve Web UI で決定性監査を見る | 提案 |
 | [BE-0146](BE-0146-serve-coverage/BE-0146-serve-coverage-ja.md) | serve Web UI で E2E カバレッジマップを見る | 提案 |
 | [BE-0147](BE-0147-serve-triage/BE-0147-serve-triage-ja.md) | serve Web UI で失敗 run をトリアージする | 提案 |

@@ -499,6 +499,16 @@ Consolidating the demo and dogfood apps onto the showcase suite: bringing it to 
 | [BE-0015](BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md) | Public hosting of the web UI | In progress |
 <!-- /GENERATED:in-progress-hosting -->
 
+### Surfacing CLI features in the serve Web UI
+
+Bringing the CLI's own tools into the serve Web UI, where authoring happens. The scenario editor's inline lint / schema validation landed first.
+
+<!-- GENERATED:in-progress-serve-cli-features -->
+| ID | Item | Status |
+|---|---|---|
+| [BE-0137](BE-0137-serve-codegen/BE-0137-serve-codegen.md) | Generate native test code from the serve Web UI | In progress |
+<!-- /GENERATED:in-progress-serve-cli-features -->
+
 ### codegen coverage
 
 <!-- GENERATED:in-progress-codegen -->
@@ -558,7 +568,6 @@ The scope is currently **limited to the iOS Simulator** ([DESIGN §1](../DESIGN.
 <!-- GENERATED:proposals-serve-cli-features -->
 | ID | Item | Status |
 |---|---|---|
-| [BE-0137](BE-0137-serve-codegen/BE-0137-serve-codegen.md) | Generate native test code from the serve Web UI | Proposal |
 | [BE-0145](BE-0145-serve-audit/BE-0145-serve-audit.md) | Determinism audit in the serve Web UI | Proposal |
 | [BE-0146](BE-0146-serve-coverage/BE-0146-serve-coverage.md) | E2E coverage map in the serve Web UI | Proposal |
 | [BE-0147](BE-0147-serve-triage/BE-0147-serve-triage.md) | Triage failed runs in the serve Web UI | Proposal |
