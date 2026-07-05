@@ -15,6 +15,16 @@ from bajutsu.platform_lifecycle import AndroidEnvironment, environment_for
 from bajutsu.scenario import Preconditions, Redact
 
 
+def test_bad_serial_is_rejected() -> None:
+    # A serial from --udid / config that could inject an adb option (leading `-`) or a shell
+    # metacharacter is rejected before it reaches a subprocess argv.
+    for bad in ["-rf", "a b", "a;b", "a$b", ""]:
+        with pytest.raises(adb.DeviceError, match="invalid device serial"):
+            adb.tap_cmd(bad, 1, 2)
+    # A normal emulator / device serial passes through.
+    assert adb.tap_cmd("emulator-5554", 1, 2)[:3] == ["adb", "-s", "emulator-5554"]
+
+
 def test_command_builders() -> None:
     assert adb.dump_cmd("S") == ["adb", "-s", "S", "exec-out", "uiautomator", "dump", "/dev/tty"]
     assert adb.tap_cmd("S", 12.6, 20.4) == ["adb", "-s", "S", "shell", "input", "tap", "13", "20"]

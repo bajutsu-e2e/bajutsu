@@ -14,18 +14,24 @@ is forwarded through the parent process.
 from __future__ import annotations
 
 import contextlib
+import re
+import shlex
 import subprocess
 from collections.abc import Callable, Mapping
+
+from bajutsu import simctl
 
 # argv -> stdout. adb needs no parent-process env (unlike simctl's SIMCTL_CHILD_*).
 RunFn = Callable[[list[str]], str]
 
 
-class DeviceError(RuntimeError):
+class DeviceError(simctl.DeviceError):
     """An adb operation failed in a way the user can act on (e.g. no emulator, app not installed).
 
     Carries a clean, actionable message — the CLI surfaces it and exits 2, the same boundary as the
-    iOS `simctl.DeviceError`, instead of dumping a Python traceback.
+    iOS device errors. It subclasses `simctl.DeviceError` so the CLI entrypoints that already catch
+    that type (`run` / `crawl` / `audit` / `record`) surface an Android device failure the same way,
+    as a clean exit-2 rather than an unhandled traceback.
     """
 
 
@@ -45,8 +51,20 @@ def _num(v: float) -> str:
     return str(round(v))  # `input tap`/`swipe` take integer coordinates
 
 
+# A device serial / emulator id: alphanumerics plus `. _ : -`, never leading with `-` (which adb
+# would read as an option). Every command builder validates the serial through `_adb`, so an id
+# from `--udid` / config can neither inject an adb option nor reach a subprocess argv unchecked.
+_SERIAL = re.compile(r"[A-Za-z0-9._:][A-Za-z0-9._:-]*")
+
+
+def _checked_serial(serial: str) -> str:
+    if not _SERIAL.fullmatch(serial):
+        raise DeviceError(f"invalid device serial: {serial!r}")
+    return serial
+
+
 def _adb(serial: str, *rest: str) -> list[str]:
-    return ["adb", "-s", serial, *rest]
+    return ["adb", "-s", _checked_serial(serial), *rest]
 
 
 # --- command builders ---
@@ -80,10 +98,20 @@ def swipe_cmd(serial: str, x1: float, y1: float, x2: float, y2: float, ms: int =
     return _adb(serial, "shell", "input", "swipe", _num(x1), _num(y1), _num(x2), _num(y2), str(ms))
 
 
-def text_cmd(serial: str, text: str) -> list[str]:
-    """Type `text` into the focused field. `input text` reads spaces as delimiters, so they are
-    sent as `%s` (its space escape); the value still travels as one argv token to `adb`."""
-    return _adb(serial, "shell", "input", "text", text.replace(" ", "%s"))
+def shell_cmd(serial: str) -> list[str]:
+    """An `adb shell` with no command — the device command is fed on stdin (see `text_script`)."""
+    return _adb(serial, "shell")
+
+
+def text_script(text: str) -> str:
+    """The device-side `input text` command line, safe to feed to `adb shell` over stdin.
+
+    Fed on stdin — not as an `adb` argv token — so a secret / OTP typed by a scenario never appears
+    in the host process's command line where `ps` could read it (BE-0155 parity with idb, which
+    passes typed text to `idb ui text` on stdin for the same reason). Spaces become `input`'s `%s`
+    escape (it splits its argument on spaces), and the result is single-quoted for the device shell.
+    """
+    return f"input text {shlex.quote(text.replace(' ', '%s'))}"
 
 
 def pm_clear_cmd(serial: str, package: str) -> list[str]:

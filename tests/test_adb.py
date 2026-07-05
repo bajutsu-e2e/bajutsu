@@ -167,7 +167,7 @@ def test_wait_until_polls_until_the_element_appears() -> None:
     assert calls[0] >= 3
 
 
-def test_swipe_and_long_press_and_type_command_shapes() -> None:
+def test_swipe_command_shape() -> None:
     calls: list[list[str]] = []
 
     def run(args: list[str]) -> str:
@@ -176,12 +176,26 @@ def test_swipe_and_long_press_and_type_command_shapes() -> None:
         calls.append(args)
         return ""
 
-    driver = AdbDriver("U", run=run)
-    driver.swipe((10, 20), (30, 40))
-    driver.type_text("hello world")
+    AdbDriver("U", run=run).swipe((10, 20), (30, 40))
     assert calls[0] == ["adb", "-s", "U", "shell", "input", "swipe", "10", "20", "30", "40", "300"]
-    # `input text` reads spaces as delimiters, so they are sent as its `%s` escape.
-    assert calls[1] == ["adb", "-s", "U", "shell", "input", "text", "hello%sworld"]
+
+
+def test_type_text_passes_value_over_stdin_not_argv(monkeypatch: pytest.MonkeyPatch) -> None:
+    # BE-0155 parity with idb: a typed value (which may be a secret / OTP) goes to `adb shell` on
+    # stdin, never in the adb argv where `ps` could read it.
+    calls: list[tuple[list[str], str]] = []
+
+    def fake_run_text(cmd: list[str], script: str) -> None:
+        calls.append((cmd, script))
+
+    monkeypatch.setattr(AdbDriver, "_run_text", staticmethod(fake_run_text))
+    AdbDriver("U", run=lambda a: "").type_text("${secrets.password} val")
+
+    ((cmd, script),) = calls
+    assert cmd == ["adb", "-s", "U", "shell"]  # no command on the argv
+    assert "${secrets.password}" not in " ".join(cmd)  # the secret is not on the command line
+    # `input text` splits on spaces, so a space becomes its `%s` escape; the arg is device-quoted.
+    assert script == "input text '${secrets.password}%sval'"
 
 
 def test_pinch_and_rotate_unsupported() -> None:

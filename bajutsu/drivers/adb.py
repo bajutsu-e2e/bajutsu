@@ -16,6 +16,7 @@ tuning of that mapping against the Android showcase is tracked as e2e follow-up 
 from __future__ import annotations
 
 import re
+import subprocess
 import time
 from collections.abc import Callable
 from xml.etree import ElementTree as ET
@@ -238,7 +239,14 @@ class AdbDriver:
         )
 
     def type_text(self, text: str) -> None:
-        self._run(adb.text_cmd(self.serial, text))
+        # Feed the `input text` command to `adb shell` over stdin, not on the argv, so a secret / OTP
+        # never lands in the adb process command line where `ps` could read it (BE-0155). Routed
+        # through a class-level attribute so tests can patch it, mirroring idb's `_run_text`.
+        self._run_text(adb.shell_cmd(self.serial), adb.text_script(text))
+
+    @staticmethod
+    def _run_text(cmd: list[str], script: str) -> None:
+        subprocess.run(cmd, input=script, capture_output=True, text=True, check=True)
 
     def wait_for(self, sel: base.Selector) -> bool:
         """Single-shot: whether `sel` matches the current screen (BE-0118).

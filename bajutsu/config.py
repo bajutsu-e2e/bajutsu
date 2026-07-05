@@ -424,8 +424,7 @@ class WebConfig:
 
 @dataclass(frozen=True)
 class AndroidConfig:
-    """Android (adb) target knobs (BE-0126 / BE-0007). On `Effective` only when `platform ==
-    "android"`."""
+    """Android (adb) target knobs (BE-0126 / BE-0007). On `Effective` only when `platform` is android."""
 
     # Android target identifier (peer of iOS bundle_id / web base_url). "" when unset.
     package: str = ""
