@@ -9,7 +9,7 @@
 | 提案者 | [@hirosassa](https://github.com/hirosassa) |
 | 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0171") |
-| 実装 PR | _pending_ |
+| 実装 PR | [#701](https://github.com/bajutsu-e2e/bajutsu/pull/701) |
 | トピック | Candidates from competitive research (MagicPod / Autify) |
 | 関連 | [BE-0029](../BE-0029-visual-regression-assertions/BE-0029-visual-regression-assertions-ja.md) |
 <!-- /BE-METADATA -->
@@ -138,7 +138,7 @@ expect:
 
 **ログ**
 
-- _pending_ — BE-0171 を出荷。`visual` アサーションに `element` スコープと `SelectorRegion` の
+- [#701](https://github.com/bajutsu-e2e/bajutsu/pull/701) — BE-0171 を出荷。`visual` アサーションに `element` スコープと `SelectorRegion` の
   マスクを追加しました。スクリーンショットを解決済みの要素へ切り出し（ベースラインは画面ではなく
   要素のままで、`approve` に特別扱いは不要）、セレクタマスクはフレームへ解決してリテラル矩形と
   組み合わせます。決定性は保たれ（曖昧なセレクタは失敗、不一致のマスクは無操作）、`run` 経路に

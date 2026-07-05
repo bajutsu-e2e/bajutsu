@@ -9,7 +9,7 @@
 | Author | [@hirosassa](https://github.com/hirosassa) |
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0171") |
-| Implementing PR | _pending_ |
+| Implementing PR | [#701](https://github.com/bajutsu-e2e/bajutsu/pull/701) |
 | Topic | Candidates from competitive research (MagicPod / Autify) |
 | Related | [BE-0029](../BE-0029-visual-regression-assertions/BE-0029-visual-regression-assertions.md) |
 <!-- /BE-METADATA -->
@@ -140,7 +140,7 @@ hide); an ambiguous one fails, consistent with directive 2.
 
 **Log**
 
-- _pending_ — Ship BE-0171: `element` scoping + `SelectorRegion` masking on the `visual`
+- [#701](https://github.com/bajutsu-e2e/bajutsu/pull/701) — Ship BE-0171: `element` scoping + `SelectorRegion` masking on the `visual`
   assertion. The screenshot is cropped to the resolved element (baseline stays the element, not
   the screen; `approve` needs no special-casing); selector masks resolve to frames and combine
   with literal rectangles. Determinism preserved (ambiguous selector fails; no-match mask is a
