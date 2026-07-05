@@ -29,10 +29,10 @@ list, the [CLI reference](cli.md) is the source of truth.
 
 ### Launch it
 
-Always start the server with `make serve`, never `bajutsu serve` or `python -m bajutsu serve`
-directly. `make serve` ([`scripts/serve.sh`](https://github.com/bajutsu-e2e/bajutsu/blob/main/scripts/serve.sh))
-installs the iOS backend's on-demand dependencies (the idb client and `idb_companion`) that a bare
-`serve` skips — without them, iOS runs fail with `no available actuator`. Pass flags through `ARGS`:
+In a repository checkout, start the server with `make serve` — the one-step path. `make serve`
+([`scripts/serve.sh`](https://github.com/bajutsu-e2e/bajutsu/blob/main/scripts/serve.sh)) provisions
+the iOS backend's on-demand dependencies (the idb client and `idb_companion`) and then runs the
+server; without them, iOS runs fail with `no available actuator`. Pass flags through `ARGS`:
 
 ```bash
 make serve                                                        # the default port (8765)
@@ -40,12 +40,17 @@ make serve ARGS="--config demos/showcase/showcase.config.yaml --port 8766"   # t
 ```
 
 The showcase config is needed for the showcase app, since the repository has no root
-`bajutsu.config.yaml`. `make serve` is a thin wrapper around `python -m bajutsu serve` (the command
-the [CLI reference](cli.md#serve) documents): it installs the idb dependencies, then runs it. It
-does not open a browser for you — it binds `127.0.0.1`, so once it is running, open the printed URL
-yourself (`http://127.0.0.1:8765` by default, or the `--port` you passed). The full option list —
-`--port`, `--config`, `--root`, `--runs`, `--baselines`, `--host`, `--token`,
-`--max-concurrent-runs`, `--evidence-store` — is in the [CLI reference](cli.md#serve).
+`bajutsu.config.yaml`.
+
+Under the hood `make serve` runs `python -m bajutsu serve` — the `bajutsu serve` command the
+[CLI reference](cli.md#serve) documents. If you installed Bajutsu outside a checkout (so there is no
+`make`), run `bajutsu serve` (or `python -m bajutsu serve`) directly; you are then responsible for
+the backend's dependencies yourself — the idb client and `idb_companion` for an iOS target (a web /
+Playwright target does not need them). Either way the server does not open a browser for you: it
+binds `127.0.0.1`, so once it is running, open the printed URL yourself (`http://127.0.0.1:8765` by
+default, or the `--port` you passed). The full option list — `--port`, `--config`, `--root`,
+`--runs`, `--baselines`, `--host`, `--token`, `--max-concurrent-runs`, `--evidence-store` — is in
+the [CLI reference](cli.md#serve).
 
 ## The layout
 
