@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0123](BE-0123-composite-action-input-indirection.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0123") |
+| Implementing PR | _pending_ |
 | Topic | Security hardening |
 <!-- /BE-METADATA -->
 
@@ -117,12 +118,15 @@ pass/fail-logic changes:
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Route `bajutsu-e2e/action.yml`'s "Preflight" and "Run scenarios" steps' inputs through `env:` indirection
-- [ ] Note (or confirm no change needed) for `bajutsu-e2e/action.yml`'s `with: name: ${{ inputs.artifact-name }}` upload step
-- [ ] Route `boot-simulator/action.yml`'s `${{ inputs.wait }}` through `env:` indirection
-- [ ] Add a regression check that fails on a raw `${{ inputs. }}` expansion inside a composite action's `run:` block
+- [x] Route `bajutsu-e2e/action.yml`'s "Preflight" and "Run scenarios" steps' inputs through `env:` indirection
+- [x] Note (or confirm no change needed) for `bajutsu-e2e/action.yml`'s `with: name: ${{ inputs.artifact-name }}` upload step
+- [x] Route `boot-simulator/action.yml`'s `${{ inputs.wait }}` through `env:` indirection
+- [x] Add a regression check that fails on a raw `${{ inputs. }}` expansion inside a composite action's `run:` block
 
-No PR has landed yet.
+- _pending_: routed both composite actions' `run:`-block inputs through `env:` indirection
+  (`TARGET`/`UDID`/`BACKEND`/`CONFIG`/`SCENARIOS` in `bajutsu-e2e`, `WAIT` in `boot-simulator`),
+  annotated the injection-safe `with:` upload step, and added `tests/test_action_input_indirection.py`
+  as the regression net against a raw `${{ inputs. }}` reappearing in a composite `run:` block.
 
 ## References
 
