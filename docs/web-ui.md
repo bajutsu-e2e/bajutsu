@@ -22,8 +22,10 @@ scenario from a natural-language goal, **run** a scenario and read its report, *
 and watch its screen map draw itself, **edit** a scenario against real screenshots, and **survey**
 the run history — all against one active config, without switching between terminal commands.
 
-Everything the UI does maps onto a CLI command (`record`, `run`, `crawl`, `stats`, `lint`); when a
-detail here needs the full option list, the [CLI reference](cli.md) is the source of truth.
+Most of what the UI does maps onto a CLI command (`record`, `run`, `crawl`, `stats`, `lint`); the
+exception is the **Author** tab, whose Capture / Edit / Enrich flows are serve-only helpers for
+building and editing scenario files, with no CLI twin. When a detail here needs the full option
+list, the [CLI reference](cli.md) is the source of truth.
 
 ### Launch it
 
@@ -38,8 +40,11 @@ make serve ARGS="--config demos/showcase/showcase.config.yaml --port 8766"   # t
 ```
 
 The showcase config is needed for the showcase app, since the repository has no root
-`bajutsu.config.yaml`. `make serve` binds `127.0.0.1` and opens the UI in your browser. The full
-option list — `--port`, `--config`, `--root`, `--runs`, `--baselines`, `--host`, `--token`,
+`bajutsu.config.yaml`. `make serve` is a thin wrapper around `python -m bajutsu serve` (the command
+the [CLI reference](cli.md#serve) documents): it installs the idb dependencies, then runs it. It
+does not open a browser for you — it binds `127.0.0.1`, so once it is running, open the printed URL
+yourself (`http://127.0.0.1:8765` by default, or the `--port` you passed). The full option list —
+`--port`, `--config`, `--root`, `--runs`, `--baselines`, `--host`, `--token`,
 `--max-concurrent-runs`, `--evidence-store` — is in the [CLI reference](cli.md#serve).
 
 ## The layout
