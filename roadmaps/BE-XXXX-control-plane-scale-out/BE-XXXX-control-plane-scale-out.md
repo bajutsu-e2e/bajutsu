@@ -60,7 +60,7 @@ no mid-run log stream has to be fanned out across replicas. The work breakdown:
 cannot exercise (no Docker, no multi-container topology). It is verified by hand on a deployment:
 bring up two app replicas, confirm a login on one replica is honored by a request served by the
 other, and confirm a run leased from one replica completes and its result is readable through the
-other. Any small stateless-ness helper that lands in `bajutsu/serve/` (e.g. asserting no in-process
+other. Any small statelessness helper that lands in `bajutsu/serve/` (e.g. asserting no in-process
 session state) keeps unit coverage, but the topology itself has no gate contract.
 
 ## Alternatives considered

@@ -303,7 +303,7 @@ into a pool — tracked separately*), each of which carries its own `Progress`.
 The single node is runnable now ([#103](https://github.com/bajutsu-e2e/bajutsu/pull/103), [#154](https://github.com/bajutsu-e2e/bajutsu/pull/154), [#365](https://github.com/bajutsu-e2e/bajutsu/pull/365), [#367](https://github.com/bajutsu-e2e/bajutsu/pull/367)); the pool-growth work now lives in the split-out items.
 
 - Worker liveness & job re-queue — heartbeat (`POST /api/worker/heartbeat`) that renews a lease, `reclaim_expired_leases` (swept on `lease_job`) that re-queues a dead worker's lease and fails a job past its attempt cap, and a worker-side heartbeat loop; also re-grounded this item's Tier B stack, diagrams, and remaining-work items on BE-0106's Redis-free HTTP worker model ([#507](https://github.com/bajutsu-e2e/bajutsu/pull/507)).
-- Split the remaining pool work into five focused roadmap items (weighted-fair dispatch, capability-routed queues, control-plane scale-out, high availability, observability) and flipped this umbrella to Implemented, recording the shipped self-hosting baselines.
+- Split the remaining pool work into five focused roadmap items (weighted-fair dispatch, capability-routed queues, control-plane scale-out, high availability, observability) and flipped this umbrella to Implemented, recording the shipped self-hosting baselines ([#674](https://github.com/bajutsu-e2e/bajutsu/pull/674)).
 
 ## References
 
