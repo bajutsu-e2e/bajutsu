@@ -1463,14 +1463,19 @@ if(!NARROW_MQ.matches)initTiling();
   function auLintSoon(){clearTimeout(auLintTimer);auLintTimer=setTimeout(auLint,400);}
 
   // ---- schema-driven completion / hover ----
+  let auSchemaKeyMap=null;   // memoized {name: description}; the schema is fetched once and immutable
   function auSchemaKeys(){
     // {name: description} for every property across the schema's defs — the grammar's key set.
+    // Cached: auHover calls this on every mousemove, so the deep walk must not repeat per event.
+    if(auSchemaKeyMap)return auSchemaKeyMap;
+    if(!auSchema)return {};
     const out={};
     (function walk(node){
       if(!node||typeof node!=='object')return;
       if(node.properties){for(const k in node.properties){const v=node.properties[k];if(!(k in out))out[k]=(v&&v.description)||'';}}
       for(const key in node){const v=node[key];if(v&&typeof v==='object')walk(v);}
     })(auSchema);
+    auSchemaKeyMap=out;
     return out;
   }
 
