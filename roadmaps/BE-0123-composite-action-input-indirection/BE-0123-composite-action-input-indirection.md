@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0123") |
-| Implementing PR | _pending_ |
+| Implementing PR | [#675](https://github.com/bajutsu-e2e/bajutsu/pull/675) |
 | Topic | Security hardening |
 <!-- /BE-METADATA -->
 
@@ -123,7 +123,7 @@ pass/fail-logic changes:
 - [x] Route `boot-simulator/action.yml`'s `${{ inputs.wait }}` through `env:` indirection
 - [x] Add a regression check that fails on a raw `${{ inputs. }}` expansion inside a composite action's `run:` block
 
-- _pending_: routed both composite actions' `run:`-block inputs through `env:` indirection
+- [#675](https://github.com/bajutsu-e2e/bajutsu/pull/675): routed both composite actions' `run:`-block inputs through `env:` indirection
   (`TARGET`/`UDID`/`BACKEND`/`CONFIG`/`SCENARIOS` in `bajutsu-e2e`, `WAIT` in `boot-simulator`),
   annotated the injection-safe `with:` upload step, and added `tests/test_action_input_indirection.py`
   as the regression net against a raw `${{ inputs. }}` reappearing in a composite `run:` block.
