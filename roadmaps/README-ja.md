@@ -585,8 +585,7 @@ Web（Playwright）backend とその完成（リッチな capability、並列実
 決定論コアが触れない縁（edge）を塞ぐ取り組みです。`serve` の HTTP 面、秘密情報がキャプチャ／record／成果物を通じてどう流れるか、ドライバの引数の扱い、CI のサプライチェーンが対象です。ここで扱う項目は、共有マシン上でも安全に実行でき、信頼できない取得元から渡されたシナリオを扱っても安全を保てることを、prime directive を弱めずに実現します。
 
 <!-- GENERATED:proposals-security -->
-| ID | 項目 | 状態 |
-|---|---|---|
+
 <!-- /GENERATED:proposals-security -->
 
 ### config の取得元
