@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-control-plane-scale-out-ja.md)
+**English** · [日本語](BE-0167-control-plane-scale-out-ja.md)
 
-# BE-XXXX — Control-plane scale-out behind a load balancer
+# BE-0167 — Control-plane scale-out behind a load balancer
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-control-plane-scale-out.md) |
+| Proposal | [BE-0167](BE-0167-control-plane-scale-out.md) |
 | Author | [@hirosassa](https://github.com/hirosassa) |
 | Status | **Proposal** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0167") |
 | Topic | Hosting the web UI (cloud / self-hosted) |
 | Related | [BE-0016](../BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md), [BE-0106](../BE-0106-post-completion-worker-model/BE-0106-post-completion-worker-model.md) |
 | Origin | [BE-0016](../BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md) |

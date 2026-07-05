@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-weighted-fair-org-dispatch-ja.md)
+**English** · [日本語](BE-0170-weighted-fair-org-dispatch-ja.md)
 
-# BE-XXXX — Weighted-fair cross-org job dispatch
+# BE-0170 — Weighted-fair cross-org job dispatch
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-weighted-fair-org-dispatch.md) |
+| Proposal | [BE-0170](BE-0170-weighted-fair-org-dispatch.md) |
 | Author | [@hirosassa](https://github.com/hirosassa) |
 | Status | **Proposal** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0170") |
 | Topic | Hosting the web UI (cloud / self-hosted) |
 | Related | [BE-0016](../BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md), [BE-0015](../BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md) |
 | Origin | [BE-0016](../BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md) |

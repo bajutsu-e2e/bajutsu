@@ -570,7 +570,13 @@ Web（Playwright）backend とその完成（リッチな capability、並列実
 ローカルの `bajutsu serve` ランチャを共有サービスにします。ランナーは iOS Simulator を駆動するため Mac が必要で、コントロールプレーン（Linux）⇄ macOS ワーカーの分離を強います。[BE-0015](in-progress/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting-ja.md) はマネージドなマルチテナント公開スタックを選定し、[BE-0016](in-progress/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting-ja.md) は自前の Mac での運用を扱います。
 
 <!-- GENERATED:proposals-hosting -->
-
+| ID | 項目 | 状態 |
+|---|---|---|
+| [BE-0166](BE-0166-capability-routed-queues/BE-0166-capability-routed-queues-ja.md) | 能力に基づくジョブキューの振り分け | 提案 |
+| [BE-0167](BE-0167-control-plane-scale-out/BE-0167-control-plane-scale-out-ja.md) | ロードバランサ配下での制御プレーンのスケールアウト | 提案 |
+| [BE-0168](BE-0168-self-host-high-availability/BE-0168-self-host-high-availability-ja.md) | セルフホストの高可用性と単一障害点の堅牢化 | 提案 |
+| [BE-0169](BE-0169-serve-metrics-observability/BE-0169-serve-metrics-observability-ja.md) | serve のメトリクスと可観測性エンドポイント | 提案 |
+| [BE-0170](BE-0170-weighted-fair-org-dispatch/BE-0170-weighted-fair-org-dispatch-ja.md) | 組織間で公平な重み付きジョブ分配 | 提案 |
 <!-- /GENERATED:proposals-hosting -->
 
 ### セキュリティ強化

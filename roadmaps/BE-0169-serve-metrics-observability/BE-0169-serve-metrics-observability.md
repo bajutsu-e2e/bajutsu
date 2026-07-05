@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-serve-metrics-observability-ja.md)
+**English** · [日本語](BE-0169-serve-metrics-observability-ja.md)
 
-# BE-XXXX — Serve metrics and observability endpoint
+# BE-0169 — Serve metrics and observability endpoint
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-serve-metrics-observability.md) |
+| Proposal | [BE-0169](BE-0169-serve-metrics-observability.md) |
 | Author | [@hirosassa](https://github.com/hirosassa) |
 | Status | **Proposal** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0169") |
 | Topic | Hosting the web UI (cloud / self-hosted) |
 | Related | [BE-0016](../BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md), [BE-0055](../BE-0055-operational-logging/BE-0055-operational-logging.md) |
 | Origin | [BE-0016](../BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md) |

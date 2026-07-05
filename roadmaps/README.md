@@ -577,7 +577,13 @@ The scope is currently **limited to the iOS Simulator** ([DESIGN §1](../DESIGN.
 Turn the local `bajutsu serve` launcher into a shared service. The runner drives an iOS Simulator and so needs a Mac, which forces a control-plane (Linux) ⇄ macOS-worker split. [BE-0015](in-progress/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md) selects a managed, multi-tenant public stack; [BE-0016](in-progress/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md) covers running it on your own Mac(s).
 
 <!-- GENERATED:proposals-hosting -->
-
+| ID | Item | Status |
+|---|---|---|
+| [BE-0166](BE-0166-capability-routed-queues/BE-0166-capability-routed-queues.md) | Capability-routed job queues | Proposal |
+| [BE-0167](BE-0167-control-plane-scale-out/BE-0167-control-plane-scale-out.md) | Control-plane scale-out behind a load balancer | Proposal |
+| [BE-0168](BE-0168-self-host-high-availability/BE-0168-self-host-high-availability.md) | Self-hosted high availability and single-point-of-failure hardening | Proposal |
+| [BE-0169](BE-0169-serve-metrics-observability/BE-0169-serve-metrics-observability.md) | Serve metrics and observability endpoint | Proposal |
+| [BE-0170](BE-0170-weighted-fair-org-dispatch/BE-0170-weighted-fair-org-dispatch.md) | Weighted-fair cross-org job dispatch | Proposal |
 <!-- /GENERATED:proposals-hosting -->
 
 ### Security hardening
