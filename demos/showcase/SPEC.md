@@ -10,16 +10,16 @@
 ## 1. Purpose
 
 The showcase is Bajutsu's **next-generation dogfood target** — the practice ground for
-`record` (Tier 1 authoring), `crawl` (Tier 1 exploration, [BE-0038](../../roadmaps/in-progress/BE-0038-autonomous-crawl-exploration/BE-0038-autonomous-crawl-exploration.md)),
+`record` (Tier 1 authoring), `crawl` (Tier 1 exploration, [BE-0038](../../roadmaps/BE-0038-autonomous-crawl-exploration/BE-0038-autonomous-crawl-exploration.md)),
 and `run` (Tier 2 deterministic gate). It deliberately packs the interaction surface a real
 app has — tabbed + navigation + modal screen transitions, text entry, gestures, async
 loading, networking (live + mockable), and a screen that intentionally raises OS-level
 alerts — into the smallest coherent app that still tells that whole story.
 
-It supersedes the older `sample` fixture ([`demos/features/app`](../features/app)). Where
-`sample` is one SwiftUI app, the showcase ships **the same app written twice** (UIKit and
-SwiftUI) and **each in two accessibility variants**, to make a teaching point Bajutsu's whole
-design rests on visible:
+It is the **single iOS fixture** (BE-0079 retired the older `demo`/`sample`/`sample2` apps).
+Where a single-variant app is one codebase, the showcase ships **the same app written twice**
+(UIKit and SwiftUI) and **each in two accessibility variants**, to make a teaching point
+Bajutsu's whole design rests on visible:
 
 | Variant | Accessibility identifiers | Demonstrates |
 |---|---|---|
@@ -31,21 +31,66 @@ design rests on visible:
 > same app, same flows, identifiers the only difference. Run the same goal through `record`
 > against both and the diff *is* the value of accessibility work.
 
-## 2. App matrix (2 codebases × 2 build variants = 4 products)
+## 2. App matrix
 
+The iOS matrix below is 2 codebases × 2 build variants = 4 products; §2.1 adds the 4 Android twins.
 Each toolkit is **one codebase, two build targets**. The variant difference is a single Swift
 active-compilation condition, `ACCESSIBLE`; there is no forked source. (See §8.)
 
 | App name (`targets.<name>`) | Toolkit | `ACCESSIBLE` | Bundle id | Deeplink scheme | Display name |
 |---|---|---|---|---|---|
-| `showcase-swiftui` | SwiftUI | defined | `com.bajutsu.showcase.swiftui` | `showcaseswiftui` | Showcase SwiftUI |
-| `showcase-swiftui-noax` | SwiftUI | — | `com.bajutsu.showcase.swiftui.noax` | `showcaseswiftuinoax` | Showcase SwiftUI (no a11y) |
-| `showcase-uikit` | UIKit | defined | `com.bajutsu.showcase.uikit` | `showcaseuikit` | Showcase UIKit |
-| `showcase-uikit-noax` | UIKit | — | `com.bajutsu.showcase.uikit.noax` | `showcaseuikitnoax` | Showcase UIKit (no a11y) |
+| `showcase-swiftui` | SwiftUI | defined | `com.bajutsu.showcase.ios.swiftui` | `showcaseswiftui` | Showcase SwiftUI |
+| `showcase-swiftui-noax` | SwiftUI | — | `com.bajutsu.showcase.ios.swiftui.noax` | `showcaseswiftuinoax` | Showcase SwiftUI (no a11y) |
+| `showcase-uikit` | UIKit | defined | `com.bajutsu.showcase.ios.uikit` | `showcaseuikit` | Showcase UIKit |
+| `showcase-uikit-noax` | UIKit | — | `com.bajutsu.showcase.ios.uikit.noax` | `showcaseuikitnoax` | Showcase UIKit (no a11y) |
 
 The two `-a11y` apps MUST expose **byte-for-byte identical** identifier sets, launch-env hooks,
 and deeplinks, so `demos/showcase/scenarios/*.yaml` runs unchanged against either. The UIKit and
 SwiftUI views may differ in construction but never in the contract below.
+
+### 2.1 Android twins ([`android/`](android/), BE-0007 preparation)
+
+The same fixture exists for Android — built ahead of the
+[BE-0007 Android backend](../../roadmaps/BE-0007-android-backend/BE-0007-android-backend.md)
+as the app pair that backend will drive. **Jetpack Compose** mirrors the SwiftUI codebase,
+**Android Views** mirrors UIKit, and the a11y/noax pair is one Gradle flavor switch
+(`BuildConfig.ACCESSIBLE`) — no forked source, exactly like `ACCESSIBLE` on iOS.
+
+| App name (`targets.<name>`) | Toolkit | `ACCESSIBLE` | Application id | Deeplink scheme | Display name |
+|---|---|---|---|---|---|
+| `showcase-compose` | Compose | true | `com.bajutsu.showcase.android.compose` | `showcasecompose` | Showcase Compose |
+| `showcase-compose-noax` | Compose | false | `com.bajutsu.showcase.android.compose.noax` | `showcasecomposenoax` | Showcase Compose (no a11y) |
+| `showcase-views` | Views | true | `com.bajutsu.showcase.android.views` | `showcaseviews` | Showcase Views |
+| `showcase-views-noax` | Views | false | `com.bajutsu.showcase.android.views.noax` | `showcaseviewsnoax` | Showcase Views (no a11y) |
+
+The §5 contract is the shared **logical** inventory; how each platform surfaces it differs only
+in the channel (the BE-0007 selector mapping):
+
+| iOS (§5, §8) | Android Compose | Android Views |
+|---|---|---|
+| `accessibilityIdentifier` | `testTag` → `resource-id` (`testTagsAsResourceId`), dotted ids **verbatim** | `android:id` → `resource-id`, ids with `.`/`-` → `_` (`stable.refresh` → `stable_refresh`) |
+| `accessibilityValue` mirror | `content-desc` | `content-desc` |
+| `launchEnv` via `ProcessInfo` | intent extras | intent extras |
+| deeplink scheme + host | VIEW intent-filter, same host grammar (§4) | same |
+| SpringBoard alerts (§7) | runtime-permission dialogs (`POST_NOTIFICATIONS`, `ACCESS_FINE_LOCATION`) | same |
+| `UIPasteboard` round-trip (§5.4) | `ClipboardManager` | same |
+
+Both Android toolkits mirror the state value to `content-desc` (not Compose's `stateDescription`,
+which a `uiautomator dump` does not expose). Two Android-only carve-outs from the shared contract:
+
+- **`SHOWCASE_UITEST` (disable animations, §3).** On iOS the app itself disables animations; on Android
+  animations are disabled device-wide by the driver (`adb shell settings put global
+  animator_duration_scale 0`), so the app reads the hook but takes no in-app action.
+- **The notification prompt (§7) needs API 33+.** `POST_NOTIFICATIONS` is a runtime permission only on
+  Android 13 (API 33) and later; on older emulators the prompt never appears. Run the fixture on an
+  API 33+ emulator so the alert-guard flow has a prompt to guard.
+
+Because Compose testTags reproduce the dotted ids verbatim, the shared [`scenarios/`](scenarios)
+set drives `showcase-compose` unchanged. The Views ids are underscore-mapped (an `android:id`
+name allows neither `.` nor `-`); whether the adb driver normalizes `.` ↔ `_` on match or the
+Views targets get a scenario variant is a BE-0007 design decision. Networking is plain
+`HttpURLConnection` (no Android BajutsuKit yet — the `network` evidence/mock story is BE-0007's,
+§6 applies to iOS); everything else below holds for all four Android products.
 
 ## 3. Launch environment hooks
 
@@ -56,23 +101,24 @@ Driven via `launchEnv` ([DESIGN §6.1](../../DESIGN.md)). All are read once at l
 |---|---|---|
 | `SHOWCASE_UITEST` | disable animations (tight condition waits) | unset |
 | `SHOWCASE_TAB` | initial tab: `stable`/`search`/`log`/`notices`/`permissions` | `stable` |
-| `SHOWCASE_SEED` | number of seeded catalog rows (offline) | `5` |
 | `SHOWCASE_API_URL` | base URL for the catalog GET (`/horses`) | `https://example.com` |
 | `SHOWCASE_HTTP_BASE` | base for the echo POST/DELETE endpoints | `https://httpbin.org` |
 
-> There is **no auth gate**: the app launches straight into the tab UI, so a scenario lands
-> on its tab via `SHOWCASE_TAB` (the same clean-state injection the `sample` fixture uses).
+> There is **no auth gate**: the app launches straight into the tab UI, on the Stable tab
+> (`SHOWCASE_TAB` may pick another). The catalog is **fixed** at five horses — there is no
+> launch-env seed knob (BE-0079): a scenario observes the app's own data, it cannot inject a
+> data state. Likewise there is no launch-env shortcut onto a *pushed* screen (see §4).
 
 ## 4. Deeplinks
 
-Scheme is per-variant (§2); the host grammar is shared. Opening any deeplink also dismisses
-modals and pops navigation to the tab root.
+Scheme is per-variant (§2); the host grammar is shared. A deeplink **selects a tab** (and
+dismisses modals / pops that tab to root); it does **not** push a detail screen (BE-0079). A
+detail is reached only by tapping its catalog row, so there is no shortcut straight onto a
+pushed screen.
 
 | Deeplink (host) | Effect |
 |---|---|
 | `…://stable` / `search` / `log` / `notices` / `permissions` | select that tab |
-| `…://horse/<id>` | select Stable tab, push Horse Detail for `<id>` |
-| `…://notice/<id>` | select Notices tab, push Notice Detail for `<id>` |
 
 ## 5. Screen-by-screen specification
 
@@ -86,15 +132,15 @@ screen. State is mirrored to `accessibilityValue` (in `-a11y`) so assertions rea
 | # | Screen | Reached via | Kind | Namespace(s) | Spec |
 |---|---|---|---|---|---|
 | 1 | Stable (catalog list) | `stable` tab | tab · list | `stable` | §5.1 |
-| 2 | Horse Detail | Stable row / `…://horse/<id>` | push | `horse` | §5.1 |
+| 2 | Horse Detail | Stable row | push | `horse` | §5.1 |
 | 3 | Search | `search` tab | tab · filter list | `search` | §5.2 |
 | 4 | Log | `log` tab | tab · form + modals | `log` | §5.3 |
 | 5 | — Filter sheet | `log.openFilter` | sheet (detents) | `log` | §5.3 |
 | 6 | — Gallery cover | `log.openGallery` | full-screen cover | `log` | §5.3 |
 | 7 | — Delete dialog | `log.openDelete` | action sheet | `log` | §5.3 |
 | 8 | Notices (list) | `notices` tab | tab · long list (scroll) | `notice` | §5.5 |
-| 9 | Notice Detail | Notices row / `…://notice/<id>` | push | `notice` | §5.5 |
-| 10 | Permissions | `permissions` tab / `…://permissions` | tab · **OS alerts** | `perm` | §5.4 |
+| 9 | Notice Detail | Notices row | push | `notice` | §5.5 |
+| 10 | Permissions | `permissions` tab / `…://permissions` | tab · **OS alerts** + pasteboard round-trip | `perm`, `sys` | §5.4 |
 
 Tabs, left to right: **Stable · Search · Log · Notices · Permissions**.
 
@@ -113,9 +159,9 @@ A `NavigationStack` (SwiftUI) / `UINavigationController` (UIKit). Catalog list w
 - `stable.refresh` — toolbar/button that re-fetches the catalog (GET `SHOWCASE_API_URL` + `/horses`); sets `stable.status` value to `loading` → `done`/`error`
 - `stable.status` — text; `accessibilityValue` = `idle`/`loading`/`done`/`error`
 - `stable.row.<horseId>` — one per catalog row, `<horseId>` data-derived (e.g. `stable.row.3`). Tapping pushes Horse Detail. Use `idMatches: "stable.row.*"` + `count` for set assertions.
-- `stable.empty` — shown only when the catalog is empty (`SHOWCASE_SEED=0` and no network rows)
+- `stable.empty` — shown only when the catalog is empty; the catalog is fixed non-empty (BE-0079), so this is defensive markup, not a reachable state in the showcase
 
-**Horse Detail** (pushed; also reachable via `…://horse/<id>`):
+**Horse Detail** (pushed by tapping a Stable row):
 - `horse.title` — the horse's name
 - `horse.id.value` — id, mirrored to value
 - `horse.fetch` — button: GET detail (`/horses/<id>`); `horse.status` value `loading`→`done`/`error`
@@ -138,6 +184,7 @@ A training-log composer exercising every input control and every modal style.
 - `log.note` — multiline text field
 - `log.count` — stepper for a numeric count; `log.count.value` mirrors the number
 - `log.intense` — a button-backed toggle "Intense" (a plain Toggle/UISwitch does not flip under idb on iOS 26); `log.intense.value` = `on`/`off`
+- `log.segment.<one|two|three>` — a button-backed segmented control (a native `Picker(.segmented)` / `UISegmentedControl` does not switch under idb on iOS 26); the selected button carries the `selected` trait and the choice mirrors to `log.segment.value` (`one`/`two`/`three`, default `one`)
 - `log.submit` — button: POST to `SHOWCASE_HTTP_BASE` + `/post` with the note/count as JSON; on success shows `log.toast` (auto-dismiss ~1.2 s → exercises `wait until gone`) and appends a row
 - `log.status` — value `idle`/`loading`/`done`/`error`
 - `log.row.<n>` — submitted entries
@@ -154,17 +201,24 @@ Modals reachable from Log (the four presentation styles):
 - `log.openDelete` → **action sheet** (a custom overlay of plain buttons, not a confirmationDialog / UIAlertController, whose actions idb cannot drive on iOS 26): choices `log.dialog.archive`, `log.dialog.delete` (destructive), `log.dialog.cancel`; result mirrored to `log.dialog.value` (`none`/`archive`/`delete`)
 - `log.toast` — the transient toast described above
 
-### 5.4 Tab: Permissions — `perm` namespace (**the OS-alert screen**)
+### 5.4 Tab: Permissions — `perm`, `sys` namespaces (**the OS-integration screen**)
 
 A `NavigationStack` (SwiftUI) / `UINavigationController` (UIKit). **The one screen that
 intentionally raises OS-level alerts** (§7) — promoted to a top-level tab so the alert-guard
-flow is reached directly.
+flow is reached directly — plus a System section with an in-app pasteboard round-trip.
 
 - `perm.requestNotif` — button → `UNUserNotificationCenter.requestAuthorization`. Raises the **SpringBoard notification prompt** (out-of-process; idb cannot see it — cleared by the run's vision alert guard, or tapped "Allow" via `dismissAlerts`).
 - `perm.notif.value` — `notDetermined`/`authorized`/`denied`
 - `perm.notif.authorized` — element shown only once granted (gives the run a positive condition to wait for)
 - `perm.requestLocation` — button → `CLLocationManager.requestWhenInUseAuthorization`. Raises the **system location prompt** (also SpringBoard).
 - `perm.location.value` — `notDetermined`/`authorizedWhenInUse`/`denied`
+
+**System** — an in-app pasteboard round-trip, mirroring state idb's app-scoped query cannot
+otherwise observe. It stays in-app because reading a pasteboard seeded by another process trips
+iOS's paste-permission prompt; a value this app itself wrote reads back silently:
+- `sys.copy` — button that writes a known string (`bajutsu-clip`) to the pasteboard
+- `sys.paste` — button that reads the pasteboard back into `sys.paste.value`
+- `sys.paste.value` — the pasted text; a scenario taps `sys.copy` then `sys.paste` and asserts it
 
 ### 5.5 Tab: Notices — `notice` namespace (long list → detail, scroll-to-element)
 
@@ -179,14 +233,14 @@ navigation, scroll, and crawl scenarios.
 
 - `notice.row.<id>` — one per *visible* notice (`notice.row.1` … the off-screen tail appears only after scrolling), `<id>` data-derived. Tapping pushes Notice Detail. (Don't assert a fixed `count` over `notice.row.*` — only the on-screen rows are in the tree, which is device-dependent.)
 
-**Notice Detail** (pushed; also reachable via `…://notice/<id>`):
+**Notice Detail** (pushed by tapping a Notices row):
 - `notice.detail.title` — the notice's title (the screen's identifying element; the nav title carries no id)
 - `notice.detail.body` — the notice's body text
 - **Back** — the standard system back button; idb drives it by its OS-provided id `BackButton` (see §5.1).
 
 ## 6. Networking
 
-Mirrors the `sample` fixture's BajutsuKit integration:
+Uses the standard BajutsuKit integration:
 
 - The app links **BajutsuKit** and calls `BajutsuNet.startIfEnabled()` at launch (a no-op unless
   `BAJUTSU_COLLECTOR` is injected). All requests then flow through the interceptor, so `network`
@@ -271,7 +325,7 @@ reserved (shared cross-screen) namespaces; the back control is the OS-provided s
 (id `BackButton`), outside the app's namespaces.
 
 ```
-stable, horse, search, log, notice, perm, net
+stable, horse, search, log, notice, perm, sys, net
 ```
 
 The `-noax` apps declare an **empty** `idNamespaces: []` — an honest declaration that the build
@@ -285,4 +339,4 @@ exposes no identifiers, which is what makes `doctor --target showcase-…-noax` 
 | `run` | `-a11y` | Deterministic replay of every scenario in `scenarios/` — tabs, push nav, all four modal styles, networking (live + mocked), and the alert-guarded Permissions flow. |
 | `doctor --target` | both | `-a11y` → **Ready**; `-noax` → **Blocked** (`idCoverage` ≈ 0). The pair quantifies accessibility debt. |
 | `record` | `-noax` | AI authors a scenario for a natural-language goal against an app with no identifiers, falling to label/traits/coordinates — the stability-ladder cost made visible. The `-a11y` twin shows the clean id-based output for the same goal. |
-| `crawl` ([BE-0038](../../roadmaps/in-progress/BE-0038-autonomous-crawl-exploration/BE-0038-autonomous-crawl-exploration.md)) | `-a11y` | Breadth-first exploration over a genuinely branchy app (5 tabs × pushes × 4 modal styles) → a screen map; the id-based state fingerprint is stable because §5 identifiers are. (Forward-looking: lands when BE-0038 ships.) |
+| `crawl` ([BE-0038](../../roadmaps/BE-0038-autonomous-crawl-exploration/BE-0038-autonomous-crawl-exploration.md)) | `-a11y` | Breadth-first exploration over a genuinely branchy app (5 tabs × pushes × 4 modal styles) → a screen map; the id-based state fingerprint is stable because §5 identifiers are. (Forward-looking: lands when BE-0038 ships.) |

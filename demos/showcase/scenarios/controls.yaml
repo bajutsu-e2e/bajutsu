@@ -1,0 +1,25 @@
+# Controls: the Log tab's button-backed segmented control mirrors its selection to an a11y
+# value, so a scenario picks a segment and asserts log.segment.value (the same value-mirror
+# idiom the Intense toggle uses — the `selected` trait the buttons also carry is a VoiceOver
+# affordance, not what idb asserts). A native segmented control (Picker(.segmented) /
+# UISegmentedControl) does not switch under idb on iOS 26, hence the plain buttons. The section
+# sits near the bottom (below Modals + Gestures), so walk down with swipes anchored on each
+# section's still-visible top control until the segment is on-screen.
+- name: segmented control mirrors the selected choice
+  preconditions:
+    launchEnv: { SHOWCASE_UITEST: "1", SHOWCASE_TAB: log }
+  steps:
+    - wait: { for: { id: log.note }, timeout: 10 }
+      capture: [video]
+    - swipe: { on: { id: log.note }, direction: up }
+    - swipe: { on: { id: log.openFilter }, direction: up }
+    - swipe: { on: { id: log.longpress }, direction: up }
+    - wait: { for: { id: log.segment.one }, timeout: 5 }
+    - assert:
+        - value: { sel: { id: log.segment.value }, equals: "one" }
+    - tap: { id: log.segment.two }
+    - assert:
+        - value: { sel: { id: log.segment.value }, equals: "two" }
+    - tap: { id: log.segment.three }
+  expect:
+    - value: { sel: { id: log.segment.value }, equals: "three" }

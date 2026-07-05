@@ -83,6 +83,108 @@ def test_a_screen_with_actionable_elements_is_not_flagged_no_actionable() -> Non
     assert s.no_actionable is False
 
 
+def test_custom_thresholds_lower_ok() -> None:
+    # 4/5 = 0.8 coverage. Default OK is 0.9 so this would be Partial. With ok=0.8 → Ready.
+    screen = [_el(f"settings.b{i}", ["button"]) for i in range(4)] + [_el(None, ["button"])]
+    s = score(screen, ["settings"], ok_coverage=0.8, fail_coverage=0.7)
+    assert s.id_coverage == 0.8
+    assert s.grade == "Ready"
+
+
+def test_custom_thresholds_higher_fail() -> None:
+    # 4/5 = 0.8 coverage. Default fail is 0.7, so 0.8 is Partial. With fail=0.85 → Blocked.
+    screen = [_el(f"settings.b{i}", ["button"]) for i in range(4)] + [_el(None, ["button"])]
+    s = score(screen, ["settings"], ok_coverage=0.9, fail_coverage=0.85)
+    assert s.id_coverage == 0.8
+    assert s.grade == "Blocked"
+
+
+def test_default_thresholds_unchanged() -> None:
+    # Calling score() without threshold args behaves as before (regression guard).
+    screen = [_el(f"settings.b{i}", ["button"]) for i in range(4)] + [_el(None, ["button"])]
+    s = score(screen, ["settings"])
+    assert s.id_coverage == 0.8
+    assert s.grade == "Partial"
+
+
 def test_render_mentions_grade() -> None:
     s = score([_el("settings.open", ["button"])], ["settings"])
     assert "grade: Ready" in render(s)
+
+
+def test_web_traits_are_actionable() -> None:
+    """Web-mapped traits (textField, textView, switch, slider, tab, cell) must all be
+    recognized as actionable by doctor so it scores web pages correctly (BE-0024)."""
+    from bajutsu.dom import parse_dom
+
+    web_elements = [
+        {
+            "identifier": "f.input",
+            "role": "input",
+            "label": "Name",
+            "value": None,
+            "disabled": False,
+            "selected": False,
+            "frame": [0, 0, 10, 10],
+        },
+        {
+            "identifier": "f.area",
+            "role": "textarea",
+            "label": "Bio",
+            "value": None,
+            "disabled": False,
+            "selected": False,
+            "frame": [0, 0, 10, 10],
+        },
+        {
+            "identifier": "f.agree",
+            "role": "checkbox",
+            "label": "Agree",
+            "value": None,
+            "disabled": False,
+            "selected": False,
+            "frame": [0, 0, 10, 10],
+        },
+        {
+            "identifier": "f.slider",
+            "role": "slider",
+            "label": "Volume",
+            "value": None,
+            "disabled": False,
+            "selected": False,
+            "frame": [0, 0, 10, 10],
+        },
+        {
+            "identifier": "f.tab",
+            "role": "tab",
+            "label": "Home",
+            "value": None,
+            "disabled": False,
+            "selected": False,
+            "frame": [0, 0, 10, 10],
+        },
+        {
+            "identifier": "f.item",
+            "role": "option",
+            "label": "Option 1",
+            "value": None,
+            "disabled": False,
+            "selected": False,
+            "frame": [0, 0, 10, 10],
+        },
+        {
+            "identifier": "f.select",
+            "role": "select",
+            "label": "Country",
+            "value": None,
+            "disabled": False,
+            "selected": False,
+            "frame": [0, 0, 10, 10],
+        },
+    ]
+    elements = parse_dom(web_elements)
+    s = score(elements, ["f"])
+    # All 7 elements should be actionable (they all have traits in ACTIONABLE_TRAITS)
+    assert s.actionable == 7
+    assert s.with_id == 7
+    assert s.grade == "Ready"

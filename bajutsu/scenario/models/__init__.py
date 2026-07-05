@@ -77,7 +77,7 @@ from bajutsu.scenario.models.scenario import (
 )
 from bajutsu.scenario.models.selector import Selector
 from bajutsu.scenario.models.steps import _STEP_ACTIONS as STEP_ACTIONS
-from bajutsu.scenario.models.steps import Extract, ForEach, If, Step, Use
+from bajutsu.scenario.models.steps import Extract, ForEach, If, Step, Use, Web
 
 __all__ = [
     "STEP_ACTIONS",
@@ -136,4 +136,5 @@ __all__ = [
     "VisualMatch",
     "Wait",
     "WaitRequest",
+    "Web",
 ]

@@ -352,6 +352,62 @@ def test_repeat_cli_unavailable_backend_exits_two(tmp_path: Path) -> None:
     assert result.exit_code == 2 and "no available actuator" in result.output
 
 
+# --- remaining usage-error branches + _read_manifests (BE-0117) ---
+
+
+def test_cli_history_with_repeat_is_usage_error(tmp_path: Path) -> None:
+    # --history reads past runs; --repeat executes new ones. Asking for both is a usage error.
+    runs = tmp_path / "runs"
+    runs.mkdir()
+    result = runner.invoke(app, ["audit", "--history", str(runs), "--repeat", "2"])
+    assert result.exit_code == 2
+    assert "--history" in result.output and "--repeat" in result.output
+
+
+def test_cli_no_scenario_no_history_is_usage_error() -> None:
+    result = runner.invoke(app, ["audit"])
+    assert result.exit_code == 2
+    assert "audit needs a scenario file" in result.output
+
+
+def test_cli_scenario_load_failure_exits_two(tmp_path: Path) -> None:
+    # Valid YAML whose content is not a valid scenario (missing `name`): the loader raises a
+    # ValidationError (a ValueError), turned into a clean exit 2.
+    bad = tmp_path / "bad.yaml"
+    bad.write_text("- steps:\n    - tap: { id: ok }\n", encoding="utf-8")
+    result = runner.invoke(app, ["audit", str(bad)])
+    assert result.exit_code == 2
+    assert "failed to load scenario" in result.output
+
+
+def test_cli_audit_malformed_yaml_exits_two(tmp_path: Path) -> None:
+    # YAML that does not parse at all (unclosed flow mapping): the loader normalizes the parse's
+    # yaml.YAMLError into a ValueError, so audit's guard turns it into the same clean exit 2 as a
+    # structurally-invalid scenario — not an uncaught traceback with exit 1 (BE-0150).
+    bad = tmp_path / "broken.yaml"
+    bad.write_text("- name: a\n  steps: { id\n", encoding="utf-8")
+    result = runner.invoke(app, ["audit", str(bad)])
+    assert result.exit_code == 2
+    assert "failed to load scenario" in result.output
+
+
+def test_read_manifests_skips_non_dirs_missing_and_non_dict(tmp_path: Path) -> None:
+    from bajutsu.cli._shared import read_manifests
+
+    runs = tmp_path / "runs"
+    runs.mkdir()
+    (runs / "loose.txt").write_text("x", encoding="utf-8")  # not a directory → skipped
+    (runs / "no-manifest").mkdir()  # a run dir without manifest.json → skipped
+    listy = runs / "list-manifest"
+    listy.mkdir()
+    (listy / "manifest.json").write_text(json.dumps([1, 2, 3]), encoding="utf-8")  # non-dict → skip
+    good = runs / "good"
+    good.mkdir()
+    (good / "manifest.json").write_text(json.dumps({"runId": "r1"}), encoding="utf-8")
+
+    assert read_manifests(runs) == [{"runId": "r1"}]
+
+
 def _audit(yaml: str):  # type: ignore[no-untyped-def]
     [scenario] = load_scenarios(yaml)
     return audit_scenario(scenario)

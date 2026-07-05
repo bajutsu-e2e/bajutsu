@@ -66,10 +66,10 @@ existing Linux gate) is in **[multi-platform](multi-platform.md)**. A second iOS
 cheap Linux control plane (auth, history, queue, report viewer) split from an
 expensive device-worker pool, so a team runs and reviews from a browser.
 
-- **[BE-0015 — public / cloud hosting](../roadmaps/proposals/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md)** — public / multi-tenant: control-plane ⇄ macOS worker pool
+- **[BE-0015 — public / cloud hosting](../roadmaps/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md)** — public / multi-tenant: control-plane ⇄ macOS worker pool
   split, the `subprocess.Popen` → job-queue refactor, and the security hardening that public
   exposure mandates.
-- **[BE-0016 — self-hosting](../roadmaps/proposals/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md)** — your own Mac(s): a today-ready single-Mac setup and a
+- **[BE-0016 — self-hosting](../roadmaps/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md)** — your own Mac(s): a today-ready single-Mac setup and a
   fully self-hosted multi-tenant topology.
 - **MCP (Model Context Protocol) integration** ([roadmap → Integration & automation](../roadmaps/README.md#integration--automation-mcp)) — expose `run`/`doctor`/`record`/
   `codegen` as MCP tools and evidence as MCP resources, so agents drive Bajutsu directly. This
@@ -83,10 +83,10 @@ softening the gate.
 - **GUI (graphical user interface) editor & non-AI action capture** ([roadmap → Authoring experience](../roadmaps/README.md#authoring-experience-record--gui-editor)) —
   visually edit scenarios, pick selectors on a screenshot, and capture real taps/types into a
   scenario without an LLM. `bajutsu serve` is the first step.
-- **Visual-regression assertions** ([roadmap: BE-0029](../roadmaps/implemented/BE-0029-visual-regression-assertions/BE-0029-visual-regression-assertions.md)) — a new
+- **Visual-regression assertions** ([roadmap: BE-0029](../roadmaps/BE-0029-visual-regression-assertions/BE-0029-visual-regression-assertions.md)) — a new
   deterministic assertion type (baseline diff). It fits because it is machine-checked,
   not AI-judged.
-- **Self-healing triage** ([roadmap: BE-0021](../roadmaps/implemented/BE-0021-ai-triage/BE-0021-ai-triage.md)) — already shipped: AI reads
+- **Self-healing triage** ([roadmap: BE-0021](../roadmaps/BE-0021-ai-triage/BE-0021-ai-triage.md)) — already shipped: AI reads
   failure evidence and proposes a **minimal diff**, which a human reviews and applies with
   `--write`. The guardrail (never auto-soften a committed test) is what keeps this inside the
   directives.
@@ -124,11 +124,11 @@ later one at low cost, are:
    emulator, and exercises the rich end of the capability model (native network/video/semantic).
 2. **MCP server** ([roadmap → Integration & automation](../roadmaps/README.md#integration--automation-mcp)). Low surface area, high leverage for
    the Tier-1 authoring loop, and it does not touch the gate.
-3. **Visual-regression assertions** ([roadmap: BE-0029](../roadmaps/implemented/BE-0029-visual-regression-assertions/BE-0029-visual-regression-assertions.md)). A
+3. **Visual-regression assertions** ([roadmap: BE-0029](../roadmaps/BE-0029-visual-regression-assertions/BE-0029-visual-regression-assertions.md)). A
    deterministic capability that competitors gate behind AI; it strengthens the
    directives rather than straining them.
 
-The hosting axis ([BE-0015](../roadmaps/proposals/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md) / [BE-0016](../roadmaps/proposals/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md)) is a larger,
+The hosting axis ([BE-0015](../roadmaps/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md) / [BE-0016](../roadmaps/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md)) is a larger,
 separable investment; pursue it when the demand is collaborative rather than individual.
 
 > **How this relates to [roadmap](../roadmaps/README.md):** this page covers the rationale and the overall

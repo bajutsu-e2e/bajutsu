@@ -8,11 +8,11 @@ deterministic baseline (proposer wins), the tool-call parsing, and guide selecti
 from __future__ import annotations
 
 import json
-from pathlib import Path
 
-from conftest import FakeAnthropic, FakeBlock, el
+from conftest import FakeBackend, FakeBlock, ShotDriver, el
 
 from bajutsu import crawl, crawl_tabs
+from bajutsu.ai.base import TextPart
 from bajutsu.anthropic_client import AiConfig
 from bajutsu.crawl_guide import (
     ClaudeActionProposer,
@@ -26,14 +26,6 @@ from bajutsu.crawl_guide import (
 from bajutsu.drivers.fake import FakeDriver
 from bajutsu.redaction import Redactor
 from bajutsu.scenario import Redact
-
-
-class _ShotDriver(FakeDriver):
-    """FakeDriver whose screenshot writes real bytes, so the guide's vision path has an image."""
-
-    def screenshot(self, path: str) -> None:
-        Path(path).write_bytes(b"\x89PNG\r\n\x1a\n fake")
-        self.actions.append(("screenshot", path))
 
 
 class _FakeProposer:
@@ -127,7 +119,7 @@ def test_ai_guide_uses_vision_tabs_only_for_an_unaddressable_tab_bar() -> None:
     locator = _FakeTabLocator(
         [crawl_tabs.TabTarget(0.2, 0.95, "Home"), crawl_tabs.TabTarget(0.8, 0.95, "Me")]
     )
-    actions = ai_guide(_FakeProposer([]), tab_locator=locator)(_ShotDriver(screen=bar), bar, _ctx())
+    actions = ai_guide(_FakeProposer([]), tab_locator=locator)(ShotDriver(screen=bar), bar, _ctx())
     assert locator.calls == 1
     taps = [a for a in actions if a.kind == "tap_point"]
     assert [a.label for a in taps] == ["Home", "Me"]  # both tabs, left to right
@@ -138,7 +130,7 @@ def test_ai_guide_uses_vision_tabs_only_for_an_unaddressable_tab_bar() -> None:
     addr = [el(identifier="tab.home", traits=["tab"]), el(identifier="tab.me", traits=["tab"])]
     locator2 = _FakeTabLocator([crawl_tabs.TabTarget(0.5, 0.95, "X")])
     actions2 = ai_guide(_FakeProposer([]), tab_locator=locator2)(
-        _ShotDriver(screen=addr), addr, _ctx()
+        ShotDriver(screen=addr), addr, _ctx()
     )
     assert locator2.calls == 0
     assert not any(a.kind == "tap_point" for a in actions2)
@@ -146,7 +138,7 @@ def test_ai_guide_uses_vision_tabs_only_for_an_unaddressable_tab_bar() -> None:
     # No tab bar at all -> vision never fires on an ordinary screen.
     plain = [el(identifier="only", traits=["button"])]
     locator3 = _FakeTabLocator([crawl_tabs.TabTarget(0.5, 0.95, "X")])
-    ai_guide(_FakeProposer([]), tab_locator=locator3)(_ShotDriver(screen=plain), plain, _ctx())
+    ai_guide(_FakeProposer([]), tab_locator=locator3)(ShotDriver(screen=plain), plain, _ctx())
     assert locator3.calls == 0
 
 
@@ -261,42 +253,46 @@ def test_claude_code_proposer_tolerates_a_bad_envelope() -> None:
 # --- BE-0097: the crawl guide's AI inputs are redacted and the provider config is threaded ---
 
 
-def _propose_client() -> FakeAnthropic:
-    """A fake client that returns a minimal propose_actions tool call."""
-    return FakeAnthropic(
+def _propose_backend() -> FakeBackend:
+    """A fake backend that returns a minimal propose_actions tool call."""
+    return FakeBackend(
         FakeBlock("propose_actions", {"thought": "ok", "actions": [{"action": "tap", "id": "a"}]})
     )
 
 
-def test_claude_proposer_threads_ai_config_to_client_and_model() -> None:
-    """BE-0097: a non-default AiConfig is threaded to make_client and resolve_model, so the crawl
+def _text_of(backend: FakeBackend) -> str:
+    return next(p.text for p in backend.requests[0].messages[0].content if isinstance(p, TextPart))
+
+
+def test_claude_proposer_threads_ai_config_to_backend_and_model() -> None:
+    """BE-0097: a non-default AiConfig is threaded to the backend and resolve_model, so the crawl
     guide talks to the user's configured provider, not a hardcoded default."""
     ai = AiConfig(provider="bedrock", model="us.anthropic.claude-opus-4-8-v1")
-    client = _propose_client()
-    proposer = ClaudeActionProposer(client=client, ai=ai)
+    backend = _propose_backend()
+    proposer = ClaudeActionProposer(backend=backend, ai=ai)
     proposer.propose([el(identifier="a", traits=["button"])], None, [], ())
-    assert client.calls[0]["model"] == "us.anthropic.claude-opus-4-8-v1"
+    assert backend.requests[0].model == "us.anthropic.claude-opus-4-8-v1"
 
 
 def test_claude_proposer_redacts_elements_before_send() -> None:
     """BE-0097: a secret in an element's value/label is masked before it reaches the model."""
-    client = _propose_client()
+    backend = _propose_backend()
     redactor = Redactor(Redact(labels=["カード番号"]), values=["sk-secret-token"])
     elements = [
         el(identifier="card", label="カード番号", value="4111-1111-1111-1111"),
         el(identifier="tok", label="token: sk-secret-token", value="sk-secret-token"),
     ]
-    ClaudeActionProposer(client=client, redactor=redactor).propose(elements, None, [], ())
-    text = next(c["text"] for c in client.calls[0]["messages"][0]["content"] if c["type"] == "text")
+    ClaudeActionProposer(backend=backend, redactor=redactor).propose(elements, None, [], ())
+    text = _text_of(backend)
     assert "sk-secret-token" not in text
     assert "[REDACTED]" in text
 
 
 def test_claude_proposer_no_redactor_leaves_text_unmasked() -> None:
-    client = _propose_client()
+    backend = _propose_backend()
     elements = [el(identifier="a", label="plain-label")]
-    ClaudeActionProposer(client=client).propose(elements, None, [], ())
-    text = next(c["text"] for c in client.calls[0]["messages"][0]["content"] if c["type"] == "text")
+    ClaudeActionProposer(backend=backend).propose(elements, None, [], ())
+    text = _text_of(backend)
     assert "plain-label" in text
 
 

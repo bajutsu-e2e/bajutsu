@@ -1,6 +1,6 @@
 """`bajutsu report` — re-render a finished run's report from its stored data (BE-0068).
 
-Rewrites `runs/<id>/report.html` (and `junit.xml`) for an existing run using the **current**
+Rewrites `runs/<id>/report.html` (and `junit.xml` / `ctrf.json`) for an existing run using the **current**
 template, reading the persisted render model (`manifest.json` + `scenario.yaml`) — no device, no
 AI, no re-run. So a template improvement or rendering fix reaches past runs without re-executing
 them; the verdict is read from the stored model, never recomputed.
@@ -23,7 +23,7 @@ def report(
     ),
     runs: str = typer.Option("runs", help="runs root (used for a bare run id and for --all)"),
 ) -> None:
-    """Re-render a finished run's report.html + junit.xml from its stored data.
+    """Re-render a finished run's report.html + junit.xml + ctrf.json from its stored data.
 
     Uses the current template and reads only the run dir — no device, no AI, and the verdict is
     never recomputed.

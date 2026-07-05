@@ -54,12 +54,12 @@ def test_load_config_cached_reparses_when_the_file_changes(tmp_path: Path) -> No
     assert sorted(helpers._load_config_cached(cfg).targets) == ["demo", "other"]
 
 
-def test_load_config_file_returns_none_on_malformed_yaml(tmp_path: Path) -> None:
+def test_load_serve_config_file_returns_none_on_malformed_yaml(tmp_path: Path) -> None:
     # A YAML syntax error (yaml.YAMLError, not a ValueError) is normalized so the helpers' broad
     # except still turns it into None rather than escaping and crashing request handling.
     cfg = tmp_path / "bajutsu.config.yaml"
     cfg.write_text("targets: [unbalanced\n", encoding="utf-8")
-    assert srv.load_config_file(cfg) is None
+    assert srv.load_serve_config_file(cfg) is None
     assert srv.list_targets(cfg) == []
 
 
@@ -210,6 +210,51 @@ def test_run_command_includes_runs_dir() -> None:
     cmd = srv.run_command("s.yaml", "demo", runs_dir="/serve/runs")
     assert cmd[cmd.index("--runs-dir") + 1] == "/serve/runs"
     assert "--runs-dir" not in srv.run_command("s.yaml", "demo")
+
+
+def test_run_command_emits_the_backfilled_flags() -> None:
+    # BE-0134 backfill: run_command now passes through the flags it previously couldn't. This drives
+    # the real run_command path (not flag_args directly), so a param dropped from its dict is caught.
+    cmd = srv.run_command(
+        "s.yaml",
+        "demo",
+        browser="firefox",
+        browsers="chromium,firefox",
+        tag="smoke",
+        exclude="slow",
+        schemas="/s",
+        goldens="/g",
+        network=False,
+        log_predicate="subsystem == 'x'",
+        log_subsystem="com.example",
+        alert_instruction="tap Allow",
+        zip_run=True,
+        config_offline=True,
+        require_pinned_config=True,
+    )
+    assert cmd[cmd.index("--browser") + 1] == "firefox"
+    assert cmd[cmd.index("--browsers") + 1] == "chromium,firefox"
+    assert cmd[cmd.index("--tag") + 1] == "smoke"
+    assert cmd[cmd.index("--exclude") + 1] == "slow"
+    assert cmd[cmd.index("--schemas") + 1] == "/s"
+    assert cmd[cmd.index("--goldens") + 1] == "/g"
+    assert cmd[cmd.index("--log-predicate") + 1] == "subsystem == 'x'"
+    assert cmd[cmd.index("--log-subsystem") + 1] == "com.example"
+    assert cmd[cmd.index("--alert-instruction") + 1] == "tap Allow"
+    assert "--no-network" in cmd and "--zip" in cmd
+    assert "--config-offline" in cmd and "--require-pinned-config" in cmd
+    # All omitted when unset (defaults), so a normal run's argv is unchanged.
+    bare = srv.run_command("s.yaml", "demo")
+    for flag in (
+        "--browser",
+        "--tag",
+        "--schemas",
+        "--zip",
+        "--network",
+        "--no-network",
+        "--config-offline",
+    ):
+        assert flag not in bare
 
 
 def test_record_command_builder() -> None:
@@ -368,6 +413,10 @@ def test_valid_backend(value: str, ok: bool) -> None:
         ("A,B", True),  # comma pool
         ("A B", False),  # space -> reject
         ("A;rm -rf /", False),  # metacharacters -> reject
+        ("-rf", False),  # leading hyphen -> reject (could look like a flag)
+        ("--help", False),  # leading hyphen -> reject
+        ("--config", False),  # leading hyphen -> reject
+        ("booted,-rf", False),  # one leading-hyphen token in the pool -> reject
     ],
 )
 def test_valid_udid(value: str, ok: bool) -> None:

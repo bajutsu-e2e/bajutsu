@@ -11,20 +11,21 @@ make -C demos tour                   # or, directly:
 ./demos/tour/demo.sh
 ```
 
-It runs against the dedicated [`demo` app](../app/README.md) (onboarding → login → counter) and
+It runs against the [showcase](../showcase/README.md) app (the SwiftUI accessibility product) and
 walks three phases:
 
-1. **Run** — execute the committed scenario [`counter.yaml`](../app/scenarios/counter.yaml) on
-   the Simulator. It writes a real run directory (manifest, JUnit, `report.html`) and **PASSES**.
-2. **Modify** — change the expected counter to a wrong value → the deterministic check **FAILS**
-   (a machine assertion caught it, not an LLM) → fix it → it **PASSES** again.
+1. **Run** — execute the committed scenario [`tour.yaml`](../showcase/scenarios/menu/tour.yaml) on
+   the Simulator: open the third horse from the Stable catalog and turn on Favorite. It writes a
+   real run directory (manifest, JUnit, `report.html`) and **PASSES**.
+2. **Modify** — change the expected favorite state to a wrong value → the deterministic check
+   **FAILS** (a machine assertion caught it, not an LLM) → fix it → it **PASSES** again.
 3. **Diagnose** — rename a selector so it no longer resolves (a selector that drifted out from
    under the test) → the run **FAILS** → [`triage`](../../bajutsu/triage.py) reads the failed run
-   and diagnoses it: the category (`selector`) plus a *"did you mean `counter.increment`?"* fix
-   lifted from the captured element tree → restore the selector → it **PASSES**.
+   and diagnoses it: the category (`selector`) plus a *"did you mean `stable.row.3`?"* fix lifted
+   from the captured element tree → restore the selector → it **PASSES**.
 
 The script edits a gitignored working copy (`demos/tour/scenario.yaml`), never the tracked
-`counter.yaml`, so the repo stays clean. The only difference from the on-device `record` demo is
+`tour.yaml`, so the repo stays clean. The only difference from the on-device `record` demo is
 that the scenario is already authored — there's no Claude step, so no API key.
 
 ## No Mac? The same story on a fake device (zero setup)
@@ -47,12 +48,13 @@ a device.
 
 ## Status
 
-> The `demo` app and `counter.yaml` were authored against the iOS Simulator's accessibility
-> model and validated by replaying the scenario through the real pipeline on a fake driver, but
-> have **not yet been built and run on-device** — confirm with `make -C demos tour` on a Mac.
+> `tour.yaml` reuses identifiers the showcase smoke / search scenarios and the `record` goals
+> already drive on-device (`stable.row.*`, `horse.favorite`), and parses through the real
+> pipeline, but the tour flow itself has **not yet been replayed on-device** in this form —
+> confirm with `make -C demos tour` on a Mac.
 
 ## Where to go next
 
-- [`demos/features/`](../features/WEBUI.md) — the Web UI tour through every evidence type.
-- [`demos/record/`](../record/README.md) — AI authoring with real Claude on-device.
+- [`demos/showcase/WEBUI.md`](../showcase/WEBUI.md) — the Web UI tour through every evidence type.
+- [`demos/showcase/`](../showcase/README.md#run-on-a-booted-simulator) — AI authoring with real Claude on-device (`record`).
 - The map of all demos: [`demos/README.md`](../README.md).

@@ -62,9 +62,9 @@ Bajutsu は 3 つの独立した軸に沿って広がります。これらは合
 コントロールプレーン（認証、履歴、キュー、レポートビューア）を、高価なデバイスワーカープールから
 切り離し、チームがブラウザから実行とレビューを行えるようにします。
 
-- **[BE-0015（公開 / クラウドホスティング）](../../roadmaps/proposals/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting-ja.md)**：公開とマルチテナントを扱います。control-plane ⇄ macOS ワーカープールの
+- **[BE-0015（公開 / クラウドホスティング）](../../roadmaps/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting-ja.md)**：公開とマルチテナントを扱います。control-plane ⇄ macOS ワーカープールの
   分離、`subprocess.Popen` からジョブキューへのリファクタ、そして公開時に必須となるセキュリティ堅牢化です。
-- **[BE-0016（セルフホスティング）](../../roadmaps/proposals/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting-ja.md)**：自前の Mac を扱います。今日すぐ使える単一 Mac 構成と、完全にセルフホストする
+- **[BE-0016（セルフホスティング）](../../roadmaps/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting-ja.md)**：自前の Mac を扱います。今日すぐ使える単一 Mac 構成と、完全にセルフホストする
   マルチテナント構成です。
 - **MCP（Model Context Protocol）統合**（[roadmap → 統合と自動化](../../roadmaps/README-ja.md#統合と自動化mcp-化)）：`run`/`doctor`/`record`/`codegen` を MCP ツールとして、
   証跡を MCP リソースとして公開し、エージェントが直接 Bajutsu を駆動できるようにします。これは Tier-1 の境界の内側に収まります。
@@ -76,9 +76,9 @@ Bajutsu は 3 つの独立した軸に沿って広がります。これらは合
 
 - **GUI（graphical user interface）エディタと非 AI 操作キャプチャ**（[roadmap → オーサリング体験](../../roadmaps/README-ja.md#オーサリング体験record--gui-エディタ)）：シナリオを画面上で編集し、
   スクリーンショット上でセレクタを選び、実際の tap や type を LLM なしでシナリオに取り込みます。`bajutsu serve` はその第一歩です。
-- **ビジュアル回帰アサーション**（[roadmap: BE-0029](../../roadmaps/implemented/BE-0029-visual-regression-assertions/BE-0029-visual-regression-assertions-ja.md)）：新しい決定的アサーション種別（ベースライン差分）です。AI が
+- **ビジュアル回帰アサーション**（[roadmap: BE-0029](../../roadmaps/BE-0029-visual-regression-assertions/BE-0029-visual-regression-assertions-ja.md)）：新しい決定的アサーション種別（ベースライン差分）です。AI が
   判定するのではなく機械でチェックするので、原則に適合します。
-- **自己修復 triage**（[roadmap: BE-0021](../../roadmaps/implemented/BE-0021-ai-triage/BE-0021-ai-triage-ja.md)）：既に出荷済みです。AI が
+- **自己修復 triage**（[roadmap: BE-0021](../../roadmaps/BE-0021-ai-triage/BE-0021-ai-triage-ja.md)）：既に出荷済みです。AI が
   失敗証跡を読んで **最小差分**を提案し、人間がレビューして `--write` で適用します。コミット済みテストを自動で緩めないという
   ガードレールが、これを directive の内側に保ちます。
 
@@ -113,10 +113,10 @@ Bajutsu は 3 つの独立した軸に沿って広がります。これらは合
    示せます。同時に、能力モデルの豊かな側（ネイティブの network、video、意味的操作）を行使します。
 2. **MCP サーバ**（[roadmap → 統合と自動化](../../roadmaps/README-ja.md#統合と自動化mcp-化)）。表面積が小さく、Tier-1 のオーサリングループへの
    レバレッジが大きく、しかもゲートに触れません。
-3. **ビジュアル回帰アサーション**（[roadmap: BE-0029](../../roadmaps/implemented/BE-0029-visual-regression-assertions/BE-0029-visual-regression-assertions-ja.md)）。競合が
+3. **ビジュアル回帰アサーション**（[roadmap: BE-0029](../../roadmaps/BE-0029-visual-regression-assertions/BE-0029-visual-regression-assertions-ja.md)）。競合が
    AI でゲートしている決定的な能力であり、directive を緊張させるどころか、むしろ強める差別化要素です。
 
-ホスティング軸（[BE-0015](../../roadmaps/proposals/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting-ja.md) / [BE-0016](../../roadmaps/proposals/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting-ja.md)）は、より大きく、
+ホスティング軸（[BE-0015](../../roadmaps/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting-ja.md) / [BE-0016](../../roadmaps/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting-ja.md)）は、より大きく、
 切り離して進められる投資です。需要が個人のものではなく協働のものになったときに進めます。
 
 > **[roadmap](../../roadmaps/README-ja.md) との関係：** 本ページは根拠と全体的な方向を扱い、ロードマップは

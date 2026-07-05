@@ -210,3 +210,92 @@ def test_step_index_missing_or_invalid_is_a_non_matching_sentinel() -> None:
     assert trace._step_index({}) < 0
     assert trace._step_index({"index": "x"}) < 0
     assert trace._step_index({"index": True}) < 0  # bool is not a step index
+
+
+# --- `bajutsu trace` CLI command (BE-0117) ---
+
+from typer.testing import CliRunner  # noqa: E402
+
+from bajutsu.cli import app  # noqa: E402
+
+runner = CliRunner()
+
+
+def test_cli_trace_renders_run(tmp_path: Path) -> None:
+    run = _write_run(tmp_path / "runs", "20260101-000000")
+    r = runner.invoke(app, ["trace", str(run)])
+    assert r.exit_code == 0
+    assert "s" in r.output
+
+
+def test_cli_trace_no_run_at_explicit_path(tmp_path: Path) -> None:
+    empty = tmp_path / "run-without-manifest"
+    empty.mkdir()
+    r = runner.invoke(app, ["trace", str(empty)])
+    assert r.exit_code == 2
+    assert "no run found" in r.output
+    assert str(empty) in r.output
+
+
+def test_cli_trace_no_run_under_runs_root(tmp_path: Path) -> None:
+    runs = tmp_path / "runs"
+    runs.mkdir()
+    r = runner.invoke(app, ["trace", "--runs", str(runs)])
+    assert r.exit_code == 2
+    assert "no run found" in r.output
+    assert "runs" in r.output
+
+
+def test_cli_trace_explain_needs_scenario_path() -> None:
+    r = runner.invoke(app, ["trace", "--explain"])
+    assert r.exit_code == 2
+    assert "--explain needs a scenario file path" in r.output
+
+
+def test_cli_trace_explain_missing_file(tmp_path: Path) -> None:
+    r = runner.invoke(app, ["trace", "--explain", str(tmp_path / "nope.yaml")])
+    assert r.exit_code == 2
+    assert "--explain needs a scenario file path" in r.output
+
+
+def test_cli_trace_explain_invalid_scenario(tmp_path: Path) -> None:
+    # Valid YAML whose content is not a valid scenario (missing `name`): the loader raises a
+    # ValidationError (a ValueError), which _explain turns into a clean exit 2.
+    bad = tmp_path / "bad.yaml"
+    bad.write_text("- steps:\n    - tap: { id: ok }\n", encoding="utf-8")
+    r = runner.invoke(app, ["trace", "--explain", str(bad)])
+    assert r.exit_code == 2
+    assert "failed to load scenario" in r.output
+
+
+def test_cli_trace_explain_malformed_yaml(tmp_path: Path) -> None:
+    # YAML that does not parse at all (unclosed flow mapping): the loader normalizes the parse's
+    # yaml.YAMLError into a ValueError, so _explain's guard turns it into the same clean exit 2 as a
+    # structurally-invalid scenario — not an uncaught traceback with exit 1 (BE-0150).
+    bad = tmp_path / "broken.yaml"
+    bad.write_text("- name: a\n  steps: { id\n", encoding="utf-8")
+    r = runner.invoke(app, ["trace", "--explain", str(bad)])
+    assert r.exit_code == 2
+    assert "failed to load scenario" in r.output
+
+
+def test_cli_trace_explain_malformed_component_names_the_component(tmp_path: Path) -> None:
+    # A syntax error in a *referenced component* is attributed to the component file, not the
+    # top-level scenario: the loader names each file it parses, so it can't misreport which one is
+    # malformed (BE-0150).
+    (tmp_path / "comp.yaml").write_text("steps: { tap\n", encoding="utf-8")  # unclosed flow mapping
+    scenario = tmp_path / "s.yaml"
+    scenario.write_text(
+        "- name: a\n  steps:\n    - use: { component: comp.yaml }\n", encoding="utf-8"
+    )
+    r = runner.invoke(app, ["trace", "--explain", str(scenario)])
+    assert r.exit_code == 2
+    assert "failed to load scenario" in r.output
+    assert "comp.yaml" in r.output  # the component, not the scenario, is named as malformed
+
+
+def test_cli_trace_explain_renders_valid_scenario(tmp_path: Path) -> None:
+    good = tmp_path / "good.yaml"
+    good.write_text("- name: a\n  steps:\n    - tap: { id: ok }\n", encoding="utf-8")
+    r = runner.invoke(app, ["trace", "--explain", str(good)])
+    assert r.exit_code == 0

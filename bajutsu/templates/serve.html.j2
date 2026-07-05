@@ -14,8 +14,8 @@
       <button class="toptab active" data-view="record" data-testid="nav.record">Record</button>
       <button class="toptab" data-view="replay" data-testid="nav.replay">Replay</button>
       <button class="toptab" data-view="crawl" data-testid="nav.crawl">Crawl</button>
-      <button class="toptab" data-view="capture" data-testid="nav.capture">Capture</button>
-      <button class="toptab" data-view="editor" data-testid="nav.editor">Editor</button>
+      <button class="toptab" data-view="author" data-testid="nav.author">Author</button>
+      <button class="toptab" data-view="stats" data-testid="nav.stats">Stats</button>
       <button class="cfgbtn" id="opencfg" data-testid="nav.open-config">Open config</button>
       <span class="cfgname" id="cfgname" data-testid="nav.config-name"></span>
       <button class="cfgbtn" id="opensettings" data-testid="nav.settings">Settings</button>
@@ -38,6 +38,11 @@
     <button class="vstab" data-pane="yaml">Output</button>
   </div>
   <div class="left" data-pane="form">
+    <!-- Claude-reachability gate (BE-0101): shown disabled with an inline explanation when Claude is
+         unreachable, so `record` degrades gracefully instead of failing only on click. Lives inside
+         the controls pane so the desktop tile layout (which replaces the view's direct children)
+         keeps it. -->
+    <div class="ai-gate" id="rec-aigate" data-testid="record.ai-gate" hidden></div>
     <div class="card">
       <div class="panel" id="panel-record">
         <label>Goal (natural language)</label>
@@ -142,6 +147,8 @@
     <button class="vstab" data-pane="console">Console</button>
   </div>
   <div class="left" data-pane="form">
+    <!-- Claude-reachability gate (BE-0101); see the record view above. -->
+    <div class="ai-gate" id="crawl-aigate" data-testid="crawl.ai-gate" hidden></div>
     <div class="card">
       <div class="panel" id="panel-crawl">
         <label>Target</label><select id="crawl-target" data-testid="crawl.target"></select>
@@ -198,115 +205,116 @@
   </div>
 </main>
 
-<!-- ===== Capture: record actions by clicking on a screenshot (BE-0012) ===== -->
-<main id="view-capture" data-testid="view.capture" data-pane="form" hidden>
-  <div class="viewswitch" role="tablist" data-testid="capture.switch">
+<!-- ===== Author (BE-0098): one open scenario, three modes (Capture / Edit / Enrich) =====
+     Unifies the former Capture (BE-0012) and Editor (BE-0013) tabs and the Enrich panel
+     (BE-0014). The mode switcher below picks what a click on the shared screenshot does;
+     switching mode never reloads the scenario or drops unsaved YAML edits. -->
+<main id="view-author" data-testid="view.author" data-pane="form" hidden>
+  <div class="viewswitch" role="tablist" data-testid="author.switch">
     <button class="vstab active" data-pane="form">Form</button>
     <button class="vstab" data-pane="screen">Screen</button>
     <button class="vstab" data-pane="steps">Steps</button>
   </div>
+
   <div class="left" data-pane="form">
+    <!-- Mode switcher: a button row, not tabs — distinct from the top-level nav above. -->
+    <div class="modeswitch" role="tablist" data-testid="author.mode">
+      <button class="modetab active" data-mode="capture" data-testid="author.mode-capture">Capture</button>
+      <button class="modetab" data-mode="edit" data-testid="author.mode-edit">Edit</button>
+      <button class="modetab" data-mode="enrich" data-testid="author.mode-enrich">Enrich</button>
+    </div>
     <div class="card">
-      <div class="panel" id="panel-capture">
-        <label>Target</label><select id="cap-target" data-testid="capture.target"></select>
-        <label>Action mode</label>
-        <div class="checks">
-          <label><input type="radio" name="cap-mode" value="tap" checked> tap</label>
-          <label><input type="radio" name="cap-mode" value="type"> type</label>
+      <div class="panel" id="panel-author">
+        <label>Target</label><select id="au-target" data-testid="author.target"></select>
+        <!-- Scenario + run selection: Edit / Enrich load an existing scenario; Capture starts fresh. -->
+        <div class="au-loadrow">
+          <label>Scenario</label><select id="au-scenario" data-testid="author.scenario"></select>
+          <label>Run</label><select id="au-run" data-testid="author.run"></select>
+          <button class="run" id="au-load" data-testid="author.load" data-idle="Load">Load</button>
         </div>
-        <div id="cap-type-field" hidden>
-          <label>Text to type</label>
-          <input id="cap-text" type="text" placeholder="text to enter into the focused field">
+        <!-- Capture-only: what a screenshot click records. -->
+        <div class="au-cap">
+          <label>Action mode</label>
+          <div class="checks">
+            <label><input type="radio" name="au-mode" value="tap" checked> tap</label>
+            <label><input type="radio" name="au-mode" value="type"> type</label>
+          </div>
+          <div id="au-type-field" hidden>
+            <label>Text to type</label>
+            <input id="au-text" type="text" placeholder="text to enter into the focused field">
+          </div>
         </div>
       </div>
     </div>
-    <div class="card cap-steps-card" data-pane="steps">
-      <div class="yamlhead"><span class="ttl">Captured steps</span><span class="muted" id="cap-count">0 steps</span></div>
-      <ol id="cap-steplist" class="cap-steplist"></ol>
+    <div class="card au-steps-card" data-pane="steps">
+      <div class="yamlhead"><span class="ttl">Steps</span><span class="muted" id="au-step-count">0 steps</span></div>
+      <ol id="au-steplist" class="au-steplist"></ol>
+    </div>
+    <div class="card yamlpanel" id="au-yamlpanel" data-pane="yaml">
+      <div class="yamlhead">
+        <span class="ttl">Scenario YAML</span>
+        <button class="savebtn au-enrich" id="au-enrich" data-testid="author.enrich" disabled>Enrich</button>
+        <button class="savebtn" id="au-save" data-testid="author.save" disabled>Save</button>
+      </div>
+      <div class="yamledit">
+        <div class="yamlgutter" id="au-gutter" aria-hidden="true"><div class="yamlgutter-inner" id="au-gutter-inner"></div></div>
+        <textarea id="au-yaml" class="yaml" placeholder="Capture a flow or load a scenario to edit its YAML here." spellcheck="false"></textarea>
+        <div class="yamlcomplete" id="au-complete" hidden></div>
+        <div class="yamlhover" id="au-hover" hidden></div>
+      </div>
+      <div class="au-problems" id="au-problems" data-testid="author.problems" hidden></div>
+      <div class="enrich-panel" id="au-enrich-panel" hidden>
+        <div class="enrich-head">
+          <span class="ttl">Proposed assertions</span>
+          <span class="enrich-actions">
+            <button class="savebtn enrich-accept" id="au-enrich-accept" data-testid="author.enrich-accept">Accept</button>
+            <button class="savebtn enrich-dismiss" id="au-enrich-dismiss" data-testid="author.enrich-dismiss">Dismiss</button>
+          </span>
+        </div>
+        <div class="enrich-note" id="au-enrich-note"></div>
+        <ul class="enrich-list" id="au-enrich-list"></ul>
+      </div>
     </div>
   </div>
+
   <div class="gutter" data-var="--rec-left" data-min="260" data-max="640"></div>
+
   <div class="rec-stack">
-    <div class="card cap-screen-card" data-pane="screen">
-      <div style="display:flex;gap:.5em;margin-bottom:.5em">
-        <button class="run" id="cap-start" data-testid="capture.start" data-idle="Start capture">Start capture</button>
-        <button class="run" id="cap-finish" data-testid="capture.finish" hidden>Finish &amp; save</button>
+    <div class="card au-screen-card" data-pane="screen">
+      <!-- Capture-only: start / finish a live session. -->
+      <div class="au-cap au-btnrow">
+        <button class="run" id="au-start" data-testid="author.start" data-idle="Start capture">Start capture</button>
+        <button class="run" id="au-finish" data-testid="author.finish" hidden>Finish &amp; save</button>
       </div>
-      <div class="status" id="cap-status"></div>
-      <div class="cap-screen-wrap" id="cap-screen-wrap">
-        <div class="cap-placeholder" id="cap-placeholder">Select a target and press Start to begin capturing actions by clicking on the screenshot.</div>
-        <img id="cap-screenshot" class="cap-screenshot" hidden alt="device screenshot">
-        <div class="cap-feedback" id="cap-feedback" hidden>
-          <span class="cap-rung" id="cap-rung"></span>
-          <span class="cap-sel" id="cap-sel"></span>
+      <!-- Edit-only: step navigation across the loaded run's screenshots. -->
+      <div class="au-step-nav au-edit">
+        <button class="run au-nav-btn" id="au-prev" data-testid="author.prev" disabled>&larr; Prev</button>
+        <span class="au-step-label" id="au-step-label">No step loaded</span>
+        <button class="run au-nav-btn" id="au-next" data-testid="author.next" disabled>Next &rarr;</button>
+      </div>
+      <div class="status" id="au-status"></div>
+      <div class="au-screen-wrap" id="au-screen-wrap">
+        <div class="au-placeholder" id="au-placeholder">Pick a mode: Capture a new flow, or load a scenario to Edit / Enrich.</div>
+        <img id="au-screenshot" class="au-screenshot" hidden alt="scenario screenshot">
+        <div class="au-feedback" id="au-feedback" hidden>
+          <span class="au-rung" id="au-rung"></span>
+          <span id="au-sel"></span>
+          <button class="savebtn au-edit" id="au-apply" data-testid="author.apply">Apply</button>
         </div>
       </div>
     </div>
   </div>
 </main>
 
-<!-- ===== Editor (BE-0013): two-pane scenario editor with offline screenshot picker ===== -->
-<main id="view-editor" data-testid="view.editor" data-pane="form" hidden>
-  <div class="viewswitch" role="tablist" data-testid="editor.switch">
-    <button class="vstab active" data-pane="form">Form</button>
-    <button class="vstab" data-pane="screen">Screen</button>
-    <button class="vstab" data-pane="steps">Steps</button>
-  </div>
-
-  <div class="left" data-pane="form">
-    <div class="card">
-      <div class="panel" id="panel-editor">
-        <label>Target</label><select id="edt-target" data-testid="editor.target"></select>
-        <label>Scenario</label><select id="edt-scenario" data-testid="editor.scenario"></select>
-        <label>Run</label><select id="edt-run" data-testid="editor.run"></select>
-        <button class="run" id="edt-load" data-testid="editor.load" data-idle="Load">Load</button>
-      </div>
+<!-- ===== Stats (BE-0102): the read-only aggregate run-stats dashboard across the run history ===== -->
+<main id="view-stats" data-testid="view.stats" hidden>
+  <div class="card statscard">
+    <div class="yamlhead">
+      <span class="ttl">Run stats</span>
+      <span class="muted" style="font-size:.8em">Read-only trend across the run history — no verdict, advisory only.</span>
+      <button class="refresh" id="stats-refresh" data-testid="stats.refresh" title="refresh">&#8635;</button>
     </div>
-    <div class="card edt-steps-card" data-pane="steps">
-      <div class="yamlhead"><span class="ttl">Steps</span><span class="muted" id="edt-step-count">0 steps</span></div>
-      <ol id="edt-steplist" class="edt-steplist"></ol>
-    </div>
-    <div class="card yamlpanel" id="edt-yamlpanel" data-pane="yaml">
-      <div class="yamlhead">
-        <span class="ttl">Scenario YAML</span>
-        <button class="savebtn" id="edt-enrich" data-testid="editor.enrich" disabled>Enrich</button>
-        <button class="savebtn" id="edt-save" data-testid="editor.save" disabled>Save</button>
-      </div>
-      <textarea id="edt-yaml" class="yaml" placeholder="Load a scenario to edit its YAML here."></textarea>
-      <div class="enrich-panel" id="edt-enrich-panel" hidden>
-        <div class="enrich-head">
-          <span class="ttl">Proposed assertions</span>
-          <span class="enrich-actions">
-            <button class="savebtn enrich-accept" id="edt-enrich-accept" data-testid="editor.enrich-accept">Accept</button>
-            <button class="savebtn enrich-dismiss" id="edt-enrich-dismiss" data-testid="editor.enrich-dismiss">Dismiss</button>
-          </span>
-        </div>
-        <div class="enrich-note" id="edt-enrich-note"></div>
-        <ul class="enrich-list" id="edt-enrich-list"></ul>
-      </div>
-    </div>
-  </div>
-
-  <div class="gutter" data-var="--rec-left" data-min="260" data-max="640"></div>
-
-  <div class="rec-stack">
-    <div class="card edt-screen-card" data-pane="screen">
-      <div class="edt-step-nav">
-        <button class="run edt-nav-btn" id="edt-prev" data-testid="editor.prev" disabled>&larr; Prev</button>
-        <span class="edt-step-label" id="edt-step-label">No step loaded</span>
-        <button class="run edt-nav-btn" id="edt-next" data-testid="editor.next" disabled>Next &rarr;</button>
-      </div>
-      <div class="status" id="edt-status"></div>
-      <div class="edt-screen-wrap" id="edt-screen-wrap">
-        <div class="edt-placeholder" id="edt-placeholder">Select a target, scenario, and run, then press Load.</div>
-        <img id="edt-screenshot" class="edt-screenshot" hidden alt="step screenshot">
-        <div class="edt-feedback" id="edt-feedback" hidden>
-          <span class="cap-rung" id="edt-rung"></span>
-          <span class="cap-sel" id="edt-sel"></span>
-          <button class="savebtn" id="edt-apply" data-testid="editor.apply">Apply</button>
-        </div>
-      </div>
-    </div>
+    <div class="statshost" id="stats-host" data-testid="stats.host"><div class="empty">Loading run stats…</div></div>
   </div>
 </main>
 
@@ -336,10 +344,14 @@
       <div class="upmeta" id="up-meta" data-testid="upload.meta" hidden></div>
       <div class="gitsrcerr" id="up-error" data-testid="upload.error" hidden></div>
     </div>
-    <div class="fsor">or browse the server</div>
-    <div class="fspath" id="fspath" data-testid="config.path"></div>
-    <ul class="fslist" id="fslist" data-testid="config.list"></ul>
-    <div class="fshint">Pick a <code>.yml</code>/<code>.yaml</code> config file. Browsing is limited to the server's <code>--root</code>.</div>
+    <!-- The file browser is a local affordance; a hosted deployment hides this whole block, since a
+         remote user has no filesystem relationship to the host (BE-0108). -->
+    <div id="fssrc" data-testid="config.fs-source">
+      <div class="fsor">or browse the server</div>
+      <div class="fspath" id="fspath" data-testid="config.path"></div>
+      <ul class="fslist" id="fslist" data-testid="config.list"></ul>
+      <div class="fshint">Pick a <code>.yml</code>/<code>.yaml</code> config file. Browsing is limited to the server's <code>--root</code>.</div>
+    </div>
   </div>
 </div>
 
@@ -372,12 +384,11 @@
       <label class="keylabel" for="apikey">New key</label>
       <div class="keyrow">
         <input type="password" id="apikey" data-testid="settings.apikey" class="keyinput" placeholder="sk-ant-…" autocomplete="off" spellcheck="false">
-        <button class="keyreveal" id="keyreveal" data-testid="settings.key-reveal" type="button" title="show / hide" aria-label="show / hide the key">&#128065;</button>
       </div>
       <div class="keyactions">
         <button class="keyclear" id="keyclear" data-testid="settings.key-clear">Clear</button>
       </div>
-      <div class="fshint">Used by the <b>Anthropic API</b> provider (Amazon Bedrock uses AWS credentials instead). Only the AI paths need it: <b>Record</b>, <b>Crawl</b>, and Replay with <code>--dismiss-alerts</code>.</div>
+      <div class="fshint">Write-once: set or replace the key here; it is shown only masked and never displayed again. Used by the <b>Anthropic API</b> provider (Amazon Bedrock uses AWS credentials instead). Only the AI paths need it: <b>Record</b>, <b>Crawl</b>, and Replay with <code>--dismiss-alerts</code>.</div>
     </div>
     <div class="keyactions">
       <button class="cfgbtn keysave" id="settingssave" data-testid="settings.save">Save</button>

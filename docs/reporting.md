@@ -1,8 +1,8 @@
 **English** · [日本語](ja/reporting.md)
 
-# Reporting (manifest.json / JUnit / HTML)
+# Reporting (manifest.json / JUnit / CTRF / HTML)
 
-> One run executes one or more scenarios (`list[RunResult]`). Their results are written in three
+> One run executes one or more scenarios (`list[RunResult]`). Their results are written in four
 > formats. `manifest.json` is the **single source of truth** for the report and for CI (continuous integration).
 >
 > Implementation: `bajutsu/report/` (a package, split by stage: `format` → `manifest` / `richtext` → `rows` / `panels` → `html`).
@@ -17,6 +17,7 @@ Related: [the run results in run-loop](run-loop.md#run-results-data-structures) 
 runs/<runId>/
 ├── manifest.json     # the step → outcome correlation (single source of truth)
 ├── junit.xml         # CI integration (1 scenario = 1 testcase)
+├── ctrf.json         # Common Test Report Format (richer CI consumers: PR comments, dashboards)
 ├── report.html       # self-contained HTML (no external assets)
 └── <stepId>/         # per-step evidence (when using FileSink)
     ├── after.png     # screenshot
@@ -67,17 +68,17 @@ verbatim.
 - `steps[].artifacts`: the provenance of evidence captured for that step
   ([evidence](evidence.md#artifact-provenance-provider)).
 - `failure`: a summary on failure (e.g. `"step 3 (tap): no match: {...}"`). null on success.
-- `provenance` (top, optional): a run-identity stamp ([BE-0049](../roadmaps/implemented/BE-0049-determinism-flakiness-audit/BE-0049-determinism-flakiness-audit.md))
+- `provenance` (top, optional): a run-identity stamp ([BE-0049](../roadmaps/BE-0049-determinism-flakiness-audit/BE-0049-determinism-flakiness-audit.md))
   — `scenarioHash` (a `sha256:` fingerprint of the executed `scenario.yaml`), `toolVersion`
   (`bajutsu.__version__`), `gitRevision` (the commit, present only when the run is inside a git
-  checkout), and — when the config came from a Git source ([BE-0063](../roadmaps/implemented/BE-0063-git-config-source/BE-0063-git-config-source.md)) —
+  checkout), and — when the config came from a Git source ([BE-0063](../roadmaps/BE-0063-git-config-source/BE-0063-git-config-source.md)) —
   `configSource` (`{ host, owner, repo, ref, sha }`, the exact commit a branch-based run executed).
   It lets accumulated runs be grouped by identity, so a verdict that flips while the fingerprint is
   unchanged is **true flakiness** rather than an edited scenario. Pure metadata — like the `idb`
   version block, it never enters `ok`. (`schemaVersion` is `3` or higher once this block can appear — it is `4` today.)
 - `idb` (top, optional): the `idb_companion` / client versions, when idb drove the run (BE-0005).
 - `matrix` (top, optional): the cross-browser engine × scenario grid, present only on a
-  `bajutsu run --browsers` run ([BE-0076](../roadmaps/implemented/BE-0076-web-cross-browser-engines/BE-0076-web-cross-browser-engines.md)).
+  `bajutsu run --browsers` run ([BE-0076](../roadmaps/BE-0076-web-cross-browser-engines/BE-0076-web-cross-browser-engines.md)).
   `scenarios` stays the flat result list, each entry tagged with its `engine`; `matrix` is
   `{ engines, scenarios, cells: { "<scenario>": { "<engine>": { ok, sid, failure } } } }` — a pure
   aggregation of those per-engine verdicts (the report renders it as a grid). `ok` is all-must-pass
@@ -99,6 +100,72 @@ as distinct cases (BE-0076); a single-engine run keeps `classname="bajutsu"`.
 step 1 tap: FAIL no match: {...}</failure>
   </testcase>
 </testsuite>
+```
+
+## ctrf.json
+
+The [Common Test Report Format (CTRF)](https://ctrf.io/) export ([BE-0161](../roadmaps/BE-0161-ctrf-report-export/BE-0161-ctrf-report-export.md)):
+an open-standard JSON test report that a growing ecosystem — the `ctrf-io` GitHub Actions
+(PR-comment / job-summary reporters), cross-tool dashboards, flaky-test analytics — reads without
+per-tool adapters. Where JUnit XML strips a run down to name / time / a failure blob, CTRF carries
+Bajutsu's structured detail (per-step outcomes, the engine and device, artifacts as first-class
+attachments) that JUnit has no place for. It is a **pure projection of `manifest.json`** — the same
+data, a new shape beside `junit.xml` — so it adds no bookkeeping, and being written after the verdict
+it cannot move it (no LLM, no effect on pass/fail).
+
+The document is `{ reportFormat: "CTRF", specVersion, generatedBy, timestamp, results }`, where
+`results` holds `tool` / `summary` / `tests` (+ optional `environment` / `extra`):
+
+```json
+{
+  "reportFormat": "CTRF",
+  "specVersion": "0.0.0",
+  "generatedBy": "bajutsu",
+  "results": {
+    "tool": { "name": "bajutsu", "version": "…" },
+    "summary": { "tests": 2, "passed": 1, "failed": 1, "skipped": 0, "pending": 0, "other": 0,
+                 "start": 1717581300000, "stop": 1717581302300, "duration": 2300 },
+    "tests": [
+      { "name": "login", "status": "passed", "duration": 1500,
+        "steps": [{ "name": "tap", "status": "passed", "extra": { "duration": 500 } }],
+        "browser": "chromium", "device": "iPhone 15 (iOS 17.2)",
+        "attachments": [{ "name": "00-login/scenario.mp4", "contentType": "video/mp4", "path": "00-login/scenario.mp4" }] }
+    ]
+  }
+}
+```
+
+- `summary.duration` and each `tests[].duration` are milliseconds (Σ / per-scenario `duration_s`),
+  the field CTRF consumers key on, and exact. `summary.start` and the document `timestamp` derive
+  from the `YYYYMMDD-HHMMSS` runId, parsed as UTC (the runId is stamped in UTC); `stop = start +
+  duration`. Absolute per-test start/stop are deferred (they need an absolute per-scenario epoch, an
+  optional follow-up) so they are omitted rather than approximated. The export carries no live host
+  state, so `bajutsu report` regenerates the same run's `ctrf.json` byte-for-byte.
+- `tests[].status` is `passed` / `failed` — the only two states a Bajutsu run emits; the other CTRF
+  counts stay `0`.
+- A CTRF `step` allows only `{ name, status, extra }`, so a step's richer data (duration, reason,
+  per-step assertions, artifacts) lands in `step.extra` — a consumer that renders just name/status
+  sees a clean list, and Bajutsu-aware tooling can read the extras.
+- Attachment `contentType` comes from an artifact-`kind` → MIME map (`video`→`video/mp4`,
+  `screenshot`→`image/png`, `deviceLog`→`text/plain`, `elements`/`network`/`appTrace`→`application/json`),
+  defaulting to `application/octet-stream`; `path` stays run-directory relative like the manifest.
+- On a `--browsers` matrix run each engine × scenario cell is one CTRF test — the engine in the test
+  `name` and the `browser` field (mirroring JUnit's `classname`) — and the engine × scenario grid is
+  carried under `results.extra.matrix`. Bajutsu's other surplus (`sid`, `expect` results, alerts,
+  `skipped_captures`) lives under the per-test `extra`.
+- Since CTRF is projected from the already-redacted manifest, it inherits the same secret scrubbing
+  ([BE-0047](../roadmaps/BE-0047-ai-data-sovereignty/BE-0047-ai-data-sovereignty.md)); no raw secret reaches it.
+
+### Consuming ctrf.json in CI
+
+`ctrf.json` sits beside `junit.xml`, so wiring it into a CI job is a single consumer step. For
+example, the `ctrf-io/github-test-reporter` action turns it into a PR comment / job summary:
+
+```yaml
+- uses: ctrf-io/github-test-reporter@v1
+  with:
+    report-path: runs/*/ctrf.json
+  if: always()
 ```
 
 ## report.html
@@ -148,10 +215,11 @@ Device Log / App Trace remain separate tabs.
 ## Write API
 
 ```python
-def write_report(run_dir, run_id, results, definitions=None, sources=None, source_name=None, description=None, idb_versions=None, provenance=None) -> Path  # all 3 formats; definitions = per-scenario dict, sources = raw YAML, source_name = scenario file name, description = file-level description; idb_versions = idb provenance (BE-0005), provenance = run-identity stamp (BE-0049)
-def write_html_and_junit(run_dir, run_id, results, definitions=None, sources=None, source_name=None, description=None) -> None  # the renderable half (report.html + junit.xml), leaving manifest.json untouched — used by re-render
+def write_report(run_dir, run_id, results, definitions=None, sources=None, source_name=None, description=None, idb_versions=None, provenance=None) -> Path  # all 4 formats; definitions = per-scenario dict, sources = raw YAML, source_name = scenario file name, description = file-level description; idb_versions = idb provenance (BE-0005), provenance = run-identity stamp (BE-0049)
+def write_html_and_junit(run_dir, run_id, results, definitions=None, sources=None, source_name=None, description=None, provenance=None) -> None  # the regenerable half (report.html + junit.xml + ctrf.json), leaving manifest.json untouched — used by re-render; provenance feeds the CTRF tool/environment fields
 def manifest_dict(run_id, results, *, source_name=None, idb_versions=None, provenance=None) -> dict  # the versioned render model (schemaVersion); the manifest source (for tests / inspection)
 def run_provenance(scenario_yaml, *, git_revision, config_source=None) -> dict  # the run-identity stamp: scenarioHash + toolVersion + optional gitRevision (BE-0049) + optional configSource (BE-0063)
+def ctrf_json(run_id, results, *, provenance=None) -> dict  # the CTRF projection of the result model (BE-0161); provenance feeds tool.version / environment.commit
 def junit_xml(results) -> str
 def html_report(run_id, results, run_dir=None, definitions=None, sources=None, source_name=None, description=None) -> str
 def scenario_render_inputs(scenarios) -> tuple[list[dict], list[str]]  # (definitions, sources); shared by the bake and the re-render
@@ -168,6 +236,6 @@ re-rendered offline with the current template — without re-executing it. `mani
 **versioned** (`schemaVersion`), lossless render model; `report.load` is its inverse —
 `results_from_manifest()` reconstructs the `RunResult`s, and `load_run(run_dir)` recovers the whole
 render model (outcomes from `manifest.json`, the scenario plan from `scenario.yaml`). `bajutsu
-report <run>` ([cli](cli.md#report)) rewrites `report.html` + `junit.xml` from it. Re-rendering only
+report <run>` ([cli](cli.md#report)) rewrites `report.html` + `junit.xml` + `ctrf.json` from it. Re-rendering only
 re-presents recorded outcomes — it never re-runs an assertion or changes a verdict — and an older
 run renders with any newer-only section shown as "not captured" rather than invented.

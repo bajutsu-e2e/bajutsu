@@ -19,6 +19,8 @@ from bajutsu.drivers import base
 
 RunFn = Callable[[list[str]], str]
 
+_StableKey = tuple[tuple[str, base.Frame], ...]
+
 # A short dwell on every tap. A zero-duration `idb ui tap` presses and releases in
 # the same instant, which a UISwitch's gesture recognizer does not register — so a
 # coordinate tap on a real Toggle never flips it. A brief hold actuates the switch
@@ -73,9 +75,16 @@ def swipe_cmd(udid: str, x1: float, y1: float, x2: float, y2: float) -> list[str
     ]
 
 
-def text_cmd(udid: str, text: str) -> list[str]:
-    """The `idb` argv that types text into the focused field."""
-    return ["idb", "ui", "text", "--udid", udid, text]
+def text_cmd(udid: str) -> list[str]:
+    """The `idb` argv that types text into the focused field.
+
+    The text itself is deliberately absent from the argv: it is fed to `idb ui text`
+    over stdin (see `IdbDriver._run_text`), so a secret or OTP value never appears in
+    the process command line, where any local user could read it via `ps`/`/proc`
+    (BE-0155). This relies on `idb ui text` reading stdin when no positional text
+    argument is given.
+    """
+    return ["idb", "ui", "text", "--udid", udid]
 
 
 def screenshot_cmd(udid: str, path: str) -> list[str]:
@@ -163,11 +172,14 @@ class IdbDriver:
     _EMPTY_RETRIES = 5  # extra describe-all attempts on a degenerate tree
     _EMPTY_BACKOFF_S = 0.05  # base delay; doubles each attempt up to the cap
     _EMPTY_BACKOFF_MAX_S = 0.2  # cap on a single backoff (total added <= ~0.75s, bounded)
+    _SETTLE_MAX_POLLS = 3  # extra reads after initial comparison when frames are moving
+    _SETTLE_POLL_S = 0.05  # interval between settle reads; describe-all provides natural spacing
 
     def __init__(self, udid: str, run: RunFn = _real_run) -> None:
         self.udid = udid
         self._run = run
         self._max_seen = 0  # richest tree seen on this device; gates the empty retry
+        self._last_stable_key: _StableKey | None = None
 
     def query(self) -> list[base.Element]:
         """describe-all, parsed and normalized into Elements.
@@ -185,7 +197,35 @@ class IdbDriver:
             time.sleep(self._empty_backoff(i))
             els = self._describe()
         self._max_seen = max(self._max_seen, len(els))
+        self._last_stable_key = self._stable_key(els)
         return els
+
+    def _settle(self) -> list[base.Element]:
+        """Wait until the tree's identifier-frame projection is unchanged, or give up.
+
+        Compares (identifier, frame) only — ignoring volatile value, traits,
+        label — so data changes on a static screen do not trigger extra polls.
+        The first call (no cached key) returns immediately; a cached-match
+        also returns in one query.  Only a cache miss starts the bounded poll.
+        """
+        prev_key = self._last_stable_key
+        tree = self.query()
+        key = self._last_stable_key
+        if prev_key is None or key == prev_key:
+            return tree
+        for _ in range(self._SETTLE_MAX_POLLS):
+            time.sleep(self._SETTLE_POLL_S)
+            tree = self.query()
+            new_key = self._last_stable_key
+            if new_key == key:
+                return tree
+            key = new_key
+        return tree
+
+    @staticmethod
+    def _stable_key(els: list[base.Element]) -> _StableKey:
+        """Identifier-frame projection for settle: ignores volatile value/traits/label."""
+        return tuple(sorted((e["identifier"] or "", e["frame"]) for e in els))
 
     def _empty_backoff(self, attempt: int) -> float:
         """Exponential backoff for the transient-empty retry: base * 2**attempt, capped.
@@ -208,20 +248,30 @@ class IdbDriver:
         """
         return len(els) < self._READY_MIN and self._max_seen >= self._READY_MIN
 
-    def _resolve(self, sel: base.Selector, timeout: float = 3.0, poll: float = 0.2) -> base.Element:
+    def _resolve(
+        self,
+        sel: base.Selector,
+        timeout: float = 3.0,
+        poll: float = 0.2,
+        *,
+        initial_tree: list[base.Element] | None = None,
+    ) -> base.Element:
         # Real-device trees can be transiently empty during transitions; retry
         # not-found while keeping ambiguity fail-fast.
         deadline = time.monotonic() + timeout
+        tree = initial_tree if initial_tree is not None else self.query()
         while True:
             try:
-                return base.resolve_unique(self.query(), sel)
+                return base.resolve_unique(tree, sel)
             except base.ElementNotFound:
                 if time.monotonic() >= deadline:
                     raise
                 time.sleep(poll)
+                tree = self.query()
 
     def _center(self, sel: base.Selector) -> base.Point:
-        el = self._resolve(sel)
+        tree = self._settle()
+        el = self._resolve(sel, initial_tree=tree)
         x, y, w, h = el["frame"]
         return (x + w / 2, y + h / 2)
 
@@ -258,30 +308,37 @@ class IdbDriver:
         self._run(swipe_cmd(self.udid, frm[0], frm[1], to[0], to[1]))
 
     def type_text(self, text: str) -> None:
-        self._run(text_cmd(self.udid, text))
+        # Pass the value on stdin, not argv, so a secret/OTP never lands in the idb
+        # process command line (BE-0155). Routed through a class-level attribute so
+        # tests can patch it, mirroring Env._run_pbcopy for simctl pbcopy.
+        self._run_text(text_cmd(self.udid), text)
 
-    def wait_for(self, sel: base.Selector, timeout: float, poll: float = 0.2) -> bool:
-        """Poll until at least one element matches `sel`, or `timeout` elapses.
+    @staticmethod
+    def _run_text(cmd: list[str], text: str) -> None:
+        subprocess.run(cmd, input=text, capture_output=True, text=True, check=True)
 
-        Returns whether the selector was found. Polls rather than checking once so the
-        caller's timeout is honoured on a real device, where the element may render
-        slightly after the call (mirroring the orchestrator's condition-wait discipline).
+    def wait_for(self, sel: base.Selector) -> bool:
+        """Single-shot: whether `sel` matches the current screen (BE-0118).
+
+        The deadline poll lives in the shared `base.wait_until`, so the timeout is honoured
+        identically on every backend.
         """
-        deadline = time.monotonic() + timeout
-        while True:
-            if len(base.find_all(self.query(), sel)) >= 1:
-                return True
-            if time.monotonic() >= deadline:
-                return False
-            time.sleep(poll)
+        return len(base.find_all(self.query(), sel)) >= 1
 
     def screenshot(self, path: str) -> None:
         self._run(screenshot_cmd(self.udid, path))
 
-    # No semantic tap and no native network monitoring. Exposed as a class constant so the preflight
-    # (BE-0082) can read it via `backends.capabilities_for` without constructing a driver.
+    # No semantic tap and no native network monitoring. `deviceControl` because the iOS Simulator
+    # lifecycle wires a real simctl-backed `DeviceControl` for idb runs (BE-0128). Exposed as a
+    # class constant so the preflight (BE-0082) can read it via `backends.capabilities_for` without
+    # constructing a driver.
     CAPABILITIES = frozenset(
-        {base.Capability.QUERY, base.Capability.ELEMENTS, base.Capability.SCREENSHOT}
+        {
+            base.Capability.QUERY,
+            base.Capability.ELEMENTS,
+            base.Capability.SCREENSHOT,
+            base.Capability.DEVICE_CONTROL,
+        }
     )
 
     def capabilities(self) -> set[str]:

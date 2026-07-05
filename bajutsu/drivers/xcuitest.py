@@ -62,6 +62,12 @@ _OK = "ok"
 _STALE = "stale"  # the resolved handle no longer maps to a live element (the screen changed)
 _NOT_FOUND = "not-found"  # the runner could not act on the handle (no matching live element)
 
+# Socket timeout for a single runner request. BE-0105 replaced the per-attribute `/elements` walk
+# (~10s+ per screen) with one `app.snapshot()`, so the 60s stopgap is reverted to a bounded window:
+# generous enough for a cold first snapshot (XCUITest waits for the app to idle), tight enough that a
+# wedged runner fails loudly rather than hanging.
+_SOCKET_TIMEOUT_SECONDS = 15
+
 
 def _to_element(item: Mapping[str, Any]) -> base.Element:
     """Normalize one `GET /elements` item into an `Element`.
@@ -101,7 +107,9 @@ def _http_transport(host: str, port: int) -> TransportFn:
     """The real transport: one short HTTP request to the runner's loopback server per call."""
 
     def transport(method: str, path: str, body: Mapping[str, Any] | None) -> _Reply:
-        conn = http.client.HTTPConnection(host, port, timeout=10)
+        # One `app.snapshot()` per `/elements` (BE-0105), so the bounded `_SOCKET_TIMEOUT_SECONDS`
+        # still covers a cold first snapshot while failing a wedged runner in a reasonable window.
+        conn = http.client.HTTPConnection(host, port, timeout=_SOCKET_TIMEOUT_SECONDS)
         try:  # pragma: no cover - exercised on-device against the real runner, not on the gate
             payload = json.dumps(body).encode() if body is not None else None
             headers = {"Content-Type": "application/json"} if payload is not None else {}
@@ -123,8 +131,10 @@ class XcuitestDriver:
 
     # Beyond idb: a semantic tap (by handle, no coordinates), native condition waiting, and the
     # two-finger gestures idb raises UnsupportedAction for. No NETWORK — network evidence comes from
-    # the app-side collector (BE-0020 boundary), not the actuator. A class constant so the preflight
-    # (BE-0082) reads it via backends.capabilities_for without constructing a driver.
+    # the app-side collector (BE-0020 boundary), not the actuator. `deviceControl` because xcuitest
+    # shares the iOS Simulator lifecycle, which wires a real simctl-backed `DeviceControl` for its
+    # runs too (BE-0128). A class constant so the preflight (BE-0082) reads it via
+    # backends.capabilities_for without constructing a driver.
     CAPABILITIES = frozenset(
         {
             base.Capability.QUERY,
@@ -133,6 +143,7 @@ class XcuitestDriver:
             base.Capability.SEMANTIC_TAP,
             base.Capability.CONDITION_WAIT,
             base.Capability.MULTI_TOUCH,
+            base.Capability.DEVICE_CONTROL,
         }
     )
 
@@ -228,19 +239,13 @@ class XcuitestDriver:
         if reply.status != _OK:
             raise XcuitestChannelError(f"type failed ({reply.status})")
 
-    def wait_for(self, sel: base.Selector, timeout: float, poll: float = 0.2) -> bool:
-        """Poll `query()` until at least one element matches, or `timeout` elapses.
+    def wait_for(self, sel: base.Selector) -> bool:
+        """Single-shot: whether `sel` matches the current screen (BE-0118).
 
-        A condition wait with no fixed sleep — mirroring the orchestrator's discipline and idb's
-        `wait_for`.
+        The deadline poll lives in the shared `base.wait_until`, so the timeout is honoured
+        identically on every backend.
         """
-        deadline = time.monotonic() + timeout
-        while True:
-            if len(base.find_all(self.query(), sel)) >= 1:
-                return True
-            if time.monotonic() >= deadline:
-                return False
-            time.sleep(poll)
+        return len(base.find_all(self.query(), sel)) >= 1
 
     def screenshot(self, path: str) -> None:
         reply = self._transport("GET", "/screenshot", None)

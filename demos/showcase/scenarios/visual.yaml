@@ -24,7 +24,7 @@ description: >-
 scenarios:
   - name: Stable catalog matches its visual baseline
     preconditions:
-      launchEnv: { SHOWCASE_UITEST: "1", SHOWCASE_TAB: "stable", SHOWCASE_SEED: "5" }
+      launchEnv: { SHOWCASE_UITEST: "1", SHOWCASE_TAB: "stable" }
     steps:
       - wait: { for: { id: stable.row.1 }, timeout: 10 }
         capture: [video]
@@ -33,7 +33,7 @@ scenarios:
 
   - name: Search matches its visual baseline
     preconditions:
-      launchEnv: { SHOWCASE_UITEST: "1", SHOWCASE_TAB: "search", SHOWCASE_SEED: "5" }
+      launchEnv: { SHOWCASE_UITEST: "1", SHOWCASE_TAB: "search" }
     steps:
       - wait: { for: { id: search.field }, timeout: 10 }
         capture: [video]
@@ -69,7 +69,7 @@ scenarios:
 
   - name: Horse Detail matches its visual baseline
     preconditions:
-      launchEnv: { SHOWCASE_UITEST: "1", SHOWCASE_TAB: "stable", SHOWCASE_SEED: "5" }
+      launchEnv: { SHOWCASE_UITEST: "1", SHOWCASE_TAB: "stable" }
     steps:
       - wait: { for: { id: stable.row.1 }, timeout: 10 }
         capture: [video]

@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 #
-# A guided, fully deterministic lifecycle demo — no AI, no API key — against the bundled
-# demo app (demos/app/) on a booted Simulator via idb:
+# A guided, fully deterministic lifecycle demo — no AI, no API key — against the showcase
+# SwiftUI app (demos/showcase/ios/swiftui/) on a booted Simulator via idb:
 #   1. RUN      the committed scenario on the Simulator — a real PASS
-#   2. MODIFY   break the expected count, re-run — watch the check FAIL, then fix it
+#   2. MODIFY   break the expected value, re-run — watch the check FAIL, then fix it
 #   3. DIAGNOSE break a selector, re-run -> FAIL, let `triage` diagnose it (advisory)
 #
 # This is the on-device version of the zero-setup tour (demos/tour/tour.py): the same
@@ -12,8 +12,8 @@
 # never use AI). See demos/tour/README.md.
 #
 # Prereqs: a booted Simulator (`open -a Simulator`), the idb client
-# (`brew install facebook/fb/idb-companion && uv sync --extra idb`), and the demo app built
-# (built on demand below via `make -C demos app-build`).
+# (`brew install facebook/fb/idb-companion && uv sync --extra idb`), and the showcase app built
+# (built on demand below via `make -C demos/showcase swiftui-build`).
 #
 #   ./demos/tour/demo.sh        (or: make -C demos tour)
 #
@@ -21,14 +21,14 @@ set -euo pipefail
 
 cd "$(dirname "$0")/../.."          # repo root (the run's working directory)
 CONFIG="demos/demo.config.yaml"
-SOURCE="demos/app/scenarios/counter.yaml"
+SOURCE="demos/showcase/scenarios/menu/tour.yaml"
 SCENARIO="demos/tour/scenario.yaml"   # gitignored working copy — we edit this, not the tracked source
-APP_PATH="demos/app/build/dd/Build/Products/Debug-iphonesimulator/BajutsuDemo.app"
+APP_PATH="demos/showcase/ios/swiftui/build/dd/Build/Products/Debug-iphonesimulator/BajutsuShowcaseSwiftUI.app"
 
 note() { printf '\n\033[1;36m== %s ==\033[0m\n' "$1"; }
 
 run_scenario() {  # run the working scenario on the Simulator; returns bajutsu's exit code
-  uv run bajutsu run --scenario "$SCENARIO" --target demo --config "$CONFIG" --backend ios --no-network
+  uv run bajutsu run --scenario "$SCENARIO" --target showcase-swiftui --config "$CONFIG" --backend idb --no-network
 }
 
 replace_in_scenario() {  # $1 = exact text to find, $2 = replacement — a plain in-place edit
@@ -49,46 +49,46 @@ uv run idb --help >/dev/null 2>&1 \
 xcrun simctl list devices booted | grep -q "(Booted)" \
   || { echo "No booted Simulator. Boot one (open -a Simulator), then retry."; exit 1; }
 if [ ! -d "$APP_PATH" ]; then
-  echo "Demo app not built at $APP_PATH — building it now (make -C demos app-build)..."
-  make -C demos app-build
+  echo "Showcase app not built at $APP_PATH — building it now (make -C demos/showcase swiftui-build)..."
+  make -C demos/showcase swiftui-build
   [ -d "$APP_PATH" ] || { echo "Build finished but $APP_PATH is still missing."; exit 1; }
 fi
-echo "ok: idb, a booted Simulator, and the built demo app are present."
+echo "ok: idb, a booted Simulator, and the built showcase app are present."
 
 # Seed a fresh working copy from the committed scenario so the tracked file stays clean.
 cp "$SOURCE" "$SCENARIO"
 
 # --- 1) RUN ------------------------------------------------------------------
-note "1/3  Run the committed scenario on the demo app (idb) — expect PASS"
+note "1/3  Run the committed scenario on the showcase app (idb) — expect PASS"
 if run_scenario; then
   echo "-> PASS."
 else
   echo "-> FAIL. Don't stop — run triage to diagnose and self-heal, then carry on:"
   uv run bajutsu triage --apply "$SCENARIO" --write --rerun \
-    --target demo --backend ios --config "$CONFIG" || true
+    --target showcase-swiftui --backend idb --config "$CONFIG" || true
 fi
 
 # --- 2) MODIFY ---------------------------------------------------------------
 note "2/3  Modify the scenario, then re-run"
-echo "Change the expected count to a WRONG value (3) — the run should now FAIL, because the"
-echo "app actually shows 2. This is the deterministic check doing its job (no AI judged it):"
-replace_in_scenario 'equals: "2"' 'equals: "3"'
+echo "Change the expected favorite state to a WRONG value (off) — the run should now FAIL, because"
+echo "the toggle is actually on. This is the deterministic check doing its job (no AI judged it):"
+replace_in_scenario 'equals: "on"' 'equals: "off"'
 if run_scenario; then
-  echo "!! unexpected PASS — the app did not show 2?"; exit 1
+  echo "!! unexpected PASS — the favorite toggle did not read on?"; exit 1
 else
   echo "-> FAIL as expected: the assertion caught the mismatch."
 fi
 
 echo
-echo "Now fix it back to the correct value (2) and re-run — expect PASS again:"
-replace_in_scenario 'equals: "3"' 'equals: "2"'
+echo "Now fix it back to the correct value (on) and re-run — expect PASS again:"
+replace_in_scenario 'equals: "off"' 'equals: "on"'
 run_scenario
 
 # --- 3) DIAGNOSE -------------------------------------------------------------
 note "3/3  Break a selector, then let triage diagnose the failure"
-echo "Rename the Increment button's id (counter.increment -> counter.increments), simulating a"
-echo "selector that drifted out from under the test. Re-run — the tap can't resolve, so it FAILS:"
-replace_in_scenario 'id: counter.increment' 'id: counter.increments'
+echo "Rename the tapped Stable row's id (stable.row.3 -> stable.row.99), simulating a selector"
+echo "that drifted out from under the test. Re-run — the wait can't resolve it, so it FAILS:"
+replace_in_scenario 'id: stable.row.3' 'id: stable.row.99'
 if run_scenario; then
   echo "!! unexpected PASS — the broken selector still resolved?"; exit 1
 else
@@ -98,11 +98,11 @@ fi
 echo
 echo "Diagnose the failed run with triage (advisory — it points at the likely fix from the"
 echo "captured element tree, but never judges pass/fail):"
-uv run bajutsu triage --target demo --config "$CONFIG" || true
+uv run bajutsu triage --target showcase-swiftui --config "$CONFIG" || true
 
 echo
 echo "Restore the selector and re-run — expect PASS again:"
-replace_in_scenario 'id: counter.increments' 'id: counter.increment'
+replace_in_scenario 'id: stable.row.99' 'id: stable.row.3'
 run_scenario
 
 note "Done — you ran, modified, and diagnosed a scenario on a real Simulator (no AI, no API key)"

@@ -89,7 +89,7 @@ plugins:
             Roadmap status: ロードマップの状況
             Getting started: はじめに
             Overview: 概要
-            Sample app: サンプルアプリ
+            Showcase app: ショーケースアプリ
             Concepts: コンセプト
             Architecture: アーキテクチャ
             Vision: ビジョン
@@ -149,7 +149,7 @@ nav:
   - Getting started:
       - Overview: overview.md
       - Getting started: getting-started.md
-      - Sample app: sample-app.md
+      - Showcase app: showcase.md
   - Concepts:
       - Concepts: concepts.md
       - Architecture: architecture.md
@@ -170,6 +170,7 @@ nav:
       - Reporting: reporting.md
   - Operating:
       - CLI: cli.md
+      - What uses Claude: ai-boundary.md
       - Configuration: configuration.md
       - CI: ci.md
       - Self-hosting: self-hosting.md

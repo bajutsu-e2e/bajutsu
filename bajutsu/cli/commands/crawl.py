@@ -15,7 +15,6 @@ from __future__ import annotations
 import atexit
 import json
 import subprocess
-from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -23,9 +22,10 @@ import typer
 
 from bajutsu import crawl as crawl_engine
 from bajutsu import crawl_report, crawl_repro
-from bajutsu import env as _env
+from bajutsu import simctl as _simctl
 from bajutsu.agents import AGENT_KINDS, resolve_kind
-from bajutsu.anthropic_client import credential_gap, key_env
+from bajutsu.ai import credential_gap
+from bajutsu.anthropic_client import key_env
 from bajutsu.backends import ensure_web_runtime, select_actuator
 from bajutsu.cli._shared import (
     DEFAULT_CONFIG,
@@ -34,10 +34,12 @@ from bajutsu.cli._shared import (
     _load_effective_with_source,
     _refuse_out_in_checkout,
     _require_ai_credential,
+    _with_headed,
 )
+from bajutsu.config import web_base_url, web_engine
 from bajutsu.crawl_guide import make_guide
 from bajutsu.drivers import base
-from bajutsu.environment import environment_for
+from bajutsu.platform_lifecycle import environment_for
 from bajutsu.record import _clear_blocking
 from bajutsu.runner import launch_driver
 from bajutsu.runner.launch_server import start_launch_server
@@ -134,8 +136,7 @@ def crawl(
     """
     eff, _source, checkout_root = _load_effective_with_source(config, target_name)
     # --headed/--no-headed overrides the target's `headless` config (web backend only; iOS ignores it).
-    if headed is not None:
-        eff = replace(eff, headless=not headed)
+    eff = _with_headed(eff, headed)
 
     # Progress (device work + the AI guide's reasoning) goes to stderr, like record's stream; the
     # web UI merges it into the crawl log so a watcher sees what the AI is thinking, turn by turn.
@@ -150,7 +151,7 @@ def crawl(
     backends = _backends(backend, eff.backend)
     try:
         # Auto-install Playwright (and the selected engine's browser) if a web crawl needs it.
-        ensure_web_runtime(backends, eff.browser)
+        ensure_web_runtime(backends, web_engine(eff))
         actuator = select_actuator(backends)
     except RuntimeError as e:
         typer.echo(str(e))
@@ -224,7 +225,7 @@ def crawl(
 
     if not environment.has_devices():
         browsers = f"{workers} browsers" if workers > 1 else "the browser"
-        say(f"⚙️  preparing {browsers} — navigating to {eff.base_url} …")
+        say(f"⚙️  preparing {browsers} — navigating to {web_base_url(eff)} …")
     elif workers > 1:
         say(
             f"⚙️  preparing {workers} simulators — installing and launching {target_name} on each "
@@ -246,7 +247,7 @@ def crawl(
         # The primary lane is built here (on the main thread): it drives bootstrap and the in-place
         # walk, so its driver lives on this thread. A launch failure surfaces cleanly as exit 2.
         primary = build_lane(udids[0])
-    except _env.DeviceError as e:
+    except _simctl.DeviceError as e:
         typer.echo(str(e))
         raise typer.Exit(2) from None
 
@@ -272,7 +273,7 @@ def crawl(
         # resurfaces on the worker's next operation, where the engine relaunches the lane (BE-0077).
         try:
             d.screenshot(str(screens_dir / f"{node.fingerprint}.png"))
-        except (OSError, subprocess.CalledProcessError, _env.DeviceError) as exc:
+        except (OSError, subprocess.CalledProcessError, _simctl.DeviceError) as exc:
             say(f"⚠️  screenshot failed for {node.fingerprint[:7]}: {exc}")
 
     # Crash detection and blocking-overlay clearing are platform-specific, behind the Environment
@@ -335,7 +336,7 @@ def crawl(
             recover=recover,  # web: relaunch a wedged browser so its lane keeps crawling (BE-0077)
             extra_workers=extra_factories,  # built on their own threads (BE-0064 sims / BE-0077 browsers)
         )
-    except _env.DeviceError as e:
+    except _simctl.DeviceError as e:
         typer.echo(str(e))
         raise typer.Exit(2) from None
     _write_screenmap(screenmap_path, screen_map)

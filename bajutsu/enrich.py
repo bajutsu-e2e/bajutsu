@@ -11,8 +11,9 @@ from collections.abc import Callable
 
 from bajutsu.agent import EnrichmentAgent, EnrichmentProposal, StepContext
 from bajutsu.drivers import base
+from bajutsu.elements import shows_app_ui
 from bajutsu.orchestrator import BlockedHandler, Clock, RealClock, _action_of, _do_action, _wait
-from bajutsu.record import _screenshot_bytes, shows_app_ui
+from bajutsu.record import _screenshot_bytes
 from bajutsu.scenario import Scenario, Step
 
 Reporter = Callable[[str], None]

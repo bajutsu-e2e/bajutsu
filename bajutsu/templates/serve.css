@@ -10,6 +10,13 @@ header .brand{font-weight:700}
 .toptab{background:var(--bg2);border:1px solid var(--line);color:var(--mut);padding:.25rem .9rem;font:inherit;font-weight:600;font-size:.9em;border-radius:8px;cursor:pointer}
 .toptab:hover{color:var(--fg)}
 .toptab.active{color:var(--on-acc);background:var(--acc);border-color:var(--acc)}
+/* BE-0101: a Claude tab reads disabled when Claude is unreachable (still clickable, so the view's
+   inline explanation is reachable). */
+.toptab.disabled{opacity:.5}
+.toptab.disabled:not(.active){cursor:not-allowed}
+/* BE-0101: the record/crawl gate banner — an inline "this needs Claude" affordance. */
+.ai-gate{background:var(--bg2);border:1px solid var(--run);color:var(--fg);border-radius:8px;padding:.6rem .8rem;margin-bottom:.7rem;font-size:.88em;line-height:1.4}
+.ai-gate .link{background:none;border:none;color:var(--acc);font:inherit;font-weight:600;padding:0;cursor:pointer;text-decoration:underline}
 /* dark / light toggle — small switch flanked by moon (dark) and sun (light) icons;
    checked == light (daylight). The icon for the active mode is highlighted. */
 .themeswitch{display:inline-flex;align-items:center;gap:.4rem;margin-left:auto;cursor:pointer}
@@ -266,7 +273,26 @@ iframe{width:100%;height:100%;border:1px solid var(--line);border-radius:10px;ba
 .yamlhead .ttl{font-weight:600}
 .yamlhead .savebtn{margin-left:auto;background:var(--acc);color:var(--on-acc);border:0;border-radius:6px;font-weight:700;padding:.35rem .9rem;cursor:pointer}
 .yamlhead .savebtn:disabled{opacity:.4;cursor:default}
-textarea.yaml{flex:1;min-height:0;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;white-space:pre;overflow:auto;tab-size:2}
+textarea.yaml{flex:1;min-height:0;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;line-height:18px;padding:6px 8px;white-space:pre;overflow:auto;tab-size:2}
+/* Inline validation (BE-0138): a line-number gutter synced to the textarea's scroll, error lines
+   flagged; a problems list below; caret-anchored completion + hover from the scenario JSON Schema. */
+.yamledit{position:relative;flex:1;min-height:0;display:flex}
+.yamledit textarea.yaml{border-top-left-radius:0;border-bottom-left-radius:0}
+.yamlgutter{flex:0 0 3em;overflow:hidden;box-sizing:border-box;background:var(--bg2);border:1px solid var(--line);border-right:0;border-radius:8px 0 0 8px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;line-height:18px;padding:6px 0;user-select:none}
+.yamlgutter .gl{padding:0 .5em 0 0;text-align:right;color:var(--mut);white-space:pre}
+.yamlgutter .gl.err{color:var(--ng);font-weight:700;background:color-mix(in srgb,var(--ng) 16%,transparent)}
+.au-problems{margin-top:.5rem;border:1px solid var(--line);border-radius:8px;background:var(--bg2);font-size:.82em;max-height:9rem;overflow:auto}
+.au-problems-head{padding:.3rem .6rem;font-weight:700;color:var(--ng);border-bottom:1px solid var(--line)}
+.au-problem{display:flex;gap:.5rem;padding:.25rem .6rem;cursor:pointer}
+.au-problem:hover{background:var(--bg)}
+.au-problem .pl{flex:0 0 auto;font-family:var(--mono);color:var(--ng);font-weight:700}
+.au-problem .pl-none{color:var(--mut);font-weight:400}
+.au-problem .pm{overflow-wrap:anywhere}
+.yamlcomplete{position:absolute;z-index:30;min-width:10rem;max-height:12rem;overflow:auto;background:var(--bg2);border:1px solid var(--line);border-radius:6px;box-shadow:0 2px 8px rgba(0,0,0,.3);font-family:var(--mono);font-size:12px}
+.yamlcomplete .ci{padding:.2rem .5rem;cursor:pointer;white-space:nowrap}
+.yamlcomplete .ci.sel,.yamlcomplete .ci:hover{background:var(--acc);color:var(--on-acc)}
+.yamlhover{position:absolute;z-index:30;max-width:22rem;background:var(--bg2);border:1px solid var(--line);border-radius:6px;box-shadow:0 2px 8px rgba(0,0,0,.3);padding:.35rem .55rem;font-size:.8em;line-height:1.35;pointer-events:none}
+.yamlhover .hk{font-family:var(--mono);font-weight:700;color:var(--acc)}
 /* Open-config control + its server-side file-browser modal. */
 .cfgbtn{background:var(--bg2);border:1px solid var(--line);color:var(--acc);padding:.3rem .8rem;font:inherit;font-weight:600;border-radius:8px;cursor:pointer}
 .cfgbtn:hover{color:var(--fg)}
@@ -301,8 +327,6 @@ header .cfgname{color:var(--mut);font-size:.82em;max-width:32vw;overflow:hidden;
 .keylabel{display:block;font-size:.78em;color:var(--mut);margin-bottom:.25rem}
 .keyrow{display:flex;gap:.4rem}
 .keyinput{flex:1;background:var(--bg2);border:1px solid var(--line);color:var(--fg);border-radius:8px;padding:.4rem .6rem;font:inherit}
-.keyreveal{background:var(--bg2);border:1px solid var(--line);border-radius:8px;padding:0 .7rem;font-size:1em;cursor:pointer;filter:grayscale(1) opacity(.7)}
-.keyreveal.on{filter:none;border-color:var(--acc)}
 .keyactions{display:flex;align-items:center;gap:.6rem;margin-top:.7rem}
 .keyclear{background:none;border:1px solid var(--line);color:var(--mut);padding:.3rem .8rem;font:inherit;font-weight:600;border-radius:8px;cursor:pointer}
 .keyclear:hover{color:var(--ng);border-color:var(--ng)}
@@ -354,7 +378,7 @@ header .cfgname{color:var(--mut);font-size:.82em;max-width:32vw;overflow:hidden;
   .gutter,.tile-divider,.tile-grip{display:none}
 
   /* Comfortable touch targets for the surviving controls. */
-  button.run,button.stop,.tab,.vstab{min-height:44px}
+  button.run,button.stop,.tab,.vstab,.modetab{min-height:44px}
   .history li,.fslist li,.sims label{min-height:44px}
   .scnlist,.sims{max-height:40vh}
 
@@ -369,32 +393,32 @@ header .cfgname{color:var(--mut);font-size:.82em;max-width:32vw;overflow:hidden;
   .shotside{overflow:visible}
 }
 
-/* ---- Capture (BE-0012) ---- */
-.cap-screen-wrap{position:relative;display:flex;flex-direction:column;align-items:center;gap:.5em}
-.cap-screenshot{max-width:100%;max-height:70vh;cursor:crosshair;border:1px solid var(--border);border-radius:6px}
-.cap-placeholder{padding:2em;text-align:center;color:var(--muted);font-size:.9em}
-.cap-feedback{display:flex;gap:.5em;align-items:center;font-size:.85em}
-.cap-rung{padding:2px 8px;border-radius:4px;font-weight:600;font-size:.8em}
+/* ---- Author (BE-0098): unified Capture / Edit / Enrich surface ---- */
+/* Mode switcher: a secondary control inside the view, distinct from the top-level .toptab nav. */
+.modeswitch{display:flex;gap:.3rem;margin-bottom:.2rem}
+.modetab{flex:1;background:var(--bg2);border:1px solid var(--line);color:var(--mut);padding:.35rem .6rem;font:inherit;font-weight:600;font-size:.85em;cursor:pointer;border-radius:8px}
+.modetab:hover{color:var(--fg)}
+.modetab.active{color:var(--on-acc);background:var(--acc);border-color:var(--acc)}
+.au-screen-wrap{position:relative;display:flex;flex-direction:column;align-items:center;gap:.5em}
+.au-screenshot{max-width:100%;max-height:70vh;cursor:crosshair;border:1px solid var(--border);border-radius:6px}
+.au-placeholder{padding:2em;text-align:center;color:var(--muted);font-size:.9em}
+.au-feedback{display:flex;gap:.5em;align-items:center;font-size:.85em}
+.au-rung{padding:2px 8px;border-radius:4px;font-weight:600;font-size:.8em}
 .rung-id{background:#2a6;color:#fff}
 .rung-label{background:#da3;color:#fff}
 .rung-label\+index{background:#c73;color:#fff}
-.cap-steplist{margin:0;padding:0 0 0 1.4em;font-size:.85em;font-family:var(--mono)}
-.cap-steplist li{padding:2px 0}
-.cap-steps-card{margin-top:.5em}
-/* ---- Editor (BE-0013) ---- */
-.edt-screen-wrap{position:relative;display:flex;flex-direction:column;align-items:center;gap:.5em}
-.edt-screenshot{max-width:100%;max-height:70vh;cursor:crosshair;border:1px solid var(--border);border-radius:6px}
-.edt-placeholder{padding:2em;text-align:center;color:var(--muted);font-size:.9em}
-.edt-feedback{display:flex;gap:.5em;align-items:center;font-size:.85em}
-.edt-step-nav{display:flex;align-items:center;gap:.5em;margin-bottom:.5em}
-.edt-step-label{flex:1;text-align:center;font-size:.85em;font-weight:600}
-.edt-nav-btn{min-width:5em}
-.edt-steplist{margin:0;padding:0 0 0 1.4em;font-size:.85em;font-family:var(--mono)}
-.edt-steplist li{padding:2px 0;cursor:pointer;border-radius:3px}
-.edt-steplist li:hover{background:var(--bg2)}
-.edt-steplist li.active{background:var(--accent);color:#fff}
-.edt-steps-card{margin-top:.5em}
-.edt-screen-card{display:flex;flex-direction:column}
+.au-btnrow{display:flex;gap:.5em;margin-bottom:.5em}
+/* Mode-group visibility: the [hidden] attribute must beat the display rules above, so make it explicit. */
+.au-cap[hidden],.au-edit[hidden],.au-enrich[hidden],.au-loadrow[hidden]{display:none}
+.au-step-nav{display:flex;align-items:center;gap:.5em;margin-bottom:.5em}
+.au-step-label{flex:1;text-align:center;font-size:.85em;font-weight:600}
+.au-nav-btn{min-width:5em}
+.au-steplist{margin:0;padding:0 0 0 1.4em;font-size:.85em;font-family:var(--mono)}
+.au-steplist li{padding:2px 0;cursor:pointer;border-radius:3px}
+.au-steplist li:hover{background:var(--bg2)}
+.au-steplist li.active{background:var(--accent);color:#fff}
+.au-steps-card{margin-top:.5em}
+.au-screen-card{display:flex;flex-direction:column}
 /* Enrichment panel (BE-0014) */
 .enrich-panel{border-top:1px solid var(--border);margin-top:.5em;padding-top:.5em}
 .enrich-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:.4em}

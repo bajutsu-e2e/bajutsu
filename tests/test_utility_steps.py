@@ -202,12 +202,12 @@ def test_clear_clipboard_requires_device_control() -> None:
 
 
 def test_keychain_reset_cmd() -> None:
-    from bajutsu.env import keychain_reset_cmd
+    from bajutsu.simctl import keychain_reset_cmd
 
     assert keychain_reset_cmd("U") == ["xcrun", "simctl", "keychain", "U", "reset"]
 
 
 def test_pbcopy_cmd() -> None:
-    from bajutsu.env import pbcopy_cmd
+    from bajutsu.simctl import pbcopy_cmd
 
     assert pbcopy_cmd("U") == ["xcrun", "simctl", "pbcopy", "U"]

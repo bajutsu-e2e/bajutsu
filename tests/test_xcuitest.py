@@ -16,6 +16,7 @@ import pytest
 
 from bajutsu.drivers import base
 from bajutsu.drivers.xcuitest import (
+    _SOCKET_TIMEOUT_SECONDS,
     TransportFn,
     XcuitestChannelError,
     XcuitestDriver,
@@ -173,20 +174,22 @@ def test_screenshot_writes_the_returned_png_bytes(tmp_path: Any) -> None:
     assert out.read_bytes() == png
 
 
-def test_wait_for_polls_until_a_match_appears() -> None:
+def test_wait_until_polls_xcuitest_until_a_match_appears() -> None:
+    # BE-0118: wait_for is single-shot; the shared wait_until owns the poll. It must keep
+    # polling xcuitest past the empty snapshot until the element renders.
     snapshots = [[], [_el_wire("h-ok", "ok", "OK")]]  # first empty, then the element renders
 
     def transport(method: str, path: str, body: dict[str, Any] | None) -> _Reply:
         return _Reply(status="ok", elements=snapshots.pop(0) if snapshots else [])
 
-    assert _driver(transport).wait_for({"id": "ok"}, timeout=1.0, poll=0.001) is True
+    assert base.wait_until(_driver(transport), {"id": "ok"}, timeout=1.0, poll=0) is True
 
 
-def test_wait_for_returns_false_on_timeout() -> None:
-    def transport(method: str, path: str, body: dict[str, Any] | None) -> _Reply:
-        return _Reply(status="ok", elements=[])
-
-    assert _driver(transport).wait_for({"id": "never"}, timeout=0.02, poll=0.001) is False
+def test_wait_for_is_single_shot() -> None:
+    present = _driver(lambda m, p, b: _Reply(status="ok", elements=[_el_wire("h-ok", "ok", "OK")]))
+    assert present.wait_for({"id": "ok"}) is True
+    absent = _driver(lambda m, p, b: _Reply(status="ok", elements=[]))
+    assert absent.wait_for({"id": "never"}) is False
 
 
 def test_await_ready_returns_once_the_runner_health_is_ready() -> None:
@@ -268,3 +271,10 @@ def test_screenshot_fails_loudly_on_a_runner_error(tmp_path: Any) -> None:
     with pytest.raises(XcuitestChannelError):
         _driver(lambda m, p, b: _Reply(status="error", png=None)).screenshot(str(out))
     assert not out.exists()  # no bogus artifact written
+
+
+def test_socket_timeout_is_bounded_after_the_single_snapshot_query() -> None:
+    # BE-0105 replaced the ~10s+ per-attribute /elements walk with one app.snapshot(), so the
+    # generous 60s stopgap is no longer needed: the timeout must stay bounded to a reasonable window
+    # (it still covers a cold first snapshot) so a wedged runner fails loudly rather than hanging.
+    assert 0 < _SOCKET_TIMEOUT_SECONDS <= 30

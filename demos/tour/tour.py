@@ -39,7 +39,7 @@ sys.path.insert(0, str(HERE.parent / "record"))
 from generate_from_nl import DEFAULT_GOAL, author, make_app  # noqa: E402
 
 from bajutsu import triage as _triage  # noqa: E402
-from bajutsu.config import Effective  # noqa: E402
+from bajutsu.config import Effective, IosConfig  # noqa: E402
 from bajutsu.evidence import FileSink  # noqa: E402
 from bajutsu.runner import Lease, run_and_report  # noqa: E402
 from bajutsu.scenario import (  # noqa: E402
@@ -58,11 +58,10 @@ def note(title: str) -> None:
 
 
 def _eff() -> Effective:
-    """A minimal effective config for the FakeDriver-backed sample flow."""
+    """A minimal effective config for the FakeDriver-backed showcase flow."""
     return Effective(
-        target="sample",
-        bundle_id="com.bajutsu.sample",
-        deeplink_scheme=None,
+        target="showcase-swiftui",
+        platform_config=IosConfig(bundle_id="com.bajutsu.showcase.ios.swiftui"),
         backend=["fake"],
         device="FakeDriver",
         locale="en_US",

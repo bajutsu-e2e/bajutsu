@@ -1,0 +1,18 @@
+# First look: the smallest end-to-end "drive it and watch the assertion" scenario — the
+# showcase's successor to the old demo/sample2 counter first-look. Browse the Stable catalog,
+# open a horse, toggle Favorite, and watch the mirrored value flip. Deliberately minimal, so
+# `tour` and a first read grok the run → assert loop at a glance; changing the expected value
+# is the clean "modify it and watch the assertion break" demonstration.
+- name: open a horse and favorite it
+  preconditions:
+    launchEnv: { SHOWCASE_UITEST: "1", SHOWCASE_TAB: stable }
+  steps:
+    - wait: { for: { id: stable.row.1 }, timeout: 10 }
+      capture: [video]
+    - tap: { id: stable.row.1 }
+    - wait: { for: { id: horse.favorite }, timeout: 5 }
+    - assert:
+        - value: { sel: { id: horse.favorite.value }, equals: "off" }
+    - tap: { id: horse.favorite }
+  expect:
+    - value: { sel: { id: horse.favorite.value }, equals: "on" }

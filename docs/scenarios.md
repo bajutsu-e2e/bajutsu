@@ -38,6 +38,25 @@ scenarios:
 Both the file description and each scenario's `description` appear in `report.html` (the
 summary header and each scenario card) and in the `bajutsu serve` UI.
 
+### Schema version
+
+The mapping form may carry a top-level `schema` integer marking the scenario schema version. A file
+that omits it is treated as version 1, so every existing scenario is valid unchanged:
+
+```yaml
+schema: 1
+scenarios:
+  - name: ...
+    steps: [...]
+```
+
+When a scenario declares a `schema` newer than the running `bajutsu` understands, the load fails
+with a clear upgrade-path message instead of an opaque "unknown field" error — the case that arises
+once a scenario tree is read across versions (for example, a config sourced from a pinned Git ref).
+The current version is `SCHEMA_VERSION` in `bajutsu/scenario/models/scenario.py`. Bump it only for a
+load-breaking change — removing a required field's meaning, or a change an older `bajutsu` would
+misinterpret rather than merely reject; a purely additive optional field needs no bump.
+
 ## Top-level structure (`Scenario`)
 
 | Key | Type | Default | Description |
@@ -57,23 +76,18 @@ summary header and each scenario card) and in the `bajutsu serve` UI.
 | `dismissAlerts` | bool / object | none (on) | The vision **alert guard** — clears OS prompts idb can't see. On by default; `false` disables it, `{ instruction: "tap Allow" }` keeps it on but taps a named button. CLI `--dismiss-alerts`/`--no-dismiss-alerts` overrides ([below](#dismissalerts-the-system-alert-guard)) |
 
 ```yaml
-- name: onboard, log in, and increment the counter
+- name: filter narrows the catalog
   preconditions:
-    launchEnv: { SAMPLE_UITEST: "1" }
+    launchEnv: { SHOWCASE_UITEST: "1", SHOWCASE_TAB: search }
   steps:
-    - tap: { id: onboarding.start }
-    - type: { text: "a@b.com", into: { id: auth.email } }
-    - type: { text: "pw", into: { id: auth.password } }
-    - tap: { id: auth.submit }
-    - wait: { for: { id: home.title }, timeout: 5 }
-    - tap: { id: counter.increment }
-    - tap: { id: counter.increment }
+    - type: { text: "Horse 3", into: { id: search.field } }
+    - wait: { for: { id: search.row.3 }, timeout: 5 }
   expect:
-    - exists: { id: home.title }
-    - value: { sel: { id: counter.value }, equals: "2" }
+    - count: { sel: { idMatches: "search.row.*" }, equals: 1 }
+    - value: { sel: { id: search.count }, equals: "1" }
 ```
 
-(real file: [`demos/features/app/scenarios/smoke.yaml`](../demos/features/app/scenarios/smoke.yaml))
+(real file: [`demos/showcase/scenarios/search.yaml`](../demos/showcase/scenarios/search.yaml))
 
 ## preconditions (environment setup)
 
@@ -117,7 +131,7 @@ It is **on by default** and fires **only when a step (or `expect`) is blocked**,
 The CLI `--dismiss-alerts` / `--no-dismiss-alerts` flag **overrides every scenario** (otherwise the
 per-scenario default applies); `--alert-instruction` sets a default button instruction that a
 scenario's own `instruction` overrides. (real file:
-[`demos/features/app/scenarios/permission.yaml`](../demos/features/app/scenarios/permission.yaml))
+[`demos/showcase/scenarios/permission.yaml`](../demos/showcase/scenarios/permission.yaml))
 
 ## Selectors (addressing an element)
 
@@ -215,7 +229,7 @@ is a validation error).
 - rotate: { sel: { id: gest.rotate }, radians: 1.57 }  # >0 clockwise (radians)
 ```
 
-`scale` must be **> 0** (a validation error otherwise). `pinch` / `rotate` require multi-touch: on the idb backend they fail with a "needs multiTouch" reason. Their primary target is the generated XCUITest (`pinch(withScale:)` / `rotate(_:)`). `doubleTap` runs on idb (two taps). (real file: [`demos/features/app/scenarios/gestures.yaml`](../demos/features/app/scenarios/gestures.yaml))
+`scale` must be **> 0** (a validation error otherwise). `pinch` / `rotate` require multi-touch: on the idb backend they fail with a "needs multiTouch" reason. Their primary target is the generated XCUITest (`pinch(withScale:)` / `rotate(_:)`). `doubleTap` runs on idb (two taps). (real file: [`demos/showcase/scenarios/gestures.yaml`](../demos/showcase/scenarios/gestures.yaml))
 
 ### `wait` (condition wait)
 
@@ -284,7 +298,7 @@ later steps. Touching no device, it is the one device-independent action here.
 password locally — from the shared `secret` (base32; keep it in `${secrets.*}`, not in the YAML) and
 the current time — and stores the current code in `${vars.<var>}` for a later `type` / `assert`.
 This automates a 2FA sign-in without a scripting escape hatch or an LLM: the value is a deterministic
-function of the secret and the clock ([BE-0046](../roadmaps/implemented/BE-0046-otp-email-steps/BE-0046-otp-email-steps.md)).
+function of the secret and the clock ([BE-0046](../roadmaps/BE-0046-otp-email-steps/BE-0046-otp-email-steps.md)).
 
 ### `email` (poll a mailbox for a received code)
 
@@ -305,12 +319,12 @@ timeout, a matched message whose body the regex can't hit, or an unreachable / n
 clean step failure — never a silent wrong value. Only mail newer than the step's start counts (keyed
 on message id, so a stale code from an earlier run is never matched), and among new matches the
 newest wins. Deterministic and LLM-free; the endpoint and credentials live in config-referenced
-`${secrets.*}`, so the scenario stays app-agnostic ([BE-0046](../roadmaps/implemented/BE-0046-otp-email-steps/BE-0046-otp-email-steps.md)).
+`${secrets.*}`, so the scenario stays app-agnostic ([BE-0046](../roadmaps/BE-0046-otp-email-steps/BE-0046-otp-email-steps.md)).
 
 ### Device & system control (iOS)
 
 ```yaml
-- background: {}                                                        # Home button (simctl ui home)
+- background: {}                                                        # Home button (backgrounds via SpringBoard, no terminate)
 - foreground: {}                                                        # resume the backgrounded app (simctl launch)
 - clearKeychain: {}                                                     # reset saved passwords / certificates
 - clearClipboard: {}                                                    # clear the pasteboard
@@ -324,7 +338,7 @@ channel and fail cleanly on the fake driver / in parallel runs. `overrideStatusB
 before a screenshot or a `visual` assertion, to freeze the clock and signal bars for a stable image.
 `background` / `foreground` are the two halves of a background/foreground transition; `foreground`
 resumes the app without any settle sleep, so wait for a concrete element afterward if you need one.
-`setClipboard` seeds the pasteboard for a paste flow ([BE-0052](../roadmaps/in-progress/BE-0052-device-state-timezone-clipboard-shake/BE-0052-device-state-timezone-clipboard-shake.md)).
+`setClipboard` seeds the pasteboard for a paste flow ([BE-0052](../roadmaps/BE-0052-device-state-timezone-clipboard-shake/BE-0052-device-state-timezone-clipboard-shake.md)).
 
 ## Assertion DSL
 
@@ -356,7 +370,7 @@ are in [selectors](selectors.md#assertion-evaluation).
 - `requestSequence` checks a list of request matchers were **observed in order** ([details below](#requestsequence-ordered-requests)); needs the `--network` run flag.
 - `responseSchema` validates a captured **response body against a JSON Schema** ([details below](#responseschema-json-schema-of-a-response)); needs the `--network` run flag.
 - `visual` pixel-compares a screenshot against a baseline image ([details below](#visual-visual-regression)).
-- `clipboard` reads the device pasteboard (`simctl pbpaste`) and checks **exactly one** of `equals` / `matches` (regex) — the read-back half of `setClipboard`, for verifying a "copy" action. It needs the per-device control channel, so it is unavailable on the fake driver / in parallel runs and fails cleanly there ([BE-0052](../roadmaps/in-progress/BE-0052-device-state-timezone-clipboard-shake/BE-0052-device-state-timezone-clipboard-shake.md)).
+- `clipboard` reads the device pasteboard (`simctl pbpaste`) and checks **exactly one** of `equals` / `matches` (regex) — the read-back half of `setClipboard`, for verifying a "copy" action. It needs the per-device control channel, so it is unavailable on the fake driver / in parallel runs and fails cleanly there ([BE-0052](../roadmaps/BE-0052-device-state-timezone-clipboard-shake/BE-0052-device-state-timezone-clipboard-shake.md)).
 
 > **Locale caveat**: string comparisons on `label`/`value` and assertions that look at visible
 > text break under translation. Write these against config's fixed locale, and write the selector
@@ -387,12 +401,12 @@ wait and `mocks` (below). At least one match field is required; the listed field
 
 > `count` is **not** a match field — at least one of `method` / `url` / `urlMatches` / `path` /
 > `pathMatches` / `status` / `bodyMatches` must be present. (real file:
-> [`demos/features/app/scenarios/network_mock.yaml`](../demos/features/app/scenarios/network_mock.yaml))
+> [`demos/showcase/scenarios/network_mock.yaml`](../demos/showcase/scenarios/network_mock.yaml))
 
 ### `event` (analytics event assertion)
 
 `event` asserts on a behavior the screen never shows: an analytics / telemetry event the app **sent**
-([BE-0048](../roadmaps/implemented/BE-0048-behavioral-protocol-assertions/BE-0048-behavioral-protocol-assertions.md)).
+([BE-0048](../roadmaps/BE-0048-behavioral-protocol-assertions/BE-0048-behavioral-protocol-assertions.md)).
 It is a pure check over the same observed exchanges `request` reads (needs the `--network` run flag),
 so the verdict stays machine-only — no LLM. It filters the timeline by the event's **endpoint** (the
 same `method` / `url` / `urlMatches` / `path` / `pathMatches` matcher as `request`), then by structured
@@ -420,7 +434,7 @@ expect:
 ### `requestSequence` (ordered requests)
 
 `requestSequence` asserts that several requests happened **in a given order** — e.g. a token refresh
-*before* the protected call ([BE-0048](../roadmaps/implemented/BE-0048-behavioral-protocol-assertions/BE-0048-behavioral-protocol-assertions.md)).
+*before* the protected call ([BE-0048](../roadmaps/BE-0048-behavioral-protocol-assertions/BE-0048-behavioral-protocol-assertions.md)).
 It is a pure check over the observed timeline (needs the `--network` run flag), so the verdict stays
 machine-only. It takes a non-empty list of [`request` matchers](#request-network-assertion) (the same
 fields) and matches them as an **ordered subsequence**: each matcher must match a distinct exchange at
@@ -441,7 +455,7 @@ expect:
 ### `responseSchema` (JSON Schema of a response)
 
 `responseSchema` asserts that a captured **response body conforms to a JSON Schema** — a contract
-check the screen can't express ([BE-0048](../roadmaps/implemented/BE-0048-behavioral-protocol-assertions/BE-0048-behavioral-protocol-assertions.md)).
+check the screen can't express ([BE-0048](../roadmaps/BE-0048-behavioral-protocol-assertions/BE-0048-behavioral-protocol-assertions.md)).
 It is a pure, deterministic check over the observed timeline plus a stored schema file (needs the
 `--network` run flag), so the verdict stays machine-only. `request` selects the exchange (the same
 matcher fields) whose response is validated; `schema` is a file path resolved within the app's
@@ -561,7 +575,7 @@ when it carries at least one `--tag` (or none was given) **and** none of the `--
 ```
 
 ```bash
-uv run bajutsu run --target sample --tag smoke --exclude wip   # run @smoke, skip anything @wip (across the app's scenarios dir)
+uv run bajutsu run --target showcase-swiftui --tag smoke --exclude wip   # run @smoke, skip anything @wip (across the app's scenarios dir)
 ```
 
 ### Secrets (`${secrets.X}`)

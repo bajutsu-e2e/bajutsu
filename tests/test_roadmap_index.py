@@ -124,14 +124,13 @@ def test_render_row_english_with_origin() -> None:
     entry = bri.Entry(
         id="BE-0029",
         slug="visual-regression-assertions",
-        category="implemented",
         title="Visual-regression assertions",
         status="Implemented",
         origin="Both",
     )
     row = bri.render_row(entry, "en", has_origin=True)
     assert row == (
-        "| [BE-0029](implemented/BE-0029-visual-regression-assertions/"
+        "| [BE-0029](BE-0029-visual-regression-assertions/"
         "BE-0029-visual-regression-assertions.md) "
         "| Visual-regression assertions | Implemented | Both |"
     )
@@ -141,14 +140,13 @@ def test_render_row_english_without_origin() -> None:
     entry = bri.Entry(
         id="BE-0001",
         slug="m1-deterministic-runner",
-        category="implemented",
         title="Deterministic runner (M1)",
         status="Implemented",
         origin=None,
     )
     row = bri.render_row(entry, "en", has_origin=False)
     assert row == (
-        "| [BE-0001](implemented/BE-0001-m1-deterministic-runner/"
+        "| [BE-0001](BE-0001-m1-deterministic-runner/"
         "BE-0001-m1-deterministic-runner.md) | Deterministic runner (M1) | Implemented |"
     )
 
@@ -157,14 +155,13 @@ def test_render_row_japanese_links_to_ja_file() -> None:
     entry = bri.Entry(
         id="BE-0029",
         slug="visual-regression-assertions",
-        category="implemented",
         title="ビジュアル回帰アサーション",
         status="実装済み",
         origin="両社",
     )
     row = bri.render_row(entry, "ja", has_origin=True)
     assert row == (
-        "| [BE-0029](implemented/BE-0029-visual-regression-assertions/"
+        "| [BE-0029](BE-0029-visual-regression-assertions/"
         "BE-0029-visual-regression-assertions-ja.md) "
         "| ビジュアル回帰アサーション | 実装済み | 両社 |"
     )
@@ -210,11 +207,11 @@ def test_committed_index_is_up_to_date() -> None:
 def test_duplicate_ids_flags_collisions(tmp_path: Path) -> None:
     """duplicate_ids reports any BE number shared by two item directories."""
     roadmap = tmp_path / "roadmaps"
-    for rel in ("implemented/BE-0045-foo", "proposals/BE-0045-bar", "proposals/BE-0046-baz"):
-        (roadmap / rel).mkdir(parents=True)
+    for name in ("BE-0045-foo", "BE-0045-bar", "BE-0046-baz"):
+        (roadmap / name).mkdir(parents=True)
     dupes = bri.duplicate_ids(roadmap)
     assert set(dupes) == {"BE-0045"}
-    assert sorted(dupes["BE-0045"]) == ["implemented/BE-0045-foo", "proposals/BE-0045-bar"]
+    assert sorted(dupes["BE-0045"]) == ["BE-0045-bar", "BE-0045-foo"]
 
 
 def test_load_items_rejects_duplicate_ids(tmp_path: Path) -> None:
@@ -222,8 +219,8 @@ def test_load_items_rejects_duplicate_ids(tmp_path: Path) -> None:
     import pytest
 
     roadmap = tmp_path / "roadmaps"
-    for rel in ("implemented/BE-0045-foo", "proposals/BE-0045-bar"):
-        (roadmap / rel).mkdir(parents=True)
+    for name in ("BE-0045-foo", "BE-0045-bar"):
+        (roadmap / name).mkdir(parents=True)
     with pytest.raises(ValueError, match="duplicate BE IDs"):
         bri.load_items(roadmap)
 
@@ -232,3 +229,87 @@ def test_no_duplicate_be_ids() -> None:
     """The gate: no two roadmap items share a BE id (IDs are unique and permanent)."""
     roadmap = Path(__file__).resolve().parent.parent / "roadmaps"
     assert bri.duplicate_ids(roadmap) == {}, "duplicate BE IDs found in roadmaps/"
+
+
+def test_every_item_topic_has_a_marked_section() -> None:
+    """The gate: every item — placeholders included — has its (bucket, topic) marker pair.
+
+    Guards the failure mode where a ``BE-XXXX`` placeholder introduces a topic into a bucket with no
+    marked section: the render skips the placeholder, so nothing complains until the roadmap-id
+    automation numbers it on main and the reindex hits the absent region. This catches it at PR time.
+    """
+    roadmap = Path(__file__).resolve().parent.parent / "roadmaps"
+    missing = bri.missing_section_markers(roadmap)
+    assert missing == [], "\n".join(missing)
+
+
+_PLACEHOLDER_ITEM = """\
+**English** · [日本語](BE-XXXX-foo-ja.md)
+
+# BE-XXXX — Foo
+
+<!-- BE-METADATA -->
+| Field | Value |
+|---|---|
+| Proposal | [BE-XXXX](BE-XXXX-foo.md) |
+| Status | **Proposal** |
+| Topic | codegen coverage |
+<!-- /BE-METADATA -->
+
+## Introduction
+"""
+
+
+def _write_index_pages(roadmap: Path, *, with_section: bool) -> None:
+    section = (
+        "\n### codegen coverage\n\n"
+        "<!-- GENERATED:proposals-codegen -->\n\n<!-- /GENERATED:proposals-codegen -->\n"
+        if with_section
+        else ""
+    )
+    for index_file in ("README.md", "README-ja.md"):
+        (roadmap / index_file).write_text(f"## Proposals\n{section}", encoding="utf-8")
+
+
+def test_missing_section_markers_flags_placeholder_without_section(tmp_path: Path) -> None:
+    """A placeholder whose topic has no marked section in a bucket is reported for both pages."""
+    roadmap = tmp_path / "roadmaps"
+    item = roadmap / "BE-XXXX-foo"
+    item.mkdir(parents=True)
+    (item / "BE-XXXX-foo.md").write_text(_PLACEHOLDER_ITEM, encoding="utf-8")
+    _write_index_pages(roadmap, with_section=False)
+
+    missing = bri.missing_section_markers(roadmap)
+    assert len(missing) == 2  # one per index page
+    assert all("proposals-codegen" in report and "BE-XXXX-foo" in report for report in missing)
+
+
+def test_missing_section_markers_passes_when_section_present(tmp_path: Path) -> None:
+    """With the marker pair present in both pages the placeholder's section is satisfied."""
+    roadmap = tmp_path / "roadmaps"
+    item = roadmap / "BE-XXXX-foo"
+    item.mkdir(parents=True)
+    (item / "BE-XXXX-foo.md").write_text(_PLACEHOLDER_ITEM, encoding="utf-8")
+    _write_index_pages(roadmap, with_section=True)
+
+    assert bri.missing_section_markers(roadmap) == []
+
+
+def test_missing_section_markers_flags_unpaired_opening_marker(tmp_path: Path) -> None:
+    """An opening marker without its closing partner is not a usable section — still reported.
+
+    A lone ``<!-- GENERATED:key -->`` would fool an opening-only scan but crash ``replace_region``.
+    """
+    roadmap = tmp_path / "roadmaps"
+    item = roadmap / "BE-XXXX-foo"
+    item.mkdir(parents=True)
+    (item / "BE-XXXX-foo.md").write_text(_PLACEHOLDER_ITEM, encoding="utf-8")
+    for index_file in ("README.md", "README-ja.md"):
+        (roadmap / index_file).write_text(
+            "## Proposals\n\n### codegen coverage\n\n<!-- GENERATED:proposals-codegen -->\n",
+            encoding="utf-8",
+        )
+
+    missing = bri.missing_section_markers(roadmap)
+    assert len(missing) == 2
+    assert all("proposals-codegen" in report for report in missing)

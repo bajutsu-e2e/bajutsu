@@ -1,4 +1,0 @@
-# Visual-regression baselines for the demo scenarios live here (one PNG per `visual`
-# assertion's `baseline:` key, e.g. home.png). They are captured by approving a run —
-# `make -C demos/features vrt` then `bajutsu approve` or the WebUI's Approve button — and
-# are intentionally NOT committed (device-/OS-specific; regenerate locally).

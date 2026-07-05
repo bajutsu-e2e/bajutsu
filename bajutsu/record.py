@@ -7,14 +7,18 @@ scenario that `run` later replays with no AI.
 
 from __future__ import annotations
 
+import logging
 import tempfile
 from collections.abc import Callable
 from pathlib import Path
 
 from bajutsu.agent import Agent, Observation
 from bajutsu.drivers import base
+from bajutsu.elements import shows_app_ui
 from bajutsu.orchestrator import BlockedHandler, Clock, RealClock, _action_of, _do_action, _wait
 from bajutsu.scenario import Assertion, Scenario, Selector, Step
+
+_logger = logging.getLogger(__name__)
 
 # A live-progress sink: each turn's decision is handed to it as a one-line string.
 Reporter = Callable[[str], None]
@@ -49,17 +53,70 @@ def _describe_step(step: Step) -> str:
     return next((f for f in step.model_dump(exclude_none=True)), "step")
 
 
+def _mask_secrets(text: str, secret_tokens: list[tuple[str, str]]) -> tuple[str, list[str]]:
+    """Replace each declared secret literal in `text` with its `${secrets.X}` token.
+
+    `secret_tokens` is `(literal value, "${secrets.NAME}")` pairs; the caller passes them
+    longest-value-first so a value that is a substring of another is replaced before it, never
+    leaving a partial literal behind. Returns the masked text and the tokens substituted.
+
+    Done in two passes — each matched value is first swapped for a collision-proof sentinel, then
+    the sentinels are expanded to their tokens — so a later value can never match text *inside* a
+    token already inserted (e.g. a secret whose value equals another secret's env-var name), which
+    a single sequential pass would corrupt into a malformed nested token.
+    """
+    substituted: list[str] = []
+    expansions: list[tuple[str, str]] = []
+    for i, (value, token) in enumerate(secret_tokens):
+        if value and value in text:
+            sentinel = f"\x00{i}\x00"  # NUL-delimited: cannot occur in typed text or a token
+            text = text.replace(value, sentinel)
+            expansions.append((sentinel, token))
+            substituted.append(token)
+    for sentinel, token in expansions:
+        text = text.replace(sentinel, token)
+    return text, substituted
+
+
+def _tokenize_secrets(step: Step, secret_tokens: list[tuple[str, str]]) -> tuple[Step, list[str]]:
+    """Rewrite a recorded secret literal in a `type` step's text as its `${secrets.X}` token.
+
+    A non-`type` step, or a `type` text containing no declared secret, is returned unchanged.
+    Returns the (possibly rewritten) step and the tokens substituted, so the record loop can tell
+    the author which fields were swapped.
+    """
+    if step.type is None or not secret_tokens:
+        return step, []
+    text, substituted = _mask_secrets(step.type.text, secret_tokens)
+    if not substituted:
+        return step, []
+    return step.model_copy(
+        update={"type": step.type.model_copy(update={"text": text})}
+    ), substituted
+
+
 def _screenshot_bytes(driver: base.Driver) -> bytes | None:
-    """Capture a PNG of the current screen as bytes (best-effort)."""
+    """Capture a PNG of the current screen as bytes (best-effort).
+
+    Returns None on both a genuinely empty capture and a failure — callers treat the
+    screenshot as optional and continue either way — but logs a warning when the capture
+    *fails* (a stale simulator, a permissions error, a full disk), so a real failure stays
+    distinguishable from "there was nothing to capture" instead of vanishing into None.
+    """
+    path: str | None = None
     try:
         with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
             path = tmp.name
         driver.screenshot(path)
-        data = Path(path).read_bytes()
-        Path(path).unlink(missing_ok=True)
-        return data or None
-    except Exception:
+        return Path(path).read_bytes() or None
+    except Exception as exc:
+        _logger.warning("screenshot capture failed: %s", exc, exc_info=True)
         return None
+    finally:
+        # Clean up on both paths: on a capture failure the temp file is already created
+        # (delete=False), so without this a repeated failure leaks PNGs into the temp dir.
+        if path is not None:
+            Path(path).unlink(missing_ok=True)
 
 
 def _settle_target(assertion: Assertion) -> base.Selector | None:
@@ -100,20 +157,6 @@ def _execute(driver: base.Driver, step: Step, clock: Clock) -> None:
         return  # assertions are checks, not actions to perform while recording
     else:
         _do_action(driver, step)
-
-
-def shows_app_ui(elements: list[base.Element]) -> bool:
-    """Whether the tree shows the app's own UI (rather than being collapsed under a system overlay).
-
-    A SpringBoard alert collapses the app's tree to a bare window; a live app screen
-    has actionable content. "Actionable" = any non-application element carrying an `id` OR a
-    `label`, so apps WITHOUT accessibility identifiers (label/coordinate-driven, e.g. sample2)
-    are not mistaken for a blocked screen — the bug that made the guard fire every turn.
-    """
-    return any(
-        (el.get("identifier") or el.get("label")) and "application" not in (el.get("traits") or [])
-        for el in elements
-    )
 
 
 def _clear_blocking(
@@ -217,6 +260,7 @@ def record(
     clock: Clock | None = None,
     with_screenshot: bool = True,
     alert_guard: BlockedHandler | None = None,
+    secret_tokens: list[tuple[str, str]] | None = None,
     report: Reporter | None = None,
 ) -> Scenario:
     """Explore toward `goal` with `agent`, returning the recorded scenario.
@@ -225,6 +269,11 @@ def record(
     that surfaces while authoring is dismissed so the agent keeps a clean view. The
     dismissal is environmental, not a recorded step; replay handles it with
     `run --dismiss-alerts`.
+
+    If `secret_tokens` is given (`(literal value, "${secrets.NAME}")` pairs, longest-value-first),
+    a typed value matching a declared secret is recorded as its `${secrets.X}` token, never the
+    literal (BE-0120); the app is still driven with the real value so the authenticated screen is
+    reached. Empty/None records every value verbatim.
 
     If `report` is given, each turn's decision (the agent's proposed action and reason)
     is streamed to it as a one-line string, so a caller can show progress live.
@@ -257,7 +306,10 @@ def record(
             )
         )
         if proposal.note:  # the agent's reasoning for this turn, shown before the action it chose
-            say(f"[{n}] \U0001f4ad {proposal.note}")
+            # Mask any secret the agent's free-text reasoning echoed, so the live progress stream
+            # never carries a literal either — not just the recorded step text (BE-0120).
+            note, _ = _mask_secrets(proposal.note, secret_tokens or [])
+            say(f"[{n}] \U0001f4ad {note}")
         if proposal.done:
             say(f"[{n}] ✓ finish · {len(proposal.expect)} assertion(s)")
             expect = proposal.expect
@@ -268,11 +320,17 @@ def record(
         if proposal.step is None:
             say(f"[{n}] agent proposed no action; stopping")
             break
-        say(f"[{n}] → {_describe_step(proposal.step)}")
+        # Tokenize a matched secret before narrating or recording — so neither the written
+        # scenario nor the live progress stream ever carries the literal (BE-0120) — but execute
+        # the agent's unmodified proposal, since the app needs the real value to reach its screen.
+        recorded_step, tokenized = _tokenize_secrets(proposal.step, secret_tokens or [])
+        say(f"[{n}] → {_describe_step(recorded_step)}")
+        if tokenized:
+            say(f"[{n}] \U0001f512 tokenized secret in typed text → {', '.join(tokenized)}")
         if not _execute_with_recovery(driver, proposal.step, clock, alert_guard, report=report):
             say(f"[{n}] ! could not resolve that target on the live screen; stopping")
             break  # the proposed action did not resolve, even after clearing prompts
-        steps.append(proposal.step)
+        steps.append(recorded_step)
 
     scenario = Scenario(name=name, steps=steps, expect=expect)
     # The goal is the scenario-level provenance (BE-0044): the natural language this whole scenario

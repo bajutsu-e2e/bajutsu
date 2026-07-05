@@ -22,14 +22,20 @@ import dataclasses
 import json
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
 
 import typer
 
 from bajutsu import audit as _audit
-from bajutsu import env as _env
+from bajutsu import simctl as _simctl
 from bajutsu.backends import ensure_web_runtime, select_actuator
-from bajutsu.cli._shared import DEFAULT_CONFIG, _backends, _load_effective, load_expanded_scenarios
+from bajutsu.cli._shared import (
+    DEFAULT_CONFIG,
+    _backends,
+    _load_effective,
+    load_expanded_scenarios,
+    read_manifests,
+)
+from bajutsu.config import web_engine
 from bajutsu.runner import device_pool, run_all
 from bajutsu.runner.launch_server import start_launch_server
 from bajutsu.scenario import Scenario
@@ -114,31 +120,11 @@ def _history_audit(history: str, as_json: bool) -> None:
     if not runs_dir.is_dir():
         typer.echo(f"runs directory not found: {history}")
         raise typer.Exit(2)
-    report = _audit.longitudinal(_read_manifests(runs_dir))
+    report = _audit.longitudinal(read_manifests(runs_dir))
     if as_json:
         typer.echo(json.dumps(dataclasses.asdict(report), indent=2))
     else:
         typer.echo(_audit.render_longitudinal(report))
-
-
-def _read_manifests(runs_dir: Path) -> list[dict[str, Any]]:
-    """The parsed `manifest.json` of each run under *runs_dir*; unreadable/malformed ones are skipped.
-
-    A run that can't be parsed carries no usable provenance, so dropping it here is equivalent to its
-    being skipped for lacking a fingerprint — the audit is advisory and never gates on completeness.
-    """
-    manifests: list[dict[str, Any]] = []
-    for d in sorted(runs_dir.iterdir()):
-        manifest = d / "manifest.json"
-        if not (d.is_dir() and manifest.is_file()):
-            continue
-        try:
-            data = json.loads(manifest.read_text(encoding="utf-8"))
-        except (OSError, UnicodeDecodeError, json.JSONDecodeError):
-            continue
-        if isinstance(data, dict):
-            manifests.append(data)
-    return manifests
 
 
 def _repeat_audit(
@@ -159,14 +145,14 @@ def _repeat_audit(
     # Mirror `run`/`doctor`: validate the backend before touching device CLIs, so an unknown /
     # unavailable actuator exits cleanly instead of crashing later.
     try:
-        ensure_web_runtime(backends, eff.browser)
+        ensure_web_runtime(backends, web_engine(eff))
         actuator = select_actuator(backends)
     except RuntimeError as e:
         typer.echo(str(e))
         raise typer.Exit(2) from None
     try:
-        udids = ["web"] if actuator == "playwright" else [_env.resolve_udid(udid)]
-    except _env.DeviceError as e:
+        udids = ["web"] if actuator == "playwright" else [_simctl.resolve_udid(udid)]
+    except _simctl.DeviceError as e:
         typer.echo(str(e))
         raise typer.Exit(2) from None
 
@@ -191,7 +177,7 @@ def _repeat_audit(
             _audit.repeat_diff(run_all(eff, [s] * repeat, lease, workers=1, actuator=actuator))
             for s in scenarios
         ]
-    except _env.DeviceError as e:
+    except _simctl.DeviceError as e:
         # Parity with `run`/`record`: a device failure (lease/launch) exits 2 cleanly, not a traceback.
         typer.echo(str(e))
         raise typer.Exit(2) from None

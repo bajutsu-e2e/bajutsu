@@ -4,20 +4,20 @@
 
 > Run the bajutsu web UI ([cli](cli.md#serve)) on hardware you own, reachable by your team over a
 > private Tailscale network, from the self-hosting roadmap
-> ([BE-0016](../roadmaps/proposals/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md)).
+> ([BE-0016](../roadmaps/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md)).
 > Two tiers are available today, both made safe to expose by
-> [BE-0051](../roadmaps/implemented/BE-0051-serve-hardening-for-hosting/BE-0051-serve-hardening-for-hosting.md)'s
+> [BE-0051](../roadmaps/BE-0051-serve-hardening-for-hosting/BE-0051-serve-hardening-for-hosting.md)'s
 > auth + input validation:
 >
 > - **Tier A — a single Mac.** One `bajutsu serve` process, token-authenticated, on one Mac. The
 >   rest of this page up to *Tier B* covers it.
-> - **Tier B — a self-hosted server backend.** BE-0015's control plane (FastAPI + Postgres + Redis +
+> - **Tier B — a self-hosted server backend.** BE-0015's control plane (FastAPI + Postgres +
 >   S3-compatible storage + GitHub OAuth + RBAC + quotas) on a Linux node, with Mac workers. It runs
 >   single-tenant by default and supports **multiple orgs** when you declare them in config (see
 >   *[Tier B — self-hosting the server backend](#tier-b--self-hosting-the-server-backend)*).
 >
 > The fully managed public cloud offering (a hosted MacStadium worker pool + IaC) remains future
-> ([BE-0015](../roadmaps/proposals/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md)).
+> ([BE-0015](../roadmaps/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md)).
 
 ## The macOS constraint
 
@@ -109,10 +109,20 @@ session cookie). API clients send `Authorization: Bearer $TOKEN`.
 ## Security recap (BE-0051)
 
 A self-hosted serve relies on the hardening from
-[BE-0051](../roadmaps/implemented/BE-0051-serve-hardening-for-hosting/BE-0051-serve-hardening-for-hosting.md):
+[BE-0051](../roadmaps/BE-0051-serve-hardening-for-hosting/BE-0051-serve-hardening-for-hosting.md):
 token auth on every request, `/api/run` and `/api/record` confined to the app's scenarios dir with
 validated `backend`/`udid`, a CSRF Origin check plus security headers, and a concurrency cap on run
 dispatch. Keep the token secret, keep the Mac on a tailnet, and keep the OS patched.
+
+The CSRF/Origin check and a **`Host`-header allowlist** run **unconditionally**
+([BE-0121](../roadmaps/BE-0121-serve-csrf-host-allowlist/BE-0121-serve-csrf-host-allowlist.md)) —
+not only when a token is set. This matters most for the common `make serve` default (loopback, no
+token): a cross-origin `POST` from a page open in another tab is blocked, and a request whose `Host`
+does not name a bound interface is refused, so a rebound hostname can't reach a loopback endpoint
+such as `GET /api/apikey`. A non-browser client (no `Origin` header) is unaffected. The
+`Host` allowlist is derived from the interface `serve` binds — the loopback names for a loopback
+bind, that host otherwise; a wildcard bind (`0.0.0.0` / `::`), whose reachable names can't be
+enumerated, disables the `Host` check and leaves CSRF as the cross-origin guard.
 
 ## Uploaded-config command execution (BE-0090)
 
@@ -140,11 +150,23 @@ blocked or misconfigured `launchServer` fails with a clear error, never a flaky-
 decision (denied / reused / sandboxed, and the image when sandboxed) is recorded in the run's
 `manifest.json` provenance, so "what did this run execute, and what was suppressed?" stays answerable.
 
+## Remote-config command execution (BE-0121)
+
+A config bound at startup with `--config` (a local path or a `github:` spec you typed yourself) is
+**operator-trusted**: `serve` runs its `build:` command normally. A Git config bound **later,
+through the UI's "from Git" picker** (`POST /api/config` with a `git` spec), is a different trust
+level — a cross-origin request could have bound it — so it is treated like an uploaded bundle: its
+`build:` command is **never run on the host by default**. Pass `--allow-remote-build` (or set
+`BAJUTSU_ALLOW_REMOTE_BUILD=1`) to opt in when you deliberately drive runs off a UI-bound Git config
+whose build you trust. Without the opt-in the run proceeds with the build suppressed, exactly as an
+uploaded bundle's build is suppressed — no silent host-side command execution from a config that
+arrived over the network.
+
 ## Tier B — self-hosting the server backend
 
 Tier A is one process on one Mac. **Tier B** runs BE-0015's **server backend** — the FastAPI control
-plane with Postgres, Redis, S3-compatible storage (MinIO), GitHub OAuth, RBAC, and a per-user quota
-— on a Linux node, with one or more Macs as workers. It runs **single-tenant** by default (every
+plane with Postgres, S3-compatible storage (MinIO), GitHub OAuth, RBAC, and a per-user quota — on a
+Linux node, with one or more Macs as workers. It runs **single-tenant** by default (every
 user in one default org) and supports **multiple orgs** once you declare them in config — see
 *[Multiple orgs](#multiple-orgs)* below. The ready-to-run stack is in
 [`deploy/self-host/`](../deploy/self-host/) (compose + Dockerfile + `.env.example`).
@@ -155,8 +177,8 @@ user in one default org) and supports **multiple orgs** once you declare them in
            ▼
    ┌───────────────────────────────────────┐  jobs  ┌──────────────────────────┐
    │  Linux node — docker compose          │ ─────▶ │  Mac worker × N          │
-   │  bajutsu serve --asgi --backend=server│  Redis │  bajutsu worker          │
-   │  postgres · redis · minio             │ ◀───── │  bajutsu run · Simulator │
+   │  bajutsu serve --asgi --backend=server│  HTTP  │  bajutsu worker          │
+   │  postgres · minio                     │ ◀───── │  bajutsu run · Simulator │
    └───────────────────────────────────────┘ result └──────────────────────────┘
                        └──────────── Tailscale tailnet ──────┘
 ```
@@ -164,21 +186,30 @@ user in one default org) and supports **multiple orgs** once you declare them in
 The Linux control plane is cheap; the **Mac workers** carry the Simulator runs and are the scarce
 part. The worker is **not** containerized — it needs the Aqua GUI session, exactly like Tier A.
 
+**Config sources are deployment-aware (BE-0108).** The "Open config" dialog binds the active config
+from up to three sources: a **Git repository**, an **uploaded `.zip` bundle**, and a **file browser
+over the serve host's `--root`**. On the server backend (this tier) the file browser is dropped —
+both hidden in the UI and refused server-side (`/api/fs` and the path branch of `POST /api/config`
+return `403`) — leaving only Git and upload. A hosted user has no filesystem relationship to the
+shared worker, so browsing the operator's `--root` could bind nothing they own; removing it also
+avoids handing every logged-in user a directory listing of that tree. The local backend (Tier A, a
+self-hosted single Mac) keeps all three: there the filesystem is the operator's own.
+
 ### 1. Bring up the control plane
 
 ```bash
 cd deploy/self-host
 cp .env.example .env            # set BAJUTSU_SERVE_TOKEN, POSTGRES_PASSWORD, AWS_* (MinIO), bucket
 mkdir -p config && cp /path/to/bajutsu.config.yaml config/   # the app/project list to expose
-docker compose up -d            # postgres + redis + minio + migrate (alembic upgrade head) + bajutsu
+docker compose up -d            # postgres + minio + migrate (alembic upgrade head) + bajutsu
 ```
 
 `migrate` runs the Alembic migrations to head before `bajutsu` starts, and `minio-init` creates the
 bucket. The control plane then listens on `:8765`.
 
-Published ports bind to `BIND_ADDR` (default `127.0.0.1`). For a Mac worker to reach Redis and
-MinIO from another host, set `BIND_ADDR` in `.env` to the node's **tailnet IP** — never `0.0.0.0`
-on a host with a public interface, since that would expose Redis and the artifacts bucket.
+Published ports bind to `BIND_ADDR` (default `127.0.0.1`). For a Mac worker to reach MinIO from
+another host, set `BIND_ADDR` in `.env` to the node's **tailnet IP** — never `0.0.0.0` on a host
+with a public interface, since that would expose the artifacts bucket.
 
 ### 2. Add GitHub OAuth (optional)
 
@@ -194,35 +225,94 @@ Login always requests the `read:org` scope so a user can be mapped to an org by 
 membership (config `githubOrgs`), so the consent screen mentions organization access either way. A
 single-tenant deploy (no `orgs:` block) just ignores the org info.
 
+### Operator secrets (the Claude API key)
+
+The **API key** an admin sets through the settings panel is an *operator secret*, and on the hosted
+control plane it is **write-once and encrypted at rest**
+([BE-0136](../roadmaps/BE-0136-serve-write-once-secrets/BE-0136-serve-write-once-secrets.md)). No
+endpoint ever returns the plaintext again — for any role, admin included — only a masked preview; to
+rotate a key an admin overwrites it, never reading the old one back. The value is stored in the
+database's `secrets` table encrypted with authenticated encryption (Fernet) and scoped per org, so it
+survives a restart and is shared across control-plane replicas.
+
+That encryption needs a master key, provisioned outside the database like `BAJUTSU_DATABASE_URL`:
+
+```bash
+# generate once, then keep it in .env / your platform's own secret store
+python3 -c 'from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())'
+export BAJUTSU_SECRETS_KEY=…
+```
+
+A database-backed control plane **requires** `BAJUTSU_SECRETS_KEY` and refuses to start without one,
+rather than silently degrading to holding the secret only in process memory. Without a database,
+secrets stay in the serve process's environment (the local-backend shape) and no key is needed. Treat
+the key like the database password: losing it makes the stored secrets unrecoverable, and a rotated
+key cannot decrypt values written under the old one, so re-enter each secret after rotating.
+
 ### 3. Run a Mac worker
 
 On each Mac (the same Aqua-session setup as Tier A — auto-login, `caffeinate`/`pmset`), install
-`bajutsu[worker,idb]` and point it at the Linux node over the tailnet:
+`bajutsu[idb]` and point it at the control plane over the tailnet:
 
 ```bash
-export BAJUTSU_REDIS_URL=redis://<linux-node>.<tailnet>.ts.net:6379
-export BAJUTSU_S3_BUCKET=bajutsu
-export BAJUTSU_S3_ENDPOINT=http://<linux-node>.<tailnet>.ts.net:9000
-export AWS_ACCESS_KEY_ID=… AWS_SECRET_ACCESS_KEY=…
+export BAJUTSU_SERVER_URL=http://<linux-node>.<tailnet>.ts.net:8765
+export BAJUTSU_TOKEN=…         # the same operator token the control plane uses
 export ANTHROPIC_API_KEY=…     # only if scenarios use the AI paths (record / --dismiss-alerts)
 bajutsu worker
 ```
 
-Wrap it in a `LaunchAgent` (as in Tier A) so it survives reboots. Each job runs on a fresh Simulator
-and uploads its `runs/<id>/` tree to MinIO, which the control plane serves back.
+The worker holds **no object-store credentials** (BE-0160): no `BAJUTSU_S3_BUCKET` /
+`BAJUTSU_S3_ENDPOINT` / `AWS_*`, and no cloud SDK. It downloads the run's baselines, uploads the
+finished `runs/<id>/` tree, and persists a `record` job's authored scenario over **presigned URLs
+the control plane signs** — the control plane is the only place the object store's credentials live.
+The bytes still flow worker→storage directly (the signed URL points at MinIO), so the worker needs
+network reachability to the object store, just not its secrets.
 
-> **Run history in the database.** A run executes on the worker, so the worker is what records it
-> into Postgres for the run-history list. To enable that, install `bajutsu[worker,idb,db]` and give
-> the worker `BAJUTSU_DATABASE_URL` (the Postgres node over the tailnet) — the same URL the control
-> plane uses. Without it the run still works and its artifacts are served, but it won't appear in the
-> durable history list.
+Wrap it in a `LaunchAgent` (as in Tier A) so it survives reboots. The worker polls the control
+plane's `/api/worker/lease` endpoint over HTTP (no Redis needed), runs each job on a fresh
+Simulator, uploads the `runs/<id>/` tree (including `console.log`), and posts the result back to
+`/api/worker/result`. The control plane records the finished run into Postgres — the worker needs no
+database access.
 
 ### 4. Expose it
 
 Front the control plane like Tier A: `tailscale serve --bg 8765` (tailnet-only, recommended), or
 Caddy for a real hostname (`docker compose --profile caddy up -d`, with `BAJUTSU_PUBLIC_HOST` set).
-The worker reaches Redis (`:6379`) and MinIO (`:9000`) over the tailnet, so keep the node on the
-private tailnet.
+The worker reaches the control plane (`:8765`) and MinIO (`:9000`) over the tailnet, so keep the
+node on the private tailnet.
+
+### Evidence upload to object storage (optional, BE-0110)
+
+The worker upload above writes each run tree to the **artifact store** the control plane serves reports
+from. Separately, you can archive every run's **evidence** to a lifecycle-managed bucket — retain
+main-branch evidence for audit, expire feature-branch evidence after a few days — by setting one URI
+on the control plane:
+
+```bash
+# on the control plane (docker compose env, or the serve process)
+export BAJUTSU_EVIDENCE_STORE=s3://audit-bucket/evidence/   # or gs://…; --evidence-store also works
+```
+
+The evidence store is a **second, independent destination** from the artifact store: it can be a
+separate account or a stricter-permissioned, lifecycle-managed bucket. Both are credential-free for
+the worker — the control plane holds each bucket's credentials and signs a **presigned PUT URL per
+file**, and the worker uploads over plain HTTP (BE-0110 for evidence, BE-0160 for the artifact
+store). Install the `s3` or `gcs` extra **on the control plane** (`uv sync --extra s3` or
+`--extra gcs`); the worker needs neither.
+
+A CI job picks the per-run path — and thus the lifecycle policy — by passing `evidence_prefix` when it
+starts a run:
+
+```bash
+curl -X POST "$SERVER/api/run" -H "Authorization: Bearer $TOKEN" \
+  -d '{"scenario": "smoke.yaml", "target": "demo", "evidence_prefix": "main/abc1234/"}'
+```
+
+The control plane validates `evidence_prefix` as a safe relative segment and prepends its own bucket +
+base prefix, so the final key is `evidence/main/abc1234/<runId>/…` — the run id is always in the path,
+so runs never collide, and a caller can't escape the base prefix. The upload runs **after** the verdict,
+so a failure is logged and never changes pass/fail. When `BAJUTSU_EVIDENCE_STORE` is unset the worker
+still asks and simply uploads nothing.
 
 ### Multiple orgs
 

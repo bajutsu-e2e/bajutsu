@@ -135,6 +135,90 @@ conflict in behavior — the merge is where they meet, which is exactly why the 
 suite (not an LLM, not a human eyeball) is the arbiter. Keep the suite meaningful and your branch
 rebased, and parallel work composes.
 
+## Naming GitHub Actions workflows and jobs
+
+A workflow's `name:` and each job's `name:` are all a reviewer sees in the Actions tab and a PR's
+checks list — the YAML behind them is a click away, so each name has to stand on its own. Name both
+in one shape: a short plain-language phrase for what the check does, plus a parenthetical for the
+tool or scope when that adds information — `E2E (Simulator)`, `Swift (BajutsuKit)`,
+`Web E2E (Playwright)`, `Dependency audit (pip-audit)`. Never leave a bare single word (`docs`,
+`build`, `deploy`) that only makes sense once you open the run. `e2e.yml` and `swift.yml` are the
+canonical examples (BE-0122). A `name:` that itself contains a colon-space needs quoting so YAML
+doesn't read it as a nested mapping — `name: "Roadmap: allocate BE IDs"`.
+
+One constraint bounds any rename. A required status check's context is the **job's** `name:`
+verbatim — not the workflow's — and `main`'s branch-protection ruleset pins a few of these by exact
+string: `check` (`ci.yml`), `E2E` (`e2e.yml`), and `require two approvals for BE proposals`
+(`roadmap-proposal-approvals.yml`). Renaming one of those job names without editing the ruleset's
+`required_status_checks` in the same instant strands every open PR on a check that no longer
+reports, silently blocking merges. Ruleset edits are out-of-repo admin state a normal PR can't
+carry, so leave those three names as they are; a deliberate rename must be paired with a human admin
+edit to the ruleset.
+
+## Right-sizing the model and reasoning effort (BE-0103)
+
+This repository is agent-driven, so a session's **model** and **reasoning effort** are a real,
+recurring token cost. Match them to the task's cognitive load: pay for a capable model at high
+effort where the work needs it, and downshift for mechanical chores. This is **advisory** — a human
+can always upshift for a hard instance — and it never touches the deterministic `run` / CI gate,
+which calls no model regardless of what a *development* session runs at.
+
+The failure mode is asymmetric: over-provisioning wastes tokens invisibly (the output still looks
+fine), while under-provisioning shows up loudly as a bad result. So the natural drift is toward
+*always-max*, which is exactly the waste this convention removes — without downshifting so far that
+quality suffers on the hard tasks.
+
+### The task → capability matrix
+
+This table is the single source of truth; the skill frontmatter (below) and the subagent guidance
+reflect it. Tasks map to one of three tiers along two axes — model and reasoning effort:
+
+| Tier | Model | Effort | Tasks |
+|---|---|---|---|
+| **Heavy** | `opus` | high | Implementing a BE item (`implement-be`), non-trivial refactors, architecture / design decisions, debugging a failing gate |
+| **Medium** | `sonnet` | moderate | Roadmap ideation / authoring (`ideation`), Japanese technical writing and translation review (`japanese-tech-writing`), PR review |
+| **Light** | `haiku` | low or none | Roadmap index regeneration / promote, doc formatting and link fixes, mechanical renames, lockfile / format chores, drafting a first-pass translation before the medium-tier review |
+
+The tier → model-id mapping lives only here, so re-pointing a tier at a new Claude model is a
+one-line change in one place. The model ids above are Claude Code aliases (`opus` / `sonnet` /
+`haiku`), which stay stable as the underlying model versions advance.
+
+### Where the default applies itself: skill frontmatter
+
+Each in-repo skill declares its tier as a `model:` field in its `SKILL.md` frontmatter, so the
+harness picks the right model when the skill runs — nothing to remember, still overridable:
+
+- [`implement-be`](../.claude/skills/implement-be/SKILL.md) → `opus` (Heavy)
+- [`ideation`](../.claude/skills/ideation/SKILL.md) → `sonnet` (Medium)
+- [`japanese-tech-writing`](../.claude/skills/japanese-tech-writing/SKILL.md) → `sonnet` (Medium)
+- [`roadmap-filter`](../.claude/skills/roadmap-filter/SKILL.md) → `haiku` (Light) — a read-only
+  survey of the roadmap by `Status` (BE-0162): it wraps `make roadmap-status STATUS="…"` so a
+  session lists just the items in one status (e.g. every open `Proposal`), with each item's file
+  path to open next, instead of reading the 700+-line `roadmaps/README.md` into context.
+
+Most light-tier chores aren't skills, so that tier is otherwise reached interactively or by subagent
+delegation, below — `roadmap-filter` is the exception, since its whole job is one light,
+deterministic lookup. `tests/test_skill_models.py` checks that each skill's `model:` is a known,
+valid id, so a typo fails the gate locally instead of silently falling back.
+
+### Phases and subagent delegation
+
+The frontmatter can't reach interactive and delegated work, so choose there by hand:
+
+- **Phases within a session** — downshift (or `/fast`) for exploration, research, and mechanical
+  chores; upshift for implementation and design. The `/model` and `/fast` controls switch model and
+  effort mid-session.
+- **Subagent delegation** — when spawning a subagent via the Agent tool, pass the `model` that
+  matches the *delegated* task, not the driver's: a broad `Explore` fan-out or an index
+  regeneration can run cheaper than the session driving it. This is also the only lever for the
+  out-of-repo review plugins (`pr-review-toolkit`), whose frontmatter we don't own — set their model
+  at spawn time.
+
+Deliberately **not gate-enforced**: which model a session used isn't recoverable from the diff, and
+hard-pinning would remove the human's judgment to upshift when a "light" task turns out hard. This
+follows the same "procedures as commands, advisory not policy" precedent as the rest of the
+contributor workflow ([BE-0069](../roadmaps/BE-0069-executable-contributor-guardrails/BE-0069-executable-contributor-guardrails.md)).
+
 ## Pull requests: title and body
 
 Don't open the PR yourself unless the human asks (see [One topic per branch](#one-topic-per-branch));
@@ -170,6 +254,13 @@ would write as the lead commit:
   so a copy-pasted `[BE-0046]` on a `be-0050` branch is caught.
 
 ### Body
+
+The tracked [`.github/PULL_REQUEST_TEMPLATE.md`](../.github/PULL_REQUEST_TEMPLATE.md) is the canonical
+form of this shape — GitHub pre-fills it into every new PR, and **when you (AI) draft a PR you follow
+it**: fill the sections that apply and delete the rest. The recurring `## Prime-directive compliance`
+and `## Verification` blocks it ships pre-filled are the canonical wording — trim them to what the
+change bears on rather than re-inventing the phrasing. The rest of this section is the reference the
+template's inline comments point back to.
 
 Two parts are mandatory — `## Summary` and a verification statement — and the rest appear as the
 change warrants, in the order below. Match the depth to the diff: a one-file fix is a short Summary
@@ -254,7 +345,7 @@ differences stay in config.
 `make check` green: format-check / ruff / mypy (Success) / test (N passed, coverage X%). New
 tests cover <…>.
 
-[BE-NNNN]: roadmaps/proposals/BE-NNNN-<slug>/BE-NNNN-<slug>.md
+[BE-NNNN]: roadmaps/BE-NNNN-<slug>/BE-NNNN-<slug>.md
 
 🤖 Generated with [Claude Code](https://claude.com/claude-code)
 ```
@@ -290,21 +381,21 @@ open until it is decided.
 The roadmap is **one directory per item** under [`roadmaps/`](../roadmaps/README.md). Each item lives in
 `roadmaps/<category>/BE-NNNN-<slug>/`, which holds the English file `BE-NNNN-<slug>.md` and its
 Japanese version `BE-NNNN-<slug>-ja.md` (same ID and slug). **BE** stands for *Bajutsu Evolution* and `NNNN`
-is a **zero-padded, 4-digit, monotonically increasing** ID. There are **four** folders, one per `Status`
-value (BE-0078): `roadmaps/implemented/` (`Implemented`), `roadmaps/in-progress/` (`In progress`),
-`roadmaps/proposals/` (`Proposal`), `roadmaps/deferred/` (`Proposal (deferred)`).
+is a **zero-padded, 4-digit, monotonically increasing** ID. Every item lives directly under `roadmaps/`
+in a flat layout: its path is fixed the moment its ID is allocated and never moves (BE-0159 retired the
+per-`Status` folders BE-0078 introduced — `Status` now decides only the index bucket, below).
 
 When you add a roadmap item:
 
-1. **Allocate the next ID** = the highest existing `BE-NNNN` + 1, counting all four folders. Find the current
-   max with:
+1. **Allocate the next ID** = the highest existing `BE-NNNN` + 1, over every item under `roadmaps/`. Find
+   the current max with:
    ```bash
-   ls -d roadmaps/{implemented,in-progress,proposals,deferred}/BE-*/ | sort | tail -1
+   ls -d roadmaps/BE-*/ | sort | tail -1
    ```
    Never reuse, skip, or guess a number.
-2. **Create the item directory and both language files** under `roadmaps/proposals/` (a new item is always a
-   proposal first) — `roadmaps/proposals/BE-NNNN-<slug>/BE-NNNN-<slug>.md`
-   (English) and `roadmaps/proposals/BE-NNNN-<slug>/BE-NNNN-<slug>-ja.md` (Japanese, same ID & slug). **Do not
+2. **Create the item directory and both language files** directly under `roadmaps/` with `Status: Proposal` (a new item is always a
+   proposal first) — `roadmaps/BE-NNNN-<slug>/BE-NNNN-<slug>.md`
+   (English) and `roadmaps/BE-NNNN-<slug>/BE-NNNN-<slug>-ja.md` (Japanese, same ID & slug). **Do not
    hand-edit the index tables** — they are generated from each item's own metadata. Run
    `make roadmap-index` (or `python scripts/build_roadmap_index.py`) to regenerate the tables between the
    `<!-- GENERATED:* -->` markers in **both** index pages ([en](../roadmaps/README.md), [ja](../roadmaps/README-ja.md)).
@@ -317,7 +408,7 @@ When you add a roadmap item:
    item forever.
 
 The number is allocated **on `main`, after the PR merges** — not at PR-open
-([BE-0089](../roadmaps/implemented/BE-0089-merge-time-be-id-allocation/BE-0089-merge-time-be-id-allocation.md)).
+([BE-0089](../roadmaps/BE-0089-merge-time-be-id-allocation/BE-0089-merge-time-be-id-allocation.md)).
 Drafting with the `BE-XXXX` placeholder is the norm: an item keeps `BE-XXXX` through authoring,
 review, and the merge itself, and a **BE-creation PR carries no `[BE-NNNN]` prefix at all** — its
 title stays a plain scoped subject, since the real number is not known until after the merge. The
@@ -329,7 +420,7 @@ merges, so it never spends a number.
 
 Landing that commit on protected `main` needs a bypass identity: a dedicated GitHub App on `main`'s
 ruleset bypass list, granted `contents: write` and `pull-requests: write` on this repository only,
-whose id and private key are stored as the `ROADMAP_BOT_APP_ID` / `ROADMAP_BOT_PRIVATE_KEY` Actions
+whose id and private key are stored as the `AUTOMATION_BOT_APP_ID` / `AUTOMATION_BOT_PRIVATE_KEY` Actions
 secrets. A maintainer sets this up once — see *Setting up the merge-time allocation App* below. Until
 those secrets exist the workflow is a green no-op, so `main` stays green while the App is being
 provisioned. The job only ever runs reviewed code post-merge (it checks out `main`), pins every
@@ -337,11 +428,12 @@ action to a full commit SHA, and runs `scripts/check_renumber_diff.py`, which fa
 bypass commit touches anything outside `roadmaps/` — capping the token's blast radius to that tree.
 
 You may still allocate a number by hand (the highest existing `BE-NNNN` + 1) when you want it fixed
-up front; that path is unchanged. BE-0061's hardening
-([BE-0061](../roadmaps/implemented/BE-0061-be-id-allocation-hardening/BE-0061-be-id-allocation-hardening.md):
-atomic `refs/be-claims/*` claims, the `roadmap-id-repair` and `roadmap-claims-gc` workflows) stays in
-place as defense in depth. Under merge-time allocation it is largely redundant — at most one allocate
-run touches `main` at a time, reading the latest `main` — and retiring it is a possible follow-up.
+up front; that path is unchanged. BE-0061's collision hardening — the atomic `refs/be-claims/*`
+reservations and the `roadmap-id-repair` / `roadmap-claims-gc` workflows — has since been **retired**:
+merge-time allocation runs at most one allocate at a time against the latest `main`, so the sequence
+is contiguous by construction and two branches can no longer contend for the same number, making the
+reservation ledger and its repair backstop redundant. See
+[BE-0061](../roadmaps/BE-0061-be-id-allocation-hardening/BE-0061-be-id-allocation-hardening.md).
 
 #### Setting up the merge-time allocation App
 
@@ -354,40 +446,80 @@ commit past `main`'s branch protection:
 2. **Install it on this repository only**, so its reach is a single repo.
 3. **Add the App to `main`'s ruleset bypass list** — it should be the only entry — so its
    installation token can push the renumber commit past branch protection.
-4. **Generate a private key** and store it, with the App id, as the `ROADMAP_BOT_PRIVATE_KEY` and
-   `ROADMAP_BOT_APP_ID` Actions secrets (scope them via an Environment tied to the `main` ref so no
+4. **Generate a private key** and store it, with the App id, as the `AUTOMATION_BOT_PRIVATE_KEY` and
+   `AUTOMATION_BOT_APP_ID` Actions secrets (scope them via an Environment tied to the `main` ref so no
    PR-triggered job can read them).
 
 The workflow mints a short-lived (≈1 h) installation token from those secrets for checkout, push, and
 `gh`; commits the App makes are signed and attributed to it, so every bypass push is auditable.
 
-Each file follows the **Swift-Evolution proposal format** — a metadata block (`* Proposal`,
-`* Author`, `* Status`, `* Topic`, optional `* Origin`) followed by `## Introduction` /
-`## Motivation` / `## Detailed design` / `## Alternatives considered` / `## References`. Fill what
-you can and mark unknowns `TBD`. **Name the author by GitHub handle** —
+#### Tracking issues: who owns an open item (BE-0109)
+
+Every **open** roadmap item — one whose `Status` is `Proposal` or `In progress` — has a GitHub
+issue, and that issue's native **Assignees** are the single source of truth for who (if anyone) is
+working on it. Because an item gets its issue the moment it exists as a proposal, an issue with **no**
+assignee is exactly the "nobody has picked this up yet" signal the roadmap otherwise lacks. Two saved
+filters turn the Issues list into the board:
+
+- `label:roadmap-tracking no:assignee` — the **unclaimed backlog** (proposals and in-progress items
+  with no one on them).
+- `label:roadmap-tracking assignee:<user>` — one person's plate.
+
+**Before you start an item, check its tracking issue** (search
+`label:roadmap-tracking BE-NNNN in:title`); if it's unassigned, **self-assign it** when you pick the
+work up — exactly as on any other GitHub issue. Don't close a tracking issue by hand: the sync does it.
+
+The issues are created and closed automatically by the `roadmap-tracking-issues` workflow
+(`scripts/sync_roadmap_tracking_issues.py`), which runs on `push: main` (paths `roadmaps/**`). The
+lifecycle is a pure function of each item's current `Status` — an open item with no matching open
+issue gets one; an issue whose item has since shipped (`Implemented`) or been shelved (`Proposal
+(deferred)`) is closed — so the sync is idempotent and self-healing (BE-0043 / BE-0061), never
+creating a second issue for an item on a re-run. GitHub is the source of truth for both facts —
+ownership (Assignees) and whether an issue already exists (an open `roadmap-tracking` issue with the
+item's `BE-NNNN` in its title) — so nothing is written back to the repo: the job needs only `issues:
+write`, no commit to `main` and no bypass App. It runs on `main` (not the PR) and skips the `BE-XXXX`
+placeholder, because a real-numbered issue can only be titled after `roadmap-id` allocates the number
+on `main` (BE-0089); that allocation commit is itself a `roadmaps/**` push, which re-triggers the
+sync and picks up the now-numbered item. The script calls the network (`gh`), so it never runs inside
+`make check`; its read-only `--check` mode reports drift for a maintainer without mutating anything.
+
+Each file follows the **Swift-Evolution proposal format** — a metadata block (`Proposal`,
+`Author`, `Status`, `Topic`, plus the optional `Implementing PR`, the cross-item links `Related` /
+`Superseded by`, and `Origin`) followed by `## Introduction` / `## Motivation` /
+`## Detailed design` / `## Alternatives considered` / `## Progress` / `## References`. Fill what
+you can and mark unknowns `TBD`. **`Detailed design` enumerates the work MECE** (mutually exclusive,
+collectively exhaustive), and **`Progress` is a living section** (BE-0100) — a checklist mirroring
+that breakdown (one `- [ ]` box per unit of work, ticked `- [x]` as it lands) plus a short
+chronological PR-linked log — **kept current as work proceeds**: every PR that advances an item ticks
+its boxes and adds a log entry in the same change, exactly as it fills `Implementing PR`. A
+not-yet-started `Proposal` carries a single placeholder box; an `Implemented` item carries the
+all-done checklist. `Related` / `Superseded by` are reciprocal — the superseding item lists the other
+under `Related`, the superseded one names its successor under `Superseded by`. These two rules are
+review-enforced, not machine-enforced: the gate confirms the `## Progress` section exists and the
+fields keep their canonical order, but not that a breakdown is genuinely exhaustive or a box honest.
+**Name the author by GitHub handle** —
 `* Author: [@handle](https://github.com/handle)`, the account of whoever first authored the item
 (for an AI-assisted draft, the person who drove and committed it). The **Status** field is the single
-source of truth for both the folder an item lives in and the index bucket it appears under — a
-bijection (BE-0078):
+source of truth for the index bucket an item appears under (BE-0078). It does **not** decide the item's
+location: since BE-0159 every item lives in one flat `roadmaps/BE-NNNN-<slug>/` directory whose path is
+permanent, so `Status` and directory can never disagree because the directory does not depend on `Status`
+at all.
 
-| Status | Folder / index bucket |
+| Status | Index bucket |
 |---|---|
-| `Implemented` | `roadmaps/implemented/` — shipped |
-| `In progress` | `roadmaps/in-progress/` — accepted, actively being built |
-| `Proposal` | `roadmaps/proposals/` — under consideration |
-| `Proposal (deferred)` | `roadmaps/deferred/` — parked |
+| `Implemented` | Implemented — shipped |
+| `In progress` | In progress — accepted, actively being built |
+| `Proposal` | Proposals — under consideration |
+| `Proposal (deferred)` | Deferred — parked |
 
-As an item advances, **update its Status** and regenerate the index (its row moves to the right bucket
-automatically). When its status changes — it starts being built, or it ships — the **`roadmap-promote`**
-workflow **moves its directory** to the matching folder (keeping the same ID and slug) and regenerates
-the index on your PR — or run `make roadmap-promote` to do it locally. `make test` fails if a folder
-and `Status` disagree, so an item can never merge while filed under the wrong folder. A promotion also
-**repairs the item-to-item cross-links** that the move would otherwise break (a sibling `../BE-NNNN/`
-link is wrong once the target sits in a different status folder) — the same self-healing the index
-already had (BE-0069). **`make lint-roadmap`** (in `make check`) is the gate for this: it fails if any
-item's markdown link to another item does not resolve, or if an `Author` is not a `[@handle](…)` link;
-`make lint-roadmap ARGS="--fix"` rewrites a broken item link to the target's current folder.
-Milestones M1–M4 are `BE-0001`–`BE-0004` (implemented).
+As an item advances, **update its Status** and run `make roadmap-index` to regenerate the index (its row
+moves to the right bucket automatically). The directory never moves (BE-0159): the same
+`roadmaps/BE-NNNN-<slug>/` path holds the item for its whole life, so a promotion no longer rots any link
+into or out of it — the concrete win over the folder scheme, which broke a link every time an item's
+`Status` changed. **`make lint-roadmap`** (in `make check`) still guards cross-links: it fails if any
+item's markdown link to another item does not resolve (a typo'd slug, a link to a renamed item), or if an
+`Author` is not a `[@handle](…)` link; `make lint-roadmap ARGS="--fix"` rewrites a broken item link to
+the target's current path. Milestones M1–M4 are `BE-0001`–`BE-0004` (implemented).
 
 This is a hard rule agents must follow; the short form is in [`CLAUDE.md`](../CLAUDE.md).
 
@@ -408,6 +540,10 @@ apply equally when reporting on or summarizing work.
 - **No omissions; be self-contained.** A reader must be able to understand the document on its own.
   Spell out an abbreviation the first time it appears, give a term the context it needs, and do not
   assume the reader has already read another page.
+- **Spell out an acronym the first time it appears.** Write the full term first, with the acronym
+  in parentheses right after — e.g. role-based access control (RBAC) — then the acronym alone is
+  fine for the rest of the document. This applies everywhere the term appears, including roadmap
+  items, not only `docs/`.
 - **Japanese prose follows the `japanese-tech-writing` skill.** Whether you write the Japanese side
   fresh or translate the English mirror into `docs/ja/` (or a roadmap `*-ja.md`), apply
   [`japanese-tech-writing`](../.claude/skills/japanese-tech-writing/): it is the authoritative style
@@ -478,7 +614,7 @@ def _contains(outer: Frame, inner: Frame) -> bool:
     """Whether `inner`'s frame sits inside `outer`'s (edges inclusive)."""
 ```
 
-**Migration is phased and incremental** ([BE-0065](../roadmaps/implemented/BE-0065-docstring-standard-api-reference/BE-0065-docstring-standard-api-reference.md)):
+**Migration is phased and incremental** ([BE-0065](../roadmaps/BE-0065-docstring-standard-api-reference/BE-0065-docstring-standard-api-reference.md)):
 the site renders today from the existing prose docstrings (typed signatures already give a useful
 reference); public-API docstrings move to Google style module by module in small PRs, and the
 scoped `ruff` `D` enforcement and Pages hosting land after. **Don't rewrite a whole module's

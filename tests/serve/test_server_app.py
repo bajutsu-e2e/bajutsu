@@ -55,6 +55,38 @@ def test_get_reads_delegate_to_operations(tmp_path: Path) -> None:
     assert client.get("/api/nope").status_code == 404
 
 
+def test_lint_and_schema_routes_delegate_to_operations(tmp_path: Path) -> None:
+    # The editor's inline validation (BE-0138) reaches the same ops as the stdlib handler.
+    client = _client(_state(tmp_path))
+    ok = client.post(
+        "/api/lint", json={"yaml": "- name: a\n  steps:\n    - tap: { id: x }\n"}
+    ).json()
+    assert ok == {"ok": True, "diagnostics": []}
+    bad = client.post("/api/lint", json={"yaml": "- steps:\n    - tap: { id: x }\n"}).json()
+    assert bad["ok"] is False
+    assert bad["diagnostics"][0]["line"] == 1
+    assert "Scenario" in client.get("/api/schema").json()["$defs"]
+
+
+def test_upload_urls_route_signs_put_urls(tmp_path: Path) -> None:
+    # The FastAPI shell reaches the same evidence operation as the stdlib handler (BE-0110).
+    class _FakeStore:
+        def presigned_put_url(self, key: str, *, content_type: str = "", ttl: int = 3600) -> str:
+            return f"https://signed.example/{key}"
+
+    from bajutsu.object_store import EvidenceTarget
+
+    state = _state(tmp_path)
+    state.evidence = EvidenceTarget(store=_FakeStore(), base_prefix="evidence/")
+    resp = _client(state).post(
+        "/api/runs/20260101-000000/upload-urls", json={"files": ["manifest.json"]}
+    )
+    assert resp.status_code == 200
+    assert resp.json()["urls"]["manifest.json"] == (
+        "https://signed.example/evidence/20260101-000000/manifest.json"
+    )
+
+
 def test_legacy_apps_grammar_is_rejected(tmp_path: Path) -> None:
     # Hard cutover (BE-0057): the old `/api/apps` route and the `{"app": ...}` wire key are gone, so
     # a stale client fails loudly (404 / 400) rather than silently hitting a compatibility alias.
@@ -215,6 +247,20 @@ def test_rbac_viewer_cannot_run(tmp_path: Path) -> None:
     )
 
 
+def test_rbac_viewer_gets_masked_key_never_plaintext(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # The vulnerability BE-0136 closes: a read-only viewer could previously read back the
+    # admin-configured key in plaintext via GET /api/apikey?reveal=1. Now a viewer's GET returns
+    # only a masked preview, never a `value`, for any query.
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-admin-secret-12345")
+    client = TestClient(make_app(_rbac_state(tmp_path, login="v", viewers=frozenset({"v"}))))
+    _oauth_signin(client)
+    body = client.get("/api/apikey").json()
+    assert body == {"set": True, "masked": "sk-a…2345"}
+    assert "value" not in client.get("/api/apikey?reveal=1").json()
+
+
 def test_rbac_editor_can_run_but_not_change_settings(tmp_path: Path) -> None:
     client = TestClient(make_app(_rbac_state(tmp_path, login="e")))  # default role = editor
     _oauth_signin(client)
@@ -327,6 +373,38 @@ def test_csrf_blocks_cross_origin_post(tmp_path: Path) -> None:
     assert resp.status_code == 403 and "cross-origin" in resp.json()["error"]
 
 
+def test_csrf_blocks_cross_origin_post_without_token(tmp_path: Path) -> None:
+    # BE-0121: the CSRF check is unconditional on the ASGI transport too — a cross-origin POST is
+    # blocked on the no-token default, matching the stdlib handler (not only when a token is set).
+    client = TestClient(make_app(_state(tmp_path)))
+    blocked = client.post(
+        "/api/config",
+        json={"git": "github:evil/repo@main"},
+        headers={"Origin": "http://evil.example"},
+    )
+    assert blocked.status_code == 403 and "cross-origin" in blocked.json()["error"]
+    # A non-browser client (no Origin) still reaches the operation.
+    assert client.post("/api/config", json={"path": "/nonexistent"}).status_code != 403
+
+
+def test_host_allowlist_rejects_mismatch(tmp_path: Path) -> None:
+    # BE-0121: the ASGI gate enforces the same Host allowlist as the stdlib handler, so a rebound
+    # hostname can't reach an endpoint like /api/apikey. `make_asgi_server` sets `allowed_hosts` from
+    # the bound interface; here we set a named bind's allowlist directly and drive both hosts.
+    state = _state(tmp_path)
+    state.allowed_hosts = frozenset({"myhost.example"})
+    app = make_app(state)
+    assert TestClient(app, base_url="http://attacker.example").get("/api/apikey").status_code == 403
+    assert TestClient(app, base_url="http://myhost.example").get("/api/apikey").status_code == 200
+
+
+def test_make_asgi_server_sets_host_allowlist(tmp_path: Path) -> None:
+    # The wiring that make_server does for the stdlib transport (BE-0121) also runs for --asgi.
+    state = _state(tmp_path)
+    srv.make_asgi_server(state, host="myhost.example", port=0)
+    assert "myhost.example" in state.allowed_hosts
+
+
 def test_auth_gate_mirrors_stdlib(tmp_path: Path) -> None:
     state = _state(tmp_path, token="s3cret")
     app = make_app(state)
@@ -391,3 +469,26 @@ def test_job_sse_emits_keepalive_then_log_and_done(tmp_path: Path) -> None:
     assert ":keepalive\n\n" in out
     assert "event: log\ndata: hi\n\n" in out
     assert out[-1].startswith("event: done") and '"ok": true' in out[-1]
+
+
+def test_doctor_endpoint_returns_checks(tmp_path: Path) -> None:
+    """POST /api/doctor via FastAPI returns the same shape as the stdlib handler (BE-0024)."""
+    scn_dir = tmp_path / "scenarios"
+    scn_dir.mkdir()
+    cfg = tmp_path / "bajutsu.config.yaml"
+    cfg.write_text(
+        "defaults: { backend: [fake] }\ntargets:\n"
+        f"  demo: {{ bundleId: com.example.demo, scenarios: {scn_dir} }}\n",
+        encoding="utf-8",
+    )
+    runs = tmp_path / "runs"
+    runs.mkdir()
+    state = srv.ServeState(config=cfg, runs_dir=runs, root=tmp_path, cwd=tmp_path)
+    client = _client(state)
+    resp = client.post("/api/doctor", json={"target": "demo"})
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["ok"] is True
+    assert body["target"] == "demo"
+    assert body["backend"] == "fake"
+    assert isinstance(body["checks"], list)

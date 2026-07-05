@@ -14,16 +14,25 @@ the device's point-space screen regardless of the screenshot's pixel scale.
 
 from __future__ import annotations
 
-import base64
-import tempfile
 from dataclasses import dataclass
-from pathlib import Path
-from typing import Any, Protocol
+from typing import Protocol
 
 from bajutsu import usage
-from bajutsu.anthropic_client import AiConfig, make_client, resolve_model
+from bajutsu.ai import (
+    AiBackend,
+    AnyTool,
+    ImagePart,
+    Message,
+    MessageRequest,
+    MessageResponse,
+    TextPart,
+    ToolDef,
+    create_backend,
+)
+from bajutsu.anthropic_client import AiConfig, resolve_model
 from bajutsu.drivers import base
 from bajutsu.orchestrator import AlertEvent
+from bajutsu.record import _screenshot_bytes
 from bajutsu.redaction import Redactor
 
 LOCATOR_MODEL = "claude-opus-4-8"
@@ -43,19 +52,6 @@ class AlertLocator(Protocol):
     """Given a screenshot, decide whether a blocking prompt is up and where to tap."""
 
     def locate(self, screenshot_png: bytes, instruction: str | None) -> AlertDecision: ...
-
-
-def _screenshot_png(driver: base.Driver) -> bytes | None:
-    """Capture a PNG of the current screen as bytes (best-effort)."""
-    try:
-        with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
-            path = tmp.name
-        driver.screenshot(path)
-        data = Path(path).read_bytes()
-        Path(path).unlink(missing_ok=True)
-        return data or None
-    except Exception:
-        return None
 
 
 def _screen_points(driver: base.Driver) -> base.Point:
@@ -83,7 +79,7 @@ class SystemAlertGuard:
         Returns the AlertEvent it dismissed (the button it tapped), or None when nothing
         on screen needed clearing.
         """
-        png = _screenshot_png(driver)
+        png = _screenshot_bytes(driver)
         if png is None:
             return None
         try:
@@ -118,11 +114,11 @@ so judge the vertical position carefully against the stated height.
 "Don't Allow", "Cancel", "Close"). If an instruction is provided, follow it instead \
 and tap the button it names."""
 
-LOCATOR_TOOL: list[dict[str, Any]] = [
-    {
-        "name": "resolve_alert",
-        "description": "Report whether a blocking system prompt is present and where to tap.",
-        "input_schema": {
+LOCATOR_TOOL: list[ToolDef] = [
+    ToolDef(
+        name="resolve_alert",
+        description="Report whether a blocking system prompt is present and where to tap.",
+        input_schema={
             "type": "object",
             "properties": {
                 "present": {"type": "boolean"},
@@ -132,7 +128,7 @@ LOCATOR_TOOL: list[dict[str, Any]] = [
             },
             "required": ["present"],
         },
-    }
+    )
 ]
 
 
@@ -149,8 +145,8 @@ def _fraction(value: float, size: int) -> float:
     return min(1.0, max(0.0, frac))
 
 
-def _decision_of(message: Any, width: int, height: int) -> AlertDecision:
-    tool_use = next((b for b in message.content if b.type == "tool_use"), None)
+def _decision_of(response: MessageResponse, width: int, height: int) -> AlertDecision:
+    tool_use = response.first_tool_use()
     if tool_use is None or not tool_use.input.get("present"):
         return AlertDecision(present=False)
     args = tool_use.input
@@ -164,28 +160,27 @@ def _decision_of(message: Any, width: int, height: int) -> AlertDecision:
 
 
 class ClaudeAlertLocator:
-    """AlertLocator backed by Claude vision; `anthropic` is lazy-imported."""
+    """AlertLocator backed by Claude vision, through the vendor-neutral backend (BE-0104)."""
 
     def __init__(
         self,
-        client: Any = None,
+        backend: AiBackend | None = None,
         model: str | None = None,
         *,
         ai: AiConfig | None = None,
         redactor: Redactor | None = None,
     ) -> None:
-        self._client = client
+        self._backend = backend
         self._ai = ai
         self._redactor = redactor
         self._model = resolve_model(LOCATOR_MODEL, ai) if model is None else model
 
-    def _ensure_client(self) -> Any:
-        if self._client is None:
-            self._client = make_client(ai=self._ai)
-        return self._client
+    def _ensure_backend(self) -> AiBackend:
+        if self._backend is None:
+            self._backend = create_backend(ai=self._ai)
+        return self._backend
 
     def locate(self, screenshot_png: bytes, instruction: str | None) -> AlertDecision:
-        client = self._ensure_client()
         width, height = _png_size(screenshot_png)
         text = (
             "Clear the blocking system prompt if one is present. "
@@ -198,30 +193,20 @@ class ClaudeAlertLocator:
             if self._redactor is not None:
                 instruction = self._redactor.redact_text(instruction)
             text += f"\nInstruction for the prompt: {instruction}"
-        message = client.messages.create(
-            model=self._model,
-            max_tokens=512,
-            system=[
-                {"type": "text", "text": LOCATOR_SYSTEM, "cache_control": {"type": "ephemeral"}}
-            ],
-            tools=LOCATOR_TOOL,
-            tool_choice={"type": "any"},
-            messages=[
-                {
-                    "role": "user",
-                    "content": [
-                        {
-                            "type": "image",
-                            "source": {
-                                "type": "base64",
-                                "media_type": "image/png",
-                                "data": base64.standard_b64encode(screenshot_png).decode("ascii"),
-                            },
-                        },
-                        {"type": "text", "text": text},
-                    ],
-                }
-            ],
+        response = self._ensure_backend().create_message(
+            MessageRequest(
+                system=LOCATOR_SYSTEM,
+                messages=[
+                    Message(
+                        role="user",
+                        content=[ImagePart(data=screenshot_png), TextPart(text=text)],
+                    )
+                ],
+                tools=LOCATOR_TOOL,
+                tool_choice=AnyTool(),
+                model=self._model,
+                max_tokens=512,
+            )
         )
-        usage.record(getattr(message, "usage", None))
-        return _decision_of(message, width, height)
+        usage.record(response.usage)
+        return _decision_of(response, width, height)

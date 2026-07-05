@@ -22,9 +22,9 @@ if TYPE_CHECKING:
     from bajutsu.serve.server.db import Repository
     from bajutsu.serve.server.oauth import OAuthClient
 
-from bajutsu import env
-from bajutsu.config import DEFAULT_ORG
+from bajutsu import simctl as _simctl
 from bajutsu.drivers import base as driver_base
+from bajutsu.object_store import EvidenceTarget, ObjectStore
 from bajutsu.redaction import Redactor
 from bajutsu.scenario.models import Step
 from bajutsu.serve.artifacts import ArtifactStore, LocalArtifactStore
@@ -32,7 +32,9 @@ from bajutsu.serve.baselines import BaselineStore, LocalBaselineStore
 from bajutsu.serve.executor import LocalExecutor, RunExecutor
 from bajutsu.serve.helpers import target_scenarios_dir, valid_run_id
 from bajutsu.serve.logbus import InMemoryLogBus, LogBus
+from bajutsu.serve.orgs import DEFAULT_ORG
 from bajutsu.serve.scenarios import LocalScenarioStore, ScenarioStore
+from bajutsu.serve.secrets import EnvSecretStore, SecretStore
 from bajutsu.serve.sessions import InMemorySessionStore, SessionStore
 from bajutsu.serve.uploads import Upload
 
@@ -41,8 +43,8 @@ logger = logging.getLogger(__name__)
 # The run command prints "PASS/FAIL  runs/<id>/manifest.json"; pull <id> from it.
 _RUN_ID_RE = re.compile(r"runs/([0-9A-Za-z._-]+)/manifest\.json")
 
-# The org an unassigned user/app falls into. Re-exported from config (the org model's home) so job
-# persistence and the operations layer share one source of truth.
+# The org an unassigned user/app falls into. Re-exported from serve.orgs (the org model's home) so
+# job persistence and the operations layer share one source of truth.
 _DEFAULT_ORG = DEFAULT_ORG
 
 Popen = Callable[..., Any]
@@ -86,6 +88,10 @@ class Job:
     # Provenance to record into the produced run's manifest.json after it finishes (the bound bundle's
     # filename + zip sha256 + size). None for a normal run. Set for a run off an uploaded bundle (BE-0073).
     provenance: dict[str, str] | None = None
+    # Per-run key prefix for evidence upload, under the server's --evidence-store base (BE-0110). CI
+    # sets it via the /api/run body to pick the cloud lifecycle policy; travels in the job spec so the
+    # worker relays it back when requesting presigned PUT URLs. Empty = key directly under the base.
+    evidence_prefix: str = ""
 
     def view(self, *, include_lines: bool = True) -> dict[str, Any]:
         """The job's state for the UI. `include_lines=False` omits the log buffer — used for the
@@ -118,6 +124,7 @@ class StoreBundle:
     artifacts: ArtifactStore
     scenarios: ScenarioStore
     baselines: BaselineStore
+    secrets: SecretStore
 
 
 @dataclass
@@ -167,6 +174,23 @@ class ServeState:
     # never on the serve host; it applies only to upload-sourced configs (a local/Git config is
     # operator-trusted and ungoverned). serve() sets it from --upload-exec / BAJUTSU_UPLOAD_EXEC.
     upload_exec: str = "sandbox"
+    # Host-header allowlist (BE-0121): the hostnames a request's `Host` may name, set by
+    # `make_server` from the bound interface. Empty — a wildcard bind, whose reachable names can't be
+    # enumerated — disables the check; a loopback/named bind enforces its own names, closing the
+    # DNS-rebinding path to endpoints like /api/apikey.
+    allowed_hosts: frozenset[str] = frozenset()
+    # Whether the active config is a Git source bound at runtime via the API (BE-0121), rather than
+    # one the operator pre-configured at startup. An API-bound Git config is untrusted: its `build:`
+    # command is nulled like an uploaded bundle's (never run) unless `allow_remote_build` opts in.
+    git_config_from_api: bool = False
+    # Opt-in to run an API-bound Git config's `build:` command on the host (BE-0121). Off by default;
+    # serve() sets it from --allow-remote-build / BAJUTSU_ALLOW_REMOTE_BUILD.
+    allow_remote_build: bool = False
+    # Whether this is a hosted deployment (the server backend), the single source of truth for
+    # deployment-aware config sourcing (BE-0108). The server backend sets it True where it wires its
+    # hosted seams; the local backend (stdlib serve, including a self-hosted single Mac) never does,
+    # so the file browser stays offered locally and is removed — UI and server-side — when hosted.
+    hosted: bool = False
     popen: Popen = subprocess.Popen
     # How a created job gets executed. Defaults to in-process threads (LocalExecutor); a server
     # backend swaps in a queue-based executor without touching the handler or run_job (BE-0015).
@@ -183,11 +207,17 @@ class ServeState:
     # Visual-regression baselines. Filesystem-confined by default; a server backend swaps in an
     # object-storage store (set after construction) (BE-0015).
     baselines: BaselineStore = field(init=False)
+    # Operator secrets (the Claude API key today). Write-once: set/describe only, no plaintext read
+    # an HTTP handler can reach (BE-0136). Default holds the value in the process env (in memory, as
+    # before); a server backend with a database swaps in an encrypted per-org store.
+    secrets: SecretStore = field(init=False)
     # The system of record (BE-0015 7a). None until a database is wired: local never has one, and a
     # server backend assigns a SqlRepository only when BAJUTSU_DATABASE_URL is set, so behavior is
     # unchanged without one. Annotated as a string (lazy) so the default path never loads SQLAlchemy.
     repository: Repository | None = None
-    simctl: env.RunFn = env._real_run  # runs `xcrun simctl …` (booting devices, listing them)
+    simctl: _simctl.RunFn = (
+        _simctl._real_run
+    )  # runs `xcrun simctl …` (booting devices, listing them)
     jobs: dict[str, Job] = field(default_factory=dict)
     # Cap on concurrently-running run/record jobs so one caller can't monopolize the scarce device
     # (BE-0051). <= 0 means unlimited; serve() sets it from --max-concurrent-runs (default 4).
@@ -225,6 +255,18 @@ class ServeState:
     # back to the default stores when unset, so local behavior is unchanged.
     org_stores: Callable[[str], StoreBundle] | None = None
     capture: CaptureSession | None = None
+    # Where completed runs' evidence is uploaded (BE-0110). None = no evidence store configured (the
+    # default; the upload-urls endpoint then hands back no URLs). serve() builds it from
+    # --evidence-store / BAJUTSU_EVIDENCE_STORE; the server holds the credentials so a worker uploads
+    # via presigned PUT URLs without any of its own.
+    evidence: EvidenceTarget | None = None
+    # The hosted object store + tenant base prefix the control plane signs worker upload/download
+    # URLs against (BE-0160): the worker holds no cloud credentials, so it asks for a presigned URL
+    # per file and reads/writes over plain HTTP. None/"" on local serve (no remote worker) — the
+    # worker signing endpoints and the lease then return no URLs, like `evidence` when unset. A
+    # server backend sets both where it wires its per-org object stores.
+    object_store: ObjectStore | None = None
+    object_store_prefix: str = ""
     _seq: int = 0
     _lock: threading.Lock = field(default_factory=threading.Lock)
 
@@ -239,6 +281,9 @@ class ServeState:
         # Resolve the dir lazily through a closure so a config opened from the UI later is reflected.
         self.scenarios = LocalScenarioStore(lambda target: _scenarios_dir_for(self, target))
         self.baselines = LocalBaselineStore(self.baselines_dir)
+        # The local secret store holds the value in this process's env; the name->env-var mapping is
+        # resolved lazily so a config bound later (its `ai.keyEnv`, BE-0097) is reflected.
+        self.secrets = EnvSecretStore(self._env_var_for_secret)
 
     def org_of(self, actor: str | None) -> str:
         """The org of *actor*, read from their persisted user row (assigned at login). The single
@@ -247,12 +292,21 @@ class ServeState:
             return _DEFAULT_ORG
         return self.repository.user_org(actor) or _DEFAULT_ORG
 
+    def _env_var_for_secret(self, name: str) -> str:
+        """The env var the local secret store reads/writes for logical secret *name* (BE-0136).
+
+        Only the Claude API key exists today; it honors the bound config's ``ai.keyEnv`` (BE-0097).
+        Imported lazily to avoid a cycle with the operations layer, which imports this module."""
+        from bajutsu.serve.operations.config import active_key_env
+
+        return active_key_env(self)
+
     def for_org(self, org: str) -> StoreBundle:
         """The storage seams scoped to *org*. A server backend prefixes each org's objects; local
         serve has a single tenant, so this is just the default stores (BE-0015 multi-tenancy)."""
         if self.org_stores is not None:
             return self.org_stores(org)
-        return StoreBundle(self.artifacts, self.scenarios, self.baselines)
+        return StoreBundle(self.artifacts, self.scenarios, self.baselines, self.secrets)
 
     def check_token(self, candidate: str) -> bool:
         """Constant-time compare of a presented token against the configured one."""
@@ -318,6 +372,9 @@ class ServeState:
         self.upload = upload
         self.config = upload.config
         self.cwd = upload.root
+        self.git_config_from_api = (
+            False  # a bundle is governed by upload_exec, not the Git trust flag
+        )
 
     def release_upload(self) -> None:
         """Drop the currently bound bundle's sandbox, if any, and reset `cwd` to serve's launch
@@ -415,7 +472,7 @@ def _boot_devices(state: ServeState, job: Job) -> bool:
 
     def boot(udid: str) -> None:
         try:
-            state.simctl(env.bootstatus_cmd(udid), None)
+            state.simctl(_simctl.bootstatus_cmd(udid), None)
             _log(job, f"booted {udid}")
         except (OSError, subprocess.CalledProcessError) as e:
             with errlock:

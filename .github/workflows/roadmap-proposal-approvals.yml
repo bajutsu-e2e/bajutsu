@@ -1,0 +1,119 @@
+# Require two approving reviews before a BE *proposal* PR can merge.
+#
+# A new roadmap item is a proposal first (unless its code ships with it), and accepting a proposal is
+# a design decision worth more than one reviewer — so any PR that adds or edits a proposal needs two
+# approvals, above the repo-wide single-approval bar. This is a *status check*, not branch protection:
+# only a check can raise the bar for one set of PRs without raising it for every PR. Add it to
+# `main`'s ruleset as a required check to make the gate binding.
+#
+# Since BE-0159 flattened the status folders, "a proposal" can no longer be a `roadmaps/proposals/`
+# path prefix — every item lives in one flat `roadmaps/BE-NNNN-<slug>/` directory. So the gate reads
+# the metadata `Status` of each item directory the PR touches (at the PR head) and applies when any
+# is `Proposal` (the same set the old path prefix selected).
+#
+# It re-runs on `pull_request_review` so a second approval flips it green, and — like pr-title — it
+# stays a step-level guard: a PR that changes no proposal item completes the job green (a no-op),
+# keeping the required-check contract satisfied for every PR, not just proposals.
+#
+# Escape hatch: a `Single-Approver Proposal` label on the PR waives the second approval (some proposals
+# are trivial enough for one reviewer). It re-runs on `labeled`/`unlabeled` so applying the label flips
+# the check green — and removing it re-imposes the bar.
+name: "Roadmap: require two approvals (proposals)"
+
+on:
+  pull_request:
+    types: [opened, reopened, synchronize, ready_for_review, labeled, unlabeled]
+  pull_request_review:
+    types: [submitted, dismissed, edited]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+concurrency:
+  group: roadmap-proposal-approvals-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  require-two-approvals:
+    name: require two approvals for BE proposals
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      REPO: ${{ github.repository }}
+      PR: ${{ github.event.pull_request.number }}
+      HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+      REQUIRED: 2
+      WAIVER_LABEL: Single-Approver Proposal
+    steps:
+      - name: Detect whether the PR adds or edits a BE proposal
+        id: scope
+        run: |
+          # A proposal is identified by Status, not by folder (BE-0159): the two-approval bar applies
+          # when any BE item this PR adds or edits is `Status: Proposal`. Key the check on the item
+          # *directory*, not the changed file, so a PR that edits only a proposal's `-ja` mirror still
+          # resolves to its English sibling and is gated. Read each item's Status off the contents API
+          # at the PR head — no checkout, so no PR-controlled code runs on the runner (this job's
+          # read-only footprint). The Status read is scoped to the `BE-METADATA` fence so a body table
+          # shaped like the metadata row cannot spoof it; a removed file is skipped (deleting a
+          # proposal isn't proposing one).
+          files="$(gh api --paginate "repos/${REPO}/pulls/${PR}/files" \
+            -q '.[] | select(.status != "removed") | .filename')"
+          # The distinct item directories the PR touches — drop the filename, since both language
+          # files live in the same BE-NNNN-<slug>/ dir. `roadmaps/README*.md` never matches.
+          dirs="$(printf '%s\n' "$files" | sed -n 's#^\(roadmaps/BE-[^/]*\)/.*\.md$#\1#p' | sort -u)"
+          is_proposal=false
+          while IFS= read -r dir; do
+            [ -n "$dir" ] || continue
+            en="${dir}/${dir##*/}.md"   # the English file: <dir>/<dir-basename>.md
+            # Fail *closed* if the read errors: the old path-prefix gate decided from the already-
+            # fetched file list with no extra network, so it could not fail open; this read can, and a
+            # governance gate that silently drops to one approval on a transient 5xx would defeat its
+            # purpose. On any read failure, treat the item as a proposal (require two approvals) and
+            # surface it — a re-run once the read recovers clears a false positive.
+            if ! content="$(gh api "repos/${REPO}/contents/${en}?ref=${HEAD_SHA}" -q '.content' 2>/dev/null)"; then
+              echo "::error::Could not read ${en} at the PR head to determine its Status — failing the two-approval gate closed. Re-run this check once the contents read recovers."
+              is_proposal=true
+              break
+            fi
+            status="$(printf '%s' "$content" | base64 -d 2>/dev/null \
+              | sed -n '/<!-- BE-METADATA -->/,/<!-- \/BE-METADATA -->/ s/^| Status | \*\*\(.*\)\*\* |$/\1/p')"
+            if [ "$status" = "Proposal" ]; then
+              is_proposal=true   # decision can't change; stop making contents-API calls
+              break
+            fi
+          # A here-string (not a heredoc) feeds the loop: it stays on one indented line, so it does
+          # not break the YAML block scalar, and — like a heredoc, unlike a pipe — keeps the loop in
+          # this shell so `is_proposal` survives. Bash is the default runner shell.
+          done <<< "$dirs"
+          if [ "$is_proposal" = "false" ]; then
+            echo "gated=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::PR #${PR} adds or edits no BE proposal (no changed item is Status: Proposal) — the two-approval rule does not apply. No-op."
+            exit 0
+          fi
+          # A maintainer-applied waiver label drops the bar to the repo-wide single approval. Read
+          # labels off the pulls endpoint (.labels) so the job needs only pull-requests: read — the
+          # issues/labels endpoint would require a separate issues: read scope.
+          if gh api "repos/${REPO}/pulls/${PR}" -q '.labels[].name' \
+            | grep -qxF "$WAIVER_LABEL"; then
+            echo "gated=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::PR #${PR} carries the '${WAIVER_LABEL}' label — the two-approval rule is waived. No-op."
+          else
+            echo "gated=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Require at least two approving reviews
+        if: steps.scope.outputs.gated == 'true'
+        run: |
+          # Count distinct reviewers whose *latest* review is APPROVED — a later CHANGES_REQUESTED or
+          # a dismissal supersedes an earlier approval. sort_by(.user.login) before group_by guarantees
+          # one group per reviewer regardless of API order; max_by(.submitted_at) then picks each
+          # reviewer's most recent state (ISO-8601, so it sorts lexicographically). The PR author can't
+          # approve their own PR, so no self-approval filter is needed.
+          approvals="$(gh api --paginate "repos/${REPO}/pulls/${PR}/reviews" \
+            -q 'sort_by(.user.login) | group_by(.user.login) | map(max_by(.submitted_at)) | map(select(.state == "APPROVED")) | length')"
+          echo "Approving reviews: ${approvals:-0} (need ${REQUIRED})."
+          if [ "${approvals:-0}" -lt "${REQUIRED}" ]; then
+            echo "::error::BE proposal PRs require ${REQUIRED} approvals; found ${approvals:-0}."
+            exit 1
+          fi

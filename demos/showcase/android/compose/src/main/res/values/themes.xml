@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- A no-action-bar Material theme so the Compose content owns the whole window. Framework
+         theme (no Material Components dependency needed in the Compose module). -->
+    <style name="Theme.Showcase" parent="@android:style/Theme.Material.Light.NoActionBar" />
+</resources>

@@ -85,7 +85,7 @@ determinism.
 
 | Candidate count | Behavior |
 |---|---|
-| 0 | `ElementNotFound` (an immediate action fails; via `wait_for`, it times out) |
+| 0 | `ElementNotFound` (an immediate action fails; via a wait (`wait_until`), it times out) |
 | 1 | resolved |
 | 2+ | raises `AmbiguousSelector` — **structurally rules out** "tap whatever matched first" |
 

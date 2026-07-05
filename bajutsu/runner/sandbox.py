@@ -21,7 +21,7 @@ from collections.abc import Callable
 from pathlib import Path
 from urllib.parse import urlsplit
 
-from bajutsu.config import Effective, LaunchServer
+from bajutsu.config import Effective, LaunchServer, web_base_url
 from bajutsu.runner.launch_server import _POLL_INTERVAL, _default_log, _probe
 
 # The container runs as a long-lived process we must poll for early exit; the short docker commands
@@ -176,7 +176,7 @@ def start_sandboxed_server(
     ls = eff.launch_server
     say = log or _default_log
     assert ls is not None, "start_sandboxed_server requires a launchServer (caller must guard)"
-    ready_url = ls.ready_url or eff.base_url
+    ready_url = ls.ready_url or web_base_url(eff)
     if not ready_url:
         raise SandboxError("launchServer needs readyUrl (or set the target's baseUrl to probe)")
 

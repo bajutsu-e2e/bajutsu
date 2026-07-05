@@ -52,17 +52,6 @@ def test_progress_reports_each_step() -> None:
     ]
 
 
-def test_progress_defaults_to_silent() -> None:
-    driver = FakeDriver([el("home.title", "H")])
-    # No progress callback → no error, runs as before.
-    res = run_scenario(
-        driver,
-        _scenario({"name": "n", "steps": [{"tap": {"id": "home.title"}}]}),
-        clock=FakeClock(),
-    )
-    assert res.ok
-
-
 def test_run_scenario_records_duration() -> None:
     # The result carries the scenario's wall-clock (measured off the injected clock) so the
     # report can show per-scenario and total execution time.

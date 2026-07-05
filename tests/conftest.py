@@ -1,4 +1,5 @@
-"""Shared test helpers: an element factory and a fake Anthropic client.
+"""Shared test helpers: an element factory, a fake Anthropic client, and a conformant BE-item body
+builder.
 
 These were copy-pasted across many test modules; centralising them keeps the fakes in
 one place. Plain functions/classes (not fixtures) so they can be used at module level
@@ -7,9 +8,65 @@ one place. Plain functions/classes (not fixtures) so they can be used at module 
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
+from bajutsu.ai.base import MessageRequest, MessageResponse, ToolUseBlock
 from bajutsu.drivers import base
+from bajutsu.drivers.fake import FakeDriver
+from scripts.build_roadmap_index import tracking_issue_url
+
+
+class ShotDriver(FakeDriver):
+    """A FakeDriver whose screenshot writes real PNG bytes, so callers that read the
+    capture back (the alert guard, the crawl guide's vision path) get an image."""
+
+    def screenshot(self, path: str) -> None:
+        Path(path).write_bytes(b"\x89PNG\r\n\x1a\n fake")
+        self.actions.append(("screenshot", path))
+
+
+ROADMAP_HEADINGS_EN = ("Introduction", "Motivation", "Detailed design", "Alternatives considered")
+ROADMAP_HEADINGS_JA = ("はじめに", "動機", "詳細設計", "検討した代替案")
+
+
+def valid_roadmap_item_en(id_token: str = "BE-XXXX", slug: str = "a-thing") -> str:
+    """A canonically-shaped English BE item body — the fixture the format checker, the mechanical
+    fixer, and the stale-PR re-checker's tests all build drift on top of."""
+    body = "\n\n".join(f"## {h}\n\nTBD" for h in ROADMAP_HEADINGS_EN)
+    return (
+        f"**English** · [日本語]({id_token}-{slug}-ja.md)\n\n"
+        f"# {id_token} — A test item\n\n"
+        "<!-- BE-METADATA -->\n"
+        "| Field | Value |\n"
+        "|---|---|\n"
+        f"| Proposal | [{id_token}]({id_token}-{slug}.md) |\n"
+        "| Author | [@0x0c](https://github.com/0x0c) |\n"
+        "| Status | **Proposal** |\n"
+        f"| Tracking issue | [Search]({tracking_issue_url(id_token)}) |\n"
+        "| Topic | Development infrastructure (contributor workflow) |\n"
+        "<!-- /BE-METADATA -->\n\n"
+        f"{body}\n\n## Progress\n\nTBD\n\n## References\n\nTBD\n"
+    )
+
+
+def valid_roadmap_item_ja(id_token: str = "BE-XXXX", slug: str = "a-thing") -> str:
+    """The Japanese mirror of :func:`valid_roadmap_item_en`."""
+    body = "\n\n".join(f"## {h}\n\nTBD" for h in ROADMAP_HEADINGS_JA)
+    return (
+        f"[English]({id_token}-{slug}.md) · **日本語**\n\n"
+        f"# {id_token} — A test item\n\n"
+        "<!-- BE-METADATA -->\n"
+        "| 項目 | 値 |\n"
+        "|---|---|\n"
+        f"| 提案 | [{id_token}]({id_token}-{slug}-ja.md) |\n"
+        "| 提案者 | [@0x0c](https://github.com/0x0c) |\n"
+        "| 状態 | **提案** |\n"
+        f"| トラッキング Issue | [検索]({tracking_issue_url(id_token)}) |\n"
+        "| トピック | 開発基盤（コントリビュータ体験） |\n"
+        "<!-- /BE-METADATA -->\n\n"
+        f"{body}\n\n## 進捗\n\nTBD\n\n## 参考\n\nTBD\n"
+    )
 
 
 def el(
@@ -70,7 +127,8 @@ class FakeAnthropic:
 
     Each positional block is returned as its own single-block message on successive
     `create()` calls (the last repeats once exhausted). With no blocks, `create()` returns
-    an empty message — the "model proposed no tool call" path.
+    an empty message — the "model proposed no tool call" path. Used by the Anthropic-adapter
+    tests, which drive the raw SDK shape; call-site tests use `FakeBackend` instead.
     """
 
     def __init__(self, *blocks: FakeBlock) -> None:
@@ -84,3 +142,27 @@ class FakeAnthropic:
         message = self._messages[min(self._i, len(self._messages) - 1)]
         self._i += 1
         return message
+
+
+class FakeBackend:
+    """A vendor-neutral `AiBackend` for call-site tests (BE-0104).
+
+    Each scripted `FakeBlock` tool-use is returned as its own single-block `MessageResponse` on
+    successive `create_message()` calls (the last repeats once exhausted). With none, returns an
+    empty response — the "model proposed no tool call" path. Records each `MessageRequest` so tests
+    assert on the neutral request the call site built (not any vendor's wire shape).
+    """
+
+    def __init__(self, *blocks: FakeBlock) -> None:
+        self.requests: list[MessageRequest] = []
+        self._responses = [
+            MessageResponse(content=[ToolUseBlock(name=b.name, input=b.input)], usage=FakeUsage())
+            for b in blocks
+        ] or [MessageResponse(content=[], usage=FakeUsage())]
+        self._i = 0
+
+    def create_message(self, request: MessageRequest) -> MessageResponse:
+        self.requests.append(request)
+        response = self._responses[min(self._i, len(self._responses) - 1)]
+        self._i += 1
+        return response

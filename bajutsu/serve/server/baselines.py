@@ -10,9 +10,7 @@ contract change). The object-store client is injected, so a fake drives the gate
 from __future__ import annotations
 
 from bajutsu.serve.baselines import _safe_baseline_name
-from bajutsu.serve.server.object_store import ObjectStore
-
-_BASELINES = "baselines/"
+from bajutsu.serve.server.object_store import ObjectStore, baseline_prefix
 
 
 class ObjectBaselineStore:
@@ -20,7 +18,7 @@ class ObjectBaselineStore:
 
     def __init__(self, store: ObjectStore, *, prefix: str = "") -> None:
         self._store = store
-        self._dir = f"{prefix}{_BASELINES}"
+        self._dir = baseline_prefix(prefix)
 
     def open_bytes(self, name: str) -> bytes | None:
         return self._store.get_bytes(self._dir + name) if _safe_baseline_name(name) else None

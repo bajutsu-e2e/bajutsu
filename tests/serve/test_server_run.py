@@ -69,17 +69,19 @@ def test_build_state_rejects_unknown_backend(tmp_path: Path) -> None:
 def test_build_state_server_wires_the_hosted_seams(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    # The server backend assembles the hosted seams from the environment. The Redis/RQ/boto3
-    # clients construct without connecting, so this checks the wiring (the seam types) on the gate.
+    from cryptography.fernet import Fernet
+
     from bajutsu.serve.server.artifacts import ObjectStorageArtifactStore
     from bajutsu.serve.server.baselines import ObjectBaselineStore
-    from bajutsu.serve.server.executor import QueueExecutor
-    from bajutsu.serve.server.logbus import RedisLogBus
+    from bajutsu.serve.server.db_executor import DbQueueExecutor
+    from bajutsu.serve.server.post_completion_logbus import PostCompletionLogBus
     from bajutsu.serve.server.scenarios import StorageScenarioStore
+    from bajutsu.serve.server.secrets import DbSecretStore
 
     monkeypatch.setenv("BAJUTSU_S3_BUCKET", "bkt")
     monkeypatch.setenv("BAJUTSU_S3_REGION", "auto")
-    monkeypatch.setenv("BAJUTSU_REDIS_URL", "redis://localhost:6379")
+    monkeypatch.setenv("BAJUTSU_DATABASE_URL", "sqlite://")
+    monkeypatch.setenv("BAJUTSU_SECRETS_KEY", Fernet.generate_key().decode("ascii"))
     _scn, cfg, runs = project(tmp_path)
     state = srv._build_state(
         runs_dir=runs,
@@ -91,14 +93,14 @@ def test_build_state_server_wires_the_hosted_seams(
         token=None,
         backend="server",
     )
-    assert isinstance(state.executor, QueueExecutor)
-    assert isinstance(state.logbus, RedisLogBus)
+    assert isinstance(state.executor, DbQueueExecutor)
+    assert isinstance(state.logbus, PostCompletionLogBus)
     assert isinstance(state.artifacts, ObjectStorageArtifactStore)
     assert isinstance(state.scenarios, StorageScenarioStore)
     assert isinstance(state.baselines, ObjectBaselineStore)
-    # The scenario store reads the live config's apps (project registry comes from config here).
+    assert isinstance(state.secrets, DbSecretStore)  # encrypted per-org store (BE-0136)
     scope = state.scenarios.scope("demo")
-    assert scope is not None  # demo is an app in the bound config
+    assert scope is not None
 
 
 def test_build_state_local_has_no_repository(tmp_path: Path) -> None:
@@ -134,12 +136,15 @@ def test_build_state_server_wires_the_repository_when_a_database_url_is_set(
 ) -> None:
     # With BAJUTSU_DATABASE_URL set, the server backend assembles a SqlRepository (SQLite here, so
     # it builds on the gate without a live Postgres).
+    from cryptography.fernet import Fernet
+
     from bajutsu.serve.server.db import SqlRepository
 
     monkeypatch.setenv("BAJUTSU_S3_BUCKET", "bkt")
     monkeypatch.setenv("BAJUTSU_S3_REGION", "auto")
     monkeypatch.setenv("BAJUTSU_REDIS_URL", "redis://localhost:6379")
     monkeypatch.setenv("BAJUTSU_DATABASE_URL", "sqlite://")
+    monkeypatch.setenv("BAJUTSU_SECRETS_KEY", Fernet.generate_key().decode("ascii"))
     _scn, cfg, runs = project(tmp_path)
     state = srv._build_state(
         runs_dir=runs,
@@ -154,6 +159,29 @@ def test_build_state_server_wires_the_repository_when_a_database_url_is_set(
     assert isinstance(state.repository, SqlRepository)
 
 
+def test_build_state_server_requires_a_secrets_key_with_a_database(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # A database-backed server persists operator secrets encrypted, so the master key must be
+    # provisioned — assembly fails loudly rather than degrading to plaintext-in-memory (BE-0136).
+    monkeypatch.setenv("BAJUTSU_S3_BUCKET", "bkt")
+    monkeypatch.setenv("BAJUTSU_S3_REGION", "auto")
+    monkeypatch.setenv("BAJUTSU_DATABASE_URL", "sqlite://")
+    monkeypatch.delenv("BAJUTSU_SECRETS_KEY", raising=False)
+    _scn, cfg, runs = project(tmp_path)
+    with pytest.raises(ValueError, match="BAJUTSU_SECRETS_KEY"):
+        srv._build_state(
+            runs_dir=runs,
+            config=cfg,
+            scenarios_dir=None,
+            root=tmp_path,
+            baselines_dir=None,
+            max_concurrent=4,
+            token=None,
+            backend="server",
+        )
+
+
 def test_build_state_local_uses_in_memory_sessions(tmp_path: Path) -> None:
     # Local sessions stay in-memory (a restart drops them), so its behavior is unchanged.
     from bajutsu.serve.sessions import InMemorySessionStore
@@ -161,15 +189,18 @@ def test_build_state_local_uses_in_memory_sessions(tmp_path: Path) -> None:
     assert isinstance(_state(tmp_path).sessions, InMemorySessionStore)
 
 
-def test_build_state_server_uses_redis_sessions(
+def test_build_state_server_uses_sql_sessions_when_db_is_configured(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    # The server backend keeps sessions in Redis so they survive a restart and span replicas.
-    from bajutsu.serve.server.sessions import RedisSessionStore
+    from cryptography.fernet import Fernet
+
+    from bajutsu.serve.server.sessions import SqlSessionStore
 
     monkeypatch.setenv("BAJUTSU_S3_BUCKET", "bkt")
     monkeypatch.setenv("BAJUTSU_S3_REGION", "auto")
     monkeypatch.setenv("BAJUTSU_REDIS_URL", "redis://localhost:6379")
+    monkeypatch.setenv("BAJUTSU_DATABASE_URL", "sqlite://")
+    monkeypatch.setenv("BAJUTSU_SECRETS_KEY", Fernet.generate_key().decode("ascii"))
     _scn, cfg, runs = project(tmp_path)
     state = srv._build_state(
         runs_dir=runs,
@@ -181,7 +212,30 @@ def test_build_state_server_uses_redis_sessions(
         token=None,
         backend="server",
     )
-    assert isinstance(state.sessions, RedisSessionStore)
+    assert isinstance(state.sessions, SqlSessionStore)
+
+
+def test_build_state_server_falls_back_to_in_memory_sessions_without_db(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from bajutsu.serve.sessions import InMemorySessionStore
+
+    monkeypatch.setenv("BAJUTSU_S3_BUCKET", "bkt")
+    monkeypatch.setenv("BAJUTSU_S3_REGION", "auto")
+    monkeypatch.setenv("BAJUTSU_REDIS_URL", "redis://localhost:6379")
+    monkeypatch.delenv("BAJUTSU_DATABASE_URL", raising=False)
+    _scn, cfg, runs = project(tmp_path)
+    state = srv._build_state(
+        runs_dir=runs,
+        config=cfg,
+        scenarios_dir=None,
+        root=tmp_path,
+        baselines_dir=None,
+        max_concurrent=4,
+        token=None,
+        backend="server",
+    )
+    assert isinstance(state.sessions, InMemorySessionStore)
 
 
 def test_build_state_local_has_no_oauth(tmp_path: Path) -> None:
@@ -327,11 +381,14 @@ def test_build_state_server_requires_a_bucket(
 def test_build_state_server_without_extras_raises_a_clear_install_hint(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    # With an extra missing (redis stood in here), the server assembly surfaces one install hint
-    # naming the extras — not a raw ImportError for whichever module loaded first.
+    # With an extra missing, the server assembly surfaces one install hint naming the extras — not
+    # a raw ImportError for whichever module loaded first. We block a sub-import the server path
+    # needs (the object-store client) so ImportError fires before any env check.
     import sys
 
-    monkeypatch.setitem(sys.modules, "redis", None)
+    monkeypatch.setenv("BAJUTSU_S3_BUCKET", "bkt")
+    monkeypatch.setenv("BAJUTSU_S3_REGION", "auto")
+    monkeypatch.setitem(sys.modules, "boto3", None)
     _scn, cfg, runs = project(tmp_path)
     with pytest.raises(srv.MissingServerExtra, match="extra"):
         srv._build_state(

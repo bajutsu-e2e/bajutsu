@@ -57,7 +57,7 @@ capturePolicy:
     capture: [screenshot, video, deviceLog, elements, actionLog]
 ```
 
-（[`demos/features/app/scenarios/settings.yaml`](../../demos/features/app/scenarios/settings.yaml) に実例）
+（[`demos/showcase/scenarios/settings.yaml`](../../demos/showcase/scenarios/settings.yaml) に実例）
 
 トリガー `on` は **`action` / `event` / `result` のいずれか 1 つ**です。
 
@@ -83,7 +83,7 @@ capturePolicy:
   capture: [video, deviceLog]     # この wait の区間を録る
 ```
 
-（[`demos/features/app/scenarios/evidence.yaml`](../../demos/features/app/scenarios/evidence.yaml) に実例）
+（[`demos/showcase/scenarios/evidence.yaml`](../../demos/showcase/scenarios/evidence.yaml) に実例）
 
 ## 区間証跡（video / deviceLog / appTrace）
 
@@ -139,7 +139,7 @@ class Artifact:
 | `"simctl"` | `simctl` による区間証跡です（動画、デバイスログ、アプリトレース）。 |
 | `"collector"` | idb のアプリ側ネットワークコレクタ（`BAJUTSU_COLLECTOR`）です。 |
 | `"playwright"` | Playwright のネイティブなネットワーク観測です（web バックエンド）。 |
-| `"<backend> (fallback)"` | read-only な証跡フォールバックが供給したアーティファクトです（[BE-0020](../../roadmaps/implemented/BE-0020-multi-backend-evidence-fallback/BE-0020-multi-backend-evidence-fallback-ja.md)）。 |
+| `"<backend> (fallback)"` | read-only な証跡フォールバックが供給したアーティファクトです（[BE-0020](../../roadmaps/BE-0020-multi-backend-evidence-fallback/BE-0020-multi-backend-evidence-fallback-ja.md)）。 |
 
 証跡の種別をリスト内のどのバックエンドも供給できない場合は、シナリオごとに `SkippedCapture(kind, reason)` を記録し、manifest で開示します。gap を黙って空にすることはありません。
 
@@ -150,10 +150,27 @@ class Artifact:
 ```yaml
 redact:
   labels: ["カード番号"]            # accessibility ラベル
-  headers: ["Authorization", "Cookie"]  # HTTP ヘッダ名
+  headers: ["X-Session"]           # 追加の HTTP ヘッダ名（既定集合に上乗せ）
   fields: ["token", "password"]    # JSON/body フィールド名
+  unmaskHeaders: ["authorization"] # 既定の保護を外す（明示的で目に見える指定）
 ```
+
+> **機密ヘッダは既定でマスクされます**（この保護にシナリオ側の `redact:` は不要です）。組み込みの集合は
+> `authorization`・`proxy-authorization`・`cookie`・`set-cookie`・`x-api-key`・`x-auth-token` で、
+> 大文字小文字を区別せずに照合します。`cookie` と `set-cookie` は一つの関心事として扱い、どちらか一方を
+> 指定（または解除）すると両方に適用されます。`redact.headers` に書いたヘッダ名はこの集合に上乗せされる
+> だけで、集合を置き換えることはありません。既定ヘッダの生の値がどうしても必要なとき（認証失敗のデバッグ
+> など）は、そのヘッダ名を `unmaskHeaders` に書きます。保護を外すのは明示的で目に見える選択であり、
+> `redact:` を書かないだけで外れることはありません。
 
 > redact は証跡の書き出し前に **適用されます**（`redaction.py` `Redactor`）。device log と app trace は key→value パターンでスクラブし、要素ツリーは label が設定済みなら value をマスクします（または埋め込まれた secret をスクラブします）。各 network exchange は構造的にマスクします。ヘッダ値は名前で処理し、url / request / response の body はフリーテキストとして処理するので、クエリパラメータや `token` / `password` の body フィールドも捕捉します。画像（スクリーンショット / video）はマスクできず、そのまま残ります。
 >
 > redact は **secret の入力値** にも及びます。`${secrets.X}` の背後にある実値（環境から解決し、config の `secrets:` で宣言します。[configuration](configuration.md#シークレットsecrets)）は、設定済みの `labels` / `headers` / `fields` だけでなく、証跡に現れる箇所すべてでマスクします。長い値から先にマスクするため、ある値が別の値の部分文字列であっても、部分的な漏れは起きません。
+>
+> 値の照合は **エンコードを考慮** します。同じ秘密値でも、証跡に現れるときは多くの場合エンコードされており、そのままのバイト列は現れません。redact は、生の値に加えて、よくあるエンコード形もマスクします。パーセントエンコード（URL のクエリやフォームフィールド。たとえば `p@ss` は `p%40ss` になります）、HTML エスケープと JSON エスケープの形、そして `Authorization: Basic <base64(user:pass)>` トークンのうちデコードした認証情報がその値を含むもの、の三種です。これは既知の値に対して固定された変換を適用する方式（値をエンコードしてから検索します）であり、証跡内のあらゆる文字列をデコードして総当たりする方式ではないので、コストと誤検出の範囲は限定的なままです。一つ制約が残ります。redact が動く前に証跡が実際に断片化している場合（ストリーミングのチャンクにまたがって分割され、redact が一つの連続した文字列として見られない値）は、照合がベストエフォートになります。組み立て済みの全文の証跡という通常のケースには影響しません。
+>
+> 実行したシナリオは run ディレクトリにもスナップショットとして保存されます（`scenario.yaml`、およびレポートの生 YAML 表示）。`totp` ステップの `secret` は使い捨てのコードではなく恒久的な base32 シードなので、シナリオに **リテラル** で書かれたシードは、このスナップショット内で `<redacted>` にマスクします。`${secrets.X}` 参照はそのまま残します（参照自体はシードではなく、解決後の実値は上記の secret 入力値のルールでマスクされるためです）。`totp` のシードは `${secrets.X}` で渡し、シナリオファイルにシードが残らないようにするのが望ましい方法です。
+
+## ファイルパーミッション
+
+マスキングは漏えいした証跡が明かす内容を減らしますが、ベストエフォートの denylist なので、証跡を誰が読めるかも同じく重要です。ランナーは各 run ディレクトリを所有者のみ（`0700`）で作成し、機微な内容を含み得るファイル（`network.json`、コピーした `scenario.yaml`、要素ダンプ（`elements.json`）、スクリーンショット）を、ホストの `umask` に依存せず所有者のみ（`0600`）で書き込みます（[BE-0131](../../roadmaps/BE-0131-run-artifact-permissions/BE-0131-run-artifact-permissions-ja.md)）。それ以外の証跡も `0700` の run ディレクトリ配下に置かれるため、共有ホスト（CI ランナーなど）の別のローカルアカウントからは既定で読めません。実装: `artifact_perms.py`。

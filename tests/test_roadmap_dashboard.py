@@ -32,7 +32,20 @@ def test_every_committed_item_is_rendered() -> None:
     for item in _ITEMS:
         en = item.by_lang["en"]
         assert f">{en.id}</span>" in _PAGE, f"{en.id} missing from the dashboard"
-        assert f"/roadmaps/{en.category}/{en.id}-{en.slug}/{en.id}-{en.slug}.md" in _PAGE
+        assert f"/roadmaps/{en.id}-{en.slug}/{en.id}-{en.slug}.md" in _PAGE
+
+
+def test_each_card_links_to_its_tracking_issue_search() -> None:
+    """Each card carries an additive "Issue" pill linking to its id's tracking-issue search (BE-0139).
+
+    The pill is a second link beside the proposal one, built from the id alone (no network), so the
+    per-item count matches the card count and each url is the one the id predicts.
+    """
+    assert _PAGE.count('class="be-issue"') == len(_ITEMS)
+    for item in _ITEMS:
+        en = item.by_lang["en"]
+        url = html.escape(brd.bri.tracking_issue_url(en.id))
+        assert f'<a class="be-issue" href="{url}"' in _PAGE, f"{en.id} issue link missing"
 
 
 def test_every_nonempty_category_renders_a_section() -> None:
@@ -109,7 +122,6 @@ def test_html_is_escaped() -> None:
             "en": entry_cls(
                 id="BE-9999",
                 slug="x",
-                category="proposals",
                 title="a <script> & b",
                 status="Proposal",
                 origin=None,

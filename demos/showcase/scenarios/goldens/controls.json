@@ -1,0 +1,86 @@
+{
+  "log.note": {
+    "identifier": "log.note",
+    "label": null,
+    "value": "Note",
+    "traits": [
+      "textField"
+    ],
+    "frame": [
+      32.0,
+      223.33333333333334,
+      338.0,
+      64.33333333333334
+    ]
+  },
+  "log.count.value": {
+    "identifier": "log.count.value",
+    "label": "Count: 1",
+    "value": "1",
+    "traits": [
+      "staticText"
+    ],
+    "frame": [
+      16.0,
+      354.66666666666663,
+      370.0,
+      52.0
+    ]
+  },
+  "log.intense": {
+    "identifier": "log.intense",
+    "label": "Intense",
+    "value": null,
+    "traits": [
+      "button"
+    ],
+    "frame": [
+      16.0,
+      406.66666666666663,
+      370.0,
+      52.0
+    ]
+  },
+  "log.intense.value": {
+    "identifier": "log.intense.value",
+    "label": "Easy",
+    "value": "off",
+    "traits": [
+      "staticText"
+    ],
+    "frame": [
+      16.0,
+      458.6666666666667,
+      370.0,
+      52.0
+    ]
+  },
+  "log.submit": {
+    "identifier": "log.submit",
+    "label": "Submit",
+    "value": null,
+    "traits": [
+      "button"
+    ],
+    "frame": [
+      16.0,
+      510.6666666666667,
+      370.0,
+      52.00000000000006
+    ]
+  },
+  "log.status": {
+    "identifier": "log.status",
+    "label": "Status: idle",
+    "value": "idle",
+    "traits": [
+      "staticText"
+    ],
+    "frame": [
+      16.0,
+      562.6666666666667,
+      370.0,
+      52.0
+    ]
+  }
+}

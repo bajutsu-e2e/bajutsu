@@ -14,8 +14,14 @@ import pkgutil
 
 import typer
 
+from bajutsu import capabilities
 from bajutsu.cli import commands
 from bajutsu.dotenv import load_dotenv
+
+# Rich help panels that split `bajutsu --help` on the Claude boundary (BE-0101), so the split is the
+# first thing `--help` shows. Titles are the two buckets `capabilities` classifies into.
+_CLAUDE_FREE_PANEL = "Claude-free (zero-config)"
+_CLAUDE_USING_PANEL = "Uses Claude"
 
 app = typer.Typer(
     add_completion=False,
@@ -39,7 +45,21 @@ def _register_commands() -> None:
         module.register(app)
 
 
+def _group_by_claude_use() -> None:
+    """Sort each command into the Claude-free / uses-Claude help panel from `capabilities` (BE-0101).
+
+    Done once here rather than in each `commands/<name>.py` so the classification stays in one place
+    and adding a command needs no help-panel wiring — its `capabilities` entry drives the panel.
+    """
+    for info in app.registered_commands:
+        name = info.name or (info.callback.__name__.replace("_", "-") if info.callback else "")
+        cap = capabilities.by_command(name)
+        if cap is not None:
+            info.rich_help_panel = _CLAUDE_USING_PANEL if cap.uses_claude else _CLAUDE_FREE_PANEL
+
+
 _register_commands()
+_group_by_claude_use()
 
 __all__ = ["app"]
 

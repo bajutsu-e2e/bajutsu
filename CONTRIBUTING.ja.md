@@ -38,7 +38,7 @@ make check   # lock-check ＋ format-check ＋ lint ＋ lint-sh ＋ lint-actions
 成果を守る回帰検出網です。
 
 実機での E2E（macOS ＋ Simulator）はより重い別経路で、このゲートには**含まれません**。
-`make -C demos/features e2e`（事前に `make deps`）で実行します。コア作業をこれで止めないで
+`make -C demos/showcase run-swiftui`（事前に `make deps`）で実行します。コア作業をこれで止めないで
 ください。
 
 ## ブランチ、コミット、プルリクエスト

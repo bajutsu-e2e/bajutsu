@@ -11,24 +11,42 @@ import queue
 from collections.abc import Callable
 from pathlib import Path
 
-from bajutsu import env
+from bajutsu import simctl
 from bajutsu.backends import default_available, resolve_evidence_providers, select_actuator
 from bajutsu.backends import make_driver as _make_driver
 from bajutsu.config import Effective
 from bajutsu.drivers import base
-
-# `device_control` / `device_relauncher` live with the platform lifecycle now; re-exported so
-# `from bajutsu.runner import device_control, device_relauncher` keeps its import unchanged.
-from bajutsu.environment import device_control, device_relauncher, environment_for
 from bajutsu.evidence import FileSink
 from bajutsu.network import Collector, NetworkCollector
 from bajutsu.orchestrator import DeviceControl, RelaunchFn
 from bajutsu.orchestrator.evidence_rules import requested_intervals
+
+# `device_control` / `device_relauncher` live with the platform lifecycle now; re-exported so
+# `from bajutsu.runner import device_control, device_relauncher` keeps its import unchanged.
+from bajutsu.platform_lifecycle import device_control, device_relauncher, environment_for
 from bajutsu.runner.launch import launch_driver
 from bajutsu.runner.types import Lease, LeaseFn
 from bajutsu.scenario import Scenario
+from bajutsu.webview import WebViewBridge
 
 __all__ = ["device_control", "device_pool", "device_relauncher"]
+
+
+def _alloc_webview_bridge(
+    lease_env: object,
+) -> tuple[WebViewBridge | None, int | None]:
+    """Allocate a WebView bridge for platforms that need one (iOS, not web).
+
+    Returns (bridge, port) or (None, None) when the platform doesn't use the bridge.
+    """
+    if getattr(lease_env, "observes_network_via_driver", lambda: False)():
+        return None, None
+    import socket
+
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.bind(("127.0.0.1", 0))
+        port = s.getsockname()[1]
+    return WebViewBridge(port=port), port
 
 
 def device_pool(
@@ -42,7 +60,7 @@ def device_pool(
     log_subsystem: str | None = None,
     secret_values: list[str] | None = None,
     available: Callable[[str], bool] = default_available,
-    env_run: env.RunFn = env._real_run,
+    env_run: simctl.RunFn = simctl._real_run,
     make_driver: Callable[..., base.Driver] = _make_driver,
     evidence_providers: Callable[
         [list[str], str, Callable[[str], bool]], tuple[dict[str, str], dict[str, str]]
@@ -146,11 +164,12 @@ def device_pool(
                     collector = collectors.get(udid)
             else:
                 collector = None  # resolved after launch from the live page
-            extra_env = (
-                {"BAJUTSU_COLLECTOR": f"http://127.0.0.1:{collector.port}"}
-                if isinstance(collector, NetworkCollector)
-                else None
-            )
+            extra_env: dict[str, str] = {}
+            if isinstance(collector, NetworkCollector):
+                extra_env["BAJUTSU_COLLECTOR"] = f"http://127.0.0.1:{collector.port}"
+            webview_bridge, webview_port = _alloc_webview_bridge(lease_env)
+            if webview_port is not None:
+                extra_env["BAJUTSU_WEBVIEW_PORT"] = str(webview_port)
             driver = launch_driver(
                 udid, eff, actuator, scenario.preconditions, env_run, extra_env, record_video_dir
             )
@@ -195,6 +214,7 @@ def device_pool(
                 device_name=meta.get("name", ""),
                 device_runtime=meta.get("runtime", ""),
                 collector_provider=collector_provider,
+                webview_bridge=webview_bridge,
             )
         except BaseException:
             if release_collector is not None:

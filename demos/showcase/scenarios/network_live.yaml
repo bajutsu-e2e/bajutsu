@@ -1,0 +1,14 @@
+# Live networking (observed, not mocked): tapping Refresh issues a real GET to
+# SHOWCASE_API_URL/horses; BajutsuKit captures the exchange as network evidence with no app
+# change (the counterpart to network_mock.yaml). The upstream response varies, so the scenario
+# asserts only the deterministic fact — that the request was observed — not a specific status.
+- name: refresh issues an observed catalog request
+  preconditions:
+    launchEnv: { SHOWCASE_UITEST: "1", SHOWCASE_TAB: stable }
+  steps:
+    - wait: { for: { id: stable.refresh }, timeout: 10 }
+      capture: [video, network]
+    - tap: { id: stable.refresh }
+    - wait: { until: { request: { method: GET, pathMatches: "/horses$" } }, timeout: 10 }
+  expect:
+    - request: { method: GET, pathMatches: "/horses$" }

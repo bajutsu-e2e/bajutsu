@@ -1,7 +1,0 @@
-# Phase 2: a `use` step expands into the login component's steps (params substituted).
-- name: login via shared component
-  steps:
-    - use: { component: _components/login.yaml, with: { email: "a@b.com", password: "pw" } }
-    - wait: { for: { id: home.title }, timeout: 5 }
-  expect:
-    - exists: { id: home.title }

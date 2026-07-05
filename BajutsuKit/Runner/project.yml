@@ -1,0 +1,52 @@
+name: BajutsuRunner
+# The generic XCUITest runner (BE-0019): one UI-testing bundle that drives whatever app the run
+# installs, launched by the forwarded BAJUTSU_BUNDLE_ID, so a single built .xctestrun serves every
+# target. A minimal host app satisfies XCUITest's build-time "target application" requirement; the
+# runner never drives it. Build with `xcodebuild build-for-testing`.
+options:
+  bundleIdPrefix: com.bajutsu.runner
+  deploymentTarget:
+    iOS: "15.0"
+  createIntermediateGroups: true
+settings:
+  base:
+    SWIFT_VERSION: "5.9"
+    SUPPORTED_PLATFORMS: "iphoneos iphonesimulator"
+    TARGETED_DEVICE_FAMILY: "1,2"
+    CODE_SIGNING_ALLOWED: NO
+packages:
+  BajutsuKit:
+    path: ..
+targets:
+  BajutsuRunnerHost:
+    type: application
+    platform: iOS
+    sources:
+      - path: Host
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.bajutsu.runner.host
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_UILaunchScreen_Generation: YES
+  BajutsuRunnerUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - path: Sources
+    dependencies:
+      - package: BajutsuKit
+        product: BajutsuRunner
+      - target: BajutsuRunnerHost
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.bajutsu.runner.uitests
+        GENERATE_INFOPLIST_FILE: YES
+schemes:
+  BajutsuRunner:
+    build:
+      targets:
+        BajutsuRunnerHost: all
+        BajutsuRunnerUITests: [test]
+    test:
+      targets:
+        - BajutsuRunnerUITests

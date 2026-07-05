@@ -43,13 +43,13 @@ def repo_root(tmp_path: Path) -> Path:
         "docs/api/runner.md",
         "DESIGN.md",
         "roadmaps/README.md",
-        "roadmaps/proposals/BE-0015-x/BE-0015-x.md",
+        "roadmaps/BE-0015-x/BE-0015-x.md",
         "assets/icons/logo.png",
     ):
         f = tmp_path / rel
         f.parent.mkdir(parents=True, exist_ok=True)
         f.touch()
-    (tmp_path / "demos/features/app/scenarios").mkdir(parents=True)
+    (tmp_path / "demos/showcase/scenarios").mkdir(parents=True)
     return tmp_path
 
 
@@ -70,17 +70,17 @@ _CASES = [
     ("[d](<../DESIGN.md>)", "concepts.md", f"[d]({_BLOB}/DESIGN.md)"),
     # A directory target points at the tree view, not blob.
     (
-        "[s](../demos/features/app/scenarios/)",
+        "[s](../demos/showcase/scenarios/)",
         "concepts.md",
-        f"[s]({_TREE}/demos/features/app/scenarios)",
+        f"[s]({_TREE}/demos/showcase/scenarios)",
     ),
     # Images escape the same way.
     ("![logo](../assets/icons/logo.png)", "concepts.md", f"![logo]({_BLOB}/assets/icons/logo.png)"),
     # Reference definitions are rewritten too.
     (
-        "[BE-0015]: ../roadmaps/proposals/BE-0015-x/BE-0015-x.md",
+        "[BE-0015]: ../roadmaps/BE-0015-x/BE-0015-x.md",
         "ai-development.md",
-        f"[BE-0015]: {_BLOB}/roadmaps/proposals/BE-0015-x/BE-0015-x.md",
+        f"[BE-0015]: {_BLOB}/roadmaps/BE-0015-x/BE-0015-x.md",
     ),
     # In-docs links are left for MkDocs to resolve.
     ("[s](scenarios.md)", "concepts.md", "[s](scenarios.md)"),
@@ -97,9 +97,9 @@ _CASES = [
     ("[x](#frag)", "concepts.md", "[x](#frag)"),
     # The literal ``BE-NNNN-<slug>`` placeholder in docs prose is left alone (it is not a real path).
     (
-        "[BE-NNNN]: roadmaps/proposals/BE-NNNN-<slug>/BE-NNNN-<slug>.md",
+        "[BE-NNNN]: roadmaps/BE-NNNN-<slug>/BE-NNNN-<slug>.md",
         "ai-development.md",
-        "[BE-NNNN]: roadmaps/proposals/BE-NNNN-<slug>/BE-NNNN-<slug>.md",
+        "[BE-NNNN]: roadmaps/BE-NNNN-<slug>/BE-NNNN-<slug>.md",
     ),
 ]
 

@@ -60,7 +60,7 @@ Which module owns each box, and how they depend on each other, is in [architectu
 | 11 | [recording](recording.md) | AI authoring (Tier 1 `record`) · the Agent abstraction · system-alert handling |
 | 12 | [codegen](codegen.md) | Scenario → native XCUITest generation |
 | 13 | [cli](cli.md) | Full reference for CLI commands and options |
-| 14 | [sample-app](sample-app.md) | The bundled `BajutsuSample` fixture (exercises every primitive) |
+| 14 | [showcase](showcase.md) | The showcase suite — the single iOS fixture (exercises every primitive) |
 | 15 | [ci](ci.md) | Running in CI — the repo's own workflows + the reusable `bajutsu-e2e` action |
 | 16 | [self-hosting](self-hosting.md) | Run `serve` as a token-authenticated LaunchAgent on a single Mac behind Tailscale (BE-0016 Tier A) |
 | 17 | [vision](vision.md) | **Forward-looking** — the three axes of growth (reach / scale / authoring) and the constraints all of them respect |
@@ -74,9 +74,9 @@ Which module owns each box, and how they depend on each other, is in [architectu
 uv sync --group dev                  # .venv + deps + dev tools
 uv run pytest -q                     # unit tests (no Simulator needed)
 
-# Against the bundled sample (needs a real Simulator)
-make -C demos/features sample-build                    # build the fixture app
-make -C demos/features e2e                             # run the smoke scenario on the idb backend
+# Against the showcase fixture (needs a real Simulator)
+make -C demos/showcase swiftui-build                    # build the fixture app
+make -C demos/showcase run-swiftui                      # run the scenarios on the idb backend
 ```
 
 Minimal CLI:

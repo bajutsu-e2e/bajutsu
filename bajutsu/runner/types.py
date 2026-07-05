@@ -14,6 +14,7 @@ from bajutsu.evidence import EvidenceSink
 from bajutsu.network import Collector, NetworkExchange
 from bajutsu.orchestrator import BlockedHandler, DeviceControl, RelaunchFn, SkippedCapture
 from bajutsu.scenario import Scenario
+from bajutsu.webview import DomSource
 
 # Builds the in-scenario relaunch function for a scenario (given its live driver).
 RelaunchFactory = Callable[[Effective, Scenario, base.Driver], RelaunchFn]
@@ -52,6 +53,9 @@ class Lease:
     collector_provider: str = "collector"
     # Evidence kinds no eligible backend could supply, disclosed per scenario (BE-0020).
     skipped_captures: list[SkippedCapture] = field(default_factory=list)
+    # WebView bridge for hybrid apps (BE-0037). None when the app has no WebView or the platform
+    # doesn't support the bridge (e.g. web/Playwright — it already has DOM access).
+    webview_bridge: DomSource | None = None
 
 
 # Leases a free device for one scenario (blocking until one frees up): launches the app

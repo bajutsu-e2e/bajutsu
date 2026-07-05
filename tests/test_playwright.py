@@ -12,13 +12,9 @@ from typing import Any
 
 import pytest
 
+from bajutsu.dom import _norm_role, _str_or_none, parse_dom
 from bajutsu.drivers import base
-from bajutsu.drivers.playwright import (
-    PlaywrightDriver,
-    _norm_role,
-    _str_or_none,
-    parse_dom,
-)
+from bajutsu.drivers.playwright import PlaywrightDriver
 
 
 def _rec(**kw: Any) -> dict[str, Any]:
@@ -53,7 +49,7 @@ def test_parse_dom_maps_fields() -> None:
     assert el["identifier"] == "auth.email"
     assert el["label"] == "Email"
     assert el["value"] == "a@b.com"
-    assert "textbox" in el["traits"]  # input role normalized
+    assert "textField" in el["traits"]  # input role normalized to iOS-aligned trait
     assert el["frame"] == (10.0, 20.0, 40.0, 10.0)
 
 
@@ -85,6 +81,74 @@ def test_norm_role_and_str_or_none() -> None:
     assert _str_or_none("") is None
     assert _str_or_none(None) is None
     assert _str_or_none(3) == "3"
+
+
+# --- expanded role mapping (BE-0024): interactive HTML elements → ACTIONABLE_TRAITS ---
+
+
+def test_input_and_textbox_map_to_textfield() -> None:
+    """input / textbox (ARIA) should become textField — the iOS-aligned trait that
+    ACTIONABLE_TRAITS already includes, so doctor counts text inputs as actionable."""
+    for role in ("input", "textbox"):
+        [el] = parse_dom([_rec(role=role)])
+        assert "textField" in el["traits"], f"role={role!r} should map to textField"
+
+
+def test_textarea_maps_to_textview() -> None:
+    """textarea should become textView — the trait for multi-line text areas."""
+    [el] = parse_dom([_rec(role="textarea")])
+    assert "textView" in el["traits"]
+
+
+def test_checkbox_and_radio_map_to_switch() -> None:
+    """checkbox / radio ARIA roles should become switch so doctor scores them."""
+    for role in ("checkbox", "radio"):
+        [el] = parse_dom([_rec(role=role)])
+        assert "switch" in el["traits"], f"role={role!r} should map to switch"
+
+
+def test_switch_role_maps_to_switch() -> None:
+    """The ARIA switch role should map to the switch trait directly."""
+    [el] = parse_dom([_rec(role="switch")])
+    assert "switch" in el["traits"]
+
+
+def test_select_and_combobox_and_listbox_map_to_button() -> None:
+    """select / combobox / listbox are tappable controls — map to button."""
+    for role in ("select", "combobox", "listbox"):
+        [el] = parse_dom([_rec(role=role)])
+        assert "button" in el["traits"], f"role={role!r} should map to button"
+
+
+def test_slider_role_maps_to_slider() -> None:
+    """The ARIA slider role should map to the slider trait."""
+    [el] = parse_dom([_rec(role="slider")])
+    assert "slider" in el["traits"]
+
+
+def test_tab_role_maps_to_tab() -> None:
+    """The ARIA tab role should map to the tab trait."""
+    [el] = parse_dom([_rec(role="tab")])
+    assert "tab" in el["traits"]
+
+
+def test_option_and_menuitem_map_to_cell() -> None:
+    """option / menuitem are selectable items — map to cell."""
+    for role in ("option", "menuitem", "menuitemcheckbox", "menuitemradio"):
+        [el] = parse_dom([_rec(role=role)])
+        assert "cell" in el["traits"], f"role={role!r} should map to cell"
+
+
+def test_spinbutton_maps_to_textfield() -> None:
+    """spinbutton is a numeric text input — map to textField."""
+    [el] = parse_dom([_rec(role="spinbutton")])
+    assert "textField" in el["traits"]
+
+
+def test_searchbox_maps_to_searchfield() -> None:
+    """searchbox ARIA role should map to searchField."""
+    [el] = parse_dom([_rec(role="searchbox")])
+    assert "searchField" in el["traits"]
 
 
 # --- fake page + driver actions ---
@@ -357,10 +421,11 @@ def test_type_text() -> None:
     assert page.keyboard.typed == ["hello"]
 
 
-def test_wait_for() -> None:
+def test_wait_for_is_single_shot() -> None:
+    # BE-0118: single-shot check of the current DOM; the deadline poll lives in base.wait_until.
     drv, _ = _driver([_rec(identifier="home.title")])
-    assert drv.wait_for({"id": "home.title"}, 1.0) is True
-    assert drv.wait_for({"id": "nope"}, 1.0) is False
+    assert drv.wait_for({"id": "home.title"}) is True
+    assert drv.wait_for({"id": "nope"}) is False
 
 
 def _touch_points(params: Any) -> list[tuple[float, float]]:
@@ -609,9 +674,9 @@ def test_wedge_surfaces_as_device_error_but_selection_errors_pass_through(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """A wedged browser raises a Playwright error from a page op; the driver re-raises it as the
-    crawl's recoverable `env.DeviceError` (BE-0077), so a pool worker relaunches instead of the crawl
+    crawl's recoverable `simctl.DeviceError` (BE-0077), so a pool worker relaunches instead of the crawl
     aborting. A selection failure is not a wedge and still propagates unchanged."""
-    from bajutsu import env
+    from bajutsu import simctl
 
     class _PwError(Exception):
         pass
@@ -626,9 +691,9 @@ def test_wedge_surfaces_as_device_error_but_selection_errors_pass_through(
             raise _PwError("Target page, context or browser has been closed")
 
     wedged = PlaywrightDriver("http://app.test/", page=_WedgedPage([]))
-    with pytest.raises(env.DeviceError):
+    with pytest.raises(simctl.DeviceError):
         wedged.query()
-    with pytest.raises(env.DeviceError):
+    with pytest.raises(simctl.DeviceError):
         wedged.tap({"id": "anything"})  # tap → _center → query() wedges → DeviceError
 
     # A missing selector is a SelectorError, not a wedge — it must not be masked as a DeviceError.

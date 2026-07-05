@@ -31,11 +31,15 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
+# Import the shared id-shape predicate whether this file is run as ``python3 scripts/…`` (scripts/
+# already on the path) or loaded under its bare name by a test — add scripts/ so the sibling import
+# resolves either way.
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from roadmap_ids import iter_item_dirs, numbered_match
+
 ROADMAP = Path("roadmaps")
-# Each item lives under exactly one, by its Status (BE-0078); the folder prefixes its index links.
-CATEGORIES = ("implemented", "in-progress", "proposals", "deferred")
-NUMBERED_DIR_RE = re.compile(r"^BE-(\d{4})-(.+)$")
 TITLE_RE = re.compile(r"^# BE-\d{4} — (.+)$", re.MULTILINE)
+
 # Canonical metadata: a ``| Field | Value |`` table fenced by these markers, mirroring the index's
 # ``<!-- GENERATED:* -->`` regions. Fencing keeps the parser off same-shaped tables in the body.
 META_BLOCK_RE = re.compile(r"<!-- BE-METADATA -->\n(.*?)\n<!-- /BE-METADATA -->", re.DOTALL)
@@ -45,6 +49,22 @@ META_ROW_RE = re.compile(r"^\| (.+?) \| (.+?) \|\s*$", re.MULTILINE)
 META_HEADER_KEYS = frozenset({"Field", "項目"})
 # Legacy form (unmigrated items): ``* Field: value`` bullet lines. Read when no fence is present.
 FIELD_RE = re.compile(r"^\* ([^:]+): (.+)$", re.MULTILINE)
+
+# The GitHub search that finds an item's BE-0109 tracking issue from its id alone (BE-0139). The
+# issue title is always ``[BE-NNNN] …`` and carries the ``roadmap-tracking`` label, so the id is
+# enough to locate it without its issue number. No ``is:open`` filter, so it matches whether the
+# issue is still open or was closed after the item shipped. Purely a function of the id — no ``gh``
+# call, token, or network at build or authoring time — and the literal ``BE-XXXX`` placeholder flows
+# through it unchanged until CI allocates the real id (BE-0089 rewrites it with the rest of the file).
+_TRACKING_ISSUE_SEARCH = (
+    "https://github.com/bajutsu-e2e/bajutsu/issues"
+    '?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"{id}"'
+)
+
+
+def tracking_issue_url(be_id: str) -> str:
+    """The GitHub issue-search URL for an item's tracking issue, built from its id alone (BE-0139)."""
+    return _TRACKING_ISSUE_SEARCH.format(id=be_id)
 
 
 @dataclass(frozen=True)
@@ -120,17 +140,21 @@ TOPICS: tuple[tuple[str, str, bool], ...] = (
     ("Platform expansion (landed slices)", "platform-landed", False),
     ("Platform expansion (Android / Web / Flutter)", "platform", False),
     ("Authoring experience (record / GUI editor)", "authoring", False),
+    ("Surfacing CLI features in the serve Web UI", "serve-cli-features", False),
     ("Self-healing triage (M4)", "self-healing", False),
     ("Candidates from competitive research (MagicPod / Autify)", "competitive", True),
     ("Candidates from competitive research (Maestro)", "competitive-maestro", True),
     ("Integration & automation (MCP)", "mcp", False),
+    ("Integration with external services", "external-integration", False),
     ("Backend expansion (iOS actuators)", "backend", False),
     ("doctor / onboarding", "doctor", False),
     ("Development infrastructure (contributor workflow)", "dev-infra", False),
+    ("Codebase quality & technical debt", "quality-debt", False),
     ("Dogfood fixtures (demo apps)", "dogfood", True),
     ("Dogfood fixtures (web UI)", "dogfood-web-ui", True),
     ("AI provider configuration", "ai-provider", False),
     ("Hosting the web UI (cloud / self-hosted)", "hosting", False),
+    ("Security hardening", "security", False),
     ("Configuration sourcing", "config-sourcing", False),
     ("codegen coverage", "codegen", False),
     ("Crawl performance / scale-out", "crawl", False),
@@ -138,6 +162,8 @@ TOPICS: tuple[tuple[str, str, bool], ...] = (
     ("Miscellaneous / on hold", "misc", False),
 )
 KNOWN_TOPICS = frozenset(topic for topic, _key, _origin in TOPICS)
+TOPIC_KEY_BY_NAME = {topic: key for topic, key, _origin in TOPICS}
+BUCKET_KEY_BY_NAME = dict(BUCKETS)
 
 
 @dataclass(frozen=True)
@@ -180,9 +206,6 @@ class Entry:
 
     id: str
     slug: str
-    category: (
-        str  # status folder the item lives in (implemented / in-progress / proposals / deferred)
-    )
     title: str
     status: str  # raw status, before display mapping
     origin: str | None
@@ -213,18 +236,24 @@ def parse_metadata(text: str) -> tuple[str, dict[str, str]]:
     title_match = TITLE_RE.search(text)
     if not title_match:
         raise ValueError("no '# BE-NNNN — <title>' heading found")
+    return title_match.group(1).strip(), metadata_fields(text)
+
+
+def metadata_fields(text: str) -> dict[str, str]:
+    """Parse just the ``field -> value`` metadata, independent of the (numbered) title.
+
+    Split from :func:`parse_metadata` so a ``BE-XXXX`` placeholder — whose title carries no number
+    and so trips ``TITLE_RE`` — can still be read for its ``Status`` / ``Topic``. Prefers the fenced
+    ``BE-METADATA`` table; falls back to the legacy ``* Field: value`` bullets for unmigrated items.
+    """
     block = META_BLOCK_RE.search(text)
     if block:
-        fields = {
+        return {
             key.strip(): value.replace("**", "").strip()
             for key, value in META_ROW_RE.findall(block.group(1))
             if key.strip() not in META_HEADER_KEYS
         }
-    else:  # legacy bullet form, until the item is migrated to the fenced table
-        fields = {
-            key.strip(): value.replace("**", "").strip() for key, value in FIELD_RE.findall(text)
-        }
-    return title_match.group(1).strip(), fields
+    return {key.strip(): value.replace("**", "").strip() for key, value in FIELD_RE.findall(text)}
 
 
 def status_display(raw: str, lang_code: str) -> str:
@@ -239,7 +268,7 @@ def status_display(raw: str, lang_code: str) -> str:
 def render_row(entry: Entry, lang_code: str, has_origin: bool) -> str:
     """Render one Markdown table row for an item in the given language."""
     lang = LANG_BY_CODE[lang_code]
-    href = f"{entry.category}/{entry.id}-{entry.slug}/{entry.id}-{entry.slug}{lang.suffix}.md"
+    href = f"{entry.id}-{entry.slug}/{entry.id}-{entry.slug}{lang.suffix}.md"
     cells = [f"[{entry.id}]({href})", entry.title, status_display(entry.status, lang_code)]
     if has_origin:
         cells.append(entry.origin or "")
@@ -280,63 +309,50 @@ def duplicate_ids(roadmap: Path) -> dict[str, list[str]]:
     fail the build rather than silently render two index rows for one id. Empty when all unique.
     """
     by_id: dict[str, list[str]] = {}
-    for category in CATEGORIES:
-        category_dir = roadmap / category
-        if not category_dir.is_dir():
-            continue
-        for d in sorted(category_dir.iterdir()):
-            if d.is_dir() and (match := NUMBERED_DIR_RE.match(d.name)):
-                by_id.setdefault(f"BE-{match.group(1)}", []).append(f"{category}/{d.name}")
+    for d in iter_item_dirs(roadmap):
+        if match := numbered_match(d.name):
+            by_id.setdefault(f"BE-{match.group(1)}", []).append(d.name)
     return {be_id: paths for be_id, paths in by_id.items() if len(paths) > 1}
 
 
 def load_items(roadmap: Path) -> list[Item]:
     """Read every BE item directory into an Item with per-language render fields.
 
-    Items live under ``roadmaps/<category>/BE-NNNN-<slug>/`` — the category (the directory the
-    item was filed in by its Status) prefixes every link the index renders to it. Refuses a tree
-    with duplicate ids, so a number reused across two items fails the build.
+    Items live under one flat ``roadmaps/BE-NNNN-<slug>/`` directory (BE-0159), so the link the index
+    renders to an item is just its directory name. Refuses a tree with duplicate ids, so a number
+    reused across two items fails the build.
     """
     if dupes := duplicate_ids(roadmap):
         detail = "; ".join(f"{be_id}: {', '.join(paths)}" for be_id, paths in sorted(dupes.items()))
         raise ValueError(f"duplicate BE IDs (each id must be unique and permanent): {detail}")
     items: list[Item] = []
-    for category in CATEGORIES:
-        category_dir = roadmap / category
-        if not category_dir.is_dir():
+    for d in iter_item_dirs(roadmap):
+        match = numbered_match(d.name)
+        if not match:
             continue
-        for d in sorted(category_dir.iterdir()):
-            if not d.is_dir():
-                continue
-            match = NUMBERED_DIR_RE.match(d.name)
-            if not match:
-                continue
-            item_id, slug = f"BE-{match.group(1)}", match.group(2)
+        item_id, slug = f"BE-{match.group(1)}", match.group(2)
 
-            by_lang: dict[str, Entry] = {}
-            item_bucket = topic = ""
-            for lang in LANGS:
-                path = d / f"{item_id}-{slug}{lang.suffix}.md"
-                title, fields = parse_metadata(path.read_text(encoding="utf-8"))
-                by_lang[lang.code] = Entry(
-                    id=item_id,
-                    slug=slug,
-                    category=category,
-                    title=title,
-                    status=fields[lang.field_status],
-                    origin=fields.get(lang.field_origin),
-                )
-                if lang.code == "en":
-                    item_bucket = bucket(fields[lang.field_status])
-                    topic = fields[lang.field_topic]
-            if topic not in KNOWN_TOPICS:
-                raise ValueError(
-                    f"{item_id}: unknown Topic {topic!r}; add it to TOPICS (with a key) so it "
-                    "maps to a section"
-                )
-            items.append(
-                Item(id=item_id, slug=slug, bucket=item_bucket, topic=topic, by_lang=by_lang)
+        by_lang: dict[str, Entry] = {}
+        item_bucket = topic = ""
+        for lang in LANGS:
+            path = d / f"{item_id}-{slug}{lang.suffix}.md"
+            title, fields = parse_metadata(path.read_text(encoding="utf-8"))
+            by_lang[lang.code] = Entry(
+                id=item_id,
+                slug=slug,
+                title=title,
+                status=fields[lang.field_status],
+                origin=fields.get(lang.field_origin),
             )
+            if lang.code == "en":
+                item_bucket = bucket(fields[lang.field_status])
+                topic = fields[lang.field_topic]
+        if topic not in KNOWN_TOPICS:
+            raise ValueError(
+                f"{item_id}: unknown Topic {topic!r}; add it to TOPICS (with a key) so it "
+                "maps to a section"
+            )
+        items.append(Item(id=item_id, slug=slug, bucket=item_bucket, topic=topic, by_lang=by_lang))
     return items
 
 
@@ -360,12 +376,22 @@ def render_index(items: list[Item], lang_code: str) -> dict[str, str]:
 
 
 def _marker_keys(text: str) -> set[str]:
-    """Return the set of section keys that have ``<!-- GENERATED:<key> -->`` markers in *text*.
+    """Return the set of section keys that have an opening ``<!-- GENERATED:<key> -->`` marker.
 
     Only matches keys made of word-chars and hyphens (the format ``<bucket>-<topic>``), so
     wildcard references like ``GENERATED:*`` in prose are ignored.
     """
     return set(re.findall(r"<!-- GENERATED:([\w-]+) -->", text))
+
+
+def _paired_marker_keys(text: str) -> set[str]:
+    """Return the keys that have **both** an opening and a closing ``GENERATED`` marker.
+
+    A lone opening marker is not a usable section: ``replace_region`` needs the closing marker too
+    and would crash on it. So the guard counts a section as present only when the pair is intact.
+    """
+    closing = set(re.findall(r"<!-- /GENERATED:([\w-]+) -->", text))
+    return _marker_keys(text) & closing
 
 
 def build_index_text(items: list[Item], current: str, lang_code: str) -> str:
@@ -394,6 +420,51 @@ def stale_files(roadmap: Path) -> list[str]:
     return stale
 
 
+def required_section_keys(roadmap: Path) -> dict[str, str]:
+    """Map every ``<bucket>-<topic>`` section key an item needs to the directory that first needs it.
+
+    Scans **every** item directory — placeholders (``BE-XXXX``) included, unlike ``load_items``,
+    which the index render skips. This is what closes the gap that let the missing-section failure
+    reach ``main``: a placeholder that introduces a topic into a bucket needs that section to exist
+    *before* the ``roadmap-id`` automation numbers it and the reindex tries to fill the region.
+    """
+    required: dict[str, str] = {}
+    for d in iter_item_dirs(roadmap):
+        fields = metadata_fields((d / f"{d.name}.md").read_text(encoding="utf-8"))
+        topic = fields["Topic"]
+        if topic not in TOPIC_KEY_BY_NAME:
+            raise ValueError(
+                f"{d.name}: unknown Topic {topic!r}; add it to TOPICS (with a key) so it "
+                "maps to a section"
+            )
+        key = f"{BUCKET_KEY_BY_NAME[bucket(fields['Status'])]}-{TOPIC_KEY_BY_NAME[topic]}"
+        required.setdefault(key, d.name)
+    return required
+
+
+def missing_section_markers(roadmap: Path) -> list[str]:
+    """Report every section an item needs but an index page lacks the ``GENERATED`` markers for.
+
+    Empty when both index pages carry a marker pair for each item's ``(bucket, topic)`` — the
+    invariant the render silently assumes. Non-empty entries name the page, the missing key, and
+    the item, so the fix (add the heading + marker pair) is unambiguous.
+    """
+    required = required_section_keys(roadmap)
+    marker_sets = {
+        lang.index_file: _paired_marker_keys(
+            (roadmap / lang.index_file).read_text(encoding="utf-8")
+        )
+        for lang in LANGS
+    }
+    return [
+        f"{index_file}: no '<!-- GENERATED:{key} -->' section for {item_dir} "
+        "(add the heading + marker pair for this Topic under its bucket)"
+        for key, item_dir in sorted(required.items())
+        for index_file, keys in marker_sets.items()
+        if key not in keys
+    ]
+
+
 def _diff(current: str, updated: str, name: str) -> str:
     return "".join(
         difflib.unified_diff(
@@ -409,8 +480,12 @@ def main(argv: list[str]) -> int:
     check = "--check" in argv
     try:
         items = load_items(ROADMAP)
+        missing = missing_section_markers(ROADMAP)
     except ValueError as exc:
         print(exc, file=sys.stderr)
+        return 1
+    if missing:
+        print("\n".join(missing), file=sys.stderr)
         return 1
     drift: list[str] = []
     for lang in LANGS:

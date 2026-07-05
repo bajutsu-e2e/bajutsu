@@ -8,7 +8,7 @@
 > launching the app (boot/launch) is handled by a `simctl` wrapper.
 >
 > Implementation: `bajutsu/drivers/` (`base.py` / `idb.py` / `playwright.py` / `fake.py`) ·
-> `bajutsu/backends.py` · `bajutsu/env.py`.
+> `bajutsu/backends.py` · `bajutsu/simctl.py`.
 
 Related: [selectors](selectors.md) (resolution) · [the stability ladder](concepts.md#5-the-stability-ladder) · [run-loop](run-loop.md)
 
@@ -27,15 +27,17 @@ class Driver(Protocol):
     def long_press(self, sel: Selector, duration: float) -> None: ...
     def swipe(self, frm: Point, to: Point) -> None: ...
     def type_text(self, text: str) -> None: ...
-    def wait_for(self, sel: Selector, timeout: float) -> bool: ...
+    def wait_for(self, sel: Selector) -> bool: ...   # single-shot: matches the current screen?
     def screenshot(self, path: str) -> None: ...
     def capabilities(self) -> set[str]: ...          # provided capabilities (for actuator / fallback resolution)
 ```
 
-> **About `wait_for`**: it exists on the Protocol, but the run loop's condition waits are done by
-> the orchestrator itself polling `query()` (`_wait`, [run-loop](run-loop.md#waits-condition-waits-only)),
-> so the current execution path does not call the driver's `wait_for` directly. It remains part
-> of the interface.
+> **About `wait_for`**: it is **single-shot by contract** (BE-0118) — it checks the current screen
+> once and returns, never looping. The deadline poll lives in one shared helper, `base.wait_until`,
+> so a caller's `timeout` means the same real seconds on every backend instead of each driver
+> reimplementing its own loop. The run loop's own condition waits are done by the orchestrator
+> polling `query()` directly (`_wait`, [run-loop](run-loop.md#waits-condition-waits-only)); so
+> `wait_until` is used only by callers outside that loop (e.g. `golden_assert`).
 
 ### Capabilities (`Capability`)
 
@@ -51,6 +53,7 @@ resolution, and the **preflight capability check** (below).
 | `conditionWait` | native condition waiting | — | ✅ | ✅ |
 | `network` | native network monitoring | — | ✅ | — |
 | `multiTouch` | two-finger gestures (pinch / rotate) | — | ✅ | ✅ |
+| `deviceControl` | simctl device operations (push / setLocation / clearKeychain / …) | ✅ | — | — |
 
 > idb actuates by **frame-center coordinates** — it exposes no semantic tap, so the run loop resolves
 > a unique element via `query()` and taps its center. `pinch` / `rotate` raise `UnsupportedAction`
@@ -72,12 +75,19 @@ through (prime directive #2: fail fast and clearly). It is a pure function of (s
 set) — no device, no clock — and per-scenario: only the offending scenarios fail, the rest run.
 
 The check gates only the **hard** requirements the capability set cleanly decides: `pinch` /
-`rotate` need `multiTouch`, a `visual` assertion needs `screenshot`, and every run needs `query` +
+`rotate` need `multiTouch`, a `visual` assertion needs `screenshot`, a device-control step
+(`setLocation` / `push` / `clearKeychain` / `clearClipboard` / `setClipboard` / `background` /
+`foreground` / `overrideStatusBar` / `clearStatusBar`) needs `deviceControl` (the whole
+simctl-backed `DeviceControl` family as one unit, BE-0128), and every run needs `query` +
 `elements`. It deliberately does **not** gate `conditionWait` (the run loop polls for every wait,
 so no backend needs the token) or `network` (idb captures traffic through the app-side collector
 despite not advertising `network`, so `request` / `event` / `requestSequence` / `responseSchema`
 assertions and `until: { request }` waits run on idb). `gestures.py`'s `_require_multi_touch` stays
-as a defense-in-depth check at gesture time.
+as a defense-in-depth check at gesture time, and `_need_control` stays as the equivalent for
+device-control steps — catching the case where a backend advertises `deviceControl` (so the
+preflight lets the scenario through) but the specific run still has no `DeviceControl` wired, e.g.
+a parallel run with no pinned device. A backend that does not advertise `deviceControl` (Playwright,
+`fake`) never reaches this path: the preflight rejects its device-control scenarios first.
 
 ## idb
 
@@ -94,7 +104,7 @@ Headless, coordinate-based. For CI (continuous integration). With no semantic ta
   as a pan by SwiftUI).
 
 > The describe-all JSON key names follow fb-idb's output and are **validated on-device** against
-> fb-idb (iPhone 17 Pro, recent iOS) via `make -C demos/features e2e` + the `e2e.yml` CI workflow; re-check them only
+> fb-idb (iPhone 17 Pro, recent iOS) via `make -C demos/showcase run-swiftui` + the `e2e.yml` CI workflow; re-check them only
 > if the installed idb version changes the schema (the note atop `idb.py`). The idb client is
 > `uv sync --extra idb`; `idb_companion` is `brew install facebook/fb/idb-companion`.
 
@@ -124,7 +134,7 @@ whatever happens to be installed:
 
 Headless Chromium via Playwright (Python). Runs on Linux with **no Mac and no Simulator**, so it
 fits the same toolchain as `make check`. Implementation: `drivers/playwright.py` (roadmap
-[BE-0041](../roadmaps/implemented/BE-0041-web-playwright-backend/BE-0041-web-playwright-backend.md)).
+[BE-0041](../roadmaps/BE-0041-web-playwright-backend/BE-0041-web-playwright-backend.md)).
 
 - `query()`: one `page.evaluate()` walks the visible / interactive / a11y-relevant DOM nodes and a
   pure parser (`parse_dom`) maps each to an `Element`. The id convention is the web equivalent of
@@ -135,7 +145,8 @@ fits the same toolchain as `make check`. Implementation: `drivers/playwright.py`
   coordinate (`page.mouse.click`). It deliberately does **not** use Playwright's own
   `get_by_test_id().click()`, so selector semantics stay byte-identical to every other backend.
 - `type_text` types via `page.keyboard` (the orchestrator taps `into` first, focusing the field);
-  `screenshot` is `page.screenshot`; `wait_for` is single-shot via `find_all` (same as idb).
+  `screenshot` is `page.screenshot`; `wait_for` is single-shot via `find_all` (like every backend —
+  the shared `base.wait_until` supplies the deadline poll).
 - Lifecycle is owned by the driver: a fresh `BrowserContext` is the `erase` equivalent, `navigate()`
   (`page.goto(baseUrl)`) is the `launch`, and `close()` tears the browser down. There is no simctl
   device, so the run uses a dummy lease and no device control.
@@ -186,23 +197,23 @@ Implementation: `bajutsu/backends.py`.
 
 ```python
 PLATFORMS = {                              # a platform token expands to its actuators
-    "ios":     ("xcuitest", "idb"),        #   XCUITest preferred, idb fallback (BE-0019); xcuitest not built yet
+    "ios":     ("xcuitest", "idb"),        #   XCUITest preferred, idb fallback (BE-0019)
     "android": ("adb",),                   #   planned
     "web":     ("playwright",),            #   implemented (BE-0041)
     "fake":    ("fake",),                  #   the in-memory test/demo driver
 }
-IMPLEMENTED = {"idb", "fake", "playwright"}  # actuators with a driver today
+IMPLEMENTED = {"idb", "fake", "playwright", "xcuitest"}  # actuators with a driver today
 
 def default_available(actuator) -> bool:   # implemented + backing tool present (playwright: package import; fake: always)
 def resolve_actuators(backends) -> list:   # expand each token (platform or actuator) to actuators
 def select_actuator(backends, available) -> str:  # first implemented + available, in order
-def make_driver(actuator, udid, *, base_url=None) -> Driver:  # "idb"→IdbDriver, "playwright"→PlaywrightDriver, "fake"→FakeDriver
+def make_driver(actuator, udid, *, base_url=None, runner_port=None) -> Driver:  # "xcuitest"→XcuitestDriver, "idb"→IdbDriver, "playwright"→PlaywrightDriver, "fake"→FakeDriver
 ```
 
 - A **backend token** is either a **platform** (`ios` / `android` / `web` / `fake`) or a concrete
-  **actuator** (e.g. `idb`). `ios` now lists `xcuitest` ahead of `idb` (BE-0019), but XCUITest has no
-  driver yet, so `--backend ios` (or `backend: [ios]`) still resolves to `idb` today and picks up the
-  richer XCUITest actuator automatically once it lands — the scenario and config never change.
+  **actuator** (e.g. `idb`). `ios` lists `xcuitest` ahead of `idb` (BE-0019): `--backend ios` (or
+  `backend: [ios]`) prefers XCUITest when available and falls back to `idb` when it is not (e.g.
+  headless CI without the XCUITest host) — the scenario and config never change.
 - `backend` is an **ordered list** (most-stable-first; [concepts](concepts.md#5-the-stability-ladder)).
   Each token is expanded to its actuators, in order; the **actuator = the first implemented and
   available** one. If none is available, `RuntimeError` (the CLI exits with code 2).
@@ -217,7 +228,7 @@ def make_driver(actuator, udid, *, base_url=None) -> Driver:  # "idb"→IdbDrive
   operate one device).
 
 Actuation stays with the single actuator. Non-actuator backends in the list can serve as **read-only
-evidence fallbacks** (DESIGN §9, [BE-0020](../roadmaps/implemented/BE-0020-multi-backend-evidence-fallback/BE-0020-multi-backend-evidence-fallback.md)):
+evidence fallbacks** (DESIGN §9, [BE-0020](../roadmaps/BE-0020-multi-backend-evidence-fallback/BE-0020-multi-backend-evidence-fallback.md)):
 a same-platform backend whose `capabilities()` advertises a kind the actuator lacks (e.g.
 `Capability.NETWORK`) is resolved as the provider for that kind, accessed only through the narrow
 `EvidenceProvider` Protocol (no tap/type/swipe — a type-level guarantee). When no backend can fill a
@@ -227,7 +238,7 @@ details.
 
 ## Environment management (simctl)
 
-Implementation: `bajutsu/env.py`. Command builders are pure functions (unit-tested); execution goes
+Implementation: `bajutsu/simctl.py`. Command builders are pure functions (unit-tested); execution goes
 through an injectable `RunFn`.
 
 | Method | Command | Notes |
@@ -241,8 +252,8 @@ through an injectable `RunFn`.
 
 > **Injecting launch env**: an env var to pass to the app is set on the parent process as
 > `SIMCTL_CHILD_<NAME>`, which reaches the child (the app) as `<NAME>`. `child_env()` does this
-> conversion. The sample app's launch hooks like `SAMPLE_UITEST` use this mechanism
-> ([sample-app](sample-app.md#launch-env-hooks)).
+> conversion. The showcase's launch hooks like `SHOWCASE_UITEST` use this mechanism
+> ([showcase](showcase.md#launch-environment-hooks)).
 
 The `video` / `deviceLog` interval captures also use `simctl io recordVideo` / `simctl spawn log
 stream`, but those live in the evidence subsystem (`intervals.py`)

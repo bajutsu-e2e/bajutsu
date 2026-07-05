@@ -3,11 +3,11 @@
 # Getting started
 
 > A hands-on walkthrough. By the end you will have installed Bajutsu, run the
-> unit suite, read a scenario, driven the bundled sample app on a Simulator, and opened the
+> unit suite, read a scenario, driven the bundled showcase app on a Simulator, and opened the
 > HTML report. The other pages are a reference (what each feature does); this one is a
 > tutorial (do these steps, in order).
 
-Related: [cli](cli.md) · [scenarios](scenarios.md) · [sample-app](sample-app.md) · [run-loop](run-loop.md) · [reporting](reporting.md)
+Related: [cli](cli.md) · [scenarios](scenarios.md) · [showcase](showcase.md) · [run-loop](run-loop.md) · [reporting](reporting.md)
 
 ---
 
@@ -16,11 +16,16 @@ Related: [cli](cli.md) · [scenarios](scenarios.md) · [sample-app](sample-app.m
 | For… | You need |
 |---|---|
 | The deterministic core + unit tests | macOS or Linux, Python 3.13 (managed via [uv](https://github.com/astral-sh/uv)) |
-| Driving an app on a Simulator | macOS with **Xcode** (the iOS Simulator), [XcodeGen](https://github.com/yonwoo9/XcodeGen) (to build the sample), and the **idb** backend (`brew install facebook/fb/idb-companion`) |
+| Driving an app on a Simulator | macOS with **Xcode** (the iOS Simulator), [XcodeGen](https://github.com/yonaskolb/XcodeGen) (to build the showcase), and the **idb** backend (`brew install facebook/fb/idb-companion`) |
 | Driving a web app (Playwright) | any OS — `uv sync --extra web` + `uv run playwright install chromium` (no Mac / Simulator; see [`demos/web`](../demos/web/README.md)) |
 | AI authoring (`record` / `crawl`) / `--dismiss-alerts` | an `ANTHROPIC_API_KEY` (or a Claude Code login with `--agent claude-code`) |
 
 You can do **Steps 1–3 on any machine** (no Simulator). Steps 4–6 need a Mac with Xcode.
+
+> **No Claude needed to start.** Only the AI authoring paths reach a model; `run`, `doctor`,
+> `lint`, `codegen`, `trace`, and friends run with **zero configuration** — no key, no `.env`, no
+> login. Which commands use Claude and which don't is spelled out in
+> [What uses Claude](ai-boundary.md).
 
 > **Status note.** Bajutsu is pre-alpha. The deterministic core, the AI authoring loop, the
 > evidence subsystem, and codegen are all implemented and unit-tested; on-device execution via
@@ -38,6 +43,11 @@ uv sync --group dev                        # creates .venv (Python 3.13) + deps 
 
 `uv` reads `pyproject.toml` / `uv.lock` and builds an isolated `.venv`. Prefix project commands
 with `uv run` (e.g. `uv run bajutsu …`) so they use that environment.
+
+> **Installing from PyPI?** The base package is AI-free: `pip install bajutsu` gets the
+> deterministic authoring / running paths with no AI SDK, and `pip install bajutsu[ai]` (or
+> `bajutsu[bedrock]`) adds the SDK for the Claude paths. The split is detailed in
+> [What uses Claude](ai-boundary.md#installing-the-claude-paths).
 
 Confirm the CLI (command-line interface) is wired up:
 
@@ -70,13 +80,13 @@ it.
 
 A scenario is plain YAML: a list of named tests, each with optional `preconditions`, a list of
 `steps`, and an `expect` block of **machine-checkable assertions**. Open the bundled smoke test,
-[`demos/features/app/scenarios/smoke.yaml`](../demos/features/app/scenarios/smoke.yaml):
+[`demos/showcase/scenarios/smoke.yaml`](../demos/showcase/scenarios/smoke.yaml):
 
 ```yaml
 # End-to-end smoke: onboarding -> login -> home -> counter.
 - name: onboard, log in, and increment the counter
   preconditions:
-    launchEnv: { SAMPLE_UITEST: "1" }     # disable animations -> tight condition waits
+    launchEnv: { SHOWCASE_UITEST: "1" }     # disable animations -> tight condition waits
   steps:
     - tap:  { id: onboarding.start }
     - type: { text: "a@b.com", into: { id: auth.email } }
@@ -102,22 +112,23 @@ The key points:
   element exists, up to the timeout.
 
 The full grammar (every step kind, wait, and assertion) is in [scenarios](scenarios.md); the
-identifiers this app exposes are catalogued in [sample-app](sample-app.md).
+identifiers this app exposes are catalogued in [showcase](showcase.md).
 
 ---
 
-## Step 4 — Build the sample app (needs Xcode)
+## Step 4 — Build the showcase app (needs Xcode)
 
-The repo ships a small SwiftUI fixture, `BajutsuSample`, instrumented for every Bajutsu
-primitive. Build it for the Simulator:
+The repo ships the showcase fixture — the same app in SwiftUI and UIKit, each in an
+accessibility-on / -off variant — instrumented for every Bajutsu primitive. Build the SwiftUI
+accessibility product for the Simulator:
 
 ```bash
-make -C demos/features sample-build         # xcodegen generate -> xcodebuild for the iOS Simulator
+make -C demos/showcase swiftui-build         # xcodegen generate -> xcodebuild for the iOS Simulator
 ```
 
-This produces `BajutsuSample.app` under `demos/features/app/build/…`. (The `.xcodeproj` and `build/` are
-gitignored — `project.yml` is the source of truth.) See [sample-app](sample-app.md) for the launch-env
-hooks and the identifier catalog.
+This produces `BajutsuShowcaseSwiftUI.app` under `demos/showcase/ios/swiftui/build/…`. (The `.xcodeproj`
+and `build/` are gitignored — `project.yml` is the source of truth.) See [showcase](showcase.md) for
+the launch-env hooks and the identifier catalog.
 
 ---
 
@@ -135,18 +146,18 @@ The one-shot path is the `make` target, which installs the freshly built app and
 scenario plus a `doctor` check on the booted device:
 
 ```bash
-make -C demos/features e2e
+make -C demos/showcase run-swiftui
 ```
 
 Or drive the CLI directly (the same steps, written out):
 
 ```bash
-uv run bajutsu run --scenario demos/features/app/scenarios/smoke.yaml --target sample --backend idb --udid booted --no-erase
+uv run bajutsu run --scenario demos/showcase/scenarios/smoke.yaml --target showcase-swiftui --backend idb --udid booted --no-erase
 ```
 
 What the flags mean:
 
-- `--target sample` selects `targets.sample` from [`bajutsu.config.yaml`](../bajutsu.config.yaml)
+- `--target showcase-swiftui` selects `targets.showcase-swiftui` from [`bajutsu.config.yaml`](../bajutsu.config.yaml)
   (bundle id, launch env, allowed id namespaces). The tool itself is app-agnostic; all per-target
   differences live in config ([configuration](configuration.md)).
 - `--backend idb` picks the actuator; `--udid booted` targets the currently booted Simulator.
@@ -162,7 +173,7 @@ PASS  runs/20260610-120000/manifest.json
 ([run-loop](run-loop.md)).
 
 > Hit an environment problem (no booted Simulator, idb not installed)? Run
-> `uv run bajutsu doctor --target sample` first — it prints a ✓/✗ checklist of the required CLIs and
+> `uv run bajutsu doctor --target showcase-swiftui` first — it prints a ✓/✗ checklist of the required CLIs and
 > a booted device, then scores how well the current screen follows the identifier convention
 > ([configuration](configuration.md#doctor-the-convention-score)).
 
@@ -205,18 +216,19 @@ entry points use the same scenario format:
 - **Author with AI.** Let Claude explore toward a goal and write the scenario for you (Tier 1).
   Put `ANTHROPIC_API_KEY=sk-ant-…` in a `.env` file, then:
   ```bash
-  uv run bajutsu record --target sample --goal "log in and increment the counter to 3"   # writes into the app's scenarios dir
+  uv run bajutsu record --target showcase-swiftui --goal "log in and increment the counter to 3"   # writes into the app's scenarios dir
   ```
-  In the web UI (`make serve`) the **API key** button sets the same key for the running session,
-  showing it redacted with a reveal toggle. It is kept in memory only (not written to disk), so a
+  In the web UI (`make serve`) the **API key** button sets the same key for the running session.
+  The key is write-once: it is shown only as a masked preview and never displayed again — to change
+  it, set a new one (there is no read-back). It is kept in memory only (not written to disk), so a
   `.env` is still the way to make it survive a restart. How the authoring loop and the system-alert
   guard work: [recording](recording.md).
 - **Emit a native XCUITest.** Convert a scenario to Swift (no Bajutsu runtime / AI at test time):
   ```bash
-  uv run bajutsu codegen demos/features/app/scenarios/smoke.yaml --target sample -o UITests/Smoke.swift
+  uv run bajutsu codegen demos/showcase/scenarios/smoke.yaml --target showcase-swiftui -o UITests/Smoke.swift
   ```
-  The structural mapping: [codegen](codegen.md). Run it end-to-end with `make -C demos/features ui-test`.
+  The structural mapping: [codegen](codegen.md). Run it end-to-end with `make -C demos/showcase ui-test`.
 
 From here, the reference pages cover each piece in depth. Start with [concepts](concepts.md) for the
 rationale, then follow the suggested reading order in the [docs overview](overview.md). To onboard your own
-app (not the sample), see [configuration](configuration.md#onboarding-a-new-target).
+app (not the showcase), see [configuration](configuration.md#onboarding-a-new-target).

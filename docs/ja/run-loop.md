@@ -115,7 +115,7 @@ erase（pre.erase なら shutdown → erase） → boot → terminate(bundle)（
   → _await_ready（query() が 2 要素以上返すまで最大 10s ポーリング）
 ```
 
-> `_await_ready` は「アプリが UI を描画した（ルート要素より多い）」ことをポーリングで待ちます。`locale` は launch 時に **適用されます**（シナリオの `preconditions.locale` が config 既定を上書きし、`env.locale_args` で launch 引数として渡ります）。simctl の launch 手順は `make -C demos/features e2e` ＋ `e2e.yml` CI ワークフローで実機（iPhone 17 Pro）検証済みです。
+> `_await_ready` は「アプリが UI を描画した（ルート要素より多い）」ことをポーリングで待ちます。`locale` は launch 時に **適用されます**（シナリオの `preconditions.locale` が config 既定を上書きし、`env.locale_args` で launch 引数として渡ります）。simctl の launch 手順は `make -C demos/showcase run-swiftui` ＋ `e2e.yml` CI ワークフローで実機（iPhone 17 Pro）検証済みです。
 
 ### `device_factory` / `run_all` / `run_and_report`
 

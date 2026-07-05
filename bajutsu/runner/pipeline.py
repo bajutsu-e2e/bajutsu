@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Any
 
 from bajutsu import capability_preflight, idb_version
+from bajutsu.artifact_perms import make_run_dir, restrict_file
 from bajutsu.assertions import (
     AssertionResult,
     GoldenContext,
@@ -35,7 +36,7 @@ from bajutsu.redaction import Redactor
 from bajutsu.report import run_provenance, scenario_render_inputs, write_report
 from bajutsu.runner.mailbox import build_mailbox_reader
 from bajutsu.runner.types import LeaseFn, OnBlockedFor, _no_net
-from bajutsu.scenario import Scenario, dump_scenario_file
+from bajutsu.scenario import Scenario, dump_scenario_file, redact_totp_secrets
 
 
 def _write_network(
@@ -65,6 +66,8 @@ def _write_network(
     out = run_dir / sid / "network.json"
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(text, encoding="utf-8")
+    # network.json can carry request/response bodies and headers — owner-only, umask-independent (BE-0131).
+    restrict_file(out)
     return Artifact(f"{sid}/network.json", "network", provider)
 
 
@@ -171,7 +174,7 @@ def run_all(
             gc_with_screen = golden_context
             if golden_context is not None and golden_context.screen is None:
                 try:
-                    from bajutsu.capture import screen_size_from_elements
+                    from bajutsu.elements import screen_size_from_elements
 
                     sw, sh = screen_size_from_elements(lz.driver.query())
                     gc_with_screen = GoldenContext(
@@ -195,6 +198,7 @@ def run_all(
                 schema_context=sc,
                 mailbox=mailbox,
                 golden_context=gc_with_screen,
+                webview_bridge=lz.webview_bridge,
             )
             result.sid = sid  # the evidence-dir slug, so the matrix links to the real dir (BE-0076)
             result.device = lz.udid  # attribute the scenario to the device that ran it
@@ -262,6 +266,9 @@ def run_and_report(
         The per-scenario results and the path to the written `manifest.json`.
     """
     run_dir = runs_dir / run_id
+    # Create the run dir owner-only up front, before any scenario write creates it world-readable
+    # under the ambient umask; everything underneath then inherits a non-world-readable parent (BE-0131).
+    make_run_dir(run_dir)
     results = run_all(
         eff,
         scenarios,
@@ -321,6 +328,9 @@ def run_matrix_and_report(
         The concatenated per-engine results and the path to the written `manifest.json`.
     """
     run_dir = runs_dir / run_id
+    # Owner-only up front (BE-0131): each engine pass writes under run_dir/<engine>, so a 0700 top
+    # dir keeps every engine's evidence non-world-readable without per-subdir chmod.
+    make_run_dir(run_dir)
     results: list[RunResult] = []
     for engine in engines:
         passed = run_pass(engine, run_dir / engine)
@@ -393,13 +403,19 @@ def _assemble_report(
     `scenario.yaml`, the idb/provenance stamps, and `manifest.json` / `junit.xml` / `report.html`,
     then the final secret-value scrub.
     """
+    # Snapshot for evidence with literal `totp.secret` seeds masked (BE-0152) — a `${secrets.*}`
+    # reference is kept and its resolved value is scrubbed by the secret-value pass below.
+    snapshot = [redact_totp_secrets(s) for s in scenarios]
     # The merged Result tab renders each scenario as a structured view (definitions) with a toggle
     # to the raw YAML (sources). The same helper feeds the offline re-render, so the two match.
-    definitions, sources = scenario_render_inputs(scenarios)
-    run_dir.mkdir(parents=True, exist_ok=True)
+    definitions, sources = scenario_render_inputs(snapshot)
+    make_run_dir(run_dir)  # owner-only; idempotent if run_and_report already created it (BE-0131)
     # Keep the executed scenario alongside its results (re-runnable / reviewable).
-    scenario_yaml = dump_scenario_file(scenarios, description)
-    (run_dir / "scenario.yaml").write_text(scenario_yaml, encoding="utf-8")
+    scenario_yaml = dump_scenario_file(snapshot, description)
+    scenario_path = run_dir / "scenario.yaml"
+    scenario_path.write_text(scenario_yaml, encoding="utf-8")
+    # The scenario copy can hold masked-but-sensitive text — owner-only, umask-independent (BE-0131).
+    restrict_file(scenario_path)
     # Record the idb versions this run was driven against, but only when idb actually drove it —
     # provenance for the artifact set, never a pass/fail input (BE-0005). Non-idb runs probe nothing.
     # idb-by-name is fine while idb is the only backend with a toolchain version; when a second
@@ -459,7 +475,7 @@ def _scrub_secret_values(run_dir: Path, secret_values: list[str] | None) -> None
     if not secret_values:
         return
     scrub = Redactor(None, values=secret_values)
-    for name in ("manifest.json", "junit.xml", "report.html", "scenario.yaml"):
+    for name in ("manifest.json", "junit.xml", "ctrf.json", "report.html", "scenario.yaml"):
         path = run_dir / name
         if path.exists():
             path.write_text(scrub.redact_text(path.read_text(encoding="utf-8")), encoding="utf-8")

@@ -1,0 +1,99 @@
+name: BajutsuShowcaseSwiftUI
+options:
+  bundleIdPrefix: com.bajutsu.showcase
+  deploymentTarget:
+    iOS: "17.0"
+  createIntermediateGroups: true
+settings:
+  base:
+    SWIFT_VERSION: "5.10"
+    ENABLE_USER_SCRIPT_SANDBOXING: NO
+    SUPPORTED_PLATFORMS: "iphoneos iphonesimulator"
+    SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD: NO
+    SUPPORTS_MACCATALYST: NO
+    TARGETED_DEVICE_FAMILY: "1,2"
+packages:
+  BajutsuKit:
+    path: ../../../../BajutsuKit
+targets:
+  # The a11y build: ACCESSIBLE is defined, so every aid(...) attaches an identifier
+  # and state mirrors to accessibilityValue. doctor --target grades this Ready.
+  BajutsuShowcaseSwiftUI:
+    type: application
+    platform: iOS
+    sources:
+      - path: Sources
+    dependencies:
+      - package: BajutsuKit
+    info:
+      path: Info.plist
+      properties:
+        UILaunchScreen:
+          UIColorName: ""
+        CFBundleDisplayName: Showcase SwiftUI
+        UIRequiredDeviceCapabilities: [arm64]
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+        CFBundleURLTypes:
+          - CFBundleURLName: com.bajutsu.showcase.ios.swiftui
+            CFBundleURLSchemes: [showcaseswiftui]
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.bajutsu.showcase.ios.swiftui
+        SWIFT_ACTIVE_COMPILATION_CONDITIONS: ACCESSIBLE
+  # The no-a11y twin: same Sources/, but ACCESSIBLE is absent, so aid(...) is a no-op
+  # and no identifiers or mirrored values reach the tree. doctor --target grades it Blocked.
+  BajutsuShowcaseSwiftUINoAx:
+    type: application
+    platform: iOS
+    sources:
+      - path: Sources
+    dependencies:
+      - package: BajutsuKit
+    info:
+      path: Info-NoAx.plist
+      properties:
+        UILaunchScreen:
+          UIColorName: ""
+        CFBundleDisplayName: Showcase SwiftUI (no a11y)
+        UIRequiredDeviceCapabilities: [arm64]
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+        CFBundleURLTypes:
+          - CFBundleURLName: com.bajutsu.showcase.ios.swiftui.noax
+            CFBundleURLSchemes: [showcaseswiftuinoax]
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.bajutsu.showcase.ios.swiftui.noax
+  # Native XCUITest host for the codegen output (SPEC §5.4): `bajutsu codegen` writes
+  # UITests/ComponentsUITests.swift, which runs against the a11y app via the `UITests`
+  # scheme below — no bajutsu runtime, idb, or AI at test time.
+  BajutsuShowcaseSwiftUIUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - path: UITests
+    dependencies:
+      - target: BajutsuShowcaseSwiftUI
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.bajutsu.showcase.ios.swiftui.uitests
+        GENERATE_INFOPLIST_FILE: YES
+schemes:
+  BajutsuShowcaseSwiftUI:
+    build:
+      targets:
+        BajutsuShowcaseSwiftUI: all
+  BajutsuShowcaseSwiftUINoAx:
+    build:
+      targets:
+        BajutsuShowcaseSwiftUINoAx: all
+  UITests:
+    build:
+      targets:
+        BajutsuShowcaseSwiftUI: all
+        BajutsuShowcaseSwiftUIUITests: [test]
+    test:
+      targets:
+        - BajutsuShowcaseSwiftUIUITests
+      gatherCoverageData: false

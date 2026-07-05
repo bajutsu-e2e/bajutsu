@@ -25,7 +25,7 @@ import urllib.error
 import urllib.request
 from collections.abc import Callable
 
-from bajutsu.config import Effective
+from bajutsu.config import Effective, web_base_url
 
 _POLL_INTERVAL = 0.25  # seconds between readiness probes (the grain of the condition wait)
 
@@ -95,9 +95,9 @@ def start_launch_server(
     say = log or _default_log
     if upload_exec == "sandbox":
         return start_sandboxed_server(eff, log=log)
-    ready_url = ls.ready_url or eff.base_url
+    ready_url = ls.ready_url or web_base_url(eff)
     if not ready_url:
-        raise RuntimeError("launchServer needs readyUrl (or set the app's baseUrl to probe)")
+        raise RuntimeError("launchServer needs readyUrl (or set the target's baseUrl to probe)")
 
     if upload_exec in ("deny", "reuse"):
         # Neither mode runs the uploaded command: only an externally-answering readyUrl is accepted,

@@ -8,8 +8,8 @@ imported only when the server backend is selected (the import guard in
 ``server`` optional-dependency group.
 
 The transport-specific parts mirror the stdlib handler one-to-one: the auth gate (BE-0051), the
-CSRF Origin check, the session cookie, and the hardening response headers. Live-log SSE streaming
-arrives with a later slice; the rest of the API surface is here.
+unconditional CSRF Origin check and Host allowlist (BE-0121), the session cookie, and the hardening
+response headers. Live-log SSE streaming arrives with a later slice; the rest of the API surface is here.
 """
 
 from __future__ import annotations
@@ -66,9 +66,27 @@ def make_app(state: ServeState) -> FastAPI:
 
     @app.middleware("http")
     async def gate(request: Request, call_next: Any) -> Response:
-        """Auth + CSRF + hardening headers, mirroring the stdlib handler's `_gate`/`_csrf_ok`/
-        `end_headers` exactly so the two backends enforce the same policy."""
+        """Host allowlist + auth + CSRF + hardening headers, mirroring the stdlib handler's
+        `_gate`/`_host_ok`/`_csrf_ok`/`end_headers` exactly so the two backends enforce the same
+        policy (BE-0051/BE-0121)."""
         oplog.bind_request(oplog.new_request_id())
+        # DNS-rebinding defense (BE-0121): a Host that names no bound interface is refused ahead of
+        # everything else, regardless of the token/CSRF posture. An empty allowlist (a wildcard bind,
+        # set by make_asgi_server) accepts any Host, so this is off unless we bound a named interface.
+        if state.allowed_hosts:
+            host = urlparse(f"//{request.headers.get('host', '')}").hostname
+            if host not in state.allowed_hosts:
+                return _hardened(JSONResponse({"error": "host not allowed"}, status_code=403))
+        # Block cross-origin state-changing requests unconditionally (BE-0121) — not only when a token
+        # is configured. A no-token server would otherwise leave every POST as an unguarded CSRF
+        # surface (the CSRF-to-arbitrary-config hole this closes). No Origin (a non-browser client)
+        # passes, matching the stdlib `_csrf_ok`.
+        if request.method == "POST":
+            origin = request.headers.get("origin")
+            if origin and urlparse(origin).netloc != (request.headers.get("host") or ""):
+                return _hardened(
+                    JSONResponse({"error": "cross-origin request blocked"}, status_code=403)
+                )
         if state.token is not None:
             path, method = request.url.path, request.method
             open_path = (method == "GET" and path in _OPEN_GET) or (
@@ -85,13 +103,6 @@ def make_app(state: ServeState) -> FastAPI:
                 and ops.forbidden_for_role(state, login, method, path)
             ):
                 return _hardened(JSONResponse({"error": "forbidden"}, status_code=403))
-            # Block cross-origin state-changing requests when auth (the cookie) is in play.
-            if method == "POST":
-                origin = request.headers.get("origin")
-                if origin and urlparse(origin).netloc != (request.headers.get("host") or ""):
-                    return _hardened(
-                        JSONResponse({"error": "cross-origin request blocked"}, status_code=403)
-                    )
         return _hardened(await call_next(request))
 
     def _hardened(response: Response) -> Response:
@@ -140,8 +151,8 @@ def make_app(state: ServeState) -> FastAPI:
         return _result(ops.browse_fs(state, dir))
 
     @app.get("/api/apikey")
-    async def api_key(reveal: str | None = None) -> JSONResponse:
-        return _result(ops.api_key_info(state, bool(reveal)))
+    async def api_key(request: Request) -> JSONResponse:
+        return _result(ops.api_key_info(state, _actor(request)))
 
     @app.get("/api/provider")
     async def get_provider() -> JSONResponse:
@@ -154,6 +165,11 @@ def make_app(state: ServeState) -> FastAPI:
     @app.get("/api/runs")
     async def runs(request: Request) -> JSONResponse:
         return _result(ops.runs_payload(state, actor=_actor(request)))
+
+    @app.get("/stats", response_class=HTMLResponse)
+    async def stats(request: Request) -> HTMLResponse:
+        html, code = ops.stats_html(state, actor=_actor(request))
+        return HTMLResponse(html, status_code=code)
 
     @app.get("/api/scenario")
     async def read_scenario(
@@ -173,6 +189,10 @@ def make_app(state: ServeState) -> FastAPI:
                 scenario_name=scenario,
             )
         )
+
+    @app.get("/api/schema")
+    async def scenario_schema() -> JSONResponse:
+        return _result(ops.scenario_schema())
 
     @app.get("/api/jobs/{job_id}")
     async def job(job_id: str) -> JSONResponse:
@@ -262,8 +282,8 @@ def make_app(state: ServeState) -> FastAPI:
         return _result(ops.bind_config(state, str(body.get("path", "") or "")))
 
     @app.post("/api/apikey")
-    async def set_api_key(body: dict[str, Any]) -> JSONResponse:
-        return _result(ops.set_api_key(state, str(body.get("value", "") or "")))
+    async def set_api_key(body: dict[str, Any], request: Request) -> JSONResponse:
+        return _result(ops.set_api_key(state, str(body.get("value", "") or ""), _actor(request)))
 
     @app.post("/api/provider")
     async def set_provider(body: dict[str, Any]) -> JSONResponse:
@@ -289,12 +309,46 @@ def make_app(state: ServeState) -> FastAPI:
     async def resolve_scenario_pick(body: dict[str, Any], request: Request) -> JSONResponse:
         return _result(ops.resolve_scenario_pick(state, body, actor=_actor(request)))
 
+    @app.post("/api/lint")
+    async def lint_scenario(body: dict[str, Any]) -> JSONResponse:
+        return _result(ops.lint_scenario(body))
+
     @app.post("/api/approve")
     async def approve(body: dict[str, Any], request: Request) -> JSONResponse:
         return _result(ops.approve_baseline(state, body, actor=_actor(request)))
 
+    @app.post("/api/doctor")
+    async def doctor(body: dict[str, Any], request: Request) -> JSONResponse:
+        return _result(ops.doctor_check(state, body, actor=_actor(request)))
+
     @app.post("/api/jobs/{job_id}/cancel")
     async def cancel(job_id: str) -> JSONResponse:
         return _result(ops.cancel_job(state, job_id))
+
+    @app.post("/api/runs/{run_id}/upload-urls")
+    async def upload_urls(run_id: str, body: dict[str, Any]) -> JSONResponse:
+        return _result(ops.generate_upload_urls(state, run_id, body))
+
+    @app.post("/api/worker/lease")
+    async def worker_lease(body: dict[str, Any]) -> JSONResponse:
+        return _result(ops.worker_lease(state, body.get("worker_id", "")))
+
+    @app.post("/api/worker/heartbeat")
+    async def worker_heartbeat(body: dict[str, Any]) -> JSONResponse:
+        return _result(
+            ops.worker_heartbeat(state, body.get("worker_id", ""), body.get("job_id", ""))
+        )
+
+    @app.post("/api/worker/result")
+    async def worker_result(body: dict[str, Any]) -> JSONResponse:
+        return _result(ops.worker_result(state, body))
+
+    @app.post("/api/worker/artifact-urls")
+    async def worker_artifact_urls(body: dict[str, Any]) -> JSONResponse:
+        return _result(ops.worker_artifact_urls(state, body))
+
+    @app.post("/api/worker/scenario-url")
+    async def worker_scenario_url(body: dict[str, Any]) -> JSONResponse:
+        return _result(ops.worker_scenario_url(state, body))
 
     return app

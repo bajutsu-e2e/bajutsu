@@ -183,7 +183,7 @@ def test_for_org_routes_to_the_per_org_bundle(tmp_path: Path) -> None:
 
     def factory(org: str) -> StoreBundle:
         seen.append(org)
-        return StoreBundle(state.artifacts, state.scenarios, state.baselines)
+        return StoreBundle(state.artifacts, state.scenarios, state.baselines, state.secrets)
 
     state.org_stores = factory
     state.for_org("acme")

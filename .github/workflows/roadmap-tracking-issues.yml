@@ -1,0 +1,41 @@
+# Keep one GitHub tracking issue open per *open* roadmap item (BE-0109).
+#
+# On every push to `main` that touches `roadmaps/**`, reconcile GitHub's open `roadmap-tracking`
+# issues with the tree: open an issue for each open item (Status `Proposal` / `In progress`) that
+# lacks one, and close the issue of any item that has since shipped or been shelved. GitHub is the
+# source of truth for both ownership (the issue's Assignees) and issue existence, so nothing is
+# written back to the repo — the job needs only `issues: write`, no commit to `main` and no bypass
+# App (a strict subset of what `roadmap-id` requires).
+#
+# The sync is a pure function of each item's current Status and idempotent, so it stays green as a
+# no-op when the set is already consistent. It runs on `main` (not the PR) because a new proposal
+# still carries the `BE-XXXX` placeholder on its PR; only after `roadmap-id` allocates the real
+# number — itself a `roadmaps/**` push to `main` — can the now-numbered item get its issue here.
+name: "Roadmap: sync tracking issues"
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'roadmaps/**'
+  workflow_dispatch: {}  # manual trigger for the one-time backfill / an ad-hoc reconcile
+
+permissions:
+  contents: read   # check out the tree
+  issues: write    # open / close the tracking issues
+
+concurrency:
+  group: roadmap-tracking-issues-main
+  cancel-in-progress: false   # serialize so two runs can't both create the same issue
+
+jobs:
+  sync:
+    name: sync tracking issues
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+
+      - name: Reconcile tracking issues with each item's Status
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 scripts/sync_roadmap_tracking_issues.py

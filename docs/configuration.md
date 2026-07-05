@@ -4,7 +4,7 @@
 
 The tool core is app-agnostic. All app-specific differences belong in config, allowing multiple apps to run with the same binary and the same drivers. Adding a target means adding one `targets.<name>` entry.
 
-Implementation: `bajutsu/config.py` (resolution) · `bajutsu/doctor.py` (convention score). No config ships in the repo root; pass one with `--config` (default filename `bajutsu.config.yaml`) — the demos ship ready-to-run configs, e.g. [`demos/features/demo.config.yaml`](../demos/features/demo.config.yaml) (iOS) and [`demos/web/demo.config.yaml`](../demos/web/demo.config.yaml) (web).
+Implementation: `bajutsu/config.py` (resolution) · `bajutsu/doctor.py` (convention score). No config ships in the repo root; pass one with `--config` (default filename `bajutsu.config.yaml`) — the demos ship ready-to-run configs, e.g. [`demos/showcase/showcase.config.yaml`](../demos/showcase/showcase.config.yaml) (iOS) and [`demos/web/demo.config.yaml`](../demos/web/demo.config.yaml) (web).
 
 Related: [app-agnostic in concepts](concepts.md#6-app-agnostic-push-differences-into-config) · [drivers](drivers.md) · [scenarios](scenarios.md)
 
@@ -28,12 +28,12 @@ defaults:                       # shared across all targets
   reservedNamespaces: [auth, nav]   # the id contract for shared flows / components (informational)
 
 targets:
-  sample:                       # ← selected by --target sample
-    bundleId:       com.bajutsu.sample     # iOS target (required unless baseUrl is set for web)
-    deeplinkScheme: bajutsusample
-    idNamespaces:   [home, list, counter, settings, onboarding, auth, nav, comp, ctrl, text, lists]
-    launchEnv:      { SAMPLE_UITEST: "1" }
-    scenarios:      demos/features/app/scenarios   # this target's scenarios dir (run reads it; record writes here)
+  showcase-swiftui:             # ← selected by --target showcase-swiftui
+    bundleId:       com.bajutsu.showcase.ios.swiftui     # iOS target (required unless baseUrl is set for web)
+    deeplinkScheme: showcaseswiftui
+    idNamespaces:   [stable, horse, search, log, notice, perm, sys, net]
+    launchEnv:      { SHOWCASE_UITEST: "1" }
+    scenarios:      demos/showcase/scenarios   # this target's scenarios dir (run reads it; record writes here)
     # optional: backend / device / locale / launchArgs / setup / redact / secrets / mockServer / appPath / build
 
   web:                          # a web target (Playwright backend) is identified by URL
@@ -58,13 +58,13 @@ An undefined target raises `KeyError` (the CLI exits with code 2).
 
 | `Effective` field | Source | Notes |
 |---|---|---|
-| `platform` | app < defaults < derived | the target's platform (`ios`/`android`/`web`): explicit `platform` wins, else the target's `backend` implies it, else the identifier present, else `ios`. Selects which identifier is required ([BE-0009](../roadmaps/implemented/BE-0009-cross-platform-abstractions/BE-0009-cross-platform-abstractions.md)) |
+| `platform` | app < defaults < derived | the target's platform (`ios`/`android`/`web`): explicit `platform` wins, else the target's `backend` implies it, else the identifier present, else `ios`. Selects which identifier is required ([BE-0009](../roadmaps/BE-0009-cross-platform-abstractions/BE-0009-cross-platform-abstractions.md)) |
 | `bundle_id` | app | iOS target identifier; required when the platform is `ios` |
 | `base_url` | app | web target URL (Playwright backend); required when the platform is `web` |
 | `package` | app | Android target identifier; required when the platform is `android` |
 | `headless` | app | web backend only: `true` (default) runs headless; `false` shows a visible (headed) browser, in slow-motion. `bajutsu run --headed / --no-headed` and the Web UI's "show browser" toggle override per run; iOS ignores it |
-| `browser` | app | web backend only: the Playwright rendering engine to drive — `chromium` (default), `firefox`, or `webkit`. All three run headless on Linux. `bajutsu run/record --browser <engine>` overrides per run (flag > config > default), and `bajutsu run --browsers <list>` runs the cross-browser matrix (below); a missing engine binary is installed on demand. An unknown value is rejected at config load. iOS ignores it ([BE-0076](../roadmaps/implemented/BE-0076-web-cross-browser-engines/BE-0076-web-cross-browser-engines.md)) |
-| `launch_server` | app | optional `launchServer: {cmd, readyUrl, readyTimeout, cwd, env}` — bring up `baseUrl`'s host for the run, then tear it down: probe `readyUrl` (default `baseUrl`), reuse it if already serving, else run `cmd` and wait until ready (a condition wait, never a fixed sleep). The web analogue of `build` ([BE-0059](../roadmaps/implemented/BE-0059-launch-target-server/BE-0059-launch-target-server.md)). For an **uploaded** bundle in `serve`, the host never runs `cmd` directly — `serve --upload-exec` governs it (see [self-hosting](self-hosting.md#uploaded-config-command-execution-be-0090)); a `sandbox` run needs the extra fields `dockerImage` (a Docker image reference, e.g. `node:20-slim`) **or** `dockerfile` (a bundle-relative path built with `docker build`) — exactly one — plus `port` (the in-container listen port, published to a loopback host port) ([BE-0090](../roadmaps/implemented/BE-0090-uploaded-config-command-execution/BE-0090-uploaded-config-command-execution.md)) |
+| `browser` | app | web backend only: the Playwright rendering engine to drive — `chromium` (default), `firefox`, or `webkit`. All three run headless on Linux. `bajutsu run/record --browser <engine>` overrides per run (flag > config > default), and `bajutsu run --browsers <list>` runs the cross-browser matrix (below); a missing engine binary is installed on demand. An unknown value is rejected at config load. iOS ignores it ([BE-0076](../roadmaps/BE-0076-web-cross-browser-engines/BE-0076-web-cross-browser-engines.md)) |
+| `launch_server` | app | optional `launchServer: {cmd, readyUrl, readyTimeout, cwd, env}` — bring up `baseUrl`'s host for the run, then tear it down: probe `readyUrl` (default `baseUrl`), reuse it if already serving, else run `cmd` and wait until ready (a condition wait, never a fixed sleep). The web analogue of `build` ([BE-0059](../roadmaps/BE-0059-launch-target-server/BE-0059-launch-target-server.md)). For an **uploaded** bundle in `serve`, the host never runs `cmd` directly — `serve --upload-exec` governs it (see [self-hosting](self-hosting.md#uploaded-config-command-execution-be-0090)); a `sandbox` run needs the extra fields `dockerImage` (a Docker image reference, e.g. `node:20-slim`) **or** `dockerfile` (a bundle-relative path built with `docker build`) — exactly one — plus `port` (the in-container listen port, published to a loopback host port) ([BE-0090](../roadmaps/BE-0090-uploaded-config-command-execution/BE-0090-uploaded-config-command-execution.md)) |
 | `deeplink_scheme` | app | the scheme used by the preconditions' deeplink |
 | `backend` | app ?? defaults | stability-ordered list of platforms (`ios`/`android`/`web`/`fake`) or actuators (`idb`); a single string is listified ([drivers](drivers.md#backend-selection-and-the-actuator)) |
 | `device` / `locale` | app ?? defaults | `locale` is applied at launch (`simctl` launch args) |
@@ -79,6 +79,7 @@ An undefined target raises `KeyError` (the CLI exits with code 2).
 | `redact` | defaults ∪ app | merged (below) |
 | `secrets` | defaults ∪ app | env var names declaring `${secrets.X}`; values are masked in evidence ([evidence](evidence.md#masking-redact)) |
 | `ai` | defaults < app (field by field) | the AI paths' provider/model/endpoint/key ([below](#ai-provider-ai-be-0047)); `None` (omitted) = the environment alone decides |
+| `defaults.doctor.idCoverageOk` / `defaults.doctor.idCoverageFail` | defaults | id-coverage thresholds for doctor grading ([below](#configurable-thresholds-defaultsdoctor-be-0024)); default 0.9 / 0.7 |
 
 The `backend` field validator `_norm` normalizes "a single string → a 1-element list" (on both
 defaults / app).
@@ -106,17 +107,29 @@ and merged **field by field** (the target's value wins per field). The block res
 `Effective.ai`, so the CLI and `serve` agree on one source of truth. This is the enforcement behind
 "your AI, your key, your data": every AI path runs under the key and endpoint you configure, and the
 deterministic `run` gate still calls no model at all
-([BE-0047](../roadmaps/implemented/BE-0047-ai-data-sovereignty/BE-0047-ai-data-sovereignty.md)).
+([BE-0047](../roadmaps/BE-0047-ai-data-sovereignty/BE-0047-ai-data-sovereignty.md)).
 
 ```yaml
 defaults:
   ai:
-    provider: anthropic                      # anthropic (default) | bedrock
+    provider: anthropic                      # a registered provider name; anthropic (default) or bedrock ship today
     model:    claude-opus-4-8                 # optional: override the path's default model
     baseUrl:  https://ai-gateway.internal/v1  # optional: a self-hosted gateway / enterprise proxy (anthropic provider)
     keyEnv:   ANTHROPIC_API_KEY               # the NAME of the env var holding the key — never the key itself
 ```
 
+- **A provider is a backend behind one interface**
+  ([BE-0104](../roadmaps/BE-0104-vendor-neutral-ai-backend/BE-0104-vendor-neutral-ai-backend.md)).
+  The AI paths reach a model only through a vendor-neutral seam (`bajutsu/ai`), mirroring how a
+  platform is a backend behind the `Driver` interface. `provider` is therefore an **open,
+  registry-validated** value, not a fixed pair: `anthropic` and `bedrock` are the adapters that ship
+  today (Bedrock lives inside the Anthropic adapter, an Anthropic-SDK variant), and an unknown name
+  fails closed with a clear error the first time an AI path resolves the provider. (The check lives
+  in the AI layer, not at config load: the deterministic core must not import the AI provider stack
+  ([BE-0112](../roadmaps/BE-0112-layer-boundary-enforcement/BE-0112-layer-boundary-enforcement.md)),
+  so config accepts the name and the registry that owns the valid names rejects an unregistered one.)
+  Adding a model family (e.g. an OpenAI-compatible endpoint) is *registering an adapter*, and it
+  inherits the redaction and fail-closed guarantees below by construction.
 - **Keys never live in config.** `keyEnv` names an environment variable; the value is read from the
   environment at call time, so a secret never lands in the repo or an uploaded bundle. `baseUrl`
   points the Anthropic SDK at a self-hosted gateway / proxy (`Anthropic(base_url=…,
@@ -134,6 +147,17 @@ defaults:
   redaction as written evidence (the target's `redact` keys + resolved secret values). Screenshots
   are images and `redaction` masks text, not pixels — so the second guarantee carries them: every
   input, screenshots included, goes only to the provider/endpoint you configured.
+- **On-screen secrets stay in the pixels (BE-0151).** Because images cannot be masked, a secret the
+  app *displays* — a typed password, an OTP, PII on screen — stays verbatim in the raw pixels of the
+  screenshot the AI sees: the live screen every turn during `record`, and the captured failure
+  screenshot (if any) during `triage --ai`, read from the run's `runs/` evidence. That image goes to
+  the AI provider you configured — except `record --agent claude-code`, which reaches the model
+  through the `claude` CLI rather than the SDK provider/endpoint. Redaction covers the `${secrets.X}`
+  *value* wherever it appears in text (network, element tree, logs), not what the app renders on
+  screen. So that this is never a surprise, `record` and `triage --ai` print a one-time warning when
+  the target binds `secrets:`. This is a disclosure, not a mitigation (visual evidence is the point):
+  to avoid the exposure entirely, skip AI-driven authoring for a secret-bearing flow, or keep the
+  secret off-screen in the app under test.
 
 ### Mailbox (the `email` step)
 
@@ -156,11 +180,11 @@ The defaults match the common shape (an array of messages with `to` / `subject` 
 `receivedAt` / `id`), so a conforming API needs no `messages` / `fields` mapping. The `email` step
 reads the inbox over HTTP, keeps only messages newer than the step's start (keyed on `id`), waits
 for one that matches, and extracts the code — deterministic and LLM-free
-([BE-0046](../roadmaps/implemented/BE-0046-otp-email-steps/BE-0046-otp-email-steps.md)).
+([BE-0046](../roadmaps/BE-0046-otp-email-steps/BE-0046-otp-email-steps.md)).
 
 ### Orgs (`orgs:`, the multi-tenant server backend)
 
-`orgs:` declares tenants for the hosted server backend ([BE-0015](../roadmaps/proposals/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md)).
+`orgs:` declares tenants for the hosted server backend ([BE-0015](../roadmaps/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md)).
 Each org lists its members — explicit GitHub logins (`members`) and/or whole GitHub orgs
 (`githubOrgs`) — and the targets it owns:
 
@@ -232,7 +256,7 @@ git+https://<host>/<owner>/<repo>.git[@<ref>][#<path>]          # general form (
 - A fresh checkout holds **no built binary**, and there is no local "first" in which to build one, so a
   Git-sourced `run` **builds the app on demand**: when `appPath` is set but missing, it runs the
   config's `build` command from the **checkout root** (where `build`'s relative parts, e.g.
-  `make -C demos/features sample-build`, are rooted), then proceeds. A failed build exits cleanly.
+  `make -C demos/showcase swiftui-build`, are rooted), then proceeds. A failed build exits cleanly.
   A local-path `run` is unchanged (it never builds; a missing binary still errors).
 - A **pinned commit SHA** (`@<sha>`) is reproducible and runs offline after the first fetch; a branch
   (or tag) is resolved fresh each load. Private repos use a token from `GITHUB_TOKEN` / `GH_TOKEN`, else
@@ -279,7 +303,7 @@ Three invariants:
 2. **Non-localized, data-derived** — don't use display text in an id (it breaks under translation).
 3. **Namespace-prefixed** — every id starts with a declared namespace.
 
-The sample app's id catalog is in [sample-app](sample-app.md#accessibilityidentifier-catalog).
+The showcase's id catalog is in [showcase](showcase.md) (and, in full, `demos/showcase/SPEC.md`).
 
 ## doctor (the convention score)
 
@@ -299,7 +323,7 @@ Implementation: `bajutsu/doctor.py`. **AI-independent and deterministic.** It an
 Measured over actionable elements (trait ∈ `ACTIONABLE_TRAITS` = button / link / textField /
 searchField / textView / switch / slider / tab / cell).
 
-| Metric | Definition | Threshold |
+| Metric | Definition | Threshold (default) |
 |---|---|---|
 | `idCoverage` | fraction of actionable elements with an id | ✓ ≥ 0.9 / warn 0.7–0.9 / fail < 0.7 |
 | `namespaceConformance` | fraction of ids whose first segment is in `idNamespaces` | off-convention ids listed in `off_namespace` |
@@ -308,9 +332,26 @@ searchField / textView / switch / slider / tab / cell).
 ### Grading
 
 - **Blocked**: no actionable elements on the screen (most likely blank, not yet loaded, or the
-  wrong screen — `render` says so), any duplicate id, **or** `idCoverage` < 0.7.
-- **Ready**: `idCoverage` ≥ 0.9 **and** `namespaceConformance` == 1.0.
+  wrong screen — `render` says so), any duplicate id, **or** `idCoverage` < `idCoverageFail` (default 0.7).
+- **Ready**: `idCoverage` ≥ `idCoverageOk` (default 0.9) **and** `namespaceConformance` == 1.0.
 - **Partial**: otherwise (runnable, but a forecast of coordinate fallback / flakiness).
+
+### Configurable thresholds (`defaults.doctor`, BE-0024)
+
+The id-coverage thresholds that determine the grade are configurable in `defaults.doctor`. Teams
+with many decorative elements that legitimately lack test IDs can tune the thresholds for leniency
+(typically lowering `idCoverageOk` and/or `idCoverageFail`) without changing the tool:
+
+```yaml
+defaults:
+  doctor:
+    idCoverageOk:   0.85   # default 0.9 — coverage >= this is eligible for "Ready"
+    idCoverageFail: 0.6    # default 0.7 — coverage < this drops to "Blocked"
+```
+
+Both values must be in [0, 1] and `idCoverageOk` must be >= `idCoverageFail`; an invalid value is
+rejected at config load. When omitted, the hardcoded defaults (0.9 / 0.7) apply — existing configs
+are unchanged.
 
 ### Output
 

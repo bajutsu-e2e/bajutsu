@@ -1,12 +1,11 @@
-"""Tests for ClaudeAgent with an injected fake Anthropic client (no real API)."""
+"""Tests for ClaudeAgent with an injected fake AI backend (no real provider, BE-0104)."""
 
 from __future__ import annotations
 
-import base64
-
-from conftest import FakeAnthropic, FakeBlock
+from conftest import FakeBackend, FakeBlock
 
 from bajutsu.agent import Observation
+from bajutsu.ai.base import AnyTool, ImagePart, NamedTool, TextPart
 from bajutsu.claude_agent import ClaudeAgent, proposal_from_call
 from bajutsu.drivers import base
 from bajutsu.drivers.fake import FakeDriver
@@ -29,8 +28,14 @@ def _obs(goal: str = "g") -> Observation:
     return Observation(goal=goal, screen=[_el("a", "A")], history=[])
 
 
+def _text_of(backend: FakeBackend, call: int = 0) -> str:
+    return next(
+        p.text for p in backend.requests[call].messages[0].content if isinstance(p, TextPart)
+    )
+
+
 def test_tap_proposal() -> None:
-    agent = ClaudeAgent(client=FakeAnthropic(FakeBlock("tap", {"id": "settings.open"})))
+    agent = ClaudeAgent(backend=FakeBackend(FakeBlock("tap", {"id": "settings.open"})))
     proposal = agent.next_action(_obs())
     assert proposal.step is not None
     assert proposal.step.tap is not None
@@ -38,7 +43,7 @@ def test_tap_proposal() -> None:
 
 
 def test_type_text_proposal() -> None:
-    agent = ClaudeAgent(client=FakeAnthropic(FakeBlock("type_text", {"id": "f", "text": "hi"})))
+    agent = ClaudeAgent(backend=FakeBackend(FakeBlock("type_text", {"id": "f", "text": "hi"})))
     step = agent.next_action(_obs()).step
     assert step is not None and step.type is not None
     assert step.type.text == "hi"
@@ -46,9 +51,7 @@ def test_type_text_proposal() -> None:
 
 
 def test_wait_proposal() -> None:
-    agent = ClaudeAgent(
-        client=FakeAnthropic(FakeBlock("wait_for", {"id": "spinner", "timeout": 5}))
-    )
+    agent = ClaudeAgent(backend=FakeBackend(FakeBlock("wait_for", {"id": "spinner", "timeout": 5})))
     step = agent.next_action(_obs()).step
     assert step is not None and step.wait is not None
     assert step.wait.for_ is not None and step.wait.for_.id == "spinner"
@@ -65,7 +68,7 @@ def test_finish_proposal_with_assertions() -> None:
             ]
         },
     )
-    proposal = ClaudeAgent(client=FakeAnthropic(block)).next_action(_obs())
+    proposal = ClaudeAgent(backend=FakeBackend(block)).next_action(_obs())
     assert proposal.done is True
     assert proposal.expect[0].exists is not None
     assert proposal.expect[1].value is not None and proposal.expect[1].value.equals == "3"
@@ -94,33 +97,31 @@ def test_assertion_intent_becomes_provenance_optional() -> None:
     assert p.expect[1].from_ is None
 
 
-def test_request_uses_forced_tool_choice_and_cache() -> None:
-    client = FakeAnthropic(FakeBlock("tap", {"id": "a"}))
-    ClaudeAgent(client=client, model="claude-opus-4-8").next_action(_obs())
-    call = client.calls[0]
-    assert call["model"] == "claude-opus-4-8"
-    assert call["tool_choice"] == {"type": "any"}
-    assert call["system"][0]["cache_control"] == {"type": "ephemeral"}
-    assert {t["name"] for t in call["tools"]} == {"tap", "type_text", "wait_for", "finish"}
+def test_request_uses_forced_tool_choice() -> None:
+    backend = FakeBackend(FakeBlock("tap", {"id": "a"}))
+    ClaudeAgent(backend=backend, model="claude-opus-4-8").next_action(_obs())
+    request = backend.requests[0]
+    assert request.model == "claude-opus-4-8"
+    assert isinstance(request.tool_choice, AnyTool)  # force one tool call
+    assert {t.name for t in request.tools} == {"tap", "type_text", "wait_for", "finish"}
 
 
-def test_screenshot_sent_as_image_block() -> None:
-    client = FakeAnthropic(FakeBlock("tap", {"id": "a"}))
+def test_screenshot_sent_as_image_part() -> None:
+    backend = FakeBackend(FakeBlock("tap", {"id": "a"}))
     png = b"\x89PNG\r\n\x1a\n fake-bytes"
     obs = Observation(goal="g", screen=[_el("a", "A")], history=[], screenshot=png)
-    ClaudeAgent(client=client).next_action(obs)
-    content = client.calls[0]["messages"][0]["content"]
-    image = next(c for c in content if c["type"] == "image")
-    assert image["source"]["media_type"] == "image/png"
-    assert base64.standard_b64decode(image["source"]["data"]) == png
-    assert any(c["type"] == "text" for c in content)
+    ClaudeAgent(backend=backend).next_action(obs)
+    content = backend.requests[0].messages[0].content
+    image = next(c for c in content if isinstance(c, ImagePart))
+    assert image.data == png
+    assert any(isinstance(c, TextPart) for c in content)
 
 
 def test_no_screenshot_is_text_only() -> None:
-    client = FakeAnthropic(FakeBlock("tap", {"id": "a"}))
-    ClaudeAgent(client=client).next_action(_obs())  # no screenshot
-    content = client.calls[0]["messages"][0]["content"]
-    assert [c["type"] for c in content] == ["text"]
+    backend = FakeBackend(FakeBlock("tap", {"id": "a"}))
+    ClaudeAgent(backend=backend).next_action(_obs())  # no screenshot
+    content = backend.requests[0].messages[0].content
+    assert [type(c) for c in content] == [TextPart]
 
 
 def test_claude_agent_drives_record() -> None:
@@ -131,14 +132,14 @@ def test_claude_agent_drives_record() -> None:
             d.screen = nxt
 
     driver = FakeDriver([_el("go", "Go")], react=react)
-    client = FakeAnthropic(
+    backend = FakeBackend(
         FakeBlock(
             "plan", {"steps": ["Tap Go", "Confirm Done is shown"]}
         ),  # the up-front decomposition
         FakeBlock("tap", {"id": "go"}),
         FakeBlock("finish", {"assertions": [{"id": "done", "check": "exists"}]}),
     )
-    scenario = record(driver, "reach done", ClaudeAgent(client=client), name="reach")
+    scenario = record(driver, "reach done", ClaudeAgent(backend=backend), name="reach")
 
     assert scenario.steps[0].tap is not None and scenario.steps[0].tap.id == "go"
     assert scenario.expect[0].exists is not None and scenario.expect[0].exists.sel.id == "done"
@@ -147,14 +148,14 @@ def test_claude_agent_drives_record() -> None:
 
 
 def test_plan_decomposes_goal_into_steps() -> None:
-    client = FakeAnthropic(
+    backend = FakeBackend(
         FakeBlock("plan", {"steps": ["Tap Get Started", " ", "Confirm home is shown"]})
     )
-    steps = ClaudeAgent(client=client).plan("sign in")
+    steps = ClaudeAgent(backend=backend).plan("sign in")
     assert steps == ["Tap Get Started", "Confirm home is shown"]  # blanks dropped, order kept
-    call = client.calls[0]
-    assert call["tool_choice"] == {"type": "tool", "name": "plan"}  # the plan call is forced
-    assert {t["name"] for t in call["tools"]} == {"plan"}
+    request = backend.requests[0]
+    assert isinstance(request.tool_choice, NamedTool) and request.tool_choice.name == "plan"
+    assert {t.name for t in request.tools} == {"plan"}
 
 
 def test_plan_is_rendered_into_the_turn_prompt() -> None:
@@ -172,8 +173,8 @@ def test_plan_is_rendered_into_the_turn_prompt() -> None:
 
 def test_secret_in_element_value_is_masked_before_send() -> None:
     # A configured `redact` label and a literal secret value: both must be [REDACTED] in the text
-    # block the model receives — what the model sees matches what evidence masks.
-    client = FakeAnthropic(FakeBlock("tap", {"id": "a"}))
+    # part the model receives — what the model sees matches what evidence masks.
+    backend = FakeBackend(FakeBlock("tap", {"id": "a"}))
     redactor = Redactor(Redact(labels=["カード番号"]), values=["sk-secret-token"])
     screen = [
         _el("card", "カード番号"),  # value masked because its label is configured
@@ -186,17 +187,17 @@ def test_secret_in_element_value_is_masked_before_send() -> None:
         },
     ]
     obs = Observation(goal="g", screen=screen, history=[])
-    ClaudeAgent(client=client, redactor=redactor).next_action(obs)
-    text = next(c["text"] for c in client.calls[0]["messages"][0]["content"] if c["type"] == "text")
+    ClaudeAgent(backend=backend, redactor=redactor).next_action(obs)
+    text = _text_of(backend)
     assert "sk-secret-token" not in text
     assert "[REDACTED]" in text
 
 
 def test_no_redactor_leaves_text_unmasked() -> None:
-    client = FakeAnthropic(FakeBlock("tap", {"id": "a"}))
+    backend = FakeBackend(FakeBlock("tap", {"id": "a"}))
     screen = [_el("a", "plain-label")]
-    ClaudeAgent(client=client).next_action(Observation(goal="g", screen=screen, history=[]))
-    text = next(c["text"] for c in client.calls[0]["messages"][0]["content"] if c["type"] == "text")
+    ClaudeAgent(backend=backend).next_action(Observation(goal="g", screen=screen, history=[]))
+    text = _text_of(backend)
     assert "plain-label" in text
 
 
@@ -216,7 +217,7 @@ def _vel(label: str | None, traits: list[str], value: str | None = None) -> base
 
 def test_tap_by_label_when_no_id() -> None:
     step = (
-        ClaudeAgent(client=FakeAnthropic(FakeBlock("tap", {"label": "Get Started"})))
+        ClaudeAgent(backend=FakeBackend(FakeBlock("tap", {"label": "Get Started"})))
         .next_action(_obs())
         .step
     )
@@ -226,7 +227,7 @@ def test_tap_by_label_when_no_id() -> None:
 
 def test_type_into_field_by_value_and_traits() -> None:
     block = FakeBlock("type_text", {"value": "Email", "traits": ["textField"], "text": "a@b.co"})
-    step = ClaudeAgent(client=FakeAnthropic(block)).next_action(_obs()).step
+    step = ClaudeAgent(backend=FakeBackend(block)).next_action(_obs()).step
     assert step is not None and step.type is not None and step.type.into is not None
     assert step.type.into.value == "Email" and step.type.into.traits == ["textField"]
     assert step.type.text == "a@b.co"
@@ -234,7 +235,7 @@ def test_type_into_field_by_value_and_traits() -> None:
 
 def test_tap_by_traits_and_index() -> None:
     step = (
-        ClaudeAgent(client=FakeAnthropic(FakeBlock("tap", {"traits": ["textField"], "index": 1})))
+        ClaudeAgent(backend=FakeBackend(FakeBlock("tap", {"traits": ["textField"], "index": 1})))
         .next_action(_obs())
         .step
     )
@@ -246,7 +247,7 @@ def test_finish_label_contains_for_valueless_counter() -> None:
     block = FakeBlock(
         "finish", {"assertions": [{"label": "Count: 2", "check": "labelContains", "text": "2"}]}
     )
-    proposal = ClaudeAgent(client=FakeAnthropic(block)).next_action(_obs())
+    proposal = ClaudeAgent(backend=FakeBackend(block)).next_action(_obs())
     assert proposal.done is True
     assert proposal.expect[0].label is not None
     assert proposal.expect[0].label.sel.label == "Count: 2"
@@ -256,7 +257,7 @@ def test_finish_label_contains_for_valueless_counter() -> None:
 def test_authored_valueless_selectors_resolve_uniquely() -> None:
     """A scenario authored against a no-id/no-value screen must produce selectors that the
     deterministic driver resolves to exactly one element — the half `run` replays without AI."""
-    # The home screen as idb reports it for the value-less sample2: a label-only count text
+    # The home screen as idb reports it for a value-less no-id app: a label-only count text
     # and a "+" button, plus two unlabeled fields distinguished only by placeholder/position.
     screen = [
         _vel("Count: 2", ["staticText"]),
@@ -265,11 +266,11 @@ def test_authored_valueless_selectors_resolve_uniquely() -> None:
         _vel(None, ["textField"], value="Password"),
     ]
     plus = (
-        ClaudeAgent(client=FakeAnthropic(FakeBlock("tap", {"label": "+"}))).next_action(_obs()).step
+        ClaudeAgent(backend=FakeBackend(FakeBlock("tap", {"label": "+"}))).next_action(_obs()).step
     )
     email = (
         ClaudeAgent(
-            client=FakeAnthropic(
+            backend=FakeBackend(
                 FakeBlock("type_text", {"value": "Email", "traits": ["textField"], "text": "x"})
             )
         )
@@ -278,7 +279,7 @@ def test_authored_valueless_selectors_resolve_uniquely() -> None:
     )
     count = (
         ClaudeAgent(
-            client=FakeAnthropic(
+            backend=FakeBackend(
                 FakeBlock(
                     "finish",
                     {"assertions": [{"label": "Count: 2", "check": "labelContains", "text": "2"}]},

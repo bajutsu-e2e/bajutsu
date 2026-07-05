@@ -79,6 +79,14 @@ public final class RunnerServer {
         ProcessInfo.processInfo.environment["BAJUTSU_DEEPLINK"]
     }
 
+    /// The bundle id of the app under test, forwarded via `BAJUTSU_BUNDLE_ID`.
+    ///
+    /// One generic runner drives whatever app the run targets, so the host launches
+    /// `XCUIApplication(bundleIdentifier:)` with this rather than its own target app.
+    public static var forwardedBundleId: String? {
+        ProcessInfo.processInfo.environment["BAJUTSU_BUNDLE_ID"]
+    }
+
     /// Stop the server and close the listening socket.
     public func stop() {
         httpServer.stop()

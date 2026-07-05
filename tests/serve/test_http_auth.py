@@ -168,18 +168,47 @@ def test_cross_origin_post_is_blocked(tmp_path: Path) -> None:
         server.server_close()
 
 
-def test_origin_unchecked_on_open_server(tmp_path: Path) -> None:
-    # No token configured -> loopback-only open server; the Origin check does not apply.
+def test_cross_origin_post_blocked_even_without_token(tmp_path: Path) -> None:
+    # BE-0121: the Origin/CSRF check runs unconditionally, so a cross-origin state-changing POST is
+    # blocked even on the no-token loopback default — closing the CSRF-to-arbitrary-config hole.
     server, port = _serve(_state(tmp_path, None))
     try:
-        status, _, _ = _request(
+        blocked, _, _ = _request(
             port,
-            "/api/login",
+            "/api/config",
             method="POST",
             headers={"Content-Type": "application/json", "Origin": "http://evil.example"},
-            body={"token": "x"},
+            body={"git": "github:evil/repo@main"},
         )
-        assert status != 403  # login returns 401 (no token configured), not a CSRF block
+        assert blocked == 403
+        # A non-browser client (no Origin) is still allowed through unchanged.
+        no_origin, _, _ = _request(
+            port,
+            "/api/config",
+            method="POST",
+            headers={"Content-Type": "application/json"},
+            body={"path": "/nonexistent"},
+        )
+        assert no_origin != 403
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+def test_mismatched_host_is_rejected(tmp_path: Path) -> None:
+    # BE-0121: DNS-rebinding defense — a request whose Host isn't a bound interface is refused, so a
+    # rebound hostname can't reach /api/apikey to probe the API key even without the CSRF bypass.
+    server, port = _serve(_state(tmp_path, None))
+    try:
+        conn = http.client.HTTPConnection("127.0.0.1", port)
+        conn.request("GET", "/api/apikey", headers={"Host": "attacker.example"})
+        assert conn.getresponse().status == 403
+        conn.close()
+        # The loopback Host a browser actually sends to `make serve` is accepted.
+        conn = http.client.HTTPConnection("127.0.0.1", port)
+        conn.request("GET", "/api/apikey", headers={"Host": f"127.0.0.1:{port}"})
+        assert conn.getresponse().status == 200
+        conn.close()
     finally:
         server.shutdown()
         server.server_close()

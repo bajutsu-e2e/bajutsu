@@ -16,15 +16,20 @@ from typing import Any
 
 import yaml
 
-from bajutsu import env
+from bajutsu import simctl as _simctl
 from bajutsu.backends import KNOWN_ACTUATORS, PLATFORMS
-from bajutsu.config import Config, load_config, resolve
+from bajutsu.config import Config, IosConfig, resolve
 from bajutsu.scenario import load_scenario_file
+from bajutsu.serve._cli_flags import flag_args
+from bajutsu.serve.orgs import OrgConfig, load_serve_config
 
 # Tokens a `--backend` may name: a platform (ios/android/web/fake) or a known actuator (idb/…).
 _VALID_BACKENDS = frozenset(PLATFORMS) | frozenset(KNOWN_ACTUATORS)
-# A udid token: hex groups + hyphens, or the literal "booted". No spaces/metacharacters.
-_UDID_RE = re.compile(r"^[A-Za-z0-9-]+$")
+# A udid token: alphanumeric, optionally hyphenated (covers simctl's UUIDs and the literal
+# "booted"). No spaces/metacharacters, and the first character must be alphanumeric so a
+# client-supplied udid can never start with a hyphen and be mistaken for a subprocess flag
+# (e.g. `-rf`, `--config`) by idb/xcrun.
+_UDID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9-]*$")
 # A run id is a single safe path segment (timestamps like 20260610-153045): alphanumeric start,
 # then [A-Za-z0-9._-]. Blocks "..", path separators, and absolute paths, so a client-supplied run
 # id (a resumed crawl) can't redirect a run's --out dir outside runs_dir.
@@ -83,13 +88,14 @@ def list_scenarios(scenarios_dir: Path) -> list[dict[str, Any]]:
 # size changes; an edit that preserves both (a same-size rewrite that also keeps the timestamp) won't
 # be noticed, which is acceptable for an operator-edited config. A lock guards the dict since serve
 # handles requests on multiple threads.
-_config_cache: dict[str, tuple[tuple[int, int], Config]] = {}
+_config_cache: dict[str, tuple[tuple[int, int], Config, dict[str, OrgConfig]]] = {}
 _config_cache_lock = threading.Lock()
 
 
-def _load_config_cached(config_path: Path) -> Config:
-    """The parsed config at *config_path*, cached by resolved path + file mtime/size so a request
-    parses it at most once and unchanged files aren't re-parsed across requests. Raises on a
+def _load_serve_config_cached(config_path: Path) -> tuple[Config, dict[str, OrgConfig]]:
+    """The parsed config *and* its org model at *config_path*, cached by resolved path + file
+    mtime/size so a request parses it at most once and unchanged files aren't re-parsed across
+    requests. The core `Config` drops `orgs:`; the org model is recovered here (BE-0129). Raises on a
     read/validation error (callers handle it); a malformed-YAML error is normalized to `ValueError`
     so the callers' `except (OSError, ValueError)` covers it. Only successful parses are cached, so a
     fix to a bad config is picked up at once."""
@@ -100,23 +106,28 @@ def _load_config_cached(config_path: Path) -> Config:
     with _config_cache_lock:
         cached = _config_cache.get(key)
         if cached is not None and cached[0] == stamp:
-            return cached[1]
+            return cached[1], cached[2]
     try:
-        config = load_config(config_path.read_text(encoding="utf-8"))
+        config, orgs = load_serve_config(config_path.read_text(encoding="utf-8"))
     except yaml.YAMLError as e:
         raise ValueError(str(e)) from e  # so callers catching ValueError handle a malformed config
     with _config_cache_lock:
-        _config_cache[key] = (stamp, config)
-    return config
+        _config_cache[key] = (stamp, config, orgs)
+    return config, orgs
 
 
-def load_config_file(config_path: Path | None) -> Config | None:
-    """The parsed config, or None if there is none or it can't be read/validated. Used where the
-    org model is needed (resolving a user/target to its org)."""
+def _load_config_cached(config_path: Path) -> Config:
+    """The parsed config at *config_path* (org model discarded); see `_load_serve_config_cached`."""
+    return _load_serve_config_cached(config_path)[0]
+
+
+def load_serve_config_file(config_path: Path | None) -> tuple[Config, dict[str, OrgConfig]] | None:
+    """The parsed config and its org model, or None if there is none or it can't be read/validated.
+    Used where the org model is needed (resolving a user/target to its org)."""
     if config_path is None:
         return None
     try:
-        return _load_config_cached(config_path)
+        return _load_serve_config_cached(config_path)
     except (OSError, ValueError):
         return None
 
@@ -137,7 +148,9 @@ def target_build_info(config_path: Path, target: str) -> tuple[str | None, str |
         eff = resolve(_load_config_cached(config_path), target)
     except (OSError, ValueError, KeyError):
         return (None, None)
-    return (eff.app_path, eff.build)
+    ios = eff.platform_config
+    # Only an iOS target carries an on-demand build; other platforms have no .app to build.
+    return (ios.app_path, ios.build) if isinstance(ios, IosConfig) else (None, None)
 
 
 def target_scenarios_dir(config_path: Path, target: str) -> Path | None:
@@ -177,11 +190,11 @@ def list_fs(root: Path, sub: str | None) -> dict[str, Any]:
     }
 
 
-def list_simulators(simctl: env.RunFn = env._real_run) -> list[dict[str, Any]]:
+def list_simulators(simctl: _simctl.RunFn = _simctl._real_run) -> list[dict[str, Any]]:
     """Available simulators for the device picker (booted first): udid, name, runtime, booted.
     A run boots any picked-but-shut-down device first, so the UI can start from a cold list."""
     try:
-        data = json.loads(simctl(env.list_devices_cmd(), None))
+        data = json.loads(simctl(_simctl.list_devices_cmd(), None))
     except (OSError, subprocess.CalledProcessError, json.JSONDecodeError, ValueError):
         return []
     sims: list[dict[str, Any]] = []
@@ -257,14 +270,30 @@ def run_command(
     headed: bool | None = None,
     runs_dir: str = "",
     upload_exec: str = "",
+    browser: str = "",
+    browsers: str = "",
+    tag: str = "",
+    exclude: str = "",
+    schemas: str = "",
+    goldens: str = "",
+    network: bool | None = None,
+    log_predicate: str = "",
+    log_subsystem: str = "",
+    alert_instruction: str = "",
+    zip_run: bool | None = None,
+    config_offline: bool | None = None,
+    require_pinned_config: bool | None = None,
 ) -> list[str]:
     """The ``python -m bajutsu run ...`` argv for a launch request.  ``udid`` may be a comma
     list and ``workers > 1`` runs those devices as a parallel pool (capped to the pool size by
-    the CLI).  ``erase`` / ``dismiss_alerts`` / ``headed`` are overrides: True/False force the
-    flag on/off, None leaves the target's own config (each scenario's preconditions.erase /
-    dismissAlerts, or the target's headless) to decide.  ``runs_dir`` (when set) points the run's
-    output tree elsewhere via ``--runs-dir`` — an uploaded bundle runs from its own extracted dir
-    (the working directory) but must still write its run into serve's runs store (BE-0073)."""
+    the CLI).  ``erase`` / ``dismiss_alerts`` / ``headed`` / ``network`` are overrides: True/False
+    force the flag on/off, None omits it so the CLI's own default applies — for ``erase`` /
+    ``dismiss_alerts`` that means each scenario's preconditions.erase / dismissAlerts, for
+    ``headed`` the target's ``headless`` config, and for ``network`` the ``--network`` default (on).
+    ``runs_dir`` (when set) points the run's output tree elsewhere via ``--runs-dir`` — an uploaded
+    bundle runs from its own extracted dir (the working directory) but must still write its run into
+    serve's runs store (BE-0073).  Every flag is rendered from ``run``'s own option metadata
+    (BE-0134), so this argv can't drift from the CLI."""
     cmd = [
         sys.executable,
         "-m",
@@ -278,30 +307,34 @@ def run_command(
         config,
         "--progress",
     ]  # stream per-scenario/step progress into the run log
-    if backend:
-        cmd += ["--backend", backend]
-    if udid:
-        cmd += ["--udid", udid]
-    if workers > 1:
-        cmd += ["--workers", str(workers)]
-    if erase is True:
-        cmd += ["--erase"]
-    elif erase is False:
-        cmd += ["--no-erase"]
-    if dismiss_alerts is True:
-        cmd += ["--dismiss-alerts"]
-    elif dismiss_alerts is False:
-        cmd += ["--no-dismiss-alerts"]
-    if headed is True:
-        cmd += ["--headed"]
-    elif headed is False:
-        cmd += ["--no-headed"]
-    if baselines:
-        cmd += ["--baselines", baselines]
-    if runs_dir:
-        cmd += ["--runs-dir", runs_dir]
-    if upload_exec:
-        cmd += ["--upload-exec", upload_exec]
+    cmd += flag_args(
+        "run",
+        {
+            "backend": backend,
+            "udid": udid,
+            # --workers 1 is the CLI default; omit it (a single device isn't a pool).
+            "workers": workers if workers > 1 else None,
+            "erase": erase,
+            "dismiss_alerts": dismiss_alerts,
+            "headed": headed,
+            "baselines": baselines,
+            "runs_dir": runs_dir,
+            "upload_exec": upload_exec,
+            "browser": browser,
+            "browsers": browsers,
+            "tag": tag,
+            "exclude": exclude,
+            "schemas": schemas,
+            "goldens": goldens,
+            "network": network,
+            "log_predicate": log_predicate,
+            "log_subsystem": log_subsystem,
+            "alert_instruction": alert_instruction,
+            "zip_run": zip_run,
+            "config_offline": config_offline,
+            "require_pinned_config": require_pinned_config,
+        },
+    )
     return cmd
 
 
@@ -338,26 +371,18 @@ def record_command(
         "--config",
         config,
     ]
-    if agent:
-        cmd += ["--agent", agent]
-    if backend:
-        cmd += ["--backend", backend]
-    if udid:
-        cmd += ["--udid", udid]
-    if erase is True:
-        cmd += ["--erase"]
-    elif erase is False:
-        cmd += ["--no-erase"]
-    if dismiss_alerts is True:
-        cmd += ["--dismiss-alerts"]
-    elif dismiss_alerts is False:
-        cmd += ["--no-dismiss-alerts"]
-    if headed is True:
-        cmd += ["--headed"]
-    elif headed is False:
-        cmd += ["--no-headed"]
-    if upload_exec:
-        cmd += ["--upload-exec", upload_exec]
+    cmd += flag_args(
+        "record",
+        {
+            "agent": agent,
+            "backend": backend,
+            "udid": udid,
+            "erase": erase,
+            "dismiss_alerts": dismiss_alerts,
+            "headed": headed,
+            "upload_exec": upload_exec,
+        },
+    )
     return cmd
 
 
@@ -405,31 +430,24 @@ def crawl_command(
         "--max-steps",
         str(max_steps),
     ]
-    if agent:
-        cmd += ["--agent", agent]
-    if backend:
-        cmd += ["--backend", backend]
-    if udid:
-        cmd += ["--udid", udid]
-    if workers > 1:
-        cmd += ["--workers", str(workers)]
-    if erase is True:
-        cmd += ["--erase"]
-    elif erase is False:
-        cmd += ["--no-erase"]
-    if dismiss_alerts is True:
-        cmd += ["--dismiss-alerts"]
-    elif dismiss_alerts is False:
-        cmd += ["--no-dismiss-alerts"]
-    if headed is True:
-        cmd += ["--headed"]
-    elif headed is False:
-        cmd += ["--no-headed"]
-    if resume_src and resume_key:
-        # Resuming appends to the existing run: don't erase the device's app state mid-walk.
-        cmd += ["--resume-src", resume_src, "--resume-key", resume_key, "--no-erase"]
-    if upload_exec:
-        cmd += ["--upload-exec", upload_exec]
+    # Resuming appends to the existing run, so force --no-erase (don't wipe the app state mid-walk)
+    # and carry the resume keys; a fresh crawl leaves erase to the override and omits them.
+    resuming = bool(resume_src and resume_key)
+    cmd += flag_args(
+        "crawl",
+        {
+            "agent": agent,
+            "backend": backend,
+            "udid": udid,
+            "workers": workers if workers > 1 else None,
+            "erase": False if resuming else erase,
+            "dismiss_alerts": dismiss_alerts,
+            "headed": headed,
+            "upload_exec": upload_exec,
+            "resume_src": resume_src if resuming else "",
+            "resume_key": resume_key if resuming else "",
+        },
+    )
     return cmd
 
 
@@ -502,6 +520,19 @@ def valid_scenario_ref(ref: str | None, *, allow_absolute: bool = False) -> bool
     if ".." in pure.parts:
         return False
     return allow_absolute or not pure.is_absolute()
+
+
+def valid_relative_key(key: str, *, allow_empty: bool = False) -> bool:
+    """Whether *key* is a safe relative object-storage key segment (BE-0110): NUL-free, relative
+    (no leading ``/``), and free of ``..`` traversal — so a client-supplied prefix or file path
+    can't escape the base prefix the server prepends. *allow_empty* accepts the empty string, used
+    for an optional per-run prefix (no extra segment)."""
+    if not key:
+        return allow_empty
+    if "\x00" in key or key.startswith("/"):
+        return False
+    pure = PurePosixPath(key.replace("\\", "/"))  # a Windows separator counts as traversal too
+    return ".." not in pure.parts and not pure.is_absolute()
 
 
 def _scenario_path(scenarios_dir: Path, p: str | None) -> Path | None:

@@ -76,7 +76,7 @@ class Element(TypedDict):
 
 | 候補数 | 挙動 |
 |---|---|
-| 0 件 | `ElementNotFound`（即時アクションは失敗、`wait_for` 経由はタイムアウト） |
+| 0 件 | `ElementNotFound`（即時アクションは失敗、待機（`wait_until`）経由はタイムアウト） |
 | 1 件 | 解決成功 |
 | 2 件以上 | `AmbiguousSelector` を送出。「たまたま最初の一致を叩く」非決定性を**構造的に排除**する |
 

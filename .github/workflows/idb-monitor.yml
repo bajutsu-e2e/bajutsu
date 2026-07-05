@@ -7,7 +7,7 @@
 # fails it loudly here — on a cadence we control — instead of surfacing later as a confusing run
 # failure. It also records the versions it ran against in the job summary. This is monitoring, not
 # a gate: it never feeds a run's pass/fail (the verdict stays deterministic and LLM-free).
-name: idb monitor
+name: idb compatibility monitor
 
 on:
   workflow_dispatch:
@@ -31,7 +31,7 @@ jobs:
     # 6h default. Typical end-to-end is ~10min, so 25 catches a real hang with comfortable headroom.
     timeout-minutes: 25
     steps:
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10  # v6.0.3
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
 
       - name: Select Xcode
         uses: maxim-lobanov/setup-xcode@ed7a3b1fda3918c0306d1b724322adc0b8cc0a90  # v1.7.0
@@ -52,15 +52,15 @@ jobs:
           HOMEBREW_NO_INSTALL_CLEANUP: "1"
         run: brew install xcodegen
 
-      - name: Build the sample app
-        run: make -C demos/features sample-build
+      - name: Build the showcase app
+        run: make -C demos/showcase swiftui-build
 
       - name: Boot a Simulator
         id: sim
         uses: ./.github/actions/boot-simulator
 
       - name: Install the app
-        run: xcrun simctl install "${{ steps.sim.outputs.udid }}" "demos/features/app/build/dd/Build/Products/Debug-iphonesimulator/BajutsuSample.app"
+        run: xcrun simctl install "${{ steps.sim.outputs.udid }}" "demos/showcase/ios/swiftui/build/dd/Build/Products/Debug-iphonesimulator/BajutsuShowcaseSwiftUI.app"
 
       # Record the versions this run was driven against, before the smoke run, so the summary
       # states them even if the run then fails. `idb_companion` is brewed here (idempotent; the
@@ -85,9 +85,9 @@ jobs:
       - name: Run smoke scenarios (schema/behaviour assertion)
         uses: ./.github/actions/bajutsu-e2e
         with:
-          scenarios: demos/features/app/scenarios/smoke.yaml
-          target: sample
-          config: demos/features/demo.config.yaml
+          scenarios: demos/showcase/scenarios/smoke.yaml
+          target: showcase-swiftui
+          config: demos/showcase/showcase.config.yaml
           udid: ${{ steps.sim.outputs.udid }}
           artifact-name: idb-monitor-run
 
@@ -97,8 +97,8 @@ jobs:
       - name: Run golden scenarios (BE-0006)
         uses: ./.github/actions/bajutsu-e2e
         with:
-          scenarios: demos/features/app/scenarios/golden.yaml
-          target: sample
-          config: demos/features/demo.config.yaml
+          scenarios: demos/showcase/scenarios/golden.yaml
+          target: showcase-swiftui
+          config: demos/showcase/showcase.config.yaml
           udid: ${{ steps.sim.outputs.udid }}
           artifact-name: idb-monitor-golden-run

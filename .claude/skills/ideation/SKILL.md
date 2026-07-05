@@ -1,12 +1,14 @@
 ---
 name: ideation
+model: sonnet
 description: >-
   Sounding board for Bajutsu feature ideation. Use when the user wants to
   brainstorm potential features, explore what Bajutsu could do next, or turn a rough
   idea into a roadmap (BE) item. Grounds the conversation in the existing roadmap,
   proposes new items or seeds, folds overlapping ideas into existing items, and — when
   the user is happy — drafts the BE files with a placeholder ID and opens a PR. The real
-  BE ID is allocated by CI (scripts/allocate_roadmap_ids.py), never guessed by hand.
+  BE ID is allocated by CI (scripts/allocate_roadmap_ids.py), never guessed by hand. Scope is
+  roadmap authoring only — it never implements the feature (that is the implement-be skill).
 ---
 
 # Ideation
@@ -15,6 +17,19 @@ A sounding board for ideating Bajutsu features and shaping them into roadmap (BE
 You are the author and the thinking partner — **not** the judge. Converse in the user's
 language (the roadmap is bilingual; mirror their language in the chat, write the files in
 both as required below).
+
+## Scope: roadmap authoring only — never implement
+
+This skill **only** authors and shapes roadmap (BE) items. It stops at the roadmap files
+(and, when asked, the PR that carries them). **Do not write, modify, or refactor any
+product code** — not `bajutsu/`, not `BajutsuKit/`, not tests, not config, not demos — even
+if the discussion makes the implementation obvious or the user nudges toward "just build
+it". Your deliverable is always the BE proposal, never a working feature.
+
+If the user asks you to implement an idea, don't switch hats mid-session: point them to the
+[`implement-be`](../implement-be/) skill (the deterministic counterpart that ships an
+existing BE item from its ID) and keep this session to authoring the proposal. The only
+files this skill touches are under `roadmaps/` (plus the index the generator regenerates).
 
 ## Prime directives (these bound every idea)
 
@@ -76,7 +91,7 @@ the exact canonical format, and skips the index (so the gate stays green locally
 make new-roadmap-item SLUG=<slug> TITLE="<title>" [TOPIC="<topic>"] [STATUS=Proposal] [HANDLE=<handle>]
 ```
 
-This creates `roadmaps/proposals/BE-XXXX-<slug>/` with both `BE-XXXX-<slug>.md` and its `-ja.md`
+This creates `roadmaps/BE-XXXX-<slug>/` with both `BE-XXXX-<slug>.md` and its `-ja.md`
 mirror — the bilingual header link, the metadata block (`Proposal` / `Author` / `Status` /
 `Topic`), and the five sections (`Introduction` / `Motivation` / `Detailed design` /
 `Alternatives considered` / `References`) seeded with `TBD`. `TOPIC` is validated against the

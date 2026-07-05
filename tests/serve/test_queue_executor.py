@@ -17,39 +17,8 @@ from _shared import FakeProc, fake_popen, project
 
 from bajutsu import serve as srv
 from bajutsu.serve import operations as ops
-from bajutsu.serve.server import worker_job
 from bajutsu.serve.server.executor import QueueExecutor
-from bajutsu.serve.server.logbus import RedisLogBus
 from bajutsu.serve.server.worker_job import execute_job_spec, job_spec
-
-
-class _FakeRedis:
-    """The slice of a Redis client RedisLogBus uses, in memory. Returns the stored values as
-    `object` (bytes, like redis-py) to match the `RedisLike` protocol's `lrange -> list[object]`.
-    A DB stand-in so the worker's cross-process log flow is exercised without a real Redis."""
-
-    def __init__(self) -> None:
-        self._lists: dict[str, list[str]] = {}
-        self._kv: dict[str, str] = {}
-
-    def rpush(self, key: str, value: str) -> int:
-        self._lists.setdefault(key, []).append(value)
-        return len(self._lists[key])
-
-    def lrange(self, key: str, start: int, end: int) -> list[object]:
-        items = self._lists.get(key, [])
-        stop = len(items) if end == -1 else end + 1
-        return [s.encode() for s in items[start:stop]]
-
-    def set(self, key: str, value: str) -> None:
-        self._kv[key] = value
-
-    def get(self, key: str) -> bytes | None:
-        v = self._kv.get(key)
-        return v.encode() if v is not None else None
-
-    def expire(self, key: str, seconds: int) -> None:
-        pass  # close() bounds key lifetime; this fake keeps everything for the test's duration
 
 
 class _FakeQueue:
@@ -91,6 +60,7 @@ def test_dispatch_enqueues_a_serializable_job_spec(tmp_path: Path) -> None:
         "materialize_baselines": False,
         "org": "default",  # single-tenant default org (BE-0015 multi-tenancy)
         "actor": None,  # no OAuth identity for this locally-built job
+        "evidence_prefix": "",  # no per-run evidence prefix requested (BE-0110)
     }
     json.dumps(spec)  # must carry no live objects (locks/Popen/bus) — JSON round-trips
 
@@ -109,6 +79,28 @@ def test_job_spec_carries_the_actor(tmp_path: Path) -> None:
     spec = job_spec(job)
     assert spec["actor"] == "alice"
     assert spec["org"] == "acme"
+
+
+def test_job_spec_carries_the_evidence_prefix(tmp_path: Path) -> None:
+    # The per-run evidence prefix travels so the worker relays it when requesting presigned PUT URLs,
+    # landing the run's evidence under the lifecycle path CI chose (BE-0110).
+    state = srv.ServeState(runs_dir=tmp_path / "runs")
+    job = state.register(srv.Job(cmd=["run"], evidence_prefix="main/abc1234/"))
+    assert job_spec(job)["evidence_prefix"] == "main/abc1234/"
+
+
+def test_start_run_carries_a_valid_evidence_prefix_end_to_end(tmp_path: Path) -> None:
+    # A valid evidence_prefix on /api/run reaches the enqueued job spec, so the worker can relay it.
+    scn_dir, cfg, runs = project(tmp_path)
+    q = _FakeQueue()
+    state = srv.ServeState(
+        scenarios_dir=scn_dir, config=cfg, runs_dir=runs, cwd=tmp_path, executor=QueueExecutor(q)
+    )
+    _, code = ops.start_run(
+        state, {"scenario": "smoke.yaml", "target": "demo", "evidence_prefix": "main/abc1234/"}
+    )
+    assert code == 200
+    assert q.enqueued[0][1][0]["evidence_prefix"] == "main/abc1234/"
 
 
 def test_execute_job_spec_records_the_run_into_an_injected_repository(tmp_path: Path) -> None:
@@ -166,21 +158,16 @@ def test_execute_job_spec_rebuilds_and_runs_run_job(tmp_path: Path) -> None:
 
 
 def test_execute_job_spec_streams_logs_to_the_injected_bus(tmp_path: Path) -> None:
-    # The worker publishes the job's log to the (Redis) LogBus it's given, so a control-plane
-    # replica streaming the same job id over its own RedisLogBus replays the log cross-process —
-    # the gap W1 closes (the worker no longer logs into a private in-memory bus).
     project(tmp_path)
-    redis = _FakeRedis()
+    bus = srv.InMemoryLogBus()
     spec = {"job_id": "7", "cmd": ["bajutsu", "run"], "udids": [], "app_path": None, "build": None}
     execute_job_spec(
         spec,
         popen=fake_popen(["step 0 ok\n", "PASS  runs/20260610-1/manifest.json\n"]),
         cwd=tmp_path,
-        bus=RedisLogBus(redis),
+        bus=bus,
     )
-    # A separate bus over the same Redis (a different process) replays the worker's log, then ends
-    # (run_job closes the channel on exit, so the stream is finite).
-    replay = list(RedisLogBus(redis).stream("7"))
+    replay = list(bus.stream("7"))
     assert "step 0 ok" in replay
     assert any("20260610-1" in line for line in replay)
 
@@ -219,47 +206,21 @@ def test_worker_operational_log_correlates_the_job_and_run(tmp_path: Path) -> No
     assert events["worker.job.finished"]["run_id"] == "20260610-1"
 
 
-def test_redis_url_prefers_bajutsu_then_redis_then_default(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setattr(
-        worker_job, "_broker_url", None
-    )  # no in-process override; restored at teardown
-    monkeypatch.delenv("BAJUTSU_REDIS_URL", raising=False)
-    monkeypatch.delenv("REDIS_URL", raising=False)
-    assert worker_job.redis_url() == "redis://localhost:6379"
-    monkeypatch.setenv("REDIS_URL", "redis://r:6379")
-    assert worker_job.redis_url() == "redis://r:6379"
-    monkeypatch.setenv("BAJUTSU_REDIS_URL", "redis://b:6379")
-    assert worker_job.redis_url() == "redis://b:6379"  # BAJUTSU_REDIS_URL wins
-
-
-def test_set_broker_url_wins_over_environment(monkeypatch: pytest.MonkeyPatch) -> None:
-    # The worker records the broker URL in-process (not the environment), so it must take
-    # precedence over env vars and never need exporting — credentials stay out of spawned runs.
-    monkeypatch.setattr(worker_job, "_broker_url", None)  # restored at teardown
-    monkeypatch.setenv("BAJUTSU_REDIS_URL", "redis://env:6379")
-    worker_job.set_broker_url("redis://broker:6379")
-    assert worker_job.redis_url() == "redis://broker:6379"
-
-
 def test_execute_job_spec_records_terminal_status_on_the_bus(tmp_path: Path) -> None:
-    # The worker records the finished job's status on the bus (W2), so a control-plane replica
-    # reads the real exit/run id cross-process — its own Job stays "running".
     project(tmp_path)
-    redis = _FakeRedis()
+    bus = srv.InMemoryLogBus()
     spec = {"job_id": "9", "cmd": ["bajutsu", "run"], "udids": [], "app_path": None, "build": None}
     execute_job_spec(
         spec,
         popen=fake_popen(["PASS  runs/20260610-1/manifest.json\n"]),
         cwd=tmp_path,
-        bus=RedisLogBus(redis),
+        bus=bus,
     )
-    final = RedisLogBus(redis).final("9")
+    final = bus.final("9")
     assert final is not None
     view = json.loads(final)
     assert view["status"] == "done" and view["ok"] is True and view["runId"] == "20260610-1"
-    assert "lines" not in view  # the log already lives in the bus stream; don't duplicate it
+    assert "lines" not in view
 
 
 def test_execute_job_spec_materializes_files_into_the_workspace(tmp_path: Path) -> None:
@@ -313,6 +274,53 @@ def test_start_run_on_the_server_backend_materializes_scenario_and_config(tmp_pa
     assert "targets:" in spec["materials"]["bajutsu.config.yaml"]
 
 
+def test_start_run_passes_safe_backfilled_flags_and_withholds_host_paths(tmp_path: Path) -> None:
+    # BE-0134: the flags run_command couldn't previously pass through now flow from the request
+    # body — except client-supplied host directory paths (schemas/goldens), which BE-0051 keeps out
+    # of a serve-driven argv (baselines is serve-computed for the same reason).
+    from bajutsu.serve.server.scenarios import StorageScenarioStore
+
+    scn_dir, cfg, runs = project(tmp_path)
+    scenario_text = (scn_dir / "smoke.yaml").read_text()
+    q = _FakeQueue()
+    state = srv.ServeState(config=cfg, runs_dir=runs, cwd=tmp_path, executor=QueueExecutor(q))
+    state.scenarios = StorageScenarioStore(
+        FakeScenarioStorage({"demo": {"smoke.yaml": scenario_text}})
+    )
+    _payload, code = ops.start_run(
+        state,
+        {
+            "scenario": "smoke.yaml",
+            "target": "demo",
+            "tag": "smoke",
+            "exclude": "slow",
+            "browser": "firefox",
+            "browsers": "chromium,firefox",
+            "network": False,
+            "zip": True,
+            "alertInstruction": "tap Allow",
+            "logPredicate": "subsystem == 'x'",
+            "logSubsystem": "com.example",
+            "schemas": "/etc",  # host path — must be withheld (BE-0051)
+            "goldens": "/tmp/g",  # host path — must be withheld (BE-0051)
+        },
+    )
+    assert code == 200
+    cmd = q.enqueued[0][1][0]["cmd"]
+    assert cmd[cmd.index("--tag") + 1] == "smoke"
+    assert cmd[cmd.index("--exclude") + 1] == "slow"
+    assert cmd[cmd.index("--browser") + 1] == "firefox"
+    assert cmd[cmd.index("--browsers") + 1] == "chromium,firefox"
+    assert "--no-network" in cmd  # network=False forces the off side of the pair
+    assert "--zip" in cmd
+    assert cmd[cmd.index("--alert-instruction") + 1] == "tap Allow"
+    assert cmd[cmd.index("--log-predicate") + 1] == "subsystem == 'x'"
+    assert cmd[cmd.index("--log-subsystem") + 1] == "com.example"
+    assert "--schemas" not in cmd and "--goldens" not in cmd
+    # Git-config knobs stay config-driven too — start_run never sources them from the client body.
+    assert "--config-offline" not in cmd and "--require-pinned-config" not in cmd
+
+
 class FakeScenarioStorage:
     """Per-project scenario storage, in memory: {app: {ref: yaml}} (for the start_run test)."""
 
@@ -332,117 +340,59 @@ class FakeScenarioStorage:
         return ref
 
 
-class _FakeObjectStore:
-    """In-memory ObjectStore (put_bytes) for the worker upload tests."""
+class _RecordingWorkerIO:
+    """In-memory `WorkerIO` for the worker upload tests (BE-0160): records the calls execute_job_spec
+    makes, so the gate exercises the orchestration without a network or a cloud SDK."""
 
     def __init__(self) -> None:
-        self.objects: dict[str, bytes] = {}
+        self.downloaded: list[Path] = []
+        self.uploaded: list[tuple[Path, str]] = []
+        self.saved: list[tuple[Path, str, str, str]] = []
 
-    def exists(self, key: str) -> bool:
-        return key in self.objects
+    def download_baselines(self, work: Path) -> None:
+        self.downloaded.append(work)
 
-    def get_bytes(self, key: str) -> bytes | None:
-        return self.objects.get(key)
+    def upload_run(self, work: Path, run_id: str) -> None:
+        self.uploaded.append((work, run_id))
 
-    def put_bytes(self, key: str, data: bytes) -> None:
-        self.objects[key] = data
-
-    def put_file(self, key: str, path: Path) -> None:
-        self.objects[key] = path.read_bytes()
-
-    def presigned_url(self, key: str) -> str:
-        return f"https://signed.example/{key}"
-
-    def list_keys(self, prefix: str) -> list[str]:
-        return [k for k in self.objects if k.startswith(prefix)]
+    def save_scenario(self, work: Path, out_path: str, app: str, ref: str) -> None:
+        self.saved.append((work, out_path, app, ref))
 
 
-def test_upload_runs_puts_every_file_under_the_artifact_prefix(tmp_path: Path) -> None:
-    run = tmp_path / "runs" / "20260610-1"
-    (run / "sub").mkdir(parents=True)
-    (run / "report.html").write_text("<html>", encoding="utf-8")
-    (run / "manifest.json").write_text("{}", encoding="utf-8")
-    (run / "sub" / "shot.png").write_bytes(b"\x89PNG")
-    # Another run in the shared workspace must NOT be uploaded (scoped to run_id).
-    other = tmp_path / "runs" / "20260101-0"
-    other.mkdir(parents=True)
-    (other / "report.html").write_text("old", encoding="utf-8")
-    # A symlink in the run dir must be skipped (no exfiltration outside the run tree).
-    secret = tmp_path / "secret.txt"
-    secret.write_text("secret", encoding="utf-8")
-    (run / "link.txt").symlink_to(secret)
-
-    store = _FakeObjectStore()
-    worker_job._upload_runs(tmp_path, store, "artifacts/", "20260610-1")
-    assert store.objects["artifacts/20260610-1/report.html"] == b"<html>"
-    assert store.objects["artifacts/20260610-1/manifest.json"] == b"{}"
-    assert store.objects["artifacts/20260610-1/sub/shot.png"] == b"\x89PNG"
-    assert "artifacts/20260101-0/report.html" not in store.objects  # other run not uploaded
-    assert "artifacts/20260610-1/link.txt" not in store.objects  # symlink skipped
-
-
-def test_execute_job_spec_uploads_the_run_tree(tmp_path: Path) -> None:
-    # The worker uploads the run tree the subprocess wrote, to the keys the artifact store serves.
+def test_execute_job_spec_uploads_the_run_tree_through_the_io(tmp_path: Path) -> None:
+    # After the run, the worker uploads its run tree through the presigned-URL seam, scoped to the
+    # run id the run minted (the key layout is fixed server-side, not by the worker — BE-0160).
     def popen_writing_run(_cmd: list[str], **_kw: object) -> FakeProc:
         run = tmp_path / "runs" / "20260610-1"
         run.mkdir(parents=True, exist_ok=True)
         (run / "report.html").write_text("<html>", encoding="utf-8")
         return FakeProc(["PASS  runs/20260610-1/manifest.json\n"])
 
-    store = _FakeObjectStore()
+    io = _RecordingWorkerIO()
     spec = {"job_id": "1", "cmd": ["bajutsu", "run"], "udids": [], "app_path": None, "build": None}
-    execute_job_spec(
-        spec, popen=popen_writing_run, cwd=tmp_path, bus=srv.InMemoryLogBus(), store=store
-    )
-    assert store.objects["artifacts/20260610-1/report.html"] == b"<html>"
+    execute_job_spec(spec, popen=popen_writing_run, cwd=tmp_path, bus=srv.InMemoryLogBus(), io=io)
+    assert io.uploaded == [(tmp_path, "20260610-1")]
 
 
-def test_execute_job_spec_uploads_under_the_orgs_prefix(tmp_path: Path) -> None:
-    # A non-default org's run tree uploads under the org segment, matching the control plane's
-    # org-scoped artifact store (BE-0015 multi-tenancy).
-    def popen_writing_run(_cmd: list[str], **_kw: object) -> FakeProc:
-        run = tmp_path / "runs" / "20260610-1"
-        run.mkdir(parents=True, exist_ok=True)
-        (run / "report.html").write_text("<html>", encoding="utf-8")
-        return FakeProc(["PASS  runs/20260610-1/manifest.json\n"])
-
-    store = _FakeObjectStore()
-    spec = {
-        "job_id": "1",
-        "cmd": ["bajutsu", "run"],
-        "udids": [],
-        "app_path": None,
-        "build": None,
-        "org": "acme",
-    }
-    execute_job_spec(
-        spec, popen=popen_writing_run, cwd=tmp_path, bus=srv.InMemoryLogBus(), store=store
-    )
-    assert store.objects["acme/artifacts/20260610-1/report.html"] == b"<html>"
-
-
-def test_execute_job_spec_skips_upload_without_a_store(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    # No object store configured (no BAJUTSU_S3_BUCKET) -> a finished run isn't failed; it just
-    # doesn't upload.
-    monkeypatch.delenv("BAJUTSU_S3_BUCKET", raising=False)
+def test_execute_job_spec_skips_upload_without_an_io(tmp_path: Path) -> None:
+    # No WorkerIO injected (a worker with no hosted control plane) -> a finished run isn't failed; it
+    # just doesn't upload.
     project(tmp_path)
     spec = {"job_id": "1", "cmd": ["bajutsu", "run"], "udids": [], "app_path": None, "build": None}
     job = execute_job_spec(spec, popen=fake_popen(["ok\n"]), cwd=tmp_path, bus=srv.InMemoryLogBus())
     assert job.view()["status"] == "done"  # ran fine, just no upload
 
 
-def test_execute_job_spec_saves_the_authored_scenario(tmp_path: Path) -> None:
-    # A server-backend `record`: the worker writes the authored scenario to its workspace, then
-    # persists it to the same object-storage key the control plane reads (scenarios/<app>/<ref>).
+def test_execute_job_spec_saves_the_authored_scenario_through_the_io(tmp_path: Path) -> None:
+    # A server-backend `record`: after authoring, the worker persists the scenario through the seam
+    # as (app, ref) — the presigned scenario URL, not a direct object-store write (BE-0160).
     def popen_writing_scenario(_cmd: list[str], **_kw: object) -> FakeProc:
         out = tmp_path / "scenarios" / "login.yaml"
         out.parent.mkdir(parents=True, exist_ok=True)
         out.write_text("- name: login\n  steps: []\n", encoding="utf-8")
         return FakeProc(["authored ok\n"])
 
-    store = _FakeObjectStore()
+    io = _RecordingWorkerIO()
     spec = {
         "job_id": "1",
         "cmd": ["bajutsu", "record"],
@@ -453,31 +403,46 @@ def test_execute_job_spec_saves_the_authored_scenario(tmp_path: Path) -> None:
         "record_save": ["demo", "login.yaml"],
     }
     job = execute_job_spec(
-        spec, popen=popen_writing_scenario, cwd=tmp_path, bus=srv.InMemoryLogBus(), store=store
+        spec, popen=popen_writing_scenario, cwd=tmp_path, bus=srv.InMemoryLogBus(), io=io
     )
-    assert store.objects["scenarios/demo/login.yaml"] == b"- name: login\n  steps: []\n"
+    assert io.saved == [(tmp_path, "scenarios/login.yaml", "demo", "login.yaml")]
     assert job.view()["outPath"] == "scenarios/login.yaml"  # terminal status reports the out path
 
 
-def test_execute_job_spec_save_authored_confines_to_the_workspace(tmp_path: Path) -> None:
-    # A crafted spec with an escaping out_path must not read & upload a host file outside the
-    # workspace (defensive — the control plane never builds such a path).
-    secret = tmp_path / "secret.yaml"
-    secret.write_text("secret", encoding="utf-8")
-    store = _FakeObjectStore()
+def test_execute_job_spec_materializes_baselines_through_the_io(tmp_path: Path) -> None:
+    # A server-backend run downloads its visual baselines through the seam before running, so the
+    # cmd's `--baselines baselines` resolves on the worker (BE-0160).
+    io = _RecordingWorkerIO()
     spec = {
         "job_id": "1",
-        "cmd": ["bajutsu", "record"],
+        "cmd": ["bajutsu", "run"],
         "udids": [],
         "app_path": None,
         "build": None,
-        "out_path": "../secret.yaml",
-        "record_save": ["demo", "stolen.yaml"],
+        "materialize_baselines": True,
     }
     execute_job_spec(
-        spec, popen=fake_popen(["ok\n"]), cwd=tmp_path / "ws", bus=srv.InMemoryLogBus(), store=store
+        spec, popen=fake_popen(["ok\n"]), cwd=tmp_path, bus=srv.InMemoryLogBus(), io=io
     )
-    assert store.objects == {}  # nothing read/uploaded from outside the workspace
+    assert io.downloaded == [tmp_path]
+
+
+def test_execute_job_spec_surfaces_an_upload_failure(tmp_path: Path) -> None:
+    # An upload failure must fail the job loudly — a report the control plane can't serve is a
+    # failure, not a silent skip (BE-0160 / determinism-first).
+    class _FailingIO(_RecordingWorkerIO):
+        def upload_run(self, work: Path, run_id: str) -> None:
+            raise RuntimeError("upload boom")
+
+    def popen_writing_run(_cmd: list[str], **_kw: object) -> FakeProc:
+        (tmp_path / "runs" / "20260610-1").mkdir(parents=True, exist_ok=True)
+        return FakeProc(["PASS  runs/20260610-1/manifest.json\n"])
+
+    spec = {"job_id": "1", "cmd": ["bajutsu", "run"], "udids": [], "app_path": None, "build": None}
+    with pytest.raises(RuntimeError, match="upload boom"):
+        execute_job_spec(
+            spec, popen=popen_writing_run, cwd=tmp_path, bus=srv.InMemoryLogBus(), io=_FailingIO()
+        )
 
 
 def test_start_record_on_the_server_backend_materializes_and_targets_storage(
@@ -500,24 +465,18 @@ def test_start_record_on_the_server_backend_materializes_and_targets_storage(
     assert "targets:" in spec["materials"]["bajutsu.config.yaml"]
 
 
-def test_execute_job_spec_materializes_baselines(tmp_path: Path) -> None:
-    # A server-backend run downloads the visual baselines into work/baselines before running, so the
-    # cmd's `--baselines baselines` resolves on the worker.
-    store = _FakeObjectStore()
-    store.objects["baselines/home.png"] = b"\x89PNG"
+def test_execute_job_spec_skips_baseline_download_when_not_requested(tmp_path: Path) -> None:
+    # A run that doesn't materialize baselines never touches the seam's download path (BE-0160).
+    io = _RecordingWorkerIO()
     spec = {
         "job_id": "1",
         "cmd": ["bajutsu", "run"],
         "udids": [],
         "app_path": None,
         "build": None,
-        "materialize_baselines": True,
+        "materialize_baselines": False,
     }
-    # A stale baseline from a previous job in the reused workspace must be cleared before download.
-    (tmp_path / "baselines").mkdir()
-    (tmp_path / "baselines" / "stale.png").write_bytes(b"old")
     execute_job_spec(
-        spec, popen=fake_popen(["ok\n"]), cwd=tmp_path, bus=srv.InMemoryLogBus(), store=store
+        spec, popen=fake_popen(["ok\n"]), cwd=tmp_path, bus=srv.InMemoryLogBus(), io=io
     )
-    assert (tmp_path / "baselines" / "home.png").read_bytes() == b"\x89PNG"
-    assert not (tmp_path / "baselines" / "stale.png").exists()  # cleared before re-materialize
+    assert io.downloaded == []

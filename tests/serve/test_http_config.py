@@ -91,7 +91,7 @@ def test_http_open_config_binds_and_lists_apps(tmp_path: Path) -> None:
 def test_http_open_config_from_git_binds_checkout(tmp_path: Path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
     # The "from Git" picker: a github: spec materializes a checkout, binds its config, and repoints
     # state.cwd to the checkout root so build/scenarios resolve there (BE-0063).
-    import bajutsu.serve.operations as ops
+    import bajutsu.serve.operations.config as ops  # bind_git_config resolves `materialize` here
     from bajutsu.config_source import Materialized
 
     _, _, runs = project(tmp_path)
@@ -138,7 +138,7 @@ def test_http_open_config_from_git_binds_checkout(tmp_path: Path, monkeypatch) -
 def test_http_git_config_with_escaping_path_is_refused(tmp_path: Path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
     # A fetched config whose path field climbs out of the checkout is rejected at bind, so serve's
     # (unconfined) scenario/build resolution never sees a host path outside the tree (BE-0063/BE-0051).
-    import bajutsu.serve.operations as ops
+    import bajutsu.serve.operations.config as ops  # bind_git_config resolves `materialize` here
     from bajutsu.config_source import Materialized
 
     _, _, runs = project(tmp_path)
@@ -177,6 +177,63 @@ def test_http_config_rejects_absolute_traversal_outside_root(tmp_path: Path) -> 
         escape = str(root / ".." / "secret.yaml")  # absolute, resolves to tmp_path/secret.yaml
         status, resp = _post(port, "/api/config", {"path": escape})
         assert status == 400 and "outside the browse root" in resp["error"]
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+def test_http_config_sources_local_offers_all_three(tmp_path: Path) -> None:
+    # The local backend offers every config source, including the file browser, and surfaces the
+    # browse root the fs source needs (BE-0108).
+    _, _, runs = project(tmp_path)
+    server, port = _serve(srv.ServeState(runs_dir=runs, root=tmp_path, cwd=tmp_path))
+    try:
+        info = _get_json(port, "/api/config")
+        assert info["configSources"] == ["git", "upload", "fs"]
+        assert info["root"] == str(tmp_path.resolve())
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+def test_http_config_sources_hosted_omits_fs_and_root(tmp_path: Path) -> None:
+    # A hosted deployment (server backend) drops the file browser: the remote user has no
+    # filesystem relationship to the host, so only Git and upload are offered — and the browse root,
+    # dead information without the fs source, is withheld rather than leaking the host path (BE-0108).
+    _, _, runs = project(tmp_path)
+    server, port = _serve(srv.ServeState(runs_dir=runs, root=tmp_path, cwd=tmp_path, hosted=True))
+    try:
+        info = _get_json(port, "/api/config")
+        assert info["configSources"] == ["git", "upload"]
+        assert info["root"] is None
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+def test_http_hosted_refuses_path_bind_but_git_still_binds(tmp_path: Path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    # Server-side enforcement (defense in depth): when hosted, the path branch of POST /api/config is
+    # refused even by a hand-crafted request, while the Git branch is unaffected (BE-0108).
+    import bajutsu.serve.operations.config as ops
+    from bajutsu.config_source import Materialized
+
+    _, _, runs = project(tmp_path)
+    checkout = tmp_path / "gitsrc"
+    checkout.mkdir()
+    git_cfg = checkout / "bajutsu.config.yaml"
+    git_cfg.write_text("targets:\n  fromgit: { bundleId: com.example.fromgit }\n", encoding="utf-8")
+    monkeypatch.setattr(
+        ops, "materialize", lambda spec, **kw: Materialized(git_cfg, checkout, "sha")
+    )
+    state = srv.ServeState(runs_dir=runs, root=tmp_path, cwd=tmp_path, hosted=True)
+    server, port = _serve(state)
+    try:
+        status, resp = _post(port, "/api/config", {"path": "bajutsu.config.yaml"})
+        assert status == 403 and "file browser is disabled" in resp["error"]
+        assert state.config is None  # the refused path bind changed nothing
+        # The Git branch still binds — hosting keeps the two remote-usable sources.
+        status, resp = _post(port, "/api/config", {"git": "github:acme/repo@main"})
+        assert status == 200 and resp["ok"] is True and resp["targets"] == ["fromgit"]
     finally:
         server.shutdown()
         server.server_close()

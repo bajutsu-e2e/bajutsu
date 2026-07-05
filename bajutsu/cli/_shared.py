@@ -6,14 +6,25 @@ genuinely cross-command pieces belong here, so adding a command rarely edits thi
 
 from __future__ import annotations
 
+import json
 import os
+from collections.abc import Callable
 from dataclasses import replace
 from pathlib import Path
 
 import typer
+import yaml
 
 from bajutsu import anthropic_client
-from bajutsu.config import WEB_ENGINES, Effective, load_config, resolve
+from bajutsu.ai import credential_gap
+from bajutsu.config import (
+    WEB_ENGINES,
+    Effective,
+    WebConfig,
+    ios_bundle_id,
+    load_config,
+    resolve,
+)
 from bajutsu.config_source import is_full_sha, materialize, parse_config_spec, source_provenance
 from bajutsu.redaction import Redactor
 from bajutsu.scenario import (
@@ -35,6 +46,33 @@ def _secret_values(eff: Effective) -> list[str]:
     redaction never drift in how they read secrets.
     """
     return [os.environ[n] for n in eff.secrets if n in os.environ]
+
+
+def _warn_onscreen_secrets(eff: Effective) -> None:
+    """Disclose that on-screen secrets leak into images before an AI path that binds them starts (BE-0151).
+
+    `record` sends the live screenshot to the AI each turn; `triage --ai` sends the captured failure
+    screenshot (if any), read from the run's `runs/` evidence. The image goes to the AI provider
+    resolved from config, except `record --agent claude-code`, which reaches the model through the
+    `claude` CLI. `${secrets.X}` values are masked in *text* evidence (network, element tree, logs)
+    by `Redactor`, but images cannot be pixel-masked — so a secret the app *displays* (a typed
+    password, an OTP, PII) stays in the raw pixels. This warns plainly at the point secrets are
+    bound; it changes no behavior (visual evidence is the point) — an author who wants to avoid the
+    exposure skips AI authoring for the flow, or keeps the secret off-screen. A no-op when the target
+    declares no `secrets:`.
+    """
+    if not eff.secrets:
+        return
+    names = ", ".join(eff.secrets)
+    typer.echo(
+        f"⚠️  on-screen secrets are not redacted from images: {names} are masked in text evidence "
+        "(network, element tree, logs), but a secret the app shows on screen (a typed password, an "
+        "OTP, displayed PII) stays in the raw pixels of the screenshot sent to the AI — the live "
+        "screen each turn under record, the captured failure screenshot under triage --ai. That "
+        "image goes to the AI provider you configured (record --agent claude-code instead reaches "
+        "the model through the claude CLI).",
+        err=True,
+    )
 
 
 def _ai_redactor(eff: Effective) -> Redactor:
@@ -66,27 +104,43 @@ def _require_ai_credential(eff: Effective) -> None:
     Raises a clean exit-2 so an AI entry point never constructs a client that would round-trip to a
     hosted default. A no-op when a credential is present.
     """
-    gap = anthropic_client.credential_gap(eff.ai)
+    gap = credential_gap(eff.ai)
     if gap is not None:
         typer.echo(_credential_gap_message(gap, eff))
         raise typer.Exit(2)
 
 
+def _parse_yaml_named[T](file: Path, parse: Callable[[str], T]) -> T:
+    """Read and *parse* a YAML file, re-raising a syntax error as a `ValueError` naming *file*.
+
+    A `yaml.YAMLError` is not a `ValueError` subclass, so a caller's `except (OSError, ValueError)`
+    would leak it as a traceback. Normalizing per file — so a malformed referenced component is
+    attributed to the component, not the top-level scenario — and collapsing PyYAML's multi-line
+    text keeps the one-line CLI error clean and actionable (BE-0150). An `OSError` (unreadable file)
+    is left to propagate unchanged.
+    """
+    try:
+        return parse(file.read_text(encoding="utf-8"))
+    except yaml.YAMLError as e:
+        raise ValueError(f"invalid YAML in {file}: {' '.join(str(e).split())}") from e
+
+
 def load_expanded_scenarios(path: Path) -> list[Scenario]:
     """Load a scenario file and expand its components + data rows, resolving refs relative to the file.
 
-    The shared device-free loader behind `trace --explain` and `audit` (setup-prefixing
+    The shared device-free loader behind `trace --explain`, `audit`, and `coverage` (setup-prefixing
     `run` keeps its own loader).
 
     Raises:
         OSError: The scenario file or a referenced component / CSV cannot be read.
-        ValueError: The file parses but its content is invalid.
+        ValueError: The content is invalid, or the YAML does not parse — `_parse_yaml_named`
+            normalizes a `yaml.YAMLError` into a `ValueError` naming the offending file (the scenario
+            or a referenced component), so its callers' `except (OSError, ValueError)` guard a
+            malformed file as cleanly as a structurally-invalid one (BE-0150).
     """
     base = path.parent
-    scenarios = load_scenario_file(path.read_text(encoding="utf-8")).scenarios
-    expand_components(
-        scenarios, lambda ref: load_component((base / ref).read_text(encoding="utf-8"))
-    )
+    scenarios = _parse_yaml_named(path, load_scenario_file).scenarios
+    expand_components(scenarios, lambda ref: _parse_yaml_named(base / ref, load_component))
     return expand_data(scenarios, lambda ref: read_csv((base / ref).read_text(encoding="utf-8")))
 
 
@@ -102,6 +156,27 @@ def resolve_run_dir(run: str, runs_root: str) -> Path:
     """
     p = Path(run)
     return p if p.is_absolute() or len(p.parts) > 1 else Path(runs_root) / run
+
+
+def read_manifests(runs_dir: Path) -> list[dict[str, object]]:
+    """The parsed `manifest.json` of each run under *runs_dir*; unreadable/malformed ones are skipped.
+
+    Shared by the read-only run-history readers (`audit --history`, `stats`): a run that can't be
+    parsed carries no usable outcome, so dropping it here matches those tools' advisory tolerance —
+    they never gate on completeness.
+    """
+    manifests: list[dict[str, object]] = []
+    for d in sorted(runs_dir.iterdir()):
+        manifest = d / "manifest.json"
+        if not (d.is_dir() and manifest.is_file()):
+            continue
+        try:
+            data = json.loads(manifest.read_text(encoding="utf-8"))
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+            continue
+        if isinstance(data, dict):
+            manifests.append(data)
+    return manifests
 
 
 def _load_effective(config: str, target_name: str) -> Effective:
@@ -206,4 +281,24 @@ def _resolve_browser(eff: Effective, browser: str) -> Effective:
     if browser not in WEB_ENGINES:
         typer.echo(f"unknown --browser {browser!r}: use one of {', '.join(WEB_ENGINES)}")
         raise typer.Exit(2)
-    return replace(eff, browser=browser)
+    if not isinstance(eff.platform_config, WebConfig):
+        return eff  # `browser` is a web-only knob; a non-web target ignores the flag
+    return replace(eff, platform_config=replace(eff.platform_config, browser=browser))
+
+
+def _with_headed(eff: Effective, headed: bool | None) -> Effective:
+    """Apply `--headed`/`--no-headed` to a web target's `headless` (BE-0126).
+
+    Web-only, like `--browser`: a non-web target has no `headless` knob and ignores the flag.
+    """
+    if headed is None or not isinstance(eff.platform_config, WebConfig):
+        return eff
+    return replace(eff, platform_config=replace(eff.platform_config, headless=not headed))
+
+
+def _log_subsystem_default(eff: Effective) -> str:
+    """The default idb log subsystem — the iOS bundle id, or empty for a non-iOS target (BE-0126).
+
+    The device-log predicate scopes to the app's bundle id; a web target has no such subsystem.
+    """
+    return ios_bundle_id(eff)

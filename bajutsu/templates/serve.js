@@ -94,15 +94,21 @@ document.querySelectorAll('.viewswitch').forEach(sw=>{
 // ---- top-level Record / Replay / Crawl views ----
 function showView(name){
   document.querySelectorAll('.toptab').forEach(t=>t.classList.toggle('active',t.dataset.view===name));
-  $('#view-record').hidden=name!=='record';$('#view-replay').hidden=name!=='replay';$('#view-crawl').hidden=name!=='crawl';$('#view-capture').hidden=name!=='capture';$('#view-editor').hidden=name!=='editor';
+  $('#view-record').hidden=name!=='record';$('#view-replay').hidden=name!=='replay';$('#view-crawl').hidden=name!=='crawl';$('#view-author').hidden=name!=='author';$('#view-stats').hidden=name!=='stats';
   if(name==='replay')loadHistory();
-  if(name==='editor')editorInit();
+  if(name==='author')authorInit();
+  if(name==='stats')loadStats();
 }
 document.querySelectorAll('.toptab').forEach(t=>t.addEventListener('click',()=>showView(t.dataset.view)));
 
 // ---- config: bound at startup or opened from the UI's file browser ----
+// Whether the file-browser source is offered — a hosted deployment omits `fs` from configSources
+// (BE-0108), so we hide that block and never call browseFs. Git + Upload are always offered.
+let fsSourceEnabled=true;
 async function loadConfig(){
   let c;try{c=await (await fetch('/api/config')).json()}catch(e){c={hasConfig:false}}
+  fsSourceEnabled=!c.configSources||c.configSources.includes('fs');
+  $('#fssrc').hidden=!fsSourceEnabled;
   $('#cfgname').textContent=c.hasConfig?c.config:'no config bound — open one →';
   if(c.hasConfig){await loadShared()}else{openFs()}
 }
@@ -120,35 +126,25 @@ async function browseFs(dir){
   $('#fslist').querySelectorAll('li[data-dir]').forEach(li=>li.addEventListener('click',()=>browseFs(li.dataset.dir)));
   $('#fslist').querySelectorAll('li[data-file]').forEach(li=>li.addEventListener('click',()=>chooseConfig(li.dataset.file)));
 }
-function openFs(){$('#fsmodal').hidden=false;browseFs('')}
+function openFs(){$('#fsmodal').hidden=false;if(fsSourceEnabled)browseFs('')}
 function closeFs(){$('#fsmodal').hidden=true}
 $('#opencfg').addEventListener('click',openFs);
 $('#fsclose').addEventListener('click',closeFs);
 $('#fsmodal').addEventListener('click',e=>{if(e.target===$('#fsmodal'))closeFs()});
 
-// ---- Claude API key: shown redacted; reveal fetches the full value on demand ----
-let keyState={set:false,masked:'',full:null,shown:false};
+// ---- Claude API key: write-once — shown masked only, never revealed (BE-0136) ----
+let keyState={set:false,masked:''};
 function setSettingsStatus(t,c){const st=$('#setstatus');st.textContent=t;st.className='keystatus '+(c||'')}
 function renderKey(){
   const cur=$('#keycur'),inp=$('#apikey');
   if(keyState.set){
-    const disp=(keyState.shown&&keyState.full!=null)?keyState.full:keyState.masked;
-    cur.innerHTML='Current key: <code>'+esc(disp)+'</code>';
+    cur.innerHTML='Current key: <code>'+esc(keyState.masked)+'</code>';
     inp.placeholder='Enter a new key to replace it';
   }else{cur.textContent='No key set yet.';inp.placeholder='sk-ant-…'}
-  inp.type=keyState.shown?'text':'password';
-  $('#keyreveal').classList.toggle('on',keyState.shown);
 }
 async function loadKey(){
   let d;try{d=await (await fetch('/api/apikey')).json()}catch(e){d={set:false}}
-  keyState={set:!!d.set,masked:d.masked||'',full:null,shown:false};
-  renderKey();
-}
-async function toggleReveal(){
-  keyState.shown=!keyState.shown;
-  if(keyState.shown&&keyState.set&&keyState.full==null){
-    try{const d=await (await fetch('/api/apikey?reveal=1')).json();keyState.full=d.value||''}catch(e){}
-  }
+  keyState={set:!!d.set,masked:d.masked||''};
   renderKey();
 }
 async function postKey(value){
@@ -160,10 +156,9 @@ async function clearKey(){
   setSettingsStatus('clearing…','');
   let d;try{d=await postKey('')}catch(e){d={error:'request failed'}}
   if(d.error){setSettingsStatus(d.error,'ng');return}
-  $('#apikey').value='';keyState={set:false,masked:'',full:null,shown:false};renderKey();
+  $('#apikey').value='';keyState={set:false,masked:''};renderKey();
   setSettingsStatus('cleared','ok');
 }
-$('#keyreveal').addEventListener('click',toggleReveal);
 $('#keyclear').addEventListener('click',clearKey);
 
 // ---- AI provider: Anthropic API (Claude API key), Amazon Bedrock (AWS creds), or Claude Code (CLI) ----
@@ -183,6 +178,23 @@ async function loadProv(){
   $('#bedrock-model').value=d.model||'';
   renderProv();
 }
+// ---- Claude reachability (BE-0101): the record/crawl surfaces degrade gracefully when Claude
+// can't be reached — the tabs read disabled and each view shows an inline explanation naming what
+// is missing with a pointer to Settings, instead of only failing on click. Flips live as soon as a
+// key is saved / a provider is picked (saveSettings re-runs this). Availability is data from
+// /api/provider (claudeAvailable / claudeHint), so the three surfaces never disagree.
+async function refreshAiAvailability(){
+  let d;try{d=await (await fetch('/api/provider')).json()}catch(e){d={}}
+  const ok=d.claudeAvailable!==false, hint=d.claudeHint||'set an API key, configure Bedrock, or sign in to the Claude Code CLI.';
+  document.querySelectorAll('.toptab[data-view="record"],.toptab[data-view="crawl"]').forEach(t=>t.classList.toggle('disabled',!ok));
+  [['#rec-aigate','#rec-go'],['#crawl-aigate','#crawl-go']].forEach(([gate,btn])=>{
+    const g=$(gate);
+    if(g){g.hidden=ok;if(!ok)g.innerHTML='<b>This needs Claude.</b> '+esc(hint)+' <button class="link" type="button" data-open-settings>Open Settings</button>';}
+    const b=$(btn);if(b)b.disabled=!ok;
+  });
+}
+// One delegated listener: the gate banner's "Open Settings" button is re-created on every refresh.
+document.addEventListener('click',e=>{if(e.target.closest('[data-open-settings]'))openSettings();});
 // ---- Settings: one Save persists the provider; the API key saves on every path but Bedrock ----
 async function saveSettings(){
   const provider=$('#provider').value,body={provider};
@@ -200,10 +212,11 @@ async function saveSettings(){
     if(v){
       let k;try{k=await postKey(v)}catch(e){k={error:'request failed'}}
       if(k.error){setSettingsStatus(k.error,'ng');return}
-      $('#apikey').value='';keyState={set:true,masked:k.masked||'',full:null,shown:false};renderKey();
+      $('#apikey').value='';keyState={set:true,masked:k.masked||''};renderKey();
     }
   }
   setSettingsStatus('saved','ok');
+  refreshAiAvailability();  // a just-saved key / provider can flip the record/crawl gate live
 }
 // ---- Settings modal: one panel for the provider + API-key controls ----
 function openSettings(){$('#settingsmodal').hidden=false;$('#apikey').value='';setSettingsStatus('','');loadKey();loadProv()}
@@ -239,14 +252,14 @@ async function loadShared(){
   // each target carries its primary backend (data-backend) so picking a web target hides the iOS-only UI
   const opts=targets.map(a=>{const n=typeof a==='string'?a:a.name,b=typeof a==='string'?'':(a.backend||'');
     return `<option value="${esc(n)}" data-backend="${esc(b)}">${esc(n)}</option>`;}).join('');
-  $('#target').innerHTML=opts;$('#rec-target').innerHTML=opts;$('#crawl-target').innerHTML=opts;$('#cap-target').innerHTML=opts;$('#edt-target').innerHTML=opts;
+  $('#target').innerHTML=opts;$('#rec-target').innerHTML=opts;$('#crawl-target').innerHTML=opts;$('#au-target').innerHTML=opts;
   syncPlatform('#panel-run','#target');
   syncPlatform('#panel-record','#rec-target');
   syncPlatform('#panel-crawl','#crawl-target');
-  syncPlatform('#panel-capture','#cap-target');
-  syncPlatform('#panel-editor','#edt-target');
+  syncPlatform('#panel-author','#au-target');
   await loadScenarios();
-  if(!$('#view-editor').hidden)editorRefresh();
+  if(!$('#view-author').hidden)authorRefresh();
+  refreshAiAvailability();  // a newly-bound config's ai.keyEnv can change reachability
 }
 // Scenarios come from the selected target's configured dir, so reload when the Replay target changes.
 async function loadScenarios(){
@@ -376,6 +389,24 @@ async function setReport(id,repSel){
   // the shadow via window.__bajutsuReportRoot); inline scripts run synchronously, so remove it after.
   const s=document.createElement('script');s.textContent=js;document.body.appendChild(s);s.remove();
 }
+// Stats (BE-0102): render the self-contained /stats dashboard into a shadow root so its inline
+// CSS stays isolated (same approach as setReport). The page has no scripts and no relative assets,
+// so no rewrite is needed — only retarget its :root/body rules to :host inside the shadow root.
+async function loadStats(){
+  const host=$('#stats-host');
+  // Reuse the host's shadow root on a refresh (unlike setReport, which recreates its host each time):
+  // this innerHTML replacement is idempotent and the page carries no scripts or listeners to leak.
+  const sh=host.shadowRoot||host.attachShadow({mode:'open'});
+  let html;
+  // Treat a network error or a non-2xx (e.g. 401/500) as unavailable, and render the error into the
+  // shadow root so a failed refresh replaces the stale dashboard instead of leaving it on screen.
+  try{const r=await fetch('/stats');if(!r.ok)throw 0;html=await r.text();}
+  catch(e){sh.innerHTML='<div style="color:#6e6e73;font-style:italic">stats unavailable</div>';return;}
+  const doc=new DOMParser().parseFromString(html,'text/html');
+  const css=((doc.querySelector('style')||{}).textContent||'').replace(/:root/g,':host')
+    .replace(/(^|[\s,>}])body([\s{])/g,'$1:host$2');
+  sh.innerHTML=`<style>:host{display:block}\n${css}</style>${doc.body.innerHTML}`;
+}
 async function loadHistory(){
   let runs;try{runs=await (await fetch('/api/runs')).json()}catch(e){return}
   const tab=$('#histtab');if(tab)tab.textContent='History'+(runs.length?` (${runs.length})`:'');
@@ -385,6 +416,7 @@ async function loadHistory(){
   ul.querySelectorAll('li[data-id]').forEach(li=>li.addEventListener('click',()=>{setReport(li.dataset.id);ul.querySelectorAll('li').forEach(x=>x.classList.remove('sel'));li.classList.add('sel')}));
 }
 $('#refresh').addEventListener('click',loadHistory);
+$('#stats-refresh').addEventListener('click',loadStats);
 function showTab(name){
   document.querySelectorAll('#view-replay .tab').forEach(t=>t.classList.toggle('active',t.dataset.tab===name));
   $('#panel-run').hidden=name!=='run';$('#panel-history').hidden=name!=='history';
@@ -918,8 +950,7 @@ function wirePlatform(panelSel,appSel){
 wirePlatform('#panel-run','#target');
 wirePlatform('#panel-record','#rec-target');
 wirePlatform('#panel-crawl','#crawl-target');
-wirePlatform('#panel-capture','#cap-target');
-wirePlatform('#panel-editor','#edt-target');
+wirePlatform('#panel-author','#au-target');
 
 // Resizable panels: each view has gutter bars between its grid columns. Dragging one resizes the
 // column to its left via a CSS var on the <main>'s grid-template; widths persist in localStorage.
@@ -1084,134 +1115,168 @@ function initTiling(){
 // room on a phone; skip it at the narrow tier so the markup stays in its single-column stack form.
 if(!NARROW_MQ.matches)initTiling();
 
-// ---- Capture (BE-0012): record actions by clicking on a screenshot ----
+// ===========================================================================
+// Author tab (BE-0098) — one open scenario, three modes (Capture / Edit / Enrich)
+// Unifies the former Capture (BE-0012) and Editor (BE-0013) tabs and the Enrich
+// panel (BE-0014). Target / scenario / YAML / steps / Save are shared; a mode
+// switcher picks what a screenshot click does. Switching mode never reloads the
+// scenario or drops unsaved YAML edits — the mode-specific state is scoped to the
+// one open scenario.
+// ===========================================================================
 (function(){
-  const modeRadios=document.querySelectorAll('input[name="cap-mode"]');
-  modeRadios.forEach(r=>r.addEventListener('change',()=>{
-    $('#cap-type-field').hidden=r.value!=='type'||!r.checked;
+  let mode='capture';        // capture | edit | enrich
+  let auInited=false;
+  // Edit / Enrich state (scoped to the open scenario).
+  let auSteps=[];            // [{stepId, action, fields, screenshotUrl, elementsUrl}]
+  let auIdx=-1;              // currently displayed step index
+  let auPath='';             // scenario file path for save
+  let auResolvedSel=null;    // last resolved selector from picker
+  let enrichResult=null;     // last enrichment response {expect, settle, note}
+  // Capture state.
+  let capActive=false;
+  // Inline validation + schema assistance (BE-0138).
+  let auSchema=null;         // scenario JSON Schema, fetched once for completion / hover
+  let auDiagnostics=[];      // last /api/lint findings [{line, column, message, severity}]
+  let auLintTimer=null;      // debounce handle for live validation
+  let auCharW=0;             // measured monospace char width, for caret ↔ pixel math
+  const AU_LH=18, AU_PADX=8, AU_PADY=6;  // must match textarea.yaml line-height / padding in serve.css
+
+  // ---- mode switching ----
+  function setMode(m){
+    mode=m;
+    document.querySelectorAll('.modetab').forEach(b=>b.classList.toggle('active',b.dataset.mode===m));
+    document.querySelectorAll('#view-author .au-cap').forEach(e=>e.hidden=m!=='capture');
+    document.querySelectorAll('#view-author .au-edit').forEach(e=>e.hidden=m!=='edit');
+    document.querySelectorAll('#view-author .au-enrich').forEach(e=>e.hidden=m!=='enrich');
+    document.querySelectorAll('#view-author .au-loadrow').forEach(e=>e.hidden=m==='capture');
+    // The proposal panel belongs to Enrich; leaving the mode hides any open proposal.
+    if(m!=='enrich')$('#au-enrich-panel').hidden=true;
+  }
+  document.querySelectorAll('.modetab').forEach(b=>b.addEventListener('click',()=>setMode(b.dataset.mode)));
+
+  // ---- Capture mode (BE-0012): record actions by clicking on a screenshot ----
+  document.querySelectorAll('input[name="au-mode"]').forEach(r=>r.addEventListener('change',()=>{
+    $('#au-type-field').hidden=r.value!=='type'||!r.checked;
   }));
 
   function capMode(){
-    const checked=document.querySelector('input[name="cap-mode"]:checked');
+    const checked=document.querySelector('input[name="au-mode"]:checked');
     return checked?checked.value:'tap';
   }
 
-  let capActive=false;
-
-  $('#cap-start').addEventListener('click',async()=>{
-    const target=$('#cap-target').value;
-    if(!target){$('#cap-status').textContent='Select a target first.';return;}
-    $('#cap-status').textContent='Starting capture…';$('#cap-status').className='status run';
+  $('#au-start').addEventListener('click',async()=>{
+    const target=$('#au-target').value;
+    if(!target){$('#au-status').textContent='Select a target first.';return;}
+    $('#au-status').textContent='Starting capture…';$('#au-status').className='status run';
     try{
       const r=await fetch('/api/capture/start',{method:'POST',headers:{'Content-Type':'application/json'},
         body:JSON.stringify({target})});
       const d=await r.json();
-      if(!r.ok||d.error){$('#cap-status').textContent=d.error||'failed';$('#cap-status').className='status ng';return;}
+      if(!r.ok||d.error){$('#au-status').textContent=d.error||'failed';$('#au-status').className='status ng';return;}
       capActive=true;
-      $('#cap-start').hidden=true;$('#cap-finish').hidden=false;
-      $('#cap-placeholder').hidden=true;$('#cap-screenshot').hidden=false;
-      $('#cap-screenshot').src='/api/capture/screenshot?t='+Date.now();
-      $('#cap-status').textContent='Click on the screenshot to capture actions.';$('#cap-status').className='status ok';
-      $('#cap-steplist').innerHTML='';$('#cap-count').textContent='0 steps';
-    }catch(e){$('#cap-status').textContent=String(e);$('#cap-status').className='status ng';}
+      $('#au-start').hidden=true;$('#au-finish').hidden=false;
+      $('#au-placeholder').hidden=true;$('#au-screenshot').hidden=false;
+      $('#au-screenshot').src='/api/capture/screenshot?t='+Date.now();
+      $('#au-status').textContent='Click on the screenshot to capture actions.';$('#au-status').className='status ok';
+      $('#au-steplist').innerHTML='';$('#au-step-count').textContent='0 steps';
+    }catch(e){$('#au-status').textContent=String(e);$('#au-status').className='status ng';}
   });
 
-  $('#cap-screenshot').addEventListener('click',async(e)=>{
+  async function capMark(nx,ny){
     if(!capActive)return;
-    const rect=e.target.getBoundingClientRect();
-    const nx=(e.clientX-rect.left)/rect.width;
-    const ny=(e.clientY-rect.top)/rect.height;
-    const mode=capMode();
-    const body={kind:mode,point:[nx,ny]};
-    if(mode==='type')body.text=$('#cap-text').value||'';
-    $('#cap-status').textContent='Resolving…';$('#cap-status').className='status run';
+    const m=capMode();
+    const body={kind:m,point:[nx,ny]};
+    if(m==='type')body.text=$('#au-text').value||'';
+    $('#au-status').textContent='Resolving…';$('#au-status').className='status run';
     try{
       const r=await fetch('/api/capture/mark',{method:'POST',headers:{'Content-Type':'application/json'},
         body:JSON.stringify(body)});
       const d=await r.json();
-      if(d.refused){
-        $('#cap-status').textContent='Refused: '+d.refused;$('#cap-status').className='status ng';
-        return;
-      }
+      if(d.refused){$('#au-status').textContent='Refused: '+d.refused;$('#au-status').className='status ng';return;}
       if(d.ambiguity){
         const ids=d.ambiguity.map(a=>a.identifier||a.label||'?').join(', ');
-        $('#cap-status').textContent='Ambiguous: '+ids;$('#cap-status').className='status ng';
+        $('#au-status').textContent='Ambiguous: '+ids;$('#au-status').className='status ng';
         return;
       }
-      if(d.error){$('#cap-status').textContent=d.error;$('#cap-status').className='status ng';return;}
+      if(d.error){$('#au-status').textContent=d.error;$('#au-status').className='status ng';return;}
       const sel=d.selector;
       const desc=sel.id?('#'+sel.id):(sel.label||'?');
       const li=document.createElement('li');
-      li.textContent=mode+' '+desc;
-      if(mode==='type')li.textContent+=' = "'+($('#cap-text').value||'')+'"';
-      $('#cap-steplist').appendChild(li);
-      const count=$('#cap-steplist').children.length;
-      $('#cap-count').textContent=count+' step'+(count===1?'':'s');
-      $('#cap-feedback').hidden=false;
-      $('#cap-rung').textContent=d.rung;$('#cap-rung').className='cap-rung rung-'+d.rung;
-      $('#cap-sel').textContent=desc;
-      $('#cap-screenshot').src='/api/capture/screenshot?t='+Date.now();
-      $('#cap-status').textContent='Captured: '+mode+' '+desc;$('#cap-status').className='status ok';
-    }catch(e){$('#cap-status').textContent=String(e);$('#cap-status').className='status ng';}
-  });
+      li.textContent=m+' '+desc;
+      if(m==='type')li.textContent+=' = "'+($('#au-text').value||'')+'"';
+      $('#au-steplist').appendChild(li);
+      const count=$('#au-steplist').children.length;
+      $('#au-step-count').textContent=count+' step'+(count===1?'':'s');
+      $('#au-feedback').hidden=false;
+      $('#au-rung').textContent=d.rung;$('#au-rung').className='au-rung rung-'+d.rung;
+      $('#au-sel').textContent=desc;
+      $('#au-screenshot').src='/api/capture/screenshot?t='+Date.now();
+      $('#au-status').textContent='Captured: '+m+' '+desc;$('#au-status').className='status ok';
+    }catch(e){$('#au-status').textContent=String(e);$('#au-status').className='status ng';}
+  }
 
-  $('#cap-finish').addEventListener('click',async()=>{
+  $('#au-finish').addEventListener('click',async()=>{
     if(!capActive)return;
-    $('#cap-status').textContent='Saving…';$('#cap-status').className='status run';
+    $('#au-status').textContent='Saving…';$('#au-status').className='status run';
     try{
       const r=await fetch('/api/capture/finish',{method:'POST',headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({target:$('#cap-target').value})});
+        body:JSON.stringify({target:$('#au-target').value})});
       const d=await r.json();
       capActive=false;
-      $('#cap-start').hidden=false;$('#cap-finish').hidden=true;
-      if(d.error){$('#cap-status').textContent=d.error;$('#cap-status').className='status ng';return;}
+      $('#au-start').hidden=false;$('#au-finish').hidden=true;
+      if(d.error){$('#au-status').textContent=d.error;$('#au-status').className='status ng';return;}
       const path=d.path||'(unsaved)';
-      $('#cap-status').textContent='Saved to '+path;$('#cap-status').className='status ok';
-    }catch(e){$('#cap-status').textContent=String(e);$('#cap-status').className='status ng';}
+      $('#au-status').textContent='Saved to '+path;$('#au-status').className='status ok';
+      // Flow the captured scenario into Edit mode so it can be refined without a tab switch.
+      if(d.path)await auOpenSaved(d.path);
+    }catch(e){$('#au-status').textContent=String(e);$('#au-status').className='status ng';}
   });
-})();
 
-// ===========================================================================
-// Editor tab (BE-0013) — offline two-pane scenario editor with screenshot picker
-// ===========================================================================
-(function(){
-  let edtSteps=[];   // [{stepId, action, fields, screenshotUrl, elementsUrl}]
-  let edtIdx=-1;     // currently displayed step index
-  let edtInited=false;
-  let edtPath='';    // scenario file path for save
-  let edtResolvedSel=null; // last resolved selector from picker
+  // Load a just-captured file into Edit state: refresh the scenario dropdown, select it, load it.
+  async function auOpenSaved(path){
+    await auLoadScenarios();
+    const opt=Array.from($('#au-scenario').options).find(o=>o.value.split('|')[0]===path);
+    if(!opt){
+      // The saved file didn't surface in the target's scenario list — keep the Finish success
+      // visible and let the author open it from Edit, rather than silently loading a stale pick.
+      $('#au-status').textContent='Saved to '+path+' — switch to Edit to refine it.';$('#au-status').className='status ok';
+      return;
+    }
+    $('#au-scenario').value=opt.value;
+    setMode('edit');
+    await auLoad();
+  }
 
-  // Populate scenario dropdown when editor target changes.
-  async function edtLoadScenarios(){
-    const target=$('#edt-target').value;
+  // ---- Edit mode (BE-0013): screenshot picker + structured YAML editing ----
+  async function auLoadScenarios(){
+    const target=$('#au-target').value;
     let files=[];
     try{files=target?await (await fetch('/api/scenarios?target='+encodeURIComponent(target))).json():[];}catch(e){files=[];}
     const opts=files.map(s=>
       (s.scenarios||[]).map(sc=>`<option value="${esc(s.path)}|${esc(sc.name)}">${esc(s.file)} — ${esc(sc.name)}</option>`)
     ).flat().join('');
-    $('#edt-scenario').innerHTML=opts||'<option value="">—</option>';
-    edtLoadRuns();
+    $('#au-scenario').innerHTML=opts||'<option value="">—</option>';
+    await auLoadRuns();
   }
 
-  // Populate run dropdown.
-  async function edtLoadRuns(){
+  async function auLoadRuns(){
     let runs=[];
     try{runs=await (await fetch('/api/runs')).json();}catch(e){runs=[];}
     const opts=runs.map(r=>{
       const label=r.id+' '+(r.ok?'✓':'✗');
       return `<option value="${esc(r.id)}">${esc(label)}</option>`;
     }).join('');
-    $('#edt-run').innerHTML=opts||'<option value="">—</option>';
+    $('#au-run').innerHTML=opts||'<option value="">—</option>';
   }
 
-  function edtSelectorYaml(sel){
+  function auSelectorYaml(sel){
     if(sel.id)return '{ id: '+sel.id+' }';
     if(sel.label&&sel.index!=null)return '{ label: '+sel.label+', index: '+sel.index+' }';
     if(sel.label)return '{ label: '+sel.label+' }';
     return JSON.stringify(sel);
   }
 
-  function edtStepLabel(s){
+  function auStepLabel(s){
     const a=s.action||'?';
     const f=s.fields||{};
     if(a==='tap'||a==='doubleTap'||a==='longPress'){
@@ -1228,102 +1293,107 @@ if(!NARROW_MQ.matches)initTiling();
     return a;
   }
 
-  // Load scenario + run artifacts.
-  async function edtLoad(){
-    const combo=$('#edt-scenario').value;
-    if(!combo){$('#edt-status').textContent='Select a scenario.';return;}
+  async function auLoad(){
+    const combo=$('#au-scenario').value;
+    if(!combo){$('#au-status').textContent='Select a scenario.';return;}
     const [path,scnName]=combo.split('|');
-    const target=$('#edt-target').value;
-    const runId=$('#edt-run').value;
-    edtPath=path;
-    $('#edt-status').textContent='Loading…';$('#edt-status').className='status run';
+    const target=$('#au-target').value;
+    const runId=$('#au-run').value;
+    auPath=path;
+    $('#au-status').textContent='Loading…';$('#au-status').className='status run';
     try{
       let url='/api/scenario?target='+encodeURIComponent(target)+'&path='+encodeURIComponent(path);
       if(runId)url+='&runId='+encodeURIComponent(runId)+'&scenario='+encodeURIComponent(scnName);
       const r=await fetch(url);
       const d=await r.json();
-      if(d.error){$('#edt-status').textContent=d.error;$('#edt-status').className='status ng';return;}
-      // Populate YAML textarea.
-      $('#edt-yaml').value=d.yaml||'';
-      $('#edt-save').disabled=false;
-      edtSteps=d.steps||[];
-      edtRenderStepList();
-      if(edtSteps.length>0){edtShowStep(0);}
-      else{edtIdx=-1;$('#edt-placeholder').hidden=false;$('#edt-placeholder').textContent=runId?'No steps in this run.':'No run selected — edit YAML directly.';$('#edt-screenshot').hidden=true;$('#edt-feedback').hidden=true;$('#edt-prev').disabled=true;$('#edt-next').disabled=true;$('#edt-step-label').textContent='No steps';}
-      const msg=edtSteps.length?edtSteps.length+' step'+(edtSteps.length===1?'':'s')+' loaded':'YAML loaded (no run selected)';
-      $('#edt-status').textContent=msg;$('#edt-status').className='status ok';
-      $('#edt-enrich').disabled=false;
-      $('#edt-enrich-panel').hidden=true;
-    }catch(e){$('#edt-status').textContent=String(e);$('#edt-status').className='status ng';}
+      if(d.error){$('#au-status').textContent=d.error;$('#au-status').className='status ng';return;}
+      $('#au-yaml').value=d.yaml||'';
+      $('#au-save').disabled=false;
+      auRenderGutter();auLint();
+      auSteps=d.steps||[];
+      auRenderStepList();
+      if(auSteps.length>0){auShowStep(0);}
+      else{auIdx=-1;$('#au-placeholder').hidden=false;$('#au-placeholder').textContent=runId?'No steps in this run.':'No run selected — edit YAML directly.';$('#au-screenshot').hidden=true;$('#au-feedback').hidden=true;$('#au-prev').disabled=true;$('#au-next').disabled=true;$('#au-step-label').textContent='No steps';}
+      const msg=auSteps.length?auSteps.length+' step'+(auSteps.length===1?'':'s')+' loaded':'YAML loaded (no run selected)';
+      $('#au-status').textContent=msg;$('#au-status').className='status ok';
+      $('#au-enrich').disabled=false;
+      $('#au-enrich-panel').hidden=true;
+    }catch(e){$('#au-status').textContent=String(e);$('#au-status').className='status ng';}
   }
 
-  function edtRenderStepList(){
-    const ol=$('#edt-steplist');ol.innerHTML='';
-    edtSteps.forEach((s,i)=>{
+  function auRenderStepList(){
+    const ol=$('#au-steplist');ol.innerHTML='';
+    auSteps.forEach((s,i)=>{
       const li=document.createElement('li');
-      li.textContent=(i+1)+'. '+edtStepLabel(s);
-      li.addEventListener('click',()=>edtShowStep(i));
+      li.textContent=(i+1)+'. '+auStepLabel(s);
+      li.addEventListener('click',()=>auShowStep(i));
       ol.appendChild(li);
     });
-    $('#edt-step-count').textContent=edtSteps.length+' step'+(edtSteps.length===1?'':'s');
+    $('#au-step-count').textContent=auSteps.length+' step'+(auSteps.length===1?'':'s');
   }
 
-  function edtShowStep(idx){
-    if(idx<0||idx>=edtSteps.length)return;
-    edtIdx=idx;
-    const s=edtSteps[idx];
-    document.querySelectorAll('#edt-steplist li').forEach((li,i)=>li.classList.toggle('active',i===idx));
-    $('#edt-prev').disabled=idx===0;
-    $('#edt-next').disabled=idx===edtSteps.length-1;
-    $('#edt-step-label').textContent='Step '+(idx+1)+' / '+edtSteps.length;
+  function auShowStep(idx){
+    if(idx<0||idx>=auSteps.length)return;
+    auIdx=idx;
+    const s=auSteps[idx];
+    document.querySelectorAll('#au-steplist li').forEach((li,i)=>li.classList.toggle('active',i===idx));
+    $('#au-prev').disabled=idx===0;
+    $('#au-next').disabled=idx===auSteps.length-1;
+    $('#au-step-label').textContent='Step '+(idx+1)+' / '+auSteps.length;
     if(s.screenshotUrl){
-      $('#edt-screenshot').src=s.screenshotUrl;
-      $('#edt-screenshot').hidden=false;$('#edt-placeholder').hidden=true;
+      $('#au-screenshot').src=s.screenshotUrl;
+      $('#au-screenshot').hidden=false;$('#au-placeholder').hidden=true;
     }else{
-      $('#edt-screenshot').hidden=true;$('#edt-placeholder').hidden=false;
-      $('#edt-placeholder').textContent='No screenshot for this step.';
+      $('#au-screenshot').hidden=true;$('#au-placeholder').hidden=false;
+      $('#au-placeholder').textContent='No screenshot for this step.';
     }
-    $('#edt-feedback').hidden=true;
-    edtResolvedSel=null;
+    $('#au-feedback').hidden=true;
+    auResolvedSel=null;
   }
 
-  // Screenshot click → resolve.
-  $('#edt-screenshot').addEventListener('click',async(e)=>{
-    if(edtIdx<0||edtIdx>=edtSteps.length)return;
-    const rect=e.target.getBoundingClientRect();
-    const nx=(e.clientX-rect.left)/rect.width;
-    const ny=(e.clientY-rect.top)/rect.height;
-    const target=$('#edt-target').value;
-    const runId=$('#edt-run').value;
-    const s=edtSteps[edtIdx];
-    $('#edt-status').textContent='Resolving…';$('#edt-status').className='status run';
+  async function editResolve(nx,ny){
+    if(auIdx<0||auIdx>=auSteps.length)return;
+    const target=$('#au-target').value;
+    const runId=$('#au-run').value;
+    const s=auSteps[auIdx];
+    $('#au-status').textContent='Resolving…';$('#au-status').className='status run';
     try{
       const r=await fetch('/api/scenario/resolve',{method:'POST',headers:{'Content-Type':'application/json'},
         body:JSON.stringify({target:target,runId:runId,stepId:s.stepId,point:[nx,ny]})});
       const d=await r.json();
-      if(d.error){$('#edt-status').textContent=d.error;$('#edt-status').className='status ng';return;}
-      if(d.refused){$('#edt-status').textContent=d.refused;$('#edt-status').className='status ng';$('#edt-feedback').hidden=true;edtResolvedSel=null;return;}
+      if(d.error){$('#au-status').textContent=d.error;$('#au-status').className='status ng';return;}
+      if(d.refused){$('#au-status').textContent=d.refused;$('#au-status').className='status ng';$('#au-feedback').hidden=true;auResolvedSel=null;return;}
       if(d.ambiguous){
-        $('#edt-status').textContent='Ambiguous: '+d.candidates+' elements share this selector. Narrow with within/index.';
-        $('#edt-status').className='status ng';
+        $('#au-status').textContent='Ambiguous: '+d.candidates+' elements share this selector. Narrow with within/index.';
+        $('#au-status').className='status ng';
       }else{
-        $('#edt-status').textContent='Resolved — click Apply to update the YAML';$('#edt-status').className='status ok';
+        $('#au-status').textContent='Resolved — click Apply to update the YAML';$('#au-status').className='status ok';
       }
-      edtResolvedSel=d.selector;
+      auResolvedSel=d.selector;
       const desc=d.selector.id?('#'+d.selector.id):(d.selector.label||'?');
-      $('#edt-feedback').hidden=false;
-      $('#edt-rung').textContent=d.rung;$('#edt-rung').className='cap-rung rung-'+d.rung;
-      $('#edt-sel').textContent=desc;
-    }catch(e){$('#edt-status').textContent=String(e);$('#edt-status').className='status ng';}
+      $('#au-feedback').hidden=false;
+      $('#au-rung').textContent=d.rung;$('#au-rung').className='au-rung rung-'+d.rung;
+      $('#au-sel').textContent=desc;
+    }catch(e){$('#au-status').textContent=String(e);$('#au-status').className='status ng';}
+  }
+
+  // Shared screenshot click — routed by the active mode.
+  $('#au-screenshot').addEventListener('click',(e)=>{
+    const rect=e.target.getBoundingClientRect();
+    const nx=(e.clientX-rect.left)/rect.width;
+    const ny=(e.clientY-rect.top)/rect.height;
+    if(mode==='capture')capMark(nx,ny);
+    else if(mode==='edit')editResolve(nx,ny);
+    else{$('#au-status').textContent='Clicking the screenshot does nothing in Enrich mode — switch to Capture or Edit to pick elements.';$('#au-status').className='status';}
   });
 
   // Apply: write resolved selector into YAML at the current step.
-  $('#edt-apply').addEventListener('click',()=>{
-    if(!edtResolvedSel||edtIdx<0)return;
-    const s=edtSteps[edtIdx];
+  $('#au-apply').addEventListener('click',()=>{
+    if(!auResolvedSel||auIdx<0)return;
+    const s=auSteps[auIdx];
     const action=s.action||'tap';
-    const newSel=edtSelectorYaml(edtResolvedSel);
-    const yaml=$('#edt-yaml').value;
+    const newSel=auSelectorYaml(auResolvedSel);
+    const yaml=$('#au-yaml').value;
     const oldFields=s.fields||{};
     let oldPattern='';
     if(action==='tap'||action==='doubleTap'||action==='longPress'){
@@ -1339,7 +1409,7 @@ if(!NARROW_MQ.matches)initTiling();
     for(let i=0;i<lines.length;i++){
       const trimmed=lines[i].trimStart();
       if(trimmed.startsWith('- '+oldPattern)||trimmed.startsWith('- '+action+':')){
-        if(stepCount===edtIdx){
+        if(stepCount===auIdx){
           const indent=lines[i].match(/^(\s*)/)[1];
           if(action==='type'){
             lines[i]=indent+'- type: { into: '+newSel+', text: '+(oldFields.text||'""')+' }';
@@ -1351,39 +1421,183 @@ if(!NARROW_MQ.matches)initTiling();
         stepCount++;
       }
     }
-    $('#edt-yaml').value=lines.join('\n');
+    $('#au-yaml').value=lines.join('\n');
+    auRenderGutter();auLintSoon();
     // Update the in-memory step fields.
     if(action==='type'){
-      s.fields={into:edtResolvedSel,text:oldFields.text||''};
+      s.fields={into:auResolvedSel,text:oldFields.text||''};
     }else{
-      s.fields=edtResolvedSel;
+      s.fields=auResolvedSel;
     }
-    edtRenderStepList();
-    document.querySelectorAll('#edt-steplist li').forEach((li,j)=>li.classList.toggle('active',j===edtIdx));
-    $('#edt-status').textContent='Applied '+edtSelectorYaml(edtResolvedSel)+' to step '+(edtIdx+1);
-    $('#edt-status').className='status ok';
+    auRenderStepList();
+    document.querySelectorAll('#au-steplist li').forEach((li,j)=>li.classList.toggle('active',j===auIdx));
+    $('#au-status').textContent='Applied '+auSelectorYaml(auResolvedSel)+' to step '+(auIdx+1);
+    $('#au-status').className='status ok';
   });
+
+  // ---- Inline validation + schema assistance (BE-0138) ----
+  // Static and AI-free: /api/lint and /api/schema wrap the same validators the CLI runs.
+
+  function auMeasureChar(){
+    // Width of one monospace glyph, for mapping caret column ↔ pixel x.
+    const span=document.createElement('span');
+    span.style.cssText='position:absolute;visibility:hidden;white-space:pre;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px';
+    span.textContent='0'.repeat(20);document.body.appendChild(span);
+    auCharW=span.getBoundingClientRect().width/20;span.remove();
+  }
+
+  function auGutterSync(){
+    $('#au-gutter-inner').style.transform='translateY('+(-$('#au-yaml').scrollTop)+'px)';
+  }
+
+  function auRenderGutter(){
+    const ta=$('#au-yaml');
+    const n=Math.max(1,ta.value.split('\n').length);
+    const errLines=new Set(auDiagnostics.filter(d=>d.line).map(d=>d.line));
+    let html='';
+    for(let i=1;i<=n;i++){html+='<div class="gl'+(errLines.has(i)?' err':'')+'">'+i+'</div>';}
+    $('#au-gutter-inner').innerHTML=html;
+    auGutterSync();
+  }
+
+  function auJumpToLine(line){
+    const ta=$('#au-yaml');
+    const lines=ta.value.split('\n');
+    let start=0;for(let i=0;i<line-1&&i<lines.length;i++){start+=lines[i].length+1;}
+    const end=start+(lines[line-1]?lines[line-1].length:0);
+    ta.focus();ta.setSelectionRange(start,end);
+    ta.scrollTop=Math.max(0,(line-1)*AU_LH-ta.clientHeight/2);
+    auGutterSync();
+  }
+
+  function auRenderProblems(){
+    const box=$('#au-problems');
+    if(!auDiagnostics.length){box.hidden=true;box.innerHTML='';return;}
+    box.hidden=false;
+    box.innerHTML='<div class="au-problems-head">'+auDiagnostics.length+' problem'+(auDiagnostics.length===1?'':'s')+'</div>'+
+      auDiagnostics.map((d,i)=>'<div class="au-problem" data-i="'+i+'">'+
+        (d.line?'<span class="pl">L'+d.line+(d.column?':'+d.column:'')+'</span>':'<span class="pl pl-none">—</span>')+
+        '<span class="pm">'+esc(d.message)+'</span></div>').join('');
+    box.querySelectorAll('.au-problem').forEach(el=>{
+      el.addEventListener('click',()=>{const d=auDiagnostics[+el.dataset.i];if(d&&d.line)auJumpToLine(d.line);});
+    });
+  }
+
+  async function auLint(){
+    // Fail loudly: if validation is unavailable (network / non-2xx / bad body), surface an
+    // unanchored diagnostic rather than clearing findings — a "clean" editor must mean "validated
+    // clean", not "couldn't validate".
+    try{
+      const r=await fetch('/api/lint',{method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({yaml:$('#au-yaml').value})});
+      if(!r.ok)throw new Error('/api/lint returned '+r.status);
+      const d=await r.json();
+      if(!Array.isArray(d.diagnostics))throw new Error('unexpected response');
+      auDiagnostics=d.diagnostics;
+    }catch(e){
+      auDiagnostics=[{line:null,column:null,message:'Inline validation unavailable ('+e+')',severity:'error'}];
+    }
+    auRenderGutter();auRenderProblems();
+  }
+
+  function auLintSoon(){clearTimeout(auLintTimer);auLintTimer=setTimeout(auLint,400);}
+
+  // ---- schema-driven completion / hover ----
+  let auSchemaKeyMap=null;   // memoized {name: description}; the schema is fetched once and immutable
+  function auSchemaKeys(){
+    // {name: description} for every property across the schema's defs — the grammar's key set.
+    // Cached: auHover calls this on every mousemove, so the deep walk must not repeat per event.
+    if(auSchemaKeyMap)return auSchemaKeyMap;
+    if(!auSchema)return {};
+    const out={};
+    (function walk(node){
+      if(!node||typeof node!=='object')return;
+      if(node.properties){for(const k in node.properties){const v=node.properties[k];if(!(k in out))out[k]=(v&&v.description)||'';}}
+      for(const key in node){const v=node[key];if(v&&typeof v==='object')walk(v);}
+    })(auSchema);
+    auSchemaKeyMap=out;
+    return out;
+  }
+
+  function auCaretLineCol(){
+    const before=$('#au-yaml').value.slice(0,$('#au-yaml').selectionStart).split('\n');
+    return {line:before.length,col:before[before.length-1].length};
+  }
+
+  let auCompItems=[], auCompSel=0, auCompToken='';
+  function auHideComplete(){$('#au-complete').hidden=true;auCompItems=[];}
+
+  function auShowComplete(){
+    if(!auCharW)auMeasureChar();
+    const ta=$('#au-yaml'), pos=auCaretLineCol();
+    const lineText=ta.value.split('\n')[pos.line-1]||'';
+    auCompToken=(lineText.slice(0,pos.col).match(/[\w.-]*$/)||[''])[0];
+    const keys=auSchemaKeys();
+    auCompItems=Object.keys(keys).filter(k=>k.startsWith(auCompToken)&&k!==auCompToken).sort().slice(0,12);
+    if(!auCompItems.length){auHideComplete();return;}
+    auCompSel=0;
+    const box=$('#au-complete');
+    // Offsets are relative to .yamledit (the popup's offset parent), so add the textarea's own
+    // offset within it — the line-number gutter sits to its left.
+    box.style.left=(ta.offsetLeft+Math.max(0,AU_PADX+(pos.col*auCharW)-ta.scrollLeft))+'px';
+    box.style.top=(ta.offsetTop+AU_PADY+(pos.line*AU_LH)-ta.scrollTop)+'px';
+    auRenderComplete(keys);
+    box.hidden=false;
+  }
+
+  function auRenderComplete(keys){
+    $('#au-complete').innerHTML=auCompItems.map((k,i)=>
+      '<div class="ci'+(i===auCompSel?' sel':'')+'" data-k="'+esc(k)+'" title="'+esc(keys[k]||'')+'">'+esc(k)+'</div>').join('');
+    $('#au-complete').querySelectorAll('.ci').forEach(el=>{
+      el.addEventListener('mousedown',e=>{e.preventDefault();auAcceptComplete(el.dataset.k);});
+    });
+  }
+
+  function auAcceptComplete(key){
+    const ta=$('#au-yaml'), idx=ta.selectionStart;
+    const start=idx-auCompToken.length;
+    ta.value=ta.value.slice(0,start)+key+ta.value.slice(idx);
+    const caret=start+key.length;ta.setSelectionRange(caret,caret);
+    auHideComplete();ta.focus();
+    $('#au-save').disabled=false;auRenderGutter();auLintSoon();
+  }
+
+  function auHover(e){
+    const box=$('#au-hover');
+    if(!auCharW)auMeasureChar();
+    const ta=$('#au-yaml'), rect=ta.getBoundingClientRect();
+    const y=e.clientY-rect.top+ta.scrollTop-AU_PADY, x=e.clientX-rect.left+ta.scrollLeft-AU_PADX;
+    const lines=ta.value.split('\n'), li=Math.floor(y/AU_LH);
+    if(x<0||li<0||li>=lines.length){box.hidden=true;return;}
+    const col=Math.round(x/auCharW), text=lines[li];
+    const tok=(text.slice(0,col).match(/[\w.-]*$/)||[''])[0]+(text.slice(col).match(/^[\w.-]*/)||[''])[0];
+    const keys=auSchemaKeys();
+    if(!tok||!(tok in keys)||!keys[tok]){box.hidden=true;return;}
+    box.innerHTML='<span class="hk">'+esc(tok)+'</span> — '+esc(keys[tok]);
+    // Position within .yamledit (offset parent): add the textarea's offset past the gutter.
+    box.style.left=(ta.offsetLeft+Math.min(e.clientX-rect.left+8,ta.clientWidth-40))+'px';
+    box.style.top=(ta.offsetTop+e.clientY-rect.top+18)+'px';
+    box.hidden=false;
+  }
 
   // Save.
-  $('#edt-save').addEventListener('click',async()=>{
-    if(!edtPath)return;
-    const target=$('#edt-target').value;
-    const yaml=$('#edt-yaml').value;
-    $('#edt-save').disabled=true;
-    $('#edt-status').textContent='Saving…';$('#edt-status').className='status run';
+  $('#au-save').addEventListener('click',async()=>{
+    if(!auPath){$('#au-status').textContent='Nothing to save yet — capture a flow or load a scenario first.';$('#au-status').className='status ng';return;}
+    const target=$('#au-target').value;
+    const yaml=$('#au-yaml').value;
+    $('#au-save').disabled=true;
+    $('#au-status').textContent='Saving…';$('#au-status').className='status run';
     try{
       const r=await fetch('/api/scenario',{method:'POST',headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({target:target,path:edtPath,yaml:yaml})});
+        body:JSON.stringify({target:target,path:auPath,yaml:yaml})});
       const d=await r.json();
-      if(d.error){$('#edt-status').textContent=d.error;$('#edt-status').className='status ng';}
-      else{$('#edt-status').textContent='Saved ✓';$('#edt-status').className='status ok';}
-    }catch(e){$('#edt-status').textContent=String(e);$('#edt-status').className='status ng';}
-    $('#edt-save').disabled=false;
+      if(d.error){$('#au-status').textContent=d.error;$('#au-status').className='status ng';}
+      else{$('#au-status').textContent='Saved ✓';$('#au-status').className='status ok';}
+    }catch(e){$('#au-status').textContent=String(e);$('#au-status').className='status ng';}
+    $('#au-save').disabled=false;
   });
 
-  // --- Enrichment (BE-0014) ---
-  let enrichResult=null; // last enrichment response {expect, settle, note}
-
+  // ---- Enrich mode (BE-0014): propose assertions over the open scenario ----
   function enrichAssertionLabel(a){
     if(a.exists){
       const sel=a.exists.sel||{};
@@ -1405,7 +1619,7 @@ if(!NARROW_MQ.matches)initTiling();
 
   function enrichRender(data){
     enrichResult=data;
-    const list=$('#edt-enrich-list');list.innerHTML='';
+    const list=$('#au-enrich-list');list.innerHTML='';
     (data.expect||[]).forEach(a=>{
       const li=document.createElement('li');
       li.innerHTML='<span class="enrich-check">✓</span>'+esc(enrichAssertionLabel(a));
@@ -1419,8 +1633,8 @@ if(!NARROW_MQ.matches)initTiling();
       li.innerHTML='<span class="enrich-check">⏳</span>settle wait for '+esc(id);
       list.appendChild(li);
     }
-    $('#edt-enrich-note').textContent=data.note||'';
-    $('#edt-enrich-panel').hidden=false;
+    $('#au-enrich-note').textContent=data.note||'';
+    $('#au-enrich-panel').hidden=false;
   }
 
   function enrichAssertionYaml(a,indent){
@@ -1452,8 +1666,8 @@ if(!NARROW_MQ.matches)initTiling();
 
   function enrichApply(){
     if(!enrichResult)return;
-    let yaml=$('#edt-yaml').value;
-    const combo=$('#edt-scenario').value;
+    let yaml=$('#au-yaml').value;
+    const combo=$('#au-scenario').value;
     if(!combo)return;
     const scnName=combo.split('|')[1]||'';
 
@@ -1526,63 +1740,84 @@ if(!NARROW_MQ.matches)initTiling();
       }
     }
 
-    $('#edt-yaml').value=lines.join('\n');
-    $('#edt-save').disabled=false;
-    $('#edt-enrich-panel').hidden=true;
+    $('#au-yaml').value=lines.join('\n');
+    auRenderGutter();auLintSoon();
+    $('#au-save').disabled=false;
+    $('#au-enrich-panel').hidden=true;
     enrichResult=null;
-    $('#edt-status').textContent='Assertions applied — review and Save';$('#edt-status').className='status ok';
+    $('#au-status').textContent='Assertions applied — review and Save';$('#au-status').className='status ok';
   }
 
-  $('#edt-enrich').addEventListener('click',async()=>{
-    const combo=$('#edt-scenario').value;
-    if(!combo){$('#edt-status').textContent='Load a scenario first.';return;}
+  $('#au-enrich').addEventListener('click',async()=>{
+    const combo=$('#au-scenario').value;
+    if(!combo){$('#au-status').textContent='Load a scenario first.';return;}
     const [path,scnName]=combo.split('|');
-    const target=$('#edt-target').value;
-    $('#edt-enrich').disabled=true;
-    $('#edt-enrich-panel').hidden=true;
-    $('#edt-status').textContent='Enriching — replaying steps and proposing assertions…';$('#edt-status').className='status run';
+    const target=$('#au-target').value;
+    $('#au-enrich').disabled=true;
+    $('#au-enrich-panel').hidden=true;
+    $('#au-status').textContent='Enriching — replaying steps and proposing assertions…';$('#au-status').className='status run';
     try{
       const r=await fetch('/api/enrich',{method:'POST',headers:{'Content-Type':'application/json'},
         body:JSON.stringify({target:target,scenario:path,name:scnName})});
       const d=await r.json();
-      if(d.error){$('#edt-status').textContent=d.error;$('#edt-status').className='status ng';return;}
+      if(d.error){$('#au-status').textContent=d.error;$('#au-status').className='status ng';return;}
       const count=(d.expect||[]).length;
-      $('#edt-status').textContent=count+' assertion'+(count===1?'':'s')+' proposed';$('#edt-status').className='status ok';
+      $('#au-status').textContent=count+' assertion'+(count===1?'':'s')+' proposed';$('#au-status').className='status ok';
       enrichRender(d);
-    }catch(e){$('#edt-status').textContent=String(e);$('#edt-status').className='status ng';}
-    finally{$('#edt-enrich').disabled=false;}
+    }catch(e){$('#au-status').textContent=String(e);$('#au-status').className='status ng';}
+    finally{$('#au-enrich').disabled=false;}
   });
 
-  $('#edt-enrich-accept').addEventListener('click',enrichApply);
-  $('#edt-enrich-dismiss').addEventListener('click',()=>{
-    $('#edt-enrich-panel').hidden=true;enrichResult=null;
-    $('#edt-status').textContent='Enrichment dismissed';$('#edt-status').className='status';
+  $('#au-enrich-accept').addEventListener('click',enrichApply);
+  $('#au-enrich-dismiss').addEventListener('click',()=>{
+    $('#au-enrich-panel').hidden=true;enrichResult=null;
+    $('#au-status').textContent='Enrichment dismissed';$('#au-status').className='status';
   });
 
   // Nav buttons.
-  $('#edt-prev').addEventListener('click',()=>{if(edtIdx>0)edtShowStep(edtIdx-1);});
-  $('#edt-next').addEventListener('click',()=>{if(edtIdx<edtSteps.length-1)edtShowStep(edtIdx+1);});
+  $('#au-prev').addEventListener('click',()=>{if(auIdx>0)auShowStep(auIdx-1);});
+  $('#au-next').addEventListener('click',()=>{if(auIdx<auSteps.length-1)auShowStep(auIdx+1);});
   // Load button.
-  $('#edt-load').addEventListener('click',edtLoad);
+  $('#au-load').addEventListener('click',auLoad);
   // Target change reloads scenarios.
-  $('#edt-target').addEventListener('change',edtLoadScenarios);
-  // YAML textarea edits enable save.
-  $('#edt-yaml').addEventListener('input',()=>{$('#edt-save').disabled=false;});
+  $('#au-target').addEventListener('change',auLoadScenarios);
+  // YAML textarea edits enable save and re-validate (BE-0138): gutter updates instantly, lint debounced.
+  $('#au-yaml').addEventListener('input',()=>{
+    $('#au-save').disabled=false;auRenderGutter();auLintSoon();
+    if(!$('#au-complete').hidden)auShowComplete();
+  });
+  $('#au-yaml').addEventListener('scroll',()=>{auGutterSync();auHideComplete();});
+  $('#au-yaml').addEventListener('blur',()=>{auHideComplete();$('#au-hover').hidden=true;});
+  $('#au-yaml').addEventListener('mousemove',auHover);
+  $('#au-yaml').addEventListener('mouseleave',()=>{$('#au-hover').hidden=true;});
+  // Completion: Ctrl/Cmd+Space opens; arrows/Enter/Tab drive it while open; Escape closes.
+  $('#au-yaml').addEventListener('keydown',e=>{
+    if((e.ctrlKey||e.metaKey)&&e.code==='Space'){e.preventDefault();auShowComplete();return;}
+    if($('#au-complete').hidden)return;
+    if(e.key==='Escape'){e.preventDefault();auHideComplete();}
+    else if(e.key==='ArrowDown'){e.preventDefault();auCompSel=(auCompSel+1)%auCompItems.length;auRenderComplete(auSchemaKeys());}
+    else if(e.key==='ArrowUp'){e.preventDefault();auCompSel=(auCompSel-1+auCompItems.length)%auCompItems.length;auRenderComplete(auSchemaKeys());}
+    else if(e.key==='Enter'||e.key==='Tab'){e.preventDefault();auAcceptComplete(auCompItems[auCompSel]);}
+  });
+  // Fetch the scenario schema once, for completion / hover.
+  fetch('/api/schema').then(r=>r.ok?r.json():null).then(s=>{auSchema=s;}).catch(()=>{});
 
-  // Called by showView('editor') — lazy init.
-  window.editorInit=function(){
-    if(edtInited)return;
-    edtInited=true;
-    edtLoadScenarios();
+  // Called by showView('author') — lazy init: default to Capture mode and load scenarios.
+  window.authorInit=function(){
+    if(auInited)return;
+    auInited=true;
+    setMode('capture');
+    auLoadScenarios();
   };
-  // Called by loadShared() after targets arrive — re-populate if Editor is already visible.
-  window.editorRefresh=function(){
-    edtLoadScenarios();
+  // Called by loadShared() after targets arrive — re-populate if Author is already visible.
+  window.authorRefresh=function(){
+    auLoadScenarios();
   };
 })();
 
 initTheme();
 loadConfig();
+refreshAiAvailability();
 loadSims();
 loadHistory();
 setInterval(loadHistory,4000);

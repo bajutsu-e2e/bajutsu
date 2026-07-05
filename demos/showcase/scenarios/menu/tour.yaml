@@ -1,0 +1,15 @@
+# The Bajutsu tour, on a real Simulator (no AI, no API key): open a horse from the Stable
+# catalog, favorite it, and let the deterministic assertion confirm the toggle landed.
+# demos/tour/demo.sh runs this, then breaks the expected value (watch the check FAIL and a
+# machine — not an LLM — catch it) and a selector (watch `triage` diagnose the drift). A focused
+# first-look slice of the showcase, the no-login successor to the old demo app's counter flow.
+- name: favorite a horse
+  preconditions:
+    launchEnv: { SHOWCASE_UITEST: "1", SHOWCASE_TAB: stable }
+  steps:
+    - wait: { for: { id: stable.row.3 }, timeout: 10 }
+    - tap: { id: stable.row.3 }
+    - wait: { for: { id: horse.favorite }, timeout: 5 }
+    - tap: { id: horse.favorite }
+  expect:
+    - value: { sel: { id: horse.favorite.value }, equals: "on" }

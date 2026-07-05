@@ -9,10 +9,10 @@
 # hardening this builds on.)
 #
 # Landing a commit on protected `main` needs a bypass identity: a dedicated GitHub App on `main`'s
-# ruleset bypass list, whose id/private-key are stored as the `ROADMAP_BOT_APP_ID` /
-# `ROADMAP_BOT_PRIVATE_KEY` secrets. Until those secrets exist the job is a green no-op (the gate step
+# ruleset bypass list, whose id/private-key are stored as the `AUTOMATION_BOT_APP_ID` /
+# `AUTOMATION_BOT_PRIVATE_KEY` secrets. Until those secrets exist the job is a green no-op (the gate step
 # below), so `main` is never red while the App is being set up.
-name: roadmap-id
+name: "Roadmap: allocate BE IDs"
 
 on:
   push:
@@ -36,8 +36,8 @@ jobs:
       - name: Gate on the bypass App being configured
         id: gate
         env:
-          APP_ID: ${{ secrets.ROADMAP_BOT_APP_ID }}
-          APP_KEY: ${{ secrets.ROADMAP_BOT_PRIVATE_KEY }}
+          APP_ID: ${{ secrets.AUTOMATION_BOT_APP_ID }}
+          APP_KEY: ${{ secrets.AUTOMATION_BOT_PRIVATE_KEY }}
         run: |
           # Enable only when BOTH the App id and its private key are present: minting the App token
           # needs both, so a half-configured App (id set, key missing) must stay dormant rather than
@@ -46,7 +46,7 @@ jobs:
             echo "enabled=true" >> "$GITHUB_OUTPUT"
           else
             echo "enabled=false" >> "$GITHUB_OUTPUT"
-            echo "::notice::ROADMAP_BOT_APP_ID / ROADMAP_BOT_PRIVATE_KEY are not both set — merge-time BE-ID allocation is dormant (BE-0089). No-op."
+            echo "::notice::AUTOMATION_BOT_APP_ID / AUTOMATION_BOT_PRIVATE_KEY are not both set — merge-time BE-ID allocation is dormant (BE-0089). No-op."
           fi
 
       - name: Mint a short-lived installation token for the bypass App
@@ -54,12 +54,12 @@ jobs:
         id: app-token
         uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1  # v3.2.0
         with:
-          app-id: ${{ secrets.ROADMAP_BOT_APP_ID }}
-          private-key: ${{ secrets.ROADMAP_BOT_PRIVATE_KEY }}
+          app-id: ${{ secrets.AUTOMATION_BOT_APP_ID }}
+          private-key: ${{ secrets.AUTOMATION_BOT_PRIVATE_KEY }}
 
       - name: Check out main with the App token
         if: steps.gate.outputs.enabled == 'true'
-        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10  # v6.0.3
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
         with:
           ref: main
           fetch-depth: 0
@@ -95,8 +95,11 @@ jobs:
 
           git add -A
           git commit -m "docs(roadmap): allocate BE IDs for merged placeholder items"
-          # Cap the bypass token's blast radius: the committed renumber must touch only roadmaps/
-          # (BE-0089). Runs on the commit, so it guards exactly what gets pushed.
+          # Gate the bypass-token commit before it lands on main: cap its blast radius to roadmaps/
+          # (BE-0089) and, on the renumbered tree, run the stdlib roadmap format check — the first
+          # point a once-placeholder item's shape is checkable, on a path with no PR or required
+          # check of its own (BE-0149). Runs on the commit, so it guards exactly what gets pushed;
+          # a failure aborts before `git push`, leaving main untouched.
           python3 scripts/check_renumber_diff.py
 
           # main may have moved between checkout and push; rebase onto it and retry a few times,

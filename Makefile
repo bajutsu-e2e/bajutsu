@@ -1,6 +1,6 @@
-.PHONY: setup hooks deps deps-check serve worktree preflight test lint lint-docstrings format format-check typecheck \
-        lock-check lint-sh lint-actions lint-roadmap lint-pr check new-roadmap-item roadmap-index roadmap-promote roadmap-id-repair \
-        roadmap-dashboard docs docs-serve
+.PHONY: setup hooks install deps deps-check serve worktree preflight test lint lint-docstrings lint-imports format format-check typecheck \
+        lock-check lint-sh lint-actions lint-js lint-roadmap lint-pr check new-roadmap-item roadmap-index \
+        roadmap-status roadmap-dashboard docs docs-serve
 
 # One-command bootstrap for a fresh clone (cross-platform; the dev gate needs no
 # Simulator). Installs the Python toolchain and wires the tracked git hooks.
@@ -22,13 +22,25 @@ hooks:
 	  && git config rerere.enabled true \
 	  && echo "hooks: uv.lock + roadmap-index merge drivers + rerere wired"
 
-# Install the external tools the idb backend needs (idempotent).
-#   - Homebrew tools (idb_companion / xcodegen) from the Brewfile
-#   - the idb python client via uv (the `idb` extra)
+# Config-aware one-command bootstrap (BE-0164): the base toolchain (`setup`) PLUS exactly the
+# backend deps a project's config needs — not "idb unconditionally", not "everything". Meant to run
+# right after `git clone`, the same moment `make setup` does. Pass a config or a forced backend
+# through ARGS, e.g. `make install ARGS="--config demos/showcase/showcase.config.yaml"`. With no
+# config in cwd it installs nothing beyond the base (the dev gate needs no backend).
+install: setup
+	@./scripts/install.sh $(ARGS)
+
+# Install the external tools the idb backend needs (idempotent). Superseded by `make install`
+# (config-aware); kept as the idb-forced shortcut. The `idb` extra + the `idb_companion` formula
+# come from the one requirements mapping via the installer (BE-0164), so the Brewfile now holds
+# only the sample-app build tool (xcodegen), which is not a bajutsu backend requirement.
 deps:
-	@command -v brew >/dev/null 2>&1 || { echo "Homebrew is required: https://brew.sh"; exit 1; }
-	brew bundle --file=Brewfile
-	uv sync --extra idb --group dev
+	@./scripts/install.sh --backend idb
+	@if command -v brew >/dev/null 2>&1; then \
+	  brew bundle --file=Brewfile; \
+	else \
+	  echo "deps: Homebrew absent — skipping xcodegen (brew bundle); see https://brew.sh"; \
+	fi
 
 # Verify the required tools are on PATH without installing anything.
 deps-check:
@@ -56,17 +68,17 @@ preflight:
 	@./scripts/preflight.sh
 
 # Shell scripts the gate lints. pre-push has no .sh suffix, so they're listed explicitly.
-SHELL_SCRIPTS := .githooks/pre-push .githooks/commit-msg scripts/serve.sh scripts/worktree.sh scripts/preflight.sh scripts/merge-uv-lock.sh scripts/merge-roadmap-index.sh scripts/open_pr_be_ids.sh scripts/open_pr_be_map.sh scripts/be_claims.sh .claude/hooks/session-start.sh demos/record/demo.sh demos/tour/demo.sh
+SHELL_SCRIPTS := .githooks/pre-push .githooks/commit-msg scripts/serve.sh scripts/install.sh scripts/worktree.sh scripts/preflight.sh scripts/merge-uv-lock.sh scripts/merge-roadmap-index.sh .claude/hooks/session-start.sh demos/tour/demo.sh
 
 # Modules whose public surface has migrated to the Google-style docstring standard (BE-0065),
 # enforced by `lint-docstrings`. This list GROWS module-by-module as more migrate; keep it the
 # allowlist (not an ignore list) so an unmigrated module never accidentally falls under the gate.
-DOCSTRING_PATHS := bajutsu/drivers bajutsu/assertions.py bajutsu/network.py bajutsu/runner bajutsu/scenario bajutsu/mcp bajutsu/cli bajutsu/doctor.py bajutsu/audit.py bajutsu/coverage.py bajutsu/trace.py bajutsu/triage.py bajutsu/report bajutsu/evidence.py bajutsu/idb_version.py bajutsu/intervals.py bajutsu/redaction.py bajutsu/config.py bajutsu/config_source.py bajutsu/codegen.py bajutsu/codegen_common.py bajutsu/codegen_playwright.py bajutsu/backends.py bajutsu/capability_preflight.py bajutsu/crawl.py bajutsu/crawl_guide.py bajutsu/crawl_tabs.py bajutsu/agent.py bajutsu/agents.py bajutsu/claude_agent.py bajutsu/claude_code_agent.py bajutsu/claude_triage.py bajutsu/alerts.py bajutsu/anthropic_client.py bajutsu/record.py bajutsu/visual.py bajutsu/web_network.py bajutsu/provenance.py
+DOCSTRING_PATHS := bajutsu/ai bajutsu/drivers bajutsu/assertions.py bajutsu/network.py bajutsu/runner bajutsu/scenario bajutsu/mcp bajutsu/cli bajutsu/doctor.py bajutsu/audit.py bajutsu/coverage.py bajutsu/stats.py bajutsu/trace.py bajutsu/triage.py bajutsu/report bajutsu/evidence.py bajutsu/idb_version.py bajutsu/intervals.py bajutsu/redaction.py bajutsu/config.py bajutsu/config_source.py bajutsu/codegen.py bajutsu/codegen_common.py bajutsu/codegen_playwright.py bajutsu/backends.py bajutsu/capability_preflight.py bajutsu/requirements.py bajutsu/provision.py bajutsu/crawl.py bajutsu/crawl_guide.py bajutsu/crawl_tabs.py bajutsu/agent.py bajutsu/agents.py bajutsu/claude_agent.py bajutsu/claude_code_agent.py bajutsu/claude_triage.py bajutsu/alerts.py bajutsu/anthropic_client.py bajutsu/record.py bajutsu/visual.py bajutsu/web_network.py bajutsu/from_grouping.py
 
 # Run the suite with a coverage floor — a regression that quietly drops coverage fails the gate.
 # The JSON report is a gitignored side artifact CI renders into its job summary (scripts/coverage_summary.py).
 test:
-	uv run pytest -q --cov=bajutsu --cov-report=term-missing:skip-covered --cov-report=json:coverage.json --cov-fail-under=87
+	uv run pytest -q --cov=bajutsu --cov-report=term-missing:skip-covered --cov-report=json:coverage.json --cov-fail-under=89
 
 lint:
 	uv run ruff check .
@@ -78,6 +90,13 @@ lint:
 # (magic methods / __init__) are noise. The google convention is set in pyproject's pydocstyle.
 lint-docstrings:
 	uv run ruff check --select D --ignore D102,D105,D107 $(DOCSTRING_PATHS)
+
+# BE-0112: enforce the core / contract / periphery layer model as a static import contract
+# ([tool.importlinter] in pyproject). Fails when a deterministic-core module imports the periphery,
+# keeping the verdict/evidence path free of the serve / AI / codegen stacks. Static analysis on the
+# import graph — no Simulator, no model, nothing on the run/CI verdict path (prime directives 1 & 3).
+lint-imports:
+	uv run lint-imports
 
 # Apply the formatter; `format-check` (in the gate) only verifies, never rewrites.
 format:
@@ -104,10 +123,29 @@ lint-sh:
 lint-actions:
 	@command -v actionlint >/dev/null 2>&1 && actionlint -color || echo "lint-actions: actionlint not installed — skipping (CI enforces it)"
 
+# BE-0129: a proportionate guardrail for the serve Web UI's vanilla JS (bajutsu/templates/serve.js),
+# ~1.5k lines with no build step. `node --check` catches syntax errors and runs wherever Node is
+# present (including CI runners); the flat-config eslint (eslint.config.mjs) adds a few structural
+# checks and runs only when eslint is already resolvable, so the gate never downloads it. Node
+# absence skips with a notice — the same pattern lint-actions uses for actionlint — so `check` runs
+# anywhere.
+lint-js:
+	@set -e; \
+	if ! command -v node >/dev/null 2>&1; then \
+		echo "lint-js: node not installed — skipping (CI enforces it)"; \
+	else \
+		node --check bajutsu/templates/serve.js; \
+		if npx --no-install eslint --version >/dev/null 2>&1; then \
+			npx --no-install eslint bajutsu/templates/serve.js; \
+		else \
+			echo "lint-js: eslint not installed — skipping (ran node --check; install eslint for the structural checks)"; \
+		fi; \
+	fi
+
 # Lint roadmap items: every item-to-item markdown link resolves, and each Author is a handle link
 # (BE-0069). Folded into `check` so a broken cross-reference fails the gate, not a reader's click.
 # Pass flags through ARGS, e.g. `make lint-roadmap ARGS="--fix"` rewrites broken item links to the
-# target's current status folder.
+# target item's current path.
 lint-roadmap:
 	uv run python scripts/lint_roadmap.py $(ARGS)
 
@@ -134,26 +172,17 @@ lint-pr:
 roadmap-index:
 	uv run python scripts/build_roadmap_index.py
 
-# Move shipped items (Status: Implemented) from proposals/ to implemented/ and reindex, so each
-# item's directory matches its Status — the mechanical half of the documented ship step. The
-# roadmap-promote workflow runs this on a PR; the same invariant is enforced by
-# tests/test_promote_roadmap_items.py (part of `make test`), so the gate fails on a mismatch.
-roadmap-promote:
-	uv run python scripts/promote_roadmap_items.py
-
-# Renumber any item on this branch whose BE id a more authoritative holder already owns — origin/main
-# (a merged item wins), or, when nothing is merged, a lower-numbered open PR — picking the next free
-# ID. The backstop for the rare collision the refs/be-claims/* reservation does not prevent. The
-# roadmap-id-repair workflow runs this across open PRs on a push to main and on a schedule; run it
-# locally to fix your own branch before pushing (needs `git fetch origin` first; the open-PR
-# tiebreaker only applies in CI, which passes ROADMAP_LOWER_PR_IDS).
-roadmap-id-repair:
-	uv run python scripts/allocate_roadmap_ids.py --repair
+# Filter roadmap (BE) items by Status into one small table — ID / Item / Topic / Path — so an AI
+# session surveys just the rows it needs (e.g. every Proposal) without reading the 700+-line index
+# (BE-0162). Pure and offline: reads roadmaps/ metadata only. The `roadmap-filter` skill wraps this.
+#   make roadmap-status STATUS="Proposal"   # or "In progress" / "Implemented" / "Proposal (deferred)"
+roadmap-status:
+	uv run python scripts/roadmap_query.py --status "$(STATUS)"
 
 # The full gate. CI (.github/workflows/ci.yml) mirrors these steps so "green locally"
 # predicts "green in CI". The uv-native checks run identically everywhere; actionlint is
 # the lone exception (see lint-actions above).
-check: hooks format-check lint lint-docstrings lint-sh lint-actions lint-roadmap lock-check typecheck test
+check: hooks format-check lint lint-docstrings lint-imports lint-sh lint-actions lint-js lint-roadmap lock-check typecheck test
 
 # Generated API reference (BE-0065). Deliberately NOT in `check`: like on-device E2E, the
 # reference build is a separate, heavier path (it pulls the `docs` extra) and must not slow the
@@ -170,6 +199,5 @@ docs: roadmap-dashboard
 docs-serve: roadmap-dashboard
 	uv run --extra docs mkdocs serve
 
-# Sample-app build / E2E targets live with their demos:
-#   make -C demos/features sample-gen|sample-build|e2e|ui-test   (demos/features/app)
-#   make -C demos/record   sample2-gen|sample2-build             (demos/record/app)
+# Showcase build / on-device targets live with the fixture (demos/showcase/, the single iOS app):
+#   make -C demos/showcase swiftui-build|uikit-build|run-swiftui|doctor|record|ui-test|vrt

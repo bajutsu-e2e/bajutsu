@@ -10,17 +10,29 @@ capability — gating either would reject scenarios that actually run.
 
 from __future__ import annotations
 
+from pathlib import Path
+
+import pytest
+
 from bajutsu import capability_preflight
 from bajutsu.drivers import base
 from bajutsu.scenario import Scenario
 
-_IDB = {base.Capability.QUERY, base.Capability.ELEMENTS, base.Capability.SCREENSHOT}
+_IDB = {
+    base.Capability.QUERY,
+    base.Capability.ELEMENTS,
+    base.Capability.SCREENSHOT,
+    base.Capability.DEVICE_CONTROL,
+}
 _FULL = _IDB | {
     base.Capability.SEMANTIC_TAP,
     base.Capability.CONDITION_WAIT,
     base.Capability.MULTI_TOUCH,
     base.Capability.NETWORK,
 }
+# idb minus device control — a backend that advertises no `deviceControl` (e.g. Playwright, or a
+# future backend without a real DeviceControl wired), used to prove device-control steps are gated.
+_NO_CONTROL = _IDB - {base.Capability.DEVICE_CONTROL}
 
 
 def _sc(**body: object) -> Scenario:
@@ -48,13 +60,6 @@ def test_visual_assertion_requires_screenshot() -> None:
     sc = _sc(steps=[{"tap": {"id": "ok"}}], expect=[{"visual": {"baseline": "home"}}])
     # idb has screenshot, so it's fine there; a backend without it is rejected.
     assert capability_preflight.unsupported(sc, _IDB) == []
-    no_shot = _IDB - {base.Capability.SCREENSHOT}
-    assert any("screenshot" in r for r in capability_preflight.unsupported(sc, no_shot))
-
-
-def test_visual_in_step_assert_is_detected() -> None:
-    # An inline step assertion (a step whose sole field is `assert`) is scanned too, not just expect.
-    sc = _sc(steps=[{"tap": {"id": "ok"}}, {"assert": [{"visual": {"baseline": "home"}}]}])
     no_shot = _IDB - {base.Capability.SCREENSHOT}
     assert any("screenshot" in r for r in capability_preflight.unsupported(sc, no_shot))
 
@@ -133,3 +138,305 @@ def test_aggregates_every_unsupported_construct() -> None:
     )
     assert any("multiTouch" in r for r in reasons)
     assert any("screenshot" in r for r in reasons)
+
+
+# --- Device-control steps require deviceControl (BE-0128) ---
+
+# One representative step per DeviceControl operation. `relaunch` is excluded: it is gated by the
+# injected RelaunchFn, not DeviceControl, so it is not part of this capability family.
+_DEVICE_CONTROL_STEPS = (
+    {"setLocation": {"lat": 35.0, "lon": 139.0}},
+    {"push": {"payload": {"aps": {"alert": "hi"}}}},
+    {"clearKeychain": {}},
+    {"clearClipboard": {}},
+    {"setClipboard": {"text": "x"}},
+    {"background": {}},
+    {"foreground": {}},
+    {"overrideStatusBar": {"time": "9:41"}},
+    {"clearStatusBar": {}},
+)
+
+
+@pytest.mark.parametrize("step", _DEVICE_CONTROL_STEPS)
+def test_device_control_step_requires_device_control(step: dict[str, object]) -> None:
+    # Every device-control step needs `deviceControl`; a backend without it is rejected up front,
+    # and idb (which backs a real DeviceControl) runs it.
+    sc = _sc(steps=[step])
+    reasons = capability_preflight.unsupported(sc, _NO_CONTROL)
+    assert reasons and any("deviceControl" in r for r in reasons)
+    assert capability_preflight.unsupported(sc, _IDB) == []
+
+
+def test_device_control_reason_includes_step_index() -> None:
+    sc = _sc(steps=[{"tap": {"id": "ok"}}, {"push": {"payload": {"aps": {"alert": "hi"}}}}])
+    reasons = capability_preflight.unsupported(sc, _NO_CONTROL)
+    assert len(reasons) == 1
+    assert reasons[0].startswith("step 2: ")
+    assert "deviceControl" in reasons[0]
+
+
+def test_device_control_nested_in_for_each_is_detected() -> None:
+    sc = _sc(
+        steps=[
+            {
+                "forEach": {
+                    "sel": {"idMatches": "row.*"},
+                    "as": "row",
+                    "steps": [{"setLocation": {"lat": 1.0, "lon": 2.0}}],
+                }
+            }
+        ]
+    )
+    reasons = capability_preflight.unsupported(sc, _NO_CONTROL)
+    assert len(reasons) == 1
+    assert "step 1 > forEach[0]" in reasons[0]
+    assert "deviceControl" in reasons[0]
+
+
+def test_multiple_device_control_steps_yield_multiple_reasons() -> None:
+    sc = _sc(
+        steps=[
+            {"push": {"payload": {"aps": {"alert": "a"}}}},
+            {"tap": {"id": "ok"}},
+            {"clearKeychain": {}},
+        ]
+    )
+    reasons = capability_preflight.unsupported(sc, _NO_CONTROL)
+    paths = [r.split(":")[0] for r in reasons]
+    assert "step 1" in paths
+    assert "step 3" in paths
+
+
+def test_relaunch_is_not_gated_by_device_control() -> None:
+    # `relaunch` runs through the injected RelaunchFn, not DeviceControl, so a backend lacking
+    # deviceControl must not reject it.
+    sc = _sc(steps=[{"relaunch": {}}])
+    assert capability_preflight.unsupported(sc, _IDB - {base.Capability.DEVICE_CONTROL}) == []
+
+
+# --- Path hints in reason strings (BE-0024) ---
+
+
+def test_pinch_reason_includes_step_index() -> None:
+    # A pinch at step 3 (1-indexed) must surface the path in the reason.
+    sc = _sc(
+        steps=[
+            {"tap": {"id": "ok"}},
+            {"tap": {"id": "next"}},
+            {"pinch": {"sel": {"id": "map"}, "scale": 2.0}},
+        ]
+    )
+    reasons = capability_preflight.unsupported(sc, _IDB)
+    assert len(reasons) == 1
+    assert reasons[0].startswith("step 3: ")
+    assert "multiTouch" in reasons[0]
+
+
+def test_rotate_reason_includes_step_index() -> None:
+    sc = _sc(steps=[{"rotate": {"sel": {"id": "dial"}, "radians": 1.57}}])
+    reasons = capability_preflight.unsupported(sc, _IDB)
+    assert len(reasons) == 1
+    assert reasons[0].startswith("step 1: ")
+
+
+def test_visual_in_expect_reason_includes_expect_path() -> None:
+    sc = _sc(
+        steps=[{"tap": {"id": "ok"}}],
+        expect=[{"exists": {"id": "ok"}}, {"visual": {"baseline": "home"}}],
+    )
+    no_shot = _IDB - {base.Capability.SCREENSHOT}
+    reasons = capability_preflight.unsupported(sc, no_shot)
+    assert len(reasons) == 1
+    assert "expect[1]" in reasons[0]
+    assert "screenshot" in reasons[0]
+
+
+def test_visual_in_step_assert_reason_includes_path() -> None:
+    sc = _sc(steps=[{"tap": {"id": "ok"}}, {"assert": [{"visual": {"baseline": "home"}}]}])
+    no_shot = _IDB - {base.Capability.SCREENSHOT}
+    reasons = capability_preflight.unsupported(sc, no_shot)
+    assert len(reasons) == 1
+    assert "step 2" in reasons[0]
+    assert "screenshot" in reasons[0]
+
+
+def test_pinch_nested_in_if_then_path() -> None:
+    sc = _sc(
+        steps=[
+            {
+                "if": {
+                    "condition": {"exists": {"id": "banner"}},
+                    "then": [{"pinch": {"sel": {"id": "map"}, "scale": 2.0}}],
+                }
+            }
+        ]
+    )
+    reasons = capability_preflight.unsupported(sc, _IDB)
+    assert len(reasons) == 1
+    assert "step 1 > if > then[0]" in reasons[0]
+
+
+def test_pinch_nested_in_if_else_path() -> None:
+    sc = _sc(
+        steps=[
+            {
+                "if": {
+                    "condition": {"exists": {"id": "banner"}},
+                    "then": [{"tap": {"id": "ok"}}],
+                    "else": [{"pinch": {"sel": {"id": "map"}, "scale": 2.0}}],
+                }
+            }
+        ]
+    )
+    reasons = capability_preflight.unsupported(sc, _IDB)
+    assert len(reasons) == 1
+    assert "step 1 > if > else[0]" in reasons[0]
+
+
+def test_pinch_nested_in_for_each_path() -> None:
+    sc = _sc(
+        steps=[
+            {
+                "forEach": {
+                    "sel": {"idMatches": "row.*"},
+                    "as": "row",
+                    "steps": [
+                        {"tap": {"id": "ok"}},
+                        {"pinch": {"sel": {"id": "map"}, "scale": 2.0}},
+                    ],
+                }
+            }
+        ]
+    )
+    reasons = capability_preflight.unsupported(sc, _IDB)
+    assert len(reasons) == 1
+    assert "step 1 > forEach[1]" in reasons[0]
+
+
+def test_visual_in_if_condition_path() -> None:
+    sc = _sc(
+        steps=[
+            {
+                "if": {
+                    "condition": {"visual": {"baseline": "home"}},
+                    "then": [{"tap": {"id": "ok"}}],
+                }
+            }
+        ]
+    )
+    no_shot = _IDB - {base.Capability.SCREENSHOT}
+    reasons = capability_preflight.unsupported(sc, no_shot)
+    assert len(reasons) == 1
+    assert "step 1 > if > condition" in reasons[0]
+
+
+def test_multiple_pinches_yield_multiple_reasons() -> None:
+    # Each occurrence generates its own reason with its own path.
+    sc = _sc(
+        steps=[
+            {"pinch": {"sel": {"id": "map"}, "scale": 2.0}},
+            {"tap": {"id": "ok"}},
+            {"pinch": {"sel": {"id": "map2"}, "scale": 3.0}},
+        ]
+    )
+    reasons = capability_preflight.unsupported(sc, _IDB)
+    paths = [r.split(":")[0] for r in reasons]
+    assert "step 1" in paths
+    assert "step 3" in paths
+
+
+def test_baseline_reasons_have_no_path() -> None:
+    # The baseline capability reasons (query/elements) are backend-level, not step-specific.
+    sc = _sc(steps=[{"tap": {"id": "ok"}}])
+    reasons = capability_preflight.unsupported(sc, {base.Capability.ELEMENTS})
+    assert any("query" in r for r in reasons)
+    # Baseline reasons should NOT have a step prefix.
+    assert all(not r.startswith("step ") for r in reasons)
+
+
+# --- CLI doctor --scenario integration (BE-0024) ---
+
+
+def test_doctor_scenario_check_detects_unsupported_capabilities(tmp_path: Path) -> None:
+    # A scenario with pinch on an idb backend (no multiTouch) must surface the unsupported
+    # capability. Tests the check_scenarios helper used by the CLI.
+    from bajutsu.cli.commands.doctor import check_scenarios
+
+    scn_file = tmp_path / "pinch.yaml"
+    scn_file.write_text(
+        "- name: pinch test\n  steps:\n    - pinch: { sel: { id: map }, scale: 2.0 }\n",
+        encoding="utf-8",
+    )
+    reasons = check_scenarios(scn_file, "idb")
+    assert len(reasons) == 1
+    assert "multiTouch" in reasons[0]
+    assert "pinch test" in reasons[0]
+
+
+def test_doctor_scenario_check_no_issue_when_supported(tmp_path: Path) -> None:
+    # A plain tap scenario on idb — no unsupported capabilities.
+    from bajutsu.cli.commands.doctor import check_scenarios
+
+    scn_file = tmp_path / "tap.yaml"
+    scn_file.write_text(
+        "- name: tap test\n  steps:\n    - tap: { id: ok }\n",
+        encoding="utf-8",
+    )
+    reasons = check_scenarios(scn_file, "idb")
+    assert reasons == []
+
+
+def test_doctor_scenario_check_multiple_scenarios(tmp_path: Path) -> None:
+    # Multiple scenarios: only the one with pinch should produce a reason.
+    from bajutsu.cli.commands.doctor import check_scenarios
+
+    scn_file = tmp_path / "mixed.yaml"
+    scn_file.write_text(
+        "- name: ok scenario\n"
+        "  steps:\n"
+        "    - tap: { id: ok }\n"
+        "- name: pinch scenario\n"
+        "  steps:\n"
+        "    - pinch: { sel: { id: map }, scale: 2.0 }\n",
+        encoding="utf-8",
+    )
+    reasons = check_scenarios(scn_file, "idb")
+    assert len(reasons) == 1
+    assert "pinch scenario" in reasons[0]
+    assert "ok scenario" not in reasons[0]
+
+
+def test_doctor_scenario_check_missing_file(tmp_path: Path) -> None:
+    from bajutsu.cli.commands.doctor import check_scenarios
+
+    # A missing scenario file should raise (not silently skip).
+    with pytest.raises(FileNotFoundError):
+        check_scenarios(tmp_path / "missing.yaml", "idb")
+
+
+def test_doctor_scenario_flag_rejects_directory(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """--scenario pointing at a directory must exit 2 with a clean message, not crash."""
+    from typer.testing import CliRunner
+
+    from bajutsu.cli import app
+
+    cfg = tmp_path / "bajutsu.config.yaml"
+    cfg.write_text(
+        "defaults: { backend: [idb] }\n"
+        "targets:\n"
+        "  demo: { bundleId: com.example.demo, idNamespaces: [home] }\n",
+        encoding="utf-8",
+    )
+    # The sandbox has no idb, so skip the actuator-availability gate to reach the scenario check.
+    monkeypatch.setattr("bajutsu.cli.commands.doctor.select_actuator", lambda _: "idb")
+    # tmp_path itself is a directory — use it as the --scenario argument.
+    scenario_dir = tmp_path / "subdir"
+    scenario_dir.mkdir()
+    r = CliRunner().invoke(
+        app,
+        ["doctor", "--target", "demo", "--config", str(cfg), "--scenario", str(scenario_dir)],
+    )
+    assert r.exit_code == 2
+    assert "scenario not found" in r.output

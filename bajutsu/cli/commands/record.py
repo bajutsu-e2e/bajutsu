@@ -3,12 +3,12 @@
 from __future__ import annotations
 
 import atexit
-from dataclasses import replace
+import os
 from pathlib import Path
 
 import typer
 
-from bajutsu import env as _env
+from bajutsu import simctl as _simctl
 from bajutsu import usage as _usage
 from bajutsu.agents import make_agent, resolve_kind
 from bajutsu.backends import ensure_web_runtime, select_actuator
@@ -20,12 +20,30 @@ from bajutsu.cli._shared import (
     _refuse_out_in_checkout,
     _require_ai_credential,
     _resolve_browser,
+    _warn_onscreen_secrets,
+    _with_headed,
 )
-from bajutsu.config import WEB_ENGINES, Effective
+from bajutsu.config import WEB_ENGINES, Effective, web_engine
 from bajutsu.record import record as record_loop
 from bajutsu.runner import launch_driver
 from bajutsu.runner.launch_server import start_launch_server
 from bajutsu.scenario import Preconditions, dump_scenarios
+
+
+def _secret_tokens(eff: Effective) -> list[tuple[str, str]]:
+    """`(value, "${secrets.NAME}")` pairs for each declared secret with a non-empty env value.
+
+    The counterpart to `run`'s forward secret resolution (`_resolve_secrets`): `record` uses these
+    to rewrite a recorded literal back to its token (BE-0120). An env var that is unset *or empty*
+    is skipped — an empty value has no literal to tokenize, and matching one would splice the token
+    between every character. (`run` keeps the empty binding but its redactor drops empty values the
+    same way, so the effect is identical.) Longest value first so a value that is a substring of
+    another is substituted before it, never leaving a partial literal in the written scenario.
+    """
+    pairs = [
+        (os.environ[name], f"${{secrets.{name}}}") for name in eff.secrets if os.environ.get(name)
+    ]
+    return sorted(pairs, key=lambda pair: len(pair[0]), reverse=True)
 
 
 def _record_out_path(
@@ -127,8 +145,7 @@ def record(
     """
     eff, _source, checkout_root = _load_effective_with_source(config, target_name)
     # --headed/--no-headed overrides the target's `headless` config (web backend only; iOS ignores it).
-    if headed is not None:
-        eff = replace(eff, headless=not headed)
+    eff = _with_headed(eff, headed)
     # --browser overrides the target's `browser` config (web backend only; flag > config > chromium).
     eff = _resolve_browser(eff, browser)
     out_path = _record_out_path(eff, out, name, goal, target_name, checkout_root=checkout_root)
@@ -140,6 +157,9 @@ def record(
     # the alert guard is on.
     if kind == "api" or dismiss_alerts:
         _require_ai_credential(eff)
+    # Disclose that on-screen secrets are not redacted from the screenshots sent to the AI or
+    # stored under runs/ (BE-0151), before the authoring loop starts.
+    _warn_onscreen_secrets(eff)
     # Mask the textual model inputs (element trees, the alert instruction) before they leave the
     # process; the screenshot is sent as-is — images cannot be pixel-masked (BE-0047).
     redactor = _ai_redactor(eff)
@@ -151,7 +171,7 @@ def record(
     backends = _backends(backend, eff.backend)
     try:
         # Auto-install Playwright (and the selected engine's browser) if a web record needs it.
-        ensure_web_runtime(backends, eff.browser)
+        ensure_web_runtime(backends, web_engine(eff))
         actuator = select_actuator(backends)
     except RuntimeError as e:
         typer.echo(str(e))
@@ -165,7 +185,7 @@ def record(
     # Web has no simctl udid (launch_driver ignores it for playwright); resolving "booted" would
     # shell out to simctl and crash off-macOS, so skip it for the web backend.
     if actuator != "playwright":
-        udid = _env.resolve_udid(udid)
+        udid = _simctl.resolve_udid(udid)
 
     # Bring up the app's target server (the web baseUrl host) if it declares launchServer — reused
     # if already serving, started otherwise. Stopped when this command exits (atexit).
@@ -187,7 +207,7 @@ def record(
     )
     try:
         driver = launch_driver(udid, eff, actuator, Preconditions(erase=erase))
-    except _env.DeviceError as e:
+    except _simctl.DeviceError as e:
         typer.echo(str(e))
         raise typer.Exit(2) from None
     say(f"✅ app is up — authoring toward the goal: {goal!r}")
@@ -197,6 +217,7 @@ def record(
         authoring_agent,
         name=goal,
         alert_guard=alert_guard,
+        secret_tokens=_secret_tokens(eff),
         report=say,
     )
     out_path.parent.mkdir(parents=True, exist_ok=True)

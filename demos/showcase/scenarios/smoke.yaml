@@ -1,8 +1,9 @@
-# Smoke: the app launches logged-in, the Stable catalog seeds, and the seeded rows
-# are present. Runs identically against showcase-swiftui and showcase-uikit (same ids).
+# Smoke: the app launches on the Stable tab, the fixed catalog is present, and the seeded
+# rows show. Runs identically against showcase-swiftui and showcase-uikit (same ids). The
+# catalog is fixed at five (no launch-env seed knob, BE-0079), so the count is a constant.
 - name: stable catalog smoke
   preconditions:
-    launchEnv: { SHOWCASE_UITEST: "1", SHOWCASE_TAB: stable, SHOWCASE_SEED: "5" }
+    launchEnv: { SHOWCASE_UITEST: "1", SHOWCASE_TAB: stable }
   steps:
     - wait: { for: { id: stable.row.1 }, timeout: 10 }
       capture: [video]
@@ -10,13 +11,3 @@
     - count: { sel: { idMatches: "stable.row.*" }, equals: 5 }
     - exists: { id: stable.row.1 }
     - exists: { id: stable.empty, negate: true }
-
-- name: empty catalog shows the empty state
-  preconditions:
-    launchEnv: { SHOWCASE_UITEST: "1", SHOWCASE_TAB: stable, SHOWCASE_SEED: "0" }
-  steps:
-    - wait: { for: { id: stable.empty }, timeout: 10 }
-      capture: [video]
-  expect:
-    - exists: { id: stable.empty }
-    - count: { sel: { idMatches: "stable.row.*" }, equals: 0 }

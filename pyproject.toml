@@ -4,8 +4,9 @@ version = "0.0.0"
 description = "自然言語駆動の E2E テストツール"
 readme = "DESIGN.md"
 requires-python = ">=3.13"
+license = "Apache-2.0"
+license-files = ["LICENSE", "NOTICE"]
 dependencies = [
-    "anthropic>=0.50",
     "jinja2>=3.1",
     "pydantic>=2.7",
     "pyyaml>=6.0",
@@ -13,6 +14,11 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+# The Anthropic SDK for the AI authoring / investigation paths (record / triage / crawl-guide /
+# alert-dismissal). The deterministic `run` / CI gate never reaches a model (BE-0101), so the SDK
+# is an opt-in extra, not a base dependency — the base install stays AI-free (BE-0111). Imported
+# lazily, only when a model is actually called; the import guard locks it off the default path.
+ai = ["anthropic>=0.50"]
 # The idb backend shells out to the `idb` client; idb_companion is a separate
 # `brew install facebook/fb/idb-companion`.
 idb = ["fb-idb>=1.1.0"]
@@ -23,24 +29,33 @@ web = ["playwright>=1.49"]
 visual = ["pillow>=10.0"]
 mcp = ["fastmcp>=2.0.0"]
 # Amazon Bedrock provider for the AI paths (BAJUTSU_AI_PROVIDER=bedrock); pulls in boto3 for SigV4.
-bedrock = ["anthropic[bedrock]>=0.50"]
-# The hosted-backend worker (`bajutsu worker`): leases queued runs from Redis via RQ (BE-0015).
-# Imported lazily, only when a server backend is selected — never on the default path.
-worker = ["redis>=5", "rq>=1.16"]
+# Layers the Bedrock variant onto the `ai` extra, which is the single source of the `anthropic`
+# version pin — so the Bedrock line only adds the `[bedrock]` extra, never a second version (BE-0111).
+bedrock = ["bajutsu[ai]", "anthropic[bedrock]"]
+# The hosted-backend worker (`bajutsu worker`): polls the control plane over HTTP (BE-0106).
+# No extra dependencies needed (stdlib urllib); kept as an empty extra for backwards compatibility.
+worker = []
 # The hosted-backend control plane (`serve --backend=server`): the FastAPI app that serves the
 # same SPA + API over the swap-in seams. Imported only when the server backend is selected, never
 # on the default path (the import guard in tests/serve/test_import_guard.py locks this).
 server = ["fastapi>=0.110", "uvicorn>=0.27", "boto3>=1.34"]
 # The hosted-backend system of record (`serve --backend=server` with BAJUTSU_DATABASE_URL): the
-# SQLAlchemy `Repository` seam + Alembic migrations + the Postgres driver (BE-0015 7a). Imported
-# only when a database is wired, never on the default path (the import guard locks this).
-db = ["sqlalchemy>=2.0", "alembic>=1.13", "psycopg[binary]>=3.1"]
+# SQLAlchemy `Repository` seam + Alembic migrations + the Postgres driver (BE-0015 7a), plus
+# `cryptography` for the encrypted-at-rest operator secret store (BE-0136). Imported only when a
+# database is wired, never on the default path (the import guard locks this).
+db = ["sqlalchemy>=2.0", "alembic>=1.13", "psycopg[binary]>=3.1", "cryptography>=42.0"]
 # GitHub OAuth login for the hosted control plane (BE-0015 7b-2). Imported only when OAuth is
 # configured (BAJUTSU_OAUTH_GITHUB_*), never on the default path (the import guard locks this).
 oauth = ["authlib>=1.3"]
 # JSON Schema validation for the `responseSchema` assertion (BE-0048). Imported lazily, only when a
 # responseSchema assertion is evaluated — never on the default path.
 schema = ["jsonschema>=4.0"]
+# Evidence upload to object storage via a single URI (BE-0110). The SDK is imported lazily, only
+# when `run --evidence-store` (or serve) actually uploads — never on the default path. `s3` covers
+# S3-compatible targets (AWS / R2 / MinIO), `gcs` covers Google Cloud Storage, `cloud` is both.
+s3 = ["boto3>=1.34"]
+gcs = ["google-cloud-storage>=2.10"]
+cloud = ["bajutsu[s3,gcs]"]
 # The public website + docs portal and the generated API reference (BE-0093, BE-0065): MkDocs +
 # mkdocs-material render the landing page and the bilingual `docs/` tree; mkdocstrings renders the
 # Python surface from its docstrings + typed signatures; mkdocs-static-i18n drives the EN/JA switch.
@@ -59,12 +74,15 @@ docs = [
 dev = [
     # The optional extras the gate imports and tests — referenced by name so each one's version is
     # declared once, in [project.optional-dependencies], and never duplicated here. The gate runs
-    # with all of them installed: bedrock (boto3 for the AI path), server (FastAPI/uvicorn/boto3),
-    # worker (Redis/RQ), db (SQLAlchemy/Alembic/psycopg), oauth (Authlib), mcp, visual (Pillow), and
-    # schema (jsonschema).
-    "bajutsu[bedrock,server,worker,db,oauth,mcp,visual,schema]",
+    # with all of them installed: ai (the anthropic SDK for the AI paths, BE-0111), bedrock (its
+    # Bedrock variant + boto3), server (FastAPI/uvicorn/boto3), worker (empty since BE-0106),
+    # db (SQLAlchemy/Alembic/psycopg), oauth (Authlib), mcp, visual (Pillow), schema (jsonschema),
+    # and cloud (boto3 + google-cloud-storage for BE-0110). Keeping `ai` here means `make check`
+    # still imports and tests the AI paths; the AI-free guarantee is scoped to the *base* install.
+    "bajutsu[ai,bedrock,server,worker,db,oauth,mcp,visual,schema,cloud]",
     # Test/lint tooling — not part of any runtime extra, so declared directly here.
     "httpx>=0.27",  # FastAPI TestClient + real-uvicorn checks
+    "import-linter>=2.0",  # BE-0112: static core/contract/periphery layer-boundary contract
     "mypy>=1.10",
     "pytest>=8",
     "pytest-cov>=5",
@@ -144,7 +162,16 @@ ignore = [
 convention = "google"
 
 [tool.pytest.ini_options]
-addopts = "-n auto"
+# The two conformance suites that need a real backend stay out of the fast gate (BE-0114): `not
+# web` drops the browser-driven suite (real Chromium + the `web` extra; runs in `web-e2e.yml`,
+# `-m web`), and `not ondevice` drops the idb / XCUITest suite (a booted Simulator; runs in
+# `e2e.yml`). Deselecting by marker (not just importorskip) means each stays out even when its extra
+# happens to be installed locally — so the gate is hermetic regardless of the venv's state.
+addopts = "-n auto -m 'not web and not ondevice'"
+markers = [
+    "web: browser-driven test requiring the Playwright web extra + a Chromium binary (web CI only)",
+    "ondevice: iOS Simulator test requiring a booted device + the showcase app (E2E workflow only)",
+]
 # Collect only the project's own suite; ignore local git worktrees under worktree/.
 testpaths = ["tests"]
 
@@ -156,21 +183,120 @@ branch = true
 python_version = "3.13"
 strict = true
 
-# The server/worker SDKs (RQ/Redis, boto3) are lazy imports behind the optional extras and ship no
-# type stubs, so resolve their imports loosely — the seam adapters around them are typed and tested.
+# The cloud SDKs (boto3, google-cloud-storage) are lazy imports behind the optional extras and ship
+# no type stubs, so resolve their imports loosely — the seam adapters around them are typed and tested.
 [[tool.mypy.overrides]]
 module = [
-    "redis",
-    "redis.*",
-    "rq",
-    "rq.*",
     "boto3",
     "boto3.*",
     "botocore",
     "botocore.*",
+    "google.cloud.*",
     "authlib.*",
     "playwright.*",
     "jsonschema",
     "jsonschema.*",
 ]
 ignore_missing_imports = true
+
+# BE-0112: the core / contract / periphery layer model as an executable contract. `make lint-imports`
+# (part of `make check`) fails when a deterministic-core module imports the periphery, keeping the
+# verdict/evidence path free of the serve, AI and codegen stacks. Static analysis on the import
+# graph — no model, nothing on the run/CI verdict path (prime directives #1 and #3 as a contract).
+# The three layers, and where a new module belongs, are documented in docs/architecture.md.
+[tool.importlinter]
+root_package = "bajutsu"
+# Needed so a `forbidden` contract can name external packages (BE-0129 forbids the db/oauth extras
+# in the core). import-linter requires this at the top level, not per contract.
+include_external_packages = true
+
+# The deterministic core: the path that derives a verdict and evidence with no model and no
+# periphery stack. It carries the prime directives and can only live in Bajutsu.
+[[tool.importlinter.contracts]]
+name = "Deterministic core is independent of the periphery"
+type = "forbidden"
+source_modules = [
+    "bajutsu.orchestrator",
+    "bajutsu.runner",
+    "bajutsu.drivers.base",
+    "bajutsu.assertions",
+    "bajutsu.evidence",
+    "bajutsu.report",
+    "bajutsu.config",
+    "bajutsu.scenario",
+    "bajutsu.preflight",
+    "bajutsu.capability_preflight",
+    "bajutsu.capabilities",
+    "bajutsu.doctor",
+    "bajutsu.lint",
+]
+forbidden_modules = [
+    "bajutsu.serve",
+    "bajutsu.mcp",
+    "bajutsu.codegen",
+    "bajutsu.codegen_common",
+    "bajutsu.codegen_playwright",
+    "bajutsu.agent",
+    "bajutsu.agents",
+    "bajutsu.claude_agent",
+    "bajutsu.claude_code_agent",
+    "bajutsu.claude_enrich_agent",
+    "bajutsu.claude_triage",
+    "bajutsu.anthropic_client",
+    "bajutsu.ai_availability",
+    "bajutsu.enrich",
+    "bajutsu.triage",
+    "bajutsu.record",
+    "bajutsu.record_capture",
+    "bajutsu.crawl_guide",
+    "bajutsu.github",
+    "bajutsu.notify",
+    "bajutsu.alerts",
+]
+
+# The deterministic core must also stay free of the hosting-only third-party extras (BE-0129): the
+# `db` (SQLAlchemy/Alembic/psycopg/cryptography) and `oauth` (Authlib) stacks belong to
+# `bajutsu/serve/` alone. The periphery contract above already keeps the core off `bajutsu.serve`;
+# this forbids a core module from reaching the extras *directly*, which the internal layer graph
+# can't express — so `include_external_packages` lets import-linter see the external import. The
+# whole `bajutsu.drivers` package is covered here, beyond the `bajutsu.drivers.base` above.
+[[tool.importlinter.contracts]]
+name = "Deterministic core stays free of the db/oauth hosting extras"
+type = "forbidden"
+source_modules = [
+    "bajutsu.config",
+    "bajutsu.drivers",
+    "bajutsu.runner",
+    "bajutsu.scenario",
+]
+forbidden_modules = [
+    "sqlalchemy",
+    "alembic",
+    "psycopg",
+    "authlib",
+    "cryptography",
+]
+
+# The contract surface consumers depend on: the scenario schema and the `Driver` Protocol. Keeping
+# them independent of the runtime core (as well as the periphery, already covered above) makes the
+# contract a portable inner layer — a consumer can read a scenario or implement a `Driver` without
+# pulling in the orchestrator / runner / config, which underpins cross-version schema reads
+# (BE-0119) and any future split of the periphery from the core.
+[[tool.importlinter.contracts]]
+name = "Scenario schema and Driver Protocol stay a portable inner contract"
+type = "forbidden"
+source_modules = [
+    "bajutsu.scenario",
+    "bajutsu.drivers.base",
+]
+forbidden_modules = [
+    "bajutsu.orchestrator",
+    "bajutsu.runner",
+    "bajutsu.assertions",
+    "bajutsu.evidence",
+    "bajutsu.report",
+    "bajutsu.config",
+    "bajutsu.preflight",
+    "bajutsu.doctor",
+    "bajutsu.lint",
+]

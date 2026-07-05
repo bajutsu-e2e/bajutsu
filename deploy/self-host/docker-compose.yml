@@ -3,9 +3,9 @@
 # docs/self-hosting.md. Copy .env.example to .env and fill it in, then `docker compose up -d`.
 # One team = one (default) org; multi-tenant isolation is not implemented yet.
 #
-# Published ports bind to ${BIND_ADDR}, which defaults to 127.0.0.1 (loopback only). Redis and
-# MinIO must stay private: to let the native Mac worker reach them, set BIND_ADDR to the host's
-# tailnet IP — never 0.0.0.0 on a host that also has a public interface.
+# Published ports bind to ${BIND_ADDR}, which defaults to 127.0.0.1 (loopback only). MinIO must
+# stay private: to let the native Mac worker reach it, set BIND_ADDR to the host's tailnet IP —
+# never 0.0.0.0 on a host that also has a public interface.
 
 services:
   postgres:
@@ -20,13 +20,6 @@ services:
       interval: 5s
       timeout: 3s
       retries: 10
-
-  redis:
-    image: redis:7
-    volumes: ["redisdata:/data"]
-    # Reached by the Mac worker over the tailnet — bind to the tailnet IP via BIND_ADDR; loopback by
-    # default. Keep it off any public interface.
-    ports: ["${BIND_ADDR:-127.0.0.1}:6379:6379"]
 
   minio:
     # Pinned for reproducible deploys; bump deliberately after re-validating with this stack.
@@ -89,7 +82,6 @@ services:
     ports: ["${BIND_ADDR:-127.0.0.1}:8765:8765"]
     depends_on:
       postgres: { condition: service_healthy }
-      redis: { condition: service_started }
       minio-init: { condition: service_completed_successfully }
       migrate: { condition: service_completed_successfully }
 
@@ -107,6 +99,5 @@ services:
 
 volumes:
   pgdata:
-  redisdata:
   miniodata:
   caddydata:

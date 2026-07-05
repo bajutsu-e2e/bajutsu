@@ -1,0 +1,38 @@
+# On-device showcase of the scenario engine's authoring features — tags, a parameterized shared
+# component, and a masked secret — over the showcase Search flow. Run a tagged subset, e.g.:
+#   bajutsu run --scenario features.yaml --target showcase-swiftui --tag smoke --exclude slow
+- name: filter via the shared component
+  tags: [smoke]
+  preconditions:
+    launchEnv: { SHOWCASE_UITEST: "1", SHOWCASE_TAB: search }
+  steps:
+    - use: { component: _components/search_for.yaml, with: { query: "Horse 3" } }
+    - wait: { for: { id: search.row.3 }, timeout: 5 }
+  expect:
+    - value: { sel: { id: search.count }, equals: "1" }
+
+- name: type a masked secret into the field
+  tags: [smoke, secret]
+  preconditions:
+    launchEnv: { SHOWCASE_UITEST: "1", SHOWCASE_TAB: search }
+  steps:
+    # ${secrets.PASSWORD} resolves from the environment; the literal value is masked in every run
+    # artifact, while the scenario file keeps only the token. It matches no horse name, so the
+    # filter empties — a deterministic, network-free way to exercise a secret end to end.
+    - wait: { for: { id: search.field }, timeout: 10 }
+    - type: { into: { id: search.field }, text: "${secrets.PASSWORD}" }
+    - wait: { for: { id: search.results-empty }, timeout: 5 }
+  expect:
+    - exists: { id: search.results-empty }
+
+- name: nightly deep check
+  tags: [slow]
+  preconditions:
+    launchEnv: { SHOWCASE_UITEST: "1", SHOWCASE_TAB: stable }
+  steps:
+    - wait: { for: { id: stable.row.3 }, timeout: 10 }
+    - tap: { id: stable.row.3 }
+    - wait: { for: { id: horse.favorite }, timeout: 5 }
+    - tap: { id: horse.favorite }
+  expect:
+    - value: { sel: { id: horse.favorite.value }, equals: "on" }

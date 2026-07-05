@@ -38,7 +38,7 @@ def _scaffold(tmp_path: Path, **kw: str) -> Path:
 def test_creates_both_language_files_with_placeholder(tmp_path: Path) -> None:
     item = _scaffold(tmp_path)
     assert item.name == "BE-XXXX-demo-feature"
-    assert item.parent.name == "proposals"
+    assert item.parent.name == "roadmaps"  # flat layout (BE-0159): no status folder
     assert (item / "BE-XXXX-demo-feature.md").is_file()
     assert (item / "BE-XXXX-demo-feature-ja.md").is_file()
 
@@ -50,6 +50,9 @@ def test_english_file_has_canonical_shape(tmp_path: Path) -> None:
     assert "| Proposal | [BE-XXXX](BE-XXXX-demo-feature.md) |" in text
     assert "| Author | [@octocat](https://github.com/octocat) |" in text
     assert "| Status | **Proposal** |" in text
+    # Tracking issue (BE-0139): a search URL computed from the literal BE-XXXX placeholder, which
+    # the CI allocator rewrites to the real id alongside the rest of the file.
+    assert f"| Tracking issue | [Search]({nri._tracking_issue_url('BE-XXXX')}) |" in text
     assert f"| Topic | {_TOPIC} |" in text
     for section in (
         "Introduction",
@@ -59,6 +62,15 @@ def test_english_file_has_canonical_shape(tmp_path: Path) -> None:
         "References",
     ):
         assert f"## {section}\n\nTBD" in text
+    # Progress (BE-0100) is seeded with its living-checklist skeleton, between Alternatives and
+    # References, not a bare TBD.
+    assert "## Progress\n\n> Keep this current as work proceeds." in text
+    assert "- [ ] TBD — enumerate the work breakdown (MECE) here once scoped." in text
+    assert (
+        text.index("## Alternatives considered")
+        < text.index("## Progress")
+        < text.index("## References")
+    )
 
 
 def test_japanese_file_has_canonical_shape(tmp_path: Path) -> None:
@@ -66,8 +78,11 @@ def test_japanese_file_has_canonical_shape(tmp_path: Path) -> None:
     assert text.startswith("[English](BE-XXXX-demo-feature.md) · **日本語**\n")
     assert "| 提案者 | [@octocat](https://github.com/octocat) |" in text
     assert "| 状態 | **提案** |" in text  # Proposal -> 提案
+    assert f"| トラッキング Issue | [検索]({nri._tracking_issue_url('BE-XXXX')}) |" in text
     for section in ("はじめに", "動機", "詳細設計", "検討した代替案", "参考"):
         assert f"## {section}\n\nTBD" in text
+    assert "## 進捗\n\n> 開発の進行に合わせて常に最新の状態に保ってください。" in text
+    assert "- [ ] TBD — スコープが固まり次第、作業分解（MECE）をここに列挙します。" in text
 
 
 def test_status_maps_to_japanese(tmp_path: Path) -> None:
@@ -94,21 +109,17 @@ def test_handle_is_stripped_of_leading_at(tmp_path: Path) -> None:
     assert "| Author | [@octocat](https://github.com/octocat) |" in text
 
 
-def test_in_progress_item_lands_in_in_progress_folder(tmp_path: Path) -> None:
-    # Status is the source of truth for the folder; scaffolding into proposals/ regardless of
-    # Status would make the promote gate flag the item immediately after creation.
-    item = _scaffold(tmp_path, status="In progress")
-    assert item.parent.name == "in-progress"
-
-
-def test_implemented_item_lands_in_implemented_folder(tmp_path: Path) -> None:
-    item = _scaffold(tmp_path, status="Implemented")
-    assert item.parent.name == "implemented"
-
-
-def test_deferred_item_lands_in_deferred_folder(tmp_path: Path) -> None:
-    item = _scaffold(tmp_path, status="Proposal (deferred)")
-    assert item.parent.name == "deferred"
+@pytest.mark.parametrize(
+    "status", ["Proposal", "In progress", "Implemented", "Proposal (deferred)"]
+)
+def test_item_lands_directly_under_roadmaps_regardless_of_status(
+    tmp_path: Path, status: str
+) -> None:
+    # BE-0159 scaffolds every new item at roadmaps/BE-XXXX-<slug>/ — Status decides only the index
+    # bucket, never the directory — so the scaffold path is the same for every Status.
+    item = _scaffold(tmp_path, status=status)
+    assert item.parent.name == "roadmaps"
+    assert item.name == "BE-XXXX-demo-feature"
 
 
 def test_empty_title_is_rejected(tmp_path: Path) -> None:
