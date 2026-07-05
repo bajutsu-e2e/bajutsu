@@ -9,6 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0163") |
+| Implementing PR | [#689](https://github.com/bajutsu-e2e/bajutsu/pull/689) |
 | Topic | AI provider configuration |
 | Related | [BE-0125](../BE-0125-authoring-agent-tool-restriction/BE-0125-authoring-agent-tool-restriction.md) |
 <!-- /BE-METADATA -->
@@ -156,7 +157,7 @@ Open questions, left **TBD** for implementation time:
 
 Log:
 
-- The `ant` provider ships end to end: a third authentication path in `anthropic_client.py`
+- [#689](https://github.com/bajutsu-e2e/bajutsu/pull/689) — the `ant` provider ships end to end: a third authentication path in `anthropic_client.py`
   (`auth_token` from `ant auth print-credentials`), registered on the shared Anthropic adapter, with
   the `claude-code` agent kind and its `--agent` option, denylist, and `ai_availability` CLI branch
   removed; `serve`'s Settings selector now offers `anthropic` / `bedrock` / `ant`. Docs (both
