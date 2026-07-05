@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0146") |
-| Implementing PR | _pending_ |
+| Implementing PR | [#702](https://github.com/bajutsu-e2e/bajutsu/pull/702) |
 | Topic | Surfacing CLI features in the serve Web UI |
 <!-- /BE-METADATA -->
 
@@ -73,7 +73,7 @@ Tier-1, read-only; the UI only shells out to the existing aggregation.
 - [x] Add the "Coverage" view surfacing those results in the browser
 - [x] Fold in the endpoints-observed-vs-asserted dimension when a run set is selected
 
-* _pending_ — Added `POST /api/coverage` (shared with the stdlib and FastAPI shells) reusing the
+* [#702](https://github.com/bajutsu-e2e/bajutsu/pull/702) — Added `POST /api/coverage` (shared with the stdlib and FastAPI shells) reusing the
   BE-0050 aggregation and its self-contained HTML report, plus a "Coverage" tab that renders it. The
   device-free scenario loader moved to `bajutsu/scenario` and the run-evidence readers were shared
   into `bajutsu/coverage.py` (with a run-id filter) so the CLI and serve read the same way. Also
