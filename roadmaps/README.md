@@ -661,6 +661,7 @@ Sending a run's result out to a service the team already lives in. These are pos
 | ID | Item | Status | Origin |
 |---|---|---|---|
 | [BE-0165](BE-0165-visual-compare-engines/BE-0165-visual-compare-engines.md) | Selectable perceptual compare engines for visual regression | Proposal |  |
+| [BE-0171](BE-0171-element-scoped-visual-assertions/BE-0171-element-scoped-visual-assertions.md) | Element-scoped visual assertions and selector-based masking | Proposal |  |
 <!-- /GENERATED:proposals-competitive -->
 
 ### Candidates from competitive research (Maestro)

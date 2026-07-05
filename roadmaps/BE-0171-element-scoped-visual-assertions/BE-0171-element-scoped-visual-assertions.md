@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-element-scoped-visual-assertions-ja.md)
+**English** · [日本語](BE-0171-element-scoped-visual-assertions-ja.md)
 
-# BE-XXXX — Element-scoped visual assertions and selector-based masking
+# BE-0171 — Element-scoped visual assertions and selector-based masking
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-element-scoped-visual-assertions.md) |
+| Proposal | [BE-0171](BE-0171-element-scoped-visual-assertions.md) |
 | Author | [@hirosassa](https://github.com/hirosassa) |
 | Status | **Proposal** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0171") |
 | Topic | Candidates from competitive research (MagicPod / Autify) |
 | Related | [BE-0029](../BE-0029-visual-regression-assertions/BE-0029-visual-regression-assertions.md) |
 <!-- /BE-METADATA -->
