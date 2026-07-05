@@ -7,7 +7,7 @@ import subprocess
 import time
 from collections.abc import Callable, Mapping
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
 
@@ -27,6 +27,7 @@ from bajutsu.network import NetworkExchange
 from bajutsu.orchestrator import (
     BlockedHandler,
     Clock,
+    MailboxReader,
     ProgressFn,
     RunResult,
     run_scenario,
@@ -69,6 +70,136 @@ def _write_network(
     # network.json can carry request/response bodies and headers — owner-only, umask-independent (BE-0131).
     restrict_file(out)
     return Artifact(f"{sid}/network.json", "network", provider)
+
+
+@dataclass(frozen=True)
+class _ScenarioRunner:
+    """One run's shared context, applied to each scenario in turn (BE-0172).
+
+    Promoted from the ``run_one`` closure that lived inside ``run_all``: the values every scenario
+    needs — the resolved config, the lease factory, the per-run redactor / mailbox / capability set,
+    and the output knobs — are explicit read-only fields instead of captured free variables. This
+    makes ``run_one`` legible and unit-testable in isolation, and makes explicit exactly which state
+    each worker touches: the fields are immutable and shared across ``ThreadPoolExecutor`` workers
+    unchanged, precisely as the closure's captured state was.
+    """
+
+    eff: Effective
+    lease: LeaseFn
+    redactor: Redactor
+    mailbox: MailboxReader | None
+    caps: frozenset[str] | None
+    total: int
+    clock: Clock | None = None
+    on_blocked: BlockedHandler | None = None
+    on_blocked_for: OnBlockedFor | None = None
+    run_dir: Path | None = None
+    bindings: Mapping[str, str] | None = None
+    progress: ProgressFn | None = None
+    baselines_dir: Path | None = None
+    schemas_dir: Path | None = None
+    actuator: str | None = None
+    golden_context: GoldenContext | None = None
+
+    def run_one(self, i: int, s: Scenario) -> RunResult:
+        """Run one scenario on a freshly leased device and return its result.
+
+        Args:
+            i: The scenario's zero-based index, used for its ordered `NN-slug` evidence dir.
+            s: The scenario to run.
+        """
+        sid = f"{i:02d}-{scenario_slug(s.name)}"
+        if self.progress is not None:
+            self.progress(f"▶ scenario {i + 1}/{self.total}: {s.name}")
+        if self.caps is not None and (reasons := capability_preflight.unsupported(s, self.caps)):
+            if self.progress is not None:
+                self.progress(
+                    f"✘ scenario {i + 1}/{self.total}: {s.name} (unsupported on {self.actuator})"
+                )
+            return RunResult(
+                scenario=s.name,
+                ok=False,
+                steps=[],
+                backend=self.actuator or "",
+                sid=sid,
+                failure=f"unsupported on backend '{self.actuator}': {'; '.join(reasons)}",
+            )
+        lz = self.lease(self.eff, s)
+        handler = self.on_blocked_for(s) if self.on_blocked_for is not None else self.on_blocked
+        try:
+            if lz.collector is not None:
+                lz.collector.clear()
+            # t0 after launch, so exchange offsets share the step timeline's origin.
+            scenario_start = time.monotonic()
+            # Build visual context for scenario-level visual assertions (expect).
+            vc: VisualContext | None = None
+            if self.baselines_dir is not None and self.run_dir is not None:
+                vc = VisualContext(
+                    screenshot_path=self.run_dir / sid / "visual-actual.png",
+                    baselines_dir=self.baselines_dir,
+                    diff_dir=self.run_dir / sid,
+                    run_dir=self.run_dir,
+                )
+            sc = (
+                SchemaContext(schemas_dir=self.schemas_dir)
+                if self.schemas_dir is not None
+                else None
+            )
+            # Best-effort device screen bounds for golden frame sanity (BE-0006):
+            # a query() failure here must not block non-golden scenarios.
+            gc_with_screen = self.golden_context
+            if self.golden_context is not None and self.golden_context.screen is None:
+                try:
+                    from bajutsu.elements import screen_size_from_elements
+
+                    sw, sh = screen_size_from_elements(lz.driver.query())
+                    gc_with_screen = GoldenContext(
+                        goldens_dir=self.golden_context.goldens_dir, screen=(0.0, 0.0, sw, sh)
+                    )
+                except Exception:  # noqa: S110 — best-effort; _eval_golden falls back
+                    pass
+            result = run_scenario(
+                lz.driver,
+                s,
+                self.clock,
+                sink=lz.sink,
+                on_blocked=handler,
+                scenario_id=sid,
+                network=(lz.collector.snapshot if lz.collector is not None else _no_net),
+                relaunch=lz.relaunch,
+                bindings=self.bindings,
+                control=lz.control,
+                progress=self.progress,
+                visual_context=vc,
+                schema_context=sc,
+                mailbox=self.mailbox,
+                golden_context=gc_with_screen,
+                webview_bridge=lz.webview_bridge,
+            )
+            result.sid = sid  # the evidence-dir slug, so the matrix links to the real dir (BE-0076)
+            result.device = lz.udid  # attribute the scenario to the device that ran it
+            result.device_name = lz.device_name  # for the report's Environment tab
+            result.device_runtime = lz.device_runtime
+            result.skipped_captures = list(lz.skipped_captures)  # disclose evidence gaps (BE-0020)
+            if lz.collector is not None and self.run_dir is not None:
+                art = _write_network(
+                    lz.collector.snapshot_timed(),
+                    scenario_start,
+                    self.run_dir,
+                    sid,
+                    self.redactor,
+                    provider=lz.collector_provider,
+                )
+                if art is not None:
+                    result.artifacts.append(art)
+            if self.progress is not None:
+                mark = "✔" if result.ok else "✘"
+                self.progress(
+                    f"{mark} scenario {i + 1}/{self.total}: {s.name} ({result.duration_s:.1f}s)"
+                )
+            return result
+        finally:
+            lz.release()
 
 
 def run_all(
@@ -135,98 +266,30 @@ def run_all(
     # drive a lease directly), so the gesture handler's own check still backstops it.
     caps = capabilities_for(actuator) if actuator is not None else None
 
-    total = len(scenarios)
-
-    def run_one(i: int, s: Scenario) -> RunResult:
-        sid = f"{i:02d}-{scenario_slug(s.name)}"
-        if progress is not None:
-            progress(f"▶ scenario {i + 1}/{total}: {s.name}")
-        if caps is not None and (reasons := capability_preflight.unsupported(s, caps)):
-            if progress is not None:
-                progress(f"✘ scenario {i + 1}/{total}: {s.name} (unsupported on {actuator})")
-            return RunResult(
-                scenario=s.name,
-                ok=False,
-                steps=[],
-                backend=actuator or "",
-                sid=sid,
-                failure=f"unsupported on backend '{actuator}': {'; '.join(reasons)}",
-            )
-        lz = lease(eff, s)
-        handler = on_blocked_for(s) if on_blocked_for is not None else on_blocked
-        try:
-            if lz.collector is not None:
-                lz.collector.clear()
-            # t0 after launch, so exchange offsets share the step timeline's origin.
-            scenario_start = time.monotonic()
-            # Build visual context for scenario-level visual assertions (expect).
-            vc: VisualContext | None = None
-            if baselines_dir is not None and run_dir is not None:
-                vc = VisualContext(
-                    screenshot_path=run_dir / sid / "visual-actual.png",
-                    baselines_dir=baselines_dir,
-                    diff_dir=run_dir / sid,
-                    run_dir=run_dir,
-                )
-            sc = SchemaContext(schemas_dir=schemas_dir) if schemas_dir is not None else None
-            # Best-effort device screen bounds for golden frame sanity (BE-0006):
-            # a query() failure here must not block non-golden scenarios.
-            gc_with_screen = golden_context
-            if golden_context is not None and golden_context.screen is None:
-                try:
-                    from bajutsu.elements import screen_size_from_elements
-
-                    sw, sh = screen_size_from_elements(lz.driver.query())
-                    gc_with_screen = GoldenContext(
-                        goldens_dir=golden_context.goldens_dir, screen=(0.0, 0.0, sw, sh)
-                    )
-                except Exception:  # noqa: S110 — best-effort; _eval_golden falls back
-                    pass
-            result = run_scenario(
-                lz.driver,
-                s,
-                clock,
-                sink=lz.sink,
-                on_blocked=handler,
-                scenario_id=sid,
-                network=(lz.collector.snapshot if lz.collector is not None else _no_net),
-                relaunch=lz.relaunch,
-                bindings=bindings,
-                control=lz.control,
-                progress=progress,
-                visual_context=vc,
-                schema_context=sc,
-                mailbox=mailbox,
-                golden_context=gc_with_screen,
-                webview_bridge=lz.webview_bridge,
-            )
-            result.sid = sid  # the evidence-dir slug, so the matrix links to the real dir (BE-0076)
-            result.device = lz.udid  # attribute the scenario to the device that ran it
-            result.device_name = lz.device_name  # for the report's Environment tab
-            result.device_runtime = lz.device_runtime
-            result.skipped_captures = list(lz.skipped_captures)  # disclose evidence gaps (BE-0020)
-            if lz.collector is not None and run_dir is not None:
-                art = _write_network(
-                    lz.collector.snapshot_timed(),
-                    scenario_start,
-                    run_dir,
-                    sid,
-                    redactor,
-                    provider=lz.collector_provider,
-                )
-                if art is not None:
-                    result.artifacts.append(art)
-            if progress is not None:
-                mark = "✔" if result.ok else "✘"
-                progress(f"{mark} scenario {i + 1}/{total}: {s.name} ({result.duration_s:.1f}s)")
-            return result
-        finally:
-            lz.release()
-
+    runner = _ScenarioRunner(
+        eff=eff,
+        lease=lease,
+        redactor=redactor,
+        mailbox=mailbox,
+        caps=caps,
+        total=len(scenarios),
+        clock=clock,
+        on_blocked=on_blocked,
+        on_blocked_for=on_blocked_for,
+        run_dir=run_dir,
+        bindings=bindings,
+        progress=progress,
+        baselines_dir=baselines_dir,
+        schemas_dir=schemas_dir,
+        actuator=actuator,
+        golden_context=golden_context,
+    )
     if workers > 1:
+        # >1 hands each worker its own device + per-device resources; the runner's fields are
+        # immutable and shared unchanged, so the loop keeps no shared mutable state.
         with ThreadPoolExecutor(max_workers=workers) as pool:
-            return list(pool.map(lambda pair: run_one(*pair), list(enumerate(scenarios))))
-    return [run_one(i, s) for i, s in enumerate(scenarios)]
+            return list(pool.map(lambda pair: runner.run_one(*pair), list(enumerate(scenarios))))
+    return [runner.run_one(i, s) for i, s in enumerate(scenarios)]
 
 
 def run_and_report(

@@ -272,6 +272,7 @@ Bajutsu の「契約としての決定性」という立場を、Maestro の fla
 | [BE-0142](BE-0142-cli-command-coverage/BE-0142-cli-command-coverage-ja.md) | CLI コマンド層にテストを追加する | 実装済み |
 | [BE-0143](BE-0143-run-command-decomposition/BE-0143-run-command-decomposition-ja.md) | run コマンドの巨大関数を分解する | 実装済み |
 | [BE-0150](BE-0150-scenario-load-yaml-error-handling/BE-0150-scenario-load-yaml-error-handling-ja.md) | `trace --explain` と `audit` で壊れたシナリオを綺麗に失敗させる | 実装済み |
+| [BE-0172](BE-0172-run-loop-step-decomposition/BE-0172-run-loop-step-decomposition-ja.md) | run 経路のステップループとシナリオ実行関数の分解 | 実装済み |
 <!-- /GENERATED:implemented-quality-debt -->
 
 ### Dogfood フィクスチャ（デモアプリ）
@@ -512,9 +513,7 @@ Web（Playwright）backend とその完成（リッチな capability、並列実
 ### コードベース品質・技術的負債
 
 <!-- GENERATED:in-progress-quality-debt -->
-| ID | 項目 | 状態 |
-|---|---|---|
-| [BE-0172](BE-0172-run-loop-step-decomposition/BE-0172-run-loop-step-decomposition-ja.md) | run 経路のステップループとシナリオ実行関数の分解 | 実装中 |
+
 <!-- /GENERATED:in-progress-quality-debt -->
 
 ## 提案

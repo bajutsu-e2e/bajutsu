@@ -279,6 +279,7 @@ Behavior-preserving cleanup inside `bajutsu/` itself — deduplication, decompos
 | [BE-0142](BE-0142-cli-command-coverage/BE-0142-cli-command-coverage.md) | Cover the CLI command layer | Implemented |
 | [BE-0143](BE-0143-run-command-decomposition/BE-0143-run-command-decomposition.md) | Decompose the run command god-function | Implemented |
 | [BE-0150](BE-0150-scenario-load-yaml-error-handling/BE-0150-scenario-load-yaml-error-handling.md) | Fail cleanly on a malformed scenario in `trace --explain` and `audit` | Implemented |
+| [BE-0172](BE-0172-run-loop-step-decomposition/BE-0172-run-loop-step-decomposition.md) | Decompose the run-path step loop and per-scenario runner | Implemented |
 <!-- /GENERATED:implemented-quality-debt -->
 
 ### Dogfood fixtures (demo apps)
@@ -519,9 +520,7 @@ Consolidating the demo and dogfood apps onto the showcase suite: bringing it to 
 ### Codebase quality & technical debt
 
 <!-- GENERATED:in-progress-quality-debt -->
-| ID | Item | Status |
-|---|---|---|
-| [BE-0172](BE-0172-run-loop-step-decomposition/BE-0172-run-loop-step-decomposition.md) | Decompose the run-path step loop and per-scenario runner | In progress |
+
 <!-- /GENERATED:in-progress-quality-debt -->
 
 ## Proposals
