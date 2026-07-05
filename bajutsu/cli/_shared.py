@@ -93,11 +93,14 @@ def _credential_gap_message(gap: str, eff: Effective) -> str:
     if gap == anthropic_client.ANT_CLI_MISSING:
         return (
             "no AI credential: the ant provider needs the Anthropic CLI — install `ant` and run "
-            "`ant auth login`, or set ai.provider to anthropic / bedrock."
+            "`ant auth login`, or set ai.provider to api-key / bedrock."
         )
     if gap == anthropic_client.ANT_CLI_UNAUTHENTICATED:
+        # Also returned when the token probe fails to exec or times out — the wording stays accurate
+        # for that case too, while `ant auth login` remains the primary fix.
         return (
-            "no AI credential: the Anthropic CLI (`ant`) is not signed in — run `ant auth login`."
+            "no AI credential: the Anthropic CLI (`ant`) has no active credential or could not be "
+            "read — run `ant auth login`."
         )
     return (
         f"no AI credential: set ${anthropic_client.key_env(eff.ai)} (the env var named by "

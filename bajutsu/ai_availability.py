@@ -37,7 +37,12 @@ def message(gap: str, ai: AiConfig | None = None) -> str:
             "or switch to the Anthropic API / Bedrock provider."
         )
     if gap == ANT_CLI_UNAUTHENTICATED:
-        return "the Anthropic CLI (`ant`) is not signed in — run `ant auth login`."
+        # Also returned when the token probe fails to exec or times out, not only a genuine
+        # sign-out — so the wording covers both, with `ant auth login` as the primary fix.
+        return (
+            "the Anthropic CLI (`ant`) has no active credential or could not be read — "
+            "run `ant auth login`."
+        )
     if gap == "bedrock-model":
         return (
             "the Bedrock provider needs a provider-prefixed model id "

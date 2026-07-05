@@ -118,7 +118,7 @@ def api_key_info(state: ServeState, actor: str | None) -> tuple[Any, int]:
 def provider_info(state: ServeState) -> tuple[Any, int]:
     """The AI provider spawned jobs will use, with the Bedrock region/model.  Read from the serve
     process's environment, so it reflects what a record/crawl job inherits — one of the registered
-    SDK providers (`anthropic` / `bedrock` / `ant`, BE-0163)."""
+    SDK providers (`api-key` / `bedrock` / `ant`, BE-0163)."""
     mode = provider()
     # Claude reachability for the resolved provider (BE-0101), so the front end disables the Claude
     # tabs (record/crawl) on data rather than only surfacing the failure on click. Honors the bound
