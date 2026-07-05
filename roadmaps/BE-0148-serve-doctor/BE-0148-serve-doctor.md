@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0148") |
-| Implementing PR | _pending_ |
+| Implementing PR | [#704](https://github.com/bajutsu-e2e/bajutsu/pull/704) |
 | Topic | Surfacing CLI features in the serve Web UI |
 <!-- /BE-METADATA -->
 
@@ -84,7 +84,7 @@ adds the convention score (queried in-process only when the environment is runna
 Replay forms. The score is a synchronous in-process query rather than a spawned job: it mirrors the
 existing `doctor_check` and audit operations and keeps the check AI-free and deterministic.
 
-- _pending_ — complete the doctor Web UI surface (endpoint score + readiness panel).
+- [#704](https://github.com/bajutsu-e2e/bajutsu/pull/704) — complete the doctor Web UI surface (endpoint score + readiness panel).
 
 ## References
 
