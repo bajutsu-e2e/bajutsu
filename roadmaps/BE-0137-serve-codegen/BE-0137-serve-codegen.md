@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0137") |
-| Implementing PR | [#692](https://github.com/bajutsu-e2e/bajutsu/pull/692) |
+| Implementing PR | [#692](https://github.com/bajutsu-e2e/bajutsu/pull/692), [#696](https://github.com/bajutsu-e2e/bajutsu/pull/696) |
 | Topic | Surfacing CLI features in the serve Web UI |
 <!-- /BE-METADATA -->
 
@@ -78,8 +78,9 @@ Tier-1, deterministic; the UI only shells out to the existing command.
 - [#692](https://github.com/bajutsu-e2e/bajutsu/pull/692) — the `POST /api/codegen` endpoint and
   the editor-side "Generate code" action (emit selector, read-only code viewer with copy /
   download), with the emit dispatch shared with the CLI (`bajutsu/codegen_emit.py`).
-- _(follow-up PR)_ — the same "Generate code" action on the Replay view, reusing the endpoint through
-  a shared client-side `makeCodegen` factory; completes the item (Status → Implemented).
+- [#696](https://github.com/bajutsu-e2e/bajutsu/pull/696) — the same "Generate code" action on the
+  Replay view, reusing the endpoint through a shared client-side `makeCodegen` factory; completes the
+  item (Status → Implemented).
 
 ## References
 
