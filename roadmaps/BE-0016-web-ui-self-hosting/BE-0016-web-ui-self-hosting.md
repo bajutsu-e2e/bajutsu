@@ -7,9 +7,9 @@
 |---|---|
 | Proposal | [BE-0016](BE-0016-web-ui-self-hosting.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **In progress** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0016") |
-| Implementing PR | [#103](https://github.com/bajutsu-e2e/bajutsu/pull/103), [#154](https://github.com/bajutsu-e2e/bajutsu/pull/154), [#365](https://github.com/bajutsu-e2e/bajutsu/pull/365), [#367](https://github.com/bajutsu-e2e/bajutsu/pull/367), [#507](https://github.com/bajutsu-e2e/bajutsu/pull/507) |
+| Implementing PR | [#103](https://github.com/bajutsu-e2e/bajutsu/pull/103), [#154](https://github.com/bajutsu-e2e/bajutsu/pull/154), [#365](https://github.com/bajutsu-e2e/bajutsu/pull/365), [#367](https://github.com/bajutsu-e2e/bajutsu/pull/367), [#507](https://github.com/bajutsu-e2e/bajutsu/pull/507), [#674](https://github.com/bajutsu-e2e/bajutsu/pull/674) |
 | Topic | Hosting the web UI (cloud / self-hosted) |
 | Related | [BE-0106](../BE-0106-post-completion-worker-model/BE-0106-post-completion-worker-model.md) |
 <!-- /BE-METADATA -->
@@ -35,8 +35,11 @@ self-hosted counterpart to the managed, multi-tenant public stack in
   ([`deploy/self-host/`](../../../deploy/self-host/)); what remains is growing that node into a
   fault-tolerant, org-fair *pool*. The fully managed public cloud stays BE-0015's.
 
-The item as a whole is a proposal; Tier A and the single-node Tier B are the runnable baselines
-within it, and the remaining pool work is the design that follows.
+This item now records the **shipped self-hosting baselines** — Tier A and the single-node Tier B
+(including multi-org isolation, the per-org concurrency cap, and worker-liveness re-queue). The
+further work of growing that single node into a fault-tolerant, org-fair *pool* has been split into
+five focused roadmap items, each tracked on its own (see *Growing one node into a pool — tracked
+separately* below); this item is the umbrella that links them.
 
 ## Motivation
 
@@ -148,9 +151,17 @@ are in [`deploy/self-host/`](../../../deploy/self-host/) and
   `console.log`) to MinIO, and posts the result back to `POST /api/worker/result`. No Redis or
   RQ — the worker needs only HTTP and (optionally) the object-store client
   ([BE-0106](../BE-0106-post-completion-worker-model/BE-0106-post-completion-worker-model.md)).
-- **Quotas.** A **global** concurrency cap (`--max-concurrent-runs`, default 4) and a **per-user** cap
-  (`max_concurrent_per_user`) keep one caller from monopolizing the scarce devices — enforced
-  atomically under a lock in `try_register` (`bajutsu/serve/jobs.py`).
+- **Quotas.** A **global** concurrency cap (`--max-concurrent-runs`, default 4), a **per-user** cap
+  (`max_concurrent_per_user`), and a **per-org** cap (`max_concurrent_per_org`,
+  [#367](https://github.com/bajutsu-e2e/bajutsu/pull/367); `0` = unlimited, so single-tenant is
+  unchanged) keep one caller — or one org — from monopolizing the scarce devices, enforced atomically
+  under a lock in `try_register` (`bajutsu/serve/jobs.py`). An over-cap job is rejected (HTTP 429);
+  turning that rejection into fair *holding* is one of the split-out items below.
+- **Worker liveness and job re-queue.** Every lease carries a timer: `bajutsu worker` sends a
+  periodic heartbeat (`POST /api/worker/heartbeat`) that renews the lease, and the control plane
+  reclaims any lease with no heartbeat past a timeout — returning the job to `queued` for another
+  worker (`reclaim_expired_leases`, swept on each `lease_job`), failing a poison job past an attempt
+  cap rather than re-queuing it forever ([#507](https://github.com/bajutsu-e2e/bajutsu/pull/507)).
 
 The mapping below is the menu for the remaining managed services; the **Shipped today** column marks
 what `deploy/self-host/` already uses, versus what is still a suggested choice for scale-out.
@@ -182,96 +193,42 @@ what `deploy/self-host/` already uses, versus what is still a suggested choice f
 **Sizing.** Video evidence is heavy — budget a few hundred GB for MinIO. The Linux node is modest
 (2 vCPU / 4 GB; it can even co-locate on the Mac via OrbStack). The **Macs dominate** the footprint.
 
-#### What remains — growing one node into a pool
+#### Growing one node into a pool — tracked separately
 
 Everything above runs on **one** Linux node with **one or a few** Mac workers. Turning that into a
-fault-tolerant pool that stays fair across orgs is the remaining work. Each item below names its
-**shipped base**, the **concrete design** to finish it, and how it is **verified** — most of these
-are deployment and operations concerns that the Linux-only `make check` gate cannot exercise (no
-Docker, no Mac), so the table is explicit about which piece has a machine-checkable contract and which
-is verified by hand on a deployment.
+fault-tolerant pool that stays fair across orgs is further work. Because each piece is independent,
+substantial, and mostly a deployment or operations concern the Linux-only `make check` gate cannot
+exercise (no Docker, no Mac), it has been **split out of this umbrella into five focused roadmap
+items** — the per-org cap and worker-liveness re-queue this work built on have already shipped (see
+*What runs today*). Each successor names its shipped base, its concrete design, and how it is
+verified; three expose a machine-checkable surface — fully for weighted-fair dispatch, partially for
+capability routing and observability — while control-plane scale-out and high availability are
+verified by hand. By topic:
 
-**1. Cross-org fairness and quota (the one piece with a gate-checkable contract).** Before this, the
-caps were global and per-user, with no per-org bound, so one org could crowd the scarce Mac pool even
-when its users each stayed under their per-user cap. The design extends the existing seam rather than
-adding a new one, and lands in two slices:
+1. **Weighted-fair cross-org job dispatch** — turn the per-org cap's 429 rejection into *holding*:
+   per-org pending queues and a round-robin dispatcher that keeps the scarce pool fair under
+   contention. The only piece that is *fully* gate-checkable (unit-tested on `ServeState`, no Mac);
+   it lands in `bajutsu/serve/operations.py` and `jobs.py`.
+2. **Capability-routed job queues** — per-capability queues (`q:ios18`, `q:ipad`) so a job is only
+   ever leased by a worker that can run it. The lease filter is gate-checkable; the multi-device
+   routing is verified by hand. No change to the deterministic `run`.
+3. **Control-plane scale-out behind a load balancer** — N stateless app replicas behind a
+   least-connections load balancer, no sticky sessions (sessions live in Postgres). Verified by hand.
+4. **Self-hosted high availability** — remove the lone stateful single point of failure (SPOF): a
+   Postgres primary + replica, a redundant load balancer, and a backed-up object store. Verified by
+   hand.
+5. **Serve metrics and observability** — a `/metrics` endpoint (queue depth, in-flight jobs per org,
+   run durations, worker liveness) plus optional Prometheus / Grafana containers. The endpoint is
+   gate-checkable; the containers are verified by hand.
 
-- **Per-org cap — shipped.** `max_concurrent_per_org` is counted on `job.org` exactly as
-  `max_concurrent_per_user` is counted on `job.actor`, in the same atomic count-and-insert under the
-  lock in `try_register` (`bajutsu/serve/jobs.py`); a server backend sets it from
-  `BAJUTSU_MAX_CONCURRENT_PER_ORG` (`0` = unlimited, so single-tenant is unchanged). A job over its
-  org's cap is **rejected** (HTTP 429) today, mirroring the per-user cap. The unit tests pin the
-  invariants on `ServeState` (no Mac): an org never exceeds its cap, a different org is unaffected,
-  the default is unlimited, and the per-user and per-org caps compose. Landed in
-  [#367](https://github.com/bajutsu-e2e/bajutsu/pull/367).
-- **Weighted-fair dispatch — remaining.** Turn that rejection into **holding**: replace the
-  "reject with 429 when a cap is hit" tail (`_register_and_dispatch`, `bajutsu/serve/operations.py`)
-  with **per-org pending queues** and a dispatcher that round-robins across orgs with pending work,
-  admitting the next job only while that org is under its cap. Priority tiers ride the same
-  round-robin as weights. Pure first-in, first-out (FIFO) is what lets one org monopolize the pool;
-  per-org queues fix it. **Conflict note:** this lands in `bajutsu/serve/operations.py`, the surface
-  open PR #166 (BE-0056) is editing — so it should land **after** #166 merges, or be coordinated.
-
-**2. Capability-routed queues.** Today there is a single job queue. A mixed pool (different iOS
-runtimes, iPad vs iPhone) needs **per-capability queues** (`q:ios18`, `q:ipad`); the control plane
-enqueues onto the queue matching the target's device, and each worker subscribes only to the queues
-it can serve. Verified by hand on a multi-device pool. (No change to the deterministic `run`; routing
-is purely about *which* idle worker picks the job up.)
-
-**3. Worker liveness and job re-queue — shipped.** A Mac that dies mid-run must not silently drop
-the job. Under the post-completion HTTP worker model
-([BE-0106](../BE-0106-post-completion-worker-model/BE-0106-post-completion-worker-model.md))
-every lease carries a timer: `bajutsu worker` sends a periodic **heartbeat**
-(`POST /api/worker/heartbeat`) that renews the lease while a run is in flight, and the control plane
-**reclaims** any lease with no heartbeat past a timeout — returning the job to `queued` for another
-worker (`reclaim_expired_leases` in `bajutsu/serve/server/db.py`, swept on each `lease_job`, so no
-separate reaper process is needed). A poison job that keeps killing its worker is **failed** once it
-hits an attempt cap rather than re-queued forever. The Mac pool is scarce, so a lost job is worse
-than a retried one; the trade-off is **at-least-once** execution — a worker whose lease is reclaimed
-mid-run drops its result, and the re-run is the source of truth. The timeout and cap are operator
-knobs (`BAJUTSU_LEASE_TIMEOUT_SECONDS`, `BAJUTSU_LEASE_MAX_ATTEMPTS`); the worker's heartbeat
-interval stays well under the timeout so a legitimately long run is never reclaimed. The re-queue,
-renew, and attempt-cap invariants have unit tests against SQLite (no Mac); the worker-side heartbeat
-loop is verified by hand by killing a worker mid-run and confirming the job re-runs.
-
-**4. Control-plane scale-out.** The control plane is cheap HTTP and scales out, but the compose runs
-**one** app container today. To run **N replicas** behind a load balancer (Caddy or HAProxy):
-**least-conn** over round-robin (server-sent events (SSE) connections are long-lived) and **no sticky
-sessions** — auth is a signed cookie and sessions live in **Postgres**
-([BE-0106](../BE-0106-post-completion-worker-model/BE-0106-post-completion-worker-model.md)
-folded the session store into the database), so any replica serves any request. Because the worker
-model is **post-completion**, there is no mid-run log stream to fan out across replicas: a worker
-polls `/api/worker/lease` from any replica and posts the whole result to `/api/worker/result`, and
-the browser reads finished runs from the shared database and object store. Verified by hand: bring up
-two app replicas and confirm a login on one and a run history read on the other.
-
-**5. High availability — the single points of failure (SPOF).** With Redis gone
-([BE-0106](../BE-0106-post-completion-worker-model/BE-0106-post-completion-worker-model.md)),
-a single node makes **Postgres** the one stateful SPOF: it holds the job queue (the `jobs` table),
-the sessions, the quota state, *and* the run metadata. The hardened topology: **Postgres primary +
-replica** (Patroni) or at minimum a tested backup, **MinIO** with redundancy or a backed-up bucket,
-and a redundant load balancer (keepalived / Virtual Router Redundancy Protocol, VRRP, or DNS). A
-single node is acceptable for a self-host **if** it is explicitly flagged as a SPOF. Verified by hand
-on the deployment; no gate coverage.
-
-```
-[DNS] → [HAProxy ×2 (VRRP)] → [FastAPI ×N] ─┬─ Postgres (primary+replica)  ← queue / sessions / quotas
-                                            └─ MinIO (tenant prefix)
-                                                   │ HTTP lease (per-device + per-org fairness)
-                              Mac mini pool ×M (K slots each · erase per run · dedicated/isolated)
-```
-
-**6. Observability.** The serve backend already emits **structured JSON logs to stdout** with secrets
-redacted ([BE-0055](../BE-0055-operational-logging/BE-0055-operational-logging.md)) —
-shipping those to a log stack is the deployment's job. What is missing is **metrics**: a `/metrics`
-endpoint (queue depth, in-flight jobs per org, run durations, worker liveness) and `prometheus` +
-`grafana` containers in the compose to scrape and chart them. The `/metrics` endpoint is the only part
-with a Python surface (and so a gate-checkable contract); the containers are verified by hand. The
-`/metrics` route would touch `bajutsu/serve/`, so it carries the same #166 coordination note as item 1.
+Each of these five is its own proposal and names this item as its origin; this item stays the
+umbrella holding the shipped self-hosting baselines together. (The reciprocal links from this item's
+metadata are added once CI allocates the successors' BE IDs.)
 
 #### Multi-tenancy — the four axes, reconciled
 
-The multi-tenant design rests on four axes; three have shipped, one (fairness) is item 1 above.
+The multi-tenant design rests on four axes; three have shipped, one (fairness) is the
+*Weighted-fair cross-org job dispatch* successor item above.
 
 - **Data isolation — shipped.** Each org's artifacts, scenarios, and baselines live under their own
   object-store prefix, and every query is org-scoped so a cross-org read returns not-found / 403.
@@ -284,7 +241,7 @@ The multi-tenant design rests on four axes; three have shipped, one (fairness) i
   automated.
 - **Fairness / noisy-neighbor — partly shipped.** The per-user cap and now the **per-org** cap exist
   (both reject over-cap requests); weighted-fair scheduling across the scarce pool (holding rather
-  than rejecting) is the remaining half of item 1.
+  than rejecting) is the *Weighted-fair cross-org job dispatch* successor item.
 - **Authorization boundary — shipped.** Every request carries its org (the OAuth claim); org scope is
   enforced on each endpoint, RBAC applies within the org, and a worker is handed only its job's org
   context.
@@ -300,9 +257,10 @@ authorization axes already cross the org boundary; because the Mac pool cannot s
 Start with **Tier A** (Tailscale + LaunchAgent) — it runs the real, existing system safely for a
 team with essentially no code, on a single Mac. Move to **Tier B** once you need multi-user history
 and isolation: the single-node control plane, including **multi-org isolation**, is runnable today
-([`deploy/self-host/`](../../../deploy/self-host/)). Take on the **remaining pool work**
-(cross-org fairness, capability routing, high availability, observability) only when the pool and the
-contention are real — and the **fully managed public cloud** offering remains
+([`deploy/self-host/`](../../../deploy/self-host/)). Take on the **split-out pool work** (cross-org
+fairness, capability routing, control-plane scale-out, high availability, observability — each a
+separate roadmap item that names this one as its origin) only when the pool and the contention are
+real — and the **fully managed public cloud** offering remains
 [BE-0015](../BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md)'s, not this
 item's.
 
@@ -323,27 +281,29 @@ item's.
   with `org_id` and Postgres RLS gives isolation with far less operational burden.
 - **Per-user quota alone vs adding a per-org quota** — the per-user cap already shipped, and in a
   single-tenant deploy it is enough. But it does not bound an *org* whose many users each stay under
-  the per-user cap, so a multi-org pool still needs a per-org cap layered on the same mechanism (the
-  remaining work, item 1). Keeping both caps — not replacing one with the other — is deliberate.
+  the per-user cap, so a multi-org pool still needs a per-org cap layered on the same mechanism
+  (shipped; the holding half is the *Weighted-fair cross-org job dispatch* item). Keeping both caps —
+  not replacing one with the other — is deliberate.
 - **Pure FIFO scheduling vs weighted-fair scheduling** — rejected for the cross-org case: pure
   first-in, first-out (FIFO) lets one org monopolize the scarce Mac pool. Per-org pending queues with
   a quota-respecting round-robin dispatcher keep the pool fair under contention.
 
 ## Progress
 
+This item is **Implemented**: it tracks the shipped self-hosting baselines. Growing the single node
+into a fault-tolerant, org-fair pool is tracked as five separate roadmap items (see *Growing one node
+into a pool — tracked separately*), each of which carries its own `Progress`.
+
 - [x] Tier A — run `serve` as a LaunchAgent, keep the session alive, expose via Tailscale.
 - [x] Tier B, single node — the control-plane compose stack, GitHub OAuth + RBAC, multi-org isolation, HTTP-leased job distribution over the Postgres `jobs` table with ephemeral Simulators, and global + per-user quotas (`deploy/self-host/`).
 - [x] Per-org concurrency cap (`max_concurrent_per_org`) ([#367](https://github.com/bajutsu-e2e/bajutsu/pull/367)).
-- [ ] Weighted-fair dispatch — per-org pending queues round-robined across orgs.
-- [ ] Capability-routed queues (`q:ios18`, `q:ipad`).
 - [x] Worker liveness and job re-queue — lease heartbeat + timeout-based reclaim over the `jobs` table, with a re-queue attempt cap.
-- [ ] Control-plane scale-out — N app replicas behind a load balancer.
-- [ ] High availability — a Postgres primary + replica, a redundant load balancer, and a backed-up object store.
-- [ ] Observability — a `/metrics` endpoint with Prometheus / Grafana.
+- [x] Split the remaining pool work (weighted-fair dispatch, capability-routed queues, control-plane scale-out, high availability, observability) into five focused roadmap items that name this one as their origin.
 
-The single node is runnable now ([#103](https://github.com/bajutsu-e2e/bajutsu/pull/103), [#154](https://github.com/bajutsu-e2e/bajutsu/pull/154), [#365](https://github.com/bajutsu-e2e/bajutsu/pull/365), [#367](https://github.com/bajutsu-e2e/bajutsu/pull/367)); growing it into a highly-available pool is the remaining work.
+The single node is runnable now ([#103](https://github.com/bajutsu-e2e/bajutsu/pull/103), [#154](https://github.com/bajutsu-e2e/bajutsu/pull/154), [#365](https://github.com/bajutsu-e2e/bajutsu/pull/365), [#367](https://github.com/bajutsu-e2e/bajutsu/pull/367)); the pool-growth work now lives in the split-out items.
 
 - Worker liveness & job re-queue — heartbeat (`POST /api/worker/heartbeat`) that renews a lease, `reclaim_expired_leases` (swept on `lease_job`) that re-queues a dead worker's lease and fails a job past its attempt cap, and a worker-side heartbeat loop; also re-grounded this item's Tier B stack, diagrams, and remaining-work items on BE-0106's Redis-free HTTP worker model ([#507](https://github.com/bajutsu-e2e/bajutsu/pull/507)).
+- Split the remaining pool work into five focused roadmap items (weighted-fair dispatch, capability-routed queues, control-plane scale-out, high availability, observability) and flipped this umbrella to Implemented, recording the shipped self-hosting baselines ([#674](https://github.com/bajutsu-e2e/bajutsu/pull/674)).
 
 ## References
 
