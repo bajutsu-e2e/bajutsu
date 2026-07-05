@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0144") |
-| Implementing PR | _pending_ |
+| Implementing PR | [#691](https://github.com/bajutsu-e2e/bajutsu/pull/691) |
 | Topic | Security hardening |
 <!-- /BE-METADATA -->
 
@@ -77,7 +77,7 @@ with dismissed approvals is the actual first step.
       `require_last_push_approval` settings.
 - [x] Confirm these settings apply to every merge path, including BE-0061's automation and native
       auto-merge.
-- [ ] ~~If a gap is found, enable/enforce the missing setting(s) and re-verify BE-0061's
+- [x] ~~If a gap is found, enable/enforce the missing setting(s) and re-verify BE-0061's
       automation.~~ — N/A (no gap found).
 - [x] If no gap is found, close this proposal recording the confirmation (no code change).
 

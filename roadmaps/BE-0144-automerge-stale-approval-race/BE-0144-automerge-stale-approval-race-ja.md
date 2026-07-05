@@ -9,7 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0144") |
-| 実装 PR | _pending_ |
+| 実装 PR | [#691](https://github.com/bajutsu-e2e/bajutsu/pull/691) |
 | トピック | セキュリティ強化 |
 <!-- /BE-METADATA -->
 
@@ -79,7 +79,7 @@ dismiss された承認とどう相互作用するかを確認することです
       `require_last_push_approval` の設定を確認する。
 - [x] これらの設定が、BE-0061 の自動化とネイティブ auto-merge を含むすべてのマージ経路に
       適用されることを確認する。
-- [ ] ~~不足が見つかった場合、該当する設定を有効化・強制し、BE-0061 の自動化を再検証する。~~
+- [x] ~~不足が見つかった場合、該当する設定を有効化・強制し、BE-0061 の自動化を再検証する。~~
       — 該当なし（不足は見つかりませんでした）。
 - [x] 不足が見つからなかった場合、確認結果を記録して本提案をクローズする（コード変更なし）。
 
