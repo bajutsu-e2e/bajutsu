@@ -7,20 +7,25 @@
 |---|---|
 | Proposal | [BE-0154](BE-0154-roadmap-promote-base-sha.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **Proposal (deferred)** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0154") |
 | Topic | Security hardening |
 | Related | [BE-0159](../BE-0159-flatten-roadmap-status-folders/BE-0159-flatten-roadmap-status-folders.md) |
+| Superseded by | [BE-0159](../BE-0159-flatten-roadmap-status-folders/BE-0159-flatten-roadmap-status-folders.md) |
 <!-- /BE-METADATA -->
 
 ## Introduction
 
-> **Premise retired by [BE-0159](../BE-0159-flatten-roadmap-status-folders/BE-0159-flatten-roadmap-status-folders.md).**
+> **Deferred — premise retired by [BE-0159](../BE-0159-flatten-roadmap-status-folders/BE-0159-flatten-roadmap-status-folders.md).**
 > This item hardens `roadmap-promote.yml`, which BE-0159 deleted along with
 > `scripts/promote_roadmap_items.py` (the flat layout leaves nothing to promote). The
-> `contents: write`, PR-influenced workflow this item guards no longer exists, so this proposal
-> should be revised against whatever remains of the automation, or closed. Left open pending that
-> decision.
+> `contents: write`, PR-influenced workflow this item guards no longer exists, and a review of the
+> remaining automation found nothing to re-target: the roadmap automation that still holds
+> `contents: write` (`roadmap-id.yml`, `roadmap-drift-check.yml`) is triggered by `push` to `main`
+> and runs its script from the trusted `main` checkout, while `auto-merge.yml` checks out no
+> repository code at all — so the PR-head-script-under-`contents: write` pattern this item guards
+> against no longer occurs anywhere. The item is therefore deferred and superseded by BE-0159,
+> which designed the hazard out rather than hardening it in place. Kept for the historical record.
 
 `roadmap-promote.yml` checks out and runs a script from the PR's own head ref while holding
 `contents: write`. This proposal moves the executed script to the trusted base SHA so a PR

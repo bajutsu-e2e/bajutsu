@@ -7,19 +7,25 @@
 |---|---|
 | 提案 | [BE-0154](BE-0154-roadmap-promote-base-sha-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **提案** |
+| 状態 | **提案（保留）** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0154") |
 | トピック | セキュリティ強化 |
 | 関連 | [BE-0159](../BE-0159-flatten-roadmap-status-folders/BE-0159-flatten-roadmap-status-folders-ja.md) |
+| 無効化 | [BE-0159](../BE-0159-flatten-roadmap-status-folders/BE-0159-flatten-roadmap-status-folders-ja.md) |
 <!-- /BE-METADATA -->
 
 ## はじめに
 
-> **前提は [BE-0159](../BE-0159-flatten-roadmap-status-folders/BE-0159-flatten-roadmap-status-folders-ja.md) で失効しました。**
+> **保留。前提は [BE-0159](../BE-0159-flatten-roadmap-status-folders/BE-0159-flatten-roadmap-status-folders-ja.md) で失効しました。**
 > 本項目は `roadmap-promote.yml` を強化するものですが、BE-0159 がこのワークフローを
 > `scripts/promote_roadmap_items.py` ごと削除しました（フラット構成では昇格するものがありません）。本項目が
-> 守ろうとしていた `contents: write` を持つ PR 依存のワークフローはもう存在しないので、本提案は残った自動化に
-> 対して書き直すか、終了するべきです。その判断が付くまで開いたままにしています。
+> 守ろうとしていた `contents: write` を持つ PR 依存のワークフローはもう存在しません。残った自動化を見直しても、
+> 書き直す先はありませんでした。いまも `contents: write` を持つロードマップ自動化（`roadmap-id.yml` と
+> `roadmap-drift-check.yml`）は `main` への `push` をトリガーとし、信頼できる `main` のチェックアウトから
+> スクリプトを実行します。`auto-merge.yml` はリポジトリのコードを一切チェックアウトしません。したがって、
+> 本項目が守ろうとしていた「PR の head にあるスクリプトを `contents: write` で実行する」パターンは、もはや
+> どこにも存在しません。そのため本項目は保留とし、危険を後から強化するのではなく設計段階で取り除いた BE-0159 に
+> よって無効化されたものとして扱います。記録として残します。
 
 `roadmap-promote.yml` は `contents: write` を持ちながら、PR 自身の head ref からスクリプトを
 チェックアウトして実行しています。本提案は、実行するスクリプトを信頼できるベース SHA 側へ移し、
