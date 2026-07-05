@@ -6,9 +6,11 @@
 # events (push to main, merge queue, the weekly schedule) always run the full matrix so the
 # default-branch alert baseline stays complete.
 #
-# The Android job uses `build-mode: none` (buildless extraction), so it needs no Android SDK
-# or Gradle build on the runner — it stays on ubuntu alongside the core languages, unlike
-# Swift, which builds via `swift build` on macOS.
+# The Android job uses `build-mode: autobuild`: CodeQL's buildless (`build-mode: none`) extractor
+# sees no Kotlin in an Android Gradle project ("no source code seen"), so it compiles the showcase
+# via the committed Gradle wrapper and traces that build. ubuntu-latest ships the Android SDK, so it
+# stays on ubuntu alongside the core languages — no extra SDK setup — unlike Swift, which builds via
+# `swift build` on macOS.
 #
 # The required branch-protection status check is the aggregation job `CodeQL` below,
 # not the per-language `Analyze (...)` jobs — that keeps a single stable required check
@@ -140,10 +142,11 @@ jobs:
       - name: Initialize CodeQL
         uses: github/codeql-action/init@c35d1b164463ee62a100735382aaaa525c5d3496 # codeql-bundle-v2.25.6
         with:
-          # Java and Kotlin share one CodeQL language id; `build-mode: none` extracts the Android
-          # showcase sources without an Android SDK or Gradle build on the runner.
+          # Java and Kotlin share one CodeQL language id; `autobuild` compiles the Android showcase
+          # (Gradle wrapper + the runner's preinstalled Android SDK) so CodeQL sees its Kotlin/Java —
+          # buildless extraction sees none in an Android Gradle project.
           languages: java-kotlin
-          build-mode: none
+          build-mode: autobuild
       - name: Perform CodeQL analysis
         uses: github/codeql-action/analyze@c35d1b164463ee62a100735382aaaa525c5d3496 # codeql-bundle-v2.25.6
         with:
