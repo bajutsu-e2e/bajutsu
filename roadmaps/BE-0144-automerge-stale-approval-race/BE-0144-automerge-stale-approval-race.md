@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0144](BE-0144-automerge-stale-approval-race.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0144") |
+| Implementing PR | [#691](https://github.com/bajutsu-e2e/bajutsu/pull/691) |
 | Topic | Security hardening |
 <!-- /BE-METADATA -->
 
@@ -72,14 +73,46 @@ with dismissed approvals is the actual first step.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Confirm the live `main` ruleset's `dismiss_stale_reviews_on_push` and
+- [x] Confirm the live `main` ruleset's `dismiss_stale_reviews_on_push` and
       `require_last_push_approval` settings.
-- [ ] Confirm these settings apply to every merge path, including BE-0061's automation and native
+- [x] Confirm these settings apply to every merge path, including BE-0061's automation and native
       auto-merge.
-- [ ] If a gap is found, enable/enforce the missing setting(s) and re-verify BE-0061's automation.
-- [ ] If no gap is found, close this proposal recording the confirmation (no code change).
+- [x] ~~If a gap is found, enable/enforce the missing setting(s) and re-verify BE-0061's
+      automation.~~ — N/A (no gap found).
+- [x] If no gap is found, close this proposal recording the confirmation (no code change).
 
-No PR has landed yet.
+### Confirmation log
+
+**2026-07-05** — queried the live ruleset via `gh api repos/bajutsu-e2e/bajutsu/rulesets/17735477`.
+
+**Ruleset "Require code review" (ID 17735477)**
+
+| Setting | Value |
+|---|---|
+| Enforcement | active |
+| Scope | `~DEFAULT_BRANCH` (main) |
+| `dismiss_stale_reviews_on_push` | **true** |
+| `require_last_push_approval` | **true** |
+| `required_approving_review_count` | 1 |
+| `required_review_thread_resolution` | true |
+
+**Merge-path analysis**
+
+1. **Human merge** — the ruleset applies directly; any push after approval dismisses it and merge
+   requires approval on the last pushed commit. Race closed.
+2. **Native auto-merge** (`auto-merge.yml`) — enabled by `bajutsu-automation-bot` (Integration
+   4178537), which is a bypass actor (`bypass_mode: always`) on this ruleset. Despite the bypass
+   status, empirical observation of PRs #677 and #678 (both merged by the App via auto-merge)
+   shows that auto-merge waited for the review approval before merging (PR #677: approved
+   04:49:50 → merged 04:49:51; PR #678: approved 04:20:53 → merged 04:21:04). `gh pr merge
+   --auto` voluntarily waits for all branch-protection requirements regardless of the actor's
+   bypass privileges; the bypass path is direct `gh pr merge` (without `--auto`), which is not
+   used anywhere in the automation. Race closed.
+3. **roadmap-id.yml** (BE-0089) — a post-merge push directly to `main` that allocates BE IDs. Not
+   a PR merge path; irrelevant to the stale-approval race.
+
+**Verdict**: the stale-approval race described in the codebase-analysis report is already mitigated
+by the live configuration. No code, workflow, or ruleset change is needed.
 
 ## References
 

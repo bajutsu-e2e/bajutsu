@@ -7,8 +7,9 @@
 |---|---|
 | 提案 | [BE-0144](BE-0144-automerge-stale-approval-race-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **提案** |
+| 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0144") |
+| 実装 PR | [#691](https://github.com/bajutsu-e2e/bajutsu/pull/691) |
 | トピック | セキュリティ強化 |
 <!-- /BE-METADATA -->
 
@@ -74,14 +75,47 @@ dismiss された承認とどう相互作用するかを確認することです
 > 作業分解（作業の単位ごとに 1 つ）に対応し、ログには変更内容と時期（古い順）を PR へのリンクと
 > ともに記録します。
 
-- [ ] 稼働中の `main` ruleset の `dismiss_stale_reviews_on_push` と
+- [x] 稼働中の `main` ruleset の `dismiss_stale_reviews_on_push` と
       `require_last_push_approval` の設定を確認する。
-- [ ] これらの設定が、BE-0061 の自動化とネイティブ auto-merge を含むすべてのマージ経路に
+- [x] これらの設定が、BE-0061 の自動化とネイティブ auto-merge を含むすべてのマージ経路に
       適用されることを確認する。
-- [ ] 不足が見つかった場合、該当する設定を有効化・強制し、BE-0061 の自動化を再検証する。
-- [ ] 不足が見つからなかった場合、確認結果を記録して本提案をクローズする（コード変更なし）。
+- [x] ~~不足が見つかった場合、該当する設定を有効化・強制し、BE-0061 の自動化を再検証する。~~
+      — 該当なし（不足は見つかりませんでした）。
+- [x] 不足が見つからなかった場合、確認結果を記録して本提案をクローズする（コード変更なし）。
 
-まだ着手した PR はありません。
+### 確認ログ
+
+**2026-07-05** — `gh api repos/bajutsu-e2e/bajutsu/rulesets/17735477` で稼働中の ruleset を
+照会しました。
+
+**Ruleset「Require code review」（ID 17735477）**
+
+| 設定 | 値 |
+|---|---|
+| Enforcement | active |
+| スコープ | `~DEFAULT_BRANCH`（main） |
+| `dismiss_stale_reviews_on_push` | **true** |
+| `require_last_push_approval` | **true** |
+| `required_approving_review_count` | 1 |
+| `required_review_thread_resolution` | true |
+
+**マージ経路の分析**
+
+1. **人手によるマージ** — ruleset が直接適用されます。承認後の push は承認を dismiss し、最後
+   に push されたコミットへの承認がマージの前提条件となります。レースは解消済みです。
+2. **ネイティブ auto-merge**（`auto-merge.yml`） — `bajutsu-automation-bot`（Integration
+   4178537）によって有効化されており、この App は本 ruleset の bypass actor
+   （`bypass_mode: always`）です。しかし bypass ステータスにもかかわらず、PR #677 と #678
+   （いずれも本 App による auto-merge でマージ）を実地観察すると、auto-merge はマージ前に
+   レビュー承認を待っていました（PR #677: 承認 04:49:50 → マージ 04:49:51、PR #678: 承認
+   04:20:53 → マージ 04:21:04）。`gh pr merge --auto` はアクターの bypass 権限にかかわらず、
+   すべてのブランチ保護要件を自発的に待機します。bypass を直接行使するパスは `--auto` なしの
+   `gh pr merge` ですが、自動化のどこにも使われていません。レースは解消済みです。
+3. **roadmap-id.yml**（BE-0089） — マージ後に BE ID を割り当てる `main` への直接 push です。
+   PR のマージ経路ではなく、stale-approval レースとは無関係です。
+
+**結論**: コードベース分析レポートが指摘した stale-approval レースは、稼働中の設定によって
+すでに緩和されています。コード、ワークフロー、ruleset のいずれの変更も不要です。
 
 ## 参考
 
