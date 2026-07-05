@@ -84,6 +84,18 @@ def test_crawl_flag_surface_is_fully_classified() -> None:
     assert base_handled | not_serve_exposed | pass_through == _option_names("crawl")
 
 
+def test_triage_flag_surface_is_fully_classified() -> None:
+    # run_dir is a positional argument (not an option); --config is passed directly by triage_command.
+    base_handled = {"config"}
+    # The CLI-only apply/rerun flow: serve previews with --apply then writes through POST /api/scenario,
+    # so it never drives --write/--rerun (nor the --rerun-only backend/udid), passes the run dir
+    # positionally rather than via --runs, and triages the run's first failed scenario rather than
+    # forwarding a --scenario name filter (BE-0147).
+    not_serve_exposed = {"runs", "write", "rerun", "backend", "udid", "scenario"}
+    pass_through = {"target_name", "ai", "apply", "json_out"}
+    assert base_handled | not_serve_exposed | pass_through == _option_names("triage")
+
+
 # --- drift: an unknown param name is rejected (catches a renamed/removed CLI flag) ---
 
 

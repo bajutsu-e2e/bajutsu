@@ -306,6 +306,8 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
                     self._json(*ops.start_record(state, body, actor=self._actor()))
                 case "/api/crawl":
                     self._json(*ops.start_crawl(state, body, actor=self._actor()))
+                case "/api/triage":
+                    self._json(*ops.start_triage(state, body, actor=self._actor()))
                 case "/api/scenario":
                     self._json(*ops.save_scenario(state, body, actor=self._actor()))
                 case "/api/lint":

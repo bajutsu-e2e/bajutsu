@@ -154,6 +154,21 @@ report section shows: [reporting](reporting.md).
 **History.** The sub-tab lists past runs, newest first, each with a pass/fail dot and a scenario
 summary. Click one to reopen its report. Use the refresh button to re-list.
 
+**Triage a failed run.** When a run fails, a **Triage** button appears in the report bar (both on a
+just-run report and when you reopen a failed run from History) — the `triage` command in the
+browser, so you can ask "why did this fail?" without dropping to a terminal. Click it, then
+**Diagnose**: triage reads that run's stored failure context and reports a root-cause summary, the
+implicated step, and suggestions. The default is the deterministic rule-based agent; tick **Claude**
+(enabled only when an AI provider is configured — see [Settings](#settings)) to diagnose with the
+Claude investigator instead. When triage can propose a mechanical fix (rename a selector id,
+disambiguate a match, or raise a timeout), it shows the fix as a **diff** against the currently
+selected scenario source. **Apply fix** writes that patch back through the same validated save path
+the Author tab uses; **Apply & re-run** writes it and immediately re-runs the scenario to confirm.
+The fix is written only on that explicit click — nothing is edited automatically, and the run's
+pass/fail verdict is read from the deterministic run, never recomputed by AI. Triage previews and
+applies against the scenario currently selected in the **Run** sub-tab, so pick the matching
+scenario and target before triaging a run from History.
+
 ## Crawl — explore the app and map its screens live
 
 **What it does.** Explores the app breadth-first and draws the reachable screens and the transitions

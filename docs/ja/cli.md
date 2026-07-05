@@ -215,6 +215,10 @@ bajutsu triage [<run-dir>] --ai --apply <scenario-file> [--write] \
 - `--rerun` は `--write` と `--target` が必要。
 - `--ai` のときは、診断後に消費トークン量を示す `AI usage:` 行を stderr に出力します。既定のルール
   ベースは AI を使わないので何も出力しません。
+- `--json <path>` は診断結果を JSON でも書き出します（category、summary、suggestions、構造化された
+  修正）。`--apply` と併用すると、その修正の unified diff とパッチ適用後のテキストも含めます。これは
+  JSON を書き出す dry-run で、シナリオのソースは一切編集しません。`serve` の Web UI は、triage を
+  ブラウザに出すためにこれを使います（BE-0147）。
 
 ## `record`
 

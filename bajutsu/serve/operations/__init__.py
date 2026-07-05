@@ -83,6 +83,7 @@ from bajutsu.serve.operations.sse import (
     job_log_events,
     job_sse,
 )
+from bajutsu.serve.operations.triage import start_triage
 from bajutsu.serve.operations.upload import (
     _safe_filename,
     bind_upload_config,
@@ -160,6 +161,7 @@ __all__ = [
     "start_enrich",
     "start_record",
     "start_run",
+    "start_triage",
     "stats_html",
     "worker_artifact_urls",
     "worker_heartbeat",

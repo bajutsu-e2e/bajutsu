@@ -447,6 +447,38 @@ def crawl_command(
     return cmd
 
 
+def triage_command(
+    run_dir: str,
+    *,
+    target: str = "",
+    ai: bool = False,
+    apply_path: str = "",
+    json_out: str = "",
+    config: str = "bajutsu.config.yaml",
+) -> list[str]:
+    """The ``python -m bajutsu triage <run_dir> …`` argv for a serve triage job (BE-0147).
+
+    Diagnoses the failed run at ``run_dir`` — the deterministic heuristic agent by default;
+    ``ai`` opts into the Claude investigator, which reads provider config from the serve
+    environment like record/crawl (`BAJUTSU_AI_PROVIDER`, BE-0163) and, with ``target`` set, that
+    target's ``ai`` block and redaction rules (BE-0047). ``apply_path`` is the scenario **source**
+    file a structured fix is previewed against — a dry-run diff the job never writes; the human
+    applies it through the validated scenario-save path. ``json_out`` is where the machine-readable
+    result is written for the UI to read back. Every flag renders from the CLI's own option metadata
+    (BE-0134), so this argv can't drift from `bajutsu triage`."""
+    cmd = [sys.executable, "-m", "bajutsu", "triage", run_dir, "--config", config]
+    cmd += flag_args(
+        "triage",
+        {
+            "target_name": target,
+            "ai": ai,
+            "apply": apply_path,
+            "json_out": json_out,
+        },
+    )
+    return cmd
+
+
 # --- path helpers ---
 
 

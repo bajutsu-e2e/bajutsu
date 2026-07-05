@@ -101,7 +101,7 @@ flowchart TB
 | `triage.py` | M4 自己修復: ルールベース `HeuristicTriageAgent` + 構造化 fix（`renameId`/`addIndex`/`raiseTimeout`）、`--apply`/`--write`/`--rerun` | [cli](cli.md) |
 | `claude_triage.py` | Claude ベースの `TriageAgent`（`--ai`、失敗スクショ） | [cli](cli.md) |
 | `github.py` | GitHub ヘルパ（CI） | [ci](ci.md) |
-| `serve/` | ローカル Web UI（`serve` コマンド）: オーサリング / 実行 / レポート | [cli](cli.md) |
+| `serve/` | ローカル Web UI（`serve` コマンド）: オーサリング / 実行 / レポート / 失敗した run の triage | [cli](cli.md) |
 | `mcp/` | MCP サーバ: `run`/`doctor` をツール + 実行証跡をリソースとして公開 | [cli](cli.md) |
 | `lint.py` | シナリオ linter + JSON Schema 生成（`lint` / `schema` コマンド） | [cli](cli.md) |
 | `cli/` | Typer ベース CLI。コマンドごとに `cli/commands/` の 1 ファイル（`run`/`doctor`/`record`/`crawl`/`codegen`/`trace`/`triage`/`approve`/`serve`/`mcp`/`worker`/`lint`/`schema`） | [cli](cli.md) |
