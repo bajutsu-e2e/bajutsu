@@ -1,5 +1,5 @@
-# External tools the idb backend needs (macOS). Install with `brew bundle` or `make deps`.
-tap "facebook/fb"
-
-brew "facebook/fb/idb-companion"  # idb backend (drives the Simulator)
-brew "xcodegen"                   # generates the sample app's .xcodeproj for the build
+# Build tool for the demos/showcase sample app's .xcodeproj. Install with `brew bundle` or
+# `make deps`. Not a bajutsu backend requirement: the idb backend's own external tool
+# (idb_companion) is installed by the config-aware installer from the requirements mapping
+# (bajutsu/requirements.py, BE-0164), not from here.
+brew "xcodegen"  # generates the sample app's .xcodeproj for the build

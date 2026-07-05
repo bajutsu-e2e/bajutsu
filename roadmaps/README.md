@@ -153,6 +153,7 @@ The first slices of the multi-platform direction that have shipped: a **platform
 | ID | Item | Status |
 |---|---|---|
 | [BE-0024](BE-0024-doctor-onboarding/BE-0024-doctor-onboarding.md) | doctor / onboarding | Implemented |
+| [BE-0164](BE-0164-config-aware-environment-installer/BE-0164-config-aware-environment-installer.md) | Config-aware environment installer | Implemented |
 <!-- /GENERATED:implemented-doctor -->
 
 ### Authoring experience (record / GUI editor)
@@ -624,9 +625,7 @@ Keeping the autonomous crawl fast and its code lean as it grows.
 ### doctor / onboarding
 
 <!-- GENERATED:proposals-doctor -->
-| ID | Item | Status |
-|---|---|---|
-| [BE-0164](BE-0164-config-aware-environment-installer/BE-0164-config-aware-environment-installer.md) | Config-aware environment installer | Proposal |
+
 <!-- /GENERATED:proposals-doctor -->
 
 ### Development infrastructure (contributor workflow)

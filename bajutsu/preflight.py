@@ -15,22 +15,11 @@ import shutil
 from collections.abc import Callable
 from dataclasses import dataclass
 
-from bajutsu import idb_version
+from bajutsu import idb_version, requirements
 from bajutsu.idb_version import IdbVersions
 
 Which = Callable[[str], str | None]
 Probe = Callable[[], bool]
-
-# backend -> the extra CLIs an on-device run needs beyond Xcode's `xcrun`.
-_BACKEND_TOOLS: dict[str, list[tuple[str, str]]] = {
-    "idb": [
-        ("idb", "the fb-idb client — `uv sync --extra idb`"),
-        ("idb_companion", "`brew install facebook/fb/idb-companion`"),
-    ],
-    "xcuitest": [
-        ("xcodebuild", "Xcode — `xcode-select --install`"),
-    ],
-}
 
 
 @dataclass(frozen=True)
@@ -124,9 +113,15 @@ def runnability(
 def _ios_runnability(
     backend: str, which: Which, booted_count: Callable[[], int] | None
 ) -> list[Check]:
-    checks = [_tool("xcrun", "Xcode + `xcode-select --install`", which)]
-    for exe, hint in _BACKEND_TOOLS.get(backend, []):
-        checks.append(_tool(exe, hint, which))
+    # The extra CLIs beyond `xcrun` come from the one requirements mapping (BE-0164), so the
+    # remedy strings never drift from what the installer actually installs.
+    checks = [
+        _tool("xcrun", "Xcode + `xcode-select --install`", which),
+        *(
+            _tool(tool.exe, requirements.remedy(tool.install), which)
+            for tool in requirements.BACKENDS.get(backend, requirements.Requirement()).tools
+        ),
+    ]
     if booted_count is not None:
         count = booted_count()
         checks.append(
@@ -142,16 +137,21 @@ def _ios_runnability(
 def _web_runnability(engine: str, web_pkg: Probe, web_browser: BrowserProbe) -> list[Check]:
     pkg_ok = web_pkg()
     browser_ok = web_browser(engine)
+    # Remedy strings come from the one requirements mapping (BE-0164): the `web` extra for the
+    # package, a `playwright install <engine>` for the selected engine's browser.
+    web_extra = requirements.BACKENDS["playwright"].extra
+    pkg_remedy = requirements.remedy(requirements.Extra(web_extra)) if web_extra else ""
+    browser_remedy = requirements.remedy(requirements.playwright_browser(engine).install)
     return [
         Check(
             "playwright",
             pkg_ok,
-            "installed" if pkg_ok else "the Playwright package — `uv sync --extra web`",
+            "installed" if pkg_ok else f"the Playwright package — {pkg_remedy}",
         ),
         Check(
             f"{engine} browser",
             browser_ok,
-            "installed" if browser_ok else f"`uv run playwright install {engine}`",
+            "installed" if browser_ok else browser_remedy,
         ),
     ]
 
