@@ -99,6 +99,30 @@ def test_label_for_topic_maps_known_and_rejects_unknown() -> None:
     assert labels.label_for_topic("Not A Real Topic") is None
 
 
+# --- path -> topic mapping --------------------------------------------------------
+
+
+def test_path_topic_labels_maps_a_mapped_tree() -> None:
+    assert labels.path_topic_labels("bajutsu/mcp/server.py") == {"topic:mcp"}
+    assert labels.path_topic_labels("demos/showcase/app.py") == {"topic:dogfood"}
+
+
+def test_path_topic_labels_is_empty_for_an_unmapped_path() -> None:
+    # docs and dependency lockfiles have no canonical topic, so they take no path label.
+    assert labels.path_topic_labels("docs/architecture.md") == set()
+    assert labels.path_topic_labels("uv.lock") == set()
+
+
+def test_path_topic_labels_exact_and_suffix_rules() -> None:
+    assert labels.path_topic_labels("Makefile") == {"topic:dev-infra"}
+    assert labels.path_topic_labels("BajutsuKit/Sources/x.swift") == {"topic:on-device"}
+
+
+def test_path_topic_rules_reference_only_real_topic_keys() -> None:
+    # Mirrors the module's import-time assertion: a rule can only name a key TOPICS defines.
+    assert labels._PATH_RULE_KEYS.issubset(labels.TOPIC_KEY_BY_NAME.values())
+
+
 # --- compute_actions (the reconciling decision) -----------------------------------
 
 
@@ -255,6 +279,38 @@ def test_a_sibling_still_holding_a_topic_keeps_its_label() -> None:
         current={_KNOWN_LABEL},
     )
     assert plan.adds == [_OTHER_LABEL] and plan.removes == []
+
+
+# --- path labels flow through the same reconcile ----------------------------------
+
+
+def test_path_only_pr_gets_a_path_topic_label() -> None:
+    # A PR touching no roadmap item still lands an area label from its paths alone.
+    plan = _actions([_changed("modified", "demos/showcase/app.py")], {})
+    assert plan.adds == ["topic:dogfood"] and plan.removes == []
+
+
+def test_path_label_is_status_agnostic() -> None:
+    # Deleting files under a mapped tree is still a change in that area.
+    plan = _actions([_changed("removed", "bajutsu/mcp/old.py")], {})
+    assert plan.adds == ["topic:mcp"] and plan.removes == []
+
+
+def test_roadmap_item_and_path_labels_union() -> None:
+    # The two sources union: the item's topic plus every touched tree's topic.
+    item = "roadmaps/BE-9001-x/BE-9001-x.md"
+    plan = _actions(
+        [_changed("added", item), _changed("modified", "demos/x/app.py")],
+        {item: _item_text(_KNOWN_TOPIC)},
+    )
+    assert plan.adds == sorted([_KNOWN_LABEL, "topic:dogfood"]) and plan.removes == []
+
+
+def test_path_label_reconciled_off_when_its_tree_leaves_the_diff() -> None:
+    # A later push drops the mapped file (only an unmapped docs path remains): the path label the PR
+    # carried is reconciled away, the same convergence the roadmap source relies on.
+    plan = _actions([_changed("modified", "docs/x.md")], {}, current={"topic:dogfood"})
+    assert plan.adds == [] and plan.removes == ["topic:dogfood"]
 
 
 # --- parsing / main seam ----------------------------------------------------------
