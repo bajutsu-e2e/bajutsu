@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0148](BE-0148-serve-doctor.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0148") |
+| Implementing PR | _pending_ |
 | Topic | Surfacing CLI features in the serve Web UI |
 <!-- /BE-METADATA -->
 
@@ -70,12 +71,20 @@ Tier-1, read-only; the UI only shells out to the existing checks.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Add the `POST /api/doctor` endpoint (`{target, udid?, backend?}`) running the check as a
-      serve job and returning the runnability result and the convention score
-- [ ] Add the readiness panel, reachable standalone and as a pre-run check in Record and Replay
-- [ ] Make the panel platform-aware (hide simulator-only controls for a web target)
+- [x] Add the `POST /api/doctor` endpoint (`{target, udid?, backend?}`) returning the runnability
+      result and the convention score
+- [x] Add the readiness panel, reachable as a pre-run check in Record and Replay
+- [x] Make the panel platform-aware (the checks return backend-appropriate; simulator-only form
+      controls stay hidden for a web target)
 
-No PR has landed yet.
+The `POST /api/doctor` endpoint and its runnability half landed earlier under BE-0024; this item
+completed it: the endpoint now takes `{udid?, backend?}`, reports the booted-Simulator check, and
+adds the convention score (queried in-process only when the environment is runnable — the CLI's
+"never a device it can't reach" guard), and a readiness panel surfaces both in the Record and
+Replay forms. The score is a synchronous in-process query rather than a spawned job: it mirrors the
+existing `doctor_check` and audit operations and keeps the check AI-free and deterministic.
+
+- _pending_ — complete the doctor Web UI surface (endpoint score + readiness panel).
 
 ## References
 

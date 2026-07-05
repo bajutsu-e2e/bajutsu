@@ -388,6 +388,7 @@ Bringing the CLI's own tools into the serve Web UI, where authoring happens. The
 | [BE-0145](BE-0145-serve-audit/BE-0145-serve-audit.md) | Determinism audit in the serve Web UI | Implemented |
 | [BE-0146](BE-0146-serve-coverage/BE-0146-serve-coverage.md) | E2E coverage map in the serve Web UI | Implemented |
 | [BE-0147](BE-0147-serve-triage/BE-0147-serve-triage.md) | Triage failed runs in the serve Web UI | Implemented |
+| [BE-0148](BE-0148-serve-doctor/BE-0148-serve-doctor.md) | Doctor readiness panel in the serve Web UI | Implemented |
 <!-- /GENERATED:implemented-serve-cli-features -->
 
 ### codegen coverage
@@ -572,7 +573,6 @@ The scope is currently **limited to the iOS Simulator** ([DESIGN §1](../DESIGN.
 <!-- GENERATED:proposals-serve-cli-features -->
 | ID | Item | Status |
 |---|---|---|
-| [BE-0148](BE-0148-serve-doctor/BE-0148-serve-doctor.md) | Doctor readiness panel in the serve Web UI | Proposal |
 <!-- /GENERATED:proposals-serve-cli-features -->
 
 ### Dogfood fixtures (demo apps)

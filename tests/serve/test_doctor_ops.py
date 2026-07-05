@@ -9,6 +9,7 @@ from pathlib import Path
 
 from _shared import project
 
+from bajutsu.drivers import base
 from bajutsu.serve import operations as ops
 from bajutsu.serve.jobs import ServeState
 
@@ -115,3 +116,147 @@ def test_check_shape_has_name_ok_detail(tmp_path: Path) -> None:
         assert isinstance(check["name"], str)
         assert isinstance(check["ok"], bool)
         assert isinstance(check["detail"], str)
+
+
+# --- BE-0148: {udid?, backend?}, the booted-Simulator check, and the convention score ---
+
+
+def _element(
+    identifier: str | None, traits: list[str], label: str = "", value: str | None = None
+) -> base.Element:
+    """A real screen element for the score path — test data, not a behavior mock."""
+    return {
+        "identifier": identifier,
+        "label": label,
+        "traits": traits,
+        "value": value,
+        "frame": (0.0, 0.0, 10.0, 10.0),
+    }
+
+
+def test_invalid_backend_rejected(tmp_path: Path) -> None:
+    # A free-text backend must not reach argv / driver selection (BE-0051).
+    state = _state(tmp_path)
+    payload, status = ops.doctor_check(state, {"target": "demo", "backend": "rm -rf"})
+    assert status == 400
+    assert "backend" in payload["error"]
+
+
+def test_invalid_udid_rejected(tmp_path: Path) -> None:
+    state = _state(tmp_path)
+    payload, status = ops.doctor_check(state, {"target": "demo", "udid": "; reboot"})
+    assert status == 400
+    assert "udid" in payload["error"]
+
+
+def test_backend_override_selects_actuator(tmp_path: Path) -> None:
+    # The config declares idb, but the request overrides to fake.
+    state = _state(
+        tmp_path,
+        "defaults: { backend: [idb] }\ntargets:\n  demo: { bundleId: com.demo }\n",
+    )
+    payload, status = ops.doctor_check(
+        state,
+        {"target": "demo", "backend": "fake"},
+        screen_query=lambda actuator, udid, eff: [],
+    )
+    assert status == 200
+    assert payload["backend"] == "fake"
+
+
+def test_comma_list_backend_resolves_first_implemented(tmp_path: Path) -> None:
+    # A comma-list backend (like the CLI's --backend) is split, not treated as one token.
+    state = _state(
+        tmp_path,
+        "defaults: { backend: [idb] }\ntargets:\n  demo: { bundleId: com.demo }\n",
+    )
+    payload, status = ops.doctor_check(
+        state,
+        {"target": "demo", "backend": "fake,idb"},
+        screen_query=lambda actuator, udid, eff: [],
+    )
+    assert status == 200
+    assert payload["backend"] == "fake"
+
+
+def test_idb_reports_booted_simulator_check(tmp_path: Path) -> None:
+    # doctor reports whether a Simulator is booted, reading it through state.simctl so the
+    # Linux gate never shells out to a real xcrun.
+    state = _state(
+        tmp_path,
+        "defaults: { backend: [idb] }\ntargets:\n  demo: { bundleId: com.demo }\n",
+    )
+    state.simctl = lambda args, extra_env=None: '{"devices": {}}'  # no booted device
+    payload, status = ops.doctor_check(state, {"target": "demo"})
+    assert status == 200
+    booted = [c for c in payload["checks"] if c["name"] == "Simulator booted"]
+    assert booted and booted[0]["ok"] is False
+
+
+def test_score_present_when_runnable(tmp_path: Path) -> None:
+    # fake backend has no runnability gate, so the score is computed from the current screen.
+    state = _state(
+        tmp_path,
+        "defaults: { backend: [fake] }\n"
+        "targets:\n  demo: { bundleId: com.demo, idNamespaces: [auth] }\n",
+    )
+    screen = [
+        _element("auth.email", ["textField"]),
+        _element("auth.submit", ["button"]),
+    ]
+    payload, status = ops.doctor_check(
+        state,
+        {"target": "demo"},
+        screen_query=lambda actuator, udid, eff: screen,
+    )
+    assert status == 200
+    assert payload["score"] is not None
+    score = payload["score"]
+    assert score["grade"] == "Ready"
+    assert score["actionable"] == 2
+    assert score["withId"] == 2
+    assert score["idCoverage"] == 1.0
+
+
+def test_score_reports_gaps(tmp_path: Path) -> None:
+    state = _state(
+        tmp_path,
+        "defaults: { backend: [fake] }\n"
+        "targets:\n  demo: { bundleId: com.demo, idNamespaces: [auth] }\n",
+    )
+    screen = [
+        _element("auth.email", ["textField"]),
+        _element(None, ["button"], label="Submit"),  # missing id
+    ]
+    payload, _status = ops.doctor_check(
+        state,
+        {"target": "demo"},
+        screen_query=lambda actuator, udid, eff: screen,
+    )
+    score = payload["score"]
+    assert score["grade"] in {"Partial", "Blocked"}
+    assert score["actionable"] == 2
+    assert score["withId"] == 1
+    assert len(score["missingId"]) == 1
+    assert score["missingId"][0]["label"] == "Submit"
+
+
+def test_score_null_when_runnability_fails(tmp_path: Path) -> None:
+    # A web target without baseUrl fails the config check, so no screen is queried — the score
+    # is null, mirroring the CLI which exits before scoring when the environment isn't runnable.
+    state = _state(
+        tmp_path,
+        "defaults: { backend: [playwright] }\ntargets:\n  webapp: { bundleId: com.example }\n",
+    )
+    called = False
+
+    def screen_query(actuator: str, udid: str, eff: object) -> list[base.Element]:
+        nonlocal called
+        called = True
+        return []
+
+    payload, status = ops.doctor_check(state, {"target": "webapp"}, screen_query=screen_query)
+    assert status == 200
+    assert payload["ok"] is False
+    assert payload["score"] is None
+    assert called is False  # never touch a device the runnability gate already failed

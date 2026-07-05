@@ -68,6 +68,59 @@ function renderGradeBadge(el,reports){
   el.hidden=false;el.textContent=text;el.className='grade-badge '+GRADE_CLASS[grade];
 }
 
+// ---- doctor readiness (BE-0148): shells out to the same checks the CLI `doctor` runs ----
+// Two halves from POST /api/doctor: the runnability checks (each required tool present? a
+// Simulator booted?) and the current screen's convention score (Ready/Partial/Blocked with the
+// per-id gaps). Read-only and AI-free — it never gates a run. Shared by the Record and Replay
+// panels; a sequence guard drops a stale response so a slow check can't overwrite a newer one.
+const DR_GRADE_CLASS={Ready:'ready',Partial:'partial',Blocked:'blocked'};
+function renderDoctorChecks(box,checks){
+  box.innerHTML=(checks||[]).map(c=>
+    `<div class="dr-check-line ${c.ok?'ok':'ng'}">${c.ok?'✓':'✗'} ${esc(c.name)}: ${esc(c.detail)}</div>`).join('');
+}
+function renderDoctorScore(el,score){
+  if(!score){el.hidden=true;return;}
+  el.hidden=false;
+  el.textContent=score.grade+' · '+Math.round(score.idCoverage*100)+'% id coverage';
+  el.className='grade-badge '+(DR_GRADE_CLASS[score.grade]||'');
+}
+// The score's "what to fix" list: unnamed controls, off-namespace ids, and duplicate ids.
+function doctorFindings(score){
+  const out=[];
+  if(score.noActionable)out.push('no actionable elements — is the app on the expected screen and loaded?');
+  (score.missingId||[]).forEach(m=>out.push('missing id: '+(m.label||'(no label)')+' ['+(m.traits||[]).join(', ')+']'));
+  (score.offNamespace||[]).forEach(i=>out.push('off-namespace id: '+i));
+  (score.duplicates||[]).forEach(i=>out.push('duplicate id: '+i));
+  return out;
+}
+function wireDoctor(ids,getTarget){
+  const btn=$(ids.btn);
+  if(!btn)return;
+  const status=$(ids.status),badge=$(ids.badge),checks=$(ids.checks),findings=$(ids.findings);
+  let seq=0;
+  btn.addEventListener('click',async()=>{
+    const target=getTarget();
+    if(!target){setStatus(status,'pick a target first','ng');return;}
+    const my=++seq;
+    setStatus(status,'checking…','run');badge.hidden=true;checks.innerHTML='';findings.hidden=true;
+    try{
+      const r=await fetch('/api/doctor',{method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({target})});
+      const d=await r.json();
+      if(my!==seq)return;  // a newer check superseded this one
+      if(!r.ok){setStatus(status,d.error||('doctor failed ('+r.status+')'),'ng');return;}
+      renderDoctorChecks(checks,d.checks);
+      renderDoctorScore(badge,d.score);
+      const f=d.score?doctorFindings(d.score):[];
+      if(f.length){findings.hidden=false;
+        findings.innerHTML='<div class="au-audit-head">'+f.length+' readiness finding'+(f.length===1?'':'s')+'</div>'+
+          f.map(t=>'<div class="au-finding">'+esc(t)+'</div>').join('');}
+      else findings.hidden=true;
+      setStatus(status,d.ok?'environment ready ✓':'environment not ready',d.ok?'ok':'ng');
+    }catch(e){if(my===seq)setStatus(status,'doctor request failed','ng');}
+  });
+}
+
 // ---- dark / light toggle (matching CSS-variable blocks live in serve.themes.css) ----
 // Two themes only, driven by a checkbox switch: checked == daylight (light), else midnight (dark).
 // Default behaviour follows the OS and updates live; a manual flip persists until the OS changes.
@@ -1110,6 +1163,12 @@ wirePlatform('#panel-run','#target');
 wirePlatform('#panel-record','#rec-target');
 wirePlatform('#panel-crawl','#crawl-target');
 wirePlatform('#panel-author','#au-target');
+
+// Readiness panels (BE-0148): the Replay and Record forms each check the selected target.
+wireDoctor({btn:'#dr-check',status:'#dr-status',badge:'#dr-grade',checks:'#dr-checks',findings:'#dr-findings'},
+  ()=>$('#target').value);
+wireDoctor({btn:'#recdr-check',status:'#recdr-status',badge:'#recdr-grade',checks:'#recdr-checks',findings:'#recdr-findings'},
+  ()=>$('#rec-target').value);
 
 // Shared codegen wiring for a view (BE-0137): an emit selector synced to the target's backend, a
 // Generate button that POSTs the selected scenario to /api/codegen, and a result panel with copy /
