@@ -37,7 +37,7 @@ Tier-1, deterministic; the UI only shells out to the existing command.
 
 - **A "Generate code" action** on a scenario, in the editor and the Replay view, with an emit
   selector (XCUITest / Playwright — the destinations `codegen` already supports). It posts to
-  `POST /api/codegen` (`{target, path, emit}`), which runs codegen and returns the generated source.
+  `POST /api/codegen` (`{target, scenario, emit}`), which runs codegen and returns the generated source.
 - **The result** renders in a read-only code viewer with copy-to-clipboard and download (the
   filename derived from the scenario and destination, e.g. `LoginTest.swift` / `login.spec.ts`).
 - **Deterministic and AI-free.** codegen is a structural mapping from the scenario model to target
@@ -66,7 +66,7 @@ Tier-1, deterministic; the UI only shells out to the existing command.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [x] Add the `POST /api/codegen` endpoint (`{target, path, emit}`) that runs codegen and returns
+- [x] Add the `POST /api/codegen` endpoint (`{target, scenario, emit}`) that runs codegen and returns
       the generated source
 - [ ] Add the "Generate code" action in the editor and Replay view, with the XCUITest / Playwright
       emit selector (editor done; Replay view is a follow-up PR)
