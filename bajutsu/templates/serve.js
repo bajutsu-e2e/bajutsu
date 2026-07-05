@@ -1451,12 +1451,19 @@ if(!NARROW_MQ.matches)initTiling();
   }
 
   async function auLint(){
+    // Fail loudly: if validation is unavailable (network / non-2xx / bad body), surface an
+    // unanchored diagnostic rather than clearing findings — a "clean" editor must mean "validated
+    // clean", not "couldn't validate".
     try{
       const r=await fetch('/api/lint',{method:'POST',headers:{'Content-Type':'application/json'},
         body:JSON.stringify({yaml:$('#au-yaml').value})});
+      if(!r.ok)throw new Error('/api/lint returned '+r.status);
       const d=await r.json();
-      auDiagnostics=Array.isArray(d.diagnostics)?d.diagnostics:[];
-    }catch(e){auDiagnostics=[];}
+      if(!Array.isArray(d.diagnostics))throw new Error('unexpected response');
+      auDiagnostics=d.diagnostics;
+    }catch(e){
+      auDiagnostics=[{line:null,column:null,message:'Inline validation unavailable ('+e+')',severity:'error'}];
+    }
     auRenderGutter();auRenderProblems();
   }
 
