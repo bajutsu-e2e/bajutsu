@@ -114,6 +114,8 @@ def _assert_parts(a: dict[str, Any]) -> tuple[str, list[Part], list[Part]]:
     if "visual" in a:
         m = a["visual"]
         vcomp: list[Part] = [("", "≤ "), ("num", f"{_gnum(m.get('threshold', 0))}%")]
+        if m.get("element"):  # element-scoped comparison (BE-0171)
+            vcomp += [("", " · "), ("kw", "element-scoped")]
         if m.get("exclude"):
             vcomp += [("", " · "), ("kw", f"{len(m['exclude'])} excluded")]
         return "visual", [("str", str(m.get("baseline", "?")))], vcomp

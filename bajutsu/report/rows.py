@@ -359,6 +359,8 @@ def _visual_row(ev: Any, ok: bool) -> dict[str, Any] | None:
         "baseline_name": ev.baseline_name,
         "sid": sid,
         "engine": ev.engine,
+        "element_scoped": ev.element_scoped,  # comparison cropped to one element (BE-0171)
+        "masked_selectors": ev.masked_selectors,  # selectors that masked a region (BE-0171)
     }
 
 

@@ -184,12 +184,28 @@ class EventMatch(_EndpointMatch):
 
 
 class ExcludeRegion(_Model):
-    """A rectangular region to ignore during visual comparison (e.g. status bar, clock)."""
+    """A rectangular region to ignore during visual comparison (e.g. status bar, clock).
+
+    Coordinates are in screenshot pixels — a fixed box, stable only while the layout is.
+    Use `SelectorRegion` to mask by element instead, which survives reflow and resolution changes.
+    """
 
     x: float
     y: float
     w: float
     h: float
+
+
+class SelectorRegion(_Model):
+    """An element to ignore during visual comparison, addressed by selector (BE-0171).
+
+    Resolved to the element's frame at evaluation time and masked exactly as an `ExcludeRegion`
+    rectangle is. Robust where a pixel box is not: it follows the element across reflow, resolution,
+    and locale changes. A selector matching nothing is a masking no-op (nothing on screen to hide);
+    an ambiguous one fails, like every other selector resolution (prime directive 2).
+    """
+
+    selector: Selector
 
 
 class ResponseSchemaMatch(_Model):
@@ -205,14 +221,20 @@ class ResponseSchemaMatch(_Model):
 
 
 class VisualMatch(_Model):
-    """Visual regression assertion — compare a screenshot to a baseline image."""
+    """Visual regression assertion — compare a screenshot to a baseline image.
+
+    By default the whole screen is compared. `element` (BE-0171) scopes the comparison to one
+    element's frame: the screenshot is cropped to it and the baseline is that crop, so unrelated
+    on-screen changes no longer churn the baseline.
+    """
 
     baseline: str
+    element: Selector | None = None  # scope the comparison to this element's frame (BE-0171)
     compare: Literal["exact", "pixelmatch"] | None = None
     threshold: float = 0.0  # allowed diff percentage (0.0 = exact match)
     color_tolerance: float = Field(default=0.1, ge=0.0, le=1.0, alias="colorTolerance")
     antialiasing: bool = True
-    exclude: list[ExcludeRegion] | None = None
+    exclude: list[ExcludeRegion | SelectorRegion] | None = None
 
     @model_validator(mode="after")
     def _engine_fields(self) -> Self:

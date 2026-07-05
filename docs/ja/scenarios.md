@@ -424,6 +424,8 @@ expect:
 - assert:
     - visual: { baseline: "home.png", threshold: 0.02, exclude: [{ x: 0, y: 0, w: 390, h: 47 }] }
     - visual: { baseline: "detail.png", compare: pixelmatch, colorTolerance: 0.1, antialiasing: true }
+    - visual: { baseline: "summary-card.png", element: { id: "summary-card" } }  # 1 要素だけ比較
+    - visual: { baseline: "home.png", exclude: [{ selector: { label: "last updated" } }] }  # 要素でマスク
 ```
 
 `visual` はスクリーンショットを取得し、`baseline`（run の baselines ディレクトリ内の PNG。`--baselines`、またはシナリオ脇の `baselines/`）と比較します。
@@ -437,7 +439,11 @@ expect:
 
 `compare` を省略すると、ターゲットの `visualCompare` 設定（`defaults:` または `targets.<name>` で指定）にフォールバックし、さらに未設定なら `exact` になります。
 
-`threshold` は許容する差分ピクセルの割合（既定 `0.0` = 完全一致）で、すべてのエンジン共通です。`colorTolerance`（0–1、既定 `0.1`）は `pixelmatch` のピクセル単位の知覚的色差許容値、`antialiasing`（既定 `true`）はアンチエイリアスされたピクセルを差分から除外します。`exclude` は比較前にマスクする矩形（スクリーンショットのピクセル座標）のリストで、ステータスバーや時計などに使います。baseline は `approve` コマンド（[cli](cli.md#approve)）か `serve` UI で作成・更新します。baseline が無いとアサーションは失敗します。`overrideStatusBar` と併用すると時計・バッテリーを固定できます。差分は `report.html` に表示されます。`pixelmatch` では、割引されなかった（非 AA）ピクセルのみが差分画像に表示されます。
+`threshold` は許容する差分ピクセルの割合（既定 `0.0` = 完全一致）で、すべてのエンジン共通です。`colorTolerance`（0–1、既定 `0.1`）は `pixelmatch` のピクセル単位の知覚的色差許容値、`antialiasing`（既定 `true`）はアンチエイリアスされたピクセルを差分から除外します。`exclude` は比較前にマスクする領域のリストで、ステータスバーや時計などに使います。各要素は、スクリーンショットのピクセル座標で表す矩形（`{ x, y, w, h }`）か、マスク対象の要素を指す `{ selector: <Selector> }`（BE-0171）のどちらかです。後者は評価時に要素のフレームへ解決されます。baseline は `approve` コマンド（[cli](cli.md#approve)）か `serve` UI で作成・更新します。baseline が無いとアサーションは失敗します。`overrideStatusBar` と併用すると時計やバッテリーを固定できます。差分は `report.html` に表示されます。`pixelmatch` では、割引されなかった（非 AA）ピクセルのみが差分画像に表示されます。
+
+**要素スコープ比較（BE-0171）。** `visual` は既定で画面全体を比較するため、無関係な変化（バナー、行が増えたリストなど）があるたびにアサーションが失敗し、baseline が揺れます。`element: <Selector>` を指定すると、**その要素だけ**を比較します。スクリーンショットは要素のフレームにクロップされ、baseline はそのクロップ画像になるので、フレームの外側の変化は無視されます。セレクタは通常の一意解決規則で解決し、**曖昧なセレクタは最初の一致をクロップせず即座に失敗します**。何にも一致しないセレクタも失敗します。`approve` は要素スコープの baseline も画面全体の baseline と同じ手順で昇格します（baseline は単に小さい画像になるだけです）。
+
+**セレクタによるマスク（BE-0171）。** `exclude` のピクセル矩形は、レイアウトが変わったりデバイスの解像度が変わったりした瞬間にずれます。代わりに要素を指定すると（`{ selector: { label: "last updated" } }`）、そうした変化に強くなります。要素をフレームへ解決し、矩形と同じ方法でマスクするからです。何にも一致しないマスクセレクタは何もしません（画面上に隠すものが無いため）。曖昧なセレクタは、決定論の原則どおり失敗します。セレクタと矩形は一つの `exclude` リストに混在でき、どちらも要素スコープ比較と併用できます（クロップした要素の内側のマスクは、クロップの座標系へ変換されます）。
 
 ## ネットワークモック（決定的スタブ）
 

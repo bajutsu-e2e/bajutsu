@@ -392,6 +392,361 @@ def test_visual_context_default_compare_fallback(tmp_path):
     assert result.visual.engine == "pixelmatch"
 
 
+# --- element-scoped visual & selector masking (BE-0171) ---
+
+
+def _framed_screen() -> list[base.Element]:
+    """A screen whose full-screen root fixes the point-space size at 100x100.
+
+    The card sits inside it; the clock overlaps the top-left; the badge nests inside the card.
+    Frames are in points — element scoping/masking converts them to screenshot pixels via the
+    screenshot/point scale.
+    """
+    return [
+        el("root", frame=(0.0, 0.0, 100.0, 100.0)),
+        el("card", "Summary", ["staticText"], frame=(10.0, 10.0, 40.0, 30.0)),
+        el("clock", "last updated", ["staticText"], frame=(0.0, 0.0, 50.0, 8.0)),
+        el("badge", "3", ["staticText"], frame=(15.0, 15.0, 10.0, 10.0)),
+    ]
+
+
+def _vc(tmp_path: Path, screenshot: Path):
+    from bajutsu.assertions import VisualContext
+
+    return VisualContext(
+        screenshot_path=screenshot,
+        baselines_dir=tmp_path / "baselines",
+        diff_dir=tmp_path / "diffs",
+        run_dir=tmp_path,
+    )
+
+
+def _paint(img, box: tuple[int, int, int, int], color: tuple[int, int, int, int]) -> None:
+    x, y, w, h = box
+    for px in range(x, x + w):
+        for py in range(y, y + h):
+            img.putpixel((px, py), color)
+
+
+def test_visual_element_scoped_pass(tmp_path: Path) -> None:
+    from PIL import Image
+
+    baselines = tmp_path / "baselines"
+    baselines.mkdir()
+    # Baseline is the element crop (40x30), not the whole screen.
+    Image.new("RGBA", (40, 30), (0, 255, 0, 255)).save(baselines / "card.png")
+    # Actual full screenshot: red, with the card region matching the green baseline.
+    actual = Image.new("RGBA", (100, 100), (255, 0, 0, 255))
+    _paint(actual, (10, 10, 40, 30), (0, 255, 0, 255))
+    shot = tmp_path / "shot.png"
+    actual.save(shot)
+
+    r = evaluate_one(
+        _framed_screen(),
+        _a({"visual": {"baseline": "card.png", "element": {"id": "card"}}}),
+        visual_context=_vc(tmp_path, shot),
+    )
+    assert r.ok
+    assert r.visual is not None
+    assert r.visual.element_scoped is True
+    assert r.visual.diff_pct == 0.0
+    # The recorded actual is the element crop (40x30), so `approve` promotes the crop.
+    actual_size = Image.open(tmp_path / r.visual.actual).size
+    assert actual_size == (40, 30)
+
+
+def test_visual_element_scoped_missing_baseline_reports_the_crop(tmp_path: Path) -> None:
+    """On the first run (no baseline) the reported actual is the element crop, so the first
+    `approve` stores an element-sized baseline — not the whole screen."""
+    from PIL import Image
+
+    (tmp_path / "baselines").mkdir()  # empty: no baseline yet
+    actual = Image.new("RGBA", (100, 100), (255, 0, 0, 255))
+    _paint(actual, (10, 10, 40, 30), (0, 255, 0, 255))
+    shot = tmp_path / "shot.png"
+    actual.save(shot)
+
+    r = evaluate_one(
+        _framed_screen(),
+        _a({"visual": {"baseline": "card.png", "element": {"id": "card"}}}),
+        visual_context=_vc(tmp_path, shot),
+    )
+    assert not r.ok
+    assert r.visual is not None
+    assert r.visual.missing is True
+    assert r.visual.element_scoped is True
+    # The captured actual is the element crop (40x30), so approving it yields an element baseline.
+    actual_size = Image.open(tmp_path / r.visual.actual).size
+    assert actual_size == (40, 30)
+
+
+def test_visual_element_scoped_ignores_unrelated_change(tmp_path: Path) -> None:
+    from PIL import Image
+
+    baselines = tmp_path / "baselines"
+    baselines.mkdir()
+    Image.new("RGBA", (40, 30), (0, 255, 0, 255)).save(baselines / "card.png")
+    # The card matches, but a large unrelated region differs — whole-screen would fail.
+    actual = Image.new("RGBA", (100, 100), (0, 0, 255, 255))
+    _paint(actual, (10, 10, 40, 30), (0, 255, 0, 255))
+    shot = tmp_path / "shot.png"
+    actual.save(shot)
+
+    r = evaluate_one(
+        _framed_screen(),
+        _a({"visual": {"baseline": "card.png", "element": {"id": "card"}}}),
+        visual_context=_vc(tmp_path, shot),
+    )
+    assert r.ok
+
+
+def test_visual_element_scoped_fail(tmp_path: Path) -> None:
+    from PIL import Image
+
+    baselines = tmp_path / "baselines"
+    baselines.mkdir()
+    Image.new("RGBA", (40, 30), (0, 255, 0, 255)).save(baselines / "card.png")
+    actual = Image.new("RGBA", (100, 100), (255, 0, 0, 255))
+    _paint(actual, (10, 10, 40, 30), (0, 0, 255, 255))  # card differs from baseline
+    shot = tmp_path / "shot.png"
+    actual.save(shot)
+
+    r = evaluate_one(
+        _framed_screen(),
+        _a({"visual": {"baseline": "card.png", "element": {"id": "card"}}}),
+        visual_context=_vc(tmp_path, shot),
+    )
+    assert not r.ok
+    assert r.visual is not None
+    assert r.visual.diff_pct == 100.0
+    assert r.visual.diff is not None and (tmp_path / r.visual.diff).is_file()
+
+
+def test_visual_element_ambiguous_fails(tmp_path: Path) -> None:
+    from PIL import Image
+
+    baselines = tmp_path / "baselines"
+    baselines.mkdir()
+    Image.new("RGBA", (40, 30), (0, 255, 0, 255)).save(baselines / "card.png")
+    Image.new("RGBA", (100, 100), (0, 255, 0, 255)).save(tmp_path / "shot.png")
+
+    # Two staticText elements match — an ambiguous scope must fail, not crop the first.
+    r = evaluate_one(
+        _framed_screen(),
+        _a({"visual": {"baseline": "card.png", "element": {"traits": ["staticText"]}}}),
+        visual_context=_vc(tmp_path, tmp_path / "shot.png"),
+    )
+    assert not r.ok
+    assert r.reason.startswith("element ")  # a resolution failure, not a pixel diff
+    assert r.visual is not None and r.visual.diff_pct is None  # never compared
+
+
+def test_visual_element_not_found_fails(tmp_path: Path) -> None:
+    from PIL import Image
+
+    baselines = tmp_path / "baselines"
+    baselines.mkdir()
+    Image.new("RGBA", (40, 30), (0, 255, 0, 255)).save(baselines / "card.png")
+    Image.new("RGBA", (100, 100), (0, 255, 0, 255)).save(tmp_path / "shot.png")
+
+    r = evaluate_one(
+        _framed_screen(),
+        _a({"visual": {"baseline": "card.png", "element": {"id": "nope"}}}),
+        visual_context=_vc(tmp_path, tmp_path / "shot.png"),
+    )
+    assert not r.ok
+
+
+def test_visual_element_empty_frame_fails_cleanly(tmp_path: Path) -> None:
+    """A zero-area element frame fails the assertion instead of crashing Pillow on an empty crop."""
+    from PIL import Image
+
+    baselines = tmp_path / "baselines"
+    baselines.mkdir()
+    Image.new("RGBA", (40, 30), (0, 255, 0, 255)).save(baselines / "card.png")
+    Image.new("RGBA", (100, 100), (0, 255, 0, 255)).save(tmp_path / "shot.png")
+
+    screen = [
+        el("root", frame=(0.0, 0.0, 100.0, 100.0)),
+        el("collapsed", "hidden", ["staticText"], frame=(10.0, 10.0, 0.0, 0.0)),  # zero area
+    ]
+    r = evaluate_one(
+        screen,
+        _a({"visual": {"baseline": "card.png", "element": {"id": "collapsed"}}}),
+        visual_context=_vc(tmp_path, tmp_path / "shot.png"),
+    )
+    assert not r.ok
+    assert "empty frame" in r.reason
+
+
+def test_visual_element_scoped_scale_factor(tmp_path: Path) -> None:
+    """A 2x screenshot: point frames must be scaled to pixels before cropping."""
+    from PIL import Image
+
+    baselines = tmp_path / "baselines"
+    baselines.mkdir()
+    # card is (10,10,40,30) points → (20,20,80,60) pixels at 2x.
+    Image.new("RGBA", (80, 60), (0, 255, 0, 255)).save(baselines / "card.png")
+    actual = Image.new("RGBA", (200, 200), (255, 0, 0, 255))
+    _paint(actual, (20, 20, 80, 60), (0, 255, 0, 255))
+    shot = tmp_path / "shot.png"
+    actual.save(shot)
+
+    r = evaluate_one(
+        _framed_screen(),
+        _a({"visual": {"baseline": "card.png", "element": {"id": "card"}}}),
+        visual_context=_vc(tmp_path, shot),
+    )
+    assert r.ok
+    assert r.visual is not None
+    actual_size = Image.open(tmp_path / r.visual.actual).size
+    assert actual_size == (80, 60)
+
+
+def test_visual_selector_mask_hides_dynamic_element(tmp_path: Path) -> None:
+    from PIL import Image
+
+    baselines = tmp_path / "baselines"
+    baselines.mkdir()
+    Image.new("RGBA", (100, 100), (0, 255, 0, 255)).save(baselines / "home.png")
+    # Actual differs only inside the clock's frame (0,0,50,8).
+    actual = Image.new("RGBA", (100, 100), (0, 255, 0, 255))
+    _paint(actual, (0, 0, 50, 8), (255, 0, 0, 255))
+    shot = tmp_path / "shot.png"
+    actual.save(shot)
+
+    masked = _a({"visual": {"baseline": "home.png", "exclude": [{"selector": {"id": "clock"}}]}})
+    r = evaluate_one(_framed_screen(), masked, visual_context=_vc(tmp_path, shot))
+    assert r.ok
+    assert r.visual is not None
+    assert r.visual.masked_selectors  # provenance records the mask
+
+    # Without the mask the same screen fails — proving the mask did the work.
+    bare = _a({"visual": {"baseline": "home.png"}})
+    r2 = evaluate_one(_framed_screen(), bare, visual_context=_vc(tmp_path, shot))
+    assert not r2.ok
+
+
+def test_visual_selector_mask_not_found_is_noop(tmp_path: Path) -> None:
+    from PIL import Image
+
+    baselines = tmp_path / "baselines"
+    baselines.mkdir()
+    Image.new("RGBA", (100, 100), (0, 255, 0, 255)).save(baselines / "home.png")
+    actual = Image.new("RGBA", (100, 100), (0, 255, 0, 255))
+    _paint(actual, (0, 0, 50, 8), (255, 0, 0, 255))
+    shot = tmp_path / "shot.png"
+    actual.save(shot)
+
+    # A selector matching nothing masks nothing — the real diff survives and fails.
+    a = _a({"visual": {"baseline": "home.png", "exclude": [{"selector": {"id": "ghost"}}]}})
+    r = evaluate_one(_framed_screen(), a, visual_context=_vc(tmp_path, shot))
+    assert not r.ok
+
+
+def test_visual_selector_mask_ambiguous_fails(tmp_path: Path) -> None:
+    from PIL import Image
+
+    baselines = tmp_path / "baselines"
+    baselines.mkdir()
+    Image.new("RGBA", (100, 100), (0, 255, 0, 255)).save(baselines / "home.png")
+    Image.new("RGBA", (100, 100), (0, 255, 0, 255)).save(tmp_path / "shot.png")
+
+    a = _a(
+        {"visual": {"baseline": "home.png", "exclude": [{"selector": {"traits": ["staticText"]}}]}}
+    )
+    r = evaluate_one(_framed_screen(), a, visual_context=_vc(tmp_path, tmp_path / "shot.png"))
+    assert not r.ok
+    assert r.reason.startswith("exclude selector ")  # ambiguous mask fails, never masks first match
+
+
+def test_visual_element_scoped_with_selector_mask(tmp_path: Path) -> None:
+    """A crop plus a mask inside it — the mask must translate into crop-local coordinates."""
+    from PIL import Image
+
+    baselines = tmp_path / "baselines"
+    baselines.mkdir()
+    Image.new("RGBA", (40, 30), (0, 255, 0, 255)).save(baselines / "card.png")
+    # The card matches the baseline except the badge region (15,15,10,10) inside it.
+    actual = Image.new("RGBA", (100, 100), (255, 0, 0, 255))
+    _paint(actual, (10, 10, 40, 30), (0, 255, 0, 255))
+    _paint(actual, (15, 15, 10, 10), (0, 0, 255, 255))  # dynamic badge differs
+    shot = tmp_path / "shot.png"
+    actual.save(shot)
+
+    a = _a(
+        {
+            "visual": {
+                "baseline": "card.png",
+                "element": {"id": "card"},
+                "exclude": [{"selector": {"id": "badge"}}],
+            }
+        }
+    )
+    r = evaluate_one(_framed_screen(), a, visual_context=_vc(tmp_path, shot))
+    assert r.ok
+
+
+def test_visual_element_scoped_mask_straddling_crop_edge(tmp_path: Path) -> None:
+    """A mask that overlaps the crop boundary is clipped into crop-local coordinates, not dropped."""
+    from PIL import Image
+
+    baselines = tmp_path / "baselines"
+    baselines.mkdir()
+    Image.new("RGBA", (40, 30), (0, 255, 0, 255)).save(baselines / "card.png")
+    # The card (10,10,40,30) matches, except a region that a straddling element covers.
+    actual = Image.new("RGBA", (100, 100), (255, 0, 0, 255))
+    _paint(actual, (10, 10, 40, 30), (0, 255, 0, 255))
+    _paint(actual, (10, 10, 15, 15), (0, 0, 255, 255))  # differs inside the card's top-left
+    shot = tmp_path / "shot.png"
+    actual.save(shot)
+
+    # The masking element straddles the card's top-left corner (starts outside the crop).
+    screen = [
+        el("root", frame=(0.0, 0.0, 100.0, 100.0)),
+        el("card", "Summary", ["cell"], frame=(10.0, 10.0, 40.0, 30.0)),
+        el("straddle", "overlay", ["staticText"], frame=(5.0, 5.0, 20.0, 20.0)),
+    ]
+    a = _a(
+        {
+            "visual": {
+                "baseline": "card.png",
+                "element": {"id": "card"},
+                "exclude": [{"selector": {"id": "straddle"}}],
+            }
+        }
+    )
+    r = evaluate_one(screen, a, visual_context=_vc(tmp_path, shot))
+    assert r.ok
+
+
+def test_visual_mixed_rectangle_and_selector_mask(tmp_path: Path) -> None:
+    from PIL import Image
+
+    baselines = tmp_path / "baselines"
+    baselines.mkdir()
+    Image.new("RGBA", (100, 100), (0, 255, 0, 255)).save(baselines / "home.png")
+    actual = Image.new("RGBA", (100, 100), (0, 255, 0, 255))
+    _paint(actual, (0, 0, 50, 8), (255, 0, 0, 255))  # clock (masked by selector)
+    _paint(actual, (80, 90, 20, 10), (255, 0, 0, 255))  # corner (masked by rectangle)
+    shot = tmp_path / "shot.png"
+    actual.save(shot)
+
+    a = _a(
+        {
+            "visual": {
+                "baseline": "home.png",
+                "exclude": [
+                    {"selector": {"id": "clock"}},
+                    {"x": 80, "y": 90, "w": 20, "h": 10},
+                ],
+            }
+        }
+    )
+    r = evaluate_one(_framed_screen(), a, visual_context=_vc(tmp_path, shot))
+    assert r.ok
+
+
 # --- golden element-tree assertion (BE-0006) ---
 
 

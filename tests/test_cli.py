@@ -1133,6 +1133,45 @@ def test_approve_promotes_failing_visual(tmp_path: Path) -> None:
     assert "approved home.png" in r.output
 
 
+def test_approve_promotes_element_scoped_crop(tmp_path: Path) -> None:
+    """An element-scoped baseline is just the cropped actual — `approve` needs no special-casing."""
+    import json
+
+    run_dir = tmp_path / "runs" / "20260610-1"
+    (run_dir / "00-home").mkdir(parents=True)
+    # The evidence points at the element crop, not the full screenshot.
+    (run_dir / "00-home" / "actual-card.png").write_bytes(b"CROPDATA")
+    manifest = {
+        "runId": "20260610-1",
+        "ok": False,
+        "scenarios": [
+            {
+                "scenario": "home",
+                "ok": False,
+                "expect_results": [
+                    {
+                        "ok": False,
+                        "kind": "visual",
+                        "detail": "visual ≈ card.png",
+                        "reason": "baseline not found: card.png",
+                        "visual": {
+                            "baseline_name": "card.png",
+                            "actual": "00-home/actual-card.png",
+                            "missing": True,
+                            "element_scoped": True,
+                        },
+                    }
+                ],
+            }
+        ],
+    }
+    (run_dir / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+    baselines = tmp_path / "baselines"
+    r = runner.invoke(app, ["approve", str(run_dir), "--baselines", str(baselines)])
+    assert r.exit_code == 0
+    assert (baselines / "card.png").read_bytes() == b"CROPDATA"  # the crop became the baseline
+
+
 def test_approve_skips_passing_without_all(tmp_path: Path) -> None:
     run_dir = _write_visual_run(tmp_path / "runs", "20260610-1", ok=True)
     baselines = tmp_path / "baselines"

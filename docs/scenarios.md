@@ -480,6 +480,8 @@ expect:
 - assert:
     - visual: { baseline: "home.png", threshold: 0.02, exclude: [{ x: 0, y: 0, w: 390, h: 47 }] }
     - visual: { baseline: "detail.png", compare: pixelmatch, colorTolerance: 0.1, antialiasing: true }
+    - visual: { baseline: "summary-card.png", element: { id: "summary-card" } }  # one element only
+    - visual: { baseline: "home.png", exclude: [{ selector: { label: "last updated" } }] }  # mask by element
 ```
 
 `visual` captures a screenshot and compares it against `baseline` (a PNG resolved inside the run's
@@ -498,11 +500,30 @@ When `compare` is omitted, the engine falls back to the target's `visualCompare`
 `threshold` is the allowed percentage of differing pixels (default `0.0` = exact match), shared
 by all engines. `colorTolerance` (0–1, default `0.1`) sets the per-pixel perceptual color
 tolerance for `pixelmatch`; `antialiasing` (default `true`) discounts anti-aliased pixels from
-the diff. `exclude` lists rectangles (screenshot pixels) to mask before comparing, e.g. a
-status bar or a clock. A baseline is created or updated with the `approve` command
+the diff. `exclude` masks regions before comparing, e.g. a status bar or a clock. Each entry is
+either a rectangle in screenshot pixels (`{ x, y, w, h }`) **or** a `{ selector: <Selector> }`
+that names an element to mask (BE-0171); the element is resolved to its frame at evaluation time.
+A baseline is created or updated with the `approve` command
 ([cli](cli.md#approve)) or the `serve` UI; a missing baseline fails the assertion. Pair it with
 `overrideStatusBar` to keep the clock / battery deterministic. Diffs are surfaced in
 `report.html`; for `pixelmatch`, only the surviving (non-discounted) pixels appear in the diff.
+
+**Element-scoped comparison (BE-0171).** By default `visual` compares the whole screen, so any
+unrelated change (a banner, a list that grew a row) fails the check and churns the baseline. Give
+`element: <Selector>` to compare **only that element**: the screenshot is cropped to the element's
+frame and the baseline is that crop, so the check ignores everything outside it. The selector is
+resolved with the usual unique-resolution rules — an **ambiguous selector fails immediately**
+rather than cropping the first match, and a selector matching nothing fails too. `approve` promotes
+an element-scoped baseline exactly as it does a whole-screen one (the baseline is simply a smaller
+image).
+
+**Selector-based masking (BE-0171).** A pixel rectangle in `exclude` drifts the moment the layout
+reflows or the device resolution changes. Naming the element instead — `{ selector: { label:
+"last updated" } }` — is stable across those changes: the element is resolved to its frame and
+masked exactly as a rectangle is. A mask selector that matches nothing is a no-op (there is nothing
+on screen to hide); an ambiguous one fails, consistent with the determinism rule. Selector masks
+and rectangles can be mixed in one `exclude` list, and both work with an element-scoped comparison
+(a mask inside the cropped element is translated into the crop's coordinates).
 
 ## Network mocks (deterministic stubs)
 

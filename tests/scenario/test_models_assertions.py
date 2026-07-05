@@ -7,6 +7,8 @@ from pydantic import ValidationError
 
 from bajutsu.scenario import (
     Assertion,
+    ExcludeRegion,
+    SelectorRegion,
     Wait,
     WaitRequest,
 )
@@ -184,3 +186,49 @@ def test_visual_assertion_with_exclude_and_threshold() -> None:
 def test_visual_assertion_requires_baseline() -> None:
     with pytest.raises(ValidationError):
         Assertion.model_validate({"visual": {}})
+
+
+def test_visual_assertion_scoped_to_element() -> None:
+    a = Assertion.model_validate(
+        {"visual": {"baseline": "card.png", "element": {"id": "summary-card"}}}
+    )
+    assert a.visual is not None
+    assert a.visual.element is not None
+    assert a.visual.element.id == "summary-card"
+
+
+def test_visual_exclude_accepts_selector_form() -> None:
+    a = Assertion.model_validate(
+        {
+            "visual": {
+                "baseline": "home.png",
+                "exclude": [{"selector": {"label": "last updated"}}],
+            }
+        }
+    )
+    assert a.visual is not None
+    assert a.visual.exclude is not None
+    region = a.visual.exclude[0]
+    assert isinstance(region, SelectorRegion)
+    assert region.selector.label == "last updated"
+
+
+def test_visual_exclude_mixes_rectangle_and_selector() -> None:
+    a = Assertion.model_validate(
+        {
+            "visual": {
+                "baseline": "home.png",
+                "exclude": [
+                    {"x": 0, "y": 0, "w": 390, "h": 54},
+                    {"selector": {"id": "clock"}},
+                ],
+            }
+        }
+    )
+    assert a.visual is not None
+    assert a.visual.exclude is not None
+    rect, sel = a.visual.exclude
+    assert isinstance(rect, ExcludeRegion)
+    assert rect.w == 390
+    assert isinstance(sel, SelectorRegion)
+    assert sel.selector.id == "clock"
