@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0145") |
-| Implementing PR | _pending_ |
+| Implementing PR | [#700](https://github.com/bajutsu-e2e/bajutsu/pull/700) |
 | Topic | Surfacing CLI features in the serve Web UI |
 <!-- /BE-METADATA -->
 
@@ -76,7 +76,7 @@ Tier-1, read-only; the UI only shells out to the existing audit.
       grade, the id-based selector ratio, and the findings
 - [x] Ship the static score first; the dynamic repeat-and-diff half stays a later, device-bound slice
 
-- _pending_ — `POST /api/audit` (inline `yaml` for the live editor content, `{target, path}` for the
+- [#700](https://github.com/bajutsu-e2e/bajutsu/pull/700) — `POST /api/audit` (inline `yaml` for the live editor content, `{target, path}` for the
   Replay view's saved file) wrapping the static audit `bajutsu/audit.py`, plus the grade badge and
   findings panel in the Author editor and the Replay scenario picker; docs updated in both languages.
 
