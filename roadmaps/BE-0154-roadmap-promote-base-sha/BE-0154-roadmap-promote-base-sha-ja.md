@@ -10,7 +10,6 @@
 | 状態 | **提案（保留）** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0154") |
 | トピック | セキュリティ強化 |
-| 関連 | [BE-0159](../BE-0159-flatten-roadmap-status-folders/BE-0159-flatten-roadmap-status-folders-ja.md) |
 | 無効化 | [BE-0159](../BE-0159-flatten-roadmap-status-folders/BE-0159-flatten-roadmap-status-folders-ja.md) |
 <!-- /BE-METADATA -->
 
