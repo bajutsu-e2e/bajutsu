@@ -133,7 +133,7 @@ def test_http_codegen_malformed_scenario_is_a_clean_400(tmp_path: Path) -> None:
 
 
 def test_http_codegen_missing_scenario(tmp_path: Path) -> None:
-    # A path outside the target's scenarios dir must not resolve — the store confines it (BE-0051).
+    # A scenario name with no matching file in the target's scenarios dir resolves to nothing -> 404.
     scn_dir, cfg, runs = _project(tmp_path)
     state = srv.ServeState(scenarios_dir=scn_dir, config=cfg, runs_dir=runs, cwd=tmp_path)
     server, port = _serve(state)

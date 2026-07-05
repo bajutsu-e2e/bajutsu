@@ -1787,7 +1787,8 @@ if(!NARROW_MQ.matches)initTiling();
       ?'<option value="xcuitest">XCUITest</option>'
       :'<option value="playwright">Playwright</option>';
   }
-  // A generated result is tied to one target+emit; drop it so Copy/Download never export a stale file.
+  // A generated result is tied to one target + scenario + its saved YAML; drop it whenever any of
+  // those change so Copy/Download never export a stale file.
   function auCodegenReset(){$('#au-codegen-panel').hidden=true;codegenResult=null;}
   $('#au-codegen').addEventListener('click',async()=>{
     const combo=$('#au-scenario').value;
@@ -1820,7 +1821,9 @@ if(!NARROW_MQ.matches)initTiling();
     const blob=new Blob([codegenResult.code],{type:'text/plain'});
     const url=URL.createObjectURL(blob);
     const a=document.createElement('a');a.href=url;a.download=codegenResult.filename;
-    document.body.appendChild(a);a.click();a.remove();URL.revokeObjectURL(url);
+    // Revoke on the next tick: revoking synchronously after click() can truncate the download in
+    // some browsers (Safari) before the blob navigation starts.
+    document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),0);
   });
   $('#au-codegen-close').addEventListener('click',auCodegenReset);
 
@@ -1829,6 +1832,9 @@ if(!NARROW_MQ.matches)initTiling();
   $('#au-next').addEventListener('click',()=>{if(auIdx<auSteps.length-1)auShowStep(auIdx+1);});
   // Load button.
   $('#au-load').addEventListener('click',auLoad);
+  // Picking a different scenario invalidates any open generation — drop it so Copy/Download can't
+  // export the previous scenario's file.
+  $('#au-scenario').addEventListener('change',auCodegenReset);
   // Target change reloads scenarios and re-picks the emit valid for the new backend; any open
   // codegen result is for the old target, so drop it rather than let Copy/Download export a stale file.
   $('#au-target').addEventListener('change',()=>{auLoadScenarios();auSyncEmit();auCodegenReset();});
@@ -1836,6 +1842,8 @@ if(!NARROW_MQ.matches)initTiling();
   $('#au-yaml').addEventListener('input',()=>{
     $('#au-save').disabled=false;auRenderGutter();auLintSoon();
     if(!$('#au-complete').hidden)auShowComplete();
+    // Editing the YAML makes any generated code stale (codegen ran against the saved scenario).
+    auCodegenReset();
   });
   $('#au-yaml').addEventListener('scroll',()=>{auGutterSync();auHideComplete();});
   $('#au-yaml').addEventListener('blur',()=>{auHideComplete();$('#au-hover').hidden=true;});
