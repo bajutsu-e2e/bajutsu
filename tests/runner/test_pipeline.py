@@ -31,6 +31,31 @@ def test_run_all() -> None:
     assert [r.ok for r in results] == [True, False]
 
 
+def test_scenario_runner_runs_one_in_isolation() -> None:
+    """`_ScenarioRunner.run_one` runs a single scenario without run_all's setup (BE-0172).
+
+    The promotion's payoff: the per-scenario runner is unit-testable directly, its shared context
+    passed as explicit fields rather than reconstructed from all of `run_all`.
+    """
+    from bajutsu.redaction import Redactor
+    from bajutsu.runner.pipeline import _ScenarioRunner
+
+    runner = _ScenarioRunner(
+        eff=_eff(),
+        lease=_lease,
+        redactor=Redactor(None),
+        mailbox=None,
+        caps=None,
+        total=2,
+    )
+    ok = runner.run_one(0, Scenario.model_validate({"name": "a", "steps": [{"tap": {"id": "ok"}}]}))
+    bad = runner.run_one(
+        1, Scenario.model_validate({"name": "b", "steps": [{"tap": {"id": "missing"}}]})
+    )
+    assert ok.ok and ok.sid == "00-a"
+    assert not bad.ok and bad.sid == "01-b"
+
+
 def test_preflight_fails_unsupported_scenario_before_leasing() -> None:
     # A pinch needs multiTouch, which idb lacks — the preflight fails the scenario up front, so the
     # lease (device work) is never reached (BE-0082).
