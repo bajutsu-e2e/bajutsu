@@ -15,6 +15,7 @@ than forking the installer or the preflight (prime directive #3).
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import assert_never
 
 
 @dataclass(frozen=True)
@@ -81,6 +82,8 @@ def remedy(method: InstallMethod) -> str:
             return f"`uv run playwright install {browser}`"
         case Manual(hint):
             return hint
+        case _:  # pragma: no cover - exhaustive; a new InstallMethod is a mypy error here
+            assert_never(method)
 
 
 def playwright_browser(engine: str) -> Tool:
