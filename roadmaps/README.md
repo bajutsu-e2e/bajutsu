@@ -171,6 +171,7 @@ The AI-driven `record` (Tier 1) is implemented ([recording.md](../docs/recording
 | [BE-0060](BE-0060-run-report-zip-export/BE-0060-run-report-zip-export.md) | Download / export a run report as a zip | Implemented |
 | [BE-0068](BE-0068-regenerable-reports/BE-0068-regenerable-reports.md) | Regenerable reports (render from stored run data) | Implemented |
 | [BE-0072](BE-0072-responsive-web-ui/BE-0072-responsive-web-ui.md) | Responsive serve Web UI (small-screen & touch layout) | Implemented |
+| [BE-0095](BE-0095-interactive-crawl-graph/BE-0095-interactive-crawl-graph.md) | Interactive crawl graph (draggable nodes + realign) | Implemented |
 | [BE-0098](BE-0098-unified-authoring-surface/BE-0098-unified-authoring-surface.md) | Unified authoring surface in serve | Implemented |
 | [BE-0102](BE-0102-run-stats-dashboard/BE-0102-run-stats-dashboard.md) | Aggregate run-stats dashboard | Implemented |
 <!-- /GENERATED:implemented-authoring -->
@@ -539,9 +540,7 @@ The scope is currently **limited to the iOS Simulator** ([DESIGN §1](../DESIGN.
 ### Authoring experience (record / GUI editor)
 
 <!-- GENERATED:proposals-authoring -->
-| ID | Item | Status |
-|---|---|---|
-| [BE-0095](BE-0095-interactive-crawl-graph/BE-0095-interactive-crawl-graph.md) | Interactive crawl graph (draggable nodes + realign) | Proposal |
+
 <!-- /GENERATED:proposals-authoring -->
 
 ### Surfacing CLI features in the serve Web UI

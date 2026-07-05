@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0095](BE-0095-interactive-crawl-graph.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0095") |
+| Implementing PR | [#398](https://github.com/bajutsu-e2e/bajutsu/pull/398) |
 | Topic | Authoring experience (record / GUI editor) |
 <!-- /BE-METADATA -->
 

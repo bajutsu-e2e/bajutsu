@@ -556,6 +556,7 @@ let crawlGraphData=null,crawlGraphRunId=null;
 let prunePlan=true;  // collapse a global op (e.g. a tab switch) repeated across screens to one entry
 const expandedGroups=new Set();  // group keys the user expanded in the graph (kept across redraws)
 const nodeOverrides=new Map();  // unit-id → {x,y} manual positions (kept across redraws, cleared by realign)
+const NODE_W=176,NODE_H=290;  // graph card dimensions (px), shared by renderGraph and liveEdges
 const gview={x:0,y:0,k:1};  // pan (px) + zoom (scale), applied as a transform on the graph layer
 function shotURL(runId,fp){return `/runs/${encodeURIComponent(runId)}/screens/${encodeURIComponent(fp)}.png`}
 // Screens with the same set of accessibility identifiers are the same UI in different states; key
@@ -673,7 +674,7 @@ function renderGraph(data,runId){
   const layers=[];units.forEach(u=>{const d=depth.get(u.id);(layers[d]||(layers[d]=[])).push(u)});
   // Layout: vertical cards — a large screenshot on top, label+info (and any group button) below.
   // Wider than tall-text needs so labels wrap rather than truncate.
-  const NW=176,NH=290,COLW=250,ROWH=NH+30,PAD=24;
+  const NW=NODE_W,NH=NODE_H,COLW=250,ROWH=NH+30,PAD=24;
   const pos=new Map();let maxRows=1;
   layers.forEach((layer,d)=>{if(!layer)return;maxRows=Math.max(maxRows,layer.length);layer.forEach((u,i)=>pos.set(u.id,{x:PAD+d*COLW,y:PAD+i*ROWH}))});
   nodeOverrides.forEach((p,id)=>{if(pos.has(id))pos.set(id,p)});
@@ -728,7 +729,7 @@ function zoomBy(factor,cx,cy){
 function resetView(){gview.x=0;gview.y=0;gview.k=1;applyView()}
 (function(){
   const box=$('#crawl-graph');let drag=null,nodeDrag=null,moved=false;
-  const NDW=176,NDH2=145;
+  const NDW=NODE_W,NDH2=NODE_H/2;
   function liveEdges(wrap,uid,nx,ny){
     wrap.querySelectorAll('.edge').forEach(p=>{
       const isA=p.dataset.a===uid,isB=p.dataset.b===uid;if(!isA&&!isB)return;
