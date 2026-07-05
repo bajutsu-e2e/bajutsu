@@ -7,12 +7,8 @@ from pathlib import Path
 import typer
 
 from bajutsu.cli._shared import DEFAULT_CONFIG, _load_effective
-from bajutsu.codegen import class_name_for, to_xcuitest
-from bajutsu.codegen_playwright import describe_name_for, to_playwright
-from bajutsu.config import web_base_url
+from bajutsu.codegen_emit import EMIT_TARGETS, CodegenError, generate_test
 from bajutsu.scenario import load_scenarios
-
-_EMIT_TARGETS = ("xcuitest", "playwright")
 
 
 def codegen(
@@ -23,8 +19,8 @@ def codegen(
     config: str = typer.Option(DEFAULT_CONFIG),
 ) -> None:
     """Generate a native test from a scenario (no AI; structural mapping)."""
-    if emit not in _EMIT_TARGETS:
-        typer.echo(f"unsupported --emit: {emit} (one of {', '.join(_EMIT_TARGETS)})")
+    if emit not in EMIT_TARGETS:
+        typer.echo(f"unsupported --emit: {emit} (one of {', '.join(EMIT_TARGETS)})")
         raise typer.Exit(2)
     eff = _load_effective(config, target_name)
     scenario_path = Path(scenario)
@@ -33,14 +29,15 @@ def codegen(
         raise typer.Exit(2)
     scenarios = load_scenarios(scenario_path.read_text(encoding="utf-8"))
     stem = Path(out).stem if out != "-" else scenario_path.stem
-    if emit == "playwright":
-        base_url = web_base_url(eff)
-        if not base_url:
+    try:
+        code, _filename = generate_test(emit, scenarios, stem, eff)
+    except CodegenError as exc:
+        # The CLI keeps its own web-target hint, which names the config key to set.
+        if emit == "playwright":
             typer.echo(f"--emit playwright needs targets.{target_name}.baseUrl (a web target)")
-            raise typer.Exit(2)
-        code = to_playwright(scenarios, describe_name_for(stem), base_url, eff.launch_env)
-    else:
-        code = to_xcuitest(scenarios, class_name_for(stem), eff.launch_env)
+        else:
+            typer.echo(str(exc))
+        raise typer.Exit(2) from exc
     if out == "-":
         typer.echo(code)
     else:

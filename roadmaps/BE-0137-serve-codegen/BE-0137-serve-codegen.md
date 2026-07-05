@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0137](BE-0137-serve-codegen.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0137") |
+| Implementing PR | _pending_ |
 | Topic | Surfacing CLI features in the serve Web UI |
 <!-- /BE-METADATA -->
 
@@ -65,16 +66,18 @@ Tier-1, deterministic; the UI only shells out to the existing command.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Add the `POST /api/codegen` endpoint (`{target, path, emit}`) that runs codegen and returns
+- [x] Add the `POST /api/codegen` endpoint (`{target, path, emit}`) that runs codegen and returns
       the generated source
 - [ ] Add the "Generate code" action in the editor and Replay view, with the XCUITest / Playwright
-      emit selector
-- [ ] Render the result in a read-only code viewer with copy-to-clipboard and download (filename
+      emit selector (editor done; Replay view is a follow-up PR)
+- [x] Render the result in a read-only code viewer with copy-to-clipboard and download (filename
       derived from the scenario and destination)
-- [ ] Offer only the emit targets valid for the selected backend and surface codegen's existing
+- [x] Offer only the emit targets valid for the selected backend and surface codegen's existing
       diagnostics
 
-No PR has landed yet.
+- The `POST /api/codegen` endpoint and the editor-side "Generate code" action (emit selector,
+  read-only code viewer with copy / download) landed first; the same action on the Replay view is
+  a follow-up PR reusing the endpoint.
 
 ## References
 

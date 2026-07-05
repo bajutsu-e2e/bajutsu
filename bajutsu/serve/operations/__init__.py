@@ -28,6 +28,7 @@ from bajutsu.serve.operations.capture import (
     mark_capture,
     start_capture,
 )
+from bajutsu.serve.operations.codegen import generate_codegen
 from bajutsu.serve.operations.config import (
     _confined_config_path,
     _valid_key_env_name,
@@ -125,6 +126,7 @@ __all__ = [
     "finish_capture",
     "forbidden_for_role",
     "format_sse",
+    "generate_codegen",
     "generate_upload_urls",
     "job_log_events",
     "job_sse",

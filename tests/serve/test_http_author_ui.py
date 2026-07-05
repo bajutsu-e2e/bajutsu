@@ -147,6 +147,21 @@ def test_author_enrich_mode_controls(tmp_path: Path) -> None:
     assert 'id="au-enrich-dismiss"' in text
 
 
+def test_author_codegen_controls(tmp_path: Path) -> None:
+    """The codegen export (BE-0137): emit selector, Generate button, and a code viewer with
+    copy / download."""
+    text = _index_text(tmp_path)
+    for el in (
+        'id="au-emit"',
+        'id="au-codegen"',
+        'id="au-codegen-panel"',
+        'id="au-codegen-code"',
+        'id="au-codegen-copy"',
+        'id="au-codegen-download"',
+    ):
+        assert el in text, el
+
+
 # ---------------------------------------------------------------------------
 # The JS still wires the (unchanged) endpoints each mode uses.
 # ---------------------------------------------------------------------------
@@ -169,3 +184,8 @@ def test_author_js_wires_save_and_enrich(tmp_path: Path) -> None:
     text = _index_text(tmp_path)
     assert "/api/scenario" in text
     assert "/api/enrich" in text
+
+
+def test_author_js_wires_codegen(tmp_path: Path) -> None:
+    text = _index_text(tmp_path)
+    assert "/api/codegen" in text

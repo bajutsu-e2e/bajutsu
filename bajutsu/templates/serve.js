@@ -1133,6 +1133,7 @@ if(!NARROW_MQ.matches)initTiling();
   let auPath='';             // scenario file path for save
   let auResolvedSel=null;    // last resolved selector from picker
   let enrichResult=null;     // last enrichment response {expect, settle, note}
+  let codegenResult=null;    // last /api/codegen response {code, filename}
   // Capture state.
   let capActive=false;
   // Inline validation + schema assistance (BE-0138).
@@ -1152,6 +1153,8 @@ if(!NARROW_MQ.matches)initTiling();
     document.querySelectorAll('#view-author .au-loadrow').forEach(e=>e.hidden=m==='capture');
     // The proposal panel belongs to Enrich; leaving the mode hides any open proposal.
     if(m!=='enrich')$('#au-enrich-panel').hidden=true;
+    // Capture starts fresh with no saved scenario, so codegen has nothing to export there.
+    if(m==='capture'){auCodegenReset();$('#au-codegen').disabled=true;}
   }
   document.querySelectorAll('.modetab').forEach(b=>b.addEventListener('click',()=>setMode(b.dataset.mode)));
 
@@ -1318,6 +1321,7 @@ if(!NARROW_MQ.matches)initTiling();
       const msg=auSteps.length?auSteps.length+' step'+(auSteps.length===1?'':'s')+' loaded':'YAML loaded (no run selected)';
       $('#au-status').textContent=msg;$('#au-status').className='status ok';
       $('#au-enrich').disabled=false;
+      $('#au-codegen').disabled=false;
       $('#au-enrich-panel').hidden=true;
     }catch(e){$('#au-status').textContent=String(e);$('#au-status').className='status ng';}
   }
@@ -1775,13 +1779,59 @@ if(!NARROW_MQ.matches)initTiling();
     $('#au-status').textContent='Enrichment dismissed';$('#au-status').className='status';
   });
 
+  // ---- codegen (BE-0137): export the scenario as a native test ----
+  // Offer only the emit the target's backend supports — iOS→XCUITest, web→Playwright — mirroring
+  // `--emit`. The server is authoritative (it rejects a mismatch), this just avoids offering it.
+  function auSyncEmit(){
+    $('#au-emit').innerHTML=isIosBackend(appBackend('#au-target'))
+      ?'<option value="xcuitest">XCUITest</option>'
+      :'<option value="playwright">Playwright</option>';
+  }
+  // A generated result is tied to one target+emit; drop it so Copy/Download never export a stale file.
+  function auCodegenReset(){$('#au-codegen-panel').hidden=true;codegenResult=null;}
+  $('#au-codegen').addEventListener('click',async()=>{
+    const combo=$('#au-scenario').value;
+    if(!combo){$('#au-status').textContent='Load a scenario first.';return;}
+    const [path]=combo.split('|');
+    const target=$('#au-target').value, emit=$('#au-emit').value;
+    $('#au-codegen').disabled=true;
+    $('#au-status').textContent='Generating '+emit+' code…';$('#au-status').className='status run';
+    try{
+      const r=await fetch('/api/codegen',{method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({target:target,scenario:path,emit:emit})});
+      const d=await r.json();
+      if(d.error){$('#au-status').textContent=d.error;$('#au-status').className='status ng';return;}
+      codegenResult=d;
+      $('#au-codegen-title').textContent=d.filename;
+      $('#au-codegen-code').textContent=d.code;
+      $('#au-codegen-panel').hidden=false;
+      $('#au-status').textContent='Generated '+d.filename;$('#au-status').className='status ok';
+    }catch(e){$('#au-status').textContent=String(e);$('#au-status').className='status ng';}
+    finally{$('#au-codegen').disabled=false;}
+  });
+  $('#au-codegen-copy').addEventListener('click',async()=>{
+    if(!codegenResult)return;
+    try{await navigator.clipboard.writeText(codegenResult.code);
+      $('#au-status').textContent='Copied '+codegenResult.filename+' to clipboard';$('#au-status').className='status ok';}
+    catch(e){$('#au-status').textContent='Copy failed: '+e;$('#au-status').className='status ng';}
+  });
+  $('#au-codegen-download').addEventListener('click',()=>{
+    if(!codegenResult)return;
+    const blob=new Blob([codegenResult.code],{type:'text/plain'});
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement('a');a.href=url;a.download=codegenResult.filename;
+    document.body.appendChild(a);a.click();a.remove();URL.revokeObjectURL(url);
+  });
+  $('#au-codegen-close').addEventListener('click',auCodegenReset);
+
   // Nav buttons.
   $('#au-prev').addEventListener('click',()=>{if(auIdx>0)auShowStep(auIdx-1);});
   $('#au-next').addEventListener('click',()=>{if(auIdx<auSteps.length-1)auShowStep(auIdx+1);});
   // Load button.
   $('#au-load').addEventListener('click',auLoad);
-  // Target change reloads scenarios.
-  $('#au-target').addEventListener('change',auLoadScenarios);
+  // Target change reloads scenarios and re-picks the emit valid for the new backend; any open
+  // codegen result is for the old target, so drop it rather than let Copy/Download export a stale file.
+  $('#au-target').addEventListener('change',()=>{auLoadScenarios();auSyncEmit();auCodegenReset();});
   // YAML textarea edits enable save and re-validate (BE-0138): gutter updates instantly, lint debounced.
   $('#au-yaml').addEventListener('input',()=>{
     $('#au-save').disabled=false;auRenderGutter();auLintSoon();
@@ -1809,10 +1859,12 @@ if(!NARROW_MQ.matches)initTiling();
     auInited=true;
     setMode('capture');
     auLoadScenarios();
+    auSyncEmit();
   };
   // Called by loadShared() after targets arrive — re-populate if Author is already visible.
   window.authorRefresh=function(){
     auLoadScenarios();
+    auSyncEmit();
   };
 })();
 

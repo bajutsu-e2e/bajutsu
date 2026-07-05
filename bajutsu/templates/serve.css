@@ -430,3 +430,13 @@ header .cfgname{color:var(--mut);font-size:.82em;max-width:32vw;overflow:hidden;
 .enrich-list{margin:0;padding:0 0 0 1.2em;font-size:.85em;font-family:var(--mono)}
 .enrich-list li{padding:2px 0}
 .enrich-list .enrich-check{color:var(--accent);font-weight:600;margin-right:.3em}
+/* codegen (BE-0137): the emit selector + action buttons cluster right, next to Save. */
+.yamlhead .yaml-actions{margin-left:auto;display:flex;align-items:center;gap:.4em}
+.yamlhead .yaml-actions .savebtn{margin-left:0}
+.yamlhead .au-emit{font:inherit;font-size:.85em;padding:.25rem .4rem;border-radius:6px;border:1px solid var(--line);background:var(--bg2);color:var(--fg);cursor:pointer}
+.codegen-panel{border-top:1px solid var(--line);margin-top:.5em;padding-top:.5em}
+.codegen-head{display:flex;align-items:center;justify-content:space-between;gap:.4em;margin-bottom:.4em}
+.codegen-head .ttl{font-weight:600;font-size:.85em;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.codegen-actions{display:flex;gap:.3em;flex:0 0 auto}
+.codegen-actions .savebtn{background:var(--acc);color:var(--on-acc);border:0;border-radius:6px;font-weight:700;padding:.3rem .7rem;font-size:.85em;cursor:pointer}
+.codegen-code{margin:0;max-height:340px;overflow:auto;background:var(--bg2);border:1px solid var(--line);border-radius:6px;padding:.6em;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;line-height:18px;white-space:pre;tab-size:2}
