@@ -516,6 +516,14 @@ Consolidating the demo and dogfood apps onto the showcase suite: bringing it to 
 
 <!-- /GENERATED:in-progress-authoring -->
 
+### Codebase quality & technical debt
+
+<!-- GENERATED:in-progress-quality-debt -->
+| ID | Item | Status |
+|---|---|---|
+| [BE-0172](BE-0172-run-loop-step-decomposition/BE-0172-run-loop-step-decomposition.md) | Decompose the run-path step loop and per-scenario runner | In progress |
+<!-- /GENERATED:in-progress-quality-debt -->
+
 ## Proposals
 
 Under consideration — not yet decided. Promote an item to *In progress* once work starts, or to *Implemented* when it ships.
@@ -643,9 +651,7 @@ Keeping the autonomous crawl fast and its code lean as it grows.
 Behavior-preserving cleanup inside `bajutsu/` itself — deduplication, decomposition of oversized functions/modules, and naming clarity — as distinct from *Development infrastructure (contributor workflow)* above, which covers the tooling contributors use to work on this repo (CI, hooks, roadmap automation).
 
 <!-- GENERATED:proposals-quality-debt -->
-| ID | Item | Status |
-|---|---|---|
-| [BE-0172](BE-0172-run-loop-step-decomposition/BE-0172-run-loop-step-decomposition.md) | Decompose the run-path step loop and per-scenario runner | Proposal |
+
 <!-- /GENERATED:proposals-quality-debt -->
 
 ### Integration with external services
