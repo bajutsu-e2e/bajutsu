@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0137") |
-| Implementing PR | _pending_ |
+| Implementing PR | [#692](https://github.com/bajutsu-e2e/bajutsu/pull/692) |
 | Topic | Surfacing CLI features in the serve Web UI |
 <!-- /BE-METADATA -->
 
@@ -75,9 +75,10 @@ Tier-1, deterministic; the UI only shells out to the existing command.
 - [x] Offer only the emit targets valid for the selected backend and surface codegen's existing
       diagnostics
 
-- The `POST /api/codegen` endpoint and the editor-side "Generate code" action (emit selector,
-  read-only code viewer with copy / download) landed first; the same action on the Replay view is
-  a follow-up PR reusing the endpoint.
+- [#692](https://github.com/bajutsu-e2e/bajutsu/pull/692) — the `POST /api/codegen` endpoint and
+  the editor-side "Generate code" action (emit selector, read-only code viewer with copy /
+  download), with the emit dispatch shared with the CLI (`bajutsu/codegen_emit.py`). The same action
+  on the Replay view is a follow-up PR reusing the endpoint.
 
 ## References
 
