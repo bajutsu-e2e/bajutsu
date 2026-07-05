@@ -6,11 +6,11 @@
 # events (push to main, merge queue, the weekly schedule) always run the full matrix so the
 # default-branch alert baseline stays complete.
 #
-# The Android job uses `build-mode: autobuild`: CodeQL's buildless (`build-mode: none`) extractor
-# sees no Kotlin in an Android Gradle project ("no source code seen"), so it compiles the showcase
-# via the committed Gradle wrapper and traces that build. ubuntu-latest ships the Android SDK, so it
-# stays on ubuntu alongside the core languages — no extra SDK setup — unlike Swift, which builds via
-# `swift build` on macOS.
+# The Android job uses `build-mode: manual` with an explicit Gradle build: CodeQL's buildless
+# extractor sees no Kotlin in an Android Gradle project, and autobuild can't find a build command
+# because the project lives under demos/showcase/android, not at the repo root. So it compiles the
+# showcase via the committed Gradle wrapper (ubuntu-latest ships the Android SDK, so no extra setup)
+# and traces that build — mirroring the Swift job's manual `swift build` on macOS.
 #
 # The required branch-protection status check is the aggregation job `CodeQL` below,
 # not the per-language `Analyze (...)` jobs — that keeps a single stable required check
@@ -142,11 +142,19 @@ jobs:
       - name: Initialize CodeQL
         uses: github/codeql-action/init@c35d1b164463ee62a100735382aaaa525c5d3496 # codeql-bundle-v2.25.6
         with:
-          # Java and Kotlin share one CodeQL language id; `autobuild` compiles the Android showcase
-          # (Gradle wrapper + the runner's preinstalled Android SDK) so CodeQL sees its Kotlin/Java —
-          # buildless extraction sees none in an Android Gradle project.
+          # Java and Kotlin share one CodeQL language id. `manual` + an explicit Gradle build (below)
+          # is needed because the showcase is a Gradle project under demos/showcase/android, not at
+          # the repo root: buildless extraction sees no Kotlin, and autobuild can't find a build
+          # command at the root. The manual build mirrors the Swift job's `swift build`.
           languages: java-kotlin
-          build-mode: autobuild
+          build-mode: manual
+      - name: Build the Android showcase so CodeQL can trace it
+        # The committed Gradle wrapper + ubuntu-latest's preinstalled Android SDK build all four
+        # products (both toolkits × both a11y flavors), so CodeQL extracts every Kotlin/Java source.
+        # Pin JDK 17 (the showcase's documented minimum) rather than the runner's default.
+        run: |
+          export JAVA_HOME="$JAVA_HOME_17_X64"
+          make -C demos/showcase/android build-all
       - name: Perform CodeQL analysis
         uses: github/codeql-action/analyze@c35d1b164463ee62a100735382aaaa525c5d3496 # codeql-bundle-v2.25.6
         with:
