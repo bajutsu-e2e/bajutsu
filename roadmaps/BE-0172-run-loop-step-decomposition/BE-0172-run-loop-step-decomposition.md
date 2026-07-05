@@ -117,7 +117,7 @@ Each unit is independently landable in its own small PR, and each keeps the suit
 - [x] Regression-net check: fast, Simulator-free branch tests for `_run_steps` and `run_one` land first.
 - [x] Lift `_run_steps`'s step-index state out of the `[0]`-box into an explicit counter.
 - [x] Extract the web-step driver swap into a named helper that passes the driver explicitly.
-- [x] Promote `run_one` to a top-level function with its captured values as explicit parameters.
+- [x] Promote `run_one` out of the closure into a top-level `_ScenarioRunner` (frozen dataclass, `run_one` as a method) with its captured values as explicit fields.
 
 ## References
 
