@@ -257,6 +257,7 @@ async function loadShared(){
   syncPlatform('#panel-record','#rec-target');
   syncPlatform('#panel-crawl','#crawl-target');
   syncPlatform('#panel-author','#au-target');
+  replayCodegen.sync();  // offer the emit valid for the (re)loaded Replay target
   await loadScenarios();
   if(!$('#view-author').hidden)authorRefresh();
   refreshAiAvailability();  // a newly-bound config's ai.keyEnv can change reachability
@@ -268,7 +269,7 @@ async function loadScenarios(){
   $('#scn').innerHTML=scnFiles.map(s=>`<option value="${esc(s.path)}">${esc(s.file)}</option>`).join('');
   showInfo();
 }
-$('#target').addEventListener('change',loadScenarios);
+$('#target').addEventListener('change',()=>{loadScenarios();replayCodegen.sync();replayCodegen.reset();});
 async function loadSims(){
   try{sims=await (await fetch('/api/simulators')).json()}catch(e){sims=[]}
   // Replay: multi-select checkboxes (parallel pool).
@@ -338,7 +339,7 @@ function showInfo(){
   if(f.scenarios&&f.scenarios.length)h+='<ul class="scnlist">'+f.scenarios.map(s=>`<li><b>${esc(s.name)}</b>${s.description?' &mdash; <span class="sd">'+esc(s.description)+'</span>':''}</li>`).join('')+'</ul>';
   el.innerHTML=h;
 }
-$('#scn').addEventListener('change',showInfo);
+$('#scn').addEventListener('change',()=>{showInfo();replayCodegen.reset();});
 function pickedUdids(){return [...$('#sims').querySelectorAll('.simck:checked')].map(c=>c.value)}
 function onSimChange(){const n=pickedUdids().length;if(n>0)$('#workers').value=n}
 $('#simrefresh').addEventListener('click',loadSims);
@@ -953,6 +954,56 @@ wirePlatform('#panel-record','#rec-target');
 wirePlatform('#panel-crawl','#crawl-target');
 wirePlatform('#panel-author','#au-target');
 
+// Shared codegen wiring for a view (BE-0137): an emit selector synced to the target's backend, a
+// Generate button that POSTs the selected scenario to /api/codegen, and a result panel with copy /
+// download. The Author and Replay views both call this — one endpoint, one client behaviour. `ids`
+// names the view's elements, `getScenario` returns the scenario path (or "" when none is selected).
+// Returns {sync, reset} so the caller can re-pick the emit and drop a stale result on its own events.
+function makeCodegen(ids,targetSel,getScenario){
+  let result=null;
+  const setStat=(msg,cls)=>{const s=$(ids.status);if(s){s.textContent=msg;s.className='status'+(cls?' '+cls:'');}};
+  function reset(){$(ids.panel).hidden=true;result=null;}
+  function sync(){$(ids.emit).innerHTML=isIosBackend(appBackend(targetSel))
+    ?'<option value="xcuitest">XCUITest</option>'
+    :'<option value="playwright">Playwright</option>';}
+  $(ids.btn).addEventListener('click',async()=>{
+    const scenario=getScenario();
+    if(!scenario){setStat('Load a scenario first.');return;}
+    const emit=$(ids.emit).value;
+    $(ids.btn).disabled=true;setStat('Generating '+emit+' code…','run');
+    try{
+      const r=await fetch('/api/codegen',{method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({target:$(targetSel).value,scenario:scenario,emit:emit})});
+      const d=await r.json();
+      if(d.error){setStat(d.error,'ng');return;}
+      result=d;$(ids.title).textContent=d.filename;$(ids.code).textContent=d.code;$(ids.panel).hidden=false;
+      setStat('Generated '+d.filename,'ok');
+    }catch(e){setStat(String(e),'ng');}
+    finally{$(ids.btn).disabled=false;}
+  });
+  $(ids.copy).addEventListener('click',async()=>{
+    if(!result)return;
+    try{await navigator.clipboard.writeText(result.code);setStat('Copied '+result.filename+' to clipboard','ok');}
+    catch(e){setStat('Copy failed: '+e,'ng');}
+  });
+  $(ids.download).addEventListener('click',()=>{
+    if(!result)return;
+    const url=URL.createObjectURL(new Blob([result.code],{type:'text/plain'}));
+    const a=document.createElement('a');a.href=url;a.download=result.filename;
+    // Revoke on the next tick: revoking synchronously after click() can truncate the download in
+    // some browsers (Safari) before the blob navigation starts.
+    document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),0);
+  });
+  $(ids.close).addEventListener('click',reset);
+  return {sync,reset};
+}
+const CODEGEN_IDS=pfx=>({emit:'#'+pfx+'-emit',btn:'#'+pfx+'-codegen',panel:'#'+pfx+'-codegen-panel',
+  title:'#'+pfx+'-codegen-title',code:'#'+pfx+'-codegen-code',copy:'#'+pfx+'-codegen-copy',
+  download:'#'+pfx+'-codegen-download',close:'#'+pfx+'-codegen-close'});
+
+// Replay view: generate from the selected scenario (#scn) + target (#target); status shares #status.
+const replayCodegen=makeCodegen({...CODEGEN_IDS('rp'),status:'#status'},'#target',()=>$('#scn').value);
+
 // Resizable panels: each view has gutter bars between its grid columns. Dragging one resizes the
 // column to its left via a CSS var on the <main>'s grid-template; widths persist in localStorage.
 const SPLIT_KEY='bajutsu-splits';
@@ -1133,7 +1184,6 @@ if(!NARROW_MQ.matches)initTiling();
   let auPath='';             // scenario file path for save
   let auResolvedSel=null;    // last resolved selector from picker
   let enrichResult=null;     // last enrichment response {expect, settle, note}
-  let codegenResult=null;    // last /api/codegen response {code, filename}
   // Capture state.
   let capActive=false;
   // Inline validation + schema assistance (BE-0138).
@@ -1780,52 +1830,12 @@ if(!NARROW_MQ.matches)initTiling();
   });
 
   // ---- codegen (BE-0137): export the scenario as a native test ----
-  // Offer only the emit the target's backend supports — iOS→XCUITest, web→Playwright — mirroring
-  // `--emit`. The server is authoritative (it rejects a mismatch), this just avoids offering it.
-  function auSyncEmit(){
-    $('#au-emit').innerHTML=isIosBackend(appBackend('#au-target'))
-      ?'<option value="xcuitest">XCUITest</option>'
-      :'<option value="playwright">Playwright</option>';
-  }
-  // A generated result is tied to one target + scenario + its saved YAML; drop it whenever any of
-  // those change so Copy/Download never export a stale file.
-  function auCodegenReset(){$('#au-codegen-panel').hidden=true;codegenResult=null;}
-  $('#au-codegen').addEventListener('click',async()=>{
-    const combo=$('#au-scenario').value;
-    if(!combo){$('#au-status').textContent='Load a scenario first.';return;}
-    const [path]=combo.split('|');
-    const target=$('#au-target').value, emit=$('#au-emit').value;
-    $('#au-codegen').disabled=true;
-    $('#au-status').textContent='Generating '+emit+' code…';$('#au-status').className='status run';
-    try{
-      const r=await fetch('/api/codegen',{method:'POST',headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({target:target,scenario:path,emit:emit})});
-      const d=await r.json();
-      if(d.error){$('#au-status').textContent=d.error;$('#au-status').className='status ng';return;}
-      codegenResult=d;
-      $('#au-codegen-title').textContent=d.filename;
-      $('#au-codegen-code').textContent=d.code;
-      $('#au-codegen-panel').hidden=false;
-      $('#au-status').textContent='Generated '+d.filename;$('#au-status').className='status ok';
-    }catch(e){$('#au-status').textContent=String(e);$('#au-status').className='status ng';}
-    finally{$('#au-codegen').disabled=false;}
-  });
-  $('#au-codegen-copy').addEventListener('click',async()=>{
-    if(!codegenResult)return;
-    try{await navigator.clipboard.writeText(codegenResult.code);
-      $('#au-status').textContent='Copied '+codegenResult.filename+' to clipboard';$('#au-status').className='status ok';}
-    catch(e){$('#au-status').textContent='Copy failed: '+e;$('#au-status').className='status ng';}
-  });
-  $('#au-codegen-download').addEventListener('click',()=>{
-    if(!codegenResult)return;
-    const blob=new Blob([codegenResult.code],{type:'text/plain'});
-    const url=URL.createObjectURL(blob);
-    const a=document.createElement('a');a.href=url;a.download=codegenResult.filename;
-    // Revoke on the next tick: revoking synchronously after click() can truncate the download in
-    // some browsers (Safari) before the blob navigation starts.
-    document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),0);
-  });
-  $('#au-codegen-close').addEventListener('click',auCodegenReset);
+  // Reuse the shared codegen wiring (see makeCodegen); the Author scenario select carries "path|name",
+  // and codegen works on the file, so hand it the path. `sync`/`reset` are driven by the Author's own
+  // scenario / target / YAML events below.
+  const authorCodegen=makeCodegen({...CODEGEN_IDS('au'),status:'#au-status'},'#au-target',
+    ()=>{const c=$('#au-scenario').value;return c?c.split('|')[0]:'';});
+  const auSyncEmit=authorCodegen.sync, auCodegenReset=authorCodegen.reset;
 
   // Nav buttons.
   $('#au-prev').addEventListener('click',()=>{if(auIdx>0)auShowStep(auIdx-1);});

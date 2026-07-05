@@ -433,7 +433,11 @@ header .cfgname{color:var(--mut);font-size:.82em;max-width:32vw;overflow:hidden;
 /* codegen (BE-0137): the emit selector + action buttons cluster right, next to Save. */
 .yamlhead .yaml-actions{margin-left:auto;display:flex;align-items:center;gap:.4em}
 .yamlhead .yaml-actions .savebtn{margin-left:0}
-.yamlhead .au-emit{font:inherit;font-size:.85em;padding:.25rem .4rem;border-radius:6px;border:1px solid var(--line);background:var(--bg2);color:var(--fg);cursor:pointer}
+.codegen-emit{font:inherit;font-size:.85em;padding:.25rem .4rem;border-radius:6px;border:1px solid var(--line);background:var(--bg2);color:var(--fg);cursor:pointer}
+/* Replay codegen action row: emit selector + Generate button below the run output. */
+.codegen-bar{display:flex;align-items:center;gap:.4em;margin-top:.5em}
+.codegen-bar .savebtn{background:var(--acc);color:var(--on-acc);border:0;border-radius:6px;font-weight:700;padding:.35rem .8rem;font-size:.85em;cursor:pointer}
+.codegen-bar .savebtn:disabled{opacity:.4;cursor:default}
 .codegen-panel{border-top:1px solid var(--line);margin-top:.5em;padding-top:.5em}
 .codegen-head{display:flex;align-items:center;justify-content:space-between;gap:.4em;margin-bottom:.4em}
 .codegen-head .ttl{font-weight:600;font-size:.85em;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}

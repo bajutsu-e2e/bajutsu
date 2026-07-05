@@ -379,6 +379,7 @@ Bringing the CLI's own tools into the serve Web UI, where authoring happens. The
 <!-- GENERATED:implemented-serve-cli-features -->
 | ID | Item | Status |
 |---|---|---|
+| [BE-0137](BE-0137-serve-codegen/BE-0137-serve-codegen.md) | Generate native test code from the serve Web UI | Implemented |
 | [BE-0138](BE-0138-serve-lint/BE-0138-serve-lint.md) | Inline scenario validation in the serve editor | Implemented |
 <!-- /GENERATED:implemented-serve-cli-features -->
 
@@ -504,9 +505,7 @@ Consolidating the demo and dogfood apps onto the showcase suite: bringing it to 
 Bringing the CLI's own tools into the serve Web UI, where authoring happens. The scenario editor's inline lint / schema validation landed first.
 
 <!-- GENERATED:in-progress-serve-cli-features -->
-| ID | Item | Status |
-|---|---|---|
-| [BE-0137](BE-0137-serve-codegen/BE-0137-serve-codegen.md) | Generate native test code from the serve Web UI | In progress |
+
 <!-- /GENERATED:in-progress-serve-cli-features -->
 
 ### codegen coverage

@@ -133,6 +133,22 @@
     <button class="stop" id="stop" hidden>Stop</button>
     <div class="status" id="status"></div>
     <pre class="out" id="out" data-empty="Run a scenario to see its output here."></pre>
+    <!-- codegen (BE-0137): export the selected scenario as a native test, right where it just ran. -->
+    <div class="codegen-bar">
+      <select class="codegen-emit" id="rp-emit" data-testid="replay.emit" aria-label="codegen destination" title="codegen destination"></select>
+      <button class="savebtn" id="rp-codegen" data-testid="replay.codegen">Generate code</button>
+    </div>
+    <div class="codegen-panel" id="rp-codegen-panel" hidden>
+      <div class="codegen-head">
+        <span class="ttl" id="rp-codegen-title" data-testid="replay.codegen-filename">Generated code</span>
+        <span class="codegen-actions">
+          <button class="savebtn" id="rp-codegen-copy" data-testid="replay.codegen-copy">Copy</button>
+          <button class="savebtn" id="rp-codegen-download" data-testid="replay.codegen-download">Download</button>
+          <button class="savebtn" id="rp-codegen-close" data-testid="replay.codegen-close">Close</button>
+        </span>
+      </div>
+      <pre class="codegen-code" id="rp-codegen-code" data-testid="replay.codegen-code" tabindex="0"></pre>
+    </div>
   </div>
   <div class="gutter" data-var="--rep-mid" data-min="220" data-max="640"></div>
   <div class="report" id="report" data-testid="replay.report" data-pane="report"><div class="empty">Run a scenario to see its report here.</div></div>
@@ -256,7 +272,7 @@
         <div class="yaml-actions">
           <button class="savebtn au-enrich" id="au-enrich" data-testid="author.enrich" disabled>Enrich</button>
           <!-- codegen destination — only the emit valid for the target's backend is offered (BE-0137). -->
-          <select class="au-emit" id="au-emit" data-testid="author.emit" aria-label="codegen destination" title="codegen destination"></select>
+          <select class="codegen-emit" id="au-emit" data-testid="author.emit" aria-label="codegen destination" title="codegen destination"></select>
           <button class="savebtn" id="au-codegen" data-testid="author.codegen" disabled>Generate code</button>
           <button class="savebtn" id="au-save" data-testid="author.save" disabled>Save</button>
         </div>
