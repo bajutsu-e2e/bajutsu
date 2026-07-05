@@ -637,7 +637,9 @@ Web（Playwright）backend とその完成（リッチな capability、並列実
 `bajutsu/` 内部のコードを対象にした、振る舞いを変えないクリーンアップです。重複コードの解消、肥大化した関数・モジュールの分割、命名の明確化などが含まれます。上記の「開発基盤（コントリビュータ体験）」がこのリポジトリで作業するためのツール（CI、フック、ロードマップ自動化）を指すのに対し、こちらは `bajutsu/` 自体のコード品質を扱う点で区別されます。
 
 <!-- GENERATED:proposals-quality-debt -->
-
+| ID | 項目 | 状態 |
+|---|---|---|
+| [BE-0172](BE-0172-run-loop-step-decomposition/BE-0172-run-loop-step-decomposition-ja.md) | run 経路のステップループとシナリオ実行関数の分解 | 提案 |
 <!-- /GENERATED:proposals-quality-debt -->
 
 ### 外部サービスとの連携

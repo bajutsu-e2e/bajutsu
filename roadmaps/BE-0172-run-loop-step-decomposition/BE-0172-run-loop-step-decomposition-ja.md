@@ -1,14 +1,14 @@
-[English](BE-XXXX-run-loop-step-decomposition.md) · **日本語**
+[English](BE-0172-run-loop-step-decomposition.md) · **日本語**
 
-# BE-XXXX — run 経路のステップループとシナリオ実行関数の分解
+# BE-0172 — run 経路のステップループとシナリオ実行関数の分解
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
 |---|---|
-| 提案 | [BE-XXXX](BE-XXXX-run-loop-step-decomposition-ja.md) |
+| 提案 | [BE-0172](BE-0172-run-loop-step-decomposition-ja.md) |
 | 提案者 | [@hirosassa](https://github.com/hirosassa) |
 | 状態 | **提案** |
-| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0172") |
 | トピック | Codebase quality & technical debt |
 | 関連 | [BE-0143](../BE-0143-run-command-decomposition/BE-0143-run-command-decomposition-ja.md)、[BE-0092](../BE-0092-crawl-coordinator-extraction/BE-0092-crawl-coordinator-extraction-ja.md) |
 <!-- /BE-METADATA -->

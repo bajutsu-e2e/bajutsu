@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-run-loop-step-decomposition-ja.md)
+**English** · [日本語](BE-0172-run-loop-step-decomposition-ja.md)
 
-# BE-XXXX — Decompose the run-path step loop and per-scenario runner
+# BE-0172 — Decompose the run-path step loop and per-scenario runner
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-run-loop-step-decomposition.md) |
+| Proposal | [BE-0172](BE-0172-run-loop-step-decomposition.md) |
 | Author | [@hirosassa](https://github.com/hirosassa) |
 | Status | **Proposal** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0172") |
 | Topic | Codebase quality & technical debt |
 | Related | [BE-0143](../BE-0143-run-command-decomposition/BE-0143-run-command-decomposition.md), [BE-0092](../BE-0092-crawl-coordinator-extraction/BE-0092-crawl-coordinator-extraction.md) |
 <!-- /BE-METADATA -->
