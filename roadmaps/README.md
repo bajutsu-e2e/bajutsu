@@ -352,6 +352,7 @@ Closing the edges the deterministic core does not touch — `serve`'s HTTP surfa
 | [BE-0131](BE-0131-run-artifact-permissions/BE-0131-run-artifact-permissions.md) | Restrict run-artifact file permissions | Implemented |
 | [BE-0133](BE-0133-pin-actionlint-installer/BE-0133-pin-actionlint-installer.md) | Pin the actionlint installer by SHA | Implemented |
 | [BE-0136](BE-0136-serve-write-once-secrets/BE-0136-serve-write-once-secrets.md) | Write-once secrets store for serve | Implemented |
+| [BE-0144](BE-0144-automerge-stale-approval-race/BE-0144-automerge-stale-approval-race.md) | Close the auto-merge stale-approval race | Implemented |
 | [BE-0151](BE-0151-screenshot-secret-capture-warning/BE-0151-screenshot-secret-capture-warning.md) | Warn when screenshots and video may capture on-screen secrets | Implemented |
 | [BE-0152](BE-0152-totp-seed-artifact-leak/BE-0152-totp-seed-artifact-leak.md) | Keep literal TOTP seeds out of run artifacts | Implemented |
 | [BE-0153](BE-0153-encode-aware-secret-redaction/BE-0153-encode-aware-secret-redaction.md) | Encode-aware secret redaction | Implemented |
@@ -593,7 +594,6 @@ Closing the edges the deterministic core does not touch — `serve`'s HTTP surfa
 | ID | Item | Status |
 |---|---|---|
 | [BE-0115](BE-0115-inprocess-collector-auth/BE-0115-inprocess-collector-auth.md) | Authenticate the in-process iOS network collector | Proposal |
-| [BE-0144](BE-0144-automerge-stale-approval-race/BE-0144-automerge-stale-approval-race.md) | Close the auto-merge stale-approval race | Proposal |
 <!-- /GENERATED:proposals-security -->
 
 ### Configuration sourcing
