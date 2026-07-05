@@ -147,7 +147,7 @@ class Artifact:
 
 `visual` アサーションは `VisualEvidence` レコードを生成し、manifest とレポートに反映します。run ディレクトリからの相対パスとして、baseline コピー、実際のスクリーンショット、差分画像（差分が見つかった場合）を持ち、`diff_pct`（差分ピクセルの割合）と `engine`（判定を行った比較エンジン、`"exact"` または `"pixelmatch"`。[BE-0165](../../roadmaps/BE-0165-visual-compare-engines/BE-0165-visual-compare-engines-ja.md)）を記録します。
 
-エンジンはアサーション単位（`compare:`）で選択でき、ターゲットレベルの config（`visual_compare`）にフォールバックします。使用されたエンジンは証跡に記録されるため、レポートでどのアルゴリズムが実行されたかを確認できます。実装: `bajutsu/assertions.py` `VisualEvidence`。
+エンジンはアサーション単位（`compare:`）で選択でき、ターゲットレベルの config（`visualCompare`）にフォールバックします。使用されたエンジンは証跡に記録されるため、レポートでどのアルゴリズムが実行されたかを確認できます。実装: `bajutsu/assertions.py` `VisualEvidence`。
 
 ## マスキング（redact）
 

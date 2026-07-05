@@ -93,7 +93,9 @@ def compare_images(
             antialiasing=antialiasing,
             diff_path=diff_path,
         )
-    return _compare_exact(actual, baseline, threshold=threshold, diff_path=diff_path)
+    if engine == "exact":
+        return _compare_exact(actual, baseline, threshold=threshold, diff_path=diff_path)
+    raise ValueError(f"unknown visual compare engine {engine!r}: use 'exact' or 'pixelmatch'")
 
 
 def _verdict(diff_count: int, total: int, threshold: float) -> CompareResult:
@@ -143,13 +145,13 @@ def _compare_pixelmatch(
 
     for i in range(total):
         off = i * 4
-        r1, g1, b1 = buf_a[off], buf_a[off + 1], buf_a[off + 2]
-        r2, g2, b2 = buf_b[off], buf_b[off + 1], buf_b[off + 2]
+        r1, g1, b1, a1 = buf_a[off], buf_a[off + 1], buf_a[off + 2], buf_a[off + 3]
+        r2, g2, b2, a2 = buf_b[off], buf_b[off + 1], buf_b[off + 2], buf_b[off + 3]
 
-        if r1 == r2 and g1 == g2 and b1 == b2:
+        if r1 == r2 and g1 == g2 and b1 == b2 and a1 == a2:
             continue
 
-        delta = _color_delta_sq(r1, g1, b1, r2, g2, b2)
+        delta = _color_delta_sq(r1, g1, b1, a1, r2, g2, b2, a2)
         if delta <= max_delta:
             continue
 
@@ -167,8 +169,21 @@ def _compare_pixelmatch(
     return _verdict(len(diff_pixels), total, threshold)
 
 
-def _color_delta_sq(r1: int, g1: int, b1: int, r2: int, g2: int, b2: int) -> float:
-    dr, dg, db = r1 - r2, g1 - g2, b1 - b2
+def _color_delta_sq(
+    r1: int, g1: int, b1: int, a1: int, r2: int, g2: int, b2: int, a2: int
+) -> float:
+    """YIQ perceptual color distance squared, alpha-blended over white."""
+    dr: float
+    dg: float
+    db: float
+    if a1 == a2 == 255:
+        dr, dg, db = r1 - r2, g1 - g2, b1 - b2
+    else:
+        ar1 = a1 / 255.0
+        ar2 = a2 / 255.0
+        dr = (r1 * ar1 + 255 * (1 - ar1)) - (r2 * ar2 + 255 * (1 - ar2))
+        dg = (g1 * ar1 + 255 * (1 - ar1)) - (g2 * ar2 + 255 * (1 - ar2))
+        db = (b1 * ar1 + 255 * (1 - ar1)) - (b2 * ar2 + 255 * (1 - ar2))
     dy = dr * _Y_R + dg * _Y_G + db * _Y_B
     di = dr * _I_R + dg * _I_G + db * _I_B
     dq = dr * _Q_R + dg * _Q_G + db * _Q_B
@@ -230,9 +245,11 @@ def _is_antialiased(
                 buf[off0],
                 buf[off0 + 1],
                 buf[off0 + 2],
+                buf[off0 + 3],
                 other_buf[off_n],
                 other_buf[off_n + 1],
                 other_buf[off_n + 2],
+                other_buf[off_n + 3],
             )
             if d <= max_delta:
                 return True

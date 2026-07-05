@@ -492,7 +492,7 @@ The comparison engine is selectable via `compare` (BE-0165):
 | `exact` | Pixel-perfect — any channel difference counts as a changed pixel. | Yes (backward-compatible) |
 | `pixelmatch` | Perceptual YIQ color distance with anti-aliasing detection. Tolerates sub-pixel rendering noise and one-pixel edge shifts. | No |
 
-When `compare` is omitted, the engine falls back to the target's `visual_compare` config
+When `compare` is omitted, the engine falls back to the target's `visualCompare` config
 (under `defaults:` or `targets.<name>`), and then to `exact`.
 
 `threshold` is the allowed percentage of differing pixels (default `0.0` = exact match), shared
