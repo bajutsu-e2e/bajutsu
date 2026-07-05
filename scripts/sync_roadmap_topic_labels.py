@@ -78,9 +78,10 @@ EDIT_STATUSES = frozenset({"modified", "renamed", "changed"})
 # to the PR, independent of any roadmap item — so a code/CI/docs-only PR still lands an at-a-glance
 # area label. Keys must be real topic keys from ``TOPICS`` (validated below), so a rename there fails
 # loudly here instead of silently emitting a label no reconcile step recognizes. Every matching rule
-# contributes: a driver change is under ``bajutsu/`` and ``bajutsu/drivers/``, and a PR can carry
-# several ``topic:*`` labels. Trees the roadmap taxonomy has no topic for (docs, dependency lockfiles)
-# are intentionally unmapped — they simply take no topic label.
+# contributes: a ``BajutsuKit/…/*.swift`` file matches both the ``BajutsuKit/`` prefix and the
+# ``.swift`` suffix rule (both ``on-device``, deduped to one label), and a PR touching several trees
+# carries several ``topic:*`` labels. Trees the roadmap taxonomy has no topic for (docs, dependency
+# lockfiles) are intentionally unmapped — they simply take no topic label.
 PATH_TOPIC_PREFIX_RULES: tuple[tuple[str, str], ...] = (
     ("bajutsu/mcp/", "mcp"),
     ("bajutsu/serve/", "serve-cli-features"),
@@ -102,14 +103,16 @@ PATH_TOPIC_EXACT_RULES: tuple[tuple[str, str], ...] = (("Makefile", "dev-infra")
 PATH_TOPIC_SUFFIX_RULES: tuple[tuple[str, str], ...] = ((".swift", "on-device"),)
 
 # Fail fast at import if a path rule names a topic key that ``TOPICS`` no longer defines: the label
-# it would emit could never be reconciled against a roadmap item's, so catch the drift here.
+# it would emit could never be reconciled against a roadmap item's, so catch the drift here. A plain
+# ``raise`` rather than ``assert`` — the guard must hold even under ``python -O`` (which strips asserts).
 _PATH_RULE_KEYS = {
     key for _, key in (*PATH_TOPIC_PREFIX_RULES, *PATH_TOPIC_EXACT_RULES, *PATH_TOPIC_SUFFIX_RULES)
 }
 _UNKNOWN_RULE_KEYS = _PATH_RULE_KEYS - set(TOPIC_KEY_BY_NAME.values())
-assert not _UNKNOWN_RULE_KEYS, (
-    f"PATH_TOPIC_* rules reference topic keys not in TOPICS: {sorted(_UNKNOWN_RULE_KEYS)}"
-)
+if _UNKNOWN_RULE_KEYS:
+    raise ValueError(
+        f"PATH_TOPIC_* rules reference topic keys not in TOPICS: {sorted(_UNKNOWN_RULE_KEYS)}"
+    )
 
 
 @dataclass(frozen=True)
