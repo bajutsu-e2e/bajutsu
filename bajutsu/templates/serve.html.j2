@@ -255,7 +255,13 @@
         <button class="savebtn au-enrich" id="au-enrich" data-testid="author.enrich" disabled>Enrich</button>
         <button class="savebtn" id="au-save" data-testid="author.save" disabled>Save</button>
       </div>
-      <textarea id="au-yaml" class="yaml" placeholder="Capture a flow or load a scenario to edit its YAML here."></textarea>
+      <div class="yamledit">
+        <div class="yamlgutter" id="au-gutter" aria-hidden="true"><div class="yamlgutter-inner" id="au-gutter-inner"></div></div>
+        <textarea id="au-yaml" class="yaml" placeholder="Capture a flow or load a scenario to edit its YAML here." spellcheck="false"></textarea>
+        <div class="yamlcomplete" id="au-complete" hidden></div>
+        <div class="yamlhover" id="au-hover" hidden></div>
+      </div>
+      <div class="au-problems" id="au-problems" data-testid="author.problems" hidden></div>
       <div class="enrich-panel" id="au-enrich-panel" hidden>
         <div class="enrich-head">
           <span class="ttl">Proposed assertions</span>

@@ -51,6 +51,7 @@ from bajutsu.serve.operations.dispatch import (
 from bajutsu.serve.operations.doctor import doctor_check
 from bajutsu.serve.operations.enrich import start_enrich
 from bajutsu.serve.operations.evidence import generate_upload_urls
+from bajutsu.serve.operations.lint import lint_scenario, scenario_schema
 from bajutsu.serve.operations.reads import (
     _find_sid,
     _primary_backend,
@@ -128,6 +129,7 @@ __all__ = [
     "job_log_events",
     "job_sse",
     "job_view",
+    "lint_scenario",
     "list_scenarios",
     "list_targets_payload",
     "login",
@@ -143,6 +145,7 @@ __all__ = [
     "run_file",
     "runs_payload",
     "save_scenario",
+    "scenario_schema",
     "set_api_key",
     "set_provider",
     "simulators_payload",

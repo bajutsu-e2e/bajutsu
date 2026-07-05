@@ -55,6 +55,19 @@ def test_get_reads_delegate_to_operations(tmp_path: Path) -> None:
     assert client.get("/api/nope").status_code == 404
 
 
+def test_lint_and_schema_routes_delegate_to_operations(tmp_path: Path) -> None:
+    # The editor's inline validation (BE-0138) reaches the same ops as the stdlib handler.
+    client = _client(_state(tmp_path))
+    ok = client.post(
+        "/api/lint", json={"yaml": "- name: a\n  steps:\n    - tap: { id: x }\n"}
+    ).json()
+    assert ok == {"ok": True, "diagnostics": []}
+    bad = client.post("/api/lint", json={"yaml": "- steps:\n    - tap: { id: x }\n"}).json()
+    assert bad["ok"] is False
+    assert bad["diagnostics"][0]["line"] == 1
+    assert "Scenario" in client.get("/api/schema").json()["$defs"]
+
+
 def test_upload_urls_route_signs_put_urls(tmp_path: Path) -> None:
     # The FastAPI shell reaches the same evidence operation as the stdlib handler (BE-0110).
     class _FakeStore:

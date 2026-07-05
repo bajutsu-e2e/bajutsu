@@ -190,6 +190,10 @@ def make_app(state: ServeState) -> FastAPI:
             )
         )
 
+    @app.get("/api/schema")
+    async def scenario_schema() -> JSONResponse:
+        return _result(ops.scenario_schema())
+
     @app.get("/api/jobs/{job_id}")
     async def job(job_id: str) -> JSONResponse:
         return _result(ops.job_view(state, job_id))
@@ -304,6 +308,10 @@ def make_app(state: ServeState) -> FastAPI:
     @app.post("/api/scenario/resolve")
     async def resolve_scenario_pick(body: dict[str, Any], request: Request) -> JSONResponse:
         return _result(ops.resolve_scenario_pick(state, body, actor=_actor(request)))
+
+    @app.post("/api/lint")
+    async def lint_scenario(body: dict[str, Any]) -> JSONResponse:
+        return _result(ops.lint_scenario(body))
 
     @app.post("/api/approve")
     async def approve(body: dict[str, Any], request: Request) -> JSONResponse:

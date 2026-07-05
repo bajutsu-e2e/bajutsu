@@ -366,6 +366,16 @@ Where a project's config and scenarios come from. A Git repository + ref is a to
 | [BE-0119](BE-0119-scenario-schema-versioning/BE-0119-scenario-schema-versioning.md) | Version the scenario schema for cross-version reads | Implemented |
 <!-- /GENERATED:implemented-config-sourcing -->
 
+### Surfacing CLI features in the serve Web UI
+
+Bringing the CLI's own tools into the serve Web UI, where authoring happens. The scenario editor's inline lint / schema validation landed first.
+
+<!-- GENERATED:implemented-serve-cli-features -->
+| ID | Item | Status |
+|---|---|---|
+| [BE-0138](BE-0138-serve-lint/BE-0138-serve-lint.md) | Inline scenario validation in the serve editor | Implemented |
+<!-- /GENERATED:implemented-serve-cli-features -->
+
 ### codegen coverage
 
 Turning a passing scenario into a native test in a destination framework's idiom. The web (Playwright) target has landed alongside the original XCUITest one.
@@ -539,7 +549,6 @@ The scope is currently **limited to the iOS Simulator** ([DESIGN §1](../DESIGN.
 | ID | Item | Status |
 |---|---|---|
 | [BE-0137](BE-0137-serve-codegen/BE-0137-serve-codegen.md) | Generate native test code from the serve Web UI | Proposal |
-| [BE-0138](BE-0138-serve-lint/BE-0138-serve-lint.md) | Inline scenario validation in the serve editor | Proposal |
 | [BE-0145](BE-0145-serve-audit/BE-0145-serve-audit.md) | Determinism audit in the serve Web UI | Proposal |
 | [BE-0146](BE-0146-serve-coverage/BE-0146-serve-coverage.md) | E2E coverage map in the serve Web UI | Proposal |
 | [BE-0147](BE-0147-serve-triage/BE-0147-serve-triage.md) | Triage failed runs in the serve Web UI | Proposal |

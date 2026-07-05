@@ -495,6 +495,13 @@ bajutsu serve [--port 8765] [--config bajutsu.config.yaml] [--root .] [--runs ru
   **Claude Code**（ローカルの `claude` CLI。サブスクリプションを利用、テキストのみ）の 3 択で、`serve` は
   この選択を `BAJUTSU_AI_PROVIDER` / `BAJUTSU_AGENT` として起動ジョブに渡します。タブごとの Agent 選択は
   ありません。Claude Code のときは、API キー（設定済みなら）はアラートガードにのみ使われます。
+- **エディタでのシナリオのインライン検証（[BE-0138](../../roadmaps/BE-0138-serve-lint/BE-0138-serve-lint-ja.md)）。**
+  Author タブの YAML エディタは、保存時だけでなく**入力しながら**検証します。デバウンスした `POST /api/lint`
+  が `bajutsu lint` と同じチェックを実行し、行に紐づく診断を返します。診断は該当行のガターのマーカーと、
+  クリックで該当行へ移動できる問題リストに表示されます。YAML のパースエラーは正確な行と列を持ち、スキーマや
+  検証のエラーは可能な限り行を解決します。シナリオの JSON Schema（`GET /api/schema`。`bajutsu schema` が出力する
+  ものと同じ）は、軽量なキー補完（Ctrl/⌘+Space）と hover の説明表示にも使われます。決定的で AI を使わず、デバイスも
+  モデルも起動しません。保存は保存自身の検証を保持するので、インライン検証は失敗をより早く見せるだけです。
 - アプリのビルド済みバイナリ（config `appPath`）が無い場合は、先にそのアプリの `build` コマンドを
   実行します（出力は job ログにストリーム）。ビルド失敗時は run を開始せず中止します。`targets.<name>.build`
   に `appPath` を生成するシェルコマンド（例: `make -C demos/showcase swiftui-build`）を設定すると、
