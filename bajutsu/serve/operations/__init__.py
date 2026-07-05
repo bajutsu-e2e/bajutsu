@@ -23,6 +23,7 @@ from bajutsu.serve.operations._common import (
     _device_args,
     _resolve_org_or_forbid,
 )
+from bajutsu.serve.operations.audit import audit_scenario
 from bajutsu.serve.operations.capture import (
     finish_capture,
     mark_capture,
@@ -116,6 +117,7 @@ __all__ = [
     "active_key_env",
     "api_key_info",
     "approve_baseline",
+    "audit_scenario",
     "bind_config",
     "bind_git_config",
     "bind_upload_config",

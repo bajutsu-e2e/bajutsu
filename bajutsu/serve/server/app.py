@@ -313,6 +313,10 @@ def make_app(state: ServeState) -> FastAPI:
     async def lint_scenario(body: dict[str, Any]) -> JSONResponse:
         return _result(ops.lint_scenario(body))
 
+    @app.post("/api/audit")
+    async def audit_scenario(body: dict[str, Any], request: Request) -> JSONResponse:
+        return _result(ops.audit_scenario(state, body, actor=_actor(request)))
+
     @app.post("/api/approve")
     async def approve(body: dict[str, Any], request: Request) -> JSONResponse:
         return _result(ops.approve_baseline(state, body, actor=_actor(request)))

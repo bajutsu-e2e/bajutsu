@@ -288,6 +288,16 @@ textarea.yaml{flex:1;min-height:0;font-family:ui-monospace,SFMono-Regular,Menlo,
 .au-problem .pl{flex:0 0 auto;font-family:var(--mono);color:var(--ng);font-weight:700}
 .au-problem .pl-none{color:var(--mut);font-weight:400}
 .au-problem .pm{overflow-wrap:anywhere}
+/* Determinism audit (BE-0145): a grade badge + a findings well, colour-keyed by stability. */
+.grade-badge{display:inline-block;padding:.1rem .5rem;border-radius:999px;font-size:.78em;font-weight:700;border:1px solid currentColor;white-space:nowrap}
+.grade-badge.stable{color:var(--ok)}
+.grade-badge.moderate{color:var(--run)}
+.grade-badge.fragile{color:var(--ng)}
+#scn-grade:not([hidden]){margin-top:.4rem}
+.au-audit{margin-top:.5rem;border:1px solid var(--line);border-radius:8px;background:var(--bg2);font-size:.82em;max-height:9rem;overflow:auto}
+.au-audit-head{padding:.3rem .6rem;font-weight:700;color:var(--run);border-bottom:1px solid var(--line)}
+.au-finding{padding:.25rem .6rem;overflow-wrap:anywhere}
+.au-finding+.au-finding{border-top:1px solid var(--line)}
 .yamlcomplete{position:absolute;z-index:30;min-width:10rem;max-height:12rem;overflow:auto;background:var(--bg2);border:1px solid var(--line);border-radius:6px;box-shadow:0 2px 8px rgba(0,0,0,.3);font-family:var(--mono);font-size:12px}
 .yamlcomplete .ci{padding:.2rem .5rem;cursor:pointer;white-space:nowrap}
 .yamlcomplete .ci.sel,.yamlcomplete .ci:hover{background:var(--acc);color:var(--on-acc)}

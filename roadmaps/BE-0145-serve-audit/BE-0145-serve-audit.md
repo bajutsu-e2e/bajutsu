@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0145](BE-0145-serve-audit.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0145") |
+| Implementing PR | _pending_ |
 | Topic | Surfacing CLI features in the serve Web UI |
 <!-- /BE-METADATA -->
 
@@ -38,9 +39,10 @@ the stability signal is most useful — the same reason the GUI editor
 Tier-1, read-only; the UI only shells out to the existing audit.
 
 - **An "Audit" panel / badge** on a scenario, in the editor and the Replay view, posting to
-  `POST /api/audit` (`{target, path}`). It runs the static audit and returns the per-scenario
-  determinism score with the per-selector grades and the findings (timeout-less waits,
-  raw-coordinate gestures, off-ladder selectors).
+  `POST /api/audit`. The editor sends its live, possibly-unsaved `yaml` (so the score reflects what
+  is being written); the Replay view sends `{target, path}` and the server reads the saved file. It
+  runs the static audit and returns the per-scenario determinism score with the per-selector grades
+  and the findings (timeout-less waits, raw-coordinate gestures, off-ladder selectors).
 - **Read-only, deterministic, AI-free.** The audit is static analysis over the scenario; it never
   runs a device, never calls a model, and never gates — it is informational, exactly like the CLI.
 - **The static score first.** This surfaces BE-0049's static half — the cheapest figure, whose
@@ -68,13 +70,15 @@ Tier-1, read-only; the UI only shells out to the existing audit.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Add the `POST /api/audit` endpoint (`{target, path}`) that runs the static audit and returns
-      the per-scenario score
-- [ ] Add the "Audit" panel / badge in the editor and Replay view showing per-selector grades and
-      findings
-- [ ] Ship the static score first; the dynamic repeat-and-diff half stays a later, device-bound slice
+- [x] Add the `POST /api/audit` endpoint (inline `yaml`, or `{target, path}`) that runs the static
+      audit and returns the per-scenario score
+- [x] Add the determinism-audit badge + findings panel in the editor and Replay view showing the
+      grade, the id-based selector ratio, and the findings
+- [x] Ship the static score first; the dynamic repeat-and-diff half stays a later, device-bound slice
 
-No PR has landed yet.
+- _pending_ — `POST /api/audit` (inline `yaml` for the live editor content, `{target, path}` for the
+  Replay view's saved file) wrapping the static audit `bajutsu/audit.py`, plus the grade badge and
+  findings panel in the Author editor and the Replay scenario picker; docs updated in both languages.
 
 ## References
 

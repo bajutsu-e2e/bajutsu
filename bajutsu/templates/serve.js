@@ -48,6 +48,23 @@ function appendLine(el,line){el.textContent+=(el.textContent?'\n':'')+line;el.sc
 function esc(s){return (s||'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]))}
 function setStatus(el,t,c){el.textContent=t;el.className='status '+c}
 
+// ---- determinism audit badge (BE-0145): shared by the Author editor and the Replay views ----
+// The audit returns one report per scenario in a file; the badge shows the file's worst grade and
+// its overall id-based selector ratio. Read-only and AI-free — it never gates a run.
+const GRADE_CLASS={Stable:'stable',Moderate:'moderate',Fragile:'fragile'};
+const GRADE_RANK={Stable:0,Moderate:1,Fragile:2};
+function gradeSummary(reports){
+  const grade=reports.reduce((w,r)=>GRADE_RANK[r.grade]>GRADE_RANK[w]?r.grade:w,'Stable');
+  const sel=reports.reduce((a,r)=>a+r.selectors,0);
+  const stable=reports.reduce((a,r)=>a+r.stable,0);
+  return {grade,text:grade+(sel?' · '+stable+'/'+sel+' id-based':'')};
+}
+function renderGradeBadge(el,reports){
+  if(!reports||!reports.length){el.hidden=true;return;}
+  const {grade,text}=gradeSummary(reports);
+  el.hidden=false;el.textContent=text;el.className='grade-badge '+GRADE_CLASS[grade];
+}
+
 // ---- dark / light toggle (matching CSS-variable blocks live in serve.themes.css) ----
 // Two themes only, driven by a checkbox switch: checked == daylight (light), else midnight (dark).
 // Default behaviour follows the OS and updates live; a manual flip persists until the OS changes.
@@ -267,7 +284,7 @@ async function loadScenarios(){
   const target=$('#target').value;
   try{scnFiles=target?await (await fetch('/api/scenarios?target='+encodeURIComponent(target))).json():[]}catch(e){scnFiles=[]}
   $('#scn').innerHTML=scnFiles.map(s=>`<option value="${esc(s.path)}">${esc(s.file)}</option>`).join('');
-  showInfo();
+  showInfo();replayAudit();
 }
 $('#target').addEventListener('change',()=>{loadScenarios();replayCodegen.sync();replayCodegen.reset();});
 async function loadSims(){
@@ -339,7 +356,21 @@ function showInfo(){
   if(f.scenarios&&f.scenarios.length)h+='<ul class="scnlist">'+f.scenarios.map(s=>`<li><b>${esc(s.name)}</b>${s.description?' &mdash; <span class="sd">'+esc(s.description)+'</span>':''}</li>`).join('')+'</ul>';
   el.innerHTML=h;
 }
-$('#scn').addEventListener('change',()=>{showInfo();replayCodegen.reset();});
+// Grade the selected scenario's determinism (BE-0145). The Replay view has only the file path, so
+// the server reads it from {target, path}; advisory, so a failed audit just leaves the badge hidden.
+async function replayAudit(){
+  const badge=$('#scn-grade'),target=$('#target').value,path=$('#scn').value;
+  badge.hidden=true;
+  if(!target||!path)return;
+  try{
+    const r=await fetch('/api/audit',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({target,path})});
+    if(!r.ok)return;
+    const d=await r.json();
+    if(d.ok&&Array.isArray(d.reports))renderGradeBadge(badge,d.reports);
+  }catch(e){/* advisory: leave the badge hidden */}
+}
+$('#scn').addEventListener('change',()=>{showInfo();replayAudit();replayCodegen.reset();});
 function pickedUdids(){return [...$('#sims').querySelectorAll('.simck:checked')].map(c=>c.value)}
 function onSimChange(){const n=pickedUdids().length;if(n>0)$('#workers').value=n}
 $('#simrefresh').addEventListener('click',loadSims);
@@ -1553,9 +1584,41 @@ if(!NARROW_MQ.matches)initTiling();
       auDiagnostics=[{line:null,column:null,message:'Inline validation unavailable ('+e+')',severity:'error'}];
     }
     auRenderGutter();auRenderProblems();
+    auAudit();  // re-grade determinism on the same live YAML lint just validated (BE-0145)
   }
 
   function auLintSoon(){clearTimeout(auLintTimer);auLintTimer=setTimeout(auLint,400);}
+
+  // ---- Determinism audit (BE-0145): surface the static stability score inline ----
+  // Read-only, AI-free: /api/audit wraps the same static audit the CLI runs (bajutsu/audit.py). It
+  // grades the live YAML, so it rides alongside lint (auLint calls it) rather than on its own timer.
+  async function auAudit(){
+    try{
+      const r=await fetch('/api/audit',{method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({yaml:$('#au-yaml').value})});
+      if(!r.ok)throw new Error('/api/audit returned '+r.status);
+      const d=await r.json();
+      if(!d.ok||!Array.isArray(d.reports))throw new Error('unexpected response');
+      renderGradeBadge($('#au-grade'),d.reports);
+      auRenderFindings(d.reports);
+    }catch(e){
+      // The audit is advisory, and lint already flags a broken scenario loudly, so a failed audit
+      // just clears its badge rather than raising a second alarm.
+      $('#au-grade').hidden=true;$('#au-audit').hidden=true;
+    }
+  }
+
+  function auRenderFindings(reports){
+    const box=$('#au-audit');
+    const multi=reports.length>1;
+    const findings=[];
+    reports.forEach(r=>(r.findings||[]).forEach(f=>
+      findings.push((multi?r.scenario+': ':'')+f.where+' — '+f.detail)));
+    if(!findings.length){box.hidden=true;box.innerHTML='';return;}
+    box.hidden=false;
+    box.innerHTML='<div class="au-audit-head">'+findings.length+' determinism finding'+(findings.length===1?'':'s')+'</div>'+
+      findings.map(t=>'<div class="au-finding">'+esc(t)+'</div>').join('');
+  }
 
   // ---- schema-driven completion / hover ----
   let auSchemaKeyMap=null;   // memoized {name: description}; the schema is fetched once and immutable

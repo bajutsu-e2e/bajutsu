@@ -105,6 +105,8 @@
       <div class="panel" id="panel-run" data-testid="replay.panel-run">
         <label>Scenario</label>
         <select id="scn" data-testid="replay.scenario"></select><div class="names" id="names" data-testid="replay.scenario-info"></div>
+        <!-- Determinism audit badge (BE-0145): the selected scenario's static stability grade. -->
+        <div class="grade-badge" id="scn-grade" data-testid="replay.grade" hidden></div>
         <label>Target</label><select id="target" data-testid="replay.target"></select>
         <div class="row iosonly"><div><label>Workers</label><input id="workers" type="number" min="1" value="1"></div></div>
         <div class="hhead iosonly" data-testid="replay.simulators"><span>Simulators</span><button class="refresh" id="simrefresh" title="refresh devices">&#8635;</button></div>
@@ -269,6 +271,8 @@
     <div class="card yamlpanel" id="au-yamlpanel" data-pane="yaml">
       <div class="yamlhead">
         <span class="ttl">Scenario YAML</span>
+        <!-- Determinism audit badge (BE-0145): the static stability grade of the live YAML. -->
+        <span class="grade-badge" id="au-grade" data-testid="author.grade" hidden></span>
         <div class="yaml-actions">
           <button class="savebtn au-enrich" id="au-enrich" data-testid="author.enrich" disabled>Enrich</button>
           <!-- codegen destination — only the emit valid for the target's backend is offered (BE-0137). -->
@@ -284,6 +288,8 @@
         <div class="yamlhover" id="au-hover" hidden></div>
       </div>
       <div class="au-problems" id="au-problems" data-testid="author.problems" hidden></div>
+      <!-- Determinism findings (BE-0145): timeout-less waits, coordinate gestures, off-ladder selectors. -->
+      <div class="au-audit" id="au-audit" data-testid="author.audit" hidden></div>
       <div class="enrich-panel" id="au-enrich-panel" hidden>
         <div class="enrich-head">
           <span class="ttl">Proposed assertions</span>
