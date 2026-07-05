@@ -80,8 +80,9 @@ class _ScenarioRunner:
     needs — the resolved config, the lease factory, the per-run redactor / mailbox / capability set,
     and the output knobs — are explicit read-only fields instead of captured free variables. This
     makes ``run_one`` legible and unit-testable in isolation, and makes explicit exactly which state
-    each worker touches: the fields are immutable and shared across ``ThreadPoolExecutor`` workers
-    unchanged, precisely as the closure's captured state was.
+    each worker touches: the runner is frozen (no attribute rebinding) and holds no per-scenario
+    mutable state — each ``run_one`` keeps its scenario state local — so it is shared across
+    ``ThreadPoolExecutor`` workers as-is, precisely as the closure's captured state was.
     """
 
     eff: Effective
@@ -285,8 +286,8 @@ def run_all(
         golden_context=golden_context,
     )
     if workers > 1:
-        # >1 hands each worker its own device + per-device resources; the runner's fields are
-        # immutable and shared unchanged, so the loop keeps no shared mutable state.
+        # >1 hands each worker its own device + per-device resources; the runner is frozen and
+        # holds no per-scenario mutable state, so sharing it across workers adds none.
         with ThreadPoolExecutor(max_workers=workers) as pool:
             return list(pool.map(lambda pair: runner.run_one(*pair), list(enumerate(scenarios))))
     return [runner.run_one(i, s) for i, s in enumerate(scenarios)]
