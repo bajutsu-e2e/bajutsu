@@ -358,16 +358,19 @@ function showInfo(){
 }
 // Grade the selected scenario's determinism (BE-0145). The Replay view has only the file path, so
 // the server reads it from {target, path}; advisory, so a failed audit just leaves the badge hidden.
+// A sequence guard drops a stale response so a slow audit for a since-changed selection can't
+// overwrite the badge for the current one.
+let replayAuditSeq=0;
 async function replayAudit(){
-  const badge=$('#scn-grade'),target=$('#target').value,path=$('#scn').value;
+  const badge=$('#scn-grade'),target=$('#target').value,path=$('#scn').value,seq=++replayAuditSeq;
   badge.hidden=true;
   if(!target||!path)return;
   try{
     const r=await fetch('/api/audit',{method:'POST',headers:{'Content-Type':'application/json'},
       body:JSON.stringify({target,path})});
-    if(!r.ok)return;
+    if(!r.ok||seq!==replayAuditSeq)return;
     const d=await r.json();
-    if(d.ok&&Array.isArray(d.reports))renderGradeBadge(badge,d.reports);
+    if(seq===replayAuditSeq&&d.ok&&Array.isArray(d.reports))renderGradeBadge(badge,d.reports);
   }catch(e){/* advisory: leave the badge hidden */}
 }
 $('#scn').addEventListener('change',()=>{showInfo();replayAudit();replayCodegen.reset();});
@@ -1592,18 +1595,24 @@ if(!NARROW_MQ.matches)initTiling();
   // ---- Determinism audit (BE-0145): surface the static stability score inline ----
   // Read-only, AI-free: /api/audit wraps the same static audit the CLI runs (bajutsu/audit.py). It
   // grades the live YAML, so it rides alongside lint (auLint calls it) rather than on its own timer.
+  // Since it fires on every debounced edit, a sequence guard drops a stale response so an older
+  // audit can't overwrite (or clear) the badge/findings for newer YAML.
+  let auAuditSeq=0;
   async function auAudit(){
+    const seq=++auAuditSeq;
     try{
       const r=await fetch('/api/audit',{method:'POST',headers:{'Content-Type':'application/json'},
         body:JSON.stringify({yaml:$('#au-yaml').value})});
       if(!r.ok)throw new Error('/api/audit returned '+r.status);
       const d=await r.json();
+      if(seq!==auAuditSeq)return;  // a newer edit superseded this response
       if(!d.ok||!Array.isArray(d.reports))throw new Error('unexpected response');
       renderGradeBadge($('#au-grade'),d.reports);
       auRenderFindings(d.reports);
     }catch(e){
       // The audit is advisory, and lint already flags a broken scenario loudly, so a failed audit
-      // just clears its badge rather than raising a second alarm.
+      // just clears its badge rather than raising a second alarm — but only if it is still current.
+      if(seq!==auAuditSeq)return;
       $('#au-grade').hidden=true;$('#au-audit').hidden=true;
     }
   }
