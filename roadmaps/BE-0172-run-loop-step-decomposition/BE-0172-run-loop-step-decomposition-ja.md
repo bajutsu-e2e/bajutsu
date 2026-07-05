@@ -9,7 +9,7 @@
 | 提案者 | [@hirosassa](https://github.com/hirosassa) |
 | 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0172") |
-| 実装 PR | [#693](https://github.com/bajutsu-e2e/bajutsu/pull/693) |
+| 実装 PR | [#693](https://github.com/bajutsu-e2e/bajutsu/pull/693)、[#694](https://github.com/bajutsu-e2e/bajutsu/pull/694) |
 | トピック | Codebase quality & technical debt |
 | 関連 | [BE-0143](../BE-0143-run-command-decomposition/BE-0143-run-command-decomposition-ja.md)、[BE-0092](../BE-0092-crawl-coordinator-extraction/BE-0092-crawl-coordinator-extraction-ja.md) |
 <!-- /BE-METADATA -->
