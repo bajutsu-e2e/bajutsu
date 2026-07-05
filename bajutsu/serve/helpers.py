@@ -343,7 +343,6 @@ def record_command(
     target: str,
     goal: str,
     *,
-    agent: str = "",
     backend: str = "",
     udid: str = "",
     erase: bool | None = None,
@@ -353,10 +352,10 @@ def record_command(
     upload_exec: str = "",
 ) -> list[str]:
     """The ``python -m bajutsu record --out OUT --target … --goal …`` argv for an authoring request —
-    the Tier-1 record loop the Record tab drives.  ``agent`` picks the brain ("api" /
-    "claude-code"); ``erase`` / ``dismiss_alerts`` mirror ``run_command`` (None leaves the CLI
-    default — record erases and dismisses by default), and ``out`` is the ``*.yaml`` the
-    recorded scenario is written to."""
+    the Tier-1 record loop the Record tab drives.  ``erase`` / ``dismiss_alerts`` mirror
+    ``run_command`` (None leaves the CLI default — record erases and dismisses by default), and
+    ``out`` is the ``*.yaml`` the recorded scenario is written to. The AI provider is inherited from
+    the serve process's environment (`BAJUTSU_AI_PROVIDER`, BE-0163)."""
     cmd = [
         sys.executable,
         "-m",
@@ -374,7 +373,6 @@ def record_command(
     cmd += flag_args(
         "record",
         {
-            "agent": agent,
             "backend": backend,
             "udid": udid,
             "erase": erase,
@@ -390,7 +388,6 @@ def crawl_command(
     target: str,
     *,
     out: str,
-    agent: str = "",
     backend: str = "",
     udid: str = "",
     workers: int = 1,
@@ -410,10 +407,10 @@ def crawl_command(
     leaves the CLI default — crawl erases by default). ``udid`` may be a comma list and
     ``workers > 1`` crawls with that many workers at once, sharing one screen map: across that many
     simulators on iOS (BE-0064, capped to the pool size by the CLI) or that many browser processes
-    on web (BE-0077). Crawl is AI-driven, so ``agent`` is the brain that
-    proposes what to try ("api" / "claude-code"); blank leaves the CLI default. When ``resume_src``
-    / ``resume_key`` are set, ``out`` points at an existing run and the crawl resumes one pruned
-    branch, appending to that run's map instead of starting a fresh one."""
+    on web (BE-0077). Crawl is AI-driven; the AI provider is inherited from the serve process's
+    environment (`BAJUTSU_AI_PROVIDER`, BE-0163). When ``resume_src`` / ``resume_key`` are set,
+    ``out`` points at an existing run and the crawl resumes one pruned branch, appending to that
+    run's map instead of starting a fresh one."""
     cmd = [
         sys.executable,
         "-m",
@@ -436,7 +433,6 @@ def crawl_command(
     cmd += flag_args(
         "crawl",
         {
-            "agent": agent,
             "backend": backend,
             "udid": udid,
             "workers": workers if workers > 1 else None,

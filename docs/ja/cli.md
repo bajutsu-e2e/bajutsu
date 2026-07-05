@@ -244,8 +244,7 @@ bajutsu record --target <name> --goal "<自然言語ゴール>" [--out <file.yam
 - 出力: `recorded <N> steps -> <path>`。**要 `ANTHROPIC_API_KEY`**（`ClaudeAgent`）。
 - **Git の `--config` は読み取り専用入力です**（[BE-0063](../../roadmaps/BE-0063-git-config-source/BE-0063-git-config-source-ja.md)）。`record` は config を取得したチェックアウトから読みますが、生成したシナリオは**ローカル**へ書きます。`--out` 省略時は（読み取り専用の SHA キーのキャッシュであるチェックアウト内の `scenarios` ディレクトリではなく）**カレントディレクトリ**に自動命名し、チェックアウト内を指す `--out` は拒否します。そのファイルをレビューし、通常の git でリポジトリへコミットしてください。
 - 続けて、オーサリング（およびアラートガード）の AI が消費したトークン量を示す `AI usage:` 行を
-  stderr に出力します。`claude-code` エージェントはここで API トークンを消費しないため、何も表示
-  されません。
+  stderr に出力します。
 
 ## `crawl`
 
@@ -265,7 +264,6 @@ bajutsu crawl --target <name> [--max-screens N] [--max-steps N] [--out <dir>] [o
 | `--target` | （必須） | 対象アプリ |
 | `--max-screens` | `50` | この数の異なる画面を発見したら停止 |
 | `--max-steps` | `200` | この数のアクションを実行したら停止 |
-| `--agent` | `$BAJUTSU_AGENT` または `api` | クロールガイドの AI バックエンド。`api`（Anthropic SDK、従量課金。設定した AI プロバイダを使用し、Anthropic なら `ANTHROPIC_API_KEY`、`BAJUTSU_AI_PROVIDER=bedrock` なら AWS 認証情報 + `BAJUTSU_BEDROCK_MODEL`）か `claude-code`（Claude Code CLI。サブスクリプションを利用、テキストのみ。`record --agent claude-code` と同様）。省略時は `$BAJUTSU_AGENT`（`serve` が Settings の選択から設定）に従い、なければ `api` |
 | `--udid` | `booted` | 対象 Simulator。カンマ区切り（`A,B,C`）で並列プールも指定できる（`--workers` 参照） |
 | `--workers` | `1` | 同時に動かすワーカー数。1 つの画面マップを共有する。iOS は同数のシミュレータ（[BE-0064](../../roadmaps/BE-0064-parallel-crawl/BE-0064-parallel-crawl-ja.md)、`--udid` のデバイス数で上限）、web は同数のブラウザプロセス（[BE-0077](../../roadmaps/BE-0077-parallel-web-crawl/BE-0077-parallel-web-crawl-ja.md)）。`1` はシングルワーカーのクロール |
 | `--backend` | config | actuator 順 |
@@ -490,11 +488,11 @@ bajutsu serve [--port 8765] [--config bajutsu.config.yaml] [--root .] [--runs ru
   展開後の総サイズ、エントリごとの圧縮率の上限）に対して堅牢で、各ターゲットのパス項目はバインド時にバンドル内へ
   封じ込められ、config のバインドは他のリクエストと同じトークン認証の裏にある admin ロールの操作です。任意の
   バイナリを持ち込むことは、認証済みの単一 Mac の `serve` でのみ公開されます。
-- オーサリング（Record と Crawl）の **AI バックエンド**は **Settings → AI プロバイダ** の一箇所で選びます。
+- オーサリング（Record と Crawl）の **AI プロバイダ**は **Settings → AI プロバイダ** の一箇所で選びます。
   **Anthropic API**（`ANTHROPIC_API_KEY`）、**Amazon Bedrock**（AWS 認証情報 + `BAJUTSU_BEDROCK_MODEL`）、
-  **Claude Code**（ローカルの `claude` CLI。サブスクリプションを利用、テキストのみ）の 3 択で、`serve` は
-  この選択を `BAJUTSU_AI_PROVIDER` / `BAJUTSU_AGENT` として起動ジョブに渡します。タブごとの Agent 選択は
-  ありません。Claude Code のときは、API キー（設定済みなら）はアラートガードにのみ使われます。
+  **Anthropic CLI**（`ant`。Pro / Max / Console のシートに対するブラウザ経由の OAuth（SSO）サインイン。
+  BE-0163）の 3 択で、`serve` はこの選択を `BAJUTSU_AI_PROVIDER` として起動ジョブに渡します。タブごとの
+  選択はなく、すべての AI 経路（オーサリング、アラートガード、triage）が同じ 1 つのプロバイダを使います。
 - **エディタでのシナリオのインライン検証（[BE-0138](../../roadmaps/BE-0138-serve-lint/BE-0138-serve-lint-ja.md)）。**
   Author タブの YAML エディタは、保存時だけでなく**入力しながら**検証します。デバウンスした `POST /api/lint`
   が `bajutsu lint` と同じチェックを実行し、行に紐づく診断を返します。診断は該当行のガターのマーカーと、
@@ -576,10 +574,11 @@ bajutsu schema > bajutsu.schema.json
   `BAJUTSU_BEDROCK_MODEL` にはプロバイダ接頭辞付きのモデル id（例 `global.anthropic.claude-opus-4-6-v1`。
   素の Anthropic id は Bedrock では無効）、`AWS_REGION` にはリージョンを設定します。既定は Anthropic
   です。この選択は `record`、`crawl`、`triage`、アラートガードに共通で効きます。
-- オーサリングエージェント: `BAJUTSU_AGENT=claude-code` にすると、`record` / `crawl` は API ではなく
-  ローカルの `claude` CLI（Claude Code のサブスクリプション）でシナリオを書きます。`--agent` を省略した
-  ときの既定値です。`api`（既定）は上記の SDK プロバイダを使います。`serve` の Settings の選択がこの値を
-  起動ジョブに書き込みます。アラートガードはエージェントに関わらず常に SDK プロバイダを使います。
+- Anthropic CLI（BE-0163）: `BAJUTSU_AI_PROVIDER=ant`（または `ai.provider: ant`）を設定すると、公式の
+  `ant` CLI 経由で Claude を呼びます。`ant auth login`（ブラウザ経由の OAuth（SSO）サインイン）を実行
+  すると、API キーの代わりに Claude の Pro / Max / Console のシートに課金されます。`ANTHROPIC_PROFILE`
+  で名前付きの CLI プロファイルを選べます。**`ANTHROPIC_API_KEY` は不要**で、すべての AI 経路で画像も
+  そのまま使えます。
 
 ```bash
 # .env：Anthropic（既定）
@@ -589,4 +588,8 @@ ANTHROPIC_API_KEY=sk-ant-...
 BAJUTSU_AI_PROVIDER=bedrock
 BAJUTSU_BEDROCK_MODEL=global.anthropic.claude-opus-4-6-v1
 AWS_REGION=us-east-1
+
+# .env：代わりに Anthropic CLI（API キー不要。先に `ant auth login` を実行）
+BAJUTSU_AI_PROVIDER=ant
+# ANTHROPIC_PROFILE=work   # 任意: 名前付きの ant CLI プロファイルを選ぶ
 ```

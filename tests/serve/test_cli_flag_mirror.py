@@ -63,7 +63,7 @@ def test_record_flag_surface_is_fully_classified() -> None:
     base_handled = {"target_name", "goal", "config", "out"}
     # name is redundant (serve computes --out); browser/alert_instruction aren't exposed via serve yet.
     not_serve_exposed = {"name", "browser", "alert_instruction"}
-    pass_through = {"agent", "backend", "udid", "erase", "dismiss_alerts", "headed", "upload_exec"}
+    pass_through = {"backend", "udid", "erase", "dismiss_alerts", "headed", "upload_exec"}
     assert base_handled | not_serve_exposed | pass_through == _option_names("record")
 
 
@@ -71,7 +71,6 @@ def test_crawl_flag_surface_is_fully_classified() -> None:
     base_handled = {"target_name", "out", "config", "max_screens", "max_steps"}
     not_serve_exposed = {"prune_global", "alert_instruction"}
     pass_through = {
-        "agent",
         "backend",
         "udid",
         "workers",

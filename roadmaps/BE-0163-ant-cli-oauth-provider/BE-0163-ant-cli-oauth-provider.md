@@ -7,9 +7,11 @@
 |---|---|
 | Proposal | [BE-0163](BE-0163-ant-cli-oauth-provider.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0163") |
+| Implementing PR | [#689](https://github.com/bajutsu-e2e/bajutsu/pull/689) |
 | Topic | AI provider configuration |
+| Related | [BE-0125](../BE-0125-authoring-agent-tool-restriction/BE-0125-authoring-agent-tool-restriction.md) |
 <!-- /BE-METADATA -->
 
 ## Introduction
@@ -143,15 +145,26 @@ Open questions, left **TBD** for implementation time:
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Register `ant` as a provider in `anthropic_client.py` (`PROVIDERS`, `make_client`,
+- [x] Register `ant` as a provider in `anthropic_client.py` (`PROVIDERS`, `make_client`,
       `credential_gap`, `resolve_model`)
-- [ ] Register `ant` in `ai/registry.py`
-- [ ] Remove `bajutsu/claude_code_agent.py` and the `claude-code` agent kind (`agents.py`,
+- [x] Register `ant` in `ai/registry.py`
+- [x] Remove `bajutsu/claude_code_agent.py` and the `claude-code` agent kind (`agents.py`,
       `crawl_guide.py`'s `ClaudeCodeActionProposer`, `ai_availability.py`, the `--agent` option
       in `record` / `crawl`)
-- [ ] Update `serve`'s AI-provider selector and settings UI
-- [ ] Update docs (`docs/configuration.md`, `docs/recording.md`, Japanese mirrors)
-- [ ] Tests for the new provider branch; remove/replace `claude_code_agent` tests
+- [x] Update `serve`'s AI-provider selector and settings UI
+- [x] Update docs (`docs/configuration.md`, `docs/recording.md`, Japanese mirrors)
+- [x] Tests for the new provider branch; remove/replace `claude_code_agent` tests
+
+Log:
+
+- [#689](https://github.com/bajutsu-e2e/bajutsu/pull/689) — the `ant` provider ships end to end: a third authentication path in `anthropic_client.py`
+  (`auth_token` from `ant auth print-credentials`), registered on the shared Anthropic adapter, with
+  the `claude-code` agent kind and its `--agent` option, denylist, and `ai_availability` CLI branch
+  removed; `serve`'s Settings selector now offers `api-key` / `bedrock` / `ant`. Docs (both
+  languages) and tests updated; `make check` green.
+- Follow-up: renamed the direct-API provider from `anthropic` to `api-key` (the name now states the
+  *auth method*, since Bedrock and `ant` are Anthropic too). The legacy `anthropic` name still
+  resolves to `api-key` via `normalize_provider`, so existing configs keep working.
 
 ## References
 

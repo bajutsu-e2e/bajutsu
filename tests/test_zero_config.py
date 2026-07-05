@@ -39,7 +39,7 @@ def test_importing_the_cli_pulls_in_no_ai_sdk() -> None:
     """
     code = (
         "import os\n"
-        "for v in ('ANTHROPIC_API_KEY','BAJUTSU_AI_PROVIDER','BAJUTSU_BEDROCK_MODEL','BAJUTSU_AGENT'):\n"
+        "for v in ('ANTHROPIC_API_KEY','BAJUTSU_AI_PROVIDER','BAJUTSU_BEDROCK_MODEL'):\n"
         "    os.environ.pop(v, None)\n"
         "import sys\n"
         "import bajutsu.cli  # runs the command scan — every commands/<name>.py is imported\n"
@@ -62,13 +62,12 @@ def test_importing_the_cli_pulls_in_no_ai_sdk() -> None:
 
 @pytest.fixture
 def _no_ai_setup(monkeypatch: pytest.MonkeyPatch) -> None:
-    """No key, no provider, no agent, no .env — and any model-client construction fails loudly."""
+    """No key, no provider, no .env — and any model-client construction fails loudly."""
     monkeypatch.setattr("bajutsu.cli.load_dotenv", lambda *a, **k: None)
     for var in (
         "ANTHROPIC_API_KEY",
         "BAJUTSU_AI_PROVIDER",
         "BAJUTSU_BEDROCK_MODEL",
-        "BAJUTSU_AGENT",
     ):
         monkeypatch.delenv(var, raising=False)
     monkeypatch.setattr(

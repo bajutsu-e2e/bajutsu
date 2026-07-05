@@ -23,7 +23,7 @@ defaults:                       # 全ターゲット共通の既定
   capture: [screenshot.after, elements, actionLog]
   redact:  { headers: [Authorization, Cookie], fields: [token, password] }
   secrets: [LOGIN_PASSWORD]         # ${secrets.X} に使える環境変数名（実値は証跡でマスク）
-  ai:      { provider: anthropic, keyEnv: ANTHROPIC_API_KEY }   # AI 経路のプロバイダ / モデル / エンドポイント / キー（下記）
+  ai:      { provider: api-key, keyEnv: ANTHROPIC_API_KEY }   # AI 経路のプロバイダ / モデル / エンドポイント / キー（下記）
   reservedNamespaces: [auth, nav]   # 共有フロー / コンポーネントの id 契約（情報用）
 
 targets:
@@ -92,18 +92,19 @@ AI 経路、すなわち `record`、`triage --ai`、`--dismiss-alerts` のガー
 ```yaml
 defaults:
   ai:
-    provider: anthropic                      # 登録済みのプロバイダ名。現状は anthropic（既定）か bedrock
+    provider: api-key                        # 登録済みのプロバイダ名。現状は api-key（既定）/ bedrock / ant
     model:    claude-opus-4-8                 # 任意: その経路の既定モデルを上書き
-    baseUrl:  https://ai-gateway.internal/v1  # 任意: 自己ホストのゲートウェイ / 社内プロキシ（anthropic プロバイダ）
+    baseUrl:  https://ai-gateway.internal/v1  # 任意: 自己ホストのゲートウェイ / 社内プロキシ（api-key プロバイダ）
     keyEnv:   ANTHROPIC_API_KEY               # キーを保持する環境変数の「名前」。キーの値そのものは置かない
 ```
 
-- **プロバイダは単一のインターフェースの背後に置かれたバックエンドです**（[BE-0104](../../roadmaps/BE-0104-vendor-neutral-ai-backend/BE-0104-vendor-neutral-ai-backend-ja.md)）。AI 経路は、プラットフォームが `Driver` インターフェースの背後のバックエンドであるのと同じように、ベンダー中立なシーム（`bajutsu/ai`）を通じてのみモデルへ到達します。そのため `provider` は固定された 2 値ではなく、**レジストリで検証される開放型**の値です。現在は `anthropic` と `bedrock` のアダプタが同梱されており（Bedrock は Anthropic SDK の一変種なので、Anthropic アダプタの内側に収まります）、未知の名前は AI 経路が最初にプロバイダを解決する時点で明確なエラーとともに fail closed になります。この検証は config の読み込み時ではなく AI 層で行います。決定論的なコアは AI プロバイダのスタックを import してはならないため（[BE-0112](../../roadmaps/BE-0112-layer-boundary-enforcement/BE-0112-layer-boundary-enforcement-ja.md)）、config は名前をそのまま受け取り、正当な名前を保持するレジストリが未登録の名前を拒否します。モデルファミリ（たとえば OpenAI 互換エンドポイント）の追加はアダプタの登録にあたり、下記の秘匿化とフェイルクローズの保証を構造上そのまま受け継ぎます。
+- **プロバイダは単一のインターフェースの背後に置かれたバックエンドです**（[BE-0104](../../roadmaps/BE-0104-vendor-neutral-ai-backend/BE-0104-vendor-neutral-ai-backend-ja.md)）。AI 経路は、プラットフォームが `Driver` インターフェースの背後のバックエンドであるのと同じように、ベンダー中立なシーム（`bajutsu/ai`）を通じてのみモデルへ到達します。そのため `provider` は固定された集合ではなく、**レジストリで検証される開放型**の値です。現在は `api-key`、`bedrock`、`ant` のアダプタが同梱されており（三つとも Anthropic アダプタを共有し、名前は認証手段を表します。直接の API キー、Bedrock の AWS 資格情報、`ant` CLI の OAuth トークンです。BE-0163。旧称 `anthropic` は今も `api-key` として解決されます）、未知の名前は AI 経路が最初にプロバイダを解決する時点で明確なエラーとともに fail closed になります。この検証は config の読み込み時ではなく AI 層で行います。決定論的なコアは AI プロバイダのスタックを import してはならないため（[BE-0112](../../roadmaps/BE-0112-layer-boundary-enforcement/BE-0112-layer-boundary-enforcement-ja.md)）、config は名前をそのまま受け取り、正当な名前を保持するレジストリが未登録の名前を拒否します。モデルファミリ（たとえば OpenAI 互換エンドポイント）の追加はアダプタの登録にあたり、下記の秘匿化とフェイルクローズの保証を構造上そのまま受け継ぎます。
 - **キーは設定ファイルに置きません。** `keyEnv` は環境変数の名前を指すだけで、値は呼び出し時に環境から読みます。これにより秘密がリポジトリやアップロードされたバンドルに入りません。`baseUrl` は Anthropic SDK を自己ホストのゲートウェイやプロキシへ向けます（`Anthropic(base_url=…, api_key=os.environ[keyEnv])`）。スクリーンショットや要素ツリーは、ベンダーの既定先ではなく、あなたが設定したエンドポイントにだけ届きます。Bedrock は標準の AWS 資格情報チェーン（`AWS_REGION` と、環境変数 / 共有プロファイル / インスタンスまたはタスクロール）のままで、プロバイダ接頭辞付きの `model` を必要とします。
-- **設定が先、環境変数はフォールバック。** 省略したフィールドは現状の環境変数（`BAJUTSU_AI_PROVIDER`、`ANTHROPIC_API_KEY`、`BAJUTSU_BEDROCK_MODEL`）へフォールバックするので、`ai` ブロックの無い config はこれまでどおり動きます。
+- **`ant` は API キー無しでサブスクリプション（SSO）のシートに課金します（BE-0163）。** `ant` プロバイダは公式の [Anthropic CLI](https://github.com/anthropics/anthropic-cli) 経由でモデルへ到達します。CLI を導入し、`ant auth login`（Claude Console に対するブラウザ経由の OAuth（SSO）サインイン）を実行してください。Bajutsu は呼び出し時に CLI からベアラートークンを読み、API キーではなく `auth_token` として SDK に渡すため、Claude の Pro / Max / Console のシートに課金されます。`ANTHROPIC_PROFILE` で名前付きの CLI プロファイルを選べます。API キーは不要で、すべての AI 経路（オーサリング、アラートガード、`triage --ai`）で画像もそのまま使えます。`ant` はユーザー自身が導入する外部バイナリで、Bajutsu が同梱・インストールすることはありません。
+- **設定が先、環境変数はフォールバック。** 省略したフィールドは現状の環境変数（`BAJUTSU_AI_PROVIDER`、`ANTHROPIC_API_KEY`、`BAJUTSU_BEDROCK_MODEL`。`ant` プロバイダは `ANTHROPIC_PROFILE` を尊重しつつ CLI から資格情報を読みます）へフォールバックするので、`ai` ブロックの無い config はこれまでどおり動きます。
 - **フェイルクローズ。** `record`、`triage --ai`、明示的に要求した `--dismiss-alerts` は、選択したプロバイダに使える資格情報が無いとき、プロバイダ別の明確なエラーで終了します。ホストされた既定先へ黙ってフォールバックするクライアントは決して構築しません。
 - **テキスト系入力は秘匿化され、スクリーンショットはできません。** モデルへ送る要素ツリー、失敗のテキスト、（ユーザー指定もありうる）アラート指示は、証跡の書き出しと同じ run スコープの秘匿化（対象の `redact` キーと解決済みの秘密値）で隠します。スクリーンショットは画像であり、秘匿化はテキストを隠せても画素は隠せません。そこで二つ目の保証がスクリーンショットを受け持ちます。スクリーンショットを含むすべての入力は、あなたが設定したプロバイダ／エンドポイントにのみ送られます。
-- **画面に表示された秘密は画素に残ります（BE-0151）。** 画像はマスクできないため、アプリが画面に表示する秘密（入力したパスワード、OTP、画面上の個人情報など）は、AI が見るスクリーンショットの画素にそのまま残ります。`record` は毎ターンのライブ画面を、`triage --ai` は run の `runs/` 証跡に保存された失敗時点のスクリーンショット（あれば）を送ります。この画像は設定から解決した AI プロバイダへ送られますが、`record --agent claude-code` だけは SDK のプロバイダ/エンドポイント設定を使わず `claude` CLI 経由でモデルへ届きます。秘匿化が覆うのはテキスト（ネットワーク、要素ツリー、ログ）に現れる `${secrets.X}` の値であって、アプリが画面に描画した内容ではありません。これが不意打ちにならないよう、対象が `secrets:` をバインドしているとき、`record` と `triage --ai` は一度だけ警告を出します。これは緩和策ではなく告知です（視覚的な証跡こそが目的だからです）。この露出を完全に避けたいなら、秘密を含むフローで AI による作成を使わないか、テスト対象アプリで秘密を画面に出さないようにします。
+- **画面に表示された秘密は画素に残ります（BE-0151）。** 画像はマスクできないため、アプリが画面に表示する秘密（入力したパスワード、OTP、画面上の個人情報など）は、AI が見るスクリーンショットの画素にそのまま残ります。`record` は毎ターンのライブ画面を、`triage --ai` は run の `runs/` 証跡に保存された失敗時点のスクリーンショット（あれば）を送ります。この画像は設定から解決した AI プロバイダへ送られます。秘匿化が覆うのはテキスト（ネットワーク、要素ツリー、ログ）に現れる `${secrets.X}` の値であって、アプリが画面に描画した内容ではありません。これが不意打ちにならないよう、対象が `secrets:` をバインドしているとき、`record` と `triage --ai` は一度だけ警告を出します。これは緩和策ではなく告知です（視覚的な証跡こそが目的だからです）。この露出を完全に避けたいなら、秘密を含むフローで AI による作成を使わないか、テスト対象アプリで秘密を画面に出さないようにします。
 
 ### mailbox（`email` ステップ）
 

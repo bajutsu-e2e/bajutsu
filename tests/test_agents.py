@@ -1,29 +1,24 @@
-"""Tests for authoring-agent selection (bajutsu.agents)."""
+"""Tests for authoring-agent construction (bajutsu.agents).
+
+There is one authoring agent — the SDK-based `ClaudeAgent` — whose provider (Anthropic API /
+Bedrock / the Anthropic CLI `ant`) is a property of the resolved `ai` config (BE-0104 / BE-0163),
+not a separate agent kind. `make_agent` just builds it.
+"""
 
 from __future__ import annotations
 
-import pytest
-
-from bajutsu.agents import AGENT_ENV, make_agent, resolve_kind
-
-
-def test_resolve_kind_explicit_wins(monkeypatch: pytest.MonkeyPatch) -> None:
-    # An explicit kind beats the env default.
-    monkeypatch.setenv(AGENT_ENV, "claude-code")
-    assert resolve_kind("api") == "api"
+from bajutsu.agents import make_agent, make_enrichment_agent
+from bajutsu.anthropic_client import AiConfig
 
 
-def test_resolve_kind_falls_back_to_env(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv(AGENT_ENV, "claude-code")
-    assert resolve_kind("") == "claude-code"
+def test_make_agent_builds_the_sdk_authoring_agent() -> None:
+    from bajutsu.claude_agent import ClaudeAgent
+
+    agent = make_agent(ai=AiConfig(provider="ant"))
+    assert isinstance(agent, ClaudeAgent)
 
 
-def test_resolve_kind_defaults_to_api(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.delenv(AGENT_ENV, raising=False)
-    assert resolve_kind("") == "api"
+def test_make_enrichment_agent_builds_the_enrichment_agent() -> None:
+    from bajutsu.claude_enrich_agent import ClaudeEnrichmentAgent
 
-
-def test_make_agent_rejects_unknown_kind() -> None:
-    # resolve_kind never validates; the construction seam does.
-    with pytest.raises(ValueError, match="unknown agent"):
-        make_agent("bogus")
+    assert isinstance(make_enrichment_agent(), ClaudeEnrichmentAgent)

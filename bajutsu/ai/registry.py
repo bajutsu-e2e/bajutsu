@@ -3,7 +3,7 @@
 Generalizes the pre-BE-0104 two-value ``provider`` (`anthropic` / `bedrock`) into a registry keyed
 by provider name → adapter, so adding a provider is *register an adapter*, not *edit a factory
 `if`-chain*. This item ships the registry and its built-in Anthropic adapter (covering the Anthropic
-API and Amazon Bedrock); it registers no second vendor.
+API, Amazon Bedrock, and the Anthropic CLI `ant` — BE-0163); it registers no second vendor.
 
 **The adapter contract.** A provider adapter registers an `Adapter`: a ``factory`` that builds its
 `AiBackend` from the resolved `ai` config, and a ``credential_gap`` that reports what the provider
@@ -19,7 +19,12 @@ from collections.abc import Callable
 from dataclasses import dataclass
 
 from bajutsu.ai.base import AiBackend
-from bajutsu.anthropic_client import PROVIDER_ENV, AiConfig
+from bajutsu.anthropic_client import (
+    DEFAULT_PROVIDER,
+    PROVIDER_ENV,
+    AiConfig,
+    normalize_provider,
+)
 
 BackendFactory = Callable[[AiConfig | None], AiBackend]
 CredentialGap = Callable[[AiConfig | None], str | None]
@@ -45,18 +50,22 @@ def _ensure_builtins() -> None:
     """Register the built-in Anthropic adapter on first use (lazy, to keep imports acyclic).
 
     Keyed on the built-in names, not on the registry being empty: a third-party or test adapter
-    registering first must not suppress `anthropic`/`bedrock` (that would `KeyError` when they
+    registering first must not suppress `api-key`/`bedrock`/`ant` (that would `KeyError` when they
     later resolve). `setdefault` also leaves an earlier explicit registration for those names intact.
     """
-    if "anthropic" in _ADAPTERS and "bedrock" in _ADAPTERS:
+    if all(name in _ADAPTERS for name in ("api-key", "bedrock", "ant")):
         return
     from bajutsu.ai import anthropic
     from bajutsu.anthropic_client import credential_gap
 
     adapter = Adapter(factory=anthropic.factory, credential_gap=credential_gap)
-    # Anthropic API and Amazon Bedrock are one adapter — Bedrock is an Anthropic-SDK variant (BE-0053).
-    _ADAPTERS.setdefault("anthropic", adapter)
+    # The direct Anthropic API (`api-key`), Amazon Bedrock, and the Anthropic CLI (`ant`, BE-0163)
+    # share one adapter: Bedrock is an Anthropic-SDK hosting variant (BE-0053) and `ant` an
+    # authentication variant — `AnthropicBackend` is provider-agnostic once it holds a constructed
+    # SDK client. The legacy `anthropic` name resolves via `normalize_provider`, so it needs no slot.
+    _ADAPTERS.setdefault("api-key", adapter)
     _ADAPTERS.setdefault("bedrock", adapter)
+    _ADAPTERS.setdefault("ant", adapter)
 
 
 def known_providers() -> tuple[str, ...]:
@@ -77,8 +86,8 @@ def _provider_name(ai: AiConfig | None) -> str:
     Raises:
         ValueError: the resolved name has no registered adapter.
     """
-    raw = (ai and ai.provider) or os.environ.get(PROVIDER_ENV) or "anthropic"
-    value = raw.strip().lower()
+    raw = (ai and ai.provider) or os.environ.get(PROVIDER_ENV) or DEFAULT_PROVIDER
+    value = normalize_provider(raw)
     _ensure_builtins()
     if value not in _ADAPTERS:
         allowed = ", ".join(repr(p) for p in _ADAPTERS)

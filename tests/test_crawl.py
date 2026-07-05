@@ -1134,30 +1134,18 @@ def _crawl_config(tmp_path: Path) -> Path:
     return cfg
 
 
-def test_cli_crawl_unknown_agent(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.delenv("BAJUTSU_AGENT", raising=False)
-    cfg = _crawl_config(tmp_path)
-    r = _cli.invoke(
-        app, ["crawl", "--target", "demo", "--agent", "carrier-pigeon", "--config", str(cfg)]
-    )
-    assert r.exit_code == 2
-    assert "unknown --agent" in r.output
-    assert "api" in r.output and "claude-code" in r.output
-
-
 def test_cli_crawl_fails_closed_without_credential(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr("bajutsu.cli.load_dotenv", lambda *a, **k: None)  # no .env key leak-in
     monkeypatch.delenv("BAJUTSU_AI_PROVIDER", raising=False)
-    monkeypatch.delenv("BAJUTSU_AGENT", raising=False)
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
     monkeypatch.setattr(
         "anthropic.Anthropic",
         lambda *a, **k: pytest.fail("client constructed despite missing credential"),
     )
     cfg = _crawl_config(tmp_path)
-    # fake backend selects fine, so the api guide's missing credential is what fails.
-    r = _cli.invoke(app, ["crawl", "--target", "demo", "--agent", "api", "--config", str(cfg)])
+    # fake backend selects fine, so the guide's missing credential (default anthropic provider) fails.
+    r = _cli.invoke(app, ["crawl", "--target", "demo", "--config", str(cfg)])
     assert r.exit_code == 2
     assert "no AI credential" in r.output and "ANTHROPIC_API_KEY" in r.output

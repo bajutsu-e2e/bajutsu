@@ -341,7 +341,7 @@ bajutsu record --target <name> --goal "<natural-language goal>" [--out <file.yam
   is the read-only SHA-keyed cache), and an `--out` inside the checkout is refused. Review the file
   and commit it to the repository through normal git.
 - An `AI usage:` line with the tokens the authoring (and any alert-guard) AI consumed follows on
-  stderr. The `claude-code` agent bills no API tokens here, so it shows nothing.
+  stderr.
 
 ## `crawl`
 
@@ -362,7 +362,6 @@ bajutsu crawl --target <name> [--max-screens N] [--max-steps N] [--out <dir>] [o
 | `--target` | (required) | the target app |
 | `--max-screens` | `50` | stop after discovering this many distinct screens |
 | `--max-steps` | `200` | stop after taking this many actions |
-| `--agent` | `$BAJUTSU_AGENT` or `api` | AI backend for the crawl guide: `api` (the Anthropic SDK, pay-per-token; uses the configured AI provider — `ANTHROPIC_API_KEY` for Anthropic, or AWS credentials + `BAJUTSU_BEDROCK_MODEL` when `BAJUTSU_AI_PROVIDER=bedrock`) or `claude-code` (the Claude Code CLI, drawing on your subscription — text-only, like `record --agent claude-code`). Omitted, it follows `$BAJUTSU_AGENT` (which `serve` sets from its Settings selector), then `api` |
 | `--udid` | `booted` | the target Simulator — or a comma list (`A,B,C`) for a parallel pool (see `--workers`) |
 | `--workers` | `1` | crawl with this many workers at once, sharing one screen map: across this many simulators on iOS ([BE-0064](../roadmaps/BE-0064-parallel-crawl/BE-0064-parallel-crawl.md), capped to the `--udid` devices) or this many browser processes on web ([BE-0077](../roadmaps/BE-0077-parallel-web-crawl/BE-0077-parallel-web-crawl.md)). `1` = single-worker crawl |
 | `--backend` | config | actuator order |
@@ -613,11 +612,11 @@ bajutsu serve [--port 8765] [--config bajutsu.config.yaml] [--root .] [--runs ru
   compression-ratio caps); every target's path fields are confined to the bundle at bind; and binding
   a config is an admin-role action behind the same token auth as every other request — bringing an
   arbitrary binary is only exposed on an authenticated, single-Mac `serve`.
-- The **AI backend for authoring** (Record and Crawl) is one global choice in **Settings → AI
+- The **AI provider for authoring** (Record and Crawl) is one global choice in **Settings → AI
   provider**: **Anthropic API** (`ANTHROPIC_API_KEY`), **Amazon Bedrock** (AWS credentials +
-  `BAJUTSU_BEDROCK_MODEL`), or **Claude Code** (the local `claude` CLI on your subscription — text
-  only). `serve` applies it to spawned jobs via `BAJUTSU_AI_PROVIDER` / `BAJUTSU_AGENT`, so there is
-  no per-tab agent picker. Under Claude Code, an API key (if set) still powers only the alert guard.
+  `BAJUTSU_BEDROCK_MODEL`), or the **Anthropic CLI** (`ant`, a browser-based OAuth/SSO sign-in on your
+  Pro/Max/Console seat — BE-0163). `serve` applies it to spawned jobs via `BAJUTSU_AI_PROVIDER`, so
+  there is no per-tab picker; every AI path (authoring, the alert guard, triage) uses the one provider.
 - **Inline scenario validation in the editor ([BE-0138](../roadmaps/BE-0138-serve-lint/BE-0138-serve-lint.md)).**
   The Author tab's YAML editor validates **as you type**, not only on Save: a debounced `POST /api/lint`
   runs the same `bajutsu lint` checks and returns line-anchored diagnostics, shown as a gutter marker
@@ -724,10 +723,10 @@ bajutsu schema > bajutsu.schema.json
   `BAJUTSU_BEDROCK_MODEL` to a provider-prefixed model id (e.g. `global.anthropic.claude-opus-4-6-v1`;
   the bare Anthropic id is not a valid Bedrock id) and `AWS_REGION` for the region. Anthropic is the
   default. The same selection drives `record`, `crawl`, `triage`, and the alert guard.
-- Authoring agent: `BAJUTSU_AGENT=claude-code` makes `record` / `crawl` author through the local
-  `claude` CLI (your Claude Code subscription) instead of the API, the default when `--agent` is
-  omitted; `api` (the default) uses the SDK provider above. `serve`'s Settings selector writes this
-  for spawned jobs. The alert guard always uses the SDK provider, regardless of the agent.
+- Anthropic CLI (BE-0163): set `BAJUTSU_AI_PROVIDER=ant` (or `ai.provider: ant`) to reach Claude
+  through the official `ant` CLI — run `ant auth login` (a browser-based OAuth/SSO sign-in) so a
+  Claude Pro/Max/Console seat is billed instead of an API key; `ANTHROPIC_PROFILE` selects a named CLI
+  profile. **No `ANTHROPIC_API_KEY`** is needed, and every AI path keeps full vision.
 
 ```bash
 # .env — Anthropic (default)
@@ -737,4 +736,8 @@ ANTHROPIC_API_KEY=sk-ant-...
 BAJUTSU_AI_PROVIDER=bedrock
 BAJUTSU_BEDROCK_MODEL=global.anthropic.claude-opus-4-6-v1
 AWS_REGION=us-east-1
+
+# .env — Anthropic CLI instead (no API key; run `ant auth login` first)
+BAJUTSU_AI_PROVIDER=ant
+# ANTHROPIC_PROFILE=work   # optional: select a named ant CLI profile
 ```

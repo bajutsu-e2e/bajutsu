@@ -161,6 +161,17 @@ def test_triage_ai_fails_closed_without_credential(
     assert "no AI credential" in r.output
 
 
+def test_credential_gap_messages_for_ant_are_actionable() -> None:
+    # The ant provider's fail-closed messages (BE-0163) name the fix, mirroring bedrock's.
+    from bajutsu.anthropic_client import ANT_CLI_MISSING, ANT_CLI_UNAUTHENTICATED
+    from bajutsu.cli._shared import _credential_gap_message
+    from bajutsu.config import load_config, resolve
+
+    eff = resolve(load_config("targets: { demo: { bundleId: com.x } }"), "demo")
+    assert "ant auth login" in _credential_gap_message(ANT_CLI_MISSING, eff)
+    assert "ant auth login" in _credential_gap_message(ANT_CLI_UNAUTHENTICATED, eff)
+
+
 def test_legacy_app_flag_is_rejected(tmp_path: Path) -> None:
     # Hard cutover (BE-0057): there is no `--app` alias — the old flag exits 2 (unknown option).
     cfg, scn = _write(tmp_path)
@@ -263,10 +274,12 @@ def test_record_writes_the_authored_scenario(
     # The record command's option handling and output-path selection, device- and AI-free: the
     # authoring loop, driver launch, and launchServer are the external boundaries, stubbed here so
     # the surrounding command body (target/browser/out resolution, then the file write) is covered.
-    # --agent claude-code + --no-dismiss-alerts keeps the credential gate off this deterministic path.
+    # A dummy key clears the credential gate and --no-dismiss-alerts skips the alert guard, so no
+    # model client is ever built on this deterministic path.
     import bajutsu.cli.commands.record as rec
     from bajutsu.scenario import load_scenarios
 
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test")
     authored = load_scenarios("- name: authored\n  steps:\n    - tap: { id: home.title }\n")[0]
     monkeypatch.setattr("bajutsu.simctl.resolve_udid", lambda u: "FAKE-UDID")
     monkeypatch.setattr(rec, "make_agent", lambda *a, **k: object())
@@ -293,8 +306,6 @@ def test_record_writes_the_authored_scenario(
             "do x",
             "--out",
             str(out),
-            "--agent",
-            "claude-code",
             "--no-dismiss-alerts",
             "--config",
             str(cfg),
@@ -315,38 +326,6 @@ def _fake_record_config(tmp_path: Path) -> Path:
     return cfg
 
 
-def test_record_unbuildable_agent_exits_2(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    # A misconfigured authoring agent is an actionable error surfaced before any device work
-    # (exit 2), not a crash: make_agent's ValueError is caught and echoed.
-    import bajutsu.cli.commands.record as rec
-
-    def bad_agent(*_a: object, **_k: object) -> object:
-        raise ValueError("bad agent config")
-
-    monkeypatch.setattr(rec, "make_agent", bad_agent)
-    r = runner.invoke(
-        app,
-        [
-            "record",
-            "--target",
-            "demo",
-            "--backend",
-            "fake",
-            "--goal",
-            "do x",
-            "--out",
-            str(tmp_path / "rec.yaml"),
-            "--agent",
-            "claude-code",
-            "--no-dismiss-alerts",
-            "--config",
-            str(_fake_record_config(tmp_path)),
-        ],
-    )
-    assert r.exit_code == 2
-    assert "bad agent config" in r.output
-
-
 def test_record_device_error_exits_2(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     # A device failure while bringing the app up is reported and exits 2, not an uncaught traceback.
     import bajutsu.cli.commands.record as rec
@@ -355,6 +334,7 @@ def test_record_device_error_exits_2(tmp_path: Path, monkeypatch: pytest.MonkeyP
     def no_device(*_a: object, **_k: object) -> object:
         raise _simctl.DeviceError("no booted simulator")
 
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test")  # clear the credential gate
     monkeypatch.setattr("bajutsu.simctl.resolve_udid", lambda u: "FAKE-UDID")
     monkeypatch.setattr(rec, "make_agent", lambda *a, **k: object())
     monkeypatch.setattr(rec, "start_launch_server", lambda *a, **k: (lambda: None, None))
@@ -371,8 +351,6 @@ def test_record_device_error_exits_2(tmp_path: Path, monkeypatch: pytest.MonkeyP
             "do x",
             "--out",
             str(tmp_path / "rec.yaml"),
-            "--agent",
-            "claude-code",
             "--no-dismiss-alerts",
             "--config",
             str(_fake_record_config(tmp_path)),
@@ -783,7 +761,6 @@ def test_claude_readiness_reachable_with_a_credential(monkeypatch: pytest.Monkey
     from bajutsu.cli.commands.doctor import _claude_readiness
 
     monkeypatch.delenv("BAJUTSU_AI_PROVIDER", raising=False)
-    monkeypatch.delenv("BAJUTSU_AGENT", raising=False)
     monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test")
     eff = resolve(load_config("targets: { demo: { bundleId: com.x } }"), "demo")
     line = _claude_readiness(eff)
@@ -798,7 +775,6 @@ def test_claude_readiness_not_configured_without_a_credential(
     from bajutsu.cli.commands.doctor import _claude_readiness
 
     monkeypatch.delenv("BAJUTSU_AI_PROVIDER", raising=False)
-    monkeypatch.delenv("BAJUTSU_AGENT", raising=False)
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
     eff = resolve(load_config("targets: { demo: { bundleId: com.x } }"), "demo")
     line = _claude_readiness(eff)
@@ -935,18 +911,6 @@ def test_crawl_no_backend_available(tmp_path: Path) -> None:
     assert not out.exists()
 
 
-def test_crawl_agent_from_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    # With no --agent, crawl resolves the kind from $BAJUTSU_AGENT (set by serve's Settings
-    # selector), mirroring record. An invalid env value surfaces the same validation error, which
-    # proves the env is consulted — and it fails before any device work.
-    monkeypatch.setattr("bajutsu.cli.load_dotenv", lambda *a, **k: None)
-    monkeypatch.setenv("BAJUTSU_AGENT", "bad")
-    cfg, _ = _write(tmp_path)
-    r = runner.invoke(app, ["crawl", "--target", "demo", "--config", str(cfg)])
-    assert r.exit_code == 2
-    assert "unknown --agent 'bad'" in r.output
-
-
 # --- crawl AI-provider credential gate (BE-0053 / BE-0097) ------------------------------------
 # The crawl-specific `_ai_credential_gap` was removed by BE-0097: crawl now uses the shared,
 # provider-aware `_require_ai_credential(eff)` from `_shared.py`, and `credential_gap(eff.ai)` is
@@ -955,15 +919,12 @@ def test_crawl_agent_from_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -
 
 def _no_dotenv(monkeypatch: pytest.MonkeyPatch) -> None:
     """Make the credential-gate CLI tests hermetic: stub the @app.callback .env load so a
-    developer's local .env can't re-inject ANTHROPIC_API_KEY / a provider, and clear those vars.
-    BAJUTSU_AGENT is cleared too — crawl now resolves a blank --agent from it, so a leaked
-    claude-code would skip the Anthropic-key gate these tests assert on."""
+    developer's local .env can't re-inject ANTHROPIC_API_KEY / a provider, and clear those vars."""
     monkeypatch.setattr("bajutsu.cli.load_dotenv", lambda *a, **k: None)
     for var in (
         "ANTHROPIC_API_KEY",
         "BAJUTSU_AI_PROVIDER",
         "BAJUTSU_BEDROCK_MODEL",
-        "BAJUTSU_AGENT",
     ):
         monkeypatch.delenv(var, raising=False)
 
@@ -971,9 +932,9 @@ def _no_dotenv(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_crawl_api_agent_needs_anthropic_key(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    # On the Anthropic provider, --agent api still requires ANTHROPIC_API_KEY. The gate fires after
-    # backend selection (the `fake` actuator is always available) and before any device work, so the
-    # run dir is not created.
+    # On the default Anthropic provider the crawl guide requires ANTHROPIC_API_KEY. The gate fires
+    # after backend selection (the `fake` actuator is always available) and before any device work,
+    # so the run dir is not created.
     _no_dotenv(monkeypatch)
     cfg, _ = _write(tmp_path)
     out = tmp_path / "crawlrun"
@@ -1072,6 +1033,7 @@ def test_crawl_web_builds_one_browser_lane_per_worker(
     import bajutsu.crawl as crawl_engine
 
     _no_dotenv(monkeypatch)
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test")  # clear the credential gate (guide is lazy)
     monkeypatch.setattr("bajutsu.cli.commands.crawl.ensure_web_runtime", lambda *a, **k: None)
     monkeypatch.setattr("bajutsu.cli.commands.crawl.select_actuator", lambda *a, **k: "playwright")
     monkeypatch.setattr(
@@ -1106,8 +1068,6 @@ def test_crawl_web_builds_one_browser_lane_per_worker(
             "web",
             "--workers",
             "3",
-            "--agent",
-            "claude-code",
             "--out",
             str(out),
             "--config",

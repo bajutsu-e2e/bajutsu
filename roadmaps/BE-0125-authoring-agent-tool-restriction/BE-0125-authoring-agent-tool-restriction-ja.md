@@ -11,6 +11,7 @@
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0125") |
 | 実装 PR | [#620](https://github.com/bajutsu-e2e/bajutsu/pull/620) |
 | トピック | セキュリティ強化 |
+| 無効化 | [BE-0163](../BE-0163-ant-cli-oauth-provider/BE-0163-ant-cli-oauth-provider-ja.md) |
 <!-- /BE-METADATA -->
 
 ## はじめに

@@ -5,9 +5,9 @@
 > Tier 1 = AI ライブ操作です。自然言語のゴールから AI がアプリを探索しながら操作し、**決定的シナリオ**
 > を書き出します。AI が関与するのはここ（記録時）だけです。生成された YAML は AI 非依存で、以後はユーザーが管理します。
 >
-> 実装: `bajutsu/record.py`（ループ）、`bajutsu/agent.py` + `bajutsu/agents.py`（抽象 + backend 選択）、
-> `bajutsu/claude_agent.py`（Anthropic API）/ `bajutsu/claude_code_agent.py`（Claude Code）、
-> `bajutsu/alerts.py`（システムアラート対処）。幅優先の探索 `bajutsu/crawl.py` も同じエージェントを使います。
+> 実装: `bajutsu/record.py`（ループ）、`bajutsu/agent.py` + `bajutsu/agents.py`（抽象 + 構築）、
+> `bajutsu/claude_agent.py`（SDK オーサリングエージェント）、`bajutsu/alerts.py`（システムアラート対処）。
+> 幅優先の探索 `bajutsu/crawl.py` も同じエージェントを使います。
 
 関連: [concepts の 2 層](concepts.md#2-2-層構成tier-1--tier-2) ・ [scenarios](scenarios.md) ・ [run-loop](run-loop.md)
 
@@ -16,7 +16,7 @@
 ## Agent 抽象
 
 ループとモデルを分離するための薄い Protocol です（`agent.py`）。テストではスクリプト化した fake を使い、
-本番では Claude backend を `--agent` で選びます（下記）。
+本番では SDK 経由の `ClaudeAgent` を使います（下記）。
 
 ```python
 @dataclass
@@ -65,14 +65,22 @@ class Agent(Protocol):
 「存在を要する要素」への `wait`** を、アサーションの直前に記録します。これにより `run` に
 暗黙のタイミングを追加せず、記録シナリオが自己完結します。
 
-## Claude エージェント
+## Claude オーサリングエージェント
 
-`record` / `crawl` が本番の `agent.Agent` 実装を `--agent` で選びます（`agents.py` が解決）。
+`record` / `crawl` は本番の `agent.Agent` 実装として `ClaudeAgent` を 1 つ構築します
+（`claude_agent.py`、`agents.py` が組み立てます）。モデルへはベンダー中立の `AiBackend`
+シーム（BE-0104）を通して話すため、**プロバイダは設定の細部**であって別のエージェントではありません。
+解決済みの `ai.provider`（[configuration](configuration.md#ai-プロバイダai-be-0047)）が次を選びます。
 
-- **`api`**（`ClaudeAgent`, `claude_agent.py`）: Anthropic API を直接呼びます（従量課金）。`ANTHROPIC_API_KEY`、または `BAJUTSU_AI_PROVIDER=bedrock` 経由の Amazon Bedrock が必要です（[cli の .env](cli.md#環境変数env)）。モデルは `claude-opus-4-8`。`anthropic` は遅延インポートで（API キー無しでもモジュールは読み込めます）、クライアントは注入可能です（テスト用）。
-- **`claude-code`**（`ClaudeCodeAgent`, `claude_code_agent.py`）: ローカルの Claude Code CLI を駆動します。Claude Code のサブスクリプションで動き、API キーは不要です。
+- **`api-key`**（既定）：**Anthropic API**。`ANTHROPIC_API_KEY`（または `ai.keyEnv` が指す環境変数）で認証します。（旧称 `anthropic` も同じものとして解決されます。）
+- **`bedrock`**：**Amazon Bedrock**。AWS の資格情報と、プロバイダプレフィックス付きのモデル id
+  （`BAJUTSU_BEDROCK_MODEL`）で認証します。
+- **`ant`**：公式の **Anthropic CLI**（`ant auth login`。ブラウザ経由の OAuth（SSO）サインイン）。
+  API キーの代わりに Claude の Pro / Max / Console のシートに課金され、すべての AI 経路で画像も
+  そのまま使えます（BE-0163）。
 
-どちらも同じターン契約を共有します。
+モデルは `claude-opus-4-8` です。`anthropic` は遅延インポートで（資格情報無しでもモジュールは
+読み込めます）、クライアントはテスト用に注入できます。どのプロバイダでもターン契約は同じです。
 
 - **ツール強制呼び出し**: `tool_choice={"type": "any"}` で毎ターン **ちょうど 1 つ**のツールを呼びます。`tap(id)` / `type_text(id, text)` / `wait_for(id, timeout)` / `finish(assertions)`。`finish` の `assertions`（`exists` / `notExists` / `valueEquals` / `labelContains`）は `Assertion` に変換されます（`_to_assertion`）。
 - **prompt cache**（API 経路）: 静的なシステムプロンプトとツール定義に `cache_control: ephemeral` を付け、ターンごとに変わるのは観測（要素 + スクショ）だけです。

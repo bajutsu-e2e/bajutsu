@@ -6,9 +6,9 @@ single source of truth: the CLI help grouping, the `docs/ai-boundary` reference,
 readiness section, and the zero-config regression test all read it, so those surfaces can never
 disagree and a newly added command is classified in exactly one place.
 
-The axis is whether a path invokes Claude *at all* — independent of provider (Anthropic / Bedrock)
-and agent backend (SDK / Claude Code CLI), which are credential / config details (BE-0047 /
-BE-0053), not part of the classification. It is at the granularity of the *path*, not the command
+The axis is whether a path invokes Claude *at all* — independent of provider (Anthropic / Bedrock /
+the Anthropic CLI `ant`), a credential / config detail (BE-0047 / BE-0053 / BE-0163), not part of
+the classification. It is at the granularity of the *path*, not the command
 name: `triage` is Claude-free but `triage --ai` reaches Claude, and a single flag flips it — so a
 command carries both its default classification and the flag (if any) that flips it.
 

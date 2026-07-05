@@ -262,14 +262,14 @@ def test_record_command_builder() -> None:
         "out.yaml",
         "demo",
         "tap Increment",
-        agent="claude-code",
         backend="idb",
         udid="U",
         config="c.yaml",
     )
     assert cmd[:6] == [sys.executable, "-m", "bajutsu", "record", "--out", "out.yaml"]
     assert cmd[6:12] == ["--target", "demo", "--goal", "tap Increment", "--config", "c.yaml"]
-    assert cmd[cmd.index("--agent") + 1] == "claude-code"
+    # The AI provider is inherited from the serve env (BE-0163), never passed as a flag.
+    assert "--agent" not in cmd
     assert cmd[cmd.index("--backend") + 1] == "idb" and cmd[cmd.index("--udid") + 1] == "U"
     # erase / dismiss default to None (the CLI defaults — record erases and dismisses): no flag.
     assert "--erase" not in cmd and "--no-erase" not in cmd and "--no-dismiss-alerts" not in cmd
@@ -280,7 +280,7 @@ def test_record_command_builder() -> None:
     assert "--headed" not in cmd and "--no-headed" not in cmd
     assert "--headed" in srv.record_command("o.yaml", "demo", "g", headed=True)
     assert "--no-headed" in srv.record_command("o.yaml", "demo", "g", headed=False)
-    bare = srv.record_command("o.yaml", "demo", "g")  # no agent → no --agent (CLI default applies)
+    bare = srv.record_command("o.yaml", "demo", "g")
     assert "--agent" not in bare and "--backend" not in bare
 
 
@@ -288,7 +288,6 @@ def test_crawl_command_builder() -> None:
     cmd = srv.crawl_command(
         "demo",
         out="runs/20260619-1",
-        agent="claude-code",
         backend="idb",
         udid="U",
         max_screens=10,
@@ -300,7 +299,8 @@ def test_crawl_command_builder() -> None:
     assert cmd[cmd.index("--config") + 1] == "c.yaml"
     assert cmd[cmd.index("--max-screens") + 1] == "10"
     assert cmd[cmd.index("--max-steps") + 1] == "30"
-    assert cmd[cmd.index("--agent") + 1] == "claude-code"
+    # The AI provider is inherited from the serve env (BE-0163), never passed as a flag.
+    assert "--agent" not in cmd
     assert cmd[cmd.index("--backend") + 1] == "idb" and cmd[cmd.index("--udid") + 1] == "U"
     # erase defaults to None (the CLI default — crawl erases): no flag forced either way.
     assert "--erase" not in cmd and "--no-erase" not in cmd
@@ -310,8 +310,8 @@ def test_crawl_command_builder() -> None:
     assert "--no-headed" in srv.crawl_command("demo", out="o", headed=False)
     assert "--no-erase" in srv.crawl_command("demo", out="o", erase=False)  # explicit override
     assert "--no-dismiss-alerts" in srv.crawl_command("demo", out="o", dismiss_alerts=False)
-    bare = srv.crawl_command("demo", out="o")  # no agent/backend/udid → those flags omitted
-    assert "--agent" not in bare  # no agent → no --agent (CLI default api applies)
+    bare = srv.crawl_command("demo", out="o")  # no backend/udid → those flags omitted
+    assert "--agent" not in bare  # the AI provider is inherited from the serve env (BE-0163)
     assert "--backend" not in bare and "--udid" not in bare
     assert "--guide" not in bare  # crawl is AI-driven; there is no guide toggle
     assert "--workers" not in bare  # single-device crawl omits it (CLI default 1)

@@ -85,7 +85,7 @@ def test_first_tool_use_is_none_without_a_tool_block() -> None:
 
 
 def test_builtin_providers_are_registered() -> None:
-    assert {"anthropic", "bedrock"} <= set(known_providers())
+    assert {"api-key", "bedrock", "ant"} <= set(known_providers())
 
 
 def test_builtins_survive_an_adapter_registered_first() -> None:
@@ -98,11 +98,11 @@ def test_builtins_survive_an_adapter_registered_first() -> None:
     registry._ADAPTERS.clear()
     try:
         register("test-first", sentinel)
-        register("anthropic", sentinel)  # an explicit registration for a built-in name
+        register("api-key", sentinel)  # an explicit registration for a built-in name
         providers = set(known_providers())
-        assert {"anthropic", "bedrock", "test-first"} <= providers
-        # setdefault leaves the earlier explicit `anthropic` registration intact.
-        assert registry._ADAPTERS["anthropic"] is sentinel
+        assert {"api-key", "bedrock", "ant", "test-first"} <= providers
+        # setdefault leaves the earlier explicit `api-key` registration intact.
+        assert registry._ADAPTERS["api-key"] is sentinel
     finally:
         registry._ADAPTERS.clear()
         registry._ADAPTERS.update(saved)
@@ -113,14 +113,23 @@ def test_create_backend_defaults_to_the_anthropic_adapter() -> None:
 
     assert isinstance(create_backend(), AnthropicBackend)
     assert isinstance(create_backend(AiConfig(provider="bedrock")), AnthropicBackend)
+    # `ant` (BE-0163) shares the same provider-agnostic adapter.
+    assert isinstance(create_backend(AiConfig(provider="ant")), AnthropicBackend)
 
 
 def test_credential_gap_dispatches_to_the_resolved_provider(monkeypatch: Any) -> None:
+    from bajutsu import anthropic_client
+
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
-    # Anthropic without a key, and Bedrock without a model id, each report their own gap token.
+    # api-key without a key, and Bedrock without a model id, each report their own gap token.
+    assert credential_gap(AiConfig(provider="api-key")) == "anthropic-key"
+    # The legacy `anthropic` name still dispatches (normalized to api-key), not "unknown provider".
     assert credential_gap(AiConfig(provider="anthropic")) == "anthropic-key"
     monkeypatch.delenv("BAJUTSU_BEDROCK_MODEL", raising=False)
     assert credential_gap(AiConfig(provider="bedrock")) == "bedrock-model"
+    # `ant` (BE-0163) dispatches through the same shared adapter to the CLI credential probe.
+    monkeypatch.setattr(anthropic_client.shutil, "which", lambda _exe: None)
+    assert credential_gap(AiConfig(provider="ant")) == anthropic_client.ANT_CLI_MISSING
 
 
 # --- the registry is a real extension point (in-process fake adapter) ---

@@ -236,7 +236,6 @@ def start_record(
         authored.out,
         body["target"],
         str(body["goal"]),
-        agent=body.get("agent", ""),
         backend=backend,
         udid=udid,
         erase=_bool_flag(body, "erase"),
@@ -298,7 +297,6 @@ def start_crawl(
     cmd = crawl_command(
         target,
         out=str(state.runs_dir / run_id),
-        agent=body.get("agent", ""),
         backend=backend,
         udid=udid,
         workers=_int(body.get("workers"), 1),
