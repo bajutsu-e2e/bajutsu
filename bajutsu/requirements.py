@@ -15,7 +15,6 @@ than forking the installer or the preflight (prime directive #3).
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import assert_never
 
 
 @dataclass(frozen=True)
@@ -82,8 +81,9 @@ def remedy(method: InstallMethod) -> str:
             return f"`uv run playwright install {browser}`"
         case Manual(hint):
             return hint
-        case _:  # pragma: no cover - exhaustive; a new InstallMethod is a mypy error here
-            assert_never(method)
+    # The match is exhaustive over InstallMethod; this explicit terminal keeps every path
+    # returning or raising (CodeQL flags a bare implicit fall-through) and guards a future variant.
+    raise AssertionError(f"unhandled InstallMethod: {method!r}")  # pragma: no cover
 
 
 def playwright_browser(engine: str) -> Tool:

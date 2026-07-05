@@ -22,7 +22,6 @@ import sys
 from collections.abc import Callable, Iterable, Iterator
 from dataclasses import dataclass
 from pathlib import Path
-from typing import assert_never
 
 from bajutsu import requirements
 from bajutsu.backends import resolve_actuators
@@ -147,8 +146,8 @@ def _tool_action(
             return None, requirements.remedy(tool.install)
         case Manual(hint):
             return (None, None) if which(tool.exe) is not None else (None, hint)
-        case _:  # pragma: no cover - exhaustive; a new InstallMethod is a mypy error here
-            assert_never(tool.install)
+    # Exhaustive over InstallMethod; explicit terminal so no path falls through implicitly (CodeQL).
+    raise AssertionError(f"unhandled InstallMethod: {tool.install!r}")  # pragma: no cover
 
 
 def _build(pairs: Iterable[tuple[str, str | None]], *, ai: bool) -> InstallPlan:
