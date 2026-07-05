@@ -280,6 +280,35 @@ def test_visual_assertion_no_context():
     assert "no visual context" in result.reason
 
 
+def test_visual_pixelmatch_fields_with_resolved_exact_fails(tmp_path):
+    """Explicit pixelmatch fields + resolved engine exact → clean failure."""
+    from PIL import Image
+
+    from bajutsu.assertions import VisualContext
+
+    baselines = tmp_path / "baselines"
+    baselines.mkdir()
+    img = Image.new("RGBA", (10, 10), (255, 0, 0, 255))
+    img.save(baselines / "red.png")
+    screenshot = tmp_path / "screenshot.png"
+    img.save(screenshot)
+
+    ctx = VisualContext(
+        screenshot_path=screenshot,
+        baselines_dir=baselines,
+        diff_dir=tmp_path / "diffs",
+        run_dir=tmp_path,
+        default_compare="exact",
+    )
+    result = evaluate_one(
+        SCREEN,
+        _a({"visual": {"baseline": "red.png", "colorTolerance": 0.5}}),
+        visual_context=ctx,
+    )
+    assert not result.ok
+    assert "resolved engine is 'exact'" in result.reason
+
+
 def test_visual_evidence_records_engine(tmp_path):
     """VisualEvidence.engine reflects the resolved compare engine."""
     from PIL import Image

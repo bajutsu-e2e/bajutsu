@@ -171,8 +171,8 @@ percentage of pixels that differed) and `engine` — the comparison engine that 
 verdict (`"exact"` or `"pixelmatch"`; [BE-0165](../roadmaps/BE-0165-visual-compare-engines/BE-0165-visual-compare-engines.md)).
 
 The engine is selected per assertion (`compare:`) with a target-level config fallback
-(`visualCompare`), and is recorded in the evidence so the report can show which algorithm
-ran. Implementation: `bajutsu/assertions.py` `VisualEvidence`.
+(`visualCompare`), and is recorded in the manifest so the algorithm that produced each
+verdict is traceable. Implementation: `bajutsu/assertions.py` `VisualEvidence`.
 
 ## Masking (redact)
 

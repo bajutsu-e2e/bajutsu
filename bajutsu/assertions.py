@@ -553,6 +553,15 @@ def _eval_visual(ctx: VisualContext | None, a: VisualMatch) -> AssertionResult:
 
     engine = a.compare or ctx.default_compare
 
+    if engine == "exact" and {"color_tolerance", "antialiasing"} & a.model_fields_set:
+        return AssertionResult(
+            False,
+            "visual",
+            detail,
+            "colorTolerance/antialiasing are set but the resolved engine is 'exact' "
+            "(set compare: pixelmatch or the target's visualCompare)",
+        )
+
     ctx.diff_dir.mkdir(parents=True, exist_ok=True)
     diff_path = ctx.diff_dir / f"diff-{name}"
     # Copy the baseline into the run dir so the report (and serve) are self-contained.

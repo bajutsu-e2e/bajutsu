@@ -260,8 +260,9 @@ def _is_antialiased(
 def _write_pixelmatch_diff(
     baseline: Image.Image, diff_pixels: list[int], w: int, h: int, diff_path: Path
 ) -> None:
-    dimmed = baseline.convert("L").convert("RGBA")
-    diff_img = Image.blend(dimmed, Image.new("RGBA", (w, h), (0, 0, 0, 0)), 0.3)
+    gray = baseline.convert("L")
+    dimmed = gray.point(lambda p: int(p * 0.7))
+    diff_img = dimmed.convert("RGBA")
     pixels = diff_img.load()
     assert pixels is not None
     for idx in diff_pixels:
