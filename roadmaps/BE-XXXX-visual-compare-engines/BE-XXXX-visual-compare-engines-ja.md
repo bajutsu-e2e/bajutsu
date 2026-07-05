@@ -60,7 +60,7 @@ expect:
 - **完全一致を知覚的比較で全面的に置き換える。** 見送りました。完全一致は最も厳格な判定で、ピクセル完全一致を求めるターゲットには正しいものです。これをデフォルトに残すことで後方互換を保ち、緩さへの切り替えを明示的な opt-in にできます。
 - **ピクセル単位の色の許容のみ（アンチエイリアス検出なし）。** より小さな変更ですが、1 ピクセルの縁のずれを吸収できません（ずれた縁はその座標で実際に異なる色だからです）。`pixelmatch` は単純な色の許容を包含したうえで縁のずれも扱うので、目標としてはこちらが優れます。単純な許容は `pixelmatch` の一部分にすぎません。
 - **救済フォールバック（失敗したらより緩いエンジンで再試行し、どれかが合格すれば合格とする）。** 見送りました。determinism first に反します。失敗時により緩いエンジンへ上げると、実効的な判定基準が最も緩いエンジンになり、ゲートを黙って甘くします。厳格なエンジンは、生き残る失敗を一度も出さなくなります。ゲートは黙って緩めるのではなく失敗させるべきです。採用するフォールバックは、合否を変えない上記の性能のための短絡評価だけです。
-- **実行環境に応じた自動フォールバック（依存が無いときに格下げする）。** 見送りました。合否がマシンに依存し、CI と手元の実行で判定が食い違いえます。代わりに明示的に失敗させます。
+- **実行環境に応じた自動フォールバック（依存が無いときに格下げする）。** 見送りました。合否がマシンに依存し、CI と手元の実行で判定が食い違います。代わりに明示的に失敗させます。
 - **SSIM をデフォルト/主要エンジンにする。** 先送りしました。その類似度スコアの意味は既存の面積 % の `threshold` と非互換で、独自の互換設計を要し、目先の false positive の問題を直すには重すぎます。ここで用意する拡張点により、SSIM はきれいな後続作業になります。
 
 ## 進捗
@@ -79,4 +79,4 @@ expect:
 
 ## 参考
 
-[BE-0029](../BE-0029-visual-regression-assertions/BE-0029-visual-regression-assertions-ja.md)（この項目が拡張する既存の `visual` アサーション）、`bajutsu/visual.py`、`bajutsu/assertions.py`、`bajutsu/scenario/models/assertions.py`、[DESIGN §6.4](../../../DESIGN.md)、[evidence.md](../../../docs/evidence.md)、`pixelmatch` アルゴリズム（アンチエイリアス検出を備えた知覚的なピクセル単位の差分。Playwright の `toHaveScreenshot` が採用）
+[BE-0029](../BE-0029-visual-regression-assertions/BE-0029-visual-regression-assertions-ja.md)（この項目が拡張する既存の `visual` アサーション）、`bajutsu/visual.py`、`bajutsu/assertions.py`、`bajutsu/scenario/models/assertions.py`、[DESIGN §6.4](../../../DESIGN.md)、[evidence.md](../../../docs/ja/evidence.md)、`pixelmatch` アルゴリズム（アンチエイリアス検出を備えた知覚的なピクセル単位の差分。Playwright の `toHaveScreenshot` が採用）
