@@ -45,7 +45,7 @@
 {%- endmacro -%}
 
 {%- macro visual_strip(v) -%}
-<tr class='visrow'><td colspan='5'>{% if v.baseline and v.actual %}{{ vcompare(v) }}{% elif v.actual %}<div class="vstrip">{{ vshot('actual', v.actual, 'va') }}</div>{% else %}<div class="vstrip"><span class="muted">no images captured</span></div>{% endif %}<div class="vmeta">{% if v.missing %}<span class="vbadge miss">no baseline yet</span>{% elif v.diff_pct %}<span class="vbadge">diff {{ v.diff_pct }}</span>{% endif %}{% if v.approvable %}<button class="vapprove" type="button" data-sid="{{ v.sid }}" data-baseline="{{ v.baseline_name }}">Approve as baseline</button>{% endif %}</div></td></tr>
+<tr class='visrow'><td colspan='5'>{% if v.baseline and v.actual %}{{ vcompare(v) }}{% elif v.actual %}<div class="vstrip">{{ vshot('actual', v.actual, 'va') }}</div>{% else %}<div class="vstrip"><span class="muted">no images captured</span></div>{% endif %}<div class="vmeta">{% if v.missing %}<span class="vbadge miss">no baseline yet</span>{% elif v.diff_pct %}<span class="vbadge">diff {{ v.diff_pct }}</span>{% endif %}{% if v.element_scoped %}<span class="vbadge" title="the comparison was cropped to one element's frame">element-scoped</span>{% endif %}{% if v.masked_selectors %}<span class="vbadge" title="masked by selector: {{ v.masked_selectors|join(', ') }}">{{ v.masked_selectors|length }} masked</span>{% endif %}{% if v.approvable %}<button class="vapprove" type="button" data-sid="{{ v.sid }}" data-baseline="{{ v.baseline_name }}">Approve as baseline</button>{% endif %}</div></td></tr>
 {%- endmacro -%}
 
 {%- macro exrow(row) -%}

@@ -72,6 +72,36 @@ def test_html_visual_pass_has_comparator_without_diff_mode(tmp_path: Path) -> No
     assert "Approve as baseline" not in out  # a passing check is not approvable
 
 
+def test_assert_parts_visual_element_scoped() -> None:
+    from bajutsu.report.richtext import _assert_parts
+
+    kind, _target, comp = _assert_parts(
+        {"visual": {"baseline": "card.png", "element": {"id": "summary-card"}}}
+    )
+    assert kind == "visual"
+    assert any("element-scoped" in v for _, v in comp)
+
+
+def test_html_visual_strip_shows_element_and_mask_provenance(tmp_path: Path) -> None:
+    from bajutsu.assertions import AssertionResult, VisualEvidence
+
+    ev = VisualEvidence(
+        baseline_name="card.png",
+        actual="00-s1/actual-card.png",
+        baseline="00-s1/baseline-card.png",
+        diff="00-s1/diff-card.png",
+        diff_pct=1.0,
+        element_scoped=True,
+        masked_selectors=["label='last updated'"],
+    )
+    ar = AssertionResult(False, "visual", "visual ≈ card.png", "diff 1%", visual=ev)
+    r = RunResult(scenario="s1", ok=False, steps=[], expect_results=[ar], artifacts=[])
+    out = html_report("runE", [r], tmp_path)
+    assert "element-scoped" in out
+    assert "1 masked" in out
+    assert "last updated" in out  # the masking selector shown in the badge tooltip
+
+
 def test_html_visual_missing_baseline_no_approve_is_offered() -> None:
     from bajutsu.assertions import AssertionResult, VisualEvidence
 

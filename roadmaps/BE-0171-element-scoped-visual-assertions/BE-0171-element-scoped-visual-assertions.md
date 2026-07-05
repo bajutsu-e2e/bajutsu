@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0171](BE-0171-element-scoped-visual-assertions.md) |
 | Author | [@hirosassa](https://github.com/hirosassa) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0171") |
+| Implementing PR | _pending_ |
 | Topic | Candidates from competitive research (MagicPod / Autify) |
 | Related | [BE-0029](../BE-0029-visual-regression-assertions/BE-0029-visual-regression-assertions.md) |
 <!-- /BE-METADATA -->
@@ -85,19 +86,25 @@ hide); an ambiguous one fails, consistent with directive 2.
 - **Schema** — add `element: Selector | None` to `VisualMatch`; turn `ExcludeRegion` into a union of
   the pixel rectangle and a `{ selector: Selector }` form. Keep both optional so BE-0029 scenarios
   are unchanged.
-- **Frame resolution** — a small helper that resolves a `Selector` to a pixel frame via the driver's
-  element tree, reusing the existing unique-resolution path (ambiguous → fail).
-- **Comparison engine** (`bajutsu/visual.py`) — accept an optional crop rectangle (the element
-  frame) applied to both images before diffing; extend masking to accept resolved selector frames
-  alongside literal rectangles. No change to the pixel-diff core.
+- **Frame resolution** — a small helper that resolves a `Selector` to a screenshot-pixel frame via
+  the driver's element tree, reusing the existing unique-resolution path (ambiguous → fail). Element
+  frames are in points; the screenshot is in device pixels, so the helper scales by the
+  screenshot/point ratio (screenshot size over the point-space screen extent).
+- **Comparison engine** (`bajutsu/visual.py`) — unchanged. Because the baseline is the *element*
+  crop (below), the actual is cropped to the element frame in the evaluation step and the existing
+  engine compares the two element-sized images; resolved selector masks are just more
+  `ExcludeRegion` rectangles passed to the existing mask path. The pixel-diff core is untouched.
 - **Evaluation** (`bajutsu/assertions.py`, `_eval_visual` / `VisualContext`) — resolve `element` and
-  selector masks to frames, then call the engine with the crop and the combined mask list.
+  selector masks to pixel frames, crop the actual to the element (writing the crop as the evidence
+  `actual`), translate masks into the crop's local coordinates, and compare against the
+  element-sized baseline.
 - **Evidence & report** — the `visual` evidence records whether the comparison was element-scoped
-  and which selector(s) masked; the HTML report's baseline/actual/diff strip renders the cropped
-  images so the reviewer sees exactly what was compared.
+  (`element_scoped`) and which selector(s) masked (`masked_selectors`); the HTML report's
+  baseline/actual/diff strip renders the cropped images (they *are* the recorded paths) plus badges
+  for the provenance, so the reviewer sees exactly what was compared.
 - **Approve workflow** — `bajutsu approve` promotes element-scoped baselines the same way it does
-  whole-screen ones (the baseline is just a smaller image; no special-casing expected, to be
-  confirmed).
+  whole-screen ones: it copies whatever the evidence `actual` points at, which for an element-scoped
+  check is the crop, so no special-casing is needed (confirmed).
 - **Docs & schema reference** — document `element` and selector masks in the scenario schema and
   `docs/` / `docs/ja/`; add an example to the showcase visual scenario.
 - **Tests** — element-scoped pass/fail, ambiguous-selector failure, selector mask hiding a dynamic
@@ -122,14 +129,23 @@ hide); an ambiguous one fails, consistent with directive 2.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Schema — `element` field + `ExcludeRegion` selector union
-- [ ] Frame resolution helper (selector → pixel frame, ambiguous → fail)
-- [ ] Comparison engine — crop + selector-frame masking
-- [ ] Evaluation wiring (`_eval_visual` / `VisualContext`)
-- [ ] Evidence & HTML report (cropped strip, mask provenance)
-- [ ] Approve workflow confirmation for element-scoped baselines
-- [ ] Docs & schema reference + showcase example
-- [ ] Tests (element pass/fail, ambiguous fail, selector mask, backward compat)
+- [x] Schema — `element` field + `ExcludeRegion` / `SelectorRegion` union
+- [x] Frame resolution helper (selector → pixel frame, ambiguous → fail)
+- [x] Comparison engine — crop of the actual + selector-frame masking (engine signature unchanged)
+- [x] Evaluation wiring (`_eval_visual` / `VisualContext`)
+- [x] Evidence & HTML report (cropped strip, `element_scoped` / masked-selector provenance)
+- [x] Approve workflow confirmation for element-scoped baselines
+- [x] Docs & schema reference + showcase example
+- [x] Tests (element pass/fail, ambiguous fail, selector mask, backward compat)
+
+**Log**
+
+- _pending_ — Ship BE-0171: `element` scoping + `SelectorRegion` masking on the `visual`
+  assertion. The screenshot is cropped to the resolved element (baseline stays the element, not
+  the screen; `approve` needs no special-casing); selector masks resolve to frames and combine
+  with literal rectangles. Determinism preserved (ambiguous selector fails; no-match mask is a
+  no-op), no LLM on the `run` path. Evidence records `element_scoped` / `masked_selectors`; the
+  report strip shows both.
 
 ## References
 

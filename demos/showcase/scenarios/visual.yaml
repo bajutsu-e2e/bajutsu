@@ -18,6 +18,10 @@
 # them to your simulator. Baselines resolve inside the dir
 # passed via `--baselines` (default: a `baselines/` folder beside this scenario, gitignored —
 # regenerate locally). See demos/showcase/Makefile `vrt` / `vrt-approve`.
+#
+# The last two scenarios show BE-0171: `element` scopes the comparison to one element's frame (no
+# chrome to mask, so no `exclude` needed), and a `{ selector: … }` entry in `exclude` masks an
+# element by selector instead of a fixed pixel rectangle — stable across layout / resolution changes.
 description: >-
   Visual regression demo — pixel-compare each showcase screen against a stored baseline. The
   first run reports missing baselines; approve them, then re-run to pass.
@@ -126,3 +130,31 @@ scenarios:
       - wait: { for: { id: log.dialog.delete }, timeout: 5 }
     expect:
       - visual: { baseline: delete_dialog.png, threshold: 4.0, exclude: [{ x: 0, y: 0, w: 1300, h: 130 }, { x: 0, y: 2250, w: 1300, h: 290 }] }
+
+  # BE-0171: compare only the first catalog row's frame. The screenshot is cropped to that element,
+  # so unrelated changes elsewhere on the screen (and the chrome strips) never affect this check.
+  - name: First catalog row matches its element-scoped baseline
+    preconditions:
+      launchEnv: { SHOWCASE_UITEST: "1", SHOWCASE_TAB: "stable" }
+    steps:
+      - wait: { for: { id: stable.row.1 }, timeout: 10 }
+        capture: [video]
+    expect:
+      - visual: { baseline: stable_row_element.png, threshold: 4.0, element: { id: stable.row.1 } }
+
+  # BE-0171: mask the first row *by selector* rather than a pixel rectangle, so the mask follows the
+  # element across layout / resolution changes; the status bar and tab bar stay masked by rectangle.
+  - name: Catalog matches its baseline with the first row masked by selector
+    preconditions:
+      launchEnv: { SHOWCASE_UITEST: "1", SHOWCASE_TAB: "stable" }
+    steps:
+      - wait: { for: { id: stable.row.1 }, timeout: 10 }
+        capture: [video]
+    expect:
+      - visual:
+          baseline: stable_row_masked.png
+          threshold: 4.0
+          exclude:
+            - { x: 0, y: 0, w: 1300, h: 130 }
+            - { x: 0, y: 2250, w: 1300, h: 290 }
+            - { selector: { id: stable.row.1 } }
