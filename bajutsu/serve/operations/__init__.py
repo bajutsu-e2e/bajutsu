@@ -42,6 +42,7 @@ from bajutsu.serve.operations.config import (
     set_api_key,
     set_provider,
 )
+from bajutsu.serve.operations.coverage import coverage_view
 from bajutsu.serve.operations.dispatch import (
     _bool_flag,
     _boot_targets,
@@ -124,6 +125,7 @@ __all__ = [
     "browse_fs",
     "cancel_job",
     "config_info",
+    "coverage_view",
     "doctor_check",
     "finish_capture",
     "forbidden_for_role",

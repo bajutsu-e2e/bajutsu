@@ -54,7 +54,8 @@ the [CLI reference](cli.md#serve).
 
 ## The layout
 
-The header holds five top-level tabs: **Record**, **Replay**, **Crawl**, **Author**, and **Stats**.
+The header holds six top-level tabs: **Record**, **Replay**, **Crawl**, **Author**, **Stats**, and
+**Coverage**.
 To their right are **Open config** (with the active config's name shown beside it once one is bound),
 **Settings**, and a dark/light theme toggle that follows your system by default. Each tab is a full
 screen of its own; switching tabs never discards what another tab was doing.
@@ -242,6 +243,20 @@ stored `manifest.json`.
 
 **How to use it.** Open the tab to load the dashboard; use the refresh button to recompute it over
 the current run history. No device, AI, or run is involved.
+
+## Coverage — the E2E coverage map
+
+**What it does.** Renders the E2E coverage map for a target — the `coverage` command in the browser.
+It measures the scenario suite's stable-id references against the app's declared `idNamespaces`,
+showing per-namespace coverage, the gap list (declared namespaces no scenario touches), and
+off-namespace ids. When you select one or more past runs, it folds in the run-evidence dimensions:
+endpoints observed vs asserted (the union of those runs' `network.json` against the suite's network
+assertions) and observed ids vs declared namespaces (from each run's `elements.json`). Like Stats it
+is **read-only and advisory, never a verdict or a gate** — every figure is a deterministic count, no
+model is consulted.
+
+**How to use it.** Pick a target, optionally select runs to add the run-evidence dimensions, and
+press **Compute** to render the map. No device, AI, or run is involved.
 
 ## Security and hosting
 

@@ -322,6 +322,8 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
                     self._json(*ops.start_enrich(state, body, actor=self._actor()))
                 case "/api/doctor":
                     self._json(*ops.doctor_check(state, body, actor=self._actor()))
+                case "/api/coverage":
+                    self._json(*ops.coverage_view(state, body, actor=self._actor()))
                 case "/api/capture/start":
                     self._json(*ops.start_capture(state, body, actor=self._actor()))
                 case "/api/capture/mark":

@@ -325,6 +325,10 @@ def make_app(state: ServeState) -> FastAPI:
     async def doctor(body: dict[str, Any], request: Request) -> JSONResponse:
         return _result(ops.doctor_check(state, body, actor=_actor(request)))
 
+    @app.post("/api/coverage")
+    async def coverage(body: dict[str, Any], request: Request) -> JSONResponse:
+        return _result(ops.coverage_view(state, body, actor=_actor(request)))
+
     @app.post("/api/jobs/{job_id}/cancel")
     async def cancel(job_id: str) -> JSONResponse:
         return _result(ops.cancel_job(state, job_id))

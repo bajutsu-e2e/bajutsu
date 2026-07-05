@@ -12,7 +12,8 @@ touched: a coverage report is advisory, never a CI gate.
 from __future__ import annotations
 
 import functools
-from collections.abc import Iterator
+import json
+from collections.abc import Iterable, Iterator
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -320,6 +321,63 @@ def render_screens(sc: ScreenCoverage) -> str:
     if sc.unvisited:
         lines.append(f"  unvisited (discovered, no run reached): {[s.label for s in sc.unvisited]}")
     return "\n".join(lines)
+
+
+# --- filesystem evidence readers: the run set's captured artifacts (shared CLI + serve, BE-0146) ---
+
+
+def _evidence_files(runs_dir: Path, name: str, run_ids: Iterable[str] | None) -> list[Path]:
+    """Every per-step ``<run>/<step>/<name>`` under *runs_dir*, optionally restricted to *run_ids*.
+
+    ``run_ids`` None reads the whole runs dir (the CLI's ``--runs <dir>``); a set restricts to those
+    runs (the serve view's selected run set). Callers pass only validated single-segment run ids, so a
+    restricted read never globs outside a run's own tree.
+    """
+    if run_ids is None:
+        return sorted(runs_dir.glob(f"*/*/{name}"))
+    return sorted(f for rid in run_ids for f in (runs_dir / rid).glob(f"*/{name}"))
+
+
+def read_exchanges(runs_dir: Path, run_ids: Iterable[str] | None = None) -> list[NetworkExchange]:
+    """Every network exchange recorded across the run set.
+
+    The union of each ``network.json`` under *runs_dir* (read-only; a malformed/partial file is
+    skipped wholesale, not fatal — a bad entry never leaves a half-read batch).
+    """
+    exchanges: list[NetworkExchange] = []
+    for net in _evidence_files(runs_dir, "network.json", run_ids):
+        try:
+            data = json.loads(net.read_text(encoding="utf-8"))
+            if not isinstance(data, list):  # a scalar/object file isn't an exchange list — skip it
+                continue
+            batch = [NetworkExchange.model_validate(e) for e in data if isinstance(e, dict)]
+        except (OSError, ValueError):
+            continue
+        exchanges.extend(batch)
+    return exchanges
+
+
+def read_observed_ids(runs_dir: Path, run_ids: Iterable[str] | None = None) -> list[str]:
+    """Every stable id rendered across the run set.
+
+    The union of each element's ``identifier`` from every per-step ``elements.json`` under *runs_dir*
+    (read-only; a malformed/partial file is skipped, not fatal). Null and empty identifiers are
+    dropped — only elements that carry a stable id contribute.
+    """
+    ids: list[str] = []
+    for els in _evidence_files(runs_dir, "elements.json", run_ids):
+        try:
+            data = json.loads(els.read_text(encoding="utf-8"))
+            if not isinstance(data, list):  # a scalar/object file isn't an element list — skip it
+                continue
+        except (OSError, ValueError):  # unreadable or invalid JSON — skip, like read_exchanges
+            continue
+        ids.extend(
+            e["identifier"]
+            for e in data
+            if isinstance(e, dict) and isinstance(e.get("identifier"), str) and e["identifier"]
+        )
+    return ids
 
 
 # --- HTML report: the dimensions visualized on one self-contained page (BE-0050) ---

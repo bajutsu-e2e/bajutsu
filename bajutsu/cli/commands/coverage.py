@@ -19,53 +19,9 @@ import typer
 
 from bajutsu import coverage as _coverage
 from bajutsu import crawl as _crawl
-from bajutsu.cli._shared import DEFAULT_CONFIG, _load_effective, load_expanded_scenarios
+from bajutsu.cli._shared import DEFAULT_CONFIG, _load_effective
 from bajutsu.drivers import base
-from bajutsu.network import NetworkExchange
-
-
-def _observed_exchanges(runs_dir: Path) -> list[NetworkExchange]:
-    """Every exchange recorded across the run set.
-
-    The union of every `network.json` under `runs_dir` (read-only; a malformed/partial file is
-    skipped, not fatal).
-    """
-    exchanges: list[NetworkExchange] = []
-    for net in sorted(runs_dir.glob("*/*/network.json")):
-        try:
-            data = json.loads(net.read_text(encoding="utf-8"))
-            if not isinstance(data, list):  # a scalar/object file isn't an exchange list — skip it
-                continue
-            # Validate the whole file into a batch before extending, so a bad entry (pydantic
-            # ValidationError, a ValueError) skips the file wholesale rather than leaving a partial.
-            batch = [NetworkExchange.model_validate(e) for e in data if isinstance(e, dict)]
-        except (OSError, ValueError):
-            continue
-        exchanges.extend(batch)
-    return exchanges
-
-
-def _observed_ids(runs_dir: Path) -> list[str]:
-    """Every stable id rendered across the run set.
-
-    The union of each element's `identifier` from every per-step `elements.json` under `runs_dir`
-    (read-only; a malformed/partial file is skipped, not fatal). Null and empty identifiers are
-    dropped — only elements that carry a stable id contribute.
-    """
-    ids: list[str] = []
-    for els in sorted(runs_dir.glob("*/*/elements.json")):
-        try:
-            data = json.loads(els.read_text(encoding="utf-8"))
-            if not isinstance(data, list):  # a scalar/object file isn't an element list — skip it
-                continue
-        except (OSError, ValueError):  # unreadable or invalid JSON — skip, like _observed_exchanges
-            continue
-        ids.extend(
-            e["identifier"]
-            for e in data
-            if isinstance(e, dict) and isinstance(e.get("identifier"), str) and e["identifier"]
-        )
-    return ids
+from bajutsu.scenario import load_scenarios_dir
 
 
 def _visited_screens(runs_dir: Path) -> frozenset[str]:
@@ -154,9 +110,7 @@ def coverage(
         typer.echo(f"scenarios dir not found: {eff.scenarios}")
         raise typer.Exit(2)
     try:
-        scenarios = [
-            s for f in sorted(scenarios_dir.glob("*.yaml")) for s in load_expanded_scenarios(f)
-        ]
+        scenarios = load_scenarios_dir(scenarios_dir)
     except (OSError, ValueError) as e:
         typer.echo(f"failed to load scenarios: {e}")
         raise typer.Exit(2) from None
@@ -167,8 +121,10 @@ def coverage(
     screens = None
     runs_path = Path(runs) if runs else None
     if runs_path is not None and runs_path.is_dir():
-        endpoints = _coverage.endpoint_coverage(scenarios, _observed_exchanges(runs_path))
-        observed_ids = _coverage.observed_id_coverage(_observed_ids(runs_path), eff.id_namespaces)
+        endpoints = _coverage.endpoint_coverage(scenarios, _coverage.read_exchanges(runs_path))
+        observed_ids = _coverage.observed_id_coverage(
+            _coverage.read_observed_ids(runs_path), eff.id_namespaces
+        )
     elif runs:  # don't silently ignore the flag — warn (to stderr) and proceed without run evidence
         typer.echo(f"--runs not found, skipping run-evidence coverage: {runs}", err=True)
     if crawl:
