@@ -68,6 +68,23 @@ def test_lint_and_schema_routes_delegate_to_operations(tmp_path: Path) -> None:
     assert "Scenario" in client.get("/api/schema").json()["$defs"]
 
 
+def test_audit_route_delegates_to_operations(tmp_path: Path) -> None:
+    # The determinism audit (BE-0145) reaches the same ops as the stdlib handler, on both the
+    # inline-yaml (editor) and {target, path} (Replay) paths the hosted backend serves.
+    client = _client(_state(tmp_path))
+    inline = client.post(
+        "/api/audit", json={"yaml": "- name: a\n  steps:\n    - tap: { label: OK }\n"}
+    ).json()
+    assert inline["ok"] is True
+    assert inline["reports"][0]["grade"] == "Moderate"
+    by_path = client.post("/api/audit", json={"target": "demo", "path": "smoke.yaml"}).json()
+    assert {r["grade"] for r in by_path["reports"]} == {"Stable"}
+    assert (
+        client.post("/api/audit", json={"target": "demo", "path": "missing.yaml"}).status_code
+        == 404
+    )
+
+
 def test_upload_urls_route_signs_put_urls(tmp_path: Path) -> None:
     # The FastAPI shell reaches the same evidence operation as the stdlib handler (BE-0110).
     class _FakeStore:

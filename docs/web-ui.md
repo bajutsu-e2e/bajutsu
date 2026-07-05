@@ -216,6 +216,15 @@ also drives lightweight key completion (Ctrl/⌘+Space) and hover descriptions. 
 and AI-free. Click **Save** to write the scenario. The grammar these checks enforce:
 [scenarios](scenarios.md); how selectors are graded: [selectors](selectors.md).
 
+**The determinism audit badge** grades the same live YAML for stability, alongside the lint check.
+A grade badge (**Stable** / **Moderate** / **Fragile**, with the ratio of `id`-based selectors)
+sits in the editor header, and a findings list below the editor names each determinism risk — a
+selector below the stability ladder, a `wait` with no concrete condition, a raw-coordinate gesture.
+It is the [`audit`](cli.md) command's static score in the browser: read-only, device-free, and
+AI-free, purely informational and never a gate. The **Replay** tab shows the same badge for the
+scenario you have selected, so the stability signal is visible both where a scenario is written and
+where it is run.
+
 **Generate code** — export the loaded scenario as a native test, without leaving the browser. Load a
 scenario, then click **Generate code**: the result opens in a read-only viewer you can **Copy** or
 **Download** (the filename is derived from the scenario and destination, e.g. `LoginUITests.swift` /

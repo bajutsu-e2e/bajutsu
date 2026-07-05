@@ -310,6 +310,8 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
                     self._json(*ops.save_scenario(state, body, actor=self._actor()))
                 case "/api/lint":
                     self._json(*ops.lint_scenario(body))
+                case "/api/audit":
+                    self._json(*ops.audit_scenario(state, body, actor=self._actor()))
                 case "/api/codegen":
                     self._json(*ops.generate_codegen(state, body, actor=self._actor()))
                 case "/api/approve":
