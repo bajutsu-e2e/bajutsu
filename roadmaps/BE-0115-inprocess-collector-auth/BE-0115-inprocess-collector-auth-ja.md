@@ -9,7 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0115") |
-| 実装 PR | _pending_ |
+| 実装 PR | [#690](https://github.com/bajutsu-e2e/bajutsu/pull/690) |
 | トピック | セキュリティ強化 |
 <!-- /BE-METADATA -->
 
@@ -78,7 +78,7 @@ docstring 参照）とも整合します。とはいえ、別のテスト run、
 - [x] `BajutsuKit` の HTTP 送信部を更新し、各 POST にトークンを添付する。
 - [x] 未認証・不一致なトークンの POST が拒否されることを検証する回帰テストを追加する。
 
-- _pending_ — 共有トークン認証を一通り実装（コレクタが `start()` でトークンを生成し、`pool` が
+- [#690](https://github.com/bajutsu-e2e/bajutsu/pull/690) — 共有トークン認証を一通り実装（コレクタが `start()` でトークンを生成し、`pool` が
   `BAJUTSU_COLLECTOR_TOKEN` を注入、`do_POST` が `secrets.compare_digest` で検証、`BajutsuKit`
   が `Authorization: Bearer` として送信）し、受理・拒否の両経路に回帰テストを追加。
 

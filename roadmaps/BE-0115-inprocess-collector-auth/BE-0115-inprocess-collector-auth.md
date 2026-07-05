@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0115") |
-| Implementing PR | _pending_ |
+| Implementing PR | [#690](https://github.com/bajutsu-e2e/bajutsu/pull/690) |
 | Topic | Security hardening |
 <!-- /BE-METADATA -->
 
@@ -77,7 +77,7 @@ pass or fail incorrectly, undermining the determinism the runner otherwise guara
 - [x] Update `BajutsuKit`'s HTTP sender to attach the token to each POST.
 - [x] Add a regression test asserting an unauthenticated/mismatched POST is rejected.
 
-- _pending_ — implement the shared-token auth end to end (collector mints the token in
+- [#690](https://github.com/bajutsu-e2e/bajutsu/pull/690) — implement the shared-token auth end to end (collector mints the token in
   `start()`, `pool` injects `BAJUTSU_COLLECTOR_TOKEN`, `do_POST` verifies it with
   `secrets.compare_digest`, `BajutsuKit` sends it as `Authorization: Bearer`), with
   regression tests for the accept/reject paths.
