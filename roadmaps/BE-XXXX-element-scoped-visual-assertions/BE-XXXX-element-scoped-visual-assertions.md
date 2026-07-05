@@ -53,13 +53,13 @@ and backward-compatible — an existing `visual:` block keeps its current whole-
 ```yaml
 expect:
   - visual:
-      element: { id: "summary-card" }   # a Selector, resolved uniquely (§5)
+      element: { id: "summary-card" }   # a Selector, resolved uniquely
       baseline: summary-card.png
       threshold: 0.1
 ```
 
-The selector is resolved with the existing unique-resolution rules — **an ambiguous selector fails
-immediately** (prime directive 2), never "crop whatever matched first". The element's frame is read
+The selector is resolved with the existing unique-resolution rules ([DESIGN §5](../../DESIGN.md)) —
+**an ambiguous selector fails immediately** (prime directive 2), never "crop whatever matched first". The element's frame is read
 from the driver's element tree, the captured screenshot is cropped to that frame, and the crop is
 diffed against the baseline. The baseline is therefore the *element*, not the screen, which is what
 makes it robust to unrelated changes.
