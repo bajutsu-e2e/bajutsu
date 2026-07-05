@@ -1,0 +1,25 @@
+# Multi-touch gestures (SPEC §5.3): pinch and rotate. These are XCUITest-only — idb is single-touch
+# and raises UnsupportedAction (BE-0019), so this scenario is NOT part of the idb smoke path; the
+# e2e `xcuitest (multi-touch)` job runs it with `--backend xcuitest`.
+#
+# The SHOWCASE_GESTURES launch env swaps the app for a flat, scroll-free pinch/rotate screen (see
+# GestureView / AppModel), mirroring the SHOWCASE_CONFORMANCE affordance. Both targets are therefore
+# always in the accessibility tree — no scroll-to-element — which matters because XCUITest's
+# swipe-to-scroll on a deep Form row is unreliable, and a two-finger target must be fully on-screen
+# for its touch points anyway. Each target flips its mirrored a11y value once the gesture is
+# recognized, so the run asserts the actuation actually landed rather than merely not erroring.
+- name: pinch and rotate targets mirror their result
+  preconditions:
+    launchEnv: { SHOWCASE_UITEST: "1", SHOWCASE_GESTURES: "1" }
+  steps:
+    - wait: { for: { id: log.pinch }, timeout: 10 }
+      capture: [video]
+    - wait: { for: { id: log.rotate }, timeout: 10 }
+    - assert:
+        - value: { sel: { id: log.pinch.value }, equals: "idle" }
+        - value: { sel: { id: log.rotate.value }, equals: "idle" }
+    - pinch: { sel: { id: log.pinch }, scale: 2.0 }
+    - rotate: { sel: { id: log.rotate }, radians: 1.0 }
+  expect:
+    - value: { sel: { id: log.pinch.value }, equals: "pinched" }
+    - value: { sel: { id: log.rotate.value }, equals: "rotated" }
