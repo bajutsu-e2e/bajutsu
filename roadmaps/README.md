@@ -589,7 +589,6 @@ Closing the edges the deterministic core does not touch — `serve`'s HTTP surfa
 |---|---|---|
 | [BE-0115](BE-0115-inprocess-collector-auth/BE-0115-inprocess-collector-auth.md) | Authenticate the in-process iOS network collector | Proposal |
 | [BE-0144](BE-0144-automerge-stale-approval-race/BE-0144-automerge-stale-approval-race.md) | Close the auto-merge stale-approval race | Proposal |
-| [BE-0154](BE-0154-roadmap-promote-base-sha/BE-0154-roadmap-promote-base-sha.md) | Run roadmap-promote from the base SHA | Proposal |
 <!-- /GENERATED:proposals-security -->
 
 ### Configuration sourcing
@@ -687,6 +686,14 @@ Parked proposals — considered, then shelved for now. Kept here (not deleted) s
 |---|---|---|
 | [BE-0070](BE-0070-live-run-artifacts-across-split/BE-0070-live-run-artifacts-across-split.md) | Live in-progress run artifacts across the worker split | Deferred |
 <!-- /GENERATED:deferred-hosting -->
+
+### Security hardening
+
+<!-- GENERATED:deferred-security -->
+| ID | Item | Status |
+|---|---|---|
+| [BE-0154](BE-0154-roadmap-promote-base-sha/BE-0154-roadmap-promote-base-sha.md) | Run roadmap-promote from the base SHA | Deferred |
+<!-- /GENERATED:deferred-security -->
 
 ### Miscellaneous / on hold
 

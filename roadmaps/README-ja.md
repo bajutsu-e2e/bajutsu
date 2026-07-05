@@ -582,7 +582,6 @@ Web（Playwright）backend とその完成（リッチな capability、並列実
 |---|---|---|
 | [BE-0115](BE-0115-inprocess-collector-auth/BE-0115-inprocess-collector-auth-ja.md) | iOS 用インプロセスネットワークコレクタを認証する | 提案 |
 | [BE-0144](BE-0144-automerge-stale-approval-race/BE-0144-automerge-stale-approval-race-ja.md) | auto-merge の stale-approval レースを解消する | 提案 |
-| [BE-0154](BE-0154-roadmap-promote-base-sha/BE-0154-roadmap-promote-base-sha-ja.md) | roadmap-promote をベース SHA から実行する | 提案 |
 <!-- /GENERATED:proposals-security -->
 
 ### config の取得元
@@ -680,6 +679,14 @@ Maestro（mobile.dev）はオープンソースのクロスプラットフォー
 |---|---|---|
 | [BE-0070](BE-0070-live-run-artifacts-across-split/BE-0070-live-run-artifacts-across-split-ja.md) | 制御プレーンと worker をまたいだ実行中アーティファクトのライブ表示 | 保留 |
 <!-- /GENERATED:deferred-hosting -->
+
+### セキュリティ強化
+
+<!-- GENERATED:deferred-security -->
+| ID | 項目 | 状態 |
+|---|---|---|
+| [BE-0154](BE-0154-roadmap-promote-base-sha/BE-0154-roadmap-promote-base-sha-ja.md) | roadmap-promote をベース SHA から実行する | 保留 |
+<!-- /GENERATED:deferred-security -->
 
 ### その他と保留
 
