@@ -98,14 +98,12 @@ def provision(
     which: Which = shutil.which,
     run: Runner = _run,
     system: System = platform.system,
-    python_exe: str | None = None,
 ) -> ProvisionReport:
     """Execute a plan idempotently: sync the extras, then install only the tools that are missing.
 
     The subprocess seams (``which`` / ``run`` / ``system``) are injectable so the logic tests
     without running a package manager.
     """
-    python = python_exe or sys.executable
     host = system()
     ran: list[tuple[str, ...]] = []
     manual: list[str] = []
@@ -114,7 +112,7 @@ def provision(
         run(cmd)
         ran.append(tuple(cmd))
     for tool in p.tools:
-        command, note = _tool_action(tool, which=which, host=host, python=python)
+        command, note = _tool_action(tool, which=which, host=host)
         if command is not None:
             run(command)
             ran.append(tuple(command))
@@ -123,9 +121,7 @@ def provision(
     return ProvisionReport(tuple(ran), tuple(manual))
 
 
-def _tool_action(
-    tool: Tool, *, which: Which, host: str, python: str
-) -> tuple[list[str] | None, str | None]:
+def _tool_action(tool: Tool, *, which: Which, host: str) -> tuple[list[str] | None, str | None]:
     """The action for one tool.
 
     Returns ``(command, None)`` to run, ``(None, remedy)`` to leave for the user, or
@@ -136,8 +132,9 @@ def _tool_action(
             return None, None  # the client is installed by the extras sync
         case Playwright(browser):
             # `playwright install` is idempotent (present browser = fast no-op), so run it
-            # unconditionally — the browser binary is not a PATH executable to probe.
-            return [python, "-m", "playwright", "install", browser], None
+            # unconditionally — the browser binary is not a PATH executable to probe. The command
+            # mirrors what `remedy()` renders, so preflight's advice and the installer never drift.
+            return ["uv", "run", "playwright", "install", browser], None
         case Brew(formula):
             if which(tool.exe) is not None:
                 return None, None
@@ -191,7 +188,8 @@ def _unique(items: list[str]) -> tuple[str, ...]:
 
 
 def _unique_tools(tools: list[Tool]) -> tuple[Tool, ...]:
-    # Dedupe by probe name, keeping first-seen order; the same exe always maps to the same tool.
+    # Dedupe by probe name. The dict keeps each key's first-seen position; a duplicate exe always
+    # maps to an identical Tool, so which duplicate's value the dict keeps is immaterial.
     return tuple({tool.exe: tool for tool in tools}.values())
 
 

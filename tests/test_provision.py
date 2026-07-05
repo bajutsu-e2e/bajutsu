@@ -132,10 +132,14 @@ def test_provision_reports_manual_when_brew_is_unavailable() -> None:
 
 
 def test_provision_always_runs_the_idempotent_playwright_installer() -> None:
+    # The executed command mirrors `remedy(Playwright(...))` so the installer and preflight advice
+    # never drift (BE-0164): `uv run playwright install <engine>`.
     ran, run = _captured()
     plan = provision.InstallPlan(("web",), (requirements.playwright_browser("chromium"),))
-    provision.provision(plan, which=lambda _exe: None, run=run, python_exe="py")
-    assert ("py", "-m", "playwright", "install", "chromium") in ran
+    provision.provision(plan, which=lambda _exe: None, run=run)
+    assert ("uv", "run", "playwright", "install", "chromium") in ran
+    # the executed command is exactly the rendered remedy (sans backticks) — one source of truth
+    assert " ".join(ran[-1]) == requirements.remedy(Playwright("chromium")).strip("`")
 
 
 def test_provision_reports_a_manual_only_tool_when_missing() -> None:
