@@ -157,7 +157,8 @@ flowchart TB
   （manifest / report / JUnit / artifact）をリソースとして公開し、Claude Desktop / Code 連携に
   使えます
 - **Web UI**（`bajutsu serve`）: シナリオのオーサリング（`record` / `crawl`）・編集・実行、レポートと
-  あらゆる証跡の閲覧、ビジュアル baseline の承認、SSE によるジョブのライブ配信
+  あらゆる証跡の閲覧、ビジュアル baseline の承認、SSE によるジョブのライブ配信。各タブの操作方法は
+  [docs/ja/web-ui.md](docs/ja/web-ui.md) を参照してください
 
 実機 Simulator で検証済み（iPhone 17 Pro・近年の iOS）:
 
