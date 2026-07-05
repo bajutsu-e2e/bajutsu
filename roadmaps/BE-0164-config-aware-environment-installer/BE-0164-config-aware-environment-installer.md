@@ -7,7 +7,7 @@
 |---|---|
 | Proposal | [BE-0164](BE-0164-config-aware-environment-installer.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0164") |
 | Topic | doctor / onboarding |
 <!-- /BE-METADATA -->
@@ -135,9 +135,21 @@ surprising side effect than the existing, narrowly-scoped precedent.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Declarative mapping of backend/extra → pip extra + external-tool check + install command
-- [ ] Config-aware install step (resolve configured backends, install only what's needed, idempotent)
-- [ ] Shared Makefile target + script entry point (supersedes/folds `make deps`, callable right after `git clone`)
+- [x] Declarative mapping of backend/extra → pip extra + external-tool check + install command
+- [x] Config-aware install step (resolve configured backends, install only what's needed, idempotent)
+- [x] Shared Makefile target + script entry point (supersedes/folds `make deps`, callable right after `git clone`)
+
+### Log
+
+- **2026-07-05** — Shipped all three pieces in one change. `bajutsu/requirements.py` holds the one
+  declarative mapping (backend/capability → pip extra + external-tool probe + install method), now
+  the single source `preflight.py`'s remedy strings read from (its hardcoded `_BACKEND_TOOLS` and web
+  remedy prose removed). `bajutsu/provision.py` resolves a config's referenced backends (via
+  `backends.resolve_actuators`) and configured AI provider into a pure `InstallPlan`, then executes
+  it idempotently over injectable subprocess seams. `scripts/install.sh` + `make install` (depends on
+  `setup`, which keeps its config-agnostic base role) are the two entry points; `make deps` and
+  `scripts/serve.sh` now delegate idb provisioning to the same script, and `idb_companion` moved out
+  of the `Brewfile` into the mapping (the Brewfile keeps only the sample-app build tool `xcodegen`).
 
 ## References
 

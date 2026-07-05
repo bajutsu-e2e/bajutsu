@@ -146,6 +146,7 @@
 | ID | 項目 | 状態 |
 |---|---|---|
 | [BE-0024](BE-0024-doctor-onboarding/BE-0024-doctor-onboarding-ja.md) | doctor / オンボーディング | 実装済み |
+| [BE-0164](BE-0164-config-aware-environment-installer/BE-0164-config-aware-environment-installer-ja.md) | config を踏まえた環境インストーラー | 実装済み |
 <!-- /GENERATED:implemented-doctor -->
 
 ### オーサリング体験（record / GUI エディタ）
@@ -617,9 +618,7 @@ Web（Playwright）backend とその完成（リッチな capability、並列実
 ### doctor / オンボーディング
 
 <!-- GENERATED:proposals-doctor -->
-| ID | 項目 | 状態 |
-|---|---|---|
-| [BE-0164](BE-0164-config-aware-environment-installer/BE-0164-config-aware-environment-installer-ja.md) | config を踏まえた環境インストーラー | 提案 |
+
 <!-- /GENERATED:proposals-doctor -->
 
 ### 開発基盤（コントリビュータ体験）

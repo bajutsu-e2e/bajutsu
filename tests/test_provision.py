@@ -1,0 +1,205 @@
+"""Config-aware environment installer (BE-0164): pure planning + idempotent execution."""
+
+from __future__ import annotations
+
+from pathlib import Path
+
+import pytest
+
+from bajutsu import provision, requirements
+from bajutsu.config import load_config
+from bajutsu.requirements import Brew, Extra, Playwright, Tool
+
+# --- plan(): resolve exactly what a config's backends + AI provider need ---------------------
+
+
+def test_plan_idb_target_needs_the_idb_extra_and_the_companion() -> None:
+    cfg = load_config("targets:\n  demo:\n    bundleId: com.example.demo\n    backend: [idb]\n")
+    p = provision.plan(cfg)
+    assert p.extras == ("idb",)
+    assert Tool("idb_companion", Brew("facebook/fb/idb-companion")) in p.tools
+
+
+def test_plan_web_target_includes_the_configured_engine_browser() -> None:
+    cfg = load_config(
+        "targets:\n  site:\n    baseUrl: http://x/index.html\n"
+        "    backend: [web]\n    browser: firefox\n"
+    )
+    p = provision.plan(cfg)
+    assert p.extras == ("web",)
+    assert Tool("firefox", Playwright("firefox")) in p.tools
+
+
+def test_plan_fake_target_installs_nothing() -> None:
+    cfg = load_config("targets:\n  t:\n    bundleId: com.example.t\n    backend: [fake]\n")
+    assert provision.plan(cfg).is_empty
+
+
+def test_plan_dedupes_across_targets() -> None:
+    cfg = load_config(
+        "targets:\n"
+        "  a:\n    bundleId: com.example.a\n    backend: [idb]\n"
+        "  b:\n    bundleId: com.example.b\n    backend: [idb]\n"
+    )
+    p = provision.plan(cfg)
+    assert p.extras == ("idb",)
+    assert [t.exe for t in p.tools].count("idb_companion") == 1
+
+
+def test_plan_detects_a_configured_ai_provider() -> None:
+    cfg = load_config(
+        "defaults:\n  ai:\n    provider: anthropic\n"
+        "targets:\n  demo:\n    bundleId: com.example.demo\n    backend: [idb]\n"
+    )
+    assert "ai" in provision.plan(cfg).extras
+
+
+def test_plan_without_ai_config_omits_the_ai_extra() -> None:
+    cfg = load_config("targets:\n  demo:\n    bundleId: com.example.demo\n    backend: [idb]\n")
+    assert "ai" not in provision.plan(cfg).extras
+
+
+def test_plan_with_no_targets_installs_no_backend() -> None:
+    # Backends come from targets.*; a config that declares no target references no backend, so a
+    # bare `make install` at a repo with no config installs nothing beyond the base (BE-0164).
+    from bajutsu.config import Config
+
+    assert provision.plan(Config()).is_empty
+    assert provision.plan(load_config("defaults:\n  backend: [web]\n")).is_empty
+
+
+def test_plan_no_targets_still_detects_a_defaults_ai_provider() -> None:
+    # AI is a config-level signal (defaults.ai), independent of any target — so it is installed
+    # even when no target is declared, unlike backends.
+    cfg = load_config("defaults:\n  ai:\n    provider: anthropic\n")
+    assert provision.plan(cfg).extras == ("ai",)
+
+
+def test_plan_for_backends_forces_a_specific_backend() -> None:
+    # The `make deps` path: provision the idb backend regardless of any config.
+    p = provision.plan_for_backends(["idb"])
+    assert p.extras == ("idb",)
+    assert Tool("idb_companion", Brew("facebook/fb/idb-companion")) in p.tools
+
+
+def test_plan_skips_a_planned_but_unbuilt_backend() -> None:
+    # `android` resolves to the `adb` actuator, which has no requirements entry yet — nothing to
+    # install, rather than a crash (forward-compatible, like backends.py skipping unknown tokens).
+    assert provision.plan_for_backends(["android"]).is_empty
+
+
+# --- provision(): idempotent execution over injectable subprocess seams ----------------------
+
+
+def _captured() -> tuple[list[tuple[str, ...]], provision.Runner]:
+    ran: list[tuple[str, ...]] = []
+    return ran, lambda cmd: ran.append(tuple(cmd))
+
+
+def test_provision_syncs_the_needed_extras() -> None:
+    ran, run = _captured()
+    provision.provision(provision.InstallPlan(("idb", "web"), ()), run=run)
+    assert ran == [("uv", "sync", "--extra", "idb", "--extra", "web")]
+
+
+def test_provision_skips_a_tool_already_on_path() -> None:
+    ran, run = _captured()
+    plan = provision.InstallPlan((), (Tool("idb_companion", Brew("facebook/fb/idb-companion")),))
+    report = provision.provision(
+        plan, which=lambda exe: f"/opt/{exe}", run=run, system=lambda: "Darwin"
+    )
+    assert ran == [] and report.manual == ()
+
+
+def test_provision_brew_installs_a_missing_tool_on_macos() -> None:
+    ran, run = _captured()
+    plan = provision.InstallPlan((), (Tool("idb_companion", Brew("facebook/fb/idb-companion")),))
+    provision.provision(
+        plan,
+        which=lambda exe: "/usr/bin/brew" if exe == "brew" else None,
+        run=run,
+        system=lambda: "Darwin",
+    )
+    assert ("brew", "install", "facebook/fb/idb-companion") in ran
+
+
+def test_provision_reports_manual_when_brew_is_unavailable() -> None:
+    ran, run = _captured()
+    plan = provision.InstallPlan((), (Tool("idb_companion", Brew("facebook/fb/idb-companion")),))
+    report = provision.provision(plan, which=lambda _exe: None, run=run, system=lambda: "Linux")
+    assert ran == []
+    assert report.manual == (requirements.remedy(Brew("facebook/fb/idb-companion")),)
+
+
+def test_provision_always_runs_the_idempotent_playwright_installer() -> None:
+    ran, run = _captured()
+    plan = provision.InstallPlan(("web",), (requirements.playwright_browser("chromium"),))
+    provision.provision(plan, which=lambda _exe: None, run=run, python_exe="py")
+    assert ("py", "-m", "playwright", "install", "chromium") in ran
+
+
+def test_provision_reports_a_manual_only_tool_when_missing() -> None:
+    # xcuitest's Xcode can't be auto-installed: missing -> a manual remedy, present -> skipped.
+    ran, run = _captured()
+    plan = provision.InstallPlan((), requirements.BACKENDS["xcuitest"].tools)
+    report = provision.provision(plan, which=lambda _exe: None, run=run, system=lambda: "Darwin")
+    assert ran == []
+    assert any("Xcode" in note for note in report.manual)
+
+    present = provision.provision(
+        plan, which=lambda exe: f"/opt/{exe}", run=run, system=lambda: "Darwin"
+    )
+    assert present.manual == ()
+
+
+def test_provision_extra_backed_tool_is_covered_by_the_extras_sync() -> None:
+    # `idb`'s client comes from the extra, so the Extra-backed tool needs no separate action.
+    ran, run = _captured()
+    plan = provision.InstallPlan(
+        ("idb",),
+        (
+            Tool("idb", Extra("idb")),
+            Tool("idb_companion", Brew("facebook/fb/idb-companion")),
+        ),
+    )
+    provision.provision(
+        plan,
+        which=lambda exe: "/usr/bin/brew" if exe == "brew" else None,
+        run=run,
+        system=lambda: "Darwin",
+    )
+    assert ran == [
+        ("uv", "sync", "--extra", "idb"),
+        ("brew", "install", "facebook/fb/idb-companion"),
+    ]
+
+
+# --- CLI: config loading + the dry-run / forced-backend / empty paths ------------------------
+
+
+def test_load_missing_explicit_config_exits(tmp_path: Path) -> None:
+    with pytest.raises(SystemExit):
+        provision._load(str(tmp_path / "nope.yaml"))
+
+
+def test_load_reads_an_existing_config(tmp_path: Path) -> None:
+    cfg_path = tmp_path / "bajutsu.config.yaml"
+    cfg_path.write_text("targets:\n  demo:\n    bundleId: com.example.demo\n    backend: [idb]\n")
+    cfg = provision._load(str(cfg_path))
+    assert "demo" in cfg.targets
+
+
+def test_main_dry_run_prints_the_plan_without_installing(tmp_path: Path) -> None:
+    cfg_path = tmp_path / "bajutsu.config.yaml"
+    cfg_path.write_text("targets:\n  demo:\n    bundleId: com.example.demo\n    backend: [idb]\n")
+    assert provision.main(["--config", str(cfg_path), "--dry-run"]) == 0
+
+
+def test_main_forced_backend_dry_run(tmp_path: Path) -> None:
+    assert provision.main(["--backend", "idb", "--dry-run"]) == 0
+
+
+def test_main_empty_config_installs_nothing(tmp_path: Path) -> None:
+    cfg_path = tmp_path / "bajutsu.config.yaml"
+    cfg_path.write_text("targets:\n  t:\n    bundleId: com.example.t\n    backend: [fake]\n")
+    assert provision.main(["--config", str(cfg_path)]) == 0

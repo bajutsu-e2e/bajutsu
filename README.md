@@ -190,8 +190,18 @@ Android (`adb`) and Flutter backends (planned). See
 ## Setup
 
 ```bash
-uv sync --group dev      # creates .venv (Python 3.13) and installs deps + dev tools
+make setup                 # base: .venv (Python 3.13) + dev tools + git hooks (no backend, runs anywhere)
+make install               # base PLUS exactly the backends your config needs (config-aware, BE-0164)
 ```
+
+`make setup` is the config-agnostic floor the deterministic gate needs. `make install` builds on it:
+it reads your `--config` (pass one via `make install ARGS="--config demos/showcase/showcase.config.yaml"`),
+resolves which backends its `targets.*` actually use plus whether an AI provider is configured, and
+installs only those pip extras and external tools (the `idb` client + `idb_companion` for iOS,
+Playwright's browser for web, the `anthropic` SDK when AI is configured) — idempotently, so it is
+safe to re-run. With no config in the working directory it installs nothing beyond the base. The
+requirements it draws from live in one mapping ([`bajutsu/requirements.py`](bajutsu/requirements.py)),
+shared with `doctor`'s pre-flight so the two never drift.
 
 Installing from PyPI instead? The base package is AI-free: `pip install bajutsu` gets the
 deterministic authoring / running paths with no AI SDK, and `pip install bajutsu[ai]` (or

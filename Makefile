@@ -1,4 +1,4 @@
-.PHONY: setup hooks deps deps-check serve worktree preflight test lint lint-docstrings lint-imports format format-check typecheck \
+.PHONY: setup hooks install deps deps-check serve worktree preflight test lint lint-docstrings lint-imports format format-check typecheck \
         lock-check lint-sh lint-actions lint-js lint-roadmap lint-pr check new-roadmap-item roadmap-index \
         roadmap-status roadmap-dashboard docs docs-serve
 
@@ -22,13 +22,25 @@ hooks:
 	  && git config rerere.enabled true \
 	  && echo "hooks: uv.lock + roadmap-index merge drivers + rerere wired"
 
-# Install the external tools the idb backend needs (idempotent).
-#   - Homebrew tools (idb_companion / xcodegen) from the Brewfile
-#   - the idb python client via uv (the `idb` extra)
+# Config-aware one-command bootstrap (BE-0164): the base toolchain (`setup`) PLUS exactly the
+# backend deps a project's config needs — not "idb unconditionally", not "everything". Meant to run
+# right after `git clone`, the same moment `make setup` does. Pass a config or a forced backend
+# through ARGS, e.g. `make install ARGS="--config demos/showcase/showcase.config.yaml"`. With no
+# config in cwd it installs nothing beyond the base (the dev gate needs no backend).
+install: setup
+	@./scripts/install.sh $(ARGS)
+
+# Install the external tools the idb backend needs (idempotent). Superseded by `make install`
+# (config-aware); kept as the idb-forced shortcut. The `idb` extra + the `idb_companion` formula
+# come from the one requirements mapping via the installer (BE-0164), so the Brewfile now holds
+# only the sample-app build tool (xcodegen), which is not a bajutsu backend requirement.
 deps:
-	@command -v brew >/dev/null 2>&1 || { echo "Homebrew is required: https://brew.sh"; exit 1; }
-	brew bundle --file=Brewfile
-	uv sync --extra idb --group dev
+	@./scripts/install.sh --backend idb
+	@if command -v brew >/dev/null 2>&1; then \
+	  brew bundle --file=Brewfile; \
+	else \
+	  echo "deps: Homebrew absent — skipping xcodegen (brew bundle); see https://brew.sh"; \
+	fi
 
 # Verify the required tools are on PATH without installing anything.
 deps-check:
@@ -56,12 +68,12 @@ preflight:
 	@./scripts/preflight.sh
 
 # Shell scripts the gate lints. pre-push has no .sh suffix, so they're listed explicitly.
-SHELL_SCRIPTS := .githooks/pre-push .githooks/commit-msg scripts/serve.sh scripts/worktree.sh scripts/preflight.sh scripts/merge-uv-lock.sh scripts/merge-roadmap-index.sh .claude/hooks/session-start.sh demos/tour/demo.sh
+SHELL_SCRIPTS := .githooks/pre-push .githooks/commit-msg scripts/serve.sh scripts/install.sh scripts/worktree.sh scripts/preflight.sh scripts/merge-uv-lock.sh scripts/merge-roadmap-index.sh .claude/hooks/session-start.sh demos/tour/demo.sh
 
 # Modules whose public surface has migrated to the Google-style docstring standard (BE-0065),
 # enforced by `lint-docstrings`. This list GROWS module-by-module as more migrate; keep it the
 # allowlist (not an ignore list) so an unmigrated module never accidentally falls under the gate.
-DOCSTRING_PATHS := bajutsu/ai bajutsu/drivers bajutsu/assertions.py bajutsu/network.py bajutsu/runner bajutsu/scenario bajutsu/mcp bajutsu/cli bajutsu/doctor.py bajutsu/audit.py bajutsu/coverage.py bajutsu/stats.py bajutsu/trace.py bajutsu/triage.py bajutsu/report bajutsu/evidence.py bajutsu/idb_version.py bajutsu/intervals.py bajutsu/redaction.py bajutsu/config.py bajutsu/config_source.py bajutsu/codegen.py bajutsu/codegen_common.py bajutsu/codegen_playwright.py bajutsu/backends.py bajutsu/capability_preflight.py bajutsu/crawl.py bajutsu/crawl_guide.py bajutsu/crawl_tabs.py bajutsu/agent.py bajutsu/agents.py bajutsu/claude_agent.py bajutsu/claude_code_agent.py bajutsu/claude_triage.py bajutsu/alerts.py bajutsu/anthropic_client.py bajutsu/record.py bajutsu/visual.py bajutsu/web_network.py bajutsu/from_grouping.py
+DOCSTRING_PATHS := bajutsu/ai bajutsu/drivers bajutsu/assertions.py bajutsu/network.py bajutsu/runner bajutsu/scenario bajutsu/mcp bajutsu/cli bajutsu/doctor.py bajutsu/audit.py bajutsu/coverage.py bajutsu/stats.py bajutsu/trace.py bajutsu/triage.py bajutsu/report bajutsu/evidence.py bajutsu/idb_version.py bajutsu/intervals.py bajutsu/redaction.py bajutsu/config.py bajutsu/config_source.py bajutsu/codegen.py bajutsu/codegen_common.py bajutsu/codegen_playwright.py bajutsu/backends.py bajutsu/capability_preflight.py bajutsu/requirements.py bajutsu/provision.py bajutsu/crawl.py bajutsu/crawl_guide.py bajutsu/crawl_tabs.py bajutsu/agent.py bajutsu/agents.py bajutsu/claude_agent.py bajutsu/claude_code_agent.py bajutsu/claude_triage.py bajutsu/alerts.py bajutsu/anthropic_client.py bajutsu/record.py bajutsu/visual.py bajutsu/web_network.py bajutsu/from_grouping.py
 
 # Run the suite with a coverage floor — a regression that quietly drops coverage fails the gate.
 # The JSON report is a gitignored side artifact CI renders into its job summary (scripts/coverage_summary.py).
