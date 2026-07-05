@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-visual-compare-engines-ja.md)
+**English** · [日本語](BE-0165-visual-compare-engines-ja.md)
 
-# BE-XXXX — Selectable perceptual compare engines for visual regression
+# BE-0165 — Selectable perceptual compare engines for visual regression
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-visual-compare-engines.md) |
+| Proposal | [BE-0165](BE-0165-visual-compare-engines.md) |
 | Author | [@hirosassa](https://github.com/hirosassa) |
 | Status | **Proposal** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0165") |
 | Topic | Candidates from competitive research (MagicPod / Autify) |
 <!-- /BE-METADATA -->
 

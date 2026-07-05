@@ -653,7 +653,9 @@ Sending a run's result out to a service the team already lives in. These are pos
 ### Candidates from competitive research (MagicPod / Autify)
 
 <!-- GENERATED:proposals-competitive -->
-
+| ID | Item | Status | Origin |
+|---|---|---|---|
+| [BE-0165](BE-0165-visual-compare-engines/BE-0165-visual-compare-engines.md) | Selectable perceptual compare engines for visual regression | Proposal |  |
 <!-- /GENERATED:proposals-competitive -->
 
 ### Candidates from competitive research (Maestro)

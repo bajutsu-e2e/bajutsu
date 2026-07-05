@@ -646,7 +646,9 @@ Web（Playwright）backend とその完成（リッチな capability、並列実
 ### 競合調査（MagicPod / Autify）由来の候補
 
 <!-- GENERATED:proposals-competitive -->
-
+| ID | 項目 | 状態 | 由来 |
+|---|---|---|---|
+| [BE-0165](BE-0165-visual-compare-engines/BE-0165-visual-compare-engines-ja.md) | ビジュアルリグレッションの比較エンジンを選択可能にする | 提案 |  |
 <!-- /GENERATED:proposals-competitive -->
 
 ### 競合調査（Maestro）由来の候補
