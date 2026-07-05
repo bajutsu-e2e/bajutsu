@@ -555,6 +555,8 @@ function renderPlan(data){
 let crawlGraphData=null,crawlGraphRunId=null;
 let prunePlan=true;  // collapse a global op (e.g. a tab switch) repeated across screens to one entry
 const expandedGroups=new Set();  // group keys the user expanded in the graph (kept across redraws)
+const nodeOverrides=new Map();  // unit-id → {x,y} manual positions (kept across redraws, cleared by realign)
+const NODE_W=176,NODE_H=290;  // graph card dimensions (px), shared by renderGraph and liveEdges
 const gview={x:0,y:0,k:1};  // pan (px) + zoom (scale), applied as a transform on the graph layer
 function shotURL(runId,fp){return `/runs/${encodeURIComponent(runId)}/screens/${encodeURIComponent(fp)}.png`}
 // Screens with the same set of accessibility identifiers are the same UI in different states; key
@@ -672,9 +674,10 @@ function renderGraph(data,runId){
   const layers=[];units.forEach(u=>{const d=depth.get(u.id);(layers[d]||(layers[d]=[])).push(u)});
   // Layout: vertical cards — a large screenshot on top, label+info (and any group button) below.
   // Wider than tall-text needs so labels wrap rather than truncate.
-  const NW=176,NH=290,COLW=250,ROWH=NH+30,PAD=24;
+  const NW=NODE_W,NH=NODE_H,COLW=250,ROWH=NH+30,PAD=24;
   const pos=new Map();let maxRows=1;
   layers.forEach((layer,d)=>{if(!layer)return;maxRows=Math.max(maxRows,layer.length);layer.forEach((u,i)=>pos.set(u.id,{x:PAD+d*COLW,y:PAD+i*ROWH}))});
+  nodeOverrides.forEach((p,id)=>{if(pos.has(id))pos.set(id,p)});
   const W=PAD*2+(layers.length-1)*COLW+NW,H=PAD*2+(maxRows-1)*ROWH+NH;
   // Edge layer (SVG), sized to the same coordinate space the unit boxes are positioned in.
   let svg=`<svg class="graphsvg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">`;
@@ -725,29 +728,59 @@ function zoomBy(factor,cx,cy){
 }
 function resetView(){gview.x=0;gview.y=0;gview.k=1;applyView()}
 (function(){
-  const box=$('#crawl-graph');let drag=null,moved=false;
+  const box=$('#crawl-graph');let drag=null,nodeDrag=null,moved=false;
+  const NDW=NODE_W,NDH2=NODE_H/2;
+  function liveEdges(wrap,uid,nx,ny){
+    wrap.querySelectorAll('.edge').forEach(p=>{
+      const isA=p.dataset.a===uid,isB=p.dataset.b===uid;if(!isA&&!isB)return;
+      if(p.dataset.a===p.dataset.b){const x=nx+NDW,y=ny+NDH2;p.setAttribute('d',`M${x},${y-8} C${x+34},${y-26} ${x+34},${y+26} ${x},${y+8}`);
+        const t=p.nextElementSibling;if(t&&t.classList.contains('edgealert')){t.setAttribute('x',x+30);t.setAttribute('y',y)}return}
+      const oid=isA?p.dataset.b:p.dataset.a,oel=wrap.querySelector(`.gnode[data-uid="${CSS.escape(oid)}"]`);if(!oel)return;
+      const ox=parseFloat(oel.style.left),oy=parseFloat(oel.style.top);
+      const ax=isA?nx:ox,ay=isA?ny:oy,bx=isB?nx:ox,by=isB?ny:oy;
+      const x1=ax+NDW,y1=ay+NDH2,x2=bx,y2=by+NDH2,mx=(x1+x2)/2;
+      p.setAttribute('d',`M${x1},${y1} C${mx},${y1} ${mx},${y2} ${x2},${y2}`);
+      const t=p.nextElementSibling;if(t&&t.classList.contains('edgealert')){t.setAttribute('x',mx);t.setAttribute('y',(y1+y2)/2-4)}});
+  }
   box.addEventListener('wheel',e=>{if(!$('.graphwrap'))return;e.preventDefault();zoomBy(e.deltaY<0?1.1:1/1.1,e.clientX,e.clientY)},{passive:false});
-  box.addEventListener('mousedown',e=>{if(!$('.graphwrap'))return;drag={x:e.clientX,y:e.clientY,ox:gview.x,oy:gview.y};moved=false;box.classList.add('panning')});
-  window.addEventListener('mousemove',e=>{if(!drag)return;const dx=e.clientX-drag.x,dy=e.clientY-drag.y;if(Math.abs(dx)+Math.abs(dy)>3)moved=true;gview.x=drag.ox+dx;gview.y=drag.oy+dy;applyView()});
-  window.addEventListener('mouseup',()=>{if(drag){drag=null;box.classList.remove('panning')}});
-  // Touch (BE-0072): one finger pans, two fingers pinch-zoom — both reuse the existing translate +
-  // `zoom` math (zoomBy keeps a point fixed while scaling, same as wheel). The view is already a
-  // pan+zoom model, so the mapping is unchanged; this is purely an additional input path. A touch
-  // that didn't drift still falls through to `click` for expand/collapse/lightbox.
+  box.addEventListener('mousedown',e=>{if(!$('.graphwrap'))return;
+    const gn=e.target.closest('.gnode');
+    if(gn&&gn.dataset.uid){nodeDrag={uid:gn.dataset.uid,el:gn,sx:e.clientX,sy:e.clientY,ox:parseFloat(gn.style.left),oy:parseFloat(gn.style.top)};moved=false;return}
+    drag={x:e.clientX,y:e.clientY,ox:gview.x,oy:gview.y};moved=false;box.classList.add('panning')});
+  window.addEventListener('mousemove',e=>{
+    if(nodeDrag){const dx=(e.clientX-nodeDrag.sx)/gview.k,dy=(e.clientY-nodeDrag.sy)/gview.k;
+      if(Math.abs(e.clientX-nodeDrag.sx)+Math.abs(e.clientY-nodeDrag.sy)>3)moved=true;
+      const nx=nodeDrag.ox+dx,ny=nodeDrag.oy+dy;nodeDrag.el.style.left=nx+'px';nodeDrag.el.style.top=ny+'px';
+      const w=$('.graphwrap');if(w)liveEdges(w,nodeDrag.uid,nx,ny);return}
+    if(!drag)return;const dx=e.clientX-drag.x,dy=e.clientY-drag.y;if(Math.abs(dx)+Math.abs(dy)>3)moved=true;gview.x=drag.ox+dx;gview.y=drag.oy+dy;applyView()});
+  window.addEventListener('mouseup',()=>{
+    if(nodeDrag){if(moved){nodeOverrides.set(nodeDrag.uid,{x:parseFloat(nodeDrag.el.style.left),y:parseFloat(nodeDrag.el.style.top)});nodeDrag=null;redrawGraph();return}nodeDrag=null;return}
+    if(drag){drag=null;box.classList.remove('panning')}});
+  // Touch (BE-0072 + BE-0095): one finger on background pans, on a node drags it; two fingers
+  // pinch-zoom. Both reuse the existing translate + `zoom` math. A touch that didn't drift still
+  // falls through to `click` for expand/collapse/lightbox.
   let tpan=null,pinch=null;
   const dist=(a,b)=>Math.hypot(a.clientX-b.clientX,a.clientY-b.clientY);
   const mid=(a,b)=>({x:(a.clientX+b.clientX)/2,y:(a.clientY+b.clientY)/2});
   box.addEventListener('touchstart',e=>{if(!$('.graphwrap'))return;
-    if(e.touches.length===1){const t=e.touches[0];tpan={x:t.clientX,y:t.clientY,ox:gview.x,oy:gview.y};pinch=null;moved=false;box.classList.add('panning');}
-    else if(e.touches.length===2){const m=mid(e.touches[0],e.touches[1]);pinch={d:dist(e.touches[0],e.touches[1]),cx:m.x,cy:m.y};tpan=null;moved=true;}
+    if(e.touches.length===1){const t=e.touches[0],gn=e.target.closest('.gnode');
+      if(gn&&gn.dataset.uid){nodeDrag={uid:gn.dataset.uid,el:gn,sx:t.clientX,sy:t.clientY,ox:parseFloat(gn.style.left),oy:parseFloat(gn.style.top)};pinch=null;tpan=null;moved=false;return;}
+      tpan={x:t.clientX,y:t.clientY,ox:gview.x,oy:gview.y};pinch=null;moved=false;box.classList.add('panning');}
+    else if(e.touches.length===2){const m=mid(e.touches[0],e.touches[1]);pinch={d:dist(e.touches[0],e.touches[1]),cx:m.x,cy:m.y};tpan=null;nodeDrag=null;moved=true;}
   },{passive:true});
   box.addEventListener('touchmove',e=>{if(!$('.graphwrap'))return;
-    if(pinch&&e.touches.length===2){e.preventDefault();const d=dist(e.touches[0],e.touches[1]),m=mid(e.touches[0],e.touches[1]);
+    if(nodeDrag&&e.touches.length===1){e.preventDefault();const t=e.touches[0],dx=(t.clientX-nodeDrag.sx)/gview.k,dy=(t.clientY-nodeDrag.sy)/gview.k;
+      if(Math.abs(t.clientX-nodeDrag.sx)+Math.abs(t.clientY-nodeDrag.sy)>3)moved=true;
+      const nx=nodeDrag.ox+dx,ny=nodeDrag.oy+dy;nodeDrag.el.style.left=nx+'px';nodeDrag.el.style.top=ny+'px';
+      const w=$('.graphwrap');if(w)liveEdges(w,nodeDrag.uid,nx,ny);}
+    else if(pinch&&e.touches.length===2){e.preventDefault();const d=dist(e.touches[0],e.touches[1]),m=mid(e.touches[0],e.touches[1]);
       if(pinch.d>0)zoomBy(d/pinch.d,m.x,m.y);pinch.d=d;pinch.cx=m.x;pinch.cy=m.y;}
     else if(tpan&&e.touches.length===1){e.preventDefault();const t=e.touches[0],dx=t.clientX-tpan.x,dy=t.clientY-tpan.y;
       if(Math.abs(dx)+Math.abs(dy)>3)moved=true;gview.x=tpan.ox+dx;gview.y=tpan.oy+dy;applyView();}
   },{passive:false});
-  const endTouch=()=>{tpan=null;pinch=null;box.classList.remove('panning');};
+  const endTouch=()=>{
+    if(nodeDrag&&moved){nodeOverrides.set(nodeDrag.uid,{x:parseFloat(nodeDrag.el.style.left),y:parseFloat(nodeDrag.el.style.top)});nodeDrag=null;redrawGraph();tpan=null;pinch=null;box.classList.remove('panning');return;}
+    nodeDrag=null;tpan=null;pinch=null;box.classList.remove('panning');};
   window.addEventListener('touchend',e=>{if(e.touches.length===0)endTouch();});
   // A touchcancel (gesture takeover, OS context switch) aborts the gesture outright — reset the same
   // way as touchend so a cancelled pan/pinch can't leave stuck state that breaks the next tap/pan.
@@ -761,8 +794,8 @@ function resetView(){gview.x=0;gview.y=0;gview.k=1;applyView()}
     const node=e.target.closest('.gnode');if(node&&node.dataset.fp)openShot(node.dataset.fp)});
   // Hovering a node lights up only the edges touching it and dims the rest, so a busy web of lines
   // becomes readable on demand. Edges carry data-a/data-b (their endpoint unit ids); the node carries
-  // data-uid. Skipped while dragging so a pan doesn't flicker the highlight.
-  box.addEventListener('mouseover',e=>{if(drag)return;const n=e.target.closest('.gnode');if(!n||!n.dataset.uid)return;
+  // data-uid. Skipped while dragging (pan or node) so a gesture doesn't flicker the highlight.
+  box.addEventListener('mouseover',e=>{if(drag||nodeDrag)return;const n=e.target.closest('.gnode');if(!n||!n.dataset.uid)return;
     const wrap=$('.graphwrap');if(!wrap)return;const uid=n.dataset.uid;
     wrap.classList.add('hl');
     wrap.querySelectorAll('.edge').forEach(p=>p.classList.toggle('hot',p.dataset.a===uid||p.dataset.b===uid));
@@ -782,6 +815,7 @@ function isAdjacent(wrap,uid,other){
 $('#crawl-zoomin').addEventListener('click',()=>{const r=$('#crawl-graph').getBoundingClientRect();zoomBy(1.2,r.left+r.width/2,r.top+r.height/2)});
 $('#crawl-zoomout').addEventListener('click',()=>{const r=$('#crawl-graph').getBoundingClientRect();zoomBy(1/1.2,r.left+r.width/2,r.top+r.height/2)});
 $('#crawl-zoomreset').addEventListener('click',resetView);
+$('#crawl-realign').addEventListener('click',()=>{nodeOverrides.clear();redrawGraph()});
 // A screen row in the plan tree opens that screen's lightbox, same as a graph node.
 $('#crawl-plan').addEventListener('click',e=>{
   // A struck-through pruned op: resume exploring that branch (re-crawl from its screen).
