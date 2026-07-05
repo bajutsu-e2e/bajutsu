@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0016") |
-| Implementing PR | [#103](https://github.com/bajutsu-e2e/bajutsu/pull/103), [#154](https://github.com/bajutsu-e2e/bajutsu/pull/154), [#365](https://github.com/bajutsu-e2e/bajutsu/pull/365), [#367](https://github.com/bajutsu-e2e/bajutsu/pull/367), [#507](https://github.com/bajutsu-e2e/bajutsu/pull/507) |
+| Implementing PR | [#103](https://github.com/bajutsu-e2e/bajutsu/pull/103), [#154](https://github.com/bajutsu-e2e/bajutsu/pull/154), [#365](https://github.com/bajutsu-e2e/bajutsu/pull/365), [#367](https://github.com/bajutsu-e2e/bajutsu/pull/367), [#507](https://github.com/bajutsu-e2e/bajutsu/pull/507), [#674](https://github.com/bajutsu-e2e/bajutsu/pull/674) |
 | Topic | Hosting the web UI (cloud / self-hosted) |
 | Related | [BE-0106](../BE-0106-post-completion-worker-model/BE-0106-post-completion-worker-model.md) |
 <!-- /BE-METADATA -->
@@ -201,12 +201,14 @@ substantial, and mostly a deployment or operations concern the Linux-only `make 
 exercise (no Docker, no Mac), it has been **split out of this umbrella into five focused roadmap
 items** — the per-org cap and worker-liveness re-queue this work built on have already shipped (see
 *What runs today*). Each successor names its shipped base, its concrete design, and how it is
-verified; only two carry a machine-checkable contract. By topic:
+verified; three expose a machine-checkable surface — fully for weighted-fair dispatch, partially for
+capability routing and observability — while control-plane scale-out and high availability are
+verified by hand. By topic:
 
 1. **Weighted-fair cross-org job dispatch** — turn the per-org cap's 429 rejection into *holding*:
    per-org pending queues and a round-robin dispatcher that keeps the scarce pool fair under
-   contention. The one remaining piece with a gate-checkable contract (unit-tested on `ServeState`,
-   no Mac); it lands in `bajutsu/serve/operations.py` and `jobs.py`.
+   contention. The only piece that is *fully* gate-checkable (unit-tested on `ServeState`, no Mac);
+   it lands in `bajutsu/serve/operations.py` and `jobs.py`.
 2. **Capability-routed job queues** — per-capability queues (`q:ios18`, `q:ipad`) so a job is only
    ever leased by a worker that can run it. The lease filter is gate-checkable; the multi-device
    routing is verified by hand. No change to the deterministic `run`.
