@@ -188,7 +188,10 @@ ClipboardMatch ::= ( {equals:string} | {matches:string} )   # ちょうど 1 つ
 
 VisualMatch ::= {                  # 画面をベースライン画像とピクセル比較する
   baseline:   string,             # --baselines 内で解決されるファイル名（既定: シナリオ隣の baselines/）
+  compare?:   "exact" | "pixelmatch",  # 比較エンジン（既定: config または "exact"、BE-0165）
   threshold?: number,             # 許容差分（ピクセルの%、既定 0.0 = 完全一致）
+  colorTolerance?: number,        # ピクセル単位の知覚的色差許容値、0–1（pixelmatch 用、既定 0.1）
+  antialiasing?: boolean,         # アンチエイリアスピクセルを差分から除外する（pixelmatch 用、既定 true）
   exclude?:   list(<ExcludeRegion>),  # 比較前にマスクする領域（ステータスバー・時計など）
 }
 ExcludeRegion ::= { x: number, y: number, w: number, h: number }   # スクリーンショットのピクセル

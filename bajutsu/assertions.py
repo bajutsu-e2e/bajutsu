@@ -56,6 +56,7 @@ class VisualEvidence:
     diff: str | None = None  # the diff visualization (None when identical / missing)
     diff_pct: float | None = None
     missing: bool = False  # baseline did not exist yet (first run)
+    engine: str | None = None  # the compare engine used (exact / pixelmatch; BE-0165)
 
 
 @dataclass(frozen=True)
@@ -81,6 +82,7 @@ class VisualContext:
     baselines_dir: Path
     diff_dir: Path
     run_dir: Path
+    default_compare: str = "exact"
 
 
 @dataclass(frozen=True)
@@ -542,7 +544,23 @@ def _eval_visual(ctx: VisualContext | None, a: VisualMatch) -> AssertionResult:
             False, "visual", detail, f"baseline not found: {a.baseline}", visual=ev
         )
 
-    from bajutsu.visual import compare_images
+    try:
+        from bajutsu.visual import compare_images
+    except ImportError:
+        return AssertionResult(
+            False, "visual", detail, "visual assertions need the 'visual' extra (Pillow)"
+        )
+
+    engine = a.compare or ctx.default_compare
+
+    if engine == "exact" and {"color_tolerance", "antialiasing"} & a.model_fields_set:
+        return AssertionResult(
+            False,
+            "visual",
+            detail,
+            "colorTolerance/antialiasing are set but the resolved engine is 'exact' "
+            "(set compare: pixelmatch or the target's visualCompare)",
+        )
 
     ctx.diff_dir.mkdir(parents=True, exist_ok=True)
     diff_path = ctx.diff_dir / f"diff-{name}"
@@ -552,7 +570,10 @@ def _eval_visual(ctx: VisualContext | None, a: VisualMatch) -> AssertionResult:
     result = compare_images(
         ctx.screenshot_path,
         baseline_path,
+        engine=engine,
         threshold=a.threshold,
+        color_tolerance=a.color_tolerance,
+        antialiasing=a.antialiasing,
         exclude=a.exclude,
         diff_path=diff_path,
     )
@@ -562,6 +583,7 @@ def _eval_visual(ctx: VisualContext | None, a: VisualMatch) -> AssertionResult:
         baseline=_rel(ctx.run_dir, baseline_copy),
         diff=_rel(ctx.run_dir, diff_path) if (not result.ok and diff_path.is_file()) else None,
         diff_pct=result.diff_pct,
+        engine=engine,
     )
     return AssertionResult(result.ok, "visual", detail, result.reason, visual=ev)
 

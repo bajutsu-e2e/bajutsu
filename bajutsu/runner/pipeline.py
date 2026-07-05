@@ -140,6 +140,7 @@ class _ScenarioRunner:
                     baselines_dir=self.baselines_dir,
                     diff_dir=self.run_dir / sid,
                     run_dir=self.run_dir,
+                    default_compare=self.eff.visual_compare,
                 )
             sc = (
                 SchemaContext(schemas_dir=self.schemas_dir)

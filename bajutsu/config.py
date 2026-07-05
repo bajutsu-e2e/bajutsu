@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field, replace
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -231,6 +231,9 @@ class Defaults(_Model):
     # per-app: the pin is the same whichever target a scenario drives. `doctor` reports the
     # installed companion against it; None = no pin declared (BE-0005).
     idb_version: str | None = Field(default=None, alias="idbVersion")
+    visual_compare: Literal["exact", "pixelmatch"] | None = Field(
+        default=None, alias="visualCompare"
+    )
 
     @field_validator("backend", mode="before")
     @classmethod
@@ -319,6 +322,9 @@ class TargetConfig(_Model):
     ai: AiSettings | None = None
     # Per-target webhook notification override (BE-0099). None inherits the top-level `notify:`.
     notify: list[NotifyEndpoint] | None = None
+    visual_compare: Literal["exact", "pixelmatch"] | None = Field(
+        default=None, alias="visualCompare"
+    )
 
     @field_validator("backend", mode="before")
     @classmethod
@@ -468,6 +474,7 @@ class Effective:
     doctor_fail_coverage: float = 0.7
     # Webhook notification sinks (BE-0099). Empty when no `notify:` is configured.
     notify: list[NotifyEndpoint] = field(default_factory=list)
+    visual_compare: str = "exact"
 
     @property
     def platform(self) -> str:
@@ -700,6 +707,7 @@ def resolve(config: Config, target: str) -> Effective:
         doctor_ok_coverage=d.doctor.id_coverage_ok,
         doctor_fail_coverage=d.doctor.id_coverage_fail,
         notify=a.notify if a.notify is not None else list(config.notify),
+        visual_compare=a.visual_compare or d.visual_compare or "exact",
     )
 
 

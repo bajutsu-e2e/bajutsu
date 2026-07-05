@@ -702,6 +702,39 @@ def test_notify_on_accepts_single_string() -> None:
     assert resolve(cfg, "s").notify[0].on == ["always"]
 
 
+# --- BE-0165: visual compare engine config ---
+
+
+def test_visual_compare_defaults_to_exact() -> None:
+    cfg = load_config("targets:\n  s:\n    bundleId: com.x\n")
+    assert resolve(cfg, "s").visual_compare == "exact"
+
+
+def test_visual_compare_from_defaults() -> None:
+    cfg = load_config(
+        "defaults:\n  visualCompare: pixelmatch\ntargets:\n  s:\n    bundleId: com.x\n"
+    )
+    assert resolve(cfg, "s").visual_compare == "pixelmatch"
+
+
+def test_visual_compare_target_overrides_defaults() -> None:
+    cfg = load_config(
+        "defaults:\n  visualCompare: pixelmatch\n"
+        "targets:\n  s:\n    bundleId: com.x\n    visualCompare: exact\n"
+    )
+    assert resolve(cfg, "s").visual_compare == "exact"
+
+
+def test_visual_compare_target_only() -> None:
+    cfg = load_config("targets:\n  s:\n    bundleId: com.x\n    visualCompare: pixelmatch\n")
+    assert resolve(cfg, "s").visual_compare == "pixelmatch"
+
+
+def test_visual_compare_invalid_rejected() -> None:
+    with pytest.raises(ValidationError):
+        load_config("targets:\n  s:\n    bundleId: com.x\n    visualCompare: ssim\n")
+
+
 def test_load_config_drops_top_level_orgs() -> None:
     # The org model is a serve concern the deterministic core does not understand (BE-0129). A run
     # in the hosted topology reads an org-bearing config, so the core loader must drop `orgs:` and

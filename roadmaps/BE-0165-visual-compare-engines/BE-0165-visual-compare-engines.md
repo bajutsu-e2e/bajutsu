@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0165](BE-0165-visual-compare-engines.md) |
 | Author | [@hirosassa](https://github.com/hirosassa) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0165") |
+| Implementing PR | [#695](https://github.com/bajutsu-e2e/bajutsu/pull/695) |
 | Topic | Candidates from competitive research (MagicPod / Autify) |
 <!-- /BE-METADATA -->
 
@@ -126,13 +127,13 @@ engine and only reserves the seam for a structural engine, whose different thres
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Schema: `compare` selector + pixelmatch tolerances on `VisualMatch`
-- [ ] Config: target-level default compare engine with per-assertion override
-- [ ] Engine seam: dispatch in `compare_images`; add the `pixelmatch` engine
-- [ ] Performance short-circuit: exact pre-check before the perceptual pass
-- [ ] Explicit dependency errors (no silent downgrade)
-- [ ] Diff output + wiring through `_eval_visual` / `VisualContext` + engine recorded in evidence
-- [ ] Docs (`docs/evidence.md` + `docs/ja/`) & deterministic per-engine tests
+- [x] Schema: `compare` selector + pixelmatch tolerances on `VisualMatch`
+- [x] Config: target-level default compare engine with per-assertion override
+- [x] Engine seam: dispatch in `compare_images`; add the `pixelmatch` engine
+- [x] Performance short-circuit: exact pre-check before the perceptual pass
+- [x] Explicit dependency errors (no silent downgrade)
+- [x] Diff output + wiring through `_eval_visual` / `VisualContext` + engine recorded in evidence
+- [x] Docs (`docs/evidence.md` + `docs/ja/`) & deterministic per-engine tests
 
 ## References
 

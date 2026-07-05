@@ -358,6 +358,7 @@ def _visual_row(ev: Any, ok: bool) -> dict[str, Any] | None:
         "approvable": not ok,
         "baseline_name": ev.baseline_name,
         "sid": sid,
+        "engine": ev.engine,
     }
 
 

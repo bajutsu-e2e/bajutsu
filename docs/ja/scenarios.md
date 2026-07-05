@@ -423,9 +423,21 @@ expect:
 ```yaml
 - assert:
     - visual: { baseline: "home.png", threshold: 0.02, exclude: [{ x: 0, y: 0, w: 390, h: 47 }] }
+    - visual: { baseline: "detail.png", compare: pixelmatch, colorTolerance: 0.1, antialiasing: true }
 ```
 
-`visual` はスクリーンショットを取得し、`baseline`（run の baselines ディレクトリ内の PNG。`--baselines`、またはシナリオ脇の `baselines/`）とピクセル比較します。`threshold` は許容する差分ピクセルの割合（既定 `0.0` = 完全一致）、`exclude` は比較前にマスクする矩形（スクリーンショットのピクセル座標）のリストで、ステータスバーや時計などに使います。baseline は `approve` コマンド（[cli](cli.md#approve)）か `serve` UI で作成 / 更新します。baseline が無いとアサーションは失敗します。`overrideStatusBar` と併用すると時計 / バッテリーを固定できます。差分は `report.html` に表示されます。
+`visual` はスクリーンショットを取得し、`baseline`（run の baselines ディレクトリ内の PNG。`--baselines`、またはシナリオ脇の `baselines/`）と比較します。
+
+比較エンジンは `compare` で選択できます（BE-0165）。
+
+| エンジン | 説明 | 既定 |
+|---|---|---|
+| `exact` | ピクセル完全一致。いずれかのチャネルが異なればそのピクセルは「差分」として計上されます。 | はい（後方互換） |
+| `pixelmatch` | 知覚的 YIQ 色差 + アンチエイリアシング検出。サブピクセルレンダリングノイズや 1 ピクセルのエッジシフトを許容します。 | いいえ |
+
+`compare` を省略すると、ターゲットの `visualCompare` 設定（`defaults:` または `targets.<name>` で指定）にフォールバックし、さらに未設定なら `exact` になります。
+
+`threshold` は許容する差分ピクセルの割合（既定 `0.0` = 完全一致）で、すべてのエンジン共通です。`colorTolerance`（0–1、既定 `0.1`）は `pixelmatch` のピクセル単位の知覚的色差許容値、`antialiasing`（既定 `true`）はアンチエイリアスされたピクセルを差分から除外します。`exclude` は比較前にマスクする矩形（スクリーンショットのピクセル座標）のリストで、ステータスバーや時計などに使います。baseline は `approve` コマンド（[cli](cli.md#approve)）か `serve` UI で作成・更新します。baseline が無いとアサーションは失敗します。`overrideStatusBar` と併用すると時計・バッテリーを固定できます。差分は `report.html` に表示されます。`pixelmatch` では、割引されなかった（非 AA）ピクセルのみが差分画像に表示されます。
 
 ## ネットワークモック（決定的スタブ）
 
