@@ -164,6 +164,10 @@ def _make_handler(collector: NetworkCollector) -> type[BaseHTTPRequestHandler]:
             auth = self.headers.get("Authorization", "")
             presented = auth[len("Bearer ") :] if auth.startswith("Bearer ") else ""
             if not collector.check_token(presented):
+                # Close rather than drain the unread body (mirrors serve's reject path). This
+                # server is HTTP/1.0, so connections already close per request; the explicit flag
+                # guards the reject path should the protocol ever be bumped to keep-alive.
+                self.close_connection = True
                 self.send_response(401)
                 self.end_headers()
                 return
