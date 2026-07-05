@@ -222,7 +222,7 @@ entry points use the same scenario format:
   The key is write-once: it is shown only as a masked preview and never displayed again — to change
   it, set a new one (there is no read-back). It is kept in memory only (not written to disk), so a
   `.env` is still the way to make it survive a restart. How the authoring loop and the system-alert
-  guard work: [recording](recording.md).
+  guard work: [recording](recording.md). How to drive each tab of the web UI: [web-ui](web-ui.md).
 - **Emit a native XCUITest.** Convert a scenario to Swift (no Bajutsu runtime / AI at test time):
   ```bash
   uv run bajutsu codegen demos/showcase/scenarios/smoke.yaml --target showcase-swiftui -o UITests/Smoke.swift

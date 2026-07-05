@@ -161,7 +161,8 @@ Implemented and covered by tests (run without a Simulator):
 - **MCP server** (`bajutsu mcp`): exposes `run` and `doctor` as MCP tools and run evidence
   (manifest / report / JUnit / artifacts) as resources, for Claude Desktop / Code integration
 - **Web UI** (`bajutsu serve`): author (`record` / `crawl`), edit, and run scenarios; browse
-  reports and every evidence type; approve visual baselines; live job streaming over SSE
+  reports and every evidence type; approve visual baselines; live job streaming over SSE. How to
+  drive each tab: [docs/web-ui.md](docs/web-ui.md)
 
 Validated on a real Simulator (iPhone 17 Pro, recent iOS):
 
