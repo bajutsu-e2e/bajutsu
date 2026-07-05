@@ -585,8 +585,7 @@ The scope is currently **limited to the iOS Simulator** ([DESIGN §1](../DESIGN.
 ### AI provider configuration
 
 <!-- GENERATED:proposals-ai-provider -->
-| ID | Item | Status |
-|---|---|---|
+
 <!-- /GENERATED:proposals-ai-provider -->
 
 ### Hosting the web UI (cloud / self-hosted)
