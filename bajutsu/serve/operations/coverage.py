@@ -51,9 +51,14 @@ def coverage_view(
     eff = resolve(config, target)
     static = _coverage.coverage(scenarios, eff.id_namespaces)
 
-    # A run set (optional) folds in the run-evidence dimensions. Every id must be a single path
-    # segment — a crafted `../..` would otherwise let the reader glob outside its run's own tree.
-    runs = [str(r) for r in body.get("runs") or []]
+    # A run set (optional) folds in the run-evidence dimensions. Require an actual JSON list — a bare
+    # string would iterate into its characters and silently compute the wrong (or empty) run set.
+    # Every id must then be a single path segment: a crafted `../..` would otherwise let the reader
+    # glob outside its run's own tree.
+    raw_runs = body.get("runs") or []
+    if not isinstance(raw_runs, list):
+        return {"error": "runs must be a list of run ids"}, 400
+    runs = [str(r) for r in raw_runs]
     if runs and not all(valid_run_id(r) for r in runs):
         return {"error": "invalid run id"}, 400
     endpoints = None

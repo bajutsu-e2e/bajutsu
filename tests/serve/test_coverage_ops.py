@@ -134,3 +134,11 @@ def test_run_ids_are_confined_to_single_segments(tmp_path: Path) -> None:
     payload, status = ops.coverage_view(state, {"target": "demo", "runs": ["../../etc"]})
     assert status == 400
     assert "run" in payload["error"].lower()
+
+
+def test_runs_must_be_a_list(tmp_path: Path) -> None:
+    """A bare string for `runs` is rejected, not iterated into per-character run ids."""
+    state = _state(tmp_path, id_namespaces=["home"])
+    payload, status = ops.coverage_view(state, {"target": "demo", "runs": "r1"})
+    assert status == 400
+    assert "list" in payload["error"]
