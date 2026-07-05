@@ -216,6 +216,8 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
                             scenario_name=self._qs("scenario"),
                         )
                     )
+                case "/api/schema":
+                    self._json(*ops.scenario_schema())
                 case "/api/oauth/login":
                     self._oauth_login()
                 case "/api/oauth/callback":
@@ -306,6 +308,8 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
                     self._json(*ops.start_crawl(state, body, actor=self._actor()))
                 case "/api/scenario":
                     self._json(*ops.save_scenario(state, body, actor=self._actor()))
+                case "/api/lint":
+                    self._json(*ops.lint_scenario(body))
                 case "/api/approve":
                     self._json(*ops.approve_baseline(state, body, actor=self._actor()))
                 case "/api/scenario/resolve":

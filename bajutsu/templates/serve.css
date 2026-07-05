@@ -272,7 +272,26 @@ iframe{width:100%;height:100%;border:1px solid var(--line);border-radius:10px;ba
 .yamlhead .ttl{font-weight:600}
 .yamlhead .savebtn{margin-left:auto;background:var(--acc);color:var(--on-acc);border:0;border-radius:6px;font-weight:700;padding:.35rem .9rem;cursor:pointer}
 .yamlhead .savebtn:disabled{opacity:.4;cursor:default}
-textarea.yaml{flex:1;min-height:0;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;white-space:pre;overflow:auto;tab-size:2}
+textarea.yaml{flex:1;min-height:0;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;line-height:18px;padding:6px 8px;white-space:pre;overflow:auto;tab-size:2}
+/* Inline validation (BE-0138): a line-number gutter synced to the textarea's scroll, error lines
+   flagged; a problems list below; caret-anchored completion + hover from the scenario JSON Schema. */
+.yamledit{position:relative;flex:1;min-height:0;display:flex}
+.yamledit textarea.yaml{border-top-left-radius:0;border-bottom-left-radius:0}
+.yamlgutter{flex:0 0 3em;overflow:hidden;box-sizing:border-box;background:var(--bg2);border:1px solid var(--line);border-right:0;border-radius:8px 0 0 8px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;line-height:18px;padding:6px 0;user-select:none}
+.yamlgutter .gl{padding:0 .5em 0 0;text-align:right;color:var(--mut);white-space:pre}
+.yamlgutter .gl.err{color:var(--ng);font-weight:700;background:color-mix(in srgb,var(--ng) 16%,transparent)}
+.au-problems{margin-top:.5rem;border:1px solid var(--line);border-radius:8px;background:var(--bg2);font-size:.82em;max-height:9rem;overflow:auto}
+.au-problems-head{padding:.3rem .6rem;font-weight:700;color:var(--ng);border-bottom:1px solid var(--line)}
+.au-problem{display:flex;gap:.5rem;padding:.25rem .6rem;cursor:pointer}
+.au-problem:hover{background:var(--bg)}
+.au-problem .pl{flex:0 0 auto;font-family:var(--mono);color:var(--ng);font-weight:700}
+.au-problem .pl-none{color:var(--mut);font-weight:400}
+.au-problem .pm{overflow-wrap:anywhere}
+.yamlcomplete{position:absolute;z-index:30;min-width:10rem;max-height:12rem;overflow:auto;background:var(--bg2);border:1px solid var(--line);border-radius:6px;box-shadow:0 2px 8px rgba(0,0,0,.3);font-family:var(--mono);font-size:12px}
+.yamlcomplete .ci{padding:.2rem .5rem;cursor:pointer;white-space:nowrap}
+.yamlcomplete .ci.sel,.yamlcomplete .ci:hover{background:var(--acc);color:var(--on-acc)}
+.yamlhover{position:absolute;z-index:30;max-width:22rem;background:var(--bg2);border:1px solid var(--line);border-radius:6px;box-shadow:0 2px 8px rgba(0,0,0,.3);padding:.35rem .55rem;font-size:.8em;line-height:1.35;pointer-events:none}
+.yamlhover .hk{font-family:var(--mono);font-weight:700;color:var(--acc)}
 /* Open-config control + its server-side file-browser modal. */
 .cfgbtn{background:var(--bg2);border:1px solid var(--line);color:var(--acc);padding:.3rem .8rem;font:inherit;font-weight:600;border-radius:8px;cursor:pointer}
 .cfgbtn:hover{color:var(--fg)}
