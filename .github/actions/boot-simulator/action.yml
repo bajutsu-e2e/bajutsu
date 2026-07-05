@@ -27,6 +27,10 @@ runs:
     - name: Boot
       id: boot
       shell: bash
+      # wait goes through env: so the shell reads it as data, not as script text spliced in
+      # before parsing (the GitHub Actions ${{ }} injection pattern). See BE-0123.
+      env:
+        WAIT: ${{ inputs.wait }}
       run: |
         set -euo pipefail
         # Reuse a device that is already booted (zero boot cost) before booting a fresh one.
@@ -50,7 +54,7 @@ runs:
         # Default: block until fully booted so callers can install/actuate right away. With
         # wait=false the boot proceeds in the background; the caller waits before actuating,
         # letting the boot overlap intervening work (e.g. the app build).
-        if [ "${{ inputs.wait }}" = "true" ]; then
+        if [ "$WAIT" = "true" ]; then
           xcrun simctl bootstatus "$udid" -b
         fi
         echo "udid=$udid" >> "$GITHUB_OUTPUT"

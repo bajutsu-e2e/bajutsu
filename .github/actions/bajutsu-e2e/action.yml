@@ -49,20 +49,35 @@ runs:
       shell: bash
       run: uv sync --extra idb --no-dev
 
+    # Inputs go through env: so the shell sees them as data, not as script text spliced in
+    # before parsing (the GitHub Actions ${{ }} injection pattern). See BE-0123.
     - name: Preflight (bajutsu doctor — non-blocking)
       shell: bash
+      env:
+        TARGET: ${{ inputs.target }}
+        UDID: ${{ inputs.udid }}
+        BACKEND: ${{ inputs.backend }}
+        CONFIG: ${{ inputs.config }}
       run: >-
-        uv run --no-sync bajutsu doctor --target "${{ inputs.target }}" --udid "${{ inputs.udid }}"
-        --backend "${{ inputs.backend }}" --config "${{ inputs.config }}"
+        uv run --no-sync bajutsu doctor --target "$TARGET" --udid "$UDID"
+        --backend "$BACKEND" --config "$CONFIG"
         || echo "doctor: non-blocking (convention score only)"
 
     - name: Run scenarios
       shell: bash
+      env:
+        SCENARIOS: ${{ inputs.scenarios }}
+        TARGET: ${{ inputs.target }}
+        UDID: ${{ inputs.udid }}
+        BACKEND: ${{ inputs.backend }}
+        CONFIG: ${{ inputs.config }}
       run: >-
-        uv run --no-sync bajutsu run --scenario "${{ inputs.scenarios }}" --target "${{ inputs.target }}"
-        --udid "${{ inputs.udid }}" --backend "${{ inputs.backend }}"
-        --config "${{ inputs.config }}" --no-erase
+        uv run --no-sync bajutsu run --scenario "$SCENARIOS" --target "$TARGET"
+        --udid "$UDID" --backend "$BACKEND"
+        --config "$CONFIG" --no-erase
 
+    # artifact-name is a `with:` value on a `uses:` step, not a shell `run:` block, so the
+    # ${{ }} injection pattern does not apply — no env: indirection needed here (BE-0123).
     - name: Upload run artifacts
       if: always()
       uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
