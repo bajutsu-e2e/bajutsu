@@ -451,7 +451,33 @@ def test_visual_element_scoped_pass(tmp_path: Path) -> None:
     assert r.visual.element_scoped is True
     assert r.visual.diff_pct == 0.0
     # The recorded actual is the element crop (40x30), so `approve` promotes the crop.
-    assert Image.open(tmp_path / r.visual.actual).size == (40, 30)
+    actual_size = Image.open(tmp_path / r.visual.actual).size
+    assert actual_size == (40, 30)
+
+
+def test_visual_element_scoped_missing_baseline_reports_the_crop(tmp_path: Path) -> None:
+    """On the first run (no baseline) the reported actual is the element crop, so the first
+    `approve` stores an element-sized baseline — not the whole screen."""
+    from PIL import Image
+
+    (tmp_path / "baselines").mkdir()  # empty: no baseline yet
+    actual = Image.new("RGBA", (100, 100), (255, 0, 0, 255))
+    _paint(actual, (10, 10, 40, 30), (0, 255, 0, 255))
+    shot = tmp_path / "shot.png"
+    actual.save(shot)
+
+    r = evaluate_one(
+        _framed_screen(),
+        _a({"visual": {"baseline": "card.png", "element": {"id": "card"}}}),
+        visual_context=_vc(tmp_path, shot),
+    )
+    assert not r.ok
+    assert r.visual is not None
+    assert r.visual.missing is True
+    assert r.visual.element_scoped is True
+    # The captured actual is the element crop (40x30), so approving it yields an element baseline.
+    actual_size = Image.open(tmp_path / r.visual.actual).size
+    assert actual_size == (40, 30)
 
 
 def test_visual_element_scoped_ignores_unrelated_change(tmp_path: Path) -> None:
@@ -573,7 +599,8 @@ def test_visual_element_scoped_scale_factor(tmp_path: Path) -> None:
     )
     assert r.ok
     assert r.visual is not None
-    assert Image.open(tmp_path / r.visual.actual).size == (80, 60)
+    actual_size = Image.open(tmp_path / r.visual.actual).size
+    assert actual_size == (80, 60)
 
 
 def test_visual_selector_mask_hides_dynamic_element(tmp_path: Path) -> None:

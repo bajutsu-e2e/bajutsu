@@ -592,10 +592,69 @@ def _eval_visual(
     baseline_path = ctx.baselines_dir / a.baseline
     # Flatten any path separators in the baseline key for the in-run copy/diff filenames.
     name = Path(a.baseline).name
+    # Element scoping and selector masks (BE-0171) resolve against the live element tree, in
+    # screenshot-pixel space. A comparison that needs neither keeps the whole-screen behavior.
+    needs_frames = a.element is not None or any(
+        isinstance(r, SelectorRegion) for r in a.exclude or []
+    )
+
+    # Crop the actual to the element *before* the missing-baseline check: the crop is both what we
+    # compare and what `approve` promotes, so the baseline is the element even on the first run
+    # (otherwise the first approve would store a whole-screen baseline and every later run would
+    # size-mismatch). This needs Pillow, which element scoping requires regardless of the baseline.
+    compare_actual = ctx.screenshot_path
+    crop: ExcludeRegion | None = None
+    scale: tuple[float, float] | None = None
+    if needs_frames:
+        try:
+            from PIL import Image
+        except ImportError:
+            return AssertionResult(
+                False, "visual", detail, "visual assertions need the 'visual' extra (Pillow)"
+            )
+        scale = _visual_scale(ctx.screenshot_path, elements)
+        if scale is None:
+            return AssertionResult(
+                False, "visual", detail, "cannot resolve selectors: no elements on screen"
+            )
+        if a.element is not None:
+            el, err = _resolve_one(elements, a.element)
+            if el is None:
+                ev = VisualEvidence(
+                    baseline_name=a.baseline, actual=actual_rel, element_scoped=True
+                )
+                return AssertionResult(False, "visual", detail, f"element {err}", visual=ev)
+            crop = _frame_to_px(el["frame"], scale)
+            if crop.w <= 0 or crop.h <= 0:
+                # A zero-area frame (an off-screen / collapsed element) can't be cropped — fail
+                # cleanly rather than letting Pillow raise on an empty image.
+                ev = VisualEvidence(
+                    baseline_name=a.baseline, actual=actual_rel, element_scoped=True
+                )
+                return AssertionResult(
+                    False,
+                    "visual",
+                    detail,
+                    f"element has an empty frame: {_sel_str(a.element)}",
+                    visual=ev,
+                )
+            ctx.diff_dir.mkdir(parents=True, exist_ok=True)
+            cropped_path = ctx.diff_dir / f"actual-{name}"
+            box = (int(crop.x), int(crop.y), int(crop.x + crop.w), int(crop.y + crop.h))
+            with Image.open(ctx.screenshot_path) as img:
+                img.crop(box).save(cropped_path)
+            compare_actual = cropped_path
+            actual_rel = _rel(ctx.run_dir, cropped_path)
+
     if not baseline_path.is_file():
         # First run (or a brand-new screen): nothing to compare against. Report the actual
-        # so it can be reviewed and approved into a baseline.
-        ev = VisualEvidence(baseline_name=a.baseline, actual=actual_rel, missing=True)
+        # (the element crop, when scoped) so it can be reviewed and approved into a baseline.
+        ev = VisualEvidence(
+            baseline_name=a.baseline,
+            actual=actual_rel,
+            missing=True,
+            element_scoped=crop is not None,
+        )
         return AssertionResult(
             False, "visual", detail, f"baseline not found: {a.baseline}", visual=ev
         )
@@ -618,44 +677,15 @@ def _eval_visual(
             "(set compare: pixelmatch or the target's visualCompare)",
         )
 
-    # Element scoping and selector masks (BE-0171) resolve against the live element tree, in
-    # screenshot-pixel space. A comparison that needs neither keeps the whole-screen behavior.
-    needs_frames = a.element is not None or any(
-        isinstance(r, SelectorRegion) for r in a.exclude or []
-    )
-    scale = _visual_scale(ctx.screenshot_path, elements) if needs_frames else None
-    if needs_frames and scale is None:
-        return AssertionResult(
-            False, "visual", detail, "cannot resolve selectors: no elements on screen"
-        )
-
-    crop: ExcludeRegion | None = None
-    if a.element is not None:
-        assert scale is not None  # needs_frames implies a resolved scale
-        el, err = _resolve_one(elements, a.element)
-        if el is None:
-            ev = VisualEvidence(baseline_name=a.baseline, actual=actual_rel, element_scoped=True)
-            return AssertionResult(False, "visual", detail, f"element {err}", visual=ev)
-        crop = _frame_to_px(el["frame"], scale)
-        if crop.w <= 0 or crop.h <= 0:
-            # A zero-area frame (an off-screen / collapsed element) can't be cropped — fail
-            # cleanly rather than letting Pillow raise on an empty image.
-            ev = VisualEvidence(baseline_name=a.baseline, actual=actual_rel, element_scoped=True)
-            return AssertionResult(
-                False,
-                "visual",
-                detail,
-                f"element has an empty frame: {_sel_str(a.element)}",
-                visual=ev,
-            )
-
+    # Resolve selector masks (compare-time only) and, when element-scoped, translate them into the
+    # crop's local coordinates.
     masks: list[ExcludeRegion] = []
     masked_selectors: list[str] = []
     for r in a.exclude or []:
         if not isinstance(r, SelectorRegion):
             masks.append(r)
             continue
-        assert scale is not None
+        assert scale is not None  # a SelectorRegion sets needs_frames, so scale is resolved
         el, err = _resolve_mask(elements, r.selector)
         if err:
             return AssertionResult(False, "visual", detail, f"exclude selector {err}")
@@ -663,27 +693,14 @@ def _eval_visual(
             continue  # matched nothing — nothing on screen to hide
         masks.append(_frame_to_px(el["frame"], scale))
         masked_selectors.append(_sel_str(r.selector))
+    if crop is not None:
+        masks = [_shift(m, crop.x, crop.y) for m in masks]
 
     ctx.diff_dir.mkdir(parents=True, exist_ok=True)
     diff_path = ctx.diff_dir / f"diff-{name}"
     # Copy the baseline into the run dir so the report (and serve) are self-contained.
     baseline_copy = ctx.diff_dir / f"baseline-{name}"
     shutil.copyfile(baseline_path, baseline_copy)
-
-    # When scoped to an element, crop the actual to its frame and compare that against the
-    # (element-sized) baseline; masks translate into the crop's local coordinates. The cropped
-    # actual is what `approve` promotes, so the baseline stays the element, not the screen.
-    compare_actual = ctx.screenshot_path
-    if crop is not None:
-        from PIL import Image
-
-        cropped_path = ctx.diff_dir / f"actual-{name}"
-        box = (int(crop.x), int(crop.y), int(crop.x + crop.w), int(crop.y + crop.h))
-        with Image.open(ctx.screenshot_path) as img:
-            img.crop(box).save(cropped_path)
-        compare_actual = cropped_path
-        actual_rel = _rel(ctx.run_dir, cropped_path)
-        masks = [_shift(m, crop.x, crop.y) for m in masks]
 
     result = compare_images(
         compare_actual,
