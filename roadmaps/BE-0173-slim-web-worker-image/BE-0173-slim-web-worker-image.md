@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-slim-web-worker-image-ja.md)
+**English** · [日本語](BE-0173-slim-web-worker-image-ja.md)
 
-# BE-XXXX — Slim Linux web-worker container image
+# BE-0173 — Slim Linux web-worker container image
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-slim-web-worker-image.md) |
+| Proposal | [BE-0173](BE-0173-slim-web-worker-image.md) |
 | Author | [@hirosassa](https://github.com/hirosassa) |
 | Status | **Proposal** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0173") |
 | Topic | Hosting the web UI (cloud / self-hosted) |
 | Related | [BE-0160](../BE-0160-worker-credential-free-uploads/BE-0160-worker-credential-free-uploads.md), [BE-0166](../BE-0166-capability-routed-queues/BE-0166-capability-routed-queues.md), [BE-0016](../BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md), [BE-0106](../BE-0106-post-completion-worker-model/BE-0106-post-completion-worker-model.md), [BE-0041](../BE-0041-web-playwright-backend/BE-0041-web-playwright-backend.md) |
 <!-- /BE-METADATA -->

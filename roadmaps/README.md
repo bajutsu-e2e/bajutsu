@@ -601,6 +601,7 @@ Turn the local `bajutsu serve` launcher into a shared service. The runner drives
 | [BE-0168](BE-0168-self-host-high-availability/BE-0168-self-host-high-availability.md) | Self-hosted high availability and single-point-of-failure hardening | Proposal |
 | [BE-0169](BE-0169-serve-metrics-observability/BE-0169-serve-metrics-observability.md) | Serve metrics and observability endpoint | Proposal |
 | [BE-0170](BE-0170-weighted-fair-org-dispatch/BE-0170-weighted-fair-org-dispatch.md) | Weighted-fair cross-org job dispatch | Proposal |
+| [BE-0173](BE-0173-slim-web-worker-image/BE-0173-slim-web-worker-image.md) | Slim Linux web-worker container image | Proposal |
 <!-- /GENERATED:proposals-hosting -->
 
 ### Security hardening
