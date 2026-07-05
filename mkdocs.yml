@@ -108,6 +108,7 @@ plugins:
             Evidence: evidence
             Reporting: レポート
             Operating: 運用
+            Web UI: Web UI
             Configuration: 設定
             Self-hosting: セルフホスティング
             AI development: AI 開発
@@ -170,6 +171,7 @@ nav:
       - Reporting: reporting.md
   - Operating:
       - CLI: cli.md
+      - Web UI: web-ui.md
       - What uses Claude: ai-boundary.md
       - Configuration: configuration.md
       - CI: ci.md
