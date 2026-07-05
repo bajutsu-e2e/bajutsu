@@ -257,7 +257,27 @@ def run_scenario(
     )
 
 
-_ExecSteps = Callable[[list[Step]], str | None]
+# A recursive step runner: run these steps against this active driver, return the failure or None.
+# The driver is passed explicitly so a web block can hand its inner steps a WebView driver without
+# any shared mutable state (BE-0172).
+_ExecSteps = Callable[[list[Step], base.Driver], str | None]
+
+
+class _StepCounter:
+    """A monotonically increasing step index shared across the recursive step loop (BE-0172).
+
+    A named replacement for the former ``step_counter = [0]`` closure smuggle: ``take()`` returns
+    the current index and advances, so nested ``for_each`` / ``web`` groups keep unique, ordered
+    indices without a boxed list.
+    """
+
+    def __init__(self) -> None:
+        self._next = 0
+
+    def take(self) -> int:
+        idx = self._next
+        self._next += 1
+        return idx
 
 
 def _run_if(
@@ -275,7 +295,7 @@ def _run_if(
     branch = if_block.then if assertions.passed(results) else (if_block.else_ or [])
     if not branch:
         return True, ""
-    failure = exec_steps(branch)
+    failure = exec_steps(branch, driver)
     return (True, "") if failure is None else (False, failure)
 
 
@@ -295,7 +315,7 @@ def _run_for_each(
         if not ident:
             return False, f"forEach: matched element has no identifier (label={el.get('label')!r})"
         bindings[f"vars.{loop.as_}"] = ident
-        failure = exec_steps(loop.steps)
+        failure = exec_steps(loop.steps, driver)
         if failure is not None:
             return False, failure
     return True, ""
@@ -326,16 +346,12 @@ def _run_steps(
     steps add ``vars.*`` entries so that subsequent steps and scenario-level
     ``expect`` can reference them."""
     assert bindings is not None
-    step_counter = [0]  # mutable counter shared across recursive exec_steps calls
+    counter = _StepCounter()
 
-    _active_driver: list[base.Driver] = [driver]
-
-    def exec_steps(steps: list[Step]) -> str | None:
-        active_driver = _active_driver[0]
+    def exec_steps(steps: list[Step], active_driver: base.Driver) -> str | None:
         for step in steps:
             kind = _action_of(step)
-            idx = step_counter[0]
-            step_counter[0] += 1
+            idx = counter.take()
             outcome = StepOutcome(index=idx, action=kind)
             if progress is not None:
                 progress(f"{sid} · step {idx + 1}: {_step_label(step, kind)}")
@@ -381,13 +397,11 @@ def _run_steps(
                         if host_id is None:
                             ok, reason = False, "web: within selector must specify an id"
                         else:
+                            # The inner steps run against a WebView driver; the active driver is
+                            # passed explicitly, so control returns to `active_driver` for the
+                            # steps after this block with no shared mutable state (BE-0172).
                             web_driver = WebContextDriver(bridge=webview_bridge, webview_id=host_id)
-                            prev_driver = _active_driver[0]
-                            _active_driver[0] = web_driver
-                            try:
-                                failure = exec_steps(step.web.steps)
-                            finally:
-                                _active_driver[0] = prev_driver
+                            failure = exec_steps(step.web.steps, web_driver)
                             ok = failure is None
                             reason = failure or ""
                 except base.SelectorError as e:
@@ -451,4 +465,4 @@ def _run_steps(
                 return f"step {idx} ({kind}): {outcome.reason}"
         return None
 
-    return exec_steps(scenario.steps)
+    return exec_steps(scenario.steps, driver)

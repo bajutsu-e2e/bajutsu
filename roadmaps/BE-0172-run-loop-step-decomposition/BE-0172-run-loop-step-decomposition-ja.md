@@ -7,8 +7,9 @@
 |---|---|
 | 提案 | [BE-0172](BE-0172-run-loop-step-decomposition-ja.md) |
 | 提案者 | [@hirosassa](https://github.com/hirosassa) |
-| 状態 | **提案** |
+| 状態 | **実装中** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0172") |
+| 実装 PR | [#693](https://github.com/bajutsu-e2e/bajutsu/pull/693) |
 | トピック | Codebase quality & technical debt |
 | 関連 | [BE-0143](../BE-0143-run-command-decomposition/BE-0143-run-command-decomposition-ja.md)、[BE-0092](../BE-0092-crawl-coordinator-extraction/BE-0092-crawl-coordinator-extraction-ja.md) |
 <!-- /BE-METADATA -->
@@ -106,8 +107,8 @@
 > ともに記録します。
 
 - [ ] 回帰テストの網の確認：`_run_steps` と `run_one` に対する高速でシミュレータ不要な分岐テストを先に投入する。
-- [ ] `_run_steps` のステップ番号の状態を `[0]` の箱から明示的なカウンタへ引き上げる。
-- [ ] web ステップのドライバ入れ替えを、ドライバを明示的に受け渡す名前付きヘルパへ抽出する。
+- [x] `_run_steps` のステップ番号の状態を `[0]` の箱から明示的なカウンタへ引き上げる。
+- [x] web ステップのドライバ入れ替えを、ドライバを明示的に受け渡す名前付きヘルパへ抽出する。
 - [ ] `run_one` を、捕捉していた値を明示的な引数に取るトップレベル関数に昇格する。
 
 ## 参考

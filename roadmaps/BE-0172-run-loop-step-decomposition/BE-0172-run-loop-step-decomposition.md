@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0172](BE-0172-run-loop-step-decomposition.md) |
 | Author | [@hirosassa](https://github.com/hirosassa) |
-| Status | **Proposal** |
+| Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0172") |
+| Implementing PR | [#693](https://github.com/bajutsu-e2e/bajutsu/pull/693) |
 | Topic | Codebase quality & technical debt |
 | Related | [BE-0143](../BE-0143-run-command-decomposition/BE-0143-run-command-decomposition.md), [BE-0092](../BE-0092-crawl-coordinator-extraction/BE-0092-crawl-coordinator-extraction.md) |
 <!-- /BE-METADATA -->
@@ -114,8 +115,8 @@ Each unit is independently landable in its own small PR, and each keeps the suit
 > (oldest first), linking the PRs.
 
 - [ ] Regression-net check: fast, Simulator-free branch tests for `_run_steps` and `run_one` land first.
-- [ ] Lift `_run_steps`'s step-index state out of the `[0]`-box into an explicit counter.
-- [ ] Extract the web-step driver swap into a named helper that passes the driver explicitly.
+- [x] Lift `_run_steps`'s step-index state out of the `[0]`-box into an explicit counter.
+- [x] Extract the web-step driver swap into a named helper that passes the driver explicitly.
 - [ ] Promote `run_one` to a top-level function with its captured values as explicit parameters.
 
 ## References

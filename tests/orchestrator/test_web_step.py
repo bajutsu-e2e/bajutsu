@@ -103,6 +103,49 @@ def test_web_step_assert_inside_web_context() -> None:
     assert result.ok, result.failure
 
 
+def test_native_step_after_web_step_runs_on_native_driver() -> None:
+    """The active driver is restored after a web block: a following native step taps the device."""
+    native_screen = [
+        el("app.webview", "WebView", frame=(0.0, 0.0, 400.0, 800.0)),
+        el("done", "Done", ["button"]),
+    ]
+    dom_elements: list[base.Element] = [
+        {
+            "identifier": "place-order",
+            "label": "Place Order",
+            "traits": ["button"],
+            "value": None,
+            "frame": (50.0, 100.0, 200.0, 40.0),
+        },
+    ]
+    bridge = FakeBridge(dom_elements)
+    driver = FakeDriver(native_screen)
+    result = run_scenario(
+        driver,
+        _scenario(
+            {
+                "name": "web then native",
+                "steps": [
+                    {
+                        "web": {
+                            "within": {"id": "app.webview"},
+                            "steps": [{"tap": {"id": "place-order"}}],
+                        },
+                    },
+                    {"tap": {"id": "done"}},
+                ],
+            }
+        ),
+        clock=FakeClock(),
+        webview_bridge=bridge,
+    )
+    assert result.ok, result.failure
+    # The web tap went through the bridge; the following native tap went to the device driver,
+    # proving the active driver was restored after the web block.
+    assert len(bridge.tapped) == 1
+    assert [a[1] for a in driver.actions if a[0] == "tap"] == [{"id": "done"}]
+
+
 def test_web_step_host_not_found_fails() -> None:
     driver = FakeDriver([el("other.element")])
     bridge = FakeBridge([])
