@@ -9,7 +9,7 @@
 | Author | [@hirosassa](https://github.com/hirosassa) |
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0169") |
-| Implementing PR | _pending_ |
+| Implementing PR | [#719](https://github.com/bajutsu-e2e/bajutsu/pull/719) |
 | Topic | Hosting the web UI (cloud / self-hosted) |
 | Related | [BE-0016](../BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md), [BE-0055](../BE-0055-operational-logging/BE-0055-operational-logging.md) |
 | Origin | [BE-0016](../BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md) |
@@ -85,7 +85,7 @@ merges, or coordinate to avoid a conflict.
 - [x] `/metrics` respects serve exposure rules and never leaks secrets (unit-tested).
 - [x] Optional `prometheus` + `grafana` containers and a starter dashboard in `deploy/self-host/`.
 
-- _pending_ — Shipped the `/metrics` endpoint on both serve backends (the stdlib handler and the
+- [#719](https://github.com/bajutsu-e2e/bajutsu/pull/719) — Shipped the `/metrics` endpoint on both serve backends (the stdlib handler and the
   FastAPI control plane), rendering Prometheus-format metrics from state the control plane already
   tracks: in-flight jobs per org (`state.jobs`), and — with a database wired — queue depth, leased
   jobs, worker heartbeat freshness, and the oldest in-flight run (a new one-pass
