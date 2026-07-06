@@ -308,6 +308,11 @@ bajutsu triage [<run-dir>] --ai --apply <scenario-file> [--write] \
 - `--rerun` requires `--write` (nothing to verify otherwise) and `--target`.
 - With `--ai`, an `AI usage:` line of the tokens the diagnosis consumed is printed to stderr after
   the diagnosis. The rule-based default uses no AI, so it prints nothing.
+- `--json <path>` also writes the diagnosis as JSON (category, summary, suggestions, and the
+  structured fix); combined with `--apply`, it includes the fix's unified diff and patched text.
+  `--json` itself only writes that JSON file and never touches the scenario source — patching the
+  source still requires `--write` (as it always has). The `serve` Web UI uses `--json` to surface
+  triage in the browser (BE-0147).
 
 ## `record`
 

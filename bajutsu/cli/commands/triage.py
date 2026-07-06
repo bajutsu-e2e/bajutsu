@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import contextlib
+import json
 import subprocess
 import sys
 from dataclasses import replace
@@ -49,6 +50,11 @@ def triage(
         "--rerun",
         help="after --write, re-run the patched scenario to verify the fix (needs --target + a device)",
     ),
+    json_out: str = typer.Option(
+        "",
+        "--json",
+        help="also write the diagnosis (and, with --apply, the fix diff + patched text) as JSON here",
+    ),
     target_name: str = typer.Option("", "--target", help="target key, for --rerun"),
     backend: str = typer.Option("", "--backend", help="actuator backend, for --rerun"),
     udid: str = typer.Option("booted", "--udid", help="simulator udid, for --rerun"),
@@ -92,6 +98,20 @@ def triage(
     spent = _usage.snapshot() - before
     if spent.calls:
         typer.echo(spent.render(), err=True)
+    if json_out:
+        # `context.scenario_yaml` is the --apply file's own text (reloaded above), so the fix's
+        # `find` fragment matches what a UI writes back — a dry-run preview, never a write here.
+        applied = (
+            _triage.apply_result(context.scenario_yaml, apply, result.fix)
+            if apply and result.fix is not None
+            else None
+        )
+        Path(json_out).write_text(
+            json.dumps(
+                _triage.result_payload(context, result, applied), ensure_ascii=False, indent=2
+            ),
+            encoding="utf-8",
+        )
     if not apply:
         return
     wrote = _apply_fix(result, apply, write)

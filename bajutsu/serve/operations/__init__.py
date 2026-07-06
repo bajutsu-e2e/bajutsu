@@ -44,6 +44,7 @@ from bajutsu.serve.operations.config import (
     set_api_key,
     set_provider,
 )
+from bajutsu.serve.operations.coverage import coverage_view
 from bajutsu.serve.operations.dispatch import (
     _bool_flag,
     _boot_targets,
@@ -84,6 +85,7 @@ from bajutsu.serve.operations.sse import (
     job_log_events,
     job_sse,
 )
+from bajutsu.serve.operations.triage import start_triage
 from bajutsu.serve.operations.upload import (
     _safe_filename,
     bind_upload_config,
@@ -128,6 +130,7 @@ __all__ = [
     "browse_fs",
     "cancel_job",
     "config_info",
+    "coverage_view",
     "doctor_check",
     "finish_capture",
     "forbidden_for_role",
@@ -162,6 +165,7 @@ __all__ = [
     "start_enrich",
     "start_record",
     "start_run",
+    "start_triage",
     "stats_html",
     "worker_artifact_urls",
     "worker_heartbeat",

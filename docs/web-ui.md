@@ -54,7 +54,8 @@ the [CLI reference](cli.md#serve).
 
 ## The layout
 
-The header holds five top-level tabs: **Record**, **Replay**, **Crawl**, **Author**, and **Stats**.
+The header holds six top-level tabs: **Record**, **Replay**, **Crawl**, **Author**, **Stats**, and
+**Coverage**.
 To their right are **Open config** (with the active config's name shown beside it once one is bound),
 **Settings**, and a dark/light theme toggle that follows your system by default. Each tab is a full
 screen of its own; switching tabs never discards what another tab was doing.
@@ -156,6 +157,21 @@ report section shows: [reporting](reporting.md).
 **History.** The sub-tab lists past runs, newest first, each with a pass/fail dot and a scenario
 summary. Click one to reopen its report. Use the refresh button to re-list.
 
+**Triage a failed run.** When a run fails, a **Triage** button appears in the report bar (both on a
+just-run report and when you reopen a failed run from History) — the `triage` command in the
+browser, so you can ask "why did this fail?" without dropping to a terminal. Click it, then
+**Diagnose**: triage reads that run's stored failure context and reports a root-cause summary, the
+implicated step, and suggestions. The default is the deterministic rule-based agent; tick **Claude**
+(enabled only when an AI provider is configured — see [Settings](#settings)) to diagnose with the
+Claude investigator instead. When triage can propose a mechanical fix (rename a selector id,
+disambiguate a match, or raise a timeout), it shows the fix as a **diff** against the currently
+selected scenario source. **Apply fix** writes that patch back through the same validated save path
+the Author tab uses; **Apply & re-run** writes it and immediately re-runs the scenario to confirm.
+The fix is written only on that explicit click — nothing is edited automatically, and the run's
+pass/fail verdict is read from the deterministic run, never recomputed by AI. Triage previews and
+applies against the scenario currently selected in the **Run** sub-tab, so pick the matching
+scenario and target before triaging a run from History.
+
 ## Crawl — explore the app and map its screens live
 
 **What it does.** Explores the app breadth-first and draws the reachable screens and the transitions
@@ -245,6 +261,20 @@ stored `manifest.json`.
 
 **How to use it.** Open the tab to load the dashboard; use the refresh button to recompute it over
 the current run history. No device, AI, or run is involved.
+
+## Coverage — the E2E coverage map
+
+**What it does.** Renders the E2E coverage map for a target — the `coverage` command in the browser.
+It measures the scenario suite's stable-id references against the app's declared `idNamespaces`,
+showing per-namespace coverage, the gap list (declared namespaces no scenario touches), and
+off-namespace ids. When you select one or more past runs, it folds in the run-evidence dimensions:
+endpoints observed vs asserted (the union of those runs' `network.json` against the suite's network
+assertions) and observed ids vs declared namespaces (from each run's `elements.json`). Like Stats it
+is **read-only and advisory, never a verdict or a gate** — every figure is a deterministic count, no
+model is consulted.
+
+**How to use it.** Pick a target, optionally select runs to add the run-evidence dimensions, and
+press **Compute** to render the map. No device, AI, or run is involved.
 
 ## Security and hosting
 

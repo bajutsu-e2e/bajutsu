@@ -241,6 +241,26 @@ pre.out:empty::before{content:attr(data-empty);color:var(--mut)}
 .repbar{flex:0 0 auto;display:flex;gap:.9rem;justify-content:flex-end;padding:.3rem .5rem;border-bottom:1px solid var(--line);background:var(--bg2)}
 .repopen,.repdl{font-size:.82rem;color:var(--acc);text-decoration:none}
 .repopen:hover,.repdl:hover{text-decoration:underline}
+/* Triage panel (BE-0147): sits between the report bar and the report, expanding on demand. */
+.repbtn{font-size:.8rem;background:var(--acc);color:#fff;border:0;border-radius:6px;padding:.22rem .6rem;cursor:pointer;font-weight:600}
+.repbtn:disabled{opacity:.5;cursor:default}
+.repbtn.running{background:var(--run)}
+.triagepanel{flex:0 0 auto;border-bottom:1px solid var(--line);background:var(--bg2);padding:.55rem .7rem;max-height:45%;overflow:auto}
+.triagepanel[hidden]{display:none}
+.triagebar{display:flex;align-items:center;gap:.7rem}
+.triagetitle{font-weight:700}
+.triage-aiopt{display:flex;align-items:center;gap:.3rem;font-size:.85em;color:var(--fg)}
+.triagebar .stop{width:auto;margin-top:0;padding:.22rem .6rem}
+.triagelog{margin:.5rem 0 0;padding:.4rem .6rem;background:#fff;border:1px solid var(--line);border-radius:6px;font-size:.8rem;max-height:9rem;overflow:auto;white-space:pre-wrap}
+.triagelog[hidden]{display:none}
+.triageresult{margin-top:.5rem;font-size:.88em}
+.triagediag{font-weight:600}
+.triagecat{display:inline-block;background:var(--acc);color:#fff;border-radius:4px;padding:0 .4rem;font-size:.76em;text-transform:uppercase;letter-spacing:.02em;margin-right:.3rem}
+.triagesugg{margin:.3rem 0 0;padding-left:1.1rem}
+.triagefix{margin-top:.5rem;font-weight:600}
+.triagediff{margin:.35rem 0 0;padding:.4rem .6rem;background:#fff;border:1px solid var(--line);border-radius:6px;font-size:.8rem;overflow:auto;white-space:pre;max-height:12rem}
+.triageactions{display:flex;align-items:center;gap:.6rem;margin-top:.5rem}
+.triageerr{color:var(--ng);font-weight:600;margin-top:.4rem}
 .rephost{flex:1;min-height:0;overflow:auto}
 iframe{width:100%;height:100%;border:1px solid var(--line);border-radius:10px;background:#fff}
 .empty{display:flex;align-items:center;justify-content:center;height:100%;color:var(--mut);text-align:center;padding:1rem}
@@ -293,11 +313,23 @@ textarea.yaml{flex:1;min-height:0;font-family:ui-monospace,SFMono-Regular,Menlo,
 .grade-badge.stable{color:var(--ok)}
 .grade-badge.moderate{color:var(--run)}
 .grade-badge.fragile{color:var(--ng)}
+/* doctor readiness grades (BE-0148): Ready / Partial / Blocked reuse the badge's ok/warn/bad hues */
+.grade-badge.ready{color:var(--ok)}
+.grade-badge.partial{color:var(--run)}
+.grade-badge.blocked{color:var(--ng)}
 #scn-grade:not([hidden]){margin-top:.4rem}
 .au-audit{margin-top:.5rem;border:1px solid var(--line);border-radius:8px;background:var(--bg2);font-size:.82em;max-height:9rem;overflow:auto}
 .au-audit-head{padding:.3rem .6rem;font-weight:700;color:var(--run);border-bottom:1px solid var(--line)}
 .au-finding{padding:.25rem .6rem;overflow-wrap:anywhere}
 .au-finding+.au-finding{border-top:1px solid var(--line)}
+/* doctor readiness (BE-0148): the runnability check list; ✓ green / ✗ red per check */
+.doctor{margin-top:.7rem}
+.doctor .grade-badge:not([hidden]){margin-top:.4rem}
+.dr-checks:not(:empty){margin-top:.5rem;border:1px solid var(--line);border-radius:8px;background:var(--bg2);font-size:.82em;overflow:hidden}
+.dr-check-line{padding:.25rem .6rem;overflow-wrap:anywhere}
+.dr-check-line+.dr-check-line{border-top:1px solid var(--line)}
+.dr-check-line.ok{color:var(--ok)}
+.dr-check-line.ng{color:var(--ng)}
 .yamlcomplete{position:absolute;z-index:30;min-width:10rem;max-height:12rem;overflow:auto;background:var(--bg2);border:1px solid var(--line);border-radius:6px;box-shadow:0 2px 8px rgba(0,0,0,.3);font-family:var(--mono);font-size:12px}
 .yamlcomplete .ci{padding:.2rem .5rem;cursor:pointer;white-space:nowrap}
 .yamlcomplete .ci.sel,.yamlcomplete .ci:hover{background:var(--acc);color:var(--on-acc)}
@@ -444,6 +476,10 @@ header .cfgname{color:var(--mut);font-size:.82em;max-width:32vw;overflow:hidden;
 .yamlhead .yaml-actions{margin-left:auto;display:flex;align-items:center;gap:.4em}
 .yamlhead .yaml-actions .savebtn{margin-left:0}
 .codegen-emit{font:inherit;font-size:.85em;padding:.25rem .4rem;border-radius:6px;border:1px solid var(--line);background:var(--bg2);color:var(--fg);cursor:pointer}
+/* coverage (BE-0146): the target / run-set / compute control row above the rendered map. */
+.covctl{display:flex;gap:1em;align-items:flex-end;flex-wrap:wrap;margin:.8em 0}
+.covctl label{display:flex;flex-direction:column;gap:.25em;font-size:.85em}
+.covctl .subhint{font-size:.75em;color:var(--muted)}
 /* Replay codegen action row: emit selector + Generate button below the run output. */
 .codegen-bar{display:flex;align-items:center;gap:.4em;margin-top:.5em}
 .codegen-bar .savebtn{background:var(--acc);color:var(--on-acc);border:0;border-radius:6px;font-weight:700;padding:.35rem .8rem;font-size:.85em;cursor:pointer}

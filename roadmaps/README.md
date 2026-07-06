@@ -386,6 +386,9 @@ Bringing the CLI's own tools into the serve Web UI, where authoring happens. The
 | [BE-0137](BE-0137-serve-codegen/BE-0137-serve-codegen.md) | Generate native test code from the serve Web UI | Implemented |
 | [BE-0138](BE-0138-serve-lint/BE-0138-serve-lint.md) | Inline scenario validation in the serve editor | Implemented |
 | [BE-0145](BE-0145-serve-audit/BE-0145-serve-audit.md) | Determinism audit in the serve Web UI | Implemented |
+| [BE-0146](BE-0146-serve-coverage/BE-0146-serve-coverage.md) | E2E coverage map in the serve Web UI | Implemented |
+| [BE-0147](BE-0147-serve-triage/BE-0147-serve-triage.md) | Triage failed runs in the serve Web UI | Implemented |
+| [BE-0148](BE-0148-serve-doctor/BE-0148-serve-doctor.md) | Doctor readiness panel in the serve Web UI | Implemented |
 <!-- /GENERATED:implemented-serve-cli-features -->
 
 ### codegen coverage
@@ -568,11 +571,7 @@ The scope is currently **limited to the iOS Simulator** ([DESIGN §1](../DESIGN.
 ### Surfacing CLI features in the serve Web UI
 
 <!-- GENERATED:proposals-serve-cli-features -->
-| ID | Item | Status |
-|---|---|---|
-| [BE-0146](BE-0146-serve-coverage/BE-0146-serve-coverage.md) | E2E coverage map in the serve Web UI | Proposal |
-| [BE-0147](BE-0147-serve-triage/BE-0147-serve-triage.md) | Triage failed runs in the serve Web UI | Proposal |
-| [BE-0148](BE-0148-serve-doctor/BE-0148-serve-doctor.md) | Doctor readiness panel in the serve Web UI | Proposal |
+
 <!-- /GENERATED:proposals-serve-cli-features -->
 
 ### Dogfood fixtures (demo apps)
@@ -586,7 +585,9 @@ The scope is currently **limited to the iOS Simulator** ([DESIGN §1](../DESIGN.
 ### AI provider configuration
 
 <!-- GENERATED:proposals-ai-provider -->
-
+| ID | Item | Status |
+|---|---|---|
+| [BE-0175](BE-0175-serve-web-ui-ant-sso-login/BE-0175-serve-web-ui-ant-sso-login.md) | Sign in to the `ant` provider from the serve Web UI | Proposal |
 <!-- /GENERATED:proposals-ai-provider -->
 
 ### Hosting the web UI (cloud / self-hosted)
@@ -609,7 +610,9 @@ Turn the local `bajutsu serve` launcher into a shared service. The runner drives
 Closing the edges the deterministic core does not touch — `serve`'s HTTP surface, how secrets flow through capture / record / artifacts, driver argument hygiene, and the CI supply chain. These items keep the tool safe to run on a shared machine and safe to hand a scenario from an untrusted source, without weakening the prime directives.
 
 <!-- GENERATED:proposals-security -->
-
+| ID | Item | Status |
+|---|---|---|
+| [BE-0174](BE-0174-scenario-ref-path-containment/BE-0174-scenario-ref-path-containment.md) | Contain scenario component and data refs within the suite root | Proposal |
 <!-- /GENERATED:proposals-security -->
 
 ### Configuration sourcing

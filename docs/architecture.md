@@ -102,7 +102,7 @@ The `bajutsu/` package (Python 3.13+, pydantic v2 / typer / anthropic / pyyaml /
 | `triage.py` | M4 self-heal: rule-based `HeuristicTriageAgent` + structured fixes (`renameId`/`addIndex`/`raiseTimeout`), `--apply`/`--write`/`--rerun` | [cli](cli.md) |
 | `claude_triage.py` | Claude-backed `TriageAgent` (`--ai`, failure screenshot) | [cli](cli.md) |
 | `github.py` | GitHub helpers (CI, continuous integration) | [ci](ci.md) |
-| `serve/` | Local web UI (the `serve` command): author / run / reports | [cli](cli.md) |
+| `serve/` | Local web UI (the `serve` command): author / run / reports / triage a failed run | [cli](cli.md) |
 | `mcp/` | MCP server: exposes `run`/`doctor` as tools + run evidence as resources | [cli](cli.md) |
 | `lint.py` | Scenario linter + JSON Schema generation (`lint` / `schema` commands) | [cli](cli.md) |
 | `cli/` | Typer-based CLI; one file per command in `cli/commands/` (`run`/`doctor`/`record`/`crawl`/`codegen`/`trace`/`triage`/`approve`/`serve`/`mcp`/`worker`/`lint`/`schema`) | [cli](cli.md) |
@@ -279,7 +279,7 @@ workers would collide).
   `--apply`/`--write` patches the scenario source (diff-previewed, opt-in) and `--rerun` re-runs it
 - The CLI: `run` / `doctor` / `record` / `crawl` / `codegen` / `trace` / `triage` / `approve` / `serve` / `mcp` / `worker` / `lint` / `schema` — with `record` + `crawl` as the Tier 1 AI authoring paths and the alert guard
 - AI **crawl** (`crawl.py`): autonomous breadth-first exploration of an app → a screen map (`screenmap.json`)
-- The `serve` local web UI (Tier 1): author (`record` / `crawl`), edit, and run scenarios; **open a `.zip` bundle** of config + scenarios + the built app binary as the active config the tabs run from (BE-0073); browse reports and evidence; a read-only aggregate **run-stats dashboard** across the run history (BE-0102); approve visual baselines; live job streaming — from a browser (not for CI)
+- The `serve` local web UI (Tier 1): author (`record` / `crawl`), edit, and run scenarios; **open a `.zip` bundle** of config + scenarios + the built app binary as the active config the tabs run from (BE-0073); browse reports and evidence; a read-only aggregate **run-stats dashboard** across the run history (BE-0102); a pre-run **readiness panel** (`doctor`: environment runnability + the current screen's convention score) in the Record and Replay forms (BE-0148); approve visual baselines; live job streaming — from a browser (not for CI)
 - **MCP server** (`bajutsu mcp`): `bajutsu_run` and `bajutsu_doctor` as MCP tools + run evidence as resources, for Claude Desktop / Code integration (optional dependency `fastmcp`)
 - **Scenario linter** (`bajutsu lint` / `bajutsu schema`): validate scenarios without running them; JSON Schema output for editor integration
 - XCUITest code generation

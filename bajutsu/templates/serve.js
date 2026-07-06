@@ -25,7 +25,10 @@ async function _bjLogin(){
 
 const $=s=>document.querySelector(s);
 let poll=null,recPoll=null,selectedRun=null,recPath=null,scnFiles=[],targets=[],sims=[];
-let recJobId=null,runJobId=null;
+let recJobId=null,runJobId=null,triageJobId=null;
+// Whether Claude is reachable (from /api/provider). Gates the opt-in AI toggle on triage the same
+// way it gates record/crawl; heuristic triage never needs it. Kept in sync by refreshAiAvailability.
+let aiAvailable=false;
 // Toggle a run/stop button pair between idle and running (amber + spinner via the .running class).
 function setBusy(btn,stop,on,busyLabel){
   btn.classList.toggle('running',on);btn.disabled=on;btn.textContent=on?busyLabel:btn.dataset.idle;
@@ -63,6 +66,59 @@ function renderGradeBadge(el,reports){
   if(!reports||!reports.length){el.hidden=true;return;}
   const {grade,text}=gradeSummary(reports);
   el.hidden=false;el.textContent=text;el.className='grade-badge '+GRADE_CLASS[grade];
+}
+
+// ---- doctor readiness (BE-0148): shells out to the same checks the CLI `doctor` runs ----
+// Two halves from POST /api/doctor: the runnability checks (each required tool present? a
+// Simulator booted?) and the current screen's convention score (Ready/Partial/Blocked with the
+// per-id gaps). Read-only and AI-free — it never gates a run. Shared by the Record and Replay
+// panels; a sequence guard drops a stale response so a slow check can't overwrite a newer one.
+const DR_GRADE_CLASS={Ready:'ready',Partial:'partial',Blocked:'blocked'};
+function renderDoctorChecks(box,checks){
+  box.innerHTML=(checks||[]).map(c=>
+    `<div class="dr-check-line ${c.ok?'ok':'ng'}">${c.ok?'✓':'✗'} ${esc(c.name)}: ${esc(c.detail)}</div>`).join('');
+}
+function renderDoctorScore(el,score){
+  if(!score){el.hidden=true;return;}
+  el.hidden=false;
+  el.textContent=score.grade+' · '+Math.round(score.idCoverage*100)+'% id coverage';
+  el.className='grade-badge '+(DR_GRADE_CLASS[score.grade]||'');
+}
+// The score's "what to fix" list: unnamed controls, off-namespace ids, and duplicate ids.
+function doctorFindings(score){
+  const out=[];
+  if(score.noActionable)out.push('no actionable elements — is the app on the expected screen and loaded?');
+  (score.missingId||[]).forEach(m=>out.push('missing id: '+(m.label||'(no label)')+' ['+(m.traits||[]).join(', ')+']'));
+  (score.offNamespace||[]).forEach(i=>out.push('off-namespace id: '+i));
+  (score.duplicates||[]).forEach(i=>out.push('duplicate id: '+i));
+  return out;
+}
+function wireDoctor(ids,getTarget){
+  const btn=$(ids.btn);
+  if(!btn)return;
+  const status=$(ids.status),badge=$(ids.badge),checks=$(ids.checks),findings=$(ids.findings);
+  let seq=0;
+  btn.addEventListener('click',async()=>{
+    const target=getTarget();
+    if(!target){setStatus(status,'pick a target first','ng');return;}
+    const my=++seq;
+    setStatus(status,'checking…','run');badge.hidden=true;checks.innerHTML='';findings.hidden=true;
+    try{
+      const r=await fetch('/api/doctor',{method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({target})});
+      const d=await r.json();
+      if(my!==seq)return;  // a newer check superseded this one
+      if(!r.ok){setStatus(status,d.error||('doctor failed ('+r.status+')'),'ng');return;}
+      renderDoctorChecks(checks,d.checks);
+      renderDoctorScore(badge,d.score);
+      const f=d.score?doctorFindings(d.score):[];
+      if(f.length){findings.hidden=false;
+        findings.innerHTML='<div class="au-audit-head">'+f.length+' readiness finding'+(f.length===1?'':'s')+'</div>'+
+          f.map(t=>'<div class="au-finding">'+esc(t)+'</div>').join('');}
+      else findings.hidden=true;
+      setStatus(status,d.ok?'environment ready ✓':'environment not ready',d.ok?'ok':'ng');
+    }catch(e){if(my===seq)setStatus(status,'doctor request failed','ng');}
+  });
 }
 
 // ---- dark / light toggle (matching CSS-variable blocks live in serve.themes.css) ----
@@ -111,10 +167,11 @@ document.querySelectorAll('.viewswitch').forEach(sw=>{
 // ---- top-level Record / Replay / Crawl views ----
 function showView(name){
   document.querySelectorAll('.toptab').forEach(t=>t.classList.toggle('active',t.dataset.view===name));
-  $('#view-record').hidden=name!=='record';$('#view-replay').hidden=name!=='replay';$('#view-crawl').hidden=name!=='crawl';$('#view-author').hidden=name!=='author';$('#view-stats').hidden=name!=='stats';
+  $('#view-record').hidden=name!=='record';$('#view-replay').hidden=name!=='replay';$('#view-crawl').hidden=name!=='crawl';$('#view-author').hidden=name!=='author';$('#view-stats').hidden=name!=='stats';$('#view-coverage').hidden=name!=='coverage';
   if(name==='replay')loadHistory();
   if(name==='author')authorInit();
   if(name==='stats')loadStats();
+  if(name==='coverage')coverageInit();
 }
 document.querySelectorAll('.toptab').forEach(t=>t.addEventListener('click',()=>showView(t.dataset.view)));
 
@@ -252,6 +309,8 @@ async function loadProv(){
 async function refreshAiAvailability(){
   let d;try{d=await (await fetch('/api/provider')).json()}catch(e){d={}}
   const ok=d.claudeAvailable!==false, hint=d.claudeHint||'set an API key, configure Bedrock, or sign in with `ant auth login`.';
+  aiAvailable=ok;  // the triage panel's opt-in Claude toggle reads this (BE-0147)
+  const ta=$('#triage-ai');if(ta)ta.disabled=!ok;  // reflect live if a triage panel is open
   document.querySelectorAll('.toptab[data-view="record"],.toptab[data-view="crawl"]').forEach(t=>t.classList.toggle('disabled',!ok));
   [['#rec-aigate','#rec-go'],['#crawl-aigate','#crawl-go']].forEach(([gate,btn])=>{
     const g=$(gate);
@@ -319,7 +378,7 @@ async function loadShared(){
   // each target carries its primary backend (data-backend) so picking a web target hides the iOS-only UI
   const opts=targets.map(a=>{const n=typeof a==='string'?a:a.name,b=typeof a==='string'?'':(a.backend||'');
     return `<option value="${esc(n)}" data-backend="${esc(b)}">${esc(n)}</option>`;}).join('');
-  $('#target').innerHTML=opts;$('#rec-target').innerHTML=opts;$('#crawl-target').innerHTML=opts;$('#au-target').innerHTML=opts;
+  $('#target').innerHTML=opts;$('#rec-target').innerHTML=opts;$('#crawl-target').innerHTML=opts;$('#au-target').innerHTML=opts;$('#cov-target').innerHTML=opts;
   syncPlatform('#panel-run','#target');
   syncPlatform('#panel-record','#rec-target');
   syncPlatform('#panel-crawl','#crawl-target');
@@ -445,16 +504,20 @@ function runDone(j){
   poll=null;runJobId=null;setBusy($('#go'),$('#stop'),false);
   if(j.cancelled){setStatus($('#status'),'cancelled','ng');loadHistory();return}
   setStatus($('#status'),j.ok?'PASS':'FAIL', j.ok?'ok':'ng');
-  if(j.runId)setReport(j.runId);
+  if(j.runId)setReport(j.runId,j.ok);
   loadHistory();
 }
 // Show a run's report inline (no iframe): render report.html into a shadow root so its CSS/JS stay
 // isolated, plus an "open full report ↗" link to view it as its own page. report.js is root-aware
 // (window.__bajutsuReportRoot), so its queries + delegated listeners run against the shadow root.
-async function setReport(id,repSel){
+async function setReport(id,ok,repSel){
   selectedRun=id;
   const rep=$(repSel||'#report');
-  rep.innerHTML=`<div class="repbar"><a class="repdl" href="/runs/${esc(id)}/archive.zip" download>⬇ download .zip</a><a class="repopen" href="/runs/${esc(id)}/report.html" target="_blank" rel="noopener">open full report ↗</a></div><div class="rephost"></div>`;
+  // Offer "Triage" only on a failed run — the "why did this fail?" the Replay/History view asks
+  // right where the red report is (BE-0147). A passed run has nothing to diagnose.
+  const triageBtn=ok===false?`<button class="repbtn" id="triagebtn" data-testid="replay.triage">🔧 Triage</button>`:'';
+  rep.innerHTML=`<div class="repbar"><a class="repdl" href="/runs/${esc(id)}/archive.zip" download>⬇ download .zip</a><a class="repopen" href="/runs/${esc(id)}/report.html" target="_blank" rel="noopener">open full report ↗</a>${triageBtn}</div><div class="triagepanel" id="triagepanel" data-testid="replay.triage-panel" hidden></div><div class="rephost"></div>`;
+  if(ok===false)$('#triagebtn').addEventListener('click',()=>openTriage(id));
   const host=rep.querySelector('.rephost');
   let html;
   try{html=await (await fetch(`/runs/${encodeURIComponent(id)}/report.html`)).text();}
@@ -474,34 +537,147 @@ async function setReport(id,repSel){
   // the shadow via window.__bajutsuReportRoot); inline scripts run synchronously, so remove it after.
   const s=document.createElement('script');s.textContent=js;document.body.appendChild(s);s.remove();
 }
-// Stats (BE-0102): render the self-contained /stats dashboard into a shadow root so its inline
-// CSS stays isolated (same approach as setReport). The page has no scripts and no relative assets,
-// so no rewrite is needed — only retarget its :root/body rules to :host inside the shadow root.
-async function loadStats(){
-  const host=$('#stats-host');
-  // Reuse the host's shadow root on a refresh (unlike setReport, which recreates its host each time):
-  // this innerHTML replacement is idempotent and the page carries no scripts or listeners to leak.
+// Render a self-contained report page (no scripts, no relative assets) into a host's shadow root so
+// its inline CSS stays isolated — only retarget its :root/body rules to :host. Reusing the host's
+// shadow root is idempotent, so a refresh replaces the previous content in place. Shared by the Stats
+// (BE-0102) and Coverage (BE-0146) dashboards; the richer setReport keeps its own script-aware path.
+function renderReportInShadow(host,html){
   const sh=host.shadowRoot||host.attachShadow({mode:'open'});
-  let html;
-  // Treat a network error or a non-2xx (e.g. 401/500) as unavailable, and render the error into the
-  // shadow root so a failed refresh replaces the stale dashboard instead of leaving it on screen.
-  try{const r=await fetch('/stats');if(!r.ok)throw 0;html=await r.text();}
-  catch(e){sh.innerHTML='<div style="color:#6e6e73;font-style:italic">stats unavailable</div>';return;}
   const doc=new DOMParser().parseFromString(html,'text/html');
   const css=((doc.querySelector('style')||{}).textContent||'').replace(/:root/g,':host')
     .replace(/(^|[\s,>}])body([\s{])/g,'$1:host$2');
   sh.innerHTML=`<style>:host{display:block}\n${css}</style>${doc.body.innerHTML}`;
+}
+// ---- Triage (BE-0147): diagnose a failed run in the browser. The heuristic agent is the default
+// and fully deterministic; Claude is opt-in and only investigates — no LLM ever decides pass/fail.
+// A proposed fix is previewed as a diff and written only on an explicit click, through the same
+// validated scenario-save path the editor uses. The run's verdict is read back, never recomputed. ----
+function openTriage(id){
+  const panel=$('#triagepanel');panel.hidden=false;
+  panel.innerHTML=`<div class="triagebar"><span class="triagetitle">Triage</span>`
+    +`<label class="triage-aiopt" title="Diagnose with Claude instead of the built-in rules"><input type="checkbox" id="triage-ai" data-testid="replay.triage-ai"${aiAvailable?'':' disabled'}> Claude</label>`
+    +`<button class="repbtn" id="triage-go" data-idle="Diagnose" data-testid="replay.triage-go">Diagnose</button>`
+    +`<button class="stop" id="triage-stop" data-testid="replay.triage-stop" hidden>Stop</button></div>`
+    +`<pre class="triagelog" id="triage-log" data-testid="replay.triage-log" hidden></pre>`
+    +`<div class="triageresult" id="triage-result" data-testid="replay.triage-result"></div>`;
+  $('#triage-go').addEventListener('click',()=>runTriage(id));
+  $('#triage-stop').addEventListener('click',()=>cancelJob(triageJobId,$('#triage-stop')));
+}
+async function runTriage(id){
+  const go=$('#triage-go'),stop=$('#triage-stop'),log=$('#triage-log'),res=$('#triage-result');
+  res.innerHTML='';log.textContent='';log.hidden=false;
+  setBusy(go,stop,true,'Diagnosing…');
+  // Capture the scenario source now (target + path) so Apply writes to the file that was
+  // diagnosed, even if the user changes the Run-tab selectors while triage is streaming.
+  const target=$('#target').value,scenario=$('#scn').value,ai=$('#triage-ai').checked||undefined;
+  let r;try{r=await fetch('/api/triage',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({runId:id,target,scenario,ai})})}catch(e){r=null}
+  const d=r&&r.ok?await r.json():{error:r?('HTTP '+r.status):'request failed'};
+  if(!r||!r.ok||d.error){setBusy(go,stop,false);res.innerHTML=`<div class="triageerr">${esc(d.error||'triage failed')}</div>`;return}
+  triageJobId=d.jobId;
+  streamJob(d.jobId,line=>{const l=$('#triage-log');if(l)appendLine(l,line)},j=>triageDone(id,target,scenario,j));
+}
+function triageDone(id,target,scenario,j){
+  triageJobId=null;
+  const res=$('#triage-result');if(!res)return;  // the panel was torn down (user navigated away)
+  setBusy($('#triage-go'),$('#triage-stop'),false);
+  if(j.cancelled){res.innerHTML='<div class="triageerr">cancelled</div>';return}
+  if(!j.ok){res.innerHTML='<div class="triageerr">triage failed — see the log above.</div>';return}
+  loadTriageResult(id,target,scenario);
+}
+// Read back the machine-readable result the job wrote into the run dir and render it. A finished
+// triage with no diagnosable failure writes no triage.json (exit 0), so a miss is not an error —
+// say so rather than leaving the panel blank.
+async function loadTriageResult(id,target,scenario){
+  let d;try{const r=await fetch(`/runs/${encodeURIComponent(id)}/triage.json`);d=r.ok?await r.json():null}catch(e){d=null}
+  const res=$('#triage-result');if(!res)return;
+  if(d)renderTriage(id,target,scenario,d);
+  else res.innerHTML='<div class="triagefix muted">No diagnosis was produced for this run — see the log above.</div>';
+}
+function renderTriage(id,target,scenario,d){
+  const res=$('#triage-result');if(!res)return;
+  let h=`<div class="triagediag"><span class="triagecat">${esc(d.category||'')}</span> ${esc(d.summary||'')}</div>`;
+  if(d.suggestions&&d.suggestions.length)h+='<ul class="triagesugg">'+d.suggestions.map(s=>`<li>${esc(s)}</li>`).join('')+'</ul>';
+  const ap=d.apply,hasFix=!!(d.fix&&ap&&ap.count>0);
+  if(hasFix){
+    h+=`<div class="triagefix">${esc(d.fix.summary)}</div><pre class="triagediff">${esc(ap.diff)}</pre>`
+      +`<div class="triageactions"><button class="repbtn" id="triage-apply" data-testid="replay.triage-apply">Apply fix</button>`
+      +`<button class="repbtn" id="triage-applyrun" data-testid="replay.triage-applyrun">Apply &amp; re-run</button>`
+      +`<span class="status" id="triage-applystatus"></span></div>`;
+  }else if(d.fix){
+    h+=`<div class="triagefix muted">${esc(d.fix.summary)} — not found in the current scenario source, nothing to apply.</div>`;
+  }else{
+    h+='<div class="triagefix muted">No mechanical fix for this failure — advisory only.</div>';
+  }
+  res.innerHTML=h;
+  if(hasFix){
+    $('#triage-apply').addEventListener('click',()=>applyTriage(target,scenario,d,false));
+    $('#triage-applyrun').addEventListener('click',()=>applyTriage(target,scenario,d,true));
+  }
+}
+// Apply is the human's explicit action: write the previewed patch through POST /api/scenario (which
+// re-validates the YAML), against the scenario source that was diagnosed (captured at Diagnose time).
+async function applyTriage(target,scenario,d,rerun){
+  const st=$('#triage-applystatus'),apply=$('#triage-apply'),applyrun=$('#triage-applyrun');
+  apply.disabled=true;applyrun.disabled=true;setStatus(st,'applying…','');
+  let r;try{r=await fetch('/api/scenario',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({target,path:scenario,yaml:d.apply.patched})})}catch(e){r=null}
+  const j=r&&r.ok?await r.json():{error:r?('HTTP '+r.status):'request failed'};
+  if(!r||!r.ok||j.error){apply.disabled=false;applyrun.disabled=false;setStatus(st,j.error||'apply failed','ng');return}
+  setStatus(st,'applied ✓','ok');
+  if(!rerun)return;
+  // Re-run the diagnosed scenario to confirm the fix. Realign the Run-tab selectors to the file we
+  // patched: setting .value fires no `change` event, so load that target's scenarios explicitly and
+  // await it (no racing rebuild) before selecting the scenario and running.
+  $('#target').value=target;
+  await loadScenarios();
+  $('#scn').value=scenario;
+  $('#go').click();
+}
+async function loadStats(){
+  const host=$('#stats-host');
+  let html;
+  // Treat a network error or a non-2xx (e.g. 401/500) as unavailable, and render the error into the
+  // shadow root so a failed refresh replaces the stale dashboard instead of leaving it on screen.
+  try{const r=await fetch('/stats');if(!r.ok)throw 0;html=await r.text();}
+  catch(e){(host.shadowRoot||host.attachShadow({mode:'open'})).innerHTML='<div style="color:#6e6e73;font-style:italic">stats unavailable</div>';return;}
+  renderReportInShadow(host,html);
 }
 async function loadHistory(){
   let runs;try{runs=await (await fetch('/api/runs')).json()}catch(e){return}
   const tab=$('#histtab');if(tab)tab.textContent='History'+(runs.length?` (${runs.length})`:'');
   const ul=$('#history');
   if(!runs.length){ul.innerHTML='<li class="muted">no runs yet</li>';return}
-  ul.innerHTML=runs.map(r=>`<li data-id="${r.id}"${r.id===selectedRun?' class="sel"':''}><span class="dot ${r.ok?'ok':'ng'}"></span><span class="hid">${r.id}</span><span class="hsum">${r.passed}/${r.total}${r.scenarios.length?' · '+r.scenarios.join(', '):''}</span></li>`).join('');
-  ul.querySelectorAll('li[data-id]').forEach(li=>li.addEventListener('click',()=>{setReport(li.dataset.id);ul.querySelectorAll('li').forEach(x=>x.classList.remove('sel'));li.classList.add('sel')}));
+  ul.innerHTML=runs.map(r=>`<li data-id="${r.id}" data-ok="${r.ok?1:0}"${r.id===selectedRun?' class="sel"':''}><span class="dot ${r.ok?'ok':'ng'}"></span><span class="hid">${r.id}</span><span class="hsum">${r.passed}/${r.total}${r.scenarios.length?' · '+r.scenarios.join(', '):''}</span></li>`).join('');
+  ul.querySelectorAll('li[data-id]').forEach(li=>li.addEventListener('click',()=>{setReport(li.dataset.id,li.dataset.ok==='1');ul.querySelectorAll('li').forEach(x=>x.classList.remove('sel'));li.classList.add('sel')}));
 }
 $('#refresh').addEventListener('click',loadHistory);
 $('#stats-refresh').addEventListener('click',loadStats);
+
+// Coverage (BE-0146): POST the target (+ optional run set) to /api/coverage and render the returned
+// self-contained report into a shadow root — the same isolation as loadStats. The aggregation stays
+// server-side (the CLI's `bajutsu coverage`), so nothing is recomputed in JS; the view only displays.
+async function coverageInit(){
+  // Fill the run picker from the same history the Replay view lists; a target is already populated by
+  // loadShared. Selecting runs is optional — it folds in the endpoint / observed-id dimensions.
+  let runs;try{runs=await (await fetch('/api/runs')).json()}catch(e){runs=[]}
+  $('#cov-runs').innerHTML=runs.map(r=>`<option value="${esc(r.id)}">${esc(r.id)}${r.scenarios&&r.scenarios.length?' · '+esc(r.scenarios.join(', ')):''}</option>`).join('');
+}
+async function loadCoverage(){
+  const host=$('#cov-host');
+  // Render errors into the shadow root too (once attached it shadows the light-DOM empty state), so a
+  // failed recompute replaces the stale map — the same reasoning as loadStats.
+  const fail=msg=>{(host.shadowRoot||host.attachShadow({mode:'open'})).innerHTML=`<div style="color:#6e6e73;font-style:italic">${esc(msg)}</div>`};
+  const target=$('#cov-target').value;
+  if(!target){fail('Open a config and pick a target first.');return}
+  const runs=[...$('#cov-runs').selectedOptions].map(o=>o.value);
+  let resp;
+  try{const r=await fetch('/api/coverage',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({target,runs})});
+    resp=await r.json();if(!r.ok)throw new Error(resp.error||'coverage failed');}
+  catch(e){fail(e.message||'coverage unavailable');return}
+  renderReportInShadow(host,resp.html);
+}
+$('#cov-go').addEventListener('click',loadCoverage);
 function showTab(name){
   document.querySelectorAll('#view-replay .tab').forEach(t=>t.classList.toggle('active',t.dataset.tab===name));
   $('#panel-run').hidden=name!=='run';$('#panel-history').hidden=name!=='history';
@@ -1037,6 +1213,12 @@ wirePlatform('#panel-run','#target');
 wirePlatform('#panel-record','#rec-target');
 wirePlatform('#panel-crawl','#crawl-target');
 wirePlatform('#panel-author','#au-target');
+
+// Readiness panels (BE-0148): the Replay and Record forms each check the selected target.
+wireDoctor({btn:'#dr-check',status:'#dr-status',badge:'#dr-grade',checks:'#dr-checks',findings:'#dr-findings'},
+  ()=>$('#target').value);
+wireDoctor({btn:'#recdr-check',status:'#recdr-status',badge:'#recdr-grade',checks:'#recdr-checks',findings:'#recdr-findings'},
+  ()=>$('#rec-target').value);
 
 // Shared codegen wiring for a view (BE-0137): an emit selector synced to the target's backend, a
 // Generate button that POSTs the selected scenario to /api/codegen, and a result panel with copy /

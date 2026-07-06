@@ -301,6 +301,10 @@ def make_app(state: ServeState) -> FastAPI:
     async def crawl(body: dict[str, Any], request: Request) -> JSONResponse:
         return _result(ops.start_crawl(state, body, actor=_actor(request)))
 
+    @app.post("/api/triage")
+    async def triage(body: dict[str, Any], request: Request) -> JSONResponse:
+        return _result(ops.start_triage(state, body, actor=_actor(request)))
+
     @app.post("/api/scenario")
     async def save_scenario(body: dict[str, Any], request: Request) -> JSONResponse:
         return _result(ops.save_scenario(state, body, actor=_actor(request)))
@@ -324,6 +328,10 @@ def make_app(state: ServeState) -> FastAPI:
     @app.post("/api/doctor")
     async def doctor(body: dict[str, Any], request: Request) -> JSONResponse:
         return _result(ops.doctor_check(state, body, actor=_actor(request)))
+
+    @app.post("/api/coverage")
+    async def coverage(body: dict[str, Any], request: Request) -> JSONResponse:
+        return _result(ops.coverage_view(state, body, actor=_actor(request)))
 
     @app.post("/api/jobs/{job_id}/cancel")
     async def cancel(job_id: str) -> JSONResponse:

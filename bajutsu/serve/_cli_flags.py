@@ -24,7 +24,7 @@ from typer.core import TyperCommand, TyperOption
 
 # The commands serve spawns. Each is a `bajutsu.cli.commands.<name>` module whose command function
 # shares the name — a Literal so a typo at a call site is a type error, not a runtime import failure.
-Command = Literal["run", "record", "crawl"]
+Command = Literal["run", "record", "crawl", "triage"]
 # A flag value: a string/int for a value option, a tri-state bool for a flag pair, or None to omit.
 FlagValue = str | bool | int | None
 

@@ -32,13 +32,12 @@ from bajutsu.cli._shared import (
     DEFAULT_CONFIG,
     _backends,
     _load_effective,
-    load_expanded_scenarios,
     read_manifests,
 )
 from bajutsu.config import web_engine
 from bajutsu.runner import device_pool, run_all
 from bajutsu.runner.launch_server import start_launch_server
-from bajutsu.scenario import Scenario
+from bajutsu.scenario import Scenario, load_expanded_scenarios
 
 
 def audit(

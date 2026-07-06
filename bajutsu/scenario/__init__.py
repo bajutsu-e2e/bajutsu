@@ -15,6 +15,7 @@ from bajutsu.scenario.expand import (
     read_csv,
 )
 from bajutsu.scenario.load import load_component, load_scenario_file, load_scenarios
+from bajutsu.scenario.load_expanded import load_expanded_scenarios, load_scenarios_dir
 from bajutsu.scenario.models import (
     STEP_ACTIONS,
     Assertion,
@@ -150,8 +151,10 @@ __all__ = [
     "expand_components",
     "expand_data",
     "load_component",
+    "load_expanded_scenarios",
     "load_scenario_file",
     "load_scenarios",
+    "load_scenarios_dir",
     "read_csv",
     "redact_totp_secrets",
     "scenario_dict",
