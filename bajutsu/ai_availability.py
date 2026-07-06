@@ -13,6 +13,7 @@ Kept SDK-free at import time (it only forwards to `credential_gap`, which reads 
 from __future__ import annotations
 
 from bajutsu.ai import credential_gap
+from bajutsu.ai.claude_code import CLI_MISSING as CLAUDE_CODE_CLI_MISSING
 from bajutsu.anthropic_client import ANT_CLI_MISSING, ANT_CLI_UNAUTHENTICATED, AiConfig, key_env
 
 
@@ -24,13 +25,20 @@ def availability(ai: AiConfig | None = None) -> str | None:
 
     Returns:
         A gap token from `credential_gap` — ``"anthropic-key"`` / ``"bedrock-model"`` /
-        ``"ant-cli-missing"`` / ``"ant-cli-unauthenticated"`` — or None when Claude can be reached.
+        ``"ant-cli-missing"`` / ``"ant-cli-unauthenticated"`` / ``"claude-code-cli-missing"`` — or
+        None when Claude can be reached.
     """
     return credential_gap(ai)
 
 
 def message(gap: str, ai: AiConfig | None = None) -> str:
     """A specific, actionable one-liner for a gap from `availability`, for `serve` / `doctor`."""
+    if gap == CLAUDE_CODE_CLI_MISSING:
+        return (
+            "the Claude Code CLI (`claude`) is not installed — install Claude Code and sign in "
+            "(`claude setup-token`, or an interactive login), or switch to the Anthropic API / "
+            "Bedrock / ant provider."
+        )
     if gap == ANT_CLI_MISSING:
         return (
             "the Anthropic CLI (`ant`) is not installed — install it and run `ant auth login`, "

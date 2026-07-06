@@ -11,7 +11,7 @@
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0104") |
 | 実装 PR | [#608](https://github.com/bajutsu-e2e/bajutsu/pull/608) |
 | トピック | AI provider configuration |
-| 関連 | [BE-0047](../BE-0047-ai-data-sovereignty/BE-0047-ai-data-sovereignty-ja.md), [BE-0053](../BE-0053-bedrock-ai-provider/BE-0053-bedrock-ai-provider-ja.md), [BE-0097](../BE-0097-crawl-ai-data-sovereignty/BE-0097-crawl-ai-data-sovereignty-ja.md), [BE-0101](../BE-0101-ai-free-zero-config/BE-0101-ai-free-zero-config-ja.md) |
+| 関連 | [BE-0047](../BE-0047-ai-data-sovereignty/BE-0047-ai-data-sovereignty-ja.md), [BE-0053](../BE-0053-bedrock-ai-provider/BE-0053-bedrock-ai-provider-ja.md), [BE-0097](../BE-0097-crawl-ai-data-sovereignty/BE-0097-crawl-ai-data-sovereignty-ja.md), [BE-0101](../BE-0101-ai-free-zero-config/BE-0101-ai-free-zero-config-ja.md), [BE-0176](../BE-0176-claude-code-ai-backend/BE-0176-claude-code-ai-backend-ja.md) |
 <!-- /BE-METADATA -->
 
 ## はじめに

@@ -12,6 +12,7 @@ import tempfile
 from collections.abc import Callable
 from pathlib import Path
 
+from bajutsu import usage as _usage
 from bajutsu.agent import Agent, Observation
 from bajutsu.drivers import base
 from bajutsu.elements import shows_app_ui
@@ -294,8 +295,9 @@ def record(
             clock.sleep(0.3)
             continue
         n = len(steps) + 1
-        say(f"[{n}] observing {len(elements)} elements; asking the agent …")
+        say(f"[{n}] observing {len(elements)} elements; asking the agent (waits on the model) …")
         screenshot = _screenshot_bytes(driver) if with_screenshot else None
+        before = _usage.snapshot()
         proposal = agent.next_action(
             Observation(
                 goal=goal,
@@ -305,6 +307,11 @@ def record(
                 plan=plan,
             )
         )
+        spent = (
+            _usage.snapshot() - before
+        )  # single-threaded record loop → this turn's tokens exactly
+        if spent.total_tokens:
+            say(f"[{n}] \U0001f916 agent replied · {spent.total_tokens:,} tokens")
         if proposal.note:  # the agent's reasoning for this turn, shown before the action it chose
             # Mask any secret the agent's free-text reasoning echoed, so the live progress stream
             # never carries a literal either — not just the recorded step text (BE-0120).

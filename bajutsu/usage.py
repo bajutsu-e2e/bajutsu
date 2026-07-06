@@ -70,6 +70,27 @@ def _int(value: Any) -> int:
     return int(value) if isinstance(value, (int, float)) and value > 0 else 0
 
 
+def _field(usage: Any, name: str) -> int:
+    """One token field, read from an SDK usage object *or* a plain dict (the Claude Code adapter's
+    envelope reports usage as a dict — BE-0176 — so attribute-only access would count it as zero)."""
+    raw = usage.get(name) if isinstance(usage, dict) else getattr(usage, name, 0)
+    return _int(raw)
+
+
+def of(usage: Any) -> TokenUsage:
+    """One response's counts as a `TokenUsage` (``calls=1`` when usage is present), for per-call
+    display. Best-effort like `record`: a ``None`` usage yields an empty (zero) snapshot."""
+    if usage is None:
+        return TokenUsage()
+    return TokenUsage(
+        input_tokens=_field(usage, "input_tokens"),
+        output_tokens=_field(usage, "output_tokens"),
+        cache_write_tokens=_field(usage, "cache_creation_input_tokens"),
+        cache_read_tokens=_field(usage, "cache_read_input_tokens"),
+        calls=1,
+    )
+
+
 class _Accumulator:
     """Thread-safe running total of token counts across AI responses."""
 
@@ -87,11 +108,12 @@ class _Accumulator:
         zero — recording never raises and never affects pass/fail."""
         if usage is None:
             return
+        one = of(usage)
         with self._lock:
-            self._input += _int(getattr(usage, "input_tokens", 0))
-            self._output += _int(getattr(usage, "output_tokens", 0))
-            self._cache_write += _int(getattr(usage, "cache_creation_input_tokens", 0))
-            self._cache_read += _int(getattr(usage, "cache_read_input_tokens", 0))
+            self._input += one.input_tokens
+            self._output += one.output_tokens
+            self._cache_write += one.cache_write_tokens
+            self._cache_read += one.cache_read_tokens
             self._calls += 1
 
     def snapshot(self) -> TokenUsage:

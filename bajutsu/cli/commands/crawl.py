@@ -23,6 +23,7 @@ import typer
 from bajutsu import crawl as crawl_engine
 from bajutsu import crawl_report, crawl_repro
 from bajutsu import simctl as _simctl
+from bajutsu.ai import resolved_provider
 from bajutsu.backends import ensure_web_runtime, select_actuator
 from bajutsu.cli._shared import (
     DEFAULT_CONFIG,
@@ -146,6 +147,7 @@ def crawl(
     # first.
     _require_ai_credential(eff)
     redactor = _ai_redactor(eff)
+    say(f"🤖 AI provider: {resolved_provider(eff.ai)}")
     crawl_guide = make_guide(report=say, ai=eff.ai, redactor=redactor)
 
     out_dir = Path(out) if out else Path("runs") / datetime.now(tz=UTC).strftime("%Y%m%d-%H%M%S")

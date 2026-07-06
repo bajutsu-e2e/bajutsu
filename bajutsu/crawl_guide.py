@@ -18,7 +18,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any, Protocol
 
-from bajutsu import crawl, crawl_tabs
+from bajutsu import crawl, crawl_tabs, usage
 from bajutsu.ai import (
     AiBackend,
     ContentPart,
@@ -52,6 +52,7 @@ class Proposal:
 
     actions: list[crawl.Action] = field(default_factory=list)
     thought: str = ""
+    tokens: int = 0  # tokens the model spent on this proposal (0 when unknown / no AI call)
 
 
 class ActionProposer(Protocol):
@@ -88,13 +89,19 @@ def ai_guide(
     def guide(
         driver: base.Driver, elements: list[base.Element], context: crawl.GuideContext
     ) -> list[crawl.Action]:
+        if report is not None:
+            report("📸 capturing the current screen…")
         shot = _screenshot_bytes(driver)
         candidates = crawl.candidate_actions(elements)  # deterministic inspection, fed to the AI
         tabs = _locate_tabs(tab_locator, elements, shot, report)
         if report is not None and context.dismissed:
             report(f"🛡️  factoring in a just-dismissed OS prompt: {', '.join(context.dismissed)}")
+        if report is not None:
+            report("🤖 asking Claude to choose the next operations (this waits on the model)…")
         proposal = proposer.propose(elements, shot, candidates, context.dismissed)
         if report is not None:
+            spent = f" · {proposal.tokens:,} tokens" if proposal.tokens else ""
+            report(f"🤖 Claude proposed {len(proposal.actions)} operation(s){spent}")
             if proposal.thought:
                 report(f"🤔 {proposal.thought}")
             for a in proposal.actions:
@@ -115,6 +122,8 @@ def _locate_tabs(
     """Vision fallback for an un-addressable tab bar: a coordinate tap per tab, only when a locator and screenshot exist and such a tab bar is present."""
     if tab_locator is None or shot is None or not crawl_tabs.needs_vision_tabs(elements):
         return []
+    if report is not None:
+        report("👁️  tab bar not addressable in the tree — asking Claude to locate tabs by vision…")
     targets = tab_locator.locate(shot)
     actions = [crawl.Action("tap_point", label=t.label, point=(t.x, t.y)) for t in targets]
     if report is not None and actions:
@@ -371,7 +380,10 @@ class ClaudeActionProposer:
                 max_tokens=self._max_tokens,
             )
         )
+        usage.record(response.usage)  # reporting only (BE-0104) — never on the pass/fail path
         block = response.first_tool_use()
         if block is None:
             return Proposal()
-        return _proposal_from(block.input, self._max_actions)
+        proposal = _proposal_from(block.input, self._max_actions)
+        proposal.tokens = usage.of(response.usage).total_tokens
+        return proposal

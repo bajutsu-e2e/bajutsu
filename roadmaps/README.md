@@ -319,6 +319,7 @@ The Tier-1 AI paths (`record` / `triage` / `--dismiss-alerts` / `crawl`) call Cl
 | [BE-0111](BE-0111-ai-sdk-optional-dependency/BE-0111-ai-sdk-optional-dependency.md) | Make the AI SDK an optional extra so the deterministic gate installs AI-free | Implemented |
 | [BE-0163](BE-0163-ant-cli-oauth-provider/BE-0163-ant-cli-oauth-provider.md) | Replace the Claude Code CLI authoring backend with an `ant`-CLI OAuth AI provider | Implemented |
 | [BE-0175](BE-0175-serve-web-ui-ant-sso-login/BE-0175-serve-web-ui-ant-sso-login.md) | Sign in to the `ant` provider from the serve Web UI | Implemented |
+| [BE-0176](BE-0176-claude-code-ai-backend/BE-0176-claude-code-ai-backend.md) | Revive Claude Code as an AiBackend adapter with file-based vision | Implemented |
 <!-- /GENERATED:implemented-ai-provider -->
 
 ### Hosting the web UI (cloud / self-hosted)
@@ -586,9 +587,7 @@ The scope is currently **limited to the iOS Simulator** ([DESIGN §1](../DESIGN.
 ### AI provider configuration
 
 <!-- GENERATED:proposals-ai-provider -->
-| ID | Item | Status |
-|---|---|---|
-| [BE-0176](BE-0176-claude-code-ai-backend/BE-0176-claude-code-ai-backend.md) | Revive Claude Code as an AiBackend adapter with file-based vision | Proposal |
+
 <!-- /GENERATED:proposals-ai-provider -->
 
 ### Hosting the web UI (cloud / self-hosted)

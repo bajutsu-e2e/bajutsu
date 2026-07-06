@@ -85,7 +85,7 @@ def test_first_tool_use_is_none_without_a_tool_block() -> None:
 
 
 def test_builtin_providers_are_registered() -> None:
-    assert {"api-key", "bedrock", "ant"} <= set(known_providers())
+    assert {"api-key", "bedrock", "ant", "claude-code"} <= set(known_providers())
 
 
 def test_builtins_survive_an_adapter_registered_first() -> None:
@@ -117,6 +117,16 @@ def test_create_backend_defaults_to_the_anthropic_adapter() -> None:
     assert isinstance(create_backend(AiConfig(provider="ant")), AnthropicBackend)
 
 
+def test_claude_code_resolves_to_its_own_adapter() -> None:
+    # `claude-code` (BE-0176) is a separate adapter, not another alias on the shared Anthropic one.
+    from bajutsu.ai.anthropic import AnthropicBackend
+    from bajutsu.ai.claude_code import ClaudeCodeBackend
+
+    backend = create_backend(AiConfig(provider="claude-code"))
+    assert isinstance(backend, ClaudeCodeBackend)
+    assert not isinstance(backend, AnthropicBackend)
+
+
 def test_credential_gap_dispatches_to_the_resolved_provider(monkeypatch: Any) -> None:
     from bajutsu import anthropic_client
 
@@ -130,6 +140,11 @@ def test_credential_gap_dispatches_to_the_resolved_provider(monkeypatch: Any) ->
     # `ant` (BE-0163) dispatches through the same shared adapter to the CLI credential probe.
     monkeypatch.setattr(anthropic_client.shutil, "which", lambda _exe: None)
     assert credential_gap(AiConfig(provider="ant")) == anthropic_client.ANT_CLI_MISSING
+    # `claude-code` (BE-0176) dispatches to its own adapter's gap: the `claude` binary is absent.
+    from bajutsu.ai import claude_code
+
+    monkeypatch.setattr(claude_code.shutil, "which", lambda _exe: None)
+    assert credential_gap(AiConfig(provider="claude-code")) == claude_code.CLI_MISSING
 
 
 # --- the registry is a real extension point (in-process fake adapter) ---

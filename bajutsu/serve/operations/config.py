@@ -13,16 +13,15 @@ from typing import Any
 import yaml
 
 from bajutsu import ai_availability
+from bajutsu.ai import known_providers, resolved_provider
 from bajutsu.anthropic_client import (
     ANT_BINARY,
     ANT_CLI_MISSING,
     ANTHROPIC_KEY_ENV,
     BEDROCK_MODEL_ENV,
     PROVIDER_ENV,
-    PROVIDERS,
     AiConfig,
     normalize_provider,
-    provider,
 )
 from bajutsu.config import load_config, resolve
 from bajutsu.config_source import materialize, parse_config_spec, source_provenance
@@ -123,8 +122,10 @@ def api_key_info(state: ServeState, actor: str | None) -> tuple[Any, int]:
 def provider_info(state: ServeState) -> tuple[Any, int]:
     """The AI provider spawned jobs will use, with the Bedrock region/model.  Read from the serve
     process's environment, so it reflects what a record/crawl job inherits — one of the registered
-    SDK providers (`api-key` / `bedrock` / `ant`, BE-0163)."""
-    mode = provider()
+    providers (`api-key` / `bedrock` / `ant` / `claude-code`). Resolved through the BE-0104 registry
+    so a non-SDK provider (`claude-code`, BE-0176) is reported as itself, not clamped to the SDK
+    family."""
+    mode = resolved_provider()
     # Claude reachability for the resolved provider (BE-0101), so the front end disables the Claude
     # tabs (record/crawl) on data rather than only surfacing the failure on click. Honors the bound
     # config's `ai.keyEnv` (BE-0097) so the SDK-path check reads the right env var.
@@ -240,16 +241,17 @@ def set_api_key(state: ServeState, value: str, actor: str | None) -> tuple[Any, 
 
 def set_provider(state: ServeState, body: dict[str, Any]) -> tuple[Any, int]:
     """Select the AI provider for spawned record/crawl jobs: the Anthropic API (`api-key`), Amazon
-    Bedrock, or the Anthropic CLI (`ant`, a browser-based OAuth/SSO sign-in — BE-0163). Written into
+    Bedrock, the Anthropic CLI (`ant`, a browser-based OAuth/SSO sign-in — BE-0163), or the Claude
+    Code CLI (`claude-code`, the local `claude` on a Pro/Max/Console seat — BE-0176). Written into
     the serve process's environment (`BAJUTSU_AI_PROVIDER`) for this session only — never to disk —
-    and inherited by jobs, mirroring the API-key handler. All three are registered SDK providers, so
+    and inherited by jobs, mirroring the API-key handler. Validated against the BE-0104 registry, so
     every AI path (authoring, the alert guard, triage) resolves through the same seam."""
     prov = normalize_provider(str(body.get("provider", "") or ""))
-    if prov not in PROVIDERS:
+    if prov not in known_providers():
         return {"error": f"unknown provider: {prov or '(empty)'}"}, 400
-    if prov in ("api-key", "ant"):
-        # `api-key` authenticates with an Anthropic API key; `ant` with the CLI's OAuth/SSO
-        # credential — neither takes a model/region here, so the selection is just the provider name.
+    if prov in ("api-key", "ant", "claude-code"):
+        # `api-key` authenticates with an Anthropic API key; `ant` and `claude-code` with a CLI's
+        # own credential — none takes a model/region here, so the selection is just the provider name.
         os.environ[PROVIDER_ENV] = prov
         return {"ok": True, "provider": prov}, 200
     # Bedrock needs a provider-prefixed model id (the bare Anthropic id is invalid there); region is
