@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-run-behavior-target-config-ja.md)
+**English** · [日本語](BE-0177-run-behavior-target-config-ja.md)
 
-# BE-XXXX — Per-target config defaults for run-behavior settings
+# BE-0177 — Per-target config defaults for run-behavior settings
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-run-behavior-target-config.md) |
+| Proposal | [BE-0177](BE-0177-run-behavior-target-config.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0177") |
 | Topic | Configuration sourcing |
 <!-- /BE-METADATA -->
 
