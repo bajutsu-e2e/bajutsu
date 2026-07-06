@@ -14,7 +14,9 @@ from bajutsu.scenario import (
 
 def test_preconditions_default() -> None:
     s = Scenario.model_validate({"name": "x", "steps": [{"tap": {"id": "a"}}]})
-    assert s.preconditions.erase is False  # no full wipe by default; reinstall keeps the app fresh
+    assert (
+        s.preconditions.erase is None
+    )  # unset: inherit target config, then built-in off (BE-0177)
     assert s.preconditions.reinstall == "clean"  # uninstall + install by default
 
 

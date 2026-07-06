@@ -16,7 +16,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 from bajutsu import _yaml, idb_version
 from bajutsu.drivers import base
-from bajutsu.scenario import Redact
+from bajutsu.scenario import DismissAlerts, Redact
 
 # Playwright rendering engines a web target can drive (BE-0076). Chromium is the default,
 # preserving today's single-engine behaviour; all three run headless on Linux.
@@ -325,6 +325,13 @@ class TargetConfig(_Model):
     visual_compare: Literal["exact", "pixelmatch"] | None = Field(
         default=None, alias="visualCompare"
     )
+    # Per-app defaults for the run-behavior knobs that otherwise live per-scenario or on a CLI flag
+    # (BE-0177). Each sits *between* the per-scenario value and the built-in default: the flag still
+    # overrides for one run, then the scenario's own value, then this, then the built-in — mirroring
+    # `--headed`/`headless`. None = unset (fall through to the built-in default).
+    dismiss_alerts: DismissAlerts | None = Field(default=None, alias="dismissAlerts")
+    erase: bool | None = None  # default for preconditions.erase (built-in: off)
+    network: bool | None = None  # collect the app's network exchanges (built-in: on)
 
     @field_validator("backend", mode="before")
     @classmethod
@@ -475,6 +482,12 @@ class Effective:
     # Webhook notification sinks (BE-0099). Empty when no `notify:` is configured.
     notify: list[NotifyEndpoint] = field(default_factory=list)
     visual_compare: str = "exact"
+    # Per-app run-behavior defaults (BE-0177), resolved from the target: the layer the run consults
+    # when neither a CLI flag nor the scenario sets the value. `dismiss_alerts` None = built-in on with
+    # the default instruction; `erase` / `network` are the concrete built-in defaults when unset.
+    dismiss_alerts: DismissAlerts | None = None
+    erase: bool = False
+    network: bool = True
 
     @property
     def platform(self) -> str:
@@ -708,6 +721,9 @@ def resolve(config: Config, target: str) -> Effective:
         doctor_fail_coverage=d.doctor.id_coverage_fail,
         notify=a.notify if a.notify is not None else list(config.notify),
         visual_compare=a.visual_compare or d.visual_compare or "exact",
+        dismiss_alerts=a.dismiss_alerts,
+        erase=a.erase if a.erase is not None else False,
+        network=a.network if a.network is not None else True,
     )
 
 
