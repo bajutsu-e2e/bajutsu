@@ -11,6 +11,7 @@
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0125") |
 | Implementing PR | [#620](https://github.com/bajutsu-e2e/bajutsu/pull/620) |
 | Topic | Security hardening |
+| Related | [BE-0176](../BE-0176-claude-code-ai-backend/BE-0176-claude-code-ai-backend.md) |
 | Superseded by | [BE-0163](../BE-0163-ant-cli-oauth-provider/BE-0163-ant-cli-oauth-provider.md) |
 <!-- /BE-METADATA -->
 
