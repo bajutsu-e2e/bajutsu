@@ -11,6 +11,7 @@ import typer
 from bajutsu import simctl as _simctl
 from bajutsu import usage as _usage
 from bajutsu.agents import make_agent
+from bajutsu.ai import resolved_provider
 from bajutsu.backends import ensure_web_runtime, select_actuator
 from bajutsu.cli._shared import (
     DEFAULT_CONFIG,
@@ -189,6 +190,7 @@ def record(
     def say(msg: str) -> None:
         typer.echo(msg, err=True)
 
+    say(f"🤖 AI provider: {resolved_provider(eff.ai)}")
     say(
         f"⚙️  preparing the simulator — installing and launching {target_name} (this can take a moment) …"
     )
