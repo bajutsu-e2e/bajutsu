@@ -12,7 +12,13 @@ from bajutsu.agent import Observation, Proposal
 from bajutsu.drivers import base
 from bajutsu.drivers.fake import FakeDriver
 from bajutsu.elements import shows_app_ui
-from bajutsu.record import _is_looping, _screenshot_bytes, _tokenize_secrets, record
+from bajutsu.record import (
+    _format_elapsed,
+    _is_looping,
+    _screenshot_bytes,
+    _tokenize_secrets,
+    record,
+)
 from bajutsu.scenario import Assertion, Step, dump_scenarios, load_scenarios
 
 
@@ -147,6 +153,19 @@ def test_is_looping_detects_repetition_and_oscillation() -> None:
     assert _is_looping(["tap Open", "tap Close", "tap Open", "tap Close"])  # A,B,A,B oscillation
     assert not _is_looping(["tap a", "tap b", "tap a"])  # progress-ish, not yet a cycle
     assert not _is_looping(["tap a", "tap b", "tap c", "tap d"])  # all distinct
+
+
+def test_format_elapsed() -> None:
+    assert _format_elapsed(13.44) == "13.4s"
+    assert _format_elapsed(63) == "1m 03s"
+    assert _format_elapsed(125) == "2m 05s"
+
+
+def test_record_reports_elapsed_time_on_completion() -> None:
+    driver = FakeDriver([_el("a", "A")])
+    msgs: list[str] = []
+    record(driver, "x", FakeAgent([Proposal(done=True, expect=[])]), report=msgs.append)
+    assert any("record finished in" in m for m in msgs)
 
 
 def test_record_stops_on_an_oscillation_before_max_steps() -> None:

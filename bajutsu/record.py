@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import logging
 import tempfile
+import time
 from collections.abc import Callable
 from pathlib import Path
 
@@ -23,6 +24,14 @@ _logger = logging.getLogger(__name__)
 
 # A live-progress sink: each turn's decision is handed to it as a one-line string.
 Reporter = Callable[[str], None]
+
+
+def _format_elapsed(seconds: float) -> str:
+    """Wall-clock duration as a compact string — `13.4s`, or `2m 03s` past a minute."""
+    if seconds < 60:
+        return f"{seconds:.1f}s"
+    minutes, secs = divmod(int(seconds), 60)
+    return f"{minutes}m {secs:02d}s"
 
 
 def _describe_selector(sel: Selector | None) -> str:
@@ -301,6 +310,7 @@ def record(
     """
     clock = clock or RealClock()
     say = report or (lambda _msg: None)
+    started = time.monotonic()  # wall-clock: how long the author actually waited (model + device)
     steps: list[Step] = []
     expect: list[Assertion] = []
     plan = _plan_goal(agent, goal, say)
@@ -365,6 +375,11 @@ def record(
             )
             break
 
+    # Report wall-clock duration on every exit path (finish, stop, max_steps) so the console — and
+    # the serve progress pane, which both stream `say` — always show how long authoring took.
+    say(
+        f"⏱  record finished in {_format_elapsed(time.monotonic() - started)} · {len(steps)} step(s)"
+    )
     scenario = Scenario(name=name, steps=steps, expect=expect)
     # The goal is the scenario-level provenance (BE-0044): the natural language this whole scenario
     # was authored from. Set by attribute since the field's `from` alias is a Python keyword.
