@@ -301,6 +301,8 @@ async function loadProv(){
   let d;try{d=await (await fetch('/api/provider')).json()}catch(e){d={}}
   $('#bedrock-region').value=d.region||'';
   $('#bedrock-model').value=d.model||'';
+  $('#ai-model').value=d.aiModel||'';
+  $('#ai-effort').value=d.effort||'';
   renderProv();
 }
 // ---- Claude reachability (BE-0101): the record/crawl surfaces degrade gracefully when Claude
@@ -326,10 +328,15 @@ document.addEventListener('click',e=>{if(e.target.closest('[data-open-settings]'
 async function saveSettings(){
   const provider=$('#provider').value,body={provider};
   if(!provider){setSettingsStatus('select an AI provider','ng');return}  // explicit choice required
+  // The reasoning effort applies to any provider that supports it; the general model override applies
+  // to the non-Bedrock providers (Bedrock keeps its own prefixed id). Blank clears either.
+  body.effort=$('#ai-effort').value;
   if(provider==='bedrock'){
     body.region=$('#bedrock-region').value.trim();
     body.model=$('#bedrock-model').value.trim();
     if(!body.model){setSettingsStatus('enter a Bedrock model id','ng');return}
+  }else{
+    body.aiModel=$('#ai-model').value.trim();
   }
   setSettingsStatus('saving…','');
   let d;try{d=await (await fetch('/api/provider',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)})).json()}catch(e){d={error:'request failed'}}

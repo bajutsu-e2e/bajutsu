@@ -113,10 +113,18 @@ deterministic `run` gate still calls no model at all
 defaults:
   ai:
     provider: api-key                        # a registered provider name; api-key (default), bedrock, ant, or claude-code ship today
-    model:    claude-opus-4-8                 # optional: override the path's default model
+    model:    claude-opus-4-8                 # optional: override the path's default model (or the BAJUTSU_AI_MODEL env)
+    effort:   high                            # optional: reasoning effort — low/medium/high/xhigh/max (or BAJUTSU_AI_EFFORT); claude-code
     baseUrl:  https://ai-gateway.internal/v1  # optional: a self-hosted gateway / enterprise proxy (anthropic provider)
     keyEnv:   ANTHROPIC_API_KEY               # the NAME of the env var holding the key — never the key itself
 ```
+
+- **Model and effort are config-first with an env fallback.** `model` (or `BAJUTSU_AI_MODEL`)
+  overrides the default model on any provider; `effort` (or `BAJUTSU_AI_EFFORT`) sets the reasoning
+  effort — one of `low`/`medium`/`high`/`xhigh`/`max`, honored by the `claude-code` provider
+  (passed to the CLI as `--effort`; an unrecognized value falls back to the model's default). The
+  `serve` **Settings** panel exposes both for the running session, and `record` prints the resolved
+  choice up front (`🤖 AI: <provider> · model <model> · effort <effort>`).
 
 - **A provider is a backend behind one interface**
   ([BE-0104](../roadmaps/BE-0104-vendor-neutral-ai-backend/BE-0104-vendor-neutral-ai-backend.md)).

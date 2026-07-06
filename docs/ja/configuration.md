@@ -93,7 +93,8 @@ AI 経路、すなわち `record`、`triage --ai`、`--dismiss-alerts` のガー
 defaults:
   ai:
     provider: api-key                        # 登録済みのプロバイダ名。現状は api-key（既定）/ bedrock / ant / claude-code
-    model:    claude-opus-4-8                 # 任意: その経路の既定モデルを上書き
+    model:    claude-opus-4-8                 # 任意: その経路の既定モデルを上書き（環境変数 BAJUTSU_AI_MODEL でも可）
+    effort:   high                            # 任意: 推論エフォート low/medium/high/xhigh/max（BAJUTSU_AI_EFFORT でも可）。claude-code
     baseUrl:  https://ai-gateway.internal/v1  # 任意: 自己ホストのゲートウェイ / 社内プロキシ（api-key プロバイダ）
     keyEnv:   ANTHROPIC_API_KEY               # キーを保持する環境変数の「名前」。キーの値そのものは置かない
 ```
@@ -103,6 +104,7 @@ defaults:
 - **`ant` は API キー無しでサブスクリプション（SSO）のシートに課金します（BE-0163）。** `ant` プロバイダは公式の [Anthropic CLI](https://github.com/anthropics/anthropic-cli) 経由でモデルへ到達します。CLI を導入し、`ant auth login`（Claude Console に対するブラウザ経由の OAuth（SSO）サインイン）を実行してください。Bajutsu は呼び出し時に CLI からベアラートークンを読み、API キーではなく `auth_token` として SDK に渡すため、Claude の Pro / Max / Console のシートに課金されます。`ANTHROPIC_PROFILE` で名前付きの CLI プロファイルを選べます。API キーは不要で、すべての AI 経路（オーサリング、アラートガード、`triage --ai`）で画像もそのまま使えます。`ant` はユーザー自身が導入する外部バイナリで、Bajutsu が同梱・インストールすることはありません。
 - **`claude-code` はローカル CLI 経由で Claude Code のサブスクリプションに課金します（BE-0176）。** `claude-code` プロバイダは Anthropic SDK ではなく [`claude` CLI](https://github.com/anthropics/claude-code)（`claude -p`、print モード）をサブプロセス起動するため、オーサリングや調査は、すでにサインイン済みの Claude Code の Pro / Max / Console のシート（`claude setup-token`、または対話ログイン）を使います。すべての AI 経路で画像もそのまま使えます。各スクリーンショットは呼び出しごとのスクラッチファイルに書き出し、そのパスをプロンプトで示したうえで、CLI にはそのディレクトリに限定した `Read` だけを許可して読ませます。画面上のテキストは信頼できない入力なので（[BE-0125](../../roadmaps/BE-0125-authoring-agent-tool-restriction/BE-0125-authoring-agent-tool-restriction-ja.md)）、それ以外のツールはすべて拒否し、権限の確認は fail closed にします。`ANTHROPIC_API_KEY` があっても CLI の呼び出しからは取り除き、API ではなくサブスクリプションに課金されるようにします。`claude` はユーザー自身が導入する外部バイナリで、Bajutsu が同梱・インストールすることはありません。
 - **設定が先、環境変数はフォールバック。** 省略したフィールドは現状の環境変数（`BAJUTSU_AI_PROVIDER`、`ANTHROPIC_API_KEY`、`BAJUTSU_BEDROCK_MODEL`。`ant` プロバイダは `ANTHROPIC_PROFILE` を尊重しつつ CLI から資格情報を読みます）へフォールバックするので、`ai` ブロックの無い config はこれまでどおり動きます。
+- **モデルとエフォートも設定が先で、環境変数がフォールバックです。** `model`（または `BAJUTSU_AI_MODEL`）はどのプロバイダでも既定モデルを上書きします。`effort`（または `BAJUTSU_AI_EFFORT`）は推論エフォートを `low`／`medium`／`high`／`xhigh`／`max` から指定し、`claude-code` プロバイダが CLI の `--effort` として反映します（未知の値はモデルの既定へフォールバックします）。`serve` の **Settings** パネルは実行中セッションの両方を変更でき、`record` は解決結果を冒頭に表示します（`🤖 AI: <プロバイダ> · model <モデル> · effort <エフォート>`）。
 - **フェイルクローズ。** `record`、`triage --ai`、明示的に要求した `--dismiss-alerts` は、選択したプロバイダに使える資格情報が無いとき、プロバイダ別の明確なエラーで終了します。ホストされた既定先へ黙ってフォールバックするクライアントは決して構築しません。
 - **テキスト系入力は秘匿化され、スクリーンショットはできません。** モデルへ送る要素ツリー、失敗のテキスト、（ユーザー指定もありうる）アラート指示は、証跡の書き出しと同じ run スコープの秘匿化（対象の `redact` キーと解決済みの秘密値）で隠します。スクリーンショットは画像であり、秘匿化はテキストを隠せても画素は隠せません。そこで二つ目の保証がスクリーンショットを受け持ちます。スクリーンショットを含むすべての入力は、あなたが設定したプロバイダ／エンドポイントにのみ送られます。
 - **画面に表示された秘密は画素に残ります（BE-0151）。** 画像はマスクできないため、アプリが画面に表示する秘密（入力したパスワード、OTP、画面上の個人情報など）は、AI が見るスクリーンショットの画素にそのまま残ります。`record` は毎ターンのライブ画面を、`triage --ai` は run の `runs/` 証跡に保存された失敗時点のスクリーンショット（あれば）を送ります。この画像は設定から解決した AI プロバイダへ送られます。秘匿化が覆うのはテキスト（ネットワーク、要素ツリー、ログ）に現れる `${secrets.X}` の値であって、アプリが画面に描画した内容ではありません。これが不意打ちにならないよう、対象が `secrets:` をバインドしているとき、`record` と `triage --ai` は一度だけ警告を出します。これは緩和策ではなく告知です（視覚的な証跡こそが目的だからです）。この露出を完全に避けたいなら、秘密を含むフローで AI による作成を使わないか、テスト対象アプリで秘密を画面に出さないようにします。

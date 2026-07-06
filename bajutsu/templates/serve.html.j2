@@ -470,6 +470,21 @@
         <div class="fshint">Bedrock model ids carry a provider prefix (<code>global.anthropic.&hellip;</code>, or a regional <code>us.anthropic.&hellip;</code>) &mdash; unlike the bare Anthropic id. Authentication uses your standard AWS credentials (environment, shared profile, or an IAM role); set <code>AWS_*</code> / <code>AWS_REGION</code> in your shell or a <code>.env</code> before launching <code>serve</code> if you don't use a profile or role.</div>
       </div>
     </div>
+    <div class="setsection" id="modelsection" data-testid="settings.model-section">
+      <div class="setlabel">Model &amp; effort</div>
+      <label class="keylabel" for="ai-model">Model</label>
+      <input type="text" id="ai-model" data-testid="settings.model" class="keyinput" placeholder="claude-opus-4-8 (default) — leave blank" autocomplete="off" spellcheck="false">
+      <label class="keylabel" for="ai-effort">Reasoning effort</label>
+      <select id="ai-effort" data-testid="settings.effort" class="keyinput">
+        <option value="">default</option>
+        <option value="low">low</option>
+        <option value="medium">medium</option>
+        <option value="high">high</option>
+        <option value="xhigh">xhigh</option>
+        <option value="max">max</option>
+      </select>
+      <div class="fshint">Applies to the <b>Anthropic API</b>, <b>ant</b>, and <b>Claude Code</b> providers (Bedrock uses the prefixed id above). Reasoning effort (low&ndash;max) is honored by the <b>Claude Code</b> provider (<code>--effort</code>); blank leaves the model's default.</div>
+    </div>
     <div class="setsection" id="apikeysection" data-testid="settings.apikey-section">
       <div class="setlabel">Claude API key</div>
       <div class="keycur" id="keycur"></div>
