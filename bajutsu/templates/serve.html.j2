@@ -92,9 +92,11 @@
       <div class="yamlhead">
         <span class="ttl">Generated scenario</span>
         <span class="muted" id="rec-yamlinfo" style="font-size:.8em"></span>
-        <button class="savebtn" id="rec-save" data-testid="record.save" disabled>Save</button>
-        <button class="savebtn" id="rec-run" data-testid="record.run" data-idle="▶ Run" disabled>▶ Run</button>
-        <button class="stop" id="rec-runstop" hidden>Stop</button>
+        <div class="yaml-actions">
+          <button class="savebtn" id="rec-save" data-testid="record.save" disabled>Save</button>
+          <button class="savebtn" id="rec-run" data-testid="record.run" data-idle="▶ Run" disabled>▶ Run</button>
+          <button class="stop" id="rec-runstop" hidden>Stop</button>
+        </div>
       </div>
       <textarea id="rec-yaml" data-testid="record.yaml" class="yaml" placeholder="The recorded scenario YAML appears here once authoring finishes — edit and Save, then Run it here (or in the Replay tab)."></textarea>
       <div class="status" id="rec-runstatus"></div>
