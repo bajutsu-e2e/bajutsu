@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-serve-web-ui-ant-sso-login-ja.md)
+**English** · [日本語](BE-0175-serve-web-ui-ant-sso-login-ja.md)
 
-# BE-XXXX — Sign in to the `ant` provider from the serve Web UI
+# BE-0175 — Sign in to the `ant` provider from the serve Web UI
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-serve-web-ui-ant-sso-login.md) |
+| Proposal | [BE-0175](BE-0175-serve-web-ui-ant-sso-login.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0175") |
 | Topic | AI provider configuration |
 | Related | [BE-0163](../BE-0163-ant-cli-oauth-provider/BE-0163-ant-cli-oauth-provider.md) |
 <!-- /BE-METADATA -->
