@@ -7,9 +7,8 @@
 |---|---|
 | Proposal | [BE-XXXX](BE-XXXX-serve-web-ui-ant-sso-login.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Implemented** |
+| Status | **Proposal** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
-| Implementing PR | [#705](https://github.com/bajutsu-e2e/bajutsu/pull/705) |
 | Topic | AI provider configuration |
 | Related | [BE-0163](../BE-0163-ant-cli-oauth-provider/BE-0163-ant-cli-oauth-provider.md) |
 <!-- /BE-METADATA -->
@@ -72,19 +71,19 @@ completion. No token ever passes through serve; the CLI writes the machine crede
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [x] `ant_login` / `ant_login_status` operations, with the injectable spawn seam
-- [x] `POST` / `GET /api/ant/login` routing and the admin RBAC entry
-- [x] `ServeState.ant_login_proc` handle
-- [x] Settings UI button, status line, and polling
-- [x] Docs (en + ja) corrected and the SSO button documented
-- [x] Tests: endpoint (hosted 403, missing-binary 400, spawn 202, status transitions, no
-  double-spawn) and the status op
+- [ ] `ant_login` / `ant_login_status` operations, with the injectable spawn seam
+- [ ] `POST` / `GET /api/ant/login` routing and the admin RBAC entry
+- [ ] `ServeState.ant_login_proc` handle
+- [ ] Settings UI button, status line, and polling
+- [ ] Docs (en + ja) corrected and the SSO button documented
+- [ ] Tests: endpoint (hosted 403, missing-binary 400, spawn 202, status transitions,
+  supersede-on-reclick) and the status op
 
 Log:
 
-- [#705](https://github.com/bajutsu-e2e/bajutsu/pull/705) — implements the feature: backend
-  operations + routing, the Settings button, docs, and tests. This item is authored in a separate
-  PR so the roadmap and the implementation are reviewed independently.
+- Proposed. The implementation is drafted in [#705](https://github.com/bajutsu-e2e/bajutsu/pull/705)
+  (open, not yet merged); when it lands, tick the boxes above, flip **Status** to *Implemented*, and
+  record the PR under `Implementing PR`.
 
 ## References
 
