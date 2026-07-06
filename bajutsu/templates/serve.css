@@ -478,6 +478,9 @@ header .cfgname{color:var(--mut);font-size:.82em;max-width:32vw;overflow:hidden;
 /* codegen (BE-0137): the emit selector + action buttons cluster right, next to Save. */
 .yamlhead .yaml-actions{margin-left:auto;display:flex;align-items:center;gap:.4em}
 .yamlhead .yaml-actions .savebtn{margin-left:0}
+/* Stop sits inline beside Save/Run here, so override the full-width stacked-panel .stop styling
+   (width:100% + margin-top) that otherwise overflows the header row and clips the button. */
+.yamlhead .yaml-actions .stop{width:auto;margin-top:0;padding:.35rem .9rem}
 .codegen-emit{font:inherit;font-size:.85em;padding:.25rem .4rem;border-radius:6px;border:1px solid var(--line);background:var(--bg2);color:var(--fg);cursor:pointer}
 /* coverage (BE-0146): the target / run-set / compute control row above the rendered map. */
 .covctl{display:flex;gap:1em;align-items:flex-end;flex-wrap:wrap;margin:.8em 0}
