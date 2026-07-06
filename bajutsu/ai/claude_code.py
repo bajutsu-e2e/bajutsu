@@ -48,8 +48,9 @@ CLI_MISSING = "claude-code-cli-missing"
 # the vision transport, and only scoped to the per-call scratch directory via `--add-dir`.
 _DENY = ("Bash", "Write", "Edit", "NotebookEdit", "Glob", "Grep", "WebFetch", "WebSearch", "Task")
 
-# A runner takes the argv and the working directory and returns the CLI's stdout. Injectable for tests.
-Runner = Callable[[list[str], str], str]
+# A runner takes the argv, the working directory, and the prompt (fed on stdin) and returns the CLI's
+# stdout. Injectable for tests.
+Runner = Callable[[list[str], str, str], str]
 
 
 def _forced_tool(request: MessageRequest) -> ToolDef | None:
@@ -132,16 +133,21 @@ def _command(
     request: MessageRequest,
     schema: dict[str, Any],
     note: str,
-    prompt: str,
     scratch: str,
     image: bool,
 ) -> list[str]:
-    """Build the `claude -p` argv for one turn.
+    """Build the `claude -p` argv for one turn (the prompt is passed on stdin, not in argv).
 
     ``request.max_tokens`` is intentionally not forwarded: `claude -p` has no output-token cap flag
     and manages its own budget, so the neutral field is honored by the SDK adapters but not here.
     ``request.model`` passes straight to ``--model`` — the caller's `resolve_model` yields the bare
     Anthropic id (e.g. ``claude-opus-4-8``), which is what the CLI expects.
+
+    The prompt is fed via stdin rather than as the trailing `[prompt]` positional because
+    ``--allowedTools`` / ``--disallowedTools`` / ``--add-dir`` are variadic (`<tools...>`): a
+    positional after them is swallowed as bogus tool names. So the variadic flags go last (each
+    stopped by the next `--flag` or end of argv) and take space-separated values, and there is no
+    trailing positional at all.
     """
     cmd = [
         BINARY,
@@ -162,7 +168,7 @@ def _command(
         cmd += ["--add-dir", scratch, "--allowedTools", "Read"]
     else:
         deny.append("Read")  # no image this turn — the adapter needs no tool at all
-    cmd += ["--disallowedTools", ",".join(deny), prompt]
+    cmd += ["--disallowedTools", *deny]  # variadic + last: space-separated, nothing trails it
     return cmd
 
 
@@ -173,10 +179,16 @@ def _child_env() -> dict[str, str]:
     return env
 
 
-def _default_runner(cmd: list[str], cwd: str) -> str:
+def _default_runner(cmd: list[str], cwd: str, prompt: str) -> str:
     try:
         result = subprocess.run(
-            cmd, capture_output=True, text=True, cwd=cwd, env=_child_env(), timeout=180
+            cmd,
+            input=prompt,
+            capture_output=True,
+            text=True,
+            cwd=cwd,
+            env=_child_env(),
+            timeout=180,
         )
     except FileNotFoundError as exc:
         raise RuntimeError(
@@ -184,7 +196,10 @@ def _default_runner(cmd: list[str], cwd: str) -> str:
             "bedrock / ant."
         ) from exc
     if result.returncode != 0:
-        raise RuntimeError(f"claude -p failed ({result.returncode}): {result.stderr.strip()}")
+        # A CLI error (e.g. an auth 401) is reported in the stdout JSON envelope's `result`, with
+        # stderr often empty — surface stdout as the fallback so the failure is actionable.
+        detail = result.stderr.strip() or result.stdout.strip()
+        raise RuntimeError(f"claude -p failed ({result.returncode}): {detail[:300]}")
     return result.stdout
 
 
@@ -234,8 +249,8 @@ class ClaudeCodeBackend:
         scratch = Path(tempfile.mkdtemp(prefix="bajutsu-cc-"))
         try:
             prompt, image = _prompt_and_images(request, scratch)
-            cmd = _command(request, schema, note, prompt, str(scratch), image)
-            stdout = self._runner(cmd, str(scratch))
+            cmd = _command(request, schema, note, str(scratch), image)
+            stdout = self._runner(cmd, str(scratch), prompt)
         finally:
             shutil.rmtree(scratch, ignore_errors=True)
         return _response(stdout, forced_name)

@@ -55,24 +55,30 @@ def _request(
 
 
 class FakeRunner:
-    """Records the argv + cwd, optionally runs a probe against the scratch dir, returns an envelope."""
+    """Records argv + cwd + the stdin prompt, optionally probes the scratch dir, returns an envelope."""
 
     def __init__(self, envelope: dict[str, Any], *, probe: Any = None) -> None:
         self._stdout = json.dumps(envelope)
         self._probe = probe
         self.cmd: list[str] = []
         self.cwd: str = ""
+        self.prompt: str = ""
 
-    def __call__(self, cmd: list[str], cwd: str) -> str:
-        self.cmd, self.cwd = cmd, cwd
+    def __call__(self, cmd: list[str], cwd: str, prompt: str) -> str:
+        self.cmd, self.cwd, self.prompt = cmd, cwd, prompt
         if self._probe is not None:
             self._probe(cmd, cwd)
         return self._stdout
 
 
 def _flag(cmd: list[str], name: str) -> str:
-    """The value following *name* in the argv."""
+    """The single value following *name* in the argv."""
     return cmd[cmd.index(name) + 1]
+
+
+def _deny_tools(cmd: list[str]) -> list[str]:
+    """The space-separated tool names after the trailing variadic ``--disallowedTools``."""
+    return cmd[cmd.index("--disallowedTools") + 1 :]
 
 
 def _envelope(structured_output: Any) -> dict[str, Any]:
@@ -126,17 +132,19 @@ def test_image_is_written_named_in_prompt_and_read_allowed_then_cleaned_up() -> 
         # The scratch dir exists during the call and holds the PNG the prompt points at.
         pngs = list(Path(cwd).glob("*.png"))
         seen["png_bytes"] = pngs[0].read_bytes()
-        seen["prompt_names_png"] = str(pngs[0]) in cmd[-1]
+        seen["png_path"] = str(pngs[0])
 
     runner = FakeRunner(_envelope({"k": "v"}), probe=probe)
     resp = claude_code.ClaudeCodeBackend(runner=runner).create_message(
         _request(tool_choice=NamedTool(name="do"), image=b"\x89PNG\r\n\x1a\n bytes")
     )
     assert seen["png_bytes"] == b"\x89PNG\r\n\x1a\n bytes"
-    assert seen["prompt_names_png"]
+    # The prompt (fed on stdin, never in argv) names the PNG path so the CLI can Read it.
+    assert seen["png_path"] in runner.prompt
+    assert runner.prompt not in runner.cmd
     assert _flag(runner.cmd, "--add-dir") == runner.cwd
     assert _flag(runner.cmd, "--allowedTools") == "Read"
-    assert "Read" not in _flag(runner.cmd, "--disallowedTools")
+    assert "Read" not in _deny_tools(runner.cmd)
     assert resp.first_tool_use() is not None
     # The per-call scratch dir is removed once the call returns.
     assert not os.path.exists(runner.cwd)
@@ -152,7 +160,11 @@ def test_text_only_turn_allows_no_tool_and_writes_no_file() -> None:
     )
     assert "--add-dir" not in runner.cmd
     assert "--allowedTools" not in runner.cmd
-    assert "Read" in _flag(runner.cmd, "--disallowedTools").split(",")
+    assert "Read" in _deny_tools(runner.cmd)
+    # `--disallowedTools` is the trailing variadic flag; no positional prompt trails it.
+    assert runner.cmd.index("--disallowedTools") + 1 + len(_deny_tools(runner.cmd)) == len(
+        runner.cmd
+    )
 
 
 def test_model_and_fail_closed_permission_mode_pass_through() -> None:
@@ -178,7 +190,7 @@ def test_usage_passes_through_and_is_error_and_non_json_raise() -> None:
             _request(tool_choice=NamedTool(name="do"))
         )
 
-    def junk(cmd: list[str], cwd: str) -> str:
+    def junk(cmd: list[str], cwd: str, prompt: str) -> str:
         return "not json"
 
     with pytest.raises(RuntimeError, match="non-JSON"):

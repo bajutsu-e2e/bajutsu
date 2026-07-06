@@ -161,6 +161,11 @@ runner with no credential. `known_providers()` then includes it automatically.
 - Implemented the adapter behind the BE-0104 `AiBackend` seam so all six AI paths gain a
   `claude-code` option with file-path vision; registered the provider, surfaced it in `serve` /
   `doctor` / docs, and added the tests. `make check` green.
+- Local `crawl` verification: the prompt was fed as the trailing `[prompt]` positional after the
+  variadic `--disallowedTools` / `--allowedTools` / `--add-dir`, so `claude` swallowed it as bogus
+  tool names. Fixed by feeding the prompt on stdin and passing deny tools as space-separated tokens
+  with the variadic flags last; a non-zero exit now surfaces the stdout envelope so errors (e.g. an
+  auth 401) are actionable.
 
 ## References
 
