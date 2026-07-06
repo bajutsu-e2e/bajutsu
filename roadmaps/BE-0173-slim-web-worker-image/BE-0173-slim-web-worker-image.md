@@ -9,7 +9,7 @@
 | Author | [@hirosassa](https://github.com/hirosassa) |
 | Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0173") |
-| Implementing PR | _pending_ |
+| Implementing PR | [#718](https://github.com/bajutsu-e2e/bajutsu/pull/718) |
 | Topic | Hosting the web UI (cloud / self-hosted) |
 | Related | [BE-0160](../BE-0160-worker-credential-free-uploads/BE-0160-worker-credential-free-uploads.md), [BE-0166](../BE-0166-capability-routed-queues/BE-0166-capability-routed-queues.md), [BE-0016](../BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md), [BE-0106](../BE-0106-post-completion-worker-model/BE-0106-post-completion-worker-model.md), [BE-0041](../BE-0041-web-playwright-backend/BE-0041-web-playwright-backend.md) |
 <!-- /BE-METADATA -->
@@ -178,7 +178,7 @@ win, so it is not adopted.
 - [x] Cold-start / import-closure guard test for the worker entry
 - [x] Extend BE-0166 with `backend` as a capability axis (reciprocal cross-reference)
 
-_pending_ — Slim web-worker image landed: `worker-web` / `worker-idb` closure extras; multi-stage
+[#718](https://github.com/bajutsu-e2e/bajutsu/pull/718) — Slim web-worker image landed: `worker-web` / `worker-idb` closure extras; multi-stage
 `deploy/self-host/worker-web.Dockerfile` installing only `bajutsu[worker-web]` + Chromium's headless
 shell (`--only-shell`) and running as an unprivileged user; optional `worker-web` compose service
 (off by default, behind the `web-worker` profile) + heterogeneous-fleet docs in both languages; a

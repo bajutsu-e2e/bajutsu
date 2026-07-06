@@ -9,7 +9,7 @@
 | 提案者 | [@hirosassa](https://github.com/hirosassa) |
 | 状態 | **実装中** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0173") |
-| 実装 PR | _pending_ |
+| 実装 PR | [#718](https://github.com/bajutsu-e2e/bajutsu/pull/718) |
 | トピック | Web UI のホスティング（クラウド / セルフホスト） |
 | 関連 | [BE-0160](../BE-0160-worker-credential-free-uploads/BE-0160-worker-credential-free-uploads-ja.md), [BE-0166](../BE-0166-capability-routed-queues/BE-0166-capability-routed-queues-ja.md), [BE-0016](../BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting-ja.md), [BE-0106](../BE-0106-post-completion-worker-model/BE-0106-post-completion-worker-model-ja.md), [BE-0041](../BE-0041-web-playwright-backend/BE-0041-web-playwright-backend-ja.md) |
 <!-- /BE-METADATA -->
@@ -94,7 +94,7 @@ worker/run/backend のコードだけを持つ2つ目のパッケージを公開
 - [x] worker エントリの cold start / import 閉包ガードテスト
 - [x] BE-0166 に `backend` の capability 軸を追記する（相互参照）
 
-_pending_ — スリムな web worker イメージを追加。`worker-web` / `worker-idb` の閉包 extra、`bajutsu[worker-web]` と Chromium のヘッドレスシェル（`--only-shell`）だけを入れて非特権ユーザで動かすマルチステージの `deploy/self-host/worker-web.Dockerfile`、既定で無効（`web-worker` profile の裏）の optional な `worker-web` compose サービスと両言語の異種フリート記述、worker の import 閉包ガード（`tests/serve/test_import_guard.py`）、そして BE-0166 への相互参照となる `backend` capability 軸の追記を含みます。
+[#718](https://github.com/bajutsu-e2e/bajutsu/pull/718) — スリムな web worker イメージを追加。`worker-web` / `worker-idb` の閉包 extra、`bajutsu[worker-web]` と Chromium のヘッドレスシェル（`--only-shell`）だけを入れて非特権ユーザで動かすマルチステージの `deploy/self-host/worker-web.Dockerfile`、既定で無効（`web-worker` profile の裏）の optional な `worker-web` compose サービスと両言語の異種フリート記述、worker の import 閉包ガード（`tests/serve/test_import_guard.py`）、そして BE-0166 への相互参照となる `backend` capability 軸の追記を含みます。
 
 ## 参考
 
