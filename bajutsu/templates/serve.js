@@ -201,31 +201,39 @@ async function refreshAntLogin(){
   btn.textContent=signedIn?'Signed in ✓':'Sign in with SSO';
   setAntStatus(signedIn?'signed in':'', signedIn?'ok':'');
 }
+// Each click bumps the generation; a poll loop bails the moment a newer click supersedes it, so a
+// stale attempt (the operator abandoned the browser flow and clicked again) can't clobber the UI or
+// leave two loops running. The button stays clickable throughout — clicking while a sign-in is still
+// waiting restarts it (the server terminates the stuck CLI and spawns a fresh one).
+let antLoginGen=0;
 async function antLogin(){
+  const myGen=++antLoginGen;
   const btn=$('#ant-login');
   setAntStatus('starting sign-in…','');
   let d;try{d=await (await fetch('/api/ant/login',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'})).json()}catch(e){d={error:'request failed'}}
-  if(d.error){setAntStatus(d.error,'ng');return}
-  if(btn)btn.disabled=true;
+  if(myGen!==antLoginGen)return;                    // a newer click already took over
+  if(d.error){await refreshAntLogin();setAntStatus(d.error,'ng');return}  // restore button, then show why
+  if(btn)btn.textContent='Retry sign-in';           // keep it enabled so a stuck flow can be restarted
   setAntStatus('complete the sign-in in your browser…','');
-  for(let i=0;i<200;i++){                           // ~5 min ceiling (matches the CLI's callback timeout)
+  for(let i=0;i<200;i++){                            // ~5 min ceiling (matches the CLI's callback timeout)
     await new Promise(r=>setTimeout(r,1500));
+    if(myGen!==antLoginGen)return;                   // superseded — stop polling, let the newer loop drive
     let s;try{s=await (await fetch('/api/ant/login')).json()}catch(e){s={state:'error',detail:'status check failed'}}
     if(s.state==='running')continue;
     if(s.state==='ok'){
       // Align the server's active provider to `ant` so the record/crawl gate reflects the new
-      // credential, then re-read availability and the button.
+      // credential, then re-read availability and the button (which restores its label).
       try{await fetch('/api/provider',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({provider:'ant'})})}catch(e){}
       if($('#provider').value==='ant')setSettingsStatus('signed in — provider set to ant','ok');
       refreshAiAvailability();refreshAntLogin();
     }else{
+      await refreshAntLogin();                       // restore the button, then surface why it failed
       setAntStatus(s.detail||'sign-in did not complete','ng');
-      if(btn)btn.disabled=false;
     }
     return;
   }
+  await refreshAntLogin();
   setAntStatus('sign-in timed out — try again','ng');
-  if(btn)btn.disabled=false;
 }
 async function loadProv(){
   // Explicit selection: don't pre-select a provider from the server's (env-derived) default —

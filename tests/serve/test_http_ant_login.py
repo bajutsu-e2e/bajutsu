@@ -22,24 +22,43 @@ from bajutsu.serve import operations as ops
 
 class _FakeAnt:
     """A stand-in for the `ant auth login` Popen: `poll()` returns None while running or the exit
-    code once done, and `stdout` is the merged output the status op tails for an error detail."""
+    code once done, `terminate()` records the supersede-and-restart tear-down, and `stdout` is the
+    merged output the status op tails for an error detail."""
 
     def __init__(self, code: int | None, out: str = "") -> None:
         self._code = code
         self.stdout = io.StringIO(out)
+        self.terminated = False
 
     def poll(self) -> int | None:
         return self._code
 
+    def terminate(self) -> None:
+        self.terminated = True
+        self._code = -15  # SIGTERM — poll() now reports it exited
+
 
 def _popen_returning(proc: _FakeAnt):  # type: ignore[no-untyped-def]
-    """A fake `popen` that hands back *proc* and records how many times it was called (to prove a
-    second sign-in click does not spawn a duplicate CLI)."""
+    """A fake `popen` that hands back *proc* and records the kwargs of each call."""
     calls: list[dict[str, Any]] = []
 
     def popen(_cmd: list[str], **kw: Any) -> _FakeAnt:
         calls.append(kw)
         return proc
+
+    popen.calls = calls  # type: ignore[attr-defined]
+    return popen
+
+
+def _popen_sequence(*procs: _FakeAnt):  # type: ignore[no-untyped-def]
+    """A fake `popen` that hands back *procs* in order (one per call) and records the count, so a
+    supersede test can watch the first process torn down and a distinct second one spawned."""
+    seq = iter(procs)
+    calls: list[dict[str, Any]] = []
+
+    def popen(_cmd: list[str], **kw: Any) -> _FakeAnt:
+        calls.append(kw)
+        return next(seq)
 
     popen.calls = calls  # type: ignore[attr-defined]
     return popen
@@ -69,12 +88,16 @@ def test_ant_login_starts_and_reports_ok(tmp_path: Path, monkeypatch: pytest.Mon
         server.server_close()
 
 
-def test_ant_login_does_not_spawn_twice(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """A second click while a sign-in is still running reuses the in-flight CLI (started: false),
-    never a duplicate racing for the same loopback callback port."""
+def test_ant_login_supersedes_a_running_signin(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A click while a previous sign-in is still waiting terminates the stale CLI and spawns a fresh
+    one, so an abandoned browser flow can be retried at once instead of wedging until the CLI's
+    timeout."""
     scn_dir, cfg, runs = project(tmp_path)
     _install_ant(monkeypatch)
-    popen = _popen_returning(_FakeAnt(code=None))  # poll() → None: still running
+    first_proc, second_proc = _FakeAnt(code=None), _FakeAnt(code=None)  # both start "running"
+    popen = _popen_sequence(first_proc, second_proc)
     state = srv.ServeState(scenarios_dir=scn_dir, config=cfg, runs_dir=runs, cwd=tmp_path)
     state.popen = popen
     server, port = _serve(state)
@@ -82,9 +105,10 @@ def test_ant_login_does_not_spawn_twice(tmp_path: Path, monkeypatch: pytest.Monk
         first_code, first = _post(port, "/api/ant/login", {})
         second_code, second = _post(port, "/api/ant/login", {})
         assert first_code == 202 and first["started"] is True
-        assert second_code == 202 and second["started"] is False and second["state"] == "running"
-        assert len(popen.calls) == 1  # type: ignore[attr-defined]
-        assert _get_json(port, "/api/ant/login") == {"state": "running"}
+        assert second_code == 202 and second["started"] is True  # a fresh sign-in, not a refusal
+        assert first_proc.terminated is True  # the stale attempt was torn down
+        assert len(popen.calls) == 2  # type: ignore[attr-defined]
+        assert state.ant_login_proc is second_proc
     finally:
         server.shutdown()
         server.server_close()

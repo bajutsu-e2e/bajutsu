@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import logging
 import os
 import shutil
@@ -284,9 +285,11 @@ def ant_login(state: ServeState) -> tuple[Any, int]:
     (`provider_info`) flips to reachable once the token lands.
 
     Returns:
-        ``202`` with ``{state: "running"}`` once the CLI is spawned (or already in flight — a second
-        click never starts a duplicate). ``403`` when hosted, ``400`` when the `ant` binary is
-        absent (with the same install hint the availability check uses).
+        ``202`` with ``{state: "running"}`` once the CLI is spawned. A click while a previous
+        sign-in is still waiting **supersedes** it (the stale process is terminated and a fresh one
+        started), so an abandoned browser flow never wedges the button until the CLI's own timeout.
+        ``403`` when hosted, ``400`` when the `ant` binary is absent (with the same install hint the
+        availability check uses).
     """
     if state.hosted:
         return {
@@ -297,9 +300,13 @@ def ant_login(state: ServeState) -> tuple[Any, int]:
         return {"error": ai_availability.message(ANT_CLI_MISSING)}, 400
     proc = state.ant_login_proc
     if proc is not None and proc.poll() is None:
-        # A sign-in is already in flight (the user clicked twice, or is mid-flow) — don't spawn a
-        # second CLI racing for the same loopback port; report the existing one as still running.
-        return {"ok": True, "started": False, "state": "running"}, 202
+        # A previous sign-in is still waiting on its browser callback (the operator abandoned it, or
+        # is deliberately restarting). Superseding it — rather than refusing — is what lets a stuck
+        # attempt be retried at once instead of blocking the button until the CLI's ~5-min timeout.
+        # `ant auth login` binds an ephemeral callback port, so the fresh spawn never collides with
+        # the one being torn down.
+        with contextlib.suppress(OSError):  # already gone between the poll and the terminate
+            proc.terminate()
     try:
         # stdin=DEVNULL: `ant auth login` (default mode) races a browser loopback callback against a
         # pasted code on stdin; closing stdin makes the paste path see EOF (the CLI treats that as
