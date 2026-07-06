@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0147](BE-0147-serve-triage.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0147") |
+| Implementing PR | [#703](https://github.com/bajutsu-e2e/bajutsu/pull/703) |
 | Topic | Surfacing CLI features in the serve Web UI |
 <!-- /BE-METADATA -->
 
@@ -80,13 +81,17 @@ human accepts, never an automatic edit.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Add the `POST /api/triage` endpoint (`{runId, scenario, ai?}`), running triage as a serve job
+- [x] Add the `POST /api/triage` endpoint (`{runId, scenario, ai?}`), running triage as a serve job
       that reuses the existing job / SSE / cancel machinery
-- [ ] Add the "Triage" action on a failed run's Replay report and History list, with a diff preview
+- [x] Add the "Triage" action on a failed run's Replay report and History list, with a diff preview
       for any proposed fix
-- [ ] Wire the AI (`--ai`) path as opt-in, defaulting to the deterministic heuristic agent
+- [x] Wire the AI (`--ai`) path as opt-in, defaulting to the deterministic heuristic agent
 
-No PR has landed yet.
+- [#703](https://github.com/bajutsu-e2e/bajutsu/pull/703) — Ship BE-0147: `triage --json` writes a machine-readable result into the run dir; a new
+  `POST /api/triage` runs it as a serve job (reusing the job / SSE / cancel machinery); the Replay
+  report and History list gain a "Triage" action with a diff preview; Apply writes the fix through the
+  validated `POST /api/scenario` save path. AI is opt-in and only investigates; the heuristic agent is
+  the default and no LLM touches the verdict.
 
 ## References
 

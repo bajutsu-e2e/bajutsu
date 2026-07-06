@@ -13,7 +13,7 @@ import difflib
 import json
 import re
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any, Protocol
 
@@ -126,6 +126,57 @@ def diff_fix(old: str, new: str, path: str) -> str:
             tofile=path,
         )
     )
+
+
+@dataclass(frozen=True)
+class AppliedFix:
+    """A fix applied to scenario source, packaged for a UI to preview and write back (BE-0147).
+
+    `patched` is the full source with the fix applied; `diff` is its unified diff — empty when
+    `count` is 0 (the fragment no longer matches the source, a safe no-op the diff makes obvious).
+    """
+
+    path: str
+    count: int
+    diff: str
+    patched: str
+
+
+def apply_result(source: str, path: str, fix: Fix) -> AppliedFix:
+    """Apply `fix` to `source`, packaging the patched text and unified diff for a UI (BE-0147).
+
+    The write itself stays the human's explicit action — this only prepares the preview.
+    """
+    patched, count = apply_fix(source, fix)
+    return AppliedFix(path, count, diff_fix(source, patched, path) if count else "", patched)
+
+
+def result_payload(
+    context: TriageContext, triage: Triage, applied: AppliedFix | None = None
+) -> dict[str, Any]:
+    """A JSON-serializable triage result for the serve Web UI (BE-0147).
+
+    Mirrors the terminal `render`, plus — when a structured fix was applied against the scenario
+    source — the unified diff and patched text the UI previews and writes back through the
+    validated scenario-save path. Never a verdict: the run already decided pass/fail; this only
+    explains and proposes.
+    """
+    fs, fix = context.failed_step, triage.fix
+    # These three are flat frozen dataclasses of JSON-safe fields, so `asdict` gives the payload
+    # its keys — no hand-listed dict to drift when a field is added. (TriageContext itself can't:
+    # its `elements`/`screenshot` aren't JSON-serializable, so it's projected field by field.)
+    return {
+        "scenario": context.scenario,
+        "failure": context.failure,
+        "failedStep": asdict(fs) if fs is not None else None,
+        "failedExpectations": list(context.failed_expectations),
+        "evidence": list(context.evidence),
+        "category": triage.category,
+        "summary": triage.summary,
+        "suggestions": list(triage.suggestions),
+        "fix": asdict(fix) if fix is not None else None,
+        "apply": asdict(applied) if applied is not None else None,
+    }
 
 
 # --- assembly (pure) ---

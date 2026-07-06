@@ -257,6 +257,30 @@ def test_run_command_emits_the_backfilled_flags() -> None:
         assert flag not in bare
 
 
+def test_triage_command_builder() -> None:
+    cmd = srv.triage_command("runs/r", config="c.yaml")
+    assert cmd[:5] == [sys.executable, "-m", "bajutsu", "triage", "runs/r"]
+    assert cmd[cmd.index("--config") + 1] == "c.yaml"
+    # Heuristic by default: no --ai, and no apply/json/scenario/target flags when unset.
+    assert "--ai" not in cmd and "--apply" not in cmd and "--json" not in cmd
+    assert "--scenario" not in cmd and "--target" not in cmd
+    # The full serve triage job: opt into AI, preview a fix against the source, emit machine JSON.
+    full = srv.triage_command(
+        "runs/r",
+        target="demo",
+        ai=True,
+        apply_path="/scn/login.yaml",
+        json_out="runs/r/triage.json",
+        config="c.yaml",
+    )
+    assert "--ai" in full
+    assert full[full.index("--target") + 1] == "demo"
+    assert full[full.index("--apply") + 1] == "/scn/login.yaml"
+    assert full[full.index("--json") + 1] == "runs/r/triage.json"
+    # serve drives apply through POST /api/scenario, never the CLI's --write/--rerun.
+    assert "--write" not in full and "--rerun" not in full
+
+
 def test_record_command_builder() -> None:
     cmd = srv.record_command(
         "out.yaml",

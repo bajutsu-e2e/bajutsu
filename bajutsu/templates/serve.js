@@ -25,7 +25,10 @@ async function _bjLogin(){
 
 const $=s=>document.querySelector(s);
 let poll=null,recPoll=null,selectedRun=null,recPath=null,scnFiles=[],targets=[],sims=[];
-let recJobId=null,runJobId=null;
+let recJobId=null,runJobId=null,triageJobId=null;
+// Whether Claude is reachable (from /api/provider). Gates the opt-in AI toggle on triage the same
+// way it gates record/crawl; heuristic triage never needs it. Kept in sync by refreshAiAvailability.
+let aiAvailable=false;
 // Toggle a run/stop button pair between idle and running (amber + spinner via the .running class).
 function setBusy(btn,stop,on,busyLabel){
   btn.classList.toggle('running',on);btn.disabled=on;btn.textContent=on?busyLabel:btn.dataset.idle;
@@ -204,6 +207,8 @@ async function loadProv(){
 async function refreshAiAvailability(){
   let d;try{d=await (await fetch('/api/provider')).json()}catch(e){d={}}
   const ok=d.claudeAvailable!==false, hint=d.claudeHint||'set an API key, configure Bedrock, or sign in with `ant auth login`.';
+  aiAvailable=ok;  // the triage panel's opt-in Claude toggle reads this (BE-0147)
+  const ta=$('#triage-ai');if(ta)ta.disabled=!ok;  // reflect live if a triage panel is open
   document.querySelectorAll('.toptab[data-view="record"],.toptab[data-view="crawl"]').forEach(t=>t.classList.toggle('disabled',!ok));
   [['#rec-aigate','#rec-go'],['#crawl-aigate','#crawl-go']].forEach(([gate,btn])=>{
     const g=$(gate);
@@ -396,16 +401,20 @@ function runDone(j){
   poll=null;runJobId=null;setBusy($('#go'),$('#stop'),false);
   if(j.cancelled){setStatus($('#status'),'cancelled','ng');loadHistory();return}
   setStatus($('#status'),j.ok?'PASS':'FAIL', j.ok?'ok':'ng');
-  if(j.runId)setReport(j.runId);
+  if(j.runId)setReport(j.runId,j.ok);
   loadHistory();
 }
 // Show a run's report inline (no iframe): render report.html into a shadow root so its CSS/JS stay
 // isolated, plus an "open full report ↗" link to view it as its own page. report.js is root-aware
 // (window.__bajutsuReportRoot), so its queries + delegated listeners run against the shadow root.
-async function setReport(id,repSel){
+async function setReport(id,ok,repSel){
   selectedRun=id;
   const rep=$(repSel||'#report');
-  rep.innerHTML=`<div class="repbar"><a class="repdl" href="/runs/${esc(id)}/archive.zip" download>⬇ download .zip</a><a class="repopen" href="/runs/${esc(id)}/report.html" target="_blank" rel="noopener">open full report ↗</a></div><div class="rephost"></div>`;
+  // Offer "Triage" only on a failed run — the "why did this fail?" the Replay/History view asks
+  // right where the red report is (BE-0147). A passed run has nothing to diagnose.
+  const triageBtn=ok===false?`<button class="repbtn" id="triagebtn" data-testid="replay.triage">🔧 Triage</button>`:'';
+  rep.innerHTML=`<div class="repbar"><a class="repdl" href="/runs/${esc(id)}/archive.zip" download>⬇ download .zip</a><a class="repopen" href="/runs/${esc(id)}/report.html" target="_blank" rel="noopener">open full report ↗</a>${triageBtn}</div><div class="triagepanel" id="triagepanel" data-testid="replay.triage-panel" hidden></div><div class="rephost"></div>`;
+  if(ok===false)$('#triagebtn').addEventListener('click',()=>openTriage(id));
   const host=rep.querySelector('.rephost');
   let html;
   try{html=await (await fetch(`/runs/${encodeURIComponent(id)}/report.html`)).text();}
@@ -436,6 +445,92 @@ function renderReportInShadow(host,html){
     .replace(/(^|[\s,>}])body([\s{])/g,'$1:host$2');
   sh.innerHTML=`<style>:host{display:block}\n${css}</style>${doc.body.innerHTML}`;
 }
+// ---- Triage (BE-0147): diagnose a failed run in the browser. The heuristic agent is the default
+// and fully deterministic; Claude is opt-in and only investigates — no LLM ever decides pass/fail.
+// A proposed fix is previewed as a diff and written only on an explicit click, through the same
+// validated scenario-save path the editor uses. The run's verdict is read back, never recomputed. ----
+function openTriage(id){
+  const panel=$('#triagepanel');panel.hidden=false;
+  panel.innerHTML=`<div class="triagebar"><span class="triagetitle">Triage</span>`
+    +`<label class="triage-aiopt" title="Diagnose with Claude instead of the built-in rules"><input type="checkbox" id="triage-ai" data-testid="replay.triage-ai"${aiAvailable?'':' disabled'}> Claude</label>`
+    +`<button class="repbtn" id="triage-go" data-idle="Diagnose" data-testid="replay.triage-go">Diagnose</button>`
+    +`<button class="stop" id="triage-stop" data-testid="replay.triage-stop" hidden>Stop</button></div>`
+    +`<pre class="triagelog" id="triage-log" data-testid="replay.triage-log" hidden></pre>`
+    +`<div class="triageresult" id="triage-result" data-testid="replay.triage-result"></div>`;
+  $('#triage-go').addEventListener('click',()=>runTriage(id));
+  $('#triage-stop').addEventListener('click',()=>cancelJob(triageJobId,$('#triage-stop')));
+}
+async function runTriage(id){
+  const go=$('#triage-go'),stop=$('#triage-stop'),log=$('#triage-log'),res=$('#triage-result');
+  res.innerHTML='';log.textContent='';log.hidden=false;
+  setBusy(go,stop,true,'Diagnosing…');
+  // Capture the scenario source now (target + path) so Apply writes to the file that was
+  // diagnosed, even if the user changes the Run-tab selectors while triage is streaming.
+  const target=$('#target').value,scenario=$('#scn').value,ai=$('#triage-ai').checked||undefined;
+  let r;try{r=await fetch('/api/triage',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({runId:id,target,scenario,ai})})}catch(e){r=null}
+  const d=r&&r.ok?await r.json():{error:r?('HTTP '+r.status):'request failed'};
+  if(!r||!r.ok||d.error){setBusy(go,stop,false);res.innerHTML=`<div class="triageerr">${esc(d.error||'triage failed')}</div>`;return}
+  triageJobId=d.jobId;
+  streamJob(d.jobId,line=>{const l=$('#triage-log');if(l)appendLine(l,line)},j=>triageDone(id,target,scenario,j));
+}
+function triageDone(id,target,scenario,j){
+  triageJobId=null;
+  const res=$('#triage-result');if(!res)return;  // the panel was torn down (user navigated away)
+  setBusy($('#triage-go'),$('#triage-stop'),false);
+  if(j.cancelled){res.innerHTML='<div class="triageerr">cancelled</div>';return}
+  if(!j.ok){res.innerHTML='<div class="triageerr">triage failed — see the log above.</div>';return}
+  loadTriageResult(id,target,scenario);
+}
+// Read back the machine-readable result the job wrote into the run dir and render it. A finished
+// triage with no diagnosable failure writes no triage.json (exit 0), so a miss is not an error —
+// say so rather than leaving the panel blank.
+async function loadTriageResult(id,target,scenario){
+  let d;try{const r=await fetch(`/runs/${encodeURIComponent(id)}/triage.json`);d=r.ok?await r.json():null}catch(e){d=null}
+  const res=$('#triage-result');if(!res)return;
+  if(d)renderTriage(id,target,scenario,d);
+  else res.innerHTML='<div class="triagefix muted">No diagnosis was produced for this run — see the log above.</div>';
+}
+function renderTriage(id,target,scenario,d){
+  const res=$('#triage-result');if(!res)return;
+  let h=`<div class="triagediag"><span class="triagecat">${esc(d.category||'')}</span> ${esc(d.summary||'')}</div>`;
+  if(d.suggestions&&d.suggestions.length)h+='<ul class="triagesugg">'+d.suggestions.map(s=>`<li>${esc(s)}</li>`).join('')+'</ul>';
+  const ap=d.apply,hasFix=!!(d.fix&&ap&&ap.count>0);
+  if(hasFix){
+    h+=`<div class="triagefix">${esc(d.fix.summary)}</div><pre class="triagediff">${esc(ap.diff)}</pre>`
+      +`<div class="triageactions"><button class="repbtn" id="triage-apply" data-testid="replay.triage-apply">Apply fix</button>`
+      +`<button class="repbtn" id="triage-applyrun" data-testid="replay.triage-applyrun">Apply &amp; re-run</button>`
+      +`<span class="status" id="triage-applystatus"></span></div>`;
+  }else if(d.fix){
+    h+=`<div class="triagefix muted">${esc(d.fix.summary)} — not found in the current scenario source, nothing to apply.</div>`;
+  }else{
+    h+='<div class="triagefix muted">No mechanical fix for this failure — advisory only.</div>';
+  }
+  res.innerHTML=h;
+  if(hasFix){
+    $('#triage-apply').addEventListener('click',()=>applyTriage(target,scenario,d,false));
+    $('#triage-applyrun').addEventListener('click',()=>applyTriage(target,scenario,d,true));
+  }
+}
+// Apply is the human's explicit action: write the previewed patch through POST /api/scenario (which
+// re-validates the YAML), against the scenario source that was diagnosed (captured at Diagnose time).
+async function applyTriage(target,scenario,d,rerun){
+  const st=$('#triage-applystatus'),apply=$('#triage-apply'),applyrun=$('#triage-applyrun');
+  apply.disabled=true;applyrun.disabled=true;setStatus(st,'applying…','');
+  let r;try{r=await fetch('/api/scenario',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({target,path:scenario,yaml:d.apply.patched})})}catch(e){r=null}
+  const j=r&&r.ok?await r.json():{error:r?('HTTP '+r.status):'request failed'};
+  if(!r||!r.ok||j.error){apply.disabled=false;applyrun.disabled=false;setStatus(st,j.error||'apply failed','ng');return}
+  setStatus(st,'applied ✓','ok');
+  if(!rerun)return;
+  // Re-run the diagnosed scenario to confirm the fix. Realign the Run-tab selectors to the file we
+  // patched: setting .value fires no `change` event, so load that target's scenarios explicitly and
+  // await it (no racing rebuild) before selecting the scenario and running.
+  $('#target').value=target;
+  await loadScenarios();
+  $('#scn').value=scenario;
+  $('#go').click();
+}
 async function loadStats(){
   const host=$('#stats-host');
   let html;
@@ -450,8 +545,8 @@ async function loadHistory(){
   const tab=$('#histtab');if(tab)tab.textContent='History'+(runs.length?` (${runs.length})`:'');
   const ul=$('#history');
   if(!runs.length){ul.innerHTML='<li class="muted">no runs yet</li>';return}
-  ul.innerHTML=runs.map(r=>`<li data-id="${r.id}"${r.id===selectedRun?' class="sel"':''}><span class="dot ${r.ok?'ok':'ng'}"></span><span class="hid">${r.id}</span><span class="hsum">${r.passed}/${r.total}${r.scenarios.length?' · '+r.scenarios.join(', '):''}</span></li>`).join('');
-  ul.querySelectorAll('li[data-id]').forEach(li=>li.addEventListener('click',()=>{setReport(li.dataset.id);ul.querySelectorAll('li').forEach(x=>x.classList.remove('sel'));li.classList.add('sel')}));
+  ul.innerHTML=runs.map(r=>`<li data-id="${r.id}" data-ok="${r.ok?1:0}"${r.id===selectedRun?' class="sel"':''}><span class="dot ${r.ok?'ok':'ng'}"></span><span class="hid">${r.id}</span><span class="hsum">${r.passed}/${r.total}${r.scenarios.length?' · '+r.scenarios.join(', '):''}</span></li>`).join('');
+  ul.querySelectorAll('li[data-id]').forEach(li=>li.addEventListener('click',()=>{setReport(li.dataset.id,li.dataset.ok==='1');ul.querySelectorAll('li').forEach(x=>x.classList.remove('sel'));li.classList.add('sel')}));
 }
 $('#refresh').addEventListener('click',loadHistory);
 $('#stats-refresh').addEventListener('click',loadStats);

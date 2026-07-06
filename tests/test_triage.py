@@ -274,6 +274,87 @@ def test_cli_rerun_after_write(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) 
     assert "home.titel" not in src.read_text(encoding="utf-8")  # the fix was written
 
 
+def test_apply_result_packages_diff_and_patched() -> None:
+    src = "    - tap: { id: home.titel }\n"
+    ar = triage.apply_result(src, "s.yaml", Fix("renameId", "rename", "home.titel", "home.title"))
+    assert ar.count == 1
+    assert "home.title }" in ar.patched and "home.titel" not in ar.patched
+    assert "-    - tap: { id: home.titel }" in ar.diff and "s.yaml" in ar.diff
+
+
+def test_apply_result_noop_has_empty_diff() -> None:
+    ar = triage.apply_result(
+        "nothing here\n", "s.yaml", Fix("addIndex", "x", "{ id: gone }", "{ id: gone, index: 0 }")
+    )
+    assert ar.count == 0 and ar.diff == "" and ar.patched == "nothing here\n"  # a safe no-op
+
+
+def test_result_payload_shape() -> None:
+    ctx = TriageContext(
+        scenario="s",
+        failure="f",
+        failed_step=FailedStep(0, "tap", "r"),
+        failed_expectations=["e"],
+        elements=[],
+        scenario_yaml="",
+        target_id="x",
+        evidence=["deviceLog"],
+    )
+    tri = triage.Triage("sum", "selector", ["do x"], fix=Fix("renameId", "rename", "a", "b"))
+    p = triage.result_payload(ctx, tri)
+    assert p["scenario"] == "s" and p["category"] == "selector" and p["summary"] == "sum"
+    assert p["failedStep"] == {"index": 0, "action": "tap", "reason": "r"}
+    assert p["failedExpectations"] == ["e"] and p["evidence"] == ["deviceLog"]
+    assert p["fix"] == {"kind": "renameId", "summary": "rename", "find": "a", "replace": "b"}
+    assert p["apply"] is None  # no AppliedFix passed
+
+
+def test_result_payload_no_fix_is_null() -> None:
+    ctx = TriageContext(
+        scenario="s",
+        failure="f",
+        failed_step=None,
+        failed_expectations=[],
+        elements=[],
+        scenario_yaml="",
+        target_id=None,
+    )
+    p = triage.result_payload(ctx, triage.Triage("s", "unknown", ["look"]))
+    assert p["fix"] is None and p["failedStep"] is None and p["apply"] is None
+
+
+def test_cli_triage_json_writes_result_with_diff(tmp_path: Path) -> None:
+    run = _write_run(tmp_path / "runs", ok=False, reason="一致なし: {'id': 'home.titel'}")
+    src = tmp_path / "src.yaml"
+    src.write_text("- name: s\n  steps:\n    - tap: { id: home.titel }\n", encoding="utf-8")
+    out = tmp_path / "triage.json"
+
+    r = runner.invoke(app, ["triage", str(run), "--apply", str(src), "--json", str(out)])
+    assert r.exit_code == 0
+    data = json.loads(out.read_text(encoding="utf-8"))
+    assert data["category"] == "selector"
+    assert data["fix"] == {
+        "kind": "renameId",
+        "summary": "rename id `home.titel` -> `home.title`",
+        "find": "home.titel",
+        "replace": "home.title",
+    }
+    assert data["apply"]["count"] == 1
+    assert "home.title }" in data["apply"]["patched"]
+    assert "home.titel" in data["apply"]["diff"]
+    # --json is a dry-run: the source file is untouched (apply is the UI's explicit save).
+    assert "home.titel" in src.read_text(encoding="utf-8")
+
+
+def test_cli_triage_json_without_apply_has_no_patch(tmp_path: Path) -> None:
+    run = _write_run(tmp_path / "runs", ok=False, reason="一致なし")
+    out = tmp_path / "t.json"
+    r = runner.invoke(app, ["triage", str(run), "--json", str(out)])
+    assert r.exit_code == 0
+    data = json.loads(out.read_text(encoding="utf-8"))
+    assert data["apply"] is None and data["summary"] and data["category"] == "selector"
+
+
 def test_heuristic_timing_and_assertion() -> None:
     timing = HeuristicTriageAgent().triage(
         TriageContext(
