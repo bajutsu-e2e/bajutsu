@@ -12,6 +12,7 @@
     launchEnv: { SHOWCASE_UITEST: "1", SHOWCASE_TAB: search }
   steps:
     - wait: { for: { id: search.field }, timeout: 10 }
+      capture: [video]
     - type: { into: { id: search.field }, text: "${row.q}" }
     - wait: { for: { id: "search.row.${row.n}" }, timeout: 5 }
   expect:

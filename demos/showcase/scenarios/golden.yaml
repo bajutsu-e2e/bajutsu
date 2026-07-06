@@ -17,6 +17,7 @@
     launchEnv: { SHOWCASE_UITEST: "1", SHOWCASE_TAB: log }
   steps:
     - wait: { for: { id: log.note }, timeout: 10 }
+      capture: [video]
   expect:
     - golden: { path: controls.json }
 
@@ -30,5 +31,6 @@
     launchEnv: { SHOWCASE_UITEST: "1", SHOWCASE_TAB: stable }
   steps:
     - wait: { for: { id: stable.row.1 }, timeout: 10 }
+      capture: [video]
   expect:
     - golden: { path: lists.json }
