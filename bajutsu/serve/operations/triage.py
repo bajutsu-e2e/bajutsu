@@ -52,7 +52,17 @@ def start_triage(
     # files that aren't on this host.
     if runnable.materials:
         return {"error": "triage in the web UI is not yet available on the server backend"}, 400
-    ai = bool(body.get("ai"))
+    # Resolve against base_cwd (serve's launch dir) so the run dir is absolute: the spawned triage
+    # runs with cwd=state.cwd, which a Git/upload config bind can repoint away from where runs live
+    # (BE-0063/BE-0073) — a relative runs_dir would then resolve against the wrong tree.
+    run_dir = (state.base_cwd / state.runs_dir / run_id).resolve()
+    # A missing run is a client error, not a job that fails mid-stream (and would write triage.json
+    # into a nonexistent dir). The manifest is what `triage` reads, so its absence is the check.
+    if not (run_dir / "manifest.json").is_file():
+        return {"error": "run not found"}, 404
+    # Only the JSON boolean `true` opts into AI — a string like "false" must not turn it on (it would
+    # be truthy under bool()). The default is the deterministic heuristic agent.
+    ai = body.get("ai") is True
     if ai:
         # Gate before dispatch so a missing credential is a clean 400, not a job that fails mid-stream.
         # The `--ai` path is opt-in and only an investigator; the run's verdict is already decided.
@@ -62,10 +72,6 @@ def start_triage(
         gap = credential_gap(resolve(config, target).ai)
         if gap:
             return {"error": f"AI triage requires an AI credential ({gap})"}, 400
-    # Resolve against base_cwd (serve's launch dir) so the run dir is absolute: the spawned triage
-    # runs with cwd=state.cwd, which a Git/upload config bind can repoint away from where runs live
-    # (BE-0063/BE-0073) — a relative runs_dir would then resolve against the wrong tree.
-    run_dir = (state.base_cwd / state.runs_dir / run_id).resolve()
     cmd = triage_command(
         str(run_dir),
         # --target carries the target's `ai` config + redaction rules for the AI path (BE-0047); the
