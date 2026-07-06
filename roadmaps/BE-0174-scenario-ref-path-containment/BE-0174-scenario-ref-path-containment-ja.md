@@ -1,14 +1,14 @@
-[English](BE-XXXX-scenario-ref-path-containment.md) · **日本語**
+[English](BE-0174-scenario-ref-path-containment.md) · **日本語**
 
-# BE-XXXX — シナリオの component／data 参照をスイートのルート内に封じ込める
+# BE-0174 — シナリオの component／data 参照をスイートのルート内に封じ込める
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
 |---|---|
-| 提案 | [BE-XXXX](BE-XXXX-scenario-ref-path-containment-ja.md) |
+| 提案 | [BE-0174](BE-0174-scenario-ref-path-containment-ja.md) |
 | 提案者 | [@hirosassa](https://github.com/hirosassa) |
 | 状態 | **提案** |
-| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0174") |
 | トピック | セキュリティ強化 |
 <!-- /BE-METADATA -->
 

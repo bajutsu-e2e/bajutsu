@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-scenario-ref-path-containment-ja.md)
+**English** · [日本語](BE-0174-scenario-ref-path-containment-ja.md)
 
-# BE-XXXX — Contain scenario component and data refs within the suite root
+# BE-0174 — Contain scenario component and data refs within the suite root
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-scenario-ref-path-containment.md) |
+| Proposal | [BE-0174](BE-0174-scenario-ref-path-containment.md) |
 | Author | [@hirosassa](https://github.com/hirosassa) |
 | Status | **Proposal** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0174") |
 | Topic | Security hardening |
 <!-- /BE-METADATA -->
 
