@@ -129,6 +129,70 @@ def test_doctor_web_target_missing_base_url(tmp_path: Path) -> None:
         server.server_close()
 
 
+def test_doctor_score_present_for_fake_backend(tmp_path: Path) -> None:
+    """A runnable backend also returns the convention score (BE-0148). The fake driver's screen is
+    empty, so the score grades it Blocked — but the point is the score section is present."""
+    scn_dir = tmp_path / "scenarios"
+    scn_dir.mkdir()
+    cfg = tmp_path / "bajutsu.config.yaml"
+    cfg.write_text(
+        "defaults: { backend: [fake] }\ntargets:\n"
+        f"  demo: {{ bundleId: com.example.demo, scenarios: {scn_dir} }}\n",
+        encoding="utf-8",
+    )
+    runs = tmp_path / "runs"
+    runs.mkdir()
+    state = srv.ServeState(config=cfg, runs_dir=runs, cwd=tmp_path)
+    server, port = _serve(state)
+    try:
+        status, resp = _post(port, "/api/doctor", {"target": "demo"})
+        assert status == 200
+        assert resp["score"] is not None
+        assert resp["score"]["grade"] == "Blocked"  # empty fake screen: nothing actionable
+        assert resp["score"]["noActionable"] is True
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+def test_doctor_score_null_when_unrunnable(tmp_path: Path) -> None:
+    """When the runnability gate fails there is no reachable screen, so the score is null."""
+    scn_dir = tmp_path / "scenarios"
+    scn_dir.mkdir()
+    cfg = tmp_path / "bajutsu.config.yaml"
+    cfg.write_text(
+        "defaults: { backend: [playwright] }\ntargets:\n"
+        f"  webapp: {{ bundleId: com.example, scenarios: {scn_dir} }}\n",
+        encoding="utf-8",
+    )
+    runs = tmp_path / "runs"
+    runs.mkdir()
+    state = srv.ServeState(config=cfg, runs_dir=runs, cwd=tmp_path)
+    server, port = _serve(state)
+    try:
+        status, resp = _post(port, "/api/doctor", {"target": "webapp"})
+        assert status == 200
+        assert resp["ok"] is False
+        assert resp["score"] is None
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+def test_doctor_rejects_invalid_backend(tmp_path: Path) -> None:
+    """A free-text backend is rejected before it can reach driver selection (BE-0051)."""
+    _scn_dir, cfg, runs = project(tmp_path)
+    state = srv.ServeState(config=cfg, runs_dir=runs, cwd=tmp_path)
+    server, port = _serve(state)
+    try:
+        status, resp = _post(port, "/api/doctor", {"target": "demo", "backend": "evil; rm"})
+        assert status == 400
+        assert "error" in resp
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
 def test_doctor_web_target_with_base_url(tmp_path: Path) -> None:
     """A web target with baseUrl passes the config check (runnability may still fail)."""
     scn_dir = tmp_path / "scenarios"

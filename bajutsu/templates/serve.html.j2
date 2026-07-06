@@ -54,6 +54,15 @@
           <div><select id="rec-device"></select></div>
           <div style="flex:0 0 auto"><button class="refresh" id="rec-simrefresh" title="refresh devices">&#8635;</button></div>
         </div>
+        <!-- Readiness (BE-0148): the same doctor pre-run check as the Replay panel, so authoring
+             a scenario can start from a known-runnable, addressable app. Read-only and AI-free. -->
+        <div class="doctor" data-testid="record.doctor">
+          <div class="hhead"><span>Readiness</span><button class="refresh" id="recdr-check" title="check readiness" data-testid="record.doctor-check">Check</button></div>
+          <div class="status" id="recdr-status"></div>
+          <div class="grade-badge" id="recdr-grade" data-testid="record.doctor-grade" hidden></div>
+          <div class="dr-checks" id="recdr-checks"></div>
+          <div class="au-audit" id="recdr-findings" hidden></div>
+        </div>
         <label>Save as</label>
         <input id="rec-name" type="text" placeholder="generated.yaml — leave blank to default">
         <div class="subhint">The recorded scenario is written under the scenarios dir, so it shows up in the <b>Replay</b> tab to run. Blank defaults to <code>generated.yaml</code>; if the name already exists, the run's date-time is appended (e.g. <code>generated-20260613-153045.yaml</code>) so nothing is overwritten.</div>
@@ -113,6 +122,18 @@
         <div class="hhead iosonly" data-testid="replay.simulators"><span>Simulators</span><button class="refresh" id="simrefresh" title="refresh devices">&#8635;</button></div>
         <div class="sims iosonly" id="sims"></div>
         <div class="subhint iosonly">Pick the simulators to run on &mdash; shut-down ones are booted (and waited for) before the run. Pick two or more (Workers auto-tracks the count) to run the scenarios in parallel across them: each device gets its own network capture, video / device log, and setLocation / push. None picked = the already-booted device.</div>
+        <!-- Readiness (BE-0148): shells out to the same doctor checks the CLI runs — tool/device
+             runnability plus the current screen's convention score — so a user can answer "is my
+             environment ready, and is my app addressable?" before pressing Run. Read-only and
+             AI-free; it never gates the run. The checks come back backend-appropriate, so the
+             panel shows for iOS and web alike (simulator-only form controls above stay .iosonly). -->
+        <div class="doctor" data-testid="replay.doctor">
+          <div class="hhead"><span>Readiness</span><button class="refresh" id="dr-check" title="check readiness" data-testid="replay.doctor-check">Check</button></div>
+          <div class="status" id="dr-status"></div>
+          <div class="grade-badge" id="dr-grade" data-testid="replay.doctor-grade" hidden></div>
+          <div class="dr-checks" id="dr-checks"></div>
+          <div class="au-audit" id="dr-findings" hidden></div>
+        </div>
         <div class="checks iosonly">
           <label><input type="checkbox" id="erasedev"> erase device first
             <span class="hint">Wipe the whole simulator (simctl erase &mdash; all apps, data, settings) before each scenario. Off (default) leaves it to each scenario's <code>preconditions.erase</code>; the app is reinstalled fresh either way.</span></label>
