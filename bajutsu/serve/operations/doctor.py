@@ -172,5 +172,9 @@ def _current_screen(
         # shell out to `xcrun` and fail on a host without Xcode (e.g. the Linux gate).
         return make_driver("fake", udid).query()
     query_actuator = "idb" if actuator == "xcuitest" else actuator
-    resolved = simctl.resolve_udid(udid or "booted", run=state.simctl)
+    # The doctor scores one screen; take only the first UDID from a comma-list (the same format
+    # /api/run uses for parallel workers). Passing the whole "A,B" string to resolve_udid or
+    # make_driver treats it as a single, invalid UDID.
+    first_udid = (udid.split(",")[0].strip() if udid else "") or "booted"
+    resolved = simctl.resolve_udid(first_udid, run=state.simctl)
     return make_driver(query_actuator, resolved).query()
