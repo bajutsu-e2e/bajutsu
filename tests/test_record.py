@@ -12,7 +12,7 @@ from bajutsu.agent import Observation, Proposal
 from bajutsu.drivers import base
 from bajutsu.drivers.fake import FakeDriver
 from bajutsu.elements import shows_app_ui
-from bajutsu.record import _screenshot_bytes, _tokenize_secrets, record
+from bajutsu.record import _is_looping, _screenshot_bytes, _tokenize_secrets, record
 from bajutsu.scenario import Assertion, Step, dump_scenarios, load_scenarios
 
 
@@ -140,6 +140,25 @@ def test_record_respects_max_steps() -> None:
     driver = FakeDriver([_el("a", "A")])
     scenario = record(driver, "x", LoopAgent(), max_steps=3)
     assert len(scenario.steps) == 3
+
+
+def test_is_looping_detects_repetition_and_oscillation() -> None:
+    assert _is_looping(["tap a", "tap a", "tap a"])  # same action three times running
+    assert _is_looping(["tap Open", "tap Close", "tap Open", "tap Close"])  # A,B,A,B oscillation
+    assert not _is_looping(["tap a", "tap b", "tap a"])  # progress-ish, not yet a cycle
+    assert not _is_looping(["tap a", "tap b", "tap c", "tap d"])  # all distinct
+
+
+def test_record_stops_on_an_oscillation_before_max_steps() -> None:
+    # An agent that cycles open/close forever is cut off by loop detection, not left to burn every
+    # turn (the real-world stuck-record failure). A,B,A,B → stop after four recorded steps.
+    driver = FakeDriver([_el("open", "Open"), _el("close", "Close")])
+    cycle = [
+        Proposal(step=Step.model_validate({"tap": {"id": "open"}})),
+        Proposal(step=Step.model_validate({"tap": {"id": "close"}})),
+    ] * 10
+    scenario = record(driver, "x", FakeAgent(cycle), max_steps=30)
+    assert [s.tap.id for s in scenario.steps if s.tap] == ["open", "close", "open", "close"]
 
 
 def _vel(label: str | None, traits: list[str]) -> base.Element:

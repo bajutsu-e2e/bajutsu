@@ -121,6 +121,7 @@ StepMods  ::= { capture?: list(<CaptureToken>), extract?: map(string, <Extract>)
 Extract   ::= { sel: <Selector>, prop?: ("value"|"label"|"identifier") }   # default "value"
 Action    ::=
     { tap:         <Selector> }
+  | { tapPoint:    { x: number, y: number } }   # normalized 0..1 (top-left origin); vision fallback for a control absent from the tree (e.g. a no-id tab-bar tab)
   | { doubleTap:   <Selector> }
   | { longPress:   { sel: <Selector>, duration: number } }
   | { type:        { text: string, into?: <Selector>, submit?: boolean } }   # submit default false

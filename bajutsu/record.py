@@ -47,11 +47,31 @@ def _describe_step(step: Step) -> str:
     """A one-line summary of a proposed step, for live record output."""
     if step.tap is not None:
         return f"tap {_describe_selector(step.tap)}"
+    if step.tap_point is not None:
+        return f"tap point ({step.tap_point.x:.2f}, {step.tap_point.y:.2f}) [located in screenshot]"
     if step.type is not None:
         return f"type {step.type.text!r} into {_describe_selector(step.type.into)}"
     if step.wait is not None:
         return f"wait for {_describe_selector(step.wait.for_)}"
     return next((f for f in step.model_dump(exclude_none=True)), "step")
+
+
+def _is_looping(signatures: list[str]) -> bool:
+    """Whether the recorded steps show the agent stuck rather than progressing.
+
+    Two deterministic patterns (no model — this must never gate on an LLM): the same action three
+    times running, or a two-step A,B,A,B oscillation (the classic open-modal / close-modal cycle the
+    agent falls into when a control it wants isn't where it expects). Stopping on either turns a
+    silent, expensive spin (dozens of model calls) into an actionable, bounded outcome.
+    """
+    if len(signatures) >= 3 and signatures[-1] == signatures[-2] == signatures[-3]:
+        return True
+    return (
+        len(signatures) >= 4
+        and signatures[-1] == signatures[-3]
+        and signatures[-2] == signatures[-4]
+        and signatures[-1] != signatures[-2]
+    )
 
 
 def _mask_secrets(text: str, secret_tokens: list[tuple[str, str]]) -> tuple[str, list[str]]:
@@ -338,6 +358,12 @@ def record(
             say(f"[{n}] ! could not resolve that target on the live screen; stopping")
             break  # the proposed action did not resolve, even after clearing prompts
         steps.append(recorded_step)
+        if _is_looping([_describe_step(s) for s in steps]):
+            say(
+                f"[{n}] ⟳ the agent is repeating actions without progress; stopping "
+                "(refine the goal, or the app may need accessibility ids for this control)"
+            )
+            break
 
     scenario = Scenario(name=name, steps=steps, expect=expect)
     # The goal is the scenario-level provenance (BE-0044): the natural language this whole scenario

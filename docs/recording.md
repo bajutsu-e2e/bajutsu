@@ -88,9 +88,23 @@ credential) and the client is injectable for tests. The turn contract is the sam
 provider is active:
 
 - **Forced tool use**: `tool_choice={"type": "any"}` forces **exactly one** tool call per turn —
-  `tap(id)` / `type_text(id, text)` / `wait_for(id, timeout)` / `finish(assertions)`. `finish`'s
-  `assertions` (`exists` / `notExists` / `valueEquals` / `labelContains`) convert to `Assertion`
-  (`_to_assertion`).
+  `tap(id)` / `tap_point(x, y)` / `swipe(id, direction)` / `type_text(id, text)` /
+  `wait_for(id, timeout)` / `finish(assertions)`. `finish`'s `assertions` (`exists` / `notExists` /
+  `valueEquals` / `labelContains`) convert to `Assertion` (`_to_assertion`). `swipe` scrolls a
+  visible element to bring an off-screen control into view; `tap_point` (above) reaches a visible
+  control the tree omits.
+- **Loop guard**: the recent actions are shown back to the agent each turn, and the loop
+  deterministically stops if the recording repeats one action three times running or oscillates
+  A,B,A,B (`_is_looping`) — turning a stuck spin into a bounded, actionable stop rather than burning
+  every remaining turn.
+- **`tap_point` — the vision fallback for a control absent from the tree.** When the goal needs a
+  control the accessibility tree does not expose — most often an individual tab in a bottom tab bar
+  on a no-id app, which `idb` collapses into one opaque group — the agent locates it in the
+  screenshot and taps by **normalized coordinates [0,1]** (top-left origin). `run` scales them by the
+  app-window frame to a `driver.tap_point` (the same normalized-point convention the alert locator
+  uses, below). It is the bottom rung of the stability ladder (unverifiable by selector), so the
+  prompt restricts it to controls genuinely missing from the element list — a listed element is
+  always addressed by its far more stable `id`/`label`.
 - **prompt cache** (API path): the static system prompt + tool definitions are marked
   `cache_control: ephemeral`; only the per-turn observation (elements + screenshot) changes.
 - **Vision + elements together**: appearance / state is read from the screenshot, but the agent

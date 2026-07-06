@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from bajutsu.drivers import base
+from bajutsu.elements import screen_size_from_elements
 from bajutsu.orchestrator.actions._registry import _handler
 from bajutsu.scenario import Step
 
@@ -38,6 +39,15 @@ def _require_multi_touch(driver: base.Driver, action: str) -> None:
 def _do_tap(driver: base.Driver, step: Step, _r: object, _c: object, _b: object) -> None:
     assert step.tap is not None
     driver.tap(step.tap.as_selector())
+
+
+@_handler("tap_point")
+def _do_tap_point(driver: base.Driver, step: Step, _r: object, _c: object, _b: object) -> None:
+    assert step.tap_point is not None
+    # Scale the normalized [0,1] point by the live screen size — the same helper the crawl and the
+    # alert guard use, so every coordinate tap replays against one screen-size definition.
+    w, h = screen_size_from_elements(driver.query())
+    driver.tap_point((step.tap_point.x * w, step.tap_point.y * h))
 
 
 @_handler("double_tap")

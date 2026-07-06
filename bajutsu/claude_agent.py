@@ -52,6 +52,15 @@ Use the screenshot to map the goal's wording to the right element when the text 
 differs from it (e.g. a "+" button is the increment control). You must call exactly one tool:
 
 - tap(id|label): tap that element.
+- tap_point(x, y): tap a screen location by NORMALIZED coordinates (0..1 from the \
+top-left corner), read from the screenshot. Use this for a control you can SEE in the \
+screenshot but that is NOT in the element list — a tab-bar tab, a segmented-control \
+segment, a toolbar item, on an app whose accessibility tree omits it. Estimate the \
+visible control's center as a fraction of the screen (a tab in a 5-tab bar near the \
+bottom is around y≈0.96; the 3rd of 5 tabs is around x≈0.5).
+- swipe(id|label, direction): swipe on a visible element (up/down/left/right) to SCROLL \
+a list or form. Use it to bring a control that is off-screen — neither in the element \
+list nor visible in the screenshot — into view before acting on it.
 - type_text(id|label, text): focus the field and type text into it.
 - wait_for(id|label, timeout): wait until that element appears.
 - finish(assertions): the goal is reached; provide machine-checkable assertions \
@@ -60,8 +69,15 @@ that verify it, each addressing an element by id or label.
 Rules:
 - Act only on elements present in the screen list; address them by their real `id` \
 or `label`. Never invent an id or a label that is not shown.
-- Take the most direct path to the goal. Do not repeat an action that did not \
-change the screen.
+- For a control missing from the list, choose by WHERE it is: if you can see it in the \
+screenshot, tap_point its center; if you cannot see it, it is off-screen — swipe to \
+scroll it into view first. Never use tap_point for an element that IS listed — address \
+that one by id/label, which is far more stable. Prefer these over giving up on the goal.
+- Take the most direct path to the goal. NEVER repeat an action that did not move you \
+toward the goal, and never re-open a screen you just closed. If a step left you where you \
+were, or you are cycling between two screens, change your approach: scroll to look \
+elsewhere, or tap_point a control you can see. The recent steps you have taken are listed \
+each turn — read them and do not loop.
 - Always fill `reason`: one short sentence of your reasoning for THIS turn — what you \
 see on the screen and why this action moves toward the goal. This is shown live to the \
 person watching, so make it a clear thought, not a restatement of the action.
@@ -146,6 +162,40 @@ TOOLS: list[ToolDef] = [
         },
     ),
     ToolDef(
+        name="tap_point",
+        description="Tap a screen location by normalized coordinates (0..1) read from the "
+        "screenshot — only for a visible control absent from the element list, e.g. a tab-bar tab.",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "x": {
+                    "type": "number",
+                    "description": "horizontal center, a fraction of screen width (0 = left, 1 = right)",
+                },
+                "y": {
+                    "type": "number",
+                    "description": "vertical center, a fraction of screen height (0 = top, 1 = bottom)",
+                },
+                **_REASON_PROP,
+            },
+            "required": ["x", "y", "reason"],
+        },
+    ),
+    ToolDef(
+        name="swipe",
+        description="Swipe on a visible element in a direction to scroll a list/form and reveal an "
+        "off-screen control (one neither in the element list nor visible in the screenshot).",
+        input_schema={
+            "type": "object",
+            "properties": {
+                **_TARGET_PROPS,
+                "direction": {"type": "string", "enum": ["up", "down", "left", "right"]},
+                **_REASON_PROP,
+            },
+            "required": ["direction", "reason"],
+        },
+    ),
+    ToolDef(
         name="type_text",
         description="Focus the field (addressed by id or label) and type the given text.",
         input_schema={
@@ -200,6 +250,29 @@ TOOLS: list[ToolDef] = [
 ]
 
 
+def _hist_hint(sel: Any) -> str:
+    """The id or label to name a selector by in a recent-actions line (`?` when it has neither)."""
+    return next((str(v) for v in (getattr(sel, "id", None), getattr(sel, "label", None)) if v), "?")
+
+
+def _history_line(step: Step) -> str:
+    """A compact summary of an already-taken step, shown back to the agent to curb repetition.
+
+    Secrets are never echoed — typed text is omitted.
+    """
+    if step.tap is not None:
+        return f"tap {_hist_hint(step.tap)}"
+    if step.tap_point is not None:
+        return f"tap point ({step.tap_point.x:.2f}, {step.tap_point.y:.2f})"
+    if step.swipe is not None and step.swipe.on is not None:
+        return f"swipe {step.swipe.direction} on {_hist_hint(step.swipe.on)}"
+    if step.type is not None:
+        return f"type into {_hist_hint(step.type.into)}"
+    if step.wait is not None:
+        return f"wait for {_hist_hint(step.wait.for_)}"
+    return next(iter(step.model_dump(exclude_none=True)), "step")
+
+
 def _render(observation: Observation, redactor: Redactor | None = None) -> str:
     lines = [f"Goal: {observation.goal}"]
     if observation.plan:
@@ -232,7 +305,13 @@ def _render(observation: Observation, redactor: Redactor | None = None) -> str:
     if not shown:
         lines.append("- (no addressable elements; the screen may still be loading)")
     lines += ["", f"Steps taken so far: {len(observation.history)}"]
-    lines.append("Call exactly one tool: tap, type_text, wait_for, or finish.")
+    if observation.history:
+        # Show the recent actions so the agent can see whether it is looping (repeating an action or
+        # cycling between screens) and change course — the single biggest cause of a stuck record.
+        recent = observation.history[-6:]
+        lines.append("Recent actions (most recent last) — do not repeat these fruitlessly:")
+        lines += [f"  - {_history_line(s)}" for s in recent]
+    lines.append("Call exactly one tool: tap, tap_point, swipe, type_text, wait_for, or finish.")
     return "\n".join(lines)
 
 
@@ -293,6 +372,12 @@ def proposal_from_call(name: str, args: dict[str, Any]) -> Proposal:
     prov = _provenance(note)
     if name == "tap":
         return Proposal(step=Step.model_validate({"tap": _target(args), **prov}), note=note)
+    if name == "tap_point":
+        point = {"tapPoint": {"x": args["x"], "y": args["y"]}, **prov}
+        return Proposal(step=Step.model_validate(point), note=note)
+    if name == "swipe":
+        swipe = {"swipe": {"on": _target(args), "direction": args["direction"]}, **prov}
+        return Proposal(step=Step.model_validate(swipe), note=note)
     if name == "type_text":
         step = {"type": {"into": _target(args), "text": args["text"]}, **prov}
         return Proposal(step=Step.model_validate(step), note=note)

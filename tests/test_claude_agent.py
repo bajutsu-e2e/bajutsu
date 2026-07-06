@@ -50,6 +50,14 @@ def test_type_text_proposal() -> None:
     assert step.type.into is not None and step.type.into.id == "f"
 
 
+def test_swipe_proposal() -> None:
+    block = FakeBlock("swipe", {"id": "list", "direction": "up", "reason": "scroll to reveal it"})
+    step = ClaudeAgent(backend=FakeBackend(block)).next_action(_obs()).step
+    assert step is not None and step.swipe is not None
+    assert step.swipe.on is not None and step.swipe.on.id == "list"
+    assert step.swipe.direction == "up"
+
+
 def test_wait_proposal() -> None:
     agent = ClaudeAgent(backend=FakeBackend(FakeBlock("wait_for", {"id": "spinner", "timeout": 5})))
     step = agent.next_action(_obs()).step
@@ -103,7 +111,14 @@ def test_request_uses_forced_tool_choice() -> None:
     request = backend.requests[0]
     assert request.model == "claude-opus-4-8"
     assert isinstance(request.tool_choice, AnyTool)  # force one tool call
-    assert {t.name for t in request.tools} == {"tap", "type_text", "wait_for", "finish"}
+    assert {t.name for t in request.tools} == {
+        "tap",
+        "tap_point",
+        "swipe",
+        "type_text",
+        "wait_for",
+        "finish",
+    }
 
 
 def test_screenshot_sent_as_image_part() -> None:

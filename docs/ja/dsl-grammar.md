@@ -119,6 +119,7 @@ StepMods  ::= { capture?: list(<CaptureToken>), extract?: map(string, <Extract>)
 Extract   ::= { sel: <Selector>, prop?: ("value"|"label"|"identifier") }   # 既定 "value"
 Action    ::=
     { tap:         <Selector> }
+  | { tapPoint:    { x: number, y: number } }   # 正規化座標 0..1（左上原点）。ツリーに現れない要素（ID なしアプリのタブバーのタブなど）への画像フォールバック
   | { doubleTap:   <Selector> }
   | { longPress:   { sel: <Selector>, duration: number } }
   | { type:        { text: string, into?: <Selector>, submit?: boolean } }   # submit 既定 false
