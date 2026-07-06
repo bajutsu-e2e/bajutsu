@@ -26,6 +26,7 @@ async function _bjLogin(){
 const $=s=>document.querySelector(s);
 let poll=null,recPoll=null,selectedRun=null,recPath=null,scnFiles=[],targets=[],sims=[];
 let recJobId=null,runJobId=null,triageJobId=null;
+let recRunPoll=null,recRunJobId=null;  // running the just-authored scenario from the Record tab
 // Whether Claude is reachable (from /api/provider). Gates the opt-in AI toggle on triage the same
 // way it gates record/crawl; heuristic triage never needs it. Kept in sync by refreshAiAvailability.
 let aiAvailable=false;
@@ -420,6 +421,10 @@ $('#rec-go').addEventListener('click',async()=>{
   if(recPoll)recPoll.close();
   setBusy($('#rec-go'),$('#rec-stop'),true,'Authoring…');$('#rec-out').textContent='';
   $('#rec-yaml').value='';$('#rec-save').disabled=true;$('#rec-yamlinfo').textContent='';recPath=null;
+  // Clear any prior in-place run so its report/log/status don't linger over a fresh authoring.
+  if(recRunPoll)recRunPoll.close();
+  $('#rec-run').disabled=true;$('#rec-report').innerHTML='';
+  $('#rec-runout').hidden=true;$('#rec-runout').textContent='';setStatus($('#rec-runstatus'),'','');
   setStatus($('#rec-status'),'','run');
   const r=await fetch('/api/record',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
     goal,target:$('#rec-target').value,
@@ -442,9 +447,36 @@ async function loadGenerated(path){
   recPath=path;
   try{
     const d=await (await fetch('/api/scenario?target='+encodeURIComponent($('#rec-target').value)+'&path='+encodeURIComponent(path))).json();
-    if(d.yaml!=null){$('#rec-yaml').value=d.yaml;$('#rec-save').disabled=false;
+    if(d.yaml!=null){$('#rec-yaml').value=d.yaml;$('#rec-save').disabled=false;$('#rec-run').disabled=false;
       $('#rec-yamlinfo').textContent=path.split('/').pop();}
   }catch(e){}
+}
+// Run the just-authored scenario in place, without switching to Replay. Persist the current YAML
+// first (so edits in the box are what runs), then start a normal run against the same target and
+// stream it + the report right here.
+$('#rec-run').addEventListener('click',async()=>{
+  if(!recPath)return;
+  if(recRunPoll)recRunPoll.close();
+  const target=$('#rec-target').value;
+  await fetch('/api/scenario',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({target,path:recPath,yaml:$('#rec-yaml').value})}).catch(()=>{});
+  setBusy($('#rec-run'),$('#rec-runstop'),true,'Running…');
+  $('#rec-runout').hidden=false;$('#rec-runout').textContent='';$('#rec-report').innerHTML='';
+  setStatus($('#rec-runstatus'),'','run');
+  const r=await fetch('/api/run',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
+    scenario:recPath,target,udid:$('#rec-device').value||'booted',
+    erase:$('#rec-erase').checked||undefined,dismissAlerts:$('#rec-nodismiss').checked?false:undefined})});
+  const {jobId,error}=await r.json();
+  if(error){setStatus($('#rec-runstatus'),error,'ng');setBusy($('#rec-run'),$('#rec-runstop'),false);return}
+  recRunJobId=jobId;
+  recRunPoll=streamJob(jobId,line=>appendLine($('#rec-runout'),line),recRunDone);
+});
+$('#rec-runstop').addEventListener('click',()=>cancelJob(recRunJobId,$('#rec-runstop')));
+function recRunDone(j){
+  recRunPoll=null;recRunJobId=null;setBusy($('#rec-run'),$('#rec-runstop'),false);
+  if(j.cancelled){setStatus($('#rec-runstatus'),'cancelled','ng');return}
+  setStatus($('#rec-runstatus'),j.ok?'PASS':'FAIL', j.ok?'ok':'ng');
+  if(j.runId)setReport(j.runId,j.ok,'#rec-report');
 }
 $('#rec-save').addEventListener('click',async()=>{
   if(!recPath)return;
