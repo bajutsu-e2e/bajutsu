@@ -20,6 +20,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Protocol
 
+from bajutsu import usage
 from bajutsu.ai import (
     AiBackend,
     AnyTool,
@@ -212,4 +213,5 @@ class ClaudeTabLocator:
                 max_tokens=512,
             )
         )
+        usage.record(response.usage)  # reporting only (BE-0104) — never on the pass/fail path
         return _targets_of(response, width, height)

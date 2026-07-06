@@ -34,6 +34,31 @@ def test_subtraction_is_the_per_feature_delta() -> None:
     assert spent.input_tokens == 80 and spent.output_tokens == 25 and spent.calls == 3
 
 
+def test_of_reads_a_dict_usage_like_the_claude_code_envelope() -> None:
+    # The Claude Code adapter (BE-0176) reports usage as a dict, not an SDK object — `of` must read
+    # its fields (attribute-only access would silently count it as zero tokens).
+    one = usage.of(
+        {
+            "input_tokens": 100,
+            "output_tokens": 30,
+            "cache_creation_input_tokens": 20,
+            "cache_read_input_tokens": 14,
+        }
+    )
+    assert one.total_tokens == 164 and one.calls == 1
+
+
+def test_of_none_is_an_empty_snapshot() -> None:
+    assert usage.of(None) == TokenUsage()
+
+
+def test_record_counts_a_dict_usage_into_the_tracker() -> None:
+    before = usage.snapshot()
+    usage.record({"input_tokens": 7, "output_tokens": 3})
+    spent = usage.snapshot() - before
+    assert spent.input_tokens == 7 and spent.output_tokens == 3 and spent.calls == 1
+
+
 def test_render_is_a_one_line_human_summary() -> None:
     u = TokenUsage(input_tokens=900, output_tokens=300, cache_write_tokens=20, cache_read_tokens=14)
     line = u.render()
