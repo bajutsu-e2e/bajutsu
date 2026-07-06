@@ -125,6 +125,38 @@ def test_malformed_structured_output_yields_no_tool_use(output: Any) -> None:
     assert resp.first_tool_use() is None
 
 
+def test_named_tool_not_among_the_offered_tools_raises() -> None:
+    runner = FakeRunner(_envelope({"k": "v"}))
+    with pytest.raises(RuntimeError, match="not among the offered tools"):
+        claude_code.ClaudeCodeBackend(runner=runner).create_message(
+            _request(tools=[_DO], tool_choice=NamedTool(name="missing"))
+        )
+
+
+def test_no_tools_offered_raises() -> None:
+    runner = FakeRunner(_envelope({"k": "v"}))
+    req = MessageRequest(  # built directly: the _request helper substitutes a default tool for []
+        system="SYS",
+        messages=[Message(role="user", content=[TextPart(text="observe this")])],
+        tools=[],
+        tool_choice=_ANY,
+        model="claude-opus-4-8",
+        max_tokens=256,
+    )
+    with pytest.raises(RuntimeError, match="no tools"):
+        claude_code.ClaudeCodeBackend(runner=runner).create_message(req)
+
+
+def test_non_object_json_envelope_raises() -> None:
+    def a_list(cmd: list[str], cwd: str, prompt: str) -> str:
+        return "[1, 2, 3]"  # valid JSON, but not the object envelope the CLI documents
+
+    with pytest.raises(RuntimeError, match="non-object JSON"):
+        claude_code.ClaudeCodeBackend(runner=a_list).create_message(
+            _request(tool_choice=NamedTool(name="do"))
+        )
+
+
 def test_image_is_written_named_in_prompt_and_read_allowed_then_cleaned_up() -> None:
     seen: dict[str, Any] = {}
 

@@ -59,11 +59,21 @@ def _forced_tool(request: MessageRequest) -> ToolDef | None:
     `NamedTool` names one tool; `AnyTool` over exactly one offered tool is the same case. `AnyTool`
     over several (only `ClaudeAgent.next_action`) returns ``None`` — the wrapper schema then carries
     the choice.
+
+    Raises:
+        RuntimeError: the request is malformed — no tools offered, or a `NamedTool` naming a tool
+            that isn't among them. Fail loud like the Anthropic adapter would at the API, rather
+            than silently downgrading a forced-tool call to free choice over a bogus tool set.
     """
+    if not request.tools:
+        raise RuntimeError("claude-code: request offers no tools to force a call on")
     if isinstance(request.tool_choice, AnyTool):
         return request.tools[0] if len(request.tools) == 1 else None
     name = request.tool_choice.name
-    return next((t for t in request.tools if t.name == name), None)
+    forced = next((t for t in request.tools if t.name == name), None)
+    if forced is None:
+        raise RuntimeError(f"claude-code: forced tool {name!r} is not among the offered tools")
+    return forced
 
 
 def _schema_and_note(request: MessageRequest) -> tuple[dict[str, Any], str, str | None]:
@@ -219,13 +229,15 @@ def _response(stdout: str, forced_name: str | None) -> MessageResponse:
     """Parse the `--output-format json` envelope into a neutral response.
 
     Raises:
-        RuntimeError: the CLI returned non-JSON, or its envelope reports an error — fail loud
-            (determinism first) rather than silently returning an empty proposal.
+        RuntimeError: the CLI returned non-JSON or a non-object JSON, or its envelope reports an
+            error — fail loud (determinism first) rather than silently returning an empty proposal.
     """
     try:
         envelope = json.loads(stdout)
     except json.JSONDecodeError as exc:
         raise RuntimeError(f"claude -p returned non-JSON output: {stdout[:200]!r}") from exc
+    if not isinstance(envelope, dict):
+        raise RuntimeError(f"claude -p returned non-object JSON: {stdout[:200]!r}")
     if envelope.get("is_error"):
         raise RuntimeError(f"claude -p reported an error: {envelope.get('result')!r}")
     block = _tool_use(envelope.get("structured_output"), forced_name)
