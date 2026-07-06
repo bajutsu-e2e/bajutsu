@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0177](BE-0177-run-behavior-target-config.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0177") |
+| Implementing PR | [#715](https://github.com/bajutsu-e2e/bajutsu/pull/715) |
 | Topic | Configuration sourcing |
 <!-- /BE-METADATA -->
 
@@ -113,12 +114,16 @@ the alert guard still reaches the AI provider only as a `BlockedHandler`, never 
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Add `dismissAlerts`, `erase`, `network` to `TargetConfig` (schema + `dismissAlerts` coercion).
-- [ ] Resolve precedence `CLI > scenario > target > default` for each in the run path.
-- [ ] Fold the target `instruction` into the `default_instruction` chain.
-- [ ] Verify the layering holds through serve (flags + checkboxes unchanged; config default applies beneath).
-- [ ] Document the config fields + precedence (English + Japanese); update DESIGN.md / architecture.md if affected.
-- [ ] Tests for parsing and precedence.
+- [x] Add `dismissAlerts`, `erase`, `network` to `TargetConfig` and resolve them onto `Effective` (schema + `dismissAlerts` coercion).
+- [x] Resolve precedence `CLI > scenario > target > default` for each in the run path (`erase` via `_filter_scenarios`, guard `enabled` in `_alert_guard_factory`, `network` in `run`). Made `Preconditions.erase` and `--network` `bool | None` so "unset" falls through.
+- [x] Fold the target `instruction` into the `default_instruction` chain.
+- [x] Verify the layering holds through serve (flags + checkboxes unchanged; config default applies beneath — no serve code change needed).
+- [x] Document the config fields + precedence (English + Japanese `configuration.md` / `cli.md`); DESIGN.md / architecture.md unaffected.
+- [x] Tests for parsing and precedence.
+
+**Log**
+
+- [#715](https://github.com/bajutsu-e2e/bajutsu/pull/715) — implemented the per-target config layer for `dismissAlerts` / `erase` / `network` with `flag > scenario > target > default` precedence, plus config-parse and precedence tests and the bilingual doc updates.
 
 ## References
 

@@ -33,7 +33,8 @@ targets:
     idNamespaces:   [stable, horse, search, log, notice, perm, sys, net]
     launchEnv:      { SHOWCASE_UITEST: "1" }
     scenarios:      demos/showcase/scenarios   # このターゲットのシナリオディレクトリ（run が読み、record が書く）
-    # 任意: backend / device / locale / launchArgs / setup / redact / secrets / mockServer / appPath / build
+    dismissAlerts:  { instruction: Allow }     # アラートガード（後述）のアプリ既定。--dismiss-alerts が実行ごとに上書き
+    # 任意: erase / network / backend / device / locale / launchArgs / setup / redact / secrets / mockServer / appPath / build
 
   web:                          # web ターゲット（Playwright backend）は URL で指定する
     platform:  web                                  # 任意: 通常は backend や baseUrl から導出されるが、明示すると最も明確
@@ -59,6 +60,7 @@ targets:
 | `headless` | app | web backend のみ: `true`（既定）はヘッドレス、`false` はブラウザを画面に表示し低速再生する。`bajutsu run --headed / --no-headed` と Web UI の「show browser」トグルが実行ごとに上書きする。iOS は無視する |
 | `browser` | app | web backend のみ: 駆動する Playwright の描画エンジン。`chromium`（既定）、`firefox`、`webkit` から選びます。いずれも Linux 上でヘッドレス実行できます。`bajutsu run/record --browser <engine>` が実行ごとに上書きし（フラグ > config > 既定）、`bajutsu run --browsers <list>` はクロスブラウザマトリクスを実行します（後述）。エンジンのブラウザバイナリが無ければ実行時に取得します。未知の値は config 読み込み時に拒否されます。iOS は無視します（[BE-0076](../../roadmaps/BE-0076-web-cross-browser-engines/BE-0076-web-cross-browser-engines-ja.md)） |
 | `launch_server` | app | 任意の `launchServer: {cmd, readyUrl, readyTimeout, cwd, env}`。run のために `baseUrl` のホストを起動し、終わったら停止します。`readyUrl`（既定は `baseUrl`）をプローブし、すでに応答すれば再利用、しなければ `cmd` を起動して準備が整うまで待ちます（固定 sleep ではなく条件待ち）。iOS の `build` の web 版です（[BE-0059](../../roadmaps/BE-0059-launch-target-server/BE-0059-launch-target-server-ja.md)）。`serve` 上の**アップロードされた**バンドルでは、ホストが `cmd` を直接実行することはなく、`serve --upload-exec` が統制します（[セルフホスティング](self-hosting.md#アップロードされた-config-のコマンド実行be-0090)を参照）。`sandbox` での実行には、追加フィールドとして `dockerImage`（Docker イメージ参照。例 `node:20-slim`）か `dockerfile`（バンドル相対のパスで、`docker build` でビルドします）のどちらか一方、加えて `port`（コンテナ内の待ち受けポート。ループバックのホストポートへ publish します）が必要です（[BE-0090](../../roadmaps/BE-0090-uploaded-config-command-execution/BE-0090-uploaded-config-command-execution-ja.md)） |
+| `dismiss_alerts` / `erase` / `network` | app | 本来シナリオ単位や CLI フラグで指定する run のテスト動作設定に、アプリ単位の既定値を与えます（[BE-0177](../../roadmaps/BE-0177-run-behavior-target-config/BE-0177-run-behavior-target-config-ja.md)）。`dismissAlerts` はシナリオと同じ形（`false`、または `{ enabled, instruction }`）を取りアラートガードの既定値になり、`erase` は `preconditions.erase` の、`network` はアプリのネットワーク収集の既定値になります。いずれも **フラグ ＞ シナリオ ＞ これ ＞ ビルトイン既定**（ガードは on、erase は off、network は on）の順で解決し、`--headed`/`headless` と同じ重ね方です。`bajutsu run --dismiss-alerts/--no-dismiss-alerts`・`--erase/--no-erase`・`--network/--no-network`（および `--alert-instruction`）が実行ごとに上書きします |
 | `deeplink_scheme` | app | preconditions の deeplink で使う scheme |
 | `backend` | app ?? defaults | プラットフォーム(`ios`/`android`/`web`/`fake`)か actuator(`idb`)の安定度順リスト（単一文字列はリスト化）（[drivers](drivers.md#バックエンド選択と-actuator)） |
 | `device` / `locale` | app ?? defaults | `locale` は launch 時に適用される（`simctl` の launch 引数） |

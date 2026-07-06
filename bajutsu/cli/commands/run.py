@@ -266,12 +266,14 @@ def _load_scenarios(
 
 
 def _filter_scenarios(
-    scenarios: list[Scenario], tag: str, exclude: str, erase: bool | None
+    scenarios: list[Scenario], tag: str, exclude: str, erase: bool | None, target_erase: bool
 ) -> list[Scenario]:
-    """Apply `--tag`/`--exclude` selection and the `--erase` override across the expanded set.
+    """Apply `--tag`/`--exclude` selection and resolve each scenario's `preconditions.erase`.
 
-    Selection runs over the combined set; an empty result is a usage error (exit 2). `--erase` /
-    `--no-erase`, when given, overrides every scenario's `preconditions.erase`.
+    Selection runs over the combined set; an empty result is a usage error (exit 2). Erase resolves
+    most-specific-wins (BE-0177): `--erase` / `--no-erase` overrides every scenario, else a scenario's
+    own explicit value, else *target_erase* (the target config default, already the built-in off when
+    unset). Leaves every scenario with a concrete bool, so downstream never sees the unset `None`.
     """
     include = [t.strip() for t in tag.split(",") if t.strip()]
     excluded = [t.strip() for t in exclude.split(",") if t.strip()]
@@ -280,11 +282,11 @@ def _filter_scenarios(
         if not scenarios:
             typer.echo("no scenarios match --tag/--exclude")
             raise typer.Exit(2)
-    # --erase / --no-erase, when given, overrides every scenario; otherwise each scenario's own
-    # preconditions.erase (default off) decides whether its device is wiped first.
-    if erase is not None:
-        for s in scenarios:
-            s.preconditions.erase = erase
+    for s in scenarios:
+        if erase is not None:
+            s.preconditions.erase = erase  # CLI flag overrides every scenario
+        elif s.preconditions.erase is None:
+            s.preconditions.erase = target_erase  # unset scenario inherits the target default
     return scenarios
 
 
@@ -339,7 +341,18 @@ def _alert_guard_factory(
     (BE-0053/BE-0047), so a missing/insufficient credential prints a note and no-ops — never a client
     that would fall back to a hosted default, so the deterministic gate still runs Claude-free.
     """
-    if not any(s.dismiss_alerts is None or s.dismiss_alerts.enabled for s in scenarios):
+
+    # A scenario's guard is on when its own `dismissAlerts` says so, else the target config's, else the
+    # built-in on (BE-0177). The `--dismiss-alerts` flag is already baked onto the scenario by
+    # `_apply_dismiss_alerts`, so it needs no separate check here.
+    def _enabled(s: Scenario) -> bool:
+        if s.dismiss_alerts is not None:
+            return s.dismiss_alerts.enabled
+        if eff.dismiss_alerts is not None:
+            return eff.dismiss_alerts.enabled
+        return True
+
+    if not any(_enabled(s) for s in scenarios):
         return None
     from bajutsu.alerts import ClaudeAlertLocator, SystemAlertGuard
 
@@ -362,15 +375,28 @@ def _alert_guard_factory(
     locator = ClaudeAlertLocator(ai=eff.ai, redactor=redactor) if guard_gap is None else None
     default_instruction = alert_instruction or None
 
+    # The button label resolves scenario > `--alert-instruction` > target config > built-in dismissive
+    # (BE-0177): a scenario's own wins, then the run-wide flag default, then the app default, then None
+    # (the guard's built-in). `--alert-instruction` stays a *default* the scenario overrides, as before.
+    target_instruction = eff.dismiss_alerts.instruction if eff.dismiss_alerts else None
+
     def _guard_for(s: Scenario) -> BlockedHandler | None:
         if locator is None:
             return None  # no usable AI credential: the guard no-ops, never a hosted fallback
-        cfg = s.dismiss_alerts or DismissAlerts()
-        if not cfg.enabled:
+        if not _enabled(s):
             return None
-        return SystemAlertGuard(locator, cfg.instruction or default_instruction).dismiss
+        scenario_instruction = s.dismiss_alerts.instruction if s.dismiss_alerts else None
+        # Trailing `or None` normalizes an empty instruction (e.g. config `instruction: ""`) to the
+        # guard's built-in default, matching how `default_instruction` drops an empty --alert-instruction.
+        instruction = scenario_instruction or default_instruction or target_instruction or None
+        return SystemAlertGuard(locator, instruction).dismiss
 
     return _guard_for
+
+
+def _resolve_network(network: bool | None, target_network: bool) -> bool:
+    """Resolve network collection: `--network/--no-network` flag > target `network` config > on (BE-0177)."""
+    return network if network is not None else target_network
 
 
 def _apply_mocks(scenarios: list[Scenario], network: bool) -> None:
@@ -710,11 +736,12 @@ def run(
     log_subsystem: str = typer.Option(
         "", "--log-subsystem", help="os_log subsystem for appTrace (defaults to the app's bundleId)"
     ),
-    network: bool = typer.Option(
-        True,
+    network: bool | None = typer.Option(
+        None,
         "--network/--no-network",
         help="collect the app's network exchanges (for `request` assertions); iOS needs BajutsuKit "
-        "in the app, web (Playwright) observes natively",
+        "in the app, web (Playwright) observes natively. Default: the target's `network` config, "
+        "then on",
     ),
     progress: bool = typer.Option(
         False,
@@ -821,13 +848,16 @@ def run(
     )
     secret_bindings, secret_values = _resolve_secrets(eff)
     scenarios, description, source_name, files = _load_scenarios(eff, scenario, target_name)
-    scenarios = _filter_scenarios(scenarios, tag, exclude, erase)
+    scenarios = _filter_scenarios(scenarios, tag, exclude, erase, eff.erase)
     actuator, backends = _select_actuator(backend, eff, engines)
     # Web has no simctl udid: `--workers N` is N near-free BrowserContext lanes (BE-0054); for idb,
     # `--udid` is a concrete comma list capped to the pool size. (The "booted" default is unused on web.)
     udids, workers = _resolve_lanes(actuator, udid, workers, _simctl.resolve_udid)
     _apply_dismiss_alerts(scenarios, dismiss_alerts)
     on_blocked_for = _alert_guard_factory(scenarios, eff, alert_instruction)
+    # Network collection resolves `--network/--no-network` over the target's `network` config, then on
+    # (BE-0177); the resolved bool baked into mocks and the plan drives collection and `request` waits.
+    network = _resolve_network(network, eff.network)
     _apply_mocks(scenarios, network)
     baselines_dir, schemas_dir, gc = _resolve_evidence_dirs(
         baselines, schemas, goldens, eff, files[0]
