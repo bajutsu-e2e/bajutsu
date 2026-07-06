@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-claude-code-ai-backend-ja.md)
+**English** · [日本語](BE-0176-claude-code-ai-backend-ja.md)
 
-# BE-XXXX — Revive Claude Code as an AiBackend adapter with file-based vision
+# BE-0176 — Revive Claude Code as an AiBackend adapter with file-based vision
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-claude-code-ai-backend.md) |
+| Proposal | [BE-0176](BE-0176-claude-code-ai-backend.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0176") |
 | Topic | AI provider configuration |
 | Related | [BE-0104](../BE-0104-vendor-neutral-ai-backend/BE-0104-vendor-neutral-ai-backend.md), [BE-0163](../BE-0163-ant-cli-oauth-provider/BE-0163-ant-cli-oauth-provider.md), [BE-0125](../BE-0125-authoring-agent-tool-restriction/BE-0125-authoring-agent-tool-restriction.md) |
 <!-- /BE-METADATA -->
