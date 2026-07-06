@@ -325,7 +325,7 @@ docker run -d --rm \
 ```
 
 プールが backend の capability でルーティングするようになれば、web ワーカーは **web** ジョブだけを、Mac の idb
-ワーカーは **idb** ジョブだけをリースします（[BE-0166](../../roadmaps/BE-0166-capability-routed-queues/BE-0166-capability-routed-queues.md)
+ワーカーは **idb** ジョブだけをリースします（[BE-0166](../../roadmaps/BE-0166-capability-routed-queues/BE-0166-capability-routed-queues-ja.md)
 で追跡）。それまでは、プールは backend ごとに同一構成へ保ってください。
 
 ### オブジェクトストレージへの証跡アップロード（任意、BE-0110）
