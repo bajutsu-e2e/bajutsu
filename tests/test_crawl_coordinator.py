@@ -34,6 +34,22 @@ def test_publish_registers_node_and_returns_its_frontier() -> None:
     assert [act.target for act in frontier] == ["x"]
 
 
+def test_publish_records_the_replayable_path_to_the_screen() -> None:
+    # The path to reach a screen is set before publish; publish persists it into the map so the
+    # discovered screen carries a committable candidate flow (BE-0038).
+    coord = _coord()
+    coord.path_to["a"] = [Action(kind="tap", target="login")]
+    coord.publish(_node("a"), [])
+    assert coord.screen_map.paths["a"] == (Action(kind="tap", target="login"),)
+
+
+def test_publish_records_an_empty_path_for_the_entry_screen() -> None:
+    coord = _coord()
+    coord.path_to["entry"] = []
+    coord.publish(_node("entry"), [])
+    assert coord.screen_map.paths["entry"] == ()
+
+
 def test_publish_prunes_a_global_control_already_claimed_elsewhere() -> None:
     coord = _coord(prune_global=True)
     coord.path_to["a"] = []

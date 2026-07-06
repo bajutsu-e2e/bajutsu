@@ -558,10 +558,22 @@ def test_screenmap_dict_round_trips_nodes_edges_crashes() -> None:
         d.screen = list(home)
 
     data = crawl.screenmap_dict(crawl.crawl(driver, reset))
-    assert set(data) == {"nodes", "edges", "crashes", "alerts", "plan", "pruned", "stop_reason"}
+    assert set(data) == {
+        "nodes",
+        "edges",
+        "crashes",
+        "alerts",
+        "plan",
+        "paths",
+        "pruned",
+        "stop_reason",
+    }
     assert isinstance(data["nodes"], list) and data["nodes"]
     assert all({"fingerprint", "kind", "ids", "actions"} <= set(n) for n in data["nodes"])
     assert all({"src", "action", "dst", "alert"} == set(e) for e in data["edges"])
+    # Every discovered screen carries the replayable path that reached it (empty for the entry).
+    assert isinstance(data["paths"], dict)
+    assert set(data["paths"]) == {n["fingerprint"] for n in data["nodes"]}
     # A fully explored app has no pending operations left, so the plan is empty.
     assert data["plan"] == {}
     assert data["stop_reason"] == "completed"  # the small app is fully explored

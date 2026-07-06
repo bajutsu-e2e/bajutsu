@@ -7,9 +7,9 @@
 |---|---|
 | Proposal | [BE-0038](BE-0038-autonomous-crawl-exploration.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **In progress** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0038") |
-| Implementing PR | [#80](https://github.com/bajutsu-e2e/bajutsu/pull/80), [#307](https://github.com/bajutsu-e2e/bajutsu/pull/307), [#319](https://github.com/bajutsu-e2e/bajutsu/pull/319) |
+| Implementing PR | [#80](https://github.com/bajutsu-e2e/bajutsu/pull/80), [#83](https://github.com/bajutsu-e2e/bajutsu/pull/83), [#307](https://github.com/bajutsu-e2e/bajutsu/pull/307), [#319](https://github.com/bajutsu-e2e/bajutsu/pull/319), _pending_ |
 | Topic | Candidates from competitive research (MagicPod / Autify) |
 | Origin | Autify VAX |
 <!-- /BE-METADATA -->
@@ -122,10 +122,10 @@ Everything lands under `runs/<runId>/` alongside the existing `manifest.json` ([
 - [x] Live **Crawl** tab in serve.
 - [x] Rendered screen-map graph — a self-contained `screenmap.html` ([#307](https://github.com/bajutsu-e2e/bajutsu/pull/307)).
 - [x] Automatic crash-repro scenario emission — one `crashes/crash-NNN.yaml` per faithfully reproducible crash ([#319](https://github.com/bajutsu-e2e/bajutsu/pull/319)).
-- [ ] AI-guided text-input supply for form-heavy flows.
-- [ ] Candidate-scenario proposals per discovered flow.
+- [x] AI-guided text-input supply for form-heavy flows — the crawl guide proposes realistic `type` values and compound `fill` (several fields at once, so a submit stays valid) ([#83](https://github.com/bajutsu-e2e/bajutsu/pull/83)).
+- [x] Candidate-scenario proposals per discovered flow — one `flows/flow-NNN.yaml` draft per faithfully reachable screen, built from the replayable path the crawl recorded to it, for a user to promote into a Tier-2 test (_pending_).
 
-Shipped across [#80](https://github.com/bajutsu-e2e/bajutsu/pull/80) / [#307](https://github.com/bajutsu-e2e/bajutsu/pull/307) / [#319](https://github.com/bajutsu-e2e/bajutsu/pull/319); the two AI-assisted authoring slices remain.
+Shipped across [#80](https://github.com/bajutsu-e2e/bajutsu/pull/80) / [#83](https://github.com/bajutsu-e2e/bajutsu/pull/83) / [#307](https://github.com/bajutsu-e2e/bajutsu/pull/307) / [#319](https://github.com/bajutsu-e2e/bajutsu/pull/319) and the candidate-flow slice (_pending_): the crawl now emits both crash repros and candidate flow scenarios, completing the item.
 
 ## References
 

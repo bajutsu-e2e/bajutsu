@@ -5,6 +5,9 @@ runnable `Scenario` — a pure, deterministic, model-free function of the `Scree
 LLM, never a verdict. The emitted scenario is something `run` can replay to reproduce the crash, so
 a discovered crash becomes a regression test rather than a one-off observation.
 
+`scenario_from_actions` is the shared crawl-path → scenario converter: crash repros build on it
+here, and candidate flows (`crawl_flows.py`) reuse the same faithful conversion.
+
 A path that taps a normalized coordinate (`tap_point`) has no selector to address, so it cannot be
 faithfully replayed; such a path emits no scenario rather than a lossy one (the prime directive:
 faithful or nothing).
@@ -12,6 +15,7 @@ faithful or nothing).
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from pathlib import Path
 
 from bajutsu.crawl import Action, Crash, ScreenMap
@@ -52,15 +56,15 @@ def _steps(action: Action) -> list[Step] | None:
     return None
 
 
-def crash_scenario(crash: Crash, name: str) -> Scenario | None:
-    """Build a runnable repro scenario from a crash's recorded action path.
+def scenario_from_actions(actions: Sequence[Action], name: str) -> Scenario | None:
+    """Build a runnable scenario from a recorded crawl action path.
 
-    Returns None when the path is empty or contains an action with no faithful scenario form (a
-    `tap_point`): a partial replay wouldn't reach the crash, so no scenario is better than a lossy
-    one.
+    The shared converter behind both crash repros and candidate flows. Returns None when the path is
+    empty or contains an action with no faithful scenario form (a `tap_point`): a partial replay
+    wouldn't reach the target screen, so no scenario is better than a lossy one.
     """
     steps: list[Step] = []
-    for action in crash.actions:
+    for action in actions:
         produced = _steps(action)
         if produced is None:
             return None
@@ -68,6 +72,14 @@ def crash_scenario(crash: Crash, name: str) -> Scenario | None:
     if not steps:
         return None
     return Scenario(name=name, steps=steps)
+
+
+def crash_scenario(crash: Crash, name: str) -> Scenario | None:
+    """Build a runnable repro scenario from a crash's recorded action path.
+
+    A thin wrapper over `scenario_from_actions`; None when the crash path has no faithful form.
+    """
+    return scenario_from_actions(crash.actions, name)
 
 
 def write_repros(out_dir: Path, screen_map: ScreenMap) -> list[Path]:
