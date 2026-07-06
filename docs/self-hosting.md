@@ -37,9 +37,13 @@ backend runs a headless browser and needs none of them — it can serve from any
 
 > **First install the backend's runtime dependencies into the venv the agent will use.** The agent
 > runs `python -m bajutsu serve` directly, so — unlike `make serve` — it does **not** install them
-> on demand. For the iOS Simulator (idb) backend: `make deps` (the `idb` client + `idb_companion` +
-> xcodegen). For the web (Playwright) backend: `uv sync --extra web && playwright install chromium`.
-> Skipping it makes runs fail at dispatch with `no available actuator`.
+> on demand. Install the backend's **runtime closure** — the single extra that names everything a run
+> reaches, including the `visual` (screenshot) and `schema` (`responseSchema`) assertion deps
+> (BE-0173): for the web (Playwright) backend, `uv sync --extra worker-web && playwright install
+> chromium`; for the iOS Simulator (idb) backend, `make deps` (the `idb` client + `idb_companion` +
+> xcodegen) then `uv sync --extra worker-idb`. Installing the backend extra alone (`web` / `idb`)
+> under-installs — such a run fails lazily at assertion time — and skipping it entirely makes runs
+> fail at dispatch with `no available actuator`.
 
 `bajutsu serve --emit-launchagent` prints a launchd plist matching the serve flags you pass, then
 exits without starting a server. Pick a strong token and write the plist into your LaunchAgents:
@@ -176,15 +180,24 @@ user in one default org) and supports **multiple orgs** once you declare them in
            │  HTTPS (Tailscale tailnet, or Caddy at a hostname)
            ▼
    ┌───────────────────────────────────────┐  jobs  ┌──────────────────────────┐
-   │  Linux node — docker compose          │ ─────▶ │  Mac worker × N          │
-   │  bajutsu serve --asgi --backend=server│  HTTP  │  bajutsu worker          │
+   │  Linux node — docker compose          │ ─────▶ │  Mac worker × N (bare)   │
+   │  bajutsu serve --asgi --backend=server│  HTTP  │  bajutsu worker (idb)    │
    │  postgres · minio                     │ ◀───── │  bajutsu run · Simulator │
-   └───────────────────────────────────────┘ result └──────────────────────────┘
-                       └──────────── Tailscale tailnet ──────┘
+   │  [+ Linux web worker container(s)]    │ result └──────────────────────────┘
+   └───────────────────────────────────────┘        ┌──────────────────────────┐
+                       └───── Tailscale tailnet ────▶│  Linux web worker (web)  │
+                                                     │  bajutsu worker · Chromium│
+                                                     └──────────────────────────┘
 ```
 
 The Linux control plane is cheap; the **Mac workers** carry the Simulator runs and are the scarce
-part. The worker is **not** containerized — it needs the Aqua GUI session, exactly like Tier A.
+part. The fleet is **heterogeneous by backend**: a Mac idb worker runs **bare metal** because it needs
+the Aqua GUI session for the iOS Simulator (exactly like Tier A), while a **Linux web (Playwright)
+worker runs headless in a container** (BE-0173) — the web backend has no GUI-session constraint. Both
+lease from the same control plane over HTTP; the web-worker container needs **no cloud SDK or
+object-store secrets** (BE-0160), only the control-plane URL and a token. Running a mixed fleet is
+optional — an idb-only deploy is the default and unchanged; add web workers when you host web runs
+([§ Add a Linux web worker](#5-add-a-linux-web-worker-container-optional)).
 
 **Config sources are deployment-aware (BE-0108).** The "Open config" dialog binds the active config
 from up to three sources: a **Git repository**, an **uploaded `.zip` bundle**, and a **file browser
@@ -251,8 +264,9 @@ key cannot decrypt values written under the old one, so re-enter each secret aft
 
 ### 3. Run a Mac worker
 
-On each Mac (the same Aqua-session setup as Tier A — auto-login, `caffeinate`/`pmset`), install
-`bajutsu[idb]` and point it at the control plane over the tailnet:
+On each Mac (the same Aqua-session setup as Tier A — auto-login, `caffeinate`/`pmset`), install the
+idb worker's runtime closure `bajutsu[worker-idb]` (the `idb` backend plus the `visual` / `schema`
+assertion deps a run reaches, BE-0173) and point it at the control plane over the tailnet:
 
 ```bash
 export BAJUTSU_SERVER_URL=http://<linux-node>.<tailnet>.ts.net:8765
@@ -280,6 +294,47 @@ Front the control plane like Tier A: `tailscale serve --bg 8765` (tailnet-only, 
 Caddy for a real hostname (`docker compose --profile caddy up -d`, with `BAJUTSU_PUBLIC_HOST` set).
 The worker reaches the control plane (`:8765`) and MinIO (`:9000`) over the tailnet, so keep the
 node on the private tailnet.
+
+### 5. Add a Linux web worker container (optional)
+
+The web (Playwright) backend runs headless on Linux, so its worker is a **container** rather than a
+bare-metal Mac (BE-0173). The compose stack ships an optional `worker-web` service, **off by default**
+(behind a profile), so an idb-only deploy is unchanged. Enable it — on the Linux node or any other
+Docker host that can reach the control plane — with:
+
+```bash
+cd deploy/self-host
+# BAJUTSU_SERVE_TOKEN must be set in .env — the web worker reuses it as its operator token
+docker compose --profile web-worker up -d --build
+```
+
+The service builds [`worker-web.Dockerfile`](../deploy/self-host/worker-web.Dockerfile), a multi-stage
+image that installs only the worker's runtime closure (`bajutsu[worker-web]` = the `web` backend +
+`visual` + `schema`) and the headless Chromium the browser needs. It deliberately omits the control
+plane's stack (`server` / `db` / `oauth`), the cloud SDKs, and the AI SDK — the worker talks to the
+control plane and object store over plain HTTP and, per BE-0160, holds **no object-store credentials**
+(it needs only `BAJUTSU_SERVER_URL` and `BAJUTSU_TOKEN`). To keep the image small it installs
+Chromium's **headless shell** (`playwright install --with-deps --only-shell chromium`) instead of the
+full headed build: the shell is what Playwright already uses for headless runs, so nothing in a run
+changes, and it saves tens of MB of browser plus a lighter system-library set. A Linux worker is
+always headless, so the headed-only features the shell drops don't apply. The image installs only the
+**Chromium** shell, so it serves Chromium web runs (the default engine); a scenario pinned to Firefox
+or WebKit (BE-0076) needs a worker with those browsers, not this slim image.
+
+To run a web worker outside compose (e.g. a separate Linux box), build and run the image directly:
+
+```bash
+docker build -f deploy/self-host/worker-web.Dockerfile -t bajutsu-worker-web .
+docker run -d --rm \
+  -e BAJUTSU_SERVER_URL=http://<linux-node>.<tailnet>.ts.net:8765 \
+  -e BAJUTSU_TOKEN=… \
+  bajutsu-worker-web
+```
+
+A web worker leases only **web** jobs and a Mac idb worker only **idb** jobs once the pool routes by
+backend capability (tracked in
+[BE-0166](../roadmaps/BE-0166-capability-routed-queues/BE-0166-capability-routed-queues.md)); until
+then, keep the pool homogeneous per backend.
 
 ### Evidence upload to object storage (optional, BE-0110)
 

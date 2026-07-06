@@ -63,6 +63,52 @@ def test_default_serve_and_cli_import_no_server_deps() -> None:
     )
 
 
+def test_worker_command_path_stays_lean() -> None:
+    """Importing the `worker` command path must not pull in the control plane / cloud / AI stacks.
+
+    A slim web-worker container (BE-0173) carries only the worker's true runtime closure
+    (`bajutsu[worker-web]` — the `web` backend + `visual` + `schema`); its weight above the Chromium
+    binary is exactly the deps it imports. This locks that a stray top-level import in the worker
+    entry — or anything it reaches (`bajutsu.serve.server.worker_job`) — can never silently
+    re-inflate the image or slow the worker's cold start by dragging in `fastapi`/`uvicorn`,
+    `sqlalchemy`, `boto3`/GCS, or `anthropic`. The worker talks to the control plane and object store
+    over plain HTTP (BE-0106/BE-0160), so none of those belong on its import closure.
+    """
+    forbidden = sorted(
+        {
+            "fastapi",
+            "uvicorn",
+            "starlette",
+            "sqlalchemy",
+            "alembic",
+            "psycopg",
+            "boto3",
+            "botocore",
+            "google",  # google-cloud-storage
+            "anthropic",
+            "redis",
+            "rq",
+        }
+    )
+    code = (
+        "import sys\n"
+        "import bajutsu.cli.commands.worker\n"
+        f"forbidden = set({forbidden!r})\n"
+        "leaked = sorted(m for m in sys.modules if m.split('.')[0] in forbidden)\n"
+        "sys.stdout.write(','.join(leaked))\n"
+        "sys.exit(1 if leaked else 0)\n"
+    )
+    result = _run_in_child(code)
+    assert result.returncode == 0, (
+        "importing the worker command path pulled in a dep outside the worker runtime closure "
+        f"(exit {result.returncode}).\n"
+        f"leaked deps: {result.stdout.strip() or '(none)'}\n"
+        f"stderr: {result.stderr.strip() or '(none)'}\n"
+        "Keep the control-plane / cloud / AI imports lazy so `bajutsu[worker-web]` stays slim "
+        "(BE-0173): the worker reaches the control plane and object store over HTTP, not an SDK."
+    )
+
+
 def test_default_path_does_not_import_anthropic() -> None:
     """The AI SDK (`anthropic`, BE-0111) must stay off the default path.
 
