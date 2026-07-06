@@ -458,15 +458,34 @@ async function loadGenerated(path){
       $('#rec-yamlinfo').textContent=path.split('/').pop();}
   }catch(e){}
 }
-// Run the just-authored scenario in place, without switching to Replay. Persist the current YAML
-// first (so edits in the box are what runs), then start a normal run against the same target and
-// stream it + the report right here.
+// The scenarios-dir ref to save+run the current YAML to: the recorded path when we have one, else a
+// name from the "Save as" field (default generated.yaml) — so hand-pasted/edited YAML is runnable too.
+function recRunRef(){
+  if(recPath)return recPath;
+  let name=$('#rec-name').value.trim()||'generated.yaml';
+  if(!/\.ya?ml$/i.test(name))name+='.yaml';
+  return name;
+}
+// Enable Save / Run whenever the Generated-scenario box holds YAML to save or run (idle only — a
+// record or run in progress owns the buttons' disabled state).
+function syncRecActions(){
+  if(recPoll||recRunPoll)return;
+  const has=!!$('#rec-yaml').value.trim();
+  $('#rec-save').disabled=!has;$('#rec-run').disabled=!has;
+}
+$('#rec-yaml').addEventListener('input',syncRecActions);
+// Run the current scenario in place, without switching to Replay. Persist the YAML first (creating
+// the file for hand-pasted YAML; a parse error means it isn't runnable, so it's surfaced and Run
+// stops), then start a normal run against the same target and stream it + the report right here.
 $('#rec-run').addEventListener('click',async()=>{
-  if(!recPath)return;
+  const yaml=$('#rec-yaml').value;
+  if(!yaml.trim())return;
   if(recRunPoll)recRunPoll.close();
   const target=$('#rec-target').value;
-  await fetch('/api/scenario',{method:'POST',headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({target,path:recPath,yaml:$('#rec-yaml').value})}).catch(()=>{});
+  let sd;try{sd=await (await fetch('/api/scenario',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({target,path:recRunRef(),yaml})})).json()}catch(e){sd={error:'request failed'}}
+  if(sd.error){setStatus($('#rec-status'),sd.error,'ng');return}
+  recPath=sd.path;$('#rec-yamlinfo').textContent=recPath.split('/').pop();loadScenarios();
   setBusy($('#rec-run'),$('#rec-runstop'),true,'Running…');
   $('#rec-runout').textContent='';$('#rec-report').innerHTML='';
   setStatus($('#rec-runstatus'),'','run');
@@ -491,14 +510,14 @@ function recRunDone(j){
   if(j.runId)setReport(j.runId,j.ok,'#rec-report');
 }
 $('#rec-save').addEventListener('click',async()=>{
-  if(!recPath)return;
+  if(!$('#rec-yaml').value.trim())return;
   $('#rec-save').disabled=true;$('#rec-save').textContent='Saving…';
   const r=await fetch('/api/scenario',{method:'POST',headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({target:$('#rec-target').value,path:recPath,yaml:$('#rec-yaml').value})});
+    body:JSON.stringify({target:$('#rec-target').value,path:recRunRef(),yaml:$('#rec-yaml').value})});
   const d=await r.json();
   $('#rec-save').textContent='Save';$('#rec-save').disabled=false;
   if(d.error){setStatus($('#rec-status'),d.error,'ng')}
-  else{setStatus($('#rec-status'),'saved ✓','ok');loadScenarios()}
+  else{recPath=d.path;$('#rec-yamlinfo').textContent=recPath.split('/').pop();setStatus($('#rec-status'),'saved ✓','ok');loadScenarios()}
 });
 
 // ---- Replay: scenario info, run, history ----
