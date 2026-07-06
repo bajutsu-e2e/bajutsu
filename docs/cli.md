@@ -310,8 +310,9 @@ bajutsu triage [<run-dir>] --ai --apply <scenario-file> [--write] \
   the diagnosis. The rule-based default uses no AI, so it prints nothing.
 - `--json <path>` also writes the diagnosis as JSON (category, summary, suggestions, and the
   structured fix); combined with `--apply`, it includes the fix's unified diff and patched text.
-  This is a dry-run write of the JSON only — it never edits the scenario source. The `serve` Web UI
-  uses it to surface triage in the browser (BE-0147).
+  `--json` itself only writes that JSON file and never touches the scenario source — patching the
+  source still requires `--write` (as it always has). The `serve` Web UI uses `--json` to surface
+  triage in the browser (BE-0147).
 
 ## `record`
 

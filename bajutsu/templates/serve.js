@@ -521,10 +521,15 @@ async function applyTriage(target,scenario,d,rerun){
     body:JSON.stringify({target,path:scenario,yaml:d.apply.patched})})}catch(e){r=null}
   const j=r&&r.ok?await r.json():{error:r?('HTTP '+r.status):'request failed'};
   if(!r||!r.ok||j.error){apply.disabled=false;applyrun.disabled=false;setStatus(st,j.error||'apply failed','ng');return}
-  setStatus(st,'applied ✓','ok');loadScenarios();
-  // Re-run the diagnosed scenario to confirm the fix — realign the Run-tab selectors first so the
-  // re-run targets the file we just patched, not whatever is currently picked.
-  if(rerun){$('#target').value=target;$('#scn').value=scenario;$('#go').click();}
+  setStatus(st,'applied ✓','ok');
+  if(!rerun)return;
+  // Re-run the diagnosed scenario to confirm the fix. Realign the Run-tab selectors to the file we
+  // patched: setting .value fires no `change` event, so load that target's scenarios explicitly and
+  // await it (no racing rebuild) before selecting the scenario and running.
+  $('#target').value=target;
+  await loadScenarios();
+  $('#scn').value=scenario;
+  $('#go').click();
 }
 async function loadStats(){
   const host=$('#stats-host');
