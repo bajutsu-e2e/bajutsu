@@ -98,9 +98,12 @@ bind するので、起動したら表示された URL（既定は `http://127.0
 - **Amazon Bedrock**：AWS 経由の Claude です。標準の AWS 認証情報で認証し、**AWS region** と
   **Bedrock model id** の欄が加わります（Bedrock の id はプロバイダ接頭辞を持ちます。例
   `global.anthropic.…`。素の Anthropic id とは異なります）。
-- **Claude Code**：ローカルの `claude` CLI で、Pro/Max のサブスクリプションを使います（テキストのみの
-  オーサリング）。`serve` を起動した環境にインストールし、認証（`claude setup-token`）しておく必要が
-  あります。
+- **Anthropic CLI（ant）**：公式の Anthropic CLI が持つ OAuth/SSO サインインを通じて、Pro/Max/Console
+  のシートで Claude を使います。API キーは不要で、どのパスでも画像入力（スクリーンショット）が使えます。
+  `serve` を起動した環境に CLI をインストールしておくと、**Sign in with SSO** ボタンがブラウザでの
+  サインインを開始します（その環境で `ant auth login` を実行するのと同じです）。ボタンは `serve` が動く
+  マシンでブラウザを開くので、ローカルの `make serve` で使えます。ホスト型のデプロイではサーバがこの要求を
+  拒否し（403）、運用者が別途ホスト側でサインインします。
 
 **Claude API key** は **write-once** です。キーを入力して **Save** すると、以後はマスクした表示だけになり、
 内容が再表示されることはありません。変更するには新しいキーを設定します。**Clear** で削除します。これは

@@ -193,6 +193,8 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
                     self._json(*ops.api_key_info(state, self._actor()))
                 case "/api/provider":
                     self._json(*ops.provider_info(state))
+                case "/api/ant/login":
+                    self._json(*ops.ant_login_status(state))
                 case "/api/simulators":
                     self._json(*ops.simulators_payload(state))
                 case "/api/runs":
@@ -300,6 +302,8 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
                     )
                 case "/api/provider":
                     self._json(*ops.set_provider(state, body))
+                case "/api/ant/login":
+                    self._json(*ops.ant_login(state))
                 case "/api/run":
                     self._json(*ops.start_run(state, body, actor=self._actor()))
                 case "/api/record":

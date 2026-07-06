@@ -446,7 +446,12 @@
         <option value="ant">Anthropic CLI (ant, OAuth sign-in)</option>
       </select>
       <div id="antfields" hidden>
-        <div class="fshint">Every AI path (<b>Record</b>, <b>Crawl</b>, and the <b>alert guard</b>) reaches Claude through the official Anthropic CLI (<code>ant</code>) on your Pro/Max/Console seat instead of an API key. Install <code>ant</code> and sign in with <code>ant auth login</code> (a browser-based OAuth/SSO flow against the Claude Console) in the environment that launched <code>serve</code>; <code>ANTHROPIC_PROFILE</code> selects a named profile. No API key is needed &mdash; the CLI's bearer token authenticates every request, with full vision (screenshots) on every path.</div>
+        <div class="fshint">Every AI path (<b>Record</b>, <b>Crawl</b>, and the <b>alert guard</b>) reaches Claude through the official Anthropic CLI (<code>ant</code>) on your Pro/Max/Console seat instead of an API key. No API key is needed &mdash; the CLI's bearer token authenticates every request, with full vision (screenshots) on every path. <code>ANTHROPIC_PROFILE</code> selects a named profile.</div>
+        <div class="keyactions">
+          <button class="cfgbtn" id="ant-login" data-testid="settings.ant-login" hidden>Sign in with SSO</button>
+          <span class="keystatus" id="ant-login-status" data-testid="settings.ant-login-status"></span>
+        </div>
+        <div class="fshint">Opens a browser sign-in (OAuth/SSO against the Claude Console) on the machine running <code>serve</code>, so this works with a local <code>make serve</code>. You can also sign in from a terminal with <code>ant auth login</code>.</div>
       </div>
       <div id="bedrockfields" data-testid="settings.bedrock-fields" hidden>
         <label class="keylabel" for="bedrock-region">AWS region</label>

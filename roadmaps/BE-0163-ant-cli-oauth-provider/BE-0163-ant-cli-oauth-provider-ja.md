@@ -11,7 +11,7 @@
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0163") |
 | 実装 PR | [#689](https://github.com/bajutsu-e2e/bajutsu/pull/689) |
 | トピック | AI provider configuration |
-| 関連 | [BE-0125](../BE-0125-authoring-agent-tool-restriction/BE-0125-authoring-agent-tool-restriction-ja.md) |
+| 関連 | [BE-0125](../BE-0125-authoring-agent-tool-restriction/BE-0125-authoring-agent-tool-restriction-ja.md), [BE-0175](../BE-0175-serve-web-ui-ant-sso-login/BE-0175-serve-web-ui-ant-sso-login-ja.md) |
 <!-- /BE-METADATA -->
 
 ## はじめに
