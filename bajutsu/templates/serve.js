@@ -431,7 +431,7 @@ $('#rec-go').addEventListener('click',async()=>{
   // Clear any prior in-place run so its report/log/status don't linger over a fresh authoring.
   if(recRunPoll)recRunPoll.close();
   $('#rec-run').disabled=true;$('#rec-report').innerHTML='';
-  $('#rec-runout').hidden=true;$('#rec-runout').textContent='';setStatus($('#rec-runstatus'),'','');
+  $('#rec-runout').textContent='';setStatus($('#rec-runstatus'),'','');$('#rec-runmodal').hidden=true;
   setStatus($('#rec-status'),'','run');
   const r=await fetch('/api/record',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
     goal,target:$('#rec-target').value,
@@ -468,8 +468,9 @@ $('#rec-run').addEventListener('click',async()=>{
   await fetch('/api/scenario',{method:'POST',headers:{'Content-Type':'application/json'},
     body:JSON.stringify({target,path:recPath,yaml:$('#rec-yaml').value})}).catch(()=>{});
   setBusy($('#rec-run'),$('#rec-runstop'),true,'Running…');
-  $('#rec-runout').hidden=false;$('#rec-runout').textContent='';$('#rec-report').innerHTML='';
+  $('#rec-runout').textContent='';$('#rec-report').innerHTML='';
   setStatus($('#rec-runstatus'),'','run');
+  $('#rec-runmodal').hidden=false;  // show the run result in its own dismissable panel
   const r=await fetch('/api/run',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
     scenario:recPath,target,udid:$('#rec-device').value||'booted',
     erase:$('#rec-erase').checked||undefined,dismissAlerts:$('#rec-nodismiss').checked?false:undefined})});
@@ -479,6 +480,10 @@ $('#rec-run').addEventListener('click',async()=>{
   recRunPoll=streamJob(jobId,line=>appendLine($('#rec-runout'),line),recRunDone);
 });
 $('#rec-runstop').addEventListener('click',()=>cancelJob(recRunJobId,$('#rec-runstop')));
+// Dismiss the run-result panel (X or scrim). A run in progress keeps going — Stop lives on the
+// Record panel — so the panel can be closed and reappears when Run is pressed again.
+$('#rec-runclose').addEventListener('click',()=>{$('#rec-runmodal').hidden=true});
+$('#rec-runmodal').addEventListener('click',e=>{if(e.target===$('#rec-runmodal'))$('#rec-runmodal').hidden=true});
 function recRunDone(j){
   recRunPoll=null;recRunJobId=null;setBusy($('#rec-run'),$('#rec-runstop'),false);
   if(j.cancelled){setStatus($('#rec-runstatus'),'cancelled','ng');return}

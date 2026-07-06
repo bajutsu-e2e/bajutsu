@@ -342,6 +342,8 @@ header .cfgname{color:var(--mut);font-size:.82em;max-width:32vw;overflow:hidden;
 .modal{position:fixed;inset:0;z-index:50;background:var(--scrim);display:flex;align-items:center;justify-content:center}
 .modal[hidden]{display:none}
 .fsbox{width:min(560px,92vw);max-height:80vh;display:flex;flex-direction:column;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:1rem;overflow-y:auto}
+/* The Record run-result panel holds a full run report, so it needs more room than a settings box. */
+#rec-runmodal .fsbox{width:min(960px,94vw);max-height:88vh}
 .fshead{display:flex;align-items:center;margin-bottom:.6rem}.fshead .ttl{font-weight:700}
 .fshead .fsclose{margin-left:auto;background:none;border:0;color:var(--mut);font-size:1.1em;cursor:pointer}
 .fspath{color:var(--mut);font-size:.82em;margin-bottom:.4rem;word-break:break-all}
