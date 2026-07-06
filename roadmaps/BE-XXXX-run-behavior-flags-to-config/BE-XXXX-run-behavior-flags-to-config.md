@@ -82,8 +82,17 @@ on the `run`/CI verdict path.
    `bajutsu run`; delete the run-wide override helpers `_apply_dismiss_alerts` and
    `_apply_erase`; fold the alert instruction into the scenario → target → built-in
    `default_instruction` chain in `_alert_guard_factory`. This is a breaking CLI change.
-4. **serve / flag-mirror.** Remove these flags from serve where it mirrors run flags
-   (BE-0134), so the two surfaces stay in step.
+4. **serve Web UI.** serve builds the run argv through a generic flag-mirror
+   ([`bajutsu/serve/_cli_flags.py`](../../bajutsu/serve/_cli_flags.py)) that introspects the
+   CLI's option metadata, so once the flags are gone it stops emitting them automatically —
+   but the Web UI also has *hand-coded* pieces that must be removed with them. The **Replay /
+   Record / Crawl** tabs carry checkboxes for erase (`#erasedev`) and dismiss-alerts
+   (`#nodismiss`) in [`bajutsu/templates/serve.html.j2`](../../bajutsu/templates/serve.html.j2)
+   /  [`serve.js`](../../bajutsu/templates/serve.js), and
+   [`bajutsu/serve/operations/dispatch.py`](../../bajutsu/serve/operations/dispatch.py) reads
+   `erase` / `dismissAlerts` / `network` / `alertInstruction` from the request body. Delete
+   these so nothing dangles (`network` / `alertInstruction` have no UI control today). See the
+   Web-UI-control trade-off in *Alternatives considered*.
 5. **Docs & migration note.** Document the new config fields (English + `docs/ja/`) and the
    flag removal, with a flag→config migration mapping (e.g. `--alert-instruction "Allow"` →
    `dismissAlerts: { instruction: "Allow" }` in `targets.<name>`; `--no-erase` → `erase:
@@ -112,6 +121,15 @@ on the `run`/CI verdict path.
 - **Also fold the selection / observation flags** (`--headed`, `--browser`, the directory
   overrides). Out of scope: those are not test behavior — they select what runs or how you
   observe it, and the ones with config counterparts already coexist with config by design.
+- **Keep a per-run behavior toggle in the serve Web UI** (rather than removing the
+  erase / dismiss-alerts checkboxes). Rejected: those checkboxes are exactly the transient
+  per-run toggle this policy argues against, so the Web UI should read behavior from the
+  target config too, not offer its own override. The consequence is real, though — serve
+  opens config *read-only* today, so once the checkboxes are gone a serve user sets erase /
+  dismiss-alerts in the target config the run uses, not in the UI. Making that config editable
+  in the Web UI (to restore in-UI control) belongs to the "Surfacing CLI features in the serve
+  Web UI" topic, not here; this item only removes the now-dead controls. `network` /
+  `alertInstruction` have no Web UI control today, so they lose nothing.
 - **A global `Defaults` field instead of per-target.** Rejected as the primary home: these
   settings are app-specific, so the natural key is the target. A `Defaults` field could be
   added later if a genuine all-apps default emerges.
@@ -125,7 +143,7 @@ on the `run`/CI verdict path.
 - [ ] Add `dismissAlerts`, `erase`, `network` to `TargetConfig` (schema + `dismissAlerts` coercion).
 - [ ] Resolve precedence `scenario > target > default` for each in the run path.
 - [ ] Remove the four flags and `_apply_dismiss_alerts` / `_apply_erase`; fold instruction into the default chain.
-- [ ] Remove the mirrored flags from serve (BE-0134).
+- [ ] serve: delete the erase / dismiss-alerts checkboxes (Replay/Record/Crawl) and the request-body reads in `dispatch.py`; the flag-mirror drops the argv automatically (BE-0134).
 - [ ] Document the config fields + flag removal with a migration mapping (English + Japanese); update DESIGN.md / architecture.md if affected.
 - [ ] Tests for parsing and precedence; drop/retarget the CLI-flag tests.
 
@@ -138,5 +156,9 @@ on the `run`/CI verdict path.
 - Config model: [`bajutsu/config.py`](../../bajutsu/config.py) (`TargetConfig`, `Defaults`).
 - Flag/config precedent: [`bajutsu/cli/_shared.py`](../../bajutsu/cli/_shared.py)
   (`_with_headed`, over `TargetConfig.headless`) — the pattern kept for observation flags.
+- serve surfacing: [`bajutsu/serve/_cli_flags.py`](../../bajutsu/serve/_cli_flags.py) (generic
+  flag-mirror), [`bajutsu/serve/operations/dispatch.py`](../../bajutsu/serve/operations/dispatch.py)
+  (request-body reads), [`bajutsu/templates/serve.html.j2`](../../bajutsu/templates/serve.html.j2)
+  / [`serve.js`](../../bajutsu/templates/serve.js) (the erase / dismiss-alerts checkboxes).
 - Related: BE-0134 (serve ↔ CLI flag-mirror drift), BE-0047 (AI data sovereignty /
   redaction), BE-0104 / BE-0053 (vendor-neutral AI provider).
