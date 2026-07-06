@@ -1,10 +1,21 @@
 #!/usr/bin/env python3
-"""Keep an open roadmap item's PR labeled with a ``topic:<key>`` label matching its ``Topic`` (BE-0156).
+"""Label every PR with the ``topic:<key>`` labels its diff calls for (BE-0156).
 
 The roadmap groups every item under one of the canonical topics in ``build_roadmap_index``'s
 ``TOPICS`` tuple, but that grouping is invisible on the GitHub PR list where reviewers triage. A
 ``topic:<key>`` label surfaces it there — for a brand new item, and for a ``Topic`` edit on an
 already-numbered item.
+
+Two independent sources contribute to a PR's desired ``topic:*`` set, so the label taxonomy is one
+shared family rather than a roadmap-only scheme with a rival "area" scheme beside it:
+
+* **Roadmap items** — an in-scope item file added or re-``Topic``'d contributes its item's topic
+  (the original BE-0156 behavior, below).
+* **Paths** — a changed file under a mapped tree contributes that tree's topic (``PATH_TOPIC_*``),
+  so a PR that never touches ``roadmaps/**`` still gets an at-a-glance area label. This is why the
+  reconcile must own the whole ``topic:*`` family: two workflows both writing ``topic:*`` would
+  fight (one adding what the other reconciles away), so path labels live *here*, inside the single
+  reconciling pass, not in a second labeler.
 
 Labeling is **reconciling, not a diff replay.** GitHub's ``pulls/{pr}/files`` is the PR's whole
 base→head diff, so from it the *desired* topic-label set for the PR is a pure function of the
@@ -63,6 +74,46 @@ LABEL_PREFIX = "topic:"
 # on an in-scope item, so they contribute nothing.
 EDIT_STATUSES = frozenset({"modified", "renamed", "changed"})
 
+# Path -> canonical topic key. A changed file under one of these trees contributes that ``topic:<key>``
+# to the PR, independent of any roadmap item — so a code/CI/docs-only PR still lands an at-a-glance
+# area label. Keys must be real topic keys from ``TOPICS`` (validated below), so a rename there fails
+# loudly here instead of silently emitting a label no reconcile step recognizes. Every matching rule
+# contributes: a ``BajutsuKit/…/*.swift`` file matches both the ``BajutsuKit/`` prefix and the
+# ``.swift`` suffix rule (both ``on-device``, deduped to one label), and a PR touching several trees
+# carries several ``topic:*`` labels. Trees the roadmap taxonomy has no topic for (docs, dependency
+# lockfiles) are intentionally unmapped — they simply take no topic label.
+PATH_TOPIC_PREFIX_RULES: tuple[tuple[str, str], ...] = (
+    ("bajutsu/mcp/", "mcp"),
+    ("bajutsu/serve/", "serve-cli-features"),
+    ("bajutsu/drivers/", "backend"),
+    ("bajutsu/ai/", "ai-provider"),
+    ("BajutsuKit/", "on-device"),
+    ("assets/", "serve-cli-features"),
+    ("overrides/", "serve-cli-features"),
+    ("deploy/", "hosting"),
+    ("demos/", "dogfood"),
+    (".github/", "dev-infra"),
+    (".githooks/", "dev-infra"),
+    ("scripts/", "dev-infra"),
+)
+# Whole-path (exact) rules, for tracked top-level files that aren't a tree.
+PATH_TOPIC_EXACT_RULES: tuple[tuple[str, str], ...] = (("Makefile", "dev-infra"),)
+# File-suffix rules, same contribution model — Swift sources are the on-device test-support surface
+# wherever they live.
+PATH_TOPIC_SUFFIX_RULES: tuple[tuple[str, str], ...] = ((".swift", "on-device"),)
+
+# Fail fast at import if a path rule names a topic key that ``TOPICS`` no longer defines: the label
+# it would emit could never be reconciled against a roadmap item's, so catch the drift here. A plain
+# ``raise`` rather than ``assert`` — the guard must hold even under ``python -O`` (which strips asserts).
+_PATH_RULE_KEYS = {
+    key for _, key in (*PATH_TOPIC_PREFIX_RULES, *PATH_TOPIC_EXACT_RULES, *PATH_TOPIC_SUFFIX_RULES)
+}
+_UNKNOWN_RULE_KEYS = _PATH_RULE_KEYS - set(TOPIC_KEY_BY_NAME.values())
+if _UNKNOWN_RULE_KEYS:
+    raise ValueError(
+        f"PATH_TOPIC_* rules reference topic keys not in TOPICS: {sorted(_UNKNOWN_RULE_KEYS)}"
+    )
+
 
 @dataclass(frozen=True)
 class ChangedFile:
@@ -111,6 +162,19 @@ def label_for_topic(topic: str) -> str | None:
     return f"{LABEL_PREFIX}{key}" if key else None
 
 
+def path_topic_labels(filename: str) -> set[str]:
+    """The ``topic:*`` labels a changed file's path contributes, via the ``PATH_TOPIC_*`` rules.
+
+    Every matching rule contributes, so one file can yield several labels (and the whole PR their
+    union). A path under no mapped tree yields the empty set — it simply gets no path-based topic.
+    Status-agnostic: an added, modified, or deleted file under a mapped tree is all an area change.
+    """
+    keys = {key for prefix, key in PATH_TOPIC_PREFIX_RULES if filename.startswith(prefix)}
+    keys |= {key for exact, key in PATH_TOPIC_EXACT_RULES if filename == exact}
+    keys |= {key for suffix, key in PATH_TOPIC_SUFFIX_RULES if filename.endswith(suffix)}
+    return {f"{LABEL_PREFIX}{key}" for key in keys}
+
+
 def _warn_unknown(topic: str, path: str) -> str:
     return (
         f"::warning file={path}::Topic {topic!r} is not in the canonical topic list; "
@@ -125,11 +189,14 @@ def desired_labels(
 ) -> tuple[set[str], list[str]]:
     """The ``topic:*`` labels the PR *should* carry, given its cumulative base→head diff.
 
-    A label is desired when an in-scope item file is added (its head topic), or is modified/renamed
-    with a head ``Topic`` that differs from the base (its new topic). An edit that leaves ``Topic``
-    unchanged contributes nothing, so a prose-only edit never labels a PR on its own. An item whose
-    head ``Status`` is ``Implemented`` is skipped — a shipped item has no open PR left to triage
-    (BE-0159 made this a Status read rather than an ``implemented/`` folder check).
+    Two sources union into the desired set. **Paths:** any changed file under a mapped tree
+    contributes that tree's topic (:func:`path_topic_labels`), regardless of its change status.
+    **Roadmap items:** a label is desired when an in-scope item file is added (its head topic), or
+    is modified/renamed with a head ``Topic`` that differs from the base (its new topic). An edit
+    that leaves ``Topic`` unchanged contributes no *item* topic, so a prose-only roadmap edit never
+    labels a PR on its own (though its path may still). An item whose head ``Status`` is
+    ``Implemented`` is skipped — a shipped item has no open PR left to triage (BE-0159 made this a
+    Status read rather than an ``implemented/`` folder check).
 
     Returns:
         The desired label set and any ``::warning::`` lines for a head ``Topic`` outside the
@@ -138,6 +205,7 @@ def desired_labels(
     desired: set[str] = set()
     warnings: list[str] = []
     for entry in entries:
+        desired |= path_topic_labels(entry.filename)
         if not is_scoped_item_file(entry.filename):
             continue
         head_text = read_head(entry.filename)
