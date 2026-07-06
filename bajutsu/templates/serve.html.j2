@@ -444,7 +444,11 @@
         <option value="api-key">Anthropic API (uses ANTHROPIC_API_KEY)</option>
         <option value="bedrock">Amazon Bedrock (uses AWS credentials)</option>
         <option value="ant">Anthropic CLI (ant, OAuth sign-in)</option>
+        <option value="claude-code">Claude Code CLI (claude, subscription)</option>
       </select>
+      <div id="claudecodefields" data-testid="settings.claudecode-fields" hidden>
+        <div class="fshint">Every AI path (<b>Record</b>, <b>Crawl</b>, and the <b>alert guard</b>) reaches Claude by shelling out to the <code>claude</code> CLI on your Claude Code Pro/Max/Console subscription, with full vision (screenshots read from disk). No API key is needed &mdash; sign in once with <code>claude setup-token</code> (or an interactive <code>claude</code> login) on the machine running <code>serve</code>. Any <code>ANTHROPIC_API_KEY</code> is ignored for this provider so billing stays on the subscription.</div>
+      </div>
       <div id="antfields" hidden>
         <div class="fshint">Every AI path (<b>Record</b>, <b>Crawl</b>, and the <b>alert guard</b>) reaches Claude through the official Anthropic CLI (<code>ant</code>) on your Pro/Max/Console seat instead of an API key. No API key is needed &mdash; the CLI's bearer token authenticates every request, with full vision (screenshots) on every path. <code>ANTHROPIC_PROFILE</code> selects a named profile.</div>
         <div class="keyactions">

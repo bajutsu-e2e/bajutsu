@@ -235,13 +235,14 @@ async function clearKey(){
 }
 $('#keyclear').addEventListener('click',clearKey);
 
-// ---- AI provider: Anthropic API (Claude API key), Amazon Bedrock (AWS creds), or Anthropic CLI (ant, OAuth) ----
+// ---- AI provider: Anthropic API (Claude API key), Amazon Bedrock (AWS creds), Anthropic CLI (ant, OAuth), or Claude Code CLI (claude, subscription) ----
 // Show only the selected provider's own config block — nothing until one is explicitly picked.
 function renderProv(){
   const v=$('#provider').value;
   $('#apikeysection').hidden=v!=='api-key';        // the Claude API key is the api-key provider's config
   $('#bedrockfields').hidden=v!=='bedrock';        // region + model id
   $('#antfields').hidden=v!=='ant';                // ant CLI prerequisites (OAuth sign-in button)
+  $('#claudecodefields').hidden=v!=='claude-code'; // claude CLI prerequisites (subscription sign-in note)
   if(v==='ant')refreshAntLogin();                  // reflect the CLI's current sign-in state on the button
 }
 // ---- ant CLI SSO sign-in (BE-0175): start `ant auth login` from the Web UI instead of a terminal.

@@ -36,7 +36,13 @@ from bajutsu.ai.base import (
     ToolDef,
     ToolUseBlock,
 )
-from bajutsu.ai.registry import create_backend, credential_gap, known_providers, register
+from bajutsu.ai.registry import (
+    create_backend,
+    credential_gap,
+    known_providers,
+    register,
+    resolved_provider,
+)
 
 __all__ = [
     "AiBackend",
@@ -57,4 +63,5 @@ __all__ = [
     "credential_gap",
     "known_providers",
     "register",
+    "resolved_provider",
 ]

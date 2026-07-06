@@ -112,7 +112,7 @@ deterministic `run` gate still calls no model at all
 ```yaml
 defaults:
   ai:
-    provider: api-key                        # a registered provider name; api-key (default), bedrock, or ant ship today
+    provider: api-key                        # a registered provider name; api-key (default), bedrock, ant, or claude-code ship today
     model:    claude-opus-4-8                 # optional: override the path's default model
     baseUrl:  https://ai-gateway.internal/v1  # optional: a self-hosted gateway / enterprise proxy (anthropic provider)
     keyEnv:   ANTHROPIC_API_KEY               # the NAME of the env var holding the key — never the key itself
@@ -122,10 +122,12 @@ defaults:
   ([BE-0104](../roadmaps/BE-0104-vendor-neutral-ai-backend/BE-0104-vendor-neutral-ai-backend.md)).
   The AI paths reach a model only through a vendor-neutral seam (`bajutsu/ai`), mirroring how a
   platform is a backend behind the `Driver` interface. `provider` is therefore an **open,
-  registry-validated** value, not a fixed set: `api-key`, `bedrock`, and `ant` are the adapters
-  that ship today (all three share one Anthropic adapter — the name states the *auth method*: a
-  direct API key, AWS credentials for Bedrock, or the `ant` CLI's OAuth token, BE-0163; the legacy
-  name `anthropic` still resolves to `api-key`). An unknown name fails closed with a
+  registry-validated** value, not a fixed set: `api-key`, `bedrock`, `ant`, and `claude-code` are the
+  adapters that ship today. The first three share one Anthropic adapter — the name states the *auth
+  method*: a direct API key, AWS credentials for Bedrock, or the `ant` CLI's OAuth token, BE-0163;
+  the legacy name `anthropic` still resolves to `api-key`. `claude-code`
+  ([BE-0176](../roadmaps/BE-0176-claude-code-ai-backend/BE-0176-claude-code-ai-backend.md)) is a
+  separate adapter that shells out to the local `claude` CLI. An unknown name fails closed with a
   clear error the first time an AI path resolves the provider. (The check lives
   in the AI layer, not at config load: the deterministic core must not import the AI provider stack
   ([BE-0112](../roadmaps/BE-0112-layer-boundary-enforcement/BE-0112-layer-boundary-enforcement.md)),
@@ -145,6 +147,18 @@ defaults:
   key), so a Claude Pro/Max/Console seat is billed. `ANTHROPIC_PROFILE` selects a named CLI profile;
   no API key is needed, and every AI path (authoring, the alert guard, `triage --ai`) keeps full
   vision. `ant` is an external binary you install yourself — Bajutsu neither vendors nor installs it.
+- **`claude-code` bills a Claude Code subscription via the local CLI (BE-0176).** The `claude-code`
+  provider shells out to the [`claude` CLI](https://github.com/anthropics/claude-code) (`claude -p`,
+  print mode) instead of the Anthropic SDK, so authoring / investigation draw on the Claude Code
+  Pro / Max / Console seat you already have signed in (`claude setup-token`, or an interactive
+  login). Every AI path keeps full vision: each screenshot is written to a per-call scratch file
+  whose path the prompt names, and the CLI is allowed only `Read` (scoped to that directory) to view
+  it — every other tool is denied and permission prompts fail closed, since on-screen text is
+  untrusted input
+  ([BE-0125](../roadmaps/BE-0125-authoring-agent-tool-restriction/BE-0125-authoring-agent-tool-restriction.md)).
+  Any `ANTHROPIC_API_KEY` is stripped from the CLI call so billing stays on the subscription rather
+  than the API. `claude` is an external binary you install yourself — Bajutsu neither vendors nor
+  installs it.
 - **Config first, environment fallback.** Any field you omit falls back to today's environment
   variables — `BAJUTSU_AI_PROVIDER`, `ANTHROPIC_API_KEY`, `BAJUTSU_BEDROCK_MODEL` (the `ant` provider
   reads its credential from the CLI, honoring `ANTHROPIC_PROFILE`) — so a config with no `ai` block

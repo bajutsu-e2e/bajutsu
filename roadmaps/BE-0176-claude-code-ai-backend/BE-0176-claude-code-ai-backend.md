@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0176](BE-0176-claude-code-ai-backend.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0176") |
+| Implementing PR | _pending_ |
 | Topic | AI provider configuration |
 | Related | [BE-0104](../BE-0104-vendor-neutral-ai-backend/BE-0104-vendor-neutral-ai-backend.md), [BE-0163](../BE-0163-ant-cli-oauth-provider/BE-0163-ant-cli-oauth-provider.md), [BE-0125](../BE-0125-authoring-agent-tool-restriction/BE-0125-authoring-agent-tool-restriction.md) |
 <!-- /BE-METADATA -->
@@ -147,11 +148,19 @@ runner with no credential. `known_providers()` then includes it automatically.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] `ClaudeCodeBackend` adapter — `create_message`, structured-output mapping, vision scratch
+- [x] `ClaudeCodeBackend` adapter — `create_message`, structured-output mapping, vision scratch
       files, tool restriction, subscription env, usage pass-through (`bajutsu/ai/claude_code.py`).
-- [ ] Registry registration of the `claude-code` provider + its `credential_gap`.
-- [ ] Surfacing: `serve` Settings selector, `doctor`, and bilingual docs / README.
-- [ ] Tests: adapter unit tests (mapping, vision, env) and registry test.
+- [x] Registry registration of the `claude-code` provider + its `credential_gap` (plus
+      `resolved_provider` for surfaces).
+- [x] Surfacing: `serve` Settings selector + provider handlers, `doctor` (via `ai_availability`),
+      and bilingual `configuration.md`.
+- [x] Tests: adapter unit tests (mapping, vision, env) and registry test.
+
+**Log**
+
+- Implemented the adapter behind the BE-0104 `AiBackend` seam so all six AI paths gain a
+  `claude-code` option with file-path vision; registered the provider, surfaced it in `serve` /
+  `doctor` / docs, and added the tests. `make check` green.
 
 ## References
 

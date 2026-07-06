@@ -53,9 +53,9 @@ def _ensure_builtins() -> None:
     registering first must not suppress `api-key`/`bedrock`/`ant` (that would `KeyError` when they
     later resolve). `setdefault` also leaves an earlier explicit registration for those names intact.
     """
-    if all(name in _ADAPTERS for name in ("api-key", "bedrock", "ant")):
+    if all(name in _ADAPTERS for name in ("api-key", "bedrock", "ant", "claude-code")):
         return
-    from bajutsu.ai import anthropic
+    from bajutsu.ai import anthropic, claude_code
     from bajutsu.anthropic_client import credential_gap
 
     adapter = Adapter(factory=anthropic.factory, credential_gap=credential_gap)
@@ -66,6 +66,12 @@ def _ensure_builtins() -> None:
     _ADAPTERS.setdefault("api-key", adapter)
     _ADAPTERS.setdefault("bedrock", adapter)
     _ADAPTERS.setdefault("ant", adapter)
+    # `claude-code` (BE-0176) is genuinely separate: it shells out to the `claude` CLI rather than
+    # the Anthropic SDK, so it registers its own factory and credential gap, not another alias.
+    _ADAPTERS.setdefault(
+        "claude-code",
+        Adapter(factory=claude_code.factory, credential_gap=claude_code.credential_gap),
+    )
 
 
 def known_providers() -> tuple[str, ...]:
@@ -93,6 +99,19 @@ def _provider_name(ai: AiConfig | None) -> str:
         allowed = ", ".join(repr(p) for p in _ADAPTERS)
         raise ValueError(f"unknown ai.provider {value!r}: registered providers are {allowed}")
     return value
+
+
+def resolved_provider(ai: AiConfig | None = None) -> str:
+    """The registry-resolved provider name, for surfaces that report the current selection.
+
+    The soft counterpart to `_provider_name`: an unregistered name falls back to the default rather
+    than raising, since a status read (serve / doctor) must not blow up. The fail-closed raise stays
+    on the AI paths, which resolve through `create_backend` / `credential_gap`.
+    """
+    try:
+        return _provider_name(ai)
+    except ValueError:
+        return DEFAULT_PROVIDER
 
 
 def _adapter(ai: AiConfig | None) -> Adapter:
