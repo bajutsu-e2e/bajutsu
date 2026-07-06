@@ -119,7 +119,9 @@ def _record_audit(
 _ROLE_RANK = {"viewer": 0, "editor": 1, "admin": 2}
 # Server-wide settings — including binding the active config, from the file browser, Git, or an
 # uploaded bundle (BE-0073): each repoints which config the whole server serves.
-_ADMIN_PATHS = frozenset({"/api/config", "/api/upload", "/api/apikey", "/api/provider"})
+_ADMIN_PATHS = frozenset(
+    {"/api/config", "/api/upload", "/api/apikey", "/api/provider", "/api/ant/login"}
+)
 _EDITOR_PATHS = frozenset(
     {
         "/api/run",

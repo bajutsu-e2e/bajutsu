@@ -255,6 +255,11 @@ class ServeState:
     # back to the default stores when unset, so local behavior is unchanged.
     org_stores: Callable[[str], StoreBundle] | None = None
     capture: CaptureSession | None = None
+    # The in-flight `ant auth login` subprocess (BE-XXXX), or None when no sign-in is running. Held
+    # between the POST that starts it and the GET that polls it, so a second click doesn't spawn a
+    # duplicate. Local serve only — a hosted deployment refuses the operation, so this stays None
+    # there. Spawned through `popen` (the injectable seam above) so tests never exec the real CLI.
+    ant_login_proc: Any = None
     # Where completed runs' evidence is uploaded (BE-0110). None = no evidence store configured (the
     # default; the upload-urls endpoint then hands back no URLs). serve() builds it from
     # --evidence-store / BAJUTSU_EVIDENCE_STORE; the server holds the credentials so a worker uploads

@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import logging
 import os
+import shutil
+import subprocess
 from pathlib import Path
 from typing import Any
 
@@ -11,6 +13,8 @@ import yaml
 
 from bajutsu import ai_availability
 from bajutsu.anthropic_client import (
+    ANT_BINARY,
+    ANT_CLI_MISSING,
     ANTHROPIC_KEY_ENV,
     BEDROCK_MODEL_ENV,
     PROVIDER_ENV,
@@ -260,3 +264,82 @@ def set_provider(state: ServeState, body: dict[str, Any]) -> tuple[Any, int]:
     if region:
         os.environ["AWS_REGION"] = region
     return {"ok": True, "provider": "bedrock", "region": region, "model": model}, 200
+
+
+# The number of trailing characters of `ant auth login`'s output surfaced as the error detail — a
+# one-line reason (the CLI's last message) without dumping the whole transcript to the browser.
+_ANT_LOGIN_ERROR_TAIL = 200
+
+
+def ant_login(state: ServeState) -> tuple[Any, int]:
+    """Begin an interactive `ant auth login` (the Anthropic CLI's browser-based OAuth/SSO sign-in)
+    in serve's own environment, so the operator authenticates the `ant` provider from the Web UI
+    instead of dropping to a terminal (BE-XXXX).
+
+    Local serve only. The sign-in writes a machine-global credential (``~/.config/anthropic``) that
+    every AI path on this host then shares, so a hosted / multi-tenant deployment refuses it (403) —
+    signing the server into one user's Claude account is not a per-session choice. The CLI opens its
+    own browser and binds its own loopback callback, so this only spawns it (detached, no interactive
+    stdin) and returns immediately; the caller polls `ant_login_status` and the provider gate
+    (`provider_info`) flips to reachable once the token lands.
+
+    Returns:
+        ``202`` with ``{state: "running"}`` once the CLI is spawned (or already in flight — a second
+        click never starts a duplicate). ``403`` when hosted, ``400`` when the `ant` binary is
+        absent (with the same install hint the availability check uses).
+    """
+    if state.hosted:
+        return {
+            "error": "SSO sign-in runs on the server and writes a shared credential, so it is "
+            "available only on a local serve — sign in with `ant auth login` on the host instead."
+        }, 403
+    if shutil.which(ANT_BINARY) is None:
+        return {"error": ai_availability.message(ANT_CLI_MISSING)}, 400
+    proc = state.ant_login_proc
+    if proc is not None and proc.poll() is None:
+        # A sign-in is already in flight (the user clicked twice, or is mid-flow) — don't spawn a
+        # second CLI racing for the same loopback port; report the existing one as still running.
+        return {"ok": True, "started": False, "state": "running"}, 202
+    try:
+        # stdin=DEVNULL: `ant auth login` (default mode) races a browser loopback callback against a
+        # pasted code on stdin; closing stdin makes the paste path see EOF (the CLI treats that as
+        # "not a race result") so only the browser+callback flow drives it. stderr→stdout merges the
+        # CLI's progress/URL lines into one stream we can tail for an error message.
+        state.ant_login_proc = state.popen(
+            [ANT_BINARY, "auth", "login"],
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+        )
+    except OSError as e:  # exec failure despite `which` finding the binary
+        return {"error": f"could not start `ant auth login`: {e}"}, 500
+    return {"ok": True, "started": True, "state": "running"}, 202
+
+
+def ant_login_status(state: ServeState) -> tuple[Any, int]:
+    """Poll the `ant auth login` started by `ant_login` (BE-XXXX).
+
+    Returns ``{state: ...}`` — ``idle`` (none started), ``running`` (browser sign-in in progress),
+    ``ok`` (the CLI exited 0; the credential is written and the provider gate now reads reachable),
+    or ``error`` with a one-line ``detail`` (the CLI's last output line) when it exited non-zero
+    (sign-in cancelled, timed out, or failed).
+    """
+    proc = state.ant_login_proc
+    if proc is None:
+        return {"state": "idle"}, 200
+    code = proc.poll()
+    if code is None:
+        return {"state": "running"}, 200
+    if code == 0:
+        return {"state": "ok"}, 200
+    detail = f"`ant auth login` exited with code {code}"
+    try:
+        # The process has exited, so the merged stdout buffer reads without blocking; its last
+        # non-empty line is the CLI's most specific message (e.g. a timeout or "authorization denied").
+        out = (proc.stdout.read() if proc.stdout else "") or ""
+        if out.strip():
+            detail = out.strip().splitlines()[-1][:_ANT_LOGIN_ERROR_TAIL]
+    except (OSError, ValueError):  # pipe already closed / consumed by an earlier poll
+        pass
+    return {"state": "error", "detail": detail}, 200

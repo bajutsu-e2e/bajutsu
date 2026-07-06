@@ -184,7 +184,48 @@ function renderProv(){
   const v=$('#provider').value;
   $('#apikeysection').hidden=v!=='api-key';        // the Claude API key is the api-key provider's config
   $('#bedrockfields').hidden=v!=='bedrock';        // region + model id
-  $('#antfields').hidden=v!=='ant';                // ant CLI prerequisites (no inputs — OAuth sign-in)
+  $('#antfields').hidden=v!=='ant';                // ant CLI prerequisites (OAuth sign-in button)
+  if(v==='ant')refreshAntLogin();                  // reflect the CLI's current sign-in state on the button
+}
+// ---- ant CLI SSO sign-in (BE-XXXX): start `ant auth login` from the Web UI instead of a terminal.
+// Local serve only (the server refuses it when hosted). The button state comes from /api/provider —
+// the same reachability the record/crawl gate reads — so "Signed in ✓" and the gate never disagree.
+function setAntStatus(t,c){const st=$('#ant-login-status');if(st){st.textContent=t;st.className='keystatus '+(c||'')}}
+async function refreshAntLogin(){
+  const btn=$('#ant-login');if(!btn)return;
+  let d;try{d=await (await fetch('/api/provider')).json()}catch(e){d={}}
+  // claudeGap is provider-specific only once `ant` is the active provider; before Save we can't tell
+  // "signed in" apart, so the button stays actionable and the login endpoint reports a missing CLI.
+  const signedIn=d.provider==='ant'&&d.claudeAvailable===true;
+  btn.hidden=false;btn.disabled=signedIn;
+  btn.textContent=signedIn?'Signed in ✓':'Sign in with SSO';
+  setAntStatus(signedIn?'signed in':'', signedIn?'ok':'');
+}
+async function antLogin(){
+  const btn=$('#ant-login');
+  setAntStatus('starting sign-in…','');
+  let d;try{d=await (await fetch('/api/ant/login',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'})).json()}catch(e){d={error:'request failed'}}
+  if(d.error){setAntStatus(d.error,'ng');return}
+  if(btn)btn.disabled=true;
+  setAntStatus('complete the sign-in in your browser…','');
+  for(let i=0;i<200;i++){                           // ~5 min ceiling (matches the CLI's callback timeout)
+    await new Promise(r=>setTimeout(r,1500));
+    let s;try{s=await (await fetch('/api/ant/login')).json()}catch(e){s={state:'error',detail:'status check failed'}}
+    if(s.state==='running')continue;
+    if(s.state==='ok'){
+      // Align the server's active provider to `ant` so the record/crawl gate reflects the new
+      // credential, then re-read availability and the button.
+      try{await fetch('/api/provider',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({provider:'ant'})})}catch(e){}
+      if($('#provider').value==='ant')setSettingsStatus('signed in — provider set to ant','ok');
+      refreshAiAvailability();refreshAntLogin();
+    }else{
+      setAntStatus(s.detail||'sign-in did not complete','ng');
+      if(btn)btn.disabled=false;
+    }
+    return;
+  }
+  setAntStatus('sign-in timed out — try again','ng');
+  if(btn)btn.disabled=false;
 }
 async function loadProv(){
   // Explicit selection: don't pre-select a provider from the server's (env-derived) default —
@@ -243,6 +284,7 @@ $('#settingsclose').addEventListener('click',closeSettings);
 $('#settingsmodal').addEventListener('click',e=>{if(e.target===$('#settingsmodal'))closeSettings()});
 $('#provider').addEventListener('change',renderProv);
 $('#settingssave').addEventListener('click',saveSettings);
+$('#ant-login').addEventListener('click',antLogin);
 async function chooseConfig(path){
   const r=await fetch('/api/config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({path})});
   const d=await r.json();

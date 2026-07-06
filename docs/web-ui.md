@@ -96,9 +96,12 @@ survive a restart, set `ANTHROPIC_API_KEY` / `AWS_*` in your shell or a `.env` b
 - **Amazon Bedrock** — Claude through AWS, authenticated by your standard AWS credentials; it adds
   **AWS region** and **Bedrock model id** fields (a Bedrock id carries a provider prefix, e.g.
   `global.anthropic.…`, unlike the bare Anthropic id).
-- **Claude Code** — the local `claude` CLI on your Pro/Max subscription (text-only authoring). It
-  must be installed and authenticated (`claude setup-token`) in the environment that launched
-  `serve`.
+- **Anthropic CLI (ant)** — Claude on your Pro/Max/Console seat through the official Anthropic CLI's
+  OAuth/SSO sign-in, so no API key is needed and every path keeps full vision. The CLI must be
+  installed in the environment that launched `serve`; a **Sign in with SSO** button then starts the
+  browser sign-in for you (equivalent to running `ant auth login` in that terminal). The button
+  opens the browser on the machine running `serve`, so it works with a local `make serve`; on a
+  hosted deployment the sign-in is disabled and the operator signs the host in out of band.
 
 **Claude API key** is **write-once**: enter a key and **Save**, and it is shown only masked and never
 displayed again — to change it, set a new one; **Clear** removes it. It powers the Anthropic API
