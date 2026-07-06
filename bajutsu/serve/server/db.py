@@ -50,7 +50,8 @@ class JobMetrics:
     leased_by_org: dict[str, int]  # org_id -> jobs leased to a worker (in flight)
     # worker_id -> seconds since its freshest lease renewal; rising past the lease timeout = dead
     heartbeat_age_by_worker: dict[str, float]
-    # Age of the oldest in-flight (leased) job in seconds — a slow / stuck-run signal; 0.0 if none
+    # Seconds since the oldest in-flight (leased) job was *enqueued* (created_at), so it includes
+    # the time it waited in the queue before the lease — a slow / stuck-run signal; 0.0 if none
     oldest_in_flight_seconds: float
 
 

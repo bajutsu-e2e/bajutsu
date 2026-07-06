@@ -428,7 +428,7 @@ BE-0015 で今後の作業です。
 ## メトリクスと可観測性（BE-0169）
 
 構造化ログ（前節）が記録するのはイベントです。一方の**メトリクス**は、プールが飽和していないか、いまどの
-org が消費しているか、run にどれだけ時間がかかっているか、ワーカーが生きているかを示す時系列です。
+org が消費しているか、run がふだんより長引いていないか、ワーカーが生きているかを示す時系列です。
 コントロールプレーンはこれらを Prometheus のテキスト形式で **`GET /metrics`** に公開します。値はすでに
 追跡している状態（jobs テーブルとリース・ハートビートの記録）から導くので、新しい記帳は増えません。
 
@@ -438,7 +438,7 @@ org が消費しているか、run にどれだけ時間がかかっているか
 | `bajutsu_queue_depth{org}` | gauge | キューで待機している job 数（サーバ backend）。org ごと。 |
 | `bajutsu_leased_jobs{org}` | gauge | ワーカーにリースされ実行中の job 数（サーバ backend）。org ごと。 |
 | `bajutsu_worker_heartbeat_age_seconds{worker}` | gauge | 各ワーカーの最後のハートビートからの経過秒。リースタイムアウトを超えて増え続けるとワーカーの停止を意味します。 |
-| `bajutsu_oldest_in_flight_seconds` | gauge | 実行中でもっとも古い job の経過秒。run が遅い、または詰まっている兆候です。 |
+| `bajutsu_oldest_in_flight_seconds` | gauge | 実行中でもっとも古い job がキューに投入されてからの経過秒（キューでの待機時間を含みます）。run が遅い、または詰まっている兆候です。 |
 | `bajutsu_max_concurrent` | gauge | 同時実行 job 数の上限（0 は無制限）。 |
 
 `/metrics` は公開の面ではありません。serve の他の面と同じ認証ゲート（BE-0051）の背後に置かれるので、

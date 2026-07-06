@@ -62,7 +62,8 @@ def render_metrics(state: ServeState) -> tuple[str, int]:
         _scalar(
             lines,
             "bajutsu_oldest_in_flight_seconds",
-            "Age of the oldest in-flight job (seconds) — a slow-run signal.",
+            "Seconds since the oldest in-flight job was enqueued (includes time queued) —"
+            " a slow-run signal.",
             snap.oldest_in_flight_seconds,
         )
 

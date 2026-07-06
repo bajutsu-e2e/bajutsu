@@ -111,7 +111,7 @@
     {
       "type": "timeseries",
       "title": "Oldest in-flight job age",
-      "description": "Age of the longest-running in-flight job (bajutsu_oldest_in_flight_seconds). A slow / stuck-run signal.",
+      "description": "Seconds since the oldest in-flight job was enqueued (bajutsu_oldest_in_flight_seconds); includes time spent queued. A slow / stuck-run signal.",
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
