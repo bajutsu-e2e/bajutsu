@@ -9,7 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0177") |
-| 実装 PR | _保留_ |
+| 実装 PR | [#715](https://github.com/bajutsu-e2e/bajutsu/pull/715) |
 | トピック | config の取得元 |
 <!-- /BE-METADATA -->
 
@@ -60,7 +60,7 @@ CLI フラグは意図して残します。一度限りの CI 実行、デバッ
 
 **ログ**
 
-- _保留_ — `dismissAlerts` / `erase` / `network` のターゲットごとの config 層を、優先順位 `フラグ ＞ シナリオ ＞ ターゲット ＞ 既定` で実装。config パースと優先順位のテスト、日英のドキュメント更新を含む。
+- [#715](https://github.com/bajutsu-e2e/bajutsu/pull/715) — `dismissAlerts` / `erase` / `network` のターゲットごとの config 層を、優先順位 `フラグ ＞ シナリオ ＞ ターゲット ＞ 既定` で実装。config パースと優先順位のテスト、日英のドキュメント更新を含む。
 
 ## 参考
 

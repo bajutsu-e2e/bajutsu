@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0177") |
-| Implementing PR | _pending_ |
+| Implementing PR | [#715](https://github.com/bajutsu-e2e/bajutsu/pull/715) |
 | Topic | Configuration sourcing |
 <!-- /BE-METADATA -->
 
@@ -123,7 +123,7 @@ the alert guard still reaches the AI provider only as a `BlockedHandler`, never 
 
 **Log**
 
-- _pending_ — implemented the per-target config layer for `dismissAlerts` / `erase` / `network` with `flag > scenario > target > default` precedence, plus config-parse and precedence tests and the bilingual doc updates.
+- [#715](https://github.com/bajutsu-e2e/bajutsu/pull/715) — implemented the per-target config layer for `dismissAlerts` / `erase` / `network` with `flag > scenario > target > default` precedence, plus config-parse and precedence tests and the bilingual doc updates.
 
 ## References
 
