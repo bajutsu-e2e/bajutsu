@@ -63,7 +63,10 @@ of 5 tabs → x ≈ 0.5); vertically, aim midway through the icon and label, typ
 y ≈ 0.94 in a bottom tab bar.
 - swipe(id|label, direction): swipe on a visible element (up/down/left/right) to SCROLL \
 a list or form. Use it to bring a control that is off-screen — neither in the element \
-list nor visible in the screenshot — into view before acting on it.
+list nor visible in the screenshot — into view before acting on it. Set `amount` (a \
+fraction of the screen, 0–1) to control how far it scrolls: a small nudge by default, or \
+0.5–0.9 to move quickly toward a control you expect to be far down. Increase it if a \
+previous swipe barely moved the screen.
 - type_text(id|label, text): focus the field and type text into it.
 - wait_for(id|label, timeout): wait until that element appears.
 - finish(assertions): the goal is reached; provide machine-checkable assertions \
@@ -206,6 +209,12 @@ TOOLS: list[ToolDef] = [
             "properties": {
                 **_TARGET_PROPS,
                 "direction": {"type": "string", "enum": ["up", "down", "left", "right"]},
+                "amount": {
+                    "type": "number",
+                    "description": "how far to scroll as a fraction of the screen (0-1): ~0.2 a "
+                    "little, ~0.5 half a screen, ~0.9 nearly a full screen. Judge it from how far "
+                    "the target likely is; omit for a small default nudge.",
+                },
                 **_REASON_PROP,
                 **_PLAN_PROP,
             },
@@ -407,8 +416,10 @@ def proposal_from_call(name: str, args: dict[str, Any]) -> Proposal:
         point = {"tapPoint": {"x": args["x"], "y": args["y"]}, **prov}
         return Proposal(step=Step.model_validate(point), note=note, plan_step=ps)
     if name == "swipe":
-        swipe = {"swipe": {"on": _target(args), "direction": args["direction"]}, **prov}
-        return Proposal(step=Step.model_validate(swipe), note=note, plan_step=ps)
+        spec: dict[str, Any] = {"on": _target(args), "direction": args["direction"]}
+        if args.get("amount") is not None:
+            spec["amount"] = args["amount"]
+        return Proposal(step=Step.model_validate({"swipe": spec, **prov}), note=note, plan_step=ps)
     if name == "type_text":
         step = {"type": {"into": _target(args), "text": args["text"]}, **prov}
         return Proposal(step=Step.model_validate(step), note=note, plan_step=ps)

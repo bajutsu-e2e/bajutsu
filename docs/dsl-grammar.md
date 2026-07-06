@@ -149,8 +149,9 @@ If ::= { condition: <Assertion>, then: list(<Step>), else?: list(<Step>) }
 ForEach ::= { sel: <Selector>, as: string, steps: list(<Step>) }
 
 Swipe ::=
-    { on: <Selector>, direction: ("up"|"down"|"left"|"right") }   # selector form  ┐ XOR
-  | { from: <Point>,  to: <Point> }                               # coordinate form ┘
+    { on: <Selector>, direction: ("up"|"down"|"left"|"right"), amount?: number }   # selector form  ┐ XOR
+  | { from: <Point>,  to: <Point> }                                                # coordinate form ┘
+    # amount (selector form only): travel as a fraction of the screen, 0 < amount ≤ 1; omitted = a small default nudge
 Point ::= [ number, number ]
 
 # ── Selector (≥1 field; provided fields are AND-ed) ────────────────────

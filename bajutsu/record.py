@@ -58,6 +58,9 @@ def _describe_step(step: Step) -> str:
         return f"tap {_describe_selector(step.tap)}"
     if step.tap_point is not None:
         return f"tap point ({step.tap_point.x:.2f}, {step.tap_point.y:.2f}) [located in screenshot]"
+    if step.swipe is not None and step.swipe.direction is not None:
+        extent = f" {step.swipe.amount:.0%}" if step.swipe.amount is not None else ""
+        return f"swipe {step.swipe.direction}{extent} on {_describe_selector(step.swipe.on)}"
     if step.type is not None:
         return f"type {step.type.text!r} into {_describe_selector(step.type.into)}"
     if step.wait is not None:

@@ -65,6 +65,15 @@ def test_swipe_proposal() -> None:
     assert step is not None and step.swipe is not None
     assert step.swipe.on is not None and step.swipe.on.id == "list"
     assert step.swipe.direction == "up"
+    assert step.swipe.amount is None  # omitted → default nudge
+
+
+def test_swipe_proposal_carries_amount() -> None:
+    block = FakeBlock(
+        "swipe", {"id": "list", "direction": "up", "amount": 0.6, "reason": "far down"}
+    )
+    step = ClaudeAgent(backend=FakeBackend(block)).next_action(_obs()).step
+    assert step is not None and step.swipe is not None and step.swipe.amount == 0.6
 
 
 def test_wait_proposal() -> None:
