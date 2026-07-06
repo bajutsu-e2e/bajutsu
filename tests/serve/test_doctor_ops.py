@@ -218,6 +218,24 @@ def test_score_present_when_runnable(tmp_path: Path) -> None:
     assert score["idCoverage"] == 1.0
 
 
+def test_fake_score_does_not_shell_out_to_simctl(tmp_path: Path) -> None:
+    # The fake backend needs no device, so scoring its (empty) screen must never call simctl —
+    # a resolve_udid would shell out to xcrun and crash on a host without Xcode (the Linux gate).
+    # No screen_query is injected here, so this exercises the real _current_screen fake path.
+    state = _state(
+        tmp_path,
+        "defaults: { backend: [fake] }\ntargets:\n  demo: { bundleId: com.demo }\n",
+    )
+
+    def boom(args: list[str], extra_env: object = None) -> str:
+        raise AssertionError("fake backend must not shell out to simctl")
+
+    state.simctl = boom
+    payload, status = ops.doctor_check(state, {"target": "demo"})
+    assert status == 200
+    assert payload["score"] is not None  # the empty fake screen is still scored
+
+
 def test_score_reports_gaps(tmp_path: Path) -> None:
     state = _state(
         tmp_path,

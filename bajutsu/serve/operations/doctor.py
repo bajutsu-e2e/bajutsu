@@ -167,6 +167,10 @@ def _current_screen(
         finally:
             with contextlib.suppress(*_playwright_error_types()):
                 driver.close()
+    if actuator == "fake":
+        # The fake driver needs no device, so it must not touch simctl — resolving a udid would
+        # shell out to `xcrun` and fail on a host without Xcode (e.g. the Linux gate).
+        return make_driver("fake", udid).query()
     query_actuator = "idb" if actuator == "xcuitest" else actuator
     resolved = simctl.resolve_udid(udid or "booted", run=state.simctl)
     return make_driver(query_actuator, resolved).query()
