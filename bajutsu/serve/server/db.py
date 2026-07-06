@@ -37,6 +37,24 @@ class LeasedJob:
 
 
 @dataclass
+class JobMetrics:
+    """An aggregate read of the jobs table for the ``/metrics`` endpoint (BE-0169).
+
+    Every field is derived from rows the lease path already maintains — this adds no bookkeeping.
+    Ages are seconds relative to the server clock at snapshot time; ``leased_at`` doubles as the
+    worker's last-heartbeat timestamp (the worker renews it on its heartbeat interval), so its age
+    is the liveness signal.
+    """
+
+    queued_by_org: dict[str, int]  # org_id -> jobs waiting in the queue
+    leased_by_org: dict[str, int]  # org_id -> jobs leased to a worker (in flight)
+    # worker_id -> seconds since its freshest lease renewal; rising past the lease timeout = dead
+    heartbeat_age_by_worker: dict[str, float]
+    # Age of the oldest in-flight (leased) job in seconds — a slow / stuck-run signal; 0.0 if none
+    oldest_in_flight_seconds: float
+
+
+@dataclass
 class RunRecord:
     """A run as the seam exchanges it — the relational core plus the JSON manifest summary."""
 
@@ -123,6 +141,9 @@ class Repository(Protocol):
     def get_job(self, job_id: str) -> dict[str, Any] | None:
         """Return the job's status, result, org_id, and current lease holder (``leased_by``), or None
         if it does not exist."""
+
+    def metrics_snapshot(self) -> JobMetrics:
+        """A one-pass aggregate of the jobs table for the ``/metrics`` endpoint (BE-0169)."""
 
 
 def _to_record(row: Run) -> RunRecord:
@@ -425,6 +446,61 @@ class SqlRepository:
                 "org_id": row.org_id,
                 "leased_by": row.leased_by,
             }
+
+    def metrics_snapshot(self) -> JobMetrics:
+        from collections import defaultdict
+
+        from sqlalchemy import select
+        from sqlalchemy.orm import Session
+
+        from bajutsu.serve.server.models import JobRecord
+
+        now = datetime.now(UTC)
+        queued: dict[str, int] = defaultdict(int)
+        leased: dict[str, int] = defaultdict(int)
+        # Per worker, keep its freshest lease renewal (max leased_at) — that is its last heartbeat.
+        latest_heartbeat: dict[str, datetime] = {}
+        oldest_in_flight = 0.0
+        # Read only the columns the aggregate needs — never `spec`/`result`, which can carry
+        # secrets. Filtering to the two live states keeps the read off finished rows.
+        stmt = select(
+            JobRecord.status,
+            JobRecord.org_id,
+            JobRecord.leased_by,
+            JobRecord.leased_at,
+            JobRecord.created_at,
+        ).where(JobRecord.status.in_(("queued", "leased")))
+        with Session(self._engine) as session:
+            for status, org_id, leased_by, leased_at, created_at in session.execute(stmt):
+                if status == "queued":
+                    queued[org_id] += 1
+                    continue
+                leased[org_id] += 1
+                oldest_in_flight = max(oldest_in_flight, _age_seconds(now, created_at))
+                if leased_by is not None and leased_at is not None:
+                    fresh = latest_heartbeat.get(leased_by)
+                    renewed = _as_utc(leased_at)
+                    if fresh is None or renewed > fresh:
+                        latest_heartbeat[leased_by] = renewed
+        return JobMetrics(
+            queued_by_org=dict(queued),
+            leased_by_org=dict(leased),
+            heartbeat_age_by_worker={
+                worker: (now - renewed).total_seconds()
+                for worker, renewed in latest_heartbeat.items()
+            },
+            oldest_in_flight_seconds=oldest_in_flight,
+        )
+
+
+def _as_utc(dt: datetime) -> datetime:
+    """Read a stored timestamp as UTC-aware. SQLite (the gate) hands back naive datetimes for a
+    ``DateTime(timezone=True)`` column, so subtracting a UTC-aware ``now`` would raise; assume UTC."""
+    return dt if dt.tzinfo is not None else dt.replace(tzinfo=UTC)
+
+
+def _age_seconds(now: datetime, then: datetime) -> float:
+    return (now - _as_utc(then)).total_seconds()
 
 
 def engine_from_url(url: str) -> Engine:

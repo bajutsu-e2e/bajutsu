@@ -13,6 +13,7 @@ import shutil
 import subprocess
 import sys
 import threading
+from collections import Counter
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -332,6 +333,12 @@ class ServeState:
         """How many spawned jobs are still running (not yet finished)."""
         with self._lock:
             return sum(1 for j in self.jobs.values() if j.status == "running")
+
+    def in_flight_by_org(self) -> dict[str, int]:
+        """Running jobs grouped by org, for the ``/metrics`` endpoint (BE-0169). Counted under the
+        lock, like `active_jobs`, so a concurrent register/finish can't corrupt the snapshot."""
+        with self._lock:
+            return dict(Counter(j.org for j in self.jobs.values() if j.status == "running"))
 
     def _register(self, job: Job) -> Job:
         """Assign the job its id + live-log bus and store it. Caller must hold ``self._lock``. The

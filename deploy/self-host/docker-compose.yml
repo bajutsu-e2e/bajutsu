@@ -117,7 +117,51 @@ services:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddydata:/data
 
+  # Optional metrics stack (BE-0169): Prometheus scrapes serve's /metrics, Grafana charts it.
+  # Not started by default — like the caddy profile. Enable with:
+  #   docker compose --profile metrics up -d
+  # Grafana then lands on ${BIND_ADDR}:3000 (log in as admin / GRAFANA_ADMIN_PASSWORD), with the
+  # Prometheus datasource and a starter Bajutsu dashboard already provisioned.
+  prometheus:
+    # Pinned (v2.53 is a Prometheus LTS); bump deliberately after re-validating with this stack.
+    image: prom/prometheus:v2.53.0
+    profiles: ["metrics"]
+    # /metrics sits behind serve's auth gate (BE-0051), so the scraper authenticates with the
+    # operator token. Prometheus does not expand env vars in its config file, so write the token to
+    # a file the scrape config reads via `authorization.credentials_file`.
+    entrypoint:
+      - /bin/sh
+      - -c
+      - >
+        printf '%s' "$$BAJUTSU_SERVE_TOKEN" > /etc/prometheus/serve-token &&
+        exec /bin/prometheus --config.file=/etc/prometheus/prometheus.yml
+        --storage.tsdb.path=/prometheus
+    environment:
+      BAJUTSU_SERVE_TOKEN: ${BAJUTSU_SERVE_TOKEN:?set BAJUTSU_SERVE_TOKEN in .env}
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - promdata:/prometheus
+    depends_on: [bajutsu]
+
+  grafana:
+    # Pinned for reproducible deploys; bump deliberately after re-validating with this stack.
+    image: grafana/grafana:11.1.0
+    profiles: ["metrics"]
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    # Same BIND_ADDR rule as the other published ports: loopback by default.
+    ports: ["${BIND_ADDR:-127.0.0.1}:3000:3000"]
+    volumes:
+      - grafanadata:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+    depends_on: [prometheus]
+
 volumes:
   pgdata:
   miniodata:
   caddydata:
+  promdata:
+  grafanadata:

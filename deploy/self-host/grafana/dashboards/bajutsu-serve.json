@@ -1,0 +1,167 @@
+{
+  "annotations": {
+    "list": []
+  },
+  "editable": true,
+  "graphTooltip": 0,
+  "schemaVersion": 39,
+  "tags": [
+    "bajutsu"
+  ],
+  "title": "Bajutsu serve",
+  "uid": "bajutsu-serve",
+  "time": {
+    "from": "now-6h",
+    "to": "now"
+  },
+  "timepicker": {},
+  "templating": {
+    "list": []
+  },
+  "panels": [
+    {
+      "type": "timeseries",
+      "title": "Queue depth by org",
+      "description": "Jobs waiting in the queue (bajutsu_queue_depth). A steady rise means the pool is saturated.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 0
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "expr": "bajutsu_queue_depth",
+          "legendFormat": "{{org}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "In-flight jobs by org",
+      "description": "Jobs running now \u2014 leased to a worker (bajutsu_leased_jobs, server backend) or run by the control plane itself (bajutsu_in_flight_jobs, local serve).",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 0
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "expr": "bajutsu_leased_jobs",
+          "legendFormat": "leased {{org}}",
+          "refId": "A"
+        },
+        {
+          "expr": "bajutsu_in_flight_jobs",
+          "legendFormat": "local {{org}}",
+          "refId": "B"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Worker heartbeat age",
+      "description": "Seconds since each worker's last heartbeat (bajutsu_worker_heartbeat_age_seconds). Rising past the lease timeout means a dead worker.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "expr": "bajutsu_worker_heartbeat_age_seconds",
+          "legendFormat": "{{worker}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Oldest in-flight job age",
+      "description": "Age of the longest-running in-flight job (bajutsu_oldest_in_flight_seconds). A slow / stuck-run signal.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 12,
+        "y": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "expr": "bajutsu_oldest_in_flight_seconds",
+          "legendFormat": "oldest",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Max concurrent",
+      "description": "Configured cap on concurrent jobs (bajutsu_max_concurrent); 0 = unlimited.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 4,
+        "x": 20,
+        "y": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "expr": "bajutsu_max_concurrent",
+          "refId": "A"
+        }
+      ]
+    }
+  ]
+}

@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0169](BE-0169-serve-metrics-observability.md) |
 | Author | [@hirosassa](https://github.com/hirosassa) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0169") |
+| Implementing PR | _pending_ |
 | Topic | Hosting the web UI (cloud / self-hosted) |
 | Related | [BE-0016](../BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md), [BE-0055](../BE-0055-operational-logging/BE-0055-operational-logging.md) |
 | Origin | [BE-0016](../BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md) |
@@ -80,9 +81,19 @@ merges, or coordinate to avoid a conflict.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] `/metrics` endpoint exposing queue depth, per-org in-flight, run durations, worker liveness.
-- [ ] `/metrics` respects serve exposure rules and never leaks secrets (unit-tested).
-- [ ] Optional `prometheus` + `grafana` containers and a starter dashboard in `deploy/self-host/`.
+- [x] `/metrics` endpoint exposing queue depth, per-org in-flight, run durations, worker liveness.
+- [x] `/metrics` respects serve exposure rules and never leaks secrets (unit-tested).
+- [x] Optional `prometheus` + `grafana` containers and a starter dashboard in `deploy/self-host/`.
+
+- _pending_ — Shipped the `/metrics` endpoint on both serve backends (the stdlib handler and the
+  FastAPI control plane), rendering Prometheus-format metrics from state the control plane already
+  tracks: in-flight jobs per org (`state.jobs`), and — with a database wired — queue depth, leased
+  jobs, worker heartbeat freshness, and the oldest in-flight run (a new one-pass
+  `Repository.metrics_snapshot`). The endpoint sits behind serve's auth gate (BE-0051) and emits
+  only counts, ages, and org / worker ids — never a job spec or the token — so a scrape cannot leak
+  a secret. Added the optional `metrics` compose profile (`prometheus` + `grafana`, a provisioned
+  datasource, and a starter dashboard) to `deploy/self-host/`, and documented it in the self-host
+  README and `docs/self-hosting.md` (+ `docs/ja/`).
 
 ## References
 

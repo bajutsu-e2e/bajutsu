@@ -171,6 +171,13 @@ def make_app(state: ServeState) -> FastAPI:
         html, code = ops.stats_html(state, actor=_actor(request))
         return HTMLResponse(html, status_code=code)
 
+    @app.get("/metrics")
+    async def metrics() -> Response:
+        # Prometheus text format; behind the same auth gate as every route (BE-0051), so a scraper
+        # authenticates with the operator token when one is configured.
+        text, code = ops.render_metrics(state)
+        return Response(text, status_code=code, media_type=ops.PROMETHEUS_CONTENT_TYPE)
+
     @app.get("/api/scenario")
     async def read_scenario(
         request: Request,

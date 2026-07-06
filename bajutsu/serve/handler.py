@@ -78,6 +78,16 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
             self.end_headers()
             self.wfile.write(body)
 
+        def _text(self, text: str, code: int, content_type: str) -> None:
+            """Write a text body with an explicit content type — the shared shape behind the
+            non-JSON GET routes (/stats HTML, /metrics Prometheus)."""
+            body = text.encode("utf-8")
+            self.send_response(code)
+            self.send_header("Content-Type", content_type)
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
         def _sse_job(self, job_id: str) -> None:
             """Stream a job's log over SSE via the shared event stream: a `log` event per line
             (backlog + live from the LogBus), then a terminal `done` event carrying the job's final
@@ -199,14 +209,14 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
                     self._json(*ops.simulators_payload(state))
                 case "/api/runs":
                     self._json(*ops.runs_payload(state, actor=self._actor()))
+                case "/metrics":
+                    # Prometheus text format, not JSON. It sits behind `_gate` like every other
+                    # route (BE-0051) — not on the open-GET list — so a scraper authenticates with
+                    # the operator token when one is configured.
+                    self._text(*ops.render_metrics(state), ops.PROMETHEUS_CONTENT_TYPE)
                 case "/stats":
                     html, code = ops.stats_html(state, actor=self._actor())
-                    body = html.encode("utf-8")
-                    self.send_response(code)
-                    self.send_header("Content-Type", "text/html; charset=utf-8")
-                    self.send_header("Content-Length", str(len(body)))
-                    self.end_headers()
-                    self.wfile.write(body)
+                    self._text(html, code, "text/html; charset=utf-8")
                 case "/api/scenario":
                     self._json(
                         *ops.read_scenario(
