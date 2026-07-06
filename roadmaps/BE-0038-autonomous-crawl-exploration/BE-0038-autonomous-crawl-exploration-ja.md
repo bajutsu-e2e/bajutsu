@@ -7,9 +7,9 @@
 |---|---|
 | 提案 | [BE-0038](BE-0038-autonomous-crawl-exploration-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **実装中** |
+| 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0038") |
-| 実装 PR | [#80](https://github.com/bajutsu-e2e/bajutsu/pull/80), [#307](https://github.com/bajutsu-e2e/bajutsu/pull/307), [#319](https://github.com/bajutsu-e2e/bajutsu/pull/319) |
+| 実装 PR | [#80](https://github.com/bajutsu-e2e/bajutsu/pull/80), [#83](https://github.com/bajutsu-e2e/bajutsu/pull/83), [#307](https://github.com/bajutsu-e2e/bajutsu/pull/307), [#319](https://github.com/bajutsu-e2e/bajutsu/pull/319), [#716](https://github.com/bajutsu-e2e/bajutsu/pull/716) |
 | トピック | 競合調査（MagicPod / Autify）由来の候補 |
 | 由来 | Autify VAX |
 <!-- /BE-METADATA -->
@@ -122,10 +122,10 @@ bajutsu crawl --app <name>
 - [x] serve のライブ **Crawl** タブ。
 - [x] 描画した画面マップグラフ。自己完結の `screenmap.html`（[#307](https://github.com/bajutsu-e2e/bajutsu/pull/307)）。
 - [x] クラッシュ再現シナリオの自動生成。忠実に再現できるクラッシュごとに `crashes/crash-NNN.yaml` を一つ書き出します（[#319](https://github.com/bajutsu-e2e/bajutsu/pull/319)）。
-- [ ] フォーム中心のフローへの、AI 補助のテキスト入力供給。
-- [ ] 発見したフローごとの候補シナリオの提案。
+- [x] フォーム中心のフローへの、AI 補助のテキスト入力供給。クロールガイドが現実的な `type` の値と、複数フィールドを一度に埋める `fill`（送信ボタンが有効になるまでフォーム全体を妥当にする）を提案します（[#83](https://github.com/bajutsu-e2e/bajutsu/pull/83)）。
+- [x] 発見したフローごとの候補シナリオの提案。忠実に到達できる画面ごとに、クロールが記録した再生可能な経路から下書き `flows/flow-NNN.yaml` を一つ書き出し、ユーザーが Tier 2 のテストへ昇格できるようにします（[#716](https://github.com/bajutsu-e2e/bajutsu/pull/716)）。
 
-[#80](https://github.com/bajutsu-e2e/bajutsu/pull/80) / [#307](https://github.com/bajutsu-e2e/bajutsu/pull/307) / [#319](https://github.com/bajutsu-e2e/bajutsu/pull/319) で出荷しました。AI 補助の二つの著者支援スライスが残ります。
+[#80](https://github.com/bajutsu-e2e/bajutsu/pull/80) / [#83](https://github.com/bajutsu-e2e/bajutsu/pull/83) / [#307](https://github.com/bajutsu-e2e/bajutsu/pull/307) / [#319](https://github.com/bajutsu-e2e/bajutsu/pull/319) と候補フローのスライス（[#716](https://github.com/bajutsu-e2e/bajutsu/pull/716)）で出荷しました。クロールはクラッシュ再現と候補フローシナリオの両方を書き出すようになり、本項目は完了しました。
 
 ## 参考
 

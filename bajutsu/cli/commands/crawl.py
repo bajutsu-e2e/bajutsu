@@ -5,9 +5,11 @@ the crawl engine ([`crawl.py`](../../crawl.py)), and streams the growing screen 
 `runs/<id>/screenmap.json` so the web UI can render it live. On completion it also writes a
 self-contained `runs/<id>/screenmap.html` (`crawl_report.py`) — the offline counterpart to the
 live graph, openable straight from the run dir — plus one `runs/<id>/crashes/crash-NNN.yaml` repro
-scenario per faithfully replayable crash (`crawl_repro.py`), directly runnable by `run`. The engine
-is deterministic (screen identity, transitions, crashes); the AI guide only proposes *what to try*,
-and the alert guard dismisses unexpected OS prompts. Discovery only — never a pass/fail gate.
+scenario per faithfully replayable crash (`crawl_repro.py`) and one `runs/<id>/flows/flow-NNN.yaml`
+candidate scenario per faithfully reachable screen (`crawl_flows.py`), both directly runnable by
+`run`. The engine is deterministic (screen identity, transitions, crashes); the AI guide only
+proposes *what to try*, and the alert guard dismisses unexpected OS prompts. Discovery only — never a
+pass/fail gate.
 """
 
 from __future__ import annotations
@@ -21,7 +23,7 @@ from pathlib import Path
 import typer
 
 from bajutsu import crawl as crawl_engine
-from bajutsu import crawl_report, crawl_repro
+from bajutsu import crawl_flows, crawl_report, crawl_repro
 from bajutsu import simctl as _simctl
 from bajutsu.ai import resolved_provider
 from bajutsu.backends import ensure_web_runtime, select_actuator
@@ -316,6 +318,7 @@ def crawl(
     _write_screenmap(screenmap_path, screen_map)
     report_path = crawl_report.write_html(out_dir, screen_map, out_dir.name)
     repros = crawl_repro.write_repros(out_dir, screen_map)
+    flows = crawl_flows.write_flows(out_dir, screen_map)
     why = {
         "completed": "explored everything reachable",
         "max_screens": f"reached the --max-screens limit ({max_screens})",
@@ -329,6 +332,8 @@ def crawl(
     typer.echo(f"screen map report -> {report_path}")
     if repros:
         typer.echo(f"crash repro scenarios -> {len(repros)} under {out_dir / 'crashes'}")
+    if flows:
+        typer.echo(f"candidate flow scenarios -> {len(flows)} under {out_dir / 'flows'}")
 
 
 def register(app: typer.Typer) -> None:

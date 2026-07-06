@@ -270,6 +270,10 @@ class ScreenMap:
     plan: dict[str, list[str]] = field(default_factory=dict)
     # Operations pruned as duplicate global controls (explored once from their owner screen).
     pruned: list[Pruned] = field(default_factory=list)
+    # The canonical replayable action path from the entry screen to each discovered screen, keyed by
+    # fingerprint (empty for the entry screen itself). This is what turns a discovered screen into a
+    # committable candidate flow scenario (`crawl_flows.py`, BE-0038).
+    paths: dict[str, tuple[Action, ...]] = field(default_factory=dict)
     # Why the crawl stopped: "completed" (frontier exhausted — everything reachable in the model
     # was explored), "max_screens", or "max_steps" (a budget was hit, so screens may remain).
     stop_reason: str = ""
@@ -619,6 +623,10 @@ class _Coordinator:
         # Holding the lock: register the node (keyed by its fingerprint) and claim its operations.
         # Returns the screen's frontier (its actions not already claimed elsewhere).
         self._sm.nodes[node.fingerprint] = node
+        # The path to reach this screen is already known (set before publish: [] for the entry, the
+        # discovering edge's path otherwise) — persist it so a discovered screen carries a
+        # committable candidate flow (BE-0038).
+        self._sm.paths[node.fingerprint] = tuple(self.path_to.get(node.fingerprint, ()))
         return self._claim(node.fingerprint, actions)
 
     def publish(self, node: Node, actions: list[Action]) -> list[Action]:
@@ -1071,6 +1079,10 @@ def screenmap_from_dict(data: dict[str, Any]) -> ScreenMap:
         ],
         plan={str(fp): list(ops) for fp, ops in (data.get("plan") or {}).items()},
         pruned=pruned,
+        paths={
+            str(fp): tuple(action_from_dict(a) for a in (acts or []))
+            for fp, acts in (data.get("paths") or {}).items()
+        },
         stop_reason=str(data.get("stop_reason") or ""),
     )
 
@@ -1118,6 +1130,9 @@ def screenmap_dict(screen_map: ScreenMap) -> dict[str, object]:
         ],
         "alerts": [{"path": list(a.path), "buttons": list(a.buttons)} for a in screen_map.alerts],
         "plan": {fp: list(ops) for fp, ops in sorted(screen_map.plan.items())},
+        "paths": {
+            fp: [action_to_dict(a) for a in acts] for fp, acts in sorted(screen_map.paths.items())
+        },
         "pruned": [
             {
                 "src": p.src,
