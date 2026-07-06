@@ -168,6 +168,21 @@ def test_record_reports_elapsed_time_on_completion() -> None:
     assert any("record finished in" in m for m in msgs)
 
 
+def test_record_shows_intent_and_action_on_one_line() -> None:
+    # The step's intent (the agent's reason) and the concrete action are streamed together, so a
+    # watcher sees what each step is trying to do next to what it did.
+    driver = FakeDriver([_el("a", "A")])
+    msgs: list[str] = []
+    agent = FakeAgent(
+        [
+            Proposal(step=Step.model_validate({"tap": {"id": "a"}}), note="open the panel"),
+            Proposal(done=True, expect=[]),
+        ]
+    )
+    record(driver, "x", agent, report=msgs.append)
+    assert any("open the panel" in m and "→" in m and "tap" in m for m in msgs)
+
+
 def test_record_stops_on_an_oscillation_before_max_steps() -> None:
     # An agent that cycles open/close forever is cut off by loop detection, not left to burn every
     # turn (the real-world stuck-record failure). A,B,A,B → stop after four recorded steps.

@@ -342,13 +342,12 @@ def record(
         )  # single-threaded record loop → this turn's tokens exactly
         if spent.total_tokens:
             say(f"[{n}] \U0001f916 agent replied · {spent.total_tokens:,} tokens")
-        if proposal.note:  # the agent's reasoning for this turn, shown before the action it chose
-            # Mask any secret the agent's free-text reasoning echoed, so the live progress stream
-            # never carries a literal either — not just the recorded step text (BE-0120).
-            note, _ = _mask_secrets(proposal.note, secret_tokens or [])
-            say(f"[{n}] \U0001f4ad {note}")
+        # One line per step: the intent (what it is trying to do) and the concrete action, together.
+        # The reasoning is masked first so the live stream never carries a secret literal (BE-0120).
+        intent = _mask_secrets(proposal.note, secret_tokens or [])[0] if proposal.note else ""
+        lead = f"[{n}] \U0001f4ad {intent}  →  " if intent else f"[{n}] → "
         if proposal.done:
-            say(f"[{n}] ✓ finish · {len(proposal.expect)} assertion(s)")
+            say(f"{lead}✓ finish · {len(proposal.expect)} assertion(s)")
             expect = proposal.expect
             settle = _settle_step(expect)
             if settle is not None:
@@ -361,7 +360,7 @@ def record(
         # scenario nor the live progress stream ever carries the literal (BE-0120) — but execute
         # the agent's unmodified proposal, since the app needs the real value to reach its screen.
         recorded_step, tokenized = _tokenize_secrets(proposal.step, secret_tokens or [])
-        say(f"[{n}] → {_describe_step(recorded_step)}")
+        say(f"{lead}{_describe_step(recorded_step)}")
         if tokenized:
             say(f"[{n}] \U0001f512 tokenized secret in typed text → {', '.join(tokenized)}")
         if not _execute_with_recovery(driver, proposal.step, clock, alert_guard, report=report):
