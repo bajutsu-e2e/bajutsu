@@ -342,10 +342,14 @@ def record(
         )  # single-threaded record loop → this turn's tokens exactly
         if spent.total_tokens:
             say(f"[{n}] \U0001f916 agent replied · {spent.total_tokens:,} tokens")
-        # One line per step: the intent (what it is trying to do) and the concrete action, together.
-        # The reasoning is masked first so the live stream never carries a secret literal (BE-0120).
+        # One line per step: which plan step it advances, the intent (what it is trying to do), and
+        # the concrete action, together. The reasoning is masked first so the live stream never
+        # carries a secret literal (BE-0120).
         intent = _mask_secrets(proposal.note, secret_tokens or [])[0] if proposal.note else ""
-        lead = f"[{n}] \U0001f4ad {intent}  →  " if intent else f"[{n}] → "
+        plan_tag = (
+            f"(plan {proposal.plan_step}/{len(plan)}) " if proposal.plan_step and plan else ""
+        )
+        lead = f"[{n}] {plan_tag}\U0001f4ad {intent}  →  " if intent else f"[{n}] {plan_tag}→ "
         if proposal.done:
             say(f"{lead}✓ finish · {len(proposal.expect)} assertion(s)")
             expect = proposal.expect

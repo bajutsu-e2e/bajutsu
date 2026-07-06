@@ -50,6 +50,15 @@ def test_type_text_proposal() -> None:
     assert step.type.into is not None and step.type.into.id == "f"
 
 
+def test_plan_step_flows_through_proposal() -> None:
+    assert proposal_from_call("tap", {"id": "a", "reason": "r", "plan_step": 2}).plan_step == 2
+    assert (
+        proposal_from_call("tap", {"id": "a", "reason": "r"}).plan_step is None
+    )  # omitted -> None
+    p = proposal_from_call("finish", {"assertions": [], "reason": "done", "plan_step": 4})
+    assert p.done and p.plan_step == 4
+
+
 def test_swipe_proposal() -> None:
     block = FakeBlock("swipe", {"id": "list", "direction": "up", "reason": "scroll to reveal it"})
     step = ClaudeAgent(backend=FakeBackend(block)).next_action(_obs()).step

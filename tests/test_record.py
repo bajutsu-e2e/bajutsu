@@ -168,6 +168,20 @@ def test_record_reports_elapsed_time_on_completion() -> None:
     assert any("record finished in" in m for m in msgs)
 
 
+def test_record_shows_which_plan_step_is_running() -> None:
+    driver = FakeDriver([_el("a", "A")])
+    msgs: list[str] = []
+    agent = PlanningAgent(
+        [
+            Proposal(step=Step.model_validate({"tap": {"id": "a"}}), note="do it", plan_step=2),
+            Proposal(done=True, expect=[]),
+        ],
+        plan_steps=["step one", "step two", "step three"],
+    )
+    record(driver, "x", agent, report=msgs.append)
+    assert any("(plan 2/3)" in m for m in msgs)
+
+
 def test_record_shows_intent_and_action_on_one_line() -> None:
     # The step's intent (the agent's reason) and the concrete action are streamed together, so a
     # watcher sees what each step is trying to do next to what it did.

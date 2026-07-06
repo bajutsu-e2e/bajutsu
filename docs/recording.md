@@ -104,7 +104,12 @@ provider is active:
   app-window frame to a `driver.tap_point` (the same normalized-point convention the alert locator
   uses, below). It is the bottom rung of the stability ladder (unverifiable by selector), so the
   prompt restricts it to controls genuinely missing from the element list — a listed element is
-  always addressed by its far more stable `id`/`label`.
+  always addressed by its far more stable `id`/`label`. For a tab-bar tab the prompt aims at the
+  **center of the icon+label rectangle** — the i-th of N tabs at `x ≈ (i − 0.5)/N` — not the icon
+  alone or the empty strip below the label.
+- **Live per-step line**: each turn streams one line — `(plan k/N) 💭 <intent> → <action>` — so the
+  watcher sees which planned step is running (the agent tags the action with its `plan_step`), the
+  intent, and the concrete action together. Followed on completion by `⏱ record finished in <elapsed>`.
 - **prompt cache** (API path): the static system prompt + tool definitions are marked
   `cache_control: ephemeral`; only the per-turn observation (elements + screenshot) changes.
 - **Vision + elements together**: appearance / state is read from the screenshot, but the agent
