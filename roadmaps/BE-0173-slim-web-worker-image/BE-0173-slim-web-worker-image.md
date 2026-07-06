@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0173](BE-0173-slim-web-worker-image.md) |
 | Author | [@hirosassa](https://github.com/hirosassa) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0173") |
+| Implementing PR | [#718](https://github.com/bajutsu-e2e/bajutsu/pull/718) |
 | Topic | Hosting the web UI (cloud / self-hosted) |
 | Related | [BE-0160](../BE-0160-worker-credential-free-uploads/BE-0160-worker-credential-free-uploads.md), [BE-0166](../BE-0166-capability-routed-queues/BE-0166-capability-routed-queues.md), [BE-0016](../BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md), [BE-0106](../BE-0106-post-completion-worker-model/BE-0106-post-completion-worker-model.md), [BE-0041](../BE-0041-web-playwright-backend/BE-0041-web-playwright-backend.md) |
 <!-- /BE-METADATA -->
@@ -40,9 +41,12 @@ Two things make a *slim* image worth designing deliberately rather than installi
   stack (`fastapi`/`uvicorn`, `sqlalchemy`/`alembic`/`psycopg`), the cloud SDKs (`boto3`, GCS), and
   the AI SDK (`anthropic`) — on the order of a few hundred MB of wheels the worker never imports.
   BE-0160 is precisely what lets us drop them: the worker's network dependency is an HTTP client, not
-  a cloud SDK. The remaining weight is dominated by the Chromium binary Playwright needs, which is
-  irreducible for a browser-driving worker — but everything above it is avoidable, and a smaller image
-  pulls and cold-starts faster across a scaling fleet.
+  a cloud SDK. The remaining weight is dominated by the Chromium binary Playwright needs — but even
+  that is not fixed: a headless Linux worker never renders a window, so it installs Chromium's
+  **headless shell** (`playwright install --only-shell`) rather than the full headed build, which
+  Playwright already auto-selects for headless launches. That trims tens of MB of browser plus a
+  lighter system-library set, on top of the avoidable stacks above it — and a smaller image pulls and
+  cold-starts faster across a scaling fleet.
 - **A named runtime closure.** Today the docs install the worker as `bajutsu[idb]`, but a run also
   reaches `pillow` (visual assertions) and `jsonschema` (`responseSchema` assertions) — so
   `bajutsu[idb]` alone *under-installs*, and such a run fails lazily at assertion time. There is no
@@ -78,14 +82,19 @@ base-AI-free guarantee. The container build (§2) and the Mac worker install doc
 
 ### 2. Multi-stage Dockerfile for the web worker
 
-Add `deploy/self-host/worker-web.Dockerfile` (name TBD) as a multi-stage build:
+Add `deploy/self-host/worker-web.Dockerfile` as a multi-stage build:
 
-- **Build stage**: install `bajutsu[worker-web]` into a virtual environment with `uv` (from the
-  built wheel, not an editable checkout).
+- **Build stage**: install `bajutsu[worker-web]` into a virtual environment (a non-editable install,
+  not an editable checkout).
 - **Final stage**: a slim Python base + the venv + the Chromium browser Playwright needs, and nothing
-  from `server`/`db`/`oauth`/`cloud`/`ai`. The Chromium binary is installed with `playwright install
-  --with-deps chromium`; alternatively the final stage builds on the upstream Playwright Python image
-  (browsers + OS libraries preinstalled) — the Alternatives section weighs the two.
+  from `server`/`db`/`oauth`/`cloud`/`ai`. The browser is installed with `playwright install
+  --with-deps --only-shell chromium` — the **headless shell**, not the full headed Chromium: a Linux
+  worker is always headless, Playwright auto-selects the shell for headless launches (so the driver
+  is unchanged), and the shell is tens of MB lighter with a smaller `--with-deps` system-library set.
+  Because the container refuses to run Chromium as root without weakening the sandbox, the final stage
+  runs the worker as an unprivileged user (the driver keeps its default sandboxed launch flags,
+  app-agnostic). Alternative B weighs this self-installed slim base against the upstream Playwright
+  image.
 - Entrypoint runs `bajutsu worker`, configured by environment (`BAJUTSU_SERVER_URL`, `BAJUTSU_TOKEN`)
   exactly as the bare-metal worker is, and — per BE-0160 — with **no** object-store credentials.
 
@@ -126,9 +135,22 @@ item removes. BE-0160 is what makes dropping them safe, so not doing so wastes t
 Basing the final stage on `mcr.microsoft.com/playwright/python` ships browsers and OS libraries
 preinstalled and version-matched, at the cost of a larger, less-controlled base and an external base
 dependency. Installing Chromium ourselves onto a slim Python base keeps the base minimal and fully
-ours, at the cost of maintaining the `--with-deps` system-library step. The image should pick one and
-document why; this proposal leans toward the self-installed slim base for control, pending a size
-comparison.
+ours, at the cost of maintaining the `--with-deps` system-library step. **Adopted: the self-installed
+slim base** — control wins here precisely because the whole point is a minimal image, and the upstream
+image bundles the full headed browser we deliberately skip.
+
+### E. Full headed Chromium vs. the headless shell (`--only-shell`)
+
+Since Playwright 1.49, `playwright install chromium` fetches both the full headed Chrome-for-Testing
+build and a separate `chromium-headless-shell`, and Playwright auto-selects the shell for headless
+launches. A Linux worker is always headless, so the image installs only the shell (`--only-shell`),
+skipping the full build for tens of MB less browser and a lighter `--with-deps` set — with **no code
+change**, since the driver's `launch(headless=True)` already resolves to the shell. The shell drops
+headed mode, browser extensions, and in-page PDF rendering, and its screenshots are not pixel-identical
+to full Chrome; none of those affect a headless E2E worker's click / navigation / network-interception
+/ screenshot / video paths. (A visual baseline is already backend- and platform-specific — captured
+and compared on the same worker — so the shell does not introduce a new parity axis.) Keeping the full
+build would cost image size for capabilities the worker never uses, so it is not adopted.
 
 ### C. Containerize the Mac (idb) worker too
 
@@ -150,11 +172,18 @@ win, so it is not adopted.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Define the `worker-web` / `worker-idb` runtime-closure extras in `pyproject.toml`
-- [ ] Multi-stage web-worker Dockerfile in `deploy/self-host/`
-- [ ] Optional `worker-web` compose service + `docs/self-hosting.md` (+ Japanese mirror) heterogeneous-fleet docs
-- [ ] Cold-start / import-closure guard test for the worker entry
-- [ ] Extend BE-0166 with `backend` as a capability axis (reciprocal cross-reference)
+- [x] Define the `worker-web` / `worker-idb` runtime-closure extras in `pyproject.toml`
+- [x] Multi-stage web-worker Dockerfile in `deploy/self-host/`
+- [x] Optional `worker-web` compose service + `docs/self-hosting.md` (+ Japanese mirror) heterogeneous-fleet docs
+- [x] Cold-start / import-closure guard test for the worker entry
+- [x] Extend BE-0166 with `backend` as a capability axis (reciprocal cross-reference)
+
+[#718](https://github.com/bajutsu-e2e/bajutsu/pull/718) — Slim web-worker image landed: `worker-web` / `worker-idb` closure extras; multi-stage
+`deploy/self-host/worker-web.Dockerfile` installing only `bajutsu[worker-web]` + Chromium's headless
+shell (`--only-shell`) and running as an unprivileged user; optional `worker-web` compose service
+(off by default, behind the `web-worker` profile) + heterogeneous-fleet docs in both languages; a
+worker import-closure guard (`tests/serve/test_import_guard.py`); and the reciprocal `backend`
+capability-axis note added to BE-0166.
 
 ## References
 

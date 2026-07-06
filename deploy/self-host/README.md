@@ -35,6 +35,19 @@ export BAJUTSU_DATABASE_URL=postgresql+psycopg://bajutsu:<password>@<linux-node>
 bajutsu worker
 ```
 
-> The compose stack and image are **not exercised by CI** (no Docker on the gate). Verify a
+For a **web (Playwright) backend** the worker is instead a Linux container (BE-0173) — the web
+backend has no Simulator/GUI constraint. An optional `worker-web` service (off by default) builds
+[`worker-web.Dockerfile`](worker-web.Dockerfile), a slim multi-stage image carrying only
+`bajutsu[worker-web]` and Chromium's headless shell. Enable it once `BAJUTSU_SERVE_TOKEN` is set:
+
+```sh
+docker compose --profile web-worker up -d --build
+```
+
+Until BE-0166 routes jobs by backend, `/api/worker/lease` has no backend/capability filtering, so
+keep the pool **homogeneous per backend** — run either idb workers or web workers against a control
+plane, not both — or a web worker may lease an idb job (and vice versa) and fail.
+
+> The compose stack and images are **not exercised by CI** (no Docker on the gate). Verify a
 > deployment by hand: `docker compose up`, then check the migrate step succeeds, `/` returns 200,
-> OAuth login works, and the Mac worker consumes a job.
+> OAuth login works, and a worker consumes a job.

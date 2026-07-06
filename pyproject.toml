@@ -35,6 +35,14 @@ bedrock = ["bajutsu[ai]", "anthropic[bedrock]"]
 # The hosted-backend worker (`bajutsu worker`): polls the control plane over HTTP (BE-0106).
 # No extra dependencies needed (stdlib urllib); kept as an empty extra for backwards compatibility.
 worker = []
+# The worker's true runtime closure per backend (BE-0173) — the single name for "what a worker must
+# install" so both the container build and the bare-metal install docs consume one definition. A run
+# reaches `visual` (Pillow, screenshot assertions) and `schema` (jsonschema, `responseSchema`), so a
+# backend extra alone under-installs and fails lazily at assertion time. Deliberately omits the
+# control plane (`server`/`db`/`oauth`), the cloud SDKs (`cloud` — unneeded since BE-0160 made the
+# worker credential-free), and the AI SDK (`ai`, opt-in only for the authoring/investigation paths).
+worker-web = ["bajutsu[web,visual,schema]"]
+worker-idb = ["bajutsu[idb,visual,schema]"]
 # The hosted-backend control plane (`serve --backend=server`): the FastAPI app that serves the
 # same SPA + API over the swap-in seams. Imported only when the server backend is selected, never
 # on the default path (the import guard in tests/serve/test_import_guard.py locks this).

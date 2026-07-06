@@ -10,7 +10,7 @@
 | Status | **Proposal** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0166") |
 | Topic | Hosting the web UI (cloud / self-hosted) |
-| Related | [BE-0016](../BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md), [BE-0106](../BE-0106-post-completion-worker-model/BE-0106-post-completion-worker-model.md) |
+| Related | [BE-0016](../BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md), [BE-0106](../BE-0106-post-completion-worker-model/BE-0106-post-completion-worker-model.md), [BE-0173](../BE-0173-slim-web-worker-image/BE-0173-slim-web-worker-image.md) |
 | Origin | [BE-0016](../BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md) |
 <!-- /BE-METADATA -->
 
@@ -59,6 +59,13 @@ Routing is purely about *which* idle worker picks a job up; it does **not** chan
 4. **Fallback and unroutable jobs.** A job whose required capability no worker in the pool advertises
    must not hang silently. It stays queued and is surfaced as unroutable (an operator signal), rather
    than being leased by an incompatible worker or dropped.
+5. **`backend` as a capability axis (idb vs web).** Beyond iOS runtime and device class, the worker's
+   **backend** is itself a capability: a Mac idb worker advertises `backend=idb`, and the Linux web
+   worker container ([BE-0173](../BE-0173-slim-web-worker-image/BE-0173-slim-web-worker-image.md))
+   advertises `backend=web`. A job's target backend becomes part of its required-capability key, so a
+   `web` job is only ever leased by a web worker and an `idb` job only by a Mac worker — the two never
+   cross. This is the same declare/route/filter machinery as the axes above, with `backend` as an
+   additional dimension; it matters once the pool mixes backends (a homogeneous pool is unaffected).
 
 **Verification.** The routing decision (target to capability to queue) and the lease filter have a
 Python surface and are unit-tested with no Simulator: a job requiring `ios18` is never offered to an
@@ -88,6 +95,7 @@ confirming that a mixed fleet drains each capability's work onto the right machi
 - [ ] Control plane routes a job to the queue matching its target's required capability.
 - [ ] Capability-aware `lease` filter so a worker only leases jobs it can run.
 - [ ] Unroutable jobs stay queued and are surfaced, never leased by an incompatible worker.
+- [ ] `backend` (idb vs web) as a capability axis so web jobs route only to web workers (BE-0173).
 
 ## References
 
