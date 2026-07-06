@@ -488,6 +488,9 @@ $('#rec-run').addEventListener('click',async()=>{
   if(!yaml.trim())return;
   if(recRunPoll)recRunPoll.close();
   const target=$('#rec-target').value;
+  // Re-evaluate the scenario on every Run: clear a prior syntax error first, so a since-fixed
+  // scenario shows no stale error and only a still-broken one re-surfaces below.
+  setStatus($('#rec-status'),'','');
   let sd;try{sd=await (await fetch('/api/scenario',{method:'POST',headers:{'Content-Type':'application/json'},
     body:JSON.stringify({target,path:recRunRef(),yaml})})).json()}catch(e){sd={error:'request failed'}}
   if(sd.error){setStatus($('#rec-status'),sd.error,'ng');return}
