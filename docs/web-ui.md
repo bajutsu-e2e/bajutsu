@@ -102,7 +102,7 @@ survive a restart, set `ANTHROPIC_API_KEY` / `AWS_*` in your shell or a `.env` b
   installed in the environment that launched `serve`; a **Sign in with SSO** button then starts the
   browser sign-in for you (equivalent to running `ant auth login` in that terminal). The button
   opens the browser on the machine running `serve`, so it works with a local `make serve`; on a
-  hosted deployment the sign-in is disabled and the operator signs the host in out of band.
+  hosted deployment the server refuses the request (403) and the operator signs the host in out of band.
 
 **Claude API key** is **write-once**: enter a key and **Save**, and it is shown only masked and never
 displayed again — to change it, set a new one; **Clear** removes it. It powers the Anthropic API

@@ -267,15 +267,15 @@ def set_provider(state: ServeState, body: dict[str, Any]) -> tuple[Any, int]:
     return {"ok": True, "provider": "bedrock", "region": region, "model": model}, 200
 
 
-# The number of trailing characters of `ant auth login`'s output surfaced as the error detail — a
-# one-line reason (the CLI's last message) without dumping the whole transcript to the browser.
+# The cap on the error detail surfaced to the browser: the CLI's last output line, truncated to this
+# many leading characters — a one-line reason without dumping the whole transcript.
 _ANT_LOGIN_ERROR_TAIL = 200
 
 
 def ant_login(state: ServeState) -> tuple[Any, int]:
     """Begin an interactive `ant auth login` (the Anthropic CLI's browser-based OAuth/SSO sign-in)
     in serve's own environment, so the operator authenticates the `ant` provider from the Web UI
-    instead of dropping to a terminal (BE-XXXX).
+    instead of dropping to a terminal (BE-0175).
 
     Local serve only. The sign-in writes a machine-global credential (``~/.config/anthropic``) that
     every AI path on this host then shares, so a hosted / multi-tenant deployment refuses it (403) —
@@ -289,7 +289,7 @@ def ant_login(state: ServeState) -> tuple[Any, int]:
         sign-in is still waiting **supersedes** it (the stale process is terminated and a fresh one
         started), so an abandoned browser flow never wedges the button until the CLI's own timeout.
         ``403`` when hosted, ``400`` when the `ant` binary is absent (with the same install hint the
-        availability check uses).
+        availability check uses), and ``500`` when the CLI is present but fails to exec.
     """
     if state.hosted:
         return {
@@ -298,34 +298,38 @@ def ant_login(state: ServeState) -> tuple[Any, int]:
         }, 403
     if shutil.which(ANT_BINARY) is None:
         return {"error": ai_availability.message(ANT_CLI_MISSING)}, 400
-    proc = state.ant_login_proc
-    if proc is not None and proc.poll() is None:
-        # A previous sign-in is still waiting on its browser callback (the operator abandoned it, or
-        # is deliberately restarting). Superseding it — rather than refusing — is what lets a stuck
-        # attempt be retried at once instead of blocking the button until the CLI's ~5-min timeout.
-        # `ant auth login` binds an ephemeral callback port, so the fresh spawn never collides with
-        # the one being torn down.
-        with contextlib.suppress(OSError):  # already gone between the poll and the terminate
-            proc.terminate()
-    try:
-        # stdin=DEVNULL: `ant auth login` (default mode) races a browser loopback callback against a
-        # pasted code on stdin; closing stdin makes the paste path see EOF (the CLI treats that as
-        # "not a race result") so only the browser+callback flow drives it. stderr→stdout merges the
-        # CLI's progress/URL lines into one stream we can tail for an error message.
-        state.ant_login_proc = state.popen(
-            [ANT_BINARY, "auth", "login"],
-            stdin=subprocess.DEVNULL,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            text=True,
-        )
-    except OSError as e:  # exec failure despite `which` finding the binary
-        return {"error": f"could not start `ant auth login`: {e}"}, 500
+    # serve is a ThreadingHTTPServer, so hold the lock across check-terminate-spawn: two concurrent
+    # POSTs must not both observe no in-flight process and each spawn a CLI (the second overwrite would
+    # leak the first, unsupersedable, subprocess).
+    with state.ant_login_lock:
+        proc = state.ant_login_proc
+        if proc is not None and proc.poll() is None:
+            # A previous sign-in is still waiting on its browser callback (the operator abandoned it,
+            # or is deliberately restarting). Superseding it — rather than refusing — is what lets a
+            # stuck attempt be retried at once instead of blocking the button until the CLI's ~5-min
+            # timeout. `ant auth login` binds an ephemeral callback port, so the fresh spawn never
+            # collides with the one being torn down.
+            with contextlib.suppress(OSError):  # already gone between the poll and the terminate
+                proc.terminate()
+        try:
+            # stdin=DEVNULL: `ant auth login` (default mode) races a browser loopback callback against
+            # a pasted code on stdin; closing stdin makes the paste path see EOF (the CLI treats that
+            # as "not a race result") so only the browser+callback flow drives it. stderr→stdout
+            # merges the CLI's progress/URL lines into one stream we can tail for an error message.
+            state.ant_login_proc = state.popen(
+                [ANT_BINARY, "auth", "login"],
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+            )
+        except OSError as e:  # exec failure despite `which` finding the binary
+            return {"error": f"could not start `ant auth login`: {e}"}, 500
     return {"ok": True, "started": True, "state": "running"}, 202
 
 
 def ant_login_status(state: ServeState) -> tuple[Any, int]:
-    """Poll the `ant auth login` started by `ant_login` (BE-XXXX).
+    """Poll the `ant auth login` started by `ant_login` (BE-0175).
 
     Returns ``{state: ...}`` — ``idle`` (none started), ``running`` (browser sign-in in progress),
     ``ok`` (the CLI exited 0; the credential is written and the provider gate now reads reachable),

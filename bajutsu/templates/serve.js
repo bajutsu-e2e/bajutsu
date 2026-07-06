@@ -244,7 +244,7 @@ function renderProv(){
   $('#antfields').hidden=v!=='ant';                // ant CLI prerequisites (OAuth sign-in button)
   if(v==='ant')refreshAntLogin();                  // reflect the CLI's current sign-in state on the button
 }
-// ---- ant CLI SSO sign-in (BE-XXXX): start `ant auth login` from the Web UI instead of a terminal.
+// ---- ant CLI SSO sign-in (BE-0175): start `ant auth login` from the Web UI instead of a terminal.
 // Local serve only (the server refuses it when hosted). The button state comes from /api/provider —
 // the same reachability the record/crawl gate reads — so "Signed in ✓" and the gate never disagree.
 function setAntStatus(t,c){const st=$('#ant-login-status');if(st){st.textContent=t;st.className='keystatus '+(c||'')}}

@@ -1,4 +1,4 @@
-"""Tests for the ant-CLI SSO sign-in endpoint (/api/ant/login), real ThreadingHTTPServer (BE-XXXX).
+"""Tests for the ant-CLI SSO sign-in endpoint (/api/ant/login), real ThreadingHTTPServer (BE-0175).
 
 POST starts an `ant auth login` subprocess in serve's environment; GET polls it. The subprocess is
 injected through `ServeState.popen` (the same seam the run/build paths use) so no real `ant` binary
