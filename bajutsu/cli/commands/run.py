@@ -386,10 +386,17 @@ def _alert_guard_factory(
         if not _enabled(s):
             return None
         scenario_instruction = s.dismiss_alerts.instruction if s.dismiss_alerts else None
-        instruction = scenario_instruction or default_instruction or target_instruction
+        # Trailing `or None` normalizes an empty instruction (e.g. config `instruction: ""`) to the
+        # guard's built-in default, matching how `default_instruction` drops an empty --alert-instruction.
+        instruction = scenario_instruction or default_instruction or target_instruction or None
         return SystemAlertGuard(locator, instruction).dismiss
 
     return _guard_for
+
+
+def _resolve_network(network: bool | None, target_network: bool) -> bool:
+    """Resolve network collection: `--network/--no-network` flag > target `network` config > on (BE-0177)."""
+    return network if network is not None else target_network
 
 
 def _apply_mocks(scenarios: list[Scenario], network: bool) -> None:
@@ -850,7 +857,7 @@ def run(
     on_blocked_for = _alert_guard_factory(scenarios, eff, alert_instruction)
     # Network collection resolves `--network/--no-network` over the target's `network` config, then on
     # (BE-0177); the resolved bool baked into mocks and the plan drives collection and `request` waits.
-    network = network if network is not None else eff.network
+    network = _resolve_network(network, eff.network)
     _apply_mocks(scenarios, network)
     baselines_dir, schemas_dir, gc = _resolve_evidence_dirs(
         baselines, schemas, goldens, eff, files[0]

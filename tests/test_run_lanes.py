@@ -17,6 +17,7 @@ from bajutsu.cli.commands.run import (
     _resolve_evidence_dirs,
     _resolve_goldens_dir,
     _resolve_lanes,
+    _resolve_network,
     _resolve_schemas_dir,
     _resolve_secrets,
 )
@@ -248,6 +249,21 @@ def test_alert_guard_factory_scenario_reenables_over_target() -> None:
         "- name: a\n  dismissAlerts: true\n  steps:\n    - tap: { id: home.title }\n"
     )
     assert _alert_guard_factory(scenarios, _eff(dismissAlerts="false"), "") is not None
+
+
+# --- _resolve_network: --network/--no-network flag > target `network` config > built-in on (BE-0177)
+
+
+def test_resolve_network_flag_wins() -> None:
+    assert _resolve_network(False, True) is False  # --no-network overrides a target `network: true`
+    assert _resolve_network(True, False) is True  # --network overrides a target `network: false`
+
+
+def test_resolve_network_falls_back_to_target_then_builtin() -> None:
+    assert _resolve_network(None, False) is False  # no flag → the target's `network` config
+    assert (
+        _resolve_network(None, True) is True
+    )  # no flag, target on (the resolve() built-in default)
 
 
 def test_alert_guard_factory_noop_without_credential(monkeypatch: pytest.MonkeyPatch) -> None:
