@@ -40,7 +40,9 @@ completion. No token ever passes through serve; the CLI writes the machine crede
   credential the whole server would share), refuses when the `ant` binary is absent (400, reusing
   the availability hint), and otherwise spawns `ant auth login` through the injectable
   `ServeState.popen` seam with `stdin` closed (so only the browser+loopback path drives it),
-  returning 202. A second click while one is in flight never spawns a duplicate. `ant_login_status`
+  returning 202. A second click while one is in flight **supersedes** it — the stale process is
+  terminated and a fresh one started (never two concurrently), so an abandoned browser flow can be
+  retried at once instead of wedging the button until the CLI's own timeout. `ant_login_status`
   polls the held process: `idle` / `running` / `ok` / `error` (with the CLI's last output line as
   the detail).
 - **Routing + RBAC** (`bajutsu/serve/handler.py`, `bajutsu/serve/authz.py`). `POST /api/ant/login`
