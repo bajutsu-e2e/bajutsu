@@ -111,10 +111,11 @@ document.querySelectorAll('.viewswitch').forEach(sw=>{
 // ---- top-level Record / Replay / Crawl views ----
 function showView(name){
   document.querySelectorAll('.toptab').forEach(t=>t.classList.toggle('active',t.dataset.view===name));
-  $('#view-record').hidden=name!=='record';$('#view-replay').hidden=name!=='replay';$('#view-crawl').hidden=name!=='crawl';$('#view-author').hidden=name!=='author';$('#view-stats').hidden=name!=='stats';
+  $('#view-record').hidden=name!=='record';$('#view-replay').hidden=name!=='replay';$('#view-crawl').hidden=name!=='crawl';$('#view-author').hidden=name!=='author';$('#view-stats').hidden=name!=='stats';$('#view-coverage').hidden=name!=='coverage';
   if(name==='replay')loadHistory();
   if(name==='author')authorInit();
   if(name==='stats')loadStats();
+  if(name==='coverage')coverageInit();
 }
 document.querySelectorAll('.toptab').forEach(t=>t.addEventListener('click',()=>showView(t.dataset.view)));
 
@@ -269,7 +270,7 @@ async function loadShared(){
   // each target carries its primary backend (data-backend) so picking a web target hides the iOS-only UI
   const opts=targets.map(a=>{const n=typeof a==='string'?a:a.name,b=typeof a==='string'?'':(a.backend||'');
     return `<option value="${esc(n)}" data-backend="${esc(b)}">${esc(n)}</option>`;}).join('');
-  $('#target').innerHTML=opts;$('#rec-target').innerHTML=opts;$('#crawl-target').innerHTML=opts;$('#au-target').innerHTML=opts;
+  $('#target').innerHTML=opts;$('#rec-target').innerHTML=opts;$('#crawl-target').innerHTML=opts;$('#au-target').innerHTML=opts;$('#cov-target').innerHTML=opts;
   syncPlatform('#panel-run','#target');
   syncPlatform('#panel-record','#rec-target');
   syncPlatform('#panel-crawl','#crawl-target');
@@ -424,23 +425,25 @@ async function setReport(id,repSel){
   // the shadow via window.__bajutsuReportRoot); inline scripts run synchronously, so remove it after.
   const s=document.createElement('script');s.textContent=js;document.body.appendChild(s);s.remove();
 }
-// Stats (BE-0102): render the self-contained /stats dashboard into a shadow root so its inline
-// CSS stays isolated (same approach as setReport). The page has no scripts and no relative assets,
-// so no rewrite is needed — only retarget its :root/body rules to :host inside the shadow root.
-async function loadStats(){
-  const host=$('#stats-host');
-  // Reuse the host's shadow root on a refresh (unlike setReport, which recreates its host each time):
-  // this innerHTML replacement is idempotent and the page carries no scripts or listeners to leak.
+// Render a self-contained report page (no scripts, no relative assets) into a host's shadow root so
+// its inline CSS stays isolated — only retarget its :root/body rules to :host. Reusing the host's
+// shadow root is idempotent, so a refresh replaces the previous content in place. Shared by the Stats
+// (BE-0102) and Coverage (BE-0146) dashboards; the richer setReport keeps its own script-aware path.
+function renderReportInShadow(host,html){
   const sh=host.shadowRoot||host.attachShadow({mode:'open'});
-  let html;
-  // Treat a network error or a non-2xx (e.g. 401/500) as unavailable, and render the error into the
-  // shadow root so a failed refresh replaces the stale dashboard instead of leaving it on screen.
-  try{const r=await fetch('/stats');if(!r.ok)throw 0;html=await r.text();}
-  catch(e){sh.innerHTML='<div style="color:#6e6e73;font-style:italic">stats unavailable</div>';return;}
   const doc=new DOMParser().parseFromString(html,'text/html');
   const css=((doc.querySelector('style')||{}).textContent||'').replace(/:root/g,':host')
     .replace(/(^|[\s,>}])body([\s{])/g,'$1:host$2');
   sh.innerHTML=`<style>:host{display:block}\n${css}</style>${doc.body.innerHTML}`;
+}
+async function loadStats(){
+  const host=$('#stats-host');
+  let html;
+  // Treat a network error or a non-2xx (e.g. 401/500) as unavailable, and render the error into the
+  // shadow root so a failed refresh replaces the stale dashboard instead of leaving it on screen.
+  try{const r=await fetch('/stats');if(!r.ok)throw 0;html=await r.text();}
+  catch(e){(host.shadowRoot||host.attachShadow({mode:'open'})).innerHTML='<div style="color:#6e6e73;font-style:italic">stats unavailable</div>';return;}
+  renderReportInShadow(host,html);
 }
 async function loadHistory(){
   let runs;try{runs=await (await fetch('/api/runs')).json()}catch(e){return}
@@ -452,6 +455,31 @@ async function loadHistory(){
 }
 $('#refresh').addEventListener('click',loadHistory);
 $('#stats-refresh').addEventListener('click',loadStats);
+
+// Coverage (BE-0146): POST the target (+ optional run set) to /api/coverage and render the returned
+// self-contained report into a shadow root — the same isolation as loadStats. The aggregation stays
+// server-side (the CLI's `bajutsu coverage`), so nothing is recomputed in JS; the view only displays.
+async function coverageInit(){
+  // Fill the run picker from the same history the Replay view lists; a target is already populated by
+  // loadShared. Selecting runs is optional — it folds in the endpoint / observed-id dimensions.
+  let runs;try{runs=await (await fetch('/api/runs')).json()}catch(e){runs=[]}
+  $('#cov-runs').innerHTML=runs.map(r=>`<option value="${esc(r.id)}">${esc(r.id)}${r.scenarios&&r.scenarios.length?' · '+esc(r.scenarios.join(', ')):''}</option>`).join('');
+}
+async function loadCoverage(){
+  const host=$('#cov-host');
+  // Render errors into the shadow root too (once attached it shadows the light-DOM empty state), so a
+  // failed recompute replaces the stale map — the same reasoning as loadStats.
+  const fail=msg=>{(host.shadowRoot||host.attachShadow({mode:'open'})).innerHTML=`<div style="color:#6e6e73;font-style:italic">${esc(msg)}</div>`};
+  const target=$('#cov-target').value;
+  if(!target){fail('Open a config and pick a target first.');return}
+  const runs=[...$('#cov-runs').selectedOptions].map(o=>o.value);
+  let resp;
+  try{const r=await fetch('/api/coverage',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({target,runs})});
+    resp=await r.json();if(!r.ok)throw new Error(resp.error||'coverage failed');}
+  catch(e){fail(e.message||'coverage unavailable');return}
+  renderReportInShadow(host,resp.html);
+}
+$('#cov-go').addEventListener('click',loadCoverage);
 function showTab(name){
   document.querySelectorAll('#view-replay .tab').forEach(t=>t.classList.toggle('active',t.dataset.tab===name));
   $('#panel-run').hidden=name!=='run';$('#panel-history').hidden=name!=='history';

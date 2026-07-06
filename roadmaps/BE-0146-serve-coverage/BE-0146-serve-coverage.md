@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0146](BE-0146-serve-coverage.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0146") |
+| Implementing PR | [#702](https://github.com/bajutsu-e2e/bajutsu/pull/702) |
 | Topic | Surfacing CLI features in the serve Web UI |
 <!-- /BE-METADATA -->
 
@@ -67,12 +68,16 @@ Tier-1, read-only; the UI only shells out to the existing aggregation.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Add the `POST /api/coverage` endpoint (`{target, runs?}`) that runs the aggregation and
+- [x] Add the `POST /api/coverage` endpoint (`{target, runs?}`) that runs the aggregation and
       returns per-namespace coverage, the gap list, and off-namespace ids
-- [ ] Add the "Coverage" view surfacing those results in the browser
-- [ ] Fold in the endpoints-observed-vs-asserted dimension when a run set is selected
+- [x] Add the "Coverage" view surfacing those results in the browser
+- [x] Fold in the endpoints-observed-vs-asserted dimension when a run set is selected
 
-No PR has landed yet.
+* [#702](https://github.com/bajutsu-e2e/bajutsu/pull/702) — Added `POST /api/coverage` (shared with the stdlib and FastAPI shells) reusing the
+  BE-0050 aggregation and its self-contained HTML report, plus a "Coverage" tab that renders it. The
+  device-free scenario loader moved to `bajutsu/scenario` and the run-evidence readers were shared
+  into `bajutsu/coverage.py` (with a run-id filter) so the CLI and serve read the same way. Also
+  folds in the observed-id dimension alongside endpoints for a selected run set.
 
 ## References
 

@@ -16,6 +16,7 @@
       <button class="toptab" data-view="crawl" data-testid="nav.crawl">Crawl</button>
       <button class="toptab" data-view="author" data-testid="nav.author">Author</button>
       <button class="toptab" data-view="stats" data-testid="nav.stats">Stats</button>
+      <button class="toptab" data-view="coverage" data-testid="nav.coverage">Coverage</button>
       <button class="cfgbtn" id="opencfg" data-testid="nav.open-config">Open config</button>
       <span class="cfgname" id="cfgname" data-testid="nav.config-name"></span>
       <button class="cfgbtn" id="opensettings" data-testid="nav.settings">Settings</button>
@@ -354,6 +355,23 @@
       <button class="refresh" id="stats-refresh" data-testid="stats.refresh" title="refresh">&#8635;</button>
     </div>
     <div class="statshost" id="stats-host" data-testid="stats.host"><div class="empty">Loading run stats…</div></div>
+  </div>
+</main>
+
+<!-- ===== Coverage (BE-0146): the read-only E2E coverage map surfaced from `bajutsu coverage` ===== -->
+<main id="view-coverage" data-testid="view.coverage" hidden>
+  <div class="card statscard">
+    <div class="yamlhead">
+      <span class="ttl">Coverage</span>
+      <span class="muted" style="font-size:.8em">Read-only map of which declared id namespaces the suite touches — advisory, never a gate.</span>
+    </div>
+    <div class="covctl">
+      <label>Target <select id="cov-target" data-testid="coverage.target"></select></label>
+      <label>Runs <select id="cov-runs" data-testid="coverage.runs" multiple size="4"></select>
+        <span class="subhint">optional — select runs to fold in endpoints observed vs asserted</span></label>
+      <button class="run" id="cov-go" data-testid="coverage.compute" data-idle="Compute">Compute</button>
+    </div>
+    <div class="statshost" id="cov-host" data-testid="coverage.host"><div class="empty">Pick a target and compute the coverage map.</div></div>
   </div>
 </main>
 

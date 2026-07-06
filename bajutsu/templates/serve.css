@@ -444,6 +444,10 @@ header .cfgname{color:var(--mut);font-size:.82em;max-width:32vw;overflow:hidden;
 .yamlhead .yaml-actions{margin-left:auto;display:flex;align-items:center;gap:.4em}
 .yamlhead .yaml-actions .savebtn{margin-left:0}
 .codegen-emit{font:inherit;font-size:.85em;padding:.25rem .4rem;border-radius:6px;border:1px solid var(--line);background:var(--bg2);color:var(--fg);cursor:pointer}
+/* coverage (BE-0146): the target / run-set / compute control row above the rendered map. */
+.covctl{display:flex;gap:1em;align-items:flex-end;flex-wrap:wrap;margin:.8em 0}
+.covctl label{display:flex;flex-direction:column;gap:.25em;font-size:.85em}
+.covctl .subhint{font-size:.75em;color:var(--muted)}
 /* Replay codegen action row: emit selector + Generate button below the run output. */
 .codegen-bar{display:flex;align-items:center;gap:.4em;margin-top:.5em}
 .codegen-bar .savebtn{background:var(--acc);color:var(--on-acc);border:0;border-radius:6px;font-weight:700;padding:.35rem .8rem;font-size:.85em;cursor:pointer}
