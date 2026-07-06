@@ -63,9 +63,11 @@ use (a single subprocess site, a `Runner` seam for tests).
 
 - **Forced tool call → structured output.** BE-0104's `tool_choice` is `AnyTool` or `NamedTool`
   over `request.tools`. Map it to the CLI's `--json-schema`:
-  - `NamedTool`, or `AnyTool` over a single tool (`enrich`, `crawl`, `plan`, `triage`,
-    `--dismiss-alerts`, tab locator all offer exactly one tool): pass that tool's `input_schema`
-    directly; wrap the returned `structured_output` as `ToolUseBlock(name=tool.name, input=…)`.
+  - `NamedTool`, or `AnyTool` over a single tool: pass that tool's `input_schema` directly and
+    wrap the returned `structured_output` as `ToolUseBlock(name=tool.name, input=…)`. Every path
+    but `next_action` is single-tool — `propose_actions` (crawl), `propose_assertions` (enrich),
+    `plan`, `diagnose` (triage), `resolve_alert` (`--dismiss-alerts`), and `find_tabs` (tab
+    locator) each offer exactly one `ToolDef`.
   - `AnyTool` over several tools (only `ClaudeAgent.next_action`, with `tap` / `type_text` /
     `wait_for` / `finish`): wrap in a discriminator schema
     `{"tool": {"enum": [names]}, "arguments": {"oneOf": [each schema]}}`, list the per-tool schemas

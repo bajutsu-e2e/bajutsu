@@ -65,10 +65,11 @@ BE-0104 のシームの狙いです）。
 
 - **強制ツール呼び出しから structured output へ。** BE-0104 の `tool_choice` は `request.tools` に対する
   `AnyTool` か `NamedTool` です。これを CLI の `--json-schema` に対応づけます。
-  - `NamedTool`、または単一ツールに対する `AnyTool`（`enrich`、`crawl`、`plan`、`triage`、
-    `--dismiss-alerts`、タブ locator はいずれもツールを 1 つだけ提示します）は、そのツールの
-    `input_schema` をそのまま渡し、返ってきた `structured_output` を
-    `ToolUseBlock(name=tool.name, input=…)` に包みます。
+  - `NamedTool`、または単一ツールに対する `AnyTool` は、そのツールの `input_schema` をそのまま渡し、
+    返ってきた `structured_output` を `ToolUseBlock(name=tool.name, input=…)` に包みます。
+    `next_action` 以外はすべて単一ツールで、`propose_actions`（crawl）、`propose_assertions`
+    （enrich）、`plan`、`diagnose`（triage）、`resolve_alert`（`--dismiss-alerts`）、`find_tabs`
+    （タブ locator）がそれぞれ `ToolDef` を 1 つだけ提示します。
   - 複数ツールに対する `AnyTool`（該当するのは `tap` / `type_text` / `wait_for` / `finish` を持つ
     `ClaudeAgent.next_action` のみ）は、判別用スキーマ
     `{"tool": {"enum": [names]}, "arguments": {"oneOf": [各スキーマ]}}` に包み、各ツールのスキーマを
