@@ -24,6 +24,20 @@ The control plane is then on `:8765`. Front it with `tailscale serve --bg 8765` 
 recommended) or enable Caddy for a public hostname: `docker compose --profile caddy up -d` (set
 `BAJUTSU_PUBLIC_HOST`).
 
+### Metrics (optional)
+
+The control plane exposes Prometheus-format metrics at `/metrics` — queue depth and in-flight jobs
+per org, worker heartbeat freshness, and the oldest in-flight run — behind the same auth as the
+rest of serve. Turn on the optional stack to chart them:
+
+```sh
+docker compose --profile metrics up -d   # adds prometheus + grafana
+```
+
+Grafana then lands on `:3000` (log in as `admin` / `GRAFANA_ADMIN_PASSWORD`) with the Prometheus
+datasource and a starter **Bajutsu serve** dashboard already provisioned. Prometheus scrapes
+`/metrics` using `BAJUTSU_SERVE_TOKEN`, so the endpoint is never an unauthenticated public surface.
+
 On a Mac, run the worker (see the guide):
 
 ```sh
@@ -50,4 +64,5 @@ plane, not both — or a web worker may lease an idb job (and vice versa) and fa
 
 > The compose stack and images are **not exercised by CI** (no Docker on the gate). Verify a
 > deployment by hand: `docker compose up`, then check the migrate step succeeds, `/` returns 200,
-> OAuth login works, and a worker consumes a job.
+> OAuth login works, and a worker consumes a job. With the `metrics` profile, also confirm
+> Prometheus's `bajutsu-serve` target is `UP` and the Grafana dashboard charts the series.

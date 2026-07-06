@@ -440,6 +440,19 @@ def test_auth_gate_mirrors_stdlib(tmp_path: Path) -> None:
     assert fresh.get("/api/runs", headers={"Authorization": "Bearer s3cret"}).status_code == 200
 
 
+def test_metrics_route_serves_prometheus_text(tmp_path: Path) -> None:
+    # Parity with the stdlib handler: the FastAPI shell serves the same rendered metrics behind the
+    # same auth gate (BE-0169). A token makes /metrics require a credential like every other route.
+    state = _state(tmp_path, token="s3cret")
+    state.register(srv.Job(org="default"))
+    client = TestClient(make_app(state))
+    assert client.get("/metrics").status_code == 401
+    resp = client.get("/metrics", headers={"Authorization": "Bearer s3cret"})
+    assert resp.status_code == 200
+    assert resp.headers["content-type"].startswith("text/plain")
+    assert "bajutsu_in_flight_jobs" in resp.text
+
+
 def test_done_event_and_poll_use_the_bus_final_status(tmp_path: Path) -> None:
     # On the server backend the control-plane Job stays "running" (the worker ran it elsewhere);
     # the terminal status comes from the bus. The done event and the poll must report that, not the

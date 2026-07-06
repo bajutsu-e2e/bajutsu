@@ -57,6 +57,7 @@ from bajutsu.serve.operations.doctor import doctor_check
 from bajutsu.serve.operations.enrich import start_enrich
 from bajutsu.serve.operations.evidence import generate_upload_urls
 from bajutsu.serve.operations.lint import lint_scenario, scenario_schema
+from bajutsu.serve.operations.metrics import PROMETHEUS_CONTENT_TYPE, render_metrics
 from bajutsu.serve.operations.reads import (
     _find_sid,
     _primary_backend,
@@ -101,6 +102,7 @@ from bajutsu.serve.operations.worker_uploads import (
 )
 
 __all__ = [
+    "PROMETHEUS_CONTENT_TYPE",
     "_bool_flag",
     "_boot_targets",
     "_confined_config_path",
@@ -149,6 +151,7 @@ __all__ = [
     "oauth_login",
     "provider_info",
     "read_scenario",
+    "render_metrics",
     "required_role",
     "resolve_scenario_pick",
     "role_allows",

@@ -438,3 +438,37 @@ client secret, `ANTHROPIC_API_KEY`, and a run's resolved `${secrets.X}` while th
 and sensitive field **names** (`authorization`, `token`, `secret`, `password`, `cookie`, `api_key`),
 replacing them with `[REDACTED]`.
 
+## Metrics and observability (BE-0169)
+
+Structured logs (above) are events; **metrics** are the time series that show whether the pool is
+saturated, which org is consuming it, whether runs are taking longer than usual, and whether a worker
+is alive. The control plane exposes them in Prometheus text format at **`GET /metrics`**, derived from
+state it already tracks (the jobs table and lease/heartbeat records) — so it adds no bookkeeping:
+
+| Metric | Type | Meaning |
+|---|---|---|
+| `bajutsu_in_flight_jobs{org}` | gauge | Jobs the control plane is running itself, by org (local serve). |
+| `bajutsu_queue_depth{org}` | gauge | Jobs waiting in the queue, by org (server backend). |
+| `bajutsu_leased_jobs{org}` | gauge | Jobs leased to a worker — in flight — by org (server backend). |
+| `bajutsu_worker_heartbeat_age_seconds{worker}` | gauge | Seconds since a worker's last heartbeat; rising past the lease timeout means a dead worker. |
+| `bajutsu_oldest_in_flight_seconds` | gauge | Seconds since the oldest in-flight job was enqueued (includes time it waited in the queue) — a slow / stuck-run signal. |
+| `bajutsu_max_concurrent` | gauge | Configured cap on concurrent jobs (0 = unlimited). |
+
+`/metrics` is **not** a public surface: it sits behind the same auth gate as the rest of serve
+(BE-0051), so with a token configured a scraper must send `Authorization: Bearer <token>`. The
+output carries only counts, ages, and org / worker identifiers — never a job spec, a result, or the
+token — so a scrape cannot leak a secret. On local serve (no database) only the in-flight and
+capacity series appear; the queue / lease / worker series are added when a database is wired.
+
+The compose stack ships an **optional** Prometheus + Grafana profile (like `caddy`):
+
+```sh
+docker compose --profile metrics up -d
+```
+
+Grafana lands on `:3000` (`admin` / `GRAFANA_ADMIN_PASSWORD`) with the Prometheus datasource and a
+starter **Bajutsu serve** dashboard already provisioned; Prometheus scrapes `/metrics` with
+`BAJUTSU_SERVE_TOKEN`. Point a hosted scraper at the endpoint instead if you prefer. Like the rest of
+the compose stack this profile is verified by hand, not by CI: bring it up, then check Prometheus's
+`bajutsu-serve` target is `UP` and the dashboard charts the series.
+

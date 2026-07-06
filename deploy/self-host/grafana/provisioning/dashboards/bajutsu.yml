@@ -1,0 +1,10 @@
+# Grafana dashboard provisioning (BE-0169): load every dashboard JSON under /var/lib/grafana/dashboards
+# (the mounted ./grafana/dashboards) on startup, so the starter Bajutsu dashboard appears without an import.
+apiVersion: 1
+
+providers:
+  - name: bajutsu
+    type: file
+    options:
+      path: /var/lib/grafana/dashboards
+      foldersFromFilesStructure: false

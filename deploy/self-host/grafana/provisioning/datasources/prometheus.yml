@@ -1,0 +1,12 @@
+# Grafana datasource provisioning (BE-0169): point Grafana at the Prometheus service on the compose
+# network, as the default datasource, so the starter dashboard resolves without any manual setup.
+apiVersion: 1
+
+datasources:
+  - name: Prometheus
+    # Fixed uid so the provisioned dashboard can reference this datasource deterministically.
+    uid: prometheus
+    type: prometheus
+    access: proxy
+    url: http://prometheus:9090
+    isDefault: true

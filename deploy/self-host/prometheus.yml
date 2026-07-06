@@ -1,0 +1,18 @@
+# Prometheus scrape config for the optional self-host metrics stack (BE-0169). Mounted read-only
+# into the `prometheus` service (see docker-compose.yml, profile `metrics`). It scrapes the serve
+# control plane's /metrics over the compose network.
+#
+# /metrics sits behind serve's auth gate (BE-0051), so the scrape must present the operator token.
+# Prometheus does not expand env vars in this file, so the service's entrypoint writes
+# BAJUTSU_SERVE_TOKEN to `serve-token` and it is read here as bearer credentials.
+global:
+  scrape_interval: 15s
+
+scrape_configs:
+  - job_name: bajutsu-serve
+    metrics_path: /metrics
+    authorization:
+      type: Bearer
+      credentials_file: /etc/prometheus/serve-token
+    static_configs:
+      - targets: ["bajutsu:8765"]

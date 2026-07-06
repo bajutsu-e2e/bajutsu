@@ -424,3 +424,37 @@ BE-0015 で今後の作業です。
 忘れないことに依存しません。既知の秘密の**値**（オペレータトークン、OAuth クライアントシークレット、
 `ANTHROPIC_API_KEY`、および run の実行中はその run が解決した `${secrets.X}`）と、機微なフィールド**名**
 （`authorization`、`token`、`secret`、`password`、`cookie`、`api_key`）をマスクし、`[REDACTED]` に置き換えます。
+
+## メトリクスと可観測性（BE-0169）
+
+構造化ログ（前節）が記録するのはイベントです。一方の**メトリクス**は、プールが飽和していないか、いまどの
+org が消費しているか、run がふだんより長引いていないか、ワーカーが生きているかを示す時系列です。
+コントロールプレーンはこれらを Prometheus のテキスト形式で **`GET /metrics`** に公開します。値はすでに
+追跡している状態（jobs テーブルとリース・ハートビートの記録）から導くので、新しい記帳は増えません。
+
+| メトリクス | 種別 | 意味 |
+|---|---|---|
+| `bajutsu_in_flight_jobs{org}` | gauge | コントロールプレーン自身が実行中の job 数（ローカル serve）。org ごと。 |
+| `bajutsu_queue_depth{org}` | gauge | キューで待機している job 数（サーバ backend）。org ごと。 |
+| `bajutsu_leased_jobs{org}` | gauge | ワーカーにリースされ実行中の job 数（サーバ backend）。org ごと。 |
+| `bajutsu_worker_heartbeat_age_seconds{worker}` | gauge | 各ワーカーの最後のハートビートからの経過秒。リースタイムアウトを超えて増え続けるとワーカーの停止を意味します。 |
+| `bajutsu_oldest_in_flight_seconds` | gauge | 実行中でもっとも古い job がキューに投入されてからの経過秒（キューでの待機時間を含みます）。run が遅い、または詰まっている兆候です。 |
+| `bajutsu_max_concurrent` | gauge | 同時実行 job 数の上限（0 は無制限）。 |
+
+`/metrics` は公開の面ではありません。serve の他の面と同じ認証ゲート（BE-0051）の背後に置かれるので、
+トークンを設定していればスクレイパは `Authorization: Bearer <token>` を送る必要があります。出力に含まれるのは
+カウント、経過時間、org やワーカーの識別子だけで、job の spec や結果、トークンは一切含みません。したがって
+スクレイプが秘密を漏らすことはありません。ローカル serve（データベースなし）では実行中と上限の系列だけが
+現れ、キュー・リース・ワーカーの系列はデータベースを配線したときに加わります。
+
+compose スタックには、Prometheus と Grafana の**任意**のプロファイルを（`caddy` と同じように）同梱しています。
+
+```sh
+docker compose --profile metrics up -d
+```
+
+Grafana は `:3000` で起動し（`admin` / `GRAFANA_ADMIN_PASSWORD`）、Prometheus のデータソースと、初期の
+**Bajutsu serve** ダッシュボードをあらかじめ組み込んだ状態になります。Prometheus は `BAJUTSU_SERVE_TOKEN` を
+使って `/metrics` をスクレイプします。ホスト型のスクレイパをこのエンドポイントに向けても構いません。compose
+スタックの他の部分と同様、このプロファイルは CI ではなく手元で検証します。起動したうえで、Prometheus の
+`bajutsu-serve` ターゲットが `UP` であること、ダッシュボードが系列を描画することを確認してください。
