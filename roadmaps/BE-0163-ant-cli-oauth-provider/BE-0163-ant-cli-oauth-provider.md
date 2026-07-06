@@ -11,7 +11,7 @@
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0163") |
 | Implementing PR | [#689](https://github.com/bajutsu-e2e/bajutsu/pull/689) |
 | Topic | AI provider configuration |
-| Related | [BE-0125](../BE-0125-authoring-agent-tool-restriction/BE-0125-authoring-agent-tool-restriction.md) |
+| Related | [BE-0125](../BE-0125-authoring-agent-tool-restriction/BE-0125-authoring-agent-tool-restriction.md), [BE-0175](../BE-0175-serve-web-ui-ant-sso-login/BE-0175-serve-web-ui-ant-sso-login.md) |
 <!-- /BE-METADATA -->
 
 ## Introduction
