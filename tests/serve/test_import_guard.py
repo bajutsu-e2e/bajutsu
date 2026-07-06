@@ -82,6 +82,7 @@ def test_worker_command_path_stays_lean() -> None:
             "sqlalchemy",
             "alembic",
             "psycopg",
+            "authlib",  # OAuth (server/oauth extra) — control-plane only
             "boto3",
             "botocore",
             "google",  # google-cloud-storage

@@ -44,6 +44,10 @@ backend has no Simulator/GUI constraint. An optional `worker-web` service (off b
 docker compose --profile web-worker up -d --build
 ```
 
+Until BE-0166 routes jobs by backend, `/api/worker/lease` has no backend/capability filtering, so
+keep the pool **homogeneous per backend** — run either idb workers or web workers against a control
+plane, not both — or a web worker may lease an idb job (and vice versa) and fail.
+
 > The compose stack and images are **not exercised by CI** (no Docker on the gate). Verify a
 > deployment by hand: `docker compose up`, then check the migrate step succeeds, `/` returns 200,
 > OAuth login works, and a worker consumes a job.

@@ -7,7 +7,7 @@
 |---|---|
 | Proposal | [BE-0173](BE-0173-slim-web-worker-image.md) |
 | Author | [@hirosassa](https://github.com/hirosassa) |
-| Status | **In progress** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0173") |
 | Implementing PR | [#718](https://github.com/bajutsu-e2e/bajutsu/pull/718) |
 | Topic | Hosting the web UI (cloud / self-hosted) |

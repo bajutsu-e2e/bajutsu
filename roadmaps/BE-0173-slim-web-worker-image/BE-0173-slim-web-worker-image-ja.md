@@ -1,13 +1,13 @@
 [English](BE-0173-slim-web-worker-image.md) · **日本語**
 
-# BE-0173 — Slim Linux web-worker container image
+# BE-0173 — 軽量な Linux web worker のコンテナイメージ
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
 |---|---|
 | 提案 | [BE-0173](BE-0173-slim-web-worker-image-ja.md) |
 | 提案者 | [@hirosassa](https://github.com/hirosassa) |
-| 状態 | **実装中** |
+| 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0173") |
 | 実装 PR | [#718](https://github.com/bajutsu-e2e/bajutsu/pull/718) |
 | トピック | Web UI のホスティング（クラウド / セルフホスト） |

@@ -340,6 +340,7 @@ Standing up `bajutsu serve` beyond loopback. The hardening that makes the existi
 | [BE-0127](BE-0127-split-serve-operations-module/BE-0127-split-serve-operations-module.md) | Split the serve operations god-module | Implemented |
 | [BE-0129](BE-0129-serve-scope-boundary/BE-0129-serve-scope-boundary.md) | Bound serve scope and keep host concerns out of shared config | Implemented |
 | [BE-0160](BE-0160-worker-credential-free-uploads/BE-0160-worker-credential-free-uploads.md) | Credential-free worker uploads via presigned URLs | Implemented |
+| [BE-0173](BE-0173-slim-web-worker-image/BE-0173-slim-web-worker-image.md) | Slim Linux web-worker container image | Implemented |
 <!-- /GENERATED:implemented-hosting -->
 
 ### Security hardening
@@ -508,7 +509,6 @@ Consolidating the demo and dogfood apps onto the showcase suite: bringing it to 
 | ID | Item | Status |
 |---|---|---|
 | [BE-0015](BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md) | Public hosting of the web UI | In progress |
-| [BE-0173](BE-0173-slim-web-worker-image/BE-0173-slim-web-worker-image.md) | Slim Linux web-worker container image | In progress |
 <!-- /GENERATED:in-progress-hosting -->
 
 ### Surfacing CLI features in the serve Web UI
