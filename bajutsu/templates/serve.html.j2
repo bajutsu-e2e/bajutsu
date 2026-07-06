@@ -100,6 +100,18 @@
       </div>
       <textarea id="rec-yaml" data-testid="record.yaml" class="yaml" placeholder="The recorded scenario YAML appears here once authoring finishes — edit and Save, then Run it here (or in the Replay tab)."></textarea>
     </div>
+    <!-- Run result: an inline panel (same tiling mechanism as the panels above) holding only the
+         report, shown when ▶ Run is pressed and dismissable with its X. The live run log streams to
+         the Progress console above, like Generate. Hidden by default; the desktop tiler adds/removes
+         it as an optional pane, and at the phone tier the `hidden` attribute + Output tab govern it. -->
+    <div class="card rec-report-panel" id="rec-reportpanel" data-pane="yaml" hidden>
+      <div class="yamlhead">
+        <span class="ttl">Run result</span>
+        <span class="muted" id="rec-runstatus" style="font-size:.8em"></span>
+        <button class="fsclose" id="rec-runclose" data-testid="record.run-close" style="margin-left:auto">&#10005;</button>
+      </div>
+      <div id="rec-report" data-testid="record.run-report"></div>
+    </div>
   </div>
 </main>
 
@@ -501,18 +513,6 @@
       <span class="keystatus" id="setstatus" data-testid="settings.status"></span>
     </div>
     <div class="fshint">Settings live in the running server's memory for this session only &mdash; <b>not written to disk</b>, so they reset when <code>serve</code> restarts. For values that survive restarts, set <code>ANTHROPIC_API_KEY</code> / <code>AWS_*</code> in your shell or a <code>.env</code> before launching <code>serve</code>.</div>
-  </div>
-</div>
-<!-- ===== Record run result: the in-place run's log + report, in its own dismissable panel ===== -->
-<div class="modal" id="rec-runmodal" data-testid="record.run-modal" hidden>
-  <div class="fsbox">
-    <div class="fshead">
-      <span class="ttl">Run result</span>
-      <span class="status" id="rec-runstatus" style="margin-left:.6rem"></span>
-      <button class="fsclose" id="rec-runclose" data-testid="record.run-close">&#10005;</button>
-    </div>
-    <pre class="out" id="rec-runout" data-testid="record.run-out"></pre>
-    <div id="rec-report" data-testid="record.run-report"></div>
   </div>
 </div>
 <!-- ===== Screenshot lightbox: the enlarged screen + where it goes next (Crawl tab) ===== -->
