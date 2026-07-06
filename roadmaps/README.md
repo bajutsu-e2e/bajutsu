@@ -376,6 +376,7 @@ Where a project's config and scenarios come from. A Git repository + ref is a to
 | [BE-0063](BE-0063-git-config-source/BE-0063-git-config-source.md) | Load config (and its scenario tree) from a Git repository + ref | Implemented |
 | [BE-0073](BE-0073-serve-zip-bundle-upload/BE-0073-serve-zip-bundle-upload.md) | Upload a config + scenarios + app-binary bundle as a zip and run it from the web UI | Implemented |
 | [BE-0119](BE-0119-scenario-schema-versioning/BE-0119-scenario-schema-versioning.md) | Version the scenario schema for cross-version reads | Implemented |
+| [BE-0177](BE-0177-run-behavior-target-config/BE-0177-run-behavior-target-config.md) | Per-target config defaults for run-behavior settings | Implemented |
 <!-- /GENERATED:implemented-config-sourcing -->
 
 ### Surfacing CLI features in the serve Web UI
@@ -622,7 +623,6 @@ Where `bajutsu` reads its config and scenario tree from. Today that is a local p
 <!-- GENERATED:proposals-config-sourcing -->
 | ID | Item | Status |
 |---|---|---|
-| [BE-0177](BE-0177-run-behavior-target-config/BE-0177-run-behavior-target-config.md) | Per-target config defaults for run-behavior settings | Proposal |
 <!-- /GENERATED:proposals-config-sourcing -->
 
 ### codegen coverage

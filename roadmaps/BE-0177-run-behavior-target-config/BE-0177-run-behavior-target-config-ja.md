@@ -7,8 +7,9 @@
 |---|---|
 | 提案 | [BE-0177](BE-0177-run-behavior-target-config-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **提案** |
+| 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0177") |
+| 実装 PR | _保留_ |
 | トピック | config の取得元 |
 <!-- /BE-METADATA -->
 
@@ -50,12 +51,16 @@ CLI フラグは意図して残します。一度限りの CI 実行、デバッ
 > 作業分解（作業の単位ごとに 1 つ）に対応し、ログには変更内容と時期（古い順）を PR へのリンクと
 > ともに記録します。
 
-- [ ] `TargetConfig` に `dismissAlerts`、`erase`、`network` を追加する（スキーマと `dismissAlerts` の変換）。
-- [ ] run の経路で各設定の優先順位 `CLI ＞ シナリオ ＞ ターゲット ＞ 既定` を解決する。
-- [ ] ターゲットの `instruction` を `default_instruction` の連なりに組み込む。
-- [ ] この層が serve を通しても成り立つことを確認する（フラグとチェックボックスは変更せず、config の既定値が下位に効く）。
-- [ ] config フィールドと優先順位を文書化する（英語と日本語）。影響があれば DESIGN.md / architecture.md を更新する。
-- [ ] パースと優先順位のテストを追加する。
+- [x] `TargetConfig` に `dismissAlerts`、`erase`、`network` を追加し、`Effective` に解決する（スキーマと `dismissAlerts` の変換）。
+- [x] run の経路で各設定の優先順位 `CLI ＞ シナリオ ＞ ターゲット ＞ 既定` を解決する（`erase` は `_filter_scenarios`、ガードの `enabled` は `_alert_guard_factory`、`network` は `run`）。「未設定」が下位に落ちるよう `Preconditions.erase` と `--network` を `bool | None` にした。
+- [x] ターゲットの `instruction` を `default_instruction` の連なりに組み込む。
+- [x] この層が serve を通しても成り立つことを確認する（フラグとチェックボックスは変更せず、config の既定値が下位に効く。serve のコード変更は不要）。
+- [x] config フィールドと優先順位を文書化する（英語と日本語の `configuration.md` / `cli.md`）。DESIGN.md / architecture.md への影響はなし。
+- [x] パースと優先順位のテストを追加する。
+
+**ログ**
+
+- _保留_ — `dismissAlerts` / `erase` / `network` のターゲットごとの config 層を、優先順位 `フラグ ＞ シナリオ ＞ ターゲット ＞ 既定` で実装。config パースと優先順位のテスト、日英のドキュメント更新を含む。
 
 ## 参考
 

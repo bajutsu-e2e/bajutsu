@@ -185,21 +185,43 @@ def test_filter_scenarios_selects_by_tag() -> None:
     scenarios = load_scenarios(
         _one_scenario("a", tags="[smoke]") + _one_scenario("b", tags="[slow]")
     )
-    got = _filter_scenarios(scenarios, "smoke", "", None)
+    got = _filter_scenarios(scenarios, "smoke", "", None, False)
     assert [s.name for s in got] == ["a"]
 
 
 def test_filter_scenarios_no_match_exits_2() -> None:
     scenarios = load_scenarios(_one_scenario("a", tags="[smoke]"))
     with pytest.raises(typer.Exit) as exc:
-        _filter_scenarios(scenarios, "nightly", "", None)
+        _filter_scenarios(scenarios, "nightly", "", None, False)
     assert exc.value.exit_code == 2
 
 
 def test_filter_scenarios_erase_override() -> None:
     scenarios = load_scenarios(_one_scenario("a"))
-    _filter_scenarios(scenarios, "", "", True)  # --erase forces every scenario on
+    _filter_scenarios(scenarios, "", "", True, False)  # --erase forces every scenario on
     assert scenarios[0].preconditions.erase is True
+
+
+def test_filter_scenarios_erase_inherits_target_default() -> None:
+    # BE-0177: an unset scenario (erase None) inherits the target config default when no flag is given.
+    scenarios = load_scenarios(_one_scenario("a"))
+    assert scenarios[0].preconditions.erase is None
+    _filter_scenarios(scenarios, "", "", None, True)
+    assert scenarios[0].preconditions.erase is True
+
+
+def test_filter_scenarios_erase_scenario_beats_target() -> None:
+    # BE-0177: a scenario's explicit erase wins over the target default; the flag is unset here.
+    scenarios = load_scenarios(_one_scenario("a") + "  preconditions:\n    erase: false\n")
+    _filter_scenarios(scenarios, "", "", None, True)
+    assert scenarios[0].preconditions.erase is False
+
+
+def test_filter_scenarios_erase_flag_beats_scenario_and_target() -> None:
+    # BE-0177: `--no-erase` overrides even a scenario that explicitly set erase: true.
+    scenarios = load_scenarios(_one_scenario("a") + "  preconditions:\n    erase: true\n")
+    _filter_scenarios(scenarios, "", "", False, True)
+    assert scenarios[0].preconditions.erase is False
 
 
 # --- _alert_guard_factory: build the guard factory, or None when no scenario wants one
@@ -210,6 +232,22 @@ def test_alert_guard_factory_none_when_all_disabled() -> None:
         "- name: a\n  dismissAlerts: false\n" + "  steps:\n    - tap: { id: home.title }\n"
     )
     assert _alert_guard_factory(scenarios, _eff(), "") is None
+
+
+def test_alert_guard_factory_none_when_target_disables() -> None:
+    # BE-0177: a scenario with no dismissAlerts inherits the target config's `dismissAlerts: false`,
+    # so the factory builds no guard at all (the enabled bit resolves scenario > target > built-in on).
+    scenarios = load_scenarios(_one_scenario("a"))
+    assert _alert_guard_factory(scenarios, _eff(dismissAlerts="false"), "") is None
+
+
+def test_alert_guard_factory_scenario_reenables_over_target() -> None:
+    # BE-0177: a scenario's explicit `dismissAlerts: true` wins over the target's `false`, so a guard
+    # is still built (it no-ops here only because the test env has no AI credential).
+    scenarios = load_scenarios(
+        "- name: a\n  dismissAlerts: true\n  steps:\n    - tap: { id: home.title }\n"
+    )
+    assert _alert_guard_factory(scenarios, _eff(dismissAlerts="false"), "") is not None
 
 
 def test_alert_guard_factory_noop_without_credential(monkeypatch: pytest.MonkeyPatch) -> None:
