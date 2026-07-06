@@ -28,7 +28,7 @@ from bajutsu.ai import (
     ToolDef,
     create_backend,
 )
-from bajutsu.anthropic_client import AiConfig, resolve_model
+from bajutsu.anthropic_client import AiConfig, resolve_effort, resolve_model
 from bajutsu.redaction import Redactor
 from bajutsu.scenario import Assertion, Step
 
@@ -454,6 +454,7 @@ class ClaudeAgent:
         self._ai = ai
         self._redactor = redactor
         self._model = resolve_model(MODEL, ai) if model is None else model
+        self._effort = resolve_effort(ai)  # passed to backends that support it (claude-code)
         self._max_tokens = max_tokens
 
     def _ensure_backend(self) -> AiBackend:
@@ -471,6 +472,7 @@ class ClaudeAgent:
                 tool_choice=AnyTool(),
                 model=self._model,
                 max_tokens=self._max_tokens,
+                effort=self._effort,
             )
         )
         usage.record(response.usage)
@@ -485,6 +487,7 @@ class ClaudeAgent:
                 tool_choice=NamedTool(name="plan"),  # force the plan call
                 model=self._model,
                 max_tokens=self._max_tokens,
+                effort=self._effort,
             )
         )
         usage.record(response.usage)

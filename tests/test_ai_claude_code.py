@@ -39,6 +39,7 @@ def _request(
     tools: list[ToolDef] | None = None,
     tool_choice: ToolChoice = _ANY,
     image: bytes | None = None,
+    effort: str | None = None,
 ) -> MessageRequest:
     content: list[Any] = []
     if image is not None:
@@ -51,7 +52,16 @@ def _request(
         tool_choice=tool_choice,
         model="claude-opus-4-8",
         max_tokens=256,
+        effort=effort,
     )
+
+
+def test_command_passes_effort_only_when_set() -> None:
+    schema = {"type": "object"}
+    with_effort = claude_code._command(_request(effort="high"), schema, "note", "/tmp/s", False)
+    assert "--effort" in with_effort and _flag(with_effort, "--effort") == "high"
+    without = claude_code._command(_request(), schema, "note", "/tmp/s", False)
+    assert "--effort" not in without
 
 
 class FakeRunner:

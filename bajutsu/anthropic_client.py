@@ -42,8 +42,12 @@ from typing import Any, Protocol
 from bajutsu.config import AiConfig as AiConfig
 
 PROVIDER_ENV = "BAJUTSU_AI_PROVIDER"
+MODEL_ENV = "BAJUTSU_AI_MODEL"  # provider-agnostic model override (config `ai.model` wins over it)
+EFFORT_ENV = "BAJUTSU_AI_EFFORT"  # reasoning-effort override (config `ai.effort` wins over it)
 BEDROCK_MODEL_ENV = "BAJUTSU_BEDROCK_MODEL"
 ANTHROPIC_KEY_ENV = "ANTHROPIC_API_KEY"
+# The reasoning-effort levels the `claude` CLI accepts (`--effort`); other levels are ignored.
+EFFORT_LEVELS = ("low", "medium", "high", "xhigh", "max")
 # Provider names state the authentication method — all three are Anthropic-SDK variants.
 PROVIDERS = ("api-key", "bedrock", "ant")
 DEFAULT_PROVIDER = "api-key"
@@ -223,9 +227,25 @@ def resolve_model(default: str, ai: AiConfig | None = None) -> str:
     """
     if ai and ai.model:
         return ai.model
+    env_model = (os.environ.get(MODEL_ENV) or "").strip()
+    if env_model:
+        return env_model
     if provider(ai) == "bedrock":
         return (os.environ.get(BEDROCK_MODEL_ENV) or "").strip() or default
     return default
+
+
+def resolve_effort(ai: AiConfig | None = None) -> str | None:
+    """The reasoning-effort level for this call, or ``None`` when unset / unrecognized.
+
+    Config ``ai.effort`` wins, else ``BAJUTSU_AI_EFFORT`` (config-first, env fallback — like the
+    provider and model). Only the levels the `claude` CLI accepts (`EFFORT_LEVELS`) pass through; any
+    other value resolves to ``None`` so a typo silently falls back to the model's default rather than
+    failing a run. Providers that have no effort knob (the Anthropic SDK) ignore the result.
+    """
+    raw = (ai.effort if ai else None) or os.environ.get(EFFORT_ENV) or ""
+    value = raw.strip().lower()
+    return value if value in EFFORT_LEVELS else None
 
 
 def credential_gap(ai: AiConfig | None = None) -> str | None:

@@ -130,6 +130,14 @@ def test_request_uses_forced_tool_choice() -> None:
     }
 
 
+def test_effort_is_threaded_into_the_request() -> None:
+    from bajutsu.anthropic_client import AiConfig
+
+    backend = FakeBackend(FakeBlock("tap", {"id": "a"}))
+    ClaudeAgent(backend=backend, ai=AiConfig(effort="high")).next_action(_obs())
+    assert backend.requests[0].effort == "high"
+
+
 def test_screenshot_sent_as_image_part() -> None:
     backend = FakeBackend(FakeBlock("tap", {"id": "a"}))
     png = b"\x89PNG\r\n\x1a\n fake-bytes"

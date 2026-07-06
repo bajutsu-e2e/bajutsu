@@ -173,6 +173,8 @@ def _command(
         "--permission-mode",
         "default",
     ]
+    if request.effort:
+        cmd += ["--effort", request.effort]  # reasoning-effort level, when the caller set one
     deny = list(_DENY)
     if image:
         cmd += ["--add-dir", scratch, "--allowedTools", "Read"]

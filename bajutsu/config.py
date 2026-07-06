@@ -38,6 +38,7 @@ class AiConfig:
     model: str | None = None
     base_url: str | None = None  # self-hosted gateway / proxy for the Anthropic provider
     key_env: str | None = None  # name of the env var holding the API key (never the key)
+    effort: str | None = None  # reasoning-effort level (low/medium/high/xhigh/max) where supported
 
 
 class _Model(BaseModel):
@@ -130,6 +131,7 @@ class AiSettings(_Model):
     model: str | None = None  # override the path's default model
     base_url: str | None = Field(default=None, alias="baseUrl")  # self-hosted gateway / proxy
     key_env: str | None = Field(default=None, alias="keyEnv")  # NAME of the env var (never the key)
+    effort: str | None = None  # reasoning-effort level: low/medium/high/xhigh/max (claude-code)
 
 
 def _check_platform(v: str | None) -> str | None:
@@ -606,6 +608,7 @@ def _merge_ai(base: AiSettings | None, over: AiSettings | None) -> AiConfig | No
         model=o.model or b.model,
         base_url=o.base_url or b.base_url,
         key_env=o.key_env or b.key_env,
+        effort=o.effort or b.effort,
     )
 
 

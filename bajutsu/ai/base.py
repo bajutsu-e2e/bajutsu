@@ -90,6 +90,9 @@ class MessageRequest:
     tool_choice: ToolChoice
     model: str
     max_tokens: int
+    # Reasoning-effort level (low/medium/high/xhigh/max) for backends that support it — the
+    # `claude-code` CLI does (`--effort`); the SDK adapters have no such knob and ignore it.
+    effort: str | None = None
 
 
 @dataclass(frozen=True)
