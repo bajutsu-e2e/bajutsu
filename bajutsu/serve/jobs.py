@@ -10,6 +10,7 @@ import re
 import secrets
 import shlex
 import shutil
+import signal
 import subprocess
 import sys
 import threading
@@ -429,7 +430,15 @@ def _log(job: Job, line: str) -> None:
 
 
 def _terminate(proc: Any) -> None:
-    """Best-effort stop of a live subprocess; ignore an already-exited / fake proc."""
+    """Best-effort stop of a live subprocess AND its children; ignore an already-exited / fake proc.
+
+    A record job spawns its own children (the authoring agent shells out to `claude -p`), so
+    terminating only the top process orphans them. The job is launched in its own session
+    (`start_new_session`), so signal the whole process group; fall back to terminating just the
+    process (a fake proc in tests, or a platform without process groups)."""
+    with contextlib.suppress(OSError, ProcessLookupError, AttributeError):
+        os.killpg(os.getpgid(proc.pid), signal.SIGTERM)
+        return
     with contextlib.suppress(OSError, ProcessLookupError, AttributeError):
         proc.terminate()
 
@@ -521,6 +530,7 @@ def _build_app(state: ServeState, job: Job) -> bool:
             stderr=subprocess.STDOUT,
             text=True,
             bufsize=1,
+            start_new_session=True,  # own process group, so a cancel can stop its children too
         )
         if not _register_proc(job, proc):
             proc.wait()
@@ -669,6 +679,7 @@ def _run_job(state: ServeState, job: Job) -> None:
         stderr=subprocess.STDOUT,
         text=True,
         bufsize=1,
+        start_new_session=True,  # own process group, so a cancel stops its children (e.g. `claude -p`)
     )
     if not _register_proc(job, proc):
         proc.wait()
