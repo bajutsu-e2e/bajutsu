@@ -168,6 +168,24 @@ def test_http_config_content_returns_local_yaml_without_provenance(tmp_path: Pat
         server.server_close()
 
 
+def test_http_config_content_uses_restricted_loader_and_stays_json_safe(tmp_path: Path) -> None:
+    # The parsed structure must use the project's restricted YAML loader (so an `on:` key stays the
+    # string "on", not the bool True as YAML 1.1 would coerce it) and must be JSON-serializable — a
+    # bare `date` from a timestamp would otherwise make the handler's json.dumps 500. config_content
+    # reads state.config directly (no schema re-validation), so a tricky file exercises both.
+    _, _, runs = project(tmp_path)
+    cfg = tmp_path / "tricky.yaml"
+    cfg.write_text("on: 1\nreleased: 2020-01-02\ndefaults: { backend: [idb] }\n", encoding="utf-8")
+    server, port = _serve(srv.ServeState(config=cfg, runs_dir=runs, cwd=tmp_path))
+    try:
+        d = _get_json(port, "/api/config/content")  # would raise on a 500 (non-JSON-safe payload)
+        assert "on" in d["parsed"]  # restricted loader kept the key a string, not True
+        assert d["parsed"]["released"] == "2020-01-02"  # the date was coerced to a string for JSON
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
 def test_http_config_content_404_when_no_config_bound(tmp_path: Path) -> None:
     # Nothing bound yet (the UI opens the picker instead): the content endpoint 404s rather than
     # returning an empty body the viewer would render as a blank config.

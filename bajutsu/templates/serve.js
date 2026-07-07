@@ -250,7 +250,7 @@ async function openCfgView(){
   let d;try{d=await (await fetch('/api/config/content')).json()}catch(e){d={error:'request failed'}}
   const prov=$('#cfgprov'),tree=$('#cfgviewtree');
   tree.textContent='';
-  if(d.error){prov.hidden=true;$('#cfgviewpath').textContent='';$('#cfgviewbody').textContent=d.error;cfgViewMode(true);$('#cfgviewmodal').hidden=false;return}
+  if(d.error){prov.hidden=true;$('#cfgviewpath').textContent='';$('#cfgviewbody').textContent=d.error;$('#cfgview-structured').disabled=true;cfgViewMode(true);$('#cfgviewmodal').hidden=false;return}
   const p=d.provenance;
   if(p){
     // A Git source: show which commit was materialized (ref → resolved sha), not the opaque cache path.

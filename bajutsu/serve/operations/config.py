@@ -12,7 +12,7 @@ from typing import Any
 
 import yaml
 
-from bajutsu import ai_availability
+from bajutsu import _yaml, ai_availability
 from bajutsu.ai import known_providers, resolved_provider
 from bajutsu.anthropic_client import (
     ANT_BINARY,
@@ -109,6 +109,23 @@ def config_info(state: ServeState) -> tuple[Any, int]:
     }, 200
 
 
+def _json_safe(value: Any) -> Any:
+    """Coerce a parsed-YAML structure into JSON-serializable types for the config-content payload.
+
+    The YAML loader can emit scalars JSON has no type for (a `date`/`datetime` from a timestamp,
+    say); left as-is they would make the stdlib handler's `json.dumps` raise. Recurse containers and
+    stringify any leaf that is not already a JSON scalar; dict keys are stringified too (JSON keys
+    are strings). Only affects the display structure — the raw YAML text is returned untouched.
+    """
+    if isinstance(value, dict):
+        return {str(k): _json_safe(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_json_safe(v) for v in value]
+    if value is None or isinstance(value, (str, bool, int, float)):
+        return value
+    return str(value)
+
+
 def config_content(state: ServeState) -> tuple[Any, int]:
     """The raw text of the active config plus its source, so the UI can confirm *what* is bound.
 
@@ -128,11 +145,14 @@ def config_content(state: ServeState) -> tuple[Any, int]:
         # The bound path was validated at bind time; a read failure here means it moved/was removed
         # under us (a transient checkout, a deleted file) — report it rather than 500 with a traceback.
         return {"error": f"could not read config: {e}"}, 404
-    # The parsed structure powers the UI's collapsible key/value view; `safe_load` keeps it faithful
-    # to the file (no env interpolation, so `${secrets.*}` stay literal strings like in the raw text).
-    # A parse failure leaves `parsed` null and the UI falls back to the raw YAML rather than erroring.
+    # The parsed structure powers the UI's collapsible key/value view. Use the same restricted loader
+    # `load_config` uses (`_yaml`), not `yaml.safe_load`: YAML 1.1 implicit typing would turn an `on:`
+    # trigger key into `True`, so a plain load would misrender a valid config. `_json_safe` then coerces
+    # any non-JSON scalar the loader can still emit (e.g. a `date`) to a string, so the payload is always
+    # JSON-serializable — the stdlib handler dumps it directly and would 500 on a raw `date`. A parse
+    # failure leaves `parsed` null and the UI falls back to the raw YAML rather than erroring.
     try:
-        parsed = yaml.safe_load(content)
+        parsed = _json_safe(_yaml.safe_load(content))
     except yaml.YAMLError:
         parsed = None
     return {
