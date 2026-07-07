@@ -80,6 +80,7 @@ from bajutsu.serve.operations.reads import (
     save_scenario,
     simulators_payload,
     stats_html,
+    usage_html,
 )
 from bajutsu.serve.operations.sse import (
     _job_event_pairs,
@@ -176,6 +177,7 @@ __all__ = [
     "start_run",
     "start_triage",
     "stats_html",
+    "usage_html",
     "worker_artifact_urls",
     "worker_heartbeat",
     "worker_lease",

@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+{#- Self-contained AI usage/cost dashboard (BE-0195). usage_stats.py builds the context; all markup
+    lives here. CSS is inlined and the trend is inline SVG (no external asset, no JS chart library) so
+    the page works opened straight from disk, mirroring the run-stats dashboard (BE-0102). -#}
+{%- macro money(row) -%}
+{%- if row.has_price %}${{ '%.4f' | format(row.cost) }}{% if row.unpriced_calls %} <span class="tag unpriced">+{{ row.unpriced_calls }} unpriced</span>{% endif %}{% else %}<span class="unpriced">—</span>{% endif -%}
+{%- endmacro -%}
+{%- macro breakdown(title, rows) -%}
+<section>
+<h2>{{ title }}</h2>
+<table>
+<thead><tr><th>{{ title }}</th><th class="num">Calls</th><th class="num">Tokens</th><th class="num">Cost</th></tr></thead>
+<tbody>
+{%- for row in rows %}
+<tr><td><code>{{ row.key }}</code></td><td class="num">{{ row.calls }}</td><td class="num">{{ '{:,}'.format(row.tokens) }}</td><td class="num">{{ money(row) }}</td></tr>
+{%- endfor %}
+</tbody>
+</table>
+</section>
+{%- endmacro -%}
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AI usage &amp; cost</title>
+<style>
+:root { color-scheme: light dark; }
+body { font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  margin: 0; padding: 2rem; max-width: 880px; margin: 0 auto; color: #1d1d1f; background: #fff; }
+h1 { font-size: 1.5rem; margin: 0 0 .25rem; }
+h2 { font-size: 1.1rem; margin: 2rem 0 .75rem; border-bottom: 1px solid #e0e0e0; padding-bottom: .35rem; }
+.sub { color: #6e6e73; margin: 0 0 1.5rem; }
+section { margin-bottom: 1.5rem; }
+.totals { display: flex; flex-wrap: wrap; gap: 1.5rem; margin: 0 0 .5rem; }
+.totals .metric { min-width: 7rem; }
+.totals .val { font-size: 1.4rem; font-weight: 600; font-variant-numeric: tabular-nums; }
+.totals .lbl { color: #6e6e73; font-size: .85rem; }
+table { border-collapse: collapse; width: 100%; }
+th, td { text-align: left; padding: .4rem .6rem; border-bottom: 1px solid #ececec; vertical-align: top; }
+th { color: #6e6e73; font-weight: 600; font-size: .85rem; }
+td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+code { background: #f2f2f7; border-radius: 4px; padding: .1rem .35rem; font-size: .85em; }
+.empty { color: #6e6e73; font-style: italic; }
+.unpriced { color: #6e6e73; }
+.tag { display: inline-block; border-radius: 4px; padding: .05rem .35rem; font-size: .8em; background: #f2f2f7; color: #6e6e73; }
+.trend { width: 100%; height: 120px; }
+.trend polyline { fill: none; stroke: #34c759; stroke-width: 2; }
+.trend .axis { stroke: #d0d0d5; stroke-width: 1; }
+@media (prefers-color-scheme: dark) {
+  body { color: #f5f5f7; background: #1c1c1e; }
+  h2 { border-color: #3a3a3c; }
+  .sub, .lbl, th, .unpriced { color: #98989d; }
+  code, .tag { background: #2c2c2e; }
+  th, td { border-color: #2c2c2e; }
+  .trend .axis { stroke: #48484a; }
+}
+</style>
+</head>
+<body>
+<h1>AI usage &amp; cost</h1>
+{%- if not stats.calls %}
+<p class="empty">No AI usage recorded yet. Every AI path (record, crawl, triage, the alert locator) appends to the usage ledger at <code>runs/usage.jsonl</code>; set <code>ai.usageLedger</code> to move it, or <code>""</code> to disable recording.</p>
+{%- else %}
+<p class="sub">Read-only view of {{ stats.calls }} recorded AI call(s){% if stats.period_start %} from {{ stats.period_start[:10] }} to {{ stats.period_end[:10] }}{% endif %}. No verdict — advisory only.</p>
+
+<section>
+<div class="totals">
+<div class="metric"><div class="val">{{ '{:,}'.format(stats.total_tokens) }}</div><div class="lbl">tokens</div></div>
+<div class="metric"><div class="val">${{ '%.4f' | format(stats.total_cost) }}</div><div class="lbl">cost{% if stats.unpriced_calls %} ({{ stats.unpriced_calls }} unpriced){% endif %}</div></div>
+<div class="metric"><div class="val">{{ stats.calls }}</div><div class="lbl">calls</div></div>
+</div>
+</section>
+
+{%- if stats.by_day | length > 1 %}
+{#- Trend polyline over the per-day cost: x by index, y inverted (peak at the top). -#}
+<section>
+<h2>Cost trend by day</h2>
+{%- set max_cost = stats.by_day | map(attribute='cost') | max %}
+<svg class="trend" viewBox="0 0 100 40" preserveAspectRatio="none" role="img" aria-label="cost per day">
+<line class="axis" x1="0" y1="39" x2="100" y2="39"></line>
+<polyline points="
+{%- for d in stats.by_day -%}
+{{ (loop.index0 / (stats.by_day | length - 1) * 100) | round(2) }},{{ (38 - (d.cost / max_cost * 36 if max_cost else 0)) | round(2) }}{{ ' ' }}
+{%- endfor -%}
+"></polyline>
+</svg>
+<p class="sub">{{ stats.by_day[0].day }} → {{ stats.by_day[-1].day }}, peak ${{ '%.4f' | format(max_cost) }}/day.</p>
+</section>
+{%- endif %}
+
+<section>
+<h2>Provider / model comparison</h2>
+<table>
+<thead><tr><th>Provider</th><th>Model</th><th class="num">Calls</th><th class="num">Scenarios</th><th class="num">Cost</th><th class="num">$/call</th><th class="num">$/scenario</th></tr></thead>
+<tbody>
+{%- for row in stats.comparison %}
+<tr><td><code>{{ row.provider }}</code></td><td><code>{{ row.model }}</code></td><td class="num">{{ row.calls }}</td><td class="num">{{ row.scenarios }}</td><td class="num">{% if row.priced_calls %}${{ '%.4f' | format(row.cost) }}{% else %}<span class="unpriced">—</span>{% endif %}</td><td class="num">{% if row.cost_per_call is not none %}${{ '%.4f' | format(row.cost_per_call) }}{% else %}<span class="unpriced">—</span>{% endif %}</td><td class="num">{% if row.cost_per_scenario is not none %}${{ '%.4f' | format(row.cost_per_scenario) }}{% else %}<span class="unpriced">—</span>{% endif %}</td></tr>
+{%- endfor %}
+</tbody>
+</table>
+</section>
+
+{{ breakdown('By provider', stats.by_provider) }}
+{{ breakdown('By model', stats.by_model) }}
+{{ breakdown('By command', stats.by_command) }}
+{{ breakdown('By scenario', stats.by_scenario) }}
+{%- endif %}
+</body>
+</html>

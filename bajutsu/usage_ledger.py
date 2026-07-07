@@ -306,18 +306,29 @@ def reset() -> None:
 DEFAULT_LEDGER_PATH = Path("runs") / "usage.jsonl"
 
 
+def resolve_ledger_path(configured: str | None) -> Path | None:
+    """The ledger file for a `usageLedger` config value, or None when persistence is disabled.
+
+    A configured path wins; an unset (None) value falls back to `DEFAULT_LEDGER_PATH`; an explicit
+    empty string is the "disabled" marker and yields None. The single place this rule lives, shared
+    by the writer (`configure_from_ai_config`) and the serve dashboard reader (BE-0195) so the two
+    never resolve the same config differently. The path may be relative — the caller resolves it
+    against the cwd the AI paths run in.
+    """
+    if configured == "":  # explicitly disabled
+        return None
+    return Path(configured) if configured else DEFAULT_LEDGER_PATH
+
+
 def configure_from_ai_config(ai: AiConfig | None) -> None:
     """Install the process ledger from a resolved `AiConfig` (called by a CLI/serve AI command).
 
     The path is `ai.usage_ledger` when set, else `DEFAULT_LEDGER_PATH`; an explicit empty string
     disables persistence. Pricing overlays the config `pricing` block onto the shipped defaults.
     """
-    path_str = ai.usage_ledger if ai is not None else None
-    if path_str == "":  # explicitly disabled
-        configure(None, {})
-        return
-    path = Path(path_str) if path_str else DEFAULT_LEDGER_PATH
-    configure(JsonlLedger(path), pricing_table_from_config(ai.pricing if ai is not None else None))
+    path = resolve_ledger_path(ai.usage_ledger if ai is not None else None)
+    ledger = JsonlLedger(path) if path is not None else None
+    configure(ledger, pricing_table_from_config(ai.pricing if ai is not None else None))
 
 
 def emit(raw_usage: Any, *, provider: str | None, model: str | None) -> None:

@@ -172,10 +172,11 @@ document.querySelectorAll('.viewswitch').forEach(sw=>{
 // ---- top-level Record / Replay / Crawl views ----
 function showView(name){
   document.querySelectorAll('.toptab').forEach(t=>t.classList.toggle('active',t.dataset.view===name));
-  $('#view-record').hidden=name!=='record';$('#view-replay').hidden=name!=='replay';$('#view-crawl').hidden=name!=='crawl';$('#view-author').hidden=name!=='author';$('#view-stats').hidden=name!=='stats';$('#view-coverage').hidden=name!=='coverage';
+  $('#view-record').hidden=name!=='record';$('#view-replay').hidden=name!=='replay';$('#view-crawl').hidden=name!=='crawl';$('#view-author').hidden=name!=='author';$('#view-stats').hidden=name!=='stats';$('#view-usage').hidden=name!=='usage';$('#view-coverage').hidden=name!=='coverage';
   if(name==='replay')loadHistory();
   if(name==='author')authorInit();
   if(name==='stats')loadStats();
+  if(name==='usage')loadUsage();
   if(name==='coverage')coverageInit();
 }
 document.querySelectorAll('.toptab').forEach(t=>t.addEventListener('click',()=>showView(t.dataset.view)));
@@ -848,6 +849,16 @@ async function loadStats(){
   catch(e){setShadowContent(host,'<div style="color:#6e6e73;font-style:italic">stats unavailable</div>');return;}
   renderReportInShadow(host,html);
 }
+// Usage (BE-0195): fetch the self-contained AI usage/cost dashboard and render it into a shadow root,
+// the same isolation as loadStats. Aggregation stays server-side (/usage over the ledger); the view
+// only displays. A network error or non-2xx replaces the stale dashboard with an unavailable notice.
+async function loadUsage(){
+  const host=$('#usage-host');
+  let html;
+  try{const r=await fetch('/usage');if(!r.ok)throw 0;html=await r.text();}
+  catch(e){setShadowContent(host,'<div style="color:#6e6e73;font-style:italic">usage unavailable</div>');return;}
+  renderReportInShadow(host,html);
+}
 async function loadHistory(){
   let runs;try{runs=await (await fetch('/api/runs')).json()}catch(e){return}
   const tab=$('#histtab');if(tab)tab.textContent='History'+(runs.length?` (${runs.length})`:'');
@@ -858,6 +869,7 @@ async function loadHistory(){
 }
 $('#refresh').addEventListener('click',loadHistory);
 $('#stats-refresh').addEventListener('click',loadStats);
+$('#usage-refresh').addEventListener('click',loadUsage);
 
 // Coverage (BE-0146): POST the target (+ optional run set) to /api/coverage and render the returned
 // self-contained report into a shadow root — the same isolation as loadStats. The aggregation stays

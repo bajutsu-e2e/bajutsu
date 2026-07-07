@@ -54,8 +54,8 @@ the [CLI reference](cli.md#serve).
 
 ## The layout
 
-The header holds six top-level tabs: **Record**, **Replay**, **Crawl**, **Author**, **Stats**, and
-**Coverage**.
+The header holds seven top-level tabs: **Record**, **Replay**, **Crawl**, **Author**, **Stats**,
+**Usage**, and **Coverage**.
 To their right are **Open config** (with the active config's name shown beside it once one is bound,
 and a **View** button to inspect it — see below), **Settings**, and a dark/light theme toggle that
 follows your system by default. Each tab is a full screen of its own; switching tabs never discards
@@ -84,7 +84,7 @@ feature is lost — only the arrangement changes.
 [Settings](#settings)). While Claude cannot be reached — no key, no signed-in CLI — those two tabs
 read as disabled, their start buttons grey out, and an inline banner names what is missing with an
 **Open Settings** shortcut. The state flips live as soon as a provider is configured; everything
-else (Replay, Author, Stats, Coverage) works without any AI setup.
+else (Replay, Author, Stats, Usage, Coverage) works without any AI setup.
 
 ## Choosing the active config
 
@@ -352,6 +352,22 @@ stored `manifest.json`.
 
 **How to use it.** Open the tab to load the dashboard; use the refresh button to recompute it over
 the current run history. No device, AI, or run is involved.
+
+## Usage — the AI token-usage and cost dashboard
+
+**What it does.** Renders the AI usage and cost dashboard over the attributed usage ledger the AI
+paths record (record, crawl, triage, the alert locator). Like Stats it is **read-only and advisory,
+never a verdict or a gate**: headline totals (tokens and dollars for the period), breakdowns by
+provider, model, command, and scenario, a provider/model comparison (cost per call and per
+scenario), and a daily cost trend — every figure a deterministic sum over the ledger, no model
+consulted. A subscription provider or an unknown model records tokens without a per-token price, and
+those calls are shown as unpriced (a "—") rather than a fabricated `$0.00`.
+
+**How to use it.** Open the tab to load the dashboard; use the refresh button to recompute it over
+the current ledger. When no usage has been recorded yet — the AI paths never ran, or persistence is
+disabled — the tab shows an empty state explaining how recording is enabled (the ledger defaults to
+`runs/usage.jsonl`; `ai.usageLedger` moves it, an empty string disables it). No device, AI, or run
+is involved.
 
 ## Coverage — the E2E coverage map
 

@@ -10,6 +10,8 @@ import yaml
 
 from bajutsu import handoff
 from bajutsu import stats as _stats
+from bajutsu import usage_ledger as _usage_ledger
+from bajutsu import usage_stats as _usage_stats
 from bajutsu.config import Config, load_config
 from bajutsu.drivers import base as driver_base
 from bajutsu.scenario import load_scenario_file
@@ -179,6 +181,36 @@ def _run_manifests(state: ServeState, actor: str | None) -> list[dict[str, Any]]
         if isinstance(data, dict):
             manifests.append(data)
     return manifests
+
+
+def usage_html(state: ServeState, *, actor: str | None = None) -> tuple[str, int]:
+    """The AI usage/cost dashboard (BE-0195) as a self-contained HTML page.
+
+    Reads the same attributed ledger the serve process's AI subprocesses append to and aggregates it
+    deterministically: read-only, no verdict, no LLM. A disabled or absent ledger is not an error —
+    it aggregates to the empty state, which explains how recording is enabled (graceful degradation,
+    like the readiness panels). The ledger is a single per-process file, not org-scoped, so the view
+    is not filtered by *actor* (a per-org ledger would follow the ledger becoming org-scoped).
+    """
+    path = _usage_ledger_path(state)
+    events = _usage_ledger.read_events(path) if path is not None else []
+    return _usage_stats.render_html(_usage_stats.aggregate_usage(events)), 200
+
+
+def _usage_ledger_path(state: ServeState) -> Path | None:
+    """The ledger file the dashboard reads — resolved exactly as the AI subprocesses resolve it.
+
+    AI work in serve runs as subprocesses that call `usage_ledger.configure_from_ai_config`, writing
+    to the team-wide `defaults.ai.usageLedger` (else `DEFAULT_LEDGER_PATH`) relative to their cwd
+    (`state.cwd`). The dashboard points at that same file. An explicit empty string disables
+    persistence — None then, so there is nothing to read.
+    """
+    loaded = load_serve_config_file(state.config)  # cached parse; None when absent/unreadable
+    ai = loaded[0].defaults.ai if loaded is not None else None
+    path = _usage_ledger.resolve_ledger_path(ai.usage_ledger if ai is not None else None)
+    if path is None or path.is_absolute():
+        return path
+    return state.cwd / path
 
 
 def read_scenario(
