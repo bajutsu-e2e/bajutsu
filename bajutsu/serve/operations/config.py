@@ -179,13 +179,14 @@ def api_key_info(state: ServeState, actor: str | None) -> tuple[Any, int]:
     return payload, 200
 
 
-def _provider_settings_map(state: ServeState) -> dict[str, dict[str, str]]:
+def _provider_settings_map(state: ServeState, mode: str) -> dict[str, dict[str, str]]:
     """The per-provider settings the Settings UI pre-populates from (BE-0183): every provider that
     has a remembered slot, plus the active provider seeded from the environment so a value set before
     serve started (or via env alone) still shows. For the active provider the environment is
     authoritative — set_provider materializes its slot there for spawned jobs — so it is read from
-    there rather than the stored slot."""
-    mode = resolved_provider()
+    there rather than the stored slot. *mode* is the active provider resolved once by the caller, so
+    a concurrent `set_provider` can't flip it between the top-level `provider` and this map (serve is
+    threaded)."""
     slots = state.provider_settings_snapshot()  # locked copy — serve is threaded (BE-0183)
     slots[mode] = ProviderSettings(
         model=os.environ.get(BEDROCK_MODEL_ENV if mode == "bedrock" else MODEL_ENV, ""),
@@ -217,7 +218,7 @@ def provider_info(state: ServeState) -> tuple[Any, int]:
         "aiModel": os.environ.get(MODEL_ENV, ""),  # general model override (non-Bedrock providers)
         "effort": os.environ.get(EFFORT_ENV, ""),
         "language": os.environ.get(LANGUAGE_ENV, ""),  # AI output language (BE-0188)
-        "providers": _provider_settings_map(state),
+        "providers": _provider_settings_map(state, mode),
         "claudeAvailable": gap is None,
         "claudeGap": gap,
         "claudeHint": ai_availability.message(gap) if gap is not None else "",
