@@ -77,6 +77,11 @@ def test_http_open_config_binds_and_lists_apps(tmp_path: Path) -> None:
         assert status == 200 and resp["ok"] is True and resp["targets"] == ["demo", "other"]
         assert _get_json(port, "/api/config")["hasConfig"] is True
         assert [a["name"] for a in _get_json(port, "/api/targets")] == ["demo", "other"]
+        # The file browser lists (and posts back) the *absolute* path it built from list_fs's cwd, so
+        # an absolute path inside the browse root is the normal case and must bind, not be rejected.
+        abs_in_root = str((tmp_path / "bajutsu.config.yaml").resolve())
+        status, resp = _post(port, "/api/config", {"path": abs_in_root})
+        assert status == 200 and resp["ok"] is True and resp["targets"] == ["demo", "other"]
         # A path outside the browse root is rejected.
         status, _ = _post(port, "/api/config", {"path": "/etc/hosts"})
         assert status == 400

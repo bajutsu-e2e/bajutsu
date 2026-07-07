@@ -141,24 +141,24 @@ def provider_info(state: ServeState) -> tuple[Any, int]:
 
 
 def _confined_config_path(root: Path, raw: str) -> Path | None:
-    """Resolve *raw* (relative to *root*) to a path confined to *root*, or None if it escapes.
+    """Resolve *raw* (relative to *root*, or an absolute path) to a path confined to *root*, or None
+    if it escapes — the one barrier between client input and a filesystem read.
 
-    Client input must be a relative path from the file browser; absolute paths are rejected. We then
-    resolve to normalize any ``..`` before enforcing containment, so traversal segments cannot escape
-    the configured browse root.
+    The file browser sends the resolved *absolute* path it listed (``list_fs`` returns an absolute
+    ``cwd``), so an absolute *raw* inside *root* is the normal case, not an attack. Resolving **first**
+    normalizes any ``..`` and symlinks so the ``relative_to`` containment check is sound: it accepts
+    only paths that stay under *root* and rejects the rest with ``ValueError``. Resolution stays
+    non-strict so a not-yet-existing in-root path still resolves — the caller's ``is_file`` reports it
+    as 404 rather than this returning None and masking it as a misleading "outside the browse root"
+    400. ``OSError``/``RuntimeError`` from resolution (e.g. a symlink loop) collapse to None too.
     """
     try:
-        base = root.resolve(strict=True)
-        if not raw or not raw.strip():
-            return None
-        user_rel = Path(raw)
-        if user_rel.is_absolute():
-            return None
-        candidate = (base / user_rel).resolve()
-        candidate.relative_to(base)
-        return candidate
+        base = root.resolve()
+        target = (Path(raw) if Path(raw).is_absolute() else base / raw).resolve()
+        target.relative_to(base)
     except (OSError, RuntimeError, ValueError):
         return None
+    return target
 
 
 def bind_config(state: ServeState, raw: str) -> tuple[Any, int]:
