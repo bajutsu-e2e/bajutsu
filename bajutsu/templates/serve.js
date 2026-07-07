@@ -684,15 +684,21 @@ async function setReport(id,ok,repSel){
 // its inline CSS stays isolated — only retarget its :root/body rules to :host. Reusing the host's
 // shadow root is idempotent, so a refresh replaces the previous content in place. Shared by the Stats
 // (BE-0102) and Coverage (BE-0146) dashboards; the richer setReport keeps its own script-aware path.
-function renderReportInShadow(host,html){
+// Attach (or reuse) the host's shadow root, set its content, and drop any light-DOM `.empty`
+// placeholder. Once anything is rendered into the shadow — a report, a stats/coverage dashboard, OR
+// an error message — the stale placeholder still reads as the host's text (accessibility / the
+// dogfood's element query), so every shadow render clears it, error paths included.
+function setShadowContent(host,inner){
   const sh=host.shadowRoot||host.attachShadow({mode:'open'});
+  sh.innerHTML=inner;
+  host.querySelectorAll(':scope>.empty').forEach(e=>e.remove());
+  return sh;
+}
+function renderReportInShadow(host,html){
   const doc=new DOMParser().parseFromString(html,'text/html');
   const css=((doc.querySelector('style')||{}).textContent||'').replace(/:root/g,':host')
     .replace(/(^|[\s,>}])body([\s{])/g,'$1:host$2');
-  sh.innerHTML=`<style>:host{display:block}\n${css}</style>${doc.body.innerHTML}`;
-  // The shadow render stops the light-DOM empty state rendering, but the stale node still reads as
-  // the host's text (accessibility / the dogfood's element query); drop it rather than shadow it.
-  host.querySelectorAll(':scope>.empty').forEach(e=>e.remove());
+  setShadowContent(host,`<style>:host{display:block}\n${css}</style>${doc.body.innerHTML}`);
 }
 // ---- Triage (BE-0147): diagnose a failed run in the browser. The heuristic agent is the default
 // and fully deterministic; Claude is opt-in and only investigates — no LLM ever decides pass/fail.
@@ -786,7 +792,7 @@ async function loadStats(){
   // Treat a network error or a non-2xx (e.g. 401/500) as unavailable, and render the error into the
   // shadow root so a failed refresh replaces the stale dashboard instead of leaving it on screen.
   try{const r=await fetch('/stats');if(!r.ok)throw 0;html=await r.text();}
-  catch(e){(host.shadowRoot||host.attachShadow({mode:'open'})).innerHTML='<div style="color:#6e6e73;font-style:italic">stats unavailable</div>';return;}
+  catch(e){setShadowContent(host,'<div style="color:#6e6e73;font-style:italic">stats unavailable</div>');return;}
   renderReportInShadow(host,html);
 }
 async function loadHistory(){
@@ -811,9 +817,9 @@ async function coverageInit(){
 }
 async function loadCoverage(){
   const host=$('#cov-host');
-  // Render errors into the shadow root too (once attached it shadows the light-DOM empty state), so a
-  // failed recompute replaces the stale map — the same reasoning as loadStats.
-  const fail=msg=>{(host.shadowRoot||host.attachShadow({mode:'open'})).innerHTML=`<div style="color:#6e6e73;font-style:italic">${esc(msg)}</div>`};
+  // Render errors through setShadowContent too, so a failed recompute replaces the stale map and
+  // clears the light-DOM placeholder — the same reasoning (and helper) as loadStats.
+  const fail=msg=>{setShadowContent(host,`<div style="color:#6e6e73;font-style:italic">${esc(msg)}</div>`)};
   const target=$('#cov-target').value;
   if(!target){fail('Open a config and pick a target first.');return}
   const runs=[...$('#cov-runs').selectedOptions].map(o=>o.value);
