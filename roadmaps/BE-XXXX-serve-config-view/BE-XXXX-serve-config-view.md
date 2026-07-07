@@ -36,9 +36,9 @@ that path is an opaque content-addressed cache location
   commit am I on?" answer, and a branch ref gives no hint at all of what it resolved to.
 
 The information already exists server-side — the bound path, the file's bytes, and (for a Git bind)
-the `source_provenance` stamp BE-0063 computes — it is simply never surfaced. Surfacing it would turn
-"trust that the right thing is bound" into "see that the right thing is bound", which matters most
-for the Git path this builds on.
+the `source_provenance` stamp BE-0063 computes and already returns from the bind — it is simply never
+surfaced *in the UI* afterward. Surfacing it would turn "trust that the right thing is bound" into
+"see that the right thing is bound", which matters most for the Git path this builds on.
 
 ## Detailed design
 
@@ -52,13 +52,18 @@ this is a Tier‑1 convenience surface.
   startup threads its provenance through into the state too, so a startup-bound Git config also
   reports its commit.
 - **A config-content serve operation + endpoint.** A read operation returns the bound config's
-  verbatim text, its path, its parsed structure (`yaml.safe_load` of the same text, so `${secrets.*}`
-  stay literal), and the provenance (or `None`). It is exposed as `GET /api/config/content` on both
-  serve transports (the stdlib handler and the FastAPI app), needs no role (it is a read), and returns
-  404 when no config is bound.
-- **Verbatim, secret-safe.** The text (and the parsed structure) is the file as bound; placeholders
-  like `${secrets.*}` appear as written and are never resolved, so the view discloses nothing beyond
-  the file already committed to Git or shipped in the bundle.
+  verbatim text, its path, its parsed structure (loaded with the project's restricted YAML loader, so
+  an `on:` key stays the string `"on"` rather than being coerced to a boolean, then coerced to
+  JSON-safe types), and the provenance (or `None`). It is exposed as `GET /api/config/content` on both
+  serve transports (the stdlib handler and the FastAPI app) and returns 404 when no config is bound.
+  Because the full config body is a wider disclosure than the path-only `/api/config`, this read is
+  gated to the `admin` role (it is ungated only on a local, tokenless deployment).
+- **Verbatim about placeholders, not a secret redactor.** The text (and parsed structure) is the file
+  as bound: `${secrets.*}` placeholders appear as written and are never resolved, so the view adds no
+  disclosure beyond the file already committed to Git or shipped in the bundle. It is *not* a redactor,
+  though — a secret written **literally** into a local or uploaded config would be shown as-is. Keeping
+  secrets out of the file (as `${secrets.*}` refs) remains the contract; the `admin` gate above bounds
+  who can read the body regardless.
 - **UI: a "View" button + a viewer modal.** A **View** button beside the config name (revealed only
   once a config is bound) opens a modal showing the provenance line (for a Git source), the path, and
   the config in two switchable views: a **Structured** collapsible key/value tree (nested objects and
