@@ -222,6 +222,10 @@ def record(
         name=goal,
         alert_guard=alert_guard,
         secret_tokens=_secret_tokens(eff),
+        # A mobile (iOS-simulator) app always records a scenario-wide screen video; the recording is
+        # a simctl interval, so it's specific to the idb backend (web replays capture video by other
+        # means, and the fake actuator has no device to record).
+        capture_video=actuator == "idb",
         report=say,
     )
     out_path.parent.mkdir(parents=True, exist_ok=True)

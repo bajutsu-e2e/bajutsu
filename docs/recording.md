@@ -68,6 +68,15 @@ and may verify before an async transition (e.g. a sheet) has rendered. So it rec
 the first "must-be-present" element in expect**, just before the assertions. This makes the recorded
 scenario self-sufficient without adding implicit timing to `run`.
 
+### Video capture on mobile targets
+
+For a mobile (iOS-simulator) target, `record` tags the recorded scenario's first step with
+`capture: [video]`, so replaying it records a scenario-wide screen video. A single step's inline
+`capture` is what `requested_intervals` uses to start the run-wide interval, so the whole replay is
+recorded, not just one action's window. The recording is a `simctl` interval (BE-0028), so this is
+specific to the iOS backend — a web target captures video by other means, and the recorded scenario
+carries no `capture` for it.
+
 ## The Claude authoring agent
 
 `record` / `crawl` construct one production `agent.Agent` implementation, `ClaudeAgent`

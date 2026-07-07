@@ -294,6 +294,7 @@ def record(
     with_screenshot: bool = True,
     alert_guard: BlockedHandler | None = None,
     secret_tokens: list[tuple[str, str]] | None = None,
+    capture_video: bool = False,
     report: Reporter | None = None,
 ) -> Scenario:
     """Explore toward `goal` with `agent`, returning the recorded scenario.
@@ -307,6 +308,10 @@ def record(
     a typed value matching a declared secret is recorded as its `${secrets.X}` token, never the
     literal (BE-0120); the app is still driven with the real value so the authenticated screen is
     reached. Empty/None records every value verbatim.
+
+    If `capture_video` is set, the recorded scenario requests a scenario-wide screen video
+    (`capture: [video]` on its first step) so a replay records the run — enabled for mobile
+    (iOS-simulator) targets, where the recording is a `simctl` interval (BE-0028).
 
     If `report` is given, each turn's decision (the agent's proposed action and reason)
     is streamed to it as a one-line string, so a caller can show progress live.
@@ -386,6 +391,13 @@ def record(
     say(
         f"⏱  record finished in {_format_elapsed(time.monotonic() - started)} · {len(steps)} step(s)"
     )
+    if capture_video and steps:
+        # A single step's inline `capture` starts the scenario-wide interval (requested_intervals),
+        # so tag the first step — the whole replay is then recorded, not just one action's window.
+        first = steps[0]
+        kinds = list(first.capture or [])
+        if "video" not in kinds:
+            steps[0] = first.model_copy(update={"capture": [*kinds, "video"]})
     scenario = Scenario(name=name, steps=steps, expect=expect)
     # The goal is the scenario-level provenance (BE-0044): the natural language this whole scenario
     # was authored from. Set by attribute since the field's `from` alias is a Python keyword.

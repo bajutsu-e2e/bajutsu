@@ -99,6 +99,33 @@ def test_record_produces_scenario() -> None:
     assert reloaded[0].steps[1].wait is not None
 
 
+def test_record_capture_video_tags_the_first_step_for_a_scenario_wide_recording() -> None:
+    from bajutsu.orchestrator.evidence_rules import requested_intervals
+
+    driver = FakeDriver([_el("go", "Go")])
+    agent = FakeAgent(
+        [Proposal(step=Step.model_validate({"tap": {"id": "go"}})), Proposal(done=True)]
+    )
+    scenario = record(driver, "x", agent, capture_video=True)
+    assert scenario.steps[0].capture == ["video"]
+    # a single step's inline capture is what makes the runner record the whole scenario
+    assert "video" in requested_intervals(scenario)
+    # and it survives the YAML round-trip
+    assert load_scenarios(dump_scenarios([scenario]))[0].steps[0].capture == ["video"]
+
+
+def test_record_without_capture_video_requests_no_interval() -> None:
+    from bajutsu.orchestrator.evidence_rules import requested_intervals
+
+    driver = FakeDriver([_el("go", "Go")])
+    agent = FakeAgent(
+        [Proposal(step=Step.model_validate({"tap": {"id": "go"}})), Proposal(done=True)]
+    )
+    scenario = record(driver, "x", agent)  # default: no video
+    assert scenario.steps[0].capture is None
+    assert requested_intervals(scenario) == []
+
+
 def test_record_sets_scenario_provenance_from_goal() -> None:
     # The goal is the scenario-level `from:` provenance (BE-0044), and it round-trips.
     driver = FakeDriver([_el("go", "Go")])
