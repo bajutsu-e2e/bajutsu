@@ -24,6 +24,10 @@ class Observation:
     history: list[Step]
     screenshot: bytes | None = None  # PNG bytes of the current screen, for vision
     plan: list[str] = field(default_factory=list)  # the goal decomposed into ordered concrete steps
+    # Whether this session can ever supply a screenshot (BE-0192). False in `--no-screenshot` mode,
+    # where vision is off for every turn — so the agent must not be nudged to escalate for one it
+    # can never get. When True, a `screenshot is None` turn is merely on-demand-skipped, not blind.
+    vision_available: bool = True
 
 
 @dataclass
@@ -50,6 +54,11 @@ class Proposal:
     # unresolvable target) belong to the child items; this is only the outcome they raise.
     needs_human: bool = False
     human_prompt: str = ""
+    # A fourth turn outcome (BE-0192): on a text-only turn (no screenshot attached) the agent
+    # cannot proceed from the element list alone and asks to see the screen. The record loop
+    # re-issues the same observation once with the screenshot attached, rather than acting blind.
+    # This is an authoring-time request, never on the `run` path.
+    need_screenshot: bool = False
 
     @property
     def step(self) -> Step | None:

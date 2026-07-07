@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0192](BE-0192-record-vision-on-demand.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0192") |
+| Implementing PR | [#785](https://github.com/bajutsu-e2e/bajutsu/pull/785) |
 | Topic | Authoring experience (record / GUI editor) |
 <!-- /BE-METADATA -->
 
@@ -208,12 +209,19 @@ behavior.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Loop decides attach/skip per turn (new-screen + degenerate-tree triggers) with lazy capture.
-- [ ] `need_screenshot` escalation: tool + `proposal_from_call` mapping (API agent) and the Claude
+- [x] Loop decides attach/skip per turn (new-screen + degenerate-tree triggers) with lazy capture.
+- [x] `need_screenshot` escalation: tool + `proposal_from_call` mapping (API agent) and the Claude
       Code structured-output equivalent; loop re-issues once with the image on the same screen.
-- [ ] System-prompt guidance: screenshot may be absent, elements are authoritative, when to escalate.
-- [ ] Tests: attach/skip/lazy-capture loop tests; escalation loop + backend-mapping tests;
+- [x] System-prompt guidance: screenshot may be absent, elements are authoritative, when to escalate.
+- [x] Tests: attach/skip/lazy-capture loop tests; escalation loop + backend-mapping tests;
       image-every-turn regression guard.
+
+**Log**
+
+- [#785](https://github.com/bajutsu-e2e/bajutsu/pull/785) — Shipped the whole item: `_should_attach` (new-screen + degenerate-tree triggers) with
+  lazy capture in `record.py`; the `need_screenshot` tool + `proposal_from_call` mapping + `_combine`
+  short-circuit in `claude_agent.py` (shared by the API and Claude Code backends); system-prompt and
+  `_render` guidance; loop tests, backend-mapping tests, and the image-every-turn regression guard.
 
 ## References
 
