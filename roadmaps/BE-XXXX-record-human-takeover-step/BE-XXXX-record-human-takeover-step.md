@@ -10,12 +10,13 @@
 | Status | **Proposal** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
 | Topic | Authoring experience (record / GUI editor) |
-| Related | [BE-0012](../BE-0012-action-capture-record/BE-0012-action-capture-record.md), [BE-0015](../BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md), [BE-0016](../BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md), [BE-0026](../BE-0026-shrink-unsupported-syntax/BE-0026-shrink-unsupported-syntax.md), [BE-0035](../BE-0035-device-control-primitives/BE-0035-device-control-primitives.md), [BE-0052](../BE-0052-device-state-timezone-clipboard-shake/BE-0052-device-state-timezone-clipboard-shake.md) |
+| Related | [BE-0012](../BE-0012-action-capture-record/BE-0012-action-capture-record.md), [BE-0015](../BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md), [BE-0016](../BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md), [BE-0026](../BE-0026-shrink-unsupported-syntax/BE-0026-shrink-unsupported-syntax.md), [BE-0035](../BE-0035-device-control-primitives/BE-0035-device-control-primitives.md), [BE-0052](../BE-0052-device-state-timezone-clipboard-shake/BE-0052-device-state-timezone-clipboard-shake.md), [BE-0179](../BE-0179-record-human-handoff/BE-0179-record-human-handoff.md) |
 <!-- /BE-METADATA -->
 
 ## Introduction
 
-Rides on the record human-in-the-loop handoff substrate (`record-human-handoff`). This item covers
+Rides on the record human-in-the-loop handoff substrate
+([BE-0179](../BE-0179-record-human-handoff/BE-0179-record-human-handoff.md)). This item covers
 the case where the blocker is **not a value but an operation** the AI cannot perform or resolve — a
 CAPTCHA, a biometric prompt, or a gesture/target the agent repeatedly fails to resolve. `record`
 pauses, the human operates the device directly, and bajutsu observes the resulting state and
@@ -119,7 +120,8 @@ interactive-mirror surface itself is out of scope here and would be its own item
 
 ## References
 
-Substrate: `record-human-handoff`. Sibling pattern: `record-human-value-prompt` (values).
+Substrate: [BE-0179](../BE-0179-record-human-handoff/BE-0179-record-human-handoff.md). Sibling
+pattern: `record-human-value-prompt` (values).
 Related existing items:
 [BE-0026 — Shrink unsupported syntax (codegen TODO)](../BE-0026-shrink-unsupported-syntax/BE-0026-shrink-unsupported-syntax.md),
 [BE-0035 — Device-control primitives](../BE-0035-device-control-primitives/BE-0035-device-control-primitives.md),
