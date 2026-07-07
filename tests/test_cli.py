@@ -198,7 +198,9 @@ def test_no_backend_available_exits_cleanly(
 
 def test_record_exposes_token_budget_flags() -> None:
     # BE-0194 §3: the loop's max_steps / with_screenshot knobs are surfaced on the CLI.
-    r = runner.invoke(app, ["record", "--help"])
+    # Force a wide terminal so Rich's help renderer doesn't wrap the flag names at their hyphens
+    # (a narrow CI terminal would break `--max-steps` across lines and the substring check would miss).
+    r = runner.invoke(app, ["record", "--help"], env={"COLUMNS": "200"})
     assert r.exit_code == 0
     assert "--max-steps" in r.output
     assert "--no-screenshot" in r.output
