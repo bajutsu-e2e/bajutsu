@@ -238,24 +238,18 @@ def auth_summary() -> str:
 
 
 def _child_env() -> dict[str, str]:
-    """The child env for `claude -p`: force the subscription login, and defang the IMDS probe.
+    """The child env for `claude -p`: force the CLI's own subscription login.
 
     Every backend-routing / billing-identity variable in `_ROUTING_ENV` is dropped so the CLI falls
     back to its own stored subscription login (Pro / Max / Console) rather than an inherited Bedrock /
     Vertex / API-key configuration — see that constant for why (the Claude desktop app's Bedrock env
-    leaking in froze `record` in off-cloud AWS credential resolution).
-
-    `AWS_EC2_METADATA_DISABLED` and `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC` are then defaulted on as
-    belt-and-suspenders: the first blocks the cloud-metadata probe (169.254.169.254) that hangs the
-    AWS SDK off-cloud should any AWS var slip through; the second silences telemetry / auto-update
-    traffic that is useless for a headless one-shot call. Both via ``setdefault`` so a user who really
-    wants them can override (e.g. an EC2 instance role: ``AWS_EC2_METADATA_DISABLED=false``).
+    leaking in froze `record` in off-cloud AWS credential resolution). With the AWS routing stripped
+    the SDK does no credential resolution at all, so the metadata (IMDS 169.254.169.254) probe that
+    hung the call cannot fire — disabling it separately is unnecessary.
     """
     env = dict(os.environ)
     for var in _ROUTING_ENV:
         env.pop(var, None)
-    env.setdefault("AWS_EC2_METADATA_DISABLED", "true")
-    env.setdefault("CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC", "1")
     return env
 
 
