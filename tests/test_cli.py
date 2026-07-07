@@ -812,8 +812,8 @@ def test_doctor_reports_unreachable_screen_instead_of_crashing(
     # fixable error and exit 1, not propagate a stack trace.
     from bajutsu import simctl
 
-    monkeypatch.setattr("bajutsu.simctl.resolve_udid", lambda u: "FAKE-UDID")
-
+    # `_current_screen` is replaced wholesale below, so the real udid resolution it would do never
+    # runs — no `resolve_udid` stub needed.
     def boom(actuator: str, udid: str, eff: object) -> list[object]:
         raise simctl.DeviceError("web browser fault (recoverable wedge): ERR_CONNECTION_REFUSED")
 
