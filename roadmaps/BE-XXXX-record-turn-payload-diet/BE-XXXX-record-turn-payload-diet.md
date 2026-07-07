@@ -55,7 +55,7 @@ visibility that lets all three be measured. It is independent of
 ### Why accuracy is preserved
 
 The element-tree compaction is **lossless for addressing**: every element the agent can act on
-(anything carrying an `id` or `label`) is always rendered in full, so no action the agent would take
+(anything carrying selector fields like `id`, `label`, `value`, or `traits`) is always rendered in full, so no action the agent would take
 today becomes unavailable. Compaction removes only redundant characters (empty `value`/`traits`
 fields that carry no information) and, for pathologically long screens, summarizes the purely
 non-addressable remainder as a count rather than silently dropping it — the agent is told what was
