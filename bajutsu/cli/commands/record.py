@@ -193,10 +193,19 @@ def record(
         typer.echo(msg, err=True)
 
     effort = resolve_effort(eff.ai)
+    provider = resolved_provider(eff.ai)
     say(
-        f"🤖 AI: {resolved_provider(eff.ai)} · model {resolve_model(_RECORD_MODEL, eff.ai)} · "
+        f"🤖 AI: {provider} · model {resolve_model(_RECORD_MODEL, eff.ai)} · "
         f"effort {effort or 'default'}"
     )
+    # Disclose how the claude-code CLI will authenticate (BE-0176): the adapter forces the CLI's own
+    # subscription login and ignores any inherited Bedrock/Vertex/API-key routing, so surface that —
+    # a `make serve` launched from the Claude desktop app inherits a Bedrock setup that would
+    # otherwise take over silently.
+    if provider == "claude-code":
+        from bajutsu.ai import claude_code
+
+        say(f"🔑 auth: {claude_code.auth_summary()}")
     say(
         f"⚙️  preparing the simulator — installing and launching {target_name} (this can take a moment) …"
     )

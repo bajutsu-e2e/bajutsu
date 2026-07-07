@@ -263,9 +263,18 @@ def test_child_env_strips_the_api_key(monkeypatch: Any) -> None:
     assert "PATH" in env  # the rest of the environment is preserved
 
 
+def test_child_env_strips_inherited_backend_routing(monkeypatch: Any) -> None:
+    # The desktop app's Bedrock env (and any API-key/Vertex routing) must not reach the child, or the
+    # adapter runs against a backend it never chose — and off-cloud hangs in AWS credential resolution.
+    for var in ("CLAUDE_CODE_USE_BEDROCK", "AWS_PROFILE", "ANTHROPIC_MODEL", "AWS_REGION"):
+        monkeypatch.setenv(var, "x")
+    env = claude_code._child_env()
+    assert not any(v in env for v in claude_code._ROUTING_ENV)
+
+
 def test_child_env_disables_the_imds_probe_and_side_traffic() -> None:
-    # A Bedrock-configured CLI's AWS SDK otherwise probes the instance-metadata endpoint
-    # 169.254.169.254, which hangs in SYN_SENT off-cloud (~75s) and freezes the call.
+    # Belt-and-suspenders should any AWS var slip through: the AWS SDK otherwise probes the metadata
+    # endpoint 169.254.169.254, which hangs in SYN_SENT off-cloud (~75s) and freezes the call.
     env = claude_code._child_env()
     assert env["AWS_EC2_METADATA_DISABLED"] == "true"
     assert env["CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC"] == "1"
@@ -275,3 +284,13 @@ def test_child_env_lets_the_user_re_enable_imds_on_ec2(monkeypatch: Any) -> None
     # setdefault, not overwrite: an EC2 instance-role user opts back in by exporting the flag.
     monkeypatch.setenv("AWS_EC2_METADATA_DISABLED", "false")
     assert claude_code._child_env()["AWS_EC2_METADATA_DISABLED"] == "false"
+
+
+def test_auth_summary_reports_subscription_and_flags_overridden_backends(monkeypatch: Any) -> None:
+    for var in claude_code._ROUTING_ENV:
+        monkeypatch.delenv(var, raising=False)
+    assert "subscription login" in claude_code.auth_summary()
+    assert "ignoring" not in claude_code.auth_summary()
+
+    monkeypatch.setenv("CLAUDE_CODE_USE_BEDROCK", "1")
+    assert "Bedrock" in claude_code.auth_summary()

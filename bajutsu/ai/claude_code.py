@@ -188,28 +188,72 @@ def _command(
     return cmd
 
 
+# Env vars that would route the CLI to a specific model backend or billing identity. The adapter is
+# defined to use the CLI's own subscription login (BE-0176), so these are stripped from the child —
+# otherwise a backend configuration inherited from the ambient environment silently takes over. The
+# Claude desktop app, for one, exports a full Amazon Bedrock setup (`CLAUDE_CODE_USE_BEDROCK`,
+# `AWS_PROFILE`, a Bedrock model ARN in `ANTHROPIC_MODEL`); a `make serve` launched from it inherits
+# that, so `record` ran against Bedrock — and, off-cloud, hung in AWS credential resolution (a
+# provider-chain fallback probes the metadata endpoint 169.254.169.254, whose TCP connect sits in
+# SYN_SENT for the ~75s OS connect timeout). Stripping them keeps the adapter on the subscription
+# login regardless of what the environment was configured for.
+_ROUTING_ENV = (
+    "ANTHROPIC_API_KEY",  # forces API billing instead of the subscription login
+    "ANTHROPIC_AUTH_TOKEN",  # a custom bearer token
+    "ANTHROPIC_MODEL",  # a Bedrock/Vertex model id or ARN that would override --model
+    "ANTHROPIC_SMALL_FAST_MODEL",
+    "CLAUDE_CODE_USE_BEDROCK",  # → Amazon Bedrock
+    "CLAUDE_CODE_USE_VERTEX",  # → Google Vertex
+    "AWS_PROFILE",
+    "AWS_REGION",
+    "AWS_DEFAULT_REGION",
+    "AWS_ACCESS_KEY_ID",
+    "AWS_SECRET_ACCESS_KEY",
+    "AWS_SESSION_TOKEN",
+    "AWS_BEARER_TOKEN_BEDROCK",
+    "AWS_CONFIG_FILE",
+    "AWS_SHARED_CREDENTIALS_FILE",
+    "ANTHROPIC_VERTEX_PROJECT_ID",
+    "CLOUD_ML_REGION",
+    "GOOGLE_APPLICATION_CREDENTIALS",
+)
+
+
+def auth_summary() -> str:
+    """One line naming how the child `claude -p` will authenticate — shown before a record.
+
+    The adapter forces the CLI's own subscription login by stripping any inherited backend routing
+    (see `_ROUTING_ENV`), so this reports that mode and flags when such a configuration was present
+    and overridden — most notably the Claude desktop app's Bedrock setup, which would otherwise take
+    over silently and (off-cloud) hang the run.
+    """
+    base = "Claude Code CLI subscription login (Pro/Max/Console)"
+    if os.environ.get("CLAUDE_CODE_USE_BEDROCK"):
+        return f"{base} — ignoring the inherited Amazon Bedrock configuration"
+    if os.environ.get("CLAUDE_CODE_USE_VERTEX"):
+        return f"{base} — ignoring the inherited Google Vertex configuration"
+    if os.environ.get("ANTHROPIC_API_KEY"):
+        return f"{base} — ignoring the inherited ANTHROPIC_API_KEY"
+    return base
+
+
 def _child_env() -> dict[str, str]:
-    """The child env for `claude -p`: force subscription billing, and defang the IMDS probe.
+    """The child env for `claude -p`: force the subscription login, and defang the IMDS probe.
 
-    `ANTHROPIC_API_KEY` is dropped so a subscription user's billing draws on the CLI's Pro / Max /
-    Console token (its presence would force API billing); a Bedrock/Vertex-configured CLI ignores it.
+    Every backend-routing / billing-identity variable in `_ROUTING_ENV` is dropped so the CLI falls
+    back to its own stored subscription login (Pro / Max / Console) rather than an inherited Bedrock /
+    Vertex / API-key configuration — see that constant for why (the Claude desktop app's Bedrock env
+    leaking in froze `record` in off-cloud AWS credential resolution).
 
-    `AWS_EC2_METADATA_DISABLED` is defaulted on to kill the cloud-metadata probe that otherwise
-    intermittently freezes the call (observed as `record` hanging at "thinking about how to approach
-    the goal"). When the CLI is pointed at Amazon Bedrock (``CLAUDE_CODE_USE_BEDROCK``, as the Claude
-    desktop app's environment sets), its bundled AWS SDK resolves credentials through a provider chain
-    whose fallback probes the instance-metadata endpoint ``169.254.169.254``. Off an EC2 instance that
-    link-local address is unroutable, so the probe's TCP connect sits in ``SYN_SENT`` for the OS
-    connect timeout (~75s) — the sole socket the process holds while its event loop parks — before the
-    request ever reaches Bedrock. Disabling IMDS leaves the profile / SSO credential path (the one
-    that works off-cloud) untouched. Via ``setdefault`` so anyone genuinely on EC2 with an instance
-    role can re-enable it by exporting ``AWS_EC2_METADATA_DISABLED=false``.
-
-    `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC` likewise defaults on: the CLI's telemetry / auto-update
-    traffic is useless for a headless one-shot call.
+    `AWS_EC2_METADATA_DISABLED` and `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC` are then defaulted on as
+    belt-and-suspenders: the first blocks the cloud-metadata probe (169.254.169.254) that hangs the
+    AWS SDK off-cloud should any AWS var slip through; the second silences telemetry / auto-update
+    traffic that is useless for a headless one-shot call. Both via ``setdefault`` so a user who really
+    wants them can override (e.g. an EC2 instance role: ``AWS_EC2_METADATA_DISABLED=false``).
     """
     env = dict(os.environ)
-    env.pop("ANTHROPIC_API_KEY", None)
+    for var in _ROUTING_ENV:
+        env.pop(var, None)
     env.setdefault("AWS_EC2_METADATA_DISABLED", "true")
     env.setdefault("CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC", "1")
     return env
