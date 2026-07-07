@@ -1,14 +1,14 @@
-[English](BE-XXXX-serve-ui-dogfood-ci-gate.md) · **日本語**
+[English](BE-0189-serve-ui-dogfood-ci-gate.md) · **日本語**
 
-# BE-XXXX — serve Web UI のドッグフードを CI でゲートする
+# BE-0189 — serve Web UI のドッグフードを CI でゲートする
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
 |---|---|
-| 提案 | [BE-XXXX](BE-XXXX-serve-ui-dogfood-ci-gate-ja.md) |
+| 提案 | [BE-0189](BE-0189-serve-ui-dogfood-ci-gate-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **提案** |
-| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0189") |
 | トピック | Dogfood フィクスチャ（Web UI） |
 | 関連 | [BE-0058](../BE-0058-dogfood-web-ui/BE-0058-dogfood-web-ui-ja.md), [BE-0101](../BE-0101-ai-free-zero-config/BE-0101-ai-free-zero-config-ja.md) |
 | 由来 | Dogfooding |

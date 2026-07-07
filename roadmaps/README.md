@@ -596,7 +596,9 @@ The scope is currently **limited to the iOS Simulator** ([DESIGN §1](../DESIGN.
 ### Dogfood fixtures (web UI)
 
 <!-- GENERATED:proposals-dogfood-web-ui -->
-
+| ID | Item | Status | Origin |
+|---|---|---|---|
+| [BE-0189](BE-0189-serve-ui-dogfood-ci-gate/BE-0189-serve-ui-dogfood-ci-gate.md) | Gate the serve Web UI dogfood in CI | Proposal | Dogfooding |
 <!-- /GENERATED:proposals-dogfood-web-ui -->
 
 ### AI provider configuration
