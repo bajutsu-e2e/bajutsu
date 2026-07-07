@@ -325,6 +325,7 @@ The Tier-1 AI paths (`record` / `triage` / `--dismiss-alerts` / `crawl`) call Cl
 | [BE-0163](BE-0163-ant-cli-oauth-provider/BE-0163-ant-cli-oauth-provider.md) | Replace the Claude Code CLI authoring backend with an `ant`-CLI OAuth AI provider | Implemented |
 | [BE-0175](BE-0175-serve-web-ui-ant-sso-login/BE-0175-serve-web-ui-ant-sso-login.md) | Sign in to the `ant` provider from the serve Web UI | Implemented |
 | [BE-0176](BE-0176-claude-code-ai-backend/BE-0176-claude-code-ai-backend.md) | Revive Claude Code as an AiBackend adapter with file-based vision | Implemented |
+| [BE-0183](BE-0183-per-provider-serve-settings/BE-0183-per-provider-serve-settings.md) | Per-provider AI settings in the serve Web UI | Implemented |
 | [BE-0188](BE-0188-configurable-ai-output-language/BE-0188-configurable-ai-output-language.md) | Configurable AI output language for record and crawl | Implemented |
 <!-- /GENERATED:implemented-ai-provider -->
 
@@ -612,7 +613,6 @@ The scope is currently **limited to the iOS Simulator** ([DESIGN §1](../DESIGN.
 <!-- GENERATED:proposals-ai-provider -->
 | ID | Item | Status |
 |---|---|---|
-| [BE-0183](BE-0183-per-provider-serve-settings/BE-0183-per-provider-serve-settings.md) | Per-provider AI settings in the serve Web UI | Proposal |
 | [BE-0184](BE-0184-persist-serve-ai-provider-settings/BE-0184-persist-serve-ai-provider-settings.md) | Persist serve AI provider settings across restarts | Proposal |
 <!-- /GENERATED:proposals-ai-provider -->
 

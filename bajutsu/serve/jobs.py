@@ -136,6 +136,21 @@ class StoreBundle:
 
 
 @dataclass
+class ProviderSettings:
+    """One AI provider's remembered model/effort/region for the serve session (BE-0183).
+
+    Scopes the fields to the provider they belong to, so switching the Settings dropdown no longer
+    overwrites what was set for the provider left behind. `region` applies to `bedrock` only; the
+    SDK/CLI providers leave it empty. Session-only, like the env-var materialization it feeds — never
+    written to disk.
+    """
+
+    model: str = ""
+    effort: str = ""
+    region: str = ""
+
+
+@dataclass
 class CaptureSession:
     """Live state for an active capture session (BE-0012).
 
@@ -268,6 +283,11 @@ class ServeState:
     # back to the default stores when unset, so local behavior is unchanged.
     org_stores: Callable[[str], StoreBundle] | None = None
     capture: CaptureSession | None = None
+    # Per-provider AI settings the Settings panel reads/writes (BE-0183), keyed by provider name.
+    # Holds each provider's own model/effort/region so switching the dropdown stops discarding the
+    # one left behind; the active provider's slot is materialized into the env vars spawned jobs read.
+    # Session-only, in memory, like the env-var state it feeds — never persisted.
+    provider_settings: dict[str, ProviderSettings] = field(default_factory=dict)
     # The in-flight `ant auth login` subprocess (BE-0175), or None when no sign-in is running. Held
     # between the POST that starts it and the GET that polls it, so a second click doesn't spawn a
     # duplicate. Local serve only — a hosted deployment refuses the operation, so this stays None
@@ -340,6 +360,19 @@ class ServeState:
 
     def valid_session(self, sid: str) -> bool:
         return self.sessions.valid(sid)
+
+    def provider_settings_snapshot(self) -> dict[str, ProviderSettings]:
+        """A shallow copy of the per-provider AI settings, taken under the lock (BE-0183). serve is a
+        ThreadingHTTPServer, so a bare `dict(...)` here could race a concurrent `set_provider_setting`
+        write and raise "dictionary changed size during iteration"; the lock makes the snapshot safe."""
+        with self._lock:
+            return dict(self.provider_settings)
+
+    def set_provider_setting(self, name: str, settings: ProviderSettings) -> None:
+        """Store one provider's AI settings slot under the lock (BE-0183), so a write can't corrupt a
+        concurrent `provider_settings_snapshot` read on another request thread."""
+        with self._lock:
+            self.provider_settings[name] = settings
 
     def active_jobs(self) -> int:
         """How many spawned jobs are still running (not yet finished)."""

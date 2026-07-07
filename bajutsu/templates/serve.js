@@ -305,13 +305,22 @@ async function clearKey(){
 $('#keyclear').addEventListener('click',clearKey);
 
 // ---- AI provider: Anthropic API (Claude API key), Amazon Bedrock (AWS creds), Anthropic CLI (ant, OAuth), or Claude Code CLI (claude, subscription) ----
-// Show only the selected provider's own config block — nothing until one is explicitly picked.
+// Each provider's remembered model/effort/region, keyed by provider name (BE-0183); loadProv fills
+// it from /api/provider's `providers` map so a dropdown change swaps to that provider's own values
+// instead of leaving the previous provider's sitting in what looks like a shared textbox.
+let provState={};
+// Show only the selected provider's own config block — nothing until one is explicitly picked — and
+// swap the model/effort/region fields to the selected provider's remembered values (BE-0183).
 function renderProv(){
   const v=$('#provider').value;
   $('#apikeysection').hidden=v!=='api-key';        // the Claude API key is the api-key provider's config
   $('#bedrockfields').hidden=v!=='bedrock';        // region + model id
   $('#antfields').hidden=v!=='ant';                // ant CLI prerequisites (OAuth sign-in button)
   $('#claudecodefields').hidden=v!=='claude-code'; // claude CLI prerequisites (subscription sign-in note)
+  const s=provState[v]||{};
+  if(v==='bedrock'){$('#bedrock-region').value=s.region||'';$('#bedrock-model').value=s.model||'';}
+  else{$('#ai-model').value=s.model||'';}          // the non-Bedrock providers share the general model field
+  $('#ai-effort').value=s.effort||'';
   if(v==='ant')refreshAntLogin();                  // reflect the CLI's current sign-in state on the button
 }
 // ---- ant CLI SSO sign-in (BE-0175): start `ant auth login` from the Web UI instead of a terminal.
@@ -365,12 +374,9 @@ async function antLogin(){
 async function loadProv(){
   // Explicit selection: don't pre-select a provider from the server's (env-derived) default —
   // the user must consciously pick one, so the #provider placeholder stays until they do. The
-  // region/model are still pre-filled so picking Bedrock shows the saved values.
+  // per-provider map is cached so renderProv can pre-fill each provider's own values on pick (BE-0183).
   let d;try{d=await (await fetch('/api/provider')).json()}catch(e){d={}}
-  $('#bedrock-region').value=d.region||'';
-  $('#bedrock-model').value=d.model||'';
-  $('#ai-model').value=d.aiModel||'';
-  $('#ai-effort').value=d.effort||'';
+  provState=d.providers||{};
   $('#ai-language').value=d.language||'auto';  // AI output language (BE-0188); blank env = auto
   renderProv();
 }
@@ -411,6 +417,9 @@ async function saveSettings(){
   setSettingsStatus('saving…','');
   let d;try{d=await (await fetch('/api/provider',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)})).json()}catch(e){d={error:'request failed'}}
   if(d.error){setSettingsStatus(d.error,'ng');return}
+  // Remember this provider's just-saved values locally so switching away and back keeps them (BE-0183),
+  // matching the per-provider slot the server now holds.
+  provState[provider]={model:body.model||body.aiModel||'',effort:body.effort||'',region:body.region||''};
   if(provider==='api-key'){  // only the api-key provider needs the key (Bedrock uses AWS creds, ant uses its OAuth token)
     const v=$('#apikey').value.trim();
     if(v){
@@ -421,6 +430,10 @@ async function saveSettings(){
   }
   setSettingsStatus('saved','ok');
   refreshAiAvailability();  // a just-saved key / provider can flip the record/crawl gate live
+  // The ant sign-in button reads the *server-side* active provider (d.provider==='ant'), which only
+  // becomes ant once the save lands; refresh it now so "Signed in ✓" reflects the save without
+  // waiting for the modal to reopen or the dropdown to toggle.
+  if(provider==='ant')refreshAntLogin();
 }
 // ---- Settings modal: one panel for the provider + API-key controls ----
 function openSettings(){$('#settingsmodal').hidden=false;$('#apikey').value='';setSettingsStatus('','');loadKey();loadProv()}
