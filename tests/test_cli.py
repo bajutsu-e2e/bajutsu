@@ -313,10 +313,12 @@ def test_record_writes_the_authored_scenario(
     )
     assert r.exit_code == 0
     assert "recorded 1 steps" in r.output
-    # record announces the resolved AI provider, model, and effort up front (here the defaults).
+    # record announces the resolved AI provider and model up front (here the defaults). Disclosure is
+    # per-provider (BE-0176 follow-up): the Anthropic SDK has no reasoning-effort knob, so its line
+    # names only provider and model — never an "effort" that would not take effect.
     assert "AI: api-key" in r.output
     assert "model claude-opus-4-8" in r.output
-    assert "effort default" in r.output
+    assert "effort" not in r.output
     assert out.is_file() and "name: authored" in out.read_text(encoding="utf-8")
 
 
@@ -1108,6 +1110,12 @@ def test_crawl_web_builds_one_browser_lane_per_worker(
         ],
     )
     assert r.exit_code == 0, r.output
+    # Like record, crawl announces the resolved AI provider and model up front (BE-0176 follow-up:
+    # both commands share `announce_ai`, so neither starts a provider silently). The api-key default
+    # is the Anthropic SDK, whose per-provider line names only provider and model — no effort.
+    assert "AI: api-key" in r.output
+    assert "model claude-opus-4-8" in r.output
+    assert "effort" not in r.output
     # Only the primary lane is built eagerly (on the main thread, for bootstrap); the other two are
     # factories the engine calls on each worker's own thread (BE-0077: a Playwright browser must be
     # created on the thread that drives it).
