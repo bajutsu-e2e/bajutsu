@@ -375,9 +375,13 @@ def record(
             # responder is present, then resume by re-observing; otherwise fail cleanly and labeled
             # so CI never hangs and the AI never guesses. `continue` re-observes without consuming a
             # step number, and is bounded by the enclosing `max_steps` loop.
-            reason = (
-                proposal.human_prompt or proposal.note or "the agent cannot proceed without help"
-            )
+            # Mask any declared secret literal before the reason is streamed / logged / raised, the
+            # same way the normal step's intent is masked (BE-0120) — a handoff prompt must not leak
+            # a secret into the terminal, the serve stream, or CI output.
+            reason = _mask_secrets(
+                proposal.human_prompt or proposal.note or "the agent cannot proceed without help",
+                secret_tokens or [],
+            )[0]
             if handoff is None:
                 say(
                     f"[{n}] ✋ needs human handoff: {reason} — no responder; re-record interactively"

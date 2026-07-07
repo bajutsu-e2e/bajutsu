@@ -201,6 +201,13 @@ def record(
         typer.echo(msg, err=True)
 
     announce_ai(say, default_model=_RECORD_MODEL, ai=eff.ai)
+    # Resolve the handoff responder before the slow device boot, so an invalid --handoff mode fails
+    # fast and cleanly (BE-0179) rather than after launching, or as an uncaught traceback.
+    try:
+        handoff_responder = make_handoff(handoff, say=say)
+    except ValueError as e:
+        typer.echo(str(e), err=True)
+        raise typer.Exit(2) from None
     say(
         f"⚙️  preparing the simulator — installing and launching {target_name} (this can take a moment) …"
     )
@@ -225,7 +232,7 @@ def record(
             report=say,
             # A "needs human" turn hands off to this responder; with no responder (CI, non-interactive)
             # the loop raises below rather than hanging or guessing (BE-0179).
-            handoff=make_handoff(handoff, say=say),
+            handoff=handoff_responder,
         )
     except HumanHandoffUnavailable as e:
         # Deterministic under automation: a flow that needs a human is a clean, labeled non-zero

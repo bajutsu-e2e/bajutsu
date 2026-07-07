@@ -116,7 +116,8 @@ def make_handoff(mode: str, *, say: Say) -> Handoff | None:
 
     `auto` (the default) is interactive when stdin is a TTY, else None — so CI, with no human,
     gets the clean labeled failure. `prompt` / `stream` force the terminal / `serve` responder;
-    `off` forces no responder.
+    `off` forces no responder. An unknown mode raises rather than silently degrading to `auto`,
+    so a typo (`--handoff promt`) fails loudly instead of quietly changing whether `record` can pause.
     """
     if mode == "off":
         return None
@@ -124,4 +125,6 @@ def make_handoff(mode: str, *, say: Say) -> Handoff | None:
         return PromptHandoff(say)
     if mode == "stream":
         return StreamHandoff()
-    return PromptHandoff(say) if sys.stdin.isatty() else None
+    if mode == "auto":
+        return PromptHandoff(say) if sys.stdin.isatty() else None
+    raise ValueError(f"unknown handoff mode: {mode!r} (expected auto | prompt | stream | off)")

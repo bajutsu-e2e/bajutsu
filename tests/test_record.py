@@ -198,6 +198,19 @@ def test_record_handles_two_handoffs_in_one_run() -> None:
     assert [s.tap.id for s in scenario.steps if s.tap is not None] == ["go"]
 
 
+def test_record_masks_a_secret_in_the_handoff_reason() -> None:
+    # A declared secret literal in the handoff prompt is tokenized before it reaches the request
+    # (and thus the stream / logs), like the normal step's intent (BE-0120).
+    driver = FakeDriver([_el("go", "Go")])
+    agent = FakeAgent(
+        [Proposal(needs_human=True, human_prompt="the code is s3cr3t"), Proposal(done=True)]
+    )
+    handoff = RecordingHandoff([HandoffResponse(acted=True)])
+    record(driver, "x", agent, handoff=handoff, secret_tokens=[("s3cr3t", "${secrets.OTP}")])
+    assert "s3cr3t" not in handoff.requests[0].reason
+    assert "${secrets.OTP}" in handoff.requests[0].reason
+
+
 def test_record_needs_human_without_a_responder_fails_cleanly() -> None:
     # No responder (CI / non-interactive): a raised handoff is a clean, labeled failure, never a
     # hang and never an AI guess (BE-0179).

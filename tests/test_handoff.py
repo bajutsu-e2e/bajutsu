@@ -83,6 +83,12 @@ def test_make_handoff_routes_by_mode(monkeypatch: pytest.MonkeyPatch) -> None:
     assert make_handoff("auto", say=say) is None
 
 
+def test_make_handoff_rejects_an_unknown_mode() -> None:
+    # A typo must fail loudly, not silently degrade to auto (which changes whether record can pause).
+    with pytest.raises(ValueError, match="unknown handoff mode"):
+        make_handoff("promt", say=lambda _m: None)
+
+
 def _pipe_stdin(monkeypatch: pytest.MonkeyPatch, feed: bytes) -> None:
     """Wire sys.stdin to a real pipe pre-fed with *feed* (a real fd, so `select` can wait on it)."""
     read_fd, write_fd = os.pipe()

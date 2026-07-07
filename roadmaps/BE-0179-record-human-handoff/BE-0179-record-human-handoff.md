@@ -88,8 +88,8 @@ the `serve` record path shape the design:
   authoring surface, BE-0098) renders the request in a modal — so it can't be missed below the fold:
   why the loop paused, the
   current screen (the screenshot the request carries, reusing the existing capture-screenshot
-  channel with the target element highlighted), and a response control. The human answers in the
-  browser and the loop resumes.
+  channel; the target element is carried as a text description — pixel-highlighting it is a
+  follow-up), and a response control. The human answers in the browser and the loop resumes.
 - **It is bounded and cancelable.** The modal offers cancel — ending the record cleanly — and the
   awaiting-human state carries the same bounded wait as the CLI, so a `serve` worker never hangs
   indefinitely on a human who has walked away.
