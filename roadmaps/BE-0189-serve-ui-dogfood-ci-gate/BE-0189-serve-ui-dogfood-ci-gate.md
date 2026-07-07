@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0189](BE-0189-serve-ui-dogfood-ci-gate.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0189") |
+| Implementing PR | [#733](https://github.com/bajutsu-e2e/bajutsu/pull/733) |
 | Topic | Dogfood fixtures (web UI) |
 | Related | [BE-0058](../BE-0058-dogfood-web-ui/BE-0058-dogfood-web-ui.md), [BE-0101](../BE-0101-ai-free-zero-config/BE-0101-ai-free-zero-config.md) |
 | Origin | Dogfooding |
@@ -123,10 +124,18 @@ test. No assertion anywhere consults a model.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] CI job `dogfood (serve UI)` added to `web-e2e.yml`, with the serve/templates/serve-ui path filters
-- [ ] `_scroll_gesture` begins the directional swipe on the element; unit test pins the invariant
-- [ ] `record-form` reframed as the keyless BE-0101 Record-degradation net
-- [ ] `panel-resize` green via the gesture fix (intent unchanged)
+- [x] CI job `dogfood (serve UI)` added to `web-e2e.yml`, with the serve/templates/serve-ui path filters
+- [x] `_scroll_gesture` begins the directional swipe on the element; unit test pins the invariant
+- [x] `record-form` reframed as the keyless BE-0101 Record-degradation net
+- [x] `panel-resize` green via the gesture fix (intent unchanged)
+
+Log:
+
+- [#733](https://github.com/bajutsu-e2e/bajutsu/pull/733) — implemented. Added the `dogfood (serve UI)`
+  job (plus the serve/templates/serve-ui path filters) to `web-e2e.yml`, made `_scroll_gesture` begin
+  the directional swipe on the element with a unit test pinning `down` on the centre, reframed
+  `record-form` as the keyless BE-0101 Record-degradation net, and brought `panel-resize` green via
+  the gesture fix — `make -C demos/serve-ui e2e` now 9/9.
 
 ## References
 
