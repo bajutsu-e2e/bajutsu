@@ -574,8 +574,9 @@ async function sendHandoff(body){
   // didn't land (the job already ended / its stdin is gone) must not look like it succeeded.
   try{
     const r=await fetch('/api/jobs/'+recJobId+'/respond-human',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
-    const {resumed}=await r.json();
-    if(!resumed){appendLine($('#rec-out'),'handoff response did not resume the record (it may have already ended)');return;}
+    const d=await r.json().catch(()=>({}));
+    if(!r.ok){appendLine($('#rec-out'),'handoff response failed ('+r.status+'): '+(d.error||r.statusText));return;}
+    if(!d.resumed){appendLine($('#rec-out'),'handoff response did not resume the record (it may have already ended)');return;}
     hideHandoffPanel();
   }catch(e){appendLine($('#rec-out'),'handoff response failed: '+e);}
 }
