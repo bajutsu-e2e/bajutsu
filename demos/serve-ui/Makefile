@@ -46,5 +46,7 @@ codegen:
 # (needs Node). The inner serve is brought up by playwright.config.ts's webServer — self-contained
 # like `e2e`, but running in a team's existing Playwright toolchain / CI instead of bajutsu's
 # runner. No AI at test time; pass/fail is Playwright's own assertions.
+# `npm ci` (not `install`) installs exactly the committed package-lock.json — deterministic and
+# drift-proof, the right mode for a CI vehicle.
 e2e-playwright: codegen
-	cd $(HERE) && npm install && npx playwright install chromium && npx playwright test
+	cd $(HERE) && npm ci && npx playwright install chromium && npx playwright test

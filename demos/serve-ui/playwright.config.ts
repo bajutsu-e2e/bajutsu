@@ -14,7 +14,10 @@ export default defineConfig({
     command:
       'uv run --directory ../.. bajutsu serve --config demos/web/demo.config.yaml --root demos/serve-ui --port 8799',
     url: 'http://127.0.0.1:8799/',
-    reuseExistingServer: true,
+    // In CI, always start (and own) the server so the webServer command is the sole source of
+    // truth for the revision under test — never reuse whatever happens to be on :8799. Locally,
+    // reuse a serve you already have running for fast iteration.
+    reuseExistingServer: !process.env.CI,
     timeout: 60_000,
   },
 });
