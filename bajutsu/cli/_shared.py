@@ -111,6 +111,20 @@ def _require_ai_credential(eff: Effective) -> None:
         raise typer.Exit(2)
 
 
+def _install_usage_ledger(eff: Effective, command: str, *, scenario: str | None = None) -> None:
+    """Install the AI usage/cost ledger and bind this command's attribution (BE-0196).
+
+    The one-line entry point every AI CLI command shares: configure the ledger from `eff.ai`, then
+    bind `command` (and an optional `scenario`) so each recorded event says what its tokens were
+    spent on. Reporting only — never on the deterministic verdict path. `run` does not use this: it
+    binds per-scenario at the alert guard so attribution reaches the runner's worker threads.
+    """
+    from bajutsu import usage_ledger
+
+    usage_ledger.configure_from_ai_config(eff.ai)
+    usage_ledger.bind_command(command, scenario=scenario)
+
+
 def resolve_run_dir(run: str, runs_root: str) -> Path:
     """Resolve a run id or path to its directory.
 

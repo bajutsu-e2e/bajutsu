@@ -205,6 +205,28 @@ defaults:
   the target binds `secrets:`. This is a disclosure, not a mitigation (visual evidence is the point):
   to avoid the exposure entirely, skip AI-driven authoring for a secret-bearing flow, or keep the
   secret off-screen in the app under test.
+- **Usage and cost are recorded to an attributed ledger**
+  ([BE-0196](../roadmaps/BE-0196-ai-usage-cost-ledger/BE-0196-ai-usage-cost-ledger.md)). Every AI call
+  appends one line to a JSON Lines (JSONL) ledger tagged with what its tokens were spent on (command,
+  provider, model, scenario) and priced in dollars where the provider has per-token pricing. It is
+  reporting only — recording is best-effort and never touches the deterministic `run` verdict. Two
+  optional fields under `ai` tune it:
+
+  ```yaml
+  defaults:
+    ai:
+      usageLedger: runs/usage.jsonl              # optional: ledger path (default runs/usage.jsonl; "" disables)
+      pricing:                                   # optional: override the shipped per-token rates (USD per million tokens)
+        api-key/sonnet: { input: 3.0, output: 15.0, cacheWrite: 3.75, cacheRead: 0.3 }
+  ```
+
+  `usageLedger` sets the JSONL path — the default is `runs/usage.jsonl` (under the gitignored `runs/`
+  tree), and an explicit empty string turns persistence off. `pricing` overrides the shipped default
+  rate table, keyed by `"provider/model"` (the model part matches a model id by family, e.g.
+  `api-key/sonnet` prices any `claude-sonnet-*`); a subscription provider with no per-token price
+  (`ant`, `claude-code`) records the token counts with a null cost rather than a fabricated dollar
+  figure. Like the textual inputs above, the ledger stores counts, prices, and labels only — never
+  prompt or response content.
 
 ### Mailbox (the `email` step)
 

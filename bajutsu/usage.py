@@ -13,6 +13,7 @@ alert locator across threads, so several threads can record concurrently. Comman
 
 from __future__ import annotations
 
+import contextlib
 from dataclasses import dataclass
 from threading import Lock
 from typing import Any
@@ -144,9 +145,35 @@ class _Accumulator:
 _TRACKER = _Accumulator()
 
 
-def record(usage: Any, category: str = CATEGORY_OTHER) -> None:
-    """Record one Anthropic response's `usage` into the process-global tracker under `category`."""
+def record(
+    usage: Any,
+    category: str = CATEGORY_OTHER,
+    *,
+    provider: str | None = None,
+    model: str | None = None,
+) -> None:
+    """Record one provider response's `usage` into the process-global tracker under `category`.
+
+    Provider-agnostic (BE-0104): the `usage` object comes from whichever backend answered — the
+    Anthropic SDK, Bedrock, or the `claude-code` CLI's dict envelope. When a ledger is configured
+    (BE-0196), also append one attributed, priced event; *provider* and *model* name what produced
+    the tokens. Ledger emission is best-effort and never raises — a broken sink must not break the AI
+    path — and never touches the deterministic verdict.
+    """
     _TRACKER.record(usage, category)
+    _emit_ledger_event(usage, provider=provider, model=model)
+
+
+def _emit_ledger_event(usage: Any, *, provider: str | None, model: str | None) -> None:
+    """Forward the usage to the ledger, swallowing anything it raises (reporting only, BE-0196).
+
+    Imported lazily so `bajutsu.usage` stays free of the ledger's import at module load (the ledger
+    imports `TokenUsage` from here), and so the deterministic core never pulls it in transitively.
+    """
+    with contextlib.suppress(Exception):
+        from bajutsu import usage_ledger
+
+        usage_ledger.emit(usage, provider=provider, model=model)
 
 
 def snapshot() -> TokenUsage:

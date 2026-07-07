@@ -18,6 +18,7 @@ from bajutsu.cli._shared import (
     DEFAULT_CONFIG,
     _ai_redactor,
     _backends,
+    _install_usage_ledger,
     _load_effective_with_source,
     _refuse_out_in_checkout,
     _require_ai_credential,
@@ -175,6 +176,9 @@ def record(
     # --language overrides the target's `ai.language` (flag > config > auto), BE-0188.
     eff = _resolve_language(eff, language)
     out_path = _record_out_path(eff, out, name, goal, target_name, checkout_root=checkout_root)
+    # Attribute this session's AI tokens/cost to the `record` command (BE-0196) — reporting only,
+    # never on a verdict path; the ledger only persists when configured.
+    _install_usage_ledger(eff, "record", scenario=out_path.stem)
     before = _usage.snapshot()
     before_cat = _usage.snapshot_by_category()  # for the per-category breakdown (BE-0194 §4)
     # Fail closed (BE-0047): the authoring agent and the alert guard both reach the model via the

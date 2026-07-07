@@ -31,6 +31,7 @@ from bajutsu.cli._shared import (
     DEFAULT_CONFIG,
     _ai_redactor,
     _backends,
+    _install_usage_ledger,
     _load_effective_with_source,
     _refuse_out_in_checkout,
     _require_ai_credential,
@@ -173,6 +174,8 @@ def crawl(
     # first.
     _require_ai_credential(eff)
     redactor = _ai_redactor(eff)
+    # Attribute the crawl guide's (and alert guard's) AI tokens/cost to the `crawl` command (BE-0196).
+    _install_usage_ledger(eff, "crawl", scenario=target_name)
     announce_ai(say, default_model=_CRAWL_GUIDE_MODEL, ai=eff.ai)
     crawl_guide = make_guide(report=say, ai=eff.ai, redactor=redactor)
 

@@ -26,6 +26,7 @@ from bajutsu.ai import (
     TextPart,
     ToolDef,
     create_backend,
+    resolved_provider,
 )
 from bajutsu.anthropic_client import AiConfig, resolve_model
 from bajutsu.redaction import Redactor
@@ -232,5 +233,5 @@ class ClaudeTriageAgent:
                 max_tokens=self._max_tokens,
             )
         )
-        usage.record(response.usage)
+        usage.record(response.usage, provider=resolved_provider(self._ai), model=self._model)
         return _to_triage(response)

@@ -40,6 +40,12 @@ class AiConfig:
     key_env: str | None = None  # name of the env var holding the API key (never the key)
     effort: str | None = None  # reasoning-effort level (low/medium/high/xhigh/max) where supported
     language: str | None = None  # AI output language for the generated prose (ja/en/auto), BE-0188
+    # AI usage/cost ledger (BE-0196). `usage_ledger` is the JSONL path (None = default under runs/,
+    # empty string = disabled); `pricing` overrides the shipped per-token rates, keyed by
+    # "provider/model" with input/output/cacheWrite/cacheRead (USD per million tokens). Plain dicts,
+    # not the ledger's own types, so the deterministic core stays free of the AI stack (BE-0112).
+    usage_ledger: str | None = None
+    pricing: dict[str, dict[str, float]] | None = None
 
 
 class _Model(BaseModel):
@@ -114,6 +120,19 @@ class XcuitestConfig(_Model):
     build: str | None = None
 
 
+class PricingEntry(_Model):
+    """Per-token rates for one `(provider, model)` in `ai.pricing` (BE-0196), USD per million tokens.
+
+    Overrides a shipped default. `cacheWrite` / `cacheRead` default to 0 for a provider that does
+    not price cache separately, so an entry may name only `input` / `output`.
+    """
+
+    input: float
+    output: float
+    cache_write: float = Field(default=0.0, alias="cacheWrite")
+    cache_read: float = Field(default=0.0, alias="cacheRead")
+
+
 class AiSettings(_Model):
     """The `ai` block (BE-0047) — which provider/model/endpoint/key the AI paths use.
 
@@ -137,6 +156,11 @@ class AiSettings(_Model):
     # default) keeps today's behavior — `record` follows the goal's language, `crawl` stays English.
     # Governs authoring/investigation prose only; never the deterministic run/CI verdict.
     language: str | None = None
+    # AI usage/cost ledger (BE-0196), reporting only — never on the run/CI verdict. `usageLedger` is
+    # the JSONL ledger path (unset = default under runs/, empty = disabled); `pricing` overrides the
+    # shipped per-token rates, keyed by "provider/model" (e.g. "api-key/sonnet").
+    usage_ledger: str | None = Field(default=None, alias="usageLedger")
+    pricing: dict[str, PricingEntry] | None = None
 
 
 def _check_platform(v: str | None) -> str | None:
@@ -621,6 +645,7 @@ def _merge_ai(base: AiSettings | None, over: AiSettings | None) -> AiConfig | No
         return None
     b = base or AiSettings()
     o = over or AiSettings()
+    pricing = o.pricing if o.pricing is not None else b.pricing
     return AiConfig(
         provider=o.provider or b.provider,
         model=o.model or b.model,
@@ -628,6 +653,14 @@ def _merge_ai(base: AiSettings | None, over: AiSettings | None) -> AiConfig | No
         key_env=o.key_env or b.key_env,
         effort=o.effort or b.effort,
         language=o.language or b.language,
+        usage_ledger=o.usage_ledger if o.usage_ledger is not None else b.usage_ledger,
+        # `by_alias` emits the camelCase rate keys (`cacheWrite`/`cacheRead`) the ledger reads, so the
+        # key names live only on `PricingEntry` — not restated here (keeps the AI stack out of core).
+        pricing=(
+            {k: v.model_dump(by_alias=True) for k, v in pricing.items()}
+            if pricing is not None
+            else None
+        ),
     )
 
 

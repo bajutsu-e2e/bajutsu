@@ -28,6 +28,7 @@ from bajutsu.ai import (
     ToolDef,
     ToolUseBlock,
     create_backend,
+    resolved_provider,
 )
 from bajutsu.anthropic_client import (
     AiConfig,
@@ -598,7 +599,12 @@ class ClaudeAgent:
                 effort=self._effort,
             )
         )
-        usage.record(response.usage, usage.CATEGORY_ACTION)
+        usage.record(
+            response.usage,
+            usage.CATEGORY_ACTION,
+            provider=resolved_provider(self._ai),
+            model=self._model,
+        )
         return _to_proposal(response)
 
     def plan(self, goal: str) -> list[str]:
@@ -616,7 +622,12 @@ class ClaudeAgent:
                 timeout_s=PLAN_TIMEOUT_S,
             )
         )
-        usage.record(response.usage, usage.CATEGORY_PLAN)
+        usage.record(
+            response.usage,
+            usage.CATEGORY_PLAN,
+            provider=resolved_provider(self._ai),
+            model=self._model,
+        )
         block = response.first_tool_use()
         if block is None:
             return []

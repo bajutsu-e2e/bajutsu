@@ -140,6 +140,25 @@ def test_ai_block_absent_resolves_to_none() -> None:
     assert resolve(cfg, "s").ai is None
 
 
+def test_ai_usage_ledger_and_pricing_resolve() -> None:
+    # BE-0196: the ledger path and per-model pricing override resolve as plain dicts on AiConfig.
+    cfg = load_config(
+        "defaults:\n"
+        "  ai:\n"
+        "    provider: api-key\n"
+        "    usageLedger: runs/mine.jsonl\n"
+        "    pricing:\n"
+        "      api-key/sonnet: { input: 3.0, output: 15.0, cacheWrite: 3.75, cacheRead: 0.3 }\n"
+        "targets:\n  s:\n    bundleId: com.x\n"
+    )
+    ai = resolve(cfg, "s").ai
+    assert ai is not None
+    assert ai.usage_ledger == "runs/mine.jsonl"
+    assert ai.pricing == {
+        "api-key/sonnet": {"input": 3.0, "output": 15.0, "cacheWrite": 3.75, "cacheRead": 0.3}
+    }
+
+
 def test_ai_language_resolves_and_target_overrides() -> None:
     # BE-0188: `ai.language` merges like effort — defaults resolve, a target overrides field-wise.
     cfg = load_config(

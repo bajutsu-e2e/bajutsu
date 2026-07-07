@@ -407,6 +407,16 @@ Bringing the CLI's own tools into the serve Web UI, where authoring happens. The
 | [BE-0148](BE-0148-serve-doctor/BE-0148-serve-doctor.md) | Doctor readiness panel in the serve Web UI | Implemented |
 <!-- /GENERATED:implemented-serve-cli-features -->
 
+### AI usage and cost observability
+
+Making Bajutsu's AI token and dollar spend visible: an attributed, persistent ledger of every AI call, and (separately) the serve Web UI dashboard that reads it.
+
+<!-- GENERATED:implemented-ai-usage -->
+| ID | Item | Status |
+|---|---|---|
+| [BE-0196](BE-0196-ai-usage-cost-ledger/BE-0196-ai-usage-cost-ledger.md) | Record AI token usage and cost as an attributed, persistent ledger | Implemented |
+<!-- /GENERATED:implemented-ai-usage -->
+
 ### codegen coverage
 
 Turning a passing scenario into a native test in a destination framework's idiom. The web (Playwright) target has landed alongside the original XCUITest one.
@@ -625,7 +635,6 @@ Measuring what the AI paths (`record` / `crawl` / `triage --ai` / `run --apply`)
 | ID | Item | Status |
 |---|---|---|
 | [BE-0195](BE-0195-ai-usage-cost-dashboard/BE-0195-ai-usage-cost-dashboard.md) | Visualize AI token usage and cost in the serve Web UI | Proposal |
-| [BE-0196](BE-0196-ai-usage-cost-ledger/BE-0196-ai-usage-cost-ledger.md) | Record AI token usage and cost as an attributed, persistent ledger | Proposal |
 <!-- /GENERATED:proposals-ai-usage -->
 
 ### Hosting the web UI (cloud / self-hosted)
