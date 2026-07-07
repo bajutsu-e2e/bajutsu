@@ -44,7 +44,10 @@ jobs:
       - name: Check the PR title (form + roadmap-id prefix from the branch)
         if: >-
           github.event.pull_request.user.login != 'dependabot[bot]' &&
-          !startsWith(github.event.pull_request.head.ref, 'alert-autofix-')
+          !(
+            github.event.pull_request.head.repo.full_name == github.repository &&
+            startsWith(github.event.pull_request.head.ref, 'alert-autofix-')
+          )
         env:
           PR_TITLE: ${{ github.event.pull_request.title }}
           HEAD_REF: ${{ github.event.pull_request.head.ref }}
