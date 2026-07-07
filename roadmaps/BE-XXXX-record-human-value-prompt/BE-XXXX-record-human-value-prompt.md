@@ -10,7 +10,7 @@
 | Status | **Proposal** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
 | Topic | Authoring experience (record / GUI editor) |
-| Related | [BE-0044](../BE-0044-scenario-provenance/BE-0044-scenario-provenance.md), [BE-0046](../BE-0046-otp-email-steps/BE-0046-otp-email-steps.md), [BE-0120](../BE-0120-recorded-scenario-secret-tokenization/BE-0120-recorded-scenario-secret-tokenization.md) |
+| Related | [BE-0015](../BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md), [BE-0016](../BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md), [BE-0044](../BE-0044-scenario-provenance/BE-0044-scenario-provenance.md), [BE-0046](../BE-0046-otp-email-steps/BE-0046-otp-email-steps.md), [BE-0120](../BE-0120-recorded-scenario-secret-tokenization/BE-0120-recorded-scenario-secret-tokenization.md) |
 <!-- /BE-METADATA -->
 
 ## Introduction
@@ -69,7 +69,13 @@ originated from a human value handoff, so the report and the GUI editor can show
 needs wiring.
 
 **CLI and `serve`.** Both surfaces come from the substrate; this item adds only the value prompt
-and the classification/TODO emission on top.
+and the classification/TODO emission on top. On `serve`, the handoff pane shows the awaited field
+(highlighted on the request screenshot) and a single input for the value — the author reads the
+code off their authenticator or inbox and types it into the browser. Because a value is supplied
+**entirely in the browser** and needs no access to the device, this pattern works unchanged on a
+remote or self-hosted `serve` (BE-0015 / BE-0016), where the Simulator is not in front of the
+author. That is the sharp contrast with the operation-takeover pattern, which does need the author
+to reach the device.
 
 ## Alternatives considered
 
