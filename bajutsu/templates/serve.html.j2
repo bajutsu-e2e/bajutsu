@@ -483,7 +483,7 @@
     <div class="cfgpath" id="cfgviewpath" data-testid="config.view-path"></div>
     <div class="cfgtree" id="cfgviewtree" data-testid="config.view-tree"></div>
     <pre class="cfgview" id="cfgviewbody" data-testid="config.view-content" hidden></pre>
-    <div class="gitsrchint"><code>${secrets.*}</code> placeholders are shown verbatim &mdash; they resolve from the server's environment at run time, so nothing secret is disclosed here.</div>
+    <div class="gitsrchint">The config is shown verbatim. <code>${secrets.*}</code> placeholders are not resolved (they resolve from the server's environment at run time), but a secret written <b>literally</b> into the file would be shown as-is &mdash; keep secrets in <code>${secrets.*}</code> refs, not in the file.</div>
   </div>
 </div>
 

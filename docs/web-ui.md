@@ -95,8 +95,11 @@ Above both, it shows the config's path and — when it came from a Git repositor
 materialized from: the repository, the `ref` you asked for, and the resolved commit SHA. This matters
 for a Git source, whose active path is an opaque content-addressed cache location
 (`…/gitsrc/<host>/<owner>/<repo>/<sha>/…`); the provenance line states which commit is actually
-bound, not just the path. The config is shown verbatim, so any `${secrets.*}` placeholders appear as
-written — they resolve from the server's environment at run time, and nothing secret is disclosed.
+bound, not just the path. The config is shown verbatim: `${secrets.*}` placeholders appear as written
+and are never resolved (they resolve from the server's environment at run time), so the view adds no
+disclosure beyond the file itself. It is not a redactor, though — a secret written **literally** into
+a local or uploaded config is shown as-is, so keeping secrets in `${secrets.*}` refs rather than in
+the file is what keeps them out of this view. In a hosted deployment the endpoint is admin-only.
 
 ## Settings
 
