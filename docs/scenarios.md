@@ -603,7 +603,8 @@ A CSV `dataFile` has a header row naming the columns; each subsequent row become
 > load started from). A ref that leaves it — an absolute path, a `../` chain that escapes the root,
 > or a symlink pointing outside — is rejected with a clear error and never read, so a scenario cannot
 > make the loader open a file outside its own tree ([BE-0174](../roadmaps/BE-0174-scenario-ref-path-containment/BE-0174-scenario-ref-path-containment.md)).
-> A relative `../components/shared.yaml` that stays inside the root keeps working.
+> A relative ref that stays inside the root keeps working — a sibling `components/shared.yaml`, or,
+> from a scenario in a subdirectory, a `../shared.yaml` that climbs no higher than the root.
 
 ### Tags and selection
 
