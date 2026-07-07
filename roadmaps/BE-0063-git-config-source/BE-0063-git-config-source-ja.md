@@ -11,7 +11,7 @@
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0063") |
 | 実装 PR | [#277](https://github.com/bajutsu-e2e/bajutsu/pull/277)（BE-0063 の複数 PR の最後） |
 | トピック | config の取得元 |
-| 関連 | [BE-0108](../BE-0108-hosted-config-source-restriction/BE-0108-hosted-config-source-restriction-ja.md) |
+| 関連 | [BE-0108](../BE-0108-hosted-config-source-restriction/BE-0108-hosted-config-source-restriction-ja.md), [BE-0187](../BE-0187-serve-config-view/BE-0187-serve-config-view-ja.md) |
 <!-- /BE-METADATA -->
 
 ## はじめに

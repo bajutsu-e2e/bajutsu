@@ -11,7 +11,7 @@
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0063") |
 | Implementing PR | [#277](https://github.com/bajutsu-e2e/bajutsu/pull/277) (the last of several BE-0063 PRs) |
 | Topic | Configuration sourcing |
-| Related | [BE-0108](../BE-0108-hosted-config-source-restriction/BE-0108-hosted-config-source-restriction.md) |
+| Related | [BE-0108](../BE-0108-hosted-config-source-restriction/BE-0108-hosted-config-source-restriction.md), [BE-0187](../BE-0187-serve-config-view/BE-0187-serve-config-view.md) |
 <!-- /BE-METADATA -->
 
 ## Introduction
