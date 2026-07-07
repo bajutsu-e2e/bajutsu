@@ -98,6 +98,6 @@ The work is the following mutually exclusive, collectively exhaustive units:
 
 - `ai-usage-cost-ledger` — the sibling item that records the attributed usage/cost ledger this
   dashboard reads. This item depends on that format.
-- BE-0102 (Run-stats dashboard) — the read-only serve dashboard pattern this follows.
-- BE-0169 (Serve metrics and observability endpoint) — the complementary `/metrics` surface.
+- [BE-0102](../BE-0102-run-stats-dashboard/BE-0102-run-stats-dashboard.md) (Run-stats dashboard) — the read-only serve dashboard pattern this follows.
+- [BE-0169](../BE-0169-serve-metrics-observability/BE-0169-serve-metrics-observability.md) (Serve metrics and observability endpoint) — the complementary `/metrics` surface.
 - `bajutsu/templates/serve.js` — the serve Web UI where the view is added.

@@ -130,8 +130,9 @@ The work is the following mutually exclusive, collectively exhaustive units:
 
 - `bajutsu/usage.py` — the existing in-memory `TokenUsage` accumulator this item extends.
 - `bajutsu/ai/base.py`, `bajutsu/ai/registry.py` — the `AiBackend` seam and provider registry
-  (`anthropic` / `bedrock` / `ant` / `claude-code`) that already pass `usage` through (BE-0104).
-- BE-0055 (Operational logging) — the structured-JSON, secret-redacting logging style this ledger follows.
-- BE-0047 (AI data sovereignty) — the redaction rules the ledger inherits.
-- BE-0169 (Serve metrics and observability endpoint) — the complementary operational `/metrics` surface.
+  (`anthropic` / `bedrock` / `ant` / `claude-code`) that already pass `usage` through
+  ([BE-0104](../BE-0104-vendor-neutral-ai-backend/BE-0104-vendor-neutral-ai-backend.md)).
+- [BE-0055](../BE-0055-operational-logging/BE-0055-operational-logging.md) (Operational logging) — the structured-JSON, secret-redacting logging style this ledger follows.
+- [BE-0047](../BE-0047-ai-data-sovereignty/BE-0047-ai-data-sovereignty.md) (AI data sovereignty) — the redaction rules the ledger inherits.
+- [BE-0169](../BE-0169-serve-metrics-observability/BE-0169-serve-metrics-observability.md) (Serve metrics and observability endpoint) — the complementary operational `/metrics` surface.
 - `ai-usage-cost-dashboard` — the sibling item that visualizes this ledger in the serve Web UI.

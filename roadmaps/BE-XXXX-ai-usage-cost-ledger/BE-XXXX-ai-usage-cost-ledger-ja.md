@@ -68,8 +68,8 @@ Bajutsu の AI 経路、つまり `record`、`crawl`、`triage --ai`、`run --ap
 ## 参考
 
 - `bajutsu/usage.py` — この項目が拡張する、既存のメモリ上の `TokenUsage` 積算器。
-- `bajutsu/ai/base.py`、`bajutsu/ai/registry.py` — すでに `usage` を通している `AiBackend` の継ぎ目とプロバイダレジストリ（`anthropic` / `bedrock` / `ant` / `claude-code`）（BE-0104）。
-- BE-0055（運用ログ） — この台帳が従う、構造化 JSON で秘匿情報を除去するログのスタイル。
-- BE-0047（AI データ主権） — 台帳が引き継ぐ秘匿情報除去の規則。
-- BE-0169（serve のメトリクスと可観測性エンドポイント） — 補完的な運用向けの `/metrics` サーフェス。
+- `bajutsu/ai/base.py`、`bajutsu/ai/registry.py` — すでに `usage` を通している `AiBackend` の継ぎ目とプロバイダレジストリ（`anthropic` / `bedrock` / `ant` / `claude-code`）（[BE-0104](../BE-0104-vendor-neutral-ai-backend/BE-0104-vendor-neutral-ai-backend-ja.md)）。
+- [BE-0055](../BE-0055-operational-logging/BE-0055-operational-logging-ja.md)（運用ログ） — この台帳が従う、構造化 JSON で秘匿情報を除去するログのスタイル。
+- [BE-0047](../BE-0047-ai-data-sovereignty/BE-0047-ai-data-sovereignty-ja.md)（AI データ主権） — 台帳が引き継ぐ秘匿情報除去の規則。
+- [BE-0169](../BE-0169-serve-metrics-observability/BE-0169-serve-metrics-observability-ja.md)（serve のメトリクスと可観測性エンドポイント） — 補完的な運用向けの `/metrics` サーフェス。
 - `ai-usage-cost-dashboard` — この台帳を serve の Web UI に可視化する姉妹項目。
