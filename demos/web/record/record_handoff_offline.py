@@ -94,7 +94,7 @@ class VerifyAgent:
     def next_action(self, obs: Observation) -> Proposal:
         ids = {e["identifier"] for e in obs.screen}
         if "verify.start" in ids:
-            return Proposal(step=Step.model_validate({"tap": {"id": "verify.start"}}))
+            return Proposal(steps=[Step.model_validate({"tap": {"id": "verify.start"}})])
         if "verified.title" in ids:
             return Proposal(
                 done=True,
@@ -106,7 +106,7 @@ class VerifyAgent:
                 needs_human=True,
                 human_prompt="enter the one-time verification code shown on the device",
             )
-        return Proposal(step=Step.model_validate({"tap": {"id": "verify.submit"}}))
+        return Proposal(steps=[Step.model_validate({"tap": {"id": "verify.submit"}})])
 
 
 class ScriptedHuman:

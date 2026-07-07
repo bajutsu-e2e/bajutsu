@@ -494,12 +494,22 @@ def _combine(subs: list[Proposal]) -> Proposal:
     """Fold the per-action proposals of one turn into a single batch proposal (BE-0178).
 
     Actions are collected in order; a `finish` terminates the batch (Decision 3) — the actions
-    before it stay in `steps`, and its assertions become the batch's `expect`. Turn-level `note`
-    and `plan_step` are taken from the first action (each step also carries its own `from_` reason).
+    before it stay in `steps`, and its assertions become the batch's `expect`. A `needs_human`
+    (BE-0179) likewise terminates the batch, carrying its `human_prompt` so the loop can hand off.
+    Turn-level `note` and `plan_step` are taken from the first action (each step also carries its
+    own `from_` reason).
     """
     steps: list[Step] = []
     note, plan_step = subs[0].note, subs[0].plan_step
     for sub in subs:
+        if sub.needs_human:
+            return Proposal(
+                steps=steps,
+                needs_human=True,
+                human_prompt=sub.human_prompt,
+                note=note,
+                plan_step=plan_step,
+            )
         if sub.done:
             return Proposal(
                 steps=steps, done=True, expect=sub.expect, note=note, plan_step=plan_step

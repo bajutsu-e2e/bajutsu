@@ -150,7 +150,7 @@ def test_record_hands_off_on_needs_human_then_resumes() -> None:
     agent = FakeAgent(
         [
             Proposal(needs_human=True, human_prompt="enter the one-time password"),
-            Proposal(step=Step.model_validate({"tap": {"id": "go"}})),
+            Proposal(steps=[Step.model_validate({"tap": {"id": "go"}})]),
             Proposal(done=True),
         ]
     )
@@ -170,7 +170,7 @@ def test_record_resumes_after_a_value_response() -> None:
     agent = FakeAgent(
         [
             Proposal(needs_human=True, human_prompt="enter the OTP"),
-            Proposal(step=Step.model_validate({"tap": {"id": "go"}})),
+            Proposal(steps=[Step.model_validate({"tap": {"id": "go"}})]),
             Proposal(done=True),
         ]
     )
@@ -187,7 +187,7 @@ def test_record_handles_two_handoffs_in_one_run() -> None:
     agent = FakeAgent(
         [
             Proposal(needs_human=True, human_prompt="enter the OTP"),
-            Proposal(step=Step.model_validate({"tap": {"id": "go"}})),
+            Proposal(steps=[Step.model_validate({"tap": {"id": "go"}})]),
             Proposal(needs_human=True, human_prompt="solve the CAPTCHA"),
             Proposal(done=True),
         ]
