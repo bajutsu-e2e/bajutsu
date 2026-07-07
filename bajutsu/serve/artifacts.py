@@ -17,7 +17,7 @@ from typing import Any, Protocol
 
 from bajutsu.report.archive import archive_run_dir
 from bajutsu.report.load import rerender_html
-from bajutsu.serve.helpers import list_runs, valid_run_id
+from bajutsu.serve.helpers import list_crawl_runs, list_runs, valid_run_id
 
 
 @dataclass
@@ -38,6 +38,13 @@ class ArtifactStore(Protocol):
 
     def list_runs(self) -> list[dict[str, Any]]:
         """Past runs, newest first, each summarized for the history list."""
+
+    def list_crawl_runs(self) -> list[dict[str, Any]]:
+        """Past crawl runs, newest first, each summarized from its screenmap.json (BE-0180/BE-0190).
+
+        The crawl-history counterpart to `list_runs`: keyed on screenmap.json (the artifact every
+        crawl streams) instead of manifest.json (a crawl has no pass/fail verdict). Each entry is the
+        `helpers.crawl_run_summary` shape the Crawl tab consumes."""
 
     def render_report(self, run_id: str) -> Artifact | None:
         """Render *run_id*'s report.html **on view** from its stored model with the current template
@@ -101,6 +108,9 @@ class LocalArtifactStore:
 
     def list_runs(self) -> list[dict[str, Any]]:
         return list_runs(self._runs_dir)
+
+    def list_crawl_runs(self) -> list[dict[str, Any]]:
+        return list_crawl_runs(self._runs_dir)
 
     def archive(self, run_id: str) -> Artifact | None:
         # A run is a single id segment, so reject `r1/demo` (a subdir) — it would otherwise zip the

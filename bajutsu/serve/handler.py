@@ -212,7 +212,7 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
                 case "/api/runs":
                     self._json(*ops.runs_payload(state, actor=self._actor()))
                 case "/api/crawl/runs":
-                    self._json(*ops.crawl_runs_payload(state))
+                    self._json(*ops.crawl_runs_payload(state, actor=self._actor()))
                 case "/metrics":
                     # Prometheus text format, not JSON. It sits behind `_gate` like every other
                     # route (BE-0051) — not on the open-GET list — so a scraper authenticates with

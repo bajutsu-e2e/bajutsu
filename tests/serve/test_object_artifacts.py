@@ -40,6 +40,17 @@ def _manifest(ok: bool, scenarios: list[tuple[str, bool]]) -> bytes:
     ).encode()
 
 
+def _screenmap(nodes: int, edges: int, crashes: int, *, stop_reason: str = "") -> bytes:
+    data: dict[str, object] = {
+        "nodes": [{} for _ in range(nodes)],
+        "edges": [{} for _ in range(edges)],
+        "crashes": [{} for _ in range(crashes)],
+    }
+    if stop_reason:
+        data["stop_reason"] = stop_reason
+    return json.dumps(data).encode()
+
+
 def test_get_redirects_to_a_signed_url_for_an_existing_object() -> None:
     store = ObjectStorageArtifactStore(
         FakeObjectStore({"runs/r1/report.html": b"<html></html>"}), prefix="runs/"
@@ -126,3 +137,63 @@ def test_archive_missing_or_escaping_run_id_is_none() -> None:
     assert store.archive("nope") is None  # no objects
     assert store.archive("../etc") is None  # escapes the prefix
     assert store.archive("r1/demo") is None  # a nested segment isn't a run id
+
+
+def test_list_crawl_runs_summarizes_from_screenmaps_newest_first() -> None:
+    objects = {
+        "runs/20260610-1/screenmap.json": _screenmap(2, 1, 0),
+        "runs/20260610-1/flows/login.yaml": b"name: login",
+        "runs/20260612-9/screenmap.json": _screenmap(5, 4, 1, stop_reason="budget"),
+        "runs/20260612-9/crashes/crash-1.yaml": b"name: crash",
+    }
+    listed = ObjectStorageArtifactStore(FakeObjectStore(objects), prefix="runs/").list_crawl_runs()
+    assert [r["id"] for r in listed] == ["20260612-9", "20260610-1"]  # reverse-lexicographic
+    newest, older = listed
+    assert newest["screens"] == 5 and newest["transitions"] == 4 and newest["crashes"] == 1
+    assert newest["crashFiles"] == ["crash-1.yaml"] and newest["stopReason"] == "budget"
+    assert older["flowFiles"] == ["login.yaml"] and older["crashFiles"] == []
+
+
+def test_list_crawl_runs_keys_on_screenmap_not_manifest() -> None:
+    # A replay run writes manifest.json but no screenmap.json — it is not a crawl, so it must not
+    # appear in the crawl history (the mirror of how list_runs keys on manifest.json).
+    objects = {"runs/r1/manifest.json": b"{}", "runs/r2/screenmap.json": _screenmap(1, 0, 0)}
+    listed = ObjectStorageArtifactStore(FakeObjectStore(objects), prefix="runs/").list_crawl_runs()
+    assert [r["id"] for r in listed] == ["r2"]
+
+
+def test_list_crawl_runs_skips_unparseable_or_non_object_screenmap() -> None:
+    objects = {
+        "runs/bad/screenmap.json": b"not json",
+        "runs/list/screenmap.json": b"[1, 2, 3]",  # a JSON array, not a screen map object
+        "runs/good/screenmap.json": _screenmap(1, 0, 0),
+    }
+    listed = ObjectStorageArtifactStore(FakeObjectStore(objects), prefix="runs/").list_crawl_runs()
+    assert [r["id"] for r in listed] == ["good"]
+
+
+def test_list_crawl_runs_lists_only_direct_yaml_children() -> None:
+    # Only *.yaml directly under crashes/ becomes a link — a nested key or a non-yaml is skipped, so
+    # the file list matches the local scan's `glob("*.yaml")` (no dead links).
+    objects = {
+        "runs/r1/screenmap.json": _screenmap(1, 0, 0),
+        "runs/r1/crashes/a.yaml": b"x",
+        "runs/r1/crashes/nested/b.yaml": b"x",
+        "runs/r1/crashes/notes.txt": b"x",
+    }
+    (got,) = ObjectStorageArtifactStore(FakeObjectStore(objects), prefix="runs/").list_crawl_runs()
+    assert got["crashFiles"] == ["a.yaml"]
+
+
+def test_list_crawl_runs_is_scoped_to_the_stores_prefix() -> None:
+    # Two orgs' crawls share one bucket under their own prefixes (the org prefix is baked into the
+    # store instance); each store lists only its own runs — the tenant isolation BE-0190 relies on.
+    objects = {
+        "artifacts/acme-run/screenmap.json": _screenmap(1, 0, 0),
+        "other/artifacts/beta-run/screenmap.json": _screenmap(2, 1, 0),
+    }
+    shared = FakeObjectStore(objects)
+    default_org = ObjectStorageArtifactStore(shared, prefix="artifacts/")
+    other_org = ObjectStorageArtifactStore(shared, prefix="other/artifacts/")
+    assert [r["id"] for r in default_org.list_crawl_runs()] == ["acme-run"]
+    assert [r["id"] for r in other_org.list_crawl_runs()] == ["beta-run"]

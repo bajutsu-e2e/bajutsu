@@ -18,7 +18,6 @@ from bajutsu.serve import jobs
 from bajutsu.serve.artifacts import Artifact, ArtifactStore
 from bajutsu.serve.authz import _target_forbidden
 from bajutsu.serve.helpers import (
-    list_crawl_runs,
     list_fs,
     list_simulators,
     list_targets,
@@ -114,22 +113,20 @@ def runs_payload(state: ServeState, *, actor: str | None = None) -> tuple[Any, i
     return state.artifacts.list_runs(), 200
 
 
-def crawl_runs_payload(state: ServeState) -> tuple[Any, int]:
-    """Past crawl runs for the Crawl tab's history list (BE-0180).
+def crawl_runs_payload(state: ServeState, *, actor: str | None = None) -> tuple[Any, int]:
+    """Past crawl runs for the Crawl tab's history list, from the actor's org store (BE-0180/BE-0190).
 
     Keyed on screenmap.json (the artifact every crawl streams), separate from `runs_payload`'s
     manifest-backed pass/fail history — a crawl run has no such verdict. Read-only and AI-free: it
     only summarizes the deterministic screen map and links to the crash/flow scenario files the crawl
     already wrote, served through the existing `/runs/<id>/...` static mount.
 
-    Scoped to the local backend. A server backend (`state.repository` wired) serves run artifacts from
-    an org-scoped object store, not `runs_dir`, so a local-filesystem scan would be non-functional
-    there and could surface run ids across org boundaries; until a store-backed, org-scoped crawl
-    listing exists, the endpoint returns an empty list on that backend rather than leak or mislead.
+    Listed through the actor's org-scoped `ArtifactStore`, exactly as `runs_payload` and `/runs/<id>/...`
+    are (BE-0190): the local backend resolves to the default org's `LocalArtifactStore` (a `runs_dir`
+    scan, today's behavior), while a server backend reads the org's object store, so the history is
+    tenant-scoped by construction — no run id from another org is reachable.
     """
-    if state.repository is not None:
-        return [], 200
-    return list_crawl_runs(state.runs_dir), 200
+    return state.for_org(state.org_of(actor)).artifacts.list_crawl_runs(), 200
 
 
 # The newest-N run window a serve `/stats` refresh aggregates. Bounds the per-refresh manifest reads

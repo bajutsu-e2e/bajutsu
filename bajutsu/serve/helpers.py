@@ -269,21 +269,39 @@ def list_crawl_runs(runs_dir: Path) -> list[dict[str, Any]]:
         if not isinstance(data, dict):
             continue
         out.append(
-            {
-                "id": d.name,
-                "screens": _list_len(data.get("nodes")),
-                "transitions": _list_len(data.get("edges")),
-                "crashes": _list_len(data.get("crashes")),
-                "crashFiles": _scenario_file_names(d / "crashes"),
-                "flowFiles": _scenario_file_names(d / "flows"),
-                # Screens the run left with untried operations — what a full-frontier continuation
-                # (BE-0181) would explore. Lets the Crawl tab offer "continue" only when >0.
-                "frontier": _frontier_count(data.get("plan")),
-                "stopReason": str(data.get("stop_reason") or ""),
-            }
+            crawl_run_summary(
+                d.name, data, _scenario_file_names(d / "crashes"), _scenario_file_names(d / "flows")
+            )
         )
     out.sort(key=lambda r: r["id"], reverse=True)
     return out
+
+
+def crawl_run_summary(
+    run_id: str,
+    screenmap: dict[str, Any],
+    crash_files: list[str],
+    flow_files: list[str],
+) -> dict[str, Any]:
+    """One crawl run's history-list entry, from its parsed screenmap.json and its crash/flow file names.
+
+    Shared by the local filesystem scan (`list_crawl_runs`) and the object-store listing (BE-0190) so
+    both backends emit an identical entry — the shape the Crawl tab consumes. *crash_files* /
+    *flow_files* are the `crashes/*.yaml` / `flows/*.yaml` names the caller already resolved for its
+    backend (a directory glob locally, object keys on the server).
+    """
+    return {
+        "id": run_id,
+        "screens": _list_len(screenmap.get("nodes")),
+        "transitions": _list_len(screenmap.get("edges")),
+        "crashes": _list_len(screenmap.get("crashes")),
+        "crashFiles": crash_files,
+        "flowFiles": flow_files,
+        # Screens the run left with untried operations — what a full-frontier continuation
+        # (BE-0181) would explore. Lets the Crawl tab offer "continue" only when >0.
+        "frontier": _frontier_count(screenmap.get("plan")),
+        "stopReason": str(screenmap.get("stop_reason") or ""),
+    }
 
 
 def _list_len(value: Any) -> int:

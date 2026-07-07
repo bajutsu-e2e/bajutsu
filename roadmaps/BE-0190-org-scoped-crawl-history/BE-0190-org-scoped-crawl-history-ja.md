@@ -7,8 +7,9 @@
 |---|---|
 | 提案 | [BE-0190](BE-0190-org-scoped-crawl-history-ja.md) |
 | 提案者 | [@hirosassa](https://github.com/hirosassa) |
-| 状態 | **提案** |
+| 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0190") |
+| 実装 PR | _pending_ |
 | トピック | Web UI のホスティング（クラウド / セルフホスト） |
 | 関連 | [BE-0180](../BE-0180-crawl-history-viewer/BE-0180-crawl-history-viewer-ja.md) |
 | 由来 | [BE-0180](../BE-0180-crawl-history-viewer/BE-0180-crawl-history-viewer-ja.md) のレビュー |
@@ -103,12 +104,20 @@ CI の判定パスには一切触れないため、BE-0180 と同じくプライ
 > 作業分解（作業の単位ごとに 1 つ）に対応し、ログには変更内容と時期（古い順）を PR へのリンクと
 > ともに記録します。
 
-- [ ] `ArtifactStore` Protocol への `list_crawl_runs()`
-- [ ] `LocalArtifactStore.list_crawl_runs()`（BE-0180 のヘルパーへ委譲）
-- [ ] `ObjectStorageArtifactStore.list_crawl_runs()`（`<runId>/screenmap.json` で走査し、crash/flow キーを一覧）
-- [ ] `state.for_org(org).artifacts` を介して `crawl_runs_payload` を org スコープ化
-- [ ] stdlib ハンドラと FastAPI アプリの route に actor を通す
-- [ ] テスト: オブジェクトストア一覧（org の分離）と org スコープ付きペイロード
+- [x] `ArtifactStore` Protocol への `list_crawl_runs()`
+- [x] `LocalArtifactStore.list_crawl_runs()`（BE-0180 のヘルパーへ委譲）
+- [x] `ObjectStorageArtifactStore.list_crawl_runs()`（`<runId>/screenmap.json` で走査し、crash/flow キーを一覧）
+- [x] `state.for_org(org).artifacts` を介して `crawl_runs_payload` を org スコープ化
+- [x] stdlib ハンドラと FastAPI アプリの route に actor を通す
+- [x] テスト: オブジェクトストア一覧（org の分離）と org スコープ付きペイロード
+
+ログ:
+
+- _pending_ — org スコープ付きの crawl 一覧を実装しました。`ArtifactStore` の接続点に `list_crawl_runs()`
+  を追加し（ローカルは BE-0180 のヘルパーへ委譲、オブジェクトストアは `<runId>/screenmap.json` を 1 回の走査で
+  拾い、各 run 直下の `crashes/*.yaml`・`flows/*.yaml` キーを索引化）、両バックエンドが同一の要約を返すよう
+  共通ヘルパー `helpers.crawl_run_summary` を切り出しました。`crawl_runs_payload` を
+  `state.for_org(state.org_of(actor)).artifacts` へ載せ替え、actor を両トランスポートに通しています。
 
 ## 参考
 

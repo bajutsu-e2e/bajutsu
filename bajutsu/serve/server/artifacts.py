@@ -21,7 +21,7 @@ from typing import Any
 
 from bajutsu.report.archive import zip_tree
 from bajutsu.serve.artifacts import Artifact
-from bajutsu.serve.helpers import valid_run_id
+from bajutsu.serve.helpers import crawl_run_summary, valid_run_id
 from bajutsu.serve.server.object_store import ObjectStore
 
 
@@ -106,5 +106,44 @@ class ObjectStorageArtifactStore:
                     "passed": sum(1 for s in scenarios if s.get("ok")),
                     "total": len(scenarios),
                 }
+            )
+        return out
+
+    def list_crawl_runs(self) -> list[dict[str, Any]]:
+        # The crawl-history counterpart to list_runs, keyed on screenmap.json (BE-0190). The prefix is
+        # this store's org prefix, so `list_keys` only ever returns this org's keys — the listing is
+        # tenant-safe by construction, and no run id from another org is reachable.
+        rels = [k[len(self._prefix) :] for k in self._store.list_keys(self._prefix)]
+        # One pass over the keys (like list_runs' single `present` scan): collect the runs that
+        # streamed a screen map, and index each run's direct crashes/*.yaml and flows/*.yaml names —
+        # a nested key or a non-yaml is excluded, matching the local scan's glob (no dead links).
+        crawl_ids: set[str] = set()
+        files: dict[tuple[str, str], list[str]] = {}
+        for rel in rels:
+            run_id, _, rest = rel.partition("/")
+            if rest == "screenmap.json":
+                crawl_ids.add(run_id)
+                continue
+            sub, _, name = rest.partition("/")
+            if sub in ("crashes", "flows") and name.endswith(".yaml") and "/" not in name:
+                files.setdefault((run_id, sub), []).append(name)
+        out: list[dict[str, Any]] = []
+        for run_id in sorted(crawl_ids, reverse=True):  # ids are timestamps → newest first
+            raw = self._store.get_bytes(f"{self._prefix}{run_id}/screenmap.json")
+            if raw is None:
+                continue
+            try:
+                data = json.loads(raw)
+            except (ValueError, TypeError):
+                continue
+            if not isinstance(data, dict):  # a screen map that isn't a JSON object is skipped
+                continue
+            out.append(
+                crawl_run_summary(
+                    run_id,
+                    data,
+                    sorted(files.get((run_id, "crashes"), [])),
+                    sorted(files.get((run_id, "flows"), [])),
+                )
             )
         return out

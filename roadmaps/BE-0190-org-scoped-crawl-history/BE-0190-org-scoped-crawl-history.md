@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0190](BE-0190-org-scoped-crawl-history.md) |
 | Author | [@hirosassa](https://github.com/hirosassa) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0190") |
+| Implementing PR | _pending_ |
 | Topic | Hosting the web UI (cloud / self-hosted) |
 | Related | [BE-0180](../BE-0180-crawl-history-viewer/BE-0180-crawl-history-viewer.md) |
 | Origin | Review of [BE-0180](../BE-0180-crawl-history-viewer/BE-0180-crawl-history-viewer.md) |
@@ -101,12 +102,20 @@ and never touches the `run`/CI verdict path, so prime directive 1 holds exactly 
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] `list_crawl_runs()` on the `ArtifactStore` Protocol
-- [ ] `LocalArtifactStore.list_crawl_runs()` (delegates to the BE-0180 helper)
-- [ ] `ObjectStorageArtifactStore.list_crawl_runs()` (scan by `<runId>/screenmap.json`, list crash/flow keys)
-- [ ] `crawl_runs_payload` made org-scoped via `state.for_org(org).artifacts`
-- [ ] Actor threaded through the stdlib handler and the FastAPI app routes
-- [ ] Tests: object-store listing (org isolation) + org-scoped payload
+- [x] `list_crawl_runs()` on the `ArtifactStore` Protocol
+- [x] `LocalArtifactStore.list_crawl_runs()` (delegates to the BE-0180 helper)
+- [x] `ObjectStorageArtifactStore.list_crawl_runs()` (scan by `<runId>/screenmap.json`, list crash/flow keys)
+- [x] `crawl_runs_payload` made org-scoped via `state.for_org(org).artifacts`
+- [x] Actor threaded through the stdlib handler and the FastAPI app routes
+- [x] Tests: object-store listing (org isolation) + org-scoped payload
+
+Log:
+
+- _pending_ — Shipped the org-scoped crawl listing: added `list_crawl_runs()` to the `ArtifactStore`
+  seam (local delegates to the BE-0180 helper; the object store scans `<runId>/screenmap.json` in one
+  pass and indexes each run's direct `crashes/*.yaml` / `flows/*.yaml` keys), extracted the shared
+  `helpers.crawl_run_summary` so both backends emit an identical entry, rewired `crawl_runs_payload`
+  onto `state.for_org(state.org_of(actor)).artifacts`, and threaded the actor through both transports.
 
 ## References
 
