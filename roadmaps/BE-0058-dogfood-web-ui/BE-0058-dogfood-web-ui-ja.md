@@ -134,17 +134,16 @@ driver の意味的な `selectOption` capability が要り、これは
 
 ## 進捗
 
-- [x] 最初の一枚を出荷しました。ナビゲーション、モーダル、config→ピッカーの契約、フォームの状態、
-  プラットフォーム対応のコントロールです。[#169](https://github.com/bajutsu-e2e/bajutsu/pull/169)
-- [x] カバレッジを完成させ、CI の実行手段を加えました。[#742](https://github.com/bajutsu-e2e/bajutsu/pull/742)
-  残りのビュー（Author / Stats / Coverage）と新しい Replay のツール（audit バッジ、codegen、doctor）の
-  シナリオを揃えました。dogfood の README は、完成した `docs/web-ui.md` に対する機能カバレッジマップを
-  持ち、意図して覆わないものとその理由を列挙します。`bajutsu codegen --emit playwright` がシナリオを
-  ネイティブの `@playwright/test` スペックとして書き出し、`.github/workflows/serve-ui-e2e.yml` が
-  serve UI に触れる PR ごとに実行します。YAML が唯一のソースのままです。広げた網が見つけた副次的な修正も
-  含みます。方向スワイプが対象の上から始まるようにし、ネイティブ checkbox の `checked` を `selected`
-  トレイトとして読むようにし、serve UI の描画不具合三つ（空の grade バッジ、shadow に取り残される
-  プレースホルダ、見切れる Author の load 行）を直しました。
+- [x] 最初のスライスを出荷しました。`data-testid` の id、`demos/serve-ui` のハーネス、Tier A の
+  シナリオです。[#169](https://github.com/bajutsu-e2e/bajutsu/pull/169)
+- [x] カバレッジを完成させました。[#742](https://github.com/bajutsu-e2e/bajutsu/pull/742) 残りのビュー
+  （Author / Stats / Coverage）と新しい Replay のツール（audit バッジ、codegen、doctor）のシナリオを
+  揃え、完成した `docs/web-ui.md` に対する機能カバレッジマップを dogfood の README に置きました（意図して
+  覆わないものとその理由も列挙）。補助的な修正として、ネイティブ checkbox の `checked` を `selected`
+  トレイトとして読むようにし（テーマ切替の状態をアサート可能に）、serve UI の描画不具合三つ（空の grade
+  バッジ、shadow に取り残されるプレースホルダ、見切れる Author の load 行）を直しました。ハーネスの CI
+  ゲートは [BE-0189](../BE-0189-serve-ui-dogfood-ci-gate/BE-0189-serve-ui-dogfood-ci-gate-ja.md) で別途
+  追跡します。
 
 ## 参考
 

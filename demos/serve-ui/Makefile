@@ -2,7 +2,7 @@
 # `serve` Web UI. Like demos/web this needs no Mac and no Simulator — the app under test is the
 # serve SPA, so it runs on Linux in the same toolchain as `make check`. Invoke from anywhere with
 # `make -C demos/serve-ui <target>`.
-.PHONY: web-deps serve-ui e2e codegen e2e-playwright
+.PHONY: web-deps serve-ui e2e
 
 ROOT := $(abspath $(dir $(lastword $(MAKEFILE_LIST)))/../..)
 HERE := $(ROOT)/demos/serve-ui
@@ -30,23 +30,3 @@ serve-ui:
 # device, no Simulator, no LLM — pass/fail is the scenarios' machine assertions only.
 e2e: web-deps
 	cd $(ROOT) && uv run bajutsu run --target webui --backend web --config $(CONFIG) --no-network
-
-# Export every dogfood scenario as a native Playwright spec (BE-0137). Regenerated from the YAML
-# on every invocation — the scenarios stay the single source of truth and the specs are never
-# edited by hand (playwright-tests/ is gitignored). Codegen is pure text mapping: no browser, no
-# device, no AI.
-codegen:
-	rm -rf $(HERE)/playwright-tests && mkdir -p $(HERE)/playwright-tests
-	cd $(ROOT) && for f in demos/serve-ui/scenarios/*.yaml; do \
-		uv run bajutsu codegen --config $(CONFIG) --target webui --emit playwright \
-			-o $(HERE)/playwright-tests/$$(basename $${f%.yaml}).spec.ts $$f; \
-	done
-
-# The same UI regression net, natively: generate the specs and run them with @playwright/test
-# (needs Node). The inner serve is brought up by playwright.config.ts's webServer — self-contained
-# like `e2e`, but running in a team's existing Playwright toolchain / CI instead of bajutsu's
-# runner. No AI at test time; pass/fail is Playwright's own assertions.
-# `npm ci` (not `install`) installs exactly the committed package-lock.json — deterministic and
-# drift-proof, the right mode for a CI vehicle.
-e2e-playwright: codegen
-	cd $(HERE) && npm ci && npx playwright install chromium && npx playwright test

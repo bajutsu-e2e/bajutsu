@@ -142,17 +142,16 @@ Bedrock) stay out of this net.
 
 ## Progress
 
-- [x] Shipped the first slice — navigation, modals, config→pickers contract, form state,
-  platform-aware controls. [#169](https://github.com/bajutsu-e2e/bajutsu/pull/169)
-- [x] Completed the coverage and added a CI vehicle. [#742](https://github.com/bajutsu-e2e/bajutsu/pull/742)
-  Scenarios for every remaining view (Author / Stats / Coverage) and the newer Replay tools (audit
-  badge, codegen, doctor); the dogfood README carries a feature-coverage map against a completed
-  `docs/web-ui.md`, listing what is deliberately not covered and why. `bajutsu codegen --emit
-  playwright` exports the scenarios as native `@playwright/test` specs, run by
-  `.github/workflows/serve-ui-e2e.yml` on every serve-UI PR — the YAML stays the single source of
-  truth. Side fixes the wider net surfaced: the directional swipe now starts on its target, native
-  checkbox `checked` reads as the `selected` trait, and three serve-UI rendering defects (empty
-  grade badges, shadow-orphaned placeholders, the clipped Author load row).
+- [x] Shipped the first slice — the `data-testid` ids, the `demos/serve-ui` harness, and the
+  Tier-A scenarios. [#169](https://github.com/bajutsu-e2e/bajutsu/pull/169)
+- [x] Completed the coverage. [#742](https://github.com/bajutsu-e2e/bajutsu/pull/742) Scenarios for
+  every remaining view (Author / Stats / Coverage) and the newer Replay tools (audit badge,
+  codegen, doctor), with a feature-coverage map in the dogfood README against a completed
+  `docs/web-ui.md` (listing what is deliberately not covered and why). Supporting fixes: native
+  checkbox `checked` reads as the `selected` trait (so the theme toggle is state-assertable), and
+  three serve-UI rendering defects (empty grade badges, shadow-orphaned placeholders, the clipped
+  Author load row). The CI gate for the harness is tracked separately under
+  [BE-0189](../BE-0189-serve-ui-dogfood-ci-gate/BE-0189-serve-ui-dogfood-ci-gate.md).
 
 ## References
 

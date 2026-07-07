@@ -28,8 +28,7 @@ from machine assertions, never an LLM.
 | `scenarios/coverage.yaml` | Compute renders the target's coverage map (BE-0146) |
 | `scenarios/platform-ui.yaml` | the Replay panel hides its iOS device UI (simulators, workers, erase) for a non-iOS backend |
 | `scenarios/panel-resize.yaml` | dragging one tiling divider redistributes only its pair, never a third panel |
-| `package.json` / `playwright.config.ts` | harness for the **generated** native Playwright specs (see below) |
-| `Makefile` | `web-deps` / `serve-ui` / `e2e` / `codegen` / `e2e-playwright` |
+| `Makefile` | `web-deps` / `serve-ui` / `e2e` |
 
 ## Run it
 
@@ -45,19 +44,9 @@ companion or iOS actuator is involved.
 
 To poke the Web UI by hand, `make -C demos/serve-ui serve-ui` and open <http://127.0.0.1:8799/>.
 
-## The same net as native Playwright tests (CI)
-
-```bash
-make -C demos/serve-ui e2e-playwright   # needs Node
-```
-
-`bajutsu codegen --emit playwright` (BE-0137) exports every scenario above as a native
-`@playwright/test` spec into `playwright-tests/` (gitignored — regenerated from the YAML on every
-run, so the scenarios stay the single source of truth). The harness (`playwright.config.ts`) brings
-the inner serve up itself, so the target is the same self-contained one `e2e` drives. CI runs this
-on every PR that touches the serve UI
-([`.github/workflows/serve-ui-e2e.yml`](../../.github/workflows/serve-ui-e2e.yml)); the bajutsu-run
-`e2e` stays the local dogfood — the same flows, recorded and replayed by bajutsu itself.
+CI gates this on every PR that touches the serve UI — the `dogfood (serve UI)` job in
+[`.github/workflows/web-e2e.yml`](../../.github/workflows/web-e2e.yml) runs `make -C demos/serve-ui e2e`
+on Linux (BE-0189).
 
 ## How it maps to the core
 
