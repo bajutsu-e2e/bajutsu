@@ -201,6 +201,7 @@ module = [
     "botocore.*",
     "google.cloud.*",
     "authlib.*",
+    "idb.*",
     "playwright.*",
     "jsonschema",
     "jsonschema.*",

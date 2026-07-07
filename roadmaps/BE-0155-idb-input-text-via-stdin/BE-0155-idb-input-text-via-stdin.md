@@ -76,22 +76,30 @@ resolved:
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [x] Switch `text_cmd`/the idb driver's text-input path to pass the value via stdin
-      instead of argv.
-- [x] Add/adjust a driver-level test asserting the typed text never appears in the
-      built argv list.
+- [x] Keep the input text off `idb`'s argv. Done via the fb-idb gRPC client, not the CLI.
+- [x] Add/adjust a driver-level test asserting the typed value never reaches a subprocess
+      argv.
 
-- Implemented at the idb driver: `text_cmd` no longer carries the text in argv, and
-  `IdbDriver.type_text` feeds the value to `idb ui text` on stdin through a `_run_text`
-  staticmethod (mirroring `Env._run_pbcopy` for `simctl pbcopy`), so a secret/OTP never
-  appears in the process command line. A driver test asserts the value is absent from the
-  built argv and present on stdin; `Driver.type_text` is unchanged. This relies on
-  `idb ui text` reading stdin when given no positional text argument — an on-device
-  behavior confirmed by the E2E path, not by the deterministic gate.
+- First attempted via stdin (#615), then found broken. The design assumed `idb ui text`
+  reads stdin when given no positional text argument. It does not: fb-idb 1.1.7 declares
+  `text` as a required positional (`type=str`) with no stdin path, so `idb ui text --udid
+  <udid>` with the value on stdin fails with `error: the following arguments are required:
+  text` (exit 2) — meaning the stdin change silently broke *all* idb text input, surfacing
+  as a `CalledProcessError` on any `type` action (found during a crawl demo). The
+  deterministic gate missed it because the test injected a fake `_run_text` and never
+  exercised the real `idb ui text` stdin behavior.
+- Fixed by dropping the CLI for text entirely and calling the fb-idb gRPC client directly:
+  `idb ui text` is only a thin wrapper over `client.text()`, so `IdbDriver.type_text` now
+  routes through `_type_text_via_companion`, which opens a `ClientManager.from_udid` session
+  and `await client.text(text=…)`. The value travels to `idb_companion` over gRPC and never
+  lands on any command line — the original goal, now actually achieved. Verified on-device
+  (booted simulator). `Driver.type_text` is unchanged; the driver test patches the
+  `_type_text` class attribute and asserts the value reaches the companion path while no
+  subprocess argv is built for it.
 
 ## References
 
-- `bajutsu/drivers/idb.py:78` (`text_cmd`)
+- `bajutsu/drivers/idb.py` (`_type_text_via_companion`, `IdbDriver.type_text`)
 - Related: [BE-0032](../BE-0032-secret-variables/BE-0032-secret-variables.md)
   (secret variables), [BE-0035](../BE-0035-device-control-primitives/BE-0035-device-control-primitives.md)
   (device-control primitives)
