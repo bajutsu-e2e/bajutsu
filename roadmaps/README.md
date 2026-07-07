@@ -686,7 +686,9 @@ Sending a run's result out to a service the team already lives in. These are pos
 ### Candidates from competitive research (MagicPod / Autify)
 
 <!-- GENERATED:proposals-competitive -->
-
+| ID | Item | Status | Origin |
+|---|---|---|---|
+| [BE-0186](BE-0186-mailbox-provider-registry/BE-0186-mailbox-provider-registry.md) | Mailbox provider registry for the email step | Proposal |  |
 <!-- /GENERATED:proposals-competitive -->
 
 ### Candidates from competitive research (Maestro)

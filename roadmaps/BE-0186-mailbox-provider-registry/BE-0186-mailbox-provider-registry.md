@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-mailbox-provider-registry-ja.md)
+**English** · [日本語](BE-0186-mailbox-provider-registry-ja.md)
 
-# BE-XXXX — Mailbox provider registry for the email step
+# BE-0186 — Mailbox provider registry for the email step
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-mailbox-provider-registry.md) |
+| Proposal | [BE-0186](BE-0186-mailbox-provider-registry.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0186") |
 | Topic | Candidates from competitive research (MagicPod / Autify) |
 <!-- /BE-METADATA -->
 
