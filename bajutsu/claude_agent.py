@@ -436,13 +436,22 @@ def _render(observation: Observation, redactor: Redactor | None = None) -> str:
         recent = observation.history[-6:]
         lines.append("Recent actions (most recent last) — do not repeat these fruitlessly:")
         lines += [f"  - {_history_line(s)}" for s in recent]
-    if observation.screenshot is None:
-        # Vision-on-demand (BE-0192): this turn carries no image. Say so, and remind the agent it can
-        # pull the screen back with need_screenshot when the elements above genuinely do not suffice.
+    if observation.screenshot is None and observation.vision_available:
+        # Vision-on-demand (BE-0192): this turn carries no image, but the session can supply one on
+        # request. Say so, and remind the agent it can pull the screen back with need_screenshot when
+        # the elements above genuinely do not suffice.
         lines.append(
             "No screenshot this turn — the elements above are authoritative for addressing. Call "
             "need_screenshot only if you genuinely must see the screen to proceed (a control you "
             "need is not listed, or you must read an appearance the elements do not expose)."
+        )
+    elif observation.screenshot is None:
+        # Screenshots are off for the whole session (`--no-screenshot`), so need_screenshot can never
+        # be satisfied — telling the agent to escalate would dead-end the record. Direct it to act
+        # from the elements alone and explicitly not to escalate (BE-0192).
+        lines.append(
+            "No screenshots are available this session — act from the elements above alone. Do NOT "
+            "call need_screenshot; it cannot be satisfied here."
         )
     lines.append(
         "Call tap, tap_point, swipe, type_text, wait_for, or finish — one tool, or several "

@@ -214,6 +214,31 @@ def test_no_screenshot_is_text_only() -> None:
     assert [type(c) for c in content] == [TextPart]
 
 
+def test_text_only_turn_with_vision_available_invites_need_screenshot() -> None:
+    # BE-0192: a text-only turn in a vision-capable session nudges the agent to escalate on demand.
+    from bajutsu.claude_agent import _render
+
+    obs = Observation(
+        goal="g", screen=[_el("a", "A")], history=[]
+    )  # vision_available defaults True
+    text = _render(obs)
+    assert "Call need_screenshot only if" in text  # the on-demand invitation
+    assert "No screenshot this turn" in text
+
+
+def test_no_vision_session_forbids_need_screenshot() -> None:
+    # BE-0192: in --no-screenshot mode (vision_available=False) the guidance must explicitly forbid
+    # escalating — need_screenshot can never be satisfied and would dead-end the record. The
+    # on-demand invitation must be absent; a clear prohibition must be present.
+    from bajutsu.claude_agent import _render
+
+    obs = Observation(goal="g", screen=[_el("a", "A")], history=[], vision_available=False)
+    text = _render(obs)
+    assert "Call need_screenshot only if" not in text  # never invited here
+    assert "Do NOT" in text and "need_screenshot" in text  # explicitly forbidden
+    assert "No screenshots are available this session" in text
+
+
 def test_claude_agent_drives_record() -> None:
     nxt = [_el("done", "Done", ["staticText"])]
 

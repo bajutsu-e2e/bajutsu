@@ -445,7 +445,12 @@ def record(
         proposal = _ask_agent(
             agent,
             Observation(
-                goal=goal, screen=elements, history=list(steps), screenshot=screenshot, plan=plan
+                goal=goal,
+                screen=elements,
+                history=list(steps),
+                screenshot=screenshot,
+                plan=plan,
+                vision_available=with_screenshot,
             ),
             say,
             n,
@@ -468,6 +473,7 @@ def record(
                     history=list(steps),
                     screenshot=screenshot,
                     plan=plan,
+                    vision_available=with_screenshot,
                 ),
                 say,
                 n,

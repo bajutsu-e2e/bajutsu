@@ -323,6 +323,7 @@ def test_record_with_screenshot_disabled_never_attaches_or_escalates() -> None:
     )
     record(driver, "no vision", agent, with_screenshot=False)
     assert all(obs.screenshot is None for obs in agent.seen)
+    assert all(obs.vision_available is False for obs in agent.seen)  # the guidance keys off this
     assert _shots(driver) == 0
 
 
