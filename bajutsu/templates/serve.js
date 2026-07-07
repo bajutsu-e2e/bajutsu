@@ -974,7 +974,7 @@ async function continuePastRun(runId){
     dismissAlerts:$('#crawl-nodismiss').checked?false:undefined,headed:$('#crawl-headed').checked||undefined,
     runId:runId,continue:true})});
   const {jobId,runId:started,error}=await r.json();
-  if(error){setStatus($('#crawl-status'),error,'ng');setBusy($('#crawl-go'),$('#crawl-stop'),false);return}
+  if(error){setStatus($('#crawl-status'),error,'ng');setBusy($('#crawl-go'),$('#crawl-stop'),false);return;}
   crawlJobId=jobId;crawlRunId=started;
   crawlPoll=streamJob(jobId,line=>{
     appendLine($('#crawl-out'),line);
