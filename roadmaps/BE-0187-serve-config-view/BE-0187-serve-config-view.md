@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-serve-config-view-ja.md)
+**English** · [日本語](BE-0187-serve-config-view-ja.md)
 
-# BE-XXXX — View the loaded config in the serve Web UI (raw YAML, structured tree, Git provenance)
+# BE-0187 — View the loaded config in the serve Web UI (raw YAML, structured tree, Git provenance)
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-serve-config-view.md) |
+| Proposal | [BE-0187](BE-0187-serve-config-view.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0187") |
 | Topic | Configuration sourcing |
 | Related | [BE-0063](../BE-0063-git-config-source/BE-0063-git-config-source.md) |
 <!-- /BE-METADATA -->
