@@ -9,7 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0176") |
-| 実装 PR | [#713](https://github.com/bajutsu-e2e/bajutsu/pull/713) |
+| 実装 PR | [#713](https://github.com/bajutsu-e2e/bajutsu/pull/713), [#745](https://github.com/bajutsu-e2e/bajutsu/pull/745) |
 | トピック | AI provider configuration |
 | 関連 | [BE-0104](../BE-0104-vendor-neutral-ai-backend/BE-0104-vendor-neutral-ai-backend-ja.md), [BE-0163](../BE-0163-ant-cli-oauth-provider/BE-0163-ant-cli-oauth-provider-ja.md), [BE-0125](../BE-0125-authoring-agent-tool-restriction/BE-0125-authoring-agent-tool-restriction-ja.md) |
 <!-- /BE-METADATA -->
@@ -163,6 +163,12 @@ BE-0047 に従って経路を fail-closed にします。これで `known_provid
   として飲み込んでいました。プロンプトを stdin で渡し、deny ツールをスペース区切りのトークンにして
   可変長フラグを最後に置くよう修正しました。非ゼロ終了時は stdout のエンベロープを表面化し、認証
   401 などのエラーを実用的に読めるようにしました。
+- フォローアップ（[#745](https://github.com/bajutsu-e2e/bajutsu/pull/745)）。プロバイダの起動時開示を
+  プロバイダごとに切り替えるようにしました。アダプタの契約に `announce` を追加し、各プロバイダが
+  自分の開示行を生成します。Anthropic SDK は reasoning effort のノブを持たないため provider と model
+  だけを示し、`claude-code` はこの項目が導入した強制サブスクリプションの認証行と、尊重する effort を
+  加えます。`record` と `crawl` は同じ `announce_ai` を共有するようになり、これまで `crawl` が出していなかった
+  model（`claude-code` では effort と認証も）を開示します。`make check` は緑です。
 
 ## 参考
 
