@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0180") |
-| Implementing PR | _pending_ |
+| Implementing PR | [#750](https://github.com/bajutsu-e2e/bajutsu/pull/750) |
 | Topic | Authoring experience (record / GUI editor) |
 <!-- /BE-METADATA -->
 
@@ -120,7 +120,7 @@ Author tab is part of this item (see Alternatives).
 
 **Log**
 
-- _pending_ — `list_crawl_runs()` scans a runs dir for `screenmap.json` and summarizes each crawl's
+- [#750](https://github.com/bajutsu-e2e/bajutsu/pull/750) — `list_crawl_runs()` scans a runs dir for `screenmap.json` and summarizes each crawl's
   screen/transition/crash counts plus the names of its `crashes/*.yaml` and `flows/*.yaml` files;
   exposed read-only at `/api/crawl/runs` (both the stdlib handler and the FastAPI app). The Crawl tab
   gained a Form/History sub-tab pair: selecting a past run reopens its screen map through the existing
