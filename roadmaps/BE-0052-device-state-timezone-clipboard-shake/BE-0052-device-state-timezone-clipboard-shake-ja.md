@@ -116,4 +116,4 @@ prime directive の保持：
 から分割。`setTimezone` と `shake` は、さらに
 [BE-0158 — タイムゾーンのデバイスプリミティブ](../BE-0158-timezone-device-primitive/BE-0158-timezone-device-primitive-ja.md)と
 [BE-0157 — シェイクのデバイスプリミティブ](../BE-0157-shake-device-primitive/BE-0157-shake-device-primitive-ja.md)へ分割しました。
-[DESIGN §6.2](../../../DESIGN.md)、`bajutsu/orchestrator/actions/handlers/device.py`
+[DESIGN §6.2](../../DESIGN.md)、`bajutsu/orchestrator/actions/handlers/device.py`

@@ -15,7 +15,7 @@
 
 ## はじめに
 
-[`.github/workflows/ci.yml`](../../../.github/workflows/ci.yml) の `check` ジョブは、`uv sync`
+[`.github/workflows/ci.yml`](../../.github/workflows/ci.yml) の `check` ジョブは、`uv sync`
 の対象外である唯一のゲートステップである `actionlint` を、可変なタグから取得したスクリプトを
 `bash` にそのまま流し込んでインストールしています。このリポジトリの CI にあるほかのサードパー
 ティ依存はすべてコミット SHA で固定されています。本提案は、`actionlint` のインストーラをその

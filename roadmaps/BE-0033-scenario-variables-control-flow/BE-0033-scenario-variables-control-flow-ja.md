@@ -44,4 +44,4 @@
 
 ## 参考
 
-`bajutsu/interp.py`、[scenarios.md](../../../docs/ja/scenarios.md)
+`bajutsu/interp.py`、[scenarios.md](../../docs/ja/scenarios.md)

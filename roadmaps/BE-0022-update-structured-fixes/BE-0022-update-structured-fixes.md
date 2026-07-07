@@ -45,4 +45,4 @@ Nothing here touches pass/fail. The fix is an edit to the scenario source that a
 
 ## References
 
-[DESIGN §6.5](../../../DESIGN.md), `bajutsu triage --apply`
+[DESIGN §6.5](../../DESIGN.md), `bajutsu triage --apply`

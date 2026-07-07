@@ -40,4 +40,4 @@ Expansion is a pure compile-time macro, not a runtime action. Before the run, `e
 
 ## References
 
-`bajutsu/scenario/` (`use`/`expand_components`), [scenarios.md](../../../docs/scenarios.md)
+`bajutsu/scenario/` (`use`/`expand_components`), [scenarios.md](../../docs/scenarios.md)

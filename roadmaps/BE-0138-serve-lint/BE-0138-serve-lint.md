@@ -91,6 +91,6 @@ Tier-1, deterministic; the UI only shells out to the existing validators.
   [BE-0011 — Local web UI (`bajutsu serve`)](../BE-0011-local-web-ui-serve/BE-0011-local-web-ui-serve.md),
   [BE-0072 — Responsive serve Web UI](../BE-0072-responsive-web-ui/BE-0072-responsive-web-ui.md)
   — the UI this extends and the small-screen layout it inherits.
-* [scenarios.md](../../../docs/scenarios.md) — the scenario grammar lint and the schema validate
-  against; [CLAUDE.md](../../../CLAUDE.md), [DESIGN §2](../../../DESIGN.md) — validation is static
+* [scenarios.md](../../docs/scenarios.md) — the scenario grammar lint and the schema validate
+  against; [CLAUDE.md](../../CLAUDE.md), [DESIGN §2](../../DESIGN.md) — validation is static
   and AI-free, and never a verdict.

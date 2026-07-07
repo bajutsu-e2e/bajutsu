@@ -80,4 +80,4 @@ expect:
 
 ## 参考
 
-[BE-0029](../BE-0029-visual-regression-assertions/BE-0029-visual-regression-assertions-ja.md)（この項目が拡張する既存の `visual` アサーション）、`bajutsu/visual.py`、`bajutsu/assertions.py`、`bajutsu/scenario/models/assertions.py`、[DESIGN §6.4](../../../DESIGN.md)、[evidence.md](../../../docs/ja/evidence.md)、`pixelmatch` アルゴリズム（アンチエイリアス検出を備えた知覚的なピクセル単位の差分。Playwright の `toHaveScreenshot` が採用）
+[BE-0029](../BE-0029-visual-regression-assertions/BE-0029-visual-regression-assertions-ja.md)（この項目が拡張する既存の `visual` アサーション）、`bajutsu/visual.py`、`bajutsu/assertions.py`、`bajutsu/scenario/models/assertions.py`、[DESIGN §6.4](../../DESIGN.md)、[evidence.md](../../docs/ja/evidence.md)、`pixelmatch` アルゴリズム（アンチエイリアス検出を備えた知覚的なピクセル単位の差分。Playwright の `toHaveScreenshot` が採用）

@@ -208,8 +208,8 @@ fail-closed で停止し（`anthropic_client.credential_gap()`）、[BE-0053](..
 レジストリ）、`bajutsu/claude_code_agent.py`（サブスクリプションログインの CLI バックエンド）、
 `bajutsu/cli/`（`uses_claude` フラグを付けるコマンドレジストリ）、`bajutsu/serve/`
 （`api_key_info` / `set_api_key`。制御の基にするキーの表示面）、`bajutsu/doctor.py`・
-`bajutsu/preflight.py`（オンボーディングの表示面）、[DESIGN §2 / §3.1](../../../DESIGN.md)、
-[CLAUDE.md](../../../CLAUDE.md)（本項目が見えるようにする境界の散文での記述）、
+`bajutsu/preflight.py`（オンボーディングの表示面）、[DESIGN §2 / §3.1](../../DESIGN.md)、
+[CLAUDE.md](../../CLAUDE.md)（本項目が見えるようにする境界の散文での記述）、
 [BE-0047](../BE-0047-ai-data-sovereignty/BE-0047-ai-data-sovereignty-ja.md)
 （AI 側の強制の相方）、[BE-0053](../BE-0053-bedrock-ai-provider/BE-0053-bedrock-ai-provider-ja.md)
 （差し替え可能なプロバイダ）、[BE-0024](../BE-0024-doctor-onboarding/BE-0024-doctor-onboarding-ja.md)

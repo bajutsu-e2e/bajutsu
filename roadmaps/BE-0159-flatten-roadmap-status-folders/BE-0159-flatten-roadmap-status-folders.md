@@ -40,7 +40,7 @@ working repairs — for the two link surfaces this repository can see and rewrit
 
 ### A concrete, currently-live bug the existing repairs don't reach
 
-[`scripts/sync_roadmap_tracking_issues.py`](../../../scripts/sync_roadmap_tracking_issues.py)
+[`scripts/sync_roadmap_tracking_issues.py`](../../scripts/sync_roadmap_tracking_issues.py)
 (BE-0109) opens a GitHub tracking issue for every open item, with a body that links back to the
 item's file:
 
@@ -276,10 +276,10 @@ Log:
   item's format-check change builds on.
 - [BE-0154 — Run roadmap-promote from the base SHA](../BE-0154-roadmap-promote-base-sha/BE-0154-roadmap-promote-base-sha.md)
   — a proposal whose target script this item retires; should be revised or closed once this lands.
-- [`scripts/sync_roadmap_tracking_issues.py`](../../../scripts/sync_roadmap_tracking_issues.py),
-  [`scripts/promote_roadmap_items.py`](../../../scripts/promote_roadmap_items.py),
-  [`scripts/build_roadmap_index.py`](../../../scripts/build_roadmap_index.py),
-  [`scripts/allocate_roadmap_ids.py`](../../../scripts/allocate_roadmap_ids.py),
-  [`scripts/new_roadmap_item.py`](../../../scripts/new_roadmap_item.py),
-  [`scripts/check_roadmap_format.py`](../../../scripts/check_roadmap_format.py),
-  [`scripts/roadmap_ids.py`](../../../scripts/roadmap_ids.py) — the tooling surface this item touches.
+- [`scripts/sync_roadmap_tracking_issues.py`](../../scripts/sync_roadmap_tracking_issues.py),
+  [`scripts/promote_roadmap_items.py`](../../scripts/promote_roadmap_items.py),
+  [`scripts/build_roadmap_index.py`](../../scripts/build_roadmap_index.py),
+  [`scripts/allocate_roadmap_ids.py`](../../scripts/allocate_roadmap_ids.py),
+  [`scripts/new_roadmap_item.py`](../../scripts/new_roadmap_item.py),
+  [`scripts/check_roadmap_format.py`](../../scripts/check_roadmap_format.py),
+  [`scripts/roadmap_ids.py`](../../scripts/roadmap_ids.py) — the tooling surface this item touches.

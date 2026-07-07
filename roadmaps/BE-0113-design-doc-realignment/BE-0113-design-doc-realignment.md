@@ -52,7 +52,7 @@ norm against recurrence, not just the one-time correction.
 
 The work is MECE along the six work items below. The "Machine-checkable outcome" and
 "Prime-directive compliance" subsections record acceptance criteria, not additional work items.
-`DESIGN.md` is written in Japanese, so all edits follow the [`japanese-tech-writing`](../../../.claude/skills/japanese-tech-writing/SKILL.md) skill.
+`DESIGN.md` is written in Japanese, so all edits follow the [`japanese-tech-writing`](../../.claude/skills/japanese-tech-writing/SKILL.md) skill.
 
 ### 1. Reposition the opening
 
@@ -82,7 +82,7 @@ fix or annotate them in the same change — without expanding into a full rewrit
 
 ### 6. Add a norm against recurrence
 
-Add a line to [`CLAUDE.md`](../../../CLAUDE.md)'s Conventions — alongside the existing rule to
+Add a line to [`CLAUDE.md`](../../CLAUDE.md)'s Conventions — alongside the existing rule to
 update both `docs/` and `docs/ja/` when a documented behavior changes — stating that a PR
 that changes behavior described by `DESIGN.md` or `docs/architecture.md` must update the
 affected document in the same change. This cannot become a CI gate: verifying that a given
@@ -138,9 +138,9 @@ could mislead a reader about how determinism and evidence actually work today.
 
 ## References
 
-- [DESIGN.md](../../../DESIGN.md) — the document this realigns; also the package's published description via `readme = "DESIGN.md"` in `pyproject.toml`
-- [docs/architecture.md](../../../docs/architecture.md) — the implementation-status source of truth DESIGN.md should defer to
-- [CLAUDE.md](../../../CLAUDE.md) — where the recurrence-prevention norm is added, alongside the existing bilingual-docs convention
+- [DESIGN.md](../../DESIGN.md) — the document this realigns; also the package's published description via `readme = "DESIGN.md"` in `pyproject.toml`
+- [docs/architecture.md](../../docs/architecture.md) — the implementation-status source of truth DESIGN.md should defer to
+- [CLAUDE.md](../../CLAUDE.md) — where the recurrence-prevention norm is added, alongside the existing bilingual-docs convention
 - [BE-0027](../BE-0027-mock-server-external/BE-0027-mock-server-external.md) — why the external mock server was deferred, replaced by in-scenario `mocks`
 - [BE-0019](../BE-0019-xcuitest-backend/BE-0019-xcuitest-backend.md) — the XCUITest backend now In progress, not "future"
 - [BE-0010](../BE-0010-update-scope-statement/BE-0010-update-scope-statement.md) — precedent: a documentation item that realigned the scope statement with reality

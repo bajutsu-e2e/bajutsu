@@ -22,7 +22,7 @@ mechanical chores. This is a **contributor-workflow** item, not a product featur
 we develop Bajutsu with Claude Code, not about how Bajutsu itself calls Claude.
 
 The deliverable is two-sided: (1) a documented **task → model/effort** convention in
-[`docs/ai-development.md`](../../../docs/ai-development.md) (bilingual), covering both work phases
+[`docs/ai-development.md`](../../docs/ai-development.md) (bilingual), covering both work phases
 (exploration / chores → light; implementation / design → heavy) and how to pass an appropriate
 `model` when delegating to a subagent; and (2) **default `model:` frontmatter wired into the
 repo's own skills** (`.claude/skills/*`) so the right choice is the automatic one — no session has
@@ -156,7 +156,7 @@ validation.
 
 `.claude/skills/ideation/SKILL.md` · `.claude/skills/implement-be/SKILL.md` ·
 `.claude/skills/japanese-tech-writing/SKILL.md` (the frontmatter that gains a `model:` default),
-[`CLAUDE.md`](../../../CLAUDE.md) and [`docs/ai-development.md`](../../../docs/ai-development.md)
+[`CLAUDE.md`](../../CLAUDE.md) and [`docs/ai-development.md`](../../docs/ai-development.md)
 (the working-agreement and contributor-guide surfaces the convention lives in), the Claude Code
 per-skill / per-subagent `model:` frontmatter, the Agent tool `model` override, and the interactive
 `/model` / `/fast` (effort) controls; [BE-0069](../BE-0069-executable-contributor-guardrails/BE-0069-executable-contributor-guardrails.md)

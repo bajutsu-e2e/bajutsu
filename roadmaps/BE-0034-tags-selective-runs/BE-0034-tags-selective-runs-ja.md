@@ -40,4 +40,4 @@
 
 ## 参考
 
-`bajutsu/scenario/`（`select_scenarios`）、[cli.md](../../../docs/ja/cli.md)
+`bajutsu/scenario/`（`select_scenarios`）、[cli.md](../../docs/ja/cli.md)

@@ -152,6 +152,6 @@ All machine-checkable in the fast gate — no real API, since the SDK client is 
 `bajutsu/anthropic_client.py` (the one provider factory — `provider` / `make_client` /
 `resolve_model` / `credential_gap`), `bajutsu/agent.py`, `bajutsu/claude_agent.py`,
 `bajutsu/alerts.py`, `bajutsu/redaction.py`, `bajutsu/evidence.py` (where the run-scoped `Redactor`
-is built today), [recording.md](../../../docs/recording.md), [DESIGN §2 / §3.1](../../../DESIGN.md),
+is built today), [recording.md](../../docs/recording.md), [DESIGN §2 / §3.1](../../DESIGN.md),
 [BE-0055](../BE-0055-operational-logging/BE-0055-operational-logging.md) — which extends
 the same redacted-path philosophy to the hosted serve's operational logs.

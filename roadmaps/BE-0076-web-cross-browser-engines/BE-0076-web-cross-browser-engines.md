@@ -27,7 +27,7 @@ Give the Web (Playwright) backend a **browser-engine axis**. Two phases:
 The browser engine is an **execution axis** — like `--workers` or device selection — not scenario
 content, so scenarios stay engine-neutral and platform-neutral. No LLM enters the gate: each
 per-engine result is the existing deterministic `run` verdict, and the matrix is pure aggregation
-of those verdicts. The proposal sits entirely inside the prime directives ([CLAUDE.md](../../../CLAUDE.md)).
+of those verdicts. The proposal sits entirely inside the prime directives ([CLAUDE.md](../../CLAUDE.md)).
 
 ## Motivation
 
@@ -286,7 +286,7 @@ a required check, so it adds the real cross-engine signal without slowing the fa
 
 ## References
 
-* [CLAUDE.md](../../../CLAUDE.md), [DESIGN.md](../../../DESIGN.md) — the prime directives this
+* [CLAUDE.md](../../CLAUDE.md), [DESIGN.md](../../DESIGN.md) — the prime directives this
   respects: AI never judges (the matrix aggregates deterministic verdicts), determinism first
   (per-engine condition-waited runs), app-agnostic (engine is an execution axis, not scenario content).
 * [BE-0041 — Web (Playwright) backend](../BE-0041-web-playwright-backend/BE-0041-web-playwright-backend.md)
@@ -305,5 +305,5 @@ a required check, so it adds the real cross-engine signal without slowing the fa
   (`TargetConfig.headless` → `Effective.headless` → `resolve`, the template the `browser` field
   follows), `bajutsu/cli/commands/run.py` / `record.py` (the `--headed` override the `--browser` flag
   mirrors), `bajutsu/report/manifest.py` (`manifest_dict`, `junit_xml`), and
-  `.github/workflows/web-e2e.yml`; [drivers.md](../../../docs/drivers.md),
-  [multi-platform.md](../../../docs/multi-platform.md).
+  `.github/workflows/web-e2e.yml`; [drivers.md](../../docs/drivers.md),
+  [multi-platform.md](../../docs/multi-platform.md).

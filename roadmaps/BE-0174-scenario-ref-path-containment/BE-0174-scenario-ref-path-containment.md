@@ -131,5 +131,5 @@ no bearing on pass/fail.
   [BE-0063 — Git config source](../BE-0063-git-config-source/BE-0063-git-config-source.md),
   [BE-0108 — Hosted config source restriction](../BE-0108-hosted-config-source-restriction/BE-0108-hosted-config-source-restriction.md)
   — the untrusted-config surfaces that make this matter.
-* [CLAUDE.md](../../../CLAUDE.md), [DESIGN.md](../../../DESIGN.md) — determinism-first (a bad ref
+* [CLAUDE.md](../../CLAUDE.md), [DESIGN.md](../../DESIGN.md) — determinism-first (a bad ref
   fails loudly, never guesses) and the app-agnostic boundary the check preserves.

@@ -15,7 +15,7 @@
 
 ## Introduction
 
-The doctor feasibility gate (the CLI (command-line interface) suite + a check for a booted Simulator) is implemented ([architecture.md](../../../docs/architecture.md#implementation-status)). This item originally ran as a placeholder that absorbed small doctor / onboarding improvements as they came up. That practice has ended: new onboarding improvements, of any size, are now proposed as their own BE items instead of being added here. The Progress section below records the candidates that shipped while this item served as that catch-all.
+The doctor feasibility gate (the CLI (command-line interface) suite + a check for a booted Simulator) is implemented ([architecture.md](../../docs/architecture.md#implementation-status)). This item originally ran as a placeholder that absorbed small doctor / onboarding improvements as they came up. That practice has ended: new onboarding improvements, of any size, are now proposed as their own BE items instead of being added here. The Progress section below records the candidates that shipped while this item served as that catch-all.
 
 ## Motivation
 
@@ -36,7 +36,7 @@ each spawning a throwaway proposal.
 ## Detailed design
 
 This is a deliberate **placeholder** topic, not a single concrete spec. The implemented
-onboarding surface is already documented in [architecture.md](../../../docs/architecture.md#implementation-status):
+onboarding surface is already documented in [architecture.md](../../docs/architecture.md#implementation-status):
 `preflight.py` (the environment runnability gate) and `doctor.py` (the convention score). The
 principle for this item is how *new* candidates get added, not a feature to build now:
 
@@ -144,4 +144,4 @@ that history.
 
 ## References
 
-[architecture.md](../../../docs/architecture.md#implementation-status)
+[architecture.md](../../docs/architecture.md#implementation-status)

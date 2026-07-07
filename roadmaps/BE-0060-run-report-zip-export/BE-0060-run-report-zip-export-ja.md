@@ -73,7 +73,7 @@ zip には `runs/<id>/` の下にあるものをすべて入れます。`report.
 同じ配置に並びます。そのため `report.html` の相対リンクはそのまま解決します。これが、単体の HTML ではなく
 ディレクトリを丸ごと固める理由です。ディレクトリの走査はソート順で行い（ファイルの mtime を固定値に揃えても
 よい）、同じ run ディレクトリからは再現可能な zip が得られるようにします。ただしバイト単位の一致は、証跡
-（[DESIGN §2](../../../DESIGN.md)）と違ってここでは契約ではなく、あれば望ましい程度のものです。
+（[DESIGN §2](../../DESIGN.md)）と違ってここでは契約ではなく、あれば望ましい程度のものです。
 
 ### CLI の提供面
 
@@ -107,7 +107,7 @@ UI では、ダウンロードボタンを History の一覧と Replay の結果
 
 * **LLM なし、合否への影響なし。** これは、決定的な `run` がすでに出力した成果物を、事後に梱包するだけです。
   `run` の合否は zip より前に、かつ zip とは独立に決まります。`--zip` は合否のあとに梱包の一手を足すだけです。
-  prime directive の 1 と 2（[CLAUDE.md](../../../CLAUDE.md)）は構造上保たれます。
+  prime directive の 1 と 2（[CLAUDE.md](../../CLAUDE.md)）は構造上保たれます。
 * **Linux でテストできます。** ディレクトリの zip 化に Simulator は要りません。アーカイバとエンドポイントは、
   フィクスチャの run ディレクトリを相手に既存の Linux ゲートで単体テストできます。
 * **機密はスクラブされたままです。** 機密の値は run のあとに証跡から redact 済みです
@@ -159,7 +159,7 @@ UI では、ダウンロードボタンを History の一覧と Replay の結果
 
 ## 参考
 
-* [CLAUDE.md](../../../CLAUDE.md)、[DESIGN §2](../../../DESIGN.md)：AI は判定者にならない、決定性優先。アーカイバは
+* [CLAUDE.md](../../CLAUDE.md)、[DESIGN §2](../../DESIGN.md)：AI は判定者にならない、決定性優先。アーカイバは
   LLM を足さず、合否のあとに走ります。
 * [BE-0011 — ローカル Web UI（`bajutsu serve`）](../BE-0011-local-web-ui-serve/BE-0011-local-web-ui-serve-ja.md)：
   本項目が拡張する、埋め込みレポートと相対リンクの証跡配信。ダウンロードボタンの置き場所。
@@ -170,6 +170,6 @@ UI では、ダウンロードボタンを History の一覧と Replay の結果
   既存の成果物スクラブ。
 * [BE-0018 — 証跡を MCP リソースとして返す](../BE-0018-evidence-as-mcp-resources/BE-0018-evidence-as-mcp-resources-ja.md)：
   隣接する「run の成果物を外に見せる」面（MCP）。zip は、人間がファイルとしてダウンロードする版に当たります。
-* `bajutsu/report/`（`manifest.py`、`html.py`）、`bajutsu/serve/artifacts.py`、[cli.md](../../../docs/ja/cli.md)、
-  [evidence.md](../../../docs/ja/evidence.md)：本項目が梱包する、レポートの書き出し、閉じ込められた artifact ストア、
+* `bajutsu/report/`（`manifest.py`、`html.py`）、`bajutsu/serve/artifacts.py`、[cli.md](../../docs/ja/cli.md)、
+  [evidence.md](../../docs/ja/evidence.md)：本項目が梱包する、レポートの書き出し、閉じ込められた artifact ストア、
   run 出力と証跡の配置。

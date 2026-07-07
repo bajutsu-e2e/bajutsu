@@ -44,4 +44,4 @@ Two complementary guards, neither of which touches pass/fail.
 
 ## References
 
-[DESIGN §11](../../../DESIGN.md)
+[DESIGN §11](../../DESIGN.md)

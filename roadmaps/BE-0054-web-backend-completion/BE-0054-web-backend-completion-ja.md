@@ -86,5 +86,5 @@ backend に適用される既存の record 体験の提案
 
 [BE-0041 — Web（Playwright）backend](../BE-0041-web-playwright-backend/BE-0041-web-playwright-backend-ja.md)、
 [BE-0009 — クロスプラットフォーム抽象](../BE-0009-cross-platform-abstractions/BE-0009-cross-platform-abstractions-ja.md)、
-[multi-platform.md](../../../docs/multi-platform.md)、`bajutsu/drivers/playwright.py`、
+[multi-platform.md](../../docs/multi-platform.md)、`bajutsu/drivers/playwright.py`、
 `bajutsu/runner/pool.py`、`bajutsu/evidence.py`

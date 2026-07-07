@@ -29,7 +29,7 @@ every takeover replays.
 Not every record blocker is a missing value. Some are operations the AI cannot carry out: solving a
 CAPTCHA, clearing a biometric prompt, or performing a gesture whose target the agent's proposals
 keep failing to resolve (`could not resolve that target on the live screen; stopping` in
-[`bajutsu/record.py`](../../../bajutsu/record.py)). Today `record` just stops there, and the author
+[`bajutsu/record.py`](../../bajutsu/record.py)). Today `record` just stops there, and the author
 abandons the run.
 
 The remedy mirrors the value case in spirit — pause, let the human act, resume — but the hard part
@@ -127,4 +127,4 @@ Related existing items:
 [BE-0035 — Device-control primitives](../BE-0035-device-control-primitives/BE-0035-device-control-primitives.md),
 [BE-0052 — Device-state primitives: timezone, clipboard, shake](../BE-0052-device-state-timezone-clipboard-shake/BE-0052-device-state-timezone-clipboard-shake.md),
 [BE-0012 — Action-capture record](../BE-0012-action-capture-record/BE-0012-action-capture-record.md).
-[`bajutsu/record.py`](../../../bajutsu/record.py).
+[`bajutsu/record.py`](../../bajutsu/record.py).

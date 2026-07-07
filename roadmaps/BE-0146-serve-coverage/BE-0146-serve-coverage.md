@@ -91,6 +91,6 @@ Tier-1, read-only; the UI only shells out to the existing aggregation.
 * [BE-0011 — Local web UI (`bajutsu serve`)](../BE-0011-local-web-ui-serve/BE-0011-local-web-ui-serve.md),
   [BE-0072 — Responsive serve Web UI](../BE-0072-responsive-web-ui/BE-0072-responsive-web-ui.md)
   — the UI this extends and the small-screen layout it inherits.
-* [evidence.md](../../../docs/evidence.md), [configuration.md](../../../docs/configuration.md) — the
-  captured artifacts and declared namespaces the map aggregates; [CLAUDE.md](../../../CLAUDE.md),
-  [DESIGN §2](../../../DESIGN.md) — every figure is a deterministic count, never a verdict.
+* [evidence.md](../../docs/evidence.md), [configuration.md](../../docs/configuration.md) — the
+  captured artifacts and declared namespaces the map aggregates; [CLAUDE.md](../../CLAUDE.md),
+  [DESIGN §2](../../DESIGN.md) — every figure is a deterministic count, never a verdict.

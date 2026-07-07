@@ -104,5 +104,5 @@ expect:
 ## References
 
 `bajutsu/network.py`, `bajutsu/assertions.py`, `bajutsu/redaction.py`,
-[`BajutsuKit`](../../../BajutsuKit/README.md), [evidence.md](../../../docs/evidence.md),
-[DESIGN §2 / §6.4](../../../DESIGN.md)
+[`BajutsuKit`](../../BajutsuKit/README.md), [evidence.md](../../docs/evidence.md),
+[DESIGN §2 / §6.4](../../DESIGN.md)

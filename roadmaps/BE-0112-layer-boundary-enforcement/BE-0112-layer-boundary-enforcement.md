@@ -151,8 +151,8 @@ Log:
 `drivers/`, `runner/`, `assertions`, `evidence`, `report`, `config` for the core; `serve/`, `mcp/`,
 the codegen emitters and AI paths for the periphery), `tests/serve/test_import_guard.py` (the
 per-subsystem runtime import guards this item complements with a static contract), `Makefile` and
-[`.github/workflows/ci.yml`](../../../.github/workflows/ci.yml) (the gate this check joins),
-[DESIGN.md](../../../DESIGN.md) and [docs/architecture.md](../../../docs/architecture.md) (the core
+[`.github/workflows/ci.yml`](../../.github/workflows/ci.yml) (the gate this check joins),
+[DESIGN.md](../../DESIGN.md) and [docs/architecture.md](../../docs/architecture.md) (the core
 / contract / periphery model this encodes),
 [BE-0067](../BE-0067-code-quality-gate-hardening/BE-0067-code-quality-gate-hardening.md)
 (prior gate-hardening this extends),

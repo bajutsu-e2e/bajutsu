@@ -25,7 +25,7 @@ entirely. It is plain, reviewable YAML that survives the `load ↔ dump` round-t
 
 ## Motivation
 
-[DESIGN §6.5](../../../DESIGN.md) requires that the origin of each step / rule (the natural
+[DESIGN §6.5](../../DESIGN.md) requires that the origin of each step / rule (the natural
 language it was normalized from) be preserved as **provenance** — "leave the origin as a `# from:`
 comment or a sidecar". [BE-0002](../BE-0002-m2-ai-loop-and-evidence/BE-0002-m2-ai-loop-and-evidence.md)
 shipped the M2 authoring loop but explicitly left this "light — a follow-up rather than an
@@ -35,11 +35,11 @@ back to the natural language that produced it.
 Why this matters, and why a structured field rather than the alternatives:
 
 1. **Human review of AI output.** The scenario is the durable artifact a human owns and reviews in
-   a PR ([DESIGN §6.5](../../../DESIGN.md)). Seeing *"this `tap` exists because the goal said
+   a PR ([DESIGN §6.5](../../DESIGN.md)). Seeing *"this `tap` exists because the goal said
    'open settings'"* is what lets a reviewer judge whether the normalization is faithful — the
    core check that keeps `record` from quietly producing a scenario that does not match the intent.
 2. **`update` needs an anchor.** M4 self-healing proposes a **minimal diff** when the UI changes
-   ([DESIGN §6.5](../../../DESIGN.md), `triage.py`). To re-derive only the broken step it helps to
+   ([DESIGN §6.5](../../DESIGN.md), `triage.py`). To re-derive only the broken step it helps to
    know which intent that step served; provenance is the natural anchor for "re-author *this*
    intent" instead of re-recording the whole scenario.
 3. **Comments do not survive the round-trip.** The DESIGN-era idea of a `# from:` comment is
@@ -49,7 +49,7 @@ Why this matters, and why a structured field rather than the alternatives:
    the provenance. A structured field rides inside the model, so it round-trips by construction.
 4. **Determinism is untouched.** `from:` is pure metadata. `run` never reads it, so it adds **no**
    LLM call to the gate and cannot affect pass/fail — it stays squarely on the authoring side
-   ([DESIGN §2](../../../DESIGN.md), [CLAUDE.md](../../../CLAUDE.md) prime directive 1).
+   ([DESIGN §2](../../DESIGN.md), [CLAUDE.md](../../CLAUDE.md) prime directive 1).
 
 ## Detailed design
 
@@ -143,8 +143,8 @@ the natural-language intent behind that action:
 
 ## References
 
-- [DESIGN §6.5](../../../DESIGN.md) — normalization & round-trip; the `# from:` / provenance requirement
-- [DESIGN §2](../../../DESIGN.md), [CLAUDE.md](../../../CLAUDE.md) — AI authors, never judges; determinism first
+- [DESIGN §6.5](../../DESIGN.md) — normalization & round-trip; the `# from:` / provenance requirement
+- [DESIGN §2](../../DESIGN.md), [CLAUDE.md](../../CLAUDE.md) — AI authors, never judges; determinism first
 - [BE-0002 — AI authoring loop & evidence (M2)](../BE-0002-m2-ai-loop-and-evidence/BE-0002-m2-ai-loop-and-evidence.md) — where provenance was deferred
-- [recording.md](../../../docs/recording.md) — the `record` loop and the `Agent` abstraction
-- [scenarios.md](../../../docs/scenarios.md), `bajutsu/scenario.py` — the scenario schema and load/dump path
+- [recording.md](../../docs/recording.md) — the `record` loop and the `Agent` abstraction
+- [scenarios.md](../../docs/scenarios.md), `bajutsu/scenario.py` — the scenario schema and load/dump path

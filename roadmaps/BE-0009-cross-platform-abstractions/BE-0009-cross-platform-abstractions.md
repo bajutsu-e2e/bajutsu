@@ -15,7 +15,7 @@
 
 ## Introduction
 
-Bajutsu is scoped today to the iOS Simulator only ([DESIGN §1](../../../DESIGN.md), [README](../../../README.md)), but its core was deliberately built behind a backend-agnostic `Driver` interface. This item is the cross-cutting abstraction work that lets the same deterministic core also drive Android (emulator) and Web (browser): extracting the iOS-specific seams behind platform-neutral protocols, generalizing the config schema with a `platform` discriminator, and auditing the runner and orchestrator for leaked iOS assumptions. The per-platform backends themselves are separate items — Android is [BE-0007](../BE-0007-android-backend/BE-0007-android-backend.md), Web is [BE-0041](../BE-0041-web-playwright-backend/BE-0041-web-playwright-backend.md) (web-playwright-backend), and the already-landed selector/registry slice is [BE-0042](../BE-0042-platform-backend-registry/BE-0042-platform-backend-registry.md) (platform-backend-registry). This item is the shared substrate they all build on.
+Bajutsu is scoped today to the iOS Simulator only ([DESIGN §1](../../DESIGN.md), [README](../../README.md)), but its core was deliberately built behind a backend-agnostic `Driver` interface. This item is the cross-cutting abstraction work that lets the same deterministic core also drive Android (emulator) and Web (browser): extracting the iOS-specific seams behind platform-neutral protocols, generalizing the config schema with a `platform` discriminator, and auditing the runner and orchestrator for leaked iOS assumptions. The per-platform backends themselves are separate items — Android is [BE-0007](../BE-0007-android-backend/BE-0007-android-backend.md), Web is [BE-0041](../BE-0041-web-playwright-backend/BE-0041-web-playwright-backend.md) (web-playwright-backend), and the already-landed selector/registry slice is [BE-0042](../BE-0042-platform-backend-registry/BE-0042-platform-backend-registry.md) (platform-backend-registry). This item is the shared substrate they all build on.
 
 ## Motivation
 
@@ -25,7 +25,7 @@ The deterministic spine — scenario DSL (domain-specific language), selector re
 
 1. **The actuator** (`drivers/idb.py`) — drives the UI via `idb` + frame-center coordinate taps.
 2. **The environment manager** (`env.py`) — `simctl` boot / erase / launch / openurl.
-3. **The stable-id convention** (`accessibilityIdentifier`, [DESIGN §7](../../../DESIGN.md)) — the app-side source that makes `Selector.id` resolution deterministic.
+3. **The stable-id convention** (`accessibilityIdentifier`, [DESIGN §7](../../DESIGN.md)) — the app-side source that makes `Selector.id` resolution deterministic.
 
 Adding multi-platform support means **adding a new triple** (actuator + environment + id convention) per platform, while the deterministic core stays byte-for-byte the same. This is the same move the design already anticipates for a second iOS actuator (XCUITest, [BE-0019](../BE-0019-xcuitest-backend/BE-0019-xcuitest-backend.md)) — generalized across OSes.
 
@@ -51,7 +51,7 @@ The first new platform is the most expensive to add because it forces any latent
 
 ### The crux: selector portability
 
-A scenario is portable across platforms **only to the extent its selectors are by `id`**. Each platform has a native equivalent of `accessibilityIdentifier` — a **non-localized, developer-assigned, data-derived** handle — and the per-platform id convention ([DESIGN §7.3](../../../DESIGN.md)) maps onto it:
+A scenario is portable across platforms **only to the extent its selectors are by `id`**. Each platform has a native equivalent of `accessibilityIdentifier` — a **non-localized, developer-assigned, data-derived** handle — and the per-platform id convention ([DESIGN §7.3](../../DESIGN.md)) maps onto it:
 
 | `Selector` field | iOS | Android | Web |
 |---|---|---|---|
@@ -62,7 +62,7 @@ A scenario is portable across platforms **only to the extent its selectors are b
 
 The key property: **the YAML selector `{ id: settings.reindex }` is already platform-neutral.** What differs is *which app-side attribute the backend reads to satisfy it* — and that lives entirely inside the new Driver, never in the scenario.
 
-**Honest stance on shared scenarios.** Three apps for the same product rarely have identical screens, so the realistic model is **per-platform scenarios that share one DSL, one runner, and one toolchain** — not one YAML run thrice. Cross-platform *reuse* is then an **opt-in** for the slices that genuinely match, expressed through the existing **reserved/shared id namespaces** (`auth.*`, `nav.*`, [DESIGN §7.3](../../../DESIGN.md)): a login `setup:` component can run on all three platforms iff those ids are kept in parity. The tool provides *portable tooling* and *portable scenarios* only where the team maintains an id contract — a single YAML is not automatically a tri-platform test.
+**Honest stance on shared scenarios.** Three apps for the same product rarely have identical screens, so the realistic model is **per-platform scenarios that share one DSL, one runner, and one toolchain** — not one YAML run thrice. Cross-platform *reuse* is then an **opt-in** for the slices that genuinely match, expressed through the existing **reserved/shared id namespaces** (`auth.*`, `nav.*`, [DESIGN §7.3](../../DESIGN.md)): a login `setup:` component can run on all three platforms iff those ids are kept in parity. The tool provides *portable tooling* and *portable scenarios* only where the team maintains an id contract — a single YAML is not automatically a tri-platform test.
 
 ### Configuration changes
 
@@ -160,7 +160,7 @@ Phase 0 lands incrementally so each PR stays small and the gate stays green:
 
 ## References
 
-- [DESIGN §5](../../../DESIGN.md) (backend-agnostic `Driver` interface), [DESIGN §7 / §7.3](../../../DESIGN.md) (stable-id convention)
+- [DESIGN §5](../../DESIGN.md) (backend-agnostic `Driver` interface), [DESIGN §7 / §7.3](../../DESIGN.md) (stable-id convention)
 - `bajutsu/drivers/` (`base.py` `resolve_unique`, `idb.py`), `bajutsu/backends.py` (platform registry)
-- [architecture.md](../../../docs/architecture.md)
+- [architecture.md](../../docs/architecture.md)
 - Related items: [BE-0007](../BE-0007-android-backend/BE-0007-android-backend.md) (Android backend), [BE-0041](../BE-0041-web-playwright-backend/BE-0041-web-playwright-backend.md) (web Playwright backend), [BE-0042](../BE-0042-platform-backend-registry/BE-0042-platform-backend-registry.md) (platform backend registry), [BE-0010](../BE-0010-update-scope-statement/BE-0010-update-scope-statement.md) (scope-statement update), [BE-0019](../BE-0019-xcuitest-backend/BE-0019-xcuitest-backend.md) (XCUITest backend)

@@ -33,7 +33,7 @@ Bajutsu の CI は 13 本のワークフロー（`.github/workflows/*.yml`）ま
 - **checks 一覧は、ワークフローファイルそのものより遥かに頻繁に読まれます。** 人間・エージ
   ェントを問わず、あらゆる PR はまず checks 一覧でトリアージされます。名前から中身を推測でき
   ず実行結果を開く必要があるなら、赤くなった 1 件ごとにクリックが 1 回増えます。本リポジトリ
-  は多数のセッションを並行して走らせる運用（[CLAUDE.md](../../../CLAUDE.md) の「並行作業」節
+  は多数のセッションを並行して走らせる運用（[CLAUDE.md](../../CLAUDE.md) の「並行作業」節
   参照）なので、この積み重ねは無視できません。
 - **良い形式はすでに存在するのに、適用が一貫していません。** `E2E (Simulator)` と
   `Swift (BajutsuKit)` は、目指すべき形式が一度は見つかっていたことを示しています。残る 10 本
@@ -95,7 +95,7 @@ Bajutsu の CI は 13 本のワークフロー（`.github/workflows/*.yml`）ま
    てください（ルールセットの編集は通常の PR からは届かない、リポジトリ外の管理者操作であり、
    人手での作業になります）。
 
-4. **命名の慣例をドキュメント化します。** [`docs/ai-development.md`](../../../docs/ai-development.md)
+4. **命名の慣例をドキュメント化します。** [`docs/ai-development.md`](../../docs/ai-development.md)
    （英語）とその日本語版に、「GitHub Actions のワークフロー名・ジョブ名の付け方」という短い
    節を追加し、形式（短い句＋必要な場合のみツールや範囲を示す括弧書き、単語 1 語だけの
    `name:` は避ける）を示します。`e2e.yml` と `swift.yml` を模範例として挙げ、項目 3 で述べた
@@ -157,8 +157,8 @@ Bajutsu の CI は 13 本のワークフロー（`.github/workflows/*.yml`）ま
 
 ## 参考
 
-- [`.github/workflows/`](../../../.github/workflows/) — 本項目がリネームするワークフロー
-- [`docs/ai-development.md`](../../../docs/ai-development.md) — 命名の慣例を明文化する先
+- [`.github/workflows/`](../../.github/workflows/) — 本項目がリネームするワークフロー
+- [`docs/ai-development.md`](../../docs/ai-development.md) — 命名の慣例を明文化する先
 - [BE-0067](../BE-0067-code-quality-gate-hardening/BE-0067-code-quality-gate-hardening-ja.md) —
   本項目が補完する、先行する CI 強化項目（正しさ側 vs. 読みやすさ側）
 - GitHub Actions のドキュメント（required status check がジョブの `name:` をチェックの

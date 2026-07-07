@@ -23,7 +23,7 @@ Going multi-platform means adding a per-platform triple — actuator + environme
 
 ## Detailed design
 
-Implemented in [`bajutsu/backends.py`](../../../bajutsu/backends.py). See also [drivers → backend selection](../../../docs/drivers.md#backend-selection-and-the-actuator).
+Implemented in [`bajutsu/backends.py`](../../bajutsu/backends.py). See also [drivers → backend selection](../../docs/drivers.md#backend-selection-and-the-actuator).
 
 A platform registry maps each platform token to its actuators, most-stable-first:
 
@@ -77,4 +77,4 @@ apps:
 
 ## References
 
-[`bajutsu/backends.py`](../../../bajutsu/backends.py), [drivers.md](../../../docs/drivers.md#backend-selection-and-the-actuator), [BE-0009](../BE-0009-cross-platform-abstractions/BE-0009-cross-platform-abstractions.md), [BE-0007](../BE-0007-android-backend/BE-0007-android-backend.md), [BE-0041](../BE-0041-web-playwright-backend/BE-0041-web-playwright-backend.md), [BE-0019](../BE-0019-xcuitest-backend/BE-0019-xcuitest-backend.md)
+[`bajutsu/backends.py`](../../bajutsu/backends.py), [drivers.md](../../docs/drivers.md#backend-selection-and-the-actuator), [BE-0009](../BE-0009-cross-platform-abstractions/BE-0009-cross-platform-abstractions.md), [BE-0007](../BE-0007-android-backend/BE-0007-android-backend.md), [BE-0041](../BE-0041-web-playwright-backend/BE-0041-web-playwright-backend.md), [BE-0019](../BE-0019-xcuitest-backend/BE-0019-xcuitest-backend.md)

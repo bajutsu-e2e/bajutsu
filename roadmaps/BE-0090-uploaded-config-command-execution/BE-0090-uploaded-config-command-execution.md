@@ -19,7 +19,7 @@
 browser user upload a `.zip` bundle that `serve` extracts and binds as the **active config** the
 Replay / Record / Crawl tabs run from. An uploaded config is untrusted input, and BE-0073 already
 refuses one part of it: a target's `build` command is **never** executed on the host (the bundle
-ships a prebuilt binary; [DESIGN §1](../../../DESIGN.md)). But a config carries other fields that run
+ships a prebuilt binary; [DESIGN §1](../../DESIGN.md)). But a config carries other fields that run
 a shell command on the `serve` host — chiefly `launchServer.cmd` — and that command is **not**
 governed: when the bound bundle runs, the `bajutsu run` subprocess spawns it as written, on the bare
 host, with the operator's environment. This item replaces that bare-host execution with a `sandbox`
@@ -70,7 +70,7 @@ self-contained-web-bundle use the upload path exists for, and `allow` is bare-ho
 option is a **safe yes** — run the uploaded command, but confine it so a hostile `cmd` reaches nothing
 but a disposable container. That is what virtualizing the server command with Docker buys, and it is
 already in the project's grain: Tier-B self-hosting ships a `docker compose` control plane
-([`deploy/self-host/`](../../../deploy/self-host/), [docs/self-hosting.md](../../../docs/self-hosting.md)),
+([`deploy/self-host/`](../../deploy/self-host/), [docs/self-hosting.md](../../docs/self-hosting.md)),
 and BE-0015 / BE-0016 already name per-job container isolation as their domain. This item pulls that
 isolation forward as a concrete execution mode and gives it the deterministic policy gate to sit
 behind.
@@ -127,7 +127,7 @@ prime directives.
     port. The container is named per-run and torn down on teardown, replacing the host process-group
     kill of `start_launch_server`.
   - **Readiness is unchanged.** The run still probes `readyUrl` (now the published loopback port) as a
-    **condition wait**, never a fixed sleep ([DESIGN §2](../../../DESIGN.md)); `reuse` semantics still
+    **condition wait**, never a fixed sleep ([DESIGN §2](../../DESIGN.md)); `reuse` semantics still
     apply — an externally answered `readyUrl` short-circuits both spawn and container.
   - **Containment, not a VM.** Docker confines the blast radius to a disposable container; it is not a
     VM-grade boundary. Egress restriction, per-tenant network namespaces, and VM-level isolation stay
@@ -138,7 +138,7 @@ prime directives.
   `dockerImage` nor `dockerfile`, or a `docker build` that fails — the run fails with a clear error
   naming the
   offending field and the reason
-  ([DESIGN §2](../../../DESIGN.md): fail loud, no silent fallback). A blocked or sandbox-misconfigured
+  ([DESIGN §2](../../DESIGN.md): fail loud, no silent fallback). A blocked or sandbox-misconfigured
   `launchServer` must not read as a flaky run, and `sandbox` must never quietly fall back to running
   the command on the bare host. `build` keeps its existing always-denied treatment for uploads, folded
   into this policy as the precedent rather than a separate special case.
@@ -209,10 +209,10 @@ extend.
   [BE-0016 — Self-hosting of the web UI](../BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md)
   — the multi-tenant/hosted targets where `sandbox`-by-default matters and deeper (egress / VM-grade)
   per-job isolation lives.
-- [docs/self-hosting.md](../../../docs/self-hosting.md), [`deploy/self-host/`](../../../deploy/self-host/)
+- [docs/self-hosting.md](../../docs/self-hosting.md), [`deploy/self-host/`](../../deploy/self-host/)
   — the existing `docker compose` hosting stack `sandbox` is consistent with.
-- [DESIGN §1](../../../DESIGN.md) (Bajutsu receives a prebuilt app, does not build it),
-  [DESIGN §2](../../../DESIGN.md) (determinism; fail loud, never a silent fallback).
+- [DESIGN §1](../../DESIGN.md) (Bajutsu receives a prebuilt app, does not build it),
+  [DESIGN §2](../../DESIGN.md) (determinism; fail loud, never a silent fallback).
 - `bajutsu/config.py` (`LaunchServer.cmd`, `MockServer.cmd`, `AppConfig.build`; the new
   `LaunchServer.docker_image` (alias `dockerImage`) / `dockerfile` / `port`),
   `bajutsu/runner/launch_server.py`

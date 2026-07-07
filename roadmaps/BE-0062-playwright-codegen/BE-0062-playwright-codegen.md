@@ -41,7 +41,7 @@ The mapping is a good fit for the same reasons the XCUITest one is:
 
 - It is **purely structural** — a fixed map from scenario constructs to Playwright calls,
   with no model consulted at generation time. It does not touch the `run` / CI gate
-  ([DESIGN §2](../../../DESIGN.md)), and it adds no LLM anywhere.
+  ([DESIGN §2](../../DESIGN.md)), and it adds no LLM anywhere.
 - The web id convention (`data-testid`) and ARIA `role`/name already mirror the
   `Selector` fields ([BE-0041](../BE-0041-web-playwright-backend/BE-0041-web-playwright-backend.md)),
   so each construct has a natural Playwright equivalent — exactly the property that lets the
@@ -51,7 +51,7 @@ The mapping is a good fit for the same reasons the XCUITest one is:
 
 ### Why the emitted test uses Playwright's *semantic* locators
 
-The web `run` driver ([`drivers/playwright.py`](../../../bajutsu/drivers/playwright.py))
+The web `run` driver ([`drivers/playwright.py`](../../bajutsu/drivers/playwright.py))
 deliberately does **not** use Playwright's semantic locators: it walks the DOM, normalizes to
 `Element`s, and coordinate-clicks the resolved frame center through the shared
 `base.resolve_unique`, so matching is byte-for-byte identical to iOS. The emitted test does the
@@ -153,12 +153,12 @@ short drag duration. This is called out honestly, the same way the iOS path is.
 
 Add a `to_playwright(scenarios, …)` sibling to `to_xcuitest` (its own module, e.g.
 `codegen_playwright.py`, or a new function in `codegen.py`), and dispatch on `--emit` in
-[`cli/commands/codegen.py`](../../../bajutsu/cli/commands/codegen.py). The XCUITest path stays
+[`cli/commands/codegen.py`](../../bajutsu/cli/commands/codegen.py). The XCUITest path stays
 byte-for-byte unchanged. The two emitters share the same structural walk (scenarios → steps →
 assertions, unsupported → `// TODO`); whether to factor that walk behind a tiny emitter seam or
 keep two parallel total functions is an implementation detail — the parallel-function form is
 preferred first, to avoid over-abstracting for two targets. Docs:
-[codegen.md](../../../docs/codegen.md) (+ ja) gains the `--emit playwright` target and its
+[codegen.md](../../docs/codegen.md) (+ ja) gains the `--emit playwright` target and its
 mapping tables.
 
 ### Prime-directive compliance
@@ -198,8 +198,8 @@ than in the emitter.
 
 ## References
 
-[codegen.md](../../../docs/codegen.md), [`bajutsu/codegen.py`](../../../bajutsu/codegen.py),
-[`bajutsu/drivers/playwright.py`](../../../bajutsu/drivers/playwright.py),
+[codegen.md](../../docs/codegen.md), [`bajutsu/codegen.py`](../../bajutsu/codegen.py),
+[`bajutsu/drivers/playwright.py`](../../bajutsu/drivers/playwright.py),
 [BE-0041 — Web (Playwright) backend](../BE-0041-web-playwright-backend/BE-0041-web-playwright-backend.md),
 [BE-0019 — XCUITest backend](../BE-0019-xcuitest-backend/BE-0019-xcuitest-backend.md),
 [BE-0025 — Coordinate swipe generation](../BE-0025-coordinate-swipe-generation/BE-0025-coordinate-swipe-generation.md),

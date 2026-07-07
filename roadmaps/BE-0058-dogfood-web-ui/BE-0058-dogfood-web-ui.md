@@ -47,12 +47,12 @@ it runs on Linux, headless, inside the same toolchain as `make check`, with no M
 model. Dogfooding the backend on our own product is the strongest signal that it holds up.
 
 **3. It models the id discipline we ask of users.** Selector stability is *the* determinism lever
-([DESIGN §2/§5](../../../DESIGN.md)). Giving the Web UI `data-testid` ids — the web equivalent of an
+([DESIGN §2/§5](../../DESIGN.md)). Giving the Web UI `data-testid` ids — the web equivalent of an
 iOS `accessibilityIdentifier` — makes it a well-behaved subject and demonstrates, on our own code,
 the practice the tool exists to reward. The same controlled-experiment spirit as BE-0045, on the
 web side.
 
-**4. It respects every prime directive** ([CLAUDE.md](../../../CLAUDE.md)). The scenarios are pure
+**4. It respects every prime directive** ([CLAUDE.md](../../CLAUDE.md)). The scenarios are pure
 Tier-2: pass/fail comes only from machine assertions (which view/modal is present, a button's
 enabled/disabled state, a field's value), never a model. The Web UI is just another app behind a
 `baseUrl`, onboarded through one `apps.<name>` entry — app-agnostic, per-app differences in config.
@@ -61,12 +61,12 @@ enabled/disabled state, a field's value), never a model. The Web UI is just anot
 
 ### Test subject: `data-testid` on the Web UI
 
-The controls in [`bajutsu/templates/serve.html.j2`](../../../bajutsu/templates/serve.html.j2) carry
+The controls in [`bajutsu/templates/serve.html.j2`](../../bajutsu/templates/serve.html.j2) carry
 `data-testid` ids, namespaced by area — `nav.*` (top tabs, Open config, Settings, theme), `view.*`
 (the three `<main>` views), `record.*`, `replay.*`, `crawl.*`, `settings.*`, `config.*`. The web
 backend resolves a scenario's `{ id: nav.replay }` selector to `data-testid` through the **same**
 `resolve_unique` / `find_all` core as iOS resolves `accessibilityIdentifier`; only the attribute the
-driver reads differs ([drivers.md](../../../docs/drivers.md)).
+driver reads differs ([drivers.md](../../docs/drivers.md)).
 
 ### Harness: `demos/serve-ui/`
 
@@ -136,7 +136,7 @@ Bedrock) stay out of this net.
   selection.
 - **Skip `data-testid` and select by visible text / role.** Rejected: many controls are icon-only
   (theme, refresh, zoom) or share labels, so text/role selectors would be ambiguous — and ambiguous
-  selectors fail by design ([DESIGN §2](../../../DESIGN.md)). Stable ids are the honest fix and the
+  selectors fail by design ([DESIGN §2](../../DESIGN.md)). Stable ids are the honest fix and the
   practice the tool rewards.
 
 ## Progress
@@ -149,5 +149,5 @@ Bedrock) stay out of this net.
 - [BE-0045 — Dogfood showcase apps](../BE-0045-dogfood-showcase-apps/BE-0045-dogfood-showcase-apps.md) — the iOS counterpart this mirrors
 - [BE-0011 — Local web UI (`bajutsu serve`)](../BE-0011-local-web-ui-serve/BE-0011-local-web-ui-serve.md) — the subject under test
 - [BE-0054 — Web backend completion](../BE-0054-web-backend-completion/BE-0054-web-backend-completion.md) — where `<select>` operation belongs
-- [`demos/serve-ui`](../../../demos/serve-ui) — the harness · [`demos/web`](../../../demos/web) — the pattern it mirrors
-- [DESIGN §2 / §5 / §7.1](../../../DESIGN.md) — determinism, stability ladder, per-app onboarding · [drivers.md](../../../docs/drivers.md) — the Playwright backend
+- [`demos/serve-ui`](../../demos/serve-ui) — the harness · [`demos/web`](../../demos/web) — the pattern it mirrors
+- [DESIGN §2 / §5 / §7.1](../../DESIGN.md) — determinism, stability ladder, per-app onboarding · [drivers.md](../../docs/drivers.md) — the Playwright backend

@@ -44,4 +44,4 @@
 
 ## 参考
 
-[DESIGN §11](../../../DESIGN.md)
+[DESIGN §11](../../DESIGN.md)

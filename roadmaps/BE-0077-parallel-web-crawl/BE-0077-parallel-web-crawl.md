@@ -29,7 +29,7 @@ A web crawl is serial today: it explores one screen at a time in one browser. Th
 
 Both overlap cleanly across independent browsers, so wall-clock time falls roughly with the number of workers until AI rate limits or coordinator contention dominate.
 
-**Web is the lowest-friction place to make a parallel crawl pay off.** It needs no Mac and no emulator and runs on the existing Linux `make check` / CI gate ([BE-0041](../BE-0041-web-playwright-backend/BE-0041-web-playwright-backend.md)), so a fast crawl can run as a discovery step right inside CI. A browser process also starts in seconds with no device boot, so standing up N lanes is cheap. `run` already scales across lanes — [BE-0054](../BE-0054-web-backend-completion/BE-0054-web-backend-completion.md) generalizes the web branch of the pool to N — leaving crawl the one Tier-1 path still pinned to a single browser, which makes it slow to use as the front end to `record` and as the whole-app coverage run ([DESIGN §7.2](../../../DESIGN.md); [BE-0038](../BE-0038-autonomous-crawl-exploration/BE-0038-autonomous-crawl-exploration.md) motivation #2).
+**Web is the lowest-friction place to make a parallel crawl pay off.** It needs no Mac and no emulator and runs on the existing Linux `make check` / CI gate ([BE-0041](../BE-0041-web-playwright-backend/BE-0041-web-playwright-backend.md)), so a fast crawl can run as a discovery step right inside CI. A browser process also starts in seconds with no device boot, so standing up N lanes is cheap. `run` already scales across lanes — [BE-0054](../BE-0054-web-backend-completion/BE-0054-web-backend-completion.md) generalizes the web branch of the pool to N — leaving crawl the one Tier-1 path still pinned to a single browser, which makes it slow to use as the front end to `record` and as the whole-app coverage run ([DESIGN §7.2](../../DESIGN.md); [BE-0038](../BE-0038-autonomous-crawl-exploration/BE-0038-autonomous-crawl-exploration.md) motivation #2).
 
 ## Detailed design
 
@@ -47,11 +47,11 @@ The guide's AI calls thus run concurrently across workers — the primary speedu
 
 ### The lane is a browser process; the per-reset clean state is a fresh context
 
-A worker's durable lane is a full **browser process** — the unit the coordinator hard-kills and relaunches on a fault (below). The per-iteration `reset`, however, is **not** a browser relaunch: it is a fresh `BrowserContext` inside that worker's browser, which is the `erase` equivalent and is ~free. This reuses BE-0066's existing web reset seam (`reset` is already just `driver.navigate()` into a fresh context, mirroring `_web_relauncher` in [`runner/pool.py`](../../../bajutsu/runner/pool.py)). So "separate browser processes" costs one browser launch per *worker* (and per fault), not per screen.
+A worker's durable lane is a full **browser process** — the unit the coordinator hard-kills and relaunches on a fault (below). The per-iteration `reset`, however, is **not** a browser relaunch: it is a fresh `BrowserContext` inside that worker's browser, which is the `erase` equivalent and is ~free. This reuses BE-0066's existing web reset seam (`reset` is already just `driver.navigate()` into a fresh context, mirroring `_web_relauncher` in [`runner/pool.py`](../../bajutsu/runner/pool.py)). So "separate browser processes" costs one browser launch per *worker* (and per fault), not per screen.
 
 ### The determinism boundary (the crux)
 
-Screen *identity* (the fingerprint), transition detection, crash detection, and the screen map's content stay pure deterministic functions of the element tree — unchanged. Web crash detection keeps BE-0066's deterministic signals (an uncaught JS exception via `page.on("pageerror")`, an HTTP 4xx/5xx main-frame status, or a blank DOM); none is an LLM judgment. AI still only chooses *what to try* and never judges ([prime directive #1](../../../CLAUDE.md)).
+Screen *identity* (the fingerprint), transition detection, crash detection, and the screen map's content stay pure deterministic functions of the element tree — unchanged. Web crash detection keeps BE-0066's deterministic signals (an uncaught JS exception via `page.on("pageerror")`, an HTTP 4xx/5xx main-frame status, or a blank DOM); none is an LLM judgment. AI still only chooses *what to try* and never judges ([prime directive #1](../../CLAUDE.md)).
 
 What parallelism relaxes is **exploration order** and the **recorded canonical `path_to`**: which worker reaches a screen first is scheduling-dependent, so for an app with its own non-determinism the recorded paths (and the tie-broken discovery order) can differ run to run. For a deterministic app the *set* of nodes and edges discovered is invariant; only ordering / path metadata varies. This is acceptable precisely because crawl is **Tier 1 and emits a discovery artifact, never a pass/fail** — the same reason BE-0038 and BE-0064 already give. The deterministic *byproducts* keep their guarantees: a recorded crash repro / flow path still replays AI-free under web `run` as a Tier-2 regression.
 
@@ -64,7 +64,7 @@ What parallelism relaxes is **exploration order** and the **recorded canonical `
 
 ### Reuse of the web pool (BE-0054)
 
-The web branch of [`runner/pool.py`](../../../bajutsu/runner/pool.py) that BE-0054 generalizes to N lanes is the seam this builds on. The one difference is the lane's isolation unit: this item's crawl lane is a full browser process (for fault isolation, since a crawl deliberately provokes crashes and hangs), whereas BE-0054's `run` lanes are `BrowserContext`s (cheaper, and fine for independent scenarios). Both are "N lanes in the web pool"; the unit is chosen per use case.
+The web branch of [`runner/pool.py`](../../bajutsu/runner/pool.py) that BE-0054 generalizes to N lanes is the seam this builds on. The one difference is the lane's isolation unit: this item's crawl lane is a full browser process (for fault isolation, since a crawl deliberately provokes crashes and hangs), whereas BE-0054's `run` lanes are `BrowserContext`s (cheaper, and fine for independent scenarios). Both are "N lanes in the web pool"; the unit is chosen per use case.
 
 ## Alternatives considered
 
@@ -86,5 +86,5 @@ The web branch of [`runner/pool.py`](../../../bajutsu/runner/pool.py) that BE-00
 * [BE-0054 — Web backend completion](../BE-0054-web-backend-completion/BE-0054-web-backend-completion.md) — generalizes the web pool to N lanes; this item's lane is a browser process rather than a context.
 * [BE-0038 — Autonomous crawl exploration](../BE-0038-autonomous-crawl-exploration/BE-0038-autonomous-crawl-exploration.md) — the platform-neutral crawl engine.
 * [BE-0041 — Web (Playwright) backend](../BE-0041-web-playwright-backend/BE-0041-web-playwright-backend.md) — the web driver and the deterministic web `run` path.
-* [`bajutsu/runner/pool.py`](../../../bajutsu/runner/pool.py), [`bajutsu/crawl.py`](../../../bajutsu/crawl.py), [`bajutsu/cli/commands/crawl.py`](../../../bajutsu/cli/commands/crawl.py), [`bajutsu/drivers/playwright.py`](../../../bajutsu/drivers/playwright.py).
-* [CLAUDE.md](../../../CLAUDE.md) — prime directive #1 (AI never judges) and #2 (determinism first); [DESIGN §7.2](../../../DESIGN.md) — whole-app coverage from crawl dumps, which a faster crawl makes practical.
+* [`bajutsu/runner/pool.py`](../../bajutsu/runner/pool.py), [`bajutsu/crawl.py`](../../bajutsu/crawl.py), [`bajutsu/cli/commands/crawl.py`](../../bajutsu/cli/commands/crawl.py), [`bajutsu/drivers/playwright.py`](../../bajutsu/drivers/playwright.py).
+* [CLAUDE.md](../../CLAUDE.md) — prime directive #1 (AI never judges) and #2 (determinism first); [DESIGN §7.2](../../DESIGN.md) — whole-app coverage from crawl dumps, which a faster crawl makes practical.

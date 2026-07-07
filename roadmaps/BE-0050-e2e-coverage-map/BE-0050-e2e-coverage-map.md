@@ -78,5 +78,5 @@ Proposal altitude.
 
 `bajutsu/doctor.py` (id namespaces / convention score),
 [BE-0038](../BE-0038-autonomous-crawl-exploration/BE-0038-autonomous-crawl-exploration.md),
-[evidence.md](../../../docs/evidence.md), [configuration.md](../../../docs/configuration.md),
-[DESIGN §2 / §7](../../../DESIGN.md)
+[evidence.md](../../docs/evidence.md), [configuration.md](../../docs/configuration.md),
+[DESIGN §2 / §7](../../DESIGN.md)

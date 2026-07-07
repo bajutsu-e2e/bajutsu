@@ -17,7 +17,7 @@
 
 Bajutsu の決定的な開発時ゲート、すなわち `make check`（lock-check、format-check、ruff、shellcheck、
 actionlint、mypy、pytest とカバレッジ）を pre-push フックと CI が共有する仕組みが、多数の並行ブランチを
-衝突させずに緑へ保つ土台になっています（[CLAUDE.md](../../../CLAUDE.md)、[BE-0043](../BE-0043-conflict-resistant-file-flow/BE-0043-conflict-resistant-file-flow-ja.md)）。
+衝突させずに緑へ保つ土台になっています（[CLAUDE.md](../../CLAUDE.md)、[BE-0043](../BE-0043-conflict-resistant-file-flow/BE-0043-conflict-resistant-file-flow-ja.md)）。
 そのゲート自体を監査したところ、土台は堅牢だが、確定した忠実性の不具合と、いくつか欠けている層が見つかりました。
 本項目はゲートを強化します。CI が構造的に `make check` を反映するようにし、ロードマップ用スクリプトを型検査の
 対象に加え、分岐カバレッジを導入し、さらに2つのセキュリティ層（セキュリティ linter と依存の脆弱性
@@ -121,8 +121,8 @@ Dependabot の security updates を有効にするのが、合わせ技として
 
 ## 参考
 
-- [CLAUDE.md](../../../CLAUDE.md) — 契約としてのゲート。`make check` を CI と pre-push フックが反映します。
+- [CLAUDE.md](../../CLAUDE.md) — 契約としてのゲート。`make check` を CI と pre-push フックが反映します。
 - [BE-0043 — コンフリクトに強いファイル流動](../BE-0043-conflict-resistant-file-flow/BE-0043-conflict-resistant-file-flow-ja.md)
   — 本項目が拡張する、コントリビュータ体験の姉妹項目（自己修復フック、索引の生成）。
-- [.github/workflows/ci.yml](../../../.github/workflows/ci.yml)、[Makefile](../../../Makefile)、[pyproject.toml](../../../pyproject.toml)
+- [.github/workflows/ci.yml](../../.github/workflows/ci.yml)、[Makefile](../../Makefile)、[pyproject.toml](../../pyproject.toml)
   — 本項目が強化するゲート。

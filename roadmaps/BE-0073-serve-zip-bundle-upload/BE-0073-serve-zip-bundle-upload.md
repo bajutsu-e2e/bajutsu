@@ -38,7 +38,7 @@ unsafe to expose.
 ## Motivation
 
 A team's config and scenarios live in their repository, and `bajutsu run` consumes a *local* tree
-plus a *built* app artifact ([DESIGN §1](../../../DESIGN.md): "Bajutsu does not build the app — it
+plus a *built* app artifact ([DESIGN §1](../../DESIGN.md): "Bajutsu does not build the app — it
 receives an existing `xcodebuild` product"). For a local Mac this is fine; for a **hosted or remote
 serve** it leaves a gap that neither hand-placement nor a Git source fully closes:
 
@@ -59,7 +59,7 @@ serve** it leaves a gap that neither hand-placement nor a Git source fully close
    own design leans on the config's `build:` command to (re)produce the binary on the host — which
    needs a full toolchain on that host. A zip is the one transport that bundles the **already-built**
    artifact together with the config and scenarios, which is precisely what
-   [DESIGN §1](../../../DESIGN.md) says Bajutsu consumes. The two acquisition paths are
+   [DESIGN §1](../../DESIGN.md) says Bajutsu consumes. The two acquisition paths are
    complementary: Git for the versioned text, an upload for the prebuilt binary.
 
 3. **Hand-placing files on the host is the only path today.** The self-hosting Tier-A guide
@@ -132,7 +132,7 @@ introduces the same seam. The two are designed to share it.)
   [BE-0060](../BE-0060-run-report-zip-export/BE-0060-run-report-zip-export.md)'s
   download closes the round trip (upload a suite → run → download the result). An uploaded config's
   `build` command is never executed on the host: the bundle ships a prebuilt binary
-  ([DESIGN §1](../../../DESIGN.md)).
+  ([DESIGN §1](../../DESIGN.md)).
 
 ### Security — the heart of the design (on top of BE-0051)
 
@@ -155,11 +155,11 @@ Tier-A serve**; deeper multi-tenant isolation is deferred to BE-0015 / BE-0016 (
 - **Ephemeral by default.** Each upload extracts into its own serve-owned directory, and **only one
   bundle is bound at a time** — binding another config (from any source) removes the previous bundle's
   sandbox, so no uploaded code lingers past the session or accumulates on disk. On iOS the run uses a
-  clean/`--erase` Simulator ([DESIGN §2](../../../DESIGN.md)), so an uploaded app gets today's per-run
+  clean/`--erase` Simulator ([DESIGN §2](../../DESIGN.md)), so an uploaded app gets today's per-run
   execution isolation for free.
 - **Provenance.** The uploaded filename and the **sha256 of the zip** are recorded into the run's
   `manifest.json`, mirroring how BE-0063 records the resolved commit SHA — so "what did this run
-  execute?" is always answerable after the fact, preserving [DESIGN §2](../../../DESIGN.md)'s "never
+  execute?" is always answerable after the fact, preserving [DESIGN §2](../../DESIGN.md)'s "never
   silently run an unknown revision".
 - **Secrets.** The bundle carries config and scenarios but **not** secret values — `${secrets.*}`
   resolve from the serve host's environment as today ([BE-0032](../BE-0032-secret-variables/BE-0032-secret-variables.md)),
@@ -170,7 +170,7 @@ Tier-A serve**; deeper multi-tenant isolation is deferred to BE-0015 / BE-0016 (
 
 - **No LLM, no effect on the verdict.** This is acquisition + extraction before the deterministic
   `run`; pass/fail is still computed only from machine assertions. Prime directives 1 and 2
-  ([CLAUDE.md](../../../CLAUDE.md)) hold by construction.
+  ([CLAUDE.md](../../CLAUDE.md)) hold by construction.
 - **Linux-testable.** Extraction, zip-slip rejection, the resource bounds, and the path-base
   resolution are pure packaging/plumbing and unit-test on the existing Linux gate against fixture
   zips — no Simulator. Only the actual app *install + run* needs a Mac, exactly as for any iOS run.
@@ -190,7 +190,7 @@ lands.
 
 ### Out of scope
 
-- **Building the app from source.** [DESIGN §1](../../../DESIGN.md) is explicit that Bajutsu receives
+- **Building the app from source.** [DESIGN §1](../../DESIGN.md) is explicit that Bajutsu receives
   a prebuilt artifact; the bundle carries the build product, it does not build it. (The config's
   `build:` on-demand build remains available for the *local* / Git case, where a toolchain is present.)
 - **Multi-tenant execution isolation.** Per-tenant Simulators, per-job egress controls, and
@@ -206,7 +206,7 @@ lands.
 
 - **Git source only ([BE-0063](../BE-0063-git-config-source/BE-0063-git-config-source.md)).**
   Rejected as a complete substitute: Git carries the *text* well but not the *built binary*, which
-  [DESIGN §1](../../../DESIGN.md) says Bajutsu consumes. Forcing the binary through Git means either
+  [DESIGN §1](../../DESIGN.md) says Bajutsu consumes. Forcing the binary through Git means either
   committing build products or running a full build on the host — exactly what an upload avoids. The
   two are complementary, not redundant.
 - **Hand-place files on the host and use the existing file-browser picker.** Works on a local Mac but
@@ -233,8 +233,8 @@ lands.
 
 ## References
 
-- [CLAUDE.md](../../../CLAUDE.md), [DESIGN §1](../../../DESIGN.md) (Bajutsu receives a prebuilt app,
-  does not build it), [DESIGN §2](../../../DESIGN.md) (AI never judges; determinism first; clean
+- [CLAUDE.md](../../CLAUDE.md), [DESIGN §1](../../DESIGN.md) (Bajutsu receives a prebuilt app,
+  does not build it), [DESIGN §2](../../DESIGN.md) (AI never judges; determinism first; clean
   environment per test).
 - [BE-0060 — Download / export a run report as a zip](../BE-0060-run-report-zip-export/BE-0060-run-report-zip-export.md)
   — the **export** mirror; the shared stdlib `zipfile` foundation and the round-trip partner.
@@ -256,4 +256,4 @@ lands.
   (`bind_config` / `bind_git_config` / `bind_upload_config`, the config-bind path), `bajutsu/serve/jobs.py`
   (the run job machinery and `ServeState.bind_upload`), `bajutsu/serve/artifacts.py` (the confined
   artifact store) — the surfaces this touches.
-- [docs/configuration.md](../../../docs/configuration.md), [docs/cli.md](../../../docs/cli.md#serve).
+- [docs/configuration.md](../../docs/configuration.md), [docs/cli.md](../../docs/cli.md#serve).

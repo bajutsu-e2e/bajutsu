@@ -57,6 +57,6 @@ XCUITest エミッタのフォールバック処理は磨かれました（BE-00
 
 ## 参考
 
-- [`bajutsu/codegen_playwright.py`](../../../bajutsu/codegen_playwright.py) — web エミッタと現在の `// TODO` 箇所。`bajutsu/assertions.py` の `request_label`（共有のマッチャ記述）。
+- [`bajutsu/codegen_playwright.py`](../../bajutsu/codegen_playwright.py) — web エミッタと現在の `// TODO` 箇所。`bajutsu/assertions.py` の `request_label`（共有のマッチャ記述）。
 - [BE-0026](../BE-0026-shrink-unsupported-syntax/BE-0026-shrink-unsupported-syntax-ja.md)（XCUITest 版と統制ルール）、[BE-0062](../BE-0062-playwright-codegen/BE-0062-playwright-codegen-ja.md)（Playwright ターゲット）、[BE-0083](../BE-0083-codegen-emitter-unification/BE-0083-codegen-emitter-unification-ja.md)（共有エミッタウォーク）。
-- [docs/codegen.md](../../../docs/ja/codegen.md)。
+- [docs/codegen.md](../../docs/ja/codegen.md)。
