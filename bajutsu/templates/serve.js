@@ -210,12 +210,47 @@ $('#opencfg').addEventListener('click',openFs);
 $('#fsclose').addEventListener('click',closeFs);
 $('#fsmodal').addEventListener('click',e=>{if(e.target===$('#fsmodal'))closeFs()});
 
-// ---- view the loaded config: its raw YAML + (for a Git source) the commit it came from ----
+// ---- view the loaded config: a structured key/value tree (or the raw YAML) + its Git origin ----
 function closeCfgView(){$('#cfgviewmodal').hidden=true}
+// Toggle between the collapsible structured tree and the raw YAML text.
+function cfgViewMode(raw){
+  $('#cfgviewtree').hidden=raw;$('#cfgviewbody').hidden=!raw;
+  $('#cfgview-raw').classList.toggle('active',raw);
+  $('#cfgview-structured').classList.toggle('active',!raw);
+}
+// Is `v` a container (object or array) that gets a collapsible node, vs a scalar leaf?
+function cfgIsContainer(v){return v!==null&&typeof v==='object'}
+function cfgScalar(v){return v===null?'null':(typeof v==='string'?v:String(v))}
+function cfgScalarClass(v){return v===null?'nul':(typeof v==='boolean'?'bool':(typeof v==='number'?'num':'str'))}
+// Build one node: a scalar row, or a <details> whose summary is the key and body its children. The
+// first two levels open by default so `defaults`/`targets` are visible without a click; deeper nests
+// stay collapsed. `key` is null for a scalar array item (shown as a bare value).
+function cfgNode(key,val,depth){
+  if(!cfgIsContainer(val)){
+    const row=document.createElement('div');row.className='cfgrow';
+    if(key!==null){const k=document.createElement('span');k.className='cfgkey';k.textContent=key;row.appendChild(k)}
+    const v=document.createElement('span');v.className='cfgval '+cfgScalarClass(val);v.textContent=cfgScalar(val);row.appendChild(v);
+    return row;
+  }
+  const arr=Array.isArray(val);
+  const entries=arr?val.map((v,i)=>[i,v]):Object.entries(val);
+  const det=document.createElement('details');det.className='cfgdet';if(depth<2)det.open=true;
+  const sum=document.createElement('summary');
+  const label=document.createElement('span');label.className='cfgkey';label.textContent=(key!==null?key:(arr?'list':'config'));sum.appendChild(label);
+  const meta=document.createElement('span');meta.className='cfgmeta';meta.textContent=arr?('['+entries.length+']'):('{'+entries.length+'}');sum.appendChild(meta);
+  det.appendChild(sum);
+  const kids=document.createElement('div');kids.className='cfgchildren';
+  // An array's scalar items show as bare values (key null); its object items keep their index so
+  // repeated `{config}` rows stay distinguishable.
+  for(const [k,v] of entries)kids.appendChild(cfgNode(arr?(cfgIsContainer(v)?k:null):k,v,depth+1));
+  det.appendChild(kids);
+  return det;
+}
 async function openCfgView(){
   let d;try{d=await (await fetch('/api/config/content')).json()}catch(e){d={error:'request failed'}}
-  const prov=$('#cfgprov');
-  if(d.error){prov.hidden=true;$('#cfgviewpath').textContent='';$('#cfgviewbody').textContent=d.error;$('#cfgviewmodal').hidden=false;return}
+  const prov=$('#cfgprov'),tree=$('#cfgviewtree');
+  tree.textContent='';
+  if(d.error){prov.hidden=true;$('#cfgviewpath').textContent='';$('#cfgviewbody').textContent=d.error;cfgViewMode(true);$('#cfgviewmodal').hidden=false;return}
   const p=d.provenance;
   if(p){
     // A Git source: show which commit was materialized (ref → resolved sha), not the opaque cache path.
@@ -224,10 +259,17 @@ async function openCfgView(){
   }else{prov.hidden=true}
   $('#cfgviewpath').textContent=d.config||'';
   $('#cfgviewbody').textContent=d.content||'';
+  // A parseable config gets the structured tree by default; an unparseable one falls back to raw.
+  const hasTree=d.parsed!==null&&d.parsed!==undefined;
+  if(hasTree)tree.appendChild(cfgNode(null,d.parsed,0));
+  $('#cfgview-structured').disabled=!hasTree;
+  cfgViewMode(!hasTree);
   $('#cfgviewmodal').hidden=false;
 }
 $('#viewcfg').addEventListener('click',openCfgView);
 $('#cfgviewclose').addEventListener('click',closeCfgView);
+$('#cfgview-structured').addEventListener('click',()=>cfgViewMode(false));
+$('#cfgview-raw').addEventListener('click',()=>cfgViewMode(true));
 $('#cfgviewmodal').addEventListener('click',e=>{if(e.target===$('#cfgviewmodal'))closeCfgView()});
 
 // ---- Claude API key: write-once — shown masked only, never revealed (BE-0136) ----

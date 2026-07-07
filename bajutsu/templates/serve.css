@@ -370,11 +370,30 @@ header .cfgname{color:var(--mut);font-size:.82em;max-width:32vw;overflow:hidden;
 .gitsrcrow input{flex:1;background:var(--bg2);border:1px solid var(--line);color:var(--fg);padding:.35rem .55rem;font:inherit;border-radius:8px}
 .gitsrchint{color:var(--mut);font-size:.78em;margin-top:.35rem}
 .gitsrcerr{color:var(--bad,#e5534b);font-size:.8em;margin-top:.35rem;word-break:break-word}
-/* View-config modal (BE-0063): the raw YAML the tabs run from, plus its Git provenance. */
+/* View-config modal (BE-0063): a structured key/value tree (or the raw YAML), plus Git provenance. */
 .cfgviewbox{width:min(760px,94vw)}
+.cfgviewtoggle{margin-left:auto;display:flex;gap:.25rem;background:var(--bg2);border:1px solid var(--line);border-radius:8px;padding:2px}
+.cfgtogbtn{background:none;border:0;color:var(--mut);font:inherit;font-size:.78em;font-weight:600;padding:.2rem .6rem;border-radius:6px;cursor:pointer}
+.cfgtogbtn.active{background:var(--card);color:var(--fg)}
+.cfgtogbtn:disabled{opacity:.4;cursor:not-allowed}
+.fshead .fsclose{margin-left:.5rem}
 .cfgprov{font-size:.82em;margin-bottom:.4rem}.cfgprov code{background:var(--bg2);padding:.05rem .3rem;border-radius:5px}
 .cfgpath{color:var(--mut);font-size:.76em;margin-bottom:.5rem;word-break:break-all}
 .cfgview{flex:1;min-height:0;overflow:auto;background:var(--bg2);border:1px solid var(--line);border-radius:8px;padding:.6rem .7rem;margin:0;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.8em;line-height:1.5;white-space:pre;tab-size:2}
+/* Structured tree: nested <details> with a caret; scalars colored by JSON type. */
+.cfgtree{flex:1;min-height:0;overflow:auto;background:var(--bg2);border:1px solid var(--line);border-radius:8px;padding:.5rem .7rem;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.8em;line-height:1.6}
+.cfgchildren{padding-left:1.1rem;border-left:1px solid var(--line);margin-left:.3rem}
+.cfgdet>summary{cursor:pointer;list-style:none;user-select:none}
+.cfgdet>summary::-webkit-details-marker{display:none}
+.cfgdet>summary::before{content:"\25B8";display:inline-block;width:1em;color:var(--mut);transition:transform .1s}
+.cfgdet[open]>summary::before{transform:rotate(90deg)}
+.cfgrow{padding-left:1em}
+.cfgkey{color:var(--acc);font-weight:600}
+.cfgmeta{color:var(--mut);margin-left:.4rem;font-size:.92em}
+.cfgval{margin-left:.4rem}
+.cfgval.str{color:var(--fg)}
+.cfgval.num{color:var(--acc)}
+.cfgval.bool,.cfgval.nul{color:var(--mut);font-style:italic}
 .fsor{color:var(--mut);font-size:.78em;text-transform:uppercase;letter-spacing:.04em;margin:.5rem 0 .4rem}
 /* Settings modal (AI provider + Claude API key) */
 .setsection{padding-top:.85rem;margin-top:.85rem;border-top:1px solid var(--line)}

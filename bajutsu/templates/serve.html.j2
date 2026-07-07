@@ -469,11 +469,20 @@
 <!-- ===== View config: the raw YAML the tabs run from, plus its Git provenance (BE-0063) ===== -->
 <div class="modal" id="cfgviewmodal" data-testid="config.view-modal" hidden>
   <div class="fsbox cfgviewbox">
-    <div class="fshead"><span class="ttl">Loaded config</span><button class="fsclose" id="cfgviewclose" data-testid="config.view-close">&#10005;</button></div>
+    <div class="fshead">
+      <span class="ttl">Loaded config</span>
+      <!-- Structured (collapsible key/value tree) vs the raw YAML the file holds. -->
+      <div class="cfgviewtoggle" role="tablist">
+        <button class="cfgtogbtn active" id="cfgview-structured" data-testid="config.view-structured">Structured</button>
+        <button class="cfgtogbtn" id="cfgview-raw" data-testid="config.view-raw">Raw</button>
+      </div>
+      <button class="fsclose" id="cfgviewclose" data-testid="config.view-close">&#10005;</button>
+    </div>
     <!-- Provenance: for a Git source, which commit this was materialized from; hidden for a local file. -->
     <div class="cfgprov" id="cfgprov" data-testid="config.view-provenance" hidden></div>
     <div class="cfgpath" id="cfgviewpath" data-testid="config.view-path"></div>
-    <pre class="cfgview" id="cfgviewbody" data-testid="config.view-content"></pre>
+    <div class="cfgtree" id="cfgviewtree" data-testid="config.view-tree"></div>
+    <pre class="cfgview" id="cfgviewbody" data-testid="config.view-content" hidden></pre>
     <div class="gitsrchint"><code>${secrets.*}</code> placeholders are shown verbatim &mdash; they resolve from the server's environment at run time, so nothing secret is disclosed here.</div>
   </div>
 </div>

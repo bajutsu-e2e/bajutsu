@@ -159,6 +159,10 @@ def test_http_config_content_returns_local_yaml_without_provenance(tmp_path: Pat
         assert d["config"] == str(cfg)
         assert d["content"] == cfg.read_text(encoding="utf-8")
         assert d["provenance"] is None  # a local file has no commit to point at
+        # The parsed structure powers the UI's collapsible tree; it mirrors the file faithfully
+        # (targets keyed by name), with no env interpolation applied.
+        assert set(d["parsed"]) == {"defaults", "targets"}
+        assert set(d["parsed"]["targets"]) == {"demo", "other"}
     finally:
         server.shutdown()
         server.server_close()

@@ -88,12 +88,14 @@ zip-slip hardening, the `--root` confinement — is documented in the
 
 ### Confirming what is bound
 
-Click **View** (beside the config name) to see the exact config the tabs run from. The dialog shows
-the config's raw YAML, its path, and — when it came from a Git repository — the source it was
+Click **View** (beside the config name) to see the exact config the tabs run from. The dialog opens
+on a **Structured** view — a collapsible key/value tree, with each nested object and list a toggle you
+expand only where you need it — and a **Raw** toggle switches to the verbatim YAML (comments and all).
+Above both, it shows the config's path and — when it came from a Git repository — the source it was
 materialized from: the repository, the `ref` you asked for, and the resolved commit SHA. This matters
 for a Git source, whose active path is an opaque content-addressed cache location
 (`…/gitsrc/<host>/<owner>/<repo>/<sha>/…`); the provenance line states which commit is actually
-bound, not just the path. The YAML is shown verbatim, so any `${secrets.*}` placeholders appear as
+bound, not just the path. The config is shown verbatim, so any `${secrets.*}` placeholders appear as
 written — they resolve from the server's environment at run time, and nothing secret is disclosed.
 
 ## Settings

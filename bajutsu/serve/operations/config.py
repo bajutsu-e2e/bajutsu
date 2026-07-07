@@ -128,9 +128,17 @@ def config_content(state: ServeState) -> tuple[Any, int]:
         # The bound path was validated at bind time; a read failure here means it moved/was removed
         # under us (a transient checkout, a deleted file) — report it rather than 500 with a traceback.
         return {"error": f"could not read config: {e}"}, 404
+    # The parsed structure powers the UI's collapsible key/value view; `safe_load` keeps it faithful
+    # to the file (no env interpolation, so `${secrets.*}` stay literal strings like in the raw text).
+    # A parse failure leaves `parsed` null and the UI falls back to the raw YAML rather than erroring.
+    try:
+        parsed = yaml.safe_load(content)
+    except yaml.YAMLError:
+        parsed = None
     return {
         "config": str(state.config),
         "content": content,
+        "parsed": parsed,
         "provenance": state.config_provenance,  # None for a local file / uploaded bundle
     }, 200
 
