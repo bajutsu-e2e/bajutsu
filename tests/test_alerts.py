@@ -234,7 +234,7 @@ def test_record_guard_clears_blocking_before_agent_acts() -> None:
         return True
 
     agent = _ScriptAgent(
-        Proposal(step=Step.model_validate({"tap": {"id": "go"}})),
+        Proposal(steps=[Step.model_validate({"tap": {"id": "go"}})]),
         Proposal(done=True, expect=[]),
     )
     scenario = record_loop(
@@ -254,7 +254,7 @@ def test_record_guard_not_called_when_app_is_visible() -> None:
         return False
 
     agent = _ScriptAgent(
-        Proposal(step=Step.model_validate({"tap": {"id": "go"}})),
+        Proposal(steps=[Step.model_validate({"tap": {"id": "go"}})]),
         Proposal(done=True, expect=[]),
     )
     record_loop(

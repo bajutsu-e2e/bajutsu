@@ -26,6 +26,7 @@ from bajutsu.ai import (
     NamedTool,
     TextPart,
     ToolDef,
+    ToolUseBlock,
     create_backend,
 )
 from bajutsu.anthropic_client import AiConfig, resolve_effort, resolve_model
@@ -53,7 +54,7 @@ an empty text field exposes its placeholder like "Email" as its value), and `tra
 - add `index` (0-based, in the listed order) only when several elements still match.
 
 Use the screenshot to map the goal's wording to the right element when the text \
-differs from it (e.g. a "+" button is the increment control). You must call exactly one tool:
+differs from it (e.g. a "+" button is the increment control). Call one of these tools:
 
 - tap(id|label): tap that element.
 - tap_point(x, y): tap a screen location by NORMALIZED coordinates (0..1 from the \
@@ -81,6 +82,13 @@ or an action only a human can perform. The person authoring supplies it and the 
 resumes — you never guess.
 
 Rules:
+- Usually call ONE tool. You MAY call several action tools in one turn ONLY when each is \
+determinable from the CURRENT screen without seeing the previous action's effect — e.g. fill \
+several form fields, then tap Submit; the actions run in the order you give them. Do NOT batch \
+when a later action depends on what an earlier one reveals (a field that only appears after a \
+tap, a screen you must first navigate to): emit one action and see the next screen. If the \
+screen changes partway through a batch, the remaining actions are dropped and you re-observe — \
+so batching is safe, but only helps when the whole batch really is determinable up front.
 - Act only on elements present in the screen list; address them by their real `id` \
 or `label`. Never invent an id or a label that is not shown.
 - For a control missing from the list, choose by WHERE it is: if you can see it in the \
@@ -378,7 +386,10 @@ def _render(observation: Observation, redactor: Redactor | None = None) -> str:
         recent = observation.history[-6:]
         lines.append("Recent actions (most recent last) — do not repeat these fruitlessly:")
         lines += [f"  - {_history_line(s)}" for s in recent]
-    lines.append("Call exactly one tool: tap, tap_point, swipe, type_text, wait_for, or finish.")
+    lines.append(
+        "Call tap, tap_point, swipe, type_text, wait_for, or finish — one tool, or several "
+        "action tools together only when all are determinable from THIS screen (see the rules)."
+    )
     return "\n".join(lines)
 
 
@@ -441,21 +452,23 @@ def proposal_from_call(name: str, args: dict[str, Any]) -> Proposal:
     ps = raw_ps if isinstance(raw_ps, int) and not isinstance(raw_ps, bool) else None
     if name == "tap":
         step = {"tap": _target(args), **prov}
-        return Proposal(step=Step.model_validate(step), note=note, plan_step=ps)
+        return Proposal(steps=[Step.model_validate(step)], note=note, plan_step=ps)
     if name == "tap_point":
         point = {"tapPoint": {"x": args["x"], "y": args["y"]}, **prov}
-        return Proposal(step=Step.model_validate(point), note=note, plan_step=ps)
+        return Proposal(steps=[Step.model_validate(point)], note=note, plan_step=ps)
     if name == "swipe":
         spec: dict[str, Any] = {"on": _target(args), "direction": args["direction"]}
         if args.get("amount") is not None:
             spec["amount"] = args["amount"]
-        return Proposal(step=Step.model_validate({"swipe": spec, **prov}), note=note, plan_step=ps)
+        return Proposal(
+            steps=[Step.model_validate({"swipe": spec, **prov})], note=note, plan_step=ps
+        )
     if name == "type_text":
         step = {"type": {"into": _target(args), "text": args["text"]}, **prov}
-        return Proposal(step=Step.model_validate(step), note=note, plan_step=ps)
+        return Proposal(steps=[Step.model_validate(step)], note=note, plan_step=ps)
     if name == "wait_for":
         step = {"wait": {"for": _target(args), "timeout": args["timeout"]}, **prov}
-        return Proposal(step=Step.model_validate(step), note=note, plan_step=ps)
+        return Proposal(steps=[Step.model_validate(step)], note=note, plan_step=ps)
     if name == "finish":
         expect = [_to_assertion(a) for a in args.get("assertions", [])]
         return Proposal(done=True, expect=expect, note=note, plan_step=ps)
@@ -477,11 +490,43 @@ def steps_from_plan(raw: Any) -> list[str]:
     return [str(step).strip() for step in raw if str(step).strip()]
 
 
+def _combine(subs: list[Proposal]) -> Proposal:
+    """Fold the per-action proposals of one turn into a single batch proposal (BE-0178).
+
+    Actions are collected in order; a `finish` terminates the batch (Decision 3) — the actions
+    before it stay in `steps`, and its assertions become the batch's `expect`. A `needs_human`
+    (BE-0179) likewise terminates the batch, carrying its `human_prompt` so the loop can hand off.
+    Turn-level `note` and `plan_step` are taken from the first action (each step also carries its
+    own `from_` reason).
+    """
+    steps: list[Step] = []
+    note, plan_step = subs[0].note, subs[0].plan_step
+    for sub in subs:
+        if sub.needs_human:
+            return Proposal(
+                steps=steps,
+                needs_human=True,
+                human_prompt=sub.human_prompt,
+                note=note,
+                plan_step=plan_step,
+            )
+        if sub.done:
+            return Proposal(
+                steps=steps, done=True, expect=sub.expect, note=note, plan_step=plan_step
+            )
+        steps.extend(sub.steps)
+    return Proposal(steps=steps, note=note, plan_step=plan_step)
+
+
 def _to_proposal(response: MessageResponse) -> Proposal:
-    tool_use = response.first_tool_use()
-    if tool_use is None:
+    # Map every tool-use block in the turn to a step, in order (BE-0178) — the agent may emit
+    # several actions determinable from the current screen. A turn with no tool call is done.
+    subs = [
+        proposal_from_call(b.name, b.input) for b in response.content if isinstance(b, ToolUseBlock)
+    ]
+    if not subs:
         return Proposal(done=True, note="model returned no tool call")
-    return proposal_from_call(tool_use.name, tool_use.input)
+    return _combine(subs)
 
 
 class ClaudeAgent:

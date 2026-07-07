@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0178](BE-0178-record-multi-action-turn.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0178") |
+| Implementing PR | [#744](https://github.com/bajutsu-e2e/bajutsu/pull/744) |
 | Topic | Authoring experience (record / GUI editor) |
 <!-- /BE-METADATA -->
 
@@ -187,14 +188,35 @@ cost of a single `query()` (that is BE-0105's separate concern).
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] `Proposal` carries an ordered `steps: list[Step]` (single-action = length-1); `finish` unchanged.
-- [ ] API agent maps every tool-use block in a turn to a step (parallel tool use enabled); system prompt
-      bounds when a batch is appropriate.
-- [ ] Claude Code backend returns an ordered action list mapping to the same `Proposal.steps`.
-- [ ] Record loop executes a batch with abort-on-screen-change and abort-on-resolve-failure, recording only
-      the executed prefix.
-- [ ] Tests: loop batch/abort/prefix-recording + length-1 regression; backend multi-block mapping; scenario
+- [x] `Proposal` carries an ordered `steps: list[Step]` (single-action = length-1, exposed as a read-only
+      `step` property for callers); `finish` unchanged.
+- [x] API agent maps every tool-use block in a turn to a step (`_to_proposal` + `_combine`; parallel tool use
+      is already the Anthropic default under `tool_choice: any`, so no adapter change was needed); system
+      prompt bounds when a batch is appropriate.
+- [x] Claude Code backend returns an ordered `actions` list mapping to the same `Proposal.steps`.
+- [x] Record loop executes a batch with abort-on-transition and abort-on-resolve-failure, recording only the
+      executed prefix. The abort check uses `crawl.screen_identity` (a transition signature that ignores
+      per-element fill/enabled/selected state) rather than `crawl.fingerprint`, so a form-fill batch — the
+      motivating case — is not mistaken for a transition and actually saves model turns.
+- [x] Tests: loop batch/abort/prefix-recording + length-1 regression; backend multi-block mapping; scenario
       round-trip invariance.
+
+**Log**
+
+- [#744](https://github.com/bajutsu-e2e/bajutsu/pull/744): Implemented the batch loop end to end: `Proposal.steps`, per-turn multi-block mapping (`_combine`), the
+  Claude Code list-shaped `actions` schema, and the record loop's deterministic abort-on-transition /
+  abort-on-resolve-failure with executed-prefix recording. Added `crawl.screen_identity` (state-omitting
+  transition signature, factored to share `fingerprint`'s reduction) after finding that the literal
+  `crawl.fingerprint` would abort a form-fill batch on the first field it filled. Docs (`docs/recording.md`
+  + `docs/ja/`, `DESIGN.md`) updated; `make check` green.
+- [#744](https://github.com/bajutsu-e2e/bajutsu/pull/744): Record-UX follow-up on the same PR — before each
+  observe the loop now prints the plan step it is about to work toward (`⏭️ next — plan k/M: …`), so the
+  model round-trip is no longer a silent gap. The concrete action is still decided from the live screen; a
+  `plan_cursor` advances as the agent attributes actions to plan steps.
+- [#744](https://github.com/bajutsu-e2e/bajutsu/pull/744): Refined that narration — a multi-action turn is
+  announced (`📦 batch — K actions from one observation`), and the `plan_cursor` advances by the number of
+  actions the batch actually executed (the model labels a whole batch with one `plan_step`), so the "next"
+  hint doesn't name a step the batch already did.
 
 ## References
 

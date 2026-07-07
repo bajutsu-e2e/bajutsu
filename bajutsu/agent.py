@@ -28,9 +28,15 @@ class Observation:
 
 @dataclass
 class Proposal:
-    """The agent's next move: an action to take, done (with the goal's checks), or needs human."""
+    """The agent's next move: an ordered batch of actions, done (with the goal's checks), or needs human.
 
-    step: Step | None = None
+    `steps` is the ordered actions the agent judges executable from the *current* observation
+    without seeing the result of the earlier ones (BE-0178) — a single action is the length-1
+    case. The record loop executes them in order and aborts the moment the screen changes out
+    from under the plan, so a batch never acts on a stale screen.
+    """
+
+    steps: list[Step] = field(default_factory=list)
     done: bool = False
     expect: list[Assertion] = field(default_factory=list)
     note: str = ""
@@ -44,6 +50,11 @@ class Proposal:
     # unresolvable target) belong to the child items; this is only the outcome they raise.
     needs_human: bool = False
     human_prompt: str = ""
+
+    @property
+    def step(self) -> Step | None:
+        """The first proposed step, or None — a convenience for single-action callers."""
+        return self.steps[0] if self.steps else None
 
 
 class Agent(Protocol):

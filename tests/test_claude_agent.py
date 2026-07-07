@@ -2,10 +2,17 @@
 
 from __future__ import annotations
 
-from conftest import FakeBackend, FakeBlock
+from conftest import FakeBackend, FakeBlock, FakeUsage
 
 from bajutsu.agent import Observation
-from bajutsu.ai.base import AnyTool, ImagePart, NamedTool, TextPart
+from bajutsu.ai.base import (
+    AnyTool,
+    ImagePart,
+    MessageResponse,
+    NamedTool,
+    TextPart,
+    ToolUseBlock,
+)
 from bajutsu.claude_agent import ClaudeAgent, proposal_from_call
 from bajutsu.drivers import base
 from bajutsu.drivers.fake import FakeDriver
@@ -363,3 +370,53 @@ def test_authored_valueless_selectors_resolve_uniquely() -> None:
     assert base.resolve_unique(screen, email.type.into.as_selector())["value"] == "Email"
     assert count.label is not None
     assert base.resolve_unique(screen, count.label.sel.as_selector())["label"] == "Count: 2"
+
+
+# --- multi-action turns: several tool-use blocks map to Proposal.steps (BE-0178) ---
+
+
+class _ContentBackend:
+    """A backend returning one fixed multi-block response — a single batched turn."""
+
+    def __init__(self, *blocks: FakeBlock) -> None:
+        self._content = [ToolUseBlock(name=b.name, input=b.input) for b in blocks]
+
+    def create_message(self, request: object) -> MessageResponse:
+        return MessageResponse(content=list(self._content), usage=FakeUsage())
+
+
+def test_multiple_tool_blocks_map_to_ordered_steps() -> None:
+    backend = _ContentBackend(
+        FakeBlock("type_text", {"id": "email", "text": "a@b.co", "reason": "email"}),
+        FakeBlock("type_text", {"id": "pw", "text": "x", "reason": "password"}),
+        FakeBlock("tap", {"id": "submit", "reason": "sign in"}),
+    )
+    proposal = ClaudeAgent(backend=backend).next_action(_obs())
+    assert not proposal.done and len(proposal.steps) == 3
+    assert [s.type.into.id for s in proposal.steps if s.type] == ["email", "pw"]
+    assert proposal.steps[2].tap is not None and proposal.steps[2].tap.id == "submit"
+    # each step keeps its own reason as provenance; the turn-level note is the first action's
+    assert proposal.steps[0].from_ == "email" and proposal.note == "email"
+
+
+def test_finish_block_after_actions_keeps_preceding_steps() -> None:
+    # finish terminates the batch (Decision 3): the action before it stays, its assertions → expect.
+    backend = _ContentBackend(
+        FakeBlock("tap", {"id": "go", "reason": "go"}),
+        FakeBlock("finish", {"assertions": [{"id": "done", "check": "exists"}], "reason": "done"}),
+    )
+    proposal = ClaudeAgent(backend=backend).next_action(_obs())
+    assert proposal.done is True
+    assert len(proposal.steps) == 1 and proposal.steps[0].tap is not None
+    assert proposal.steps[0].tap.id == "go"
+    assert proposal.expect and proposal.expect[0].exists is not None
+
+
+def test_a_block_after_finish_is_dropped() -> None:
+    # finish ends the turn: any action emitted after it in the same turn is ignored.
+    backend = _ContentBackend(
+        FakeBlock("finish", {"assertions": [], "reason": "done"}),
+        FakeBlock("tap", {"id": "late", "reason": "too late"}),
+    )
+    proposal = ClaudeAgent(backend=backend).next_action(_obs())
+    assert proposal.done is True and proposal.steps == []

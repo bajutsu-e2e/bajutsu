@@ -86,7 +86,7 @@ Reporter (manifest.json + JUnit/CTRF/HTML + スクショ/録画)
 
 | コマンド | 層 | AI | ループの中身 / 合否の決め方 |
 |---|---|---|---|
-| `record` | Tier1 | 著者 | observe(`query()` + screenshot) → AI が次の 1 手を提案 → act → verify → **決定的ステップ + capturePolicy を書き出す**。AI の判断は記録時のみで、成果物は AI 非依存 |
+| `record` | Tier1 | 著者 | observe(`query()` + screenshot) → AI が現在の画面から確定できる 1 手以上のバッチを提案（BE-0178）→ 順に act。画面が遷移したら残りを中断して再観測 → verify → **決定的ステップ + capturePolicy を書き出す**。AI の判断は記録時のみで、成果物は AI 非依存 |
 | `run` | Tier2 | なし | 各ステップを act → wait(条件待機) → verify。**合否は `expect` の機械アサーションのみ**で決まる |
 | `trace` / triage | — | 調査役 | 失敗証跡を AI が読み、原因要約・修正提案（人間レビュー前提・M4） |
 
