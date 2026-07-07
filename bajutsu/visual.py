@@ -284,13 +284,22 @@ def downscale_png(data: bytes, max_long_edge: int) -> bytes:
 
     Returns:
         The downscaled PNG bytes, or *data* itself when the long edge already fits.
+
+    Raises:
+        ValueError: If *max_long_edge* is not positive.
     """
+    if max_long_edge <= 0:
+        raise ValueError(f"max_long_edge must be positive, got {max_long_edge}")
     with Image.open(io.BytesIO(data)) as img:
         w, h = img.size
         if max(w, h) <= max_long_edge:
             return data
         scale = max_long_edge / max(w, h)
-        resized = img.resize((round(w * scale), round(h * scale)), Image.Resampling.LANCZOS)
+        # Clamp to 1px: an extreme aspect ratio (e.g. 1x5000) would otherwise round the short
+        # edge to 0 and raise in `resize`.
+        resized = img.resize(
+            (max(1, round(w * scale)), max(1, round(h * scale))), Image.Resampling.LANCZOS
+        )
     buf = io.BytesIO()
     resized.save(buf, format="PNG")
     return buf.getvalue()

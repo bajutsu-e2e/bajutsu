@@ -12,6 +12,7 @@ from __future__ import annotations
 import io
 from pathlib import Path
 
+import pytest
 from PIL import Image
 
 from bajutsu.record import MAX_IMAGE_LONG_EDGE, _screenshot_bytes
@@ -19,13 +20,12 @@ from bajutsu.visual import downscale_png
 
 
 def _png(width: int, height: int) -> bytes:
-    """A synthetic PNG of the given pixel size (a gradient so it is not trivially compressible)."""
-    img = Image.new("RGB", (width, height))
-    px = img.load()
-    assert px is not None
-    for y in range(height):
-        for x in range(width):
-            px[x, y] = (x % 256, y % 256, (x + y) % 256)
+    """A synthetic PNG of the given pixel size.
+
+    Uses Pillow's C-implemented ``effect_noise`` so even a multi-megapixel image is generated
+    quickly (a pure-Python per-pixel loop would dominate the suite's runtime at these sizes).
+    """
+    img = Image.effect_noise((width, height), 100).convert("RGB")
     buf = io.BytesIO()
     img.save(buf, format="PNG")
     return buf.getvalue()
@@ -83,6 +83,17 @@ def test_output_stays_png() -> None:
     out = downscale_png(_png(3000, 2000), 1568)
     with Image.open(io.BytesIO(out)) as img:
         assert img.format == "PNG"
+
+
+def test_extreme_aspect_ratio_clamps_short_edge_to_one_pixel() -> None:
+    # A 1x5000 sliver would round the short edge to 0 without the clamp, raising in resize.
+    out = downscale_png(_png(1, 5000), 1568)
+    assert _size(out) == (1, 1568)
+
+
+def test_non_positive_cap_is_rejected() -> None:
+    with pytest.raises(ValueError, match="must be positive"):
+        downscale_png(_png(100, 100), 0)
 
 
 class _ScreenshotDriver:
