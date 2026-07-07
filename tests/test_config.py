@@ -325,22 +325,26 @@ def test_baselines_defaults_to_none() -> None:
 
 
 def test_baselines_resolution_order() -> None:
-    """_resolve_baselines_dir respects: --baselines flag > config > scenario-local default."""
-    from bajutsu.cli.commands.run import _resolve_baselines_dir
+    """_resolve_dir for baselines respects: --baselines flag > config > scenario-local default."""
+    from bajutsu.cli.commands.run import _resolve_dir
 
     eff_with = resolve(load_config("targets: { x: { bundleId: com.x, baselines: cfg/bl } }"), "x")
     eff_without = resolve(load_config("targets: { x: { bundleId: com.x } }"), "x")
     scenario_file = Path("/scenarios/app/smoke.yaml")
 
     # flag wins over everything
-    assert _resolve_baselines_dir("flag/bl", eff_with, scenario_file) == Path("flag/bl")
-    assert _resolve_baselines_dir("flag/bl", eff_without, scenario_file) == Path("flag/bl")
+    assert _resolve_dir("flag/bl", eff_with.baselines, scenario_file, "baselines") == Path(
+        "flag/bl"
+    )
+    assert _resolve_dir("flag/bl", eff_without.baselines, scenario_file, "baselines") == Path(
+        "flag/bl"
+    )
 
     # config used when no flag
-    assert _resolve_baselines_dir("", eff_with, scenario_file) == Path("cfg/bl")
+    assert _resolve_dir("", eff_with.baselines, scenario_file, "baselines") == Path("cfg/bl")
 
     # scenario-local default when neither flag nor config
-    assert _resolve_baselines_dir("", eff_without, scenario_file) == Path(
+    assert _resolve_dir("", eff_without.baselines, scenario_file, "baselines") == Path(
         "/scenarios/app/baselines"
     )
 
@@ -356,16 +360,18 @@ def test_schemas_defaults_to_none() -> None:
 
 
 def test_schemas_resolution_order() -> None:
-    """_resolve_schemas_dir respects: --schemas flag > config > scenario-local default."""
-    from bajutsu.cli.commands.run import _resolve_schemas_dir
+    """_resolve_dir for schemas respects: --schemas flag > config > scenario-local default."""
+    from bajutsu.cli.commands.run import _resolve_dir
 
     eff_with = resolve(load_config("targets: { x: { bundleId: com.x, schemas: cfg/sc } }"), "x")
     eff_without = resolve(load_config("targets: { x: { bundleId: com.x } }"), "x")
     scenario_file = Path("/scenarios/app/smoke.yaml")
 
-    assert _resolve_schemas_dir("flag/sc", eff_with, scenario_file) == Path("flag/sc")  # flag wins
-    assert _resolve_schemas_dir("", eff_with, scenario_file) == Path("cfg/sc")  # then config
-    assert _resolve_schemas_dir("", eff_without, scenario_file) == Path("/scenarios/app/schemas")
+    assert _resolve_dir("flag/sc", eff_with.schemas, scenario_file, "schemas") == Path("flag/sc")
+    assert _resolve_dir("", eff_with.schemas, scenario_file, "schemas") == Path("cfg/sc")
+    assert _resolve_dir("", eff_without.schemas, scenario_file, "schemas") == Path(
+        "/scenarios/app/schemas"
+    )
 
 
 def test_goldens_parsed() -> None:
@@ -379,22 +385,24 @@ def test_goldens_defaults_to_none() -> None:
 
 
 def test_goldens_resolution_order() -> None:
-    """_resolve_goldens_dir respects: --goldens flag > config > scenario-local default."""
-    from bajutsu.cli.commands.run import _resolve_goldens_dir
+    """_resolve_dir for goldens respects: --goldens flag > config > scenario-local default."""
+    from bajutsu.cli.commands.run import _resolve_dir
 
     eff_with = resolve(load_config("targets: { x: { bundleId: com.x, goldens: cfg/gl } }"), "x")
     eff_without = resolve(load_config("targets: { x: { bundleId: com.x } }"), "x")
     scenario_file = Path("/scenarios/app/smoke.yaml")
 
     # flag wins over everything
-    assert _resolve_goldens_dir("flag/gl", eff_with, scenario_file) == Path("flag/gl")
-    assert _resolve_goldens_dir("flag/gl", eff_without, scenario_file) == Path("flag/gl")
+    assert _resolve_dir("flag/gl", eff_with.goldens, scenario_file, "goldens") == Path("flag/gl")
+    assert _resolve_dir("flag/gl", eff_without.goldens, scenario_file, "goldens") == Path("flag/gl")
 
     # config used when no flag
-    assert _resolve_goldens_dir("", eff_with, scenario_file) == Path("cfg/gl")
+    assert _resolve_dir("", eff_with.goldens, scenario_file, "goldens") == Path("cfg/gl")
 
     # scenario-local default when neither flag nor config
-    assert _resolve_goldens_dir("", eff_without, scenario_file) == Path("/scenarios/app/goldens")
+    assert _resolve_dir("", eff_without.goldens, scenario_file, "goldens") == Path(
+        "/scenarios/app/goldens"
+    )
 
 
 def test_rebased_resolves_relative_paths_under_the_checkout_root() -> None:
