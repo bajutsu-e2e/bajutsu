@@ -289,12 +289,15 @@ def start_crawl(
     resume_src = str(body.get("resumeSrc", "") or "")
     resume_key = str(body.get("resumeKey", "") or "")
     resuming = bool(resume_src and resume_key and body.get("runId"))
+    # Parse `continue` as a strict boolean (only a literal JSON `true` counts), like the other
+    # tri-state flags, so a stray string such as "false" can't read as truthy.
+    wants_continue = _bool_flag(body, "continue") is True
     # `continue` names an existing run to pick up, so it's meaningless without a runId — reject that
     # rather than silently reinterpreting it as a fresh crawl (which would leave the user's target run
     # untouched with no error).
-    if body.get("continue") and not body.get("runId"):
+    if wants_continue and not body.get("runId"):
         return {"error": "continue requires the runId of the crawl to continue"}, 400
-    continuing = bool(body.get("continue")) and bool(body.get("runId"))
+    continuing = wants_continue and bool(body.get("runId"))
     if resuming and continuing:
         return {"error": "resume and continue are mutually exclusive"}, 400
     reuse_run = resuming or continuing

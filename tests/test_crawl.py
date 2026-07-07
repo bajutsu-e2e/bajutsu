@@ -336,6 +336,32 @@ def test_continue_skips_a_screen_whose_recorded_path_no_longer_resolves() -> Non
     assert len(continued.nodes) == 3
 
 
+def test_continue_skips_a_screen_whose_replay_lands_on_a_different_fingerprint() -> None:
+    """App drift where a recorded path still replays cleanly but now reaches a *different* screen: the
+    landed fingerprint no longer matches the planned one, so that screen must be skipped rather than
+    seeded under the stale fingerprint (which would misattribute the continuation's edges)."""
+    react, home = _three_screen_app()
+
+    def reset(d: FakeDriver) -> None:
+        d.screen = list(home)
+
+    partial = crawl.crawl(FakeDriver(screen=list(home), react=react), reset, max_steps=1)
+    # Inject a frontier entry with an empty path (so replay trivially succeeds and lands on `home`)
+    # but a fingerprint that isn't home's — modeling a screen whose identity changed under us.
+    bogus = "bogus-fingerprint"
+    partial.paths[bogus] = ()
+    partial.plan[bogus] = ["tap home.settings"]
+
+    continued = crawl.crawl(
+        FakeDriver(screen=list(home), react=react), reset, base_map=partial, max_steps=100
+    )
+    # The bogus screen was neither seeded nor attributed any edge, and the real frontier still
+    # finished: no edge claims to originate from the stale fingerprint.
+    assert bogus not in continued.nodes
+    assert not any(e.src == bogus for e in continued.edges)
+    assert len(continued.nodes) == 3
+
+
 def test_continue_that_hits_a_budget_again_reports_the_new_reason_and_keeps_a_frontier() -> None:
     """A continuation re-decides its own stop reason (it doesn't inherit the prior run's): continuing
     a map that stopped on `max_steps` with a still-too-small budget stops on `max_steps` again and

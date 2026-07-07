@@ -272,6 +272,40 @@ def test_http_crawl_continue_reuses_run_and_passes_continue_flag(tmp_path: Path)
         server.server_close()
 
 
+def test_http_crawl_continue_is_a_strict_boolean(tmp_path: Path) -> None:
+    """`continue` is parsed as a strict boolean (only a literal JSON true counts): a stray string
+    like "false" must not read as truthy and turn a request into a continuation. Here it falls
+    through to a fresh run — a new timestamp id, no --continue threaded."""
+    scn_dir, cfg, runs = project(tmp_path)
+    captured: list[list[str]] = []
+
+    def popen(cmd: list[str], **_kw: Any) -> FakeProc:
+        captured.append(cmd)
+        out_dir = Path(cmd[cmd.index("--out") + 1])
+        out_dir.mkdir(parents=True, exist_ok=True)
+        (out_dir / "screenmap.json").write_text(json.dumps(SCREENMAP), encoding="utf-8")
+        return FakeProc(["crawl\n"])
+
+    server, port = _serve(
+        srv.ServeState(scenarios_dir=scn_dir, config=cfg, runs_dir=runs, cwd=tmp_path, popen=popen)
+    )
+    try:
+        status, resp = _post(
+            port, "/api/crawl", {"target": "demo", "runId": "20260101-000000", "continue": "false"}
+        )
+        assert status == 200
+        assert resp["runId"] != "20260101-000000"  # a fresh run, not a continuation of the given id
+        for _ in range(100):
+            j = _get_json(port, "/api/jobs/" + resp["jobId"])
+            if j["status"] == "done":
+                break
+            time.sleep(0.02)
+        assert "--continue" not in captured[0]
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
 def test_http_crawl_continue_and_resume_are_mutually_exclusive(tmp_path: Path) -> None:
     # Naming both a single pruned branch and the whole frontier is contradictory (BE-0181) — the
     # endpoint rejects it before dispatching, so no crawl is spawned.

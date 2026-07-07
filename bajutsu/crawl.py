@@ -852,6 +852,13 @@ def crawl(
                 stale = True
                 continue  # the recorded path no longer resolves — skip this screen's frontier
             landed, dismissed = _observe(d)
+            if fingerprint(landed).value != fp:
+                # The path still replays but no longer lands on `fp` (the app changed under us).
+                # Screen identity is a pure function of the element tree, so a different fingerprint
+                # means a different screen; seeding `pending[fp]`/`path_to[fp]` here would later
+                # misattribute this walk's edges to the wrong source screen — treat it as stale.
+                stale = True
+                continue
             if dismissed:
                 coord.record_alert(path, dismissed)
             ops = [a for a in candidate_actions(landed) if a.describe() in remaining]
