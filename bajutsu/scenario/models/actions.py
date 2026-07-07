@@ -50,6 +50,28 @@ class Rotate(_Model):
     radians: float
 
 
+class TapPoint(_Model):
+    """`tapPoint` action — tap a screen location by normalized coordinates (0..1), not a selector.
+
+    The bottom rung of the stability ladder (DESIGN §5), for a control the accessibility tree does
+    not expose as an addressable element — most notably a tab-bar tab on an app with no accessibility
+    ids, which `idb` collapses into one opaque group. `record`'s agent locates it in the screenshot
+    and emits its center here; `run` replays it against the current screen size. `x`/`y` are fractions
+    of the app window (top-left origin), so the tap survives a resolution change a raw-pixel tap would
+    not — but it is still coordinate-based and unverifiable by selector, so prefer a real selector
+    whenever the element is addressable.
+    """
+
+    x: float
+    y: float
+
+    @model_validator(mode="after")
+    def _in_unit_square(self) -> Self:
+        if not (0.0 <= self.x <= 1.0 and 0.0 <= self.y <= 1.0):
+            raise ValueError("tapPoint x/y are normalized fractions and must be within 0..1 (§6.2)")
+        return self
+
+
 class TypeText(_Model):
     """`type` action — enter text, optionally into a selector and optionally submitting after."""
 
@@ -59,10 +81,16 @@ class TypeText(_Model):
 
 
 class Swipe(_Model):
-    """`swipe` action — by `direction` on an element (`on`), or between two points (`from`/`to`)."""
+    """`swipe` action — by `direction` on an element (`on`), or between two points (`from`/`to`).
+
+    `amount` (only with `on`/`direction`) sets how far to travel as a fraction of the screen
+    (0 < amount ≤ 1): ~0.2 nudges, ~0.5 scrolls half a screen, ~0.9 nearly a full one. Omitted, a
+    small default distance is used — so the caller can dial the scroll to the instruction.
+    """
 
     on: Selector | None = None
     direction: Literal["up", "down", "left", "right"] | None = None
+    amount: float | None = None
     from_: Point | None = Field(default=None, alias="from")
     to: Point | None = None
 
@@ -72,8 +100,14 @@ class Swipe(_Model):
         pt_fields = self.from_ is not None or self.to is not None
         if sel_fields and pt_fields:
             raise ValueError("swipe cannot mix {on,direction} with {from,to} (§6.2)")
+        if self.amount is not None and not (0.0 < self.amount <= 1.0):
+            raise ValueError(
+                "swipe amount is a fraction of the screen and must be within 0..1 (§6.2)"
+            )
         if self.on is not None and self.direction is not None:
             return self
+        if self.amount is not None:
+            raise ValueError("swipe amount applies only to the {on,direction} form (§6.2)")
         if self.from_ is not None and self.to is not None:
             return self
         raise ValueError("swipe requires either {on,direction} or {from,to} completely (§6.2)")

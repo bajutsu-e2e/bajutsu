@@ -313,8 +313,10 @@ def test_record_writes_the_authored_scenario(
     )
     assert r.exit_code == 0
     assert "recorded 1 steps" in r.output
-    # record announces the resolved AI provider up front (here the default, api-key).
-    assert "AI provider: api-key" in r.output
+    # record announces the resolved AI provider, model, and effort up front (here the defaults).
+    assert "AI: api-key" in r.output
+    assert "model claude-opus-4-8" in r.output
+    assert "effort default" in r.output
     assert out.is_file() and "name: authored" in out.read_text(encoding="utf-8")
 
 

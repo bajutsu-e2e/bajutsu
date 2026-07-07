@@ -121,6 +121,7 @@ StepMods  ::= { capture?: list(<CaptureToken>), extract?: map(string, <Extract>)
 Extract   ::= { sel: <Selector>, prop?: ("value"|"label"|"identifier") }   # default "value"
 Action    ::=
     { tap:         <Selector> }
+  | { tapPoint:    { x: number, y: number } }   # normalized 0..1 (top-left origin); vision fallback for a control absent from the tree (e.g. a no-id tab-bar tab)
   | { doubleTap:   <Selector> }
   | { longPress:   { sel: <Selector>, duration: number } }
   | { type:        { text: string, into?: <Selector>, submit?: boolean } }   # submit default false
@@ -148,8 +149,9 @@ If ::= { condition: <Assertion>, then: list(<Step>), else?: list(<Step>) }
 ForEach ::= { sel: <Selector>, as: string, steps: list(<Step>) }
 
 Swipe ::=
-    { on: <Selector>, direction: ("up"|"down"|"left"|"right") }   # selector form  ┐ XOR
-  | { from: <Point>,  to: <Point> }                               # coordinate form ┘
+    { on: <Selector>, direction: ("up"|"down"|"left"|"right"), amount?: number }   # selector form  ┐ XOR
+  | { from: <Point>,  to: <Point> }                                                # coordinate form ┘
+    # amount (selector form only): travel as a fraction of the screen, 0 < amount ≤ 1; omitted = a small default nudge
 Point ::= [ number, number ]
 
 # ── Selector (≥1 field; provided fields are AND-ed) ────────────────────

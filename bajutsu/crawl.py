@@ -34,7 +34,7 @@ from typing import Any
 
 from bajutsu import simctl
 from bajutsu.drivers import base
-from bajutsu.elements import shows_app_ui
+from bajutsu.elements import screen_size_from_elements, shows_app_ui
 
 # Controls a tap drives forward: navigation / activation, toggling a switch, or switching tabs.
 TAP_TRAITS = frozenset({"button", "link", "switch", "tab"})
@@ -156,7 +156,7 @@ class Action:
                 driver.type_text(val)
             return
         if self.kind == "tap_point" and self.point is not None:
-            w, h = _screen_size(driver)
+            w, h = screen_size_from_elements(driver.query())
             driver.tap_point((self.point[0] * w, self.point[1] * h))
             return
         driver.tap(self.as_selector())
@@ -289,12 +289,6 @@ OnEvent = Callable[[ScreenMap], None]
 # parallel crawl screenshots each screen on whichever simulator discovered it. Pure observation,
 # like `OnEvent`.
 OnNode = Callable[[base.Driver, "Node"], None]
-
-
-def _screen_size(driver: base.Driver) -> tuple[float, float]:
-    """Full-screen size in points (the largest element frame), the basis a normalized [0,1] coordinate replays against regardless of pixel scale."""
-    frames = [f for el in driver.query() if (f := el.get("frame"))]
-    return (max((f[2] for f in frames), default=0.0), max((f[3] for f in frames), default=0.0))
 
 
 def _id_of(element: base.Element) -> str | None:

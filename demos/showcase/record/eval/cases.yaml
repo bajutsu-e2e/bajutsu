@@ -1,0 +1,56 @@
+# Representative `record` evaluation cases for the showcase `-noax` apps (no accessibility ids).
+#
+# Each case is a natural-language goal (as a human would hand `bajutsu record`) plus the ordered
+# operations the recording must contain to be "correct". `run_eval.py` drives real `record` against
+# `showcase-swiftui-noax` (or `showcase-uikit-noax`) once or K times, and `grade.py` scores each
+# recording structurally against the `expect` list below. See README.md for the grading rules.
+#
+# The goals are in Japanese, matching demos/showcase/record/goals.txt (the real Claude agent reads
+# Japanese here). `expect` targets are accepted *text fragments* (any-of, case-insensitive) matched
+# against the recorded selector's id / label / value — so a tab switch or row tap that `record`
+# could only place by coordinate (no readable target) grades COORD (unverifiable), not a pass.
+#
+# The interaction classes are chosen to span the showcase surface (SPEC.md §5): list → push nav,
+# a form text field, a button-backed control, and a multi-tap + clipboard round-trip.
+
+- id: nav-favorite
+  goal: >-
+    Stable の一覧から馬を 1 頭タップして詳細画面を開き、Favorite をオンにして、
+    お気に入りがオンになったことを確認してください。
+  # Stable catalog row → Horse Detail (push) → toggle Favorite → assert the on-state (SPEC §5.1).
+  expect:
+    - tap: ["Horse", "馬", "stable.row"]
+    - tap: ["Favorite", "お気に入り", "favorite"]
+    - assert: ["on", "Favorited", "オン", "favorite"]
+
+- id: log-note-submit
+  goal: >-
+    Log タブを開き、メモ欄に「morning ride」と入力してから Submit をタップし、
+    ログが記録されたことを確認してください。
+  # Tab switch → multiline text entry → submit (POST) → assert the entry landed (SPEC §5.3).
+  expect:
+    - tap: ["Log", "ログ", "log"]
+    - type: { text: "morning ride", into: ["note", "メモ", "Note"] }
+    - tap: ["Submit", "送信", "submit"]
+    - assert: ["morning ride", "Logged", "done", "log.row", "log.toast"]
+
+- id: log-segment
+  goal: >-
+    Log タブを開き、セグメントコントロールで「two」を選択して、
+    選択が two になっていることを確認してください。
+  # A button-backed segmented control (SPEC §5.3): select the second segment, assert the choice.
+  expect:
+    - tap: ["Log", "ログ", "log"]
+    - tap: ["two", "2", "segment.two"]
+    - assert: ["two", "segment"]
+
+- id: pasteboard-roundtrip
+  goal: >-
+    Permissions タブを開き、Copy をタップしてから Paste をタップして、
+    貼り付けられた文字列が表示されることを確認してください。
+  # System section pasteboard round-trip (SPEC §5.4): copy writes a known string, paste reads it back.
+  expect:
+    - tap: ["Permissions", "権限", "perm"]
+    - tap: ["Copy", "コピー", "sys.copy"]
+    - tap: ["Paste", "ペースト", "貼り", "sys.paste"]
+    - assert: ["bajutsu-clip", "paste"]

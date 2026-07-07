@@ -34,6 +34,7 @@ from bajutsu.scenario.models.actions import (
     SetClipboard,
     SetLocation,
     Swipe,
+    TapPoint,
     Totp,
     TypeText,
 )
@@ -97,6 +98,7 @@ class Step(_Model):
     """One action plus optional modifiers (capture / name / extract)."""
 
     tap: Selector | None = None
+    tap_point: TapPoint | None = Field(default=None, alias="tapPoint")
     double_tap: Selector | None = Field(default=None, alias="doubleTap")
     long_press: LongPress | None = Field(default=None, alias="longPress")
     type: TypeText | None = None

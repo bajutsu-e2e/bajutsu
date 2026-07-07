@@ -48,9 +48,13 @@ CLI_MISSING = "claude-code-cli-missing"
 # the vision transport, and only scoped to the per-call scratch directory via `--add-dir`.
 _DENY = ("Bash", "Write", "Edit", "NotebookEdit", "Glob", "Grep", "WebFetch", "WebSearch", "Task")
 
-# A runner takes the argv, the working directory, and the prompt (fed on stdin) and returns the CLI's
-# stdout. Injectable for tests.
-Runner = Callable[[list[str], str, str], str]
+# A runner takes the argv, the working directory, the prompt (fed on stdin), and a wall-clock
+# timeout, and returns the CLI's stdout. Injectable for tests.
+Runner = Callable[..., str]
+
+# Default per-call wall-clock cap. A best-effort call (the up-front plan) overrides it with a short
+# value via MessageRequest.timeout_s, so a hung CLI fails fast instead of blocking the whole run.
+_DEFAULT_TIMEOUT = 180.0
 
 
 def _forced_tool(request: MessageRequest) -> ToolDef | None:
@@ -173,6 +177,8 @@ def _command(
         "--permission-mode",
         "default",
     ]
+    if request.effort:
+        cmd += ["--effort", request.effort]  # reasoning-effort level, when the caller set one
     deny = list(_DENY)
     if image:
         cmd += ["--add-dir", scratch, "--allowedTools", "Read"]
@@ -182,14 +188,66 @@ def _command(
     return cmd
 
 
+# Env vars that would route the CLI to a specific model backend or billing identity. The adapter is
+# defined to use the CLI's own subscription login (BE-0176), so these are stripped from the child —
+# otherwise a backend configuration inherited from the ambient environment silently takes over. The
+# Claude desktop app, for one, exports a full Amazon Bedrock setup (`CLAUDE_CODE_USE_BEDROCK`,
+# `AWS_PROFILE`, a Bedrock model ARN in `ANTHROPIC_MODEL`); a `make serve` launched from it inherits
+# that, so `record` ran against Bedrock — and, off-cloud, hung in AWS credential resolution (a
+# provider-chain fallback probes the metadata endpoint 169.254.169.254, whose TCP connect sits in
+# SYN_SENT for the ~75s OS connect timeout). Stripping them keeps the adapter on the subscription
+# login regardless of what the environment was configured for.
+_ROUTING_ENV = (
+    "ANTHROPIC_API_KEY",  # forces API billing instead of the subscription login
+    "ANTHROPIC_AUTH_TOKEN",  # a custom bearer token
+    "ANTHROPIC_MODEL",  # a Bedrock/Vertex model id or ARN that would override --model
+    "ANTHROPIC_SMALL_FAST_MODEL",
+    "CLAUDE_CODE_USE_BEDROCK",  # → Amazon Bedrock
+    "CLAUDE_CODE_USE_VERTEX",  # → Google Vertex
+    "AWS_PROFILE",
+    "AWS_REGION",
+    "AWS_DEFAULT_REGION",
+    "AWS_ACCESS_KEY_ID",
+    "AWS_SECRET_ACCESS_KEY",
+    "AWS_SESSION_TOKEN",
+    "AWS_BEARER_TOKEN_BEDROCK",
+    "AWS_CONFIG_FILE",
+    "AWS_SHARED_CREDENTIALS_FILE",
+    "ANTHROPIC_VERTEX_PROJECT_ID",
+    "CLOUD_ML_REGION",
+    "GOOGLE_APPLICATION_CREDENTIALS",
+)
+
+
+def auth_summary() -> str:
+    """One line naming how the child `claude -p` authenticates — shown before a record.
+
+    The claude-code provider always uses the CLI's own subscription login: the adapter drives the
+    CLI purely from Bajutsu's configured provider, never from the ambient environment's backend
+    routing (see `_ROUTING_ENV`), so this is a fixed statement of that mode.
+    """
+    return "Claude Code CLI subscription login (Pro/Max/Console)"
+
+
 def _child_env() -> dict[str, str]:
-    """The child env with `ANTHROPIC_API_KEY` removed, so billing uses the CLI's subscription token."""
+    """The child env for `claude -p`: force the CLI's own subscription login.
+
+    Every backend-routing / billing-identity variable in `_ROUTING_ENV` is dropped so the CLI falls
+    back to its own stored subscription login (Pro / Max / Console) rather than an inherited Bedrock /
+    Vertex / API-key configuration — see that constant for why (the Claude desktop app's Bedrock env
+    leaking in froze `record` in off-cloud AWS credential resolution). With the AWS routing stripped
+    the SDK does no credential resolution at all, so the metadata (IMDS 169.254.169.254) probe that
+    hung the call cannot fire — disabling it separately is unnecessary.
+    """
     env = dict(os.environ)
-    env.pop("ANTHROPIC_API_KEY", None)
+    for var in _ROUTING_ENV:
+        env.pop(var, None)
     return env
 
 
-def _default_runner(cmd: list[str], cwd: str, prompt: str) -> str:
+def _default_runner(
+    cmd: list[str], cwd: str, prompt: str, timeout: float = _DEFAULT_TIMEOUT
+) -> str:
     try:
         result = subprocess.run(
             cmd,
@@ -198,13 +256,17 @@ def _default_runner(cmd: list[str], cwd: str, prompt: str) -> str:
             text=True,
             cwd=cwd,
             env=_child_env(),
-            timeout=180,
+            timeout=timeout,
         )
     except FileNotFoundError as exc:
         raise RuntimeError(
             "`claude` CLI not found — install Claude Code, or switch ai.provider to api-key / "
             "bedrock / ant."
         ) from exc
+    except subprocess.TimeoutExpired as exc:
+        # The CLI occasionally hangs; subprocess.run has already killed it. Surface a clear, bounded
+        # error so a best-effort caller (the plan) can proceed rather than block on the long default.
+        raise RuntimeError(f"claude -p timed out after {timeout:g}s") from exc
     if result.returncode != 0:
         # A CLI error (e.g. an auth 401) is reported in the stdout JSON envelope's `result`, with
         # stderr often empty — surface stdout as the fallback so the failure is actionable.
@@ -262,7 +324,9 @@ class ClaudeCodeBackend:
         try:
             prompt, image = _prompt_and_images(request, scratch)
             cmd = _command(request, schema, note, str(scratch), image)
-            stdout = self._runner(cmd, str(scratch), prompt)
+            stdout = self._runner(
+                cmd, str(scratch), prompt, timeout=request.timeout_s or _DEFAULT_TIMEOUT
+            )
         finally:
             shutil.rmtree(scratch, ignore_errors=True)
         return _response(stdout, forced_name)

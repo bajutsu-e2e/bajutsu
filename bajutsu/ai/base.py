@@ -90,6 +90,12 @@ class MessageRequest:
     tool_choice: ToolChoice
     model: str
     max_tokens: int
+    # Reasoning-effort level (low/medium/high/xhigh/max) for backends that support it — the
+    # `claude-code` CLI does (`--effort`); the SDK adapters have no such knob and ignore it.
+    effort: str | None = None
+    # Wall-clock cap (seconds) for this one call, or None for the backend default. A best-effort call
+    # (e.g. the up-front plan) sets a short cap so a hung CLI fails fast instead of blocking the run.
+    timeout_s: float | None = None
 
 
 @dataclass(frozen=True)

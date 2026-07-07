@@ -7,6 +7,7 @@
     launchEnv: { SHOWCASE_UITEST: "1", SHOWCASE_TAB: stable }
   steps:
     - wait: { for: { id: stable.row.1 }, timeout: 10 }
+      capture: [video]
     - setLocation: { lat: 35.681, lon: 139.767 }
     - push: { payload: { aps: { alert: "You have a new message" } } }
   expect:

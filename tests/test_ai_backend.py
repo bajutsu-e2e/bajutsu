@@ -172,7 +172,14 @@ def test_tool_use_loop_drives_the_neutral_interface(fake_provider: RecordingBack
     request = fake_provider.requests[0]
     assert isinstance(request, MessageRequest)
     assert isinstance(request.tool_choice, AnyTool)
-    assert {t.name for t in request.tools} == {"tap", "type_text", "wait_for", "finish"}
+    assert {t.name for t in request.tools} == {
+        "tap",
+        "tap_point",
+        "swipe",
+        "type_text",
+        "wait_for",
+        "finish",
+    }
     assert all(isinstance(t, ToolDef) for t in request.tools)
 
 

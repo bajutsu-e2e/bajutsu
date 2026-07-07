@@ -31,6 +31,7 @@ from bajutsu.ai import (
 )
 from bajutsu.anthropic_client import AiConfig, resolve_model
 from bajutsu.drivers import base
+from bajutsu.elements import screen_size_from_elements
 from bajutsu.orchestrator import AlertEvent
 from bajutsu.record import _screenshot_bytes
 from bajutsu.redaction import Redactor
@@ -52,18 +53,6 @@ class AlertLocator(Protocol):
     """Given a screenshot, decide whether a blocking prompt is up and where to tap."""
 
     def locate(self, screenshot_png: bytes, instruction: str | None) -> AlertDecision: ...
-
-
-def _screen_points(driver: base.Driver) -> base.Point:
-    """Full-screen size in points = the largest element frame (the app window).
-
-    Even when a SpringBoard alert collapses the tree to one node, that node is the
-    app window and its frame spans the whole screen in point space.
-    """
-    frames = [el["frame"] for el in driver.query()]
-    width = max((f[2] for f in frames), default=0.0)
-    height = max((f[3] for f in frames), default=0.0)
-    return (width, height)
 
 
 class SystemAlertGuard:
@@ -88,7 +77,7 @@ class SystemAlertGuard:
             return None  # best-effort: the guard is on by default, so it must never crash a run
         if not decision.present:
             return None
-        width, height = _screen_points(driver)
+        width, height = screen_size_from_elements(driver.query())
         if width <= 0 or height <= 0:
             return None
         driver.tap_point((decision.x * width, decision.y * height))

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import logging
 import tempfile
+import time
 from collections.abc import Callable
 from pathlib import Path
 
@@ -23,6 +24,14 @@ _logger = logging.getLogger(__name__)
 
 # A live-progress sink: each turn's decision is handed to it as a one-line string.
 Reporter = Callable[[str], None]
+
+
+def _format_elapsed(seconds: float) -> str:
+    """Wall-clock duration as a compact string — `13.4s`, or `2m 03s` past a minute."""
+    if seconds < 60:
+        return f"{seconds:.1f}s"
+    minutes, secs = divmod(int(seconds), 60)
+    return f"{minutes}m {secs:02d}s"
 
 
 def _describe_selector(sel: Selector | None) -> str:
@@ -47,11 +56,34 @@ def _describe_step(step: Step) -> str:
     """A one-line summary of a proposed step, for live record output."""
     if step.tap is not None:
         return f"tap {_describe_selector(step.tap)}"
+    if step.tap_point is not None:
+        return f"tap point ({step.tap_point.x:.2f}, {step.tap_point.y:.2f}) [located in screenshot]"
+    if step.swipe is not None and step.swipe.direction is not None:
+        extent = f" {step.swipe.amount:.0%}" if step.swipe.amount is not None else ""
+        return f"swipe {step.swipe.direction}{extent} on {_describe_selector(step.swipe.on)}"
     if step.type is not None:
         return f"type {step.type.text!r} into {_describe_selector(step.type.into)}"
     if step.wait is not None:
         return f"wait for {_describe_selector(step.wait.for_)}"
     return next((f for f in step.model_dump(exclude_none=True)), "step")
+
+
+def _is_looping(signatures: list[str]) -> bool:
+    """Whether the recorded steps show the agent stuck rather than progressing.
+
+    Two deterministic patterns (no model — this must never gate on an LLM): the same action three
+    times running, or a two-step A,B,A,B oscillation (the classic open-modal / close-modal cycle the
+    agent falls into when a control it wants isn't where it expects). Stopping on either turns a
+    silent, expensive spin (dozens of model calls) into an actionable, bounded outcome.
+    """
+    if len(signatures) >= 3 and signatures[-1] == signatures[-2] == signatures[-3]:
+        return True
+    return (
+        len(signatures) >= 4
+        and signatures[-1] == signatures[-3]
+        and signatures[-2] == signatures[-4]
+        and signatures[-1] != signatures[-2]
+    )
 
 
 def _mask_secrets(text: str, secret_tokens: list[tuple[str, str]]) -> tuple[str, list[str]]:
@@ -262,6 +294,7 @@ def record(
     with_screenshot: bool = True,
     alert_guard: BlockedHandler | None = None,
     secret_tokens: list[tuple[str, str]] | None = None,
+    capture_video: bool = False,
     report: Reporter | None = None,
 ) -> Scenario:
     """Explore toward `goal` with `agent`, returning the recorded scenario.
@@ -276,11 +309,16 @@ def record(
     literal (BE-0120); the app is still driven with the real value so the authenticated screen is
     reached. Empty/None records every value verbatim.
 
+    If `capture_video` is set, the recorded scenario requests a scenario-wide screen video
+    (`capture: [video]` on its first step) so a replay records the run — enabled for mobile
+    (iOS-simulator) targets, where the recording is a `simctl` interval (BE-0028).
+
     If `report` is given, each turn's decision (the agent's proposed action and reason)
     is streamed to it as a one-line string, so a caller can show progress live.
     """
     clock = clock or RealClock()
     say = report or (lambda _msg: None)
+    started = time.monotonic()  # wall-clock: how long the author actually waited (model + device)
     steps: list[Step] = []
     expect: list[Assertion] = []
     plan = _plan_goal(agent, goal, say)
@@ -312,13 +350,16 @@ def record(
         )  # single-threaded record loop → this turn's tokens exactly
         if spent.total_tokens:
             say(f"[{n}] \U0001f916 agent replied · {spent.total_tokens:,} tokens")
-        if proposal.note:  # the agent's reasoning for this turn, shown before the action it chose
-            # Mask any secret the agent's free-text reasoning echoed, so the live progress stream
-            # never carries a literal either — not just the recorded step text (BE-0120).
-            note, _ = _mask_secrets(proposal.note, secret_tokens or [])
-            say(f"[{n}] \U0001f4ad {note}")
+        # One line per step: which plan step it advances, the intent (what it is trying to do), and
+        # the concrete action, together. The reasoning is masked first so the live stream never
+        # carries a secret literal (BE-0120).
+        intent = _mask_secrets(proposal.note, secret_tokens or [])[0] if proposal.note else ""
+        plan_tag = (
+            f"(plan {proposal.plan_step}/{len(plan)}) " if proposal.plan_step and plan else ""
+        )
+        lead = f"[{n}] {plan_tag}\U0001f4ad {intent}  →  " if intent else f"[{n}] {plan_tag}→ "
         if proposal.done:
-            say(f"[{n}] ✓ finish · {len(proposal.expect)} assertion(s)")
+            say(f"{lead}✓ finish · {len(proposal.expect)} assertion(s)")
             expect = proposal.expect
             settle = _settle_step(expect)
             if settle is not None:
@@ -331,14 +372,32 @@ def record(
         # scenario nor the live progress stream ever carries the literal (BE-0120) — but execute
         # the agent's unmodified proposal, since the app needs the real value to reach its screen.
         recorded_step, tokenized = _tokenize_secrets(proposal.step, secret_tokens or [])
-        say(f"[{n}] → {_describe_step(recorded_step)}")
+        say(f"{lead}{_describe_step(recorded_step)}")
         if tokenized:
             say(f"[{n}] \U0001f512 tokenized secret in typed text → {', '.join(tokenized)}")
         if not _execute_with_recovery(driver, proposal.step, clock, alert_guard, report=report):
             say(f"[{n}] ! could not resolve that target on the live screen; stopping")
             break  # the proposed action did not resolve, even after clearing prompts
         steps.append(recorded_step)
+        if _is_looping([_describe_step(s) for s in steps]):
+            say(
+                f"[{n}] ⟳ the agent is repeating actions without progress; stopping "
+                "(refine the goal, or the app may need accessibility ids for this control)"
+            )
+            break
 
+    # Report wall-clock duration on every exit path (finish, stop, max_steps) so the console — and
+    # the serve progress pane, which both stream `say` — always show how long authoring took.
+    say(
+        f"⏱  record finished in {_format_elapsed(time.monotonic() - started)} · {len(steps)} step(s)"
+    )
+    if capture_video and steps:
+        # A single step's inline `capture` starts the scenario-wide interval (requested_intervals),
+        # so tag the first step — the whole replay is then recorded, not just one action's window.
+        first = steps[0]
+        kinds = list(first.capture or [])
+        if "video" not in kinds:
+            steps[0] = first.model_copy(update={"capture": [*kinds, "video"]})
     scenario = Scenario(name=name, steps=steps, expect=expect)
     # The goal is the scenario-level provenance (BE-0044): the natural language this whole scenario
     # was authored from. Set by attribute since the field's `from` alias is a Python keyword.

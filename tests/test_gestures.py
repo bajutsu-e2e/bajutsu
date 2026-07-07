@@ -71,6 +71,43 @@ def test_orchestrator_dispatches_gestures() -> None:
     assert kinds == ["double_tap", "pinch", "rotate"]
 
 
+# --- swipe amount: how far a directional scroll travels ---
+
+
+def _swipe_travel(spec: str) -> float:
+    """Run a swipe step against a 400x800 fake screen and return its vertical travel in points."""
+    win: base.Element = {"identifier": None, "label": None, "traits": ["application"], "value": None,
+                         "frame": (0.0, 0.0, 400.0, 800.0)}  # fmt: skip
+    lst: base.Element = {"identifier": None, "label": "list", "traits": ["table"], "value": None,
+                         "frame": (0.0, 300.0, 400.0, 200.0)}  # fmt: skip
+    driver = FakeDriver(screen=[win, lst])
+    result = run_scenario(driver, load_scenarios(f"- name: s\n  steps:\n    - {spec}\n")[0])
+    assert result.ok, result.failure
+    frm, to = next(arg for kind, arg in driver.actions if kind == "swipe")
+    return abs(frm[1] - to[1])
+
+
+def test_swipe_amount_scales_scroll_distance() -> None:
+    default = _swipe_travel("swipe: { on: { label: list }, direction: up }")
+    half = _swipe_travel("swipe: { on: { label: list }, direction: up, amount: 0.5 }")
+    assert default == 100.0  # the small default nudge
+    assert half == 400.0 and half > default  # 0.5 of the 800pt screen height
+
+
+def test_swipe_amount_must_be_a_screen_fraction() -> None:
+    with pytest.raises(ValueError, match=r"within 0"):
+        load_scenarios(
+            "- name: s\n  steps:\n    - swipe: { on: { id: a }, direction: up, amount: 2 }\n"
+        )
+
+
+def test_swipe_amount_only_with_direction_form() -> None:
+    with pytest.raises(ValueError, match="amount applies only"):
+        load_scenarios(
+            "- name: s\n  steps:\n    - swipe: { from: [0, 0], to: [0, 10], amount: 0.5 }\n"
+        )
+
+
 # --- Capability gating: a single-touch actuator declines pinch / rotate ---
 
 

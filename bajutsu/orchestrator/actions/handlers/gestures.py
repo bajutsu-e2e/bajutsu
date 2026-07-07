@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 from bajutsu.drivers import base
+from bajutsu.elements import screen_size_from_elements
 from bajutsu.orchestrator.actions._registry import _handler
 from bajutsu.scenario import Step
 
-_SWIPE_DIST = 100.0
+_SWIPE_DIST = 100.0  # default travel in points when `amount` isn't given (a small nudge)
+_SWIPE_MARGIN = 4.0  # keep both gesture endpoints this far inside the screen edges
 
 
 def _center(frame: base.Frame) -> base.Point:
@@ -14,15 +16,27 @@ def _center(frame: base.Frame) -> base.Point:
     return (x + w / 2, y + h / 2)
 
 
-def _target(center: base.Point, direction: str) -> base.Point:
+def _scroll_gesture(
+    center: base.Point, direction: str, amount: float | None, screen: base.Point
+) -> tuple[base.Point, base.Point]:
+    """The (from, to) points for a directional swipe that travels `amount` of the screen.
+
+    `amount` is a fraction of the screen (height for up/down, width for left/right); ``None`` uses
+    the default nudge. The travel segment of that length is centered on `center` but slid to stay
+    within the screen (capped at the on-screen maximum), and oriented so `up`/`left` scroll content
+    toward the smaller coordinate — so a bigger `amount` scrolls proportionally further.
+    """
     cx, cy = center
-    if direction == "up":
-        return (cx, cy - _SWIPE_DIST)
-    if direction == "down":
-        return (cx, cy + _SWIPE_DIST)
-    if direction == "left":
-        return (cx - _SWIPE_DIST, cy)
-    return (cx + _SWIPE_DIST, cy)  # right
+    sw, sh = screen
+    vertical = direction in ("up", "down")
+    dim = sh if vertical else sw
+    dist = amount * dim if amount is not None else _SWIPE_DIST
+    span = min(dist, max(0.0, dim - 2 * _SWIPE_MARGIN))
+    anchor = cy if vertical else cx
+    lo = min(max(anchor - span / 2, _SWIPE_MARGIN), dim - _SWIPE_MARGIN - span)
+    hi = lo + span
+    start, end = (hi, lo) if direction in ("up", "left") else (lo, hi)
+    return ((cx, start), (cx, end)) if vertical else ((start, cy), (end, cy))
 
 
 def _require_multi_touch(driver: base.Driver, action: str) -> None:
@@ -38,6 +52,15 @@ def _require_multi_touch(driver: base.Driver, action: str) -> None:
 def _do_tap(driver: base.Driver, step: Step, _r: object, _c: object, _b: object) -> None:
     assert step.tap is not None
     driver.tap(step.tap.as_selector())
+
+
+@_handler("tap_point")
+def _do_tap_point(driver: base.Driver, step: Step, _r: object, _c: object, _b: object) -> None:
+    assert step.tap_point is not None
+    # Scale the normalized [0,1] point by the live screen size — the same helper the crawl and the
+    # alert guard use, so every coordinate tap replays against one screen-size definition.
+    w, h = screen_size_from_elements(driver.query())
+    driver.tap_point((step.tap_point.x * w, step.tap_point.y * h))
 
 
 @_handler("double_tap")
@@ -67,9 +90,12 @@ def _do_swipe(driver: base.Driver, step: Step, _r: object, _c: object, _b: objec
     if sw.from_ is not None and sw.to is not None:
         driver.swipe(sw.from_, sw.to)
     elif sw.on is not None and sw.direction is not None:
-        el = base.resolve_unique(driver.query(), sw.on.as_selector())
-        center = _center(el["frame"])
-        driver.swipe(center, _target(center, sw.direction))
+        elements = driver.query()
+        el = base.resolve_unique(elements, sw.on.as_selector())
+        frm, to = _scroll_gesture(
+            _center(el["frame"]), sw.direction, sw.amount, screen_size_from_elements(elements)
+        )
+        driver.swipe(frm, to)
 
 
 @_handler("pinch")

@@ -39,6 +39,8 @@ def _request(
     tools: list[ToolDef] | None = None,
     tool_choice: ToolChoice = _ANY,
     image: bytes | None = None,
+    effort: str | None = None,
+    timeout_s: float | None = None,
 ) -> MessageRequest:
     content: list[Any] = []
     if image is not None:
@@ -51,7 +53,29 @@ def _request(
         tool_choice=tool_choice,
         model="claude-opus-4-8",
         max_tokens=256,
+        effort=effort,
+        timeout_s=timeout_s,
     )
+
+
+def test_backend_forwards_request_timeout_to_the_runner() -> None:
+    runner = FakeRunner(_envelope({"k": 1}))
+    claude_code.ClaudeCodeBackend(runner=runner).create_message(_request(timeout_s=42))
+    assert runner.timeout == 42
+
+
+def test_backend_uses_the_default_timeout_when_unset() -> None:
+    runner = FakeRunner(_envelope({"k": 1}))
+    claude_code.ClaudeCodeBackend(runner=runner).create_message(_request())
+    assert runner.timeout == claude_code._DEFAULT_TIMEOUT
+
+
+def test_command_passes_effort_only_when_set() -> None:
+    schema = {"type": "object"}
+    with_effort = claude_code._command(_request(effort="high"), schema, "note", "/tmp/s", False)
+    assert "--effort" in with_effort and _flag(with_effort, "--effort") == "high"
+    without = claude_code._command(_request(), schema, "note", "/tmp/s", False)
+    assert "--effort" not in without
 
 
 class FakeRunner:
@@ -64,8 +88,8 @@ class FakeRunner:
         self.cwd: str = ""
         self.prompt: str = ""
 
-    def __call__(self, cmd: list[str], cwd: str, prompt: str) -> str:
-        self.cmd, self.cwd, self.prompt = cmd, cwd, prompt
+    def __call__(self, cmd: list[str], cwd: str, prompt: str, timeout: float | None = None) -> str:
+        self.cmd, self.cwd, self.prompt, self.timeout = cmd, cwd, prompt, timeout
         if self._probe is not None:
             self._probe(cmd, cwd)
         return self._stdout
@@ -148,7 +172,7 @@ def test_no_tools_offered_raises() -> None:
 
 
 def test_non_object_json_envelope_raises() -> None:
-    def a_list(cmd: list[str], cwd: str, prompt: str) -> str:
+    def a_list(cmd: list[str], cwd: str, prompt: str, timeout: float | None = None) -> str:
         return "[1, 2, 3]"  # valid JSON, but not the object envelope the CLI documents
 
     with pytest.raises(RuntimeError, match="non-object JSON"):
@@ -222,7 +246,7 @@ def test_usage_passes_through_and_is_error_and_non_json_raise() -> None:
             _request(tool_choice=NamedTool(name="do"))
         )
 
-    def junk(cmd: list[str], cwd: str, prompt: str) -> str:
+    def junk(cmd: list[str], cwd: str, prompt: str, timeout: float | None = None) -> str:
         return "not json"
 
     with pytest.raises(RuntimeError, match="non-JSON"):
@@ -237,3 +261,21 @@ def test_child_env_strips_the_api_key(monkeypatch: Any) -> None:
     env = claude_code._child_env()
     assert "ANTHROPIC_API_KEY" not in env
     assert "PATH" in env  # the rest of the environment is preserved
+
+
+def test_child_env_strips_inherited_backend_routing(monkeypatch: Any) -> None:
+    # The desktop app's Bedrock env (and any API-key/Vertex routing) must not reach the child, or the
+    # adapter runs against a backend it never chose — and off-cloud hangs in AWS credential resolution.
+    for var in ("CLAUDE_CODE_USE_BEDROCK", "AWS_PROFILE", "ANTHROPIC_MODEL", "AWS_REGION"):
+        monkeypatch.setenv(var, "x")
+    env = claude_code._child_env()
+    assert not any(v in env for v in claude_code._ROUTING_ENV)
+
+
+def test_auth_summary_is_a_fixed_subscription_statement(monkeypatch: Any) -> None:
+    # Bajutsu drives the CLI from its configured provider, not the ambient env, so the summary is
+    # fixed — it never inspects (nor narrates) any inherited backend routing.
+    monkeypatch.setenv("CLAUDE_CODE_USE_BEDROCK", "1")
+    summary = claude_code.auth_summary()
+    assert "subscription login" in summary
+    assert "Bedrock" not in summary and "ignoring" not in summary

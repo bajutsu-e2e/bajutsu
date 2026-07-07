@@ -53,7 +53,29 @@ def test_resolve_model_bedrock_without_override_falls_back(
 ) -> None:
     monkeypatch.setenv(ac.PROVIDER_ENV, "bedrock")
     monkeypatch.delenv(ac.BEDROCK_MODEL_ENV, raising=False)
+    monkeypatch.delenv(ac.MODEL_ENV, raising=False)
     assert ac.resolve_model("claude-opus-4-8") == "claude-opus-4-8"
+
+
+def test_resolve_model_env_override(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv(ac.PROVIDER_ENV, raising=False)
+    monkeypatch.setenv(ac.MODEL_ENV, "claude-sonnet-5")
+    assert ac.resolve_model("claude-opus-4-8") == "claude-sonnet-5"  # env override
+    # A configured ai.model still wins over the env.
+    assert ac.resolve_model("claude-opus-4-8", ac.AiConfig(model="m-cfg")) == "m-cfg"
+
+
+def test_resolve_effort_config_wins_and_validates(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv(ac.EFFORT_ENV, raising=False)
+    assert ac.resolve_effort(ac.AiConfig(effort="high")) == "high"
+    assert ac.resolve_effort(ac.AiConfig(effort="TURBO")) is None  # not a recognized level
+    assert ac.resolve_effort(None) is None
+
+
+def test_resolve_effort_env_fallback(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv(ac.EFFORT_ENV, "xhigh")
+    assert ac.resolve_effort(None) == "xhigh"
+    assert ac.resolve_effort(ac.AiConfig(effort="low")) == "low"  # config wins over env
 
 
 def test_make_client_returns_injected_client() -> None:

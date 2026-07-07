@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import signal
 import subprocess
 from pathlib import Path
 from typing import Any
@@ -10,6 +11,7 @@ import pytest
 from _shared import FakeProc, fake_popen, project
 
 from bajutsu import serve as srv
+from bajutsu.serve import jobs as srv_jobs
 from bajutsu.serve.uploads import Upload
 
 
@@ -261,6 +263,43 @@ def test_run_job_terminates_process_on_output_error(tmp_path: Path) -> None:
     srv.run_job(state, job)
     assert terminated, "process was not terminated after stdout error"
     assert job.view()["status"] == "done"
+
+
+def test_terminate_signals_the_whole_process_group(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Cancel must reach the job's children (a record job shells out to `claude -p`): _terminate
+    signals the process group, not just the top process."""
+    calls: list[Any] = []
+    monkeypatch.setattr(srv_jobs.os, "getpgid", lambda pid: pid)  # own session → group == pid
+    monkeypatch.setattr(srv_jobs.os, "killpg", lambda pgid, sig: calls.append((pgid, sig)))
+
+    class _Proc:
+        pid = 4321
+
+        def terminate(self) -> None:
+            calls.append("terminate")
+
+    srv_jobs._terminate(_Proc())
+    assert calls == [(4321, signal.SIGTERM)]  # group killed; the single-process fallback not used
+
+
+def test_terminate_falls_back_to_the_process(monkeypatch: pytest.MonkeyPatch) -> None:
+    """When there is no process group (a fake proc / unsupported platform), fall back to terminate()."""
+    calls: list[str] = []
+
+    def _no_group(pid: int) -> int:
+        raise ProcessLookupError
+
+    monkeypatch.setattr(srv_jobs.os, "getpgid", _no_group)
+    monkeypatch.setattr(srv_jobs.os, "killpg", lambda *_a: calls.append("killpg"))
+
+    class _Proc:
+        pid = 1
+
+        def terminate(self) -> None:
+            calls.append("terminate")
+
+    srv_jobs._terminate(_Proc())
+    assert calls == ["terminate"]  # killpg failed → fell back to the process
 
 
 def test_build_app_terminates_process_on_output_error(tmp_path: Path) -> None:

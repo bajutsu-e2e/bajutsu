@@ -92,9 +92,25 @@
       <div class="yamlhead">
         <span class="ttl">Generated scenario</span>
         <span class="muted" id="rec-yamlinfo" style="font-size:.8em"></span>
-        <button class="savebtn" id="rec-save" data-testid="record.save" disabled>Save</button>
+        <div class="yaml-actions">
+          <button class="savebtn" id="rec-save" data-testid="record.save" disabled>Save</button>
+          <button class="savebtn" id="rec-run" data-testid="record.run" data-idle="▶ Run" disabled>▶ Run</button>
+          <button class="stop" id="rec-runstop" hidden>Stop</button>
+        </div>
       </div>
-      <textarea id="rec-yaml" data-testid="record.yaml" class="yaml" placeholder="The recorded scenario YAML appears here once authoring finishes — edit and Save, then run it in the Replay tab."></textarea>
+      <textarea id="rec-yaml" data-testid="record.yaml" class="yaml" placeholder="The recorded scenario YAML appears here once authoring finishes — edit and Save, then Run it here (or in the Replay tab)."></textarea>
+    </div>
+    <!-- Run result: an inline panel (same tiling mechanism as the panels above) holding only the
+         report, shown when ▶ Run is pressed and dismissable with its X. The live run log streams to
+         the Progress console above, like Generate. Hidden by default; the desktop tiler adds/removes
+         it as an optional pane, and at the phone tier the `hidden` attribute + Output tab govern it. -->
+    <div class="card rec-report-panel" id="rec-reportpanel" data-pane="yaml" hidden>
+      <div class="yamlhead">
+        <span class="ttl">Run result</span>
+        <span class="muted" id="rec-runstatus" style="font-size:.8em"></span>
+        <button class="fsclose" id="rec-runclose" data-testid="record.run-close" style="margin-left:auto">&#10005;</button>
+      </div>
+      <div id="rec-report" data-testid="record.run-report"></div>
     </div>
   </div>
 </main>
@@ -464,6 +480,21 @@
         <input type="text" id="bedrock-model" data-testid="settings.bedrock-model" class="keyinput" placeholder="global.anthropic.claude-opus-4-6-v1" autocomplete="off" spellcheck="false">
         <div class="fshint">Bedrock model ids carry a provider prefix (<code>global.anthropic.&hellip;</code>, or a regional <code>us.anthropic.&hellip;</code>) &mdash; unlike the bare Anthropic id. Authentication uses your standard AWS credentials (environment, shared profile, or an IAM role); set <code>AWS_*</code> / <code>AWS_REGION</code> in your shell or a <code>.env</code> before launching <code>serve</code> if you don't use a profile or role.</div>
       </div>
+    </div>
+    <div class="setsection" id="modelsection" data-testid="settings.model-section">
+      <div class="setlabel">Model &amp; effort</div>
+      <label class="keylabel" for="ai-model">Model</label>
+      <input type="text" id="ai-model" data-testid="settings.model" class="keyinput" placeholder="claude-opus-4-8 (default) — leave blank" autocomplete="off" spellcheck="false">
+      <label class="keylabel" for="ai-effort">Reasoning effort</label>
+      <select id="ai-effort" data-testid="settings.effort" class="keyinput">
+        <option value="">default</option>
+        <option value="low">low</option>
+        <option value="medium">medium</option>
+        <option value="high">high</option>
+        <option value="xhigh">xhigh</option>
+        <option value="max">max</option>
+      </select>
+      <div class="fshint">Applies to the <b>Anthropic API</b>, <b>ant</b>, and <b>Claude Code</b> providers (Bedrock uses the prefixed id above). Reasoning effort (low&ndash;max) is honored by the <b>Claude Code</b> provider (<code>--effort</code>); blank leaves the model's default.</div>
     </div>
     <div class="setsection" id="apikeysection" data-testid="settings.apikey-section">
       <div class="setlabel">Claude API key</div>

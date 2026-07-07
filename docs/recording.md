@@ -68,6 +68,15 @@ and may verify before an async transition (e.g. a sheet) has rendered. So it rec
 the first "must-be-present" element in expect**, just before the assertions. This makes the recorded
 scenario self-sufficient without adding implicit timing to `run`.
 
+### Video capture on mobile targets
+
+For a mobile (iOS-simulator) target, `record` tags the recorded scenario's first step with
+`capture: [video]`, so replaying it records a scenario-wide screen video. A single step's inline
+`capture` is what `requested_intervals` uses to start the run-wide interval, so the whole replay is
+recorded, not just one action's window. The recording is a `simctl` interval (BE-0028), so this is
+specific to the iOS backend — a web target captures video by other means, and the recorded scenario
+carries no `capture` for it.
+
 ## The Claude authoring agent
 
 `record` / `crawl` construct one production `agent.Agent` implementation, `ClaudeAgent`
@@ -88,9 +97,28 @@ credential) and the client is injectable for tests. The turn contract is the sam
 provider is active:
 
 - **Forced tool use**: `tool_choice={"type": "any"}` forces **exactly one** tool call per turn —
-  `tap(id)` / `type_text(id, text)` / `wait_for(id, timeout)` / `finish(assertions)`. `finish`'s
-  `assertions` (`exists` / `notExists` / `valueEquals` / `labelContains`) convert to `Assertion`
-  (`_to_assertion`).
+  `tap(id)` / `tap_point(x, y)` / `swipe(id, direction)` / `type_text(id, text)` /
+  `wait_for(id, timeout)` / `finish(assertions)`. `finish`'s `assertions` (`exists` / `notExists` /
+  `valueEquals` / `labelContains`) convert to `Assertion` (`_to_assertion`). `swipe` scrolls a
+  visible element to bring an off-screen control into view; `tap_point` (above) reaches a visible
+  control the tree omits.
+- **Loop guard**: the recent actions are shown back to the agent each turn, and the loop
+  deterministically stops if the recording repeats one action three times running or oscillates
+  A,B,A,B (`_is_looping`) — turning a stuck spin into a bounded, actionable stop rather than burning
+  every remaining turn.
+- **`tap_point` — the vision fallback for a control absent from the tree.** When the goal needs a
+  control the accessibility tree does not expose — most often an individual tab in a bottom tab bar
+  on a no-id app, which `idb` collapses into one opaque group — the agent locates it in the
+  screenshot and taps by **normalized coordinates [0,1]** (top-left origin). `run` scales them by the
+  app-window frame to a `driver.tap_point` (the same normalized-point convention the alert locator
+  uses, below). It is the bottom rung of the stability ladder (unverifiable by selector), so the
+  prompt restricts it to controls genuinely missing from the element list — a listed element is
+  always addressed by its far more stable `id`/`label`. For a tab-bar tab the prompt aims at the
+  **center of the icon+label rectangle** — the i-th of N tabs at `x ≈ (i − 0.5)/N` — not the icon
+  alone or the empty strip below the label.
+- **Live per-step line**: each turn streams one line — `(plan k/N) 💭 <intent> → <action>` — so the
+  watcher sees which planned step is running (the agent tags the action with its `plan_step`), the
+  intent, and the concrete action together. Followed on completion by `⏱ record finished in <elapsed>`.
 - **prompt cache** (API path): the static system prompt + tool definitions are marked
   `cache_control: ephemeral`; only the per-turn observation (elements + screenshot) changes.
 - **Vision + elements together**: appearance / state is read from the screenshot, but the agent

@@ -12,7 +12,9 @@ from bajutsu import simctl as _simctl
 from bajutsu import usage as _usage
 from bajutsu.agents import make_agent
 from bajutsu.ai import resolved_provider
+from bajutsu.anthropic_client import resolve_effort, resolve_model
 from bajutsu.backends import ensure_web_runtime, select_actuator
+from bajutsu.claude_agent import MODEL as _RECORD_MODEL
 from bajutsu.cli._shared import (
     DEFAULT_CONFIG,
     _ai_redactor,
@@ -190,7 +192,20 @@ def record(
     def say(msg: str) -> None:
         typer.echo(msg, err=True)
 
-    say(f"🤖 AI provider: {resolved_provider(eff.ai)}")
+    effort = resolve_effort(eff.ai)
+    provider = resolved_provider(eff.ai)
+    say(
+        f"🤖 AI: {provider} · model {resolve_model(_RECORD_MODEL, eff.ai)} · "
+        f"effort {effort or 'default'}"
+    )
+    # Disclose how the claude-code CLI will authenticate (BE-0176): the adapter forces the CLI's own
+    # subscription login and ignores any inherited Bedrock/Vertex/API-key routing, so surface that —
+    # a `make serve` launched from the Claude desktop app inherits a Bedrock setup that would
+    # otherwise take over silently.
+    if provider == "claude-code":
+        from bajutsu.ai import claude_code
+
+        say(f"🔑 auth: {claude_code.auth_summary()}")
     say(
         f"⚙️  preparing the simulator — installing and launching {target_name} (this can take a moment) …"
     )
@@ -207,6 +222,10 @@ def record(
         name=goal,
         alert_guard=alert_guard,
         secret_tokens=_secret_tokens(eff),
+        # A mobile (iOS-simulator) app always records a scenario-wide screen video; the recording is
+        # a simctl interval, so it's specific to the idb backend (web replays capture video by other
+        # means, and the fake actuator has no device to record).
+        capture_video=actuator == "idb",
         report=say,
     )
     out_path.parent.mkdir(parents=True, exist_ok=True)

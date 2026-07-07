@@ -50,6 +50,32 @@ def test_type_text_proposal() -> None:
     assert step.type.into is not None and step.type.into.id == "f"
 
 
+def test_plan_step_flows_through_proposal() -> None:
+    assert proposal_from_call("tap", {"id": "a", "reason": "r", "plan_step": 2}).plan_step == 2
+    assert (
+        proposal_from_call("tap", {"id": "a", "reason": "r"}).plan_step is None
+    )  # omitted -> None
+    p = proposal_from_call("finish", {"assertions": [], "reason": "done", "plan_step": 4})
+    assert p.done and p.plan_step == 4
+
+
+def test_swipe_proposal() -> None:
+    block = FakeBlock("swipe", {"id": "list", "direction": "up", "reason": "scroll to reveal it"})
+    step = ClaudeAgent(backend=FakeBackend(block)).next_action(_obs()).step
+    assert step is not None and step.swipe is not None
+    assert step.swipe.on is not None and step.swipe.on.id == "list"
+    assert step.swipe.direction == "up"
+    assert step.swipe.amount is None  # omitted → default nudge
+
+
+def test_swipe_proposal_carries_amount() -> None:
+    block = FakeBlock(
+        "swipe", {"id": "list", "direction": "up", "amount": 0.6, "reason": "far down"}
+    )
+    step = ClaudeAgent(backend=FakeBackend(block)).next_action(_obs()).step
+    assert step is not None and step.swipe is not None and step.swipe.amount == 0.6
+
+
 def test_wait_proposal() -> None:
     agent = ClaudeAgent(backend=FakeBackend(FakeBlock("wait_for", {"id": "spinner", "timeout": 5})))
     step = agent.next_action(_obs()).step
@@ -103,7 +129,22 @@ def test_request_uses_forced_tool_choice() -> None:
     request = backend.requests[0]
     assert request.model == "claude-opus-4-8"
     assert isinstance(request.tool_choice, AnyTool)  # force one tool call
-    assert {t.name for t in request.tools} == {"tap", "type_text", "wait_for", "finish"}
+    assert {t.name for t in request.tools} == {
+        "tap",
+        "tap_point",
+        "swipe",
+        "type_text",
+        "wait_for",
+        "finish",
+    }
+
+
+def test_effort_is_threaded_into_the_request() -> None:
+    from bajutsu.anthropic_client import AiConfig
+
+    backend = FakeBackend(FakeBlock("tap", {"id": "a"}))
+    ClaudeAgent(backend=backend, ai=AiConfig(effort="high")).next_action(_obs())
+    assert backend.requests[0].effort == "high"
 
 
 def test_screenshot_sent_as_image_part() -> None:
@@ -156,6 +197,10 @@ def test_plan_decomposes_goal_into_steps() -> None:
     request = backend.requests[0]
     assert isinstance(request.tool_choice, NamedTool) and request.tool_choice.name == "plan"
     assert {t.name for t in request.tools} == {"plan"}
+    # The plan is best-effort, so it's bounded by a short timeout (a hung CLI must not stall the run).
+    from bajutsu.claude_agent import PLAN_TIMEOUT_S
+
+    assert request.timeout_s == PLAN_TIMEOUT_S
 
 
 def test_plan_is_rendered_into_the_turn_prompt() -> None:

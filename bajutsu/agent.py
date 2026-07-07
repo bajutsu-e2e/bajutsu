@@ -34,6 +34,9 @@ class Proposal:
     done: bool = False
     expect: list[Assertion] = field(default_factory=list)
     note: str = ""
+    # The 1-based plan step this move carries out (from `Observation.plan`), for live progress;
+    # None when the agent gave no plan or did not attribute the move to one.
+    plan_step: int | None = None
 
 
 class Agent(Protocol):

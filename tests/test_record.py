@@ -12,7 +12,13 @@ from bajutsu.agent import Observation, Proposal
 from bajutsu.drivers import base
 from bajutsu.drivers.fake import FakeDriver
 from bajutsu.elements import shows_app_ui
-from bajutsu.record import _screenshot_bytes, _tokenize_secrets, record
+from bajutsu.record import (
+    _format_elapsed,
+    _is_looping,
+    _screenshot_bytes,
+    _tokenize_secrets,
+    record,
+)
 from bajutsu.scenario import Assertion, Step, dump_scenarios, load_scenarios
 
 
@@ -93,6 +99,33 @@ def test_record_produces_scenario() -> None:
     assert reloaded[0].steps[1].wait is not None
 
 
+def test_record_capture_video_tags_the_first_step_for_a_scenario_wide_recording() -> None:
+    from bajutsu.orchestrator.evidence_rules import requested_intervals
+
+    driver = FakeDriver([_el("go", "Go")])
+    agent = FakeAgent(
+        [Proposal(step=Step.model_validate({"tap": {"id": "go"}})), Proposal(done=True)]
+    )
+    scenario = record(driver, "x", agent, capture_video=True)
+    assert scenario.steps[0].capture == ["video"]
+    # a single step's inline capture is what makes the runner record the whole scenario
+    assert "video" in requested_intervals(scenario)
+    # and it survives the YAML round-trip
+    assert load_scenarios(dump_scenarios([scenario]))[0].steps[0].capture == ["video"]
+
+
+def test_record_without_capture_video_requests_no_interval() -> None:
+    from bajutsu.orchestrator.evidence_rules import requested_intervals
+
+    driver = FakeDriver([_el("go", "Go")])
+    agent = FakeAgent(
+        [Proposal(step=Step.model_validate({"tap": {"id": "go"}})), Proposal(done=True)]
+    )
+    scenario = record(driver, "x", agent)  # default: no video
+    assert scenario.steps[0].capture is None
+    assert requested_intervals(scenario) == []
+
+
 def test_record_sets_scenario_provenance_from_goal() -> None:
     # The goal is the scenario-level `from:` provenance (BE-0044), and it round-trips.
     driver = FakeDriver([_el("go", "Go")])
@@ -140,6 +173,67 @@ def test_record_respects_max_steps() -> None:
     driver = FakeDriver([_el("a", "A")])
     scenario = record(driver, "x", LoopAgent(), max_steps=3)
     assert len(scenario.steps) == 3
+
+
+def test_is_looping_detects_repetition_and_oscillation() -> None:
+    assert _is_looping(["tap a", "tap a", "tap a"])  # same action three times running
+    assert _is_looping(["tap Open", "tap Close", "tap Open", "tap Close"])  # A,B,A,B oscillation
+    assert not _is_looping(["tap a", "tap b", "tap a"])  # progress-ish, not yet a cycle
+    assert not _is_looping(["tap a", "tap b", "tap c", "tap d"])  # all distinct
+
+
+def test_format_elapsed() -> None:
+    assert _format_elapsed(13.44) == "13.4s"
+    assert _format_elapsed(63) == "1m 03s"
+    assert _format_elapsed(125) == "2m 05s"
+
+
+def test_record_reports_elapsed_time_on_completion() -> None:
+    driver = FakeDriver([_el("a", "A")])
+    msgs: list[str] = []
+    record(driver, "x", FakeAgent([Proposal(done=True, expect=[])]), report=msgs.append)
+    assert any("record finished in" in m for m in msgs)
+
+
+def test_record_shows_which_plan_step_is_running() -> None:
+    driver = FakeDriver([_el("a", "A")])
+    msgs: list[str] = []
+    agent = PlanningAgent(
+        [
+            Proposal(step=Step.model_validate({"tap": {"id": "a"}}), note="do it", plan_step=2),
+            Proposal(done=True, expect=[]),
+        ],
+        plan_steps=["step one", "step two", "step three"],
+    )
+    record(driver, "x", agent, report=msgs.append)
+    assert any("(plan 2/3)" in m for m in msgs)
+
+
+def test_record_shows_intent_and_action_on_one_line() -> None:
+    # The step's intent (the agent's reason) and the concrete action are streamed together, so a
+    # watcher sees what each step is trying to do next to what it did.
+    driver = FakeDriver([_el("a", "A")])
+    msgs: list[str] = []
+    agent = FakeAgent(
+        [
+            Proposal(step=Step.model_validate({"tap": {"id": "a"}}), note="open the panel"),
+            Proposal(done=True, expect=[]),
+        ]
+    )
+    record(driver, "x", agent, report=msgs.append)
+    assert any("open the panel" in m and "→" in m and "tap" in m for m in msgs)
+
+
+def test_record_stops_on_an_oscillation_before_max_steps() -> None:
+    # An agent that cycles open/close forever is cut off by loop detection, not left to burn every
+    # turn (the real-world stuck-record failure). A,B,A,B → stop after four recorded steps.
+    driver = FakeDriver([_el("open", "Open"), _el("close", "Close")])
+    cycle = [
+        Proposal(step=Step.model_validate({"tap": {"id": "open"}})),
+        Proposal(step=Step.model_validate({"tap": {"id": "close"}})),
+    ] * 10
+    scenario = record(driver, "x", FakeAgent(cycle), max_steps=30)
+    assert [s.tap.id for s in scenario.steps if s.tap] == ["open", "close", "open", "close"]
 
 
 def _vel(label: str | None, traits: list[str]) -> base.Element:

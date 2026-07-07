@@ -19,6 +19,9 @@ from bajutsu.anthropic_client import (
     ANT_CLI_MISSING,
     ANTHROPIC_KEY_ENV,
     BEDROCK_MODEL_ENV,
+    EFFORT_ENV,
+    EFFORT_LEVELS,
+    MODEL_ENV,
     PROVIDER_ENV,
     AiConfig,
     normalize_provider,
@@ -134,6 +137,8 @@ def provider_info(state: ServeState) -> tuple[Any, int]:
         "provider": mode,
         "region": os.environ.get("AWS_REGION", ""),
         "model": os.environ.get(BEDROCK_MODEL_ENV, ""),
+        "aiModel": os.environ.get(MODEL_ENV, ""),  # general model override (non-Bedrock providers)
+        "effort": os.environ.get(EFFORT_ENV, ""),
         "claudeAvailable": gap is None,
         "claudeGap": gap,
         "claudeHint": ai_availability.message(gap) if gap is not None else "",
@@ -266,11 +271,26 @@ def set_provider(state: ServeState, body: dict[str, Any]) -> tuple[Any, int]:
     prov = normalize_provider(str(body.get("provider", "") or ""))
     if prov not in known_providers():
         return {"error": f"unknown provider: {prov or '(empty)'}"}, 400
+    # Reasoning effort applies to any provider that supports it (claude-code); a blank value clears
+    # it and an unknown level is rejected so a typo is a visible error, not a silent default.
+    effort = str(body.get("effort", "") or "").strip().lower()
+    if effort and effort not in EFFORT_LEVELS:
+        return {"error": f"unknown effort {effort!r}: use one of {', '.join(EFFORT_LEVELS)}"}, 400
+    if effort:
+        os.environ[EFFORT_ENV] = effort
+    else:
+        os.environ.pop(EFFORT_ENV, None)
     if prov in ("api-key", "ant", "claude-code"):
-        # `api-key` authenticates with an Anthropic API key; `ant` and `claude-code` with a CLI's
-        # own credential — none takes a model/region here, so the selection is just the provider name.
+        # These providers take a bare Anthropic model id via the general override (blank = default).
+        ai_model = str(body.get("aiModel", "") or "").strip()
+        if any(c.isspace() for c in ai_model):
+            return {"error": "model must not contain whitespace"}, 400
+        if ai_model:
+            os.environ[MODEL_ENV] = ai_model
+        else:
+            os.environ.pop(MODEL_ENV, None)
         os.environ[PROVIDER_ENV] = prov
-        return {"ok": True, "provider": prov}, 200
+        return {"ok": True, "provider": prov, "model": ai_model, "effort": effort}, 200
     # Bedrock needs a provider-prefixed model id (the bare Anthropic id is invalid there); region is
     # optional and falls back to AWS_REGION already in the environment.
     model = str(body.get("model", "") or "").strip()
@@ -281,9 +301,16 @@ def set_provider(state: ServeState, body: dict[str, Any]) -> tuple[Any, int]:
         return {"error": "region and model must not contain whitespace"}, 400
     os.environ[PROVIDER_ENV] = "bedrock"
     os.environ[BEDROCK_MODEL_ENV] = model
+    os.environ.pop(MODEL_ENV, None)  # Bedrock uses its own model id; clear the general override
     if region:
         os.environ["AWS_REGION"] = region
-    return {"ok": True, "provider": "bedrock", "region": region, "model": model}, 200
+    return {
+        "ok": True,
+        "provider": "bedrock",
+        "region": region,
+        "model": model,
+        "effort": effort,
+    }, 200
 
 
 # The cap on the error detail surfaced to the browser: the CLI's last output line, truncated to this

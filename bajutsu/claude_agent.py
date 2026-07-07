@@ -28,11 +28,15 @@ from bajutsu.ai import (
     ToolDef,
     create_backend,
 )
-from bajutsu.anthropic_client import AiConfig, resolve_model
+from bajutsu.anthropic_client import AiConfig, resolve_effort, resolve_model
 from bajutsu.redaction import Redactor
 from bajutsu.scenario import Assertion, Step
 
 MODEL = "claude-opus-4-8"
+
+# Wall-clock cap for the best-effort up-front plan call — well above its normal few seconds, but
+# short enough that an occasional CLI hang fails fast and the loop proceeds without a plan.
+PLAN_TIMEOUT_S = 60.0
 
 SYSTEM_PROMPT = """You are an iOS end-to-end test author. You drive an app on the \
 iOS Simulator to accomplish a goal, then record the steps as a deterministic test.
@@ -52,6 +56,21 @@ Use the screenshot to map the goal's wording to the right element when the text 
 differs from it (e.g. a "+" button is the increment control). You must call exactly one tool:
 
 - tap(id|label): tap that element.
+- tap_point(x, y): tap a screen location by NORMALIZED coordinates (0..1 from the \
+top-left corner), read from the screenshot. Use this for a control you can SEE in the \
+screenshot but that is NOT in the element list — a tab-bar tab, a segmented-control \
+segment, a toolbar item, on an app whose accessibility tree omits it. Aim at the CENTER \
+of the control's visible hit area. For a tab-bar tab, that is the center of the rectangle \
+enclosing BOTH its icon and its label — not the icon alone, and not the empty strip below \
+the label. Horizontally, the i-th of N equal-width tabs sits at x ≈ (i − 0.5)/N (the 3rd \
+of 5 tabs → x ≈ 0.5); vertically, aim midway through the icon and label, typically \
+y ≈ 0.94 in a bottom tab bar.
+- swipe(id|label, direction): swipe on a visible element (up/down/left/right) to SCROLL \
+a list or form. Use it to bring a control that is off-screen — neither in the element \
+list nor visible in the screenshot — into view before acting on it. Set `amount` (a \
+fraction of the screen, 0–1) to control how far it scrolls: a small nudge by default, or \
+0.5–0.9 to move quickly toward a control you expect to be far down. Increase it if a \
+previous swipe barely moved the screen.
 - type_text(id|label, text): focus the field and type text into it.
 - wait_for(id|label, timeout): wait until that element appears.
 - finish(assertions): the goal is reached; provide machine-checkable assertions \
@@ -60,11 +79,20 @@ that verify it, each addressing an element by id or label.
 Rules:
 - Act only on elements present in the screen list; address them by their real `id` \
 or `label`. Never invent an id or a label that is not shown.
-- Take the most direct path to the goal. Do not repeat an action that did not \
-change the screen.
+- For a control missing from the list, choose by WHERE it is: if you can see it in the \
+screenshot, tap_point its center; if you cannot see it, it is off-screen — swipe to \
+scroll it into view first. Never use tap_point for an element that IS listed — address \
+that one by id/label, which is far more stable. Prefer these over giving up on the goal.
+- Take the most direct path to the goal. NEVER repeat an action that did not move you \
+toward the goal, and never re-open a screen you just closed. If a step left you where you \
+were, or you are cycling between two screens, change your approach: scroll to look \
+elsewhere, or tap_point a control you can see. The recent steps you have taken are listed \
+each turn — read them and do not loop.
 - Always fill `reason`: one short sentence of your reasoning for THIS turn — what you \
 see on the screen and why this action moves toward the goal. This is shown live to the \
 person watching, so make it a clear thought, not a restatement of the action.
+- When a plan is shown this turn, set `plan_step` to the number of the planned step this \
+action carries out, so the watcher sees where the run is in the plan. Omit it if there is no plan.
 - Call finish only once the goal is FULLY reached. If the goal names a target \
 value or count (e.g. "the count shows 2"), confirm the current screen already \
 shows it before finishing; if not, keep acting. Then provide assertions that \
@@ -134,6 +162,16 @@ _REASON_PROP: dict[str, Any] = {
     }
 }
 
+# Which planned step this action carries out — surfaced live so the watcher sees the run's place in
+# the plan. Optional: omit when there is no plan (`Observation.plan` empty) or the move fits none.
+_PLAN_PROP: dict[str, Any] = {
+    "plan_step": {
+        "type": "integer",
+        "description": "the 1-based number of the planned step (from the plan shown this turn) that "
+        "this action carries out; omit when there is no plan",
+    }
+}
+
 # Static tool definitions (cached together with the system prompt).
 TOOLS: list[ToolDef] = [
     ToolDef(
@@ -141,8 +179,50 @@ TOOLS: list[ToolDef] = [
         description="Tap the element addressed by id or label.",
         input_schema={
             "type": "object",
-            "properties": {**_TARGET_PROPS, **_REASON_PROP},
+            "properties": {**_TARGET_PROPS, **_REASON_PROP, **_PLAN_PROP},
             "required": ["reason"],
+        },
+    ),
+    ToolDef(
+        name="tap_point",
+        description="Tap a screen location by normalized coordinates (0..1) read from the "
+        "screenshot — only for a visible control absent from the element list, e.g. a tab-bar tab.",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "x": {
+                    "type": "number",
+                    "description": "horizontal center, a fraction of screen width (0 = left, 1 = right)",
+                },
+                "y": {
+                    "type": "number",
+                    "description": "vertical center, a fraction of screen height (0 = top, 1 = bottom)",
+                },
+                **_REASON_PROP,
+                **_PLAN_PROP,
+            },
+            "required": ["x", "y", "reason"],
+        },
+    ),
+    ToolDef(
+        name="swipe",
+        description="Swipe on a visible element in a direction to scroll a list/form and reveal an "
+        "off-screen control (one neither in the element list nor visible in the screenshot).",
+        input_schema={
+            "type": "object",
+            "properties": {
+                **_TARGET_PROPS,
+                "direction": {"type": "string", "enum": ["up", "down", "left", "right"]},
+                "amount": {
+                    "type": "number",
+                    "description": "how far to scroll as a fraction of the screen (0-1): ~0.2 a "
+                    "little, ~0.5 half a screen, ~0.9 nearly a full screen. Judge it from how far "
+                    "the target likely is; omit for a small default nudge.",
+                },
+                **_REASON_PROP,
+                **_PLAN_PROP,
+            },
+            "required": ["direction", "reason"],
         },
     ),
     ToolDef(
@@ -150,7 +230,12 @@ TOOLS: list[ToolDef] = [
         description="Focus the field (addressed by id or label) and type the given text.",
         input_schema={
             "type": "object",
-            "properties": {**_TARGET_PROPS, "text": {"type": "string"}, **_REASON_PROP},
+            "properties": {
+                **_TARGET_PROPS,
+                "text": {"type": "string"},
+                **_REASON_PROP,
+                **_PLAN_PROP,
+            },
             "required": ["text", "reason"],
         },
     ),
@@ -159,7 +244,12 @@ TOOLS: list[ToolDef] = [
         description="Wait until the element (addressed by id or label) appears, up to timeout seconds.",
         input_schema={
             "type": "object",
-            "properties": {**_TARGET_PROPS, "timeout": {"type": "number"}, **_REASON_PROP},
+            "properties": {
+                **_TARGET_PROPS,
+                "timeout": {"type": "number"},
+                **_REASON_PROP,
+                **_PLAN_PROP,
+            },
             "required": ["timeout", "reason"],
         },
     ),
@@ -193,11 +283,35 @@ TOOLS: list[ToolDef] = [
                     },
                 },
                 **_REASON_PROP,
+                **_PLAN_PROP,
             },
             "required": ["assertions", "reason"],
         },
     ),
 ]
+
+
+def _hist_hint(sel: Any) -> str:
+    """The id or label to name a selector by in a recent-actions line (`?` when it has neither)."""
+    return next((str(v) for v in (getattr(sel, "id", None), getattr(sel, "label", None)) if v), "?")
+
+
+def _history_line(step: Step) -> str:
+    """A compact summary of an already-taken step, shown back to the agent to curb repetition.
+
+    Secrets are never echoed — typed text is omitted.
+    """
+    if step.tap is not None:
+        return f"tap {_hist_hint(step.tap)}"
+    if step.tap_point is not None:
+        return f"tap point ({step.tap_point.x:.2f}, {step.tap_point.y:.2f})"
+    if step.swipe is not None and step.swipe.on is not None:
+        return f"swipe {step.swipe.direction} on {_hist_hint(step.swipe.on)}"
+    if step.type is not None:
+        return f"type into {_hist_hint(step.type.into)}"
+    if step.wait is not None:
+        return f"wait for {_hist_hint(step.wait.for_)}"
+    return next(iter(step.model_dump(exclude_none=True)), "step")
 
 
 def _render(observation: Observation, redactor: Redactor | None = None) -> str:
@@ -232,7 +346,13 @@ def _render(observation: Observation, redactor: Redactor | None = None) -> str:
     if not shown:
         lines.append("- (no addressable elements; the screen may still be loading)")
     lines += ["", f"Steps taken so far: {len(observation.history)}"]
-    lines.append("Call exactly one tool: tap, type_text, wait_for, or finish.")
+    if observation.history:
+        # Show the recent actions so the agent can see whether it is looping (repeating an action or
+        # cycling between screens) and change course — the single biggest cause of a stuck record.
+        recent = observation.history[-6:]
+        lines.append("Recent actions (most recent last) — do not repeat these fruitlessly:")
+        lines += [f"  - {_history_line(s)}" for s in recent]
+    lines.append("Call exactly one tool: tap, tap_point, swipe, type_text, wait_for, or finish.")
     return "\n".join(lines)
 
 
@@ -291,17 +411,28 @@ def proposal_from_call(name: str, args: dict[str, Any]) -> Proposal:
     """
     note = args.get("reason", "")
     prov = _provenance(note)
+    raw_ps = args.get("plan_step")
+    ps = raw_ps if isinstance(raw_ps, int) and not isinstance(raw_ps, bool) else None
     if name == "tap":
-        return Proposal(step=Step.model_validate({"tap": _target(args), **prov}), note=note)
+        step = {"tap": _target(args), **prov}
+        return Proposal(step=Step.model_validate(step), note=note, plan_step=ps)
+    if name == "tap_point":
+        point = {"tapPoint": {"x": args["x"], "y": args["y"]}, **prov}
+        return Proposal(step=Step.model_validate(point), note=note, plan_step=ps)
+    if name == "swipe":
+        spec: dict[str, Any] = {"on": _target(args), "direction": args["direction"]}
+        if args.get("amount") is not None:
+            spec["amount"] = args["amount"]
+        return Proposal(step=Step.model_validate({"swipe": spec, **prov}), note=note, plan_step=ps)
     if name == "type_text":
         step = {"type": {"into": _target(args), "text": args["text"]}, **prov}
-        return Proposal(step=Step.model_validate(step), note=note)
+        return Proposal(step=Step.model_validate(step), note=note, plan_step=ps)
     if name == "wait_for":
         step = {"wait": {"for": _target(args), "timeout": args["timeout"]}, **prov}
-        return Proposal(step=Step.model_validate(step), note=note)
+        return Proposal(step=Step.model_validate(step), note=note, plan_step=ps)
     if name == "finish":
         expect = [_to_assertion(a) for a in args.get("assertions", [])]
-        return Proposal(done=True, expect=expect, note=note)
+        return Proposal(done=True, expect=expect, note=note, plan_step=ps)
     raise ValueError(f"unknown tool: {name!r}")
 
 
@@ -338,6 +469,7 @@ class ClaudeAgent:
         self._ai = ai
         self._redactor = redactor
         self._model = resolve_model(MODEL, ai) if model is None else model
+        self._effort = resolve_effort(ai)  # passed to backends that support it (claude-code)
         self._max_tokens = max_tokens
 
     def _ensure_backend(self) -> AiBackend:
@@ -355,6 +487,7 @@ class ClaudeAgent:
                 tool_choice=AnyTool(),
                 model=self._model,
                 max_tokens=self._max_tokens,
+                effort=self._effort,
             )
         )
         usage.record(response.usage)
@@ -369,6 +502,10 @@ class ClaudeAgent:
                 tool_choice=NamedTool(name="plan"),  # force the plan call
                 model=self._model,
                 max_tokens=self._max_tokens,
+                effort=self._effort,
+                # The plan is best-effort (the loop proceeds without it), so bound it: a hung CLI
+                # fails fast here instead of stalling the run at "thinking about how to approach…".
+                timeout_s=PLAN_TIMEOUT_S,
             )
         )
         usage.record(response.usage)

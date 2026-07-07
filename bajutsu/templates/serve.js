@@ -26,6 +26,8 @@ async function _bjLogin(){
 const $=s=>document.querySelector(s);
 let poll=null,recPoll=null,selectedRun=null,recPath=null,scnFiles=[],targets=[],sims=[];
 let recJobId=null,runJobId=null,triageJobId=null;
+let recRunPoll=null,recRunJobId=null;  // running the just-authored scenario from the Record tab
+let recReportShow=null,recReportHide=null;  // set by the tiler: add/remove the Run-result pane
 // Whether Claude is reachable (from /api/provider). Gates the opt-in AI toggle on triage the same
 // way it gates record/crawl; heuristic triage never needs it. Kept in sync by refreshAiAvailability.
 let aiAvailable=false;
@@ -300,6 +302,8 @@ async function loadProv(){
   let d;try{d=await (await fetch('/api/provider')).json()}catch(e){d={}}
   $('#bedrock-region').value=d.region||'';
   $('#bedrock-model').value=d.model||'';
+  $('#ai-model').value=d.aiModel||'';
+  $('#ai-effort').value=d.effort||'';
   renderProv();
 }
 // ---- Claude reachability (BE-0101): the record/crawl surfaces degrade gracefully when Claude
@@ -325,10 +329,15 @@ document.addEventListener('click',e=>{if(e.target.closest('[data-open-settings]'
 async function saveSettings(){
   const provider=$('#provider').value,body={provider};
   if(!provider){setSettingsStatus('select an AI provider','ng');return}  // explicit choice required
+  // The reasoning effort applies to any provider that supports it; the general model override applies
+  // to the non-Bedrock providers (Bedrock keeps its own prefixed id). Blank clears either.
+  body.effort=$('#ai-effort').value;
   if(provider==='bedrock'){
     body.region=$('#bedrock-region').value.trim();
     body.model=$('#bedrock-model').value.trim();
     if(!body.model){setSettingsStatus('enter a Bedrock model id','ng');return}
+  }else{
+    body.aiModel=$('#ai-model').value.trim();
   }
   setSettingsStatus('saving…','');
   let d;try{d=await (await fetch('/api/provider',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)})).json()}catch(e){d={error:'request failed'}}
@@ -420,6 +429,14 @@ $('#rec-go').addEventListener('click',async()=>{
   if(recPoll)recPoll.close();
   setBusy($('#rec-go'),$('#rec-stop'),true,'Authoring…');$('#rec-out').textContent='';
   $('#rec-yaml').value='';$('#rec-save').disabled=true;$('#rec-yamlinfo').textContent='';recPath=null;
+  // Clear any prior in-place run so its report/status don't linger over a fresh authoring. The
+  // report / status live in the Run-result pane, which the tiler detaches while hidden, so guard the
+  // lookups — they're null until a run has shown the pane.
+  if(recRunPoll)recRunPoll.close();
+  $('#rec-run').disabled=true;
+  const rep0=$('#rec-report');if(rep0)rep0.innerHTML='';
+  const rs0=$('#rec-runstatus');if(rs0)setStatus(rs0,'','');
+  hideReportPanel();
   setStatus($('#rec-status'),'','run');
   const r=await fetch('/api/record',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
     goal,target:$('#rec-target').value,
@@ -442,19 +459,80 @@ async function loadGenerated(path){
   recPath=path;
   try{
     const d=await (await fetch('/api/scenario?target='+encodeURIComponent($('#rec-target').value)+'&path='+encodeURIComponent(path))).json();
-    if(d.yaml!=null){$('#rec-yaml').value=d.yaml;$('#rec-save').disabled=false;
+    if(d.yaml!=null){$('#rec-yaml').value=d.yaml;$('#rec-save').disabled=false;$('#rec-run').disabled=false;
       $('#rec-yamlinfo').textContent=path.split('/').pop();}
   }catch(e){}
 }
+// The scenarios-dir ref to save+run the current YAML to: the recorded path when we have one, else a
+// name from the "Save as" field (default generated.yaml) — so hand-pasted/edited YAML is runnable too.
+function recRunRef(){
+  if(recPath)return recPath;
+  let name=$('#rec-name').value.trim()||'generated.yaml';
+  if(!/\.ya?ml$/i.test(name))name+='.yaml';
+  return name;
+}
+// Enable Save / Run whenever the Generated-scenario box holds YAML to save or run (idle only — a
+// record or run in progress owns the buttons' disabled state).
+function syncRecActions(){
+  if(recPoll||recRunPoll)return;
+  const has=!!$('#rec-yaml').value.trim();
+  $('#rec-save').disabled=!has;$('#rec-run').disabled=!has;
+}
+$('#rec-yaml').addEventListener('input',syncRecActions);
+// Show / hide the Run-result pane — the tiler hooks when present (desktop), else the plain `hidden`
+// attribute (phone tier, where the pane stacks under the Output tab).
+function showReportPanel(){if(recReportShow)recReportShow();else $('#rec-reportpanel').hidden=false;}
+function hideReportPanel(){if(recReportHide)recReportHide();else{const p=$('#rec-reportpanel');if(p)p.hidden=true;}}
+// Run the current scenario in place, without switching to Replay. Persist the YAML first (creating
+// the file for hand-pasted YAML; a parse error means it isn't runnable, so it's surfaced and Run
+// stops), then start a normal run: the live log streams to the Progress console (like Generate) and
+// only the final report lands in the dismissable Run-result pane.
+$('#rec-run').addEventListener('click',async()=>{
+  const yaml=$('#rec-yaml').value;
+  if(!yaml.trim())return;
+  if(recRunPoll)recRunPoll.close();
+  const target=$('#rec-target').value;
+  // Re-evaluate the scenario on every Run: clear a prior syntax error first, so a since-fixed
+  // scenario shows no stale error and only a still-broken one re-surfaces below.
+  setStatus($('#rec-status'),'','');
+  let sd;try{sd=await (await fetch('/api/scenario',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({target,path:recRunRef(),yaml})})).json()}catch(e){sd={error:'request failed'}}
+  if(sd.error){setStatus($('#rec-status'),sd.error,'ng');return}
+  recPath=sd.path;$('#rec-yamlinfo').textContent=recPath.split('/').pop();loadScenarios();
+  setBusy($('#rec-run'),$('#rec-runstop'),true,'Running…');
+  $('#rec-out').textContent='';  // the live run log shares the Progress console, like Generate
+  showReportPanel();  // attaches the pane, so the report / status lookups below resolve
+  const rep=$('#rec-report');if(rep)rep.innerHTML='';
+  const rs=$('#rec-runstatus');if(rs)setStatus(rs,'','run');
+  const r=await fetch('/api/run',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
+    scenario:recPath,target,udid:$('#rec-device').value||'booted',
+    erase:$('#rec-erase').checked||undefined,dismissAlerts:$('#rec-nodismiss').checked?false:undefined})});
+  const {jobId,error}=await r.json();
+  if(error){setStatus($('#rec-runstatus'),error,'ng');setBusy($('#rec-run'),$('#rec-runstop'),false);return;}
+  recRunJobId=jobId;
+  recRunPoll=streamJob(jobId,line=>appendLine($('#rec-out'),line),recRunDone);
+});
+$('#rec-runstop').addEventListener('click',()=>cancelJob(recRunJobId,$('#rec-runstop')));
+// Dismiss the Run-result pane with its X. A run in progress keeps going (Stop lives on the Generated
+// scenario panel) and the pane reappears on the next Run.
+$('#rec-runclose').addEventListener('click',hideReportPanel);
+function recRunDone(j){
+  recRunPoll=null;recRunJobId=null;setBusy($('#rec-run'),$('#rec-runstop'),false);
+  showReportPanel();  // re-show the pane (the user may have closed it mid-run) so the result lands
+  const rs=$('#rec-runstatus');
+  if(j.cancelled){if(rs)setStatus(rs,'cancelled','ng');return}
+  if(rs)setStatus(rs,j.ok?'PASS':'FAIL', j.ok?'ok':'ng');
+  if(j.runId)setReport(j.runId,j.ok,'#rec-report');
+}
 $('#rec-save').addEventListener('click',async()=>{
-  if(!recPath)return;
+  if(!$('#rec-yaml').value.trim())return;
   $('#rec-save').disabled=true;$('#rec-save').textContent='Saving…';
   const r=await fetch('/api/scenario',{method:'POST',headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({target:$('#rec-target').value,path:recPath,yaml:$('#rec-yaml').value})});
+    body:JSON.stringify({target:$('#rec-target').value,path:recRunRef(),yaml:$('#rec-yaml').value})});
   const d=await r.json();
   $('#rec-save').textContent='Save';$('#rec-save').disabled=false;
   if(d.error){setStatus($('#rec-status'),d.error,'ng')}
-  else{setStatus($('#rec-status'),'saved ✓','ok');loadScenarios()}
+  else{recPath=d.path;$('#rec-yamlinfo').textContent=recPath.split('/').pop();setStatus($('#rec-status'),'saved ✓','ok');loadScenarios()}
 });
 
 // ---- Replay: scenario info, run, history ----
@@ -1311,11 +1389,13 @@ function initTiling(){
   const KEY='bajutsu-tiles';
   const SPECS=[
     {id:'view-replay',def:{d:'row',k:['controls','log','report'],s:[1,1,2]},sel:{controls:'.left',log:'.logpanel',report:'.report'}},
-    {id:'view-record',def:{d:'row',k:['controls',{d:'col',k:['log','yaml'],s:[1,1]}],s:[1,2]},sel:{controls:'.left',log:'.rec-stack .logpanel',yaml:'.rec-stack .yamlpanel'}},
+    {id:'view-record',def:{d:'row',k:['controls',{d:'col',k:['log','yaml'],s:[1,1]}],s:[1,2]},sel:{controls:'.left',log:'.rec-stack .logpanel',yaml:'.rec-stack .yamlpanel',report:'.rec-stack .rec-report-panel'},optional:['report']},
     {id:'view-crawl',def:{d:'row',k:['controls','graph',{d:'col',k:['plan','console'],s:[1,1]}],s:[1,2,1]},sel:{controls:'.left',graph:'.crawl-graph-panel',plan:'.crawl-plan-panel',console:'.crawl-console-panel'}},
   ];
   const leaves=n=>typeof n==='string'?[n]:n.k.flatMap(leaves);
-  const valid=(t,keys)=>{try{const l=leaves(t);return l.length===keys.length&&new Set(l).size===l.length&&l.every(k=>keys.includes(k));}catch(e){return false;}};
+  // A tree is valid when its leaves are unique, all known panels, and include every REQUIRED panel.
+  // Optional panels (e.g. Record's Run-result) may be absent — so hiding one keeps the tree valid.
+  const valid=(t,keys,optional=[])=>{try{const l=leaves(t);const req=keys.filter(k=>!optional.includes(k));return new Set(l).size===l.length&&l.every(k=>keys.includes(k))&&req.every(k=>l.includes(k));}catch(e){return false;}};
   let saved={};
   try{saved=JSON.parse(localStorage.getItem(KEY)||'{}');}catch(e){}
   const views=[];
@@ -1401,7 +1481,8 @@ function initTiling(){
     const view=document.getElementById(spec.id);if(!view)return;
     const panel={};for(const k in spec.sel){const el=view.querySelector(spec.sel[k]);if(el)panel[k]=el;}
     const keys=Object.keys(panel);if(!keys.length)return;
-    const V={spec,view,panel,keys,id:spec.id.replace('view-',''),dvc:0,tree:(saved[spec.id]&&valid(saved[spec.id],keys))?saved[spec.id]:spec.def};
+    const optional=spec.optional||[];
+    const V={spec,view,panel,keys,optional,id:spec.id.replace('view-',''),dvc:0,tree:(saved[spec.id]&&valid(saved[spec.id],keys,optional))?saved[spec.id]:spec.def};
     keys.forEach(k=>{
       const g=document.createElement('div');g.className='tile-grip';g.title='drag to move / swap';g.textContent='⠿';
       g.addEventListener('mousedown',e=>{e.preventDefault();pdrag={V,key:k};panel[k].classList.add('tile-dragging');document.body.classList.add('reordering-active');document.body.style.userSelect='none';document.body.style.cursor='grabbing';});
@@ -1409,6 +1490,14 @@ function initTiling(){
     });
     rebuild(V);views.push(V);
   });
+  // Expose add/remove of Record's optional Run-result pane, so the run handlers can show it on Run
+  // and its X can dismiss it — using the same tiling machinery (insert/remove leaf) as a drag would.
+  const recV=views.find(v=>v.spec.id==='view-record');
+  if(recV){
+    const inTree=()=>leaves(recV.tree).includes('report');
+    recReportShow=()=>{recV.panel.report.hidden=false;if(!inTree()){recV.tree=insertBeside(recV.tree,'yaml','report','bottom');rebuild(recV);}};
+    recReportHide=()=>{if(inTree()){recV.tree=removeLeaf(recV.tree,'report')||recV.tree;rebuild(recV);}recV.panel.report.hidden=true;};
+  }
   window.addEventListener('mousemove',e=>{
     if(!pdrag)return;
     const el=document.elementFromPoint(e.clientX,e.clientY),t=el&&el.closest('.tile-leaf');
@@ -1423,7 +1512,7 @@ function initTiling(){
       const bak=JSON.stringify(V.tree);
       try{
         V.tree=pdrag.z==='center'?swapKeys(V.tree,pdrag.key,pdrag.tkey):normalize(insertBeside(removeLeaf(V.tree,pdrag.key),pdrag.tkey,pdrag.key,pdrag.z));
-        if(!valid(V.tree,V.keys))V.tree=JSON.parse(bak);
+        if(!valid(V.tree,V.keys,V.optional))V.tree=JSON.parse(bak);
       }catch(err){V.tree=JSON.parse(bak);}
       rebuild(V);save();
     }
