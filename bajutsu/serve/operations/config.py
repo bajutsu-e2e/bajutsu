@@ -141,25 +141,30 @@ def provider_info(state: ServeState) -> tuple[Any, int]:
 
 
 def _confined_config_path(root: Path, raw: str) -> Path | None:
-    """Resolve *raw* as a path under *root* and return the normalized result, or None if it escapes.
+    """Resolve *raw* (relative to *root*, or an absolute path) to a path confined to *root*, or None
+    if it escapes — the one barrier between client input and a filesystem read.
 
-    Accepts both a relative path (resolved under *root*) and an absolute path (kept only when it
-    resolves within *root*): the file browser posts the absolute paths ``/api/fs`` returns, so
-    rejecting them outright would break every valid in-root selection. We normalize with
-    ``resolve(strict=False)`` and then enforce confinement by requiring the resolved target to be
-    relative to the resolved root — the same ``resolve(...).relative_to(root)`` guard used across
-    the codebase, so a ``..`` escape or an out-of-root absolute path (e.g. ``/etc/hosts``) yields
-    None regardless of how it was spelled."""
+    Accepts both a relative path (resolved under *root*) and an absolute path: the file browser posts
+    the absolute paths ``/api/fs`` returns, so rejecting them outright would break every valid in-root
+    selection. ``base / raw`` handles both — pathlib drops *base* when *raw* is absolute — and is the
+    same join the directory browser's ``base / sub`` uses; that shape resolves the client value
+    without tripping the path-injection query, whereas building ``Path(raw)`` directly does. Resolving
+    **first** normalizes any ``..`` and follows symlinks so the containment check is sound; the
+    explicit ``is_relative_to`` guard (not a suppressed ``relative_to``) is what CodeQL recognizes as
+    the barrier, so the downstream ``is_file`` / ``read_text`` sinks stay clear. Resolution is
+    non-strict so a not-yet-existing in-root path still resolves — the caller's ``is_file`` reports it
+    as 404 rather than this masking it as a misleading "outside the browse root" 400. A NUL byte or a
+    resolution failure (bad path string, symlink loop) collapses to None."""
     if not raw or not raw.strip() or "\x00" in raw:
         return None
-    base = root.resolve()
-    candidate = Path(raw.strip())
-    anchored = candidate if candidate.is_absolute() or candidate.anchor else base / candidate
-    target = anchored.resolve(strict=False)
-    with contextlib.suppress(ValueError):
-        target.relative_to(base)
-        return target
-    return None
+    try:
+        base = root.resolve(strict=False)
+        target = (base / raw.strip()).resolve(strict=False)
+    except (OSError, RuntimeError, ValueError):
+        return None
+    if not target.is_relative_to(base):
+        return None
+    return target
 
 
 def bind_config(state: ServeState, raw: str) -> tuple[Any, int]:
