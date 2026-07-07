@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-record-human-value-prompt-ja.md)
+**English** · [日本語](BE-0182-record-human-value-prompt-ja.md)
 
-# BE-XXXX — Human value entry during record (OTP / random / one-off values)
+# BE-0182 — Human value entry during record (OTP / random / one-off values)
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-record-human-value-prompt.md) |
+| Proposal | [BE-0182](BE-0182-record-human-value-prompt.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0182") |
 | Topic | Authoring experience (record / GUI editor) |
 | Related | [BE-0015](../BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md), [BE-0016](../BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md), [BE-0044](../BE-0044-scenario-provenance/BE-0044-scenario-provenance.md), [BE-0046](../BE-0046-otp-email-steps/BE-0046-otp-email-steps.md), [BE-0120](../BE-0120-recorded-scenario-secret-tokenization/BE-0120-recorded-scenario-secret-tokenization.md), [BE-0179](../BE-0179-record-human-handoff/BE-0179-record-human-handoff.md) |
 <!-- /BE-METADATA -->
