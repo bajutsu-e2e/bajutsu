@@ -79,6 +79,7 @@ def test_crawl_flag_surface_is_fully_classified() -> None:
         "headed",
         "resume_src",
         "resume_key",
+        "continue_crawl",
         "upload_exec",
     }
     assert base_handled | not_serve_exposed | pass_through == _option_names("crawl")

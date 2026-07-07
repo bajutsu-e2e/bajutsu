@@ -220,6 +220,146 @@ def test_resume_a_pruned_branch_explores_it_and_appends_to_the_map() -> None:
     assert any(e.dst == crawl.fingerprint(extra).value for e in resumed.edges)
 
 
+def test_continue_reconstructs_the_full_frontier_and_finishes_the_crawl() -> None:
+    """A crawl stopped on a budget leaves a frontier in `plan`; feeding that map back as `base_map`
+    without a seed path (BE-0181 full-frontier continuation) reconstructs every screen's untried ops
+    from `paths` + `plan`, keeps exploring, and completes the map a bigger budget would have."""
+    react, home = _three_screen_app()
+
+    def reset(d: FakeDriver) -> None:
+        d.screen = list(home)
+
+    # A tight budget stops after one action, so `about` is never reached and a frontier remains.
+    partial = crawl.crawl(FakeDriver(screen=list(home), react=react), reset, max_steps=1)
+    assert partial.stop_reason == "max_steps"
+    assert len(partial.nodes) < 3
+    assert any(partial.plan.values()), "the budget stop must leave untried operations to continue"
+
+    # Continue: base_map, no seed_path/seed_ops — the whole remaining frontier, not one branch.
+    continued = crawl.crawl(
+        FakeDriver(screen=list(home), react=react),
+        reset,
+        base_map=partial,
+        max_screens=50,
+        max_steps=100,
+    )
+    assert len(continued.nodes) == 3  # home, settings, about — the full map
+    assert crawl.fingerprint(_three_screen_app()[1]).value in continued.nodes
+    assert continued.stop_reason == "completed"  # re-decided by the continuation, not inherited
+
+
+def test_continue_through_a_dict_round_trip_matches_a_full_crawl() -> None:
+    """The real path: the partial map is persisted to `screenmap.json` and reloaded (as the CLI's
+    `--continue` does), then continued. The continued map reaches the same screens a single
+    uninterrupted crawl of the deterministic app would."""
+    react, home = _three_screen_app()
+
+    def reset(d: FakeDriver) -> None:
+        d.screen = list(home)
+
+    full = crawl.crawl(FakeDriver(screen=list(home), react=react), reset, max_steps=100)
+    partial = crawl.crawl(FakeDriver(screen=list(home), react=react), reset, max_steps=1)
+    reloaded = crawl.screenmap_from_dict(crawl.screenmap_dict(partial))
+    continued = crawl.crawl(
+        FakeDriver(screen=list(home), react=react), reset, base_map=reloaded, max_steps=100
+    )
+    assert set(continued.nodes) == set(full.nodes)
+
+
+def test_continue_with_no_frontier_is_a_noop_and_reports_completed() -> None:
+    """Continuing a map that already explored everything finds nothing new: the reconstructed
+    frontier is empty, so the crawl returns the same nodes and reports `completed`."""
+    react, home = _three_screen_app()
+
+    def reset(d: FakeDriver) -> None:
+        d.screen = list(home)
+
+    done = crawl.crawl(FakeDriver(screen=list(home), react=react), reset, max_steps=100)
+    assert done.stop_reason == "completed" and not any(done.plan.values())
+    again = crawl.crawl(FakeDriver(screen=list(home), react=react), reset, base_map=done)
+    assert set(again.nodes) == set(done.nodes)
+    assert again.stop_reason == "completed"
+
+
+def test_continue_runs_the_worker_pool_in_parallel() -> None:
+    """Unlike a single-branch resume (one walk), a full-frontier continuation keeps `extra_workers`
+    (BE-0181): a partial crawl of a wide hub is continued across a worker pool, reaches the same
+    screens the serial crawl of the whole app does, and genuinely shares the work across devices."""
+    react, home = _wide_app(8)
+
+    def reset(d: FakeDriver) -> None:
+        d.screen = list(home)
+
+    serial = crawl.crawl(FakeDriver(screen=list(home), react=react), reset, max_steps=100)
+    partial = crawl.crawl(FakeDriver(screen=list(home), react=react), reset, max_steps=2)
+    assert partial.stop_reason == "max_steps"
+
+    # A small settle (device-latency stand-in) lets the extra workers actually overlap the primary
+    # instead of it draining the synchronous fake alone — the latency the parallel design overlaps.
+    def settle(_d: FakeDriver) -> None:
+        time.sleep(0.002)
+
+    drivers, factories = _pool(react, home, 4)  # 4 workers: primary + 3 extra-worker factories
+    continued = crawl.crawl(
+        drivers[0], reset, base_map=partial, max_steps=100, settle=settle, extra_workers=factories
+    )
+    assert set(continued.nodes) == set(serial.nodes)
+    # The continuation genuinely used the pool (not a silently-serial walk): more than one device
+    # explored the reconstructed frontier. The extras only tap during exploration, so an extra having
+    # tapped proves the pool drove the continuation — this fails if `extra_workers` were dropped.
+    extras_acted = sum(1 for d in drivers[1:] if any(a[0] == "tap" for a in d.actions))
+    assert extras_acted >= 1
+
+
+def test_continue_skips_a_screen_whose_recorded_path_no_longer_resolves() -> None:
+    """App drift between the original crawl and the continuation: one frontier screen's recorded path
+    no longer replays (a selector is gone), the other still does. The stale screen is skipped, the
+    live one is still explored, and the crawl neither raises nor aborts the whole continuation."""
+    react, home = _three_screen_app()
+
+    def reset(d: FakeDriver) -> None:
+        d.screen = list(home)
+
+    partial = crawl.crawl(FakeDriver(screen=list(home), react=react), reset, max_steps=1)
+    # Hand-inject a frontier screen whose recorded path taps an id the reset screen doesn't have, so
+    # its replay fails (SelectorError); `home`'s own remaining op (home.about) still resolves.
+    ghost = "ghost-fingerprint"
+    partial.paths[ghost] = (crawl.Action("tap", target="does.not.exist"),)
+    partial.plan[ghost] = ["tap does.not.exist"]
+
+    continued = crawl.crawl(
+        FakeDriver(screen=list(home), react=react), reset, base_map=partial, max_steps=100
+    )
+    # The stale ghost screen contributed nothing, but the reachable frontier (home → about) was still
+    # explored: all three real screens are present and the run didn't crash on the broken path.
+    assert crawl.fingerprint(_three_screen_app()[1]).value in continued.nodes
+    assert len(continued.nodes) == 3
+
+
+def test_continue_that_hits_a_budget_again_reports_the_new_reason_and_keeps_a_frontier() -> None:
+    """A continuation re-decides its own stop reason (it doesn't inherit the prior run's): continuing
+    a map that stopped on `max_steps` with a still-too-small budget stops on `max_steps` again and
+    leaves a frontier, so it stays continuable — proving the stop_reason reset, not an inherited value."""
+    react, home = _wide_app(8)
+
+    def reset(d: FakeDriver) -> None:
+        d.screen = list(home)
+
+    partial = crawl.crawl(FakeDriver(screen=list(home), react=react), reset, max_steps=1)
+    assert partial.stop_reason == "max_steps" and len(partial.nodes) < 9
+
+    continued = crawl.crawl(
+        FakeDriver(screen=list(home), react=react),
+        reset,
+        base_map=partial,
+        max_screens=50,
+        max_steps=3,
+    )
+    assert continued.stop_reason == "max_steps"  # re-decided by this run, not inherited
+    assert len(continued.nodes) < 9  # still incomplete
+    assert any(continued.plan.values())  # a frontier remains, so it's still continuable
+
+
 def test_screenmap_round_trips_through_dict_for_resume() -> None:
     """A saved map reloads with its nodes, edges and pruned replay paths intact, so a resume can use
     it as the base."""

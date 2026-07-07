@@ -924,11 +924,53 @@ function viewCrawlRun(r){
   crawlHistoryRun=r.id;
   setCrawlFormDisabled(true);  // read-only framing: the live form can't drive a past map
   const badge=$('#crawl-pastbadge');badge.textContent='past crawl · '+r.id;badge.hidden=false;
+  // Offer "continue exploring" (BE-0181) only when the run left untried operations — a completed
+  // crawl has an empty frontier, so continuing it would find nothing. Reuses the live form's budget
+  // inputs, so the user can raise Max screens / Max steps before continuing.
+  const cont=$('#crawl-continue');
+  if(r.frontier>0){cont.hidden=false;cont.textContent='▸ continue exploring · '+r.frontier+' screen'+(r.frontier>1?'s':'')+' left';cont.onclick=()=>continuePastRun(r.id)}
+  else{cont.hidden=true;cont.onclick=null}
   setStatus($('#crawl-status'),'','');
   const art=$('#crawl-artifacts');
   const html=crawlArtifactLinks(r.id,'crashes','crashes',r.crashFiles)+crawlArtifactLinks(r.id,'flows','flows',r.flowFiles);
   art.innerHTML=html;art.hidden=!html;
   loadGraph(r.id);
+}
+// BE-0181: leave read-only history framing to actively explore an open past run — its whole
+// remaining frontier (continue) or one pruned branch (resume). BE-0180 makes the history view
+// read-only on purpose (a past map must not read as live, nor be driven by accident), so this is
+// the deliberate un-lock: re-enable the form, drop the history-mode state, and arm crawlRunId — and
+// only when the user explicitly asks to explore. Switches to the Form sub-tab so Stop is reachable.
+function armPastRun(runId){
+  crawlHistoryRun=null;crawlLiveRun=null;crawlRunId=runId;
+  setCrawlFormDisabled(false);
+  $('#crawl-pastbadge').hidden=true;$('#crawl-continue').hidden=true;
+  $('#crawl-artifacts').hidden=true;$('#crawl-artifacts').innerHTML='';
+  document.querySelectorAll('#view-crawl .tab').forEach(t=>t.classList.toggle('active',t.dataset.tab==='crawlform'));
+  $('#panel-crawl').hidden=false;$('#crawl-panel-history').hidden=true;
+}
+// Continue a past run's whole remaining frontier live: re-launch the crawl against the SAME run with
+// continue:true — the engine reconstructs every screen with untried ops from its saved map and keeps
+// exploring, appending to it. --workers/--udid make the continuation parallel, unlike a resume.
+async function continuePastRun(runId){
+  armPastRun(runId);
+  if(crawlPoll)crawlPoll.close();
+  setBusy($('#crawl-go'),$('#crawl-stop'),true,'Continuing…');
+  $('#crawl-out').textContent='';
+  setStatus($('#crawl-status'),'','run');
+  const r=await fetch('/api/crawl',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
+    target:$('#crawl-target').value,udid:crawlPickedUdids().join(',')||'booted',
+    workers:parseInt($('#crawl-workers').value,10)||1,
+    maxScreens:parseInt($('#crawl-maxscreens').value,10)||50,maxSteps:parseInt($('#crawl-maxsteps').value,10)||200,
+    dismissAlerts:$('#crawl-nodismiss').checked?false:undefined,headed:$('#crawl-headed').checked||undefined,
+    runId:runId,continue:true})});
+  const {jobId,runId:started,error}=await r.json();
+  if(error){setStatus($('#crawl-status'),error,'ng');setBusy($('#crawl-go'),$('#crawl-stop'),false);return}
+  crawlJobId=jobId;crawlRunId=started;
+  crawlPoll=streamJob(jobId,line=>{
+    appendLine($('#crawl-out'),line);
+    if(crawlRunId)loadGraph(crawlRunId);
+  },crawlDone);
 }
 // Leave history mode: re-enable the live form and reset the map/plan/links to their pre-crawl state,
 // the same clean slate crawlDone leaves for the next run.
@@ -937,7 +979,8 @@ function exitCrawlHistory(){
   crawlHistoryRun=null;
   crawlRunId=crawlLiveRun;crawlLiveRun=null;  // hand the graph back to the live crawl, if one was running
   setCrawlFormDisabled(false);
-  $('#crawl-pastbadge').hidden=true;$('#crawl-artifacts').hidden=true;$('#crawl-artifacts').innerHTML='';
+  $('#crawl-pastbadge').hidden=true;$('#crawl-continue').hidden=true;
+  $('#crawl-artifacts').hidden=true;$('#crawl-artifacts').innerHTML='';
   $('#crawl-counts').textContent='';setStatus($('#crawl-status'),'','');
   $('#crawl-graph').innerHTML='<div class="empty">Start a crawl to watch the screen map grow.</div>';
   $('#crawl-plan').innerHTML='<div class="empty">The plan tree grows as the crawl explores.</div>';
@@ -1293,7 +1336,12 @@ $('#crawl-plan').addEventListener('click',e=>{
 // Tap a pruned branch to resume exploring it: re-launch the crawl against the SAME run, seeded to
 // replay to that screen and perform the pruned op, appending whatever it finds to the live map.
 async function resumePruned(src,key){
-  if(!crawlRunId){setStatus($('#crawl-status'),'no active run to resume','ng');return}
+  // A pruned branch tapped while viewing a past run (BE-0180 read-only history) is an explicit
+  // request to explore it: adopt that run and un-lock, the same deliberate transition continue makes
+  // (BE-0181). Live crawl → crawlRunId is already set; a fresh Crawl tab with neither → nothing to do.
+  const runId=crawlRunId||crawlHistoryRun;
+  if(!runId){setStatus($('#crawl-status'),'no active run to resume','ng');return}
+  if(crawlHistoryRun)armPastRun(runId);
   if(crawlPoll)crawlPoll.close();
   setBusy($('#crawl-go'),$('#crawl-stop'),true,'Resuming…');
   setStatus($('#crawl-status'),'','run');
@@ -1301,10 +1349,10 @@ async function resumePruned(src,key){
     target:$('#crawl-target').value,udid:crawlPickedUdids()[0]||'booted',  // a resume is a single-branch walk
     maxScreens:parseInt($('#crawl-maxscreens').value,10)||50,maxSteps:parseInt($('#crawl-maxsteps').value,10)||200,
     dismissAlerts:$('#crawl-nodismiss').checked?false:undefined,headed:$('#crawl-headed').checked||undefined,
-    runId:crawlRunId,resumeSrc:src,resumeKey:key})});
-  const {jobId,runId,error}=await r.json();
+    runId:runId,resumeSrc:src,resumeKey:key})});
+  const {jobId,runId:started,error}=await r.json();
   if(error){setStatus($('#crawl-status'),error,'ng');setBusy($('#crawl-go'),$('#crawl-stop'),false);return}
-  crawlJobId=jobId;crawlRunId=runId;
+  crawlJobId=jobId;crawlRunId=started;
   crawlPoll=streamJob(jobId,line=>{
     appendLine($('#crawl-out'),line);
     if(crawlRunId)loadGraph(crawlRunId);

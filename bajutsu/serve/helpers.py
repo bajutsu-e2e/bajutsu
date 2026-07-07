@@ -276,6 +276,10 @@ def list_crawl_runs(runs_dir: Path) -> list[dict[str, Any]]:
                 "crashes": _list_len(data.get("crashes")),
                 "crashFiles": _scenario_file_names(d / "crashes"),
                 "flowFiles": _scenario_file_names(d / "flows"),
+                # Screens the run left with untried operations — what a full-frontier continuation
+                # (BE-0181) would explore. Lets the Crawl tab offer "continue" only when >0.
+                "frontier": _frontier_count(data.get("plan")),
+                "stopReason": str(data.get("stop_reason") or ""),
             }
         )
     out.sort(key=lambda r: r["id"], reverse=True)
@@ -286,6 +290,14 @@ def _list_len(value: Any) -> int:
     """The length of *value* when it's a list, else 0 — so a missing or hand-corrupted screenmap
     count field (a dict, a scalar) summarizes as 0 instead of miscounting or raising."""
     return len(value) if isinstance(value, list) else 0
+
+
+def _frontier_count(plan: Any) -> int:
+    """Screens with a non-empty untried-operation list in *plan* — the size of a continuation's
+    frontier. Tolerant of a missing or hand-corrupted `plan` (not a dict → 0), like `_list_len`."""
+    if not isinstance(plan, dict):
+        return 0
+    return sum(1 for ops in plan.values() if isinstance(ops, list) and ops)
 
 
 def _scenario_file_names(dir_: Path) -> list[str]:
@@ -450,6 +462,7 @@ def crawl_command(
     config: str = "bajutsu.config.yaml",
     resume_src: str = "",
     resume_key: str = "",
+    continue_crawl: bool = False,
     upload_exec: str = "",
 ) -> list[str]:
     """The ``python -m bajutsu crawl --target … --out …`` argv for a crawl request — the explorer the
@@ -461,7 +474,8 @@ def crawl_command(
     on web (BE-0077). Crawl is AI-driven; the AI provider is inherited from the serve process's
     environment (`BAJUTSU_AI_PROVIDER`, BE-0163). When ``resume_src`` / ``resume_key`` are set,
     ``out`` points at an existing run and the crawl resumes one pruned branch, appending to that
-    run's map instead of starting a fresh one."""
+    run's map instead of starting a fresh one; ``continue_crawl`` instead continues that run's whole
+    remaining frontier (BE-0181, mutually exclusive with the resume keys)."""
     cmd = [
         sys.executable,
         "-m",
@@ -479,7 +493,8 @@ def crawl_command(
         str(max_steps),
     ]
     # Resuming appends to the existing run, so force --no-erase (don't wipe the app state mid-walk)
-    # and carry the resume keys; a fresh crawl leaves erase to the override and omits them.
+    # and carry the resume keys; a fresh crawl or a full-frontier continuation leaves erase to the
+    # override (a continuation re-derives its frontier from a clean baseline, like a fresh crawl).
     resuming = bool(resume_src and resume_key)
     cmd += flag_args(
         "crawl",
@@ -493,6 +508,7 @@ def crawl_command(
             "upload_exec": upload_exec,
             "resume_src": resume_src if resuming else "",
             "resume_key": resume_key if resuming else "",
+            "continue_crawl": continue_crawl,
         },
     )
     return cmd

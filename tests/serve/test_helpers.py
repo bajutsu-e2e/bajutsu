@@ -233,6 +233,36 @@ def test_list_crawl_runs_lists_only_yaml_files_not_dirs(tmp_path: Path) -> None:
     assert got["crashFiles"] == ["crash-001.yaml"]  # the directory is excluded
 
 
+def test_list_crawl_runs_counts_the_continuation_frontier(tmp_path: Path) -> None:
+    # `frontier` (BE-0181) counts screens the run left with untried operations — what a continuation
+    # would explore — so the Crawl tab can offer "continue" only when >0. A plan entry with an empty
+    # op list is a fully-explored screen and doesn't count; a run with no plan key is 0.
+    _, _, runs = project(tmp_path)
+    (runs / "r1").mkdir()
+    (runs / "r1" / "screenmap.json").write_text(
+        json.dumps(
+            {
+                "nodes": [{"fingerprint": "a"}, {"fingerprint": "b"}],
+                "edges": [],
+                "crashes": [],
+                "plan": {
+                    "a": ["tap x", "tap y"],
+                    "b": [],
+                },  # a has untried ops, b is fully explored
+                "stop_reason": "max_steps",
+            }
+        ),
+        encoding="utf-8",
+    )
+    (runs / "r2").mkdir()  # no plan / stop_reason keys at all
+    (runs / "r2" / "screenmap.json").write_text(
+        json.dumps({"nodes": [], "edges": [], "crashes": []}), encoding="utf-8"
+    )
+    got = {r["id"]: r for r in srv.list_crawl_runs(runs)}
+    assert got["r1"]["frontier"] == 1 and got["r1"]["stopReason"] == "max_steps"
+    assert got["r2"]["frontier"] == 0 and got["r2"]["stopReason"] == ""
+
+
 def test_list_crawl_runs_empty_dir(tmp_path: Path) -> None:
     assert srv.list_crawl_runs(tmp_path / "nope") == []
 
@@ -438,6 +468,16 @@ def test_crawl_command_builder() -> None:
     assert res[res.index("--resume-key") + 1] == "tab.x"
     assert "--no-erase" in res
     assert "--resume-src" not in bare  # omitted for a normal crawl
+    assert "--continue" not in bare  # continuation flag omitted for a normal crawl
+    # A full-frontier continuation (BE-0181) passes --continue, keeps the erase override (unlike a
+    # single-branch resume, which forces --no-erase), and never carries the resume keys.
+    cont = srv.crawl_command("demo", out="o", continue_crawl=True, workers=2)
+    assert "--continue" in cont
+    assert "--resume-src" not in cont and "--resume-key" not in cont
+    assert (
+        "--no-erase" not in cont
+    )  # a continuation leaves erase to the override, like a fresh crawl
+    assert cont[cont.index("--workers") + 1] == "2"  # continuation keeps the parallel pool
 
 
 def test_scenario_out_path_sanitizes(tmp_path: Path) -> None:

@@ -7,7 +7,7 @@
 |---|---|
 | Proposal | [BE-0181](BE-0181-crawl-continuation.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0181") |
 | Topic | Crawl performance / scale-out |
 <!-- /BE-METADATA -->
@@ -145,13 +145,26 @@ rejects both being set).
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Engine: full-frontier reconstruction from `paths` + `plan` (no schema change) and the
+- [x] Engine: full-frontier reconstruction from `paths` + `plan` (no schema change) and the
       `base_map`-without-`seed_ops` continuation path in `crawl()`.
-- [ ] Engine: allow `extra_workers` for a full-frontier continuation (parallel resume).
-- [ ] CLI: `--continue` flag on `bajutsu crawl`, mutually exclusive with `--resume-src`/`--resume-key`.
-- [ ] Web UI: run picker to reopen a past run's `screenmap.json` into the Crawl tab (fixes
-      pruned-branch resume outside the originating tab).
-- [ ] Web UI: "continue exploring" control wired through `dispatch.py`'s `start_crawl`.
+- [x] Engine: allow `extra_workers` for a full-frontier continuation (parallel resume).
+- [x] CLI: `--continue` flag on `bajutsu crawl`, mutually exclusive with `--resume-src`/`--resume-key`.
+- [x] Web UI: reopen a past run's `screenmap.json` into the Crawl tab and resume a pruned branch on
+      it (BE-0180 shipped the read-only run picker; this adds the explicit un-lock to explore it).
+- [x] Web UI: "continue exploring" control wired through `dispatch.py`'s `start_crawl`.
+
+Log:
+
+- Implemented the full-frontier continuation end to end: engine reconstruction + continuation path
+  and parallel-continuation support in [`crawl.py`](../../bajutsu/crawl.py); the `--continue` flag
+  (mutually exclusive with `--resume-src`/`--resume-key`) in
+  [`cli/commands/crawl.py`](../../bajutsu/cli/commands/crawl.py); the `continue` branch through
+  [`dispatch.py`](../../bajutsu/serve/operations/dispatch.py) / `crawl_command`; and a Web UI
+  "continue exploring" control plus pruned-branch resume that consciously leave BE-0180's read-only
+  history view ([`serve.js`](../../bajutsu/templates/serve.js)). Reconciles with
+  [BE-0180](../BE-0180-crawl-history-viewer/BE-0180-crawl-history-viewer.md), which had already
+  added the Crawl-tab run picker (deliberately read-only), so gap #1 became an explicit un-lock
+  rather than arming the picker on selection.
 
 ## References
 

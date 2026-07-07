@@ -7,7 +7,7 @@
 |---|---|
 | 提案 | [BE-0181](BE-0181-crawl-continuation-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **提案** |
+| 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0181") |
 | トピック | クロール性能 / スケールアウト |
 <!-- /BE-METADATA -->
@@ -143,14 +143,28 @@ run 一覧を組み立てる run ピッカーを持っています（[`serve.js`
 > 作業分解（作業の単位ごとに 1 つ）に対応し、ログには変更内容と時期（古い順）を PR へのリンクと
 > ともに記録します。
 
-- [ ] エンジン：`paths` と `plan` からのフロンティア全体の再構築（スキーマ変更なし）と、`crawl()` の
+- [x] エンジン：`paths` と `plan` からのフロンティア全体の再構築（スキーマ変更なし）と、`crawl()` の
       `base_map` のみ（`seed_ops` なし）による継続探索の経路。
-- [ ] エンジン：フロンティア全体の継続探索で `extra_workers`（並列再開）を許可する。
-- [ ] CLI：`bajutsu crawl` に `--continue` フラグを追加する（`--resume-src`/`--resume-key` とは
+- [x] エンジン：フロンティア全体の継続探索で `extra_workers`（並列再開）を許可する。
+- [x] CLI：`bajutsu crawl` に `--continue` フラグを追加する（`--resume-src`/`--resume-key` とは
       同時指定不可）。
-- [ ] Web UI：過去の run の `screenmap.json` を Crawl タブに読み込み直す run ピッカー（開始したタブの
-      外でも枝刈りブランチの再開を可能にする）。
-- [ ] Web UI：`dispatch.py` の `start_crawl` まで配線した「続きを探索する」操作。
+- [x] Web UI：過去の run の `screenmap.json` を Crawl タブに読み込み直し、その run で枝刈りブランチを
+      再開する（読み取り専用の run ピッカーは BE-0180 が出荷済みで、本項目はそれを探索するための明示的な
+      解除を追加します）。
+- [x] Web UI：`dispatch.py` の `start_crawl` まで配線した「続きを探索する」操作。
+
+ログ：
+
+- フロンティア全体の継続探索を一通り実装しました。[`crawl.py`](../../bajutsu/crawl.py) にエンジンの
+  再構築と継続探索の経路、および並列継続探索のサポートを追加し、
+  [`cli/commands/crawl.py`](../../bajutsu/cli/commands/crawl.py) に `--continue` フラグ
+  （`--resume-src`/`--resume-key` とは同時指定不可）を、
+  [`dispatch.py`](../../bajutsu/serve/operations/dispatch.py) と `crawl_command` に `continue`
+  の分岐を、[`serve.js`](../../bajutsu/templates/serve.js) に「続きを探索する」操作と、BE-0180 の
+  読み取り専用の履歴表示を意図的に抜ける枝刈りブランチの再開を追加しました。すでに Crawl タブの run
+  ピッカー（意図的に読み取り専用）を出荷していた
+  [BE-0180](../BE-0180-crawl-history-viewer/BE-0180-crawl-history-viewer-ja.md) と整合させ、gap #1 は
+  選択時にピッカーを起動可能にするのではなく、明示的な解除としました。
 
 ## 参考
 

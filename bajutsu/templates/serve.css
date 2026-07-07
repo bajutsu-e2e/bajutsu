@@ -78,6 +78,8 @@ body.reordering-active iframe{pointer-events:none}
 /* Crawl history (BE-0180): a "past crawl" badge so a reopened map never reads as live, and a strip of
    links to the crash/flow scenario files the run wrote. */
 .pastbadge{font-size:.72em;font-weight:600;color:var(--acc);border:1px solid var(--acc);border-radius:10px;padding:.05rem .5rem;text-transform:uppercase;letter-spacing:.03em}
+.pastcontinue{font-size:.74em;font-weight:600;color:var(--bg);background:var(--acc);border:1px solid var(--acc);border-radius:10px;padding:.1rem .6rem;cursor:pointer}
+.pastcontinue:hover{filter:brightness(1.08)}
 .crawl-artifacts{flex:0 0 auto;display:flex;flex-wrap:wrap;gap:.6rem;margin-bottom:.5rem;font-size:.82em}
 .crawl-artifacts .artgroup{display:inline-flex;align-items:center;gap:.4rem;flex-wrap:wrap}
 .crawl-artifacts .artlabel{color:var(--mut);text-transform:uppercase;letter-spacing:.03em;font-size:.9em}

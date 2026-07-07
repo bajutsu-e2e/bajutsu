@@ -282,14 +282,26 @@ def start_crawl(
     org, forbidden = _resolve_org_or_forbid(state, target, actor)
     if forbidden:
         return forbidden
-    # Resume continues an existing run (a pruned branch tapped in the UI); otherwise a new run.
+    # Two ways to warm-start an existing run (both take its runId from the UI): resume one pruned
+    # branch tapped in the graph, or continue the whole remaining frontier (BE-0181). They're
+    # mutually exclusive — one names a single branch, the other means "everything left". Anything
+    # else is a fresh run under a new timestamp id.
     resume_src = str(body.get("resumeSrc", "") or "")
     resume_key = str(body.get("resumeKey", "") or "")
     resuming = bool(resume_src and resume_key and body.get("runId"))
-    run_id = str(body["runId"]) if resuming else datetime.now(tz=UTC).strftime("%Y%m%d-%H%M%S")
-    # A resumed crawl takes runId from the client; reject anything but a safe path segment so
+    # `continue` names an existing run to pick up, so it's meaningless without a runId — reject that
+    # rather than silently reinterpreting it as a fresh crawl (which would leave the user's target run
+    # untouched with no error).
+    if body.get("continue") and not body.get("runId"):
+        return {"error": "continue requires the runId of the crawl to continue"}, 400
+    continuing = bool(body.get("continue")) and bool(body.get("runId"))
+    if resuming and continuing:
+        return {"error": "resume and continue are mutually exclusive"}, 400
+    reuse_run = resuming or continuing
+    run_id = str(body["runId"]) if reuse_run else datetime.now(tz=UTC).strftime("%Y%m%d-%H%M%S")
+    # A reused run takes runId from the client; reject anything but a safe path segment so
     # `runs_dir / run_id` (the crawl's --out) can't escape runs_dir (BE-0051).
-    if resuming and not valid_run_id(run_id):
+    if reuse_run and not valid_run_id(run_id):
         return {"error": "invalid runId"}, 400
     backend, udid, err = _device_args(body)
     if err:
@@ -308,6 +320,7 @@ def start_crawl(
         config=str(cfg),
         resume_src=resume_src if resuming else "",
         resume_key=resume_key if resuming else "",
+        continue_crawl=continuing,
         upload_exec=state.upload_exec if state.upload is not None else "",
     )
     app_path, build = target_build_info(cfg, target)
