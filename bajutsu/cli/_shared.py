@@ -273,6 +273,8 @@ def _resolve_language(eff: Effective, language: str) -> Effective:
         known = ", ".join(anthropic_client.LANGUAGES)
         typer.echo(f"unknown --language {language!r}: use one of {known}")
         raise typer.Exit(2)
+    if normalized == anthropic_client.DEFAULT_LANGUAGE:
+        os.environ.pop(anthropic_client.LANGUAGE_ENV, None)
     return replace(eff, ai=replace(eff.ai or AiConfig(), language=normalized))
 
 
