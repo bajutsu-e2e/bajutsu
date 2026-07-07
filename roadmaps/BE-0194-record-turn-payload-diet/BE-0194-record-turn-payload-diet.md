@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-record-turn-payload-diet-ja.md)
+**English** · [日本語](BE-0194-record-turn-payload-diet-ja.md)
 
-# BE-XXXX — Lean the record turn payload (compact the element tree, token-budget controls, per-category usage)
+# BE-0194 — Lean the record turn payload (compact the element tree, token-budget controls, per-category usage)
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-record-turn-payload-diet.md) |
+| Proposal | [BE-0194](BE-0194-record-turn-payload-diet.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0194") |
 | Topic | Authoring experience (record / GUI editor) |
 <!-- /BE-METADATA -->
 

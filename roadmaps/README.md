@@ -584,6 +584,7 @@ The scope is currently **limited to the iOS Simulator** ([DESIGN §1](../DESIGN.
 | [BE-0191](BE-0191-pluggable-theme-system-serve-ui/BE-0191-pluggable-theme-system-serve-ui.md) | Pluggable theme system for the serve Web UI (visual tokens and swappable transitions) | Proposal |
 | [BE-0192](BE-0192-record-vision-on-demand/BE-0192-record-vision-on-demand.md) | Vision-on-demand in record (attach a screenshot only when it adds information) | Proposal |
 | [BE-0193](BE-0193-record-screenshot-downscale/BE-0193-record-screenshot-downscale.md) | Right-size the record screenshot with a deterministic client-side downscale | Proposal |
+| [BE-0194](BE-0194-record-turn-payload-diet/BE-0194-record-turn-payload-diet.md) | Lean the record turn payload (compact the element tree, token-budget controls, per-category usage) | Proposal |
 <!-- /GENERATED:proposals-authoring -->
 
 ### Surfacing CLI features in the serve Web UI

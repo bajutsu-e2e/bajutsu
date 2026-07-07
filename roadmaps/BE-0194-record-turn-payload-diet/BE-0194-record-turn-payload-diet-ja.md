@@ -1,14 +1,14 @@
-[English](BE-XXXX-record-turn-payload-diet.md) · **日本語**
+[English](BE-0194-record-turn-payload-diet.md) · **日本語**
 
-# BE-XXXX — record の 1 ターンのペイロードを痩せさせる（要素ツリーの圧縮、トークン予算ノブ、種別ごとの使用量）
+# BE-0194 — record の 1 ターンのペイロードを痩せさせる（要素ツリーの圧縮、トークン予算ノブ、種別ごとの使用量）
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
 |---|---|
-| 提案 | [BE-XXXX](BE-XXXX-record-turn-payload-diet-ja.md) |
+| 提案 | [BE-0194](BE-0194-record-turn-payload-diet-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **提案** |
-| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0194") |
 | トピック | Authoring experience (record / GUI editor) |
 <!-- /BE-METADATA -->
 
