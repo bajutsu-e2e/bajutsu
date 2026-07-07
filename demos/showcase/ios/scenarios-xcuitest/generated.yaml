@@ -1,0 +1,42 @@
+- name: Log タブを開き、画面下部に存在するControlsというセクションの中にあるUIの「Two」を選択して。その後、選択が Two になっていることを確認してください。
+  from: Log タブを開き、画面下部に存在するControlsというセクションの中にあるUIの「Two」を選択して。その後、選択が Two になっていることを確認してください。
+  capturePolicy:
+    - on: { action: tap }
+      capture: [screenshot.after, video]
+  preconditions:
+    erase: !!bool 'false'
+    reinstall: clean
+  steps:
+  - tapPoint:
+      x: 0.5
+      y: 0.94
+    from: The Log tab is the 3rd of 5 tabs in the bottom tab bar, not in the element
+      list, so I tap its visible center to open it.
+  - swipe:
+      on:
+        label: Modals
+      direction: up
+      amount: 0.8
+    from: The Controls section is below the Modals section, so I scroll down to reveal
+      it.
+  - tap:
+      label: Two
+    from: 'The Controls section is visible with One/Two/Three buttons and ''Segment:
+      one''; tapping Two selects it.'
+  - wait:
+      for:
+        label: 'Segment: two'
+      timeout: 5.0
+  expect:
+  - exists:
+      sel:
+        label: 'Segment: two'
+      negate: !!bool 'false'
+    from: the selection in the Controls section is Two
+  - exists:
+      sel:
+        label: Two
+        traits:
+        - button
+      negate: !!bool 'false'
+    from: the 'Two' option exists in the Controls section
