@@ -657,8 +657,7 @@ Turning a passing scenario into a native test in a destination framework's idiom
 Keeping the autonomous crawl fast and its code lean as it grows.
 
 <!-- GENERATED:proposals-crawl -->
-| ID | Item | Status |
-|---|---|---|
+
 <!-- /GENERATED:proposals-crawl -->
 
 ### Backend expansion (iOS actuators)
