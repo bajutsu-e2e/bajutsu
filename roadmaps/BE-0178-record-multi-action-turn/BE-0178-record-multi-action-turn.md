@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-record-multi-action-turn-ja.md)
+**English** · [日本語](BE-0178-record-multi-action-turn-ja.md)
 
-# BE-XXXX — Multi-action record turns (batch intra-screen actions)
+# BE-0178 — Multi-action record turns (batch intra-screen actions)
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-record-multi-action-turn.md) |
+| Proposal | [BE-0178](BE-0178-record-multi-action-turn.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0178") |
 | Topic | Authoring experience (record / GUI editor) |
 <!-- /BE-METADATA -->
 

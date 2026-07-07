@@ -570,7 +570,9 @@ The scope is currently **limited to the iOS Simulator** ([DESIGN §1](../DESIGN.
 ### Authoring experience (record / GUI editor)
 
 <!-- GENERATED:proposals-authoring -->
-
+| ID | Item | Status |
+|---|---|---|
+| [BE-0178](BE-0178-record-multi-action-turn/BE-0178-record-multi-action-turn.md) | Multi-action record turns (batch intra-screen actions) | Proposal |
 <!-- /GENERATED:proposals-authoring -->
 
 ### Surfacing CLI features in the serve Web UI

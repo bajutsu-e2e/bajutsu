@@ -1,14 +1,14 @@
-[English](BE-XXXX-record-multi-action-turn.md) · **日本語**
+[English](BE-0178-record-multi-action-turn.md) · **日本語**
 
-# BE-XXXX — record の 1 ターンで複数アクションをまとめて実行する
+# BE-0178 — record の 1 ターンで複数アクションをまとめて実行する
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
 |---|---|
-| 提案 | [BE-XXXX](BE-XXXX-record-multi-action-turn-ja.md) |
+| 提案 | [BE-0178](BE-0178-record-multi-action-turn-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **提案** |
-| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0178") |
 | トピック | オーサリング体験（record / GUI エディタ） |
 <!-- /BE-METADATA -->
 
