@@ -7,9 +7,8 @@
 |---|---|
 | Proposal | [BE-XXXX](BE-XXXX-serve-config-view.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **In progress** |
+| Status | **Proposal** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
-| Implementing PR | [#734](https://github.com/bajutsu-e2e/bajutsu/pull/734) |
 | Topic | Configuration sourcing |
 | Related | [BE-0063](../BE-0063-git-config-source/BE-0063-git-config-source.md) |
 <!-- /BE-METADATA -->
@@ -37,7 +36,7 @@ that path is an opaque content-addressed cache location
   commit am I on?" answer, and a branch ref gives no hint at all of what it resolved to.
 
 The information already exists server-side — the bound path, the file's bytes, and (for a Git bind)
-the `source_provenance` stamp BE-0063 computes — it is simply never surfaced. Surfacing it turns
+the `source_provenance` stamp BE-0063 computes — it is simply never surfaced. Surfacing it would turn
 "trust that the right thing is bound" into "see that the right thing is bound", which matters most
 for the Git path this builds on.
 
@@ -46,17 +45,17 @@ for the Git path this builds on.
 A read-only serve endpoint plus a viewer in the UI. No `run`/CI path is touched (prime directive 1);
 this is a Tier‑1 convenience surface.
 
-- **Persist Git provenance on the bound state.** `ServeState` gains a `config_provenance` field
+- **Persist Git provenance on the bound state.** `ServeState` would gain a `config_provenance` field
   holding BE-0063's `source_provenance` stamp (host / owner / repo / requested ref / resolved SHA)
   when the active config came from a Git source, or `None` for a local file or an uploaded bundle.
   It is set on a runtime Git bind and cleared on a local-file / bundle bind; a Git `--config` at
   startup threads its provenance through into the state too, so a startup-bound Git config also
   reports its commit.
-- **`config_content` serve operation + endpoint.** A new op returns the bound config's verbatim text,
-  its path, its parsed structure (`yaml.safe_load` of the same text, so `${secrets.*}` stay literal),
-  and the provenance (or `None`). Wired as `GET /api/config/content` on both serve transports (the
-  stdlib handler and the FastAPI app). It is a read — no role gate — and returns 404 when no config
-  is bound.
+- **A config-content serve operation + endpoint.** A read operation returns the bound config's
+  verbatim text, its path, its parsed structure (`yaml.safe_load` of the same text, so `${secrets.*}`
+  stay literal), and the provenance (or `None`). It is exposed as `GET /api/config/content` on both
+  serve transports (the stdlib handler and the FastAPI app), needs no role (it is a read), and returns
+  404 when no config is bound.
 - **Verbatim, secret-safe.** The text (and the parsed structure) is the file as bound; placeholders
   like `${secrets.*}` appear as written and are never resolved, so the view discloses nothing beyond
   the file already committed to Git or shipped in the bundle.
@@ -70,8 +69,8 @@ this is a Tier‑1 convenience surface.
 
 ## Alternatives considered
 
-- **Show the full YAML inline in the header, no modal.** Rejected: a config is long, and the header
-  is shared with the tab bar; a click-to-open modal keeps the default UI uncluttered.
+- **Show the full YAML inline in the header, no modal.** A config is long, and the header is shared
+  with the tab bar; a click-to-open modal keeps the default UI uncluttered.
 - **Only reformat the header path (show `owner/repo@ref` instead of the cache path), no content
   view.** This solves the "which commit" half but not the "what content" half; an operator still
   cannot confirm the bound targets/scenarios without leaving the UI. The content view subsumes it.
@@ -86,17 +85,14 @@ this is a Tier‑1 convenience surface.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [x] Persist Git provenance on `ServeState` (set on Git bind, cleared on local/bundle bind, threaded from startup).
-- [x] `config_content` op returning content + path + parsed structure + provenance.
-- [x] `GET /api/config/content` on both transports (stdlib handler + FastAPI app).
-- [x] UI: View button + viewer modal with Structured / Raw toggle.
-- [x] Docs (en + ja) describe the viewer and provenance line.
-
-- [#734](https://github.com/bajutsu-e2e/bajutsu/pull/734) — implements the endpoint, the provenance
-  plumbing, and the structured/raw viewer; flips this item to *Implemented* on merge.
+- [ ] Persist Git provenance on `ServeState` (set on Git bind, cleared on local/bundle bind, threaded from startup).
+- [ ] Config-content read operation returning content + path + parsed structure + provenance.
+- [ ] `GET /api/config/content` on both transports (stdlib handler + FastAPI app).
+- [ ] UI: View button + viewer modal with Structured / Raw toggle.
+- [ ] Docs (en + ja) describe the viewer and provenance line.
 
 ## References
 
 - [BE-0063](../BE-0063-git-config-source/BE-0063-git-config-source.md) — the Git config source whose
-  resolved-commit provenance this surfaces.
+  resolved-commit provenance this would surface.
 - [`docs/web-ui.md`](../../docs/web-ui.md) — the Web UI guide ("Choosing the active config").
