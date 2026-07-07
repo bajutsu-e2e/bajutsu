@@ -34,6 +34,8 @@ class Proposal:
     done: bool = False              # the goal is reached
     expect: list[Assertion] = []    # on done, the assertions that verify the goal
     note: str = ""
+    needs_human: bool = False       # a third outcome: hand off to a human (BE-0179)
+    human_prompt: str = ""          # why, shown to the human on handoff
 
 class Agent(Protocol):
     def next_action(self, observation: Observation) -> Proposal: ...
@@ -52,6 +54,10 @@ class Agent(Protocol):
 3. Take a screenshot, build an Observation, and call agent.next_action()
 4. If proposal.done:
      - insert a settle step (below) if needed, finalize expect, and finish
+   If proposal.needs_human (BE-0179):
+     - hand off to a human via the `handoff` responder; on a value/acted response, re-observe and
+       continue (the human's turn records no step); on cancel, stop. With no responder, raise
+       `HumanHandoffUnavailable` — a clean, labeled failure, never a hang or a guess
    If proposal.step:
      - execute via _execute_with_recovery (on failure with alert_guard, clear and retry once)
      - on success, push to steps. If it does not resolve, break
@@ -60,6 +66,26 @@ class Agent(Protocol):
 
 The output is serialized to YAML via `dump_scenarios`
 ([scenarios](scenarios.md#round-trip-load--dump)).
+
+### Human-in-the-loop handoff (BE-0179)
+
+Some flows are gated by something the AI cannot supply — a one-time password, a CAPTCHA, a biometric
+prompt. When a turn's outcome is "needs human" (`proposal.needs_human`), the loop pauses and hands
+control to a human through the transport-neutral `Handoff` contract (`handoff.py`): a request (why it
+paused, plus the current screen summary and screenshot) goes out, a response (a supplied value, or "I
+operated the device — re-observe", or cancel) comes back, and the loop resumes by re-observing the
+live screen. The human is only ever in the loop **while authoring**; the recorded scenario replays
+with no human on the deterministic `run` path.
+
+The same contract has two surfaces. From the terminal, `record` reads the response from an
+interactive, bounded stdin prompt. Driven from `serve`, the request is serialized onto the record's
+server-sent-event stream as a `human-request` event (the paused job enters a visible, resumable
+"awaiting human" state), and the browser posts the response to `/api/jobs/<id>/respond-human`, which
+`serve` writes to the spawned `record` process's stdin. Either way the wait is bounded and
+cancelable, so no surface hangs on a human who walked away. With no responder at all — a
+non-interactive or CI invocation — a needs-human turn is a clean, labeled non-zero exit, never a hang
+and never an AI guess. This substrate owns the mechanism and the boundary; the heuristics that raise
+"needs human" and the shape of what a handoff records are the child items' concern.
 
 ### Automatic settle-step insertion
 

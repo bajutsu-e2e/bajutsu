@@ -28,6 +28,7 @@ let poll=null,recPoll=null,selectedRun=null,recPath=null,scnFiles=[],targets=[],
 let recJobId=null,runJobId=null,triageJobId=null;
 let recRunPoll=null,recRunJobId=null;  // running the just-authored scenario from the Record tab
 let recReportShow=null,recReportHide=null;  // set by the tiler: add/remove the Run-result pane
+let recHandoffShow=null,recHandoffHide=null;  // set by the tiler: add/remove the Human-handoff pane (BE-0179)
 // Whether Claude is reachable (from /api/provider). Gates the opt-in AI toggle on triage the same
 // way it gates record/crawl; heuristic triage never needs it. Kept in sync by refreshAiAvailability.
 let aiAvailable=false;
@@ -43,9 +44,12 @@ async function cancelJob(id,stop){
 }
 // Live-stream a job's log over SSE (BE-0015): a `log` event per line, then one `done` event with
 // the job's final view. Returns the EventSource so a restart can close it. Replaces 1s polling.
-function streamJob(id,onLog,onDone){
+function streamJob(id,onLog,onDone,onHuman){
   const es=new EventSource('/api/jobs/'+id+'/events');
   es.addEventListener('log',e=>onLog(e.data));
+  // A "needs human" turn (BE-0179): the paused record's serialized request. Only record wires
+  // onHuman; run/crawl never emit it.
+  es.addEventListener('human-request',e=>{if(onHuman)onHuman(JSON.parse(e.data))});
   es.addEventListener('done',e=>{es.close();onDone(JSON.parse(e.data))});
   return es;
 }
@@ -500,7 +504,7 @@ $('#rec-go').addEventListener('click',async()=>{
   $('#rec-run').disabled=true;
   const rep0=$('#rec-report');if(rep0)rep0.innerHTML='';
   const rs0=$('#rec-runstatus');if(rs0)setStatus(rs0,'','');
-  hideReportPanel();
+  hideReportPanel();hideHandoffPanel();
   setStatus($('#rec-status'),'','run');
   const r=await fetch('/api/record',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
     goal,target:$('#rec-target').value,
@@ -510,11 +514,11 @@ $('#rec-go').addEventListener('click',async()=>{
   const {jobId,path,error}=await r.json();
   if(error){setStatus($('#rec-status'),error,'ng');setBusy($('#rec-go'),$('#rec-stop'),false);return}
   recPath=path;recJobId=jobId;
-  recPoll=streamJob(jobId,line=>appendLine($('#rec-out'),line),recDone);
+  recPoll=streamJob(jobId,line=>appendLine($('#rec-out'),line),recDone,onHandoffRequest);
 });
 $('#rec-stop').addEventListener('click',()=>cancelJob(recJobId,$('#rec-stop')));
 async function recDone(j){
-  recPoll=null;recJobId=null;setBusy($('#rec-go'),$('#rec-stop'),false);
+  recPoll=null;recJobId=null;setBusy($('#rec-go'),$('#rec-stop'),false);hideHandoffPanel();
   if(j.cancelled){setStatus($('#rec-status'),'cancelled','ng');return}
   setStatus($('#rec-status'),j.ok?'authored ✓':'failed', j.ok?'ok':'ng');
   if(j.ok&&(j.outPath||recPath)){await loadGenerated(j.outPath||recPath);loadScenarios();}
@@ -547,6 +551,33 @@ $('#rec-yaml').addEventListener('input',syncRecActions);
 // attribute (phone tier, where the pane stacks under the Output tab).
 function showReportPanel(){if(recReportShow)recReportShow();else $('#rec-reportpanel').hidden=false;}
 function hideReportPanel(){if(recReportHide)recReportHide();else{const p=$('#rec-reportpanel');if(p)p.hidden=true;}}
+// Human handoff (BE-0179): the record paused for a human. Show the request in the retained pane
+// (tiler when present, else the plain `hidden` attribute at the phone tier), and resume the loop by
+// POSTing the response — a supplied value, "I operated the device", or a cancel — back to the job.
+function showHandoffPanel(){if(recHandoffShow)recHandoffShow();else $('#rec-handoffpanel').hidden=false;}
+function hideHandoffPanel(){if(recHandoffHide)recHandoffHide();else{const p=$('#rec-handoffpanel');if(p)p.hidden=true;}}
+function onHandoffRequest(req){
+  $('#rec-handoff-reason').textContent=req.reason||'the agent needs a human to continue';
+  $('#rec-handoff-screen').textContent=[req.target&&('target: '+req.target),req.screen].filter(Boolean).join(' · ');
+  const shot=$('#rec-handoff-shot');
+  if(req.screenshot){shot.src='data:image/png;base64,'+req.screenshot;shot.hidden=false;}else{shot.removeAttribute('src');shot.hidden=true;}
+  $('#rec-handoff-value').value='';
+  showHandoffPanel();
+}
+async function sendHandoff(body){
+  if(!recJobId)return;
+  // Only hide the pane once we know the response actually reached the paused record — a resume that
+  // didn't land (the job already ended / its stdin is gone) must not look like it succeeded.
+  try{
+    const r=await fetch('/api/jobs/'+recJobId+'/respond-human',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    const {resumed}=await r.json();
+    if(!resumed){appendLine($('#rec-out'),'handoff response did not resume the record (it may have already ended)');return;}
+    hideHandoffPanel();
+  }catch(e){appendLine($('#rec-out'),'handoff response failed: '+e);}
+}
+$('#rec-handoff-send').addEventListener('click',()=>{const v=$('#rec-handoff-value').value;sendHandoff({values:v?[v]:[]});});
+$('#rec-handoff-acted').addEventListener('click',()=>sendHandoff({acted:true}));
+$('#rec-handoff-cancel').addEventListener('click',()=>sendHandoff({cancelled:true}));
 // Run the current scenario in place, without switching to Replay. Persist the YAML first (creating
 // the file for hand-pasted YAML; a parse error means it isn't runnable, so it's surfaced and Run
 // stops), then start a normal run: the live log streams to the Progress console (like Generate) and
@@ -1526,7 +1557,7 @@ function initTiling(){
   const KEY='bajutsu-tiles';
   const SPECS=[
     {id:'view-replay',def:{d:'row',k:['controls','log','report'],s:[1,1,2]},sel:{controls:'.left',log:'.logpanel',report:'.report'}},
-    {id:'view-record',def:{d:'row',k:['controls',{d:'col',k:['log','yaml'],s:[1,1]}],s:[1,2]},sel:{controls:'.left',log:'.rec-stack .logpanel',yaml:'.rec-stack .yamlpanel',report:'.rec-stack .rec-report-panel'},optional:['report']},
+    {id:'view-record',def:{d:'row',k:['controls',{d:'col',k:['log','yaml'],s:[1,1]}],s:[1,2]},sel:{controls:'.left',log:'.rec-stack .logpanel',yaml:'.rec-stack .yamlpanel',report:'.rec-stack .rec-report-panel',handoff:'.rec-stack .rec-handoff-panel'},optional:['report','handoff']},
     {id:'view-crawl',def:{d:'row',k:['controls','graph',{d:'col',k:['plan','console'],s:[1,1]}],s:[1,2,1]},sel:{controls:'.left',graph:'.crawl-graph-panel',plan:'.crawl-plan-panel',console:'.crawl-console-panel'}},
   ];
   const leaves=n=>typeof n==='string'?[n]:n.k.flatMap(leaves);
@@ -1634,6 +1665,9 @@ function initTiling(){
     const inTree=()=>leaves(recV.tree).includes('report');
     recReportShow=()=>{recV.panel.report.hidden=false;if(!inTree()){recV.tree=insertBeside(recV.tree,'yaml','report','bottom');rebuild(recV);}};
     recReportHide=()=>{if(inTree()){recV.tree=removeLeaf(recV.tree,'report')||recV.tree;rebuild(recV);}recV.panel.report.hidden=true;};
+    const handoffInTree=()=>leaves(recV.tree).includes('handoff');
+    recHandoffShow=()=>{recV.panel.handoff.hidden=false;if(!handoffInTree()){recV.tree=insertBeside(recV.tree,'yaml','handoff','bottom');rebuild(recV);}};
+    recHandoffHide=()=>{if(handoffInTree()){recV.tree=removeLeaf(recV.tree,'handoff')||recV.tree;rebuild(recV);}recV.panel.handoff.hidden=true;};
   }
   window.addEventListener('mousemove',e=>{
     if(!pdrag)return;

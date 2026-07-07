@@ -64,7 +64,9 @@ def test_record_flag_surface_is_fully_classified() -> None:
     # name is redundant (serve computes --out); browser/alert_instruction aren't exposed via serve yet.
     not_serve_exposed = {"name", "browser", "alert_instruction"}
     pass_through = {"backend", "udid", "erase", "dismiss_alerts", "headed", "upload_exec"}
-    assert base_handled | not_serve_exposed | pass_through == _option_names("record")
+    # serve forces --handoff to `stream` (a human at the browser answers over SSE), never a knob (BE-0179).
+    serve_forced = {"handoff"}
+    assert base_handled | not_serve_exposed | pass_through | serve_forced == _option_names("record")
 
 
 def test_crawl_flag_surface_is_fully_classified() -> None:

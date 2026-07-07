@@ -113,6 +113,26 @@
       </div>
       <div id="rec-report" data-testid="record.run-report"></div>
     </div>
+    <!-- Human handoff (BE-0179): shown when a "needs human" turn pauses the record. The tiler adds
+         it as an optional pane, like Run result; it renders why the loop paused, the screen it
+         paused on, and a response control. Answering resumes the loop by re-observing. -->
+    <div class="card rec-handoff-panel" id="rec-handoffpanel" data-pane="yaml" hidden>
+      <div class="yamlhead">
+        <span class="ttl">✋ Human handoff</span>
+        <span class="muted" id="rec-handoff-reason" style="font-size:.8em"></span>
+      </div>
+      <div class="rec-handoff-body">
+        <div class="muted" id="rec-handoff-screen" style="font-size:.8em"></div>
+        <img id="rec-handoff-shot" alt="the screen the record paused on" hidden />
+        <label class="muted" for="rec-handoff-value" style="font-size:.85em">Supply a value (e.g. a one-time password), or operate the device yourself and resume:</label>
+        <input id="rec-handoff-value" data-testid="record.handoff-value" type="text" placeholder="value to supply" />
+        <div class="yaml-actions">
+          <button class="savebtn" id="rec-handoff-send" data-testid="record.handoff-send">Supply value</button>
+          <button class="savebtn" id="rec-handoff-acted" data-testid="record.handoff-acted">I did it — resume</button>
+          <button class="stop" id="rec-handoff-cancel" data-testid="record.handoff-cancel">Cancel</button>
+        </div>
+      </div>
+    </div>
   </div>
 </main>
 

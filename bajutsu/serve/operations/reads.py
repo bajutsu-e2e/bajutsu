@@ -8,6 +8,7 @@ from typing import Any
 
 import yaml
 
+from bajutsu import handoff
 from bajutsu import stats as _stats
 from bajutsu.config import Config, load_config
 from bajutsu.drivers import base as driver_base
@@ -362,6 +363,21 @@ def cancel_job(state: ServeState, job_id: str) -> tuple[Any, int]:
     if job is None:
         return {"error": "no such job"}, 404
     return {"cancelled": jobs.cancel_job(job)}, 200
+
+
+def respond_human(state: ServeState, job_id: str, body: dict[str, Any]) -> tuple[Any, int]:
+    """Deliver a human's handoff response to a paused `record` job, resuming it (BE-0179).
+
+    The response is written to the job's stdin as the transport-neutral JSON the record loop reads
+    (the same contract the terminal uses). `resumed` is False when the job has no live stdin — it
+    already finished or was never handoff-capable.
+    """
+    job = state.jobs.get(job_id)
+    if job is None:
+        return {"error": "no such job"}, 404
+    response = handoff.HandoffResponse.from_dict(body)
+    resumed = jobs.send_response(job, handoff.response_to_json(response))
+    return {"resumed": resumed}, 200
 
 
 def resolve_scenario_pick(

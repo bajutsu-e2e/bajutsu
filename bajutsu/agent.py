@@ -28,7 +28,7 @@ class Observation:
 
 @dataclass
 class Proposal:
-    """The agent's next move: an action to take, or done (with the goal's checks)."""
+    """The agent's next move: an action to take, done (with the goal's checks), or needs human."""
 
     step: Step | None = None
     done: bool = False
@@ -37,6 +37,13 @@ class Proposal:
     # The 1-based plan step this move carries out (from `Observation.plan`), for live progress;
     # None when the agent gave no plan or did not attribute the move to one.
     plan_step: int | None = None
+    # A third turn outcome (BE-0179), distinct from `done` and a no-action stop: the agent cannot
+    # proceed and needs a human — to supply a value it cannot know or perform an operation it
+    # cannot. `human_prompt` says why (shown to the human); the record loop turns this into a
+    # handoff request. The heuristics that *set* it (an OTP-looking field, a repeatedly
+    # unresolvable target) belong to the child items; this is only the outcome they raise.
+    needs_human: bool = False
+    human_prompt: str = ""
 
 
 class Agent(Protocol):
