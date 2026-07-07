@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0192") |
-| Implementing PR | _pending_ |
+| Implementing PR | [#785](https://github.com/bajutsu-e2e/bajutsu/pull/785) |
 | Topic | Authoring experience (record / GUI editor) |
 <!-- /BE-METADATA -->
 
@@ -218,7 +218,7 @@ behavior.
 
 **Log**
 
-- _pending_ — Shipped the whole item: `_should_attach` (new-screen + degenerate-tree triggers) with
+- [#785](https://github.com/bajutsu-e2e/bajutsu/pull/785) — Shipped the whole item: `_should_attach` (new-screen + degenerate-tree triggers) with
   lazy capture in `record.py`; the `need_screenshot` tool + `proposal_from_call` mapping + `_combine`
   short-circuit in `claude_agent.py` (shared by the API and Claude Code backends); system-prompt and
   `_render` guidance; loop tests, backend-mapping tests, and the image-every-turn regression guard.
