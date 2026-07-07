@@ -1,14 +1,14 @@
-[English](BE-XXXX-crawl-history-viewer.md) · **日本語**
+[English](BE-0180-crawl-history-viewer.md) · **日本語**
 
-# BE-XXXX — Web UI へのクロール履歴ビューア
+# BE-0180 — Web UI へのクロール履歴ビューア
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
 |---|---|
-| 提案 | [BE-XXXX](BE-XXXX-crawl-history-viewer-ja.md) |
+| 提案 | [BE-0180](BE-0180-crawl-history-viewer-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **提案** |
-| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0180") |
 | トピック | オーサリング体験（record / GUI エディタ） |
 <!-- /BE-METADATA -->
 

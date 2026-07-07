@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-crawl-history-viewer-ja.md)
+**English** · [日本語](BE-0180-crawl-history-viewer-ja.md)
 
-# BE-XXXX — Crawl history viewer in the Web UI
+# BE-0180 — Crawl history viewer in the Web UI
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-crawl-history-viewer.md) |
+| Proposal | [BE-0180](BE-0180-crawl-history-viewer.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0180") |
 | Topic | Authoring experience (record / GUI editor) |
 <!-- /BE-METADATA -->
 
