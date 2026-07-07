@@ -102,18 +102,30 @@ def doctor_check(
     # The convention score needs a live screen, so it is attempted only once the environment is
     # runnable — querying a device the runnability gate already failed would only crash. When the
     # gate fails, the score is None and the panel shows the runnability remedy instead (BE-0148).
+    #
+    # Runnability proves the *tools* are present, not that the screen is actually reachable: a web
+    # target passes it whenever Playwright + the browser are installed, even with its app server
+    # down, so navigating the baseUrl can still fault (ERR_CONNECTION_REFUSED). Report that as a
+    # failed check rather than letting the probe crash doctor — doctor's job is to *report* what is
+    # wrong, and a stack trace reports nothing. score stays None and ok flips false, so the panel
+    # shows the reason instead of a 500.
     score = None
     if ok:
         query = screen_query or functools.partial(_current_screen, state)
-        elements = query(actuator, udid, eff)
-        score = _serialize_score(
-            doctor.score(
-                elements,
-                eff.id_namespaces,
-                ok_coverage=eff.doctor_ok_coverage,
-                fail_coverage=eff.doctor_fail_coverage,
+        try:
+            elements = query(actuator, udid, eff)
+        except simctl.DeviceError as e:
+            all_checks = [*all_checks, preflight.Check("screen readable", False, str(e))]
+            ok = False
+        else:
+            score = _serialize_score(
+                doctor.score(
+                    elements,
+                    eff.id_namespaces,
+                    ok_coverage=eff.doctor_ok_coverage,
+                    fail_coverage=eff.doctor_fail_coverage,
+                )
             )
-        )
 
     return {
         "ok": ok,
