@@ -15,7 +15,7 @@
 # stays a step-level guard: a PR that changes no proposal item completes the job green (a no-op),
 # keeping the required-check contract satisfied for every PR, not just proposals.
 #
-# Escape hatch: a `Single-Approver Proposal` label on the PR waives the second approval (some proposals
+# Escape hatch: a `single-approver proposal` label on the PR waives the second approval (some proposals
 # are trivial enough for one reviewer). It re-runs on `labeled`/`unlabeled` so applying the label flips
 # the check green — and removing it re-imposes the bar.
 name: "Roadmap: require two approvals (proposals)"
@@ -44,7 +44,7 @@ jobs:
       PR: ${{ github.event.pull_request.number }}
       HEAD_SHA: ${{ github.event.pull_request.head.sha }}
       REQUIRED: 2
-      WAIVER_LABEL: Single-Approver Proposal
+      WAIVER_LABEL: single-approver proposal
     steps:
       - name: Detect whether the PR adds or edits a BE proposal
         id: scope
