@@ -10,7 +10,7 @@
 | Status | **Proposal** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
 | Topic | Authoring experience (record / GUI editor) |
-| Related | [BE-0012](../BE-0012-action-capture-record/BE-0012-action-capture-record.md), [BE-0014](../BE-0014-record-demarcation/BE-0014-record-demarcation.md), [BE-0039](../BE-0039-self-healing-propose-optin/BE-0039-self-healing-propose-optin.md), [BE-0044](../BE-0044-scenario-provenance/BE-0044-scenario-provenance.md), [BE-0046](../BE-0046-otp-email-steps/BE-0046-otp-email-steps.md), [BE-0098](../BE-0098-unified-authoring-surface/BE-0098-unified-authoring-surface.md), [BE-0120](../BE-0120-recorded-scenario-secret-tokenization/BE-0120-recorded-scenario-secret-tokenization.md) |
+| Related | [BE-0011](../BE-0011-local-web-ui-serve/BE-0011-local-web-ui-serve.md), [BE-0012](../BE-0012-action-capture-record/BE-0012-action-capture-record.md), [BE-0014](../BE-0014-record-demarcation/BE-0014-record-demarcation.md), [BE-0039](../BE-0039-self-healing-propose-optin/BE-0039-self-healing-propose-optin.md), [BE-0044](../BE-0044-scenario-provenance/BE-0044-scenario-provenance.md), [BE-0046](../BE-0046-otp-email-steps/BE-0046-otp-email-steps.md), [BE-0098](../BE-0098-unified-authoring-surface/BE-0098-unified-authoring-surface.md), [BE-0120](../BE-0120-recorded-scenario-secret-tokenization/BE-0120-recorded-scenario-secret-tokenization.md) |
 <!-- /BE-METADATA -->
 
 ## Introduction
@@ -70,10 +70,30 @@ response from an interactive prompt (stdin), on a bounded, cancelable wait. It n
 unbounded: a non-interactive or CI invocation with no responder fails cleanly (see below) rather
 than blocking forever.
 
-**`serve` surface.** A `record` driven from the `serve` Web UI raises the same request as an
-affordance in the record view (on the unified authoring surface, BE-0098); the human responds in
-the browser, and the loop resumes. The UI is added inside a retained pane, per the serve layout
-rules.
+**`serve` surface.** The Web UI is the more natural home for the handoff: when a `record` is
+driven from `serve`, a human is already at the browser watching it unfold, so pausing to ask them
+for help is a small, in-context step rather than a switch to another window. Three properties of
+the `serve` record path shape the design:
+
+- **It crosses a process boundary.** `serve` spawns `bajutsu record` as a background job
+  ([`bajutsu/serve/operations/dispatch.py`](../../../bajutsu/serve/operations/dispatch.py),
+  BE-0127) and streams its progress over server-sent events (the record narration already flows to
+  the browser this way). The handoff request must therefore be **serializable**, not an in-process
+  callback: it travels out to the browser as a structured event on that same stream, and the
+  human's response travels back over a response endpoint. The transport-neutral contract above is
+  what makes this the same protocol the CLI uses in-process.
+- **The job enters an explicit "awaiting human" state.** Rather than a worker blocking invisibly,
+  the paused record is a visible, resumable job state in the UI — the record view (on the unified
+  authoring surface, BE-0098) renders the request inside a retained pane: why the loop paused, the
+  current screen (the screenshot the request carries, reusing the existing capture-screenshot
+  channel with the target element highlighted), and a response control. The human answers in the
+  browser and the loop resumes.
+- **It is bounded and cancelable.** The pane offers cancel — ending the record cleanly — and the
+  awaiting-human state carries the same bounded wait as the CLI, so a `serve` worker never hangs
+  indefinitely on a human who has walked away.
+
+The two child patterns render *inside* this one affordance: a value field for the value pattern, a
+"I have operated the device — resume" control for the takeover pattern.
 
 **Resume semantics.** After a response, the loop re-queries the live screen and continues from the
 observed state — the same observe → propose → execute cycle. The human's contribution (a typed
@@ -115,7 +135,8 @@ itself deterministic under automation.
 - [ ] Add a "needs human" turn outcome to the agent/record loop, distinct from `done` / no-action.
 - [ ] Define the transport-neutral handoff request/response contract.
 - [ ] CLI surface: bounded, cancelable interactive prompt on stdin.
-- [ ] `serve` surface: handoff affordance in the record view (BE-0098), retained-pane.
+- [ ] `serve` surface: serialize the request over the record SSE stream and take the response over an endpoint (crossing the spawned-`bajutsu record` process boundary, BE-0127).
+- [ ] `serve` surface: an explicit, resumable "awaiting human" job state rendered as a retained-pane affordance in the record view (BE-0098), with the request screenshot and a response control.
 - [ ] Resume-by-re-observation wiring in the record loop.
 - [ ] Non-interactive / CI behavior: clean labeled failure, no hang, no guess.
 
