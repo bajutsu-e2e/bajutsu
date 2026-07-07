@@ -1,0 +1,75 @@
+# CI for the serve Web UI regression net: the dogfood scenarios (demos/serve-ui) exported as
+# native Playwright specs (`bajutsu codegen --emit playwright`, BE-0137) and run with
+# @playwright/test on a headless Chromium. The scenario YAML stays the single source of truth —
+# the specs are regenerated from it on every run, so a scenario change and its CI coverage can
+# never drift apart. Deterministic and AI-free end to end: codegen is a structural mapping and
+# pass/fail is Playwright's own assertions (prime directive 1 holds — no LLM near the verdict).
+#
+# Linux only — the app under test is the serve SPA (brought up by playwright.config.ts's
+# webServer), so no Mac and no Simulator. Like web-e2e.yml this is not a required check: the path
+# filter keeps it off PRs that can't affect the serve UI. Node comes preinstalled on ubuntu-latest;
+# the Python side needs only the core sync (codegen and `bajutsu serve` use no browser extra).
+name: Serve UI E2E (Playwright)
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: &serve-ui-paths
+      - 'bajutsu/serve/**'
+      - 'bajutsu/templates/**'
+      - 'bajutsu/scenario/**'
+      - 'bajutsu/*.py'
+      - 'bajutsu/cli/__init__.py'
+      - 'bajutsu/cli/_shared.py'
+      - 'bajutsu/cli/commands/__init__.py'
+      - 'bajutsu/cli/commands/serve.py'
+      - 'bajutsu/cli/commands/codegen.py'
+      - 'demos/serve-ui/**'
+      - 'demos/web/demo.config.yaml'
+      - 'pyproject.toml'
+      - 'uv.lock'
+      - '.github/workflows/serve-ui-e2e.yml'
+  pull_request:
+    paths: *serve-ui-paths
+
+permissions:
+  contents: read
+
+concurrency:
+  group: serve-ui-e2e-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  serve-ui-playwright:
+    name: serve UI (generated playwright)
+    runs-on: ubuntu-latest
+    # Codegen and the inner serve need only the core package — never the dev group and not even
+    # the web extra (the browser here is npm Playwright's own, not the Python driver's).
+    env:
+      UV_NO_DEV: "1"
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39  # v8.2.0
+        with:
+          enable-cache: true
+
+      # Cache the Chromium binary npm Playwright downloads (~100MB), keyed on the npm lockfile
+      # (the pinned @playwright/test version lives there). The restore-keys fallback warms the
+      # cache across version bumps; `playwright install` below is idempotent, so a stale browser
+      # is simply re-downloaded and the cache only ever skips work, never changes the result.
+      - name: Cache Playwright browsers
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-npm-${{ runner.os }}-${{ hashFiles('demos/serve-ui/package-lock.json') }}
+          restore-keys: |
+            playwright-npm-${{ runner.os }}-
+
+      - name: Install the core package (codegen + serve)
+        run: uv sync
+
+      - name: Serve UI E2E (generated Playwright specs)
+        run: make -C demos/serve-ui e2e-playwright

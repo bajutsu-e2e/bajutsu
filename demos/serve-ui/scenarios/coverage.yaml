@@ -1,0 +1,28 @@
+# Coverage view (BE-0146) — Compute posts the bound target to /api/coverage and renders the map
+# into a shadow root (which the element query does not pierce), removing the light-DOM empty state.
+# Deterministic and AI-free: the aggregation is the same static `bajutsu coverage` the CLI runs over
+# the target's scenario files, so the empty-state node leaving the tree is exactly "the map was
+# computed and rendered". No runs are selected, so only the static dimension is aggregated and run
+# history cannot affect the result.
+description: >-
+  Coverage — the bound target reaches the picker, and Compute replaces the empty state with the
+  rendered coverage map.
+scenarios:
+  - name: compute renders the target's coverage map
+    description: The target picker holds the bound config's web app; Compute replaces the empty state with the map.
+    steps:
+      - tap: { id: nav.coverage }
+      - wait: { for: { id: view.coverage }, timeout: 5 }
+      # The picker fills from /api/targets at bind time; poll until the web app's option text
+      # reaches the select, then pin the selected value (the value check retries natively when
+      # this scenario is exported as a Playwright test).
+      - wait: { for: { id: coverage.target, labelMatches: "web" }, timeout: 10 }
+      - assert:
+          - value: { sel: { id: coverage.target }, contains: "web" }
+          - exists: { id: coverage.runs }        # optional run fold-in offered
+          - exists: { id: coverage.empty }       # nothing computed yet
+      - tap: { id: coverage.compute }
+      # The empty-state node is removed once /api/coverage responds and the shadow render lands.
+      - wait: { until: { gone: { id: coverage.empty } }, timeout: 10 }
+    expect:
+      - exists: { id: coverage.host }

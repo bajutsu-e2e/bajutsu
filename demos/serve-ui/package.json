@@ -1,0 +1,8 @@
+{
+  "name": "bajutsu-serve-ui-e2e",
+  "private": true,
+  "description": "Native Playwright tests generated from the serve-UI dogfood scenarios (bajutsu codegen --emit playwright). Run via `make -C demos/serve-ui e2e-playwright`.",
+  "devDependencies": {
+    "@playwright/test": "^1.49.0"
+  }
+}

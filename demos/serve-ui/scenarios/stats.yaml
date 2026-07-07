@@ -1,0 +1,19 @@
+# Stats view (BE-0102) — switching to Stats fetches /stats and renders the dashboard into a shadow
+# root (which the element query does not pierce), removing the light-DOM loading placeholder. The
+# placeholder leaving the tree is exactly "the dashboard render path ran" — the dashboard's numbers
+# themselves vary with run history and are never asserted. Deterministic and AI-free.
+description: >-
+  Stats — opening the view loads the run dashboard: the loading placeholder is replaced and the
+  refresh control is offered.
+scenarios:
+  - name: the stats view loads the run dashboard
+    description: Switch to Stats and wait for the loading placeholder to be replaced by the rendered dashboard.
+    steps:
+      - tap: { id: nav.stats }
+      - wait: { for: { id: view.stats }, timeout: 5 }
+      - assert:
+          - exists: { id: stats.refresh }
+      # The placeholder node is removed once /stats responds and the shadow render lands.
+      - wait: { until: { gone: { id: stats.empty } }, timeout: 10 }
+    expect:
+      - exists: { id: stats.host }

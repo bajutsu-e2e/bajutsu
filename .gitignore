@@ -65,3 +65,10 @@ docs/api/roadmap.md
 
 # serve upload temp dirs (BE-0073) — never commit extracted bundles
 uploads/
+
+# serve-UI dogfood: generated Playwright specs (make -C demos/serve-ui codegen) + npm state —
+# regenerated from the scenario YAML on every run, never committed.
+demos/serve-ui/playwright-tests/
+demos/serve-ui/node_modules/
+demos/serve-ui/test-results/
+demos/serve-ui/playwright-report/

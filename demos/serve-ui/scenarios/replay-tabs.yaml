@@ -1,0 +1,24 @@
+# Replay tabs — the Run / History tabs swap the left panel. Deterministic: showTab toggles the
+# two panels via the `hidden` attribute synchronously on click, so exactly one is in the element
+# tree at a time. History's *content* varies with the runs dir, so only the panel swap (and its
+# refresh control) is asserted — never the run list itself.
+description: >-
+  Replay tabs — the Run and History tabs swap the left panel, and exactly one panel is visible
+  at a time.
+scenarios:
+  - name: the run and history tabs swap the panels
+    description: Replay starts on the Run panel; History swaps it out (and offers a refresh); Run swaps back.
+    steps:
+      - tap: { id: nav.replay }
+      - wait: { for: { id: replay.panel-run }, timeout: 10 }
+      - assert:
+          - exists: { id: replay.panel-history, negate: true }
+      - tap: { id: replay.tab-history }
+      - wait: { for: { id: replay.panel-history }, timeout: 5 }
+      - assert:
+          - exists: { id: replay.panel-run, negate: true }
+      - tap: { id: replay.tab-run }
+      - wait: { for: { id: replay.panel-run }, timeout: 5 }
+    expect:
+      - exists: { id: replay.panel-run }
+      - exists: { id: replay.panel-history, negate: true }
