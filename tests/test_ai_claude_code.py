@@ -263,7 +263,15 @@ def test_child_env_strips_the_api_key(monkeypatch: Any) -> None:
     assert "PATH" in env  # the rest of the environment is preserved
 
 
-def test_child_env_disables_nonessential_traffic() -> None:
-    # The umbrella flag that stops the CLI's telemetry/auto-update side traffic — one strand of which
-    # probes the cloud metadata endpoint 169.254.169.254 and intermittently hangs the call in SYN_SENT.
-    assert claude_code._child_env()["CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC"] == "1"
+def test_child_env_disables_the_imds_probe_and_side_traffic() -> None:
+    # A Bedrock-configured CLI's AWS SDK otherwise probes the instance-metadata endpoint
+    # 169.254.169.254, which hangs in SYN_SENT off-cloud (~75s) and freezes the call.
+    env = claude_code._child_env()
+    assert env["AWS_EC2_METADATA_DISABLED"] == "true"
+    assert env["CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC"] == "1"
+
+
+def test_child_env_lets_the_user_re_enable_imds_on_ec2(monkeypatch: Any) -> None:
+    # setdefault, not overwrite: an EC2 instance-role user opts back in by exporting the flag.
+    monkeypatch.setenv("AWS_EC2_METADATA_DISABLED", "false")
+    assert claude_code._child_env()["AWS_EC2_METADATA_DISABLED"] == "false"

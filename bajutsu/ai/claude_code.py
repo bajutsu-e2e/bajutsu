@@ -189,19 +189,29 @@ def _command(
 
 
 def _child_env() -> dict[str, str]:
-    """The child env for `claude -p`: subscription billing, no non-essential network side-trips.
+    """The child env for `claude -p`: force subscription billing, and defang the IMDS probe.
 
-    `ANTHROPIC_API_KEY` is removed so billing draws on the CLI's subscription token (its presence
-    would force API billing). `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC` turns off the CLI's
-    telemetry / auto-update / error-reporting traffic — one strand of which probes the cloud metadata
-    endpoint ``169.254.169.254`` on startup. Off a cloud VM that link-local address is unroutable, so
-    the probe's TCP connect sits in ``SYN_SENT`` until it times out (~75s), intermittently stalling
-    the whole call before it even reaches the API (observed as `record` freezing at planning).
-    Disabling it removes the stall, and the side traffic is useless for a headless one-shot call.
+    `ANTHROPIC_API_KEY` is dropped so a subscription user's billing draws on the CLI's Pro / Max /
+    Console token (its presence would force API billing); a Bedrock/Vertex-configured CLI ignores it.
+
+    `AWS_EC2_METADATA_DISABLED` is defaulted on to kill the cloud-metadata probe that otherwise
+    intermittently freezes the call (observed as `record` hanging at "thinking about how to approach
+    the goal"). When the CLI is pointed at Amazon Bedrock (``CLAUDE_CODE_USE_BEDROCK``, as the Claude
+    desktop app's environment sets), its bundled AWS SDK resolves credentials through a provider chain
+    whose fallback probes the instance-metadata endpoint ``169.254.169.254``. Off an EC2 instance that
+    link-local address is unroutable, so the probe's TCP connect sits in ``SYN_SENT`` for the OS
+    connect timeout (~75s) — the sole socket the process holds while its event loop parks — before the
+    request ever reaches Bedrock. Disabling IMDS leaves the profile / SSO credential path (the one
+    that works off-cloud) untouched. Via ``setdefault`` so anyone genuinely on EC2 with an instance
+    role can re-enable it by exporting ``AWS_EC2_METADATA_DISABLED=false``.
+
+    `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC` likewise defaults on: the CLI's telemetry / auto-update
+    traffic is useless for a headless one-shot call.
     """
     env = dict(os.environ)
     env.pop("ANTHROPIC_API_KEY", None)
-    env["CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC"] = "1"
+    env.setdefault("AWS_EC2_METADATA_DISABLED", "true")
+    env.setdefault("CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC", "1")
     return env
 
 
