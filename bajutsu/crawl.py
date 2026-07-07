@@ -371,7 +371,16 @@ def screen_identity(elements: list[base.Element]) -> str:
     abort the very form-fill batching the feature exists to enable. Determinism is unchanged — a pure
     comparison, no LLM.
     """
-    return _reduce(elements, lambda el: _id_of(el) or "")[0]
+    h, kind = _reduce(elements, lambda el: _id_of(el) or "")
+    if kind == "id":
+        return f"id:{h}"
+    stateful = {base.Trait.NOT_ENABLED, base.Trait.SELECTED}
+    structure = sorted(
+        f"{','.join(t for t in (el.get('traits') or []) if t not in stateful)}@{_frame_bucket(el)}"
+        for el in elements
+        if ACTIONABLE_TRAITS & _traits(el)
+    )
+    return f"structural:{_hash(structure)}"
 
 
 def _frame_bucket(element: base.Element) -> tuple[int, int, int, int]:
