@@ -362,6 +362,36 @@ def test_continue_skips_a_screen_whose_replay_lands_on_a_different_fingerprint()
     assert len(continued.nodes) == 3
 
 
+def test_continue_preserves_a_frontier_it_cannot_reconstruct_rather_than_completing() -> None:
+    """The recorded frontier is real but not deterministically reconstructable — its only untried op
+    is an AI-only one (`tap_point`, which `candidate_actions` never re-derives). Reconstruction
+    re-seeds nothing, but it must NOT wipe the saved plan or mislabel the run `completed`: the work
+    still exists in the map, so the plan and the prior stop reason survive for a retry (BE-0181)."""
+    react, home = _three_screen_app()
+
+    def reset(d: FakeDriver) -> None:
+        d.screen = list(home)
+
+    home_fp = crawl.fingerprint(home).value
+    # A map whose sole frontier op is a vision-located tap — `candidate_actions(home)` yields the
+    # deterministic taps (home.settings / home.about), none of which describe as this op, so nothing
+    # is re-seeded even though the path replays cleanly and the fingerprint matches.
+    ai_op = crawl.Action("tap_point", point=(0.5, 0.9)).describe()
+    base = crawl.ScreenMap(
+        nodes={home_fp: crawl.Node(home_fp, "id", ("home.about", "home.settings"), ())},
+        plan={home_fp: [ai_op]},
+        paths={home_fp: ()},
+        stop_reason="max_steps",
+    )
+    continued = crawl.crawl(
+        FakeDriver(screen=list(home), react=react), reset, base_map=base, max_steps=100
+    )
+    # Nothing reconstructed → the crawl added no screens, kept the recorded frontier verbatim, and
+    # did not falsely report completion.
+    assert continued.stop_reason == "max_steps"
+    assert continued.plan == {home_fp: [ai_op]}  # preserved, not overwritten with {}
+
+
 def test_continue_that_hits_a_budget_again_reports_the_new_reason_and_keeps_a_frontier() -> None:
     """A continuation re-decides its own stop reason (it doesn't inherit the prior run's): continuing
     a map that stopped on `max_steps` with a still-too-small budget stops on `max_steps` again and

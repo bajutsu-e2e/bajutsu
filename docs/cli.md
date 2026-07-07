@@ -389,12 +389,17 @@ bajutsu crawl --target <name> [--max-screens N] [--max-steps N] [--out <dir>] [o
   `bajutsu crawl --out <existing run> --continue` picks the run's map back up and re-explores
   **every** screen it left with untried operations — the whole remaining frontier — instead of
   re-crawling from the entry screen with a bigger budget. It needs no extra saved state: each such
-  screen's recorded path (`paths`) is replayed and its still-untried operations (`plan`) re-derived
-  deterministically, so continuation reproduces exactly what the first run would have tried next.
-  Raise `--max-screens`/`--max-steps` to go deeper, and `--workers`/`--udid` run the continuation
-  across the same parallel pool a fresh crawl uses. This is distinct from the single-branch resume
-  the Web UI's pruned-branch "tap to resume" fires (which re-explores one named pruned operation);
-  `--continue` and that resume are mutually exclusive.
+  screen's recorded path (`paths`) is replayed and its still-untried operations re-derived by the
+  **deterministic** guide (`candidate_actions`) and matched against the saved `plan`. Because the
+  reconstruction is deterministic, it reconstructs only the deterministically derivable operations;
+  **AI-only operations are intentionally not reconstructed** — for an AI-guided run, the richer
+  operations the model proposed (a realistic `fill`/`type`, a vision-located `tap_point`) are not
+  re-seeded, only the deterministic taps/inputs are. A frontier that reconstructs to nothing is left
+  untouched (the saved map keeps its `plan` and stop reason) rather than reported as completed. Raise
+  `--max-screens`/`--max-steps` to go deeper, and `--workers`/`--udid` run the continuation across the
+  same parallel pool a fresh crawl uses. This is distinct from the single-branch resume the Web UI's
+  pruned-branch "tap to resume" fires (which re-explores one named pruned operation); `--continue`
+  and that resume are mutually exclusive.
 - Disabled controls (`notEnabled`) are reported per screen as `blocked` rather than tapped. To
   enumerate transitions the crawl explores the **combinations** of control states: it tries each
   empty text field (and toggles each switch, and switches each tab of a tab bar) independently,

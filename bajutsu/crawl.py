@@ -838,7 +838,7 @@ def crawl(
         # The primary worker starts cold afterward (backtracking like any worker), so the driver's
         # position at the end of this loop doesn't matter — it never assumes a warm screen.
         prior_reason = screen_map.stop_reason
-        stale = False  # a recorded path no longer resolved (the app changed under us)
+        had_frontier = any(screen_map.plan.values())  # the loaded map recorded untried operations
         for fp in sorted(screen_map.plan):
             remaining = set(
                 screen_map.plan[fp]
@@ -849,15 +849,13 @@ def crawl(
             rst(d)
             _observe(d)
             if not _replay(d, path, settle, clear_blocking):
-                stale = True
                 continue  # the recorded path no longer resolves — skip this screen's frontier
             landed, dismissed = _observe(d)
             if fingerprint(landed).value != fp:
                 # The path still replays but no longer lands on `fp` (the app changed under us).
                 # Screen identity is a pure function of the element tree, so a different fingerprint
                 # means a different screen; seeding `pending[fp]`/`path_to[fp]` here would later
-                # misattribute this walk's edges to the wrong source screen — treat it as stale.
-                stale = True
+                # misattribute this walk's edges to the wrong source screen — skip it.
                 continue
             if dismissed:
                 coord.record_alert(path, dismissed)
@@ -870,12 +868,14 @@ def crawl(
             # so the live plan reflects the reconstructed frontier.
             screen_map.stop_reason = ""
             coord.emit()
-        elif stale:
-            # Re-seeded nothing because the recorded paths no longer resolve (the app changed). Don't
-            # emit — that would overwrite the persisted `plan` with the empty frontier and destroy the
-            # recorded work — and don't claim "completed": keep the prior budget stop so the frontier
-            # survives for a retry once the app matches again. Fall back to "max_steps" only if the
-            # loaded map somehow carried no reason.
+        elif had_frontier:
+            # The map recorded untried operations but none could be re-seeded — every recorded path
+            # is stale (no longer resolves, or lands on a different screen) or the remaining ops are
+            # not deterministically reconstructable (AI-only type/fill/tap_point, which
+            # `candidate_actions` never re-derives). Don't emit — that would overwrite the persisted
+            # `plan` with the empty frontier and destroy the recorded work — and don't claim
+            # "completed": keep the prior budget stop so the frontier survives for a retry. Fall back
+            # to "max_steps" only if the loaded map somehow carried no reason.
             screen_map.stop_reason = prior_reason or "max_steps"
         else:
             # The loaded map genuinely had no untried operations (every plan entry was empty): the
