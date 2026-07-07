@@ -73,12 +73,23 @@ Then branch on where it sits:
 Every open item (`Status: Proposal` or `Status: In progress`) has a GitHub tracking issue —
 opened and labeled `roadmap-tracking` by the BE-0109 sync, titled `[BE-NNNN] <title>`. Its
 body says "self-assign this issue when you pick it up; leave it unassigned if it's up for
-grabs." Do that now, before you branch, so ownership is visible the moment you start:
+grabs." Before claiming it, **check who is already assigned** — the issue is how parallel
+sessions signal ownership, so an existing assignee means someone else has picked this item up:
 
 ```bash
-gh issue list --label roadmap-tracking --state open --search "BE-NNNN in:title" --json number --jq '.[0].number'
-gh issue edit <number> --add-assignee @me
+number=$(gh issue list --label roadmap-tracking --state open --search "BE-NNNN in:title" --json number --jq '.[0].number')
+gh issue view "$number" --json assignees --jq '.assignees[].login'
 ```
+
+- **Someone else is already assigned** (a login that isn't the account `gh` is authenticated
+  as — check with `gh api user --jq .login`): **stop.** Tell the user the item is already
+  claimed, name the assignee, and don't branch, plan, or write any code. Let the user decide
+  whether to coordinate with that person, pick a different item, or override deliberately.
+  Only continue if the user explicitly tells you to proceed anyway.
+- **Unassigned, or already assigned to you** — claim it (idempotent) and continue:
+  ```bash
+  gh issue edit "$number" --add-assignee @me
+  ```
 
 `--add-assignee @me` assigns the human account `gh` is authenticated as — the same account
 commits and PRs are attributed to. It's idempotent (re-assigning yourself is a no-op), so
