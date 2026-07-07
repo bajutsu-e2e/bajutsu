@@ -690,6 +690,9 @@ function renderReportInShadow(host,html){
   const css=((doc.querySelector('style')||{}).textContent||'').replace(/:root/g,':host')
     .replace(/(^|[\s,>}])body([\s{])/g,'$1:host$2');
   sh.innerHTML=`<style>:host{display:block}\n${css}</style>${doc.body.innerHTML}`;
+  // The shadow render stops the light-DOM empty state rendering, but the stale node still reads as
+  // the host's text (accessibility / the dogfood's element query); drop it rather than shadow it.
+  host.querySelectorAll(':scope>.empty').forEach(e=>e.remove());
 }
 // ---- Triage (BE-0147): diagnose a failed run in the browser. The heuristic agent is the default
 // and fully deterministic; Claude is opt-in and only investigates — no LLM ever decides pass/fail.
