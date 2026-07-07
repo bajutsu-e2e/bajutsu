@@ -74,8 +74,9 @@ def test_orchestrator_dispatches_gestures() -> None:
 # --- swipe amount: how far a directional scroll travels ---
 
 
-def _swipe_travel(spec: str) -> float:
-    """Run a swipe step against a 400x800 fake screen and return its vertical travel in points."""
+def _swipe_points(spec: str) -> tuple[base.Point, base.Point]:
+    """Run a swipe step against a 400x800 fake screen (a `list` at y 300..500) and return its
+    resolved (from, to) points."""
     win: base.Element = {"identifier": None, "label": None, "traits": ["application"], "value": None,
                          "frame": (0.0, 0.0, 400.0, 800.0)}  # fmt: skip
     lst: base.Element = {"identifier": None, "label": "list", "traits": ["table"], "value": None,
@@ -84,6 +85,12 @@ def _swipe_travel(spec: str) -> float:
     result = run_scenario(driver, load_scenarios(f"- name: s\n  steps:\n    - {spec}\n")[0])
     assert result.ok, result.failure
     frm, to = next(arg for kind, arg in driver.actions if kind == "swipe")
+    return frm, to
+
+
+def _swipe_travel(spec: str) -> float:
+    """The vertical distance a directional swipe travels (independent of where it starts)."""
+    frm, to = _swipe_points(spec)
     return abs(frm[1] - to[1])
 
 
@@ -92,6 +99,16 @@ def test_swipe_amount_scales_scroll_distance() -> None:
     half = _swipe_travel("swipe: { on: { label: list }, direction: up, amount: 0.5 }")
     assert default == 100.0  # the small default nudge
     assert half == 400.0 and half > default  # 0.5 of the 800pt screen height
+
+
+def test_swipe_begins_on_the_element() -> None:
+    # A directional swipe must put its `down` ON the target, not offset by half the travel — else a
+    # swipe that grabs a small handle (a resize divider) lands beside it and drags nothing. The list
+    # spans y 300..500 (center 400) with room in both directions, so the gesture starts exactly at
+    # the center and travels the default nudge upward from there.
+    frm, to = _swipe_points("swipe: { on: { label: list }, direction: up }")
+    assert frm == (200.0, 400.0)  # down on the element center
+    assert to == (200.0, 300.0)  # up by the 100pt default nudge
 
 
 def test_swipe_amount_must_be_a_screen_fraction() -> None:

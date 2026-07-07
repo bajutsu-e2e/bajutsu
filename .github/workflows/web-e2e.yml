@@ -6,11 +6,12 @@
 # can't affect the web path, and an unrelated PR isn't blocked.
 #
 # Positive-list filter: only paths the web jobs actually exercise. Subdirectories are listed
-# explicitly (runner, scenario, drivers, orchestrator); `bajutsu/*.py` covers the single-level
-# top-level modules (most are in the run path) while inherently excluding subpackages the web jobs
-# never touch (serve/, mcp/, templates/, report/). CLI commands are limited to the three entry
-# points the smoke invokes, plus the conformance suite's own files. A new subpackage or CLI command
-# defaults to NOT triggering this workflow — add it here when it becomes web-CI-relevant.
+# explicitly (runner, scenario, drivers, orchestrator for the smoke; serve, templates, serve-ui for
+# the serve-UI dogfood, which drives the served SPA); `bajutsu/*.py` covers the single-level
+# top-level modules (most are in the run path) while inherently excluding the subpackages no web job
+# touches (mcp/, report/). CLI commands are limited to the three entry points the smoke invokes,
+# plus the conformance suite's own files. A new subpackage or CLI command defaults to NOT triggering
+# this workflow — add it here when it becomes web-CI-relevant.
 name: Web E2E (Playwright)
 
 on:
@@ -29,6 +30,11 @@ on:
       - 'bajutsu/cli/commands/run.py'
       - 'bajutsu/cli/commands/codegen.py'
       - 'bajutsu/cli/commands/record.py'
+      # The serve UI dogfood (BE-0058) drives the served SPA, so it is web-CI-relevant whenever the
+      # serve backend or its templates change — not only when the harness itself does.
+      - 'bajutsu/serve/**'
+      - 'bajutsu/templates/**'
+      - 'demos/serve-ui/**'
       - 'demos/web/**'
       - 'tests/driver_conformance.py'
       - 'tests/test_driver_conformance_web.py'
@@ -81,6 +87,38 @@ jobs:
 
       - name: Web smoke (demos/web)
         run: make -C demos/web e2e
+
+  # The serve Web UI dogfood (BE-0058): the web backend drives Bajutsu's *own* serve SPA through the
+  # Tier-A deterministic scenarios. Same shape and same `web` extra as the smoke above — the inner
+  # serve it drives is brought up and torn down by the config's launchServer, so no server is
+  # hand-started here. Keyless: no ANTHROPIC_API_KEY, no model — pass/fail is the scenarios' machine
+  # assertions only.
+  serve-ui-dogfood:
+    name: dogfood (serve UI)
+    runs-on: ubuntu-latest
+    env:
+      UV_NO_DEV: "1"
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39  # v8.2.0
+        with:
+          enable-cache: true
+
+      - name: Cache Playwright browsers
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('uv.lock') }}
+          restore-keys: |
+            playwright-${{ runner.os }}-
+
+      - name: Install the web backend (Playwright + Chromium)
+        run: uv sync --extra web && uv run --no-sync playwright install --with-deps chromium
+
+      - name: Serve UI dogfood (demos/serve-ui)
+        run: make -C demos/serve-ui e2e
 
   # The driver conformance suite (BE-0114) against the real Playwright backend: the same contract
   # `make check` runs on FakeDriver, now driving a headless Chromium so drift in the driver's own
