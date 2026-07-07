@@ -410,13 +410,16 @@ def record(
                 break
             say(f"[{n}] ✋ handoff resolved; re-observing the live screen")
             continue
-        if proposal.plan_step:
-            # Advance the cursor monotonically so the next turn's "next" hint points past the step
-            # the agent just worked on (a batch shares one plan_step across its actions).
-            plan_cursor = max(plan_cursor, proposal.plan_step)
         plan_tag = (
             f"(plan {proposal.plan_step}/{len(plan)}) " if proposal.plan_step and plan else ""
         )
+        if len(proposal.steps) > 1:
+            # Make the batch visible: one observation yielded several actions (BE-0178), so say so
+            # rather than letting the steps appear one-by-one as if from separate model turns.
+            say(
+                f"[{n}] \U0001f4e6 batch — {len(proposal.steps)} actions from one observation; "
+                "executing in order (aborts if the screen changes)"
+            )
         # Execute the proposed steps as a batch (BE-0178). It is intra-screen by construction: after
         # each executed step the screen's identity is compared against the one the batch was planned
         # against, and the moment it changes with steps still pending, the rest is abandoned and the
@@ -425,6 +428,7 @@ def record(
         # ignores per-field state (fill/enabled/selected) so filling a form's fields — the batch's own
         # intended work — is not mistaken for a transition; only elements appearing/disappearing is.
         before_id = screen_identity(elements)
+        steps_before = len(steps)
         stop = rebatch = False
         for i, proposed in enumerate(proposal.steps):
             m = len(steps) + 1
@@ -466,6 +470,13 @@ def record(
                 say(f"[{m}] ↻ the screen changed mid-batch; re-observing before the next action")
                 rebatch = True
                 break
+        if plan and proposal.plan_step:
+            # Advance the "next" cursor past every step this turn actually executed. The model shares
+            # one plan_step across a whole batch, so a batch of K actions plausibly covered K
+            # consecutive plan steps from the labelled one — pointing the next hint only past the
+            # single labelled step would leave it naming work the batch already did.
+            executed = len(steps) - steps_before
+            plan_cursor = max(plan_cursor, proposal.plan_step + max(0, executed - 1))
         if stop:
             break
         if rebatch:

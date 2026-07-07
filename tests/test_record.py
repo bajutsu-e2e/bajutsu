@@ -743,3 +743,32 @@ def test_record_without_a_plan_emits_no_next_hint() -> None:
         report=msgs.append,
     )
     assert not any("next — plan" in m for m in msgs)
+
+
+def test_record_batch_announces_and_advances_plan_cursor_past_executed_steps() -> None:
+    # (B) a multi-action turn is announced as a batch; (A) the "next" hint then points past every
+    # plan step the batch covered — the model labels a whole batch with one plan_step, so advancing
+    # only past that one would leave the hint naming work the batch already did.
+    driver = FakeDriver(
+        [_field("email", "Email"), _field("password", "Password"), _el("submit", "Submit")]
+    )
+    msgs: list[str] = []
+    agent = PlanningAgent(
+        [
+            Proposal(
+                steps=[
+                    Step.model_validate({"type": {"into": {"id": "email"}, "text": "a@b.co"}}),
+                    Step.model_validate({"type": {"into": {"id": "password"}, "text": "pw"}}),
+                    Step.model_validate({"tap": {"id": "submit"}}),
+                ],
+                plan_step=2,
+            ),
+            Proposal(done=True, expect=[]),
+        ],
+        plan_steps=["welcome", "fill email", "fill password", "submit", "confirm"],
+    )
+    record(driver, "x", agent, report=msgs.append)
+    joined = "\n".join(msgs)
+    assert "📦 batch — 3 actions from one observation" in joined  # (B) the batch is announced
+    assert "next — plan 5/5: confirm" in joined  # (A) advanced past the 3 batched steps (2→4)
+    assert "next — plan 3/" not in joined  # and not left naming a step the batch already did

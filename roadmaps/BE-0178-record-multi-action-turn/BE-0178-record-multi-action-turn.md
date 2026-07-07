@@ -213,6 +213,10 @@ cost of a single `query()` (that is BE-0105's separate concern).
   observe the loop now prints the plan step it is about to work toward (`⏭️ next — plan k/M: …`), so the
   model round-trip is no longer a silent gap. The concrete action is still decided from the live screen; a
   `plan_cursor` advances as the agent attributes actions to plan steps.
+- [#744](https://github.com/bajutsu-e2e/bajutsu/pull/744): Refined that narration — a multi-action turn is
+  announced (`📦 batch — K actions from one observation`), and the `plan_cursor` advances by the number of
+  actions the batch actually executed (the model labels a whole batch with one `plan_step`), so the "next"
+  hint doesn't name a step the batch already did.
 
 ## References
 
