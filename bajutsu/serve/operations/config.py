@@ -141,13 +141,20 @@ def provider_info(state: ServeState) -> tuple[Any, int]:
 
 
 def _confined_config_path(root: Path, raw: str) -> Path | None:
-    """Resolve *raw* (relative to *root*, or an absolute path) to a path confined to *root*, or None
-    if it escapes — the one barrier between client input and a filesystem read. Resolving **first**
-    normalizes any ``..`` so the containment check is sound: an absolute path left unresolved could
-    keep *root* as a literal parent while the real file lies outside it (a path-traversal read)."""
+    """Resolve *raw* (relative to *root*) to a path confined to *root*, or None if it escapes.
+
+    Client input must be a relative path from the file browser; absolute paths are rejected. We then
+    resolve to normalize any ``..`` before enforcing containment, so traversal segments cannot escape
+    the configured browse root.
+    """
     try:
         base = root.resolve(strict=True)
-        candidate = (Path(raw) if Path(raw).is_absolute() else base / raw).resolve()
+        if not raw or not raw.strip():
+            return None
+        user_rel = Path(raw)
+        if user_rel.is_absolute():
+            return None
+        candidate = (base / user_rel).resolve()
         candidate.relative_to(base)
         return candidate
     except (OSError, RuntimeError, ValueError):
