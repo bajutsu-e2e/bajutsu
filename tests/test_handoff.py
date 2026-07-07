@@ -96,13 +96,25 @@ def test_make_handoff_rejects_an_unknown_mode() -> None:
         make_handoff("promt", say=lambda _m: None)
 
 
-def _pipe_stdin(monkeypatch: pytest.MonkeyPatch, feed: bytes) -> None:
-    """Wire sys.stdin to a real pipe pre-fed with *feed* (a real fd, so `select` can wait on it)."""
+def _pipe_stdin(
+    monkeypatch: pytest.MonkeyPatch, feed: bytes, *, close_write: bool = True
+) -> int | None:
+    """Wire sys.stdin to a real pipe pre-fed with *feed* (a real fd, so `select` can wait on it).
+
+    With `close_write=True` (the default) the write end is closed, so a bounded read sees EOF right
+    after the fed bytes. With `close_write=False` the write end is left OPEN and returned — used by
+    the timeout tests so `select()` has no EOF to short-circuit on and must actually hit the
+    deadline (the caller closes the returned fd). A regression to a blocking `readline()` would then
+    hang the test rather than pass.
+    """
     read_fd, write_fd = os.pipe()
     if feed:
         os.write(write_fd, feed)
-    os.close(write_fd)  # EOF after the fed bytes, so a bounded read never blocks past them
     monkeypatch.setattr(sys, "stdin", os.fdopen(read_fd, "r"))
+    if close_write:
+        os.close(write_fd)
+        return None
+    return write_fd
 
 
 def test_stream_handoff_emits_the_request_and_reads_the_response(
@@ -121,9 +133,14 @@ def test_stream_handoff_emits_the_request_and_reads_the_response(
 
 
 def test_stream_handoff_times_out_to_a_cancel(monkeypatch: pytest.MonkeyPatch) -> None:
-    _pipe_stdin(monkeypatch, b"")  # nothing to read
+    # Write end stays open (no EOF), so select() must actually reach the 0.1s deadline — a blocking
+    # readline() regression would hang here instead of passing.
+    write_fd = _pipe_stdin(monkeypatch, b"", close_write=False)
     monkeypatch.setattr(sys, "stdout", io.StringIO())
-    assert StreamHandoff(timeout=0.1).request(HandoffRequest(reason="x")).cancelled
+    try:
+        assert StreamHandoff(timeout=0.1).request(HandoffRequest(reason="x")).cancelled
+    finally:
+        os.close(write_fd)  # type: ignore[arg-type]
 
 
 def test_response_from_json_rejects_non_object_json() -> None:
@@ -160,5 +177,13 @@ def test_prompt_handoff_interprets_the_typed_line(
 
 
 def test_prompt_handoff_times_out_to_a_cancel(monkeypatch: pytest.MonkeyPatch) -> None:
-    _pipe_stdin(monkeypatch, b"")
-    assert PromptHandoff(lambda _m: None, timeout=0.1).request(HandoffRequest(reason="x")).cancelled
+    # Write end stays open so select() must hit the 0.1s deadline (see the stream timeout test).
+    write_fd = _pipe_stdin(monkeypatch, b"", close_write=False)
+    try:
+        assert (
+            PromptHandoff(lambda _m: None, timeout=0.1)
+            .request(HandoffRequest(reason="x"))
+            .cancelled
+        )
+    finally:
+        os.close(write_fd)  # type: ignore[arg-type]
