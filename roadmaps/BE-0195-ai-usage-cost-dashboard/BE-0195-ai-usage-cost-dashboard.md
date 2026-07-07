@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-ai-usage-cost-dashboard-ja.md)
+**English** · [日本語](BE-0195-ai-usage-cost-dashboard-ja.md)
 
-# BE-XXXX — Visualize AI token usage and cost in the serve Web UI
+# BE-0195 — Visualize AI token usage and cost in the serve Web UI
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-ai-usage-cost-dashboard.md) |
+| Proposal | [BE-0195](BE-0195-ai-usage-cost-dashboard.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0195") |
 | Topic | AI usage and cost observability |
 <!-- /BE-METADATA -->
 

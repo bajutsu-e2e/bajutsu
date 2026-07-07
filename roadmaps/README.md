@@ -621,7 +621,10 @@ The scope is currently **limited to the iOS Simulator** ([DESIGN §1](../DESIGN.
 Measuring what the AI paths (`record` / `crawl` / `triage --ai` / `run --apply`) actually cost — tokens and money — broken down by provider, model, command, and scenario. Bajutsu already has `bajutsu/usage.py`, but it tracks a single in-memory token total that is lost on process exit; these items turn that into an attributed, persistent record and surface it in the serve Web UI, so a team can see where its AI spend goes and make deterministic provider/model choices from real data. Observability only — nothing here puts an LLM on the `run` / CI verdict path.
 
 <!-- GENERATED:proposals-ai-usage -->
-
+| ID | Item | Status |
+|---|---|---|
+| [BE-0195](BE-0195-ai-usage-cost-dashboard/BE-0195-ai-usage-cost-dashboard.md) | Visualize AI token usage and cost in the serve Web UI | Proposal |
+| [BE-0196](BE-0196-ai-usage-cost-ledger/BE-0196-ai-usage-cost-ledger.md) | Record AI token usage and cost as an attributed, persistent ledger | Proposal |
 <!-- /GENERATED:proposals-ai-usage -->
 
 ### Hosting the web UI (cloud / self-hosted)

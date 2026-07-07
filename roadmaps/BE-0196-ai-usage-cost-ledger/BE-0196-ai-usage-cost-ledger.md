@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-ai-usage-cost-ledger-ja.md)
+**English** · [日本語](BE-0196-ai-usage-cost-ledger-ja.md)
 
-# BE-XXXX — Record AI token usage and cost as an attributed, persistent ledger
+# BE-0196 — Record AI token usage and cost as an attributed, persistent ledger
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-ai-usage-cost-ledger.md) |
+| Proposal | [BE-0196](BE-0196-ai-usage-cost-ledger.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0196") |
 | Topic | AI usage and cost observability |
 <!-- /BE-METADATA -->
 

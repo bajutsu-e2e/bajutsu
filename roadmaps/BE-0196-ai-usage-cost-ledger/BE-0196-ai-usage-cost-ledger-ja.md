@@ -1,14 +1,14 @@
-[English](BE-XXXX-ai-usage-cost-ledger.md) · **日本語**
+[English](BE-0196-ai-usage-cost-ledger.md) · **日本語**
 
-# BE-XXXX — AI のトークン使用量とコストを属性付きの永続的な台帳として記録する
+# BE-0196 — AI のトークン使用量とコストを属性付きの永続的な台帳として記録する
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
 |---|---|
-| 提案 | [BE-XXXX](BE-XXXX-ai-usage-cost-ledger-ja.md) |
+| 提案 | [BE-0196](BE-0196-ai-usage-cost-ledger-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **提案** |
-| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0196") |
 | トピック | AI 使用量とコストの可観測性 |
 <!-- /BE-METADATA -->
 
