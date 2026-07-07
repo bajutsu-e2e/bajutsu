@@ -429,9 +429,13 @@ $('#rec-go').addEventListener('click',async()=>{
   if(recPoll)recPoll.close();
   setBusy($('#rec-go'),$('#rec-stop'),true,'Authoring…');$('#rec-out').textContent='';
   $('#rec-yaml').value='';$('#rec-save').disabled=true;$('#rec-yamlinfo').textContent='';recPath=null;
-  // Clear any prior in-place run so its report/status don't linger over a fresh authoring.
+  // Clear any prior in-place run so its report/status don't linger over a fresh authoring. The
+  // report / status live in the Run-result pane, which the tiler detaches while hidden, so guard the
+  // lookups — they're null until a run has shown the pane.
   if(recRunPoll)recRunPoll.close();
-  $('#rec-run').disabled=true;$('#rec-report').innerHTML='';setStatus($('#rec-runstatus'),'','');
+  $('#rec-run').disabled=true;
+  const rep0=$('#rec-report');if(rep0)rep0.innerHTML='';
+  const rs0=$('#rec-runstatus');if(rs0)setStatus(rs0,'','');
   hideReportPanel();
   setStatus($('#rec-status'),'','run');
   const r=await fetch('/api/record',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
@@ -497,7 +501,9 @@ $('#rec-run').addEventListener('click',async()=>{
   recPath=sd.path;$('#rec-yamlinfo').textContent=recPath.split('/').pop();loadScenarios();
   setBusy($('#rec-run'),$('#rec-runstop'),true,'Running…');
   $('#rec-out').textContent='';  // the live run log shares the Progress console, like Generate
-  showReportPanel();$('#rec-report').innerHTML='';setStatus($('#rec-runstatus'),'','run');
+  showReportPanel();  // attaches the pane, so the report / status lookups below resolve
+  const rep=$('#rec-report');if(rep)rep.innerHTML='';
+  const rs=$('#rec-runstatus');if(rs)setStatus(rs,'','run');
   const r=await fetch('/api/run',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
     scenario:recPath,target,udid:$('#rec-device').value||'booted',
     erase:$('#rec-erase').checked||undefined,dismissAlerts:$('#rec-nodismiss').checked?false:undefined})});
@@ -512,8 +518,10 @@ $('#rec-runstop').addEventListener('click',()=>cancelJob(recRunJobId,$('#rec-run
 $('#rec-runclose').addEventListener('click',hideReportPanel);
 function recRunDone(j){
   recRunPoll=null;recRunJobId=null;setBusy($('#rec-run'),$('#rec-runstop'),false);
-  if(j.cancelled){setStatus($('#rec-runstatus'),'cancelled','ng');return}
-  setStatus($('#rec-runstatus'),j.ok?'PASS':'FAIL', j.ok?'ok':'ng');
+  showReportPanel();  // re-show the pane (the user may have closed it mid-run) so the result lands
+  const rs=$('#rec-runstatus');
+  if(j.cancelled){if(rs)setStatus(rs,'cancelled','ng');return}
+  if(rs)setStatus(rs,j.ok?'PASS':'FAIL', j.ok?'ok':'ng');
   if(j.runId)setReport(j.runId,j.ok,'#rec-report');
 }
 $('#rec-save').addEventListener('click',async()=>{
