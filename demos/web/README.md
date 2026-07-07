@@ -10,12 +10,13 @@ toolchain as `make check`.
 
 | Path | Purpose |
 |---|---|
-| `app/index.html` | the app under test — onboarding → login → counter, vanilla JS, stable `data-testid` ids |
+| `app/index.html` | the app under test — onboarding → login → counter, plus a device-verification flow for the handoff demo, vanilla JS, stable `data-testid` ids |
 | `scenarios/smoke.yaml` | the deterministic smoke scenario (same step/expect schema as the iOS demos) |
 | `record/goals.txt` | the natural-language goal `make -C demos/web record` authors from |
 | `record/record_offline.py` | the offline, API-key-free twin of `record` — the same loop, a keyword agent + FakeDriver |
+| `record/record_handoff_offline.py` | the offline, key-free twin of the human-in-the-loop handoff demo — the real pause/resume with a scripted agent + responder |
 | `demo.config.yaml` | `targets.web` with `baseUrl` + `scenarios` + `backend: [web]` (no `bundleId`) |
-| `Makefile` | `web-deps` / `app-serve` / `e2e` / `record` / `record-offline` |
+| `Makefile` | `web-deps` / `app-serve` / `e2e` / `record` / `record-handoff` / `record-offline` / `record-handoff-offline` |
 
 ## Run it
 
@@ -54,6 +55,32 @@ each step in an in-memory FakeDriver, so it runs in the `make check` toolchain:
 ```bash
 make -C demos/web record-offline                                   # the default goal
 uv run python demos/web/record/record_offline.py "get started, increment twice, check the counter shows 2"
+```
+
+## Human-in-the-loop handoff (BE-0179)
+
+Some steps are gated by something the AI cannot supply — here, a one-time verification code that
+arrives out-of-band. `record` pauses on such a step, hands off to a human, takes their response, and
+resumes by re-observing the live screen ([BE-0179](../../roadmaps/BE-0179-record-human-handoff/BE-0179-record-human-handoff.md)).
+The human is only in the loop **while authoring**; the recorded scenario still replays with no human
+on the deterministic `run` path.
+
+Run it **headed** so you can operate the browser when the AI pauses:
+
+```bash
+make -C demos/web record-handoff   # real Claude + a headed browser (needs ANTHROPIC_API_KEY)
+```
+
+The AI clicks **Verify a device**, reaches the code screen, recognizes it cannot know the code (an
+`ask_human` turn), and pauses. Enter the code shown in the browser, click **Verify**, then answer the
+terminal prompt (`done`) to resume — the loop re-observes the verified screen and finishes.
+
+With no key, no browser, and no live human, the offline twin reproduces the *same* pause/resume — the
+real handoff contract and record loop — with a scripted agent + responder, so the mechanism runs in
+the `make check` toolchain:
+
+```bash
+make -C demos/web record-handoff-offline
 ```
 
 ## How it maps to the core

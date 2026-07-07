@@ -420,6 +420,10 @@ def record_command(
         goal,
         "--config",
         config,
+        # A human is at the browser watching this record; a "needs human" turn hands off to the UI
+        # over the SSE stream + response endpoint rather than blocking on a terminal stdin (BE-0179).
+        "--handoff",
+        "stream",
     ]
     cmd += flag_args(
         "record",

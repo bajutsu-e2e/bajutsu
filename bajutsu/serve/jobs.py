@@ -26,6 +26,7 @@ if TYPE_CHECKING:
 
 from bajutsu import simctl as _simctl
 from bajutsu.drivers import base as driver_base
+from bajutsu.handoff import REQUEST_LINE_PREFIX as _HANDOFF_REQUEST_PREFIX
 from bajutsu.object_store import EvidenceTarget, ObjectStore
 from bajutsu.redaction import Redactor
 from bajutsu.scenario.models import Step
@@ -94,6 +95,10 @@ class Job:
     # sets it via the /api/run body to pick the cloud lifecycle policy; travels in the job spec so the
     # worker relays it back when requesting presigned PUT URLs. Empty = key directly under the base.
     evidence_prefix: str = ""
+    # A `record` job that paused for a human is in an explicit, resumable "awaiting human" state
+    # (BE-0179): set when the spawned record emits a handoff request, cleared when the response is
+    # written back to its stdin. Surfaced to the UI so the paused job is visible, not a silent block.
+    awaiting_human: bool = False
 
     def view(self, *, include_lines: bool = True) -> dict[str, Any]:
         """The job's state for the UI. `include_lines=False` omits the log buffer — used for the
@@ -110,6 +115,7 @@ class Job:
                 "ok": (self.exit_code == 0 and not self.cancelled)
                 if self.status == "done"
                 else None,
+                "awaitingHuman": self.awaiting_human,
             }
             if include_lines:
                 v["lines"] = list(self.lines)
@@ -489,6 +495,26 @@ def cancel_job(job: Job) -> bool:
     return True
 
 
+def send_response(job: Job, line: str) -> bool:
+    """Write a human-handoff response line to the job's stdin, resuming a paused `record` (BE-0179).
+
+    Clears the awaiting-human state and returns False if the job has no live stdin (already
+    finished, or not a handoff-capable spawn) so the caller can report the resume never landed.
+    """
+    with job.lock:
+        proc = job.proc
+        job.awaiting_human = False
+    stdin = getattr(proc, "stdin", None)
+    if stdin is None:
+        return False
+    try:
+        stdin.write(line if line.endswith("\n") else line + "\n")
+        stdin.flush()
+    except (OSError, ValueError):
+        return False
+    return True
+
+
 def _boot_devices(state: ServeState, job: Job) -> bool:
     """Boot the job's devices in parallel (each ``bootstatus -b`` boots its device and waits
     until ready) so multiple cold simulators come up at the same time, then the run drives
@@ -684,10 +710,16 @@ def _run_job(state: ServeState, job: Job) -> None:
         return
     if not _build_app(state, job):
         return
+    # A stdin pipe is the human-handoff response channel (BE-0179): a paused `record --handoff stream`
+    # reads the human's response line here. Only handoff-capable commands get the pipe; every other
+    # job gets DEVNULL, so a subprocess that unexpectedly reads stdin sees EOF rather than blocking
+    # forever on input that will never arrive.
+    stdin = subprocess.PIPE if "--handoff" in job.cmd else subprocess.DEVNULL
     proc = state.popen(
         job.cmd,
         cwd=str(job.cwd or state.cwd),
         env=_spawn_env(),
+        stdin=stdin,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         text=True,
@@ -702,6 +734,15 @@ def _run_job(state: ServeState, job: Job) -> None:
     try:
         for raw in proc.stdout or []:
             line = raw.rstrip("\n")
+            if line.startswith(_HANDOFF_REQUEST_PREFIX):
+                # A handoff request (BE-0179): mark the job awaiting-human and relay the line to the
+                # bus (where the SSE layer turns it into a `human-request` event). Kept out of
+                # `job.lines` so the transcript view isn't polluted by the serialized payload.
+                with job.lock:
+                    job.awaiting_human = True
+                if job.bus is not None:
+                    job.bus.publish(job.id, line)
+                continue
             match = _RUN_ID_RE.search(line)
             with job.lock:
                 job.lines.append(line)
@@ -716,3 +757,7 @@ def _run_job(state: ServeState, job: Job) -> None:
         job.proc = None
         job.exit_code = proc.returncode
         job.status = "done"
+        # A record that paused for a human but ended without a response (a StreamHandoff timeout →
+        # cancel, or a killed job) must not report awaiting-human on its terminal view — the process
+        # is gone and cannot be resumed (BE-0179).
+        job.awaiting_human = False

@@ -32,6 +32,8 @@ class Proposal:
     done: bool = False              # ゴール到達
     expect: list[Assertion] = []    # done 時に、ゴールを検証するアサーション
     note: str = ""
+    needs_human: bool = False       # 第三の結果。人に引き渡す（BE-0179）
+    human_prompt: str = ""          # 引き渡しの理由。人に提示する
 
 class Agent(Protocol):
     def next_action(self, observation: Observation) -> Proposal: ...
@@ -50,6 +52,10 @@ class Agent(Protocol):
 3. screenshot を撮り、Observation を作って agent.next_action() を呼ぶ
 4. proposal.done なら:
      - settle ステップ（後述）を必要なら差し込み、expect を確定して終了
+   proposal.needs_human なら（BE-0179）:
+     - `handoff` 応答者に引き渡す。値の供給や「操作した」応答なら観測し直して続行し（人のターンは
+       ステップを記録しません）、cancel なら停止する。応答者が居なければ `HumanHandoffUnavailable`
+       を送出する。ハングも推測もない、明確でラベル付きの失敗です
    proposal.step なら:
      - _execute_with_recovery で実行（失敗かつ alert_guard ありなら片付けて 1 回再試行）
      - 成功したら steps に積む。解決しなければ break
@@ -57,6 +63,25 @@ class Agent(Protocol):
 ```
 
 出力は `dump_scenarios` を通して YAML 化されます（[scenarios](scenarios.md#ラウンドトリップ読込--書出)）。
+
+### human-in-the-loop ハンドオフ（BE-0179）
+
+一部の flow は、AI が供給できない何か（ワンタイムパスワード、CAPTCHA、生体認証のプロンプト）で
+塞がれます。ターン結果が「人が必要」（`proposal.needs_human`）のとき、ループは一時停止し、転送方式に
+依存しない `Handoff` 契約（`handoff.py`）を通して人に制御を引き渡します。要求（なぜ止まったか、現在
+画面の要約とスクリーンショット）が出て行き、応答（供給された値、または「デバイスを操作した。観測し
+直せ」、または cancel）が返り、ループは実際の画面を観測し直して再開します。人がループに入るのは
+オーサリングの最中だけで、記録した scenario は決定論的な `run` の経路に人を置かずに再生されます。
+
+同じ契約に二つのインターフェースがあります。端末からは、`record` が上限つきで中断可能な対話的な標準
+入力プロンプトから応答を読み取ります。`serve` から駆動する場合は、要求を record の server-sent
+events ストリーム上の `human-request` イベントとしてシリアライズ配信し（一時停止したジョブは、目に
+見える再開可能な「人待ち」状態に入ります）、ブラウザが応答を `/api/jobs/<id>/respond-human` へ
+POST すると、`serve` がそれを spawn した `record` プロセスの標準入力へ書き込みます。どちらの経路でも
+待機は上限つきで中断可能なので、席を外した人を相手にどのインターフェースもハングしません。応答者が
+まったく居ない非対話的な実行や CI では、「人が必要」のターンは明確でラベル付きの非ゼロ終了になり、
+ハングにも AI の推測にもなりません。この土台は仕組みと境界を担い、「人が必要」を立ち上げる
+ヒューリスティックと、ハンドオフが記録する成果物の形は、子項目が受け持ちます。
 
 ### settle ステップの自動挿入
 

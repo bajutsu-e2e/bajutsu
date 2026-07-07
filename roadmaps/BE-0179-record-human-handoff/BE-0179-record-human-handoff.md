@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0179](BE-0179-record-human-handoff.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0179") |
+| Implementing PR | [#735](https://github.com/bajutsu-e2e/bajutsu/pull/735) |
 | Topic | Authoring experience (record / GUI editor) |
 | Related | [BE-0011](../BE-0011-local-web-ui-serve/BE-0011-local-web-ui-serve.md), [BE-0012](../BE-0012-action-capture-record/BE-0012-action-capture-record.md), [BE-0014](../BE-0014-record-demarcation/BE-0014-record-demarcation.md), [BE-0039](../BE-0039-self-healing-propose-optin/BE-0039-self-healing-propose-optin.md), [BE-0044](../BE-0044-scenario-provenance/BE-0044-scenario-provenance.md), [BE-0046](../BE-0046-otp-email-steps/BE-0046-otp-email-steps.md), [BE-0098](../BE-0098-unified-authoring-surface/BE-0098-unified-authoring-surface.md), [BE-0120](../BE-0120-recorded-scenario-secret-tokenization/BE-0120-recorded-scenario-secret-tokenization.md) |
 <!-- /BE-METADATA -->
@@ -84,11 +85,12 @@ the `serve` record path shape the design:
   what makes this the same protocol the CLI uses in-process.
 - **The job enters an explicit "awaiting human" state.** Rather than a worker blocking invisibly,
   the paused record is a visible, resumable job state in the UI — the record view (on the unified
-  authoring surface, BE-0098) renders the request inside a retained pane: why the loop paused, the
+  authoring surface, BE-0098) renders the request in a modal — so it can't be missed below the fold:
+  why the loop paused, the
   current screen (the screenshot the request carries, reusing the existing capture-screenshot
-  channel with the target element highlighted), and a response control. The human answers in the
-  browser and the loop resumes.
-- **It is bounded and cancelable.** The pane offers cancel — ending the record cleanly — and the
+  channel; the target element is carried as a text description — pixel-highlighting it is a
+  follow-up), and a response control. The human answers in the browser and the loop resumes.
+- **It is bounded and cancelable.** The modal offers cancel — ending the record cleanly — and the
   awaiting-human state carries the same bounded wait as the CLI, so a `serve` worker never hangs
   indefinitely on a human who has walked away.
 
@@ -132,13 +134,20 @@ itself deterministic under automation.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Add a "needs human" turn outcome to the agent/record loop, distinct from `done` / no-action.
-- [ ] Define the transport-neutral handoff request/response contract.
-- [ ] CLI surface: bounded, cancelable interactive prompt on stdin.
-- [ ] `serve` surface: serialize the request over the record SSE stream and take the response over an endpoint (crossing the spawned-`bajutsu record` process boundary, BE-0127).
-- [ ] `serve` surface: an explicit, resumable "awaiting human" job state rendered as a retained-pane affordance in the record view (BE-0098), with the request screenshot and a response control.
-- [ ] Resume-by-re-observation wiring in the record loop.
-- [ ] Non-interactive / CI behavior: clean labeled failure, no hang, no guess.
+- [x] Add a "needs human" turn outcome to the agent/record loop, distinct from `done` / no-action.
+- [x] Define the transport-neutral handoff request/response contract.
+- [x] CLI surface: bounded, cancelable interactive prompt on stdin.
+- [x] `serve` surface: serialize the request over the record SSE stream and take the response over an endpoint (crossing the spawned-`bajutsu record` process boundary, BE-0127). *Local `serve` only — the distributed server-backend response channel (remote worker, BE-0015) is a follow-up.*
+- [x] `serve` surface: an explicit, resumable "awaiting human" job state rendered as a modal in the record view (BE-0098), with the request screenshot and a response control.
+- [x] Resume-by-re-observation wiring in the record loop.
+- [x] Non-interactive / CI behavior: clean labeled failure, no hang, no guess.
+
+Deferred to follow-ups (out of this substrate's first slice): the author-initiated *explicit takeover* pause trigger (b) — pausing mid-run at the author's request, distinct from the agent-raised "needs human" trigger (a) shipped here; the distributed server-backend response channel; and pixel-highlighting the target element on the request screenshot (the target travels as a text description for now). The two child patterns (`record-human-value-prompt`, `record-human-takeover-step`) supply the heuristics that *raise* the "needs human" outcome and decide the recorded artifact's shape.
+
+**Log**
+
+- Substrate landed: the `handoff` contract ([`bajutsu/handoff.py`](../../bajutsu/handoff.py)), the `needs_human` turn outcome and pause/resume in the record loop ([`bajutsu/record.py`](../../bajutsu/record.py)), the CLI stdin responders ([`bajutsu/cli/handoff.py`](../../bajutsu/cli/handoff.py)), and the local-`serve` surface (SSE `human-request` event, the `respond-human` endpoint over the record process's stdin, the awaiting-human job state, and the handoff modal in the Web UI). Non-interactive / CI raises a clean, labeled failure.
+- Demo enablement: a device-verification flow in the web demo app ([`demos/web/app/index.html`](../../demos/web/app/index.html)) and an `ask_human` outcome the authoring agent ([`bajutsu/claude_agent.py`](../../bajutsu/claude_agent.py)) emits for a value it cannot know (an out-of-band one-time code), so a real headed `record` hands off end to end (`make -C demos/web record-handoff`), with a key-free offline twin for the toolchain. This `ask_human` guidance is a first, minimal slice the value-prompt / takeover child items will formalize (the field-level heuristics and the recorded-artifact shape remain theirs).
 
 ## References
 

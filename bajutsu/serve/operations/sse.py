@@ -5,7 +5,16 @@ from __future__ import annotations
 import json
 from collections.abc import Generator, Iterator
 
+from bajutsu.handoff import REQUEST_LINE_PREFIX
 from bajutsu.serve.jobs import Job, ServeState
+
+
+def _classify(line: str) -> tuple[str, str]:
+    """A bus line as an ``(event, data)`` pair: a handoff request (BE-0179) becomes a
+    ``human-request`` event carrying just its JSON payload; every other line is a ``log``."""
+    if line.startswith(REQUEST_LINE_PREFIX):
+        return ("human-request", line[len(REQUEST_LINE_PREFIX) :])
+    return ("log", line)
 
 
 def format_sse(event: str, data: str) -> str:
@@ -31,7 +40,7 @@ def job_log_events(state: ServeState, job_id: str) -> Iterator[tuple[str, str]] 
 def _job_event_pairs(state: ServeState, job: Job, job_id: str) -> Iterator[tuple[str, str]]:
     for line in state.logbus.stream(job_id):
         if line is not None:  # no timeout passed, so no heartbeats — guard only satisfies the type
-            yield ("log", line)
+            yield _classify(line)
     yield ("done", _terminal_payload(state, job, job_id))
 
 
@@ -57,5 +66,5 @@ def job_sse(state: ServeState, job_id: str, *, keepalive: float) -> Generator[st
 
 def _job_sse_frames(state: ServeState, job: Job, job_id: str, keepalive: float) -> Generator[str]:
     for line in state.logbus.stream(job_id, timeout=keepalive):
-        yield ":keepalive\n\n" if line is None else format_sse("log", line)
+        yield ":keepalive\n\n" if line is None else format_sse(*_classify(line))
     yield format_sse("done", _terminal_payload(state, job, job_id))

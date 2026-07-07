@@ -12,10 +12,12 @@ from bajutsu.agent import Observation, Proposal
 from bajutsu.drivers import base
 from bajutsu.drivers.fake import FakeDriver
 from bajutsu.elements import shows_app_ui
+from bajutsu.handoff import HandoffRequest, HandoffResponse, HumanHandoffUnavailable
 from bajutsu.record import (
     _format_elapsed,
     _is_looping,
     _screenshot_bytes,
+    _summarize_screen,
     _tokenize_secrets,
     record,
 )
@@ -124,6 +126,113 @@ def test_record_without_capture_video_requests_no_interval() -> None:
     scenario = record(driver, "x", agent)  # default: no video
     assert scenario.steps[0].capture is None
     assert requested_intervals(scenario) == []
+
+
+class RecordingHandoff:
+    """A scripted handoff responder that records the requests it received (BE-0179)."""
+
+    def __init__(self, responses: list[HandoffResponse]) -> None:
+        self._responses = responses
+        self._i = 0
+        self.requests: list[HandoffRequest] = []
+
+    def request(self, request: HandoffRequest) -> HandoffResponse:
+        self.requests.append(request)
+        response = self._responses[self._i]
+        self._i += 1
+        return response
+
+
+def test_record_hands_off_on_needs_human_then_resumes() -> None:
+    # A "needs human" turn pauses, hands off, and the loop resumes by re-observing — the human's
+    # turn consumes no recorded step, and the next proposed action is recorded as usual (BE-0179).
+    driver = FakeDriver([_el("go", "Go")])
+    agent = FakeAgent(
+        [
+            Proposal(needs_human=True, human_prompt="enter the one-time password"),
+            Proposal(step=Step.model_validate({"tap": {"id": "go"}})),
+            Proposal(done=True),
+        ]
+    )
+    handoff = RecordingHandoff([HandoffResponse(acted=True)])
+    scenario = record(driver, "log in", agent, handoff=handoff)
+
+    assert len(handoff.requests) == 1
+    assert handoff.requests[0].reason == "enter the one-time password"
+    assert handoff.requests[0].screen  # the current screen summary travels with the request
+    assert [s.tap.id for s in scenario.steps if s.tap is not None] == ["go"]
+
+
+def test_record_resumes_after_a_value_response() -> None:
+    # A value response (the headline case — the human supplies an OTP) also resumes by re-observing;
+    # the substrate deliberately does not itself record the value (a child item decides that).
+    driver = FakeDriver([_el("go", "Go")])
+    agent = FakeAgent(
+        [
+            Proposal(needs_human=True, human_prompt="enter the OTP"),
+            Proposal(step=Step.model_validate({"tap": {"id": "go"}})),
+            Proposal(done=True),
+        ]
+    )
+    handoff = RecordingHandoff([HandoffResponse(values=["999111"])])
+    scenario = record(driver, "log in", agent, handoff=handoff)
+    assert len(handoff.requests) == 1
+    assert [s.tap.id for s in scenario.steps if s.tap is not None] == ["go"]
+
+
+def test_record_handles_two_handoffs_in_one_run() -> None:
+    # A multi-factor flow pauses twice (OTP, then CAPTCHA); each resumes without consuming a step
+    # number, and the run still finishes normally.
+    driver = FakeDriver([_el("go", "Go")])
+    agent = FakeAgent(
+        [
+            Proposal(needs_human=True, human_prompt="enter the OTP"),
+            Proposal(step=Step.model_validate({"tap": {"id": "go"}})),
+            Proposal(needs_human=True, human_prompt="solve the CAPTCHA"),
+            Proposal(done=True),
+        ]
+    )
+    handoff = RecordingHandoff([HandoffResponse(values=["999111"]), HandoffResponse(acted=True)])
+    scenario = record(driver, "log in", agent, handoff=handoff)
+    assert [r.reason for r in handoff.requests] == ["enter the OTP", "solve the CAPTCHA"]
+    assert [s.tap.id for s in scenario.steps if s.tap is not None] == ["go"]
+
+
+def test_record_masks_a_secret_in_the_handoff_reason() -> None:
+    # A declared secret literal in the handoff prompt is tokenized before it reaches the request
+    # (and thus the stream / logs), like the normal step's intent (BE-0120).
+    driver = FakeDriver([_el("go", "Go")])
+    agent = FakeAgent(
+        [Proposal(needs_human=True, human_prompt="the code is s3cr3t"), Proposal(done=True)]
+    )
+    handoff = RecordingHandoff([HandoffResponse(acted=True)])
+    record(driver, "x", agent, handoff=handoff, secret_tokens=[("s3cr3t", "${secrets.OTP}")])
+    assert "s3cr3t" not in handoff.requests[0].reason
+    assert "${secrets.OTP}" in handoff.requests[0].reason
+
+
+def test_record_needs_human_without_a_responder_fails_cleanly() -> None:
+    # No responder (CI / non-interactive): a raised handoff is a clean, labeled failure, never a
+    # hang and never an AI guess (BE-0179).
+    driver = FakeDriver([_el("go", "Go")])
+    agent = FakeAgent([Proposal(needs_human=True, human_prompt="solve the CAPTCHA")])
+    with pytest.raises(HumanHandoffUnavailable, match="CAPTCHA"):
+        record(driver, "x", agent)  # no handoff given
+
+
+def test_record_handoff_cancel_stops_cleanly() -> None:
+    # A cancelled handoff ends the record cleanly — no further steps, no crash.
+    driver = FakeDriver([_el("go", "Go")])
+    agent = FakeAgent([Proposal(needs_human=True, human_prompt="help")])
+    handoff = RecordingHandoff([HandoffResponse(cancelled=True)])
+    scenario = record(driver, "x", agent, handoff=handoff)
+    assert scenario.steps == []
+
+
+def test_summarize_screen_lists_labels_and_counts() -> None:
+    summary = _summarize_screen([_el("go", "Go"), _el("cancel", "Cancel")])
+    assert "2 element(s)" in summary
+    assert "Go" in summary and "Cancel" in summary
 
 
 def test_record_sets_scenario_provenance_from_goal() -> None:

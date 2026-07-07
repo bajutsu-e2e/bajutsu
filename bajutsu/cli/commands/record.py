@@ -25,7 +25,9 @@ from bajutsu.cli._shared import (
     _warn_onscreen_secrets,
     _with_headed,
 )
+from bajutsu.cli.handoff import make_handoff
 from bajutsu.config import WEB_ENGINES, Effective, web_engine
+from bajutsu.handoff import HumanHandoffUnavailable
 from bajutsu.record import record as record_loop
 from bajutsu.runner import launch_driver
 from bajutsu.runner.launch_server import start_launch_server
@@ -132,6 +134,13 @@ def record(
         help="internal: serve sets this for an uploaded bundle to govern its launchServer command "
         "(deny | reuse | sandbox); empty = ungoverned local/Git run (BE-0090)",
     ),
+    handoff: str = typer.Option(
+        "auto",
+        "--handoff",
+        hidden=True,
+        help="human-in-the-loop handoff responder (BE-0179): auto (interactive when stdin is a TTY, "
+        "else none) | prompt | stream (serve sets this) | off",
+    ),
     config: str = typer.Option(DEFAULT_CONFIG),
 ) -> None:
     """Explore the app with AI toward a goal and write the recorded scenario.
@@ -192,6 +201,13 @@ def record(
         typer.echo(msg, err=True)
 
     announce_ai(say, default_model=_RECORD_MODEL, ai=eff.ai)
+    # Resolve the handoff responder before the slow device boot, so an invalid --handoff mode fails
+    # fast and cleanly (BE-0179) rather than after launching, or as an uncaught traceback.
+    try:
+        handoff_responder = make_handoff(handoff, say=say)
+    except ValueError as e:
+        typer.echo(str(e), err=True)
+        raise typer.Exit(2) from None
     say(
         f"⚙️  preparing the simulator — installing and launching {target_name} (this can take a moment) …"
     )
@@ -201,19 +217,28 @@ def record(
         typer.echo(str(e))
         raise typer.Exit(2) from None
     say(f"✅ app is up — authoring toward the goal: {goal!r}")
-    scenario = record_loop(
-        driver,
-        goal,
-        authoring_agent,
-        name=goal,
-        alert_guard=alert_guard,
-        secret_tokens=_secret_tokens(eff),
-        # A mobile (iOS-simulator) app always records a scenario-wide screen video; the recording is
-        # a simctl interval, so it's specific to the idb backend (web replays capture video by other
-        # means, and the fake actuator has no device to record).
-        capture_video=actuator == "idb",
-        report=say,
-    )
+    try:
+        scenario = record_loop(
+            driver,
+            goal,
+            authoring_agent,
+            name=goal,
+            alert_guard=alert_guard,
+            secret_tokens=_secret_tokens(eff),
+            # A mobile (iOS-simulator) app always records a scenario-wide screen video; the recording
+            # is a simctl interval, so it's specific to the idb backend (web replays capture video by
+            # other means, and the fake actuator has no device to record).
+            capture_video=actuator == "idb",
+            report=say,
+            # A "needs human" turn hands off to this responder; with no responder (CI, non-interactive)
+            # the loop raises below rather than hanging or guessing (BE-0179).
+            handoff=handoff_responder,
+        )
+    except HumanHandoffUnavailable as e:
+        # Deterministic under automation: a flow that needs a human is a clean, labeled non-zero
+        # exit, not a hang and not an AI guess (BE-0179).
+        typer.echo(f"this flow needs human handoff ({e}); re-record interactively", err=True)
+        raise typer.Exit(3) from None
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text(dump_scenarios([scenario]), encoding="utf-8")
     typer.echo(f"recorded {len(scenario.steps)} steps -> {out_path}")

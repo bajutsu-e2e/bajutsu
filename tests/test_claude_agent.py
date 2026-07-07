@@ -50,6 +50,27 @@ def test_type_text_proposal() -> None:
     assert step.type.into is not None and step.type.into.id == "f"
 
 
+def test_ask_human_proposal() -> None:
+    # BE-0179: the ask_human tool maps to a "needs human" proposal, carrying the prompt shown to
+    # the human — no step, not done.
+    agent = ClaudeAgent(
+        backend=FakeBackend(
+            FakeBlock(
+                "ask_human", {"prompt": "enter the one-time code", "reason": "cannot know it"}
+            )
+        )
+    )
+    proposal = agent.next_action(_obs())
+    assert proposal.needs_human is True
+    assert proposal.human_prompt == "enter the one-time code"
+    assert proposal.step is None and proposal.done is False
+
+
+def test_ask_human_falls_back_to_reason_when_no_prompt() -> None:
+    proposal = proposal_from_call("ask_human", {"reason": "an OTP arrives out-of-band"})
+    assert proposal.needs_human is True and proposal.human_prompt == "an OTP arrives out-of-band"
+
+
 def test_plan_step_flows_through_proposal() -> None:
     assert proposal_from_call("tap", {"id": "a", "reason": "r", "plan_step": 2}).plan_step == 2
     assert (
@@ -136,6 +157,7 @@ def test_request_uses_forced_tool_choice() -> None:
         "type_text",
         "wait_for",
         "finish",
+        "ask_human",
     }
 
 

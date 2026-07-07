@@ -75,6 +75,10 @@ previous swipe barely moved the screen.
 - wait_for(id|label, timeout): wait until that element appears.
 - finish(assertions): the goal is reached; provide machine-checkable assertions \
 that verify it, each addressing an element by id or label.
+- ask_human(prompt): hand off to a human when the next step needs a value you cannot \
+possibly know in a real run (a one-time password, a verification / 2FA code, a CAPTCHA) \
+or an action only a human can perform. The person authoring supplies it and the recording \
+resumes — you never guess.
 
 Rules:
 - Act only on elements present in the screen list; address them by their real `id` \
@@ -83,6 +87,9 @@ or `label`. Never invent an id or a label that is not shown.
 screenshot, tap_point its center; if you cannot see it, it is off-screen — swipe to \
 scroll it into view first. Never use tap_point for an element that IS listed — address \
 that one by id/label, which is far more stable. Prefer these over giving up on the goal.
+- NEVER type a one-time password, a verification code, or a 2FA code — even when one is \
+shown on the screen. In a real run it arrives out-of-band and you cannot know it, so reading \
+a test fixture's code would bake a stale value into the recording. Call ask_human for it.
 - Take the most direct path to the goal. NEVER repeat an action that did not move you \
 toward the goal, and never re-open a screen you just closed. If a step left you where you \
 were, or you are cycling between two screens, change your approach: scroll to look \
@@ -288,6 +295,25 @@ TOOLS: list[ToolDef] = [
             "required": ["assertions", "reason"],
         },
     ),
+    ToolDef(
+        name="ask_human",
+        description="Hand off to a human: the next step needs a value you cannot possibly know in a "
+        "real run (a one-time password, a verification / 2FA code, a CAPTCHA answer) or an action "
+        "only a human can perform. Never guess or read such a value off the screen.",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "prompt": {
+                    "type": "string",
+                    "description": "what the human must supply or do, in one short sentence "
+                    "(e.g. 'enter the one-time verification code shown on the device')",
+                },
+                **_REASON_PROP,
+                **_PLAN_PROP,
+            },
+            "required": ["prompt", "reason"],
+        },
+    ),
 ]
 
 
@@ -433,6 +459,11 @@ def proposal_from_call(name: str, args: dict[str, Any]) -> Proposal:
     if name == "finish":
         expect = [_to_assertion(a) for a in args.get("assertions", [])]
         return Proposal(done=True, expect=expect, note=note, plan_step=ps)
+    if name == "ask_human":
+        # A "needs human" turn (BE-0179): the loop hands off to a human and resumes by re-observing.
+        return Proposal(
+            needs_human=True, human_prompt=args.get("prompt") or note, note=note, plan_step=ps
+        )
     raise ValueError(f"unknown tool: {name!r}")
 
 

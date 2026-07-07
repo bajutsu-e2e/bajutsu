@@ -116,6 +116,27 @@
   </div>
 </main>
 
+<!-- Human handoff (BE-0179): a "needs human" turn pauses the record. Shown as a modal (not a pane)
+     so it can't be missed below the fold — the human must answer to resume: supply a value, confirm
+     they operated the device, or cancel. No backdrop dismiss; the buttons are the only exits. -->
+<div class="modal" id="rec-handoffmodal" data-testid="record.handoff-modal" hidden>
+  <div class="fsbox" role="dialog" aria-modal="true" aria-labelledby="rec-handoff-heading">
+    <div class="fshead"><span class="ttl" id="rec-handoff-heading">✋ Human handoff</span></div>
+    <div class="rec-handoff-body">
+      <div id="rec-handoff-reason"></div>
+      <div class="muted" id="rec-handoff-screen" style="font-size:.85em"></div>
+      <img id="rec-handoff-shot" alt="the screen the record paused on" hidden />
+      <label class="muted" for="rec-handoff-value" style="font-size:.85em">Supply a value (e.g. a one-time password), or operate the device yourself and resume:</label>
+      <input id="rec-handoff-value" data-testid="record.handoff-value" type="text" placeholder="value to supply" />
+      <div class="rec-handoff-actions">
+        <button id="rec-handoff-send" data-testid="record.handoff-send">Supply value</button>
+        <button id="rec-handoff-acted" data-testid="record.handoff-acted">I did it — resume</button>
+        <button id="rec-handoff-cancel" data-testid="record.handoff-cancel">Cancel</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- ===== Replay: run a scenario and view its report ===== -->
 <main id="view-replay" data-testid="view.replay" data-pane="form" hidden>
   <div class="viewswitch" role="tablist" data-testid="replay.switch">

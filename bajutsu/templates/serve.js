@@ -43,9 +43,12 @@ async function cancelJob(id,stop){
 }
 // Live-stream a job's log over SSE (BE-0015): a `log` event per line, then one `done` event with
 // the job's final view. Returns the EventSource so a restart can close it. Replaces 1s polling.
-function streamJob(id,onLog,onDone){
+function streamJob(id,onLog,onDone,onHuman){
   const es=new EventSource('/api/jobs/'+id+'/events');
   es.addEventListener('log',e=>onLog(e.data));
+  // A "needs human" turn (BE-0179): the paused record's serialized request. Only record wires
+  // onHuman; run/crawl never emit it.
+  es.addEventListener('human-request',e=>{if(onHuman)onHuman(JSON.parse(e.data))});
   es.addEventListener('done',e=>{es.close();onDone(JSON.parse(e.data))});
   return es;
 }
@@ -500,7 +503,7 @@ $('#rec-go').addEventListener('click',async()=>{
   $('#rec-run').disabled=true;
   const rep0=$('#rec-report');if(rep0)rep0.innerHTML='';
   const rs0=$('#rec-runstatus');if(rs0)setStatus(rs0,'','');
-  hideReportPanel();
+  hideReportPanel();hideHandoffPanel();
   setStatus($('#rec-status'),'','run');
   const r=await fetch('/api/record',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
     goal,target:$('#rec-target').value,
@@ -510,11 +513,11 @@ $('#rec-go').addEventListener('click',async()=>{
   const {jobId,path,error}=await r.json();
   if(error){setStatus($('#rec-status'),error,'ng');setBusy($('#rec-go'),$('#rec-stop'),false);return}
   recPath=path;recJobId=jobId;
-  recPoll=streamJob(jobId,line=>appendLine($('#rec-out'),line),recDone);
+  recPoll=streamJob(jobId,line=>appendLine($('#rec-out'),line),recDone,onHandoffRequest);
 });
 $('#rec-stop').addEventListener('click',()=>cancelJob(recJobId,$('#rec-stop')));
 async function recDone(j){
-  recPoll=null;recJobId=null;setBusy($('#rec-go'),$('#rec-stop'),false);
+  recPoll=null;recJobId=null;setBusy($('#rec-go'),$('#rec-stop'),false);hideHandoffPanel();
   if(j.cancelled){setStatus($('#rec-status'),'cancelled','ng');return}
   setStatus($('#rec-status'),j.ok?'authored ✓':'failed', j.ok?'ok':'ng');
   if(j.ok&&(j.outPath||recPath)){await loadGenerated(j.outPath||recPath);loadScenarios();}
@@ -547,6 +550,41 @@ $('#rec-yaml').addEventListener('input',syncRecActions);
 // attribute (phone tier, where the pane stacks under the Output tab).
 function showReportPanel(){if(recReportShow)recReportShow();else $('#rec-reportpanel').hidden=false;}
 function hideReportPanel(){if(recReportHide)recReportHide();else{const p=$('#rec-reportpanel');if(p)p.hidden=true;}}
+// Human handoff (BE-0179): the record paused for a human. Shown as a modal so it can't be missed
+// below the fold; the human resumes by POSTing a response — a supplied value, "I operated the
+// device", or a cancel — back to the job.
+function showHandoffPanel(){$('#rec-handoffmodal').hidden=false;}
+function hideHandoffPanel(){$('#rec-handoffmodal').hidden=true;}
+function onHandoffRequest(req){
+  $('#rec-handoff-reason').textContent=req.reason||'the agent needs a human to continue';
+  $('#rec-handoff-screen').textContent=[req.target&&('target: '+req.target),req.screen].filter(Boolean).join(' · ');
+  const shot=$('#rec-handoff-shot');
+  if(req.screenshot){shot.src='data:image/png;base64,'+req.screenshot;shot.hidden=false;}else{shot.removeAttribute('src');shot.hidden=true;}
+  $('#rec-handoff-value').value='';
+  syncHandoffSend();
+  showHandoffPanel();
+  $('#rec-handoff-value').focus();
+}
+// "Supply value" only submits a value — it is disabled while the field is empty, so an empty click
+// can't fall through to an acted-style resume (empty `values` coerces to acted server-side).
+function syncHandoffSend(){$('#rec-handoff-send').disabled=!$('#rec-handoff-value').value.trim();}
+async function sendHandoff(body){
+  if(!recJobId)return;
+  // Only hide the pane once we know the response actually reached the paused record — a resume that
+  // didn't land (the job already ended / its stdin is gone) must not look like it succeeded.
+  try{
+    const r=await fetch('/api/jobs/'+recJobId+'/respond-human',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    const d=await r.json().catch(()=>({}));
+    if(!r.ok){appendLine($('#rec-out'),'handoff response failed ('+r.status+'): '+(d.error||r.statusText));return;}
+    if(!d.resumed){appendLine($('#rec-out'),'handoff response did not resume the record (it may have already ended)');return;}
+    hideHandoffPanel();
+  }catch(e){appendLine($('#rec-out'),'handoff response failed: '+e);}
+}
+$('#rec-handoff-value').addEventListener('input',syncHandoffSend);
+$('#rec-handoff-value').addEventListener('keydown',e=>{if(e.key==='Enter'&&!$('#rec-handoff-send').disabled)$('#rec-handoff-send').click();});
+$('#rec-handoff-send').addEventListener('click',()=>{const v=$('#rec-handoff-value').value.trim();if(!v)return;sendHandoff({values:[v]});});
+$('#rec-handoff-acted').addEventListener('click',()=>sendHandoff({acted:true}));
+$('#rec-handoff-cancel').addEventListener('click',()=>sendHandoff({cancelled:true}));
 // Run the current scenario in place, without switching to Replay. Persist the YAML first (creating
 // the file for hand-pasted YAML; a parse error means it isn't runnable, so it's surfaced and Run
 // stops), then start a normal run: the live log streams to the Progress console (like Generate) and

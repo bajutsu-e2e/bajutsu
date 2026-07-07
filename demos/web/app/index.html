@@ -24,6 +24,24 @@
     <section data-testid="onboarding.screen" id="onboarding">
       <h1 data-testid="onboarding.title">Welcome to Bajutsu</h1>
       <button data-testid="onboarding.start">Get started</button>
+      <!-- A second entry point for the human-in-the-loop record demo (BE-0179): a device
+           verification that asks for a one-time code. The AI cannot know an out-of-band code, so
+           `record` hands off to a human. Kept separate from onboarding.start so the smoke flow
+           (onboarding -> auth -> home) is unaffected. -->
+      <button data-testid="verify.start">Verify a device</button>
+    </section>
+
+    <section data-testid="verify.screen" id="verify" hidden>
+      <h1 data-testid="verify.title">Device verification</h1>
+      <p>A one-time code was sent to your device. Enter it to continue:</p>
+      <p>Your code: <strong data-testid="verify.code" id="verify-code">------</strong></p>
+      <input data-testid="verify.input" type="text" placeholder="One-time code" aria-label="One-time code" />
+      <button data-testid="verify.submit">Verify</button>
+      <output data-testid="verify.error" hidden>That code is not correct — try again.</output>
+    </section>
+
+    <section data-testid="verified.screen" id="verified" hidden>
+      <h1 data-testid="verified.title">Device verified ✓</h1>
     </section>
 
     <section data-testid="auth.screen" id="auth" hidden>
@@ -56,6 +74,32 @@
       document.querySelector('[data-testid="auth.submit"]').addEventListener("click", () =>
         show("home")
       );
+
+      // Device-verification flow for the human-in-the-loop record demo. A random code is generated
+      // and shown when the screen opens; the code is display-only (no id a scenario would type), so
+      // an authoring AI has nothing to derive the value from and must hand off to a human.
+      const verifyCodeEl = document.querySelector('[data-testid="verify.code"]');
+      const verifyInput = document.querySelector('[data-testid="verify.input"]');
+      const verifyError = document.querySelector('[data-testid="verify.error"]');
+      let verifyCode = "";
+      const newCode = () => {
+        const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // no ambiguous O/0/1/I
+        verifyCode = Array.from(
+          { length: 6 },
+          () => alphabet[Math.floor(Math.random() * alphabet.length)]
+        ).join("");
+        verifyCodeEl.textContent = verifyCode;
+      };
+      document.querySelector('[data-testid="verify.start"]').addEventListener("click", () => {
+        newCode();
+        verifyInput.value = "";
+        verifyError.hidden = true;
+        show("verify");
+      });
+      document.querySelector('[data-testid="verify.submit"]').addEventListener("click", () => {
+        if (verifyInput.value.trim().toUpperCase() === verifyCode) show("verified");
+        else verifyError.hidden = false;
+      });
       const counter = document.querySelector('[data-testid="counter.value"]');
       let n = 0;
       document.querySelector('[data-testid="counter.increment"]').addEventListener("click", () => {

@@ -322,6 +322,47 @@ def test_record_writes_the_authored_scenario(
     assert out.is_file() and "name: authored" in out.read_text(encoding="utf-8")
 
 
+def test_record_needs_human_handoff_exits_3(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # BE-0179: a needs-human turn with no responder (the CI / non-interactive path) is a clean,
+    # labeled non-zero exit — distinct from the credential/device exit 2 — never a hang or a guess.
+    import bajutsu.cli.commands.record as rec
+    from bajutsu.handoff import HumanHandoffUnavailable
+
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test")
+    monkeypatch.setattr("bajutsu.simctl.resolve_udid", lambda u: "FAKE-UDID")
+    monkeypatch.setattr(rec, "make_agent", lambda *a, **k: object())
+    monkeypatch.setattr(rec, "launch_driver", lambda *a, **k: object())
+    monkeypatch.setattr(rec, "start_launch_server", lambda *a, **k: (lambda: None, None))
+
+    def _needs_human(*_a: object, **_k: object) -> object:
+        raise HumanHandoffUnavailable("solve the CAPTCHA")
+
+    monkeypatch.setattr(rec, "record_loop", _needs_human)
+
+    cfg = _fake_record_config(tmp_path)
+    r = runner.invoke(
+        app,
+        [
+            "record",
+            "--target",
+            "demo",
+            "--backend",
+            "fake",
+            "--goal",
+            "log in",
+            "--out",
+            str(tmp_path / "rec.yaml"),
+            "--no-dismiss-alerts",
+            "--config",
+            str(cfg),
+        ],
+    )
+    assert r.exit_code == 3
+    assert "needs human handoff" in r.output and "re-record interactively" in r.output
+
+
 def _fake_record_config(tmp_path: Path) -> Path:
     cfg = tmp_path / "bajutsu.config.yaml"
     cfg.write_text(

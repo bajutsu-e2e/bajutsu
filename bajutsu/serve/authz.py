@@ -148,8 +148,8 @@ def role_for(login: str, *, admins: frozenset[str], viewers: frozenset[str]) -> 
 
 def required_role(method: str, path: str) -> str | None:
     """The minimum role a request needs, or None for reads (GET) and the open auth endpoints.
-    Cancelling a job is an editor action (it stops a run). The one gated read is
-    ``GET /api/config/content`` (admin), whose full config body is a wider disclosure than a path."""
+    Cancelling a job or answering its handoff are editor actions (they mutate a running job). The
+    one gated read is ``GET /api/config/content`` (admin), a wider disclosure than the path."""
     # Config content is the one gated GET: it returns the active config's full body, a wider
     # disclosure than the path-only `/api/config`, and a local/uploaded config may embed literal
     # secrets. Gate it like binding the config (admin) so a viewer/editor can't read it.
@@ -159,7 +159,11 @@ def required_role(method: str, path: str) -> str | None:
         return None
     if path in _ADMIN_PATHS:
         return "admin"
-    if path in _EDITOR_PATHS or (path.startswith("/api/jobs/") and path.endswith("/cancel")):
+    # Cancelling a job or answering its handoff both mutate a running job's state, so both are
+    # editor actions — a viewer must not be able to resume/cancel a paused record (BE-0179).
+    if path in _EDITOR_PATHS or (
+        path.startswith("/api/jobs/") and path.endswith(("/cancel", "/respond-human"))
+    ):
         return "editor"
     return None  # /api/login, /api/oauth/* — authenticated/guarded elsewhere, no role gate
 

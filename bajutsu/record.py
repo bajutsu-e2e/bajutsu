@@ -17,6 +17,7 @@ from bajutsu import usage as _usage
 from bajutsu.agent import Agent, Observation
 from bajutsu.drivers import base
 from bajutsu.elements import shows_app_ui
+from bajutsu.handoff import Handoff, HandoffRequest, HumanHandoffUnavailable
 from bajutsu.orchestrator import BlockedHandler, Clock, RealClock, _action_of, _do_action, _wait
 from bajutsu.scenario import Assertion, Scenario, Selector, Step
 
@@ -50,6 +51,18 @@ def _describe_selector(sel: Selector | None) -> str:
     if sel.index is not None:
         parts.append(f"index={sel.index}")
     return " ".join(parts) or "?"
+
+
+def _summarize_screen(elements: list[base.Element]) -> str:
+    """A one-line summary of the screen for a handoff request (a terminal responder has no image)."""
+    labels = [
+        label
+        for e in elements
+        if (label := str(e.get("label") or e.get("identifier") or "").strip())
+    ]
+    tail = ", …" if len(labels) > 8 else ""
+    listed = f": {', '.join(labels[:8])}{tail}" if labels else ""
+    return f"{len(elements)} element(s) on screen{listed}"
 
 
 def _describe_step(step: Step) -> str:
@@ -296,6 +309,7 @@ def record(
     secret_tokens: list[tuple[str, str]] | None = None,
     capture_video: bool = False,
     report: Reporter | None = None,
+    handoff: Handoff | None = None,
 ) -> Scenario:
     """Explore toward `goal` with `agent`, returning the recorded scenario.
 
@@ -315,6 +329,12 @@ def record(
 
     If `report` is given, each turn's decision (the agent's proposed action and reason)
     is streamed to it as a one-line string, so a caller can show progress live.
+
+    If `handoff` is given, a turn whose outcome is "needs human" (the agent cannot proceed) is
+    handed to it — the human supplies a value or performs an operation, and the loop resumes by
+    re-observing the live screen (BE-0179). Without a `handoff`, that outcome is a clean, labeled
+    failure (`HumanHandoffUnavailable`), never a hang or an AI guess — so `record` stays
+    deterministic under CI. The human is only ever in the authoring loop, never on the `run` path.
     """
     clock = clock or RealClock()
     say = report or (lambda _msg: None)
@@ -350,6 +370,37 @@ def record(
         )  # single-threaded record loop → this turn's tokens exactly
         if spent.total_tokens:
             say(f"[{n}] \U0001f916 agent replied · {spent.total_tokens:,} tokens")
+        if proposal.needs_human:
+            # A third outcome (BE-0179): the agent cannot proceed and needs a human. Hand off if a
+            # responder is present, then resume by re-observing; otherwise fail cleanly and labeled
+            # so CI never hangs and the AI never guesses. `continue` re-observes without consuming a
+            # step number, and is bounded by the enclosing `max_steps` loop.
+            # Mask any declared secret literal before the reason is streamed / logged / raised, the
+            # same way the normal step's intent is masked (BE-0120) — a handoff prompt must not leak
+            # a secret into the terminal, the serve stream, or CI output.
+            reason = _mask_secrets(
+                proposal.human_prompt or proposal.note or "the agent cannot proceed without help",
+                secret_tokens or [],
+            )[0]
+            if handoff is None:
+                say(
+                    f"[{n}] ✋ needs human handoff: {reason} — no responder; re-record interactively"
+                )
+                raise HumanHandoffUnavailable(reason)
+            say(f"[{n}] ✋ pausing for a human — {reason}")
+            response = handoff.request(
+                HandoffRequest(
+                    reason=reason,
+                    screen=_summarize_screen(elements),
+                    target=_describe_step(proposal.step) if proposal.step is not None else "",
+                    screenshot=screenshot,
+                )
+            )
+            if response.kind == "cancel":
+                say(f"[{n}] ✋ handoff cancelled; stopping")
+                break
+            say(f"[{n}] ✋ handoff resolved; re-observing the live screen")
+            continue
         # One line per step: which plan step it advances, the intent (what it is trying to do), and
         # the concrete action, together. The reasoning is masked first so the live stream never
         # carries a secret literal (BE-0120).
