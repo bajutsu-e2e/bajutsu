@@ -38,7 +38,10 @@ class DeviceError(simctl.DeviceError):
 def device_error(exc: subprocess.CalledProcessError) -> DeviceError:
     """Turn a raw adb failure into a clean DeviceError, keeping the command, exit code, and stderr."""
     cmd = exc.cmd if isinstance(exc.cmd, str) else " ".join(map(str, exc.cmd or []))
-    detail = ((exc.stderr if isinstance(exc.stderr, str) else "") or "").strip()
+    # stderr is str under our text=True runs, but decode bytes too (a text=False caller) so the most
+    # actionable part of the failure is never silently dropped.
+    stderr = exc.stderr.decode(errors="replace") if isinstance(exc.stderr, bytes) else exc.stderr
+    detail = ((stderr if isinstance(stderr, str) else "") or "").strip()
     msg = f"device operation failed (exit {exc.returncode}): {cmd}"
     return DeviceError(f"{msg}\n{detail}" if detail else msg)
 

@@ -248,7 +248,7 @@ class IosEnvironment(_DeviceEnvironment):
 
 
 def _await_boot(env: adb.Env, timeout: float = 60.0, poll: float = 0.5) -> None:
-    """Wait until the device reports `sys.boot_completed` (a bounded condition wait, no fixed sleep).
+    """Wait until the device reports `sys.boot_completed`, polling to a bounded deadline (a condition wait at `poll` intervals, not a fixed up-front sleep).
 
     The Android peer of `simctl bootstatus`: `getprop sys.boot_completed` is polled to a bounded
     deadline. `boot_completed` treats a device adb can't yet see as "not booted" and retries it (no

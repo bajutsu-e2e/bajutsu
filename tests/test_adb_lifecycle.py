@@ -168,6 +168,15 @@ def test_device_error_keeps_command_and_stderr() -> None:
     assert "exit 1" in str(err) and "Failure [INSTALL]" in str(err)
 
 
+def test_device_error_decodes_bytes_stderr() -> None:
+    import subprocess
+
+    # A text=False caller yields bytes stderr; it must be decoded, not dropped (the message is the
+    # most actionable part of the failure).
+    exc = subprocess.CalledProcessError(1, ["adb", "install", "x.apk"], stderr=b"Failure [INSTALL]")
+    assert "Failure [INSTALL]" in str(adb.device_error(exc))
+
+
 def test_booted_serials_empty_on_failure() -> None:
     import subprocess
 
