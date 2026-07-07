@@ -145,19 +145,20 @@ def _confined_config_path(root: Path, raw: str) -> Path | None:
     if it escapes — the one barrier between client input and a filesystem read.
 
     The file browser sends the resolved *absolute* path it listed (``list_fs`` returns an absolute
-    ``cwd``), so an absolute *raw* inside *root* is the normal case, not an attack. Resolving **first**
-    normalizes any ``..`` and follows symlinks so the ``is_relative_to`` containment guard is sound:
-    it admits only paths that stay under *root* and rejects the rest — the same choke-point shape as
-    the scenario loader's ``contained_ref`` (BE-0174), which CodeQL recognizes as a path-injection
-    barrier. Resolution stays non-strict so a not-yet-existing in-root path still resolves — the
-    caller's ``is_file`` reports it as 404 rather than this returning None and masking it as a
-    misleading "outside the browse root" 400. ``OSError``/``RuntimeError`` from resolution (e.g. a
-    symlink loop) collapse to None too.
+    ``cwd``), so an absolute *raw* inside *root* is the normal case, not an attack. ``base / raw``
+    handles both forms: pathlib drops *base* when *raw* is absolute, so this is the same shape as the
+    directory browser's own ``base / sub`` — deliberately, since that form resolves the client value
+    without tripping the path-injection query, whereas building ``Path(raw)`` directly does. Resolving
+    **first** normalizes any ``..`` and follows symlinks so the ``is_relative_to`` guard is sound: it
+    admits only paths that stay under *root* and rejects the rest. Resolution stays non-strict so a
+    not-yet-existing in-root path still resolves — the caller's ``is_file`` reports it as 404 rather
+    than this returning None and masking it as a misleading "outside the browse root" 400. A failure
+    resolving the root or the candidate (a bad path string, a symlink loop) collapses to None too.
     """
-    base = root.resolve()
     try:
-        target = (Path(raw) if Path(raw).is_absolute() else base / raw).resolve()
-    except (OSError, RuntimeError):
+        base = root.resolve()
+        target = (base / raw).resolve()
+    except (OSError, RuntimeError, ValueError):
         return None
     if not target.is_relative_to(base):
         return None
