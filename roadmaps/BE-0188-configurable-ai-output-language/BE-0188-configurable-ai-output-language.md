@@ -9,6 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0188") |
+| Implementing PR | [#772](https://github.com/bajutsu-e2e/bajutsu/pull/772) |
 | Topic | AI provider configuration |
 <!-- /BE-METADATA -->
 
@@ -138,7 +139,7 @@ Log:
   prompt-cacheable); a `--language {ja,en,auto}` flag on `record` / `crawl` overriding the config;
   and an *Output language* dropdown in the serve AI settings panel wired through `/api/provider`.
   Added unit tests for each surface and bilingual docs. The setting never touches the deterministic
-  `run` / CI verdict.
+  `run` / CI verdict. ([#772](https://github.com/bajutsu-e2e/bajutsu/pull/772))
 
 ## References
 
