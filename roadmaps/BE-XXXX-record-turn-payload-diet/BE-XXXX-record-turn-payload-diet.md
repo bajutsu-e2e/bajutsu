@@ -76,8 +76,8 @@ elements and the ability to address each is unchanged.
 ### 2. A deterministic, safe cap for pathological screens
 
 For a screen whose element count exceeds a constant threshold, apply a cap that is **safe by
-construction**: keep **all** elements carrying an `id` or `label` (the addressable ones the agent may
-act on), and collapse the purely-decorative remainder (no id, no label) into a trailing summary line
+construction**: keep **all** elements carrying an `id`, `label`, `value`, or `traits` (selector fields the agent may
+act on), and collapse the purely-decorative remainder (no id, label, value, traits) into a trailing summary line
 — e.g. `- (+N further non-addressable elements omitted)`. An addressable element is never dropped, and
 the agent is explicitly told the screen was truncated, so it can `swipe` to reveal more if needed (the
 existing off-screen-control path). The threshold is a global constant, not per-app config.
