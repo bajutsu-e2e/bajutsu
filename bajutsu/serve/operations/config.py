@@ -143,17 +143,16 @@ def provider_info(state: ServeState) -> tuple[Any, int]:
 def _confined_config_path(root: Path, raw: str) -> Path | None:
     """Resolve *raw* as a path under *root* and return the normalized result, or None if it escapes.
 
-    Accepts both relative paths (resolved under *root*) and absolute paths (accepted only when they
-    resolve within *root*). We normalize with ``resolve(strict=False)`` and then enforce confinement
-    by requiring the resolved target to be relative to the resolved root."""
+    Accepts only relative paths from the UI and resolves them under *root*. We normalize with
+    ``resolve(strict=False)`` and then enforce confinement by requiring the resolved target to be
+    relative to the resolved root."""
     if not raw or not raw.strip() or "\x00" in raw:
         return None
     base = root.resolve()
-    candidate = Path(raw)
+    candidate = Path(raw.strip())
     if candidate.is_absolute() or candidate.anchor:
-        target = candidate.resolve(strict=False)
-    else:
-        target = (base / candidate).resolve(strict=False)
+        return None
+    target = (base / candidate).resolve(strict=False)
     with contextlib.suppress(ValueError):
         target.relative_to(base)
         return target
