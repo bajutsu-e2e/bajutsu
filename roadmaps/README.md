@@ -174,6 +174,7 @@ The AI-driven `record` (Tier 1) is implemented ([recording.md](../docs/recording
 | [BE-0095](BE-0095-interactive-crawl-graph/BE-0095-interactive-crawl-graph.md) | Interactive crawl graph (draggable nodes + realign) | Implemented |
 | [BE-0098](BE-0098-unified-authoring-surface/BE-0098-unified-authoring-surface.md) | Unified authoring surface in serve | Implemented |
 | [BE-0102](BE-0102-run-stats-dashboard/BE-0102-run-stats-dashboard.md) | Aggregate run-stats dashboard | Implemented |
+| [BE-0180](BE-0180-crawl-history-viewer/BE-0180-crawl-history-viewer.md) | Crawl history viewer in the Web UI | Implemented |
 <!-- /GENERATED:implemented-authoring -->
 
 ### Self-healing triage (M4)
@@ -574,7 +575,6 @@ The scope is currently **limited to the iOS Simulator** ([DESIGN §1](../DESIGN.
 |---|---|---|
 | [BE-0178](BE-0178-record-multi-action-turn/BE-0178-record-multi-action-turn.md) | Multi-action record turns (batch intra-screen actions) | Proposal |
 | [BE-0179](BE-0179-record-human-handoff/BE-0179-record-human-handoff.md) | Human-in-the-loop handoff during record (pause / hand off / resume) | Proposal |
-| [BE-0180](BE-0180-crawl-history-viewer/BE-0180-crawl-history-viewer.md) | Crawl history viewer in the Web UI | Proposal |
 | [BE-0182](BE-0182-record-human-value-prompt/BE-0182-record-human-value-prompt.md) | Human value entry during record (OTP / random / one-off values) | Proposal |
 | [BE-0185](BE-0185-record-human-takeover-step/BE-0185-record-human-takeover-step.md) | Human takeover step during record (CAPTCHA / biometrics / unresolvable gestures) | Proposal |
 <!-- /GENERATED:proposals-authoring -->

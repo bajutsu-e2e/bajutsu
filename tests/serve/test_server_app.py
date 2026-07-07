@@ -49,6 +49,13 @@ def test_get_reads_delegate_to_operations(tmp_path: Path) -> None:
     assert client.get("/api/scenarios?target=demo").json()[0]["names"] == ["alpha", "beta"]
     assert client.get("/api/config").json()["hasConfig"] is True
     assert client.get("/api/runs").json()[0]["id"] == "20260101-000000"
+    # The crawl history is keyed on screenmap.json, so a manifest-only run never appears.
+    crawl_dir = tmp_path / "runs" / "20260101-000001"
+    crawl_dir.mkdir(parents=True)
+    (crawl_dir / "screenmap.json").write_text(
+        json.dumps({"nodes": [{}], "edges": [], "crashes": []}), encoding="utf-8"
+    )
+    assert [r["id"] for r in client.get("/api/crawl/runs").json()] == ["20260101-000001"]
     body = client.get("/api/scenario?target=demo&path=smoke.yaml").json()
     assert body["yaml"] == SCENARIO
     assert client.get("/api/scenario?target=demo&path=missing.yaml").status_code == 404

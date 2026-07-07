@@ -201,6 +201,16 @@ deterministic, while the AI provider chosen in **Settings** proposes *what to tr
 Clicking a screen in the map opens a **screenshot lightbox**: the enlarged screen with **‹** / **›**
 to step to a transition into or out of it, and hotspots marking where each transition was taken.
 
+**History.** A crawl writes no `manifest.json` and so never appears in the Replay tab's History; its
+runs are listed under the Crawl tab's own **History** sub-tab instead, keyed on the `screenmap.json`
+every crawl streams. Each entry shows the run id and its screen / transition / crash counts, newest
+first. Selecting one reopens that crawl's screen map **read-only** — the same interactive graph, drawn
+from the stored map with no re-crawl — with a **past crawl** badge so it can't be mistaken for a live
+run and the live form disabled while it's shown. Beside the map, the run's `crashes/*.yaml` (a
+replayable crash) and `flows/*.yaml` (a reachable screen) scenario files are linked directly; each opens
+the raw YAML, ready to run with `bajutsu run`. Switch back to the **Form** sub-tab to return to the
+live crawl form.
+
 The screen map, the fingerprint that identifies a screen, and the web-vs-iOS differences are covered
 in the [CLI reference](cli.md#crawl).
 

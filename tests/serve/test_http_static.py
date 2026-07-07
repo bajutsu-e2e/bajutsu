@@ -86,6 +86,27 @@ def test_http_index_carries_responsive_layout(tmp_path: Path) -> None:
         server.server_close()
 
 
+def test_http_index_carries_crawl_history_markup(tmp_path: Path) -> None:
+    """The Crawl tab ships the history affordance (BE-0180): the Form/History sub-tabs, the list
+    container, the read-only "past crawl" badge, the crash/flow links strip, and the JS wired to
+    /api/crawl/runs. Structural facts only — never a "looks good" check."""
+    scn_dir, cfg, runs = project(tmp_path)
+    server, port = _serve(
+        srv.ServeState(scenarios_dir=scn_dir, config=cfg, runs_dir=runs, cwd=tmp_path)
+    )
+    try:
+        text = _get(port, "/")[1].decode("utf-8")
+        assert 'id="crawl-histtab"' in text and 'data-tab="crawlhistory"' in text
+        assert 'id="crawl-history"' in text  # the list container
+        assert 'id="crawl-pastbadge"' in text  # read-only framing badge
+        assert 'id="crawl-artifacts"' in text  # crash/flow links strip
+        # The JS fetches the crawl-specific listing and reuses the existing graph render path.
+        assert "/api/crawl/runs" in text and "viewCrawlRun" in text
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
 def test_serve_assets_present() -> None:
     """Guard against a template file going missing from the package."""
     for name in ("serve.html.j2", "serve.css", "serve.themes.css", "serve.js"):
@@ -101,6 +122,34 @@ def test_http_runs_history(tmp_path: Path) -> None:
     try:
         hist = _get_json(port, "/api/runs")
         assert len(hist) == 1 and hist[0]["id"] == "20260610-1" and hist[0]["ok"] is True
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+def test_http_crawl_runs_lists_screenmaps(tmp_path: Path) -> None:
+    scn_dir, cfg, runs = project(tmp_path)
+    # A crawl run: screenmap.json + one crash and two flow scenario files.
+    d = runs / "20260610-1"
+    (d / "crashes").mkdir(parents=True)
+    (d / "flows").mkdir(parents=True)
+    (d / "screenmap.json").write_text(
+        json.dumps({"nodes": [{}, {}], "edges": [{}], "crashes": [{}]}), encoding="utf-8"
+    )
+    (d / "crashes" / "crash-001.yaml").write_text("- name: c\n", encoding="utf-8")
+    (d / "flows" / "flow-001.yaml").write_text("- name: f\n", encoding="utf-8")
+    (d / "flows" / "flow-002.yaml").write_text("- name: f\n", encoding="utf-8")
+    write_run(runs, "20260610-0", ok=True, scenarios=[("alpha", True)])  # a replay run, not a crawl
+    server, port = _serve(
+        srv.ServeState(scenarios_dir=scn_dir, config=cfg, runs_dir=runs, cwd=tmp_path)
+    )
+    try:
+        crawls = _get_json(port, "/api/crawl/runs")
+        assert [r["id"] for r in crawls] == ["20260610-1"]  # only the screenmap run
+        assert crawls[0]["screens"] == 2 and crawls[0]["transitions"] == 1
+        assert crawls[0]["crashes"] == 1
+        assert crawls[0]["crashFiles"] == ["crash-001.yaml"]
+        assert crawls[0]["flowFiles"] == ["flow-001.yaml", "flow-002.yaml"]
     finally:
         server.shutdown()
         server.server_close()

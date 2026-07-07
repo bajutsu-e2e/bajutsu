@@ -245,6 +245,57 @@ def list_runs(runs_dir: Path) -> list[dict[str, Any]]:
     return out
 
 
+def list_crawl_runs(runs_dir: Path) -> list[dict[str, Any]]:
+    """Past crawl runs under *runs_dir* (newest first), each summarized from its screenmap.json.
+
+    Unlike `list_runs`, which keys on manifest.json (a pass/fail scenario report a crawl never
+    writes), this keys on screenmap.json — the one file every crawl streams regardless of outcome —
+    so it is independent of whether a manifest also happens to exist. Each entry carries the
+    screen/transition/crash counts the Crawl tab already shows and the names of the `crashes/*.yaml`
+    and `flows/*.yaml` scenario files the run produced, so the UI can link straight to them via the
+    existing `/runs/<id>/...` static mount. Run ids are timestamps, so a reverse sort is newest-first.
+    """
+    out: list[dict[str, Any]] = []
+    if not runs_dir.is_dir():
+        return out
+    for d in runs_dir.iterdir():
+        screenmap = d / "screenmap.json"
+        if not (d.is_dir() and screenmap.is_file()):
+            continue
+        try:
+            data = json.loads(screenmap.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        if not isinstance(data, dict):
+            continue
+        out.append(
+            {
+                "id": d.name,
+                "screens": _list_len(data.get("nodes")),
+                "transitions": _list_len(data.get("edges")),
+                "crashes": _list_len(data.get("crashes")),
+                "crashFiles": _scenario_file_names(d / "crashes"),
+                "flowFiles": _scenario_file_names(d / "flows"),
+            }
+        )
+    out.sort(key=lambda r: r["id"], reverse=True)
+    return out
+
+
+def _list_len(value: Any) -> int:
+    """The length of *value* when it's a list, else 0 — so a missing or hand-corrupted screenmap
+    count field (a dict, a scalar) summarizes as 0 instead of miscounting or raising."""
+    return len(value) if isinstance(value, list) else 0
+
+
+def _scenario_file_names(dir_: Path) -> list[str]:
+    """Sorted `*.yaml` file names directly under *dir_* (a crawl's crashes/ or flows/), or []."""
+    if not dir_.is_dir():
+        return []
+    # Only real files — a directory named `foo.yaml` also matches the glob and would become a dead link.
+    return sorted(p.name for p in dir_.glob("*.yaml") if p.is_file())
+
+
 # --- command builders ---
 
 

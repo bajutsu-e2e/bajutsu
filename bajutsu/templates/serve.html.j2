@@ -206,6 +206,10 @@
     <!-- Claude-reachability gate (BE-0101); see the record view above. -->
     <div class="ai-gate" id="crawl-aigate" data-testid="crawl.ai-gate" hidden></div>
     <div class="card">
+      <div class="tabs">
+        <button class="tab active" data-tab="crawlform" data-testid="crawl.tab-form">Form</button>
+        <button class="tab" data-tab="crawlhistory" id="crawl-histtab" data-testid="crawl.tab-history">History</button>
+      </div>
       <div class="panel" id="panel-crawl">
         <label>Target</label><select id="crawl-target" data-testid="crawl.target"></select>
         <div class="row" style="align-items:flex-end">
@@ -234,12 +238,20 @@
         <button class="stop" id="crawl-stop" hidden>Stop</button>
         <div class="status" id="crawl-status"></div>
       </div>
+      <!-- History (BE-0180): past crawls, keyed on the screenmap.json each one streams. Selecting one
+           reopens its screen map read-only via the existing loadGraph — no re-crawl, no verdict. -->
+      <div class="panel" id="crawl-panel-history" data-testid="crawl.panel-history" hidden>
+        <div class="hhead"><span>Past crawls</span><button class="refresh" id="crawl-refresh" title="refresh">&#8635;</button></div>
+        <ul class="history" id="crawl-history" data-testid="crawl.history"></ul>
+      </div>
     </div>
   </div>
   <div class="card crawl-graph-panel" data-pane="graph">
     <div class="crawlhead">
       <span class="ttl">Screen map</span>
       <span class="crawlcounts" id="crawl-counts"></span>
+      <!-- Shown only while a historical run is open (BE-0180), to keep a past map from reading as live. -->
+      <span class="pastbadge" id="crawl-pastbadge" data-testid="crawl.past-badge" hidden></span>
       <span class="zoomctl">
         <button class="zbtn" id="crawl-zoomout" title="zoom out">&minus;</button>
         <button class="zbtn" id="crawl-zoomreset" title="reset view">&#9678;</button>
@@ -247,6 +259,10 @@
         <button class="zbtn" id="crawl-realign" title="realign nodes">&#8634;</button>
       </span>
     </div>
+    <!-- Crash/flow scenario links for a selected past run (BE-0180): each crawl writes one
+         crashes/crash-NNN.yaml per replayable crash and one flows/flow-NNN.yaml per reachable screen,
+         both directly runnable by `bajutsu run`. Links point into the existing /runs/<id>/ static mount. -->
+    <div class="crawl-artifacts" id="crawl-artifacts" data-testid="crawl.artifacts" hidden></div>
     <div class="crawlgraph" id="crawl-graph"><div class="empty">Start a crawl to watch the screen map grow.</div></div>
   </div>
   <div class="card crawl-plan-panel" data-pane="plan">

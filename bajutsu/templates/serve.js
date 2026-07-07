@@ -823,6 +823,70 @@ $('#crawl-go').addEventListener('click',async()=>{
   },crawlDone);
 });
 $('#crawl-stop').addEventListener('click',()=>cancelJob(crawlJobId,$('#crawl-stop')));
+
+// ---- Crawl history (BE-0180): reopen a past crawl's screen map read-only ----
+// A crawl writes no manifest.json (it has no pass/fail), so its runs never appear in the Replay tab's
+// History; they're keyed on the screenmap.json each one streams and listed here instead. Selecting one
+// reuses loadGraph — the same render path as a live crawl — and disables the live form so a past map
+// can't be mistaken for a running one. Returning to the Form tab clears the selection.
+let crawlHistoryRun=null,crawlLiveRun=null;  // crawlLiveRun parks a running crawl's id while history borrows the graph
+function setCrawlFormDisabled(on){
+  $('#panel-crawl').querySelectorAll('input,select,button').forEach(el=>{el.disabled=on});
+}
+async function loadCrawlHistory(){
+  let runs;try{runs=await (await fetch('/api/crawl/runs')).json()}catch(e){return}
+  const tab=$('#crawl-histtab');if(tab)tab.textContent='History'+(runs.length?` (${runs.length})`:'');
+  const ul=$('#crawl-history');
+  if(!runs.length){ul.innerHTML='<li class="muted">no crawls yet</li>';return}
+  ul.innerHTML=runs.map(r=>`<li data-id="${esc(r.id)}"${r.id===crawlHistoryRun?' class="sel"':''}><span class="hid">${esc(r.id)}</span><span class="hsum">${r.screens} screens · ${r.transitions} transitions${r.crashes?' · '+r.crashes+' crashes':''}</span></li>`).join('');
+  ul.querySelectorAll('li[data-id]').forEach(li=>li.addEventListener('click',()=>{
+    const r=runs.find(x=>x.id===li.dataset.id);if(r)viewCrawlRun(r);
+    ul.querySelectorAll('li').forEach(x=>x.classList.remove('sel'));li.classList.add('sel');
+  }));
+}
+// Link the crash/flow scenario files a run produced — plain links into the existing /runs/<id>/ mount,
+// each opening the raw runnable YAML. Empty groups are omitted; the whole strip hides when there's none.
+function crawlArtifactLinks(runId,label,dir,files){
+  if(!files||!files.length)return '';
+  const links=files.map(f=>`<a href="/runs/${encodeURIComponent(runId)}/${dir}/${encodeURIComponent(f)}" target="_blank" rel="noopener">${esc(f)}</a>`).join('');
+  return `<div class="artgroup"><span class="artlabel">${label}</span>${links}</div>`;
+}
+function viewCrawlRun(r){
+  // Park any live crawl's id (only on first entry, so switching between past runs keeps it parked): a
+  // nulled crawlRunId makes history mode truly read-only — the streaming redraw's `if(crawlRunId)` guard
+  // stops it clobbering this map, and resumePruned's guard blocks a resume against an unrelated run.
+  if(crawlHistoryRun===null)crawlLiveRun=crawlRunId;
+  crawlRunId=null;
+  crawlHistoryRun=r.id;
+  setCrawlFormDisabled(true);  // read-only framing: the live form can't drive a past map
+  const badge=$('#crawl-pastbadge');badge.textContent='past crawl · '+r.id;badge.hidden=false;
+  setStatus($('#crawl-status'),'','');
+  const art=$('#crawl-artifacts');
+  const html=crawlArtifactLinks(r.id,'crashes','crashes',r.crashFiles)+crawlArtifactLinks(r.id,'flows','flows',r.flowFiles);
+  art.innerHTML=html;art.hidden=!html;
+  loadGraph(r.id);
+}
+// Leave history mode: re-enable the live form and reset the map/plan/links to their pre-crawl state,
+// the same clean slate crawlDone leaves for the next run.
+function exitCrawlHistory(){
+  if(crawlHistoryRun===null)return;
+  crawlHistoryRun=null;
+  crawlRunId=crawlLiveRun;crawlLiveRun=null;  // hand the graph back to the live crawl, if one was running
+  setCrawlFormDisabled(false);
+  $('#crawl-pastbadge').hidden=true;$('#crawl-artifacts').hidden=true;$('#crawl-artifacts').innerHTML='';
+  $('#crawl-counts').textContent='';setStatus($('#crawl-status'),'','');
+  $('#crawl-graph').innerHTML='<div class="empty">Start a crawl to watch the screen map grow.</div>';
+  $('#crawl-plan').innerHTML='<div class="empty">The plan tree grows as the crawl explores.</div>';
+  $('#crawl-planpct').textContent='';$('#crawl-planfill').style.width='0';
+}
+function showCrawlTab(name){
+  document.querySelectorAll('#view-crawl .tab').forEach(t=>t.classList.toggle('active',t.dataset.tab===name));
+  $('#panel-crawl').hidden=name!=='crawlform';$('#crawl-panel-history').hidden=name!=='crawlhistory';
+  if(name==='crawlform')exitCrawlHistory();else loadCrawlHistory();
+}
+document.querySelectorAll('#view-crawl .tab').forEach(t=>t.addEventListener('click',()=>showCrawlTab(t.dataset.tab)));
+$('#crawl-refresh').addEventListener('click',loadCrawlHistory);
+
 async function crawlDone(j){
   crawlPoll=null;crawlJobId=null;setBusy($('#crawl-go'),$('#crawl-stop'),false);
   if(crawlRunId)await loadGraph(crawlRunId);  // final redraw
