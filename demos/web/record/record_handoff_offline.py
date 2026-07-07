@@ -116,8 +116,8 @@ class ScriptedHuman:
         self._state = app_state
 
     def request(self, request: HandoffRequest) -> HandoffResponse:
-        print(f"\n  ✋ record paused — handoff request:\n     {request.reason}")
-        print(f"     screen: {request.screen}")
+        print("\n  ✋ record paused — the AI cannot know the out-of-band one-time code.")
+        print(f"     it asks: {request.reason}")
         # A real human would type the code into the visible browser and submit; here the stand-in
         # marks the mock as operated and answers "I acted on the device — re-observe".
         self._state["acted"] = True
@@ -128,6 +128,8 @@ class ScriptedHuman:
 def main() -> int:
     state = {"acted": False}  # shared by the mock app and the scripted human
     print("Natural-language goal:\n  Verify a device: complete the one-time code step\n")
+    # No `report=` here: the ScriptedHuman narrates the pause, and streaming the loop's per-turn
+    # narration through bare `print` isn't needed for the demo (record_offline.py omits it too).
     scenario = record(
         make_app(state),
         "verify a device with the one-time code",
@@ -135,7 +137,6 @@ def main() -> int:
         name="device verification (human-in-the-loop)",
         with_screenshot=False,
         handoff=ScriptedHuman(state),
-        report=lambda m: print(f"  {m}"),
     )
     print("\nRecorded scenario (plain YAML, no AI, no human on the run path):\n")
     print(dump_scenarios([scenario]))
