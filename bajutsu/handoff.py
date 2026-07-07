@@ -143,5 +143,13 @@ def response_to_json(response: HandoffResponse) -> str:
 
 
 def response_from_json(payload: str) -> HandoffResponse:
-    """Parse a handoff response from its serialized form."""
-    return HandoffResponse.from_dict(json.loads(payload))
+    """Parse a handoff response from its serialized form.
+
+    Raises `ValueError` on anything that is not a JSON object — malformed text, or valid JSON that
+    is a list / string / number / null. The `StreamHandoff` responder maps that to a cancel, so a
+    bad response never crashes `record` with an `AttributeError`.
+    """
+    data = json.loads(payload)
+    if not isinstance(data, dict):
+        raise ValueError("handoff response must be a JSON object")
+    return HandoffResponse.from_dict(data)

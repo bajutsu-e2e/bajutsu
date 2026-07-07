@@ -113,10 +113,19 @@ def test_stream_handoff_times_out_to_a_cancel(monkeypatch: pytest.MonkeyPatch) -
     assert StreamHandoff(timeout=0.1).request(HandoffRequest(reason="x")).cancelled
 
 
+def test_response_from_json_rejects_non_object_json() -> None:
+    # Valid JSON that isn't an object must be a ValueError (not an AttributeError from `.get`), so
+    # the StreamHandoff responder can map it to a cancel rather than crashing `record`.
+    for payload in ("[]", "null", '"x"', "42"):
+        with pytest.raises(ValueError, match="JSON object"):
+            response_from_json(payload)
+
+
+@pytest.mark.parametrize("payload", [b"not json at all\n", b"[]\n", b"null\n"])
 def test_stream_handoff_treats_a_malformed_response_as_cancel(
-    monkeypatch: pytest.MonkeyPatch,
+    monkeypatch: pytest.MonkeyPatch, payload: bytes
 ) -> None:
-    _pipe_stdin(monkeypatch, b"not json at all\n")
+    _pipe_stdin(monkeypatch, payload)
     monkeypatch.setattr(sys, "stdout", io.StringIO())
     assert StreamHandoff(timeout=2.0).request(HandoffRequest(reason="x")).cancelled
 
