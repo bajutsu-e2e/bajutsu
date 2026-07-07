@@ -221,6 +221,9 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
                 case "/stats":
                     html, code = ops.stats_html(state, actor=self._actor())
                     self._text(html, code, "text/html; charset=utf-8")
+                case "/usage":
+                    html, code = ops.usage_html(state, actor=self._actor())
+                    self._text(html, code, "text/html; charset=utf-8")
                 case "/api/scenario":
                     self._json(
                         *ops.read_scenario(

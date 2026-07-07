@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0195](BE-0195-ai-usage-cost-dashboard.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0195") |
+| Implementing PR | [#786](https://github.com/bajutsu-e2e/bajutsu/pull/786) |
 | Topic | AI usage and cost observability |
 <!-- /BE-METADATA -->
 
@@ -88,11 +89,19 @@ The work is the following mutually exclusive, collectively exhaustive units:
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Read API for aggregated usage (`GET /api/usage`)
-- [ ] Usage dashboard view in `serve.js`
-- [ ] Provider/model comparison view
-- [ ] Empty/absent-ledger handling
-- [ ] Tests (aggregation endpoint + view)
+- [x] Read API for aggregated usage (the `/usage` HTML endpoint)
+- [x] Usage dashboard view in `serve.js`
+- [x] Provider/model comparison view
+- [x] Empty/absent-ledger handling
+- [x] Tests (aggregation endpoint + view)
+
+**Log**
+
+- [#786](https://github.com/bajutsu-e2e/bajutsu/pull/786) — Add the AI usage/cost dashboard: `usage_stats.aggregate_usage` + `usage.html.j2`
+  render the ledger server-side; a `/usage` endpoint (both serve backends) and a new **Usage** tab
+  in `serve.js` display it, mirroring the run-stats dashboard (BE-0102). Following the existing
+  dashboard convention, `/usage` returns a self-contained HTML page rather than the `GET /api/usage`
+  JSON the proposal sketched.
 
 ## References
 
