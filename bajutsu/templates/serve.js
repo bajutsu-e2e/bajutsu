@@ -185,9 +185,11 @@ async function loadConfig(){
   let c;try{c=await (await fetch('/api/config')).json()}catch(e){c={hasConfig:false}}
   fsSourceEnabled=!c.configSources||c.configSources.includes('fs');
   $('#fssrc').hidden=!fsSourceEnabled;
-  $('#cfgname').textContent=c.hasConfig?c.config:'no config bound — open one →';
+  setCfgName(c.hasConfig?c.config:'no config bound — open one →',c.hasConfig);
   if(c.hasConfig){await loadShared()}else{openFs()}
 }
+// Set the nav's config-name label and reveal the "View" button only when a config is actually bound.
+function setCfgName(text,hasConfig){$('#cfgname').textContent=text;$('#viewcfg').hidden=!hasConfig}
 // Browse the server's --root for a config.yml. Paths returned by /api/fs are absolute and the
 // server re-validates every one against --root, so clicking can never escape the browse ceiling.
 async function browseFs(dir){
@@ -207,6 +209,26 @@ function closeFs(){$('#fsmodal').hidden=true}
 $('#opencfg').addEventListener('click',openFs);
 $('#fsclose').addEventListener('click',closeFs);
 $('#fsmodal').addEventListener('click',e=>{if(e.target===$('#fsmodal'))closeFs()});
+
+// ---- view the loaded config: its raw YAML + (for a Git source) the commit it came from ----
+function closeCfgView(){$('#cfgviewmodal').hidden=true}
+async function openCfgView(){
+  let d;try{d=await (await fetch('/api/config/content')).json()}catch(e){d={error:'request failed'}}
+  const prov=$('#cfgprov');
+  if(d.error){prov.hidden=true;$('#cfgviewpath').textContent='';$('#cfgviewbody').textContent=d.error;$('#cfgviewmodal').hidden=false;return}
+  const p=d.provenance;
+  if(p){
+    // A Git source: show which commit was materialized (ref → resolved sha), not the opaque cache path.
+    prov.innerHTML='From Git: <code>'+esc(p.host+'/'+p.owner+'/'+p.repo)+'</code> @ <code>'+esc(p.ref)+'</code> &rarr; <code>'+esc((p.sha||'').slice(0,12))+'</code>';
+    prov.hidden=false;
+  }else{prov.hidden=true}
+  $('#cfgviewpath').textContent=d.config||'';
+  $('#cfgviewbody').textContent=d.content||'';
+  $('#cfgviewmodal').hidden=false;
+}
+$('#viewcfg').addEventListener('click',openCfgView);
+$('#cfgviewclose').addEventListener('click',closeCfgView);
+$('#cfgviewmodal').addEventListener('click',e=>{if(e.target===$('#cfgviewmodal'))closeCfgView()});
 
 // ---- Claude API key: write-once — shown masked only, never revealed (BE-0136) ----
 let keyState={set:false,masked:''};
@@ -366,7 +388,7 @@ async function chooseConfig(path){
   const r=await fetch('/api/config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({path})});
   const d=await r.json();
   if(d.error){$('#fslist').innerHTML='<li class="muted">'+esc(d.error)+'</li>';return}
-  $('#cfgname').textContent=d.config;closeFs();await loadShared();
+  setCfgName(d.config,true);closeFs();await loadShared();
 }
 // From-Git picker (BE-0063): POST the github:… spec; the server materializes the checkout, binds
 // its config, and repoints its cwd there. Errors (a bad spec, a fetch/auth failure) show inline.
@@ -377,7 +399,7 @@ async function chooseGitConfig(){
   const r=await fetch('/api/config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({git})});
   const d=await r.json();
   if(d.error){err.textContent=d.error;err.hidden=false;return}
-  $('#cfgname').textContent=d.config;closeFs();await loadShared();
+  setCfgName(d.config,true);closeFs();await loadShared();
 }
 $('#gitload').addEventListener('click',chooseGitConfig);
 $('#gitspec').addEventListener('keydown',e=>{if(e.key==='Enter')chooseGitConfig()});
@@ -785,7 +807,7 @@ async function chooseUploadConfig(file){
   const s=d.source||{};
   // textContent (not innerHTML): the file name comes from a file input, so never reinterpret it as HTML.
   meta.textContent='Bound '+(s.filename||file.name)+' · '+fmtSize(s.size||file.size)+' · sha256 '+(s.sha256||'').slice(0,12)+'…';
-  $('#cfgname').textContent=d.config;closeFs();await loadShared();
+  setCfgName(d.config,true);closeFs();await loadShared();
 }
 $('#up-pick').addEventListener('click',()=>$('#up-file').click());
 $('#up-file').addEventListener('change',e=>{const f=e.target.files[0];e.target.value='';if(f)chooseUploadConfig(f);});  // clear value so re-picking the same .zip still fires change

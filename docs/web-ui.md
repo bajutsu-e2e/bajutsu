@@ -56,9 +56,10 @@ the [CLI reference](cli.md#serve).
 
 The header holds six top-level tabs: **Record**, **Replay**, **Crawl**, **Author**, **Stats**, and
 **Coverage**.
-To their right are **Open config** (with the active config's name shown beside it once one is bound),
-**Settings**, and a dark/light theme toggle that follows your system by default. Each tab is a full
-screen of its own; switching tabs never discards what another tab was doing.
+To their right are **Open config** (with the active config's name shown beside it once one is bound,
+and a **View** button to inspect it — see below), **Settings**, and a dark/light theme toggle that
+follows your system by default. Each tab is a full screen of its own; switching tabs never discards
+what another tab was doing.
 
 Some forms change with the backend. Against the iOS Simulator (idb) you see a **Device** picker,
 a **Simulators** multi-select, and an **erase device first** option; against a web target (Playwright
@@ -84,6 +85,16 @@ three sources:
 The full behavior of each source — the content-addressed Git cache, the bundle's sandboxing and
 zip-slip hardening, the `--root` confinement — is documented in the
 [CLI reference](cli.md#serve). Only one config is bound at a time; opening another replaces it.
+
+### Confirming what is bound
+
+Click **View** (beside the config name) to see the exact config the tabs run from. The dialog shows
+the config's raw YAML, its path, and — when it came from a Git repository — the source it was
+materialized from: the repository, the `ref` you asked for, and the resolved commit SHA. This matters
+for a Git source, whose active path is an opaque content-addressed cache location
+(`…/gitsrc/<host>/<owner>/<repo>/<sha>/…`); the provenance line states which commit is actually
+bound, not just the path. The YAML is shown verbatim, so any `${secrets.*}` placeholders appear as
+written — they resolve from the server's environment at run time, and nothing secret is disclosed.
 
 ## Settings
 

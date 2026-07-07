@@ -197,6 +197,8 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
                     self._json(*ops.list_targets_payload(state, actor=self._actor()))
                 case "/api/config":
                     self._json(*ops.config_info(state))
+                case "/api/config/content":
+                    self._json(*ops.config_content(state))
                 case "/api/fs":
                     self._json(*ops.browse_fs(state, self._qs("dir")))
                 case "/api/apikey":

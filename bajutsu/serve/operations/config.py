@@ -109,6 +109,32 @@ def config_info(state: ServeState) -> tuple[Any, int]:
     }, 200
 
 
+def config_content(state: ServeState) -> tuple[Any, int]:
+    """The raw text of the active config plus its source, so the UI can confirm *what* is bound.
+
+    The path in `config_info` is enough for a local file, but a Git-sourced config resolves to an
+    opaque content-addressed cache path (`…/gitsrc/<host>/<owner>/<repo>/<sha>/…`); this returns the
+    YAML the tabs actually run from and — for a Git source — the `provenance` stamp (host/owner/repo/
+    ref/resolved sha) so the reader sees which commit it came from, not just the path.
+
+    The text is verbatim: any ``${secrets.*}`` placeholders are shown as written, never resolved, so
+    this discloses nothing beyond the file already committed to Git or uploaded in the bundle.
+    """
+    if state.config is None:
+        return {"error": "no config bound"}, 404
+    try:
+        content = state.config.read_text(encoding="utf-8")
+    except OSError as e:
+        # The bound path was validated at bind time; a read failure here means it moved/was removed
+        # under us (a transient checkout, a deleted file) — report it rather than 500 with a traceback.
+        return {"error": f"could not read config: {e}"}, 404
+    return {
+        "config": str(state.config),
+        "content": content,
+        "provenance": state.config_provenance,  # None for a local file / uploaded bundle
+    }, 200
+
+
 def api_key_info(state: ServeState, actor: str | None) -> tuple[Any, int]:
     """Whether the Claude API key is set, with a masked preview — never the plaintext (BE-0136).
 
@@ -192,6 +218,7 @@ def bind_config(state: ServeState, raw: str) -> tuple[Any, int]:
         return {"error": f"invalid config: {e}"}, 400
     state.release_upload()  # a fresh config replaces any bound bundle and resets cwd to serve's launch dir
     state.config = target
+    state.config_provenance = None  # a local file has no Git commit provenance to show
     state.git_config_from_api = False  # a local file config is operator-trusted (BE-0121)
     return {"ok": True, "config": str(target), "targets": list_targets(target)}, 200
 
@@ -234,6 +261,8 @@ def bind_git_config(state: ServeState, spec_str: str) -> tuple[Any, int]:
     state.release_upload()  # switching to a Git config drops any bound bundle's sandbox
     state.config = mat.config_path
     state.cwd = mat.root  # the checkout root: the config's relative paths resolve from here
+    provenance = source_provenance(spec, mat)
+    state.config_provenance = provenance  # so /api/config/content can show the resolved commit
     # A Git config bound here came in over the API, not from the operator's startup flags, so its
     # `build:` command is untrusted and stays ungoverned until --allow-remote-build opts in (BE-0121).
     state.git_config_from_api = True
@@ -241,7 +270,7 @@ def bind_git_config(state: ServeState, spec_str: str) -> tuple[Any, int]:
         "ok": True,
         "config": str(mat.config_path),
         "targets": list_targets(mat.config_path),
-        "source": source_provenance(spec, mat),
+        "source": provenance,
     }, 200
 
 
