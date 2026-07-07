@@ -171,8 +171,8 @@ def make_app(state: ServeState) -> FastAPI:
         return _result(ops.runs_payload(state, actor=_actor(request)))
 
     @app.get("/api/crawl/runs")
-    async def crawl_runs() -> JSONResponse:
-        return _result(ops.crawl_runs_payload(state))
+    async def crawl_runs(request: Request) -> JSONResponse:
+        return _result(ops.crawl_runs_payload(state, actor=_actor(request)))
 
     @app.get("/stats", response_class=HTMLResponse)
     async def stats(request: Request) -> HTMLResponse:

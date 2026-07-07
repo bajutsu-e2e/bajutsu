@@ -167,19 +167,45 @@ def test_runs_payload_falls_back_to_the_artifact_store_without_a_repository(tmp_
     assert [r["id"] for r in payload] == ["20260621-9"]
 
 
-def test_crawl_runs_payload_is_empty_on_the_server_backend(tmp_path: Path) -> None:
-    # On the server backend, run artifacts live in the org-scoped object store, not runs_dir; a local
-    # scan there would be non-functional and could surface ids across orgs, so it returns empty until a
-    # store-backed, org-scoped crawl listing exists (BE-0180). A crawl run sits in runs_dir to prove the
-    # local scan is deliberately skipped — not merely empty for lack of data.
+def test_crawl_runs_payload_falls_back_to_the_artifact_store_without_a_repository(
+    tmp_path: Path,
+) -> None:
+    # Local serve (no repository) resolves to the default org's LocalArtifactStore, which scans
+    # runs_dir — today's behavior, preserved after the listing moved onto the ArtifactStore seam.
     _scn_dir, _cfg, runs = project(tmp_path)
     (runs / "20260621-c").mkdir()
     (runs / "20260621-c" / "screenmap.json").write_text(
         '{"nodes": [{}], "edges": [], "crashes": []}', encoding="utf-8"
     )
-    with_repo = srv.ServeState(runs_dir=runs, repository=_repo())
-    assert crawl_runs_payload(with_repo) == ([], 200)
-    # The same runs_dir on the local backend does list that crawl — the scan itself works.
-    local = srv.ServeState(runs_dir=runs)
-    payload, status = crawl_runs_payload(local)
+    payload, status = crawl_runs_payload(srv.ServeState(runs_dir=runs))
     assert status == 200 and [r["id"] for r in payload] == ["20260621-c"]
+
+
+def test_crawl_runs_payload_is_scoped_to_the_actors_org(tmp_path: Path) -> None:
+    # On the server backend the crawl history comes from the actor's org-scoped artifact store, not a
+    # local runs_dir scan (BE-0190). Two orgs' stores back distinct dirs; each actor lists only its own.
+    from bajutsu.serve.artifacts import LocalArtifactStore
+    from bajutsu.serve.jobs import StoreBundle
+
+    def _write_crawl(root: Path, run_id: str) -> None:
+        (root / run_id).mkdir(parents=True)
+        (root / run_id / "screenmap.json").write_text(
+            '{"nodes": [{}], "edges": [], "crashes": []}', encoding="utf-8"
+        )
+
+    dirs = {"default": tmp_path / "acme", "other": tmp_path / "other"}
+    _write_crawl(dirs["default"], "20260621-a")
+    _write_crawl(dirs["other"], "20260621-b")
+
+    repo = _repo()
+    repo.ensure_org("other", slug="other", name="Other")
+    repo.upsert_user("al", org_id="default", github_login="al", email="a@x")
+    repo.upsert_user("bo", org_id="other", github_login="bo", email="b@x")
+
+    state = srv.ServeState(runs_dir=tmp_path, repository=repo)
+    state.org_stores = lambda org: StoreBundle(
+        LocalArtifactStore(dirs[org]), state.scenarios, state.baselines, state.secrets
+    )
+
+    assert [r["id"] for r in crawl_runs_payload(state, actor="al")[0]] == ["20260621-a"]
+    assert [r["id"] for r in crawl_runs_payload(state, actor="bo")[0]] == ["20260621-b"]
