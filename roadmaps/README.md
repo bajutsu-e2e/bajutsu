@@ -595,7 +595,10 @@ The scope is currently **limited to the iOS Simulator** ([DESIGN §1](../DESIGN.
 ### AI provider configuration
 
 <!-- GENERATED:proposals-ai-provider -->
-
+| ID | Item | Status |
+|---|---|---|
+| [BE-0183](BE-0183-per-provider-serve-settings/BE-0183-per-provider-serve-settings.md) | Per-provider AI settings in the serve Web UI | Proposal |
+| [BE-0184](BE-0184-persist-serve-ai-provider-settings/BE-0184-persist-serve-ai-provider-settings.md) | Persist serve AI provider settings across restarts | Proposal |
 <!-- /GENERATED:proposals-ai-provider -->
 
 ### Hosting the web UI (cloud / self-hosted)

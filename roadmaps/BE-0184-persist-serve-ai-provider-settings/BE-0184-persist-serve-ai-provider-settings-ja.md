@@ -1,14 +1,14 @@
-[English](BE-XXXX-persist-serve-ai-provider-settings.md) · **日本語**
+[English](BE-0184-persist-serve-ai-provider-settings.md) · **日本語**
 
-# BE-XXXX — serve の AI プロバイダー設定を再起動をまたいで永続化する
+# BE-0184 — serve の AI プロバイダー設定を再起動をまたいで永続化する
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
 |---|---|
-| 提案 | [BE-XXXX](BE-XXXX-persist-serve-ai-provider-settings-ja.md) |
+| 提案 | [BE-0184](BE-0184-persist-serve-ai-provider-settings-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **提案** |
-| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0184") |
 | トピック | AI provider configuration |
 | 関連 | [BE-0136](../BE-0136-serve-write-once-secrets/BE-0136-serve-write-once-secrets-ja.md)、[BE-0175](../BE-0175-serve-web-ui-ant-sso-login/BE-0175-serve-web-ui-ant-sso-login-ja.md)、[BE-0015](../BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting-ja.md) |
 <!-- /BE-METADATA -->

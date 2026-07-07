@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-per-provider-serve-settings-ja.md)
+**English** · [日本語](BE-0183-per-provider-serve-settings-ja.md)
 
-# BE-XXXX — Per-provider AI settings in the serve Web UI
+# BE-0183 — Per-provider AI settings in the serve Web UI
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-per-provider-serve-settings.md) |
+| Proposal | [BE-0183](BE-0183-per-provider-serve-settings.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0183") |
 | Topic | AI provider configuration |
 | Related | [BE-0104](../BE-0104-vendor-neutral-ai-backend/BE-0104-vendor-neutral-ai-backend.md), [BE-0163](../BE-0163-ant-cli-oauth-provider/BE-0163-ant-cli-oauth-provider.md), [BE-0176](../BE-0176-claude-code-ai-backend/BE-0176-claude-code-ai-backend.md), [BE-0175](../BE-0175-serve-web-ui-ant-sso-login/BE-0175-serve-web-ui-ant-sso-login.md) |
 <!-- /BE-METADATA -->
