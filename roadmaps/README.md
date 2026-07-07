@@ -574,6 +574,9 @@ The scope is currently **limited to the iOS Simulator** ([DESIGN §1](../DESIGN.
 |---|---|---|
 | [BE-0178](BE-0178-record-multi-action-turn/BE-0178-record-multi-action-turn.md) | Multi-action record turns (batch intra-screen actions) | Proposal |
 | [BE-0179](BE-0179-record-human-handoff/BE-0179-record-human-handoff.md) | Human-in-the-loop handoff during record (pause / hand off / resume) | Proposal |
+| [BE-0180](BE-0180-crawl-history-viewer/BE-0180-crawl-history-viewer.md) | Crawl history viewer in the Web UI | Proposal |
+| [BE-0182](BE-0182-record-human-value-prompt/BE-0182-record-human-value-prompt.md) | Human value entry during record (OTP / random / one-off values) | Proposal |
+| [BE-0185](BE-0185-record-human-takeover-step/BE-0185-record-human-takeover-step.md) | Human takeover step during record (CAPTCHA / biometrics / unresolvable gestures) | Proposal |
 <!-- /GENERATED:proposals-authoring -->
 
 ### Surfacing CLI features in the serve Web UI
@@ -593,7 +596,10 @@ The scope is currently **limited to the iOS Simulator** ([DESIGN §1](../DESIGN.
 ### AI provider configuration
 
 <!-- GENERATED:proposals-ai-provider -->
-
+| ID | Item | Status |
+|---|---|---|
+| [BE-0183](BE-0183-per-provider-serve-settings/BE-0183-per-provider-serve-settings.md) | Per-provider AI settings in the serve Web UI | Proposal |
+| [BE-0184](BE-0184-persist-serve-ai-provider-settings/BE-0184-persist-serve-ai-provider-settings.md) | Persist serve AI provider settings across restarts | Proposal |
 <!-- /GENERATED:proposals-ai-provider -->
 
 ### Hosting the web UI (cloud / self-hosted)
@@ -622,7 +628,9 @@ Closing the edges the deterministic core does not touch — `serve`'s HTTP surfa
 Where `bajutsu` reads its config and scenario tree from. Today that is a local path; the items here propose naming a **Git repository at a ref** (`github:owner/repo@ref:path`) or uploading a bundle, so a hosted or self-hosted `serve`, or a CI runner, can pull a team's test repo directly.
 
 <!-- GENERATED:proposals-config-sourcing -->
-
+| ID | Item | Status |
+|---|---|---|
+| [BE-0187](BE-0187-serve-config-view/BE-0187-serve-config-view.md) | View the loaded config in the serve Web UI (raw YAML, structured tree, Git provenance) | Proposal |
 <!-- /GENERATED:proposals-config-sourcing -->
 
 ### codegen coverage
@@ -638,7 +646,9 @@ Turning a passing scenario into a native test in a destination framework's idiom
 Keeping the autonomous crawl fast and its code lean as it grows.
 
 <!-- GENERATED:proposals-crawl -->
-
+| ID | Item | Status |
+|---|---|---|
+| [BE-0181](BE-0181-crawl-continuation/BE-0181-crawl-continuation.md) | Resumable crawl continuation (Web UI + full-frontier resume) | Proposal |
 <!-- /GENERATED:proposals-crawl -->
 
 ### Backend expansion (iOS actuators)
@@ -678,7 +688,9 @@ Sending a run's result out to a service the team already lives in. These are pos
 ### Candidates from competitive research (MagicPod / Autify)
 
 <!-- GENERATED:proposals-competitive -->
-
+| ID | Item | Status | Origin |
+|---|---|---|---|
+| [BE-0186](BE-0186-mailbox-provider-registry/BE-0186-mailbox-provider-registry.md) | Mailbox provider registry for the email step | Proposal |  |
 <!-- /GENERATED:proposals-competitive -->
 
 ### Candidates from competitive research (Maestro)
