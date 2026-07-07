@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
+import pytest
+
 from bajutsu.drivers import base
 from bajutsu.drivers.idb import (
     IdbDriver,
     parse_describe_all,
     tap_cmd,
-    text_cmd,
 )
 
 FIXTURE = """
@@ -258,25 +259,32 @@ def test_settle_polls_until_frames_stabilize() -> None:
     assert calls[0] == 2
 
 
-# --- type_text: value goes via stdin, never argv (BE-0155) ---
+# --- type_text: value goes over the gRPC companion client, never onto argv (BE-0155) ---
 
 
-def test_type_text_passes_value_over_stdin_not_argv(monkeypatch) -> None:  # type: ignore[no-untyped-def]
-    # A secret or OTP typed into a field must not land in the idb process's argv, where
-    # any local user could read it via ps/proc; the value is handed to idb on stdin.
-    calls: list[tuple[list[str], str]] = []
+def test_type_text_sends_value_over_companion_not_argv(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    # A secret/OTP typed into a field must not land on the idb process's argv, where a
+    # co-tenant could read it via ps/proc. The driver sends it over the fb-idb gRPC client
+    # (idb_companion), so no subprocess carries it and no argv is built for it.
+    typed: list[tuple[str, str]] = []
+    monkeypatch.setattr(
+        IdbDriver, "_type_text", staticmethod(lambda udid, text: typed.append((udid, text)))
+    )
+    ran: list[list[str]] = []
+    IdbDriver("U", run=lambda a: ran.append(a) or "").type_text("${secrets.password}")
 
-    def fake_run_text(cmd: list[str], text: str) -> None:
-        calls.append((cmd, text))
+    assert typed == [("U", "${secrets.password}")]  # value reaches the companion path
+    assert ran == []  # no subprocess/argv was built for the value
 
-    monkeypatch.setattr(IdbDriver, "_run_text", staticmethod(fake_run_text))
-    IdbDriver("U", run=lambda a: "").type_text("${secrets.password}")
 
-    ((cmd, text),) = calls
-    assert cmd == text_cmd("U")
-    assert cmd == ["idb", "ui", "text", "--udid", "U"]
-    assert "${secrets.password}" not in cmd  # the secret never appears in argv
-    assert text == "${secrets.password}"  # it is passed on stdin instead
+def test_type_text_fails_fast_when_companion_missing(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    # A missing idb_companion must raise a clear, actionable error here, not an opaque one
+    # deep inside fb-idb from a None companion_path.
+    import shutil
+
+    monkeypatch.setattr(shutil, "which", lambda _name: None)
+    with pytest.raises(RuntimeError, match="idb_companion not found"):
+        IdbDriver("U").type_text("hi")
 
 
 def test_settle_gives_up_after_max_polls() -> None:

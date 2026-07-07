@@ -75,16 +75,45 @@ def swipe_cmd(udid: str, x1: float, y1: float, x2: float, y2: float) -> list[str
     ]
 
 
-def text_cmd(udid: str) -> list[str]:
-    """The `idb` argv that types text into the focused field.
+def _type_text_via_companion(udid: str, text: str) -> None:
+    """Type `text` into the focused field over the fb-idb gRPC client (BE-0155).
 
-    The text itself is deliberately absent from the argv: it is fed to `idb ui text`
-    over stdin (see `IdbDriver._run_text`), so a secret or OTP value never appears in
-    the process command line, where any local user could read it via `ps`/`/proc`
-    (BE-0155). This relies on `idb ui text` reading stdin when no positional text
-    argument is given.
+    fb-idb's `idb ui text` takes the text as a required positional argument, so a secret
+    or OTP typed through the CLI sits on the `idb` process's argv, where a co-tenant on the
+    host could read it via `ps`/`/proc`. The CLI subcommand is only a thin wrapper around
+    `client.text()`, so we call that directly instead: the value travels to `idb_companion`
+    over gRPC and never lands on any command line.
+
+    Runs its own event loop via `asyncio.run`: the idb driver is synchronous and is only
+    ever called from threads with no running loop (the runner and the crawl workers).
     """
-    return ["idb", "ui", "text", "--udid", udid]
+    import shutil
+
+    companion_path = shutil.which("idb_companion")
+    if companion_path is None:
+        # Fail fast and legibly rather than letting a None path surface as an opaque
+        # error deep inside fb-idb. idb_companion is a separate Homebrew formula. Checked
+        # before the fb-idb import below so this stays meaningful even where the idb extra
+        # isn't installed (e.g. the deterministic gate, which carries no backend deps).
+        raise RuntimeError(
+            "idb_companion not found on PATH — install it with "
+            "`brew install facebook/fb/idb-companion`"
+        )
+
+    import asyncio
+    import logging
+
+    from idb.grpc.management import ClientManager
+
+    async def _send() -> None:
+        manager = ClientManager(
+            companion_path=companion_path,
+            logger=logging.getLogger("bajutsu.idb.companion"),
+        )
+        async with manager.from_udid(udid=udid) as client:
+            await client.text(text=text)
+
+    asyncio.run(_send())
 
 
 def screenshot_cmd(udid: str, path: str) -> list[str]:
@@ -308,14 +337,11 @@ class IdbDriver:
         self._run(swipe_cmd(self.udid, frm[0], frm[1], to[0], to[1]))
 
     def type_text(self, text: str) -> None:
-        # Pass the value on stdin, not argv, so a secret/OTP never lands in the idb
-        # process command line (BE-0155). Routed through a class-level attribute so
-        # tests can patch it, mirroring Env._run_pbcopy for simctl pbcopy.
-        self._run_text(text_cmd(self.udid), text)
+        # Via _type_text (a patchable class attribute), so tests can intercept the value
+        # without a companion, and so it never touches argv — see _type_text_via_companion.
+        self._type_text(self.udid, text)
 
-    @staticmethod
-    def _run_text(cmd: list[str], text: str) -> None:
-        subprocess.run(cmd, input=text, capture_output=True, text=True, check=True)
+    _type_text = staticmethod(_type_text_via_companion)
 
     def wait_for(self, sel: base.Selector) -> bool:
         """Single-shot: whether `sel` matches the current screen (BE-0118).
