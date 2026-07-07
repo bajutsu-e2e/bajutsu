@@ -1,0 +1,50 @@
+# Author editor — loading a scenario fills the YAML editor, grades it (BE-0145), and arms the
+# actions; editing invalid YAML surfaces inline problems (BE-0138) and arms Save. Deterministic and
+# AI-free: /api/scenario reads the file, /api/lint and /api/audit wrap the same static validators
+# the CLI runs — no device, no model. The inner serve is bound to the web demo's config, so the
+# scenario picker deterministically offers counter.yaml first (the dir sorted by filename).
+description: >-
+  Author editor — Edit-mode Load fills the YAML editor with the picked scenario, shows its
+  determinism grade, and arms Save/codegen; typing invalid YAML surfaces the problems panel.
+scenarios:
+  - name: loading a scenario fills the editor and grades it
+    description: In Edit mode, Load pulls the first listed scenario (counter.yaml) into the editor; the audit badge appears, no problems are flagged, and Save/codegen arm.
+    steps:
+      - tap: { id: nav.author }
+      - wait: { for: { id: author.mode-edit }, timeout: 10 }
+      - tap: { id: author.mode-edit }
+      # The picker is empty until /api/scenarios resolves; poll until counter.yaml's option text
+      # reaches the select (the same pattern as the Replay contract), then load it. The label
+      # check re-pins the picker content — it retries natively when this scenario is exported as
+      # a Playwright test, where the wait above degrades to a visibility check.
+      - wait: { for: { id: author.scenario, labelMatches: "counter" }, timeout: 10 }
+      - assert:
+          - label: { sel: { id: author.scenario }, contains: "counter" }
+      - tap: { id: author.load }
+      # Load triggers lint + the determinism audit on the loaded YAML; the badge appearing means
+      # both round-trips completed.
+      - wait: { for: { id: author.grade }, timeout: 10 }
+      - assert:
+          - value: { sel: { id: author.yaml }, contains: "counter.increment" }
+          - exists: { id: author.problems, negate: true }   # a valid scenario flags nothing
+          - enabled: { id: author.save }
+          - enabled: { id: author.codegen }
+    expect:
+      # counter.yaml addresses everything by id, so the badge always carries the id-based ratio.
+      - label: { sel: { id: author.grade }, contains: "id-based" }
+
+  - name: editing invalid YAML surfaces problems and arms save
+    description: Typing a non-scenario document into the empty editor makes the inline validation list at least one problem and enables Save.
+    steps:
+      - tap: { id: nav.author }
+      - wait: { for: { id: author.yaml }, timeout: 10 }
+      - assert:
+          - disabled: { id: author.save }
+      - type: { text: "z", into: { id: author.yaml } }
+      # Inline validation is debounced (~400ms) then round-trips /api/lint; the problems panel
+      # unhides once diagnostics land.
+      - wait: { for: { id: author.problems }, timeout: 10 }
+      - assert:
+          - label: { sel: { id: author.problems }, contains: "problem" }
+    expect:
+      - enabled: { id: author.save }

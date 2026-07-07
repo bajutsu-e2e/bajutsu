@@ -18,4 +18,4 @@ targets:
       readyTimeout: 60
     scenarios: demos/serve-ui/scenarios
     # The data-testid namespaces the WebUI exposes (the web equivalent of accessibility ids).
-    idNamespaces: [nav, view, record, replay, crawl, settings, config]
+    idNamespaces: [nav, view, record, replay, crawl, author, stats, coverage, settings, config, upload]

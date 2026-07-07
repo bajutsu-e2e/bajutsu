@@ -66,6 +66,26 @@ a **Simulators** multi-select, and an **erase device first** option; against a w
 / Chromium) those give way to a **show browser (headed)** option. The rest of each tab is the same
 across backends. The **Replay** tab also carries a **History** list of past runs (see below).
 
+**Theme.** The header's toggle switches between the dark and light theme. It follows your operating
+system's preference until you flip it; a manual flip is remembered (in the browser's local storage)
+until the system preference next changes, which drops the override and re-adopts the system mode.
+
+**Panel management (desktop).** On a desktop-width window, the Record, Replay, and Crawl tabs tile
+their panels: drag the divider between two panels to redistribute that pair's widths (the other
+panels keep their share), and drag a panel's **⠿** grip onto another panel to swap them (drop on the
+center) or split beside it (drop on an edge). Each view's layout persists in the browser's local
+storage. Record's run-result pane joins and leaves this tiling as a run starts and is dismissed.
+
+**Narrow windows.** Below phone width the tiling gives way to a single-column stack, and each view
+gains a small switcher that brings one pane (form, log, report, …) to full width at a time. No
+feature is lost — only the arrangement changes.
+
+**When Claude is unreachable.** Record and Crawl need an AI provider (see
+[Settings](#settings)). While Claude cannot be reached — no key, no signed-in CLI — those two tabs
+read as disabled, their start buttons grey out, and an inline banner names what is missing with an
+**Open Settings** shortcut. The state flips live as soon as a provider is configured; everything
+else (Replay, Author, Stats, Coverage) works without any AI setup.
+
 ## Choosing the active config
 
 Every tab runs against one **active config**. Click **Open config** to bind it. The dialog offers
@@ -119,8 +139,19 @@ survive a restart, set `ANTHROPIC_API_KEY` / `AWS_*` in your shell or a `.env` b
   browser sign-in for you (equivalent to running `ant auth login` in that terminal). The button
   opens the browser on the machine running `serve`, so it works with a local `make serve`; on a
   hosted deployment the server refuses the request (403) and the operator signs the host in out of band.
+- **Claude Code CLI (claude)** — Claude on your Claude Code Pro/Max/Console subscription, by shelling
+  out to the `claude` CLI. No API key is needed; sign in once with `claude setup-token` (or an
+  interactive `claude` login) on the machine running `serve`. Any `ANTHROPIC_API_KEY` in the
+  environment is ignored for this provider, so billing stays on the subscription.
 
-**Claude API key** is **write-once**: enter a key and **Save**, and it is shown only masked and never
+The picker starts on a placeholder — there is **no default provider**, and **Save** refuses until
+you pick one explicitly. Each provider's own fields (the API key, the Bedrock region and model id,
+the CLI sign-in) appear only once that provider is selected. Two overrides apply across providers:
+**Model** substitutes a specific model id for the default (Bedrock keeps its own prefixed id
+field), and **Reasoning effort** trades speed against depth for the authoring agents.
+
+**Claude API key** (shown when the Anthropic API provider is selected) is **write-once**: enter a
+key and **Save**, and it is shown only masked and never
 displayed again — to change it, set a new one; **Clear** removes it. It powers the Anthropic API
 provider and the alert guard (Bedrock uses AWS credentials instead). Only the AI paths need it:
 **Record**, **Crawl**, and Replay with alert-dismiss on.
@@ -150,6 +181,20 @@ scenario is written under the target's scenarios directory, so it appears in the
 **Scenario** picker, ready to run. How the authoring loop and the alert guard work:
 [recording](recording.md).
 
+**Run it in place.** The **▶ Run** button beside Save (also disabled until there is YAML) runs the
+panel's current content — the just-authored scenario, or YAML you pasted or edited by hand — without
+switching tabs. A run-result pane opens with the live log and the finished report, with **Stop** to
+abort and a close button to dismiss the pane. The verdict is the deterministic runner's, exactly as
+on the Replay tab.
+
+**Readiness (doctor).** A **Readiness** panel with a **Check** button sits in the form — the
+`doctor` command in the browser, shared by the Record and Replay tabs. It reports two halves: the
+runnability checks (is each required tool present, is a Simulator booted, is the web target's page
+reachable), and — once the environment is runnable — the current screen's convention score, a
+**Ready** / **Partial** / **Blocked** grade with the stable-id coverage and a what-to-fix list
+(unnamed controls, off-namespace ids, duplicates). It probes the host environment, is read-only and
+AI-free, and never gates a run.
+
 ## Replay — run a scenario and read its report
 
 **What it does.** Runs a scenario deterministically and embeds its report — the `run` command in the
@@ -163,7 +208,12 @@ browser. Two sub-tabs: **Run** and **History**.
    and **disable alert-dismiss** apply as in Record. On web: tick **show browser (headed)** to watch
    the run in a visible Chromium window.
 3. Click **Run** (**Stop** aborts). The output streams live in the log, and the run's `report.html`
-   embeds beside it on completion.
+   embeds beside it on completion. Before a run, the same **Readiness** panel as on Record (see
+   above) answers "is my environment ready, and is my app addressable?" on a click — advisory only.
+
+Under the log panel, a **Generate code** bar exports the selected scenario as a native test — the
+same codegen as on the [Author](#author--capture-edit-and-enrich-one-scenario) tab, placed where a
+scenario has just run.
 
 Inside the embedded report, a visual check's **Approve** button promotes that run's captured
 screenshot into the visual baseline (the same promotion as the `approve` CLI command), so the next
@@ -320,6 +370,11 @@ authentication and CSRF protection; binding a non-loopback `--host` requires one
 single Mac (`--emit-launchagent`) or the full control-plane backend (`--backend server`), together
 with `--max-concurrent-runs` and `--evidence-store`, are covered in the
 [CLI reference](cli.md#serve) and [self-hosting](self-hosting.md).
+
+**Signing in.** On an authenticated server, the first request that comes back unauthorized starts
+the sign-in: when GitHub OAuth is configured the browser is sent through it, and otherwise a token
+prompt appears — enter the shared token, and a session cookie keeps you signed in from then on. On
+an open (local) server neither ever appears.
 
 ---
 

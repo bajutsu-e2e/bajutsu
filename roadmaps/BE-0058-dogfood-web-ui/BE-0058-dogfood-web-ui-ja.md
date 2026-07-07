@@ -9,8 +9,9 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0058") |
-| 実装 PR | [#169](https://github.com/bajutsu-e2e/bajutsu/pull/169) |
+| 実装 PR | [#169](https://github.com/bajutsu-e2e/bajutsu/pull/169), [#742](https://github.com/bajutsu-e2e/bajutsu/pull/742) |
 | トピック | Dogfood フィクスチャ（Web UI） |
+| 関連 | [BE-0189](../BE-0189-serve-ui-dogfood-ci-gate/BE-0189-serve-ui-dogfood-ci-gate-ja.md) |
 | 由来 | Dogfooding |
 <!-- /BE-METADATA -->
 
@@ -133,7 +134,16 @@ driver の意味的な `selectOption` capability が要り、これは
 
 ## 進捗
 
-- [x] 出荷済み。上記の *実装 PR* を参照してください。
+- [x] 最初のスライスを出荷しました。`data-testid` の id、`demos/serve-ui` のハーネス、Tier A の
+  シナリオです。[#169](https://github.com/bajutsu-e2e/bajutsu/pull/169)
+- [x] カバレッジを完成させました。[#742](https://github.com/bajutsu-e2e/bajutsu/pull/742) 残りのビュー
+  （Author / Stats / Coverage）と新しい Replay のツール（audit バッジ、codegen、doctor）のシナリオを
+  揃え、完成した `docs/web-ui.md` に対する機能カバレッジマップを dogfood の README に置きました（意図して
+  覆わないものとその理由も列挙）。補助的な修正として、ネイティブ checkbox の `checked` を `selected`
+  トレイトとして読むようにし（テーマ切替の状態をアサート可能に）、serve UI の描画不具合三つ（空の grade
+  バッジ、shadow に取り残されるプレースホルダ、見切れる Author の load 行）を直しました。ハーネスの CI
+  ゲートは [BE-0189](../BE-0189-serve-ui-dogfood-ci-gate/BE-0189-serve-ui-dogfood-ci-gate-ja.md) で別途
+  追跡します。
 
 ## 参考
 

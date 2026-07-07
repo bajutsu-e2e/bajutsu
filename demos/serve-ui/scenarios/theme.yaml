@@ -1,0 +1,22 @@
+# Theme toggle — the header switch follows the OS preference and flips the theme on click. The
+# driver reads a native checkbox's checked state as the `selected` trait, so the switch state is
+# assertable. Deterministic: Playwright emulates prefers-color-scheme as light by default, in the
+# dogfood runner and in the exported spec alike, so the switch starts checked (= light) on both.
+# The DSL has no negated `selected`, so the scenario pins the checked state on both sides of a
+# full round-trip (light → dark → light) rather than the unchecked middle.
+description: >-
+  Theme toggle — the header switch starts on the light theme (the OS preference), and a double
+  flip returns to it with the switch state readable throughout.
+scenarios:
+  - name: the theme toggle flips and returns
+    description: The switch starts checked (light, following the OS), survives a flip to dark, and reads checked again after flipping back.
+    steps:
+      - wait: { for: { id: view.record }, timeout: 10 }
+      - assert:
+          - selected: { id: nav.theme-toggle }   # follows the (light) OS preference
+      - tap: { id: nav.theme-toggle }            # → dark
+      - assert:
+          - exists: { id: nav.theme-toggle }
+      - tap: { id: nav.theme-toggle }            # → back to light
+    expect:
+      - selected: { id: nav.theme-toggle }

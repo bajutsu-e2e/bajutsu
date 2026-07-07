@@ -1,0 +1,44 @@
+# Author modes — the Capture / Edit / Enrich switcher shows each mode's controls and hides the
+# others. Deterministic: setMode toggles the mode-scoped blocks (.au-cap / .au-edit / .au-enrich /
+# .au-loadrow) via the `hidden` attribute synchronously on click, which the Playwright backend
+# reads as present/absent in the element tree. No AI runs — Enrich is only shown, never invoked.
+description: >-
+  Author modes — Capture is the default and hides the load row; Edit exposes the load row and
+  step navigation; Enrich exposes its (disabled until load) Enrich button.
+scenarios:
+  - name: capture is the default mode and hides the load row
+    description: On first visit the Author view is in Capture mode — capture controls show, the scenario load row does not, and codegen/save start disabled.
+    steps:
+      - tap: { id: nav.author }
+      - wait: { for: { id: author.start }, timeout: 10 }
+      - assert:
+          - exists: { id: author.mode-capture }
+          - exists: { id: author.start }                  # capture-only control shows
+          - exists: { id: author.load, negate: true }     # load row is Edit/Enrich-only
+          - exists: { id: author.scenario, negate: true }
+          - exists: { id: author.enrich, negate: true }   # Enrich button is Enrich-only
+          - disabled: { id: author.codegen }              # nothing captured yet to export
+          - disabled: { id: author.save }
+    expect:
+      - exists: { id: view.author }
+
+  - name: edit and enrich modes expose their controls
+    description: Switching to Edit shows the load row and the step navigation; switching to Enrich swaps the step navigation for the Enrich button, still disabled until a scenario is loaded.
+    steps:
+      - tap: { id: nav.author }
+      - wait: { for: { id: author.mode-edit }, timeout: 10 }
+      - tap: { id: author.mode-edit }
+      - wait: { for: { id: author.load }, timeout: 5 }
+      - assert:
+          - exists: { id: author.scenario }
+          - exists: { id: author.prev }                   # edit-only step navigation shows
+          - disabled: { id: author.prev }                 # nothing loaded yet
+          - exists: { id: author.start, negate: true }    # capture controls are gone
+      - tap: { id: author.mode-enrich }
+      - wait: { for: { id: author.enrich }, timeout: 5 }
+      - assert:
+          - exists: { id: author.load }                   # Enrich also loads an existing scenario
+          - disabled: { id: author.enrich }               # armed only once a scenario is loaded
+          - exists: { id: author.prev, negate: true }     # edit-only step navigation is gone
+    expect:
+      - exists: { id: view.author }

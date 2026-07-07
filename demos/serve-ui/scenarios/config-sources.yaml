@@ -1,0 +1,30 @@
+# Config sources — the "Open config" modal offers all three binding sources: the file browser
+# (BE-0108: present because the inner serve runs with --root), a Git spec (BE-0063), and a bundle
+# upload (BE-0073). Deterministic: the modal is a static form, and the file browser lists the
+# --root directory (demos/serve-ui), whose contents this repo pins — so dogfood.config.yaml is
+# always in the listing. Nothing is bound or uploaded; the modal is only opened and closed.
+description: >-
+  Config sources — the config modal offers the file browser (listing --root), the Git spec
+  input, and the bundle-upload zone.
+scenarios:
+  - name: the config modal offers file, Git, and upload sources
+    description: Open the modal; the file browser lists demos/serve-ui (dogfood.config.yaml shows), and the Git and upload sources are offered; close it again.
+    steps:
+      - tap: { id: nav.open-config }
+      - wait: { for: { id: config.close }, timeout: 5 }
+      - assert:
+          - exists: { id: config.fs-source }     # --root given → the fs source is offered
+          - exists: { id: config.git-spec }
+          - exists: { id: config.git-load }
+          - exists: { id: upload.drop }
+          - exists: { id: upload.pick }
+      # The browser starts at --root (demos/serve-ui); its listing reaches the modal async. The
+      # label check re-pins the listing content — it retries natively when this scenario is
+      # exported as a Playwright test, where the wait above degrades to a visibility check.
+      - wait: { for: { id: config.list, labelMatches: "dogfood.config.yaml" }, timeout: 10 }
+      - assert:
+          - label: { sel: { id: config.list }, contains: "dogfood.config.yaml" }
+      - tap: { id: config.close }
+      - wait: { until: { gone: { id: config.modal } }, timeout: 5 }
+    expect:
+      - exists: { id: config.modal, negate: true }
