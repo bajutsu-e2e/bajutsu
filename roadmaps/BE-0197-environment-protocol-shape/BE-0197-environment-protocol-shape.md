@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-environment-protocol-shape-ja.md)
+**English** · [日本語](BE-0197-environment-protocol-shape-ja.md)
 
-# BE-XXXX — Even out the Environment protocol shape for a third platform
+# BE-0197 — Even out the Environment protocol shape for a third platform
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-environment-protocol-shape.md) |
+| Proposal | [BE-0197](BE-0197-environment-protocol-shape.md) |
 | Author | [@hirosassa](https://github.com/hirosassa) |
 | Status | **Proposal** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0197") |
 | Topic | Codebase quality & technical debt |
 <!-- /BE-METADATA -->
 

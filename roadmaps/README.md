@@ -704,7 +704,10 @@ Keeping the autonomous crawl fast and its code lean as it grows.
 Behavior-preserving cleanup inside `bajutsu/` itself — deduplication, decomposition of oversized functions/modules, and naming clarity — as distinct from *Development infrastructure (contributor workflow)* above, which covers the tooling contributors use to work on this repo (CI, hooks, roadmap automation).
 
 <!-- GENERATED:proposals-quality-debt -->
-
+| ID | Item | Status |
+|---|---|---|
+| [BE-0197](BE-0197-environment-protocol-shape/BE-0197-environment-protocol-shape.md) | Even out the Environment protocol shape for a third platform | Proposal |
+| [BE-0198](BE-0198-serve-state-job-registry-split/BE-0198-serve-state-job-registry-split.md) | Split the JobRegistry out of ServeState | Proposal |
 <!-- /GENERATED:proposals-quality-debt -->
 
 ### Integration with external services

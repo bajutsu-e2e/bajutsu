@@ -1,14 +1,14 @@
-[English](BE-XXXX-environment-protocol-shape.md) · **日本語**
+[English](BE-0197-environment-protocol-shape.md) · **日本語**
 
-# BE-XXXX — 3 つめのプラットフォームに向けて Environment protocol の形をそろえる
+# BE-0197 — 3 つめのプラットフォームに向けて Environment protocol の形をそろえる
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
 |---|---|
-| 提案 | [BE-XXXX](BE-XXXX-environment-protocol-shape-ja.md) |
+| 提案 | [BE-0197](BE-0197-environment-protocol-shape-ja.md) |
 | 提案者 | [@hirosassa](https://github.com/hirosassa) |
 | 状態 | **提案** |
-| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0197") |
 | トピック | Codebase quality & technical debt |
 <!-- /BE-METADATA -->
 

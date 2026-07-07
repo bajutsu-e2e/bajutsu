@@ -697,7 +697,10 @@ AI を使う経路（`record` ／ `crawl` ／ `triage --ai` ／ `run --apply`）
 `bajutsu/` 内部のコードを対象にした、振る舞いを変えないクリーンアップです。重複コードの解消、肥大化した関数・モジュールの分割、命名の明確化などが含まれます。上記の「開発基盤（コントリビュータ体験）」がこのリポジトリで作業するためのツール（CI、フック、ロードマップ自動化）を指すのに対し、こちらは `bajutsu/` 自体のコード品質を扱う点で区別されます。
 
 <!-- GENERATED:proposals-quality-debt -->
-
+| ID | 項目 | 状態 |
+|---|---|---|
+| [BE-0197](BE-0197-environment-protocol-shape/BE-0197-environment-protocol-shape-ja.md) | 3 つめのプラットフォームに向けて Environment protocol の形をそろえる | 提案 |
+| [BE-0198](BE-0198-serve-state-job-registry-split/BE-0198-serve-state-job-registry-split-ja.md) | ServeState から JobRegistry を切り出す | 提案 |
 <!-- /GENERATED:proposals-quality-debt -->
 
 ### 外部サービスとの連携

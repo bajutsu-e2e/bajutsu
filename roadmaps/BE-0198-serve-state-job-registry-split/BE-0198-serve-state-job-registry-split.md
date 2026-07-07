@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-serve-state-job-registry-split-ja.md)
+**English** · [日本語](BE-0198-serve-state-job-registry-split-ja.md)
 
-# BE-XXXX — Split the JobRegistry out of ServeState
+# BE-0198 — Split the JobRegistry out of ServeState
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-serve-state-job-registry-split.md) |
+| Proposal | [BE-0198](BE-0198-serve-state-job-registry-split.md) |
 | Author | [@hirosassa](https://github.com/hirosassa) |
 | Status | **Proposal** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0198") |
 | Topic | Codebase quality & technical debt |
 <!-- /BE-METADATA -->
 
