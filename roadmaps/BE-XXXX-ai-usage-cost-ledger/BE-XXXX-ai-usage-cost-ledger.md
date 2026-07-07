@@ -39,7 +39,7 @@ follow, and each blocks the optimization the user is after:
   survives across `record` / `triage` / `run` invocations, so no history accumulates and no trend
   is observable.
 - **No cost, no per-provider/per-model breakdown.** `TokenUsage` is a single set of counters
-  regardless of which of the four providers (`anthropic` / `bedrock` / `ant` / `claude-code`) or
+  regardless of which of the four providers (`api-key` / `bedrock` / `ant` / `claude-code`) or
   which model produced them, and it computes no dollar figure at all. Comparing providers on cost —
   the concrete lever for "use the AI provider more smartly" — is impossible from what is recorded.
 
@@ -60,7 +60,7 @@ item only produces the data.
 The work is the following mutually exclusive, collectively exhaustive units:
 
 1. **A usage event schema.** Define one record per AI call carrying: the token counts already in
-   `TokenUsage` (`input` / `output` / `cache_write` / `cache_read` / `calls`), the attribution
+   `TokenUsage` (`input_tokens` / `output_tokens` / `cache_write_tokens` / `cache_read_tokens` / `calls`), the attribution
    dimensions (`command`, `provider`, `model`, `scenario`, `step`/task label), a UTC timestamp, and
    the computed `cost` (nullable — see unit 3). Keep it a plain, versioned dict so the on-disk
    format is forward-compatible and mirrors the existing structured-logging style (BE-0055).
@@ -130,7 +130,7 @@ The work is the following mutually exclusive, collectively exhaustive units:
 
 - `bajutsu/usage.py` — the existing in-memory `TokenUsage` accumulator this item extends.
 - `bajutsu/ai/base.py`, `bajutsu/ai/registry.py` — the `AiBackend` seam and provider registry
-  (`anthropic` / `bedrock` / `ant` / `claude-code`) that already pass `usage` through
+  (`api-key` / `bedrock` / `ant` / `claude-code`) that already pass `usage` through
   ([BE-0104](../BE-0104-vendor-neutral-ai-backend/BE-0104-vendor-neutral-ai-backend.md)).
 - [BE-0055](../BE-0055-operational-logging/BE-0055-operational-logging.md) (Operational logging) — the structured-JSON, secret-redacting logging style this ledger follows.
 - [BE-0047](../BE-0047-ai-data-sovereignty/BE-0047-ai-data-sovereignty.md) (AI data sovereignty) — the redaction rules the ledger inherits.

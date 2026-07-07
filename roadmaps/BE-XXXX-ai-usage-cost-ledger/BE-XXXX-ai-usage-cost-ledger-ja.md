@@ -24,7 +24,7 @@ Bajutsu の AI 経路、つまり `record`、`crawl`、`triage --ai`、`run --ap
 
 - **属性がありません。** 合計はフラットです。大きなアプリでの `crawl` が `record` セッションの 10 倍かかったこと、モデル X をシナリオ Y に使うとそこにトークンが集中していることを、この合計は示せません。トークンが何に使われたかがわからなければ、どこを節約すべきかを判断する根拠もありません。
 - **永続化されません。** カウンタはプロセスのメモリ上にあり、プロセスとともに消えます。`record` や `triage` や `run` の呼び出しをまたいで残るものが何もないため、履歴は蓄積されず、傾向も観測できません。
-- **コストも、プロバイダ別・モデル別の内訳もありません。** `TokenUsage` は、4 つのプロバイダ（`anthropic` ／ `bedrock` ／ `ant` ／ `claude-code`）のどれが、どのモデルで生成したかによらず、単一のカウンタ群です。ドル建ての値は一切算出しません。「AI プロバイダをより賢く使う」ための具体的な手がかりであるコストでのプロバイダ比較は、記録される内容からは不可能です。
+- **コストも、プロバイダ別・モデル別の内訳もありません。** `TokenUsage` は、4 つのプロバイダ（`api-key` ／ `bedrock` ／ `ant` ／ `claude-code`）のどれが、どのモデルで生成したかによらず、単一のカウンタ群です。ドル建ての値は一切算出しません。「AI プロバイダをより賢く使う」ための具体的な手がかりであるコストでのプロバイダ比較は、記録される内容からは不可能です。
 
 計装はすでに正しい場所にあります。`bajutsu/ai/base.py` は各バックエンドの `usage` フィールドを手を加えずに通し、すべての呼び出し箇所はすでに `usage.record(...)` を呼んでいます。足りないのはデータを*取得する*ことではなく、それを*属性付けし、値付けし、残す*ことです。呼び出し箇所を計装し直す必要はなく、変えるのは `bajutsu/usage.py` と、既存の呼び出しを囲む薄い属性付けコンテキストだけなので、この差を埋めるのは安価です。
 
@@ -34,7 +34,7 @@ Bajutsu の AI 経路、つまり `record`、`crawl`、`triage --ai`、`run --ap
 
 作業は、次の相互排他かつ網羅的（MECE）な単位からなります。
 
-1. **使用量イベントのスキーマ。** AI 呼び出しごとに 1 件の記録を定義し、`TokenUsage` にすでにあるトークン数（`input` ／ `output` ／ `cache_write` ／ `cache_read` ／ `calls`）、属性のディメンション（`command`、`provider`、`model`、`scenario`、`step`/タスクのラベル）、UTC のタイムスタンプ、算出した `cost`（null 許容。単位 3 を参照）を持たせます。素朴でバージョン付きの dict とし、ディスク上の形式が前方互換になり、既存の構造化ログのスタイル（BE-0055）に沿うようにします。
+1. **使用量イベントのスキーマ。** AI 呼び出しごとに 1 件の記録を定義し、`TokenUsage` にすでにあるトークン数（`input_tokens` ／ `output_tokens` ／ `cache_write_tokens` ／ `cache_read_tokens` ／ `calls`）、属性のディメンション（`command`、`provider`、`model`、`scenario`、`step`/タスクのラベル）、UTC のタイムスタンプ、算出した `cost`（null 許容。単位 3 を参照）を持たせます。素朴でバージョン付きの dict とし、ディスク上の形式が前方互換になり、既存の構造化ログのスタイル（BE-0055）に沿うようにします。
 
 2. **属性付けの配線。** 各呼び出し箇所を計装し直さずに、「何のためか」のディメンションを `usage.record(...)` を呼ぶ地点まで届けます。CLI コマンドや MCP ツールが設定する `contextvar` ベースのスコープ（例：`with usage.attributed(command="crawl", scenario=…, step=…):`）を使い、`bajutsu/usage.py` がイベントを記録するときにそれを読みます。プロバイダとモデルは使用中の `AiBackend` から得られるので、すべての呼び出し側が渡すのではなく、バックエンドから読みます。
 
@@ -68,7 +68,7 @@ Bajutsu の AI 経路、つまり `record`、`crawl`、`triage --ai`、`run --ap
 ## 参考
 
 - `bajutsu/usage.py` — この項目が拡張する、既存のメモリ上の `TokenUsage` 積算器。
-- `bajutsu/ai/base.py`、`bajutsu/ai/registry.py` — すでに `usage` を通している `AiBackend` の継ぎ目とプロバイダレジストリ（`anthropic` ／ `bedrock` ／ `ant` ／ `claude-code`）（[BE-0104](../BE-0104-vendor-neutral-ai-backend/BE-0104-vendor-neutral-ai-backend-ja.md)）。
+- `bajutsu/ai/base.py`、`bajutsu/ai/registry.py` — すでに `usage` を通している `AiBackend` の継ぎ目とプロバイダレジストリ（`api-key` ／ `bedrock` ／ `ant` ／ `claude-code`）（[BE-0104](../BE-0104-vendor-neutral-ai-backend/BE-0104-vendor-neutral-ai-backend-ja.md)）。
 - [BE-0055](../BE-0055-operational-logging/BE-0055-operational-logging-ja.md)（運用ログ） — この台帳が従う、構造化 JSON で秘匿情報を除去するログのスタイル。
 - [BE-0047](../BE-0047-ai-data-sovereignty/BE-0047-ai-data-sovereignty-ja.md)（AI データ主権） — 台帳が引き継ぐ秘匿情報除去の規則。
 - [BE-0169](../BE-0169-serve-metrics-observability/BE-0169-serve-metrics-observability-ja.md)（serve のメトリクスと可観測性エンドポイント） — 補完的な運用向けの `/metrics` サーフェス。
