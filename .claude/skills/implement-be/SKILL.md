@@ -77,9 +77,12 @@ grabs." Before claiming it, **check who is already assigned** — the issue is h
 sessions signal ownership, so an existing assignee means someone else has picked this item up:
 
 ```bash
-number=$(gh issue list --label roadmap-tracking --state open --search "BE-NNNN in:title" --json number --jq '.[0].number')
-gh issue view "$number" --json assignees --jq '.assignees[].login'
+number=$(gh issue list --label roadmap-tracking --state open --search "BE-NNNN in:title" --json number --jq '.[0].number // empty')
+[ -n "$number" ] && gh issue view "$number" --json assignees --jq '.assignees[].login'
 ```
+
+`.[0].number // empty` leaves `number` empty (not `null`) when no issue matches, so the guarded
+`gh issue view` simply doesn't run — fall through to the "no matching open issue" note below.
 
 - **Someone else is already assigned** (a login that isn't the account `gh` is authenticated
   as — check with `gh api user --jq .login`): **stop.** Tell the user the item is already
