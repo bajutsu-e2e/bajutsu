@@ -25,14 +25,14 @@
 
 ## 動機
 
-[BE-0038](../BE-0038-autonomous-crawl-exploration/BE-0038-autonomous-crawl-exploration.md) が実装した
+[BE-0038](../BE-0038-autonomous-crawl-exploration/BE-0038-autonomous-crawl-exploration-ja.md) が実装した
 クロールの再開は、**枝刈りされたグローバルコントロール**（タブやナビゲーションのように複数画面に共通する
-操作を、すでに他の画面が探索済みとして省略したもの。[`Pruned`](../../../bajutsu/crawl.py) として記録され
+操作を、すでに他の画面が探索済みとして省略したもの。[`Pruned`](../../bajutsu/crawl.py) として記録され
 ます）を再開する、ただ一つの用途に限られています。`bajutsu crawl --resume-src <fp> --resume-key <key> --out <既存の run>`
 は、その画面までリプレイしたうえで省略された一つの操作を探索します
-（[`bajutsu/cli/commands/crawl.py`](../../../bajutsu/cli/commands/crawl.py)）。Web UI のクロールグラフ
+（[`bajutsu/cli/commands/crawl.py`](../../bajutsu/cli/commands/crawl.py)）。Web UI のクロールグラフ
 でも、枝刈りされた操作はすべて取り消し線付きで表示され、タップすると同じリクエストが送られます
-（[`bajutsu/templates/serve.js`](../../../bajutsu/templates/serve.js) の `resumePruned`）。
+（[`bajutsu/templates/serve.js`](../../bajutsu/templates/serve.js) の `resumePruned`）。
 
 実際に「後から」使おうとすると、二つの課題が残ります。
 
@@ -42,7 +42,7 @@
 run を `runs/<id>/screenmap.json` から読み込み、枝刈りされたブランチをタップする、という使い方は今の
 実装ではできません。`crawlRunId` が `null` のままなので、タップするたびに「再開対象の run がありません」
 という失敗になります。Replay タブはシナリオ実行について同じ課題をすでに解決しており、`history` から
-run 一覧を組み立てる run ピッカーを持っています（[`serve.js`](../../../bajutsu/templates/serve.js) の
+run 一覧を組み立てる run ピッカーを持っています（[`serve.js`](../../bajutsu/templates/serve.js) の
 `loadHistory`）。Crawl タブには、過去の screen map を開き直す手段が相当するものとしてありません。
 
 **二つ目は、予算切れで止まったクロールをその先まで探索する手段がないことです。** ある程度の規模のアプリ
@@ -57,8 +57,8 @@ run 一覧を組み立てる run ピッカーを持っています（[`serve.js`
 すべての画面を再開する。一つのブランチだけではない）をエンジンに持たせ、Web UI には任意の過去の run を
 再開系の機能が前提としている状態に読み込む手段を用意します。継続探索が単一の指名されたブランチに縛ら
 れなくなれば、それをワーカー一つに縛る理由もなくなります。既存の複数ワーカーのプール
-（[BE-0064](../BE-0064-parallel-crawl/BE-0064-parallel-crawl.md) /
-[BE-0077](../BE-0077-parallel-web-crawl/BE-0077-parallel-web-crawl.md)）はそのまま適用できます。
+（[BE-0064](../BE-0064-parallel-crawl/BE-0064-parallel-crawl-ja.md) /
+[BE-0077](../BE-0077-parallel-web-crawl/BE-0077-parallel-web-crawl-ja.md)）はそのまま適用できます。
 
 ## 詳細設計
 
@@ -74,10 +74,10 @@ run 一覧を組み立てる run ピッカーを持っています（[`serve.js`
 スキーマの変更は不要です。`plan[fp]` が空でない画面 `fp` を再開するには、`paths[fp]` をクリーンな
 `reset()` の直後からリプレイし（これはライブクロール中の `select_next_work` の既存のバックトラック処理が
 すでに行っている手順と同じです）、`driver.query()` を呼んで、`candidate_actions(elements)`
-（[`bajutsu/crawl.py`](../../../bajutsu/crawl.py)）で決定的に候補を計算し、その `.describe()` が
+（[`bajutsu/crawl.py`](../../bajutsu/crawl.py)）で決定的に候補を計算し、その `.describe()` が
 `plan[fp]` にまだ残っている操作と一致するものだけを残します。これは、元のクロールが止まった時点でまだ
 試していなかった操作の集合そのものです。画面の同一性と候補の順序は要素ツリーの純粋な関数として決まるため
-（[`crawl.py`](../../../bajutsu/crawl.py) のモジュール docstring）、再開時に再導出しても最初の run が
+（[`crawl.py`](../../bajutsu/crawl.py) のモジュール docstring）、再開時に再導出しても最初の run が
 次に試したはずの候補と一致し、`plan` が約束していた内容からずれる心配はありません。
 
 ### エンジン：フロンティア全体を継続探索するモード
@@ -106,7 +106,7 @@ run 一覧を組み立てる run ピッカーを持っています（[`serve.js`
 ### Web UI
 
 - **過去の run を Crawl タブに読み込み直す。** Replay タブの `history` 由来のピッカー
-  （[`serve.js`](../../../bajutsu/templates/serve.js) の `loadHistory`）にならい、Crawl パネルに run
+  （[`serve.js`](../../bajutsu/templates/serve.js) の `loadHistory`）にならい、Crawl パネルに run
   ピッカーを追加します。run を選ぶと、既存の `loadGraph(runId)` でその `screenmap.json` を読み込み、
   `crawlRunId = runId` を設定します。これにより、枝刈りされたブランチの「タップして再開」機能が、
   それを生成したタブに限らず、任意の過去の run で使えるようになります。
@@ -114,7 +114,7 @@ run 一覧を組み立てる run ピッカーを持っています（[`serve.js`
   `resumeKey` ではなく、新しい `continue: true` モードを送る「続きを探索する」操作を追加します
   （既存の `#crawl-maxscreens`/`#crawl-maxsteps` の入力欄をそのまま再利用し、同じリクエストの中で
   予算を引き上げられるようにします）。`start_crawl`
-  （[`bajutsu/serve/operations/dispatch.py`](../../../bajutsu/serve/operations/dispatch.py)）に、既存の
+  （[`bajutsu/serve/operations/dispatch.py`](../../bajutsu/serve/operations/dispatch.py)）に、既存の
   `resuming` の分岐と並べて `continue` の分岐を追加し、`continue_crawl` フラグを `crawl_command` から
   CLI の `--continue` まで橋渡しします。
 
@@ -154,12 +154,12 @@ run 一覧を組み立てる run ピッカーを持っています（[`serve.js`
 
 ## 参考
 
-- [`bajutsu/crawl.py`](../../../bajutsu/crawl.py) — `ScreenMap`（`paths`、`plan`、`pruned`）、
+- [`bajutsu/crawl.py`](../../bajutsu/crawl.py) — `ScreenMap`（`paths`、`plan`、`pruned`）、
   `candidate_actions`、`_Coordinator.select_next_work`、`crawl()`。
-- [`bajutsu/cli/commands/crawl.py`](../../../bajutsu/cli/commands/crawl.py) — この提案が拡張する、既存の
+- [`bajutsu/cli/commands/crawl.py`](../../bajutsu/cli/commands/crawl.py) — この提案が拡張する、既存の
   `--resume-src`/`--resume-key` による単一ブランチの再開。
-- [`bajutsu/serve/operations/dispatch.py`](../../../bajutsu/serve/operations/dispatch.py)、
-  [`bajutsu/templates/serve.js`](../../../bajutsu/templates/serve.js) — `start_crawl`、`resumePruned`、
+- [`bajutsu/serve/operations/dispatch.py`](../../bajutsu/serve/operations/dispatch.py)、
+  [`bajutsu/templates/serve.js`](../../bajutsu/templates/serve.js) — `start_crawl`、`resumePruned`、
   `loadHistory`（Replay タブにある run ピッカーの先例）。
 - [BE-0038 — 自律クロール探索（App Explorer 風）](../BE-0038-autonomous-crawl-exploration/BE-0038-autonomous-crawl-exploration-ja.md)
   — 枝刈りブランチの再開を導入した項目。本提案はこれを一般化します。

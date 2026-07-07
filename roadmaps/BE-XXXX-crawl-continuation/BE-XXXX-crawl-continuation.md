@@ -28,12 +28,12 @@ to the continuation for free.
 
 [BE-0038](../BE-0038-autonomous-crawl-exploration/BE-0038-autonomous-crawl-exploration.md) shipped
 crawl resume for exactly one case: a **pruned global control**
-([`Pruned`](../../../bajutsu/crawl.py) — a tab/nav skipped because another screen already claimed
+([`Pruned`](../../bajutsu/crawl.py) — a tab/nav skipped because another screen already claimed
 it). `bajutsu crawl --resume-src <fp> --resume-key <key> --out <existing run>` replays to that
 screen and explores the one skipped operation
-([`bajutsu/cli/commands/crawl.py`](../../../bajutsu/cli/commands/crawl.py)); the Web UI's crawl
+([`bajutsu/cli/commands/crawl.py`](../../bajutsu/cli/commands/crawl.py)); the Web UI's crawl
 graph shows every pruned op struck through and tapping one fires the same request
-([`bajutsu/templates/serve.js`](../../../bajutsu/templates/serve.js), `resumePruned`).
+([`bajutsu/templates/serve.js`](../../bajutsu/templates/serve.js), `resumePruned`).
 
 Two real gaps remain once you actually try to use this after the fact:
 
@@ -43,7 +43,7 @@ that started (or last resumed) a crawl in *that page*. There is no way to open t
 a run that finished five minutes — or five days — ago from `runs/<id>/screenmap.json`, and tap one
 of its pruned branches: `crawlRunId` is `null`, and every tap fails with "no active run to resume".
 The Replay tab already solves the analogous problem for scenario runs with a run picker fed by
-`history` ([`serve.js`](../../../bajutsu/templates/serve.js), `loadHistory`); the Crawl tab has no
+`history` ([`serve.js`](../../bajutsu/templates/serve.js), `loadHistory`); the Crawl tab has no
 equivalent for reopening a past screen map.
 
 **2. There is no way to keep exploring once a crawl stops on a budget.** `stop_reason` is
@@ -75,10 +75,10 @@ that way for the report/live-graph view:
 No schema change is needed. To resume screen `fp` with `plan[fp]` non-empty: replay `paths[fp]`
 from a clean `reset()` (the same replay `select_next_work`'s existing backtrack path already does
 for a live crawl), call `driver.query()`, compute the deterministic candidates with
-`candidate_actions(elements)` ([`bajutsu/crawl.py`](../../../bajutsu/crawl.py)), and keep only the
+`candidate_actions(elements)` ([`bajutsu/crawl.py`](../../bajutsu/crawl.py)), and keep only the
 ones whose `.describe()` matches an entry still listed in `plan[fp]`. That is the exact set the
 original crawl had not yet tried when it stopped — screen identity and candidate ordering are pure
-functions of the element tree ([`crawl.py`](../../../bajutsu/crawl.py) module docstring), so
+functions of the element tree ([`crawl.py`](../../bajutsu/crawl.py) module docstring), so
 re-deriving them on resume reproduces the same candidates the first run would have tried next,
 with no risk of drifting from what `plan` promised.
 
@@ -109,14 +109,14 @@ rejects both being set).
 
 - **Reopen a past run into the Crawl tab.** Add a run picker to the Crawl panel, mirroring the
   Replay tab's `history`-fed picker (`loadHistory` in
-  [`serve.js`](../../../bajutsu/templates/serve.js)): choosing a run loads its `screenmap.json` via
+  [`serve.js`](../../bajutsu/templates/serve.js)): choosing a run loads its `screenmap.json` via
   the existing `loadGraph(runId)` and sets `crawlRunId = runId`, so the pruned-branch "tap to
   resume" affordance works on any past run, not only the tab that produced it.
 - **A "continue exploring" control.** Next to the pruned-branch rows in the plan tree, add a
   "continue exploring" action that posts the new `continue: true` mode (reusing the existing
   `#crawl-maxscreens`/`#crawl-maxsteps` inputs so the user can raise the budget in the same request)
   instead of a single `resumeSrc`/`resumeKey`. `start_crawl`
-  ([`bajutsu/serve/operations/dispatch.py`](../../../bajutsu/serve/operations/dispatch.py)) grows a
+  ([`bajutsu/serve/operations/dispatch.py`](../../bajutsu/serve/operations/dispatch.py)) grows a
   `continue` branch alongside its existing `resuming` branch, threading a `continue_crawl` flag
   through `crawl_command` to the CLI's `--continue`.
 
@@ -155,12 +155,12 @@ rejects both being set).
 
 ## References
 
-- [`bajutsu/crawl.py`](../../../bajutsu/crawl.py) — `ScreenMap` (`paths`, `plan`, `pruned`),
+- [`bajutsu/crawl.py`](../../bajutsu/crawl.py) — `ScreenMap` (`paths`, `plan`, `pruned`),
   `candidate_actions`, `_Coordinator.select_next_work`, `crawl()`.
-- [`bajutsu/cli/commands/crawl.py`](../../../bajutsu/cli/commands/crawl.py) — the existing
+- [`bajutsu/cli/commands/crawl.py`](../../bajutsu/cli/commands/crawl.py) — the existing
   `--resume-src`/`--resume-key` single-branch resume this proposal extends.
-- [`bajutsu/serve/operations/dispatch.py`](../../../bajutsu/serve/operations/dispatch.py),
-  [`bajutsu/templates/serve.js`](../../../bajutsu/templates/serve.js) — `start_crawl`,
+- [`bajutsu/serve/operations/dispatch.py`](../../bajutsu/serve/operations/dispatch.py),
+  [`bajutsu/templates/serve.js`](../../bajutsu/templates/serve.js) — `start_crawl`,
   `resumePruned`, `loadHistory` (the run-picker precedent from the Replay tab).
 - [BE-0038 — Autonomous crawl exploration](../BE-0038-autonomous-crawl-exploration/BE-0038-autonomous-crawl-exploration.md)
   — introduced pruned-branch resume, which this item generalizes.
