@@ -1,0 +1,50 @@
+{
+  "nodes": [
+    {
+      "fingerprint": "home0000000000000000000000000000000000000",
+      "kind": "id",
+      "ids": ["home.detail", "home.tab"],
+      "actions": ["home.detail", "home.tab"],
+      "blocked": [],
+      "targets": {}
+    },
+    {
+      "fingerprint": "detail000000000000000000000000000000000000",
+      "kind": "id",
+      "ids": ["detail.back", "detail.more"],
+      "actions": ["detail.back", "detail.more"],
+      "blocked": [],
+      "targets": {}
+    }
+  ],
+  "edges": [
+    {
+      "src": "home0000000000000000000000000000000000000",
+      "action": "tap home.detail",
+      "dst": "detail000000000000000000000000000000000000",
+      "alert": []
+    }
+  ],
+  "crashes": [],
+  "alerts": [],
+  "plan": {
+    "detail000000000000000000000000000000000000": ["tap detail.more"]
+  },
+  "paths": {
+    "home0000000000000000000000000000000000000": [],
+    "detail000000000000000000000000000000000000": [{ "kind": "tap", "target": "home.detail" }]
+  },
+  "pruned": [
+    {
+      "src": "detail000000000000000000000000000000000000",
+      "action": "tap home.tab",
+      "key": "home.tab",
+      "owner": "home0000000000000000000000000000000000000",
+      "path": [
+        { "kind": "tap", "target": "home.detail" },
+        { "kind": "tap", "target": "home.tab" }
+      ]
+    }
+  ],
+  "stop_reason": "max_screens"
+}

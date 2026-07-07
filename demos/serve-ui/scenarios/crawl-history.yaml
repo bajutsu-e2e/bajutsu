@@ -1,0 +1,36 @@
+# Crawl history + continuation — reopening a past crawl run (BE-0180) and continuing it (BE-0181).
+# The inner serve is pointed at demos/serve-ui/fixtures/crawl-runs (see dogfood.config.yaml), a
+# committed screen map that stopped on a budget with one screen still in its `plan` — a non-empty
+# frontier and one pruned global control. Deterministic: selecting the run reopens its stored map
+# read-only (the SPA nulls crawlRunId and shows the past-crawl badge) and, because a frontier
+# remains, reveals the "continue exploring" control; the reopened plan tree renders the frontier op
+# and the pruned branch. Nothing is started — continuing/resuming would launch an AI crawl (a run,
+# out of scope for this deterministic net), so only the controls' presence and the rendered map are
+# asserted, never a crawl.
+description: >-
+  Crawl history — a past crawl run reopens read-only with the past-crawl badge, and because it
+  stopped with a remaining frontier it offers "continue exploring"; the reopened plan tree shows the
+  frontier op and the pruned branch.
+scenarios:
+  - name: a past crawl run reopens read-only and offers continue exploring
+    description: On the Crawl History tab, select the fixture past run; its map reopens read-only (past-crawl badge), the continue-exploring control appears, and the plan tree renders the frontier op and pruned branch.
+    steps:
+      - tap: { id: nav.crawl }
+      - tap: { id: crawl.tab-history }
+      # The list fills from /api/crawl/runs; poll until the fixture run id reaches it, then select it
+      # (the label check retries natively when this scenario is exported as a Playwright test).
+      - wait: { for: { id: crawl.history, labelMatches: "20260101" }, timeout: 10 }
+      - tap: { id: crawl.history-item }
+      # Selecting a past run reveals the read-only badge and the continue control (both start hidden,
+      # so the SPA toggles them into the tree via the `hidden` attribute — the backend sees them once shown).
+      - wait: { for: { id: crawl.past-badge }, timeout: 10 }
+      - assert:
+          - label: { sel: { id: crawl.past-badge }, contains: "20260101" }
+          - label: { sel: { id: crawl.continue }, contains: "continue exploring" }
+          # The reopened map's plan tree renders the remaining frontier op and the pruned branch
+          # (BE-0181 makes that pruned branch resumable from a past run).
+          - label: { sel: { id: crawl.plan }, contains: "detail.more" }
+          - label: { sel: { id: crawl.plan }, contains: "home.tab" }
+    expect:
+      - exists: { id: crawl.past-badge }
+      - exists: { id: crawl.continue }

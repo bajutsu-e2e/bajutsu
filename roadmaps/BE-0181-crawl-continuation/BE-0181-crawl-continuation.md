@@ -166,6 +166,11 @@ Log:
   [BE-0180](../BE-0180-crawl-history-viewer/BE-0180-crawl-history-viewer.md), which had already
   added the Crawl-tab run picker (deliberately read-only), so gap #1 became an explicit un-lock
   rather than arming the picker on selection.
+- Added deterministic Web-UI e2e coverage (BE-0189 serve-UI dogfood): a committed crawl-history
+  fixture (`demos/serve-ui/fixtures/crawl-runs`) the inner serve's `--runs` points at, and
+  `demos/serve-ui/scenarios/crawl-history.yaml` asserting a past run reopens read-only (past-crawl
+  badge) and, with a remaining frontier, offers the *continue exploring* control — the AI-driven
+  continue/resume click stays out of the deterministic net, only the control's presence is asserted.
 
 ## References
 

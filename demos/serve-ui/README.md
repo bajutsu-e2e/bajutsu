@@ -16,6 +16,7 @@ from machine assertions, never an LLM.
 | `scenarios/shell-navigation.yaml` | the top tabs (Record / Replay / Crawl / Author / Stats / Coverage) swap the visible view |
 | `scenarios/theme.yaml` | the theme toggle follows the OS preference and flips on click |
 | `scenarios/crawl-form.yaml` | the Crawl form holds the bound target and the default exploration budget |
+| `scenarios/crawl-history.yaml` | a past crawl run reopens read-only (past-crawl badge), and one with a remaining frontier offers "continue exploring" — driven off the committed `fixtures/crawl-runs` run |
 | `scenarios/modals.yaml` | the config browser and Settings panel open/close; the AI provider needs an explicit choice (no default — Save is rejected until one is picked) |
 | `scenarios/config-sources.yaml` | the config modal offers all three binding sources — the file browser (listing `--root`), a Git spec, and a bundle upload |
 | `scenarios/replay-contract.yaml` | a bound config reaches the Replay pickers (config → `/api/targets` → `/api/scenarios`) |
@@ -93,6 +94,8 @@ and the AI-driven flows are excluded from any deterministic gate **by design** (
 | Codegen export (Playwright emit offered, spec + filename, close) | `replay-tools.yaml` |
 | Platform-aware controls (web hides iOS device UI, shows headed) | `platform-ui.yaml` |
 | Crawl form: bound target, default budget (1 / 50 / 200), Start offered | `crawl-form.yaml` |
+| Crawl History: reopen a past run read-only (past-crawl badge), plan tree renders the stored map | `crawl-history.yaml` |
+| Crawl continue exploring: a past run with a remaining frontier offers the continue control | `crawl-history.yaml` |
 | Author modes show each mode's controls | `author-modes.yaml` |
 | Author Edit: Load fills + grades the YAML; inline lint flags invalid YAML | `author-editor.yaml` |
 | Stats dashboard renders | `stats.yaml` |
@@ -100,11 +103,15 @@ and the AI-driven flows are excluded from any deterministic gate **by design** (
 
 **Not exercised by the dogfood, and why:**
 
-- **AI-driven flows** — Record's Generate, Crawl's Start, Enrich's proposals, Triage with Claude.
-  Excluded from every deterministic net by design: an LLM must never sit on a gate's verdict path.
+- **AI-driven flows** — Record's Generate, Crawl's Start, and its **continue exploring** / pruned
+  **resume** (both launch a crawl), Enrich's proposals, Triage with Claude. Excluded from every
+  deterministic net by design: an LLM must never sit on a gate's verdict path. `crawl-history.yaml`
+  asserts the continue control is *offered*, never clicks it.
 - **Flows that need a prior run** — the embedded report's content, visual Approve, Triage (even
-  rule-based), History entries, Coverage's run fold-in. The run history is host state, so
-  asserting its content would be machine-dependent; the operations behind them are pytest-covered.
+  rule-based), Replay History entries, Coverage's run fold-in. The Replay run history is host state,
+  so asserting its content would be machine-dependent; the operations behind them are pytest-covered.
+  The one exception is the **Crawl** History, now driven off a committed `fixtures/crawl-runs` screen
+  map (BE-0181) so its read-only reopen and the continue control are asserted deterministically.
 - **Run execution round-trips** — Replay's Run and Record's in-place ▶ Run start a nested
   `bajutsu run` (a browser inside the browser test); deferred in BE-0058.
 - **Native `<select>` option switching** — the coordinate-tapping web backend cannot open a native

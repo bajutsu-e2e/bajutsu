@@ -911,7 +911,7 @@ async function loadCrawlHistory(){
   const tab=$('#crawl-histtab');if(tab)tab.textContent='History'+(runs.length?` (${runs.length})`:'');
   const ul=$('#crawl-history');
   if(!runs.length){ul.innerHTML='<li class="muted">no crawls yet</li>';return}
-  ul.innerHTML=runs.map(r=>`<li data-id="${esc(r.id)}"${r.id===crawlHistoryRun?' class="sel"':''}><span class="hid">${esc(r.id)}</span><span class="hsum">${r.screens} screens · ${r.transitions} transitions${r.crashes?' · '+r.crashes+' crashes':''}</span></li>`).join('');
+  ul.innerHTML=runs.map(r=>`<li data-id="${esc(r.id)}" data-testid="crawl.history-item"${r.id===crawlHistoryRun?' class="sel"':''}><span class="hid">${esc(r.id)}</span><span class="hsum">${r.screens} screens · ${r.transitions} transitions${r.crashes?' · '+r.crashes+' crashes':''}</span></li>`).join('');
   ul.querySelectorAll('li[data-id]').forEach(li=>li.addEventListener('click',()=>{
     const r=runs.find(x=>x.id===li.dataset.id);if(r)viewCrawlRun(r);
     ul.querySelectorAll('li').forEach(x=>x.classList.remove('sel'));li.classList.add('sel');

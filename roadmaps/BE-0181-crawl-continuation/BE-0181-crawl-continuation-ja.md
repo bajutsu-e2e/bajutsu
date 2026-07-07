@@ -166,6 +166,11 @@ run 一覧を組み立てる run ピッカーを持っています（[`serve.js`
   ピッカー（意図的に読み取り専用）を出荷していた
   [BE-0180](../BE-0180-crawl-history-viewer/BE-0180-crawl-history-viewer-ja.md) と整合させ、gap #1 は
   選択時にピッカーを起動可能にするのではなく、明示的な解除としました。
+- 決定的な Web UI の e2e カバレッジを追加しました（BE-0189 の serve-UI dogfood）。内側の serve の
+  `--runs` が指すコミット済みの crawl-history フィクスチャ（`demos/serve-ui/fixtures/crawl-runs`）と、
+  過去の run が読み取り専用で開き直し（past-crawl バッジ）、フロンティアが残る場合に「続きを探索する」
+  コントロールを出すことをアサートする `demos/serve-ui/scenarios/crawl-history.yaml` を追加しました。
+  AI 駆動の continue / resume のクリックは決定的な網の外に置き、コントロールの提示だけをアサートします。
 
 ## 参考
 
