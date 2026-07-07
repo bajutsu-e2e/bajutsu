@@ -158,8 +158,8 @@ def _confined_config_path(root: Path, raw: str) -> Path | None:
     if not raw or not raw.strip() or "\x00" in raw:
         return None
     try:
-        base = root.resolve()
-        target = (base / raw.strip()).resolve()
+        base = root.resolve(strict=False)
+        target = (base / raw.strip()).resolve(strict=False)
     except (OSError, RuntimeError, ValueError):
         return None
     if not target.is_relative_to(base):
