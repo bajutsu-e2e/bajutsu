@@ -29,6 +29,7 @@ from bajutsu.ai import (
     TextPart,
     ToolDef,
     create_backend,
+    resolved_provider,
 )
 from bajutsu.anthropic_client import AiConfig, language_instruction, resolve_model
 from bajutsu.drivers import base
@@ -381,7 +382,8 @@ class ClaudeActionProposer:
                 max_tokens=self._max_tokens,
             )
         )
-        usage.record(response.usage)  # reporting only (BE-0104) — never on the pass/fail path
+        # reporting only (BE-0104) — never on the pass/fail path
+        usage.record(response.usage, provider=resolved_provider(self._ai), model=self._model)
         block = response.first_tool_use()
         if block is None:
             return Proposal()

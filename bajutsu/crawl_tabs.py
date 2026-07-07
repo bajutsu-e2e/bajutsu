@@ -31,6 +31,7 @@ from bajutsu.ai import (
     TextPart,
     ToolDef,
     create_backend,
+    resolved_provider,
 )
 from bajutsu.alerts import _fraction, _png_size
 from bajutsu.anthropic_client import AiConfig, language_instruction, resolve_model
@@ -214,5 +215,6 @@ class ClaudeTabLocator:
                 max_tokens=512,
             )
         )
-        usage.record(response.usage)  # reporting only (BE-0104) — never on the pass/fail path
+        # reporting only (BE-0104) — never on the pass/fail path
+        usage.record(response.usage, provider=resolved_provider(self._ai), model=self._model)
         return _targets_of(response, width, height)

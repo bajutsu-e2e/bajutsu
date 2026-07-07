@@ -17,6 +17,7 @@ from bajutsu import usage as _usage
 from bajutsu.cli._shared import (
     DEFAULT_CONFIG,
     _ai_redactor,
+    _install_usage_ledger,
     _load_effective,
     _require_ai_credential,
     _warn_onscreen_secrets,
@@ -89,6 +90,8 @@ def triage(
         # are not redacted (BE-0151).
         _warn_onscreen_secrets(eff)
         agent = ClaudeTriageAgent(ai=eff.ai, redactor=_ai_redactor(eff))
+        # Attribute the triage agent's AI tokens/cost to the `triage` command (BE-0196).
+        _install_usage_ledger(eff, "triage")
     else:
         agent = _triage.HeuristicTriageAgent()
     before = _usage.snapshot()

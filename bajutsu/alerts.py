@@ -28,6 +28,7 @@ from bajutsu.ai import (
     TextPart,
     ToolDef,
     create_backend,
+    resolved_provider,
 )
 from bajutsu.anthropic_client import AiConfig, resolve_model
 from bajutsu.drivers import base
@@ -197,5 +198,10 @@ class ClaudeAlertLocator:
                 max_tokens=512,
             )
         )
-        usage.record(response.usage, usage.CATEGORY_ALERT)
+        usage.record(
+            response.usage,
+            usage.CATEGORY_ALERT,
+            provider=resolved_provider(self._ai),
+            model=self._model,
+        )
         return _decision_of(response, width, height)

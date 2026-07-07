@@ -8,12 +8,17 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from bajutsu.drivers import base
 
 import typer
 
 from bajutsu import github
 from bajutsu import simctl as _simctl
 from bajutsu import usage as _usage
+from bajutsu import usage_ledger as _usage_ledger
 from bajutsu.ai import credential_gap
 from bajutsu.anthropic_client import key_env as ac_key_env
 from bajutsu.artifact_perms import make_run_dir
@@ -29,7 +34,7 @@ from bajutsu.cli._shared import (
     _with_headed,
 )
 from bajutsu.config import WEB_ENGINES, Effective, IosConfig, web_engine
-from bajutsu.orchestrator import BlockedHandler, RunResult
+from bajutsu.orchestrator import AlertEvent, BlockedHandler, RunResult
 from bajutsu.report.archive import archive_run_dir
 from bajutsu.runner import device_pool, run_all, run_and_report, run_matrix_and_report
 from bajutsu.runner.build import BuildError, build_if_missing
@@ -397,7 +402,16 @@ def _alert_guard_factory(
         # Trailing `or None` normalizes an empty instruction (e.g. config `instruction: ""`) to the
         # guard's built-in default, matching how `default_instruction` drops an empty --alert-instruction.
         instruction = scenario_instruction or default_instruction or target_instruction or None
-        return SystemAlertGuard(locator, instruction).dismiss
+        handler = SystemAlertGuard(locator, instruction).dismiss
+
+        # Attribute the guard's AI tokens/cost to this scenario (BE-0196). The handler fires inside
+        # the runner's `ThreadPoolExecutor` worker, so the scope must be entered *there* — a contextvar
+        # bound on the main thread would not reach the worker under `run --workers N`.
+        def _attributed(driver: base.Driver) -> AlertEvent | None:
+            with _usage_ledger.attributed(command="run", scenario=s.name):
+                return handler(driver)
+
+        return _attributed
 
     return _guard_for
 
@@ -898,6 +912,11 @@ def run(
         evidence_store=evidence_store,
         upload_exec=upload_exec,
     )
+    # Install the usage/cost ledger before dispatch (BE-0196). Reporting only — emission is
+    # best-effort and off the deterministic verdict path (prime directive 1). Per-scenario `command`
+    # / `scenario` attribution is bound at the alert guard (`_alert_guard_factory`), which fires
+    # inside the runner's worker threads, so it reaches the worker under `run --workers N`.
+    _usage_ledger.configure_from_ai_config(eff.ai)
     # Snapshot AI usage before dispatch — the alert guard is the only thing that can spend tokens,
     # and it fires during dispatch, so `_finish` reports exactly what this run used.
     before = _usage.snapshot()

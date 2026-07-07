@@ -8,13 +8,29 @@ one place. Plain functions/classes (not fixtures) so they can be used at module 
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
+import pytest
+
+from bajutsu import usage_ledger
 from bajutsu.ai.base import MessageRequest, MessageResponse, ToolUseBlock
 from bajutsu.drivers import base
 from bajutsu.drivers.fake import FakeDriver
 from scripts.build_roadmap_index import tracking_issue_url
+
+
+@pytest.fixture(autouse=True)
+def _reset_usage_ledger() -> Iterator[None]:
+    """Detach the process-global usage ledger and attribution around every test (BE-0196).
+
+    A CLI-command test installs the ledger and binds attribution via module globals that outlive
+    the test; resetting on both sides keeps that state from leaking between tests in a worker.
+    """
+    usage_ledger.reset()
+    yield
+    usage_ledger.reset()
 
 
 class ShotDriver(FakeDriver):

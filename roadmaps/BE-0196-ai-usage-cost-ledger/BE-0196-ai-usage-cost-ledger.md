@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0196](BE-0196-ai-usage-cost-ledger.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0196") |
+| Implementing PR | [#783](https://github.com/bajutsu-e2e/bajutsu/pull/783) |
 | Topic | AI usage and cost observability |
 <!-- /BE-METADATA -->
 
@@ -119,12 +120,20 @@ The work is the following mutually exclusive, collectively exhaustive units:
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Usage event schema (versioned record shape)
-- [ ] Attribution plumbing (contextvar scope around `usage.record`)
-- [ ] Per-provider/per-model cost computation + config-sourced pricing table
-- [ ] Append-only JSONL ledger (persistence + redaction)
-- [ ] Preserve the existing in-memory total and CLI summary
-- [ ] Tests (schema, pricing incl. `cost = null`, attribution, round-trip)
+- [x] Usage event schema (versioned record shape)
+- [x] Attribution plumbing (contextvar scope around `usage.record`)
+- [x] Per-provider/per-model cost computation + config-sourced pricing table
+- [x] Append-only JSONL ledger (persistence + redaction)
+- [x] Preserve the existing in-memory total and CLI summary
+- [x] Tests (schema, pricing incl. `cost = null`, attribution, round-trip)
+
+Log:
+
+- [#783](https://github.com/bajutsu-e2e/bajutsu/pull/783) — Land the ledger: `bajutsu/usage_ledger.py` (versioned `UsageEvent`, `Pricing` table
+  with a shipped default overridable by `ai.pricing`, `attributed` contextvar scope, append-only
+  `JsonlLedger`), extend `usage.record` to emit best-effort attributed events, add the `ai.pricing`
+  / `ai.usageLedger` config, and wire `record` / `crawl` / `triage` / `run` to install the ledger and
+  bind attribution (`run` binds per-scenario at the alert guard so it reaches worker threads).
 
 ## References
 
