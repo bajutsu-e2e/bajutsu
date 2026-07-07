@@ -1,14 +1,14 @@
-[English](BE-XXXX-configurable-ai-output-language.md) · **日本語**
+[English](BE-0188-configurable-ai-output-language.md) · **日本語**
 
-# BE-XXXX — AI 出力言語を record と crawl で設定可能にする
+# BE-0188 — AI 出力言語を record と crawl で設定可能にする
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
 |---|---|
-| 提案 | [BE-XXXX](BE-XXXX-configurable-ai-output-language-ja.md) |
+| 提案 | [BE-0188](BE-0188-configurable-ai-output-language-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **提案** |
-| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0188") |
 | トピック | AI provider configuration |
 <!-- /BE-METADATA -->
 

@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-configurable-ai-output-language-ja.md)
+**English** · [日本語](BE-0188-configurable-ai-output-language-ja.md)
 
-# BE-XXXX — Configurable AI output language for record and crawl
+# BE-0188 — Configurable AI output language for record and crawl
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-configurable-ai-output-language.md) |
+| Proposal | [BE-0188](BE-0188-configurable-ai-output-language.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0188") |
 | Topic | AI provider configuration |
 <!-- /BE-METADATA -->
 
