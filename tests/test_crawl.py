@@ -1161,3 +1161,37 @@ def test_cli_crawl_fails_closed_without_credential(
     r = _cli.invoke(app, ["crawl", "--target", "demo", "--config", str(cfg)])
     assert r.exit_code == 2
     assert "no AI credential" in r.output and "ANTHROPIC_API_KEY" in r.output
+
+
+# --- screen_identity: transition signature that ignores per-element state (BE-0178) ---
+
+
+def test_screen_identity_structural_ignores_state_traits() -> None:
+    # On an id-poor screen (structural fallback), a control merely enabling mid-batch must NOT read
+    # as a transition — else a form-fill batch that enables Submit would wrongly abort.
+    disabled = [el(label="Submit", traits=["button", "notEnabled"])]
+    enabled = [el(label="Submit", traits=["button"])]
+    assert crawl.screen_identity(disabled) == crawl.screen_identity(enabled)
+    # fingerprint stays state-sensitive (the crawl explores distinct control-state combinations).
+    assert crawl.fingerprint(disabled) != crawl.fingerprint(enabled)
+
+
+def test_screen_identity_structural_changes_when_an_element_appears() -> None:
+    one = [el(label="A", traits=["button"])]
+    two = [
+        el(label="A", traits=["button"]),
+        el(label="B", traits=["button"], frame=(0, 20, 10, 10)),
+    ]
+    assert crawl.screen_identity(one) != crawl.screen_identity(two)  # a real transition
+
+
+def test_screen_identity_is_kind_prefixed() -> None:
+    # Crossing the id-count threshold changes kind, so the identity differs (a transition worth
+    # aborting on) — the prefix rules out an accidental id/structural hash collision.
+    ids = [
+        el(identifier="x0", traits=["button"]),
+        el(identifier="x1", traits=["button"], frame=(0, 20, 10, 10)),
+    ]
+    struct = [el(label="A", traits=["button"])]
+    assert crawl.screen_identity(ids).startswith("id:")
+    assert crawl.screen_identity(struct).startswith("structural:")

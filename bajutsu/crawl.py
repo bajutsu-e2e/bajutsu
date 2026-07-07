@@ -42,6 +42,10 @@ TAP_TRAITS = frozenset({"button", "link", "switch", "tab"})
 INPUT_TRAITS = frozenset({"textField", "searchField", "secureTextField"})
 # Any interactive control — used by the structural fingerprint and blocked-control detection.
 ACTIONABLE_TRAITS = TAP_TRAITS | INPUT_TRAITS
+# Interactive-*state* traits (as opposed to a control's kind). `screen_identity` drops these from
+# its structural signature so a control merely enabling/deselecting mid-batch isn't read as a screen
+# transition (BE-0178); `fingerprint` keeps them, since the crawl explores distinct control states.
+_STATE_TRAITS = frozenset({base.Trait.NOT_ENABLED, base.Trait.SELECTED})
 
 # Below this many id-bearing elements, the id set is too thin to identify a screen reliably,
 # so fall back to a structural fingerprint (flagged as less stable). See DESIGN §5.
@@ -329,22 +333,30 @@ def _fingerprint_token(element: base.Element) -> str:
 
 
 def _reduce(
-    elements: list[base.Element], id_token: Callable[[base.Element], str]
+    elements: list[base.Element],
+    id_token: Callable[[base.Element], str],
+    *,
+    stateless_structure: bool = False,
 ) -> tuple[str, str]:
     """Reduce a screen to `(hash, kind)` via id tokens or a structural fallback.
 
     The sorted id-derived tokens when the screen is instrumented (`kind="id"`), else a structural
     traits+frame hash (`kind="structural"`, the less-stable fallback for too few identifiers).
     `id_token` maps each id-bearing element to its contribution, so the caller chooses whether that
-    token carries per-element state.
+    token carries per-element state. `stateless_structure` additionally drops `_STATE_TRAITS` from
+    the structural path's traits, so an id-poor screen's signature ignores enabled/selected changes
+    too (screen_identity needs this; fingerprint keeps state on both paths).
     """
     if len({i for el in elements if (i := _id_of(el))}) >= _MIN_IDS_FOR_ID_FINGERPRINT:
         return _hash(sorted({id_token(el) for el in elements if _id_of(el)})), "id"
-    structure = sorted(
-        f"{','.join(el.get('traits') or [])}@{_frame_bucket(el)}"
-        for el in elements
-        if ACTIONABLE_TRAITS & _traits(el)
-    )
+
+    def _struct(el: base.Element) -> str:
+        traits = el.get("traits") or []
+        if stateless_structure:
+            traits = [t for t in traits if t not in _STATE_TRAITS]
+        return f"{','.join(traits)}@{_frame_bucket(el)}"
+
+    structure = sorted(_struct(el) for el in elements if ACTIONABLE_TRAITS & _traits(el))
     return _hash(structure), "structural"
 
 
@@ -363,24 +375,18 @@ def fingerprint(elements: list[base.Element]) -> Fingerprint:
 def screen_identity(elements: list[base.Element]) -> str:
     """A transition signature for BE-0178's intra-screen batch-abort check.
 
-    Shares `fingerprint`'s id-or-structural reduction but keys the id path on the bare identifier,
-    deliberately omitting per-element *state* (a field's fill, a control's enabled/selected flags).
-    The record loop compares it after each batched step to abort on a genuine transition (elements
-    appearing/disappearing, a navigation), not on a field the batch itself just filled: `fingerprint`
-    folds fill-state into its tokens (a typed text field gains a `=` marker), so using it here would
-    abort the very form-fill batching the feature exists to enable. Determinism is unchanged — a pure
-    comparison, no LLM.
+    Shares `fingerprint`'s id-or-structural reduction but keys the id path on the bare identifier and
+    strips interactive-state traits from the structural path, deliberately omitting per-element
+    *state* (a field's fill, a control's enabled/selected flags) on both. The record loop compares it
+    after each batched step to abort on a genuine transition (elements appearing/disappearing, a
+    navigation), not on a field the batch itself just filled or a Submit button it just enabled:
+    `fingerprint` folds that state into its tokens, so using it here would abort the very form-fill
+    batching the feature exists to enable. Determinism is unchanged — a pure comparison, no LLM.
     """
-    h, kind = _reduce(elements, lambda el: _id_of(el) or "")
-    if kind == "id":
-        return f"id:{h}"
-    stateful = {base.Trait.NOT_ENABLED, base.Trait.SELECTED}
-    structure = sorted(
-        f"{','.join(t for t in (el.get('traits') or []) if t not in stateful)}@{_frame_bucket(el)}"
-        for el in elements
-        if ACTIONABLE_TRAITS & _traits(el)
-    )
-    return f"structural:{_hash(structure)}"
+    value, kind = _reduce(elements, lambda el: _id_of(el) or "", stateless_structure=True)
+    # Prefix with the reduction kind so an id-path signature can never accidentally equal a
+    # structural-path one — crossing the id-count threshold is itself a transition worth aborting on.
+    return f"{kind}:{value}"
 
 
 def _frame_bucket(element: base.Element) -> tuple[int, int, int, int]:
