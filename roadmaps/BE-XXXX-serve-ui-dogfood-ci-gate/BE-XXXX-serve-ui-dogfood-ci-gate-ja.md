@@ -9,7 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **提案** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
-| トピック | Dogfood fixtures (web UI) |
+| トピック | Dogfood フィクスチャ（Web UI） |
 | 関連 | [BE-0058](../BE-0058-dogfood-web-ui/BE-0058-dogfood-web-ui-ja.md), [BE-0101](../BE-0101-ai-free-zero-config/BE-0101-ai-free-zero-config-ja.md) |
 | 由来 | Dogfooding |
 <!-- /BE-METADATA -->
