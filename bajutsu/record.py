@@ -27,6 +27,12 @@ _logger = logging.getLogger(__name__)
 # A live-progress sink: each turn's decision is handed to it as a one-line string.
 Reporter = Callable[[str], None]
 
+# The long-edge cap for the authoring screenshot (BE-0193). Anthropic bills an image by its pixel
+# dimensions and derives no benefit above ~1568px on the long edge, so a full-resolution Simulator
+# capture pays for pixels the model discards. A global constant, not a `targets.<name>` knob: the
+# right resolution is a property of the model's image handling, not of the app under test.
+MAX_IMAGE_LONG_EDGE = 1568
+
 
 def _format_elapsed(seconds: float) -> str:
     """Wall-clock duration as a compact string — `13.4s`, or `2m 03s` past a minute."""
@@ -142,6 +148,28 @@ def _tokenize_secrets(step: Step, secret_tokens: list[tuple[str, str]]) -> tuple
     ), substituted
 
 
+def _downscaled(data: bytes) -> bytes:
+    """Right-size the captured PNG to `MAX_IMAGE_LONG_EDGE` before it reaches the model (BE-0193).
+
+    Applied here, on the shared authoring capture path, so every backend (iOS and web) hands the
+    model the same bounded image and the vendor-neutral adapter stays a pure translator (BE-0104).
+    Pillow lives in the `visual` extra, which `record` does not require; without it the full-
+    resolution bytes pass through unchanged (the screenshot is best-effort either way) and the
+    provider's own server-side downscale still bounds the cost. The downscale is an optimization,
+    not a correctness requirement: a capture Pillow cannot decode is sent as-is rather than dropped.
+    """
+    try:
+        from bajutsu.visual import downscale_png
+
+        return downscale_png(data, MAX_IMAGE_LONG_EDGE)
+    except ImportError:
+        _logger.debug("Pillow not installed; sending the screenshot at full resolution")
+        return data
+    except Exception as exc:
+        _logger.debug("screenshot downscale skipped (%s); sending at full resolution", exc)
+        return data
+
+
 def _screenshot_bytes(driver: base.Driver) -> bytes | None:
     """Capture a PNG of the current screen as bytes (best-effort).
 
@@ -155,7 +183,8 @@ def _screenshot_bytes(driver: base.Driver) -> bytes | None:
         with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
             path = tmp.name
         driver.screenshot(path)
-        return Path(path).read_bytes() or None
+        data = Path(path).read_bytes() or None
+        return _downscaled(data) if data is not None else None
     except Exception as exc:
         _logger.warning("screenshot capture failed: %s", exc, exc_info=True)
         return None
