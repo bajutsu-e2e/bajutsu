@@ -26,18 +26,18 @@ removing vision or weakening any determinism guarantee.
 ## Motivation
 
 The record loop (`bajutsu/record.py:record`) captures a screenshot every iteration
-(`_screenshot_bytes`, `record.py:131`) and `ClaudeAgent` attaches it to the turn's user message
-whenever it is present (`_user_content` / `ImagePart`, `bajutsu/claude_agent.py:518`). The image is
+(`_screenshot_bytes` in `bajutsu/record.py`) and `ClaudeAgent` attaches it to the turn's user message
+whenever it is present (`_user_content` / `ImagePart` in `bajutsu/claude_agent.py`). The image is
 sent as a raw PNG and base64-encoded verbatim into the request (`bajutsu/ai/anthropic.py`).
 
 Two facts make this the right thing to attack:
 
 - **The image dominates the per-turn cost.** The record loop does *not* resend a growing transcript
   — each `next_action` is a fresh single-user-message request, and only a compact last-6-actions
-  summary carries state forward (`_render`, `claude_agent.py:317`). So per-turn input is roughly
+  summary carries state forward (`_render` in `claude_agent.py`). So per-turn input is roughly
   constant across a session; the bulk of it is the screenshot plus the element tree.
 - **The image is never cached.** Prompt caching covers only the static system prompt and tool
-  definitions (`cache_control: ephemeral`, `bajutsu/ai/anthropic.py:79`); the per-turn observation —
+  definitions (`cache_control: ephemeral` in `bajutsu/ai/anthropic.py`); the per-turn observation —
   image + elements — is uncached by construction. So the screenshot is paid in full, every turn, at
   full device resolution, for all `max_steps` turns.
 
@@ -129,8 +129,8 @@ surface — a small privacy side-benefit, not a regression.
 
 This stays strictly **Tier 1 (record only)**: no model call is added to `run` or CI. The two
 attach/skip triggers are deterministic computations over the element tree (a fingerprint comparison
-and an id-coverage check), not an LLM judgment (prime directive 1); the escalation is an authoring
--time request by the agent, still outside the gate. Per-action resolution is unchanged — a selector
+and an id-coverage check), not an LLM judgment (prime directive 1); the escalation is an
+authoring-time request by the agent, still outside the gate. Per-action resolution is unchanged — a selector
 still resolves uniquely against the live screen and an ambiguous one fails immediately (prime
 directive 2). The triggers read only the generic element tree and need no per-app config (prime
 directive 3). The scenario artifact shape is invariant, so the whole downstream and its tests are
