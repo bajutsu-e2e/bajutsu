@@ -17,6 +17,7 @@ from bajutsu import anthropic_client
 from bajutsu.ai import credential_gap
 from bajutsu.config import (
     WEB_ENGINES,
+    AiConfig,
     Effective,
     WebConfig,
     ios_bundle_id,
@@ -250,6 +251,29 @@ def _resolve_browser(eff: Effective, browser: str) -> Effective:
     if not isinstance(eff.platform_config, WebConfig):
         return eff  # `browser` is a web-only knob; a non-web target ignores the flag
     return replace(eff, platform_config=replace(eff.platform_config, browser=browser))
+
+
+def _resolve_language(eff: Effective, language: str) -> Effective:
+    """Apply a `--language` flag over the resolved `ai.language` config (BE-0188).
+
+    Precedence mirrors `--browser`: an explicit flag wins, else the config value (already on
+    `eff.ai`), else the `auto` default. An unknown value is a clean exit 2 before it reaches an AI
+    path. Governs only the language the model writes its generated prose in — never the
+    deterministic run/CI verdict.
+
+    Raises:
+        typer.Exit: *language* is set but not one of the known languages (exit code 2).
+    """
+    # Normalize like the config/serve paths (`resolve_language`, `set_provider`) so the three input
+    # surfaces agree: `--language JA` / ` ja ` is accepted, not rejected as unknown.
+    normalized = language.strip().lower()
+    if not normalized:
+        return eff
+    if normalized not in anthropic_client.LANGUAGES:
+        known = ", ".join(anthropic_client.LANGUAGES)
+        typer.echo(f"unknown --language {language!r}: use one of {known}")
+        raise typer.Exit(2)
+    return replace(eff, ai=replace(eff.ai or AiConfig(), language=normalized))
 
 
 def _with_headed(eff: Effective, headed: bool | None) -> Effective:

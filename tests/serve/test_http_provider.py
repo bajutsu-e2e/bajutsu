@@ -26,6 +26,8 @@ def _clean_provider_env(monkeypatch: pytest.MonkeyPatch) -> None:
         ac.PROVIDER_ENV,
         ac.BEDROCK_MODEL_ENV,
         ac.ANTHROPIC_KEY_ENV,
+        ac.EFFORT_ENV,
+        ac.LANGUAGE_ENV,
         "AWS_REGION",
     ):
         monkeypatch.delenv(var, raising=False)
@@ -50,6 +52,7 @@ def test_http_provider_select_bedrock_and_back(
             "model": "",
             "aiModel": "",
             "effort": "",
+            "language": "",
             "claudeAvailable": False,
             "claudeGap": "anthropic-key",
             "claudeHint": ai_availability.message("anthropic-key"),
@@ -72,6 +75,7 @@ def test_http_provider_select_bedrock_and_back(
             "model": _BEDROCK_MODEL,
             "aiModel": "",
             "effort": "",
+            "language": "",
             "claudeAvailable": True,
             "claudeGap": None,
             "claudeHint": "",
@@ -128,6 +132,7 @@ def test_http_provider_select_ant_and_back(tmp_path: Path, monkeypatch: pytest.M
             "model": "",
             "aiModel": "",
             "effort": "",
+            "language": "",
             "claudeAvailable": False,
             "claudeGap": ac.ANT_CLI_MISSING,
             "claudeHint": ai_availability.message(ac.ANT_CLI_MISSING),
@@ -170,6 +175,35 @@ def test_http_provider_rejects_unknown(tmp_path: Path, monkeypatch: pytest.Monke
     try:
         code, body = _post(port, "/api/provider", {"provider": "vertex"})
         assert code == 400 and "unknown provider" in body["error"]
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+def test_http_provider_output_language_round_trip(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """BE-0188: the output-language dropdown persists into the process env spawned jobs inherit —
+    `ja` sets it, `auto` clears it, and an unknown value is rejected without touching the env."""
+    scn_dir, cfg, runs = project(tmp_path)
+    _clean_provider_env(monkeypatch)
+    server, port = _serve(
+        srv.ServeState(scenarios_dir=scn_dir, config=cfg, runs_dir=runs, cwd=tmp_path)
+    )
+    try:
+        code, body = _post(port, "/api/provider", {"provider": "api-key", "language": "ja"})
+        assert code == 200 and body["language"] == "ja"
+        assert os.environ[ac.LANGUAGE_ENV] == "ja"
+        assert _get_json(port, "/api/provider")["language"] == "ja"
+        # `auto` is the no-override default: it clears the env rather than storing a value.
+        code, body = _post(port, "/api/provider", {"provider": "api-key", "language": "auto"})
+        assert code == 200 and body["language"] == "auto"
+        assert ac.LANGUAGE_ENV not in os.environ
+        assert _get_json(port, "/api/provider")["language"] == ""
+        # An unknown language is a visible 400, and the env is left as it was (cleared above).
+        code, body = _post(port, "/api/provider", {"provider": "api-key", "language": "klingon"})
+        assert code == 400 and "language" in body["error"]
+        assert ac.LANGUAGE_ENV not in os.environ
     finally:
         server.shutdown()
         server.server_close()

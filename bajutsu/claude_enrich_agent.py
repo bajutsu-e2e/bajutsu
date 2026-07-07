@@ -26,7 +26,7 @@ from bajutsu.ai import (
     ToolDef,
     create_backend,
 )
-from bajutsu.anthropic_client import AiConfig, resolve_model
+from bajutsu.anthropic_client import AiConfig, language_instruction, resolve_model
 from bajutsu.claude_agent import _TARGET_PROPS, _to_assertion
 from bajutsu.record import _describe_step, _settle_step
 from bajutsu.redaction import Redactor
@@ -183,6 +183,7 @@ class ClaudeEnrichmentAgent:
         self._ai = ai
         self._redactor = redactor
         self._model = resolve_model(MODEL, ai) if model is None else model
+        self._lang = language_instruction(ai)  # output-language suffix, empty for `auto` (BE-0188)
         self._max_tokens = max_tokens
 
     def _ensure_backend(self) -> AiBackend:
@@ -197,7 +198,7 @@ class ClaudeEnrichmentAgent:
     ) -> EnrichmentProposal:
         response = self._ensure_backend().create_message(
             MessageRequest(
-                system=SYSTEM_PROMPT,
+                system=SYSTEM_PROMPT + self._lang,
                 messages=[
                     Message(
                         role="user",

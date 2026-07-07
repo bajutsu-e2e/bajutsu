@@ -62,6 +62,29 @@ def test_propose_assertions_returns_enrichment_proposal() -> None:
     assert proposal.note == "the scenario reaches the done screen"
 
 
+def test_output_language_is_folded_into_the_enrichment_prompt() -> None:
+    # BE-0188: enrichment's generated prose (the assertion `intent` / `note`) follows `ai.language`.
+    from bajutsu.anthropic_client import AiConfig
+
+    block = FakeBlock(
+        "propose_assertions",
+        {"assertions": [{"id": "x", "check": "exists"}], "reason": "ok"},
+    )
+    steps = [Step.model_validate({"tap": {"id": "go"}})]
+    scenario = _scenario(steps, goal="reach done")
+    contexts = [_ctx(steps[0], [_el("x", "X")])]
+
+    default = FakeBackend(block)
+    ClaudeEnrichmentAgent(backend=default).propose_assertions(scenario, contexts)
+    assert "日本語" not in default.requests[0].system
+
+    ja = FakeBackend(block)
+    ClaudeEnrichmentAgent(backend=ja, ai=AiConfig(language="ja")).propose_assertions(
+        scenario, contexts
+    )
+    assert "日本語" in ja.requests[0].system
+
+
 def test_propose_assertions_value_equals() -> None:
     block = FakeBlock(
         "propose_assertions",

@@ -7,7 +7,7 @@
 |---|---|
 | Proposal | [BE-0188](BE-0188-configurable-ai-output-language.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0188") |
 | Topic | AI provider configuration |
 <!-- /BE-METADATA -->
@@ -124,10 +124,21 @@ committed artifacts.)
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] `ai.language` config field (`AiConfig` / `AiSettings`), enum `ja` | `en` | `auto`, default `auto`
-- [ ] Prompt threading in `record` (authoring + enrichment) and `crawl` (guide + tabs)
-- [ ] `--language` CLI flag on `record` and `crawl`
-- [ ] Output-language dropdown in the serve AI settings panel
+- [x] `ai.language` config field (`AiConfig` / `AiSettings`), enum `ja` | `en` | `auto`, default `auto`
+- [x] Prompt threading in `record` (authoring + enrichment) and `crawl` (guide + tabs)
+- [x] `--language` CLI flag on `record` and `crawl`
+- [x] Output-language dropdown in the serve AI settings panel
+
+Log:
+
+- Implemented all four units: `ai.language` on `AiConfig` / `AiSettings` with `resolve_language`
+  / `language_instruction` in `anthropic_client` (config-first, `BAJUTSU_AI_LANGUAGE` env fallback,
+  unknown → `auto`); the language instruction folded onto the static system prompts of the `record`
+  authoring/enrichment and `crawl` guide/tabs agents (empty for `auto`, so the prompt stays
+  prompt-cacheable); a `--language {ja,en,auto}` flag on `record` / `crawl` overriding the config;
+  and an *Output language* dropdown in the serve AI settings panel wired through `/api/provider`.
+  Added unit tests for each surface and bilingual docs. The setting never touches the deterministic
+  `run` / CI verdict.
 
 ## References
 

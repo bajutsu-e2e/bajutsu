@@ -34,6 +34,7 @@ from bajutsu.cli._shared import (
     _load_effective_with_source,
     _refuse_out_in_checkout,
     _require_ai_credential,
+    _resolve_language,
     _with_headed,
 )
 from bajutsu.config import web_base_url, web_engine
@@ -120,6 +121,12 @@ def crawl(
         help="web backend: crawl a visible (headed, slow-motion) browser instead of headless; "
         "default leaves the target's `headless` config",
     ),
+    language: str = typer.Option(
+        "",
+        "--language",
+        help="AI output language for the guide's streamed reasoning — ja / en / auto; overrides "
+        "`ai.language`, default leaves the config (auto stays English for crawl)",
+    ),
     upload_exec: str = typer.Option(
         "",
         "--upload-exec",
@@ -144,6 +151,8 @@ def crawl(
     eff, _source, checkout_root = _load_effective_with_source(config, target_name)
     # --headed/--no-headed overrides the target's `headless` config (web backend only; iOS ignores it).
     eff = _with_headed(eff, headed)
+    # --language overrides the target's `ai.language` (flag > config > auto), BE-0188.
+    eff = _resolve_language(eff, language)
 
     # Progress (device work + the AI guide's reasoning) goes to stderr, like record's stream; the
     # web UI merges it into the crawl log so a watcher sees what the AI is thinking, turn by turn.

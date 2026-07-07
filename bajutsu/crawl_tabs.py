@@ -33,7 +33,7 @@ from bajutsu.ai import (
     create_backend,
 )
 from bajutsu.alerts import _fraction, _png_size
-from bajutsu.anthropic_client import AiConfig, resolve_model
+from bajutsu.anthropic_client import AiConfig, language_instruction, resolve_model
 from bajutsu.drivers import base
 
 TAB_LOCATOR_MODEL = "claude-opus-4-8"
@@ -186,6 +186,7 @@ class ClaudeTabLocator:
         self._backend = backend
         self._ai = ai
         self._model = resolve_model(TAB_LOCATOR_MODEL, ai) if model is None else model
+        self._lang = language_instruction(ai)  # output-language suffix, empty for `auto` (BE-0188)
 
     def _ensure_backend(self) -> AiBackend:
         if self._backend is None:
@@ -200,7 +201,7 @@ class ClaudeTabLocator:
         )
         response = self._ensure_backend().create_message(
             MessageRequest(
-                system=_SYSTEM,
+                system=_SYSTEM + self._lang,
                 messages=[
                     Message(
                         role="user",

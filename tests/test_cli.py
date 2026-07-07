@@ -12,7 +12,7 @@ import pytest
 from typer.testing import CliRunner
 
 from bajutsu.cli import app
-from bajutsu.cli._shared import _resolve_browser
+from bajutsu.cli._shared import _resolve_browser, _resolve_language
 from bajutsu.config import Effective, IosConfig, WebConfig, load_config, resolve
 
 runner = CliRunner()
@@ -618,6 +618,48 @@ def test_resolve_browser_default_is_chromium() -> None:
     # No flag and no config: chromium, today's behaviour.
     eff = resolve(load_config("targets: { web: { baseUrl: 'http://x/' } }"), "web")
     assert _browser_of(_resolve_browser(eff, "")) == "chromium"
+
+
+def test_resolve_language_flag_overrides_config() -> None:
+    # BE-0188: an explicit --language flag wins over the target's `ai.language` config.
+    cfg = load_config("defaults:\n  ai: { language: en }\ntargets:\n  s:\n    bundleId: com.x\n")
+    eff = resolve(cfg, "s")
+    assert eff.ai is not None and eff.ai.language == "en"  # config says en
+    overridden = _resolve_language(eff, "ja")
+    assert overridden.ai is not None and overridden.ai.language == "ja"  # flag wins
+
+
+def test_resolve_language_flag_is_normalized() -> None:
+    # BE-0188: the flag is normalized (strip + lowercase) like the config/serve paths, so the three
+    # input surfaces agree on `JA` / ` ja `.
+    eff = resolve(load_config("targets:\n  s:\n    bundleId: com.x\n"), "s")
+    overridden = _resolve_language(eff, " JA ")
+    assert overridden.ai is not None and overridden.ai.language == "ja"
+
+
+def test_resolve_language_empty_flag_keeps_config() -> None:
+    cfg = load_config("defaults:\n  ai: { language: ja }\ntargets:\n  s:\n    bundleId: com.x\n")
+    eff = resolve(cfg, "s")
+    kept = _resolve_language(eff, "")  # no flag
+    assert kept.ai is not None and kept.ai.language == "ja"
+
+
+def test_resolve_language_flag_without_ai_config() -> None:
+    # No `ai:` block at all: the flag still applies, constructing the config it overrides.
+    eff = resolve(load_config("targets:\n  s:\n    bundleId: com.x\n"), "s")
+    assert eff.ai is None
+    overridden = _resolve_language(eff, "ja")
+    assert overridden.ai is not None and overridden.ai.language == "ja"
+
+
+@pytest.mark.parametrize("command", ["record", "crawl"])
+def test_unknown_language_exits_cleanly(tmp_path: Path, command: str) -> None:
+    # An unknown --language exits 2 before reaching an AI path (BE-0188), with a usable hint.
+    cfg, scn = _write(tmp_path)
+    argv = _argv(command, cfg=cfg, scn=scn, out=tmp_path / "rec.yaml", app="demo")
+    r = runner.invoke(app, [*argv, "--language", "klingon"])
+    assert r.exit_code == 2
+    assert "unknown --language" in r.output
 
 
 @pytest.mark.parametrize("command", ["run", "record"])

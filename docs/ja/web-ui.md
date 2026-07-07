@@ -149,9 +149,13 @@ admin 限定です。
 
 ピッカーはプレースホルダから始まります。**既定の provider はなく**、明示的に選ぶまで **Save** は
 拒否されます。各 provider 固有の欄（API キー、Bedrock の region と model id、CLI のサインイン）は、
-その provider を選んだときだけ現れます。provider をまたいで効く上書きが二つあります。**Model** は
+その provider を選んだときだけ現れます。provider をまたいで効く上書きが三つあります。**Model** は
 既定の代わりに特定のモデル id を使い（Bedrock は自前の接頭辞付き id 欄を保ちます）、**Reasoning
-effort** はオーサリングのエージェントについて速度と深さを釣り合わせます。
+effort** はオーサリングのエージェントについて速度と深さを釣り合わせ、**Output language**
+（[BE-0188](../../roadmaps/BE-0188-configurable-ai-output-language/BE-0188-configurable-ai-output-language-ja.md)）は
+AI が生成するプローズ、すなわち `record` の `from:` 由来と `crawl` の流れる推論を、どの言語で書くかを固定します。
+既定の *auto* は現状の挙動を保ちます（`record` はゴールに追従し、`crawl` は英語のままです）。決定論的な
+`run` の判定には触れず、対象のデバイス `locale` とは別物です。
 
 **Claude API key**（Anthropic API provider を選ぶと現れます）は **write-once** です。キーを入力して **Save** すると、以後はマスクした表示だけになり、
 内容が再表示されることはありません。変更するには新しいキーを設定します。**Clear** で削除します。これは

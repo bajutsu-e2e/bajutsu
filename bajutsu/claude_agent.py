@@ -28,7 +28,12 @@ from bajutsu.ai import (
     ToolDef,
     create_backend,
 )
-from bajutsu.anthropic_client import AiConfig, resolve_effort, resolve_model
+from bajutsu.anthropic_client import (
+    AiConfig,
+    language_instruction,
+    resolve_effort,
+    resolve_model,
+)
 from bajutsu.redaction import Redactor
 from bajutsu.scenario import Assertion, Step
 
@@ -501,6 +506,9 @@ class ClaudeAgent:
         self._redactor = redactor
         self._model = resolve_model(MODEL, ai) if model is None else model
         self._effort = resolve_effort(ai)  # passed to backends that support it (claude-code)
+        # Output-language suffix (BE-0188), empty for `auto`. Folded onto the static system prompts
+        # below so the reasoning/plan prose comes out in the chosen language.
+        self._lang = language_instruction(ai)
         self._max_tokens = max_tokens
 
     def _ensure_backend(self) -> AiBackend:
@@ -512,7 +520,7 @@ class ClaudeAgent:
         # Force one tool call; no thinking with forced choice.
         response = self._ensure_backend().create_message(
             MessageRequest(
-                system=SYSTEM_PROMPT,
+                system=SYSTEM_PROMPT + self._lang,
                 messages=[Message(role="user", content=_user_content(observation, self._redactor))],
                 tools=TOOLS,
                 tool_choice=AnyTool(),
@@ -527,7 +535,7 @@ class ClaudeAgent:
     def plan(self, goal: str) -> list[str]:
         response = self._ensure_backend().create_message(
             MessageRequest(
-                system=PLAN_SYSTEM,
+                system=PLAN_SYSTEM + self._lang,
                 messages=[Message(role="user", content=[TextPart(text=f"Goal: {goal}")])],
                 tools=[PLAN_TOOL],
                 tool_choice=NamedTool(name="plan"),  # force the plan call

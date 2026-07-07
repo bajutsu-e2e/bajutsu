@@ -30,7 +30,7 @@ from bajutsu.ai import (
     ToolDef,
     create_backend,
 )
-from bajutsu.anthropic_client import AiConfig, resolve_model
+from bajutsu.anthropic_client import AiConfig, language_instruction, resolve_model
 from bajutsu.drivers import base
 from bajutsu.record import _screenshot_bytes
 from bajutsu.redaction import Redactor
@@ -352,6 +352,7 @@ class ClaudeActionProposer:
         self._ai = ai
         self._redactor = redactor
         self._model = resolve_model(MODEL, ai) if model is None else model
+        self._lang = language_instruction(ai)  # output-language suffix, empty for `auto` (BE-0188)
         self._max_tokens = max_tokens
         self._max_actions = max_actions
 
@@ -372,7 +373,7 @@ class ClaudeActionProposer:
         content = _content(elements, screenshot, candidates, dismissed, self._redactor)
         response = self._ensure_backend().create_message(
             MessageRequest(
-                system=_SYSTEM,
+                system=_SYSTEM + self._lang,
                 messages=[Message(role="user", content=content)],
                 tools=[_PROPOSE_TOOL],
                 tool_choice=NamedTool(name="propose_actions"),

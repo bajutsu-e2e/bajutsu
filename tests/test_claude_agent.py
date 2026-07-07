@@ -169,6 +169,25 @@ def test_effort_is_threaded_into_the_request() -> None:
     assert backend.requests[0].effort == "high"
 
 
+def test_output_language_is_folded_into_the_system_prompt() -> None:
+    # BE-0188: `ai.language` appends a language instruction to the system prompt; `auto` (default)
+    # appends nothing, so the prompt stays byte-identical (and prompt-cacheable).
+    from bajutsu.anthropic_client import AiConfig
+
+    default = FakeBackend(FakeBlock("tap", {"id": "a"}))
+    ClaudeAgent(backend=default).next_action(_obs())
+    assert "日本語" not in default.requests[0].system
+
+    ja = FakeBackend(FakeBlock("tap", {"id": "a"}))
+    agent = ClaudeAgent(backend=ja, ai=AiConfig(language="ja"))
+    agent.next_action(_obs())
+    assert "日本語" in ja.requests[0].system
+    # The plan prompt is constrained too, so the planned steps come out in the chosen language.
+    ja_plan = FakeBackend(FakeBlock("plan", {"steps": ["a"]}))
+    ClaudeAgent(backend=ja_plan, ai=AiConfig(language="ja")).plan("g")
+    assert "日本語" in ja_plan.requests[0].system
+
+
 def test_screenshot_sent_as_image_part() -> None:
     backend = FakeBackend(FakeBlock("tap", {"id": "a"}))
     png = b"\x89PNG\r\n\x1a\n fake-bytes"

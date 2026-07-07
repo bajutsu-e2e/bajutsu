@@ -243,6 +243,7 @@ bajutsu record --target <name> --goal "<自然言語ゴール>" [--out <file.yam
 | `--dismiss-alerts` | off | オーサリング中のプロンプトを片付ける（要 API キー） |
 | `--headed / --no-headed` | アプリの `headless` | web backend: ヘッドレスではなく目に見える（低速再生の）ブラウザでオーサリングする。省略時はアプリの `headless` 設定に従う |
 | `--alert-instruction` | "" | 同上の押下指示 |
+| `--language` | config の `ai.language`（`auto`） | 著すプローズ（`from:` 由来、推論）の AI 出力言語。`ja` / `en` / `auto` から選び `ai.language` を上書きする。`auto` はゴールに追従する（[BE-0188](../../roadmaps/BE-0188-configurable-ai-output-language/BE-0188-configurable-ai-output-language-ja.md)） |
 | `--config` | `bajutsu.config.yaml` | config |
 
 - 内部で `launch_driver` → `record_loop(driver, goal, ClaudeAgent(), ...)` → `dump_scenarios` で書き出します。
@@ -275,6 +276,7 @@ bajutsu crawl --target <name> [--max-screens N] [--max-steps N] [--out <dir>] [o
 | `--erase / --no-erase` | `--erase` | 起動前に erase（アプリはインストール済みである必要） |
 | `--dismiss-alerts / --no-dismiss-alerts` | `--dismiss-alerts` | クロール中に予期せぬ OS プロンプトを片付ける（クラッシュ誤判定を防ぐ。設定した AI プロバイダを使用し、`ANTHROPIC_API_KEY`、Bedrock なら AWS 認証情報） |
 | `--headed / --no-headed` | アプリの `headless` | web backend: ヘッドレスではなく目に見える（低速再生の）ブラウザでクロールする。省略時はアプリの `headless` 設定に従う |
+| `--language` | config の `ai.language`（`auto`） | ガイドの流れる推論の AI 出力言語。`ja` / `en` / `auto` から選び `ai.language` を上書きする。`auto` はクロールでは英語のまま（[BE-0188](../../roadmaps/BE-0188-configurable-ai-output-language/BE-0188-configurable-ai-output-language-ja.md)） |
 | `--out` | `runs/<timestamp>` | 画面マップを書き出す run ディレクトリ |
 | `--continue` | オフ | 過去の run（`--out` でその run を指します）を続きから探索します。1 つのブランチだけでなく、未試行の操作が残る**すべて**の画面を再探索します。`--max-screens`/`--max-steps` を上げるとさらに深く進み、`--workers`/`--udid` で continuation を並列に実行します（[BE-0181](../../roadmaps/BE-0181-crawl-continuation/BE-0181-crawl-continuation-ja.md)） |
 | `--config` | `bajutsu.config.yaml` | config |

@@ -96,3 +96,15 @@ def test_locator_threads_ai_config_to_model() -> None:
     backend = FakeBackend(FakeBlock("find_tabs", {"tabs": []}))
     crawl_tabs.ClaudeTabLocator(backend=backend, ai=ai).locate(_png(10, 10))
     assert backend.requests[0].model == "us.anthropic.claude-opus-4-8-v1"
+
+
+def test_output_language_is_folded_into_the_tab_locator_prompt() -> None:
+    # BE-0188: the tab locator's system prompt carries the language instruction; `auto` (default)
+    # leaves it unchanged.
+    default = FakeBackend(FakeBlock("find_tabs", {"tabs": []}))
+    crawl_tabs.ClaudeTabLocator(backend=default).locate(_png(10, 10))
+    assert "日本語" not in default.requests[0].system
+
+    ja = FakeBackend(FakeBlock("find_tabs", {"tabs": []}))
+    crawl_tabs.ClaudeTabLocator(backend=ja, ai=AiConfig(language="ja")).locate(_png(10, 10))
+    assert "日本語" in ja.requests[0].system

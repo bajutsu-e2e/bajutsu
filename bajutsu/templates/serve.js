@@ -371,6 +371,7 @@ async function loadProv(){
   $('#bedrock-model').value=d.model||'';
   $('#ai-model').value=d.aiModel||'';
   $('#ai-effort').value=d.effort||'';
+  $('#ai-language').value=d.language||'auto';  // AI output language (BE-0188); blank env = auto
   renderProv();
 }
 // ---- Claude reachability (BE-0101): the record/crawl surfaces degrade gracefully when Claude
@@ -399,6 +400,7 @@ async function saveSettings(){
   // The reasoning effort applies to any provider that supports it; the general model override applies
   // to the non-Bedrock providers (Bedrock keeps its own prefixed id). Blank clears either.
   body.effort=$('#ai-effort').value;
+  body.language=$('#ai-language').value;  // AI output language (BE-0188); auto clears the override
   if(provider==='bedrock'){
     body.region=$('#bedrock-region').value.trim();
     body.model=$('#bedrock-model').value.trim();
