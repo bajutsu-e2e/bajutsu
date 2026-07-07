@@ -122,9 +122,11 @@ defaults:
 - **Model and effort are config-first with an env fallback.** `model` (or `BAJUTSU_AI_MODEL`)
   overrides the default model on any provider; `effort` (or `BAJUTSU_AI_EFFORT`) sets the reasoning
   effort — one of `low`/`medium`/`high`/`xhigh`/`max`, honored by the `claude-code` provider
-  (passed to the CLI as `--effort`; an unrecognized value falls back to the model's default). The
-  `serve` **Settings** panel exposes both for the running session, and `record` prints the resolved
-  choice up front (`🤖 AI: <provider> · model <model> · effort <effort>`).
+  (passed to the CLI as `--effort`). An unrecognized `effort` from config or the env var falls back
+  to the model's default; the `serve` **Settings** panel instead validates its input and rejects an
+  unknown value (HTTP 400) rather than falling back. The panel exposes both for the running session,
+  and `record` prints the resolved choice up front (`🤖 AI: <provider> · model <model> · effort
+  <effort>`).
 
 - **A provider is a backend behind one interface**
   ([BE-0104](../roadmaps/BE-0104-vendor-neutral-ai-backend/BE-0104-vendor-neutral-ai-backend.md)).

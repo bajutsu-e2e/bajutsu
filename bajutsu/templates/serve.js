@@ -508,7 +508,7 @@ $('#rec-run').addEventListener('click',async()=>{
     scenario:recPath,target,udid:$('#rec-device').value||'booted',
     erase:$('#rec-erase').checked||undefined,dismissAlerts:$('#rec-nodismiss').checked?false:undefined})});
   const {jobId,error}=await r.json();
-  if(error){setStatus($('#rec-runstatus'),error,'ng');setBusy($('#rec-run'),$('#rec-runstop'),false);return}
+  if(error){setStatus($('#rec-runstatus'),error,'ng');setBusy($('#rec-run'),$('#rec-runstop'),false);return;}
   recRunJobId=jobId;
   recRunPoll=streamJob(jobId,line=>appendLine($('#rec-out'),line),recRunDone);
 });

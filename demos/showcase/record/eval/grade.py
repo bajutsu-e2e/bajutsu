@@ -109,14 +109,17 @@ class _Move:
 def _selector_texts(sel: Selector | None) -> tuple[str, ...]:
     """The matchable text a selector carries, case-folded.
 
-    Includes `id` / `idMatches` as well as `label` / `value`: the `-noax` target has no ids so a
-    recording there matches on label/value, but an id-bearing recording (the a11y twin) matches on
-    the dotted id — e.g. an expected `favorite` finds the `horse.favorite` id — so the same grader
-    scores both sides of the accessibility A/B.
+    Includes `id` / `idMatches` and `label` / `labelMatches` / `value`: the `-noax` target has no ids
+    so a recording there matches on label/value, but an id-bearing recording (the a11y twin) matches
+    on the dotted id — e.g. an expected `favorite` finds the `horse.favorite` id — so the same grader
+    scores both sides of the accessibility A/B. `labelMatches` is listed here too, in step with
+    `_selector_has_text` (which counts it as matchable): otherwise a `labelMatches`-only selector
+    would grade as verifiable yet carry no text, producing a false `MISS`.
     """
     if sel is None:
         return ()
-    return tuple(t.casefold() for t in (sel.id, sel.id_matches, sel.label, sel.value) if t)
+    texts = (sel.id, sel.id_matches, sel.label, sel.label_matches, sel.value)
+    return tuple(t.casefold() for t in texts if t)
 
 
 def _selector_has_text(sel: Selector | None) -> bool:
