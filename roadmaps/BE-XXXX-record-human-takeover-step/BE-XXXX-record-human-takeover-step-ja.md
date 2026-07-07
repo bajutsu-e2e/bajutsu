@@ -27,8 +27,8 @@ record の human-in-the-loop ハンドオフの土台
 
 record の詰まりのすべてが値の欠落とは限りません。AI が実行できない操作もあります。CAPTCHA を解く、
 生体認証のプロンプトを通す、あるいはエージェントの提案が繰り返しターゲットの解決に失敗するジェスチャ
-を行う、などです（[`bajutsu/record.py`](../../../bajutsu/record.py) の `could not resolve that
-target on the live screen; stopping`）。現状の `record` はそこで単に停止し、著者は記録を諦めます。
+を行う、などです（[`bajutsu/record.py`](../../../bajutsu/record.py) の
+`could not resolve that target on the live screen; stopping`）。現状の `record` はそこで単に停止し、著者は記録を諦めます。
 
 対処の骨子は値のケースと同じ精神です。一時停止し、人が操作し、再開する、という流れです。ただし難所は
 異なり、操作に固有です。実際の CAPTCHA を解くような操作には、決定論的な実行時の等価物がそもそも
