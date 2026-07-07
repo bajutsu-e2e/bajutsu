@@ -99,4 +99,4 @@ capability の集合を集め、`driver.capabilities()` との差を取ります
 - [BE-0009 — Cross-platform abstractions](../BE-0009-cross-platform-abstractions/BE-0009-cross-platform-abstractions-ja.md)——`capabilities()`
   を backend の契約とするプラットフォームごとの backend の組み合わせ。本項目は、それを runner
   が前もって強制するようにします。
-- [CLAUDE.md](../../../CLAUDE.md)——prime directive #2（決定論優先：推測したり中途半端に進めたりせず、速く失敗する）。
+- [CLAUDE.md](../../CLAUDE.md)——prime directive #2（決定論優先：推測したり中途半端に進めたりせず、速く失敗する）。

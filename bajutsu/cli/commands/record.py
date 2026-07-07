@@ -11,8 +11,7 @@ import typer
 from bajutsu import simctl as _simctl
 from bajutsu import usage as _usage
 from bajutsu.agents import make_agent
-from bajutsu.ai import resolved_provider
-from bajutsu.anthropic_client import resolve_effort, resolve_model
+from bajutsu.ai import announce_ai
 from bajutsu.backends import ensure_web_runtime, select_actuator
 from bajutsu.claude_agent import MODEL as _RECORD_MODEL
 from bajutsu.cli._shared import (
@@ -192,20 +191,7 @@ def record(
     def say(msg: str) -> None:
         typer.echo(msg, err=True)
 
-    effort = resolve_effort(eff.ai)
-    provider = resolved_provider(eff.ai)
-    say(
-        f"🤖 AI: {provider} · model {resolve_model(_RECORD_MODEL, eff.ai)} · "
-        f"effort {effort or 'default'}"
-    )
-    # Disclose how the claude-code CLI will authenticate (BE-0176): the adapter forces the CLI's own
-    # subscription login and ignores any inherited Bedrock/Vertex/API-key routing, so surface that —
-    # a `make serve` launched from the Claude desktop app inherits a Bedrock setup that would
-    # otherwise take over silently.
-    if provider == "claude-code":
-        from bajutsu.ai import claude_code
-
-        say(f"🔑 auth: {claude_code.auth_summary()}")
+    announce_ai(say, default_model=_RECORD_MODEL, ai=eff.ai)
     say(
         f"⚙️  preparing the simulator — installing and launching {target_name} (this can take a moment) …"
     )

@@ -146,6 +146,10 @@ def make_app(state: ServeState) -> FastAPI:
     async def config() -> JSONResponse:
         return _result(ops.config_info(state))
 
+    @app.get("/api/config/content")
+    async def config_content() -> JSONResponse:
+        return _result(ops.config_content(state))
+
     @app.get("/api/fs")
     async def fs(dir: str | None = None) -> JSONResponse:
         return _result(ops.browse_fs(state, dir))

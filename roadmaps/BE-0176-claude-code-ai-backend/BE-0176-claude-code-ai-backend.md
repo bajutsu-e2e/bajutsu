@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0176") |
-| Implementing PR | [#713](https://github.com/bajutsu-e2e/bajutsu/pull/713) |
+| Implementing PR | [#713](https://github.com/bajutsu-e2e/bajutsu/pull/713), [#745](https://github.com/bajutsu-e2e/bajutsu/pull/745) |
 | Topic | AI provider configuration |
 | Related | [BE-0104](../BE-0104-vendor-neutral-ai-backend/BE-0104-vendor-neutral-ai-backend.md), [BE-0163](../BE-0163-ant-cli-oauth-provider/BE-0163-ant-cli-oauth-provider.md), [BE-0125](../BE-0125-authoring-agent-tool-restriction/BE-0125-authoring-agent-tool-restriction.md) |
 <!-- /BE-METADATA -->
@@ -166,6 +166,12 @@ runner with no credential. `known_providers()` then includes it automatically.
   tool names. Fixed by feeding the prompt on stdin and passing deny tools as space-separated tokens
   with the variadic flags last; a non-zero exit now surfaces the stdout envelope so errors (e.g. an
   auth 401) are actionable.
+- Follow-up ([#745](https://github.com/bajutsu-e2e/bajutsu/pull/745)): made the provider startup
+  disclosure per-provider. The adapter contract gained an `announce` capability so each provider
+  produces its own lines — the Anthropic SDK names only provider and model (it has no reasoning-effort
+  knob), while `claude-code` adds the effort it honors and the forced-subscription auth line this item
+  introduced. `record` and `crawl` now share one `announce_ai` sink, so `crawl` discloses the model
+  (and, on `claude-code`, effort and auth) it previously omitted. `make check` green.
 
 ## References
 

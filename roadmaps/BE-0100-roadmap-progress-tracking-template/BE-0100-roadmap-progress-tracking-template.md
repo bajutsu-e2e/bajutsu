@@ -103,9 +103,9 @@ but not that a prose breakdown is genuinely exhaustive or that the boxes are hon
 
 ### 3. The tooling
 
-- **Scaffolder** ([`scripts/new_roadmap_item.py`](../../../scripts/new_roadmap_item.py)) emits the
+- **Scaffolder** ([`scripts/new_roadmap_item.py`](../../scripts/new_roadmap_item.py)) emits the
   `Progress` section seeded with the skeleton above, rather than a bare `TBD`.
-- **Format check** ([`tests/test_roadmap_format.py`](../../../tests/test_roadmap_format.py)) adds
+- **Format check** ([`tests/test_roadmap_format.py`](../../tests/test_roadmap_format.py)) adds
   `Progress` / `進捗` to the required, ordered H2 headings, and `Related` / `Superseded by` (and their
   Japanese labels) to the known optional metadata fields. The index generator reads metadata by field
   name, so the new optional fields do not affect it.
@@ -162,5 +162,5 @@ All four pieces shipped together in [#415](https://github.com/bajutsu-e2e/bajuts
 - [BE-0074 — Standardize the BE item template (EN / JA)](../BE-0074-be-template-standardization/BE-0074-be-template-standardization.md) — the template-pinning item this one extends from five sections to six; BE-0074 carries the reciprocal `Related` back-link.
 - [BE-0043 — Conflict-resistant file flow](../BE-0043-conflict-resistant-file-flow/BE-0043-conflict-resistant-file-flow.md) — the "make the invariant machine-checked" precedent.
 - [BE-0078 — Status-driven roadmap folders](../BE-0078-roadmap-status-folders/BE-0078-roadmap-status-folders.md) — `Status` as the lifecycle source of truth, which `Progress` complements with finer-grained state.
-- [`scripts/new_roadmap_item.py`](../../../scripts/new_roadmap_item.py) · [`tests/test_roadmap_format.py`](../../../tests/test_roadmap_format.py) — the scaffolder and the gate the implementing PR extends.
+- [`scripts/new_roadmap_item.py`](../../scripts/new_roadmap_item.py) · [`tests/test_roadmap_format.py`](../../tests/test_roadmap_format.py) — the scaffolder and the gate the implementing PR extends.
 </content>

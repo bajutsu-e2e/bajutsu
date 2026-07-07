@@ -49,4 +49,4 @@ Install: `uv pip install bajutsu[mcp]`
 
 ## References
 
-`bajutsu/mcp/`, [cli.md](../../../docs/cli.md)
+`bajutsu/mcp/`, [cli.md](../../docs/cli.md)

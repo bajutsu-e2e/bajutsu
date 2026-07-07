@@ -185,6 +185,11 @@ class ServeState:
     # one the operator pre-configured at startup. An API-bound Git config is untrusted: its `build:`
     # command is nulled like an uploaded bundle's (never run) unless `allow_remote_build` opts in.
     git_config_from_api: bool = False
+    # Git-source provenance of the active config when it came from a Git source (host/owner/repo/ref/
+    # resolved sha, `config_source.source_provenance`), else None for a local file or uploaded bundle.
+    # Surfaced by `/api/config/content` so the UI can show *which* commit the opaque cache-path config
+    # was materialized from, not just the path. Set at startup (Git `--config`) and on an API bind.
+    config_provenance: dict[str, str] | None = None
     # Opt-in to run an API-bound Git config's `build:` command on the host (BE-0121). Off by default;
     # serve() sets it from --allow-remote-build / BAJUTSU_ALLOW_REMOTE_BUILD.
     allow_remote_build: bool = False
@@ -388,6 +393,7 @@ class ServeState:
         self.upload = upload
         self.config = upload.config
         self.cwd = upload.root
+        self.config_provenance = None  # a bundle is not a Git source — no commit provenance to show
         self.git_config_from_api = (
             False  # a bundle is governed by upload_exec, not the Git trust flag
         )

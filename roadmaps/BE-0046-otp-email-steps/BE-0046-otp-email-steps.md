@@ -45,7 +45,7 @@ escape hatch and without an LLM, so the gate stays deterministic and the flow st
 ## Detailed design
 
 Add two steps that produce a value into the existing `${vars.*}` namespace
-([scenarios](../../../docs/scenarios.md#runtime-variables-vars)), so a later `type` / `assert` can
+([scenarios](../../docs/scenarios.md#runtime-variables-vars)), so a later `type` / `assert` can
 consume it deterministically:
 
 ```yaml
@@ -185,4 +185,4 @@ network. The live HTTP call is the only mocked surface — the permitted "extern
 ## References
 
 Split out of [BE-0036 — HTTP utility step](../BE-0036-utility-steps/BE-0036-utility-steps.md).
-[scenarios.md](../../../docs/scenarios.md)
+[scenarios.md](../../docs/scenarios.md)

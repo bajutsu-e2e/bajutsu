@@ -92,4 +92,4 @@
 
 [BE-0052 — デバイス状態プリミティブ: タイムゾーン・クリップボード・シェイク](../BE-0052-device-state-timezone-clipboard-shake/BE-0052-device-state-timezone-clipboard-shake-ja.md)
 から分割。BE-0052 自体は [BE-0035 — デバイス制御ステップ](../BE-0035-device-control-primitives/BE-0035-device-control-primitives-ja.md)
-から分割したものです。[DESIGN §6.2](../../../DESIGN.md)、`bajutsu/orchestrator/actions/handlers/device.py`、`bajutsu/env.py`
+から分割したものです。[DESIGN §6.2](../../DESIGN.md)、`bajutsu/orchestrator/actions/handlers/device.py`、`bajutsu/env.py`

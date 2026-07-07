@@ -119,7 +119,7 @@ that nothing here can affect pass/fail.
 - **A cloud secret manager (Doppler / AWS Secrets Manager / Vault), as BE-0015's Secrets row
   originally suggested.** Not rejected outright — it remains the right choice for a large, multi-cloud
   deployment — but it adds an external dependency and account before any secret can be set, which is a
-  poor fit for the self-hosted single-node case ([`deploy/self-host/`](../../../deploy/self-host/))
+  poor fit for the self-hosted single-node case ([`deploy/self-host/`](../../deploy/self-host/))
   BE-0016 already ships. An in-database encrypted store needs only a master key the operator already
   manages alongside `BAJUTSU_DATABASE_URL`, and does not preclude swapping in Doppler/Vault later
   behind the same `SecretStore` seam.

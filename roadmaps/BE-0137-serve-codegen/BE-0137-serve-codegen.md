@@ -93,5 +93,5 @@ Tier-1, deterministic; the UI only shells out to the existing command.
 * [BE-0011 — Local web UI (`bajutsu serve`)](../BE-0011-local-web-ui-serve/BE-0011-local-web-ui-serve.md),
   [BE-0072 — Responsive serve Web UI](../BE-0072-responsive-web-ui/BE-0072-responsive-web-ui.md)
   — the UI this extends and the small-screen layout it inherits.
-* [codegen.md](../../../docs/codegen.md); [CLAUDE.md](../../../CLAUDE.md), [DESIGN §2](../../../DESIGN.md)
+* [codegen.md](../../docs/codegen.md); [CLAUDE.md](../../CLAUDE.md), [DESIGN §2](../../DESIGN.md)
   — codegen is structural and AI-free, so this surface adds no LLM and computes no verdict.

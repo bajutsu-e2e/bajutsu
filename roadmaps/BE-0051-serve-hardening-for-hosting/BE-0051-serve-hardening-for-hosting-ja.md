@@ -91,4 +91,4 @@ HTTP ハーネスで Simulator 無しにテストできます。
 
 [BE-0015](../BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting-ja.md)（公開/クラウドホスティング）、
 [BE-0016](../BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting-ja.md)（セルフホスティング）、
-`bajutsu/serve/`、[cli.md](../../../docs/cli.md#serve)
+`bajutsu/serve/`、[cli.md](../../docs/cli.md#serve)

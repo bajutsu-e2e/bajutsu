@@ -29,7 +29,7 @@
 
 どちらも独立したブラウザ間できれいに重なるので、AI のレート上限やコーディネータの競合が支配的になるまで、実時間はおおよそワーカー数に反比例して減ります。
 
-**並列クロールを最も低摩擦で活かせるのが Web です。** Mac もエミュレータも要らず、既存の Linux の `make check` / CI ゲート上で動くので（[BE-0041](../BE-0041-web-playwright-backend/BE-0041-web-playwright-backend-ja.md)）、速いクロールを CI 内の発見ステップとしてそのまま回せます。ブラウザプロセスは端末起動なしに数秒で立ち上がるので、N レーンを用意するコストも小さいものです。`run` は既にレーンで並列化されており（[BE-0054](../BE-0054-web-backend-completion/BE-0054-web-backend-completion-ja.md) がプールの Web 分岐を N レーンへ一般化します）、クロールだけが、いまだ 1 つのブラウザに固定された唯一の Tier-1 経路です。これが、`record` の入口として、また全画面のカバレッジ計測の実行として（[DESIGN §7.2](../../../DESIGN.md)、[BE-0038](../BE-0038-autonomous-crawl-exploration/BE-0038-autonomous-crawl-exploration-ja.md) 動機 #2）クロールを使いにくくしています。
+**並列クロールを最も低摩擦で活かせるのが Web です。** Mac もエミュレータも要らず、既存の Linux の `make check` / CI ゲート上で動くので（[BE-0041](../BE-0041-web-playwright-backend/BE-0041-web-playwright-backend-ja.md)）、速いクロールを CI 内の発見ステップとしてそのまま回せます。ブラウザプロセスは端末起動なしに数秒で立ち上がるので、N レーンを用意するコストも小さいものです。`run` は既にレーンで並列化されており（[BE-0054](../BE-0054-web-backend-completion/BE-0054-web-backend-completion-ja.md) がプールの Web 分岐を N レーンへ一般化します）、クロールだけが、いまだ 1 つのブラウザに固定された唯一の Tier-1 経路です。これが、`record` の入口として、また全画面のカバレッジ計測の実行として（[DESIGN §7.2](../../DESIGN.md)、[BE-0038](../BE-0038-autonomous-crawl-exploration/BE-0038-autonomous-crawl-exploration-ja.md) 動機 #2）クロールを使いにくくしています。
 
 ## 詳細設計
 
@@ -47,11 +47,11 @@
 
 ### レーンはブラウザプロセス、リセットごとのクリーン状態は新しいコンテキスト
 
-ワーカーの永続的なレーンは 1 つの**ブラウザプロセス**です。障害時にコーディネータが強制終了して再起動する単位がこれです（後述）。一方、反復ごとの `reset` は**ブラウザの再起動ではありません**。それはワーカーのブラウザ内に新しい `BrowserContext` を作ることで、`erase` に相当し、ほぼ無コストです。これは BE-0066 の既存の Web リセット継ぎ目をそのまま再利用します（`reset` は既に、新しいコンテキストへの `driver.navigate()` にすぎず、[`runner/pool.py`](../../../bajutsu/runner/pool.py) の `_web_relauncher` と同じです）。つまり「ブラウザプロセスを分ける」コストは、画面ごとではなく**ワーカーごと**（および障害ごと）のブラウザ起動 1 回です。
+ワーカーの永続的なレーンは 1 つの**ブラウザプロセス**です。障害時にコーディネータが強制終了して再起動する単位がこれです（後述）。一方、反復ごとの `reset` は**ブラウザの再起動ではありません**。それはワーカーのブラウザ内に新しい `BrowserContext` を作ることで、`erase` に相当し、ほぼ無コストです。これは BE-0066 の既存の Web リセット継ぎ目をそのまま再利用します（`reset` は既に、新しいコンテキストへの `driver.navigate()` にすぎず、[`runner/pool.py`](../../bajutsu/runner/pool.py) の `_web_relauncher` と同じです）。つまり「ブラウザプロセスを分ける」コストは、画面ごとではなく**ワーカーごと**（および障害ごと）のブラウザ起動 1 回です。
 
 ### 決定性の境界（要点）
 
-画面の*同一性*（fingerprint）、遷移判定、クラッシュ判定、画面マップの内容は、要素ツリーの純粋な決定的関数のまま変わりません。Web のクラッシュ判定は BE-0066 の決定的シグナルを保ちます（`page.on("pageerror")` による未捕捉 JS 例外、メインフレームの HTTP 4xx/5xx ステータス、または空の DOM）。いずれも LLM の判断ではありません。AI は依然「何を試すか」だけを選び、判定は下しません（[prime directive #1](../../../CLAUDE.md)）。
+画面の*同一性*（fingerprint）、遷移判定、クラッシュ判定、画面マップの内容は、要素ツリーの純粋な決定的関数のまま変わりません。Web のクラッシュ判定は BE-0066 の決定的シグナルを保ちます（`page.on("pageerror")` による未捕捉 JS 例外、メインフレームの HTTP 4xx/5xx ステータス、または空の DOM）。いずれも LLM の判断ではありません。AI は依然「何を試すか」だけを選び、判定は下しません（[prime directive #1](../../CLAUDE.md)）。
 
 並列化で緩むのは**探索順序**と**記録される正準 `path_to`** です。どのワーカーが画面に先に到達するかはスケジュール依存なので、アプリ自体に非決定性があると、記録されるパス（およびタイブレークされた発見順）は実行ごとに変わりえます。決定的なアプリでは、発見されるノードとエッジの*集合*は不変で、順序やパスのメタデータだけが変わります。これが許容されるのは、まさにクロールが **Tier 1 であり、合否ではなく発見成果物を出力する**からです。BE-0038 と BE-0064 が既に挙げているのと同じ理由です。決定的な*副産物*はその保証を保ちます。記録されたクラッシュ再現 / フローのパスは、Web の `run` で AI なしの Tier 2 リグレッションとして再生できます。
 
@@ -64,7 +64,7 @@
 
 ### Web プールの再利用（BE-0054）
 
-BE-0054 が N レーンへ一般化する [`runner/pool.py`](../../../bajutsu/runner/pool.py) の Web 分岐が、本項目の土台となる継ぎ目です。唯一の違いはレーンの隔離単位です。本項目のクロールレーンは（クロールはわざとクラッシュや固まりを誘発するので、障害隔離のために）1 つのブラウザプロセスであり、BE-0054 の `run` レーンは `BrowserContext`（より安価で、独立シナリオには十分）です。どちらも「Web プールの N レーン」であり、単位は用途ごとに選びます。
+BE-0054 が N レーンへ一般化する [`runner/pool.py`](../../bajutsu/runner/pool.py) の Web 分岐が、本項目の土台となる継ぎ目です。唯一の違いはレーンの隔離単位です。本項目のクロールレーンは（クロールはわざとクラッシュや固まりを誘発するので、障害隔離のために）1 つのブラウザプロセスであり、BE-0054 の `run` レーンは `BrowserContext`（より安価で、独立シナリオには十分）です。どちらも「Web プールの N レーン」であり、単位は用途ごとに選びます。
 
 ## 検討した代替案
 
@@ -86,5 +86,5 @@ BE-0054 が N レーンへ一般化する [`runner/pool.py`](../../../bajutsu/ru
 * [BE-0054 — Web バックエンドの完成](../BE-0054-web-backend-completion/BE-0054-web-backend-completion-ja.md) —— Web プールを N レーンへ一般化します。本項目のレーンはコンテキストではなくブラウザプロセス。
 * [BE-0038 — 自律クロール探索](../BE-0038-autonomous-crawl-exploration/BE-0038-autonomous-crawl-exploration-ja.md) —— プラットフォーム非依存のクロールエンジン。
 * [BE-0041 — Web（Playwright）バックエンド](../BE-0041-web-playwright-backend/BE-0041-web-playwright-backend-ja.md) —— Web ドライバと決定的な Web `run` 経路。
-* [`bajutsu/runner/pool.py`](../../../bajutsu/runner/pool.py)、[`bajutsu/crawl.py`](../../../bajutsu/crawl.py)、[`bajutsu/cli/commands/crawl.py`](../../../bajutsu/cli/commands/crawl.py)、[`bajutsu/drivers/playwright.py`](../../../bajutsu/drivers/playwright.py)。
-* [CLAUDE.md](../../../CLAUDE.md) —— prime directive #1（AI は判定しない）と #2（決定性優先）。[DESIGN §7.2](../../../DESIGN.md) —— クロールのダンプから全画面カバレッジを得ます。クロールが速くなれば実用的になります。
+* [`bajutsu/runner/pool.py`](../../bajutsu/runner/pool.py)、[`bajutsu/crawl.py`](../../bajutsu/crawl.py)、[`bajutsu/cli/commands/crawl.py`](../../bajutsu/cli/commands/crawl.py)、[`bajutsu/drivers/playwright.py`](../../bajutsu/drivers/playwright.py)。
+* [CLAUDE.md](../../CLAUDE.md) —— prime directive #1（AI は判定しない）と #2（決定性優先）。[DESIGN §7.2](../../DESIGN.md) —— クロールのダンプから全画面カバレッジを得ます。クロールが速くなれば実用的になります。

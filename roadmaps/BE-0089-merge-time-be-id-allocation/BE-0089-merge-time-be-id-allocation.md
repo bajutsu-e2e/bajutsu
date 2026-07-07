@@ -16,7 +16,7 @@
 ## Introduction
 
 A roadmap item's permanent `BE-NNNN` id is assigned the moment its pull request opens: the
-[`roadmap-id`](../../../.github/workflows/roadmap-id.yml) workflow runs on `pull_request`,
+[`roadmap-id`](../../.github/workflows/roadmap-id.yml) workflow runs on `pull_request`,
 allocates the next free number, claims it atomically as a `refs/be-claims/*` ref, pushes the rename
 back onto the branch, and rewrites the PR title's `BE-XXXX` to the allocated id.
 [BE-0061](../BE-0061-be-id-allocation-hardening/BE-0061-be-id-allocation-hardening.md)
@@ -85,7 +85,7 @@ trigger collapses from "approval, then auto-merge, then rename" to a single "pus
 
 ## Detailed design
 
-The allocation logic ([`scripts/allocate_roadmap_ids.py`](../../../scripts/allocate_roadmap_ids.py))
+The allocation logic ([`scripts/allocate_roadmap_ids.py`](../../scripts/allocate_roadmap_ids.py))
 is reused **unchanged**: it already finds every `BE-XXXX-<slug>/` placeholder in the working tree,
 allocates `max(used) + 1` per item (sorted by slug for determinism), `git mv`s the directory and
 files, rewrites the in-file token, and fixes the index rows. What changes is *where* and *when* it
@@ -181,10 +181,10 @@ the bypass identity*).
 Each load-bearing assumption, made concrete:
 
 - **A transient `BE-XXXX` on `main` keeps the gate green.** All three roadmap tools key on
-  `^BE-(\d{4})-` and skip anything else: [`tests/test_roadmap_format.py`](../../../tests/test_roadmap_format.py)
-  and [`tests/test_roadmap_index.py`](../../../tests/test_roadmap_index.py) (through
-  [`build_roadmap_index.py`](../../../scripts/build_roadmap_index.py), whose `load_items` `continue`s
-  on a non-numbered dir) and [`promote_roadmap_items.py`](../../../scripts/promote_roadmap_items.py).
+  `^BE-(\d{4})-` and skip anything else: [`tests/test_roadmap_format.py`](../../tests/test_roadmap_format.py)
+  and [`tests/test_roadmap_index.py`](../../tests/test_roadmap_index.py) (through
+  [`build_roadmap_index.py`](../../scripts/build_roadmap_index.py), whose `load_items` `continue`s
+  on a non-numbered dir) and [`promote_roadmap_items.py`](../../scripts/promote_roadmap_items.py).
   So a `BE-XXXX` directory is invisible to the format check, contributes no index row (no drift), and
   is not promoted. Empirically, `make check` passes with this very placeholder item present in the
   tree. There is therefore **no red window** on `main` between the merge commit and the renumber
@@ -308,22 +308,22 @@ and [BE-0078](../BE-0078-roadmap-status-folders/BE-0078-roadmap-status-folders.m
   — the item this extends; its *Alternatives considered* records the "assign id at merge time" option
   this realizes, and its hardening (atomic claims, repair, claims-gc) was later retired once this
   model proved out (see its *Progress*).
-- [`.github/workflows/roadmap-id.yml`](../../../.github/workflows/roadmap-id.yml) (the trigger this
+- [`.github/workflows/roadmap-id.yml`](../../.github/workflows/roadmap-id.yml) (the trigger this
   moves from `pull_request` to `push: main`). The `roadmap-id-repair` and `roadmap-claims-gc`
   workflows were in scope too and have since been removed.
-- [`scripts/allocate_roadmap_ids.py`](../../../scripts/allocate_roadmap_ids.py) (reused unchanged),
-  [`scripts/build_roadmap_index.py`](../../../scripts/build_roadmap_index.py),
-  [`scripts/promote_roadmap_items.py`](../../../scripts/promote_roadmap_items.py) — the three tools
+- [`scripts/allocate_roadmap_ids.py`](../../scripts/allocate_roadmap_ids.py) (reused unchanged),
+  [`scripts/build_roadmap_index.py`](../../scripts/build_roadmap_index.py),
+  [`scripts/promote_roadmap_items.py`](../../scripts/promote_roadmap_items.py) — the three tools
   that all skip a `BE-XXXX` directory, which is what keeps `main` green during the transient window.
 - [`actions/create-github-app-token`](https://github.com/actions/create-github-app-token) — mints the
   short-lived installation token for the bypass App in the workflow; pinned to a full commit SHA like
   every other third-party action.
-- [`tests/test_roadmap_format.py`](../../../tests/test_roadmap_format.py),
-  [`tests/test_roadmap_index.py`](../../../tests/test_roadmap_index.py) — the gate tests that key on
+- [`tests/test_roadmap_format.py`](../../tests/test_roadmap_format.py),
+  [`tests/test_roadmap_index.py`](../../tests/test_roadmap_index.py) — the gate tests that key on
   `^BE-(\d{4})-` and so ignore the placeholder.
-- [`CLAUDE.md`](../../../CLAUDE.md) ·
-  [`roadmaps/README.md`](../../README.md) ·
-  [`docs/ai-development.md`](../../../docs/ai-development.md) — the authoring rules updated to say the
+- [`CLAUDE.md`](../../CLAUDE.md) ·
+  [`roadmaps/README.md`](../README.md) ·
+  [`docs/ai-development.md`](../../docs/ai-development.md) — the authoring rules updated to say the
   number is allocated on `main` after the merge, not at PR-open, and that a BE-creation PR's title
   carries no `[BE-NNNN]` prefix (the prefix rule stays for PRs implementing an already-numbered item).
 - GitHub docs — *Automatically merging a pull request* (auto-merge) and *Managing a merge queue* — the

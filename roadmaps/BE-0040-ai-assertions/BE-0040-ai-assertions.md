@@ -47,4 +47,4 @@ If lowering is not possible for a given expectation — the screen genuinely can
 
 ## References
 
-[DESIGN §2 / §3.1](../../../DESIGN.md)
+[DESIGN §2 / §3.1](../../DESIGN.md)

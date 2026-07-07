@@ -45,7 +45,7 @@ returns to it.
 
 ## Detailed design
 
-All work is in [`bajutsu/templates/serve.js`](../../../bajutsu/templates/serve.js), the
+All work is in [`bajutsu/templates/serve.js`](../../bajutsu/templates/serve.js), the
 report's graph renderer. The layout already computes `pos` — a `Map` from each unit id
 (`g:<key>` for a collapsed group, `n:<fingerprint>` for a node/member) to its algorithmic
 `{x, y}`. Edges, group frames, and unit boxes are all positioned by reading `pos`, so
@@ -127,7 +127,7 @@ lands; it can ship in the same change if low-cost, or as an immediate follow-up.
 
 ## References
 
-- [`bajutsu/templates/serve.js`](../../../bajutsu/templates/serve.js) — the crawl graph
+- [`bajutsu/templates/serve.js`](../../bajutsu/templates/serve.js) — the crawl graph
   renderer (`renderGraph`, the `pos` map, the zoom/pan handlers).
 - [BE-0072](../BE-0072-responsive-web-ui/BE-0072-responsive-web-ui.md) —
   responsive web UI / touch pan + pinch-zoom on this same graph; the precedent for adding

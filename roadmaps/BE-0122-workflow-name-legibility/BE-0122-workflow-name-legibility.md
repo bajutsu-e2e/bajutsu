@@ -33,7 +33,7 @@ docs-only, zero-runtime-behavior change to `name:` fields.
 - **The checks list is read far more often than the workflow files.** Every PR — human or
   agent — is triaged from the checks list first; a name that requires opening the run to
   decode adds a click to every red build, multiplied across the many parallel sessions this
-  repo runs (see "Working in parallel" in [CLAUDE.md](../../../CLAUDE.md)).
+  repo runs (see "Working in parallel" in [CLAUDE.md](../../CLAUDE.md)).
 - **The good pattern already exists but is applied unevenly.** `E2E (Simulator)` and
   `Swift (BajutsuKit)` show the target shape was already discovered once; the other ten
   workflows never got the same treatment, so a new contributor can't infer the convention
@@ -92,7 +92,7 @@ or permission changes.
    the ruleset's `required_status_checks` contexts (a manual, human-executed step — ruleset
    edits are out-of-repo admin state, not reachable from a normal PR).
 
-4. **Document the convention** in [`docs/ai-development.md`](../../../docs/ai-development.md)
+4. **Document the convention** in [`docs/ai-development.md`](../../docs/ai-development.md)
    (English) and its Japanese mirror: a short subsection ("Naming GitHub Actions workflows and
    jobs") stating the shape (short phrase, parenthetical for tool/scope, no bare single-word
    `name:`), pointing at `e2e.yml` / `swift.yml` as the canonical examples, and flagging the
@@ -153,8 +153,8 @@ Log:
 
 ## References
 
-- [`.github/workflows/`](../../../.github/workflows/) — the workflows this item renames
-- [`docs/ai-development.md`](../../../docs/ai-development.md) — where the naming convention
+- [`.github/workflows/`](../../.github/workflows/) — the workflows this item renames
+- [`docs/ai-development.md`](../../docs/ai-development.md) — where the naming convention
   is documented
 - [BE-0067](../BE-0067-code-quality-gate-hardening/BE-0067-code-quality-gate-hardening.md) —
   prior CI-hardening item this one complements (correctness vs. legibility)

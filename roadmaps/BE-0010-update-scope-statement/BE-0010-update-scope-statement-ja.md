@@ -15,7 +15,7 @@
 
 ## はじめに
 
-マルチプラットフォーム化はコードだけの話ではなく、**戦略的なスコープ変更**です。現状の Bajutsu は、iOS Simulator 限定とドキュメントに書かれています（[DESIGN §1](../../../DESIGN.md)、[README](../../../README.md)）。2 つ目の本格的なプラットフォームが最初に着地したとき（まず Web、続いて Android。横断的な抽象化の作業は [BE-0009](../BE-0009-cross-platform-abstractions/BE-0009-cross-platform-abstractions-ja.md) を参照）、プロジェクトが宣言するスコープもそれに合わせて動かす必要があります。本項目は、それらのドキュメントと位置づけの変更を、意図して協調させた一手として扱い、プロダクトの説明がコードから遅れないようにします。
+マルチプラットフォーム化はコードだけの話ではなく、**戦略的なスコープ変更**です。現状の Bajutsu は、iOS Simulator 限定とドキュメントに書かれています（[DESIGN §1](../../DESIGN.md)、[README](../../README.md)）。2 つ目の本格的なプラットフォームが最初に着地したとき（まず Web、続いて Android。横断的な抽象化の作業は [BE-0009](../BE-0009-cross-platform-abstractions/BE-0009-cross-platform-abstractions-ja.md) を参照）、プロジェクトが宣言するスコープもそれに合わせて動かす必要があります。本項目は、それらのドキュメントと位置づけの変更を、意図して協調させた一手として扱い、プロダクトの説明がコードから遅れないようにします。
 
 ## 動機
 
@@ -27,10 +27,10 @@
 
 最初の新プラットフォームが着地したら（段階 1、Web）、同じ変更で次を更新します。
 
-- **[DESIGN §1](../../../DESIGN.md)** の「やること / やらないこと」：iOS Simulator 限定からマルチプラットフォームへ。「実機 / クラウドデバイスファーム」の論拠は、引き続き当てはまる箇所へ移します。
-- **[README](../../../README.md) / [README.ja](../../../README.ja.md)**：プロダクトの一文紹介と中核原則のセクション。
-- **[architecture 実装状況](../../../docs/ja/architecture.md)**：実装状況の表に新しいバックエンドを登録します。
-- **docs ナビ**：[`docs/README.md`](../../../docs/README.md) と [`docs/ja/README.md`](../../../docs/ja/README.md) の両方。
+- **[DESIGN §1](../../DESIGN.md)** の「やること / やらないこと」：iOS Simulator 限定からマルチプラットフォームへ。「実機 / クラウドデバイスファーム」の論拠は、引き続き当てはまる箇所へ移します。
+- **[README](../../README.md) / [README.ja](../../README.ja.md)**：プロダクトの一文紹介と中核原則のセクション。
+- **[architecture 実装状況](../../docs/ja/architecture.md)**：実装状況の表に新しいバックエンドを登録します。
+- **docs ナビ**：[`docs/README.md`](../../docs/README.md) と [`docs/ja/README.md`](../../docs/ja/README.md) の両方。
 
 ### Prime directive は不変に保つ
 
@@ -47,7 +47,7 @@
 
 ## 参考
 
-- [DESIGN §1](../../../DESIGN.md)（スコープ: やること / やらないこと）
-- [README](../../../README.md)、[README.ja](../../../README.ja.md)
-- [architecture.md](../../../docs/ja/architecture.md)（実装状況）
+- [DESIGN §1](../../DESIGN.md)（スコープ: やること / やらないこと）
+- [README](../../README.md)、[README.ja](../../README.ja.md)
+- [architecture.md](../../docs/ja/architecture.md)（実装状況）
 - 関連項目: [BE-0009](../BE-0009-cross-platform-abstractions/BE-0009-cross-platform-abstractions-ja.md)（抽象のクロスプラットフォーム化）、[BE-0041](../BE-0041-web-playwright-backend/BE-0041-web-playwright-backend-ja.md)（Web Playwright バックエンド）、[BE-0007](../BE-0007-android-backend/BE-0007-android-backend-ja.md)（Android バックエンド）

@@ -17,7 +17,7 @@
 
 Bajutsu's deterministic dev-time gate — `make check` (lock-check, format-check, ruff, shellcheck,
 actionlint, mypy, pytest + coverage), mirrored by the pre-push hook and CI — is what lets many
-parallel branches stay green without colliding ([CLAUDE.md](../../../CLAUDE.md),
+parallel branches stay green without colliding ([CLAUDE.md](../../CLAUDE.md),
 [BE-0043](../BE-0043-conflict-resistant-file-flow/BE-0043-conflict-resistant-file-flow.md)). An audit
 of the gate *itself* found it strong but with a confirmed fidelity defect and several missing layers.
 This item hardens the gate: it makes CI mirror `make check` by construction, brings the roadmap
@@ -125,9 +125,9 @@ Dependabot **security updates** in repo settings is the recommended companion.
 
 ## References
 
-- [CLAUDE.md](../../../CLAUDE.md) — the gate as the contract; `make check` mirrored by CI and the
+- [CLAUDE.md](../../CLAUDE.md) — the gate as the contract; `make check` mirrored by CI and the
   pre-push hook.
 - [BE-0043 — Conflict-resistant file flow](../BE-0043-conflict-resistant-file-flow/BE-0043-conflict-resistant-file-flow.md)
   — the contributor-workflow sibling (self-healing hooks, generated indexes) this extends.
-- [.github/workflows/ci.yml](../../../.github/workflows/ci.yml), [Makefile](../../../Makefile),
-  [pyproject.toml](../../../pyproject.toml) — the gate this item hardens.
+- [.github/workflows/ci.yml](../../.github/workflows/ci.yml), [Makefile](../../Makefile),
+  [pyproject.toml](../../pyproject.toml) — the gate this item hardens.

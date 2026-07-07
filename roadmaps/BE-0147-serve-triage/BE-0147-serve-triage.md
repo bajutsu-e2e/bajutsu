@@ -108,5 +108,5 @@ human accepts, never an automatic edit.
   — the UI this extends;
   [BE-0072 — Responsive serve Web UI](../BE-0072-responsive-web-ui/BE-0072-responsive-web-ui.md)
   — the small-screen layout the panel inherits.
-* [CLAUDE.md](../../../CLAUDE.md), [DESIGN §2](../../../DESIGN.md) — AI never judges; determinism
+* [CLAUDE.md](../../CLAUDE.md), [DESIGN §2](../../DESIGN.md) — AI never judges; determinism
   first. Triage stays advisory and the verdict is read back, never recomputed.

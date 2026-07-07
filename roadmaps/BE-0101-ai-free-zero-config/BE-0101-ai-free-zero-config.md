@@ -206,7 +206,7 @@ availability seam), `bajutsu/agents.py` (`AGENT_KINDS = ("api", "claude-code")` 
 registry), `bajutsu/claude_code_agent.py` (the subscription-login CLI backend), `bajutsu/cli/`
 (per-command registry the `uses_claude` flag attaches to), `bajutsu/serve/` (`api_key_info` /
 `set_api_key` — the key surface to gate on), `bajutsu/doctor.py` · `bajutsu/preflight.py` (the
-onboarding surface), [DESIGN §2 / §3.1](../../../DESIGN.md), [CLAUDE.md](../../../CLAUDE.md) (the
+onboarding surface), [DESIGN §2 / §3.1](../../DESIGN.md), [CLAUDE.md](../../CLAUDE.md) (the
 prose statement of the boundary this item makes legible), [BE-0047](../BE-0047-ai-data-sovereignty/BE-0047-ai-data-sovereignty.md)
 (the enforcement counterpart on the AI side), [BE-0053](../BE-0053-bedrock-ai-provider/BE-0053-bedrock-ai-provider.md)
 (pluggable provider), [BE-0024](../BE-0024-doctor-onboarding/BE-0024-doctor-onboarding.md) (the

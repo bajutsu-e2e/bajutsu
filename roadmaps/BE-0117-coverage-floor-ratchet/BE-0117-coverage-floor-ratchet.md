@@ -145,8 +145,8 @@ Work breaks down by module, then a final floor-raise once all test additions lan
 - `bajutsu/cli/commands/crawl.py:58-...` (`crawl`), 67.4% coverage
 - `bajutsu/cli/commands/schema.py:8-12` (`schema`), 71.4% coverage
 - `bajutsu/cli/commands/audit.py:38-...` (`audit`, `_history_audit`), 71.9% coverage
-- [`Makefile:69`](../../../Makefile) — the `--cov-fail-under` line this item raised from 87 to 89.
-- [`pyproject.toml`](../../../pyproject.toml) — `[tool.coverage.run] branch = true`, the branch-
+- [`Makefile:69`](../../Makefile) — the `--cov-fail-under` line this item raised from 87 to 89.
+- [`pyproject.toml`](../../pyproject.toml) — `[tool.coverage.run] branch = true`, the branch-
   coverage mode the floor is measured against.
 - [BE-0067 — Code-quality gate hardening](../BE-0067-code-quality-gate-hardening/BE-0067-code-quality-gate-hardening.md)
   — introduced branch coverage and the 87% floor this item ratchets further.

@@ -23,12 +23,12 @@ below). This proposal
 selects a concrete server, database, storage, and deployment stack for turning the local
 `bajutsu serve` (`bajutsu/serve/`) into a **shared, publicly hosted** service. The local UI today is a Tier-1
 convenience that binds `127.0.0.1`, has no auth, and shells out to `bajutsu run` on the same host
-([cli](../../../docs/cli.md#serve) · [reporting](../../../docs/reporting.md)). Going public changes the shape of
+([cli](../../docs/cli.md#serve) · [reporting](../../docs/reporting.md)). Going public changes the shape of
 the system, not just its address: the web UI is a **thin launcher**, so hosting it really means
 hosting the **runner** — which leads to a shared public service built from a Linux control plane
 and a macOS worker pool.
 
-Related: [architecture](../../../docs/architecture.md) · [ci](../../../docs/ci.md) · the self-hosting counterpart
+Related: [architecture](../../docs/architecture.md) · [ci](../../docs/ci.md) · the self-hosting counterpart
 [BE-0016](../BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md).
 
 ## Motivation
@@ -65,7 +65,7 @@ workers.**
 
 | Layer | Selected | Why this one | Notable alternatives |
 |---|---|---|---|
-| **API / web** | **FastAPI** on **Uvicorn** (prod: Gunicorn + uvicorn workers) | Async (SSE — server-sent events — / WebSocket for live logs), Pydantic is **already a dependency** ([pyproject](../../../pyproject.toml)), OpenAPI for free, same Python as the core | Django (heavier, sync-first), Litestar, keep stdlib (won't scale to auth/multi-user) |
+| **API / web** | **FastAPI** on **Uvicorn** (prod: Gunicorn + uvicorn workers) | Async (SSE — server-sent events — / WebSocket for live logs), Pydantic is **already a dependency** ([pyproject](../../pyproject.toml)), OpenAPI for free, same Python as the core | Django (heavier, sync-first), Litestar, keep stdlib (won't scale to auth/multi-user) |
 | **Frontend** | Keep the **single-page UI** from `serve`, served by the API; add auth + project pickers | The UI is one HTML string already; no SPA build step needed for v1 | React/Svelte SPA later if the UI grows |
 | **Reverse proxy + TLS** (Transport Layer Security) | **Caddy** | Automatic HTTPS (Let's Encrypt) with near-zero config; clean reverse proxy + headers | nginx + certbot (more knobs, more setup), Traefik |
 | **AuthN/Z** (authentication / authorization) | **OAuth2 — GitHub provider** via **Authlib**, signed-cookie sessions; per-org RBAC (role-based access control) | Audience is developers (they have GitHub); no passwords to store; org model maps to GitHub orgs | oauth2-proxy at the edge, Auth0/Clerk/WorkOS (managed, paid), Google OAuth |
@@ -76,7 +76,7 @@ workers.**
 | **macOS workers** | **MacStadium Orka** | Purpose-built macOS-VM orchestration ("k8s for Mac") — the only option that gives a **scalable, schedulable pool** of clean Macs | AWS EC2 Mac (24h min allocation, pricey), Scaleway Apple silicon, self-hosted Mac minis |
 | **Secrets** | Cloud secret manager (**Doppler** or platform-native: Fly/AWS Secrets Manager) | Centralized rotation; per-org **BYO (bring-your-own) `ANTHROPIC_API_KEY`** (bounds cost/abuse for `--dismiss-alerts` and `record`) | Vault (heavier), env files (don't, for public) |
 | **Observability** | **Sentry** (errors) + **Prometheus/Grafana** (metrics) + structured JSON logs | Standard, cheap, hosted tiers exist | OpenTelemetry collector, Datadog (paid) |
-| **IaC (infrastructure as code) + CI/CD** (continuous integration / continuous delivery) | **Terraform** + **GitHub Actions** → **GHCR** (GitHub Container Registry) images | Reproducible infra; the repo already lives in Actions ([ci](../../../docs/ci.md)) | Pulumi, manual (don't) |
+| **IaC (infrastructure as code) + CI/CD** (continuous integration / continuous delivery) | **Terraform** + **GitHub Actions** → **GHCR** (GitHub Container Registry) images | Reproducible infra; the repo already lives in Actions ([ci](../../docs/ci.md)) | Pulumi, manual (don't) |
 
 ### What each piece does
 
@@ -133,7 +133,7 @@ A small Python agent (launchd service) on each Orka-provisioned Mac:
 The Linux control plane, Postgres, Redis, and R2 are **cheap and elastic**. The **Macs dominate the
 bill** and don't scale to zero cleanly (Orka nodes / EC2 Mac 24 h minimums). Design the pool around
 **queue depth with a small warm floor**, and push the deterministic *gate* to ephemeral CI
-([ci](../../../docs/ci.md)) so the hosted pool only carries **interactive authoring**, not regression volume.
+([ci](../../docs/ci.md)) so the hosted pool only carries **interactive authoring**, not regression volume.
 
 ### Security hardening (mandatory before any public exposure)
 
@@ -334,8 +334,8 @@ The single-tenant groundwork has landed (across #105–#159); the multi-tenant p
 
 ## References
 
-`bajutsu/serve/`, [ci](../../../docs/ci.md), [architecture](../../../docs/architecture.md),
-[reporting](../../../docs/reporting.md), [cli](../../../docs/cli.md#serve), the self-hosting counterpart
+`bajutsu/serve/`, [ci](../../docs/ci.md), [architecture](../../docs/architecture.md),
+[reporting](../../docs/reporting.md), [cli](../../docs/cli.md#serve), the self-hosting counterpart
 [BE-0016](../BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md), and
 [BE-0055](../BE-0055-operational-logging/BE-0055-operational-logging.md) — which designs
 the operational logging that realizes the "structured JSON logs" observability row above.

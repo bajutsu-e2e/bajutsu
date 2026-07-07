@@ -33,7 +33,7 @@ Bajutsu が競合に対して掲げる中心的な主張は、ゲートが吸収
 提案粒度です。設計上の制約は、監査が純粋に観測に徹することです。
 
 - **繰り返して差分を取る（動的）。** `--audit` モード（または `bajutsu audit` サブコマンド）が、同一の前提条件下でシナリオを `K` 回実行し、結果を比較します。比較するのはステップごとの pass/fail、解決されたセレクタの対象、アサーション結果です。run をまたいでばらつくものは非決定的として、ばらついた証跡（要素ツリー／スクリーンショット／ネットワーク）を添えて報告します。分類は `deterministic` か `flaky` かであり、緩めた通過には決してなりません。既存の並列実行と証跡の機構を再利用し、固定 sleep は導入しません。
-- **安定性スコア（静的）。** シナリオをパースし、デバイスなしで採点します。各セレクタを安定性のはしご（[selectors.md](../../../docs/ja/selectors.md)）で採点し、`timeout` のない `wait` ステップや広すぎる条件でゲートされた待機を指摘し、安定した `id` で置き換えられる生座標ジェスチャを指摘します。`doctor` の id カバレッジスコア（`bajutsu/doctor.py`）と並ぶ、シナリオごとの決定性スコアを出力します。
+- **安定性スコア（静的）。** シナリオをパースし、デバイスなしで採点します。各セレクタを安定性のはしご（[selectors.md](../../docs/ja/selectors.md)）で採点し、`timeout` のない `wait` ステップや広すぎる条件でゲートされた待機を指摘し、安定した `id` で置き換えられる生座標ジェスチャを指摘します。`doctor` の id カバレッジスコア（`bajutsu/doctor.py`）と並ぶ、シナリオごとの決定性スコアを出力します。
 - **run の provenance ／バージョンスタンプ（経時分析の前提）。** 各 run に、`manifest.json` と serve の run 記録（[BE-0015](../BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting-ja.md) 7c-4）の両方へ、**シナリオの content hash**（すでに本文を保存している実行済み `scenario.yaml` の安定した指紋）、**ツールのバージョン**（`bajutsu.__version__`）、そして取得できるときは**シナリオの git revision**と**アプリの build id**（どちらも任意。すべての run が git 管理下とは限らず、build が分かるとも限らない）をスタンプします。デバイスのモデル／ランタイムはすでに取得済みです。これらのスタンプがあれば、経時ビューは貯まった run を content hash で束ね、合格率の推移を示し、**content hash（できればアプリ／ツールのバージョンも）が変わらないのに判定が反転する**シナリオを指摘できます。これが真のフレーキネスで、編集されたシナリオや動いたアプリと切り分けられます。これは貯まった run 記録を再利用し、フィールドを足すだけで、判定は足しません。
 - **出力。** 助言的なレポート（HTML ／ JSON）と、参考情報としての終了ステータスです。シナリオと判定に対しては読み取り専用で、テストを編集することも、CI をゲートすることもありません。
 
@@ -55,9 +55,9 @@ Bajutsu が競合に対して掲げる中心的な主張は、ゲートが吸収
 
 ## 参考
 
-`bajutsu/doctor.py`、[selectors.md](../../../docs/ja/selectors.md)、
+`bajutsu/doctor.py`、[selectors.md](../../docs/ja/selectors.md)、
 [BE-0024](../BE-0024-doctor-onboarding/BE-0024-doctor-onboarding-ja.md)、
 [BE-0015](../BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting-ja.md) — 経時ビューが掘る DB 記録の run（run の provenance はそこにスタンプする）、
 [BE-0044](../BE-0044-scenario-provenance/BE-0044-scenario-provenance-ja.md) — *別軸*の provenance（ステップ↔自然言語の出自）で、run のバージョン付けではない、
-[ロードマップ → 取り込まない](../../README-ja.md#取り込まない既に充足--スコープ外)、
-[DESIGN §2 / §10](../../../DESIGN.md)
+[ロードマップ → 取り込まない](../README-ja.md#取り込まない既に充足--スコープ外)、
+[DESIGN §2 / §10](../../DESIGN.md)

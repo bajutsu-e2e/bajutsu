@@ -128,6 +128,14 @@ def test_http_open_config_from_git_binds_checkout(tmp_path: Path, monkeypatch) -
         # The relative `scenarios: e2e` resolves against the checkout, so the listing finds smoke.yaml.
         assert _get_json(port, "/api/scenarios?target=fromgit")[0]["names"] == ["s"]
         assert _get_json(port, "/api/config")["hasConfig"] is True
+        # The bind stamps the resolved commit into state, and /api/config/content surfaces the raw
+        # YAML plus that provenance (BE-0063) — so the UI can confirm which commit is actually bound,
+        # not just the opaque cache path.
+        assert state.config_provenance is not None
+        assert state.config_provenance["sha"] == "deadbeefcafe"
+        content = _get_json(port, "/api/config/content")
+        assert content["content"] == git_cfg.read_text(encoding="utf-8")
+        assert content["provenance"]["sha"] == "deadbeefcafe"
         # A value with no recognized scheme is not a Git spec → a clear 400, not a local-path read.
         status, resp = _post(port, "/api/config", {"git": "/etc/passwd"})
         assert status == 400
@@ -135,6 +143,57 @@ def test_http_open_config_from_git_binds_checkout(tmp_path: Path, monkeypatch) -
         # gets the "spec is required" 400 rather than silently falling back to the local file binder.
         status, resp = _post(port, "/api/config", {"git": ""})
         assert status == 400 and "spec is required" in resp["error"]
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+def test_http_config_content_returns_local_yaml_without_provenance(tmp_path: Path) -> None:
+    # A local file config: /api/config/content returns its verbatim YAML and no Git provenance.
+    scn_dir, cfg, runs = project(tmp_path)
+    server, port = _serve(
+        srv.ServeState(scenarios_dir=scn_dir, config=cfg, runs_dir=runs, cwd=tmp_path)
+    )
+    try:
+        d = _get_json(port, "/api/config/content")
+        assert d["config"] == str(cfg)
+        assert d["content"] == cfg.read_text(encoding="utf-8")
+        assert d["provenance"] is None  # a local file has no commit to point at
+        # The parsed structure powers the UI's collapsible tree; it mirrors the file faithfully
+        # (targets keyed by name), with no env interpolation applied.
+        assert set(d["parsed"]) == {"defaults", "targets"}
+        assert set(d["parsed"]["targets"]) == {"demo", "other"}
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+def test_http_config_content_uses_restricted_loader_and_stays_json_safe(tmp_path: Path) -> None:
+    # The parsed structure must use the project's restricted YAML loader (so an `on:` key stays the
+    # string "on", not the bool True as YAML 1.1 would coerce it) and must be JSON-serializable — a
+    # bare `date` from a timestamp would otherwise make the handler's json.dumps 500. config_content
+    # reads state.config directly (no schema re-validation), so a tricky file exercises both.
+    _, _, runs = project(tmp_path)
+    cfg = tmp_path / "tricky.yaml"
+    cfg.write_text("on: 1\nreleased: 2020-01-02\ndefaults: { backend: [idb] }\n", encoding="utf-8")
+    server, port = _serve(srv.ServeState(config=cfg, runs_dir=runs, cwd=tmp_path))
+    try:
+        d = _get_json(port, "/api/config/content")  # would raise on a 500 (non-JSON-safe payload)
+        assert "on" in d["parsed"]  # restricted loader kept the key a string, not True
+        assert d["parsed"]["released"] == "2020-01-02"  # the date was coerced to a string for JSON
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+def test_http_config_content_404_when_no_config_bound(tmp_path: Path) -> None:
+    # Nothing bound yet (the UI opens the picker instead): the content endpoint 404s rather than
+    # returning an empty body the viewer would render as a blank config.
+    _, _, runs = project(tmp_path)
+    server, port = _serve(srv.ServeState(runs_dir=runs, cwd=tmp_path))
+    try:
+        with pytest.raises(urllib.error.HTTPError, match="404"):
+            _get_json(port, "/api/config/content")
     finally:
         server.shutdown()
         server.server_close()

@@ -16,7 +16,7 @@
 ## Introduction
 
 Many parallel sessions and contributors work this repository at once (see
-[ai-development.md](../../../docs/ai-development.md)), and pull requests conflict far more often than the
+[ai-development.md](../../docs/ai-development.md)), and pull requests conflict far more often than the
 work is actually semantically overlapping. This item proposes treating *merge conflicts as a
 design smell* and reshaping the file flow so that independent changes touch disjoint files: turn
 hand-edited shared ledgers into generated artifacts, split monolith modules and test files so new
@@ -40,7 +40,7 @@ disabled (not wired into `make setup`), and the history is full of `Merge branch
 <branch>` commits — long-lived branches drift and integrate late, so conflicts surface large.
 
 The BE-ID allocation race is already solved (the `BE-0043` placeholder + `scripts/allocate_roadmap_ids.py`
-run by the [`roadmap-id`](../../../.github/workflows/roadmap-id.yml) workflow), but the **index
+run by the [`roadmap-id`](../../.github/workflows/roadmap-id.yml) workflow), but the **index
 tables that carry those IDs are still hand-edited**, so they remain the single largest conflict
 source. This proposal closes that gap and generalizes the lesson.
 
@@ -94,7 +94,7 @@ Mechanisms 1 and 3 alone cover most of the measured top conflict sources (roadma
 
 ## References
 
-- [ai-development.md](../../../docs/ai-development.md) — parallel-work guide (worktrees, rebase, lanes)
-- [`scripts/allocate_roadmap_ids.py`](../../../scripts/allocate_roadmap_ids.py) — the existing
+- [ai-development.md](../../docs/ai-development.md) — parallel-work guide (worktrees, rebase, lanes)
+- [`scripts/allocate_roadmap_ids.py`](../../scripts/allocate_roadmap_ids.py) — the existing
   ID-race fix this generalizes
-- [CLAUDE.md](../../../CLAUDE.md) — "Working in parallel without breaking each other"
+- [CLAUDE.md](../../CLAUDE.md) — "Working in parallel without breaking each other"

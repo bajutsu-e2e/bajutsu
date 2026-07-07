@@ -15,7 +15,7 @@
 
 ## はじめに
 
-[`bajutsu/crawl.py`](../../../bajutsu/crawl.py) の `crawl()` をリファクタリングし、共有される並行状態
+[`bajutsu/crawl.py`](../../bajutsu/crawl.py) の `crawl()` をリファクタリングし、共有される並行状態
 （スクリーンマップ、フロンティア、各種の上限値、そしてそれらを守るロック）を `_Coordinator` という
 小さなクラス一つにまとめます。`crawl()` 自身は、その調整役を呼び出しながら端末を歩く処理だけが残ります。
 これは**挙動を変えない**内部リファクタリングです。クロールは引き続き探索のための道具（Tier 1 であり、
@@ -159,7 +159,7 @@ class _Coordinator:
 
 ## 参考
 
-- [`bajutsu/crawl.py`](../../../bajutsu/crawl.py) — `crawl()` とそのネストしたクロージャ。
+- [`bajutsu/crawl.py`](../../bajutsu/crawl.py) — `crawl()` とそのネストしたクロージャ。
 - [BE-0064 — 複数シミュレータにまたがる並行クロール](../BE-0064-parallel-crawl/BE-0064-parallel-crawl-ja.md) — ここで再編するマルチワーカーのフロンティアを導入。
 - [BE-0077 — 複数ブラウザにまたがる並行 Web クロール](../BE-0077-parallel-web-crawl/BE-0077-parallel-web-crawl-ja.md) — スレッド内ワーカーファクトリと `recover` を導入。
 - [BE-0083 — codegen エミッタを共有のシナリオ走査の背後に統合する](../BE-0083-codegen-emitter-unification/BE-0083-codegen-emitter-unification-ja.md) — これと同種の、挙動を変えない内部構造リファクタリング。

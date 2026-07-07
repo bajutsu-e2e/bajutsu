@@ -37,7 +37,7 @@ item" (the proposal text) and "is anyone already on it" (the issue, its Assignee
 the first is answered where the reader is looking. It also matters in two distinct places, not one:
 a reader reaches an item's own file directly just as often as through the dashboard — a link from
 another document, a PR description, a GitHub code search, or the plain-text
-[`roadmaps/README.md`](../../README.md) index — and none of those paths pass through the dashboard at
+[`roadmaps/README.md`](../README.md) index — and none of those paths pass through the dashboard at
 all. Putting the link only on the derived HTML rendering would leave every one of those paths
 without it. Closing the gap at the source, the item's own file, is what makes it reach every reader
 regardless of how they got there; the dashboard link is then the same fact surfaced a second time,
@@ -164,11 +164,11 @@ Log:
 - [BE-0109 — GitHub Issues as the ownership tracker for open roadmap items](../BE-0109-roadmap-tracking-issues/BE-0109-roadmap-tracking-issues.md) —
   the tracking-issue title/label convention this item's search URL relies on, and the item whose
   *Alternatives considered* already rejected writing a live issue number back into the metadata block.
-- [`scripts/build_roadmap_dashboard.py`](../../../scripts/build_roadmap_dashboard.py) — the
+- [`scripts/build_roadmap_dashboard.py`](../../scripts/build_roadmap_dashboard.py) — the
   dashboard generator this item changes.
-- [`scripts/new_roadmap_item.py`](../../../scripts/new_roadmap_item.py) — the scaffold this item
+- [`scripts/new_roadmap_item.py`](../../scripts/new_roadmap_item.py) — the scaffold this item
   extends so every new item gets the field automatically.
-- [`tests/test_roadmap_format.py`](../../../tests/test_roadmap_format.py) — the per-item format
+- [`tests/test_roadmap_format.py`](../../tests/test_roadmap_format.py) — the per-item format
   check this item extends with the new field and its value check.
 - [BE-0074 — Standardize the BE item template (EN / JA)](../BE-0074-be-template-standardization/BE-0074-be-template-standardization.md) —
   the format-pinning precedent `test_roadmap_format.py` follows, and the item whose canonical field

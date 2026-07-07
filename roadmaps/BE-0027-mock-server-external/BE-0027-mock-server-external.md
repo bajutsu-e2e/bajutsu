@@ -76,4 +76,4 @@ as "schema only, not wired" — is the honest middle ground.
 
 ## References
 
-[architecture.md](../../../docs/architecture.md#implementation-status), `config.py` `MockServer`
+[architecture.md](../../docs/architecture.md#implementation-status), `config.py` `MockServer`

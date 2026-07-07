@@ -116,4 +116,4 @@ Split out of [BE-0035 — Device-control steps](../BE-0035-device-control-primit
 `setTimezone` and `shake` were in turn split out into
 [BE-0158 — Timezone device primitive](../BE-0158-timezone-device-primitive/BE-0158-timezone-device-primitive.md) and
 [BE-0157 — Shake device primitive](../BE-0157-shake-device-primitive/BE-0157-shake-device-primitive.md).
-[DESIGN §6.2](../../../DESIGN.md), `bajutsu/orchestrator/actions/handlers/device.py`
+[DESIGN §6.2](../../DESIGN.md), `bajutsu/orchestrator/actions/handlers/device.py`

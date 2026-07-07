@@ -93,6 +93,6 @@ Tier-1, read-only; the UI only shells out to the existing audit.
 * [BE-0011 — Local web UI (`bajutsu serve`)](../BE-0011-local-web-ui-serve/BE-0011-local-web-ui-serve.md),
   [BE-0072 — Responsive serve Web UI](../BE-0072-responsive-web-ui/BE-0072-responsive-web-ui.md)
   — the UI this extends and the small-screen layout it inherits.
-* [selectors.md](../../../docs/selectors.md) — the stability ladder the audit grades against;
-  [CLAUDE.md](../../../CLAUDE.md), [DESIGN §2](../../../DESIGN.md) — the audit is read-only and
+* [selectors.md](../../docs/selectors.md) — the stability ladder the audit grades against;
+  [CLAUDE.md](../../CLAUDE.md), [DESIGN §2](../../DESIGN.md) — the audit is read-only and
   AI-free, never a verdict.

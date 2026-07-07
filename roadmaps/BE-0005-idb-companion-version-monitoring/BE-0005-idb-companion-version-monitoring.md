@@ -46,4 +46,4 @@ Nothing here introduces fixed sleeps or non-deterministic selection: the monitor
 
 ## References
 
-[DESIGN §11](../../../DESIGN.md)
+[DESIGN §11](../../DESIGN.md)

@@ -140,8 +140,8 @@ Log:
 
 The `Driver` Protocol and `drivers/base` shared implementation (the contract the suite enumerates
 and the layer backends bypass), the existing per-backend driver tests (fake / idb / Playwright —
-what this consolidates into one spec), [DESIGN.md](../../../DESIGN.md) and
-[docs/architecture.md](../../../docs/architecture.md) (the backend-agnostic philosophy and the
+what this consolidates into one spec), [DESIGN.md](../../DESIGN.md) and
+[docs/architecture.md](../../docs/architecture.md) (the backend-agnostic philosophy and the
 implementation-status source of truth),
 [BE-0009](../BE-0009-cross-platform-abstractions/BE-0009-cross-platform-abstractions.md)
 (the cross-platform abstractions this checks),

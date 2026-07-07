@@ -81,4 +81,4 @@ guarantee intact while steadily reducing the hand-porting a team must do.
 
 ## References
 
-[codegen.md](../../../docs/codegen.md)
+[codegen.md](../../docs/codegen.md)

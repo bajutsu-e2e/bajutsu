@@ -28,7 +28,7 @@ the one path — merge-time id allocation — that lands content on `main` with 
 
 ### The format check is blind to placeholders by design
 
-[`tests/test_roadmap_format.py`](../../../tests/test_roadmap_format.py)'s `_items()` collects
+[`tests/test_roadmap_format.py`](../../tests/test_roadmap_format.py)'s `_items()` collects
 directories matching `^BE-(\d{4})-`; a `BE-0149-<slug>` placeholder never matches, so it is invisible
 to both the format check and the index build. This is deliberate:
 [BE-0089](../BE-0089-merge-time-be-id-allocation/BE-0089-merge-time-be-id-allocation.md)'s
@@ -53,8 +53,8 @@ those changes reached `main`. `make check` stayed green on both PRs the whole ti
 exemption meant there was nothing for it to catch — and both merged on 2026-07-03 still carrying the
 old template.
 
-The merge-time allocator ([`scripts/allocate_roadmap_ids.py`](../../../scripts/allocate_roadmap_ids.py),
-run by [`roadmap-id.yml`](../../../.github/workflows/roadmap-id.yml)) then renamed `BE-0149` to
+The merge-time allocator ([`scripts/allocate_roadmap_ids.py`](../../scripts/allocate_roadmap_ids.py),
+run by [`roadmap-id.yml`](../../.github/workflows/roadmap-id.yml)) then renamed `BE-0149` to
 `BE-0137`/`BE-0138` and rebuilt the index — a purely mechanical rename with no format validation of
 its own; BE-0089's own design notes that the re-triggered `roadmap-id` run "finds no placeholders and
 exits as a no-op," never re-invoking the format check. That rename commit lands by pushing directly
@@ -79,10 +79,10 @@ where a non-conformant item can reach `main` undetected.
 ### 1. Check a placeholder's structural shape during review
 
 `^BE-(\d{4})-` is not a single check but a pattern independently hardcoded in four places:
-`tests/test_roadmap_format.py`'s `_items()`, [`scripts/build_roadmap_index.py`](../../../scripts/build_roadmap_index.py)
+`tests/test_roadmap_format.py`'s `_items()`, [`scripts/build_roadmap_index.py`](../../scripts/build_roadmap_index.py)
 (which already carries three separate copies — `NUMBERED_DIR_RE`, `ITEM_DIR_RE`, `TITLE_RE` — and
-they already disagree, since only `ITEM_DIR_RE` accepts `XXXX` today), [`scripts/allocate_roadmap_ids.py`](../../../scripts/allocate_roadmap_ids.py),
-and [`scripts/promote_roadmap_items.py`](../../../scripts/promote_roadmap_items.py). Patching only
+they already disagree, since only `ITEM_DIR_RE` accepts `XXXX` today), [`scripts/allocate_roadmap_ids.py`](../../scripts/allocate_roadmap_ids.py),
+and [`scripts/promote_roadmap_items.py`](../../scripts/promote_roadmap_items.py). Patching only
 `test_roadmap_format.py` would leave the other three to keep drifting independently — `promote_roadmap_items.py`'s
 `misfiled_items()` is a live instance: it skips `BE-0149` placeholders the same way, so a placeholder
 whose `Status` changes while still unallocated can sit in the wrong category folder undetected, the
@@ -146,7 +146,7 @@ hand" (as PR #568 did) into "review and merge one generated PR."
 ### 3. Make the merge-time allocator self-validate before landing on `main`
 
 `.github/workflows/roadmap-id.yml` already runs a guard between the renumber commit and the push —
-[`scripts/check_renumber_diff.py`](../../../scripts/check_renumber_diff.py), which caps the commit's
+[`scripts/check_renumber_diff.py`](../../scripts/check_renumber_diff.py), which caps the commit's
 blast radius to `roadmaps/**` (BE-0089). Extend that same guard, rather than adding a second, parallel
 one, to also call the shared predicate/checker item 1 introduces against the renumbered item, run
 right after `check_renumber_diff.py` and before `git push`. On failure, abort the push (`main` is left

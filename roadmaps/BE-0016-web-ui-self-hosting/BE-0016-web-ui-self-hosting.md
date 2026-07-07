@@ -27,12 +27,12 @@ self-hosted counterpart to the managed, multi-tenant public stack in
   (token auth + input validation), plus operational configuration (LaunchAgent, auto-login,
   Tailscale). The one small piece of code it adds is `serve --emit-launchagent`, which prints the
   LaunchAgent plist for you. The step-by-step operator guide is
-  [docs/self-hosting.md](../../../docs/self-hosting.md).
+  [docs/self-hosting.md](../../docs/self-hosting.md).
 - **Tier B — the server backend with a Mac worker pool.** A self-hosted version of
   [BE-0015](../BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md)'s server backend,
   with every managed service replaced by self-hosted open-source software (OSS). Its single-node form —
   **including multi-org isolation** — has shipped and is runnable today
-  ([`deploy/self-host/`](../../../deploy/self-host/)); what remains is growing that node into a
+  ([`deploy/self-host/`](../../deploy/self-host/)); what remains is growing that node into a
   fault-tolerant, org-fair *pool*. The fully managed public cloud stays BE-0015's.
 
 This item now records the **shipped self-hosting baselines** — Tier A and the single-node Tier B
@@ -72,7 +72,7 @@ The only thing that actually runs today is the stdlib `bajutsu serve` + the CLI,
 exposure by [BE-0051](../BE-0051-serve-hardening-for-hosting/BE-0051-serve-hardening-for-hosting.md).
 This tier makes it safely reachable for a team with **near-zero code change** (only the
 `--emit-launchagent` helper) — it is **runnable today** on the existing `bajutsu serve`. See
-[docs/self-hosting.md](../../../docs/self-hosting.md) for the full walkthrough.
+[docs/self-hosting.md](../../docs/self-hosting.md) for the full walkthrough.
 
 ```
             team laptops
@@ -128,8 +128,8 @@ not this item's.
 #### What runs today
 
 The single-node server backend is runnable now — the compose stack, walkthrough, and multi-org setup
-are in [`deploy/self-host/`](../../../deploy/self-host/) and
-[docs/self-hosting.md](../../../docs/self-hosting.md#tier-b--self-hosting-the-server-backend). It ships:
+are in [`deploy/self-host/`](../../deploy/self-host/) and
+[docs/self-hosting.md](../../docs/self-hosting.md#tier-b--self-hosting-the-server-backend). It ships:
 
 - **The control-plane stack.** A `docker-compose.yml` wires `postgres`, `minio`
   (S3-compatible storage), a one-shot `migrate` (Alembic to head), the `bajutsu` app
@@ -257,7 +257,7 @@ authorization axes already cross the org boundary; because the Mac pool cannot s
 Start with **Tier A** (Tailscale + LaunchAgent) — it runs the real, existing system safely for a
 team with essentially no code, on a single Mac. Move to **Tier B** once you need multi-user history
 and isolation: the single-node control plane, including **multi-org isolation**, is runnable today
-([`deploy/self-host/`](../../../deploy/self-host/)). Take on the **split-out pool work** (cross-org
+([`deploy/self-host/`](../../deploy/self-host/)). Take on the **split-out pool work** (cross-org
 fairness, capability routing, control-plane scale-out, high availability, observability — each a
 separate roadmap item that names this one as its origin) only when the pool and the contention are
 real — and the **fully managed public cloud** offering remains
@@ -307,9 +307,9 @@ The single node is runnable now ([#103](https://github.com/bajutsu-e2e/bajutsu/p
 
 ## References
 
-`bajutsu/serve/`, [docs/self-hosting.md](../../../docs/self-hosting.md) (the Tier A and Tier B
-operator guide), [`deploy/self-host/`](../../../deploy/self-host/) (the runnable single-node compose
-stack), [cli.md](../../../docs/cli.md#serve), [ci.md](../../../docs/ci.md),
+`bajutsu/serve/`, [docs/self-hosting.md](../../docs/self-hosting.md) (the Tier A and Tier B
+operator guide), [`deploy/self-host/`](../../deploy/self-host/) (the runnable single-node compose
+stack), [cli.md](../../docs/cli.md#serve), [ci.md](../../docs/ci.md),
 [BE-0051](../BE-0051-serve-hardening-for-hosting/BE-0051-serve-hardening-for-hosting.md)
 (the hardening that makes exposure safe),
 [BE-0055](../BE-0055-operational-logging/BE-0055-operational-logging.md) (the structured

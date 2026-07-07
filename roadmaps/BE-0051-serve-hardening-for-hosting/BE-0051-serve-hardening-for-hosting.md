@@ -102,4 +102,4 @@ safe to put behind a private network with a token."
 
 [BE-0015](../BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md) (public/cloud hosting),
 [BE-0016](../BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md) (self-hosting),
-`bajutsu/serve/`, [cli.md](../../../docs/cli.md#serve)
+`bajutsu/serve/`, [cli.md](../../docs/cli.md#serve)

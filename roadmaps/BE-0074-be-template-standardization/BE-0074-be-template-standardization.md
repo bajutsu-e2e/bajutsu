@@ -20,10 +20,10 @@ Every roadmap item is a pair of files — an English `BE-NNNN-<slug>.md` and a J
 `BE-NNNN-<slug>-ja.md` — that share one fixed shape: a bilingual header link, an H1 title, a
 metadata block, and the five Swift-Evolution sections (`Introduction` / `Motivation` /
 `Detailed design` / `Alternatives considered` / `References`). That shape is described in prose
-across [`CLAUDE.md`](../../../CLAUDE.md), [`roadmaps/README.md`](../../README.md), and the
-[`ideation`](../../../.claude/skills/ideation/SKILL.md) skill, and the index tables are already
+across [`CLAUDE.md`](../../CLAUDE.md), [`roadmaps/README.md`](../README.md), and the
+[`ideation`](../../.claude/skills/ideation/SKILL.md) skill, and the index tables are already
 generated and gate-checked from each item's metadata
-([`scripts/build_roadmap_index.py`](../../../scripts/build_roadmap_index.py),
+([`scripts/build_roadmap_index.py`](../../scripts/build_roadmap_index.py),
 `tests/test_roadmap_index.py`). What is *not* yet pinned is the body of each item file: the exact
 metadata labels, the heading wording, and which sections are mandatory. Authors — human and agent —
 reconstruct the shape from neighbouring files each time, so small variations have crept in.
@@ -167,16 +167,16 @@ dash here is part of the fixed title format, not Japanese running text).
 The H1 title line is `# BE-NNNN — <Title>` in both files: the ID, a space, an em dash (`—`,
 U+2014) flanked by spaces, then the title. A brand-new item leaves the number undetermined and is
 authored under the literal placeholder directory the `ideation` skill and
-[`README.md`](../../README.md#adding-a-roadmap-item--be-ids-agents-must-follow) describe, which CI
-([`scripts/allocate_roadmap_ids.py`](../../../scripts/allocate_roadmap_ids.py)) rewrites to the real
+[`README.md`](../README.md#adding-a-roadmap-item--be-ids-agents-must-follow) describe, which CI
+([`scripts/allocate_roadmap_ids.py`](../../scripts/allocate_roadmap_ids.py)) rewrites to the real
 number; this template governs everything else about the file.
 
 ### The metadata parser
 
 The metadata block is read by `parse_metadata` in
-[`scripts/build_roadmap_index.py`](../../../scripts/build_roadmap_index.py) (the index generator)
+[`scripts/build_roadmap_index.py`](../../scripts/build_roadmap_index.py) (the index generator)
 and, for the `Status` field, by `read_status` in
-[`scripts/promote_roadmap_items.py`](../../../scripts/promote_roadmap_items.py). Their contract is:
+[`scripts/promote_roadmap_items.py`](../../scripts/promote_roadmap_items.py). Their contract is:
 
 1. **Scope to the fence.** Read only the text between `<!-- BE-METADATA -->` and
    `<!-- /BE-METADATA -->`. This is the reason for the markers: without them a parser keys on a
@@ -256,13 +256,13 @@ Japanese mirror) is updated to describe the fenced block. The tree is green unde
 
 ## References
 
-- [`CLAUDE.md`](../../../CLAUDE.md) — the roadmap-item rules this item makes machine-checkable.
-- [`roadmaps/README.md`](../../README.md#adding-a-roadmap-item--be-ids-agents-must-follow) — the
+- [`CLAUDE.md`](../../CLAUDE.md) — the roadmap-item rules this item makes machine-checkable.
+- [`roadmaps/README.md`](../README.md#adding-a-roadmap-item--be-ids-agents-must-follow) — the
   prose description of the BE format and ID rules.
-- [`.claude/skills/ideation/SKILL.md`](../../../.claude/skills/ideation/SKILL.md) — the skill that
+- [`.claude/skills/ideation/SKILL.md`](../../.claude/skills/ideation/SKILL.md) — the skill that
   drafts new items from this shape.
-- [`scripts/build_roadmap_index.py`](../../../scripts/build_roadmap_index.py),
-  [`scripts/promote_roadmap_items.py`](../../../scripts/promote_roadmap_items.py),
+- [`scripts/build_roadmap_index.py`](../../scripts/build_roadmap_index.py),
+  [`scripts/promote_roadmap_items.py`](../../scripts/promote_roadmap_items.py),
   `tests/test_roadmap_index.py` — the metadata parsers this item re-specifies around the fenced
   table, and the existing generate-and-gate treatment of the *index* it mirrors for the *body*.
 - [BE-0043 — Conflict-resistant file flow](../BE-0043-conflict-resistant-file-flow/BE-0043-conflict-resistant-file-flow.md)

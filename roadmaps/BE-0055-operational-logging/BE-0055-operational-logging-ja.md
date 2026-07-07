@@ -26,13 +26,13 @@ worker から成り、org でスコープされます。ところが、ツール
 これはツール**自身**の診断の軌跡であり、すでに存在する 3 つのログ面とは意図的に切り分けます。
 
 - **証跡**：**テスト対象**の軌跡（`deviceLog`、`appTrace`、network、actionLog）。evidence サブシステムが取得し
-  機密をスクラブします（[evidence.md](../../../docs/ja/evidence.md)）。本提案の対象ではありません。
+  機密をスクラブします（[evidence.md](../../docs/ja/evidence.md)）。本提案の対象ではありません。
 - **run 出力**：`--progress` の scenario/step ストリーム。serve の LogBus 経由でライブ配信し、保存します
   （BE-0015）。本提案の対象ではありません。
 - **監査ログ**：誰が何をしたかを `audit_log` テーブルに記録します（BE-0015）。隣接しますが別物です（その閲覧
   手段は別の関心事）。
 
-設計は prime directive（[CLAUDE.md](../../../CLAUDE.md)、[DESIGN.md](../../../DESIGN.md)）に従います。決定的な
+設計は prime directive（[CLAUDE.md](../../CLAUDE.md)、[DESIGN.md](../../DESIGN.md)）に従います。決定的な
 `run` / CI ゲートは軽量（stdlib のみ、静か、人間可読）に保ち、**機密はログ行に絶対に出さない**ことが前提です。
 
 ## 動機
@@ -64,7 +64,7 @@ worker から成り、org でスコープされます。ところが、ツール
 
 ### どこに差し込むか（継ぎ目）
 
-いまのコードベースには運用ログと呼べるものがほぼありません。[`serve/jobs.py`](../../../bajutsu/serve/jobs.py)
+いまのコードベースには運用ログと呼べるものがほぼありません。[`serve/jobs.py`](../../bajutsu/serve/jobs.py)
 に `logging.getLogger(__name__)` が 1 つあるだけで、HTTP リクエストハンドラ（`serve/handler.py` の
 `Handler.log_message`、`network.py` のスタブ）はどちらも per-request ログを意図的に黙らせています。ルート設定も
 `contextvars` の利用もありません。つまりここは更地への配線で、1 か所に据えます。
@@ -73,21 +73,21 @@ worker から成り、org でスコープされます。ところが、ツール
   がルートのフォーマッタと redact／相関フィルタを据え、`contextvars`、event 名のレジストリ、JSON フォーマッタも
   ここに置きます。`serve` が起動時に呼び、CLI／`run` 経路は import しません（ゲートを stdlib のみで静かに保ちます）。
 - **HTTP surface は 2 つ、フィルタは 1 枚。** フィルタは**ルートロガー**に座るので、hosted の FastAPI アプリ
-  （[`serve/server/app.py`](../../../bajutsu/serve/server/app.py)。リクエスト境界に `@app.middleware("http")` がすでに
+  （[`serve/server/app.py`](../../bajutsu/serve/server/app.py)。リクエスト境界に `@app.middleware("http")` がすでに
   あり、`request_id` を採番して contextvar に bind する自然な場所）と、ローカルの stdlib サーバ
-  （[`serve/handler.py`](../../../bajutsu/serve/handler.py) の `do_GET`／`do_POST`）の両方を覆います。JSON は serve
+  （[`serve/handler.py`](../../bajutsu/serve/handler.py) の `do_GET`／`do_POST`）の両方を覆います。JSON は serve
   モードで有効化し、ローカル CLI は text のままです。
-- **worker の境界。** [`serve/server/worker_job.py`](../../../bajutsu/serve/server/worker_job.py) の
+- **worker の境界。** [`serve/server/worker_job.py`](../../bajutsu/serve/server/worker_job.py) の
   `execute_job_spec(spec, …)` が、ジョブの id を bind する場所です。job spec は **`job_id` / `org` / `actor`** を運び
   （`worker_job.py` で組み立て）、**`run_id` は worker 上で run が始まるときに採番**されるので、そこで bind します
   （下の不変条件を訂正）。したがってプロセスをまたぐ相関は、両側にすでに在る**共有 id の値**で行い、context
   オブジェクトを伝播しません。
-- **redaction の再利用。** フィルタは既存の `Redactor`（[`redaction.py`](../../../bajutsu/redaction.py) の `redact_text`）
+- **redaction の再利用。** フィルタは既存の `Redactor`（[`redaction.py`](../../bajutsu/redaction.py) の `redact_text`）
   を値マスクに使い、新しいキーベースのマスクを足します。
 
 ### 契約（機械チェック可能な不変条件）
 
-運用ログは**非決定的**（タイムスタンプや順序）なので、証跡（[DESIGN §2](../../../DESIGN.md)）と違って
+運用ログは**非決定的**（タイムスタンプや順序）なので、証跡（[DESIGN §2](../../DESIGN.md)）と違って
 バイト一致は求めません。代わりに**スキーマと不変条件の束**を定め、それぞれをゲートのテストで検証します。
 
 1. **機密ゼロ（redaction）。** redact するフィルタ／フォーマッタを**ルートロガー**に 1 枚かませ、サードパーティ
@@ -172,9 +172,9 @@ worker から成り、org でスコープされます。ところが、ツール
 
 ## 参考
 
-- [DESIGN.md](../../../DESIGN.md) §2 — 決定性優先、機密マスク。
+- [DESIGN.md](../../DESIGN.md) §2 — 決定性優先、機密マスク。
 - [BE-0015 — Web UI の公開ホスティング](../BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting-ja.md) — ホスト型トポロジと、本項目が実体化する「構造化 JSON ログ」の可観測性行。
 - [BE-0032 — Secret 変数](../BE-0032-secret-variables/BE-0032-secret-variables-ja.md) — 本項目と共有する機密マスクの仕組み。
 - [BE-0047 — AI データ主権](../BE-0047-ai-data-sovereignty/BE-0047-ai-data-sovereignty-ja.md) — 本項目が運用ログへ広げる「redact された経路」の思想。
 - [BE-0011 — ローカル Web UI（`bajutsu serve`）](../BE-0011-local-web-ui-serve/BE-0011-local-web-ui-serve-ja.md)、[BE-0051 — serve のハードニング](../BE-0051-serve-hardening-for-hosting/BE-0051-serve-hardening-for-hosting-ja.md) — 本ログが計装する serve。
-- [evidence.md](../../../docs/ja/evidence.md) — 本項目が意図的に切り分ける証跡サブシステム。
+- [evidence.md](../../docs/ja/evidence.md) — 本項目が意図的に切り分ける証跡サブシステム。

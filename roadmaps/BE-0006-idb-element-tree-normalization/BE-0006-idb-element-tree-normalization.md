@@ -57,7 +57,7 @@ walking the UI:
 
 These ids come from the app's own namespace — the `ctrl` / `lists` prefixes the existing
 `ControlsView` / `ListsNavView` scenarios already use. Today
-[`demos/features/demo.config.yaml`](../../../demos/features/demo.config.yaml)'s `idNamespaces`
+[`demos/features/demo.config.yaml`](../../demos/features/demo.config.yaml)'s `idNamespaces`
 lists `home` / `list` / `comp` / … but **not** `ctrl` / `lists`, so wiring the catalogue is also
 adding those two prefixes there (a one-line config change, stated here so the proposal stays
 grounded in the repo's current state). The catalogue exercises how idb *normalizes* a `Toggle` or
@@ -139,7 +139,7 @@ cadence turns "the schema changed" from a vague smoke failure into the specific 
 
 The golden assertion runs on the heavier on-device path, never the fast per-PR gate — the same
 macOS + Simulator surface as `make -C demos/features e2e` and the `smoke` job in
-[`.github/workflows/e2e.yml`](../../../.github/workflows/e2e.yml), which already builds, boots,
+[`.github/workflows/e2e.yml`](../../.github/workflows/e2e.yml), which already builds, boots,
 installs the sample app, and runs scenarios through real idb. The catalogue golden is added as a
 scenario there (and is a natural addition to BE-0005's weekly monitor), so it costs metered macOS
 minutes only on device-relevant PRs and on the scheduled cadence — `make check` stays untouched.
@@ -168,4 +168,4 @@ exactly and the `frame` within bounds, and on any mismatch emit the field-level 
 
 ## References
 
-[DESIGN §11](../../../DESIGN.md)
+[DESIGN §11](../../DESIGN.md)

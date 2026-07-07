@@ -24,7 +24,7 @@ core stays byte-for-byte the same.
 
 Android is the **architectural twin of idb**: subprocess-driven, coordinate actuation, and a
 transiently-empty tree during transitions — so it reuses idb's *resolve-with-retry,
-fail-ambiguity-fast* pattern (see [drivers](../../../docs/drivers.md)) almost unchanged. Building it
+fail-ambiguity-fast* pattern (see [drivers](../../docs/drivers.md)) almost unchanged. Building it
 validates that the iOS-specific parts were really isolated to the three seams (actuator,
 environment manager, stable-id convention), with almost no new shape introduced into the
 "unchanged" core. It also extends the product's reach to the second-most-common mobile target
@@ -51,7 +51,7 @@ Android is the **architectural twin of idb**: subprocess-driven, coordinate actu
 transiently-empty tree during screen transitions. Because of that shared shape it reuses idb's
 *resolve-with-retry, fail-ambiguity-fast* pattern — poll the tree, retry on a transiently-empty
 result, and fail immediately if a selector resolves to more than one element rather than "tapping
-whatever matched first" (see [drivers](../../../docs/drivers.md)). Validating it proves the iOS-specific
+whatever matched first" (see [drivers](../../docs/drivers.md)). Validating it proves the iOS-specific
 parts were truly confined to the three seams, with almost no new shape required from the rest of
 the system.
 
@@ -186,7 +186,7 @@ Log:
 
 ## References
 
-[DESIGN](../../../DESIGN.md), `bajutsu/drivers/`, `bajutsu/backends.py`,
-[drivers.md](../../../docs/drivers.md),
+[DESIGN](../../DESIGN.md), `bajutsu/drivers/`, `bajutsu/backends.py`,
+[drivers.md](../../docs/drivers.md),
 [BE-0041 — Web (Playwright) backend](../BE-0041-web-playwright-backend/BE-0041-web-playwright-backend.md),
 [BE-0008 — Flutter support](../BE-0008-flutter-support/BE-0008-flutter-support.md)

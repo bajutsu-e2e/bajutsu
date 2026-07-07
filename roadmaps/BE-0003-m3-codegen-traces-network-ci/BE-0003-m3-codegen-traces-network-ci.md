@@ -35,4 +35,4 @@ The external `mockServer` command was superseded by declarative in-protocol `moc
 
 ## References
 
-[codegen.md](../../../docs/codegen.md), [ci.md](../../../docs/ci.md), `bajutsu/codegen.py`
+[codegen.md](../../docs/codegen.md), [ci.md](../../docs/ci.md), `bajutsu/codegen.py`
