@@ -176,6 +176,11 @@ def plan_from_goal(goal: str) -> tuple[Plan, list[tuple[str, str]]]:
     return plan, expects
 
 
+def _words(text: str) -> set[str]:
+    """The significant word tokens of `text`: lowercased, id separators split, stopwords dropped."""
+    return {w for w in re.split(r"[^a-z0-9]+", text.lower()) if w and w not in _STOP}
+
+
 def _ground(
     screen: list[base.Element],
     hint: str,
@@ -184,7 +189,7 @@ def _ground(
     field: bool = False,
     valued: bool = False,
 ) -> str:
-    """The id of the visible element best matching `hint` (id substring, then label)."""
+    """The id of the visible element best matching `hint` (id/label substring, then word tokens)."""
     hint = hint.lower().strip()
 
     def fits(e: base.Element) -> bool:
@@ -200,6 +205,15 @@ def _ground(
         for e in cands:
             text = (e["label"] if match_label else e["identifier"]) or ""
             if hint and hint in text.lower():
+                return e["identifier"] or ""
+    # Fallback: match when every significant word of the hint is present in the element's id/label,
+    # even when not as one contiguous substring — so natural phrasing ("increment the counter")
+    # still grounds to `counter.increment`. First candidate in screen order wins, keeping it
+    # deterministic.
+    want = _words(hint)
+    if want:
+        for e in cands:
+            if want <= _words(f"{e['identifier'] or ''} {e['label'] or ''}"):
                 return e["identifier"] or ""
     raise LookupError(f"goal mentions {hint!r}, but no matching element is on screen")
 
