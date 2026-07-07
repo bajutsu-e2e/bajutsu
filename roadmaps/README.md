@@ -593,6 +593,12 @@ The scope is currently **limited to the iOS Simulator** ([DESIGN §1](../DESIGN.
 | [BE-0107](BE-0107-showcase-tab-navigation-no-launch-shortcut/BE-0107-showcase-tab-navigation-no-launch-shortcut.md) | Reach every showcase tab by navigation, not a launch-env shortcut | Proposal | Dogfooding |
 <!-- /GENERATED:proposals-dogfood -->
 
+### Dogfood fixtures (web UI)
+
+<!-- GENERATED:proposals-dogfood-web-ui -->
+
+<!-- /GENERATED:proposals-dogfood-web-ui -->
+
 ### AI provider configuration
 
 <!-- GENERATED:proposals-ai-provider -->
