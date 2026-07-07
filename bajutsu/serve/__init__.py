@@ -168,6 +168,7 @@ def _build_state(
     allow_remote_build: bool = False,
     backend: str = "local",
     cwd: Path | None = None,
+    config_provenance: dict[str, str] | None = None,
 ) -> ServeState:
     """Assemble the `ServeState` for *backend* — the one place the serve seams are wired.
 
@@ -223,6 +224,7 @@ def _build_state(
         evidence=evidence,
         allow_remote_build=allow_remote_build,
         cwd=cwd or Path.cwd(),
+        config_provenance=config_provenance,
     )
 
 
@@ -452,6 +454,7 @@ def serve(
     asgi: bool = False,
     backend: str = "local",
     cwd: Path | None = None,
+    config_provenance: dict[str, str] | None = None,
 ) -> None:
     state = _build_state(
         runs_dir=runs_dir,
@@ -466,6 +469,7 @@ def serve(
         allow_remote_build=allow_remote_build,
         backend=backend,
         cwd=cwd,
+        config_provenance=config_provenance,
     )
     # Clear upload sandboxes orphaned by a prior serve process — the dir is serve-owned and
     # ephemeral, and nothing is bound at startup, so this just stops them accumulating across

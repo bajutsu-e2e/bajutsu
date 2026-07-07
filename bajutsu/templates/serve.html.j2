@@ -19,6 +19,7 @@
       <button class="toptab" data-view="coverage" data-testid="nav.coverage">Coverage</button>
       <button class="cfgbtn" id="opencfg" data-testid="nav.open-config">Open config</button>
       <span class="cfgname" id="cfgname" data-testid="nav.config-name"></span>
+      <button class="cfgbtn" id="viewcfg" data-testid="nav.view-config" hidden>View</button>
       <button class="cfgbtn" id="opensettings" data-testid="nav.settings">Settings</button>
     </div>
   </div>
@@ -462,6 +463,27 @@
       <ul class="fslist" id="fslist" data-testid="config.list"></ul>
       <div class="fshint">Pick a <code>.yml</code>/<code>.yaml</code> config file. Browsing is limited to the server's <code>--root</code>.</div>
     </div>
+  </div>
+</div>
+
+<!-- ===== View config: the raw YAML the tabs run from, plus its Git provenance (BE-0063) ===== -->
+<div class="modal" id="cfgviewmodal" data-testid="config.view-modal" hidden>
+  <div class="fsbox cfgviewbox">
+    <div class="fshead">
+      <span class="ttl">Loaded config</span>
+      <!-- Structured (collapsible key/value tree) vs the raw YAML the file holds. -->
+      <div class="cfgviewtoggle" role="tablist">
+        <button class="cfgtogbtn active" id="cfgview-structured" data-testid="config.view-structured">Structured</button>
+        <button class="cfgtogbtn" id="cfgview-raw" data-testid="config.view-raw">Raw</button>
+      </div>
+      <button class="fsclose" id="cfgviewclose" data-testid="config.view-close">&#10005;</button>
+    </div>
+    <!-- Provenance: for a Git source, which commit this was materialized from; hidden for a local file. -->
+    <div class="cfgprov" id="cfgprov" data-testid="config.view-provenance" hidden></div>
+    <div class="cfgpath" id="cfgviewpath" data-testid="config.view-path"></div>
+    <div class="cfgtree" id="cfgviewtree" data-testid="config.view-tree"></div>
+    <pre class="cfgview" id="cfgviewbody" data-testid="config.view-content" hidden></pre>
+    <div class="gitsrchint">The config is shown verbatim. <code>${secrets.*}</code> placeholders are not resolved (they resolve from the server's environment at run time), but a secret written <b>literally</b> into the file would be shown as-is &mdash; keep secrets in <code>${secrets.*}</code> refs, not in the file.</div>
   </div>
 </div>
 
