@@ -402,8 +402,8 @@ expect:
 `responseSchema` は、捕捉した **レスポンスボディが JSON Schema に適合する**ことを表明します。画面では
 表現できない契約の検査です（[BE-0048](../../roadmaps/BE-0048-behavioral-protocol-assertions/BE-0048-behavioral-protocol-assertions-ja.md)）。
 観測済みタイムラインと保存済みのスキーマファイルに対する純粋で決定的な検査なので（`--network` 実行フラグが
-必要）、判定は機械のみです。`request`（同じマッチャフィールド）で検証対象の交信を選び、`schema` はアプリの
-**スキーマディレクトリ**（`--schemas` フラグ、config の `apps.<name>.schemas`、またはシナリオ脇の
+必要）、判定は機械のみです。`request`（同じマッチャフィールド）で検証対象の交信を選び、`schema` はターゲットの
+**スキーマディレクトリ**（`--schemas` フラグ、config の `targets.<name>.schemas`、またはシナリオ脇の
 `schemas/`）内で解決するファイルパスです。検証には `jsonschema` ライブラリを使うので、`schema` extra を
 インストールしてください（`pip install bajutsu[schema]`）。
 

@@ -57,8 +57,6 @@ capturePolicy:
     capture: [screenshot, video, deviceLog, elements, actionLog]
 ```
 
-（[`demos/showcase/scenarios/settings.yaml`](../../demos/showcase/scenarios/settings.yaml) に実例）
-
 トリガー `on` は **`action` / `event` / `result` のいずれか 1 つ**です。
 
 - `action: <tap|longPress|type|swipe|...>`：任意で `idMatches`（主対象の `id` に glob 一致）を併用できます。`idMatches` は `action` とのみ併用できます。

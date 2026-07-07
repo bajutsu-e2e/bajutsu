@@ -458,8 +458,8 @@ expect:
 check the screen can't express ([BE-0048](../roadmaps/BE-0048-behavioral-protocol-assertions/BE-0048-behavioral-protocol-assertions.md)).
 It is a pure, deterministic check over the observed timeline plus a stored schema file (needs the
 `--network` run flag), so the verdict stays machine-only. `request` selects the exchange (the same
-matcher fields) whose response is validated; `schema` is a file path resolved within the app's
-**schemas directory** (`--schemas` flag, config `apps.<name>.schemas`, or `schemas/` beside the
+matcher fields) whose response is validated; `schema` is a file path resolved within the target's
+**schemas directory** (`--schemas` flag, config `targets.<name>.schemas`, or `schemas/` beside the
 scenario). Validation uses the `jsonschema` library — install the `schema` extra
 (`pip install bajutsu[schema]`).
 

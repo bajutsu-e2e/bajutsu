@@ -81,6 +81,13 @@ jobs:
       - name: Lint workflows (actionlint)
         run: ./actionlint -color
 
+      # serve.js is build-step-free browser JS with no other CI coverage, so a syntax slip would
+      # otherwise reach a browser unchecked. `node` ships on ubuntu-latest, so `make lint-js` runs
+      # `node --check`; the eslint structural rules stay a local-only extra (no node toolchain in
+      # this Python repo), exactly as `make lint-js` degrades when eslint is absent.
+      - name: Lint JS (node --check serve.js)
+        run: make lint-js
+
       # Persist mypy's incremental cache across runs so typecheck is a warm re-check (a few seconds)
       # instead of a full cold scan (~18s here). mypy invalidates per-file by content, so a restored
       # cache is always safe; the per-commit key with prefix restore-keys keeps it fresh (each run
