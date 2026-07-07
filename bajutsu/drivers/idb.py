@@ -87,20 +87,23 @@ def _type_text_via_companion(udid: str, text: str) -> None:
     Runs its own event loop via `asyncio.run`: the idb driver is synchronous and is only
     ever called from threads with no running loop (the runner and the crawl workers).
     """
-    import asyncio
-    import logging
     import shutil
-
-    from idb.grpc.management import ClientManager
 
     companion_path = shutil.which("idb_companion")
     if companion_path is None:
         # Fail fast and legibly rather than letting a None path surface as an opaque
-        # error deep inside fb-idb. idb_companion is a separate Homebrew formula.
+        # error deep inside fb-idb. idb_companion is a separate Homebrew formula. Checked
+        # before the fb-idb import below so this stays meaningful even where the idb extra
+        # isn't installed (e.g. the deterministic gate, which carries no backend deps).
         raise RuntimeError(
             "idb_companion not found on PATH — install it with "
             "`brew install facebook/fb/idb-companion`"
         )
+
+    import asyncio
+    import logging
+
+    from idb.grpc.management import ClientManager
 
     async def _send() -> None:
         manager = ClientManager(
