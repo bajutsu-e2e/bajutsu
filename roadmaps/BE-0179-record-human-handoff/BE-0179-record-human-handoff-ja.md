@@ -141,8 +141,8 @@ record 経路には、設計を左右する三つの性質があります。
 
 **ログ**
 
-- 土台を実装しました。ハンドオフの契約（[`bajutsu/handoff.py`](../../../bajutsu/handoff.py)）、record ループの「人が必要」というターン結果と一時停止・再開（[`bajutsu/record.py`](../../../bajutsu/record.py)）、CLI の標準入力応答（[`bajutsu/cli/handoff.py`](../../../bajutsu/cli/handoff.py)）、そしてローカル `serve` のインターフェース（SSE の `human-request` イベント、record プロセスの標準入力を通す `respond-human` エンドポイント、「人待ち」ジョブ状態、Web UI のハンドオフモーダル）です。非対話的な実行と CI では、明確でラベル付きの失敗を立ち上げます。
-- デモを用意しました。web デモアプリのデバイス検証フロー（[`demos/web/app/index.html`](../../../demos/web/app/index.html)）と、オーサリングエージェント（[`bajutsu/claude_agent.py`](../../../bajutsu/claude_agent.py)）が知り得ない値（out-of-band のワンタイムコード）に対して出す `ask_human` の結果です。これにより、実際の headed `record` が端から端までハンドオフします（`make -C demos/web record-handoff`）。ツールチェーン向けにキー不要のオフライン版も用意しました。この `ask_human` の指示は最初の最小の一歩で、欄ごとのヒューリスティックと記録される成果物の形は value-prompt / takeover の子項目が受け持ちます。
+- 土台を実装しました。ハンドオフの契約（[`bajutsu/handoff.py`](../../bajutsu/handoff.py)）、record ループの「人が必要」というターン結果と一時停止・再開（[`bajutsu/record.py`](../../bajutsu/record.py)）、CLI の標準入力応答（[`bajutsu/cli/handoff.py`](../../bajutsu/cli/handoff.py)）、そしてローカル `serve` のインターフェース（SSE の `human-request` イベント、record プロセスの標準入力を通す `respond-human` エンドポイント、「人待ち」ジョブ状態、Web UI のハンドオフモーダル）です。非対話的な実行と CI では、明確でラベル付きの失敗を立ち上げます。
+- デモを用意しました。web デモアプリのデバイス検証フロー（[`demos/web/app/index.html`](../../demos/web/app/index.html)）と、オーサリングエージェント（[`bajutsu/claude_agent.py`](../../bajutsu/claude_agent.py)）が知り得ない値（out-of-band のワンタイムコード）に対して出す `ask_human` の結果です。これにより、実際の headed `record` が端から端までハンドオフします（`make -C demos/web record-handoff`）。ツールチェーン向けにキー不要のオフライン版も用意しました。この `ask_human` の指示は最初の最小の一歩で、欄ごとのヒューリスティックと記録される成果物の形は value-prompt / takeover の子項目が受け持ちます。
 
 ## 参考
 
