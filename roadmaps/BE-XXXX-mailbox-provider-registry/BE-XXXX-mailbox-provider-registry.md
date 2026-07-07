@@ -17,10 +17,10 @@
 Apply Bajutsu's **backend-agnostic** philosophy — *a platform is a backend behind one interface* —
 to where the `email` step (BE-0046) reads its mail: **a mailbox is a backend behind one interface.**
 The step already talks to its inbox through a single `MailboxReader` seam that returns normalized
-`MailboxMessage`es; today that seam has exactly one implementation, a generic HTTP-JSON reader.
-This item turns that single hardcoded path into a **provider registry keyed by transport
-protocol** (`http`, later `imap`), selected per target in config, so a second kind of mailbox is
-*register an adapter*, not *edit the runner* — the same move BE-0104 made for AI providers.
+messages (`MailboxMessage`); today that seam has exactly one implementation, a generic HTTP-JSON
+reader. This item turns that single hardcoded path into a **provider registry keyed by transport
+protocol** (`http`, later `imap`), selected per target in config, so adding a second kind of mailbox
+is *registering an adapter*, not *editing the runner* — the same move BE-0104 made for AI providers.
 
 The registry ships with its HTTP reference adapter (the existing reader, re-homed behind the
 registry) and nothing else; IMAP and any further transports are deliberately deferred to follow-up
