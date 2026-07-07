@@ -82,6 +82,13 @@ def test_compute_cost_is_null_for_an_unpriced_model() -> None:
     assert compute_cost({}, "api-key", "some-unknown-model", TokenUsage(input_tokens=999)) is None
 
 
+def test_compute_cost_family_match_is_case_insensitive() -> None:
+    # A config family with different casing (`api-key/Sonnet`) still matches `claude-sonnet-…`.
+    table = {("api-key", "Sonnet"): Pricing(3.0, 0.0, 0.0, 0.0)}
+    cost = compute_cost(table, "api-key", "claude-sonnet-4-6", TokenUsage(input_tokens=1_000_000))
+    assert cost == 3.0
+
+
 def test_compute_cost_prefers_an_exact_key_over_a_family_match() -> None:
     # An exact (provider, model) entry wins over a looser family-substring entry for the same model.
     table = {
@@ -154,6 +161,22 @@ def test_read_events_skips_blank_lines(tmp_path: Path) -> None:
     )
     events = read_events(path)
     assert len(events) == 1 and events[0].command == "run"
+
+
+def test_read_events_skips_malformed_and_truncated_lines(tmp_path: Path) -> None:
+    # A crash / disk-full mid-append leaves a truncated last line, and a line may be missing `ts`;
+    # one bad line must not hide the valid events around it.
+    path = tmp_path / "usage.jsonl"
+    path.write_text(
+        '{"v": 1, "ts": "2026-07-08T00:00:00+00:00", "command": "record"}\n'
+        "{ this is not json\n"  # malformed
+        '{"v": 1, "command": "no-ts"}\n'  # valid JSON but missing the required `ts`
+        '{"v": 1, "ts": "2026-07-08T00:02:00+00:00", "command": "run"}\n'
+        '{"v": 1, "ts": "2026-07-08T00:03:00+00:00", "comm',  # truncated last line
+        encoding="utf-8",
+    )
+    commands = [e.command for e in read_events(path)]
+    assert commands == ["record", "run"]
 
 
 def test_pricing_table_from_config_overlays_config_on_defaults() -> None:

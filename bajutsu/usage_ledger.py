@@ -107,11 +107,16 @@ def _find_pricing(table: PricingTable, provider: str | None, model: str | None) 
     exact = table.get((provider, model))
     if exact is not None:
         return exact
-    low = model.lower()
-    # `family` is never empty (config overlay skips empty-model keys), but guard anyway — an empty
-    # family would substring-match every model and silently apply one provider's rates to all of them.
+    low = model.casefold()
+    # Case-insensitive on both sides so a config family like `api-key/Sonnet` still matches
+    # `claude-sonnet-…`. `family` is never empty (config overlay skips empty-model keys), but guard
+    # anyway — an empty family would substring-match every model and misprice them all.
     return next(
-        (p for (prov, family), p in table.items() if prov == provider and family and family in low),
+        (
+            p
+            for (prov, family), p in table.items()
+            if prov == provider and family and family.casefold() in low
+        ),
         None,
     )
 
@@ -252,14 +257,23 @@ class JsonlLedger:
 
 
 def read_events(path: Path) -> list[UsageEvent]:
-    """Every event in the ledger at *path* (empty when the file is absent); blank lines are skipped."""
+    """Every readable event in the ledger at *path* (empty when the file is absent).
+
+    Resilient to a real append-only ledger: blank lines are skipped, and a malformed or partially
+    written line (a crash or disk-full mid-append leaves a truncated last line) is skipped rather
+    than failing the whole read — one bad line must not hide every other event.
+    """
     if not path.exists():
         return []
-    return [
-        UsageEvent.from_record(json.loads(line))
-        for line in path.read_text(encoding="utf-8").splitlines()
-        if line.strip()
-    ]
+    events = []
+    for line in path.read_text(encoding="utf-8").splitlines():
+        if not line.strip():
+            continue
+        try:
+            events.append(UsageEvent.from_record(json.loads(line)))
+        except (json.JSONDecodeError, KeyError, TypeError):
+            continue  # truncated / malformed / hand-edited line — skip it, keep the rest
+    return events
 
 
 # The process-active ledger sink and pricing table, installed by the CLI/serve at startup. None
