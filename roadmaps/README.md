@@ -639,7 +639,9 @@ Turning a passing scenario into a native test in a destination framework's idiom
 Keeping the autonomous crawl fast and its code lean as it grows.
 
 <!-- GENERATED:proposals-crawl -->
-
+| ID | Item | Status |
+|---|---|---|
+| [BE-0181](BE-0181-crawl-continuation/BE-0181-crawl-continuation.md) | Resumable crawl continuation (Web UI + full-frontier resume) | Proposal |
 <!-- /GENERATED:proposals-crawl -->
 
 ### Backend expansion (iOS actuators)

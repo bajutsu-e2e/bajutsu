@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-crawl-continuation-ja.md)
+**English** · [日本語](BE-0181-crawl-continuation-ja.md)
 
-# BE-XXXX — Resumable crawl continuation (Web UI + full-frontier resume)
+# BE-0181 — Resumable crawl continuation (Web UI + full-frontier resume)
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-crawl-continuation.md) |
+| Proposal | [BE-0181](BE-0181-crawl-continuation.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0181") |
 | Topic | Crawl performance / scale-out |
 <!-- /BE-METADATA -->
 
