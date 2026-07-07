@@ -9,6 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0178") |
+| Implementing PR | [#744](https://github.com/bajutsu-e2e/bajutsu/pull/744) |
 | Topic | Authoring experience (record / GUI editor) |
 <!-- /BE-METADATA -->
 
@@ -202,7 +203,7 @@ cost of a single `query()` (that is BE-0105's separate concern).
 
 **Log**
 
-- Implemented the batch loop end to end: `Proposal.steps`, per-turn multi-block mapping (`_combine`), the
+- [#744](https://github.com/bajutsu-e2e/bajutsu/pull/744): Implemented the batch loop end to end: `Proposal.steps`, per-turn multi-block mapping (`_combine`), the
   Claude Code list-shaped `actions` schema, and the record loop's deterministic abort-on-transition /
   abort-on-resolve-failure with executed-prefix recording. Added `crawl.screen_identity` (state-omitting
   transition signature, factored to share `fingerprint`'s reduction) after finding that the literal
