@@ -205,6 +205,7 @@ def test_tool_use_loop_drives_the_neutral_interface(fake_provider: RecordingBack
         "type_text",
         "wait_for",
         "finish",
+        "need_screenshot",
         "ask_human",
     }
     assert all(isinstance(t, ToolDef) for t in request.tools)

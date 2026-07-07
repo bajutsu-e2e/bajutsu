@@ -51,7 +51,9 @@ class Agent(Protocol):
 2. elements = driver.query()
    - Under alert_guard, if no element has an id, don't show the agent a dead screen (it would
      hallucinate ids); loop again to re-clear
-3. Take a screenshot, build an Observation, and call agent.next_action()
+3. Decide whether to attach a screenshot (vision-on-demand, BE-0192), capture it lazily if so,
+   build an Observation, and call agent.next_action(). If the agent asks to see the screen
+   (need_screenshot) on a text-only turn, re-issue the same observation once with the image attached.
 4. If proposal.needs_human (BE-0179):
      - hand off to a human via the `handoff` responder; on a value/acted response, re-observe and
        continue (the human's turn records no step); on cancel, stop. With no responder, raise
@@ -140,6 +142,35 @@ unless you opt in:
   token spend.
 - **`--no-screenshot`** records an elements-only session (no image sent) — the cheapest possible
   record, for an app you know is fully instrumented.
+
+### Vision-on-demand (BE-0192)
+
+The screenshot is the single largest per-turn cost, and — unlike the static system prompt and tool
+definitions — it is never prompt-cached, so it is paid in full at device resolution on every turn.
+Yet the agent **acts only by an element's `id` or `label`** (it never invents ids), so on a screen
+whose controls are all addressable the image is confirmatory, not decisive. So `record` sends it
+**on demand** rather than every turn: the accessibility elements always travel in the per-turn
+message, and the screenshot only when it actually adds information.
+
+The loop decides per turn from two deterministic triggers over the element tree — no model, so this
+stays Tier 1:
+
+- **New-screen.** The current screen's `crawl.fingerprint(...)` differs from the previous turn's (or
+  it is the first turn) — a screen the agent has not seen yet gets the image.
+- **Degenerate-tree.** `fingerprint` fell back to its structural reduction (too few accessibility
+  identifiers to address by selector — the no-id, tab-bar case where `tap_point` is the way in). The
+  image is attached proactively; this trigger is deliberately generous, so an id-poor screen never
+  relies on an escalation round-trip.
+
+When neither fires — a screen already seen with a rich, addressable tree — the turn is **text-only**,
+and the screenshot is not even captured (lazy capture skips the `screenshot` subprocess too). Vision
+is **deferred, never removed**: every distinct screen is seen with an image at least once, a
+degenerate tree always gets one, and any residual need is caught by the agent itself calling
+**`need_screenshot`** — the loop re-issues that one turn, unchanged, with the image attached (at most
+once per turn). So the agent can always see what it needs to; it simply is not handed an image on
+turns the element list already fully determines. `--no-screenshot` still forces every turn text-only
+(and disables the escalation, since there is no image to hand back). The recorded scenario artifact is
+byte-for-byte unchanged, so `run`, `codegen`, and the report are unaffected.
 
 The end-of-session `AI usage:` line is followed by a per-category breakdown (`plan` / `next_action` /
 `alert-guard`) attributed by call site (`usage.py`, BE-0194), so the effect of a token-saving change

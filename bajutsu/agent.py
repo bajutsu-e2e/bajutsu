@@ -50,6 +50,11 @@ class Proposal:
     # unresolvable target) belong to the child items; this is only the outcome they raise.
     needs_human: bool = False
     human_prompt: str = ""
+    # A fourth turn outcome (BE-0192): on a text-only turn (no screenshot attached) the agent
+    # cannot proceed from the element list alone and asks to see the screen. The record loop
+    # re-issues the same observation once with the screenshot attached, rather than acting blind.
+    # This is an authoring-time request, never on the `run` path.
+    need_screenshot: bool = False
 
     @property
     def step(self) -> Step | None:

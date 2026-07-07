@@ -164,6 +164,7 @@ def test_request_uses_forced_tool_choice() -> None:
         "type_text",
         "wait_for",
         "finish",
+        "need_screenshot",
         "ask_human",
     }
 
@@ -517,6 +518,26 @@ def test_finish_block_after_actions_keeps_preceding_steps() -> None:
     assert len(proposal.steps) == 1 and proposal.steps[0].tap is not None
     assert proposal.steps[0].tap.id == "go"
     assert proposal.expect and proposal.expect[0].exists is not None
+
+
+def test_need_screenshot_proposal() -> None:
+    # BE-0192: the need_screenshot tool maps to an escalation proposal — no step, not done, not a
+    # human handoff; the record loop re-issues the same screen with an image attached.
+    proposal = proposal_from_call("need_screenshot", {"reason": "the control I need is not listed"})
+    assert proposal.need_screenshot is True
+    assert proposal.step is None and proposal.done is False and proposal.needs_human is False
+
+
+def test_need_screenshot_carries_plan_step() -> None:
+    assert proposal_from_call("need_screenshot", {"reason": "r", "plan_step": 3}).plan_step == 3
+
+
+def test_need_screenshot_block_maps_to_escalation() -> None:
+    # A need_screenshot tool_use from either backend flows through _to_proposal / _combine to the
+    # escalation signal, carrying no steps.
+    backend = _ContentBackend(FakeBlock("need_screenshot", {"reason": "must see the screen"}))
+    proposal = ClaudeAgent(backend=backend).next_action(_obs())
+    assert proposal.need_screenshot is True and proposal.steps == [] and proposal.done is False
 
 
 def test_a_block_after_finish_is_dropped() -> None:

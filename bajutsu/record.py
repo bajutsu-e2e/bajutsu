@@ -14,8 +14,8 @@ from collections.abc import Callable
 from pathlib import Path
 
 from bajutsu import usage as _usage
-from bajutsu.agent import Agent, Observation
-from bajutsu.crawl import screen_identity
+from bajutsu.agent import Agent, Observation, Proposal
+from bajutsu.crawl import Fingerprint, fingerprint, screen_identity
 from bajutsu.drivers import base
 from bajutsu.elements import shows_app_ui
 from bajutsu.handoff import Handoff, HandoffRequest, HumanHandoffUnavailable
@@ -193,6 +193,41 @@ def _screenshot_bytes(driver: base.Driver) -> bytes | None:
         # (delete=False), so without this a repeated failure leaks PNGs into the temp dir.
         if path is not None:
             Path(path).unlink(missing_ok=True)
+
+
+def _should_attach(current: Fingerprint, previous: Fingerprint | None) -> bool:
+    """Whether this turn's observation should carry a screenshot (BE-0192, vision-on-demand).
+
+    Two deterministic triggers over the element tree — no model, so `record` stays Tier 1 (prime
+    directive 1):
+
+    - **New-screen**: the current fingerprint differs from the previous turn's, or it is the first
+      turn. The agent has not seen this screen yet, so it gets the image.
+    - **Degenerate-tree**: `fingerprint` fell back to its structural reduction (too few accessibility
+      identifiers to address by selector — the no-id, tab-bar case where `tap_point` is the expected
+      path). The image is attached proactively (deliberately generous, so an id-poor screen never
+      relies on an escalation round-trip).
+
+    A screen already seen whose tree is addressable by id fires neither trigger, and its turn is
+    text-only — the element list alone determines the action there.
+    """
+    if previous is None or current != previous:
+        return True
+    return current.kind == "structural"
+
+
+def _ask_agent(agent: Agent, observation: Observation, say: Reporter, turn: int) -> Proposal:
+    """Ask the agent for its next move, streaming this turn's token cost.
+
+    Factored out so the escalation path (BE-0192) can re-issue the same turn with a screenshot
+    attached without duplicating the single-threaded token accounting.
+    """
+    before = _usage.snapshot()
+    proposal = agent.next_action(observation)
+    spent = _usage.snapshot() - before  # single-threaded record loop → this turn's tokens exactly
+    if spent.total_tokens:
+        say(f"[{turn}] \U0001f916 agent replied · {spent.total_tokens:,} tokens")
+    return proposal
 
 
 def _settle_target(assertion: Assertion) -> base.Selector | None:
@@ -373,6 +408,9 @@ def record(
     expect: list[Assertion] = []
     plan = _plan_goal(agent, goal, say)
     plan_cursor = 0  # plan steps reached so far — drives the pre-observe "next" hint below
+    prev_fp: Fingerprint | None = (
+        None  # previous turn's screen fingerprint (BE-0192 attach trigger)
+    )
 
     for _ in range(max_steps):
         n = len(steps) + 1
@@ -392,22 +430,44 @@ def record(
             clock.sleep(0.3)
             continue
         say(f"[{n}] observing {len(elements)} elements; asking the agent (waits on the model) …")
-        screenshot = _screenshot_bytes(driver) if with_screenshot else None
-        before = _usage.snapshot()
-        proposal = agent.next_action(
+        # Vision-on-demand (BE-0192): decide per turn whether to attach a screenshot, then capture
+        # it LAZILY — only when a trigger (or the escalation below) actually needs it, so a text-only
+        # turn skips the `screenshot` subprocess too. `with_screenshot=False` (a driver with no
+        # screenshot capability) keeps every turn text-only, exactly as before.
+        current_fp = fingerprint(elements)
+        attach = with_screenshot and _should_attach(current_fp, prev_fp)
+        prev_fp = current_fp
+        screenshot = _screenshot_bytes(driver) if attach else None
+        proposal = _ask_agent(
+            agent,
             Observation(
-                goal=goal,
-                screen=elements,
-                history=list(steps),
-                screenshot=screenshot,
-                plan=plan,
-            )
+                goal=goal, screen=elements, history=list(steps), screenshot=screenshot, plan=plan
+            ),
+            say,
+            n,
         )
-        spent = (
-            _usage.snapshot() - before
-        )  # single-threaded record loop → this turn's tokens exactly
-        if spent.total_tokens:
-            say(f"[{n}] \U0001f916 agent replied · {spent.total_tokens:,} tokens")
+        if proposal.need_screenshot and with_screenshot and screenshot is None:
+            # Escalation (BE-0192): the agent could not proceed from the elements alone on a
+            # text-only turn. Capture the screen now and re-issue the SAME, unchanged observation
+            # once with the image attached — the loop (not an LLM) re-issues, so this stays Tier 1.
+            # At most one extra round-trip per turn; a second need_screenshot is ignored (the image
+            # is now present) and falls through to the no-action stop below.
+            say(
+                f"[{n}] \U0001f441️  the agent asked to see the screen; re-observing with a screenshot"
+            )
+            screenshot = _screenshot_bytes(driver)
+            proposal = _ask_agent(
+                agent,
+                Observation(
+                    goal=goal,
+                    screen=elements,
+                    history=list(steps),
+                    screenshot=screenshot,
+                    plan=plan,
+                ),
+                say,
+                n,
+            )
         if proposal.needs_human:
             # A third outcome (BE-0179): the agent cannot proceed and needs a human. Hand off if a
             # responder is present, then resume by re-observing; otherwise fail cleanly and labeled

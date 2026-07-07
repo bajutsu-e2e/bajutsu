@@ -164,6 +164,21 @@ def test_multi_anytool_maps_several_actions_to_ordered_blocks() -> None:
     assert blocks[0].input == {"id": "email"} and blocks[2].input == {"note": "done"}
 
 
+def test_need_screenshot_action_maps_to_a_tool_use_block() -> None:
+    # BE-0192: the CLI expresses the escalation as an `actions` entry naming need_screenshot; it maps
+    # to a ToolUseBlock exactly like any other tool, so ClaudeAgent turns it into the same signal.
+    need_shot = ToolDef(name="need_screenshot", description="ask", input_schema={"type": "object"})
+    runner = FakeRunner(
+        _envelope({"actions": [{"tool": "need_screenshot", "arguments": {"reason": "must see"}}]})
+    )
+    resp = claude_code.ClaudeCodeBackend(runner=runner).create_message(
+        _request(tools=[_TAP, need_shot], tool_choice=AnyTool())
+    )
+    block = resp.first_tool_use()
+    assert block is not None and block.name == "need_screenshot"
+    assert block.input == {"reason": "must see"}
+
+
 @pytest.mark.parametrize("output", [None, "not-a-dict", {"tool": "finish"}, {"arguments": {}}])
 def test_malformed_structured_output_yields_no_tool_use(output: Any) -> None:
     runner = FakeRunner(_envelope(output))

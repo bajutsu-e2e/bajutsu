@@ -9,6 +9,7 @@ import pytest
 from conftest import ShotDriver
 
 from bajutsu.agent import Observation, Proposal
+from bajutsu.crawl import Fingerprint
 from bajutsu.drivers import base
 from bajutsu.drivers.fake import FakeDriver
 from bajutsu.elements import shows_app_ui
@@ -17,6 +18,7 @@ from bajutsu.record import (
     _format_elapsed,
     _is_looping,
     _screenshot_bytes,
+    _should_attach,
     _summarize_screen,
     _tokenize_secrets,
     record,
@@ -40,6 +42,19 @@ class LoopAgent:
 
     def next_action(self, observation: Observation) -> Proposal:
         return Proposal(steps=[Step.model_validate({"tap": {"id": "a"}})])
+
+
+class SeenAgent(FakeAgent):
+    """A scripted fake that also records the observations it was handed, so a test can inspect
+    which turns carried a screenshot (BE-0192, vision-on-demand)."""
+
+    def __init__(self, proposals: list[Proposal]) -> None:
+        super().__init__(proposals)
+        self.seen: list[Observation] = []
+
+    def next_action(self, observation: Observation) -> Proposal:
+        self.seen.append(observation)
+        return super().next_action(observation)
 
 
 class PlanningAgent(FakeAgent):
@@ -178,6 +193,137 @@ def test_record_resumes_after_a_value_response() -> None:
     scenario = record(driver, "log in", agent, handoff=handoff)
     assert len(handoff.requests) == 1
     assert [s.tap.id for s in scenario.steps if s.tap is not None] == ["go"]
+
+
+def _noid(label: str) -> base.Element:
+    """An addressable-by-label-only element (no accessibility id), for the degenerate-tree case."""
+    return {
+        "identifier": None,
+        "label": label,
+        "traits": ["button"],
+        "value": None,
+        "frame": (0.0, 0.0, 10.0, 10.0),
+    }
+
+
+def _shots(driver: ShotDriver) -> int:
+    """How many times the driver's screen was actually captured (lazy-capture check, BE-0192)."""
+    return sum(1 for kind, _ in driver.actions if kind == "screenshot")
+
+
+# --- BE-0192: vision-on-demand ---------------------------------------------------------------
+
+
+def test_should_attach_triggers() -> None:
+    id_screen = Fingerprint("hash-a", "id")
+    # First turn (no previous) and any fingerprint change always attach.
+    assert _should_attach(id_screen, None) is True
+    assert _should_attach(id_screen, Fingerprint("hash-b", "id")) is True
+    # A screen already seen with a rich, addressable (id) tree is text-only.
+    assert _should_attach(id_screen, id_screen) is False
+    # A degenerate (structural) tree attaches even when unchanged — the generous no-id trigger.
+    structural = Fingerprint("hash-c", "structural")
+    assert _should_attach(structural, structural) is True
+
+
+def test_record_attaches_on_first_turn_then_skips_the_same_screen() -> None:
+    # First observation of a screen carries a screenshot; a same-fingerprint follow-up turn is
+    # text-only, and — lazy capture — the driver is not screenshotted on that turn.
+    driver = ShotDriver([_el("a", "A"), _el("b", "B")])  # two ids → stable id fingerprint
+    agent = SeenAgent(
+        [Proposal(steps=[Step.model_validate({"tap": {"id": "a"}})]), Proposal(done=True)]
+    )
+    record(driver, "stay put", agent)
+    assert agent.seen[0].screenshot is not None  # new screen → attached
+    assert agent.seen[1].screenshot is None  # same screen, id-rich → text-only
+    assert _shots(driver) == 1  # captured only for the turn that attached
+
+
+def test_record_reattaches_when_the_screen_changes() -> None:
+    # A fingerprint change re-attaches: the agent sees each newly-reached screen with an image.
+    nxt = [_el("c", "C"), _el("d", "D")]
+
+    def react(d: FakeDriver, kind: str, arg: object) -> None:
+        if kind == "tap":
+            d.screen = nxt
+
+    driver = ShotDriver([_el("a", "A"), _el("b", "B")], react=react)
+    agent = SeenAgent(
+        [Proposal(steps=[Step.model_validate({"tap": {"id": "a"}})]), Proposal(done=True)]
+    )
+    record(driver, "move on", agent)
+    assert agent.seen[0].screenshot is not None
+    assert agent.seen[1].screenshot is not None  # new fingerprint → re-attached
+
+
+def test_record_attaches_for_a_degenerate_tree_even_on_the_same_screen() -> None:
+    # A no-id (structural-fingerprint) screen attaches every turn, regardless of fingerprint — the
+    # tap_point case where vision is the way in.
+    driver = ShotDriver([_noid("X"), _noid("Y")])
+    agent = SeenAgent(
+        [
+            Proposal(steps=[Step.model_validate({"tap": {"label": "X"}})]),
+            Proposal(steps=[Step.model_validate({"tap": {"label": "Y"}})]),
+            Proposal(done=True),
+        ]
+    )
+    record(driver, "no ids here", agent)
+    assert agent.seen[0].screenshot is not None
+    assert agent.seen[1].screenshot is not None  # unchanged, but degenerate → still attached
+
+
+def test_record_escalates_to_a_screenshot_when_the_agent_asks() -> None:
+    # On a text-only turn the agent calls need_screenshot; the loop re-issues the SAME screen once
+    # with the image attached, and the eventual action is recorded normally.
+    driver = ShotDriver([_el("a", "A"), _el("b", "B")])
+    agent = SeenAgent(
+        [
+            Proposal(steps=[Step.model_validate({"tap": {"id": "a"}})]),  # turn 1 (attached)
+            Proposal(need_screenshot=True),  # turn 2, text-only → escalate
+            Proposal(steps=[Step.model_validate({"tap": {"id": "b"}})]),  # re-issue with image
+            Proposal(done=True),  # turn 3
+        ]
+    )
+    scenario = record(driver, "peek", agent)
+    assert agent.seen[1].screenshot is None  # the turn where the agent asked was text-only
+    assert agent.seen[2].screenshot is not None  # re-issued with the image on the same screen
+    # The action decided after escalation is recorded like any other; escalation itself adds no step.
+    assert [s.tap.id for s in scenario.steps if s.tap is not None] == ["a", "b"]
+    assert _shots(driver) == 2  # turn 1's attach + the one escalation capture
+
+
+def test_record_attaches_every_turn_when_the_screen_always_changes() -> None:
+    # Regression: when every turn reaches a new screen, the image is sent every turn, exactly as
+    # before vision-on-demand.
+    screens = [[_el("c", "C")], [_el("e", "E")]]
+
+    def react(d: FakeDriver, kind: str, arg: object) -> None:
+        if kind == "tap" and screens:
+            d.screen = screens.pop(0)
+
+    driver = ShotDriver([_el("a", "A")], react=react)
+    agent = SeenAgent(
+        [
+            Proposal(steps=[Step.model_validate({"tap": {"id": "a"}})]),
+            Proposal(steps=[Step.model_validate({"tap": {"id": "c"}})]),
+            Proposal(done=True),
+        ]
+    )
+    record(driver, "always moving", agent)
+    assert all(obs.screenshot is not None for obs in agent.seen)
+    assert _shots(driver) == 3
+
+
+def test_record_with_screenshot_disabled_never_attaches_or_escalates() -> None:
+    # with_screenshot=False (a driver with no screenshot capability) keeps every turn text-only and
+    # never captures — the escalation cannot fire because there is no image to hand back.
+    driver = ShotDriver([_el("a", "A"), _el("b", "B")])
+    agent = SeenAgent(
+        [Proposal(steps=[Step.model_validate({"tap": {"id": "a"}})]), Proposal(done=True)]
+    )
+    record(driver, "no vision", agent, with_screenshot=False)
+    assert all(obs.screenshot is None for obs in agent.seen)
+    assert _shots(driver) == 0
 
 
 def test_record_handles_two_handoffs_in_one_run() -> None:

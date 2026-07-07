@@ -53,9 +53,12 @@ _LARGE_SCREEN_ELEMENTS = 50
 SYSTEM_PROMPT = """You are an iOS end-to-end test author. You drive an app on the \
 iOS Simulator to accomplish a goal, then record the steps as a deterministic test.
 
-Each turn you receive the goal, a screenshot of the current screen, and the \
-screen's accessibility elements. Each element has a `label`, `value`, and `traits`, \
-and — only if the app instrumented it — a stable `id`. Address an element by:
+Each turn you receive the goal and the screen's accessibility elements. A screenshot \
+of the current screen MAY also be present, but not every turn: it is attached the first \
+time a screen is seen and whenever the elements are too sparse to act on, and omitted on \
+a screen you have already seen whose elements fully determine the action. The element \
+list is ALWAYS authoritative for addressing. Each element has a `label`, `value`, and \
+`traits`, and — only if the app instrumented it — a stable `id`. Address an element by:
 
 - `id` when it has one — non-localized and data-derived, so ALWAYS prefer it; otherwise
 - any combination of `label` (exact accessibility label), `value` (exact value — e.g. \
@@ -64,8 +67,8 @@ an empty text field exposes its placeholder like "Email" as its value), and `tra
 (a text field with value "Email" → value="Email", traits=["textField"]).
 - add `index` (0-based, in the listed order) only when several elements still match.
 
-Use the screenshot to map the goal's wording to the right element when the text \
-differs from it (e.g. a "+" button is the increment control). Call one of these tools:
+When a screenshot is present, use it to map the goal's wording to the right element when \
+the text differs from it (e.g. a "+" button is the increment control). Call one of these tools:
 
 - tap(id|label): tap that element.
 - tap_point(x, y): tap a screen location by NORMALIZED coordinates (0..1 from the \
@@ -87,6 +90,11 @@ previous swipe barely moved the screen.
 - wait_for(id|label, timeout): wait until that element appears.
 - finish(assertions): the goal is reached; provide machine-checkable assertions \
 that verify it, each addressing an element by id or label.
+- need_screenshot(): ask to see the current screen. Use ONLY on a turn that arrived \
+without a screenshot, and only when you genuinely cannot proceed from the element list \
+alone — a control you need is not listed, or you must read an appearance the elements do \
+not expose. The same, unchanged screen is re-shown once with a screenshot attached; do \
+not call it when the elements already determine your action.
 - ask_human(prompt): hand off to a human when the next step needs a value you cannot \
 possibly know in a real run (a one-time password, a verification / 2FA code, a CAPTCHA) \
 or an action only a human can perform. The person authoring supplies it and the recording \
@@ -315,6 +323,18 @@ TOOLS: list[ToolDef] = [
         },
     ),
     ToolDef(
+        name="need_screenshot",
+        description="Ask to see the current screen. Call this ONLY on a turn that arrived without a "
+        "screenshot, and only when you genuinely cannot proceed from the element list alone — a "
+        "control you need is not listed, or you must read an appearance the elements do not expose. "
+        "The same, unchanged screen is then re-shown to you once with a screenshot attached.",
+        input_schema={
+            "type": "object",
+            "properties": {**_REASON_PROP, **_PLAN_PROP},
+            "required": ["reason"],
+        },
+    ),
+    ToolDef(
         name="ask_human",
         description="Hand off to a human: the next step needs a value you cannot possibly know in a "
         "real run (a one-time password, a verification / 2FA code, a CAPTCHA answer) or an action "
@@ -416,6 +436,14 @@ def _render(observation: Observation, redactor: Redactor | None = None) -> str:
         recent = observation.history[-6:]
         lines.append("Recent actions (most recent last) — do not repeat these fruitlessly:")
         lines += [f"  - {_history_line(s)}" for s in recent]
+    if observation.screenshot is None:
+        # Vision-on-demand (BE-0192): this turn carries no image. Say so, and remind the agent it can
+        # pull the screen back with need_screenshot when the elements above genuinely do not suffice.
+        lines.append(
+            "No screenshot this turn — the elements above are authoritative for addressing. Call "
+            "need_screenshot only if you genuinely must see the screen to proceed (a control you "
+            "need is not listed, or you must read an appearance the elements do not expose)."
+        )
     lines.append(
         "Call tap, tap_point, swipe, type_text, wait_for, or finish — one tool, or several "
         "action tools together only when all are determinable from THIS screen (see the rules)."
@@ -507,6 +535,10 @@ def proposal_from_call(name: str, args: dict[str, Any]) -> Proposal:
         return Proposal(
             needs_human=True, human_prompt=args.get("prompt") or note, note=note, plan_step=ps
         )
+    if name == "need_screenshot":
+        # An escalation (BE-0192): on a text-only turn the agent asks to see the screen. The loop
+        # re-issues the same observation once with a screenshot attached — no step, not done.
+        return Proposal(need_screenshot=True, note=note, plan_step=ps)
     raise ValueError(f"unknown tool: {name!r}")
 
 
@@ -532,6 +564,10 @@ def _combine(subs: list[Proposal]) -> Proposal:
     steps: list[Step] = []
     note, plan_step = subs[0].note, subs[0].plan_step
     for sub in subs:
+        if sub.need_screenshot:
+            # An escalation (BE-0192) terminates the batch: the agent wants to see the screen before
+            # committing to any action, so no steps are executed this turn — the loop re-observes.
+            return Proposal(steps=steps, need_screenshot=True, note=note, plan_step=plan_step)
         if sub.needs_human:
             return Proposal(
                 steps=steps,
