@@ -105,12 +105,12 @@
 
 ## 参考
 
-- [`bajutsu/record.py:52`](../../../bajutsu/record.py) — `_screenshot_bytes`。本項目が統合後の
+- [`bajutsu/record.py:52`](../../bajutsu/record.py) — `_screenshot_bytes`。本項目が統合後の
   実装として残すヘルパーです。
-- [`bajutsu/alerts.py:48`](../../../bajutsu/alerts.py) — `_screenshot_png`。本項目が削除する、
+- [`bajutsu/alerts.py:48`](../../bajutsu/alerts.py) — `_screenshot_png`。本項目が削除する、
   完全に同一のコピーです。
-- [`bajutsu/crawl_guide.py:82`](../../../bajutsu/crawl_guide.py)、
-  [`bajutsu/enrich.py:92`](../../../bajutsu/enrich.py) — すでに `_screenshot_bytes` を使っている
+- [`bajutsu/crawl_guide.py:82`](../../bajutsu/crawl_guide.py)、
+  [`bajutsu/enrich.py:92`](../../bajutsu/enrich.py) — すでに `_screenshot_bytes` を使っている
   残り二つの呼び出し元です。
 - [BE-0064 — Parallel crawl across multiple simulators](../BE-0064-parallel-crawl/BE-0064-parallel-crawl.md)
   — 統合後のヘルパーの呼び出し元が動作するクロールコードです。

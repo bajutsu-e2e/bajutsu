@@ -148,7 +148,13 @@ def role_for(login: str, *, admins: frozenset[str], viewers: frozenset[str]) -> 
 
 def required_role(method: str, path: str) -> str | None:
     """The minimum role a request needs, or None for reads (GET) and the open auth endpoints.
-    Cancelling a job is an editor action (it stops a run)."""
+    Cancelling a job is an editor action (it stops a run). The one gated read is
+    ``GET /api/config/content`` (admin), whose full config body is a wider disclosure than a path."""
+    # Config content is the one gated GET: it returns the active config's full body, a wider
+    # disclosure than the path-only `/api/config`, and a local/uploaded config may embed literal
+    # secrets. Gate it like binding the config (admin) so a viewer/editor can't read it.
+    if method == "GET" and path == "/api/config/content":
+        return "admin"
     if method != "POST":
         return None
     if path in _ADMIN_PATHS:

@@ -15,7 +15,7 @@
 
 ## Introduction
 
-Going multi-platform is a **strategic scope change**, not just code. Bajutsu is documented today as scoped to the iOS Simulator only ([DESIGN §1](../../../DESIGN.md), [README](../../../README.md)). When the first real second platform lands (Web, then Android — see [BE-0009](../BE-0009-cross-platform-abstractions/BE-0009-cross-platform-abstractions.md) for the cross-cutting abstraction work), the project's stated scope has to move with it. This item tracks those documentation and positioning changes as a deliberate, coordinated step, so the product description never lags the code.
+Going multi-platform is a **strategic scope change**, not just code. Bajutsu is documented today as scoped to the iOS Simulator only ([DESIGN §1](../../DESIGN.md), [README](../../README.md)). When the first real second platform lands (Web, then Android — see [BE-0009](../BE-0009-cross-platform-abstractions/BE-0009-cross-platform-abstractions.md) for the cross-cutting abstraction work), the project's stated scope has to move with it. This item tracks those documentation and positioning changes as a deliberate, coordinated step, so the product description never lags the code.
 
 ## Motivation
 
@@ -27,10 +27,10 @@ The scope statement is load-bearing: it sets reader expectations, frames the des
 
 When the first new platform lands (Phase 1, Web), update in the same change:
 
-- **[DESIGN §1](../../../DESIGN.md)** "やること / やらないこと" (what we do / don't do) — iOS-Simulator-only → multi-platform; move the "実機 / クラウドデバイスファーム" (physical device / cloud device farm) reasoning to where it remains relevant.
-- **[README](../../../README.md) / [README.ja](../../../README.ja.md)** — the product one-liner and the core-principles section.
-- **[architecture status](../../../docs/architecture.md)** — register the new backend in the implementation-status table.
-- **docs navigation** — both [`docs/README.md`](../../../docs/README.md) and [`docs/ja/README.md`](../../../docs/ja/README.md).
+- **[DESIGN §1](../../DESIGN.md)** "やること / やらないこと" (what we do / don't do) — iOS-Simulator-only → multi-platform; move the "実機 / クラウドデバイスファーム" (physical device / cloud device farm) reasoning to where it remains relevant.
+- **[README](../../README.md) / [README.ja](../../README.ja.md)** — the product one-liner and the core-principles section.
+- **[architecture status](../../docs/architecture.md)** — register the new backend in the implementation-status table.
+- **docs navigation** — both [`docs/README.md`](../../docs/README.md) and [`docs/ja/README.md`](../../docs/ja/README.md).
 
 ### Keep the prime directives intact
 
@@ -47,7 +47,7 @@ The scope **widens**, but the prime directives do **not** change. Determinism-fi
 
 ## References
 
-- [DESIGN §1](../../../DESIGN.md) (scope: what we do / don't do)
-- [README](../../../README.md), [README.ja](../../../README.ja.md)
-- [architecture.md](../../../docs/architecture.md) (implementation status)
+- [DESIGN §1](../../DESIGN.md) (scope: what we do / don't do)
+- [README](../../README.md), [README.ja](../../README.ja.md)
+- [architecture.md](../../docs/architecture.md) (implementation status)
 - Related items: [BE-0009](../BE-0009-cross-platform-abstractions/BE-0009-cross-platform-abstractions.md) (cross-platform abstractions), [BE-0041](../BE-0041-web-playwright-backend/BE-0041-web-playwright-backend.md) (web Playwright backend), [BE-0007](../BE-0007-android-backend/BE-0007-android-backend.md) (Android backend)

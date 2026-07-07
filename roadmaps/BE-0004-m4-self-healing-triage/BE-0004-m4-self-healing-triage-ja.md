@@ -27,7 +27,7 @@
 
 ## 検討した代替案
 
-競合ツールは実行中に自動補正します。Bajutsu は「テストを甘くする」ことを避けるため、実行中の暗黙の補正を意図的に拒否しています（[DESIGN §11](../../../DESIGN.md)）。
+競合ツールは実行中に自動補正します。Bajutsu は「テストを甘くする」ことを避けるため、実行中の暗黙の補正を意図的に拒否しています（[DESIGN §11](../../DESIGN.md)）。
 
 ## 進捗
 
@@ -35,4 +35,4 @@
 
 ## 参考
 
-[DESIGN §3.1 / §12](../../../DESIGN.md)、[reporting.md](../../../docs/ja/reporting.md)、`bajutsu/triage.py`、[自己修復トリアージ（M4）](../../README-ja.md#自己修復トリアージm4)
+[DESIGN §3.1 / §12](../../DESIGN.md)、[reporting.md](../../docs/ja/reporting.md)、`bajutsu/triage.py`、[自己修復トリアージ（M4）](../README-ja.md#自己修復トリアージm4)

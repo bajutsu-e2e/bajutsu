@@ -22,10 +22,10 @@ ground where `record` (Tier 1 authoring), `crawl` (Tier 1 exploration,
 and `run` (Tier 2 deterministic gate) are all exercised against one realistic app. The suite
 ships **the same app written twice** — once in UIKit, once in SwiftUI — and **each in two
 accessibility variants** (identifiers on / off), for four installable products from two
-codebases. The full screen-by-screen contract lives in [`demos/showcase/SPEC.md`](../../../demos/showcase/SPEC.md)
-([ja](../../../demos/showcase/SPEC.ja.md)); this item records the rationale and scope.
+codebases. The full screen-by-screen contract lives in [`demos/showcase/SPEC.md`](../../demos/showcase/SPEC.md)
+([ja](../../demos/showcase/SPEC.ja.md)); this item records the rationale and scope.
 
-It supersedes the older single-app `sample` fixture ([`demos/features/app`](../../../demos/features/app)):
+It supersedes the older single-app `sample` fixture ([`demos/features/app`](../../demos/features/app)):
 `sample` proves the feature surface on one SwiftUI app, but it cannot demonstrate the toolkit
 axis (UIKit vs SwiftUI element-tree differences) or the accessibility axis (what `record` and
 `doctor` do when identifiers are absent), which are exactly the dimensions a dogfood fixture
@@ -42,9 +42,9 @@ one coherent app. A genuinely branchy app (5 tabs × pushes × 4 modal styles) i
 `crawl`'s breadth-first traversal meaningful: there is a real graph to map.
 
 **2. The accessibility pairing is a controlled experiment, not just a fixture.** Selector
-stability is *the* determinism lever ([DESIGN §2](../../../DESIGN.md)): id-based selectors
+stability is *the* determinism lever ([DESIGN §2](../../DESIGN.md)): id-based selectors
 resolve uniquely and survive layout/locale changes, while coordinate/label fallbacks are
-fragile ([DESIGN §5](../../../DESIGN.md) stability ladder). The `-a11y` ↔ `-noax` twins make
+fragile ([DESIGN §5](../../DESIGN.md) stability ladder). The `-a11y` ↔ `-noax` twins make
 that abstract claim concrete and measurable — same app, same flows, identifiers the only
 difference:
 
@@ -60,28 +60,28 @@ value of accessibility work — a demo no single-variant fixture can give.
 
 **3. The toolkit axis catches element-tree differences early.** idb's element-tree
 normalization is a known risk area, especially for SwiftUI standard controls
-([DESIGN §11](../../../DESIGN.md); [BE-0006](../BE-0006-idb-element-tree-normalization/BE-0006-idb-element-tree-normalization.md)).
+([DESIGN §11](../../DESIGN.md); [BE-0006](../BE-0006-idb-element-tree-normalization/BE-0006-idb-element-tree-normalization.md)).
 A UIKit twin that exposes the *same* identifier contract as the SwiftUI twin lets us run the
 *same* scenario set across both and surface where the two toolkits' a11y trees diverge — a
 regression net for the driver, free, as a byproduct of the fixture existing.
 
 **4. A stable base for practising future features.** Because per-app differences live entirely
-in config ([DESIGN §8](../../../DESIGN.md)), the showcase is the natural target to try new
+in config ([DESIGN §8](../../DESIGN.md)), the showcase is the natural target to try new
 capabilities against without inventing a throwaway app each time: visual-regression baselines
 ([BE-0029](../BE-0029-visual-regression-assertions/BE-0029-visual-regression-assertions.md)),
 data-driven runs, secret redaction, the crawl screen-map, and `doctor`'s whole-app coverage
 ([BE-0024](../BE-0024-doctor-onboarding/BE-0024-doctor-onboarding.md)) all have a ready,
 representative subject.
 
-This respects every prime directive ([CLAUDE.md](../../../CLAUDE.md)): it is purely a test
+This respects every prime directive ([CLAUDE.md](../../CLAUDE.md)): it is purely a test
 *subject* plus config and scenarios, adds **no** LLM call to any gate, and changes **nothing**
 in the tool, drivers, or runner — the whole suite is onboarded through `apps.<name>` entries
-exactly as [DESIGN §7.1](../../../DESIGN.md) prescribes.
+exactly as [DESIGN §7.1](../../DESIGN.md) prescribes.
 
 ## Detailed design
 
 The authoritative, screen-by-screen contract — identifier map, launch-env hooks, deeplinks,
-OS-alert placement, and the `ACCESSIBLE` build flag — is [`demos/showcase/SPEC.md`](../../../demos/showcase/SPEC.md).
+OS-alert placement, and the `ACCESSIBLE` build flag — is [`demos/showcase/SPEC.md`](../../demos/showcase/SPEC.md).
 The shape:
 
 - **Layout** — `demos/showcase/{swiftui,uikit}/` hold the two codebases (xcodegen
@@ -96,13 +96,13 @@ The shape:
   `UIAccessibilityIdentification` extension in UIKit) is the *only* place identifiers enter the
   tree, gated by `#if ACCESSIBLE`; the `-noax` build therefore compiles to a tree with no
   identifiers and no mirrored state values.
-- **OS alerts, deliberate and scoped** ([SPEC §7](../../../demos/showcase/SPEC.md)) — no
+- **OS alerts, deliberate and scoped** ([SPEC §7](../../demos/showcase/SPEC.md)) — no
   permission prompts at launch; the notification and location prompts appear *only* on the
   **Permissions tab**, where they serve as the canonical fixture for the run's vision alert
-  guard / `dismissAlerts` (the showcase's own [`permission.yaml`](../../../demos/showcase/scenarios/permission.yaml)
+  guard / `dismissAlerts` (the showcase's own [`permission.yaml`](../../demos/showcase/scenarios/permission.yaml)
   scenario).
 - **Networking** reuses the `sample` app's BajutsuKit integration unchanged, so `network`
-  evidence and `mocks` work with no app-side change ([DESIGN §3.2](../../../DESIGN.md)).
+  evidence and `mocks` work with no app-side change ([DESIGN §3.2](../../DESIGN.md)).
 
 ### Scope and phasing
 
@@ -141,9 +141,9 @@ The shape:
 
 ## References
 
-- [`demos/showcase/SPEC.md`](../../../demos/showcase/SPEC.md) ([ja](../../../demos/showcase/SPEC.ja.md)) — the screen-by-screen contract
-- [DESIGN §2 / §5 / §7.1 / §7.3 / §8 / §11](../../../DESIGN.md) — determinism, stability ladder, per-app onboarding, identifier naming, config, risks
+- [`demos/showcase/SPEC.md`](../../demos/showcase/SPEC.md) ([ja](../../demos/showcase/SPEC.ja.md)) — the screen-by-screen contract
+- [DESIGN §2 / §5 / §7.1 / §7.3 / §8 / §11](../../DESIGN.md) — determinism, stability ladder, per-app onboarding, identifier naming, config, risks
 - [BE-0038](../BE-0038-autonomous-crawl-exploration/BE-0038-autonomous-crawl-exploration.md) — autonomous crawl exploration (this fixture's forward-looking target)
 - [BE-0024](../BE-0024-doctor-onboarding/BE-0024-doctor-onboarding.md) — doctor / onboarding (consumes this fixture's coverage)
 - [BE-0006](../BE-0006-idb-element-tree-normalization/BE-0006-idb-element-tree-normalization.md) — idb element-tree normalization (the toolkit axis stresses this)
-- [`demos/features/app`](../../../demos/features/app) — the `sample` fixture this supersedes
+- [`demos/features/app`](../../demos/features/app) — the `sample` fixture this supersedes

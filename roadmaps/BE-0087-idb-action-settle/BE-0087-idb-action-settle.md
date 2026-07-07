@@ -75,6 +75,6 @@ Small, focused PRs. (1) `wait_for` / `_resolve` hygiene (PR #295), (2) exponenti
 
 ## References
 
-- [DESIGN §11](../../../DESIGN.md) — idb normalization and the transient-empty note
+- [DESIGN §11](../../DESIGN.md) — idb normalization and the transient-empty note
 - [BE-0006](../BE-0006-idb-element-tree-normalization/BE-0006-idb-element-tree-normalization.md) — steady-state golden normalization (complementary)
 - [BE-0049](../BE-0049-determinism-flakiness-audit/BE-0049-determinism-flakiness-audit.md) — determinism / flakiness audit (before/after measurement)

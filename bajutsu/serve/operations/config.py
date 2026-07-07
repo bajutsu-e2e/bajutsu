@@ -12,7 +12,7 @@ from typing import Any
 
 import yaml
 
-from bajutsu import ai_availability
+from bajutsu import _yaml, ai_availability
 from bajutsu.ai import known_providers, resolved_provider
 from bajutsu.anthropic_client import (
     ANT_BINARY,
@@ -109,6 +109,60 @@ def config_info(state: ServeState) -> tuple[Any, int]:
     }, 200
 
 
+def _json_safe(value: Any) -> Any:
+    """Coerce a parsed-YAML structure into JSON-serializable types for the config-content payload.
+
+    The YAML loader can emit scalars JSON has no type for (a `date`/`datetime` from a timestamp,
+    say); left as-is they would make the stdlib handler's `json.dumps` raise. Recurse containers and
+    stringify any leaf that is not already a JSON scalar; dict keys are stringified too (JSON keys
+    are strings). Only affects the display structure — the raw YAML text is returned untouched.
+    """
+    if isinstance(value, dict):
+        return {str(k): _json_safe(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_json_safe(v) for v in value]
+    if value is None or isinstance(value, (str, bool, int, float)):
+        return value
+    return str(value)
+
+
+def config_content(state: ServeState) -> tuple[Any, int]:
+    """The raw text of the active config plus its source, so the UI can confirm *what* is bound.
+
+    The path in `config_info` is enough for a local file, but a Git-sourced config resolves to an
+    opaque content-addressed cache path (`…/gitsrc/<host>/<owner>/<repo>/<sha>/…`); this returns the
+    YAML the tabs actually run from and — for a Git source — the `provenance` stamp (host/owner/repo/
+    ref/resolved sha) so the reader sees which commit it came from, not just the path.
+
+    The text is verbatim: any ``${secrets.*}`` placeholders are shown as written, never resolved, so
+    this discloses nothing beyond the file already committed to Git or uploaded in the bundle.
+    """
+    if state.config is None:
+        return {"error": "no config bound"}, 404
+    try:
+        content = state.config.read_text(encoding="utf-8")
+    except OSError as e:
+        # The bound path was validated at bind time; a read failure here means it moved/was removed
+        # under us (a transient checkout, a deleted file) — report it rather than 500 with a traceback.
+        return {"error": f"could not read config: {e}"}, 404
+    # The parsed structure powers the UI's collapsible key/value view. Use the same restricted loader
+    # `load_config` uses (`_yaml`), not `yaml.safe_load`: YAML 1.1 implicit typing would turn an `on:`
+    # trigger key into `True`, so a plain load would misrender a valid config. `_json_safe` then coerces
+    # any non-JSON scalar the loader can still emit (e.g. a `date`) to a string, so the payload is always
+    # JSON-serializable — the stdlib handler dumps it directly and would 500 on a raw `date`. A parse
+    # failure leaves `parsed` null and the UI falls back to the raw YAML rather than erroring.
+    try:
+        parsed = _json_safe(_yaml.safe_load(content))
+    except yaml.YAMLError:
+        parsed = None
+    return {
+        "config": str(state.config),
+        "content": content,
+        "parsed": parsed,
+        "provenance": state.config_provenance,  # None for a local file / uploaded bundle
+    }, 200
+
+
 def api_key_info(state: ServeState, actor: str | None) -> tuple[Any, int]:
     """Whether the Claude API key is set, with a masked preview — never the plaintext (BE-0136).
 
@@ -192,6 +246,7 @@ def bind_config(state: ServeState, raw: str) -> tuple[Any, int]:
         return {"error": f"invalid config: {e}"}, 400
     state.release_upload()  # a fresh config replaces any bound bundle and resets cwd to serve's launch dir
     state.config = target
+    state.config_provenance = None  # a local file has no Git commit provenance to show
     state.git_config_from_api = False  # a local file config is operator-trusted (BE-0121)
     return {"ok": True, "config": str(target), "targets": list_targets(target)}, 200
 
@@ -234,6 +289,8 @@ def bind_git_config(state: ServeState, spec_str: str) -> tuple[Any, int]:
     state.release_upload()  # switching to a Git config drops any bound bundle's sandbox
     state.config = mat.config_path
     state.cwd = mat.root  # the checkout root: the config's relative paths resolve from here
+    provenance = source_provenance(spec, mat)
+    state.config_provenance = provenance  # so /api/config/content can show the resolved commit
     # A Git config bound here came in over the API, not from the operator's startup flags, so its
     # `build:` command is untrusted and stays ungoverned until --allow-remote-build opts in (BE-0121).
     state.git_config_from_api = True
@@ -241,7 +298,7 @@ def bind_git_config(state: ServeState, spec_str: str) -> tuple[Any, int]:
         "ok": True,
         "config": str(mat.config_path),
         "targets": list_targets(mat.config_path),
-        "source": source_provenance(spec, mat),
+        "source": provenance,
     }, 200
 
 

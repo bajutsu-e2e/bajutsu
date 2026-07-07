@@ -104,12 +104,12 @@ unifying the helper is the natural place to also fix how it fails:
 
 ## References
 
-- [`bajutsu/record.py:52`](../../../bajutsu/record.py) — `_screenshot_bytes`, the helper this item
+- [`bajutsu/record.py:52`](../../bajutsu/record.py) — `_screenshot_bytes`, the helper this item
   keeps as the unified implementation.
-- [`bajutsu/alerts.py:48`](../../../bajutsu/alerts.py) — `_screenshot_png`, the byte-identical
+- [`bajutsu/alerts.py:48`](../../bajutsu/alerts.py) — `_screenshot_png`, the byte-identical
   duplicate this item removes.
-- [`bajutsu/crawl_guide.py:82`](../../../bajutsu/crawl_guide.py),
-  [`bajutsu/enrich.py:92`](../../../bajutsu/enrich.py) — the other two call sites already using
+- [`bajutsu/crawl_guide.py:82`](../../bajutsu/crawl_guide.py),
+  [`bajutsu/enrich.py:92`](../../bajutsu/enrich.py) — the other two call sites already using
   `_screenshot_bytes`.
 - [BE-0064 — Parallel crawl across multiple simulators](../BE-0064-parallel-crawl/BE-0064-parallel-crawl.md)
   — crawl code the unified helper's callers run under.

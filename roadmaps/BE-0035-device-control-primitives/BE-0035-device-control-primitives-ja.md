@@ -93,4 +93,4 @@ prime directive の保持：
 レジューム）は、[デバイス状態プリミティブ: タイムゾーン・クリップボード・シェイク](../BE-0052-device-state-timezone-clipboard-shake/BE-0052-device-state-timezone-clipboard-shake-ja.md)
 で別途扱います。
 
-[DESIGN §6.2](../../../DESIGN.md)、`bajutsu/orchestrator/actions/handlers/device.py`
+[DESIGN §6.2](../../DESIGN.md)、`bajutsu/orchestrator/actions/handlers/device.py`

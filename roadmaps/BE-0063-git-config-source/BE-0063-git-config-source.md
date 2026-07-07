@@ -11,7 +11,7 @@
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0063") |
 | Implementing PR | [#277](https://github.com/bajutsu-e2e/bajutsu/pull/277) (the last of several BE-0063 PRs) |
 | Topic | Configuration sourcing |
-| Related | [BE-0108](../BE-0108-hosted-config-source-restriction/BE-0108-hosted-config-source-restriction.md) |
+| Related | [BE-0108](../BE-0108-hosted-config-source-restriction/BE-0108-hosted-config-source-restriction.md), [BE-0187](../BE-0187-serve-config-view/BE-0187-serve-config-view.md) |
 <!-- /BE-METADATA -->
 
 ## Introduction
@@ -34,7 +34,7 @@ plus [BE-0051](../BE-0051-serve-hardening-for-hosting/BE-0051-serve-hardening-fo
 
 ## Motivation
 
-A team's config and scenarios already live in a Git repository — [DESIGN §6.5](../../../DESIGN.md)
+A team's config and scenarios already live in a Git repository — [DESIGN §6.5](../../DESIGN.md)
 fixes this on purpose: "scenarios are just files in the repo, git holds the history, and Bajutsu has
 no store of its own." Yet to run them you must first check that repository out locally and run from
 inside it. For continuous integration (CI) and for a hosted or self-hosted `serve`, that local
@@ -54,7 +54,7 @@ checkout is friction or is impossible:
   it.
 
 The crux that shapes the whole design: **the config alone is not enough.**
-[`demos/features/demo.config.yaml`](../../../demos/features/demo.config.yaml) sets
+[`demos/features/demo.config.yaml`](../../demos/features/demo.config.yaml) sets
 `scenarios: demos/features/app/scenarios`, an `appPath:`, and `build: make -C demos/features
 sample-build` — all relative to the run's working directory. Fetching only the YAML would leave
 those paths dangling. "Load the config from Git" therefore has to mean "materialize the repo subtree
@@ -124,7 +124,7 @@ Simulator.
 
 ### Determinism and the mutable-ref boundary
 
-This brushes against [DESIGN §2](../../../DESIGN.md) (determinism first), so it is worth stating
+This brushes against [DESIGN §2](../../DESIGN.md) (determinism first), so it is worth stating
 plainly. A bare branch ref is **mutable**: `…@main` resolved today and a week from now can be
 different commits. Bajutsu allows it for authoring convenience, but bounds the mutability so it is
 never hidden:
@@ -164,7 +164,7 @@ The config schema (`bajutsu/config.py`), `resolve()`, the runner, the drivers, t
 evaluator, and the deterministic gate are untouched. A Git source is purely a new way to **acquire**
 the same config and tree — exactly
 [BE-0015](../BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md)'s "only its invocation
-and plumbing move" and [DESIGN §6.5](../../../DESIGN.md)'s "git holds the history." Per-app
+and plumbing move" and [DESIGN §6.5](../../DESIGN.md)'s "git holds the history." Per-app
 differences stay in the config; the tool does not branch per repository.
 
 ### CLI surface (run / doctor / record / crawl)
@@ -185,7 +185,7 @@ GUI below. Two kinds of command consume a Git source differently:
   they may resolve the app config and existing scenarios from it (context for the agent), but the
   generated artifact is written to a **local path** (`--out`, defaulting under the current
   directory), never into the cache. The author reviews that file and commits it to the repository
-  through normal git — exactly [DESIGN §6.5](../../../DESIGN.md)'s "AI output is a reviewable diff the
+  through normal git — exactly [DESIGN §6.5](../../DESIGN.md)'s "AI output is a reviewable diff the
   human commits," unchanged. For a tight local authoring loop, point `--config` at a local checkout
   as today.
 
@@ -223,7 +223,7 @@ applies to the checkout root just as it does to `--root` today.
   of "any ref, record the resolved SHA": branch-tracking is convenient for authoring, pinning is
   required for a reproducible gate, and recording the SHA reconciles the two.
 - **A bespoke Bajutsu config store (upload configs to a service).** Rejected: it contradicts
-  [DESIGN §6.5](../../../DESIGN.md) (no store of its own); Git already is the versioned source of
+  [DESIGN §6.5](../../DESIGN.md) (no store of its own); Git already is the versioned source of
   truth.
 - **Resolve relative paths against the caller's current directory even for a Git source.** Rejected:
   the caller's directory has nothing to do with the fetched tree, so paths must resolve against the
@@ -246,15 +246,15 @@ applies to the checkout root just as it does to `--root` today.
 
 ## References
 
-- [DESIGN §6.5](../../../DESIGN.md) (scenarios are git-tracked files; no store of its own),
-  [DESIGN §8](../../../DESIGN.md) (CLI and per-app config).
+- [DESIGN §6.5](../../DESIGN.md) (scenarios are git-tracked files; no store of its own),
+  [DESIGN §8](../../DESIGN.md) (CLI and per-app config).
 - `bajutsu/cli/_shared.py` (`_load_effective`), `bajutsu/config.py` (the relative-path fields),
   `bajutsu/cli/commands/serve.py` (the config picker), `bajutsu/github.py`.
-- [`demos/features/demo.config.yaml`](../../../demos/features/demo.config.yaml) — a config whose
+- [`demos/features/demo.config.yaml`](../../demos/features/demo.config.yaml) — a config whose
   `scenarios` / `appPath` / `build` are relative to the working directory (the crux).
 - [BE-0015](../BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md) (the `ScenarioStore`
   seam a Git source implements), [BE-0016](../BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md)
   (self-hosting; serve-from-repo is the Tier-A win),
   [BE-0051](../BE-0051-serve-hardening-for-hosting/BE-0051-serve-hardening-for-hosting.md)
   (serve hardening — token auth and path confinement the Git source honors).
-- [docs/configuration.md](../../../docs/configuration.md).
+- [docs/configuration.md](../../docs/configuration.md).

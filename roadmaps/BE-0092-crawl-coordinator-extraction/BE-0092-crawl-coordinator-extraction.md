@@ -15,7 +15,7 @@
 
 ## Introduction
 
-Refactor `crawl()` in [`bajutsu/crawl.py`](../../../bajutsu/crawl.py) so its shared concurrent
+Refactor `crawl()` in [`bajutsu/crawl.py`](../../bajutsu/crawl.py) so its shared concurrent
 state — the screen map, the frontier, the budgets, and the lock that guards them — lives in one
 small `_Coordinator` class, leaving `crawl()` itself as the device-walk that calls into it. This is a
 **behavior-preserving** internal refactor: the crawl stays a discovery tool (Tier 1, never a CI
@@ -164,7 +164,7 @@ it lands as **one focused PR** announced up front, not folded into unrelated wor
 
 ## References
 
-- [`bajutsu/crawl.py`](../../../bajutsu/crawl.py) — `crawl()` and its nested closures.
+- [`bajutsu/crawl.py`](../../bajutsu/crawl.py) — `crawl()` and its nested closures.
 - [BE-0064 — Parallel crawl across multiple simulators](../BE-0064-parallel-crawl/BE-0064-parallel-crawl.md) — added the multi-worker frontier this reorganizes.
 - [BE-0077 — Parallel web crawl across multiple browsers](../BE-0077-parallel-web-crawl/BE-0077-parallel-web-crawl.md) — added the in-thread worker factories and `recover`.
 - [BE-0083 — Unify the codegen emitters behind a shared scenario walk](../BE-0083-codegen-emitter-unification/BE-0083-codegen-emitter-unification.md) — a comparable behavior-preserving internal-structure refactor.

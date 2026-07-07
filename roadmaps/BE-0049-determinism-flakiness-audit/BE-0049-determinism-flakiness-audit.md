@@ -69,7 +69,7 @@ Proposal altitude; the design constraint is that the audit is purely observation
   network) attached. Classification is `deterministic` vs `flaky`, never a softened pass. This
   reuses the existing parallel-run and evidence machinery; it does not introduce a fixed sleep.
 - **Stability score (static).** Parse the scenario and grade it without a device: score each
-  selector on the stability ladder ([selectors.md](../../../docs/selectors.md)), flag `wait` steps
+  selector on the stability ladder ([selectors.md](../../docs/selectors.md)), flag `wait` steps
   missing a `timeout` or gated on an over-broad condition, and flag raw-coordinate gestures that
   a stable `id` could replace. Emit a per-scenario determinism score, parallel to `doctor`'s
   id-coverage score (`bajutsu/doctor.py`).
@@ -111,11 +111,11 @@ may simply extend it.
 
 ## References
 
-`bajutsu/doctor.py`, [selectors.md](../../../docs/selectors.md),
+`bajutsu/doctor.py`, [selectors.md](../../docs/selectors.md),
 [BE-0024](../BE-0024-doctor-onboarding/BE-0024-doctor-onboarding.md),
 [BE-0015](../BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md) — the
 DB-backed run records the longitudinal view mines (run provenance is stamped onto them);
 [BE-0044](../BE-0044-scenario-provenance/BE-0044-scenario-provenance.md) — a *different*
 provenance axis (step ↔ natural-language origin), not run versioning;
-[roadmap → Not adopting](../../README.md#not-adopting-already-covered--out-of-scope),
-[DESIGN §2 / §10](../../../DESIGN.md)
+[roadmap → Not adopting](../README.md#not-adopting-already-covered--out-of-scope),
+[DESIGN §2 / §10](../../DESIGN.md)

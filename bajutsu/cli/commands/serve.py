@@ -165,8 +165,9 @@ def serve(
     # baselines resolve against the fetched tree. A non-spec value stays a local path.
     config_path = Path(config) if config else None
     cwd: Path | None = None
+    config_provenance: dict[str, str] | None = None
     if config:
-        from bajutsu.config_source import materialize, parse_config_spec
+        from bajutsu.config_source import materialize, parse_config_spec, source_provenance
 
         spec = parse_config_spec(config)
         if spec is not None:
@@ -176,6 +177,9 @@ def serve(
                 typer.echo(f"--config {config}: {e}")
                 raise typer.Exit(2) from None
             config_path, cwd = mat.config_path, mat.root
+            # Stamp the resolved commit so the UI's "view config" can show which commit this opaque
+            # cache-path config was materialized from, not just the path (BE-0063).
+            config_provenance = source_provenance(spec, mat)
 
     try:
         _serve(
@@ -194,6 +198,7 @@ def serve(
             asgi=asgi,
             backend=backend,
             cwd=cwd,
+            config_provenance=config_provenance,
         )
     except MissingServerExtra as e:
         # The server backend was selected without its optional extras: show the install hint and

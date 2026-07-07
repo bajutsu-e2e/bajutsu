@@ -45,4 +45,4 @@
 
 ## 参考
 
-[DESIGN §6.5](../../../DESIGN.md)、`bajutsu triage --apply`
+[DESIGN §6.5](../../DESIGN.md)、`bajutsu triage --apply`

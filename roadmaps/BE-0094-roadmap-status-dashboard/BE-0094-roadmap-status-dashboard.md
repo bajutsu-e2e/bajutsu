@@ -128,9 +128,9 @@ API reference — to be served. That one-time repository setting is outside this
 
 ## References
 
-[`roadmaps/README.md`](../../README.md), `scripts/build_roadmap_dashboard.py`,
-`scripts/build_roadmap_index.py`, [`mkdocs.yml`](../../../mkdocs.yml),
-[`.github/workflows/docs.yml`](../../../.github/workflows/docs.yml),
+[`roadmaps/README.md`](../README.md), `scripts/build_roadmap_dashboard.py`,
+`scripts/build_roadmap_index.py`, [`mkdocs.yml`](../../mkdocs.yml),
+[`.github/workflows/docs.yml`](../../.github/workflows/docs.yml),
 [BE-0043 — Roadmap index merge driver](../BE-0043-conflict-resistant-file-flow/BE-0043-conflict-resistant-file-flow.md),
 [BE-0061 — Atomic BE-id allocation](../BE-0061-be-id-allocation-hardening/BE-0061-be-id-allocation-hardening.md),
 [BE-0078 — Status-derived roadmap folders](../BE-0078-roadmap-status-folders/BE-0078-roadmap-status-folders.md)

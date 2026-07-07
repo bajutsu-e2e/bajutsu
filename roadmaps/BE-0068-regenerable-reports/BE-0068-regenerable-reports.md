@@ -42,7 +42,7 @@ and the coupling bites in several concrete ways:
 1. **Report improvements never reach past runs.** Every change to the report — a new evidence
    tab, a better step table, a rendering bug fix, a summary computed from data the run already
    captured — only affects runs executed *after* the change. A two-week-old failure report keeps
-   the old presentation. The single hub artifact of the whole tool ([DESIGN §9](../../../DESIGN.md):
+   the old presentation. The single hub artifact of the whole tool ([DESIGN §9](../../DESIGN.md):
    `manifest.json` is "the single source of truth for the report and CI") cannot be re-presented.
 2. **"Re-run to refresh" is wasteful, and often impossible.** Re-executing a scenario just to pick
    up a template change spends a Simulator, minutes, and (on AI paths) tokens to recompute a
@@ -115,15 +115,15 @@ kind, or a field added to the model later. For such a run the renderer reads its
 inventing a value. This keeps the promise precise: re-rendering reflects template and feature
 changes *that derive from data the run already captured*; a genuinely new capture still needs a
 fresh run. Being explicit about what is absent follows the same honesty the runner already
-practices for skipped evidence ([DESIGN §10](../../../DESIGN.md)).
+practices for skipped evidence ([DESIGN §10](../../DESIGN.md)).
 
 ### Determinism, the gate, and the verdict
 
 * **No LLM, no effect on pass/fail.** Rendering re-presents outcomes the deterministic `run`
   already recorded; it never re-evaluates an assertion. A run's verdict is read from the stored
   model, never recomputed, so re-rendering cannot change it. Prime directives 1 and 2
-  ([CLAUDE.md](../../../CLAUDE.md)) hold by construction, and the result strengthens determinism:
-  the report becomes a reproducible function of stored evidence ([DESIGN §2](../../../DESIGN.md)).
+  ([CLAUDE.md](../../CLAUDE.md)) hold by construction, and the result strengthens determinism:
+  the report becomes a reproducible function of stored evidence ([DESIGN §2](../../DESIGN.md)).
 * **App-agnostic.** Rendering depends on the run model, not on any app; nothing here touches
   `apps.<name>` config, the drivers, or the runner.
 * **Linux-testable.** Re-rendering needs no Simulator — it reads files and renders — so the
@@ -144,7 +144,7 @@ renders without error, with newer-only sections shown as "not captured"; (d) **n
 ### Out of scope
 
 Adding *new* evidence kinds or capturing more during a run (the evidence subsystem,
-[DESIGN §9](../../../DESIGN.md)); cross-run report diffing or a multi-run dashboard (a natural
+[DESIGN §9](../../DESIGN.md)); cross-run report diffing or a multi-run dashboard (a natural
 follow-on the data contract enables, but a separate item); and any change to what `run` decides or
 captures.
 
@@ -189,12 +189,12 @@ captures.
 
 ## References
 
-* [CLAUDE.md](../../../CLAUDE.md), [DESIGN §2](../../../DESIGN.md) — AI never judges; determinism
+* [CLAUDE.md](../../CLAUDE.md), [DESIGN §2](../../DESIGN.md) — AI never judges; determinism
   first. Re-rendering adds no LLM and never recomputes a verdict; it makes the report a
   reproducible function of stored data.
-* [DESIGN §9](../../../DESIGN.md) — `manifest.json` as the single source of truth for the report
+* [DESIGN §9](../../DESIGN.md) — `manifest.json` as the single source of truth for the report
   and CI; this proposal makes it literally the render input.
-* [DESIGN §10](../../../DESIGN.md) — being explicit about skipped / absent evidence; the model for
+* [DESIGN §10](../../DESIGN.md) — being explicit about skipped / absent evidence; the model for
   the graceful-degradation boundary above.
 * [BE-0011 — Local web UI (`bajutsu serve`)](../BE-0011-local-web-ui-serve/BE-0011-local-web-ui-serve.md)
   — the embedded report this makes render-on-view, and the relative-link, self-contained report it
@@ -203,6 +203,6 @@ captures.
   — complementary: BE-0060 packages a run dir; regeneration keeps the report inside it current, and
   a bundled versioned model keeps an exported zip re-renderable later.
 * `bajutsu/report/` (`html.py`, `manifest.py`, `panels.py`, `templates/report.html.j2`),
-  `bajutsu/runner/pipeline.py`, `bajutsu/serve/`, [reporting.md](../../../docs/reporting.md) — the
+  `bajutsu/runner/pipeline.py`, `bajutsu/serve/`, [reporting.md](../../docs/reporting.md) — the
   renderer, the manifest writer, the run pipeline that bakes the report, and the serve surface this
   re-renders through.

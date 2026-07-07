@@ -103,11 +103,11 @@ codegen tests on the Linux gate (codegen is pure; no browser needed to test the 
 
 ## References
 
-- [`bajutsu/codegen_playwright.py`](../../../bajutsu/codegen_playwright.py) — the web emitter and its
+- [`bajutsu/codegen_playwright.py`](../../bajutsu/codegen_playwright.py) — the web emitter and its
   current `// TODO` sites; `bajutsu/assertions.py` `request_label` (the shared matcher description).
 - [BE-0026](../BE-0026-shrink-unsupported-syntax/BE-0026-shrink-unsupported-syntax.md)
   (the XCUITest counterpart and the governing rule),
   [BE-0062](../BE-0062-playwright-codegen/BE-0062-playwright-codegen.md) (the Playwright
   target), [BE-0083](../BE-0083-codegen-emitter-unification/BE-0083-codegen-emitter-unification.md)
   (the shared emitter walk).
-- [docs/codegen.md](../../../docs/codegen.md).
+- [docs/codegen.md](../../docs/codegen.md).

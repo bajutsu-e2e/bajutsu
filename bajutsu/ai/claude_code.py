@@ -35,7 +35,7 @@ from bajutsu.ai.base import (
     ToolDef,
     ToolUseBlock,
 )
-from bajutsu.anthropic_client import AiConfig
+from bajutsu.anthropic_client import AiConfig, resolve_effort, resolve_model
 
 BINARY = "claude"
 
@@ -227,6 +227,20 @@ def auth_summary() -> str:
     routing (see `_ROUTING_ENV`), so this is a fixed statement of that mode.
     """
     return "Claude Code CLI subscription login (Pro/Max/Console)"
+
+
+def announce(ai: AiConfig | None, provider: str, default_model: str) -> list[str]:
+    """This provider's startup disclosure — the registry's `announce` for `claude-code` (BE-0176).
+
+    Beyond the generic provider+model line, the `claude` CLI honors reasoning effort (unlike the
+    Anthropic SDK, which ignores it), so this names the resolved effort; and the CLI's forced
+    subscription login is non-obvious, so it discloses the auth mode too.
+    """
+    effort = resolve_effort(ai)
+    return [
+        f"🤖 AI: {provider} · model {resolve_model(default_model, ai)} · effort {effort or 'default'}",
+        f"🔑 auth: {auth_summary()}",
+    ]
 
 
 def _child_env() -> dict[str, str]:

@@ -57,7 +57,7 @@ explicit *web context* for the WebView's DOM, rather than silently blending the 
   the existing `Driver` / capability model: a new `webView` capability gates the web context, and a
   backend lacking it fails the step cleanly (the same contract as the multi-touch gestures today).
   A WebView-capable actuator that arrives later (e.g. via XCUITest) is picked up by the
-  [stability-ladder](../../../docs/drivers.md) `backend` list with the scenario and config unchanged.
+  [stability-ladder](../../docs/drivers.md) `backend` list with the scenario and config unchanged.
 - **Waits and assertions** carry over unchanged in form (condition waits with a mandatory
   timeout, machine-checkable assertions), evaluated against the DOM query inside the web
   context. No fixed sleeps; the run/CI gate stays AI-free.
@@ -201,4 +201,4 @@ The concrete touch-points the change adds, each small and named:
 
 ## References
 
-[drivers.md](../../../docs/drivers.md)
+[drivers.md](../../docs/drivers.md)

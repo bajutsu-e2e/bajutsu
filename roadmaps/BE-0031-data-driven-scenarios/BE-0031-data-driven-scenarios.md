@@ -40,4 +40,4 @@ Each derived scenario is renamed `"<name> [row N: col=val, …]"` so reports and
 
 ## References
 
-`bajutsu/scenario/` (`expand_data`), [scenarios.md](../../../docs/scenarios.md)
+`bajutsu/scenario/` (`expand_data`), [scenarios.md](../../docs/scenarios.md)

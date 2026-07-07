@@ -25,13 +25,13 @@ gated to a manual run.
 This item proposes a **public project website** at the project's GitHub Pages URL: a landing page
 that introduces Bajutsu and its principles, plus the existing bilingual `docs/` tree published as a
 browseable documentation portal. It **extends the mkdocs-material site that already exists**
-([`mkdocs.yml`](../../../mkdocs.yml)) rather than introducing a second toolchain, and turns on the
-deploy path that is already wired but dormant ([`.github/workflows/docs.yml`](../../../.github/workflows/docs.yml)).
+([`mkdocs.yml`](../../mkdocs.yml)) rather than introducing a second toolchain, and turns on the
+deploy path that is already wired but dormant ([`.github/workflows/docs.yml`](../../.github/workflows/docs.yml)).
 
 ## Motivation
 
 - **The material is already written, but locked to GitHub.** `docs/` holds 20-plus pages with a
-  full Japanese mirror under `docs/ja/`, plus `README`, [`vision.md`](../../../docs/vision.md), and
+  full Japanese mirror under `docs/ja/`, plus `README`, [`vision.md`](../../docs/vision.md), and
   `DESIGN.md`. None of it is discoverable outside the repository, and GitHub's Markdown rendering
   gives no site search, no navigation, no language switch, and no canonical landing page a reader
   can be pointed at.
@@ -102,7 +102,7 @@ The deploy path exists but is dormant. To go live:
 
 1. **Enable GitHub Pages** — Settings → Pages → source "GitHub Actions". This is a one-time
    repository-admin action and cannot be done from code.
-2. **Flip the deploy guards** in [`docs.yml`](../../../.github/workflows/docs.yml): drop the
+2. **Flip the deploy guards** in [`docs.yml`](../../.github/workflows/docs.yml): drop the
    `workflow_dispatch`-only guard on the artifact upload and the `deploy` job so a push to `main`
    publishes (the comments in the file already mark exactly what to remove).
 3. **Widen the workflow's path filter** so a change under `docs/**` (not only `bajutsu/**` /
@@ -138,8 +138,8 @@ publishes. No LLM, no Simulator, Linux-only — consistent with the existing doc
 ## References
 
 - [BE-0065 — Docstring standard & generated API reference](../BE-0065-docstring-standard-api-reference/BE-0065-docstring-standard-api-reference.md) — the existing mkdocs-material site this extends.
-- [`mkdocs.yml`](../../../mkdocs.yml) — current site config (API reference only).
-- [`.github/workflows/docs.yml`](../../../.github/workflows/docs.yml) — the dormant build/deploy workflow.
-- [`docs/vision.md`](../../../docs/vision.md) · [`README`](../../../README.md) — source material for the landing page.
+- [`mkdocs.yml`](../../mkdocs.yml) — current site config (API reference only).
+- [`.github/workflows/docs.yml`](../../.github/workflows/docs.yml) — the dormant build/deploy workflow.
+- [`docs/vision.md`](../../docs/vision.md) · [`README`](../../README.md) — source material for the landing page.
 - [BE-0015](../BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md) · [BE-0016](../BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md) — hosting the `serve` *app* (distinct from this static site).
 - [mkdocs-static-i18n](https://github.com/ultrabug/mkdocs-static-i18n) — bilingual rendering for the portal.

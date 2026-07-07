@@ -111,7 +111,7 @@ Verified on the Linux gate with the in-memory / fake object store (no Mac, no Si
 ### Prime-directive fit
 
 This is **Tier-1 `crawl` + serve plumbing only**. No LLM enters the `run` / CI gate
-([DESIGN §2](../../../DESIGN.md)). Determinism is preserved because the change alters only *when bytes
+([DESIGN §2](../../DESIGN.md)). Determinism is preserved because the change alters only *when bytes
 become visible*, never *what the crawl explores* — a crawl's traversal stays a pure function of the
 element tree. The mechanism is app-agnostic (it moves a file, regardless of the target app).
 
@@ -151,7 +151,7 @@ execution, this proposal can be revisited.
 
 ## References
 
-- [DESIGN.md](../../../DESIGN.md) §2 — determinism-first; AI stays out of the `run` / CI gate. This
+- [DESIGN.md](../../DESIGN.md) §2 — determinism-first; AI stays out of the `run` / CI gate. This
   change keeps the crawl's traversal deterministic and adds no model call.
 - [BE-0015 — Public hosting of the web UI](../BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md)
   — introduces the control-plane ⇄ worker split and the LogBus / artifact-store seams this item builds on.
@@ -163,7 +163,7 @@ execution, this proposal can be revisited.
 - [BE-0055 — Operational logging for the hosted serve](../BE-0055-operational-logging/BE-0055-operational-logging.md)
   — sibling hosting item; notes that the LogBus already carries run *output* live, i.e. console logs
   already cross the split.
-- [architecture.md#implementation-status](../../../docs/architecture.md#implementation-status) — the
+- [architecture.md#implementation-status](../../docs/architecture.md#implementation-status) — the
   serve UI's "live job streaming" and the crawl screen map.
 - Source touchpoints: `bajutsu/serve/server/worker_job.py` (`_upload_runs`, the terminal upload),
   `bajutsu/serve/artifacts.py` / `bajutsu/serve/server/artifacts.py` (the artifact-store seam),

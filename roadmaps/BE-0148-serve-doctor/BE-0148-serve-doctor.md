@@ -97,6 +97,6 @@ existing `doctor_check` and audit operations and keeps the check AI-free and det
 * [BE-0011 — Local web UI (`bajutsu serve`)](../BE-0011-local-web-ui-serve/BE-0011-local-web-ui-serve.md),
   [BE-0072 — Responsive serve Web UI](../BE-0072-responsive-web-ui/BE-0072-responsive-web-ui.md)
   — the UI this extends and the small-screen layout it inherits.
-* [configuration.md](../../../docs/configuration.md) — the `doctor` score and runnability gate;
-  [CLAUDE.md](../../../CLAUDE.md), [DESIGN §2](../../../DESIGN.md) — determinism first; the checks
+* [configuration.md](../../docs/configuration.md) — the `doctor` score and runnability gate;
+  [CLAUDE.md](../../CLAUDE.md), [DESIGN §2](../../DESIGN.md) — determinism first; the checks
   stay AI-free.

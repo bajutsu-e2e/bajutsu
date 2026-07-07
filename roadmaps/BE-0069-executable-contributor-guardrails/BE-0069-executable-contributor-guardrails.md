@@ -16,13 +16,13 @@
 ## Introduction
 
 Promote the contributor procedures that today live only as **prose** — in
-[`CLAUDE.md`](../../../CLAUDE.md), the `ideation` / `implement-be` skills, and
-[`docs/ai-development.md`](../../../docs/ai-development.md) — into **human-runnable commands**
+[`CLAUDE.md`](../../CLAUDE.md), the `ideation` / `implement-be` skills, and
+[`docs/ai-development.md`](../../docs/ai-development.md) — into **human-runnable commands**
 (`make` targets backed by small scripts). The same entrypoint then serves both a human starting a
 task and an AI doing it on the human's behalf, so a guardrail is no longer a recipe that only an
 agent reliably follows from prose, but a command anyone can run. This is purely developer-facing
 infrastructure: it adds no LLM, never runs inside `run`, and does not touch the deterministic gate,
-so the Prime directives ([CLAUDE.md](../../../CLAUDE.md)) hold by construction.
+so the Prime directives ([CLAUDE.md](../../CLAUDE.md)) hold by construction.
 
 This continues the *Development infrastructure* line.
 [BE-0043](../BE-0043-conflict-resistant-file-flow/BE-0043-conflict-resistant-file-flow.md)
@@ -36,9 +36,9 @@ applies that principle to the **procedures** themselves.
 
 Bajutsu's guardrails already split into two kinds, by whether a human can run them:
 
-- **Executable** — one command a human and an AI invoke identically: [`make check`](../../../Makefile)
-  (the gate), [`make setup` / `make hooks`](../../../Makefile) (self-healing git config),
-  [`make roadmap-index` / `roadmap-promote` / `roadmap-id-repair`](../../../Makefile). The command
+- **Executable** — one command a human and an AI invoke identically: [`make check`](../../Makefile)
+  (the gate), [`make setup` / `make hooks`](../../Makefile) (self-healing git config),
+  [`make roadmap-index` / `roadmap-promote` / `roadmap-id-repair`](../../Makefile). The command
   *is* the guardrail; it cannot be forgotten or half-remembered.
 - **Prose only** — a multi-step recipe written for a reader to follow by hand:
   - **Scaffolding a new roadmap item** — create the directory and *both* bilingual files in the
@@ -46,7 +46,7 @@ Bajutsu's guardrails already split into two kinds, by whether a human can run th
     author's GitHub handle. The `ideation` skill spends most of its text teaching this, and it is the
     single most error-prone, highest-ceremony procedure in the repo — yet it has no command.
   - **Worktree + branch setup** — the `git fetch origin && git worktree add … -b … origin/main &&
-    make setup` recipe in [`docs/ai-development.md`](../../../docs/ai-development.md).
+    make setup` recipe in [`docs/ai-development.md`](../../docs/ai-development.md).
   - **Pre-push routine** — `git fetch origin && git rebase origin/main && make check`, plus the
     "definition of done" checklist (both-language docs touched? a test changed with the behavior?
     `Status` flipped if shipping?).
@@ -75,7 +75,7 @@ of the procedure.
 ## Detailed design
 
 **Principle.** Each prose procedure becomes a `make <verb>` target backed by a small script under
-[`scripts/`](../../../scripts/) — Python where it manipulates roadmap files (typed; `mypy` covers
+[`scripts/`](../../scripts/) — Python where it manipulates roadmap files (typed; `mypy` covers
 `scripts/` since BE-0067), shell where it is git plumbing (added to the `SHELL_SCRIPTS` list
 `make lint-sh` checks), matching the existing split. The target is the single source of truth;
 `CLAUDE.md`, the skills, and the docs then **reference the command** instead of re-describing its
@@ -99,7 +99,7 @@ Four mechanisms, in order of leverage.
   ([BE-0061](../BE-0061-be-id-allocation-hardening/BE-0061-be-id-allocation-hardening.md));
   a scaffolder that guessed a number would reintroduce the race the placeholder exists to avoid.
 - Validates `TOPIC` against the known section map in
-  [`scripts/build_roadmap_index.py`](../../../scripts/build_roadmap_index.py) so the item lands in a
+  [`scripts/build_roadmap_index.py`](../../scripts/build_roadmap_index.py) so the item lands in a
   real section. (A `Topic` matching no section makes the index builder *crash* after CI numbers the
   item — not merely drift — a sharp edge worth catching at creation.) Defaults: `Status=Proposal`,
   author resolved from `git config` (overridable via `HANDLE=`).
@@ -129,15 +129,15 @@ checks the well-formedness rules now scattered across prose and reviewer judgeme
   rewrite cannot fix that — already a documented limitation).
 
 Today only index drift and `Status`↔directory consistency are tested
-([`tests/test_roadmap_index.py`](../../../tests/test_roadmap_index.py),
-[`tests/test_promote_roadmap_items.py`](../../../tests/test_promote_roadmap_items.py)); the rest rely
+([`tests/test_roadmap_index.py`](../../tests/test_roadmap_index.py),
+[`tests/test_promote_roadmap_items.py`](../../tests/test_promote_roadmap_items.py)); the rest rely
 on a reviewer noticing. This makes well-formedness a first-class, fast, author-time check with
 actionable messages — runnable mid-edit without the full suite. Where it overlaps the existing tests,
 the invariant consolidates here and the tests call it.
 
 ### C. Workspace & preflight helpers — `make worktree`, `make preflight`
 
-Turn the multi-line recipes in [`docs/ai-development.md`](../../../docs/ai-development.md) into
+Turn the multi-line recipes in [`docs/ai-development.md`](../../docs/ai-development.md) into
 commands:
 
 - `make worktree TOPIC=<topic>` → `git fetch origin`, then
@@ -165,7 +165,7 @@ commits, or in CI against the PR title. It deliberately never blocks on the un-m
 
 ### Where it lives, and what the prose becomes
 
-- Scripts under `scripts/`; new `make` targets in the [`Makefile`](../../../Makefile); `lint-roadmap`
+- Scripts under `scripts/`; new `make` targets in the [`Makefile`](../../Makefile); `lint-roadmap`
   joins the `check` target so it gates by construction.
 - The prose that today *describes* these procedures is rewritten to *point at the command*:
   `CLAUDE.md`'s Conventions, the worktree / preflight / BE-ID sections of `docs/ai-development.md`
@@ -221,7 +221,7 @@ Each phase is a small, independent PR (the parallel-work model, BE-0043).
 
 ## References
 
-- [CLAUDE.md](../../../CLAUDE.md) — the prose procedures these commands replace, and the Prime
+- [CLAUDE.md](../../CLAUDE.md) — the prose procedures these commands replace, and the Prime
   directives this respects (no LLM in the gate; developer-facing only).
 - [BE-0043 — Conflict-resistant file flow](../BE-0043-conflict-resistant-file-flow/BE-0043-conflict-resistant-file-flow.md)
   — turning a hand-edited ledger into a generated artifact; the *Development infrastructure*
@@ -230,10 +230,10 @@ Each phase is a small, independent PR (the parallel-work model, BE-0043).
   — CI mirrors `make check` by construction (single source of truth); `scripts/` under `mypy`.
 - [BE-0061 — Collision-proof BE-ID allocation](../BE-0061-be-id-allocation-hardening/BE-0061-be-id-allocation-hardening.md)
   — why the scaffolder must emit `BE-0069`, not a number.
-- [`docs/ai-development.md`](../../../docs/ai-development.md) — the worktree / preflight / BE-ID
+- [`docs/ai-development.md`](../../docs/ai-development.md) — the worktree / preflight / BE-ID
   recipes C and A convert.
-- [`Makefile`](../../../Makefile), [`scripts/`](../../../scripts/) — where the targets and scripts
+- [`Makefile`](../../Makefile), [`scripts/`](../../scripts/) — where the targets and scripts
   land; the existing executable guardrails they extend.
-- The [`ideation`](../../../.claude/skills/ideation/) and
-  [`implement-be`](../../../.claude/skills/implement-be/) skills — the procedures A formalizes, which
+- The [`ideation`](../../.claude/skills/ideation/) and
+  [`implement-be`](../../.claude/skills/implement-be/) skills — the procedures A formalizes, which
   are rewritten to call the commands.

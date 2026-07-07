@@ -40,4 +40,4 @@ Each scenario carries an optional `tags` list (`Scenario` in `bajutsu/scenario/`
 
 ## References
 
-`bajutsu/scenario/` (`select_scenarios`), [cli.md](../../../docs/cli.md)
+`bajutsu/scenario/` (`select_scenarios`), [cli.md](../../docs/cli.md)

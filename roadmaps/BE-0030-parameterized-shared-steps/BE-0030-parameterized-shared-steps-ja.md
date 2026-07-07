@@ -40,4 +40,4 @@
 
 ## 参考
 
-`bajutsu/scenario/`（`use`/`expand_components`）、[scenarios.md](../../../docs/ja/scenarios.md)
+`bajutsu/scenario/`（`use`/`expand_components`）、[scenarios.md](../../docs/ja/scenarios.md)

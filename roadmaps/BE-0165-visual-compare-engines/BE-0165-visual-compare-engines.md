@@ -139,6 +139,6 @@ engine and only reserves the seam for a structural engine, whose different thres
 
 [BE-0029](../BE-0029-visual-regression-assertions/BE-0029-visual-regression-assertions.md) (the
 existing `visual` assertion this extends), `bajutsu/visual.py`, `bajutsu/assertions.py`,
-`bajutsu/scenario/models/assertions.py`, [DESIGN §6.4](../../../DESIGN.md),
-[evidence.md](../../../docs/evidence.md), the `pixelmatch` algorithm (perceptual per-pixel diff with
+`bajutsu/scenario/models/assertions.py`, [DESIGN §6.4](../../DESIGN.md),
+[evidence.md](../../docs/evidence.md), the `pixelmatch` algorithm (perceptual per-pixel diff with
 anti-aliasing detection; used by Playwright's `toHaveScreenshot`)

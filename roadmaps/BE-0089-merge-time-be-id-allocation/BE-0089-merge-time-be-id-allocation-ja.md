@@ -16,7 +16,7 @@
 ## はじめに
 
 ロードマップ項目の恒久 ID である `BE-NNNN` は、いまはプルリクエストを開いた瞬間に割り当てられる。
-[`roadmap-id`](../../../.github/workflows/roadmap-id.yml) ワークフローが `pull_request` を契機に走り、
+[`roadmap-id`](../../.github/workflows/roadmap-id.yml) ワークフローが `pull_request` を契機に走り、
 次の空き番号を採番し、`refs/be-claims/*` ref として原子的に確保し、リネームをブランチへ push し、PR
 タイトルの `BE-XXXX` を実 ID に書き換える。
 [BE-0061](../BE-0061-be-id-allocation-hardening/BE-0061-be-id-allocation-hardening.md)
@@ -80,7 +80,7 @@ push しない以上、失効は起きない。おまけに、契機は「承認
 
 ## 詳細設計
 
-採番ロジック（[`scripts/allocate_roadmap_ids.py`](../../../scripts/allocate_roadmap_ids.py)）は
+採番ロジック（[`scripts/allocate_roadmap_ids.py`](../../scripts/allocate_roadmap_ids.py)）は
 **そのまま** 再利用する。これはすでに、ワーキングツリー内の各 `BE-XXXX-<slug>/` プレースホルダを見つけ、
 項目ごとに `max(used) + 1` を採番し（決定性のため slug 順）、ディレクトリとファイルを `git mv` し、ファイル
 内のトークンを書き換え、索引の行を直す。変わるのは、走らせる場所とタイミング（`main` に対して、マージ後に）
@@ -173,11 +173,11 @@ bypass する ID は専用の GitHub App とし、admin 権限を持つメンテ
 
 - **`main` 上の一時的な `BE-XXXX` でもゲートは緑のまま。** ロードマップ系の 3 つのツールはいずれも
   `^BE-(\d{4})-` で判定し、それ以外を読み飛ばす。すなわち
-  [`tests/test_roadmap_format.py`](../../../tests/test_roadmap_format.py) と
-  [`tests/test_roadmap_index.py`](../../../tests/test_roadmap_index.py)
-  （後者は [`build_roadmap_index.py`](../../../scripts/build_roadmap_index.py) 経由で、`load_items` が
+  [`tests/test_roadmap_format.py`](../../tests/test_roadmap_format.py) と
+  [`tests/test_roadmap_index.py`](../../tests/test_roadmap_index.py)
+  （後者は [`build_roadmap_index.py`](../../scripts/build_roadmap_index.py) 経由で、`load_items` が
   番号なしディレクトリで `continue` する）、そして
-  [`promote_roadmap_items.py`](../../../scripts/promote_roadmap_items.py) である。したがって `BE-XXXX`
+  [`promote_roadmap_items.py`](../../scripts/promote_roadmap_items.py) である。したがって `BE-XXXX`
   ディレクトリは format チェックから見えず、索引の行を生まず（差分なし）、移動もされない。実地でも、
   このプレースホルダ項目をツリーに置いたまま `make check` が通る。よってマージコミットと採番コミットの間、
   `main` に赤くなる窓は生じない。
@@ -290,22 +290,22 @@ BE-0061、
   本項目が拡張する項目。その「検討した代替案」が、本項目で実現する「マージ時に採番する」案を記録して
   おり、その堅牢化（原子的 claim、repair、claims-gc）は、本モデルが実証できたのちに撤去した（その
   「進捗」を参照）。
-- [`.github/workflows/roadmap-id.yml`](../../../.github/workflows/roadmap-id.yml)（契機を
+- [`.github/workflows/roadmap-id.yml`](../../.github/workflows/roadmap-id.yml)（契機を
   `pull_request` から `push: main` へ移す対象）。`roadmap-id-repair` と `roadmap-claims-gc` の
   ワークフローも対象だったが、その後削除した。
-- [`scripts/allocate_roadmap_ids.py`](../../../scripts/allocate_roadmap_ids.py)（そのまま再利用）、
-  [`scripts/build_roadmap_index.py`](../../../scripts/build_roadmap_index.py)、
-  [`scripts/promote_roadmap_items.py`](../../../scripts/promote_roadmap_items.py)：いずれも `BE-XXXX`
+- [`scripts/allocate_roadmap_ids.py`](../../scripts/allocate_roadmap_ids.py)（そのまま再利用）、
+  [`scripts/build_roadmap_index.py`](../../scripts/build_roadmap_index.py)、
+  [`scripts/promote_roadmap_items.py`](../../scripts/promote_roadmap_items.py)：いずれも `BE-XXXX`
   ディレクトリを読み飛ばす 3 つのツール。これが一時的な窓の間 `main` を緑に保つ。
 - [`actions/create-github-app-token`](https://github.com/actions/create-github-app-token)：ワークフロー
   内で bypass する App の短命なインストールトークンを発行する action。ほかの third-party action と同様に
   full コミット SHA で pin する。
-- [`tests/test_roadmap_format.py`](../../../tests/test_roadmap_format.py)、
-  [`tests/test_roadmap_index.py`](../../../tests/test_roadmap_index.py)：`^BE-(\d{4})-` で判定し、
+- [`tests/test_roadmap_format.py`](../../tests/test_roadmap_format.py)、
+  [`tests/test_roadmap_index.py`](../../tests/test_roadmap_index.py)：`^BE-(\d{4})-` で判定し、
   プレースホルダを無視するゲートテスト。
-- [`CLAUDE.md`](../../../CLAUDE.md) ·
-  [`roadmaps/README.md`](../../README.md) ·
-  [`docs/ai-development.md`](../../../docs/ai-development.md)：番号を PR オープン時ではなくマージ後の
+- [`CLAUDE.md`](../../CLAUDE.md) ·
+  [`roadmaps/README.md`](../README.md) ·
+  [`docs/ai-development.md`](../../docs/ai-development.md)：番号を PR オープン時ではなくマージ後の
   `main` で採番し、BE 作成 PR のタイトルに `[BE-NNNN]` 接頭辞を付けない（接頭辞ルールは、採番済みの項目を
   実装する PR には残る）よう更新する作成ルール。
 - GitHub ドキュメント（*Automatically merging a pull request*（auto-merge）と *Managing a merge queue*）：

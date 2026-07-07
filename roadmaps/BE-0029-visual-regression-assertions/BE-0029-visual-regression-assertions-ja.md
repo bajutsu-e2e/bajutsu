@@ -71,8 +71,8 @@ Python レベルのピクセルループは、C レベルで高速な `ImageChop
 ## 参考
 
 [PR #30](https://github.com/bajutsu-e2e/bajutsu/pull/30)、`bajutsu/visual.py`、
-`bajutsu/assertions.py`、`bajutsu/scenario/`、[DESIGN §6.4](../../../DESIGN.md)、
-[evidence.md](../../../docs/ja/evidence.md)
+`bajutsu/assertions.py`、`bajutsu/scenario/`、[DESIGN §6.4](../../DESIGN.md)、
+[evidence.md](../../docs/ja/evidence.md)
 
 ### フォローアップ（未実装）
 

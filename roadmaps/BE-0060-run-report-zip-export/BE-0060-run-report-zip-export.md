@@ -77,7 +77,7 @@ the executed `scenario.yaml`, and every per-scenario / per-step evidence file. E
 links therefore resolve unchanged — the whole point of bundling the directory rather than the lone
 HTML. The directory walk is **sorted** (and file mtimes may be pinned to a fixed value) so the same
 run dir yields a reproducible zip; byte-stability is a nicety here, not a contract (unlike evidence,
-[DESIGN §2](../../../DESIGN.md)).
+[DESIGN §2](../../DESIGN.md)).
 
 ### CLI surface
 
@@ -117,7 +117,7 @@ RAM.
 * **No LLM, no effect on the verdict.** This is post-hoc packaging of artifacts the deterministic
   `run` already produced. `run`'s pass/fail is computed before — and independently of — any zip;
   `--zip` only adds a packaging step after the verdict. Prime directives 1 and 2
-  ([CLAUDE.md](../../../CLAUDE.md)) hold by construction.
+  ([CLAUDE.md](../../CLAUDE.md)) hold by construction.
 * **Linux-testable.** Zipping a directory needs no Simulator, so the archiver and the endpoint are
   unit-tested on the existing Linux gate against a fixture run dir.
 * **Secrets stay scrubbed.** Secret values are already redacted from artifacts after a run
@@ -171,7 +171,7 @@ retention / cleanup of old runs.
 
 ## References
 
-* [CLAUDE.md](../../../CLAUDE.md), [DESIGN §2](../../../DESIGN.md) — AI never judges; determinism
+* [CLAUDE.md](../../CLAUDE.md), [DESIGN §2](../../DESIGN.md) — AI never judges; determinism
   first. The archiver adds no LLM and runs after the verdict.
 * [BE-0011 — Local web UI (`bajutsu serve`)](../BE-0011-local-web-ui-serve/BE-0011-local-web-ui-serve.md)
   — the embedded report and the relative-link evidence serving this extends; where the Download
@@ -185,5 +185,5 @@ retention / cleanup of old runs.
   — the adjacent "expose run artifacts" surface (MCP); the zip is the human / file-download
   equivalent.
 * `bajutsu/report/` (`manifest.py`, `html.py`), `bajutsu/serve/artifacts.py`,
-  [cli.md](../../../docs/cli.md), [evidence.md](../../../docs/evidence.md) — the report writers, the
+  [cli.md](../../docs/cli.md), [evidence.md](../../docs/evidence.md) — the report writers, the
   confined artifact store, and the run-output and evidence layout this packages.

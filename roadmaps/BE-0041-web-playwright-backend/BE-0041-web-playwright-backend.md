@@ -29,7 +29,7 @@ Web is the **lowest-cost place to prove the abstraction is platform-neutral**, f
 no other platform shares at once:
 
 1. **It needs no macOS and no device emulator.** A `BrowserContext` is the whole "device", so the
-   backend runs on Linux and fits *inside* the current `make check` / CI gate ([ci](../../../docs/ci.md))
+   backend runs on Linux and fits *inside* the current `make check` / CI gate ([ci](../../docs/ci.md))
    from day one. That removes the largest source of friction — provisioning a Mac or an emulator —
    from the first real second platform.
 2. **It exercises the rich end of the capability model.** Playwright provides `semanticTap`, native
@@ -93,7 +93,7 @@ the abstraction holds.
 
 Web is the **recommended Phase 1** platform — the first real second platform, taken up before
 Android. The rationale is decisive: Web is the only platform that needs **no macOS and no device
-emulator**, so it fits the *existing* Linux `make check` / CI gate ([ci](../../../docs/ci.md)) from day one.
+emulator**, so it fits the *existing* Linux `make check` / CI gate ([ci](../../docs/ci.md)) from day one.
 Native network + video + semantic actions exercise the **rich** end of `capabilities()`. It is the
 lowest friction, broadest reach, and cheapest proof that the core is platform-neutral. Android
 ([BE-0007](../BE-0007-android-backend/BE-0007-android-backend.md)) follows in Phase 2, confirming
@@ -120,7 +120,7 @@ then confirms the lean/coordinate path on an already-generalized core.
 
 ## References
 
-[DESIGN](../../../DESIGN.md), `bajutsu/drivers/`, `bajutsu/backends.py`,
-[drivers.md](../../../docs/drivers.md), [ci.md](../../../docs/ci.md), [concepts.md](../../../docs/concepts.md),
+[DESIGN](../../DESIGN.md), `bajutsu/drivers/`, `bajutsu/backends.py`,
+[drivers.md](../../docs/drivers.md), [ci.md](../../docs/ci.md), [concepts.md](../../docs/concepts.md),
 [BE-0007 — Android backend](../BE-0007-android-backend/BE-0007-android-backend.md),
 [BE-0008 — Flutter support](../BE-0008-flutter-support/BE-0008-flutter-support.md)

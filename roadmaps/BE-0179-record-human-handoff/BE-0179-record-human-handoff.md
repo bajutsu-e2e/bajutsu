@@ -27,7 +27,7 @@ ride on this substrate and decide the *shape* of the recorded artifact; this ite
 ## Motivation
 
 `record` drives an AI agent one step at a time: observe the screen, propose the next action,
-execute it ([`bajutsu/record.py`](../../../bajutsu/record.py) — the `record()` loop). When the
+execute it ([`bajutsu/record.py`](../../bajutsu/record.py) — the `record()` loop). When the
 agent has nothing valid to do, `record` simply stops — either the agent proposes no action, or a
 proposed target does not resolve on the live screen (`could not resolve that target on the live
 screen; stopping`). There is no path to ask a human for help.
@@ -76,7 +76,7 @@ for help is a small, in-context step rather than a switch to another window. Thr
 the `serve` record path shape the design:
 
 - **It crosses a process boundary.** `serve` spawns `bajutsu record` as a background job
-  ([`bajutsu/serve/operations/dispatch.py`](../../../bajutsu/serve/operations/dispatch.py),
+  ([`bajutsu/serve/operations/dispatch.py`](../../bajutsu/serve/operations/dispatch.py),
   BE-0127) and streams its progress over server-sent events (the record narration already flows to
   the browser this way). The handoff request must therefore be **serializable**, not an in-process
   callback: it travels out to the browser as a structured event on that same stream, and the
@@ -153,4 +153,4 @@ Child patterns riding on this substrate: `record-human-value-prompt` (values) an
 [BE-0014 — Demarcation from the existing AI record](../BE-0014-record-demarcation/BE-0014-record-demarcation.md),
 [BE-0098 — Unified authoring surface in serve](../BE-0098-unified-authoring-surface/BE-0098-unified-authoring-surface.md),
 [BE-0120 — Tokenize secrets in recorded scenario YAML](../BE-0120-recorded-scenario-secret-tokenization/BE-0120-recorded-scenario-secret-tokenization.md).
-[`bajutsu/record.py`](../../../bajutsu/record.py), [`bajutsu/agent.py`](../../../bajutsu/agent.py).
+[`bajutsu/record.py`](../../bajutsu/record.py), [`bajutsu/agent.py`](../../bajutsu/agent.py).

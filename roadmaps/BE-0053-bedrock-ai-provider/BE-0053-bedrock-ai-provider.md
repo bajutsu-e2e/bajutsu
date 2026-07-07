@@ -24,7 +24,7 @@ what is needed is a small **provider seam** (one client factory + config) and **
 IDs**. Anthropic stays the default. This is the first concrete realization of the "provider is
 pluggable" guarantee in [BE-0047](../BE-0047-ai-data-sovereignty/BE-0047-ai-data-sovereignty.md),
 scoped to one provider. It stays strictly on the Tier-1 side: `run` and the CI gate call no model
-and are unaffected ([DESIGN §2 / §3.1](../../../DESIGN.md)).
+and are unaffected ([DESIGN §2 / §3.1](../../DESIGN.md)).
 
 ## Motivation
 
@@ -73,7 +73,7 @@ constructor param every class already accepts (used for testing) stays as the te
 ### Config — app-agnostic provider selection
 
 Add an AI-provider block under `defaults` / `apps.<name>` in `bajutsu/config.py`, resolved
-`defaults < app` like the rest of the config ([DESIGN §8](../../../DESIGN.md)):
+`defaults < app` like the rest of the config ([DESIGN §8](../../DESIGN.md)):
 
 - a provider selector — `anthropic` (default) or `bedrock`;
 - for `bedrock`: `aws_region` (falls back to `AWS_REGION`), and optional credential/endpoint knobs;
@@ -85,7 +85,7 @@ It is the config formalization BE-0047 calls for ("endpoint, model, key source e
 swappable"), realized for one provider.
 
 > **Naming:** call this axis the **AI provider**, never "backend". In Bajutsu `backend:` already
-> means the UI *actuator* (idb / future XCUITest / Web — [DESIGN §5 / §8](../../../DESIGN.md),
+> means the UI *actuator* (idb / future XCUITest / Web — [DESIGN §5 / §8](../../DESIGN.md),
 > [BE-0042](../BE-0042-platform-backend-registry/BE-0042-platform-backend-registry.md)).
 > The LLM provider is an orthogonal axis; overloading `backend` would conflate device actuation
 > with model routing.
@@ -113,7 +113,7 @@ configured provider's credentials must resolve, with no silent fallback to anoth
 Bedrock support needs the `anthropic[bedrock]` extra (pulls in boto3/botocore for SigV4 signing),
 which means a `uv.lock` update. To avoid forcing boto3 on users who never touch Bedrock, prefer an
 **optional dependency group installed on demand** — mirroring how `make serve`
-([scripts/serve.sh](../../../scripts/serve.sh)) installs the idb backend's deps on demand — rather
+([scripts/serve.sh](../../scripts/serve.sh)) installs the idb backend's deps on demand — rather
 than a hard core dependency. The exact packaging (optional extra vs. lazy install) is **TBD**.
 
 ### Feature support — no regression for the current AI paths
@@ -142,7 +142,7 @@ config value, this is configuration, not a code change.
 `doctor` could gain a deterministic check that the configured provider's credentials resolve (AWS
 credentials present / region set, or `ANTHROPIC_API_KEY` set for the Anthropic provider) and that
 the configured model ID is well-formed for the provider — mirroring the existing executability
-gate ([DESIGN §7.2](../../../DESIGN.md)). **TBD** whether to include it in this item.
+gate ([DESIGN §7.2](../../DESIGN.md)). **TBD** whether to include it in this item.
 
 ## Alternatives considered
 
@@ -169,7 +169,7 @@ gate ([DESIGN §7.2](../../../DESIGN.md)). **TBD** whether to include it in this
 
 `bajutsu/agents.py`, `bajutsu/claude_agent.py`, `bajutsu/alerts.py`, `bajutsu/claude_triage.py`,
 `bajutsu/crawl_guide.py`, `bajutsu/crawl_tabs.py`, `bajutsu/config.py`, `bajutsu/usage.py`,
-`bajutsu/claude_code_agent.py`, [DESIGN §2 / §3.1 / §5 / §8](../../../DESIGN.md),
+`bajutsu/claude_code_agent.py`, [DESIGN §2 / §3.1 / §5 / §8](../../DESIGN.md),
 [BE-0047 — AI data sovereignty](../BE-0047-ai-data-sovereignty/BE-0047-ai-data-sovereignty.md),
 [BE-0042 — Platform-aware backend registry](../BE-0042-platform-backend-registry/BE-0042-platform-backend-registry.md),
 Anthropic docs — "Claude on Amazon Bedrock" (`AnthropicBedrock`, `anthropic.`-prefixed model IDs).

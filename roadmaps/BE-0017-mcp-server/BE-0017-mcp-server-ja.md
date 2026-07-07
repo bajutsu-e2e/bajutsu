@@ -49,4 +49,4 @@ MCP サーバは `bajutsu/mcp/` に実装（optional dependency `fastmcp>=2.0.0`
 
 ## 参考
 
-`bajutsu/mcp/`、[cli.md](../../../docs/ja/cli.md)
+`bajutsu/mcp/`、[cli.md](../../docs/ja/cli.md)

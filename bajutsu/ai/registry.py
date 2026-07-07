@@ -24,18 +24,36 @@ from bajutsu.anthropic_client import (
     PROVIDER_ENV,
     AiConfig,
     normalize_provider,
+    resolve_model,
 )
 
 BackendFactory = Callable[[AiConfig | None], AiBackend]
 CredentialGap = Callable[[AiConfig | None], str | None]
+# (ai, resolved provider name, the command's primary-agent default model) → startup disclosure lines.
+Announce = Callable[[AiConfig | None, str, str], list[str]]
+
+
+def _default_announce(ai: AiConfig | None, provider: str, default_model: str) -> list[str]:
+    """The generic startup line — provider and resolved model, nothing provider-specific.
+
+    Names only what every provider has (a provider and a model). A provider with its own knobs —
+    reasoning effort, a distinct auth mode — supplies its own `announce` to disclose them; a new
+    adapter that doesn't gets this, so it never starts silently.
+    """
+    return [f"🤖 AI: {provider} · model {resolve_model(default_model, ai)}"]
 
 
 @dataclass(frozen=True)
 class Adapter:
-    """What a provider adapter registers: how to build its backend and its BE-0047 credential gap."""
+    """What a provider adapter registers: how to build its backend and its BE-0047 credential gap.
+
+    ``announce`` produces the provider's startup disclosure lines (BE-0176 follow-up); it defaults to
+    the generic provider+model line, so only a provider with extra knobs to surface overrides it.
+    """
 
     factory: BackendFactory
     credential_gap: CredentialGap
+    announce: Announce = _default_announce
 
 
 _ADAPTERS: dict[str, Adapter] = {}
@@ -70,7 +88,11 @@ def _ensure_builtins() -> None:
     # the Anthropic SDK, so it registers its own factory and credential gap, not another alias.
     _ADAPTERS.setdefault(
         "claude-code",
-        Adapter(factory=claude_code.factory, credential_gap=claude_code.credential_gap),
+        Adapter(
+            factory=claude_code.factory,
+            credential_gap=claude_code.credential_gap,
+            announce=claude_code.announce,
+        ),
     )
 
 
@@ -126,3 +148,18 @@ def create_backend(ai: AiConfig | None = None) -> AiBackend:
 def credential_gap(ai: AiConfig | None = None) -> str | None:
     """What the resolved provider is missing to authenticate, or ``None`` when it can (BE-0047)."""
     return _adapter(ai).credential_gap(ai)
+
+
+def announcement(default_model: str, ai: AiConfig | None = None) -> list[str]:
+    """The resolved provider's own startup disclosure lines (BE-0176 follow-up).
+
+    Each provider decides what it discloses — the Anthropic SDK names only provider and model, while
+    `claude-code` adds the reasoning effort it honors and its forced-subscription auth mode. Resolves
+    the provider softly (like `resolved_provider`) so a display path never raises on an unknown name.
+
+    Args:
+        default_model: The calling command's primary-agent model id, resolved per provider.
+        ai: The effective AI config; ``None`` resolves from the environment defaults.
+    """
+    provider = resolved_provider(ai)
+    return _ADAPTERS[provider].announce(ai, provider, default_model)

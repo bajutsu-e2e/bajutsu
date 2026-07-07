@@ -235,7 +235,7 @@ load ([#608](https://github.com/bajutsu-e2e/bajutsu/pull/608)).
 `bajutsu/claude_enrich_agent.py` · `bajutsu/crawl_guide.py` · `bajutsu/crawl_tabs.py` (the paths
 that speak the Anthropic Messages API today), `bajutsu/config.py` (`AiSettings` / `Effective.ai` —
 the config surface), `bajutsu/redaction.py` (the guarantee the neutral seam would enforce
-uniformly), [DESIGN.md](../../../DESIGN.md) (the backend-agnostic Driver philosophy this mirrors on
+uniformly), [DESIGN.md](../../DESIGN.md) (the backend-agnostic Driver philosophy this mirrors on
 the AI side), [BE-0047](../BE-0047-ai-data-sovereignty/BE-0047-ai-data-sovereignty.md)
 (enforced provider-agnostic, redacted AI path), [BE-0053](../BE-0053-bedrock-ai-provider/BE-0053-bedrock-ai-provider.md)
 (Bedrock as the first pluggable provider — subsumed by the Anthropic adapter here),

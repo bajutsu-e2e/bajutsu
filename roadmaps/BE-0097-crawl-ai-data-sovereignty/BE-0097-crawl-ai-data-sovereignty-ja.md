@@ -107,4 +107,4 @@ serve 経路を確認することです。
   `bajutsu/cli/commands/crawl.py`（`_ai_credential_gap`、ガイドエージェントとアラートガードの構築）、
   `bajutsu/crawl.py`、`bajutsu/alerts.py`、`bajutsu/redaction.py`、`bajutsu/serve/jobs.py`（`_spawn_env`）、
   `bajutsu/serve/operations.py`（`set_api_key`）— 修正が触れる面。
-- [DESIGN §2 / §3.1](../../../DESIGN.md) — Tier-1 の AI と決定的ゲート。
+- [DESIGN §2 / §3.1](../../DESIGN.md) — Tier-1 の AI と決定的ゲート。

@@ -22,9 +22,12 @@ def _scroll_gesture(
     """The (from, to) points for a directional swipe that travels `amount` of the screen.
 
     `amount` is a fraction of the screen (height for up/down, width for left/right); ``None`` uses
-    the default nudge. The travel segment of that length is centered on `center` but slid to stay
-    within the screen (capped at the on-screen maximum), and oriented so `up`/`left` scroll content
-    toward the smaller coordinate — so a bigger `amount` scrolls proportionally further.
+    the default nudge. The gesture *begins on* `center` when there is room, and travels a segment of
+    that length in the direction (`up`/`left` toward the smaller coordinate), so a bigger `amount`
+    scrolls proportionally further. Beginning on the element — rather than centering the travel
+    across it — is what lets a swipe grab a small handle (e.g. a resize divider) it would otherwise
+    straddle and miss. Only when a travel would overrun a screen edge does the segment slide back on
+    (moving the start off `center` in that case), which keeps the travelled distance intact.
     """
     cx, cy = center
     sw, sh = screen
@@ -33,9 +36,14 @@ def _scroll_gesture(
     dist = amount * dim if amount is not None else _SWIPE_DIST
     span = min(dist, max(0.0, dim - 2 * _SWIPE_MARGIN))
     anchor = cy if vertical else cx
-    lo = min(max(anchor - span / 2, _SWIPE_MARGIN), dim - _SWIPE_MARGIN - span)
-    hi = lo + span
-    start, end = (hi, lo) if direction in ("up", "left") else (lo, hi)
+    start = min(max(anchor, _SWIPE_MARGIN), dim - _SWIPE_MARGIN)
+    end = start - span if direction in ("up", "left") else start + span
+    if end < _SWIPE_MARGIN:
+        start += _SWIPE_MARGIN - end
+        end = _SWIPE_MARGIN
+    elif end > dim - _SWIPE_MARGIN:
+        start -= end - (dim - _SWIPE_MARGIN)
+        end = dim - _SWIPE_MARGIN
     return ((cx, start), (cx, end)) if vertical else ((start, cy), (end, cy))
 
 

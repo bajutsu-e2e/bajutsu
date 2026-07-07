@@ -44,4 +44,4 @@ The shared interpolation primitive is implemented: `${...}` tokens are resolved 
 
 ## References
 
-`bajutsu/interp.py`, [scenarios.md](../../../docs/scenarios.md)
+`bajutsu/interp.py`, [scenarios.md](../../docs/scenarios.md)

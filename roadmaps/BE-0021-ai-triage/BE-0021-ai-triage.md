@@ -43,4 +43,4 @@ The deterministic `trace` command is the layer beneath triage: it lays out the e
 
 ## References
 
-[DESIGN §3.1 / §12](../../../DESIGN.md), `bajutsu/triage.py` · `bajutsu/claude_triage.py`
+[DESIGN §3.1 / §12](../../DESIGN.md), `bajutsu/triage.py` · `bajutsu/claude_triage.py`

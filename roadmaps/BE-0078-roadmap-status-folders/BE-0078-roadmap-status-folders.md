@@ -89,11 +89,11 @@ names that should agree — the status word, the folder name, and the index head
 "in progress" — and drops the now-redundant "Accepted," framing (an item being implemented was
 necessarily accepted). The change touches the nine in-progress item pairs (the `Status` value, both
 languages), the `STATUS_PAIR` map in
-[`tests/test_roadmap_format.py`](../../../tests/test_roadmap_format.py), the `status_display` maps in
-[`scripts/build_roadmap_index.py`](../../../scripts/build_roadmap_index.py) (the index already
+[`tests/test_roadmap_format.py`](../../tests/test_roadmap_format.py), the `status_display` maps in
+[`scripts/build_roadmap_index.py`](../../scripts/build_roadmap_index.py) (the index already
 renders the middle status as "In progress" / "実装中"; the raw key changes), and the prose that lists
-the status set ([`CLAUDE.md`](../../../CLAUDE.md),
-[`docs/ai-development.md`](../../../docs/ai-development.md), both README index pages).
+the status set ([`CLAUDE.md`](../../CLAUDE.md),
+[`docs/ai-development.md`](../../docs/ai-development.md), both README index pages).
 
 ### Status is the single source of truth — retire `Track`
 
@@ -154,17 +154,17 @@ gate is a reasonable companion (it fits the *executable contributor guardrails* 
 
 ### Scripts and tests touched
 
-- [`scripts/promote_roadmap_items.py`](../../../scripts/promote_roadmap_items.py) — `CATEGORIES`
+- [`scripts/promote_roadmap_items.py`](../../scripts/promote_roadmap_items.py) — `CATEGORIES`
   grows to four; `expected_category(status)` returns the four-way mapping. The script's job is
   unchanged (reconcile each item's folder with its `Status`); it simply now has four targets. Its
   gate counterpart `tests/test_promote_roadmap_items.py` follows.
-- [`scripts/build_roadmap_index.py`](../../../scripts/build_roadmap_index.py) — `CATEGORIES` grows to
+- [`scripts/build_roadmap_index.py`](../../scripts/build_roadmap_index.py) — `CATEGORIES` grows to
   four; `status_display` keys rename; `SECTIONS` re-keyed by bucket; `Track` parsing removed (or
   repurposed under the alternative). Its gate counterpart `tests/test_roadmap_index.py` follows.
-- [`scripts/allocate_roadmap_ids.py`](../../../scripts/allocate_roadmap_ids.py) — `CATEGORIES` grows
+- [`scripts/allocate_roadmap_ids.py`](../../scripts/allocate_roadmap_ids.py) — `CATEGORIES` grows
   to four so it counts existing IDs across all folders; `PLACEHOLDER_CATEGORY` stays `proposals`
   (a brand-new item is always a live proposal first).
-- [`tests/test_roadmap_format.py`](../../../tests/test_roadmap_format.py) — `CATEGORIES` grows to
+- [`tests/test_roadmap_format.py`](../../tests/test_roadmap_format.py) — `CATEGORIES` grows to
   four; `STATUS_PAIR` renames the middle pair; `Track` leaves the required-field set and field order
   (recommended design).
 
@@ -202,14 +202,14 @@ contributor-workflow refactor, in the same family as BE-0043 / BE-0061 / BE-0074
 
 ## References
 
-- [`CLAUDE.md`](../../../CLAUDE.md) — the roadmap status/folder rules this item revises.
-- [`roadmaps/README.md`](../../README.md#adding-a-roadmap-item--be-ids-agents-must-follow) — the
+- [`CLAUDE.md`](../../CLAUDE.md) — the roadmap status/folder rules this item revises.
+- [`roadmaps/README.md`](../README.md#adding-a-roadmap-item--be-ids-agents-must-follow) — the
   prose description of the two-folder model that becomes four.
-- [`docs/ai-development.md`](../../../docs/ai-development.md) — the contributor guide's Status→Track
+- [`docs/ai-development.md`](../../docs/ai-development.md) — the contributor guide's Status→Track
   table and the "moves its directory" lifecycle prose, both updated by this item.
-- [`scripts/build_roadmap_index.py`](../../../scripts/build_roadmap_index.py),
-  [`scripts/promote_roadmap_items.py`](../../../scripts/promote_roadmap_items.py),
-  [`scripts/allocate_roadmap_ids.py`](../../../scripts/allocate_roadmap_ids.py) — the three scripts
+- [`scripts/build_roadmap_index.py`](../../scripts/build_roadmap_index.py),
+  [`scripts/promote_roadmap_items.py`](../../scripts/promote_roadmap_items.py),
+  [`scripts/allocate_roadmap_ids.py`](../../scripts/allocate_roadmap_ids.py) — the three scripts
   that hardcode the two-folder assumption, plus `tests/test_roadmap_format.py` /
   `tests/test_roadmap_index.py` / `tests/test_promote_roadmap_items.py` that gate it.
 - [BE-0074 — Standardize the BE item template](../BE-0074-be-template-standardization/BE-0074-be-template-standardization.md)
