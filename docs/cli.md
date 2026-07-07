@@ -374,6 +374,7 @@ bajutsu crawl --target <name> [--max-screens N] [--max-steps N] [--out <dir>] [o
 | `--dismiss-alerts / --no-dismiss-alerts` | `--dismiss-alerts` | dismiss unexpected OS prompts while crawling (so they aren't read as crashes; uses the configured AI provider — `ANTHROPIC_API_KEY`, or AWS credentials for Bedrock) |
 | `--headed / --no-headed` | app `headless` | web backend: crawl a visible (headed, slow-motion) browser instead of headless; omit to use the app's `headless` config |
 | `--out` | `runs/<timestamp>` | run dir the screen map is written into |
+| `--continue` | off | continue a past run (point `--out` at it) — re-explore **every** screen it left with untried operations, not one branch; raise `--max-screens`/`--max-steps` to go deeper, and `--workers`/`--udid` run the continuation in parallel ([BE-0181](../roadmaps/BE-0181-crawl-continuation/BE-0181-crawl-continuation.md)) |
 | `--config` | `bajutsu.config.yaml` | config |
 
 - **A Git `--config` is read-only input** ([BE-0063](../roadmaps/BE-0063-git-config-source/BE-0063-git-config-source.md)):
@@ -383,6 +384,22 @@ bajutsu crawl --target <name> [--max-screens N] [--max-steps N] [--out <dir>] [o
 - Traversal is by **deterministic replay**, not in-place backtracking: to revisit a known screen
   the crawl relaunches the app to a clean start and replays the shortest recorded path to it,
   then takes the next untried action — the same way `run` reaches any state.
+- **Continue a past crawl** ([BE-0181](../roadmaps/BE-0181-crawl-continuation/BE-0181-crawl-continuation.md)):
+  a crawl stops on `--max-screens`/`--max-steps` far more often than on `completed`, so
+  `bajutsu crawl --out <existing run> --continue` picks the run's map back up and re-explores
+  **every** screen it left with untried operations — the whole remaining frontier — instead of
+  re-crawling from the entry screen with a bigger budget. It needs no extra saved state: each such
+  screen's recorded path (`paths`) is replayed and its still-untried operations re-derived by the
+  **deterministic** guide (`candidate_actions`) and matched against the saved `plan`. Because the
+  reconstruction is deterministic, it reconstructs only the deterministically derivable operations;
+  **AI-only operations are intentionally not reconstructed** — for an AI-guided run, the richer
+  operations the model proposed (a realistic `fill`/`type`, a vision-located `tap_point`) are not
+  re-seeded, only the deterministic taps/inputs are. A frontier that reconstructs to nothing is left
+  untouched (the saved map keeps its `plan` and stop reason) rather than reported as completed. Raise
+  `--max-screens`/`--max-steps` to go deeper, and `--workers`/`--udid` run the continuation across the
+  same parallel pool a fresh crawl uses. This is distinct from the single-branch resume the Web UI's
+  pruned-branch "tap to resume" fires (which re-explores one named pruned operation); `--continue`
+  and that resume are mutually exclusive.
 - Disabled controls (`notEnabled`) are reported per screen as `blocked` rather than tapped. To
   enumerate transitions the crawl explores the **combinations** of control states: it tries each
   empty text field (and toggles each switch, and switches each tab of a tab bar) independently,

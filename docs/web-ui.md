@@ -277,6 +277,16 @@ replayable crash) and `flows/*.yaml` (a reachable screen) scenario files are lin
 the raw YAML, ready to run with `bajutsu run`. Switch back to the **Form** sub-tab to return to the
 live crawl form.
 
+**Continue a past crawl** ([BE-0181](../roadmaps/BE-0181-crawl-continuation/BE-0181-crawl-continuation.md)).
+When an open past run stopped on a budget with screens still left to explore, a **▸ continue exploring**
+button appears on the map header. Clicking it leaves the read-only history view and continues that run
+live — re-exploring its whole remaining frontier (every screen with untried operations) and appending to
+the same map, using the current **Max screens** / **Max steps** so you can raise the budget in the same
+step, and **Workers** / picked simulators to run the continuation in parallel. Tapping a struck-through
+**pruned** operation while a past run is open likewise resumes exploring just that one branch. Both are a
+deliberate action: the history view stays read-only until you ask to explore, so a past map is never
+driven by accident.
+
 The screen map, the fingerprint that identifies a screen, and the web-vs-iOS differences are covered
 in the [CLI reference](cli.md#crawl).
 

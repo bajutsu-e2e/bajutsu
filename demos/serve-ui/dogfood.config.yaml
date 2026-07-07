@@ -11,10 +11,11 @@ targets:
     backend: [web]
     # Bring up the inner serve (the WebUI under test) on :8799 for the run, then tear it down — so
     # the run needs no hand-started server. Reused untouched if something is already serving :8799.
-    # The inner serve loads demos/web's config (so its dropdowns show a real app + scenario) and
-    # confines its file browser to demos/serve-ui via --root.
+    # The inner serve loads demos/web's config (so its dropdowns show a real app + scenario),
+    # confines its file browser to demos/serve-ui via --root, and serves runs from the committed
+    # crawl-history fixture (BE-0181) so the Crawl History tab has a deterministic past run to reopen.
     launchServer:
-      cmd: "uv run bajutsu serve --config demos/web/demo.config.yaml --root demos/serve-ui --port 8799"
+      cmd: "uv run bajutsu serve --config demos/web/demo.config.yaml --root demos/serve-ui --runs demos/serve-ui/fixtures/crawl-runs --port 8799"
       readyTimeout: 60
     scenarios: demos/serve-ui/scenarios
     # The data-testid namespaces the WebUI exposes (the web equivalent of accessibility ids).

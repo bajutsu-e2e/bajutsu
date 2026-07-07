@@ -773,20 +773,30 @@ def crawl(
     retiring; only fires in a pool. Stops at `max_screens` distinct screens or `max_steps` actions,
     whichever first.
 
+    `base_map` warm-starts from an existing map in two ways. With `seed_path`/`seed_ops` it is a
+    *single-branch resume*: replay `seed_path` back to one pruned branch's screen, then explore it
+    with `seed_ops` as that screen's frontier (one walk, so `extra_workers` is dropped). Supplied
+    *without* `seed_path`/`seed_ops` it is a *full-frontier continuation* (BE-0181): every screen the
+    prior run left with untried operations is re-seeded from `paths` + `plan` and explored again, so
+    a crawl that stopped on a budget can be pushed deeper without re-walking from the entry screen.
+
     `extra_workers` adds workers beyond the primary `(driver, reset)`: each is a *factory* the engine
     calls inside that worker's own thread to build one more `(driver, reset)` lane, which explores the
     *same* shared frontier on its own device/browser so the guide's AI round-trips overlap (BE-0064).
     Building inside the thread is what lets a thread-affine driver (Playwright's sync API, BE-0077) be
     created on the very thread that drives it. The default (none) is a single worker that walks exactly
-    as the serial engine always did. A resumed crawl (`seed_path`) is one walk, so `extra_workers` is
-    ignored for it.
+    as the serial engine always did. A single-branch resume (`seed_path`) is one walk, so
+    `extra_workers` is ignored for it; a full-frontier continuation keeps the pool.
     """
     guide = guide or _deterministic_guide
     # Default crash signal = the iOS accessibility-tree check; a backend can inject its own.
     alive = is_alive or (lambda _driver, elements: is_app_alive(elements))
-    # Resume continues an existing map (`base_map`): replay `seed_path` back to a pruned branch's
-    # screen, then explore from it with `seed_ops` as that screen's frontier, appending findings.
+    # Warm-start from an existing map (`base_map`): a single-branch resume (with `seed_path`/
+    # `seed_ops`) replays back to one pruned branch's screen and explores it; a full-frontier
+    # continuation (base_map, no `seed_path`) re-seeds every screen that still has untried ops.
     screen_map = base_map if base_map is not None else ScreenMap()
+    # A full-frontier continuation warm-starts from the map without a seed path.
+    continuing = base_map is not None and seed_path is None
     # The worker pool: the caller-built primary `(driver, reset)` (used on this thread for bootstrap
     # and the in-place walk), plus extra-worker factories the engine builds inside each spawned
     # thread (so a thread-affine driver is created on the thread that drives it). A resume is a
@@ -815,11 +825,74 @@ def crawl(
         dismissed = clear_blocking(d) if clear_blocking is not None else []
         return d.query(), dismissed
 
+    def _reconstruct_frontier(d: base.Driver, rst: Reset) -> None:
+        # Full-frontier continuation (BE-0181): the map's nodes are already known, so instead of
+        # discovering the entry screen, re-seed the frontier for every screen that still has untried
+        # operations. `paths[fp]` + `plan[fp]` hold everything needed with no new persisted state —
+        # replay the recorded path from a clean reset, re-derive the deterministic candidates, and
+        # keep only the ones the plan still lists (the exact set the prior run had not yet tried).
+        # Screen identity and candidate order are pure functions of the element tree, so this
+        # reproduces what the first run would have tried next. AI-only ops from an AI-guided run
+        # aren't reconstructed here on purpose — reconstruction stays deterministic (see BE-0181
+        # "Alternatives considered": no materialized-action schema, one re-derived query instead).
+        # The primary worker starts cold afterward (backtracking like any worker), so the driver's
+        # position at the end of this loop doesn't matter — it never assumes a warm screen.
+        prior_reason = screen_map.stop_reason
+        had_frontier = any(screen_map.plan.values())  # the loaded map recorded untried operations
+        for fp in sorted(screen_map.plan):
+            remaining = set(
+                screen_map.plan[fp]
+            )  # `fp` is a key of `plan`; empty list → skipped below
+            if not remaining:
+                continue
+            path = list(screen_map.paths.get(fp, ()))
+            rst(d)
+            _observe(d)
+            if not _replay(d, path, settle, clear_blocking):
+                continue  # the recorded path no longer resolves — skip this screen's frontier
+            landed, dismissed = _observe(d)
+            if fingerprint(landed).value != fp:
+                # The path still replays but no longer lands on `fp` (the app changed under us).
+                # Screen identity is a pure function of the element tree, so a different fingerprint
+                # means a different screen; seeding `pending[fp]`/`path_to[fp]` here would later
+                # misattribute this walk's edges to the wrong source screen — skip it.
+                continue
+            if dismissed:
+                coord.record_alert(path, dismissed)
+            ops = [a for a in candidate_actions(landed) if a.describe() in remaining]
+            if ops:
+                coord.path_to[fp] = path
+                coord.pending[fp] = ops
+        if any(coord.pending.values()):
+            # Something to explore: re-decide the stop reason from this continuation's run, and emit
+            # so the live plan reflects the reconstructed frontier.
+            screen_map.stop_reason = ""
+            coord.emit()
+        elif had_frontier:
+            # The map recorded untried operations but none could be re-seeded — every recorded path
+            # is stale (no longer resolves, or lands on a different screen) or the remaining ops are
+            # not deterministically reconstructable (AI-only type/fill/tap_point, which
+            # `candidate_actions` never re-derives). Don't emit — that would overwrite the persisted
+            # `plan` with the empty frontier and destroy the recorded work — and don't claim
+            # "completed": keep the prior budget stop so the frontier survives for a retry. Fall back
+            # to "max_steps" only if the loaded map somehow carried no reason.
+            screen_map.stop_reason = prior_reason or "max_steps"
+        else:
+            # The loaded map genuinely had no untried operations (every plan entry was empty): the
+            # prior run was already complete. Record it and emit the (empty) frontier.
+            screen_map.stop_reason = "completed"
+            coord.emit()
+
     def _bootstrap() -> str | None:
         # Once, before workers start (so single-threaded): reach the entry screen on the primary
         # device and seed the frontier. Returns the fingerprint the primary worker is left on, or
-        # None if a resume's replay no longer resolves (nothing to explore).
+        # None if a resume's replay no longer resolves (nothing to explore) — or, for a full-frontier
+        # continuation, always None (the primary starts cold and backtracks to the reconstructed
+        # frontier like any worker).
         d, rst = driver, reset
+        if continuing:
+            _reconstruct_frontier(d, rst)
+            return None
         rst(d)
         start, dismissed = _observe(d)
         if dismissed:
@@ -949,8 +1022,11 @@ def crawl(
             coord.note_failure(exc)
 
     start_fp = _bootstrap()
-    if start_fp is None:
-        return screen_map  # a resume with nothing to replay (stop_reason set in bootstrap)
+    if start_fp is None and not any(coord.pending.values()):
+        # Nothing to explore: a single-branch resume whose replay no longer resolves, or a
+        # continuation whose frontier reconstructed empty (stop_reason set in bootstrap). A
+        # continuation with a live frontier keeps going with the primary starting cold (start_fp None).
+        return screen_map
 
     def _run_extra(factory: WorkerFactory) -> None:
         # Build this lane's driver on *this* thread (the Playwright sync API is bound to its creating

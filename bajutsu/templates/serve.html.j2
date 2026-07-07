@@ -274,6 +274,9 @@
       <span class="crawlcounts" id="crawl-counts"></span>
       <!-- Shown only while a historical run is open (BE-0180), to keep a past map from reading as live. -->
       <span class="pastbadge" id="crawl-pastbadge" data-testid="crawl.past-badge" hidden></span>
+      <!-- Continue a past run's remaining frontier (BE-0181): shown for an open past run that still has
+           untried operations. Clicking it leaves the read-only history view and continues exploring live. -->
+      <button class="pastcontinue" id="crawl-continue" data-testid="crawl.continue" hidden></button>
       <span class="zoomctl">
         <button class="zbtn" id="crawl-zoomout" title="zoom out">&minus;</button>
         <button class="zbtn" id="crawl-zoomreset" title="reset view">&#9678;</button>
@@ -291,7 +294,7 @@
     <div class="crawlsub planhd"><span>Exploration plan<span class="planpct" id="crawl-planpct"></span></span>
       <label class="prunetog" title="Show the operations the crawl pruned as duplicate global controls (a tab/nav explored once), struck through and tappable to resume. Uncheck to hide them."><input type="checkbox" id="crawl-prune" checked> show pruned</label></div>
     <div class="planbar" title="share of planned operations explored"><div class="planfill" id="crawl-planfill"></div></div>
-    <div class="crawlplan" id="crawl-plan"><div class="empty">The plan tree grows as the crawl explores.</div></div>
+    <div class="crawlplan" id="crawl-plan" data-testid="crawl.plan"><div class="empty">The plan tree grows as the crawl explores.</div></div>
   </div>
   <div class="card crawl-console-panel" data-pane="console">
     <div class="crawlsub">Console</div>

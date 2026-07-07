@@ -106,6 +106,14 @@ def crawl(
     resume_key: str = typer.Option(
         "", "--resume-key", help="resume: the pruned operation's replay key (see --resume-src)"
     ),
+    continue_crawl: bool = typer.Option(
+        False,
+        "--continue",
+        help="continue an existing run's whole remaining frontier — every screen with untried "
+        "operations, not one pruned branch — with --out pointing at that run; raise "
+        "--max-screens/--max-steps to go deeper, and --workers/--udid runs the continuation in "
+        "parallel. Mutually exclusive with --resume-src/--resume-key.",
+    ),
     headed: bool | None = typer.Option(
         None,
         "--headed/--no-headed",
@@ -127,6 +135,12 @@ def crawl(
     identity, transitions, crashes); the AI guide only proposes *what to try*. A discovery tool,
     never a pass/fail gate.
     """
+    # Argument validation first, before any config/backend/credential/device setup: --continue takes
+    # an existing run's whole remaining frontier, --resume-src/--resume-key one pruned branch — naming
+    # both is contradictory, so reject it up front (BE-0181).
+    if continue_crawl and (resume_src or resume_key):
+        typer.echo("crawl: --continue and --resume-src/--resume-key are mutually exclusive")
+        raise typer.Exit(2)
     eff, _source, checkout_root = _load_effective_with_source(config, target_name)
     # --headed/--no-headed overrides the target's `headless` config (web backend only; iOS ignores it).
     eff = _with_headed(eff, headed)
@@ -164,15 +178,24 @@ def crawl(
     screens_dir.mkdir(exist_ok=True)
     screenmap_path = out_dir / "screenmap.json"
 
-    # Resume mode: continue from the existing map, exploring one pruned branch. Else start fresh.
-    base_map = seed_path = seed_ops = None
-    if resume_src and resume_key:
+    # Two ways to warm-start an existing run's map (--out points at it), or a fresh crawl otherwise:
+    #   --resume-src/--resume-key  → single-branch resume of one pruned branch (seed_path/seed_ops)
+    #   --continue                 → full-frontier continuation of every screen with untried ops
+    def _load_base_map(mode: str) -> crawl_engine.ScreenMap:
+        # Both warm-start modes read the existing run's map from --out; only the failure prefix differs.
         try:
             data = json.loads(screenmap_path.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError) as e:
-            typer.echo(f"resume: cannot read {screenmap_path}: {e}")
+            typer.echo(f"{mode}: cannot read {screenmap_path}: {e}")
             raise typer.Exit(2) from None
-        base_map = crawl_engine.screenmap_from_dict(data)
+        return crawl_engine.screenmap_from_dict(data)
+
+    # The two are mutually exclusive (validated up front): one names a single branch, the other
+    # means "everything left".
+    resuming = bool(resume_src and resume_key)
+    base_map = seed_path = seed_ops = None
+    if resuming:
+        base_map = _load_base_map("resume")
         match = next(
             (p for p in base_map.pruned if p.src == resume_src and p.key == resume_key), None
         )
@@ -183,14 +206,26 @@ def crawl(
         seed_ops = [match.path[-1]]  # then the pruned op
         base_map.pruned = [p for p in base_map.pruned if p is not match]  # it's being explored now
         say(f"↩  resuming pruned branch: {match.action} on {resume_src[:7]}")
+    elif continue_crawl:
+        base_map = _load_base_map("continue")
+        # The frontier is every screen the prior run left with untried operations; nothing to do if
+        # it explored everything (stop_reason "completed"). Reject up front rather than launching a
+        # device only to find no work.
+        frontier = sum(1 for ops in base_map.plan.values() if ops)
+        if not frontier:
+            typer.echo(
+                "continue: no remaining frontier in the screen map (nothing left to explore)"
+            )
+            raise typer.Exit(2)
+        say(f"↪  continuing crawl: {frontier} screens with untried operations")
     else:
         _write_screenmap(screenmap_path, crawl_engine.ScreenMap())  # empty map the UI can poll now
     typer.echo(f"crawl → {screenmap_path}")  # tells the web UI where the map lands
 
     # The worker pool, all sharing one screen map. The platform's Environment sizes the lane set
     # (BE-0009): iOS resolves the `--udid` pool and caps `--workers` to it (BE-0064); web has no
-    # device, so the worker count alone sizes N browser lanes (BE-0077). A resumed crawl is a
-    # single-branch walk, so it runs on one lane.
+    # device, so the worker count alone sizes N browser lanes (BE-0077). A single-branch resume is a
+    # single walk, so it runs on one lane; a full-frontier continuation keeps the pool (BE-0181).
     environment = environment_for(actuator, "")
     udids = environment.plan_lanes(udid, workers)
     if not udids:
@@ -198,7 +233,7 @@ def crawl(
         # a fixable message rather than crashing later on the first lane.
         typer.echo("no devices to crawl: --udid resolved to an empty pool")
         raise typer.Exit(2)
-    if base_map is not None:
+    if seed_path is not None:
         udids = udids[:1]
     workers = len(udids)
 
@@ -304,7 +339,9 @@ def crawl(
             clear_blocking=clear_blocking,
             is_alive=is_alive,
             guide=crawl_guide,
-            prune_global=prune_global and base_map is None,  # resume explores the branch fully
+            # A single-branch resume explores that one branch fully (no pruning); a fresh crawl and a
+            # full-frontier continuation both prune duplicate global controls per the flag (BE-0181).
+            prune_global=prune_global and seed_path is None,
             base_map=base_map,
             seed_path=seed_path,
             seed_ops=seed_ops,

@@ -1285,6 +1285,30 @@ def test_serve_server_backend_without_extras_exits_cleanly(monkeypatch: pytest.M
     assert "extra" in r.output.lower()
 
 
+def test_crawl_continue_and_resume_are_mutually_exclusive(tmp_path: Path) -> None:
+    # --continue (the whole remaining frontier) and --resume-src/--resume-key (one pruned branch)
+    # contradict, so naming both is rejected up front — before any backend/credential/device setup
+    # (BE-0181), so the error is a clean usage message, not a late failure.
+    cfg, _ = _write(tmp_path)
+    r = runner.invoke(
+        app,
+        [
+            "crawl",
+            "--target",
+            "demo",
+            "--continue",
+            "--resume-src",
+            "fp",
+            "--resume-key",
+            "k",
+            "--config",
+            str(cfg),
+        ],
+    )
+    assert r.exit_code == 2
+    assert "mutually exclusive" in r.output
+
+
 def test_worker_help_exits_cleanly() -> None:
     # The worker CLI uses stdlib only (no Redis/RQ since BE-0106), so --help must work without
     # any optional extras installed.

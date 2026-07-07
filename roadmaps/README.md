@@ -423,6 +423,7 @@ Running the autonomous crawl across more than one device so a full screen map is
 |---|---|---|
 | [BE-0064](BE-0064-parallel-crawl/BE-0064-parallel-crawl.md) | Parallel crawl across multiple simulators | Implemented |
 | [BE-0077](BE-0077-parallel-web-crawl/BE-0077-parallel-web-crawl.md) | Parallel web crawl across multiple browsers | Implemented |
+| [BE-0181](BE-0181-crawl-continuation/BE-0181-crawl-continuation.md) | Resumable crawl continuation (Web UI + full-frontier resume) | Implemented |
 <!-- /GENERATED:implemented-crawl -->
 
 ### On-device validation (M1 close-out)
@@ -656,9 +657,7 @@ Turning a passing scenario into a native test in a destination framework's idiom
 Keeping the autonomous crawl fast and its code lean as it grows.
 
 <!-- GENERATED:proposals-crawl -->
-| ID | Item | Status |
-|---|---|---|
-| [BE-0181](BE-0181-crawl-continuation/BE-0181-crawl-continuation.md) | Resumable crawl continuation (Web UI + full-frontier resume) | Proposal |
+
 <!-- /GENERATED:proposals-crawl -->
 
 ### Backend expansion (iOS actuators)

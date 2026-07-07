@@ -276,12 +276,27 @@ bajutsu crawl --target <name> [--max-screens N] [--max-steps N] [--out <dir>] [o
 | `--dismiss-alerts / --no-dismiss-alerts` | `--dismiss-alerts` | クロール中に予期せぬ OS プロンプトを片付ける（クラッシュ誤判定を防ぐ。設定した AI プロバイダを使用し、`ANTHROPIC_API_KEY`、Bedrock なら AWS 認証情報） |
 | `--headed / --no-headed` | アプリの `headless` | web backend: ヘッドレスではなく目に見える（低速再生の）ブラウザでクロールする。省略時はアプリの `headless` 設定に従う |
 | `--out` | `runs/<timestamp>` | 画面マップを書き出す run ディレクトリ |
+| `--continue` | オフ | 過去の run（`--out` でその run を指します）を続きから探索します。1 つのブランチだけでなく、未試行の操作が残る**すべて**の画面を再探索します。`--max-screens`/`--max-steps` を上げるとさらに深く進み、`--workers`/`--udid` で continuation を並列に実行します（[BE-0181](../../roadmaps/BE-0181-crawl-continuation/BE-0181-crawl-continuation-ja.md)） |
 | `--config` | `bajutsu.config.yaml` | config |
 
 - **Git の `--config` は読み取り専用入力です**（[BE-0063](../../roadmaps/BE-0063-git-config-source/BE-0063-git-config-source-ja.md)）。`crawl` は config を取得したチェックアウトから読みますが、画面マップ／スクリーンショットはローカルの `--out` run ディレクトリ（既定 `runs/<timestamp>`）に書き、読み取り専用の SHA キーのキャッシュには書きません。チェックアウト内を指す `--out` は拒否します。
 - 走査は**決定的リプレイ**で行い、その場での後戻りはしません。既知の画面を再訪するには、アプリを
   クリーンな状態に再起動し、そこへの最短経路を再生してから次の未試行アクションを取ります。これは
   `run` が任意の状態へ到達するのと同じやり方です。
+- **過去のクロールの続きから探索する**（[BE-0181](../../roadmaps/BE-0181-crawl-continuation/BE-0181-crawl-continuation-ja.md)）。
+  クロールは `completed` よりも `--max-screens`/`--max-steps` で止まることのほうがはるかに多いので、
+  `bajutsu crawl --out <既存の run> --continue` はその run の画面マップを引き継ぎ、未試行の操作が残る
+  **すべて**の画面、つまり残りのフロンティア全体を再探索します。予算を増やしてエントリー画面からクロール
+  し直すのとは異なります。追加の永続状態は要りません。各画面の記録済み経路（`paths`）を再生し、まだ試して
+  いない操作を**決定的**なガイド（`candidate_actions`）で導出し直し、保存済みの `plan` と突き合わせます。
+  再構築は決定的なので、決定的に導出できる操作だけを再構築します。**AI-only の操作は意図的に再構築しません**。
+  AI ガイドの run では、モデルが提案した豊かな操作（現実的な `fill`/`type`、視覚で特定した `tap_point`）は
+  再シードされず、決定的なタップや入力だけが対象です。何も再構築できなかったフロンティアは、`completed`
+  とは報告せず手を付けないまま残します（保存済みマップの `plan` と停止理由をそのまま保ちます）。
+  `--max-screens`/`--max-steps` を上げるとさらに深く進み、`--workers`/`--udid` は通常のクロールと同じ並列
+  プールで continuation を実行します。これは Web UI の pruned ブランチの「タップして再開」が起動する単一
+  ブランチの resume（名前付きの pruned 操作 1 つを再探索します）とは別物で、`--continue` とその resume は
+  同時には指定できません。
 - 無効化された操作要素（`notEnabled`）はタップせず、画面ごとに `blocked` として報告します。遷移を洗い出すため、
   crawl は操作要素の状態の**組合せ**を探索します。各空テキスト欄を個別に入力し（スイッチは個別にトグル、タブバーは各タブに切り替え）、
   空欄が複数あるときは**一括入力（compound fill）**も試します。一括入力が重要なのは、操作要素が *複数* の欄が

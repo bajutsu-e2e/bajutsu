@@ -20,9 +20,10 @@ web-deps:
 
 # Launch the serve Web UI under test for manual poking. We start serve directly (not `make serve`,
 # which installs the idb companion) because the dogfood is web-only — no iOS actuator is involved.
-# Ctrl-C to stop. --root confines the in-UI file browser to this directory.
+# Ctrl-C to stop. --root confines the in-UI file browser to this directory; --runs points at the
+# committed crawl-history fixture so the Crawl History tab shows the past run the dogfood reopens.
 serve-ui:
-	cd $(ROOT) && uv run bajutsu serve --config $(INNER_CONFIG) --root $(HERE) --port $(PORT)
+	cd $(ROOT) && uv run bajutsu serve --config $(INNER_CONFIG) --root $(HERE) --runs $(HERE)/fixtures/crawl-runs --port $(PORT)
 
 # End-to-end: drive the serve Web UI through the Playwright backend with the Tier-A deterministic
 # scenarios. The app under test (the inner serve) is brought up and torn down by the config's
