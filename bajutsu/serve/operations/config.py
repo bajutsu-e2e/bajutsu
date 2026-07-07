@@ -35,7 +35,7 @@ from bajutsu.serve import jobs
 from bajutsu.serve.helpers import (
     list_targets,
 )
-from bajutsu.serve.jobs import ServeState
+from bajutsu.serve.jobs import ProviderSettings, ServeState
 
 # The logical name of the Claude API key in the secret store (BE-0136). One named secret today; a
 # future credential (e.g. a Bedrock AWS key) reuses the same store under its own name.
@@ -179,12 +179,32 @@ def api_key_info(state: ServeState, actor: str | None) -> tuple[Any, int]:
     return payload, 200
 
 
+def _provider_settings_map(state: ServeState) -> dict[str, dict[str, str]]:
+    """The per-provider settings the Settings UI pre-populates from (BE-0183): every provider that
+    has a remembered slot, plus the active provider seeded from the environment so a value set before
+    serve started (or via env alone) still shows. For the active provider the environment is
+    authoritative — set_provider materializes its slot there for spawned jobs — so it is read from
+    there rather than the stored slot."""
+    mode = resolved_provider()
+    slots = dict(state.provider_settings)
+    slots[mode] = ProviderSettings(
+        model=os.environ.get(BEDROCK_MODEL_ENV if mode == "bedrock" else MODEL_ENV, ""),
+        effort=os.environ.get(EFFORT_ENV, ""),
+        region=os.environ.get("AWS_REGION", "") if mode == "bedrock" else "",
+    )
+    return {
+        name: {"model": s.model, "effort": s.effort, "region": s.region}
+        for name, s in slots.items()
+    }
+
+
 def provider_info(state: ServeState) -> tuple[Any, int]:
     """The AI provider spawned jobs will use, with the Bedrock region/model.  Read from the serve
     process's environment, so it reflects what a record/crawl job inherits — one of the registered
     providers (`api-key` / `bedrock` / `ant` / `claude-code`). Resolved through the BE-0104 registry
     so a non-SDK provider (`claude-code`, BE-0176) is reported as itself, not clamped to the SDK
-    family."""
+    family. `providers` carries every provider's own remembered model/effort/region (BE-0183) so the
+    Settings UI can swap fields on a dropdown change without a round trip."""
     mode = resolved_provider()
     # Claude reachability for the resolved provider (BE-0101), so the front end disables the Claude
     # tabs (record/crawl) on data rather than only surfacing the failure on click. Honors the bound
@@ -197,6 +217,7 @@ def provider_info(state: ServeState) -> tuple[Any, int]:
         "aiModel": os.environ.get(MODEL_ENV, ""),  # general model override (non-Bedrock providers)
         "effort": os.environ.get(EFFORT_ENV, ""),
         "language": os.environ.get(LANGUAGE_ENV, ""),  # AI output language (BE-0188)
+        "providers": _provider_settings_map(state),
         "claudeAvailable": gap is None,
         "claudeGap": gap,
         "claudeHint": ai_availability.message(gap) if gap is not None else "",
@@ -327,8 +348,12 @@ def set_provider(state: ServeState, body: dict[str, Any]) -> tuple[Any, int]:
     Bedrock, the Anthropic CLI (`ant`, a browser-based OAuth/SSO sign-in — BE-0163), or the Claude
     Code CLI (`claude-code`, the local `claude` on a Pro/Max/Console seat — BE-0176). Written into
     the serve process's environment (`BAJUTSU_AI_PROVIDER`) for this session only — never to disk —
-    and inherited by jobs, mirroring the API-key handler. Validated against the BE-0104 registry, so
-    every AI path (authoring, the alert guard, triage) resolves through the same seam."""
+    and inherited by jobs, mirroring the API-key handler. The selection is also remembered per
+    provider in `state.provider_settings` (BE-0183) so switching the Settings dropdown no longer
+    discards the model/effort set for the provider left behind; only the selected provider's slot is
+    written — the others are untouched — and the active slot is what gets materialized into the env.
+    Validated against the BE-0104 registry, so every AI path (authoring, the alert guard, triage)
+    resolves through the same seam."""
     prov = normalize_provider(str(body.get("provider", "") or ""))
     if prov not in known_providers():
         return {"error": f"unknown provider: {prov or '(empty)'}"}, 400
@@ -361,6 +386,7 @@ def set_provider(state: ServeState, body: dict[str, Any]) -> tuple[Any, int]:
         else:
             os.environ.pop(MODEL_ENV, None)
         os.environ[PROVIDER_ENV] = prov
+        state.provider_settings[prov] = ProviderSettings(model=ai_model, effort=effort)
         return {
             "ok": True,
             "provider": prov,
@@ -381,6 +407,7 @@ def set_provider(state: ServeState, body: dict[str, Any]) -> tuple[Any, int]:
     os.environ.pop(MODEL_ENV, None)  # Bedrock uses its own model id; clear the general override
     if region:
         os.environ["AWS_REGION"] = region
+    state.provider_settings["bedrock"] = ProviderSettings(model=model, effort=effort, region=region)
     return {
         "ok": True,
         "provider": "bedrock",

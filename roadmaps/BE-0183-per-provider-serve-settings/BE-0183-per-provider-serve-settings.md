@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0183](BE-0183-per-provider-serve-settings.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0183") |
+| Implementing PR | _pending_ |
 | Topic | AI provider configuration |
 | Related | [BE-0104](../BE-0104-vendor-neutral-ai-backend/BE-0104-vendor-neutral-ai-backend.md), [BE-0163](../BE-0163-ant-cli-oauth-provider/BE-0163-ant-cli-oauth-provider.md), [BE-0176](../BE-0176-claude-code-ai-backend/BE-0176-claude-code-ai-backend.md), [BE-0175](../BE-0175-serve-web-ui-ant-sso-login/BE-0175-serve-web-ui-ant-sso-login.md) |
 <!-- /BE-METADATA -->
@@ -89,10 +90,18 @@ removes the ad hoc exception and fixes the shared-state loss in one move.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Define the per-provider settings structure held by serve.
-- [ ] Return the full per-provider map from `GET /api/provider`.
-- [ ] Scope `POST /api/provider` writes to the selected provider's slot.
-- [ ] Update the Settings UI to swap fields per provider from the fetched map.
+- [x] Define the per-provider settings structure held by serve.
+- [x] Return the full per-provider map from `GET /api/provider`.
+- [x] Scope `POST /api/provider` writes to the selected provider's slot.
+- [x] Update the Settings UI to swap fields per provider from the fetched map.
+
+Log:
+
+- _pending_ — Added the `ProviderSettings` dataclass and `ServeState.provider_settings`, returned
+  the per-provider map as `providers` from `GET /api/provider` (active provider seeded from env),
+  scoped `POST /api/provider` writes to the selected provider's slot while still materializing it
+  into the env spawned jobs read, and reworked the Settings JS to cache the map and swap
+  model/effort/region per provider on a dropdown change.
 
 ## References
 

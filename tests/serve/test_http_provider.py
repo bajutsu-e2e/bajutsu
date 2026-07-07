@@ -25,6 +25,8 @@ def _clean_provider_env(monkeypatch: pytest.MonkeyPatch) -> None:
     for var in (
         ac.PROVIDER_ENV,
         ac.BEDROCK_MODEL_ENV,
+        ac.MODEL_ENV,
+        ac.EFFORT_ENV,
         ac.ANTHROPIC_KEY_ENV,
         ac.EFFORT_ENV,
         ac.LANGUAGE_ENV,
@@ -53,6 +55,7 @@ def test_http_provider_select_bedrock_and_back(
             "aiModel": "",
             "effort": "",
             "language": "",
+            "providers": {"api-key": {"model": "", "effort": "", "region": ""}},
             "claudeAvailable": False,
             "claudeGap": "anthropic-key",
             "claudeHint": ai_availability.message("anthropic-key"),
@@ -76,6 +79,9 @@ def test_http_provider_select_bedrock_and_back(
             "aiModel": "",
             "effort": "",
             "language": "",
+            "providers": {
+                "bedrock": {"model": _BEDROCK_MODEL, "effort": "", "region": "us-east-1"}
+            },
             "claudeAvailable": True,
             "claudeGap": None,
             "claudeHint": "",
@@ -133,6 +139,7 @@ def test_http_provider_select_ant_and_back(tmp_path: Path, monkeypatch: pytest.M
             "aiModel": "",
             "effort": "",
             "language": "",
+            "providers": {"ant": {"model": "", "effort": "", "region": ""}},
             "claudeAvailable": False,
             "claudeGap": ac.ANT_CLI_MISSING,
             "claudeHint": ai_availability.message(ac.ANT_CLI_MISSING),
@@ -161,6 +168,84 @@ def test_http_provider_accepts_the_legacy_anthropic_alias(
         code, body = _post(port, "/api/provider", {"provider": "anthropic"})
         assert code == 200 and body["provider"] == "api-key"
         assert os.environ[ac.PROVIDER_ENV] == "api-key"
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+def test_http_provider_remembers_settings_per_provider(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """BE-0183: each provider keeps its own model/effort. Configuring claude-code, then saving
+    api-key (which the old shared-slot design would have wiped), then switching back leaves
+    claude-code's model/effort intact — read from the per-provider map GET /api/provider returns."""
+    scn_dir, cfg, runs = project(tmp_path)
+    _clean_provider_env(monkeypatch)
+    server, port = _serve(
+        srv.ServeState(scenarios_dir=scn_dir, config=cfg, runs_dir=runs, cwd=tmp_path)
+    )
+    try:
+        code, _ = _post(
+            port,
+            "/api/provider",
+            {"provider": "claude-code", "aiModel": "claude-opus-4-6", "effort": "high"},
+        )
+        assert code == 200
+        # Saving a different provider must not disturb claude-code's remembered slot.
+        code, _ = _post(
+            port, "/api/provider", {"provider": "api-key", "aiModel": "claude-sonnet-4-6"}
+        )
+        assert code == 200
+        providers = _get_json(port, "/api/provider")["providers"]
+        assert providers["claude-code"] == {
+            "model": "claude-opus-4-6",
+            "effort": "high",
+            "region": "",
+        }
+        assert providers["api-key"] == {"model": "claude-sonnet-4-6", "effort": "", "region": ""}
+        # Switching back materializes claude-code's remembered slot into the env spawned jobs read.
+        code, _ = _post(
+            port,
+            "/api/provider",
+            {"provider": "claude-code", "aiModel": "claude-opus-4-6", "effort": "high"},
+        )
+        assert code == 200
+        assert os.environ[ac.PROVIDER_ENV] == "claude-code"
+        assert os.environ[ac.MODEL_ENV] == "claude-opus-4-6"
+        assert os.environ[ac.EFFORT_ENV] == "high"
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+def test_http_provider_write_scopes_to_the_selected_slot(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """BE-0183: a Bedrock save writes only Bedrock's slot; the api-key slot set earlier is untouched."""
+    scn_dir, cfg, runs = project(tmp_path)
+    _clean_provider_env(monkeypatch)
+    server, port = _serve(
+        srv.ServeState(scenarios_dir=scn_dir, config=cfg, runs_dir=runs, cwd=tmp_path)
+    )
+    try:
+        _post(port, "/api/provider", {"provider": "api-key", "aiModel": "claude-sonnet-4-6"})
+        _post(
+            port,
+            "/api/provider",
+            {
+                "provider": "bedrock",
+                "region": "us-east-1",
+                "model": _BEDROCK_MODEL,
+                "effort": "low",
+            },
+        )
+        providers = _get_json(port, "/api/provider")["providers"]
+        assert providers["api-key"] == {"model": "claude-sonnet-4-6", "effort": "", "region": ""}
+        assert providers["bedrock"] == {
+            "model": _BEDROCK_MODEL,
+            "effort": "low",
+            "region": "us-east-1",
+        }
     finally:
         server.shutdown()
         server.server_close()
