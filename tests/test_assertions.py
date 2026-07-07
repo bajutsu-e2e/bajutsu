@@ -747,6 +747,153 @@ def test_visual_mixed_rectangle_and_selector_mask(tmp_path: Path) -> None:
     assert r.ok
 
 
+# --- visual _eval_visual helpers (unit) ---
+
+
+def test_prepare_visual_comparison_whole_screen_is_a_passthrough(tmp_path: Path) -> None:
+    """No element / no selector mask: preprocessing leaves the whole screenshot as the actual."""
+    from PIL import Image
+
+    from bajutsu.assertions import _prepare_visual_comparison
+
+    shot = tmp_path / "shot.png"
+    Image.new("RGBA", (100, 100), (255, 0, 0, 255)).save(shot)
+    a = _a({"visual": {"baseline": "home.png"}}).visual
+    assert a is not None
+    prepared = _prepare_visual_comparison(_vc(tmp_path, shot), a, _framed_screen(), "home.png")
+
+    # A whole-screen comparison: no crop, no scale, the actual is the untouched screenshot.
+    from bajutsu.assertions import _Prepared
+
+    assert isinstance(prepared, _Prepared)
+    assert prepared.crop is None
+    assert prepared.scale is None
+    assert prepared.compare_actual == shot
+    assert prepared.actual_rel == "shot.png"
+
+
+def test_prepare_visual_comparison_crops_to_the_element(tmp_path: Path) -> None:
+    """An element-scoped comparison writes the crop and reports it as the actual (40x30 card)."""
+    from PIL import Image
+
+    from bajutsu.assertions import _prepare_visual_comparison, _Prepared
+
+    actual = Image.new("RGBA", (100, 100), (255, 0, 0, 255))
+    _paint(actual, (10, 10, 40, 30), (0, 255, 0, 255))
+    shot = tmp_path / "shot.png"
+    actual.save(shot)
+    a = _a({"visual": {"baseline": "card.png", "element": {"id": "card"}}}).visual
+    assert a is not None
+    prepared = _prepare_visual_comparison(_vc(tmp_path, shot), a, _framed_screen(), "card.png")
+
+    assert isinstance(prepared, _Prepared)
+    assert prepared.crop is not None
+    assert prepared.scale == (1.0, 1.0)  # 100px screenshot over 100pt screen
+    # The crop is written to diff_dir/actual-card.png and is the 40x30 element region.
+    assert Image.open(prepared.compare_actual).size == (40, 30)
+    assert prepared.actual_rel == "diffs/actual-card.png"
+
+
+def test_prepare_visual_comparison_element_not_found_returns_result(tmp_path: Path) -> None:
+    """An unresolvable element scope short-circuits to a failing AssertionResult, not a crop."""
+    from PIL import Image
+
+    from bajutsu.assertions import AssertionResult, _prepare_visual_comparison
+
+    shot = tmp_path / "shot.png"
+    Image.new("RGBA", (100, 100), (255, 0, 0, 255)).save(shot)
+    a = _a({"visual": {"baseline": "card.png", "element": {"id": "nope"}}}).visual
+    assert a is not None
+    out = _prepare_visual_comparison(_vc(tmp_path, shot), a, _framed_screen(), "card.png")
+
+    assert isinstance(out, AssertionResult)
+    assert not out.ok
+    assert out.reason.startswith("element ")
+    assert out.visual is not None and out.visual.element_scoped is True
+
+
+def test_resolve_masks_selector_and_rectangle(tmp_path: Path) -> None:
+    """Selector masks resolve to pixel rectangles (with provenance); plain rectangles pass through."""
+    from PIL import Image
+
+    from bajutsu.assertions import AssertionResult, ExcludeRegion, _resolve_masks
+
+    shot = tmp_path / "shot.png"
+    Image.new("RGBA", (100, 100), (0, 255, 0, 255)).save(shot)
+    a = _a(
+        {
+            "visual": {
+                "baseline": "home.png",
+                "exclude": [
+                    {"selector": {"id": "clock"}},
+                    {"x": 80, "y": 90, "w": 20, "h": 10},
+                ],
+            }
+        }
+    ).visual
+    assert a is not None
+    out = _resolve_masks(
+        a, _framed_screen(), scale=(1.0, 1.0), crop=None, detail="visual ≈ home.png"
+    )
+
+    assert not isinstance(out, AssertionResult)
+    masks, masked_selectors = out
+    # clock (0,0,50,8) resolved to a pixel rect; the explicit rectangle passed through unchanged.
+    assert ExcludeRegion(x=0, y=0, w=50, h=8) in masks
+    assert ExcludeRegion(x=80, y=90, w=20, h=10) in masks
+    assert masked_selectors == ["id='clock'"]
+
+
+def test_resolve_masks_ambiguous_selector_returns_result(tmp_path: Path) -> None:
+    """An ambiguous mask selector fails the assertion rather than masking the first match."""
+    from bajutsu.assertions import AssertionResult, _resolve_masks
+
+    a = _a(
+        {"visual": {"baseline": "home.png", "exclude": [{"selector": {"traits": ["staticText"]}}]}}
+    ).visual
+    assert a is not None
+    out = _resolve_masks(
+        a, _framed_screen(), scale=(1.0, 1.0), crop=None, detail="visual ≈ home.png"
+    )
+
+    assert isinstance(out, AssertionResult)
+    assert not out.ok
+    assert out.reason.startswith("exclude selector ")
+
+
+def test_resolve_masks_translates_into_crop_local_coordinates(tmp_path: Path) -> None:
+    """When element-scoped, masks are shifted into the crop's local coordinate space."""
+    from bajutsu.assertions import ExcludeRegion, _resolve_masks
+
+    a = _a({"visual": {"baseline": "card.png", "exclude": [{"selector": {"id": "badge"}}]}}).visual
+    assert a is not None
+    # crop origin (10,10): badge at pixel (15,15) becomes crop-local (5,5).
+    crop = ExcludeRegion(x=10, y=10, w=40, h=30)
+    out = _resolve_masks(a, _framed_screen(), scale=(1.0, 1.0), crop=crop, detail="d")
+
+    masks, _ = out  # type: ignore[misc]
+    assert ExcludeRegion(x=5, y=5, w=10, h=10) in masks
+
+
+def test_resolve_baselines_copies_the_baseline_and_prepares_the_diff_path(tmp_path: Path) -> None:
+    """Baseline I/O: the baseline is copied into the run dir and the diff path is prepared."""
+    from PIL import Image
+
+    from bajutsu.assertions import _resolve_baselines
+
+    baselines = tmp_path / "baselines"
+    baselines.mkdir()
+    Image.new("RGBA", (10, 10), (0, 255, 0, 255)).save(baselines / "home.png")
+    ctx = _vc(tmp_path, tmp_path / "shot.png")
+
+    baseline_copy, diff_path = _resolve_baselines(ctx, baselines / "home.png", "home.png")
+
+    assert baseline_copy == tmp_path / "diffs" / "baseline-home.png"
+    assert baseline_copy.is_file()  # copied into the run dir so the report is self-contained
+    assert diff_path == tmp_path / "diffs" / "diff-home.png"
+    assert (tmp_path / "diffs").is_dir()  # diff dir was created
+
+
 # --- golden element-tree assertion (BE-0006) ---
 
 
