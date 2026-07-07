@@ -251,11 +251,11 @@ def _await_boot(env: adb.Env, timeout: float = 60.0, poll: float = 0.5) -> None:
     """Wait until the device reports `sys.boot_completed` (a bounded condition wait, no fixed sleep).
 
     The Android peer of `simctl bootstatus`: `getprop sys.boot_completed` is polled to a bounded
-    deadline. `boot_completed` suppresses its own subprocess error, so a device adb can't yet see
-    just reads as "not booted" and is retried — no unbounded `adb wait-for-device` block. An
-    already-booted device returns on the first poll; if the deadline passes with no device, the
-    launch sequence proceeds and fails loudly on the first `pm clear` / `am start` with a clean
-    `DeviceError`, rather than hanging here.
+    deadline. `boot_completed` treats a device adb can't yet see as "not booted" and retries it (no
+    unbounded `adb wait-for-device` block), but lets a missing `adb` binary propagate so `start`
+    fails fast with a clean error instead of spinning here. An already-booted device returns on the
+    first poll; if the deadline passes with no device, the launch sequence proceeds and fails loudly
+    on the first `pm clear` / `am start` with a clean `DeviceError`, rather than hanging here.
     """
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
@@ -313,6 +313,12 @@ class AndroidEnvironment:
                 e.open_url(pre.deeplink, android.package)
         except subprocess.CalledProcessError as exc:
             raise adb.device_error(exc) from exc
+        except OSError as exc:
+            # adb itself could not be run (e.g. missing from PATH) — surface it as a clean
+            # DeviceError (exit 2) rather than an unhandled traceback or a spin to the boot deadline.
+            raise adb.DeviceError(
+                f"could not run adb ({exc}); is Android platform-tools installed and on PATH?"
+            ) from exc
         return make_driver(self._actuator, self._serial)
 
     def device_catalog(self) -> dict[str, dict[str, str]]:

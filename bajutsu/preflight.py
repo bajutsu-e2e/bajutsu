@@ -155,7 +155,11 @@ def _android_runnability(which: Which, booted_count: Callable[[], int] | None) -
             Check(
                 "device attached",
                 count > 0,
-                f"{count} attached" if count else "start one: `emulator -avd <name>`",
+                # `emulator` ships with the Android SDK, not the `android-platform-tools` `adb`
+                # requirement, so the remedy names the SDK tool rather than implying `adb` has it.
+                f"{count} attached"
+                if count
+                else "attach a device, or boot an AVD (Android SDK `emulator`); shows in `adb devices`",
             )
         )
     return checks

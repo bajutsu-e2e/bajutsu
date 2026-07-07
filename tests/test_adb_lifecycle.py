@@ -187,3 +187,15 @@ def test_device_catalog_skips_a_device_whose_props_fail() -> None:
         raise subprocess.CalledProcessError(1, args)  # getprop fails
 
     assert adb.device_catalog(run) == {}
+
+
+def test_start_raises_clean_device_error_when_adb_is_missing() -> None:
+    # A missing `adb` binary makes the runner raise FileNotFoundError. `boot_completed` lets it
+    # propagate (not a transient "not booted yet"), and `start` converts it to a clean DeviceError
+    # so the CLI exits 2 instead of spinning to the boot deadline or dumping a traceback.
+    def no_adb(args: list[str]) -> str:
+        raise FileNotFoundError("adb")
+
+    env = AndroidEnvironment("adb", "emulator-5554", adb_run=no_adb)
+    with pytest.raises(adb.DeviceError, match="adb"):
+        env.start(_eff(), Preconditions())

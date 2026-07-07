@@ -218,10 +218,20 @@ class Env:
 
     def boot_completed(self) -> bool:
         """Whether `sys.boot_completed` is `1` — the boot-readiness signal polled as a condition
-        wait (no fixed sleep), the Android peer of `simctl bootstatus`."""
-        with contextlib.suppress(subprocess.CalledProcessError, OSError):
+        wait (no fixed sleep), the Android peer of `simctl bootstatus`.
+
+        A device adb cannot see yet reads as "not booted" (retried by the poll), but a missing `adb`
+        binary is not a transient not-booted-yet state, so `FileNotFoundError` propagates rather than
+        being masked into a spin to the boot deadline.
+        """
+        try:
             return self._run(get_prop_cmd(self.serial, "sys.boot_completed")).strip() == "1"
-        return False
+        except subprocess.CalledProcessError:
+            return False  # adb ran but the device is not ready yet
+        except FileNotFoundError:
+            raise  # adb itself is absent — fail fast, do not spin
+        except OSError:
+            return False  # a transient runner error; the next poll retries
 
     def clear(self, package: str) -> None:
         self._run(pm_clear_cmd(self.serial, package))
