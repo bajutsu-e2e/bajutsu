@@ -117,6 +117,35 @@ recorded, not just one action's window. The recording is a `simctl` interval (BE
 specific to the iOS backend — a web target captures video by other means, and the recorded scenario
 carries no `capture` for it.
 
+### Leaning the turn payload and bounding its cost (BE-0194)
+
+After the screenshot, the rendered accessibility element tree is the largest per-turn input, so
+`_render` (`claude_agent.py`) keeps it lean without dropping anything the agent can act on:
+
+- **Lossless element-line compaction.** Each element line prints only the fields that carry
+  information — every addressing field (`id`, `label`, a non-empty `value`, non-empty `traits`) is
+  kept, and an empty `value`/`traits` is dropped rather than printed as `value='' traits=[]`. The set
+  of elements and the ability to address each is unchanged; it is pure character reduction.
+- **A safe cap for pathological screens.** Above a global element-count threshold
+  (`_LARGE_SCREEN_ELEMENTS`), the purely non-addressable remainder (elements with no `id`, `label`,
+  `value`, or `traits`) is collapsed into one trailing `- (+N further non-addressable elements
+  omitted)` line instead of being silently skipped. Every addressable element is still rendered in
+  full — the cap never drops one — and the agent is told the screen was truncated, so it can swipe to
+  reveal more if it needs to.
+
+Two CLI knobs bound a session's spend up front; both default to today's behavior, so nothing changes
+unless you opt in:
+
+- **`--max-steps N`** caps the number of authoring turns (default 30), and therefore the worst-case
+  token spend.
+- **`--no-screenshot`** records an elements-only session (no image sent) — the cheapest possible
+  record, for an app you know is fully instrumented.
+
+The end-of-session `AI usage:` line is followed by a per-category breakdown (`plan` / `next_action` /
+`alert-guard`) attributed by call site (`usage.py`, BE-0194), so the effect of a token-saving change
+is measurable. The categories partition every recorded call, so they sum to the running total. The
+breakdown is reporting-only and never touches pass/fail, consistent with the rest of `usage.py`.
+
 ## The Claude authoring agent
 
 `record` / `crawl` construct one production `agent.Agent` implementation, `ClaudeAgent`

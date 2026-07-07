@@ -261,6 +261,94 @@ def test_plan_is_rendered_into_the_turn_prompt() -> None:
     assert "Planned steps" in text and "1. First do X" in text and "2. Then do Y" in text
 
 
+# --- BE-0194 §1: lossless element-line compaction (drop empty fields, keep every addressing one) ---
+
+
+def _full_el(
+    identifier: str | None,
+    label: str | None,
+    value: str | None,
+    traits: list[str],
+) -> base.Element:
+    return {
+        "identifier": identifier,
+        "label": label,
+        "value": value,
+        "traits": traits,
+        "frame": (0.0, 0.0, 10.0, 10.0),
+    }
+
+
+def _element_lines(text: str) -> list[str]:
+    """The per-element `- …` lines of a rendered turn (between the header and the summary)."""
+    return [line for line in text.splitlines() if line.startswith("- ")]
+
+
+def test_empty_value_and_traits_are_dropped_from_the_line() -> None:
+    from bajutsu.claude_agent import _render
+
+    obs = Observation(goal="g", screen=[_full_el("a", "A", None, [])], history=[])
+    line = _element_lines(_render(obs))[0]
+    assert line == "- id='a' label='A'"
+    assert "value=" not in line and "traits=" not in line
+
+
+def test_every_addressing_field_is_kept_when_present() -> None:
+    from bajutsu.claude_agent import _render
+
+    obs = Observation(
+        goal="g", screen=[_full_el("f", "Email", "you@x.co", ["textField"])], history=[]
+    )
+    line = _element_lines(_render(obs))[0]
+    assert "id='f'" in line and "label='Email'" in line
+    assert "value='you@x.co'" in line and "traits=['textField']" in line
+
+
+def test_valueless_element_keeps_traits_so_it_stays_addressable() -> None:
+    from bajutsu.claude_agent import _render
+
+    # No id, no label, no value — only traits. It must still render (addressable by traits),
+    # so compaction never turns it into a dropped, unaddressable element.
+    obs = Observation(goal="g", screen=[_full_el(None, None, None, ["button"])], history=[])
+    line = _element_lines(_render(obs))[0]
+    assert line == "- traits=['button']"
+
+
+# --- BE-0194 §2: a safe cap that never drops an addressable element on a pathological screen ---
+
+
+def test_small_screen_never_reports_omissions() -> None:
+    from bajutsu.claude_agent import _render
+
+    screen = [_full_el("a", "A", None, ["button"]), _full_el(None, None, None, [])]
+    text = _render(Observation(goal="g", screen=screen, history=[]))
+    assert "omitted" not in text
+
+
+def test_large_screen_collapses_only_the_non_addressable_remainder() -> None:
+    from bajutsu.claude_agent import _LARGE_SCREEN_ELEMENTS, _render
+
+    addressable = [_full_el(f"row{i}", f"Row {i}", None, ["button"]) for i in range(60)]
+    decorative = [_full_el(None, None, None, []) for _ in range(5)]
+    assert len(addressable) + len(decorative) > _LARGE_SCREEN_ELEMENTS
+    text = _render(Observation(goal="g", screen=[*addressable, *decorative], history=[]))
+    lines = _element_lines(text)
+    # every addressable element is rendered in full; none is dropped
+    assert sum(1 for line in lines if "id='row" in line) == 60
+    # the decorative remainder is collapsed into one reported summary line, count correct
+    assert "- (+5 further non-addressable elements omitted)" in lines
+
+
+def test_large_screen_of_only_addressable_elements_reports_nothing() -> None:
+    from bajutsu.claude_agent import _LARGE_SCREEN_ELEMENTS, _render
+
+    screen = [
+        _full_el(f"r{i}", f"R{i}", None, ["button"]) for i in range(_LARGE_SCREEN_ELEMENTS + 5)
+    ]
+    text = _render(Observation(goal="g", screen=screen, history=[]))
+    assert "omitted" not in text  # nothing non-addressable to collapse
+
+
 # --- BE-0047: the textual element tree is redacted before it reaches the model ---
 
 
