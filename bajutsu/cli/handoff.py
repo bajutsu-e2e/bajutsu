@@ -63,7 +63,7 @@ class PromptHandoff:
             self._say(f"   screen: {request.screen}")
         self._say(
             "   type a value to supply it, `done` after you operate the device, or `cancel` "
-            f"(waiting up to {int(self._timeout)}s) …"
+            f"(waiting up to {self._timeout:g}s) …"
         )
         line = _read_line_bounded(self._timeout)
         if line is None:
@@ -95,7 +95,7 @@ class StreamHandoff:
         line = _read_line_bounded(self._timeout)
         if line is None:
             # Narrate the cancel on the stream (not silently), so the record log shows *why* it ended.
-            self._say(f"✋ no handoff response within {int(self._timeout)}s — cancelling")
+            self._say(f"✋ no handoff response within {self._timeout:g}s — cancelling")
             return HandoffResponse(cancelled=True)
         try:
             return response_from_json(line)

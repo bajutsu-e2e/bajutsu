@@ -120,8 +120,8 @@
      so it can't be missed below the fold — the human must answer to resume: supply a value, confirm
      they operated the device, or cancel. No backdrop dismiss; the buttons are the only exits. -->
 <div class="modal" id="rec-handoffmodal" data-testid="record.handoff-modal" hidden>
-  <div class="fsbox">
-    <div class="fshead"><span class="ttl">✋ Human handoff</span></div>
+  <div class="fsbox" role="dialog" aria-modal="true" aria-labelledby="rec-handoff-heading">
+    <div class="fshead"><span class="ttl" id="rec-handoff-heading">✋ Human handoff</span></div>
     <div class="rec-handoff-body">
       <div id="rec-handoff-reason"></div>
       <div class="muted" id="rec-handoff-screen" style="font-size:.85em"></div>
