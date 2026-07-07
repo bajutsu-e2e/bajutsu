@@ -214,15 +214,15 @@
       <div class="panel" id="panel-crawl">
         <label>Target</label><select id="crawl-target" data-testid="crawl.target"></select>
         <div class="row" style="align-items:flex-end">
-          <div><label>Workers</label><input id="crawl-workers" type="number" min="1" value="1"></div>
+          <div><label>Workers</label><input id="crawl-workers" data-testid="crawl.workers" type="number" min="1" value="1"></div>
         </div>
         <div class="subhint webonly">Crawl this many browser processes at once, sharing one screen map (BE-0077): independent branches explore in parallel and the AI guide's round-trips overlap, so the map builds faster. Each worker is its own browser, so one that wedges is relaunched without sinking the crawl. 1 = a single browser.</div>
         <div class="hhead iosonly"><span>Simulators</span><button class="refresh" id="crawl-simrefresh" title="refresh devices">&#8635;</button></div>
         <div class="sims iosonly" id="crawl-sims"></div>
         <div class="subhint iosonly">Pick the simulators to crawl on &mdash; shut-down ones are booted (and waited for) first. Pick two or more (Workers auto-tracks the count) to crawl across them in parallel: they share one screen map, so independent branches explore at once and the AI guide's round-trips overlap (BE-0064). None picked = the already-booted device.</div>
         <div class="row">
-          <div><label>Max screens</label><input id="crawl-maxscreens" type="number" min="1" value="50"></div>
-          <div><label>Max steps</label><input id="crawl-maxsteps" type="number" min="1" value="200"></div>
+          <div><label>Max screens</label><input id="crawl-maxscreens" data-testid="crawl.max-screens" type="number" min="1" value="50"></div>
+          <div><label>Max steps</label><input id="crawl-maxsteps" data-testid="crawl.max-steps" type="number" min="1" value="200"></div>
         </div>
         <div class="subhint">Crawl explores the app breadth-first, discovering screens and the transitions between them &mdash; a discovery tool, never a pass/fail gate. It is AI-driven: the engine (screen identity, transitions, crashes) is always deterministic, while the <b>AI</b> proposes <i>what to try</i> &mdash; richer operations and realistic inputs to enable controls whose precondition isn't obvious. The AI backend is the one chosen in <b>Settings</b> &mdash; the Anthropic API, Amazon Bedrock, or the Claude Code CLI. Stops at the first of Max screens / Max steps.</div>
         <div class="checks iosonly">
@@ -296,7 +296,7 @@
       <button class="modetab" data-mode="edit" data-testid="author.mode-edit">Edit</button>
       <button class="modetab" data-mode="enrich" data-testid="author.mode-enrich">Enrich</button>
     </div>
-    <div class="card">
+    <div class="card au-controls-card">
       <div class="panel" id="panel-author">
         <label>Target</label><select id="au-target" data-testid="author.target"></select>
         <!-- Scenario + run selection: Edit / Enrich load an existing scenario; Capture starts fresh. -->
@@ -338,7 +338,7 @@
       </div>
       <div class="yamledit">
         <div class="yamlgutter" id="au-gutter" aria-hidden="true"><div class="yamlgutter-inner" id="au-gutter-inner"></div></div>
-        <textarea id="au-yaml" class="yaml" placeholder="Capture a flow or load a scenario to edit its YAML here." spellcheck="false"></textarea>
+        <textarea id="au-yaml" class="yaml" data-testid="author.yaml" placeholder="Capture a flow or load a scenario to edit its YAML here." spellcheck="false"></textarea>
         <div class="yamlcomplete" id="au-complete" hidden></div>
         <div class="yamlhover" id="au-hover" hidden></div>
       </div>
@@ -408,7 +408,7 @@
       <span class="muted" style="font-size:.8em">Read-only trend across the run history — no verdict, advisory only.</span>
       <button class="refresh" id="stats-refresh" data-testid="stats.refresh" title="refresh">&#8635;</button>
     </div>
-    <div class="statshost" id="stats-host" data-testid="stats.host"><div class="empty">Loading run stats…</div></div>
+    <div class="statshost" id="stats-host" data-testid="stats.host"><div class="empty" data-testid="stats.empty">Loading run stats…</div></div>
   </div>
 </main>
 
@@ -425,7 +425,7 @@
         <span class="subhint">optional — select runs to fold in endpoints observed vs asserted</span></label>
       <button class="run" id="cov-go" data-testid="coverage.compute" data-idle="Compute">Compute</button>
     </div>
-    <div class="statshost" id="cov-host" data-testid="coverage.host"><div class="empty">Pick a target and compute the coverage map.</div></div>
+    <div class="statshost" id="cov-host" data-testid="coverage.host"><div class="empty" data-testid="coverage.empty">Pick a target and compute the coverage map.</div></div>
   </div>
 </main>
 

@@ -29,6 +29,10 @@ scenarios:
           - exists: { id: settings.provider }
           - exists: { id: settings.apikey-section, negate: true }   # no provider picked → no config block shows
           - exists: { id: settings.bedrock-fields, negate: true }
+          - exists: { id: settings.claudecode-fields, negate: true }
+          - exists: { id: settings.model-section }                  # the cross-provider overrides are offered
+          - exists: { id: settings.model }
+          - exists: { id: settings.effort }
       - tap: { id: settings.save }   # nothing selected yet — the placeholder is the active option
       - wait: { for: { id: settings.status }, timeout: 5 }
       - assert:

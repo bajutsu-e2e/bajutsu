@@ -1,0 +1,55 @@
+# Replay tools — the advisory panels around the selected scenario: the determinism audit badge
+# (BE-0145), codegen export (BE-0137), and the readiness (doctor) panel (BE-0148). Deterministic
+# and AI-free: the audit and codegen endpoints wrap the same static generators the CLI runs on the
+# scenario *file* — no device, no model. Doctor is asserted present but never invoked: its checks
+# probe the live environment (and would launch a browser), which is host-dependent by design.
+description: >-
+  Replay tools — the selected scenario gets a determinism grade, codegen exports it as a
+  Playwright test, and the readiness panel is offered without being run.
+scenarios:
+  - name: the selected scenario gets a determinism grade
+    description: Once the picker resolves (counter.yaml auto-selected), the audit badge appears with the id-based selector ratio.
+    steps:
+      - tap: { id: nav.replay }
+      - wait: { for: { id: replay.scenario, labelMatches: "counter" }, timeout: 10 }
+      # The audit fires automatically when the scenario list loads; the badge unhides on response.
+      - wait: { for: { id: replay.grade }, timeout: 10 }
+    expect:
+      # counter.yaml addresses everything by id, so the badge always carries the id-based ratio.
+      - label: { sel: { id: replay.grade }, contains: "id-based" }
+
+  - name: codegen exports the selected scenario as a Playwright test
+    description: With counter.yaml selected on the web target, Generate code opens the result panel with counter.spec.ts; Close dismisses it.
+    steps:
+      - tap: { id: nav.replay }
+      - wait: { for: { id: replay.scenario, labelMatches: "counter" }, timeout: 10 }
+      - assert:
+          # Re-pin the picker content (retries natively in the exported Playwright test, where
+          # the wait above degrades to a visibility check).
+          - label: { sel: { id: replay.scenario }, contains: "counter" }
+          # A web target offers exactly the Playwright emit — no manual choice needed.
+          - value: { sel: { id: replay.emit }, contains: "playwright" }
+      - tap: { id: replay.codegen }
+      - wait: { for: { id: replay.codegen-code }, timeout: 10 }
+      - assert:
+          - label: { sel: { id: replay.codegen-filename }, contains: "counter.spec.ts" }
+          - exists: { id: replay.codegen-copy }
+          - exists: { id: replay.codegen-download }
+      - tap: { id: replay.codegen-close }
+      - wait: { until: { gone: { id: replay.codegen-code } }, timeout: 5 }
+    expect:
+      - exists: { id: replay.codegen-code, negate: true }
+
+  - name: the readiness panel is offered on Replay and Record
+    description: Both views carry the doctor panel with an armed Check button and no grade yet — the check itself probes the host environment, so it is not run here.
+    steps:
+      - tap: { id: nav.replay }
+      - wait: { for: { id: replay.doctor }, timeout: 10 }
+      - assert:
+          - enabled: { id: replay.doctor-check }
+          - exists: { id: replay.doctor-grade, negate: true }   # hidden until a check runs
+      - tap: { id: nav.record }
+      - wait: { for: { id: record.doctor }, timeout: 5 }
+    expect:
+      - enabled: { id: record.doctor-check }
+      - exists: { id: record.doctor-grade, negate: true }

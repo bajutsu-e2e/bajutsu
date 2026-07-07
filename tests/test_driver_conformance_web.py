@@ -73,7 +73,7 @@ class PlaywrightConformanceHarness:
 
 
 @pytest.fixture(scope="module")
-def _browser() -> Iterator[Any]:
+def chromium() -> Iterator[Any]:
     # Imported here, not at module top, so collection stays free of the heavy dep (see the skip above).
     from playwright.sync_api import sync_playwright
 
@@ -90,9 +90,31 @@ def _browser() -> Iterator[Any]:
 @pytest.mark.web
 class TestPlaywrightDriverConformance(DriverConformanceContract):
     @pytest.fixture
-    def harness(self, _browser: Any) -> Iterator[ConformanceHarness]:
-        page = _browser.new_page()
+    def harness(self, chromium: Any) -> Iterator[ConformanceHarness]:
+        page = chromium.new_page()
         try:
             yield PlaywrightConformanceHarness(page)
         finally:
             page.close()
+
+
+@pytest.mark.web
+def test_native_checkbox_checked_reads_as_selected(chromium: Any) -> None:
+    """A native checkbox's live checked state must surface as the `selected` trait.
+
+    ARIA-free pages (a bare `<input type=checkbox>`, like the serve UI's theme switch) carry
+    their state only on the DOM property, so `QUERY_JS` must read `el.checked` — the web
+    equivalent of a UISwitch's value — for the DSL's `selected` assertion to see it.
+    """
+    page = chromium.new_page()
+    try:
+        driver = PlaywrightDriver("about:blank", page=page)
+        page.set_content(
+            '<input type="checkbox" data-testid="on" checked>'
+            '<input type="checkbox" data-testid="off">'
+        )
+        by_id = {el["identifier"]: el for el in driver.query()}
+        assert base.Trait.SELECTED in by_id["on"]["traits"]
+        assert base.Trait.SELECTED not in by_id["off"]["traits"]
+    finally:
+        page.close()

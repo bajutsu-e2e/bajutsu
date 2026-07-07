@@ -1,10 +1,10 @@
-# Shell navigation — the three top tabs swap the main view. Deterministic without any AI or
+# Shell navigation — the top tabs swap the main view. Deterministic without any AI or
 # Simulator: the SPA toggles each <main> via the `hidden` attribute (display:none), which the
 # Playwright backend reads as "not in the element tree", so the active view exists and the others
 # do not. Byte-for-byte the same step/expect schema as the iOS demos — only the backend differs.
 description: >-
-  Shell navigation — Record / Replay / Crawl tabs swap the visible view. Asserts the active
-  view's container is present and the inactive ones are gone.
+  Shell navigation — the top tabs (Record / Replay / Crawl / Author / Stats / Coverage) swap the
+  visible view. Asserts the active view's container is present and the inactive ones are gone.
 scenarios:
   - name: the top tabs switch the main view
     description: From the default Record view, switch to Replay, then Crawl, then back to Record.
@@ -29,3 +29,23 @@ scenarios:
     expect:
       - exists: { id: view.record }
       - exists: { id: view.crawl, negate: true }
+
+  - name: the authoring and analytics tabs switch the view too
+    description: Switch to Author, then Stats, then Coverage — the newer views toggle the same way.
+    steps:
+      - wait: { for: { id: view.record }, timeout: 10 }
+      - tap: { id: nav.author }
+      - wait: { for: { id: view.author }, timeout: 5 }
+      - assert:
+          - exists: { id: view.author }
+          - exists: { id: view.record, negate: true }
+      - tap: { id: nav.stats }
+      - wait: { for: { id: view.stats }, timeout: 5 }
+      - assert:
+          - exists: { id: view.stats }
+          - exists: { id: view.author, negate: true }
+      - tap: { id: nav.coverage }
+      - wait: { for: { id: view.coverage }, timeout: 5 }
+    expect:
+      - exists: { id: view.coverage }
+      - exists: { id: view.stats, negate: true }

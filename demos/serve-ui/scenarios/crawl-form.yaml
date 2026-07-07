@@ -1,0 +1,22 @@
+# Crawl form — the bound target reaches the picker and the exploration budget starts at its
+# documented defaults (Workers 1, Max screens 50, Max steps 200). Deterministic: the defaults are
+# static form values and the target flows from /api/targets, no crawl is started. Start's enabled
+# state is NOT asserted — BE-0101 gates it on Claude reachability, which is host state.
+description: >-
+  Crawl form — the bound web app reaches the target picker, the budget fields hold their
+  defaults, and the Start button is offered.
+scenarios:
+  - name: the crawl form holds the bound target and the default budget
+    description: Switch to Crawl; the target picker holds the web app, Workers/Max screens/Max steps read their defaults, and Start is offered.
+    steps:
+      - tap: { id: nav.crawl }
+      # The picker fills from /api/targets at bind time; poll until the web app's option text
+      # reaches the select, then pin the values (they retry natively in the exported spec).
+      - wait: { for: { id: crawl.target, labelMatches: "web" }, timeout: 10 }
+      - assert:
+          - value: { sel: { id: crawl.target }, contains: "web" }
+          - value: { sel: { id: crawl.workers }, equals: "1" }
+          - value: { sel: { id: crawl.max-screens }, equals: "50" }
+          - value: { sel: { id: crawl.max-steps }, equals: "200" }
+    expect:
+      - exists: { id: crawl.start }

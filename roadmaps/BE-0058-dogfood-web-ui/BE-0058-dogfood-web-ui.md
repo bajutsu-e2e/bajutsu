@@ -9,8 +9,9 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0058") |
-| Implementing PR | [#169](https://github.com/bajutsu-e2e/bajutsu/pull/169) |
+| Implementing PR | [#169](https://github.com/bajutsu-e2e/bajutsu/pull/169), [#742](https://github.com/bajutsu-e2e/bajutsu/pull/742) |
 | Topic | Dogfood fixtures (web UI) |
+| Related | [BE-0189](../BE-0189-serve-ui-dogfood-ci-gate/BE-0189-serve-ui-dogfood-ci-gate.md) |
 | Origin | Dogfooding |
 <!-- /BE-METADATA -->
 
@@ -141,7 +142,16 @@ Bedrock) stay out of this net.
 
 ## Progress
 
-- [x] Shipped — see the *Implementing PR* above.
+- [x] Shipped the first slice — the `data-testid` ids, the `demos/serve-ui` harness, and the
+  Tier-A scenarios. [#169](https://github.com/bajutsu-e2e/bajutsu/pull/169)
+- [x] Completed the coverage. [#742](https://github.com/bajutsu-e2e/bajutsu/pull/742) Scenarios for
+  every remaining view (Author / Stats / Coverage) and the newer Replay tools (audit badge,
+  codegen, doctor), with a feature-coverage map in the dogfood README against a completed
+  `docs/web-ui.md` (listing what is deliberately not covered and why). Supporting fixes: native
+  checkbox `checked` reads as the `selected` trait (so the theme toggle is state-assertable), and
+  three serve-UI rendering defects (empty grade badges, shadow-orphaned placeholders, the clipped
+  Author load row). The CI gate for the harness is tracked separately under
+  [BE-0189](../BE-0189-serve-ui-dogfood-ci-gate/BE-0189-serve-ui-dogfood-ci-gate.md).
 
 ## References
 
