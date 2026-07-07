@@ -306,6 +306,7 @@ Bajutsu's own `serve` Web UI is a web app, so the Web (Playwright) backend drive
 |---|---|---|---|
 | [BE-0058](BE-0058-dogfood-web-ui/BE-0058-dogfood-web-ui.md) | Dogfood the serve Web UI (web-backend regression net) | Implemented | Dogfooding |
 | [BE-0059](BE-0059-launch-target-server/BE-0059-launch-target-server.md) | Bring up the target server for a run (`launchServer`) | Implemented | Dogfooding |
+| [BE-0189](BE-0189-serve-ui-dogfood-ci-gate/BE-0189-serve-ui-dogfood-ci-gate.md) | Gate the serve Web UI dogfood in CI | Implemented | Dogfooding |
 <!-- /GENERATED:implemented-dogfood-web-ui -->
 
 ### AI provider configuration
@@ -598,7 +599,6 @@ The scope is currently **limited to the iOS Simulator** ([DESIGN §1](../DESIGN.
 <!-- GENERATED:proposals-dogfood-web-ui -->
 | ID | Item | Status | Origin |
 |---|---|---|---|
-| [BE-0189](BE-0189-serve-ui-dogfood-ci-gate/BE-0189-serve-ui-dogfood-ci-gate.md) | Gate the serve Web UI dogfood in CI | Proposal | Dogfooding |
 <!-- /GENERATED:proposals-dogfood-web-ui -->
 
 ### AI provider configuration

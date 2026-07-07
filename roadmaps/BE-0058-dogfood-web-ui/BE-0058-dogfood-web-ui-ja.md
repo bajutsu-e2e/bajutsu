@@ -11,6 +11,7 @@
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0058") |
 | 実装 PR | [#169](https://github.com/bajutsu-e2e/bajutsu/pull/169), [#742](https://github.com/bajutsu-e2e/bajutsu/pull/742) |
 | トピック | Dogfood フィクスチャ（Web UI） |
+| 関連 | [BE-0189](../BE-0189-serve-ui-dogfood-ci-gate/BE-0189-serve-ui-dogfood-ci-gate-ja.md) |
 | 由来 | Dogfooding |
 <!-- /BE-METADATA -->
 

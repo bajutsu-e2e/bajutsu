@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0189](BE-0189-serve-ui-dogfood-ci-gate.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0189") |
+| Implementing PR | [#742](https://github.com/bajutsu-e2e/bajutsu/pull/742) |
 | Topic | Dogfood fixtures (web UI) |
 | Related | [BE-0058](../BE-0058-dogfood-web-ui/BE-0058-dogfood-web-ui.md), [BE-0101](../BE-0101-ai-free-zero-config/BE-0101-ai-free-zero-config.md) |
 | Origin | Dogfooding |
@@ -123,10 +124,25 @@ test. No assertion anywhere consults a model.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] CI job `dogfood (serve UI)` added to `web-e2e.yml`, with the serve/templates/serve-ui path filters
-- [ ] `_scroll_gesture` begins the directional swipe on the element; unit test pins the invariant
-- [ ] `record-form` reframed as the keyless BE-0101 Record-degradation net
-- [ ] `panel-resize` green via the gesture fix (intent unchanged)
+- [x] The serve-UI dogfood is gated in CI, with the serve/templates/serve-ui path filters
+- [x] `_scroll_gesture` begins the directional swipe on the element; unit test pins the invariant
+- [x] `record-form` reframed as the keyless BE-0101 Record-degradation net
+- [x] `panel-resize` green via the gesture fix (intent unchanged)
+
+Log:
+
+- [#742](https://github.com/bajutsu-e2e/bajutsu/pull/742) — implemented, with the CI vehicle
+  evolved from the design in §1. Rather than a `make -C demos/serve-ui e2e` (bajutsu-runner) job in
+  `web-e2e.yml`, the dogfood is gated by a dedicated
+  [`serve-ui-e2e.yml`](../../.github/workflows/serve-ui-e2e.yml) that exports every scenario as a
+  native `@playwright/test` spec (`bajutsu codegen --emit playwright`, BE-0137) and runs those —
+  path-filtered on `bajutsu/serve/**`, `bajutsu/templates/**`, `demos/serve-ui/**`, not a required
+  check, Linux-only. The bajutsu-runner net stays the local `make -C demos/serve-ui e2e`. This PR
+  also completed the coverage BE-0058 left partial (Author / Stats / Coverage views, the newer
+  Replay tools) and mapped every documented Web UI feature to a scenario. The gesture fix (§2) and
+  both scenario repairs (§3) landed exactly as designed; `record-form` asserts the degraded Record
+  surface (Generate present but the form gated, Save/▶ Run disabled, the goal textarea still taking
+  input). `make -C demos/serve-ui e2e` is green (23/23) and the generated specs pass in CI.
 
 ## References
 

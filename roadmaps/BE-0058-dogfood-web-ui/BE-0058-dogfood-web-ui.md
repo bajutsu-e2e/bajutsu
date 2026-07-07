@@ -11,6 +11,7 @@
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0058") |
 | Implementing PR | [#169](https://github.com/bajutsu-e2e/bajutsu/pull/169), [#742](https://github.com/bajutsu-e2e/bajutsu/pull/742) |
 | Topic | Dogfood fixtures (web UI) |
+| Related | [BE-0189](../BE-0189-serve-ui-dogfood-ci-gate/BE-0189-serve-ui-dogfood-ci-gate.md) |
 | Origin | Dogfooding |
 <!-- /BE-METADATA -->
 
