@@ -1,18 +1,23 @@
-# Record form — the Save button is gated until a scenario exists, and the goal field accepts
-# input. Deterministic: "Save" carries the `disabled` attribute until authoring produces YAML, so
-# typing a goal alone must not enable it. No AI runs — we only assert the form's own state.
+# Record form — the AI-driven Record surface degrades gracefully when Claude can't be reached
+# (BE-0101). The dogfood runs keyless (no ANTHROPIC_API_KEY, no provider), so the Record view must
+# show its "needs Claude" gate, disable Generate, and keep Save disabled — while the plain goal
+# textarea still records typed input. Deterministic: pass/fail is the controls' own state, no AI runs.
 description: >-
-  Record form — Save stays disabled until a scenario is generated, and the goal textarea
-  records typed input.
+  Record form (keyless) — with no Claude reachable the AI gate shows, Generate and Save are
+  disabled, and the goal textarea still records typed input.
 scenarios:
-  - name: save stays disabled until a scenario is generated
-    description: On the Record view, Generate is ready and Save is disabled; typing a goal does not enable Save.
+  - name: the Record surface degrades gracefully without Claude
+    description: >-
+      On the Record view with no AI provider configured, the gate banner is present, Generate and
+      Save are disabled, and typing a goal changes neither.
     steps:
       - wait: { for: { id: view.record }, timeout: 10 }
       - assert:
-          - enabled: { id: record.generate }
+          - exists: { id: record.ai-gate }
+          - disabled: { id: record.generate }
           - disabled: { id: record.save }
       - type: { text: "increment the counter twice and check it reads 2", into: { id: record.goal } }
     expect:
       - value: { sel: { id: record.goal }, contains: "increment the counter" }
+      - disabled: { id: record.generate }
       - disabled: { id: record.save }
