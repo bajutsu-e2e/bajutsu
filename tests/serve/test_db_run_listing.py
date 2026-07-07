@@ -12,7 +12,7 @@ from _shared import fake_popen, project, write_run
 from sqlalchemy import create_engine
 
 from bajutsu import serve as srv
-from bajutsu.serve.operations import runs_payload
+from bajutsu.serve.operations import crawl_runs_payload, runs_payload
 from bajutsu.serve.server.db import RunRecord, SqlRepository
 from bajutsu.serve.server.models import Base
 
@@ -165,3 +165,21 @@ def test_runs_payload_falls_back_to_the_artifact_store_without_a_repository(tmp_
     payload, status = runs_payload(state)
     assert status == 200
     assert [r["id"] for r in payload] == ["20260621-9"]
+
+
+def test_crawl_runs_payload_is_empty_on_the_server_backend(tmp_path: Path) -> None:
+    # On the server backend, run artifacts live in the org-scoped object store, not runs_dir; a local
+    # scan there would be non-functional and could surface ids across orgs, so it returns empty until a
+    # store-backed, org-scoped crawl listing exists (BE-0180). A crawl run sits in runs_dir to prove the
+    # local scan is deliberately skipped — not merely empty for lack of data.
+    _scn_dir, _cfg, runs = project(tmp_path)
+    (runs / "20260621-c").mkdir()
+    (runs / "20260621-c" / "screenmap.json").write_text(
+        '{"nodes": [{}], "edges": [], "crashes": []}', encoding="utf-8"
+    )
+    with_repo = srv.ServeState(runs_dir=runs, repository=_repo())
+    assert crawl_runs_payload(with_repo) == ([], 200)
+    # The same runs_dir on the local backend does list that crawl — the scan itself works.
+    local = srv.ServeState(runs_dir=runs)
+    payload, status = crawl_runs_payload(local)
+    assert status == 200 and [r["id"] for r in payload] == ["20260621-c"]

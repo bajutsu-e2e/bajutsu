@@ -120,7 +120,14 @@ def crawl_runs_payload(state: ServeState) -> tuple[Any, int]:
     manifest-backed pass/fail history — a crawl run has no such verdict. Read-only and AI-free: it
     only summarizes the deterministic screen map and links to the crash/flow scenario files the crawl
     already wrote, served through the existing `/runs/<id>/...` static mount.
+
+    Scoped to the local backend. A server backend (`state.repository` wired) serves run artifacts from
+    an org-scoped object store, not `runs_dir`, so a local-filesystem scan would be non-functional
+    there and could surface run ids across org boundaries; until a store-backed, org-scoped crawl
+    listing exists, the endpoint returns an empty list on that backend rather than leak or mislead.
     """
+    if state.repository is not None:
+        return [], 200
     return list_crawl_runs(state.runs_dir), 200
 
 
