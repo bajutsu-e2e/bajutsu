@@ -710,13 +710,16 @@ def _run_job(state: ServeState, job: Job) -> None:
         return
     if not _build_app(state, job):
         return
+    # A stdin pipe is the human-handoff response channel (BE-0179): a paused `record --handoff stream`
+    # reads the human's response line here. Only handoff-capable commands get the pipe; every other
+    # job gets DEVNULL, so a subprocess that unexpectedly reads stdin sees EOF rather than blocking
+    # forever on input that will never arrive.
+    stdin = subprocess.PIPE if "--handoff" in job.cmd else subprocess.DEVNULL
     proc = state.popen(
         job.cmd,
         cwd=str(job.cwd or state.cwd),
         env=_spawn_env(),
-        # A stdin pipe is the human-handoff response channel (BE-0179): a paused `record` reads the
-        # human's response line here. Harmless for run/crawl, which never read stdin.
-        stdin=subprocess.PIPE,
+        stdin=stdin,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         text=True,

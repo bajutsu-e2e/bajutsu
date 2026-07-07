@@ -34,6 +34,13 @@ def test_request_round_trips_without_a_screenshot() -> None:
     assert back.reason == "help" and back.screenshot is None
 
 
+def test_request_from_json_rejects_non_object_json() -> None:
+    # Symmetric with response_from_json: a non-object payload is a ValueError, not an AttributeError.
+    for payload in ("[]", "null", '"x"', "42"):
+        with pytest.raises(ValueError, match="JSON object"):
+            request_from_json(payload)
+
+
 @pytest.mark.parametrize(
     "response",
     [

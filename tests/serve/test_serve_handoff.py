@@ -4,9 +4,11 @@ the stdin response channel, the awaiting-human job state, and the record argv fl
 from __future__ import annotations
 
 import io
+import subprocess
 from pathlib import Path
+from typing import Any
 
-from _shared import fake_popen, project
+from _shared import FakeProc, fake_popen, project
 
 from bajutsu import serve as srv
 from bajutsu.handoff import (
@@ -120,6 +122,26 @@ def test_respond_human_404s_for_an_unknown_job(tmp_path: Path) -> None:
     state = srv.ServeState(scenarios_dir=scn_dir, config=cfg, runs_dir=runs, cwd=tmp_path)
     _body, code = respond_human(state, "nope", {"cancelled": True})
     assert code == 404
+
+
+def test_run_job_pipes_stdin_only_for_handoff_capable_jobs(tmp_path: Path) -> None:
+    # Only a handoff-capable command (record --handoff stream) gets a stdin PIPE (the response
+    # channel); every other job gets DEVNULL, so a subprocess reading stdin sees EOF, not a hang.
+    scn_dir, cfg, runs = project(tmp_path)
+    seen: dict[str, object] = {}
+
+    def spy_popen(_cmd: list[str], **kw: Any) -> FakeProc:
+        seen["stdin"] = kw.get("stdin")
+        return FakeProc(["done\n"])
+
+    state = srv.ServeState(
+        scenarios_dir=scn_dir, config=cfg, runs_dir=runs, cwd=tmp_path, popen=spy_popen
+    )
+    srv.run_job(state, state.register(srv.Job(cmd=["bajutsu", "record", "--handoff", "stream"])))
+    assert seen["stdin"] is subprocess.PIPE
+
+    srv.run_job(state, state.register(srv.Job(cmd=["bajutsu", "run", "--scenario", "s.yaml"])))
+    assert seen["stdin"] is subprocess.DEVNULL
 
 
 def test_run_job_handles_the_request_line_and_clears_awaiting_human_on_completion(

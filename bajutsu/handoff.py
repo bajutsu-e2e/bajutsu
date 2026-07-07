@@ -124,8 +124,15 @@ def request_to_json(request: HandoffRequest) -> str:
 
 
 def request_from_json(payload: str) -> HandoffRequest:
-    """Parse a handoff request from its serialized form."""
+    """Parse a handoff request from its serialized form.
+
+    Raises `ValueError` on anything that is not a JSON object (like `response_from_json`), so a
+    malformed line on the cross-process channel fails clearly rather than crashing with an
+    `AttributeError` on `.get`.
+    """
     data = json.loads(payload)
+    if not isinstance(data, dict):
+        raise ValueError("handoff request must be a JSON object")
     shot = data.get("screenshot")
     return HandoffRequest(
         reason=str(data.get("reason", "")),
