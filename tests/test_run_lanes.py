@@ -112,7 +112,7 @@ def test_expand_file_returns_scenarios_and_file_description(tmp_path: Path) -> N
         "description: a suite\nscenarios:\n  - name: demo\n    steps:\n      - tap: { id: home.title }\n",
         encoding="utf-8",
     )
-    scenarios, description = _expand_file(path, _eff())
+    scenarios, description = _expand_file(path, _eff(), root=tmp_path)
     assert description == "a suite"
     assert [s.name for s in scenarios] == ["demo"]
 
@@ -122,7 +122,7 @@ def test_expand_file_missing_setup_ref_exits_2(tmp_path: Path) -> None:
     path = tmp_path / "s.yaml"
     path.write_text("- name: demo\n  steps:\n    - tap: { id: home.title }\n", encoding="utf-8")
     with pytest.raises(typer.Exit) as exc:
-        _expand_file(path, _eff(setup="missing.yaml"))
+        _expand_file(path, _eff(setup="missing.yaml"), root=tmp_path)
     assert exc.value.exit_code == 2
 
 
@@ -132,7 +132,7 @@ def test_expand_file_missing_component_ref_exits_2(tmp_path: Path) -> None:
         "- name: demo\n  steps:\n    - use: { component: missing.yaml }\n", encoding="utf-8"
     )
     with pytest.raises(typer.Exit) as exc:
-        _expand_file(path, _eff())
+        _expand_file(path, _eff(), root=tmp_path)
     assert exc.value.exit_code == 2
 
 
@@ -143,7 +143,7 @@ def test_expand_file_missing_data_file_exits_2(tmp_path: Path) -> None:
         encoding="utf-8",
     )
     with pytest.raises(typer.Exit) as exc:
-        _expand_file(path, _eff())
+        _expand_file(path, _eff(), root=tmp_path)
     assert exc.value.exit_code == 2
 
 

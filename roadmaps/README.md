@@ -367,6 +367,7 @@ Closing the edges the deterministic core does not touch — `serve`'s HTTP surfa
 | [BE-0152](BE-0152-totp-seed-artifact-leak/BE-0152-totp-seed-artifact-leak.md) | Keep literal TOTP seeds out of run artifacts | Implemented |
 | [BE-0153](BE-0153-encode-aware-secret-redaction/BE-0153-encode-aware-secret-redaction.md) | Encode-aware secret redaction | Implemented |
 | [BE-0155](BE-0155-idb-input-text-via-stdin/BE-0155-idb-input-text-via-stdin.md) | Pass idb input text via stdin to keep secrets out of argv | Implemented |
+| [BE-0174](BE-0174-scenario-ref-path-containment/BE-0174-scenario-ref-path-containment.md) | Contain scenario component and data refs within the suite root | Implemented |
 <!-- /GENERATED:implemented-security -->
 
 ### Configuration sourcing
@@ -610,9 +611,7 @@ Turn the local `bajutsu serve` launcher into a shared service. The runner drives
 Closing the edges the deterministic core does not touch — `serve`'s HTTP surface, how secrets flow through capture / record / artifacts, driver argument hygiene, and the CI supply chain. These items keep the tool safe to run on a shared machine and safe to hand a scenario from an untrusted source, without weakening the prime directives.
 
 <!-- GENERATED:proposals-security -->
-| ID | Item | Status |
-|---|---|---|
-| [BE-0174](BE-0174-scenario-ref-path-containment/BE-0174-scenario-ref-path-containment.md) | Contain scenario component and data refs within the suite root | Proposal |
+
 <!-- /GENERATED:proposals-security -->
 
 ### Configuration sourcing
