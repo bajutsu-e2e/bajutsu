@@ -754,3 +754,7 @@ def _run_job(state: ServeState, job: Job) -> None:
         job.proc = None
         job.exit_code = proc.returncode
         job.status = "done"
+        # A record that paused for a human but ended without a response (a StreamHandoff timeout →
+        # cancel, or a killed job) must not report awaiting-human on its terminal view — the process
+        # is gone and cannot be resumed (BE-0179).
+        job.awaiting_human = False

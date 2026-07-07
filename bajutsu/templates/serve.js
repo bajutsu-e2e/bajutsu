@@ -561,9 +561,13 @@ function onHandoffRequest(req){
   const shot=$('#rec-handoff-shot');
   if(req.screenshot){shot.src='data:image/png;base64,'+req.screenshot;shot.hidden=false;}else{shot.removeAttribute('src');shot.hidden=true;}
   $('#rec-handoff-value').value='';
+  syncHandoffSend();
   showHandoffPanel();
   $('#rec-handoff-value').focus();
 }
+// "Supply value" only submits a value — it is disabled while the field is empty, so an empty click
+// can't fall through to an acted-style resume (empty `values` coerces to acted server-side).
+function syncHandoffSend(){$('#rec-handoff-send').disabled=!$('#rec-handoff-value').value.trim();}
 async function sendHandoff(body){
   if(!recJobId)return;
   // Only hide the pane once we know the response actually reached the paused record — a resume that
@@ -575,7 +579,9 @@ async function sendHandoff(body){
     hideHandoffPanel();
   }catch(e){appendLine($('#rec-out'),'handoff response failed: '+e);}
 }
-$('#rec-handoff-send').addEventListener('click',()=>{const v=$('#rec-handoff-value').value;sendHandoff({values:v?[v]:[]});});
+$('#rec-handoff-value').addEventListener('input',syncHandoffSend);
+$('#rec-handoff-value').addEventListener('keydown',e=>{if(e.key==='Enter'&&!$('#rec-handoff-send').disabled)$('#rec-handoff-send').click();});
+$('#rec-handoff-send').addEventListener('click',()=>{const v=$('#rec-handoff-value').value.trim();if(!v)return;sendHandoff({values:[v]});});
 $('#rec-handoff-acted').addEventListener('click',()=>sendHandoff({acted:true}));
 $('#rec-handoff-cancel').addEventListener('click',()=>sendHandoff({cancelled:true}));
 // Run the current scenario in place, without switching to Replay. Persist the YAML first (creating

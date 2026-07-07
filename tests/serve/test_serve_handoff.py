@@ -122,7 +122,7 @@ def test_respond_human_404s_for_an_unknown_job(tmp_path: Path) -> None:
     assert code == 404
 
 
-def test_run_job_marks_awaiting_human_and_keeps_the_request_out_of_the_transcript(
+def test_run_job_handles_the_request_line_and_clears_awaiting_human_on_completion(
     tmp_path: Path,
 ) -> None:
     scn_dir, cfg, runs = project(tmp_path)
@@ -137,6 +137,9 @@ def test_run_job_marks_awaiting_human_and_keeps_the_request_out_of_the_transcrip
     job = state.register(srv.Job(cmd=["x"]))
     srv.run_job(state, job)
 
-    assert job.awaiting_human is True  # the request was seen and the job entered the paused state
+    # The request line was recognized (kept out of the transcript, unlike a normal narration line)…
     assert request not in job.view()["lines"]  # the serialized payload isn't dumped into the log
     assert "resumed, tapping next" in job.view()["lines"]
+    # …and awaiting-human is cleared once the job ends, so a job that paused but got no response
+    # doesn't report an un-resumable paused state forever (BE-0179).
+    assert job.view()["awaitingHuman"] is False
