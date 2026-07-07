@@ -9,7 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0155") |
-| 実装 PR | [#615](https://github.com/bajutsu-e2e/bajutsu/pull/615) |
+| 実装 PR | [#615](https://github.com/bajutsu-e2e/bajutsu/pull/615), [#737](https://github.com/bajutsu-e2e/bajutsu/pull/737) |
 | トピック | セキュリティ強化 |
 <!-- /BE-METADATA -->
 
@@ -31,6 +31,11 @@ def text_cmd(udid: str, text: str) -> list[str]:
 
 ## 詳細設計
 
+> **この節は当初の提案であり、実際に実装されたものとは異なります。** 以下の stdin 方式は実現でき
+> ませんでした。fb-idb の `idb ui text` はテキストを位置引数として要求し、stdin を読まないためです。
+> 実装版は同じく値を argv に載せませんが、その手段として fb-idb の gRPC クライアント（`client.text`）
+> を用います。実際に採用した設計は *進捗* を参照してください。
+
 値の解決方法や扱いは変えず、`idb` への渡し方だけを変えます。
 
 - `idb ui text` への入力を argv ではなく stdin 経由で渡し、プロセスのコマンドラインに値が一切現れないようにします。この設計は、位置引数のテキストを渡さない場合に `idb ui text` が stdin を読む（stdin が空のときのみ argv にフォールバックする）ことを前提とするため、実装時に idb の実際の挙動を確認します。これは idb 側の新しい機能を必要としない、呼び出し方だけの変更です。
@@ -49,20 +54,29 @@ def text_cmd(udid: str, text: str) -> list[str]:
 > 作業分解（作業の単位ごとに 1 つ）に対応し、ログには変更内容と時期（古い順）を PR へのリンクと
 > ともに記録します。
 
-- [x] `text_cmd`／idb ドライバのテキスト入力パスを、argv ではなく stdin 経由に切り替える。
-- [x] 入力したテキストが構築後の argv に一切現れないことを検証する、ドライバ層のテストを追加・調整する。
+- [x] 入力テキストを `idb` の argv から外す。CLI ではなく fb-idb の gRPC クライアントで実現しました。
+- [x] 入力した値が subprocess の argv に一切現れないことを検証する、ドライバ層のテストを追加・調整しました。
 
-- idb ドライバで実装した。`text_cmd` は argv にテキストを載せなくなり、`IdbDriver.type_text` は
-  `_run_text` staticmethod（`simctl pbcopy` の `Env._run_pbcopy` に倣ったもの）を通じて値を
-  `idb ui text` の stdin へ渡す。これによりシークレットや OTP がプロセスのコマンドラインに現れなく
-  なった。ドライバのテストで、値が構築後の argv に存在せず stdin 側に渡ることを検証している。
-  `Driver.type_text` インターフェースは不変。なお本変更は「位置引数のテキストを渡さないとき
-  `idb ui text` が stdin を読む」という挙動に依存する。これは決定的ゲートではなく E2E（実機）
-  パスで確認される。
+- 最初は stdin 経由を試み（#615）、その後壊れていることが判明しました。この設計は「位置引数のテキストを
+  渡さなければ `idb ui text` が stdin を読む」という前提に立っていましたが、実際はそうなっていません。
+  fb-idb 1.1.7 は `text` を必須の位置引数（`type=str`）として宣言し、stdin から読む経路を持ちません。
+  そのため値を stdin に載せて `idb ui text --udid <udid>` を実行すると
+  `error: the following arguments are required: text`（exit 2）で失敗します。つまり stdin 化は
+  idb のテキスト入力そのものを壊しており、あらゆる `type` アクションが `CalledProcessError` として
+  表面化していました（crawl のデモ中に発覚）。決定的ゲートは fake の `_run_text` を注入するだけで、
+  実際の `idb ui text` の stdin 挙動を検証していなかったため見落としました。
+- テキスト入力について CLI の利用をやめ、fb-idb の gRPC クライアントを直接呼ぶ形に修正しました。
+  `idb ui text` は `client.text()` の薄いラッパーにすぎないため、`IdbDriver.type_text` は
+  `_type_text_via_companion` を経由し、`ClientManager.from_udid` でセッションを開いて
+  `await client.text(text=…)` を呼びます。値は gRPC で `idb_companion` に送られ、コマンドラインには
+  一切現れません。本項目が本来目指していた状態を、これで実際に達成しました。実機（起動中のシミュレータ）
+  で確認済みです。`Driver.type_text` インターフェースは不変で、ドライバのテストは `_type_text` クラス
+  属性を差し替え、値がコンパニオン経路に渡ること、およびその値のために subprocess の argv が組み立て
+  られないことを検証します。
 
 ## 参考
 
-- `bajutsu/drivers/idb.py:78`（`text_cmd`）
+- `bajutsu/drivers/idb.py`（`_type_text_via_companion`、`IdbDriver.type_text`）
 - 関連: [BE-0032](../BE-0032-secret-variables/BE-0032-secret-variables-ja.md)
   （シークレット変数）、[BE-0035](../BE-0035-device-control-primitives/BE-0035-device-control-primitives-ja.md)
   （デバイス制御ステップ）
