@@ -145,9 +145,13 @@ def _confined_config_path(root: Path, raw: str) -> Path | None:
     if it escapes — the one barrier between client input and a filesystem read. Resolving **first**
     normalizes any ``..`` so the containment check is sound: an absolute path left unresolved could
     keep *root* as a literal parent while the real file lies outside it (a path-traversal read)."""
-    target = (Path(raw) if Path(raw).is_absolute() else root / raw).resolve()
-    base = root.resolve()
-    return target if (target == base or base in target.parents) else None
+    try:
+        base = root.resolve(strict=True)
+        candidate = (Path(raw) if Path(raw).is_absolute() else base / raw).resolve()
+        candidate.relative_to(base)
+        return candidate
+    except (OSError, RuntimeError, ValueError):
+        return None
 
 
 def bind_config(state: ServeState, raw: str) -> tuple[Any, int]:
