@@ -128,16 +128,40 @@ def test_single_anytool_is_treated_as_the_named_case() -> None:
     assert tool_use is not None and tool_use.name == "do" and tool_use.input == {"id": "a"}
 
 
-def test_multi_anytool_wraps_the_schema_and_unwraps_the_choice() -> None:
-    runner = FakeRunner(_envelope({"tool": "finish", "arguments": {"note": "done"}}))
+def test_multi_anytool_wraps_the_schema_as_an_actions_list() -> None:
+    # AnyTool over several tools → the CLI emits an ordered `actions` list (BE-0178), each entry a
+    # {tool, arguments} pair, since the CLI returns one object rather than parallel tool calls.
+    runner = FakeRunner(_envelope({"actions": [{"tool": "finish", "arguments": {"note": "done"}}]}))
     resp = claude_code.ClaudeCodeBackend(runner=runner).create_message(
         _request(tools=[_TAP, _FINISH], tool_choice=AnyTool())
     )
     schema = json.loads(_flag(runner.cmd, "--json-schema"))
-    assert schema["properties"]["tool"]["enum"] == ["tap", "finish"]
-    assert "arguments" in schema["properties"]
+    item = schema["properties"]["actions"]["items"]
+    assert item["properties"]["tool"]["enum"] == ["tap", "finish"]
+    assert "arguments" in item["properties"]
     tool_use = resp.first_tool_use()
     assert tool_use is not None and tool_use.name == "finish" and tool_use.input == {"note": "done"}
+
+
+def test_multi_anytool_maps_several_actions_to_ordered_blocks() -> None:
+    # A determinable batch: several actions in one turn → one ToolUseBlock each, in order.
+    runner = FakeRunner(
+        _envelope(
+            {
+                "actions": [
+                    {"tool": "tap", "arguments": {"id": "email"}},
+                    {"tool": "tap", "arguments": {"id": "password"}},
+                    {"tool": "finish", "arguments": {"note": "done"}},
+                ]
+            }
+        )
+    )
+    resp = claude_code.ClaudeCodeBackend(runner=runner).create_message(
+        _request(tools=[_TAP, _FINISH], tool_choice=AnyTool())
+    )
+    blocks = [b for b in resp.content if b.name in ("tap", "finish")]
+    assert [b.name for b in blocks] == ["tap", "tap", "finish"]
+    assert blocks[0].input == {"id": "email"} and blocks[2].input == {"note": "done"}
 
 
 @pytest.mark.parametrize("output", [None, "not-a-dict", {"tool": "finish"}, {"arguments": {}}])

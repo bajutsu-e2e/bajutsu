@@ -94,26 +94,41 @@ def _schema_and_note(request: MessageRequest) -> tuple[dict[str, Any], str, str 
             "or read any file other than the screenshots named below (when present)."
         )
         return forced.input_schema, note, forced.name
-    # `AnyTool` over several tools: the model picks `tool` and supplies its `arguments`. `arguments`
-    # stays a bare object (not a per-tool `oneOf`) so the schema is one the CLI reliably enforces;
-    # the per-tool schemas ride in the note for the model to follow.
+    # `AnyTool` over several tools: the model emits an ordered `actions` list, each entry a
+    # `{tool, arguments}` pair (BE-0178) — the Claude Code CLI returns one structured object, not
+    # parallel tool calls, so a list-shaped output is how it expresses a multi-action turn. Usually
+    # one action; several only when each is determinable from the current screen. `arguments` stays
+    # a bare object (not a per-tool `oneOf`) so the schema is one the CLI reliably enforces; the
+    # per-tool schemas ride in the note for the model to follow.
     schema: dict[str, Any] = {
         "type": "object",
         "properties": {
-            "tool": {"type": "string", "enum": [t.name for t in request.tools]},
-            "arguments": {"type": "object"},
+            "actions": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "tool": {"type": "string", "enum": [t.name for t in request.tools]},
+                        "arguments": {"type": "object"},
+                    },
+                    "required": ["tool", "arguments"],
+                },
+            }
         },
-        "required": ["tool", "arguments"],
+        "required": ["actions"],
     }
     catalog = "\n".join(
         f"- `{t.name}`: {t.description} — arguments schema: {json.dumps(t.input_schema)}"
         for t in request.tools
     )
     note = (
-        "\n\nYou are running non-interactively. Choose exactly one tool and emit one JSON object: "
-        "`tool` is the chosen tool's name and `arguments` is an object matching that tool's input "
-        "schema. Do not call any other tool or read any file other than the screenshots named "
-        f"below (when present). The tools:\n{catalog}"
+        "\n\nYou are running non-interactively. Emit one JSON object with an `actions` array; each "
+        "entry has `tool` (the chosen tool's name) and `arguments` (an object matching that tool's "
+        "input schema). Usually the array holds ONE action. Include several ONLY when each is "
+        "determinable from the current screen without seeing the previous action's effect (e.g. "
+        "fill several form fields, then submit); a `finish` entry ends the turn. Do not call any "
+        "other tool or read any file other than the screenshots named below (when present). The "
+        f"tools:\n{catalog}"
     )
     return schema, note, None
 
@@ -289,16 +304,25 @@ def _default_runner(
     return result.stdout
 
 
-def _tool_use(out: Any, forced_name: str | None) -> ToolUseBlock | None:
-    """Map the CLI's `structured_output` to a neutral tool-use block, or ``None`` when malformed."""
-    if not isinstance(out, dict):
-        return None
+def _tool_uses(out: Any, forced_name: str | None) -> list[ToolUseBlock]:
+    """Map the CLI's `structured_output` to neutral tool-use blocks, in order (BE-0178).
+
+    A single forced tool yields one block from the arguments object. The multi-tool wrapper yields
+    one block per entry in its `actions` list — usually one, several for a determinable batch.
+    Malformed output (or a malformed entry) is dropped, matching the empty-content contract.
+    """
     if forced_name is not None:
-        return ToolUseBlock(name=forced_name, input=out)
-    tool, args = out.get("tool"), out.get("arguments")
-    if not isinstance(tool, str) or not isinstance(args, dict):
-        return None
-    return ToolUseBlock(name=tool, input=args)
+        return [ToolUseBlock(name=forced_name, input=out)] if isinstance(out, dict) else []
+    if not isinstance(out, dict) or not isinstance(actions := out.get("actions"), list):
+        return []
+    blocks: list[ToolUseBlock] = []
+    for action in actions:
+        if not isinstance(action, dict):
+            continue
+        tool, args = action.get("tool"), action.get("arguments")
+        if isinstance(tool, str) and isinstance(args, dict):
+            blocks.append(ToolUseBlock(name=tool, input=args))
+    return blocks
 
 
 def _response(stdout: str, forced_name: str | None) -> MessageResponse:
@@ -316,8 +340,7 @@ def _response(stdout: str, forced_name: str | None) -> MessageResponse:
         raise RuntimeError(f"claude -p returned non-object JSON: {stdout[:200]!r}")
     if envelope.get("is_error"):
         raise RuntimeError(f"claude -p reported an error: {envelope.get('result')!r}")
-    block = _tool_use(envelope.get("structured_output"), forced_name)
-    content: list[ContentBlock] = [block] if block is not None else []
+    content: list[ContentBlock] = list(_tool_uses(envelope.get("structured_output"), forced_name))
     return MessageResponse(
         content=content, stop_reason=envelope.get("stop_reason"), usage=envelope.get("usage")
     )

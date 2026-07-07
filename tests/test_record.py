@@ -39,7 +39,7 @@ class LoopAgent:
     """Always proposes tapping `a` (never done) — for max_steps testing."""
 
     def next_action(self, observation: Observation) -> Proposal:
-        return Proposal(step=Step.model_validate({"tap": {"id": "a"}}))
+        return Proposal(steps=[Step.model_validate({"tap": {"id": "a"}})])
 
 
 class PlanningAgent(FakeAgent):
@@ -78,7 +78,7 @@ def test_record_produces_scenario() -> None:
     driver = FakeDriver([_el("go", "Go")], react=react)
     agent = FakeAgent(
         [
-            Proposal(step=Step.model_validate({"tap": {"id": "go"}})),
+            Proposal(steps=[Step.model_validate({"tap": {"id": "go"}})]),
             Proposal(done=True, expect=[Assertion.model_validate({"exists": {"id": "done"}})]),
         ]
     )
@@ -106,7 +106,7 @@ def test_record_capture_video_tags_the_first_step_for_a_scenario_wide_recording(
 
     driver = FakeDriver([_el("go", "Go")])
     agent = FakeAgent(
-        [Proposal(step=Step.model_validate({"tap": {"id": "go"}})), Proposal(done=True)]
+        [Proposal(steps=[Step.model_validate({"tap": {"id": "go"}})]), Proposal(done=True)]
     )
     scenario = record(driver, "x", agent, capture_video=True)
     assert scenario.steps[0].capture == ["video"]
@@ -121,7 +121,7 @@ def test_record_without_capture_video_requests_no_interval() -> None:
 
     driver = FakeDriver([_el("go", "Go")])
     agent = FakeAgent(
-        [Proposal(step=Step.model_validate({"tap": {"id": "go"}})), Proposal(done=True)]
+        [Proposal(steps=[Step.model_validate({"tap": {"id": "go"}})]), Proposal(done=True)]
     )
     scenario = record(driver, "x", agent)  # default: no video
     assert scenario.steps[0].capture is None
@@ -239,7 +239,7 @@ def test_record_sets_scenario_provenance_from_goal() -> None:
     # The goal is the scenario-level `from:` provenance (BE-0044), and it round-trips.
     driver = FakeDriver([_el("go", "Go")])
     agent = FakeAgent(
-        [Proposal(step=Step.model_validate({"tap": {"id": "go"}})), Proposal(done=True)]
+        [Proposal(steps=[Step.model_validate({"tap": {"id": "go"}})]), Proposal(done=True)]
     )
     scenario = record(driver, "reach the done screen", agent, name="reach")
     assert scenario.from_ == "reach the done screen"
@@ -249,7 +249,7 @@ def test_record_sets_scenario_provenance_from_goal() -> None:
 def test_record_streams_plan_and_feeds_it_to_the_agent() -> None:
     driver = FakeDriver([_el("go", "Go")])
     agent = PlanningAgent(
-        [Proposal(step=Step.model_validate({"tap": {"id": "go"}})), Proposal(done=True)],
+        [Proposal(steps=[Step.model_validate({"tap": {"id": "go"}})]), Proposal(done=True)],
         plan_steps=["Tap Go", "Confirm the result"],
     )
     msgs: list[str] = []
@@ -265,7 +265,7 @@ def test_record_without_a_planning_agent_still_works() -> None:
     """A fake agent with no `plan` method records exactly as before — planning is optional."""
     driver = FakeDriver([_el("go", "Go")])
     agent = FakeAgent(
-        [Proposal(step=Step.model_validate({"tap": {"id": "go"}})), Proposal(done=True)]
+        [Proposal(steps=[Step.model_validate({"tap": {"id": "go"}})]), Proposal(done=True)]
     )
     scenario = record(driver, "x", agent)
     assert scenario.steps and scenario.steps[0].tap is not None and scenario.steps[0].tap.id == "go"
@@ -273,7 +273,7 @@ def test_record_without_a_planning_agent_still_works() -> None:
 
 def test_record_stops_on_unresolvable_action() -> None:
     driver = FakeDriver([_el("a", "A")])
-    agent = FakeAgent([Proposal(step=Step.model_validate({"tap": {"id": "missing"}}))])
+    agent = FakeAgent([Proposal(steps=[Step.model_validate({"tap": {"id": "missing"}})])])
     scenario = record(driver, "x", agent)
     assert scenario.steps == []  # could not execute -> not recorded
 
@@ -309,7 +309,7 @@ def test_record_shows_which_plan_step_is_running() -> None:
     msgs: list[str] = []
     agent = PlanningAgent(
         [
-            Proposal(step=Step.model_validate({"tap": {"id": "a"}}), note="do it", plan_step=2),
+            Proposal(steps=[Step.model_validate({"tap": {"id": "a"}})], note="do it", plan_step=2),
             Proposal(done=True, expect=[]),
         ],
         plan_steps=["step one", "step two", "step three"],
@@ -325,7 +325,7 @@ def test_record_shows_intent_and_action_on_one_line() -> None:
     msgs: list[str] = []
     agent = FakeAgent(
         [
-            Proposal(step=Step.model_validate({"tap": {"id": "a"}}), note="open the panel"),
+            Proposal(steps=[Step.model_validate({"tap": {"id": "a"}})], note="open the panel"),
             Proposal(done=True, expect=[]),
         ]
     )
@@ -338,8 +338,8 @@ def test_record_stops_on_an_oscillation_before_max_steps() -> None:
     # turn (the real-world stuck-record failure). A,B,A,B → stop after four recorded steps.
     driver = FakeDriver([_el("open", "Open"), _el("close", "Close")])
     cycle = [
-        Proposal(step=Step.model_validate({"tap": {"id": "open"}})),
-        Proposal(step=Step.model_validate({"tap": {"id": "close"}})),
+        Proposal(steps=[Step.model_validate({"tap": {"id": "open"}})]),
+        Proposal(steps=[Step.model_validate({"tap": {"id": "close"}})]),
     ] * 10
     scenario = record(driver, "x", FakeAgent(cycle), max_steps=30)
     assert [s.tap.id for s in scenario.steps if s.tap] == ["open", "close", "open", "close"]
@@ -384,7 +384,7 @@ def test_alert_guard_activity_is_reported() -> None:
 
     agent = FakeAgent(
         [
-            Proposal(step=Step.model_validate({"tap": {"label": "Get Started"}})),
+            Proposal(steps=[Step.model_validate({"tap": {"label": "Get Started"}})]),
             Proposal(done=True),
         ]
     )
@@ -414,7 +414,7 @@ def test_alert_guard_not_fired_on_a_label_only_app() -> None:
     driver = FakeDriver([_vel("Get Started", ["button"])])
     agent = FakeAgent(
         [
-            Proposal(step=Step.model_validate({"tap": {"label": "Get Started"}})),
+            Proposal(steps=[Step.model_validate({"tap": {"label": "Get Started"}})]),
             Proposal(done=True),
         ]
     )
@@ -429,7 +429,7 @@ def test_settle_wait_targets_value_assertion() -> None:
         done=True,
         expect=[Assertion.model_validate({"value": {"sel": {"id": "counter"}, "equals": "2"}})],
     )
-    agent = FakeAgent([Proposal(step=Step.model_validate({"tap": {"id": "go"}})), finish])
+    agent = FakeAgent([Proposal(steps=[Step.model_validate({"tap": {"id": "go"}})]), finish])
     scenario = record(driver, "g", agent)
     assert scenario.steps[-1].wait is not None and scenario.steps[-1].wait.for_ is not None
     assert scenario.steps[-1].wait.for_.id == "counter"
@@ -440,7 +440,7 @@ def test_no_settle_wait_for_negated_assertion() -> None:
     finish = Proposal(
         done=True, expect=[Assertion.model_validate({"exists": {"id": "x", "negate": True}})]
     )
-    agent = FakeAgent([Proposal(step=Step.model_validate({"tap": {"id": "go"}})), finish])
+    agent = FakeAgent([Proposal(steps=[Step.model_validate({"tap": {"id": "go"}})]), finish])
     scenario = record(driver, "g", agent)
     assert all(step.wait is None for step in scenario.steps)  # nothing positive to wait for
 
@@ -465,7 +465,9 @@ def test_record_tokenizes_a_typed_secret_but_types_the_real_value() -> None:
     agent = FakeAgent(
         [
             Proposal(
-                step=Step.model_validate({"type": {"text": "hunter2", "into": {"id": "password"}}})
+                steps=[
+                    Step.model_validate({"type": {"text": "hunter2", "into": {"id": "password"}}})
+                ]
             ),
             Proposal(done=True),
         ]
@@ -491,7 +493,7 @@ def test_record_leaves_non_secret_text_unchanged() -> None:
     agent = FakeAgent(
         [
             Proposal(
-                step=Step.model_validate({"type": {"text": "alice", "into": {"id": "username"}}})
+                steps=[Step.model_validate({"type": {"text": "alice", "into": {"id": "username"}}})]
             ),
             Proposal(done=True),
         ]
@@ -507,7 +509,9 @@ def test_record_narrates_a_tokenization_without_leaking_the_literal() -> None:
     agent = FakeAgent(
         [
             Proposal(
-                step=Step.model_validate({"type": {"text": "hunter2", "into": {"id": "password"}}}),
+                steps=[
+                    Step.model_validate({"type": {"text": "hunter2", "into": {"id": "password"}}})
+                ],
                 note="typing hunter2 into the password field",  # reasoning echoes the literal
             ),
             Proposal(done=True),
@@ -532,7 +536,9 @@ def test_record_without_secrets_records_the_literal_as_before() -> None:
     agent = FakeAgent(
         [
             Proposal(
-                step=Step.model_validate({"type": {"text": "hunter2", "into": {"id": "password"}}})
+                steps=[
+                    Step.model_validate({"type": {"text": "hunter2", "into": {"id": "password"}}})
+                ]
             ),
             Proposal(done=True),
         ]
@@ -604,3 +610,102 @@ def test_screenshot_bytes_surfaces_failure_instead_of_swallowing(
     assert "simulator gone" in caplog.text
     # The temp file is cleaned up even on failure, so repeated failures don't leak PNGs.
     assert driver.attempted_path is not None and not Path(driver.attempted_path).exists()
+
+
+# --- multi-action batch turns (BE-0178) ---
+
+
+def test_record_executes_a_full_intra_screen_batch_in_order() -> None:
+    # Several actions determinable from one screen run in one turn; the screen identity is stable
+    # (no transition), so the whole batch executes and is recorded in order — one model turn.
+    driver = FakeDriver([_el("a", "A"), _el("b", "B"), _el("c", "C")])
+    agent = FakeAgent(
+        [
+            Proposal(
+                steps=[
+                    Step.model_validate({"tap": {"id": "a"}}),
+                    Step.model_validate({"tap": {"id": "b"}}),
+                    Step.model_validate({"tap": {"id": "c"}}),
+                ]
+            ),
+            Proposal(done=True),  # a second turn re-observes and finishes
+        ]
+    )
+    scenario = record(driver, "batch", agent)
+    assert [s.tap.id for s in scenario.steps if s.tap] == ["a", "b", "c"]
+    # the artifact stays a flat, individually-resolved step list — unchanged shape, round-trips
+    reloaded = load_scenarios(dump_scenarios([scenario]))
+    assert [s.tap.id for s in reloaded[0].steps if s.tap] == ["a", "b", "c"]
+
+
+def test_record_aborts_batch_on_screen_change_recording_only_the_prefix() -> None:
+    # The screen moves out from under the plan after the first step; the rest of the batch is
+    # abandoned (never executed, never recorded) and the loop re-observes (Decision 2, "仕切り直し").
+    after = [_el("done", "Done", ["staticText"])]
+
+    def react(d: FakeDriver, kind: str, arg: object) -> None:
+        if kind == "tap" and isinstance(arg, dict) and arg.get("id") == "a":
+            d.screen = after
+
+    driver = FakeDriver([_el("a", "A"), _el("b", "B"), _el("c", "C")], react=react)
+    agent = FakeAgent(
+        [
+            Proposal(
+                steps=[
+                    Step.model_validate({"tap": {"id": "a"}}),
+                    Step.model_validate({"tap": {"id": "b"}}),
+                    Step.model_validate({"tap": {"id": "c"}}),
+                ]
+            ),
+            Proposal(done=True),
+        ]
+    )
+    scenario = record(driver, "batch", agent)
+    assert [s.tap.id for s in scenario.steps if s.tap] == ["a"]  # only the executed prefix
+    assert len([a for a in driver.actions if a[0] == "tap"]) == 1  # b and c never executed
+
+
+def test_record_aborts_batch_on_midbatch_resolve_failure_recording_prefix() -> None:
+    # A batched step that no longer resolves — after at least one executed — aborts the rest and
+    # re-observes; only the executed prefix is recorded (unlike a length-1 unresolvable, which stops).
+    driver = FakeDriver([_el("a", "A"), _el("c", "C")])
+    agent = FakeAgent(
+        [
+            Proposal(
+                steps=[
+                    Step.model_validate({"tap": {"id": "a"}}),
+                    Step.model_validate({"tap": {"id": "missing"}}),
+                    Step.model_validate({"tap": {"id": "c"}}),
+                ]
+            ),
+            Proposal(done=True),
+        ]
+    )
+    scenario = record(driver, "batch", agent)
+    assert [s.tap.id for s in scenario.steps if s.tap] == ["a"]
+
+
+def test_record_runs_actions_then_finishes_in_one_turn() -> None:
+    # A turn may end with finish after actions (Decision 3): the action runs, then the loop finishes
+    # with finish's assertions — action and conclusion in a single model turn.
+    nxt = [_el("done", "Done", ["staticText"])]
+
+    def react(d: FakeDriver, kind: str, arg: object) -> None:
+        if kind == "tap":
+            d.screen = nxt
+
+    driver = FakeDriver([_el("go", "Go")], react=react)
+    agent = FakeAgent(
+        [
+            Proposal(
+                steps=[Step.model_validate({"tap": {"id": "go"}})],
+                done=True,
+                expect=[Assertion.model_validate({"exists": {"id": "done"}})],
+            )
+        ]
+    )
+    scenario = record(driver, "reach done", agent)
+    assert scenario.steps[0].tap is not None and scenario.steps[0].tap.id == "go"
+    assert scenario.steps[1].wait is not None and scenario.steps[1].wait.for_ is not None
+    assert scenario.steps[1].wait.for_.id == "done"
+    assert scenario.expect[0].exists is not None and scenario.expect[0].exists.sel.id == "done"

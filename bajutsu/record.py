@@ -15,6 +15,7 @@ from pathlib import Path
 
 from bajutsu import usage as _usage
 from bajutsu.agent import Agent, Observation
+from bajutsu.crawl import screen_identity
 from bajutsu.drivers import base
 from bajutsu.elements import shows_app_ui
 from bajutsu.handoff import Handoff, HandoffRequest, HumanHandoffUnavailable
@@ -401,40 +402,79 @@ def record(
                 break
             say(f"[{n}] ✋ handoff resolved; re-observing the live screen")
             continue
-        # One line per step: which plan step it advances, the intent (what it is trying to do), and
-        # the concrete action, together. The reasoning is masked first so the live stream never
-        # carries a secret literal (BE-0120).
-        intent = _mask_secrets(proposal.note, secret_tokens or [])[0] if proposal.note else ""
         plan_tag = (
             f"(plan {proposal.plan_step}/{len(plan)}) " if proposal.plan_step and plan else ""
         )
-        lead = f"[{n}] {plan_tag}\U0001f4ad {intent}  →  " if intent else f"[{n}] {plan_tag}→ "
+        # Execute the proposed steps as a batch (BE-0178). It is intra-screen by construction: after
+        # each executed step the screen's identity is compared against the one the batch was planned
+        # against, and the moment it changes with steps still pending, the rest is abandoned and the
+        # loop re-observes — so a batch never acts on a screen that moved out from under it. Only the
+        # steps that actually executed are recorded; the aborted tail is never written. The signature
+        # ignores per-field state (fill/enabled/selected) so filling a form's fields — the batch's own
+        # intended work — is not mistaken for a transition; only elements appearing/disappearing is.
+        before_id = screen_identity(elements)
+        stop = rebatch = False
+        for i, proposed in enumerate(proposal.steps):
+            m = len(steps) + 1
+            # One line per step: plan tag, the step's own intent (its `from_` reason; the turn-level
+            # note is the fallback for the first action), and the concrete action. The reasoning is
+            # masked first so the live stream never carries a secret literal (BE-0120).
+            reason = proposed.from_ or (proposal.note if i == 0 else "")
+            intent = _mask_secrets(reason, secret_tokens or [])[0] if reason else ""
+            lead = f"[{m}] {plan_tag}\U0001f4ad {intent}  →  " if intent else f"[{m}] {plan_tag}→ "
+            # Tokenize a matched secret before narrating or recording — so neither the written
+            # scenario nor the live stream ever carries the literal (BE-0120) — but execute the
+            # agent's unmodified step, since the app needs the real value to reach its screen.
+            recorded_step, tokenized = _tokenize_secrets(proposed, secret_tokens or [])
+            say(f"{lead}{_describe_step(recorded_step)}")
+            if tokenized:
+                say(f"[{m}] \U0001f512 tokenized secret in typed text → {', '.join(tokenized)}")
+            if not _execute_with_recovery(driver, proposed, clock, alert_guard, report=report):
+                # The step did not resolve, even after clearing prompts. If nothing in this turn
+                # executed (the length-1 unresolvable case, unchanged from before), stop; otherwise
+                # the plan went stale mid-batch — abort the rest and re-observe next turn.
+                if i == 0:
+                    say(f"[{m}] ! could not resolve that target on the live screen; stopping")
+                    stop = True
+                else:
+                    say(f"[{m}] ! a batched step no longer resolves; re-observing the new screen")
+                    rebatch = True
+                break
+            steps.append(recorded_step)
+            if _is_looping([_describe_step(s) for s in steps]):
+                say(
+                    f"[{m}] ⟳ the agent is repeating actions without progress; stopping "
+                    "(refine the goal, or the app may need accessibility ids for this control)"
+                )
+                stop = True
+                break
+            # A change on the last step (e.g. the submit tap) is legitimate — there is nothing left
+            # to invalidate — so only abort when steps remain (Decision 2, "仕切り直し").
+            if i < len(proposal.steps) - 1 and screen_identity(driver.query()) != before_id:
+                say(f"[{m}] ↻ the screen changed mid-batch; re-observing before the next action")
+                rebatch = True
+                break
+        if stop:
+            break
+        if rebatch:
+            continue  # the batch was cut short; re-observe and re-plan from the new screen
         if proposal.done:
-            say(f"{lead}✓ finish · {len(proposal.expect)} assertion(s)")
+            # `finish` after the batch: the actions have run, now conclude with the goal's checks
+            # (Decision 3). Its assertions verify the settled final screen exactly as before.
+            note = _mask_secrets(proposal.note, secret_tokens or [])[0] if proposal.note else ""
+            fin = (
+                f"[{len(steps) + 1}] {plan_tag}\U0001f4ad {note}  →  "
+                if note
+                else f"[{len(steps) + 1}] {plan_tag}→ "
+            )
+            say(f"{fin}✓ finish · {len(proposal.expect)} assertion(s)")
             expect = proposal.expect
             settle = _settle_step(expect)
             if settle is not None:
                 steps.append(settle)  # let an async screen render before replay verifies
             break
-        if proposal.step is None:
+        if not proposal.steps:
             say(f"[{n}] agent proposed no action; stopping")
-            break
-        # Tokenize a matched secret before narrating or recording — so neither the written
-        # scenario nor the live progress stream ever carries the literal (BE-0120) — but execute
-        # the agent's unmodified proposal, since the app needs the real value to reach its screen.
-        recorded_step, tokenized = _tokenize_secrets(proposal.step, secret_tokens or [])
-        say(f"{lead}{_describe_step(recorded_step)}")
-        if tokenized:
-            say(f"[{n}] \U0001f512 tokenized secret in typed text → {', '.join(tokenized)}")
-        if not _execute_with_recovery(driver, proposal.step, clock, alert_guard, report=report):
-            say(f"[{n}] ! could not resolve that target on the live screen; stopping")
-            break  # the proposed action did not resolve, even after clearing prompts
-        steps.append(recorded_step)
-        if _is_looping([_describe_step(s) for s in steps]):
-            say(
-                f"[{n}] ⟳ the agent is repeating actions without progress; stopping "
-                "(refine the goal, or the app may need accessibility ids for this control)"
-            )
             break
 
     # Report wall-clock duration on every exit path (finish, stop, max_steps) so the console — and

@@ -328,6 +328,26 @@ def _fingerprint_token(element: base.Element) -> str:
     return ident + "".join(marker for present, marker in markers if present)
 
 
+def _reduce(
+    elements: list[base.Element], id_token: Callable[[base.Element], str]
+) -> tuple[str, str]:
+    """Reduce a screen to `(hash, kind)` via id tokens or a structural fallback.
+
+    The sorted id-derived tokens when the screen is instrumented (`kind="id"`), else a structural
+    traits+frame hash (`kind="structural"`, the less-stable fallback for too few identifiers).
+    `id_token` maps each id-bearing element to its contribution, so the caller chooses whether that
+    token carries per-element state.
+    """
+    if len({i for el in elements if (i := _id_of(el))}) >= _MIN_IDS_FOR_ID_FINGERPRINT:
+        return _hash(sorted({id_token(el) for el in elements if _id_of(el)})), "id"
+    structure = sorted(
+        f"{','.join(el.get('traits') or [])}@{_frame_bucket(el)}"
+        for el in elements
+        if ACTIONABLE_TRAITS & _traits(el)
+    )
+    return _hash(structure), "structural"
+
+
 def fingerprint(elements: list[base.Element]) -> Fingerprint:
     """Reduce a screen to a stable identity.
 
@@ -337,17 +357,21 @@ def fingerprint(elements: list[base.Element]) -> Fingerprint:
     identifiers): a structural hash over the actionable elements' `(traits, frame-bucket)`, which
     is less stable and flagged as such.
     """
-    ids = {i for el in elements if (i := _id_of(el))}
-    if len(ids) >= _MIN_IDS_FOR_ID_FINGERPRINT:
-        tokens = sorted({_fingerprint_token(el) for el in elements if _id_of(el)})
-        return Fingerprint(_hash(tokens), "id")
+    return Fingerprint(*_reduce(elements, _fingerprint_token))
 
-    structure = sorted(
-        f"{','.join(el.get('traits') or [])}@{_frame_bucket(el)}"
-        for el in elements
-        if ACTIONABLE_TRAITS & _traits(el)
-    )
-    return Fingerprint(_hash(structure), "structural")
+
+def screen_identity(elements: list[base.Element]) -> str:
+    """A transition signature for BE-0178's intra-screen batch-abort check.
+
+    Shares `fingerprint`'s id-or-structural reduction but keys the id path on the bare identifier,
+    deliberately omitting per-element *state* (a field's fill, a control's enabled/selected flags).
+    The record loop compares it after each batched step to abort on a genuine transition (elements
+    appearing/disappearing, a navigation), not on a field the batch itself just filled: `fingerprint`
+    folds fill-state into its tokens (a typed text field gains a `=` marker), so using it here would
+    abort the very form-fill batching the feature exists to enable. Determinism is unchanged — a pure
+    comparison, no LLM.
+    """
+    return _reduce(elements, lambda el: _id_of(el) or "")[0]
 
 
 def _frame_bucket(element: base.Element) -> tuple[int, int, int, int]:

@@ -233,14 +233,18 @@ class KeywordAgent:
             hint, timeout = rest
             eid = _ground(obs.screen, hint)
             return Proposal(
-                step=Step.model_validate({"wait": {"for": {"id": eid}, "timeout": float(timeout)}})
+                steps=[
+                    Step.model_validate({"wait": {"for": {"id": eid}, "timeout": float(timeout)}})
+                ]
             )
         if kind == "type":
             text, hint = rest
             eid = _ground(obs.screen, hint, field=True)
-            return Proposal(step=Step.model_validate({"type": {"text": text, "into": {"id": eid}}}))
+            return Proposal(
+                steps=[Step.model_validate({"type": {"text": text, "into": {"id": eid}}})]
+            )
         eid = _ground(obs.screen, rest[0], button=True)
-        return Proposal(step=Step.model_validate({"tap": {"id": eid}}))
+        return Proposal(steps=[Step.model_validate({"tap": {"id": eid}})])
 
 
 # --- Run it: goal -> record -> scenario YAML -> deterministic replay ---

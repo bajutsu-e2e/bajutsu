@@ -44,7 +44,7 @@ class Agent(Protocol):
 ## The record loop
 
 `record(driver, goal, agent, *, name, max_steps=30, alert_guard=None, ...) -> Scenario`
-(`record.py`). Repeats observe → propose → execute up to `max_steps`.
+(`record.py`). Repeats observe → propose → execute up to `max_steps` turns.
 
 ```
 1. (If alert_guard is set) clear anything covering the app (a system alert, etc.)
@@ -52,17 +52,31 @@ class Agent(Protocol):
    - Under alert_guard, if no element has an id, don't show the agent a dead screen (it would
      hallucinate ids); loop again to re-clear
 3. Take a screenshot, build an Observation, and call agent.next_action()
-4. If proposal.done:
-     - insert a settle step (below) if needed, finalize expect, and finish
-   If proposal.needs_human (BE-0179):
+4. If proposal.needs_human (BE-0179):
      - hand off to a human via the `handoff` responder; on a value/acted response, re-observe and
        continue (the human's turn records no step); on cancel, stop. With no responder, raise
        `HumanHandoffUnavailable` — a clean, labeled failure, never a hang or a guess
-   If proposal.step:
-     - execute via _execute_with_recovery (on failure with alert_guard, clear and retry once)
-     - on success, push to steps. If it does not resolve, break
-5. Return Scenario(name, steps, expect)
+5. Execute proposal.steps in order (a batch of one or more actions — see below):
+     - each via _execute_with_recovery (on failure with alert_guard, clear and retry once)
+     - on success, push to steps; then re-observe and compare the screen's identity to the one the
+       batch was planned against. If it changed with steps still pending, abort the rest and
+       re-observe next turn (only the executed prefix is recorded)
+     - a step that does not resolve stops the record if nothing ran this turn, else aborts the batch
+6. If proposal.done: insert a settle step (below) if needed, finalize expect, and finish
+7. Return Scenario(name, steps, expect)
 ```
+
+**Multi-action turns (BE-0178).** A turn's proposal is an ordered *batch* of steps — the actions the
+agent judges executable from the current screen without seeing the previous action's result (e.g.
+fill several form fields, then submit). The batch is intra-screen by construction: after each
+executed step the loop compares `crawl.screen_identity(...)` — a transition signature that ignores
+per-element state (a field's fill, a control's enabled/selected flags) so the batch's own fills
+don't look like a transition — against the identity captured before the batch. The moment it changes
+with steps still pending, the rest is abandoned and the loop re-observes ("仕切り直し"). Only the steps
+that actually executed are appended, so the recorded YAML is the same flat, individually-resolved
+step list as before — batching only changes *how many model turns* produce it (one observe → model →
+execute-N instead of N single-action turns), never the artifact's shape. The abort check is a
+deterministic comparison, never an LLM judgment.
 
 The output is serialized to YAML via `dump_scenarios`
 ([scenarios](scenarios.md#round-trip-load--dump)).
