@@ -25,7 +25,7 @@ detail the agent actually reads.
 
 ## Motivation
 
-`_screenshot_bytes` (`bajutsu/record.py:131`) captures the screen via `xcrun simctl io <udid>
+`_screenshot_bytes` (`bajutsu/record.py`) captures the screen via `xcrun simctl io <udid>
 screenshot` (`bajutsu/drivers/idb.py`, `screenshot_cmd`), which writes a full-resolution PNG with no
 size parameter. That PNG is carried unchanged into the request: `ImagePart(data=screenshot)`
 (`bajutsu/claude_agent.py`) is base64-encoded verbatim in the Anthropic adapter
