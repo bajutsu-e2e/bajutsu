@@ -20,6 +20,7 @@ calls no model and bears on pass/fail nowhere.
 
 from __future__ import annotations
 
+from bajutsu.ai.banner import announce_ai
 from bajutsu.ai.base import (
     AiBackend,
     AnyTool,
@@ -59,6 +60,7 @@ __all__ = [
     "ToolChoice",
     "ToolDef",
     "ToolUseBlock",
+    "announce_ai",
     "create_backend",
     "credential_gap",
     "known_providers",

@@ -127,6 +127,32 @@ def test_claude_code_resolves_to_its_own_adapter() -> None:
     assert not isinstance(backend, AnthropicBackend)
 
 
+# --- per-provider startup announcement (BE-0176 follow-up) ---
+
+
+def test_announcement_is_provider_specific() -> None:
+    from bajutsu.ai.registry import announcement
+
+    # The Anthropic SDK (default `api-key`) has no reasoning-effort knob, so its line names only the
+    # provider and resolved model — one line, no effort, no auth disclosure.
+    default = announcement("claude-opus-4-8")
+    assert default == ["🤖 AI: api-key · model claude-opus-4-8"]
+
+    # claude-code overrides `announce`: it honors effort and forces a subscription login, so it adds
+    # both the effort and an auth line the generic disclosure omits.
+    cc = announcement("claude-opus-4-8", AiConfig(provider="claude-code"))
+    assert cc[0] == "🤖 AI: claude-code · model claude-opus-4-8 · effort default"
+    assert cc[1].startswith("🔑 auth:")
+
+
+def test_announce_ai_pushes_each_line_to_the_report_sink() -> None:
+    from bajutsu.ai import announce_ai
+
+    lines: list[str] = []
+    announce_ai(lines.append, default_model="claude-opus-4-8", ai=AiConfig(provider="claude-code"))
+    assert len(lines) == 2 and lines[0].startswith("🤖 AI: claude-code")
+
+
 def test_credential_gap_dispatches_to_the_resolved_provider(monkeypatch: Any) -> None:
     from bajutsu import anthropic_client
 
