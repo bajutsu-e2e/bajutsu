@@ -26,7 +26,7 @@ measurable.
 
 ## Motivation
 
-The per-turn user message is built by `_render` (`bajutsu/claude_agent.py:317`): after the goal, plan,
+The per-turn user message is built by `_render` (`bajutsu/claude_agent.py`): after the goal, plan,
 and recent-actions summary, it emits **one line per on-screen element** —
 `- id=… label=… value=… traits=[…]` — for every addressable element. The parse
 (`parse_describe_all`, `bajutsu/drivers/idb.py`) already discards `frame` and other raw fields, and
