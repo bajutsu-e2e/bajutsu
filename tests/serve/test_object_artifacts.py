@@ -185,6 +185,19 @@ def test_list_crawl_runs_lists_only_direct_yaml_children() -> None:
     assert got["crashFiles"] == ["a.yaml"]
 
 
+def test_list_crawl_runs_skips_keys_with_an_invalid_run_id() -> None:
+    # A corrupt or hostile bucket could hold a key whose leading segment isn't a valid run id (a
+    # `..` traversal, an empty segment). It must never reach the history list — the same containment
+    # `archive`/`render_report` apply. list_keys returns keys verbatim, so the guard is on the id.
+    objects = {
+        "runs/../screenmap.json": _screenmap(1, 0, 0),
+        "runs//screenmap.json": _screenmap(1, 0, 0),
+        "runs/20260610-1/screenmap.json": _screenmap(2, 1, 0),
+    }
+    listed = ObjectStorageArtifactStore(FakeObjectStore(objects), prefix="runs/").list_crawl_runs()
+    assert [r["id"] for r in listed] == ["20260610-1"]
+
+
 def test_list_crawl_runs_is_scoped_to_the_stores_prefix() -> None:
     # Two orgs' crawls share one bucket under their own prefixes (the org prefix is baked into the
     # store instance); each store lists only its own runs — the tenant isolation BE-0190 relies on.

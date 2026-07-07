@@ -121,6 +121,8 @@ class ObjectStorageArtifactStore:
         files: dict[tuple[str, str], list[str]] = {}
         for rel in rels:
             run_id, _, rest = rel.partition("/")
+            if not valid_run_id(run_id):
+                continue  # a corrupt/hostile key (`../screenmap.json`, empty segment) never lists
             if rest == "screenmap.json":
                 crawl_ids.add(run_id)
                 continue
