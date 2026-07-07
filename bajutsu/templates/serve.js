@@ -28,7 +28,6 @@ let poll=null,recPoll=null,selectedRun=null,recPath=null,scnFiles=[],targets=[],
 let recJobId=null,runJobId=null,triageJobId=null;
 let recRunPoll=null,recRunJobId=null;  // running the just-authored scenario from the Record tab
 let recReportShow=null,recReportHide=null;  // set by the tiler: add/remove the Run-result pane
-let recHandoffShow=null,recHandoffHide=null;  // set by the tiler: add/remove the Human-handoff pane (BE-0179)
 // Whether Claude is reachable (from /api/provider). Gates the opt-in AI toggle on triage the same
 // way it gates record/crawl; heuristic triage never needs it. Kept in sync by refreshAiAvailability.
 let aiAvailable=false;
@@ -551,20 +550,19 @@ $('#rec-yaml').addEventListener('input',syncRecActions);
 // attribute (phone tier, where the pane stacks under the Output tab).
 function showReportPanel(){if(recReportShow)recReportShow();else $('#rec-reportpanel').hidden=false;}
 function hideReportPanel(){if(recReportHide)recReportHide();else{const p=$('#rec-reportpanel');if(p)p.hidden=true;}}
-// Human handoff (BE-0179): the record paused for a human. Show the request in the retained pane
-// (tiler when present, else the plain `hidden` attribute at the phone tier), and resume the loop by
-// POSTing the response — a supplied value, "I operated the device", or a cancel — back to the job.
-function showHandoffPanel(){if(recHandoffShow)recHandoffShow();else $('#rec-handoffpanel').hidden=false;}
-function hideHandoffPanel(){if(recHandoffHide)recHandoffHide();else{const p=$('#rec-handoffpanel');if(p)p.hidden=true;}}
+// Human handoff (BE-0179): the record paused for a human. Shown as a modal so it can't be missed
+// below the fold; the human resumes by POSTing a response — a supplied value, "I operated the
+// device", or a cancel — back to the job.
+function showHandoffPanel(){$('#rec-handoffmodal').hidden=false;}
+function hideHandoffPanel(){$('#rec-handoffmodal').hidden=true;}
 function onHandoffRequest(req){
-  // Show (attach) the pane FIRST: the desktop tiler detaches an optional pane's DOM until it is
-  // shown, so the field lookups below would miss it if we populated before attaching.
-  showHandoffPanel();
   $('#rec-handoff-reason').textContent=req.reason||'the agent needs a human to continue';
   $('#rec-handoff-screen').textContent=[req.target&&('target: '+req.target),req.screen].filter(Boolean).join(' · ');
   const shot=$('#rec-handoff-shot');
   if(req.screenshot){shot.src='data:image/png;base64,'+req.screenshot;shot.hidden=false;}else{shot.removeAttribute('src');shot.hidden=true;}
   $('#rec-handoff-value').value='';
+  showHandoffPanel();
+  $('#rec-handoff-value').focus();
 }
 async function sendHandoff(body){
   if(!recJobId)return;
@@ -1559,7 +1557,7 @@ function initTiling(){
   const KEY='bajutsu-tiles';
   const SPECS=[
     {id:'view-replay',def:{d:'row',k:['controls','log','report'],s:[1,1,2]},sel:{controls:'.left',log:'.logpanel',report:'.report'}},
-    {id:'view-record',def:{d:'row',k:['controls',{d:'col',k:['log','yaml'],s:[1,1]}],s:[1,2]},sel:{controls:'.left',log:'.rec-stack .logpanel',yaml:'.rec-stack .yamlpanel',report:'.rec-stack .rec-report-panel',handoff:'.rec-stack .rec-handoff-panel'},optional:['report','handoff']},
+    {id:'view-record',def:{d:'row',k:['controls',{d:'col',k:['log','yaml'],s:[1,1]}],s:[1,2]},sel:{controls:'.left',log:'.rec-stack .logpanel',yaml:'.rec-stack .yamlpanel',report:'.rec-stack .rec-report-panel'},optional:['report']},
     {id:'view-crawl',def:{d:'row',k:['controls','graph',{d:'col',k:['plan','console'],s:[1,1]}],s:[1,2,1]},sel:{controls:'.left',graph:'.crawl-graph-panel',plan:'.crawl-plan-panel',console:'.crawl-console-panel'}},
   ];
   const leaves=n=>typeof n==='string'?[n]:n.k.flatMap(leaves);
@@ -1667,9 +1665,6 @@ function initTiling(){
     const inTree=()=>leaves(recV.tree).includes('report');
     recReportShow=()=>{recV.panel.report.hidden=false;if(!inTree()){recV.tree=insertBeside(recV.tree,'yaml','report','bottom');rebuild(recV);}};
     recReportHide=()=>{if(inTree()){recV.tree=removeLeaf(recV.tree,'report')||recV.tree;rebuild(recV);}recV.panel.report.hidden=true;};
-    const handoffInTree=()=>leaves(recV.tree).includes('handoff');
-    recHandoffShow=()=>{recV.panel.handoff.hidden=false;if(!handoffInTree()){recV.tree=insertBeside(recV.tree,'yaml','handoff','bottom');rebuild(recV);}};
-    recHandoffHide=()=>{if(handoffInTree()){recV.tree=removeLeaf(recV.tree,'handoff')||recV.tree;rebuild(recV);}recV.panel.handoff.hidden=true;};
   }
   window.addEventListener('mousemove',e=>{
     if(!pdrag)return;

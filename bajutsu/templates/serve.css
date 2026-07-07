@@ -362,9 +362,9 @@ header .cfgname{color:var(--mut);font-size:.82em;max-width:32vw;overflow:hidden;
 /* Record's Run-result pane: like the other record cards, but its report body scrolls within it. */
 .rec-report-panel{display:flex;flex-direction:column;min-height:0}
 .rec-report-panel #rec-report{flex:1;min-height:0;overflow:auto}
-/* Human handoff pane (BE-0179): the request body scrolls; the screenshot never overflows the pane. */
-.rec-handoff-panel{display:flex;flex-direction:column;min-height:0}
-.rec-handoff-body{flex:1;min-height:0;overflow:auto;display:flex;flex-direction:column;gap:.5em;padding-top:.4em}
+/* Human handoff modal (BE-0179): rendered in a `.fsbox` so it can't be missed below the fold. The
+   body lays its fields out in a column; the screenshot never overflows the box. */
+.rec-handoff-body{display:flex;flex-direction:column;gap:.5em}
 .rec-handoff-body #rec-handoff-shot{max-width:100%;height:auto;border-radius:4px;align-self:flex-start}
 .rec-handoff-body #rec-handoff-value{width:100%}
 .fshead{display:flex;align-items:center;margin-bottom:.6rem}.fshead .ttl{font-weight:700}
