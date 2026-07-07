@@ -196,6 +196,14 @@ def test_no_backend_available_exits_cleanly(
     assert "no available actuator" in r.output
 
 
+def test_record_exposes_token_budget_flags() -> None:
+    # BE-0194 §3: the loop's max_steps / with_screenshot knobs are surfaced on the CLI.
+    r = runner.invoke(app, ["record", "--help"])
+    assert r.exit_code == 0
+    assert "--max-steps" in r.output
+    assert "--no-screenshot" in r.output
+
+
 def test_run_missing_config(tmp_path: Path) -> None:
     r = runner.invoke(app, ["run", "--target", "demo", "--config", str(tmp_path / "nope.yaml")])
     assert r.exit_code == 2

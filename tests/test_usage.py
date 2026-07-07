@@ -96,3 +96,61 @@ def test_claude_agent_records_each_call_into_the_tracker() -> None:
     agent.next_action(_obs())
     spent = usage.snapshot() - before
     assert spent.calls == 1 and spent.total_tokens == FAKE_USAGE_PER_CALL
+
+
+# --- BE-0194 §4: per-category token attribution (reporting only) ---
+
+
+def test_addition_is_the_inverse_of_subtraction() -> None:
+    a = TokenUsage(input_tokens=10, output_tokens=5, cache_read_tokens=3, calls=1)
+    b = TokenUsage(input_tokens=7, output_tokens=2, cache_write_tokens=4, calls=1)
+    total = a + b
+    assert total.input_tokens == 17 and total.output_tokens == 7
+    assert total.cache_write_tokens == 4 and total.cache_read_tokens == 3 and total.calls == 2
+    assert total - b == a  # add then subtract round-trips
+
+
+def test_record_attributes_tokens_to_the_named_category() -> None:
+    before = usage.snapshot_by_category()
+    usage.record({"input_tokens": 5, "output_tokens": 2}, category="plan")
+    usage.record({"input_tokens": 3, "output_tokens": 1}, category="next_action")
+    after = usage.snapshot_by_category()
+    plan = after.get("plan", TokenUsage()) - before.get("plan", TokenUsage())
+    action = after.get("next_action", TokenUsage()) - before.get("next_action", TokenUsage())
+    assert plan.input_tokens == 5 and plan.calls == 1
+    assert action.input_tokens == 3 and action.calls == 1
+
+
+def test_categories_sum_to_the_running_total_no_double_counting() -> None:
+    before_total = usage.snapshot()
+    before_cat = usage.snapshot_by_category()
+    usage.record({"input_tokens": 5, "output_tokens": 2}, category="plan")
+    usage.record({"input_tokens": 3, "output_tokens": 1}, category="next_action")
+    usage.record({"input_tokens": 9, "output_tokens": 4}, category="alert-guard")
+    spent_total = usage.snapshot() - before_total
+    after_cat = usage.snapshot_by_category()
+    per_cat_sum = sum(
+        (after_cat.get(c, TokenUsage()) - before_cat.get(c, TokenUsage())).total_tokens
+        for c in after_cat
+    )
+    assert per_cat_sum == spent_total.total_tokens  # every token lands in exactly one category
+
+
+def test_uncategorized_record_lands_in_other() -> None:
+    before = usage.snapshot_by_category()
+    usage.record({"input_tokens": 4, "output_tokens": 1})  # no category → the default bucket
+    after = usage.snapshot_by_category()
+    delta = after.get("other", TokenUsage()) - before.get("other", TokenUsage())
+    assert delta.input_tokens == 4 and delta.calls == 1
+
+
+def test_breakdown_lines_render_only_non_empty_categories() -> None:
+    before = usage.snapshot_by_category()
+    usage.record({"input_tokens": 100, "output_tokens": 30}, category="plan")
+    usage.record({"input_tokens": 50, "output_tokens": 10}, category="next_action")
+    after = usage.snapshot_by_category()
+    lines = usage.breakdown_lines(before, after)
+    joined = "\n".join(lines)
+    assert "plan" in joined and "next_action" in joined
+    assert "alert-guard" not in joined  # a category with no spend is not listed
+    assert all(line.startswith("  ") for line in lines)  # indented under the total

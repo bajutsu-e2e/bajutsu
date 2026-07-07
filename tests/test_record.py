@@ -284,6 +284,27 @@ def test_record_respects_max_steps() -> None:
     assert len(scenario.steps) == 3
 
 
+class ObservingAgent(FakeAgent):
+    """Records the observations it was given, so a test can inspect what the loop passed in."""
+
+    def __init__(self, proposals: list[Proposal]) -> None:
+        super().__init__(proposals)
+        self.seen: list[Observation] = []
+
+    def next_action(self, observation: Observation) -> Proposal:
+        self.seen.append(observation)
+        return super().next_action(observation)
+
+
+def test_record_without_screenshot_observes_elements_only() -> None:
+    # BE-0194 §3: --no-screenshot flows through as with_screenshot=False, so the loop never captures
+    # a screenshot and the agent sees an elements-only observation (the cheapest possible record).
+    driver = FakeDriver([_el("go", "Go")])
+    agent = ObservingAgent([Proposal(done=True)])
+    record(driver, "x", agent, with_screenshot=False)
+    assert agent.seen and agent.seen[0].screenshot is None
+
+
 def test_is_looping_detects_repetition_and_oscillation() -> None:
     assert _is_looping(["tap a", "tap a", "tap a"])  # same action three times running
     assert _is_looping(["tap Open", "tap Close", "tap Open", "tap Close"])  # A,B,A,B oscillation

@@ -44,6 +44,11 @@ MODEL = "claude-opus-4-8"
 # short enough that an occasional CLI hang fails fast and the loop proceeds without a plan.
 PLAN_TIMEOUT_S = 60.0
 
+# Above this many on-screen elements a turn is considered pathological (a long list / data table),
+# and the non-addressable remainder is reported as a count rather than silently dropped (BE-0194 §2).
+# A global constant, not per-app config (prime directive 3). Addressable elements are never dropped.
+_LARGE_SCREEN_ELEMENTS = 50
+
 SYSTEM_PROMPT = """You are an iOS end-to-end test author. You drive an app on the \
 iOS Simulator to accomplish a goal, then record the steps as a deterministic test.
 
@@ -369,6 +374,7 @@ def _render(observation: Observation, redactor: Redactor | None = None) -> str:
         redactor.redact_elements(observation.screen) if redactor is not None else observation.screen
     )
     shown = 0
+    omitted = 0  # purely-decorative elements skipped (BE-0194 §2) — reported only past the cap
     for element in screen:
         identifier, label, value, traits = (
             element["identifier"],
@@ -379,11 +385,29 @@ def _render(observation: Observation, redactor: Redactor | None = None) -> str:
         if "application" in traits:
             continue  # the app root is not an actionable target
         if not (identifier or label or value or traits):
-            continue  # nothing to address it by
-        lines.append(f"- id={identifier!r} label={label!r} value={value!r} traits={traits}")
+            omitted += 1  # nothing to address it by
+            continue
+        # Compact the line (BE-0194 §1): emit only the fields that carry information — every
+        # addressing field (id / label / non-empty value / non-empty traits) is kept, an empty one
+        # is dropped. Lossless for addressing; the element stays fully addressable.
+        fields = []
+        if identifier:
+            fields.append(f"id={identifier!r}")
+        if label:
+            fields.append(f"label={label!r}")
+        if value:
+            fields.append(f"value={value!r}")
+        if traits:
+            fields.append(f"traits={traits}")
+        lines.append("- " + " ".join(fields))
         shown += 1
     if not shown:
         lines.append("- (no addressable elements; the screen may still be loading)")
+    elif omitted and len(screen) > _LARGE_SCREEN_ELEMENTS:
+        # A pathological screen (BE-0194 §2): every addressable element above is kept, and the
+        # non-addressable remainder is collapsed into a reported count rather than silently dropped,
+        # so the agent knows the screen was truncated (it can swipe to reveal more).
+        lines.append(f"- (+{omitted} further non-addressable elements omitted)")
     lines += ["", f"Steps taken so far: {len(observation.history)}"]
     if observation.history:
         # Show the recent actions so the agent can see whether it is looping (repeating an action or
@@ -574,7 +598,7 @@ class ClaudeAgent:
                 effort=self._effort,
             )
         )
-        usage.record(response.usage)
+        usage.record(response.usage, usage.CATEGORY_ACTION)
         return _to_proposal(response)
 
     def plan(self, goal: str) -> list[str]:
@@ -592,7 +616,7 @@ class ClaudeAgent:
                 timeout_s=PLAN_TIMEOUT_S,
             )
         )
-        usage.record(response.usage)
+        usage.record(response.usage, usage.CATEGORY_PLAN)
         block = response.first_tool_use()
         if block is None:
             return []

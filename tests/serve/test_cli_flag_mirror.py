@@ -64,7 +64,15 @@ def test_record_flag_surface_is_fully_classified() -> None:
     # name is redundant (serve computes --out); browser/alert_instruction aren't exposed via serve yet.
     # language (BE-0188) is env-driven for serve (BAJUTSU_AI_LANGUAGE, set via /api/provider), like
     # effort/provider — the spawned job inherits it, so serve doesn't pass a per-launch --language.
-    not_serve_exposed = {"name", "browser", "alert_instruction", "language"}
+    # max_steps/screenshot are CLI token-budget knobs (BE-0194); serve doesn't surface them yet.
+    not_serve_exposed = {
+        "name",
+        "browser",
+        "alert_instruction",
+        "language",
+        "max_steps",
+        "screenshot",
+    }
     pass_through = {"backend", "udid", "erase", "dismiss_alerts", "headed", "upload_exec"}
     # serve forces --handoff to `stream` (a human at the browser answers over SSE), never a knob (BE-0179).
     serve_forced = {"handoff"}

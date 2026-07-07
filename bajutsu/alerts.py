@@ -197,5 +197,5 @@ class ClaudeAlertLocator:
                 max_tokens=512,
             )
         )
-        usage.record(response.usage)
+        usage.record(response.usage, usage.CATEGORY_ALERT)
         return _decision_of(response, width, height)

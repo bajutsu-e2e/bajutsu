@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0194](BE-0194-record-turn-payload-diet.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0194") |
+| Implementing PR | _pending_ |
 | Topic | Authoring experience (record / GUI editor) |
 <!-- /BE-METADATA -->
 
@@ -159,12 +160,20 @@ or `run`/replay change.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Lossless element-line compaction in `_render` (drop empty fields; keep every addressing field).
-- [ ] Safe deterministic element cap (keep all id/label elements; collapse non-addressable remainder
+- [x] Lossless element-line compaction in `_render` (drop empty fields; keep every addressing field).
+- [x] Safe deterministic element cap (keep all id/label elements; collapse non-addressable remainder
       into a reported summary line).
-- [ ] CLI token-budget flags: `--max-steps`, `--no-screenshot` (default to today's behavior).
-- [ ] Per-category token usage (plan / next_action / alert-guard) in `usage.py` and the record report.
-- [ ] Tests: compaction rendering; cap preserves addressable elements; CLI knobs; usage-breakdown sums.
+- [x] CLI token-budget flags: `--max-steps`, `--no-screenshot` (default to today's behavior).
+- [x] Per-category token usage (plan / next_action / alert-guard) in `usage.py` and the record report.
+- [x] Tests: compaction rendering; cap preserves addressable elements; CLI knobs; usage-breakdown sums.
+
+**Log**
+
+- _pending_ — All four parts shipped together: `_render` compacts each element line and reports the
+  non-addressable remainder past `_LARGE_SCREEN_ELEMENTS`; `bajutsu record` gains `--max-steps` /
+  `--no-screenshot`; `usage.py` attributes tokens per call-site category (`plan` / `next_action` /
+  `alert-guard`) and the record report prints the breakdown under the total. Docs updated
+  (`docs/recording.md` + `docs/ja/`). Strictly Tier 1 — no LLM added to `run`/CI.
 
 ## References
 

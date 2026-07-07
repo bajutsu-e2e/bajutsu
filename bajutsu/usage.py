@@ -52,6 +52,16 @@ class TokenUsage:
             calls=self.calls - other.calls,
         )
 
+    def __add__(self, other: TokenUsage) -> TokenUsage:
+        """Field-wise sum of two snapshots (the per-category accumulator folds each call into its bucket)."""
+        return TokenUsage(
+            input_tokens=self.input_tokens + other.input_tokens,
+            output_tokens=self.output_tokens + other.output_tokens,
+            cache_write_tokens=self.cache_write_tokens + other.cache_write_tokens,
+            cache_read_tokens=self.cache_read_tokens + other.cache_read_tokens,
+            calls=self.calls + other.calls,
+        )
+
     def render(self) -> str:
         """A one-line human summary, e.g.
         `AI usage: 1,234 tokens over 3 calls (900 in, 300 out; cache 20 write, 14 read)`."""
@@ -91,47 +101,82 @@ def of(usage: Any) -> TokenUsage:
     )
 
 
+# The call site a token count is attributed to, so the record report reads as a breakdown rather
+# than one opaque total (BE-0194 §4). The record path spends in three places; everything else (run's
+# alert guard, triage, crawl, enrich) falls in the default `other` bucket — reporting only, never on
+# the pass/fail path.
+CATEGORY_PLAN = "plan"  # the up-front `plan` call
+CATEGORY_ACTION = "next_action"  # the per-turn `next_action` calls (the element tree + screenshot)
+CATEGORY_ALERT = "alert-guard"  # the alert-guard vision calls
+CATEGORY_OTHER = "other"  # any uncategorized AI call
+
+
 class _Accumulator:
-    """Thread-safe running total of token counts across AI responses."""
+    """Thread-safe running total of token counts across AI responses, kept per category (BE-0194).
+
+    The categories partition every recorded call (each lands in exactly one), so their sum is the
+    running total — `snapshot()` folds them back together for callers that want just the total.
+    """
 
     def __init__(self) -> None:
         self._lock = Lock()
-        self._input = 0
-        self._output = 0
-        self._cache_write = 0
-        self._cache_read = 0
-        self._calls = 0
+        self._by_category: dict[str, TokenUsage] = {}
 
-    def record(self, usage: Any) -> None:
-        """Add one response's `usage` to the running total. Best-effort: a `None` usage (a
+    def record(self, usage: Any, category: str = CATEGORY_OTHER) -> None:
+        """Add one response's `usage` to `category`'s running total. Best-effort: a `None` usage (a
         mocked client, or an SDK that omitted it) is ignored, and a missing field counts as
         zero — recording never raises and never affects pass/fail."""
         if usage is None:
             return
         one = of(usage)
         with self._lock:
-            self._input += one.input_tokens
-            self._output += one.output_tokens
-            self._cache_write += one.cache_write_tokens
-            self._cache_read += one.cache_read_tokens
-            self._calls += 1
+            self._by_category[category] = self._by_category.get(category, TokenUsage()) + one
 
     def snapshot(self) -> TokenUsage:
         with self._lock:
-            return TokenUsage(
-                self._input, self._output, self._cache_write, self._cache_read, self._calls
-            )
+            return sum(self._by_category.values(), TokenUsage())
+
+    def snapshot_by_category(self) -> dict[str, TokenUsage]:
+        with self._lock:
+            return dict(self._by_category)
 
 
 _TRACKER = _Accumulator()
 
 
-def record(usage: Any) -> None:
-    """Record one Anthropic response's `usage` into the process-global tracker."""
-    _TRACKER.record(usage)
+def record(usage: Any, category: str = CATEGORY_OTHER) -> None:
+    """Record one Anthropic response's `usage` into the process-global tracker under `category`."""
+    _TRACKER.record(usage, category)
 
 
 def snapshot() -> TokenUsage:
     """The cumulative usage so far. Take one before and after a feature, then subtract to get
     what that feature consumed (`usage.snapshot() - before`)."""
     return _TRACKER.snapshot()
+
+
+def snapshot_by_category() -> dict[str, TokenUsage]:
+    """The cumulative usage so far, split by call-site category (BE-0194 §4). Take one before and
+    after a feature and subtract per category to get what each call site consumed."""
+    return _TRACKER.snapshot_by_category()
+
+
+# Categories listed in this order in the breakdown (known ones first, then any extra), so the report
+# reads plan → per-turn actions → alert guard rather than dict-insertion order.
+_CATEGORY_ORDER = (CATEGORY_PLAN, CATEGORY_ACTION, CATEGORY_ALERT, CATEGORY_OTHER)
+
+
+def breakdown_lines(before: dict[str, TokenUsage], after: dict[str, TokenUsage]) -> list[str]:
+    """Per-category delta lines to print under the one-line total (`before`/`after` from
+    `snapshot_by_category`). A category with no spend between the snapshots is omitted, so a normal
+    record shows only the buckets it actually used. Reporting only — never on the pass/fail path."""
+    ordered = [*_CATEGORY_ORDER, *sorted(set(after) - set(_CATEGORY_ORDER))]
+    lines = []
+    for category in ordered:
+        delta = after.get(category, TokenUsage()) - before.get(category, TokenUsage())
+        if delta.calls:
+            plural = "" if delta.calls == 1 else "s"
+            lines.append(
+                f"  {category}: {delta.total_tokens:,} tokens over {delta.calls} call{plural}"
+            )
+    return lines

@@ -113,6 +113,18 @@ def record(
         "--dismiss-alerts/--no-dismiss-alerts",
         help="dismiss unexpected OS prompts while authoring (on by default; uses the same API key)",
     ),
+    max_steps: int = typer.Option(
+        30,
+        "--max-steps",
+        help="cap the number of authoring turns (and therefore worst-case token spend); "
+        "default 30 (BE-0194)",
+    ),
+    screenshot: bool = typer.Option(
+        True,
+        "--screenshot/--no-screenshot",
+        help="send a screenshot each turn; --no-screenshot records elements-only (cheaper) when the "
+        "app is fully instrumented (BE-0194)",
+    ),
     alert_instruction: str = typer.Option(
         "", "--alert-instruction", help="how to handle a prompt instead of dismissing it"
     ),
@@ -164,6 +176,7 @@ def record(
     eff = _resolve_language(eff, language)
     out_path = _record_out_path(eff, out, name, goal, target_name, checkout_root=checkout_root)
     before = _usage.snapshot()
+    before_cat = _usage.snapshot_by_category()  # for the per-category breakdown (BE-0194 §4)
     # Fail closed (BE-0047): the authoring agent and the alert guard both reach the model via the
     # resolved SDK provider (Anthropic / Bedrock / ant), so a missing credential is an actionable
     # error here, not a quiet fallback.
@@ -232,6 +245,8 @@ def record(
             goal,
             authoring_agent,
             name=goal,
+            max_steps=max_steps,
+            with_screenshot=screenshot,
             alert_guard=alert_guard,
             secret_tokens=_secret_tokens(eff),
             # A mobile (iOS-simulator) app always records a scenario-wide screen video; the recording
@@ -252,10 +267,14 @@ def record(
     out_path.write_text(dump_scenarios([scenario]), encoding="utf-8")
     typer.echo(f"recorded {len(scenario.steps)} steps -> {out_path}")
     # Report what the authoring (and alert-guard) AI consumed; to stderr, like the progress
-    # narration, so stdout stays the single result line.
+    # narration, so stdout stays the single result line. The one-line total is followed by a
+    # per-category breakdown (plan / next_action / alert-guard) so a token-saving change is
+    # measurable (BE-0194 §4) — reporting only, never on the pass/fail path.
     spent = _usage.snapshot() - before
     if spent.calls:
         typer.echo(spent.render(), err=True)
+        for line in _usage.breakdown_lines(before_cat, _usage.snapshot_by_category()):
+            typer.echo(line, err=True)
 
 
 def register(app: typer.Typer) -> None:
