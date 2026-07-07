@@ -13,6 +13,7 @@ Requires ``Pillow`` (``pip install bajutsu[visual]``).
 
 from __future__ import annotations
 
+import io
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -270,3 +271,35 @@ def _write_pixelmatch_diff(
         pixels[x, y] = (255, 0, 0, 255)
     diff_path.parent.mkdir(parents=True, exist_ok=True)
     diff_img.save(diff_path)
+
+
+def downscale_png(data: bytes, max_long_edge: int) -> bytes:
+    """Right-size a PNG so its long edge is at most *max_long_edge* pixels (BE-0193).
+
+    Downscales only — an image already within the cap is returned *unchanged* (the exact input
+    bytes, not a re-encode), so a small screenshot is never upscaled and never re-compressed.
+    Aspect ratio is preserved, so a caller's normalized [0,1] coordinates map to the identical
+    screen point. The format stays PNG: Anthropic bills by pixel dimensions, so re-encoding to a
+    lossy format would save no tokens while risking blur on small on-screen text (design §2).
+
+    Returns:
+        The downscaled PNG bytes, or *data* itself when the long edge already fits.
+
+    Raises:
+        ValueError: If *max_long_edge* is not positive.
+    """
+    if max_long_edge <= 0:
+        raise ValueError(f"max_long_edge must be positive, got {max_long_edge}")
+    with Image.open(io.BytesIO(data)) as img:
+        w, h = img.size
+        if max(w, h) <= max_long_edge:
+            return data
+        scale = max_long_edge / max(w, h)
+        # Clamp to 1px: an extreme aspect ratio (e.g. 1x5000) would otherwise round the short
+        # edge to 0 and raise in `resize`.
+        resized = img.resize(
+            (max(1, round(w * scale)), max(1, round(h * scale))), Image.Resampling.LANCZOS
+        )
+    buf = io.BytesIO()
+    resized.save(buf, format="PNG")
+    return buf.getvalue()

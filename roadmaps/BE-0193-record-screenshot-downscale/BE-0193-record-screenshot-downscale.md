@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0193](BE-0193-record-screenshot-downscale.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0193") |
+| Implementing PR | [#784](https://github.com/bajutsu-e2e/bajutsu/pull/784) |
 | Topic | Authoring experience (record / GUI editor) |
 <!-- /BE-METADATA -->
 
@@ -150,10 +151,19 @@ adopt the same helper later, but are out of scope here); any scenario-schema or 
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Shared downscale helper with a `MAX_IMAGE_LONG_EDGE` cap (downscale-only, aspect preserved).
-- [ ] Wire it into the iOS authoring capture path (post-capture resize of the `simctl` PNG).
-- [ ] Wire it into the web authoring capture path (capture at the bounded size).
-- [ ] Tests: helper unit tests; authoring-path integration; `tap_point` normalized-coordinate invariance.
+- [x] Shared downscale helper with a `MAX_IMAGE_LONG_EDGE` cap (downscale-only, aspect preserved).
+- [x] Wire it into the iOS authoring capture path (post-capture resize of the `simctl` PNG).
+- [x] Wire it into the web authoring capture path (capture at the bounded size).
+- [x] Tests: helper unit tests; authoring-path integration; `tap_point` normalized-coordinate invariance.
+
+**Log**
+
+- [#784](https://github.com/bajutsu-e2e/bajutsu/pull/784) — `downscale_png` added to `bajutsu/visual.py` (downscale-only, aspect preserved, PNG kept);
+  applied via `_downscaled` in `_screenshot_bytes` (`bajutsu/record.py`), the capture choke point shared by
+  both backends, so iOS and web are covered in one place above the vendor-neutral adapter (BE-0104) rather
+  than by a per-backend branch. `MAX_IMAGE_LONG_EDGE = 1568` is a module constant. Pillow (the `visual`
+  extra) is imported lazily and, when absent, the full-resolution bytes pass through unchanged. Tests in
+  `tests/test_downscale.py`.
 
 ## References
 
