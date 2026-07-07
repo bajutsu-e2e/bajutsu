@@ -10,7 +10,7 @@
 | Status | **Proposal** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
 | Topic | Authoring experience (record / GUI editor) |
-| Related | [BE-0012](../BE-0012-action-capture-record/BE-0012-action-capture-record.md), [BE-0026](../BE-0026-shrink-unsupported-syntax/BE-0026-shrink-unsupported-syntax.md), [BE-0035](../BE-0035-device-control-primitives/BE-0035-device-control-primitives.md), [BE-0052](../BE-0052-device-state-timezone-clipboard-shake/BE-0052-device-state-timezone-clipboard-shake.md) |
+| Related | [BE-0012](../BE-0012-action-capture-record/BE-0012-action-capture-record.md), [BE-0015](../BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md), [BE-0016](../BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md), [BE-0026](../BE-0026-shrink-unsupported-syntax/BE-0026-shrink-unsupported-syntax.md), [BE-0035](../BE-0035-device-control-primitives/BE-0035-device-control-primitives.md), [BE-0052](../BE-0052-device-state-timezone-clipboard-shake/BE-0052-device-state-timezone-clipboard-shake.md) |
 <!-- /BE-METADATA -->
 
 ## Introduction
@@ -75,8 +75,21 @@ pixel-level replay of the human's hand.
 verdict. It either resolves to a deterministic bypass or stands as an explicit, visible non-CI
 marker — consistent with directives 1 and 2.
 
-**CLI and `serve`.** Both surfaces come from the substrate; this item adds the takeover flow and the
-classification/emission on top.
+**CLI and `serve`.** Both surfaces come from the substrate, but takeover uses them differently from
+the value pattern, and that difference is sharpest in the Web UI. The browser does **not** drive
+the device: the `serve` handoff pane is only the coordination surface — it explains what the AI
+could not do, and offers a single "I have operated the device — resume" control. The actual
+tapping, biometric approval, or CAPTCHA solving happens on the device itself, and bajutsu re-reads
+the screen afterwards.
+
+That makes device *reach* a real precondition here, unlike value entry (which completes entirely
+in the browser). When `serve` runs on the same machine as the Simulator, the author operates it
+directly and the pane just coordinates the pause and resume. But on a **remote or self-hosted**
+`serve` (BE-0015 / BE-0016) the device is not in front of the author, so takeover needs a way to
+reach it — an interactive, mirrored device view in the browser, or a documented fallback
+(re-record where the device is, or wire the test-build bypass without a live takeover). This
+proposal flags the remote case as a first-class constraint rather than assuming it away; the
+interactive-mirror surface itself is out of scope here and would be its own item.
 
 ## Alternatives considered
 
@@ -98,7 +111,8 @@ classification/emission on top.
 > (oldest first), linking the PRs.
 
 - [ ] Takeover trigger on unresolved-target / explicit author request, no element guessing.
-- [ ] Human-operates-the-device handoff with bajutsu not driving.
+- [ ] Human-operates-the-device handoff with bajutsu not driving; the `serve` pane coordinates the pause/resume only.
+- [ ] Remote/self-hosted `serve` (BE-0015 / BE-0016): require device reach for takeover, with a documented fallback when the device is not reachable.
 - [ ] Resume-by-re-observation recording the observed state transition, not the raw gesture.
 - [ ] Artifact classification: bypassable → placeholder + bypass TODO (BE-0035 / BE-0052).
 - [ ] Artifact classification: unreproducible → explicit non-CI manual marker (codegen `// TODO`, BE-0026; run-time explicit skip/fail).
