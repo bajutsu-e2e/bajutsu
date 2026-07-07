@@ -47,7 +47,7 @@ writes the authored scenario to a gitignored `tmp/` file — the same clean id-b
 `scenarios/smoke.yaml` holds, because the app exposes stable `data-testid` ids. `record` is the only
 web path that needs an API key; the deterministic `run`/`e2e` above needs none.
 
-No key, no browser? The offline twin reproduces the *same* record loop — the real
+With no key and no browser, the offline twin reproduces the *same* record loop — the real
 `Observation → Proposal` protocol and emitted scenario — with a deterministic keyword agent grounding
 each step in an in-memory FakeDriver, so it runs in the `make check` toolchain:
 
