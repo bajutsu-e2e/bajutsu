@@ -790,7 +790,9 @@ def test_prepare_visual_comparison_crops_to_the_element(tmp_path: Path) -> None:
     assert prepared.crop is not None
     assert prepared.scale == (1.0, 1.0)  # 100px screenshot over 100pt screen
     # The crop is written to diff_dir/actual-card.png and is the 40x30 element region.
-    assert Image.open(prepared.compare_actual).size == (40, 30)
+    with Image.open(prepared.compare_actual) as cropped:
+        crop_size = cropped.size
+    assert crop_size == (40, 30)
     assert prepared.actual_rel == "diffs/actual-card.png"
 
 
