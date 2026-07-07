@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0187](BE-0187-serve-config-view.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0187") |
+| Implementing PR | [#734](https://github.com/bajutsu-e2e/bajutsu/pull/734) |
 | Topic | Configuration sourcing |
 | Related | [BE-0063](../BE-0063-git-config-source/BE-0063-git-config-source.md) |
 <!-- /BE-METADATA -->
@@ -90,11 +91,17 @@ this is a Tier‑1 convenience surface.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Persist Git provenance on `ServeState` (set on Git bind, cleared on local/bundle bind, threaded from startup).
-- [ ] Config-content read operation returning content + path + parsed structure + provenance.
-- [ ] `GET /api/config/content` on both transports (stdlib handler + FastAPI app).
-- [ ] UI: View button + viewer modal with Structured / Raw toggle.
-- [ ] Docs (en + ja) describe the viewer and provenance line.
+- [x] Persist Git provenance on `ServeState` (set on Git bind, cleared on local/bundle bind, threaded from startup).
+- [x] Config-content read operation returning content + path + parsed structure + provenance.
+- [x] `GET /api/config/content` on both transports (stdlib handler + FastAPI app).
+- [x] UI: View button + viewer modal with Structured / Raw toggle.
+- [x] Docs (en + ja) describe the viewer and provenance line.
+
+Log:
+
+- [#734](https://github.com/bajutsu-e2e/bajutsu/pull/734) — shipped the whole item: provenance on
+  `ServeState`, the `config_content` operation and `GET /api/config/content` (both transports, gated
+  to `admin`), the View button and Structured/Raw viewer modal, and the bilingual docs.
 
 ## References
 
