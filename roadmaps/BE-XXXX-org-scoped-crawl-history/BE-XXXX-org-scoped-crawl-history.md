@@ -28,7 +28,7 @@ correctly tenant-scoped.
 
 ## Motivation
 
-On the server backend (BE-0015 multi-tenancy), the run history and every run artifact are served
+On the server backend ([BE-0015](../BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md) multi-tenancy), the run history and every run artifact are served
 from the actor's org-scoped store: `runs_payload` reads the org's recorded runs, and `/runs/<id>/...`
 serves bytes through `state.for_org(state.org_of(actor)).artifacts`. Crawl history is the one
 run-history surface that does not follow this pattern — it scans `state.runs_dir`, a local path.
@@ -119,4 +119,5 @@ and never touches the `run`/CI verdict path, so prime directive 1 holds exactly 
   artifact store to implement the crawl listing for.
 - [`bajutsu/serve/operations/reads.py`](../../bajutsu/serve/operations/reads.py) — `runs_payload`
   (the org-scoped pattern to mirror) and `crawl_runs_payload` (the stub to replace).
-- BE-0015 multi-tenancy — the org-scoping model (`state.for_org` / `state.org_of`) this listing joins.
+- [BE-0015](../BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md) multi-tenancy — the
+  org-scoping model (`state.for_org` / `state.org_of`) this listing joins.

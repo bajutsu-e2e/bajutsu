@@ -9,7 +9,7 @@
 | 提案者 | [@hirosassa](https://github.com/hirosassa) |
 | 状態 | **提案** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
-| トピック | Hosting the web UI (cloud / self-hosted) |
+| トピック | Web UI のホスティング（クラウド / セルフホスト） |
 | 関連 | [BE-0180](../BE-0180-crawl-history-viewer/BE-0180-crawl-history-viewer-ja.md) |
 | 由来 | [BE-0180](../BE-0180-crawl-history-viewer/BE-0180-crawl-history-viewer-ja.md) のレビュー |
 <!-- /BE-METADATA -->
@@ -28,7 +28,7 @@ Crawl タブの履歴リスト（[BE-0180](../BE-0180-crawl-history-viewer/BE-01
 
 ## 動機
 
-サーバーバックエンド（BE-0015 のマルチテナント）では、run 履歴もすべての run 成果物も、操作者の org に
+サーバーバックエンド（[BE-0015](../BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting-ja.md) のマルチテナント）では、run 履歴もすべての run 成果物も、操作者の org に
 スコープされたストアから配信されます。`runs_payload` はその org に記録された run を読み、`/runs/<id>/...`
 は `state.for_org(state.org_of(actor)).artifacts` を通じてバイト列を配信します。crawl 履歴だけが、この
 パターンに従っていません。ローカルパスである `state.runs_dir` を走査しているからです。
@@ -121,4 +121,4 @@ CI の判定パスには一切触れないため、BE-0180 と同じくプライ
   対象のオブジェクトストレージ成果物ストア。
 - [`bajutsu/serve/operations/reads.py`](../../bajutsu/serve/operations/reads.py) — 倣うべき org スコープの
   パターンである `runs_payload` と、置き換えるスタブである `crawl_runs_payload`。
-- BE-0015 マルチテナント — 本一覧が加わる org スコープのモデル（`state.for_org` / `state.org_of`）。
+- [BE-0015](../BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting-ja.md) マルチテナント — 本一覧が加わる org スコープのモデル（`state.for_org` / `state.org_of`）。
