@@ -15,9 +15,9 @@
 
 ## Introduction
 
-The shared substrate under two record human-in-the-loop patterns — human value entry
-(`record-human-value-prompt`) and human operation takeover (`record-human-takeover-step`).
-This item defines how the AI-driven `record` loop can pause mid-run, hand control to a human,
+This proposal is the shared substrate under two record human-in-the-loop patterns: human value
+entry (`record-human-value-prompt`) and human operation takeover (`record-human-takeover-step`).
+It defines how the AI-driven `record` loop can pause mid-run, hand control to a human,
 accept their input or action, and resume — the pause triggers, the request/response contract,
 the CLI and `serve` surfaces, and the invariant that binds all of it: whatever a handoff records
 must still re-run deterministically, with no human on the run path. The two concrete patterns
