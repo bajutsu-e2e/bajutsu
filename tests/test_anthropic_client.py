@@ -78,6 +78,38 @@ def test_resolve_effort_env_fallback(monkeypatch: pytest.MonkeyPatch) -> None:
     assert ac.resolve_effort(ac.AiConfig(effort="low")) == "low"  # config wins over env
 
 
+def test_resolve_language_config_wins_and_defaults_to_auto(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv(ac.LANGUAGE_ENV, raising=False)
+    assert ac.resolve_language(ac.AiConfig(language="ja")) == "ja"
+    assert ac.resolve_language(ac.AiConfig(language="EN")) == "en"  # normalized
+    assert ac.resolve_language(ac.AiConfig(language="klingon")) == "auto"  # unknown → auto
+    assert ac.resolve_language(ac.AiConfig(language="auto")) == "auto"
+    assert ac.resolve_language(None) == "auto"
+
+
+def test_resolve_language_env_fallback(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv(ac.LANGUAGE_ENV, "ja")
+    assert ac.resolve_language(None) == "ja"
+    assert ac.resolve_language(ac.AiConfig(language="en")) == "en"  # explicit config wins over env
+    # `auto` (the default) must NOT shadow the env — else a bound config's default would disable the
+    # serve dropdown's env setting. Config `auto` / unknown defers to the env.
+    assert ac.resolve_language(ac.AiConfig(language="auto")) == "ja"
+    assert ac.resolve_language(ac.AiConfig(language="klingon")) == "ja"
+
+
+def test_language_instruction_auto_is_empty_others_name_the_language(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv(ac.LANGUAGE_ENV, raising=False)
+    assert ac.language_instruction(None) == ""  # auto appends nothing (prompt stays cacheable)
+    assert ac.language_instruction(ac.AiConfig(language="auto")) == ""
+    ja = ac.language_instruction(ac.AiConfig(language="ja"))
+    assert "日本語" in ja and ja.startswith("\n\n")
+    assert "English" in ac.language_instruction(ac.AiConfig(language="en"))
+
+
 def test_make_client_returns_injected_client() -> None:
     sentinel = object()
     assert ac.make_client(sentinel) is sentinel

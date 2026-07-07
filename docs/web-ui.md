@@ -146,9 +146,14 @@ survive a restart, set `ANTHROPIC_API_KEY` / `AWS_*` in your shell or a `.env` b
 
 The picker starts on a placeholder — there is **no default provider**, and **Save** refuses until
 you pick one explicitly. Each provider's own fields (the API key, the Bedrock region and model id,
-the CLI sign-in) appear only once that provider is selected. Two overrides apply across providers:
+the CLI sign-in) appear only once that provider is selected. Three overrides apply across providers:
 **Model** substitutes a specific model id for the default (Bedrock keeps its own prefixed id
-field), and **Reasoning effort** trades speed against depth for the authoring agents.
+field), **Reasoning effort** trades speed against depth for the authoring agents, and **Output
+language** ([BE-0188](../roadmaps/BE-0188-configurable-ai-output-language/BE-0188-configurable-ai-output-language.md))
+fixes the language the AI writes its generated prose in — `record`'s `from:` provenance and
+`crawl`'s streamed reasoning. Its default *auto* keeps today's behavior (record follows the goal,
+crawl stays English); it never affects the deterministic `run` verdict, and it is separate from a
+target's device `locale`.
 
 **Claude API key** (shown when the Anthropic API provider is selected) is **write-once**: enter a
 key and **Save**, and it is shown only masked and never

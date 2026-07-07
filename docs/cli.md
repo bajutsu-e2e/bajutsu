@@ -336,6 +336,7 @@ bajutsu record --target <name> --goal "<natural-language goal>" [--out <file.yam
 | `--dismiss-alerts` | off | clear prompts during authoring (needs an API key) |
 | `--headed / --no-headed` | app `headless` | web backend: author against a visible (headed, slow-motion) browser instead of headless; omit to use the app's `headless` config |
 | `--alert-instruction` | "" | the press instruction for the above |
+| `--language` | config `ai.language` (`auto`) | AI output language for the authored prose (`from:` provenance, reasoning) — `ja` / `en` / `auto`; overrides `ai.language`, `auto` follows the goal ([BE-0188](../roadmaps/BE-0188-configurable-ai-output-language/BE-0188-configurable-ai-output-language.md)) |
 | `--config` | `bajutsu.config.yaml` | config |
 
 - Internally `launch_driver` → `record_loop(driver, goal, ClaudeAgent(), ...)` → `dump_scenarios`.
@@ -373,6 +374,7 @@ bajutsu crawl --target <name> [--max-screens N] [--max-steps N] [--out <dir>] [o
 | `--erase / --no-erase` | `--erase` | erase before launch (the app must be installed) |
 | `--dismiss-alerts / --no-dismiss-alerts` | `--dismiss-alerts` | dismiss unexpected OS prompts while crawling (so they aren't read as crashes; uses the configured AI provider — `ANTHROPIC_API_KEY`, or AWS credentials for Bedrock) |
 | `--headed / --no-headed` | app `headless` | web backend: crawl a visible (headed, slow-motion) browser instead of headless; omit to use the app's `headless` config |
+| `--language` | config `ai.language` (`auto`) | AI output language for the guide's streamed reasoning — `ja` / `en` / `auto`; overrides `ai.language`, `auto` stays English for crawl ([BE-0188](../roadmaps/BE-0188-configurable-ai-output-language/BE-0188-configurable-ai-output-language.md)) |
 | `--out` | `runs/<timestamp>` | run dir the screen map is written into |
 | `--continue` | off | continue a past run (point `--out` at it) — re-explore **every** screen it left with untried operations, not one branch; raise `--max-screens`/`--max-steps` to go deeper, and `--workers`/`--udid` run the continuation in parallel ([BE-0181](../roadmaps/BE-0181-crawl-continuation/BE-0181-crawl-continuation.md)) |
 | `--config` | `bajutsu.config.yaml` | config |

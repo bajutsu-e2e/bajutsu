@@ -117,6 +117,7 @@ defaults:
     provider: api-key                        # a registered provider name; api-key (default), bedrock, ant, or claude-code ship today
     model:    claude-opus-4-8                 # optional: override the path's default model (or the BAJUTSU_AI_MODEL env)
     effort:   high                            # optional: reasoning effort — low/medium/high/xhigh/max (or BAJUTSU_AI_EFFORT); claude-code
+    language: auto                            # optional: AI output language for the generated prose — ja/en/auto (or BAJUTSU_AI_LANGUAGE)
     baseUrl:  https://ai-gateway.internal/v1  # optional: a self-hosted gateway / enterprise proxy (anthropic provider)
     keyEnv:   ANTHROPIC_API_KEY               # the NAME of the env var holding the key — never the key itself
 ```
@@ -129,6 +130,17 @@ defaults:
   unknown value (HTTP 400) rather than falling back. The panel exposes both for the running session,
   and `record` prints the resolved choice up front (`🤖 AI: <provider> · model <model> · effort
   <effort>`).
+
+- **Output language is a separate, config-first knob**
+  ([BE-0188](../roadmaps/BE-0188-configurable-ai-output-language/BE-0188-configurable-ai-output-language.md)).
+  `language` (or `BAJUTSU_AI_LANGUAGE`) fixes the language the AI writes its *own generated prose* in:
+  `record`'s `from:` provenance and `crawl`'s streamed reasoning. It is one of `ja` / `en` / `auto`,
+  and `auto` (the default) keeps today's behavior — `record` follows the goal's language and `crawl`
+  stays English. Set it per invocation with `--language` on `record` / `crawl` (flag > config >
+  `auto`), or from the `serve` **Settings** panel's *Output language* dropdown; an unrecognized value
+  falls back to `auto` (the panel instead rejects it with HTTP 400). This governs authoring and
+  investigation prose only — never the deterministic `run` verdict — and is distinct from a target's
+  device `locale` below, which sets the app/UI language rather than the AI's.
 
 - **A provider is a backend behind one interface**
   ([BE-0104](../roadmaps/BE-0104-vendor-neutral-ai-backend/BE-0104-vendor-neutral-ai-backend.md)).

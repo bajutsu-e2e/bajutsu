@@ -44,10 +44,17 @@ from bajutsu.config import AiConfig as AiConfig
 PROVIDER_ENV = "BAJUTSU_AI_PROVIDER"
 MODEL_ENV = "BAJUTSU_AI_MODEL"  # provider-agnostic model override (config `ai.model` wins over it)
 EFFORT_ENV = "BAJUTSU_AI_EFFORT"  # reasoning-effort override (config `ai.effort` wins over it)
+# AI output language override, BE-0188 (config `ai.language` wins over it).
+LANGUAGE_ENV = "BAJUTSU_AI_LANGUAGE"
 BEDROCK_MODEL_ENV = "BAJUTSU_BEDROCK_MODEL"
 ANTHROPIC_KEY_ENV = "ANTHROPIC_API_KEY"
 # The reasoning-effort levels the `claude` CLI accepts (`--effort`); other levels are ignored.
 EFFORT_LEVELS = ("low", "medium", "high", "xhigh", "max")
+# The AI output languages `ai.language` / `--language` accept (BE-0188). `auto` keeps today's
+# behavior (record follows the goal, crawl stays English); the human-readable name each maps to in
+# the prompt instruction lives in `_LANGUAGE_NAMES` below.
+LANGUAGES = ("auto", "ja", "en")
+DEFAULT_LANGUAGE = "auto"
 # Provider names state the authentication method — all three are Anthropic-SDK variants.
 PROVIDERS = ("api-key", "bedrock", "ant")
 DEFAULT_PROVIDER = "api-key"
@@ -246,6 +253,48 @@ def resolve_effort(ai: AiConfig | None = None) -> str | None:
     raw = (ai.effort if ai else None) or os.environ.get(EFFORT_ENV) or ""
     value = raw.strip().lower()
     return value if value in EFFORT_LEVELS else None
+
+
+# The human-readable name each language enum maps to in the prompt instruction. `auto` has no name
+# because it appends nothing (today's emergent behavior); the trailing native form disambiguates for
+# the model (e.g. that "ja" means 日本語, not romaji).
+_LANGUAGE_NAMES = {"ja": "Japanese (日本語)", "en": "English"}
+
+
+def resolve_language(ai: AiConfig | None = None) -> str:
+    """The AI output language for this call — one of ``LANGUAGES`` (BE-0188).
+
+    An explicit ``ja`` / ``en`` in ``ai.language`` wins (config-first, like the provider, model, and
+    effort). Otherwise — an ``auto``, absent, or unrecognized config value — the language falls back
+    to ``BAJUTSU_AI_LANGUAGE``, else ``auto``. Unlike ``effort``, ``auto`` is both a real value *and*
+    the default, so it must **not** shadow the env var: a bound config carrying the default ``auto``
+    would otherwise silently disable the language the ``serve`` dropdown sets through the env. A typo
+    keeps today's behavior rather than failing an AI path. This governs only the language the model
+    writes its own generated prose in; it never enters the deterministic run/CI verdict.
+    """
+    configured = ((ai.language if ai else None) or "").strip().lower()
+    if configured in _LANGUAGE_NAMES:  # an explicit ja/en in config wins over the env
+        return configured
+    env = os.environ.get(LANGUAGE_ENV, "").strip().lower()
+    return env if env in _LANGUAGE_NAMES else DEFAULT_LANGUAGE
+
+
+def language_instruction(ai: AiConfig | None = None) -> str:
+    """A system-prompt suffix constraining the model's free-text language, or ``""`` for ``auto``.
+
+    Folded onto an AI path's static system prompt (`record` authoring/enrichment, `crawl`
+    guide/tabs) so the model's generated prose — reasoning, intent, and any provenance — comes out in
+    the chosen language. ``auto`` (the default) appends nothing, so the prompt is byte-identical to
+    today and stays prompt-cacheable. Applies only to authoring/investigation prose, never the
+    deterministic verdict.
+    """
+    name = _LANGUAGE_NAMES.get(resolve_language(ai))
+    if name is None:  # auto → append nothing
+        return ""
+    return (
+        f"\n\nWrite all of your free-text output — your reasoning, intent, and any "
+        f"provenance or descriptions — in {name}."
+    )
 
 
 def credential_gap(ai: AiConfig | None = None) -> str | None:

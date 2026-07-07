@@ -557,6 +557,13 @@
         <option value="max">max</option>
       </select>
       <div class="fshint">Applies to the <b>Anthropic API</b>, <b>ant</b>, and <b>Claude Code</b> providers (Bedrock uses the prefixed id above). Reasoning effort (low&ndash;max) is honored by the <b>Claude Code</b> provider (<code>--effort</code>); blank leaves the model's default.</div>
+      <label class="keylabel" for="ai-language">Output language</label>
+      <select id="ai-language" data-testid="settings.language" class="keyinput">
+        <option value="auto">auto (keep current behavior)</option>
+        <option value="ja">日本語</option>
+        <option value="en">English</option>
+      </select>
+      <div class="fshint">The language the AI writes its generated prose in for <b>record</b> (the <code>from:</code> provenance) and <b>crawl</b> (its streamed reasoning). <b>auto</b> keeps today's behavior &mdash; record follows the goal's language, crawl stays English. This never affects the deterministic <code>run</code> verdict, and it is separate from a target's device <code>locale</code>.</div>
     </div>
     <div class="setsection" id="apikeysection" data-testid="settings.apikey-section">
       <div class="setlabel">Claude API key</div>

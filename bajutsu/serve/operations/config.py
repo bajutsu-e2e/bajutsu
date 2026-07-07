@@ -19,8 +19,11 @@ from bajutsu.anthropic_client import (
     ANT_CLI_MISSING,
     ANTHROPIC_KEY_ENV,
     BEDROCK_MODEL_ENV,
+    DEFAULT_LANGUAGE,
     EFFORT_ENV,
     EFFORT_LEVELS,
+    LANGUAGE_ENV,
+    LANGUAGES,
     MODEL_ENV,
     PROVIDER_ENV,
     AiConfig,
@@ -193,6 +196,7 @@ def provider_info(state: ServeState) -> tuple[Any, int]:
         "model": os.environ.get(BEDROCK_MODEL_ENV, ""),
         "aiModel": os.environ.get(MODEL_ENV, ""),  # general model override (non-Bedrock providers)
         "effort": os.environ.get(EFFORT_ENV, ""),
+        "language": os.environ.get(LANGUAGE_ENV, ""),  # AI output language (BE-0188)
         "claudeAvailable": gap is None,
         "claudeGap": gap,
         "claudeHint": ai_availability.message(gap) if gap is not None else "",
@@ -337,6 +341,16 @@ def set_provider(state: ServeState, body: dict[str, Any]) -> tuple[Any, int]:
         os.environ[EFFORT_ENV] = effort
     else:
         os.environ.pop(EFFORT_ENV, None)
+    # AI output language (BE-0188): applies to record/crawl's generated prose, never the run/CI
+    # verdict. `auto` (and blank) is the no-override default, so it clears the env like a blank effort;
+    # an unknown value is rejected so a typo is a visible error, not a silent default.
+    language = str(body.get("language", "") or "").strip().lower()
+    if language and language not in LANGUAGES:
+        return {"error": f"unknown language {language!r}: use one of {', '.join(LANGUAGES)}"}, 400
+    if language and language != DEFAULT_LANGUAGE:
+        os.environ[LANGUAGE_ENV] = language
+    else:
+        os.environ.pop(LANGUAGE_ENV, None)
     if prov in ("api-key", "ant", "claude-code"):
         # These providers take a bare Anthropic model id via the general override (blank = default).
         ai_model = str(body.get("aiModel", "") or "").strip()
@@ -347,7 +361,13 @@ def set_provider(state: ServeState, body: dict[str, Any]) -> tuple[Any, int]:
         else:
             os.environ.pop(MODEL_ENV, None)
         os.environ[PROVIDER_ENV] = prov
-        return {"ok": True, "provider": prov, "model": ai_model, "effort": effort}, 200
+        return {
+            "ok": True,
+            "provider": prov,
+            "model": ai_model,
+            "effort": effort,
+            "language": language,
+        }, 200
     # Bedrock needs a provider-prefixed model id (the bare Anthropic id is invalid there); region is
     # optional and falls back to AWS_REGION already in the environment.
     model = str(body.get("model", "") or "").strip()
@@ -367,6 +387,7 @@ def set_provider(state: ServeState, body: dict[str, Any]) -> tuple[Any, int]:
         "region": region,
         "model": model,
         "effort": effort,
+        "language": language,
     }, 200
 
 

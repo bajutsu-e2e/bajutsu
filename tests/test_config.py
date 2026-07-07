@@ -140,6 +140,20 @@ def test_ai_block_absent_resolves_to_none() -> None:
     assert resolve(cfg, "s").ai is None
 
 
+def test_ai_language_resolves_and_target_overrides() -> None:
+    # BE-0188: `ai.language` merges like effort — defaults resolve, a target overrides field-wise.
+    cfg = load_config(
+        "defaults:\n  ai: { provider: api-key, language: en }\n"
+        "targets:\n"
+        "  s:\n    bundleId: com.x\n    ai: { language: ja }\n"
+        "  t:\n    bundleId: com.y\n"
+    )
+    assert resolve(cfg, "s").ai is not None and resolve(cfg, "s").ai.language == "ja"  # override
+    assert (
+        resolve(cfg, "t").ai is not None and resolve(cfg, "t").ai.language == "en"
+    )  # from defaults
+
+
 def test_ai_block_keys_in_config_are_rejected() -> None:
     # A literal key in config is a foot-gun the schema forbids: only keyEnv (a NAME) is allowed.
     with pytest.raises(ValidationError):

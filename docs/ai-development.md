@@ -512,6 +512,15 @@ at all.
 | `Proposal` | Proposals — under consideration |
 | `Proposal (deferred)` | Deferred — parked |
 
+**The code decides the Status — a hard rule.** An item's `Status` tracks whether its implementation
+exists, not a preference to keep the item reading as a forward-looking proposal. An item authored with
+no code is `Proposal`; the PR that **ships its code** sets `Status` to `Implemented` (or `In progress`
+when it lands a partial slice) in that same PR, ticks the matching `Progress` boxes, and records the PR
+under `Implementing PR`. `Proposal` is never left standing on an item whose code has already shipped —
+that is exactly the promotion the [`implement-be`](../.claude/skills/implement-be/SKILL.md) skill
+performs, and it binds humans and agents alike. (The one exception is *authoring* a new item: an
+`ideation`-style proposal that ships no code stays `Proposal`, since there is nothing implemented yet.)
+
 As an item advances, **update its Status** and run `make roadmap-index` to regenerate the index (its row
 moves to the right bucket automatically). The directory never moves (BE-0159): the same
 `roadmaps/BE-NNNN-<slug>/` path holds the item for its whole life, so a promotion no longer rots any link

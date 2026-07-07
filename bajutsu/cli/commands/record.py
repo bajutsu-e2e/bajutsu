@@ -22,6 +22,7 @@ from bajutsu.cli._shared import (
     _refuse_out_in_checkout,
     _require_ai_credential,
     _resolve_browser,
+    _resolve_language,
     _warn_onscreen_secrets,
     _with_headed,
 )
@@ -127,6 +128,12 @@ def record(
         help=f"web backend: rendering engine to author against — {' / '.join(WEB_ENGINES)}; "
         "default leaves the target's `browser` config (chromium)",
     ),
+    language: str = typer.Option(
+        "",
+        "--language",
+        help="AI output language for the authored prose (from: provenance, reasoning) — "
+        "ja / en / auto; overrides `ai.language`, default leaves the config (auto follows the goal)",
+    ),
     upload_exec: str = typer.Option(
         "",
         "--upload-exec",
@@ -153,6 +160,8 @@ def record(
     eff = _with_headed(eff, headed)
     # --browser overrides the target's `browser` config (web backend only; flag > config > chromium).
     eff = _resolve_browser(eff, browser)
+    # --language overrides the target's `ai.language` (flag > config > auto), BE-0188.
+    eff = _resolve_language(eff, language)
     out_path = _record_out_path(eff, out, name, goal, target_name, checkout_root=checkout_root)
     before = _usage.snapshot()
     # Fail closed (BE-0047): the authoring agent and the alert guard both reach the model via the

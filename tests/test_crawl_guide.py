@@ -246,3 +246,17 @@ def test_claude_proposer_no_redactor_leaves_text_unmasked() -> None:
     ClaudeActionProposer(backend=backend).propose(elements, None, [], ())
     text = _text_of(backend)
     assert "plain-label" in text
+
+
+def test_output_language_is_folded_into_the_crawl_system_prompt() -> None:
+    # BE-0188: the guide's streamed reasoning comes out in the chosen language; `auto` (default)
+    # leaves the prompt unchanged.
+    default = _propose_backend()
+    ClaudeActionProposer(backend=default).propose([el(identifier="a")], None, [], ())
+    assert "日本語" not in default.requests[0].system
+
+    ja = _propose_backend()
+    ClaudeActionProposer(backend=ja, ai=AiConfig(language="ja")).propose(
+        [el(identifier="a")], None, [], ()
+    )
+    assert "日本語" in ja.requests[0].system

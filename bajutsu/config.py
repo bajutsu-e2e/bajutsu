@@ -39,6 +39,7 @@ class AiConfig:
     base_url: str | None = None  # self-hosted gateway / proxy for the Anthropic provider
     key_env: str | None = None  # name of the env var holding the API key (never the key)
     effort: str | None = None  # reasoning-effort level (low/medium/high/xhigh/max) where supported
+    language: str | None = None  # AI output language for the generated prose (ja/en/auto), BE-0188
 
 
 class _Model(BaseModel):
@@ -132,6 +133,10 @@ class AiSettings(_Model):
     base_url: str | None = Field(default=None, alias="baseUrl")  # self-hosted gateway / proxy
     key_env: str | None = Field(default=None, alias="keyEnv")  # NAME of the env var (never the key)
     effort: str | None = None  # reasoning-effort level: low/medium/high/xhigh/max (claude-code)
+    # AI output language for the model's generated prose (BE-0188): ja | en | auto. `auto` (the
+    # default) keeps today's behavior — `record` follows the goal's language, `crawl` stays English.
+    # Governs authoring/investigation prose only; never the deterministic run/CI verdict.
+    language: str | None = None
 
 
 def _check_platform(v: str | None) -> str | None:
@@ -622,6 +627,7 @@ def _merge_ai(base: AiSettings | None, over: AiSettings | None) -> AiConfig | No
         base_url=o.base_url or b.base_url,
         key_env=o.key_env or b.key_env,
         effort=o.effort or b.effort,
+        language=o.language or b.language,
     )
 
 
