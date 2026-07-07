@@ -557,12 +557,14 @@ function hideReportPanel(){if(recReportHide)recReportHide();else{const p=$('#rec
 function showHandoffPanel(){if(recHandoffShow)recHandoffShow();else $('#rec-handoffpanel').hidden=false;}
 function hideHandoffPanel(){if(recHandoffHide)recHandoffHide();else{const p=$('#rec-handoffpanel');if(p)p.hidden=true;}}
 function onHandoffRequest(req){
+  // Show (attach) the pane FIRST: the desktop tiler detaches an optional pane's DOM until it is
+  // shown, so the field lookups below would miss it if we populated before attaching.
+  showHandoffPanel();
   $('#rec-handoff-reason').textContent=req.reason||'the agent needs a human to continue';
   $('#rec-handoff-screen').textContent=[req.target&&('target: '+req.target),req.screen].filter(Boolean).join(' · ');
   const shot=$('#rec-handoff-shot');
   if(req.screenshot){shot.src='data:image/png;base64,'+req.screenshot;shot.hidden=false;}else{shot.removeAttribute('src');shot.hidden=true;}
   $('#rec-handoff-value').value='';
-  showHandoffPanel();
 }
 async function sendHandoff(body){
   if(!recJobId)return;
