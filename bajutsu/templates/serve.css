@@ -367,6 +367,15 @@ header .cfgname{color:var(--mut);font-size:.82em;max-width:32vw;overflow:hidden;
 .rec-handoff-body{display:flex;flex-direction:column;gap:.5em}
 .rec-handoff-body #rec-handoff-shot{max-width:100%;height:auto;border-radius:4px;align-self:flex-start}
 .rec-handoff-body #rec-handoff-value{width:100%}
+/* Action row: Supply (primary) + resume (secondary) grouped left, Cancel (ghost) pushed right — so
+   the destructive action reads as least prominent, not a full-width red bar. */
+.rec-handoff-actions{display:flex;align-items:center;gap:.5em;margin-top:.3em}
+.rec-handoff-actions button{padding:.45rem 1rem;border-radius:6px;font:inherit;font-weight:700;cursor:pointer}
+.rec-handoff-actions #rec-handoff-send{background:var(--acc);color:var(--on-acc);border:1px solid var(--acc)}
+.rec-handoff-actions #rec-handoff-send:disabled{opacity:.4;cursor:default}
+.rec-handoff-actions #rec-handoff-acted{background:var(--card);color:var(--fg);border:1px solid var(--line)}
+.rec-handoff-actions #rec-handoff-cancel{margin-left:auto;background:none;border:0;color:var(--mut);font-weight:600}
+.rec-handoff-actions #rec-handoff-cancel:hover{color:var(--ng)}
 .fshead{display:flex;align-items:center;margin-bottom:.6rem}.fshead .ttl{font-weight:700}
 .fshead .fsclose{margin-left:auto;background:none;border:0;color:var(--mut);font-size:1.1em;cursor:pointer}
 .fspath{color:var(--mut);font-size:.82em;margin-bottom:.4rem;word-break:break-all}
