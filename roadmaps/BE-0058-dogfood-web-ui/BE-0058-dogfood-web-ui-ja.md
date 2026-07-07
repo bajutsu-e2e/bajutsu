@@ -9,7 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0058") |
-| 実装 PR | [#169](https://github.com/bajutsu-e2e/bajutsu/pull/169) |
+| 実装 PR | [#169](https://github.com/bajutsu-e2e/bajutsu/pull/169), [#742](https://github.com/bajutsu-e2e/bajutsu/pull/742) |
 | トピック | Dogfood フィクスチャ（Web UI） |
 | 由来 | Dogfooding |
 <!-- /BE-METADATA -->
@@ -133,7 +133,17 @@ driver の意味的な `selectOption` capability が要り、これは
 
 ## 進捗
 
-- [x] 出荷済み。上記の *実装 PR* を参照してください。
+- [x] 最初の一枚を出荷しました。ナビゲーション、モーダル、config→ピッカーの契約、フォームの状態、
+  プラットフォーム対応のコントロールです。[#169](https://github.com/bajutsu-e2e/bajutsu/pull/169)
+- [x] カバレッジを完成させ、CI の実行手段を加えました。[#742](https://github.com/bajutsu-e2e/bajutsu/pull/742)
+  残りのビュー（Author / Stats / Coverage）と新しい Replay のツール（audit バッジ、codegen、doctor）の
+  シナリオを揃えました。dogfood の README は、完成した `docs/web-ui.md` に対する機能カバレッジマップを
+  持ち、意図して覆わないものとその理由を列挙します。`bajutsu codegen --emit playwright` がシナリオを
+  ネイティブの `@playwright/test` スペックとして書き出し、`.github/workflows/serve-ui-e2e.yml` が
+  serve UI に触れる PR ごとに実行します。YAML が唯一のソースのままです。広げた網が見つけた副次的な修正も
+  含みます。方向スワイプが対象の上から始まるようにし、ネイティブ checkbox の `checked` を `selected`
+  トレイトとして読むようにし、serve UI の描画不具合三つ（空の grade バッジ、shadow に取り残される
+  プレースホルダ、見切れる Author の load 行）を直しました。
 
 ## 参考
 
