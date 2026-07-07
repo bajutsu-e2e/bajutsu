@@ -27,7 +27,8 @@ QUERY_JS = """
       value: ('value' in el) ? el.value : null,
       disabled: el.disabled === true || el.getAttribute('aria-disabled') === 'true',
       selected: el.getAttribute('aria-selected') === 'true'
-                || el.getAttribute('aria-checked') === 'true',
+                || el.getAttribute('aria-checked') === 'true'
+                || el.checked === true,
       frame: [r.x, r.y, r.width, r.height],
     });
   }
