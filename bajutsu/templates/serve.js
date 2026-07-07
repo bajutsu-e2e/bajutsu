@@ -228,7 +228,7 @@ function cfgScalarClass(v){return v===null?'nul':(typeof v==='boolean'?'bool':(t
 function cfgNode(key,val,depth){
   if(!cfgIsContainer(val)){
     const row=document.createElement('div');row.className='cfgrow';
-    if(key!==null){const k=document.createElement('span');k.className='cfgkey';k.textContent=key;row.appendChild(k)}
+    if(key!==null){const k=document.createElement('span');k.className='cfgkey';k.textContent=key;row.appendChild(k);}
     const v=document.createElement('span');v.className='cfgval '+cfgScalarClass(val);v.textContent=cfgScalar(val);row.appendChild(v);
     return row;
   }
