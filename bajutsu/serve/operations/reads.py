@@ -193,7 +193,12 @@ def usage_html(state: ServeState, *, actor: str | None = None) -> tuple[str, int
     is not filtered by *actor* (a per-org ledger would follow the ledger becoming org-scoped).
     """
     path = _usage_ledger_path(state)
-    events = _usage_ledger.read_events(path) if path is not None else []
+    try:
+        events = _usage_ledger.read_events(path) if path is not None else []
+    except OSError:
+        # An unreadable ledger (a permission issue, a transient I/O error) degrades to the empty-state
+        # dashboard rather than a 500 — the same "skip what can't be read" promise `/stats` makes.
+        events = []
     return _usage_stats.render_html(_usage_stats.aggregate_usage(events)), 200
 
 

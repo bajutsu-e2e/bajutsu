@@ -94,6 +94,19 @@ def test_usage_route_serves_html_over_http(tmp_path: Path) -> None:
         server.server_close()
 
 
+def test_usage_dashboard_degrades_when_ledger_is_unreadable(tmp_path: Path) -> None:
+    # An unreadable ledger (here a directory in the ledger's place → OSError on read) degrades to the
+    # empty state, never a 500 — the same "skip what can't be read" promise /stats makes.
+    ledger_path = tmp_path / "usage.jsonl"
+    ledger_path.mkdir()
+    state = _state_with_ledger(tmp_path, ledger_path)
+
+    html, code = ops.usage_html(state)
+
+    assert code == 200
+    assert "No AI usage recorded yet" in html
+
+
 def test_usage_dashboard_empty_when_persistence_disabled(tmp_path: Path) -> None:
     # An explicit empty `usageLedger` disables recording; the dashboard reads nothing and says so.
     cfg = tmp_path / "bajutsu.config.yaml"

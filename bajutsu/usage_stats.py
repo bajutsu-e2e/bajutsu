@@ -161,11 +161,17 @@ def _in_range(event: UsageEvent, since: datetime | None, until: datetime | None)
 
 
 def _parse_ts(ts: str) -> datetime | None:
-    """The event's timestamp as a datetime, or None when it isn't ISO-8601."""
+    """The event's timestamp as an aware datetime, or None when it isn't a usable ISO-8601 instant.
+
+    The ledger always writes a UTC offset, so an offset-naive line is malformed; treat it as
+    unplaceable (None) rather than return a naive datetime that would raise `TypeError` when compared
+    against the aware `since` / `until` bounds in `_in_range` — one bad line must not crash the filter.
+    """
     try:
-        return datetime.fromisoformat(ts)
+        parsed = datetime.fromisoformat(ts)
     except (ValueError, TypeError):
         return None
+    return parsed if parsed.tzinfo is not None else None
 
 
 def _breakdown(events: list[UsageEvent], key: Callable[[UsageEvent], str | None]) -> list[UsageRow]:
@@ -231,7 +237,9 @@ def _comparison(events: list[UsageEvent]) -> list[ComparisonRow]:
                 cost_per_scenario=pair_cost / pair_scenarios if pair_priced else None,
             )
         )
-    rows.sort(key=lambda r: (-r.cost, -r.calls, r.provider, r.model))
+    # Unpriced pairs (no priced call) always sort last — a priced pair whose cost happens to sum to
+    # $0.00 still ranks above them — then by descending cost, then calls, then the key for stability.
+    rows.sort(key=lambda r: (r.priced_calls == 0, -r.cost, -r.calls, r.provider, r.model))
     return rows
 
 

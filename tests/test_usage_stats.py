@@ -134,6 +134,27 @@ def test_time_range_excludes_events_with_unparseable_timestamp() -> None:
     assert s.calls == 1
 
 
+def test_time_range_excludes_offset_naive_timestamp() -> None:
+    # A ledger line without a UTC offset is offset-naive; comparing it against the aware bounds would
+    # raise TypeError, so it is treated as unplaceable and dropped rather than crashing the filter.
+    s = aggregate_usage(
+        [_event(ts="2026-07-05T00:00:00"), _event(ts="2026-07-05T00:00:00+00:00")],
+        since=datetime(2026, 7, 1, tzinfo=UTC),
+    )
+    assert s.calls == 1
+
+
+def test_comparison_sorts_unpriced_pairs_last() -> None:
+    # A priced pair whose cost sums to $0.00 still outranks a genuinely unpriced pair.
+    s = aggregate_usage(
+        [
+            _event(provider="ant", model="sub", cost=None),
+            _event(provider="api-key", model="free", cost=0.0),
+        ]
+    )
+    assert [(r.provider, r.priced_calls) for r in s.comparison] == [("api-key", 1), ("ant", 0)]
+
+
 def test_by_day_trend_is_chronological() -> None:
     s = aggregate_usage(
         [
