@@ -222,6 +222,17 @@ def test_list_crawl_runs_normalizes_missing_or_non_list_counts(tmp_path: Path) -
     assert got["junk"]["crashes"] == 0
 
 
+def test_list_crawl_runs_lists_only_yaml_files_not_dirs(tmp_path: Path) -> None:
+    _, _, runs = project(tmp_path)
+    d = runs / "20260610-1"
+    (d / "crashes").mkdir(parents=True)
+    (d / "screenmap.json").write_text('{"nodes": [], "edges": [], "crashes": []}', encoding="utf-8")
+    (d / "crashes" / "crash-001.yaml").write_text("- name: c\n", encoding="utf-8")
+    (d / "crashes" / "weird.yaml").mkdir()  # a directory whose name matches the glob → not a link
+    (got,) = srv.list_crawl_runs(runs)
+    assert got["crashFiles"] == ["crash-001.yaml"]  # the directory is excluded
+
+
 def test_list_crawl_runs_empty_dir(tmp_path: Path) -> None:
     assert srv.list_crawl_runs(tmp_path / "nope") == []
 

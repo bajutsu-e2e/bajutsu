@@ -292,7 +292,8 @@ def _scenario_file_names(dir_: Path) -> list[str]:
     """Sorted `*.yaml` file names directly under *dir_* (a crawl's crashes/ or flows/), or []."""
     if not dir_.is_dir():
         return []
-    return sorted(p.name for p in dir_.glob("*.yaml"))
+    # Only real files — a directory named `foo.yaml` also matches the glob and would become a dead link.
+    return sorted(p.name for p in dir_.glob("*.yaml") if p.is_file())
 
 
 # --- command builders ---

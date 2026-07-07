@@ -829,7 +829,7 @@ $('#crawl-stop').addEventListener('click',()=>cancelJob(crawlJobId,$('#crawl-sto
 // History; they're keyed on the screenmap.json each one streams and listed here instead. Selecting one
 // reuses loadGraph — the same render path as a live crawl — and disables the live form so a past map
 // can't be mistaken for a running one. Returning to the Form tab clears the selection.
-let crawlHistoryRun=null;
+let crawlHistoryRun=null,crawlLiveRun=null;  // crawlLiveRun parks a running crawl's id while history borrows the graph
 function setCrawlFormDisabled(on){
   $('#panel-crawl').querySelectorAll('input,select,button').forEach(el=>{el.disabled=on});
 }
@@ -852,6 +852,11 @@ function crawlArtifactLinks(runId,label,dir,files){
   return `<div class="artgroup"><span class="artlabel">${label}</span>${links}</div>`;
 }
 function viewCrawlRun(r){
+  // Park any live crawl's id (only on first entry, so switching between past runs keeps it parked): a
+  // nulled crawlRunId makes history mode truly read-only — the streaming redraw's `if(crawlRunId)` guard
+  // stops it clobbering this map, and resumePruned's guard blocks a resume against an unrelated run.
+  if(crawlHistoryRun===null)crawlLiveRun=crawlRunId;
+  crawlRunId=null;
   crawlHistoryRun=r.id;
   setCrawlFormDisabled(true);  // read-only framing: the live form can't drive a past map
   const badge=$('#crawl-pastbadge');badge.textContent='past crawl · '+r.id;badge.hidden=false;
@@ -865,7 +870,9 @@ function viewCrawlRun(r){
 // the same clean slate crawlDone leaves for the next run.
 function exitCrawlHistory(){
   if(crawlHistoryRun===null)return;
-  crawlHistoryRun=null;setCrawlFormDisabled(false);
+  crawlHistoryRun=null;
+  crawlRunId=crawlLiveRun;crawlLiveRun=null;  // hand the graph back to the live crawl, if one was running
+  setCrawlFormDisabled(false);
   $('#crawl-pastbadge').hidden=true;$('#crawl-artifacts').hidden=true;$('#crawl-artifacts').innerHTML='';
   $('#crawl-counts').textContent='';setStatus($('#crawl-status'),'','');
   $('#crawl-graph').innerHTML='<div class="empty">Start a crawl to watch the screen map grow.</div>';
