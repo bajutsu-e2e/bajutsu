@@ -63,9 +63,20 @@ class HandoffResponse:
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> HandoffResponse:
         """Build a response from a decoded payload, coercing types — the one authority for turning
-        an untrusted map (a stdin line, a `respond-human` POST body) into a response."""
+        an untrusted map (a stdin line, a `respond-human` POST body) into a response.
+
+        A bare `values` string (or any non-list) is wrapped as a single value, never iterated
+        character by character — so `{"values": "123456"}` supplies one code, not six.
+        """
+        raw = data.get("values")
+        if raw is None:
+            values: list[str] = []
+        elif isinstance(raw, (list, tuple)):
+            values = [str(v) for v in raw]
+        else:
+            values = [str(raw)]
         return cls(
-            values=[str(v) for v in (data.get("values") or [])],
+            values=values,
             acted=bool(data.get("acted", False)),
             cancelled=bool(data.get("cancelled", False)),
         )

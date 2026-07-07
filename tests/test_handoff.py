@@ -65,6 +65,12 @@ def test_response_from_dict_coerces_untrusted_fields() -> None:
     assert response.values == ["123"] and response.acted is True and response.cancelled is False
 
 
+def test_response_from_dict_wraps_a_bare_string_value() -> None:
+    # A bare string must be one value, never iterated char by char (an OTP is "123456", not 6 chars).
+    assert HandoffResponse.from_dict({"values": "123456"}).values == ["123456"]
+    assert HandoffResponse.from_dict({}).values == []
+
+
 def test_make_handoff_routes_by_mode(monkeypatch: pytest.MonkeyPatch) -> None:
     say = lambda _msg: None  # noqa: E731
     assert make_handoff("off", say=say) is None
