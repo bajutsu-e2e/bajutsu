@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0195") |
-| Implementing PR | _pending_ |
+| Implementing PR | [#786](https://github.com/bajutsu-e2e/bajutsu/pull/786) |
 | Topic | AI usage and cost observability |
 <!-- /BE-METADATA -->
 
@@ -97,7 +97,7 @@ The work is the following mutually exclusive, collectively exhaustive units:
 
 **Log**
 
-- _pending_ — Add the AI usage/cost dashboard: `usage_stats.aggregate_usage` + `usage.html.j2`
+- [#786](https://github.com/bajutsu-e2e/bajutsu/pull/786) — Add the AI usage/cost dashboard: `usage_stats.aggregate_usage` + `usage.html.j2`
   render the ledger server-side; a `/usage` endpoint (both serve backends) and a new **Usage** tab
   in `serve.js` display it, mirroring the run-stats dashboard (BE-0102). Following the existing
   dashboard convention, `/usage` returns a self-contained HTML page rather than the `GET /api/usage`
