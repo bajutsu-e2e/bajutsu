@@ -9,7 +9,7 @@
 | Author | [@hirosassa](https://github.com/hirosassa) |
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0190") |
-| Implementing PR | _pending_ |
+| Implementing PR | [#781](https://github.com/bajutsu-e2e/bajutsu/pull/781) |
 | Topic | Hosting the web UI (cloud / self-hosted) |
 | Related | [BE-0180](../BE-0180-crawl-history-viewer/BE-0180-crawl-history-viewer.md) |
 | Origin | Review of [BE-0180](../BE-0180-crawl-history-viewer/BE-0180-crawl-history-viewer.md) |
@@ -111,7 +111,7 @@ and never touches the `run`/CI verdict path, so prime directive 1 holds exactly 
 
 Log:
 
-- _pending_ — Shipped the org-scoped crawl listing: added `list_crawl_runs()` to the `ArtifactStore`
+- [#781](https://github.com/bajutsu-e2e/bajutsu/pull/781) — Shipped the org-scoped crawl listing: added `list_crawl_runs()` to the `ArtifactStore`
   seam (local delegates to the BE-0180 helper; the object store scans `<runId>/screenmap.json` in one
   pass and indexes each run's direct `crashes/*.yaml` / `flows/*.yaml` keys), extracted the shared
   `helpers.crawl_run_summary` so both backends emit an identical entry, rewired `crawl_runs_payload`
