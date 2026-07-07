@@ -43,6 +43,12 @@ raw value).
 
 ## Detailed design
 
+> **This section is the original proposal and was not what shipped.** The stdin approach
+> below proved unworkable — fb-idb's `idb ui text` requires the text as a positional
+> argument and never reads stdin. The implemented design keeps the value off argv the same
+> way but via the fb-idb gRPC client (`client.text`) instead; see *Progress* for what
+> actually landed.
+
 Change how `type_text` gets the value to `idb`, not what the value is or how it is
 resolved:
 

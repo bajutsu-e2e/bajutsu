@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import pytest
+
 from bajutsu.drivers import base
 from bajutsu.drivers.idb import (
     IdbDriver,
@@ -273,6 +275,16 @@ def test_type_text_sends_value_over_companion_not_argv(monkeypatch) -> None:  # 
 
     assert typed == [("U", "${secrets.password}")]  # value reaches the companion path
     assert ran == []  # no subprocess/argv was built for the value
+
+
+def test_type_text_fails_fast_when_companion_missing(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    # A missing idb_companion must raise a clear, actionable error here, not an opaque one
+    # deep inside fb-idb from a None companion_path.
+    import shutil
+
+    monkeypatch.setattr(shutil, "which", lambda _name: None)
+    with pytest.raises(RuntimeError, match="idb_companion not found"):
+        IdbDriver("U").type_text("hi")
 
 
 def test_settle_gives_up_after_max_polls() -> None:

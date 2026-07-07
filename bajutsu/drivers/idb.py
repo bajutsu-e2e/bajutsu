@@ -93,9 +93,18 @@ def _type_text_via_companion(udid: str, text: str) -> None:
 
     from idb.grpc.management import ClientManager
 
+    companion_path = shutil.which("idb_companion")
+    if companion_path is None:
+        # Fail fast and legibly rather than letting a None path surface as an opaque
+        # error deep inside fb-idb. idb_companion is a separate Homebrew formula.
+        raise RuntimeError(
+            "idb_companion not found on PATH — install it with "
+            "`brew install facebook/fb/idb-companion`"
+        )
+
     async def _send() -> None:
         manager = ClientManager(
-            companion_path=shutil.which("idb_companion"),
+            companion_path=companion_path,
             logger=logging.getLogger("bajutsu.idb.companion"),
         )
         async with manager.from_udid(udid=udid) as client:
