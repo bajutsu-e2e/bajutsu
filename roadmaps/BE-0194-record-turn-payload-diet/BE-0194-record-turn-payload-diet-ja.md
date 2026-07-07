@@ -9,7 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0194") |
-| 実装 PR | _pending_ |
+| 実装 PR | [#782](https://github.com/bajutsu-e2e/bajutsu/pull/782) |
 | トピック | Authoring experience (record / GUI editor) |
 <!-- /BE-METADATA -->
 
@@ -158,7 +158,7 @@ CLI フラグ、種別ごとのトークン使用量の報告。
 
 **ログ**
 
-- _pending_ — 4 つの部分をまとめて実装しました。`_render` は各要素の行を圧縮し、`_LARGE_SCREEN_ELEMENTS`
+- [#782](https://github.com/bajutsu-e2e/bajutsu/pull/782) — 4 つの部分をまとめて実装しました。`_render` は各要素の行を圧縮し、`_LARGE_SCREEN_ELEMENTS`
   を超える画面では操作対象にならない残りを件数として報告します。`bajutsu record` に `--max-steps` /
   `--no-screenshot` を追加しました。`usage.py` は呼び出し元の種別（`plan` / `next_action` /
   `alert-guard`）ごとにトークンを帰属させ、record の報告は合計の下に内訳を表示します。ドキュメント

@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0194") |
-| Implementing PR | _pending_ |
+| Implementing PR | [#782](https://github.com/bajutsu-e2e/bajutsu/pull/782) |
 | Topic | Authoring experience (record / GUI editor) |
 <!-- /BE-METADATA -->
 
@@ -169,7 +169,7 @@ or `run`/replay change.
 
 **Log**
 
-- _pending_ — All four parts shipped together: `_render` compacts each element line and reports the
+- [#782](https://github.com/bajutsu-e2e/bajutsu/pull/782) — All four parts shipped together: `_render` compacts each element line and reports the
   non-addressable remainder past `_LARGE_SCREEN_ELEMENTS`; `bajutsu record` gains `--max-steps` /
   `--no-screenshot`; `usage.py` attributes tokens per call-site category (`plan` / `next_action` /
   `alert-guard`) and the record report prints the breakdown under the total. Docs updated
