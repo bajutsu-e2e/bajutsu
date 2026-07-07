@@ -9,6 +9,15 @@
 # gating it only wedges dependency PRs. The exemption is a *step*-level guard, not a job `if:`, so the
 # job still completes green — keeping the required-check contract satisfied even when the check is
 # skipped for the bot's PRs.
+#
+# Copilot Autofix PRs are exempt for the same reason: GitHub opens them from an `alert-autofix-<n>`
+# branch with a fixed, generator-chosen title ("Potential fix for code scanning alert no. …") that
+# carries no scope and no roadmap id, and the branch — not the human who adopts the PR — is the
+# reliable signal (the author may show as a person, so a login check misses it). We key the exemption
+# off the branch name rather than the title so a future generator wording can't reopen the gap, and
+# require the head repo to be this repo (`head.repo.full_name == github.repository`): Autofix always
+# branches in-repo, so requiring same-repo stops an outside fork from opting out of the gate just by
+# naming its branch `alert-autofix-*` (in-repo contributors have write access and are already trusted).
 name: PR title lint
 
 on:
@@ -36,7 +45,12 @@ jobs:
           ref: ${{ github.event.pull_request.head.repo.fork && github.event.pull_request.base.sha || github.event.pull_request.head.sha }}
 
       - name: Check the PR title (form + roadmap-id prefix from the branch)
-        if: github.event.pull_request.user.login != 'dependabot[bot]'
+        if: >-
+          github.event.pull_request.user.login != 'dependabot[bot]' &&
+          !(
+            github.event.pull_request.head.repo.full_name == github.repository &&
+            startsWith(github.event.pull_request.head.ref, 'alert-autofix-')
+          )
         env:
           PR_TITLE: ${{ github.event.pull_request.title }}
           HEAD_REF: ${{ github.event.pull_request.head.ref }}
