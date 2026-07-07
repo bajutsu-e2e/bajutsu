@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-record-screenshot-downscale-ja.md)
+**English** · [日本語](BE-0193-record-screenshot-downscale-ja.md)
 
-# BE-XXXX — Right-size the record screenshot with a deterministic client-side downscale
+# BE-0193 — Right-size the record screenshot with a deterministic client-side downscale
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-record-screenshot-downscale.md) |
+| Proposal | [BE-0193](BE-0193-record-screenshot-downscale.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0193") |
 | Topic | Authoring experience (record / GUI editor) |
 <!-- /BE-METADATA -->
 

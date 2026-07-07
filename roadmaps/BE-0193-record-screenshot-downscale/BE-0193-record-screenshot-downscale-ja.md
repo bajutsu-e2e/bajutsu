@@ -1,14 +1,14 @@
-[English](BE-XXXX-record-screenshot-downscale.md) · **日本語**
+[English](BE-0193-record-screenshot-downscale.md) · **日本語**
 
-# BE-XXXX — record のスクリーンショットを送信前に適正サイズへ決定的に縮小する
+# BE-0193 — record のスクリーンショットを送信前に適正サイズへ決定的に縮小する
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
 |---|---|
-| 提案 | [BE-XXXX](BE-XXXX-record-screenshot-downscale-ja.md) |
+| 提案 | [BE-0193](BE-0193-record-screenshot-downscale-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **提案** |
-| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0193") |
 | トピック | Authoring experience (record / GUI editor) |
 <!-- /BE-METADATA -->
 
