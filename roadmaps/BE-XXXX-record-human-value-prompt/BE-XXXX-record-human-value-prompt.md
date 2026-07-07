@@ -10,12 +10,13 @@
 | Status | **Proposal** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
 | Topic | Authoring experience (record / GUI editor) |
-| Related | [BE-0015](../BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md), [BE-0016](../BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md), [BE-0044](../BE-0044-scenario-provenance/BE-0044-scenario-provenance.md), [BE-0046](../BE-0046-otp-email-steps/BE-0046-otp-email-steps.md), [BE-0120](../BE-0120-recorded-scenario-secret-tokenization/BE-0120-recorded-scenario-secret-tokenization.md) |
+| Related | [BE-0015](../BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md), [BE-0016](../BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md), [BE-0044](../BE-0044-scenario-provenance/BE-0044-scenario-provenance.md), [BE-0046](../BE-0046-otp-email-steps/BE-0046-otp-email-steps.md), [BE-0120](../BE-0120-recorded-scenario-secret-tokenization/BE-0120-recorded-scenario-secret-tokenization.md), [BE-0179](../BE-0179-record-human-handoff/BE-0179-record-human-handoff.md) |
 <!-- /BE-METADATA -->
 
 ## Introduction
 
-Rides on the record human-in-the-loop handoff substrate (`record-human-handoff`). This item
+Rides on the record human-in-the-loop handoff substrate
+([BE-0179](../BE-0179-record-human-handoff/BE-0179-record-human-handoff.md)). This item
 covers the case where the AI can locate the input field but **cannot know the value** — a one-time
 password (OTP), a two-factor (2FA) code, a random string, or an externally-issued one-off value.
 `record` pauses, the human supplies the value, recording continues, and the recorded artifact
@@ -105,7 +106,8 @@ to reach the device.
 
 ## References
 
-Substrate: `record-human-handoff`. Sibling pattern: `record-human-takeover-step` (operations).
+Substrate: [BE-0179](../BE-0179-record-human-handoff/BE-0179-record-human-handoff.md). Sibling
+pattern: `record-human-takeover-step` (operations).
 Related existing items:
 [BE-0046 — OTP & email side-channel steps](../BE-0046-otp-email-steps/BE-0046-otp-email-steps.md)
 (the run-time bridge target),
