@@ -146,9 +146,11 @@ def _confined_config_path(root: Path, raw: str) -> Path | None:
     User input is accepted only as a relative path; absolute paths are rejected. We normalize with
     ``resolve(strict=False)`` and then enforce confinement by requiring the resolved target to be
     relative to the resolved root."""
+    if not raw or not raw.strip() or "\x00" in raw:
+        return None
     base = root.resolve()
     candidate = Path(raw)
-    if candidate.is_absolute():
+    if candidate.is_absolute() or candidate.anchor:
         return None
     target = (base / candidate).resolve(strict=False)
     with contextlib.suppress(ValueError):
