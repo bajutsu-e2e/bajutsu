@@ -145,8 +145,9 @@ abstraction resolves **id → frame center → coordinate tap**, exactly as on i
   XML; a pure parser (`parse_hierarchy`) maps each `<node>` to an `Element`. The selector mapping is
   `resource-id` → `identifier` (the `<package>:id/` prefix stripped to the local name, so a Compose
   `testTag` surfaced via `testTagsAsResourceId` reproduces verbatim while a native `android:id`
-  drops its prefix), `content-desc`/`text` → `label`, `text` → `value`, and the widget `class` (plus
-  enabled / selected / checked state) → `traits`.
+  drops its prefix), `text` → `label` (`content-desc` fallback), `content-desc` → `value` (the app
+  mirrors its state value there, SPEC §2.1), and the widget `class` (plus enabled / selected /
+  checked state) → `traits`.
 - `tap(sel)`: `_resolve` confirms uniqueness (**retries not-found, fails ambiguity fast** — like
   idb, a mid-transition dump is a transient null-root that is retried, and a 2+ match fails
   immediately) → `adb shell input tap` at the frame center. `swipe` adds a finite duration so it is a

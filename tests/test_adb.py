@@ -13,8 +13,9 @@ from bajutsu import adb
 from bajutsu.drivers import base
 from bajutsu.drivers.adb import AdbDriver, parse_hierarchy
 
-# A realistic dump: a Views native id (package-prefixed), a Compose testTag (verbatim, dotted),
-# a disabled button, and a checked switch — exercising the whole selector mapping.
+# A realistic dump: a Views native id (package-prefixed) with visible text only, a Compose testTag
+# (verbatim, dotted) that mirrors its state value into content-desc à la the showcase (SPEC §2.1)
+# and is also disabled, and a checked switch — exercising the whole selector mapping.
 FIXTURE = """<?xml version='1.0' encoding='UTF-8' standalone='yes' ?>
 <hierarchy rotation="0">
   <node index="0" class="android.widget.FrameLayout" bounds="[0,0][1080,2400]">
@@ -22,7 +23,7 @@ FIXTURE = """<?xml version='1.0' encoding='UTF-8' standalone='yes' ?>
       class="android.widget.Button" content-desc="" enabled="true" checked="false"
       selected="false" bounds="[0,100][200,200]" />
     <node index="1" text="送信" resource-id="stable.submit" class="android.widget.Button"
-      content-desc="送信ボタン" enabled="false" bounds="[0,200][200,300]" />
+      content-desc="sent" enabled="false" bounds="[0,200][200,300]" />
     <node index="2" text="オン" resource-id="net.toggle" class="android.widget.Switch"
       content-desc="" checked="true" bounds="[0,300][100,360]" />
   </node>
@@ -47,15 +48,16 @@ def test_parse_hierarchy_selector_mapping() -> None:
 
     # Native android:id: the `<package>:id/` prefix is stripped to the local name.
     refresh = _by_id(els, "stable_refresh")
-    assert refresh["label"] == "設定"  # no content-desc → falls back to visible text
-    assert refresh["value"] == "設定"
+    assert refresh["label"] == "設定"  # visible text is the label
+    assert refresh["value"] is None  # no content-desc → no mirrored value
     assert refresh["traits"] == ["button"]
     assert refresh["frame"] == (0.0, 100.0, 200.0, 100.0)  # [0,100][200,200] → x,y,w,h
 
-    # Compose testTag: dotted id reproduced verbatim (no package prefix to strip).
+    # Compose testTag: dotted id verbatim; the state value is mirrored to content-desc (SPEC §2.1),
+    # so `label` is the visible text and `value` reads the mirror, not the visible string.
     submit = _by_id(els, "stable.submit")
-    assert submit["label"] == "送信ボタン"  # content-desc wins over text for the label
-    assert submit["value"] == "送信"
+    assert submit["label"] == "送信"  # visible text is the label
+    assert submit["value"] == "sent"  # content-desc mirror is the asserted value
     assert base.Trait.NOT_ENABLED in submit["traits"]  # enabled="false"
 
     # A checked switch: class → trait, checked → selected.

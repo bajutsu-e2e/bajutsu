@@ -76,10 +76,10 @@ targets:
 
   # ==== Android (BE-0007 preparation) =============================================
   # The Android twins of the four iOS products (demos/showcase/android). `backend: [android]`
-  # resolves to `adb`, which is registered but not implemented yet — a `run` against these fails
-  # with the registry's "not implemented yet" until the BE-0007 driver lands; the targets exist
-  # so that driver has a wired fixture from day one. `package` carries the applicationId; launchEnv
-  # arrives as intent extras.
+  # resolves to `adb`, the BE-0007 driver: `run` against these drives the app on an attached
+  # emulator/device (id-based taps, value assertions over `uiautomator dump`). `package` carries the
+  # applicationId; launchEnv arrives as intent extras. Interval evidence (screenrecord/logcat),
+  # device control, and the by-scheme deeplink/back paths are BE-0007 follow-up slices.
 
   # ---- Compose, accessibility ON — testTags surface the dotted SPEC ids verbatim
   # (testTagsAsResourceId), so the shared id-based scenarios drive this app unchanged.

@@ -8,9 +8,14 @@ intermittently yields a null-root/empty result mid-transition, so this reuses id
 still fail immediately on an ambiguous (2+) match rather than tapping whatever matched first.
 
 The XML attribute names follow UI Automator's `uiautomator dump` schema; the selector mapping is
-`resource-id` (id, package prefix stripped) → `identifier`, `content-desc`/`text` → `label`,
-`text` → `value`, and the widget `class` (plus enabled/selected/checked state) → `traits`. On-device
-tuning of that mapping against the Android showcase is tracked as e2e follow-up (BE-0007 Unit 7).
+`resource-id` (id, package prefix stripped) → `identifier`, `text` → `label`, `content-desc` →
+`value`, and the widget `class` (plus enabled/selected/checked state) → `traits`. The value channel
+is `content-desc`, not `text`, because the showcase mirrors its assertion state value into
+`content-desc` (SPEC §2.1: a `uiautomator dump` exposes `content-desc` but not Compose's
+`stateDescription`), while `text` carries the visible label — the Android peer of iOS's
+accessibilityLabel / accessibilityValue split. Tuned against the Android showcase on an emulator
+(BE-0007 Unit 7): with `text` → `value` a `value` assertion read the visible string ("Matches: 5",
+"Not favorited") instead of the mirrored value ("5", "off").
 """
 
 from __future__ import annotations
@@ -76,9 +81,12 @@ def _to_element(node: ET.Element) -> base.Element:
     desc = node.get("content-desc") or ""
     text = node.get("text") or ""
     return {
+        # `text` is the visible label; `content-desc` is where the showcase mirrors the assertion
+        # value (SPEC §2.1). `label` falls back to `content-desc` for an element that carries only a
+        # content description (an icon-only control), so it is never left blank when one exists.
         "identifier": _strip_pkg(node.get("resource-id") or ""),
-        "label": desc or text or None,
-        "value": text or None,
+        "label": text or desc or None,
+        "value": desc or None,
         "traits": _traits(node),
         "frame": _bounds(node.get("bounds") or ""),
     }
