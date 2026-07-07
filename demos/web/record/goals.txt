@@ -1,0 +1,18 @@
+# Natural-language goal for the web `record` demo. The first non-comment line is the goal
+# (override with GOAL=…). `make -C demos/web record` serves demos/web/app and drives *real* Claude
+# through the Playwright backend to author a scenario from this goal — the same authoring loop as
+# the iOS record demo, only the backend differs (a browser, not a Simulator). The offline,
+# API-key-free twin that reproduces the same record loop with a deterministic keyword agent (no
+# browser, no model) is record_offline.py — run it via `make -C demos/web record-offline`.
+#
+#   make -C demos/web record
+#   make -C demos/web record GOAL="Get started, sign in, then increment the counter three times and confirm it shows 3."
+#
+# The web app exposes stable data-testid ids (onboarding.start, auth.email, auth.password,
+# auth.submit, counter.increment, counter.value), so Claude records clean id-based selectors —
+# the same scenario demos/web/scenarios/smoke.yaml holds.
+
+Get started, sign in with email a@b.com and password pw, increment the counter twice, then confirm the counter shows 2.
+
+# A second goal (paste it, or pass via GOAL="…"):
+# Get started, sign in with any email and password, then increment the counter three times and confirm it shows 3.

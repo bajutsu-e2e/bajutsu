@@ -34,7 +34,9 @@ Every iOS demo drives the same fixture: the **showcase** suite ([`showcase/`](sh
 > **Web (Playwright) backend.** A separate demo drives a tiny static web app in a browser — no Mac
 > or Simulator, on Linux: `make -C demos/web e2e` ([`web/README.md`](web/README.md)). Same scenario
 > format, same deterministic runner — **only the backend differs**, which is the whole
-> multi-platform story in one demo.
+> multi-platform story in one demo. It has its own AI-authoring path too: `make -C demos/web record`
+> (real Claude, needs an API key) and `make -C demos/web record-offline` (the API-key-free twin,
+> in the `make check` toolchain).
 
 ## Which one should I run?
 
