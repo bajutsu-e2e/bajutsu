@@ -272,11 +272,10 @@ def test_child_env_strips_inherited_backend_routing(monkeypatch: Any) -> None:
     assert not any(v in env for v in claude_code._ROUTING_ENV)
 
 
-def test_auth_summary_reports_subscription_and_flags_overridden_backends(monkeypatch: Any) -> None:
-    for var in claude_code._ROUTING_ENV:
-        monkeypatch.delenv(var, raising=False)
-    assert "subscription login" in claude_code.auth_summary()
-    assert "ignoring" not in claude_code.auth_summary()
-
+def test_auth_summary_is_a_fixed_subscription_statement(monkeypatch: Any) -> None:
+    # Bajutsu drives the CLI from its configured provider, not the ambient env, so the summary is
+    # fixed — it never inspects (nor narrates) any inherited backend routing.
     monkeypatch.setenv("CLAUDE_CODE_USE_BEDROCK", "1")
-    assert "Bedrock" in claude_code.auth_summary()
+    summary = claude_code.auth_summary()
+    assert "subscription login" in summary
+    assert "Bedrock" not in summary and "ignoring" not in summary

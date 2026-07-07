@@ -220,21 +220,13 @@ _ROUTING_ENV = (
 
 
 def auth_summary() -> str:
-    """One line naming how the child `claude -p` will authenticate — shown before a record.
+    """One line naming how the child `claude -p` authenticates — shown before a record.
 
-    The adapter forces the CLI's own subscription login by stripping any inherited backend routing
-    (see `_ROUTING_ENV`), so this reports that mode and flags when such a configuration was present
-    and overridden — most notably the Claude desktop app's Bedrock setup, which would otherwise take
-    over silently and (off-cloud) hang the run.
+    The claude-code provider always uses the CLI's own subscription login: the adapter drives the
+    CLI purely from Bajutsu's configured provider, never from the ambient environment's backend
+    routing (see `_ROUTING_ENV`), so this is a fixed statement of that mode.
     """
-    base = "Claude Code CLI subscription login (Pro/Max/Console)"
-    if os.environ.get("CLAUDE_CODE_USE_BEDROCK"):
-        return f"{base} — ignoring the inherited Amazon Bedrock configuration"
-    if os.environ.get("CLAUDE_CODE_USE_VERTEX"):
-        return f"{base} — ignoring the inherited Google Vertex configuration"
-    if os.environ.get("ANTHROPIC_API_KEY"):
-        return f"{base} — ignoring the inherited ANTHROPIC_API_KEY"
-    return base
+    return "Claude Code CLI subscription login (Pro/Max/Console)"
 
 
 def _child_env() -> dict[str, str]:
