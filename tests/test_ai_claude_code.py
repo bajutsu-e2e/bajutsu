@@ -261,3 +261,9 @@ def test_child_env_strips_the_api_key(monkeypatch: Any) -> None:
     env = claude_code._child_env()
     assert "ANTHROPIC_API_KEY" not in env
     assert "PATH" in env  # the rest of the environment is preserved
+
+
+def test_child_env_disables_nonessential_traffic() -> None:
+    # The umbrella flag that stops the CLI's telemetry/auto-update side traffic — one strand of which
+    # probes the cloud metadata endpoint 169.254.169.254 and intermittently hangs the call in SYN_SENT.
+    assert claude_code._child_env()["CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC"] == "1"

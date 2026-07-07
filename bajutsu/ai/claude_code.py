@@ -189,9 +189,19 @@ def _command(
 
 
 def _child_env() -> dict[str, str]:
-    """The child env with `ANTHROPIC_API_KEY` removed, so billing uses the CLI's subscription token."""
+    """The child env for `claude -p`: subscription billing, no non-essential network side-trips.
+
+    `ANTHROPIC_API_KEY` is removed so billing draws on the CLI's subscription token (its presence
+    would force API billing). `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC` turns off the CLI's
+    telemetry / auto-update / error-reporting traffic — one strand of which probes the cloud metadata
+    endpoint ``169.254.169.254`` on startup. Off a cloud VM that link-local address is unroutable, so
+    the probe's TCP connect sits in ``SYN_SENT`` until it times out (~75s), intermittently stalling
+    the whole call before it even reaches the API (observed as `record` freezing at planning).
+    Disabling it removes the stall, and the side traffic is useless for a headless one-shot call.
+    """
     env = dict(os.environ)
     env.pop("ANTHROPIC_API_KEY", None)
+    env["CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC"] = "1"
     return env
 
 
