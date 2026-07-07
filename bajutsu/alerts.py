@@ -14,6 +14,7 @@ the device's point-space screen regardless of the screenshot's pixel scale.
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from typing import Protocol
 
@@ -38,6 +39,8 @@ from bajutsu.record import _screenshot_bytes
 from bajutsu.redaction import Redactor
 
 LOCATOR_MODEL = "claude-opus-4-8"
+
+_logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -74,8 +77,11 @@ class SystemAlertGuard:
             return None
         try:
             decision = self._locator.locate(png, self._instruction)
-        except Exception:
-            return None  # best-effort: the guard is on by default, so it must never crash a run
+        except Exception as exc:
+            # Best-effort: the guard is on by default, so it must never crash a run — but warn,
+            # because from here on --dismiss-alerts is silently not dismissing anything.
+            _logger.warning("alert locator failed; blocking prompts will not be dismissed: %s", exc)
+            return None
         if not decision.present:
             return None
         width, height = screen_size_from_elements(driver.query())
