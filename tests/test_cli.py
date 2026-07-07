@@ -197,13 +197,16 @@ def test_no_backend_available_exits_cleanly(
 
 
 def test_record_exposes_token_budget_flags() -> None:
-    # BE-0194 §3: the loop's max_steps / with_screenshot knobs are surfaced on the CLI.
-    # Force a wide terminal so Rich's help renderer doesn't wrap the flag names at their hyphens
-    # (a narrow CI terminal would break `--max-steps` across lines and the substring check would miss).
-    r = runner.invoke(app, ["record", "--help"], env={"COLUMNS": "200"})
-    assert r.exit_code == 0
-    assert "--max-steps" in r.output
-    assert "--no-screenshot" in r.output
+    # BE-0194 §3: the record CLI surfaces the loop's max_steps / with_screenshot knobs. Introspect
+    # the command's declared options rather than the rendered `--help` text — Rich formats help in an
+    # environment-dependent way (terminal width, TTY detection), so its output is not a stable
+    # substring to assert on.
+    import typer.main
+
+    record_cmd = typer.main.get_command(app).commands["record"]  # type: ignore[attr-defined]
+    flags = {opt for p in record_cmd.params for opt in (*p.opts, *p.secondary_opts)}
+    assert "--max-steps" in flags
+    assert "--no-screenshot" in flags
 
 
 def test_run_missing_config(tmp_path: Path) -> None:
