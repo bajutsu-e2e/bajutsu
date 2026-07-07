@@ -162,7 +162,9 @@ class _ScenarioRunner:
                         goldens_dir=self.golden_context.goldens_dir, screen=(0.0, 0.0, sw, sh)
                     )
                 except Exception as exc:  # best-effort; _eval_golden falls back
-                    _logger.debug("screen-bounds probe for golden framing failed: %s", exc)
+                    _logger.debug(
+                        "screen-bounds probe for golden framing failed: %s", exc, exc_info=True
+                    )
             result = run_scenario(
                 lz.driver,
                 s,

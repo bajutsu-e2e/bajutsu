@@ -148,5 +148,5 @@ def _body(response: Any) -> str | None:
     except Exception as exc:
         # Debug, not warning: a missing/binary body is routine. The log keeps a real driver
         # fault distinguishable from "no body" instead of both vanishing into None.
-        _logger.debug("response body unavailable: %s", exc)
+        _logger.debug("response body unavailable: %s", exc, exc_info=True)
         return None

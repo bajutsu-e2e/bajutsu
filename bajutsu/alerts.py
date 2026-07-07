@@ -80,7 +80,11 @@ class SystemAlertGuard:
         except Exception as exc:
             # Best-effort: the guard is on by default, so it must never crash a run — but warn,
             # because from here on --dismiss-alerts is silently not dismissing anything.
-            _logger.warning("alert locator failed; blocking prompts will not be dismissed: %s", exc)
+            _logger.warning(
+                "alert locator failed; blocking prompts will not be dismissed: %s",
+                exc,
+                exc_info=True,
+            )
             return None
         if not decision.present:
             return None
