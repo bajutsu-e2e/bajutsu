@@ -101,7 +101,7 @@ to reach the device.
 - [ ] Value-blocker detection (heuristic flag + author mark), never a guessed fill.
 - [ ] Value prompt content over the substrate's request/response contract.
 - [ ] Live type of the supplied value with BE-0120 tokenization/masking of the artifact.
-- [ ] Deterministic-output bridge: `${vars/secrets}` placeholder + classified TODO (totp / email / secret).
+- [ ] Deterministic-output bridge: `${vars.*}` / `${secrets.*}` placeholder + classified TODO (totp / email / secret).
 - [ ] `from:` provenance (BE-0044) marking the human-value origin.
 
 ## References
