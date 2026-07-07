@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0193") |
-| Implementing PR | _pending_ |
+| Implementing PR | [#784](https://github.com/bajutsu-e2e/bajutsu/pull/784) |
 | Topic | Authoring experience (record / GUI editor) |
 <!-- /BE-METADATA -->
 
@@ -158,7 +158,7 @@ adopt the same helper later, but are out of scope here); any scenario-schema or 
 
 **Log**
 
-- _pending_ — `downscale_png` added to `bajutsu/visual.py` (downscale-only, aspect preserved, PNG kept);
+- [#784](https://github.com/bajutsu-e2e/bajutsu/pull/784) — `downscale_png` added to `bajutsu/visual.py` (downscale-only, aspect preserved, PNG kept);
   applied via `_downscaled` in `_screenshot_bytes` (`bajutsu/record.py`), the capture choke point shared by
   both backends, so iOS and web are covered in one place above the vendor-neutral adapter (BE-0104) rather
   than by a per-backend branch. `MAX_IMAGE_LONG_EDGE = 1568` is a module constant. Pillow (the `visual`
