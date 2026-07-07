@@ -209,6 +209,10 @@ cost of a single `query()` (that is BE-0105's separate concern).
   transition signature, factored to share `fingerprint`'s reduction) after finding that the literal
   `crawl.fingerprint` would abort a form-fill batch on the first field it filled. Docs (`docs/recording.md`
   + `docs/ja/`, `DESIGN.md`) updated; `make check` green.
+- [#744](https://github.com/bajutsu-e2e/bajutsu/pull/744): Record-UX follow-up on the same PR — before each
+  observe the loop now prints the plan step it is about to work toward (`⏭️ next — plan k/M: …`), so the
+  model round-trip is no longer a silent gap. The concrete action is still decided from the live screen; a
+  `plan_cursor` advances as the agent attributes actions to plan steps.
 
 ## References
 

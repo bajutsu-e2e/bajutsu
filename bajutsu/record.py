@@ -343,8 +343,17 @@ def record(
     steps: list[Step] = []
     expect: list[Assertion] = []
     plan = _plan_goal(agent, goal, say)
+    plan_cursor = 0  # plan steps reached so far — drives the pre-observe "next" hint below
 
     for _ in range(max_steps):
+        n = len(steps) + 1
+        if plan:
+            # Before observing, name the step the loop is about to work toward. The concrete action
+            # is decided from the live screen (so it can't be printed yet), but the plan says where
+            # the run is headed — otherwise the watcher stares at a silent model round-trip with no
+            # idea what it is doing. `plan_cursor` advances as the agent attributes actions to steps.
+            upcoming = min(plan_cursor, len(plan) - 1)
+            say(f"[{n}] ⏭️  next — plan {upcoming + 1}/{len(plan)}: {plan[upcoming]}")
         if alert_guard is not None:
             _clear_blocking(driver, alert_guard, clock, report=report)
         elements = driver.query()
@@ -353,7 +362,6 @@ def record(
             # dead screen (it would hallucinate ids); re-clear on the next iteration.
             clock.sleep(0.3)
             continue
-        n = len(steps) + 1
         say(f"[{n}] observing {len(elements)} elements; asking the agent (waits on the model) …")
         screenshot = _screenshot_bytes(driver) if with_screenshot else None
         before = _usage.snapshot()
@@ -402,6 +410,10 @@ def record(
                 break
             say(f"[{n}] ✋ handoff resolved; re-observing the live screen")
             continue
+        if proposal.plan_step:
+            # Advance the cursor monotonically so the next turn's "next" hint points past the step
+            # the agent just worked on (a batch shares one plan_step across its actions).
+            plan_cursor = max(plan_cursor, proposal.plan_step)
         plan_tag = (
             f"(plan {proposal.plan_step}/{len(plan)}) " if proposal.plan_step and plan else ""
         )

@@ -709,3 +709,37 @@ def test_record_runs_actions_then_finishes_in_one_turn() -> None:
     assert scenario.steps[1].wait is not None and scenario.steps[1].wait.for_ is not None
     assert scenario.steps[1].wait.for_.id == "done"
     assert scenario.expect[0].exists is not None and scenario.expect[0].exists.sel.id == "done"
+
+
+def test_record_announces_the_next_plan_step_before_observing() -> None:
+    # Before each observe, the loop names the plan step it is about to work toward, so a watcher
+    # isn't left staring at a silent model round-trip (the concrete action is decided live).
+    driver = FakeDriver([_el("a", "A")])
+    msgs: list[str] = []
+    agent = PlanningAgent(
+        [
+            Proposal(steps=[Step.model_validate({"tap": {"id": "a"}})], note="do it", plan_step=1),
+            Proposal(done=True, expect=[]),
+        ],
+        plan_steps=["tap the button", "confirm the result"],
+    )
+    record(driver, "x", agent, report=msgs.append)
+    joined = "\n".join(msgs)
+    assert "next — plan 1/2: tap the button" in joined  # the first turn's up-front intent
+    # once the agent attributes its action to plan step 1, the next turn's hint points past it
+    assert "next — plan 2/2: confirm the result" in joined
+
+
+def test_record_without_a_plan_emits_no_next_hint() -> None:
+    # A fake agent with no `plan` method → no plan → no "next" hint (nothing to look ahead to).
+    driver = FakeDriver([_el("a", "A")])
+    msgs: list[str] = []
+    record(
+        driver,
+        "x",
+        FakeAgent(
+            [Proposal(steps=[Step.model_validate({"tap": {"id": "a"}})]), Proposal(done=True)]
+        ),
+        report=msgs.append,
+    )
+    assert not any("next — plan" in m for m in msgs)
