@@ -146,6 +146,6 @@ Log:
 ## References
 
 [BE-0019 — XCUITest backend](../BE-0019-xcuitest-backend/BE-0019-xcuitest-backend.md),
-[DESIGN §4](../../../DESIGN.md), `bajutsu/drivers/xcuitest.py`,
+[DESIGN §4](../../DESIGN.md), `bajutsu/drivers/xcuitest.py`,
 `BajutsuKit/Sources/BajutsuRunner/SnapshotStore.swift`,
 `BajutsuKit/Sources/BajutsuRunner/ElementProviding.swift`

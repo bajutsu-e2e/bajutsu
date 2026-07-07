@@ -44,7 +44,7 @@
 
 ## 詳細設計
 
-既存の `${vars.*}` 名前空間（[scenarios](../../../docs/ja/scenarios.md#ランタイム変数-vars)）へ値を
+既存の `${vars.*}` 名前空間（[scenarios](../../docs/ja/scenarios.md#ランタイム変数-vars)）へ値を
 生成するステップを 2 つ追加します。これにより、後続の `type` / `assert` がその値を決定的に消費でき
 ます。
 
@@ -184,4 +184,4 @@ apps:
 ## 参考
 
 [BE-0036 — HTTP ユーティリティステップ](../BE-0036-utility-steps/BE-0036-utility-steps-ja.md)
-から分割。[scenarios.md](../../../docs/ja/scenarios.md)
+から分割。[scenarios.md](../../docs/ja/scenarios.md)

@@ -70,7 +70,7 @@ The `roadmap-id` workflow folds the claims ledger into the reserved set, allocat
 allocated id atomically. If a claim is lost (another PR raced ahead), it releases any ids it did win,
 resets, and retries — the winning claim is now visible, so the next attempt steers off it. Allocation
 keeps the same monotonic rule (`max(used) + 1`, skipping any reserved or claimed number).
-[`scripts/allocate_roadmap_ids.py`](../../../scripts/allocate_roadmap_ids.py) **stays pure** — it
+[`scripts/allocate_roadmap_ids.py`](../../scripts/allocate_roadmap_ids.py) **stays pure** — it
 receives the reserved set through the environment and never talks to GitHub; the API calls and the
 retry loop live in the workflow, exactly as the existing reservation does.
 
@@ -140,12 +140,12 @@ contributor's ids are reconciled when a maintainer brings the branch in-repo.
 
 - [BE-0043 — Conflict-resistant file flow](../BE-0043-conflict-resistant-file-flow/BE-0043-conflict-resistant-file-flow.md)
   — the sibling this extends from files to ids (self-healing hooks, generated indexes, merge drivers).
-- [CLAUDE.md](../../../CLAUDE.md) · [docs/ai-development.md](../../../docs/ai-development.md) — the
+- [CLAUDE.md](../../CLAUDE.md) · [docs/ai-development.md](../../docs/ai-development.md) — the
   roadmap ID rules and the allocation/repair flow this hardens.
-- [`scripts/allocate_roadmap_ids.py`](../../../scripts/allocate_roadmap_ids.py) (allocation),
-  [`tests/test_allocate_roadmap_ids.py`](../../../tests/test_allocate_roadmap_ids.py). The claims
+- [`scripts/allocate_roadmap_ids.py`](../../scripts/allocate_roadmap_ids.py) (allocation),
+  [`tests/test_allocate_roadmap_ids.py`](../../tests/test_allocate_roadmap_ids.py). The claims
   ledger (`scripts/be_claims.sh`) and the open-PR tiebreaker input (`scripts/open_pr_be_map.sh`) were
   removed when the reservation layer was retired (see *Progress*).
-- [`.github/workflows/roadmap-id.yml`](../../../.github/workflows/roadmap-id.yml) — the merge-time
+- [`.github/workflows/roadmap-id.yml`](../../.github/workflows/roadmap-id.yml) — the merge-time
   allocator. The `roadmap-id-repair` and `roadmap-claims-gc` workflows were removed with the
   reservation layer.

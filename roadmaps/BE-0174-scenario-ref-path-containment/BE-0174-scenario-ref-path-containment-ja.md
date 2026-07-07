@@ -126,5 +126,5 @@ Git から取り込む config（[BE-0063](../BE-0063-git-config-source/BE-0063-g
   [BE-0063 — Git を config のソースにする](../BE-0063-git-config-source/BE-0063-git-config-source-ja.md)、
   [BE-0108 — ホスティング時の config ソース制限](../BE-0108-hosted-config-source-restriction/BE-0108-hosted-config-source-restriction-ja.md)
   （これを重要にする、信頼できない config の面）。
-* [CLAUDE.md](../../../CLAUDE.md)、[DESIGN.md](../../../DESIGN.md)（決定性優先＝不正な参照は推測せず明確に
+* [CLAUDE.md](../../CLAUDE.md)、[DESIGN.md](../../DESIGN.md)（決定性優先＝不正な参照は推測せず明確に
   失敗する、そして確認が保つアプリ非依存の境界）。

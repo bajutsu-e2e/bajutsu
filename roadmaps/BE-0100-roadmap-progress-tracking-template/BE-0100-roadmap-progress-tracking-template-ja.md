@@ -98,9 +98,9 @@
 
 ### 3. ツール
 
-- **スカフォルダー**（[`scripts/new_roadmap_item.py`](../../../scripts/new_roadmap_item.py)）は、素の
+- **スカフォルダー**（[`scripts/new_roadmap_item.py`](../../scripts/new_roadmap_item.py)）は、素の
   `TBD` ではなく上の雛形で初期化した `進捗` セクションを出力します。
-- **フォーマット検査**（[`tests/test_roadmap_format.py`](../../../tests/test_roadmap_format.py)）は、
+- **フォーマット検査**（[`tests/test_roadmap_format.py`](../../tests/test_roadmap_format.py)）は、
   必須で順序のある H2 見出しに `Progress` / `進捗` を加え、既知の任意メタデータ欄に `Related` / `Superseded by`
   （と日本語のラベル）を加えます。インデックス生成器はメタデータを欄名で読むため、新しい任意欄の影響を
   受けません。
@@ -153,5 +153,5 @@
 - [BE-0074 — BE 項目テンプレートの標準化（EN / JA）](../BE-0074-be-template-standardization/BE-0074-be-template-standardization-ja.md)：本項目が五セクションから六セクションへ拡張する、テンプレートを固定した項目。BE-0074 には逆方向の `関連` リンクを張っています。
 - [BE-0043 — 競合に強いファイルフロー](../BE-0043-conflict-resistant-file-flow/BE-0043-conflict-resistant-file-flow-ja.md)：「不変条件を機械で検査する」という先例。
 - [BE-0078 — 状態駆動のロードマップフォルダ](../BE-0078-roadmap-status-folders/BE-0078-roadmap-status-folders-ja.md)：ライフサイクルの真実の源としての `状態`。`進捗` はより細かい状態でこれを補完します。
-- [`scripts/new_roadmap_item.py`](../../../scripts/new_roadmap_item.py) · [`tests/test_roadmap_format.py`](../../../tests/test_roadmap_format.py)：実装 PR が拡張するスカフォルダーとゲート。
+- [`scripts/new_roadmap_item.py`](../../scripts/new_roadmap_item.py) · [`tests/test_roadmap_format.py`](../../tests/test_roadmap_format.py)：実装 PR が拡張するスカフォルダーとゲート。
 </content>

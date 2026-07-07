@@ -93,4 +93,4 @@ during its implementation triage; waits on a verified mechanism.
 
 Split out of [BE-0052 — Device-state primitives: timezone, clipboard, shake](../BE-0052-device-state-timezone-clipboard-shake/BE-0052-device-state-timezone-clipboard-shake.md),
 itself split from [BE-0035 — Device-control steps](../BE-0035-device-control-primitives/BE-0035-device-control-primitives.md).
-[DESIGN §6.2](../../../DESIGN.md), `bajutsu/orchestrator/actions/handlers/device.py`, `bajutsu/env.py`
+[DESIGN §6.2](../../DESIGN.md), `bajutsu/orchestrator/actions/handlers/device.py`, `bajutsu/env.py`

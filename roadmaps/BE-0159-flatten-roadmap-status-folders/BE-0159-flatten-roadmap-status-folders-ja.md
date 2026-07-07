@@ -41,7 +41,7 @@ Markdown のリンクであれ、GitHub の blob URL であれ、ブックマー
 
 ### 既存の修復が届かない、現在進行形の具体的なバグ
 
-[`scripts/sync_roadmap_tracking_issues.py`](../../../scripts/sync_roadmap_tracking_issues.py)
+[`scripts/sync_roadmap_tracking_issues.py`](../../scripts/sync_roadmap_tracking_issues.py)
 （BE-0109）は、未完了の項目ごとに GitHub のトラッキング Issue を開き、本文にその項目のファイルへの
 リンクを埋め込みます。
 
@@ -275,10 +275,10 @@ BE-0078 が導入し、BE-0096・BE-0149 が拡張したツール群に触れる
   `scripts/check_roadmap_format.py` です。
 - [BE-0154 — roadmap-promote をベース SHA から実行する](../BE-0154-roadmap-promote-base-sha/BE-0154-roadmap-promote-base-sha-ja.md)：
   本項目が廃止するスクリプトを対象にした提案です。本項目が着地した段階で見直すか終了するべきです。
-- [`scripts/sync_roadmap_tracking_issues.py`](../../../scripts/sync_roadmap_tracking_issues.py)、
-  [`scripts/promote_roadmap_items.py`](../../../scripts/promote_roadmap_items.py)、
-  [`scripts/build_roadmap_index.py`](../../../scripts/build_roadmap_index.py)、
-  [`scripts/allocate_roadmap_ids.py`](../../../scripts/allocate_roadmap_ids.py)、
-  [`scripts/new_roadmap_item.py`](../../../scripts/new_roadmap_item.py)、
-  [`scripts/check_roadmap_format.py`](../../../scripts/check_roadmap_format.py)、
-  [`scripts/roadmap_ids.py`](../../../scripts/roadmap_ids.py)：本項目が触れるツール群です。
+- [`scripts/sync_roadmap_tracking_issues.py`](../../scripts/sync_roadmap_tracking_issues.py)、
+  [`scripts/promote_roadmap_items.py`](../../scripts/promote_roadmap_items.py)、
+  [`scripts/build_roadmap_index.py`](../../scripts/build_roadmap_index.py)、
+  [`scripts/allocate_roadmap_ids.py`](../../scripts/allocate_roadmap_ids.py)、
+  [`scripts/new_roadmap_item.py`](../../scripts/new_roadmap_item.py)、
+  [`scripts/check_roadmap_format.py`](../../scripts/check_roadmap_format.py)、
+  [`scripts/roadmap_ids.py`](../../scripts/roadmap_ids.py)：本項目が触れるツール群です。

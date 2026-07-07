@@ -124,5 +124,5 @@ map gates only true hard requirements and does not reject scenarios that would a
 - [BE-0009 — Cross-platform abstractions](../BE-0009-cross-platform-abstractions/BE-0009-cross-platform-abstractions.md)
   — the per-platform backend matrix where `capabilities()` is the backend contract; this item makes
   the runner enforce it up front.
-- [CLAUDE.md](../../../CLAUDE.md) — prime directive #2 (determinism first: fail fast rather than
+- [CLAUDE.md](../../CLAUDE.md) — prime directive #2 (determinism first: fail fast rather than
   guess or do partial work).

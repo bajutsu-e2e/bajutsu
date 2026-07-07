@@ -31,7 +31,7 @@ A single run answers "did *this* run pass, and where did it fail." A team runnin
 has the next question — "how is the suite trending?" — and Bajutsu has no answer surface for it.
 The raw material already exists and is lossless:
 
-- Every run writes `manifest.json` ([reporting.md](../../../docs/reporting.md)) with the top-level
+- Every run writes `manifest.json` ([reporting.md](../../docs/reporting.md)) with the top-level
   verdict, each scenario's `ok`/`failure`, each step's `duration_s`, and (BE-0049) a `provenance`
   block stamping `scenarioHash` / `toolVersion` / `gitRevision`. So a directory of `runs/`
   *already* encodes pass-rate, duration, and failure history — it has just never been aggregated.
@@ -164,7 +164,7 @@ would settle; the recommendation is in brackets and the alternatives are real:
 
 ## References
 
-[`docs/reporting.md`](../../../docs/reporting.md) (`manifest.json` / `report.load` /
+[`docs/reporting.md`](../../docs/reporting.md) (`manifest.json` / `report.load` /
 `results_from_manifest`), `bajutsu/report/`, `bajutsu/serve/helpers.py` (`list_runs`),
 [BE-0049 — Determinism / flakiness audit](../BE-0049-determinism-flakiness-audit/BE-0049-determinism-flakiness-audit.md)
 (the `scenarioHash` provenance and flakiness classification this dashboard consumes),
@@ -174,4 +174,4 @@ would settle; the recommendation is in brackets and the alternatives are real:
 (the "re-present recorded outcomes, never re-run" discipline),
 [BE-0015 — Public hosting of the web UI](../BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md)
 (7c-4 — the DB-backed run records the serve tab reads, with the artifact-store fallback),
-[DESIGN §2 / §10](../../../DESIGN.md)
+[DESIGN §2 / §10](../../DESIGN.md)

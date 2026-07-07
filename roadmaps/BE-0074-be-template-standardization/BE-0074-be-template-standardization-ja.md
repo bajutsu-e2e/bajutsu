@@ -19,10 +19,10 @@
 ロードマップの各項目は、英語の `BE-NNNN-<slug>.md` と日本語の `BE-NNNN-<slug>-ja.md` という2つの
 ファイルの組であり、両者は決まった形を共有します。すなわち、対訳のヘッダリンク、H1 のタイトル、メタデータ
 ブロック、そして Swift-Evolution 形式の5つの節（Introduction / Motivation / Detailed design /
-Alternatives considered / References）です。この形は [`CLAUDE.md`](../../../CLAUDE.md)、
-[`roadmaps/README.md`](../../README-ja.md)、[`ideation`](../../../.claude/skills/ideation/SKILL.md)
+Alternatives considered / References）です。この形は [`CLAUDE.md`](../../CLAUDE.md)、
+[`roadmaps/README.md`](../README-ja.md)、[`ideation`](../../.claude/skills/ideation/SKILL.md)
 スキルの散文で説明されており、索引テーブルのほうはすでに各項目のメタデータから生成され、ゲートで検査
-されています（[`scripts/build_roadmap_index.py`](../../../scripts/build_roadmap_index.py)、
+されています（[`scripts/build_roadmap_index.py`](../../scripts/build_roadmap_index.py)、
 `tests/test_roadmap_index.py`）。まだ固定されていないのは各項目ファイルの本体、つまりメタデータの
 ラベル、見出しの文言、どの節を必須とするかです。著者は人間も AI も、その都度近くのファイルから形を
 組み立て直しており、そのために細かなばらつきが入り込んでいます。
@@ -130,7 +130,7 @@ Alternatives considered / References）です。この形は [`CLAUDE.md`](../..
 | Proposal | [BE-NNNN](BE-NNNN-<slug>.md) |
 | 提案者 | [@handle](https://github.com/handle) |
 | Status | **Proposal** |
-| Track | [Proposals](../../README.md#proposals) |
+| Track | [Proposals](../README.md#proposals) |
 | Topic | <one of the index topics> |
 <!-- /BE-METADATA -->
 
@@ -145,16 +145,16 @@ Alternatives considered / References）です。この形は [`CLAUDE.md`](../..
 
 H1 のタイトル行は両ファイルとも `# BE-NNNN — <タイトル>` とします。ID、空白、前後を空白で挟んだ em ダッシュ
 （`—`、U+2014）、続いてタイトルです。番号が未確定の新規項目は、`ideation` スキルと
-[`README.md`](../../README-ja.md) が説明するプレースホルダのディレクトリ名で起草し、CI
-（[`scripts/allocate_roadmap_ids.py`](../../../scripts/allocate_roadmap_ids.py)）が実番号へ書き換えます。
+[`README.md`](../README-ja.md) が説明するプレースホルダのディレクトリ名で起草し、CI
+（[`scripts/allocate_roadmap_ids.py`](../../scripts/allocate_roadmap_ids.py)）が実番号へ書き換えます。
 本テンプレートはファイルのそれ以外をすべて律します。
 
 ### メタデータのパーサ
 
 メタデータブロックは、索引生成器である
-[`scripts/build_roadmap_index.py`](../../../scripts/build_roadmap_index.py) の `parse_metadata` と、
+[`scripts/build_roadmap_index.py`](../../scripts/build_roadmap_index.py) の `parse_metadata` と、
 `Status` フィールドについては
-[`scripts/promote_roadmap_items.py`](../../../scripts/promote_roadmap_items.py) の `read_status` が
+[`scripts/promote_roadmap_items.py`](../../scripts/promote_roadmap_items.py) の `read_status` が
 読みます。両者の規約は次のとおりです。
 
 1. **囲みに限定します。** `<!-- BE-METADATA -->` と `<!-- /BE-METADATA -->` の間のテキストだけを読みます。
@@ -226,12 +226,12 @@ H1 のタイトル行は両ファイルとも `# BE-NNNN — <タイトル>` と
 
 ## 参考
 
-- [`CLAUDE.md`](../../../CLAUDE.md) —— 本項目が機械検査にかけるロードマップ項目の規則。
-- [`roadmaps/README.md`](../../README-ja.md) —— BE 書式と ID 規則の散文による説明。
-- [`.claude/skills/ideation/SKILL.md`](../../../.claude/skills/ideation/SKILL.md) —— この形から新規項目を
+- [`CLAUDE.md`](../../CLAUDE.md) —— 本項目が機械検査にかけるロードマップ項目の規則。
+- [`roadmaps/README.md`](../README-ja.md) —— BE 書式と ID 規則の散文による説明。
+- [`.claude/skills/ideation/SKILL.md`](../../.claude/skills/ideation/SKILL.md) —— この形から新規項目を
   起草するスキル。
-- [`scripts/build_roadmap_index.py`](../../../scripts/build_roadmap_index.py)、
-  [`scripts/promote_roadmap_items.py`](../../../scripts/promote_roadmap_items.py)、
+- [`scripts/build_roadmap_index.py`](../../scripts/build_roadmap_index.py)、
+  [`scripts/promote_roadmap_items.py`](../../scripts/promote_roadmap_items.py)、
   `tests/test_roadmap_index.py` —— 本項目が囲みブロックを軸に再定義するメタデータパーサと、本体に対して倣う
   索引への既存の「生成して検査する」扱い。
 - [BE-0043 —— 衝突に強いファイルフロー](../BE-0043-conflict-resistant-file-flow/BE-0043-conflict-resistant-file-flow-ja.md)

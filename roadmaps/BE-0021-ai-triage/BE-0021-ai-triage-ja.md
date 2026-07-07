@@ -43,4 +43,4 @@
 
 ## 参考
 
-[DESIGN §3.1 / §12](../../../DESIGN.md)、`bajutsu/triage.py`、`bajutsu/claude_triage.py`
+[DESIGN §3.1 / §12](../../DESIGN.md)、`bajutsu/triage.py`、`bajutsu/claude_triage.py`

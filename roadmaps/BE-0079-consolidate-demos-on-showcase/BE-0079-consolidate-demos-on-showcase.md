@@ -26,10 +26,10 @@ not part of this item."
 
 This item is that follow-up. It makes the showcase the **single** iOS fixture: it brings the
 showcase to feature parity with the three legacy apps, re-points every demo and on-device CI job at
-it, and then **retires** `demo` ([`demos/app`](../../../demos/app)), `sample`
-([`demos/features/app`](../../../demos/features/app)), and `sample2`
-([`demos/record/app`](../../../demos/record/app)). The web fixture
-([`demos/web`](../../../demos/web), the Playwright backend) is a different platform and out of
+it, and then **retires** `demo` ([`demos/app`](../../demos/app)), `sample`
+([`demos/features/app`](../../demos/features/app)), and `sample2`
+([`demos/record/app`](../../demos/record/app)). The web fixture
+([`demos/web`](../../demos/web), the Playwright backend) is a different platform and out of
 scope — it stays.
 
 ## Motivation
@@ -39,10 +39,10 @@ on-device verification spread across four codebases:
 
 | Fixture | Location | Bundle id | Used by |
 |---|---|---|---|
-| `demo` | [`demos/app`](../../../demos/app) | `com.bajutsu.demo` | the `tour` demo (and top-level `make -C demos features`) |
-| `sample` | [`demos/features/app`](../../../demos/features/app) | `com.bajutsu.sample` | the `webui` tour, **and the on-device CI** ([`e2e.yml`](../../../.github/workflows/e2e.yml): `smoke (idb)` + `xcuitest (codegen)`) |
-| `sample2` | [`demos/record/app`](../../../demos/record/app) | `com.bajutsu.sample2` | the `record` demo |
-| `showcase` (4 products) | [`demos/showcase`](../../../demos/showcase) | four `targets.<name>` | `run` / `doctor` / `record`, and the future `crawl` |
+| `demo` | [`demos/app`](../../demos/app) | `com.bajutsu.demo` | the `tour` demo (and top-level `make -C demos features`) |
+| `sample` | [`demos/features/app`](../../demos/features/app) | `com.bajutsu.sample` | the `webui` tour, **and the on-device CI** ([`e2e.yml`](../../.github/workflows/e2e.yml): `smoke (idb)` + `xcuitest (codegen)`) |
+| `sample2` | [`demos/record/app`](../../demos/record/app) | `com.bajutsu.sample2` | the `record` demo |
+| `showcase` (4 products) | [`demos/showcase`](../../demos/showcase) | four `targets.<name>` | `run` / `doctor` / `record`, and the future `crawl` |
 
 Each is a separate Xcode project to keep building, keep accessible, and keep aligned with DESIGN
 and the conventions; every new feature demo must pick one; and a contributor has to learn "which
@@ -53,35 +53,35 @@ full interaction surface (five tabs, navigation pushes, all four modal styles, t
 loading, live + mockable networking, an OS-alert screen) *plus* the two axes no single-variant app
 can show — the **toolkit** axis (UIKit vs SwiftUI element-tree differences) and the
 **accessibility** axis (`-a11y` ↔ `-noax`, the controlled experiment for selector stability,
-[DESIGN §5](../../../DESIGN.md)). The showcase README and `SPEC.md` already describe it as
-superseding `sample`. Meanwhile [DESIGN §1.1](../../../DESIGN.md) still names `demos/features/app`
+[DESIGN §5](../../DESIGN.md)). The showcase README and `SPEC.md` already describe it as
+superseding `sample`. Meanwhile [DESIGN §1.1](../../DESIGN.md) still names `demos/features/app`
 (`com.bajutsu.sample`) as "the first dogfood target" — a statement this item makes true again by
 pointing it at the showcase.
 
 **3. One fixture is one contract to practise against.** Because per-app differences live entirely
-in config ([DESIGN §8](../../../DESIGN.md)), a single suite gives every future capability —
+in config ([DESIGN §8](../../DESIGN.md)), a single suite gives every future capability —
 visual-regression baselines, data-driven runs, the crawl screen-map, `doctor`'s whole-app coverage
 — one ready, representative subject instead of a throwaway app each time (BE-0045 motivation #4,
 now realised by removing the alternatives).
 
-**4. It respects every prime directive** ([CLAUDE.md](../../../CLAUDE.md)). The change is purely
+**4. It respects every prime directive** ([CLAUDE.md](../../CLAUDE.md)). The change is purely
 test *subjects* + config + scenarios + CI wiring + docs: it adds **no** LLM call to any gate, and
 keeps the tool / drivers / runner unchanged — the showcase is onboarded entirely through
-`targets.<name>` entries, exactly as [DESIGN §7.1](../../../DESIGN.md) prescribes.
+`targets.<name>` entries, exactly as [DESIGN §7.1](../../DESIGN.md) prescribes.
 
 ## Detailed design
 
-**Goal state.** [`demos/showcase`](../../../demos/showcase) is the only iOS fixture. The three
+**Goal state.** [`demos/showcase`](../../demos/showcase) is the only iOS fixture. The three
 legacy app directories are gone, with their configs, scenarios, harnesses, and READMEs, and every
-reference to them across the repo is updated. [`demos/web`](../../../demos/web) (the Playwright
-fixture) and [`demos/serve-ui`](../../../demos/serve-ui) (the web-UI dogfood,
+reference to them across the repo is updated. [`demos/web`](../../demos/web) (the Playwright
+fixture) and [`demos/serve-ui`](../../demos/serve-ui) (the web-UI dogfood,
 [BE-0058](../BE-0058-dogfood-web-ui/BE-0058-dogfood-web-ui.md)) are a different
 platform / subject and are **not** touched.
 
 ### A. What the showcase already covers (the honest baseline)
 
 The showcase is already close, so the work is *filling specific gaps*, not rebuilding. Per
-[`SPEC.md` §5](../../../demos/showcase/SPEC.md) it exposes today: five tabs with push navigation;
+[`SPEC.md` §5](../../demos/showcase/SPEC.md) it exposes today: five tabs with push navigation;
 all four modal styles (detented sheet, full-screen cover, action sheet, transient toast); text
 entry (`log.note`, `search.field`), a stepper (`log.count`) and toggles (`log.intense`,
 `horse.favorite` with a mirrored `selected` state); async loading (the Stable catalog); a
@@ -97,7 +97,7 @@ mock, notices, permission, and a smoke path.
    `ComponentsUITests.swift` from `components.yaml` and run it under `xcodebuild test`. The showcase
    has none of this. Add a UITests target + `UITests` scheme to one showcase codebase
    (`{swiftui,uikit}/project.yml`), a scenario that drives a representative slice, and a `ui-test`
-   target to [`demos/showcase/Makefile`](../../../demos/showcase/Makefile).
+   target to [`demos/showcase/Makefile`](../../demos/showcase/Makefile).
 2. **Visual-regression scenario + baselines.** `sample` has `visual.yaml` and a `baselines/`
    workflow (`make vrt` / `vrt-approve`). Add `scenarios/visual.yaml` and the `vrt` / `vrt-approve`
    Make targets so the visual-regression tour has a subject.
@@ -115,8 +115,8 @@ mock, notices, permission, and a smoke path.
    - **Reusable setup:** a shared component prelude (today demonstrated by `demo`'s
      `_components/login.yaml`) re-expressed over a showcase flow — e.g. a "navigate + seed" prelude
      rather than a login, since the showcase is deliberately a no-auth app.
-   [`SPEC.md`](../../../demos/showcase/SPEC.md) (§5 / §9) is updated alongside any new id.
-4. **The full evidence tour.** Port [`WEBUI.md`](../../../demos/features/WEBUI.md)'s walk through
+   [`SPEC.md`](../../demos/showcase/SPEC.md) (§5 / §9) is updated alongside any new id.
+4. **The full evidence tour.** Port [`WEBUI.md`](../../demos/features/WEBUI.md)'s walk through
    *every* evidence type — screenshots, video, device logs, network (observed + mocked), visual
    regression, system-alert handling — onto the showcase, and make sure the showcase `scenarios/` +
    `capturePolicy` actually fire each one (adding the `evidence` / `network` / `relaunch` /
@@ -134,29 +134,29 @@ mock, notices, permission, and a smoke path.
 
 ### C. What gets re-pointed (same behaviour, new subject)
 
-- **On-device CI** — [`e2e.yml`](../../../.github/workflows/e2e.yml): point `smoke (idb)` and
+- **On-device CI** — [`e2e.yml`](../../.github/workflows/e2e.yml): point `smoke (idb)` and
   `xcuitest (codegen)` at the showcase (build → install → run), and update the `changes` path-gate
   (`demos/features/app/`, `demos/features/demo.config.yaml` → `demos/showcase/…`), the DerivedData
-  cache path + `hashFiles` key, the install path, and the [`bajutsu-e2e`](../../../.github/actions)
+  cache path + `hashFiles` key, the install path, and the [`bajutsu-e2e`](../../.github/actions)
   action inputs (`scenarios` / `target` / `config`). **Hazard:** these jobs are *not* in the local
   `make check` gate and `.github/` is missed by a default ripgrep sweep — the change must
   explicitly cover `e2e.yml` and the composite action.
-- **Demo menu** — re-point the top-level [`demos/Makefile`](../../../demos/Makefile)
+- **Demo menu** — re-point the top-level [`demos/Makefile`](../../demos/Makefile)
   (`tour` / `features` / `offline` / `webui` / `record`, `app-build`) and
-  [`demos/demo.config.yaml`](../../../demos/demo.config.yaml) at the showcase; retarget or fold in
+  [`demos/demo.config.yaml`](../../demos/demo.config.yaml) at the showcase; retarget or fold in
   the harness scripts that hard-code the legacy apps
-  ([`demos/tour/demo.sh`](../../../demos/tour/demo.sh),
-  [`demos/tour/tour.py`](../../../demos/tour/tour.py)'s bundle id,
-  [`demos/record/demo.sh`](../../../demos/record/demo.sh)); rewrite
-  [`demos/README.md`](../../../demos/README.md) (+ `.ja`) and each demo's README so the whole
+  ([`demos/tour/demo.sh`](../../demos/tour/demo.sh),
+  [`demos/tour/tour.py`](../../demos/tour/tour.py)'s bundle id,
+  [`demos/record/demo.sh`](../../demos/record/demo.sh)); rewrite
+  [`demos/README.md`](../../demos/README.md) (+ `.ja`) and each demo's README so the whole
   `make -C demos …` menu drives the one app.
 - **Docs (bilingual — update each EN file and its `docs/ja` mirror).** `DESIGN.md` §1.1 (the "first
   dogfood target" sentence) and the `bajutsusample` examples in §6.1 / §8; the "Validated on a real
-  Simulator" note in [`architecture.md`](../../../docs/architecture.md);
-  [`docs/sample-app.md`](../../../docs/sample-app.md) → a showcase page; the `sample` references in
+  Simulator" note in [`architecture.md`](../../docs/architecture.md);
+  [`docs/sample-app.md`](../../docs/sample-app.md) → a showcase page; the `sample` references in
   `docs/getting-started.md`, `docs/cli.md`, `docs/configuration.md`, `docs/evidence.md`, and the
   `docs/README.md` index; the config example in the root `README.md` / `README.ja.md`; the root
-  [`Makefile`](../../../Makefile) help lines; and [`.gitignore`](../../../.gitignore) (drop the three
+  [`Makefile`](../../Makefile) help lines; and [`.gitignore`](../../.gitignore) (drop the three
   apps' `build/` + `*.xcodeproj/` lines). Finally remove the "supersedes `sample` / kept until …"
   caveats from the showcase `README` / `SPEC` once they are no longer true.
 
@@ -164,13 +164,13 @@ mock, notices, permission, and a smoke path.
 
 Only after B/C land and the on-device path is green on the showcase:
 
-- [`demos/app/`](../../../demos/app) — the `demo` app (`BajutsuDemo`: 5 Swift files + `Info.plist` +
+- [`demos/app/`](../../demos/app) — the `demo` app (`BajutsuDemo`: 5 Swift files + `Info.plist` +
   `project.yml`), its `scenarios/` (`counter.yaml`, `features.yaml`, `_components/login.yaml`), and
   READMEs.
-- [`demos/features/app/`](../../../demos/features/app) — the `sample` app (`BajutsuSample`, ~15
+- [`demos/features/app/`](../../demos/features/app) — the `sample` app (`BajutsuSample`, ~15
   Swift files), `BajutsuSampleUITests/`, all 21 `scenarios/*.yaml` + `baselines/`, `project.yml`,
   README — once their coverage is reproduced on the showcase (B).
-- [`demos/record/app/`](../../../demos/record/app) — the `sample2` app (`BajutsuSample`,
+- [`demos/record/app/`](../../demos/record/app) — the `sample2` app (`BajutsuSample`,
   `project.yml`, README).
 - The now-orphaned per-app configs and harnesses: `demos/demo.config.yaml`,
   `demos/features/demo.config.yaml`, `demos/record/demo.config.yaml`, and whatever of the
@@ -219,6 +219,6 @@ on-device path the local gate cannot run:
 - [BE-0045 — Dogfood showcase apps](../BE-0045-dogfood-showcase-apps/BE-0045-dogfood-showcase-apps.md) — the suite this completes (and whose deferred "Migration" note this item discharges)
 - [BE-0058 — Dogfood the serve Web UI](../BE-0058-dogfood-web-ui/BE-0058-dogfood-web-ui.md) — the web-side dogfood counterpart
 - [BE-0038 — Autonomous crawl exploration](../BE-0038-autonomous-crawl-exploration/BE-0038-autonomous-crawl-exploration.md) — the showcase is its first real target
-- [`demos/showcase/SPEC.md`](../../../demos/showcase/SPEC.md) — the screen-by-screen contract · [`demos/README.md`](../../../demos/README.md) — the demo menu
-- [`.github/workflows/e2e.yml`](../../../.github/workflows/e2e.yml) — the on-device CI to re-point
-- [DESIGN §1.1 / §5 / §7.1 / §8](../../../DESIGN.md) — first dogfood target, stability ladder, per-target onboarding, config · [architecture.md](../../../docs/architecture.md) — implementation status
+- [`demos/showcase/SPEC.md`](../../demos/showcase/SPEC.md) — the screen-by-screen contract · [`demos/README.md`](../../demos/README.md) — the demo menu
+- [`.github/workflows/e2e.yml`](../../.github/workflows/e2e.yml) — the on-device CI to re-point
+- [DESIGN §1.1 / §5 / §7.1 / §8](../../DESIGN.md) — first dogfood target, stability ladder, per-target onboarding, config · [architecture.md](../../docs/architecture.md) — implementation status

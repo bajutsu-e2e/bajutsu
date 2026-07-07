@@ -25,14 +25,14 @@
 
 このマッピングが収まりよく成立する理由は、XCUITest のときと同じです。
 
-- **純粋に構造的** です。シナリオの構成要素から Playwright の呼び出しへの固定的な対応で、生成時にモデルを参照しません。`run`／CI ゲート（[DESIGN §2](../../../DESIGN.md)）には触れず、どこにも LLM を足しません。
+- **純粋に構造的** です。シナリオの構成要素から Playwright の呼び出しへの固定的な対応で、生成時にモデルを参照しません。`run`／CI ゲート（[DESIGN §2](../../DESIGN.md)）には触れず、どこにも LLM を足しません。
 - web の識別子規約（`data-testid`）と ARIA の `role`／名前は、すでに `Selector` の各フィールドに対応づいています（[BE-0041](../BE-0041-web-playwright-backend/BE-0041-web-playwright-backend-ja.md)）。そのため各構成要素には自然な Playwright の対応物があり、これこそ XCUITest の生成器を小さな全域関数に保っている性質です。
 
 ## 詳細設計
 
 ### 生成テストが Playwright の *セマンティックな* locator を使う理由
 
-web の `run` ドライバ（[`drivers/playwright.py`](../../../bajutsu/drivers/playwright.py)）は、Playwright のセマンティックな locator を意図的に **使いません**。DOM を走査して `Element` へ正規化し、共有の `base.resolve_unique` を通して解決した frame の中心を座標クリックします。こうしてマッチングを iOS とバイト単位で同一に保ちます。生成されるテストはその **逆** で、`page.getByTestId(...)` / `getByRole(...)` と web-first アサーション（要素が条件を満たすまで自動で再試行するアサーション）を使います。これは矛盾ではなく、正しい選択です。
+web の `run` ドライバ（[`drivers/playwright.py`](../../bajutsu/drivers/playwright.py)）は、Playwright のセマンティックな locator を意図的に **使いません**。DOM を走査して `Element` へ正規化し、共有の `base.resolve_unique` を通して解決した frame の中心を座標クリックします。こうしてマッチングを iOS とバイト単位で同一に保ちます。生成されるテストはその **逆** で、`page.getByTestId(...)` / `getByRole(...)` と web-first アサーション（要素が条件を満たすまで自動で再試行するアサーション）を使います。これは矛盾ではなく、正しい選択です。
 
 - 出力先フレームワークそのものがランタイムです。生成テストは bajutsu が存在しないチーム自身の Playwright CI で動くため、Playwright の流儀で語らねばならず、間に挟む共有リゾルバもありません。
 - これは XCUITest の生成器がすでにやっていることそのものです。実行時に idb は座標タップしますが、出力される XCUITest は `el(id).tap()` と `waitForExistence`、つまり出力先のセマンティックな API とネイティブの待機を使います。受け渡す成果物の決定性は、出力先フレームワークが担います（XCUITest は hittable になるまで待ち、Playwright は自動待機して web-first アサーションがタイムアウトまで再試行します）。bajutsu の決定性コアが律するのは `run` であって、それが出力するコードではありません。
@@ -109,7 +109,7 @@ test.describe('Components', () => {
 
 ### 変更の形
 
-`to_xcuitest` に並ぶ `to_playwright(scenarios, …)` を追加し（独立したモジュール、例えば `codegen_playwright.py`、あるいは `codegen.py` 内の新しい関数）、[`cli/commands/codegen.py`](../../../bajutsu/cli/commands/codegen.py) で `--emit` により振り分けます。XCUITest の経路はバイト単位で不変のままです。2 つの生成器は同じ構造的な走査（シナリオ → ステップ → アサーション、未対応は `// TODO`）を共有します。この走査を小さな emitter の継ぎ目の背後にくくり出すか、2 つの並列な全域関数として保つかは実装の細部で、ターゲットが 2 つの段階では過剰な抽象化を避けるため、まずは並列関数の形を推奨します。ドキュメントは [codegen.md](../../../docs/ja/codegen.md)（と英語版）に `--emit playwright` ターゲットとそのマッピング表を加えます。
+`to_xcuitest` に並ぶ `to_playwright(scenarios, …)` を追加し（独立したモジュール、例えば `codegen_playwright.py`、あるいは `codegen.py` 内の新しい関数）、[`cli/commands/codegen.py`](../../bajutsu/cli/commands/codegen.py) で `--emit` により振り分けます。XCUITest の経路はバイト単位で不変のままです。2 つの生成器は同じ構造的な走査（シナリオ → ステップ → アサーション、未対応は `// TODO`）を共有します。この走査を小さな emitter の継ぎ目の背後にくくり出すか、2 つの並列な全域関数として保つかは実装の細部で、ターゲットが 2 つの段階では過剰な抽象化を避けるため、まずは並列関数の形を推奨します。ドキュメントは [codegen.md](../../docs/ja/codegen.md)（と英語版）に `--emit playwright` ターゲットとそのマッピング表を加えます。
 
 ### prime directive との整合
 
@@ -131,8 +131,8 @@ test.describe('Components', () => {
 
 ## 参考
 
-[codegen.md](../../../docs/ja/codegen.md), [`bajutsu/codegen.py`](../../../bajutsu/codegen.py),
-[`bajutsu/drivers/playwright.py`](../../../bajutsu/drivers/playwright.py),
+[codegen.md](../../docs/ja/codegen.md), [`bajutsu/codegen.py`](../../bajutsu/codegen.py),
+[`bajutsu/drivers/playwright.py`](../../bajutsu/drivers/playwright.py),
 [BE-0041 — Web（Playwright）バックエンド](../BE-0041-web-playwright-backend/BE-0041-web-playwright-backend-ja.md),
 [BE-0019 — XCUITest backend](../BE-0019-xcuitest-backend/BE-0019-xcuitest-backend-ja.md),
 [BE-0025 — 座標 swipe の生成](../BE-0025-coordinate-swipe-generation/BE-0025-coordinate-swipe-generation-ja.md),

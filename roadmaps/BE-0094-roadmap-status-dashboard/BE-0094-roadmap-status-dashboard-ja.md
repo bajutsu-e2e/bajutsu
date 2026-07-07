@@ -61,9 +61,9 @@
 
 ## 参考
 
-[`roadmaps/README.md`](../../README-ja.md), `scripts/build_roadmap_dashboard.py`,
-`scripts/build_roadmap_index.py`, [`mkdocs.yml`](../../../mkdocs.yml),
-[`.github/workflows/docs.yml`](../../../.github/workflows/docs.yml),
+[`roadmaps/README.md`](../README-ja.md), `scripts/build_roadmap_dashboard.py`,
+`scripts/build_roadmap_index.py`, [`mkdocs.yml`](../../mkdocs.yml),
+[`.github/workflows/docs.yml`](../../.github/workflows/docs.yml),
 [BE-0043 — 競合に強いファイルフロー](../BE-0043-conflict-resistant-file-flow/BE-0043-conflict-resistant-file-flow-ja.md),
 [BE-0061 — BE ID 採番の堅牢化](../BE-0061-be-id-allocation-hardening/BE-0061-be-id-allocation-hardening-ja.md),
 [BE-0078 — 状態ごとのロードマップフォルダ](../BE-0078-roadmap-status-folders/BE-0078-roadmap-status-folders-ja.md)

@@ -48,7 +48,7 @@ access still read source; the standard's larger payoff is the *consistency and t
 surface*, not the format alone — see *Alternatives considered*.)
 
 This is documentation and tooling only. It adds no LLM anywhere, never runs inside `run`, and the
-reference build lives outside the gate, so Prime directives 1 and 2 ([CLAUDE.md](../../../CLAUDE.md))
+reference build lives outside the gate, so Prime directives 1 and 2 ([CLAUDE.md](../../CLAUDE.md))
 hold by construction.
 
 ## Detailed design
@@ -59,9 +59,9 @@ Structured (Google-style) docstrings apply to the **public API surface** — wha
 and agents reach for:
 
 - the `Driver` protocol and the shared types (`Selector`, `Element`, …) in
-  [`bajutsu/drivers/base.py`](../../../bajutsu/drivers/base.py);
-- the CLI commands ([`bajutsu/cli/`](../../../bajutsu/cli/));
-- the MCP tools and resources ([`bajutsu/mcp/`](../../../bajutsu/mcp/));
+  [`bajutsu/drivers/base.py`](../../bajutsu/drivers/base.py);
+- the CLI commands ([`bajutsu/cli/`](../../bajutsu/cli/));
+- the MCP tools and resources ([`bajutsu/mcp/`](../../bajutsu/mcp/));
 - the scenario schema (the hub artifact);
 - the public functions of the runner, `assertions`, and `network`.
 
@@ -72,7 +72,7 @@ one purposeful line saying why they exist. Forcing `Args:` blocks onto a small h
 ### The standard
 
 - **Language: English**, like every code comment (the prose docs are bilingual; code is not —
-  [`docs/README.md`](../../../docs/README.md)).
+  [`docs/README.md`](../../docs/README.md)).
 - **Google style on the public surface.** A one-line summary, then `Args:` / `Returns:` / `Raises:`
   (and `Yields:` / `Examples:`) **only where they add information**.
 - **Do not restate types.** Types live in annotations and the generator reads them from the
@@ -168,9 +168,9 @@ same Google-style docstrings, but is heavier here and must mock the optional imp
 
 ### Where the standard lives
 
-The standard itself is documented in [`docs/ai-development.md`](../../../docs/ai-development.md) (and
+The standard itself is documented in [`docs/ai-development.md`](../../docs/ai-development.md) (and
 its `docs/ja/` mirror) as a *Code documentation comments (docstrings)* section, and summarized in the
-**Conventions** list of [`CLAUDE.md`](../../../CLAUDE.md) — the same split the existing *Documentation
+**Conventions** list of [`CLAUDE.md`](../../CLAUDE.md) — the same split the existing *Documentation
 style* rule already uses.
 
 ### Migration, in phases
@@ -215,16 +215,16 @@ style* rule already uses.
 
 ## References
 
-- [CLAUDE.md](../../../CLAUDE.md) — Conventions (comments explain *why*; bilingual docs; code
+- [CLAUDE.md](../../CLAUDE.md) — Conventions (comments explain *why*; bilingual docs; code
   comments in English) and the Prime directives this respects (no LLM in the gate).
 - [BE-0043 — Conflict-resistant file flow](../BE-0043-conflict-resistant-file-flow/BE-0043-conflict-resistant-file-flow.md)
   — the *Development infrastructure* precedent: generated docs as artifacts, small conflict-free PRs.
-- [`docs/ai-development.md`](../../../docs/ai-development.md) — where the standard will live;
-  [`docs/README.md`](../../../docs/README.md) — "code comments / docstrings are in English".
-- [`bajutsu/drivers/base.py`](../../../bajutsu/drivers/base.py),
-  [`bajutsu/cli/`](../../../bajutsu/cli/), [`bajutsu/mcp/`](../../../bajutsu/mcp/) — the public
+- [`docs/ai-development.md`](../../docs/ai-development.md) — where the standard will live;
+  [`docs/README.md`](../../docs/README.md) — "code comments / docstrings are in English".
+- [`bajutsu/drivers/base.py`](../../bajutsu/drivers/base.py),
+  [`bajutsu/cli/`](../../bajutsu/cli/), [`bajutsu/mcp/`](../../bajutsu/mcp/) — the public
   surfaces the standard covers first.
-- [`pyproject.toml`](../../../pyproject.toml) — `mypy` strict + `ruff` `ANN`: why types live in
+- [`pyproject.toml`](../../pyproject.toml) — `mypy` strict + `ruff` `ANN`: why types live in
   annotations, not docstrings.
 - MkDocs Material, `mkdocstrings[python]` (`griffe`), and `Sphinx` + `napoleon` — the candidate
   generators.

@@ -15,7 +15,7 @@
 
 ## Introduction
 
-Make the `bajutsu serve` Web UI usable on a small screen — a phone or a narrow tablet — by reflowing its desktop-first, multi-pane layout into a single-column, touch-friendly one below a width breakpoint, and by giving its mouse-only interactions a touch path. This is a **frontend-only** change to the inlined `serve.*` templates: it adds no server route, job, or config, and changes nothing the deterministic runner does. `serve` stays a Tier-1 convenience that only shells out to the deterministic CLI, so the proposal sits entirely inside the prime directives ([CLAUDE.md](../../../CLAUDE.md)) — no LLM enters the gate, no verdict is touched, and per-app behavior stays in config.
+Make the `bajutsu serve` Web UI usable on a small screen — a phone or a narrow tablet — by reflowing its desktop-first, multi-pane layout into a single-column, touch-friendly one below a width breakpoint, and by giving its mouse-only interactions a touch path. This is a **frontend-only** change to the inlined `serve.*` templates: it adds no server route, job, or config, and changes nothing the deterministic runner does. `serve` stays a Tier-1 convenience that only shells out to the deterministic CLI, so the proposal sits entirely inside the prime directives ([CLAUDE.md](../../CLAUDE.md)) — no LLM enters the gate, no verdict is touched, and per-app behavior stays in config.
 
 ## Motivation
 
@@ -99,7 +99,7 @@ A broader desktop redesign of the resizable/collapsible tiling (this item only h
 
 ## References
 
-* [CLAUDE.md](../../../CLAUDE.md), [DESIGN.md](../../../DESIGN.md) — the prime directives this respects: AI never judges, determinism first, app-agnostic. The change adds no LLM and never computes a verdict; it only rearranges a Tier-1 convenience.
+* [CLAUDE.md](../../CLAUDE.md), [DESIGN.md](../../DESIGN.md) — the prime directives this respects: AI never judges, determinism first, app-agnostic. The change adds no LLM and never computes a verdict; it only rearranges a Tier-1 convenience.
 * [BE-0011 — Local web UI (`bajutsu serve`)](../BE-0011-local-web-ui-serve/BE-0011-local-web-ui-serve.md) — the UI this reshapes, and its stdlib-only, single-self-contained-HTML, no-build-step constraints that bound the design.
 * [BE-0013 — Scenario GUI editor](../BE-0013-scenario-gui-editor/BE-0013-scenario-gui-editor.md) — the future structured-editing surface that will live in the same UI and must also behave on a small screen.
 * [BE-0015 — Public hosting of the web UI](../BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md), [BE-0016 — Self-hosting of the web UI](../BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md) — the hosting direction that turns phone access into a realistic, desirable entry point.

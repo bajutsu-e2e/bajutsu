@@ -16,8 +16,8 @@
 ## Introduction
 
 Two of this repository's composite GitHub Actions —
-[`.github/actions/bajutsu-e2e/action.yml`](../../../.github/actions/bajutsu-e2e/action.yml) and
-[`.github/actions/boot-simulator/action.yml`](../../../.github/actions/boot-simulator/action.yml) —
+[`.github/actions/bajutsu-e2e/action.yml`](../../.github/actions/bajutsu-e2e/action.yml) and
+[`.github/actions/boot-simulator/action.yml`](../../.github/actions/boot-simulator/action.yml) —
 expand `${{ inputs.* }}` directly inside shell `run:` blocks instead of passing them through `env:`
 first. Every call site today passes literal strings or a trusted prior step's output, so there is no
 exploitable path right now, but the pattern is fragile: it is the same shape that turns into a

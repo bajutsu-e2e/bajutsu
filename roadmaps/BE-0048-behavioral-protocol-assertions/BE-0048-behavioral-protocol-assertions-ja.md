@@ -102,5 +102,5 @@ expect:
 ## 参考
 
 `bajutsu/network.py`、`bajutsu/assertions.py`、`bajutsu/redaction.py`、
-[`BajutsuKit`](../../../BajutsuKit/README.md)、[evidence.md](../../../docs/ja/evidence.md)、
-[DESIGN §2 / §6.4](../../../DESIGN.md)
+[`BajutsuKit`](../../BajutsuKit/README.md)、[evidence.md](../../docs/ja/evidence.md)、
+[DESIGN §2 / §6.4](../../DESIGN.md)

@@ -46,4 +46,4 @@ Determinism is preserved because pass/fail is never decided here: the UI only sh
 
 ## References
 
-`bajutsu/serve/`, [cli.md](../../../docs/cli.md)
+`bajutsu/serve/`, [cli.md](../../docs/cli.md)

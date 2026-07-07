@@ -92,6 +92,6 @@ Tiering is clean along the key boundary: the **AI parts need a key** (the `recor
 
 ## References
 
-[recording.md](../../../docs/recording.md), [scenarios.md](../../../docs/scenarios.md); `bajutsu/record.py` (the AI loop: `record()`, `_plan_goal`, `_settle_step`, screenshot plumbing — the intent → steps + assertions path that also hosts the enrichment mode), `bajutsu/serve/scenarios.py` (`ScenarioScope.save()` / `.authored()` — the one author-owned save path all three surfaces write through).
+[recording.md](../../docs/recording.md), [scenarios.md](../../docs/scenarios.md); `bajutsu/record.py` (the AI loop: `record()`, `_plan_goal`, `_settle_step`, screenshot plumbing — the intent → steps + assertions path that also hosts the enrichment mode), `bajutsu/serve/scenarios.py` (`ScenarioScope.save()` / `.authored()` — the one author-owned save path all three surfaces write through).
 
 **Dependencies / related items:** [BE-0011](../BE-0011-local-web-ui-serve/BE-0011-local-web-ui-serve.md) (the `serve` host, `ScenarioScope`, screenshot + report plumbing the surfaces share), [BE-0012](../BE-0012-action-capture-record/BE-0012-action-capture-record.md) (authoring from demonstration; emits steps only, defers the demarcation and the enrichment direction here), [BE-0013](../BE-0013-scenario-gui-editor/BE-0013-scenario-gui-editor.md) (editing an existing scenario; shares the element picker + doctor score with capture).

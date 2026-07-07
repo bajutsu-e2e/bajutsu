@@ -79,5 +79,5 @@ LLM は使わず、pass/fail には影響しません。
 
 `bajutsu/doctor.py`（id 名前空間／規約スコア）、
 [BE-0038](../BE-0038-autonomous-crawl-exploration/BE-0038-autonomous-crawl-exploration-ja.md)、
-[evidence.md](../../../docs/ja/evidence.md)、[configuration.md](../../../docs/ja/configuration.md)、
-[DESIGN §2 / §7](../../../DESIGN.md)
+[evidence.md](../../docs/ja/evidence.md)、[configuration.md](../../docs/ja/configuration.md)、
+[DESIGN §2 / §7](../../DESIGN.md)

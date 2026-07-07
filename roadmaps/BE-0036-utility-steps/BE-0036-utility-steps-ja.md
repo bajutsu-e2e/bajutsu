@@ -87,4 +87,4 @@ OTP／2FA とメールの側方チャネルステップ（`totp`、`email`）は
 [OTP・メールの側方チャネルステップ](../BE-0046-otp-email-steps/BE-0046-otp-email-steps-ja.md)
 で別途扱います。
 
-[scenarios.md](../../../docs/ja/scenarios.md)、`bajutsu/orchestrator/actions/handlers/http.py`
+[scenarios.md](../../docs/ja/scenarios.md)、`bajutsu/orchestrator/actions/handlers/http.py`

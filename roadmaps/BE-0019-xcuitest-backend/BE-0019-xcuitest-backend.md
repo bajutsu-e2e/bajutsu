@@ -127,4 +127,4 @@ On-device gesture validation wired (2026-07-05): added a flat, scroll-free `Gest
 
 ## References
 
-[DESIGN §5 / §3](../../../DESIGN.md), `bajutsu/backends.py`
+[DESIGN §5 / §3](../../DESIGN.md), `bajutsu/backends.py`

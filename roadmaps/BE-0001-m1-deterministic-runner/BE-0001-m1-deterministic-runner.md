@@ -27,7 +27,7 @@ The determinism core is the driver abstraction + selector resolution (0/1/2+ mat
 
 ## Alternatives considered
 
-See [`DESIGN.md`](../../../DESIGN.md) for the rationale behind determinism-first over AI-in-the-loop execution.
+See [`DESIGN.md`](../../DESIGN.md) for the rationale behind determinism-first over AI-in-the-loop execution.
 
 ## Progress
 
@@ -35,4 +35,4 @@ See [`DESIGN.md`](../../../DESIGN.md) for the rationale behind determinism-first
 
 ## References
 
-[DESIGN §2 / §3](../../../DESIGN.md), [architecture.md](../../../docs/architecture.md), `bajutsu/orchestrator.py`, `bajutsu/drivers/base.py`
+[DESIGN §2 / §3](../../DESIGN.md), [architecture.md](../../docs/architecture.md), `bajutsu/orchestrator.py`, `bajutsu/drivers/base.py`

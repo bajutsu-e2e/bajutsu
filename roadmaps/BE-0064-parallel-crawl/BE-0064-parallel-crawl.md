@@ -27,7 +27,7 @@ A crawl is serial today: it explores one screen at a time on one device. The per
 
 Both overlap cleanly across independent simulators, so wall-clock time falls roughly with the number of devices until AI rate limits or coordinator contention dominate.
 
-`run` already scales across a simulator pool ([`runner/pool.py`](../../../bajutsu/runner/pool.py)), and the WebUI already lets Replay pick a multi-device pool. Crawl is the one Tier-1 path still pinned to a single device — which makes it slow to use as the front end to `record` and as the whole-app coverage-measurement run ([DESIGN §7.2](../../../DESIGN.md); [BE-0038](../BE-0038-autonomous-crawl-exploration/BE-0038-autonomous-crawl-exploration.md) motivation #2).
+`run` already scales across a simulator pool ([`runner/pool.py`](../../bajutsu/runner/pool.py)), and the WebUI already lets Replay pick a multi-device pool. Crawl is the one Tier-1 path still pinned to a single device — which makes it slow to use as the front end to `record` and as the whole-app coverage-measurement run ([DESIGN §7.2](../../DESIGN.md); [BE-0038](../BE-0038-autonomous-crawl-exploration/BE-0038-autonomous-crawl-exploration.md) motivation #2).
 
 ## Detailed design
 
@@ -45,7 +45,7 @@ The guide's AI calls thus run concurrently across workers — the primary speedu
 
 ### The determinism boundary (the crux)
 
-Screen *identity* (the fingerprint), transition detection, crash detection, and the screen map's content stay pure deterministic functions of the element tree — unchanged. AI still only chooses *what to try* and never judges ([prime directive #1](../../../CLAUDE.md)).
+Screen *identity* (the fingerprint), transition detection, crash detection, and the screen map's content stay pure deterministic functions of the element tree — unchanged. AI still only chooses *what to try* and never judges ([prime directive #1](../../CLAUDE.md)).
 
 What parallelism relaxes is **exploration order** and the **recorded canonical `path_to`**: which worker reaches a screen first is scheduling-dependent, so for an app with its own non-determinism the recorded paths (and the tie-broken discovery order) can differ run to run. For a deterministic app the *set* of nodes and edges discovered is invariant; only ordering/path metadata varies.
 
@@ -72,6 +72,6 @@ This is acceptable precisely because crawl is **Tier 1 and emits a discovery art
 ## References
 
 * [BE-0038 — Autonomous crawl exploration](../BE-0038-autonomous-crawl-exploration/BE-0038-autonomous-crawl-exploration.md) — the engine this extends.
-* [`bajutsu/runner/pool.py`](../../../bajutsu/runner/pool.py) — `run`'s simulator pool, the existing concurrency model to mirror.
-* [CLAUDE.md](../../../CLAUDE.md) — prime directive #1 (AI never judges) and #2 (determinism first).
-* [DESIGN §7.2](../../../DESIGN.md) — whole-app coverage from crawl dumps; a faster crawl makes it practical.
+* [`bajutsu/runner/pool.py`](../../bajutsu/runner/pool.py) — `run`'s simulator pool, the existing concurrency model to mirror.
+* [CLAUDE.md](../../CLAUDE.md) — prime directive #1 (AI never judges) and #2 (determinism first).
+* [DESIGN §7.2](../../DESIGN.md) — whole-app coverage from crawl dumps; a faster crawl makes it practical.

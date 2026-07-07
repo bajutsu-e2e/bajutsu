@@ -27,13 +27,13 @@ This is the tool's *own* diagnostic trace, kept deliberately distinct from the t
 already exist:
 
 - **Evidence** — the *test subject's* trace (`deviceLog`, `appTrace`, network, actionLog), captured and
-  scrubbed by the evidence subsystem ([evidence.md](../../../docs/evidence.md)). Not this.
+  scrubbed by the evidence subsystem ([evidence.md](../../docs/evidence.md)). Not this.
 - **Run output** — the `--progress` scenario/step stream, delivered live and stored via the serve
   LogBus (BE-0015). Not this.
 - **Audit log** — who did what, in the `audit_log` table (BE-0015). Adjacent but separate (a viewer
   for it is a distinct concern).
 
-It is shaped by the prime directives ([CLAUDE.md](../../../CLAUDE.md), [DESIGN.md](../../../DESIGN.md)):
+It is shaped by the prime directives ([CLAUDE.md](../../CLAUDE.md), [DESIGN.md](../../DESIGN.md)):
 the deterministic `run` / CI gate must stay lean (stdlib-only, quiet, human-readable), and **secrets
 must never reach a log line**.
 
@@ -69,7 +69,7 @@ by environment so the difference lives in config, not per-app code:
 ### Where it plugs in (the seams)
 
 The codebase today has no operational logging to speak of: a lone `logging.getLogger(__name__)` in
-[`serve/jobs.py`](../../../bajutsu/serve/jobs.py), and both HTTP request handlers deliberately silence
+[`serve/jobs.py`](../../bajutsu/serve/jobs.py), and both HTTP request handlers deliberately silence
 per-request logging (`serve/handler.py`'s `Handler.log_message`, `network.py`'s stub). There is no root
 configuration and no `contextvars` anywhere — so this is greenfield wiring, installed in one place:
 
@@ -78,22 +78,22 @@ configuration and no `contextvars` anywhere — so this is greenfield wiring, in
   it also holds the `contextvars`, the event-name registry, and the JSON formatter. `serve` calls it at
   startup; the CLI/`run` path never imports it (keeping the gate stdlib-only and quiet).
 - **Two HTTP surfaces, one filter.** Because the filter sits at the **root logger**, it covers both the
-  hosted FastAPI app ([`serve/server/app.py`](../../../bajutsu/serve/server/app.py), which already has an
+  hosted FastAPI app ([`serve/server/app.py`](../../bajutsu/serve/server/app.py), which already has an
   `@app.middleware("http")` at the request boundary — the natural place to mint `request_id` and bind the
-  contextvar) and the local stdlib server ([`serve/handler.py`](../../../bajutsu/serve/handler.py)'s
+  contextvar) and the local stdlib server ([`serve/handler.py`](../../bajutsu/serve/handler.py)'s
   `do_GET` / `do_POST`). JSON is enabled in serve mode; the local CLI stays text.
-- **Worker boundary.** [`serve/server/worker_job.py`](../../../bajutsu/serve/server/worker_job.py)'s
+- **Worker boundary.** [`serve/server/worker_job.py`](../../bajutsu/serve/server/worker_job.py)'s
   `execute_job_spec(spec, …)` is where the job's ids bind. The job spec carries **`job_id` / `org` /
   `actor`** (built in `worker_job.py`); **`run_id` is minted when the run starts on the worker**, not in
   the spec, so it is bound there (correcting the invariant below). Cross-process correlation is therefore
   by *shared id values* that already exist on both sides, never by propagating a context object.
-- **Redaction reuse.** The filter wraps the existing `Redactor` ([`redaction.py`](../../../bajutsu/redaction.py),
+- **Redaction reuse.** The filter wraps the existing `Redactor` ([`redaction.py`](../../bajutsu/redaction.py),
   `redact_text`) for value-masking, plus the new key-based masker.
 
 ### The contract — machine-checkable invariants
 
 Operational logs are **non-deterministic** (timestamps, ordering), so — unlike evidence
-([DESIGN §2](../../../DESIGN.md)) — the design does **not** assert byte-equality. It asserts a **schema
+([DESIGN §2](../../DESIGN.md)) — the design does **not** assert byte-equality. It asserts a **schema
 and a set of invariants**, each verified by a gate test:
 
 1. **Secret-free (redaction).** A single redacting filter/formatter sits at the **root logger**, so
@@ -186,9 +186,9 @@ isn't in either set.
 
 ## References
 
-- [DESIGN.md](../../../DESIGN.md) §2 — determinism-first; secret masking.
+- [DESIGN.md](../../DESIGN.md) §2 — determinism-first; secret masking.
 - [BE-0015 — Public hosting of the web UI](../BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md) — the hosted topology and the deferred "structured JSON logs" observability row this item realizes.
 - [BE-0032 — Secret variables](../BE-0032-secret-variables/BE-0032-secret-variables.md) — the secret-masking machinery shared with this item.
 - [BE-0047 — AI data sovereignty](../BE-0047-ai-data-sovereignty/BE-0047-ai-data-sovereignty.md) — the redacted-path philosophy this item extends to operational logs.
 - [BE-0011 — Local web UI (`bajutsu serve`)](../BE-0011-local-web-ui-serve/BE-0011-local-web-ui-serve.md) and [BE-0051 — Serve hardening](../BE-0051-serve-hardening-for-hosting/BE-0051-serve-hardening-for-hosting.md) — the serve this logging instruments.
-- [evidence.md](../../../docs/evidence.md) — the evidence subsystem this is deliberately distinct from.
+- [evidence.md](../../docs/evidence.md) — the evidence subsystem this is deliberately distinct from.

@@ -23,7 +23,7 @@
 
 ## 詳細設計
 
-実装は [`bajutsu/backends.py`](../../../bajutsu/backends.py)。[drivers → backend 選択](../../../docs/ja/drivers.md#バックエンド選択と-actuator) も参照。
+実装は [`bajutsu/backends.py`](../../bajutsu/backends.py)。[drivers → backend 選択](../../docs/ja/drivers.md#バックエンド選択と-actuator) も参照。
 
 プラットフォームレジストリは、各プラットフォームトークンをその actuator 列（安定度の高い順）へ対応づけます:
 
@@ -77,4 +77,4 @@ apps:
 
 ## 参考
 
-[`bajutsu/backends.py`](../../../bajutsu/backends.py)、[drivers.md](../../../docs/ja/drivers.md#バックエンド選択と-actuator)、[BE-0009](../BE-0009-cross-platform-abstractions/BE-0009-cross-platform-abstractions-ja.md)、[BE-0007](../BE-0007-android-backend/BE-0007-android-backend-ja.md)、[BE-0041](../BE-0041-web-playwright-backend/BE-0041-web-playwright-backend-ja.md)、[BE-0019](../BE-0019-xcuitest-backend/BE-0019-xcuitest-backend-ja.md)
+[`bajutsu/backends.py`](../../bajutsu/backends.py)、[drivers.md](../../docs/ja/drivers.md#バックエンド選択と-actuator)、[BE-0009](../BE-0009-cross-platform-abstractions/BE-0009-cross-platform-abstractions-ja.md)、[BE-0007](../BE-0007-android-backend/BE-0007-android-backend-ja.md)、[BE-0041](../BE-0041-web-playwright-backend/BE-0041-web-playwright-backend-ja.md)、[BE-0019](../BE-0019-xcuitest-backend/BE-0019-xcuitest-backend-ja.md)

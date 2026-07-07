@@ -16,8 +16,8 @@
 ## はじめに
 
 このリポジトリの composite action のうち 2 つ、
-[`.github/actions/bajutsu-e2e/action.yml`](../../../.github/actions/bajutsu-e2e/action.yml) と
-[`.github/actions/boot-simulator/action.yml`](../../../.github/actions/boot-simulator/action.yml)
+[`.github/actions/bajutsu-e2e/action.yml`](../../.github/actions/bajutsu-e2e/action.yml) と
+[`.github/actions/boot-simulator/action.yml`](../../.github/actions/boot-simulator/action.yml)
 は、`${{ inputs.* }}` を `env:` 経由で受け渡す前に、シェルの `run:` ブロックへ直接展開していま
 す。現在のすべての呼び出し元はリテラル文字列か、信頼できる先行ステップの出力しか渡していないため、
 今の時点で悪用できる経路はありません。ただしこのパターン自体は脆く、将来ある入力に攻撃者の影響を

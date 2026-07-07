@@ -112,6 +112,6 @@
 
 ## 参考
 
-[scenarios.md](../../../docs/ja/scenarios.md)、[selectors.md](../../../docs/ja/selectors.md)。`bajutsu/drivers/base.py`（`_contains`、`resolve_unique`、`Selector` / `Element`）、`bajutsu/doctor.py`（`score`、`ACTIONABLE_TRAITS`）、`bajutsu/evidence.py`（`write_elements` → ステップごとの `elements.json`、`screenshot` 種別 → `after.png`）、`bajutsu/serve/scenarios.py`（`ScenarioScope.save`）、`bajutsu/scenario/load.py`（`load_scenario_file`）、`bajutsu/serve/`（`handler.py` のルーティング、`operations.py`）、`bajutsu/templates/serve.js` と crawl レポートのスクリーンショット・オーバーレイの先例。
+[scenarios.md](../../docs/ja/scenarios.md)、[selectors.md](../../docs/ja/selectors.md)。`bajutsu/drivers/base.py`（`_contains`、`resolve_unique`、`Selector` / `Element`）、`bajutsu/doctor.py`（`score`、`ACTIONABLE_TRAITS`）、`bajutsu/evidence.py`（`write_elements` → ステップごとの `elements.json`、`screenshot` 種別 → `after.png`）、`bajutsu/serve/scenarios.py`（`ScenarioScope.save`）、`bajutsu/scenario/load.py`（`load_scenario_file`）、`bajutsu/serve/`（`handler.py` のルーティング、`operations.py`）、`bajutsu/templates/serve.js` と crawl レポートのスクリーンショット・オーバーレイの先例。
 
 **依存・関連項目:** [BE-0011](../BE-0011-local-web-ui-serve/BE-0011-local-web-ui-serve-ja.md)（`serve` ホスト、`ScenarioScope`、本項目が拡張するスクリーンショットの仕組み）、[BE-0012](../BE-0012-action-capture-record/BE-0012-action-capture-record-ja.md)（**点 → 要素ピッカー + doctor スコアを共有。解決器は 1 つ、供給源が 2 つ**。エディタは取得済み成果物、キャプチャはライブな driver を読む）、[BE-0014](../BE-0014-record-demarcation/BE-0014-record-demarcation-ja.md)（オーサリング面どうしの役割分担）。

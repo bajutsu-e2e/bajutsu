@@ -198,7 +198,7 @@ cost of a single `query()` (that is BE-0105's separate concern).
 
 ## References
 
-[DESIGN §6.5](../../../DESIGN.md); `bajutsu/record.py` (the record loop, `_execute_with_recovery`,
+[DESIGN §6.5](../../DESIGN.md); `bajutsu/record.py` (the record loop, `_execute_with_recovery`,
 `_settle_step`, `_screenshot_bytes`), `bajutsu/agent.py` (`Observation` / `Proposal` / the `Agent`
 protocol), `bajutsu/claude_agent.py` (`next_action`, `proposal_from_call`, `_to_proposal`, `SYSTEM_PROMPT`,
 `TOOLS`), `bajutsu/ai/base.py` (`MessageResponse.content` / `first_tool_use`), `bajutsu/ai/claude_code.py`

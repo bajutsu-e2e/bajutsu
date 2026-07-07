@@ -35,4 +35,4 @@ Idempotent normalization / provenance comments remain light — a follow-up rath
 
 ## References
 
-[recording.md](../../../docs/recording.md), [evidence.md](../../../docs/evidence.md), [reporting.md](../../../docs/reporting.md), `bajutsu/record.py`
+[recording.md](../../docs/recording.md), [evidence.md](../../docs/evidence.md), [reporting.md](../../docs/reporting.md), `bajutsu/record.py`

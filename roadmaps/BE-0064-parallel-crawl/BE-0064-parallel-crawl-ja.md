@@ -27,7 +27,7 @@
 
 どちらも独立したシミュレータ間できれいに重なるので、AI のレート上限やコーディネータの競合が支配的になるまで、実時間はおおよそ台数に反比例して減ります。
 
-`run` は既にシミュレータプールで並列化されており（[`runner/pool.py`](../../../bajutsu/runner/pool.py)）、WebUI でも Replay は複数台プールを選べます。クロールは、いまだ 1 台に固定された唯一の Tier-1 経路です。これが、`record` の入口として、また全画面のカバレッジ計測の実行として（[DESIGN §7.2](../../../DESIGN.md)、[BE-0038](../BE-0038-autonomous-crawl-exploration/BE-0038-autonomous-crawl-exploration-ja.md) 動機 #2）クロールを使いにくくしています。
+`run` は既にシミュレータプールで並列化されており（[`runner/pool.py`](../../bajutsu/runner/pool.py)）、WebUI でも Replay は複数台プールを選べます。クロールは、いまだ 1 台に固定された唯一の Tier-1 経路です。これが、`record` の入口として、また全画面のカバレッジ計測の実行として（[DESIGN §7.2](../../DESIGN.md)、[BE-0038](../BE-0038-autonomous-crawl-exploration/BE-0038-autonomous-crawl-exploration-ja.md) 動機 #2）クロールを使いにくくしています。
 
 ## 詳細設計
 
@@ -45,7 +45,7 @@
 
 ### 決定性の境界（要点）
 
-画面の*同一性*（fingerprint）、遷移判定、クラッシュ判定、画面マップの内容は、要素ツリーの純粋な決定的関数のまま変わりません。AI は依然「何を試すか」だけを選び、判定は下しません（[prime directive #1](../../../CLAUDE.md)）。
+画面の*同一性*（fingerprint）、遷移判定、クラッシュ判定、画面マップの内容は、要素ツリーの純粋な決定的関数のまま変わりません。AI は依然「何を試すか」だけを選び、判定は下しません（[prime directive #1](../../CLAUDE.md)）。
 
 並列化で緩むのは**探索順序**と**記録される正準 `path_to`** です。どのワーカーが画面に先に到達するかはスケジュール依存なので、アプリ自体に非決定性があると、記録されるパス（およびタイブレークされた発見順）は実行ごとに変わりえます。決定的なアプリでは、発見されるノードとエッジの*集合*は不変で、順序やパスのメタデータだけが変わります。
 
@@ -72,6 +72,6 @@
 ## 参考
 
 * [BE-0038 — 自律クロール探索](../BE-0038-autonomous-crawl-exploration/BE-0038-autonomous-crawl-exploration-ja.md) —— 本項目が拡張するエンジン。
-* [`bajutsu/runner/pool.py`](../../../bajutsu/runner/pool.py) —— `run` のシミュレータプール。倣うべき既存の並行モデル。
-* [CLAUDE.md](../../../CLAUDE.md) —— prime directive #1（AI は判定しない）と #2（決定性優先）。
-* [DESIGN §7.2](../../../DESIGN.md) —— クロールのダンプから全画面カバレッジを得ます。クロールが速くなれば実用的になります。
+* [`bajutsu/runner/pool.py`](../../bajutsu/runner/pool.py) —— `run` のシミュレータプール。倣うべき既存の並行モデル。
+* [CLAUDE.md](../../CLAUDE.md) —— prime directive #1（AI は判定しない）と #2（決定性優先）。
+* [DESIGN §7.2](../../DESIGN.md) —— クロールのダンプから全画面カバレッジを得ます。クロールが速くなれば実用的になります。

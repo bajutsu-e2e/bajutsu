@@ -21,29 +21,29 @@ so `bajutsu crawl --backend web` explores a web app breadth-first and produces t
 does — a screen map, crash repro scenarios, candidate scenarios, and a whole-app coverage feed — at full parity,
 including the optional AI guide (`--guide ai`). The crawl engine is already platform-neutral; what this item adds is
 the platform-specific lifecycle wiring and web-appropriate crash / dialog semantics, all while keeping AI out of the
-verdict ([prime directive #1](../../../CLAUDE.md)).
+verdict ([prime directive #1](../../CLAUDE.md)).
 
 ## Motivation
 
 **The engine is already platform-neutral — only the command is iOS-bound.** The crawl engine
-([`crawl.py`](../../../bajutsu/crawl.py)) is built entirely on the `Driver` abstraction (`query` / `tap` /
+([`crawl.py`](../../bajutsu/crawl.py)) is built entirely on the `Driver` abstraction (`query` / `tap` /
 `type_text` / `tap_point` / `screenshot`); its module docstring states outright that it carries "no AI and no
 Simulator wiring". So a web crawl is a *wiring and semantics* gap, not an engine rewrite. The one Tier-1 path still
-pinned to iOS is the `crawl` **command** ([`cli/commands/crawl.py`](../../../bajutsu/cli/commands/crawl.py)): its
+pinned to iOS is the `crawl` **command** ([`cli/commands/crawl.py`](../../bajutsu/cli/commands/crawl.py)): its
 `reset` closure does a `simctl` relaunch (`_env.Env.terminate` / `launch` keyed by `bundle_id`), it waits via
 `_await_ready`, its crash check is the iOS accessibility-tree collapse (`shows_app_ui`), and its progress text says
 "preparing the simulator".
 
 **The web lifecycle seam already exists — `run` uses it.** `run` launches the web driver with `driver.navigate()`
-([`runner/launch.py`](../../../bajutsu/runner/launch.py)) and relaunches between scenarios with `_web_relauncher`,
-which is just another `navigate()` ([`runner/pool.py`](../../../bajutsu/runner/pool.py)); a fresh `BrowserContext` is
+([`runner/launch.py`](../../bajutsu/runner/launch.py)) and relaunches between scenarios with `_web_relauncher`,
+which is just another `navigate()` ([`runner/pool.py`](../../bajutsu/runner/pool.py)); a fresh `BrowserContext` is
 the `erase` equivalent and is ~free. Crawl should reuse that seam instead of carrying its own iOS-only reset.
 
 **Web is the lowest-friction place to make crawl pay off.** Web needs no Mac and no emulator and runs on the
 existing Linux `make check` / CI gate ([BE-0041](../BE-0041-web-playwright-backend/BE-0041-web-playwright-backend.md)),
 so a web crawl can run as a discovery step right inside CI. The three gaps BE-0038 fills apply verbatim to web apps:
 *discovery before authoring* (a screen map turns "I don't know this app" into "here are its screens, pick ones to
-author"), *whole-app coverage measurement* ([DESIGN §7.2](../../../DESIGN.md) — the crawl is the run that produces
+author"), *whole-app coverage measurement* ([DESIGN §7.2](../../DESIGN.md) — the crawl is the run that produces
 the per-screen dumps `doctor --from <runId>` consumes), and *robustness smoke testing* (broad, zero-authoring
 exploration that surfaces errors the happy paths never hit).
 
@@ -64,7 +64,7 @@ bajutsu crawl --app <web-app> --backend web
 ```
 
 The web app is identified by `baseUrl` rather than `bundleId` — the per-app config already models this
-([`config.py`](../../../bajutsu/config.py): an app needs `bundleId` (iOS) *or* `baseUrl` (web)). All other flags carry
+([`config.py`](../../bajutsu/config.py): an app needs `bundleId` (iOS) *or* `baseUrl` (web)). All other flags carry
 over unchanged from the iOS crawl; `--seed` entries are URLs / paths instead of deeplinks. As on iOS, this is an
 *AI-live* path, not part of the deterministic gate: `--guide off` runs purely on the identifier-driven heuristics and
 needs no model, `--guide ai` layers the optional guide on top, and either way AI never decides pass/fail.
@@ -93,14 +93,14 @@ The iOS crash signal — the app process dying and the accessibility tree collap
 - **Blank / collapsed document** — the DOM went effectively empty (set emptiness, the web analogue of the iOS
   collapsed tree).
 
-This needs a small addition to [`PlaywrightDriver`](../../../bajutsu/drivers/playwright.py): register the `pageerror`
+This needs a small addition to [`PlaywrightDriver`](../../bajutsu/drivers/playwright.py): register the `pageerror`
 (and console-error) handlers and track the last main-frame response status, exposed as a health accessor the crawl
 reads — the web counterpart of `is_app_alive`. The engine's single `is_app_alive(landed)` call becomes a
 platform-dispatched health check (iOS = `shows_app_ui`; web = the driver's signals). On a detected crash the crawl
-captures the full evidence set via the existing `result:error` safety net ([DESIGN §9](../../../DESIGN.md)) and emits
+captures the full evidence set via the existing `result:error` safety net ([DESIGN §9](../../DESIGN.md)) and emits
 the replayed path (the entry URL plus the recorded actions) as a minimal repro scenario, directly runnable by `run`
 on web. A pageerror is an event, an HTTP status is a number, a blank DOM is set emptiness — so [prime directive
-#1](../../../CLAUDE.md) holds: AI stays out of the verdict.
+#1](../../CLAUDE.md) holds: AI stays out of the verdict.
 
 ### Blocking-overlay guard → web dialog handler
 
@@ -133,12 +133,12 @@ streaming (`screenmap.json` is written the same way regardless of backend).
 
 **Use Playwright's native crawling / semantic click instead of the shared engine.** Rejected: routing matching
 through Playwright's own engine (`get_by_test_id().click()`) diverges from the determinism core — the very reason
-[`drivers/playwright.py`](../../../bajutsu/drivers/playwright.py) deliberately resolves every action through the
+[`drivers/playwright.py`](../../bajutsu/drivers/playwright.py) deliberately resolves every action through the
 shared `base.resolve_unique` against a `query()` snapshot. The shared crawl engine keeps web and iOS crawl identical
 and their screen maps comparable.
 
 **AI-judged crash detection** ("ask the model whether the page looks broken"). Rejected — it violates [prime
-directive #1](../../../CLAUDE.md), and the web already exposes cheap deterministic signals (pageerror / HTTP status /
+directive #1](../../CLAUDE.md), and the web already exposes cheap deterministic signals (pageerror / HTTP status /
 blank DOM) that need no model.
 
 **Fold this into BE-0038.** Rejected: BE-0038 is framed entirely around iOS and is already in progress; the web crash
@@ -163,5 +163,5 @@ intersection of this item with the parallel-crawl axis and can follow once both 
 - [BE-0041 — Web (Playwright) backend](../BE-0041-web-playwright-backend/BE-0041-web-playwright-backend.md) — the web driver and the deterministic web `run` path.
 - [BE-0054 — Web backend completion](../BE-0054-web-backend-completion/BE-0054-web-backend-completion.md) — rich web capture (network / video / parallel) that enriches a web crawl later.
 - [BE-0064 — Parallel crawl across multiple simulators](../BE-0064-parallel-crawl/BE-0064-parallel-crawl.md) — the sibling crawl axis (concurrency); parallel web crawl is the intersection of the two.
-- [`crawl.py`](../../../bajutsu/crawl.py), [`cli/commands/crawl.py`](../../../bajutsu/cli/commands/crawl.py), [`runner/launch.py`](../../../bajutsu/runner/launch.py), [`runner/pool.py`](../../../bajutsu/runner/pool.py), [`drivers/playwright.py`](../../../bajutsu/drivers/playwright.py), [`config.py`](../../../bajutsu/config.py).
-- [DESIGN §2 / §3.1 / §5 / §7.2 / §9](../../../DESIGN.md), [CLAUDE.md](../../../CLAUDE.md) prime directives #1 (AI never judges) and #2 (determinism first), [multi-platform.md](../../../docs/multi-platform.md).
+- [`crawl.py`](../../bajutsu/crawl.py), [`cli/commands/crawl.py`](../../bajutsu/cli/commands/crawl.py), [`runner/launch.py`](../../bajutsu/runner/launch.py), [`runner/pool.py`](../../bajutsu/runner/pool.py), [`drivers/playwright.py`](../../bajutsu/drivers/playwright.py), [`config.py`](../../bajutsu/config.py).
+- [DESIGN §2 / §3.1 / §5 / §7.2 / §9](../../DESIGN.md), [CLAUDE.md](../../CLAUDE.md) prime directives #1 (AI never judges) and #2 (determinism first), [multi-platform.md](../../docs/multi-platform.md).

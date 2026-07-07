@@ -15,7 +15,7 @@
 
 ## Introduction
 
-The `check` job in [`.github/workflows/ci.yml`](../../../.github/workflows/ci.yml) installs
+The `check` job in [`.github/workflows/ci.yml`](../../.github/workflows/ci.yml) installs
 `actionlint` — the one gate step not covered by `uv sync` — by piping a script fetched from a
 mutable git tag straight into `bash`. Every other third-party dependency in this repo's CI is
 pinned by commit SHA. This proposal brings the `actionlint` installer in line with that posture.

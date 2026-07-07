@@ -55,7 +55,7 @@ This stays within the prime directives:
 - **Portability.** Coordinates anchor to the app window's top-left via
   `withNormalizedOffset`, the same origin convention bajutsu already uses, so the generated
   test reads the numbers the same way `run` does. The coordinate form stays the documented
-  last resort ([scenarios](../../../docs/scenarios.md#swipe)); the selector form remains preferred
+  last resort ([scenarios](../../docs/scenarios.md#swipe)); the selector form remains preferred
   precisely because it survives layout changes.
 - **App-agnostic.** No per-app configuration is introduced; the emitted helper is identical
   across apps, like the existing `el` / `byLabel` / `matchingId` helpers.
@@ -82,4 +82,4 @@ This proposal only removes coordinate swipes from that set.
 
 ## References
 
-[codegen.md](../../../docs/codegen.md)
+[codegen.md](../../docs/codegen.md)

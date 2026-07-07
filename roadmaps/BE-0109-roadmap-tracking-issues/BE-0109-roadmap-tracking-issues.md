@@ -163,10 +163,10 @@ Log:
 
 ## References
 
-- [`roadmaps/README.md`](../../README.md) — the BE ID / metadata conventions this extends.
-- [`scripts/promote_roadmap_items.py`](../../../scripts/promote_roadmap_items.py) — the
+- [`roadmaps/README.md`](../README.md) — the BE ID / metadata conventions this extends.
+- [`scripts/promote_roadmap_items.py`](../../scripts/promote_roadmap_items.py) — the
   pure-function-of-current-state pattern this item's sync script follows.
-- [`.github/workflows/roadmap-id.yml`](../../../.github/workflows/roadmap-id.yml) — the
+- [`.github/workflows/roadmap-id.yml`](../../.github/workflows/roadmap-id.yml) — the
   `push: main` roadmap workflow this new one sits beside; allocation runs here, so the sync's
   `BE-0109` skip depends on it.
 - [BE-0089](../BE-0089-merge-time-be-id-allocation/BE-0089-merge-time-be-id-allocation.md) —

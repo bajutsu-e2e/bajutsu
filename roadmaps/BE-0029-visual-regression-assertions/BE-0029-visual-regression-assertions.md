@@ -74,8 +74,8 @@ A Python-level pixel loop was rejected in favor of `ImageChops.difference` for C
 ## References
 
 [PR #30](https://github.com/bajutsu-e2e/bajutsu/pull/30), `bajutsu/visual.py`,
-`bajutsu/assertions.py`, `bajutsu/scenario/`, [DESIGN §6.4](../../../DESIGN.md),
-[evidence.md](../../../docs/evidence.md)
+`bajutsu/assertions.py`, `bajutsu/scenario/`, [DESIGN §6.4](../../DESIGN.md),
+[evidence.md](../../docs/evidence.md)
 
 ### Follow-ups (not yet implemented)
 

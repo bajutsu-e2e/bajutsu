@@ -37,7 +37,7 @@ BE-0094 はすでに各カードから 1 本のリンクを出しています。
 誰かが取り組んでいるか」（Issue、その担当者）のうち、今は前者しか、読み手がいるその場では答えられ
 ないからです。しかも隙間は一箇所だけではありません。読み手は項目自身のファイルにも、ダッシュボード
 と同じくらいの頻度で直接たどり着きます。別のドキュメントからのリンク、PR の本文、GitHub 上の
-コード検索、あるいはプレーンテキストの [`roadmaps/README.md`](../../README-ja.md) 索引からです。
+コード検索、あるいはプレーンテキストの [`roadmaps/README.md`](../README-ja.md) 索引からです。
 これらの経路はどれもダッシュボードを経由しません。リンクをダッシュボードという派生した表示だけに
 置けば、こうした経路のすべて、そして項目のファイルそのものは、リンクを持たないままになります。
 隙間を出典である項目のファイル自身で埋めれば、たどり着き方によらずすべての読み手に届きます。
@@ -171,11 +171,11 @@ BE-0094 はすでに各カードから 1 本のリンクを出しています。
 - [BE-0109](../BE-0109-roadmap-tracking-issues/BE-0109-roadmap-tracking-issues-ja.md)（オープンな
   ロードマップ項目のトラッキング Issue）— 本項目の検索 URL が前提とする、タイトルとラベルの慣習を
   持ち、その検討した代替案で「実際の Issue 番号をメタデータへ書き戻す」案をすでに退けている項目。
-- [`scripts/build_roadmap_dashboard.py`](../../../scripts/build_roadmap_dashboard.py) — 本項目が
+- [`scripts/build_roadmap_dashboard.py`](../../scripts/build_roadmap_dashboard.py) — 本項目が
   変更するダッシュボードの生成器。
-- [`scripts/new_roadmap_item.py`](../../../scripts/new_roadmap_item.py) — 本項目が拡張する、新規
+- [`scripts/new_roadmap_item.py`](../../scripts/new_roadmap_item.py) — 本項目が拡張する、新規
   項目の生成コマンド。
-- [`tests/test_roadmap_format.py`](../../../tests/test_roadmap_format.py) — 本項目が新しいフィールド
+- [`tests/test_roadmap_format.py`](../../tests/test_roadmap_format.py) — 本項目が新しいフィールド
   とその値のチェックを追加する、項目ごとの形式チェック。
 - [BE-0074 — BE 項目テンプレートの標準化（EN / JA）](../BE-0074-be-template-standardization/BE-0074-be-template-standardization-ja.md) —
   `test_roadmap_format.py` が従う、形式を固定するという前例であり、本項目が「トラッキング Issue」

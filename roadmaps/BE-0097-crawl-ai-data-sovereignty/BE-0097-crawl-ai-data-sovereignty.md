@@ -109,4 +109,4 @@ All fast-gate, no live API (the SDK client is injectable, as BE-0047's tests rel
   `bajutsu/cli/commands/crawl.py` (`_ai_credential_gap`, the guide agent + alert guard construction),
   `bajutsu/crawl.py`, `bajutsu/alerts.py`, `bajutsu/redaction.py`, `bajutsu/serve/jobs.py`
   (`_spawn_env`), `bajutsu/serve/operations.py` (`set_api_key`) — the surfaces a fix touches.
-- [DESIGN §2 / §3.1](../../../DESIGN.md) — Tier-1 AI, deterministic gate.
+- [DESIGN §2 / §3.1](../../DESIGN.md) — Tier-1 AI, deterministic gate.
