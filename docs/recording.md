@@ -30,9 +30,9 @@ class Observation:
 
 @dataclass
 class Proposal:
-    step: Step | None = None        # the next move (None = done or stuck)
-    done: bool = False              # the goal is reached
-    expect: list[Assertion] = []    # on done, the assertions that verify the goal
+    steps: list[Step] = field(default_factory=list)  # ordered batch determinable from this screen (usually 1)
+    done: bool = False                               # the goal is reached
+    expect: list[Assertion] = field(default_factory=list)  # on done, the assertions that verify the goal
     note: str = ""
     needs_human: bool = False       # a third outcome: hand off to a human (BE-0179)
     human_prompt: str = ""          # why, shown to the human on handoff

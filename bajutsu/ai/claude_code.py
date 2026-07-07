@@ -105,6 +105,9 @@ def _schema_and_note(request: MessageRequest) -> tuple[dict[str, Any], str, str 
         "properties": {
             "actions": {
                 "type": "array",
+                # At least one action — an empty batch would map to "no tool call" and terminate
+                # the record turn as `done`, the same premature-finish the single-tool shape avoided.
+                "minItems": 1,
                 "items": {
                     "type": "object",
                     "properties": {

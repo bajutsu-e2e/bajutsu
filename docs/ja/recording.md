@@ -28,9 +28,9 @@ class Observation:
 
 @dataclass
 class Proposal:
-    steps: list[Step] = []          # 現在の画面から確定できるアクションの順序付きバッチ（通常は 1 手）
-    done: bool = False              # ゴール到達
-    expect: list[Assertion] = []    # done 時に、ゴールを検証するアサーション
+    steps: list[Step] = field(default_factory=list)        # 現在の画面から確定できるアクションの順序付きバッチ（通常は 1 手）
+    done: bool = False                                     # ゴール到達
+    expect: list[Assertion] = field(default_factory=list)  # done 時に、ゴールを検証するアサーション
     note: str = ""
     needs_human: bool = False       # 第三の結果。人に引き渡す（BE-0179）
     human_prompt: str = ""          # 引き渡しの理由。人に提示する
