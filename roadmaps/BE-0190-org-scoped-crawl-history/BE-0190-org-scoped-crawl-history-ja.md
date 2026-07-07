@@ -1,14 +1,14 @@
-[English](BE-XXXX-org-scoped-crawl-history.md) · **日本語**
+[English](BE-0190-org-scoped-crawl-history.md) · **日本語**
 
-# BE-XXXX — サーバーバックエンドでの org スコープ付き crawl 履歴
+# BE-0190 — サーバーバックエンドでの org スコープ付き crawl 履歴
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
 |---|---|
-| 提案 | [BE-XXXX](BE-XXXX-org-scoped-crawl-history-ja.md) |
+| 提案 | [BE-0190](BE-0190-org-scoped-crawl-history-ja.md) |
 | 提案者 | [@hirosassa](https://github.com/hirosassa) |
 | 状態 | **提案** |
-| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0190") |
 | トピック | Web UI のホスティング（クラウド / セルフホスト） |
 | 関連 | [BE-0180](../BE-0180-crawl-history-viewer/BE-0180-crawl-history-viewer-ja.md) |
 | 由来 | [BE-0180](../BE-0180-crawl-history-viewer/BE-0180-crawl-history-viewer-ja.md) のレビュー |

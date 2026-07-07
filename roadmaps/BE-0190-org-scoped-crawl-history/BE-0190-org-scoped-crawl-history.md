@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-org-scoped-crawl-history-ja.md)
+**English** · [日本語](BE-0190-org-scoped-crawl-history-ja.md)
 
-# BE-XXXX — Org-scoped crawl history on the server backend
+# BE-0190 — Org-scoped crawl history on the server backend
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-org-scoped-crawl-history.md) |
+| Proposal | [BE-0190](BE-0190-org-scoped-crawl-history.md) |
 | Author | [@hirosassa](https://github.com/hirosassa) |
 | Status | **Proposal** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0190") |
 | Topic | Hosting the web UI (cloud / self-hosted) |
 | Related | [BE-0180](../BE-0180-crawl-history-viewer/BE-0180-crawl-history-viewer.md) |
 | Origin | Review of [BE-0180](../BE-0180-crawl-history-viewer/BE-0180-crawl-history-viewer.md) |
