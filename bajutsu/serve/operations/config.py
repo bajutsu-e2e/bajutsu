@@ -186,7 +186,7 @@ def _provider_settings_map(state: ServeState) -> dict[str, dict[str, str]]:
     authoritative — set_provider materializes its slot there for spawned jobs — so it is read from
     there rather than the stored slot."""
     mode = resolved_provider()
-    slots = dict(state.provider_settings)
+    slots = state.provider_settings_snapshot()  # locked copy — serve is threaded (BE-0183)
     slots[mode] = ProviderSettings(
         model=os.environ.get(BEDROCK_MODEL_ENV if mode == "bedrock" else MODEL_ENV, ""),
         effort=os.environ.get(EFFORT_ENV, ""),
@@ -386,7 +386,7 @@ def set_provider(state: ServeState, body: dict[str, Any]) -> tuple[Any, int]:
         else:
             os.environ.pop(MODEL_ENV, None)
         os.environ[PROVIDER_ENV] = prov
-        state.provider_settings[prov] = ProviderSettings(model=ai_model, effort=effort)
+        state.set_provider_setting(prov, ProviderSettings(model=ai_model, effort=effort))
         return {
             "ok": True,
             "provider": prov,
@@ -407,7 +407,9 @@ def set_provider(state: ServeState, body: dict[str, Any]) -> tuple[Any, int]:
     os.environ.pop(MODEL_ENV, None)  # Bedrock uses its own model id; clear the general override
     if region:
         os.environ["AWS_REGION"] = region
-    state.provider_settings["bedrock"] = ProviderSettings(model=model, effort=effort, region=region)
+    state.set_provider_setting(
+        "bedrock", ProviderSettings(model=model, effort=effort, region=region)
+    )
     return {
         "ok": True,
         "provider": "bedrock",

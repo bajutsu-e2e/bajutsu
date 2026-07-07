@@ -28,7 +28,6 @@ def _clean_provider_env(monkeypatch: pytest.MonkeyPatch) -> None:
         ac.MODEL_ENV,
         ac.EFFORT_ENV,
         ac.ANTHROPIC_KEY_ENV,
-        ac.EFFORT_ENV,
         ac.LANGUAGE_ENV,
         "AWS_REGION",
     ):
@@ -228,8 +227,11 @@ def test_http_provider_write_scopes_to_the_selected_slot(
         srv.ServeState(scenarios_dir=scn_dir, config=cfg, runs_dir=runs, cwd=tmp_path)
     )
     try:
-        _post(port, "/api/provider", {"provider": "api-key", "aiModel": "claude-sonnet-4-6"})
-        _post(
+        code, _ = _post(
+            port, "/api/provider", {"provider": "api-key", "aiModel": "claude-sonnet-4-6"}
+        )
+        assert code == 200
+        code, _ = _post(
             port,
             "/api/provider",
             {
@@ -239,6 +241,7 @@ def test_http_provider_write_scopes_to_the_selected_slot(
                 "effort": "low",
             },
         )
+        assert code == 200
         providers = _get_json(port, "/api/provider")["providers"]
         assert providers["api-key"] == {"model": "claude-sonnet-4-6", "effort": "", "region": ""}
         assert providers["bedrock"] == {

@@ -361,6 +361,19 @@ class ServeState:
     def valid_session(self, sid: str) -> bool:
         return self.sessions.valid(sid)
 
+    def provider_settings_snapshot(self) -> dict[str, ProviderSettings]:
+        """A shallow copy of the per-provider AI settings, taken under the lock (BE-0183). serve is a
+        ThreadingHTTPServer, so a bare `dict(...)` here could race a concurrent `set_provider_setting`
+        write and raise "dictionary changed size during iteration"; the lock makes the snapshot safe."""
+        with self._lock:
+            return dict(self.provider_settings)
+
+    def set_provider_setting(self, name: str, settings: ProviderSettings) -> None:
+        """Store one provider's AI settings slot under the lock (BE-0183), so a write can't corrupt a
+        concurrent `provider_settings_snapshot` read on another request thread."""
+        with self._lock:
+            self.provider_settings[name] = settings
+
     def active_jobs(self) -> int:
         """How many spawned jobs are still running (not yet finished)."""
         with self._lock:
