@@ -89,7 +89,6 @@ class Handoff(Protocol):
 
     def request(self, request: HandoffRequest) -> HandoffResponse:
         """Present *request* to the human and return their response (cancelled on timeout)."""
-        ...
 
 
 class HumanHandoffUnavailable(RuntimeError):
