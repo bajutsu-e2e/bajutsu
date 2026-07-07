@@ -23,7 +23,9 @@ header .brand{font-weight:700}
 .themeswitch .ico{width:15px;height:15px;color:var(--mut);transition:color .15s}
 .themeswitch:has(input:not(:checked)) .ico.moon{color:var(--acc)}
 .themeswitch:has(input:checked) .ico.sun{color:var(--acc)}
-.themeswitch input{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none}
+/* Visually hidden but still clickable: a semantic click on the checkbox itself (the dogfood, an
+   exported Playwright spec, assistive tech) must toggle it, not be swallowed before the label. */
+.themeswitch input{position:absolute;width:1px;height:1px;opacity:0}
 .themeswitch .track{position:relative;width:38px;height:22px;border-radius:999px;background:var(--bg2);border:1px solid var(--line);transition:background .15s}
 .themeswitch .thumb{position:absolute;top:2px;left:2px;width:16px;height:16px;border-radius:50%;background:var(--mut);transition:transform .15s,background .15s}
 .themeswitch input:checked+.track .thumb{transform:translateX(16px);background:var(--acc)}
