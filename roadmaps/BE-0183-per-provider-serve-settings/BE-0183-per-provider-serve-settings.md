@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0183") |
-| Implementing PR | _pending_ |
+| Implementing PR | [#762](https://github.com/bajutsu-e2e/bajutsu/pull/762) |
 | Topic | AI provider configuration |
 | Related | [BE-0104](../BE-0104-vendor-neutral-ai-backend/BE-0104-vendor-neutral-ai-backend.md), [BE-0163](../BE-0163-ant-cli-oauth-provider/BE-0163-ant-cli-oauth-provider.md), [BE-0176](../BE-0176-claude-code-ai-backend/BE-0176-claude-code-ai-backend.md), [BE-0175](../BE-0175-serve-web-ui-ant-sso-login/BE-0175-serve-web-ui-ant-sso-login.md) |
 <!-- /BE-METADATA -->
@@ -97,7 +97,7 @@ removes the ad hoc exception and fixes the shared-state loss in one move.
 
 Log:
 
-- _pending_ — Added the `ProviderSettings` dataclass and `ServeState.provider_settings`, returned
+- [#762](https://github.com/bajutsu-e2e/bajutsu/pull/762) — Added the `ProviderSettings` dataclass and `ServeState.provider_settings`, returned
   the per-provider map as `providers` from `GET /api/provider` (active provider seeded from env),
   scoped `POST /api/provider` writes to the selected provider's slot while still materializing it
   into the env spawned jobs read, and reworked the Settings JS to cache the map and swap
