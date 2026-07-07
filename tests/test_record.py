@@ -9,7 +9,6 @@ import pytest
 from conftest import ShotDriver
 
 from bajutsu.agent import Observation, Proposal
-from bajutsu.crawl import Fingerprint
 from bajutsu.drivers import base
 from bajutsu.drivers.fake import FakeDriver
 from bajutsu.elements import shows_app_ui
@@ -215,14 +214,15 @@ def _shots(driver: ShotDriver) -> int:
 
 
 def test_should_attach_triggers() -> None:
-    id_screen = Fingerprint("hash-a", "id")
-    # First turn (no previous) and any fingerprint change always attach.
+    # _should_attach takes crawl.screen_identity signatures ("id:…" / "structural:…").
+    id_screen = "id:hash-a"
+    # First turn (no previous) and any signature change always attach.
     assert _should_attach(id_screen, None) is True
-    assert _should_attach(id_screen, Fingerprint("hash-b", "id")) is True
-    # A screen already seen with a rich, addressable (id) tree is text-only.
+    assert _should_attach(id_screen, "id:hash-b") is True
+    # A view already seen with a rich, addressable (id) tree is text-only.
     assert _should_attach(id_screen, id_screen) is False
     # A degenerate (structural) tree attaches even when unchanged — the generous no-id trigger.
-    structural = Fingerprint("hash-c", "structural")
+    structural = "structural:hash-c"
     assert _should_attach(structural, structural) is True
 
 

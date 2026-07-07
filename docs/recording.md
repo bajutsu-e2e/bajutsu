@@ -155,9 +155,12 @@ message, and the screenshot only when it actually adds information.
 The loop decides per turn from two deterministic triggers over the element tree — no model, so this
 stays Tier 1:
 
-- **New-screen.** The current screen's `crawl.fingerprint(...)` differs from the previous turn's (or
-  it is the first turn) — a screen the agent has not seen yet gets the image.
-- **Degenerate-tree.** `fingerprint` fell back to its structural reduction (too few accessibility
+- **New-screen.** The current screen's `crawl.screen_identity(...)` signature differs from the
+  previous turn's (or it is the first turn) — a view the agent has not seen yet gets the image. This
+  is the same transition signature the batch-abort check uses; it strips per-element interactive
+  state (a field's fill, a control's enabled/selected flags), so typing into a field or toggling a
+  control on the same view does not force a re-attach — only a genuine view change does.
+- **Degenerate-tree.** The signature took `screen_identity`'s structural path (too few accessibility
   identifiers to address by selector — the no-id, tab-bar case where `tap_point` is the way in). The
   image is attached proactively; this trigger is deliberately generous, so an id-poor screen never
   relies on an escalation round-trip.

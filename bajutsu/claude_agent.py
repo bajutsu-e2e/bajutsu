@@ -565,9 +565,12 @@ def _combine(subs: list[Proposal]) -> Proposal:
     note, plan_step = subs[0].note, subs[0].plan_step
     for sub in subs:
         if sub.need_screenshot:
-            # An escalation (BE-0192) terminates the batch: the agent wants to see the screen before
-            # committing to any action, so no steps are executed this turn — the loop re-observes.
-            return Proposal(steps=steps, need_screenshot=True, note=note, plan_step=plan_step)
+            # An escalation (BE-0192) discards the turn's actions: the agent wants to see the screen
+            # before committing to any action, so nothing is executed this turn — the loop re-issues
+            # with the image and the agent re-decides. Returning `steps=[]` (not the accumulated
+            # steps) makes that honest, so a stray `[tap, need_screenshot]` batch never executes the
+            # tap on a turn the escalation cannot re-issue (e.g. a screenshot was already attached).
+            return Proposal(steps=[], need_screenshot=True, note=note, plan_step=plan_step)
         if sub.needs_human:
             return Proposal(
                 steps=steps,
