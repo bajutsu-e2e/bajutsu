@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0174](BE-0174-scenario-ref-path-containment.md) |
 | Author | [@hirosassa](https://github.com/hirosassa) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0174") |
+| Implementing PR | _pending_ |
 | Topic | Security hardening |
 <!-- /BE-METADATA -->
 
@@ -94,14 +95,27 @@ no bearing on pass/fail.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Add a containment check to the shared ref resolvers (`load_expanded_scenarios` /
+- [x] Add a containment check to the shared ref resolvers (`load_expanded_scenarios` /
       `expand_components` / `expand_data`): resolve to a real path and require it to stay within the
       caller-supplied suite root; reject absolute paths and symlink escapes with a leak-free error
-- [ ] Thread the containment root from each caller (CLI `coverage` / `audit` / `trace`; serve
+- [x] Thread the containment root from each caller (CLI `coverage` / `audit` / `trace`; serve
       Coverage / `run` / `audit`) into the loader
-- [ ] Cover it in the fast suite: a legitimate in-root `../components/…` ref still loads; an
+- [x] Cover it in the fast suite: a legitimate in-root `../components/…` ref still loads; an
       absolute path, an out-of-root `../` chain, and a symlink escape are each rejected without
       echoing file contents
+
+### Log
+
+- The shared choke point is `contained_ref(root, base, ref)` in `bajutsu/scenario/load_expanded.py`:
+  it resolves `base / ref` to a real path (symlinks followed) and requires it to stay within the
+  caller's suite root, rejecting the escape with a leak-free `ValueError` that names only the ref.
+  `load_expanded_scenarios` (default root = the file's dir) and `load_scenarios_dir` (root = the
+  scenarios dir) route both the component and CSV resolvers through it, so the CLI
+  `coverage` / `audit` / `trace --explain` and the serve Coverage tab inherit it. The CLI `run`
+  path (`_expand_file`), which serve `run` drives via subprocess, shares the same helper. serve
+  `audit` parses a single file without expanding refs, so it has no ref to confine.
+- Note: `run`'s `setup:` prelude ref still resolves with a bare `base / ref`; confining it is a
+  natural sibling follow-up, kept out of this item's declared component/data scope.
 
 ## References
 

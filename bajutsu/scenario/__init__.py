@@ -15,7 +15,11 @@ from bajutsu.scenario.expand import (
     read_csv,
 )
 from bajutsu.scenario.load import load_component, load_scenario_file, load_scenarios
-from bajutsu.scenario.load_expanded import load_expanded_scenarios, load_scenarios_dir
+from bajutsu.scenario.load_expanded import (
+    contained_ref,
+    load_expanded_scenarios,
+    load_scenarios_dir,
+)
 from bajutsu.scenario.models import (
     STEP_ACTIONS,
     Assertion,
@@ -145,6 +149,7 @@ __all__ = [
     "WaitRequest",
     "Web",
     "apply_setups",
+    "contained_ref",
     "dump_mocks",
     "dump_scenario_file",
     "dump_scenarios",

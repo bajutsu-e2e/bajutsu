@@ -38,6 +38,7 @@ from bajutsu.scenario import (
     DismissAlerts,
     Scenario,
     apply_setups,
+    contained_ref,
     dump_mocks,
     expand_components,
     expand_data,
@@ -148,11 +149,13 @@ def _scenario_files(eff: Effective, scenario: str, target_name: str) -> tuple[li
     return files, False
 
 
-def _expand_file(path: Path, eff: Effective) -> tuple[list[Scenario], str | None]:
+def _expand_file(path: Path, eff: Effective, root: Path) -> tuple[list[Scenario], str | None]:
     """Load one scenario file and expand its setup/component/data refs.
 
     Each ref is resolved relative to THIS file's directory, so a multi-file dir run keeps every
-    file's refs local. Returns the expanded scenarios plus the file-level description.
+    file's refs local. Component and data refs are confined to *root* (the suite dir, or the file's
+    own dir for a single-file run), so a scenario cannot read outside its suite (BE-0174). Returns
+    the expanded scenarios plus the file-level description.
     """
     scenario_file = load_scenario_file(path.read_text(encoding="utf-8"))
     scenarios = scenario_file.scenarios
@@ -170,7 +173,9 @@ def _expand_file(path: Path, eff: Effective) -> tuple[list[Scenario], str | None
     try:
         expand_components(
             scenarios,
-            lambda ref: load_component((base_dir / ref).read_text(encoding="utf-8")),
+            lambda ref: load_component(
+                contained_ref(root, base_dir, ref).read_text(encoding="utf-8")
+            ),
         )
     except (OSError, ValueError) as e:
         typer.echo(f"component の展開に失敗: {e}")
@@ -178,7 +183,7 @@ def _expand_file(path: Path, eff: Effective) -> tuple[list[Scenario], str | None
     try:
         scenarios = expand_data(
             scenarios,
-            lambda ref: read_csv((base_dir / ref).read_text(encoding="utf-8")),
+            lambda ref: read_csv(contained_ref(root, base_dir, ref).read_text(encoding="utf-8")),
         )
     except (OSError, ValueError) as e:
         typer.echo(f"data の展開に失敗: {e}")
@@ -253,10 +258,13 @@ def _load_scenarios(
     a directory run), the report's source label, and the source files (for directory resolution).
     """
     files, single = _scenario_files(eff, scenario, target_name)
+    # The containment root for refs: the configured scenarios dir for a suite run, or the single
+    # file's own directory for a `--scenario` override (BE-0174).
+    root = files[0].parent if single else Path(eff.scenarios or files[0].parent)
     scenarios: list[Scenario] = []
     description: str | None = None
     for path in files:
-        expanded, file_desc = _expand_file(path, eff)
+        expanded, file_desc = _expand_file(path, eff, root)
         scenarios.extend(expanded)
         if single:
             description = file_desc
