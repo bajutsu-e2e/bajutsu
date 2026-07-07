@@ -54,7 +54,7 @@ The work is MECE across four units.
 
 ### 1. Config field: `ai.language`
 
-Add an `language` field to `AiConfig` / `AiSettings` (`bajutsu/config.py`), parallel to `effort`:
+Add a `language` field to `AiConfig` / `AiSettings` (`bajutsu/config.py`), parallel to `effort`:
 
 - **Values:** an enum — `ja` | `en` | `auto`. `auto` preserves today's `record` behavior (the
   model follows the goal's language) and is the **default**, so existing projects are unchanged.
