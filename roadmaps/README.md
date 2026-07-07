@@ -573,6 +573,7 @@ The scope is currently **limited to the iOS Simulator** ([DESIGN §1](../DESIGN.
 | ID | Item | Status |
 |---|---|---|
 | [BE-0178](BE-0178-record-multi-action-turn/BE-0178-record-multi-action-turn.md) | Multi-action record turns (batch intra-screen actions) | Proposal |
+| [BE-0179](BE-0179-record-human-handoff/BE-0179-record-human-handoff.md) | Human-in-the-loop handoff during record (pause / hand off / resume) | Proposal |
 <!-- /GENERATED:proposals-authoring -->
 
 ### Surfacing CLI features in the serve Web UI

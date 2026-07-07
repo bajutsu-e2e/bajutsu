@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-record-human-handoff-ja.md)
+**English** · [日本語](BE-0179-record-human-handoff-ja.md)
 
-# BE-XXXX — Human-in-the-loop handoff during record (pause / hand off / resume)
+# BE-0179 — Human-in-the-loop handoff during record (pause / hand off / resume)
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-record-human-handoff.md) |
+| Proposal | [BE-0179](BE-0179-record-human-handoff.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0179") |
 | Topic | Authoring experience (record / GUI editor) |
 | Related | [BE-0011](../BE-0011-local-web-ui-serve/BE-0011-local-web-ui-serve.md), [BE-0012](../BE-0012-action-capture-record/BE-0012-action-capture-record.md), [BE-0014](../BE-0014-record-demarcation/BE-0014-record-demarcation.md), [BE-0039](../BE-0039-self-healing-propose-optin/BE-0039-self-healing-propose-optin.md), [BE-0044](../BE-0044-scenario-provenance/BE-0044-scenario-provenance.md), [BE-0046](../BE-0046-otp-email-steps/BE-0046-otp-email-steps.md), [BE-0098](../BE-0098-unified-authoring-surface/BE-0098-unified-authoring-surface.md), [BE-0120](../BE-0120-recorded-scenario-secret-tokenization/BE-0120-recorded-scenario-secret-tokenization.md) |
 <!-- /BE-METADATA -->

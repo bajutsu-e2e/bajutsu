@@ -1,14 +1,14 @@
-[English](BE-XXXX-record-human-handoff.md) · **日本語**
+[English](BE-0179-record-human-handoff.md) · **日本語**
 
-# BE-XXXX — record 中の human-in-the-loop ハンドオフ（一時停止・引き渡し・再開）
+# BE-0179 — record 中の human-in-the-loop ハンドオフ（一時停止・引き渡し・再開）
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
 |---|---|
-| 提案 | [BE-XXXX](BE-XXXX-record-human-handoff-ja.md) |
+| 提案 | [BE-0179](BE-0179-record-human-handoff-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **提案** |
-| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0179") |
 | トピック | オーサリング体験（record / GUI エディタ） |
 | 関連 | [BE-0011](../BE-0011-local-web-ui-serve/BE-0011-local-web-ui-serve-ja.md), [BE-0012](../BE-0012-action-capture-record/BE-0012-action-capture-record-ja.md), [BE-0014](../BE-0014-record-demarcation/BE-0014-record-demarcation-ja.md), [BE-0039](../BE-0039-self-healing-propose-optin/BE-0039-self-healing-propose-optin-ja.md), [BE-0044](../BE-0044-scenario-provenance/BE-0044-scenario-provenance-ja.md), [BE-0046](../BE-0046-otp-email-steps/BE-0046-otp-email-steps-ja.md), [BE-0098](../BE-0098-unified-authoring-surface/BE-0098-unified-authoring-surface-ja.md), [BE-0120](../BE-0120-recorded-scenario-secret-tokenization/BE-0120-recorded-scenario-secret-tokenization-ja.md) |
 <!-- /BE-METADATA -->
