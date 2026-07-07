@@ -136,7 +136,15 @@ def doctor(
     # Fail after environment is reported, so the user sees both environment and capability issues.
     if cap_failed:
         raise typer.Exit(1)
-    elements = _current_screen(actuator, udid, eff)
+    # Runnability proved the tools are installed, not that the screen is reachable: a web target
+    # whose app server is down still faults on navigate (ERR_CONNECTION_REFUSED). Report it as a
+    # fixable error and exit non-zero rather than surfacing a stack trace — doctor diagnoses, it
+    # does not crash.
+    try:
+        elements = _current_screen(actuator, udid, eff)
+    except _simctl.DeviceError as e:
+        typer.echo(f"could not read the screen to score: {e}")
+        raise typer.Exit(1) from None
     result = score(
         elements,
         eff.id_namespaces,

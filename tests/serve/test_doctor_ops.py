@@ -9,6 +9,7 @@ from pathlib import Path
 
 from _shared import project
 
+from bajutsu import simctl
 from bajutsu.drivers import base
 from bajutsu.serve import operations as ops
 from bajutsu.serve.jobs import ServeState
@@ -95,12 +96,36 @@ def test_playwright_backend_with_base_url_passes_config_check(tmp_path: Path) ->
         tmp_path,
         "defaults: { backend: [playwright] }\ntargets:\n  webapp: { baseUrl: 'http://localhost:3000' }\n",
     )
-    payload, status = ops.doctor_check(state, {"target": "webapp"})
+    # Stub the live screen so the config-check assertion never depends on a browser being installed
+    # (with the `web` extra present the real probe would launch Chromium and navigate the baseUrl).
+    payload, status = ops.doctor_check(state, {"target": "webapp"}, screen_query=lambda *a: [])
     assert status == 200
     assert payload["backend"] == "playwright"
     config_checks = [c for c in payload["checks"] if "baseUrl" in c["name"]]
     assert config_checks
     assert all(c["ok"] for c in config_checks)
+
+
+def test_screen_probe_failure_is_reported_not_raised(tmp_path: Path) -> None:
+    # Runnability passes (tools present) but the live probe faults — e.g. a web target whose app
+    # server is down, so navigating the baseUrl raises DeviceError. doctor must report it as a
+    # failed check and null score, never let it crash the request (a 500 / stack trace). Driven on
+    # the fake backend so runnability passes deterministically, with no web extra installed; the
+    # caught branch is backend-agnostic.
+    state = _state(
+        tmp_path,
+        "defaults: { backend: [fake] }\ntargets:\n  demo: { bundleId: com.example.demo }\n",
+    )
+
+    def screen_query(actuator: str, udid: str, eff: object) -> list[base.Element]:
+        raise simctl.DeviceError("web browser fault (recoverable wedge): ERR_CONNECTION_REFUSED")
+
+    payload, status = ops.doctor_check(state, {"target": "demo"}, screen_query=screen_query)
+    assert status == 200
+    assert payload["ok"] is False
+    assert payload["score"] is None
+    failed = [c for c in payload["checks"] if not c["ok"]]
+    assert any("ERR_CONNECTION_REFUSED" in c["detail"] for c in failed)
 
 
 def test_check_shape_has_name_ok_detail(tmp_path: Path) -> None:

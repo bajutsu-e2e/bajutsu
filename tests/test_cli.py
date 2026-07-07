@@ -804,6 +804,35 @@ def test_doctor_fake_backend_scores_the_current_screen(
     assert "grade: Blocked" in r.output
 
 
+def test_doctor_reports_unreachable_screen_instead_of_crashing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Environment gates pass (tools installed) but the live screen faults — e.g. a web target whose
+    # app server is down, so navigating the baseUrl raises DeviceError. doctor must surface it as a
+    # fixable error and exit 1, not propagate a stack trace.
+    from bajutsu import simctl
+
+    # `_current_screen` is replaced wholesale below, so the real udid resolution it would do never
+    # runs — no `resolve_udid` stub needed.
+    def boom(actuator: str, udid: str, eff: object) -> list[object]:
+        raise simctl.DeviceError("web browser fault (recoverable wedge): ERR_CONNECTION_REFUSED")
+
+    monkeypatch.setattr("bajutsu.cli.commands.doctor._current_screen", boom)
+    cfg, _ = _write(tmp_path)
+    cfg.write_text(
+        "defaults: { backend: [fake] }\n"
+        "targets:\n  demo: { bundleId: com.example.demo, idNamespaces: [home] }\n",
+        encoding="utf-8",
+    )
+    r = runner.invoke(
+        app, ["doctor", "--target", "demo", "--backend", "fake", "--config", str(cfg)]
+    )
+    assert r.exit_code == 1
+    assert r.exception is None or isinstance(r.exception, SystemExit)  # no crash, a clean exit
+    assert "could not read the screen to score" in r.output
+    assert "ERR_CONNECTION_REFUSED" in r.output
+
+
 def test_doctor_scenario_not_found_exits_2(tmp_path: Path) -> None:
     # A --scenario path that doesn't exist is a usage error surfaced before any capability work.
     cfg, _ = _write(tmp_path)
