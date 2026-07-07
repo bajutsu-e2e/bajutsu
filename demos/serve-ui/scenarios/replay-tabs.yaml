@@ -13,6 +13,8 @@ scenarios:
       - wait: { for: { id: replay.panel-run }, timeout: 10 }
       - assert:
           - exists: { id: replay.panel-history, negate: true }
+          # The report pane opens on its empty state until a run embeds a report.
+          - label: { sel: { id: replay.report }, contains: "Run a scenario" }
       - tap: { id: replay.tab-history }
       - wait: { for: { id: replay.panel-history }, timeout: 5 }
       - assert:

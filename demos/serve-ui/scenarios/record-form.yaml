@@ -16,6 +16,7 @@ scenarios:
           - exists: { id: record.ai-gate }
           - disabled: { id: record.generate }
           - disabled: { id: record.save }
+          - disabled: { id: record.run }   # the in-place Run arms with Save, once YAML exists
       - type: { text: "increment the counter twice and check it reads 2", into: { id: record.goal } }
     expect:
       - value: { sel: { id: record.goal }, contains: "increment the counter" }
