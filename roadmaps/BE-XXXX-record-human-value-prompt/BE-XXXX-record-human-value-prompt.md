@@ -1,0 +1,107 @@
+**English** · [日本語](BE-XXXX-record-human-value-prompt-ja.md)
+
+# BE-XXXX — Human value entry during record (OTP / random / one-off values)
+
+<!-- BE-METADATA -->
+| Field | Value |
+|---|---|
+| Proposal | [BE-XXXX](BE-XXXX-record-human-value-prompt.md) |
+| Author | [@0x0c](https://github.com/0x0c) |
+| Status | **Proposal** |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Topic | Authoring experience (record / GUI editor) |
+| Related | [BE-0044](../BE-0044-scenario-provenance/BE-0044-scenario-provenance.md), [BE-0046](../BE-0046-otp-email-steps/BE-0046-otp-email-steps.md), [BE-0120](../BE-0120-recorded-scenario-secret-tokenization/BE-0120-recorded-scenario-secret-tokenization.md) |
+<!-- /BE-METADATA -->
+
+## Introduction
+
+Rides on the record human-in-the-loop handoff substrate (`record-human-handoff`). This item
+covers the case where the AI can locate the input field but **cannot know the value** — a one-time
+password (OTP), a two-factor (2FA) code, a random string, or an externally-issued one-off value.
+`record` pauses, the human supplies the value, recording continues, and the recorded artifact
+resolves that value **deterministically** on re-run by bridging to a
+[BE-0046](../BE-0046-otp-email-steps/BE-0046-otp-email-steps.md) `totp` / `email` step or a
+`secret` / `var`.
+
+## Motivation
+
+An out-of-band value is the single most common thing that stops an AI recording of a real login,
+verification, or password-reset flow. The agent can see the "enter code" field, but the value
+exists only in an authenticator app, an inbox, or a human's head. In `record` today the loop either
+stops at that field or the agent invents a plausible-but-wrong value — both leave the author to
+hand-write the rest.
+
+[BE-0046](../BE-0046-otp-email-steps/BE-0046-otp-email-steps.md) already solves the *run-time* side:
+`totp` computes an OTP locally from a seed, `email` polls a test mailbox. But it assumes the author
+already knows the field is an OTP field and has wired the seed or mailbox ahead of time. The record
+loop is exactly where that knowledge is discovered — interactively, mid-flow. This item closes the
+gap: let the human supply the value **once** during recording so the flow can be captured end to
+end, and emit an artifact that re-runs with no human by pointing at BE-0046 or a declared secret.
+
+## Detailed design
+
+Built on the substrate's request/response contract; this item defines the value-specific behavior.
+
+**Blocker detection and explicit request.** The agent raises the substrate's "needs human" outcome
+for a value when it flags a field it cannot fill from its own knowledge — heuristically (a field
+labeled OTP / code / verification, or one the author marked) — and the tool **never guesses** a
+value to fill it. The author can also mark a field as human-supplied up front.
+
+**Prompt content.** The handoff request names the target field (a compact selector summary) and
+asks for the value; the human types it in (CLI stdin, or a `serve` input) through the substrate's
+surfaces.
+
+**Live execution versus recorded artifact.** The supplied value is typed into the *live* app so the
+recording proceeds to the next screen, but it is **not** written into the scenario — it is random
+or secret. This reuses [BE-0120](../BE-0120-recorded-scenario-secret-tokenization/BE-0120-recorded-scenario-secret-tokenization.md)'s
+tokenization and masking so the literal never lands in the YAML, the manifest, or the live progress
+stream.
+
+**Deterministic output — the bridge.** The recorded step becomes a `${vars.*}` / `${secrets.*}`
+placeholder plus a labeled TODO that classifies the source so the author can wire it: "resolve with
+`totp` (BE-0046)", "resolve with `email` (BE-0046)", or "declare as a `secret`". Consistent with
+prime directive 1, the AI may *propose* the likely classification (it is authoring, not judging);
+the author confirms and wires it. Once wired, re-run is fully deterministic and AI-free.
+
+**Provenance.** The step carries `from:` provenance
+([BE-0044](../BE-0044-scenario-provenance/BE-0044-scenario-provenance.md)) recording that it
+originated from a human value handoff, so the report and the GUI editor can show *why* it still
+needs wiring.
+
+**CLI and `serve`.** Both surfaces come from the substrate; this item adds only the value prompt
+and the classification/TODO emission on top.
+
+## Alternatives considered
+
+- **Record the literal value the human typed.** Rejected: the value is random or secret, so the
+  scenario would be non-reproducible on the next run and would leak a secret into the artifact —
+  the exact problem [BE-0120](../BE-0120-recorded-scenario-secret-tokenization/BE-0120-recorded-scenario-secret-tokenization.md)
+  and [BE-0152](../BE-0152-totp-seed-artifact-leak/BE-0152-totp-seed-artifact-leak.md) guard against.
+- **Require BE-0046 pre-configuration before recording, with no handoff.** Rejected as the *only*
+  path: the author often does not yet know a field is an OTP field until the flow reaches it. The
+  handoff discovers it interactively and then nudges toward BE-0046 — the two are complementary, not
+  substitutes.
+- **A run-time "prompt for a value every run" step.** Rejected — that puts a human in the
+  deterministic `run` / CI gate (directive 1). The whole point is to resolve the value to a
+  deterministic source so the recorded flow replays unattended.
+
+## Progress
+
+> Keep this current as work proceeds. The checklist mirrors the MECE work breakdown in
+> *Detailed design* (one box per unit of work); the log records what changed and when
+> (oldest first), linking the PRs.
+
+- [ ] Value-blocker detection (heuristic flag + author mark), never a guessed fill.
+- [ ] Value prompt content over the substrate's request/response contract.
+- [ ] Live type of the supplied value with BE-0120 tokenization/masking of the artifact.
+- [ ] Deterministic-output bridge: `${vars/secrets}` placeholder + classified TODO (totp / email / secret).
+- [ ] `from:` provenance (BE-0044) marking the human-value origin.
+
+## References
+
+Substrate: `record-human-handoff`. Sibling pattern: `record-human-takeover-step` (operations).
+Related existing items:
+[BE-0046 — OTP & email side-channel steps](../BE-0046-otp-email-steps/BE-0046-otp-email-steps.md)
+(the run-time bridge target),
+[BE-0120 — Tokenize secrets in recorded scenario YAML](../BE-0120-recorded-scenario-secret-tokenization/BE-0120-recorded-scenario-secret-tokenization.md),
+[BE-0044 — Scenario provenance](../BE-0044-scenario-provenance/BE-0044-scenario-provenance.md).
