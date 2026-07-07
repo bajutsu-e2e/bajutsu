@@ -616,6 +616,14 @@ The scope is currently **limited to the iOS Simulator** ([DESIGN §1](../DESIGN.
 | [BE-0184](BE-0184-persist-serve-ai-provider-settings/BE-0184-persist-serve-ai-provider-settings.md) | Persist serve AI provider settings across restarts | Proposal |
 <!-- /GENERATED:proposals-ai-provider -->
 
+### AI usage and cost observability
+
+Measuring what the AI paths (`record` / `crawl` / `triage --ai` / `run --apply`) actually cost — tokens and money — broken down by provider, model, command, and scenario. Bajutsu already has `bajutsu/usage.py`, but it tracks a single in-memory token total that is lost on process exit; these items turn that into an attributed, persistent record and surface it in the serve Web UI, so a team can see where its AI spend goes and make deterministic provider/model choices from real data. Observability only — nothing here puts an LLM on the `run` / CI verdict path.
+
+<!-- GENERATED:proposals-ai-usage -->
+
+<!-- /GENERATED:proposals-ai-usage -->
+
 ### Hosting the web UI (cloud / self-hosted)
 
 Turn the local `bajutsu serve` launcher into a shared service. The runner drives an iOS Simulator and so needs a Mac, which forces a control-plane (Linux) ⇄ macOS-worker split. [BE-0015](in-progress/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md) selects a managed, multi-tenant public stack; [BE-0016](in-progress/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md) covers running it on your own Mac(s).
