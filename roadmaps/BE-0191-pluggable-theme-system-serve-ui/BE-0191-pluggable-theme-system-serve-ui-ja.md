@@ -1,14 +1,14 @@
-[English](BE-XXXX-pluggable-theme-system-serve-ui.md) · **日本語**
+[English](BE-0191-pluggable-theme-system-serve-ui.md) · **日本語**
 
-# BE-XXXX — serve Web UI のプラガブルなテーマシステム（ビジュアルトークンと差し替え可能なトランジション）
+# BE-0191 — serve Web UI のプラガブルなテーマシステム（ビジュアルトークンと差し替え可能なトランジション）
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
 |---|---|
-| 提案 | [BE-XXXX](BE-XXXX-pluggable-theme-system-serve-ui-ja.md) |
+| 提案 | [BE-0191](BE-0191-pluggable-theme-system-serve-ui-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **提案** |
-| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0191") |
 | トピック | オーサリング体験（record / GUI エディタ） |
 <!-- /BE-METADATA -->
 

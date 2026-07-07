@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-pluggable-theme-system-serve-ui-ja.md)
+**English** · [日本語](BE-0191-pluggable-theme-system-serve-ui-ja.md)
 
-# BE-XXXX — Pluggable theme system for the serve Web UI (visual tokens and swappable transitions)
+# BE-0191 — Pluggable theme system for the serve Web UI (visual tokens and swappable transitions)
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-pluggable-theme-system-serve-ui.md) |
+| Proposal | [BE-0191](BE-0191-pluggable-theme-system-serve-ui.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0191") |
 | Topic | Authoring experience (record / GUI editor) |
 <!-- /BE-METADATA -->
 
