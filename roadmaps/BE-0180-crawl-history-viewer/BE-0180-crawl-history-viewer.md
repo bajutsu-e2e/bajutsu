@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0180](BE-0180-crawl-history-viewer.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0180") |
+| Implementing PR | _pending_ |
 | Topic | Authoring experience (record / GUI editor) |
 <!-- /BE-METADATA -->
 
@@ -110,12 +111,21 @@ Author tab is part of this item (see Alternatives).
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] `list_crawl_runs()` helper (scan by `screenmap.json`, summarize counts, detect
+- [x] `list_crawl_runs()` helper (scan by `screenmap.json`, summarize counts, detect
       `crashes/`/`flows/`)
-- [ ] `/api/crawl/runs` read endpoint
-- [ ] History list in the Crawl tab, wired to the existing `loadGraph()`
-- [ ] Read-only framing (disable live controls, label the selected run as past)
-- [ ] Crash/flow file links for the selected run
+- [x] `/api/crawl/runs` read endpoint
+- [x] History list in the Crawl tab, wired to the existing `loadGraph()`
+- [x] Read-only framing (disable live controls, label the selected run as past)
+- [x] Crash/flow file links for the selected run
+
+**Log**
+
+- _pending_ — `list_crawl_runs()` scans a runs dir for `screenmap.json` and summarizes each crawl's
+  screen/transition/crash counts plus the names of its `crashes/*.yaml` and `flows/*.yaml` files;
+  exposed read-only at `/api/crawl/runs` (both the stdlib handler and the FastAPI app). The Crawl tab
+  gained a Form/History sub-tab pair: selecting a past run reopens its screen map through the existing
+  `loadGraph()` with a "past crawl" badge, disables the live form while it's shown, and links the
+  run's crash/flow scenario files into the existing `/runs/<id>/...` static mount.
 
 ## References
 

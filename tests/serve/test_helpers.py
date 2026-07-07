@@ -148,6 +148,84 @@ def test_list_runs_empty_dir(tmp_path: Path) -> None:
     assert srv.list_runs(tmp_path / "nope") == []
 
 
+def _write_crawl_run(
+    runs: Path,
+    run_id: str,
+    *,
+    nodes: int,
+    edges: int,
+    crashes: int,
+    crash_files: int = 0,
+    flow_files: int = 0,
+) -> None:
+    """A crawl run dir: the streamed screenmap.json plus optional crash/flow scenario files."""
+    d = runs / run_id
+    d.mkdir(parents=True)
+    (d / "screenmap.json").write_text(
+        json.dumps(
+            {
+                "nodes": [{"fingerprint": f"n{i}"} for i in range(nodes)],
+                "edges": [{"src": "a", "dst": "b"} for _ in range(edges)],
+                "crashes": [{"fingerprint": f"c{i}"} for i in range(crashes)],
+            }
+        ),
+        encoding="utf-8",
+    )
+    for i in range(1, crash_files + 1):
+        (d / "crashes").mkdir(exist_ok=True)
+        (d / "crashes" / f"crash-{i:03d}.yaml").write_text("- name: crash\n", encoding="utf-8")
+    for i in range(1, flow_files + 1):
+        (d / "flows").mkdir(exist_ok=True)
+        (d / "flows" / f"flow-{i:03d}.yaml").write_text("- name: flow\n", encoding="utf-8")
+
+
+def test_list_crawl_runs_summarizes_by_screenmap(tmp_path: Path) -> None:
+    _, _, runs = project(tmp_path)
+    _write_crawl_run(runs, "20260610-1", nodes=3, edges=2, crashes=1, crash_files=1, flow_files=2)
+    _write_crawl_run(runs, "20260610-2", nodes=1, edges=0, crashes=0)  # no crash/flow files
+    write_run(runs, "20260610-0", ok=True, scenarios=[("alpha", True)])  # manifest only → skipped
+    got = srv.list_crawl_runs(runs)
+    assert [r["id"] for r in got] == ["20260610-2", "20260610-1"]  # newest first, only screenmaps
+    first = got[1]
+    assert first["screens"] == 3 and first["transitions"] == 2 and first["crashes"] == 1
+    assert first["crashFiles"] == ["crash-001.yaml"]
+    assert first["flowFiles"] == ["flow-001.yaml", "flow-002.yaml"]
+    assert got[0]["crashFiles"] == [] and got[0]["flowFiles"] == []
+
+
+def test_list_crawl_runs_skips_unparseable_or_non_object(tmp_path: Path) -> None:
+    _, _, runs = project(tmp_path)
+    _write_crawl_run(runs, "20260610-good", nodes=2, edges=1, crashes=0)
+    for name, body in (
+        ("bad-json", "{not json"),  # unparseable
+        ("not-dict", "null"),  # valid JSON, but not an object
+    ):
+        (runs / name).mkdir()
+        (runs / name / "screenmap.json").write_text(body, encoding="utf-8")
+    got = srv.list_crawl_runs(runs)
+    assert [r["id"] for r in got] == ["20260610-good"]  # corrupt runs skipped, valid one kept
+
+
+def test_list_crawl_runs_normalizes_missing_or_non_list_counts(tmp_path: Path) -> None:
+    _, _, runs = project(tmp_path)
+    (runs / "empty").mkdir()
+    (runs / "empty" / "screenmap.json").write_text("{}", encoding="utf-8")  # keys absent → 0
+    (runs / "junk").mkdir()
+    # A hand-corrupted map that parses but whose count fields aren't lists summarizes as 0, never
+    # miscounting a dict's keys as screens nor raising on a scalar.
+    (runs / "junk" / "screenmap.json").write_text(
+        json.dumps({"nodes": {"a": 1}, "edges": 5, "crashes": "x"}), encoding="utf-8"
+    )
+    got = {r["id"]: r for r in srv.list_crawl_runs(runs)}
+    assert got["empty"]["screens"] == 0 and got["empty"]["transitions"] == 0
+    assert got["junk"]["screens"] == 0 and got["junk"]["transitions"] == 0
+    assert got["junk"]["crashes"] == 0
+
+
+def test_list_crawl_runs_empty_dir(tmp_path: Path) -> None:
+    assert srv.list_crawl_runs(tmp_path / "nope") == []
+
+
 def test_run_command_builder() -> None:
     cmd = srv.run_command("s.yaml", "demo", backend="idb", udid="U", config="c.yaml")
     assert cmd[:6] == [sys.executable, "-m", "bajutsu", "run", "--scenario", "s.yaml"]

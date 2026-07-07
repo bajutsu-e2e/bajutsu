@@ -17,6 +17,7 @@ from bajutsu.serve import jobs
 from bajutsu.serve.artifacts import Artifact, ArtifactStore
 from bajutsu.serve.authz import _target_forbidden
 from bajutsu.serve.helpers import (
+    list_crawl_runs,
     list_fs,
     list_simulators,
     list_targets,
@@ -110,6 +111,17 @@ def runs_payload(state: ServeState, *, actor: str | None = None) -> tuple[Any, i
     if state.repository is not None:
         return [r.summary for r in state.repository.list_runs(org_id=state.org_of(actor))], 200
     return state.artifacts.list_runs(), 200
+
+
+def crawl_runs_payload(state: ServeState) -> tuple[Any, int]:
+    """Past crawl runs for the Crawl tab's history list (BE-0180).
+
+    Keyed on screenmap.json (the artifact every crawl streams), separate from `runs_payload`'s
+    manifest-backed pass/fail history — a crawl run has no such verdict. Read-only and AI-free: it
+    only summarizes the deterministic screen map and links to the crash/flow scenario files the crawl
+    already wrote, served through the existing `/runs/<id>/...` static mount.
+    """
+    return list_crawl_runs(state.runs_dir), 200
 
 
 # The newest-N run window a serve `/stats` refresh aggregates. Bounds the per-refresh manifest reads
