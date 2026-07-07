@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-record-vision-on-demand-ja.md)
+**English** · [日本語](BE-0192-record-vision-on-demand-ja.md)
 
-# BE-XXXX — Vision-on-demand in record (attach a screenshot only when it adds information)
+# BE-0192 — Vision-on-demand in record (attach a screenshot only when it adds information)
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-record-vision-on-demand.md) |
+| Proposal | [BE-0192](BE-0192-record-vision-on-demand.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0192") |
 | Topic | Authoring experience (record / GUI editor) |
 <!-- /BE-METADATA -->
 
