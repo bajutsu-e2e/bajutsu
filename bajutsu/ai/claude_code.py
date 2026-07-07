@@ -48,9 +48,13 @@ CLI_MISSING = "claude-code-cli-missing"
 # the vision transport, and only scoped to the per-call scratch directory via `--add-dir`.
 _DENY = ("Bash", "Write", "Edit", "NotebookEdit", "Glob", "Grep", "WebFetch", "WebSearch", "Task")
 
-# A runner takes the argv, the working directory, and the prompt (fed on stdin) and returns the CLI's
-# stdout. Injectable for tests.
-Runner = Callable[[list[str], str, str], str]
+# A runner takes the argv, the working directory, the prompt (fed on stdin), and a wall-clock
+# timeout, and returns the CLI's stdout. Injectable for tests.
+Runner = Callable[..., str]
+
+# Default per-call wall-clock cap. A best-effort call (the up-front plan) overrides it with a short
+# value via MessageRequest.timeout_s, so a hung CLI fails fast instead of blocking the whole run.
+_DEFAULT_TIMEOUT = 180.0
 
 
 def _forced_tool(request: MessageRequest) -> ToolDef | None:
@@ -191,7 +195,9 @@ def _child_env() -> dict[str, str]:
     return env
 
 
-def _default_runner(cmd: list[str], cwd: str, prompt: str) -> str:
+def _default_runner(
+    cmd: list[str], cwd: str, prompt: str, timeout: float = _DEFAULT_TIMEOUT
+) -> str:
     try:
         result = subprocess.run(
             cmd,
@@ -200,13 +206,17 @@ def _default_runner(cmd: list[str], cwd: str, prompt: str) -> str:
             text=True,
             cwd=cwd,
             env=_child_env(),
-            timeout=180,
+            timeout=timeout,
         )
     except FileNotFoundError as exc:
         raise RuntimeError(
             "`claude` CLI not found — install Claude Code, or switch ai.provider to api-key / "
             "bedrock / ant."
         ) from exc
+    except subprocess.TimeoutExpired as exc:
+        # The CLI occasionally hangs; subprocess.run has already killed it. Surface a clear, bounded
+        # error so a best-effort caller (the plan) can proceed rather than block on the long default.
+        raise RuntimeError(f"claude -p timed out after {timeout:g}s") from exc
     if result.returncode != 0:
         # A CLI error (e.g. an auth 401) is reported in the stdout JSON envelope's `result`, with
         # stderr often empty — surface stdout as the fallback so the failure is actionable.
@@ -264,7 +274,9 @@ class ClaudeCodeBackend:
         try:
             prompt, image = _prompt_and_images(request, scratch)
             cmd = _command(request, schema, note, str(scratch), image)
-            stdout = self._runner(cmd, str(scratch), prompt)
+            stdout = self._runner(
+                cmd, str(scratch), prompt, timeout=request.timeout_s or _DEFAULT_TIMEOUT
+            )
         finally:
             shutil.rmtree(scratch, ignore_errors=True)
         return _response(stdout, forced_name)

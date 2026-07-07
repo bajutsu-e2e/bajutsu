@@ -34,6 +34,10 @@ from bajutsu.scenario import Assertion, Step
 
 MODEL = "claude-opus-4-8"
 
+# Wall-clock cap for the best-effort up-front plan call — well above its normal few seconds, but
+# short enough that an occasional CLI hang fails fast and the loop proceeds without a plan.
+PLAN_TIMEOUT_S = 60.0
+
 SYSTEM_PROMPT = """You are an iOS end-to-end test author. You drive an app on the \
 iOS Simulator to accomplish a goal, then record the steps as a deterministic test.
 
@@ -499,6 +503,9 @@ class ClaudeAgent:
                 model=self._model,
                 max_tokens=self._max_tokens,
                 effort=self._effort,
+                # The plan is best-effort (the loop proceeds without it), so bound it: a hung CLI
+                # fails fast here instead of stalling the run at "thinking about how to approach…".
+                timeout_s=PLAN_TIMEOUT_S,
             )
         )
         usage.record(response.usage)

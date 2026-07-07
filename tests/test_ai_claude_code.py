@@ -40,6 +40,7 @@ def _request(
     tool_choice: ToolChoice = _ANY,
     image: bytes | None = None,
     effort: str | None = None,
+    timeout_s: float | None = None,
 ) -> MessageRequest:
     content: list[Any] = []
     if image is not None:
@@ -53,7 +54,20 @@ def _request(
         model="claude-opus-4-8",
         max_tokens=256,
         effort=effort,
+        timeout_s=timeout_s,
     )
+
+
+def test_backend_forwards_request_timeout_to_the_runner() -> None:
+    runner = FakeRunner(_envelope({"k": 1}))
+    claude_code.ClaudeCodeBackend(runner=runner).create_message(_request(timeout_s=42))
+    assert runner.timeout == 42
+
+
+def test_backend_uses_the_default_timeout_when_unset() -> None:
+    runner = FakeRunner(_envelope({"k": 1}))
+    claude_code.ClaudeCodeBackend(runner=runner).create_message(_request())
+    assert runner.timeout == claude_code._DEFAULT_TIMEOUT
 
 
 def test_command_passes_effort_only_when_set() -> None:
@@ -74,8 +88,8 @@ class FakeRunner:
         self.cwd: str = ""
         self.prompt: str = ""
 
-    def __call__(self, cmd: list[str], cwd: str, prompt: str) -> str:
-        self.cmd, self.cwd, self.prompt = cmd, cwd, prompt
+    def __call__(self, cmd: list[str], cwd: str, prompt: str, timeout: float | None = None) -> str:
+        self.cmd, self.cwd, self.prompt, self.timeout = cmd, cwd, prompt, timeout
         if self._probe is not None:
             self._probe(cmd, cwd)
         return self._stdout
@@ -158,7 +172,7 @@ def test_no_tools_offered_raises() -> None:
 
 
 def test_non_object_json_envelope_raises() -> None:
-    def a_list(cmd: list[str], cwd: str, prompt: str) -> str:
+    def a_list(cmd: list[str], cwd: str, prompt: str, timeout: float | None = None) -> str:
         return "[1, 2, 3]"  # valid JSON, but not the object envelope the CLI documents
 
     with pytest.raises(RuntimeError, match="non-object JSON"):
@@ -232,7 +246,7 @@ def test_usage_passes_through_and_is_error_and_non_json_raise() -> None:
             _request(tool_choice=NamedTool(name="do"))
         )
 
-    def junk(cmd: list[str], cwd: str, prompt: str) -> str:
+    def junk(cmd: list[str], cwd: str, prompt: str, timeout: float | None = None) -> str:
         return "not json"
 
     with pytest.raises(RuntimeError, match="non-JSON"):

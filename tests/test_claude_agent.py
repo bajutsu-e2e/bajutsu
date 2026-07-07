@@ -197,6 +197,10 @@ def test_plan_decomposes_goal_into_steps() -> None:
     request = backend.requests[0]
     assert isinstance(request.tool_choice, NamedTool) and request.tool_choice.name == "plan"
     assert {t.name for t in request.tools} == {"plan"}
+    # The plan is best-effort, so it's bounded by a short timeout (a hung CLI must not stall the run).
+    from bajutsu.claude_agent import PLAN_TIMEOUT_S
+
+    assert request.timeout_s == PLAN_TIMEOUT_S
 
 
 def test_plan_is_rendered_into_the_turn_prompt() -> None:
