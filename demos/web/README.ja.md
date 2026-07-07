@@ -8,12 +8,13 @@ Bajutsu の **Playwright** backend（[BE-0041](../../roadmaps/BE-0041-web-playwr
 
 | パス | 役割 |
 |---|---|
-| `app/index.html` | テスト対象アプリ。onboarding → login → counter、素の JS、安定した `data-testid` の id |
+| `app/index.html` | テスト対象アプリ。onboarding → login → counter に加え、ハンドオフデモ用のデバイス検証フロー。素の JS、安定した `data-testid` の id |
 | `scenarios/smoke.yaml` | 決定論的なスモークシナリオ（iOS デモと同じ step/expect スキーマ） |
 | `record/goals.txt` | `make -C demos/web record` が記述の起点にする自然言語ゴール |
 | `record/record_offline.py` | `record` のオフライン版（API キー不要）。同じループを keyword agent と FakeDriver で回す |
+| `record/record_handoff_offline.py` | human-in-the-loop ハンドオフデモのオフライン版（キー不要）。実際の一時停止・再開を、台本化したエージェントと応答者で回す |
 | `demo.config.yaml` | `targets.web`（`baseUrl` ＋ `scenarios` ＋ `backend: [web]`、`bundleId` なし） |
-| `Makefile` | `web-deps` / `app-serve` / `e2e` / `record` / `record-offline` |
+| `Makefile` | `web-deps` / `app-serve` / `e2e` / `record` / `record-handoff` / `record-offline` / `record-handoff-offline` |
 
 ## 実行
 
@@ -41,6 +42,24 @@ make -C demos/web record GOAL="Get started, then increment the counter three tim
 ```bash
 make -C demos/web record-offline                                   # 既定のゴール
 uv run python demos/web/record/record_offline.py "get started, increment twice, check the counter shows 2"
+```
+
+## human-in-the-loop ハンドオフ（BE-0179）
+
+一部のステップは、AI が供給できない何かで塞がれます。ここでは out-of-band で届くワンタイムの検証コードです。`record` はそのようなステップで一時停止し、人に引き渡し、応答を受け取り、実際の画面を観測し直して再開します（[BE-0179](../../roadmaps/BE-0179-record-human-handoff/BE-0179-record-human-handoff-ja.md)）。人がループに入るのはオーサリングの最中だけで、記録したシナリオは決定論的な `run` の経路に人を置かずに再生されます。
+
+AI が一時停止したときにブラウザを操作できるよう、**headed** で実行します。
+
+```bash
+make -C demos/web record-handoff   # 実 Claude ＋ headed ブラウザ（ANTHROPIC_API_KEY が必要）
+```
+
+AI は **Verify a device** を押し、コード画面に着き、そのコードを知り得ないと判断して（`ask_human` のターン）一時停止します。ブラウザに表示されたコードを入力して **Verify** を押し、ターミナルのプロンプトに `done` と答えて再開してください。ループは検証済み画面を観測し直して完了します。
+
+キーもブラウザも生身の人も無い場合、オフライン版が同じ一時停止・再開を再現します。実際のハンドオフ契約と record ループはそのままに、台本化したエージェントと応答者で回すので、`make check` のツールチェーンで動きます。
+
+```bash
+make -C demos/web record-handoff-offline
 ```
 
 ## コアとの対応

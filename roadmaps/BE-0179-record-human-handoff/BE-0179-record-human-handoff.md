@@ -146,6 +146,7 @@ Deferred to follow-ups (out of this substrate's first slice): the author-initiat
 **Log**
 
 - Substrate landed: the `handoff` contract ([`bajutsu/handoff.py`](../../../bajutsu/handoff.py)), the `needs_human` turn outcome and pause/resume in the record loop ([`bajutsu/record.py`](../../../bajutsu/record.py)), the CLI stdin responders ([`bajutsu/cli/handoff.py`](../../../bajutsu/cli/handoff.py)), and the local-`serve` surface (SSE `human-request` event, the `respond-human` endpoint over the record process's stdin, the awaiting-human job state, and the retained handoff pane in the Web UI). Non-interactive / CI raises a clean, labeled failure.
+- Demo enablement: a device-verification flow in the web demo app ([`demos/web/app/index.html`](../../../demos/web/app/index.html)) and an `ask_human` outcome the authoring agent ([`bajutsu/claude_agent.py`](../../../bajutsu/claude_agent.py)) emits for a value it cannot know (an out-of-band one-time code), so a real headed `record` hands off end to end (`make -C demos/web record-handoff`), with a key-free offline twin for the toolchain. This `ask_human` guidance is a first, minimal slice the value-prompt / takeover child items will formalize (the field-level heuristics and the recorded-artifact shape remain theirs).
 
 ## References
 

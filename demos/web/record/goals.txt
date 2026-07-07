@@ -16,3 +16,9 @@ Get started, sign in with email a@b.com and password pw, increment the counter t
 
 # A second goal (paste it, or pass via GOAL="…"):
 # Get started, sign in with any email and password, then increment the counter three times and confirm it shows 3.
+#
+# Human-in-the-loop handoff demo (BE-0179). Run it HEADED so you can operate the browser when it
+# pauses — `make -C demos/web record-handoff` (headed record + this goal). The AI opens device
+# verification, cannot know the out-of-band one-time code, and hands off; enter the code shown in
+# the browser, submit, then answer the prompt to resume:
+# Verify a device: open device verification and complete the one-time code step.

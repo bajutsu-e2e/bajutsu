@@ -1,7 +1,7 @@
 # Build / run targets for the web demo (BE-0041): the Playwright backend driving a tiny static
 # web app. Unlike the iOS demos this needs no Mac and no Simulator — it runs on Linux inside the
 # same toolchain as `make check`. Invoke from anywhere with `make -C demos/web <target>`.
-.PHONY: web-deps app-serve e2e record record-offline
+.PHONY: web-deps app-serve e2e record record-handoff record-offline record-handoff-offline
 
 ROOT := $(abspath $(dir $(lastword $(MAKEFILE_LIST)))/../..)
 APP := $(ROOT)/demos/web/app
@@ -54,8 +54,33 @@ record: web-deps
 	cd $(ROOT) && uv run bajutsu record --target web --backend web --config $(CONFIG) \
 		--goal "$(GOAL)" --out "$(OUT)" --no-erase --no-dismiss-alerts
 
+# Human-in-the-loop handoff demo (BE-0179): a HEADED record you drive alongside the AI. The agent
+# opens device verification, recognizes it cannot know the out-of-band one-time code, and hands off
+# (`ask_human`). Enter the code shown in the visible browser, click Verify, then answer the terminal
+# prompt (`done`) to resume — the loop re-observes the verified screen and finishes. Needs
+# ANTHROPIC_API_KEY. Runs in your terminal (a TTY), which is what makes the interactive prompt work.
+HANDOFF_GOAL ?= Verify a device: open device verification and complete the one-time code step.
+HANDOFF_OUT ?= $(ROOT)/tmp/web-record-handoff.generated.yaml
+record-handoff: web-deps
+	cd $(APP) && python3 -m http.server $(PORT) >/dev/null 2>&1 & srv=$$!; \
+	trap 'kill $$srv 2>/dev/null' EXIT; \
+	ready=0; for i in $$(seq 1 100); do \
+	  if curl -sf --max-time 2 -o /dev/null "http://localhost:$(PORT)/"; then ready=1; break; fi; \
+	  sleep 0.1; \
+	done; \
+	if [ "$$ready" -ne 1 ]; then echo "demo server did not answer on port $(PORT) within the readiness timeout" >&2; exit 1; fi; \
+	mkdir -p $(ROOT)/tmp; \
+	cd $(ROOT) && uv run bajutsu record --target web --backend web --config $(CONFIG) \
+		--goal "$(HANDOFF_GOAL)" --out "$(HANDOFF_OUT)" --headed --no-erase --no-dismiss-alerts
+
 # The offline, API-key-free twin of `record`: the same record loop driven by a deterministic
 # keyword agent against an in-memory FakeDriver (no browser, no model), so it's reproducible in the
 # `make check` toolchain. Prints the goal, the generated scenario, and a deterministic replay.
 record-offline:
 	cd $(ROOT) && uv run python demos/web/record/record_offline.py
+
+# The offline, key-free twin of `record-handoff`: the same handoff pause/resume driven by a scripted
+# agent + responder against an in-memory app (no browser, no model, no human), so the mechanism is
+# reproducible without a TTY or an API key. Prints the request, the response, and the scenario.
+record-handoff-offline:
+	cd $(ROOT) && uv run python demos/web/record/record_handoff_offline.py
