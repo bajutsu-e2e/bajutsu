@@ -140,6 +140,7 @@ TOPICS: tuple[tuple[str, str, bool], ...] = (
     ("Platform expansion (landed slices)", "platform-landed", False),
     ("Platform expansion (Android / Web / Flutter)", "platform", False),
     ("Authoring experience (record / GUI editor)", "authoring", False),
+    ("Record (action capture)", "record", False),
     ("Surfacing CLI features in the serve Web UI", "serve-cli-features", False),
     ("Self-healing triage (M4)", "self-healing", False),
     ("Candidates from competitive research (MagicPod / Autify)", "competitive", True),
