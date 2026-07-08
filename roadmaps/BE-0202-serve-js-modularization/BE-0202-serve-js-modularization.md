@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0202") |
-| Implementing PR | _pending_ |
+| Implementing PR | [#811](https://github.com/bajutsu-e2e/bajutsu/pull/811) |
 | Topic | Codebase quality & technical debt |
 <!-- /BE-METADATA -->
 
@@ -76,7 +76,7 @@ call site.
 
 Log:
 
-- _pending_ — Split `serve.js` (2544 lines) into four section files — `serve.core.js` (shared
+- [#811](https://github.com/bajutsu-e2e/bajutsu/pull/811) — Split `serve.js` (2544 lines) into four section files — `serve.core.js` (shared
   helpers + state + config/Settings), `serve.panels.js` (Record/Replay/Triage/upload),
   `serve.crawl.js` (Crawl + graph + lightbox), `serve.author.js` (layout wiring + Author tab +
   boot). `handler.py` concatenates them in fixed order into the one inlined `<script>`, mirroring how
