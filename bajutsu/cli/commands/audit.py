@@ -20,7 +20,6 @@ from __future__ import annotations
 
 import dataclasses
 import json
-from datetime import UTC, datetime
 from pathlib import Path
 
 import typer
@@ -35,6 +34,7 @@ from bajutsu.cli._shared import (
     read_manifests,
 )
 from bajutsu.config import web_engine
+from bajutsu.run_id import new_run_id
 from bajutsu.runner import device_pool, run_all
 from bajutsu.runner.launch_server import start_launch_server
 from bajutsu.scenario import Scenario, load_expanded_scenarios
@@ -155,7 +155,7 @@ def _repeat_audit(
         typer.echo(str(e))
         raise typer.Exit(2) from None
 
-    run_id = datetime.now(tz=UTC).strftime("audit-%Y%m%d-%H%M%S")
+    run_id = new_run_id("audit-")
     lease, shutdown = device_pool(udids, backends, eff, Path("runs") / run_id)
     # Bring up the target's `launchServer` (the web baseUrl host) if declared, like `run` does, so a
     # web target with a server-backed baseUrl can be audited; reused if already serving, torn down

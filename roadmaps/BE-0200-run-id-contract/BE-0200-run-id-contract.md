@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0200](BE-0200-run-id-contract.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0200") |
+| Implementing PR | [#808](https://github.com/bajutsu-e2e/bajutsu/pull/808) |
 | Topic | Codebase quality & technical debt |
 <!-- /BE-METADATA -->
 
@@ -71,10 +72,10 @@ changeable in one place.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Helper module added (format constant, `new_run_id()`, timestamp-shape pattern)
-- [ ] Four run-id mint sites migrated (including the `audit-` prefixed variant)
-- [ ] Timestamp-shape consumer (`report/ctrf.py`) pointed at the shared format
-- [ ] Contract unit test added
+- [x] Helper module added (`bajutsu/run_id.py`: `RUN_ID_FORMAT`, `new_run_id()`, `parse_run_id_timestamp()`)
+- [x] Four run-id mint sites migrated (including the `audit-` prefixed variant)
+- [x] Timestamp-shape consumer (`report/ctrf.py`) pointed at the shared format
+- [x] Contract unit test added (`tests/test_run_id.py`)
 
 ## References
 

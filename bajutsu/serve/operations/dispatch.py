@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 import logging
-from datetime import UTC, datetime
 from typing import Any
 
+from bajutsu.run_id import new_run_id
 from bajutsu.serve import oplog
 from bajutsu.serve.authz import _record_audit
 from bajutsu.serve.helpers import (
@@ -301,7 +301,7 @@ def start_crawl(
     if resuming and continuing:
         return {"error": "resume and continue are mutually exclusive"}, 400
     reuse_run = resuming or continuing
-    run_id = str(body["runId"]) if reuse_run else datetime.now(tz=UTC).strftime("%Y%m%d-%H%M%S")
+    run_id = str(body["runId"]) if reuse_run else new_run_id()
     # A reused run takes runId from the client; reject anything but a safe path segment so
     # `runs_dir / run_id` (the crawl's --out) can't escape runs_dir (BE-0051).
     if reuse_run and not valid_run_id(run_id):

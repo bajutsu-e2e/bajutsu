@@ -6,7 +6,6 @@ import os
 import sys
 from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -37,6 +36,7 @@ from bajutsu.cli._shared import (
 from bajutsu.config import WEB_ENGINES, Effective, IosConfig, web_engine
 from bajutsu.orchestrator import AlertEvent, BlockedHandler, RunResult
 from bajutsu.report.archive import archive_run_dir
+from bajutsu.run_id import new_run_id
 from bajutsu.runner import device_pool, run_all, run_and_report, run_matrix_and_report
 from bajutsu.runner.build import BuildError, build_if_missing
 from bajutsu.runner.launch_server import start_launch_server
@@ -890,7 +890,7 @@ def run(
         golden_context=gc,
         secret_bindings=secret_bindings,
         secret_values=secret_values,
-        run_id=datetime.now(tz=UTC).strftime("%Y%m%d-%H%M%S"),
+        run_id=new_run_id(),
         runs_dir=Path(runs_dir),
         network=network,
         log_predicate=log_predicate,
