@@ -100,6 +100,8 @@ jobs:
             echo "provider=none" >> "$GITHUB_OUTPUT"
             if [ -n "$ROLE_ARN" ] && [ -z "$MODEL_ID" ]; then
               echo "::notice::AWS_BEDROCK_ROLE_ARN is set but the BEDROCK_MODEL_ID variable is missing — advisory Claude review is dormant (BE-0203). No-op."
+            elif [ -z "$ROLE_ARN" ] && [ -n "$MODEL_ID" ]; then
+              echo "::notice::BEDROCK_MODEL_ID is set but the AWS_BEDROCK_ROLE_ARN secret is missing — advisory Claude review is dormant (BE-0203). No-op."
             else
               echo "::notice::Neither CLAUDE_CODE_OAUTH_TOKEN nor AWS_BEDROCK_ROLE_ARN (+ BEDROCK_MODEL_ID) is set — advisory Claude review is dormant (BE-0203). No-op."
             fi
