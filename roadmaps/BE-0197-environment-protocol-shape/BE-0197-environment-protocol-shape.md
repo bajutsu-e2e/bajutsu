@@ -9,7 +9,7 @@
 | Author | [@hirosassa](https://github.com/hirosassa) |
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0197") |
-| Implementing PR | _pending_ |
+| Implementing PR | [#816](https://github.com/bajutsu-e2e/bajutsu/pull/816) |
 | Topic | Codebase quality & technical debt |
 <!-- /BE-METADATA -->
 
@@ -165,7 +165,7 @@ service of the app-agnostic seam. No LLM enters any path (the seam is determinis
 
 Log:
 
-- _pending_ — Split `Environment` into `RunEnvironment` / `CrawlEnvironment` / combined `Environment`
+- [#816](https://github.com/bajutsu-e2e/bajutsu/pull/816) — Split `Environment` into `RunEnvironment` / `CrawlEnvironment` / combined `Environment`
   in `platform_lifecycle.py`; the `run` pipeline (`runner/pool.py`, `runner/launch.py`) now holds a
   `RunEnvironment` and the `crawl` command (`cli/commands/crawl.py`) a `CrawlEnvironment`. Documented
   the two-idiom "not applicable" contract per method, the predicate→capability pairing table, and the

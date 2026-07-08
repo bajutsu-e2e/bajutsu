@@ -9,7 +9,7 @@
 | 提案者 | [@hirosassa](https://github.com/hirosassa) |
 | 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0197") |
-| 実装 PR | _pending_ |
+| 実装 PR | [#816](https://github.com/bajutsu-e2e/bajutsu/pull/816) |
 | トピック | Codebase quality & technical debt |
 <!-- /BE-METADATA -->
 
@@ -154,7 +154,7 @@ runner と crawl コマンドは同じメソッドを同じ結果で呼びます
 
 ログ:
 
-- _pending_ — `platform_lifecycle.py` の `Environment` を `RunEnvironment` / `CrawlEnvironment` と、
+- [#816](https://github.com/bajutsu-e2e/bajutsu/pull/816) — `platform_lifecycle.py` の `Environment` を `RunEnvironment` / `CrawlEnvironment` と、
   両者を統合した `Environment` の 3 つに分けました。`run` のパイプライン（`runner/pool.py`・
   `runner/launch.py`）は `RunEnvironment` を、`crawl` コマンド（`cli/commands/crawl.py`）は
   `CrawlEnvironment` を保持します。モジュールの docstring には、メソッドごとの「該当なし」の約束
