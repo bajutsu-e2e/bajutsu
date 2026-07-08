@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0202](BE-0202-serve-js-modularization.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0202") |
+| Implementing PR | _pending_ |
 | Topic | Codebase quality & technical debt |
 <!-- /BE-METADATA -->
 
@@ -68,13 +69,23 @@ call site.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] serve.js split into section files served via the existing template mechanism
-- [ ] `startJob(…)` helper; run / record / crawl handlers migrated
-- [ ] `eslint.config.mjs` covers the new file set
-- [ ] Dogfood gate green across the split (scenario extended only if a gap shows)
+- [x] serve.js split into section files served via the existing template mechanism
+- [x] `startJob(…)` helper; run / record / crawl handlers migrated
+- [x] `eslint.config.mjs` covers the new file set
+- [x] Dogfood gate green across the split (scenario extended only if a gap shows)
+
+Log:
+
+- _pending_ — Split `serve.js` (2544 lines) into four section files — `serve.core.js` (shared
+  helpers + state + config/Settings), `serve.panels.js` (Record/Replay/Triage/upload),
+  `serve.crawl.js` (Crawl + graph + lightbox), `serve.author.js` (layout wiring + Author tab +
+  boot). `handler.py` concatenates them in fixed order into the one inlined `<script>`, mirroring how
+  the two CSS assets already concatenate — so the served output is unchanged. Added the shared
+  `startJob(…)` skeleton and migrated the run / record / crawl start handlers onto it. Extended
+  `eslint.config.mjs` and `make lint-js` to the `serve.*.js` set.
 
 ## References
 
-- [`bajutsu/templates/serve.js`](../../bajutsu/templates/serve.js) · [`bajutsu/serve/handler.py`](../../bajutsu/serve/handler.py) · [`eslint.config.mjs`](../../eslint.config.mjs)
+- [`bajutsu/templates/serve.core.js`](../../bajutsu/templates/serve.core.js) · [`bajutsu/serve/handler.py`](../../bajutsu/serve/handler.py) · [`eslint.config.mjs`](../../eslint.config.mjs)
 - [BE-0129](../BE-0129-serve-scope-boundary/BE-0129-serve-scope-boundary.md) — the guardrail whose calibration this file outgrew
 - [BE-0189](../BE-0189-serve-ui-dogfood-ci-gate/BE-0189-serve-ui-dogfood-ci-gate.md) — the dogfood gate that pins UI behavior across the split
