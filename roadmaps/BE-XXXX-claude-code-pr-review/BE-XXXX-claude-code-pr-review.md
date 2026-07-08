@@ -64,7 +64,7 @@ Copilot, and the bilingual docs — no change to the deterministic gate, the dri
 runner.
 
 1. **The review workflow** — a new `.github/workflows/claude-review.yml`. It triggers on
-   `pull_request: [opened, synchronize, reopened]` (auto-review on open, re-review on every push,
+   `pull_request` with `types: [opened, synchronize, reopened]` (auto-review on open, re-review on every push,
    matching Copilot), runs the official Anthropic `claude-code-action` (pinned to a full commit
    SHA, like every other action in this repo), and invokes the repo's own **`/code-review
    --comment`** so the findings land as **inline PR comments**. Permissions are the minimum the
@@ -89,10 +89,10 @@ runner.
 
    | Copilot capability | This item |
    |---|---|
-   | Auto-review when a PR opens | `pull_request: [opened]` |
-   | Re-review on each new push | `pull_request: [synchronize]` |
+   | Auto-review when a PR opens | `pull_request` with `types: [opened]` |
+   | Re-review on each new push | `pull_request` with `types: [synchronize]` |
    | Inline line-level comments | `/code-review --comment` (posts inline PR comments) |
-   | Suggested changes (one-click apply) | the review prompt asks for a GitHub ` ```suggestion ` block wherever a concrete, mechanical fix fits |
+   | Suggested changes (one-click apply) | the review prompt asks for a GitHub ```` ```suggestion ```` block wherever a concrete, mechanical fix fits |
    | A summary of the review | a top-level review summary comment alongside the inline notes |
    | On-demand re-review | an opt-in `@claude review` mention path (below) *in addition to* the auto-trigger |
 
@@ -152,7 +152,7 @@ runner.
    the gate stays green with no new automated test to add — the review *behavior* can't be
    unit-tested, since it needs a live PR and a provider call. Verification is therefore the same
    manual shape BE-0122 used: open a test PR, confirm the review auto-posts inline comments and a
-   summary on open, re-posts on a follow-up push, that a ` ```suggestion ` block renders as a
+   summary on open, re-posts on a follow-up push, that a ```` ```suggestion ```` block renders as a
    one-click apply, and that the review's check is **not** listed among the required checks (it
    cannot block the merge).
 
