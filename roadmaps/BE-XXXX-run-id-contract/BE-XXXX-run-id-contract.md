@@ -57,10 +57,7 @@ Naming the contract once makes the dependency visible and the format changeable 
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] `new_run_id()` + format constant + validation pattern in one module
-- [ ] Five mint sites migrated
-- [ ] `valid_run_id` and the jobs.py parse regex share the pattern
-- [ ] Contract unit test (mint → validate → sort order)
+- [ ] Four run-id mint sites migrated (including the `audit-` prefixed variant)
 
 ## References
 
