@@ -710,6 +710,7 @@ Behavior-preserving cleanup inside `bajutsu/` itself — deduplication, decompos
 | [BE-0198](BE-0198-serve-state-job-registry-split/BE-0198-serve-state-job-registry-split.md) | Split the JobRegistry out of ServeState | Proposal |
 | [BE-0199](BE-0199-doctor-screen-probe-dedupe/BE-0199-doctor-screen-probe-dedupe.md) | Share the doctor screen probe between CLI and serve | Proposal |
 | [BE-0200](BE-0200-run-id-contract/BE-0200-run-id-contract.md) | Make the run-id format a single named contract | Proposal |
+| [BE-0201](BE-0201-record-enrich-shared-replay/BE-0201-record-enrich-shared-replay.md) | Consolidate the duplicated replay helpers of record and enrich | Proposal |
 <!-- /GENERATED:proposals-quality-debt -->
 
 ### Integration with external services
