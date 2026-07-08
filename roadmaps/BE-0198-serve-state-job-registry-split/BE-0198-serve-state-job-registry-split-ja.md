@@ -7,8 +7,9 @@
 |---|---|
 | 提案 | [BE-0198](BE-0198-serve-state-job-registry-split-ja.md) |
 | 提案者 | [@hirosassa](https://github.com/hirosassa) |
-| 状態 | **提案** |
+| 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0198") |
+| 実装 PR | _pending_ |
 | トピック | Codebase quality & technical debt |
 <!-- /BE-METADATA -->
 
@@ -130,12 +131,25 @@
 > 作業分解（作業の単位ごとに 1 つ）に対応し、ログには変更内容と時期（古い順）を PR へのリンクと
 > ともに記録します。
 
-- [ ] `jobs` / id の連番 / 自前のロックを所有する `JobRegistry` 型を導入し、`register` /
+- [x] `jobs` / id の連番 / 自前のロックを所有する `JobRegistry` 型を導入し、`register` /
       `try_register` / `active_jobs` / `in_flight_by_org` を公開する
-- [ ] 同時実行数の上限をどこに置くか（呼び出しごとに渡すか、レジストリの構築時に固定するか）を決めて適用する
-- [ ] `ServeState` に `JobRegistry` を持たせ、呼び出し箇所を一貫してそこへ通す（薄い委譲か直接アクセスか）
-- [ ] `provider_settings` に専用の名前付きロックを与え、`_lock` が 2 つの関心事を守る状態を解消する
-- [ ] id の単調増加と各同時実行数の上限を `JobRegistry` へ直接検証する単体テストを追加する
+- [x] 同時実行数の上限をどこに置くか（呼び出しごとに渡すか、レジストリの構築時に固定するか）を決めて適用する
+- [x] `ServeState` に `JobRegistry` を持たせ、呼び出し箇所を一貫してそこへ通す（薄い委譲か直接アクセスか）
+- [x] `provider_settings` に専用の名前付きロックを与え、`_lock` が 2 つの関心事を守る状態を解消する
+- [x] id の単調増加と各同時実行数の上限を `JobRegistry` へ直接検証する単体テストを追加する
+
+### ログ
+
+- `bajutsu/serve/jobs.py` の `ServeState` から `JobRegistry` を切り出しました。この新しい型が
+  `jobs`・id の連番・自前のロックを所有し、`register` / `try_register` / `active_jobs` /
+  `in_flight_by_org` を公開します。「1 つのロックのもとで数えてから挿入する」というアトミックな不変
+  条件は、この型の境界で担保されます。同時実行数の上限は `ServeState` に残し（`ServeState` が元から
+  所有する設定であり、`/metrics` が読み出します）、呼び出しごとに `try_register` へ渡すことで、レジス
+  トリを純粋な仕組みに保ちました。`ServeState` はレジストリを保持して 4 つのメソッドを転送し、`jobs`
+  は読み取りの委譲として公開したので、既存の参照箇所は変わりません。共有していた `_lock` は、
+  `provider_settings` だけを守るようになったため `_provider_lock` へ改名しました。id の単調増加・二重
+  登録のガード・各上限を、`ServeState` を丸ごと組み立てずに `JobRegistry` へ直接検証する単体テストを
+  追加しました。挙動は保存しており、`serve` は決定的なゲートの外にあります。
 
 ## 参考
 
