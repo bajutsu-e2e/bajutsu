@@ -565,7 +565,14 @@ def _env() -> Environment:
     return Environment(loader=FileSystemLoader(str(_TEMPLATE_DIR)), autoescape=True)
 
 
-@functools.lru_cache(maxsize=4)
+# The UI JS is split into section files (BE-0202); they concatenate in this fixed order into one
+# inlined <script>, sharing a single global scope with no build step — the same pattern the two CSS
+# assets already use (themes_css + css into one <style>). Order is load-bearing: core defines the
+# shared helpers the later sections call, and author.js ends with the boot sequence.
+_JS_ASSETS = ("serve.core.js", "serve.panels.js", "serve.crawl.js", "serve.author.js")
+
+
+@functools.lru_cache(maxsize=8)
 def _asset(name: str) -> str:
     return (_TEMPLATE_DIR / name).read_text(encoding="utf-8")
 
@@ -578,6 +585,6 @@ def _index_html() -> str:
         .render(
             css=_asset("serve.css"),
             themes_css=_asset("serve.themes.css"),
-            js=_asset("serve.js"),
+            js="\n".join(_asset(name) for name in _JS_ASSETS),
         )
     )

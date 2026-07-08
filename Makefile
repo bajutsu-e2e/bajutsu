@@ -123,20 +123,33 @@ lint-sh:
 lint-actions:
 	@command -v actionlint >/dev/null 2>&1 && actionlint -color || echo "lint-actions: actionlint not installed — skipping (CI enforces it)"
 
-# BE-0129: a proportionate guardrail for the serve Web UI's vanilla JS (bajutsu/templates/serve.js),
-# ~1.5k lines with no build step. `node --check` catches syntax errors and runs wherever Node is
-# present (including CI runners); the flat-config eslint (eslint.config.mjs) adds a few structural
+# BE-0129: a proportionate guardrail for the serve Web UI's vanilla JS. Since BE-0202 that is the
+# section files bajutsu/templates/serve.*.js (~2.5k lines total, no build step), concatenated at
+# serve time. `node --check` catches syntax errors and runs wherever Node is present (including CI
+# runners) — one file at a time, so we loop over the section files. We also `node --check` the
+# concatenation, because the files share one global scope once inlined: a cross-file duplicate
+# top-level `const`/`let` is a SyntaxError only in the combined script, invisible to the per-file
+# pass. That combined script is built from `handler._JS_ASSETS` (via `uv run`, when available) so it
+# is byte-for-byte what the server inlines — same file order and "\n" join — rather than shell-glob
+# (lexicographic) order, which would diverge. If uv isn't set up the concat pass skips with a notice
+# (the per-file pass already ran). The flat-config eslint (eslint.config.mjs) adds a few structural
 # checks and runs only when eslint is already resolvable, so the gate never downloads it. Node
-# absence skips with a notice — the same pattern lint-actions uses for actionlint — so `check` runs
-# anywhere.
+# absence skips with a notice — the same pattern lint-actions uses for actionlint — so `check` runs anywhere.
 lint-js:
 	@set -e; \
 	if ! command -v node >/dev/null 2>&1; then \
 		echo "lint-js: node not installed — skipping (CI enforces it)"; \
 	else \
-		node --check bajutsu/templates/serve.js; \
+		for f in bajutsu/templates/serve.*.js; do node --check "$$f"; done; \
+		if command -v uv >/dev/null 2>&1; then \
+			dir="$$(mktemp -d)"; trap 'rm -rf "$$dir"' EXIT; \
+			uv run --no-sync python -c "from bajutsu.serve.handler import _JS_ASSETS, _TEMPLATE_DIR; import sys; sys.stdout.write(chr(10).join((_TEMPLATE_DIR/n).read_text(encoding='utf-8') for n in _JS_ASSETS))" > "$$dir/concat.js"; \
+			node --check "$$dir/concat.js"; \
+		else \
+			echo "lint-js: uv not available — skipping the concatenation check (ran per-file node --check)"; \
+		fi; \
 		if npx --no-install eslint --version >/dev/null 2>&1; then \
-			npx --no-install eslint bajutsu/templates/serve.js; \
+			npx --no-install eslint 'bajutsu/templates/serve.*.js'; \
 		else \
 			echo "lint-js: eslint not installed — skipping (ran node --check; install eslint for the structural checks)"; \
 		fi; \

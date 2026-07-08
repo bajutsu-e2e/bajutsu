@@ -287,6 +287,7 @@ Bajutsu の「契約としての決定性」という立場を、Maestro の fla
 | [BE-0199](BE-0199-doctor-screen-probe-dedupe/BE-0199-doctor-screen-probe-dedupe-ja.md) | doctor の画面プローブを CLI と serve で共有する | 実装済み |
 | [BE-0200](BE-0200-run-id-contract/BE-0200-run-id-contract-ja.md) | run id のフォーマットを 1 つの名前付き契約にする | 実装済み |
 | [BE-0201](BE-0201-record-enrich-shared-replay/BE-0201-record-enrich-shared-replay-ja.md) | record と enrich の重複したリプレイヘルパを統合する | 実装済み |
+| [BE-0202](BE-0202-serve-js-modularization/BE-0202-serve-js-modularization-ja.md) | serve.js をビルドなしのままセクション別ファイルに分割する | 実装済み |
 <!-- /GENERATED:implemented-quality-debt -->
 
 ### Dogfood フィクスチャ（デモアプリ）
@@ -706,7 +707,6 @@ AI を使う経路（`record` ／ `crawl` ／ `triage --ai` ／ `run --apply`）
 | ID | 項目 | 状態 |
 |---|---|---|
 | [BE-0197](BE-0197-environment-protocol-shape/BE-0197-environment-protocol-shape-ja.md) | 3 つめのプラットフォームに向けて Environment protocol の形をそろえる | 提案 |
-| [BE-0202](BE-0202-serve-js-modularization/BE-0202-serve-js-modularization-ja.md) | serve.js をビルドなしのままセクション別ファイルに分割する | 提案 |
 | [BE-0205](BE-0205-crawl-command-decomposition/BE-0205-crawl-command-decomposition-ja.md) | crawl コマンドを run と同じ形に分解する | 提案 |
 | [BE-0206](BE-0206-serve-state-module-split/BE-0206-serve-state-module-split-ja.md) | serve のジョブ状態をジョブ実行から分離する | 提案 |
 <!-- /GENERATED:proposals-quality-debt -->
