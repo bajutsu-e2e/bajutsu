@@ -16,8 +16,9 @@
 
 Every pull request to this repository is reviewed automatically by **GitHub Copilot** today —
 it posts inline comments when a PR opens and re-reviews on each push. This item replaces that
-reviewer with **Claude Code**, running the repository's own [`code-review`](../../.claude/skills)
-skill from a GitHub Actions workflow on every PR: auto-triggered on open and on each push,
+reviewer with **Claude Code**, running Claude Code's built-in `code-review` skill (the same one
+this repo's [`implement-be`](../../.claude/skills/implement-be/SKILL.md) already uses author-side)
+from a GitHub Actions workflow on every PR: auto-triggered on open and on each push,
 posting **inline line-level comments** — including GitHub *suggested-change* blocks — plus a
 short summary, exactly the surface Copilot occupies. The gain over Copilot is that Claude Code
 reviews against **this repository's own contract** — the three [prime
@@ -42,8 +43,8 @@ not a judge.
   matched first", a per-app difference hardcoded instead of living in `targets.<name>` config, a
   documented behavior changed on only one language side, or a roadmap PR that doesn't link its BE
   item. Claude Code reviewing with a repo-authored prompt pulls the same way the runner does.
-- **The building blocks already exist; this item wires them to the PR.** The
-  [`code-review`](../../.claude/skills) skill already produces findings and, with `--comment`,
+- **The building blocks already exist; this item wires them to the PR.** Claude Code's built-in
+  `code-review` skill already produces findings and, with `--comment`,
   **posts them as inline PR comments**. [`implement-be`](../../.claude/skills/implement-be/SKILL.md)
   already codifies the review lenses this repo trusts (silent-failure → *fail loudly*,
   type-design under strict `mypy`, test-coverage of new logic). Today those run only **author-side,
@@ -66,11 +67,11 @@ runner.
 1. **The review workflow** — a new `.github/workflows/claude-review.yml`. It triggers on
    `pull_request` with `types: [opened, synchronize, reopened]` (auto-review on open, re-review on every push,
    matching Copilot), runs the official Anthropic `claude-code-action` (pinned to a full commit
-   SHA, like every other action in this repo), and invokes the repo's own **`/code-review
+   SHA, like every other action in this repo), and invokes the built-in **`/code-review
    --comment`** so the findings land as **inline PR comments**. Permissions are the minimum the
    surface needs: `pull-requests: write` (post review comments) and `contents: read` (read the
-   diff) — and nothing else. It carries `concurrency: claude-review-${{ github.ref }}` with
-   `cancel-in-progress: true`, mirroring `ci.yml`, so a rapid push sequence supersedes a stale
+   diff) — and nothing else. It carries a `concurrency` block (`group: claude-review-${{ github.ref }}`,
+   `cancel-in-progress: true`), mirroring `ci.yml`, so a rapid push sequence supersedes a stale
    review instead of stacking several.
 
 2. **Advisory, never a gate — the prime-directive guardrail.** Two properties keep the review off
@@ -207,10 +208,11 @@ Log:
 
 ## References
 
-- [`.claude/skills`](../../.claude/skills) — the built-in `code-review` skill (`--comment` posts
-  inline PR comments) this workflow invokes.
-- [`.claude/skills/implement-be/SKILL.md`](../../.claude/skills/implement-be/SKILL.md) — the
-  author-side review step (lenses, pr-review-toolkit) this item complements and reuses.
+- Claude Code's built-in `code-review` skill (`--comment` posts inline PR comments) — the reviewer
+  this workflow invokes. It is a built-in skill, not defined under
+  [`.claude/skills`](../../.claude/skills) (which holds only this repo's own skills); the repo's
+  [`implement-be`](../../.claude/skills/implement-be/SKILL.md) already uses it author-side (its
+  review step, with the lenses and pr-review-toolkit) — the pass this item complements and reuses.
 - [`docs/ai-development.md`](../../docs/ai-development.md) — the *Responding to PR review comments*
   rules (already naming AI reviewers) this item updates, and the required-status-check /
   admin-state constraints it mirrors.
