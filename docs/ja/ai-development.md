@@ -347,7 +347,7 @@ tests cover <…>.
 ### 自動レビュアー（Claude Code、BE-0203）
 
 `claude-review` Environment にプロバイダーの資格情報（Claude Code サブスクリプションのトークン、または
-Amazon Bedrock のロール）が設定されると、すべての pull request を **Claude Code** が自動でレビューします。
+Amazon Bedrock のロールと `BEDROCK_MODEL_ID` 変数）が設定されると、すべての pull request を **Claude Code** が自動でレビューします。
 [`claude-review`](../../.github/workflows/claude-review.yml) ワークフローから走り、PR がオープンした
 ときにレビューし、プッシュのたびに再レビューします。
 [`.github/claude-review-prompt.md`](../../.github/claude-review-prompt.md) の契約に照らしてレビューし、行単位の
