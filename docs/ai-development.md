@@ -355,8 +355,8 @@ The short form of these rules is in [`CLAUDE.md`](../CLAUDE.md).
 ## Responding to PR review comments
 
 Reviews get answered comment by comment, by **whoever owns the pull request — a human contributor
-or an AI agent alike**. When a reviewer (GitHub Copilot and other AI reviewers, or a human) leaves
-comments, keep working until every comment is resolved, then **reply to each comment
+or an AI agent alike**. When a reviewer (Claude Code — the automated reviewer, see below — or a
+human) leaves comments, keep working until every comment is resolved, then **reply to each comment
 individually**. A single summary reply on the PR is not enough: each comment thread gets its own
 reply, so the thread that raised a point is the thread that records its resolution.
 
@@ -375,6 +375,39 @@ When you are unsure how a comment should be handled — the fix is ambiguous, or
 something architecturally significant — ask rather than guess (an AI agent checks with the human
 driving it; a human contributor checks with the reviewer or a maintainer), and leave that thread
 open until it is decided.
+
+### The automated reviewer (Claude Code, BE-0203)
+
+Once the `claude-review` Environment has a provider credential (a Claude Code subscription token, or an
+Amazon Bedrock role plus a `BEDROCK_MODEL_ID` variable), every pull request from a branch in this repository is reviewed automatically by **Claude Code**, run from the
+[`claude-review`](../.github/workflows/claude-review.yml) workflow: it reviews when a PR opens and
+re-reviews on each push, reviewing against the
+[`.github/claude-review-prompt.md`](../.github/claude-review-prompt.md) contract, and posts inline
+line-level comments (with `suggestion` blocks where a fix is mechanical) plus a short summary. Until
+a credential is provisioned the workflow is a dormant green no-op — it posts nothing and never
+blocks — so no review appearing on a PR yet just means the Environment isn't configured. The
+prompt points the reviewer at *this repository's* contract — the three
+[prime directives](../CLAUDE.md#prime-directives-do-not-violate), the docstring standard, the
+bilingual-docs rule, the BE-ID lifecycle — so it catches what a generic reviewer cannot.
+
+It is **advisory, never a gate.** It is deliberately not a required status check, and its job result
+is decoupled from its findings (a review that found issues is a *successful* review, so the job goes
+red only on an infrastructure failure). The deterministic `check` / `E2E` gates remain the only
+merge arbiters — this is a reviewer, not a judge (prime directive 1). Treat its comments exactly as
+you would any reviewer's, under the reply rules above.
+
+- **On demand.** Beyond the auto-review, a maintainer or collaborator can write `@claude review` on
+  a PR (or reply to a review thread) to request a fresh pass or a follow-up on a specific comment.
+  This path is gated to trusted actors (OWNER / MEMBER / COLLABORATOR) — because comment events run
+  with repo secrets even on fork PRs — so `@claude review` from anyone else is ignored.
+- **Forks.** A plain `pull_request` event from a fork does not expose secrets (by GitHub's design),
+  so auto-review covers same-repo `claude/<topic>` / `<user>/<topic>` branches; a fork PR is
+  reviewed on demand by a maintainer instead.
+- **Migration off Copilot (manual, out-of-repo).** The workflow lands alongside Copilot's review so
+  the two run in parallel and can be compared; once Claude Code's review has proven itself, a
+  maintainer **disables Copilot's automatic review in the repository / organization settings**.
+  That is admin state a PR cannot carry (the same shape as the branch-protection ruleset edits
+  BE-0122 and BE-0089 call out), so it is an explicit manual step.
 
 ## Roadmap items: BE IDs (strict)
 

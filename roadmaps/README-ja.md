@@ -264,6 +264,7 @@ Bajutsu の「契約としての決定性」という立場を、Maestro の fla
 | [BE-0156](BE-0156-roadmap-topic-label-sync/BE-0156-roadmap-topic-label-sync-ja.md) | ロードマップ項目 PR のラベルを Topic と同期させる | 実装済み |
 | [BE-0159](BE-0159-flatten-roadmap-status-folders/BE-0159-flatten-roadmap-status-folders-ja.md) | ロードマップ項目を単一ディレクトリにまとめ、状態別フォルダをやめる | 実装済み |
 | [BE-0162](BE-0162-roadmap-status-filter-skill/BE-0162-roadmap-status-filter-skill-ja.md) | AI セッション向けのロードマップ状態フィルタスキル | 実装済み |
+| [BE-0203](BE-0203-claude-code-pr-review/BE-0203-claude-code-pr-review-ja.md) | プルリクエストの自動コードレビューを Claude Code で行う | 実装済み |
 <!-- /GENERATED:implemented-dev-infra -->
 
 ### コードベース品質・技術的負債
@@ -693,9 +694,7 @@ AI を使う経路（`record` ／ `crawl` ／ `triage --ai` ／ `run --apply`）
 ### 開発基盤（コントリビュータ体験）
 
 <!-- GENERATED:proposals-dev-infra -->
-| ID | 項目 | 状態 |
-|---|---|---|
-| [BE-0203](BE-0203-claude-code-pr-review/BE-0203-claude-code-pr-review-ja.md) | プルリクエストの自動コードレビューを Claude Code で行う | 提案 |
+
 <!-- /GENERATED:proposals-dev-infra -->
 
 ### コードベース品質・技術的負債
