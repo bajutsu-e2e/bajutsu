@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-serve-js-modularization-ja.md)
+**English** · [日本語](BE-0202-serve-js-modularization-ja.md)
 
-# BE-XXXX — Split serve.js into section files without a build step
+# BE-0202 — Split serve.js into section files without a build step
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-serve-js-modularization.md) |
+| Proposal | [BE-0202](BE-0202-serve-js-modularization.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0202") |
 | Topic | Codebase quality & technical debt |
 <!-- /BE-METADATA -->
 

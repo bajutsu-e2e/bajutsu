@@ -704,6 +704,7 @@ AI を使う経路（`record` ／ `crawl` ／ `triage --ai` ／ `run --apply`）
 | [BE-0199](BE-0199-doctor-screen-probe-dedupe/BE-0199-doctor-screen-probe-dedupe-ja.md) | doctor の画面プローブを CLI と serve で共有する | 提案 |
 | [BE-0200](BE-0200-run-id-contract/BE-0200-run-id-contract-ja.md) | run id のフォーマットを 1 つの名前付き契約にする | 提案 |
 | [BE-0201](BE-0201-record-enrich-shared-replay/BE-0201-record-enrich-shared-replay-ja.md) | record と enrich の重複したリプレイヘルパを統合する | 提案 |
+| [BE-0202](BE-0202-serve-js-modularization/BE-0202-serve-js-modularization-ja.md) | serve.js をビルドなしのままセクション別ファイルに分割する | 提案 |
 <!-- /GENERATED:proposals-quality-debt -->
 
 ### 外部サービスとの連携
