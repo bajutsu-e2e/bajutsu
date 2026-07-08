@@ -568,7 +568,9 @@ Bringing the CLI's own tools into the serve Web UI, where authoring happens. The
 ### Authoring experience (record / GUI editor)
 
 <!-- GENERATED:in-progress-authoring -->
-
+| ID | Item | Status |
+|---|---|---|
+| [BE-0191](BE-0191-pluggable-theme-system-serve-ui/BE-0191-pluggable-theme-system-serve-ui.md) | Pluggable theme system for the serve Web UI (visual tokens and swappable transitions) | In progress |
 <!-- /GENERATED:in-progress-authoring -->
 
 ### Codebase quality & technical debt
@@ -606,7 +608,6 @@ The scope is currently **limited to the iOS Simulator** ([DESIGN §1](../DESIGN.
 |---|---|---|
 | [BE-0182](BE-0182-record-human-value-prompt/BE-0182-record-human-value-prompt.md) | Human value entry during record (OTP / random / one-off values) | Proposal |
 | [BE-0185](BE-0185-record-human-takeover-step/BE-0185-record-human-takeover-step.md) | Human takeover step during record (CAPTCHA / biometrics / unresolvable gestures) | Proposal |
-| [BE-0191](BE-0191-pluggable-theme-system-serve-ui/BE-0191-pluggable-theme-system-serve-ui.md) | Pluggable theme system for the serve Web UI (visual tokens and swappable transitions) | Proposal |
 <!-- /GENERATED:proposals-authoring -->
 
 ### Surfacing CLI features in the serve Web UI

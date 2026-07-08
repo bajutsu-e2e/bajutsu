@@ -1,19 +1,51 @@
-/* Theme registry for the serve WebUI.
-   Each theme is one block of CSS custom properties, selected by [data-theme="<name>"]
-   on <html>. The first block doubles as :root so it is also the no-attribute default.
+/* Theme registry for the serve WebUI — the design-token contract (BE-0191).
 
-   The header toggle is a binary dark / light switch: unchecked selects "midnight"
-   (dark), checked selects "daylight" (light) — see initTheme/applyTheme in serve.js.
-   Adding a third theme means replacing that switch with a wider picker. */
+   A theme is one block of CSS custom properties, selected by [data-theme="<name>"] on <html>.
+   The first block doubles as :root, so it is BOTH the no-attribute default AND the fallback
+   source: because :root always matches <html>, every token below is present unless a theme block
+   overrides it. A theme therefore only needs to redefine the tokens it wants to change — anything
+   it omits inherits the :root (midnight) value. This is what lets a partial drop-in theme degrade
+   gracefully instead of rendering with unset colors.
+
+   This comment IS the theme-authoring API surface: to add a look, define a [data-theme="<name>"]
+   block setting any subset of these tokens. Every color and surface style in serve.css resolves
+   to one of them — no rule uses a raw literal — so a theme that sets them all is a complete,
+   self-contained look.
+
+   Tokens (all colors):
+     Surfaces   --bg        page / header background
+                --bg2       inset wells, tabs, popovers (the body backdrop)
+                --card      panel / card surface
+                --canvas    backdrop behind screenshots, reports, iframes (a neutral canvas)
+                --line      borders and dividers
+                --scrim     modal overlay wash (semi-transparent)
+     Text       --fg        primary foreground text
+                --mut       muted / secondary text;      --on-mut  text on a --mut background
+     Accent     --acc       accent / primary action;     --on-acc  text on --acc
+     Status     --ok        success / pass;              --on-ok   text on --ok
+                --ng        error / stop / fail;          --on-ng   text on --ng
+                --run       in-progress / warning;        --on-run  text on --run
+     Run groups --rung-id / --rung-label / --rung-labelidx  the run-grouping legend chips;
+                --on-rung   text on those chips
+   (Non-themed globals such as the monospace font stack live in serve.css's own :root, not here —
+   this registry is only the swappable look.)
+
+   The header control is still a binary dark / light toggle (unchecked = midnight, checked =
+   daylight; see initTheme/applyTheme in serve.core.js). Adding a third theme needs the wider
+   picker BE-0191 unit 3 introduces. */
 :root,[data-theme="midnight"]{
-  --bg:#0f172a; --bg2:#0b1220; --card:#1e293b; --line:#334155;
-  --fg:#e2e8f0; --mut:#94a3b8; --acc:#38bdf8; --on-acc:#082f49;
-  --ok:#22c55e; --ng:#ef4444; --run:#f59e0b; --on-run:#1c1402;
+  --bg:#0f172a; --bg2:#0b1220; --card:#1e293b; --canvas:#ffffff; --line:#334155;
+  --fg:#e2e8f0; --mut:#94a3b8; --on-mut:#0f172a; --acc:#38bdf8; --on-acc:#082f49;
+  --ok:#22c55e; --on-ok:#ffffff; --ng:#ef4444; --on-ng:#ffffff;
+  --run:#f59e0b; --on-run:#1c1402;
+  --rung-id:#22aa66; --rung-label:#ddaa33; --rung-labelidx:#cc7733; --on-rung:#ffffff;
   --scrim:rgba(2,6,23,.7);
 }
 [data-theme="daylight"]{
-  --bg:#f8fafc; --bg2:#eef2f7; --card:#ffffff; --line:#cbd5e1;
-  --fg:#0f172a; --mut:#64748b; --acc:#0284c7; --on-acc:#ffffff;
-  --ok:#16a34a; --ng:#dc2626; --run:#d97706; --on-run:#ffffff;
+  --bg:#f8fafc; --bg2:#eef2f7; --card:#ffffff; --canvas:#ffffff; --line:#cbd5e1;
+  --fg:#0f172a; --mut:#64748b; --on-mut:#ffffff; --acc:#0284c7; --on-acc:#ffffff;
+  --ok:#16a34a; --on-ok:#ffffff; --ng:#dc2626; --on-ng:#ffffff;
+  --run:#d97706; --on-run:#ffffff;
+  --rung-id:#22aa66; --rung-label:#ddaa33; --rung-labelidx:#cc7733; --on-rung:#ffffff;
   --scrim:rgba(15,23,42,.45);
 }

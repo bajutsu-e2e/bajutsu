@@ -1,7 +1,9 @@
-/* serve WebUI styles. Colors come from CSS variables defined in serve.themes.css —
+/* serve WebUI styles. Colors come from the design-token contract in serve.themes.css —
    keep new rules theme-aware by using var(--…) (e.g. --bg2 for inset wells,
-   --on-acc / --on-run for text on the accent / running buttons, --scrim for overlays)
-   rather than literals. */
+   --on-acc / --on-run for text on the accent / running buttons, --canvas for screenshot
+   backdrops, --scrim for overlays) rather than literals; that file documents every token. */
+/* Non-themed globals: constants that don't vary by theme live here, not in the theme registry. */
+:root{--mono:ui-monospace,SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace}
 *{box-sizing:border-box}body{margin:0;font:14px/1.5 system-ui,sans-serif;background:var(--bg2);color:var(--fg);display:flex;flex-direction:column;height:100vh;overflow:hidden}
 header{flex:0 0 auto;z-index:10;display:flex;align-items:center;gap:1rem;padding:.55rem 1rem;background:var(--bg);border-bottom:1px solid var(--line)}
 header .brandcol{display:flex;flex-direction:column;gap:.4rem}
@@ -165,7 +167,7 @@ body.reordering-active iframe{pointer-events:none}
 /* The frame shrink-wraps the image so the tap-location highlight, positioned in screen fractions,
    overlays it exactly. */
 .shotframe{position:relative;display:inline-block;line-height:0}
-.shotmain img{display:block;max-height:80vh;max-width:46vw;border-radius:10px;border:1px solid var(--line);background:#fff}
+.shotmain img{display:block;max-height:80vh;max-width:46vw;border-radius:10px;border:1px solid var(--line);background:var(--canvas)}
 /* Hover a transition/planned row to highlight where its tap lands on the screenshot. */
 .shothi{position:absolute;border:2px solid var(--run);border-radius:5px;background:color-mix(in srgb,var(--run) 25%,transparent);box-shadow:0 0 0 2px color-mix(in srgb,var(--run) 40%,transparent),0 0 12px color-mix(in srgb,var(--run) 60%,transparent);pointer-events:none;transition:all .12s ease}
 /* Every actionable spot on the shot, revealed on hover: a `go` spot has a known destination (an
@@ -241,20 +243,20 @@ button.run:disabled{opacity:.5;cursor:default}
 button.run.running{background:var(--run);color:var(--on-run);opacity:1;cursor:default}
 button.run.running::before{content:"";display:inline-block;width:.9em;height:.9em;margin-right:.5em;vertical-align:-.12em;border:2px solid color-mix(in srgb,var(--on-run) 30%,transparent);border-top-color:var(--on-run);border-radius:50%;animation:spin .7s linear infinite}
 @keyframes spin{to{transform:rotate(360deg)}}
-button.stop{flex:0 0 auto;width:100%;margin-top:.5rem;padding:.6rem;background:var(--ng);color:#fff;border:0;border-radius:6px;font-weight:700;cursor:pointer}
+button.stop{flex:0 0 auto;width:100%;margin-top:.5rem;padding:.6rem;background:var(--ng);color:var(--on-ng);border:0;border-radius:6px;font-weight:700;cursor:pointer}
 button.stop:disabled{opacity:.5;cursor:default}
 button.stop[hidden]{display:none}
 .status{flex:0 0 auto;font-weight:600}.status:not(:empty){margin-top:.6rem}.status.ok{color:var(--ok)}.status.ng{color:var(--ng)}.status.run{color:var(--acc)}
 .logpanel{height:100%;min-height:0;display:flex;flex-direction:column;overflow:hidden}
 pre.out{flex:1;min-height:0;margin:.6rem 0 0;overflow:auto;background:var(--bg2);border:1px solid var(--line);border-radius:6px;padding:.5rem;font-size:12px;white-space:pre-wrap}
 pre.out:empty::before{content:attr(data-empty);color:var(--mut)}
-.report{height:100%;min-height:0;display:flex;flex-direction:column;border:1px solid var(--line);border-radius:10px;overflow:hidden;background:#fff}
+.report{height:100%;min-height:0;display:flex;flex-direction:column;border:1px solid var(--line);border-radius:10px;overflow:hidden;background:var(--canvas)}
 .report>.empty{margin:auto}
 .repbar{flex:0 0 auto;display:flex;gap:.9rem;justify-content:flex-end;padding:.3rem .5rem;border-bottom:1px solid var(--line);background:var(--bg2)}
 .repopen,.repdl{font-size:.82rem;color:var(--acc);text-decoration:none}
 .repopen:hover,.repdl:hover{text-decoration:underline}
 /* Triage panel (BE-0147): sits between the report bar and the report, expanding on demand. */
-.repbtn{font-size:.8rem;background:var(--acc);color:#fff;border:0;border-radius:6px;padding:.22rem .6rem;cursor:pointer;font-weight:600}
+.repbtn{font-size:.8rem;background:var(--acc);color:var(--on-acc);border:0;border-radius:6px;padding:.22rem .6rem;cursor:pointer;font-weight:600}
 .repbtn:disabled{opacity:.5;cursor:default}
 .repbtn.running{background:var(--run)}
 .triagepanel{flex:0 0 auto;border-bottom:1px solid var(--line);background:var(--bg2);padding:.55rem .7rem;max-height:45%;overflow:auto}
@@ -263,18 +265,18 @@ pre.out:empty::before{content:attr(data-empty);color:var(--mut)}
 .triagetitle{font-weight:700}
 .triage-aiopt{display:flex;align-items:center;gap:.3rem;font-size:.85em;color:var(--fg)}
 .triagebar .stop{width:auto;margin-top:0;padding:.22rem .6rem}
-.triagelog{margin:.5rem 0 0;padding:.4rem .6rem;background:#fff;border:1px solid var(--line);border-radius:6px;font-size:.8rem;max-height:9rem;overflow:auto;white-space:pre-wrap}
+.triagelog{margin:.5rem 0 0;padding:.4rem .6rem;background:var(--canvas);border:1px solid var(--line);border-radius:6px;font-size:.8rem;max-height:9rem;overflow:auto;white-space:pre-wrap}
 .triagelog[hidden]{display:none}
 .triageresult{margin-top:.5rem;font-size:.88em}
 .triagediag{font-weight:600}
-.triagecat{display:inline-block;background:var(--acc);color:#fff;border-radius:4px;padding:0 .4rem;font-size:.76em;text-transform:uppercase;letter-spacing:.02em;margin-right:.3rem}
+.triagecat{display:inline-block;background:var(--acc);color:var(--on-acc);border-radius:4px;padding:0 .4rem;font-size:.76em;text-transform:uppercase;letter-spacing:.02em;margin-right:.3rem}
 .triagesugg{margin:.3rem 0 0;padding-left:1.1rem}
 .triagefix{margin-top:.5rem;font-weight:600}
-.triagediff{margin:.35rem 0 0;padding:.4rem .6rem;background:#fff;border:1px solid var(--line);border-radius:6px;font-size:.8rem;overflow:auto;white-space:pre;max-height:12rem}
+.triagediff{margin:.35rem 0 0;padding:.4rem .6rem;background:var(--canvas);border:1px solid var(--line);border-radius:6px;font-size:.8rem;overflow:auto;white-space:pre;max-height:12rem}
 .triageactions{display:flex;align-items:center;gap:.6rem;margin-top:.5rem}
 .triageerr{color:var(--ng);font-weight:600;margin-top:.4rem}
 .rephost{flex:1;min-height:0;overflow:auto}
-iframe{width:100%;height:100%;border:1px solid var(--line);border-radius:10px;background:#fff}
+iframe{width:100%;height:100%;border:1px solid var(--line);border-radius:10px;background:var(--canvas)}
 .empty{display:flex;align-items:center;justify-content:center;height:100%;color:var(--mut);text-align:center;padding:1rem}
 .names{color:var(--mut);font-size:.8em;margin-top:.2rem;min-height:1em}
 .names .finfo{color:var(--fg);font-size:1.05em;margin-bottom:.25rem}
@@ -394,7 +396,7 @@ header .cfgname{color:var(--mut);font-size:.82em;max-width:32vw;overflow:hidden;
 .gitsrcrow{display:flex;gap:.5rem}
 .gitsrcrow input{flex:1;background:var(--bg2);border:1px solid var(--line);color:var(--fg);padding:.35rem .55rem;font:inherit;border-radius:8px}
 .gitsrchint{color:var(--mut);font-size:.78em;margin-top:.35rem}
-.gitsrcerr{color:var(--bad,#e5534b);font-size:.8em;margin-top:.35rem;word-break:break-word}
+.gitsrcerr{color:var(--ng);font-size:.8em;margin-top:.35rem;word-break:break-word}
 /* View-config modal (BE-0063): a structured key/value tree (or the raw YAML), plus Git provenance. */
 .cfgviewbox{width:min(760px,94vw)}
 .cfgviewtoggle{margin-left:auto;display:flex;gap:.25rem;background:var(--bg2);border:1px solid var(--line);border-radius:8px;padding:2px}
@@ -502,13 +504,13 @@ header .cfgname{color:var(--mut);font-size:.82em;max-width:32vw;overflow:hidden;
 .modetab:hover{color:var(--fg)}
 .modetab.active{color:var(--on-acc);background:var(--acc);border-color:var(--acc)}
 .au-screen-wrap{position:relative;display:flex;flex-direction:column;align-items:center;gap:.5em}
-.au-screenshot{max-width:100%;max-height:70vh;cursor:crosshair;border:1px solid var(--border);border-radius:6px}
-.au-placeholder{padding:2em;text-align:center;color:var(--muted);font-size:.9em}
+.au-screenshot{max-width:100%;max-height:70vh;cursor:crosshair;border:1px solid var(--line);border-radius:6px}
+.au-placeholder{padding:2em;text-align:center;color:var(--mut);font-size:.9em}
 .au-feedback{display:flex;gap:.5em;align-items:center;font-size:.85em}
 .au-rung{padding:2px 8px;border-radius:4px;font-weight:600;font-size:.8em}
-.rung-id{background:#2a6;color:#fff}
-.rung-label{background:#da3;color:#fff}
-.rung-label\+index{background:#c73;color:#fff}
+.rung-id{background:var(--rung-id);color:var(--on-rung)}
+.rung-label{background:var(--rung-label);color:var(--on-rung)}
+.rung-label\+index{background:var(--rung-labelidx);color:var(--on-rung)}
 .au-btnrow{display:flex;gap:.5em;margin-bottom:.5em}
 /* Mode-group visibility: the [hidden] attribute must beat the display rules above, so make it explicit. */
 .au-cap[hidden],.au-edit[hidden],.au-enrich[hidden],.au-loadrow[hidden]{display:none}
@@ -518,20 +520,20 @@ header .cfgname{color:var(--mut);font-size:.82em;max-width:32vw;overflow:hidden;
 .au-steplist{margin:0;padding:0 0 0 1.4em;font-size:.85em;font-family:var(--mono)}
 .au-steplist li{padding:2px 0;cursor:pointer;border-radius:3px}
 .au-steplist li:hover{background:var(--bg2)}
-.au-steplist li.active{background:var(--accent);color:#fff}
+.au-steplist li.active{background:var(--acc);color:var(--on-acc)}
 .au-steps-card{margin-top:.5em}
 .au-screen-card{display:flex;flex-direction:column}
 /* Enrichment panel (BE-0014) */
-.enrich-panel{border-top:1px solid var(--border);margin-top:.5em;padding-top:.5em}
+.enrich-panel{border-top:1px solid var(--line);margin-top:.5em;padding-top:.5em}
 .enrich-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:.4em}
 .enrich-head .ttl{font-weight:600;font-size:.85em}
 .enrich-actions{display:flex;gap:.3em}
-.enrich-accept{background:var(--ok)!important;color:#fff!important}
-.enrich-dismiss{background:var(--muted)!important;color:#fff!important}
-.enrich-note{font-size:.8em;color:var(--muted);margin-bottom:.4em;font-style:italic}
+.enrich-accept{background:var(--ok)!important;color:var(--on-ok)!important}
+.enrich-dismiss{background:var(--mut)!important;color:var(--on-mut)!important}
+.enrich-note{font-size:.8em;color:var(--mut);margin-bottom:.4em;font-style:italic}
 .enrich-list{margin:0;padding:0 0 0 1.2em;font-size:.85em;font-family:var(--mono)}
 .enrich-list li{padding:2px 0}
-.enrich-list .enrich-check{color:var(--accent);font-weight:600;margin-right:.3em}
+.enrich-list .enrich-check{color:var(--acc);font-weight:600;margin-right:.3em}
 /* codegen (BE-0137): the emit selector + action buttons cluster right, next to Save. */
 .yamlhead .yaml-actions{margin-left:auto;display:flex;align-items:center;gap:.4em}
 .yamlhead .yaml-actions .savebtn{margin-left:0}
@@ -542,7 +544,7 @@ header .cfgname{color:var(--mut);font-size:.82em;max-width:32vw;overflow:hidden;
 /* coverage (BE-0146): the target / run-set / compute control row above the rendered map. */
 .covctl{display:flex;gap:1em;align-items:flex-end;flex-wrap:wrap;margin:.8em 0}
 .covctl label{display:flex;flex-direction:column;gap:.25em;font-size:.85em}
-.covctl .subhint{font-size:.75em;color:var(--muted)}
+.covctl .subhint{font-size:.75em;color:var(--mut)}
 /* Replay codegen action row: emit selector + Generate button below the run output. */
 .codegen-bar{display:flex;align-items:center;gap:.4em;margin-top:.5em}
 .codegen-bar .savebtn{background:var(--acc);color:var(--on-acc);border:0;border-radius:6px;font-weight:700;padding:.35rem .8rem;font-size:.85em;cursor:pointer}

@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0191](BE-0191-pluggable-theme-system-serve-ui.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0191") |
+| Implementing PR | [#826](https://github.com/bajutsu-e2e/bajutsu/pull/826) |
 | Topic | Authoring experience (record / GUI editor) |
 <!-- /BE-METADATA -->
 
@@ -224,12 +225,21 @@ filesystem, building directly on the token contract of unit 1.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] 1. Complete the design-token contract (fix `--accent`/`--muted`/`--bad` drift; route raw hex through tokens; document the contract; define fallback).
+- [x] 1. Complete the design-token contract (fix `--accent`/`--muted`/`--bad` drift; route raw hex through tokens; document the contract; define fallback).
 - [ ] 2. Pluggable theme discovery and registration (`--themes` flag, `ui.default_theme`, declarative theme + manifest, startup scan folded into the cached render).
 - [ ] 3. Theme picker UI (header dropdown replacing the binary toggle, persistence + pre-paint seeding, `data-testid` convention, tiler-safe placement).
 - [ ] 4. Swappable, theme-defined transitions (semantic state classes + `--transition-*` tokens across the four surfaces; tiler `rebuild()` refactor; `prefers-reduced-motion` collapse).
 - [ ] 5. Determinism and dogfood alignment (reduced-motion guarantees condition-wait safety; update `demos/serve-ui/scenarios/theme.yaml` for the picker).
 - [ ] 6. In-UI theme editor, live preview, and upload / export (contract-derived form, client-side live preview, local-draft + upload persistence tiers reusing the BE-0073 upload seam, export/import round-trip).
+
+### Log
+
+- Unit 1 — completed the design-token contract: reconciled the `--accent`/`--muted`/`--bad`/`--border`
+  naming drift onto the canonical `--acc`/`--mut`/`--ng`/`--line` tokens, routed every raw hex literal
+  in `serve.css` through a token (adding `--canvas`, `--on-ok`, `--on-ng`, `--on-mut`, `--on-rung`, and
+  the `--rung-*` legend tokens; defined the previously-undefined `--mono` global), documented the token
+  contract inline in `serve.themes.css`, and made `:root` (midnight) the fallback source so a partial
+  theme degrades gracefully. Added `tests/serve/test_theme_tokens.py` to guard the invariant. ([#826](https://github.com/bajutsu-e2e/bajutsu/pull/826))
 
 ## References
 
