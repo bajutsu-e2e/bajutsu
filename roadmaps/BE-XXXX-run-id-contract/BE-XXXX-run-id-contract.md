@@ -23,10 +23,11 @@ constant) and points the mint and consumer sites at it.
 
 ## Motivation
 
-The timestamp format is a cross-surface contract with three independent consumers:
+The timestamp format is a cross-surface contract with multiple independent consumers:
 
 - `serve/jobs.py:47` regex-parses run ids back out of CLI output,
-- `serve/helpers.py` (`valid_run_id`) validates ids at the API boundary,
+- `bajutsu/report/ctrf.py` parses the `YYYYmmdd-HHMMSS` shape to derive a UTC run start time,
+- `serve/helpers.py` (`valid_run_id`) is a path-safety check (safe single segment), not a timestamp-format validator,
 - the Web UI sorts run history lexicographically, which is chronological *only because* ids are
   zero-padded UTC timestamps in this exact shape.
 
