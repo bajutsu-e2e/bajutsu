@@ -11,10 +11,9 @@ from collections.abc import Callable
 
 from bajutsu.agent import EnrichmentAgent, EnrichmentProposal, StepContext
 from bajutsu.drivers import base
-from bajutsu.elements import shows_app_ui
-from bajutsu.orchestrator import BlockedHandler, Clock, RealClock, _action_of, _do_action, _wait
-from bajutsu.record import _screenshot_bytes
-from bajutsu.scenario import Scenario, Step
+from bajutsu.orchestrator import BlockedHandler, Clock, RealClock
+from bajutsu.record import _clear_blocking, _execute, _screenshot_bytes
+from bajutsu.scenario import Scenario
 
 Reporter = Callable[[str], None]
 
@@ -23,36 +22,12 @@ class _ReplayFailed(Exception):
     """A step could not be replayed (wait timeout, selector miss, unsupported action, …)."""
 
 
-def _execute_step(driver: base.Driver, step: Step, clock: Clock) -> None:
-    kind = _action_of(step)
-    if kind == "wait":
-        assert step.wait is not None
-        ok, reason = _wait(driver, step.wait, clock)
-        if not ok:
-            raise _ReplayFailed(reason)
-    elif kind == "assert_":
-        return
-    else:
-        _do_action(driver, step)
+def _raise_on_wait_failure(reason: str) -> None:
+    """Wait-failure hook for the shared step executor: a timed-out wait stops the replay.
 
-
-def _clear_blocking(
-    driver: base.Driver,
-    guard: BlockedHandler,
-    clock: Clock,
-    max_tries: int = 3,
-    report: Reporter | None = None,
-) -> None:
-    say = report or (lambda _msg: None)
-    announced = False
-    for _ in range(max_tries):
-        if shows_app_ui(driver.query()):
-            break
-        if not announced:
-            say("⚠️  screen blocked by a system prompt — asking the alert guard to clear it …")
-            announced = True
-        guard(driver)
-        clock.sleep(0.5)
+    Unlike `record`, `enrich` observes each step's settled screen to propose assertions, so a
+    step it cannot settle is a hard failure rather than something to record forward past."""
+    raise _ReplayFailed(reason)
 
 
 def enrich(
@@ -78,7 +53,7 @@ def enrich(
 
         say(f"[{i}/{len(scenario.steps)}] replaying step …")
         try:
-            _execute_step(driver, step, clock)
+            _execute(driver, step, clock, on_wait_failure=_raise_on_wait_failure)
         except (
             base.SelectorError,
             base.UnsupportedAction,

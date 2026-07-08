@@ -14,6 +14,7 @@ from bajutsu.drivers.fake import FakeDriver
 from bajutsu.elements import shows_app_ui
 from bajutsu.handoff import HandoffRequest, HandoffResponse, HumanHandoffUnavailable
 from bajutsu.record import (
+    _execute,
     _format_elapsed,
     _is_looping,
     _screenshot_bytes,
@@ -536,6 +537,58 @@ def test_shows_app_ui_recognizes_label_only_screen() -> None:
 class _NoSleep:
     def sleep(self, _seconds: float) -> None:
         return None
+
+
+class _AdvancingClock:
+    """A logical clock that advances on sleep, so a condition wait reaches its deadline fast."""
+
+    def __init__(self) -> None:
+        self._t = 0.0
+
+    def now(self) -> float:
+        return self._t
+
+    def sleep(self, seconds: float) -> None:
+        self._t += seconds
+
+
+# ---------------------------------------------------------------------------
+# Shared step executor (BE-0201): record ignores a wait failure; enrich's hook raises.
+# ---------------------------------------------------------------------------
+
+
+def test_execute_ignores_a_wait_failure_by_default() -> None:
+    """record replays a timed-out wait as a no-op: no hook, so it records forward."""
+    driver = FakeDriver([_el("a", "A")])  # target never appears
+    step = Step.model_validate({"wait": {"for": {"id": "missing"}, "timeout": 0.1}})
+
+    _execute(driver, step, _AdvancingClock())  # must not raise
+
+
+def test_execute_invokes_the_wait_failure_hook_with_the_reason() -> None:
+    """enrich passes a hook so a wait it cannot settle stops the replay; the reason is forwarded."""
+    driver = FakeDriver([_el("a", "A")])  # target never appears
+    step = Step.model_validate({"wait": {"for": {"id": "missing"}, "timeout": 0.1}})
+
+    seen: list[str] = []
+    _execute(driver, step, _AdvancingClock(), on_wait_failure=seen.append)
+
+    assert seen and "timeout" in seen[0].lower()
+
+
+def test_execute_does_not_call_the_hook_when_the_wait_succeeds() -> None:
+    """A wait whose target is present settles without touching the failure hook."""
+    driver = FakeDriver([_el("here", "Here")])
+    step = Step.model_validate({"wait": {"for": {"id": "here"}, "timeout": 0.1}})
+
+    called = {"n": 0}
+
+    def hook(_reason: str) -> None:
+        called["n"] += 1
+
+    _execute(driver, step, _AdvancingClock(), on_wait_failure=hook)
+
+    assert called["n"] == 0
 
 
 def test_alert_guard_activity_is_reported() -> None:
