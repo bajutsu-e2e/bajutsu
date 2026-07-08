@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0007") |
-| Implementing PR | [#658](https://github.com/bajutsu-e2e/bajutsu/pull/658) |
+| Implementing PR | [#658](https://github.com/bajutsu-e2e/bajutsu/pull/658), [#821](https://github.com/bajutsu-e2e/bajutsu/pull/821) |
 | Topic | Platform expansion (Android / Web / Flutter) |
 <!-- /BE-METADATA -->
 
@@ -182,7 +182,8 @@ the **lean** end of `capabilities()`.
 
 Log:
 
-- 2026-07-08 — Interval evidence slice (Unit 4, the evidence half). `video` now records via `adb
+- 2026-07-08 ([#821](https://github.com/bajutsu-e2e/bajutsu/pull/821)) — Interval evidence slice
+  (Unit 4, the evidence half). `video` now records via `adb
   shell screenrecord` and `deviceLog` via `adb logcat`, the twins of the simctl providers
   (`bajutsu/adb.py` command builders + `start_screenrecord` / `start_logcat` in `bajutsu/intervals.py`).
   `screenrecord` records device-side, so its `Interval` finalizes on SIGINT then pulls the mp4 off
