@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-server-storage-gcs-support-ja.md)
+**English** · [日本語](BE-0204-server-storage-gcs-support-ja.md)
 
-# BE-XXXX — GCS support for server-side object storage
+# BE-0204 — GCS support for server-side object storage
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-server-storage-gcs-support.md) |
+| Proposal | [BE-0204](BE-0204-server-storage-gcs-support.md) |
 | Author | [@paihu](https://github.com/paihu) |
 | Status | **Proposal** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0204") |
 | Topic | Hosting the web UI (cloud / self-hosted) |
 | Related | [BE-0015](../BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md), [BE-0016](../BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md), [BE-0110](../BE-0110-evidence-store-uri/BE-0110-evidence-store-uri.md) |
 <!-- /BE-METADATA -->
