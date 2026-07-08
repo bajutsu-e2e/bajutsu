@@ -251,11 +251,12 @@ Log:
 
 ## References
 
-- Claude Code's built-in `code-review` skill (`--comment` posts inline PR comments) — the reviewer
-  this workflow invokes. It is a built-in skill, not defined under
-  [`.claude/skills`](../../.claude/skills) (which holds only this repo's own skills); the repo's
-  [`implement-be`](../../.claude/skills/implement-be/SKILL.md) already uses it author-side (its
-  review step, with the lenses and pr-review-toolkit) — the pass this item complements and reuses.
+- Claude Code's built-in `code-review` skill — the author-side review pass this item complements.
+  It is a built-in skill, not defined under [`.claude/skills`](../../.claude/skills) (which holds
+  only this repo's own skills); the repo's [`implement-be`](../../.claude/skills/implement-be/SKILL.md)
+  already uses it author-side (its review step, with the lenses and pr-review-toolkit). The CI
+  workflow does **not** invoke that skill directly — it posts inline findings via the action's
+  native `mcp__github_inline_comment__create_inline_comment` tool against the same repo contract.
 - [`docs/ai-development.md`](../../docs/ai-development.md) — the *Responding to PR review comments*
   rules (already naming AI reviewers) this item updates, and the required-status-check /
   admin-state constraints it mirrors.
