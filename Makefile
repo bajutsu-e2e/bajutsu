@@ -126,16 +126,22 @@ lint-actions:
 # BE-0129: a proportionate guardrail for the serve Web UI's vanilla JS. Since BE-0202 that is the
 # section files bajutsu/templates/serve.*.js (~2.5k lines total, no build step), concatenated at
 # serve time. `node --check` catches syntax errors and runs wherever Node is present (including CI
-# runners) — one file at a time, so we loop over the section files; the flat-config eslint
-# (eslint.config.mjs) adds a few structural checks and runs only when eslint is already resolvable,
-# so the gate never downloads it. Node absence skips with a notice — the same pattern lint-actions
-# uses for actionlint — so `check` runs anywhere.
+# runners) — one file at a time, so we loop over the section files. We also `node --check` the
+# concatenation, because the files share one global scope once inlined: a cross-file duplicate
+# top-level `const`/`let` is a SyntaxError only in the combined script, invisible to the per-file
+# pass. The glob auto-includes any new section file; syntax checking is order-independent (each file
+# ends in a newline, so boundaries are ASI-safe as handler.py's "\n".join makes them). The flat-config
+# eslint (eslint.config.mjs) adds a few structural checks and runs only when eslint is already
+# resolvable, so the gate never downloads it. Node absence skips with a notice — the same pattern
+# lint-actions uses for actionlint — so `check` runs anywhere.
 lint-js:
 	@set -e; \
 	if ! command -v node >/dev/null 2>&1; then \
 		echo "lint-js: node not installed — skipping (CI enforces it)"; \
 	else \
 		for f in bajutsu/templates/serve.*.js; do node --check "$$f"; done; \
+		dir="$$(mktemp -d)"; trap 'rm -rf "$$dir"' EXIT; \
+		cat bajutsu/templates/serve.*.js > "$$dir/concat.js"; node --check "$$dir/concat.js"; \
 		if npx --no-install eslint --version >/dev/null 2>&1; then \
 			npx --no-install eslint 'bajutsu/templates/serve.*.js'; \
 		else \
