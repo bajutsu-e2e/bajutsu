@@ -32,7 +32,8 @@ raises `ValueError`.
 
 Beyond the copy itself, the drift the duplication invites is already visible. The CLI's check
 assembly merges xcuitest and idb runnability and adds the idb version-pin check
-(`cli/commands/doctor.py:107-123`); the serve panel (`serve/operations/doctor.py:86-100`) has
+(`bajutsu/cli/commands/doctor.py:104-121`); the serve panel
+(`bajutsu/serve/operations/doctor.py:86-100`) has
 neither, so the Web UI's doctor silently reports less than the CLI's for the same target. A
 shared probe (and a shared check assembly where the surfaces agree) is exactly the fix that
 prevents the next divergence.

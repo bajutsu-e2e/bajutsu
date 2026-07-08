@@ -30,8 +30,9 @@ serve 側は `state.simctl` を渡し、`fake` バックエンドを扱い、カ
 使います。`baseUrl` 欠落時には CLI が `typer.Exit` を、serve が `ValueError` を送出します。
 
 複製そのものに加えて、複製が招くずれもすでに現れています。CLI 側の検査の組み立ては xcuitest と
-idb の実行可否を統合し、idb のバージョンピン検査を加えています（`cli/commands/doctor.py:107-123`）。
-serve のパネル（`serve/operations/doctor.py:86-100`）にはどちらもないため、同じターゲットに
+idb の実行可否を統合し、idb のバージョンピン検査を加えています
+（`bajutsu/cli/commands/doctor.py:104-121`）。
+serve のパネル（`bajutsu/serve/operations/doctor.py:86-100`）にはどちらもないため、同じターゲットに
 対して Web UI の doctor は CLI より少ない検査結果を静かに返します。共有プローブ（と、両面で
 一致してよい範囲の共有された検査の組み立て）は、次の分岐を防ぐ手当てそのものです。
 
