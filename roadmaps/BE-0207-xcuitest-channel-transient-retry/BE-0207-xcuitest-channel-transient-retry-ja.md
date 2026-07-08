@@ -7,8 +7,9 @@
 |---|---|
 | 提案 | [BE-0207](BE-0207-xcuitest-channel-transient-retry-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **提案** |
+| 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0207") |
+| 実装 PR | _pending_ |
 | トピック | 実機検証（M1 クローズアウト） |
 <!-- /BE-METADATA -->
 
@@ -101,11 +102,22 @@ XcuitestChannelError: runner channel GET /screenshot failed: timed out
 > 作業分解（作業の単位ごとに 1 つ）に対応し、ログには変更内容と時期（古い順）を PR へのリンクと
 > ともに記録します。
 
-- [ ] 失敗の分類（接続か応答か、読み取りか書き込みかの冪等性）を定義する
-- [ ] 分類に従う上限つきリトライとバックオフを `_http_transport` に加える
-- [ ] 1 試行あたりのソケットタイムアウトは上限つきのまま、リトライのつまみを隣に名前づける
-- [ ] リトライの診断をログに出す（決して黙らない）
-- [ ] トランスポート方針の実機なしユニットテスト（一過性の後に成功、配送後の書き込み、使い切り、アウトカムは非リトライ）
+- [x] 失敗の分類（接続か応答か、読み取りか書き込みかの冪等性）を定義する
+- [x] 分類に従う上限つきリトライとバックオフを `_http_transport` に加える
+- [x] 1 試行あたりのソケットタイムアウトは上限つきのまま、リトライのつまみを隣に名前づける
+- [x] リトライの診断をログに出す（決して黙らない）
+- [x] トランスポート方針の実機なしユニットテスト（一過性の後に成功、配送後の書き込み、使い切り、アウトカムは非リトライ）
+
+### ログ
+
+- _pending_ — `_http_transport` を、単発試行の `_raw_http_transport`（失敗ごとに `delivered`
+  フラグを付与）と、リトライ対象の `_TransportFailure` だけを再送する `_with_retry` ラッパに
+  分割しました。`_is_retry_eligible` は、リクエストがランナーに届いていなければどのメソッドでも、
+  届いた後は冪等な `GET` の読み取りに限って再送を許可します。再送は `_MAX_ATTEMPTS` を上限とし、
+  `_BACKOFF_BASE_SECONDS` の指数バックオフを挟み、リトライごとにログを残し、使い切ったときは
+  従来と同じ `XcuitestChannelError` を送出します。デコード済みの `stale` / `not-found` は
+  `_Reply` であってリトライされません。フェイクのトランスポートに対する実機なしユニットテストで
+  検証しています。
 
 ## 参考
 

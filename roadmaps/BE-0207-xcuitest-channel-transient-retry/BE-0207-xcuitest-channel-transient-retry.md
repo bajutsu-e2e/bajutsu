@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0207](BE-0207-xcuitest-channel-transient-retry.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0207") |
+| Implementing PR | _pending_ |
 | Topic | On-device validation (M1 close-out) |
 <!-- /BE-METADATA -->
 
@@ -99,11 +100,21 @@ recoverable transport blip masquerade as one.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Failure classification (connect-vs-response, read-vs-write idempotency) defined
-- [ ] Bounded retry + backoff added to `_http_transport`, respecting the classification
-- [ ] Per-attempt socket timeout kept bounded; retry knobs named beside it
-- [ ] Retry diagnostic logged (never silent)
-- [ ] Off-device unit tests for the transport policy (transient-then-success, write-after-delivery, exhaustion, never-retry-outcomes)
+- [x] Failure classification (connect-vs-response, read-vs-write idempotency) defined
+- [x] Bounded retry + backoff added to `_http_transport`, respecting the classification
+- [x] Per-attempt socket timeout kept bounded; retry knobs named beside it
+- [x] Retry diagnostic logged (never silent)
+- [x] Off-device unit tests for the transport policy (transient-then-success, write-after-delivery, exhaustion, never-retry-outcomes)
+
+### Log
+
+- _pending_ — Split `_http_transport` into a single-attempt `_raw_http_transport` (tagging each
+  failure with a `delivered` flag) and a `_with_retry` wrapper that re-issues only retry-eligible
+  `_TransportFailure`s (`_is_retry_eligible`: any method when the request never reached the runner,
+  idempotent `GET` reads once delivered), bounded by `_MAX_ATTEMPTS` with `_BACKOFF_BASE_SECONDS`
+  exponential backoff, logging each retry and raising the same `XcuitestChannelError` on exhaustion.
+  Decoded `stale` / `not-found` outcomes are `_Reply`s, never retried. Covered by off-device unit
+  tests against a fake transport.
 
 ## References
 

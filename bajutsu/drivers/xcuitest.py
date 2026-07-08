@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import http.client
 import json
+import logging
 import time
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
@@ -68,6 +69,13 @@ _NOT_FOUND = "not-found"  # the runner could not act on the handle (no matching 
 # wedged runner fails loudly rather than hanging.
 _SOCKET_TIMEOUT_SECONDS = 15
 
+# Bounded retry for a *transient* transport hiccup (BE-0207), beside the per-attempt window above:
+# `_SOCKET_TIMEOUT_SECONDS` still bounds each single attempt (a wedged runner fails fast per try),
+# and these bound how many times a recoverable blip is re-issued before the loud failure. Kept small
+# so a genuinely wedged runner is not retried for an unbounded stretch.
+_MAX_ATTEMPTS = 3
+_BACKOFF_BASE_SECONDS = 0.5  # exponential per retry: 0.5s, 1.0s, … between attempts
+
 
 def _to_element(item: Mapping[str, Any]) -> base.Element:
     """Normalize one `GET /elements` item into an `Element`.
@@ -103,25 +111,103 @@ def _decode(path: str, status_code: int, body: bytes) -> _Reply:
     return _Reply(status=str(status), elements=elements)
 
 
-def _http_transport(host: str, port: int) -> TransportFn:
-    """The real transport: one short HTTP request to the runner's loopback server per call."""
+class _TransportFailure(Exception):
+    """A transport-level failure from one channel attempt, tagged with whether the request reached the runner.
+
+    Internal to the retry seam (BE-0207): `_with_retry` reads `delivered` to decide whether re-issuing
+    the call could double-apply a side-effecting write. It never escapes the module — an exhausted or
+    retry-ineligible failure is turned into the caller-facing `XcuitestChannelError`.
+    """
+
+    def __init__(self, message: str, *, delivered: bool) -> None:
+        super().__init__(message)
+        self.delivered = delivered
+
+
+def _is_retry_eligible(method: str, *, delivered: bool) -> bool:
+    """Whether a failed attempt is safe to re-issue (BE-0207).
+
+    A failure before the request reached the runner is safe for any method — the runner never acted.
+    Once the request was delivered, only idempotent reads may be retried; re-sending a side-effecting
+    write after a response timeout could double-apply the action. Idempotency is keyed on the HTTP
+    method: the runner's channel is REST-shaped, so every read is a `GET` (`/elements`, `/screenshot`,
+    `/health`) and every actuation a `POST` — and the conservative direction is safe, since a request
+    wrongly judged non-idempotent merely fails loudly instead of risking a double actuation.
+    """
+    return not delivered or method == "GET"
+
+
+def _with_retry(inner: TransportFn, *, sleep: Callable[[float], None] = time.sleep) -> TransportFn:
+    """Wrap *inner* with a bounded retry + exponential backoff over transient transport failures.
+
+    Only a `_TransportFailure` is retried, and only when `_is_retry_eligible`; a decoded outcome
+    (`stale` / `not-found`) is a `_Reply`, never an exception, so it is returned untouched and never
+    retried — retrying an outcome would be the flakiness-by-absorption BE-0049 rejects. On exhaustion
+    the loud `XcuitestChannelError` is raised, so the deterministic verdict is preserved: only a
+    recoverable blip is absorbed. Each retry is logged, so a retried-then-passed run stays visible.
+    """
+    logger = logging.getLogger("bajutsu.xcuitest.channel")
+
+    def transport(method: str, path: str, body: Mapping[str, Any] | None) -> _Reply:
+        for attempt in range(1, _MAX_ATTEMPTS + 1):
+            try:
+                return inner(method, path, body)
+            except _TransportFailure as exc:
+                if attempt == _MAX_ATTEMPTS or not _is_retry_eligible(
+                    method, delivered=exc.delivered
+                ):
+                    raise XcuitestChannelError(
+                        f"runner channel {method} {path} failed: {exc}"
+                    ) from exc
+                logger.warning(
+                    "runner channel %s %s failed (attempt %d/%d), retrying: %s",
+                    method,
+                    path,
+                    attempt,
+                    _MAX_ATTEMPTS,
+                    exc,
+                )
+                sleep(_BACKOFF_BASE_SECONDS * 2 ** (attempt - 1))
+        raise AssertionError(  # pragma: no cover - the loop returns or raises on every iteration
+            "unreachable: the retry loop returns on success or raises on the final attempt"
+        )
+
+    return transport
+
+
+def _raw_http_transport(host: str, port: int) -> TransportFn:
+    """One HTTP attempt to the runner's loopback server, tagging failures for the retry seam (BE-0207).
+
+    A failure while connecting or sending means the request never reached the runner (`delivered`
+    stays `False`); a failure while reading the response means it may have acted (`delivered` is
+    `True`) — `_with_retry` uses that split to decide what is safe to re-issue.
+    """
 
     def transport(method: str, path: str, body: Mapping[str, Any] | None) -> _Reply:
         # One `app.snapshot()` per `/elements` (BE-0105), so the bounded `_SOCKET_TIMEOUT_SECONDS`
         # still covers a cold first snapshot while failing a wedged runner in a reasonable window.
         conn = http.client.HTTPConnection(host, port, timeout=_SOCKET_TIMEOUT_SECONDS)
+        delivered = False
         try:  # pragma: no cover - exercised on-device against the real runner, not on the gate
             payload = json.dumps(body).encode() if body is not None else None
             headers = {"Content-Type": "application/json"} if payload is not None else {}
             conn.request(method, path, body=payload, headers=headers)
+            delivered = (
+                True  # the request is on the wire; a later failure is a response-side timeout
+            )
             resp = conn.getresponse()
             return _decode(path, resp.status, resp.read())
         except OSError as exc:  # pragma: no cover - see above
-            raise XcuitestChannelError(f"runner channel {method} {path} failed: {exc}") from exc
+            raise _TransportFailure(str(exc), delivered=delivered) from exc
         finally:
             conn.close()
 
     return transport
+
+
+def _http_transport(host: str, port: int) -> TransportFn:
+    """The real transport: a bounded-retry channel to the runner's loopback server (BE-0207)."""
+    return _with_retry(_raw_http_transport(host, port))
 
 
 class XcuitestDriver:
