@@ -42,12 +42,14 @@ permissions:
   pull-requests: write
   id-token: write
 
-# Mirror ci.yml: a rapid push sequence supersedes a stale review instead of stacking several. Keyed
-# on the PR/issue number (github.ref points at the wrong thing on comment events), falling back to
-# the ref only when neither is present.
+# A rapid push sequence supersedes a stale review instead of stacking several — but ONLY pushes
+# cancel: the group is split by event type, and cancel-in-progress is true only for `pull_request`.
+# Otherwise a comment posted mid-review (a bot reply, a reviewer note, even `@claude review` itself)
+# would land in the same group and cancel the running auto-review, surfacing a red "cancelled" check.
+# So push events supersede each other (per PR), while comment-triggered runs stay independent.
 concurrency:
-  group: claude-review-${{ github.event.pull_request.number || github.event.issue.number || github.ref }}
-  cancel-in-progress: true
+  group: claude-review-${{ github.event.pull_request.number || github.event.issue.number || github.ref }}-${{ github.event_name }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   # NOTE: this job's name is intentionally NOT listed in main's required_status_checks — the review

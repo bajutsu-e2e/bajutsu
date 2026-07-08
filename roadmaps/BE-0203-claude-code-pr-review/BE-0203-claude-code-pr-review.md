@@ -235,6 +235,11 @@ Log:
   (`.github/claude-review-prompt.md`) is unchanged and still reused — only the posting mechanism
   moved off the gh-based skill. Verified on a live run: OAuth (subscription) auth succeeds and the
   review posts.
+- Fixed a concurrency flaw the live runs exposed: with one shared group and `cancel-in-progress:
+  true`, a comment posted mid-review (a bot reply, a reviewer note) cancelled the running auto-review
+  and surfaced a red "cancelled" check. The group is now split by event type and only `pull_request`
+  events cancel-in-progress, so pushes still supersede each other while comment-triggered runs stay
+  independent.
 
 ## References
 
