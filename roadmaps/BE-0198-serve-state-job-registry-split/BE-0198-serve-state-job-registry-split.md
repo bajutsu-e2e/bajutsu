@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0198](BE-0198-serve-state-job-registry-split.md) |
 | Author | [@hirosassa](https://github.com/hirosassa) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0198") |
+| Implementing PR | [#812](https://github.com/bajutsu-e2e/bajutsu/pull/812) |
 | Topic | Codebase quality & technical debt |
 <!-- /BE-METADATA -->
 
@@ -134,13 +135,26 @@ first, and doing it alone keeps the PR reviewable.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Introduce a `JobRegistry` type owning `jobs` / the id sequence / its own lock, exposing
+- [x] Introduce a `JobRegistry` type owning `jobs` / the id sequence / its own lock, exposing
       `register` / `try_register` / `active_jobs` / `in_flight_by_org`
-- [ ] Decide and apply where the concurrency caps live (per-call vs. registry construction)
-- [ ] Hold a `JobRegistry` on `ServeState` and route the call sites through it consistently
+- [x] Decide and apply where the concurrency caps live (per-call vs. registry construction)
+- [x] Hold a `JobRegistry` on `ServeState` and route the call sites through it consistently
       (thin delegation or direct access)
-- [ ] Give `provider_settings` its own named lock, freeing `_lock` from guarding two concerns
-- [ ] Add unit tests for id monotonicity and each concurrency cap directly against `JobRegistry`
+- [x] Give `provider_settings` its own named lock, freeing `_lock` from guarding two concerns
+- [x] Add unit tests for id monotonicity and each concurrency cap directly against `JobRegistry`
+
+### Log
+
+- Extracted `JobRegistry` from `ServeState` in `bajutsu/serve/jobs.py`: the new type owns `jobs`,
+  the id sequence, and its own lock, and exposes `register` / `try_register` / `active_jobs` /
+  `in_flight_by_org`, with the atomic count-then-insert invariant enforced at its boundary. The
+  concurrency caps stay on `ServeState` (config it already owns and `/metrics` reads) and are passed
+  into `try_register` per call, so the registry is a pure mechanism. `ServeState` holds the registry,
+  forwards the four methods, and exposes `jobs` as a read-through so existing lookups are unchanged;
+  the former shared `_lock` is renamed `_provider_lock` now that it guards only `provider_settings`.
+  Added unit tests exercising the registry directly (id monotonicity, the register-twice guard, and
+  each cap) without standing up a full `ServeState`. Behavior-preserving; `serve` stays outside the
+  deterministic gate.
 
 ## References
 

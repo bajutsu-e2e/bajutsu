@@ -172,6 +172,80 @@ class CaptureSession:
 
 
 @dataclass
+class JobRegistry:
+    """The control-plane job registry (BE-0198): the in-flight ``jobs`` dict, the monotonic id
+    sequence, and the concurrency-cap enforcement, carved out of `ServeState` so the atomic
+    "count-then-insert under one lock" invariant is expressed by this type's boundary rather than by
+    prose on a docstring of the shared state. The registry is the sole owner of the id counter and of
+    its own lock; ``logbus`` — the live-log channel wired onto each registered job (BE-0015) — is its
+    only external dependency. The concurrency caps are configuration, not registry state, so
+    `try_register` receives them per call rather than holding them."""
+
+    logbus: LogBus
+    jobs: dict[str, Job] = field(default_factory=dict)
+    _seq: int = 0
+    _lock: threading.Lock = field(default_factory=threading.Lock)
+
+    def active_jobs(self) -> int:
+        """How many spawned jobs are still running (not yet finished)."""
+        with self._lock:
+            return sum(1 for j in self.jobs.values() if j.status == "running")
+
+    def in_flight_by_org(self) -> dict[str, int]:
+        """Running jobs grouped by org, for the ``/metrics`` endpoint (BE-0169). Counted under the
+        lock, like `active_jobs`, so a concurrent register/finish can't corrupt the snapshot."""
+        with self._lock:
+            return dict(Counter(j.org for j in self.jobs.values() if j.status == "running"))
+
+    def register(self, job: Job) -> Job:
+        with self._lock:
+            return self._register(job)
+
+    def try_register(
+        self,
+        job: Job,
+        *,
+        max_concurrent: int = 0,
+        max_concurrent_per_user: int = 0,
+        max_concurrent_per_org: int = 0,
+    ) -> Job | None:
+        """Register *job* only if under the concurrency caps, counting and inserting atomically under
+        the lock so two concurrent dispatches can't both slip past a cap (BE-0051). Returns None at
+        the global cap, at the per-user cap for an identified ``job.actor`` (BE-0015 7c-3), or at the
+        per-org cap for ``job.org`` (BE-0016 Tier B pool fairness). Each cap ``<= 0`` is unlimited."""
+        with self._lock:
+            running = [j for j in self.jobs.values() if j.status == "running"]
+            if max_concurrent > 0 and len(running) >= max_concurrent:
+                return None
+            if job.actor and max_concurrent_per_user > 0:
+                mine = sum(1 for j in running if j.actor == job.actor)
+                if mine >= max_concurrent_per_user:
+                    return None
+            if max_concurrent_per_org > 0:
+                same_org = sum(1 for j in running if j.org == job.org)
+                if same_org >= max_concurrent_per_org:
+                    return None
+            return self._register(job)
+
+    def _register(self, job: Job) -> Job:
+        """Assign the job its id + live-log bus and store it. Caller must hold ``self._lock``. The
+        caller builds a fresh `Job` (the dataclass is the single source of truth for its fields), so
+        adding a field never touches this layer. Single-use: registering a job that already has an id
+        is a programming error (it would orphan the earlier ``jobs`` entry)."""
+        if job.id:
+            raise ValueError(f"job {job.id!r} is already registered")
+        self._seq += 1
+        job.id = str(self._seq)
+        job.bus = self.logbus
+        # Don't alias caller-owned collections (preserves the prior new_job semantics): a later edit
+        # to the list/dict the caller passed must not mutate the registered job.
+        job.udids = list(job.udids)
+        job.materials = dict(job.materials)
+        self.jobs[job.id] = job
+        return job
+
+
+@dataclass
 class ServeState:
     runs_dir: Path
     config: Path | None = None  # None until a config is opened from the UI
@@ -246,7 +320,6 @@ class ServeState:
     simctl: _simctl.RunFn = (
         _simctl._real_run
     )  # runs `xcrun simctl …` (booting devices, listing them)
-    jobs: dict[str, Job] = field(default_factory=dict)
     # Cap on concurrently-running run/record jobs so one caller can't monopolize the scarce device
     # (BE-0051). <= 0 means unlimited; serve() sets it from --max-concurrent-runs (default 4).
     max_concurrent: int = 4
@@ -308,8 +381,13 @@ class ServeState:
     # server backend sets both where it wires its per-org object stores.
     object_store: ObjectStore | None = None
     object_store_prefix: str = ""
-    _seq: int = 0
-    _lock: threading.Lock = field(default_factory=threading.Lock)
+    # The job registry (BE-0198): owns the in-flight jobs, the id sequence, and the concurrency-cap
+    # enforcement. Built in __post_init__ once `logbus` is resolved; `ServeState` forwards the
+    # registration/counting surface to it and exposes `jobs` as a read-through of its dict.
+    job_registry: JobRegistry = field(init=False)
+    # Guards the `provider_settings` dict against concurrent Settings-panel reads/writes (serve is a
+    # ThreadingHTTPServer). Named for what it protects — the job registry carries its own lock.
+    _provider_lock: threading.Lock = field(default_factory=threading.Lock)
 
     def __post_init__(self) -> None:
         # serve's own launch directory, captured before any config bind repoints `cwd` at a Git
@@ -325,6 +403,17 @@ class ServeState:
         # The local secret store holds the value in this process's env; the name->env-var mapping is
         # resolved lazily so a config bound later (its `ai.keyEnv`, BE-0097) is reflected.
         self.secrets = EnvSecretStore(self._env_var_for_secret)
+        # `logbus` is resolved by now (a plain field), so the registry can capture it: it is never
+        # reassigned after construction, so the registry's reference stays the live bus.
+        self.job_registry = JobRegistry(logbus=self.logbus)
+
+    @property
+    def jobs(self) -> dict[str, Job]:
+        """The in-flight jobs, read through to the registry (BE-0198). Kept so existing lookups
+        (`state.jobs.get(id)`) read unchanged now that the registry owns the dict. Treat it as
+        read-only: register a job through `register` / `try_register` so its id assignment and cap
+        check run under the registry's lock — inserting here directly bypasses that enforcement."""
+        return self.job_registry.jobs
 
     def org_of(self, actor: str | None) -> str:
         """The org of *actor*, read from their persisted user row (assigned at login). The single
@@ -365,65 +454,37 @@ class ServeState:
         """A shallow copy of the per-provider AI settings, taken under the lock (BE-0183). serve is a
         ThreadingHTTPServer, so a bare `dict(...)` here could race a concurrent `set_provider_setting`
         write and raise "dictionary changed size during iteration"; the lock makes the snapshot safe."""
-        with self._lock:
+        with self._provider_lock:
             return dict(self.provider_settings)
 
     def set_provider_setting(self, name: str, settings: ProviderSettings) -> None:
         """Store one provider's AI settings slot under the lock (BE-0183), so a write can't corrupt a
         concurrent `provider_settings_snapshot` read on another request thread."""
-        with self._lock:
+        with self._provider_lock:
             self.provider_settings[name] = settings
 
     def active_jobs(self) -> int:
-        """How many spawned jobs are still running (not yet finished)."""
-        with self._lock:
-            return sum(1 for j in self.jobs.values() if j.status == "running")
+        """How many spawned jobs are still running (not yet finished). Delegates to the registry."""
+        return self.job_registry.active_jobs()
 
     def in_flight_by_org(self) -> dict[str, int]:
-        """Running jobs grouped by org, for the ``/metrics`` endpoint (BE-0169). Counted under the
-        lock, like `active_jobs`, so a concurrent register/finish can't corrupt the snapshot."""
-        with self._lock:
-            return dict(Counter(j.org for j in self.jobs.values() if j.status == "running"))
-
-    def _register(self, job: Job) -> Job:
-        """Assign the job its id + live-log bus and store it. Caller must hold ``self._lock``. The
-        caller builds a fresh `Job` (the dataclass is the single source of truth for its fields), so
-        adding a field never touches this layer. Single-use: registering a job that already has an id
-        is a programming error (it would orphan the earlier `state.jobs` entry)."""
-        if job.id:
-            raise ValueError(f"job {job.id!r} is already registered")
-        self._seq += 1
-        job.id = str(self._seq)
-        job.bus = self.logbus
-        # Don't alias caller-owned collections (preserves the prior new_job semantics): a later edit
-        # to the list/dict the caller passed must not mutate the registered job.
-        job.udids = list(job.udids)
-        job.materials = dict(job.materials)
-        self.jobs[job.id] = job
-        return job
+        """Running jobs grouped by org, for the ``/metrics`` endpoint (BE-0169). Delegates to the
+        registry."""
+        return self.job_registry.in_flight_by_org()
 
     def register(self, job: Job) -> Job:
-        with self._lock:
-            return self._register(job)
+        """Assign *job* its id + live-log bus and store it. Delegates to the registry (BE-0198)."""
+        return self.job_registry.register(job)
 
     def try_register(self, job: Job) -> Job | None:
-        """Register *job* only if under the concurrency caps, counting and inserting atomically under
-        the lock so two concurrent dispatches can't both slip past a cap (BE-0051). Returns None at
-        the global cap, at the per-user cap for an identified ``job.actor`` (BE-0015 7c-3), or at the
-        per-org cap for ``job.org`` (BE-0016 Tier B pool fairness)."""
-        with self._lock:
-            running = [j for j in self.jobs.values() if j.status == "running"]
-            if self.max_concurrent > 0 and len(running) >= self.max_concurrent:
-                return None
-            if job.actor and self.max_concurrent_per_user > 0:
-                mine = sum(1 for j in running if j.actor == job.actor)
-                if mine >= self.max_concurrent_per_user:
-                    return None
-            if self.max_concurrent_per_org > 0:
-                same_org = sum(1 for j in running if j.org == job.org)
-                if same_org >= self.max_concurrent_per_org:
-                    return None
-            return self._register(job)
+        """Register *job* only if under the concurrency caps, forwarding this state's configured caps
+        to the registry, which counts and inserts atomically under one lock (BE-0051)."""
+        return self.job_registry.try_register(
+            job,
+            max_concurrent=self.max_concurrent,
+            max_concurrent_per_user=self.max_concurrent_per_user,
+            max_concurrent_per_org=self.max_concurrent_per_org,
+        )
 
     def bind_upload(self, upload: Upload) -> None:
         """Make *upload* the active config (BE-0073): release any previously bound bundle's sandbox,

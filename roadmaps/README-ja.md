@@ -282,6 +282,7 @@ Bajutsu の「契約としての決定性」という立場を、Maestro の fla
 | [BE-0143](BE-0143-run-command-decomposition/BE-0143-run-command-decomposition-ja.md) | run コマンドの巨大関数を分解する | 実装済み |
 | [BE-0150](BE-0150-scenario-load-yaml-error-handling/BE-0150-scenario-load-yaml-error-handling-ja.md) | `trace --explain` と `audit` で壊れたシナリオを綺麗に失敗させる | 実装済み |
 | [BE-0172](BE-0172-run-loop-step-decomposition/BE-0172-run-loop-step-decomposition-ja.md) | run 経路のステップループとシナリオ実行関数の分解 | 実装済み |
+| [BE-0198](BE-0198-serve-state-job-registry-split/BE-0198-serve-state-job-registry-split-ja.md) | ServeState から JobRegistry を切り出す | 実装済み |
 <!-- /GENERATED:implemented-quality-debt -->
 
 ### Dogfood フィクスチャ（デモアプリ）
@@ -703,7 +704,6 @@ AI を使う経路（`record` ／ `crawl` ／ `triage --ai` ／ `run --apply`）
 | ID | 項目 | 状態 |
 |---|---|---|
 | [BE-0197](BE-0197-environment-protocol-shape/BE-0197-environment-protocol-shape-ja.md) | 3 つめのプラットフォームに向けて Environment protocol の形をそろえる | 提案 |
-| [BE-0198](BE-0198-serve-state-job-registry-split/BE-0198-serve-state-job-registry-split-ja.md) | ServeState から JobRegistry を切り出す | 提案 |
 | [BE-0199](BE-0199-doctor-screen-probe-dedupe/BE-0199-doctor-screen-probe-dedupe-ja.md) | doctor の画面プローブを CLI と serve で共有する | 提案 |
 | [BE-0200](BE-0200-run-id-contract/BE-0200-run-id-contract-ja.md) | run id のフォーマットを 1 つの名前付き契約にする | 提案 |
 | [BE-0201](BE-0201-record-enrich-shared-replay/BE-0201-record-enrich-shared-replay-ja.md) | record と enrich の重複したリプレイヘルパを統合する | 提案 |
