@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-serve-state-module-split-ja.md)
+**English** · [日本語](BE-0206-serve-state-module-split-ja.md)
 
-# BE-XXXX — Split serve job state from job execution
+# BE-0206 — Split serve job state from job execution
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-serve-state-module-split.md) |
+| Proposal | [BE-0206](BE-0206-serve-state-module-split.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0206") |
 | Topic | Codebase quality & technical debt |
 <!-- /BE-METADATA -->
 

@@ -708,6 +708,7 @@ AI を使う経路（`record` ／ `crawl` ／ `triage --ai` ／ `run --apply`）
 | [BE-0199](BE-0199-doctor-screen-probe-dedupe/BE-0199-doctor-screen-probe-dedupe-ja.md) | doctor の画面プローブを CLI と serve で共有する | 提案 |
 | [BE-0202](BE-0202-serve-js-modularization/BE-0202-serve-js-modularization-ja.md) | serve.js をビルドなしのままセクション別ファイルに分割する | 提案 |
 | [BE-0205](BE-0205-crawl-command-decomposition/BE-0205-crawl-command-decomposition-ja.md) | crawl コマンドを run と同じ形に分解する | 提案 |
+| [BE-0206](BE-0206-serve-state-module-split/BE-0206-serve-state-module-split-ja.md) | serve のジョブ状態をジョブ実行から分離する | 提案 |
 <!-- /GENERATED:proposals-quality-debt -->
 
 ### 外部サービスとの連携
