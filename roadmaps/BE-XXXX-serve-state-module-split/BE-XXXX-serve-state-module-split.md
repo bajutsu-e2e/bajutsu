@@ -14,7 +14,7 @@
 
 ## Introduction
 
-`bajutsu/serve/jobs.py` (763 lines) holds two genuinely distinct concerns: the **serve state
+`bajutsu/serve/jobs.py` (797 lines) holds two genuinely distinct concerns: the **serve state
 container** (`ServeState`, `Job`, `StoreBundle`, `CaptureSession`) that most of the serve package
 reads, and the **job execution engine** (`run_job`, `cancel_job`, spawning, device boot, app
 build) that only three modules touch. This item splits the state half into `bajutsu/serve/state.py`
