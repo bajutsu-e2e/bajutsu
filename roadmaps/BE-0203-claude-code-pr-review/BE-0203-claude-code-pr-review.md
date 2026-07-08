@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0203](BE-0203-claude-code-pr-review.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0203") |
+| Implementing PR | [#807](https://github.com/bajutsu-e2e/bajutsu/pull/807) |
 | Topic | Development infrastructure (contributor workflow) |
 <!-- /BE-METADATA -->
 
@@ -16,11 +17,10 @@
 
 Every pull request to this repository is reviewed automatically by **GitHub Copilot** today —
 it posts inline comments when a PR opens and re-reviews on each push. This item replaces that
-reviewer with **Claude Code**, running Claude Code's built-in `code-review` skill (the same one
-this repo's [`implement-be`](../../.claude/skills/implement-be/SKILL.md) already uses author-side)
-from a GitHub Actions workflow on every PR: auto-triggered on open and on each push,
-posting **inline line-level comments** — including GitHub *suggested-change* blocks — plus a
-short summary, exactly the surface Copilot occupies. The gain over Copilot is that Claude Code
+reviewer with **Claude Code**, running from a GitHub Actions workflow on every PR: auto-triggered
+on open and on each push, posting **inline line-level comments** via the action's native
+inline-comment tool — including GitHub *suggested-change* blocks — plus a short summary via a
+scoped `gh pr comment`, exactly the surface Copilot occupies. The gain over Copilot is that Claude Code
 reviews against **this repository's own contract** — the three [prime
 directives](../../CLAUDE.md#prime-directives-do-not-violate), the docstring standard, the
 bilingual-docs rule, the BE-ID lifecycle — which a generic reviewer cannot know.
@@ -191,28 +191,72 @@ runner.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Add the advisory review workflow `.github/workflows/claude-review.yml` (auto-trigger, inline
-      `/code-review --comment`, minimal permissions, concurrency) (item 1)
-- [ ] Enforce the advisory guardrail — not a required check, result decoupled from findings (item 2)
-- [ ] Reach Copilot parity — inline comments, suggestion blocks, summary (item 3)
-- [ ] Add the opt-in `@claude review` on-demand path (item 4)
-- [ ] Commit the repo-flavored review prompt (prime directives, lenses, house conventions) (item 5)
-- [ ] Scope the credential via an Environment; document the fork limitation (item 6)
-- [ ] Execute the parallel-then-switch migration; document the manual Copilot-disable step (item 7)
-- [ ] Document the reviewer in `docs/ai-development.md` (EN + JA) (item 8)
-- [ ] Manually verify on a live test PR (auto-review, re-review, suggestion, non-required check) (item 9)
+- [x] Add the advisory review workflow `.github/workflows/claude-review.yml` (auto-trigger, inline
+      comments via the action's native tool against the repo contract, minimal permissions,
+      concurrency) (item 1)
+- [x] Enforce the advisory guardrail — not a required check, result decoupled from findings (item 2)
+- [x] Reach Copilot parity — inline comments, suggestion blocks, summary (item 3)
+- [x] Add the opt-in `@claude review` on-demand path (item 4)
+- [x] Commit the repo-flavored review prompt (prime directives, lenses, house conventions) (item 5)
+- [x] Scope the credential via an Environment; document the fork limitation (item 6)
+- [x] Document the manual Copilot-disable step for the parallel-then-switch migration (item 7,
+      docs) — executing the migration (parallel → compare → switch) is a post-merge operational task
+- [x] Document the reviewer in `docs/ai-development.md` (EN + JA) (item 8)
+- [x] Verify on a live PR (item 9) — done on #807 with the subscription (OAuth) provider: the
+      auto-review posts inline comments on push and the `claude review` check is advisory
+      (non-required). The review behavior needs a live PR and a provider call, so it stays out of the
+      deterministic gate (the BE-0122 shape)
 
 Log:
 
 - Proposal authored.
+- Shipped the advisory review workflow, the repo-flavored review prompt, and the bilingual docs
+  (items 1–8). Authenticates via a Claude Code subscription (OAuth) or Amazon Bedrock via GitHub OIDC,
+  staying a green no-op until a provider credential is provisioned (`CLAUDE_CODE_OAUTH_TOKEN` or
+  `AWS_BEDROCK_ROLE_ARN` + `BEDROCK_MODEL_ID`). Item 7's migration execution (disabling Copilot in
+  repo/org settings) is a post-merge operational task. Implementing PR:
+  [#807](https://github.com/bajutsu-e2e/bajutsu/pull/807).
+- Added the Claude Code subscription (OAuth) provider alongside Bedrock (item 6): the workflow
+  prefers the `CLAUDE_CODE_OAUTH_TOKEN` secret when set, else Bedrock via OIDC, else stays a green
+  no-op. Exactly one provider is active per run.
+- Hardened after review (#807): the on-demand comment path now requires the comment to contain
+  `@claude review` *and* a trusted actor (OWNER/MEMBER/COLLABORATOR), closing a fork-PR secret-exposure gap;
+  the Bedrock gate now requires both `AWS_BEDROCK_ROLE_ARN` and `BEDROCK_MODEL_ID` (a half-configured
+  Environment stays a no-op instead of failing red); the docs now state the dormant-until-configured
+  behavior.
+- Live verification (item 9) surfaced a mechanism mismatch and fixed it: the built-in
+  `/code-review --comment` skill posts through unrestricted `gh` (Bash), which `claude-code-action`
+  sandboxes out (the first live run authenticated and reviewed fine but posted nothing —
+  21 permission denials, "No buffered inline comments"). The workflow now posts inline findings via
+  the action's native `mcp__github_inline_comment__create_inline_comment` tool and the summary via a
+  narrowly-scoped `gh pr comment`, with a matching `claude_args --allowedTools` allowlist (the same
+  shape as the action's own review workflow). The repo-flavored *contract*
+  (`.github/claude-review-prompt.md`) is unchanged and still reused — only the posting mechanism
+  moved off the gh-based skill. Verified on a live run: OAuth (subscription) auth succeeds and the
+  review posts.
+- Fixed a concurrency flaw the live runs exposed: with one shared group and `cancel-in-progress:
+  true`, a comment posted mid-review (a bot reply, a reviewer note) cancelled the running auto-review
+  and surfaced a red "cancelled" check. The group is now split by event type and only `pull_request`
+  events cancel-in-progress, so pushes still supersede each other while comment-triggered runs stay
+  independent.
+- More review hardening: corrected the on-demand checkout `ref` (only `issue_comment` needs
+  `refs/pull/N/head`; the other events carry a top-level `pull_request.head.sha`), and made the
+  review self-identify as Claude Code in its comments (it posts under `github-actions[bot]`).
+- Redesigned the checkout to clear the CodeQL "untrusted checkout in a privileged context" / TOCTOU
+  alerts: the privileged job now checks out the **default branch** — the canonical, trusted home of
+  the review contract — with `persist-credentials: false` and reviews the change set with
+  `gh pr diff`, instead of checking out the untrusted PR head. So the review contract
+  (`.github/claude-review-prompt.md`) is always read from the default branch (same for every PR,
+  and it resolves on comment events too), and a PR cannot rewrite the rules it is reviewed under.
 
 ## References
 
-- Claude Code's built-in `code-review` skill (`--comment` posts inline PR comments) — the reviewer
-  this workflow invokes. It is a built-in skill, not defined under
-  [`.claude/skills`](../../.claude/skills) (which holds only this repo's own skills); the repo's
-  [`implement-be`](../../.claude/skills/implement-be/SKILL.md) already uses it author-side (its
-  review step, with the lenses and pr-review-toolkit) — the pass this item complements and reuses.
+- Claude Code's built-in `code-review` skill — the author-side review pass this item complements.
+  It is a built-in skill, not defined under [`.claude/skills`](../../.claude/skills) (which holds
+  only this repo's own skills); the repo's [`implement-be`](../../.claude/skills/implement-be/SKILL.md)
+  already uses it author-side (its review step, with the lenses and pr-review-toolkit). The CI
+  workflow does **not** invoke that skill directly — it posts inline findings via the action's
+  native `mcp__github_inline_comment__create_inline_comment` tool against the same repo contract.
 - [`docs/ai-development.md`](../../docs/ai-development.md) — the *Responding to PR review comments*
   rules (already naming AI reviewers) this item updates, and the required-status-check /
   admin-state constraints it mirrors.
