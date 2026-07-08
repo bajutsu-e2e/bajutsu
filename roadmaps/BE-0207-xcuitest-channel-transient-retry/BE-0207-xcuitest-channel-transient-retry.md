@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-xcuitest-channel-transient-retry-ja.md)
+**English** · [日本語](BE-0207-xcuitest-channel-transient-retry-ja.md)
 
-# BE-XXXX — Make the XCUITest runner channel robust to transient timeouts
+# BE-0207 — Make the XCUITest runner channel robust to transient timeouts
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-xcuitest-channel-transient-retry.md) |
+| Proposal | [BE-0207](BE-0207-xcuitest-channel-transient-retry.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0207") |
 | Topic | On-device validation (M1 close-out) |
 <!-- /BE-METADATA -->
 

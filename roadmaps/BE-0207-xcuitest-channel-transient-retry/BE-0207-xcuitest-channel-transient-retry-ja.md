@@ -1,14 +1,14 @@
-[English](BE-XXXX-xcuitest-channel-transient-retry.md) · **日本語**
+[English](BE-0207-xcuitest-channel-transient-retry.md) · **日本語**
 
-# BE-XXXX — XCUITest ランナーチャネルを一過性のタイムアウトに強くする
+# BE-0207 — XCUITest ランナーチャネルを一過性のタイムアウトに強くする
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
 |---|---|
-| 提案 | [BE-XXXX](BE-XXXX-xcuitest-channel-transient-retry-ja.md) |
+| 提案 | [BE-0207](BE-0207-xcuitest-channel-transient-retry-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **提案** |
-| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0207") |
 | トピック | 実機検証（M1 クローズアウト） |
 <!-- /BE-METADATA -->
 
