@@ -290,6 +290,7 @@ Behavior-preserving cleanup inside `bajutsu/` itself — deduplication, decompos
 | [BE-0143](BE-0143-run-command-decomposition/BE-0143-run-command-decomposition.md) | Decompose the run command god-function | Implemented |
 | [BE-0150](BE-0150-scenario-load-yaml-error-handling/BE-0150-scenario-load-yaml-error-handling.md) | Fail cleanly on a malformed scenario in `trace --explain` and `audit` | Implemented |
 | [BE-0172](BE-0172-run-loop-step-decomposition/BE-0172-run-loop-step-decomposition.md) | Decompose the run-path step loop and per-scenario runner | Implemented |
+| [BE-0197](BE-0197-environment-protocol-shape/BE-0197-environment-protocol-shape.md) | Even out the Environment protocol shape for a third platform | Implemented |
 | [BE-0198](BE-0198-serve-state-job-registry-split/BE-0198-serve-state-job-registry-split.md) | Split the JobRegistry out of ServeState | Implemented |
 | [BE-0199](BE-0199-doctor-screen-probe-dedupe/BE-0199-doctor-screen-probe-dedupe.md) | Share the doctor screen probe between CLI and serve | Implemented |
 | [BE-0200](BE-0200-run-id-contract/BE-0200-run-id-contract.md) | Make the run-id format a single named contract | Implemented |
@@ -715,7 +716,6 @@ Behavior-preserving cleanup inside `bajutsu/` itself — deduplication, decompos
 <!-- GENERATED:proposals-quality-debt -->
 | ID | Item | Status |
 |---|---|---|
-| [BE-0197](BE-0197-environment-protocol-shape/BE-0197-environment-protocol-shape.md) | Even out the Environment protocol shape for a third platform | Proposal |
 | [BE-0205](BE-0205-crawl-command-decomposition/BE-0205-crawl-command-decomposition.md) | Decompose the crawl CLI command like run | Proposal |
 | [BE-0206](BE-0206-serve-state-module-split/BE-0206-serve-state-module-split.md) | Split serve job state from job execution | Proposal |
 <!-- /GENERATED:proposals-quality-debt -->

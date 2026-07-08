@@ -41,7 +41,7 @@ from bajutsu.config import web_base_url, web_engine
 from bajutsu.crawl_guide import MODEL as _CRAWL_GUIDE_MODEL
 from bajutsu.crawl_guide import make_guide
 from bajutsu.drivers import base
-from bajutsu.platform_lifecycle import environment_for
+from bajutsu.platform_lifecycle import CrawlEnvironment, environment_for
 from bajutsu.record import _clear_blocking
 from bajutsu.run_id import new_run_id
 from bajutsu.runner import launch_driver
@@ -238,7 +238,7 @@ def crawl(
     # (BE-0009): iOS resolves the `--udid` pool and caps `--workers` to it (BE-0064); web has no
     # device, so the worker count alone sizes N browser lanes (BE-0077). A single-branch resume is a
     # single walk, so it runs on one lane; a full-frontier continuation keeps the pool (BE-0181).
-    environment = environment_for(actuator, "")
+    environment: CrawlEnvironment = environment_for(actuator, "")
     udids = environment.plan_lanes(udid, workers)
     if not udids:
         # An empty `--udid` (e.g. `--udid ""` / `--udid ,`) resolves to no device — fail loudly with

@@ -7,8 +7,9 @@
 |---|---|
 | 提案 | [BE-0197](BE-0197-environment-protocol-shape-ja.md) |
 | 提案者 | [@hirosassa](https://github.com/hirosassa) |
-| 状態 | **提案** |
+| 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0197") |
+| 実装 PR | [#816](https://github.com/bajutsu-e2e/bajutsu/pull/816) |
 | トピック | Codebase quality & technical debt |
 <!-- /BE-METADATA -->
 
@@ -143,13 +144,23 @@ runner と crawl コマンドは同じメソッドを同じ結果で呼びます
 > 作業分解（作業の単位ごとに 1 つ）に対応し、ログには変更内容と時期（古い順）を PR へのリンクと
 > ともに記録します。
 
-- [ ] 「該当なし」にメソッドごとの正規の形を 1 つ与え、各メソッドの約束（gate 付き送出か、一級の null か）
+- [x] 「該当なし」にメソッドごとの正規の形を 1 つ与え、各メソッドの約束（gate 付き送出か、一級の null か）
       を Protocol に記す
-- [ ] 各 capability メソッドを、それを gate する述語と runner の呼び出し箇所と 1 箇所で対にする
-- [ ] `Environment` Protocol を run の lease 面と crawl の lease 面に分け、各コマンドが必要とするより狭
+- [x] 各 capability メソッドを、それを gate する述語と runner の呼び出し箇所と 1 箇所で対にする
+- [x] `Environment` Protocol を run の lease 面と crawl の lease 面に分け、各コマンドが必要とするより狭
       い型を宣言するようにする
-- [ ] 「プラットフォームを追加する」チェックリスト（モジュールの docstring か `docs/architecture.md`）を
+- [x] 「プラットフォームを追加する」チェックリスト（モジュールの docstring か `docs/architecture.md`）を
       書き、文書を seam と歩調を合わせて保つ
+
+ログ:
+
+- [#816](https://github.com/bajutsu-e2e/bajutsu/pull/816) — `platform_lifecycle.py` の `Environment` を `RunEnvironment` / `CrawlEnvironment` と、
+  両者を統合した `Environment` の 3 つに分けました。`run` のパイプライン（`runner/pool.py`・
+  `runner/launch.py`）は `RunEnvironment` を、`crawl` コマンド（`cli/commands/crawl.py`）は
+  `CrawlEnvironment` を保持します。モジュールの docstring には、メソッドごとの「該当なし」の約束
+  （2 通りの形）・述語から capability への対応表・「プラットフォームを追加する」チェックリストを
+  記しました。振る舞いは変えていません。すべての具象環境が両方の面を満たすことを seam のテストで
+  固定しています。
 
 ## 参考
 

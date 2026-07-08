@@ -11,7 +11,7 @@ from bajutsu.drivers import base
 
 # Readiness polling lives with the platform lifecycle now (BE-0009 Phase 0); re-exported here so
 # `from bajutsu.runner import _await_ready` and the crawl path keep their import unchanged.
-from bajutsu.platform_lifecycle import _await_ready, environment_for
+from bajutsu.platform_lifecycle import RunEnvironment, _await_ready, environment_for
 from bajutsu.scenario import Preconditions
 
 __all__ = ["_await_ready", "launch_driver"]
@@ -55,7 +55,7 @@ def launch_driver(
     pre = preconditions or Preconditions()
     # The per-platform startup (iOS simctl sequence, web browser context, …) lives behind the
     # `Environment` seam, so this path no longer branches on the actuator name (BE-0009 Phase 0).
-    environment = environment_for(actuator, udid, env_run)
+    environment: RunEnvironment = environment_for(actuator, udid, env_run)
     driver = environment.start(eff, pre, extra_env=extra_env, record_video_dir=record_video_dir)
     _await_ready(driver, ready_sel=eff.ready_when)
     return driver

@@ -23,7 +23,12 @@ from bajutsu.orchestrator.evidence_rules import requested_intervals
 
 # `device_control` / `device_relauncher` live with the platform lifecycle now; re-exported so
 # `from bajutsu.runner import device_control, device_relauncher` keeps its import unchanged.
-from bajutsu.platform_lifecycle import device_control, device_relauncher, environment_for
+from bajutsu.platform_lifecycle import (
+    RunEnvironment,
+    device_control,
+    device_relauncher,
+    environment_for,
+)
 from bajutsu.runner.launch import launch_driver
 from bajutsu.runner.types import Lease, LeaseFn
 from bajutsu.scenario import Scenario
@@ -101,7 +106,7 @@ def device_pool(
     # The platform's whole lease shape (catalog, network strategy, relaunch, control, teardown) comes
     # from its Environment, so nothing below branches on the actuator name. Pool-level facts read off
     # a representative environment; the device-scoped parts use one built per leased udid.
-    pool_env = environment_for(actuator, udids[0] if udids else "", env_run)
+    pool_env: RunEnvironment = environment_for(actuator, udids[0] if udids else "", env_run)
     # A same-platform, read-only provider for an evidence kind the actuator can't supply (BE-0020).
     # Today `network` is covered by web (native) and idb (its app-side `BAJUTSU_COLLECTOR`), so this
     # resolves to nothing in production; it activates when a platform gains a second, network-native
@@ -136,7 +141,7 @@ def device_pool(
 
     def lease(eff: Effective, scenario: Scenario) -> Lease:
         udid = free.get()
-        lease_env = environment_for(actuator, udid, env_run)
+        lease_env: RunEnvironment = environment_for(actuator, udid, env_run)
         # The collector to stop on release (the web page hook, or a BE-0020 fallback) — not the
         # pre-started HTTP receivers, which are reused and stopped in shutdown(). Released on a setup
         # failure too, so one launch failure neither leaks a socket nor starves later leases.
