@@ -103,6 +103,8 @@ jobs:
       - name: Check out the pull request
         if: steps.gate.outputs.provider != 'none'
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+        with:
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || format('refs/pull/{0}/head', github.event.pull_request.number || github.event.issue.number) }}
 
       - name: Exchange OIDC token for Bedrock AWS credentials
         if: steps.gate.outputs.provider == 'bedrock'
