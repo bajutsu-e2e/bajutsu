@@ -602,6 +602,16 @@ bajutsu serve [--port 8765] [--config bajutsu.config.yaml] [--root .] [--runs ru
 - `--baselines` sets the visual-regression baselines dir (default: a `baselines/` folder under
   the app's scenarios dir); runs launched from the UI use it, and the report's **Approve** button
   promotes the captured screenshot into it via `POST /api/approve`.
+- `--themes <dir>` is a **drop-in theme directory**
+  ([BE-0191](../roadmaps/BE-0191-pluggable-theme-system-serve-ui/BE-0191-pluggable-theme-system-serve-ui.md)):
+  each `*.css` file adds a selectable UI theme. A theme is declarative — a block of the design
+  tokens documented in `bajutsu/templates/serve.themes.css`, with a leading
+  `/* bajutsu-theme name: … kind: dark|light */` manifest comment; the theme's id is the filename
+  stem and its `[data-theme="<id>"]` selector must match it. No JavaScript, so a dropped-in theme
+  sits at the same trust level as your scenarios and config. The built-in `midnight` / `daylight`
+  pair is always offered; discovered themes extend it. Scanned once at startup (no live reload). An
+  optional `ui.default_theme` in the config sets the initial selection (otherwise the OS scheme is
+  followed until the user picks one).
 - Pick an app (its scenarios populate the dropdown), set backend / udid / erase / `disable
   alert-dismiss`, hit **Run**; the output streams live and the `report.html` embeds on completion.
 - The **Crawl** tab picks an app, a pool of simulators (multi-select, like Replay — two or more

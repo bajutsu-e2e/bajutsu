@@ -174,6 +174,8 @@ def _build_state(
     backend: str = "local",
     cwd: Path | None = None,
     config_provenance: dict[str, str] | None = None,
+    themes_dir: Path | None = None,
+    default_theme: str | None = None,
 ) -> ServeState:
     """Assemble the `ServeState` for *backend* — the one place the serve seams are wired.
 
@@ -230,6 +232,8 @@ def _build_state(
         allow_remote_build=allow_remote_build,
         cwd=cwd or Path.cwd(),
         config_provenance=config_provenance,
+        themes_dir=themes_dir,
+        default_theme=default_theme,
     )
 
 
@@ -460,6 +464,8 @@ def serve(
     backend: str = "local",
     cwd: Path | None = None,
     config_provenance: dict[str, str] | None = None,
+    themes_dir: Path | None = None,
+    default_theme: str | None = None,
 ) -> None:
     state = _build_state(
         runs_dir=runs_dir,
@@ -475,6 +481,8 @@ def serve(
         backend=backend,
         cwd=cwd,
         config_provenance=config_provenance,
+        themes_dir=themes_dir,
+        default_theme=default_theme,
     )
     # Clear upload sandboxes orphaned by a prior serve process — the dir is serve-owned and
     # ephemeral, and nothing is bound at startup, so this just stops them accumulating across

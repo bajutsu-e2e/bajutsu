@@ -4,8 +4,11 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>bajutsu</title>
-{#- Resolve the theme before first paint so there is no dark→light flash on load. -#}
-<script>(function(){try{var t=localStorage.getItem('bajutsu-theme');if(!t)t=matchMedia('(prefers-color-scheme: light)').matches?'daylight':'midnight';document.documentElement.setAttribute('data-theme',t)}catch(e){}})();</script>
+{#- The registered themes (built-in + drop-in) and the configured default, for the picker (BE-0191). -#}
+<script>window.__bajutsuThemes={{ themes_json|safe }};window.__bajutsuDefaultTheme={{ default_theme_json|safe }};</script>
+{#- Resolve the theme before first paint so there is no dark→light flash on load: an explicit
+    choice wins, else the configured ui.default_theme, else the OS scheme. -#}
+<script>(function(){try{var t=localStorage.getItem('bajutsu-theme');if(!t)t=window.__bajutsuDefaultTheme||(matchMedia('(prefers-color-scheme: light)').matches?'daylight':'midnight');document.documentElement.setAttribute('data-theme',t)}catch(e){}})();</script>
 <style>{{ themes_css|safe }}{{ css|safe }}</style></head>
 <body>
 <header>

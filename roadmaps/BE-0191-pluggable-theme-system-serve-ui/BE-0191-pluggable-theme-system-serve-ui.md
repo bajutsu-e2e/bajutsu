@@ -226,7 +226,7 @@ filesystem, building directly on the token contract of unit 1.
 > (oldest first), linking the PRs.
 
 - [x] 1. Complete the design-token contract (fix `--accent`/`--muted`/`--bad` drift; route raw hex through tokens; document the contract; define fallback).
-- [ ] 2. Pluggable theme discovery and registration (`--themes` flag, `ui.default_theme`, declarative theme + manifest, startup scan folded into the cached render).
+- [x] 2. Pluggable theme discovery and registration (`--themes` flag, `ui.default_theme`, declarative theme + manifest, startup scan folded into the cached render).
 - [ ] 3. Theme picker UI (header dropdown replacing the binary toggle, persistence + pre-paint seeding, `data-testid` convention, tiler-safe placement).
 - [ ] 4. Swappable, theme-defined transitions (semantic state classes + `--transition-*` tokens across the four surfaces; tiler `rebuild()` refactor; `prefers-reduced-motion` collapse).
 - [ ] 5. Determinism and dogfood alignment (reduced-motion guarantees condition-wait safety; update `demos/serve-ui/scenarios/theme.yaml` for the picker).
@@ -240,6 +240,15 @@ filesystem, building directly on the token contract of unit 1.
   the `--rung-*` legend tokens; defined the previously-undefined `--mono` global), documented the token
   contract inline in `serve.themes.css`, and made `:root` (midnight) the fallback source so a partial
   theme degrades gracefully. Added `tests/serve/test_theme_tokens.py` to guard the invariant. ([#826](https://github.com/bajutsu-e2e/bajutsu/pull/826))
+- Unit 2 — pluggable theme discovery and registration. Added `bajutsu/serve/themes.py` (a declarative
+  theme = a `*.css` block of tokens + a leading `/* bajutsu-theme name:/kind: */` manifest, no
+  JavaScript), a `bajutsu serve --themes <dir>` flag scanned once at startup and folded into the
+  cached `_index_html` render, and a serve-only `ui.default_theme` config key (dropped from the core
+  `Config` like `orgs:`, read in `themes.read_default_theme`). The registered manifest (built-in +
+  discovered) and the configured default are exposed to the client as `window.__bajutsuThemes` /
+  `window.__bajutsuDefaultTheme` for the picker (unit 3); the pre-paint seed now prefers the
+  configured default before the OS scheme. Tests: `tests/serve/test_themes.py`,
+  `tests/serve/test_http_themes.py`, and a core `ui:`-drop test. _(PR pending.)_
 
 ## References
 
