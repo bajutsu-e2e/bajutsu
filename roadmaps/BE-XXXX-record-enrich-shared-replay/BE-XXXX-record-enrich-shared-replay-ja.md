@@ -29,9 +29,9 @@
   無視します。
 - **アラート除去**（両ファイルの `_clear_blocking`）：同じ
   `for _ in range(max_tries)`、`shows_app_ui`、`guard(driver)`、`clock.sleep(0.5)` のループと、
-  同じ「screen blocked by a system prompt」のメッセージです。`record.py` 側が豊かな実装
-  （dismiss したラベルを返し、各 dismiss を報告する）で、`enrich.py` 側は guard の戻り値を
-  捨てる簡略版の複製です。
+  似た「screen … blocked …」のメッセージ（record: "the app screen looks blocked …"、enrich:
+  "screen blocked …"）です。`record.py` 側が豊かな実装（dismiss したラベルを返し、各 dismiss を
+  報告する）で、`enrich.py` 側は guard の戻り値を捨てる簡略版の複製です。
 
 独立に保守される複製はずれていきます。スクリーンショットのヘルパがまさに同じ経緯をたどり、
 BE-0132 が `record._screenshot_bytes` への統合で解消しました（`enrich.py` はすでにこれを
