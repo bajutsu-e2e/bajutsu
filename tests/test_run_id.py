@@ -13,16 +13,22 @@ from datetime import UTC, datetime, timedelta
 from bajutsu.run_id import RUN_ID_FORMAT, new_run_id, parse_run_id_timestamp
 
 
-def test_run_id_format_is_stable() -> None:
+def test_format_constant_is_the_pinned_shape() -> None:
+    # Pin the literal shape: the Web UI's lexicographic sort and ctrf's parse both depend on this
+    # exact zero-padded UTC form, so any change here must be a deliberate, reviewed edit — not one
+    # that slips through while the property tests below keep passing.
     assert RUN_ID_FORMAT == "%Y%m%d-%H%M%S"
 
 
-def test_mint_parses_back_to_a_recent_utc_time() -> None:
+def test_mint_parses_back_to_the_minting_instant() -> None:
+    # Bound the parsed time between wall-clock reads taken around the mint (floored to the second,
+    # since ids carry no sub-second field) rather than a fixed slack — robust under a slow CI pause.
+    before = datetime.now(tz=UTC).replace(microsecond=0)
     started = parse_run_id_timestamp(new_run_id())
+    after = datetime.now(tz=UTC)
     assert started is not None
     assert started.tzinfo is UTC
-    # A freshly minted id parses to roughly now (generous margin; only the round trip matters).
-    assert abs((datetime.now(tz=UTC) - started).total_seconds()) < 60
+    assert before <= started <= after
 
 
 def test_lexicographic_order_equals_chronological_order() -> None:
