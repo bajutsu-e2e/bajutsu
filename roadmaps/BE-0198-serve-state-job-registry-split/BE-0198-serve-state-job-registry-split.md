@@ -9,7 +9,7 @@
 | Author | [@hirosassa](https://github.com/hirosassa) |
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0198") |
-| Implementing PR | _pending_ |
+| Implementing PR | [#812](https://github.com/bajutsu-e2e/bajutsu/pull/812) |
 | Topic | Codebase quality & technical debt |
 <!-- /BE-METADATA -->
 
