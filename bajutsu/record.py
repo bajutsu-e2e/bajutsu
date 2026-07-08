@@ -272,9 +272,9 @@ def _execute(
     """Replay one authored step: run a wait/action, treat an assertion as a no-op.
 
     Shared by `record` and `enrich` (BE-0201). The two paths differ only in how a timed-out
-    `wait` is handled: `record` records forward regardless (default `on_wait_failure=None`,
-    the return value ignored), while `enrich` passes a hook that raises `_ReplayFailed` so a
-    step it cannot settle stops the replay.
+    `wait` is handled: `record` records forward regardless (default `on_wait_failure=None`, so
+    `_wait`'s failure result is dropped), while `enrich` passes a hook that raises `_ReplayFailed`
+    so a step it cannot settle stops the replay.
     """
     kind = _action_of(step)
     if kind == "wait":
