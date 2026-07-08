@@ -429,7 +429,8 @@ def test_try_new_job_per_user_and_per_org_caps_compose(tmp_path: Path) -> None:
 
 # The concurrency logic lives in JobRegistry (BE-0198), so it is tested directly against the
 # registry — the id sequence, the register-twice guard, and each cap — without standing up a full
-# ServeState (which would resolve stores/secrets/a launch dir the caps depend on none of).
+# ServeState, whose __post_init__ resolves stores, secrets, and a launch dir that the caps don't
+# depend on.
 
 
 def test_job_registry_assigns_monotonic_ids_and_the_log_bus() -> None:

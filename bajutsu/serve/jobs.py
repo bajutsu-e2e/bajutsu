@@ -410,7 +410,9 @@ class ServeState:
     @property
     def jobs(self) -> dict[str, Job]:
         """The in-flight jobs, read through to the registry (BE-0198). Kept so existing lookups
-        (`state.jobs.get(id)`) read unchanged now that the registry owns the dict."""
+        (`state.jobs.get(id)`) read unchanged now that the registry owns the dict. Treat it as
+        read-only: register a job through `register` / `try_register` so its id assignment and cap
+        check run under the registry's lock — inserting here directly bypasses that enforcement."""
         return self.job_registry.jobs
 
     def org_of(self, actor: str | None) -> str:
