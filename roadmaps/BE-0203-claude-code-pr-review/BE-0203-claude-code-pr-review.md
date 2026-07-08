@@ -193,7 +193,8 @@ runner.
 > (oldest first), linking the PRs.
 
 - [x] Add the advisory review workflow `.github/workflows/claude-review.yml` (auto-trigger, inline
-      `/code-review --comment`, minimal permissions, concurrency) (item 1)
+      comments via the action's native tool against the repo contract, minimal permissions,
+      concurrency) (item 1)
 - [x] Enforce the advisory guardrail — not a required check, result decoupled from findings (item 2)
 - [x] Reach Copilot parity — inline comments, suggestion blocks, summary (item 3)
 - [x] Add the opt-in `@claude review` on-demand path (item 4)
@@ -202,9 +203,10 @@ runner.
 - [x] Document the manual Copilot-disable step for the parallel-then-switch migration (item 7,
       docs) — executing the migration (parallel → compare → switch) is a post-merge operational task
 - [x] Document the reviewer in `docs/ai-development.md` (EN + JA) (item 8)
-- [ ] Manually verify on a live test PR (auto-review, re-review, suggestion, non-required check)
-      (item 9) — post-merge manual step; the review behavior needs a live PR and a provider call,
-      so it can't sit in the deterministic gate (the BE-0122 shape)
+- [x] Verify on a live PR (item 9) — done on #807 with the subscription (OAuth) provider: the
+      auto-review posts inline comments on push and the `claude review` check is advisory
+      (non-required). The review behavior needs a live PR and a provider call, so it stays out of the
+      deterministic gate (the BE-0122 shape)
 
 Log:
 

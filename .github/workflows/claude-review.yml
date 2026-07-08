@@ -1,10 +1,12 @@
 # Advisory PR code review by Claude Code (BE-0203).
 #
-# This replaces GitHub Copilot as the automated PR reviewer: on every pull request (open and each
-# push) Claude Code runs its built-in `/code-review --comment` skill against *this repository's*
-# contract — the three prime directives, the docstring standard, the bilingual-docs rule, the BE-ID
-# lifecycle — and posts inline line-level comments plus a short summary. A contributor can also ask
-# for a fresh pass on demand by writing `@claude review` on the PR.
+# This makes Claude Code the automated PR reviewer (replacing GitHub Copilot after a parallel
+# migration; see docs/ai-development.md): on every pull request (open and each push) Claude Code
+# reviews against *this repository's* contract (.github/claude-review-prompt.md — the three prime
+# directives, the docstring standard, the bilingual-docs rule, the BE-ID lifecycle) and posts inline
+# line-level comments plus a short summary, via the action's native inline-comment tool (see the
+# claude_args allowlist below). A contributor can also ask for a fresh pass on demand by writing
+# `@claude review` on the PR.
 #
 # HARD BOUNDARY (prime directive 1): this review is *advisory*. It is deliberately NOT added to
 # `main`'s branch-protection `required_status_checks`, and the job's own result is decoupled from
