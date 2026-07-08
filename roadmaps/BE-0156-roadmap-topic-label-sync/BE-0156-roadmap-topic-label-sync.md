@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0156") |
-| Implementing PR | [#612](https://github.com/bajutsu-e2e/bajutsu/pull/612) |
+| Implementing PR | [#612](https://github.com/bajutsu-e2e/bajutsu/pull/612), [#817](https://github.com/bajutsu-e2e/bajutsu/pull/817) |
 | Topic | Development infrastructure (contributor workflow) |
 <!-- /BE-METADATA -->
 
@@ -201,6 +201,11 @@ Log:
   `roadmaps/BE-0156-roadmap-topic-label-sync/`, the workflow's path filter widened to `roadmaps/**`,
   and the shipped-item exclusion moved from an `implemented/` path check to reading each item's
   `Status` (skipping `Implemented`) — since the per-`Status` folders no longer exist.
+- [#817](https://github.com/bajutsu-e2e/bajutsu/pull/817): extended the path-label rules with a
+  `record` topic — a PR touching the record modules (`bajutsu/record.py`, `bajutsu/record_capture.py`,
+  `bajutsu/cli/commands/record.py`) now carries `topic:record`. Required promoting `record` to a
+  canonical `TOPICS` key so the `PATH_TOPIC_*` guard accepts it; existing record items stay under
+  `authoring`, so the index is unchanged.
 
 ## References
 
