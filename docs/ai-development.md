@@ -396,8 +396,10 @@ red only on an infrastructure failure). The deterministic `check` / `E2E` gates 
 merge arbiters — this is a reviewer, not a judge (prime directive 1). Treat its comments exactly as
 you would any reviewer's, under the reply rules above.
 
-- **On demand.** Beyond the auto-review, write `@claude review` on a PR (or reply to a review
-  thread) to request a fresh pass or a follow-up on a specific comment.
+- **On demand.** Beyond the auto-review, a maintainer or collaborator can write `@claude review` on
+  a PR (or reply to a review thread) to request a fresh pass or a follow-up on a specific comment.
+  This path is gated to trusted actors (OWNER / MEMBER / COLLABORATOR) — because comment events run
+  with repo secrets even on fork PRs — so `@claude review` from anyone else is ignored.
 - **Forks.** A plain `pull_request` event from a fork does not expose secrets (by GitHub's design),
   so auto-review covers same-repo `claude/<topic>` / `<user>/<topic>` branches; a fork PR is
   reviewed on demand by a maintainer instead.

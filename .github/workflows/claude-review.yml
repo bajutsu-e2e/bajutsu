@@ -5,8 +5,9 @@
 # reviews against *this repository's* contract (.github/claude-review-prompt.md — the three prime
 # directives, the docstring standard, the bilingual-docs rule, the BE-ID lifecycle) and posts inline
 # line-level comments plus a short summary, via the action's native inline-comment tool (see the
-# claude_args allowlist below). A contributor can also ask for a fresh pass on demand by writing
-# `@claude review` on the PR.
+# claude_args allowlist below). A maintainer or collaborator can also ask for a fresh pass on demand
+# by writing `@claude review` on the PR — that on-demand path is gated to trusted actors
+# (OWNER / MEMBER / COLLABORATOR), so a comment from anyone else is ignored.
 #
 # HARD BOUNDARY (prime directive 1): this review is *advisory*. It is deliberately NOT added to
 # `main`'s branch-protection `required_status_checks`, and the job's own result is decoupled from
@@ -57,6 +58,10 @@ jobs:
   review:
     name: claude review
     runs-on: ubuntu-latest
+    # Fail fast instead of GitHub's 360-minute default: a live review runs in ~7 min, so a run that
+    # far exceeds this is a hang (provider outage, runaway tool loop) — cap it rather than tie up a
+    # runner and burn Actions minutes for hours.
+    timeout-minutes: 20
     # Auto-review on every PR event. The on-demand path (item 4) is additive and hardened against
     # fork-PR secret exposure: a comment event runs only when it is a PR comment, contains the
     # `@claude review` phrase, AND comes from a trusted actor (OWNER/MEMBER/COLLABORATOR). Because
