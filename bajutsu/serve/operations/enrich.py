@@ -6,12 +6,12 @@ from typing import Any
 
 from bajutsu.config import load_config, resolve
 from bajutsu.scenario import load_scenario_file
-from bajutsu.serve.jobs import ServeState
 from bajutsu.serve.operations._common import (
     _default_driver_factory,
     _device_args,
     _resolve_org_or_forbid,
 )
+from bajutsu.serve.state import ServeState
 
 
 def start_enrich(

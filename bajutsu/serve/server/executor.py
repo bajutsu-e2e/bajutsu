@@ -16,7 +16,7 @@ from typing import TYPE_CHECKING, Protocol
 from bajutsu.serve.server.worker_job import execute_job_spec, job_spec
 
 if TYPE_CHECKING:
-    from bajutsu.serve.jobs import Job, ServeState
+    from bajutsu.serve.state import Job, ServeState
 
 
 class Queue(Protocol):

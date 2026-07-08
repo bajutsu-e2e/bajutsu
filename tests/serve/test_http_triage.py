@@ -14,7 +14,7 @@ from pathlib import Path
 
 from _shared import _get, _get_json, _post, _serve, project
 
-from bajutsu.serve.jobs import ServeState
+from bajutsu.serve.state import ServeState
 
 
 def _write_failed_run(runs: Path, run_id: str) -> Path:

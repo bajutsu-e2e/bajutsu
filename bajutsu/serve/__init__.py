@@ -10,10 +10,12 @@ links resolve.  The default transport is stdlib-only — the same ``ThreadingHTT
 as the network collector ([[network]]); ``--asgi`` instead serves the same UI/API as a FastAPI app
 over uvicorn (the ``server`` extra), the transport the hosted backend uses (BE-0015).
 
-Split into three submodules:
+Split into submodules:
 
-* **helpers** — pure query/command-builder functions (no server state)
-* **jobs** — ``Job``/``ServeState`` dataclasses and the run/cancel lifecycle
+* **helpers** — pure query/path/validation functions (no server state)
+* **commands** — CLI command builders (the ``python -m bajutsu …`` argv a request spawns)
+* **state** — the ``ServeState`` container and its ``Job``/``StoreBundle`` value types
+* **jobs** — the run/cancel/build execution lifecycle that mutates a ``Job``
 * **handler** — HTTP request handler, ``make_server``, and the embedded SPA
 """
 
@@ -27,12 +29,17 @@ from typing import Any
 
 from bajutsu.object_store import EvidenceTarget
 from bajutsu.serve.artifacts import Artifact, ArtifactStore, LocalArtifactStore
+from bajutsu.serve.commands import (
+    _int,
+    crawl_command,
+    record_command,
+    run_command,
+    triage_command,
+)
 from bajutsu.serve.executor import LocalExecutor, RunExecutor
 from bajutsu.serve.handler import _allowed_hosts, make_server
 from bajutsu.serve.helpers import (
-    _int,
     _scenario_path,
-    crawl_command,
     list_crawl_runs,
     list_fs,
     list_runs,
@@ -41,18 +48,15 @@ from bajutsu.serve.helpers import (
     list_targets,
     load_serve_config_file,
     mask_secret,
-    record_command,
-    run_command,
     scenario_out_path,
     target_build_info,
     target_scenarios_dir,
-    triage_command,
     unique_scenario_path,
     valid_backend,
     valid_run_id,
     valid_udid,
 )
-from bajutsu.serve.jobs import Job, Popen, ServeState, StoreBundle, cancel_job, run_job
+from bajutsu.serve.jobs import cancel_job, run_job
 from bajutsu.serve.launchagent import launchagent_plist
 from bajutsu.serve.logbus import InMemoryLogBus, LogBus
 from bajutsu.serve.orgs import DEFAULT_ORG, targets_for_org
@@ -64,6 +68,7 @@ from bajutsu.serve.scenarios import (
 )
 from bajutsu.serve.secrets import SecretStore
 from bajutsu.serve.sessions import InMemorySessionStore
+from bajutsu.serve.state import Job, Popen, ServeState, StoreBundle
 
 __all__ = [
     "SERVE_BACKENDS",

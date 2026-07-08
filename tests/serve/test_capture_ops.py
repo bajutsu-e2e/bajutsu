@@ -14,7 +14,7 @@ from bajutsu.drivers.fake import FakeDriver
 from bajutsu.redaction import Redactor
 from bajutsu.scenario import Redact
 from bajutsu.serve import operations as ops
-from bajutsu.serve.jobs import ServeState
+from bajutsu.serve.state import ServeState
 
 
 def _screen() -> list[base.Element]:

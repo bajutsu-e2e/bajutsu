@@ -185,7 +185,7 @@ def test_crawl_runs_payload_is_scoped_to_the_actors_org(tmp_path: Path) -> None:
     # On the server backend the crawl history comes from the actor's org-scoped artifact store, not a
     # local runs_dir scan (BE-0190). Two orgs' stores back distinct dirs; each actor lists only its own.
     from bajutsu.serve.artifacts import LocalArtifactStore
-    from bajutsu.serve.jobs import StoreBundle
+    from bajutsu.serve.state import StoreBundle
 
     def _write_crawl(root: Path, run_id: str) -> None:
         (root / run_id).mkdir(parents=True)

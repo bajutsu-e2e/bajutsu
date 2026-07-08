@@ -6,7 +6,7 @@ import json
 from collections.abc import Generator, Iterator
 
 from bajutsu.handoff import REQUEST_LINE_PREFIX
-from bajutsu.serve.jobs import Job, ServeState
+from bajutsu.serve.state import Job, ServeState
 
 
 def _classify(line: str) -> tuple[str, str]:

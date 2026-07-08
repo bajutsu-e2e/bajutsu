@@ -296,6 +296,7 @@ Behavior-preserving cleanup inside `bajutsu/` itself — deduplication, decompos
 | [BE-0200](BE-0200-run-id-contract/BE-0200-run-id-contract.md) | Make the run-id format a single named contract | Implemented |
 | [BE-0201](BE-0201-record-enrich-shared-replay/BE-0201-record-enrich-shared-replay.md) | Consolidate the duplicated replay helpers of record and enrich | Implemented |
 | [BE-0202](BE-0202-serve-js-modularization/BE-0202-serve-js-modularization.md) | Split serve.js into section files without a build step | Implemented |
+| [BE-0206](BE-0206-serve-state-module-split/BE-0206-serve-state-module-split.md) | Split serve job state from job execution | Implemented |
 <!-- /GENERATED:implemented-quality-debt -->
 
 ### Dogfood fixtures (demo apps)
@@ -462,6 +463,7 @@ Running the autonomous crawl across more than one device so a full screen map is
 | [BE-0006](BE-0006-idb-element-tree-normalization/BE-0006-idb-element-tree-normalization.md) | idb element-tree normalization accuracy | Implemented |
 | [BE-0087](BE-0087-idb-action-settle/BE-0087-idb-action-settle.md) | idb action timing robustness (settle before actuation) | Implemented |
 | [BE-0088](BE-0088-overlap-simulator-boot/BE-0088-overlap-simulator-boot.md) | Overlap the Simulator boot with the build | Implemented |
+| [BE-0207](BE-0207-xcuitest-channel-transient-retry/BE-0207-xcuitest-channel-transient-retry.md) | Make the XCUITest runner channel robust to transient timeouts | Implemented |
 <!-- /GENERATED:implemented-on-device -->
 
 ### Integration with external services
@@ -586,9 +588,7 @@ Under consideration — not yet decided. Promote an item to *In progress* once w
 The deterministic core runs end-to-end on the FakeDriver, and the idb backend's subprocess execution (`describe-all` parsing, frame-center tap/text/swipe) and the simctl launch sequence are validated on a real device. What remains is only ongoing maintenance monitoring.
 
 <!-- GENERATED:proposals-on-device -->
-| ID | Item | Status |
-|---|---|---|
-| [BE-0207](BE-0207-xcuitest-channel-transient-retry/BE-0207-xcuitest-channel-transient-retry.md) | Make the XCUITest runner channel robust to transient timeouts | Proposal |
+
 <!-- /GENERATED:proposals-on-device -->
 
 ### Platform expansion (Android / Web / Flutter)
@@ -718,7 +718,6 @@ Behavior-preserving cleanup inside `bajutsu/` itself — deduplication, decompos
 | ID | Item | Status |
 |---|---|---|
 | [BE-0205](BE-0205-crawl-command-decomposition/BE-0205-crawl-command-decomposition.md) | Decompose the crawl CLI command like run | Proposal |
-| [BE-0206](BE-0206-serve-state-module-split/BE-0206-serve-state-module-split.md) | Split serve job state from job execution | Proposal |
 <!-- /GENERATED:proposals-quality-debt -->
 
 ### Integration with external services

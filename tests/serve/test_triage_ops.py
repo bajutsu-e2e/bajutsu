@@ -15,7 +15,7 @@ from typing import Any
 from _shared import FakeProc, project
 
 from bajutsu.serve import operations as ops
-from bajutsu.serve.jobs import ServeState
+from bajutsu.serve.state import ServeState
 
 
 def _state(tmp_path: Path, popen: Any = None) -> ServeState:

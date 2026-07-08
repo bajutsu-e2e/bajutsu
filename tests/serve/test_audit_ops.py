@@ -13,7 +13,7 @@ from pathlib import Path
 from _shared import project
 
 from bajutsu.serve import operations as ops
-from bajutsu.serve.jobs import ServeState
+from bajutsu.serve.state import ServeState
 
 
 def _state(tmp_path: Path) -> ServeState:

@@ -9,7 +9,7 @@ a result, or the operator token — so a scrape can never leak a secret (BE-0055
 
 from __future__ import annotations
 
-from bajutsu.serve.jobs import ServeState
+from bajutsu.serve.state import ServeState
 
 # The Prometheus text format's own content type (version 0.0.4); a scraper keys off it.
 PROMETHEUS_CONTENT_TYPE = "text/plain; version=0.0.4; charset=utf-8"

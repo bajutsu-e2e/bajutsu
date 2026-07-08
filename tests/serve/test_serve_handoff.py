@@ -18,7 +18,7 @@ from bajutsu.handoff import (
     response_from_json,
 )
 from bajutsu.serve import jobs as srv_jobs
-from bajutsu.serve.helpers import record_command
+from bajutsu.serve.commands import record_command
 from bajutsu.serve.operations import respond_human
 from bajutsu.serve.operations.sse import _classify, format_sse
 

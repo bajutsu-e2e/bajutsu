@@ -6,13 +6,12 @@ from typing import Any
 
 from bajutsu.config import load_config
 from bajutsu.redaction import Redactor
-from bajutsu.serve import jobs
-from bajutsu.serve.jobs import ServeState
 from bajutsu.serve.operations._common import (
     _default_driver_factory,
     _device_args,
     _resolve_org_or_forbid,
 )
+from bajutsu.serve.state import CaptureSession, ServeState
 
 
 def start_capture(
@@ -65,7 +64,7 @@ def start_capture(
     shot_path = shot_dir / "screen.png"
     driver.screenshot(str(shot_path))
 
-    state.capture = jobs.CaptureSession(
+    state.capture = CaptureSession(
         driver=driver,
         target=target,
         elements=elements,
