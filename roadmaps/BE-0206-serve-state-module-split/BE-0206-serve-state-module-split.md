@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0206") |
-| Implementing PR | _pending_ |
+| Implementing PR | [#825](https://github.com/bajutsu-e2e/bajutsu/pull/825) |
 | Topic | Codebase quality & technical debt |
 <!-- /BE-METADATA -->
 
@@ -91,7 +91,7 @@ keeps re-exports while importers migrate, then the shim is dropped.
 
 Log:
 
-- _pending PR_ — Split the serve state container into `serve/state.py` and the CLI command
+- [#825](https://github.com/bajutsu-e2e/bajutsu/pull/825) — Split the serve state container into `serve/state.py` and the CLI command
   builders into `serve/commands.py`, both pure moves; `serve/jobs.py` keeps the run/cancel/build
   execution engine and imports `state` in one direction. `executor.py`'s type imports repoint to
   `state` (the lazy `run_job` import stays, as does `ServeState._env_var_for_secret`'s lazy
