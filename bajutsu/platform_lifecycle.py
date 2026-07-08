@@ -126,14 +126,17 @@ class RunEnvironment(Protocol):
         Returns `{}` for a platform with no device (web) — a first-class "no devices", not an
         unimplemented stub; the caller always invokes this and reads the empty map as the answer.
         """
+        ...
 
     def observes_network_via_driver(self) -> bool:
         """Whether network is observed by hooking the live driver (web) rather than an external
         receiver the app reports to (the device backends). Gates `hook_collector`."""
+        ...
 
     def records_video_up_front(self) -> bool:
         """Whether video capture must be wired before launch (web's context records at creation)
         rather than on demand (simctl). Gates `start`'s `record_video_dir` handling."""
+        ...
 
     def hook_collector(self, driver: base.Driver, scenario: Scenario) -> Collector:
         """The page-hooked collector for a driver-observed platform, with this scenario's mocks wired
@@ -143,6 +146,7 @@ class RunEnvironment(Protocol):
         platform that returns `False` there may leave this raising `NotImplementedError` — the check
         makes the raise unreachable. This is the only Protocol method permitted to raise.
         """
+        ...
 
     def relauncher(
         self,
@@ -153,6 +157,7 @@ class RunEnvironment(Protocol):
         extra_env: Mapping[str, str] | None = None,
     ) -> RelaunchFn:
         """The scenario's `relaunch` function (app restart on a device; re-navigate on web)."""
+        ...
 
     def controller(self, eff: Effective) -> DeviceControl | None:
         """Device control for the leased device.
@@ -160,9 +165,11 @@ class RunEnvironment(Protocol):
         Returns `None` on a platform without one (web) — a first-class "no device control" the runner
         interprets, not an unimplemented stub.
         """
+        ...
 
     def teardown(self, driver: base.Driver, eff: Effective) -> None:
         """Per-release app teardown: terminate the app (device) or close the browser (web)."""
+        ...
 
 
 @runtime_checkable
@@ -179,14 +186,17 @@ class CrawlEnvironment(Protocol):
     def has_devices(self) -> bool:
         """Whether this platform drives real devices (web has none). Sizes the crawl's lane-prep
         message and distinguishes the web browser-lane sizing from a device pool."""
+        ...
 
     def plan_lanes(self, udid_arg: str, workers: int) -> list[str]:
         """The crawl's lane udids. A device pool resolves *udid_arg* and caps to *workers*; web has no
         device, so *workers* alone sizes the browser-lane set (each lane one browser)."""
+        ...
 
     def crawl_reset(self, eff: Effective) -> Reset:
         """A crawl `reset` to a clean start on this lane: relaunch the app (device) or open a fresh
         browser context (web), then wait until the first screen renders."""
+        ...
 
     def crawl_aliveness(self) -> AliveCheck | None:
         """The crawl's crash signal for a driver-observed platform (web reads pageerror / HTTP status
@@ -195,6 +205,7 @@ class CrawlEnvironment(Protocol):
         Returns `None` for the device backends (the engine reads the accessibility tree) — a
         first-class "no such signal here", not an unimplemented stub.
         """
+        ...
 
     def crawl_recover(self) -> Recover | None:
         """Heal a wedged lane (relaunch a crashed/hung browser) on web.
@@ -202,6 +213,7 @@ class CrawlEnvironment(Protocol):
         Returns `None` where the platform has no in-lane recovery (the device backends) — a
         first-class "no recovery here", not an unimplemented stub.
         """
+        ...
 
     def crawl_dialog_clearer(self) -> ClearBlocking | None:
         """Report blocking dialogs auto-cleared this step (web JS dialogs the driver dismisses).
@@ -209,6 +221,7 @@ class CrawlEnvironment(Protocol):
         Returns `None` on platforms with no such auto-clear — a first-class "nothing auto-cleared
         here", not an unimplemented stub.
         """
+        ...
 
 
 @runtime_checkable
