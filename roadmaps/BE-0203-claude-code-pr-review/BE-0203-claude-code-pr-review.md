@@ -17,11 +17,10 @@
 
 Every pull request to this repository is reviewed automatically by **GitHub Copilot** today —
 it posts inline comments when a PR opens and re-reviews on each push. This item replaces that
-reviewer with **Claude Code**, running Claude Code's built-in `code-review` skill (the same one
-this repo's [`implement-be`](../../.claude/skills/implement-be/SKILL.md) already uses author-side)
-from a GitHub Actions workflow on every PR: auto-triggered on open and on each push,
-posting **inline line-level comments** — including GitHub *suggested-change* blocks — plus a
-short summary, exactly the surface Copilot occupies. The gain over Copilot is that Claude Code
+reviewer with **Claude Code**, running from a GitHub Actions workflow on every PR: auto-triggered
+on open and on each push, posting **inline line-level comments** via the action's native
+inline-comment tool — including GitHub *suggested-change* blocks — plus a short summary via a
+scoped `gh pr comment`, exactly the surface Copilot occupies. The gain over Copilot is that Claude Code
 reviews against **this repository's own contract** — the three [prime
 directives](../../CLAUDE.md#prime-directives-do-not-violate), the docstring standard, the
 bilingual-docs rule, the BE-ID lifecycle — which a generic reviewer cannot know.

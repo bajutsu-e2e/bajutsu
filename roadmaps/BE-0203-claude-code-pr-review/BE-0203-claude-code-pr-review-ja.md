@@ -17,11 +17,10 @@
 
 現在、本リポジトリへのプルリクエストは **GitHub Copilot** が自動でレビューしています。プルリクエストが
 開かれるとインラインコメントを付け、プッシュのたびに再レビューします。この項目は、そのレビュアーを
-**Claude Code** に置き換えます。GitHub Actions のワークフローから、Claude Code 組み込みの
-`code-review` スキル（このリポジトリの [`implement-be`](../../.claude/skills/implement-be/SKILL.md) が
-著者側ですでに使っているのと同じもの）をすべてのプルリクエストに対して走らせ、オープン時と各プッシュ時に
-自動で起動して、GitHub の提案変更（suggested change）ブロックを含む**行単位のインラインコメント**と短い要約を
-投稿します。これは Copilot が占めているのとまったく同じ表面です。Copilot に対する利点は、Claude Code が
+**Claude Code** に置き換えます。GitHub Actions のワークフローをすべてのプルリクエストに対して走らせ、
+オープン時と各プッシュ時に自動で起動して、アクションのネイティブなインラインコメントツールで GitHub の
+提案変更（suggested change）ブロックを含む**行単位のインラインコメント**を投稿し、スコープを絞った
+`gh pr comment` で短い要約を投稿します。これは Copilot が占めているのとまったく同じ表面です。Copilot に対する利点は、Claude Code が
 **このリポジトリ自身の契約** に照らしてレビューできる点にあります。三つの
 [prime directive](../../CLAUDE.md#prime-directives-do-not-violate)、docstring 規約、ドキュメントの二言語ルール、
 BE ID のライフサイクルといった、汎用のレビュアーには知りようのない事項です。
