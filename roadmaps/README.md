@@ -708,6 +708,7 @@ Behavior-preserving cleanup inside `bajutsu/` itself — deduplication, decompos
 |---|---|---|
 | [BE-0197](BE-0197-environment-protocol-shape/BE-0197-environment-protocol-shape.md) | Even out the Environment protocol shape for a third platform | Proposal |
 | [BE-0198](BE-0198-serve-state-job-registry-split/BE-0198-serve-state-job-registry-split.md) | Split the JobRegistry out of ServeState | Proposal |
+| [BE-0199](BE-0199-doctor-screen-probe-dedupe/BE-0199-doctor-screen-probe-dedupe.md) | Share the doctor screen probe between CLI and serve | Proposal |
 <!-- /GENERATED:proposals-quality-debt -->
 
 ### Integration with external services

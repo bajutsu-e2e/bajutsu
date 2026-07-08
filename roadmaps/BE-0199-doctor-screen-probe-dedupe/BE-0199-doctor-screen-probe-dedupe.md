@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-doctor-screen-probe-dedupe-ja.md)
+**English** · [日本語](BE-0199-doctor-screen-probe-dedupe-ja.md)
 
-# BE-XXXX — Share the doctor screen probe between CLI and serve
+# BE-0199 — Share the doctor screen probe between CLI and serve
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-doctor-screen-probe-dedupe.md) |
+| Proposal | [BE-0199](BE-0199-doctor-screen-probe-dedupe.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0199") |
 | Topic | Codebase quality & technical debt |
 <!-- /BE-METADATA -->
 

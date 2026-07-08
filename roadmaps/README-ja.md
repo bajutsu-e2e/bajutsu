@@ -701,6 +701,7 @@ AI を使う経路（`record` ／ `crawl` ／ `triage --ai` ／ `run --apply`）
 |---|---|---|
 | [BE-0197](BE-0197-environment-protocol-shape/BE-0197-environment-protocol-shape-ja.md) | 3 つめのプラットフォームに向けて Environment protocol の形をそろえる | 提案 |
 | [BE-0198](BE-0198-serve-state-job-registry-split/BE-0198-serve-state-job-registry-split-ja.md) | ServeState から JobRegistry を切り出す | 提案 |
+| [BE-0199](BE-0199-doctor-screen-probe-dedupe/BE-0199-doctor-screen-probe-dedupe-ja.md) | doctor の画面プローブを CLI と serve で共有する | 提案 |
 <!-- /GENERATED:proposals-quality-debt -->
 
 ### 外部サービスとの連携
