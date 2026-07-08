@@ -212,10 +212,10 @@ Log:
 
 - Proposal authored.
 - Shipped the advisory review workflow, the repo-flavored review prompt, and the bilingual docs
-  (items 1–8). Authenticates to Amazon Bedrock via GitHub OIDC (`aws-actions/configure-aws-credentials`),
-  gated to a green no-op until the `AWS_BEDROCK_ROLE_ARN` Environment secret exists. Item 7's
-  migration execution (disabling Copilot in repo/org settings) and item 9's live verification are
-  post-merge manual steps a PR diff cannot perform. Implementing PR:
+  (items 1–8). Authenticates via a Claude Code subscription (OAuth) or Amazon Bedrock via GitHub OIDC,
+  staying a green no-op until a provider credential is provisioned (`CLAUDE_CODE_OAUTH_TOKEN` or
+  `AWS_BEDROCK_ROLE_ARN` + `BEDROCK_MODEL_ID`). Item 7's migration execution (disabling Copilot in
+  repo/org settings) is a post-merge operational task. Implementing PR:
   [#807](https://github.com/bajutsu-e2e/bajutsu/pull/807).
 - Added the Claude Code subscription (OAuth) provider alongside Bedrock (item 6): the workflow
   prefers the `CLAUDE_CODE_OAUTH_TOKEN` secret when set, else Bedrock via OIDC, else stays a green
