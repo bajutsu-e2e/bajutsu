@@ -2,9 +2,10 @@
 
 Split from `serve/jobs.py` (BE-0206): most of the serve package reads `ServeState` (and the `Job`,
 `StoreBundle`, `CaptureSession` value types), while only the run/cancel execution engine — which
-stays in `jobs.py` — mutates a `Job`. The dependency is one-directional (execution reads state; the
-state half never calls the execution half), so keeping the state here lets `executor` import it at
-module level and keeps the file from growing on two axes at once.
+stays in `jobs.py` — mutates a `Job`. The runtime dependency is one-directional: `state` imports
+`executor` at runtime (for the `LocalExecutor` field default), while `executor` references
+`ServeState`/`Job` only under `TYPE_CHECKING` and imports `run_job` lazily — avoiding a
+`state ⇄ executor` cycle. The state module keeps the file from growing on two axes at once.
 """
 
 from __future__ import annotations
@@ -118,10 +119,10 @@ class Job:
 
 @dataclass
 class StoreBundle:
-    """The three per-tenant storage seams resolved for one org (BE-0015 multi-tenancy). Operations
+    """The four per-tenant storage seams resolved for one org (BE-0015 multi-tenancy). Operations
     fetch a bundle for the request's org and use it instead of the bare `ServeState` fields, so a
-    server backend keeps each org's artifacts/scenarios/baselines under its own object-store prefix.
-    Local serve has one tenant, so its bundle is just the default stores."""
+    server backend keeps each org's artifacts/scenarios/baselines/secrets under its own
+    object-store prefix. Local serve has one tenant, so its bundle is just the default stores."""
 
     artifacts: ArtifactStore
     scenarios: ScenarioStore
