@@ -83,7 +83,7 @@ async function startJob(o){
   setStatus(o.status,'','run');
   const r=await fetch(o.url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(o.body)});
   const data=await r.json();
-  if(data.error){setStatus(o.status,data.error,'ng');setBusy(o.btn,o.stop,false);return null}
+  if(data.error){setStatus(o.status,data.error,'ng');setBusy(o.btn,o.stop,false);return null;}
   if(o.onStart)o.onStart(data);
   return streamJob(data.jobId,o.onLog,o.onDone,o.onHuman);
 }
