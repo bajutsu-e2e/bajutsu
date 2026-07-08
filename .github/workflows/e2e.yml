@@ -95,6 +95,25 @@ jobs:
         with:
           wait: "false"
 
+      # The DerivedData cache must not cross Xcode upgrades: a different Xcode's compiled modules
+      # cause stale-artifact build failures. Capture the active Xcode build version for the cache key.
+      - name: Resolve Xcode version (for the cache key)
+        id: xcode
+        run: echo "ver=$(xcodebuild -version | tr '\n ' '--')" >> "$GITHUB_OUTPUT"
+
+      # Cache the showcase app's DerivedData so `swiftui-build` is incremental across runs, matching
+      # the xcuitest job. Keyed on Xcode + the app's Swift sources + project spec; the `-app-` infix
+      # keeps this app-scheme cache from colliding with the xcuitest job's UITests-scheme cache that
+      # writes the same DerivedData path. restore-keys warm compiled modules on a partial source
+      # change; a miss just rebuilds cold, so the cache only ever speeds the build, never its result.
+      - name: Cache DerivedData (app)
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+        with:
+          path: demos/showcase/ios/swiftui/build/dd
+          key: xcode-dd-app-${{ runner.os }}-${{ runner.arch }}-${{ steps.xcode.outputs.ver }}-${{ hashFiles('BajutsuKit/**/*.swift', 'demos/showcase/ios/swiftui/**/*.swift', 'demos/showcase/ios/swiftui/**/project.yml') }}
+          restore-keys: |
+            xcode-dd-app-${{ runner.os }}-${{ runner.arch }}-${{ steps.xcode.outputs.ver }}-
+
       # Fetch the idb backend's deps concurrently with the app build: idb_companion (brew, ~20s) and
       # the idb Python extra are both independent of the build, so backgrounding them hides their
       # cost under the ~2.5min build instead of paying it serially before the run. The composite
@@ -184,9 +203,9 @@ jobs:
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
         with:
           path: demos/showcase/ios/swiftui/build/dd
-          key: xcode-dd-${{ runner.os }}-${{ steps.xcode.outputs.ver }}-${{ hashFiles('BajutsuKit/**/*.swift', 'demos/showcase/ios/swiftui/**/*.swift', 'demos/showcase/ios/swiftui/**/project.yml') }}
+          key: xcode-dd-${{ runner.os }}-${{ runner.arch }}-${{ steps.xcode.outputs.ver }}-${{ hashFiles('BajutsuKit/**/*.swift', 'demos/showcase/ios/swiftui/**/*.swift', 'demos/showcase/ios/swiftui/**/project.yml') }}
           restore-keys: |
-            xcode-dd-${{ runner.os }}-${{ steps.xcode.outputs.ver }}-
+            xcode-dd-${{ runner.os }}-${{ runner.arch }}-${{ steps.xcode.outputs.ver }}-
 
       # Start the boot before the codegen build so the ~80s first boot overlaps with it.
       # `wait: 'false'` returns once the boot is initiated; no explicit wait is needed because
@@ -252,6 +271,35 @@ jobs:
         uses: ./.github/actions/boot-simulator
         with:
           wait: "false"
+
+      # The DerivedData cache must not cross Xcode upgrades: a different Xcode's compiled modules
+      # cause stale-artifact build failures. Capture the active Xcode build version for the cache key.
+      - name: Resolve Xcode version (for the cache key)
+        id: xcode
+        run: echo "ver=$(xcodebuild -version | tr '\n ' '--')" >> "$GITHUB_OUTPUT"
+
+      # Cache the showcase app's DerivedData so `swiftui-build` is incremental across runs, matching
+      # the xcuitest job. Keyed on Xcode + the app's Swift sources + project spec; the `-app-` infix
+      # keeps this app-scheme cache from colliding with the xcuitest job's UITests-scheme cache that
+      # writes the same DerivedData path. restore-keys warm compiled modules on a partial source
+      # change; a miss just rebuilds cold, so the cache only ever speeds the build, never its result.
+      - name: Cache DerivedData (app)
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+        with:
+          path: demos/showcase/ios/swiftui/build/dd
+          key: xcode-dd-app-${{ runner.os }}-${{ runner.arch }}-${{ steps.xcode.outputs.ver }}-${{ hashFiles('BajutsuKit/**/*.swift', 'demos/showcase/ios/swiftui/**/*.swift', 'demos/showcase/ios/swiftui/**/project.yml') }}
+          restore-keys: |
+            xcode-dd-app-${{ runner.os }}-${{ runner.arch }}-${{ steps.xcode.outputs.ver }}-
+
+      # The resident XCUITest runner builds into its own DerivedData dir; cache it separately
+      # (keyed on the runner's Swift sources + project spec) so `runner-build` is incremental too.
+      - name: Cache DerivedData (runner)
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+        with:
+          path: BajutsuKit/Runner/build/dd
+          key: xcode-dd-runner-${{ runner.os }}-${{ runner.arch }}-${{ steps.xcode.outputs.ver }}-${{ hashFiles('BajutsuKit/**/*.swift', 'BajutsuKit/Runner/project.yml') }}
+          restore-keys: |
+            xcode-dd-runner-${{ runner.os }}-${{ runner.arch }}-${{ steps.xcode.outputs.ver }}-
 
       # Build the a11y app AND the resident XCUITest runner; fetch idb's deps concurrently so the
       # bajutsu-e2e action's idb_companion install / uv sync no-op. The trap stops the background
@@ -327,6 +375,35 @@ jobs:
         uses: ./.github/actions/boot-simulator
         with:
           wait: "false"
+
+      # The DerivedData cache must not cross Xcode upgrades: a different Xcode's compiled modules
+      # cause stale-artifact build failures. Capture the active Xcode build version for the cache key.
+      - name: Resolve Xcode version (for the cache key)
+        id: xcode
+        run: echo "ver=$(xcodebuild -version | tr '\n ' '--')" >> "$GITHUB_OUTPUT"
+
+      # Cache the showcase app's DerivedData so `swiftui-build` is incremental across runs, matching
+      # the xcuitest job. Keyed on Xcode + the app's Swift sources + project spec; the `-app-` infix
+      # keeps this app-scheme cache from colliding with the xcuitest job's UITests-scheme cache that
+      # writes the same DerivedData path. restore-keys warm compiled modules on a partial source
+      # change; a miss just rebuilds cold, so the cache only ever speeds the build, never its result.
+      - name: Cache DerivedData (app)
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+        with:
+          path: demos/showcase/ios/swiftui/build/dd
+          key: xcode-dd-app-${{ runner.os }}-${{ runner.arch }}-${{ steps.xcode.outputs.ver }}-${{ hashFiles('BajutsuKit/**/*.swift', 'demos/showcase/ios/swiftui/**/*.swift', 'demos/showcase/ios/swiftui/**/project.yml') }}
+          restore-keys: |
+            xcode-dd-app-${{ runner.os }}-${{ runner.arch }}-${{ steps.xcode.outputs.ver }}-
+
+      # The resident XCUITest runner builds into its own DerivedData dir; cache it separately
+      # (keyed on the runner's Swift sources + project spec) so `runner-build` is incremental too.
+      - name: Cache DerivedData (runner)
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+        with:
+          path: BajutsuKit/Runner/build/dd
+          key: xcode-dd-runner-${{ runner.os }}-${{ runner.arch }}-${{ steps.xcode.outputs.ver }}-${{ hashFiles('BajutsuKit/**/*.swift', 'BajutsuKit/Runner/project.yml') }}
+          restore-keys: |
+            xcode-dd-runner-${{ runner.os }}-${{ runner.arch }}-${{ steps.xcode.outputs.ver }}-
 
       # Build the a11y app AND the resident XCUITest runner; fetch idb's deps concurrently. Unlike
       # the smoke job, the venv here keeps the dev group (pytest) — this job runs the suite through
