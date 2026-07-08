@@ -1,14 +1,20 @@
-"""Convention score for an app — how ready it is to be tested.
+"""Convention score for an app — how ready it is to be tested, plus the screen probe that feeds it.
 
 Pure scoring computed from a screen (a list of Element): id coverage over
 actionable elements, namespace conformance, and id uniqueness. AI is not
-involved. Environment/connection gates (which need a device) live in the CLI.
+involved. The screen probe (`probe_screen`) that reads that screen from the device is
+shared by the CLI and serve doctors (BE-0199); the environment/connection *gates* that decide
+whether to probe stay with each caller (they need a device and their own UX).
 """
 
 from __future__ import annotations
 
+import contextlib
 from dataclasses import dataclass
 
+from bajutsu import adb, simctl
+from bajutsu.backends import make_driver
+from bajutsu.config import Effective, require_web, web_base_url
 from bajutsu.drivers import base
 
 # Traits that count as "actionable" (the denominator for id coverage).
@@ -142,3 +148,85 @@ def render(s: Score) -> str:
     if s.duplicates:
         lines.append(f"  duplicate ids: {s.duplicates}")
     return "\n".join(lines)
+
+
+class DoctorProbeError(RuntimeError):
+    """The screen can't be probed for scoring — a fixable config error, not a crash.
+
+    Raised only for the config-level "can't even attempt the probe" case (e.g. a web target
+    with no baseUrl). The caller maps it to its own surface (CLI: `typer.Exit(2)`; serve:
+    `ValueError`). Device/reachability faults keep raising their transport error (`DeviceError`,
+    a Playwright error), which the callers already handle distinctly.
+    """
+
+
+def _first_udid(udid: str) -> str:
+    """The first UDID of a possibly comma-separated list (the /api/run parallel-worker format).
+
+    doctor scores one screen, so it targets one device; passing "A,B" on to resolve/make_driver
+    would treat the whole string as one invalid UDID. Empty falls back to "booted".
+    """
+    return (udid.split(",")[0].strip() if udid else "") or "booted"
+
+
+def probe_screen(
+    actuator: str,
+    udid: str,
+    eff: Effective,
+    *,
+    simctl_run: simctl.RunFn = simctl._real_run,
+) -> list[base.Element]:
+    """Query the current screen's elements to score, backend by backend (shared, BE-0199).
+
+    Web (Playwright) navigates a fresh browser to the target's baseUrl (the `launch` equivalent)
+    and scores that page, tearing the browser down after; iOS reads the accessibility tree on the
+    booted Simulator (no runner needed even for xcuitest, which falls back to idb, BE-0019), and
+    Android whatever is on the attached device, at the resolved udid.
+
+    Args:
+        actuator: the selected backend (idb / xcuitest / playwright / adb / fake).
+        udid: the device to target; a comma-list (the /api/run parallel format) is narrowed to its
+            first entry, since doctor scores one screen.
+        eff: the resolved target config (supplies the web baseUrl / browser knobs).
+        simctl_run: how to invoke simctl — serve routes it through its host-safe runner (so it
+            never shells out on a host without Xcode) and tests inject a fake; the CLI uses the
+            default real runner.
+
+    Raises:
+        DoctorProbeError: the target is misconfigured for probing (a web target with no baseUrl).
+    """
+    if actuator == "playwright":
+        # A missing baseUrl (or a non-web target forced onto playwright) is a clean, fixable config
+        # error, not a crash — `web_base_url` is None for both, so this raises before the
+        # `require_web` narrowing below (which a present baseUrl guarantees is a WebConfig). In
+        # practice the caller's config gate already caught it; this is the defensive backstop.
+        base_url = web_base_url(eff)
+        if not base_url:
+            raise DoctorProbeError("web target needs baseUrl (set targets.<name>.baseUrl)")
+        web = require_web(eff)
+        # Lazy import keeps Playwright (a heavy optional dep) off the default path.
+        from bajutsu.drivers.playwright import PlaywrightDriver, _playwright_error_types
+
+        driver = PlaywrightDriver(base_url, headless=web.headless, browser=web.browser)
+        try:
+            driver.navigate()
+            return driver.query()
+        finally:
+            # Suppress browser-side errors on teardown so a close() failure during a faulted
+            # browser does not mask the original navigate/query exception.
+            with contextlib.suppress(*_playwright_error_types()):
+                driver.close()
+    if actuator == "fake":
+        # The fake driver needs no device, so it must not touch simctl — resolving a udid would
+        # shell out to `xcrun` and fail on a host without Xcode (e.g. the Linux gate).
+        return make_driver("fake", _first_udid(udid)).query()
+    # xcuitest needs a running runner to query, but doctor only scores the current screen — idb can
+    # read the same accessibility tree without a runner (BE-0019). Android resolves its serial via
+    # adb (the same parameterization the run pipeline uses), the iOS family via simctl.
+    query_actuator = "idb" if actuator == "xcuitest" else actuator
+    first = _first_udid(udid)
+    if actuator == "adb":
+        resolved = adb.resolve_serial(first)
+    else:
+        resolved = simctl.resolve_udid(first, run=simctl_run)
+    return make_driver(query_actuator, resolved).query()

@@ -810,8 +810,10 @@ def test_doctor_xcuitest_falls_back_to_idb_for_screen_query(
         made.append((actuator, udid))
         return FakeDriver()
 
-    monkeypatch.setattr("bajutsu.cli.commands.doctor.make_driver", fake_make_driver)
-    monkeypatch.setattr("bajutsu.simctl.resolve_udid", lambda u: "FAKE-UDID")
+    # The CLI's _current_screen is a thin adapter over doctor.probe_screen (BE-0199), so the
+    # xcuitest→idb fallback and udid resolution now live there; patch at that shared location.
+    monkeypatch.setattr("bajutsu.doctor.make_driver", fake_make_driver)
+    monkeypatch.setattr("bajutsu.simctl.resolve_udid", lambda u, run=None: "FAKE-UDID")
 
     elements = _current_screen("xcuitest", "booted", eff)
     assert elements == [el]

@@ -656,6 +656,11 @@ def android_package(eff: Effective) -> str:
     return eff.platform_config.package if isinstance(eff.platform_config, AndroidConfig) else ""
 
 
+def idb_version_pin(eff: Effective) -> str | None:
+    """The iOS target's declared idb version range (`defaults.idbVersion`), or None when unpinned."""
+    return eff.platform_config.idb_version if isinstance(eff.platform_config, IosConfig) else None
+
+
 def _merge_redact(base: Redact, over: Redact) -> Redact:
     def union(a: list[str], b: list[str]) -> list[str]:
         return list(dict.fromkeys([*a, *b]))
