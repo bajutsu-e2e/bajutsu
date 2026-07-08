@@ -28,10 +28,10 @@ Both pairs are the same logic maintained twice:
   (wait / `assert_` no-op / `_do_action`). They differ only in wait-failure handling — enrich
   checks `_wait`'s `(ok, reason)` and raises `_ReplayFailed`, record ignores the return value.
 - **Alert clearing** (`_clear_blocking` in both): the same
-  `for _ in range(max_tries)` / `shows_app_ui` / `guard(driver)` / `clock.sleep(0.5)` loop with
-  the same "screen blocked by a system prompt" message. `record.py`'s version is the richer one
-  (returns the dismissed labels, reports each dismissal); `enrich.py`'s is a stripped copy that
-  discards the guard's return value.
+  `for _ in range(max_tries)` / `shows_app_ui` / `guard(driver)` / `clock.sleep(0.5)` loop, and
+  similar "screen … blocked …" reporting (record: "the app screen looks blocked …"; enrich:
+  "screen blocked …"). `record.py`'s version is the richer one (returns the dismissed labels,
+  reports each dismissal); `enrich.py`'s is a stripped copy that discards the guard's return value.
 
 Independently maintained copies drift — the screenshot helpers had exactly this history until
 BE-0132 consolidated them onto `record._screenshot_bytes`, which `enrich.py` already imports.
