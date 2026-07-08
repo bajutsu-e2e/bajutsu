@@ -13,10 +13,10 @@ from typing import Any
 
 from bajutsu.object_store import content_type_for
 from bajutsu.serve.helpers import valid_relative_key, valid_run_id, valid_scenario_ref
-from bajutsu.serve.jobs import ServeState
 from bajutsu.serve.operations.presign import sign_put_urls
 from bajutsu.serve.orgs import DEFAULT_ORG
 from bajutsu.serve.server.object_store import artifact_prefix, org_prefix, scenario_prefix
+from bajutsu.serve.state import ServeState
 
 
 def _job_org(

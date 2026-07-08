@@ -16,7 +16,7 @@ from bajutsu import coverage as _coverage
 from bajutsu.config import load_config, resolve
 from bajutsu.scenario import load_scenarios_dir
 from bajutsu.serve.helpers import valid_run_id
-from bajutsu.serve.jobs import ServeState, _scenarios_dir_for
+from bajutsu.serve.state import ServeState, _scenarios_dir_for
 
 
 def coverage_view(

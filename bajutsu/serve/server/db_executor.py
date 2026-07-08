@@ -12,8 +12,8 @@ from typing import TYPE_CHECKING
 from bajutsu.serve.server.worker_job import job_spec
 
 if TYPE_CHECKING:
-    from bajutsu.serve.jobs import Job, ServeState
     from bajutsu.serve.server.db import Repository
+    from bajutsu.serve.state import Job, ServeState
 
 
 class DbQueueExecutor:

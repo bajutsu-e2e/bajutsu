@@ -9,8 +9,8 @@ from __future__ import annotations
 from pathlib import Path
 
 from bajutsu.serve import operations as ops
-from bajutsu.serve.jobs import ServeState
 from bajutsu.serve.server.oauth import Identity
+from bajutsu.serve.state import ServeState
 
 
 class FakeOAuthClient:

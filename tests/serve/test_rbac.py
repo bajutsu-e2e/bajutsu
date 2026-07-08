@@ -8,9 +8,9 @@ from pathlib import Path
 from sqlalchemy import create_engine
 
 from bajutsu.serve import operations as ops
-from bajutsu.serve.jobs import ServeState
 from bajutsu.serve.server.db import SqlRepository
 from bajutsu.serve.server.models import Base
+from bajutsu.serve.state import ServeState
 
 
 def test_role_for_applies_the_env_policy() -> None:

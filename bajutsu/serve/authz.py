@@ -12,8 +12,8 @@ import secrets
 from typing import Any
 
 from bajutsu.serve.helpers import load_serve_config_file
-from bajutsu.serve.jobs import _DEFAULT_ORG, ServeState
 from bajutsu.serve.orgs import org_for_identity, org_for_target
+from bajutsu.serve.state import _DEFAULT_ORG, ServeState
 
 
 def login(state: ServeState, token: str) -> tuple[Any, int, str | None]:

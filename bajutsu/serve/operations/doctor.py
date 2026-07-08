@@ -19,8 +19,8 @@ from bajutsu.config import (
     web_engine,
 )
 from bajutsu.drivers import base
-from bajutsu.serve.jobs import ServeState
 from bajutsu.serve.operations._common import _device_args
+from bajutsu.serve.state import ServeState
 
 # (actuator, udid, effective config) -> the current screen's elements. Injectable so the score
 # path is testable without a device — the device query is the one external dependency here.

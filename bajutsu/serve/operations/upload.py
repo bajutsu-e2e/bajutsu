@@ -12,7 +12,7 @@ import yaml
 from bajutsu.config import load_config, resolve
 from bajutsu.serve.authz import _record_audit
 from bajutsu.serve.helpers import list_targets
-from bajutsu.serve.jobs import ServeState
+from bajutsu.serve.state import ServeState
 from bajutsu.serve.uploads import BundleError, Upload, extract_bundle, find_bundle_config
 
 

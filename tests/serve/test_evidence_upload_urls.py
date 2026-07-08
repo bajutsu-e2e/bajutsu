@@ -16,7 +16,7 @@ from _shared import _post, _serve, project
 from bajutsu import serve as srv
 from bajutsu.object_store import EvidenceTarget
 from bajutsu.serve import operations as ops
-from bajutsu.serve.jobs import ServeState
+from bajutsu.serve.state import ServeState
 
 
 class _FakeStore:

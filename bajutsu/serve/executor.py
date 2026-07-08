@@ -13,7 +13,7 @@ import threading
 from typing import TYPE_CHECKING, Protocol
 
 if TYPE_CHECKING:
-    from bajutsu.serve.jobs import Job, ServeState
+    from bajutsu.serve.state import Job, ServeState
 
 
 class RunExecutor(Protocol):

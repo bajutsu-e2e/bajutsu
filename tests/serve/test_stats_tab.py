@@ -17,10 +17,10 @@ from sqlalchemy import create_engine
 
 from bajutsu import serve as srv
 from bajutsu.serve.artifacts import Artifact
-from bajutsu.serve.jobs import StoreBundle
 from bajutsu.serve.operations import stats_html
 from bajutsu.serve.server.db import RunRecord, SqlRepository
 from bajutsu.serve.server.models import Base
+from bajutsu.serve.state import StoreBundle
 
 
 def _repo() -> SqlRepository:
