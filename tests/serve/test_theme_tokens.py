@@ -30,14 +30,26 @@ _DEFINE = re.compile(r"(--[a-z0-9-]+)\s*:")
 _HEX = re.compile(r"#[0-9a-fA-F]{3,8}\b")
 
 
+def _root_block() -> str:
+    """The `:root`/midnight block's body — the fallback source every theme degrades to.
+
+    Scoping to this block (not the whole file) is the point: a token defined only inside another
+    theme block (e.g. ``[data-theme="daylight"]``, or a drop-in theme from BE-0191 unit 2/3) does
+    NOT satisfy the contract, because midnight — the fallback — would still render it unset.
+    """
+    match = re.search(r':root(?:,\[data-theme="midnight"\])?\s*\{([^}]*)\}', _THEMES_CSS)
+    assert match, "serve.themes.css has no :root block"
+    return match.group(1)
+
+
 def _defined_tokens() -> set[str]:
-    """Custom properties available to every element: the theme default block plus serve.css globals.
+    """Custom properties available to every element: the midnight fallback block plus serve.css globals.
 
     The theme registry's ``:root`` block (== midnight) is the fallback source for every theme, and
     serve.css may define non-themed globals (e.g. the monospace font stack) in its own ``:root``.
     """
     return (
-        set(_DEFINE.findall(_THEMES_CSS))
+        set(_DEFINE.findall(_root_block()))
         | set(_DEFINE.findall(_SERVE_CSS))
         | set(_DEFINE.findall(_JS))
     )
