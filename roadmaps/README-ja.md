@@ -689,7 +689,9 @@ AI を使う経路（`record` ／ `crawl` ／ `triage --ai` ／ `run --apply`）
 ### 開発基盤（コントリビュータ体験）
 
 <!-- GENERATED:proposals-dev-infra -->
-
+| ID | 項目 | 状態 |
+|---|---|---|
+| [BE-0203](BE-0203-claude-code-pr-review/BE-0203-claude-code-pr-review-ja.md) | プルリクエストの自動コードレビューを Claude Code で行う | 提案 |
 <!-- /GENERATED:proposals-dev-infra -->
 
 ### コードベース品質・技術的負債

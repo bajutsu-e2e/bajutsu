@@ -696,7 +696,9 @@ Keeping the autonomous crawl fast and its code lean as it grows.
 ### Development infrastructure (contributor workflow)
 
 <!-- GENERATED:proposals-dev-infra -->
-
+| ID | Item | Status |
+|---|---|---|
+| [BE-0203](BE-0203-claude-code-pr-review/BE-0203-claude-code-pr-review.md) | Claude Code as the automated PR code reviewer | Proposal |
 <!-- /GENERATED:proposals-dev-infra -->
 
 ### Codebase quality & technical debt
