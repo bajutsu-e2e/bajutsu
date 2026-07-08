@@ -14,7 +14,7 @@
 
 ## Introduction
 
-`bajutsu/cli/commands/crawl.py`'s `crawl` function runs 321 lines beyond its option
+`bajutsu/cli/commands/crawl.py`'s `crawl` function runs ~250 lines beyond its option
 declarations. BE-0143 already solved this exact problem for the `run` command — a frozen plan
 record plus small `_resolve_*` helpers, leaving a thin readable sequence — and shipped it. This
 item applies the same, now-established pattern to `crawl`, behavior unchanged.
