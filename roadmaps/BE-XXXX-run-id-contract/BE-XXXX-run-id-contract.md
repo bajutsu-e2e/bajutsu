@@ -15,11 +15,11 @@
 ## Introduction
 
 Run ids are minted as `datetime.now(tz=UTC).strftime("%Y%m%d-%H%M%S")` spelled out independently
-at five sites (`cli/commands/run.py`, `cli/commands/crawl.py`, `serve/operations/dispatch.py`,
-`serve/helpers.py`, and the `audit-` variant in `cli/commands/audit.py`). The format is not a
-local detail — other code parses it back, validates it, and sorts by it — yet nothing in the
-codebase names it. This item introduces one `new_run_id()` helper (plus the format constant) and
-points the mint, validation, and parse sites at it.
+at four sites (`cli/commands/run.py`, `cli/commands/crawl.py`, and `serve/operations/dispatch.py`,
+plus the `audit-` prefixed variant in `cli/commands/audit.py`). The format is not a
+local detail — other code parses it back, derives timestamps from it, and sorts by it — yet
+nothing in the codebase names it. This item introduces one `new_run_id()` helper (plus the format
+constant) and points the mint and consumer sites at it.
 
 ## Motivation
 
