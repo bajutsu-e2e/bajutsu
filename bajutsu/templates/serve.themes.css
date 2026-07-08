@@ -35,7 +35,7 @@
    picker BE-0191 unit 3 introduces. */
 :root,[data-theme="midnight"]{
   --bg:#0f172a; --bg2:#0b1220; --card:#1e293b; --canvas:#ffffff; --line:#334155;
-  --fg:#e2e8f0; --mut:#94a3b8; --on-mut:#ffffff; --acc:#38bdf8; --on-acc:#082f49;
+  --fg:#e2e8f0; --mut:#94a3b8; --on-mut:#0f172a; --acc:#38bdf8; --on-acc:#082f49;
   --ok:#22c55e; --on-ok:#ffffff; --ng:#ef4444; --on-ng:#ffffff;
   --run:#f59e0b; --on-run:#1c1402;
   --rung-id:#22aa66; --rung-label:#ddaa33; --rung-labelidx:#cc7733; --on-rung:#ffffff;
