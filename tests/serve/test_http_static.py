@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 
 from _shared import (
@@ -86,8 +87,9 @@ def test_http_index_concatenates_all_js_sections(tmp_path: Path) -> None:
         assert "function openShot" in text  # serve.crawl.js (crawl graph / lightbox)
         assert "function initTiling" in text  # serve.author.js (layout + Author + boot)
         # The three start buttons now share startJob; each passes its own url + busy label.
+        # Tolerate incidental whitespace / quote style so a reformat doesn't break the routing check.
         for url in ("/api/run", "/api/record", "/api/crawl"):
-            assert f"url:'{url}'" in text
+            assert re.search(rf"url:\s*['\"]{re.escape(url)}['\"]", text)
         # startJob fails loudly on a network drop / non-JSON body / missing jobId — it must reset the
         # button rather than leave it stuck spinning (it fronts all three start buttons).
         assert "'request failed'" in text and "'no job started'" in text
