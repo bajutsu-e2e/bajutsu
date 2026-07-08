@@ -1,6 +1,6 @@
 // Minimal ESLint flat config for the serve Web UI's vanilla JS (BE-0129).
 //
-// A proportionate first guardrail for `bajutsu/templates/serve.js` — ~1.5k lines of untested,
+// A proportionate first guardrail for `bajutsu/templates/serve.js` — ~2.5k lines of untested,
 // build-step-free browser JavaScript. It enables only high-signal, low-noise rules that catch real
 // bugs (a duplicated object key, a reassigned const, unreachable code, an accidental assignment in
 // a condition) without a build or a test framework. A full component/unit harness (Jest/Vitest) is

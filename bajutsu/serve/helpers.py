@@ -199,8 +199,7 @@ def list_simulators(simctl: _simctl.RunFn = _simctl._real_run) -> list[dict[str,
         return []
     sims: list[dict[str, Any]] = []
     for runtime, devices in (data.get("devices") or {}).items():
-        # "com.apple.CoreSimulator.SimRuntime.iOS-26-5" -> "iOS 26.5"
-        label = runtime.split("SimRuntime.")[-1].replace("-", " ", 1).replace("-", ".")
+        label = _simctl.runtime_label(runtime)
         for d in devices:
             if not d.get("isAvailable", True) or not d.get("udid"):
                 continue

@@ -14,6 +14,7 @@ a `request` assertion would. No model is consulted anywhere — prime directive 
 
 from __future__ import annotations
 
+import logging
 import time
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
@@ -25,6 +26,8 @@ from bajutsu.network import NetworkExchange
 if TYPE_CHECKING:
     from bajutsu.scenario.models.assertions import RequestMatch
     from bajutsu.scenario.models.mocks import Mock
+
+_logger = logging.getLogger(__name__)
 
 
 class WebNetworkCollector:
@@ -142,5 +145,8 @@ def _body(response: Any) -> str | None:
         return None
     try:
         return str(response.text())
-    except Exception:
+    except Exception as exc:
+        # Debug, not warning: a missing/binary body is routine. The log keeps a real driver
+        # fault distinguishable from "no body" instead of both vanishing into None.
+        _logger.debug("response body unavailable: %s", exc, exc_info=True)
         return None

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import subprocess
 import time
 from collections.abc import Callable, Mapping
@@ -38,6 +39,8 @@ from bajutsu.report import run_provenance, scenario_render_inputs, write_report
 from bajutsu.runner.mailbox import build_mailbox_reader
 from bajutsu.runner.types import LeaseFn, OnBlockedFor, _no_net
 from bajutsu.scenario import Scenario, dump_scenario_file, redact_totp_secrets
+
+_logger = logging.getLogger(__name__)
 
 
 def _write_network(
@@ -158,8 +161,10 @@ class _ScenarioRunner:
                     gc_with_screen = GoldenContext(
                         goldens_dir=self.golden_context.goldens_dir, screen=(0.0, 0.0, sw, sh)
                     )
-                except Exception:  # noqa: S110 — best-effort; _eval_golden falls back
-                    pass
+                except Exception as exc:  # best-effort; _eval_golden falls back
+                    _logger.debug(
+                        "screen-bounds probe for golden framing failed: %s", exc, exc_info=True
+                    )
             result = run_scenario(
                 lz.driver,
                 s,

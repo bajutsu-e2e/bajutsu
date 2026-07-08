@@ -217,7 +217,10 @@ def main(argv: list[str] | None = None) -> int:
     print(
         "Next: fill the TBD sections, localize the Japanese トピック / title / prose, and open a PR"
     )
-    print(f"      with the literal {PLACEHOLDER} in the title prefix.")
+    print(
+        "      with a plain scoped title and NO [BE-…] prefix — the id is allocated on main"
+        " after the merge (BE-0089), and scripts/lint_pr.py rejects a prefixed BE-creation title."
+    )
     return 0
 
 

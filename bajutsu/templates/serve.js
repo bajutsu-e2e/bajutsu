@@ -55,6 +55,13 @@ function streamJob(id,onLog,onDone,onHuman){
 function appendLine(el,line){el.textContent+=(el.textContent?'\n':'')+line;el.scrollTop=el.scrollHeight}
 function esc(s){return (s||'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]))}
 function setStatus(el,t,c){el.textContent=t;el.className='status '+c}
+// Fetch JSON, resolving to `fallback` on any network/parse failure — every panel degrades this
+// way, so the try/catch lives here once instead of at each call site.
+async function getJSON(url,fallback){try{return await (await fetch(url)).json()}catch(e){return fallback}}
+async function postJSON(url,body,fallback){
+  try{return await (await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)})).json()}
+  catch(e){return fallback}
+}
 
 // ---- determinism audit badge (BE-0145): shared by the Author editor and the Replay views ----
 // The audit returns one report per scenario in a file; the badge shows the file's worst grade and
@@ -186,7 +193,7 @@ document.querySelectorAll('.toptab').forEach(t=>t.addEventListener('click',()=>s
 // (BE-0108), so we hide that block and never call browseFs. Git + Upload are always offered.
 let fsSourceEnabled=true;
 async function loadConfig(){
-  let c;try{c=await (await fetch('/api/config')).json()}catch(e){c={hasConfig:false}}
+  const c=await getJSON('/api/config',{hasConfig:false});
   fsSourceEnabled=!c.configSources||c.configSources.includes('fs');
   $('#fssrc').hidden=!fsSourceEnabled;
   setCfgName(c.hasConfig?c.config:'no config bound — open one →',c.hasConfig);
@@ -197,7 +204,7 @@ function setCfgName(text,hasConfig){$('#cfgname').textContent=text;$('#viewcfg')
 // Browse the server's --root for a config.yml. Paths returned by /api/fs are absolute and the
 // server re-validates every one against --root, so clicking can never escape the browse ceiling.
 async function browseFs(dir){
-  let d;try{d=await (await fetch('/api/fs'+(dir?('?dir='+encodeURIComponent(dir)):''))).json()}catch(e){d={error:'failed'}}
+  const d=await getJSON('/api/fs'+(dir?('?dir='+encodeURIComponent(dir)):''),{error:'failed'});
   if(d.error){$('#fslist').innerHTML='<li class="muted">'+esc(d.error)+'</li>';return}
   $('#fspath').textContent=d.cwd;
   let h='';
@@ -251,7 +258,7 @@ function cfgNode(key,val,depth){
   return det;
 }
 async function openCfgView(){
-  let d;try{d=await (await fetch('/api/config/content')).json()}catch(e){d={error:'request failed'}}
+  const d=await getJSON('/api/config/content',{error:'request failed'});
   const prov=$('#cfgprov'),tree=$('#cfgviewtree');
   tree.textContent='';
   if(d.error){prov.hidden=true;$('#cfgviewpath').textContent='';$('#cfgviewbody').textContent=d.error;$('#cfgview-structured').disabled=true;cfgViewMode(true);$('#cfgviewmodal').hidden=false;return}
@@ -287,7 +294,7 @@ function renderKey(){
   }else{cur.textContent='No key set yet.';inp.placeholder='sk-ant-…'}
 }
 async function loadKey(){
-  let d;try{d=await (await fetch('/api/apikey')).json()}catch(e){d={set:false}}
+  const d=await getJSON('/api/apikey',{set:false});
   keyState={set:!!d.set,masked:d.masked||''};
   renderKey();
 }
@@ -330,7 +337,7 @@ function renderProv(){
 function setAntStatus(t,c){const st=$('#ant-login-status');if(st){st.textContent=t;st.className='keystatus '+(c||'')}}
 async function refreshAntLogin(){
   const btn=$('#ant-login');if(!btn)return;
-  let d;try{d=await (await fetch('/api/provider')).json()}catch(e){d={}}
+  const d=await getJSON('/api/provider',{});
   // claudeGap is provider-specific only once `ant` is the active provider; before Save we can't tell
   // "signed in" apart, so the button stays actionable and the login endpoint reports a missing CLI.
   const signedIn=d.provider==='ant'&&d.claudeAvailable===true;
@@ -347,7 +354,7 @@ async function antLogin(){
   const myGen=++antLoginGen;
   const btn=$('#ant-login');
   setAntStatus('starting sign-in…','');
-  let d;try{d=await (await fetch('/api/ant/login',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'})).json()}catch(e){d={error:'request failed'}}
+  const d=await postJSON('/api/ant/login',{},{error:'request failed'});
   if(myGen!==antLoginGen)return;                    // a newer click already took over
   if(d.error){await refreshAntLogin();setAntStatus(d.error,'ng');return}  // restore button, then show why
   if(btn)btn.textContent='Retry sign-in';           // keep it enabled so a stuck flow can be restarted
@@ -355,7 +362,7 @@ async function antLogin(){
   for(let i=0;i<200;i++){                            // ~5 min ceiling (matches the CLI's callback timeout)
     await new Promise(r=>setTimeout(r,1500));
     if(myGen!==antLoginGen)return;                   // superseded — stop polling, let the newer loop drive
-    let s;try{s=await (await fetch('/api/ant/login')).json()}catch(e){s={state:'error',detail:'status check failed'}}
+    const s=await getJSON('/api/ant/login',{state:'error',detail:'status check failed'});
     if(s.state==='running')continue;
     if(s.state==='ok'){
       // Align the server's active provider to `ant` so the record/crawl gate reflects the new
@@ -376,7 +383,7 @@ async function loadProv(){
   // Explicit selection: don't pre-select a provider from the server's (env-derived) default —
   // the user must consciously pick one, so the #provider placeholder stays until they do. The
   // per-provider map is cached so renderProv can pre-fill each provider's own values on pick (BE-0183).
-  let d;try{d=await (await fetch('/api/provider')).json()}catch(e){d={}}
+  const d=await getJSON('/api/provider',{});
   provState=d.providers||{};
   $('#ai-language').value=d.language||'auto';  // AI output language (BE-0188); blank env = auto
   renderProv();
@@ -387,7 +394,7 @@ async function loadProv(){
 // key is saved / a provider is picked (saveSettings re-runs this). Availability is data from
 // /api/provider (claudeAvailable / claudeHint), so the three surfaces never disagree.
 async function refreshAiAvailability(){
-  let d;try{d=await (await fetch('/api/provider')).json()}catch(e){d={}}
+  const d=await getJSON('/api/provider',{});
   const ok=d.claudeAvailable!==false, hint=d.claudeHint||'set an API key, configure Bedrock, or sign in with `ant auth login`.';
   aiAvailable=ok;  // the triage panel's opt-in Claude toggle reads this (BE-0147)
   const ta=$('#triage-ai');if(ta)ta.disabled=!ok;  // reflect live if a triage panel is open
@@ -416,7 +423,7 @@ async function saveSettings(){
     body.aiModel=$('#ai-model').value.trim();
   }
   setSettingsStatus('saving…','');
-  let d;try{d=await (await fetch('/api/provider',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)})).json()}catch(e){d={error:'request failed'}}
+  const d=await postJSON('/api/provider',body,{error:'request failed'});
   if(d.error){setSettingsStatus(d.error,'ng');return}
   // Remember this provider's just-saved values locally so switching away and back keeps them (BE-0183),
   // matching the per-provider slot the server now holds.
@@ -467,7 +474,7 @@ $('#gitspec').addEventListener('keydown',e=>{if(e.key==='Enter')chooseGitConfig(
 
 // ---- shared data: targets, scenarios, simulators (used by both views) ----
 async function loadShared(){
-  try{targets=await (await fetch('/api/targets')).json()}catch(e){targets=[]}
+  targets=await getJSON('/api/targets',[]);
   // each target carries its primary backend (data-backend) so picking a web target hides the iOS-only UI
   const opts=targets.map(a=>{const n=typeof a==='string'?a:a.name,b=typeof a==='string'?'':(a.backend||'');
     return `<option value="${esc(n)}" data-backend="${esc(b)}">${esc(n)}</option>`;}).join('');
@@ -484,21 +491,23 @@ async function loadShared(){
 // Scenarios come from the selected target's configured dir, so reload when the Replay target changes.
 async function loadScenarios(){
   const target=$('#target').value;
-  try{scnFiles=target?await (await fetch('/api/scenarios?target='+encodeURIComponent(target))).json():[]}catch(e){scnFiles=[]}
+  scnFiles=target?await getJSON('/api/scenarios?target='+encodeURIComponent(target),[]):[];
   $('#scn').innerHTML=scnFiles.map(s=>`<option value="${esc(s.path)}">${esc(s.file)}</option>`).join('');
   showInfo();replayAudit();
 }
 $('#target').addEventListener('change',()=>{loadScenarios();replayCodegen.sync();replayCodegen.reset();});
 async function loadSims(){
-  try{sims=await (await fetch('/api/simulators')).json()}catch(e){sims=[]}
+  sims=await getJSON('/api/simulators',[]);
+  // One checklist template for both multi-select pickers — Replay and Crawl differ only in the
+  // checkbox class and change handler.
+  const simChecklist=(el,cls,onChange)=>{
+    el.innerHTML=sims.length?sims.map(s=>`<label><input type="checkbox" class="${cls}" value="${esc(s.udid)}"><span class="dot ${s.booted?'ok':'off'}" title="${s.booted?'booted':'shut down'}"></span><span>${esc(s.name)}</span><span class="rt">${esc(s.runtime)}${s.booted?'':' · off'}</span></label>`).join(''):'<div class="empty">no simulators found</div>';
+    el.querySelectorAll('.'+cls).forEach(c=>c.addEventListener('change',onChange));
+  };
   // Replay: multi-select checkboxes (parallel pool).
-  const el=$('#sims');
-  el.innerHTML=sims.length?sims.map(s=>`<label><input type="checkbox" class="simck" value="${esc(s.udid)}"><span class="dot ${s.booted?'ok':'off'}" title="${s.booted?'booted':'shut down'}"></span><span>${esc(s.name)}</span><span class="rt">${esc(s.runtime)}${s.booted?'':' · off'}</span></label>`).join(''):'<div class="empty">no simulators found</div>';
-  el.querySelectorAll('.simck').forEach(c=>c.addEventListener('change',onSimChange));
+  simChecklist($('#sims'),'simck',onSimChange);
   // Crawl: multi-select checkboxes too (a parallel pool sharing one screen map — BE-0064).
-  const cel=$('#crawl-sims');
-  cel.innerHTML=sims.length?sims.map(s=>`<label><input type="checkbox" class="crawl-simck" value="${esc(s.udid)}"><span class="dot ${s.booted?'ok':'off'}" title="${s.booted?'booted':'shut down'}"></span><span>${esc(s.name)}</span><span class="rt">${esc(s.runtime)}${s.booted?'':' · off'}</span></label>`).join(''):'<div class="empty">no simulators found</div>';
-  cel.querySelectorAll('.crawl-simck').forEach(c=>c.addEventListener('change',onCrawlSimChange));
+  simChecklist($('#crawl-sims'),'crawl-simck',onCrawlSimChange);
   // Record: single-device dropdown ("booted" = whatever is already up).
   const single='<option value="booted">booted (already up)</option>'+sims.map(s=>`<option value="${esc(s.udid)}">${esc(s.name)} · ${esc(s.runtime)}${s.booted?'':' · off'}</option>`).join('');
   $('#rec-device').innerHTML=single;
@@ -613,8 +622,7 @@ $('#rec-run').addEventListener('click',async()=>{
   // Re-evaluate the scenario on every Run: clear a prior syntax error first, so a since-fixed
   // scenario shows no stale error and only a still-broken one re-surfaces below.
   setStatus($('#rec-status'),'','');
-  let sd;try{sd=await (await fetch('/api/scenario',{method:'POST',headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({target,path:recRunRef(),yaml})})).json()}catch(e){sd={error:'request failed'}}
+  const sd=await postJSON('/api/scenario',{target,path:recRunRef(),yaml},{error:'request failed'});
   if(sd.error){setStatus($('#rec-status'),sd.error,'ng');return}
   recPath=sd.path;$('#rec-yamlinfo').textContent=recPath.split('/').pop();loadScenarios();
   setBusy($('#rec-run'),$('#rec-runstop'),true,'Running…');
@@ -860,7 +868,7 @@ async function loadUsage(){
   renderReportInShadow(host,html);
 }
 async function loadHistory(){
-  let runs;try{runs=await (await fetch('/api/runs')).json()}catch(e){return}
+  const runs=await getJSON('/api/runs',null);if(!runs)return;
   const tab=$('#histtab');if(tab)tab.textContent='History'+(runs.length?` (${runs.length})`:'');
   const ul=$('#history');
   if(!runs.length){ul.innerHTML='<li class="muted">no runs yet</li>';return}
@@ -877,7 +885,7 @@ $('#usage-refresh').addEventListener('click',loadUsage);
 async function coverageInit(){
   // Fill the run picker from the same history the Replay view lists; a target is already populated by
   // loadShared. Selecting runs is optional — it folds in the endpoint / observed-id dimensions.
-  let runs;try{runs=await (await fetch('/api/runs')).json()}catch(e){runs=[]}
+  const runs=await getJSON('/api/runs',[]);
   $('#cov-runs').innerHTML=runs.map(r=>`<option value="${esc(r.id)}">${esc(r.id)}${r.scenarios&&r.scenarios.length?' · '+esc(r.scenarios.join(', ')):''}</option>`).join('');
 }
 async function loadCoverage(){
@@ -972,7 +980,7 @@ function setCrawlFormDisabled(on){
   $('#panel-crawl').querySelectorAll('input,select,button').forEach(el=>{el.disabled=on});
 }
 async function loadCrawlHistory(){
-  let runs;try{runs=await (await fetch('/api/crawl/runs')).json()}catch(e){return}
+  const runs=await getJSON('/api/crawl/runs',null);if(!runs)return;
   const tab=$('#crawl-histtab');if(tab)tab.textContent='History'+(runs.length?` (${runs.length})`:'');
   const ul=$('#crawl-history');
   if(!runs.length){ul.innerHTML='<li class="muted">no crawls yet</li>';return}
@@ -1075,7 +1083,7 @@ async function crawlDone(j){
   setStatus($('#crawl-status'),j.ok?'done ✓':'failed', j.ok?'ok':'ng');
 }
 async function loadGraph(runId){
-  let data;try{data=await (await fetch('/runs/'+runId+'/screenmap.json')).json()}catch(e){return}
+  const data=await getJSON('/runs/'+runId+'/screenmap.json',null);if(!data)return;
   renderGraph(data,runId);
   renderPlan(data);  // the right-column plan tree, kept in step with the transition graph
 }
@@ -1910,8 +1918,7 @@ if(!NARROW_MQ.matches)initTiling();
   // ---- Edit mode (BE-0013): screenshot picker + structured YAML editing ----
   async function auLoadScenarios(){
     const target=$('#au-target').value;
-    let files=[];
-    try{files=target?await (await fetch('/api/scenarios?target='+encodeURIComponent(target))).json():[];}catch(e){files=[];}
+    const files=target?await getJSON('/api/scenarios?target='+encodeURIComponent(target),[]):[];
     const opts=files.map(s=>
       (s.scenarios||[]).map(sc=>`<option value="${esc(s.path)}|${esc(sc.name)}">${esc(s.file)} — ${esc(sc.name)}</option>`)
     ).flat().join('');
@@ -1920,8 +1927,7 @@ if(!NARROW_MQ.matches)initTiling();
   }
 
   async function auLoadRuns(){
-    let runs=[];
-    try{runs=await (await fetch('/api/runs')).json();}catch(e){runs=[];}
+    const runs=await getJSON('/api/runs',[]);
     const opts=runs.map(r=>{
       const label=r.id+' '+(r.ok?'✓':'✗');
       return `<option value="${esc(r.id)}">${esc(label)}</option>`;
