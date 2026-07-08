@@ -37,7 +37,7 @@ Keeping state and execution in one module also forces two documented lazy-import
 importing the execution engine drags the state along today; with the state in its own module,
 `executor` can import it at top level and keep only `run_job` lazy.
 
-`serve/helpers.py` (656 lines) has the same shape of problem at smaller scale: its command
+`serve/helpers.py` (675 lines) has the same shape of problem at smaller scale: its command
 builders (`run_command`, `record_command`, `crawl_command`, `triage_command`, plus `_int`,
 ~240 lines) reference nothing else in the file — their only dependency is
 `serve/_cli_flags.flag_args` — and have exactly three consumers (`operations/dispatch.py`,
