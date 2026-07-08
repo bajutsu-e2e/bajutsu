@@ -46,6 +46,19 @@ class _NoSleep:
         return None
 
 
+class _AdvancingClock:
+    """A logical clock that advances on sleep, so a condition wait reaches its deadline fast."""
+
+    def __init__(self) -> None:
+        self._t = 0.0
+
+    def now(self) -> float:
+        return self._t
+
+    def sleep(self, seconds: float) -> None:
+        self._t += seconds
+
+
 # ---------------------------------------------------------------------------
 # Happy path
 # ---------------------------------------------------------------------------
@@ -110,6 +123,25 @@ def test_enrich_stops_on_unresolvable_step() -> None:
     result = enrich(driver, scenario, agent, with_screenshot=False)
 
     # The step could not be replayed — enrichment returns empty proposal, agent was never called.
+    assert result.expect == []
+    assert agent.seen_scenario is None
+
+
+def test_enrich_stops_replay_on_a_wait_timeout() -> None:
+    """A `wait` whose target never appears fails the replay (BE-0201): unlike record, enrich
+    stops rather than recording forward, so the agent never sees the unsettled screen."""
+    driver = FakeDriver([_el("a", "A")])  # "target" never appears
+    steps = [
+        Step.model_validate({"wait": {"for": {"id": "target"}, "timeout": 0.1}}),
+        Step.model_validate({"tap": {"id": "a"}}),
+    ]
+    scenario = _scenario(steps)
+
+    agent = FakeEnrichmentAgent(EnrichmentProposal())
+
+    result = enrich(driver, scenario, agent, clock=_AdvancingClock(), with_screenshot=False)
+
+    # The wait timed out on step 1, so replay stopped before any step settled.
     assert result.expect == []
     assert agent.seen_scenario is None
 

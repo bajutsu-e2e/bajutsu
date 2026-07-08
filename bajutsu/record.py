@@ -263,11 +263,25 @@ def _settle_step(expect: list[Assertion], timeout: float = 5.0) -> Step | None:
     return None
 
 
-def _execute(driver: base.Driver, step: Step, clock: Clock) -> None:
+def _execute(
+    driver: base.Driver,
+    step: Step,
+    clock: Clock,
+    on_wait_failure: Callable[[str], None] | None = None,
+) -> None:
+    """Replay one authored step: run a wait/action, treat an assertion as a no-op.
+
+    Shared by `record` and `enrich` (BE-0201). The two paths differ only in how a timed-out
+    `wait` is handled: `record` records forward regardless (default `on_wait_failure=None`, so
+    `_wait`'s failure result is dropped), while `enrich` passes a hook that raises `_ReplayFailed`
+    so a step it cannot settle stops the replay.
+    """
     kind = _action_of(step)
     if kind == "wait":
         assert step.wait is not None
-        _wait(driver, step.wait, clock)
+        ok, reason = _wait(driver, step.wait, clock)
+        if not ok and on_wait_failure is not None:
+            on_wait_failure(reason)
     elif kind == "assert_":
         return  # assertions are checks, not actions to perform while recording
     else:

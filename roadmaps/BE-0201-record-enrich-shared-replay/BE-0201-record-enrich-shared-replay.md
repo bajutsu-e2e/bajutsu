@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0201](BE-0201-record-enrich-shared-replay.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0201") |
+| Implementing PR | [#813](https://github.com/bajutsu-e2e/bajutsu/pull/813) |
 | Topic | Codebase quality & technical debt |
 <!-- /BE-METADATA -->
 
@@ -61,9 +62,16 @@ This item finishes the same consolidation for the two remaining pairs, in the sa
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Shared step-replay executor with a wait-failure hook; both callers migrated
-- [ ] Single `_clear_blocking` (record's reporting variant); enrich migrated
-- [ ] Unit tests pinning both wait-failure behaviors
+- [x] Shared step-replay executor with a wait-failure hook; both callers migrated
+- [x] Single `_clear_blocking` (record's reporting variant); enrich migrated
+- [x] Unit tests pinning both wait-failure behaviors
+
+**Log**
+
+- Added an `on_wait_failure` hook to `record._execute` and migrated `enrich`'s replay onto it
+  (dropping the duplicated `_execute_step`); replaced `enrich._clear_blocking` with an import of
+  `record`'s reporting variant. Added unit tests pinning that `record` records forward past a
+  wait timeout while `enrich`'s hook raises `_ReplayFailed`.
 
 ## References
 
