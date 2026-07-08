@@ -702,11 +702,11 @@ def test_wedge_surfaces_as_device_error_but_selection_errors_pass_through(
         healthy.tap({"id": "missing"})
 
 
-def test_web_interval_captures_console_and_pageerror(tmp_path: Any) -> None:
+def test_driver_interval_captures_console_and_pageerror(tmp_path: Any) -> None:
     # The web `deviceLog` evidence kind streams the browser console + uncaught page errors.
     drv, page = _driver([])
     path = tmp_path / "device.log"
-    interval = drv.web_interval("deviceLog", path)
+    interval = drv.driver_interval("deviceLog", path)
     assert interval is not None
     assert interval.kind == "deviceLog"
     assert interval.provider == "playwright"
@@ -722,20 +722,20 @@ def test_web_interval_captures_console_and_pageerror(tmp_path: Any) -> None:
     assert "[pageerror] boom" in text
 
 
-def test_web_interval_stop_detaches_handlers(tmp_path: Any) -> None:
+def test_driver_interval_stop_detaches_handlers(tmp_path: Any) -> None:
     # After stop(), further console events must not be written (the listener is removed).
     drv, page = _driver([])
     path = tmp_path / "device.log"
-    interval = drv.web_interval("deviceLog", path)
+    interval = drv.driver_interval("deviceLog", path)
     assert interval is not None
     interval.stop()
     page.fire("console", _FakeConsole("log", "after-stop"))
     assert "after-stop" not in path.read_text(encoding="utf-8")
 
 
-def test_web_interval_unknown_kind_is_none(tmp_path: Any) -> None:
+def test_driver_interval_unknown_kind_is_none(tmp_path: Any) -> None:
     drv, _ = _driver([])
-    assert drv.web_interval("appTrace", tmp_path / "appTrace.raw") is None
+    assert drv.driver_interval("appTrace", tmp_path / "appTrace.raw") is None
 
 
 # --- video evidence (BE-0054) ---
@@ -804,12 +804,12 @@ def test_web_driver_records_video_when_dir_set(tmp_path: Any) -> None:
     assert browser.contexts[-1].record_video_dir == str(tmp_path / "vtmp")
 
 
-def test_web_interval_video_finalizes_to_target(tmp_path: Any) -> None:
+def test_driver_interval_video_finalizes_to_target(tmp_path: Any) -> None:
     src = tmp_path / "raw.webm"
     src.write_bytes(b"vid")
     target = tmp_path / "out" / "scenario.mp4"
     drv, browser = _video_driver(tmp_path / "vtmp", src)
-    interval = drv.web_interval("video", target)
+    interval = drv.driver_interval("video", target)
     assert interval is not None
     assert interval.kind == "video"
     assert interval.provider == "playwright"
@@ -819,7 +819,7 @@ def test_web_interval_video_finalizes_to_target(tmp_path: Any) -> None:
     assert not src.exists()
 
 
-def test_web_interval_video_none_without_recording(tmp_path: Any) -> None:
+def test_driver_interval_video_none_without_recording(tmp_path: Any) -> None:
     # No record_video_dir on this lane (video not requested): no video interval.
     drv, _ = _driver([])
-    assert drv.web_interval("video", tmp_path / "scenario.mp4") is None
+    assert drv.driver_interval("video", tmp_path / "scenario.mp4") is None

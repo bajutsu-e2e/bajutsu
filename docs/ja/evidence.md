@@ -85,7 +85,7 @@ capturePolicy:
 
 ## 区間証跡（video / deviceLog / appTrace）
 
-実装: `bajutsu/intervals.py`。これらは **バックエンド非依存の `simctl` 子プロセス**であり、操作前に開始し、ステップが落ち着いてから停止します。プロセス起動は注入可能（`Spawn`）で、テストできます。（`appTrace` も区間です。アプリの os_log subsystem に対する `log stream` を、`parse_app_trace` が時刻つきの区間にペアリングします。）
+実装: `bajutsu/intervals.py`。これらは **子プロセス**であり（iOS は `simctl`、Android は `adb`）、操作前に開始し、ステップが落ち着いてから停止します。プロセス起動は注入可能（`Spawn`）で、テストできます。web は子プロセスを使いません。区間証跡は Playwright ネイティブで、driver が供給します（後述）。（`appTrace` は iOS の区間です。アプリの os_log subsystem に対する `log stream` を、`parse_app_trace` が時刻つきの区間にペアリングします。）
 
 > **区間証跡は opt-in です（BE-0028）。** `video` / `deviceLog` / `appTrace` は重いため、シナリオが
 > **その kind を要求したときだけ**記録します。要求の経路は、インライン `capture:` か `capturePolicy` ルール
@@ -94,13 +94,13 @@ capturePolicy:
 > 残ります（DESIGN §10）。何が記録されるかは `bajutsu trace --explain` で事前に確認できます
 > （[cli](cli.md#trace) 参照）。
 
-| 種別 | 開始コマンド | 停止シグナル | ファイル名 |
+| 種別 | 開始コマンド（iOS / Android） | 停止シグナル | ファイル名 |
 |---|---|---|---|
-| `video` | `simctl io <udid> recordVideo --codec h264` | **SIGINT**（強制 kill だと mp4 が壊れる） | `segment.mp4` |
-| `deviceLog` | `simctl spawn <udid> log stream --level debug --style compact [--predicate ...]` | SIGTERM | `device.log` |
+| `video` | `simctl io <udid> recordVideo --codec h264` / `adb shell screenrecord` | **SIGINT**（強制 kill だと mp4 が壊れる） | `scenario.mp4` |
+| `deviceLog` | `simctl spawn <udid> log stream --level debug --style compact [--predicate ...]` / `adb logcat -T 1` | SIGTERM | `device.log` |
 
-- `start_video` / `start_device_log` が `Interval` を返し、`Interval.stop()` がシグナルを送ってファイルを確定します。停止は最大 10s 待ち、超えたら kill します。
-- deviceLog は `--predicate`（NSPredicate）でサブシステムなどに絞れます（CLI の `--log-predicate`）。
+- iOS は `start_video` / `start_device_log`、Android は `start_screenrecord` / `start_logcat` が `Interval` を返し、`Interval.stop()` がシグナルを送ってファイルを確定します。停止は最大 10s 待ち、超えたら kill します。`screenrecord` はデバイス側に録画するので、その `Interval` は停止時に確定した mp4 を `adb pull` で回収し、デバイス側のコピーを削除します。pull が失敗した場合（デバイスが消えたなど）、Sink は実体のないパスを記録する代わりに、その 1 件だけを警告つきで捨てます。証跡の I/O で run を失敗させることはありません。なお `adb screenrecord` は 1 回の録画を約 180 秒（プラットフォームの既定／上限）で打ち切るので、それより長いシナリオの Android 動画はその時点で終わります。この上限と SIGINT による確定の実機での調整は、後続の BE-0007 e2e に含みます。
+- deviceLog は iOS では `--predicate`（NSPredicate）でサブシステムなどに絞れます（CLI の `--log-predicate`）。`adb logcat` は絞り込みません（logcat の filterspec は別の構文で、後続の knob です）。取得はリングバッファ全体ではなくシナリオの区間を反映するよう、末尾から追従を始めます。
 - `INTERVAL_KINDS = {"video", "deviceLog", "appTrace"}`。orchestrator はこの集合で「区間 / 瞬時」を振り分けます。
 
 ## Sink（証跡の出力先）
@@ -117,7 +117,7 @@ class EvidenceSink(Protocol):
 | `NullSink`（既定） | 何も書かない（run を副作用フリーに保つ） |
 | `FileSink(run_dir, udid, log_predicate)` | `run_dir/<step_id>/` 配下に書き出す |
 
-`FileSink` は `udid` が無いと区間証跡をスキップします（simctl が必要なため）。CLI の `run` は `FileSink(runs/<runId>, udid=..., log_predicate=...)` を使用します（[cli](cli.md#run)）。
+区間証跡は、driver が `driver_interval` provider を供給していればそこから取得し（web の Playwright ネイティブなコンソール / 動画、Android の `adb` screenrecord / logcat）、供給していなければ `FileSink` は simctl の経路を使い、`udid` が無ければスキップします。CLI の `run` は `FileSink(runs/<runId>, udid=..., log_predicate=...)` を使用します（[cli](cli.md#run)）。
 
 ## アーティファクトの来歴（provider）
 
@@ -135,6 +135,7 @@ class Artifact:
 |---|---|
 | `"driver"` | actuator が直接取得した証跡です（スクリーンショット、要素ツリー）。 |
 | `"simctl"` | `simctl` による区間証跡です（動画、デバイスログ、アプリトレース）。 |
+| `"adb"` | `adb` による区間証跡です（screenrecord の動画、logcat のデバイスログ）。 |
 | `"collector"` | idb のアプリ側ネットワークコレクタ（`BAJUTSU_COLLECTOR`）です。 |
 | `"playwright"` | Playwright のネイティブなネットワーク観測です（web バックエンド）。 |
 | `"<backend> (fallback)"` | read-only な証跡フォールバックが供給したアーティファクトです（[BE-0020](../../roadmaps/BE-0020-multi-backend-evidence-fallback/BE-0020-multi-backend-evidence-fallback-ja.md)）。 |

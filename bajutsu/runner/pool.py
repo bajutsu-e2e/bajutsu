@@ -181,9 +181,10 @@ def device_pool(
                 log_subsystem=log_subsystem,
                 redact=eff.redact,
                 secrets=secret_values,
-                # On a web lane, interval evidence is Playwright-native (console / page errors), not
-                # simctl; idb has no such method, so this is None there and the simctl path is used.
-                web_interval=getattr(driver, "web_interval", None),
+                # A web or Android lane supplies its own interval evidence (Playwright console / page
+                # errors; adb screenrecord / logcat); idb has no such method, so this is None there
+                # and the simctl path is used.
+                driver_interval=getattr(driver, "driver_interval", None),
             )
             # A driver-observed platform hooks its collector to the live page now (and fulfils this
             # scenario's mocks); a fresh context per lease scopes its traffic, mirroring the device's

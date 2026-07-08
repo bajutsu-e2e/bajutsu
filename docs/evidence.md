@@ -95,10 +95,11 @@ To capture just one step, attach `capture:` directly to the step.
 
 ## Interval evidence (video / deviceLog / appTrace)
 
-Implementation: `bajutsu/intervals.py`. These are **backend-independent `simctl` child processes**:
-started before the action and stopped after the step settles. Process spawning is injectable
-(`Spawn`) and testable. (`appTrace` is an interval too — a `log stream` over the app's os_log
-subsystem, paired into timed intervals by `parse_app_trace`.)
+Implementation: `bajutsu/intervals.py`. These are **subprocess child processes** — `simctl` on iOS,
+`adb` on Android — started before the action and stopped after the step settles. Process spawning is
+injectable (`Spawn`) and testable. Web has no subprocess: its intervals are Playwright-native and
+supplied by the driver (see below). (`appTrace` is an iOS interval too — a `log stream` over the
+app's os_log subsystem, paired into timed intervals by `parse_app_trace`.)
 
 > **Interval kinds are opt-in (BE-0028).** `video` / `deviceLog` / `appTrace` are heavy, so a
 > scenario records an interval **only when it asks for that kind** — through an inline `capture:`
@@ -107,15 +108,23 @@ subsystem, paired into timed intervals by `parse_app_trace`.)
 > (`screenshot` + `elements`) is always captured, so a failure still leaves evidence (DESIGN §10).
 > Preview what a scenario would record with `bajutsu trace --explain` (see [cli](cli.md#trace)).
 
-| Kind | Start command | Stop signal | Filename |
+| Kind | Start command (iOS / Android) | Stop signal | Filename |
 |---|---|---|---|
-| `video` | `simctl io <udid> recordVideo --codec h264` | **SIGINT** (a hard kill would corrupt the mp4) | `segment.mp4` |
-| `deviceLog` | `simctl spawn <udid> log stream --level debug --style compact [--predicate ...]` | SIGTERM | `device.log` |
+| `video` | `simctl io <udid> recordVideo --codec h264` / `adb shell screenrecord` | **SIGINT** (a hard kill would corrupt the mp4) | `scenario.mp4` |
+| `deviceLog` | `simctl spawn <udid> log stream --level debug --style compact [--predicate ...]` / `adb logcat -T 1` | SIGTERM | `device.log` |
 
-- `start_video` / `start_device_log` return an `Interval`, and `Interval.stop()` sends the signal
-  and finalizes the file. Stop waits up to 10s, then kills.
+- `start_video` / `start_device_log` (iOS) and `start_screenrecord` / `start_logcat` (Android)
+  return an `Interval`, and `Interval.stop()` sends the signal and finalizes the file. Stop waits up
+  to 10s, then kills. `screenrecord` records device-side, so its `Interval` also pulls the finalized
+  mp4 off the device on stop and removes the device copy. If the pull fails (the device vanished),
+  the sink drops that one artifact with a warning rather than emit a path with no file behind it —
+  it never fails the run over evidence I/O. Note `adb screenrecord` caps a single recording at ~180s
+  (the platform default/maximum), so an Android video of a longer scenario ends at that mark; the
+  on-device tuning of this cap and of SIGINT finalization is part of the deferred BE-0007 e2e.
 - deviceLog can be narrowed by `--predicate` (NSPredicate) to a subsystem, etc. (the CLI's
-  `--log-predicate`).
+  `--log-predicate`) on iOS; `adb logcat` is unfiltered (a logcat filterspec is a different syntax, a
+  later knob) and starts the follow from the tail so it reflects the scenario window, not the whole
+  ring buffer.
 - `INTERVAL_KINDS = {"video", "deviceLog", "appTrace"}`. The orchestrator uses this set to split
   "interval / instant."
 
@@ -133,7 +142,9 @@ class EvidenceSink(Protocol):
 | `NullSink` (default) | writes nothing (keeps a run side-effect-free) |
 | `FileSink(run_dir, udid, log_predicate)` | writes under `run_dir/<step_id>/` |
 
-`FileSink` skips interval captures if `udid` is absent (they need simctl). The CLI's `run` uses
+Interval captures come from the driver's `driver_interval` provider when it supplies one (web's
+Playwright-native console / video, Android's `adb` screenrecord / logcat); otherwise `FileSink`
+takes the simctl path, which it skips when `udid` is absent. The CLI's `run` uses
 `FileSink(runs/<runId>, udid=..., log_predicate=...)` ([cli](cli.md#run)).
 
 ## Artifact provenance (provider)
@@ -153,6 +164,7 @@ class Artifact:
 |---|---|
 | `"driver"` | The actuator captured it directly (screenshots, element trees). |
 | `"simctl"` | Interval evidence from `simctl` (video, device log, app trace). |
+| `"adb"` | Interval evidence from `adb` (screenrecord video, logcat device log). |
 | `"collector"` | The idb app-side network collector (`BAJUTSU_COLLECTOR`). |
 | `"playwright"` | Native Playwright network observation (web backend). |
 | `"<backend> (fallback)"` | A read-only evidence fallback supplied the artifact ([BE-0020](../roadmaps/BE-0020-multi-backend-evidence-fallback/BE-0020-multi-backend-evidence-fallback.md)). |

@@ -161,8 +161,16 @@ abstraction resolves **id → frame center → coordinate tap**, exactly as on i
   optional APK install → `pm clear` for a clean state (the `erase` equivalent) → `am force-stop` →
   `am start` (the launcher activity resolved via the package manager; launch env forwarded as intent
   extras) → deeplink (`am start -a android.intent.action.VIEW`). The run manifest records
-  `backend: "adb"` so the selected actuator is disclosed. There is no native network monitor — the
-  same mocked story as iOS — and no device-control family yet (both are BE-0007 follow-ups).
+  `backend: "adb"` so the selected actuator is disclosed.
+- **Interval evidence** (BE-0007 Unit 4): `video` records via `adb shell screenrecord` and
+  `deviceLog` streams `adb logcat`, the twins of the simctl providers. `screenrecord` writes
+  device-side (it cannot stream to a host file), so the recording is finalized on SIGINT and pulled
+  off with `adb pull` on stop; `logcat` streams to the file and stops on SIGTERM. Both are supplied
+  through the same driver `driver_interval` seam the web backend uses, so the backend-independent
+  `capture` policy drives them unchanged (see [evidence](evidence.md)).
+- **Network** is not observed natively (no `NETWORK` capability) — the same mocked story as iOS: the
+  app-side collector URL is forwarded through the launch env as an intent extra, so `mocks` work with
+  no new code path. There is no device-control family yet (a BE-0007 follow-up).
 
 > The XML attribute names follow UI Automator's `uiautomator dump` schema. On-device tuning of the
 > selector mapping against the Android showcase (`demos/showcase/android`) — including whether the
@@ -205,8 +213,9 @@ fits the same toolchain as `make check`. Implementation: `drivers/playwright.py`
   scenario — both Playwright-native (no simctl), the web analogues of the iOS os_log / simctl video.
   The pool enables recording only when `video` is in the scenario's `capture` (the `BrowserContext`
   is created with `record_video_dir`), and the `video` interval finalizes it into
-  `<scenario>/scenario.mp4` (webm content) on close. The pool injects the driver's `web_interval`
-  into the `FileSink`, so the same backend-agnostic `capture` policy carries both.
+  `<scenario>/scenario.mp4` (webm content) on close. The pool injects the driver's `driver_interval`
+  (the driver-supplied interval seam, shared with the adb backend) into the `FileSink`, so the same
+  backend-agnostic `capture` policy carries both.
 
 > `playwright` is imported **lazily** (only when a browser is actually started), so it never loads on
 > the default CLI path (locked by `tests/serve/test_import_guard.py`). Install with

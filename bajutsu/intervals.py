@@ -1,16 +1,20 @@
 """Interval (lifecycle) evidence: video and device logs captured around a step.
 
-Both are backend-independent (simctl) child processes: started before an action and
-stopped after the step settles. Command builders are pure and unit-tested; process
-spawning is injected so the start/stop lifecycle is testable without a device.
+These are subprocess child processes started before an action and stopped after the step settles —
+`simctl` on iOS, `adb` on Android (the twin providers). Command builders are pure and unit-tested;
+process spawning is injected so the start/stop lifecycle is testable without a device. Web is
+driver-native and lives in the Playwright driver, not here.
 
-- video: `simctl io <udid> recordVideo` — finalized with SIGINT (a hard kill would
-  leave a truncated mp4).
-- deviceLog: `simctl spawn <udid> log stream` streamed to a file — stopped with SIGTERM.
+- video: `simctl io <udid> recordVideo` (iOS) / `adb shell screenrecord` (Android) — finalized with
+  SIGINT (a hard kill would leave a truncated mp4). Android records device-side and is pulled off
+  after stop, since `screenrecord` cannot stream to a host file.
+- deviceLog: `simctl spawn <udid> log stream` (iOS) / `adb logcat` (Android) streamed to a file —
+  stopped with SIGTERM.
 """
 
 from __future__ import annotations
 
+import contextlib
 import json
 import re
 import signal
@@ -21,7 +25,10 @@ from datetime import datetime
 from pathlib import Path
 from typing import Protocol
 
+from bajutsu import adb
+
 PROVIDER = "simctl"
+ADB_PROVIDER = "adb"
 
 
 def record_video_cmd(udid: str, path: str) -> list[str]:
@@ -142,6 +149,49 @@ def start_device_log(
     """Begin streaming the device log to `path`; stop() (SIGTERM) ends the stream."""
     proc = spawn(device_log_cmd(udid, predicate), path)
     return Interval(kind="deviceLog", path=path, _proc=proc, _stop_signal=signal.SIGTERM)
+
+
+# --- adb (Android) interval providers: the twins of the simctl starters above ---
+
+
+def start_screenrecord(
+    serial: str, path: Path, spawn: Spawn = _spawn, run: adb.RunFn = adb._real_run
+) -> Interval:
+    """Record the Android screen; stop() (SIGINT) finalizes the mp4, then pulls it off the device.
+
+    `screenrecord` writes device-side (it cannot stream to a host file), so recording is a running
+    process plus a post-stop transform: pull the finalized mp4 to `path`, then remove it device-side.
+    SIGINT (not a kill) lets `screenrecord` flush a complete mp4, the same reason simctl recordVideo
+    finalizes on SIGINT.
+    """
+    device_path = adb.VIDEO_DEVICE_PATH
+    proc = spawn(adb.screenrecord_cmd(serial, device_path), None)
+
+    def transform(target: Path) -> Path:
+        # Let a failed pull surface (like the iOS video provider): swallowing it would record a video
+        # artifact path with no file behind it, turning a real problem into a silent one.
+        run(adb.pull_cmd(serial, device_path, str(target)))
+        # The recording is pulled; a failed cleanup of the device copy must not fail the run.
+        with contextlib.suppress(subprocess.CalledProcessError, OSError):
+            run(adb.rm_cmd(serial, device_path))
+        return target
+
+    return Interval(
+        kind="video",
+        path=path,
+        provider=ADB_PROVIDER,
+        _proc=proc,
+        _stop_signal=signal.SIGINT,
+        _transform=transform,
+    )
+
+
+def start_logcat(serial: str, path: Path, spawn: Spawn = _spawn) -> Interval:
+    """Begin streaming `adb logcat` to `path`; stop() (SIGTERM) ends the stream (the deviceLog twin)."""
+    proc = spawn(adb.logcat_cmd(serial), path)
+    return Interval(
+        kind="deviceLog", path=path, provider=ADB_PROVIDER, _proc=proc, _stop_signal=signal.SIGTERM
+    )
 
 
 # --- appTrace: pair start/finish log markers into timed intervals ---
