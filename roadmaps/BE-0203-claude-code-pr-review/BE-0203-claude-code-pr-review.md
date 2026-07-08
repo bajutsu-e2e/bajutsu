@@ -239,6 +239,14 @@ Log:
   and surfaced a red "cancelled" check. The group is now split by event type and only `pull_request`
   events cancel-in-progress, so pushes still supersede each other while comment-triggered runs stay
   independent.
+- More review hardening: corrected the on-demand checkout `ref` (only `issue_comment` needs
+  `refs/pull/N/head`; the other events carry a top-level `pull_request.head.sha`), and made the
+  review self-identify as Claude Code in its comments (it posts under `github-actions[bot]`).
+- Redesigned the checkout to clear the CodeQL "untrusted checkout in a privileged context" / TOCTOU
+  alerts: the privileged job now checks out the **trusted base** with `persist-credentials: false`
+  and reviews the change set with `gh pr diff`, instead of checking out the untrusted PR head. This
+  also means the review contract (`.github/claude-review-prompt.md`) is read from the base, so a PR
+  cannot rewrite the rules it is reviewed under.
 
 ## References
 

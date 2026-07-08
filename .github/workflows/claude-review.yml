@@ -100,15 +100,18 @@ jobs:
             fi
           fi
 
-      - name: Check out the pull request
+      # Check out the TRUSTED base, never the untrusted PR head. This job holds the review
+      # credential (OAuth token / Bedrock role) and write scope, so checking out PR-authored code
+      # here is the CodeQL "untrusted checkout in a privileged context" / TOCTOU risk (a fork PR
+      # could carry a hostile `.github/claude-review-prompt.md` or code). The review never needs the
+      # head checked out: it reads the change set with `gh pr diff` (below) and posts via the API.
+      # `persist-credentials: false` keeps even the base checkout from carrying a usable token.
+      - name: Check out the base (trusted) for the review contract
         if: steps.gate.outputs.provider != 'none'
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
         with:
-          # `pull_request` and `pull_request_review_comment` both carry a top-level `pull_request`
-          # with an immutable `head.sha` (pin it — avoids the CodeQL TOCTOU on a mutable ref). Only
-          # `issue_comment` lacks it (its `issue.pull_request` has URLs but no head), so fall back to
-          # the PR head ref by number there; that path is trusted-actor-gated.
-          ref: ${{ github.event_name == 'issue_comment' && format('refs/pull/{0}/head', github.event.issue.number) || github.event.pull_request.head.sha }}
+          ref: ${{ github.event.pull_request.base.sha || github.event.repository.default_branch }}
+          persist-credentials: false
 
       - name: Exchange OIDC token for Bedrock AWS credentials
         if: steps.gate.outputs.provider == 'bedrock'
