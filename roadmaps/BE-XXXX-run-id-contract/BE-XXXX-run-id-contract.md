@@ -14,39 +14,53 @@
 
 ## Introduction
 
-Run ids are minted as `datetime.now(tz=UTC).strftime("%Y%m%d-%H%M%S")` spelled out independently
-at four sites (`cli/commands/run.py`, `cli/commands/crawl.py`, and `serve/operations/dispatch.py`,
-plus the `audit-` prefixed variant in `cli/commands/audit.py`). The format is not a
-local detail — other code parses it back, derives timestamps from it, and sorts by it — yet
-nothing in the codebase names it. This item introduces one `new_run_id()` helper (plus the format
-constant) and points the mint and consumer sites at it.
+Run ids are minted as `datetime.now(tz=UTC).strftime("%Y%m%d-%H%M%S")`, spelled out independently
+at four sites: `cli/commands/run.py`, `cli/commands/crawl.py`, `serve/operations/dispatch.py`, and
+the `audit-` prefixed variant in `cli/commands/audit.py`. The format is not a local detail — other
+code parses it back and derives timestamps from it, and the Web UI sorts by it — yet nothing in the
+codebase names it. This item introduces one `new_run_id()` helper (plus the format constant and a
+timestamp-shape pattern) and points the mint and timestamp-consumer sites at it.
 
 ## Motivation
 
-The timestamp format is a cross-surface contract with multiple independent consumers:
+The timestamp format is a cross-surface contract with several independent consumers:
 
-- `serve/jobs.py:47` regex-parses run ids back out of CLI output,
-- `bajutsu/report/ctrf.py` parses the `YYYYmmdd-HHMMSS` shape to derive a UTC run start time,
-- `serve/helpers.py` (`valid_run_id`) is a path-safety check (safe single segment), not a timestamp-format validator,
+- `serve/jobs.py:47` regex-parses run ids back out of CLI output (a safe-segment pattern, not a
+  timestamp-shape one);
+- `bajutsu/report/ctrf.py` parses the `YYYYmmdd-HHMMSS` shape with `strptime` to derive a UTC run
+  start time;
+- `serve/helpers.py`'s `valid_run_id` is a path-safety check (a single safe path segment,
+  `^[A-Za-z0-9][A-Za-z0-9._-]*$`), so `runs_dir / run_id` can't escape — not a timestamp-format
+  validator, and it intentionally accepts non-timestamp, client-supplied ids;
 - the Web UI sorts run history lexicographically, which is chronological *only because* ids are
   zero-padded UTC timestamps in this exact shape.
 
-Today the contract holds by convention: five call sites repeat the `strftime` pattern, and the
-regex/validator repeat its shape. A well-meaning change at any one site (a timezone tweak, a
-precision bump, a separator change) would silently break parsing or history ordering elsewhere.
-Naming the contract once makes the dependency visible and the format changeable in one place.
+Today the contract holds by convention: four call sites repeat the `strftime` pattern, and
+`report/ctrf.py` repeats the shape when parsing it back. A well-meaning change at any one site (a
+timezone tweak, a precision bump, a separator change) would silently break timestamp parsing or
+history ordering elsewhere. Naming the contract once makes the dependency visible and the format
+changeable in one place.
 
 ## Detailed design
 
-1. Add a small deterministic-core helper (e.g. `bajutsu/run_id.py`): the format constant, a
-2. Replace the four run-id mint sites with `new_run_id()` (including the `audit-` prefixed variant).
-4. A unit test pinning the contract: mint → validate → lexicographic order equals chronological
+1. Add a small deterministic-core helper (e.g. `bajutsu/run_id.py`): the format constant
+   (`RUN_ID_FORMAT = "%Y%m%d-%H%M%S"`), a `new_run_id()` factory, and a timestamp-shape pattern for
+   the consumers that need timestamp semantics — kept separate from `valid_run_id`, which stays the
+   path-safety check it is.
+2. Replace the four run-id mint sites with `new_run_id()` — `cli/commands/run.py`,
+   `cli/commands/crawl.py`, `serve/operations/dispatch.py`, and the `audit-` prefixed variant in
+   `cli/commands/audit.py`.
+3. Point the timestamp-shape consumer, `report/ctrf.py`'s `strptime` parse, at the shared
+   format/pattern, so a format change lands in one place. Leave `serve/jobs.py`'s output-parsing
+   regex and `valid_run_id` untouched: neither validates the timestamp shape, and tightening
+   `valid_run_id` would reject legitimate client-supplied ids.
+4. Add a unit test pinning the contract: mint → parse → lexicographic order equals chronological
    order.
 
 ## Alternatives considered
 
-- **Leave the five copies.** The contract keeps holding only by convention; the failure mode is
-  a silent one (history order or run-id parsing breaks with no test naming the cause).
+- **Leave the four copies.** The contract keeps holding only by convention; the failure mode is a
+  silent one (history order or timestamp parsing breaks with no test naming the cause).
 - **Random/UUID run ids.** Loses the property the UI relies on (lexicographic = chronological)
   and human-scannable run directories, for no gain — collisions are already impossible enough
   at one-second granularity per host for this tool's usage.
@@ -57,8 +71,11 @@ Naming the contract once makes the dependency visible and the format changeable 
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
+- [ ] Helper module added (format constant, `new_run_id()`, timestamp-shape pattern)
 - [ ] Four run-id mint sites migrated (including the `audit-` prefixed variant)
+- [ ] Timestamp-shape consumer (`report/ctrf.py`) pointed at the shared format
+- [ ] Contract unit test added
 
 ## References
 
-- [`bajutsu/cli/commands/run.py`](../../bajutsu/cli/commands/run.py) · [`bajutsu/cli/commands/crawl.py`](../../bajutsu/cli/commands/crawl.py) · [`bajutsu/cli/commands/audit.py`](../../bajutsu/cli/commands/audit.py) · [`bajutsu/serve/operations/dispatch.py`](../../bajutsu/serve/operations/dispatch.py) · [`bajutsu/serve/helpers.py`](../../bajutsu/serve/helpers.py) · [`bajutsu/serve/jobs.py`](../../bajutsu/serve/jobs.py)
+- [`bajutsu/cli/commands/run.py`](../../bajutsu/cli/commands/run.py) · [`bajutsu/cli/commands/crawl.py`](../../bajutsu/cli/commands/crawl.py) · [`bajutsu/cli/commands/audit.py`](../../bajutsu/cli/commands/audit.py) · [`bajutsu/serve/operations/dispatch.py`](../../bajutsu/serve/operations/dispatch.py) · [`bajutsu/serve/jobs.py`](../../bajutsu/serve/jobs.py) · [`bajutsu/report/ctrf.py`](../../bajutsu/report/ctrf.py) · [`bajutsu/serve/helpers.py`](../../bajutsu/serve/helpers.py)
