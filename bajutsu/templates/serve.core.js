@@ -83,12 +83,12 @@ async function startJob(o){
   if(o.prev)o.prev.close();
   setBusy(o.btn,o.stop,true,o.busyLabel);
   setStatus(o.status,'','run');
-  const fail=msg=>{setStatus(o.status,msg,'ng');setBusy(o.btn,o.stop,false);return null};
+  const fail=msg=>{setStatus(o.status,msg,'ng');setBusy(o.btn,o.stop,false);return null;};
   let data;
   try{
     const r=await fetch(o.url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(o.body)});
     data=await r.json();
-  }catch(e){return fail('request failed')}  // network drop or non-JSON body
+  }catch(e){return fail('request failed');}  // network drop or non-JSON body
   if(data.error)return fail(data.error);
   if(!data.jobId)return fail('no job started');  // a non-2xx without an {error} field still can't stream
   if(o.onStart)o.onStart(data);
