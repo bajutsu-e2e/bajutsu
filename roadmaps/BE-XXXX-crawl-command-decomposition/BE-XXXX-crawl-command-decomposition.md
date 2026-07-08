@@ -49,7 +49,7 @@ redesign.
 
 ## Alternatives considered
 
-- **Leave it.** The 321-line body has the same costs BE-0143 documented for run: hard to read
+- **Leave it.** The ~250-line body has the same costs BE-0143 documented for run: hard to read
   end to end, testable only at whole-command granularity, and risky to edit because every line
   can touch state built up hundreds of lines earlier.
 - **Share plan machinery with `run.py`.** The two plans have almost no common fields; a shared
