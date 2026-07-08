@@ -36,11 +36,7 @@ run id は `datetime.now(tz=UTC).strftime("%Y%m%d-%H%M%S")` として、5 箇所
 
 ## 詳細設計
 
-1. 決定的コアに小さなヘルパ（例: `bajutsu/run_id.py`）を追加します。フォーマット定数、`audit-`
-   変種も扱う `new_run_id(prefix="")`、対応する検証パターンを置き、docstring に上記 3 つの
-   利用者を明記します。
-2. 5 つの刻印箇所を `new_run_id()` に置き換えます。
-3. `valid_run_id` と `serve/jobs.py` のパース用正規表現を共有パターンに向けます。
+2. 4 つの run id 刻印箇所を `new_run_id()` に置き換えます（`audit-` 変種を含む）。
 4. 契約を固定するユニットテストを追加します（刻印 → 検証 → 辞書順が時系列順に一致）。
 
 ## 検討した代替案
