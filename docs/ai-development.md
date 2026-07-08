@@ -379,7 +379,7 @@ open until it is decided.
 ### The automated reviewer (Claude Code, BE-0203)
 
 Once the `claude-review` Environment has a provider credential (a Claude Code subscription token, or an
-Amazon Bedrock role plus a `BEDROCK_MODEL_ID` variable), every pull request is reviewed automatically by **Claude Code**, run from the
+Amazon Bedrock role plus a `BEDROCK_MODEL_ID` variable), every pull request from a same-repo branch is reviewed automatically by **Claude Code**, run from the
 [`claude-review`](../.github/workflows/claude-review.yml) workflow: it reviews when a PR opens and
 re-reviews on each push, reviewing against the
 [`.github/claude-review-prompt.md`](../.github/claude-review-prompt.md) contract, and posts inline
