@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0207") |
-| Implementing PR | _pending_ |
+| Implementing PR | [#824](https://github.com/bajutsu-e2e/bajutsu/pull/824) |
 | Topic | On-device validation (M1 close-out) |
 <!-- /BE-METADATA -->
 
@@ -108,7 +108,7 @@ recoverable transport blip masquerade as one.
 
 ### Log
 
-- _pending_ — Split `_http_transport` into a single-attempt `_raw_http_transport` (tagging each
+- [#824](https://github.com/bajutsu-e2e/bajutsu/pull/824) — Split `_http_transport` into a single-attempt `_raw_http_transport` (tagging each
   failure with a `delivered` flag) and a `_with_retry` wrapper that re-issues only retry-eligible
   `_TransportFailure`s (`_is_retry_eligible`: any method when the request never reached the runner,
   idempotent `GET` reads once delivered), bounded by `_MAX_ATTEMPTS` with `_BACKOFF_BASE_SECONDS`

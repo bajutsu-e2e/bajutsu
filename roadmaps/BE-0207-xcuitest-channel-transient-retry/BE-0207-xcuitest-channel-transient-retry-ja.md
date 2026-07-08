@@ -9,7 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0207") |
-| 実装 PR | _pending_ |
+| 実装 PR | [#824](https://github.com/bajutsu-e2e/bajutsu/pull/824) |
 | トピック | 実機検証（M1 クローズアウト） |
 <!-- /BE-METADATA -->
 
@@ -110,7 +110,7 @@ XcuitestChannelError: runner channel GET /screenshot failed: timed out
 
 ### ログ
 
-- _pending_ — `_http_transport` を、単発試行の `_raw_http_transport`（失敗ごとに `delivered`
+- [#824](https://github.com/bajutsu-e2e/bajutsu/pull/824) — `_http_transport` を、単発試行の `_raw_http_transport`（失敗ごとに `delivered`
   フラグを付与）と、リトライ対象の `_TransportFailure` だけを再送する `_with_retry` ラッパに
   分割しました。`_is_retry_eligible` は、リクエストがランナーに届いていなければどのメソッドでも、
   届いた後は冪等な `GET` の読み取りに限って再送を許可します。再送は `_MAX_ATTEMPTS` を上限とし、
