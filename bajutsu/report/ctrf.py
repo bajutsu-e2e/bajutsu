@@ -13,11 +13,12 @@ determinism-first contract by construction: no LLM, and writing it can't move th
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import datetime
 
 from bajutsu import __version__
 from bajutsu.orchestrator import RunResult, StepOutcome
 from bajutsu.report.manifest import _details, _matrix
+from bajutsu.run_id import parse_run_id_timestamp
 
 # The CTRF spec version this projection targets; the vendored test schema is pinned to it.
 SPEC_VERSION = "0.0.0"
@@ -40,16 +41,13 @@ def _content_type(kind: str) -> str:
 
 
 def _run_started(run_id: str) -> datetime | None:
-    """The run's start, parsed from the `YYYYmmdd-HHMMSS` runId, or None if it isn't a timestamp.
+    """The run's start parsed from the runId, or None if it isn't a timestamp.
 
-    The runId is stamped in UTC (`bajutsu run`), so it is parsed as UTC — exact to the second for a
-    real run. None (e.g. a test runId) leaves the derived `start`/`stop`/`timestamp` at their
-    fallbacks rather than fabricating a value.
+    Delegates to the shared run-id contract (BE-0200) so the format lives in one place. None
+    (e.g. a test runId) leaves the derived `start`/`stop`/`timestamp` at their fallbacks rather
+    than fabricating a value.
     """
-    try:
-        return datetime.strptime(run_id, "%Y%m%d-%H%M%S").replace(tzinfo=UTC)
-    except ValueError:
-        return None
+    return parse_run_id_timestamp(run_id)
 
 
 def _ms(seconds: float) -> int:

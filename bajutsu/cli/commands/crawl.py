@@ -17,7 +17,6 @@ from __future__ import annotations
 import atexit
 import json
 import subprocess
-from datetime import UTC, datetime
 from pathlib import Path
 
 import typer
@@ -44,6 +43,7 @@ from bajutsu.crawl_guide import make_guide
 from bajutsu.drivers import base
 from bajutsu.platform_lifecycle import environment_for
 from bajutsu.record import _clear_blocking
+from bajutsu.run_id import new_run_id
 from bajutsu.runner import launch_driver
 from bajutsu.runner.launch_server import start_launch_server
 from bajutsu.scenario import Preconditions
@@ -179,7 +179,7 @@ def crawl(
     announce_ai(say, default_model=_CRAWL_GUIDE_MODEL, ai=eff.ai)
     crawl_guide = make_guide(report=say, ai=eff.ai, redactor=redactor)
 
-    out_dir = Path(out) if out else Path("runs") / datetime.now(tz=UTC).strftime("%Y%m%d-%H%M%S")
+    out_dir = Path(out) if out else Path("runs") / new_run_id()
     # A Git source is read-only input: the screen map / screenshots go to a local run dir, never into
     # the SHA-keyed checkout cache (BE-0063). The default `runs/` is already local.
     _refuse_out_in_checkout(out_dir, checkout_root)
