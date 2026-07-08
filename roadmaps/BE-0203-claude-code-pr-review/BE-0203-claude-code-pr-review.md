@@ -223,6 +223,16 @@ Log:
   the Bedrock gate now requires both `AWS_BEDROCK_ROLE_ARN` and `BEDROCK_MODEL_ID` (a half-configured
   Environment stays a no-op instead of failing red); the docs now state the dormant-until-configured
   behavior.
+- Live verification (item 9) surfaced a mechanism mismatch and fixed it: the built-in
+  `/code-review --comment` skill posts through unrestricted `gh` (Bash), which `claude-code-action`
+  sandboxes out (the first live run authenticated and reviewed fine but posted nothing —
+  21 permission denials, "No buffered inline comments"). The workflow now posts inline findings via
+  the action's native `mcp__github_inline_comment__create_inline_comment` tool and the summary via a
+  narrowly-scoped `gh pr comment`, with a matching `claude_args --allowedTools` allowlist (the same
+  shape as the action's own review workflow). The repo-flavored *contract*
+  (`.github/claude-review-prompt.md`) is unchanged and still reused — only the posting mechanism
+  moved off the gh-based skill. Verified on a live run: OAuth (subscription) auth succeeds and the
+  review posts.
 
 ## References
 

@@ -349,8 +349,8 @@ tests cover <…>.
 `claude-review` Environment にプロバイダーの資格情報（Claude Code サブスクリプションのトークン、または
 Amazon Bedrock のロール）が設定されると、すべての pull request を **Claude Code** が自動でレビューします。
 [`claude-review`](../../.github/workflows/claude-review.yml) ワークフローから走り、PR がオープンした
-ときにレビューし、プッシュのたびに再レビューします。組み込みの `/code-review --comment` スキルを
-[`.github/claude-review-prompt.md`](../../.github/claude-review-prompt.md) の契約に照らして実行し、行単位の
+ときにレビューし、プッシュのたびに再レビューします。
+[`.github/claude-review-prompt.md`](../../.github/claude-review-prompt.md) の契約に照らしてレビューし、行単位の
 インラインコメント（機械的な修正が当てはまる箇所では `suggestion` ブロックつき）と短い要約を投稿します。
 資格情報を用意するまではワークフローは休眠状態の green no-op で、何も投稿せず、マージを妨げることもありません。
 したがって、まだレビューが付かないのは Environment が未設定なだけです。
