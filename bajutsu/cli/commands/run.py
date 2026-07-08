@@ -15,6 +15,7 @@ if TYPE_CHECKING:
 
 import typer
 
+from bajutsu import adb as _adb
 from bajutsu import github
 from bajutsu import simctl as _simctl
 from bajutsu import usage as _usage
@@ -873,8 +874,10 @@ def run(
     scenarios = _filter_scenarios(scenarios, tag, exclude, erase, eff.erase)
     actuator, backends = _select_actuator(backend, eff, engines)
     # Web has no simctl udid: `--workers N` is N near-free BrowserContext lanes (BE-0054); for idb,
-    # `--udid` is a concrete comma list capped to the pool size. (The "booted" default is unused on web.)
-    udids, workers = _resolve_lanes(actuator, udid, workers, _simctl.resolve_udid)
+    # `--udid` is a concrete comma list capped to the pool size. (The "booted" default is unused on
+    # web.) Android resolves its device serials via adb, not simctl.
+    resolve_device = _adb.resolve_serial if actuator == "adb" else _simctl.resolve_udid
+    udids, workers = _resolve_lanes(actuator, udid, workers, resolve_device)
     _apply_dismiss_alerts(scenarios, dismiss_alerts)
     on_blocked_for = _alert_guard_factory(scenarios, eff, alert_instruction)
     # Network collection resolves `--network/--no-network` over the target's `network` config, then on

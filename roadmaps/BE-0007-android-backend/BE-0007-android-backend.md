@@ -9,6 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0007") |
+| Implementing PR | [#658](https://github.com/bajutsu-e2e/bajutsu/pull/658) |
 | Topic | Platform expansion (Android / Web / Flutter) |
 <!-- /BE-METADATA -->
 
@@ -39,7 +40,7 @@ or the reporter.
 |---|---|
 | **Actuator** | **`adb` + `uiautomator dump`** — `uiautomator dump` yields an XML tree; actuation is `adb shell input tap x y` at the element's bounds center. **Coordinate-based, no semantic tap — a near-exact twin of idb.** (A richer Appium UiAutomator2 path could add semantic actions later) |
 | **Environment** | `adb`: clean state = `pm clear <package>` (the `erase` equivalent); boot via emulator/AVD (Android Virtual Device); launch = `am start`; deeplink = `am start -a android.intent.action.VIEW -d <url>`; launch args = intent extras |
-| **id convention** | `resource-id` (XML `android:id`; Jetpack Compose `Modifier.testTag` surfaced as `resource-id` via `testTagsAsResourceId`). `content-desc`/`text` → `label`; widget class → `traits` |
+| **id convention** | `resource-id` (XML `android:id`; Jetpack Compose `Modifier.testTag` surfaced as `resource-id` via `testTagsAsResourceId`). `text` → `label` (`content-desc` fallback); `content-desc` → `value` (the state-value mirror, SPEC §2.1); widget class → `traits` |
 | **Evidence providers** | screenshot = `adb exec-out screencap`; video = `adb shell screenrecord`; `deviceLog` = `adb logcat` (filtered by tag/pid); `network` = no native monitor → same mock story as iOS |
 | **codegen target** | Espresso or UI Automator (Kotlin/Java) |
 
@@ -64,9 +65,9 @@ On Android the `Selector` fields map as:
 | `Selector` field | iOS | Android |
 |---|---|---|
 | `id` (primary) | `accessibilityIdentifier` | `resource-id` (Compose: `Modifier.testTag` + `testTagsAsResourceId`) |
-| `label` (auxiliary) | `accessibilityLabel` | `content-desc` / `text` |
+| `label` (auxiliary) | `accessibilityLabel` | `text` (visible; `content-desc` fallback) |
 | `traits` (role filter) | UI traits (`button`, `link`, …) | widget class (`android.widget.Button`) |
-| `value` | accessibility value | `text` / checked state |
+| `value` | accessibility value | `content-desc` (the state-value mirror, SPEC §2.1) |
 
 ### Where it sits in the capability matrix
 
@@ -167,16 +168,46 @@ the **lean** end of `capabilities()`.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Registry wiring — `adb` in `IMPLEMENTED`, `capabilities_for`/`make_driver` branches (`bajutsu/backends.py`).
-- [ ] `AdbDriver` actuator — `uiautomator dump` parsing, coordinate actuation, transient-empty retry, capabilities (`bajutsu/drivers/adb.py`).
-- [ ] `AndroidEnvironment` — the `pm clear` → boot → `am start` → deeplink sequence and the lease-shaping methods (`bajutsu/environment.py`).
+- [x] Registry wiring — `adb` in `IMPLEMENTED`, `capabilities_for`/`make_driver` branches (`bajutsu/backends.py`).
+- [x] `AdbDriver` actuator — `uiautomator dump` parsing, coordinate actuation, transient-empty retry, capabilities (`bajutsu/drivers/adb.py`).
+- [x] `AndroidEnvironment` — the boot-readiness wait → `pm clear` → `am start` → deeplink sequence and the lease-shaping methods (`bajutsu/platform_lifecycle.py`, over the new `bajutsu/adb.py` command layer).
 - [ ] Evidence and device control — `logcat` deviceLog, `screenrecord` video, mocked network, supported device-state steps.
-- [ ] doctor and disclosure — `doctor --target` availability beside idb; manifest records `backend: "adb"`.
+- [x] doctor and disclosure — `doctor --target` availability beside idb; manifest records `backend: "adb"`.
 - [ ] codegen target — Espresso / UI Automator generator (follow-up slice).
-- [ ] Validation — fast-gate driver/registry tests over dump fixtures; on-device emulator e2e via KVM.
+- [ ] Validation — fast-gate driver/registry tests over dump fixtures **(done)**; core scenarios
+  driven on a local arm64 emulator **(done, 2026-07-07)**; wiring the on-device e2e into KVM CI
+  (follow-up).
 
 Log:
 
+- 2026-07-07 — First on-device validation on an arm64 API 34 emulator. Two fixes fell out of it:
+  (1) the Android showcase did not build — each module's Gradle `namespace` used the `.android.`
+  applicationId instead of the Kotlin source package, so the unqualified `BuildConfig` references
+  and the manifest's relative `.MainActivity` failed to resolve; aligning `namespace` to the source
+  package (applicationId unchanged) fixes both. (2) the driver's selector mapping read `value` from
+  `text` (the visible string), so a `value` assertion saw "Matches: 5" / "Not favorited" instead of
+  the mirrored "5" / "off"; the showcase mirrors state into `content-desc` (SPEC §2.1), so `value`
+  now reads `content-desc` and `label` reads `text`. With both fixed, the core id/tap/type/value
+  scenarios pass on device (smoke, firstlook, search, components, data_driven, modals, relaunch,
+  system, evidence-capture). The remaining scenarios exercise the deferred slices — device control
+  (honestly capability-gated), multi-touch (`UnsupportedAction`), by-scheme deeplink / system back
+  (`BackButton`), mocked network, runtime-permission alerts, and visual/golden baselines — plus
+  three borderline cases now diagnosed for the follow-up: `gestures`' long-press passes, but
+  double-tap does not register because the gap between two `adb shell input tap` invocations exceeds
+  the platform double-tap window (the `input` binary's own startup dominates, so batching them into
+  one shell round-trip is not enough); `controls` reaches `log.segment.one` but its `log.segment.value`
+  sits just past the scrolled viewport; `notices` needs system back plus a list scroll. All three are
+  on-device actuation/scroll tuning. Still **In progress**.
+- 2026-07-04 — Core driver slice landed: the `adb` command layer (`bajutsu/adb.py`, the twin of
+  `simctl.py`), the `AdbDriver` coordinate actuator (`bajutsu/drivers/adb.py` — `uiautomator dump`
+  XML → `Element` selector mapping, frame-centre taps, the transient-empty retry, ambiguity
+  fails-fast, `CAPABILITIES = {query, elements, screenshot}`), the `AndroidEnvironment` launch
+  sequence (`platform_lifecycle.py`), the registry flip (`backends.py`), and `doctor`/preflight
+  reporting (`preflight.py`, `cli/commands/doctor.py`). Fast-gate unit tests over captured dump XML
+  fixtures cover the selector mapping, frame-centre taps, the transient-empty retry, and
+  ambiguous-fails-fast. Docs updated (`docs/drivers.md`, `docs/architecture.md`, `DESIGN.md`, both
+  ja mirrors). Interval evidence (`screenrecord`/`logcat`), device control, codegen, and the
+  on-device emulator e2e remain follow-up slices, so the item stays **In progress**.
 - 2026-07-03 — Started. The Android showcase fixture the driver will drive landed first
   ([#552](https://github.com/bajutsu-e2e/bajutsu/pull/552)): the Compose + Views twins of
   `demos/showcase` (a11y/noax flavors), exercising the `testTag`/`android:id` → `resource-id`

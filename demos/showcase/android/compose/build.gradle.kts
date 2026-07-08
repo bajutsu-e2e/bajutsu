@@ -5,7 +5,10 @@ plugins {
 }
 
 android {
-    namespace = "com.bajutsu.showcase.android.compose"
+    // The build namespace must match the Kotlin source package (where BuildConfig/R are generated and
+    // where the manifest's relative `.MainActivity` resolves); the installed applicationId keeps the
+    // `.android.` segment the showcase.config.yaml `package` targets, so they intentionally differ.
+    namespace = "com.bajutsu.showcase.compose"
     compileSdk = 35
 
     defaultConfig {

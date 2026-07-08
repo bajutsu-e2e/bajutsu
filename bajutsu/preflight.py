@@ -61,22 +61,23 @@ BrowserProbe = Callable[[str], bool]
 
 
 def config_checks(
-    backend: str, *, target: str, bundle_id: str, base_url: str | None
+    backend: str, *, target: str, bundle_id: str, base_url: str | None, package: str = ""
 ) -> list[Check]:
     """Whether the resolved target carries the config the selected backend needs to launch.
 
-    The web (`playwright`) backend needs a `baseUrl` to navigate to; the iOS (`idb`) backend needs a
-    `bundleId` to launch. Config parsing already rejects a target with *neither* (`_need_target`),
-    but a target can still carry the *wrong* field for the backend it is run on — an iOS target with
-    only a `baseUrl`, a web target with only a `bundleId` — which would otherwise surface as a
-    confusing downstream launch/navigate failure. This catches it up front with a remedy naming the
-    target. `fake` needs neither.
+    The web (`playwright`) backend needs a `baseUrl` to navigate to; the Android (`adb`) backend a
+    `package`; the iOS (`idb`) backend a `bundleId`. Config parsing already rejects a target with
+    *none* (`_need_target`), but a target can still carry the *wrong* field for the backend it is run
+    on — an iOS target with only a `baseUrl`, a web target with only a `bundleId` — which would
+    otherwise surface as a confusing downstream launch/navigate failure. This catches it up front
+    with a remedy naming the target. `fake` needs neither.
 
     Args:
-        backend: The selected actuator (`idb` / `playwright` / `fake`).
+        backend: The selected actuator (`idb` / `adb` / `playwright` / `fake`).
         target: The resolved target's name, used in the remedy string.
         bundle_id: The target's `bundleId` (empty when unset).
         base_url: The target's `baseUrl` (None when unset).
+        package: The target's Android `package` (empty when unset).
     """
     if backend == "fake":
         return []
@@ -84,6 +85,8 @@ def config_checks(
         return [
             Check("target baseUrl", bool(base_url), base_url or f"set targets.{target}.baseUrl")
         ]
+    if backend == "adb":
+        return [Check("target package", bool(package), package or f"set targets.{target}.package")]
     return [
         Check("target bundleId", bool(bundle_id), bundle_id or f"set targets.{target}.bundleId")
     ]
@@ -107,6 +110,8 @@ def runnability(
         return []
     if backend == "playwright":
         return _web_runnability(web_engine, web_pkg, web_browser)
+    if backend == "adb":
+        return _android_runnability(which, booted_count)
     return _ios_runnability(backend, which, booted_count)
 
 
@@ -129,6 +134,32 @@ def _ios_runnability(
                 "Simulator booted",
                 count > 0,
                 f"{count} booted" if count else "boot one: `xcrun simctl boot <udid>`",
+            )
+        )
+    return checks
+
+
+def _android_runnability(which: Which, booted_count: Callable[[], int] | None) -> list[Check]:
+    """adb present plus (when `booted_count` is given) an attached, ready device/emulator.
+
+    Unlike iOS there is no `xcrun` prerequisite; the tools come from the one requirements mapping
+    (BE-0164), so the remedy strings never drift from what the installer installs.
+    """
+    checks = [
+        _tool(tool.exe, requirements.remedy(tool.install), which)
+        for tool in requirements.BACKENDS.get("adb", requirements.Requirement()).tools
+    ]
+    if booted_count is not None:
+        count = booted_count()
+        checks.append(
+            Check(
+                "device attached",
+                count > 0,
+                # `emulator` ships with the Android SDK, not the `android-platform-tools` `adb`
+                # requirement, so the remedy names the SDK tool rather than implying `adb` has it.
+                f"{count} attached"
+                if count
+                else "attach a device, or boot an AVD (Android SDK `emulator`); shows in `adb devices`",
             )
         )
     return checks

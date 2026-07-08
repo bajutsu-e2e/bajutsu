@@ -82,10 +82,11 @@ def test_plan_for_backends_forces_a_specific_backend() -> None:
     assert Tool("idb_companion", Brew("facebook/fb/idb-companion")) in p.tools
 
 
-def test_plan_skips_a_planned_but_unbuilt_backend() -> None:
-    # `android` resolves to the `adb` actuator, which has no requirements entry yet — nothing to
-    # install, rather than a crash (forward-compatible, like backends.py skipping unknown tokens).
-    assert provision.plan_for_backends(["android"]).is_empty
+def test_plan_for_backends_includes_android_adb() -> None:
+    # `android` resolves to the `adb` actuator (BE-0007): its one tool is the platform-tools `adb`
+    # binary, provisioned via Homebrew like `idb_companion`.
+    p = provision.plan_for_backends(["android"])
+    assert Tool("adb", Brew("android-platform-tools")) in p.tools
 
 
 # --- provision(): idempotent execution over injectable subprocess seams ----------------------

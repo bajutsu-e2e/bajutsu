@@ -2,13 +2,14 @@
 
 # Driver abstraction, backends, and environment management
 
-> One `Driver` interface, behind which sit the backends — `idb` (iOS Simulator), `playwright`
-> (web browser), plus the in-memory `fake` for tests — with capability differences absorbed on the
-> abstraction side. A platform-aware registry picks the actuator from the `backend` list; on iOS,
-> launching the app (boot/launch) is handled by a `simctl` wrapper.
+> One `Driver` interface, behind which sit the backends — `idb` (iOS Simulator), `adb` (Android
+> emulator), `playwright` (web browser), plus the in-memory `fake` for tests — with capability
+> differences absorbed on the abstraction side. A platform-aware registry picks the actuator from
+> the `backend` list; on iOS, launching the app (boot/launch) is handled by a `simctl` wrapper, and
+> on Android by the twin `adb` wrapper.
 >
-> Implementation: `bajutsu/drivers/` (`base.py` / `idb.py` / `playwright.py` / `fake.py`) ·
-> `bajutsu/backends.py` · `bajutsu/simctl.py`.
+> Implementation: `bajutsu/drivers/` (`base.py` / `idb.py` / `adb.py` / `playwright.py` / `fake.py`) ·
+> `bajutsu/backends.py` · `bajutsu/simctl.py` · `bajutsu/adb.py`.
 
 Related: [selectors](selectors.md) (resolution) · [the stability ladder](concepts.md#5-the-stability-ladder) · [run-loop](run-loop.md)
 
@@ -44,20 +45,23 @@ class Driver(Protocol):
 The set of tokens returned by `capabilities()`, used for actuator selection, evidence fallback
 resolution, and the **preflight capability check** (below).
 
-| Capability | Meaning | idb | playwright | fake |
-|---|---|:--:|:--:|:--:|
-| `query` | element-tree query | ✅ | ✅ | ✅ |
-| `elements` | element-dump evidence | ✅ | ✅ | ✅ |
-| `screenshot` | screenshot | ✅ | ✅ | ✅ |
-| `semanticTap` | tap directly by id/label (no coordinates) | — | ✅ | ✅ |
-| `conditionWait` | native condition waiting | — | ✅ | ✅ |
-| `network` | native network monitoring | — | ✅ | — |
-| `multiTouch` | two-finger gestures (pinch / rotate) | — | ✅ | ✅ |
-| `deviceControl` | simctl device operations (push / setLocation / clearKeychain / …) | ✅ | — | — |
+| Capability | Meaning | idb | adb | playwright | fake |
+|---|---|:--:|:--:|:--:|:--:|
+| `query` | element-tree query | ✅ | ✅ | ✅ | ✅ |
+| `elements` | element-dump evidence | ✅ | ✅ | ✅ | ✅ |
+| `screenshot` | screenshot | ✅ | ✅ | ✅ | ✅ |
+| `semanticTap` | tap directly by id/label (no coordinates) | — | — | ✅ | ✅ |
+| `conditionWait` | native condition waiting | — | — | ✅ | ✅ |
+| `network` | native network monitoring | — | — | ✅ | — |
+| `multiTouch` | two-finger gestures (pinch / rotate) | — | — | ✅ | ✅ |
+| `deviceControl` | simctl device operations (push / setLocation / clearKeychain / …) | ✅ | — | — | — |
 
-> idb actuates by **frame-center coordinates** — it exposes no semantic tap, so the run loop resolves
-> a unique element via `query()` and taps its center. `pinch` / `rotate` raise `UnsupportedAction`
-> (single-touch); those go through codegen → XCUITest. The `fake` driver advertises a richer
+> idb and adb sit at the **lean end**, both actuating by **frame-center coordinates** — they expose
+> no semantic tap, so the run loop resolves a unique element via `query()` and taps its center.
+> `pinch` / `rotate` raise `UnsupportedAction` (single-touch); on iOS those go through codegen →
+> XCUITest. adb advertises exactly `query` / `elements` / `screenshot`; it has no `deviceControl`
+> family yet (Android device control is a follow-up, BE-0007 Unit 4). The `fake` driver advertises a
+> richer
 > capability set (semanticTap / conditionWait / multiTouch) purely to exercise those code paths in
 > tests. The `playwright` (web) driver advertises `semanticTap` / `conditionWait` (Playwright has
 > both natively), `network` — the **first backend with native network**, observing and stubbing
@@ -129,6 +133,42 @@ whatever happens to be installed:
   against the latest `idb_companion` on a weekly cadence (separate from the per-PR gate). Because
   the smoke run goes through `parse_describe_all` → Element normalization, a schema or behaviour
   drift fails it loudly there, on a cadence we control, rather than being discovered ad hoc.
+
+## adb (Android)
+
+Headless, coordinate-based — the **architectural twin of idb**. With no semantic tap, the
+abstraction resolves **id → frame center → coordinate tap**, exactly as on iOS. Implementation:
+`drivers/adb.py` + `bajutsu/adb.py` (roadmap
+[BE-0007](../roadmaps/BE-0007-android-backend/BE-0007-android-backend.md)).
+
+- `query()`: `adb -s <serial> exec-out uiautomator dump /dev/tty` streams the window's UI Automator
+  XML; a pure parser (`parse_hierarchy`) maps each `<node>` to an `Element`. The selector mapping is
+  `resource-id` → `identifier` (the `<package>:id/` prefix stripped to the local name, so a Compose
+  `testTag` surfaced via `testTagsAsResourceId` reproduces verbatim while a native `android:id`
+  drops its prefix), `text` → `label` (`content-desc` fallback), `content-desc` → `value` (the app
+  mirrors its state value there, SPEC §2.1), and the widget `class` (plus enabled / selected /
+  checked state) → `traits`.
+- `tap(sel)`: `_resolve` confirms uniqueness (**retries not-found, fails ambiguity fast** — like
+  idb, a mid-transition dump is a transient null-root that is retried, and a 2+ match fails
+  immediately) → `adb shell input tap` at the frame center. `swipe` adds a finite duration so it is a
+  real drag; `long_press` is a same-point swipe held for the duration; `type_text` is `input text`
+  (spaces sent as its `%s` escape).
+- `pinch` / `rotate` raise `UnsupportedAction` (single-touch `input`, just like idb).
+- `screenshot` writes the PNG bytes from `adb exec-out screencap -p` (binary-clean stdout).
+- Lifecycle (`AndroidEnvironment`, the twin of the iOS `simctl` sequence): boot-readiness wait
+  (polling `getprop sys.boot_completed` to a bounded deadline — a condition wait, no fixed sleep, and
+  no unbounded `adb wait-for-device` block) →
+  optional APK install → `pm clear` for a clean state (the `erase` equivalent) → `am force-stop` →
+  `am start` (the launcher activity resolved via the package manager; launch env forwarded as intent
+  extras) → deeplink (`am start -a android.intent.action.VIEW`). The run manifest records
+  `backend: "adb"` so the selected actuator is disclosed. There is no native network monitor — the
+  same mocked story as iOS — and no device-control family yet (both are BE-0007 follow-ups).
+
+> The XML attribute names follow UI Automator's `uiautomator dump` schema. On-device tuning of the
+> selector mapping against the Android showcase (`demos/showcase/android`) — including whether the
+> Views `android:id` `.`↔`_` case gets a scenario variant — is tracked as e2e follow-up (BE-0007
+> Unit 7); the fast gate exercises the parser, the frame-center taps, the transient-empty retry, and
+> ambiguous-fails-fast over captured XML fixtures. adb is `brew install android-platform-tools`.
 
 ## Playwright (web)
 

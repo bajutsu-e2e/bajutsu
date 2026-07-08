@@ -185,9 +185,10 @@ def test_xcuitest_availability_gated_on_xcodebuild(monkeypatch: pytest.MonkeyPat
 
 
 def test_select_actuator_falls_through_unavailable_platform() -> None:
-    # android resolves to adb (unavailable by default), so a request that lists fake after it
-    # falls through to fake — no forced availability needed.
-    assert select_actuator(["android", "fake"]) == "fake"
+    # android resolves to adb; with adb unavailable, a request that lists fake after it falls
+    # through to fake. `fake` is always available, adb only when the `adb` binary is present.
+    available = lambda a: a == "fake"  # noqa: E731 - a one-liner availability stub
+    assert select_actuator(["android", "fake"], available=available) == "fake"
 
 
 def test_resolve_actuators_expands_platforms() -> None:
@@ -207,9 +208,23 @@ def test_select_none_available_raises() -> None:
         select_actuator(["idb"], available=lambda b: False)
 
 
-def test_select_planned_backend_reports_not_implemented() -> None:
-    # android resolves to adb, which is recognized but has no driver yet — a clear error,
-    # not a generic "no available actuator".
+def test_select_android_actuator_when_available() -> None:
+    # android is implemented now (BE-0007): it resolves to adb and is selected when available.
+    assert select_actuator(["android"], available=lambda a: True) == "adb"
+
+
+def test_select_android_unavailable_is_not_a_planned_error() -> None:
+    # adb is implemented but its device tool may be absent: that is "no available actuator", not the
+    # "recognized but not implemented yet" error reserved for a driver that does not exist.
+    with pytest.raises(RuntimeError, match="no available actuator"):
+        select_actuator(["android"], available=lambda a: False)
+
+
+def test_select_planned_backend_reports_not_implemented(monkeypatch: pytest.MonkeyPatch) -> None:
+    # The "recognized but not implemented yet" path still guards a future planned actuator: with adb
+    # dropped from IMPLEMENTED it is recognized (in PLATFORMS) yet has no driver, so the message
+    # points at the multi-platform design rather than a generic "no available actuator".
+    monkeypatch.setattr("bajutsu.backends.IMPLEMENTED", frozenset({"idb", "fake"}))
     with pytest.raises(RuntimeError, match="not implemented yet"):
         select_actuator(["android"])
 
@@ -300,11 +315,23 @@ def test_make_driver_xcuitest_requires_runner_port() -> None:
         make_driver("xcuitest", "UDID-1")
 
 
-def test_make_driver_planned_backend() -> None:
+def test_make_driver_adb() -> None:
+    from bajutsu.drivers.adb import AdbDriver
+
+    driver = make_driver("adb", "emulator-5554")
+    assert isinstance(driver, AdbDriver)
+    # The lean end, alongside idb: no semantic tap, no native network.
+    assert base.Capability.SEMANTIC_TAP not in driver.capabilities()
+    assert base.Capability.SCREENSHOT in driver.capabilities()
+
+
+def test_make_driver_planned_backend(monkeypatch: pytest.MonkeyPatch) -> None:
     # A recognized-but-unimplemented actuator raises NotImplementedError (distinct from an
-    # outright-unknown token), so the message can point at the multi-platform design.
+    # outright-unknown token), so the message can point at the multi-platform design. Every real
+    # actuator now has a driver, so a synthetic "future" token in KNOWN_ACTUATORS stands in.
+    monkeypatch.setattr("bajutsu.backends.KNOWN_ACTUATORS", ("idb", "future"))
     with pytest.raises(NotImplementedError, match="not implemented yet"):
-        make_driver("adb", "U")
+        make_driver("future", "U")
 
 
 def test_make_driver_unknown() -> None:

@@ -7,10 +7,11 @@ import functools
 from collections.abc import Callable
 from typing import Any
 
-from bajutsu import doctor, simctl
+from bajutsu import adb, doctor, simctl
 from bajutsu.backends import IMPLEMENTED, resolve_actuators
 from bajutsu.config import (
     Effective,
+    android_package,
     ios_bundle_id,
     load_config,
     require_web,
@@ -88,13 +89,21 @@ def doctor_check(
         target=target,
         bundle_id=ios_bundle_id(eff),
         base_url=web_base_url(eff),
+        package=android_package(eff),
     )
-    # Reads booted state through state.simctl so this never shells out on a host without Xcode
-    # (and so tests can inject the device list). runnability only uses it for the iOS family.
+
+    # Report the device probe too (Android counts attached adb devices, the iOS backends booted
+    # Simulators), so a target with no device/emulator is not reported `ok: true` — the same
+    # `booted_count` the CLI doctor passes. Web / fake ignore it inside `runnability`.
+    def booted_count() -> int:
+        if actuator == "adb":
+            return len(adb.booted_serials())
+        # Reads booted state through state.simctl so this never shells out on a host without
+        # Xcode (and so tests can inject the device list). Only the iOS family uses it.
+        return len(simctl.booted_udids(run=state.simctl))
+
     env_checks = preflight.runnability(
-        actuator,
-        booted_count=lambda: len(simctl.booted_udids(run=state.simctl)),
-        web_engine=web_engine(eff),
+        actuator, booted_count=booted_count, web_engine=web_engine(eff)
     )
     all_checks = cfg_checks + env_checks
     ok = preflight.passed(all_checks)

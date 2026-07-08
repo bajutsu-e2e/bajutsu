@@ -98,7 +98,9 @@ def playwright_browser(engine: str) -> Tool:
 # Backend actuator (bajutsu.backends actuator names) -> what it needs. `idb`'s python client comes
 # from the `idb` extra (so `preflight` probes it as an Extra tool); `idb_companion` is the separate
 # Homebrew formula. The web browser is engine-specific, so it is not listed here (see
-# `playwright_browser`). `fake` needs nothing; a planned-but-unbuilt actuator (adb) is simply absent.
+# `playwright_browser`). `adb` (Android, BE-0007) needs the platform-tools `adb` binary; the emulator
+# is only needed to *boot* an AVD, not to drive a running device, so it is not listed. `fake` needs
+# nothing.
 BACKENDS: dict[str, Requirement] = {
     "idb": Requirement(
         extra="idb",
@@ -107,6 +109,7 @@ BACKENDS: dict[str, Requirement] = {
             Tool("idb_companion", Brew("facebook/fb/idb-companion")),
         ),
     ),
+    "adb": Requirement(tools=(Tool("adb", Brew("android-platform-tools")),)),
     "playwright": Requirement(extra="web"),
     "xcuitest": Requirement(
         tools=(Tool("xcodebuild", Manual("Xcode — `xcode-select --install`")),)

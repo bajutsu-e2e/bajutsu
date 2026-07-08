@@ -24,9 +24,9 @@ from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import Protocol, cast, runtime_checkable
 
-from bajutsu import simctl
+from bajutsu import adb, simctl
 from bajutsu.backends import make_driver
-from bajutsu.config import Effective, require_ios, require_web
+from bajutsu.config import Effective, require_android, require_ios, require_web
 from bajutsu.crawl import AliveCheck, ClearBlocking, Recover, Reset
 from bajutsu.drivers import base
 from bajutsu.network import Collector
@@ -245,6 +245,153 @@ class IosEnvironment(_DeviceEnvironment):
         except subprocess.CalledProcessError as exc:
             raise simctl.device_error(exc) from exc
         return make_driver(self._actuator, self._udid)
+
+
+def _await_boot(env: adb.Env, timeout: float = 60.0, poll: float = 0.5) -> None:
+    """Wait until the device reports `sys.boot_completed`, polling to a bounded deadline (a condition wait at `poll` intervals, not a fixed up-front sleep).
+
+    The Android peer of `simctl bootstatus`: `getprop sys.boot_completed` is polled to a bounded
+    deadline. `boot_completed` treats a device adb can't yet see as "not booted" and retries it (no
+    unbounded `adb wait-for-device` block), but lets a missing `adb` binary propagate so `start`
+    fails fast with a clean error instead of spinning here. An already-booted device returns on the
+    first poll; if the deadline passes with no device, the launch sequence proceeds and fails loudly
+    on the first `pm clear` / `am start` with a clean `DeviceError`, rather than hanging here.
+    """
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if env.boot_completed():
+            return
+        time.sleep(poll)
+
+
+class AndroidEnvironment:
+    """The Android emulator lifecycle via `adb` (the adb backend's environment) — idb's twin.
+
+    `start` runs the adb sequence — boot-readiness wait → optional APK (re)install → `pm clear` for a
+    clean state (the `erase` equivalent) → `am force-stop` → `am start` (launch env forwarded as
+    intent extras) → deeplink — and returns the `adb` driver. The lease-shaping methods mirror the iOS
+    `_DeviceEnvironment`, over `adb` instead of `simctl`: the same seam, a different subprocess tool.
+    Network is not observed natively (no `NETWORK` capability) and there is no device-control family
+    yet (BE-0007 Unit 4), so those methods degrade the same honest way iOS's mocked network does.
+    """
+
+    def __init__(self, actuator: str, serial: str, adb_run: adb.RunFn = adb._real_run) -> None:
+        self._actuator = actuator
+        self._serial = serial
+        self._run = adb_run
+
+    def start(
+        self,
+        eff: Effective,
+        pre: Preconditions,
+        *,
+        extra_env: Mapping[str, str] | None = None,
+        record_video_dir: Path | None = None,
+    ) -> base.Driver:
+        android = require_android(eff)
+        e = adb.Env(self._serial, run=self._run)
+        try:
+            _await_boot(e)
+            if android.app_path:
+                if not Path(android.app_path).exists():
+                    raise adb.DeviceError(
+                        f"appPath not found: {android.app_path} (build the app first)"
+                    )
+                e.install(android.app_path)
+            # `pm clear` is the clean-state reset (fresh app data); skip it only on an explicit
+            # `overwrite` reinstall with no erase, matching iOS's "keep data" overwrite path.
+            if pre.erase or pre.reinstall == "clean":
+                e.clear(android.package)
+            e.force_stop(android.package)  # clean start so readiness reflects the new launch
+            launch_env: Mapping[str, str] = {
+                **eff.launch_env,
+                **pre.launch_env,
+                **(extra_env or {}),
+            }
+            e.launch(android.package, launch_env)
+            if pre.deeplink is not None:
+                e.open_url(pre.deeplink, android.package)
+        except subprocess.CalledProcessError as exc:
+            raise adb.device_error(exc) from exc
+        except OSError as exc:
+            # adb itself could not be run (e.g. missing from PATH) — surface it as a clean
+            # DeviceError (exit 2) rather than an unhandled traceback or a spin to the boot deadline.
+            raise adb.DeviceError(
+                f"could not run adb ({exc}); is Android platform-tools installed and on PATH?"
+            ) from exc
+        return make_driver(self._actuator, self._serial)
+
+    def device_catalog(self) -> dict[str, dict[str, str]]:
+        return adb.device_catalog(self._run)
+
+    def observes_network_via_driver(self) -> bool:
+        return False  # no native network monitor — the same mocked story as iOS
+
+    def records_video_up_front(self) -> bool:
+        return False  # video (screenrecord) is a follow-up (BE-0007 Unit 4)
+
+    def hook_collector(self, driver: base.Driver, scenario: Scenario) -> Collector:
+        raise NotImplementedError("the adb backend does not observe network via the driver")
+
+    def relauncher(
+        self,
+        eff: Effective,
+        scenario: Scenario,
+        driver: base.Driver,
+        *,
+        extra_env: Mapping[str, str] | None = None,
+    ) -> RelaunchFn:
+        package = require_android(eff).package
+        e = adb.Env(self._serial, run=self._run)
+        pre = scenario.preconditions
+
+        def relaunch(opts: Relaunch) -> None:
+            e.force_stop(package)  # restart only the app; the device is not rebooted
+            launch_env = {
+                **eff.launch_env,
+                **pre.launch_env,
+                **(extra_env or {}),
+                **(opts.env or {}),
+            }
+            e.launch(package, launch_env)
+            _await_ready(driver, ready_sel=eff.ready_when)
+
+        return relaunch
+
+    def controller(self, eff: Effective) -> DeviceControl | None:
+        return None  # Android device control (setLocation / clipboard / …) is a follow-up (Unit 4)
+
+    def teardown(self, driver: base.Driver, eff: Effective) -> None:
+        adb.Env(self._serial, run=self._run).force_stop(require_android(eff).package)
+
+    def has_devices(self) -> bool:
+        return True
+
+    def plan_lanes(self, udid_arg: str, workers: int) -> list[str]:
+        serials = [
+            adb.resolve_serial(s.strip(), self._run) for s in udid_arg.split(",") if s.strip()
+        ]
+        return serials[: max(1, min(workers, len(serials)))]
+
+    def crawl_reset(self, eff: Effective) -> Reset:
+        package = require_android(eff).package
+        e = adb.Env(self._serial, run=self._run)
+
+        def reset(driver: base.Driver) -> None:
+            e.force_stop(package)
+            e.launch(package, eff.launch_env)
+            _await_ready(driver, ready_sel=eff.ready_when)
+
+        return reset
+
+    def crawl_aliveness(self) -> AliveCheck | None:
+        return None  # the engine reads the accessibility tree for device crash detection
+
+    def crawl_recover(self) -> Recover | None:
+        return None  # no in-lane recovery: a wedged device surfaces as a DeviceError
+
+    def crawl_dialog_clearer(self) -> ClearBlocking | None:
+        return None  # OS prompts are handled by the optional alert guard, wired by the CLI
 
 
 class WebEnvironment:
@@ -545,6 +692,10 @@ def environment_for(
     """The `Environment` for *actuator* — the seam that ends per-actuator branching in the runner."""
     if actuator == "playwright":
         return WebEnvironment(actuator)
+    if actuator == "adb":
+        # The Android environment drives adb (its own `argv -> stdout` runner), not simctl, so the
+        # simctl-typed `env_run` does not apply — it uses adb's default runner.
+        return AndroidEnvironment(actuator, udid)
     if actuator == "fake":
         return FakeEnvironment(actuator, udid, env_run)
     if actuator == "xcuitest":
