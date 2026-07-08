@@ -53,12 +53,21 @@ jobs:
   review:
     name: claude review
     runs-on: ubuntu-latest
-    # Auto-review on every PR event; the @claude mention path (item 4) is additive and only fires on
-    # a PR comment that carries the trigger phrase — never on a plain issue comment.
+    # Auto-review on every PR event. The on-demand path (item 4) is additive and hardened against
+    # fork-PR secret exposure: a comment event runs only when it is a PR comment, carries the exact
+    # `@claude review` phrase, AND comes from a trusted actor (OWNER/MEMBER/COLLABORATOR). Because
+    # `issue_comment` runs with repo secrets even on fork PRs, restricting the association is what
+    # stops an untrusted commenter from triggering a credentialed run.
     if: >-
       github.event_name == 'pull_request' ||
-      (github.event_name == 'pull_request_review_comment' && contains(github.event.comment.body, '@claude')) ||
-      (github.event_name == 'issue_comment' && github.event.issue.pull_request && contains(github.event.comment.body, '@claude'))
+      (
+        (
+          (github.event_name == 'issue_comment' && github.event.issue.pull_request) ||
+          github.event_name == 'pull_request_review_comment'
+        ) &&
+        contains(github.event.comment.body, '@claude review') &&
+        contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.comment.author_association)
+      )
     # Scope the review credential to this Environment so an unrelated job can't read it.
     environment: claude-review
     steps:
@@ -67,18 +76,24 @@ jobs:
         env:
           OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           ROLE_ARN: ${{ secrets.AWS_BEDROCK_ROLE_ARN }}
+          MODEL_ID: ${{ vars.BEDROCK_MODEL_ID }}
         run: |
           # Prefer the Claude Code subscription (OAuth) when its token is present; otherwise use
-          # Amazon Bedrock via OIDC. With neither configured the job stays a dormant no-op rather
-          # than failing on missing credentials, so no PR is red while the Environment is being set
-          # up (same shape as roadmap-id.yml, BE-0089).
+          # Amazon Bedrock via OIDC. Enable each provider only when ALL of its required inputs are
+          # present — Bedrock needs both the role ARN and the model id — so a half-configured
+          # Environment stays a dormant no-op rather than running and failing (which would turn the
+          # advisory check red on config drift). Same all-or-nothing shape as roadmap-id.yml (BE-0089).
           if [ -n "$OAUTH_TOKEN" ]; then
             echo "provider=oauth" >> "$GITHUB_OUTPUT"
-          elif [ -n "$ROLE_ARN" ]; then
+          elif [ -n "$ROLE_ARN" ] && [ -n "$MODEL_ID" ]; then
             echo "provider=bedrock" >> "$GITHUB_OUTPUT"
           else
             echo "provider=none" >> "$GITHUB_OUTPUT"
-            echo "::notice::Neither CLAUDE_CODE_OAUTH_TOKEN nor AWS_BEDROCK_ROLE_ARN is set — advisory Claude review is dormant (BE-0203). No-op."
+            if [ -n "$ROLE_ARN" ] && [ -z "$MODEL_ID" ]; then
+              echo "::notice::AWS_BEDROCK_ROLE_ARN is set but the BEDROCK_MODEL_ID variable is missing — advisory Claude review is dormant (BE-0203). No-op."
+            else
+              echo "::notice::Neither CLAUDE_CODE_OAUTH_TOKEN nor AWS_BEDROCK_ROLE_ARN (+ BEDROCK_MODEL_ID) is set — advisory Claude review is dormant (BE-0203). No-op."
+            fi
           fi
 
       - name: Check out the pull request

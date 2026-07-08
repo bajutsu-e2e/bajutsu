@@ -378,11 +378,14 @@ open until it is decided.
 
 ### The automated reviewer (Claude Code, BE-0203)
 
-Every pull request is reviewed automatically by **Claude Code**, run from the
+Once the `claude-review` Environment has a provider credential (a Claude Code subscription token or
+Amazon Bedrock role), every pull request is reviewed automatically by **Claude Code**, run from the
 [`claude-review`](../.github/workflows/claude-review.yml) workflow: it reviews when a PR opens and
 re-reviews on each push, running the built-in `/code-review --comment` skill against the
 [`.github/claude-review-prompt.md`](../.github/claude-review-prompt.md) contract, and posts inline
-line-level comments (with `suggestion` blocks where a fix is mechanical) plus a short summary. The
+line-level comments (with `suggestion` blocks where a fix is mechanical) plus a short summary. Until
+a credential is provisioned the workflow is a dormant green no-op — it posts nothing and never
+blocks — so no review appearing on a PR yet just means the Environment isn't configured. The
 prompt points the reviewer at *this repository's* contract — the three
 [prime directives](../CLAUDE.md#prime-directives-do-not-violate), the docstring standard, the
 bilingual-docs rule, the BE-ID lifecycle — so it catches what a generic reviewer cannot.
