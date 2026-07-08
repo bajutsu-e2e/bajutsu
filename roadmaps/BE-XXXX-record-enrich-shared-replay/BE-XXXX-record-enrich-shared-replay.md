@@ -24,7 +24,7 @@ second copy.
 
 Both pairs are the same logic maintained twice:
 
-- **Step replay** (`record.py:198-206` vs `enrich.py:26-36`): the same `_action_of` dispatch
+- **Step replay** (`record.py:266-274` vs `enrich.py:26-37`): the same `_action_of` dispatch
   (wait / `assert_` no-op / `_do_action`). They differ only in wait-failure handling — enrich
   checks `_wait`'s `(ok, reason)` and raises `_ReplayFailed`, record ignores the return value.
 - **Alert clearing** (`_clear_blocking` in both): the same
