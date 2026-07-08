@@ -31,6 +31,19 @@ def test_environment_for_selects_by_actuator() -> None:
     assert isinstance(environment_for("fake", "UDID"), FakeEnvironment)
 
 
+def test_every_environment_satisfies_both_lease_surfaces() -> None:
+    # BE-0197 splits the one Protocol into a run-lease surface and a crawl-lease surface so each
+    # command declares only the methods it uses; every concrete environment still satisfies both
+    # (and the combined `Environment`), which is what lets `environment_for` feed either consumer.
+    from bajutsu.platform_lifecycle import CrawlEnvironment, Environment, RunEnvironment
+
+    for actuator in ("idb", "xcuitest", "playwright", "fake", "adb"):
+        env = environment_for(actuator, "UDID")
+        assert isinstance(env, RunEnvironment)
+        assert isinstance(env, CrawlEnvironment)
+        assert isinstance(env, Environment)
+
+
 def test_web_environment_requires_base_url() -> None:
     eff = _web_eff(base_url=None)
     with pytest.raises(simctl.DeviceError, match="baseUrl"):

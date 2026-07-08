@@ -6,8 +6,60 @@ stable-id convention. This module owns the second: an `Environment` Protocol who
 platform's whole per-run startup sequence and returns a ready-to-poll driver, and whose lease-shaping
 methods (`relauncher` / `controller` / `teardown` / the network-observation strategy) let the runner
 drive every platform through one interface instead of branching on the actuator name. The iOS
-(`simctl`) sequence and the web (browser-context) sequence live behind the same interface, and a
-future Android (`adb`) environment ([BE-0007]) slots in the same way.
+(`simctl`) sequence, the web (browser-context) sequence, and the Android (`adb`) sequence live behind
+the same interface, and a further platform ([BE-0007]) slots in the same way.
+
+## Two lease surfaces (BE-0197)
+
+The seam serves two commands, so its Protocol is split by command rather than carried as one flat
+surface: `RunEnvironment` is the `run` lease (`start`, `relauncher`, `controller`, `teardown`,
+`hook_collector`, and the run predicates); `CrawlEnvironment` is the `crawl` lease (`has_devices`,
+`plan_lanes`, and the `crawl_*` methods). Every concrete platform implements both, and `Environment`
+is their union — the full surface a platform class satisfies and `environment_for` returns. The
+`run` pipeline (`runner/pool.py`, `runner/launch.py`) holds its environment as a `RunEnvironment`
+and the `crawl` command (`cli/commands/crawl.py`) as a `CrawlEnvironment`, so each reader sees only
+the methods its command calls and mypy keeps the two from drifting into each other.
+
+## Declining a method (the "not applicable" contract)
+
+A method a platform has no use for is declined in exactly one of two ways, chosen per method (never
+ad hoc), and each method's docstring states which it is:
+
+- **First-class null / empty** — for a method the caller *always* invokes and interprets a null
+  answer from: `controller` → `None` (no device control), `device_catalog` → `{}` (no devices),
+  `crawl_aliveness` / `crawl_recover` / `crawl_dialog_clearer` → `None` (no such behavior here).
+  The null value *is* the platform's answer, not an unimplemented stub — so a declining platform
+  returns it rather than raising.
+- **Gated raise** — only for a method the caller invokes *solely when* a predicate is true:
+  `hook_collector`, which the runner calls only after `observes_network_via_driver()`. A platform
+  that returns `False` from the predicate may leave `hook_collector` raising `NotImplementedError`,
+  because the check makes the raise unreachable. This is the *only* method that may raise.
+
+## Predicate → capability pairing
+
+Three run predicates gate behavior elsewhere; each is honored at one runner call site:
+
+| Predicate                      | Gates                                   | Honored at                       |
+|--------------------------------|-----------------------------------------|----------------------------------|
+| `observes_network_via_driver`  | `hook_collector` (may gated-raise if F) | `runner/pool.py` (`lease`)       |
+| `records_video_up_front`       | `start`'s `record_video_dir` wiring     | `runner/pool.py` (`lease`)       |
+| `has_devices`                  | `plan_lanes` / `controller` shape       | `cli/commands/crawl.py` / `pool` |
+
+## Adding a platform
+
+A new `Environment` (extend `environment_for`) must, at minimum:
+
+1. Implement the full `RunEnvironment` surface: `start` (the per-run bring-up returning a launched
+   driver), `relauncher`, `controller` (return `None` if none), `teardown`, `device_catalog`
+   (return `{}` if none), and the three run predicates. `hook_collector` may gated-raise unless
+   `observes_network_via_driver()` returns `True`.
+2. For `crawl` support, implement `CrawlEnvironment`: `has_devices`, `plan_lanes`, `crawl_reset`,
+   and the three `crawl_*` health methods (return `None` from each the platform lacks). A run-first
+   cut may defer these — a platform wired only into `run` needs `RunEnvironment` alone — but until
+   they exist the platform will not appear in `crawl`.
+
+Follow the "not applicable" contract above for every method the platform declines; do not invent a
+third idiom.
 """
 
 from __future__ import annotations
@@ -44,14 +96,16 @@ _READY_MATCH_KEYS = ("id", "idMatches", "label", "labelMatches", "traits", "valu
 
 
 @runtime_checkable
-class Environment(Protocol):
-    """One platform's app lifecycle: produce a freshly-launched app and drive its per-lease shape.
+class RunEnvironment(Protocol):
+    """The `run` lease surface: produce a freshly-launched app and drive its per-lease shape.
 
     `start` owns the entire per-run startup for a platform, so the caller need not know whether that
     means a `simctl` device sequence or a fresh browser context — it gets back a driver bound to the
     launched app (not yet polled for readiness; the runner does that). The remaining methods describe
     the differences the pool used to branch on the actuator name for: how network is observed, whether
     video must be wired before launch, and the per-scenario relaunch / device control / teardown.
+    This is the narrower surface the `run` pipeline (`runner/pool.py`, `runner/launch.py`) holds; the
+    module docstring's "not applicable" contract governs how a platform declines each method.
     """
 
     def start(
@@ -64,19 +118,28 @@ class Environment(Protocol):
     ) -> base.Driver: ...
 
     def device_catalog(self) -> dict[str, dict[str, str]]:
-        """Static device metadata (model / OS) keyed by udid; `{}` for platforms with no device."""
+        """Static device metadata (model / OS) keyed by udid.
+
+        Returns `{}` for a platform with no device (web) — a first-class "no devices", not an
+        unimplemented stub; the caller always invokes this and reads the empty map as the answer.
+        """
 
     def observes_network_via_driver(self) -> bool:
         """Whether network is observed by hooking the live driver (web) rather than an external
-        receiver the app reports to (the device backends)."""
+        receiver the app reports to (the device backends). Gates `hook_collector`."""
 
     def records_video_up_front(self) -> bool:
         """Whether video capture must be wired before launch (web's context records at creation)
-        rather than on demand (simctl)."""
+        rather than on demand (simctl). Gates `start`'s `record_video_dir` handling."""
 
     def hook_collector(self, driver: base.Driver, scenario: Scenario) -> Collector:
-        """The page-hooked collector for a driver-observed platform, with this scenario's mocks
-        wired in. Only called when `observes_network_via_driver()`."""
+        """The page-hooked collector for a driver-observed platform, with this scenario's mocks wired
+        in.
+
+        Gated raise: the runner calls this *only when* `observes_network_via_driver()` is `True`, so a
+        platform that returns `False` there may leave this raising `NotImplementedError` — the check
+        makes the raise unreachable. This is the only Protocol method permitted to raise.
+        """
 
     def relauncher(
         self,
@@ -89,12 +152,26 @@ class Environment(Protocol):
         """The scenario's `relaunch` function (app restart on a device; re-navigate on web)."""
 
     def controller(self, eff: Effective) -> DeviceControl | None:
-        """Device control for the leased device, or `None` on a platform without one (web)."""
+        """Device control for the leased device.
+
+        Returns `None` on a platform without one (web) — a first-class "no device control" the runner
+        interprets, not an unimplemented stub.
+        """
 
     def teardown(self, driver: base.Driver, eff: Effective) -> None:
         """Per-release app teardown: terminate the app (device) or close the browser (web)."""
 
-    # --- The crawl's lane shape and recovery, which the CLI used to branch on the actuator for --- #
+
+@runtime_checkable
+class CrawlEnvironment(Protocol):
+    """The `crawl` lease surface: the lane shape and health seams the CLI used to branch on the
+    actuator for.
+
+    This is the narrower surface the `crawl` command (`cli/commands/crawl.py`) holds; the concrete
+    platform classes satisfy it alongside `RunEnvironment`. The three `crawl_*` health methods follow
+    the module docstring's first-class-null contract — a platform without a given behavior returns
+    `None` rather than raising.
+    """
 
     def has_devices(self) -> bool:
         """Whether this platform drives real devices (web has none). Sizes the crawl's lane-prep
@@ -110,15 +187,36 @@ class Environment(Protocol):
 
     def crawl_aliveness(self) -> AliveCheck | None:
         """The crawl's crash signal for a driver-observed platform (web reads pageerror / HTTP status
-        / blank DOM), or None for the device backends (the engine reads the accessibility tree)."""
+        / blank DOM).
+
+        Returns `None` for the device backends (the engine reads the accessibility tree) — a
+        first-class "no such signal here", not an unimplemented stub.
+        """
 
     def crawl_recover(self) -> Recover | None:
-        """Heal a wedged lane (relaunch a crashed/hung browser) on web, or None where the platform
-        has no in-lane recovery (the device backends)."""
+        """Heal a wedged lane (relaunch a crashed/hung browser) on web.
+
+        Returns `None` where the platform has no in-lane recovery (the device backends) — a
+        first-class "no recovery here", not an unimplemented stub.
+        """
 
     def crawl_dialog_clearer(self) -> ClearBlocking | None:
-        """Report blocking dialogs auto-cleared this step (web JS dialogs the driver dismisses), or
-        None on platforms with no such auto-clear."""
+        """Report blocking dialogs auto-cleared this step (web JS dialogs the driver dismisses).
+
+        Returns `None` on platforms with no such auto-clear — a first-class "nothing auto-cleared
+        here", not an unimplemented stub.
+        """
+
+
+@runtime_checkable
+class Environment(RunEnvironment, CrawlEnvironment, Protocol):
+    """One platform's whole app lifecycle: the union of the `run` and `crawl` lease surfaces.
+
+    Every concrete platform class satisfies this combined surface, and `environment_for` returns it;
+    each consumer then narrows to the one it needs (`RunEnvironment` for the run pipeline,
+    `CrawlEnvironment` for the crawl command). See the module docstring for the "not applicable"
+    contract and the "adding a platform" checklist.
+    """
 
 
 class _DeviceEnvironment:

@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0197](BE-0197-environment-protocol-shape.md) |
 | Author | [@hirosassa](https://github.com/hirosassa) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0197") |
+| Implementing PR | _pending_ |
 | Topic | Codebase quality & technical debt |
 <!-- /BE-METADATA -->
 
@@ -154,13 +155,22 @@ service of the app-agnostic seam. No LLM enters any path (the seam is determinis
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Give "not applicable" one canonical form per method and document each method's contract
+- [x] Give "not applicable" one canonical form per method and document each method's contract
       (gated-raise vs. first-class null) on the Protocol
-- [ ] Pair each capability method with its gating predicate and its runner call site in one place
-- [ ] Split the `Environment` Protocol into a run-lease surface and a crawl-lease surface, and have
+- [x] Pair each capability method with its gating predicate and its runner call site in one place
+- [x] Split the `Environment` Protocol into a run-lease surface and a crawl-lease surface, and have
       each command declare the narrower type it needs
-- [ ] Write the "add a platform" checklist (module docstring or `docs/architecture.md`), keeping the
+- [x] Write the "add a platform" checklist (module docstring or `docs/architecture.md`), keeping the
       doc in step with the seam
+
+Log:
+
+- _pending_ — Split `Environment` into `RunEnvironment` / `CrawlEnvironment` / combined `Environment`
+  in `platform_lifecycle.py`; the `run` pipeline (`runner/pool.py`, `runner/launch.py`) now holds a
+  `RunEnvironment` and the `crawl` command (`cli/commands/crawl.py`) a `CrawlEnvironment`. Documented
+  the two-idiom "not applicable" contract per method, the predicate→capability pairing table, and the
+  "adding a platform" checklist in the module docstring. Behavior preserved; a seam test locks in that
+  every concrete environment satisfies both surfaces.
 
 ## References
 
