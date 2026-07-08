@@ -49,7 +49,7 @@ XcuitestChannelError: runner channel GET /screenshot failed: timed out
 失敗にのみ適用し、実際の結果には決して適用しません。`not-found` や `stale` は（`_decode` が返す）
 デコード済みのアウトカムであってトランスポートエラーではないので、決してリトライしません。これらを
 リトライすることは、Bajutsu が拒む「吸収によって不安定さを許容する」姿勢そのものであり、まさに
-[BE-0049](../BE-0049-determinism-flakiness-audit/BE-0049-determinism-flakiness-audit.md) が暴くために
+[BE-0049](../BE-0049-determinism-flakiness-audit/BE-0049-determinism-flakiness-audit-ja.md) が暴くために
 書かれた対象です。狙いはその逆です。実際の失敗はすべて明確に保ちつつ、回復可能なトランスポートの
 ちらつきが失敗のふりをするのをやめさせます。
 
@@ -68,7 +68,7 @@ XcuitestChannelError: runner channel GET /screenshot failed: timed out
    使い切ったら、今日と同じ `XcuitestChannelError` を送出します。明確で決定的な失敗は保たれ、
    回復可能なちらつきだけを吸収します。
 3. **ソケットタイムアウトは上限つきのまま、名前を与えます。** `_SOCKET_TIMEOUT_SECONDS` は 1 試行
-   あたりの窓のまま残します（詰まったランナーは 1 試行ごとに素早く失敗しなければなりません)。
+   あたりの窓のまま残します（詰まったランナーは 1 試行ごとに素早く失敗しなければなりません）。
    リトライ回数とバックオフは、その隣に名前つきの定数として置きます。タイムアウトを膨らませて
    ちらつきを覆い隠すことはしません。本当に詰まったランナーの待ち時間がはるかに長くなるからです。
 4. **リトライごとに診断を出します**（どのメソッドとパスか、M 回中 N 回目か、一過性のエラーの内容）。
