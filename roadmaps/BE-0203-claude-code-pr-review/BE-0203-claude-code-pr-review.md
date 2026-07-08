@@ -9,6 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0203") |
+| Implementing PR | [#807](https://github.com/bajutsu-e2e/bajutsu/pull/807) |
 | Topic | Development infrastructure (contributor workflow) |
 <!-- /BE-METADATA -->
 
@@ -212,7 +213,8 @@ Log:
   (items 1–8). Authenticates to Amazon Bedrock via GitHub OIDC (`aws-actions/configure-aws-credentials`),
   gated to a green no-op until the `AWS_BEDROCK_ROLE_ARN` Environment secret exists. Item 7's
   migration execution (disabling Copilot in repo/org settings) and item 9's live verification are
-  post-merge manual steps a PR diff cannot perform. Implementing PR: (this PR).
+  post-merge manual steps a PR diff cannot perform. Implementing PR:
+  [#807](https://github.com/bajutsu-e2e/bajutsu/pull/807).
 
 ## References
 
