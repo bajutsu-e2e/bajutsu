@@ -16,7 +16,7 @@
 
 `bajutsu/serve/jobs.py`（797 行）には、性質の異なる 2 つの責務が同居しています。serve パッケージの
 大半が読む**状態コンテナ**（`ServeState`、`Job`、`StoreBundle`、`CaptureSession`）と、3 モジュール
-しか触らない**ジョブ実行エンジン**（`run_job`、`cancel_job`、プロセス起動、デバイスの boot、アプリの
+しか触らない**ジョブ実行エンジン**（`run_job`、`cancel_job`、プロセス起動、デバイスの起動、アプリの
 ビルド）です。本項目では状態側を `bajutsu/serve/state.py` に分離し、同じ凝集度の改善として、
 `serve/helpers.py` に紛れている CLI コマンドビルダー群を `bajutsu/serve/commands.py` に切り出します。
 どちらも挙動を変えない移動です。

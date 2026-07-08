@@ -18,8 +18,8 @@
 container** (`ServeState`, `Job`, `StoreBundle`, `CaptureSession`) that most of the serve package
 reads, and the **job execution engine** (`run_job`, `cancel_job`, spawning, device boot, app
 build) that only three modules touch. This item splits the state half into `bajutsu/serve/state.py`
-and, in the same cohesion pass, extracts the CLI command builders out of the `serve/helpers.py`
-grab-bag into `bajutsu/serve/commands.py`. Both moves are behavior-preserving.
+and, in the same cohesion pass, extracts the CLI command builders out of `serve/helpers.py`
+into `bajutsu/serve/commands.py`. Both moves are behavior-preserving.
 
 ## Motivation
 
@@ -42,7 +42,7 @@ builders (`run_command`, `record_command`, `crawl_command`, `triage_command`, pl
 ~240 lines) reference nothing else in the file — their only dependency is
 `serve/_cli_flags.flag_args` — and have exactly three consumers (`operations/dispatch.py`,
 `operations/triage.py`, `serve/__init__.py`). They are a self-contained unit living in a
-"helpers" grab-bag whose docstring describes query and validation helpers.
+module whose docstring describes query and validation helpers, not command building.
 
 ## Detailed design
 
