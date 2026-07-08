@@ -9,7 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **提案** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
-| トピック | Development infrastructure (contributor workflow) |
+| トピック | 開発基盤（コントリビュータ体験） |
 <!-- /BE-METADATA -->
 
 ## はじめに
