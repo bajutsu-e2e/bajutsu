@@ -215,6 +215,9 @@ Log:
   migration execution (disabling Copilot in repo/org settings) and item 9's live verification are
   post-merge manual steps a PR diff cannot perform. Implementing PR:
   [#807](https://github.com/bajutsu-e2e/bajutsu/pull/807).
+- Added the Claude Code subscription (OAuth) provider alongside Bedrock (item 6): the workflow
+  prefers the `CLAUDE_CODE_OAUTH_TOKEN` secret when set, else Bedrock via OIDC, else stays a green
+  no-op. Exactly one provider is active per run.
 
 ## References
 
