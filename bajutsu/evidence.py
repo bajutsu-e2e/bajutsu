@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import logging
+import subprocess
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
@@ -277,12 +278,13 @@ class FileSink:
         for interval in started:
             try:
                 path = interval.stop()
-            except Exception as exc:  # any stop() failure must not skip stopping the rest
-                # A stop() can fail (e.g. the adb `screenrecord` pull raises when the device
-                # vanished). Dropping just this artifact — rather than letting the exception abort
-                # the loop — keeps the remaining intervals' subprocesses/handles from leaking, and
-                # keeps an evidence-I/O hiccup from failing an otherwise-passing scenario. The gap
-                # is disclosed loudly (warning), never a phantom artifact with no file behind it.
+            except (subprocess.CalledProcessError, OSError) as exc:
+                # An I/O failure while finalizing (e.g. the adb `screenrecord` pull raising when the
+                # device vanished) drops just this artifact rather than aborting the loop — which
+                # would orphan the intervals started after it — and does not fail an otherwise-passing
+                # scenario over evidence I/O. The gap is disclosed loudly (warning), never a phantom
+                # artifact with no file behind it. Narrow on purpose: a genuine bug in a stop()/
+                # transform (e.g. AttributeError) still surfaces rather than being swallowed here.
                 _logger.warning("dropping %s evidence: capture stop failed: %s", interval.kind, exc)
                 continue
             # appTrace also has a raw stream beside it; both must be scrubbed before the artifact ships.
