@@ -271,6 +271,7 @@ Reduce friction for the many parallel sessions working this repo — treat merge
 | [BE-0156](BE-0156-roadmap-topic-label-sync/BE-0156-roadmap-topic-label-sync.md) | Keep roadmap-item PR labels in sync with Topic | Implemented |
 | [BE-0159](BE-0159-flatten-roadmap-status-folders/BE-0159-flatten-roadmap-status-folders.md) | Flatten roadmap items into one directory (retire status-driven folders) | Implemented |
 | [BE-0162](BE-0162-roadmap-status-filter-skill/BE-0162-roadmap-status-filter-skill.md) | Roadmap status-filter skill for AI sessions | Implemented |
+| [BE-0203](BE-0203-claude-code-pr-review/BE-0203-claude-code-pr-review.md) | Claude Code as the automated PR code reviewer | Implemented |
 <!-- /GENERATED:implemented-dev-infra -->
 
 ### Codebase quality & technical debt
@@ -696,9 +697,7 @@ Keeping the autonomous crawl fast and its code lean as it grows.
 ### Development infrastructure (contributor workflow)
 
 <!-- GENERATED:proposals-dev-infra -->
-| ID | Item | Status |
-|---|---|---|
-| [BE-0203](BE-0203-claude-code-pr-review/BE-0203-claude-code-pr-review.md) | Claude Code as the automated PR code reviewer | Proposal |
+
 <!-- /GENERATED:proposals-dev-infra -->
 
 ### Codebase quality & technical debt

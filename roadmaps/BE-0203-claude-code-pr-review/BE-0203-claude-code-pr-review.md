@@ -7,7 +7,7 @@
 |---|---|
 | Proposal | [BE-0203](BE-0203-claude-code-pr-review.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0203") |
 | Topic | Development infrastructure (contributor workflow) |
 <!-- /BE-METADATA -->
@@ -191,20 +191,28 @@ runner.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Add the advisory review workflow `.github/workflows/claude-review.yml` (auto-trigger, inline
+- [x] Add the advisory review workflow `.github/workflows/claude-review.yml` (auto-trigger, inline
       `/code-review --comment`, minimal permissions, concurrency) (item 1)
-- [ ] Enforce the advisory guardrail — not a required check, result decoupled from findings (item 2)
-- [ ] Reach Copilot parity — inline comments, suggestion blocks, summary (item 3)
-- [ ] Add the opt-in `@claude review` on-demand path (item 4)
-- [ ] Commit the repo-flavored review prompt (prime directives, lenses, house conventions) (item 5)
-- [ ] Scope the credential via an Environment; document the fork limitation (item 6)
-- [ ] Execute the parallel-then-switch migration; document the manual Copilot-disable step (item 7)
-- [ ] Document the reviewer in `docs/ai-development.md` (EN + JA) (item 8)
-- [ ] Manually verify on a live test PR (auto-review, re-review, suggestion, non-required check) (item 9)
+- [x] Enforce the advisory guardrail — not a required check, result decoupled from findings (item 2)
+- [x] Reach Copilot parity — inline comments, suggestion blocks, summary (item 3)
+- [x] Add the opt-in `@claude review` on-demand path (item 4)
+- [x] Commit the repo-flavored review prompt (prime directives, lenses, house conventions) (item 5)
+- [x] Scope the credential via an Environment; document the fork limitation (item 6)
+- [x] Document the manual Copilot-disable step for the parallel-then-switch migration (item 7,
+      docs) — executing the migration (parallel → compare → switch) is a post-merge operational task
+- [x] Document the reviewer in `docs/ai-development.md` (EN + JA) (item 8)
+- [ ] Manually verify on a live test PR (auto-review, re-review, suggestion, non-required check)
+      (item 9) — post-merge manual step; the review behavior needs a live PR and a provider call,
+      so it can't sit in the deterministic gate (the BE-0122 shape)
 
 Log:
 
 - Proposal authored.
+- Shipped the advisory review workflow, the repo-flavored review prompt, and the bilingual docs
+  (items 1–8). Authenticates to Amazon Bedrock via GitHub OIDC (`aws-actions/configure-aws-credentials`),
+  gated to a green no-op until the `AWS_BEDROCK_ROLE_ARN` Environment secret exists. Item 7's
+  migration execution (disabling Copilot in repo/org settings) and item 9's live verification are
+  post-merge manual steps a PR diff cannot perform. Implementing PR: (this PR).
 
 ## References
 

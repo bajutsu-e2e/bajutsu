@@ -1,0 +1,101 @@
+# Advisory PR code review by Claude Code (BE-0203).
+#
+# This replaces GitHub Copilot as the automated PR reviewer: on every pull request (open and each
+# push) Claude Code runs its built-in `/code-review --comment` skill against *this repository's*
+# contract — the three prime directives, the docstring standard, the bilingual-docs rule, the BE-ID
+# lifecycle — and posts inline line-level comments plus a short summary. A contributor can also ask
+# for a fresh pass on demand by writing `@claude review` on the PR.
+#
+# HARD BOUNDARY (prime directive 1): this review is *advisory*. It is deliberately NOT added to
+# `main`'s branch-protection `required_status_checks`, and the job's own result is decoupled from
+# the findings — a review that *found issues* is a successful review, so the job goes red only on an
+# infrastructure failure, never on "the reviewer disliked the code". The deterministic `check` /
+# `E2E` gates remain the only merge arbiters; this adds a reviewer, never a judge.
+#
+# Auth is the vendor-neutral provider BE-0104 selects — here Amazon Bedrock, reached by exchanging
+# the workflow's GitHub OIDC token for short-lived AWS credentials (no static key). The Bedrock role
+# ARN lives in the `claude-review` Environment; until `AWS_BEDROCK_ROLE_ARN` is set the job is a
+# green no-op (the gate step below), so no PR is ever red while the credential is being provisioned.
+# A plain `pull_request` event from a fork does not expose secrets by GitHub's design, so auto-review
+# covers same-repo `claude/<topic>` / `<user>/<topic>` branches; fork PRs are reviewed on demand by a
+# maintainer. We deliberately do NOT use `pull_request_target` (it would run with secrets against
+# untrusted fork code).
+name: Claude review
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+  issue_comment:
+    types: [created]
+  pull_request_review_comment:
+    types: [created]
+
+# Minimum the surface needs: read the diff, post review comments, and mint the OIDC token the AWS
+# credential exchange requires. Nothing else.
+permissions:
+  contents: read
+  pull-requests: write
+  id-token: write
+
+# Mirror ci.yml: a rapid push sequence supersedes a stale review instead of stacking several. Keyed
+# on the PR/issue number (github.ref points at the wrong thing on comment events), falling back to
+# the ref only when neither is present.
+concurrency:
+  group: claude-review-${{ github.event.pull_request.number || github.event.issue.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # NOTE: this job's name is intentionally NOT listed in main's required_status_checks — the review
+  # is advisory and must never gate a merge (prime directive 1). Keep it off that list.
+  review:
+    name: claude review
+    runs-on: ubuntu-latest
+    # Auto-review on every PR event; the @claude mention path (item 4) is additive and only fires on
+    # a PR comment that carries the trigger phrase — never on a plain issue comment.
+    if: >-
+      github.event_name == 'pull_request' ||
+      (github.event_name == 'pull_request_review_comment' && contains(github.event.comment.body, '@claude')) ||
+      (github.event_name == 'issue_comment' && github.event.issue.pull_request && contains(github.event.comment.body, '@claude'))
+    # Scope the Bedrock credential to this Environment so an unrelated job can't read it.
+    environment: claude-review
+    steps:
+      - name: Gate on the Bedrock role being configured
+        id: gate
+        env:
+          ROLE_ARN: ${{ secrets.AWS_BEDROCK_ROLE_ARN }}
+        run: |
+          # Enable only when the Bedrock role ARN is present — until a maintainer provisions it the
+          # job stays a dormant no-op rather than failing on missing credentials, so no PR is red
+          # while the Environment is being set up (same shape as roadmap-id.yml, BE-0089).
+          if [ -n "$ROLE_ARN" ]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::AWS_BEDROCK_ROLE_ARN is not set — advisory Claude review is dormant (BE-0203). No-op."
+          fi
+
+      - name: Check out the pull request
+        if: steps.gate.outputs.enabled == 'true'
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+
+      - name: Exchange OIDC token for Bedrock AWS credentials
+        if: steps.gate.outputs.enabled == 'true'
+        uses: aws-actions/configure-aws-credentials@517a711dbcd0e402f90c77e7e2f81e849156e31d  # v6.2.2
+        with:
+          role-to-assume: ${{ secrets.AWS_BEDROCK_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION || 'us-east-1' }}
+
+      - name: Run the advisory Claude review
+        if: steps.gate.outputs.enabled == 'true'
+        uses: anthropics/claude-code-action@ba0aafd4308cbba7165f9f2cdb0cfbed5a3c99ce  # v1.0.168
+        env:
+          # Bedrock needs an explicit model id (a Bedrock inference-profile id); set it as the
+          # `BEDROCK_MODEL_ID` repo/Environment variable alongside the role ARN.
+          ANTHROPIC_MODEL: ${{ vars.BEDROCK_MODEL_ID }}
+        with:
+          use_bedrock: "true"
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          # On a PR event, run the repo-flavored review contract (the prompt file). On a comment
+          # event the prompt is empty, so the action falls through to its default `@claude` mention
+          # handling — that is the on-demand `@claude review` path.
+          prompt: ${{ github.event_name == 'pull_request' && 'Review this pull request as an advisory (non-gating) reviewer. Read .github/claude-review-prompt.md and follow it exactly, then run the /code-review skill with --comment so findings post as inline, line-level PR comments plus one short top-level summary comment.' || '' }}
