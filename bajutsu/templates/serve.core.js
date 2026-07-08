@@ -73,17 +73,24 @@ async function postJSON(url,body,fallback){
 // Shared skeleton for the run / record / crawl "start" buttons (BE-0202): close any live stream,
 // flip the button busy, POST the request, and on a clean {jobId} hand the stream to streamJob. The
 // per-panel pane clearing stays at each call site (done before calling this — it varies by panel).
-// On an {error} response it resets the button, reports via setStatus, and returns null; otherwise it
-// runs onStart(data) (so the caller can stash its jobId/runId/path) and returns the EventSource for
-// the caller to hold for a later restart/cancel.
+// On any failure — a network drop, a non-JSON body, an {error} response, or a missing jobId — it
+// resets the button, reports via setStatus, and returns null (failing loudly rather than leaving the
+// button stuck spinning, since it now fronts all three start buttons). On success it runs
+// onStart(data) (so the caller can stash its jobId/runId/path) and returns the EventSource for the
+// caller to hold for a later restart/cancel.
 //   o: {prev, btn, stop, busyLabel, status, url, body, onStart, onLog, onDone, onHuman}
 async function startJob(o){
   if(o.prev)o.prev.close();
   setBusy(o.btn,o.stop,true,o.busyLabel);
   setStatus(o.status,'','run');
-  const r=await fetch(o.url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(o.body)});
-  const data=await r.json();
-  if(data.error){setStatus(o.status,data.error,'ng');setBusy(o.btn,o.stop,false);return null;}
+  const fail=msg=>{setStatus(o.status,msg,'ng');setBusy(o.btn,o.stop,false);return null};
+  let data;
+  try{
+    const r=await fetch(o.url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(o.body)});
+    data=await r.json();
+  }catch(e){return fail('request failed')}  // network drop or non-JSON body
+  if(data.error)return fail(data.error);
+  if(!data.jobId)return fail('no job started');  // a non-2xx without an {error} field still can't stream
   if(o.onStart)o.onStart(data);
   return streamJob(data.jobId,o.onLog,o.onDone,o.onHuman);
 }

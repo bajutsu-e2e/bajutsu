@@ -88,6 +88,9 @@ def test_http_index_concatenates_all_js_sections(tmp_path: Path) -> None:
         # The three start buttons now share startJob; each passes its own url + busy label.
         for url in ("/api/run", "/api/record", "/api/crawl"):
             assert f"url:'{url}'" in text
+        # startJob fails loudly on a network drop / non-JSON body / missing jobId — it must reset the
+        # button rather than leave it stuck spinning (it fronts all three start buttons).
+        assert "'request failed'" in text and "'no job started'" in text
     finally:
         server.shutdown()
         server.server_close()

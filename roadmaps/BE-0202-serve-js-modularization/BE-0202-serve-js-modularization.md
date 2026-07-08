@@ -82,7 +82,9 @@ Log:
   boot). `handler.py` concatenates them in fixed order into the one inlined `<script>`, mirroring how
   the two CSS assets already concatenate — so the served output is unchanged. Added the shared
   `startJob(…)` skeleton and migrated the run / record / crawl start handlers onto it. Extended
-  `eslint.config.mjs` and `make lint-js` to the `serve.*.js` set.
+  `eslint.config.mjs` and `make lint-js` to the `serve.*.js` set. Review follow-up: hardened the new
+  shared `startJob(…)` to fail loudly on a network drop / non-JSON body / missing `jobId` (reset the
+  button instead of leaving it stuck spinning), since it now fronts all three start buttons.
 
 ## References
 
