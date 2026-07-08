@@ -6,8 +6,8 @@ stable-id convention. This module owns the second: an `Environment` Protocol who
 platform's whole per-run startup sequence and returns a ready-to-poll driver, and whose lease-shaping
 methods (`relauncher` / `controller` / `teardown` / the network-observation strategy) let the runner
 drive every platform through one interface instead of branching on the actuator name. The iOS
-(`simctl`) sequence, the web (browser-context) sequence, and the Android (`adb`) sequence live behind
-the same interface, and a further platform ([BE-0007]) slots in the same way.
+(`simctl`) sequence, the web (browser-context) sequence, and the Android (`adb`, [BE-0007]) sequence
+live behind the same interface, and a further platform slots in the same way.
 
 ## Two lease surfaces (BE-0197)
 
@@ -53,10 +53,13 @@ A new `Environment` (extend `environment_for`) must, at minimum:
    driver), `relauncher`, `controller` (return `None` if none), `teardown`, `device_catalog`
    (return `{}` if none), and the three run predicates. `hook_collector` may gated-raise unless
    `observes_network_via_driver()` returns `True`.
-2. For `crawl` support, implement `CrawlEnvironment`: `has_devices`, `plan_lanes`, `crawl_reset`,
-   and the three `crawl_*` health methods (return `None` from each the platform lacks). A run-first
-   cut may defer these — a platform wired only into `run` needs `RunEnvironment` alone — but until
-   they exist the platform will not appear in `crawl`.
+2. Implement `CrawlEnvironment` as well: `has_devices`, `plan_lanes`, `crawl_reset`, and the three
+   `crawl_*` health methods (return `None` from each the platform lacks). `environment_for` returns
+   the union `Environment`, so a platform class must satisfy both surfaces — but the crawl half is
+   cheap: the health methods are first-class `None`, and a run-first platform can mirror its
+   `relauncher` in `crawl_reset` and its device pooling in `plan_lanes`. Consumers still narrow to
+   the one surface they use (`RunEnvironment` in the run pipeline, `CrawlEnvironment` in `crawl`);
+   the union is what a *new class* provides, not what either *reader* depends on.
 
 Follow the "not applicable" contract above for every method the platform declines; do not invent a
 third idiom.
