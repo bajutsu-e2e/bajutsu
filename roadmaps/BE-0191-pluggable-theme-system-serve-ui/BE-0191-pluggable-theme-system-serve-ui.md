@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0191") |
-| Implementing PR | _pending_ |
+| Implementing PR | [#826](https://github.com/bajutsu-e2e/bajutsu/pull/826) |
 | Topic | Authoring experience (record / GUI editor) |
 <!-- /BE-METADATA -->
 
@@ -239,7 +239,7 @@ filesystem, building directly on the token contract of unit 1.
   in `serve.css` through a token (adding `--canvas`, `--on-ok`, `--on-ng`, `--on-mut`, `--on-rung`, and
   the `--rung-*` legend tokens; defined the previously-undefined `--mono` global), documented the token
   contract inline in `serve.themes.css`, and made `:root` (midnight) the fallback source so a partial
-  theme degrades gracefully. Added `tests/serve/test_theme_tokens.py` to guard the invariant. _(PR pending.)_
+  theme degrades gracefully. Added `tests/serve/test_theme_tokens.py` to guard the invariant. ([#826](https://github.com/bajutsu-e2e/bajutsu/pull/826))
 
 ## References
 
