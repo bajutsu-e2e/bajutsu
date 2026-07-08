@@ -95,7 +95,7 @@ class VisualContext:
 class SchemaContext:
     """The directory a `responseSchema` assertion's schema path resolves against.
 
-    One of config `apps.<name>.schemas`, the `--schemas` flag, or `schemas/` beside the scenario.
+    One of config `targets.<name>.schemas`, the `--schemas` flag, or `schemas/` beside the scenario.
     """
 
     schemas_dir: Path

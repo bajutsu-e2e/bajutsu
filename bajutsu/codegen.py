@@ -174,12 +174,6 @@ def _count_expr(sel: base.Selector) -> str:
     return f"{query}.count" if query is not None else "0"
 
 
-def _selector_of_step(step: Step) -> base.Selector | None:
-    if step.tap is not None:
-        return step.tap.as_selector()
-    return None
-
-
 def _emit_step(step: Step) -> list[str]:
     if step.tap is not None:
         return [f"{_element(step.tap.as_selector())}.tap()"]

@@ -157,7 +157,7 @@ uv run bajutsu run --scenario demos/showcase/scenarios/smoke.yaml --target showc
 
 What the flags mean:
 
-- `--target showcase-swiftui` selects `targets.showcase-swiftui` from [`bajutsu.config.yaml`](../bajutsu.config.yaml)
+- `--target showcase-swiftui` selects `targets.showcase-swiftui` from [`demos/showcase/showcase.config.yaml`](../demos/showcase/showcase.config.yaml)
   (bundle id, launch env, allowed id namespaces). The tool itself is app-agnostic; all per-target
   differences live in config ([configuration](configuration.md)).
 - `--backend idb` picks the actuator; `--udid booted` targets the currently booted Simulator.

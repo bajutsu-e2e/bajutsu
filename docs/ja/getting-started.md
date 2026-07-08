@@ -155,7 +155,7 @@ uv run bajutsu run --scenario demos/showcase/scenarios/smoke.yaml --target showc
 
 各フラグの意味は次のとおりです。
 
-- `--target showcase-swiftui` は [`bajutsu.config.yaml`](../../bajutsu.config.yaml) の `targets.showcase-swiftui` を選びます
+- `--target showcase-swiftui` は [`demos/showcase/showcase.config.yaml`](../../demos/showcase/showcase.config.yaml) の `targets.showcase-swiftui` を選びます
   （bundle id、launch env、許可された id 名前空間を含みます）。ツール自体はアプリ非依存で、アプリ
   ごとの差分はすべて config に置きます（[configuration](configuration.md)）。
 - `--backend idb` で actuator を選び、`--udid booted` で現在 boot 中の Simulator を対象にします。

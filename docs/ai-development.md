@@ -123,7 +123,7 @@ High-traffic shared surfaces to coordinate on:
 | Surface | Files | Why it's shared |
 |---|---|---|
 | Driver API | [`bajutsu/drivers/base.py`](../bajutsu/drivers/base.py) | every backend + the orchestrator depend on it |
-| Scenario schema | [`bajutsu/scenario.py`](../bajutsu/scenario.py) | the hub artifact; codegen/runner/report all read it |
+| Scenario schema | [`bajutsu/scenario/models/scenario.py`](../bajutsu/scenario/models/scenario.py) | the hub artifact; codegen/runner/report all read it |
 | Config shape | [`bajutsu/config.py`](../bajutsu/config.py) | per-target layering every command resolves through |
 
 ## CI keeps the branches honest

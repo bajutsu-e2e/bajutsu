@@ -65,8 +65,6 @@ capturePolicy:
     capture: [screenshot, video, deviceLog, elements, actionLog]
 ```
 
-(real example in [`demos/showcase/scenarios/settings.yaml`](../demos/showcase/scenarios/settings.yaml))
-
 The trigger `on` is **exactly one** of `action` / `event` / `result`:
 
 - `action: <tap|longPress|type|swipe|...>` — optionally combined with `idMatches` (glob against the
