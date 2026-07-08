@@ -37,13 +37,15 @@ ad hoc), and each method's docstring states which it is:
 
 ## Predicate → capability pairing
 
-Three run predicates gate behavior elsewhere; each is honored at one runner call site:
+Two run predicates each gate one capability method, honored at a single runner call site. A third
+predicate, `has_devices`, is a `crawl`-side flag that shapes the lane-prep message — it gates
+nothing (`plan_lanes` is called unconditionally):
 
-| Predicate                      | Gates                                   | Honored at                       |
-|--------------------------------|-----------------------------------------|----------------------------------|
-| `observes_network_via_driver`  | `hook_collector` (may gated-raise if F) | `runner/pool.py` (`lease`)       |
-| `records_video_up_front`       | `start`'s `record_video_dir` wiring     | `runner/pool.py` (`lease`)       |
-| `has_devices`                  | `plan_lanes` / `controller` shape       | `cli/commands/crawl.py` / `pool` |
+| Predicate                     | Role                                            | Honored at                 |
+|-------------------------------|-------------------------------------------------|----------------------------|
+| `observes_network_via_driver` | gates `hook_collector` (may gated-raise if F)   | `runner/pool.py` (`lease`) |
+| `records_video_up_front`      | gates `start`'s `record_video_dir` wiring       | `runner/pool.py` (`lease`) |
+| `has_devices`                 | shapes the crawl lane-prep message (not a gate) | `cli/commands/crawl.py`    |
 
 ## Adding a platform
 
@@ -51,8 +53,9 @@ A new `Environment` (extend `environment_for`) must, at minimum:
 
 1. Implement the full `RunEnvironment` surface: `start` (the per-run bring-up returning a launched
    driver), `relauncher`, `controller` (return `None` if none), `teardown`, `device_catalog`
-   (return `{}` if none), and the three run predicates. `hook_collector` may gated-raise unless
-   `observes_network_via_driver()` returns `True`.
+   (return `{}` if none), and the two run predicates (`observes_network_via_driver`,
+   `records_video_up_front`). `hook_collector` may gated-raise unless `observes_network_via_driver()`
+   returns `True`.
 2. Implement `CrawlEnvironment` as well: `has_devices`, `plan_lanes`, `crawl_reset`, and the three
    `crawl_*` health methods (return `None` from each the platform lacks). `environment_for` returns
    the union `Environment`, so a platform class must satisfy both surfaces — but the crawl half is
@@ -126,17 +129,14 @@ class RunEnvironment(Protocol):
         Returns `{}` for a platform with no device (web) — a first-class "no devices", not an
         unimplemented stub; the caller always invokes this and reads the empty map as the answer.
         """
-        ...
 
     def observes_network_via_driver(self) -> bool:
         """Whether network is observed by hooking the live driver (web) rather than an external
         receiver the app reports to (the device backends). Gates `hook_collector`."""
-        ...
 
     def records_video_up_front(self) -> bool:
         """Whether video capture must be wired before launch (web's context records at creation)
         rather than on demand (simctl). Gates `start`'s `record_video_dir` handling."""
-        ...
 
     def hook_collector(self, driver: base.Driver, scenario: Scenario) -> Collector:
         """The page-hooked collector for a driver-observed platform, with this scenario's mocks wired
@@ -146,7 +146,6 @@ class RunEnvironment(Protocol):
         platform that returns `False` there may leave this raising `NotImplementedError` — the check
         makes the raise unreachable. This is the only Protocol method permitted to raise.
         """
-        ...
 
     def relauncher(
         self,
@@ -157,7 +156,6 @@ class RunEnvironment(Protocol):
         extra_env: Mapping[str, str] | None = None,
     ) -> RelaunchFn:
         """The scenario's `relaunch` function (app restart on a device; re-navigate on web)."""
-        ...
 
     def controller(self, eff: Effective) -> DeviceControl | None:
         """Device control for the leased device.
@@ -165,11 +163,9 @@ class RunEnvironment(Protocol):
         Returns `None` on a platform without one (web) — a first-class "no device control" the runner
         interprets, not an unimplemented stub.
         """
-        ...
 
     def teardown(self, driver: base.Driver, eff: Effective) -> None:
         """Per-release app teardown: terminate the app (device) or close the browser (web)."""
-        ...
 
 
 @runtime_checkable
@@ -186,17 +182,14 @@ class CrawlEnvironment(Protocol):
     def has_devices(self) -> bool:
         """Whether this platform drives real devices (web has none). Sizes the crawl's lane-prep
         message and distinguishes the web browser-lane sizing from a device pool."""
-        ...
 
     def plan_lanes(self, udid_arg: str, workers: int) -> list[str]:
         """The crawl's lane udids. A device pool resolves *udid_arg* and caps to *workers*; web has no
         device, so *workers* alone sizes the browser-lane set (each lane one browser)."""
-        ...
 
     def crawl_reset(self, eff: Effective) -> Reset:
         """A crawl `reset` to a clean start on this lane: relaunch the app (device) or open a fresh
         browser context (web), then wait until the first screen renders."""
-        ...
 
     def crawl_aliveness(self) -> AliveCheck | None:
         """The crawl's crash signal for a driver-observed platform (web reads pageerror / HTTP status
@@ -205,7 +198,6 @@ class CrawlEnvironment(Protocol):
         Returns `None` for the device backends (the engine reads the accessibility tree) — a
         first-class "no such signal here", not an unimplemented stub.
         """
-        ...
 
     def crawl_recover(self) -> Recover | None:
         """Heal a wedged lane (relaunch a crashed/hung browser) on web.
@@ -213,7 +205,6 @@ class CrawlEnvironment(Protocol):
         Returns `None` where the platform has no in-lane recovery (the device backends) — a
         first-class "no recovery here", not an unimplemented stub.
         """
-        ...
 
     def crawl_dialog_clearer(self) -> ClearBlocking | None:
         """Report blocking dialogs auto-cleared this step (web JS dialogs the driver dismisses).
@@ -221,7 +212,6 @@ class CrawlEnvironment(Protocol):
         Returns `None` on platforms with no such auto-clear — a first-class "nothing auto-cleared
         here", not an unimplemented stub.
         """
-        ...
 
 
 @runtime_checkable
