@@ -1936,9 +1936,11 @@ if(!NARROW_MQ.matches)initTiling();
   }
 
   function auSelectorYaml(sel){
-    if(sel.id)return '{ id: '+sel.id+' }';
-    if(sel.label&&sel.index!=null)return '{ label: '+sel.label+', index: '+sel.index+' }';
-    if(sel.label)return '{ label: '+sel.label+' }';
+    // JSON.stringify the id/label so a selector containing YAML-significant characters (a ':' or '#')
+    // still emits a valid double-quoted scalar — a JSON string is a valid YAML double-quoted string.
+    if(sel.id)return '{ id: '+JSON.stringify(sel.id)+' }';
+    if(sel.label&&sel.index!=null)return '{ label: '+JSON.stringify(sel.label)+', index: '+sel.index+' }';
+    if(sel.label)return '{ label: '+JSON.stringify(sel.label)+' }';
     return JSON.stringify(sel);
   }
 
@@ -2346,7 +2348,7 @@ if(!NARROW_MQ.matches)initTiling();
     const pfx=indent+'- ';
     if(a.exists){
       const sel=a.exists.sel||{};
-      const id=sel.id?'{ id: '+sel.id+' }':JSON.stringify(sel);
+      const id=sel.id?'{ id: '+JSON.stringify(sel.id)+' }':JSON.stringify(sel);
       if(a.exists.negate)return pfx+'exists: { '+Object.entries(sel).map(([k,v])=>k+': '+JSON.stringify(v)).join(', ')+', negate: true }';
       return pfx+'exists: '+id;
     }
@@ -2423,7 +2425,7 @@ if(!NARROW_MQ.matches)initTiling();
     if(enrichResult.settle){
       const w=enrichResult.settle.wait||{};
       const sel=w['for']||{};
-      const id=sel.id?'{ id: '+sel.id+' }':JSON.stringify(sel);
+      const id=sel.id?'{ id: '+JSON.stringify(sel.id)+' }':JSON.stringify(sel);
       newLines.push(itemIndent+'- wait: { for: '+id+', timeout: '+(w.timeout||5)+' }');
     }
 

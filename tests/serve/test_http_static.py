@@ -50,6 +50,25 @@ def test_http_index_inlines_assets(tmp_path: Path) -> None:
         server.server_close()
 
 
+def test_http_index_author_selector_yaml_quotes_ids(tmp_path: Path) -> None:
+    """The Author-tab YAML builders emit selector id/label as JSON-stringified (double-quoted)
+    scalars, so a selector containing a YAML-significant character (a ':' or '#') still produces
+    valid YAML on Apply. Structural fact only: the raw `'{ id: '+sel.id+' }'` interpolation is gone
+    and the quoted form ships."""
+    scn_dir, cfg, runs = project(tmp_path)
+    server, port = _serve(
+        srv.ServeState(scenarios_dir=scn_dir, config=cfg, runs_dir=runs, cwd=tmp_path)
+    )
+    try:
+        text = _get(port, "/")[1].decode("utf-8")
+        assert "'{ id: '+sel.id+' }'" not in text  # the unquoted interpolation must be gone
+        assert "'{ id: '+JSON.stringify(sel.id)+' }'" in text
+        assert "'{ label: '+JSON.stringify(sel.label)+' }'" in text
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
 def test_http_index_carries_responsive_layout(tmp_path: Path) -> None:
     """The served doc carries the small-screen reflow (BE-0072), all inlined — no asset pipeline.
 
