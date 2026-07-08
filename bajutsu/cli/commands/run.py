@@ -94,35 +94,20 @@ def _resolve_lanes(
     return udids, max(1, min(workers, len(udids)))
 
 
-def _resolve_baselines_dir(flag: str, eff: Effective, scenario_file: Path) -> Path:
-    """Resolve the baseline images dir: --baselines flag > config baselines > baselines/ beside the scenario."""
-    # flag > config > scenario-local default
+def _resolve_dir(
+    flag: str, config_value: str | None, scenario_file: Path, default_name: str
+) -> Path:
+    """Resolve an evidence dir: --flag > config value > `default_name`/ beside the scenario.
+
+    Shared by the baselines / schemas / goldens dirs, which differ only in their config field and
+    the directory name used for the scenario-local default.
+    """
     if flag:
         return Path(flag)
-    elif eff.baselines:
-        return Path(eff.baselines)
+    elif config_value:
+        return Path(config_value)
     else:
-        return scenario_file.parent / "baselines"
-
-
-def _resolve_schemas_dir(flag: str, eff: Effective, scenario_file: Path) -> Path:
-    """Resolve the JSON Schema dir: --schemas flag > config schemas > schemas/ beside the scenario."""
-    if flag:
-        return Path(flag)
-    elif eff.schemas:
-        return Path(eff.schemas)
-    else:
-        return scenario_file.parent / "schemas"
-
-
-def _resolve_goldens_dir(flag: str, eff: Effective, scenario_file: Path) -> Path:
-    """Resolve the golden JSON dir: --goldens flag > config goldens > goldens/ beside the scenario."""
-    if flag:
-        return Path(flag)
-    elif eff.goldens:
-        return Path(eff.goldens)
-    else:
-        return scenario_file.parent / "goldens"
+        return scenario_file.parent / default_name
 
 
 def _scenario_files(eff: Effective, scenario: str, target_name: str) -> tuple[list[Path], bool]:
@@ -444,9 +429,9 @@ def _resolve_evidence_dirs(
     Each follows --flag > config > dir-beside-the-scenario. The golden context is built only when the
     goldens dir exists, so `golden` assertions can resolve their `path` within it.
     """
-    baselines_dir = _resolve_baselines_dir(baselines, eff, scenario_file)
-    schemas_dir = _resolve_schemas_dir(schemas, eff, scenario_file)
-    goldens_dir = _resolve_goldens_dir(goldens, eff, scenario_file)
+    baselines_dir = _resolve_dir(baselines, eff.baselines, scenario_file, "baselines")
+    schemas_dir = _resolve_dir(schemas, eff.schemas, scenario_file, "schemas")
+    goldens_dir = _resolve_dir(goldens, eff.goldens, scenario_file, "goldens")
     gc = GoldenContext(goldens_dir=goldens_dir) if goldens_dir.is_dir() else None
     return baselines_dir, schemas_dir, gc
 

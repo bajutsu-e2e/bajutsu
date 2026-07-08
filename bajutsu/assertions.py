@@ -582,103 +582,95 @@ def _shift(region: ExcludeRegion, dx: float, dy: float) -> ExcludeRegion:
     return ExcludeRegion(x=region.x - dx, y=region.y - dy, w=region.w, h=region.h)
 
 
-def _eval_visual(
-    ctx: VisualContext | None, a: VisualMatch, elements: list[base.Element]
-) -> AssertionResult:
+@dataclass(frozen=True)
+class _Prepared:
+    """The result of visual preprocessing: what to compare, plus the frame data later steps reuse.
+
+    `compare_actual` is the image handed to the compare engine (the element crop when scoped, else
+    the whole screenshot); `actual_rel` is its run-dir-relative path for the evidence. `crop` and
+    `scale` are None for a whole-screen comparison and set once frames were resolved.
+    """
+
+    compare_actual: Path
+    actual_rel: str
+    crop: ExcludeRegion | None
+    scale: tuple[float, float] | None
+
+
+def _prepare_visual_comparison(
+    ctx: VisualContext, a: VisualMatch, elements: list[base.Element], name: str
+) -> _Prepared | AssertionResult:
+    """Resolve frames and crop the actual to the scoped element, before the baseline check.
+
+    Element scoping and selector masks (BE-0171) resolve against the live element tree in
+    screenshot-pixel space; a comparison that needs neither keeps the whole-screen behavior. The
+    crop happens *before* the missing-baseline check because it is both what we compare and what
+    `approve` promotes — so the baseline is the element even on the first run (otherwise the first
+    approve would store a whole-screen baseline and every later run would size-mismatch).
+
+    Returns the prepared comparison, or an AssertionResult when preprocessing fails (Pillow missing,
+    no elements to resolve against, or an unresolvable / empty-frame element scope).
+    """
     detail = f"visual ≈ {a.baseline}"
-    if ctx is None:
-        return AssertionResult(False, "visual", detail, "no visual context provided")
     actual_rel = _rel(ctx.run_dir, ctx.screenshot_path)
-    baseline_path = ctx.baselines_dir / a.baseline
-    # Flatten any path separators in the baseline key for the in-run copy/diff filenames.
-    name = Path(a.baseline).name
-    # Element scoping and selector masks (BE-0171) resolve against the live element tree, in
-    # screenshot-pixel space. A comparison that needs neither keeps the whole-screen behavior.
     needs_frames = a.element is not None or any(
         isinstance(r, SelectorRegion) for r in a.exclude or []
     )
-
-    # Crop the actual to the element *before* the missing-baseline check: the crop is both what we
-    # compare and what `approve` promotes, so the baseline is the element even on the first run
-    # (otherwise the first approve would store a whole-screen baseline and every later run would
-    # size-mismatch). This needs Pillow, which element scoping requires regardless of the baseline.
-    compare_actual = ctx.screenshot_path
-    crop: ExcludeRegion | None = None
-    scale: tuple[float, float] | None = None
-    if needs_frames:
-        try:
-            from PIL import Image
-        except ImportError:
-            return AssertionResult(
-                False, "visual", detail, "visual assertions need the 'visual' extra (Pillow)"
-            )
-        scale = _visual_scale(ctx.screenshot_path, elements)
-        if scale is None:
-            return AssertionResult(
-                False, "visual", detail, "cannot resolve selectors: no elements on screen"
-            )
-        if a.element is not None:
-            el, err = _resolve_one(elements, a.element)
-            if el is None:
-                ev = VisualEvidence(
-                    baseline_name=a.baseline, actual=actual_rel, element_scoped=True
-                )
-                return AssertionResult(False, "visual", detail, f"element {err}", visual=ev)
-            crop = _frame_to_px(el["frame"], scale)
-            if crop.w <= 0 or crop.h <= 0:
-                # A zero-area frame (an off-screen / collapsed element) can't be cropped — fail
-                # cleanly rather than letting Pillow raise on an empty image.
-                ev = VisualEvidence(
-                    baseline_name=a.baseline, actual=actual_rel, element_scoped=True
-                )
-                return AssertionResult(
-                    False,
-                    "visual",
-                    detail,
-                    f"element has an empty frame: {_sel_str(a.element)}",
-                    visual=ev,
-                )
-            ctx.diff_dir.mkdir(parents=True, exist_ok=True)
-            cropped_path = ctx.diff_dir / f"actual-{name}"
-            box = (int(crop.x), int(crop.y), int(crop.x + crop.w), int(crop.y + crop.h))
-            with Image.open(ctx.screenshot_path) as img:
-                img.crop(box).save(cropped_path)
-            compare_actual = cropped_path
-            actual_rel = _rel(ctx.run_dir, cropped_path)
-
-    if not baseline_path.is_file():
-        # First run (or a brand-new screen): nothing to compare against. Report the actual
-        # (the element crop, when scoped) so it can be reviewed and approved into a baseline.
-        ev = VisualEvidence(
-            baseline_name=a.baseline,
-            actual=actual_rel,
-            missing=True,
-            element_scoped=crop is not None,
-        )
-        return AssertionResult(
-            False, "visual", detail, f"baseline not found: {a.baseline}", visual=ev
-        )
+    if not needs_frames:
+        return _Prepared(ctx.screenshot_path, actual_rel, crop=None, scale=None)
 
     try:
-        from bajutsu.visual import compare_images
+        from PIL import Image
     except ImportError:
         return AssertionResult(
             False, "visual", detail, "visual assertions need the 'visual' extra (Pillow)"
         )
+    scale = _visual_scale(ctx.screenshot_path, elements)
+    if scale is None:
+        return AssertionResult(
+            False, "visual", detail, "cannot resolve selectors: no elements on screen"
+        )
+    if a.element is None:
+        return _Prepared(ctx.screenshot_path, actual_rel, crop=None, scale=scale)
 
-    engine = a.compare or ctx.default_compare
-
-    if engine == "exact" and {"color_tolerance", "antialiasing"} & a.model_fields_set:
+    el, err = _resolve_one(elements, a.element)
+    if el is None:
+        ev = VisualEvidence(baseline_name=a.baseline, actual=actual_rel, element_scoped=True)
+        return AssertionResult(False, "visual", detail, f"element {err}", visual=ev)
+    crop = _frame_to_px(el["frame"], scale)
+    if crop.w <= 0 or crop.h <= 0:
+        # A zero-area frame (an off-screen / collapsed element) can't be cropped — fail
+        # cleanly rather than letting Pillow raise on an empty image.
+        ev = VisualEvidence(baseline_name=a.baseline, actual=actual_rel, element_scoped=True)
         return AssertionResult(
             False,
             "visual",
             detail,
-            "colorTolerance/antialiasing are set but the resolved engine is 'exact' "
-            "(set compare: pixelmatch or the target's visualCompare)",
+            f"element has an empty frame: {_sel_str(a.element)}",
+            visual=ev,
         )
+    ctx.diff_dir.mkdir(parents=True, exist_ok=True)
+    cropped_path = ctx.diff_dir / f"actual-{name}"
+    box = (int(crop.x), int(crop.y), int(crop.x + crop.w), int(crop.y + crop.h))
+    with Image.open(ctx.screenshot_path) as img:
+        img.crop(box).save(cropped_path)
+    return _Prepared(cropped_path, _rel(ctx.run_dir, cropped_path), crop=crop, scale=scale)
 
-    # Resolve selector masks (compare-time only) and, when element-scoped, translate them into the
-    # crop's local coordinates.
+
+def _resolve_masks(
+    a: VisualMatch,
+    elements: list[base.Element],
+    scale: tuple[float, float] | None,
+    crop: ExcludeRegion | None,
+    detail: str,
+) -> tuple[list[ExcludeRegion], list[str]] | AssertionResult:
+    """Resolve the compare-time exclude masks, translating them into crop-local coordinates.
+
+    Plain rectangles pass through unchanged; selector masks resolve against the live tree to a pixel
+    rectangle (an ambiguous selector fails, a match of nothing is a no-op). When element-scoped, the
+    masks are shifted into the crop's local coordinate space. Returns `(masks, masked_selectors)`, or
+    an AssertionResult when an exclude selector is ambiguous.
+    """
     masks: list[ExcludeRegion] = []
     masked_selectors: list[str] = []
     for r in a.exclude or []:
@@ -695,15 +687,76 @@ def _eval_visual(
         masked_selectors.append(_sel_str(r.selector))
     if crop is not None:
         masks = [_shift(m, crop.x, crop.y) for m in masks]
+    return masks, masked_selectors
 
+
+def _resolve_baselines(ctx: VisualContext, baseline_path: Path, name: str) -> tuple[Path, Path]:
+    """Prepare the run-dir baseline copy and the diff path for a compare.
+
+    Copies the baseline into the run dir (so the report and serve are self-contained) and returns
+    `(baseline_copy, diff_path)`. Called only once the baseline is known to exist.
+    """
     ctx.diff_dir.mkdir(parents=True, exist_ok=True)
     diff_path = ctx.diff_dir / f"diff-{name}"
-    # Copy the baseline into the run dir so the report (and serve) are self-contained.
     baseline_copy = ctx.diff_dir / f"baseline-{name}"
     shutil.copyfile(baseline_path, baseline_copy)
+    return baseline_copy, diff_path
 
+
+def _eval_visual(
+    ctx: VisualContext | None, a: VisualMatch, elements: list[base.Element]
+) -> AssertionResult:
+    detail = f"visual ≈ {a.baseline}"
+    if ctx is None:
+        return AssertionResult(False, "visual", detail, "no visual context provided")
+    baseline_path = ctx.baselines_dir / a.baseline
+    # Flatten any path separators in the baseline key for the in-run copy/diff filenames.
+    name = Path(a.baseline).name
+
+    # 1. Preprocess: resolve frames and crop the actual to the scoped element.
+    prepared = _prepare_visual_comparison(ctx, a, elements, name)
+    if isinstance(prepared, AssertionResult):
+        return prepared
+
+    # 2. Baseline: first run (or a brand-new screen) has nothing to compare against. Report the
+    # actual (the element crop, when scoped) so it can be reviewed and approved into a baseline.
+    if not baseline_path.is_file():
+        ev = VisualEvidence(
+            baseline_name=a.baseline,
+            actual=prepared.actual_rel,
+            missing=True,
+            element_scoped=prepared.crop is not None,
+        )
+        return AssertionResult(
+            False, "visual", detail, f"baseline not found: {a.baseline}", visual=ev
+        )
+
+    try:
+        from bajutsu.visual import compare_images
+    except ImportError:
+        return AssertionResult(
+            False, "visual", detail, "visual assertions need the 'visual' extra (Pillow)"
+        )
+
+    engine = a.compare or ctx.default_compare
+    if engine == "exact" and {"color_tolerance", "antialiasing"} & a.model_fields_set:
+        return AssertionResult(
+            False,
+            "visual",
+            detail,
+            "colorTolerance/antialiasing are set but the resolved engine is 'exact' "
+            "(set compare: pixelmatch or the target's visualCompare)",
+        )
+
+    masks_or_result = _resolve_masks(a, elements, prepared.scale, prepared.crop, detail)
+    if isinstance(masks_or_result, AssertionResult):
+        return masks_or_result
+    masks, masked_selectors = masks_or_result
+
+    # 3. Compare: copy the baseline into the run dir, prepare the diff path, run the engine.
+    baseline_copy, diff_path = _resolve_baselines(ctx, baseline_path, name)
     result = compare_images(
-        compare_actual,
+        prepared.compare_actual,
         baseline_path,
         engine=engine,
         threshold=a.threshold,
@@ -712,14 +765,16 @@ def _eval_visual(
         exclude=masks or None,
         diff_path=diff_path,
     )
+
+    # 4. Build the result and its evidence.
     ev = VisualEvidence(
         baseline_name=a.baseline,
-        actual=actual_rel,
+        actual=prepared.actual_rel,
         baseline=_rel(ctx.run_dir, baseline_copy),
         diff=_rel(ctx.run_dir, diff_path) if (not result.ok and diff_path.is_file()) else None,
         diff_pct=result.diff_pct,
         engine=engine,
-        element_scoped=crop is not None,
+        element_scoped=prepared.crop is not None,
         masked_selectors=masked_selectors,
     )
     return AssertionResult(result.ok, "visual", detail, result.reason, visual=ev)
