@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import contextlib
 import functools
 from collections.abc import Callable
 from typing import Any
@@ -12,9 +11,9 @@ from bajutsu.backends import IMPLEMENTED, resolve_actuators
 from bajutsu.config import (
     Effective,
     android_package,
+    idb_version_pin,
     ios_bundle_id,
     load_config,
-    require_web,
     resolve,
     web_base_url,
     web_engine,
@@ -102,8 +101,13 @@ def doctor_check(
         # Xcode (and so tests can inject the device list). Only the iOS family uses it.
         return len(simctl.booted_udids(run=state.simctl))
 
-    env_checks = preflight.runnability(
-        actuator, booted_count=booted_count, web_engine=web_engine(eff)
+    # The shared assembly gives the panel the same env checks the CLI reports — including the
+    # xcuitest→idb merge and the idb version-pin check the serve panel used to lack (BE-0199).
+    env_checks = preflight.doctor_environment_checks(
+        actuator,
+        booted_count=booted_count,
+        web_engine=web_engine(eff),
+        ios_pin=idb_version_pin(eff),
     )
     all_checks = cfg_checks + env_checks
     ok = preflight.passed(all_checks)
@@ -164,38 +168,12 @@ def _serialize_score(s: doctor.Score) -> dict[str, Any]:
 def _current_screen(
     state: ServeState, actuator: str, udid: str, eff: Effective
 ) -> list[base.Element]:
-    """The elements of the screen to score, mirroring ``cli.commands.doctor._current_screen``.
+    """The elements of the screen to score — the shared probe, routed through ``state.simctl``.
 
-    Web (Playwright) navigates a fresh browser to the target's baseUrl and scores that page,
-    tearing it down after; iOS reads the accessibility tree on the booted Simulator (no runner
-    needed even for xcuitest, BE-0019). Reads booted/udid state through ``state.simctl``.
+    Wraps ``doctor.probe_screen`` (BE-0199) so simctl never shells out on a host without Xcode,
+    and maps its config error to serve's existing ``ValueError`` surface.
     """
-    from bajutsu.backends import make_driver
-
-    if actuator == "playwright":
-        web = require_web(eff)
-        # Reached only when runnability passed, so the baseUrl config check already held — narrow
-        # the Optional for the driver, failing loudly on the unreachable None rather than guessing.
-        base_url = web.base_url
-        if not base_url:
-            raise ValueError(f"web target {eff.target!r} has no baseUrl")
-        from bajutsu.drivers.playwright import PlaywrightDriver, _playwright_error_types
-
-        driver = PlaywrightDriver(base_url, headless=web.headless, browser=web.browser)
-        try:
-            driver.navigate()
-            return driver.query()
-        finally:
-            with contextlib.suppress(*_playwright_error_types()):
-                driver.close()
-    if actuator == "fake":
-        # The fake driver needs no device, so it must not touch simctl — resolving a udid would
-        # shell out to `xcrun` and fail on a host without Xcode (e.g. the Linux gate).
-        return make_driver("fake", udid).query()
-    query_actuator = "idb" if actuator == "xcuitest" else actuator
-    # The doctor scores one screen; take only the first UDID from a comma-list (the same format
-    # /api/run uses for parallel workers). Passing the whole "A,B" string to resolve_udid or
-    # make_driver treats it as a single, invalid UDID.
-    first_udid = (udid.split(",")[0].strip() if udid else "") or "booted"
-    resolved = simctl.resolve_udid(first_udid, run=state.simctl)
-    return make_driver(query_actuator, resolved).query()
+    try:
+        return doctor.probe_screen(actuator, udid, eff, simctl_run=state.simctl)
+    except doctor.DoctorProbeError as e:
+        raise ValueError(str(e)) from e

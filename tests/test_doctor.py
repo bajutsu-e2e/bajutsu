@@ -1,8 +1,13 @@
-"""Tests for the convention score (doctor)."""
+"""Tests for the convention score and the shared screen probe (doctor)."""
 
 from __future__ import annotations
 
-from bajutsu.doctor import render, score
+import json
+
+import pytest
+
+from bajutsu.config import load_config, resolve
+from bajutsu.doctor import DoctorProbeError, probe_screen, render, score
 from bajutsu.drivers import base
 
 
@@ -188,3 +193,85 @@ def test_web_traits_are_actionable() -> None:
     assert s.actionable == 7
     assert s.with_id == 7
     assert s.grade == "Ready"
+
+
+# --- shared screen probe (BE-0199) ---
+
+
+class _RecordingDriver:
+    """A driver whose query() returns one fixed element, recording nothing itself."""
+
+    def query(self) -> list[base.Element]:
+        return [_el("probe.ok", ["button"])]
+
+
+def _booted_json(udid: str) -> str:
+    return json.dumps({"devices": {"iOS": [{"state": "Booted", "udid": udid}]}})
+
+
+def test_probe_screen_fake_backend_never_touches_simctl() -> None:
+    # The fake driver needs no device, so the probe must not resolve a udid (which would shell out
+    # to xcrun and fail on a host without Xcode). An injected simctl_run that raises proves it.
+    def boom(_cmd: list[str], _env: object = None) -> str:
+        raise AssertionError("fake backend must not invoke simctl")
+
+    eff = resolve(load_config("targets: { demo: { bundleId: com.x } }"), "demo")
+    assert probe_screen("fake", "booted", eff, simctl_run=boom) == []  # fake's screen starts empty
+
+
+def test_probe_screen_xcuitest_queries_over_idb(monkeypatch: pytest.MonkeyPatch) -> None:
+    # xcuitest has no runner in doctor, so the probe reads the tree over idb (BE-0019).
+    made: list[tuple[str, str]] = []
+    monkeypatch.setattr(
+        "bajutsu.doctor.make_driver",
+        lambda actuator, udid, **kw: made.append((actuator, udid)) or _RecordingDriver(),
+    )
+    eff = resolve(load_config("targets: { demo: { bundleId: com.x } }"), "demo")
+    elements = probe_screen("xcuitest", "DEV-1", eff)
+    assert [e["identifier"] for e in elements] == ["probe.ok"]
+    assert made == [("idb", "DEV-1")]  # queried over idb, at the concrete udid
+
+
+def test_probe_screen_routes_udid_resolution_through_injected_simctl(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # "booted" is resolved to a concrete udid via the injected simctl_run — the seam serve uses to
+    # stay host-safe and tests use to avoid shelling out.
+    made: list[tuple[str, str]] = []
+    monkeypatch.setattr(
+        "bajutsu.doctor.make_driver",
+        lambda actuator, udid, **kw: made.append((actuator, udid)) or _RecordingDriver(),
+    )
+    eff = resolve(load_config("targets: { demo: { bundleId: com.x } }"), "demo")
+    probe_screen("idb", "booted", eff, simctl_run=lambda _c, _e=None: _booted_json("BOOTED-9"))
+    assert made == [("idb", "BOOTED-9")]
+
+
+def test_probe_screen_takes_the_first_udid_of_a_comma_list(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # doctor scores one screen; a "A,B" parallel-worker list must target only the first device.
+    made: list[tuple[str, str]] = []
+    monkeypatch.setattr(
+        "bajutsu.doctor.make_driver",
+        lambda actuator, udid, **kw: made.append((actuator, udid)) or _RecordingDriver(),
+    )
+    eff = resolve(load_config("targets: { demo: { bundleId: com.x } }"), "demo")
+    probe_screen("idb", "A,B", eff)
+    assert made == [("idb", "A")]
+
+
+def test_probe_screen_web_without_base_url_raises_probe_error() -> None:
+    # A web target with no baseUrl is a fixable config error — a typed DoctorProbeError the adapters
+    # map to their own surface, never a crash. The config gate normally rejects a baseUrl-less web
+    # target, so we resolve a valid one and null the baseUrl to exercise the defensive backstop.
+    import dataclasses
+
+    from bajutsu.config import WebConfig
+
+    eff = dataclasses.replace(
+        resolve(load_config("targets: { web: { baseUrl: 'http://x' } }"), "web"),
+        platform_config=WebConfig(base_url=None),
+    )
+    with pytest.raises(DoctorProbeError, match="baseUrl"):
+        probe_screen("playwright", "booted", eff)

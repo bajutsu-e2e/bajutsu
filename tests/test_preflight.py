@@ -203,3 +203,70 @@ def test_render_marks_pass_and_fail() -> None:
         preflight.runnability("idb", which=_which({"xcrun"}), booted_count=lambda: 0)
     )
     assert "✓ xcrun" in out and "✗ idb" in out
+
+
+# --- shared doctor environment-check assembly (BE-0199) ---
+
+
+def test_doctor_environment_checks_xcuitest_merges_idb_tools() -> None:
+    # The shared assembly the CLI and serve both call must merge idb's tools into the xcuitest set
+    # (doctor falls back to idb for the screen query), deduping the shared checks.
+    checks = preflight.doctor_environment_checks(
+        "xcuitest",
+        booted_count=lambda: 1,
+        web_engine="chromium",
+        ios_pin=None,
+        which=_which({"xcrun", "xcodebuild", "idb", "idb_companion"}),
+    )
+    names = [c.name for c in checks]
+    assert "xcodebuild" in names and "idb" in names and "idb_companion" in names
+    assert names.count("xcrun") == 1 and names.count("Simulator booted") == 1
+
+
+def test_doctor_environment_checks_appends_idb_version_pin() -> None:
+    # A declared pin is reported against the installed companion when the companion is present.
+    checks = preflight.doctor_environment_checks(
+        "idb",
+        booted_count=lambda: 1,
+        web_engine="chromium",
+        ios_pin=">=1.1.8",
+        which=_which({"xcrun", "idb", "idb_companion"}),
+        idb_probe=lambda: IdbVersions(companion="1.2.0", client=None),
+    )
+    version = next(c for c in checks if c.name == "idb_companion version")
+    assert version.ok and "1.2.0" in version.detail
+
+
+def test_doctor_environment_checks_skips_pin_when_companion_absent() -> None:
+    # No companion → runnability already reports it; probing the version would only add a redundant
+    # "installed unknown" line and spawn a doomed subprocess, so the pin check is skipped.
+    probed = False
+
+    def probe() -> IdbVersions:
+        nonlocal probed
+        probed = True
+        return IdbVersions(companion=None, client=None)
+
+    checks = preflight.doctor_environment_checks(
+        "idb",
+        booted_count=lambda: 1,
+        web_engine="chromium",
+        ios_pin=">=1.1.8",
+        which=_which({"xcrun", "idb"}),  # no idb_companion
+        idb_probe=probe,
+    )
+    assert not any(c.name == "idb_companion version" for c in checks)
+    assert not probed  # never even probed the version
+
+
+def test_doctor_environment_checks_skips_pin_for_non_idb_backend() -> None:
+    # The pin is an idb concern; xcuitest merges idb tools but does not add the version line.
+    checks = preflight.doctor_environment_checks(
+        "xcuitest",
+        booted_count=lambda: 1,
+        web_engine="chromium",
+        ios_pin=">=1.1.8",
+        which=_which({"xcrun", "xcodebuild", "idb", "idb_companion"}),
+        idb_probe=lambda: IdbVersions(companion="1.2.0", client=None),
+    )
+    assert not any(c.name == "idb_companion version" for c in checks)

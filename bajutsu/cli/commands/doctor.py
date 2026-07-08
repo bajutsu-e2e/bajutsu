@@ -2,26 +2,24 @@
 
 from __future__ import annotations
 
-import contextlib
 from pathlib import Path
 
 import typer
 
 from bajutsu import adb as _adb
-from bajutsu import ai_availability, capability_preflight, idb_version, preflight
+from bajutsu import ai_availability, capability_preflight, preflight
 from bajutsu import simctl as _simctl
-from bajutsu.backends import capabilities_for, make_driver, select_actuator
+from bajutsu.backends import capabilities_for, select_actuator
 from bajutsu.cli._shared import DEFAULT_CONFIG, _backends, _load_effective
 from bajutsu.config import (
     Effective,
-    IosConfig,
     android_package,
+    idb_version_pin,
     ios_bundle_id,
-    require_web,
     web_base_url,
     web_engine,
 )
-from bajutsu.doctor import render, score
+from bajutsu.doctor import DoctorProbeError, probe_screen, render, score
 from bajutsu.drivers import base
 from bajutsu.scenario import load_scenario_file
 
@@ -99,34 +97,21 @@ def doctor(
             typer.echo("")
 
     # Runnability gate: the CLIs (+ a booted Simulator) the actuator needs. Fail fast here
-    # with a fixable checklist instead of crashing later on a missing tool / no device.
-    # xcuitest falls back to idb for the screen query, so both tool sets must be present.
+    # with a fixable checklist instead of crashing later on a missing tool / no device. The
+    # xcuitest→idb merge and the idb version-pin check live in the shared assembly so the serve
+    # panel reports the same set (BE-0199).
     def booted_count() -> int:
         # Android counts attached adb devices; the iOS backends count booted Simulators.
         if actuator == "adb":
             return len(_adb.booted_serials())
         return len(_simctl.booted_udids())
 
-    env_checks = preflight.runnability(
-        actuator, booted_count=booted_count, web_engine=web_engine(eff)
+    env_checks = preflight.doctor_environment_checks(
+        actuator,
+        booted_count=booted_count,
+        web_engine=web_engine(eff),
+        ios_pin=idb_version_pin(eff),
     )
-    if actuator == "xcuitest":
-        idb_checks = preflight.runnability("idb", booted_count=booted_count)
-        seen = {c.name for c in env_checks}
-        env_checks.extend(c for c in idb_checks if c.name not in seen)
-    # When a pin is declared (defaults.idbVersion), report the installed idb_companion against it
-    # so a compatibility break surfaces here, not as a confusing downstream failure (BE-0005).
-    # Only probe when a pin exists *and* idb_companion is actually present — runnability already
-    # reports a missing companion, so probing it would only spawn a doomed subprocess and print a
-    # redundant "installed unknown" line.
-    companion_ok = any(c.name == "idb_companion" and c.ok for c in env_checks)
-    ios_pin = (
-        eff.platform_config.idb_version if isinstance(eff.platform_config, IosConfig) else None
-    )
-    if actuator == "idb" and ios_pin is not None and companion_ok:
-        version_check = preflight.idb_version_check(ios_pin, idb_version.probe())
-        if version_check is not None:
-            env_checks.append(version_check)
     checks = cfg_checks + env_checks
     if checks:
         typer.echo("environment:")
@@ -177,39 +162,17 @@ def _claude_readiness(eff: Effective) -> str:
 
 
 def _current_screen(actuator: str, udid: str, eff: Effective) -> list[base.Element]:
-    """The elements of the screen to score.
+    """The elements of the screen to score — the shared probe, with the CLI's error UX.
 
-    Web (Playwright) has no simctl udid: it navigates a fresh browser to the target's baseUrl (the
-    `launch` equivalent) and scores that page, tearing the browser down after. iOS scores whatever
-    is on the booted Simulator, and Android whatever is on the attached device, at the resolved udid.
+    Maps the probe's config error to `typer.Exit(2)` (a web target with no baseUrl is fixable,
+    not a crash); a device/reachability fault raises `DeviceError`, which the caller turns into
+    `typer.Exit(1)`.
     """
-    if actuator == "playwright":
-        # A missing baseUrl (or a non-web target forced onto playwright) is a clean, fixable
-        # config error, not a crash — `web_base_url` is None for both, so this exits before the
-        # require_web narrowing below (which a present baseUrl guarantees is a WebConfig).
-        base_url = web_base_url(eff)
-        if not base_url:
-            typer.echo("web target needs baseUrl (set targets.<name>.baseUrl)")
-            raise typer.Exit(2)
-        web = require_web(eff)
-        # Lazy import keeps Playwright (a heavy optional dep) off the default path.
-        from bajutsu.drivers.playwright import PlaywrightDriver, _playwright_error_types
-
-        driver = PlaywrightDriver(base_url, headless=web.headless, browser=web.browser)
-        try:
-            driver.navigate()
-            return driver.query()
-        finally:
-            # Suppress browser-side errors on teardown so a close() failure during a
-            # faulted browser does not mask the original navigate/query exception.
-            with contextlib.suppress(*_playwright_error_types()):
-                driver.close()
-    # xcuitest needs a running runner to query, but doctor only scores the current screen —
-    # idb can read the same accessibility tree without a runner (BE-0019). Android resolves its
-    # serial via adb (the same parameterization the run pipeline uses), the rest via simctl.
-    query_actuator = "idb" if actuator == "xcuitest" else actuator
-    resolve = _adb.resolve_serial if actuator == "adb" else _simctl.resolve_udid
-    return make_driver(query_actuator, resolve(udid)).query()
+    try:
+        return probe_screen(actuator, udid, eff)
+    except DoctorProbeError as e:
+        typer.echo(str(e))
+        raise typer.Exit(2) from None
 
 
 def register(app: typer.Typer) -> None:

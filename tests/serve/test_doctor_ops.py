@@ -7,6 +7,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
 from _shared import project
 
 from bajutsu import simctl
@@ -104,6 +105,37 @@ def test_playwright_backend_with_base_url_passes_config_check(tmp_path: Path) ->
     config_checks = [c for c in payload["checks"] if "baseUrl" in c["name"]]
     assert config_checks
     assert all(c["ok"] for c in config_checks)
+
+
+def test_xcuitest_panel_reports_idb_tools(tmp_path: Path) -> None:
+    # BE-0199 reconciliation: the serve panel now uses the shared check assembly, so an xcuitest
+    # target reports the merged idb tools (doctor falls back to idb for the screen query) — the
+    # same set the CLI reports, where the panel used to silently show less.
+    state = _state(
+        tmp_path,
+        "defaults: { backend: [xcuitest] }\ntargets:\n  demo: { bundleId: com.demo }\n",
+    )
+    payload, status = ops.doctor_check(state, {"target": "demo"})
+    assert status == 200
+    names = {c["name"] for c in payload["checks"]}
+    assert {"idb", "idb_companion"} <= names
+
+
+def test_current_screen_maps_probe_error_to_value_error(tmp_path: Path) -> None:
+    # The serve adapter maps the probe's typed DoctorProbeError to its existing ValueError surface.
+    # A baseUrl-less web target can't be resolved directly (the config gate rejects it), so resolve
+    # a valid one and null the baseUrl to reach the probe's defensive backstop.
+    import dataclasses
+
+    from bajutsu.config import WebConfig, load_config, resolve
+    from bajutsu.serve.operations.doctor import _current_screen
+
+    eff = dataclasses.replace(
+        resolve(load_config("targets: { web: { baseUrl: 'http://x' } }"), "web"),
+        platform_config=WebConfig(base_url=None),
+    )
+    with pytest.raises(ValueError, match="baseUrl"):
+        _current_screen(_state(tmp_path), "playwright", "booted", eff)
 
 
 def test_screen_probe_failure_is_reported_not_raised(tmp_path: Path) -> None:

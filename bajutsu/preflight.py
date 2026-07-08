@@ -202,6 +202,47 @@ def idb_version_check(expected: str | None, versions: IdbVersions) -> Check | No
     return Check("idb_companion version", ok, f"{installed} (expected {expected})")
 
 
+def doctor_environment_checks(
+    backend: str,
+    *,
+    booted_count: Callable[[], int],
+    web_engine: str,
+    ios_pin: str | None,
+    which: Which = shutil.which,
+    idb_probe: Callable[[], IdbVersions] = idb_version.probe,
+) -> list[Check]:
+    """The environment checks `doctor` reports for `backend`, shared by the CLI and serve (BE-0199).
+
+    Runnability plus the two doctor-specific augmentations both surfaces must report the same way,
+    so the CLI and the serve panel never drift on how thoroughly they answer "is this target
+    healthy?": xcuitest also needs idb (it falls back to idb for the screen query, BE-0019), and a
+    declared idb version pin (`defaults.idbVersion`) is reported against the installed companion so
+    a compatibility break surfaces here, not as a confusing downstream failure (BE-0005).
+
+    Args:
+        ios_pin: the declared idb_companion version range, or None when no pin is declared.
+        idb_probe: reads the installed idb versions; injectable so the pin check stays testable
+            without idb installed. Called only when a pin is declared and the companion is present.
+    """
+    checks = runnability(backend, which=which, booted_count=booted_count, web_engine=web_engine)
+    if backend == "xcuitest":
+        seen = {c.name for c in checks}
+        checks.extend(
+            c
+            for c in runnability("idb", which=which, booted_count=booted_count)
+            if c.name not in seen
+        )
+    # Only probe the version when a pin exists *and* the companion is present — runnability already
+    # reports a missing companion, so probing it would spawn a doomed subprocess and print a
+    # redundant "installed unknown" line.
+    companion_ok = any(c.name == "idb_companion" and c.ok for c in checks)
+    if backend == "idb" and ios_pin is not None and companion_ok:
+        version_check = idb_version_check(ios_pin, idb_probe())
+        if version_check is not None:
+            checks.append(version_check)
+    return checks
+
+
 def passed(checks: list[Check]) -> bool:
     return all(c.ok for c in checks)
 

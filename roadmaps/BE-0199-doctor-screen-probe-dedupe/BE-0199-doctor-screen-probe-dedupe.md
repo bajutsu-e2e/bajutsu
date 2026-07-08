@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0199](BE-0199-doctor-screen-probe-dedupe.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0199") |
+| Implementing PR | [#814](https://github.com/bajutsu-e2e/bajutsu/pull/814) |
 | Topic | Codebase quality & technical debt |
 <!-- /BE-METADATA -->
 
@@ -67,11 +68,15 @@ prevents the next divergence.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Shared probe in `bajutsu/doctor.py` with injected environment and a typed error
-- [ ] CLI adapter (typer.Exit mapping) migrated
-- [ ] Serve adapter (state.simctl, comma-list udid) migrated
-- [ ] Check-set drift reconciled (serve panel vs CLI), decision recorded
-- [ ] Unit tests for the shared probe
+- [x] Shared probe in `bajutsu/doctor.py` with injected environment (`simctl_run`) and a typed error (`DoctorProbeError`)
+- [x] CLI adapter (typer.Exit mapping) migrated
+- [x] Serve adapter (state.simctl, comma-list udid) migrated
+- [x] Check-set drift reconciled: shared `preflight.doctor_environment_checks` gives the serve panel the CLI's xcuitest→idb merge and idb version-pin check (decision: widen serve to the CLI's fuller view)
+- [x] Unit tests for the shared probe and the shared check assembly
+
+**Log**
+
+- Shared `doctor.probe_screen` (+ `DoctorProbeError`, `_first_udid`) and `preflight.doctor_environment_checks` extracted; CLI and serve doctors reduced to thin adapters over them, and the `ios_pin` accessor pulled up as `config.idb_version_pin`. The serve panel now reports the same environment checks as the CLI. The extraction also corrected two latent bugs it subsumed: the CLI `fake` backend no longer resolves a udid (would have shelled out to `xcrun`), and serve resolves adb serials via `adb.resolve_serial` rather than `simctl.resolve_udid`.
 
 ## References
 
