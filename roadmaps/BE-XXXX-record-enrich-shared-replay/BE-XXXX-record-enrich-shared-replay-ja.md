@@ -23,7 +23,7 @@
 
 どちらのペアも、同じロジックを二重に保守している状態です。
 
-- **ステップのリプレイ**（`record.py:198-206` と `enrich.py:26-36`）：同じ `_action_of` の
+- **ステップのリプレイ**（`record.py:266-274` と `enrich.py:26-37`）：同じ `_action_of` の
   ディスパッチ（wait、`assert_` の no-op、`_do_action`）です。違いは wait 失敗時の扱いだけで、
   enrich は `_wait` の `(ok, reason)` を検査して `_ReplayFailed` を送出し、record は戻り値を
   無視します。
