@@ -91,8 +91,10 @@ def test_http_index_concatenates_all_js_sections(tmp_path: Path) -> None:
         for url in ("/api/run", "/api/record", "/api/crawl"):
             assert re.search(rf"url:\s*['\"]{re.escape(url)}['\"]", text)
         # startJob fails loudly on a network drop / non-JSON body / missing jobId — it must reset the
-        # button rather than leave it stuck spinning (it fronts all three start buttons).
-        assert "'request failed'" in text and "'no job started'" in text
+        # button rather than leave it stuck spinning (it fronts all three start buttons). Quote-tolerant
+        # so a reformat of the section files doesn't break the check.
+        for msg in ("request failed", "no job started"):
+            assert re.search(rf"['\"]{re.escape(msg)}['\"]", text)
     finally:
         server.shutdown()
         server.server_close()

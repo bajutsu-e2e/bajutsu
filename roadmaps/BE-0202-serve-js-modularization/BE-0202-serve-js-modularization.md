@@ -88,6 +88,7 @@ Log:
 
 ## References
 
-- [`bajutsu/templates/serve.core.js`](../../bajutsu/templates/serve.core.js) · [`bajutsu/serve/handler.py`](../../bajutsu/serve/handler.py) · [`eslint.config.mjs`](../../eslint.config.mjs)
+- The section files: [`serve.core.js`](../../bajutsu/templates/serve.core.js) · [`serve.panels.js`](../../bajutsu/templates/serve.panels.js) · [`serve.crawl.js`](../../bajutsu/templates/serve.crawl.js) · [`serve.author.js`](../../bajutsu/templates/serve.author.js)
+- [`bajutsu/serve/handler.py`](../../bajutsu/serve/handler.py) · [`eslint.config.mjs`](../../eslint.config.mjs)
 - [BE-0129](../BE-0129-serve-scope-boundary/BE-0129-serve-scope-boundary.md) — the guardrail whose calibration this file outgrew
 - [BE-0189](../BE-0189-serve-ui-dogfood-ci-gate/BE-0189-serve-ui-dogfood-ci-gate.md) — the dogfood gate that pins UI behavior across the split
