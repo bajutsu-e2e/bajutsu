@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-crawl-command-decomposition-ja.md)
+**English** · [日本語](BE-0205-crawl-command-decomposition-ja.md)
 
-# BE-XXXX — Decompose the crawl CLI command like run
+# BE-0205 — Decompose the crawl CLI command like run
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-crawl-command-decomposition.md) |
+| Proposal | [BE-0205](BE-0205-crawl-command-decomposition.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0205") |
 | Topic | Codebase quality & technical debt |
 <!-- /BE-METADATA -->
 

@@ -1,14 +1,14 @@
-[English](BE-XXXX-crawl-command-decomposition.md) · **日本語**
+[English](BE-0205-crawl-command-decomposition.md) · **日本語**
 
-# BE-XXXX — crawl コマンドを run と同じ形に分解する
+# BE-0205 — crawl コマンドを run と同じ形に分解する
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
 |---|---|
-| 提案 | [BE-XXXX](BE-XXXX-crawl-command-decomposition-ja.md) |
+| 提案 | [BE-0205](BE-0205-crawl-command-decomposition-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **提案** |
-| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0205") |
 | トピック | コードベース品質・技術的負債 |
 <!-- /BE-METADATA -->
 

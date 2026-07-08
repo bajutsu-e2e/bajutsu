@@ -707,6 +707,7 @@ AI を使う経路（`record` ／ `crawl` ／ `triage --ai` ／ `run --apply`）
 | [BE-0197](BE-0197-environment-protocol-shape/BE-0197-environment-protocol-shape-ja.md) | 3 つめのプラットフォームに向けて Environment protocol の形をそろえる | 提案 |
 | [BE-0199](BE-0199-doctor-screen-probe-dedupe/BE-0199-doctor-screen-probe-dedupe-ja.md) | doctor の画面プローブを CLI と serve で共有する | 提案 |
 | [BE-0202](BE-0202-serve-js-modularization/BE-0202-serve-js-modularization-ja.md) | serve.js をビルドなしのままセクション別ファイルに分割する | 提案 |
+| [BE-0205](BE-0205-crawl-command-decomposition/BE-0205-crawl-command-decomposition-ja.md) | crawl コマンドを run と同じ形に分解する | 提案 |
 <!-- /GENERATED:proposals-quality-debt -->
 
 ### 外部サービスとの連携
