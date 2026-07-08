@@ -13,6 +13,10 @@ from datetime import UTC, datetime, timedelta
 from bajutsu.run_id import RUN_ID_FORMAT, new_run_id, parse_run_id_timestamp
 
 
+def test_run_id_format_is_stable() -> None:
+    assert RUN_ID_FORMAT == "%Y%m%d-%H%M%S"
+
+
 def test_mint_parses_back_to_a_recent_utc_time() -> None:
     started = parse_run_id_timestamp(new_run_id())
     assert started is not None
