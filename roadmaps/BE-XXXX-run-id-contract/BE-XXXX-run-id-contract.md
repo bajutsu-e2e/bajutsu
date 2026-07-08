@@ -39,10 +39,7 @@ Naming the contract once makes the dependency visible and the format changeable 
 ## Detailed design
 
 1. Add a small deterministic-core helper (e.g. `bajutsu/run_id.py`): the format constant, a
-   documented `new_run_id(prefix="")` (covering the `audit-` variant), and the matching
-   validation pattern, with a docstring naming the three consumers above.
-2. Replace the five mint sites with `new_run_id()`.
-3. Point `valid_run_id` and the `serve/jobs.py` parse regex at the shared pattern.
+2. Replace the four run-id mint sites with `new_run_id()` (including the `audit-` prefixed variant).
 4. A unit test pinning the contract: mint → validate → lexicographic order equals chronological
    order.
 
