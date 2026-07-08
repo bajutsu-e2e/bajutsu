@@ -25,7 +25,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Stre
 from bajutsu.serve import operations as ops
 from bajutsu.serve import oplog
 from bajutsu.serve.handler import _OAUTH_STATE_COOKIE, _SESSION_COOKIE, _index_html
-from bajutsu.serve.jobs import ServeState
+from bajutsu.serve.state import ServeState
 
 # How long an idle SSE stream waits before sending a `:keepalive` comment (and rechecking for a
 # client disconnect). Short enough to stay under a reverse proxy's idle timeout (BE-0015).

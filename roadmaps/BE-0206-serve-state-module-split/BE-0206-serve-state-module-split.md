@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0206](BE-0206-serve-state-module-split.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0206") |
+| Implementing PR | _pending_ |
 | Topic | Codebase quality & technical debt |
 <!-- /BE-METADATA -->
 
@@ -80,12 +81,22 @@ keeps re-exports while importers migrate, then the shim is dropped.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] `serve/state.py` created with the state container (pure move)
-- [ ] `serve/jobs.py` reduced to the execution engine (+ temporary re-exports)
-- [ ] Importers migrated; re-export shim dropped
-- [ ] Lazy-import workarounds lifted where the split obsoletes them
-- [ ] `serve/commands.py` extracted from `serve/helpers.py`; importers updated
-- [ ] `docs/architecture.md` (en/ja) updated
+- [x] `serve/state.py` created with the state container (pure move)
+- [x] `serve/jobs.py` reduced to the execution engine
+- [x] Importers migrated (production + tests); no re-export shim left behind
+- [x] Lazy-import workarounds lifted where the split obsoletes them
+- [x] `serve/commands.py` extracted from `serve/helpers.py`; importers updated
+- [x] Module-list docs updated — `docs/architecture.md` (en/ja) names no touched serve submodule,
+  so the `serve/__init__.py` docstring's submodule list was the one to update
+
+Log:
+
+- _pending PR_ — Split the serve state container into `serve/state.py` and the CLI command
+  builders into `serve/commands.py`, both pure moves; `serve/jobs.py` keeps the run/cancel/build
+  execution engine and imports `state` in one direction. `executor.py`'s type imports repoint to
+  `state` (the lazy `run_job` import stays, as does `ServeState._env_var_for_secret`'s lazy
+  `operations.config` import — both would still cycle). All ~28 production importers and the serve
+  tests migrated with no shim left behind. `make check` green (3214 passed).
 
 ## References
 

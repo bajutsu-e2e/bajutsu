@@ -17,8 +17,8 @@ import yaml
 
 from bajutsu import audit as _audit
 from bajutsu.scenario import load_scenario_file
-from bajutsu.serve.jobs import ServeState
 from bajutsu.serve.operations.reads import read_scenario
+from bajutsu.serve.state import ServeState
 
 
 def audit_scenario(

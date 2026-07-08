@@ -31,11 +31,10 @@ from bajutsu.anthropic_client import (
 )
 from bajutsu.config import load_config, resolve
 from bajutsu.config_source import materialize, parse_config_spec, source_provenance
-from bajutsu.serve import jobs
 from bajutsu.serve.helpers import (
     list_targets,
 )
-from bajutsu.serve.jobs import ProviderSettings, ServeState
+from bajutsu.serve.state import ProviderSettings, ServeState
 
 # The logical name of the Claude API key in the secret store (BE-0136). One named secret today; a
 # future credential (e.g. a Bedrock AWS key) reuses the same store under its own name.
@@ -65,7 +64,7 @@ def _valid_key_env_name(name: str) -> bool:
     return bool(name) and name.isidentifier() and name not in _UNSAFE_ENV_VARS
 
 
-def active_key_env(state: jobs.ServeState) -> str:
+def active_key_env(state: ServeState) -> str:
     """The env var name the bound config's ``ai.keyEnv`` resolves to (BE-0097).
 
     Falls back to ``ANTHROPIC_API_KEY`` when no config is bound, the config has no ``keyEnv``,

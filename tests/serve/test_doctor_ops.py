@@ -13,7 +13,7 @@ from _shared import project
 from bajutsu import simctl
 from bajutsu.drivers import base
 from bajutsu.serve import operations as ops
-from bajutsu.serve.jobs import ServeState
+from bajutsu.serve.state import ServeState
 
 
 def _state(tmp_path: Path, config_text: str | None = None) -> ServeState:

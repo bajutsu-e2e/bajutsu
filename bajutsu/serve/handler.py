@@ -23,7 +23,7 @@ from jinja2 import Environment, FileSystemLoader
 from bajutsu.serve import operations as ops
 from bajutsu.serve import oplog
 from bajutsu.serve.helpers import valid_run_id
-from bajutsu.serve.jobs import ServeState
+from bajutsu.serve.state import ServeState
 from bajutsu.serve.uploads import MAX_UPLOAD_BYTES
 
 # Stream an uploaded bundle to disk in 1 MiB chunks so a large app binary never loads into memory.

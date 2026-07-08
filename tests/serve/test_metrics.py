@@ -18,9 +18,9 @@ from sqlalchemy import create_engine
 
 from bajutsu import serve as srv
 from bajutsu.serve import operations as ops
-from bajutsu.serve.jobs import Job
 from bajutsu.serve.server.db import SqlRepository
 from bajutsu.serve.server.models import Base
+from bajutsu.serve.state import Job
 
 
 def _repo() -> SqlRepository:

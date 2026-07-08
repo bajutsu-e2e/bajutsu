@@ -27,10 +27,10 @@ from bajutsu.serve.helpers import (
     valid_run_id,
     valid_scenario_ref,
 )
-from bajutsu.serve.jobs import ServeState
 from bajutsu.serve.operations._common import _resolve_org_or_forbid
 from bajutsu.serve.operations.config import FS_DISABLED_ERROR
 from bajutsu.serve.orgs import targets_for_org
+from bajutsu.serve.state import ServeState
 
 _REPORT_SUFFIX = "/report.html"
 

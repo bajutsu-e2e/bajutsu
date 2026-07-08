@@ -10,7 +10,7 @@ from bajutsu.serve.helpers import (
     valid_backend,
     valid_udid,
 )
-from bajutsu.serve.jobs import ServeState
+from bajutsu.serve.state import ServeState
 
 
 def _device_args(body: dict[str, Any]) -> tuple[str, str, tuple[Any, int] | None]:

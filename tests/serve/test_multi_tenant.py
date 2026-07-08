@@ -10,11 +10,11 @@ from sqlalchemy import create_engine
 
 from bajutsu import serve as srv
 from bajutsu.serve import operations as ops
-from bajutsu.serve.jobs import StoreBundle
 from bajutsu.serve.server.db import SqlRepository
 from bajutsu.serve.server.models import Base
 from bajutsu.serve.server.oauth import Identity
 from bajutsu.serve.server.object_store import org_prefix
+from bajutsu.serve.state import StoreBundle
 
 CONFIG = """
 targets:

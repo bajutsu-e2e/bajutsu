@@ -12,6 +12,7 @@ from _shared import FakeProc, fake_popen, project
 
 from bajutsu import serve as srv
 from bajutsu.serve import jobs as srv_jobs
+from bajutsu.serve import state as srv_state
 from bajutsu.serve.logbus import InMemoryLogBus
 from bajutsu.serve.uploads import Upload
 
@@ -437,7 +438,7 @@ def test_job_registry_assigns_monotonic_ids_and_the_log_bus() -> None:
     # The registry is the sole owner of the id sequence: ids increment from "1", each registered job
     # is wired to the registry's log bus, and it is then retrievable by that id.
     bus = InMemoryLogBus()
-    reg = srv_jobs.JobRegistry(logbus=bus)
+    reg = srv_state.JobRegistry(logbus=bus)
     first = reg.register(srv.Job(cmd=["x"]))
     second = reg.register(srv.Job(cmd=["y"]))
     assert (first.id, second.id) == ("1", "2")
@@ -447,7 +448,7 @@ def test_job_registry_assigns_monotonic_ids_and_the_log_bus() -> None:
 
 def test_job_registry_rejects_an_already_registered_job() -> None:
     # Registering a job that already has an id would orphan its earlier entry — guard against it.
-    reg = srv_jobs.JobRegistry(logbus=InMemoryLogBus())
+    reg = srv_state.JobRegistry(logbus=InMemoryLogBus())
     job = reg.register(srv.Job(cmd=["x"]))
     with pytest.raises(ValueError, match="already registered"):
         reg.register(job)
@@ -455,14 +456,14 @@ def test_job_registry_rejects_an_already_registered_job() -> None:
 
 def test_job_registry_caps_concurrency_globally() -> None:
     # The global cap rejects once the running count reaches it (BE-0051).
-    reg = srv_jobs.JobRegistry(logbus=InMemoryLogBus())
+    reg = srv_state.JobRegistry(logbus=InMemoryLogBus())
     assert reg.try_register(srv.Job(cmd=[]), max_concurrent=1) is not None
     assert reg.try_register(srv.Job(cmd=[]), max_concurrent=1) is None
 
 
 def test_job_registry_caps_concurrency_per_user() -> None:
     # The per-user cap is scoped to an identified actor; a different actor is unaffected (BE-0015 7c-3).
-    reg = srv_jobs.JobRegistry(logbus=InMemoryLogBus())
+    reg = srv_state.JobRegistry(logbus=InMemoryLogBus())
     assert reg.try_register(srv.Job(cmd=[], actor="alice"), max_concurrent_per_user=1) is not None
     assert reg.try_register(srv.Job(cmd=[], actor="alice"), max_concurrent_per_user=1) is None
     assert reg.try_register(srv.Job(cmd=[], actor="bob"), max_concurrent_per_user=1) is not None
@@ -470,7 +471,7 @@ def test_job_registry_caps_concurrency_per_user() -> None:
 
 def test_job_registry_caps_concurrency_per_org() -> None:
     # The per-org cap is scoped to a job's org; a different org is unaffected (BE-0016 Tier B).
-    reg = srv_jobs.JobRegistry(logbus=InMemoryLogBus())
+    reg = srv_state.JobRegistry(logbus=InMemoryLogBus())
     assert reg.try_register(srv.Job(cmd=[], org="acme"), max_concurrent_per_org=1) is not None
     assert reg.try_register(srv.Job(cmd=[], org="acme"), max_concurrent_per_org=1) is None
     assert reg.try_register(srv.Job(cmd=[], org="globex"), max_concurrent_per_org=1) is not None
@@ -478,7 +479,7 @@ def test_job_registry_caps_concurrency_per_org() -> None:
 
 def test_job_registry_counts_only_running_jobs() -> None:
     # active_jobs and in_flight_by_org count only running jobs; a finished job drops out of both.
-    reg = srv_jobs.JobRegistry(logbus=InMemoryLogBus())
+    reg = srv_state.JobRegistry(logbus=InMemoryLogBus())
     reg.register(srv.Job(cmd=[], org="acme"))
     reg.register(srv.Job(cmd=[], org="acme"))
     reg.register(srv.Job(cmd=[], org="beta"))

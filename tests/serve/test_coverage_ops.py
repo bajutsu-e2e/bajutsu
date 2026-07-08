@@ -10,7 +10,7 @@ import json
 from pathlib import Path
 
 from bajutsu.serve import operations as ops
-from bajutsu.serve.jobs import ServeState
+from bajutsu.serve.state import ServeState
 
 # A suite whose scenarios reference ids under two namespaces (`home`, `cart`); a third declared
 # namespace (`settings`) is touched by no scenario, so it is the gap the map should surface.
