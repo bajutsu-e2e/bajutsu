@@ -16,12 +16,16 @@ import pytest
 
 from bajutsu.drivers import base
 from bajutsu.drivers.xcuitest import (
+    _MAX_ATTEMPTS,
     _SOCKET_TIMEOUT_SECONDS,
     TransportFn,
     XcuitestChannelError,
     XcuitestDriver,
     _decode,
+    _is_retry_eligible,
     _Reply,
+    _TransportFailure,
+    _with_retry,
 )
 
 
@@ -278,3 +282,87 @@ def test_socket_timeout_is_bounded_after_the_single_snapshot_query() -> None:
     # generous 60s stopgap is no longer needed: the timeout must stay bounded to a reasonable window
     # (it still covers a cold first snapshot) so a wedged runner fails loudly rather than hanging.
     assert 0 < _SOCKET_TIMEOUT_SECONDS <= 30
+
+
+# --- transient-transport retry policy (BE-0207) --- #
+#
+# The retry lives behind the `TransportFn` seam: `_with_retry` wraps a single-attempt transport and
+# re-issues only *transport* failures (`_TransportFailure`), never a decoded outcome. It is exercised
+# here with a fake inner transport (no Simulator), passing a no-op `sleep` so backoff adds no wall time.
+
+
+def _counting(replies: list) -> tuple[TransportFn, list[int]]:
+    """A fake inner transport that yields *replies* in order; each item is either a `_Reply` to return
+    or a `_TransportFailure` to raise. `calls[0]` counts how many times it was invoked."""
+    calls = [0]
+
+    def inner(method: str, path: str, body: dict[str, Any] | None) -> _Reply:
+        calls[0] += 1
+        item = replies.pop(0)
+        if isinstance(item, _TransportFailure):
+            raise item
+        return item
+
+    return inner, calls
+
+
+def test_is_retry_eligible_splits_on_delivery_and_idempotency() -> None:
+    # Not delivered → the runner never acted, safe to re-issue any method.
+    assert _is_retry_eligible("POST", delivered=False) is True
+    assert _is_retry_eligible("GET", delivered=False) is True
+    # Delivered → only idempotent reads may be re-issued; a write could double-apply.
+    assert _is_retry_eligible("GET", delivered=True) is True
+    assert _is_retry_eligible("POST", delivered=True) is False
+
+
+def test_transient_read_failure_retries_then_succeeds() -> None:
+    inner, calls = _counting([_TransportFailure("timed out", delivered=True), _Reply(status="ok")])
+    reply = _with_retry(inner, sleep=lambda _s: None)("GET", "/elements", None)
+    assert reply.status == "ok"
+    assert calls[0] == 2  # first attempt failed, second succeeded
+
+
+def test_write_that_times_out_after_delivery_is_not_re_sent() -> None:
+    # A POST whose response timed out *after* the request was delivered must not be re-issued — that
+    # could double-apply the gesture. It fails loudly on the first attempt instead.
+    inner, calls = _counting([_TransportFailure("timed out", delivered=True), _Reply(status="ok")])
+    with pytest.raises(XcuitestChannelError, match="POST /gesture"):
+        _with_retry(inner, sleep=lambda _s: None)("POST", "/gesture", {"kind": "pinch"})
+    assert calls[0] == 1  # no retry: the second (success) reply was never reached
+
+
+def test_write_that_never_reached_the_runner_is_retried() -> None:
+    # A connect/send failure means the runner never acted, so even a POST is safe to re-issue.
+    inner, calls = _counting([_TransportFailure("refused", delivered=False), _Reply(status="ok")])
+    reply = _with_retry(inner, sleep=lambda _s: None)("POST", "/gesture", {"kind": "pinch"})
+    assert reply.status == "ok"
+    assert calls[0] == 2
+
+
+def test_persistent_failure_exhausts_attempts_and_fails_loudly() -> None:
+    inner, calls = _counting([_TransportFailure("refused", delivered=False)] * (_MAX_ATTEMPTS + 2))
+    with pytest.raises(XcuitestChannelError, match="GET /elements failed: refused"):
+        _with_retry(inner, sleep=lambda _s: None)("GET", "/elements", None)
+    assert calls[0] == _MAX_ATTEMPTS  # exactly the bounded number of attempts, no more
+
+
+def test_a_decoded_outcome_reply_is_never_retried() -> None:
+    # `stale` / `not-found` are decoded outcomes (a `_Reply`, not a `_TransportFailure`), so the
+    # retry seam returns them untouched — retrying an outcome is exactly the absorption BE-0049 rejects.
+    inner, calls = _counting([_Reply(status="not-found")])
+    reply = _with_retry(inner, sleep=lambda _s: None)("POST", "/tap", {"handle": "h"})
+    assert reply.status == "not-found"
+    assert calls[0] == 1
+
+
+def test_each_retry_emits_a_diagnostic(caplog: Any) -> None:
+    inner, _calls = _counting([_TransportFailure("timed out", delivered=True), _Reply(status="ok")])
+    with caplog.at_level("WARNING"):
+        _with_retry(inner, sleep=lambda _s: None)("GET", "/elements", None)
+    assert any("GET /elements" in r.message and "1/" in r.message for r in caplog.records)
+
+
+def test_retry_knobs_are_bounded() -> None:
+    # A small fixed attempt count, per BE-0207: enough to ride out a brief stall, not so many that a
+    # wedged runner is retried for an unbounded stretch.
+    assert 1 < _MAX_ATTEMPTS <= 5
