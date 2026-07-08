@@ -220,8 +220,8 @@ Log:
 - Added the Claude Code subscription (OAuth) provider alongside Bedrock (item 6): the workflow
   prefers the `CLAUDE_CODE_OAUTH_TOKEN` secret when set, else Bedrock via OIDC, else stays a green
   no-op. Exactly one provider is active per run.
-- Hardened after review (#807): the on-demand comment path now requires the exact `@claude review`
-  phrase *and* a trusted actor (OWNER/MEMBER/COLLABORATOR), closing a fork-PR secret-exposure gap;
+- Hardened after review (#807): the on-demand comment path now requires the comment to contain
+  `@claude review` *and* a trusted actor (OWNER/MEMBER/COLLABORATOR), closing a fork-PR secret-exposure gap;
   the Bedrock gate now requires both `AWS_BEDROCK_ROLE_ARN` and `BEDROCK_MODEL_ID` (a half-configured
   Environment stays a no-op instead of failing red); the docs now state the dormant-until-configured
   behavior.

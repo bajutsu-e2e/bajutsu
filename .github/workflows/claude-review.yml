@@ -58,7 +58,7 @@ jobs:
     name: claude review
     runs-on: ubuntu-latest
     # Auto-review on every PR event. The on-demand path (item 4) is additive and hardened against
-    # fork-PR secret exposure: a comment event runs only when it is a PR comment, carries the exact
+    # fork-PR secret exposure: a comment event runs only when it is a PR comment, contains the
     # `@claude review` phrase, AND comes from a trusted actor (OWNER/MEMBER/COLLABORATOR). Because
     # `issue_comment` runs with repo secrets even on fork PRs, restricting the association is what
     # stops an untrusted commenter from triggering a credentialed run.
