@@ -7,8 +7,9 @@
 |---|---|
 | 提案 | [BE-0209](BE-0209-android-codegen-emitter-ja.md) |
 | 提案者 | [@hirosassa](https://github.com/hirosassa) |
-| 状態 | **提案** |
+| 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0209") |
+| 実装 PR | [#854](https://github.com/bajutsu-e2e/bajutsu/pull/854) |
 | トピック | codegen coverage |
 | 関連 | [BE-0007](../BE-0007-android-backend/BE-0007-android-backend-ja.md), [BE-0083](../BE-0083-codegen-emitter-unification/BE-0083-codegen-emitter-unification-ja.md) |
 <!-- /BE-METADATA -->
@@ -71,11 +72,26 @@ Espresso（`onView(withId(...)).perform(...)`）と UI Automator
 > 作業分解（作業の単位ごとに 1 つ）に対応し、ログには変更内容と時期（古い順）を PR へのリンクと
 > ともに記録します。
 
-- [ ] 方言を選ぶ（UI Automator か Espresso か）。根拠つき。
-- [ ] BE-0083 の共通 walk の上に載る行単位のエミッタ（`bajutsu/codegen_espresso.py`）。
-- [ ] `resource-id`／`text`／`content-desc` へのセレクタのマッピング。
-- [ ] `EMIT_TARGETS`／`codegen_emit` へのターゲット登録。Android ターゲットに限定。
-- [ ] 検証：シナリオ fixture に対する byte-for-byte の golden 出力テスト。
+- [x] 方言を選ぶ（UI Automator か Espresso か）。根拠つき。
+- [x] BE-0083 の共通 walk の上に載る行単位のエミッタ（`bajutsu/codegen_uiautomator.py`）。
+- [x] `resource-id`／`text`／`content-desc` へのセレクタのマッピング。
+- [x] `EMIT_TARGETS`／`codegen_emit` へのターゲット登録。Android ターゲットに限定。
+- [x] 検証：シナリオに対する生成出力テスト（XCUITest と Playwright のエミッタと同じ部分文字列の
+  スタイル）。実機は不要。
+
+**方言：UI Automator（Kotlin）。** adb バックエンドは `uiautomator dump` でツリーを読み、
+`resource-id`／`text`／`content-desc` をそのまま対応づけます（`drivers/adb.py`）。したがって
+UI Automator のエミッタは、ドライバがすでに行っていることを忠実に逆向きにしたものになります
+（`UiDevice`／`UiObject2` に対する `By.res`／`By.text`／`By.desc`）。Espresso の
+`onView(withId(R.id.…))` は、文字列キーのシナリオが持たない `R` 参照を要するので、出荷済みの
+バックエンドの双子としては劣ります。
+
+- 2026-07-09: UI Automator エミッタ（`bajutsu/codegen_uiautomator.py`）を BE-0083 の共通 walk の上に
+  出荷し、`uiautomator` を `EMIT_TARGETS`／`generate_test` に登録（Android の `package` に限定）、
+  `codegen` CLI の `--emit` ヘルプとターゲットヒントを更新し、serve Web UI が Android ターゲットで
+  `uiautomator` を提示するようにし、`docs/codegen.md`（と ja）にターゲットを記載しました。
+  `tests/test_codegen_uiautomator.py` と `tests/serve/test_http_codegen.py` でカバーしています
+  （[#854](https://github.com/bajutsu-e2e/bajutsu/pull/854)）。
 
 ## 参考
 

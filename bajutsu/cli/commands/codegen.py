@@ -14,7 +14,9 @@ from bajutsu.scenario import load_scenarios
 def codegen(
     scenario: str,
     target_name: str = typer.Option(..., "--target"),
-    emit: str = typer.Option("xcuitest", "--emit", help="output format (xcuitest | playwright)"),
+    emit: str = typer.Option(
+        "xcuitest", "--emit", help="output format (xcuitest | playwright | uiautomator)"
+    ),
     out: str = typer.Option("-", "--out", "-o", help="output file, or - for stdout"),
     config: str = typer.Option(DEFAULT_CONFIG),
 ) -> None:
@@ -32,9 +34,13 @@ def codegen(
     try:
         code, _filename = generate_test(emit, scenarios, stem, eff)
     except CodegenError as exc:
-        # The CLI keeps its own web-target hint, which names the config key to set.
+        # The CLI keeps its own target hints, which name the config key to set.
         if emit == "playwright":
             typer.echo(f"--emit playwright needs targets.{target_name}.baseUrl (a web target)")
+        elif emit == "uiautomator":
+            typer.echo(
+                f"--emit uiautomator needs targets.{target_name}.package (an Android target)"
+            )
         else:
             typer.echo(str(exc))
         raise typer.Exit(2) from exc
