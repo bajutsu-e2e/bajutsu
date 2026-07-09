@@ -240,7 +240,7 @@ Bajutsu の「契約としての決定性」という立場を、Maestro の fla
 
 このリポジトリで並行作業する多数のセッションの摩擦を減らします。マージコンフリクトを設計の臭いとして扱い、独立した変更が互いに素なファイルだけに触れるようファイル流動を見直します。
 
-<!-- GENERATED:implemented-dev-infra -->
+<!-- GENERATED:implemented-developer-experience -->
 | ID | 項目 | 状態 |
 |---|---|---|
 | [BE-0043](BE-0043-conflict-resistant-file-flow/BE-0043-conflict-resistant-file-flow-ja.md) | コンフリクトに強いファイル流動（索引の生成・ファイル分割・git 衛生） | 実装済み |
@@ -270,7 +270,7 @@ Bajutsu の「契約としての決定性」という立場を、Maestro の fla
 | [BE-0213](BE-0213-glossary-and-docs-structure/BE-0213-glossary-and-docs-structure-ja.md) | 用語集とドキュメント構成の見直し | 実装済み |
 | [BE-0214](BE-0214-web-only-beginner-tutorial/BE-0214-web-only-beginner-tutorial-ja.md) | Web 版のみで完結する初学者向けチュートリアル(Xcode・Simulator 不要) | 実装済み |
 | [BE-0216](BE-0216-propose-and-build-parallel-skill/BE-0216-propose-and-build-parallel-skill-ja.md) | propose-and-build: BE 提案と実装を並行して書き、スタックしてつなぐ | 実装済み |
-<!-- /GENERATED:implemented-dev-infra -->
+<!-- /GENERATED:implemented-developer-experience -->
 
 ### コードベース品質・技術的負債
 
@@ -527,9 +527,9 @@ Web（Playwright）backend とその完成（リッチな capability、並列実
 
 このリポジトリで並行作業する多数のセッションの摩擦を減らします。マージコンフリクトを設計の臭いとして扱い、独立した変更が互いに素なファイルだけに触れるようファイル流動を見直します。
 
-<!-- GENERATED:in-progress-dev-infra -->
+<!-- GENERATED:in-progress-developer-experience -->
 
-<!-- /GENERATED:in-progress-dev-infra -->
+<!-- /GENERATED:in-progress-developer-experience -->
 
 ### Dogfood フィクスチャ（デモアプリ）
 
@@ -709,11 +709,11 @@ AI を使う経路（`record` ／ `crawl` ／ `triage --ai` ／ `run --apply`）
 
 ### 開発基盤（コントリビュータ体験）
 
-<!-- GENERATED:proposals-dev-infra -->
+<!-- GENERATED:proposals-developer-experience -->
 | ID | 項目 | 状態 |
 |---|---|---|
 | [BE-0217](BE-0217-harden-review-prompt/BE-0217-harden-review-prompt-ja.md) | 調査に基づく方針で自動 PR レビュープロンプトを強化する | 提案 |
-<!-- /GENERATED:proposals-dev-infra -->
+<!-- /GENERATED:proposals-developer-experience -->
 
 ### コードベース品質・技術的負債
 
