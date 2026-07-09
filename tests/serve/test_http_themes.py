@@ -6,6 +6,7 @@ import json
 import re
 from pathlib import Path
 
+import pytest
 from _shared import _get, _serve, project
 
 from bajutsu import serve as srv
@@ -74,3 +75,20 @@ def test_index_reflects_configured_default_theme(tmp_path: Path) -> None:
     finally:
         server.shutdown()
         server.server_close()
+
+
+def test_index_warns_on_unknown_default_theme(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    scn_dir, cfg, runs = project(tmp_path)
+    state = srv.ServeState(
+        scenarios_dir=scn_dir, config=cfg, runs_dir=runs, cwd=tmp_path, default_theme="nonexistent"
+    )
+    import bajutsu.serve.handler as _h
+
+    _h._index_html.cache_clear()
+    with caplog.at_level("WARNING"):
+        _h._index_html(state.themes_dir, state.default_theme)
+    assert "nonexistent" in caplog.text
+    assert "unthemed" in caplog.text
+    _h._index_html.cache_clear()

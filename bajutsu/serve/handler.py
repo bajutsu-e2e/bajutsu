@@ -11,6 +11,7 @@ from __future__ import annotations
 import functools
 import hashlib
 import json
+import logging
 import tempfile
 from http.cookies import SimpleCookie
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -590,6 +591,13 @@ def _index_html(themes_dir: Path | None = None, default_theme: str | None = None
 
     discovered = _themes.discover_themes(themes_dir)
     manifests = [*_themes.BUILTIN_THEMES, *(t.manifest for t in discovered)]
+    if default_theme is not None and default_theme not in {m.id for m in manifests}:
+        logging.getLogger(__name__).warning(
+            "ui.default_theme %r does not match any registered theme id %s — "
+            "the page will load unthemed",
+            default_theme,
+            sorted(m.id for m in manifests),
+        )
     return (
         _env()
         .get_template("serve.html.j2")

@@ -101,6 +101,17 @@ def discover_themes(themes_dir: Path | None) -> list[DiscoveredTheme]:
                 "skipping drop-in theme %s: id %r collides with a built-in theme", path, manifest.id
             )
             continue
+        if f'[data-theme="{manifest.id}"]' not in css:
+            # docs/cli.md says the [data-theme="<id>"] selector "must match" the filename stem, but
+            # nothing in the CSS format enforces it. A mismatch registers the theme in the picker
+            # while it silently applies nothing when selected — surfacing it keeps the fail-loudly
+            # convention the rest of this loop follows.
+            _log.warning(
+                'drop-in theme %s: no `[data-theme="%s"]` rule found — '
+                "it will list in the picker but never visually apply",
+                path,
+                manifest.id,
+            )
         themes.append(DiscoveredTheme(manifest=manifest, css=css))
     return themes
 

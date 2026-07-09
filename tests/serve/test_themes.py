@@ -73,6 +73,22 @@ def test_builtin_id_collision_is_skipped_with_warning(
     assert "collides with a built-in theme" in caplog.text
 
 
+def test_mismatched_selector_warns_but_still_registers(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    # A file named "solar.css" with a [data-theme="solarized"] selector is listed in the picker
+    # (it's a valid file) but never visually applied — surface a warning rather than failing silently.
+    (tmp_path / "solar.css").write_text(
+        '/* bajutsu-theme name: Solarized kind: dark */\n[data-theme="solarized"]{--bg:#002b36}\n',
+        encoding="utf-8",
+    )
+    with caplog.at_level("WARNING"):
+        found = discover_themes(tmp_path)
+    assert len(found) == 1  # still registered
+    assert found[0].manifest.id == "solar"
+    assert 'no `[data-theme="solar"]` rule found' in caplog.text
+
+
 def test_theme_manifests_prepends_builtins(tmp_path: Path) -> None:
     (tmp_path / "solarized.css").write_text(
         '/* bajutsu-theme name: Solarized kind: dark */\n[data-theme="solarized"]{--bg:#002b36}\n',
@@ -111,9 +127,8 @@ def test_malformed_config_yields_no_default(tmp_path: Path) -> None:
 
 def test_wrong_typed_default_theme_warns_and_yields_none(
     tmp_path: Path, caplog: pytest.LogCaptureFixture
-) -> (
-    None
-):  # A non-string value is an operator mistake — resolve to None, but warn (don't silently ignore).
+) -> None:
+    # A non-string value is an operator mistake — resolve to None, but warn (don't silently ignore).
     cfg = tmp_path / "c.yaml"
     cfg.write_text("ui:\n  default_theme: 5\n", encoding="utf-8")
     with caplog.at_level("WARNING"):
