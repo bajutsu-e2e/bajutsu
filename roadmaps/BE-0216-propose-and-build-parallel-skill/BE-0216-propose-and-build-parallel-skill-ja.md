@@ -9,7 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0216") |
-| 実装 PR | _pending_ |
+| 実装 PR | [#848](https://github.com/bajutsu-e2e/bajutsu/pull/848) |
 | トピック | Development infrastructure (contributor workflow) |
 <!-- /BE-METADATA -->
 
@@ -214,7 +214,7 @@ SKILL.md が符号化する順序の規律に帰着します。
 
 ### ログ
 
-- _pending_ — `propose-and-build` スキルを出荷。`.claude/skills/propose-and-build/SKILL.md`
+- [#848](https://github.com/bajutsu-e2e/bajutsu/pull/848) — `propose-and-build` スキルを出荷。`.claude/skills/propose-and-build/SKILL.md`
   （フロントマター + フェーズ A / フェーズ B / 引き継ぎ / ガードレール）を追加し、`ideation` と
   `implement-be` の各スキルを双方向に相互リンクし、`docs/ai-development.md`（と `docs/ja/` のミラー）と
   スキル段階の一覧に三つのスキルの三角形を記述しました。

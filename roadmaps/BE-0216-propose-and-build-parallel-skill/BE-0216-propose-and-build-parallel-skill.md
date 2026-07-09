@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0216") |
-| Implementing PR | _pending_ |
+| Implementing PR | [#848](https://github.com/bajutsu-e2e/bajutsu/pull/848) |
 | Topic | Development infrastructure (contributor workflow) |
 <!-- /BE-METADATA -->
 
@@ -225,7 +225,7 @@ discipline the SKILL.md encodes.
 
 ### Log
 
-- _pending_ — Ship the `propose-and-build` skill: add `.claude/skills/propose-and-build/SKILL.md`
+- [#848](https://github.com/bajutsu-e2e/bajutsu/pull/848) — Ship the `propose-and-build` skill: add `.claude/skills/propose-and-build/SKILL.md`
   (frontmatter + Phase A / Phase B / hand-off / guardrails), cross-link the `ideation` and
   `implement-be` skills both ways, and document the three-skill triangle in
   `docs/ai-development.md` (+ `docs/ja/` mirror) and the skill-tier list.
