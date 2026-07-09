@@ -89,3 +89,29 @@ def test_malformed_config_yields_no_default(tmp_path: Path) -> None:
     bad = tmp_path / "bad.yaml"
     bad.write_text("ui: {default_theme: x\n", encoding="utf-8")  # unbalanced brace → YAMLError
     assert read_default_theme(bad) is None
+
+
+def test_wrong_typed_default_theme_warns_and_yields_none(tmp_path: Path, caplog) -> None:  # type: ignore[no-untyped-def]
+    # A non-string value is an operator mistake — resolve to None, but warn (don't silently ignore).
+    cfg = tmp_path / "c.yaml"
+    cfg.write_text("ui:\n  default_theme: 5\n", encoding="utf-8")
+    with caplog.at_level("WARNING"):
+        assert read_default_theme(cfg) is None
+    assert "ui.default_theme" in caplog.text
+
+
+def test_typoed_ui_key_warns(tmp_path: Path, caplog) -> None:  # type: ignore[no-untyped-def]
+    # A typo'd sub-key (here `defualt_theme`) would otherwise vanish silently; surface it.
+    cfg = tmp_path / "c.yaml"
+    cfg.write_text("ui:\n  defualt_theme: daylight\n", encoding="utf-8")
+    with caplog.at_level("WARNING"):
+        assert read_default_theme(cfg) is None
+    assert "unknown ui.* key" in caplog.text
+
+
+def test_non_mapping_ui_warns(tmp_path: Path, caplog) -> None:  # type: ignore[no-untyped-def]
+    cfg = tmp_path / "c.yaml"
+    cfg.write_text("ui: daylight\n", encoding="utf-8")  # `ui` should be a mapping, not a scalar
+    with caplog.at_level("WARNING"):
+        assert read_default_theme(cfg) is None
+    assert "expected a mapping" in caplog.text

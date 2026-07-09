@@ -589,7 +589,7 @@ def _index_html(themes_dir: Path | None = None, default_theme: str | None = None
     from bajutsu.serve import themes as _themes
 
     discovered = _themes.discover_themes(themes_dir)
-    manifests = _themes.theme_manifests(themes_dir)
+    manifests = [*_themes.BUILTIN_THEMES, *(t.manifest for t in discovered)]
     return (
         _env()
         .get_template("serve.html.j2")

@@ -107,9 +107,11 @@ def read_default_theme(config_path: Path | None) -> str | None:
 
     A serve-only key: it is read straight from the raw YAML here, never added to the core ``Config``
     (which would reject it under ``extra="forbid"`` on the deterministic run path). A missing or
-    malformed config yields None rather than raising — the authoritative config loader surfaces such
-    errors on its own path, so the theme default must not be the thing that turns them into a
-    startup traceback.
+    malformed *config file* yields None rather than raising — the authoritative config loader
+    surfaces such errors on its own path, so the theme default must not be the thing that turns them
+    into a startup traceback. But a malformed ``ui:`` block itself (wrong shape, a typo'd key, a
+    non-string value) is warned about rather than resolving silently to None — the same fail-loudly
+    stance ``orgs:`` takes with its strict validation and ``discover_themes`` takes on a bad file.
     """
     if config_path is None:
         return None
@@ -118,5 +120,24 @@ def read_default_theme(config_path: Path | None) -> str | None:
     except (OSError, UnicodeDecodeError, yaml.YAMLError):
         return None
     ui = data.get("ui") if isinstance(data, dict) else None
-    default = ui.get("default_theme") if isinstance(ui, dict) else None
-    return default if isinstance(default, str) else None
+    if ui is None:
+        return None
+    if not isinstance(ui, dict):
+        _log.warning(
+            "ignoring `ui:` in %s: expected a mapping, got %s", config_path, type(ui).__name__
+        )
+        return None
+    unknown = sorted(k for k in ui if k != "default_theme")
+    if unknown:
+        _log.warning(
+            "ignoring unknown ui.* key(s) in %s: %s", config_path, ", ".join(map(str, unknown))
+        )
+    default = ui.get("default_theme")
+    if default is not None and not isinstance(default, str):
+        _log.warning(
+            "ignoring ui.default_theme in %s: expected a string, got %s",
+            config_path,
+            type(default).__name__,
+        )
+        return None
+    return default
