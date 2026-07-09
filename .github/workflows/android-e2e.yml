@@ -11,10 +11,13 @@
 # matches the local validation; only the ABI tracks the CI host.
 #
 # Positive-list path filter (mirrors web-e2e.yml): only the paths this lane exercises — the adb
-# driver and its command layer, the backend registry / lifecycle, the run pipeline and scenario
-# loader, the Android showcase and the shared scenarios, the config, and this workflow. Neither a
-# required check nor gated by the `changes` job, so a plain `paths:` filter is enough: an unrelated
-# PR simply doesn't run it. A new adb-relevant path defaults to NOT triggering — add it here.
+# driver, the run pipeline and scenario loader, the CLI entry points `bajutsu run` wires through,
+# the Android showcase and the shared scenarios, the config, and this workflow. `bajutsu/*.py`
+# covers the single-level top-level modules (the adb command layer, the backend registry, and the
+# platform lifecycle live there); `bajutsu/drivers/adb.py` is listed on its own because the wildcard
+# does not reach into subdirectories. Neither a required check nor gated by the `changes` job, so a
+# plain `paths:` filter is enough: an unrelated PR simply doesn't run it. A new adb-relevant path
+# defaults to NOT triggering — add it here.
 name: Android E2E (emulator)
 
 on:
@@ -23,14 +26,14 @@ on:
     branches: [main]
     paths: &android-paths
       - 'bajutsu/drivers/adb.py'
-      - 'bajutsu/adb.py'
-      - 'bajutsu/backends.py'
-      - 'bajutsu/platform_lifecycle.py'
       - 'bajutsu/runner/**'
       - 'bajutsu/scenario/**'
       - 'bajutsu/orchestrator/**'
       - 'bajutsu/*.py'
       - 'bajutsu/cli/commands/run.py'
+      - 'bajutsu/cli/__init__.py'
+      - 'bajutsu/cli/_shared.py'
+      - 'bajutsu/cli/commands/__init__.py'
       - 'demos/showcase/android/**'
       - 'demos/showcase/scenarios/**'
       - 'demos/showcase/showcase.config.yaml'
