@@ -54,6 +54,13 @@ def test_wait_until_gone() -> None:
     assert "await expect(page.getByTestId('spinner')).toBeHidden({ timeout: 3000 });" in code
 
 
+def test_back_goes_back_in_history() -> None:
+    # BE-0210: the web `back` step is browser history — emitted faithfully, not an unlabeled TODO.
+    code = _gen("- name: x\n  steps:\n    - back: {}\n")
+    assert "await page.goBack();" in code
+    assert "TODO" not in code
+
+
 def test_long_press_emits_click_delay() -> None:
     code = _gen(
         "- name: x\n  steps:\n    - longPress: { sel: { id: comp.longpress }, duration: 0.6 }\n"

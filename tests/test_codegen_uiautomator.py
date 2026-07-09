@@ -71,6 +71,13 @@ def test_type_into_sets_text_and_bare_type_is_todo() -> None:
     assert "// TODO: type without a target" in code
 
 
+def test_back_presses_the_system_key() -> None:
+    # BE-0210: UI Automator has a native system back (peer of the adb driver's keyevent 4).
+    code = _gen("- name: x\n  steps:\n    - back: {}\n")
+    assert "device.pressBack()" in code
+    assert "TODO" not in code
+
+
 def test_wait_for_and_until_gone() -> None:
     code = _gen(
         "- name: x\n  steps:\n"

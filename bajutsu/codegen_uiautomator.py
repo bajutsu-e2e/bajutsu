@@ -158,6 +158,10 @@ def _emit_step(step: Step) -> list[str]:
         return _act(step.tap.as_selector(), "click()")
     if step.double_tap is not None:
         return ["// TODO: doubleTap — UI Automator has no double-tap gesture; not generated"]
+    if step.back is not None:
+        # UI Automator has a native system back — the peer of the adb driver's `keyevent 4` — so
+        # codegen emits it faithfully rather than an unlabeled TODO (BE-0210).
+        return ["device.pressBack()"]
     if step.long_press is not None:
         # UiObject2.longClick() uses the platform long-press timeout; the scenario's duration has no
         # parameter here, so it is dropped (the honest closest gesture, not a wrong fixed sleep).
