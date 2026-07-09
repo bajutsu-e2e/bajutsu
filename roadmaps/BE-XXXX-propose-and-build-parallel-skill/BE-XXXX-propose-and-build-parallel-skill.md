@@ -121,6 +121,7 @@ afterward.
    and the skill says so rather than restating it.
 3. **Phase B — implement against the placeholder (delegates to `implement-be` steps 3–7).** Create
    `claude/<topic>-impl` **stacked on** `claude/<topic>` (or an isolated `make worktree` workspace, so the two
+   can truly proceed in parallel). Treat the `BE-XXXX-<slug>/` proposal as the spec, and run
    `implement-be`'s ground-in-the-code, plan-and-confirm, implement-with-tests, and review-the-diff
    steps — **with two carve-outs that depend on the not-yet-allocated id**: do **not** flip
    `Status` to Implemented, and do **not** add the `[BE-NNNN]` prefix. Open PR #2 as a **draft**
