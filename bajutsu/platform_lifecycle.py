@@ -86,6 +86,7 @@ from bajutsu import adb, simctl
 from bajutsu.backends import make_driver
 from bajutsu.config import Effective, require_android, require_ios, require_web
 from bajutsu.crawl import AliveCheck, ClearBlocking, Recover, Reset
+from bajutsu.doctor import namespace_of
 from bajutsu.drivers import base
 from bajutsu.network import Collector
 from bajutsu.orchestrator import DeviceControl, RelaunchFn
@@ -284,7 +285,7 @@ class _DeviceEnvironment:
         def reset(driver: base.Driver) -> None:
             e.terminate(bundle_id)
             e.launch(bundle_id, [*eff.launch_args, *simctl.locale_args(eff.locale)], eff.launch_env)
-            _await_ready(driver, ready_sel=eff.ready_when)
+            _await_ready(driver, ready_sel=eff.ready_when, id_namespaces=eff.id_namespaces)
 
         return reset
 
@@ -458,7 +459,7 @@ class AndroidEnvironment:
                 **(opts.env or {}),
             }
             e.launch(package, launch_env)
-            _await_ready(driver, ready_sel=eff.ready_when)
+            _await_ready(driver, ready_sel=eff.ready_when, id_namespaces=eff.id_namespaces)
 
         return relaunch
 
@@ -484,7 +485,7 @@ class AndroidEnvironment:
         def reset(driver: base.Driver) -> None:
             e.force_stop(package)
             e.launch(package, eff.launch_env)
-            _await_ready(driver, ready_sel=eff.ready_when)
+            _await_ready(driver, ready_sel=eff.ready_when, id_namespaces=eff.id_namespaces)
 
         return reset
 
@@ -575,7 +576,7 @@ class WebEnvironment:
         # carried across visits, so a path recorded in one worker's browser replays in another.
         def reset(driver: base.Driver) -> None:
             cast(base.BackendLifecycle, driver).reset_context()  # web-only (fresh context)
-            _await_ready(driver, ready_sel=eff.ready_when)
+            _await_ready(driver, ready_sel=eff.ready_when, id_namespaces=eff.id_namespaces)
 
         return reset
 
@@ -814,13 +815,21 @@ def _await_ready(
     poll_max: float = 0.5,
     *,
     ready_sel: base.Selector | None = None,
+    id_namespaces: list[str] | None = None,
 ) -> None:
     """Poll until the launched app has rendered its first screen.
 
-    With `ready_sel` (a target's `readyWhen`), waits for that element to appear — the readiness
-    signal for an app whose first interactive screen is a modal over always-present chrome, where the
-    plain element-count heuristic would return before the modal presents. Without it, falls back to
-    "more than the app root element" (any 2+ elements).
+    Readiness is decided by the strongest signal available, in order:
+
+    - `ready_sel` (a target's `readyWhen`): wait for that element to appear — the signal for an app
+      whose first interactive screen is a modal over always-present chrome, where a count heuristic
+      would return before the modal presents.
+    - `id_namespaces` (a target's `idNamespaces`): wait for any element whose id belongs to a declared
+      namespace. On a slow cold boot the device query can return SpringBoard (the Home screen's app
+      icons) before the app foregrounds — 2+ *off-namespace* elements that a bare count would wrongly
+      accept, letting the first scenario step race the real launch and time out. Requiring an
+      in-namespace element proves the app itself is on screen.
+    - neither: fall back to "more than the app root element" (any 2+ elements).
 
     Uses exponential backoff: the first poll is short (the app is often ready quickly) and subsequent
     intervals double up to `poll_max`, reducing wasted subprocess calls when the app takes longer to
@@ -829,17 +838,22 @@ def _await_ready(
     deadline = time.monotonic() + timeout
     poll = min(poll_init, poll_max)
     # Use the selector only when it has a per-element condition; otherwise (None, empty, or
-    # positional-only like `index`) fall back to the count heuristic — an all-matching selector would
-    # return on a single element, weaker than "2+".
+    # positional-only like `index`) fall back to the namespace/count heuristics — an all-matching
+    # selector would return on a single element, weaker than "in-namespace" or "2+".
     match_sel = ready_sel if ready_sel and any(k in ready_sel for k in _READY_MATCH_KEYS) else None
+    declared = set(id_namespaces or ())
     while time.monotonic() < deadline:
         try:
             elements = driver.query()
-            ready = (
-                len(base.find_all(elements, match_sel)) >= 1
-                if match_sel is not None
-                else len(elements) >= 2
-            )
+            if match_sel is not None:
+                ready = len(base.find_all(elements, match_sel)) >= 1
+            elif declared:
+                ready = any(
+                    el["identifier"] is not None and namespace_of(el["identifier"]) in declared
+                    for el in elements
+                )
+            else:
+                ready = len(elements) >= 2
             if ready:
                 return
         except (OSError, subprocess.CalledProcessError, ValueError):
@@ -904,7 +918,7 @@ def device_relauncher(
                 *simctl.locale_args(locale),
             ]
             e.launch(bundle_id, launch_args, launch_env)
-            _await_ready(driver, ready_sel=eff.ready_when)
+            _await_ready(driver, ready_sel=eff.ready_when, id_namespaces=eff.id_namespaces)
 
         return relaunch
 
