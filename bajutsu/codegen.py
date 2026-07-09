@@ -206,8 +206,9 @@ def _emit_step(step: Step) -> list[str]:
         return lines
     if step.back is not None:
         # iOS has no hardware back; the generated XCUITest taps the OS navigation back button, the
-        # same element the idb/XCUITest drivers tap at runtime (identifier "BackButton") — BE-0210.
-        return [f"{_element({'id': 'BackButton'})}.tap()"]
+        # same element the idb/XCUITest drivers tap at runtime. Reuse the shared constant so codegen
+        # cannot drift from the drivers if the id ever changes (BE-0210).
+        return [f"{_element({'id': base.OS_BACK_BUTTON})}.tap()"]
     if step.swipe is not None:
         sw = step.swipe
         if sw.on is not None and sw.direction is not None:
