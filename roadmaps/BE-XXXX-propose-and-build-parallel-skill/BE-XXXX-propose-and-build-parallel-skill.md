@@ -52,8 +52,10 @@ it falls out of the id-allocation timing, not out of any correctness need.
 
 The obvious fix — "just write the code alongside the proposal" — runs straight into BE-0089. Until
 the proposal merges, the item has **no** real id: it is `BE-XXXX` in the tree, the proposal PR
-carries **no** `[BE-NNNN]` title prefix (`scripts/lint_pr.py` rejects a prefixed BE-creation title),
-and the implementation therefore cannot honour the two `implement-be` steps that *depend* on a real
+carries **no** `[BE-NNNN]` title prefix by convention (`scripts/lint_pr.py` does not require or
+reject one here — its title check only fires when the branch name encodes a real id, which a
+BE-creation branch like `claude/<topic>` never does), and the implementation therefore cannot
+honour the two `implement-be` steps that *depend* on a real
 id — flipping the item to `Status: Implemented` with an `Implementing PR` row, and prefixing the
 implementation PR title `[BE-NNNN]`. So a parallel flow needs an explicit, ordered **hand-off**: a
 defined point at which the id becomes known and the implementation branch adopts it. Without that
@@ -118,7 +120,6 @@ afterward.
    skill. Open PR #1 with a plain scoped title and **no** `[BE-…]` prefix. Identical to `ideation`,
    and the skill says so rather than restating it.
 3. **Phase B — implement against the placeholder (delegates to `implement-be` steps 3–7).** Create
-   `claude/<topic>-impl` **stacked on** `claude/<topic>` (or an isolated `git worktree`, so the two
    `claude/<topic>-impl` **stacked on** `claude/<topic>` (or an isolated `make worktree` workspace, so the two
    `implement-be`'s ground-in-the-code, plan-and-confirm, implement-with-tests, and review-the-diff
    steps — **with two carve-outs that depend on the not-yet-allocated id**: do **not** flip
@@ -167,10 +168,13 @@ afterward.
 
 The skill is a procedure, so the deterministic outcome is the existing gate applied to whatever the
 implementation branch produces: `make check` green on PR #2 after the hand-off, the roadmap index
-reflecting `Status: Implemented`, and — enforced by CI's `pr-title` check — the `[BE-NNNN]` prefix
-present on the (post-hand-off) implementation PR and *absent* on the proposal PR. No new checker is
-added; the skill's correctness reduces to the already-gated `implement-be` end state plus the
-ordering discipline the SKILL.md encodes.
+reflecting `Status: Implemented`, and — enforced by CI's `pr-title` check once the (post-hand-off)
+implementation branch encodes `BE-NNNN` — the matching `[BE-NNNN]` title prefix on that PR. The
+proposal PR's title is not itself checked for the *absence* of a prefix (`scripts/lint_pr.py` only
+validates the prefix when the branch encodes a real id, which a BE-creation branch never does); its
+plain title is a convention the skill follows, not something CI enforces. No new checker is added;
+the skill's correctness reduces to the already-gated `implement-be` end state plus the ordering
+discipline the SKILL.md encodes.
 
 ## Alternatives considered
 
@@ -235,7 +239,8 @@ ordering discipline the SKILL.md encodes.
 - [BE-0103 — Right-size the model and reasoning effort per development task](../BE-0103-dev-model-effort-tiering/BE-0103-dev-model-effort-tiering.md)
   — the default `model:` the new SKILL.md's frontmatter carries.
 - [`scripts/lint_pr.py`](../../scripts/lint_pr.py) · [`.github/workflows/pr-title.yml`](../../.github/workflows/pr-title.yml)
-  — the CI check enforcing `[BE-NNNN]` on the post-hand-off implementation PR and its absence on the
-  proposal PR.
+  — the CI check that enforces the matching `[BE-NNNN]` prefix once a branch encodes a real id
+  (post-hand-off implementation PR); it does not check the proposal PR's title for the prefix's
+  absence, since a BE-creation branch never encodes an id in the first place.
 - [`CLAUDE.md`](../../CLAUDE.md) · [`docs/ai-development.md`](../../docs/ai-development.md) — the
   parallel-work rules and the three-skill triangle this documents.
