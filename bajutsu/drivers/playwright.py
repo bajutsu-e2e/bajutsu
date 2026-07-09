@@ -551,19 +551,29 @@ class PlaywrightDriver:
         # locate it at the resolved point — the same coordinate a click would use, keeping matching
         # in resolve_unique rather than Playwright's engine — and set its value, firing `change` so
         # the page's listeners run exactly as for a user selection (BE-0191).
+        #
+        # JS returns a sentinel string instead of throwing: a JS Error from evaluate() passes
+        # through _wedge_guard as a generic simctl.DeviceError (indistinguishable from a browser
+        # crash), so the two failure modes — not a <select>, option value absent — are surfaced as
+        # sentinel strings and re-raised here as ElementNotFound (a SelectorError) so the run loop
+        # can catch them with the same handler as any other selector failure.
         x, y = self._center(sel)
         opt = json.dumps(option)
-        self._page.evaluate(
+        result = self._page.evaluate(
             "(() => {"
             f"const el = document.elementFromPoint({x}, {y});"
             "const select = el && el.closest('select');"
-            "if (!select) throw new Error('selectOption: no <select> at the resolved element');"
-            f"if (![...select.options].some(o => o.value === {opt})) "
-            f"throw new Error('selectOption: no option with value ' + {opt});"
+            "if (!select) return 'no-select';"
+            f"if (![...select.options].some(o => o.value === {opt})) return 'no-option';"
             f"select.value = {opt};"
             "select.dispatchEvent(new Event('change', {bubbles: true}));"
+            "return 'ok';"
             "})()"
         )
+        if result == "no-select":
+            raise base.ElementNotFound(f"selectOption: resolved element is not a <select>: {sel!r}")
+        if result == "no-option":
+            raise base.ElementNotFound(f"selectOption: no option with value {option!r}: {sel!r}")
 
     @_wedge_guard
     def wait_for(self, sel: base.Selector) -> bool:
@@ -597,6 +607,7 @@ class PlaywrightDriver:
             base.Capability.CONDITION_WAIT,
             base.Capability.NETWORK,
             base.Capability.MULTI_TOUCH,
+            base.Capability.SELECT_OPTION,
         }
     )
 

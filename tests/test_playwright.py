@@ -209,9 +209,18 @@ class _FakePage:
         self.cdp = _FakeCDP()
         self.context = _FakeBrowserContext(self.cdp)
         self.evaluated: list[str] = []  # every evaluate() expression, for asserting non-query JS
+        # Optional queue of return values for non-query evaluate() calls. Each pop() serves one
+        # non-query call; once empty, non-query calls return None (simulating undefined JS return).
+        self.evaluate_returns: list[Any] = []
 
     def evaluate(self, expression: str) -> Any:
         self.evaluated.append(expression)
+        from bajutsu.dom import QUERY_JS
+
+        if expression == QUERY_JS:
+            return list(self._records)
+        if self.evaluate_returns:
+            return self.evaluate_returns.pop(0)
         return list(self._records)
 
     def goto(self, url: str) -> object:
@@ -450,6 +459,24 @@ def test_select_option_ambiguous_raises() -> None:
     drv, _ = _driver([_rec(identifier="dup", role="select"), _rec(identifier="dup", role="select")])
     with pytest.raises(base.AmbiguousSelector):
         drv.select_option({"id": "dup"}, "midnight")
+
+
+def test_select_option_raises_element_not_found_when_not_a_select() -> None:
+    # When JS returns 'no-select' (the resolved element is not a <select>), the driver raises
+    # ElementNotFound rather than letting _wedge_guard turn it into a DeviceError crash.
+    drv, page = _driver([_rec(identifier="nav.theme-picker", role="select", frame=[0, 0, 10, 10])])
+    page.evaluate_returns = ["no-select"]
+    with pytest.raises(base.ElementNotFound, match="not a <select>"):
+        drv.select_option({"id": "nav.theme-picker"}, "midnight")
+
+
+def test_select_option_raises_element_not_found_when_no_matching_option() -> None:
+    # When JS returns 'no-option' (no <option> has the requested value), the driver raises
+    # ElementNotFound — the same taxonomy as a missing element, not a browser crash.
+    drv, page = _driver([_rec(identifier="nav.theme-picker", role="select", frame=[0, 0, 10, 10])])
+    page.evaluate_returns = ["no-option"]
+    with pytest.raises(base.ElementNotFound, match="no option with value"):
+        drv.select_option({"id": "nav.theme-picker"}, "midnight")
 
 
 def _touch_points(params: Any) -> list[tuple[float, float]]:

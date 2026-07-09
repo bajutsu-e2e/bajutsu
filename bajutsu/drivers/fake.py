@@ -106,8 +106,9 @@ class FakeDriver:
     def screenshot(self, path: str) -> None:
         self.actions.append(("screenshot", path))
 
-    # A deliberately rich set (semanticTap / conditionWait / multiTouch) so tests can exercise those
-    # paths. Class constant so the preflight (BE-0082) reads it without constructing a driver.
+    # A deliberately rich set (semanticTap / conditionWait / multiTouch / selectOption) so tests
+    # can exercise those paths. Class constant so the preflight (BE-0082) reads it without
+    # constructing a driver.
     CAPABILITIES = frozenset(
         {
             base.Capability.QUERY,
@@ -116,6 +117,7 @@ class FakeDriver:
             base.Capability.SCREENSHOT,
             base.Capability.ELEMENTS,
             base.Capability.MULTI_TOUCH,
+            base.Capability.SELECT_OPTION,
         }
     )
 

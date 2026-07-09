@@ -47,6 +47,7 @@ class Capability:
     ELEMENTS = "elements"
     MULTI_TOUCH = "multiTouch"  # two-finger gestures (pinch / rotate); idb is single-touch
     WEBVIEW = "webView"  # DOM query/tap inside an embedded WKWebView (BE-0037)
+    SELECT_OPTION = "selectOption"  # set a native <select> by value; web only (BE-0191)
     # The `DeviceControl` family, one token per operation (BE-0212, split from the coarse
     # `deviceControl` of BE-0128). A backend advertises exactly the operations it can honor, so
     # preflight gates each device-control step on its own operation — the Android emulator backs
