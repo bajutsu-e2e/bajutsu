@@ -9,7 +9,7 @@ from pathlib import Path
 
 import pytest
 
-from bajutsu import intervals
+from bajutsu import intervals, simctl
 
 
 class FakeProc:
@@ -31,6 +31,18 @@ def test_record_video_cmd() -> None:
         "h264",
         "/tmp/v.mp4",
     ]
+
+
+def test_interval_cmds_reject_unvalidated_udid() -> None:
+    # These evidence-capture builders embed the udid in a simctl argv, so they validate it inline
+    # (mirroring adb's `screenrecord_cmd`/`logcat_cmd` via `_checked_serial`) — a bad --udid can't
+    # reach xcrun even if evidence capture is entered without the earlier Env-boundary check.
+    with pytest.raises(simctl.DeviceError, match="invalid udid"):
+        intervals.record_video_cmd("-rf; rm", "/tmp/v.mp4")
+    with pytest.raises(simctl.DeviceError, match="invalid udid"):
+        intervals.device_log_cmd("--set")
+    with pytest.raises(simctl.DeviceError, match="invalid udid"):
+        intervals.app_trace_cmd("a b", "com.x")
 
 
 def test_device_log_cmd_with_and_without_predicate() -> None:

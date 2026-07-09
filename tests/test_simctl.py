@@ -5,6 +5,8 @@ from __future__ import annotations
 import subprocess
 from collections.abc import Mapping
 
+import pytest
+
 from bajutsu import simctl
 
 
@@ -161,6 +163,30 @@ def test_shutdown_is_idempotent() -> None:
 
     simctl.Env("UDID", run=fake_run).shutdown()  # swallows the error
     assert calls == [["xcrun", "simctl", "shutdown", "UDID"]]
+
+
+def test_command_builders_reject_unvalidated_udid() -> None:
+    # Each builder validates the udid inline, so a direct builder call (bypassing Env, as
+    # serve does with bootstatus_cmd) can't smuggle an option-injecting / metacharacter id into
+    # xcrun argv — the same guarantee idb.py's builders give.
+    for builder in (simctl.erase_cmd, simctl.boot_cmd, simctl.bootstatus_cmd, simctl.pbpaste_cmd):
+        with pytest.raises(simctl.DeviceError, match="invalid udid"):
+            builder("-rf; rm")
+    with pytest.raises(simctl.DeviceError, match="invalid udid"):
+        simctl.launch_cmd("--set", "com.x")
+
+
+def test_env_validates_udid_at_construction() -> None:
+    # Env validates once in __init__ against the shared device-id policy, so every self.udid argv
+    # builder (erase/boot/launch/…) is covered — a malicious --udid can never reach a subprocess
+    # argv, not just the hand-patched ones. A leading `-` (option injection) / shell metacharacter /
+    # space / over-length id is rejected as a DeviceError, so the CLI exits 2 cleanly.
+    for bad in ["-rf", "--set", "a b", "a;b", "a$b", "", "x" * 129]:
+        with pytest.raises(simctl.DeviceError, match="invalid udid"):
+            simctl.Env(bad)
+    # UUID- / device-shaped ids and the `booted` alias pass through unchanged.
+    for good in ["booted", "U", "A1B2C3D4-1122-3344-5566-77889900AABB"]:
+        assert simctl.Env(good).udid == good
 
 
 def test_device_error_keeps_command_and_simctl_stderr() -> None:

@@ -13,6 +13,8 @@ import subprocess
 import tempfile
 from collections.abc import Callable, Mapping, Sequence
 
+from bajutsu.device_id import is_valid_device_id
+
 # (argv, extra_env) -> stdout
 RunFn = Callable[[list[str], Mapping[str, str] | None], str]
 
@@ -40,20 +42,47 @@ def device_error(exc: subprocess.CalledProcessError) -> DeviceError:
     return DeviceError(f"{msg}\n{detail}" if detail else msg)
 
 
+def validated_udid(udid: str) -> str:
+    """Return `udid` if it is safe to place on an `xcrun simctl` / `idb` argv, else raise.
+
+    The shared entry point for the simctl family of argv builders — this module's own builders,
+    plus the simctl argv assembled in `intervals.py` (evidence capture) and `platform_lifecycle.py`
+    (the xcodebuild destination). Public (unlike adb's per-module `_checked_serial`) precisely
+    because that argv-building is spread across modules; idb keeps its own copy as a separate
+    backend. The check is the shared `device_id` policy — chiefly that an id never leads with `-`,
+    which simctl would read as an option (argv option injection from an untrusted `--udid` / config).
+
+    Raises:
+        DeviceError: if `udid` violates the policy — so a bad `--udid` surfaces as the CLI's clean
+            exit-2 device fault, the same boundary adb's `_checked_serial` uses.
+    """
+    if is_valid_device_id(udid):
+        return udid
+    raise DeviceError(f"invalid udid: {udid!r}")
+
+
 def erase_cmd(udid: str) -> list[str]:
-    return ["xcrun", "simctl", "erase", udid]
+    return ["xcrun", "simctl", "erase", validated_udid(udid)]
 
 
 def boot_cmd(udid: str) -> list[str]:
-    return ["xcrun", "simctl", "boot", udid]
+    return ["xcrun", "simctl", "boot", validated_udid(udid)]
 
 
 def shutdown_cmd(udid: str) -> list[str]:
-    return ["xcrun", "simctl", "shutdown", udid]
+    return ["xcrun", "simctl", "shutdown", validated_udid(udid)]
 
 
 def launch_cmd(udid: str, bundle_id: str, args: Sequence[str] = ()) -> list[str]:
-    return ["xcrun", "simctl", "launch", "--terminate-running-process", udid, bundle_id, *args]
+    return [
+        "xcrun",
+        "simctl",
+        "launch",
+        "--terminate-running-process",
+        validated_udid(udid),
+        bundle_id,
+        *args,
+    ]
 
 
 def locale_args(locale: str) -> list[str]:
@@ -66,45 +95,45 @@ def locale_args(locale: str) -> list[str]:
 
 
 def terminate_cmd(udid: str, bundle_id: str) -> list[str]:
-    return ["xcrun", "simctl", "terminate", udid, bundle_id]
+    return ["xcrun", "simctl", "terminate", validated_udid(udid), bundle_id]
 
 
 def openurl_cmd(udid: str, url: str) -> list[str]:
-    return ["xcrun", "simctl", "openurl", udid, url]
+    return ["xcrun", "simctl", "openurl", validated_udid(udid), url]
 
 
 def screenshot_cmd(udid: str, path: str) -> list[str]:
-    return ["xcrun", "simctl", "io", udid, "screenshot", path]
+    return ["xcrun", "simctl", "io", validated_udid(udid), "screenshot", path]
 
 
 def record_video_cmd(udid: str, path: str) -> list[str]:
-    return ["xcrun", "simctl", "io", udid, "recordVideo", path]
+    return ["xcrun", "simctl", "io", validated_udid(udid), "recordVideo", path]
 
 
 def set_location_cmd(udid: str, lat: float, lon: float) -> list[str]:
-    return ["xcrun", "simctl", "location", udid, "set", f"{lat},{lon}"]
+    return ["xcrun", "simctl", "location", validated_udid(udid), "set", f"{lat},{lon}"]
 
 
 def clear_location_cmd(udid: str) -> list[str]:
-    return ["xcrun", "simctl", "location", udid, "clear"]
+    return ["xcrun", "simctl", "location", validated_udid(udid), "clear"]
 
 
 def push_cmd(udid: str, bundle_id: str, payload_path: str) -> list[str]:
-    return ["xcrun", "simctl", "push", udid, bundle_id, payload_path]
+    return ["xcrun", "simctl", "push", validated_udid(udid), bundle_id, payload_path]
 
 
 def keychain_reset_cmd(udid: str) -> list[str]:
-    return ["xcrun", "simctl", "keychain", udid, "reset"]
+    return ["xcrun", "simctl", "keychain", validated_udid(udid), "reset"]
 
 
 def pbcopy_cmd(udid: str) -> list[str]:
     """Write to the pasteboard via simctl pbcopy (text comes from stdin; empty stdin clears it)."""
-    return ["xcrun", "simctl", "pbcopy", udid]
+    return ["xcrun", "simctl", "pbcopy", validated_udid(udid)]
 
 
 def pbpaste_cmd(udid: str) -> list[str]:
     """Read the pasteboard via simctl pbpaste (the content comes back on stdout)."""
-    return ["xcrun", "simctl", "pbpaste", udid]
+    return ["xcrun", "simctl", "pbpaste", validated_udid(udid)]
 
 
 def home_cmd(udid: str) -> list[str]:
@@ -115,19 +144,19 @@ def home_cmd(udid: str) -> list[str]:
     *without* terminating it, so the app's state survives and `foreground` can resume the same
     process.
     """
-    return ["xcrun", "simctl", "launch", udid, "com.apple.springboard"]
+    return ["xcrun", "simctl", "launch", validated_udid(udid), "com.apple.springboard"]
 
 
 def foreground_cmd(udid: str, bundle_id: str) -> list[str]:
     """Resume a backgrounded app to the foreground (simctl launch, without
     --terminate-running-process, so the running process is brought forward rather than relaunched)."""
-    return ["xcrun", "simctl", "launch", udid, bundle_id]
+    return ["xcrun", "simctl", "launch", validated_udid(udid), bundle_id]
 
 
 def status_bar_override_cmd(udid: str, **kwargs: str | int) -> list[str]:
     """Override status bar fields. Supported keys (snake_case): time, battery_level,
     battery_state, cellular_bars, wifi_bars."""
-    cmd = ["xcrun", "simctl", "status_bar", udid, "override"]
+    cmd = ["xcrun", "simctl", "status_bar", validated_udid(udid), "override"]
     key_map = {
         "time": "--time",
         "battery_level": "--batteryLevel",
@@ -143,25 +172,25 @@ def status_bar_override_cmd(udid: str, **kwargs: str | int) -> list[str]:
 
 
 def status_bar_clear_cmd(udid: str) -> list[str]:
-    return ["xcrun", "simctl", "status_bar", udid, "clear"]
+    return ["xcrun", "simctl", "status_bar", validated_udid(udid), "clear"]
 
 
 def install_cmd(udid: str, app_path: str) -> list[str]:
-    return ["xcrun", "simctl", "install", udid, app_path]
+    return ["xcrun", "simctl", "install", validated_udid(udid), app_path]
 
 
 def uninstall_cmd(udid: str, bundle_id: str) -> list[str]:
-    return ["xcrun", "simctl", "uninstall", udid, bundle_id]
+    return ["xcrun", "simctl", "uninstall", validated_udid(udid), bundle_id]
 
 
 def get_app_container_cmd(udid: str, bundle_id: str) -> list[str]:
     """Path of the app's installed bundle — succeeds only if the app is installed."""
-    return ["xcrun", "simctl", "get_app_container", udid, bundle_id, "app"]
+    return ["xcrun", "simctl", "get_app_container", validated_udid(udid), bundle_id, "app"]
 
 
 def data_container_cmd(udid: str, bundle_id: str) -> list[str]:
     """Path of the app's data container (its sandbox home) — succeeds only if the app is installed."""
-    return ["xcrun", "simctl", "get_app_container", udid, bundle_id, "data"]
+    return ["xcrun", "simctl", "get_app_container", validated_udid(udid), bundle_id, "data"]
 
 
 def child_env(env: Mapping[str, str]) -> dict[str, str]:
@@ -179,7 +208,7 @@ def list_devices_cmd() -> list[str]:
 
 def bootstatus_cmd(udid: str) -> list[str]:
     """Boot the device if it isn't already (-b) and wait until it finishes booting."""
-    return ["xcrun", "simctl", "bootstatus", udid, "-b"]
+    return ["xcrun", "simctl", "bootstatus", validated_udid(udid), "-b"]
 
 
 def _real_run(args: list[str], extra_env: Mapping[str, str] | None = None) -> str:
@@ -248,7 +277,10 @@ class Env:
     """Thin simctl front end for one device."""
 
     def __init__(self, udid: str, run: RunFn = _real_run) -> None:
-        self.udid = udid
+        # Validate at construction so a bad --udid fails fast at the object boundary (the builders
+        # below also validate, so this is belt-and-suspenders — the same posture idb's IdbDriver
+        # takes for its own udid).
+        self.udid = validated_udid(udid)
         self._run = run
 
     def erase(self) -> None:

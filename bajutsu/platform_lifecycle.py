@@ -740,7 +740,10 @@ class XcuitestEnvironment(_DeviceEnvironment):
                     "-xctestrun",
                     str(self._patched_runner),
                     "-destination",
-                    f"platform=iOS Simulator,id={self._udid}",
+                    # Validate the udid inline before it lands on the xcodebuild command line
+                    # (belt-and-suspenders: `simctl.Env(self._udid)` above already raised on a bad
+                    # id) — the same defense-in-depth the simctl/idb argv builders apply.
+                    f"platform=iOS Simulator,id={simctl.validated_udid(self._udid)}",
                 ],
                 env={**os.environ, **forwarded},
                 stdout=subprocess.DEVNULL,
