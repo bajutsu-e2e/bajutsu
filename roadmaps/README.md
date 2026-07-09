@@ -302,6 +302,7 @@ Behavior-preserving cleanup inside `bajutsu/` itself — deduplication, decompos
 | [BE-0200](BE-0200-run-id-contract/BE-0200-run-id-contract.md) | Make the run-id format a single named contract | Implemented |
 | [BE-0201](BE-0201-record-enrich-shared-replay/BE-0201-record-enrich-shared-replay.md) | Consolidate the duplicated replay helpers of record and enrich | Implemented |
 | [BE-0202](BE-0202-serve-js-modularization/BE-0202-serve-js-modularization.md) | Split serve.js into section files without a build step | Implemented |
+| [BE-0205](BE-0205-crawl-command-decomposition/BE-0205-crawl-command-decomposition.md) | Decompose the crawl CLI command like run | Implemented |
 | [BE-0206](BE-0206-serve-state-module-split/BE-0206-serve-state-module-split.md) | Split serve job state from job execution | Implemented |
 <!-- /GENERATED:implemented-quality-debt -->
 
@@ -726,9 +727,7 @@ Keeping the autonomous crawl fast and its code lean as it grows.
 Behavior-preserving cleanup inside `bajutsu/` itself — deduplication, decomposition of oversized functions/modules, and naming clarity — as distinct from *Development infrastructure (contributor workflow)* above, which covers the tooling contributors use to work on this repo (CI, hooks, roadmap automation).
 
 <!-- GENERATED:proposals-quality-debt -->
-| ID | Item | Status |
-|---|---|---|
-| [BE-0205](BE-0205-crawl-command-decomposition/BE-0205-crawl-command-decomposition.md) | Decompose the crawl CLI command like run | Proposal |
+
 <!-- /GENERATED:proposals-quality-debt -->
 
 ### Integration with external services

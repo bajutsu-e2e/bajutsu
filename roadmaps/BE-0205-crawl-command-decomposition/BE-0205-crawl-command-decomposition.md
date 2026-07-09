@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0205](BE-0205-crawl-command-decomposition.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0205") |
+| Implementing PR | [#866](https://github.com/bajutsu-e2e/bajutsu/pull/866) |
 | Topic | Codebase quality & technical debt |
 <!-- /BE-METADATA -->
 
@@ -61,11 +62,19 @@ redesign.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] `_CrawlPlan` record
-- [ ] `_resolve_warm_start` extraction
-- [ ] Lane-planning / callback / guard-wiring helpers
-- [ ] `crawl` body reduced to options + thin sequence (typer signature untouched)
-- [ ] Unit tests for the extracted helpers
+- [x] `_CrawlPlan` record
+- [x] `_resolve_warm_start` extraction
+- [x] Lane-planning / callback / guard-wiring helpers
+- [x] `crawl` body reduced to options + thin sequence (typer signature untouched)
+- [x] Unit tests for the extracted helpers
+
+**Log**
+
+- [#866](https://github.com/bajutsu-e2e/bajutsu/pull/866): decomposed `crawl` into a frozen
+  `_CrawlPlan` record plus `_resolve_warm_start` / `_plan_lanes` / `_make_callbacks` / `_wire_health`
+  helpers and an `_execute` sequence, matching the shape BE-0143 gave `run`; added
+  `tests/test_crawl_lanes.py` for the extracted helpers. Behavior unchanged; the typer signature
+  stays inline (BE-0134 mirror).
 
 ## References
 

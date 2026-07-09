@@ -295,6 +295,7 @@ Bajutsu の「契約としての決定性」という立場を、Maestro の fla
 | [BE-0200](BE-0200-run-id-contract/BE-0200-run-id-contract-ja.md) | run id のフォーマットを 1 つの名前付き契約にする | 実装済み |
 | [BE-0201](BE-0201-record-enrich-shared-replay/BE-0201-record-enrich-shared-replay-ja.md) | record と enrich の重複したリプレイヘルパを統合する | 実装済み |
 | [BE-0202](BE-0202-serve-js-modularization/BE-0202-serve-js-modularization-ja.md) | serve.js をビルドなしのままセクション別ファイルに分割する | 実装済み |
+| [BE-0205](BE-0205-crawl-command-decomposition/BE-0205-crawl-command-decomposition-ja.md) | crawl コマンドを run と同じ形に分解する | 実装済み |
 | [BE-0206](BE-0206-serve-state-module-split/BE-0206-serve-state-module-split-ja.md) | serve のジョブ状態をジョブ実行から分離する | 実装済み |
 <!-- /GENERATED:implemented-quality-debt -->
 
@@ -719,9 +720,7 @@ AI を使う経路（`record` ／ `crawl` ／ `triage --ai` ／ `run --apply`）
 `bajutsu/` 内部のコードを対象にした、振る舞いを変えないクリーンアップです。重複コードの解消、肥大化した関数・モジュールの分割、命名の明確化などが含まれます。上記の「開発基盤（コントリビュータ体験）」がこのリポジトリで作業するためのツール（CI、フック、ロードマップ自動化）を指すのに対し、こちらは `bajutsu/` 自体のコード品質を扱う点で区別されます。
 
 <!-- GENERATED:proposals-quality-debt -->
-| ID | 項目 | 状態 |
-|---|---|---|
-| [BE-0205](BE-0205-crawl-command-decomposition/BE-0205-crawl-command-decomposition-ja.md) | crawl コマンドを run と同じ形に分解する | 提案 |
+
 <!-- /GENERATED:proposals-quality-debt -->
 
 ### 外部サービスとの連携
