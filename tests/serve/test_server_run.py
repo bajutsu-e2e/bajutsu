@@ -17,7 +17,7 @@ from pathlib import Path
 
 import httpx
 import pytest
-from _shared import project
+from _shared import patch_gcs_client, project
 
 from bajutsu import serve as srv
 
@@ -78,7 +78,7 @@ def test_build_state_server_wires_the_hosted_seams(
     from bajutsu.serve.server.scenarios import StorageScenarioStore
     from bajutsu.serve.server.secrets import DbSecretStore
 
-    monkeypatch.setenv("BAJUTSU_S3_BUCKET", "bkt")
+    monkeypatch.setenv("BAJUTSU_SERVER_STORE", "s3://bkt")
     monkeypatch.setenv("BAJUTSU_S3_REGION", "auto")
     monkeypatch.setenv("BAJUTSU_DATABASE_URL", "sqlite://")
     monkeypatch.setenv("BAJUTSU_SECRETS_KEY", Fernet.generate_key().decode("ascii"))
@@ -114,7 +114,7 @@ def test_build_state_server_has_no_repository_without_a_database_url(
     # The database is optional on the server backend: with BAJUTSU_DATABASE_URL unset the repository
     # stays None, so the existing server backing keeps working until a database is configured.
     monkeypatch.delenv("BAJUTSU_DATABASE_URL", raising=False)
-    monkeypatch.setenv("BAJUTSU_S3_BUCKET", "bkt")
+    monkeypatch.setenv("BAJUTSU_SERVER_STORE", "s3://bkt")
     monkeypatch.setenv("BAJUTSU_S3_REGION", "auto")
     monkeypatch.setenv("BAJUTSU_REDIS_URL", "redis://localhost:6379")
     _scn, cfg, runs = project(tmp_path)
@@ -140,7 +140,7 @@ def test_build_state_server_wires_the_repository_when_a_database_url_is_set(
 
     from bajutsu.serve.server.db import SqlRepository
 
-    monkeypatch.setenv("BAJUTSU_S3_BUCKET", "bkt")
+    monkeypatch.setenv("BAJUTSU_SERVER_STORE", "s3://bkt")
     monkeypatch.setenv("BAJUTSU_S3_REGION", "auto")
     monkeypatch.setenv("BAJUTSU_REDIS_URL", "redis://localhost:6379")
     monkeypatch.setenv("BAJUTSU_DATABASE_URL", "sqlite://")
@@ -164,7 +164,7 @@ def test_build_state_server_requires_a_secrets_key_with_a_database(
 ) -> None:
     # A database-backed server persists operator secrets encrypted, so the master key must be
     # provisioned — assembly fails loudly rather than degrading to plaintext-in-memory (BE-0136).
-    monkeypatch.setenv("BAJUTSU_S3_BUCKET", "bkt")
+    monkeypatch.setenv("BAJUTSU_SERVER_STORE", "s3://bkt")
     monkeypatch.setenv("BAJUTSU_S3_REGION", "auto")
     monkeypatch.setenv("BAJUTSU_DATABASE_URL", "sqlite://")
     monkeypatch.delenv("BAJUTSU_SECRETS_KEY", raising=False)
@@ -196,7 +196,7 @@ def test_build_state_server_uses_sql_sessions_when_db_is_configured(
 
     from bajutsu.serve.server.sessions import SqlSessionStore
 
-    monkeypatch.setenv("BAJUTSU_S3_BUCKET", "bkt")
+    monkeypatch.setenv("BAJUTSU_SERVER_STORE", "s3://bkt")
     monkeypatch.setenv("BAJUTSU_S3_REGION", "auto")
     monkeypatch.setenv("BAJUTSU_REDIS_URL", "redis://localhost:6379")
     monkeypatch.setenv("BAJUTSU_DATABASE_URL", "sqlite://")
@@ -220,7 +220,7 @@ def test_build_state_server_falls_back_to_in_memory_sessions_without_db(
 ) -> None:
     from bajutsu.serve.sessions import InMemorySessionStore
 
-    monkeypatch.setenv("BAJUTSU_S3_BUCKET", "bkt")
+    monkeypatch.setenv("BAJUTSU_SERVER_STORE", "s3://bkt")
     monkeypatch.setenv("BAJUTSU_S3_REGION", "auto")
     monkeypatch.setenv("BAJUTSU_REDIS_URL", "redis://localhost:6379")
     monkeypatch.delenv("BAJUTSU_DATABASE_URL", raising=False)
@@ -250,7 +250,7 @@ def test_build_state_server_wires_oauth_when_configured(
 ) -> None:
     from bajutsu.serve.server.oauth import GitHubOAuthClient
 
-    monkeypatch.setenv("BAJUTSU_S3_BUCKET", "bkt")
+    monkeypatch.setenv("BAJUTSU_SERVER_STORE", "s3://bkt")
     monkeypatch.setenv("BAJUTSU_S3_REGION", "auto")
     monkeypatch.setenv("BAJUTSU_REDIS_URL", "redis://localhost:6379")
     monkeypatch.setenv("BAJUTSU_OAUTH_GITHUB_CLIENT_ID", "cid")
@@ -277,7 +277,7 @@ def test_build_state_server_wires_oauth_when_configured(
 def test_build_state_server_parses_the_rbac_role_policy(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setenv("BAJUTSU_S3_BUCKET", "bkt")
+    monkeypatch.setenv("BAJUTSU_SERVER_STORE", "s3://bkt")
     monkeypatch.setenv("BAJUTSU_S3_REGION", "auto")
     monkeypatch.setenv("BAJUTSU_REDIS_URL", "redis://localhost:6379")
     monkeypatch.setenv("BAJUTSU_OAUTH_ADMINS", "root, ops")
@@ -300,7 +300,7 @@ def test_build_state_server_parses_the_rbac_role_policy(
 def test_build_state_server_parses_the_per_user_quota(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setenv("BAJUTSU_S3_BUCKET", "bkt")
+    monkeypatch.setenv("BAJUTSU_SERVER_STORE", "s3://bkt")
     monkeypatch.setenv("BAJUTSU_S3_REGION", "auto")
     monkeypatch.setenv("BAJUTSU_REDIS_URL", "redis://localhost:6379")
     monkeypatch.setenv("BAJUTSU_MAX_CONCURRENT_PER_USER", "3")
@@ -321,7 +321,7 @@ def test_build_state_server_parses_the_per_user_quota(
 def test_build_state_server_parses_the_per_org_quota(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setenv("BAJUTSU_S3_BUCKET", "bkt")
+    monkeypatch.setenv("BAJUTSU_SERVER_STORE", "s3://bkt")
     monkeypatch.setenv("BAJUTSU_S3_REGION", "auto")
     monkeypatch.setenv("BAJUTSU_REDIS_URL", "redis://localhost:6379")
     monkeypatch.setenv("BAJUTSU_MAX_CONCURRENT_PER_ORG", "5")
@@ -343,7 +343,7 @@ def test_build_state_server_has_no_oauth_without_the_env(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.delenv("BAJUTSU_OAUTH_GITHUB_CLIENT_ID", raising=False)
-    monkeypatch.setenv("BAJUTSU_S3_BUCKET", "bkt")
+    monkeypatch.setenv("BAJUTSU_SERVER_STORE", "s3://bkt")
     monkeypatch.setenv("BAJUTSU_S3_REGION", "auto")
     monkeypatch.setenv("BAJUTSU_REDIS_URL", "redis://localhost:6379")
     _scn, cfg, runs = project(tmp_path)
@@ -360,12 +360,12 @@ def test_build_state_server_has_no_oauth_without_the_env(
     assert state.oauth is None
 
 
-def test_build_state_server_requires_a_bucket(
+def test_build_state_server_requires_a_server_store(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.delenv("BAJUTSU_S3_BUCKET", raising=False)
+    monkeypatch.delenv("BAJUTSU_SERVER_STORE", raising=False)
     _scn, cfg, runs = project(tmp_path)
-    with pytest.raises(ValueError, match="BAJUTSU_S3_BUCKET"):
+    with pytest.raises(ValueError, match="BAJUTSU_SERVER_STORE"):
         srv._build_state(
             runs_dir=runs,
             config=cfg,
@@ -386,11 +386,55 @@ def test_build_state_server_without_extras_raises_a_clear_install_hint(
     # needs (the object-store client) so ImportError fires before any env check.
     import sys
 
-    monkeypatch.setenv("BAJUTSU_S3_BUCKET", "bkt")
+    monkeypatch.setenv("BAJUTSU_SERVER_STORE", "s3://bkt")
     monkeypatch.setenv("BAJUTSU_S3_REGION", "auto")
     monkeypatch.setitem(sys.modules, "boto3", None)
     _scn, cfg, runs = project(tmp_path)
     with pytest.raises(srv.MissingServerExtra, match="extra"):
+        srv._build_state(
+            runs_dir=runs,
+            config=cfg,
+            scenarios_dir=None,
+            root=tmp_path,
+            baselines_dir=None,
+            max_concurrent=4,
+            token=None,
+            backend="server",
+        )
+
+
+def test_build_state_server_without_the_gcs_extra_names_it_in_the_install_hint(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # The generic install hint predates GCS support and only ever needed to cover boto3 (bundled in
+    # the `server` extra) — it must also name `gcs` now that a gs:// BAJUTSU_SERVER_STORE is a real,
+    # separately-installed path (BE-0204), or the printed command doesn't actually fix the problem.
+    import sys
+
+    monkeypatch.setenv("BAJUTSU_SERVER_STORE", "gs://bkt")
+    monkeypatch.setitem(sys.modules, "google", None)
+    _scn, cfg, runs = project(tmp_path)
+    with pytest.raises(srv.MissingServerExtra, match="gcs"):
+        srv._build_state(
+            runs_dir=runs,
+            config=cfg,
+            scenarios_dir=None,
+            root=tmp_path,
+            baselines_dir=None,
+            max_concurrent=4,
+            token=None,
+            backend="server",
+        )
+
+
+def test_build_state_server_rejects_a_malformed_server_store(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # A malformed BAJUTSU_SERVER_STORE names the actual setting, not the sibling --evidence-store
+    # wording `evidence_target_from_uri` raises internally (BE-0204).
+    monkeypatch.setenv("BAJUTSU_SERVER_STORE", "bkt")  # no s3:// or gs:// scheme
+    _scn, cfg, runs = project(tmp_path)
+    with pytest.raises(ValueError, match="BAJUTSU_SERVER_STORE 'bkt' is invalid"):
         srv._build_state(
             runs_dir=runs,
             config=cfg,
@@ -433,9 +477,8 @@ def test_build_state_server_normalizes_a_prefix_without_a_slash(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     # A prefix without a trailing slash must not fuse into "tenantartifacts/" / "tenantscenarios/".
-    monkeypatch.setenv("BAJUTSU_S3_BUCKET", "bkt")
+    monkeypatch.setenv("BAJUTSU_SERVER_STORE", "s3://bkt/tenant")  # no trailing slash
     monkeypatch.setenv("BAJUTSU_S3_REGION", "auto")
-    monkeypatch.setenv("BAJUTSU_S3_PREFIX", "tenant")  # no trailing slash
     _scn, cfg, runs = project(tmp_path)
     state = srv._build_state(
         runs_dir=runs,
@@ -448,6 +491,30 @@ def test_build_state_server_normalizes_a_prefix_without_a_slash(
         backend="server",
     )
     # The artifact store keys a run-relative path under "<prefix>artifacts/", with the slash added.
+    assert state.artifacts._key("r1/report.html") == "tenant/artifacts/r1/report.html"
+
+
+def test_build_state_server_wires_a_gcs_object_store_from_a_gs_uri(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # A gs:// BAJUTSU_SERVER_STORE builds the server backend on GCSObjectStore instead of S3 (BE-0204)
+    # — a fake storage.Client keeps the real object_store_from_uri path off the network.
+    from bajutsu.object_store import GCSObjectStore
+
+    patch_gcs_client(monkeypatch)
+    monkeypatch.setenv("BAJUTSU_SERVER_STORE", "gs://bucket/tenant")
+    _scn, cfg, runs = project(tmp_path)
+    state = srv._build_state(
+        runs_dir=runs,
+        config=cfg,
+        scenarios_dir=None,
+        root=tmp_path,
+        baselines_dir=None,
+        max_concurrent=4,
+        token=None,
+        backend="server",
+    )
+    assert isinstance(state.artifacts._store, GCSObjectStore)
     assert state.artifacts._key("r1/report.html") == "tenant/artifacts/r1/report.html"
 
 

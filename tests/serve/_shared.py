@@ -14,6 +14,8 @@ from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
+import pytest
+
 from bajutsu import serve as srv
 
 SCENARIO = "- name: alpha\n  steps:\n    - tap: { id: home.title }\n- name: beta\n  steps:\n    - tap: { id: x }\n"
@@ -109,3 +111,26 @@ def _post(port: int, path: str, payload: dict[str, Any]) -> tuple[int, Any]:
 
 # Historic alias — `_post` already returns parsed JSON, so the two are identical.
 _post_json = _post
+
+
+class FakeGCSBucket:
+    """A `google.cloud.storage.Bucket` stand-in with no real behavior — enough for `GCSObjectStore`
+    to wrap, when a test only cares that a `gs://` URI resolved to a `GCSObjectStore`, not that it
+    can read/write objects."""
+
+
+class FakeGCSClient:
+    """A `google.cloud.storage.Client` stand-in whose `bucket()` hands back a `FakeGCSBucket`, so
+    `object_store_from_uri`'s ``gs://`` branch builds a real `GCSObjectStore` without a network call
+    or real GCP credentials (BE-0204)."""
+
+    def bucket(self, name: str) -> FakeGCSBucket:
+        return FakeGCSBucket()
+
+
+def patch_gcs_client(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Patches `google.cloud.storage.Client` to `FakeGCSClient`, so a `gs://` URI resolves through
+    the real `object_store_from_uri` without a network call or real GCP credentials (BE-0204)."""
+    from google.cloud import storage
+
+    monkeypatch.setattr(storage, "Client", FakeGCSClient)
