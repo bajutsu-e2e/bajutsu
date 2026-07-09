@@ -222,8 +222,9 @@ docker compose up -d            # postgres + minio + migrate（alembic upgrade h
 （BE-0204）。`s3://bucket/prefix`（S3 互換。この compose が同梱する MinIO）と `gs://bucket/prefix`
 （Google Cloud Storage）のどちらかを指定できます。すでに Google Cloud 上で他のスタックを動かしているなら、
 `docker-compose.yml` から `minio` と `minio-init` サービスを外し、`BAJUTSU_SERVER_STORE` を GCS バケットに
-向けて、コントロールプレーンのイメージに `s3` の代わりに `gcs` extra をインストールしてください
-（`uv sync --extra gcs`）。S3 互換バケットを別途用意する必要はなくなります。
+向けて、コントロールプレーンのイメージの [`deploy/self-host/Dockerfile`](../../deploy/self-host/Dockerfile)
+のインストール行に `gcs` extra を追加してください（`.[server,worker,db,oauth,gcs]`）。S3 互換バケットを
+別途用意する必要はなくなります。
 
 以前の `BAJUTSU_S3_BUCKET` / `BAJUTSU_S3_PREFIX` の組み合わせを使っていた環境からアップグレードするときは、
 prefix を URI のパスに畳み込んでください。`BAJUTSU_S3_BUCKET=bajutsu` と `BAJUTSU_S3_PREFIX=tenant/` の

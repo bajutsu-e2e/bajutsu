@@ -228,8 +228,9 @@ The artifact/scenario/baseline store itself is named by one URI, `BAJUTSU_SERVER
 (BE-0204) — `s3://bucket/prefix` (S3-compatible; MinIO, as shipped in this compose) or
 `gs://bucket/prefix` for a Google Cloud Storage bucket instead. Already running the rest of your
 stack on Google Cloud? Drop the `minio` / `minio-init` services from `docker-compose.yml`, point
-`BAJUTSU_SERVER_STORE` at your GCS bucket, and install the `gcs` extra on the control plane image
-(`uv sync --extra gcs`) in place of `s3` — no S3-compatible bucket needed at all.
+`BAJUTSU_SERVER_STORE` at your GCS bucket, and add the `gcs` extra to the control plane image's
+install line in [`deploy/self-host/Dockerfile`](../deploy/self-host/Dockerfile)
+(`.[server,worker,db,oauth,gcs]`) — no S3-compatible bucket needed at all.
 
 Upgrading from a deployment that set the older `BAJUTSU_S3_BUCKET` / `BAJUTSU_S3_PREFIX` pair? Fold
 the prefix into the URI's path — `BAJUTSU_S3_BUCKET=bajutsu` + `BAJUTSU_S3_PREFIX=tenant/` becomes

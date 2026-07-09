@@ -235,7 +235,7 @@ def object_store_from_uri(uri: StoreURI) -> ObjectStore:
             import boto3
         except ImportError as e:
             raise ImportError(
-                "the s3:// evidence store needs boto3 — install it with `uv sync --extra s3`"
+                "the s3:// store needs boto3 — install it with `uv sync --extra s3`"
             ) from e
         client = boto3.client(
             "s3",
@@ -247,8 +247,7 @@ def object_store_from_uri(uri: StoreURI) -> ObjectStore:
         from google.cloud import storage
     except ImportError as e:
         raise ImportError(
-            "the gs:// evidence store needs google-cloud-storage — "
-            "install it with `uv sync --extra gcs`"
+            "the gs:// store needs google-cloud-storage — install it with `uv sync --extra gcs`"
         ) from e
     return GCSObjectStore(storage.Client().bucket(uri.bucket))
 
