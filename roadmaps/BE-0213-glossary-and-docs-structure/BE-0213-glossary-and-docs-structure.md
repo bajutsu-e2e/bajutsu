@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0213") |
-| Implementing PR | _pending_ |
+| Implementing PR | [#853](https://github.com/bajutsu-e2e/bajutsu/pull/853) |
 | Topic | Development infrastructure (contributor workflow) |
 <!-- /BE-METADATA -->
 
@@ -146,7 +146,7 @@ cross-reference another new item — the per-item rewrite would resolve it to th
 
 **Log**
 
-- 2026-07-09 (_pending_ PR): Added `docs/glossary.md` and `docs/ja/glossary.md` — one entry per
+- 2026-07-09 ([#853](https://github.com/bajutsu-e2e/bajutsu/pull/853)): Added `docs/glossary.md` and `docs/ja/glossary.md` — one entry per
   domain term with disambiguation tables for the `driver` / `backend` / `actuator` / `platform`,
   `target` / `app` / `device`, scenario-vs-test, and `trace`-vs-`triage` clusters, grounded in
   `bajutsu/backends.py` and the scenario models rather than any doc's phrasing. Wired the page into
