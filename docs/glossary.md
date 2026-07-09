@@ -42,7 +42,7 @@ extract modifiers. Defined by `Step` in `bajutsu/scenario/models/steps.py`.
 **expect / assertion** — An **assertion** is a single machine-checkable check (one of `exists` /
 `value` / `label` / `count` / `enabled` / `disabled` / `selected` / `request` / `event` /
 `visual` / …). **`expect`** is the scenario-level list of assertions. This list is the *sole*
-source of pass/fail — no LLM ever decides a verdict (see [concepts §1](concepts.md#1-ai-is-the-author-and-the-investigator-never-the-judge)).
+source of pass/fail — no large language model (LLM) ever decides a verdict (see [concepts §1](concepts.md#1-ai-is-the-author-and-the-investigator-never-the-judge)).
 Assertions also appear inline on a step (`assert:`) and as a wait's `until` condition. Defined by
 `Assertion` in `bajutsu/scenario/models/assertions.py`.
 
@@ -54,7 +54,7 @@ deterministic — 0 matches or 2+ matches fail rather than guess. See
 [selectors](selectors.md); defined by `Selector` in `bajutsu/scenario/models/selector.py`.
 
 **component** — A reusable, parameterized sequence of steps, invoked from a step with `use:` and
-`with:`. It is a scenario-DSL macro, expanded away at compile time, so it does not affect
+`with:`. It is a macro in the scenario DSL (domain-specific language), expanded away at compile time, so it does not affect
 determinism — not a UI "component". Defined by `Component` in
 `bajutsu/scenario/models/scenario.py`; expanded by `bajutsu/scenario/expand.py`.
 
@@ -67,7 +67,7 @@ an assertion, a capture rule, and a scenario (YAML key `from`, model field `from
 **Tier 1** — AI live operation: exploration and authoring (`record`, `crawl`, `triage`, `serve`).
 Flexible and non-deterministic; it authors and investigates but never decides pass/fail.
 
-**Tier 2** — The deterministic runner (`bajutsu run`) that gates CI. No AI on this path; the
+**Tier 2** — The deterministic runner (`bajutsu run`) that gates CI (continuous integration). No AI on this path; the
 verdict comes only from the `expect` assertions. Tier 2 is the only pass/fail authority.
 
 The split is the top-level constraint of the project — see
@@ -137,7 +137,7 @@ Distinct from a step's inline `capture:`, which is a *one-shot* capture at that 
 
 **trace vs. triage** — One edit apart in spelling, opposite in kind:
 
-- **`trace`** (CLI verb) renders a *finished* run as a read-only text timeline (steps + network +
+- **`trace`** — a CLI (command-line interface) verb that renders a *finished* run as a read-only text timeline (steps + network +
   app trace), or with `--explain` previews how a scenario's `capturePolicy` would fire. It is
   deterministic and observational — no AI, no verdict. Engine in `bajutsu/trace.py`.
 - **`triage`** (CLI verb) is *AI diagnosing a failed run* and proposing a minimal fix. It is a

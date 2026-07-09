@@ -47,7 +47,7 @@ extract の修飾子を持ちません。定義は `bajutsu/scenario/models/step
 **expect / assertion（アサーション）**：**assertion（アサーション）** は機械チェック可能な検査ひとつ
 （`exists` / `value` / `label` / `count` / `enabled` / `disabled` / `selected` / `request` /
 `event` / `visual` などのいずれか）です。**`expect`** は、そのアサーションを並べたシナリオ単位のリスト
-です。このリストが合否の唯一の源であり、判定に LLM は一切関与しません
+です。このリストが合否の唯一の源であり、判定に LLM（大規模言語モデル）は一切関与しません
 （[concepts の 1](concepts.md#1-ai-は著者と調査役であり判定者ではない) を参照）。アサーションはステップ
 上の `assert:` としても、待機の `until` 条件としても現れます。定義は
 `bajutsu/scenario/models/assertions.py` の `Assertion` です。
@@ -60,7 +60,7 @@ AND で結合されるフィールドの集合（`id`、`idMatches`、`label`、
 してください。定義は `bajutsu/scenario/models/selector.py` の `Selector` です。
 
 **component（コンポーネント）**：再利用できる、パラメータ付きのステップ列です。ステップから `use:` と
-`with:` で呼び出します。シナリオ DSL のマクロであり、コンパイル時に展開されて消えるため、決定性には影響
+`with:` で呼び出します。シナリオ DSL（ドメイン固有言語）のマクロであり、コンパイル時に展開されて消えるため、決定性には影響
 しません。UI の「コンポーネント」ではありません。定義は `bajutsu/scenario/models/scenario.py` の
 `Component`、展開は `bajutsu/scenario/expand.py` です。
 
@@ -73,7 +73,7 @@ AND で結合されるフィールドの集合（`id`、`idMatches`、`label`、
 **Tier 1**：AI のライブ操作です。探索とオーサリング（`record`、`crawl`、`triage`、`serve`）を担いま
 す。柔軟ですが非決定的で、著者として書き調査役として調べますが、合否は決めません。
 
-**Tier 2**：CI をゲートする決定的なランナー（`bajutsu run`）です。この経路に AI はなく、合否は `expect`
+**Tier 2**：CI（継続的インテグレーション）をゲートする決定的なランナー（`bajutsu run`）です。この経路に AI はなく、合否は `expect`
 のアサーションだけから決まります。Tier 2 が唯一の合否の権限です。
 
 この分離はプロジェクトの最上位の制約です。[concepts の 1〜2](concepts.md#1-ai-は著者と調査役であり判定者ではない)
@@ -144,7 +144,7 @@ AND で結合されるフィールドの集合（`id`、`idMatches`、`label`、
 
 **trace と triage**：綴りは一文字違いですが、種類は正反対です。
 
-- **`trace`**（CLI の動詞）は、**完了した** run を読み取り専用のテキストのタイムライン（ステップ、
+- **`trace`** は、CLI（コマンドラインインターフェース）の動詞で、**完了した** run を読み取り専用のテキストのタイムライン（ステップ、
   ネットワーク、アプリトレース）として表示します。`--explain` を付けると、シナリオの `capturePolicy` が
   どう発火するかを事前にプレビューします。決定的で観測用であり、AI も合否判定もありません。エンジンは
   `bajutsu/trace.py` です。
