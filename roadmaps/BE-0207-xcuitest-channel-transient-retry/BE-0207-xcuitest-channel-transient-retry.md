@@ -11,6 +11,7 @@
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0207") |
 | Implementing PR | [#824](https://github.com/bajutsu-e2e/bajutsu/pull/824) |
 | Topic | On-device validation (M1 close-out) |
+| Related | [BE-0218](../BE-0218-e2e-simulator-flaky-readiness-actuation/BE-0218-e2e-simulator-flaky-readiness-actuation.md) |
 <!-- /BE-METADATA -->
 
 ## Introduction
