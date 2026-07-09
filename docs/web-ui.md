@@ -49,15 +49,15 @@ the backend's dependencies yourself — the idb client and `idb_companion` for a
 Playwright target does not need them). Either way the server does not open a browser for you: it
 binds `127.0.0.1`, so once it is running, open the printed URL yourself (`http://127.0.0.1:8765` by
 default, or the `--port` you passed). The full option list — `--port`, `--config`, `--root`,
-`--runs`, `--baselines`, `--host`, `--token`, `--max-concurrent-runs`, `--evidence-store` — is in
-the [CLI reference](cli.md#serve).
+`--runs`, `--baselines`, `--themes`, `--host`, `--token`, `--max-concurrent-runs`,
+`--evidence-store` — is in the [CLI reference](cli.md#serve).
 
 ## The layout
 
 The header holds seven top-level tabs: **Record**, **Replay**, **Crawl**, **Author**, **Stats**,
 **Usage**, and **Coverage**.
 To their right are **Open config** (with the active config's name shown beside it once one is bound,
-and a **View** button to inspect it — see below), **Settings**, and a dark/light theme toggle that
+and a **View** button to inspect it — see below), **Settings**, and a theme picker that
 follows your system by default. Each tab is a full screen of its own; switching tabs never discards
 what another tab was doing.
 
@@ -66,9 +66,12 @@ a **Simulators** multi-select, and an **erase device first** option; against a w
 / Chromium) those give way to a **show browser (headed)** option. The rest of each tab is the same
 across backends. The **Replay** tab also carries a **History** list of past runs (see below).
 
-**Theme.** The header's toggle switches between the dark and light theme. It follows your operating
-system's preference until you flip it; a manual flip is remembered (in the browser's local storage)
-until the system preference next changes, which drops the override and re-adopts the system mode.
+**Theme.** The header's picker chooses the visual theme. It lists every registered theme — the
+built-in **Midnight** (dark) and **Daylight** (light), plus any you drop in with `--themes` (see
+[the CLI reference](cli.md)) — grouped by dark and light. It follows your operating system's
+preference (or the configured `ui.default_theme`) until you choose one; an explicit choice is
+remembered (in the browser's local storage) until the system preference next changes, which drops
+the override and re-adopts the system mode.
 
 **Panel management (desktop).** On a desktop-width window, the Record, Replay, and Crawl tabs tile
 their panels: drag the divider between two panels to redistribute that pair's widths (the other

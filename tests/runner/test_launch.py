@@ -327,3 +327,56 @@ def test_await_ready_positional_only_selector_falls_back_to_count(
     driver = _ScriptedDriver([[_el("only", "O")], [_el("only", "O"), _el("second", "S")]])
     _await_ready(driver, ready_sel={"index": 0})  # type: ignore[arg-type]
     assert driver.calls >= 2  # ignored the index-only selector; waited for 2+ elements
+
+
+def test_await_ready_ignores_off_namespace_home_screen(monkeypatch: pytest.MonkeyPatch) -> None:
+    # The dominant smoke flake: on a slow cold boot idb queries SpringBoard (the Home screen's app
+    # icons) before the app foregrounds. Those are 2+ *off-namespace* elements, which the bare count
+    # heuristic wrongly accepts as "ready" — so the first scenario step then races the real launch and
+    # times out. With declared idNamespaces, readiness must wait for an element that belongs to the app.
+    _install_bounded_clock(monkeypatch)
+    springboard = [
+        _el("Safari", "Safari"),
+        _el("Messages", "Messages"),
+    ]  # Home screen, off-namespace
+    app_row = _el("stable.row.1", "Row 1")
+    driver = _ScriptedDriver([springboard, springboard, [*springboard, app_row]])
+    _await_ready(driver, id_namespaces=["stable"])  # type: ignore[arg-type]
+    assert (
+        driver.calls >= 3
+    )  # did not settle on the Home screen; waited for an in-namespace element
+
+
+def test_await_ready_returns_on_a_single_in_namespace_element(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # One element under a declared namespace already proves the app foregrounded, so it is ready even
+    # below the 2+ count — the namespace signal is stronger evidence than raw element count.
+    _install_bounded_clock(monkeypatch)
+    driver = _ScriptedDriver([[_el("stable.row.1", "Row 1")]])
+    _await_ready(driver, id_namespaces=["stable"])  # type: ignore[arg-type]
+    assert driver.calls == 1
+
+
+def test_await_ready_without_namespaces_keeps_count_heuristic(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # No declared idNamespaces (a -noax app, web, or an unconfigured target): the 2+ count heuristic
+    # is unchanged, so behavior for those targets is exactly as before.
+    _install_bounded_clock(monkeypatch)
+    driver = _ScriptedDriver([[_el("Safari", "S"), _el("Messages", "M")]])
+    _await_ready(driver, id_namespaces=[])  # type: ignore[arg-type]
+    assert driver.calls == 1
+
+
+def test_await_ready_selector_takes_precedence_over_namespaces(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # An explicit readyWhen is the strongest signal: when both are given, the selector governs and the
+    # namespace fallback does not short-circuit it (a modal over in-namespace chrome still waits).
+    _install_bounded_clock(monkeypatch)
+    chrome = [_el("stable.row.1", "Row 1")]  # in-namespace, but not the awaited modal
+    target = _el("onboarding.start", "Start")
+    driver = _ScriptedDriver([chrome, chrome, [*chrome, target]])
+    _await_ready(driver, ready_sel={"id": "onboarding.start"}, id_namespaces=["stable"])  # type: ignore[arg-type]
+    assert driver.calls >= 3  # waited for the selector despite an in-namespace element present

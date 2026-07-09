@@ -380,17 +380,20 @@ class IdbDriver:
     def screenshot(self, path: str) -> None:
         self._run(screenshot_cmd(self.udid, path))
 
-    # No semantic tap and no native network monitoring. `deviceControl` because the iOS Simulator
-    # lifecycle wires a real simctl-backed `DeviceControl` for idb runs (BE-0128). Exposed as a
+    # No semantic tap and no native network monitoring. The whole device-control family
+    # (`DEVICE_CONTROL_ALL`) because the iOS Simulator lifecycle wires a real simctl-backed
+    # `DeviceControl` for idb runs (BE-0128; per-operation tokens since BE-0212). Exposed as a
     # class constant so the preflight (BE-0082) can read it via `backends.capabilities_for` without
     # constructing a driver.
-    CAPABILITIES = frozenset(
-        {
-            base.Capability.QUERY,
-            base.Capability.ELEMENTS,
-            base.Capability.SCREENSHOT,
-            base.Capability.DEVICE_CONTROL,
-        }
+    CAPABILITIES = (
+        frozenset(
+            {
+                base.Capability.QUERY,
+                base.Capability.ELEMENTS,
+                base.Capability.SCREENSHOT,
+            }
+        )
+        | base.DEVICE_CONTROL_ALL
     )
 
     def capabilities(self) -> set[str]:

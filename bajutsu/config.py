@@ -806,17 +806,18 @@ def resolve(config: Config, target: str) -> Effective:
 def parse_config_dict(data: dict[str, Any]) -> Config:
     """Validate an already-parsed config document into a `Config`.
 
-    A top-level `orgs:` key is dropped before validation: the hosted multi-tenancy org model is a
-    `serve` concern the deterministic core does not understand (BE-0129), and a run in the hosted
-    topology legitimately reads an org-bearing config, so the core must ignore the key rather than
-    reject it under `extra="forbid"`. `bajutsu.serve.orgs` parses the org block separately. Every
-    other unknown key still fails loudly, preserving the typo guard.
+    Top-level `orgs:` and `ui:` keys are dropped before validation: the hosted multi-tenancy org
+    model (BE-0129) and the serve UI's `ui.default_theme` (BE-0191) are `serve` concerns the
+    deterministic core does not model, and a run in the hosted topology legitimately reads a config
+    carrying them, so the core must ignore the keys rather than reject them under `extra="forbid"`.
+    `bajutsu.serve.orgs` / `bajutsu.serve.themes` parse those blocks separately. Every other unknown
+    key still fails loudly, preserving the typo guard.
     """
-    # Only drop `orgs` from an actual mapping; a non-dict document (a YAML scalar/list) flows
-    # unchanged into model_validate, which raises a pydantic ValidationError (a ValueError) rather
-    # than the AttributeError a `.items()` on a scalar would throw and escape the callers' handling.
-    if isinstance(data, dict) and "orgs" in data:
-        data = {k: v for k, v in data.items() if k != "orgs"}
+    # Only drop from an actual mapping; a non-dict document (a YAML scalar/list) flows unchanged
+    # into model_validate, which raises a pydantic ValidationError (a ValueError) rather than the
+    # AttributeError a `.items()` on a scalar would throw and escape the callers' handling.
+    if isinstance(data, dict):
+        data = {k: v for k, v in data.items() if k not in ("orgs", "ui")}
     return Config.model_validate(data)
 
 

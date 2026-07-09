@@ -76,7 +76,7 @@ make check                # または: ruff（lint）+ mypy（strict 型）+ pyt
 
 ## ステップ 3：シナリオを読む
 
-シナリオはただの YAML です。名前付きテストのリストで、各テストは任意の `preconditions`、`steps` の
+シナリオファイルはただの YAML です。名前付きシナリオのリストで、各シナリオは任意の `preconditions`、`steps` の
 リスト、そして **機械チェック可能なアサーション** からなる `expect` ブロックを持ちます。同梱の smoke
 テスト [`demos/showcase/scenarios/smoke.yaml`](../../demos/showcase/scenarios/smoke.yaml) を開いてみましょう。
 

@@ -7,8 +7,9 @@
 |---|---|
 | 提案 | [BE-0216](BE-0216-propose-and-build-parallel-skill-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **提案** |
+| 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0216") |
+| 実装 PR | [#848](https://github.com/bajutsu-e2e/bajutsu/pull/848) |
 | トピック | Development infrastructure (contributor workflow) |
 <!-- /BE-METADATA -->
 
@@ -201,15 +202,22 @@ SKILL.md が符号化する順序の規律に帰着します。
 > 作業分解（作業の単位ごとに 1 つ）に対応し、ログには変更内容と時期（古い順）を PR へのリンクと
 > ともに記録します。
 
-- [ ] `.claude/skills/propose-and-build/SKILL.md` を執筆する（フロントマター + 本文）。
-- [ ] フェーズ A の節 — `ideation` の執筆規則に委譲する。
-- [ ] フェーズ B の節 — ID 依存の二つの外し込みを添えて `implement-be` ステップ 3〜7 に委譲する。
-- [ ] トラッキング Issue の先送りの注記（フェーズ B のあいだは BE-0109 の Issue が存在しない）。
-- [ ] 引き継ぎの節 — リベース、`BE-0216`→`BE-NNNN` の差分書き換え、ベース付け替え、`implement-be`
+- [x] `.claude/skills/propose-and-build/SKILL.md` を執筆する（フロントマター + 本文）。
+- [x] フェーズ A の節 — `ideation` の執筆規則に委譲する。
+- [x] フェーズ B の節 — ID 依存の二つの外し込みを添えて `implement-be` ステップ 3〜7 に委譲する。
+- [x] トラッキング Issue の先送りの注記（フェーズ B のあいだは BE-0109 の Issue が存在しない）。
+- [x] 引き継ぎの節 — リベース、`BE-0216`→`BE-NNNN` の差分書き換え、ベース付け替え、`implement-be`
       ステップ 8〜10。
-- [ ] ガードレール / スコープの節（いつ使うか、手戻りのトレードオフ、プライムディレクティブの束縛）。
-- [ ] `docs/ai-development.md`（+ `docs/ja/`）の三つのスキルの三角形の小節。三つの SKILL.md の
+- [x] ガードレール / スコープの節（いつ使うか、手戻りのトレードオフ、プライムディレクティブの束縛）。
+- [x] `docs/ai-development.md`（+ `docs/ja/`）の三つのスキルの三角形の小節。三つの SKILL.md の
       `References` を相互リンクする。
+
+### ログ
+
+- [#848](https://github.com/bajutsu-e2e/bajutsu/pull/848) — `propose-and-build` スキルを出荷。`.claude/skills/propose-and-build/SKILL.md`
+  （フロントマター + フェーズ A / フェーズ B / 引き継ぎ / ガードレール）を追加し、`ideation` と
+  `implement-be` の各スキルを双方向に相互リンクし、`docs/ai-development.md`（と `docs/ja/` のミラー）と
+  スキル段階の一覧に三つのスキルの三角形を記述しました。
 
 ## 参考
 

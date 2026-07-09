@@ -11,6 +11,7 @@
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0207") |
 | 実装 PR | [#824](https://github.com/bajutsu-e2e/bajutsu/pull/824) |
 | トピック | 実機検証（M1 クローズアウト） |
+| 関連 | [BE-0218](../BE-0218-e2e-simulator-flaky-readiness-actuation/BE-0218-e2e-simulator-flaky-readiness-actuation-ja.md) |
 <!-- /BE-METADATA -->
 
 ## はじめに

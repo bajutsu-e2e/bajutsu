@@ -22,17 +22,26 @@ _IDB = {
     base.Capability.QUERY,
     base.Capability.ELEMENTS,
     base.Capability.SCREENSHOT,
-    base.Capability.DEVICE_CONTROL,
-}
+} | base.DEVICE_CONTROL_ALL
 _FULL = _IDB | {
     base.Capability.SEMANTIC_TAP,
     base.Capability.CONDITION_WAIT,
     base.Capability.MULTI_TOUCH,
     base.Capability.NETWORK,
 }
-# idb minus device control — a backend that advertises no `deviceControl` (e.g. Playwright, or a
-# future backend without a real DeviceControl wired), used to prove device-control steps are gated.
-_NO_CONTROL = _IDB - {base.Capability.DEVICE_CONTROL}
+# idb minus the whole device-control family — a backend that advertises no device-control token
+# (e.g. Playwright, or a future backend without a real DeviceControl wired), used to prove
+# device-control steps are gated.
+_NO_CONTROL = _IDB - base.DEVICE_CONTROL_ALL
+# A backend that supports only part of the family (the Android emulator: setLocation + clipboard,
+# BE-0212) — used to prove preflight admits the supported subset and fails fast for the rest.
+_SUBSET = {
+    base.Capability.QUERY,
+    base.Capability.ELEMENTS,
+    base.Capability.SCREENSHOT,
+    base.Capability.DC_SET_LOCATION,
+    base.Capability.DC_CLIPBOARD,
+}
 
 
 def _sc(**body: object) -> Scenario:
@@ -140,30 +149,31 @@ def test_aggregates_every_unsupported_construct() -> None:
     assert any("screenshot" in r for r in reasons)
 
 
-# --- Device-control steps require deviceControl (BE-0128) ---
+# --- Device-control steps require their per-operation token (BE-0212, split from BE-0128) ---
 
-# One representative step per DeviceControl operation. `relaunch` is excluded: it is gated by the
-# injected RelaunchFn, not DeviceControl, so it is not part of this capability family.
+# One representative step per DeviceControl operation, paired with the per-operation capability
+# token it needs (BE-0212 split the coarse `deviceControl` family into these). `relaunch` is
+# excluded: it is gated by the injected RelaunchFn, not DeviceControl.
 _DEVICE_CONTROL_STEPS = (
-    {"setLocation": {"lat": 35.0, "lon": 139.0}},
-    {"push": {"payload": {"aps": {"alert": "hi"}}}},
-    {"clearKeychain": {}},
-    {"clearClipboard": {}},
-    {"setClipboard": {"text": "x"}},
-    {"background": {}},
-    {"foreground": {}},
-    {"overrideStatusBar": {"time": "9:41"}},
-    {"clearStatusBar": {}},
+    ({"setLocation": {"lat": 35.0, "lon": 139.0}}, base.Capability.DC_SET_LOCATION),
+    ({"push": {"payload": {"aps": {"alert": "hi"}}}}, base.Capability.DC_PUSH),
+    ({"clearKeychain": {}}, base.Capability.DC_CLEAR_KEYCHAIN),
+    ({"clearClipboard": {}}, base.Capability.DC_CLIPBOARD),
+    ({"setClipboard": {"text": "x"}}, base.Capability.DC_CLIPBOARD),
+    ({"background": {}}, base.Capability.DC_APP_LIFECYCLE),
+    ({"foreground": {}}, base.Capability.DC_APP_LIFECYCLE),
+    ({"overrideStatusBar": {"time": "9:41"}}, base.Capability.DC_STATUS_BAR),
+    ({"clearStatusBar": {}}, base.Capability.DC_STATUS_BAR),
 )
 
 
-@pytest.mark.parametrize("step", _DEVICE_CONTROL_STEPS)
-def test_device_control_step_requires_device_control(step: dict[str, object]) -> None:
-    # Every device-control step needs `deviceControl`; a backend without it is rejected up front,
-    # and idb (which backs a real DeviceControl) runs it.
+@pytest.mark.parametrize(("step", "token"), _DEVICE_CONTROL_STEPS)
+def test_device_control_step_requires_its_token(step: dict[str, object], token: str) -> None:
+    # Each device-control step needs its own operation token; a backend missing exactly that token
+    # is rejected up front (naming it), and idb (the full family) runs it.
     sc = _sc(steps=[step])
-    reasons = capability_preflight.unsupported(sc, _NO_CONTROL)
-    assert reasons and any("deviceControl" in r for r in reasons)
+    reasons = capability_preflight.unsupported(sc, _IDB - {token})
+    assert reasons and any(token in r for r in reasons)
     assert capability_preflight.unsupported(sc, _IDB) == []
 
 
@@ -172,7 +182,7 @@ def test_device_control_reason_includes_step_index() -> None:
     reasons = capability_preflight.unsupported(sc, _NO_CONTROL)
     assert len(reasons) == 1
     assert reasons[0].startswith("step 2: ")
-    assert "deviceControl" in reasons[0]
+    assert base.Capability.DC_PUSH in reasons[0]
 
 
 def test_device_control_nested_in_for_each_is_detected() -> None:
@@ -190,7 +200,7 @@ def test_device_control_nested_in_for_each_is_detected() -> None:
     reasons = capability_preflight.unsupported(sc, _NO_CONTROL)
     assert len(reasons) == 1
     assert "step 1 > forEach[0]" in reasons[0]
-    assert "deviceControl" in reasons[0]
+    assert base.Capability.DC_SET_LOCATION in reasons[0]
 
 
 def test_multiple_device_control_steps_yield_multiple_reasons() -> None:
@@ -208,10 +218,63 @@ def test_multiple_device_control_steps_yield_multiple_reasons() -> None:
 
 
 def test_relaunch_is_not_gated_by_device_control() -> None:
-    # `relaunch` runs through the injected RelaunchFn, not DeviceControl, so a backend lacking
-    # deviceControl must not reject it.
+    # `relaunch` runs through the injected RelaunchFn, not DeviceControl, so a backend lacking the
+    # device-control family must not reject it.
     sc = _sc(steps=[{"relaunch": {}}])
-    assert capability_preflight.unsupported(sc, _IDB - {base.Capability.DEVICE_CONTROL}) == []
+    assert capability_preflight.unsupported(sc, _NO_CONTROL) == []
+
+
+# --- A backend that supports only a subset of the family (Android emulator, BE-0212) ---
+
+
+@pytest.mark.parametrize(
+    "step",
+    [
+        {"setLocation": {"lat": 1.0, "lon": 2.0}},
+        {"setClipboard": {"text": "x"}},
+        {"clearClipboard": {}},
+    ],
+)
+def test_subset_backend_admits_its_supported_operations(step: dict[str, object]) -> None:
+    # The Android subset advertises setLocation + clipboard, so preflight lets those steps through.
+    assert capability_preflight.unsupported(_sc(steps=[step]), _SUBSET) == []
+
+
+@pytest.mark.parametrize(
+    ("step", "token"),
+    [
+        ({"push": {"payload": {"aps": {"alert": "hi"}}}}, base.Capability.DC_PUSH),
+        ({"clearKeychain": {}}, base.Capability.DC_CLEAR_KEYCHAIN),
+        ({"background": {}}, base.Capability.DC_APP_LIFECYCLE),
+        ({"foreground": {}}, base.Capability.DC_APP_LIFECYCLE),
+        ({"overrideStatusBar": {"time": "9:41"}}, base.Capability.DC_STATUS_BAR),
+        ({"clearStatusBar": {}}, base.Capability.DC_STATUS_BAR),
+    ],
+)
+def test_subset_backend_rejects_its_unsupported_operations(
+    step: dict[str, object], token: str
+) -> None:
+    # Operations the emulator can't honor are failed fast, each named by its own token.
+    reasons = capability_preflight.unsupported(_sc(steps=[step]), _SUBSET)
+    assert len(reasons) == 1
+    assert reasons[0].startswith("step 1: ")
+    assert token in reasons[0]
+
+
+def test_subset_backend_admits_supported_and_names_only_unsupported() -> None:
+    # setLocation (supported) + push (unsupported) + clipboard (supported): only push is rejected,
+    # named individually — the per-operation split keeps fail-fast precise for a partial backend.
+    sc = _sc(
+        steps=[
+            {"setLocation": {"lat": 1.0, "lon": 2.0}},
+            {"push": {"payload": {"aps": {"alert": "hi"}}}},
+            {"setClipboard": {"text": "x"}},
+        ]
+    )
+    reasons = capability_preflight.unsupported(sc, _SUBSET)
+    assert len(reasons) == 1
+    assert reasons[0].startswith("step 2: ")
+    assert base.Capability.DC_PUSH in reasons[0]
 
 
 # --- Path hints in reason strings (BE-0024) ---

@@ -796,8 +796,18 @@ def test_parse_config_dict_drops_orgs() -> None:
     assert "demo" in cfg.targets
 
 
+def test_load_config_drops_top_level_ui() -> None:
+    # `ui.default_theme` is a serve-only presentation setting (BE-0191); like `orgs`, the core run
+    # path must ignore it rather than reject the document under extra="forbid".
+    cfg = load_config(
+        "targets:\n  demo: { bundleId: com.example.demo }\nui:\n  default_theme: daylight\n"
+    )
+    assert not hasattr(cfg, "ui")
+    assert _ios(resolve(cfg, "demo")).bundle_id == "com.example.demo"
+
+
 def test_unknown_top_level_key_still_rejected() -> None:
-    # Dropping `orgs` must not loosen the typo guard: any other stray top-level key still fails.
+    # Dropping `orgs` / `ui` must not loosen the typo guard: any other stray top-level key still fails.
     with pytest.raises(ValidationError):
         load_config("targetz:\n  demo: { bundleId: com.example.demo }\n")
 

@@ -29,10 +29,11 @@ pass/fail, and runs only when explicitly opted in
 
 ## 2. Two tiers (Tier 1 / Tier 2)
 
-- **Tier 1 = AI live operation**: exploration and authoring. Flexible but non-deterministic.
-  The artifact (the scenario YAML) is AI-independent and, from then on, owned and edited by humans.
-- **Tier 2 = deterministic runner**: CI regression. The same scenario follows the same path
-  every time.
+- **[Tier 1](glossary.md#the-two-tiers) = AI live operation**: exploration and authoring. Flexible
+  but non-deterministic. The artifact (the scenario YAML) is AI-independent and, from then on,
+  owned and edited by humans.
+- **[Tier 2](glossary.md#the-two-tiers) = deterministic runner**: CI regression. The same scenario
+  follows the same path every time.
 
 Both use the same `observe → act → verify` loop, but the layer where AI participates is
 strictly separated.
@@ -90,12 +91,12 @@ more fragile.
 > Actuation is always a frame-center coordinate tap: idb exposes no semantic tap, so the run loop
 > resolves the unique element and taps its frame center.
 
-The **actuator (the backend that performs actions) is the first available backend in the list**; it
-is fixed once at the start of a run and held for the whole run (to avoid the non-determinism of two
-drivers operating one device). The `backend` list is written most-stable-first and resolves through a
-platform-aware registry: a platform token (`ios` / `web` / `fake`; Android planned) expands to its
-actuator (`ios` → `idb`, `web` → `playwright`), and the first available one is chosen. Selection is
-always by `id`, so scenarios do not change
+The **actuator** — the backend that performs actions — is the first available one in the
+most-stable-first `backend` list; it is fixed once at the start of a run and held for the whole run
+(to avoid the non-determinism of two drivers operating one device). The full
+[driver / backend / actuator / platform](glossary.md#driver-backend-actuator-platform)
+relationship, and which actuators each platform expands to, is in the glossary. Selection is always
+by `id`, so scenarios do not change
 ([drivers](drivers.md#backend-selection-and-the-actuator)).
 
 ## 6. App-agnostic (push differences into config)
@@ -113,7 +114,8 @@ the reporter stay byte-for-byte the same. Per-platform differences live only in 
 ## 7. Evidence is rules (fire repeatedly)
 
 The request "capture evidence **every time** a particular action happens" is stored not as a
-one-shot instruction but as a **trigger-based rule** (`capturePolicy`). This way the same
+one-shot instruction but as a **trigger-based rule**
+([`capturePolicy`](glossary.md#evidence-capturepolicy-trace-triage)). This way the same
 evidence reproduces without AI on the second run onward ([evidence](evidence.md)).
 
 ---

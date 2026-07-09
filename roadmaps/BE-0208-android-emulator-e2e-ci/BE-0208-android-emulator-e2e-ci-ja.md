@@ -7,8 +7,9 @@
 |---|---|
 | 提案 | [BE-0208](BE-0208-android-emulator-e2e-ci-ja.md) |
 | 提案者 | [@hirosassa](https://github.com/hirosassa) |
-| 状態 | **提案** |
+| 状態 | **実装中** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0208") |
+| 実装 PR | [#851](https://github.com/bajutsu-e2e/bajutsu/pull/851) |
 | トピック | Platform expansion (Android / Web / Flutter) |
 | 関連 | [BE-0007](../BE-0007-android-backend/BE-0007-android-backend-ja.md) |
 <!-- /BE-METADATA -->
@@ -71,11 +72,31 @@ directive の枠内にとどまります。
 > 作業分解（作業の単位ごとに 1 つ）に対応し、ログには変更内容と時期（古い順）を PR へのリンクと
 > ともに記録します。
 
-- [ ] ワークフロー（`.github/workflows/android-e2e.yml`）。`android-emulator-runner` ＋ KVM、パスでゲート。
-- [ ] 起動したエミュレータへの Android showcase のビルドとインストール。
-- [ ] 通る中核シナリオを `--backend android` で実行。
+- [x] ワークフロー（`.github/workflows/android-e2e.yml`）。`android-emulator-runner` ＋ KVM、パスでゲート。
+- [x] 起動したエミュレータへの Android showcase のビルドとインストール。
+- [x] 通る中核シナリオを `--backend android` で実行。
 - [ ] visual／golden ベースラインの同等性チェック。
 - [ ] アクチュエーション忠実度とデバイス制御のスライスの着地に合わせたシナリオ集合の拡張。
+
+### ログ
+
+- 2026-07-09 — 最初のスライス（ユニット 1〜3）。`.github/workflows/android-e2e.yml` を追加しました。
+  KVM のもとで AVD を起動し（`reactivecircus/android-emulator-runner`）、コアの id/tap/type/value
+  シナリオを `--backend android` で回す Linux レーンで、`demos/showcase/android/Makefile` に足した
+  `e2e` ターゲットが駆動します。AVD は（ローカル検証の arm64 ではなく）**x86_64** の API 34 です。
+  x86_64 の GitHub Linux ランナーで KVM が加速するには x86_64 のシステムイメージが要り、異なる
+  アーキテクチャのイメージは遅いソフトウェアエミュレーションに落ちるためです。API レベルは一致し、
+  ABI だけを CI ホストに合わせています。`docs/ci.md`（と ja）に記載しました。`web-e2e.yml` と
+  同じくパスでゲートし、fast の `make check` ゲートの外に置いています。最初の CI 実行で、エミュレータが
+  起動してアプリを駆動できることを確認しました。`smoke`・`firstlook`・`search` は通りましたが、
+  `components` は sheet の表示を 5 秒待つところでタイムアウトしました。CI のエミュレータは
+  ソフトウェア描画（swiftshader）のため、ローカルのハードウェア加速された arm64 実機では通る 5 秒の
+  sheet 表示待ちには、modal の表示が遅すぎます。そこで sheet／cover 系の 2 本（`components`・`modals`）は
+  レーンの初期集合（`smoke`・`firstlook`・`search`・`data_driven`・`relaunch`・`system`）から外し、
+  実機タイミングの調整後に戻します（ユニット 5 に畳み込み）。ユニット 4（visual／golden ベースラインの
+  同等性）と 5（シナリオ集合の拡張）は残します。ベースラインの次元は実機での初回採取が前提で、追加
+  シナリオは先に BE-0007 の後続スライス（と上記の modal タイミング調整）が着地する必要があるためです。
+  項目は**実装中**のままです。
 
 ## 参考
 

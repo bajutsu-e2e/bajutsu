@@ -9,15 +9,18 @@ from __future__ import annotations
 
 from bajutsu.codegen import class_name_for, to_xcuitest
 from bajutsu.codegen_playwright import describe_name_for, to_playwright
-from bajutsu.config import Effective, web_base_url
+from bajutsu.codegen_uiautomator import class_name_for as uiautomator_class_name_for
+from bajutsu.codegen_uiautomator import to_uiautomator
+from bajutsu.config import Effective, android_package, web_base_url
 from bajutsu.scenario import Scenario
 
 # The emit formats `codegen` supports; the order the CLI's `--emit` help lists them in.
-EMIT_TARGETS = ("xcuitest", "playwright")
+EMIT_TARGETS = ("xcuitest", "playwright", "uiautomator")
 
 
 class CodegenError(ValueError):
-    """A codegen request that cannot be fulfilled: an unknown emit, or Playwright on a non-web target."""
+    """A codegen request that cannot be fulfilled: an unknown emit, or an emit on the wrong target
+    (Playwright needs a web target, UI Automator an Android target)."""
 
 
 def generate_test(
@@ -30,8 +33,8 @@ def generate_test(
             and the returned filename).
 
     Raises:
-        CodegenError: *emit* is not a known format, or it is ``playwright`` on a target with no
-            web base URL.
+        CodegenError: *emit* is not a known format, it is ``playwright`` on a target with no web
+            base URL, or ``uiautomator`` on a target with no Android package.
     """
     if emit not in EMIT_TARGETS:
         raise CodegenError(f"unsupported emit: {emit} (one of {', '.join(EMIT_TARGETS)})")
@@ -41,5 +44,12 @@ def generate_test(
             raise CodegenError("playwright codegen needs a web target (baseUrl)")
         code = to_playwright(scenarios, describe_name_for(stem), base_url, eff.launch_env)
         return code, f"{stem}.spec.ts"
+    if emit == "uiautomator":
+        package = android_package(eff)
+        if not package:
+            raise CodegenError("uiautomator codegen needs an Android target (package)")
+        class_name = uiautomator_class_name_for(stem)
+        code = to_uiautomator(scenarios, class_name, package, eff.launch_env)
+        return code, f"{class_name}.kt"
     class_name = class_name_for(stem)
     return to_xcuitest(scenarios, class_name, eff.launch_env), f"{class_name}.swift"

@@ -63,11 +63,31 @@ _OK = "ok"
 _STALE = "stale"  # the resolved handle no longer maps to a live element (the screen changed)
 _NOT_FOUND = "not-found"  # the runner could not act on the handle (no matching live element)
 
-# Socket timeout for a single runner request. BE-0105 replaced the per-attribute `/elements` walk
-# (~10s+ per screen) with one `app.snapshot()`, so the 60s stopgap is reverted to a bounded window:
-# generous enough for a cold first snapshot (XCUITest waits for the app to idle), tight enough that a
-# wedged runner fails loudly rather than hanging.
+# Socket timeout for a single runner *read* request (GET). BE-0105 replaced the per-attribute
+# `/elements` walk (~10s+ per screen) with one `app.snapshot()`, so the 60s stopgap is reverted to a
+# bounded window: generous enough for a cold first snapshot (XCUITest waits for the app to idle),
+# tight enough that a wedged runner fails loudly rather than hanging. A transient read blip is
+# absorbed by the BE-0207 retry, so this stays tight.
 _SOCKET_TIMEOUT_SECONDS = 15
+
+# Socket timeout for a single actuation *write* request (POST). A write synthesizes a real UI event —
+# a two-finger gesture on a loaded CI host can take longer than a read — and BE-0207 must NOT re-issue
+# a write after delivery (double-actuation risk), so a write cannot lean on the retry the way a read
+# does. It gets ONE longer but still bounded window instead: enough headroom for a slow actuation on a
+# contended host (the observed `POST /gesture failed: timed out` flake), while a genuinely wedged
+# runner still fails loudly rather than hanging. Kept ≤ the job's per-step budget by a wide margin.
+_ACTUATION_TIMEOUT_SECONDS = 30
+
+
+def _timeout_for(method: str) -> float:
+    """Per-attempt socket timeout for a channel call, chosen by its idempotency class.
+
+    Reads (`GET`) get the tight `_SOCKET_TIMEOUT_SECONDS` and lean on the BE-0207 retry to absorb a
+    transient blip; a write (`POST`) cannot be retried after delivery, so it gets the longer, still
+    bounded `_ACTUATION_TIMEOUT_SECONDS` to tolerate a slow actuation on a loaded host.
+    """
+    return _SOCKET_TIMEOUT_SECONDS if method == "GET" else _ACTUATION_TIMEOUT_SECONDS
+
 
 # Bounded retry for a *transient* transport hiccup (BE-0207), beside the per-attempt window above:
 # `_SOCKET_TIMEOUT_SECONDS` still bounds each single attempt (a wedged runner fails fast per try),
@@ -184,9 +204,10 @@ def _raw_http_transport(host: str, port: int) -> TransportFn:
     """
 
     def transport(method: str, path: str, body: Mapping[str, Any] | None) -> _Reply:
-        # One `app.snapshot()` per `/elements` (BE-0105), so the bounded `_SOCKET_TIMEOUT_SECONDS`
-        # still covers a cold first snapshot while failing a wedged runner in a reasonable window.
-        conn = http.client.HTTPConnection(host, port, timeout=_SOCKET_TIMEOUT_SECONDS)
+        # One `app.snapshot()` per `/elements` (BE-0105), so the bounded read window still covers a
+        # cold first snapshot; a write gets the longer actuation window (`_timeout_for`) since it
+        # can't be retried after delivery — both still fail a wedged runner in a reasonable window.
+        conn = http.client.HTTPConnection(host, port, timeout=_timeout_for(method))
         delivered = False
         try:  # pragma: no cover - exercised on-device against the real runner, not on the gate
             payload = json.dumps(body).encode() if body is not None else None
@@ -217,20 +238,23 @@ class XcuitestDriver:
 
     # Beyond idb: a semantic tap (by handle, no coordinates), native condition waiting, and the
     # two-finger gestures idb raises UnsupportedAction for. No NETWORK — network evidence comes from
-    # the app-side collector (BE-0020 boundary), not the actuator. `deviceControl` because xcuitest
-    # shares the iOS Simulator lifecycle, which wires a real simctl-backed `DeviceControl` for its
-    # runs too (BE-0128). A class constant so the preflight (BE-0082) reads it via
-    # backends.capabilities_for without constructing a driver.
-    CAPABILITIES = frozenset(
-        {
-            base.Capability.QUERY,
-            base.Capability.ELEMENTS,
-            base.Capability.SCREENSHOT,
-            base.Capability.SEMANTIC_TAP,
-            base.Capability.CONDITION_WAIT,
-            base.Capability.MULTI_TOUCH,
-            base.Capability.DEVICE_CONTROL,
-        }
+    # the app-side collector (BE-0020 boundary), not the actuator. The whole device-control family
+    # (`DEVICE_CONTROL_ALL`) because xcuitest shares the iOS Simulator lifecycle, which wires a real
+    # simctl-backed `DeviceControl` for its runs too (BE-0128; per-operation tokens since BE-0212).
+    # A class constant so the preflight (BE-0082) reads it via backends.capabilities_for without
+    # constructing a driver.
+    CAPABILITIES = (
+        frozenset(
+            {
+                base.Capability.QUERY,
+                base.Capability.ELEMENTS,
+                base.Capability.SCREENSHOT,
+                base.Capability.SEMANTIC_TAP,
+                base.Capability.CONDITION_WAIT,
+                base.Capability.MULTI_TOUCH,
+            }
+        )
+        | base.DEVICE_CONTROL_ALL
     )
 
     def __init__(

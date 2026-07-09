@@ -1,8 +1,8 @@
 """Codegen serve operation (BE-0137).
 
-Surfaces `bajutsu codegen` in the serve Web UI: turn a scenario into a native test (XCUITest
-or Playwright) for copy / download. A structural mapping from the scenario model to target
-syntax — deterministic, no device, no AI, and it never touches a verdict."""
+Surfaces `bajutsu codegen` in the serve Web UI: turn a scenario into a native test (XCUITest,
+Playwright, or UI Automator) for copy / download. A structural mapping from the scenario model to
+target syntax — deterministic, no device, no AI, and it never touches a verdict."""
 
 from __future__ import annotations
 
@@ -23,7 +23,8 @@ def generate_codegen(
 
     Args:
         body: ``{target, scenario, emit}`` — the config target, the scenario name inside that
-            target's scenarios dir, and the emit format (``xcuitest`` / ``playwright``).
+            target's scenarios dir, and the emit format (``xcuitest`` / ``playwright`` /
+            ``uiautomator``).
 
     Returns:
         ``({"code", "filename"}, 200)`` on success, or ``({"error"}, status)`` — the emit

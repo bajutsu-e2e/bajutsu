@@ -135,6 +135,7 @@ The first slices of the multi-platform direction that have shipped: a **platform
 | [BE-0126](BE-0126-per-platform-effective-config/BE-0126-per-platform-effective-config.md) | Split Effective into per-platform configs | Implemented |
 | [BE-0128](BE-0128-device-step-capability-preflight/BE-0128-device-step-capability-preflight.md) | Preflight-gate device-control steps by capability | Implemented |
 | [BE-0141](BE-0141-backend-lifecycle-protocol/BE-0141-backend-lifecycle-protocol.md) | Bring backend lifecycle into the type system | Implemented |
+| [BE-0212](BE-0212-granular-device-control-capabilities/BE-0212-granular-device-control-capabilities.md) | Split the coarse deviceControl capability into per-operation tokens | Implemented |
 <!-- /GENERATED:implemented-platform -->
 
 ### Backend expansion (iOS actuators)
@@ -272,6 +273,8 @@ Reduce friction for the many parallel sessions working this repo — treat merge
 | [BE-0159](BE-0159-flatten-roadmap-status-folders/BE-0159-flatten-roadmap-status-folders.md) | Flatten roadmap items into one directory (retire status-driven folders) | Implemented |
 | [BE-0162](BE-0162-roadmap-status-filter-skill/BE-0162-roadmap-status-filter-skill.md) | Roadmap status-filter skill for AI sessions | Implemented |
 | [BE-0203](BE-0203-claude-code-pr-review/BE-0203-claude-code-pr-review.md) | Claude Code as the automated PR code reviewer | Implemented |
+| [BE-0213](BE-0213-glossary-and-docs-structure/BE-0213-glossary-and-docs-structure.md) | Terminology glossary and documentation structure review | Implemented |
+| [BE-0216](BE-0216-propose-and-build-parallel-skill/BE-0216-propose-and-build-parallel-skill.md) | propose-and-build: author a BE proposal and its implementation in parallel, stacked | Implemented |
 <!-- /GENERATED:implemented-dev-infra -->
 
 ### Codebase quality & technical debt
@@ -441,6 +444,7 @@ Turning a passing scenario into a native test in a destination framework's idiom
 | [BE-0062](BE-0062-playwright-codegen/BE-0062-playwright-codegen.md) | Playwright codegen target | Implemented |
 | [BE-0083](BE-0083-codegen-emitter-unification/BE-0083-codegen-emitter-unification.md) | Unify the codegen emitters behind a shared scenario walk | Implemented |
 | [BE-0085](BE-0085-shrink-web-codegen-syntax/BE-0085-shrink-web-codegen-syntax.md) | Shrink unsupported web (Playwright) codegen syntax | Implemented |
+| [BE-0209](BE-0209-android-codegen-emitter/BE-0209-android-codegen-emitter.md) | Android codegen emitter (Espresso / UI Automator) | Implemented |
 <!-- /GENERATED:implemented-codegen -->
 
 ### Crawl performance / scale-out
@@ -465,6 +469,7 @@ Running the autonomous crawl across more than one device so a full screen map is
 | [BE-0087](BE-0087-idb-action-settle/BE-0087-idb-action-settle.md) | idb action timing robustness (settle before actuation) | Implemented |
 | [BE-0088](BE-0088-overlap-simulator-boot/BE-0088-overlap-simulator-boot.md) | Overlap the Simulator boot with the build | Implemented |
 | [BE-0207](BE-0207-xcuitest-channel-transient-retry/BE-0207-xcuitest-channel-transient-retry.md) | Make the XCUITest runner channel robust to transient timeouts | Implemented |
+| [BE-0218](BE-0218-e2e-simulator-flaky-readiness-actuation/BE-0218-e2e-simulator-flaky-readiness-actuation.md) | Stabilize the E2E Simulator gate: namespace-aware readiness and a bounded actuation timeout | Implemented |
 <!-- /GENERATED:implemented-on-device -->
 
 ### Integration with external services
@@ -502,6 +507,7 @@ The Web (Playwright) backend and its completion (rich capabilities, parallel run
 | ID | Item | Status |
 |---|---|---|
 | [BE-0007](BE-0007-android-backend/BE-0007-android-backend.md) | Android backend | In progress |
+| [BE-0208](BE-0208-android-emulator-e2e-ci/BE-0208-android-emulator-e2e-ci.md) | Android on-device e2e in CI (emulator via KVM) | In progress |
 <!-- /GENERATED:in-progress-platform -->
 
 ### Candidates from competitive research (MagicPod / Autify)
@@ -600,10 +606,8 @@ The scope is currently **limited to the iOS Simulator** ([DESIGN §1](../DESIGN.
 | ID | Item | Status |
 |---|---|---|
 | [BE-0008](BE-0008-flutter-support/BE-0008-flutter-support.md) | Flutter support | Proposal |
-| [BE-0208](BE-0208-android-emulator-e2e-ci/BE-0208-android-emulator-e2e-ci.md) | Android on-device e2e in CI (emulator via KVM) | Proposal |
 | [BE-0210](BE-0210-android-actuation-fidelity/BE-0210-android-actuation-fidelity.md) | Android on-device actuation fidelity | Proposal |
 | [BE-0211](BE-0211-android-device-control/BE-0211-android-device-control.md) | Android device control (setLocation, clipboard) | Proposal |
-| [BE-0212](BE-0212-granular-device-control-capabilities/BE-0212-granular-device-control-capabilities.md) | Split the coarse deviceControl capability into per-operation tokens | Proposal |
 <!-- /GENERATED:proposals-platform -->
 
 ### Authoring experience (record / GUI editor)
@@ -686,9 +690,7 @@ Where `bajutsu` reads its config and scenario tree from. Today that is a local p
 Turning a passing scenario into a native test in a destination framework's idiom. These items shrink the range of constructs an emitter drops to a `// TODO`.
 
 <!-- GENERATED:proposals-codegen -->
-| ID | Item | Status |
-|---|---|---|
-| [BE-0209](BE-0209-android-codegen-emitter/BE-0209-android-codegen-emitter.md) | Android codegen emitter (Espresso / UI Automator) | Proposal |
+
 <!-- /GENERATED:proposals-codegen -->
 
 ### Crawl performance / scale-out
@@ -716,9 +718,7 @@ Keeping the autonomous crawl fast and its code lean as it grows.
 <!-- GENERATED:proposals-dev-infra -->
 | ID | Item | Status |
 |---|---|---|
-| [BE-0213](BE-0213-glossary-and-docs-structure/BE-0213-glossary-and-docs-structure.md) | Terminology glossary and documentation structure review | Proposal |
 | [BE-0214](BE-0214-web-only-beginner-tutorial/BE-0214-web-only-beginner-tutorial.md) | Web-only beginner tutorial (no Xcode/Simulator required) | Proposal |
-| [BE-0216](BE-0216-propose-and-build-parallel-skill/BE-0216-propose-and-build-parallel-skill.md) | propose-and-build: author a BE proposal and its implementation in parallel, stacked | Proposal |
 | [BE-0217](BE-0217-harden-review-prompt/BE-0217-harden-review-prompt.md) | Harden the automated PR review prompt with research-backed policy | Proposal |
 <!-- /GENERATED:proposals-dev-infra -->
 

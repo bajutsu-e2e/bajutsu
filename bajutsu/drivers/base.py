@@ -47,7 +47,32 @@ class Capability:
     ELEMENTS = "elements"
     MULTI_TOUCH = "multiTouch"  # two-finger gestures (pinch / rotate); idb is single-touch
     WEBVIEW = "webView"  # DOM query/tap inside an embedded WKWebView (BE-0037)
-    DEVICE_CONTROL = "deviceControl"  # simctl DeviceControl family as one unit (BE-0128)
+    # The `DeviceControl` family, one token per operation (BE-0212, split from the coarse
+    # `deviceControl` of BE-0128). A backend advertises exactly the operations it can honor, so
+    # preflight gates each device-control step on its own operation — the Android emulator backs
+    # setLocation + clipboard but not the rest. Operations that always ship together share a token
+    # (the clipboard read/write/clear trio; background/foreground; the status-bar override/clear pair).
+    DC_SET_LOCATION = "deviceControl.setLocation"
+    DC_CLIPBOARD = "deviceControl.clipboard"  # setClipboard / getClipboard / clearClipboard
+    DC_PUSH = "deviceControl.push"
+    DC_CLEAR_KEYCHAIN = "deviceControl.clearKeychain"
+    DC_APP_LIFECYCLE = "deviceControl.appLifecycle"  # background / foreground
+    DC_STATUS_BAR = "deviceControl.statusBar"  # overrideStatusBar / clearStatusBar
+
+
+# The whole `DeviceControl` family as a set of per-operation tokens (BE-0212). A backend that backs
+# the entire family (idb / xcuitest, via the iOS Simulator lifecycle) advertises this in one shot;
+# one that backs a subset (Android) lists only its operations' tokens.
+DEVICE_CONTROL_ALL = frozenset(
+    {
+        Capability.DC_SET_LOCATION,
+        Capability.DC_CLIPBOARD,
+        Capability.DC_PUSH,
+        Capability.DC_CLEAR_KEYCHAIN,
+        Capability.DC_APP_LIFECYCLE,
+        Capability.DC_STATUS_BAR,
+    }
+)
 
 
 class Element(TypedDict):

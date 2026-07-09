@@ -16,6 +16,7 @@ import pytest
 
 from bajutsu.drivers import base
 from bajutsu.drivers.xcuitest import (
+    _ACTUATION_TIMEOUT_SECONDS,
     _MAX_ATTEMPTS,
     _SOCKET_TIMEOUT_SECONDS,
     TransportFn,
@@ -23,7 +24,9 @@ from bajutsu.drivers.xcuitest import (
     XcuitestDriver,
     _decode,
     _is_retry_eligible,
+    _raw_http_transport,
     _Reply,
+    _timeout_for,
     _TransportFailure,
     _with_retry,
 )
@@ -282,6 +285,51 @@ def test_socket_timeout_is_bounded_after_the_single_snapshot_query() -> None:
     # generous 60s stopgap is no longer needed: the timeout must stay bounded to a reasonable window
     # (it still covers a cold first snapshot) so a wedged runner fails loudly rather than hanging.
     assert 0 < _SOCKET_TIMEOUT_SECONDS <= 30
+
+
+def test_actuation_write_gets_a_longer_bounded_timeout_than_reads() -> None:
+    # A multi-touch gesture on a loaded CI host can take longer than a read, and BE-0207 must not
+    # re-issue a write after delivery (double-actuation risk) — so a write gets ONE longer window
+    # rather than the retry a read leans on. Reads stay tight; the write window stays bounded so a
+    # genuinely wedged runner still fails loudly.
+    assert _timeout_for("GET") == _SOCKET_TIMEOUT_SECONDS
+    assert _timeout_for("POST") == _ACTUATION_TIMEOUT_SECONDS
+    assert _ACTUATION_TIMEOUT_SECONDS > _SOCKET_TIMEOUT_SECONDS
+    assert _ACTUATION_TIMEOUT_SECONDS <= 60  # still bounded
+
+
+def test_raw_transport_applies_the_per_method_socket_timeout(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # The single-attempt transport must open each connection with the timeout for that method's
+    # idempotency class: reads tight, actuation writes longer. Faked at the http.client boundary
+    # (allowed: it is a real network call) so the wiring is verified without a Simulator.
+    seen: list[tuple[str, float | None]] = []
+
+    class _FakeResponse:
+        status = 200
+
+        def read(self) -> bytes:
+            return b'{"status":"ok"}'
+
+    class _FakeConn:
+        def __init__(self, host: str, port: int, timeout: float | None = None) -> None:
+            self._timeout = timeout
+
+        def request(self, method: str, path: str, body: Any = None, headers: Any = None) -> None:
+            seen.append((method, self._timeout))
+
+        def getresponse(self) -> _FakeResponse:
+            return _FakeResponse()
+
+        def close(self) -> None:
+            pass
+
+    monkeypatch.setattr("bajutsu.drivers.xcuitest.http.client.HTTPConnection", _FakeConn)
+    transport = _raw_http_transport("127.0.0.1", 1234)
+    transport("GET", "/elements", None)
+    transport("POST", "/gesture", {"kind": "pinch"})
+    assert seen == [("GET", _SOCKET_TIMEOUT_SECONDS), ("POST", _ACTUATION_TIMEOUT_SECONDS)]
 
 
 # --- transient-transport retry policy (BE-0207) --- #
