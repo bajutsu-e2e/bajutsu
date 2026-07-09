@@ -54,8 +54,8 @@ resolution, and the **preflight capability check** (below).
 | `conditionWait` | native condition waiting | — | — | ✅ | ✅ |
 | `network` | native network monitoring | — | — | ✅ | — |
 | `multiTouch` | two-finger gestures (pinch / rotate) | — | — | ✅ | ✅ |
-| `deviceControl.setLocation` | set the simulated GPS location | ✅ | — | — | — |
-| `deviceControl.clipboard` | read / write / clear the clipboard | ✅ | — | — | — |
+| `deviceControl.setLocation` | set the simulated GPS location | ✅ | ✅ | — | — |
+| `deviceControl.clipboard` | read / write / clear the clipboard | ✅ | ✅ | — | — |
 | `deviceControl.push` | deliver a push notification | ✅ | — | — | — |
 | `deviceControl.clearKeychain` | clear the keychain | ✅ | — | — | — |
 | `deviceControl.appLifecycle` | background / foreground the app | ✅ | — | — | — |
@@ -70,9 +70,10 @@ resolution, and the **preflight capability check** (below).
 > idb and adb sit at the **lean end**, both actuating by **frame-center coordinates** — they expose
 > no semantic tap, so the run loop resolves a unique element via `query()` and taps its center.
 > `pinch` / `rotate` raise `UnsupportedAction` (single-touch); on iOS those go through codegen →
-> XCUITest. adb advertises exactly `query` / `elements` / `screenshot`; it has no device-control
-> family yet (none of the `deviceControl.*` tokens; Android device control is a follow-up, BE-0211).
-> The `fake` driver advertises a
+> XCUITest. adb advertises `query` / `elements` / `screenshot` plus the emulator-backed
+> device-control subset `deviceControl.setLocation` + `deviceControl.clipboard` (BE-0211); the rest
+> of the family has no faithful emulator equivalent and stays unadvertised. The `fake` driver
+> advertises a
 > richer
 > capability set (semanticTap / conditionWait / multiTouch) purely to exercise those code paths in
 > tests. The `playwright` (web) driver advertises `semanticTap` / `conditionWait` (Playwright has
@@ -183,7 +184,8 @@ abstraction resolves **id → frame center → coordinate tap**, exactly as on i
   `capture` policy drives them unchanged (see [evidence](evidence.md)).
 - **Network** is not observed natively (no `NETWORK` capability) — the same mocked story as iOS: the
   app-side collector URL is forwarded through the launch env as an intent extra, so `mocks` work with
-  no new code path. There is no device-control family yet (a BE-0007 follow-up).
+  no new code path. Device control backs the emulator subset `setLocation` (`emu geo fix`) and the
+  clipboard operations (`cmd clipboard`, BE-0211); the rest of the family stays unsupported.
 
 > The XML attribute names follow UI Automator's `uiautomator dump` schema. On-device tuning of the
 > selector mapping against the Android showcase (`demos/showcase/android`) — including whether the

@@ -43,9 +43,10 @@ class MailboxReader(Protocol):
 
 
 class DeviceControl(Protocol):
-    """Device-environment operations a step may trigger (simctl-backed). Injected by the
-    runner so the orchestrator stays backend-agnostic; None means unavailable (the fake
-    driver, or parallel runs which don't pin a single device)."""
+    """Device-environment operations a step may trigger (simctl on iOS, adb on Android). Injected by
+    the runner so the orchestrator stays backend-agnostic; None means unavailable (the fake driver,
+    or parallel runs which don't pin a single device). A backend that backs only part of the family
+    (the Android emulator) raises UnsupportedAction for the rest, guarded up front by preflight."""
 
     def set_location(self, lat: float, lon: float) -> None: ...
     def push(self, payload: dict[str, object]) -> None: ...

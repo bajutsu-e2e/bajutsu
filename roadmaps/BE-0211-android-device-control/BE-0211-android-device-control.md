@@ -7,10 +7,11 @@
 |---|---|
 | Proposal | [BE-0211](BE-0211-android-device-control.md) |
 | Author | [@hirosassa](https://github.com/hirosassa) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0211") |
+| Implementing PR | [#858](https://github.com/bajutsu-e2e/bajutsu/pull/858) |
 | Topic | Platform expansion (Android / Web / Flutter) |
-| Related | [BE-0007](../BE-0007-android-backend/BE-0007-android-backend.md), [BE-0128](../BE-0128-device-step-capability-preflight/BE-0128-device-step-capability-preflight.md) |
+| Related | [BE-0212](../BE-0212-granular-device-control-capabilities/BE-0212-granular-device-control-capabilities.md), [BE-0007](../BE-0007-android-backend/BE-0007-android-backend.md), [BE-0128](../BE-0128-device-step-capability-preflight/BE-0128-device-step-capability-preflight.md) |
 <!-- /BE-METADATA -->
 
 ## Introduction
@@ -82,11 +83,21 @@ faithful emulator equivalent and remain unsupported (not advertised, so prefligh
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] adb command builders for `emu geo fix` and `cmd clipboard` (`bajutsu/adb.py`).
-- [ ] `AndroidDeviceControl` over the `DeviceControl` Protocol subset (`bajutsu/platform_lifecycle.py`).
-- [ ] Wire `AndroidEnvironment.device_control()` and the clipboard read-back.
-- [ ] Declare the supported subset against the per-operation capability tokens.
-- [ ] Validation — fast-gate tests (command shape, clipboard round-trip, preflight admit/reject).
+- [x] adb command builders for `emu geo fix` and `cmd clipboard` (`bajutsu/adb.py`).
+- [x] `AndroidDeviceControl` over the `DeviceControl` Protocol subset (`bajutsu/platform_lifecycle.py`).
+- [x] Wire `AndroidEnvironment.device_control()` and the clipboard read-back.
+- [x] Declare the supported subset against the per-operation capability tokens.
+- [x] Validation — fast-gate tests (command shape, clipboard round-trip, preflight admit/reject).
+
+Log:
+
+- [#858](https://github.com/bajutsu-e2e/bajutsu/pull/858) — Added the adb command builders (`geo_fix_cmd`, `set`/`get`/`clear_primary_clip_cmd`)
+  and `adb.Env` wrappers, an `android_device_control` implementing the `DeviceControl` Protocol
+  (setLocation + clipboard delegate to adb; the rest raise `UnsupportedAction`), wired
+  `AndroidEnvironment.controller()` to return it, and had the adb backend advertise
+  `deviceControl.setLocation` + `deviceControl.clipboard` (against the BE-0212 tokens). Fast-gate
+  tests cover command shape, the clipboard round-trip, delegation / unsupported raises, and preflight
+  admit/reject on the adb capability set. Depends on BE-0212 (per-operation tokens).
 
 ## References
 
