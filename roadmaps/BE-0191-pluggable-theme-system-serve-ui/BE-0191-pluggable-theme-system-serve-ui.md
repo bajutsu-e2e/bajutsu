@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0191") |
-| Implementing PR | [#826](https://github.com/bajutsu-e2e/bajutsu/pull/826), [#837](https://github.com/bajutsu-e2e/bajutsu/pull/837) |
+| Implementing PR | [#826](https://github.com/bajutsu-e2e/bajutsu/pull/826), [#837](https://github.com/bajutsu-e2e/bajutsu/pull/837), [#855](https://github.com/bajutsu-e2e/bajutsu/pull/855) |
 | Topic | Authoring experience (record / GUI editor) |
 <!-- /BE-METADATA -->
 
@@ -259,7 +259,7 @@ filesystem, building directly on the token contract of unit 1.
   (BE-0072). Added a `tests/serve/test_http_themes.py` case asserting the picker renders one option
   per theme and the old toggle is gone, updated `docs/web-ui.md` (+ ja mirror), and rewrote the
   `demos/serve-ui/scenarios/theme.yaml` dogfood in lockstep to drive the picker via `type` typeahead
-  and assert the selected theme id (verified against a real headless Chromium). ([#_pending_](https://github.com/bajutsu-e2e/bajutsu/pulls))
+  and assert the selected theme id (verified against a real headless Chromium). ([#855](https://github.com/bajutsu-e2e/bajutsu/pull/855))
 
 ## References
 
