@@ -186,6 +186,10 @@ backend（予定）。完全な「実装済み vs 未配線」表は [`docs/ja/a
 
 ## セットアップ
 
+> **はじめての方へ。** [Getting started チュートリアル](docs/ja/getting-started.md)は一連のループを
+> iOS Simulator で辿ります。**Mac がない場合は**、[web トラック](docs/ja/getting-started-web.md)が同じ
+> ループをブラウザ（Playwright backend）に対してどの OS でも辿ります。Xcode も Simulator も要りません。
+
 ```bash
 make setup                 # 土台: .venv（Python 3.13）+ 開発ツール + git hooks（backend なし・どこでも動く）
 make install               # 土台に加えて、config が使う backend だけを導入（config 対応、BE-0164）
@@ -266,7 +270,8 @@ targets:
 - **[record](demos/showcase/README.ja.md)**（`make -C demos record`）。起動中アプリに対する本物の Claude に
   よる著作と、改変 → 自己修復（`triage`）ループです。
 - **[web](demos/web/README.md)**（`make -C demos/web e2e`）。**Playwright backend** で静的な web アプリ
-  に対しシナリオを実行します。Mac も Simulator も不要で、Linux で動きます。
+  に対しシナリオを実行します。Mac も Simulator も不要で、Linux で動きます。このデモを手順を追って辿る
+  なら、[web getting-started トラック](docs/ja/getting-started-web.md)を参照してください。
 
 ## 開発
 

@@ -9,6 +9,11 @@
 
 関連: [cli](cli.md) ・ [scenarios](scenarios.md) ・ [showcase](showcase.md) ・ [run-loop](run-loop.md) ・ [reporting](reporting.md)
 
+> **Mac がない場合は。** このページは iOS Simulator で完結します（ステップ 4〜6 は macOS + Xcode が
+> 必要です）。[web トラック](getting-started-web.md)は、同じインストール → シナリオ → 実行 → レポートの
+> ループを、Playwright バックエンドでブラウザに対して、どの OS でも辿ります。プラットフォームは
+> バックエンドにすぎません。
+
 ---
 
 ## 必要なもの

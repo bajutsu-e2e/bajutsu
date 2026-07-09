@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0214](BE-0214-web-only-beginner-tutorial.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0214") |
+| Implementing PR | [#860](https://github.com/bajutsu-e2e/bajutsu/pull/860) |
 | Topic | Development infrastructure (contributor workflow) |
 <!-- /BE-METADATA -->
 
@@ -79,10 +80,17 @@ introducing yet another ad hoc phrasing of the same terms.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] 1. Decide the tutorial track's file layout (new page vs. forked `getting-started.md`)
-- [ ] 2. Write the web-track content (serve → run --backend web → read the report)
-- [ ] 3. Cross-link from `docs/overview.md` and `README.md`
-- [ ] 4. Bilingual pass, per the `japanese-tech-writing` skill
+- [x] 1. Decide the tutorial track's file layout (new page vs. forked `getting-started.md`)
+- [x] 2. Write the web-track content (serve → run --backend web → read the report)
+- [x] 3. Cross-link from `docs/overview.md` and `README.md`
+- [x] 4. Bilingual pass, per the `japanese-tech-writing` skill
+
+### Log
+
+- [#860](https://github.com/bajutsu-e2e/bajutsu/pull/860) — Added the web track as a new self-contained page (`docs/getting-started-web.md` +
+  `docs/ja/` mirror): the same install → scenario → run → report loop against the Playwright backend,
+  no Mac required. Cross-linked from `docs/overview.md`, `docs/index.md`, `README.md` (Setup / Demos),
+  the iOS `getting-started.md`, and `mkdocs.yml` nav — in both languages.
 
 ## References
 
