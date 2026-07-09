@@ -10,7 +10,6 @@ the installed idb version changes the schema.
 from __future__ import annotations
 
 import json
-import re
 import subprocess
 import time
 from collections.abc import Callable
@@ -29,17 +28,10 @@ _StableKey = tuple[tuple[str, base.Frame], ...]
 # while staying far below any long-press threshold, so plain buttons/rows behave
 # identically. (Surfaced by the sample app's ctrl.toggle.)
 _TAP_DURATION_S = 0.1
-_UDID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$")
 
-
-def _validated_udid(udid: str) -> str:
-    # `booted` (idb's "current device" alias) already satisfies _UDID_RE, so no special case.
-    # Raise simctl.DeviceError (not a bare ValueError) so a bad --udid surfaces as the CLI's
-    # clean exit-2 device fault, the same boundary adb's _checked_serial uses.
-    v = udid.strip()
-    if _UDID_RE.fullmatch(v):
-        return v
-    raise simctl.DeviceError(f"invalid udid: {udid!r}")
+# The idb argv builders share simctl's single "safe udid" gate — the same value flows into both
+# (both go through simctl.resolve_udid), so one validator keeps the two backends' boundary identical.
+_validated_udid = simctl._validated_udid
 
 
 def _real_run(args: list[str]) -> str:

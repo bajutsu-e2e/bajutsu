@@ -9,6 +9,7 @@ from __future__ import annotations
 import contextlib
 import json
 import os
+import re
 import subprocess
 import tempfile
 from collections.abc import Callable, Mapping, Sequence
@@ -38,6 +39,27 @@ def device_error(exc: subprocess.CalledProcessError) -> DeviceError:
     msg = f"device operation failed (exit {exc.returncode}): {cmd}"
     detail = detail.strip()
     return DeviceError(f"{msg}\n{detail}" if detail else msg)
+
+
+# The single "safe udid" gate for both simctl argv builders (via Env below) and the idb
+# backend (bajutsu.drivers.idb imports this). Anchored, so a `--udid` / config value can
+# neither inject an option (leading `-`) nor smuggle a shell metacharacter / space into a
+# subprocess argv. `booted` (idb's current-device alias) already satisfies it, so no special
+# case. adb's sibling `_checked_serial` mirrors this boundary with its own regex + DeviceError.
+_UDID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$")
+
+
+def _validated_udid(udid: str) -> str:
+    # Trim first: a udid sourced from command substitution or a YAML config often carries a
+    # trailing newline / surrounding space that is not part of the id. (adb's `_checked_serial`
+    # rejects such whitespace outright; here we accept the trimmed id — the regex still rejects
+    # any embedded metacharacter, so trimming widens acceptance, not the injection surface.)
+    v = udid.strip()
+    if _UDID_RE.fullmatch(v):
+        return v
+    # DeviceError (not a bare ValueError) so a bad --udid surfaces as the CLI's clean exit-2
+    # device fault, the same boundary adb's _checked_serial uses.
+    raise DeviceError(f"invalid udid: {udid!r}")
 
 
 def erase_cmd(udid: str) -> list[str]:
@@ -248,7 +270,9 @@ class Env:
     """Thin simctl front end for one device."""
 
     def __init__(self, udid: str, run: RunFn = _real_run) -> None:
-        self.udid = udid
+        # Validate once at the object boundary so every `self.udid` argv builder below
+        # (erase/boot/launch/openurl/…) is covered, not just the ones patched by hand.
+        self.udid = _validated_udid(udid)
         self._run = run
 
     def erase(self) -> None:

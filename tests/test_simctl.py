@@ -5,6 +5,8 @@ from __future__ import annotations
 import subprocess
 from collections.abc import Mapping
 
+import pytest
+
 from bajutsu import simctl
 
 
@@ -161,6 +163,26 @@ def test_shutdown_is_idempotent() -> None:
 
     simctl.Env("UDID", run=fake_run).shutdown()  # swallows the error
     assert calls == [["xcrun", "simctl", "shutdown", "UDID"]]
+
+
+def test_validated_udid_accepts_and_rejects() -> None:
+    # UUID- / device-shaped ids and the `booted` alias pass; surrounding whitespace is trimmed.
+    for good in ["booted", "U", "A1B2C3D4-1122-3344-5566-77889900AABB", "emulator-5554"]:
+        assert simctl._validated_udid(good) == good
+    assert simctl._validated_udid("  booted  ") == "booted"
+    # A udid that could inject a simctl/idb option (leading `-`) or reach argv with a shell
+    # metacharacter / space is rejected as a DeviceError, so the CLI exits 2 cleanly.
+    for bad in ["-rf", "--set", "a b", "a;b", "a$b", "a`b", "", "x" * 129]:
+        with pytest.raises(simctl.DeviceError, match="invalid udid"):
+            simctl._validated_udid(bad)
+
+
+def test_env_validates_udid_at_construction() -> None:
+    # Env validates once in __init__, so every self.udid argv builder (erase/boot/launch/…) is
+    # covered — a malicious --udid can never reach a subprocess argv, not just the hand-patched ones.
+    with pytest.raises(simctl.DeviceError, match="invalid udid"):
+        simctl.Env("-rf; rm")
+    assert simctl.Env("  booted  ").udid == "booted"  # trimmed and accepted
 
 
 def test_device_error_keeps_command_and_simctl_stderr() -> None:
