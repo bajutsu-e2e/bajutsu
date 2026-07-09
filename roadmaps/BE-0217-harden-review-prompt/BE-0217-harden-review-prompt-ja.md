@@ -9,7 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0217") |
-| 実装 PR | _未定_ |
+| 実装 PR | [#865](https://github.com/bajutsu-e2e/bajutsu/pull/865) |
 | トピック | 開発基盤（コントリビュータ体験） |
 | 関連 | [BE-0203](../BE-0203-claude-code-pr-review/BE-0203-claude-code-pr-review-ja.md) |
 <!-- /BE-METADATA -->
