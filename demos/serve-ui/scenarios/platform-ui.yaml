@@ -8,23 +8,23 @@ description: >-
   Platform-aware controls — each view shows only the selected app's platform controls (here, the
   web app's headed toggle) across Record, Replay, and Crawl.
 scenarios:
-  - name: Replay hides the iOS device UI and shows the headed toggle for a web app
-    description: webui is a web app, so Replay's Simulators UI is gone and the "show browser" toggle shows — without typing a backend.
+  - name: Replay shows the web app's headed toggle instead of iOS device UI
+    description: webui is a web app, so Replay shows the "show browser" toggle instead of the iOS Simulators UI — without typing a backend.
     steps:
       - tap: { id: nav.replay }
       - wait: { for: { id: replay.headed }, timeout: 10 }
       - assert:
           - exists: { id: replay.headed }                    # headless/headed menu present (web)
           - exists: { id: replay.simulators, negate: true }  # iOS device UI hidden
-  - name: Record shows the headed toggle for a web app
-    description: Record's "show browser" toggle shows for the web app (its iOS-only controls are hidden).
+  - name: Record shows the web app's headed toggle instead of iOS controls
+    description: Record shows the web app's "show browser" toggle instead of the iOS controls — without typing a backend.
     steps:
       - tap: { id: nav.record }
       - wait: { for: { id: record.headed }, timeout: 10 }
       - assert:
           - exists: { id: record.headed }
-  - name: Crawl shows the headed toggle for a web app
-    description: Crawl's "show browser" toggle shows for the web app (its iOS-only controls are hidden).
+  - name: Crawl shows the web app's headed toggle instead of iOS controls
+    description: Crawl shows the web app's "show browser" toggle instead of the iOS controls — without typing a backend.
     steps:
       - tap: { id: nav.crawl }
       - wait: { for: { id: crawl.headed }, timeout: 10 }
