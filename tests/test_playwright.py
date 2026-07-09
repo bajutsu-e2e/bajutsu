@@ -12,7 +12,7 @@ from typing import Any
 
 import pytest
 
-from bajutsu.dom import _norm_role, _str_or_none, parse_dom
+from bajutsu.dom import QUERY_JS, _norm_role, _str_or_none, parse_dom
 from bajutsu.drivers import base
 from bajutsu.drivers.playwright import PlaywrightDriver
 
@@ -215,8 +215,6 @@ class _FakePage:
 
     def evaluate(self, expression: str) -> Any:
         self.evaluated.append(expression)
-        from bajutsu.dom import QUERY_JS
-
         if expression == QUERY_JS:
             return list(self._records)
         if self.evaluate_returns:
