@@ -296,9 +296,14 @@ rather than a broadened match that drops a constraint.
 | `id` | `byId('…')` — `By.res(Pattern.compile("(.*:id/)?" + Pattern.quote(id)))` |
 | `label` | `By.text('…')` |
 | `value` | `By.desc('…')` (the `content-desc` channel the driver reads) |
-| `idMatches` (fnmatch glob) | `By.res(Pattern.compile('…'))` (`*` → `.*`, `?` → `.`; a `[…]` class → `// TODO`) |
-| `labelMatches` | `By.text(Pattern.compile('…'))` (a Java regex, matching the DSL's `re.search` semantics) |
+| `idMatches` (fnmatch glob) | `By.res(Pattern.compile('…'))` — a glob is a whole-string match, so `Pattern` full-match is faithful (`*` → `.*`, `?` → `.`; a `[…]` class → `// TODO`) |
+| `labelMatches` (metacharacter-free) | `By.textContains('…')` — a plain substring, matching the DSL's `re.search`; a real regex → `// TODO` (see below) |
 | `traits` / `within` / `index` / compound | `// TODO` |
+
+`labelMatches` is a Python `re.search` (substring) pattern, but UI Automator's `By.text(Pattern)`
+requires a **full-string** match — so only a metacharacter-free pattern is a plain substring that
+maps faithfully (via `By.textContains`). A real regex has no faithful single-selector form here (the
+same limit the XCUITest emitter hits for NSPredicate `MATCHES`), so it stays a `// TODO`.
 
 ### Action mapping (UI Automator)
 
@@ -313,7 +318,7 @@ rather than a broadened match that drops a constraint.
 | `pinch` | `.pinchOpen(0.5f)` / `.pinchClose(0.5f)` (scale ≥ 1 zooms in) |
 | `wait { for }` | `assertTrue(device.wait(Until.hasObject(<by>), <ms>L))` |
 | `wait { until: gone }` | `assertTrue(device.wait(Until.gone(<by>), <ms>L))` |
-| `wait { until: screenChanged/settled }` | a comment (UI Automator waits via `Until` conditions) |
+| `wait { until: screenChanged/settled }` | `device.waitForIdle(<ms>L)` — `findObject` does not auto-wait, so this is a real condition wait, not a bare comment |
 | `relaunch` | `launch(extras)` (re-issues the launch intent) |
 | `doubleTap` / `rotate` | `// TODO` (no UI Automator gesture) |
 

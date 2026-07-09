@@ -290,9 +290,14 @@ class ComponentsUITest {
 | `id` | `byId('…')`（`By.res(Pattern.compile("(.*:id/)?" + Pattern.quote(id)))`） |
 | `label` | `By.text('…')` |
 | `value` | `By.desc('…')`（ドライバが読む `content-desc` のチャネル） |
-| `idMatches`（fnmatch glob） | `By.res(Pattern.compile('…'))`（`*` → `.*`、`?` → `.`。`[…]` クラスは `// TODO`） |
-| `labelMatches` | `By.text(Pattern.compile('…'))`（Java の正規表現。DSL の `re.search` の意味論に合わせる） |
+| `idMatches`（fnmatch glob） | `By.res(Pattern.compile('…'))`。glob は全文一致なので `Pattern` の全文一致で忠実（`*` → `.*`、`?` → `.`。`[…]` クラスは `// TODO`） |
+| `labelMatches`（メタ文字なし） | `By.textContains('…')`。DSL の `re.search` に合う部分文字列。実正規表現は `// TODO`（下記参照） |
 | `traits` / `within` / `index` / 複合 | `// TODO` |
+
+`labelMatches` は Python の `re.search`（部分一致）のパターンですが、UI Automator の `By.text(Pattern)`
+は**全文一致**を要求します。そのため、メタ文字を含まないパターン（単純な部分文字列）だけが忠実に写像でき
+（`By.textContains` 経由）、実正規表現には忠実な単一セレクタの形がありません（XCUITest エミッタが NSPredicate
+の `MATCHES` で突き当たるのと同じ限界）。この場合は `// TODO` にとどめます。
 
 ### アクションのマッピング（UI Automator）
 
@@ -307,7 +312,7 @@ class ComponentsUITest {
 | `pinch` | `.pinchOpen(0.5f)` / `.pinchClose(0.5f)`（scale ≥ 1 で拡大） |
 | `wait { for }` | `assertTrue(device.wait(Until.hasObject(<by>), <ms>L))` |
 | `wait { until: gone }` | `assertTrue(device.wait(Until.gone(<by>), <ms>L))` |
-| `wait { until: screenChanged/settled }` | コメント（UI Automator は `Until` 条件で待機） |
+| `wait { until: screenChanged/settled }` | `device.waitForIdle(<ms>L)`。`findObject` は auto-wait しないので、裸コメントではなく実際の条件待機にする |
 | `relaunch` | `launch(extras)`（起動 intent を再発行） |
 | `doubleTap` / `rotate` | `// TODO`（対応する UI Automator ジェスチャが無い） |
 

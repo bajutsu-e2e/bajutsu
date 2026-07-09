@@ -48,6 +48,12 @@ _GLOB_CLASS_CHARS = set("[]")
 # not, so the emitted selector makes the prefix optional to match either — the reverse of the strip.
 _ID_PREFIX = "(.*:id/)?"
 
+# Regex metacharacters. `labelMatches` is a Python `re.search` pattern; `By.text(Pattern)` matches
+# the *whole* string (Matcher.matches()), not a substring, so only a metacharacter-free pattern is a
+# plain substring we can map faithfully to `By.textContains`. A real regex has no faithful selector
+# form (the same limit `codegen.py` hits for NSPredicate MATCHES), so it stays unsupported (→ TODO).
+_RE_METACHARS = set(r".^$*+?{}[]\|()")
+
 
 def _s(text: str) -> str:
     """A Kotlin double-quoted string literal.
@@ -116,8 +122,13 @@ def _by(sel: base.Selector) -> str | None:
         regex = _glob_to_regex(sel["idMatches"])
         return f"By.res(Pattern.compile({_s(regex)}))" if regex is not None else None
     if keys == {"labelMatches"}:
-        # `labelMatches` is a Python `re.search` pattern; a Java regex preserves it (By.text(Pattern)).
-        return f"By.text(Pattern.compile({_s(sel['labelMatches'])}))"
+        # `By.text(Pattern)` is a full-string match, unlike `labelMatches`' `re.search`, so only a
+        # metacharacter-free pattern (a plain substring) maps faithfully — via `By.textContains`. A
+        # real regex has no faithful single-selector form, so it stays unsupported (→ TODO).
+        pattern = sel["labelMatches"]
+        if set(pattern) & _RE_METACHARS:
+            return None
+        return f"By.textContains({_s(pattern)})"
     return None
 
 
@@ -212,8 +223,10 @@ def _emit_wait(w: Wait) -> list[str]:
         return [f"assertTrue(device.wait(Until.gone({by}), {timeout}L))"]
     if isinstance(w.until, WaitRequest):
         return [f"// TODO: wait until request ({request_label(w.until.request)}) — {_NO_NETWORK}"]
-    # "screenChanged" / "settled" — UI Automator waits via Until conditions, so a comment suffices.
-    return [f"// {w.until} — UI Automator waits via Until conditions"]
+    # "screenChanged" / "settled" — `findObject` does not auto-wait (unlike Playwright/XCUITest), so
+    # a bare comment would let the next line run mid-transition. `waitForIdle` blocks until the UI
+    # goes idle: the closest faithful condition wait, never a fixed sleep (prime directive #2).
+    return [f"device.waitForIdle({timeout}L)"]
 
 
 def _emit_text_assertion(m: TextMatch, prop: str) -> list[str]:

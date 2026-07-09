@@ -140,14 +140,19 @@ def test_assertions_exist_label_value_state_and_count() -> None:
     assert 'assertTrue(device.findObjects(byId("row")).size >= 1)' in code
 
 
-def test_id_matches_glob_and_label_matches_regex() -> None:
-    code = _gen(
-        "- name: x\n  steps:\n"
-        "    - tap: { idMatches: 'row.*' }\n"
-        "    - tap: { labelMatches: '^Item ' }\n"
-    )
+def test_id_matches_glob_maps_to_res_pattern() -> None:
+    # An fnmatch glob is a whole-string match, so By.res(Pattern) (Matcher.matches()) is faithful.
+    code = _gen("- name: x\n  steps:\n    - tap: { idMatches: 'row.*' }\n")
     assert 'By.res(Pattern.compile("(.*:id/)?row\\\\..*"))' in code
-    assert 'By.text(Pattern.compile("^Item "))' in code
+
+
+def test_label_matches_substring_maps_to_contains_but_regex_is_todo() -> None:
+    # `By.text(Pattern)` is a full-string match, unlike labelMatches' re.search — so a plain
+    # substring maps to By.textContains, while a real regex (e.g. `^Item `) has no faithful form.
+    substr = _gen("- name: x\n  steps:\n    - tap: { labelMatches: 'Item' }\n")
+    assert 'device.findObject(By.textContains("Item")).click()' in substr
+    regex = _gen("- name: x\n  steps:\n    - tap: { labelMatches: '^Item ' }\n")
+    assert "// TODO: unsupported selector" in regex
 
 
 def test_compound_selector_is_todo() -> None:
@@ -188,7 +193,8 @@ def test_wait_until_request_and_settle_and_request_sequence_are_todo() -> None:
         "    - requestSequence:\n        - { path: /a }\n        - { path: /b }\n"
     )
     assert "// TODO: wait until request" in code
-    assert "settled — UI Automator waits via Until conditions" in code
+    # `findObject` does not auto-wait, so a settle maps to `waitForIdle`, not a bare comment.
+    assert "device.waitForIdle(2000L)" in code
     assert "// TODO: requestSequence assertion" in code
 
 
