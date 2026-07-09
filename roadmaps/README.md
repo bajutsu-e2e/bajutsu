@@ -719,6 +719,7 @@ Keeping the autonomous crawl fast and its code lean as it grows.
 | [BE-0213](BE-0213-glossary-and-docs-structure/BE-0213-glossary-and-docs-structure.md) | Terminology glossary and documentation structure review | Proposal |
 | [BE-0214](BE-0214-web-only-beginner-tutorial/BE-0214-web-only-beginner-tutorial.md) | Web-only beginner tutorial (no Xcode/Simulator required) | Proposal |
 | [BE-0216](BE-0216-propose-and-build-parallel-skill/BE-0216-propose-and-build-parallel-skill.md) | propose-and-build: author a BE proposal and its implementation in parallel, stacked | Proposal |
+| [BE-0217](BE-0217-harden-review-prompt/BE-0217-harden-review-prompt.md) | Harden the automated PR review prompt with research-backed policy | Proposal |
 <!-- /GENERATED:proposals-dev-infra -->
 
 ### Codebase quality & technical debt

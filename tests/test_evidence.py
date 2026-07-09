@@ -141,13 +141,13 @@ def test_filesink_dispatches_intervals_to_web_provider(tmp_path: Path) -> None:
 
     calls: list[tuple[str, str]] = []
 
-    def web_interval(kind: str, path: Path) -> intervals.Interval | None:
+    def driver_interval(kind: str, path: Path) -> intervals.Interval | None:
         calls.append((kind, path.name))
         if kind == "deviceLog":
             return intervals.Interval(kind="deviceLog", path=path, provider="playwright")
         return None  # video etc. not provided in this slice
 
-    sink = FileSink(tmp_path, udid="web-0", web_interval=web_interval)
+    sink = FileSink(tmp_path, udid="web-0", driver_interval=driver_interval)
     started = sink.start_scenario_intervals("00-s", ["deviceLog", "video"])
 
     assert calls == [("deviceLog", "device.log"), ("video", "scenario.mp4")]
@@ -162,6 +162,67 @@ def test_filesink_without_web_provider_uses_udid_gate(tmp_path: Path) -> None:
     # No udid and no web provider: intervals are skipped (the fake/headless path).
     sink = FileSink(tmp_path, udid=None)
     assert sink.start_scenario_intervals("00-s", ["deviceLog"]) == []
+
+
+def test_filesink_dispatches_adb_driver_intervals_end_to_end(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # The real seam: FileSink + AdbDriver.driver_interval start BOTH kinds via adb (not the simctl
+    # path), even with a udid set. The subprocess spawn is faked so no adb process runs; the video's
+    # pull/rm still go through the driver's injected run.
+    from bajutsu import intervals
+    from bajutsu.drivers.adb import AdbDriver
+
+    class _FakeProc:
+        def stop(self, sig: int) -> None:
+            return None
+
+    monkeypatch.setattr(intervals, "_SubprocessProc", lambda argv, stdout_path: _FakeProc())
+
+    ran: list[list[str]] = []
+
+    def run(argv: list[str]) -> str:
+        ran.append(argv)
+        return ""
+
+    sink = FileSink(tmp_path, udid="SER", driver_interval=AdbDriver("SER", run=run).driver_interval)
+    started = sink.start_scenario_intervals("00-s", ["video", "deviceLog"])
+    assert {(iv.kind, iv.provider) for iv in started} == {("video", "adb"), ("deviceLog", "adb")}
+
+    arts = sink.finish_scenario_intervals("00-s", started)
+    assert {(a.kind, a.provider) for a in arts} == {("video", "adb"), ("deviceLog", "adb")}
+    # The video's pull + rm rode the driver's injected run (device-side capture pulled to the host).
+    assert any("pull" in c for c in ran) and any("rm" in c for c in ran)
+
+
+def test_finish_scenario_intervals_drops_a_failed_stop_but_finishes_the_rest(
+    tmp_path: Path,
+) -> None:
+    # A stop() that raises (e.g. the adb video pull failing) must not orphan the intervals started
+    # after it: every interval is still stopped, the failed one is dropped (no phantom artifact), and
+    # an evidence-I/O hiccup does not fail the scenario.
+    stopped: list[str] = []
+
+    class _Recording(_StubInterval):
+        def __init__(self, path: Path, kind: str, *, fail: bool) -> None:
+            super().__init__(path, kind=kind, provider="adb")
+            self._fail = fail
+
+        def stop(self) -> Path:
+            stopped.append(self.kind)
+            if self._fail:
+                raise OSError("pull failed")
+            return self._path
+
+    good = tmp_path / "device.log"
+    good.write_text("log", encoding="utf-8")
+    started = [
+        _Recording(tmp_path / "scenario.mp4", "video", fail=True),
+        _Recording(good, "deviceLog", fail=False),
+    ]
+    out = FileSink(tmp_path).finish_scenario_intervals("s", started)
+    assert stopped == ["video", "deviceLog"]  # both stopped despite the first raising
+    assert [a.kind for a in out] == ["deviceLog"]  # the failed video is dropped, no phantom
 
 
 def test_finish_scenario_intervals_redacts_then_emits_a_readable_file(tmp_path: Path) -> None:

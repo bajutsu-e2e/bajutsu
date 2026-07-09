@@ -92,6 +92,43 @@ def screencap_cmd(serial: str) -> list[str]:
     return _adb(serial, "exec-out", "screencap", "-p")
 
 
+# The device-side path `screenrecord` writes to before it is pulled to the run dir. One fixed path is
+# enough: a device runs one scenario at a time, and parallel lanes are distinct serials. Public so the
+# interval starter pulls from and cleans up the same path it records to.
+VIDEO_DEVICE_PATH = "/sdcard/bajutsu-scenario.mp4"
+
+
+def screenrecord_cmd(serial: str, device_path: str = VIDEO_DEVICE_PATH) -> list[str]:
+    """Record the screen to `device_path` on the device (h264 mp4); the twin of simctl recordVideo.
+
+    Writes device-side — `screenrecord` cannot stream to a host file — so the recording is pulled off
+    after the process stops (the stop/pull lifecycle lives in `intervals.start_screenrecord`).
+    """
+    return _adb(serial, "shell", "screenrecord", device_path)
+
+
+def logcat_cmd(serial: str) -> list[str]:
+    """Stream the device log to stdout — the twin of simctl `log stream` for `deviceLog`.
+
+    `-T 1` starts the follow from the tail (one recent line) so the capture reflects the scenario
+    window rather than dumping the whole ring buffer's pre-run history, mirroring `log stream`'s
+    new-events-only semantics. Unfiltered: a logcat tag/priority filterspec is a different syntax
+    from the iOS `os_log` predicate, so the predicate is not forwarded here (a tag filter can be a
+    later knob).
+    """
+    return _adb(serial, "logcat", "-T", "1")
+
+
+def pull_cmd(serial: str, device_path: str, local_path: str) -> list[str]:
+    """Copy a device-side file to the host (`adb pull`) — used to collect the recorded video."""
+    return _adb(serial, "pull", device_path, local_path)
+
+
+def rm_cmd(serial: str, device_path: str) -> list[str]:
+    """Remove a device-side file (`rm -f`) — cleans up the pulled recording."""
+    return _adb(serial, "shell", "rm", "-f", device_path)
+
+
 def tap_cmd(serial: str, x: float, y: float) -> list[str]:
     return _adb(serial, "shell", "input", "tap", _num(x), _num(y))
 

@@ -245,11 +245,12 @@ workers would collide).
   `fake` tokens, each expanding to its actuator in stability order (`backends.py`)
 - The **Playwright web backend** (`drivers/playwright.py`): a first slice — a deterministic `run`
   against a browser, on the Linux gate (`demos/web`); rich-end web capture is planned (BE-0054)
-- The **Android adb backend** (`drivers/adb.py` + `adb.py`): a first slice — the coordinate driver
+- The **Android adb backend** (`drivers/adb.py` + `adb.py`): the coordinate driver
   (`uiautomator dump` → frame-center tap), the `AndroidEnvironment` launch sequence, `doctor`
-  reporting, and fast-gate unit tests over captured XML fixtures; interval evidence (screenrecord /
-  logcat), device control, and codegen are follow-ups, and the on-device emulator e2e is a separate
-  heavier path (BE-0007)
+  reporting, interval evidence (`video` via `screenrecord`, `deviceLog` via `logcat`, both through
+  the driver-supplied `driver_interval` seam) plus the mocked-network story reused from iOS, and
+  fast-gate unit tests over captured XML fixtures; device control and codegen are follow-ups, and the
+  on-device emulator e2e is a separate heavier path (BE-0007)
 - Scenario schema (strict validation) and YAML round-trip
 - Evaluation of the assertion kinds (`exists` / `value` / `label` / `count` / `enabled` / `disabled` / `selected` / `request` / `visual`)
 - The Tier 2 run loop (act → wait → verify), verified with `FakeDriver`

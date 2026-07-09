@@ -42,6 +42,26 @@ def test_command_builders() -> None:
     assert adb.install_cmd("S", "a.apk") == ["adb", "-s", "S", "install", "-r", "-t", "a.apk"]
 
 
+def test_evidence_command_builders() -> None:
+    assert adb.screenrecord_cmd("S") == [
+        "adb", "-s", "S", "shell", "screenrecord", adb.VIDEO_DEVICE_PATH,
+    ]  # fmt: skip
+    assert adb.screenrecord_cmd("S", "/sdcard/x.mp4")[-1] == "/sdcard/x.mp4"
+    assert adb.logcat_cmd("S") == ["adb", "-s", "S", "logcat", "-T", "1"]
+    assert adb.pull_cmd("S", "/sdcard/x.mp4", "/tmp/x.mp4") == [
+        "adb", "-s", "S", "pull", "/sdcard/x.mp4", "/tmp/x.mp4",
+    ]  # fmt: skip
+    assert adb.rm_cmd("S", "/sdcard/x.mp4") == [
+        "adb",
+        "-s",
+        "S",
+        "shell",
+        "rm",
+        "-f",
+        "/sdcard/x.mp4",
+    ]
+
+
 def test_launch_cmd_forwards_extras_as_intent_extras() -> None:
     cmd = adb.launch_cmd("S", "com.x/.Main", {"SHOWCASE_UITEST": "1"})
     assert cmd == [
@@ -157,6 +177,24 @@ def test_android_environment_start_runs_the_adb_sequence() -> None:
     assert any("pm clear com.bajutsu.showcase.android.compose" in j for j in joined)
     assert any("--es SHOWCASE_UITEST 1" in j for j in joined)
     assert any("action.VIEW -d showcasecompose://permissions" in j for j in joined)
+
+
+def test_android_environment_start_forwards_collector_env_for_network_mocks() -> None:
+    # Android observes no network natively, so it reuses iOS's mocked story: the pool passes the
+    # app-side collector URL/token in extra_env, and start forwards them as intent extras the app
+    # reads — the same wiring as the device backend, no new code path.
+    calls: list[list[str]] = []
+    env = AndroidEnvironment("adb", "S", adb_run=_resolve_activity_run(calls))
+    # The pool sets both BAJUTSU_COLLECTOR and BAJUTSU_COLLECTOR_TOKEN in extra_env; both ride the
+    # same launch_env merge and must reach the app as intent extras.
+    env.start(
+        _eff(),
+        Preconditions(),
+        extra_env={"BAJUTSU_COLLECTOR": "http://127.0.0.1:9/", "BAJUTSU_COLLECTOR_TOKEN": "tok"},
+    )
+    joined = [" ".join(c) for c in calls]
+    assert any("--es BAJUTSU_COLLECTOR http://127.0.0.1:9/" in j for j in joined)
+    assert any("--es BAJUTSU_COLLECTOR_TOKEN tok" in j for j in joined)
 
 
 def test_android_environment_start_skips_pm_clear_on_overwrite() -> None:
