@@ -21,7 +21,7 @@ from bajutsu.platform_lifecycle import (
     XcuitestEnvironment,
     environment_for,
 )
-from bajutsu.scenario import Preconditions
+from bajutsu.scenario import Preconditions, Relaunch, Scenario
 
 
 def test_environment_for_selects_by_actuator() -> None:
@@ -69,6 +69,36 @@ def test_web_environment_navigates_then_returns_the_driver(monkeypatch: pytest.M
     driver = WebEnvironment("playwright").start(eff, Preconditions())
     assert driver is web
     assert web.navigated is True  # the web "launch" is navigate()
+
+
+def test_web_relaunch_forwards_id_namespaces_to_await_ready(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # The web `relaunch` lifecycle path must thread `idNamespaces` into the readiness gate too, so a
+    # target does not behave inconsistently between its crawl_reset and relaunch paths.
+    from dataclasses import replace as dc_replace
+
+    seen: dict[str, object] = {}
+
+    def fake_await_ready(driver: object, *a: object, **kw: object) -> None:
+        seen.update(kw)
+
+    monkeypatch.setattr("bajutsu.platform_lifecycle._await_ready", fake_await_ready)
+
+    class _WebDriver:
+        name = "web"
+
+        def navigate(self) -> None:
+            pass
+
+        def query(self) -> list[base.Element]:
+            return []
+
+    eff = dc_replace(_web_eff(base_url="https://app.test"), id_namespaces=["app"])
+    scn = Scenario.model_validate({"name": "a", "steps": [{"tap": {"id": "ok"}}]})
+    relaunch = WebEnvironment("playwright").relauncher(eff, scn, _WebDriver())  # type: ignore[arg-type]
+    relaunch(Relaunch())
+    assert seen.get("id_namespaces") == ["app"]
 
 
 def test_fake_environment_runs_no_lifecycle() -> None:

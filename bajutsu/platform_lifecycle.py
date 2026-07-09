@@ -555,7 +555,7 @@ class WebEnvironment:
         *,
         extra_env: Mapping[str, str] | None = None,
     ) -> RelaunchFn:
-        return _web_relauncher(driver, ready_sel=eff.ready_when)
+        return _web_relauncher(driver, ready_sel=eff.ready_when, id_namespaces=eff.id_namespaces)
 
     def controller(self, eff: Effective) -> DeviceControl | None:
         return None  # the driver owns the browser; no simctl device control
@@ -868,12 +868,16 @@ def _await_ready(
         poll = min(poll * 2, poll_max)
 
 
-def _web_relauncher(driver: base.Driver, ready_sel: base.Selector | None = None) -> RelaunchFn:
+def _web_relauncher(
+    driver: base.Driver,
+    ready_sel: base.Selector | None = None,
+    id_namespaces: list[str] | None = None,
+) -> RelaunchFn:
     """Web `relaunch`: re-navigate to the base URL and wait until ready (no device restart)."""
 
     def relaunch(opts: Relaunch) -> None:
         cast(base.BackendLifecycle, driver).navigate()  # web-only lifecycle
-        _await_ready(driver, ready_sel=ready_sel)
+        _await_ready(driver, ready_sel=ready_sel, id_namespaces=id_namespaces)
 
     return relaunch
 
