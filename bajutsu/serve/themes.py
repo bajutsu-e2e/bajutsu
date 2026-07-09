@@ -26,9 +26,11 @@ _log = logging.getLogger(__name__)
 
 ThemeKind = Literal["dark", "light"]
 
-# The leading `/* bajutsu-theme … */` comment carries the manifest; name/kind are read from it and
-# the id comes from the filename. Both fields are optional — a theme with neither still registers.
-_MANIFEST_COMMENT = re.compile(r"/\*(.*?)\*/", re.DOTALL)
+# The *leading* `/* bajutsu-theme … */` comment carries the manifest; name/kind are read from it
+# and the id comes from the filename. Both fields are optional — a theme with neither still
+# registers. Anchored with `\A` so a copyright/license comment before the manifest isn't silently
+# treated as the manifest (`.search` with `\A` still works without `.match`).
+_MANIFEST_COMMENT = re.compile(r"\A/\*(.*?)\*/", re.DOTALL)
 _NAME = re.compile(r"name:\s*(.+?)\s*(?:\n|kind:|$)", re.IGNORECASE)
 _KIND = re.compile(r"kind:\s*([a-z]+)", re.IGNORECASE)
 
