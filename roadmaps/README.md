@@ -682,7 +682,9 @@ Where `bajutsu` reads its config and scenario tree from. Today that is a local p
 Turning a passing scenario into a native test in a destination framework's idiom. These items shrink the range of constructs an emitter drops to a `// TODO`.
 
 <!-- GENERATED:proposals-codegen -->
-
+| ID | Item | Status |
+|---|---|---|
+| [BE-0209](BE-0209-android-codegen-emitter/BE-0209-android-codegen-emitter.md) | Android codegen emitter (Espresso / UI Automator) | Proposal |
 <!-- /GENERATED:proposals-codegen -->
 
 ### Crawl performance / scale-out

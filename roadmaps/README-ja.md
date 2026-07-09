@@ -675,7 +675,9 @@ AI を使う経路（`record` ／ `crawl` ／ `triage --ai` ／ `run --apply`）
 通過したシナリオを出力先フレームワークの流儀のネイティブテストに変換する取り組み。ここで扱う項目は、エミッタが `// TODO` に落とす構文の範囲を減らします。
 
 <!-- GENERATED:proposals-codegen -->
-
+| ID | 項目 | 状態 |
+|---|---|---|
+| [BE-0209](BE-0209-android-codegen-emitter/BE-0209-android-codegen-emitter-ja.md) | Android codegen エミッタ（Espresso / UI Automator） | 提案 |
 <!-- /GENERATED:proposals-codegen -->
 
 ### クロール性能 / スケールアウト
