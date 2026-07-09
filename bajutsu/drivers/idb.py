@@ -10,6 +10,7 @@ the installed idb version changes the schema.
 from __future__ import annotations
 
 import json
+import re
 import subprocess
 import time
 from collections.abc import Callable
@@ -27,6 +28,14 @@ _StableKey = tuple[tuple[str, base.Frame], ...]
 # while staying far below any long-press threshold, so plain buttons/rows behave
 # identically. (Surfaced by the sample app's ctrl.toggle.)
 _TAP_DURATION_S = 0.1
+_UDID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$")
+
+
+def _validated_udid(udid: str) -> str:
+    v = str(udid).strip()
+    if v == "booted" or _UDID_RE.fullmatch(v):
+        return v
+    raise ValueError("invalid udid")
 
 
 def _real_run(args: list[str]) -> str:
@@ -38,7 +47,7 @@ def _real_run(args: list[str]) -> str:
 
 def describe_all_cmd(udid: str) -> list[str]:
     """The `idb` argv that dumps the accessibility tree as JSON."""
-    return ["idb", "ui", "describe-all", "--udid", udid, "--json"]
+    return ["idb", "ui", "describe-all", "--udid", _validated_udid(udid), "--json"]
 
 
 def tap_cmd(udid: str, x: float, y: float) -> list[str]:
@@ -48,7 +57,7 @@ def tap_cmd(udid: str, x: float, y: float) -> list[str]:
         "ui",
         "tap",
         "--udid",
-        udid,
+        _validated_udid(udid),
         _num(x),
         _num(y),
         "--duration",
@@ -65,7 +74,7 @@ def swipe_cmd(udid: str, x1: float, y1: float, x2: float, y2: float) -> list[str
         "ui",
         "swipe",
         "--udid",
-        udid,
+        _validated_udid(udid),
         _num(x1),
         _num(y1),
         _num(x2),
@@ -120,7 +129,7 @@ def screenshot_cmd(udid: str, path: str) -> list[str]:
     """The argv that writes a Simulator screenshot to path (via simctl)."""
     # idb's own frame capture is unreliable ("No Image available to encode"),
     # so screenshot via simctl, which is always available on the Simulator.
-    return ["xcrun", "simctl", "io", udid, "screenshot", path]
+    return ["xcrun", "simctl", "io", _validated_udid(udid), "screenshot", path]
 
 
 def _num(v: float) -> str:
@@ -330,7 +339,17 @@ class IdbDriver:
     def long_press(self, sel: base.Selector, duration: float) -> None:
         x, y = self._center(sel)
         self._run(
-            ["idb", "ui", "tap", "--udid", self.udid, _num(x), _num(y), "--duration", str(duration)]
+            [
+                "idb",
+                "ui",
+                "tap",
+                "--udid",
+                _validated_udid(self.udid),
+                _num(x),
+                _num(y),
+                "--duration",
+                str(duration),
+            ]
         )
 
     def swipe(self, frm: base.Point, to: base.Point) -> None:
