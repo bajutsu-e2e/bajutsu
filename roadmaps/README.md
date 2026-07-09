@@ -466,6 +466,7 @@ Running the autonomous crawl across more than one device so a full screen map is
 | [BE-0087](BE-0087-idb-action-settle/BE-0087-idb-action-settle.md) | idb action timing robustness (settle before actuation) | Implemented |
 | [BE-0088](BE-0088-overlap-simulator-boot/BE-0088-overlap-simulator-boot.md) | Overlap the Simulator boot with the build | Implemented |
 | [BE-0207](BE-0207-xcuitest-channel-transient-retry/BE-0207-xcuitest-channel-transient-retry.md) | Make the XCUITest runner channel robust to transient timeouts | Implemented |
+| [BE-0218](BE-0218-e2e-simulator-flaky-readiness-actuation/BE-0218-e2e-simulator-flaky-readiness-actuation.md) | Stabilize the E2E Simulator gate: namespace-aware readiness and a bounded actuation timeout | Implemented |
 <!-- /GENERATED:implemented-on-device -->
 
 ### Integration with external services

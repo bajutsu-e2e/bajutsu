@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-e2e-simulator-flaky-readiness-actuation-ja.md)
+**English** · [日本語](BE-0218-e2e-simulator-flaky-readiness-actuation-ja.md)
 
-# BE-XXXX — Stabilize the E2E Simulator gate: namespace-aware readiness and a bounded actuation timeout
+# BE-0218 — Stabilize the E2E Simulator gate: namespace-aware readiness and a bounded actuation timeout
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-e2e-simulator-flaky-readiness-actuation.md) |
+| Proposal | [BE-0218](BE-0218-e2e-simulator-flaky-readiness-actuation.md) |
 | Author | [@hirosassa](https://github.com/hirosassa) |
 | Status | **Implemented** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0218") |
 | Implementing PR | [#850](https://github.com/bajutsu-e2e/bajutsu/pull/850) |
 | Topic | On-device validation (M1 close-out) |
 <!-- /BE-METADATA -->
