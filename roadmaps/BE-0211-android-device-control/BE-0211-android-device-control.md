@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-android-device-control-ja.md)
+**English** · [日本語](BE-0211-android-device-control-ja.md)
 
-# BE-XXXX — Android device control (setLocation, clipboard)
+# BE-0211 — Android device control (setLocation, clipboard)
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-android-device-control.md) |
+| Proposal | [BE-0211](BE-0211-android-device-control.md) |
 | Author | [@hirosassa](https://github.com/hirosassa) |
 | Status | **Proposal** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0211") |
 | Topic | Platform expansion (Android / Web / Flutter) |
 | Related | [BE-0007](../BE-0007-android-backend/BE-0007-android-backend.md), [BE-0128](../BE-0128-device-step-capability-preflight/BE-0128-device-step-capability-preflight.md) |
 <!-- /BE-METADATA -->
