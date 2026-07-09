@@ -38,11 +38,13 @@ def test_provider_accepts_the_legacy_anthropic_alias(monkeypatch: pytest.MonkeyP
 
 def test_resolve_model_anthropic_ignores_bedrock_override(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv(ac.PROVIDER_ENV, raising=False)
+    monkeypatch.delenv(ac.MODEL_ENV, raising=False)  # isolate against a CI-set BAJUTSU_AI_MODEL
     monkeypatch.setenv(ac.BEDROCK_MODEL_ENV, "global.anthropic.claude-opus-4-6-v1")
     assert ac.resolve_model("claude-opus-4-8") == "claude-opus-4-8"
 
 
 def test_resolve_model_bedrock_uses_override(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv(ac.MODEL_ENV, raising=False)  # isolate against a CI-set BAJUTSU_AI_MODEL
     monkeypatch.setenv(ac.PROVIDER_ENV, "bedrock")
     monkeypatch.setenv(ac.BEDROCK_MODEL_ENV, "global.anthropic.claude-opus-4-6-v1")
     assert ac.resolve_model("claude-opus-4-8") == "global.anthropic.claude-opus-4-6-v1"
