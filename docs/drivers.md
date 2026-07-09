@@ -175,6 +175,14 @@ abstraction resolves **id → frame center → coordinate tap**, exactly as on i
   widen the gap past the platform's double-tap window; and a tap whose target is **not in the current
   viewport** scrolls toward it (a default up-swipe) and re-queries, bounded by a retry count — a
   condition wait, so a selector that never appears still fails deterministically.
+
+  > [!NOTE]
+  > Scroll-into-view is an **adb-only** recovery today: `idb` / XCUITest / Playwright still fail a
+  > `tap` fast when the target isn't in the initial viewport. So a `tap` on a below-the-fold element
+  > can pass on Android (after up to a few swipes) yet fail on iOS/web for the same scenario. The
+  > portable idiom stays an **explicit `swipe` step** (see `demos/showcase/scenarios/notices.yaml`);
+  > the adb auto-scroll is a robustness net, not a substitute for it. Widening it to the other
+  > backends is a follow-up (BE-0210 scoped it to adb).
 - `pinch` / `rotate` raise `UnsupportedAction` (single-touch `input`, just like idb).
 - `screenshot` writes the PNG bytes from `adb exec-out screencap -p` (binary-clean stdout).
 - Lifecycle (`AndroidEnvironment`, the twin of the iOS `simctl` sequence): boot-readiness wait
