@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-glossary-and-docs-structure-ja.md)
+**English** · [日本語](BE-0213-glossary-and-docs-structure-ja.md)
 
-# BE-XXXX — Terminology glossary and documentation structure review
+# BE-0213 — Terminology glossary and documentation structure review
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-glossary-and-docs-structure.md) |
+| Proposal | [BE-0213](BE-0213-glossary-and-docs-structure.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0213") |
 | Topic | Development infrastructure (contributor workflow) |
 <!-- /BE-METADATA -->
 
@@ -111,7 +111,7 @@ that becomes its own future proposal rather than scope creep here.
 A sibling proposal, the web-only beginner tutorial drafted alongside this one, depends on this one
 landing first so its new tutorial track can use the disambiguated vocabulary this glossary settles,
 rather than inventing its own phrasing in parallel. The two are reciprocal siblings; a `Related`
-metadata link between them is added once CI allocates their real IDs (a placeholder `BE-XXXX` cannot
+metadata link between them is added once CI allocates their real IDs (a placeholder `BE-0213` cannot
 cross-reference another new item — the per-item rewrite would resolve it to this item's own number).
 
 ## Alternatives considered

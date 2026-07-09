@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-web-only-beginner-tutorial-ja.md)
+**English** · [日本語](BE-0214-web-only-beginner-tutorial-ja.md)
 
-# BE-XXXX — Web-only beginner tutorial (no Xcode/Simulator required)
+# BE-0214 — Web-only beginner tutorial (no Xcode/Simulator required)
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-web-only-beginner-tutorial.md) |
+| Proposal | [BE-0214](BE-0214-web-only-beginner-tutorial.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0214") |
 | Topic | Development infrastructure (contributor workflow) |
 <!-- /BE-METADATA -->
 

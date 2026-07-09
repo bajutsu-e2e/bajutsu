@@ -706,7 +706,10 @@ AI を使う経路（`record` ／ `crawl` ／ `triage --ai` ／ `run --apply`）
 ### 開発基盤（コントリビュータ体験）
 
 <!-- GENERATED:proposals-dev-infra -->
-
+| ID | 項目 | 状態 |
+|---|---|---|
+| [BE-0213](BE-0213-glossary-and-docs-structure/BE-0213-glossary-and-docs-structure-ja.md) | 用語集とドキュメント構成の見直し | 提案 |
+| [BE-0214](BE-0214-web-only-beginner-tutorial/BE-0214-web-only-beginner-tutorial-ja.md) | Web 版のみで完結する初学者向けチュートリアル(Xcode・Simulator 不要) | 提案 |
 <!-- /GENERATED:proposals-dev-infra -->
 
 ### コードベース品質・技術的負債
