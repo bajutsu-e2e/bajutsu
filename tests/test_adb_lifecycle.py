@@ -35,6 +35,14 @@ def test_driver_rejects_bad_serial_at_construction() -> None:
     assert AdbDriver("emulator-5554").serial == "emulator-5554"
 
 
+def test_env_rejects_bad_serial_at_construction() -> None:
+    # Env is the object AndroidEnvironment.start drives for the real device-lifecycle path, so
+    # it validates the serial at construction too — the same guard, at the same object boundary.
+    with pytest.raises(adb.DeviceError, match="invalid device serial"):
+        adb.Env("bad;rm")
+    assert adb.Env("emulator-5554").serial == "emulator-5554"
+
+
 def test_command_builders() -> None:
     assert adb.dump_cmd("S") == ["adb", "-s", "S", "exec-out", "uiautomator", "dump", "/dev/tty"]
     assert adb.tap_cmd("S", 12.6, 20.4) == ["adb", "-s", "S", "shell", "input", "tap", "13", "20"]
