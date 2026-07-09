@@ -324,8 +324,9 @@ bajutsu/
 
 マイルストーン M1–M4 は完了しています。決定的ランナー、AI `record` ループ + `capturePolicy` 証跡
 ルール、XCUITest codegen + CI、自己修復トリアージのいずれも実機 Simulator で検証済みです（実装済み
-の範囲は上の[ステータス](#ステータス)を参照してください）。iOS の先では、**web（Playwright）backend**
-が第一段を実装済みで、**Android（`adb`）** と **Flutter** が予定です
+の範囲は上の[ステータス](#ステータス)を参照してください）。プラットフォームは 1 つのドライバインター
+フェースの背後にある backend にすぎないため、同じコアが対象をまたいで動きます。**web（Playwright）
+backend** は第一段を実装済みで、**Android（`adb`）** と **Flutter** を予定しています
 （[`docs/ja/multi-platform.md`](docs/ja/multi-platform.md)）。
 
 今後の優先順位付きバックログ（次に作りたいもの）は [`roadmaps/`](roadmaps/README-ja.md) にあります。

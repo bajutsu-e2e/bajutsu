@@ -602,7 +602,7 @@ The deterministic core runs end-to-end on the FakeDriver, and the idb backend's 
 
 ### Platform expansion (Android / Web / Flutter)
 
-The scope is currently **limited to the iOS Simulator** ([DESIGN §1](../DESIGN.md)). This section covers going multi-platform by leveraging the driver / backend abstractions. The big-picture overview is in [multi-platform.md](../docs/multi-platform.md); the concrete per-platform design lives in the items below: [BE-0009](proposals/BE-0009-cross-platform-abstractions/BE-0009-cross-platform-abstractions.md) holds the shared abstractions, then Web (recommended first), Android, and Flutter.
+A platform is just a backend behind the one driver interface ([DESIGN §1](../DESIGN.md)), so going multi-platform means adding backends, not changing the deterministic core. This section covers that expansion by leveraging the driver / backend abstractions. The big-picture overview is in [multi-platform.md](../docs/multi-platform.md); the concrete per-platform design lives in the items below: [BE-0009](proposals/BE-0009-cross-platform-abstractions/BE-0009-cross-platform-abstractions.md) holds the shared abstractions, then Web (recommended first), Android, and Flutter.
 
 <!-- GENERATED:proposals-platform -->
 | ID | Item | Status |
@@ -797,7 +797,7 @@ Parked proposals — considered, then shelved for now. Kept here (not deleted) s
 ## Not adopting (already covered / out of scope)
 
 - **Change history / version management** — already covered, since scenarios are YAML under git.
-- **Cloud device farm / real-device / cloud execution** — out of the current iOS-Simulator-only scope ([DESIGN §1](../DESIGN.md)). Multi-platform is tracked as proposals (the *Platform expansion* items).
+- **Cloud device farm / real-device / cloud execution** — out of scope: Bajutsu targets local, CI-friendly backends (Simulator, headless browser, emulator), not real hardware or device clouds ([DESIGN §1](../DESIGN.md)). Multi-platform is tracked as proposals (the *Platform expansion* items).
 - **Per-step screenshots / UI tree on error / device logs** — already covered by the evidence subsystem (capturePolicy + the `result:error` safety net).
 - **NL→test generation (Autopilot equivalent)** — overlaps with the existing `record` + the *Authoring experience* items.
 - **Scheduling / Slack / TestRail integration** — the domain of the CI / notification layer. Low priority (separately, if needed).

@@ -27,7 +27,7 @@ from machine assertions, never an LLM.
 | `scenarios/author-editor.yaml` | Edit-mode Load fills the YAML editor and grades it; invalid YAML surfaces the inline problems panel (BE-0138) |
 | `scenarios/stats.yaml` | the Stats view loads the run dashboard (BE-0102) |
 | `scenarios/coverage.yaml` | Compute renders the target's coverage map (BE-0146) |
-| `scenarios/platform-ui.yaml` | the Replay panel hides its iOS device UI (simulators, workers, erase) for a non-iOS backend |
+| `scenarios/platform-ui.yaml` | each panel shows only the selected target's platform controls — a web target shows the headed toggle instead of the iOS device UI (simulators, workers, erase) |
 | `scenarios/panel-resize.yaml` | dragging one tiling divider redistributes only its pair, never a third panel |
 | `Makefile` | `web-deps` / `serve-ui` / `e2e` |
 

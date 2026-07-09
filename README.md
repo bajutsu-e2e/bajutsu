@@ -331,8 +331,9 @@ bajutsu/
 
 Milestones M1–M4 are complete — the deterministic runner, the AI `record` loop + `capturePolicy`
 evidence rules, XCUITest codegen + CI, and self-healing triage — all validated on a real
-Simulator (see [Status](#status) above for the implemented surface). Beyond iOS, the **web
-(Playwright) backend** has landed its first slice; **Android (`adb`)** and **Flutter** are planned
+Simulator (see [Status](#status) above for the implemented surface). Because a platform is just a
+backend behind the one driver interface, the same core spans targets: the **web (Playwright)
+backend** has landed its first slice, with **Android (`adb`)** and **Flutter** planned
 (see [`docs/multi-platform.md`](docs/multi-platform.md)).
 
 The forward-looking, prioritized backlog (what we want to build next) lives in

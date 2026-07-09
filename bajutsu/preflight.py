@@ -142,8 +142,9 @@ def _ios_runnability(
 def _android_runnability(which: Which, booted_count: Callable[[], int] | None) -> list[Check]:
     """adb present plus (when `booted_count` is given) an attached, ready device/emulator.
 
-    Unlike iOS there is no `xcrun` prerequisite; the tools come from the one requirements mapping
-    (BE-0164), so the remedy strings never drift from what the installer installs.
+    The adb path has no separate SDK-tool prerequisite (nothing like the XCUITest `xcrun` step); the
+    tools come from the one requirements mapping (BE-0164), so the remedy strings never drift from
+    what the installer installs.
     """
     checks = [
         _tool(tool.exe, requirements.remedy(tool.install), which)

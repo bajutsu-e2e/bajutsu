@@ -1,11 +1,12 @@
-# Platform-aware controls — selecting a web app hides every view's iOS-only device UI (simulators,
-# device pickers, erase, the alert-dismiss guard) and shows the headless/headed "show browser"
-# toggle, with no manual Backend entry. The dogfood's only app (webui) is a web app, so each view
-# reflects that on load. Deterministic: the SPA toggles the iosonly/webonly elements synchronously
-# from the selected app's backend, which the Playwright backend reads as present/absent in the tree.
+# Platform-aware controls — each view shows only the selected app's platform controls: an iOS app
+# gets the iOS device UI (simulators, device pickers, erase, the alert-dismiss guard), a web app
+# gets the headless/headed "show browser" toggle, with no manual Backend entry. The dogfood's only
+# app (webui) is a web app, so each view reflects that on load. Deterministic: the SPA toggles the
+# iosonly/webonly elements synchronously from the selected app's backend, which the Playwright
+# backend reads as present/absent in the tree.
 description: >-
-  Platform-aware controls — a web app hides the iOS-only UI and shows the headed toggle across
-  Record, Replay, and Crawl.
+  Platform-aware controls — each view shows only the selected app's platform controls (here, the
+  web app's headed toggle) across Record, Replay, and Crawl.
 scenarios:
   - name: Replay hides the iOS device UI and shows the headed toggle for a web app
     description: webui is a web app, so Replay's Simulators UI is gone and the "show browser" toggle shows — without typing a backend.

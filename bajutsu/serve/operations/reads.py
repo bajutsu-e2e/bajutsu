@@ -73,8 +73,8 @@ def _primary_backend(config: Config, name: str) -> str:
 
 
 def list_targets_payload(state: ServeState, *, actor: str | None = None) -> tuple[Any, int]:
-    # Each target carries its primary backend, so selecting a web target can hide the iOS-only controls
-    # (and show the headed toggle) without the user typing the backend by hand.
+    # Each target carries its primary backend, so the UI shows only that platform's device controls
+    # (iOS controls, or the web headed toggle) without the user typing the backend by hand.
     if state.config is None:
         return [], 200
     parsed = load_serve_config_file(state.config)

@@ -2,10 +2,10 @@
 // and the boot sequence. A serve.*.js section file (BE-0202); see serve.core.js's header for the
 // concatenation contract. Loads last, so the trailing init calls run once every section is defined.
 
-// iOS-only device UI (simulators, device pickers, erase, alert-dismiss) shows only for an iOS
-// backend; web-only UI (the headed/show-browser toggle) shows only for web. The backend is fixed
-// per app by config (no UI override), so this follows the selected app's backend (data-backend) —
-// picking a web app hides the iOS UI. Applies to Record/Replay/Crawl.
+// Device UI is platform-specific: iOS controls (simulators, device pickers, erase, alert-dismiss)
+// show only for an iOS backend, web controls (the headed/show-browser toggle) only for web. The
+// backend is fixed per app by config (no UI override), so each panel follows the selected app's
+// backend (data-backend) and shows only that platform's controls. Applies to Record/Replay/Crawl.
 function isIosBackend(v){v=(v||'').trim().toLowerCase();return v===''||v==='idb'||v==='ios'||v==='xcuitest';}
 function isAndroidBackend(v){v=(v||'').trim().toLowerCase();return v==='adb'||v==='android'||v==='uiautomator';}
 function appBackend(appSel){const a=$(appSel),o=a&&a.selectedOptions&&a.selectedOptions[0];return (o&&o.dataset.backend)||'';}
