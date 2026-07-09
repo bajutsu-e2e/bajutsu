@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0209](BE-0209-android-codegen-emitter.md) |
 | Author | [@hirosassa](https://github.com/hirosassa) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0209") |
+| Implementing PR | _pending_ |
 | Topic | codegen coverage |
 | Related | [BE-0007](../BE-0007-android-backend/BE-0007-android-backend.md), [BE-0083](../BE-0083-codegen-emitter-unification/BE-0083-codegen-emitter-unification.md) |
 <!-- /BE-METADATA -->
@@ -68,11 +69,25 @@ the emitter lands.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Choose the dialect (UI Automator vs Espresso) with rationale.
-- [ ] Per-line emitter on BE-0083's shared walk (`bajutsu/codegen_espresso.py`).
-- [ ] Selector mapping to `resource-id` / `text` / `content-desc`.
-- [ ] Register the target in `EMIT_TARGETS` / `codegen_emit`, guarded to an Android target.
-- [ ] Validation — byte-for-byte golden-output tests over scenario fixtures.
+- [x] Choose the dialect (UI Automator vs Espresso) with rationale.
+- [x] Per-line emitter on BE-0083's shared walk (`bajutsu/codegen_uiautomator.py`).
+- [x] Selector mapping to `resource-id` / `text` / `content-desc`.
+- [x] Register the target in `EMIT_TARGETS` / `codegen_emit`, guarded to an Android target.
+- [x] Validation — generated-output tests over scenario cases (the substring style the XCUITest and
+  Playwright emitters use), no device.
+
+**Dialect: UI Automator (Kotlin).** The adb backend reads the tree through `uiautomator dump` and
+maps `resource-id` / `text` / `content-desc` directly (`drivers/adb.py`), so a UI Automator emitter
+is the faithful *reverse* of what the driver already does — `By.res` / `By.text` / `By.desc` over
+`UiDevice` / `UiObject2`. Espresso's `onView(withId(R.id.…))` would need `R` references the
+string-keyed scenario does not carry, so it is the poorer twin of the shipped backend.
+
+- 2026-07-09: Shipped the UI Automator emitter (`bajutsu/codegen_uiautomator.py`) on BE-0083's
+  shared walk, registered `uiautomator` in `EMIT_TARGETS` / `generate_test` (guarded to an Android
+  `package`), updated the `codegen` CLI `--emit` help and target hint, taught the serve Web UI to
+  offer `uiautomator` for an Android target, and documented the target in `docs/codegen.md` (+ ja).
+  Covered by `tests/test_codegen_uiautomator.py` and `tests/serve/test_http_codegen.py`
+  (_pending_ PR).
 
 ## References
 

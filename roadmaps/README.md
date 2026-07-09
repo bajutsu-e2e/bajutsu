@@ -442,6 +442,7 @@ Turning a passing scenario into a native test in a destination framework's idiom
 | [BE-0062](BE-0062-playwright-codegen/BE-0062-playwright-codegen.md) | Playwright codegen target | Implemented |
 | [BE-0083](BE-0083-codegen-emitter-unification/BE-0083-codegen-emitter-unification.md) | Unify the codegen emitters behind a shared scenario walk | Implemented |
 | [BE-0085](BE-0085-shrink-web-codegen-syntax/BE-0085-shrink-web-codegen-syntax.md) | Shrink unsupported web (Playwright) codegen syntax | Implemented |
+| [BE-0209](BE-0209-android-codegen-emitter/BE-0209-android-codegen-emitter.md) | Android codegen emitter (Espresso / UI Automator) | Implemented |
 <!-- /GENERATED:implemented-codegen -->
 
 ### Crawl performance / scale-out
@@ -688,9 +689,7 @@ Where `bajutsu` reads its config and scenario tree from. Today that is a local p
 Turning a passing scenario into a native test in a destination framework's idiom. These items shrink the range of constructs an emitter drops to a `// TODO`.
 
 <!-- GENERATED:proposals-codegen -->
-| ID | Item | Status |
-|---|---|---|
-| [BE-0209](BE-0209-android-codegen-emitter/BE-0209-android-codegen-emitter.md) | Android codegen emitter (Espresso / UI Automator) | Proposal |
+
 <!-- /GENERATED:proposals-codegen -->
 
 ### Crawl performance / scale-out

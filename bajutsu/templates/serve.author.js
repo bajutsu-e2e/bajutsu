@@ -7,6 +7,7 @@
 // per app by config (no UI override), so this follows the selected app's backend (data-backend) —
 // picking a web app hides the iOS UI. Applies to Record/Replay/Crawl.
 function isIosBackend(v){v=(v||'').trim().toLowerCase();return v===''||v==='idb'||v==='ios'||v==='xcuitest';}
+function isAndroidBackend(v){v=(v||'').trim().toLowerCase();return v==='adb'||v==='android'||v==='uiautomator';}
 function appBackend(appSel){const a=$(appSel),o=a&&a.selectedOptions&&a.selectedOptions[0];return (o&&o.dataset.backend)||'';}
 function syncPlatform(panelSel,appSel){
   const ios=isIosBackend(appBackend(appSel));
@@ -44,8 +45,9 @@ function makeCodegen(ids,targetSel,getScenario){
   let result=null;
   const setStat=(msg,cls)=>{const s=$(ids.status);if(s){s.textContent=msg;s.className='status'+(cls?' '+cls:'');}};
   function reset(){$(ids.panel).hidden=true;result=null;}
-  function sync(){$(ids.emit).innerHTML=isIosBackend(appBackend(targetSel))
+  function sync(){const b=appBackend(targetSel);$(ids.emit).innerHTML=isIosBackend(b)
     ?'<option value="xcuitest">XCUITest</option>'
+    :isAndroidBackend(b)?'<option value="uiautomator">UI Automator</option>'
     :'<option value="playwright">Playwright</option>';}
   $(ids.btn).addEventListener('click',async()=>{
     const scenario=getScenario();
