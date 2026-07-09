@@ -7,8 +7,9 @@
 |---|---|
 | 提案 | [BE-0214](BE-0214-web-only-beginner-tutorial-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **提案** |
+| 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0214") |
+| 実装 PR | _pending_ |
 | トピック | 開発基盤（コントリビュータ体験） |
 <!-- /BE-METADATA -->
 
@@ -80,10 +81,17 @@ Bajutsu 自身の中心的な主張は「プラットフォームは backend に
 > 作業分解（作業の単位ごとに 1 つ）に対応し、ログには変更内容と時期（古い順）を PR へのリンクと
 > ともに記録します。
 
-- [ ] 1. チュートリアル導線のファイル構成を決める(新規ページか `getting-started.md` の分岐か)
-- [ ] 2. Web 版の内容を書く(起動 → `run --backend web` → レポートの閲覧)
-- [ ] 3. `docs/overview.md` と `README.md` からの導線を接続する
-- [ ] 4. `japanese-tech-writing` スキルに従った日本語版の作成
+- [x] 1. チュートリアル導線のファイル構成を決める(新規ページか `getting-started.md` の分岐か)
+- [x] 2. Web 版の内容を書く(起動 → `run --backend web` → レポートの閲覧)
+- [x] 3. `docs/overview.md` と `README.md` からの導線を接続する
+- [x] 4. `japanese-tech-writing` スキルに従った日本語版の作成
+
+### ログ
+
+- _pending_ — Web 版の導線を、新規の自己完結ページ（`docs/getting-started-web.md` と `docs/ja/` の
+  対訳）として追加しました。Playwright backend に対して、インストール → シナリオ → 実行 → レポートの
+  同じループを、Mac なしで辿ります。`docs/overview.md`、`docs/index.md`、`README.md`（セットアップと
+  デモ）、iOS 版の `getting-started.md`、`mkdocs.yml` の nav から、英日の両方で導線を接続しました。
 
 ## 参考
 

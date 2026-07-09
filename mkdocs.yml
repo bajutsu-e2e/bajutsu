@@ -151,6 +151,7 @@ nav:
   - Getting started:
       - Overview: overview.md
       - Getting started: getting-started.md
+      - Getting started (web track): getting-started-web.md
       - Showcase app: showcase.md
   - Concepts:
       - Concepts: concepts.md

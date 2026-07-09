@@ -40,7 +40,8 @@ bajutsu run    --target <name> [--scenario f.yaml]          # Tier 2: determinis
 ```
 
 The [Getting started tutorial](getting-started.md) walks through install → unit tests → scenario →
-device run → report.
+device run → report. On a machine without a Mac, the [web track](getting-started-web.md) does the
+same loop against a browser (Playwright backend) — no Xcode or Simulator.
 
 ## Feature highlights
 

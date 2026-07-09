@@ -190,6 +190,10 @@ Android (`adb`) and Flutter backends (planned). See
 
 ## Setup
 
+> **New here?** The [Getting started tutorial](docs/getting-started.md) walks the whole loop on an
+> iOS Simulator. **No Mac?** The [web track](docs/getting-started-web.md) does the same loop against
+> a browser (Playwright backend) on any OS — no Xcode or Simulator.
+
 ```bash
 make setup                 # base: .venv (Python 3.13) + dev tools + git hooks (no backend, runs anywhere)
 make install               # base PLUS exactly the backends your config needs (config-aware, BE-0164)
@@ -273,7 +277,8 @@ Runnable demos, all through one entry point — `make -C demos <target>` ([`demo
 - **[record](demos/showcase/README.md)** — `make -C demos record`. AI authoring with real Claude on
   a booted app, then the modify-and-self-heal (`triage`) loop.
 - **[web](demos/web/README.md)** — `make -C demos/web e2e`. The **Playwright backend** running
-  scenarios against a static web app — no Mac or Simulator, runs on Linux.
+  scenarios against a static web app — no Mac or Simulator, runs on Linux. For a step-by-step
+  walkthrough of this demo, see the [web getting-started track](docs/getting-started-web.md).
 
 ## Development
 
