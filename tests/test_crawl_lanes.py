@@ -276,3 +276,20 @@ def test_wire_health_web_passes_through_and_wraps_recover() -> None:
     recover(_FakeDriver())  # type: ignore[arg-type]
     assert len(healed) == 1  # the platform heal still runs
     assert any("wedged" in m for m in msgs)  # after reporting the wedge
+
+
+def test_wire_health_ios_builds_alert_guard_clear_blocking() -> None:
+    # The iOS shape: the platform declines the dialog clearer (returns None) and, with
+    # --dismiss-alerts on, `_wire_health` builds the alert guard to supply `clear_blocking`.
+    # Constructing the guard needs no real credential (the guide/guard provider is checked
+    # elsewhere), so this exercises the branch without a Simulator or network.
+    is_alive, clear_blocking, recover = _wire_health(
+        _HealthEnv(),  # type: ignore[arg-type]  # all seams None, like iOS
+        _eff(),  # type: ignore[arg-type]
+        _redactor(),  # type: ignore[arg-type]
+        dismiss_alerts=True,
+        alert_instruction="",
+        report=lambda _m: None,
+    )
+    assert is_alive is None and recover is None  # engine default / no platform recovery
+    assert clear_blocking is not None  # the alert guard now supplies it
