@@ -12,10 +12,13 @@ The map gates only the **true hard requirements** the capability set cleanly dec
 
 - `pinch` / `rotate` need `multiTouch`.
 - a `visual` assertion needs `screenshot`.
-- a device-control step (`setLocation` / `push` / `clearKeychain` / `clearClipboard` /
-  `setClipboard` / `background` / `foreground` / `overrideStatusBar` / `clearStatusBar`) needs
-  `deviceControl` (BE-0128) — the whole simctl-backed `DeviceControl` family as one unit.
-  `relaunch` is not here: it is gated by the injected relauncher, not `DeviceControl`.
+- a device-control step needs the capability token for its own operation (BE-0212 split the coarse
+  `deviceControl` of BE-0128 into per-operation tokens): `setLocation` needs
+  `deviceControl.setLocation`, the clipboard steps need `deviceControl.clipboard`, `push` needs
+  `deviceControl.push`, and so on. A backend that backs only part of the family (the Android
+  emulator: setLocation + clipboard) thus passes preflight for what it supports and fails fast for
+  the rest, each unsupported step named individually. `relaunch` is not here: it is gated by the
+  injected relauncher, not `DeviceControl`.
 - every run needs `query` + `elements` (the baseline read path).
 
 Deliberately **not** gated (an audit of what each construct actually depends on, BE-0082):
@@ -93,21 +96,37 @@ def _visual_locations(sc: Scenario) -> list[str]:
     return [path for path, a in _assertions_with_path(sc) if a.visual is not None]
 
 
-def _device_control_locations(sc: Scenario) -> list[str]:
-    """The paths where a device-control step appears (any `DeviceControl` op; not `relaunch`)."""
-    return [
-        path
-        for path, step in _walk_steps(sc.steps)
-        if step.set_location is not None
-        or step.push is not None
-        or step.clear_keychain is not None
-        or step.clear_clipboard is not None
-        or step.set_clipboard is not None
-        or step.background is not None
-        or step.foreground is not None
-        or step.override_status_bar is not None
-        or step.clear_status_bar is not None
-    ]
+# Each device-control operation, paired with the per-operation capability token it needs (BE-0212)
+# and a predicate matching the step that triggers it. Clipboard read/write/clear share one token,
+# as do background/foreground and the status-bar override/clear pair — operations that always ship
+# together. A backend advertises exactly the tokens it can honor, so preflight gates each step on
+# its own operation rather than the family as a whole. `relaunch` is not here: it is gated by the
+# injected relauncher, not `DeviceControl`.
+_DEVICE_CONTROL_OPS: tuple[tuple[str, str, Callable[[Step], bool]], ...] = (
+    (base.Capability.DC_SET_LOCATION, "setLocation", lambda s: s.set_location is not None),
+    (
+        base.Capability.DC_CLIPBOARD,
+        "clipboard step",
+        lambda s: s.set_clipboard is not None or s.clear_clipboard is not None,
+    ),
+    (base.Capability.DC_PUSH, "push", lambda s: s.push is not None),
+    (base.Capability.DC_CLEAR_KEYCHAIN, "clearKeychain", lambda s: s.clear_keychain is not None),
+    (
+        base.Capability.DC_APP_LIFECYCLE,
+        "background / foreground",
+        lambda s: s.background is not None or s.foreground is not None,
+    ),
+    (
+        base.Capability.DC_STATUS_BAR,
+        "status-bar override / clear",
+        lambda s: s.override_status_bar is not None or s.clear_status_bar is not None,
+    ),
+)
+
+
+def _step_locations(matches: Callable[[Step], bool]) -> Callable[[Scenario], list[str]]:
+    """The paths of every step (recursing into `if` / `forEach`) that `matches`."""
+    return lambda sc: [path for path, step in _walk_steps(sc.steps) if matches(step)]
 
 
 # Capabilities every run needs regardless of which constructs it uses (the baseline read path).
@@ -124,10 +143,9 @@ _REQUIREMENTS = (
         "visual assertion",
         _visual_locations,
     ),
-    _Requirement(
-        base.Capability.DEVICE_CONTROL,
-        "device-control step (simctl-backed)",
-        _device_control_locations,
+    *(
+        _Requirement(token, f"{label} (device control)", _step_locations(matches))
+        for token, label, matches in _DEVICE_CONTROL_OPS
     ),
 )
 

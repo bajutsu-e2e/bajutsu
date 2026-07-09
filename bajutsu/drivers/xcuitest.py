@@ -238,20 +238,23 @@ class XcuitestDriver:
 
     # Beyond idb: a semantic tap (by handle, no coordinates), native condition waiting, and the
     # two-finger gestures idb raises UnsupportedAction for. No NETWORK — network evidence comes from
-    # the app-side collector (BE-0020 boundary), not the actuator. `deviceControl` because xcuitest
-    # shares the iOS Simulator lifecycle, which wires a real simctl-backed `DeviceControl` for its
-    # runs too (BE-0128). A class constant so the preflight (BE-0082) reads it via
-    # backends.capabilities_for without constructing a driver.
-    CAPABILITIES = frozenset(
-        {
-            base.Capability.QUERY,
-            base.Capability.ELEMENTS,
-            base.Capability.SCREENSHOT,
-            base.Capability.SEMANTIC_TAP,
-            base.Capability.CONDITION_WAIT,
-            base.Capability.MULTI_TOUCH,
-            base.Capability.DEVICE_CONTROL,
-        }
+    # the app-side collector (BE-0020 boundary), not the actuator. The whole device-control family
+    # (`DEVICE_CONTROL_ALL`) because xcuitest shares the iOS Simulator lifecycle, which wires a real
+    # simctl-backed `DeviceControl` for its runs too (BE-0128; per-operation tokens since BE-0212).
+    # A class constant so the preflight (BE-0082) reads it via backends.capabilities_for without
+    # constructing a driver.
+    CAPABILITIES = (
+        frozenset(
+            {
+                base.Capability.QUERY,
+                base.Capability.ELEMENTS,
+                base.Capability.SCREENSHOT,
+                base.Capability.SEMANTIC_TAP,
+                base.Capability.CONDITION_WAIT,
+                base.Capability.MULTI_TOUCH,
+            }
+        )
+        | base.DEVICE_CONTROL_ALL
     )
 
     def __init__(

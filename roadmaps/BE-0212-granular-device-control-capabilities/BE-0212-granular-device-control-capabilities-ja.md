@@ -7,8 +7,9 @@
 |---|---|
 | 提案 | [BE-0212](BE-0212-granular-device-control-capabilities-ja.md) |
 | 提案者 | [@hirosassa](https://github.com/hirosassa) |
-| 状態 | **提案** |
+| 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0212") |
+| 実装 PR | _pending_ |
 | トピック | Platform expansion (Android / Web / Flutter) |
 | 関連 | [BE-0128](../BE-0128-device-step-capability-preflight/BE-0128-device-step-capability-preflight-ja.md), [BE-0082](../BE-0082-capability-preflight-check/BE-0082-capability-preflight-check-ja.md), [BE-0007](../BE-0007-android-backend/BE-0007-android-backend-ja.md) |
 <!-- /BE-METADATA -->
@@ -89,11 +90,19 @@ Protocol には手を入れません。
 > 作業分解（作業の単位ごとに 1 つ）に対応し、ログには変更内容と時期（古い順）を PR へのリンクと
 > ともに記録します。
 
-- [ ] 操作単位のトークンを定義する（`bajutsu/drivers/base.py`）。
-- [ ] 各デバイス制御ステップをトークンに対応づける（`bajutsu/capability_preflight.py`）。
-- [ ] バックエンドごとにサポートを宣言する（idb はファミリ全体、fake／web は不変）。
-- [ ] 実行時の `_need_control` の砦を保つ。
-- [ ] 検証：サブセットを advertise するバックエンドに対する fast ゲートの preflight テスト。
+- [x] 操作単位のトークンを定義する（`bajutsu/drivers/base.py`）。
+- [x] 各デバイス制御ステップをトークンに対応づける（`bajutsu/capability_preflight.py`）。
+- [x] バックエンドごとにサポートを宣言する（idb はファミリ全体、fake／web は不変）。
+- [x] 実行時の `_need_control` の砦を保つ。
+- [x] 検証：サブセットを advertise するバックエンドに対する fast ゲートの preflight テスト。
+
+ログ：
+
+- _pending_ — 粗い `DEVICE_CONTROL` トークンを操作単位の 6 トークン（`deviceControl.setLocation` /
+  `.clipboard` / `.push` / `.clearKeychain` / `.appLifecycle` / `.statusBar`、まとまりのある操作は
+  一つにまとめました）へ分割し、各デバイス制御ステップを preflight でそのトークンに対応づけました。
+  idb と xcuitest は `DEVICE_CONTROL_ALL` でファミリ全体を advertise します。サブセットを advertise する
+  バックエンド向けの fast ゲートテストを追加しました。実行時の `_need_control` の砦は変えていません。
 
 ## 参考
 
