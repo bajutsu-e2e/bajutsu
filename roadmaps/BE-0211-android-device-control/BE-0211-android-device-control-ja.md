@@ -9,7 +9,7 @@
 | 提案者 | [@hirosassa](https://github.com/hirosassa) |
 | 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0211") |
-| 実装 PR | _pending_ |
+| 実装 PR | [#858](https://github.com/bajutsu-e2e/bajutsu/pull/858) |
 | トピック | Platform expansion (Android / Web / Flutter) |
 | 関連 | [BE-0212](../BE-0212-granular-device-control-capabilities/BE-0212-granular-device-control-capabilities-ja.md), [BE-0007](../BE-0007-android-backend/BE-0007-android-backend-ja.md), [BE-0128](../BE-0128-device-step-capability-preflight/BE-0128-device-step-capability-preflight-ja.md) |
 <!-- /BE-METADATA -->
@@ -94,7 +94,7 @@ iOS では `DeviceControl` Protocol を simctl が完全に裏付けており（
 
 ログ：
 
-- _pending_ — adb コマンドビルダ（`geo_fix_cmd`、`set`／`get`／`clear_primary_clip_cmd`）と `adb.Env`
+- [#858](https://github.com/bajutsu-e2e/bajutsu/pull/858) — adb コマンドビルダ（`geo_fix_cmd`、`set`／`get`／`clear_primary_clip_cmd`）と `adb.Env`
   のラッパ、`DeviceControl` Protocol を実装する `android_device_control`（setLocation とクリップボードは
   adb へ委譲し、残りは `UnsupportedAction` を送出）を追加し、`AndroidEnvironment.controller()` が
   それを返すよう配線しました。adb バックエンドは（BE-0212 のトークンに対して）
