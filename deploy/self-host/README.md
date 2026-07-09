@@ -58,9 +58,11 @@ backend has no Simulator/GUI constraint. An optional `worker-web` service (off b
 docker compose --profile web-worker up -d --build
 ```
 
-Until BE-0166 routes jobs by backend, `/api/worker/lease` has no backend/capability filtering, so
-keep the pool **homogeneous per backend** — run either idb workers or web workers against a control
-plane, not both — or a web worker may lease an idb job (and vice versa) and fail.
+`/api/worker/lease` filters by **worker capability** (BE-0166), so a mixed-backend fleet is safe:
+the web-worker container advertises `web` and leases only web jobs, while an idb worker leases only
+idb jobs — the two never cross. See [capability-routed
+queues](../../docs/self-hosting.md#capability-routed-queues-be-0166) for pinning iOS runtimes or
+device classes with `requires:`.
 
 > The compose stack and images are **not exercised by CI** (no Docker on the gate). Verify a
 > deployment by hand: `docker compose up`, then check the migrate step succeeds, `/` returns 200,
