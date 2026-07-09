@@ -143,6 +143,17 @@ first-class.
 * **A separate flakiness store instead of the DB run records.** Rejected: the run history already
   accumulates in the DB; adding a parallel store duplicates the system of record. This item adds a
   query and a surface over existing records (plus the provenance stamp BE-0049 already scoped).
+* **Split into two items — one for the flaky suggestion surface (Half 1) and one for the cross-run
+  fix proposal (Half 2).** Worth considering given that the parallel triage work in this topic
+  (BE-0021, BE-0022, BE-0023) shipped as three separate items. Bundling was deliberate here because
+  Half 1 delivers limited value on its own: surfacing a ranked list of flaky scenarios is most
+  useful when a user can immediately act on it, and the action (reviewing a cross-run fix proposal)
+  is Half 2. The two halves share the same cross-run evidence assembly step (the prerequisite DB
+  provenance stamp and the `TriageContext` extension), so splitting would require coordinating the
+  same prerequisite across two proposals. If implementation experience shows the AI-agent design of
+  Half 2 takes significantly longer to mature than Half 1, splitting at that point is the right
+  call — the Progress checklist is already structured to allow Half 1 to land and flip its boxes
+  independently.
 
 ## Progress
 
