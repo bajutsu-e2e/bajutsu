@@ -133,6 +133,26 @@ class DriverConformanceContract:
                 with pytest.raises(base.UnsupportedAction):
                     gesture()
 
+    def test_select_option_capability_matches_behavior(self, harness: ConformanceHarness) -> None:
+        # capabilities() is a promise: a SELECT_OPTION backend must not raise UnsupportedAction for
+        # select_option (though it may raise SelectorError / other errors — e.g. Playwright's harness
+        # renders <div> not <select>, so ElementNotFound is expected and acceptable); a non-supporting
+        # backend must raise UnsupportedAction rather than silently no-op'ing (same shape as MULTI_TOUCH).
+        driver = harness.with_screen([element(identifier="sel")])
+        supports = base.Capability.SELECT_OPTION in driver.capabilities()
+        if supports:
+            try:
+                driver.select_option({"id": "sel"}, "opt")
+            except base.UnsupportedAction:
+                pytest.fail(
+                    "SELECT_OPTION capability declared but select_option raised UnsupportedAction"
+                )
+            except Exception:
+                pass  # SelectorError / ElementNotFound / etc. are acceptable for a non-<select> element
+        else:
+            with pytest.raises(base.UnsupportedAction):
+                driver.select_option({"id": "sel"}, "opt")
+
     def test_wait_for_is_single_shot(self, harness: ConformanceHarness) -> None:
         # wait_for reflects the current screen only; the deadline loop lives in wait_until.
         present = harness.with_screen([element(identifier="s")])
