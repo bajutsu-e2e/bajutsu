@@ -21,7 +21,10 @@ proposal's **Detailed design** is your spec. Converse in the user's language; wr
 commits, and PR text per the conventions below.
 
 This is the counterpart to [`ideation`](../ideation/SKILL.md): that skill *authors* a BE
-proposal, this one *ships* it.
+proposal, this one *ships* it. When the author is confident enough to write the proposal and
+its implementation at once, [`propose-and-build`](../propose-and-build/SKILL.md) runs both in
+parallel as a temporary two-PR stack and hands off to this skill's steps 8–10 once the id is
+allocated.
 
 ## Prime directives (these bound every line you write)
 
@@ -240,6 +243,9 @@ When you do:
   gate, and the strict BE-ID lifecycle (Status ⇒ index bucket, flat one-directory layout, permanent IDs).
 - [`roadmaps/README.md`](../../../roadmaps/README.md) — the index and the per-item format.
 - [`ideation`](../ideation/SKILL.md) — the upstream skill that authors the proposal this one builds.
+- [`propose-and-build`](../propose-and-build/SKILL.md) — composes `ideation` + this skill for a
+  small, settled item: author the proposal and implement it in parallel as a temporary two-PR
+  stack, then hand off to this skill's steps 8–10 once the id is allocated.
 - The built-in **`simplify`** / **`code-review`** / **`verify`** skills — the authoring aids
   steps 7 and 9 lean on. They advise the author; only `make check` judges.
 - **pr-review-toolkit** (`@claude-plugins-official`, Anthropic-official) — the specialized
