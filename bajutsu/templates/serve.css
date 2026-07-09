@@ -19,19 +19,17 @@ header .brand{font-weight:700}
 /* BE-0101: the record/crawl gate banner — an inline "this needs Claude" affordance. */
 .ai-gate{background:var(--bg2);border:1px solid var(--run);color:var(--fg);border-radius:8px;padding:.6rem .8rem;margin-bottom:.7rem;font-size:.88em;line-height:1.4}
 .ai-gate .link{background:none;border:none;color:var(--acc);font:inherit;font-weight:600;padding:0;cursor:pointer;text-decoration:underline}
-/* dark / light toggle — small switch flanked by moon (dark) and sun (light) icons;
-   checked == light (daylight). The icon for the active mode is highlighted. */
-.themeswitch{display:inline-flex;align-items:center;gap:.4rem;margin-left:auto;cursor:pointer}
-.themeswitch .ico{width:15px;height:15px;color:var(--mut);transition:color .15s}
-.themeswitch:has(input:not(:checked)) .ico.moon{color:var(--acc)}
-.themeswitch:has(input:checked) .ico.sun{color:var(--acc)}
-/* Visually hidden but still clickable: a semantic click on the checkbox itself (the dogfood, an
-   exported Playwright spec, assistive tech) must toggle it, not be swallowed before the label. */
-.themeswitch input{position:absolute;width:1px;height:1px;opacity:0}
-.themeswitch .track{position:relative;width:38px;height:22px;border-radius:999px;background:var(--bg2);border:1px solid var(--line);transition:background .15s}
-.themeswitch .thumb{position:absolute;top:2px;left:2px;width:16px;height:16px;border-radius:50%;background:var(--mut);transition:transform .15s,background .15s}
-.themeswitch input:checked+.track .thumb{transform:translateX(16px);background:var(--acc)}
-.themeswitch input:focus-visible+.track{outline:2px solid var(--acc);outline-offset:2px}
+/* theme picker (BE-0191) — a native <select> of every registered theme, flanked by a small icon.
+   Pushed to the header's trailing edge; a native control stays keyboard/screen-reader accessible
+   and, unlike a custom popup, never overlaps the tiler/viewswitch controls at any width. */
+.themepick{display:inline-flex;align-items:center;gap:.4rem;margin-left:auto;cursor:pointer}
+.themepick .ico{width:15px;height:15px;color:var(--mut);transition:color .15s;flex:none}
+.themepick #theme{max-width:9rem;color:var(--fg);background:var(--bg2);border:1px solid var(--line);border-radius:6px;padding:.2rem 1.4rem .2rem .5rem;font:inherit;cursor:pointer;appearance:none;
+  /* Themed chevron drawn as a background so the control tints with the palette, no extra markup. */
+  background-image:linear-gradient(45deg,transparent 50%,var(--mut) 50%),linear-gradient(135deg,var(--mut) 50%,transparent 50%);
+  background-position:calc(100% - 14px) 50%,calc(100% - 9px) 50%;background-size:5px 5px,5px 5px;background-repeat:no-repeat}
+.themepick #theme:hover{border-color:var(--acc)}
+.themepick #theme:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
 main{flex:1 1 0;min-height:0;overflow:hidden;display:grid;grid-template-columns:var(--rep-left,340px) var(--gw) var(--rep-mid,340px) var(--gw) 1fr;grid-template-rows:1fr;gap:0;padding:1rem;align-items:stretch;--gw:14px}
 main[hidden]{display:none}
 /* Record view: form on the left, the log + generated-YAML panels stacked vertically beside it. */
@@ -457,7 +455,7 @@ header .cfgname{color:var(--mut);font-size:.82em;max-width:32vw;overflow:hidden;
   .toptabs{flex-wrap:wrap}
   .toptab,.cfgbtn{padding:.5rem .9rem;min-height:44px}
   header .cfgname{max-width:100%;flex-basis:100%}
-  .themeswitch{margin-left:0}
+  .themepick{margin-left:0}
 
   /* Every view becomes one column; its content flows, the switcher selects which pane shows. */
   main{display:block;overflow:visible;padding:.7rem;height:auto;min-height:0}

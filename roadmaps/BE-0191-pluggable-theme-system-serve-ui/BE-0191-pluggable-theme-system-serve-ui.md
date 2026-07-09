@@ -227,7 +227,7 @@ filesystem, building directly on the token contract of unit 1.
 
 - [x] 1. Complete the design-token contract (fix `--accent`/`--muted`/`--bad` drift; route raw hex through tokens; document the contract; define fallback).
 - [x] 2. Pluggable theme discovery and registration (`--themes` flag, `ui.default_theme`, declarative theme + manifest, startup scan folded into the cached render).
-- [ ] 3. Theme picker UI (header dropdown replacing the binary toggle, persistence + pre-paint seeding, `data-testid` convention, tiler-safe placement).
+- [x] 3. Theme picker UI (header dropdown replacing the binary toggle, persistence + pre-paint seeding, `data-testid` convention, tiler-safe placement).
 - [ ] 4. Swappable, theme-defined transitions (semantic state classes + `--transition-*` tokens across the four surfaces; tiler `rebuild()` refactor; `prefers-reduced-motion` collapse).
 - [ ] 5. Determinism and dogfood alignment (reduced-motion guarantees condition-wait safety; update `demos/serve-ui/scenarios/theme.yaml` for the picker).
 - [ ] 6. In-UI theme editor, live preview, and upload / export (contract-derived form, client-side live preview, local-draft + upload persistence tiers reusing the BE-0073 upload seam, export/import round-trip).
@@ -249,6 +249,17 @@ filesystem, building directly on the token contract of unit 1.
   `window.__bajutsuDefaultTheme` for the picker (unit 3); the pre-paint seed now prefers the
   configured default before the OS scheme. Tests: `tests/serve/test_themes.py`,
   `tests/serve/test_http_themes.py`, and a core `ui:`-drop test. ([#837](https://github.com/bajutsu-e2e/bajutsu/pull/837))
+- Unit 3 — theme picker UI. Replaced the two-state header toggle with a native `<select>`
+  (`data-testid="nav.theme-picker"`) rendered server-side from the registered manifest, grouped by
+  dark/light kind, each option value being the theme id; `serve.core.js` seeds the widget from the
+  applied theme, persists an explicit pick to `localStorage['bajutsu-theme']`, and follows the OS
+  scheme only while no explicit pick stands, resolving the OS scheme against the registry's kinds
+  (not just the built-in pair). The pre-paint seed was already default-then-OS aware (unit 2) and is
+  unchanged. A native control stays keyboard/screen-reader accessible and never overlaps the tiler
+  (BE-0072). Added a `tests/serve/test_http_themes.py` case asserting the picker renders one option
+  per theme and the old toggle is gone, updated `docs/web-ui.md` (+ ja mirror), and rewrote the
+  `demos/serve-ui/scenarios/theme.yaml` dogfood in lockstep to drive the picker via `type` typeahead
+  and assert the selected theme id (verified against a real headless Chromium). ([#_pending_](https://github.com/bajutsu-e2e/bajutsu/pulls))
 
 ## References
 

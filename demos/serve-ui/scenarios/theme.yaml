@@ -1,22 +1,26 @@
-# Theme toggle — the header switch follows the OS preference and flips the theme on click. The
-# driver reads a native checkbox's checked state as the `selected` trait, so the switch state is
-# assertable. Deterministic: Playwright emulates prefers-color-scheme as light by default, in the
-# dogfood runner and in the exported spec alike, so the switch starts checked (= light) on both.
-# The DSL has no negated `selected`, so the scenario pins the checked state on both sides of a
-# full round-trip (light → dark → light) rather than the unchecked middle.
+# Theme picker (BE-0191) — the header <select> lists every registered theme and applies the chosen
+# one. The driver reads a <select>'s current option value as the `value` trait, so the selection is
+# assertable by theme id. A specific theme is chosen deterministically by typing its name into the
+# focused picker (native typeahead), the same primitive `type` uses everywhere else. Deterministic:
+# Playwright emulates prefers-color-scheme as light by default, in the dogfood runner and the
+# exported spec alike, so the picker starts on `daylight` (the light built-in) on both.
+#
+# One switch, not a round-trip: the built-in themes have distinct ids, so a single change to a
+# different value already proves the picker selects deterministically — unlike the old two-state
+# toggle, which needed a round-trip to pin its one `selected` bit on both ends. A round-trip would
+# also chain two typeaheads with no wait between them (the DSL has no fixed sleep, by design), and
+# the browser's typeahead buffer has not lapsed between them, so the second keystrokes concatenate
+# onto the first and match nothing. Selecting one distinct theme is the deterministic assertion.
 description: >-
-  Theme toggle — the header switch starts on the light theme (the OS preference), and a double
-  flip returns to it with the switch state readable throughout.
+  Theme picker — the header select starts on the light theme (the OS preference) and switches to the
+  dark theme, with the picked theme id readable from the select.
 scenarios:
-  - name: the theme toggle flips and returns
-    description: The switch starts checked (light, following the OS), survives a flip to dark, and reads checked again after flipping back.
+  - name: the theme picker selects a theme
+    description: The picker starts on daylight (light, following the OS) and reads midnight after the dark theme is picked.
     steps:
       - wait: { for: { id: view.record }, timeout: 10 }
       - assert:
-          - selected: { id: nav.theme-toggle }   # follows the (light) OS preference
-      - tap: { id: nav.theme-toggle }            # → dark
-      - assert:
-          - exists: { id: nav.theme-toggle }
-      - tap: { id: nav.theme-toggle }            # → back to light
+          - value: { sel: { id: nav.theme-picker }, equals: daylight }   # follows the (light) OS preference
+      - type: { text: Midnight, into: { id: nav.theme-picker } }         # typeahead → dark
     expect:
-      - selected: { id: nav.theme-toggle }
+      - value: { sel: { id: nav.theme-picker }, equals: midnight }

@@ -604,6 +604,7 @@ def _index_html(themes_dir: Path | None = None, default_theme: str | None = None
         .render(
             css=_asset("serve.css"),
             themes_css=_asset("serve.themes.css") + "".join(t.css for t in discovered),
+            themes=manifests,
             themes_json=_script_json(
                 [{"id": m.id, "name": m.name, "kind": m.kind} for m in manifests]
             ),
