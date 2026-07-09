@@ -364,7 +364,7 @@ def make_app(state: ServeState) -> FastAPI:
 
     @app.post("/api/worker/lease")
     async def worker_lease(body: dict[str, Any]) -> JSONResponse:
-        return _result(ops.worker_lease(state, body.get("worker_id", "")))
+        return _result(ops.worker_lease(state, body.get("worker_id", ""), body.get("capabilities")))
 
     @app.post("/api/worker/heartbeat")
     async def worker_heartbeat(body: dict[str, Any]) -> JSONResponse:

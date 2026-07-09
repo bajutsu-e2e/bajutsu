@@ -344,10 +344,38 @@ docker run -d --rm \
   bajutsu-worker-web
 ```
 
-A web worker leases only **web** jobs and a Mac idb worker only **idb** jobs once the pool routes by
-backend capability (tracked in
-[BE-0166](../roadmaps/BE-0166-capability-routed-queues/BE-0166-capability-routed-queues.md)); until
-then, keep the pool homogeneous per backend.
+A web worker leases only **web** jobs and a Mac idb worker only **idb** jobs — the pool routes by
+capability, so a mixed-backend fleet is safe (see [capability-routed
+queues](#capability-routed-queues-be-0166) below).
+
+### Capability-routed queues (BE-0166)
+
+A real Mac pool is rarely uniform: machines carry different iOS runtimes, some are set up for iPad
+and others for iPhone, and a web worker runs a different backend entirely. With one undifferentiated
+queue any worker could lease any job, so a job needing iOS 18 could land on an iOS-17 worker and fail
+— not for a real defect, but because it was routed to the wrong machine. **Capability routing** stops
+that: a job is only ever leased by a worker that can actually run it.
+
+Each worker advertises a set of **capability tokens** when it polls for work, and a job carries the
+set it **requires**; the control plane leases a job to a worker only when the worker advertises every
+token the job requires. Routing decides *which* idle worker picks a job up — it never changes the
+deterministic `run` verdict.
+
+- **A worker's advertised set** comes from its `--platform` (the backend axis: `platform:ios` for a
+  Mac idb worker, `platform:web` for the Playwright container), plus — for an iOS worker — the
+  installed Simulator inventory (an `iosNN` token per runtime, and `iphone` / `ipad` device classes).
+  Pin extra tokens with `--capabilities` or `$BAJUTSU_WORKER_CAPABILITIES` (comma/space separated),
+  e.g. `bajutsu worker --platform ios --capabilities ios18,ipad`. The web-worker container bakes in
+  `--platform web`, so it advertises `web` and needs no flag.
+- **A job's required set** is the target's resolved platform axis plus its `requires:` config list
+  ([configuration](configuration.md)) — set `targets.<name>.requires: [ios18, ipad]` (or team-wide
+  `defaults.requires`) to pin a runtime or device class. A target with no `requires` routes on its
+  platform axis alone.
+- **An unroutable job** — one whose required capabilities no live worker advertises — stays queued
+  rather than being leased to an incompatible worker or dropped, and is surfaced by the
+  `bajutsu_unroutable_jobs` metric (below) so the operator knows to add a worker with the missing
+  capability. A homogeneous pool is unaffected: every worker advertises the same axis, so every job
+  routes as before.
 
 ### Evidence upload to object storage (optional, BE-0110)
 
@@ -465,6 +493,7 @@ state it already tracks (the jobs table and lease/heartbeat records) — so it a
 | `bajutsu_leased_jobs{org}` | gauge | Jobs leased to a worker — in flight — by org (server backend). |
 | `bajutsu_worker_heartbeat_age_seconds{worker}` | gauge | Seconds since a worker's last heartbeat; rising past the lease timeout means a dead worker. |
 | `bajutsu_oldest_in_flight_seconds` | gauge | Seconds since the oldest in-flight job was enqueued (includes time it waited in the queue) — a slow / stuck-run signal. |
+| `bajutsu_unroutable_jobs` | gauge | Queued jobs no live worker can serve — their required capabilities match no worker's advertised set ([capability routing](#capability-routed-queues-be-0166)). A rising count means "add a worker with the missing capability." |
 | `bajutsu_max_concurrent` | gauge | Configured cap on concurrent jobs (0 = unlimited). |
 
 `/metrics` is **not** a public surface: it sits behind the same auth gate as the rest of serve

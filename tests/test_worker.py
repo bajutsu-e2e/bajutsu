@@ -23,6 +23,7 @@ import typer
 from bajutsu.cli.commands import worker as worker_mod
 from bajutsu.cli.commands.worker import (
     PresignedWorkerIO,
+    _advertised_capabilities,
     _download_baselines,
     _evidence_files,
     _post_json,
@@ -32,6 +33,15 @@ from bajutsu.cli.commands.worker import (
     worker,
 )
 from bajutsu.serve import InMemoryLogBus
+from bajutsu.serve.capabilities import WORKER_CAPABILITIES_ENV
+
+
+@pytest.fixture(autouse=True)
+def _stub_advertised_capabilities(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Keep the worker's startup capability derivation hermetic (BE-0166): stub it to a fixed set so
+    no test shells out to real `simctl`. The derivation itself is covered by test_capabilities.py; a
+    test that cares about flag wiring overrides this with its own recorder."""
+    monkeypatch.setattr(worker_mod, "_advertised_capabilities", lambda *a, **k: ["platform:ios"])
 
 
 class _Handler(BaseHTTPRequestHandler):
@@ -189,7 +199,7 @@ def test_worker_runs_one_iteration(monkeypatch: pytest.MonkeyPatch, tmp_path: Pa
 
     lease = [c for c in calls if c[0].endswith("/lease")]
     result = [c for c in calls if c[0].endswith("/result")]
-    assert lease[0][1] == {"worker_id": "w1"}
+    assert lease[0][1] == {"worker_id": "w1", "capabilities": ["platform:ios"]}
     assert leases == 2
     # The result posted back is the job view with its bulky `lines` stripped.
     assert result and result[0][1] == {
@@ -197,6 +207,63 @@ def test_worker_runs_one_iteration(monkeypatch: pytest.MonkeyPatch, tmp_path: Pa
         "result": {"ok": True, "runId": "r1"},
         "worker_id": "w1",
     }
+
+
+def test_advertised_capabilities_splits_platforms_and_falls_back_to_env(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # BE-0166: the helper splits --platform into axes and, when --capabilities is empty, reads the
+    # override from the env. worker_capabilities is patched so the test never shells out to simctl.
+    seen: dict[str, Any] = {}
+
+    def record(platforms: Any, *, override: Any = None, run: Any = None) -> set[str]:
+        seen["platforms"] = list(platforms)
+        seen["override"] = override
+        return {"platform:ios", "platform:web"}
+
+    monkeypatch.setattr(worker_mod, "worker_capabilities", record)
+    monkeypatch.setenv(WORKER_CAPABILITIES_ENV, "ios18")
+    caps = _advertised_capabilities("ios, web", "")  # empty flag → env override applies
+    assert seen == {"platforms": ["ios", "web"], "override": "ios18"}
+    assert caps == ["platform:ios", "platform:web"]  # sorted
+
+
+def test_worker_advertises_capabilities_on_every_lease(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # BE-0166: the advertised set (computed once at startup) is sent on every lease so the control
+    # plane routes only servable jobs to this worker. The recorder overrides the autouse stub.
+    monkeypatch.chdir(tmp_path)
+    seen: dict[str, Any] = {}
+
+    def record_caps(platform: str, capabilities: str) -> list[str]:
+        seen["platform"] = platform
+        seen["capabilities"] = capabilities
+        return ["beta", "platform:web"]
+
+    monkeypatch.setattr(worker_mod, "_advertised_capabilities", record_caps)
+
+    lease_body: dict[str, Any] = {}
+
+    def fake_post(url: str, body: dict[str, Any], *, token: str | None = None) -> tuple[int, Any]:
+        if url.endswith("/lease"):
+            lease_body.update(body)
+            raise _StopLoop  # asserted the first poll's body — stop
+        return 200, {}
+
+    monkeypatch.setattr(worker_mod, "_post_json", fake_post)
+    with pytest.raises(_StopLoop):
+        worker(
+            server_url="http://cp",
+            poll_interval=1,
+            heartbeat_interval=5,
+            worker_id="w1",
+            platform="web",
+            capabilities="beta",
+        )
+
+    assert seen == {"platform": "web", "capabilities": "beta"}  # flags flow into the derivation
+    assert lease_body == {"worker_id": "w1", "capabilities": ["beta", "platform:web"]}
 
 
 def test_worker_logs_result_post_failure(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:

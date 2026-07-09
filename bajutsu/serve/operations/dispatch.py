@@ -11,6 +11,7 @@ from bajutsu.serve.authz import _record_audit
 from bajutsu.serve.commands import _int, crawl_command, record_command, run_command
 from bajutsu.serve.helpers import (
     target_build_info,
+    target_capabilities,
     valid_relative_key,
     valid_run_id,
 )
@@ -187,6 +188,7 @@ def start_run(
             actor=actor,
             org=org,
             evidence_prefix=evidence_prefix,
+            capabilities=target_capabilities(cfg, target),
         ),
     )
     if capped:
@@ -255,6 +257,7 @@ def start_record(
             record_save=authored.save,
             actor=actor,
             org=org,
+            capabilities=target_capabilities(cfg, str(body["target"])),
         ),
     )
     if capped:
@@ -335,6 +338,7 @@ def start_crawl(
             build=build,
             actor=actor,
             org=org,
+            capabilities=target_capabilities(cfg, target),
         ),
     )
     if capped:

@@ -101,6 +101,27 @@ def test_redact_unmask_headers_is_merged() -> None:
     assert resolve(cfg, "s").redact.unmask_headers == ["authorization", "cookie"]
 
 
+# BE-0166: `requires` (the capability tokens routing needs) resolves as a union of the team-wide
+# default and the target's own list — the target adds requirements, never replaces them.
+
+
+def test_requires_resolves_as_union_of_defaults_and_target() -> None:
+    cfg = load_config(
+        "defaults:\n"
+        "  requires: [ios18]\n"
+        "targets:\n"
+        "  s:\n"
+        "    bundleId: com.x\n"
+        "    requires: [ipad]\n"
+    )
+    assert sorted(resolve(cfg, "s").requires) == ["ios18", "ipad"]
+
+
+def test_requires_defaults_to_empty() -> None:
+    cfg = load_config("targets:\n  s:\n    bundleId: com.x\n")
+    assert resolve(cfg, "s").requires == []
+
+
 # BE-0047: the `ai` block resolves like any other setting (defaults overridden per target) into
 # an AiConfig the AI paths read; an absent block resolves to None (env-only, as before).
 

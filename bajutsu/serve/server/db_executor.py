@@ -23,4 +23,6 @@ class DbQueueExecutor:
         self._repo = repository
 
     def dispatch(self, state: ServeState, job: Job) -> None:
-        self._repo.enqueue_job(job.id, org_id=job.org or "", spec=job_spec(job))
+        self._repo.enqueue_job(
+            job.id, org_id=job.org or "", spec=job_spec(job), capabilities=job.capabilities
+        )

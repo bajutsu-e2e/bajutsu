@@ -94,6 +94,11 @@ class Job:
     # (BE-0179): set when the spawned record emits a handoff request, cleared when the response is
     # written back to its stdin. Surfaced to the UI so the paused job is visible, not a silent block.
     awaiting_human: bool = False
+    # Capability tokens the worker running this job must advertise (BE-0166): its platform axis
+    # (`platform:ios` / `platform:web`) plus the target's operator-declared `requires` (`ios18`,
+    # `ipad`). Travels in the job spec so the hosted router leases it only to a capable worker; empty
+    # for a local run (one worker, no routing).
+    capabilities: list[str] = field(default_factory=list)
 
     def view(self, *, include_lines: bool = True) -> dict[str, Any]:
         """The job's state for the UI. `include_lines=False` omits the log buffer — used for the

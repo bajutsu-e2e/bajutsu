@@ -355,7 +355,11 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
                 case "/api/capture/finish":
                     self._json(*ops.finish_capture(state, body, actor=self._actor()))
                 case "/api/worker/lease":
-                    self._json(*ops.worker_lease(state, body.get("worker_id", "")))
+                    self._json(
+                        *ops.worker_lease(
+                            state, body.get("worker_id", ""), body.get("capabilities")
+                        )
+                    )
                 case "/api/worker/heartbeat":
                     self._json(
                         *ops.worker_heartbeat(

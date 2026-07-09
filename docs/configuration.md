@@ -80,6 +80,7 @@ An undefined target raises `KeyError` (the CLI exits with code 2).
 | `capture` | defaults | the default evidence ([the note in evidence](evidence.md#three-ways-to-request-evidence)) |
 | `redact` | defaults ∪ app | merged (below) |
 | `secrets` | defaults ∪ app | env var names declaring `${secrets.X}`; values are masked in evidence ([evidence](evidence.md#masking-redact)) |
+| `requires` | defaults ∪ app | capability tokens a worker must advertise to run this target on the hosted backend ([self-hosting](self-hosting.md#capability-routed-queues-be-0166), [BE-0166](../roadmaps/BE-0166-capability-routed-queues/BE-0166-capability-routed-queues.md)), e.g. `[ios18, ipad]`. The platform axis is added automatically; add tokens here only to pin a runtime or device class. Ignored by a local single-worker run |
 | `ai` | defaults < app (field by field) | the AI paths' provider/model/endpoint/key ([below](#ai-provider-ai-be-0047)); `None` (omitted) = the environment alone decides |
 | `defaults.doctor.idCoverageOk` / `defaults.doctor.idCoverageFail` | defaults | id-coverage thresholds for doctor grading ([below](#configurable-thresholds-defaultsdoctor-be-0024)); default 0.9 / 0.7 |
 

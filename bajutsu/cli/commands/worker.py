@@ -27,6 +27,7 @@ import typer
 from bajutsu import simctl
 from bajutsu.object_store import content_type_for
 from bajutsu.serve import InMemoryLogBus
+from bajutsu.serve.capabilities import WORKER_CAPABILITIES_ENV, worker_capabilities
 from bajutsu.serve.server.worker_job import WorkerIO, execute_job_spec
 
 _logger = logging.getLogger("bajutsu.worker")
@@ -57,6 +58,24 @@ def _post_json(
         return e.code, json.loads(raw) if raw else {}
 
 
+def _advertised_capabilities(platform: str, capabilities: str) -> list[str]:
+    """The sorted capability set this worker advertises (BE-0166).
+
+    Combines its ``--platform`` axes, the operator override (``--capabilities`` or
+    `WORKER_CAPABILITIES_ENV`), and, for an iOS worker, the installed Simulator inventory. The
+    Simulator probe is gated on ``ios`` so a web-only worker (the Linux container) never shells out
+    to an absent ``xcrun``.
+    """
+    platforms = [p.strip() for p in platform.split(",") if p.strip()]
+    return sorted(
+        worker_capabilities(
+            platforms,
+            override=capabilities or os.environ.get(WORKER_CAPABILITIES_ENV),
+            run=simctl._real_run if "ios" in platforms else None,
+        )
+    )
+
+
 def worker(
     server_url: str = typer.Option(
         "",
@@ -73,6 +92,19 @@ def worker(
         help="Seconds between lease heartbeats during a run (keep it under the server lease timeout)",
     ),
     worker_id: str = typer.Option("", "--worker-id", help="Worker identifier"),
+    platform: str = typer.Option(
+        "ios",
+        "--platform",
+        help="Comma-list of platforms this worker can drive (ios / web / android) — the backend "
+        "axis it advertises for capability routing (BE-0166). A Mac idb worker is 'ios'; the "
+        "Playwright container is 'web'.",
+    ),
+    capabilities: str = typer.Option(
+        "",
+        "--capabilities",
+        help="Extra capability tokens to advertise beyond the platform + Simulator inventory "
+        "(comma/space separated, e.g. 'ios18,ipad'); also read from $BAJUTSU_WORKER_CAPABILITIES.",
+    ),
 ) -> None:
     """Run a worker that leases queued `bajutsu run` jobs from the control plane over HTTP.
 
@@ -89,13 +121,17 @@ def worker(
     auth_token = token or os.environ.get("BAJUTSU_TOKEN") or None
     wid = worker_id or f"worker-{os.getpid()}"
     work = Path.cwd()
+    # The capability set this worker advertises on every lease (BE-0166), computed once at startup
+    # (the pool is assumed stable per worker).
+    caps = _advertised_capabilities(platform, capabilities)
 
     typer.echo(f"bajutsu worker → polling {url}  (Ctrl-C to stop)")
+    typer.echo(f"  advertising capabilities: {', '.join(caps) or '(none)'}")
     while True:
         try:
             code, body = _post_json(
                 f"{url}/api/worker/lease",
-                {"worker_id": wid},
+                {"worker_id": wid, "capabilities": caps},
                 token=auth_token,
             )
         except (URLError, OSError) as e:

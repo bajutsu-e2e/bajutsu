@@ -10,8 +10,25 @@ from bajutsu.serve.server.object_store import baseline_prefix, org_prefix
 from bajutsu.serve.state import ServeState
 
 
-def worker_lease(state: ServeState, worker_id: str) -> tuple[dict[str, Any], int]:
-    """Lease the oldest queued job for *worker_id*, or return 204 when the queue is empty.
+def _clean_capabilities(raw: Any) -> list[str]:
+    """The worker-advertised capability tokens from a request body, defensively coerced.
+
+    A non-list (or absent) value yields ``[]`` — an un-annotated worker advertises nothing and so
+    leases only jobs with no requirement, rather than crashing the lease on a malformed payload.
+    Each token is stringified so a stray non-string can't reach the subset test.
+    """
+    return [str(t) for t in raw] if isinstance(raw, list) else []
+
+
+def worker_lease(
+    state: ServeState, worker_id: str, capabilities: Any = None
+) -> tuple[dict[str, Any], int]:
+    """Lease the oldest queued job *worker_id* can serve, or return 204 when none is servable.
+
+    *capabilities* is the worker's advertised capability set (BE-0166): the lease is filtered to
+    jobs whose required capabilities it covers, so a worker never leases a job it cannot run. The
+    worker is registered (its capabilities + liveness recorded) on every poll — including an empty
+    one — so an idle worker still counts toward what the pool can route.
 
     When the job materializes visual baselines and a hosted object store is configured, the response
     also carries ``baseline_urls`` — one presigned GET URL per baseline under the *leased job's* org
@@ -21,7 +38,9 @@ def worker_lease(state: ServeState, worker_id: str) -> tuple[dict[str, Any], int
         return {"error": "server backend has no database configured"}, 503
     if not worker_id:
         return {"error": "worker_id is required"}, 400
-    leased = state.repository.lease_job(worker_id)
+    advertised = _clean_capabilities(capabilities)
+    state.repository.register_worker(worker_id, advertised)
+    leased = state.repository.lease_job(worker_id, advertised)
     if leased is None:
         return {}, 204
     resp: dict[str, Any] = {"job_id": leased.id, "org_id": leased.org_id, "spec": leased.spec}
@@ -56,6 +75,10 @@ def worker_heartbeat(state: ServeState, worker_id: str, job_id: str) -> tuple[di
         return {"error": "worker_id is required"}, 400
     if not job_id:
         return {"error": "job_id is required"}, 400
+    # Refresh the worker's liveness (BE-0166): a worker busy on a run longer than the lease timeout
+    # polls `lease` only after it finishes, so without this its registry row would age out and make
+    # its capability's queued jobs look unroutable. The heartbeat is that liveness signal here too.
+    state.repository.touch_worker(worker_id)
     if state.repository.heartbeat_job(job_id, worker_id):
         return {"ok": True}, 200
     return {"error": "lease lost or not held by this worker"}, 409

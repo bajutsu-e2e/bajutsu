@@ -11,12 +11,13 @@ from __future__ import annotations
 import math
 import os
 import uuid
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
-from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Any, Protocol, cast, runtime_checkable
 
 if TYPE_CHECKING:
-    from sqlalchemy.engine import Engine
+    from sqlalchemy.engine import CursorResult, Engine
 
     from bajutsu.serve.server.models import Run
 
@@ -53,6 +54,10 @@ class JobMetrics:
     # Seconds since the oldest in-flight (leased) job was *enqueued* (created_at), so it includes
     # the time it waited in the queue before the lease — a slow / stuck-run signal; 0.0 if none
     oldest_in_flight_seconds: float
+    # Queued jobs no *live* worker can serve — their required capabilities are a subset of no live
+    # worker's advertised set (BE-0166). A rising count is the operator's "add a worker with X"
+    # signal; such a job stays queued rather than being leased to an incompatible worker or dropped.
+    unroutable_queued: int = 0
 
 
 @dataclass
@@ -102,11 +107,35 @@ class Repository(Protocol):
     ) -> None:
         """Append an audit-log entry — who did what to which target, and when (server clock)."""
 
-    def enqueue_job(self, job_id: str, org_id: str, spec: dict[str, Any]) -> None:
-        """Insert a job with status ``queued``."""
+    def enqueue_job(
+        self, job_id: str, org_id: str, spec: dict[str, Any], capabilities: Iterable[str] = ()
+    ) -> None:
+        """Insert a job with status ``queued`` and its required-capability routing key (BE-0166)."""
 
-    def lease_job(self, worker_id: str) -> LeasedJob | None:
-        """Atomically lease the oldest queued job to *worker_id*, or return None."""
+    def register_worker(self, worker_id: str, capabilities: Iterable[str]) -> None:
+        """Record what *worker_id* can serve and that it is live now (BE-0166 routing).
+
+        Called on every lease poll — including an empty-queue poll — so an idle worker still refreshes
+        its liveness and keeps counting toward what the pool can route (else its jobs would look
+        unroutable). Idempotent upsert keyed by *worker_id*.
+        """
+
+    def lease_job(self, worker_id: str, capabilities: Iterable[str] = ()) -> LeasedJob | None:
+        """Atomically lease the oldest queued job *worker_id* can serve, or return None (BE-0166).
+
+        A job is a candidate only when its required-capability set is a subset of *capabilities* —
+        so a worker never leases a job it cannot run. A job no live worker can serve simply stays
+        queued (surfaced as unroutable via `metrics_snapshot`), never leased to an incompatible one.
+        """
+
+    def touch_worker(self, worker_id: str) -> None:
+        """Refresh *worker_id*'s liveness without changing its capabilities (BE-0166 routing).
+
+        A worker polls `lease` only between jobs, so a worker busy on a run longer than the lease
+        timeout would otherwise age out of the live set and make its capability's queued jobs look
+        unroutable. The heartbeat calls this so a busy worker stays counted as live. A no-op if the
+        worker has no registry row yet (it registers on its first lease before any heartbeat).
+        """
 
     def heartbeat_job(self, job_id: str, worker_id: str) -> bool:
         """Renew a lease's timer, returning False when *worker_id* no longer owns the live lease.
@@ -308,41 +337,101 @@ class SqlRepository:
             )
             session.commit()
 
-    def enqueue_job(self, job_id: str, org_id: str, spec: dict[str, Any]) -> None:
+    def enqueue_job(
+        self, job_id: str, org_id: str, spec: dict[str, Any], capabilities: Iterable[str] = ()
+    ) -> None:
         from sqlalchemy.orm import Session
 
         from bajutsu.serve.server.models import JobRecord
 
         with Session(self._engine) as session:
-            session.add(JobRecord(id=job_id, org_id=org_id, spec=spec))
+            session.add(
+                JobRecord(id=job_id, org_id=org_id, spec=spec, capabilities=list(capabilities))
+            )
             session.commit()
 
-    def lease_job(self, worker_id: str) -> LeasedJob | None:
+    def register_worker(self, worker_id: str, capabilities: Iterable[str]) -> None:
         from sqlalchemy import select
         from sqlalchemy.orm import Session
 
+        from bajutsu.serve.server.models import WorkerRecord
+
+        caps = list(capabilities)
+        now = datetime.now(UTC)
+        with Session(self._engine) as session:
+            # Upsert without a dialect-specific ON CONFLICT: the lock+read+write serializes two polls
+            # from the same worker_id (rare), and the table is tiny (one row per live worker).
+            stmt = select(WorkerRecord).where(WorkerRecord.id == worker_id)
+            if self._engine.dialect.name != "sqlite":
+                stmt = stmt.with_for_update()
+            row = session.scalars(stmt).first()
+            if row is None:
+                session.add(WorkerRecord(id=worker_id, capabilities=caps, last_seen=now))
+            else:
+                row.capabilities = caps
+                row.last_seen = now
+            session.commit()
+
+    def lease_job(self, worker_id: str, capabilities: Iterable[str] = ()) -> LeasedJob | None:
+        from sqlalchemy import select, update
+        from sqlalchemy.orm import Session
+
+        from bajutsu.serve.capabilities import can_serve
         from bajutsu.serve.server.models import JobRecord
 
         # Sweep dead workers' leases back into the queue before serving, so a stuck job is picked up
         # on the next poll without a separate reaper process.
         self.reclaim_expired_leases(self._lease_timeout, max_attempts=self._max_attempts)
+        advertised = set(capabilities)
         with Session(self._engine) as session:
-            stmt = (
-                select(JobRecord)
+            # Scan queued jobs oldest-first for the first this worker can serve — capability filtering
+            # can't be a `.limit(1)` because the oldest queued job may need a capability this worker
+            # lacks, and skipping it must still find a younger servable one (the `status` index bounds
+            # the scan to queued rows). The read takes no row locks: instead of `FOR UPDATE` across the
+            # whole scan (which would lock every capability-skipped row and starve a concurrent leaser
+            # under `SKIP LOCKED`), each candidate is claimed with a guarded UPDATE that only lands if
+            # the row is still `queued` — so a lost race just moves on to the next candidate. Only
+            # (id, capabilities) is read up front (a plain-tuple snapshot, so a rollback can't expire
+            # it); the winner's `spec` is loaded once after the claim.
+            candidates = session.execute(
+                select(JobRecord.id, JobRecord.capabilities)
                 .where(JobRecord.status == "queued")
                 .order_by(JobRecord.created_at)
-                .limit(1)
+            ).all()
+            for job_id, caps in candidates:
+                if not can_serve(caps or [], advertised):
+                    continue
+                claimed = cast(
+                    "CursorResult[Any]",
+                    session.execute(
+                        update(JobRecord)
+                        .where(JobRecord.id == job_id, JobRecord.status == "queued")
+                        .values(status="leased", leased_at=datetime.now(UTC), leased_by=worker_id)
+                    ),
+                )
+                if claimed.rowcount != 1:
+                    session.rollback()  # another worker took this row between the read and the claim
+                    continue
+                org_id, spec = session.execute(
+                    select(JobRecord.org_id, JobRecord.spec).where(JobRecord.id == job_id)
+                ).one()
+                session.commit()
+                return LeasedJob(id=job_id, org_id=org_id, spec=dict(spec))
+            return None
+
+    def touch_worker(self, worker_id: str) -> None:
+        from sqlalchemy import update
+        from sqlalchemy.orm import Session
+
+        from bajutsu.serve.server.models import WorkerRecord
+
+        with Session(self._engine) as session:
+            session.execute(
+                update(WorkerRecord)
+                .where(WorkerRecord.id == worker_id)
+                .values(last_seen=datetime.now(UTC))
             )
-            if self._engine.dialect.name != "sqlite":
-                stmt = stmt.with_for_update(skip_locked=True)
-            row = session.scalars(stmt).first()
-            if row is None:
-                return None
-            row.status = "leased"
-            row.leased_at = datetime.now(UTC)
-            row.leased_by = worker_id
             session.commit()
-            return LeasedJob(id=row.id, org_id=row.org_id, spec=dict(row.spec))
 
     def heartbeat_job(self, job_id: str, worker_id: str) -> bool:
         from sqlalchemy import select
@@ -367,14 +456,19 @@ class SqlRepository:
     def reclaim_expired_leases(
         self, timeout: timedelta, *, max_attempts: int = DEFAULT_LEASE_MAX_ATTEMPTS
     ) -> list[str]:
-        from sqlalchemy import select
+        from sqlalchemy import delete, select
         from sqlalchemy.orm import Session
 
-        from bajutsu.serve.server.models import JobRecord
+        from bajutsu.serve.server.models import JobRecord, WorkerRecord
 
         cutoff = datetime.now(UTC) - timeout
         requeued: list[str] = []
         with Session(self._engine) as session:
+            # Prune dead workers in the same sweep the leases use — a worker not seen within the
+            # timeout is dead by the same definition, so its registry row stops counting toward
+            # routability and the table stays bounded to the live pool (BE-0166), never leaking a row
+            # per restarted `worker-<pid>`.
+            session.execute(delete(WorkerRecord).where(WorkerRecord.last_seen < cutoff))
             stmt = select(JobRecord).where(
                 JobRecord.status == "leased", JobRecord.leased_at < cutoff
             )
@@ -454,7 +548,8 @@ class SqlRepository:
         from sqlalchemy import select
         from sqlalchemy.orm import Session
 
-        from bajutsu.serve.server.models import JobRecord
+        from bajutsu.serve.capabilities import can_serve
+        from bajutsu.serve.server.models import JobRecord, WorkerRecord
 
         now = datetime.now(UTC)
         queued: dict[str, int] = defaultdict(int)
@@ -462,19 +557,24 @@ class SqlRepository:
         # Per worker, keep its freshest lease renewal (max leased_at) — that is its last heartbeat.
         latest_heartbeat: dict[str, datetime] = {}
         oldest_in_flight = 0.0
+        queued_caps: list[list[str]] = []  # required-capability set of each queued job (BE-0166)
         # Read only the columns the aggregate needs — never `spec`/`result`, which can carry
-        # secrets. Filtering to the two live states keeps the read off finished rows.
+        # secrets. `capabilities` is the routing key (no secret), needed for the unroutable count.
+        # Filtering to the two live states keeps the read off finished rows.
         stmt = select(
             JobRecord.status,
             JobRecord.org_id,
             JobRecord.leased_by,
             JobRecord.leased_at,
             JobRecord.created_at,
+            JobRecord.capabilities,
         ).where(JobRecord.status.in_(("queued", "leased")))
+        cutoff = now - self._lease_timeout
         with Session(self._engine) as session:
-            for status, org_id, leased_by, leased_at, created_at in session.execute(stmt):
+            for status, org_id, leased_by, leased_at, created_at, caps in session.execute(stmt):
                 if status == "queued":
                     queued[org_id] += 1
+                    queued_caps.append(list(caps or []))
                     continue
                 leased[org_id] += 1
                 oldest_in_flight = max(oldest_in_flight, _age_seconds(now, created_at))
@@ -483,6 +583,18 @@ class SqlRepository:
                     renewed = _as_utc(leased_at)
                     if fresh is None or renewed > fresh:
                         latest_heartbeat[leased_by] = renewed
+            # What the *live* pool can serve: a worker seen within the lease timeout is alive (the
+            # same freshness window the reclaim path uses; the heartbeat refreshes `last_seen` so a
+            # worker busy on a long run still counts). A queued job is unroutable when no single live
+            # worker advertises all of its required capabilities — the same `can_serve` subset test
+            # the lease filter uses, so "unroutable" means exactly "no worker would lease it".
+            live = [
+                list(w.capabilities or [])
+                for w in session.scalars(
+                    select(WorkerRecord).where(WorkerRecord.last_seen >= cutoff)
+                )
+            ]
+        unroutable = sum(1 for req in queued_caps if not any(can_serve(req, adv) for adv in live))
         return JobMetrics(
             queued_by_org=dict(queued),
             leased_by_org=dict(leased),
@@ -491,6 +603,7 @@ class SqlRepository:
                 for worker, renewed in latest_heartbeat.items()
             },
             oldest_in_flight_seconds=oldest_in_flight,
+            unroutable_queued=unroutable,
         )
 
 

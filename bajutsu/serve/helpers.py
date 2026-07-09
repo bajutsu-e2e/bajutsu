@@ -148,6 +148,22 @@ def target_build_info(config_path: Path, target: str) -> tuple[str | None, str |
     return (ios.app_path, ios.build) if isinstance(ios, IosConfig) else (None, None)
 
 
+def target_capabilities(config_path: Path, target: str) -> list[str]:
+    """The capability tokens a worker must advertise to run *target* (BE-0166): its resolved
+    platform axis (`platform:ios` / `platform:web`) plus the target's operator-declared `requires`.
+
+    Empty on any load/resolve error, so a job with an unreadable config routes as before (platform
+    axis only would be lost, but an unroutable-by-mistake job would fail loudly at lease — see the
+    router) rather than crashing dispatch."""
+    from bajutsu.serve.capabilities import required_capabilities
+
+    try:
+        eff = resolve(_load_config_cached(config_path), target)
+    except (OSError, ValueError, KeyError):
+        return []
+    return required_capabilities(eff.platform, eff.requires)
+
+
 def target_scenarios_dir(config_path: Path, target: str) -> Path | None:
     """The configured ``scenarios`` dir for *target*, or None (unset, or any load/resolve error).
     Mirrors ``target_build_info``; resolved relative to the run's working directory."""
