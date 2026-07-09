@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0217](BE-0217-harden-review-prompt.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0217") |
+| Implementing PR | [#865](https://github.com/bajutsu-e2e/bajutsu/pull/865) |
 | Topic | Development infrastructure (contributor workflow) |
 | Related | [BE-0203](../BE-0203-claude-code-pr-review/BE-0203-claude-code-pr-review.md) |
 <!-- /BE-METADATA -->
@@ -192,15 +193,15 @@ workflow permissions, triggers, or gate semantics from BE-0203 change.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Add the "review what the gate can't" leading principle (item 1)
-- [ ] Add the design & architecture lens (item 2)
-- [ ] Add the comment/docstring-drift ("comment rot") lens (item 3)
-- [ ] Add the `Protocol`/abstract-method docstring-only-body lens (item 4)
-- [ ] Add the unescaped-structured-data-interpolation lens, scoped to ungated JS templates (item 5)
-- [ ] Add the test brittleness/flakiness lens (item 6)
-- [ ] Adopt Conventional Comments labeling in inline findings (item 7)
-- [ ] Add the wording/terminology-consistency lens (item 8)
-- [ ] Verify each new lens on a live test PR (item 9)
+- [x] Add the "review what the gate can't" leading principle (item 1)
+- [x] Add the design & architecture lens (item 2)
+- [x] Add the comment/docstring-drift ("comment rot") lens (item 3)
+- [x] Add the `Protocol`/abstract-method docstring-only-body lens (item 4)
+- [x] Add the unescaped-structured-data-interpolation lens, scoped to ungated JS templates (item 5)
+- [x] Add the test brittleness/flakiness lens (item 6)
+- [x] Adopt Conventional Comments labeling in inline findings (item 7)
+- [x] Add the wording/terminology-consistency lens (item 8)
+- [ ] Verify each new lens on a live test PR (item 9) — manual, needs a live PR against the reviewer
 
 Log:
 
@@ -208,6 +209,12 @@ Log:
   (`#808`, `#811`, `#813`, `#816`, `#825`) and in external standards research (Google Engineering
   Practices, the Python PEPs, Bandit's rule catalogue, OWASP's secure-code-review guidance, the
   Conventional Comments specification, Google's developer documentation style guide).
+- Rewrote `.github/claude-review-prompt.md` to fold in items 1–8: added the "review what the gate
+  can't see" leading principle, a design & architecture lens, the comment-rot / docstring-only
+  `Protocol` body / unescaped-interpolation semantic lenses, a test brittleness/flakiness lens,
+  Conventional Comments labeling on every inline finding, and a terminology-consistency clause under
+  house conventions. The workflow YAML is unchanged (the identification prefix lives in the prompt).
+  Item 9 stays open — it requires a live PR to exercise the reviewer.
 
 ## References
 
