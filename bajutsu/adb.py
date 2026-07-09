@@ -208,8 +208,13 @@ def geo_fix_cmd(serial: str, lat: float, lon: float) -> list[str]:
 
 
 def set_primary_clip_cmd(serial: str, text: str) -> list[str]:
-    """Write `text` to the primary clipboard (`cmd clipboard set-primary-clip`)."""
-    return _adb(serial, "shell", "cmd", "clipboard", "set-primary-clip", text)
+    """Write `text` to the primary clipboard (`cmd clipboard set-primary-clip`).
+
+    `text` is free-form scenario input, and `adb shell` joins its argv into one command string run
+    by the device shell — so it is single-quoted (as `text_script` does for `input text`) to seed it
+    literally rather than let shell metacharacters execute on the device.
+    """
+    return _adb(serial, "shell", "cmd", "clipboard", "set-primary-clip", shlex.quote(text))
 
 
 def get_primary_clip_cmd(serial: str) -> list[str]:

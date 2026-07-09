@@ -45,6 +45,11 @@ def test_clipboard_command_builders() -> None:
         "set-primary-clip",
         "COUPON123",
     ]
+    # Scenario-supplied text is single-quoted for the device shell: `adb shell` joins its argv into
+    # one command string, so shell metacharacters in `text` would otherwise execute on the device
+    # rather than being seeded literally (the same reason `text_script` quotes `input text`).
+    assert adb.set_primary_clip_cmd("E", "a; rm -rf /sdcard")[-1] == "'a; rm -rf /sdcard'"
+    assert adb.set_primary_clip_cmd("E", "with space")[-1] == "'with space'"
     assert adb.get_primary_clip_cmd("E") == [
         "adb",
         "-s",
