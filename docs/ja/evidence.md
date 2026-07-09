@@ -99,7 +99,7 @@ capturePolicy:
 | `video` | `simctl io <udid> recordVideo --codec h264` / `adb shell screenrecord` | **SIGINT**（強制 kill だと mp4 が壊れる） | `scenario.mp4` |
 | `deviceLog` | `simctl spawn <udid> log stream --level debug --style compact [--predicate ...]` / `adb logcat -T 1` | SIGTERM | `device.log` |
 
-- iOS は `start_video` / `start_device_log`、Android は `start_screenrecord` / `start_logcat` が `Interval` を返し、`Interval.stop()` がシグナルを送ってファイルを確定します。停止は最大 10s 待ち、超えたら kill します。`screenrecord` はデバイス側に録画するので、その `Interval` は停止時に確定した mp4 を `adb pull` で回収し、デバイス側のコピーを削除します。pull が失敗した場合（デバイスが消えたなど）、Sink は実体のないパスを記録する代わりに、その 1 件だけを警告つきで捨てます。証跡の I/O で run を失敗させることはありません。なお `adb screenrecord` は 1 回の録画を約 180 秒（プラットフォームの既定／上限）で打ち切るので、それより長いシナリオの Android 動画はその時点で終わります。この上限と SIGINT による確定の実機での調整は、後続の BE-0007 e2e に含みます。
+- iOS は `start_video` / `start_device_log`、Android は `start_screenrecord` / `start_logcat` が `Interval` を返し、`Interval.stop()` がシグナルを送ってファイルを確定します。停止は最大 10s 待ち、超えたら kill します。`screenrecord` はデバイス側に録画するので、その `Interval` は停止時に確定した mp4 を `adb pull` で回収し、デバイス側のコピーを削除します。pull が失敗した場合（デバイスが消えたなど）、Sink は実体のないパスを記録する代わりに、その 1 件だけを警告つきで捨てます（実体のないパスを残しません）。区間証跡の確定処理の I/O で、通過するはずのシナリオを失敗させません。なお `adb screenrecord` は 1 回の録画を約 180 秒（プラットフォームの既定／上限）で打ち切るので、それより長いシナリオの Android 動画はその時点で終わります。この上限と SIGINT による確定の実機での調整は、後続の BE-0007 e2e に含みます。
 - deviceLog は iOS では `--predicate`（NSPredicate）でサブシステムなどに絞れます（CLI の `--log-predicate`）。`adb logcat` は絞り込みません（logcat の filterspec は別の構文で、後続の knob です）。取得はリングバッファ全体ではなくシナリオの区間を反映するよう、末尾から追従を始めます。
 - `INTERVAL_KINDS = {"video", "deviceLog", "appTrace"}`。orchestrator はこの集合で「区間 / 瞬時」を振り分けます。
 
