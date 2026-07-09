@@ -432,7 +432,7 @@ class AndroidEnvironment:
         return False  # no native network monitor — the same mocked story as iOS
 
     def records_video_up_front(self) -> bool:
-        return False  # video (screenrecord) is a follow-up (BE-0007 Unit 4)
+        return False  # screenrecord records on demand via driver_interval, not up front like web
 
     def hook_collector(self, driver: base.Driver, scenario: Scenario) -> Collector:
         raise NotImplementedError("the adb backend does not observe network via the driver")

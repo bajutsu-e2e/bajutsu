@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import logging
+import subprocess
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
@@ -176,9 +177,10 @@ class FileSink:
     """Write artifacts to disk under the run dir.
 
     Instant artifacts go under run_dir/<step_id>/ and the scenario's interval
-    recordings under run_dir/<scenario_id>/. `udid` is needed for interval captures
-    (simctl video / log); without it they are skipped. `log_predicate` narrows the
-    device-log stream (e.g. by subsystem); `log_subsystem` is the app's os_log
+    recordings under run_dir/<scenario_id>/. Interval captures come from the driver
+    (`driver_interval`, web / Android) when it supplies one, else the simctl path,
+    which needs a `udid`; without either they are skipped. `log_predicate` narrows the
+    simctl device-log stream (e.g. by subsystem); `log_subsystem` is the app's os_log
     subsystem for appTrace.
     """
 
@@ -190,16 +192,16 @@ class FileSink:
         log_subsystem: str | None = None,
         redact: Redact | None = None,
         secrets: list[str] | None = None,
-        web_interval: Callable[[str, Path], intervals.Interval | None] | None = None,
+        driver_interval: Callable[[str, Path], intervals.Interval | None] | None = None,
     ) -> None:
         self.run_dir = run_dir
         self.udid = udid
         self.log_predicate = log_predicate
         self.log_subsystem = log_subsystem  # for appTrace: the app's os_log subsystem
         self.redactor = Redactor(redact, values=secrets)
-        # When set (a web lane), interval evidence comes from this Playwright-native provider
-        # instead of the simctl starters below — the device pool injects the driver's `web_interval`.
-        self.web_interval = web_interval
+        # When set (a web or Android lane), interval evidence comes from this driver-supplied provider
+        # instead of the simctl starters below — the device pool injects the driver's `driver_interval`.
+        self.driver_interval = driver_interval
 
     def capture(
         self,
@@ -219,21 +221,22 @@ class FileSink:
     ) -> list[intervals.Interval]:
         """Start the whole-scenario recordings under <scenario_id>/.
 
-        A web lane records via the injected `web_interval` provider (Playwright-native); otherwise
-        the simctl starters drive iOS, which need a `udid`.
+        A driver-supplied lane records via the injected `driver_interval` provider (Playwright-native
+        on web, adb `screenrecord`/`logcat` on Android); otherwise the simctl starters drive iOS,
+        which need a `udid`.
         """
         if not kinds:
             return []
         scenario_dir = self.run_dir / scenario_id
-        if self.web_interval is not None:
+        if self.driver_interval is not None:
             scenario_dir.mkdir(parents=True, exist_ok=True)
-            web_started: list[intervals.Interval] = []
+            driver_started: list[intervals.Interval] = []
             for token in kinds:
                 kind = token.partition(".")[0]
-                interval = self.web_interval(kind, scenario_dir / _interval_filename(kind))
+                interval = self.driver_interval(kind, scenario_dir / _interval_filename(kind))
                 if interval is not None:
-                    web_started.append(interval)
-            return web_started
+                    driver_started.append(interval)
+            return driver_started
         if self.udid is None:
             return []
         scenario_dir.mkdir(parents=True, exist_ok=True)
@@ -273,7 +276,17 @@ class FileSink:
         """
         out: list[Artifact] = []
         for interval in started:
-            path = interval.stop()
+            try:
+                path = interval.stop()
+            except (subprocess.CalledProcessError, OSError) as exc:
+                # An I/O failure while finalizing (e.g. the adb `screenrecord` pull raising when the
+                # device vanished) drops just this artifact rather than aborting the loop — which
+                # would orphan the intervals started after it — and does not fail an otherwise-passing
+                # scenario over evidence I/O. The gap is disclosed loudly (warning), never a phantom
+                # artifact with no file behind it. Narrow on purpose: a genuine bug in a stop()/
+                # transform (e.g. AttributeError) still surfaces rather than being swallowed here.
+                _logger.warning("dropping %s evidence: capture stop failed: %s", interval.kind, exc)
+                continue
             # appTrace also has a raw stream beside it; both must be scrubbed before the artifact ships.
             to_scrub = [path]
             if interval.kind == "appTrace":

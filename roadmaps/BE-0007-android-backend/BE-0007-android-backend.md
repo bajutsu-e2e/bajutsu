@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0007") |
-| Implementing PR | [#658](https://github.com/bajutsu-e2e/bajutsu/pull/658) |
+| Implementing PR | [#658](https://github.com/bajutsu-e2e/bajutsu/pull/658), [#821](https://github.com/bajutsu-e2e/bajutsu/pull/821) |
 | Topic | Platform expansion (Android / Web / Flutter) |
 <!-- /BE-METADATA -->
 
@@ -171,7 +171,9 @@ the **lean** end of `capabilities()`.
 - [x] Registry wiring — `adb` in `IMPLEMENTED`, `capabilities_for`/`make_driver` branches (`bajutsu/backends.py`).
 - [x] `AdbDriver` actuator — `uiautomator dump` parsing, coordinate actuation, transient-empty retry, capabilities (`bajutsu/drivers/adb.py`).
 - [x] `AndroidEnvironment` — the boot-readiness wait → `pm clear` → `am start` → deeplink sequence and the lease-shaping methods (`bajutsu/platform_lifecycle.py`, over the new `bajutsu/adb.py` command layer).
-- [ ] Evidence and device control — `logcat` deviceLog, `screenrecord` video, mocked network, supported device-state steps.
+- [ ] Evidence and device control — `logcat` deviceLog, `screenrecord` video, and mocked network
+  **(done, 2026-07-08)**; supported device-state steps (the `DeviceControl` family) remain a
+  follow-up, deferred because Android supports only a subset of the coarse `deviceControl` capability.
 - [x] doctor and disclosure — `doctor --target` availability beside idb; manifest records `backend: "adb"`.
 - [ ] codegen target — Espresso / UI Automator generator (follow-up slice).
 - [ ] Validation — fast-gate driver/registry tests over dump fixtures **(done)**; core scenarios
@@ -180,6 +182,27 @@ the **lean** end of `capabilities()`.
 
 Log:
 
+- 2026-07-08 ([#821](https://github.com/bajutsu-e2e/bajutsu/pull/821)) — Interval evidence slice
+  (Unit 4, the evidence half). `video` now records via `adb
+  shell screenrecord` and `deviceLog` via `adb logcat`, the twins of the simctl providers
+  (`bajutsu/adb.py` command builders + `start_screenrecord` / `start_logcat` in `bajutsu/intervals.py`).
+  `screenrecord` records device-side, so its `Interval` finalizes on SIGINT then pulls the mp4 off
+  the device and removes the device copy; `logcat` streams to the file and stops on SIGTERM. Android
+  routes through the driver-supplied interval seam (`AdbDriver.driver_interval`), which the FileSink
+  now dispatches to for any non-simctl backend — the `web_interval` field was generalized to
+  `driver_interval`, shared by the Playwright and adb drivers. Mocked network needed no new code:
+  the app-side collector URL already reaches the app through the launch env as an intent extra (a
+  test now pins this). A failed `screenrecord` pull now drops just that artifact with a warning
+  instead of aborting the finalize loop (which would orphan the logcat subprocess) or failing an
+  otherwise-passing scenario over evidence I/O. Fast-gate unit tests cover the command builders, both
+  interval starters (injected spawn / run, incl. the pull-surfaces / cleanup-suppressed asymmetry),
+  the `driver_interval` routing, the FileSink↔`AdbDriver` end-to-end dispatch, the drop-on-failed-stop
+  resilience, and the collector-env forwarding. Docs updated (`docs/drivers.md`, `docs/evidence.md`,
+  `docs/architecture.md`, all ja mirrors). Two on-device caveats are deferred to the e2e slice: `adb
+  screenrecord` caps a single recording at ~180s (documented), and the SIGINT-to-device finalization
+  is the standard idiom but is device/adb-version dependent, so it is validated/tuned there. Device
+  control (setLocation / clipboard / …) and codegen remain follow-ups, so the item stays
+  **In progress**.
 - 2026-07-07 — First on-device validation on an arm64 API 34 emulator. Two fixes fell out of it:
   (1) the Android showcase did not build — each module's Gradle `namespace` used the `.android.`
   applicationId instead of the Kotlin source package, so the unqualified `BuildConfig` references

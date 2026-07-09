@@ -7,9 +7,11 @@ over an injected `run`, no device needed (BE-0007 Unit 7, fast gate).
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
-from bajutsu import adb
+from bajutsu import adb, intervals
 from bajutsu.drivers import base
 from bajutsu.drivers.adb import AdbDriver, parse_hierarchy
 
@@ -106,6 +108,40 @@ def test_capabilities_lean_end() -> None:
     assert base.Capability.SEMANTIC_TAP not in caps  # coordinate actuation, like idb
     assert base.Capability.NETWORK not in caps  # no native monitor
     assert base.Capability.SCREENSHOT in caps
+
+
+def test_driver_interval_routes_video_and_devicelog_to_adb_starters(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # driver_interval is the seam the FileSink uses for a non-simctl backend; it must dispatch
+    # `video` → screenrecord and `deviceLog` → logcat, forwarding the driver's serial (and its
+    # runner, so the screenrecord pull/rm go through the same injected run).
+    seen: dict[str, tuple[object, ...]] = {}
+
+    def fake_screenrecord(serial: str, path: Path, run: object = None, **_: object) -> object:
+        seen["video"] = (serial, path, run)
+        return intervals.Interval(kind="video", path=path, provider="adb")
+
+    def fake_logcat(serial: str, path: Path, **_: object) -> object:
+        seen["deviceLog"] = (serial, path)
+        return intervals.Interval(kind="deviceLog", path=path, provider="adb")
+
+    monkeypatch.setattr(intervals, "start_screenrecord", fake_screenrecord)
+    monkeypatch.setattr(intervals, "start_logcat", fake_logcat)
+
+    def run(_a: list[str]) -> str:
+        return ""
+
+    drv = AdbDriver("U", run=run)
+    video = drv.driver_interval("video", Path("/tmp/v.mp4"))
+    assert video is not None and video.kind == "video" and video.provider == "adb"
+    assert seen["video"] == ("U", Path("/tmp/v.mp4"), run)
+
+    log = drv.driver_interval("deviceLog", Path("/tmp/d.log"))
+    assert log is not None and log.kind == "deviceLog"
+    assert seen["deviceLog"] == ("U", Path("/tmp/d.log"))
+
+    assert drv.driver_interval("appTrace", Path("/tmp/a.raw")) is None  # no adb analogue
 
 
 def _scripted(responses: list[str]) -> tuple[object, list[int]]:
