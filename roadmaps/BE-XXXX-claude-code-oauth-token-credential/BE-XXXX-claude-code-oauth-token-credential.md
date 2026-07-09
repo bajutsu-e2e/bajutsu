@@ -32,7 +32,7 @@ existing Claude API key field.
 
 - **Headless hosts have no way in today.** `claude-code`'s only credential path is a local,
   interactive one: `claude setup-token`'s browser flow or an existing terminal session's stored
-  login. A CI runner, a container, or a remote self-hosted `serve` instance
+  login. A continuous integration (CI) runner, a container, or a remote self-hosted `serve` instance
   ([BE-0016](../BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md)) has no browser and no
   interactive terminal to run that flow against, so the provider is unusable there even though the
   whole point of BE-0176 was subscription billing across every AI path.
