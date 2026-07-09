@@ -9,7 +9,7 @@
 | 提案者 | [@hirosassa](https://github.com/hirosassa) |
 | 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0212") |
-| 実装 PR | _pending_ |
+| 実装 PR | [#856](https://github.com/bajutsu-e2e/bajutsu/pull/856) |
 | トピック | Platform expansion (Android / Web / Flutter) |
 | 関連 | [BE-0128](../BE-0128-device-step-capability-preflight/BE-0128-device-step-capability-preflight-ja.md), [BE-0082](../BE-0082-capability-preflight-check/BE-0082-capability-preflight-check-ja.md), [BE-0007](../BE-0007-android-backend/BE-0007-android-backend-ja.md) |
 <!-- /BE-METADATA -->
@@ -98,7 +98,7 @@ Protocol には手を入れません。
 
 ログ：
 
-- _pending_ — 粗い `DEVICE_CONTROL` トークンを操作単位の 6 トークン（`deviceControl.setLocation` /
+- [#856](https://github.com/bajutsu-e2e/bajutsu/pull/856) — 粗い `DEVICE_CONTROL` トークンを操作単位の 6 トークン（`deviceControl.setLocation` /
   `.clipboard` / `.push` / `.clearKeychain` / `.appLifecycle` / `.statusBar`、まとまりのある操作は
   一つにまとめました）へ分割し、各デバイス制御ステップを preflight でそのトークンに対応づけました。
   idb と xcuitest は `DEVICE_CONTROL_ALL` でファミリ全体を advertise します。サブセットを advertise する
