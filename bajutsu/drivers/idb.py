@@ -16,6 +16,7 @@ import time
 from collections.abc import Callable
 from typing import Any
 
+from bajutsu import simctl
 from bajutsu.drivers import base
 
 RunFn = Callable[[list[str]], str]
@@ -33,10 +34,12 @@ _UDID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$")
 
 def _validated_udid(udid: str) -> str:
     # `booted` (idb's "current device" alias) already satisfies _UDID_RE, so no special case.
+    # Raise simctl.DeviceError (not a bare ValueError) so a bad --udid surfaces as the CLI's
+    # clean exit-2 device fault, the same boundary adb's _checked_serial uses.
     v = udid.strip()
     if _UDID_RE.fullmatch(v):
         return v
-    raise ValueError("invalid udid")
+    raise simctl.DeviceError(f"invalid udid: {udid!r}")
 
 
 def _real_run(args: list[str]) -> str:
