@@ -272,6 +272,7 @@ Reduce friction for the many parallel sessions working this repo — treat merge
 | [BE-0159](BE-0159-flatten-roadmap-status-folders/BE-0159-flatten-roadmap-status-folders.md) | Flatten roadmap items into one directory (retire status-driven folders) | Implemented |
 | [BE-0162](BE-0162-roadmap-status-filter-skill/BE-0162-roadmap-status-filter-skill.md) | Roadmap status-filter skill for AI sessions | Implemented |
 | [BE-0203](BE-0203-claude-code-pr-review/BE-0203-claude-code-pr-review.md) | Claude Code as the automated PR code reviewer | Implemented |
+| [BE-0213](BE-0213-glossary-and-docs-structure/BE-0213-glossary-and-docs-structure.md) | Terminology glossary and documentation structure review | Implemented |
 | [BE-0216](BE-0216-propose-and-build-parallel-skill/BE-0216-propose-and-build-parallel-skill.md) | propose-and-build: author a BE proposal and its implementation in parallel, stacked | Implemented |
 <!-- /GENERATED:implemented-dev-infra -->
 
@@ -718,7 +719,6 @@ Keeping the autonomous crawl fast and its code lean as it grows.
 <!-- GENERATED:proposals-dev-infra -->
 | ID | Item | Status |
 |---|---|---|
-| [BE-0213](BE-0213-glossary-and-docs-structure/BE-0213-glossary-and-docs-structure.md) | Terminology glossary and documentation structure review | Proposal |
 | [BE-0214](BE-0214-web-only-beginner-tutorial/BE-0214-web-only-beginner-tutorial.md) | Web-only beginner tutorial (no Xcode/Simulator required) | Proposal |
 | [BE-0217](BE-0217-harden-review-prompt/BE-0217-harden-review-prompt.md) | Harden the automated PR review prompt with research-backed policy | Proposal |
 <!-- /GENERATED:proposals-dev-infra -->

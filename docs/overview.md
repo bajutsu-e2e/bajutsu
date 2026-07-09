@@ -48,25 +48,26 @@ Which module owns each box, and how they depend on each other, is in [architectu
 | # | Page | What it covers |
 |---|---|---|
 | 1 | [concepts](concepts.md) | Design philosophy & core principles (determinism, two tiers, stability ladder, the AI boundary) |
-| 2 | [architecture](architecture.md) | Module layout, dependencies, and the **implementation status** (implemented / unwired) |
-| 3 | [scenarios](scenarios.md) | Scenario YAML grammar (steps / waits / assertions / capture tokens) = the authoring reference |
-| 4 | [dsl-grammar](dsl-grammar.md) | The **formal grammar** of the scenario DSL (domain-specific language) — EBNF + every validation constraint — the normative spec behind [scenarios](scenarios.md) |
-| 5 | [selectors](selectors.md) | Selector model and deterministic resolution (0/1/2+ matches); how assertions evaluate = the determinism core |
-| 6 | [drivers](drivers.md) | Driver abstraction · idb (iOS) / playwright (web) / fake · capability differences · the simctl environment |
-| 7 | [run-loop](run-loop.md) | Orchestrator (observe → act → verify) · waits · retries · run results |
-| 8 | [evidence](evidence.md) | Evidence subsystem (instant / interval · capturePolicy · provider · redact) |
-| 9 | [reporting](reporting.md) | Reports (manifest.json / JUnit / HTML) and the `runs/` layout |
-| 10 | [configuration](configuration.md) | Config layering (defaults × targets) · onboarding a new target · the `doctor` convention score |
-| 11 | [recording](recording.md) | AI authoring (Tier 1 `record`) · the Agent abstraction · system-alert handling |
-| 12 | [codegen](codegen.md) | Scenario → native XCUITest generation |
-| 13 | [cli](cli.md) | Full reference for CLI commands and options |
-| 14 | [showcase](showcase.md) | The showcase suite — the single iOS fixture (exercises every primitive) |
-| 15 | [ci](ci.md) | Running in CI — the repo's own workflows + the reusable `bajutsu-e2e` action |
-| 16 | [self-hosting](self-hosting.md) | Run `serve` as a token-authenticated LaunchAgent on a single Mac behind Tailscale (BE-0016 Tier A) |
-| 17 | [vision](vision.md) | **Forward-looking** — the three axes of growth (reach / scale / authoring) and the constraints all of them respect |
-| 18 | [multi-platform](multi-platform.md) | **Forward-looking** — big-picture overview of extending to Android (emulator) and Web (browser) behind the existing driver abstraction; the concrete per-platform plans live in the [roadmap](../roadmaps/README.md#platform-expansion-android--web--flutter) |
-| 19 | [ai-development](ai-development.md) | Working agreement for AI agents + humans in parallel (the gate, branches, pre-push hook, worktrees) — the long form of [`CLAUDE.md`](../CLAUDE.md) |
-| 20 | [roadmap-workflow](roadmap-workflow.md) | The **ideation → implementation cycle**: the `ideation` skill authors a BE proposal, the `implement-be` skill ships it (placeholder IDs, the Proposal → Implemented lifecycle) |
+| 2 | [glossary](glossary.md) | Term-by-term reference for the domain vocabulary; disambiguates the near-synonym clusters (driver / backend / actuator / platform · target / app / device · scenario vs. test · trace vs. triage) |
+| 3 | [architecture](architecture.md) | Module layout, dependencies, and the **implementation status** (implemented / unwired) |
+| 4 | [scenarios](scenarios.md) | Scenario YAML grammar (steps / waits / assertions / capture tokens) = the authoring reference |
+| 5 | [dsl-grammar](dsl-grammar.md) | The **formal grammar** of the scenario DSL (domain-specific language) — EBNF + every validation constraint — the normative spec behind [scenarios](scenarios.md) |
+| 6 | [selectors](selectors.md) | Selector model and deterministic resolution (0/1/2+ matches); how assertions evaluate = the determinism core |
+| 7 | [drivers](drivers.md) | Driver abstraction · idb (iOS) / playwright (web) / fake · capability differences · the simctl environment |
+| 8 | [run-loop](run-loop.md) | Orchestrator (observe → act → verify) · waits · retries · run results |
+| 9 | [evidence](evidence.md) | Evidence subsystem (instant / interval · capturePolicy · provider · redact) |
+| 10 | [reporting](reporting.md) | Reports (manifest.json / JUnit / HTML) and the `runs/` layout |
+| 11 | [configuration](configuration.md) | Config layering (defaults × targets) · onboarding a new target · the `doctor` convention score |
+| 12 | [recording](recording.md) | AI authoring (Tier 1 `record`) · the Agent abstraction · system-alert handling |
+| 13 | [codegen](codegen.md) | Scenario → native XCUITest generation |
+| 14 | [cli](cli.md) | Full reference for CLI commands and options |
+| 15 | [showcase](showcase.md) | The showcase suite — the single iOS fixture (exercises every primitive) |
+| 16 | [ci](ci.md) | Running in CI — the repo's own workflows + the reusable `bajutsu-e2e` action |
+| 17 | [self-hosting](self-hosting.md) | Run `serve` as a token-authenticated LaunchAgent on a single Mac behind Tailscale (BE-0016 Tier A) |
+| 18 | [vision](vision.md) | **Forward-looking** — the three axes of growth (reach / scale / authoring) and the constraints all of them respect |
+| 19 | [multi-platform](multi-platform.md) | **Forward-looking** — big-picture overview of extending to Android (emulator) and Web (browser) behind the existing driver abstraction; the concrete per-platform plans live in the [roadmap](../roadmaps/README.md#platform-expansion-android--web--flutter) |
+| 20 | [ai-development](ai-development.md) | Working agreement for AI agents + humans in parallel (the gate, branches, pre-push hook, worktrees) — the long form of [`CLAUDE.md`](../CLAUDE.md) |
+| 21 | [roadmap-workflow](roadmap-workflow.md) | The **ideation → implementation cycle**: the `ideation` skill authors a BE proposal, the `implement-be` skill ships it (placeholder IDs, the Proposal → Implemented lifecycle) |
 
 ## Quick start
 

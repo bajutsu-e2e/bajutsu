@@ -63,6 +63,6 @@ device run → report.
 ## Learn more
 
 - [Documentation overview](overview.md) — the per-feature reference, in suggested reading order.
-- [Getting started](getting-started.md) · [Concepts](concepts.md) · [API reference](api/index.md)
+- [Getting started](getting-started.md) · [Concepts](concepts.md) · [Glossary](glossary.md) · [API reference](api/index.md)
 - [Roadmap](../roadmaps/README.md) · [Design rationale (DESIGN.md)](../DESIGN.md) ·
   [GitHub](https://github.com/bajutsu-e2e/bajutsu)

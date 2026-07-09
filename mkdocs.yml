@@ -91,6 +91,7 @@ plugins:
             Overview: 概要
             Showcase app: ショーケースアプリ
             Concepts: コンセプト
+            Glossary: 用語集
             Architecture: アーキテクチャ
             Vision: ビジョン
             Run loop: 実行ループ
@@ -153,6 +154,7 @@ nav:
       - Showcase app: showcase.md
   - Concepts:
       - Concepts: concepts.md
+      - Glossary: glossary.md
       - Architecture: architecture.md
       - Vision: vision.md
       - Run loop: run-loop.md
