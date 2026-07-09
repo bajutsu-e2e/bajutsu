@@ -95,6 +95,11 @@ class FakeDriver:
     def type_text(self, text: str) -> None:
         self._record("type", text)
 
+    def select_option(self, sel: base.Selector, option: str) -> None:
+        # Like a real driver, require a unique match; state changes are scripted via `react`.
+        base.resolve_unique(self.screen, sel)
+        self._record("select_option", (sel, option))
+
     def wait_for(self, sel: base.Selector) -> bool:
         return len(base.find_all(self.screen, sel)) >= 1
 

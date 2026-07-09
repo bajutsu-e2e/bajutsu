@@ -31,6 +31,7 @@ from bajutsu.scenario.models.actions import (
     Push,
     Relaunch,
     Rotate,
+    SelectOption,
     SetClipboard,
     SetLocation,
     Swipe,
@@ -102,6 +103,7 @@ class Step(_Model):
     double_tap: Selector | None = Field(default=None, alias="doubleTap")
     long_press: LongPress | None = Field(default=None, alias="longPress")
     type: TypeText | None = None
+    select_option: SelectOption | None = Field(default=None, alias="selectOption")
     swipe: Swipe | None = None
     pinch: Pinch | None = None
     rotate: Rotate | None = None

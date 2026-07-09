@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import contextlib
 import functools
+import json
 import math
 import shutil
 import time
@@ -542,6 +543,27 @@ class PlaywrightDriver:
         # The orchestrator taps `into` before this (see _do_type), focusing the field — same
         # contract idb relies on, so typing always lands in the just-focused element.
         self._page.keyboard.type(text)
+
+    @_wedge_guard
+    def select_option(self, sel: base.Selector, option: str) -> None:
+        # A native <select>'s dropdown isn't in the DOM, so a coordinate click can't switch it
+        # deterministically. Resolve the <select> through the determinism core (unique match), then
+        # locate it at the resolved point — the same coordinate a click would use, keeping matching
+        # in resolve_unique rather than Playwright's engine — and set its value, firing `change` so
+        # the page's listeners run exactly as for a user selection (BE-0191).
+        x, y = self._center(sel)
+        opt = json.dumps(option)
+        self._page.evaluate(
+            "(() => {"
+            f"const el = document.elementFromPoint({x}, {y});"
+            "const select = el && el.closest('select');"
+            "if (!select) throw new Error('selectOption: no <select> at the resolved element');"
+            f"if (![...select.options].some(o => o.value === {opt})) "
+            f"throw new Error('selectOption: no option with value ' + {opt});"
+            f"select.value = {opt};"
+            "select.dispatchEvent(new Event('change', {bubbles: true}));"
+            "})()"
+        )
 
     @_wedge_guard
     def wait_for(self, sel: base.Selector) -> bool:

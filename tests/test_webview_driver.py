@@ -82,6 +82,8 @@ def test_unsupported_actions_raise() -> None:
         driver.pinch({"id": "x"}, 2.0)
     with pytest.raises(base.UnsupportedAction):
         driver.rotate({"id": "x"}, 1.0)
+    with pytest.raises(base.UnsupportedAction):
+        driver.select_option({"id": "x"}, "midnight")
 
 
 def test_capabilities_include_webview() -> None:

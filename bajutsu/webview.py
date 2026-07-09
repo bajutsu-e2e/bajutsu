@@ -152,6 +152,9 @@ class WebContextDriver:
     def type_text(self, text: str) -> None:
         self._bridge.type_text(self._webview_id, text)
 
+    def select_option(self, sel: Selector, option: str) -> None:
+        raise UnsupportedAction("selectOption is not supported in web context (first slice)")
+
     def wait_for(self, sel: Selector) -> bool:
         """Single-shot: whether `sel` matches the WebView's current DOM (BE-0118).
 

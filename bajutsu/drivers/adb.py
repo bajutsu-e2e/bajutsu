@@ -247,6 +247,11 @@ class AdbDriver:
             "rotate は multiTouch が必要; adb `input` は単一タッチ（複数指ジェスチャがない）"
         )
 
+    def select_option(self, sel: base.Selector, option: str) -> None:
+        raise base.UnsupportedAction(
+            "selectOption は <select> を持つ web バックエンド専用; Android ネイティブに <select> はない"
+        )
+
     def type_text(self, text: str) -> None:
         # Feed the `input text` command to `adb shell` over stdin, not on the argv, so a secret / OTP
         # never lands in the adb process command line where `ps` could read it (BE-0155). Routed

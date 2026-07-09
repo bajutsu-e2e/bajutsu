@@ -208,8 +208,10 @@ class _FakePage:
         self._handlers: dict[str, list[Any]] = {}
         self.cdp = _FakeCDP()
         self.context = _FakeBrowserContext(self.cdp)
+        self.evaluated: list[str] = []  # every evaluate() expression, for asserting non-query JS
 
     def evaluate(self, expression: str) -> Any:
+        self.evaluated.append(expression)
         return list(self._records)
 
     def goto(self, url: str) -> object:
@@ -426,6 +428,28 @@ def test_wait_for_is_single_shot() -> None:
     drv, _ = _driver([_rec(identifier="home.title")])
     assert drv.wait_for({"id": "home.title"}) is True
     assert drv.wait_for({"id": "nope"}) is False
+
+
+def test_select_option_sets_value_at_resolved_point() -> None:
+    # The <select> resolves through the determinism core (unique match); the driver then locates it
+    # at the frame center — the same coordinate a click would use — and sets the value there,
+    # so matching never leaves resolve_unique for Playwright's own engine (BE-0191).
+    drv, page = _driver(
+        [_rec(identifier="nav.theme-picker", role="select", frame=[10, 20, 40, 10])]
+    )
+    drv.select_option({"id": "nav.theme-picker"}, "midnight")
+    # The last evaluate() is the select JS (the first is query()); it reads the resolved center
+    # (30, 25) via elementFromPoint and assigns the requested option value.
+    select_js = page.evaluated[-1]
+    assert "elementFromPoint(30.0, 25.0)" in select_js
+    assert '"midnight"' in select_js
+    assert "new Event('change'" in select_js
+
+
+def test_select_option_ambiguous_raises() -> None:
+    drv, _ = _driver([_rec(identifier="dup", role="select"), _rec(identifier="dup", role="select")])
+    with pytest.raises(base.AmbiguousSelector):
+        drv.select_option({"id": "dup"}, "midnight")
 
 
 def _touch_points(params: Any) -> list[tuple[float, float]]:

@@ -64,6 +64,13 @@ def test_capabilities_has_no_semantic_tap() -> None:
     assert base.Capability.SEMANTIC_TAP not in IdbDriver("U", run=lambda a: "[]").capabilities()
 
 
+def test_select_option_unsupported() -> None:
+    # <select> is a web control with no iOS-native counterpart, so the backend refuses (BE-0191).
+    driver = IdbDriver("U", run=lambda a: "[]")
+    with pytest.raises(base.UnsupportedAction):
+        driver.select_option({"id": "nav.theme-picker"}, "midnight")
+
+
 # A near-empty tree as idb returns mid-transition: one element, no identifier.
 EMPTY = '[{"AXLabel":"","frame":{"x":0,"y":0,"width":0,"height":0}}]'
 

@@ -126,6 +126,13 @@ def test_pinch_and_rotate_emit_gesture_requests_with_the_handle() -> None:
     ]
 
 
+def test_select_option_unsupported() -> None:
+    # <select> is a web control with no iOS-native counterpart, so the backend refuses (BE-0191).
+    d = _driver(lambda m, p, b: _Reply(status="ok"))
+    with pytest.raises(base.UnsupportedAction):
+        d.select_option({"id": "nav.theme-picker"}, "midnight")
+
+
 def test_capabilities_add_semantic_tap_condition_wait_multi_touch_but_not_network() -> None:
     caps = _driver(lambda m, p, b: _Reply(status="ok")).capabilities()
     assert base.Capability.SEMANTIC_TAP in caps

@@ -3,18 +3,14 @@
 # Deterministic: Playwright emulates prefers-color-scheme as light by default, in the dogfood runner
 # and the exported spec alike, so the picker starts on `daylight` (the light built-in) on both.
 #
-# This scenario asserts the picker's initial state only: that it renders and reflects the OS scheme.
-# It does not drive a selection change, because the DSL has no action that switches a native <select>
-# deterministically — `type` relies on the browser's keyboard typeahead, which fires under some
-# headless Chromium builds but not others (it flipped the value locally yet was a no-op in CI). A
-# deterministic switch needs a dedicated select-option action on the Driver; that lands with unit 5
-# (which owns the richer theme.yaml). The client-side selection/persist logic added in serve.core.js
-# (systemTheme() kind lookup, themeExists(), initTheme() change+localStorage wiring) has no coverage
-# in the fast suite — the repo has no JS unit test infrastructure. Unit 5 is the right place to
-# close that gap alongside the Driver action.
+# The `selectOption` action (BE-0191 unit 5) switches a native <select> deterministically: it
+# resolves the <select> through the same determinism core every action shares, then sets the option
+# by value and fires `change` so the client's initTheme() handler runs exactly as for a user pick.
+# That is what lets the second scenario drive the picker in both directions and assert the change —
+# the earlier `type`-typeahead approach fired under some headless Chromium builds but not others.
 description: >-
-  Theme picker — the header select renders and starts on the light theme (the OS preference), with
-  the selected theme id readable from the select.
+  Theme picker — the header select renders and starts on the light theme (the OS preference), and a
+  selectOption switches it deterministically, with the selected theme id readable from the select.
 scenarios:
   - name: the theme picker reflects the OS scheme
     description: The picker renders in the header and reads daylight, the light built-in, following the (light) OS preference.
@@ -22,3 +18,16 @@ scenarios:
       - wait: { for: { id: view.record }, timeout: 10 }
     expect:
       - value: { sel: { id: nav.theme-picker }, equals: daylight }   # follows the (light) OS preference
+
+  - name: selectOption switches the theme deterministically
+    description: >-
+      Selecting a theme by option value drives the native <select> and the picker reflects the pick,
+      in both directions — proving the switch is deterministic regardless of scenario order.
+    steps:
+      - wait: { for: { id: view.record }, timeout: 10 }
+      - selectOption: { sel: { id: nav.theme-picker }, option: midnight }
+      - assert:
+          - value: { sel: { id: nav.theme-picker }, equals: midnight }   # switched to the dark built-in
+      - selectOption: { sel: { id: nav.theme-picker }, option: daylight }
+      - assert:
+          - value: { sel: { id: nav.theme-picker }, equals: daylight }   # and back to the light built-in

@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0191") |
-| Implementing PR | [#826](https://github.com/bajutsu-e2e/bajutsu/pull/826), [#837](https://github.com/bajutsu-e2e/bajutsu/pull/837), [#855](https://github.com/bajutsu-e2e/bajutsu/pull/855) |
+| Implementing PR | [#826](https://github.com/bajutsu-e2e/bajutsu/pull/826), [#837](https://github.com/bajutsu-e2e/bajutsu/pull/837), [#855](https://github.com/bajutsu-e2e/bajutsu/pull/855), _pending_ |
 | Topic | Authoring experience (record / GUI editor) |
 <!-- /BE-METADATA -->
 
@@ -229,7 +229,7 @@ filesystem, building directly on the token contract of unit 1.
 - [x] 2. Pluggable theme discovery and registration (`--themes` flag, `ui.default_theme`, declarative theme + manifest, startup scan folded into the cached render).
 - [x] 3. Theme picker UI (header dropdown replacing the binary toggle, persistence + pre-paint seeding, `data-testid` convention, tiler-safe placement).
 - [ ] 4. Swappable, theme-defined transitions (semantic state classes + `--transition-*` tokens across the four surfaces; tiler `rebuild()` refactor; `prefers-reduced-motion` collapse).
-- [ ] 5. Determinism and dogfood alignment (reduced-motion guarantees condition-wait safety; update `demos/serve-ui/scenarios/theme.yaml` for the picker).
+- [x] 5. Determinism and dogfood alignment (reduced-motion guarantees condition-wait safety; update `demos/serve-ui/scenarios/theme.yaml` for the picker).
 - [ ] 6. In-UI theme editor, live preview, and upload / export (contract-derived form, client-side live preview, local-draft + upload persistence tiers reusing the BE-0073 upload seam, export/import round-trip).
 
 ### Log
@@ -263,6 +263,19 @@ filesystem, building directly on the token contract of unit 1.
   has no action that switches a native `<select>` deterministically (`type` typeahead fired under one
   headless Chromium build but was a no-op in CI). A deterministic switch needs a dedicated
   select-option Driver action, which lands with unit 5. ([#855](https://github.com/bajutsu-e2e/bajutsu/pull/855))
+- Unit 5 — determinism and dogfood alignment. Added a `selectOption` DSL action (`SelectOption`
+  model + `Step.select_option`, dispatched in `orchestrator/actions/handlers/gestures.py`) and the
+  `Driver.select_option(sel, option)` protocol method it drives: the Playwright backend resolves the
+  `<select>` through the shared `resolve_unique` core, then locates it at the resolved point
+  (`elementFromPoint` — the same coordinate a click uses, so matching stays in the determinism core)
+  and sets the option by value + fires `change`; the fake driver resolves + records; idb / adb /
+  xcuitest raise `UnsupportedAction` (a `<select>` has no native counterpart). With this, the
+  `demos/serve-ui/scenarios/theme.yaml` dogfood now drives the picker in both directions and asserts
+  the switch, closing the gap unit 3 deferred. The reduced-motion condition-wait guarantee is
+  trivially held today (no transitions exist yet) and the `prefers-reduced-motion` collapse lands
+  with unit 4's motion. Tests: `tests/test_select_option.py`, plus `select_option` cases in
+  `tests/test_playwright.py` / `test_idb.py` / `test_adb.py` / `test_xcuitest.py`; docs updated in
+  `docs/scenarios.md` and `docs/dsl-grammar.md` (+ ja mirrors). ([_pending_](https://github.com/bajutsu-e2e/bajutsu/pulls))
 
 ## References
 
