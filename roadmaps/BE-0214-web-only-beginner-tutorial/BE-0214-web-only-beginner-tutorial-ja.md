@@ -9,7 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0214") |
-| 実装 PR | _pending_ |
+| 実装 PR | [#860](https://github.com/bajutsu-e2e/bajutsu/pull/860) |
 | トピック | 開発基盤（コントリビュータ体験） |
 <!-- /BE-METADATA -->
 
@@ -88,7 +88,7 @@ Bajutsu 自身の中心的な主張は「プラットフォームは backend に
 
 ### ログ
 
-- _pending_ — Web 版の導線を、新規の自己完結ページ（`docs/getting-started-web.md` と `docs/ja/` の
+- [#860](https://github.com/bajutsu-e2e/bajutsu/pull/860) — Web 版の導線を、新規の自己完結ページ（`docs/getting-started-web.md` と `docs/ja/` の
   対訳）として追加しました。Playwright backend に対して、インストール → シナリオ → 実行 → レポートの
   同じループを、Mac なしで辿ります。`docs/overview.md`、`docs/index.md`、`README.md`（セットアップと
   デモ）、iOS 版の `getting-started.md`、`mkdocs.yml` の nav から、英日の両方で導線を接続しました。
