@@ -7,6 +7,7 @@ import pytest
 from bajutsu.drivers import base
 from bajutsu.drivers.idb import (
     IdbDriver,
+    _validated_udid,
     parse_describe_all,
     tap_cmd,
 )
@@ -388,3 +389,19 @@ def test_stable_key_handles_none_identifiers() -> None:
     # None → "" for sort safety; first element in sorted order is "" < "a".
     assert key[0][0] == ""
     assert key[1][0] == "a"
+
+
+def test_validated_udid_accepts_real_udids() -> None:
+    # `booted` (idb's current-device alias) and UUID- / device-shaped ids pass unchanged.
+    for good in ["booted", "U", "A1B2C3D4-1122-3344-5566-77889900AABB", "emulator-5554"]:
+        assert _validated_udid(good) == good
+    # Surrounding whitespace is stripped, not rejected.
+    assert _validated_udid("  booted  ") == "booted"
+
+
+def test_validated_udid_rejects_injection() -> None:
+    # A udid from --udid / config that could inject an idb option (leading `-`) or reach a
+    # subprocess argv with a shell metacharacter / space is rejected before it is used.
+    for bad in ["-rf", "--udid", "a b", "a;b", "a$b", "a`b", "", "x" * 129]:
+        with pytest.raises(ValueError, match="invalid udid"):
+            _validated_udid(bad)

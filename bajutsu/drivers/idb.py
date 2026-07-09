@@ -32,8 +32,9 @@ _UDID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$")
 
 
 def _validated_udid(udid: str) -> str:
-    v = str(udid).strip()
-    if v == "booted" or _UDID_RE.fullmatch(v):
+    # `booted` (idb's "current device" alias) already satisfies _UDID_RE, so no special case.
+    v = udid.strip()
+    if _UDID_RE.fullmatch(v):
         return v
     raise ValueError("invalid udid")
 
