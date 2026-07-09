@@ -82,16 +82,21 @@ directive の枠内にとどまります。
 
 - 2026-07-09 — 最初のスライス（ユニット 1〜3）。`.github/workflows/android-e2e.yml` を追加しました。
   KVM のもとで AVD を起動し（`reactivecircus/android-emulator-runner`）、コアの id/tap/type/value
-  シナリオ（smoke, firstlook, search, components, data_driven, modals, relaunch, system）を
-  `--backend android` で回す Linux レーンで、`demos/showcase/android/Makefile` に足した `e2e`
-  ターゲットが駆動します。AVD は（ローカル検証の arm64 ではなく）**x86_64** の API 34 です。
+  シナリオを `--backend android` で回す Linux レーンで、`demos/showcase/android/Makefile` に足した
+  `e2e` ターゲットが駆動します。AVD は（ローカル検証の arm64 ではなく）**x86_64** の API 34 です。
   x86_64 の GitHub Linux ランナーで KVM が加速するには x86_64 のシステムイメージが要り、異なる
   アーキテクチャのイメージは遅いソフトウェアエミュレーションに落ちるためです。API レベルは一致し、
   ABI だけを CI ホストに合わせています。`docs/ci.md`（と ja）に記載しました。`web-e2e.yml` と
-  同じくパスでゲートし、fast の `make check` ゲートの外に置いています。ユニット 4（visual／golden
-  ベースラインの同等性）と 5（アクチュエーション／デバイス制御のスライスに合わせた拡張）は残します。
-  ベースラインの次元は実機での初回採取が前提で、追加シナリオは先に BE-0007 の後続スライスが着地する
-  必要があるためです。項目は**実装中**のままです。
+  同じくパスでゲートし、fast の `make check` ゲートの外に置いています。最初の CI 実行で、エミュレータが
+  起動してアプリを駆動できることを確認しました。`smoke`・`firstlook`・`search` は通りましたが、
+  `components` は sheet の表示を 5 秒待つところでタイムアウトしました。CI のエミュレータは
+  ソフトウェア描画（swiftshader）のため、ローカルのハードウェア加速された arm64 実機では通る 5 秒の
+  sheet 表示待ちには、modal の表示が遅すぎます。そこで sheet／cover 系の 2 本（`components`・`modals`）は
+  レーンの初期集合（`smoke`・`firstlook`・`search`・`data_driven`・`relaunch`・`system`）から外し、
+  実機タイミングの調整後に戻します（ユニット 5 に畳み込み）。ユニット 4（visual／golden ベースラインの
+  同等性）と 5（シナリオ集合の拡張）は残します。ベースラインの次元は実機での初回採取が前提で、追加
+  シナリオは先に BE-0007 の後続スライス（と上記の modal タイミング調整）が着地する必要があるためです。
+  項目は**実装中**のままです。
 
 ## 参考
 
