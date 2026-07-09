@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-claude-code-oauth-token-credential-ja.md)
+**English** · [日本語](BE-0215-claude-code-oauth-token-credential-ja.md)
 
-# BE-XXXX — Explicit CLAUDE_CODE_OAUTH_TOKEN credential for the claude-code provider
+# BE-0215 — Explicit CLAUDE_CODE_OAUTH_TOKEN credential for the claude-code provider
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-claude-code-oauth-token-credential.md) |
+| Proposal | [BE-0215](BE-0215-claude-code-oauth-token-credential.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0215") |
 | Topic | AI provider configuration |
 | Related | [BE-0163](../BE-0163-ant-cli-oauth-provider/BE-0163-ant-cli-oauth-provider.md), [BE-0176](../BE-0176-claude-code-ai-backend/BE-0176-claude-code-ai-backend.md), [BE-0136](../BE-0136-serve-write-once-secrets/BE-0136-serve-write-once-secrets.md), [BE-0183](../BE-0183-per-provider-serve-settings/BE-0183-per-provider-serve-settings.md) |
 <!-- /BE-METADATA -->

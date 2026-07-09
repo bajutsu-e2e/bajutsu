@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-propose-and-build-parallel-skill-ja.md)
+**English** · [日本語](BE-0216-propose-and-build-parallel-skill-ja.md)
 
-# BE-XXXX — propose-and-build: author a BE proposal and its implementation in parallel, stacked
+# BE-0216 — propose-and-build: author a BE proposal and its implementation in parallel, stacked
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-propose-and-build-parallel-skill.md) |
+| Proposal | [BE-0216](BE-0216-propose-and-build-parallel-skill.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0216") |
 | Topic | Development infrastructure (contributor workflow) |
 <!-- /BE-METADATA -->
 
@@ -51,7 +51,7 @@ it falls out of the id-allocation timing, not out of any correctness need.
 ### But naively parallelising collides with merge-time allocation
 
 The obvious fix — "just write the code alongside the proposal" — runs straight into BE-0089. Until
-the proposal merges, the item has **no** real id: it is `BE-XXXX` in the tree, the proposal PR
+the proposal merges, the item has **no** real id: it is `BE-0216` in the tree, the proposal PR
 carries **no** `[BE-NNNN]` title prefix by convention (`scripts/lint_pr.py` does not require or
 reject one here — its title check only fires when the branch name encodes a real id, which a
 BE-creation branch like `claude/<topic>` never does), and the implementation therefore cannot
@@ -65,7 +65,7 @@ exactly the collision-prone, gap-prone state BE-0061 and BE-0089 were built to p
 ### Why a skill, not a note in the docs
 
 The hand-off has a precise, error-prone sequence (rebase after the proposal merges, rewrite the now-
-stale `BE-XXXX` references in the implementation diff to the allocated `BE-NNNN`, retarget the
+stale `BE-0216` references in the implementation diff to the allocated `BE-NNNN`, retarget the
 stacked PR's base from the proposal branch to `main`, *then* run `implement-be`'s promotion + gate
 steps). Encoding it as a skill — the same way `ideation` and `implement-be` encode their flows —
 makes the safe path the easy path and keeps the two existing skills unchanged and single-purpose.
@@ -87,17 +87,17 @@ prime-directive-driven guardrails on *when* to use it.
   PR #1  BE proposal                                     PR #2  implementation
   branch: claude/<topic>                                 branch: claude/<topic>-impl
   base:   main                                           base:   claude/<topic>   (stacked)
-  BE-XXXX-<slug>/ @ Status: Proposal                     code + tests against the BE-XXXX spec
+  BE-0216-<slug>/ @ Status: Proposal                     code + tests against the BE-0216 spec
   plain scoped title, NO [BE-…] prefix                   DRAFT, NO Status flip, NO [BE-…] prefix
       │                                                             │
-      │  reviewed & merged as-is (BE-XXXX intact)                   │  kept in draft, rebased as #1 evolves
+      │  reviewed & merged as-is (BE-0216 intact)                   │  kept in draft, rebased as #1 evolves
       ▼                                                             │
   roadmap-id allocates BE-NNNN on main (BE-0089)                    │
       │                                                             │
       └──────────────────────── HAND-OFF ──────────────────────────┘
                                     │
                                     ▼
-   #2: rebase onto origin/main · rewrite BE-XXXX→BE-NNNN in the diff · retarget base→main
+   #2: rebase onto origin/main · rewrite BE-0216→BE-NNNN in the diff · retarget base→main
        · run implement-be steps 8–10 (flip Status, Implementing PR row, reindex, gate, [BE-NNNN] title)
 ```
 
@@ -115,13 +115,13 @@ afterward.
    default `model:` per BE-0103) and a body structured as the phases below. It links to `ideation`
    and `implement-be` rather than duplicating their content.
 2. **Phase A — author the proposal (delegates to `ideation`'s rules).** Branch `claude/<topic>` off
-   `origin/main`; scaffold `BE-XXXX-<slug>/` with `make new-roadmap-item` at `Status: Proposal`;
+   `origin/main`; scaffold `BE-0216-<slug>/` with `make new-roadmap-item` at `Status: Proposal`;
    fill it and localize the Japanese under the [`japanese-tech-writing`](../../.claude/skills/japanese-tech-writing/SKILL.md)
    skill. Open PR #1 with a plain scoped title and **no** `[BE-…]` prefix. Identical to `ideation`,
    and the skill says so rather than restating it.
 3. **Phase B — implement against the placeholder (delegates to `implement-be` steps 3–7).** Create
    `claude/<topic>-impl` **stacked on** `claude/<topic>` (or an isolated `make worktree` workspace, so the two
-   can truly proceed in parallel). Treat the `BE-XXXX-<slug>/` proposal as the spec, and run
+   can truly proceed in parallel). Treat the `BE-0216-<slug>/` proposal as the spec, and run
    `implement-be`'s ground-in-the-code, plan-and-confirm, implement-with-tests, and review-the-diff
    steps — **with two carve-outs that depend on the not-yet-allocated id**: do **not** flip
    `Status` to Implemented, and do **not** add the `[BE-NNNN]` prefix. Open PR #2 as a **draft**
@@ -134,9 +134,9 @@ afterward.
 5. **Hand-off (the load-bearing new step).** Triggered by PR #1 merging and `roadmap-id` allocating
    `BE-NNNN` on `main`. On the implementation branch, in order:
    - `git fetch origin && git rebase origin/main` — pulls in the merged proposal *and* the renumber
-     commit. The `BE-XXXX-<slug>/` → `BE-NNNN-<slug>/` directory rename is a git rename; conflicts
+     commit. The `BE-0216-<slug>/` → `BE-NNNN-<slug>/` directory rename is a git rename; conflicts
      are mechanical.
-   - Rewrite every `BE-XXXX` reference that lives **inside PR #2's own diff** (doc cross-refs, test
+   - Rewrite every `BE-0216` reference that lives **inside PR #2's own diff** (doc cross-refs, test
      fixtures, comments) to the allocated `BE-NNNN`. The proposal's own files were already
      renumbered on `main` by the workflow; this step only fixes references the *implementation*
      introduced.
@@ -197,7 +197,7 @@ discipline the SKILL.md encodes.
 - **A single mega-PR carrying the proposal and the implementation together.** Simplest branching,
   but it collapses the "proposal reviewed on its own merits" separation the two-stage roadmap is
   built around, and it defeats BE-0089 (the item would be numbered and implemented in one shot with
-  no `BE-XXXX` window). It also makes the proposal PR carry product code, muddying review. Rejected;
+  no `BE-0216` window). It also makes the proposal PR carry product code, muddying review. Rejected;
   the two-PR stack keeps the proposal reviewable in isolation.
 - **Automate the hand-off in CI (a workflow that rebases/renumbers the implementation branch when
   the proposal merges).** Attractive for removing the manual rebase, but it adds bypass-capable
@@ -216,7 +216,7 @@ discipline the SKILL.md encodes.
 - [ ] Phase A section — delegate to `ideation`'s authoring rules.
 - [ ] Phase B section — delegate to `implement-be` steps 3–7 with the two id-dependent carve-outs.
 - [ ] Tracking-issue deferral note (BE-0109 issue does not exist during Phase B).
-- [ ] Hand-off section — rebase, `BE-XXXX`→`BE-NNNN` diff rewrite, base retarget, `implement-be`
+- [ ] Hand-off section — rebase, `BE-0216`→`BE-NNNN` diff rewrite, base retarget, `implement-be`
       steps 8–10.
 - [ ] Guardrails / scope section (when to use, the rework trade-off, prime-directive binding).
 - [ ] `docs/ai-development.md` (+ `docs/ja/`) three-skill triangle subsection; cross-link the three
