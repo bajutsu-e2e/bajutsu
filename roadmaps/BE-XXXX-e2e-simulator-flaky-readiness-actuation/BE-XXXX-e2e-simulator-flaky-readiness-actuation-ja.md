@@ -9,7 +9,7 @@
 | 提案者 | [@hirosassa](https://github.com/hirosassa) |
 | 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
-| 実装 PR | _pending_ |
+| 実装 PR | [#850](https://github.com/bajutsu-e2e/bajutsu/pull/850) |
 | トピック | 実機検証（M1 クローズアウト） |
 <!-- /BE-METADATA -->
 
@@ -123,7 +123,7 @@ XcuitestChannelError: runner channel POST /gesture failed: timed out
 
 ### ログ
 
-- _pending_ — `_await_ready` を名前空間に基づく判定にした（名前空間外の SpringBoard 画面はもはやゲートを
+- [#850](https://github.com/bajutsu-e2e/bajutsu/pull/850) — `_await_ready` を名前空間に基づく判定にした（名前空間外の SpringBoard 画面はもはやゲートを
   満たさない。名前空間内の要素が 1 つあれば満たす。`idNamespaces` が空なら 2 つ以上の要素数を維持する。
   明示的な `readyWhen` は依然として優先する）。また、XCUITest チャネルにメソッド別のタイムアウトを入れた
   （`_timeout_for`：読み取りは BE-0207 の再試行に支えられた短い 15 秒の窓のまま、操作の書き込みは配信後に

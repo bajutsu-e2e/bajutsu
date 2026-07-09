@@ -9,7 +9,7 @@
 | Author | [@hirosassa](https://github.com/hirosassa) |
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
-| Implementing PR | _pending_ |
+| Implementing PR | [#850](https://github.com/bajutsu-e2e/bajutsu/pull/850) |
 | Topic | On-device validation (M1 close-out) |
 <!-- /BE-METADATA -->
 
@@ -124,7 +124,7 @@ about whether anything is actually wrong is exactly the flaky-gate cost this fix
 
 ### Log
 
-- _pending_ — Namespace-aware `_await_ready` (an off-namespace SpringBoard screen no longer satisfies
+- [#850](https://github.com/bajutsu-e2e/bajutsu/pull/850) — Namespace-aware `_await_ready` (an off-namespace SpringBoard screen no longer satisfies
   the gate; a single in-namespace element does; empty `idNamespaces` keeps the 2+ count; an explicit
   `readyWhen` still takes precedence), and a per-method XCUITest channel timeout (`_timeout_for`:
   reads keep the tight 15s window backed by the BE-0207 retry, actuation writes get a bounded 30s
