@@ -9,6 +9,7 @@
 | Author | [@paihu](https://github.com/paihu) |
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0204") |
+| Implementing PR | [#838](https://github.com/bajutsu-e2e/bajutsu/pull/838) |
 | Topic | Hosting the web UI (cloud / self-hosted) |
 | Related | [BE-0015](../BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md), [BE-0016](../BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md), [BE-0110](../BE-0110-evidence-store-uri/BE-0110-evidence-store-uri.md) |
 <!-- /BE-METADATA -->
@@ -136,8 +137,9 @@ relative to the real deployment constraint it removes for self-hosters running o
       error message, and the existing S3 path staying green
 - [x] Documentation: `docs/self-hosting.md` + Japanese mirror get a GCS example for server storage
 
-`BAJUTSU_SERVER_STORE` (`s3://bucket/prefix` or `gs://bucket/prefix`) replaces
-`BAJUTSU_S3_BUCKET`/`BAJUTSU_S3_PREFIX`; `BAJUTSU_S3_ENDPOINT`/`BAJUTSU_S3_REGION` are unchanged, still
+[#838](https://github.com/bajutsu-e2e/bajutsu/pull/838) — `BAJUTSU_SERVER_STORE` (`s3://bucket/prefix`
+or `gs://bucket/prefix`) replaces `BAJUTSU_S3_BUCKET`/`BAJUTSU_S3_PREFIX`;
+`BAJUTSU_S3_ENDPOINT`/`BAJUTSU_S3_REGION` are unchanged, still
 read by `object_store_from_uri` for the S3-compatible client. `bajutsu.object_store` gained a new
 neutrally-named `store_target_from_uri` (returning `(ObjectStore, prefix)`) that both
 `evidence_target_from_uri` (`--evidence-store`) and the server's `object_store_from_env()` now build
