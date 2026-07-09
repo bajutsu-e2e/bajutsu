@@ -356,6 +356,35 @@ async function clearKey(){
 }
 $('#keyclear').addEventListener('click',clearKey);
 
+// ---- Claude Code OAuth token (BE-0215): the claude-code provider's headless credential. Same
+// write-once shape as the API key — masked only, never revealed — held under CLAUDE_CODE_OAUTH_TOKEN.
+let ccTokState={set:false,masked:''};
+function renderCcTok(){
+  const cur=$('#cctokcur'),inp=$('#cctoken');if(!cur||!inp)return;
+  if(ccTokState.set){
+    cur.innerHTML='Current token: <code>'+esc(ccTokState.masked)+'</code>';
+    inp.placeholder='Enter a new token to replace it';
+  }else{cur.textContent='No token set yet.';inp.placeholder='sk-ant-oat01-…'}
+}
+async function loadCcTok(){
+  const d=await getJSON('/api/claudecodetoken',{set:false});
+  ccTokState={set:!!d.set,masked:d.masked||''};
+  renderCcTok();
+}
+async function postCcTok(value){
+  const r=await fetch('/api/claudecodetoken',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({value})});
+  return r.json();
+}
+async function clearCcTok(){
+  if(!ccTokState.set){setSettingsStatus('no token to clear','ng');return}
+  setSettingsStatus('clearing…','');
+  let d;try{d=await postCcTok('')}catch(e){d={error:'request failed'}}
+  if(d.error){setSettingsStatus(d.error,'ng');return}
+  $('#cctoken').value='';ccTokState={set:false,masked:''};renderCcTok();
+  setSettingsStatus('cleared','ok');
+}
+$('#cctokclear').addEventListener('click',clearCcTok);
+
 // ---- AI provider: Anthropic API (Claude API key), Amazon Bedrock (AWS creds), Anthropic CLI (ant, OAuth), or Claude Code CLI (claude, subscription) ----
 // Each provider's remembered model/effort/region, keyed by provider name (BE-0183); loadProv fills
 // it from /api/provider's `providers` map so a dropdown change swaps to that provider's own values
@@ -480,6 +509,14 @@ async function saveSettings(){
       $('#apikey').value='';keyState={set:true,masked:k.masked||''};renderKey();
     }
   }
+  if(provider==='claude-code'){  // optional headless credential; blank leaves an interactive login in place (BE-0215)
+    const v=$('#cctoken').value.trim();
+    if(v){
+      let t;try{t=await postCcTok(v)}catch(e){t={error:'request failed'}}
+      if(t.error){setSettingsStatus(t.error,'ng');return}
+      $('#cctoken').value='';ccTokState={set:true,masked:t.masked||''};renderCcTok();
+    }
+  }
   setSettingsStatus('saved','ok');
   refreshAiAvailability();  // a just-saved key / provider can flip the record/crawl gate live
   // The ant sign-in button reads the *server-side* active provider (d.provider==='ant'), which only
@@ -488,7 +525,7 @@ async function saveSettings(){
   if(provider==='ant')refreshAntLogin();
 }
 // ---- Settings modal: one panel for the provider + API-key controls ----
-function openSettings(){$('#settingsmodal').hidden=false;$('#apikey').value='';setSettingsStatus('','');loadKey();loadProv()}
+function openSettings(){$('#settingsmodal').hidden=false;$('#apikey').value='';$('#cctoken').value='';setSettingsStatus('','');loadKey();loadCcTok();loadProv()}
 function closeSettings(){$('#settingsmodal').hidden=true}
 $('#opensettings').addEventListener('click',openSettings);
 $('#settingsclose').addEventListener('click',closeSettings);

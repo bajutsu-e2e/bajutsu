@@ -558,6 +558,16 @@
       </select>
       <div id="claudecodefields" data-testid="settings.claudecode-fields" hidden>
         <div class="fshint">Every AI path (<b>Record</b>, <b>Crawl</b>, and the <b>alert guard</b>) reaches Claude by shelling out to the <code>claude</code> CLI on your Claude Code Pro/Max/Console subscription, with full vision (screenshots read from disk). No API key is needed &mdash; sign in once with <code>claude setup-token</code> (or an interactive <code>claude</code> login) on the machine running <code>serve</code>. Any <code>ANTHROPIC_API_KEY</code> is ignored for this provider so billing stays on the subscription.</div>
+        <div class="setlabel">Claude Code OAuth token</div>
+        <div class="keycur" id="cctokcur"></div>
+        <label class="keylabel" for="cctoken">New token</label>
+        <div class="keyrow">
+          <input type="password" id="cctoken" data-testid="settings.cctoken" class="keyinput" placeholder="sk-ant-oat01-…" autocomplete="off" spellcheck="false">
+        </div>
+        <div class="keyactions">
+          <button class="keyclear" id="cctokclear" data-testid="settings.cctoken-clear">Clear</button>
+        </div>
+        <div class="fshint">Optional, for a <b>headless host</b> that can't run <code>claude setup-token</code>'s browser flow (CI, a container, a remote <code>serve</code>): mint the long-lived token elsewhere and paste it here. Write-once &mdash; set or replace it here; it is shown only masked and never displayed again, and materializes as <code>CLAUDE_CODE_OAUTH_TOKEN</code> for spawned jobs. Leave blank if you signed in interactively on this machine.</div>
       </div>
       <div id="antfields" hidden>
         <div class="fshint">Every AI path (<b>Record</b>, <b>Crawl</b>, and the <b>alert guard</b>) reaches Claude through the official Anthropic CLI (<code>ant</code>) on your Pro/Max/Console seat instead of an API key. No API key is needed &mdash; the CLI's bearer token authenticates every request, with full vision (screenshots) on every path. <code>ANTHROPIC_PROFILE</code> selects a named profile.</div>

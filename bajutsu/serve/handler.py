@@ -204,6 +204,8 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
                     self._json(*ops.browse_fs(state, self._qs("dir")))
                 case "/api/apikey":
                     self._json(*ops.api_key_info(state, self._actor()))
+                case "/api/claudecodetoken":
+                    self._json(*ops.claude_code_token_info(state, self._actor()))
                 case "/api/provider":
                     self._json(*ops.provider_info(state))
                 case "/api/ant/login":
@@ -317,6 +319,12 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
                 case "/api/apikey":
                     self._json(
                         *ops.set_api_key(state, str(body.get("value", "") or ""), self._actor())
+                    )
+                case "/api/claudecodetoken":
+                    self._json(
+                        *ops.set_claude_code_token(
+                            state, str(body.get("value", "") or ""), self._actor()
+                        )
                     )
                 case "/api/provider":
                     self._json(*ops.set_provider(state, body))

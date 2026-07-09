@@ -268,6 +268,12 @@ export BAJUTSU_SECRETS_KEY=…
 キーはデータベースのパスワードと同様に扱ってください。失うと保存済みのシークレットは復元できず、更新した
 キーは古いキーで書いた値を復号できないので、更新後は各シークレットを入力し直します。
 
+設定パネルは二つ目の write-once なオペレータのシークレットも同じ形で保持します。**Claude Code の OAuth
+トークン**（`CLAUDE_CODE_OAUTH_TOKEN`）で、ブラウザの無いホストで `claude-code` プロバイダを動かすため
+`claude setup-token` の対話的なサインインを完了できないデプロイのためのものです
+（[BE-0215](../../roadmaps/BE-0215-claude-code-oauth-token-credential/BE-0215-claude-code-oauth-token-credential-ja.md)）。
+保存もマスク表示も更新も、上の API キーとまったく同じように扱います。
+
 ### 3. Mac ワーカーを動かす
 
 各 Mac で（Tier A と同じ Aqua セッション設定。auto-login と `caffeinate`/`pmset`）、idb ワーカーの

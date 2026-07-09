@@ -39,10 +39,12 @@ from bajutsu.serve.operations.config import (
     api_key_info,
     bind_config,
     bind_git_config,
+    claude_code_token_info,
     config_content,
     config_info,
     provider_info,
     set_api_key,
+    set_claude_code_token,
     set_provider,
 )
 from bajutsu.serve.operations.coverage import coverage_view
@@ -135,6 +137,7 @@ __all__ = [
     "bind_upload_config",
     "browse_fs",
     "cancel_job",
+    "claude_code_token_info",
     "config_content",
     "config_info",
     "coverage_view",
@@ -168,6 +171,7 @@ __all__ = [
     "save_scenario",
     "scenario_schema",
     "set_api_key",
+    "set_claude_code_token",
     "set_provider",
     "simulators_payload",
     "start_capture",

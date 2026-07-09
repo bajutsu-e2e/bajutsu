@@ -44,6 +44,14 @@ BINARY = "claude"
 # probe would be unreliable; a genuinely unauthenticated call fails loud at run instead.
 CLI_MISSING = "claude-code-cli-missing"
 
+# The long-lived OAuth token `claude setup-token` mints for non-interactive use (BE-0215). The
+# `claude` CLI already honors it when present in its environment, and this is the credential a
+# headless host (CI, a container, a remote `serve`) sets instead of running the interactive login.
+# Deliberately NOT in `_ROUTING_ENV`: it is a subscription credential, not backend routing, so it
+# must reach the child — naming it here makes that pass-through a documented contract (docs, `serve`,
+# `ai_availability` point at the credential by this name) rather than an accident of not stripping it.
+OAUTH_TOKEN_ENV = "CLAUDE_CODE_OAUTH_TOKEN"  # noqa: S105 — an env-var name, not a secret value
+
 # Tools the adapter's contract never needs, denied outright (BE-0125). `Read` is added back only for
 # the vision transport, and only scoped to the per-call scratch directory via `--add-dir`.
 _DENY = ("Bash", "Write", "Edit", "NotebookEdit", "Glob", "Grep", "WebFetch", "WebSearch", "Task")

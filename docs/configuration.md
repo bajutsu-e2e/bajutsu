@@ -182,7 +182,12 @@ defaults:
   ([BE-0125](../roadmaps/BE-0125-authoring-agent-tool-restriction/BE-0125-authoring-agent-tool-restriction.md)).
   Any `ANTHROPIC_API_KEY` is stripped from the CLI call so billing stays on the subscription rather
   than the API. `claude` is an external binary you install yourself — Bajutsu neither vendors nor
-  installs it.
+  installs it. On a **headless host** — a CI runner, a container, a remote `serve` — that can't run
+  `claude setup-token`'s interactive browser flow, mint the long-lived token once on a machine that
+  can and set `CLAUDE_CODE_OAUTH_TOKEN` (in your shell, a `.env`, or `serve`'s Settings panel, which
+  holds it write-once alongside the API key)
+  ([BE-0215](../roadmaps/BE-0215-claude-code-oauth-token-credential/BE-0215-claude-code-oauth-token-credential.md));
+  the `claude` CLI reads it from the environment, so no interactive login is needed there.
 - **Config first, environment fallback.** Any field you omit falls back to today's environment
   variables — `BAJUTSU_AI_PROVIDER`, `ANTHROPIC_API_KEY`, `BAJUTSU_BEDROCK_MODEL` (the `ant` provider
   reads its credential from the CLI, honoring `ANTHROPIC_PROFILE`) — so a config with no `ai` block

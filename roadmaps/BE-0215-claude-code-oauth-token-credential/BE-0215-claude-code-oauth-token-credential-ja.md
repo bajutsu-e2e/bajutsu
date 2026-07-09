@@ -7,8 +7,9 @@
 |---|---|
 | 提案 | [BE-0215](BE-0215-claude-code-oauth-token-credential-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **提案** |
+| 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0215") |
+| 実装 PR | [#869](https://github.com/bajutsu-e2e/bajutsu/pull/869) |
 | トピック | AI provider configuration |
 | 関連 | [BE-0163](../BE-0163-ant-cli-oauth-provider/BE-0163-ant-cli-oauth-provider-ja.md)、[BE-0176](../BE-0176-claude-code-ai-backend/BE-0176-claude-code-ai-backend-ja.md)、[BE-0136](../BE-0136-serve-write-once-secrets/BE-0136-serve-write-once-secrets-ja.md)、[BE-0183](../BE-0183-per-provider-serve-settings/BE-0183-per-provider-serve-settings-ja.md) |
 <!-- /BE-METADATA -->
@@ -129,14 +130,21 @@
 > 作業分解（作業の単位ごとに 1 つ）に対応し、ログには変更内容と時期（古い順）を PR へのリンクと
 > ともに記録します。
 
-- [ ] `bajutsu/ai/claude_code.py` に `CLAUDE_CODE_OAUTH_TOKEN` を文書化された定数として追加
-- [ ] `.env.example` への記載
-- [ ] `serve` の write-once secret：`aiClaudeCodeOauthToken`（ローカルは環境変数反映、ホスト型は
+- [x] `bajutsu/ai/claude_code.py` に `CLAUDE_CODE_OAUTH_TOKEN` を文書化された定数として追加
+- [x] `.env.example` への記載
+- [x] `serve` の write-once secret：`aiClaudeCodeOauthToken`（ローカルは環境変数反映、ホスト型は
       暗号化保存）、`claude_code_token_info` / `set_claude_code_token` の operations
-- [ ] `claude-code` が選択プロバイダのときに表示する Settings UI 欄
-- [ ] `ai_availability.py` のギャップメッセージがトークンを非対話的な代替として明記
-- [ ] ドキュメント（`docs/configuration.md`、`docs/ja/`、自己ホスティングの Secrets へのポインタ）
-- [ ] テスト：secret エンドポイントの契約、`_child_env` の通過契約テスト
+- [x] `claude-code` が選択プロバイダのときに表示する Settings UI 欄
+- [x] `ai_availability.py` のギャップメッセージがトークンを非対話的な代替として明記
+- [x] ドキュメント（`docs/configuration.md`、`docs/ja/`、自己ホスティングの Secrets へのポインタ）
+- [x] テスト：secret エンドポイントの契約、`_child_env` の通過契約テスト
+
+ログ：
+
+- [#869](https://github.com/bajutsu-e2e/bajutsu/pull/869) — 本項目を一括で実装しました。
+  `OAUTH_TOKEN_ENV` 定数、`/api/claudecodetoken` エンドポイントを持つ `aiClaudeCodeOauthToken` の
+  write-once secret、プロバイダで出し分ける Settings 欄、ギャップメッセージと `.env.example`・
+  ドキュメントの更新、エンドポイントと `_child_env` の通過テストまでを含みます。
 
 ## 参考
 

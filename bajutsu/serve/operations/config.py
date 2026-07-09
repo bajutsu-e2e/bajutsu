@@ -36,9 +36,15 @@ from bajutsu.serve.helpers import (
 )
 from bajutsu.serve.state import ProviderSettings, ServeState
 
-# The logical name of the Claude API key in the secret store (BE-0136). One named secret today; a
-# future credential (e.g. a Bedrock AWS key) reuses the same store under its own name.
+# The logical name of the Claude API key in the secret store (BE-0136). The store holds each named
+# credential under its own name; the second one below is the `claude-code` provider's OAuth token.
 AI_API_KEY_SECRET = "aiApiKey"  # noqa: S105 — a secret's logical name, not a secret value
+
+# The logical name of the `claude-code` provider's OAuth token in the same secret store (BE-0215) —
+# the second named secret BE-0136's generalization anticipated, reusing the store and its write-once
+# guarantee with no new plumbing. Local serve materializes it into `CLAUDE_CODE_OAUTH_TOKEN` (via
+# `ServeState._env_var_for_secret`); the hosted backend encrypts it per org like every named secret.
+AI_CLAUDE_CODE_TOKEN_SECRET = "aiClaudeCodeOauthToken"  # noqa: S105 — a logical name, not a value
 
 _UNSAFE_ENV_VARS = frozenset(
     {
@@ -172,6 +178,18 @@ def api_key_info(state: ServeState, actor: str | None) -> tuple[Any, int]:
     any caller ever gets back, matching how GitHub Actions Secrets disclose nothing after they are
     set. Reads from the actor's org secret store, so a hosted deployment scopes it per org."""
     masked = state.for_org(state.org_of(actor)).secrets.describe(AI_API_KEY_SECRET)
+    payload: dict[str, Any] = {"set": masked is not None}
+    if masked is not None:
+        payload["masked"] = masked
+    return payload, 200
+
+
+def claude_code_token_info(state: ServeState, actor: str | None) -> tuple[Any, int]:
+    """Whether the `claude-code` OAuth token is set, with a masked preview — never plaintext (BE-0215).
+
+    The write-once counterpart to `api_key_info` for the second named secret: same shape, same store,
+    read from the actor's org so a hosted deployment scopes it per org. No `reveal`, no `value` field."""
+    masked = state.for_org(state.org_of(actor)).secrets.describe(AI_CLAUDE_CODE_TOKEN_SECRET)
     payload: dict[str, Any] = {"set": masked is not None}
     if masked is not None:
         payload["masked"] = masked
@@ -337,6 +355,22 @@ def set_api_key(state: ServeState, value: str, actor: str | None) -> tuple[Any, 
         return {"error": "the API key must not contain whitespace"}, 400
     masked = state.for_org(state.org_of(actor)).secrets.set(
         AI_API_KEY_SECRET, value, updated_by=actor
+    )
+    if masked is not None:
+        return {"ok": True, "set": True, "masked": masked}, 200
+    return {"ok": True, "set": False}, 200
+
+
+def set_claude_code_token(state: ServeState, value: str, actor: str | None) -> tuple[Any, int]:
+    """Set or replace the `claude-code` OAuth token (an empty *value* clears it), through the same
+    write-once secret store (BE-0215). The response redacts what was stored — never the plaintext.
+    Local serve holds it in ``CLAUDE_CODE_OAUTH_TOKEN`` for spawned jobs to inherit; a hosted
+    deployment encrypts it per org. Mirrors `set_api_key`; overwriting rotates the token."""
+    value = value.strip()
+    if value and any(c.isspace() for c in value):
+        return {"error": "the OAuth token must not contain whitespace"}, 400
+    masked = state.for_org(state.org_of(actor)).secrets.set(
+        AI_CLAUDE_CODE_TOKEN_SECRET, value, updated_by=actor
     )
     if masked is not None:
         return {"ok": True, "set": True, "masked": masked}, 200
