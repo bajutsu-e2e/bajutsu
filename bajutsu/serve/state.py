@@ -253,6 +253,11 @@ class ServeState:
     # of runs_dir, never the browse `--root`, so an uploaded tree can't overwrite the operator's
     # files. serve() defaults it to a sibling of runs_dir.
     uploads_dir: Path = field(default_factory=lambda: Path("uploads"))
+    # Drop-in theme directory (BE-0191 unit 2): scanned once at startup, its `*.css` folded into the
+    # inlined theme stylesheet. None (the default / no `--themes`) means only the built-in themes.
+    themes_dir: Path | None = None
+    # The `ui.default_theme` initial selection, read from the startup config; None follows the OS.
+    default_theme: str | None = None
     cwd: Path = field(default_factory=Path.cwd)
     # serve's launch directory, captured at construction (see __post_init__) before a config bind can
     # repoint `cwd`. Runs off a Git/upload bind still land their tree here (BE-0063/BE-0073).

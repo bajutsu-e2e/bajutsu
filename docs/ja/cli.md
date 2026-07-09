@@ -479,6 +479,14 @@ bajutsu serve [--port 8765] [--config bajutsu.config.yaml] [--root .] [--runs ru
 - `--baselines` でビジュアルリグレッションのベースラインディレクトリを指定します（既定: アプリのシナリオ
   ディレクトリ配下の `baselines/`）。UI から起動した実行はこれを使い、レポートの **Approve** ボタンが
   `POST /api/approve` 経由で撮影スクリーンショットをここへ昇格させます。
+- `--themes <dir>` は**差し込み式のテーマディレクトリ**です（[BE-0191](../../roadmaps/BE-0191-pluggable-theme-system-serve-ui/BE-0191-pluggable-theme-system-serve-ui-ja.md)）。
+  ここに置いた `*.css` が 1 つずつ選択可能な UI テーマになります。テーマは宣言的で、`bajutsu/templates/serve.themes.css`
+  に明文化されたデザイントークンのブロックに、先頭の `/* bajutsu-theme name: … kind: dark|light */` という
+  マニフェストコメントを添えたものです。テーマの id はファイル名の語幹で、その `[data-theme="<id>"]` セレクタは
+  これと一致させます。JavaScript を含まないので、差し込んだテーマはシナリオや config と同じ信頼レベルに収まります。
+  組み込みの `midnight` / `daylight` は常に提供され、発見したテーマはこれを拡張します。走査は起動時に一度だけ行い、
+  ライブリロードはしません。config の任意の `ui.default_theme` が初期選択を決めます（未指定なら、利用者が選ぶまでは
+  OS の配色に従います）。
 - app を選ぶ（そのシナリオがドロップダウンに並ぶ）と、backend / udid / erase / `disable alert-dismiss` を設定して **Run** を押します。
   出力がライブ表示され、完了で `report.html` が埋め込まれます。
 - **Crawl** タブは、app、シミュレータのプール（Replay と同様の複数選択。2 台以上選ぶと 1 つの画面マップを

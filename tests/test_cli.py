@@ -1017,6 +1017,37 @@ def test_serve_upload_exec_env_mirror_and_flag_precedence(monkeypatch) -> None: 
     assert r.exit_code == 0 and captured["upload_exec"] == "reuse"  # flag wins over env
 
 
+def test_serve_themes_flag_and_default_theme(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # `--themes <dir>` must arrive at srv.serve as Path(themes), and read_default_theme must be
+    # called against the config that was resolved (including a materialized Git checkout) so that
+    # ui.default_theme is not silently dropped on Git-bound configs (BE-0191).
+    import bajutsu.serve as srv
+
+    themes = tmp_path / "themes"
+    themes.mkdir()
+    cfg = tmp_path / "c.yaml"
+    cfg.write_text("ui:\n  default_theme: daylight\n", encoding="utf-8")
+    captured: dict[str, object] = {}
+    monkeypatch.setattr(srv, "serve", lambda **kw: captured.update(kw))
+    r = runner.invoke(app, ["serve", "--themes", str(themes), "--config", str(cfg)])
+    assert r.exit_code == 0
+    assert captured["themes_dir"] == themes
+    assert captured["default_theme"] == "daylight"
+
+
+def test_serve_themes_flag_absent_passes_none(monkeypatch: pytest.MonkeyPatch) -> None:
+    # When --themes is omitted, themes_dir must be None (only the built-in pair is offered).
+    import bajutsu.serve as srv
+
+    captured: dict[str, object] = {}
+    monkeypatch.setattr(srv, "serve", lambda **kw: captured.update(kw))
+    r = runner.invoke(app, ["serve", "--config", "bajutsu.config.yaml"])
+    assert r.exit_code == 0
+    assert captured.get("themes_dir") is None
+
+
 def test_serve_loopback_detection() -> None:
     from bajutsu.cli.commands.serve import _is_loopback
 

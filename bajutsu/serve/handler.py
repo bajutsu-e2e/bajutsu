@@ -11,6 +11,7 @@ from __future__ import annotations
 import functools
 import hashlib
 import json
+import logging
 import tempfile
 from http.cookies import SimpleCookie
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -185,7 +186,7 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
             path = urlparse(self.path).path
             match path:
                 case "/" | "/index.html":
-                    body = _index_html().encode("utf-8")
+                    body = _index_html(state.themes_dir, state.default_theme).encode("utf-8")
                     self.send_response(200)
                     self.send_header("Content-Type", "text/html; charset=utf-8")
                     self.send_header("Content-Length", str(len(body)))
@@ -577,14 +578,36 @@ def _asset(name: str) -> str:
     return (_TEMPLATE_DIR / name).read_text(encoding="utf-8")
 
 
-@functools.lru_cache(maxsize=1)
-def _index_html() -> str:
+def _script_json(value: object) -> str:
+    """`value` as JSON safe to inline in a <script> (escape `<` so a theme name can't close it)."""
+    return json.dumps(value).replace("<", "\\u003c")
+
+
+@functools.lru_cache(maxsize=8)
+def _index_html(themes_dir: Path | None = None, default_theme: str | None = None) -> str:
+    # Drop-in themes are static for the process lifetime (BE-0191 unit 2), so the scan is folded
+    # into this cached render — keyed on (themes_dir, default_theme), the only inputs that vary it.
+    from bajutsu.serve import themes as _themes
+
+    discovered = _themes.discover_themes(themes_dir)
+    manifests = [*_themes.BUILTIN_THEMES, *(t.manifest for t in discovered)]
+    if default_theme is not None and default_theme not in {m.id for m in manifests}:
+        logging.getLogger(__name__).warning(
+            "ui.default_theme %r does not match any registered theme id %s — "
+            "the page will load unthemed",
+            default_theme,
+            sorted(m.id for m in manifests),
+        )
     return (
         _env()
         .get_template("serve.html.j2")
         .render(
             css=_asset("serve.css"),
-            themes_css=_asset("serve.themes.css"),
+            themes_css=_asset("serve.themes.css") + "".join(t.css for t in discovered),
+            themes_json=_script_json(
+                [{"id": m.id, "name": m.name, "kind": m.kind} for m in manifests]
+            ),
+            default_theme_json=_script_json(default_theme),
             js="\n".join(_asset(name) for name in _JS_ASSETS),
         )
     )

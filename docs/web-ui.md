@@ -49,8 +49,8 @@ the backend's dependencies yourself — the idb client and `idb_companion` for a
 Playwright target does not need them). Either way the server does not open a browser for you: it
 binds `127.0.0.1`, so once it is running, open the printed URL yourself (`http://127.0.0.1:8765` by
 default, or the `--port` you passed). The full option list — `--port`, `--config`, `--root`,
-`--runs`, `--baselines`, `--host`, `--token`, `--max-concurrent-runs`, `--evidence-store` — is in
-the [CLI reference](cli.md#serve).
+`--runs`, `--baselines`, `--themes`, `--host`, `--token`, `--max-concurrent-runs`,
+`--evidence-store` — is in the [CLI reference](cli.md#serve).
 
 ## The layout
 

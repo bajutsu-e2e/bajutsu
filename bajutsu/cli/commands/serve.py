@@ -40,6 +40,12 @@ def serve(
         "--baselines",
         help="visual-regression baselines dir (default: a `baselines` folder under --scenarios)",
     ),
+    themes: str = typer.Option(
+        "",
+        "--themes",
+        help="drop-in theme dir: each *.css adds a selectable UI theme (BE-0191); "
+        "the built-in dark/light pair is always offered",
+    ),
     host: str = typer.Option("127.0.0.1", "--host"),
     max_concurrent_runs: int = typer.Option(
         4,
@@ -181,6 +187,12 @@ def serve(
             # cache-path config was materialized from, not just the path (BE-0063).
             config_provenance = source_provenance(spec, mat)
 
+    # The initial theme selection is a serve-only `ui.default_theme` key, read from the startup
+    # config here (the core Config never models it — BE-0191). None follows the OS as before.
+    from bajutsu.serve.themes import read_default_theme
+
+    default_theme = read_default_theme(config_path)
+
     try:
         _serve(
             host=host,
@@ -199,6 +211,8 @@ def serve(
             backend=backend,
             cwd=cwd,
             config_provenance=config_provenance,
+            themes_dir=Path(themes) if themes else None,
+            default_theme=default_theme,
         )
     except MissingServerExtra as e:
         # The server backend was selected without its optional extras: show the install hint and

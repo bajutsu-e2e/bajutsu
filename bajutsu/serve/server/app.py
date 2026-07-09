@@ -119,7 +119,8 @@ def make_app(state: ServeState) -> FastAPI:
     @app.get("/", response_class=HTMLResponse)
     @app.get("/index.html", response_class=HTMLResponse)
     async def index() -> HTMLResponse:
-        return HTMLResponse(_index_html())
+        # Lockstep with the stdlib handler: forward the drop-in themes dir + default (BE-0191).
+        return HTMLResponse(_index_html(state.themes_dir, state.default_theme))
 
     @app.get("/runs/{rel:path}")
     async def run_file(rel: str, request: Request) -> Response:
