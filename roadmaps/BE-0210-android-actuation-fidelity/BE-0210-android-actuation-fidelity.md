@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0210](BE-0210-android-actuation-fidelity.md) |
 | Author | [@hirosassa](https://github.com/hirosassa) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0210") |
+| Implementing PR | _pending_ |
 | Topic | Platform expansion (Android / Web / Flutter) |
 | Related | [BE-0007](../BE-0007-android-backend/BE-0007-android-backend.md) |
 <!-- /BE-METADATA -->
@@ -82,11 +83,25 @@ a still-ambiguous selector still fails rather than guessing.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] System back (`keyevent 4`) and by-scheme deeplink.
-- [ ] Double-tap within the platform double-tap window (single low-latency actuation path).
-- [ ] Scroll-into-view (bounded scroll-and-re-query condition wait).
-- [ ] Runtime permission dialog handling (deterministic grant / dismissal).
-- [ ] Validation — fast-gate builders/loop where possible; on-device acceptance of `notices` / `gestures` / `controls` / permission-gated.
+- [x] System back — a first-class `back` step, `keyevent 4` on Android. By-scheme deeplink is
+      already served by the launch-time `preconditions.deeplink` (`am start -a
+      android.intent.action.VIEW`); a mid-scenario deeplink step is deferred (see log).
+- [x] Double-tap within the platform double-tap window (single `adb shell` round-trip).
+- [x] Scroll-into-view (bounded scroll-and-re-query condition wait).
+- [x] Runtime permission handling (deterministic up-front `pm grant`).
+- [x] Validation — fast-gate command builders and the scroll-and-re-query loop covered over injected
+      `run`; on-device acceptance (`notices` / `gestures` / `controls` / permission-gated) runs on the
+      Android emulator e2e lane.
+
+Log:
+
+- _pending_ — `back` (cross-backend step: Android `keyevent 4`, iOS/XCUITest tap the OS back
+  button, web `history.back()`); `double_tap` single `adb shell` round-trip; adb scroll-into-view in
+  the resolve path (default up-swipe, bounded); config `grantPermissions` pre-granted via `pm grant`
+  at lease time. The standalone mid-scenario deeplink step is deferred: the launch-time path already
+  uses `am start -a android.intent.action.VIEW`, no acceptance scenario needs a mid-run deeplink, and
+  a step would require extending the cross-backend `DeviceControl` surface. If a mid-scenario
+  deeplink is later needed, it is a small follow-up.
 
 ## References
 

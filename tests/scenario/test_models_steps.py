@@ -17,6 +17,17 @@ def test_step_requires_exactly_one_action() -> None:
         Step.model_validate({"capture": ["screenshot"]})  # no action
 
 
+def test_back_step_parses() -> None:
+    # A no-argument navigation action, expressed like the other no-arg steps (`back: {}`).
+    step = Step.model_validate({"back": {}})
+    assert step.back is not None
+
+
+def test_back_step_is_one_action() -> None:
+    with pytest.raises(ValidationError):
+        Step.model_validate({"back": {}, "tap": {"id": "a"}})
+
+
 def test_unknown_key_rejected() -> None:
     with pytest.raises(ValidationError):
         Step.model_validate({"tapp": {"id": "a"}})  # typo rejected by extra=forbid

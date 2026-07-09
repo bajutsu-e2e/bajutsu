@@ -204,6 +204,10 @@ def _emit_step(step: Step) -> list[str]:
         else:
             lines.append(f"app.typeText({_s(step.type.text)})")
         return lines
+    if step.back is not None:
+        # iOS has no hardware back; the generated XCUITest taps the OS navigation back button, the
+        # same element the idb/XCUITest drivers tap at runtime (identifier "BackButton") — BE-0210.
+        return [f"{_element({'id': 'BackButton'})}.tap()"]
     if step.swipe is not None:
         sw = step.swipe
         if sw.on is not None and sw.direction is not None:

@@ -167,15 +167,30 @@ abstraction resolves **id → frame center → coordinate tap**, exactly as on i
   immediately) → `adb shell input tap` at the frame center. `swipe` adds a finite duration so it is a
   real drag; `long_press` is a same-point swipe held for the duration; `type_text` is `input text`
   (spaces sent as its `%s` escape).
+- **On-device actuation fidelity** (roadmap
+  [BE-0210](../roadmaps/BE-0210-android-actuation-fidelity/BE-0210-android-actuation-fidelity.md)):
+  the `back` step is the true system back (`input keyevent 4` / `KEYCODE_BACK`) — Android has no
+  on-screen back element to tap, unlike iOS's OS back button; `double_tap` issues both taps in **one
+  `adb shell` round-trip** (`input tap … ; input tap …`) so the adb transport round-trip doesn't
+  widen the gap past the platform's double-tap window; and a tap whose target is **not in the current
+  viewport** scrolls toward it (a default up-swipe) and re-queries, bounded by a retry count — a
+  condition wait, so a selector that never appears still fails deterministically.
 - `pinch` / `rotate` raise `UnsupportedAction` (single-touch `input`, just like idb).
 - `screenshot` writes the PNG bytes from `adb exec-out screencap -p` (binary-clean stdout).
 - Lifecycle (`AndroidEnvironment`, the twin of the iOS `simctl` sequence): boot-readiness wait
   (polling `getprop sys.boot_completed` to a bounded deadline — a condition wait, no fixed sleep, and
   no unbounded `adb wait-for-device` block) →
   optional APK install → `pm clear` for a clean state (the `erase` equivalent) → `am force-stop` →
-  `am start` (the launcher activity resolved via the package manager; launch env forwarded as intent
-  extras) → deeplink (`am start -a android.intent.action.VIEW`). The run manifest records
-  `backend: "adb"` so the selected actuator is disclosed.
+  runtime-permission pre-grant (`pm grant`, see below) → `am start` (the launcher activity resolved
+  via the package manager; launch env forwarded as intent extras) → deeplink
+  (`am start -a android.intent.action.VIEW`). The run manifest records `backend: "adb"` so the
+  selected actuator is disclosed.
+- **Runtime permissions** (BE-0210): the permissions listed in the target's config
+  `grantPermissions` are granted up front with `adb shell pm grant <package> <permission>` at lease
+  time — after `pm clear` (which resets grants) and before launch — so a runtime permission prompt
+  never blocks a scenario. Granting deterministically up front, rather than tapping the dialog when
+  it appears, keeps timing off the run path; the list is app-specific, so it lives in config, not the
+  driver.
 - **Interval evidence** (BE-0007 Unit 4): `video` records via `adb shell screenrecord` and
   `deviceLog` streams `adb logcat`, the twins of the simctl providers. `screenrecord` writes
   device-side (it cannot stream to a host file), so the recording is finalized on SIGINT and pulled

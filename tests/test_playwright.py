@@ -204,6 +204,7 @@ class _FakePage:
         self.mouse = _FakeMouse()
         self.keyboard = _FakeKeyboard()
         self.goto_url: str | None = None
+        self.went_back = False
         self.shot: str | None = None
         self._handlers: dict[str, list[Any]] = {}
         self.cdp = _FakeCDP()
@@ -223,6 +224,10 @@ class _FakePage:
 
     def goto(self, url: str) -> object:
         self.goto_url = url
+        return None
+
+    def go_back(self) -> object:
+        self.went_back = True
         return None
 
     def screenshot(self, *, path: str) -> object:
@@ -410,6 +415,13 @@ def test_double_tap() -> None:
     drv, page = _driver([_rec(identifier="x", frame=[0, 0, 10, 10])])
     drv.double_tap({"id": "x"})
     assert page.mouse.calls == [("dblclick", 5.0, 5.0)]
+
+
+def test_back_goes_back_in_history() -> None:
+    # The web's `back` is browser history (BE-0210), the platform peer of Android's system back key.
+    drv, page = _driver([])
+    drv.back()
+    assert page.went_back is True
 
 
 def test_long_press() -> None:

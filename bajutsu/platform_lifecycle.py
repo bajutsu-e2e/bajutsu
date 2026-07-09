@@ -409,6 +409,9 @@ class AndroidEnvironment:
             if pre.erase or pre.reinstall == "clean":
                 e.clear(android.package)
             e.force_stop(android.package)  # clean start so readiness reflects the new launch
+            # Grant runtime permissions after `pm clear` (which resets grants) but before launch, so
+            # a permission prompt never blocks the scenario — deterministic, no timing (BE-0210).
+            e.grant_permissions(android.package, android.grant_permissions)
             launch_env: Mapping[str, str] = {
                 **eff.launch_env,
                 **pre.launch_env,

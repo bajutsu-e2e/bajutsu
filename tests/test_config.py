@@ -527,6 +527,27 @@ def test_android_target_yields_android_sub_config() -> None:
     assert eff.platform_config.package == "com.x.app"
 
 
+def test_android_grant_permissions_flow_into_the_sub_config() -> None:
+    # BE-0210: runtime permissions to pre-grant live in config (app-specific), reaching AndroidConfig.
+    cfg = load_config(
+        "targets:\n  s:\n    platform: android\n    package: com.x.app\n    backend: [adb]\n"
+        "    grantPermissions: [android.permission.POST_NOTIFICATIONS, android.permission.CAMERA]\n"
+    )
+    eff = resolve(cfg, "s")
+    assert isinstance(eff.platform_config, AndroidConfig)
+    assert eff.platform_config.grant_permissions == [
+        "android.permission.POST_NOTIFICATIONS",
+        "android.permission.CAMERA",
+    ]
+
+
+def test_android_grant_permissions_default_empty() -> None:
+    cfg = load_config("targets:\n  s:\n    platform: android\n    package: com.x.app\n")
+    eff = resolve(cfg, "s")
+    assert isinstance(eff.platform_config, AndroidConfig)
+    assert eff.platform_config.grant_permissions == []
+
+
 def test_web_target_carries_no_ios_fields() -> None:
     # The whole point of the split: a web target's config never exposes iOS-only knobs.
     cfg = load_config("targets:\n  s:\n    baseUrl: https://app.test\n    backend: [playwright]\n")

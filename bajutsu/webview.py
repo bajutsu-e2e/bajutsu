@@ -143,6 +143,9 @@ class WebContextDriver:
     def swipe(self, frm: Point, to: Point) -> None:
         raise UnsupportedAction("swipe is not supported in web context (first slice)")
 
+    def back(self) -> None:
+        raise UnsupportedAction("back is not supported in web context (first slice)")
+
     def pinch(self, sel: Selector, scale: float) -> None:
         raise UnsupportedAction("pinch is not supported in web context (first slice)")
 

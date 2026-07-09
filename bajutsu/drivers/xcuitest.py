@@ -349,6 +349,12 @@ class XcuitestDriver:
             "selectOption は <select> を持つ web バックエンド専用; iOS ネイティブに <select> はない"
         )
 
+    def back(self) -> None:
+        # iOS has no hardware back: tap the OS navigation back button, the same element idb taps, so
+        # `back` behaves identically across the iOS backends. Reuses `tap` rather than re-issuing the
+        # actuate call, mirroring idb's `back` (BE-0210).
+        self.tap({"id": base.OS_BACK_BUTTON})
+
     def type_text(self, text: str) -> None:
         reply = self._transport("POST", "/type", {"text": text})
         if reply.status != _OK:

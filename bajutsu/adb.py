@@ -127,8 +127,34 @@ def rm_cmd(serial: str, device_path: str) -> list[str]:
     return _adb(serial, "shell", "rm", "-f", device_path)
 
 
+KEYCODE_BACK = 4  # `input keyevent` code for the system back button (Android's true system back).
+
+
 def tap_cmd(serial: str, x: float, y: float) -> list[str]:
     return _adb(serial, "shell", "input", "tap", _num(x), _num(y))
+
+
+def double_tap_cmd(serial: str, x: float, y: float) -> list[str]:
+    """Both taps of a double-tap in a single `adb shell` round-trip (BE-0210).
+
+    Two separate `adb shell input tap` invocations put a whole adb transport round-trip between the
+    taps, widening the inter-tap gap past the platform's double-tap window. Chaining both `input tap`
+    calls in one round-trip (`input tap x y ; input tap x y`, run by the device shell) removes that
+    transport latency; the residual gap is the on-device `input` startup, which stock `input` cannot
+    avoid — if that alone still overruns the window on a slow device, the next step is a raw
+    `sendevent` touch sequence, validated on the emulator e2e lane.
+    """
+    xs, ys = _num(x), _num(y)
+    return _adb(serial, "shell", "input", "tap", xs, ys, ";", "input", "tap", xs, ys)
+
+
+def keyevent_cmd(serial: str, keycode: int) -> list[str]:
+    """Inject a hardware/system key event (`input keyevent <code>`).
+
+    The system back button (`KEYCODE_BACK`) has no on-screen element to tap — unlike iOS, whose OS
+    back button idb resolves and taps — so it is actuated as a key event rather than a coordinate.
+    """
+    return _adb(serial, "shell", "input", "keyevent", str(keycode))
 
 
 def swipe_cmd(serial: str, x1: float, y1: float, x2: float, y2: float, ms: int = 300) -> list[str]:
@@ -159,6 +185,15 @@ def pm_clear_cmd(serial: str, package: str) -> list[str]:
 
 def force_stop_cmd(serial: str, package: str) -> list[str]:
     return _adb(serial, "shell", "am", "force-stop", package)
+
+
+def pm_grant_cmd(serial: str, package: str, permission: str) -> list[str]:
+    """Grant a runtime permission up front (`pm grant`), so its prompt never blocks the run.
+
+    Granting the permission deterministically before launch — rather than tapping the runtime
+    dialog when it appears — keeps timing off the run path (BE-0210).
+    """
+    return _adb(serial, "shell", "pm", "grant", package, permission)
 
 
 def install_cmd(serial: str, apk_path: str) -> list[str]:
@@ -314,6 +349,20 @@ class Env:
     def force_stop(self, package: str) -> None:
         with contextlib.suppress(subprocess.CalledProcessError):
             self._run(force_stop_cmd(self.serial, package))
+
+    def grant_permissions(self, package: str, permissions: list[str]) -> None:
+        """Grant each configured runtime permission up front (BE-0210), one `pm grant` per entry.
+
+        Raises:
+            DeviceError: `pm grant` reported a problem. It exits 0 even for an unknown permission or
+                an app that predates runtime permissions, printing the error to stdout — so a silent
+                config mistake would otherwise surface only as a later, misleading step failure. Any
+                stdout (`pm grant` is silent on success) is surfaced loudly instead.
+        """
+        for permission in permissions:
+            out = self._run(pm_grant_cmd(self.serial, package, permission)).strip()
+            if out:
+                raise DeviceError(f"pm grant failed for {permission} on {package}: {out}")
 
     def resolve_activity(self, package: str) -> str:
         """The launcher component (`<package>/<activity>`) for `package`, via the package manager.

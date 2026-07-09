@@ -29,6 +29,7 @@ from xml.etree import ElementTree as ET
 
 from bajutsu import adb, intervals
 from bajutsu.drivers import base
+from bajutsu.elements import screen_size_from_elements
 
 RunFn = Callable[[list[str]], str]
 
@@ -130,6 +131,13 @@ class AdbDriver:
     _EMPTY_BACKOFF_MAX_S = 0.2  # cap on a single backoff (total added <= ~0.75s, bounded)
     _SETTLE_MAX_POLLS = 3  # extra reads after initial comparison when frames are moving
     _SETTLE_POLL_S = 0.05  # interval between settle reads
+    # Scroll-into-view (BE-0210): an action target that resolves to nothing in the current viewport
+    # is scrolled toward and re-queried a bounded number of times before failing — a condition wait,
+    # not a fixed sleep. The default direction is a swipe up (content up, revealing rows below).
+    _RESOLVE_TIMEOUT_S = 3.0  # the initial no-scroll resolve deadline (rides transient trees)
+    _SCROLL_RETRIES = 3  # scroll-and-re-query attempts before a deterministic not-found failure
+    _SCROLL_FROM_FRAC = 0.7  # swipe start, as a fraction of screen height
+    _SCROLL_TO_FRAC = 0.3  # swipe end (< start ⇒ upward ⇒ content scrolls up)
 
     def __init__(self, serial: str, run: RunFn = adb._real_run) -> None:
         self.serial = adb._checked_serial(serial)
@@ -212,9 +220,43 @@ class AdbDriver:
 
     def _center(self, sel: base.Selector) -> base.Point:
         tree = self._settle()
-        el = self._resolve(sel, initial_tree=tree)
+        try:
+            el = self._resolve(sel, timeout=self._RESOLVE_TIMEOUT_S, initial_tree=tree)
+        except base.ElementNotFound:
+            # Not in the current viewport — scroll toward it and re-query (BE-0210). An ambiguous
+            # match still fails fast: only not-found triggers a scroll, so `resolve_unique`'s
+            # AmbiguousSelector propagates unchanged. The settled tree seeds the first scroll so it
+            # is oriented on stable frames rather than a fresh (possibly mid-transition) read.
+            el = self._scroll_into_view(sel, tree)
         x, y, w, h = el["frame"]
         return (x + w / 2, y + h / 2)
+
+    def _scroll_into_view(self, sel: base.Selector, tree: list[base.Element]) -> base.Element:
+        """Scroll toward `sel` and re-query, bounded by `_SCROLL_RETRIES`, then fail deterministically.
+
+        A condition wait, not a fixed sleep: each attempt swipes once (default up), then re-reads
+        via `_settle` so the scroll's fling has stopped before the tree is resolved (a bare read
+        right after the swipe can miss an element still sliding in, over-scrolling past it), and
+        retries the unique resolve. A selector that never renders still raises ElementNotFound.
+        """
+        for _ in range(self._SCROLL_RETRIES):
+            self._scroll_toward(tree)
+            tree = self._settle()
+            try:
+                return base.resolve_unique(tree, sel)
+            except base.ElementNotFound:
+                continue
+        raise base.ElementNotFound(f"一致なし（scroll しても見つからず）: {sel!r}")
+
+    def _scroll_toward(self, tree: list[base.Element]) -> None:
+        w, h = screen_size_from_elements(tree)
+        if w <= 0 or h <= 0:
+            # A degenerate/empty tree gives no screen extent to swipe across; a zero-length or
+            # edge-column swipe would be a silent no-op that burns the retry budget and then fails
+            # with a misleading "not found after scroll". Fail loudly with the real cause (BE-0210).
+            raise base.ElementNotFound("scroll 不可（要素ツリーが空。UI Automator が要素を返さず）")
+        cx = w / 2
+        self.swipe((cx, h * self._SCROLL_FROM_FRAC), (cx, h * self._SCROLL_TO_FRAC))
 
     def tap(self, sel: base.Selector) -> None:
         x, y = self._center(sel)
@@ -224,10 +266,10 @@ class AdbDriver:
         self._run(adb.tap_cmd(self.serial, p[0], p[1]))
 
     def double_tap(self, sel: base.Selector) -> None:
-        # No native double-tap; two quick taps at the same point.
+        # No native double-tap; both taps go through one `adb shell` round-trip so the adb transport
+        # round-trip does not sit between them and overrun the double-tap window (BE-0210).
         x, y = self._center(sel)
-        self._run(adb.tap_cmd(self.serial, x, y))
-        self._run(adb.tap_cmd(self.serial, x, y))
+        self._run(adb.double_tap_cmd(self.serial, x, y))
 
     def long_press(self, sel: base.Selector, duration: float) -> None:
         # `input` has no press-and-hold, so a zero-length swipe with a duration acts as a long press.
@@ -236,6 +278,11 @@ class AdbDriver:
 
     def swipe(self, frm: base.Point, to: base.Point) -> None:
         self._run(adb.swipe_cmd(self.serial, frm[0], frm[1], to[0], to[1]))
+
+    def back(self) -> None:
+        # The true system back: a KEYCODE_BACK key event. Android has no on-screen "back" element to
+        # tap (unlike iOS's OS back button), so this is a key event, not a coordinate — BE-0210.
+        self._run(adb.keyevent_cmd(self.serial, adb.KEYCODE_BACK))
 
     def pinch(self, sel: base.Selector, scale: float) -> None:
         raise base.UnsupportedAction(
