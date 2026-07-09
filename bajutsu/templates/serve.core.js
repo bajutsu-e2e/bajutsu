@@ -165,26 +165,38 @@ function wireDoctor(ids,getTarget){
   });
 }
 
-// ---- dark / light toggle (matching CSS-variable blocks live in serve.themes.css) ----
-// Two themes only, driven by a checkbox switch: checked == daylight (light), else midnight (dark).
-// Default behaviour follows the OS and updates live; a manual flip persists until the OS changes.
+// ---- theme picker (BE-0191 unit 3; theme token blocks live in serve.themes.css) ----
+// A <select> of every registered theme (window.__bajutsuThemes, built-in + drop-in), replacing the
+// old two-state toggle. Default follows the OS (or the configured ui.default_theme) and updates
+// live; an explicit pick persists in localStorage until the OS changes. The pre-paint inline script
+// (serve.html.j2) already applied the resolved theme before first paint — here we only seed the
+// widget's shown value from it and wire the change/OS handlers.
 const SYS_MQ=matchMedia('(prefers-color-scheme: light)');
-function systemTheme(){return SYS_MQ.matches?'daylight':'midnight'}
+const THEMES=Array.isArray(window.__bajutsuThemes)?window.__bajutsuThemes:[];
+function themeExists(t){return THEMES.some(x=>x.id===t)}
+function systemTheme(){
+  // The OS scheme maps to whichever registered theme declares that kind first, falling back to the
+  // built-in pair so a registry that dropped one kind still resolves.
+  const want=SYS_MQ.matches?'light':'dark';
+  const hit=THEMES.find(x=>x.kind===want);
+  return hit?hit.id:(SYS_MQ.matches?'daylight':'midnight');
+}
 function currentTheme(){
   return document.documentElement.getAttribute('data-theme')
     ||localStorage.getItem('bajutsu-theme')
+    ||window.__bajutsuDefaultTheme
     ||systemTheme();
 }
 function applyTheme(t,persist){
   document.documentElement.setAttribute('data-theme',t);
   try{if(persist)localStorage.setItem('bajutsu-theme',t)}catch(e){}
-  const sw=$('#theme');if(sw)sw.checked=(t==='daylight');
+  const sel=$('#theme');if(sel&&sel.value!==t&&themeExists(t))sel.value=t;
 }
 function initTheme(){
-  const sw=$('#theme');
+  const sel=$('#theme');
   applyTheme(currentTheme(),false);
-  // Manual flip wins for now and is remembered.
-  sw.addEventListener('change',()=>applyTheme(sw.checked?'daylight':'midnight',true));
+  // An explicit pick wins and is remembered until the OS scheme changes.
+  sel.addEventListener('change',()=>applyTheme(sel.value,true));
   // An OS theme change drops any manual override and adopts the new system mode.
   const onSys=()=>{try{localStorage.removeItem('bajutsu-theme')}catch(e){}applyTheme(systemTheme(),false)};
   if(SYS_MQ.addEventListener)SYS_MQ.addEventListener('change',onSys);
