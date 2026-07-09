@@ -15,6 +15,8 @@ import time
 from collections.abc import Callable
 from typing import Any
 
+from bajutsu import simctl
+from bajutsu.device_id import is_valid_device_id
 from bajutsu.drivers import base
 
 RunFn = Callable[[list[str]], str]
@@ -29,6 +31,17 @@ _StableKey = tuple[tuple[str, base.Frame], ...]
 _TAP_DURATION_S = 0.1
 
 
+def _validated_udid(udid: str) -> str:
+    # A udid from `--udid` / config reaches idb/xcrun argv (`--udid <id>`), so it follows the
+    # shared `device_id` policy — never leading with `-`, which would be read as an option. Raises
+    # simctl.DeviceError (not a bare ValueError) so a bad --udid surfaces as the CLI's clean exit-2
+    # device fault, the same boundary adb's `_checked_serial` uses. No `.strip()`: the check is
+    # exact, matching adb — a serial with surrounding whitespace is rejected outright.
+    if is_valid_device_id(udid):
+        return udid
+    raise simctl.DeviceError(f"invalid udid: {udid!r}")
+
+
 def _real_run(args: list[str]) -> str:
     return subprocess.run(args, capture_output=True, text=True, check=True).stdout
 
@@ -38,7 +51,7 @@ def _real_run(args: list[str]) -> str:
 
 def describe_all_cmd(udid: str) -> list[str]:
     """The `idb` argv that dumps the accessibility tree as JSON."""
-    return ["idb", "ui", "describe-all", "--udid", udid, "--json"]
+    return ["idb", "ui", "describe-all", "--udid", _validated_udid(udid), "--json"]
 
 
 def tap_cmd(udid: str, x: float, y: float) -> list[str]:
@@ -48,7 +61,7 @@ def tap_cmd(udid: str, x: float, y: float) -> list[str]:
         "ui",
         "tap",
         "--udid",
-        udid,
+        _validated_udid(udid),
         _num(x),
         _num(y),
         "--duration",
@@ -65,7 +78,7 @@ def swipe_cmd(udid: str, x1: float, y1: float, x2: float, y2: float) -> list[str
         "ui",
         "swipe",
         "--udid",
-        udid,
+        _validated_udid(udid),
         _num(x1),
         _num(y1),
         _num(x2),
@@ -120,7 +133,7 @@ def screenshot_cmd(udid: str, path: str) -> list[str]:
     """The argv that writes a Simulator screenshot to path (via simctl)."""
     # idb's own frame capture is unreliable ("No Image available to encode"),
     # so screenshot via simctl, which is always available on the Simulator.
-    return ["xcrun", "simctl", "io", udid, "screenshot", path]
+    return ["xcrun", "simctl", "io", _validated_udid(udid), "screenshot", path]
 
 
 def _num(v: float) -> str:
@@ -205,7 +218,10 @@ class IdbDriver:
     _SETTLE_POLL_S = 0.05  # interval between settle reads; describe-all provides natural spacing
 
     def __init__(self, udid: str, run: RunFn = _real_run) -> None:
-        self.udid = udid
+        # Validate once at the object boundary so every use of self.udid is covered — the argv
+        # builders and the gRPC companion path (_type_text_via_companion) alike, plus any future
+        # use site — without each having to remember to wrap it.
+        self.udid = _validated_udid(udid)
         self._run = run
         self._max_seen = 0  # richest tree seen on this device; gates the empty retry
         self._last_stable_key: _StableKey | None = None
@@ -330,7 +346,17 @@ class IdbDriver:
     def long_press(self, sel: base.Selector, duration: float) -> None:
         x, y = self._center(sel)
         self._run(
-            ["idb", "ui", "tap", "--udid", self.udid, _num(x), _num(y), "--duration", str(duration)]
+            [
+                "idb",
+                "ui",
+                "tap",
+                "--udid",
+                _validated_udid(self.udid),
+                _num(x),
+                _num(y),
+                "--duration",
+                str(duration),
+            ]
         )
 
     def swipe(self, frm: base.Point, to: base.Point) -> None:

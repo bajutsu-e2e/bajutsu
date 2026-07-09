@@ -305,3 +305,19 @@ def test_settle_polls_until_frames_stabilize() -> None:
     driver.query()  # populate the stable-key cache with FIXTURE
     tree = driver._settle()
     assert len(tree) == FIXTURE_ELEMENT_COUNT
+
+
+def test_checked_serial_accepts_real_serials() -> None:
+    # Concrete serials, the `booted` alias, and IP:port `adb connect` targets pass unchanged —
+    # every command builder embeds the serial via `_adb`.
+    for good in ["emulator-5554", "booted", "192.168.1.5:5555", "usb_serial.01"]:
+        assert adb._adb(good, "devices") == ["adb", "-s", good, "devices"]
+
+
+def test_checked_serial_rejects_injection() -> None:
+    # A serial that could inject an adb option (leading `-`) or reach argv with a shell
+    # metacharacter / space is rejected. adb keeps its own error type (`adb.DeviceError`, an
+    # exit-2 device fault) even though the underlying policy is shared with idb/serve.
+    for bad in ["-s", "--help", "a b", "a;b", "", "x" * 129]:
+        with pytest.raises(adb.DeviceError, match="invalid device serial"):
+            adb._adb(bad, "devices")
