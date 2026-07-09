@@ -218,6 +218,18 @@ docker compose up -d            # postgres + minio + migrate（alembic upgrade h
 ようにするには、`.env` の `BIND_ADDR` をノードの tailnet IP に設定してください。公開インターフェースを
 持つホストで `0.0.0.0` にはしないでください。成果物バケットを露出させてしまいます。
 
+アーティファクト／シナリオ／ベースラインのストア自体は、`BAJUTSU_SERVER_STORE` という1本の URI で選びます
+（BE-0204）。`s3://bucket/prefix`（S3 互換。この compose が同梱する MinIO）と `gs://bucket/prefix`
+（Google Cloud Storage）のどちらかを指定できます。すでに Google Cloud 上で他のスタックを動かしているなら、
+`docker-compose.yml` から `minio` と `minio-init` サービスを外し、`BAJUTSU_SERVER_STORE` を GCS バケットに
+向けて、コントロールプレーンのイメージに `s3` の代わりに `gcs` extra をインストールしてください
+（`uv sync --extra gcs`）。S3 互換バケットを別途用意する必要はなくなります。
+
+以前の `BAJUTSU_S3_BUCKET` / `BAJUTSU_S3_PREFIX` の組み合わせを使っていた環境からアップグレードするときは、
+prefix を URI のパスに畳み込んでください。`BAJUTSU_S3_BUCKET=bajutsu` と `BAJUTSU_S3_PREFIX=tenant/` の
+組み合わせは `BAJUTSU_SERVER_STORE=s3://bajutsu/tenant/` になります。prefix を畳み込まずに設定すると、
+その prefix 配下にあった既存のキーが解決できなくなります。
+
 ### 2. GitHub OAuth を足す（任意）
 
 オペレータが数人なら共有トークン（`BAJUTSU_SERVE_TOKEN`）だけで十分です。ユーザごとのブラウザログインには、
@@ -268,7 +280,7 @@ export ANTHROPIC_API_KEY=…     # シナリオが AI パス（record / --dismis
 bajutsu worker
 ```
 
-worker はオブジェクトストレージの認証情報を**一切持ちません**（BE-0160）。`BAJUTSU_S3_BUCKET` /
+worker はオブジェクトストレージの認証情報を**一切持ちません**（BE-0160）。`BAJUTSU_SERVER_STORE` /
 `BAJUTSU_S3_ENDPOINT` / `AWS_*` も、クラウド SDK も不要です。run のベースラインのダウンロード、完了した
 `runs/<id>/` ツリーのアップロード、`record` ジョブが生成したシナリオの保存は、いずれもコントロールプレーンが
 署名した presigned URL 経由で行います。オブジェクトストレージの認証情報が置かれる場所はコントロールプレーン

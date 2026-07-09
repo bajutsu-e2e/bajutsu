@@ -211,8 +211,9 @@ def _build_state(
             if e.name and e.name.split(".")[0] == "bajutsu":
                 raise
             raise MissingServerExtra(
-                "the server backend needs its optional extras — "
-                "install with: pip install 'bajutsu[server,worker,db]'"
+                "the server backend needs its optional extras — install with: "
+                "pip install 'bajutsu[server,worker,db,gcs]' (gcs is only needed if "
+                "BAJUTSU_SERVER_STORE or --evidence-store uses gs://)"
             ) from e
     return ServeState(
         runs_dir=runs_dir,
@@ -249,9 +250,10 @@ def _build_server_state(
     """Wire the hosted seams from the environment (the single-tenant server backend, BE-0015/BE-0106).
 
     Postgres (``BAJUTSU_DATABASE_URL``) backs the job queue, sessions, and the system of record
-    (BE-0106); one S3-compatible bucket (``BAJUTSU_S3_BUCKET`` / ``BAJUTSU_S3_ENDPOINT`` /
-    ``BAJUTSU_S3_REGION``, optional ``BAJUTSU_S3_PREFIX``) holds artifacts and scenarios. Server
-    extras (SQLAlchemy, boto3) are imported lazily so the default path stays SDK-free."""
+    (BE-0106); one bucket named by ``BAJUTSU_SERVER_STORE`` (``s3://bucket/prefix`` or
+    ``gs://bucket/prefix``, BE-0204) holds artifacts and scenarios — the same URI-based selector
+    ``--evidence-store`` uses, kept as its own independent setting. Server extras (SQLAlchemy,
+    boto3, google-cloud-storage) are imported lazily so the default path stays SDK-free."""
     import os
 
     from bajutsu.serve.server.artifacts import ObjectStorageArtifactStore
@@ -259,21 +261,19 @@ def _build_server_state(
     from bajutsu.serve.server.db import engine_from_url, repository_from_env
     from bajutsu.serve.server.db_executor import DbQueueExecutor
     from bajutsu.serve.server.oauth import GitHubOAuthClient
-    from bajutsu.serve.server.object_store import (
-        artifact_prefix,
-        object_store_from_env,
-        org_prefix,
-        s3_prefix,
-    )
+    from bajutsu.serve.server.object_store import artifact_prefix, object_store_from_env, org_prefix
     from bajutsu.serve.server.post_completion_logbus import PostCompletionLogBus
     from bajutsu.serve.server.scenarios import ObjectScenarioStorage, StorageScenarioStore
     from bajutsu.serve.server.secrets import DbSecretStore, fernet_from_env
     from bajutsu.serve.server.sessions import _DEFAULT_TTL, SqlSessionStore
 
-    store = object_store_from_env()
-    if store is None:
-        raise ValueError("BAJUTSU_S3_BUCKET is required for --backend=server")
-    prefix = s3_prefix()
+    server_store = object_store_from_env()
+    if server_store is None:
+        raise ValueError(
+            "BAJUTSU_SERVER_STORE is required for --backend=server "
+            "(e.g. s3://bucket/prefix or gs://bucket/prefix)"
+        )
+    store, prefix = server_store
     db_url = os.environ.get("BAJUTSU_DATABASE_URL")
     _db_engine = engine_from_url(db_url) if db_url else None
     # The master key that encrypts operator secrets at rest (BE-0136). A database-backed server

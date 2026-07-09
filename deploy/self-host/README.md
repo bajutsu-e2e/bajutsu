@@ -42,7 +42,7 @@ On a Mac, run the worker (see the guide):
 
 ```sh
 export BAJUTSU_REDIS_URL=redis://<linux-node-on-tailnet>:6379
-export BAJUTSU_S3_BUCKET=bajutsu BAJUTSU_S3_ENDPOINT=http://<linux-node>:9000
+export BAJUTSU_SERVER_STORE=s3://bajutsu BAJUTSU_S3_ENDPOINT=http://<linux-node>:9000
 export AWS_ACCESS_KEY_ID=… AWS_SECRET_ACCESS_KEY=… ANTHROPIC_API_KEY=…   # AI paths
 # To record runs in the history list, install bajutsu[worker,idb,db] and also set:
 export BAJUTSU_DATABASE_URL=postgresql+psycopg://bajutsu:<password>@<linux-node>:5432/bajutsu

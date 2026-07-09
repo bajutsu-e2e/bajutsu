@@ -1,23 +1,24 @@
 """Server-side object-storage helpers for the hosted backend (BE-0015 server phase).
 
 `ObjectStorageArtifactStore` reads run artifacts through the injected `ObjectStore` slice
-(``exists`` / ``get_bytes`` / ``presigned_url`` / ``list_keys``); its real backing is an
-S3-compatible client over one bucket — Cloudflare R2 (the roadmap's choice), AWS S3, or MinIO,
-which differ only in endpoint/credentials.
+(``exists`` / ``get_bytes`` / ``presigned_url`` / ``list_keys``); its real backing is either an
+S3-compatible bucket (Cloudflare R2, AWS S3, MinIO) or a Google Cloud Storage bucket, selected by
+the single ``BAJUTSU_SERVER_STORE`` URI (BE-0204).
 
-`ObjectStore` and `S3ObjectStore` were promoted to the top-level `bajutsu.object_store` (BE-0110) so
-``run`` and ``serve`` share one seam; they are re-exported here for the existing server imports. This
-module keeps the server-specific env/prefix helpers (`s3_client_from_env` builds the boto3 client
-**lazily**, so importing it needs no ``server`` extra and the default path stays SDK-free — #117
-import guard).
+`ObjectStore`, `S3ObjectStore`, and `store_target_from_uri` live in the top-level
+`bajutsu.object_store` (BE-0110) so ``run`` and ``serve`` share one seam; the first two are
+re-exported here for the existing server imports. `object_store_from_env` (BE-0204) rebuilds the
+server factory on that same URI machinery — `store_target_from_uri`, the "URI → (store, prefix)"
+resolution ``--evidence-store``'s `evidence_target_from_uri` also builds on — instead of hand-rolling
+an S3-only ``boto3`` client, so both cloud SDKs stay lazy imports and the default path stays
+SDK-free (#117 import guard).
 """
 
 from __future__ import annotations
 
 import os
-from typing import Any
 
-from bajutsu.object_store import ObjectStore, S3ObjectStore
+from bajutsu.object_store import ObjectStore, S3ObjectStore, store_target_from_uri
 
 __all__ = [
     "ObjectStore",
@@ -26,32 +27,8 @@ __all__ = [
     "baseline_prefix",
     "object_store_from_env",
     "org_prefix",
-    "s3_client_from_env",
-    "s3_prefix",
     "scenario_prefix",
 ]
-
-
-def s3_client_from_env() -> Any:
-    """A boto3 S3 client built from the environment (boto3 imported lazily — the ``server`` extra).
-
-    ``BAJUTSU_S3_ENDPOINT`` points at R2/MinIO (unset for AWS S3); the region comes from
-    ``BAJUTSU_S3_REGION`` / ``AWS_REGION`` (R2 uses ``auto``); credentials come from the standard
-    AWS chain (``AWS_ACCESS_KEY_ID`` / ``AWS_SECRET_ACCESS_KEY`` / profile / role)."""
-    import boto3
-
-    return boto3.client(
-        "s3",
-        endpoint_url=os.environ.get("BAJUTSU_S3_ENDPOINT") or None,
-        region_name=os.environ.get("BAJUTSU_S3_REGION") or os.environ.get("AWS_REGION") or None,
-    )
-
-
-def s3_prefix() -> str:
-    """The normalized tenant prefix from ``BAJUTSU_S3_PREFIX`` — trailing ``/`` when non-empty (so
-    ``tenant`` doesn't fuse into ``tenantartifacts/``), empty when unset."""
-    p = os.environ.get("BAJUTSU_S3_PREFIX", "")
-    return p if (not p or p.endswith("/")) else p + "/"
 
 
 def artifact_prefix(base: str = "") -> str:
@@ -86,9 +63,23 @@ def org_prefix(base: str, org: str) -> str:
     return base if org == _DEFAULT_ORG else f"{base}{org}/"
 
 
-def object_store_from_env() -> S3ObjectStore | None:
-    """An `S3ObjectStore` from the environment (``BAJUTSU_S3_BUCKET`` + endpoint/region), or None
-    when no bucket is configured — so a caller can require it (control plane) or skip (a worker with
-    no object storage)."""
-    bucket = os.environ.get("BAJUTSU_S3_BUCKET")
-    return S3ObjectStore(s3_client_from_env(), bucket) if bucket else None
+def object_store_from_env() -> tuple[ObjectStore, str] | None:
+    """The (`ObjectStore`, key-prefix) pair ``BAJUTSU_SERVER_STORE`` names (``s3://bucket/prefix``
+    or ``gs://bucket/prefix``), or None when unset — so a caller can require it (control plane) or
+    skip (a worker with no object storage). The prefix already ends with ``/`` (or is empty).
+
+    Raises:
+        ValueError: ``BAJUTSU_SERVER_STORE`` is malformed (not a valid ``s3://`` / ``gs://`` URI).
+        ImportError: the URI's backend SDK isn't installed (see `store_target_from_uri`).
+    """
+    uri = os.environ.get("BAJUTSU_SERVER_STORE")
+    if not uri:
+        return None
+    try:
+        return store_target_from_uri(uri)
+    except ValueError as e:
+        # parse_store_uri's message doesn't name a setting — reword it here so an operator sees
+        # exactly which one to fix, rather than a generic "store URI" with no env var attached.
+        raise ValueError(
+            f"BAJUTSU_SERVER_STORE {uri!r} is invalid: use s3://bucket/prefix or gs://bucket/prefix"
+        ) from e

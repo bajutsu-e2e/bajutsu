@@ -1,11 +1,14 @@
-"""Object storage for run evidence: a backend-agnostic `ObjectStore` and a single-URI selector.
+"""Object storage: a backend-agnostic `ObjectStore` and a single-URI selector.
 
-An evidence store is addressed by one URI — ``s3://bucket/prefix`` or ``gs://bucket/prefix`` —
-so the destination (and thus the cloud lifecycle policy that governs retention) is a single,
-greppable string (BE-0110). `parse_store_uri` splits it into a `StoreURI`; `object_store_from_uri`
-builds the matching `ObjectStore`. Both S3 (boto3) and GCS (google-cloud-storage) SDKs are imported
-**lazily**, so this module is safe to import without either extra and the default CLI/serve path
-stays SDK-free (the #117 import guard).
+A store is addressed by one URI — ``s3://bucket/prefix`` or ``gs://bucket/prefix`` — so the
+destination (and thus the cloud lifecycle policy that governs retention) is a single, greppable
+string. `parse_store_uri` splits it into a `StoreURI`; `object_store_from_uri` builds the matching
+`ObjectStore`; `store_target_from_uri` bundles both into a (store, prefix) pair. This one seam backs
+two independent settings that each resolve their own URI: run evidence upload (``--evidence-store``,
+BE-0110, via `evidence_target_from_uri`/`EvidenceTarget`) and the server backend's own artifact/
+scenario/baseline storage (``BAJUTSU_SERVER_STORE``, BE-0204, via ``serve/server/object_store.py``).
+Both S3 (boto3) and GCS (google-cloud-storage) SDKs are imported **lazily**, so this module is safe
+to import without either extra and the default CLI/serve path stays SDK-free (the #117 import guard).
 
 `ObjectStore` and `S3ObjectStore` were promoted here from ``serve/server/object_store.py`` (which now
 re-exports them) so both ``run`` and ``serve`` share one seam.
@@ -180,7 +183,7 @@ class GCSObjectStore:
 
 @dataclasses.dataclass(frozen=True)
 class StoreURI:
-    """A parsed evidence-store URI: the backend, its bucket, and a key prefix.
+    """A parsed store URI: the backend, its bucket, and a key prefix.
 
     *prefix* is normalized to end with ``/`` (or be empty), so keys append cleanly without fusing
     (``prefix`` + ``run/x`` never yields ``prefixrun/x``)."""
@@ -196,7 +199,8 @@ _SCHEME_BACKEND: dict[str, Literal["s3", "gcs"]] = {"s3": "s3", "gs": "gcs"}
 
 
 def parse_store_uri(uri: str) -> StoreURI:
-    """Parse an evidence-store URI (``s3://bucket/prefix`` or ``gs://bucket/prefix``) into a `StoreURI`.
+    """Parse a store URI (``s3://bucket/prefix`` or ``gs://bucket/prefix``) into a `StoreURI` — the
+    shared shape every store-selecting setting parses (``--evidence-store``, ``BAJUTSU_SERVER_STORE``).
 
     The first path segment is the bucket; the remainder is the key prefix, normalized to a trailing
     ``/`` (empty when the URI names only a bucket).
@@ -207,11 +211,11 @@ def parse_store_uri(uri: str) -> StoreURI:
     scheme, sep, rest = uri.partition("://")
     if not sep or scheme not in _SCHEME_BACKEND:
         raise ValueError(
-            f"unsupported evidence-store URI {uri!r}: use s3://bucket/prefix or gs://bucket/prefix"
+            f"unsupported store URI {uri!r}: use s3://bucket/prefix or gs://bucket/prefix"
         )
     bucket, _, raw_prefix = rest.partition("/")
     if not bucket:
-        raise ValueError(f"evidence-store URI {uri!r} is missing a bucket name")
+        raise ValueError(f"store URI {uri!r} is missing a bucket name")
     # Strip leading slashes (an extra `/` after the bucket, e.g. `s3://b//evidence/`) so keys never
     # start with `/` — a leading slash makes an empty-named segment and defeats prefix lifecycle rules.
     raw_prefix = raw_prefix.lstrip("/")
@@ -260,6 +264,20 @@ class EvidenceTarget:
     base_prefix: str  # StoreURI.prefix — empty or ends with "/"
 
 
+def store_target_from_uri(uri: str) -> tuple[ObjectStore, str]:
+    """Parse *uri* and build its (`ObjectStore`, key-prefix) pair — the shared "URI → store"
+    resolution every store-selecting setting uses (``--evidence-store`` via `evidence_target_from_uri`
+    below, and the server's ``BAJUTSU_SERVER_STORE`` (BE-0204) directly), so a second caller never
+    needs to re-derive `parse_store_uri` + `object_store_from_uri` by hand.
+
+    Raises:
+        ValueError: the URI is malformed (see `parse_store_uri`).
+        ImportError: the backend's optional SDK is missing (see `object_store_from_uri`).
+    """
+    parsed = parse_store_uri(uri)
+    return object_store_from_uri(parsed), parsed.prefix
+
+
 def evidence_target_from_uri(uri: str) -> EvidenceTarget:
     """Build an `EvidenceTarget` from an ``--evidence-store`` URI (parse it, then construct the store).
 
@@ -267,8 +285,8 @@ def evidence_target_from_uri(uri: str) -> EvidenceTarget:
         ValueError: the URI is malformed (see `parse_store_uri`).
         ImportError: the backend's optional SDK is missing (see `object_store_from_uri`).
     """
-    parsed = parse_store_uri(uri)
-    return EvidenceTarget(store=object_store_from_uri(parsed), base_prefix=parsed.prefix)
+    store, prefix = store_target_from_uri(uri)
+    return EvidenceTarget(store=store, base_prefix=prefix)
 
 
 @dataclasses.dataclass(frozen=True)
