@@ -14,10 +14,10 @@ import uuid
 from collections.abc import Iterable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
-from typing import TYPE_CHECKING, Any, Protocol, cast, runtime_checkable
+from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
 if TYPE_CHECKING:
-    from sqlalchemy.engine import CursorResult, Engine
+    from sqlalchemy.engine import Engine
 
     from bajutsu.serve.server.models import Run
 
@@ -373,7 +373,7 @@ class SqlRepository:
             session.commit()
 
     def lease_job(self, worker_id: str, capabilities: Iterable[str] = ()) -> LeasedJob | None:
-        from sqlalchemy import select, update
+        from sqlalchemy import select
         from sqlalchemy.orm import Session
 
         from bajutsu.serve.capabilities import can_serve
@@ -387,12 +387,11 @@ class SqlRepository:
             # Scan queued jobs oldest-first for the first this worker can serve — capability filtering
             # can't be a `.limit(1)` because the oldest queued job may need a capability this worker
             # lacks, and skipping it must still find a younger servable one (the `status` index bounds
-            # the scan to queued rows). The read takes no row locks: instead of `FOR UPDATE` across the
-            # whole scan (which would lock every capability-skipped row and starve a concurrent leaser
-            # under `SKIP LOCKED`), each candidate is claimed with a guarded UPDATE that only lands if
-            # the row is still `queued` — so a lost race just moves on to the next candidate. Only
-            # (id, capabilities) is read up front (a plain-tuple snapshot, so a rollback can't expire
-            # it); the winner's `spec` is loaded once after the claim.
+            # the scan to queued rows). Only (id, capabilities) is read up front, taking no locks, so a
+            # capability-skipped row is never locked (which would starve a concurrent leaser). The
+            # chosen candidate is then locked on its own — `FOR UPDATE SKIP LOCKED` on that single row —
+            # and re-checked for `queued`: if another worker took it between the scan and the lock, the
+            # row reads as gone/leased and this worker moves on to the next candidate.
             candidates = session.execute(
                 select(JobRecord.id, JobRecord.capabilities)
                 .where(JobRecord.status == "queued")
@@ -401,22 +400,18 @@ class SqlRepository:
             for job_id, caps in candidates:
                 if not can_serve(caps or [], advertised):
                     continue
-                claimed = cast(
-                    "CursorResult[Any]",
-                    session.execute(
-                        update(JobRecord)
-                        .where(JobRecord.id == job_id, JobRecord.status == "queued")
-                        .values(status="leased", leased_at=datetime.now(UTC), leased_by=worker_id)
-                    ),
-                )
-                if claimed.rowcount != 1:
-                    session.rollback()  # another worker took this row between the read and the claim
+                stmt = select(JobRecord).where(JobRecord.id == job_id, JobRecord.status == "queued")
+                if self._engine.dialect.name != "sqlite":
+                    stmt = stmt.with_for_update(skip_locked=True)
+                row = session.scalars(stmt).first()
+                if row is None:  # taken (or locked) by another worker since the scan — try the next
                     continue
-                org_id, spec = session.execute(
-                    select(JobRecord.org_id, JobRecord.spec).where(JobRecord.id == job_id)
-                ).one()
+                row.status = "leased"
+                row.leased_at = datetime.now(UTC)
+                row.leased_by = worker_id
+                leased = LeasedJob(id=row.id, org_id=row.org_id, spec=dict(row.spec))
                 session.commit()
-                return LeasedJob(id=job_id, org_id=org_id, spec=dict(spec))
+                return leased
             return None
 
     def touch_worker(self, worker_id: str) -> None:
