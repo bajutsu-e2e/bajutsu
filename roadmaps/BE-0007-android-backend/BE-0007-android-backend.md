@@ -11,7 +11,7 @@
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0007") |
 | Implementing PR | [#658](https://github.com/bajutsu-e2e/bajutsu/pull/658), [#821](https://github.com/bajutsu-e2e/bajutsu/pull/821), [#851](https://github.com/bajutsu-e2e/bajutsu/pull/851), [#854](https://github.com/bajutsu-e2e/bajutsu/pull/854), [#858](https://github.com/bajutsu-e2e/bajutsu/pull/858) |
 | Topic | Platform expansion (Android / Web / Flutter) |
-| Related | [BE-0208](../BE-0208-android-emulator-e2e-ci/BE-0208-android-emulator-e2e-ci.md), [BE-0209](../BE-0209-android-codegen-emitter/BE-0209-android-codegen-emitter.md), [BE-0211](../BE-0211-android-device-control/BE-0211-android-device-control.md) |
+| Related | [BE-0208](../BE-0208-android-emulator-e2e-ci/BE-0208-android-emulator-e2e-ci.md), [BE-0209](../BE-0209-android-codegen-emitter/BE-0209-android-codegen-emitter.md), [BE-0210](../BE-0210-android-actuation-fidelity/BE-0210-android-actuation-fidelity.md), [BE-0211](../BE-0211-android-device-control/BE-0211-android-device-control.md), [BE-0212](../BE-0212-granular-device-control-capabilities/BE-0212-granular-device-control-capabilities.md) |
 <!-- /BE-METADATA -->
 
 ## Introduction
@@ -182,7 +182,9 @@ the **lean** end of `capabilities()`.
 - [x] Validation — fast-gate driver/registry tests over dump fixtures **(done)**; core scenarios
   driven on a local arm64 emulator **(done, 2026-07-07)**; the on-device e2e wired into KVM CI as
   [BE-0208](../BE-0208-android-emulator-e2e-ci/BE-0208-android-emulator-e2e-ci.md) **(#851)** —
-  on-device scroll/double-tap tuning and the held-back scenarios continue there.
+  the residual on-device actuation tuning (double-tap timing, scroll-into-view, the held-back
+  scenarios) belongs to [BE-0210](../BE-0210-android-actuation-fidelity/BE-0210-android-actuation-fidelity.md)
+  (still Proposal), not to BE-0208 (the CI-wiring item).
 
 Log:
 
@@ -197,7 +199,9 @@ Log:
   ([#851](https://github.com/bajutsu-e2e/bajutsu/pull/851)). With every unit of the MECE breakdown
   delivered, the item moves to **Implemented**. The residual on-device actuation tuning (the
   double-tap timing window, scroll-into-view, and the held-back `components` / `modals` scenarios)
-  is beyond this item's breakdown and continues under BE-0208, which stays **In progress**.
+  is beyond this item's breakdown; it is owned by
+  [BE-0210](../BE-0210-android-actuation-fidelity/BE-0210-android-actuation-fidelity.md)
+  (still Proposal), not by BE-0208 (the CI-wiring item).
 - 2026-07-08 ([#821](https://github.com/bajutsu-e2e/bajutsu/pull/821)) — Interval evidence slice
   (Unit 4, the evidence half). `video` now records via `adb
   shell screenrecord` and `deviceLog` via `adb logcat`, the twins of the simctl providers
