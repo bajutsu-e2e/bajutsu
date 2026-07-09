@@ -1,5 +1,5 @@
 # Navigation: tap a catalog row to push Horse Detail, toggle the favorite, then pop
-# back via the system back button (idb drives it by its built-in id `BackButton`).
+# back via the cross-backend `back` step (Android: system key; iOS: OS back button).
 #
 # These scenarios use launchEnv + taps only (no literal-scheme deeplinks), so the one
 # file drives both showcase-swiftui and showcase-uikit unchanged. Deeplinks are
@@ -18,7 +18,7 @@
     - tap: { id: horse.favorite }
     - assert:
         - value: { sel: { id: horse.favorite.value }, equals: "on" }
-    - tap: { id: BackButton }
+    - back: {}
     - wait: { for: { id: stable.row.3 }, timeout: 5 }
   expect:
     - exists: { id: stable.row.3 }
