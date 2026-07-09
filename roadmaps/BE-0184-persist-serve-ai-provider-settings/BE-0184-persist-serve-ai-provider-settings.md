@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0184") |
-| Implementing PR | _pending_ |
+| Implementing PR | [#874](https://github.com/bajutsu-e2e/bajutsu/pull/874) |
 | Topic | AI provider configuration |
 | Related | [BE-0136](../BE-0136-serve-write-once-secrets/BE-0136-serve-write-once-secrets.md), [BE-0175](../BE-0175-serve-web-ui-ant-sso-login/BE-0175-serve-web-ui-ant-sso-login.md), [BE-0015](../BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md) |
 <!-- /BE-METADATA -->
@@ -90,7 +90,8 @@ that structure's values come from at boot and where they go on save, not about i
   file-backed `LocalProviderSettingsStore` (`bajutsu/serve/provider_store.py`), wired into local
   serve construction so a saved provider/model/effort is flushed on save and restored on boot;
   a malformed file logs a visible warning and falls back to the env defaults rather than crashing.
-  The hosted per-org DB-backed shape is deferred (see the unchecked box above). PR _pending_.
+  The hosted per-org DB-backed shape is deferred (see the unchecked box above).
+  ([#874](https://github.com/bajutsu-e2e/bajutsu/pull/874))
 
 ## References
 
