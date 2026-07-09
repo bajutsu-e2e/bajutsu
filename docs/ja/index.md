@@ -49,6 +49,6 @@ bajutsu run    --target <name> [--scenario f.yaml]          # ティア2: 決定
 ## さらに詳しく
 
 - [ドキュメント概要](overview.md)：推奨読書順に並べた、機能ごとのリファレンス。
-- [Getting started](getting-started.md) · [Concepts](concepts.md) · [API リファレンス](../api/index.md)
+- [Getting started](getting-started.md) · [Concepts](concepts.md) · [用語集](glossary.md) · [API リファレンス](../api/index.md)
 - [ロードマップ](../../roadmaps/README.md) · [設計の根拠（DESIGN.md）](../../DESIGN.md) ·
   [GitHub](https://github.com/bajutsu-e2e/bajutsu)

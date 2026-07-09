@@ -265,6 +265,7 @@ Bajutsu の「契約としての決定性」という立場を、Maestro の fla
 | [BE-0159](BE-0159-flatten-roadmap-status-folders/BE-0159-flatten-roadmap-status-folders-ja.md) | ロードマップ項目を単一ディレクトリにまとめ、状態別フォルダをやめる | 実装済み |
 | [BE-0162](BE-0162-roadmap-status-filter-skill/BE-0162-roadmap-status-filter-skill-ja.md) | AI セッション向けのロードマップ状態フィルタスキル | 実装済み |
 | [BE-0203](BE-0203-claude-code-pr-review/BE-0203-claude-code-pr-review-ja.md) | プルリクエストの自動コードレビューを Claude Code で行う | 実装済み |
+| [BE-0213](BE-0213-glossary-and-docs-structure/BE-0213-glossary-and-docs-structure-ja.md) | 用語集とドキュメント構成の見直し | 実装済み |
 | [BE-0216](BE-0216-propose-and-build-parallel-skill/BE-0216-propose-and-build-parallel-skill-ja.md) | propose-and-build: BE 提案と実装を並行して書き、スタックしてつなぐ | 実装済み |
 <!-- /GENERATED:implemented-dev-infra -->
 
@@ -711,7 +712,6 @@ AI を使う経路（`record` ／ `crawl` ／ `triage --ai` ／ `run --apply`）
 <!-- GENERATED:proposals-dev-infra -->
 | ID | 項目 | 状態 |
 |---|---|---|
-| [BE-0213](BE-0213-glossary-and-docs-structure/BE-0213-glossary-and-docs-structure-ja.md) | 用語集とドキュメント構成の見直し | 提案 |
 | [BE-0214](BE-0214-web-only-beginner-tutorial/BE-0214-web-only-beginner-tutorial-ja.md) | Web 版のみで完結する初学者向けチュートリアル(Xcode・Simulator 不要) | 提案 |
 | [BE-0217](BE-0217-harden-review-prompt/BE-0217-harden-review-prompt-ja.md) | 調査に基づく方針で自動 PR レビュープロンプトを強化する | 提案 |
 <!-- /GENERATED:proposals-dev-infra -->

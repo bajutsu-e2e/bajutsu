@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0213](BE-0213-glossary-and-docs-structure.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0213") |
+| Implementing PR | _pending_ |
 | Topic | Development infrastructure (contributor workflow) |
 <!-- /BE-METADATA -->
 
@@ -136,12 +137,28 @@ cross-reference another new item — the per-item rewrite would resolve it to th
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] 1. Term inventory (scenario / goal / step / driver-backend-actuator-platform /
+- [x] 1. Term inventory (scenario / goal / step / driver-backend-actuator-platform /
       target-app-device / trace-triage / capturePolicy rule / Tier 1-2 / CLI verbs / provenance)
-- [ ] 2. New `docs/glossary.md` (+ `docs/ja/glossary.md`) with disambiguation for each cluster
-- [ ] 3. Fix confirmed drift (`getting-started.md`'s "named tests" and any siblings found in the sweep)
-- [ ] 4. Reading-order / structure review (`docs/overview.md`, `README.md`, `docs/index.md` pointers)
-- [ ] 5. Bilingual pass for the new page, per the `japanese-tech-writing` skill
+- [x] 2. New `docs/glossary.md` (+ `docs/ja/glossary.md`) with disambiguation for each cluster
+- [x] 3. Fix confirmed drift (`getting-started.md`'s "named tests" and any siblings found in the sweep)
+- [x] 4. Reading-order / structure review (`docs/overview.md`, `README.md`, `docs/index.md` pointers)
+- [x] 5. Bilingual pass for the new page, per the `japanese-tech-writing` skill
+
+**Log**
+
+- 2026-07-09 (_pending_ PR): Added `docs/glossary.md` and `docs/ja/glossary.md` — one entry per
+  domain term with disambiguation tables for the `driver` / `backend` / `actuator` / `platform`,
+  `target` / `app` / `device`, scenario-vs-test, and `trace`-vs-`triage` clusters, grounded in
+  `bajutsu/backends.py` and the scenario models rather than any doc's phrasing. Wired the page into
+  `mkdocs.yml`'s Concepts section (with the `用語集` nav translation) and as item 2 of
+  `docs/overview.md`'s reading order; added pointers from `docs/index.md` and `docs/README.md`.
+  Fixed the confirmed `getting-started.md` "a list of named tests" → "scenarios" drift. Trimmed
+  `concepts.md` §2 / §5 / §7 to link the glossary instead of re-defining Tier 1-2, the
+  driver/backend/actuator/platform cluster, and `capturePolicy` inline (the §5 trim also drops the
+  "Android planned" drift and the incomplete backend enumeration from that page). The glossary's
+  backend table records that `adb` is implemented, not planned; the remaining "Android planned"
+  prose in `docs/multi-platform.md` and `CLAUDE.md` is left as a scoped follow-up. Status →
+  Implemented.
 
 ## References
 

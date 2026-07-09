@@ -78,8 +78,8 @@ it.
 
 ## Step 3 — Read a scenario
 
-A scenario is plain YAML: a list of named tests, each with optional `preconditions`, a list of
-`steps`, and an `expect` block of **machine-checkable assertions**. Open the bundled smoke test,
+A scenario is plain YAML: a scenario file holds a list of named scenarios, each with optional
+`preconditions`, a list of `steps`, and an `expect` block of **machine-checkable assertions**. Open the bundled smoke test,
 [`demos/showcase/scenarios/smoke.yaml`](../demos/showcase/scenarios/smoke.yaml):
 
 ```yaml
