@@ -9,7 +9,7 @@
 | Author | [@hirosassa](https://github.com/hirosassa) |
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0209") |
-| Implementing PR | _pending_ |
+| Implementing PR | [#854](https://github.com/bajutsu-e2e/bajutsu/pull/854) |
 | Topic | codegen coverage |
 | Related | [BE-0007](../BE-0007-android-backend/BE-0007-android-backend.md), [BE-0083](../BE-0083-codegen-emitter-unification/BE-0083-codegen-emitter-unification.md) |
 <!-- /BE-METADATA -->
@@ -87,7 +87,7 @@ string-keyed scenario does not carry, so it is the poorer twin of the shipped ba
   `package`), updated the `codegen` CLI `--emit` help and target hint, taught the serve Web UI to
   offer `uiautomator` for an Android target, and documented the target in `docs/codegen.md` (+ ja).
   Covered by `tests/test_codegen_uiautomator.py` and `tests/serve/test_http_codegen.py`
-  (_pending_ PR).
+  ([#854](https://github.com/bajutsu-e2e/bajutsu/pull/854)).
 
 ## References
 
