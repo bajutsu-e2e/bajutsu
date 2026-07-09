@@ -135,6 +135,7 @@ The first slices of the multi-platform direction that have shipped: a **platform
 | [BE-0126](BE-0126-per-platform-effective-config/BE-0126-per-platform-effective-config.md) | Split Effective into per-platform configs | Implemented |
 | [BE-0128](BE-0128-device-step-capability-preflight/BE-0128-device-step-capability-preflight.md) | Preflight-gate device-control steps by capability | Implemented |
 | [BE-0141](BE-0141-backend-lifecycle-protocol/BE-0141-backend-lifecycle-protocol.md) | Bring backend lifecycle into the type system | Implemented |
+| [BE-0211](BE-0211-android-device-control/BE-0211-android-device-control.md) | Android device control (setLocation, clipboard) | Implemented |
 | [BE-0212](BE-0212-granular-device-control-capabilities/BE-0212-granular-device-control-capabilities.md) | Split the coarse deviceControl capability into per-operation tokens | Implemented |
 <!-- /GENERATED:implemented-platform -->
 
@@ -246,7 +247,7 @@ Sharpening Bajutsu's determinism-as-contract stance against Maestro's flakiness-
 
 Reduce friction for the many parallel sessions working this repo — treat merge conflicts as a design smell and reshape the file flow so independent changes touch disjoint files.
 
-<!-- GENERATED:implemented-dev-infra -->
+<!-- GENERATED:implemented-developer-experience -->
 | ID | Item | Status |
 |---|---|---|
 | [BE-0043](BE-0043-conflict-resistant-file-flow/BE-0043-conflict-resistant-file-flow.md) | Conflict-resistant file flow (generated indexes, modular files, git hygiene) | Implemented |
@@ -274,8 +275,9 @@ Reduce friction for the many parallel sessions working this repo — treat merge
 | [BE-0162](BE-0162-roadmap-status-filter-skill/BE-0162-roadmap-status-filter-skill.md) | Roadmap status-filter skill for AI sessions | Implemented |
 | [BE-0203](BE-0203-claude-code-pr-review/BE-0203-claude-code-pr-review.md) | Claude Code as the automated PR code reviewer | Implemented |
 | [BE-0213](BE-0213-glossary-and-docs-structure/BE-0213-glossary-and-docs-structure.md) | Terminology glossary and documentation structure review | Implemented |
+| [BE-0214](BE-0214-web-only-beginner-tutorial/BE-0214-web-only-beginner-tutorial.md) | Web-only beginner tutorial (no Xcode/Simulator required) | Implemented |
 | [BE-0216](BE-0216-propose-and-build-parallel-skill/BE-0216-propose-and-build-parallel-skill.md) | propose-and-build: author a BE proposal and its implementation in parallel, stacked | Implemented |
-<!-- /GENERATED:implemented-dev-infra -->
+<!-- /GENERATED:implemented-developer-experience -->
 
 ### Codebase quality & technical debt
 
@@ -532,9 +534,9 @@ The Web (Playwright) backend and its completion (rich capabilities, parallel run
 
 Reduce friction for the many parallel sessions working this repo — treat merge conflicts as a design smell and reshape the file flow so independent changes touch disjoint files.
 
-<!-- GENERATED:in-progress-dev-infra -->
+<!-- GENERATED:in-progress-developer-experience -->
 
-<!-- /GENERATED:in-progress-dev-infra -->
+<!-- /GENERATED:in-progress-developer-experience -->
 
 ### Dogfood fixtures (demo apps)
 
@@ -607,7 +609,6 @@ The scope is currently **limited to the iOS Simulator** ([DESIGN §1](../DESIGN.
 |---|---|---|
 | [BE-0008](BE-0008-flutter-support/BE-0008-flutter-support.md) | Flutter support | Proposal |
 | [BE-0210](BE-0210-android-actuation-fidelity/BE-0210-android-actuation-fidelity.md) | Android on-device actuation fidelity | Proposal |
-| [BE-0211](BE-0211-android-device-control/BE-0211-android-device-control.md) | Android device control (setLocation, clipboard) | Proposal |
 <!-- /GENERATED:proposals-platform -->
 
 ### Authoring experience (record / GUI editor)
@@ -715,12 +716,11 @@ Keeping the autonomous crawl fast and its code lean as it grows.
 
 ### Development infrastructure (contributor workflow)
 
-<!-- GENERATED:proposals-dev-infra -->
+<!-- GENERATED:proposals-developer-experience -->
 | ID | Item | Status |
 |---|---|---|
-| [BE-0214](BE-0214-web-only-beginner-tutorial/BE-0214-web-only-beginner-tutorial.md) | Web-only beginner tutorial (no Xcode/Simulator required) | Proposal |
 | [BE-0217](BE-0217-harden-review-prompt/BE-0217-harden-review-prompt.md) | Harden the automated PR review prompt with research-backed policy | Proposal |
-<!-- /GENERATED:proposals-dev-infra -->
+<!-- /GENERATED:proposals-developer-experience -->
 
 ### Codebase quality & technical debt
 

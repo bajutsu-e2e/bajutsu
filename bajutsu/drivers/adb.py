@@ -132,7 +132,7 @@ class AdbDriver:
     _SETTLE_POLL_S = 0.05  # interval between settle reads
 
     def __init__(self, serial: str, run: RunFn = adb._real_run) -> None:
-        self.serial = serial
+        self.serial = adb._checked_serial(serial)
         self._run = run
         self._max_seen = 0  # richest tree seen on this device; gates the empty retry
         self._last_stable_key: _StableKey | None = None
@@ -284,15 +284,18 @@ class AdbDriver:
             return intervals.start_logcat(self.serial, path)
         return None
 
-    # No semantic tap, no native network monitoring, and no device-control family (Android device
-    # control is a follow-up, BE-0007 Unit 4) — the lean end of the capability model, alongside idb.
-    # A class constant so the preflight (BE-0082) reads it via `backends.capabilities_for` with no
-    # device.
+    # No semantic tap and no native network monitoring — the lean end of the capability model,
+    # alongside idb. Of the device-control family it advertises only `setLocation` + `clipboard`,
+    # the operations the emulator can honor (BE-0211); the per-operation tokens (BE-0212) let it
+    # declare exactly that subset, so preflight admits those steps and fails the rest fast. A class
+    # constant so the preflight (BE-0082) reads it via `backends.capabilities_for` with no device.
     CAPABILITIES = frozenset(
         {
             base.Capability.QUERY,
             base.Capability.ELEMENTS,
             base.Capability.SCREENSHOT,
+            base.Capability.DC_SET_LOCATION,
+            base.Capability.DC_CLIPBOARD,
         }
     )
 

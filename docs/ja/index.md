@@ -27,7 +27,7 @@ bajutsu record --target <name> --goal "..." [--out f.yaml]  # ティア1: AI が
 bajutsu run    --target <name> [--scenario f.yaml]          # ティア2: 決定的な合否
 ```
 
-[Getting started のチュートリアル](getting-started.md)が、導入からユニットテスト、シナリオ、実機実行、レポートまでを順にたどります。
+[Getting started のチュートリアル](getting-started.md)が、導入からユニットテスト、シナリオ、実機実行、レポートまでを順にたどります。Mac のないマシンでは、[web トラック](getting-started-web.md)が同じループをブラウザ（Playwright backend）に対してたどります。Xcode も Simulator も要りません。
 
 ## 機能のハイライト
 

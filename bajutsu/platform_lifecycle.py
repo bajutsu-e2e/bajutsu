@@ -376,8 +376,9 @@ class AndroidEnvironment:
     clean state (the `erase` equivalent) → `am force-stop` → `am start` (launch env forwarded as
     intent extras) → deeplink — and returns the `adb` driver. The lease-shaping methods mirror the iOS
     `_DeviceEnvironment`, over `adb` instead of `simctl`: the same seam, a different subprocess tool.
-    Network is not observed natively (no `NETWORK` capability) and there is no device-control family
-    yet (BE-0007 Unit 4), so those methods degrade the same honest way iOS's mocked network does.
+    Network is not observed natively (no `NETWORK` capability), so that path degrades the same honest
+    way iOS's mocked network does. Device control backs the subset the emulator can honor
+    (`setLocation` + clipboard, BE-0211); the rest of the family stays unsupported.
     """
 
     def __init__(self, actuator: str, serial: str, adb_run: adb.RunFn = adb._real_run) -> None:
@@ -464,7 +465,9 @@ class AndroidEnvironment:
         return relaunch
 
     def controller(self, eff: Effective) -> DeviceControl | None:
-        return None  # Android device control (setLocation / clipboard / …) is a follow-up (Unit 4)
+        # The emulator-backed subset (setLocation + clipboard); the rest of the family raises
+        # UnsupportedAction, and preflight (BE-0212) rejects it up front from the adb capability set.
+        return android_device_control(self._serial, self._run)
 
     def teardown(self, driver: base.Driver, eff: Effective) -> None:
         adb.Env(self._serial, run=self._run).force_stop(require_android(eff).package)
@@ -975,5 +978,56 @@ def device_control(
 
         def clear_status_bar(self) -> None:
             e.clear_status_bar()
+
+    return _Control()
+
+
+def android_device_control(serial: str, env_run: adb.RunFn = adb._real_run) -> DeviceControl:
+    """A `DeviceControl` for the Android emulator, backing only the operations it can honor (BE-0211).
+
+    `setLocation` (`emu geo fix`) and the clipboard operations run over adb; `push` / `clearKeychain`
+    / the status-bar overrides / the app-lifecycle steps have no faithful emulator equivalent and
+    raise `UnsupportedAction`. Preflight (BE-0212) rejects those steps up front from the adb backend's
+    advertised subset, so this raise is the runtime backstop, never a silent no-op.
+
+    Args:
+        serial: The target emulator/device serial.
+        env_run: The subprocess runner for adb, injectable for tests.
+    """
+    e = adb.Env(serial, run=env_run)
+
+    def _unsupported(op: str) -> base.UnsupportedAction:
+        return base.UnsupportedAction(f"{op} is not supported on the Android emulator")
+
+    class _Control:
+        def set_location(self, lat: float, lon: float) -> None:
+            e.set_location(lat, lon)
+
+        def set_clipboard(self, text: str) -> None:
+            e.set_clipboard(text)
+
+        def get_clipboard(self) -> str:
+            return e.get_clipboard()
+
+        def clear_clipboard(self) -> None:
+            e.clear_clipboard()
+
+        def push(self, payload: dict[str, object]) -> None:
+            raise _unsupported("push")
+
+        def clear_keychain(self) -> None:
+            raise _unsupported("clearKeychain")
+
+        def home(self) -> None:
+            raise _unsupported("background")
+
+        def foreground(self) -> None:
+            raise _unsupported("foreground")
+
+        def override_status_bar(self, **kwargs: str | int) -> None:
+            raise _unsupported("overrideStatusBar")
+
+        def clear_status_bar(self) -> None:
+            raise _unsupported("clearStatusBar")
 
     return _Control()

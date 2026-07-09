@@ -19,16 +19,12 @@ import yaml
 from bajutsu import simctl as _simctl
 from bajutsu.backends import KNOWN_ACTUATORS, PLATFORMS
 from bajutsu.config import Config, IosConfig, resolve
+from bajutsu.device_id import is_valid_device_id
 from bajutsu.scenario import load_scenario_file
 from bajutsu.serve.orgs import OrgConfig, load_serve_config
 
 # Tokens a `--backend` may name: a platform (ios/android/web/fake) or a known actuator (idb/…).
 _VALID_BACKENDS = frozenset(PLATFORMS) | frozenset(KNOWN_ACTUATORS)
-# A udid token: alphanumeric, optionally hyphenated (covers simctl's UUIDs and the literal
-# "booted"). No spaces/metacharacters, and the first character must be alphanumeric so a
-# client-supplied udid can never start with a hyphen and be mistaken for a subprocess flag
-# (e.g. `-rf`, `--config`) by idb/xcrun.
-_UDID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9-]*$")
 # A run id is a single safe path segment (timestamps like 20260610-153045): alphanumeric start,
 # then [A-Za-z0-9._-]. Blocks "..", path separators, and absolute paths, so a client-supplied run
 # id (a resumed crawl) can't redirect a run's --out dir outside runs_dir.
@@ -366,10 +362,11 @@ def valid_backend(backend: str) -> bool:
 
 
 def valid_udid(udid: str) -> bool:
-    """Whether `udid` is a comma-list of safe device tokens (hex/hyphen or `booted`), so a serve
-    client can't pass surprising free text through to the run argv."""
+    """Whether `udid` is a comma-list of safe device tokens (the shared `device_id` policy, e.g. a
+    UUID, a serial, or `booted`), so a serve client can't pass surprising free text through to the
+    run argv — in particular a leading `-` that idb/xcrun would read as an option."""
     tokens = [t.strip() for t in udid.split(",") if t.strip()]
-    return bool(tokens) and all(_UDID_RE.fullmatch(t) for t in tokens)
+    return bool(tokens) and all(is_valid_device_id(t) for t in tokens)
 
 
 def valid_run_id(run_id: str) -> bool:

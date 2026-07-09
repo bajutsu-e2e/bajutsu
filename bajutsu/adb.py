@@ -14,12 +14,12 @@ is forwarded through the parent process.
 from __future__ import annotations
 
 import contextlib
-import re
 import shlex
 import subprocess
 from collections.abc import Callable, Mapping
 
 from bajutsu import simctl
+from bajutsu.device_id import is_valid_device_id
 
 # argv -> stdout. adb needs no parent-process env (unlike simctl's SIMCTL_CHILD_*).
 RunFn = Callable[[list[str]], str]
@@ -54,14 +54,12 @@ def _num(v: float) -> str:
     return str(round(v))  # `input tap`/`swipe` take integer coordinates
 
 
-# A device serial / emulator id: alphanumerics plus `. _ : -`, never leading with `-` (which adb
-# would read as an option). Every command builder validates the serial through `_adb`, so an id
-# from `--udid` / config can neither inject an adb option nor reach a subprocess argv unchecked.
-_SERIAL = re.compile(r"[A-Za-z0-9._:][A-Za-z0-9._:-]*")
-
-
+# A device serial / emulator id follows the shared `device_id` policy (never leading with `-`,
+# which adb would read as an option). Every command builder validates the serial through `_adb`,
+# so an id from `--udid` / config can neither inject an adb option nor reach a subprocess argv
+# unchecked. Raises adb's `DeviceError` so a bad serial surfaces as the CLI's clean exit-2.
 def _checked_serial(serial: str) -> str:
-    if not _SERIAL.fullmatch(serial):
+    if not is_valid_device_id(serial):
         raise DeviceError(f"invalid device serial: {serial!r}")
     return serial
 
@@ -195,6 +193,38 @@ def deeplink_cmd(serial: str, url: str, package: str) -> list[str]:
     )
 
 
+# --- device control (BE-0211): the emulator-backed subset of the DeviceControl family ---
+
+
+def geo_fix_cmd(serial: str, lat: float, lon: float) -> list[str]:
+    """Set the emulated GPS fix via the emulator console (`emu geo fix`).
+
+    `geo fix` takes `<longitude> <latitude>`, the reverse of `set_location(lat, lon)`, so the two
+    are swapped here — the one place the order matters.
+    """
+    return _adb(serial, "emu", "geo", "fix", str(lon), str(lat))
+
+
+def set_primary_clip_cmd(serial: str, text: str) -> list[str]:
+    """Write `text` to the primary clipboard (`cmd clipboard set-primary-clip`).
+
+    `text` is free-form scenario input, and `adb shell` joins its argv into one command string run
+    by the device shell — so it is single-quoted (as `text_script` does for `input text`) to seed it
+    literally rather than let shell metacharacters execute on the device.
+    """
+    return _adb(serial, "shell", "cmd", "clipboard", "set-primary-clip", shlex.quote(text))
+
+
+def get_primary_clip_cmd(serial: str) -> list[str]:
+    """Read the primary clipboard (`cmd clipboard get-primary-clip`); content comes back on stdout."""
+    return _adb(serial, "shell", "cmd", "clipboard", "get-primary-clip")
+
+
+def clear_primary_clip_cmd(serial: str) -> list[str]:
+    """Clear the primary clipboard (`cmd clipboard clear-primary-clip`)."""
+    return _adb(serial, "shell", "cmd", "clipboard", "clear-primary-clip")
+
+
 # --- device catalog / serial resolution ---
 
 
@@ -253,7 +283,9 @@ class Env:
     """Thin adb front end for one device/emulator."""
 
     def __init__(self, serial: str, run: RunFn = _real_run) -> None:
-        self.serial = serial
+        # Validate at construction (like AdbDriver): Env is what AndroidEnvironment.start drives
+        # for the real device-lifecycle path, so a bad serial fails here, not deep in a command.
+        self.serial = _checked_serial(serial)
         self._run = run
 
     def boot_completed(self) -> bool:
@@ -321,3 +353,20 @@ class Env:
         out = subprocess.run(cmd, capture_output=True, check=True).stdout
         with open(path, "wb") as f:
             f.write(out)
+
+    # Device control (BE-0211): the subset the emulator can honor, the Android peer of simctl's
+    # setLocation / clipboard. The rest of the DeviceControl family has no faithful emulator
+    # equivalent and is not wired (see `platform_lifecycle.android_device_control`).
+
+    def set_location(self, lat: float, lon: float) -> None:
+        self._run(geo_fix_cmd(self.serial, lat, lon))
+
+    def set_clipboard(self, text: str) -> None:
+        self._run(set_primary_clip_cmd(self.serial, text))
+
+    def clear_clipboard(self) -> None:
+        self._run(clear_primary_clip_cmd(self.serial))
+
+    def get_clipboard(self) -> str:
+        # The device shell appends a trailing newline; strip it so the read-back matches the seed.
+        return self._run(get_primary_clip_cmd(self.serial)).rstrip("\n")

@@ -11,6 +11,7 @@ import pytest
 
 from bajutsu import adb
 from bajutsu.config import AndroidConfig, Effective
+from bajutsu.drivers.adb import AdbDriver
 from bajutsu.platform_lifecycle import AndroidEnvironment, environment_for
 from bajutsu.scenario import Preconditions, Redact
 
@@ -23,6 +24,23 @@ def test_bad_serial_is_rejected() -> None:
             adb.tap_cmd(bad, 1, 2)
     # A normal emulator / device serial passes through.
     assert adb.tap_cmd("emulator-5554", 1, 2)[:3] == ["adb", "-s", "emulator-5554"]
+
+
+def test_driver_rejects_bad_serial_at_construction() -> None:
+    # AdbDriver validates the serial in __init__, so a malicious id fails fast at construction
+    # rather than lying dormant until the first command builder runs.
+    with pytest.raises(adb.DeviceError, match="invalid device serial"):
+        AdbDriver("bad;rm")
+    # A normal serial constructs fine and is stored verbatim.
+    assert AdbDriver("emulator-5554").serial == "emulator-5554"
+
+
+def test_env_rejects_bad_serial_at_construction() -> None:
+    # Env is the object AndroidEnvironment.start drives for the real device-lifecycle path, so
+    # it validates the serial at construction too — the same guard, at the same object boundary.
+    with pytest.raises(adb.DeviceError, match="invalid device serial"):
+        adb.Env("bad;rm")
+    assert adb.Env("emulator-5554").serial == "emulator-5554"
 
 
 def test_command_builders() -> None:

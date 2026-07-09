@@ -7,10 +7,11 @@
 |---|---|
 | 提案 | [BE-0211](BE-0211-android-device-control-ja.md) |
 | 提案者 | [@hirosassa](https://github.com/hirosassa) |
-| 状態 | **提案** |
+| 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0211") |
+| 実装 PR | [#858](https://github.com/bajutsu-e2e/bajutsu/pull/858) |
 | トピック | Platform expansion (Android / Web / Flutter) |
-| 関連 | [BE-0007](../BE-0007-android-backend/BE-0007-android-backend-ja.md), [BE-0128](../BE-0128-device-step-capability-preflight/BE-0128-device-step-capability-preflight-ja.md) |
+| 関連 | [BE-0212](../BE-0212-granular-device-control-capabilities/BE-0212-granular-device-control-capabilities-ja.md), [BE-0007](../BE-0007-android-backend/BE-0007-android-backend-ja.md), [BE-0128](../BE-0128-device-step-capability-preflight/BE-0128-device-step-capability-preflight-ja.md) |
 <!-- /BE-METADATA -->
 
 ## はじめに
@@ -85,11 +86,21 @@ iOS では `DeviceControl` Protocol を simctl が完全に裏付けており（
 > 作業分解（作業の単位ごとに 1 つ）に対応し、ログには変更内容と時期（古い順）を PR へのリンクと
 > ともに記録します。
 
-- [ ] `emu geo fix` と `cmd clipboard` の adb コマンドビルダ（`bajutsu/adb.py`）。
-- [ ] `DeviceControl` Protocol のサブセットに対する `AndroidDeviceControl`（`bajutsu/platform_lifecycle.py`）。
-- [ ] `AndroidEnvironment.device_control()` とクリップボード読み戻しの配線。
-- [ ] 操作単位の能力トークンに対するサポート済みサブセットの宣言。
-- [ ] 検証：fast ゲートのテスト（コマンドの形、クリップボードの往復、preflight の通過／拒否）。
+- [x] `emu geo fix` と `cmd clipboard` の adb コマンドビルダ（`bajutsu/adb.py`）。
+- [x] `DeviceControl` Protocol のサブセットに対する `AndroidDeviceControl`（`bajutsu/platform_lifecycle.py`）。
+- [x] `AndroidEnvironment.device_control()` とクリップボード読み戻しの配線。
+- [x] 操作単位の能力トークンに対するサポート済みサブセットの宣言。
+- [x] 検証：fast ゲートのテスト（コマンドの形、クリップボードの往復、preflight の通過／拒否）。
+
+ログ：
+
+- [#858](https://github.com/bajutsu-e2e/bajutsu/pull/858) — adb コマンドビルダ（`geo_fix_cmd`、`set`／`get`／`clear_primary_clip_cmd`）と `adb.Env`
+  のラッパ、`DeviceControl` Protocol を実装する `android_device_control`（setLocation とクリップボードは
+  adb へ委譲し、残りは `UnsupportedAction` を送出）を追加し、`AndroidEnvironment.controller()` が
+  それを返すよう配線しました。adb バックエンドは（BE-0212 のトークンに対して）
+  `deviceControl.setLocation` と `deviceControl.clipboard` を公開します。fast ゲートのテストで、
+  コマンドの形、クリップボードの往復、委譲／非対応の送出、adb の能力集合での preflight の通過／拒否を
+  検証します。BE-0212（操作単位のトークン）に依存します。
 
 ## 参考
 

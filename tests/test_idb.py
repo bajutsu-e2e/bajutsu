@@ -396,13 +396,11 @@ def test_validated_udid_accepts_real_udids() -> None:
     # `booted` (idb's current-device alias) and UUID- / device-shaped ids pass unchanged.
     for good in ["booted", "U", "A1B2C3D4-1122-3344-5566-77889900AABB", "emulator-5554"]:
         assert _validated_udid(good) == good
-    # Surrounding whitespace is stripped, not rejected.
-    assert _validated_udid("  booted  ") == "booted"
 
 
 def test_validated_udid_rejects_injection() -> None:
     # A udid from --udid / config that could inject an idb option (leading `-`) or reach a
-    # subprocess argv with a shell metacharacter / space is rejected before it is used.
+    # subprocess argv with a shell metacharacter / space is rejected before it is used. Raises
     # simctl.DeviceError (not a bare ValueError) so the CLI's device-fault handler catches it.
     for bad in ["-rf", "--udid", "a b", "a;b", "a$b", "a`b", "", "x" * 129]:
         with pytest.raises(simctl.DeviceError, match="invalid udid"):

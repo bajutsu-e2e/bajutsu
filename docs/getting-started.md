@@ -9,6 +9,10 @@
 
 Related: [cli](cli.md) · [scenarios](scenarios.md) · [showcase](showcase.md) · [run-loop](run-loop.md) · [reporting](reporting.md)
 
+> **No Mac?** This page finishes on an iOS Simulator (Steps 4–6 need macOS + Xcode). The
+> [web track](getting-started-web.md) walks the same install → scenario → run → report loop against
+> a browser with the Playwright backend, on any OS — a platform is just a backend.
+
 ---
 
 ## What you'll need

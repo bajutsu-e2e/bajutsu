@@ -16,6 +16,7 @@ from collections.abc import Callable
 from typing import Any
 
 from bajutsu import simctl
+from bajutsu.device_id import is_valid_device_id
 from bajutsu.drivers import base
 
 RunFn = Callable[[list[str]], str]
@@ -29,9 +30,16 @@ _StableKey = tuple[tuple[str, base.Frame], ...]
 # identically. (Surfaced by the sample app's ctrl.toggle.)
 _TAP_DURATION_S = 0.1
 
-# The idb argv builders share simctl's single "safe udid" gate — the same value flows into both
-# (both go through simctl.resolve_udid), so one validator keeps the two backends' boundary identical.
-_validated_udid = simctl._validated_udid
+
+def _validated_udid(udid: str) -> str:
+    # A udid from `--udid` / config reaches idb/xcrun argv (`--udid <id>`), so it follows the
+    # shared `device_id` policy — never leading with `-`, which would be read as an option. Raises
+    # simctl.DeviceError (not a bare ValueError) so a bad --udid surfaces as the CLI's clean exit-2
+    # device fault, the same boundary adb's `_checked_serial` uses. No `.strip()`: the check is
+    # exact, matching adb — a serial with surrounding whitespace is rejected outright.
+    if is_valid_device_id(udid):
+        return udid
+    raise simctl.DeviceError(f"invalid udid: {udid!r}")
 
 
 def _real_run(args: list[str]) -> str:

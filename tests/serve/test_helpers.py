@@ -564,12 +564,16 @@ def test_valid_backend(value: str, ok: bool) -> None:
         ("booted", True),
         ("ABCDEF01-2345-6789-ABCD-EF0123456789", True),
         ("A,B", True),  # comma pool
+        ("emulator-5554", True),  # Android emulator serial
+        ("192.168.1.5:5555", True),  # dots + colon (adb connect IP:port) — shared charset
         ("A B", False),  # space -> reject
         ("A;rm -rf /", False),  # metacharacters -> reject
         ("-rf", False),  # leading hyphen -> reject (could look like a flag)
         ("--help", False),  # leading hyphen -> reject
         ("--config", False),  # leading hyphen -> reject
         ("booted,-rf", False),  # one leading-hyphen token in the pool -> reject
+        ("x" * 128, True),  # at the shared length cap
+        ("x" * 129, False),  # over the shared length cap -> reject
     ],
 )
 def test_valid_udid(value: str, ok: bool) -> None:

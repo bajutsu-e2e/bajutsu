@@ -165,24 +165,17 @@ def test_shutdown_is_idempotent() -> None:
     assert calls == [["xcrun", "simctl", "shutdown", "UDID"]]
 
 
-def test_validated_udid_accepts_and_rejects() -> None:
-    # UUID- / device-shaped ids and the `booted` alias pass; surrounding whitespace is trimmed.
-    for good in ["booted", "U", "A1B2C3D4-1122-3344-5566-77889900AABB", "emulator-5554"]:
-        assert simctl._validated_udid(good) == good
-    assert simctl._validated_udid("  booted  ") == "booted"
-    # A udid that could inject a simctl/idb option (leading `-`) or reach argv with a shell
-    # metacharacter / space is rejected as a DeviceError, so the CLI exits 2 cleanly.
-    for bad in ["-rf", "--set", "a b", "a;b", "a$b", "a`b", "", "x" * 129]:
-        with pytest.raises(simctl.DeviceError, match="invalid udid"):
-            simctl._validated_udid(bad)
-
-
 def test_env_validates_udid_at_construction() -> None:
-    # Env validates once in __init__, so every self.udid argv builder (erase/boot/launch/…) is
-    # covered — a malicious --udid can never reach a subprocess argv, not just the hand-patched ones.
-    with pytest.raises(simctl.DeviceError, match="invalid udid"):
-        simctl.Env("-rf; rm")
-    assert simctl.Env("  booted  ").udid == "booted"  # trimmed and accepted
+    # Env validates once in __init__ against the shared device-id policy, so every self.udid argv
+    # builder (erase/boot/launch/…) is covered — a malicious --udid can never reach a subprocess
+    # argv, not just the hand-patched ones. A leading `-` (option injection) / shell metacharacter /
+    # space / over-length id is rejected as a DeviceError, so the CLI exits 2 cleanly.
+    for bad in ["-rf", "--set", "a b", "a;b", "a$b", "", "x" * 129]:
+        with pytest.raises(simctl.DeviceError, match="invalid udid"):
+            simctl.Env(bad)
+    # UUID- / device-shaped ids and the `booted` alias pass through unchanged.
+    for good in ["booted", "U", "A1B2C3D4-1122-3344-5566-77889900AABB"]:
+        assert simctl.Env(good).udid == good
 
 
 def test_device_error_keeps_command_and_simctl_stderr() -> None:
