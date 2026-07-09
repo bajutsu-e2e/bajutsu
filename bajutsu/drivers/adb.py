@@ -133,7 +133,10 @@ class AdbDriver:
     _SETTLE_POLL_S = 0.05  # interval between settle reads
     # Scroll-into-view (BE-0210): an action target that resolves to nothing in the current viewport
     # is scrolled toward and re-queried a bounded number of times before failing — a condition wait,
-    # not a fixed sleep. The default direction is a swipe up (content up, revealing rows below).
+    # not a fixed sleep. Direction is always upward (content up, revealing rows below) — the
+    # acceptance scenarios all scroll down a list, so this covers the common case. A target above
+    # the current viewport exhausts retries and fails deterministically; bidirectional scroll is a
+    # follow-up when a scenario needs it.
     _RESOLVE_TIMEOUT_S = 3.0  # the initial no-scroll resolve deadline (rides transient trees)
     _SCROLL_RETRIES = 3  # scroll-and-re-query attempts before a deterministic not-found failure
     _SCROLL_FROM_FRAC = 0.7  # swipe start, as a fraction of screen height

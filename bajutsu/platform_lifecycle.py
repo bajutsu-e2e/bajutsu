@@ -373,8 +373,9 @@ class AndroidEnvironment:
     """The Android emulator lifecycle via `adb` (the adb backend's environment) — idb's twin.
 
     `start` runs the adb sequence — boot-readiness wait → optional APK (re)install → `pm clear` for a
-    clean state (the `erase` equivalent) → `am force-stop` → `am start` (launch env forwarded as
-    intent extras) → deeplink — and returns the `adb` driver. The lease-shaping methods mirror the iOS
+    clean state (the `erase` equivalent) → `am force-stop` → runtime-permission pre-grant (`pm grant`,
+    BE-0210) → `am start` (launch env forwarded as intent extras) → deeplink — and returns the `adb`
+    driver. The lease-shaping methods mirror the iOS
     `_DeviceEnvironment`, over `adb` instead of `simctl`: the same seam, a different subprocess tool.
     Network is not observed natively (no `NETWORK` capability), so that path degrades the same honest
     way iOS's mocked network does. Device control backs the subset the emulator can honor
