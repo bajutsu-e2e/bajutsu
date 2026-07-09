@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0204](BE-0204-server-storage-gcs-support.md) |
 | Author | [@paihu](https://github.com/paihu) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0204") |
+| Implementing PR | [#838](https://github.com/bajutsu-e2e/bajutsu/pull/838) |
 | Topic | Hosting the web UI (cloud / self-hosted) |
 | Related | [BE-0015](../BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md), [BE-0016](../BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md), [BE-0110](../BE-0110-evidence-store-uri/BE-0110-evidence-store-uri.md) |
 <!-- /BE-METADATA -->
@@ -127,14 +128,26 @@ relative to the real deployment constraint it removes for self-hosters running o
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Decide the final env-var / URI naming for server storage (replacing or living alongside
+- [x] Decide the final env-var / URI naming for server storage (replacing or living alongside
       `BAJUTSU_S3_BUCKET` / `BAJUTSU_S3_ENDPOINT` / `BAJUTSU_S3_REGION` / `BAJUTSU_S3_PREFIX`)
-- [ ] Rebuild `object_store_from_env()` on `parse_store_uri` / `object_store_from_uri`
+- [x] Rebuild `object_store_from_env()` on `parse_store_uri` / `object_store_from_uri`
       (`bajutsu/serve/server/object_store.py`)
-- [ ] Update `_build_server_state` wiring and error messages (`bajutsu/serve/__init__.py`)
-- [ ] Tests: server backend construction from a `gs://` URI (fake `GCSObjectStore`), missing-extra
+- [x] Update `_build_server_state` wiring and error messages (`bajutsu/serve/__init__.py`)
+- [x] Tests: server backend construction from a `gs://` URI (fake `GCSObjectStore`), missing-extra
       error message, and the existing S3 path staying green
-- [ ] Documentation: `docs/self-hosting.md` + Japanese mirror get a GCS example for server storage
+- [x] Documentation: `docs/self-hosting.md` + Japanese mirror get a GCS example for server storage
+
+[#838](https://github.com/bajutsu-e2e/bajutsu/pull/838) — `BAJUTSU_SERVER_STORE` (`s3://bucket/prefix`
+or `gs://bucket/prefix`) replaces `BAJUTSU_S3_BUCKET`/`BAJUTSU_S3_PREFIX`;
+`BAJUTSU_S3_ENDPOINT`/`BAJUTSU_S3_REGION` are unchanged, still
+read by `object_store_from_uri` for the S3-compatible client. `bajutsu.object_store` gained a new
+neutrally-named `store_target_from_uri` (returning `(ObjectStore, prefix)`) that both
+`evidence_target_from_uri` (`--evidence-store`) and the server's `object_store_from_env()` now build
+on — avoiding the evidence-flavored `EvidenceTarget` name leaking into a second, independent setting
+while still sharing the URI-parsing composition (raised during review). Downstream consumers
+(`ObjectStorageArtifactStore`, `ObjectScenarioStorage`, `ObjectBaselineStore`) needed no change,
+matching the proposal. `deploy/self-host/.env.example` and `docker-compose.yml`'s `minio-init` (bucket
+name extracted from the URI, with a scheme/bucket guard) were updated alongside the bilingual docs.
 
 ## References
 

@@ -1334,7 +1334,7 @@ def test_serve_server_backend_without_extras_exits_cleanly(monkeypatch: pytest.M
     # install hint and exit 2 — never a raw ImportError traceback.
     import sys
 
-    monkeypatch.setenv("BAJUTSU_S3_BUCKET", "bkt")
+    monkeypatch.setenv("BAJUTSU_SERVER_STORE", "s3://bkt")
     monkeypatch.setenv("BAJUTSU_S3_REGION", "auto")
     monkeypatch.setitem(sys.modules, "boto3", None)
     r = runner.invoke(app, ["serve", "--backend", "server"])

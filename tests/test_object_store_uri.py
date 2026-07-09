@@ -1,4 +1,5 @@
-"""Tests for evidence-store URI parsing (BE-0110).
+"""Tests for store URI parsing (BE-0110), shared by ``--evidence-store`` and ``BAJUTSU_SERVER_STORE``
+(BE-0204).
 
 `parse_store_uri` turns a single ``s3://…`` / ``gs://…`` string into a `StoreURI`, so the destination
 (and thus the cloud lifecycle policy) is one greppable value. These lock the split and normalization.

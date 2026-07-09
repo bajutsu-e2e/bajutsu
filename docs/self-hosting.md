@@ -224,6 +224,19 @@ Published ports bind to `BIND_ADDR` (default `127.0.0.1`). For a Mac worker to r
 another host, set `BIND_ADDR` in `.env` to the node's **tailnet IP** — never `0.0.0.0` on a host
 with a public interface, since that would expose the artifacts bucket.
 
+The artifact/scenario/baseline store itself is named by one URI, `BAJUTSU_SERVER_STORE`
+(BE-0204) — `s3://bucket/prefix` (S3-compatible; MinIO, as shipped in this compose) or
+`gs://bucket/prefix` for a Google Cloud Storage bucket instead. Already running the rest of your
+stack on Google Cloud? Drop the `minio` / `minio-init` services from `docker-compose.yml`, point
+`BAJUTSU_SERVER_STORE` at your GCS bucket, and add the `gcs` extra to the control plane image's
+install line in [`deploy/self-host/Dockerfile`](../deploy/self-host/Dockerfile)
+(`.[server,worker,db,oauth,gcs]`) — no S3-compatible bucket needed at all.
+
+Upgrading from a deployment that set the older `BAJUTSU_S3_BUCKET` / `BAJUTSU_S3_PREFIX` pair? Fold
+the prefix into the URI's path — `BAJUTSU_S3_BUCKET=bajutsu` + `BAJUTSU_S3_PREFIX=tenant/` becomes
+`BAJUTSU_SERVER_STORE=s3://bajutsu/tenant/` — or existing keys under that prefix stop resolving once
+the prefix is dropped.
+
 ### 2. Add GitHub OAuth (optional)
 
 The shared token (`BAJUTSU_SERVE_TOKEN`) alone is enough for a couple of operators. For per-user
@@ -275,7 +288,7 @@ export ANTHROPIC_API_KEY=…     # only if scenarios use the AI paths (record / 
 bajutsu worker
 ```
 
-The worker holds **no object-store credentials** (BE-0160): no `BAJUTSU_S3_BUCKET` /
+The worker holds **no object-store credentials** (BE-0160): no `BAJUTSU_SERVER_STORE` /
 `BAJUTSU_S3_ENDPOINT` / `AWS_*`, and no cloud SDK. It downloads the run's baselines, uploads the
 finished `runs/<id>/` tree, and persists a `record` job's authored scenario over **presigned URLs
 the control plane signs** — the control plane is the only place the object store's credentials live.

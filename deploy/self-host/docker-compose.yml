@@ -37,6 +37,10 @@ services:
 
   # One-shot: wait for MinIO, then create the artifacts/scenarios bucket (idempotent on a restart
   # with a persisted volume — --ignore-existing keeps `mc mb` from failing if the bucket is there).
+  # BAJUTSU_SERVER_STORE names the bucket as a URI (s3://bucket/prefix, BE-0204); strip the scheme
+  # and any prefix path to get the bare bucket name `mc mb` needs. This service only ever talks to
+  # MinIO, so a gs:// value (meant for the GCS path, which drops this service entirely) fails loudly
+  # here rather than silently producing a bogus bucket name.
   minio-init:
     image: minio/mc:RELEASE.2025-08-13T08-35-41Z
     env_file: .env
@@ -45,8 +49,17 @@ services:
       - sh
       - -c
       - >
+        case "$$BAJUTSU_SERVER_STORE" in
+        s3://*) ;;
+        *) echo "minio-init needs an s3://bucket BAJUTSU_SERVER_STORE, got: $$BAJUTSU_SERVER_STORE" >&2; exit 1 ;;
+        esac;
+        bucket="$${BAJUTSU_SERVER_STORE#s3://}"; bucket="$${bucket%%/*}";
+        if [ -z "$$bucket" ]; then
+        echo "minio-init needs an s3://bucket BAJUTSU_SERVER_STORE, got: $$BAJUTSU_SERVER_STORE" >&2; exit 1;
+        fi;
         until mc alias set m http://minio:9000 "$$AWS_ACCESS_KEY_ID" "$$AWS_SECRET_ACCESS_KEY";
-        do sleep 1; done; mc mb --ignore-existing "m/$$BAJUTSU_S3_BUCKET"
+        do sleep 1; done;
+        mc mb --ignore-existing "m/$$bucket"
 
   # One-shot: bring the schema to head (orgs/users/projects/runs/audit_log + users.role).
   migrate:

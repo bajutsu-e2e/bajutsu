@@ -3,25 +3,24 @@
 `S3ObjectStore` is the real backing for `ObjectStorageArtifactStore`'s injected `ObjectStore` slice:
 an S3-compatible client (Cloudflare R2 / AWS S3 / MinIO) over one bucket. The boto3 client is
 injected, so a small in-memory fake S3 (raising real botocore `ClientError`s for missing keys)
-drives the contract here — no real bucket or network on the gate.
+drives the contract here — no real bucket or network on the gate. `object_store_from_env` (BE-0204)
+also builds a `GCSObjectStore` from a `gs://` `BAJUTSU_SERVER_STORE`; a fake `storage.Client` keeps
+that path off the network too.
 """
 
 from __future__ import annotations
 
 import io
+import sys
 from pathlib import Path
 
 import pytest
+from _shared import patch_gcs_client
 from botocore.exceptions import ClientError
 
+from bajutsu.object_store import GCSObjectStore
 from bajutsu.serve.server.artifacts import ObjectStorageArtifactStore
-from bajutsu.serve.server.object_store import (
-    S3ObjectStore,
-    artifact_prefix,
-    object_store_from_env,
-    s3_client_from_env,
-    s3_prefix,
-)
+from bajutsu.serve.server.object_store import S3ObjectStore, artifact_prefix, object_store_from_env
 
 
 class _FakeS3:
@@ -184,31 +183,56 @@ def test_composes_with_the_artifact_store() -> None:
     assert art is not None and art.redirect is not None and art.body is None
 
 
-def test_s3_client_from_env_uses_endpoint_and_region(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("BAJUTSU_S3_ENDPOINT", "https://acct.r2.cloudflarestorage.com")
-    monkeypatch.setenv("BAJUTSU_S3_REGION", "auto")
-    client = s3_client_from_env()
-    assert client.meta.endpoint_url == "https://acct.r2.cloudflarestorage.com"
-    assert client.meta.region_name == "auto"
-
-
-def test_s3_prefix_normalizes_a_trailing_slash(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.delenv("BAJUTSU_S3_PREFIX", raising=False)
-    assert s3_prefix() == ""
-    monkeypatch.setenv("BAJUTSU_S3_PREFIX", "tenant")
-    assert s3_prefix() == "tenant/"
-    monkeypatch.setenv("BAJUTSU_S3_PREFIX", "tenant/")
-    assert s3_prefix() == "tenant/"
-
-
 def test_artifact_prefix_keys_under_base() -> None:
     assert artifact_prefix("") == "artifacts/"
     assert artifact_prefix("tenant/") == "tenant/artifacts/"
 
 
-def test_object_store_from_env_needs_a_bucket(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.delenv("BAJUTSU_S3_BUCKET", raising=False)
-    assert object_store_from_env() is None  # no bucket -> caller decides (require or skip)
-    monkeypatch.setenv("BAJUTSU_S3_BUCKET", "bkt")
+def test_object_store_from_env_needs_a_uri(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("BAJUTSU_SERVER_STORE", raising=False)
+    assert object_store_from_env() is None  # unset -> caller decides (require or skip)
+
+
+def test_object_store_from_env_builds_an_s3_store_and_prefix(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("BAJUTSU_SERVER_STORE", "s3://bkt/tenant")
+    monkeypatch.setenv("BAJUTSU_S3_ENDPOINT", "https://acct.r2.cloudflarestorage.com")
     monkeypatch.setenv("BAJUTSU_S3_REGION", "auto")
-    assert isinstance(object_store_from_env(), S3ObjectStore)
+    result = object_store_from_env()
+    assert result is not None
+    store, prefix = result
+    assert isinstance(store, S3ObjectStore)
+    assert prefix == "tenant/"
+    # BAJUTSU_S3_ENDPOINT/_REGION still reach the boto3 client through object_store_from_uri —
+    # BAJUTSU_SERVER_STORE only replaced the bucket/prefix env vars, not these (BE-0204).
+    client = store._client
+    assert client.meta.endpoint_url == "https://acct.r2.cloudflarestorage.com"
+    assert client.meta.region_name == "auto"
+
+
+def test_object_store_from_env_rejects_a_malformed_uri(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("BAJUTSU_SERVER_STORE", "bkt")  # no s3:// or gs:// scheme
+    with pytest.raises(ValueError, match="BAJUTSU_SERVER_STORE 'bkt' is invalid"):
+        object_store_from_env()
+
+
+def test_object_store_from_env_builds_a_gcs_store_from_a_gs_uri(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    patch_gcs_client(monkeypatch)
+    monkeypatch.setenv("BAJUTSU_SERVER_STORE", "gs://bucket/tenant")
+    result = object_store_from_env()
+    assert result is not None
+    store, prefix = result
+    assert isinstance(store, GCSObjectStore)
+    assert prefix == "tenant/"
+
+
+def test_object_store_from_env_names_the_install_command_when_the_sdk_is_missing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("BAJUTSU_SERVER_STORE", "s3://bkt")
+    monkeypatch.setitem(sys.modules, "boto3", None)  # force `import boto3` to raise
+    with pytest.raises(ImportError, match="uv sync --extra s3"):
+        object_store_from_env()
