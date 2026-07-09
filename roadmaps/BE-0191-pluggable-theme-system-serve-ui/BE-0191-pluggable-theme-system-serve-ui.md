@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0191") |
-| Implementing PR | [#826](https://github.com/bajutsu-e2e/bajutsu/pull/826), [#837](https://github.com/bajutsu-e2e/bajutsu/pull/837), [#855](https://github.com/bajutsu-e2e/bajutsu/pull/855), _pending_ |
+| Implementing PR | [#826](https://github.com/bajutsu-e2e/bajutsu/pull/826), [#837](https://github.com/bajutsu-e2e/bajutsu/pull/837), [#855](https://github.com/bajutsu-e2e/bajutsu/pull/855), [#859](https://github.com/bajutsu-e2e/bajutsu/pull/859) |
 | Topic | Authoring experience (record / GUI editor) |
 <!-- /BE-METADATA -->
 
@@ -275,7 +275,7 @@ filesystem, building directly on the token contract of unit 1.
   trivially held today (no transitions exist yet) and the `prefers-reduced-motion` collapse lands
   with unit 4's motion. Tests: `tests/test_select_option.py`, plus `select_option` cases in
   `tests/test_playwright.py` / `test_idb.py` / `test_adb.py` / `test_xcuitest.py`; docs updated in
-  `docs/scenarios.md` and `docs/dsl-grammar.md` (+ ja mirrors). ([_pending_](https://github.com/bajutsu-e2e/bajutsu/pulls))
+  `docs/scenarios.md` and `docs/dsl-grammar.md` (+ ja mirrors). ([#859](https://github.com/bajutsu-e2e/bajutsu/pull/859))
 
 ## References
 
