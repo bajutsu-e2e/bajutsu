@@ -712,6 +712,7 @@ AI を使う経路（`record` ／ `crawl` ／ `triage --ai` ／ `run --apply`）
 | [BE-0213](BE-0213-glossary-and-docs-structure/BE-0213-glossary-and-docs-structure-ja.md) | 用語集とドキュメント構成の見直し | 提案 |
 | [BE-0214](BE-0214-web-only-beginner-tutorial/BE-0214-web-only-beginner-tutorial-ja.md) | Web 版のみで完結する初学者向けチュートリアル(Xcode・Simulator 不要) | 提案 |
 | [BE-0216](BE-0216-propose-and-build-parallel-skill/BE-0216-propose-and-build-parallel-skill-ja.md) | propose-and-build: BE 提案と実装を並行して書き、スタックしてつなぐ | 提案 |
+| [BE-0217](BE-0217-harden-review-prompt/BE-0217-harden-review-prompt-ja.md) | 調査に基づく方針で自動 PR レビュープロンプトを強化する | 提案 |
 <!-- /GENERATED:proposals-dev-infra -->
 
 ### コードベース品質・技術的負債
