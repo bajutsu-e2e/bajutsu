@@ -9,6 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0215") |
+| Implementing PR | [#869](https://github.com/bajutsu-e2e/bajutsu/pull/869) |
 | Topic | AI provider configuration |
 | Related | [BE-0163](../BE-0163-ant-cli-oauth-provider/BE-0163-ant-cli-oauth-provider.md), [BE-0176](../BE-0176-claude-code-ai-backend/BE-0176-claude-code-ai-backend.md), [BE-0136](../BE-0136-serve-write-once-secrets/BE-0136-serve-write-once-secrets.md), [BE-0183](../BE-0183-per-provider-serve-settings/BE-0183-per-provider-serve-settings.md) |
 <!-- /BE-METADATA -->
@@ -131,6 +132,13 @@ existing Claude API key field.
 - [x] `ai_availability.py` gap message names the token as the non-interactive alternative
 - [x] Docs (`docs/configuration.md`, `docs/ja/`, self-hosting Secrets pointer)
 - [x] Tests: secret endpoint contract, `_child_env` pass-through contract test
+
+Log:
+
+- [#869](https://github.com/bajutsu-e2e/bajutsu/pull/869) — ships the whole item: the
+  `OAUTH_TOKEN_ENV` constant, the `aiClaudeCodeOauthToken` write-once secret with its
+  `/api/claudecodetoken` endpoints, the provider-gated Settings field, the gap-message and
+  `.env.example` / docs updates, and the endpoint + `_child_env` pass-through tests.
 
 ## References
 

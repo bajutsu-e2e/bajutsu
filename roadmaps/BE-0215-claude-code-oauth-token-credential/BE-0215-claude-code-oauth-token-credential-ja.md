@@ -9,6 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0215") |
+| 実装 PR | [#869](https://github.com/bajutsu-e2e/bajutsu/pull/869) |
 | トピック | AI provider configuration |
 | 関連 | [BE-0163](../BE-0163-ant-cli-oauth-provider/BE-0163-ant-cli-oauth-provider-ja.md)、[BE-0176](../BE-0176-claude-code-ai-backend/BE-0176-claude-code-ai-backend-ja.md)、[BE-0136](../BE-0136-serve-write-once-secrets/BE-0136-serve-write-once-secrets-ja.md)、[BE-0183](../BE-0183-per-provider-serve-settings/BE-0183-per-provider-serve-settings-ja.md) |
 <!-- /BE-METADATA -->
@@ -137,6 +138,13 @@
 - [x] `ai_availability.py` のギャップメッセージがトークンを非対話的な代替として明記
 - [x] ドキュメント（`docs/configuration.md`、`docs/ja/`、自己ホスティングの Secrets へのポインタ）
 - [x] テスト：secret エンドポイントの契約、`_child_env` の通過契約テスト
+
+ログ：
+
+- [#869](https://github.com/bajutsu-e2e/bajutsu/pull/869) — 本項目を一括で実装しました。
+  `OAUTH_TOKEN_ENV` 定数、`/api/claudecodetoken` エンドポイントを持つ `aiClaudeCodeOauthToken` の
+  write-once secret、プロバイダで出し分ける Settings 欄、ギャップメッセージと `.env.example`・
+  ドキュメントの更新、エンドポイントと `_child_env` の通過テストまでを含みます。
 
 ## 参考
 
