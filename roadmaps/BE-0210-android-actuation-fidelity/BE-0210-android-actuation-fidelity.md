@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-android-actuation-fidelity-ja.md)
+**English** · [日本語](BE-0210-android-actuation-fidelity-ja.md)
 
-# BE-XXXX — Android on-device actuation fidelity
+# BE-0210 — Android on-device actuation fidelity
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-android-actuation-fidelity.md) |
+| Proposal | [BE-0210](BE-0210-android-actuation-fidelity.md) |
 | Author | [@hirosassa](https://github.com/hirosassa) |
 | Status | **Proposal** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0210") |
 | Topic | Platform expansion (Android / Web / Flutter) |
 | Related | [BE-0007](../BE-0007-android-backend/BE-0007-android-backend.md) |
 <!-- /BE-METADATA -->
