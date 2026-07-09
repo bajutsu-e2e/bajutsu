@@ -1,14 +1,14 @@
-[English](BE-XXXX-granular-device-control-capabilities.md) · **日本語**
+[English](BE-0212-granular-device-control-capabilities.md) · **日本語**
 
-# BE-XXXX — 粗い deviceControl 能力を操作単位のトークンに分割する
+# BE-0212 — 粗い deviceControl 能力を操作単位のトークンに分割する
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
 |---|---|
-| 提案 | [BE-XXXX](BE-XXXX-granular-device-control-capabilities-ja.md) |
+| 提案 | [BE-0212](BE-0212-granular-device-control-capabilities-ja.md) |
 | 提案者 | [@hirosassa](https://github.com/hirosassa) |
 | 状態 | **提案** |
-| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0212") |
 | トピック | Platform expansion (Android / Web / Flutter) |
 | 関連 | [BE-0128](../BE-0128-device-step-capability-preflight/BE-0128-device-step-capability-preflight-ja.md), [BE-0082](../BE-0082-capability-preflight-check/BE-0082-capability-preflight-check-ja.md), [BE-0007](../BE-0007-android-backend/BE-0007-android-backend-ja.md) |
 <!-- /BE-METADATA -->

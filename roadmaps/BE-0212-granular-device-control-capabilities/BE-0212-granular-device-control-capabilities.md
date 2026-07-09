@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-granular-device-control-capabilities-ja.md)
+**English** · [日本語](BE-0212-granular-device-control-capabilities-ja.md)
 
-# BE-XXXX — Split the coarse deviceControl capability into per-operation tokens
+# BE-0212 — Split the coarse deviceControl capability into per-operation tokens
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-granular-device-control-capabilities.md) |
+| Proposal | [BE-0212](BE-0212-granular-device-control-capabilities.md) |
 | Author | [@hirosassa](https://github.com/hirosassa) |
 | Status | **Proposal** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0212") |
 | Topic | Platform expansion (Android / Web / Flutter) |
 | Related | [BE-0128](../BE-0128-device-step-capability-preflight/BE-0128-device-step-capability-preflight.md), [BE-0082](../BE-0082-capability-preflight-check/BE-0082-capability-preflight-check.md), [BE-0007](../BE-0007-android-backend/BE-0007-android-backend.md) |
 <!-- /BE-METADATA -->
