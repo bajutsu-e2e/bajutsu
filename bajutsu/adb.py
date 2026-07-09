@@ -285,7 +285,9 @@ class Env:
     """Thin adb front end for one device/emulator."""
 
     def __init__(self, serial: str, run: RunFn = _real_run) -> None:
-        self.serial = serial
+        # Validate at construction (like AdbDriver): Env is what AndroidEnvironment.start drives
+        # for the real device-lifecycle path, so a bad serial fails here, not deep in a command.
+        self.serial = _checked_serial(serial)
         self._run = run
 
     def boot_completed(self) -> bool:

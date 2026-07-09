@@ -132,7 +132,7 @@ class AdbDriver:
     _SETTLE_POLL_S = 0.05  # interval between settle reads
 
     def __init__(self, serial: str, run: RunFn = adb._real_run) -> None:
-        self.serial = serial
+        self.serial = adb._checked_serial(serial)
         self._run = run
         self._max_seen = 0  # richest tree seen on this device; gates the empty retry
         self._last_stable_key: _StableKey | None = None
