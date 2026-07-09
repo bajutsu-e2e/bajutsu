@@ -4,7 +4,10 @@ from __future__ import annotations
 
 import contextlib
 import signal
+import subprocess
 from pathlib import Path
+
+import pytest
 
 from bajutsu import intervals
 
@@ -69,6 +72,101 @@ def test_start_device_log_lifecycle() -> None:
     assert argv == intervals.device_log_cmd("UDID", 'process == "X"')
     assert stdout_path == Path("/tmp/d.log")  # the stream is written to the file
     assert interval.stop() == Path("/tmp/d.log")
+    assert proc.stopped_with == signal.SIGTERM
+
+
+# --- adb (Android) interval providers ---
+
+
+def test_start_screenrecord_records_device_side_then_pulls_on_stop(tmp_path: Path) -> None:
+    from bajutsu import adb
+
+    spawn_calls: list[tuple[list[str], Path | None]] = []
+    run_calls: list[list[str]] = []
+    proc = FakeProc()
+
+    def spawn(argv: list[str], stdout_path: Path | None) -> FakeProc:
+        spawn_calls.append((argv, stdout_path))
+        return proc
+
+    def run(argv: list[str]) -> str:
+        run_calls.append(argv)
+        return ""
+
+    target = tmp_path / "scenario.mp4"
+    interval = intervals.start_screenrecord("SER", target, spawn=spawn, run=run)
+    assert interval.kind == "video" and interval.provider == "adb"
+
+    argv, stdout_path = spawn_calls[0]
+    assert argv == adb.screenrecord_cmd("SER")  # records to the device-side default path
+    assert stdout_path is None  # screenrecord writes device-side, not to a host file
+
+    assert interval.stop() == target
+    assert proc.stopped_with == signal.SIGINT  # SIGINT finalizes the mp4
+    # The recording is pulled off the device, then the device copy is removed — in that order.
+    assert run_calls == [
+        adb.pull_cmd("SER", adb.VIDEO_DEVICE_PATH, str(target)),
+        adb.rm_cmd("SER", adb.VIDEO_DEVICE_PATH),
+    ]
+
+
+def test_start_screenrecord_cleanup_failure_does_not_fail_stop(tmp_path: Path) -> None:
+    proc = FakeProc()
+    ran: list[str] = []
+
+    def spawn(argv: list[str], stdout_path: Path | None) -> FakeProc:
+        return proc
+
+    def run(argv: list[str]) -> str:
+        if "pull" in argv:
+            ran.append("pull")
+            return ""
+        if "rm" in argv:  # the device-side cleanup — allowed to fail without failing the run
+            ran.append("rm")
+            raise OSError("device gone")
+        return ""
+
+    target = tmp_path / "scenario.mp4"
+    interval = intervals.start_screenrecord("SER", target, spawn=spawn, run=run)
+    assert interval.stop() == target  # a failed cleanup is suppressed
+    assert ran == ["pull", "rm"]  # the pull succeeded first; only the later cleanup failed
+
+
+def test_start_screenrecord_pull_failure_surfaces(tmp_path: Path) -> None:
+    # The pull is deliberately NOT suppressed: swallowing it would leave a video artifact path with
+    # no file behind it. A failed pull must propagate out of stop() (the FileSink then drops it).
+    proc = FakeProc()
+
+    def spawn(argv: list[str], stdout_path: Path | None) -> FakeProc:
+        return proc
+
+    def run(argv: list[str]) -> str:
+        if "pull" in argv:
+            raise subprocess.CalledProcessError(1, argv)
+        return ""
+
+    interval = intervals.start_screenrecord("SER", tmp_path / "scenario.mp4", spawn=spawn, run=run)
+    with pytest.raises(subprocess.CalledProcessError):
+        interval.stop()
+
+
+def test_start_logcat_streams_to_file(tmp_path: Path) -> None:
+    from bajutsu import adb
+
+    calls: list[tuple[list[str], Path | None]] = []
+    proc = FakeProc()
+
+    def spawn(argv: list[str], stdout_path: Path | None) -> FakeProc:
+        calls.append((argv, stdout_path))
+        return proc
+
+    path = tmp_path / "device.log"
+    interval = intervals.start_logcat("SER", path, spawn=spawn)
+    assert interval.kind == "deviceLog" and interval.provider == "adb"
+    argv, stdout_path = calls[0]
+    assert argv == adb.logcat_cmd("SER")
+    assert stdout_path == path  # the logcat stream is written to the file
+    assert interval.stop() == path
     assert proc.stopped_with == signal.SIGTERM
 
 

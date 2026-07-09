@@ -24,9 +24,10 @@ import re
 import subprocess
 import time
 from collections.abc import Callable
+from pathlib import Path
 from xml.etree import ElementTree as ET
 
-from bajutsu import adb
+from bajutsu import adb, intervals
 from bajutsu.drivers import base
 
 RunFn = Callable[[list[str]], str]
@@ -266,6 +267,22 @@ class AdbDriver:
 
     def screenshot(self, path: str) -> None:
         adb.Env(self.serial, run=self._run).screenshot(path)
+
+    def driver_interval(self, kind: str, path: Path) -> intervals.Interval | None:
+        """A whole-scenario interval recording via adb, or None for an unsupported kind.
+
+        The device pool hands this to the `FileSink` so the same backend-independent `capture` policy
+        that drives the simctl providers on iOS drives the adb ones here — Android is not `simctl`, so
+        it routes through this driver-supplied seam rather than the sink's simctl path (idb, which has
+        no such method, leaves the seam None and takes the simctl path). `video` records via
+        `screenrecord` (pulled off the device on stop); `deviceLog` streams `logcat`. `appTrace` has
+        no adb analogue, so it returns None.
+        """
+        if kind == "video":
+            return intervals.start_screenrecord(self.serial, path, run=self._run)
+        if kind == "deviceLog":
+            return intervals.start_logcat(self.serial, path)
+        return None
 
     # No semantic tap, no native network monitoring, and no device-control family (Android device
     # control is a follow-up, BE-0007 Unit 4) — the lean end of the capability model, alongside idb.
