@@ -165,6 +165,17 @@ def test_shutdown_is_idempotent() -> None:
     assert calls == [["xcrun", "simctl", "shutdown", "UDID"]]
 
 
+def test_command_builders_reject_unvalidated_udid() -> None:
+    # Each builder validates the udid inline, so a direct builder call (bypassing Env, as
+    # serve does with bootstatus_cmd) can't smuggle an option-injecting / metacharacter id into
+    # xcrun argv — the same guarantee idb.py's builders give.
+    for builder in (simctl.erase_cmd, simctl.boot_cmd, simctl.bootstatus_cmd, simctl.pbpaste_cmd):
+        with pytest.raises(simctl.DeviceError, match="invalid udid"):
+            builder("-rf; rm")
+    with pytest.raises(simctl.DeviceError, match="invalid udid"):
+        simctl.launch_cmd("--set", "com.x")
+
+
 def test_env_validates_udid_at_construction() -> None:
     # Env validates once in __init__ against the shared device-id policy, so every self.udid argv
     # builder (erase/boot/launch/…) is covered — a malicious --udid can never reach a subprocess
