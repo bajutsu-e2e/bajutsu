@@ -101,9 +101,11 @@ disambiguates the terms Bajutsu already uses; it does not argue for renaming any
 inventory surfaces a term whose *name itself* (not just its documentation) seems worth revisiting,
 that becomes its own future proposal rather than scope creep here.
 
-A sibling proposal, "web-only beginner tutorial" (see Related below), depends on this one landing
-first so its new tutorial track can use the disambiguated vocabulary this glossary settles, rather
-than inventing its own phrasing in parallel.
+A sibling proposal, the web-only beginner tutorial drafted alongside this one, depends on this one
+landing first so its new tutorial track can use the disambiguated vocabulary this glossary settles,
+rather than inventing its own phrasing in parallel. The two are reciprocal siblings; a `Related`
+metadata link between them is added once CI allocates their real IDs (a placeholder `BE-XXXX` cannot
+cross-reference another new item — the per-item rewrite would resolve it to this item's own number).
 
 ## Alternatives considered
 
