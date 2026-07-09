@@ -215,7 +215,10 @@ class IdbDriver:
     _SETTLE_POLL_S = 0.05  # interval between settle reads; describe-all provides natural spacing
 
     def __init__(self, udid: str, run: RunFn = _real_run) -> None:
-        self.udid = udid
+        # Validate once at the object boundary so every use of self.udid is covered — the argv
+        # builders and the gRPC companion path (_type_text_via_companion) alike, plus any future
+        # use site — without each having to remember to wrap it.
+        self.udid = _validated_udid(udid)
         self._run = run
         self._max_seen = 0  # richest tree seen on this device; gates the empty retry
         self._last_stable_key: _StableKey | None = None

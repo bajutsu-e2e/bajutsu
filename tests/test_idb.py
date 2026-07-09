@@ -405,3 +405,11 @@ def test_validated_udid_rejects_injection() -> None:
     for bad in ["-rf", "--udid", "a b", "a;b", "a$b", "a`b", "", "x" * 129]:
         with pytest.raises(ValueError, match="invalid udid"):
             _validated_udid(bad)
+
+
+def test_driver_rejects_bad_udid_at_construction() -> None:
+    # IdbDriver validates the udid in __init__, so a bad id fails at the object boundary and every
+    # use of self.udid — argv builders and the gRPC companion path alike — is covered.
+    with pytest.raises(ValueError, match="invalid udid"):
+        IdbDriver("bad;rm")
+    assert IdbDriver("booted", run=lambda a: "[]").udid == "booted"
