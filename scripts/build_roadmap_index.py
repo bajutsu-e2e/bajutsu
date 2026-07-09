@@ -149,7 +149,13 @@ TOPICS: tuple[tuple[str, str, bool], ...] = (
     ("Integration with external services", "external-integration", False),
     ("Backend expansion (iOS actuators)", "backend", False),
     ("doctor / onboarding", "doctor", False),
-    ("Development infrastructure (contributor workflow)", "dev-infra", False),
+    ("Development infrastructure (contributor workflow)", "developer-experience", False),
+    # Path-only infra topic: a real topic key so PATH_TOPIC_* rules for `.github/`, `.githooks/`,
+    # `scripts/`, `Makefile` can label CI/build changes without co-opting the contributor-workflow
+    # items' `topic:developer-experience`. It carries no roadmap items (every dev item's Topic is the
+    # contributor-workflow line above), so it renders no index/dashboard section — it exists only to
+    # keep `dev-infra` a valid label key for the path rules.
+    ("CI / build infrastructure", "dev-infra", False),
     ("Codebase quality & technical debt", "quality-debt", False),
     ("Dogfood fixtures (demo apps)", "dogfood", True),
     ("Dogfood fixtures (web UI)", "dogfood-web-ui", True),
