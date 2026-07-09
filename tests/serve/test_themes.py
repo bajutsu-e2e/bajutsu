@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from bajutsu.serve.themes import (
     BUILTIN_THEMES,
     ThemeManifest,
@@ -55,6 +57,22 @@ def test_malformed_manifest_falls_back_but_is_not_dropped(tmp_path: Path) -> Non
     assert by_id["odd"] == ThemeManifest(id="odd", name="Odd One", kind="dark")
 
 
+def test_builtin_id_collision_is_skipped_with_warning(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    # A drop-in named midnight.css would silently override the built-in (CSS appended last wins);
+    # instead it must be skipped with a warning so the contract "never replaced" holds.
+    (tmp_path / "midnight.css").write_text('[data-theme="midnight"]{--bg:red}\n', encoding="utf-8")
+    (tmp_path / "custom.css").write_text(
+        '/* bajutsu-theme name: Custom kind: dark */\n[data-theme="custom"]{--bg:#111}\n',
+        encoding="utf-8",
+    )
+    with caplog.at_level("WARNING"):
+        found = discover_themes(tmp_path)
+    assert [t.manifest.id for t in found] == ["custom"]  # midnight.css was skipped
+    assert "collides with a built-in theme" in caplog.text
+
+
 def test_theme_manifests_prepends_builtins(tmp_path: Path) -> None:
     (tmp_path / "solarized.css").write_text(
         '/* bajutsu-theme name: Solarized kind: dark */\n[data-theme="solarized"]{--bg:#002b36}\n',
@@ -91,8 +109,11 @@ def test_malformed_config_yields_no_default(tmp_path: Path) -> None:
     assert read_default_theme(bad) is None
 
 
-def test_wrong_typed_default_theme_warns_and_yields_none(tmp_path: Path, caplog) -> None:  # type: ignore[no-untyped-def]
-    # A non-string value is an operator mistake — resolve to None, but warn (don't silently ignore).
+def test_wrong_typed_default_theme_warns_and_yields_none(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> (
+    None
+):  # A non-string value is an operator mistake — resolve to None, but warn (don't silently ignore).
     cfg = tmp_path / "c.yaml"
     cfg.write_text("ui:\n  default_theme: 5\n", encoding="utf-8")
     with caplog.at_level("WARNING"):
@@ -100,8 +121,9 @@ def test_wrong_typed_default_theme_warns_and_yields_none(tmp_path: Path, caplog)
     assert "ui.default_theme" in caplog.text
 
 
-def test_typoed_ui_key_warns(tmp_path: Path, caplog) -> None:  # type: ignore[no-untyped-def]
-    # A typo'd sub-key (here `defualt_theme`) would otherwise vanish silently; surface it.
+def test_typoed_ui_key_warns(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:  # A typo'd sub-key (here `defualt_theme`) would otherwise vanish silently; surface it.
     cfg = tmp_path / "c.yaml"
     cfg.write_text("ui:\n  defualt_theme: daylight\n", encoding="utf-8")
     with caplog.at_level("WARNING"):
@@ -109,7 +131,7 @@ def test_typoed_ui_key_warns(tmp_path: Path, caplog) -> None:  # type: ignore[no
     assert "unknown ui.* key" in caplog.text
 
 
-def test_non_mapping_ui_warns(tmp_path: Path, caplog) -> None:  # type: ignore[no-untyped-def]
+def test_non_mapping_ui_warns(tmp_path: Path, caplog: pytest.LogCaptureFixture) -> None:
     cfg = tmp_path / "c.yaml"
     cfg.write_text("ui: daylight\n", encoding="utf-8")  # `ui` should be a mapping, not a scalar
     with caplog.at_level("WARNING"):

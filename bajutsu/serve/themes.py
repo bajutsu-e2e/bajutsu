@@ -93,7 +93,15 @@ def discover_themes(themes_dir: Path | None) -> list[DiscoveredTheme]:
             # not 500 the whole index (this runs per render). Skip it with a warning, don't crash.
             _log.warning("skipping unreadable theme %s: %s", path, e)
             continue
-        themes.append(DiscoveredTheme(manifest=_parse_manifest(path.stem, css), css=css))
+        manifest = _parse_manifest(path.stem, css)
+        if manifest.id in {b.id for b in BUILTIN_THEMES}:
+            # A drop-in whose id matches a built-in would silently override it (its CSS appended
+            # after the built-in block at equal specificity wins), the opposite of "never replaced".
+            _log.warning(
+                "skipping drop-in theme %s: id %r collides with a built-in theme", path, manifest.id
+            )
+            continue
+        themes.append(DiscoveredTheme(manifest=manifest, css=css))
     return themes
 
 
