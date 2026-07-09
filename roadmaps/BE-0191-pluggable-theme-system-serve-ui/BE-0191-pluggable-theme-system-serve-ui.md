@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0191") |
-| Implementing PR | [#826](https://github.com/bajutsu-e2e/bajutsu/pull/826) |
+| Implementing PR | [#826](https://github.com/bajutsu-e2e/bajutsu/pull/826), [#837](https://github.com/bajutsu-e2e/bajutsu/pull/837) |
 | Topic | Authoring experience (record / GUI editor) |
 <!-- /BE-METADATA -->
 
@@ -248,7 +248,7 @@ filesystem, building directly on the token contract of unit 1.
   discovered) and the configured default are exposed to the client as `window.__bajutsuThemes` /
   `window.__bajutsuDefaultTheme` for the picker (unit 3); the pre-paint seed now prefers the
   configured default before the OS scheme. Tests: `tests/serve/test_themes.py`,
-  `tests/serve/test_http_themes.py`, and a core `ui:`-drop test. _(PR pending.)_
+  `tests/serve/test_http_themes.py`, and a core `ui:`-drop test. ([#837](https://github.com/bajutsu-e2e/bajutsu/pull/837))
 
 ## References
 
