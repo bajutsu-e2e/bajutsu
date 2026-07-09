@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0208](BE-0208-android-emulator-e2e-ci.md) |
 | Author | [@hirosassa](https://github.com/hirosassa) |
-| Status | **Proposal** |
+| Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0208") |
+| Implementing PR | [#851](https://github.com/bajutsu-e2e/bajutsu/pull/851) |
 | Topic | Platform expansion (Android / Web / Flutter) |
 | Related | [BE-0007](../BE-0007-android-backend/BE-0007-android-backend.md) |
 <!-- /BE-METADATA -->
@@ -69,11 +70,31 @@ within the prime directives.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] The workflow (`.github/workflows/android-e2e.yml`) — `android-emulator-runner` + KVM, path-gated.
-- [ ] Build and install the Android showcase on the booted emulator.
-- [ ] Run the passing core scenarios over `--backend android`.
+- [x] The workflow (`.github/workflows/android-e2e.yml`) — `android-emulator-runner` + KVM, path-gated.
+- [x] Build and install the Android showcase on the booted emulator.
+- [x] Run the passing core scenarios over `--backend android`.
 - [ ] Visual/golden baseline parity check.
 - [ ] Grow the scenario set with the actuation-fidelity and device-control slices as they land.
+
+### Log
+
+- 2026-07-09 — First slice (units 1-3): added `.github/workflows/android-e2e.yml`, a Linux lane that
+  boots an AVD under KVM (`reactivecircus/android-emulator-runner`) and runs the core
+  id/tap/type/value scenarios through `--backend android`, driven by a new `e2e` target in
+  `demos/showcase/android/Makefile`. The AVD is **x86_64** API 34, not the local validation's arm64:
+  KVM acceleration on the x86_64 GitHub Linux runner needs an x86_64 system image (a foreign-arch
+  image falls back to slow software emulation) — the API level matches, only the ABI tracks the CI
+  host. Documented in `docs/ci.md` (+ ja). Path-gated like `web-e2e.yml`, off the fast `make check`
+  gate. The first CI run confirmed the emulator boots and drives the app: `smoke`, `firstlook`, and
+  `search` passed, but `components` timed out waiting 5s for a sheet to present. The CI emulator
+  renders in software (swiftshader), so it presents a modal too slowly for the 5s sheet-open waits
+  that pass on the local hardware-accelerated arm64 device; `components` and `modals` (the two
+  sheet/cover flows) are therefore held out of the lane's initial set (`smoke`, `firstlook`,
+  `search`, `data_driven`, `relaunch`, `system`) and rejoin once their on-device timing is tuned
+  (folded into unit 5). Units 4 (visual/golden baseline parity) and 5 (grow the scenario set) stay
+  open: the baseline dimensions need a first on-device capture, and the extra scenarios need their
+  BE-0007 follow-up slices (and the modal-timing tuning above) to land first. Item stays **In
+  progress**.
 
 ## References
 
