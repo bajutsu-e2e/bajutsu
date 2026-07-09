@@ -311,6 +311,17 @@ def test_child_env_strips_inherited_backend_routing(monkeypatch: Any) -> None:
     assert not any(v in env for v in claude_code._ROUTING_ENV)
 
 
+def test_child_env_passes_the_oauth_token_through(monkeypatch: Any) -> None:
+    # BE-0215: CLAUDE_CODE_OAUTH_TOKEN is the headless subscription credential the `claude` CLI reads,
+    # not backend routing — so it must NOT be in _ROUTING_ENV and must reach the child unchanged. This
+    # documents the contract so a future edit to _ROUTING_ENV can't silently start stripping it.
+    assert claude_code.OAUTH_TOKEN_ENV == "CLAUDE_CODE_OAUTH_TOKEN"
+    assert claude_code.OAUTH_TOKEN_ENV not in claude_code._ROUTING_ENV
+    monkeypatch.setenv(claude_code.OAUTH_TOKEN_ENV, "sk-ant-oat01-headless")
+    env = claude_code._child_env()
+    assert env[claude_code.OAUTH_TOKEN_ENV] == "sk-ant-oat01-headless"
+
+
 def test_auth_summary_is_a_fixed_subscription_statement(monkeypatch: Any) -> None:
     # Bajutsu drives the CLI from its configured provider, not the ambient env, so the summary is
     # fixed — it never inspects (nor narrates) any inherited backend routing.

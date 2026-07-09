@@ -36,7 +36,8 @@ def message(gap: str, ai: AiConfig | None = None) -> str:
     if gap == CLAUDE_CODE_CLI_MISSING:
         return (
             "the Claude Code CLI (`claude`) is not installed — install Claude Code and sign in "
-            "(`claude setup-token`, or an interactive login), or switch to the Anthropic API / "
+            "(`claude setup-token`, or an interactive login; on a headless host set "
+            "$CLAUDE_CODE_OAUTH_TOKEN to a token minted elsewhere), or switch to the Anthropic API / "
             "Bedrock / ant provider."
         )
     if gap == ANT_CLI_MISSING:

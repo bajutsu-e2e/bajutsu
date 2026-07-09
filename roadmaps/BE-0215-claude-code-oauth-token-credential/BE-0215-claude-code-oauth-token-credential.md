@@ -7,7 +7,7 @@
 |---|---|
 | Proposal | [BE-0215](BE-0215-claude-code-oauth-token-credential.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0215") |
 | Topic | AI provider configuration |
 | Related | [BE-0163](../BE-0163-ant-cli-oauth-provider/BE-0163-ant-cli-oauth-provider.md), [BE-0176](../BE-0176-claude-code-ai-backend/BE-0176-claude-code-ai-backend.md), [BE-0136](../BE-0136-serve-write-once-secrets/BE-0136-serve-write-once-secrets.md), [BE-0183](../BE-0183-per-provider-serve-settings/BE-0183-per-provider-serve-settings.md) |
@@ -123,14 +123,14 @@ existing Claude API key field.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Name `CLAUDE_CODE_OAUTH_TOKEN` as a documented constant in `bajutsu/ai/claude_code.py`
-- [ ] `.env.example` entry
-- [ ] `serve` write-once secret: `aiClaudeCodeOauthToken` (local env-backed + hosted encrypted),
+- [x] Name `CLAUDE_CODE_OAUTH_TOKEN` as a documented constant in `bajutsu/ai/claude_code.py`
+- [x] `.env.example` entry
+- [x] `serve` write-once secret: `aiClaudeCodeOauthToken` (local env-backed + hosted encrypted),
       `claude_code_token_info` / `set_claude_code_token` operations
-- [ ] Settings UI field, shown when `claude-code` is the selected provider
-- [ ] `ai_availability.py` gap message names the token as the non-interactive alternative
-- [ ] Docs (`docs/configuration.md`, `docs/ja/`, self-hosting Secrets pointer)
-- [ ] Tests: secret endpoint contract, `_child_env` pass-through contract test
+- [x] Settings UI field, shown when `claude-code` is the selected provider
+- [x] `ai_availability.py` gap message names the token as the non-interactive alternative
+- [x] Docs (`docs/configuration.md`, `docs/ja/`, self-hosting Secrets pointer)
+- [x] Tests: secret endpoint contract, `_child_env` pass-through contract test
 
 ## References
 

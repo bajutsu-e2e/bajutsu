@@ -159,6 +159,10 @@ def make_app(state: ServeState) -> FastAPI:
     async def api_key(request: Request) -> JSONResponse:
         return _result(ops.api_key_info(state, _actor(request)))
 
+    @app.get("/api/claudecodetoken")
+    async def claude_code_token(request: Request) -> JSONResponse:
+        return _result(ops.claude_code_token_info(state, _actor(request)))
+
     @app.get("/api/provider")
     async def get_provider() -> JSONResponse:
         return _result(ops.provider_info(state))
@@ -305,6 +309,12 @@ def make_app(state: ServeState) -> FastAPI:
     @app.post("/api/apikey")
     async def set_api_key(body: dict[str, Any], request: Request) -> JSONResponse:
         return _result(ops.set_api_key(state, str(body.get("value", "") or ""), _actor(request)))
+
+    @app.post("/api/claudecodetoken")
+    async def set_claude_code_token(body: dict[str, Any], request: Request) -> JSONResponse:
+        return _result(
+            ops.set_claude_code_token(state, str(body.get("value", "") or ""), _actor(request))
+        )
 
     @app.post("/api/provider")
     async def set_provider(body: dict[str, Any]) -> JSONResponse:

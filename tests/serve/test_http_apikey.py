@@ -49,6 +49,58 @@ def test_http_api_key_set_describe_and_clear(
         server.server_close()
 
 
+def test_http_claude_code_token_set_describe_and_clear(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """BE-0215: round-trip the `claude-code` OAuth token through the WebUI — the second named
+    write-once secret. Same contract as the API key: no endpoint returns the plaintext, only a
+    masked preview, and the value materializes into CLAUDE_CODE_OAUTH_TOKEN (its own var, not the
+    API key's) so a spawned job inherits the credential the `claude` CLI reads."""
+    scn_dir, cfg, runs = project(tmp_path)
+    monkeypatch.delenv("CLAUDE_CODE_OAUTH_TOKEN", raising=False)
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    server, port = _serve(
+        srv.ServeState(scenarios_dir=scn_dir, config=cfg, runs_dir=runs, cwd=tmp_path)
+    )
+    try:
+        assert _get_json(port, "/api/claudecodetoken") == {"set": False}
+        code, body = _post(port, "/api/claudecodetoken", {"value": "sk-ant-oat01-secret-12345"})
+        assert code == 200 and body["set"] is True
+        assert body["masked"] == "sk-a…2345" and "secret" not in body["masked"]
+        assert "value" not in body
+        # Lands under its own var, not the API key's — the two credentials are independent.
+        assert os.environ["CLAUDE_CODE_OAUTH_TOKEN"] == "sk-ant-oat01-secret-12345"
+        assert "ANTHROPIC_API_KEY" not in os.environ
+        assert not (tmp_path / ".env").exists()
+        assert _get_json(port, "/api/claudecodetoken") == {"set": True, "masked": "sk-a…2345"}
+        assert "value" not in _get_json(port, "/api/claudecodetoken?reveal=1")
+        code, body = _post(port, "/api/claudecodetoken", {"value": ""})
+        assert code == 200 and body["set"] is False
+        assert _get_json(port, "/api/claudecodetoken") == {"set": False}
+        assert "CLAUDE_CODE_OAUTH_TOKEN" not in os.environ
+    finally:
+        monkeypatch.delenv("CLAUDE_CODE_OAUTH_TOKEN", raising=False)
+        server.shutdown()
+        server.server_close()
+
+
+def test_http_claude_code_token_rejects_whitespace(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    scn_dir, cfg, runs = project(tmp_path)
+    monkeypatch.delenv("CLAUDE_CODE_OAUTH_TOKEN", raising=False)
+    server, port = _serve(
+        srv.ServeState(scenarios_dir=scn_dir, config=cfg, runs_dir=runs, cwd=tmp_path)
+    )
+    try:
+        code, body = _post(port, "/api/claudecodetoken", {"value": "oat with spaces"})
+        assert code == 400 and "whitespace" in body["error"]
+        assert _get_json(port, "/api/claudecodetoken") == {"set": False}
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
 def test_http_api_key_rejects_whitespace(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     scn_dir, cfg, runs = project(tmp_path)
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)

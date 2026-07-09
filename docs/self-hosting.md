@@ -275,6 +275,12 @@ secrets stay in the serve process's environment (the local-backend shape) and no
 the key like the database password: losing it makes the stored secrets unrecoverable, and a rotated
 key cannot decrypt values written under the old one, so re-enter each secret after rotating.
 
+The settings panel holds a second write-once operator secret the same way: the **Claude Code OAuth
+token** (`CLAUDE_CODE_OAUTH_TOKEN`), for a deployment that runs the `claude-code` provider on a
+browser-less host and so can't complete `claude setup-token`'s interactive sign-in
+([BE-0215](../roadmaps/BE-0215-claude-code-oauth-token-credential/BE-0215-claude-code-oauth-token-credential.md)).
+It is stored, masked, and rotated exactly like the API key above.
+
 ### 3. Run a Mac worker
 
 On each Mac (the same Aqua-session setup as Tier A — auto-login, `caffeinate`/`pmset`), install the
