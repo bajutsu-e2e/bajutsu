@@ -519,7 +519,7 @@ $('#gitspec').addEventListener('keydown',e=>{if(e.key==='Enter')chooseGitConfig(
 // ---- shared data: targets, scenarios, simulators (used by both views) ----
 async function loadShared(){
   targets=await getJSON('/api/targets',[]);
-  // each target carries its primary backend (data-backend) so picking a web target hides the iOS-only UI
+  // each target carries its primary backend (data-backend) so the UI shows only that platform's device controls
   const opts=targets.map(a=>{const n=typeof a==='string'?a:a.name,b=typeof a==='string'?'':(a.backend||'');
     return `<option value="${esc(n)}" data-backend="${esc(b)}">${esc(n)}</option>`;}).join('');
   $('#target').innerHTML=opts;$('#rec-target').innerHTML=opts;$('#crawl-target').innerHTML=opts;$('#au-target').innerHTML=opts;$('#cov-target').innerHTML=opts;
