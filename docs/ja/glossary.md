@@ -168,3 +168,4 @@ AND で結合されるフィールドの集合（`id`、`idMatches`、`label`、
 | `triage` | 1 | AI が失敗した run を診断し、修正を提案します（助言的）。 |
 | `codegen` | — | シナリオをネイティブの XCUITest / Playwright へ構造的にマッピングします。 |
 | `doctor` | — | Bajutsu が前提とする規約に、target がどれだけ従っているかを採点します。 |
+| `serve` | 1 | ローカルの Web UI（記録・再実行・crawl・統計）を起動します。Tier 1 で、CI 用ではありません。 |

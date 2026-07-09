@@ -160,3 +160,4 @@ command and option is in [cli](cli.md).
 | `triage` | 1 | AI diagnoses a failed run and proposes a fix (advisory). |
 | `codegen` | — | Structural mapping of a scenario to native XCUITest / Playwright. |
 | `doctor` | — | Score how well a target follows the conventions Bajutsu relies on. |
+| `serve` | 1 | Launch the local web UI (record / replay / crawl / stats); Tier 1, not for CI. |
