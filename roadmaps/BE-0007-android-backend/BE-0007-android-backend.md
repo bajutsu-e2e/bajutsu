@@ -175,7 +175,9 @@ the **lean** end of `capabilities()`.
 - [x] Evidence and device control — `logcat` deviceLog, `screenrecord` video, and mocked network
   **(done, 2026-07-08, #821)**; the supported device-state steps (`setLocation` + clipboard, the
   subset the emulator honours) landed as [BE-0211](../BE-0211-android-device-control/BE-0211-android-device-control.md)
-  **(#858)** — the rest of the coarse `deviceControl` capability stays honestly capability-gated.
+  **(#858)** — the remaining operations (`deviceControl.push`, `.clearKeychain`, `.statusBar`) stay
+  honestly gated by their per-operation tokens, per
+  [BE-0212](../BE-0212-granular-device-control-capabilities/BE-0212-granular-device-control-capabilities.md).
 - [x] doctor and disclosure — `doctor --target` availability beside idb; manifest records `backend: "adb"`.
 - [x] codegen target — UI Automator (Kotlin) generator, the target the breakdown offered as the
   alternative to Espresso, landed as [BE-0209](../BE-0209-android-codegen-emitter/BE-0209-android-codegen-emitter.md) **(#854)**.
