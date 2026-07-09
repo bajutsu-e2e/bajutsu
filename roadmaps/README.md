@@ -549,6 +549,14 @@ Consolidating the demo and dogfood apps onto the showcase suite: bringing it to 
 
 <!-- /GENERATED:in-progress-dogfood -->
 
+### AI provider configuration
+
+<!-- GENERATED:in-progress-ai-provider -->
+| ID | Item | Status |
+|---|---|---|
+| [BE-0184](BE-0184-persist-serve-ai-provider-settings/BE-0184-persist-serve-ai-provider-settings.md) | Persist serve AI provider settings across restarts | In progress |
+<!-- /GENERATED:in-progress-ai-provider -->
+
 ### Hosting the web UI (cloud / self-hosted)
 
 <!-- GENERATED:in-progress-hosting -->
@@ -646,9 +654,7 @@ A platform is just a backend behind the one driver interface ([DESIGN §1](../DE
 ### AI provider configuration
 
 <!-- GENERATED:proposals-ai-provider -->
-| ID | Item | Status |
-|---|---|---|
-| [BE-0184](BE-0184-persist-serve-ai-provider-settings/BE-0184-persist-serve-ai-provider-settings.md) | Persist serve AI provider settings across restarts | Proposal |
+
 <!-- /GENERATED:proposals-ai-provider -->
 
 ### AI usage and cost observability

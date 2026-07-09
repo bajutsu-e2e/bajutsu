@@ -22,6 +22,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
+    from bajutsu.serve.provider_store import ProviderSettingsStore
     from bajutsu.serve.server.db import Repository
     from bajutsu.serve.server.oauth import OAuthClient
 
@@ -136,8 +137,9 @@ class ProviderSettings:
 
     Scopes the fields to the provider they belong to, so switching the Settings dropdown no longer
     overwrites what was set for the provider left behind. `region` applies to `bedrock` only; the
-    SDK/CLI providers leave it empty. Session-only, like the env-var materialization it feeds — never
-    written to disk.
+    SDK/CLI providers leave it empty. Held in memory and materialized into env vars; on local serve
+    it is also persisted through `provider_settings_store` so a saved choice survives a restart
+    (BE-0184).
     """
 
     model: str = ""
@@ -359,8 +361,13 @@ class ServeState:
     # Per-provider AI settings the Settings panel reads/writes (BE-0183), keyed by provider name.
     # Holds each provider's own model/effort/region so switching the dropdown stops discarding the
     # one left behind; the active provider's slot is materialized into the env vars spawned jobs read.
-    # Session-only, in memory, like the env-var state it feeds — never persisted.
+    # In memory, but flushed to `provider_settings_store` on save and reloaded on boot (BE-0184).
     provider_settings: dict[str, ProviderSettings] = field(default_factory=dict)
+    # Durable backing for `provider_settings` + the active provider choice (BE-0184). Set on local
+    # serve to a file-backed store so a saved choice survives a restart; None leaves the pre-BE-0184
+    # session-only behavior (a hosted deployment resolves these per process, not per org, so it does
+    # not wire a store yet). `set_provider` flushes here on save; boot restores from it.
+    provider_settings_store: ProviderSettingsStore | None = None
     # The in-flight `ant auth login` subprocess (BE-0175), or None when no sign-in is running. Held
     # between the POST that starts it and the GET that polls it, so a second click doesn't spawn a
     # duplicate. Local serve only — a hosted deployment refuses the operation, so this stays None
