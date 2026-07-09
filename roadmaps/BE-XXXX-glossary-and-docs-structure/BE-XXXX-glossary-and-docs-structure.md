@@ -39,12 +39,15 @@ same thing.
 Beyond that one slip, several term clusters are genuinely non-trivial and currently reconstructed
 piecemeal by the reader:
 
-- `driver` (the abstract `Driver` interface) / `backend` (idb, playwright, fake — an
-  implementation of it, and the config's stability-ordered list) / `actuator` (the one backend
-  chosen for a given run) / `platform` (`ios` / `web` / `fake` — a token that expands to a
-  backend). [`docs/drivers.md`](../../docs/drivers.md) and
+- `driver` (the abstract `Driver` interface) / `backend` (idb, xcuitest, adb, playwright, fake — the
+  implementations of it, and the config's stability-ordered list) / `actuator` (the one backend
+  chosen for a given run) / `platform` (`ios` / `android` / `web` / `fake` — a token that expands to
+  a backend). [`docs/drivers.md`](../../docs/drivers.md) and
   [`docs/concepts.md`](../../docs/concepts.md)`#5` each explain part of this, but neither states
-  the full relationship in one place.
+  the full relationship in one place. (The enumeration here follows `bajutsu/backends.py`'s
+  `IMPLEMENTED` set / `PLATFORM_ACTUATORS`, not the docs — `docs/multi-platform.md` and CLAUDE.md
+  still call Android "planned" though `adb` is already wired as an actuator, which is itself a
+  drift this inventory is meant to catch.)
 - `trace` (inspect a finished run as a text timeline) and `triage` (diagnose a failed run and
   propose a fix) are two distinct CLI commands one edit apart in spelling — an easy pair to
   conflate on a first read of [`docs/cli.md`](../../docs/cli.md).
@@ -52,8 +55,10 @@ piecemeal by the reader:
   (the Simulator instance a target is driven on) look interchangeable to a newcomer even though
   BE-0057 deliberately renamed the config concept from `app` to `target` to separate it from the
   app it describes.
-- A `capturePolicy` entry is called a "rule" throughout [`docs/evidence.md`](../../docs/evidence.md),
-  but "rule" never appears as a schema type — the word exists only in prose.
+- A `capturePolicy` entry is called a "rule" throughout [`docs/evidence.md`](../../docs/evidence.md);
+  the schema does define a `CaptureRule` type (`bajutsu/scenario/models/evidence.py`), but the three
+  names for the same concept — `capturePolicy`, `CaptureRule`, and "rule" in prose — aren't
+  reconciled anywhere.
 
 The project is pre-alpha and the [public docs site](../BE-0093-public-docs-site/BE-0093-public-docs-site.md)
 has already shipped, so more readers and more pages will accumulate around today's terminology
@@ -70,8 +75,10 @@ The work breaks down into five independent, sequential units:
    `expect` / assertion, selector / identifier, `component`, `capturePolicy` rule, evidence, Tier 1 /
    Tier 2, `driver` / `backend` / `actuator` / `platform`, `target` / `app` / `device`, and the CLI
    verbs (`record` / `crawl` / `run` / `trace` / `triage` / `codegen` / `doctor`), plus `from`
-   (provenance). The source of truth is the current implementation (the DSL grammar and the
-   pydantic models under `bajutsu/scenario/`), not how a given doc page happens to phrase it today.
+   (provenance). The source of truth is the current implementation (the DSL grammar and the pydantic
+   models under `bajutsu/scenario/`, and the backend registry in `bajutsu/backends.py`), not how a
+   given doc page happens to phrase it today — the docs already lag the code on this point (Android /
+   `adb`).
 2. **A new page, `docs/glossary.md` (+ `docs/ja/glossary.md`).** One entry per term: a one-sentence
    definition, a pointer to the page/module that explains it in depth, and — for each cluster
    identified above — an explicit disambiguation (e.g. a short table for `driver` / `backend` /
