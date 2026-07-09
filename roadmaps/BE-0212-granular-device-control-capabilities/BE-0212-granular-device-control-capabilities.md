@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0212](BE-0212-granular-device-control-capabilities.md) |
 | Author | [@hirosassa](https://github.com/hirosassa) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0212") |
+| Implementing PR | [#856](https://github.com/bajutsu-e2e/bajutsu/pull/856) |
 | Topic | Platform expansion (Android / Web / Flutter) |
 | Related | [BE-0128](../BE-0128-device-step-capability-preflight/BE-0128-device-step-capability-preflight.md), [BE-0082](../BE-0082-capability-preflight-check/BE-0082-capability-preflight-check.md), [BE-0007](../BE-0007-android-backend/BE-0007-android-backend.md) |
 <!-- /BE-METADATA -->
@@ -87,11 +88,20 @@ separately in this same batch.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Define per-operation tokens (`bajutsu/drivers/base.py`).
-- [ ] Map each device-control step to its token (`bajutsu/capability_preflight.py`).
-- [ ] Declare support per backend (idb full set; fake / web unchanged).
-- [ ] Preserve the runtime `_need_control` backstop.
-- [ ] Validation — fast-gate preflight tests over a subset-advertising backend.
+- [x] Define per-operation tokens (`bajutsu/drivers/base.py`).
+- [x] Map each device-control step to its token (`bajutsu/capability_preflight.py`).
+- [x] Declare support per backend (idb full set; fake / web unchanged).
+- [x] Preserve the runtime `_need_control` backstop.
+- [x] Validation — fast-gate preflight tests over a subset-advertising backend.
+
+Log:
+
+- [#856](https://github.com/bajutsu-e2e/bajutsu/pull/856) — Split the coarse `DEVICE_CONTROL` token into six per-operation tokens
+  (`deviceControl.setLocation` / `.clipboard` / `.push` / `.clearKeychain` / `.appLifecycle` /
+  `.statusBar`, grouped by cohesive sub-group), mapped each device-control step to its token in the
+  preflight, had idb / xcuitest advertise the full family via `DEVICE_CONTROL_ALL`, and added
+  fast-gate tests for a subset-advertising backend. The `_need_control` runtime backstop is
+  unchanged.
 
 ## References
 

@@ -54,13 +54,25 @@ resolution, and the **preflight capability check** (below).
 | `conditionWait` | native condition waiting | — | — | ✅ | ✅ |
 | `network` | native network monitoring | — | — | ✅ | — |
 | `multiTouch` | two-finger gestures (pinch / rotate) | — | — | ✅ | ✅ |
-| `deviceControl` | simctl device operations (push / setLocation / clearKeychain / …) | ✅ | — | — | — |
+| `deviceControl.setLocation` | set the simulated GPS location | ✅ | — | — | — |
+| `deviceControl.clipboard` | read / write / clear the clipboard | ✅ | — | — | — |
+| `deviceControl.push` | deliver a push notification | ✅ | — | — | — |
+| `deviceControl.clearKeychain` | clear the keychain | ✅ | — | — | — |
+| `deviceControl.appLifecycle` | background / foreground the app | ✅ | — | — | — |
+| `deviceControl.statusBar` | override / clear the status bar | ✅ | — | — | — |
+
+> The `deviceControl.*` tokens are the `DeviceControl` family split per operation (BE-0212, from the
+> coarse `deviceControl` of BE-0128), so a backend can advertise exactly the operations it can
+> honor. idb backs the whole family; the Android emulator backs `setLocation` + `clipboard` only
+> (its `push` / keychain / status-bar / app-lifecycle operations have no faithful equivalent), which
+> the split makes expressible without green-lighting the rest.
 
 > idb and adb sit at the **lean end**, both actuating by **frame-center coordinates** — they expose
 > no semantic tap, so the run loop resolves a unique element via `query()` and taps its center.
 > `pinch` / `rotate` raise `UnsupportedAction` (single-touch); on iOS those go through codegen →
-> XCUITest. adb advertises exactly `query` / `elements` / `screenshot`; it has no `deviceControl`
-> family yet (Android device control is a follow-up, BE-0007 Unit 4). The `fake` driver advertises a
+> XCUITest. adb advertises exactly `query` / `elements` / `screenshot`; it has no device-control
+> family yet (none of the `deviceControl.*` tokens; Android device control is a follow-up, BE-0211).
+> The `fake` driver advertises a
 > richer
 > capability set (semanticTap / conditionWait / multiTouch) purely to exercise those code paths in
 > tests. The `playwright` (web) driver advertises `semanticTap` / `conditionWait` (Playwright has
@@ -79,19 +91,20 @@ through (prime directive #2: fail fast and clearly). It is a pure function of (s
 set) — no device, no clock — and per-scenario: only the offending scenarios fail, the rest run.
 
 The check gates only the **hard** requirements the capability set cleanly decides: `pinch` /
-`rotate` need `multiTouch`, a `visual` assertion needs `screenshot`, a device-control step
-(`setLocation` / `push` / `clearKeychain` / `clearClipboard` / `setClipboard` / `background` /
-`foreground` / `overrideStatusBar` / `clearStatusBar`) needs `deviceControl` (the whole
-simctl-backed `DeviceControl` family as one unit, BE-0128), and every run needs `query` +
-`elements`. It deliberately does **not** gate `conditionWait` (the run loop polls for every wait,
-so no backend needs the token) or `network` (idb captures traffic through the app-side collector
-despite not advertising `network`, so `request` / `event` / `requestSequence` / `responseSchema`
-assertions and `until: { request }` waits run on idb). `gestures.py`'s `_require_multi_touch` stays
-as a defense-in-depth check at gesture time, and `_need_control` stays as the equivalent for
-device-control steps — catching the case where a backend advertises `deviceControl` (so the
-preflight lets the scenario through) but the specific run still has no `DeviceControl` wired, e.g.
-a parallel run with no pinned device. A backend that does not advertise `deviceControl` (Playwright,
-`fake`) never reaches this path: the preflight rejects its device-control scenarios first.
+`rotate` need `multiTouch`, a `visual` assertion needs `screenshot`, and each device-control step
+needs the token for its own operation — `setLocation` needs `deviceControl.setLocation`, the
+clipboard steps need `deviceControl.clipboard`, `push` needs `deviceControl.push`, and so on
+(BE-0212 split the coarse `deviceControl` family of BE-0128 into these per-operation tokens). Every
+run needs `query` + `elements`. It deliberately does **not** gate `conditionWait` (the run loop
+polls for every wait, so no backend needs the token) or `network` (idb captures traffic through the
+app-side collector despite not advertising `network`, so `request` / `event` / `requestSequence` /
+`responseSchema` assertions and `until: { request }` waits run on idb). `gestures.py`'s
+`_require_multi_touch` stays as a defense-in-depth check at gesture time, and `_need_control` stays
+as the equivalent for device-control steps — catching the case where the specific run has no
+`DeviceControl` wired at all, e.g. a parallel run with no pinned device. Because the tokens are
+per-operation, a backend that supports only part of the family (the Android emulator: `setLocation`
++ `clipboard`) passes preflight for what it advertises and fails fast for the rest, each unsupported
+step named individually — rather than the family being all-or-nothing.
 
 ## idb
 
