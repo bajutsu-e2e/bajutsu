@@ -189,6 +189,8 @@ Each in-repo skill declares its tier as a `model:` field in its `SKILL.md` front
 harness picks the right model when the skill runs — nothing to remember, still overridable:
 
 - [`implement-be`](../.claude/skills/implement-be/SKILL.md) → `opus` (Heavy)
+- [`propose-and-build`](../.claude/skills/propose-and-build/SKILL.md) → `opus` (Heavy) — it
+  implements product code in its Phase B, so it carries the same tier as `implement-be`.
 - [`ideation`](../.claude/skills/ideation/SKILL.md) → `sonnet` (Medium)
 - [`japanese-tech-writing`](../.claude/skills/japanese-tech-writing/SKILL.md) → `sonnet` (Medium)
 - [`roadmap-filter`](../.claude/skills/roadmap-filter/SKILL.md) → `haiku` (Light) — a read-only
@@ -218,6 +220,36 @@ Deliberately **not gate-enforced**: which model a session used isn't recoverable
 hard-pinning would remove the human's judgment to upshift when a "light" task turns out hard. This
 follows the same "procedures as commands, advisory not policy" precedent as the rest of the
 contributor workflow ([BE-0069](../roadmaps/BE-0069-executable-contributor-guardrails/BE-0069-executable-contributor-guardrails.md)).
+
+## Authoring and shipping roadmap items: the three skills
+
+Turning an idea into shipped code runs through three skills that form a triangle — author,
+ship, or both:
+
+- [`ideation`](../.claude/skills/ideation/SKILL.md) — **author only.** A sounding board that
+  shapes an idea into a BE proposal and stops at the `roadmaps/` files (never touches product
+  code). The proposal carries the `BE-XXXX` placeholder; CI allocates the real id after the PR
+  merges.
+- [`implement-be`](../.claude/skills/implement-be/SKILL.md) — **ship a numbered item.** Takes an
+  already-allocated `BE-NNNN`, treats its proposal as the spec, implements it with tests, flips
+  the item to `Status: Implemented`, and proves `make check` green.
+- [`propose-and-build`](../.claude/skills/propose-and-build/SKILL.md) — **both, stacked.**
+  Composes the other two for a small, settled item the author is ready to build now: it authors
+  the proposal *and* implements it in parallel, landing them as a temporary two-PR stack (the
+  proposal PR first, the implementation PR second). Once the proposal merges and the id is
+  allocated, a hand-off rebases the implementation branch, rewrites its `BE-XXXX` references to
+  the allocated `BE-NNNN`, retargets it onto `main`, and runs `implement-be`'s promotion + gate
+  steps — so the stack collapses into an ordinary `implement-be`-shaped PR.
+
+**Picking one.** The serial `ideation` → merge → allocate → `implement-be` path is the default:
+it forces a design to clear review before code is written, and it keeps the `BE-NNNN` sequence
+contiguous by only spending a number on an item that ships
+([BE-0089](../roadmaps/BE-0089-merge-time-be-id-allocation/BE-0089-merge-time-be-id-allocation.md)).
+Reach for `propose-and-build` only when that path's latency is pure overhead — a small,
+well-scoped item whose design the author does not expect review to reshape. The parallelism buys
+the dead time between "proposal opened" and "id allocated"; it costs rework on the
+implementation branch if review changes the proposal, so fall back to the serial path whenever a
+design is genuinely uncertain.
 
 ## Pull requests: title and body
 

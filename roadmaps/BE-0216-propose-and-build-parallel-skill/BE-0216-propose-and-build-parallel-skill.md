@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0216](BE-0216-propose-and-build-parallel-skill.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0216") |
+| Implementing PR | _pending_ |
 | Topic | Development infrastructure (contributor workflow) |
 <!-- /BE-METADATA -->
 
@@ -212,15 +213,22 @@ discipline the SKILL.md encodes.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Author `.claude/skills/propose-and-build/SKILL.md` (frontmatter + body).
-- [ ] Phase A section — delegate to `ideation`'s authoring rules.
-- [ ] Phase B section — delegate to `implement-be` steps 3–7 with the two id-dependent carve-outs.
-- [ ] Tracking-issue deferral note (BE-0109 issue does not exist during Phase B).
-- [ ] Hand-off section — rebase, `BE-0216`→`BE-NNNN` diff rewrite, base retarget, `implement-be`
+- [x] Author `.claude/skills/propose-and-build/SKILL.md` (frontmatter + body).
+- [x] Phase A section — delegate to `ideation`'s authoring rules.
+- [x] Phase B section — delegate to `implement-be` steps 3–7 with the two id-dependent carve-outs.
+- [x] Tracking-issue deferral note (BE-0109 issue does not exist during Phase B).
+- [x] Hand-off section — rebase, `BE-0216`→`BE-NNNN` diff rewrite, base retarget, `implement-be`
       steps 8–10.
-- [ ] Guardrails / scope section (when to use, the rework trade-off, prime-directive binding).
-- [ ] `docs/ai-development.md` (+ `docs/ja/`) three-skill triangle subsection; cross-link the three
+- [x] Guardrails / scope section (when to use, the rework trade-off, prime-directive binding).
+- [x] `docs/ai-development.md` (+ `docs/ja/`) three-skill triangle subsection; cross-link the three
       SKILL.md `References`.
+
+### Log
+
+- _pending_ — Ship the `propose-and-build` skill: add `.claude/skills/propose-and-build/SKILL.md`
+  (frontmatter + Phase A / Phase B / hand-off / guardrails), cross-link the `ideation` and
+  `implement-be` skills both ways, and document the three-skill triangle in
+  `docs/ai-development.md` (+ `docs/ja/` mirror) and the skill-tier list.
 
 ## References
 
