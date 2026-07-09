@@ -13,7 +13,7 @@ pass/fail gate.
 
 Like `run` after BE-0143, the body is a plan record plus small `_resolve_*`/`_wire_*` helpers
 (BE-0205): each self-contained phase — warm-start resolution, lane planning, callback and health
-wiring — is a named unit taking plain data, leaving `crawl` a thin readable sequence. The ~135-line
+wiring — is a named unit taking plain data, leaving `crawl` a thin readable sequence. The ~80-line
 typer option signature stays inline (serve introspects its exact metadata via the BE-0134 flag
 mirror).
 """
