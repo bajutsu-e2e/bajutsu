@@ -6,7 +6,7 @@
 | 項目 | 値 |
 |---|---|
 | 提案 | [BE-XXXX](BE-XXXX-claude-code-oauth-token-credential-ja.md) |
-| 提案者 | [@paihu](https://github.com/paihu) |
+| 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **提案** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
 | トピック | AI provider configuration |

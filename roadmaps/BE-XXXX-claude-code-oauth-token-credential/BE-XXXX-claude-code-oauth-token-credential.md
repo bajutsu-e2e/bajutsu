@@ -6,7 +6,7 @@
 | Field | Value |
 |---|---|
 | Proposal | [BE-XXXX](BE-XXXX-claude-code-oauth-token-credential.md) |
-| Author | [@paihu](https://github.com/paihu) |
+| Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
 | Topic | AI provider configuration |
