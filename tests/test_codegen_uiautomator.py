@@ -255,6 +255,9 @@ def test_string_literals_escape_kotlin_specials() -> None:
 def test_class_name_for_stem() -> None:
     assert class_name_for("login_flow") == "LoginFlowUITest"
     assert class_name_for("!!!") == "GeneratedUITest"
+    # A digit-leading stem must not produce an identifier that starts with a digit — that is not a
+    # valid Kotlin class name and would fail to compile.
+    assert class_name_for("2fa_flow") == "_2FaFlowUITest"
 
 
 def test_scenario_name_sanitizing_edges() -> None:

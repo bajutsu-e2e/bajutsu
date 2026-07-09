@@ -80,6 +80,9 @@ def _class_name(name: str) -> str:
     cleaned = re.sub(r"[^0-9a-zA-Z]+", " ", name).title().replace(" ", "")
     if not cleaned:
         cleaned = "Generated"
+    if cleaned[0].isdigit():
+        # A Kotlin class name cannot start with a digit; prefix `_` as `_ident` does for methods.
+        cleaned = "_" + cleaned
     return f"{cleaned}UITest"
 
 
