@@ -14,12 +14,12 @@ is forwarded through the parent process.
 from __future__ import annotations
 
 import contextlib
-import re
 import shlex
 import subprocess
 from collections.abc import Callable, Mapping
 
 from bajutsu import simctl
+from bajutsu.device_id import is_valid_device_id
 
 # argv -> stdout. adb needs no parent-process env (unlike simctl's SIMCTL_CHILD_*).
 RunFn = Callable[[list[str]], str]
@@ -54,14 +54,12 @@ def _num(v: float) -> str:
     return str(round(v))  # `input tap`/`swipe` take integer coordinates
 
 
-# A device serial / emulator id: alphanumerics plus `. _ : -`, never leading with `-` (which adb
-# would read as an option). Every command builder validates the serial through `_adb`, so an id
-# from `--udid` / config can neither inject an adb option nor reach a subprocess argv unchecked.
-_SERIAL = re.compile(r"[A-Za-z0-9._:][A-Za-z0-9._:-]*")
-
-
+# A device serial / emulator id follows the shared `device_id` policy (never leading with `-`,
+# which adb would read as an option). Every command builder validates the serial through `_adb`,
+# so an id from `--udid` / config can neither inject an adb option nor reach a subprocess argv
+# unchecked. Raises adb's `DeviceError` so a bad serial surfaces as the CLI's clean exit-2.
 def _checked_serial(serial: str) -> str:
-    if not _SERIAL.fullmatch(serial):
+    if not is_valid_device_id(serial):
         raise DeviceError(f"invalid device serial: {serial!r}")
     return serial
 
