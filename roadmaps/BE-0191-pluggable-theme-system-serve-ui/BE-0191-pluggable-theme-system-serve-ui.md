@@ -258,8 +258,11 @@ filesystem, building directly on the token contract of unit 1.
   unchanged. A native control stays keyboard/screen-reader accessible and never overlaps the tiler
   (BE-0072). Added a `tests/serve/test_http_themes.py` case asserting the picker renders one option
   per theme and the old toggle is gone, updated `docs/web-ui.md` (+ ja mirror), and rewrote the
-  `demos/serve-ui/scenarios/theme.yaml` dogfood in lockstep to drive the picker via `type` typeahead
-  and assert the selected theme id (verified against a real headless Chromium). ([#855](https://github.com/bajutsu-e2e/bajutsu/pull/855))
+  `demos/serve-ui/scenarios/theme.yaml` dogfood in lockstep. The dogfood asserts the picker's initial
+  state — that it renders and reflects the OS scheme — but does not drive a selection change: the DSL
+  has no action that switches a native `<select>` deterministically (`type` typeahead fired under one
+  headless Chromium build but was a no-op in CI). A deterministic switch needs a dedicated
+  select-option Driver action, which lands with unit 5. ([#855](https://github.com/bajutsu-e2e/bajutsu/pull/855))
 
 ## References
 
