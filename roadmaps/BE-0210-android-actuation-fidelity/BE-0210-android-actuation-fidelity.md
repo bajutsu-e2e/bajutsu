@@ -9,7 +9,7 @@
 | Author | [@hirosassa](https://github.com/hirosassa) |
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0210") |
-| Implementing PR | _pending_ |
+| Implementing PR | [#857](https://github.com/bajutsu-e2e/bajutsu/pull/857) |
 | Topic | Platform expansion (Android / Web / Flutter) |
 | Related | [BE-0007](../BE-0007-android-backend/BE-0007-android-backend.md) |
 <!-- /BE-METADATA -->
@@ -95,7 +95,7 @@ a still-ambiguous selector still fails rather than guessing.
 
 Log:
 
-- _pending_ — `back` (cross-backend step: Android `keyevent 4`, iOS/XCUITest tap the OS back
+- [#857](https://github.com/bajutsu-e2e/bajutsu/pull/857) — `back` (cross-backend step: Android `keyevent 4`, iOS/XCUITest tap the OS back
   button, web `history.back()`); `double_tap` single `adb shell` round-trip; adb scroll-into-view in
   the resolve path (default up-swipe, bounded); config `grantPermissions` pre-granted via `pm grant`
   at lease time. The standalone mid-scenario deeplink step is deferred: the launch-time path already
