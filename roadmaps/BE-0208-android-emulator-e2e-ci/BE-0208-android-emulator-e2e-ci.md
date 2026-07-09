@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0208](BE-0208-android-emulator-e2e-ci.md) |
 | Author | [@hirosassa](https://github.com/hirosassa) |
-| Status | **Proposal** |
+| Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0208") |
+| Implementing PR | _pending_ |
 | Topic | Platform expansion (Android / Web / Flutter) |
 | Related | [BE-0007](../BE-0007-android-backend/BE-0007-android-backend.md) |
 <!-- /BE-METADATA -->
@@ -69,11 +70,25 @@ within the prime directives.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] The workflow (`.github/workflows/android-e2e.yml`) — `android-emulator-runner` + KVM, path-gated.
-- [ ] Build and install the Android showcase on the booted emulator.
-- [ ] Run the passing core scenarios over `--backend android`.
+- [x] The workflow (`.github/workflows/android-e2e.yml`) — `android-emulator-runner` + KVM, path-gated.
+- [x] Build and install the Android showcase on the booted emulator.
+- [x] Run the passing core scenarios over `--backend android`.
 - [ ] Visual/golden baseline parity check.
 - [ ] Grow the scenario set with the actuation-fidelity and device-control slices as they land.
+
+### Log
+
+- 2026-07-09 — First slice (units 1-3): added `.github/workflows/android-e2e.yml`, a Linux lane that
+  boots an AVD under KVM (`reactivecircus/android-emulator-runner`) and runs the core
+  id/tap/type/value scenarios (smoke, firstlook, search, components, data_driven, modals, relaunch,
+  system) through `--backend android`, driven by a new `e2e` target in
+  `demos/showcase/android/Makefile`. The AVD is **x86_64** API 34, not the local validation's arm64:
+  KVM acceleration on the x86_64 GitHub Linux runner needs an x86_64 system image (a foreign-arch
+  image falls back to slow software emulation) — the API level matches, only the ABI tracks the CI
+  host. Documented in `docs/ci.md` (+ ja). Path-gated like `web-e2e.yml`, off the fast `make check`
+  gate. Units 4 (visual/golden baseline parity) and 5 (grow with the actuation/device-control
+  slices) stay open: the baseline dimensions need a first on-device capture, and the extra scenarios
+  need their BE-0007 follow-up slices to land first. Item stays **In progress**.
 
 ## References
 

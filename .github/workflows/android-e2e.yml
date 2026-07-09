@@ -1,0 +1,141 @@
+# On-device Android e2e (Linux + KVM) — the third backend's lane, the Android twin of the iOS
+# `e2e.yml` (macOS / idb) and `web-e2e.yml` (Linux / Playwright). It boots an AVD under KVM on a
+# Linux runner and drives the showcase's core id/tap/type/value scenarios over `--backend android`
+# (the adb driver, BE-0007), asserting the deterministic pass/fail. It runs no LLM — a deterministic
+# `run` over fixed scenarios — so it stays within the prime directives, and it is kept off the fast
+# `make check` gate exactly as the idb and web e2e lanes are.
+#
+# The AVD is x86_64 API 34, not the arm64 image the local 2026-07-07 validation used: KVM
+# acceleration on the x86_64 GitHub Linux runner needs an x86_64 system image, and a foreign-arch
+# (arm64) image would fall back to slow software emulation and time the job out. The API level (34)
+# matches the local validation; only the ABI tracks the CI host.
+#
+# Positive-list path filter (mirrors web-e2e.yml): only the paths this lane exercises — the adb
+# driver and its command layer, the backend registry / lifecycle, the run pipeline and scenario
+# loader, the Android showcase and the shared scenarios, the config, and this workflow. Neither a
+# required check nor gated by the `changes` job, so a plain `paths:` filter is enough: an unrelated
+# PR simply doesn't run it. A new adb-relevant path defaults to NOT triggering — add it here.
+name: Android E2E (emulator)
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: &android-paths
+      - 'bajutsu/drivers/adb.py'
+      - 'bajutsu/adb.py'
+      - 'bajutsu/backends.py'
+      - 'bajutsu/platform_lifecycle.py'
+      - 'bajutsu/runner/**'
+      - 'bajutsu/scenario/**'
+      - 'bajutsu/orchestrator/**'
+      - 'bajutsu/*.py'
+      - 'bajutsu/cli/commands/run.py'
+      - 'demos/showcase/android/**'
+      - 'demos/showcase/scenarios/**'
+      - 'demos/showcase/showcase.config.yaml'
+      - 'pyproject.toml'
+      - 'uv.lock'
+      - '.github/workflows/android-e2e.yml'
+  pull_request:
+    paths: *android-paths
+
+permissions:
+  contents: read
+
+concurrency:
+  group: android-e2e-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  android-e2e:
+    name: smoke (adb)
+    runs-on: ubuntu-latest
+    # Booting an emulator, building the APK, and running eight scenarios is ~12min end to end; 30
+    # catches a real hang (a wedged AVD boot or adb) with comfortable headroom.
+    timeout-minutes: 30
+    # The adb backend is pure subprocess (no Python extra), so the base package suffices; skip the
+    # dev group (mypy / pytest / ruff), which the Linux `check` gate owns.
+    env:
+      UV_NO_DEV: "1"
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39  # v8.2.0
+        with:
+          enable-cache: true
+
+      # Gradle needs JDK 17 (demos/showcase/android targets jvmTarget 17); pin it explicitly rather
+      # than lean on whichever JDK the runner image defaults to.
+      - name: Set up JDK 17
+        uses: actions/setup-java@0f481fcb613427c0f801b606911222b5b6f3083a  # v5.5.0
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      # Cache the Gradle build across runs (the committed wrapper drives the build; this only warms
+      # its caches, so a miss just rebuilds cold and never changes the result).
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@3f131e8634966bd73d06cc69884922b02e6faf92  # v6.2.0
+
+      # KVM must be world-accessible for the emulator to be hardware-accelerated on the Linux runner.
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Install the base package (no dev)
+        run: uv sync --no-dev
+
+      # Build the Compose a11y APK outside the emulator session so the AVD is only alive during the
+      # run itself; bajutsu's launch installs it from the config's appPath. The `make e2e` step below
+      # depends on `compose-build` too, but Gradle finds it up to date there, so this is not rebuilt.
+      - name: Build the Compose showcase APK
+        run: make -C demos/showcase/android compose-build
+
+      # Cache the AVD system image + snapshot so the boot is warm across runs (the canonical
+      # android-emulator-runner recipe): create-and-snapshot on a miss, then reuse it on the run.
+      - name: Cache AVD
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+        id: avd-cache
+        with:
+          path: |
+            ~/.android/avd/*
+            ~/.android/adb*
+          key: avd-api34-x86_64
+
+      - name: Create AVD and generate snapshot for caching
+        if: steps.avd-cache.outputs.cache-hit != 'true'
+        uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d  # v2.38.0
+        with:
+          api-level: 34
+          arch: x86_64
+          target: google_apis
+          force-avd-creation: false
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front none
+          disable-animations: false
+          script: echo "Generated AVD snapshot for caching."
+
+      # Boot the AVD under KVM and run the passing scenarios over the adb backend. The action owns
+      # boot + readiness; `make -C demos/showcase/android e2e` drives the scenarios (default
+      # serial `booted` resolves to the one running emulator).
+      - name: Run the core scenarios (adb)
+        uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d  # v2.38.0
+        with:
+          api-level: 34
+          arch: x86_64
+          target: google_apis
+          force-avd-creation: false
+          emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front none
+          disable-animations: true
+          script: make -C demos/showcase/android e2e
+
+      - name: Upload run artifacts
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
+        with:
+          name: android-e2e-run
+          path: runs/
+          if-no-files-found: ignore
