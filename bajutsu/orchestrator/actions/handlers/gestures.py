@@ -91,6 +91,12 @@ def _do_type(driver: base.Driver, step: Step, _r: object, _c: object, _b: object
     driver.type_text(step.type.text)
 
 
+@_handler("select_option")
+def _do_select_option(driver: base.Driver, step: Step, _r: object, _c: object, _b: object) -> None:
+    assert step.select_option is not None
+    driver.select_option(step.select_option.sel.as_selector(), step.select_option.option)
+
+
 @_handler("swipe")
 def _do_swipe(driver: base.Driver, step: Step, _r: object, _c: object, _b: object) -> None:
     assert step.swipe is not None

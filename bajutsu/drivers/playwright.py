@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import contextlib
 import functools
+import json
 import math
 import shutil
 import time
@@ -544,6 +545,37 @@ class PlaywrightDriver:
         self._page.keyboard.type(text)
 
     @_wedge_guard
+    def select_option(self, sel: base.Selector, option: str) -> None:
+        # A native <select>'s dropdown isn't in the DOM, so a coordinate click can't switch it
+        # deterministically. Resolve the <select> through the determinism core (unique match), then
+        # locate it at the resolved point — the same coordinate a click would use, keeping matching
+        # in resolve_unique rather than Playwright's engine — and set its value, firing `change` so
+        # the page's listeners run exactly as for a user selection (BE-0191).
+        #
+        # JS returns a sentinel string instead of throwing: a JS Error from evaluate() passes
+        # through _wedge_guard as a generic simctl.DeviceError (indistinguishable from a browser
+        # crash), so the two failure modes — not a <select>, option value absent — are surfaced as
+        # sentinel strings and re-raised here as ElementNotFound (a SelectorError) so the run loop
+        # can catch them with the same handler as any other selector failure.
+        x, y = self._center(sel)
+        opt = json.dumps(option)
+        result = self._page.evaluate(
+            "(() => {"
+            f"const el = document.elementFromPoint({x}, {y});"
+            "const select = el && el.closest('select');"
+            "if (!select) return 'no-select';"
+            f"if (![...select.options].some(o => o.value === {opt})) return 'no-option';"
+            f"select.value = {opt};"
+            "select.dispatchEvent(new Event('change', {bubbles: true}));"
+            "return 'ok';"
+            "})()"
+        )
+        if result == "no-select":
+            raise base.ElementNotFound(f"selectOption: resolved element is not a <select>: {sel!r}")
+        if result == "no-option":
+            raise base.ElementNotFound(f"selectOption: no option with value {option!r}: {sel!r}")
+
+    @_wedge_guard
     def wait_for(self, sel: base.Selector) -> bool:
         # Single-shot by contract (BE-0118): the deadline poll lives in base.wait_until,
         # so the timeout is honoured on Web exactly as on idb (this method ignored it before).
@@ -575,6 +607,7 @@ class PlaywrightDriver:
             base.Capability.CONDITION_WAIT,
             base.Capability.NETWORK,
             base.Capability.MULTI_TOUCH,
+            base.Capability.SELECT_OPTION,
         }
     )
 

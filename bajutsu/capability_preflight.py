@@ -11,6 +11,9 @@ with one aggregated message (prime directive #2: fail fast and clearly).
 The map gates only the **true hard requirements** the capability set cleanly decides:
 
 - `pinch` / `rotate` need `multiTouch`.
+- `selectOption` needs `selectOption` (BE-0191): a web-only action that sets a native `<select>`;
+  iOS / Android backends raise `UnsupportedAction`, so a scenario with this step is rejected before
+  any device work on those platforms, exactly like `pinch`/`rotate` on idb.
 - a `visual` assertion needs `screenshot`.
 - a device-control step needs the capability token for its own operation (BE-0212 split the coarse
   `deviceControl` of BE-0128 into per-operation tokens): `setLocation` needs
@@ -91,6 +94,11 @@ def _multi_touch_locations(sc: Scenario) -> list[str]:
     ]
 
 
+def _select_option_locations(sc: Scenario) -> list[str]:
+    """The paths where a selectOption step appears."""
+    return [path for path, step in _walk_steps(sc.steps) if step.select_option is not None]
+
+
 def _visual_locations(sc: Scenario) -> list[str]:
     """The paths where a visual assertion appears."""
     return [path for path, a in _assertions_with_path(sc) if a.visual is not None]
@@ -137,6 +145,11 @@ _REQUIREMENTS = (
         base.Capability.MULTI_TOUCH,
         "pinch / rotate (two-finger gesture)",
         _multi_touch_locations,
+    ),
+    _Requirement(
+        base.Capability.SELECT_OPTION,
+        "selectOption (web <select> switch; not supported on iOS / Android)",
+        _select_option_locations,
     ),
     _Requirement(
         base.Capability.SCREENSHOT,

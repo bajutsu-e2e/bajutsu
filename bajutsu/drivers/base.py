@@ -47,6 +47,7 @@ class Capability:
     ELEMENTS = "elements"
     MULTI_TOUCH = "multiTouch"  # two-finger gestures (pinch / rotate); idb is single-touch
     WEBVIEW = "webView"  # DOM query/tap inside an embedded WKWebView (BE-0037)
+    SELECT_OPTION = "selectOption"  # set a native <select> by value; web only (BE-0191)
     # The `DeviceControl` family, one token per operation (BE-0212, split from the coarse
     # `deviceControl` of BE-0128). A backend advertises exactly the operations it can honor, so
     # preflight gates each device-control step on its own operation — the Android emulator backs
@@ -138,6 +139,10 @@ class Driver(Protocol):
     def pinch(self, sel: Selector, scale: float) -> None: ...
     def rotate(self, sel: Selector, radians: float) -> None: ...
     def type_text(self, text: str) -> None: ...
+    # Set a native `<select>` (resolved by `sel`) to the option whose value is `option`. Web-only:
+    # a `<select>` has no native counterpart on iOS / Android, so those backends raise
+    # UnsupportedAction (BE-0191).
+    def select_option(self, sel: Selector, option: str) -> None: ...
     # Single-shot by contract (BE-0118): whether `sel` matches the *current* screen,
     # checked once. A backend never loops here — the shared `wait_until` owns the
     # deadline poll, so a caller's timeout means the same real seconds on every backend.

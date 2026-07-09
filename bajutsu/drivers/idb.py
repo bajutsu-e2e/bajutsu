@@ -362,6 +362,11 @@ class IdbDriver:
     def swipe(self, frm: base.Point, to: base.Point) -> None:
         self._run(swipe_cmd(self.udid, frm[0], frm[1], to[0], to[1]))
 
+    def select_option(self, sel: base.Selector, option: str) -> None:
+        raise base.UnsupportedAction(
+            "selectOption は <select> を持つ web バックエンド専用; iOS ネイティブに <select> はない"
+        )
+
     def type_text(self, text: str) -> None:
         # Via _type_text (a patchable class attribute), so tests can intercept the value
         # without a companion, and so it never touches argv — see _type_text_via_companion.

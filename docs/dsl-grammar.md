@@ -125,6 +125,7 @@ Action    ::=
   | { doubleTap:   <Selector> }
   | { longPress:   { sel: <Selector>, duration: number } }
   | { type:        { text: string, into?: <Selector>, submit?: boolean } }   # submit default false
+  | { selectOption:{ sel: <Selector>, option: string } }   # set a web <select> to the option with this value (web only; iOS/Android raise)
   | { swipe:       <Swipe> }
   | { pinch:       { sel: <Selector>, scale: number } }    # scale > 0  (>1 in, <1 out)
   | { rotate:      { sel: <Selector>, radians: number } }  # >0 clockwise

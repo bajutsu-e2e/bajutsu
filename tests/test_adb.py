@@ -244,6 +244,13 @@ def test_pinch_and_rotate_unsupported() -> None:
         driver.rotate({"id": "stable_refresh"}, 1.0)
 
 
+def test_select_option_unsupported() -> None:
+    # <select> is a web control with no Android-native counterpart, so the backend refuses (BE-0191).
+    driver = AdbDriver("U", run=lambda a: FIXTURE)
+    with pytest.raises(base.UnsupportedAction):
+        driver.select_option({"id": "nav.theme-picker"}, "midnight")
+
+
 def test_screenshot_writes_capture_bytes(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
     captured: list[list[str]] = []
 

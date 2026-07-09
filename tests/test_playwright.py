@@ -12,7 +12,7 @@ from typing import Any
 
 import pytest
 
-from bajutsu.dom import _norm_role, _str_or_none, parse_dom
+from bajutsu.dom import QUERY_JS, _norm_role, _str_or_none, parse_dom
 from bajutsu.drivers import base
 from bajutsu.drivers.playwright import PlaywrightDriver
 
@@ -208,8 +208,17 @@ class _FakePage:
         self._handlers: dict[str, list[Any]] = {}
         self.cdp = _FakeCDP()
         self.context = _FakeBrowserContext(self.cdp)
+        self.evaluated: list[str] = []  # every evaluate() expression, for asserting non-query JS
+        # Optional queue of return values for non-query evaluate() calls. Each pop() serves one
+        # non-query call; once empty, non-query calls return None (simulating undefined JS return).
+        self.evaluate_returns: list[Any] = []
 
     def evaluate(self, expression: str) -> Any:
+        self.evaluated.append(expression)
+        if expression == QUERY_JS:
+            return list(self._records)
+        if self.evaluate_returns:
+            return self.evaluate_returns.pop(0)
         return list(self._records)
 
     def goto(self, url: str) -> object:
@@ -426,6 +435,46 @@ def test_wait_for_is_single_shot() -> None:
     drv, _ = _driver([_rec(identifier="home.title")])
     assert drv.wait_for({"id": "home.title"}) is True
     assert drv.wait_for({"id": "nope"}) is False
+
+
+def test_select_option_sets_value_at_resolved_point() -> None:
+    # The <select> resolves through the determinism core (unique match); the driver then locates it
+    # at the frame center — the same coordinate a click would use — and sets the value there,
+    # so matching never leaves resolve_unique for Playwright's own engine (BE-0191).
+    drv, page = _driver(
+        [_rec(identifier="nav.theme-picker", role="select", frame=[10, 20, 40, 10])]
+    )
+    drv.select_option({"id": "nav.theme-picker"}, "midnight")
+    # The last evaluate() is the select JS (the first is query()); it reads the resolved center
+    # (30, 25) via elementFromPoint and assigns the requested option value.
+    select_js = page.evaluated[-1]
+    assert "elementFromPoint(30.0, 25.0)" in select_js
+    assert '"midnight"' in select_js
+    assert "new Event('change'" in select_js
+
+
+def test_select_option_ambiguous_raises() -> None:
+    drv, _ = _driver([_rec(identifier="dup", role="select"), _rec(identifier="dup", role="select")])
+    with pytest.raises(base.AmbiguousSelector):
+        drv.select_option({"id": "dup"}, "midnight")
+
+
+def test_select_option_raises_element_not_found_when_not_a_select() -> None:
+    # When JS returns 'no-select' (the resolved element is not a <select>), the driver raises
+    # ElementNotFound rather than letting _wedge_guard turn it into a DeviceError crash.
+    drv, page = _driver([_rec(identifier="nav.theme-picker", role="select", frame=[0, 0, 10, 10])])
+    page.evaluate_returns = ["no-select"]
+    with pytest.raises(base.ElementNotFound, match="not a <select>"):
+        drv.select_option({"id": "nav.theme-picker"}, "midnight")
+
+
+def test_select_option_raises_element_not_found_when_no_matching_option() -> None:
+    # When JS returns 'no-option' (no <option> has the requested value), the driver raises
+    # ElementNotFound — the same taxonomy as a missing element, not a browser crash.
+    drv, page = _driver([_rec(identifier="nav.theme-picker", role="select", frame=[0, 0, 10, 10])])
+    page.evaluate_returns = ["no-option"]
+    with pytest.raises(base.ElementNotFound, match="no option with value"):
+        drv.select_option({"id": "nav.theme-picker"}, "midnight")
 
 
 def _touch_points(params: Any) -> list[tuple[float, float]]:

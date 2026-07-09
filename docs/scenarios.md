@@ -168,6 +168,7 @@ actions in one step is a validation error (`scenario/models/steps.py` `_one_acti
 | `doubleTap` | `doubleTap: <Selector>` | two quick taps on the resolved element |
 | `longPress` | `longPress: { sel: <Selector>, duration: <sec> }` | long press |
 | `type` | `type: { text: "...", into?: <Selector>, submit?: <bool> }` | with `into`, focuses first |
+| `selectOption` | `selectOption: { sel: <Selector>, option: "..." }` | set a web `<select>` to the option with this value; web only (iOS / Android raise) |
 | `swipe` | `swipe: { on: <Selector>, direction: up\|down\|left\|right }` or `swipe: { from: [x,y], to: [x,y] }` | selector form and coordinate form cannot mix |
 | `pinch` | `pinch: { sel: <Selector>, scale: <num> }` | two-finger magnify; `scale > 0` (`>1` zooms in, `<1` out) |
 | `rotate` | `rotate: { sel: <Selector>, radians: <num> }` | two-finger rotation; `>0` is clockwise |
@@ -210,6 +211,20 @@ Modifiers:
 
 > Internally, when `into` is given, the target is `tap`ped before `type_text` (`orchestrator.py`
 > `_do_action`).
+
+### `selectOption`
+
+```yaml
+- selectOption: { sel: { id: nav.theme-picker }, option: midnight }   # set the <select> to the option whose value is "midnight"
+```
+
+For a native HTML `<select>`, whose dropdown is not part of the page's element tree, a coordinate
+tap cannot switch the value deterministically. `selectOption` resolves the `<select>` through the
+same unique-match core every action uses, then sets the option by its **value** (not its visible
+label) and fires a `change` event, so the page reacts exactly as it would to a user's pick. The
+value matches what a `value` assertion reads back from the `<select>`, so a selection is directly
+assertable. This is a web-only action — a `<select>` has no native counterpart on iOS or Android,
+so those backends fail the step with a clear "unsupported action" reason rather than doing nothing.
 
 ### `swipe`
 

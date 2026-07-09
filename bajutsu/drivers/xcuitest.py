@@ -344,6 +344,11 @@ class XcuitestDriver:
         if reply.status != _OK:
             raise XcuitestChannelError(f"swipe failed ({reply.status})")
 
+    def select_option(self, sel: base.Selector, option: str) -> None:
+        raise base.UnsupportedAction(
+            "selectOption は <select> を持つ web バックエンド専用; iOS ネイティブに <select> はない"
+        )
+
     def type_text(self, text: str) -> None:
         reply = self._transport("POST", "/type", {"text": text})
         if reply.status != _OK:

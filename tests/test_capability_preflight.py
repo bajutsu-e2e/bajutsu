@@ -417,6 +417,35 @@ def test_baseline_reasons_have_no_path() -> None:
     assert all(not r.startswith("step ") for r in reasons)
 
 
+# --- selectOption capability gating (BE-0191) ---
+
+
+_WEB = _IDB | {base.Capability.SELECT_OPTION}
+
+
+def test_select_option_requires_select_option_capability() -> None:
+    # A selectOption step on a backend without SELECT_OPTION (e.g. idb/adb/xcuitest) must be
+    # rejected at preflight — not run every earlier step on the real device first and fail late.
+    sc = _sc(steps=[{"selectOption": {"sel": {"id": "nav.theme-picker"}, "option": "midnight"}}])
+    reasons = capability_preflight.unsupported(sc, _IDB)
+    assert reasons and any("selectOption" in r for r in reasons)
+    # A web backend advertising SELECT_OPTION runs it without issue.
+    assert capability_preflight.unsupported(sc, _WEB) == []
+
+
+def test_select_option_reason_includes_step_index() -> None:
+    sc = _sc(
+        steps=[
+            {"tap": {"id": "ok"}},
+            {"selectOption": {"sel": {"id": "nav.theme-picker"}, "option": "midnight"}},
+        ]
+    )
+    reasons = capability_preflight.unsupported(sc, _IDB)
+    assert len(reasons) == 1
+    assert reasons[0].startswith("step 2: ")
+    assert "selectOption" in reasons[0]
+
+
 # --- CLI doctor --scenario integration (BE-0024) ---
 
 
