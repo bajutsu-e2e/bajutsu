@@ -599,6 +599,7 @@ The scope is currently **limited to the iOS Simulator** ([DESIGN §1](../DESIGN.
 | ID | Item | Status |
 |---|---|---|
 | [BE-0008](BE-0008-flutter-support/BE-0008-flutter-support.md) | Flutter support | Proposal |
+| [BE-0208](BE-0208-android-emulator-e2e-ci/BE-0208-android-emulator-e2e-ci.md) | Android on-device e2e in CI (emulator via KVM) | Proposal |
 <!-- /GENERATED:proposals-platform -->
 
 ### Authoring experience (record / GUI editor)

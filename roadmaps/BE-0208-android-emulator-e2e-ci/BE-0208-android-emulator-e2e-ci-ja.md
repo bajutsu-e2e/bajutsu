@@ -1,14 +1,14 @@
-[English](BE-XXXX-android-emulator-e2e-ci.md) · **日本語**
+[English](BE-0208-android-emulator-e2e-ci.md) · **日本語**
 
-# BE-XXXX — Android の実機 e2e を CI に配線する（KVM 経由のエミュレータ）
+# BE-0208 — Android の実機 e2e を CI に配線する（KVM 経由のエミュレータ）
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
 |---|---|
-| 提案 | [BE-XXXX](BE-XXXX-android-emulator-e2e-ci-ja.md) |
+| 提案 | [BE-0208](BE-0208-android-emulator-e2e-ci-ja.md) |
 | 提案者 | [@hirosassa](https://github.com/hirosassa) |
 | 状態 | **提案** |
-| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0208") |
 | トピック | Platform expansion (Android / Web / Flutter) |
 | 関連 | [BE-0007](../BE-0007-android-backend/BE-0007-android-backend-ja.md) |
 <!-- /BE-METADATA -->

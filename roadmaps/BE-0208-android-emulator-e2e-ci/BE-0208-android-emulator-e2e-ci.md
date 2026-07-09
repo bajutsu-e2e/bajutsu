@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-android-emulator-e2e-ci-ja.md)
+**English** · [日本語](BE-0208-android-emulator-e2e-ci-ja.md)
 
-# BE-XXXX — Android on-device e2e in CI (emulator via KVM)
+# BE-0208 — Android on-device e2e in CI (emulator via KVM)
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-android-emulator-e2e-ci.md) |
+| Proposal | [BE-0208](BE-0208-android-emulator-e2e-ci.md) |
 | Author | [@hirosassa](https://github.com/hirosassa) |
 | Status | **Proposal** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0208") |
 | Topic | Platform expansion (Android / Web / Flutter) |
 | Related | [BE-0007](../BE-0007-android-backend/BE-0007-android-backend.md) |
 <!-- /BE-METADATA -->
