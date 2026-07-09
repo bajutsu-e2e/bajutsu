@@ -195,6 +195,33 @@ def deeplink_cmd(serial: str, url: str, package: str) -> list[str]:
     )
 
 
+# --- device control (BE-0211): the emulator-backed subset of the DeviceControl family ---
+
+
+def geo_fix_cmd(serial: str, lat: float, lon: float) -> list[str]:
+    """Set the emulated GPS fix via the emulator console (`emu geo fix`).
+
+    `geo fix` takes `<longitude> <latitude>`, the reverse of `set_location(lat, lon)`, so the two
+    are swapped here — the one place the order matters.
+    """
+    return _adb(serial, "emu", "geo", "fix", str(lon), str(lat))
+
+
+def set_primary_clip_cmd(serial: str, text: str) -> list[str]:
+    """Write `text` to the primary clipboard (`cmd clipboard set-primary-clip`)."""
+    return _adb(serial, "shell", "cmd", "clipboard", "set-primary-clip", text)
+
+
+def get_primary_clip_cmd(serial: str) -> list[str]:
+    """Read the primary clipboard (`cmd clipboard get-primary-clip`); content comes back on stdout."""
+    return _adb(serial, "shell", "cmd", "clipboard", "get-primary-clip")
+
+
+def clear_primary_clip_cmd(serial: str) -> list[str]:
+    """Clear the primary clipboard (`cmd clipboard clear-primary-clip`)."""
+    return _adb(serial, "shell", "cmd", "clipboard", "clear-primary-clip")
+
+
 # --- device catalog / serial resolution ---
 
 
@@ -321,3 +348,20 @@ class Env:
         out = subprocess.run(cmd, capture_output=True, check=True).stdout
         with open(path, "wb") as f:
             f.write(out)
+
+    # Device control (BE-0211): the subset the emulator can honor, the Android peer of simctl's
+    # setLocation / clipboard. The rest of the DeviceControl family has no faithful emulator
+    # equivalent and is not wired (see `platform_lifecycle.android_device_control`).
+
+    def set_location(self, lat: float, lon: float) -> None:
+        self._run(geo_fix_cmd(self.serial, lat, lon))
+
+    def set_clipboard(self, text: str) -> None:
+        self._run(set_primary_clip_cmd(self.serial, text))
+
+    def clear_clipboard(self) -> None:
+        self._run(clear_primary_clip_cmd(self.serial))
+
+    def get_clipboard(self) -> str:
+        # The device shell appends a trailing newline; strip it so the read-back matches the seed.
+        return self._run(get_primary_clip_cmd(self.serial)).rstrip("\n")
