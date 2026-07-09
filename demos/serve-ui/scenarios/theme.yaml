@@ -8,8 +8,10 @@
 # deterministically — `type` relies on the browser's keyboard typeahead, which fires under some
 # headless Chromium builds but not others (it flipped the value locally yet was a no-op in CI). A
 # deterministic switch needs a dedicated select-option action on the Driver; that lands with unit 5
-# (which owns the richer theme.yaml), and the picker's change/persist behaviour is covered by the
-# JS-level wiring and the http markup test in the meantime.
+# (which owns the richer theme.yaml). The client-side selection/persist logic added in serve.core.js
+# (systemTheme() kind lookup, themeExists(), initTheme() change+localStorage wiring) has no coverage
+# in the fast suite — the repo has no JS unit test infrastructure. Unit 5 is the right place to
+# close that gap alongside the Driver action.
 description: >-
   Theme picker — the header select renders and starts on the light theme (the OS preference), with
   the selected theme id readable from the select.
