@@ -81,8 +81,10 @@ gate-checked PR; nothing lands on `main` directly.
    workflows slightly offset cron times so they never contend for a runner.
 
 2. **Two credentials, all-or-nothing dormancy.** Each job needs two independent credentials and must
-   be a green no-op unless *both* are present (matching `roadmap-id.yml` / `claude-review.yml`, so a
-   half-provisioned repo never goes red):
+   be a green no-op unless *both* are present — combining the single-credential dormancy gate
+   `roadmap-id.yml` already uses for its App token with the one `claude-review.yml` already uses for
+   its AI-provider credential (neither precedent gates on both; this proposal is the first to require
+   the pair), so a half-provisioned repo never goes red:
    - **An AI provider**, selected exactly as `claude-review.yml` does (BE-0203, [BE-0104](../BE-0104-vendor-neutral-ai-backend/BE-0104-vendor-neutral-ai-backend.md)):
      the Claude Code subscription (`CLAUDE_CODE_OAUTH_TOKEN`) when present, else Amazon Bedrock via
      OIDC (`AWS_BEDROCK_ROLE_ARN` + `BEDROCK_MODEL_ID`), else dormant. This authors the updates.
