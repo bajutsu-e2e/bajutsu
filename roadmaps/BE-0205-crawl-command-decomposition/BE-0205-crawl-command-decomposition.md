@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0205") |
-| Implementing PR | [#NNN](https://github.com/bajutsu-e2e/bajutsu/pull/NNN) |
+| Implementing PR | [#866](https://github.com/bajutsu-e2e/bajutsu/pull/866) |
 | Topic | Codebase quality & technical debt |
 <!-- /BE-METADATA -->
 
@@ -70,7 +70,7 @@ redesign.
 
 **Log**
 
-- [#NNN](https://github.com/bajutsu-e2e/bajutsu/pull/NNN): decomposed `crawl` into a frozen
+- [#866](https://github.com/bajutsu-e2e/bajutsu/pull/866): decomposed `crawl` into a frozen
   `_CrawlPlan` record plus `_resolve_warm_start` / `_plan_lanes` / `_make_callbacks` / `_wire_health`
   helpers and an `_execute` sequence, matching the shape BE-0143 gave `run`; added
   `tests/test_crawl_lanes.py` for the extracted helpers. Behavior unchanged; the typer signature
