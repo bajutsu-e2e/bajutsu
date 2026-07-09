@@ -42,7 +42,7 @@
       {%- if group %}
       <optgroup label="{{ klabel }}">
         {%- for t in group %}
-        <option value="{{ t.id }}" data-kind="{{ t.kind }}">{{ t.name }}</option>
+        <option value="{{ t.id }}">{{ t.name }}</option>
         {%- endfor %}
       </optgroup>
       {%- endif %}
