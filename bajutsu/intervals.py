@@ -25,7 +25,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Protocol
 
-from bajutsu import adb
+from bajutsu import adb, simctl
 
 PROVIDER = "simctl"
 ADB_PROVIDER = "adb"
@@ -33,7 +33,19 @@ ADB_PROVIDER = "adb"
 
 def record_video_cmd(udid: str, path: str) -> list[str]:
     """Build the simctl command that records the screen to `path` (h264)."""
-    return ["xcrun", "simctl", "io", udid, "recordVideo", "--codec", "h264", path]
+    # Validate the udid inline — as simctl's own builders and adb's `screenrecord_cmd`
+    # (via `_checked_serial`) do — so this evidence-capture argv can't carry an option-injecting
+    # / metacharacter id even if reached without the earlier `simctl.Env` boundary check.
+    return [
+        "xcrun",
+        "simctl",
+        "io",
+        simctl._validated_udid(udid),
+        "recordVideo",
+        "--codec",
+        "h264",
+        path,
+    ]
 
 
 def device_log_cmd(udid: str, predicate: str | None = None) -> list[str]:
@@ -42,7 +54,7 @@ def device_log_cmd(udid: str, predicate: str | None = None) -> list[str]:
         "xcrun",
         "simctl",
         "spawn",
-        udid,
+        simctl._validated_udid(udid),
         "log",
         "stream",
         "--level",
@@ -61,7 +73,7 @@ def app_trace_cmd(udid: str, subsystem: str) -> list[str]:
         "xcrun",
         "simctl",
         "spawn",
-        udid,
+        simctl._validated_udid(udid),
         "log",
         "stream",
         "--predicate",
