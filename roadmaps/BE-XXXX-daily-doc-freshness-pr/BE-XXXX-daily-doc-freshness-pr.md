@@ -20,8 +20,8 @@ the repository with what has actually shipped, and — when they find drift — 
 
 - a **roadmap-refresh** workflow that keeps BE items (`Status` / `Progress` / `Implementing PR`)
   current, and
-- a **docs-refresh** workflow that keeps the prose docs (`docs/`, `DESIGN.md`, top-level
-  `README*` / `CLAUDE.md`) in step with behavior.
+- a **docs-refresh** workflow that keeps the prose docs (`docs/` and `DESIGN.md`) in step with
+  behavior.
 
 The two share one design (the credential shape, the contract-file pattern, the in-job gate, the
 rolling Draft PR) but run and ship independently. Both use the Claude Code action — the same AI
@@ -77,8 +77,12 @@ gate-checked PR; nothing lands on `main` directly.
 
 ### The shared shape (both workflows)
 
-1. **Triggers.** `schedule` (a daily cron) and `workflow_dispatch` (on-demand). Give the two
-   workflows slightly offset cron times so they never contend for a runner.
+1. **Triggers, concurrency, and timeout.** `schedule` (a daily cron) and `workflow_dispatch`
+   (on-demand). Give the two workflows slightly offset cron times so they never contend for a runner.
+   Each job carries a `concurrency` group (`cancel-in-progress: false`) so a manual dispatch never
+   races that workflow's own nightly run, and a `timeout-minutes` fail-fast cap so a hung provider
+   call is killed rather than tying up a runner — both following `claude-review.yml`'s
+   `concurrency:` / `timeout-minutes:` precedent.
 
 2. **Two credentials, all-or-nothing dormancy.** Each job needs two independent credentials and must
    be a green no-op unless *both* are present — combining the single-credential dormancy gate
@@ -110,9 +114,20 @@ gate-checked PR; nothing lands on `main` directly.
 
 5. **One rolling, idempotent, always-Draft, human-merged PR per workflow.** If the reconciliation
    produces no diff, the job exits without opening or touching a PR (no daily noise on a quiet week).
-   Otherwise it pushes to that workflow's fixed branch and reuses the existing open PR if there is one
-   (force-update), rather than opening a new PR every day. The PR opens with `--draft`; the human
-   reviews, and *only* the human marks it ready and merges. There is no auto-merge on either branch.
+   Otherwise it pushes to that workflow's fixed branch and reuses the existing open PR if there is one,
+   rather than opening a new PR every day. The PR opens with `--draft`; the human reviews, and *only*
+   the human marks it ready and merges. There is no auto-merge on either branch.
+
+   **Never clobber a human's work on the rolling branch.** The daily run rewrites the branch only
+   when its current tip is a commit the automation itself last authored (the App/bot identity). If a
+   human has pushed onto the branch since the last run — a reviewer's fixup commit, an edit made
+   mid-review — the run does **not** force-update over it: it leaves the branch untouched and surfaces
+   that it skipped (a `::warning::` in the job, noted on the PR) so the human's work is never
+   overwritten and the skip is loud rather than silent. This mirrors the guard in
+   `scripts/check_stale_roadmap_prs.py` (`open_or_update_fix_pr`), which deliberately bases its branch
+   on the exact SHA a fix was computed from rather than the live tip, to avoid clobbering a newer
+   commit with content computed from a stale snapshot (its comment at lines 177–180). A fresh branch
+   is created only when no rolling branch exists.
 
 ### What differs
 
@@ -121,10 +136,18 @@ gate-checked PR; nothing lands on `main` directly.
 | Branch / PR | `chore/roadmap-refresh` | `chore/docs-refresh` |
 | Contract | `.github/roadmap-refresh-prompt.md` | `.github/docs-refresh-prompt.md` |
 | Reconciles | BE items' `Status` / `Progress` / `Implementing PR` against merged PRs; runs `make roadmap-index` when it changes an index-affecting field | `docs/architecture.md#implementation-status`; `DESIGN.md` / `docs/architecture.md` prose vs behavior (BE-0113) |
-| Path allowlist | `roadmaps/**` only | `docs/**`, `DESIGN.md`, top-level `README*` / `CLAUDE.md` only |
+| Path allowlist | `roadmaps/**` only | `docs/**` and `DESIGN.md` only |
 
 Neither workflow ever edits product code (`bajutsu/`, `BajutsuKit/`, tests, config, demos) — the
 allowlist forbids it, mirroring the ideation skill's "authoring only, never implement" boundary.
+
+The docs-refresh allowlist deliberately **excludes** the top-level `README*` and `CLAUDE.md`. Those
+are the project's contract surface, not behavior-tracking prose — `CLAUDE.md` in particular states the
+prime directives the AI author is itself bound by, so letting the agent auto-draft edits to its own
+operating contract is a boundary we don't want to cross even behind a Draft PR. Edits there stay
+human-authored; the workflow's remit is `docs/` and `DESIGN.md`, exactly the prose that drifts against
+behavior. (The deterministic `docs/` → roadmap link repair for `README*` / `CLAUDE.md` is a separate,
+LLM-free concern already owned by [BE-0096](../BE-0096-docs-roadmap-link-integrity/BE-0096-docs-roadmap-link-integrity.md).)
 
 ### Prime-directive compliance
 
@@ -165,7 +188,8 @@ and tests, so it cannot affect determinism or the app-agnostic core.
 - [ ] `roadmap-refresh.yml` — daily workflow reconciling BE `Status` / `Progress` / `Implementing PR`, its own contract, branch, and rolling Draft PR
 - [ ] `docs-refresh.yml` — daily workflow reconciling `docs/` / `DESIGN.md` prose vs behavior, its own contract, branch, and rolling Draft PR
 - [ ] Shared shape wired into both: two-credential dormancy gate, concurrency + timeout, in-job `make check` surfaced in the PR body, idempotent no-diff exit
-- [ ] Path allowlists enforced per workflow (roadmap-only; docs-only) so neither touches product code
+- [ ] Rolling-branch clobber guard: force-update only over the automation's own tip; skip loudly if a human pushed onto the branch
+- [ ] Path allowlists enforced per workflow (roadmap-only; docs-only, excluding `README*` / `CLAUDE.md`) so neither touches product code or the contract surface
 
 ## References
 
