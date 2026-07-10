@@ -113,7 +113,7 @@ def _progress_bar(counts: dict[str, int], total: int) -> str:
 
 
 def render_html(items: list[Any]) -> str:
-    """Render the dashboard body: a search box + status filter, then one section per category.
+    """Render the dashboard body: search box, status filter, category sections, empty-state region.
 
     Sections are category-major (by Topic); each item card carries its own status (colour + badge),
     and each category shows a progress figure derived purely from the Status field — the share of its
@@ -255,8 +255,8 @@ _STYLE = """
 # overview (just the heading and its progress bar); turning a status off, or typing a query, expands the
 # categories that still have a match so results are visible without a click. Whenever the filters leave
 # nothing visible, a live-region line explains why rather than leaving the grid silently blank — the
-# query matched nothing, or its matches are hidden by the status chips, or (no query) the chips alone
-# hid everything. The collapsed state is applied by JS, never baked into the markup, so with scripting
+# query matched nothing, its matches are hidden by the status chips, or (no query) every chip is off or
+# the on chips have no items. The collapsed state is applied by JS, never baked into the markup, so with scripting
 # off every status is on, every category open, the empty-state region empty, and the page fully
 # readable. Each heading also toggles its own category. Nothing fetches or computes — it only shows and
 # hides already-rendered markup.
@@ -311,18 +311,22 @@ _SCRIPT = """
     });
     if(empty){
       // Whenever the current filters leave nothing visible, say why — so the grid is never silently
-      // blank, whether search or the chips (or both) emptied it. Three cases: the query matches no
-      // card ("No items match"); it matches cards the chips hide (a real match, not a non-match); or
-      // there is no query and the chips alone hide everything. Empty string ⇒ the region collapses.
+      // blank, whether search or the chips (or both) emptied it. The query cases are match-count
+      // driven; the no-query case is chip-state driven (every chip off vs. the on chips just having no
+      // items), so the wording can't contradict a chip the reader still sees checked. '' ⇒ collapses.
       var qText=search ? ('\\u201C'+search.value.trim()+'\\u201D') : '';
+      var allOff=Object.keys(on).every(function(s){ return !on[s]; });
       var msg='';
       if(hasQuery && matched===0){ msg='No items match '+qText; }
       else if(hasQuery && shown===0){
         msg=matched+(matched===1?' item matches ':' items match ')+qText
           +', but the status filter above is hiding '+(matched===1?'it':'them');
       }
-      else if(!hasQuery && shown===0){
+      else if(shown===0 && allOff){
         msg='Every status is turned off — switch a status filter above back on to see items';
+      }
+      else if(shown===0){
+        msg='No items in the selected statuses — turn on another status filter above to see more';
       }
       empty.textContent=msg;
     }

@@ -93,13 +93,14 @@ def test_search_box_is_rendered_and_wired() -> None:
     assert "search.addEventListener('input', apply)" in _PAGE
     # The always-present live region the script fills when the filters leave nothing visible.
     assert 'class="be-empty" role="status"' in _PAGE
-    # Its three empty-state reasons, so the grid never goes silently blank: the query matches nothing,
-    # its matches are hidden by the status chips, or the chips alone hide everything. Pinned to the
-    # user-facing phrases (not the JS literal's quoting), which is what a reader actually sees.
+    # Its empty-state reasons, so the grid never goes silently blank: the query matches nothing, its
+    # matches are hidden by the status chips, or — with no query — every chip is off or the on chips
+    # have no items. Pinned to the user-facing phrases (not the JS literal's quoting) a reader sees.
     assert "No items match " in _PAGE
     assert "but the status filter above is hiding " in _PAGE
     assert "item matches " in _PAGE and "items match " in _PAGE
     assert "Every status is turned off" in _PAGE
+    assert "No items in the selected statuses" in _PAGE
 
 
 def test_every_card_carries_its_topic() -> None:
