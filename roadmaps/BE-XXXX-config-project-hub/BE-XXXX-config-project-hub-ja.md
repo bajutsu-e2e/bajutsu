@@ -10,7 +10,7 @@
 | 状態 | **提案** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
 | トピック | Authoring experience (record / GUI editor) |
-| 関連 | [BE-0015](../BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting-ja.md), [BE-0102](../BE-0102-run-stats-dashboard/BE-0102-run-stats-dashboard-ja.md), [BE-0187](../BE-0187-serve-config-view/BE-0187-serve-config-view-ja.md) |
+| 関連 | [BE-0015](../BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting-ja.md), [BE-0102](../BE-0102-run-stats-dashboard/BE-0102-run-stats-dashboard-ja.md), [BE-0187](../BE-0187-serve-config-view/BE-0187-serve-config-view-ja.md), [BE-0108](../BE-0108-hosted-config-source-restriction/BE-0108-hosted-config-source-restriction-ja.md) |
 <!-- /BE-METADATA -->
 
 ## はじめに
@@ -96,9 +96,19 @@ BE-0015 が宙吊りにしていた外部キーがようやく使われます。
 ストア（既存の `runs/` ツリーと並ぶ JSON）に永続化するので、一人で使うローカルのハブに Postgres は要りません。
 どちらの経路も、`ProjectRegistry` という一つのアクセサ（一覧 / 取得 / 追加 / 削除 / active の解決）の
 背後に置き、他のシームを組み立てているのと同じ `_build_server_state` の中で、リポジトリの有無に応じて
-組み立てます。レジストリを何も設定していないときのローカルの挙動は変わりません。素の `serve --config X`
-は今まで通り `X` をバインドし、最初に使うときにそれを active なプロジェクトとして自動登録するので、単一
-config の利用者に後退は起きません。
+組み立てます。
+
+実行履歴はどちらの経路でもプロジェクト単位に分割するので、`GET /api/projects/<name>/runs`、UI の
+プロジェクトごとの「直近の実行結果」、そして姉妹の cross-project ダッシュボードは、ローカルでも動きます。
+データベースがあれば、その分割は `runs.project_id` 列（単位 1）です。データベースがなければ、ディスク上の
+ストアが同じ対応関係を記録します。既存の `runs/` ツリー配下の各実行に、それが属するプロジェクトの印を
+付ける（JSON ストア内のプロジェクト→実行 ID の索引で、`project_id` 列のローカル版）ので、プロジェクト
+単位の実行一覧は走査ではなく参照で済みます。明示的にプロジェクトを作る前に開始した実行は、起動時 config
+から自動登録された active プロジェクトが持ちます。
+
+レジストリを何も設定していないときのローカルの挙動は変わりません。素の `serve --config X` は今まで通り
+`X` をバインドし、最初に使うときにそれを active なプロジェクトとして自動登録するので、単一 config の
+利用者に後退は起きません。
 
 ### 3. API
 
@@ -106,8 +116,9 @@ config の利用者に後退は起きません。
 `default` に解決）です。
 
 - `GET /api/projects` — 登録済みプロジェクトの一覧（名前、config ソース、直近の実行サマリ）。
-- `POST /api/projects` — config ソースからプロジェクトを登録する（BE-0015 が使う allowlist で検証し、
-  ホスト時はクライアント指定のファイルシステムパスを受けない）。
+- `POST /api/projects` — config ソースからプロジェクトを登録する（[BE-0108](../BE-0108-hosted-config-source-restriction/BE-0108-hosted-config-source-restriction-ja.md)
+  が定めるホスト時の config ソース allowlist（アップロードと Git のみ）で検証し、ホスト時はクライアント
+  指定のファイルシステムパスを受けない）。
 - `DELETE /api/projects/<name>` — 登録解除する（履歴は残し、バインディングだけを外す）。
 - `POST /api/projects/<name>/run` — 既存の `RunExecutor` シームを通じてそのプロジェクトの実行を投入し、
   `project_id` に印を付ける。これが外部トリガーの宛先。
@@ -161,7 +172,7 @@ CI や cron が Web UI なしにハブをヘッドレスで駆動できるよう
 > ともに記録します。
 
 - [ ] 1 — プロジェクトのモデル：BE-0015 の `projects` 行に config ソースのレコードを足し、`runs.project_id` に印を付ける。
-- [ ] 2 — 永続化：`ProjectRegistry` シーム（リポジトリがあれば DB 上、なければディスク上の JSON）と、起動時 config の active プロジェクトへの自動登録。
+- [ ] 2 — 永続化：`ProjectRegistry` シーム（リポジトリがあれば DB 上、なければディスク上の JSON）、どちらの経路でもプロジェクト単位に分割した実行履歴（DB なら `project_id` 列、なければプロジェクト→実行 ID の索引）、起動時 config の active プロジェクトへの自動登録。
 - [ ] 3 — API：org スコープの五つの `/api/projects…` エンドポイント（既存の単一 config 向けへの追加）。
 - [ ] 4 — UI：プロジェクトスイッチャーとプロジェクト一覧。再起動なしで active プロジェクトを切り替える。
 - [ ] 5 — CLI：`bajutsu project add/ls/rm` と、ヘッドレスなトリガーとしての `bajutsu run --project <name>`。

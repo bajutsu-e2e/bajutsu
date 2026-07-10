@@ -67,9 +67,17 @@ for one config's run history, pass-rate over time, run durations, most-failing
 scenarios/steps, and a flakiness class. Factor that computation so it takes a run set as input,
 then run it **once per registered project** over that project's `project_id`-scoped runs, and
 assemble the per-project results into a comparison model: for each project, its latest pass-rate,
-its flaky-rate, its median/95th-percentile duration, and a short trend series. The aggregation is
-pure and deterministic, sits in the Python core (out of any Simulator path), and is testable on
-the Linux gate against fixture run data.
+its flaky-rate, its median/95th-percentile duration, and a short trend series.
+
+BE-0102's flakiness output is a per-scenario *classification* (each scenario is labelled flaky or
+not over the window), so the comparison needs one scalar per project to rank on. The **flaky-rate**
+is that roll-up: the share of the project's scenarios BE-0102 classifies as flaky over the window
+(flaky-classified scenarios ÷ total scenarios). This is a plain count over BE-0102's existing
+labels — it adds no new flakiness heuristic, keeping "reuse BE-0102's computation" literal — and
+answers the ranking question ("which project has the most flaky surface?") directly.
+
+The aggregation is pure and deterministic, sits in the Python core (out of any Simulator path),
+and is testable on the Linux gate against fixture run data.
 
 ### 2. API
 
@@ -112,7 +120,7 @@ is the entry point and BE-0102 is the drill-down.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] 1 — Cross-project aggregation: factor BE-0102's per-config computation to take a run set, run it per project, assemble the comparison model.
+- [ ] 1 — Cross-project aggregation: factor BE-0102's per-config computation to take a run set, run it per project, roll its per-scenario flakiness classification up into a per-project flaky-rate scalar, assemble the comparison model.
 - [ ] 2 — API: `GET /api/metrics/projects`, org-scoped, alongside BE-0102's single-config endpoint.
 - [ ] 3 — UI: the sortable comparison table + per-project trend sparklines, deep-linking into BE-0102's single-config dashboard.
 

@@ -10,7 +10,7 @@
 | Status | **Proposal** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
 | Topic | Authoring experience (record / GUI editor) |
-| Related | [BE-0015](../BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md), [BE-0102](../BE-0102-run-stats-dashboard/BE-0102-run-stats-dashboard.md), [BE-0187](../BE-0187-serve-config-view/BE-0187-serve-config-view.md) |
+| Related | [BE-0015](../BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md), [BE-0102](../BE-0102-run-stats-dashboard/BE-0102-run-stats-dashboard.md), [BE-0187](../BE-0187-serve-config-view/BE-0187-serve-config-view.md), [BE-0108](../BE-0108-hosted-config-source-restriction/BE-0108-hosted-config-source-restriction.md) |
 <!-- /BE-METADATA -->
 
 ## Introduction
@@ -95,9 +95,20 @@ no database — the default local `serve` — the registry persists to a small o
 the serve state dir (JSON alongside the existing `runs/` tree), so a single-user local hub needs
 no Postgres. Both paths sit behind one `ProjectRegistry` accessor (list / get / add / remove /
 resolve-active), assembled in `_build_server_state` exactly where the other seams are wired,
-keyed off whether a repository is present. Local behavior with no registry configured is
-unchanged: a bare `serve --config X` still binds `X` and, on first use, auto-registers it as the
-active project so nothing regresses for the single-config user.
+keyed off whether a repository is present.
+
+Run history is partitioned by project on both paths, so `GET /api/projects/<name>/runs`, the
+UI's per-project "latest run verdict," and the sibling cross-project dashboard all work locally
+too. With a database, that partition is the `runs.project_id` column (unit 1). With no database,
+the on-disk store records the same association — each run under the existing `runs/` tree is
+tagged with the project it belongs to (a project→run-ids index in the JSON store, the local
+equivalent of the `project_id` column), so a per-project run listing is a lookup rather than a
+scan. The launch config's auto-registered active project owns any runs started before an explicit
+project is created.
+
+Local behavior with no registry configured is unchanged: a bare `serve --config X` still binds
+`X` and, on first use, auto-registers it as the active project so nothing regresses for the
+single-config user.
 
 ### 3. API
 
@@ -106,7 +117,8 @@ locally):
 
 - `GET /api/projects` — list registered projects (name, config source, last run summary).
 - `POST /api/projects` — register a project from a config source (validated against the
-  allowlist BE-0015 uses; no client-supplied filesystem path when hosted).
+  hosted config-source allowlist [BE-0108](../BE-0108-hosted-config-source-restriction/BE-0108-hosted-config-source-restriction.md)
+  defines — upload and Git only, no client-supplied filesystem path when hosted).
 - `DELETE /api/projects/<name>` — deregister (history is retained, only the binding is removed).
 - `POST /api/projects/<name>/run` — enqueue a run for that project through the existing
   `RunExecutor` seam, stamping `project_id`. This is the external-trigger target.
@@ -161,7 +173,7 @@ A thin CLI mirror so CI and cron can drive the hub headlessly, without the Web U
 > (oldest first), linking the PRs.
 
 - [ ] 1 — The project model: extend BE-0015's `projects` row with a config-source record; stamp `runs.project_id`.
-- [ ] 2 — Persistence: the `ProjectRegistry` seam (DB-backed when a repository is present, on-disk JSON otherwise); auto-register the launch config as the active project.
+- [ ] 2 — Persistence: the `ProjectRegistry` seam (DB-backed when a repository is present, on-disk JSON otherwise), run history partitioned by project on both paths (the `project_id` column with a DB, a project→run-ids index without); auto-register the launch config as the active project.
 - [ ] 3 — API: the five `/api/projects…` endpoints, org-scoped, additive to the existing single-config ones.
 - [ ] 4 — UI: the project switcher + projects list, rebinding the active project without a restart.
 - [ ] 5 — CLI: `bajutsu project add/ls/rm` and `bajutsu run --project <name>` as the headless trigger.
