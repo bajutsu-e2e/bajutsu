@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-cross-project-metrics-dashboard-ja.md)
+**English** · [日本語](BE-0226-cross-project-metrics-dashboard-ja.md)
 
-# BE-XXXX — Cross-project metrics comparison dashboard
+# BE-0226 — Cross-project metrics comparison dashboard
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-cross-project-metrics-dashboard.md) |
+| Proposal | [BE-0226](BE-0226-cross-project-metrics-dashboard.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0226") |
 | Topic | Authoring experience (record / GUI editor) |
 | Related | [BE-0102](../BE-0102-run-stats-dashboard/BE-0102-run-stats-dashboard.md), [BE-0015](../BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md), [BE-0220](../BE-0220-flaky-suggestion-and-cross-run-fix/BE-0220-flaky-suggestion-and-cross-run-fix.md) |
 <!-- /BE-METADATA -->
