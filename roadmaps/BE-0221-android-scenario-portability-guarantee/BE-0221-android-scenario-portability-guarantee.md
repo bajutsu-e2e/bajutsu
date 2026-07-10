@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-android-scenario-portability-guarantee-ja.md)
+**English** · [日本語](BE-0221-android-scenario-portability-guarantee-ja.md)
 
-# BE-XXXX — Guarantee shared showcase scenarios run unchanged on Android
+# BE-0221 — Guarantee shared showcase scenarios run unchanged on Android
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-android-scenario-portability-guarantee.md) |
+| Proposal | [BE-0221](BE-0221-android-scenario-portability-guarantee.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0221") |
 | Topic | Platform expansion (Android / Web / Flutter) |
 | Related | [BE-0007](../BE-0007-android-backend/BE-0007-android-backend.md), [BE-0009](../BE-0009-cross-platform-abstractions/BE-0009-cross-platform-abstractions.md), [BE-0114](../BE-0114-driver-conformance-suite/BE-0114-driver-conformance-suite.md), [BE-0208](../BE-0208-android-emulator-e2e-ci/BE-0208-android-emulator-e2e-ci.md) |
 <!-- /BE-METADATA -->
