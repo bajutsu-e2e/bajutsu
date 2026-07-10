@@ -188,7 +188,7 @@ the **lean** end of `capabilities()`.
   close its own remaining boxes (visual/golden-baseline parity, scenario growth as later slices
   land). Residual on-device actuation tuning (double-tap timing, scroll-into-view, the held-back
   scenarios) belongs to [BE-0210](../BE-0210-android-actuation-fidelity/BE-0210-android-actuation-fidelity.md)
-  (still Proposal), not to BE-0208 (the CI-wiring item).
+  (Implemented, [#857](https://github.com/bajutsu-e2e/bajutsu/pull/857)), not to BE-0208 (the CI-wiring item).
 
 Log:
 
@@ -205,7 +205,7 @@ Log:
   double-tap timing window, scroll-into-view, and the held-back `components` / `modals` scenarios)
   is beyond this item's breakdown; it is owned by
   [BE-0210](../BE-0210-android-actuation-fidelity/BE-0210-android-actuation-fidelity.md)
-  (still Proposal), not by BE-0208 (the CI-wiring item).
+  (Implemented, [#857](https://github.com/bajutsu-e2e/bajutsu/pull/857)), not to BE-0208 (the CI-wiring item).
 - 2026-07-08 ([#821](https://github.com/bajutsu-e2e/bajutsu/pull/821)) — Interval evidence slice
   (Unit 4, the evidence half). `video` now records via `adb
   shell screenrecord` and `deviceLog` via `adb logcat`, the twins of the simctl providers
