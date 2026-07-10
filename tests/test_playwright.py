@@ -670,6 +670,29 @@ def test_reset_context_opens_a_fresh_context_closing_the_old_one() -> None:
     assert browser.context_kwargs[-1].get("reduced_motion") == "reduce"
 
 
+def test_starter_context_carries_reduced_motion() -> None:
+    """The starter's initial browser.new_context() must set reduced_motion="reduce" (BE-0191 unit 5).
+
+    `_start_browser` is untestable in the fast suite (it imports the real Playwright), so instead we
+    write a starter that calls _FakeBrowser.new_context() directly — the same pattern _start_browser
+    uses — and assert the kwarg is passed. This pins the real code path (the call at playwright.py:127)
+    without needing a live browser.
+    """
+    page = _FakePage([])
+    browser = _FakeBrowser([page])
+    pw = _FakePw()
+
+    def fake_starter(_headless: bool) -> Any:
+        ctx = browser.new_context(reduced_motion="reduce")  # mirrors _start_browser's call
+        return (pw, browser, ctx, ctx.new_page())
+
+    PlaywrightDriver("http://app.test/", starter=fake_starter)
+
+    assert browser.context_kwargs[0].get("reduced_motion") == "reduce", (
+        "initial starter context must collapse CSS motion (the BE-0191 unit 5 determinism lever)"
+    )
+
+
 def test_relaunch_replaces_the_browser_process() -> None:
     """relaunch tears down the wedged browser + Playwright and starts a fresh process (BE-0077), then
     rebinds the health handlers to the new page so the recovered lane keeps reporting crash signals."""

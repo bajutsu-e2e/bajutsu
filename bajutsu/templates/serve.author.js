@@ -188,8 +188,10 @@ function initTiling(){
     const r=render(V,V.tree);r.classList.add('tile-root');
     V.view.replaceChildren(r);
     if(ghost){
-      ghost.classList.add('is-leaving');ghost.removeAttribute('data-testid');
-      ghost.querySelectorAll('[data-testid]').forEach(n=>n.removeAttribute('data-testid'));
+      // Strip data-testid AND id so the ghost can't be reached by the selector ladder, by
+      // document.getElementById, or by aria-* idrefs / <label for> while the leave animation plays.
+      ghost.classList.add('is-leaving');ghost.removeAttribute('data-testid');ghost.removeAttribute('id');
+      ghost.querySelectorAll('[data-testid],[id]').forEach(n=>{n.removeAttribute('data-testid');n.removeAttribute('id');});
       // Match on e.target so a descendant's animationend (e.g. a .running spinner bubbling up) doesn't
       // tear the listener down early — the root's own leave/enter animation is the one that ends it.
       const drop=e=>{if(e.target!==ghost)return;ghost.removeEventListener('animationend',drop);ghost.remove();};
