@@ -65,17 +65,21 @@ it changes no shared scenario (that is the point) and adds no LLM to any path.
 ### Work breakdown (MECE)
 
 1. **Diagnose the tab-bar tree on device.** Capture `uiautomator dump` over the Compose
-   (`NavigationBarItem`) and Views (`BottomNavigationView`) showcase tab bars and pin exactly which
-   channels each tab item exposes — `class`, `text`, `content-desc`, `selected`, `clickable` — so
-   the mapping decision rests on the real tree, not an assumption about how Compose flattens.
+   (`NavigationBarItem`) and Views (a `LinearLayout` of `android.widget.Button`, per
+   `MainActivity.kt`) showcase tab bars and pin exactly which channels each tab item exposes —
+   `class`, `text`, `content-desc`, `selected`, `clickable` — so the mapping decision rests on the
+   real tree, not an assumption about how Compose flattens.
 2. **Resolve the cross-backend tab selector in the adb driver.** Make `{ label, traits: [button] }`
    resolve to the correct tab item on the adb backend, mirroring how XCUITest exposes each tab as a
    label-addressable button — the fix living in the driver's normalization (the trait/label
    mapping), app-agnostic, with no special-case for the showcase. Ambiguity stays fail-fast: two
    tabs matching one selector raise rather than tap the first.
-3. **Cover both Android toolkits.** Compose and Views surface the bar with different widget classes
-   in `uiautomator dump`; the resolution must hold for both showcase twins (`showcase-compose`,
-   `showcase-views`), or the residual difference is documented and scoped out explicitly.
+3. **Cover both Android toolkits, which are asymmetric.** The two toolkits render the bar
+   differently: Views is a `LinearLayout` of plain `android.widget.Button`s, which `_norm_class`
+   already maps to the `button` trait, so Views likely satisfies `{ label, traits: [button] }`
+   today — item 1's diagnosis confirms that on device, and this item verifies the Compose fix does
+   not regress it. Compose's `NavigationBarItem` is the toolkit the fix actually targets. Any
+   residual difference is documented and scoped out explicitly.
 4. **Reintroduce the blocked scenarios into the e2e lane.** Once the bar is drivable, add the
    held-out shared scenarios back to [`demos/showcase/android/Makefile`](../../demos/showcase/android/Makefile)'s
    `E2E_SCENARIOS` as each passes on device — `search`, `data_driven`, `relaunch`, `system` first,
@@ -109,7 +113,7 @@ it changes no shared scenario (that is the point) and adds no LLM to any path.
 
 - [ ] Diagnose the Compose / Views tab-bar tree via `uiautomator dump` on device.
 - [ ] Resolve `{ label, traits: [button] }` to the tab item in the adb driver (fail-fast on ambiguity).
-- [ ] Cover both Android toolkits (`showcase-compose`, `showcase-views`), or document the scoped gap.
+- [ ] Cover both toolkits: confirm Views (plain `android.widget.Button`s) already resolves, and the Compose fix does not regress it.
 - [ ] Reintroduce the held-out shared scenarios into the Android e2e lane (BE-0208 Unit 5).
 - [ ] Add a tab-navigation case to the driver conformance suite (BE-0114).
 
