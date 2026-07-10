@@ -95,6 +95,21 @@ within the prime directives.
   open: the baseline dimensions need a first on-device capture, and the extra scenarios need their
   BE-0007 follow-up slices (and the modal-timing tuning above) to land first. Item stays **In
   progress**.
+- 2026-07-10 — Unit 5 (Stable-tab slice): a concurrent change, BE-0107, retired the `SHOWCASE_TAB`
+  launch shortcut, so the shared scenarios now reach a tab by tapping the native tab bar. adb cannot
+  drive the tab bar (only the XCUITest backend can), so the non-Stable-tab scenarios — `search`,
+  `data_driven`, `relaunch`, `system`, and the Log/Notices flows `components`, `modals`, `gestures`,
+  `controls`, `notices` — left the adb lane (it shrank to `smoke`, `firstlook`) and now wait on adb
+  tab-bar navigation, a BE-0007 driver follow-up. This supersedes the earlier plan to rejoin
+  `components` / `modals` by modal-timing tuning alone: reaching the Log tab, not modal latency, is
+  now the blocker. Within that constraint the lane grows by adding `navigation`
+  (`demos/showcase/android/Makefile` `E2E_SCENARIOS`): it never leaves the Stable tab the app
+  launches on — tap a catalog row to push Horse Detail, toggle the favorite, then pop back via the
+  cross-backend `back` step (Android system key) — so it needs no tab bar and adds detail-screen
+  assertions and back-navigation to the lane's coverage. Verified with the Python gate (`make
+  check`); the lane runs in CI (no local emulator). The rest of unit 5 (the tab-dependent scenarios)
+  is blocked on adb tab-bar navigation, and unit 4 (visual/golden parity) stays open. Item stays **In
+  progress**.
 
 ## References
 

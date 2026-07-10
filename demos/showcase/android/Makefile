@@ -16,14 +16,15 @@ SERIAL ?= booted
 # taps, text entry, and value assertions against the Compose a11y twin (dotted SPEC ids verbatim).
 # Only the Stable-tab scenarios run here: BE-0107 retired the SHOWCASE_TAB launch shortcut, so every
 # other tab is now reached by tapping the native tab bar — which adb cannot do (idb can't either;
-# only the XCUITest backend can). `search` / `data_driven` (Search), `relaunch` (Log), and `system`
-# (Permissions) therefore leave the adb lane until the adb backend can drive the tab bar (BE-0007).
-# `components` and `modals` are held back: their sheet/cover flows wait 5s for a modal to present,
-# and the CI emulator (x86_64 + swiftshader software rendering) presents one too slowly for that
-# bound — they pass on the local hardware-accelerated arm64 device but flake here. They rejoin once
-# their on-device timing is tuned (BE-0208 unit 5). The deferred slices (gestures, multi-touch,
-# scroll, notices, device control, mocked network, visual/golden) stay out too (BE-0007 follow-ups).
-E2E_SCENARIOS := smoke firstlook
+# only the XCUITest backend can). `search` / `data_driven` (Search), `relaunch` (Log), `system`
+# (Permissions), and the Log/Notices-tab flows (`components`, `modals`, `gestures`, `controls`,
+# `notices`) therefore leave the adb lane until the adb backend can drive the tab bar (BE-0007).
+# `navigation` joins the two smoke scenarios (BE-0208 unit 5): it never leaves the Stable tab the app
+# launches on — tap a catalog row to push Horse Detail, toggle the favorite, then pop back via the
+# cross-backend `back` step (Android system key) — so it needs no tab bar, and grows the lane's
+# coverage to detail-screen assertions and back-navigation. The remaining slices (multi-touch,
+# device control, mocked network, visual/golden) stay out too (BE-0007 follow-ups / BE-0208 unit 4).
+E2E_SCENARIOS := smoke firstlook navigation
 
 # The wrapper jar IS committed (like any standard Android repo), so a fresh clone builds with no
 # extra step. Only run this to bump the pinned Gradle version — never as part of a build, since it
