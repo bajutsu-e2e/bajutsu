@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0222](BE-0222-daily-doc-freshness-pr.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0222") |
+| Implementing PR | [#882](https://github.com/bajutsu-e2e/bajutsu/pull/882) |
 | Topic | Development infrastructure (contributor workflow) |
 | Related | [BE-0203](../BE-0203-claude-code-pr-review/BE-0203-claude-code-pr-review.md) |
 <!-- /BE-METADATA -->
@@ -195,12 +196,21 @@ and tests, so it cannot affect determinism or the app-agnostic core.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] `roadmap-refresh.yml` — daily workflow reconciling BE `Status` / `Progress` / `Implementing PR`, its own contract, branch, and rolling Draft PR
-- [ ] `docs-refresh.yml` — daily workflow reconciling `docs/` / `DESIGN.md` prose vs behavior, its own contract, branch, and rolling Draft PR
-- [ ] Shared shape wired into both: two-credential dormancy gate, concurrency + timeout, in-job `make check` surfaced in the PR body, idempotent no-diff exit
-- [ ] Shared shape factored into a reusable `workflow_call` workflow (or composite action) both thin workflow files call, so they can't drift apart
-- [ ] Rolling-branch clobber guard: force-update only over the automation's own tip; skip loudly if a human pushed onto the branch
-- [ ] Path allowlists enforced per workflow (roadmap-only; docs-only, excluding `README*` / `CLAUDE.md`) so neither touches product code or the contract surface
+- [x] `roadmap-refresh.yml` — daily workflow reconciling BE `Status` / `Progress` / `Implementing PR`, its own contract, branch, and rolling Draft PR
+- [x] `docs-refresh.yml` — daily workflow reconciling `docs/` / `DESIGN.md` prose vs behavior, its own contract, branch, and rolling Draft PR
+- [x] Shared shape wired into both: two-credential dormancy gate, concurrency + timeout, in-job `make check` surfaced in the PR body, idempotent no-diff exit
+- [x] Shared shape factored into a reusable `workflow_call` workflow (or composite action) both thin workflow files call, so they can't drift apart
+- [x] Rolling-branch clobber guard: force-update only over the automation's own tip; skip loudly if a human pushed onto the branch
+- [x] Path allowlists enforced per workflow (roadmap-only; docs-only, excluding `README*` / `CLAUDE.md`) so neither touches product code or the contract surface
+
+### Log
+
+- [#882](https://github.com/bajutsu-e2e/bajutsu/pull/882): shipped in one PR — the reusable `refresh.yml` (shared shape — two-credential dormancy gate,
+  concurrency/timeout, App-token checkout, AI-authoring step, in-job `make check`), the two thin
+  callers `roadmap-refresh.yml` / `docs-refresh.yml`, their contracts
+  (`.github/{roadmap,docs}-refresh-prompt.md`), and the deterministic `scripts/refresh_pr.py`
+  (path-allowlist enforcement, idempotent no-diff exit, rolling-branch clobber guard, always-Draft
+  human-merged PR) with `tests/test_refresh_pr.py`.
 
 ## References
 

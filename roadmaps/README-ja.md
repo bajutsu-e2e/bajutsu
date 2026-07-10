@@ -273,6 +273,7 @@ Bajutsu の「契約としての決定性」という立場を、Maestro の fla
 | [BE-0214](BE-0214-web-only-beginner-tutorial/BE-0214-web-only-beginner-tutorial-ja.md) | Web 版のみで完結する初学者向けチュートリアル(Xcode・Simulator 不要) | 実装済み |
 | [BE-0216](BE-0216-propose-and-build-parallel-skill/BE-0216-propose-and-build-parallel-skill-ja.md) | propose-and-build: BE 提案と実装を並行して書き、スタックしてつなぐ | 実装済み |
 | [BE-0217](BE-0217-harden-review-prompt/BE-0217-harden-review-prompt-ja.md) | 調査に基づく方針で自動 PR レビュープロンプトを強化する | 実装済み |
+| [BE-0222](BE-0222-daily-doc-freshness-pr/BE-0222-daily-doc-freshness-pr-ja.md) | ロードマップとドキュメントを別々に毎日更新し、それぞれがレビュー用 PR を開く定期ワークフロー | 実装済み |
 <!-- /GENERATED:implemented-developer-experience -->
 
 ### コードベース品質・技術的負債
@@ -731,7 +732,6 @@ AI を使う経路（`record` ／ `crawl` ／ `triage --ai` ／ `run --apply`）
 | ID | 項目 | 状態 |
 |---|---|---|
 | [BE-0219](BE-0219-roadmap-dashboard-search/BE-0219-roadmap-dashboard-search-ja.md) | ロードマップ status ダッシュボードへのテキスト検索の追加 | 提案 |
-| [BE-0222](BE-0222-daily-doc-freshness-pr/BE-0222-daily-doc-freshness-pr-ja.md) | ロードマップとドキュメントを別々に毎日更新し、それぞれがレビュー用 PR を開く定期ワークフロー | 提案 |
 <!-- /GENERATED:proposals-developer-experience -->
 
 ### コードベース品質・技術的負債

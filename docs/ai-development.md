@@ -441,6 +441,40 @@ you would any reviewer's, under the reply rules above.
   That is admin state a PR cannot carry (the same shape as the branch-protection ruleset edits
   BE-0122 and BE-0089 call out), so it is an explicit manual step.
 
+### The scheduled refreshers (Claude Code, BE-0222)
+
+Two daily scheduled workflows keep the human-maintained parts of the repo in step with what has
+shipped, and are the **authoring** counterpart to the advisory reviewer above: BE-0203 added an AI
+*reviewer* that never gates a merge; these add an AI *author* that never merges.
+
+- [`roadmap-refresh`](../.github/workflows/roadmap-refresh.yml) reconciles each BE item's
+  `Status` / `Progress` / `Implementing PR` against what has merged on `main`.
+- [`docs-refresh`](../.github/workflows/docs-refresh.yml) reconciles the prose that drifts against
+  behavior — `docs/architecture.md#implementation-status`, and `DESIGN.md` / `docs/architecture.md`
+  prose vs the code (the [BE-0113](../roadmaps/BE-0113-design-doc-realignment/BE-0113-design-doc-realignment.md)
+  review-time norm).
+
+Both are thin callers of one reusable workflow,
+[`refresh.yml`](../.github/workflows/refresh.yml), which holds the shared shape so the two cannot
+drift apart; they differ only in their branch, contract file
+([`.github/roadmap-refresh-prompt.md`](../.github/roadmap-refresh-prompt.md),
+[`.github/docs-refresh-prompt.md`](../.github/docs-refresh-prompt.md)), and **path allowlist**
+(`roadmaps/**`; `docs/**` + `DESIGN.md`, deliberately excluding the `README*` / `CLAUDE.md` contract
+surface). The key properties, all consistent with the sibling automations:
+
+- **Dormant until provisioned.** Each run is a green no-op unless *both* an AI provider (the same
+  `claude-review` Environment credential the reviewer uses) **and** the automation App token (as
+  `roadmap-id.yml`) are present — the App identity is what lets the bot-opened PR trigger its own
+  `check` CI. A half-configured repo never goes red.
+- **AI authors, the gate and a human decide.** The Claude Code action only edits the working tree;
+  a deterministic step then enforces the path allowlist (restoring any stray edit), runs `make check`
+  in-job, and opens **one rolling Draft PR** per workflow. No LLM is on the `run`/CI verdict path
+  (prime directive 1); only a human marks the PR ready and merges it.
+- **Idempotent and non-clobbering.** A quiet day opens no PR. When there is drift, the run reuses the
+  workflow's fixed branch and force-updates it only when its remote tip was committed by the bot
+  itself (with `--force-with-lease`), so a reviewer's fixup pushed onto the branch is never
+  overwritten — the run skips loudly instead.
+
 ## Roadmap items: BE IDs (strict)
 
 The roadmap is **one directory per item** under [`roadmaps/`](../roadmaps/README.md). Each item lives in
