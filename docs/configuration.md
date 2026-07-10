@@ -128,9 +128,12 @@ defaults:
   effort — one of `low`/`medium`/`high`/`xhigh`/`max`, honored by the `claude-code` provider
   (passed to the CLI as `--effort`). An unrecognized `effort` from config or the env var falls back
   to the model's default; the `serve` **Settings** panel instead validates its input and rejects an
-  unknown value (HTTP 400) rather than falling back. The panel exposes both for the running session,
-  and `record` prints the resolved choice up front (`🤖 AI: <provider> · model <model> · effort
-  <effort>`).
+  unknown value (HTTP 400) rather than falling back. The panel exposes both; on **local** `serve` the
+  saved provider, model, and effort now persist to a serve-owned file and are restored on the next
+  start ([BE-0184](../roadmaps/BE-0184-persist-serve-ai-provider-settings/BE-0184-persist-serve-ai-provider-settings.md)),
+  so a restart no longer resets them to the launch environment; a config `ai:` block still wins over
+  a restored value. `record` prints the resolved choice up front (`🤖 AI: <provider> · model <model>
+  · effort <effort>`).
 
 - **Output language is a separate, config-first knob**
   ([BE-0188](../roadmaps/BE-0188-configurable-ai-output-language/BE-0188-configurable-ai-output-language.md)).

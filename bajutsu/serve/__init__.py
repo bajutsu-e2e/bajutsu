@@ -59,7 +59,9 @@ from bajutsu.serve.helpers import (
 from bajutsu.serve.jobs import cancel_job, run_job
 from bajutsu.serve.launchagent import launchagent_plist
 from bajutsu.serve.logbus import InMemoryLogBus, LogBus
+from bajutsu.serve.operations.config import restore_persisted_provider_settings
 from bajutsu.serve.orgs import DEFAULT_ORG, targets_for_org
+from bajutsu.serve.provider_store import LocalProviderSettingsStore
 from bajutsu.serve.scenarios import (
     LocalScenarioScope,
     LocalScenarioStore,
@@ -235,6 +237,12 @@ def _build_state(
         config_provenance=config_provenance,
         themes_dir=themes_dir,
         default_theme=default_theme,
+        # Persist the Settings panel's provider/model/effort to a serve-owned file (a sibling of
+        # runs_dir), so a saved choice survives a restart (BE-0184). Construction only wires the
+        # store; `serve()` restores from it on boot, once logging is live.
+        provider_settings_store=LocalProviderSettingsStore(
+            runs_dir.parent / "provider-settings.json"
+        ),
     )
 
 
@@ -489,6 +497,10 @@ def serve(
     # restarts (BE-0073; a bound bundle is removed when another config is bound while running).
     shutil.rmtree(state.uploads_dir, ignore_errors=True)
     _configure_oplog(state)
+    # Restore the operator's last-saved provider/model/effort before the first request, so a restart
+    # reflects it rather than resetting to the launch environment (BE-0184). After `_configure_oplog`
+    # so a malformed-file warning reaches the live log sink; a no-op when nothing is persisted (BE-0101).
+    restore_persisted_provider_settings(state)
     hint = str(config) if config else "open a config.yml in the UI"
     if not _allowed_hosts(host):
         # A wildcard bind can't enumerate its reachable hostnames, so the Host allowlist is off

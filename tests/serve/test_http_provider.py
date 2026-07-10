@@ -7,6 +7,7 @@ environment (in memory, never to disk) so spawned record/crawl jobs inherit it v
 from __future__ import annotations
 
 import os
+from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
@@ -18,20 +19,43 @@ from bajutsu import serve as srv
 
 _BEDROCK_MODEL = "global.anthropic.claude-opus-4-6-v1"
 
+_PROVIDER_ENV_VARS = (
+    ac.PROVIDER_ENV,
+    ac.BEDROCK_MODEL_ENV,
+    ac.MODEL_ENV,
+    ac.EFFORT_ENV,
+    ac.ANTHROPIC_KEY_ENV,
+    ac.LANGUAGE_ENV,
+    "AWS_REGION",
+)
+
+
+@pytest.fixture(autouse=True)
+def _isolate_provider_env() -> Iterator[None]:
+    """Snapshot and fully restore the provider env vars around every test.
+
+    The /api/provider endpoint writes os.environ directly, and monkeypatch.delenv only records a
+    variable if it exists at the time of the call — so vars that were absent at test start but
+    written by the endpoint during the test leak into later tests in the same worker. Snapshot/
+    restore is the reliable fix (same pattern as test_provider_persistence.py)."""
+    saved = {var: os.environ.get(var) for var in _PROVIDER_ENV_VARS}
+    for var in _PROVIDER_ENV_VARS:
+        os.environ.pop(var, None)
+    try:
+        yield
+    finally:
+        for var, value in saved.items():
+            if value is None:
+                os.environ.pop(var, None)
+            else:
+                os.environ[var] = value
+
 
 def _clean_provider_env(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Start from a known provider state; monkeypatch restores the originals at teardown even
-    though the handler writes os.environ directly."""
-    for var in (
-        ac.PROVIDER_ENV,
-        ac.BEDROCK_MODEL_ENV,
-        ac.MODEL_ENV,
-        ac.EFFORT_ENV,
-        ac.ANTHROPIC_KEY_ENV,
-        ac.LANGUAGE_ENV,
-        "AWS_REGION",
-    ):
-        monkeypatch.delenv(var, raising=False)
+    """No-op: env isolation is handled by the autouse _isolate_provider_env fixture.
+
+    Kept for compatibility with the call sites that still pass monkeypatch to signal "start from a
+    clean env" — the fixture already does that for every test."""
 
 
 def test_http_provider_select_bedrock_and_back(

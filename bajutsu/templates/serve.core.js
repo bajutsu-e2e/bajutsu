@@ -575,7 +575,10 @@ async function saveSettings(){
       $('#cctoken').value='';ccTokState={set:true,masked:t.masked||''};renderCcTok();
     }
   }
-  setSettingsStatus('saved','ok');
+  // persisted: true = durably saved; false = save failed (won't survive restart); null = session-only
+  // (hosted deployment, no durable store). Only false warrants a warning (BE-0184).
+  if(d.persisted===false){setSettingsStatus('active for this session, but could not be saved — it will reset on restart','ng');}
+  else{setSettingsStatus('saved','ok');}
   refreshAiAvailability();  // a just-saved key / provider can flip the record/crawl gate live
   // The ant sign-in button reads the *server-side* active provider (d.provider==='ant'), which only
   // becomes ant once the save lands; refresh it now so "Signed in ✓" reflects the save without

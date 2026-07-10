@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0184](BE-0184-persist-serve-ai-provider-settings.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0184") |
+| Implementing PR | [#874](https://github.com/bajutsu-e2e/bajutsu/pull/874) |
 | Topic | AI provider configuration |
 | Related | [BE-0136](../BE-0136-serve-write-once-secrets/BE-0136-serve-write-once-secrets.md), [BE-0175](../BE-0175-serve-web-ui-ant-sso-login/BE-0175-serve-web-ui-ant-sso-login.md), [BE-0015](../BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md) |
 <!-- /BE-METADATA -->
@@ -73,9 +74,24 @@ that structure's values come from at boot and where they go on save, not about i
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Add a durable per-provider settings store (local file / per-org DB-backed, per deployment mode).
-- [ ] Load persisted settings on serve boot, falling back to today's env-derived defaults.
-- [ ] Confirm the AI-free zero-config path is unaffected when nothing is persisted.
+- [x] Add a durable per-provider settings store — the local, file-backed shape
+  (`LocalProviderSettingsStore`, a JSON file alongside serve's run directory).
+- [ ] Add the per-organization, DB-backed store shape for a hosted deployment. **Deferred:** in
+  today's serve, provider/model/effort resolve process-globally (`os.environ` + a single
+  `ServeState.provider_settings` map), not per organization, so a per-org store would persist
+  values nothing reads per org. This needs per-org runtime resolution first, tracked as a
+  follow-up rather than done here.
+- [x] Load persisted settings on serve boot, falling back to today's env-derived defaults.
+- [x] Confirm the AI-free zero-config path is unaffected when nothing is persisted.
+
+### Log
+
+- 2026-07-10 — Local file persistence shipped: a readable `ProviderSettingsStore` seam with a
+  file-backed `LocalProviderSettingsStore` (`bajutsu/serve/provider_store.py`), wired into local
+  serve construction so a saved provider/model/effort is flushed on save and restored on boot;
+  a malformed file logs a visible warning and falls back to the env defaults rather than crashing.
+  The hosted per-org DB-backed shape is deferred (see the unchecked box above).
+  ([#874](https://github.com/bajutsu-e2e/bajutsu/pull/874))
 
 ## References
 
