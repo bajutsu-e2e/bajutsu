@@ -81,6 +81,27 @@ def test_status_filter_toggles_present() -> None:
         assert f'data-status="{item.bucket}"' in _PAGE
 
 
+def test_search_box_is_rendered_and_wired() -> None:
+    """A free-text search input sits in the filter row and the filter script listens to its input.
+
+    This is BE-0219's machine-checkable outcome: the input exists (progressive enhancement, one per
+    page), and the script wires the ``input`` event so typing narrows the cards.
+    """
+    assert _PAGE.count('type="search"') == 1
+    assert 'class="be-search"' in _PAGE
+    assert 'aria-label="Search roadmap items"' in _PAGE
+    assert "search.addEventListener('input', apply)" in _PAGE
+    # The empty-state line the script fills when a query matches nothing.
+    assert 'class="be-empty is-hidden"' in _PAGE
+
+
+def test_every_card_carries_its_topic() -> None:
+    """Each card exposes its Topic as ``data-topic`` so search can match it without scraping markup."""
+    for item in _ITEMS:
+        assert f'data-topic="{html.escape(item.topic)}"' in _PAGE
+    assert _PAGE.count("data-topic=") == len(_ITEMS)
+
+
 def test_fully_implemented_categories_are_separated() -> None:
     """A category whose items are all Implemented lands in the Completed group, others in In progress."""
     by_topic: dict[str, list[object]] = {}
