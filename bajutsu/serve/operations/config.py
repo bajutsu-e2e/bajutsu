@@ -385,13 +385,14 @@ def set_provider(state: ServeState, body: dict[str, Any]) -> tuple[Any, int]:
     """Select the AI provider for spawned record/crawl jobs: the Anthropic API (`api-key`), Amazon
     Bedrock, the Anthropic CLI (`ant`, a browser-based OAuth/SSO sign-in — BE-0163), or the Claude
     Code CLI (`claude-code`, the local `claude` on a Pro/Max/Console seat — BE-0176). Written into
-    the serve process's environment (`BAJUTSU_AI_PROVIDER`) for this session only — never to disk —
-    and inherited by jobs, mirroring the API-key handler. The selection is also remembered per
-    provider in `state.provider_settings` (BE-0183) so switching the Settings dropdown no longer
-    discards the model/effort set for the provider left behind; only the selected provider's slot is
-    written — the others are untouched — and the active slot is what gets materialized into the env.
-    Validated against the BE-0104 registry, so every AI path (authoring, the alert guard, triage)
-    resolves through the same seam."""
+    the serve process's environment (`BAJUTSU_AI_PROVIDER`) and inherited by jobs, mirroring the
+    API-key handler. On local serve the choice is also flushed to disk so it survives a restart
+    (BE-0184); a hosted deployment keeps the pre-BE-0184 session-only behavior until per-org runtime
+    resolution lands. The selection is remembered per provider in `state.provider_settings` (BE-0183)
+    so switching the Settings dropdown no longer discards the model/effort set for the provider left
+    behind; only the selected provider's slot is written — the others are untouched — and the active
+    slot is what gets materialized into the env. Validated against the BE-0104 registry, so every AI
+    path (authoring, the alert guard, triage) resolves through the same seam."""
     prov = normalize_provider(str(body.get("provider", "") or ""))
     if prov not in known_providers():
         return {"error": f"unknown provider: {prov or '(empty)'}"}, 400
@@ -531,14 +532,16 @@ def restore_persisted_provider_settings(state: ServeState) -> None:
     if data is None:
         return
     active = data.settings.get(data.provider)
-    if active is None:
-        # A well-formed save always records the active provider's own slot; a file that names an
-        # active provider with no slot is inconsistent (e.g. hand-edited). Seeding the env from an
-        # empty slot would materialize an invalid choice (a blank Bedrock model), so fall back to
-        # the env defaults instead — loud, not silent.
+    if active is None or (data.provider == "bedrock" and not active.model):
+        # A well-formed save always records the active provider's own slot with the values the
+        # operator set; a file that names an active provider with no slot, or names bedrock with a
+        # blank model (which is invalid — bedrock always needs a provider-prefixed model id), is
+        # either hand-edited or corrupt. Seeding the env from such a slot would materialize an
+        # invalid choice (a blank BAJUTSU_BEDROCK_MODEL), so fall back to the env defaults instead
+        # — loud, not silent.
         logging.getLogger(__name__).warning(
             "ignoring the persisted AI provider settings: the active provider %r has no saved "
-            "slot; falling back to the environment defaults",
+            "slot or an incomplete one; falling back to the environment defaults",
             data.provider,
         )
         return

@@ -271,6 +271,32 @@ def test_inconsistent_active_provider_falls_back_to_env(
     assert "provider" in caplog.text.lower()
 
 
+def test_bedrock_with_empty_model_falls_back_to_env(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    """A hand-edited file with `provider: bedrock` but a blank model sails through the 'no slot'
+    check — `_apply_provider_env` would then set BEDROCK_MODEL_ENV to "" (invalid for Bedrock).
+    The guard now also covers this case: an empty Bedrock model is treated as incomplete and boot
+    warns + falls back rather than materializing an invalid env."""
+    scn_dir, cfg, runs = project(tmp_path)
+    store_path = runs.parent / "provider-settings.json"
+    store_path.write_text(
+        '{"provider": "bedrock", "settings": {"bedrock": {"model": ""}}}', encoding="utf-8"
+    )
+    state = srv.ServeState(
+        scenarios_dir=scn_dir,
+        config=cfg,
+        runs_dir=runs,
+        cwd=tmp_path,
+        provider_settings_store=LocalProviderSettingsStore(store_path),
+    )
+    with caplog.at_level("WARNING"):
+        restore_persisted_provider_settings(state)
+    assert ac.PROVIDER_ENV not in os.environ
+    assert ac.BEDROCK_MODEL_ENV not in os.environ  # no blank model seeded
+    assert "provider" in caplog.text.lower()
+
+
 def test_persist_failure_keeps_the_session_change_and_warns(
     tmp_path: Path, caplog: pytest.LogCaptureFixture
 ) -> None:
