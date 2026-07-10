@@ -325,7 +325,10 @@ def make_app(state: ServeState) -> FastAPI:
         receiver = BoundedZipReceiver()
         try:
             async for chunk in request.stream():
-                receiver.write(chunk)
+                # receiver.write does a blocking disk write + SHA-256 update; off the event loop like
+                # every other blocking call in this file, so a large (up to 1 GiB) upload can't stall
+                # other requests on this worker.
+                await run_in_threadpool(receiver.write, chunk)
             if receiver.received < length:
                 return _result(({"error": "upload incomplete (body ended early)"}, 400))
             return _result(
