@@ -119,6 +119,7 @@
 <!-- GENERATED:implemented-platform -->
 | ID | 項目 | 状態 |
 |---|---|---|
+| [BE-0007](BE-0007-android-backend/BE-0007-android-backend-ja.md) | Android backend | 実装済み |
 | [BE-0009](BE-0009-cross-platform-abstractions/BE-0009-cross-platform-abstractions-ja.md) | 抽象のクロスプラットフォーム化 | 実装済み |
 | [BE-0010](BE-0010-update-scope-statement/BE-0010-update-scope-statement-ja.md) | スコープ文の更新 | 実装済み |
 | [BE-0076](BE-0076-web-cross-browser-engines/BE-0076-web-cross-browser-engines-ja.md) | ブラウザエンジンの選択とクロスブラウザ互換マトリクス（web backend） | 実装済み |
@@ -505,7 +506,6 @@ Web（Playwright）backend とその完成（リッチな capability、並列実
 <!-- GENERATED:in-progress-platform -->
 | ID | 項目 | 状態 |
 |---|---|---|
-| [BE-0007](BE-0007-android-backend/BE-0007-android-backend-ja.md) | Android backend | 実装中 |
 | [BE-0208](BE-0208-android-emulator-e2e-ci/BE-0208-android-emulator-e2e-ci-ja.md) | Android の実機 e2e を CI に配線する（KVM 経由のエミュレータ） | 実装中 |
 <!-- /GENERATED:in-progress-platform -->
 

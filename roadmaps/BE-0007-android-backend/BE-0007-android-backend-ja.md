@@ -7,10 +7,11 @@
 |---|---|
 | 提案 | [BE-0007](BE-0007-android-backend-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **実装中** |
+| 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0007") |
-| 実装 PR | [#658](https://github.com/bajutsu-e2e/bajutsu/pull/658), [#821](https://github.com/bajutsu-e2e/bajutsu/pull/821) |
+| 実装 PR | [#658](https://github.com/bajutsu-e2e/bajutsu/pull/658), [#821](https://github.com/bajutsu-e2e/bajutsu/pull/821), [#870](https://github.com/bajutsu-e2e/bajutsu/pull/870) |
 | トピック | プラットフォーム拡張（Android / Web / Flutter） |
+| 関連 | [BE-0208](../BE-0208-android-emulator-e2e-ci/BE-0208-android-emulator-e2e-ci-ja.md), [BE-0209](../BE-0209-android-codegen-emitter/BE-0209-android-codegen-emitter-ja.md), [BE-0210](../BE-0210-android-actuation-fidelity/BE-0210-android-actuation-fidelity-ja.md), [BE-0211](../BE-0211-android-device-control/BE-0211-android-device-control-ja.md), [BE-0212](../BE-0212-granular-device-control-capabilities/BE-0212-granular-device-control-capabilities-ja.md) |
 <!-- /BE-METADATA -->
 
 ## はじめに
@@ -160,13 +161,27 @@ Linux CI で動き、`capabilities()` の **小さい端**を行使します。
 - [x] レジストリ配線：`adb` を `IMPLEMENTED` に、`capabilities_for`/`make_driver` の分岐（`bajutsu/backends.py`）。
 - [x] `AdbDriver` actuator：`uiautomator dump` の解析、座標操作、一過性に空なツリーの retry、能力（`bajutsu/drivers/adb.py`）。
 - [x] `AndroidEnvironment`：起動完了待ち → `pm clear` → `am start` → deeplink の列とリース整形メソッド（`bajutsu/platform_lifecycle.py`、新設の `bajutsu/adb.py` コマンド層の上に）。
-- [ ] 証跡とデバイス制御：`logcat` の deviceLog、`screenrecord` の video、モックネットワーク**（完了、2026-07-08）**。対応するデバイス状態のステップ（`DeviceControl` 一族）は後続に残します。Android は粗い `deviceControl` 能力のうち一部しか対応できないため見送りました。
+- [x] 証跡とデバイス制御：`logcat` の deviceLog、`screenrecord` の video、モックネットワーク**（完了、2026-07-08、#821）**。対応するデバイス状態のステップ（`setLocation` と clipboard。エミュレータが対応する範囲）は [BE-0211](../BE-0211-android-device-control/BE-0211-android-device-control-ja.md) **（#858）** として着地しました。残る操作（`deviceControl.push` / `.clearKeychain` / `.statusBar`）は、[BE-0212](../BE-0212-granular-device-control-capabilities/BE-0212-granular-device-control-capabilities-ja.md) が導入した per-operation トークンで正直に gate したままです。
 - [x] doctor と開示：idb の隣に `doctor --target` の可用性、マニフェストに `backend: "adb"` を記録。
-- [ ] codegen 変換先：Espresso / UI Automator ジェネレータ（後続スライス）。
-- [ ] 検証：dump フィクスチャに対する高速ゲートの driver/レジストリテスト**（完了）**、コアシナリオをローカルの arm64 エミュレータで駆動**（完了、2026-07-07）**、実機 e2e の KVM CI への組み込み（後続）。
+- [x] codegen 変換先：作業分解が Espresso の代替として挙げた UI Automator（Kotlin）ジェネレータを [BE-0209](../BE-0209-android-codegen-emitter/BE-0209-android-codegen-emitter-ja.md) **（#854）** として着地させました。
+- [x] 検証：dump フィクスチャに対する高速ゲートの driver/レジストリテスト**（完了）**、コアシナリオをローカルの arm64 エミュレータで駆動**（完了、2026-07-07）**、実機 e2e を KVM CI へ [BE-0208](../BE-0208-android-emulator-e2e-ci/BE-0208-android-emulator-e2e-ci-ja.md) **（#851）** として組み込みました。この作業分解の単位は、CI レーンが存在してコアシナリオが動けば完了です。BE-0208 自身の残作業（visual/golden-baseline のパリティ、後続スライスの着地に伴うシナリオ追加）を待つ必要はありません。実機でのアクチュエーション微調整（double-tap の受付時間、スクロールによる表示、保留中のシナリオ）は
+  [BE-0210](../BE-0210-android-actuation-fidelity/BE-0210-android-actuation-fidelity-ja.md)
+  （実装済み、[#857](https://github.com/bajutsu-e2e/bajutsu/pull/857)）の担当であり、BE-0208（CI 配線の項目）ではありません。
 
 ログ：
 
+- 2026-07-10：チェックリストを出荷済みの実態に合わせました。2026-07-08 の時点で残っていた 3 つの
+  スライスは、それぞれ独立した後続項目として着地しています。対応するデバイス制御のサブセット
+  （`setLocation` と clipboard）は [BE-0211](../BE-0211-android-device-control/BE-0211-android-device-control-ja.md)
+  （[#858](https://github.com/bajutsu-e2e/bajutsu/pull/858)）、作業分解が Espresso の代替として挙げた
+  UI Automator（Kotlin）の codegen 変換先は [BE-0209](../BE-0209-android-codegen-emitter/BE-0209-android-codegen-emitter-ja.md)
+  （[#854](https://github.com/bajutsu-e2e/bajutsu/pull/854)）、実機 e2e の KVM CI への組み込みは
+  [BE-0208](../BE-0208-android-emulator-e2e-ci/BE-0208-android-emulator-e2e-ci-ja.md)
+  （[#851](https://github.com/bajutsu-e2e/bajutsu/pull/851)）です。MECE な作業分解の各単位がすべて
+  出荷されたので、項目を **実装済み** に移します。残る実機のアクチュエーション微調整（double-tap の
+  受付時間、スクロールによる表示、保留中の `components` / `modals` シナリオ）は本項目の作業分解の外で、
+  [BE-0210](../BE-0210-android-actuation-fidelity/BE-0210-android-actuation-fidelity-ja.md)
+  （実装済み、[#857](https://github.com/bajutsu-e2e/bajutsu/pull/857)）の担当です。BE-0208 は CI 配線の項目であり、アクチュエーション修正は扱いません。
 - 2026-07-08（[#821](https://github.com/bajutsu-e2e/bajutsu/pull/821)）：区間証跡スライス（Unit 4 の証跡側）。`video` は `adb shell screenrecord`、`deviceLog` は `adb logcat` で取得するようにしました。simctl の provider の双子です（`bajutsu/adb.py` のコマンドビルダと、`bajutsu/intervals.py` の `start_screenrecord` / `start_logcat`）。`screenrecord` はデバイス側に録画するので、その `Interval` は SIGINT で確定させたあと mp4 をデバイスから `adb pull` で回収し、デバイス側のコピーを削除します。`logcat` はファイルへストリームして SIGTERM で停止します。Android は driver 供給の区間証跡 seam（`AdbDriver.driver_interval`）を通り、FileSink は simctl 以外のバックエンドをこの seam へ振り分けます。従来の `web_interval` フィールドを `driver_interval` に一般化し、Playwright と adb の両ドライバで共有します。モックネットワークは新しいコードを要しませんでした。アプリ側 collector の URL は launch env 経由で intent extra として既にアプリへ届いており（テストで固定しました）、iOS と同じ経路です。`screenrecord` の pull が失敗したときは、確定処理のループを中断（logcat のサブプロセスを取り残す）したり、通過するはずのシナリオを証跡の I/O で失敗させたりせず、その 1 件だけを警告つきで捨てます。高速ゲートのユニットテストで、コマンドビルダ、両方の区間 starter（spawn / run を注入。pull は surface / cleanup は抑制という非対称も含む）、`driver_interval` の振り分け、FileSink と `AdbDriver` のエンドツーエンドの振り分け、stop 失敗時の drop、collector env の受け渡しを検証します。ドキュメントを更新しました（`docs/drivers.md`、`docs/evidence.md`、`docs/architecture.md` と各 ja ミラー）。実機に関わる 2 点は e2e スライスに送りました。`adb screenrecord` は 1 回の録画を約 180 秒で打ち切ること（ドキュメント化済み）と、SIGINT による確定は標準的な手法ながらデバイスや adb のバージョンに依存するため、そこで検証と調整を行うことです。デバイス制御（setLocation / clipboard など）と codegen は後続に残るため、引き続き **In progress** です。
 - 2026-07-07：arm64 API 34 のエミュレータで初めて実機検証を行いました。ここから 2 つの修正が生じました。1 つは Android showcase がビルドできなかった点です。各モジュールの Gradle `namespace` に、Kotlin ソースのパッケージではなく applicationId の `.android.` を使っていたため、修飾なしの `BuildConfig` 参照とマニフェストの相対クラス名 `.MainActivity` が解決できませんでした。`namespace` をソースのパッケージに合わせると（applicationId はそのまま）両方が直ります。もう 1 つはドライバのセレクタ対応です。`value` を `text`（可視文字列）から読んでいたため、`value` アサーションが本来の「5」や「off」ではなく「Matches: 5」や「Not favorited」を見ていました。showcase は状態値を `content-desc` にミラーします（SPEC §2.1）から、`value` は `content-desc` を、`label` は `text` を読むようにしました。両者を直した結果、id、タップ、入力、値のコアシナリオが実機で通ります（smoke、firstlook、search、components、data_driven、modals、relaunch、system、evidence の capture）。残るシナリオは後続スライスにあたります。デバイス制御（capability で正直に gate）、マルチタッチ（`UnsupportedAction`）、スキーム deeplink とシステム back（`BackButton`）、モックネットワーク、実行時権限のアラート、visual/golden のベースラインです。加えて、境界の 3 本は後続に向けて原因を特定しました。`gestures` は long-press が通る一方、double-tap が登録されません。`adb shell input tap` を 2 回発行する間隔が、プラットフォームの double-tap の受付時間を超えるためです（`input` バイナリ自体の起動時間が支配的で、1 回のシェル往復にまとめても足りません）。`controls` は `log.segment.one` までは到達しますが、`log.segment.value` がスクロール後の表示範囲のすぐ外に残ります。`notices` はシステム back とリストのスクロールが要ります。いずれも実機でのアクチュエーションとスクロールの微調整です。引き続き **In progress** です。
 - 2026-07-04：コアドライバのスライスが着地しました。`adb` コマンド層（`bajutsu/adb.py`、`simctl.py` の双子）、

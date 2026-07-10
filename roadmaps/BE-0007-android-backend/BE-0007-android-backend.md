@@ -7,10 +7,11 @@
 |---|---|
 | Proposal | [BE-0007](BE-0007-android-backend.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **In progress** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0007") |
-| Implementing PR | [#658](https://github.com/bajutsu-e2e/bajutsu/pull/658), [#821](https://github.com/bajutsu-e2e/bajutsu/pull/821) |
+| Implementing PR | [#658](https://github.com/bajutsu-e2e/bajutsu/pull/658), [#821](https://github.com/bajutsu-e2e/bajutsu/pull/821), [#870](https://github.com/bajutsu-e2e/bajutsu/pull/870) |
 | Topic | Platform expansion (Android / Web / Flutter) |
+| Related | [BE-0208](../BE-0208-android-emulator-e2e-ci/BE-0208-android-emulator-e2e-ci.md), [BE-0209](../BE-0209-android-codegen-emitter/BE-0209-android-codegen-emitter.md), [BE-0210](../BE-0210-android-actuation-fidelity/BE-0210-android-actuation-fidelity.md), [BE-0211](../BE-0211-android-device-control/BE-0211-android-device-control.md), [BE-0212](../BE-0212-granular-device-control-capabilities/BE-0212-granular-device-control-capabilities.md) |
 <!-- /BE-METADATA -->
 
 ## Introduction
@@ -171,17 +172,40 @@ the **lean** end of `capabilities()`.
 - [x] Registry wiring — `adb` in `IMPLEMENTED`, `capabilities_for`/`make_driver` branches (`bajutsu/backends.py`).
 - [x] `AdbDriver` actuator — `uiautomator dump` parsing, coordinate actuation, transient-empty retry, capabilities (`bajutsu/drivers/adb.py`).
 - [x] `AndroidEnvironment` — the boot-readiness wait → `pm clear` → `am start` → deeplink sequence and the lease-shaping methods (`bajutsu/platform_lifecycle.py`, over the new `bajutsu/adb.py` command layer).
-- [ ] Evidence and device control — `logcat` deviceLog, `screenrecord` video, and mocked network
-  **(done, 2026-07-08)**; supported device-state steps (the `DeviceControl` family) remain a
-  follow-up, deferred because Android supports only a subset of the coarse `deviceControl` capability.
+- [x] Evidence and device control — `logcat` deviceLog, `screenrecord` video, and mocked network
+  **(done, 2026-07-08, #821)**; the supported device-state steps (`setLocation` + clipboard, the
+  subset the emulator honours) landed as [BE-0211](../BE-0211-android-device-control/BE-0211-android-device-control.md)
+  **(#858)** — the remaining operations (`deviceControl.push`, `.clearKeychain`, `.statusBar`) stay
+  honestly gated by their per-operation tokens, per
+  [BE-0212](../BE-0212-granular-device-control-capabilities/BE-0212-granular-device-control-capabilities.md).
 - [x] doctor and disclosure — `doctor --target` availability beside idb; manifest records `backend: "adb"`.
-- [ ] codegen target — Espresso / UI Automator generator (follow-up slice).
-- [ ] Validation — fast-gate driver/registry tests over dump fixtures **(done)**; core scenarios
-  driven on a local arm64 emulator **(done, 2026-07-07)**; wiring the on-device e2e into KVM CI
-  (follow-up).
+- [x] codegen target — UI Automator (Kotlin) generator, the target the breakdown offered as the
+  alternative to Espresso, landed as [BE-0209](../BE-0209-android-codegen-emitter/BE-0209-android-codegen-emitter.md) **(#854)**.
+- [x] Validation — fast-gate driver/registry tests over dump fixtures **(done)**; core scenarios
+  driven on a local arm64 emulator **(done, 2026-07-07)**; the on-device e2e wired into KVM CI as
+  [BE-0208](../BE-0208-android-emulator-e2e-ci/BE-0208-android-emulator-e2e-ci.md) **(#851)**. This
+  unit is done once the CI lane exists and the core scenarios run — it does not wait for BE-0208 to
+  close its own remaining boxes (visual/golden-baseline parity, scenario growth as later slices
+  land). Residual on-device actuation tuning (double-tap timing, scroll-into-view, the held-back
+  scenarios) belongs to [BE-0210](../BE-0210-android-actuation-fidelity/BE-0210-android-actuation-fidelity.md)
+  (Implemented, [#857](https://github.com/bajutsu-e2e/bajutsu/pull/857)), not to BE-0208 (the CI-wiring item).
 
 Log:
 
+- 2026-07-10 — Reconciled the checklist with what shipped. The three slices left open on 2026-07-08
+  each landed as their own follow-up item: the supported device-control subset (`setLocation` +
+  clipboard) as [BE-0211](../BE-0211-android-device-control/BE-0211-android-device-control.md)
+  ([#858](https://github.com/bajutsu-e2e/bajutsu/pull/858)), the UI Automator (Kotlin) codegen
+  target — the alternative the breakdown offered to Espresso — as
+  [BE-0209](../BE-0209-android-codegen-emitter/BE-0209-android-codegen-emitter.md)
+  ([#854](https://github.com/bajutsu-e2e/bajutsu/pull/854)), and the on-device e2e wired into KVM CI
+  as [BE-0208](../BE-0208-android-emulator-e2e-ci/BE-0208-android-emulator-e2e-ci.md)
+  ([#851](https://github.com/bajutsu-e2e/bajutsu/pull/851)). With every unit of the MECE breakdown
+  delivered, the item moves to **Implemented**. The residual on-device actuation tuning (the
+  double-tap timing window, scroll-into-view, and the held-back `components` / `modals` scenarios)
+  is beyond this item's breakdown; it is owned by
+  [BE-0210](../BE-0210-android-actuation-fidelity/BE-0210-android-actuation-fidelity.md)
+  (Implemented, [#857](https://github.com/bajutsu-e2e/bajutsu/pull/857)), not to BE-0208 (the CI-wiring item).
 - 2026-07-08 ([#821](https://github.com/bajutsu-e2e/bajutsu/pull/821)) — Interval evidence slice
   (Unit 4, the evidence half). `video` now records via `adb
   shell screenrecord` and `deviceLog` via `adb logcat`, the twins of the simctl providers
