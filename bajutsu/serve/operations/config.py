@@ -521,10 +521,11 @@ def restore_persisted_provider_settings(state: ServeState) -> None:
 
     Restores the per-provider memory map (BE-0183) and materializes the active provider's slot into
     the env vars spawned jobs inherit, so a restart restores what the operator last saved instead of
-    resetting to the launch environment. A missing store or an empty file is a no-op — resolution
-    falls back to today's env-derived defaults, keeping the AI-free zero-config path (BE-0101)
-    unchanged. A malformed file is logged and skipped rather than crashing serve or silently
-    resetting the choice (determinism-first: loud, not silent).
+    resetting to the launch environment. With no store wired, or no file saved yet, this is a silent
+    no-op — resolution falls back to today's env-derived defaults, keeping the AI-free zero-config
+    path (BE-0101) unchanged. A file that exists but is malformed or inconsistent (an empty/0-byte
+    file counts as malformed) is logged and skipped rather than crashing serve or silently resetting
+    the choice (determinism-first: loud, not silent).
     """
     store = state.provider_settings_store
     if store is None:

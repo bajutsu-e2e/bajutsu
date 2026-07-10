@@ -59,7 +59,9 @@ from bajutsu.serve.helpers import (
 from bajutsu.serve.jobs import cancel_job, run_job
 from bajutsu.serve.launchagent import launchagent_plist
 from bajutsu.serve.logbus import InMemoryLogBus, LogBus
+from bajutsu.serve.operations.config import restore_persisted_provider_settings
 from bajutsu.serve.orgs import DEFAULT_ORG, targets_for_org
+from bajutsu.serve.provider_store import LocalProviderSettingsStore
 from bajutsu.serve.scenarios import (
     LocalScenarioScope,
     LocalScenarioStore,
@@ -217,8 +219,6 @@ def _build_state(
                 "pip install 'bajutsu[server,worker,db,gcs]' (gcs is only needed if "
                 "BAJUTSU_SERVER_STORE or --evidence-store uses gs://)"
             ) from e
-    from bajutsu.serve.provider_store import LocalProviderSettingsStore
-
     return ServeState(
         runs_dir=runs_dir,
         config=config,
@@ -500,8 +500,6 @@ def serve(
     # Restore the operator's last-saved provider/model/effort before the first request, so a restart
     # reflects it rather than resetting to the launch environment (BE-0184). After `_configure_oplog`
     # so a malformed-file warning reaches the live log sink; a no-op when nothing is persisted (BE-0101).
-    from bajutsu.serve.operations.config import restore_persisted_provider_settings
-
     restore_persisted_provider_settings(state)
     hint = str(config) if config else "open a config.yml in the UI"
     if not _allowed_hosts(host):
