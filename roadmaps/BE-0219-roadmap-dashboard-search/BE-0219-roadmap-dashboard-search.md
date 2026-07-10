@@ -116,6 +116,10 @@ Log:
   expand), the empty-state line, the CSS, and the assertions. Verified the filter end to end in a
   browser (id/title/topic/status matching, chip composition, empty state, and reset to the collapsed
   overview) beyond the deterministic tests.
+- Review follow-ups (PR #888): number-agreed the chip-hidden empty-state message, kept the native
+  focus ring on the search input, and generalised the empty-state into an always-present `aria-live`
+  region that explains *any* empty grid — the query matched nothing, its matches are chip-hidden, or
+  (no query) the chips alone hid everything — so the page never goes silently blank.
 
 ## References
 

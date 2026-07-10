@@ -194,9 +194,11 @@ def render_html(items: list[Any]) -> str:
             f"{''.join(completed)}</div>"
         )
 
-    # Filled and shown by the filter script only when a non-empty query matches no card; hidden (and
-    # empty) in the no-JS page. The query text is injected via textContent, never as markup.
-    empty = '<div class="be-empty is-hidden" role="status"></div>'
+    # A live region the filter script fills when the current filters leave the grid empty. It stays in
+    # the DOM at all times (empty = collapsed via `:empty`, so no layout cost and no-JS shows nothing);
+    # the script only ever mutates its text, never its presence — the reliable pattern for an
+    # `aria-live` status region to announce. The message text is set via textContent, never as markup.
+    empty = '<div class="be-empty" role="status"></div>'
     return f'<div class="be-dash">{summary}{groups}{empty}</div>'
 
 
@@ -208,12 +210,13 @@ _STYLE = """
   border:1px solid rgba(128,128,128,.35);border-radius:8px;background:transparent;color:inherit}
 .be-search:focus{border-color:currentColor}
 .be-empty{color:#888;font-size:13px;margin:1rem 0}
+.be-empty:empty{margin:0}
 .be-stat{border:1px solid;border-radius:8px;padding:.25rem .7rem;font-size:13px}
 .be-stat b{font-weight:600}
 .be-filter{display:inline-flex;align-items:center;gap:.45rem;cursor:pointer;user-select:none;opacity:.5}
 .be-filter.is-active{opacity:1;background:rgba(128,128,128,.1)}
 .be-check{width:15px;height:15px;margin:0;cursor:pointer;flex:none}
-.be-group.is-hidden,.be-cat.is-hidden,.be-card.is-hidden,.be-empty.is-hidden{display:none}
+.be-group.is-hidden,.be-cat.is-hidden,.be-card.is-hidden{display:none}
 .be-group-head{font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.04em;
   color:#888;border-bottom:1px solid rgba(128,128,128,.2);padding-bottom:.3rem;margin:1.6rem 0 .6rem}
 .be-cat{margin:1.6rem 0}
@@ -250,12 +253,13 @@ _STYLE = """
 # status is on AND it matches the query (empty query matches everything); a category (or group) left
 # with no visible card is hidden. With no query and every status on, categories collapse to a compact
 # overview (just the heading and its progress bar); turning a status off, or typing a query, expands the
-# categories that still have a match so results are visible without a click. A non-empty query that
-# matches no card shows "no items match"; one that matches a card the status chips are hiding says so
-# instead — either way the grid never goes silently blank with no explanation. The collapsed state is
-# applied by JS, never baked into the markup, so with scripting off every status is on, every category
-# open, no empty-state line, and the page fully readable. Each heading also toggles its own category.
-# Nothing fetches or computes — it only shows and hides already-rendered markup.
+# categories that still have a match so results are visible without a click. Whenever the filters leave
+# nothing visible, a live-region line explains why rather than leaving the grid silently blank — the
+# query matched nothing, or its matches are hidden by the status chips, or (no query) the chips alone
+# hid everything. The collapsed state is applied by JS, never baked into the markup, so with scripting
+# off every status is on, every category open, the empty-state region empty, and the page fully
+# readable. Each heading also toggles its own category. Nothing fetches or computes — it only shows and
+# hides already-rendered markup.
 _SCRIPT = """
 <script>
 (function(){
@@ -306,18 +310,21 @@ _SCRIPT = """
       c.closest('.be-filter').classList.toggle('is-active', c.checked);
     });
     if(empty){
-      // Two distinct empty reasons, so the message stays truthful either way: the query itself
-      // matches nothing ("No items match"), vs. it matches something but every match is in a
-      // status the chips have hidden (the grid would otherwise go silently blank with no
-      // explanation — a query-matched-but-chip-hidden card is a real match, not a non-match).
+      // Whenever the current filters leave nothing visible, say why — so the grid is never silently
+      // blank, whether search or the chips (or both) emptied it. Three cases: the query matches no
+      // card ("No items match"); it matches cards the chips hide (a real match, not a non-match); or
+      // there is no query and the chips alone hide everything. Empty string ⇒ the region collapses.
       var qText=search ? ('\\u201C'+search.value.trim()+'\\u201D') : '';
-      var noMatch=hasQuery && matched===0;
-      var hiddenByChips=hasQuery && matched>0 && shown===0;
-      empty.classList.toggle('is-hidden', !(noMatch || hiddenByChips));
-      empty.textContent=noMatch ? ('No items match '+qText)
-        : hiddenByChips ? (matched+(matched===1?' item matches ':' items match ')+qText
-          +', but the status filter above is hiding '+(matched===1?'it':'them'))
-        : '';
+      var msg='';
+      if(hasQuery && matched===0){ msg='No items match '+qText; }
+      else if(hasQuery && shown===0){
+        msg=matched+(matched===1?' item matches ':' items match ')+qText
+          +', but the status filter above is hiding '+(matched===1?'it':'them');
+      }
+      else if(!hasQuery && shown===0){
+        msg='Every status is turned off — switch a status filter above back on to see items';
+      }
+      empty.textContent=msg;
     }
   }
   checks.forEach(function(c){

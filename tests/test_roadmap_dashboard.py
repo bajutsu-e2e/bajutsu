@@ -91,14 +91,15 @@ def test_search_box_is_rendered_and_wired() -> None:
     assert 'class="be-search"' in _PAGE
     assert 'aria-label="Search roadmap items"' in _PAGE
     assert "search.addEventListener('input', apply)" in _PAGE
-    # The empty-state line the script fills when a query matches nothing.
-    assert 'class="be-empty is-hidden"' in _PAGE
-    # Two distinct empty-state messages: the query itself has no match, vs. it matches a card the
-    # status chips are hiding — so the grid never goes silently blank with no explanation. The
-    # chip-hidden line is number-agreed (item matches/items match, hiding it/them).
+    # The always-present live region the script fills when the filters leave nothing visible.
+    assert 'class="be-empty" role="status"' in _PAGE
+    # Its three empty-state reasons, so the grid never goes silently blank: the query matches nothing,
+    # its matches are hidden by the status chips, or the chips alone hide everything. Pinned to the
+    # user-facing phrases (not the JS literal's quoting), which is what a reader actually sees.
     assert "No items match " in _PAGE
     assert "but the status filter above is hiding " in _PAGE
-    assert "' item matches '" in _PAGE and "' items match '" in _PAGE
+    assert "item matches " in _PAGE and "items match " in _PAGE
+    assert "Every status is turned off" in _PAGE
 
 
 def test_every_card_carries_its_topic() -> None:
