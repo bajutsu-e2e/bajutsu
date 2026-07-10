@@ -1,5 +1,7 @@
 # docs-site — E2E against the live Bajutsu docs
 
+[日本語](README.ja.md)
+
 A Bajutsu config that drives the **public docs site**
 (<https://bajutsu-e2e.github.io/bajutsu/>) with the **Playwright (web) backend**. Unlike
 [`demos/web`](../web/README.md), there is no local app to serve — the target is a live public

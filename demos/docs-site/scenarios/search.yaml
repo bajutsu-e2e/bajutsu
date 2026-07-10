@@ -10,6 +10,7 @@ scenarios:
   - name: header search surfaces matching results
     description: Type a query into the search input, then assert a matching result link appears.
     steps:
+      # Wait for the hero to confirm the page has loaded before interacting with search.
       - wait: { for: { label: "Get started" }, timeout: 15 }
       # The header search box is the page's lone text input; `into` focuses it before typing.
       - type: { text: "selector", into: { traits: [textField] } }
