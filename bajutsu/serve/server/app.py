@@ -169,6 +169,10 @@ def make_app(state: ServeState) -> FastAPI:
     async def get_provider() -> JSONResponse:
         return _result(ops.provider_info(state))
 
+    @app.get("/api/themecontract")
+    async def theme_contract() -> JSONResponse:
+        return _result(ops.get_theme_contract(state))
+
     @app.get("/api/simulators")
     async def simulators() -> JSONResponse:
         return _result(ops.simulators_payload(state))
@@ -367,6 +371,10 @@ def make_app(state: ServeState) -> FastAPI:
     @app.post("/api/provider")
     async def set_provider(body: dict[str, Any]) -> JSONResponse:
         return _result(ops.set_provider(state, body))
+
+    @app.post("/api/theme")
+    async def upload_theme(body: dict[str, Any], request: Request) -> JSONResponse:
+        return _result(ops.upload_theme(state, body, _actor(request)))
 
     @app.post("/api/run")
     async def run(body: dict[str, Any], request: Request) -> JSONResponse:

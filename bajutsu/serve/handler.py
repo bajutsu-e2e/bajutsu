@@ -329,6 +329,8 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
                     )
                 case "/api/provider":
                     self._json(*ops.set_provider(state, body))
+                case "/api/theme":
+                    self._json(*ops.upload_theme(state, body, self._actor()))
                 case "/api/ant/login":
                     self._json(*ops.ant_login(state))
                 case "/api/run":
@@ -627,6 +629,9 @@ def _index_html(themes_dir: Path | None = None, default_theme: str | None = None
                 [{"id": m.id, "name": m.name, "kind": m.kind} for m in manifests]
             ),
             default_theme_json=_script_json(default_theme),
+            # Only when --themes is configured is there a directory to upload a theme into; the
+            # client uses this to reveal the "Upload to Server" button (BE-0191 unit 6).
+            themes_writable_json=_script_json(themes_dir is not None),
             js="\n".join(_asset(name) for name in _JS_ASSETS),
         )
     )

@@ -202,6 +202,34 @@ def test_legacy_apps_grammar_is_rejected(tmp_path: Path) -> None:
     assert stale.status_code == 400
 
 
+def test_theme_contract_and_upload_routes_match_stdlib(tmp_path: Path) -> None:
+    # The FastAPI shell must expose the theme editor endpoints in lockstep with the stdlib handler
+    # (BE-0191 unit 6): GET the contract, POST an edited theme into --themes.
+    themes_dir = tmp_path / "themes"
+    themes_dir.mkdir()
+    _scn_dir, cfg, runs = project(tmp_path)
+    state = srv.ServeState(
+        config=cfg, runs_dir=runs, root=tmp_path, cwd=tmp_path, themes_dir=themes_dir
+    )
+    client = _client(state)
+    contract = client.get("/api/themecontract").json()
+    assert "--bg" in contract["colors"]
+    resp = client.post(
+        "/api/theme", json={"name": "App Theme", "kind": "light", "tokens": {"--bg": "#020"}}
+    )
+    assert resp.status_code == 200
+    assert resp.json()["id"] == "app-theme"
+    assert (themes_dir / "app-theme.css").exists()
+
+
+def test_theme_upload_requires_themes_dir(tmp_path: Path) -> None:
+    # Without --themes there is nowhere to persist a theme; the shared op returns a 400 either backend.
+    client = _client(_state(tmp_path))
+    resp = client.post("/api/theme", json={"name": "x", "tokens": {"--bg": "#000"}})
+    assert resp.status_code == 400
+    assert "--themes" in resp.json()["error"]
+
+
 class _FakeOAuth:
     """Stand-in for the GitHub OAuth client — no network. `fetch_identity` fails for code ``"bad"``."""
 

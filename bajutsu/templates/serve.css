@@ -432,6 +432,13 @@ header .cfgname{color:var(--mut);font-size:.82em;max-width:32vw;overflow:hidden;
 .keyrow{display:flex;gap:.4rem}
 .keyinput{flex:1;background:var(--bg2);border:1px solid var(--line);color:var(--fg);border-radius:8px;padding:.4rem .6rem;font:inherit}
 .keyactions{display:flex;align-items:center;gap:.6rem;margin-top:.7rem}
+/* Theme editor (BE-0191 unit 6): the contract-generated form has one input per token, so it can be
+   far taller than the viewport. Cap the box and scroll only the form, keeping the header and the
+   action buttons pinned as a footer — otherwise Save/Upload sit below the fold (a usability trap,
+   and the reason a deterministic no-scroll tap in the dogfood would miss them). */
+#thememodal .fsbox{height:80vh;overflow:hidden}
+#thememodal #themecontent{flex:1 1 auto;min-height:0;overflow-y:auto}
+#thememodal .keyactions{flex-wrap:wrap}
 .keyclear{background:none;border:1px solid var(--line);color:var(--mut);padding:.3rem .8rem;font:inherit;font-weight:600;border-radius:8px;cursor:pointer}
 .keyclear:hover{color:var(--ng);border-color:var(--ng)}
 .keystatus{font-size:.82em;color:var(--mut)}

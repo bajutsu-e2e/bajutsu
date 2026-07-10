@@ -92,7 +92,7 @@ from bajutsu.serve.operations.sse import (
     job_log_events,
     job_sse,
 )
-from bajutsu.serve.operations.theme_editor import get_theme_contract
+from bajutsu.serve.operations.theme_editor import get_theme_contract, upload_theme
 from bajutsu.serve.operations.triage import start_triage
 from bajutsu.serve.operations.upload import (
     _safe_filename,
@@ -183,6 +183,7 @@ __all__ = [
     "start_run",
     "start_triage",
     "stats_html",
+    "upload_theme",
     "usage_html",
     "worker_artifact_urls",
     "worker_heartbeat",
