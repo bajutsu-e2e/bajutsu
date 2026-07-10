@@ -23,7 +23,7 @@ from jinja2 import Environment, FileSystemLoader
 
 from bajutsu.serve import operations as ops
 from bajutsu.serve import oplog
-from bajutsu.serve._paths import TEMPLATES_DIR as _TEMPLATE_DIR
+from bajutsu.serve._paths import TEMPLATES_DIR
 from bajutsu.serve.helpers import valid_run_id
 from bajutsu.serve.state import ServeState
 from bajutsu.serve.uploads import MAX_UPLOAD_BYTES
@@ -573,13 +573,13 @@ def make_server(state: ServeState, host: str = "127.0.0.1", port: int = 0) -> Th
 # The SPA shell + its CSS/JS/themes live in bajutsu/templates/serve.* — split out of this
 # module so they read/edit as real files. We inline them into one self-contained response,
 # mirroring report.py (no separate /static routes; this is a localhost dev tool).
-# _TEMPLATE_DIR is imported from bajutsu.serve._paths (shared constant, avoids independent
+# TEMPLATES_DIR is imported from bajutsu.serve._paths (shared constant, avoids independent
 # hand-counted .parent chains across modules at different package depths).
 
 
 @functools.lru_cache(maxsize=1)
 def _env() -> Environment:
-    return Environment(loader=FileSystemLoader(str(_TEMPLATE_DIR)), autoescape=True)
+    return Environment(loader=FileSystemLoader(str(TEMPLATES_DIR)), autoescape=True)
 
 
 # The UI JS is split into section files (BE-0202); they concatenate in this fixed order into one
@@ -591,7 +591,7 @@ _JS_ASSETS = ("serve.core.js", "serve.panels.js", "serve.crawl.js", "serve.autho
 
 @functools.lru_cache(maxsize=8)
 def _asset(name: str) -> str:
-    return (_TEMPLATE_DIR / name).read_text(encoding="utf-8")
+    return (TEMPLATES_DIR / name).read_text(encoding="utf-8")
 
 
 def _script_json(value: object) -> str:
