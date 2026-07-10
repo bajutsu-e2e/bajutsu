@@ -655,3 +655,139 @@ async function loadSims(){
   $('#rec-device').innerHTML=single;
 }
 
+// ---- theme editor (BE-0191 unit 6): modal form generated from the token contract ----
+async function initThemeEditor(){
+  // Fetch the theme token contract (colors + motion tokens with defaults).
+  const contract=await getJSON('/api/theme-contract',{colors:{},transitions:{}});
+  if(contract.error){setStatus($('#themestatus'),'contract not available','ng');return;}
+
+  const formEl=$('#themecontent');
+  const htmlParts=[];
+
+  // Render color token inputs (color swatch inputs).
+  if(Object.keys(contract.colors||{}).length>0){
+    htmlParts.push('<div class="setsection"><div class="setlabel">Colors</div>');
+    for(const[token,meta] of Object.entries(contract.colors||{})){
+      const hex=meta.default||'#ffffff';
+      htmlParts.push(`<label class="keylabel" for="${esc(token)}">${esc(token)}</label>`);
+      htmlParts.push(`<input type="color" id="${esc(token)}" value="${esc(hex)}" class="theme-color" data-token="${esc(token)}">`);
+    }
+    htmlParts.push('</div>');
+  }
+
+  // Render motion token inputs (duration/easing/keyframe).
+  if(Object.keys(contract.transitions||{}).length>0){
+    htmlParts.push('<div class="setsection"><div class="setlabel">Motion</div>');
+    for(const[token,meta] of Object.entries(contract.transitions||{})){
+      const val=meta.default||'';
+      const type=meta.type||'unknown';
+      htmlParts.push(`<label class="keylabel" for="${esc(token)}">${esc(token)}</label>`);
+      if(type==='keyframe'){
+        htmlParts.push(`<input type="text" id="${esc(token)}" value="${esc(val)}" class="theme-motion" data-token="${esc(token)}">`);
+      }else{
+        htmlParts.push(`<input type="text" id="${esc(token)}" value="${esc(val)}" class="theme-motion" data-token="${esc(token)}" placeholder="${type==='duration'?'e.g. 0.18s':type==='easing'?'e.g. cubic-bezier(.4,0,.2,1)':'keyframe name'}">`);
+      }
+    }
+    htmlParts.push('</div>');
+  }
+
+  formEl.innerHTML=htmlParts.join('');
+
+  // Wire color & motion inputs to live preview.
+  const onInputChange=()=>{
+    const tokens={};
+    document.querySelectorAll('#themecontent [class^="theme-"]').forEach(el=>{
+      tokens[el.dataset.token]=el.value;
+    });
+    applyThemePreview(tokens);
+  };
+  document.querySelectorAll('#themecontent [class^="theme-"]').forEach(el=>el.addEventListener('input',onInputChange));
+
+  // Wire modal buttons.
+  $('#themeclose').addEventListener('click',()=>closeModal($('#thememodal')));
+  $('#themesave-local').addEventListener('click',saveThemeLocal);
+  $('#themeexport').addEventListener('click',exportTheme);
+  $('#themeimport-file').addEventListener('change',importThemeFile);
+  $('#themeimport').addEventListener('click',()=>$('#themeimport-file').click());
+}
+
+// Apply live preview: inject or update a <style> block with the edited token values.
+function applyThemePreview(tokens){
+  let styleEl=$('#theme-editor-preview');
+  if(!styleEl){
+    styleEl=document.createElement('style');
+    styleEl.id='theme-editor-preview';
+    document.head.appendChild(styleEl);
+  }
+  const rules=Object.entries(tokens).map(([k,v])=>`${k}:${v};`).join('');
+  styleEl.textContent=`:root{${rules}}`;
+}
+
+// Save edited theme to localStorage as a local draft.
+function saveThemeLocal(){
+  const tokens={};
+  document.querySelectorAll('#themecontent [class^="theme-"]').forEach(el=>{
+    tokens[el.dataset.token]=el.value;
+  });
+  const draft={tokens,name:'custom',kind:'dark'};
+  try{localStorage.setItem('bajutsu-custom-theme-draft',JSON.stringify(draft))}catch(e){
+    setStatus($('#themestatus'),'failed to save (quota exceeded?)','ng');return;
+  }
+  setStatus($('#themestatus'),'saved to local draft','ok');
+}
+
+// Export theme as CSS file.
+function exportTheme(){
+  const tokens={};
+  document.querySelectorAll('#themecontent [class^="theme-"]').forEach(el=>{
+    tokens[el.dataset.token]=el.value;
+  });
+  const manifest=`/* bajutsu-theme\nname: custom\nkind: dark\n*/\n`;
+  const css=`[data-theme="custom"]{\n${Object.entries(tokens).map(([k,v])=>`  ${k}: ${v};`).join('\n')}\n}\n`;
+  const blob=new Blob([manifest+css],{type:'text/css'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');
+  a.href=url;
+  a.download='custom-theme.css';
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+// Import theme from file.
+function importThemeFile(){
+  const file=$('#themeimport-file').files[0];
+  if(!file){return;}
+  const reader=new FileReader();
+  reader.onload=e=>{
+    try{
+      const css=e.target.result;
+      // Simple parse: look for [data-theme="..."] block and extract --tokens.
+      const match=css.match(/\[data-theme="[^"]+"\]\s*{([^}]*)}/);
+      if(!match){setStatus($('#themestatus'),'invalid theme file (no [data-theme] rule)','ng');return;}
+      const tokens={};
+      const block=match[1];
+      for(const line of block.split(';')){
+        const parts=line.trim().split(':');
+        if(parts.length===2){
+          tokens[parts[0].trim()]=parts[1].trim();
+        }
+      }
+      // Populate form from imported tokens.
+      for(const[k,v] of Object.entries(tokens)){
+        const el=document.getElementById(k);
+        if(el){el.value=v;}
+      }
+      applyThemePreview(tokens);
+      setStatus($('#themestatus'),'imported','ok');
+    }catch(e){
+      setStatus($('#themestatus'),'import failed','ng');
+    }
+  };
+  reader.readAsText(file);
+}
+
+// Initialization on page load.
+$('#opentheme').addEventListener('click',()=>{
+  initThemeEditor();
+  $('#thememodal').hidden=false;
+});
