@@ -712,7 +712,9 @@ AI を使う経路（`record` ／ `crawl` ／ `triage --ai` ／ `run --apply`）
 ### 開発基盤（コントリビュータ体験）
 
 <!-- GENERATED:proposals-developer-experience -->
-
+| ID | 項目 | 状態 |
+|---|---|---|
+| [BE-0219](BE-0219-roadmap-dashboard-search/BE-0219-roadmap-dashboard-search-ja.md) | ロードマップ status ダッシュボードへのテキスト検索の追加 | 提案 |
 <!-- /GENERATED:proposals-developer-experience -->
 
 ### コードベース品質・技術的負債

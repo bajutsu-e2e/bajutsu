@@ -719,7 +719,9 @@ Keeping the autonomous crawl fast and its code lean as it grows.
 ### Development infrastructure (contributor workflow)
 
 <!-- GENERATED:proposals-developer-experience -->
-
+| ID | Item | Status |
+|---|---|---|
+| [BE-0219](BE-0219-roadmap-dashboard-search/BE-0219-roadmap-dashboard-search.md) | Text search on the roadmap status dashboard | Proposal |
 <!-- /GENERATED:proposals-developer-experience -->
 
 ### Codebase quality & technical debt

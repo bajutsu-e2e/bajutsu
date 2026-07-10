@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-roadmap-dashboard-search-ja.md)
+**English** · [日本語](BE-0219-roadmap-dashboard-search-ja.md)
 
-# BE-XXXX — Text search on the roadmap status dashboard
+# BE-0219 — Text search on the roadmap status dashboard
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-roadmap-dashboard-search.md) |
+| Proposal | [BE-0219](BE-0219-roadmap-dashboard-search.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0219") |
 | Topic | Development infrastructure (contributor workflow) |
 | Related | [BE-0094](../BE-0094-roadmap-status-dashboard/BE-0094-roadmap-status-dashboard.md) |
 <!-- /BE-METADATA -->
