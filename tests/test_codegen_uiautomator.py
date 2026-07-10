@@ -171,6 +171,19 @@ def test_id_matches_candidate_list_alternates_res_patterns() -> None:
     )
 
 
+def test_id_matches_candidate_list_with_class_char_is_todo() -> None:
+    # A `[...]` class in *any* candidate has no faithful regex (fnmatch-vs-regex negation differs),
+    # so the whole selector conservatively degrades to a TODO — it must not emit a partial/wrong
+    # alternation from only the clean candidates (BE-0221).
+    code = _gen(
+        "- name: x\n  steps:\n    - tap: { idMatches: ['stable.row[0-9]', 'stable_row_*'] }\n"
+    )
+    assert "// TODO: unsupported selector" in code
+    assert (
+        "(?:" not in code
+    )  # no partial alternation emitted (only the byId/byAnyId preamble helpers)
+
+
 def test_label_matches_substring_maps_to_contains_but_regex_is_todo() -> None:
     # `By.text(Pattern)` is a full-string match, unlike labelMatches' re.search — so a plain
     # substring maps to By.textContains, while a real regex (e.g. `^Item `) has no faithful form.
