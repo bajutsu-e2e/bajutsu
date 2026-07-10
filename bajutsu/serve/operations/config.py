@@ -484,13 +484,19 @@ def _apply_provider_env(prov: str, settings: ProviderSettings) -> None:
 def _persist_provider_settings(state: ServeState, provider: str) -> bool | None:
     """Write *provider* + the current in-memory settings map to the durable store (BE-0184).
 
-    The snapshot and the disk write happen inside ``state._persist_lock`` so that the *ordering*
-    of writes matches the *ordering* of mutations: whichever thread wins the lock last re-reads
-    ``provider_settings_snapshot()`` at that point and therefore writes the most up-to-date state —
-    including every mutation from threads that already released ``_provider_lock``. This prevents
-    a slow write from overwriting a newer one: without the in-lock re-read, thread A could win
-    ``_persist_lock`` with a snapshot from before B's mutation, and A's write would silently roll
-    back B's change even though B already reported ``persisted: true``.
+    The ``settings`` map write is race-safe: the snapshot and the disk write happen inside
+    ``state._persist_lock``, so whichever thread wins the lock last re-reads
+    ``provider_settings_snapshot()`` at that point and writes the most up-to-date map — including
+    every mutation from threads that already released ``_provider_lock`` — rather than a slow write
+    overwriting a newer one.
+
+    The ``provider`` (active) field is best-effort under concurrency, not race-free. It is the
+    selection *this* request applied, and ``_apply_provider_env`` writes ``os.environ[PROVIDER_ENV]``
+    unlocked before this runs — a process-global mutation that predates BE-0184 and is inherently
+    racy (two simultaneous saves for different providers already leave the live env in whichever
+    order they finish). So under concurrent conflicting saves the persisted active provider can
+    differ from the final live env; BE-0184's scope is surviving a restart, not making that
+    pre-existing env race atomic. In the normal single-operator case the two agree.
 
     The selection has already taken effect in the process env and the in-memory map, so a failure to
     write the file (a read-only serve dir, a full disk) must not fail the request that already
