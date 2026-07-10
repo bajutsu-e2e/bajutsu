@@ -192,8 +192,51 @@ function applyTheme(t,persist){
   try{if(persist)localStorage.setItem('bajutsu-theme',t)}catch(e){}
   const sel=$('#theme');if(sel&&sel.value!==t&&themeExists(t))sel.value=t;
 }
+// A theme id from a display name: lowercased, non-alnum runs hyphenated, edges trimmed. Mirrors the
+// server's `_slug` so an exported/uploaded theme's id (its `[data-theme]` selector and filename
+// stem) agrees across both sides.
+function slugTheme(name){return (name||'').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,'');}
+
+// Keep the `[data-theme="custom"]` block in sync with the local draft's tokens. Scoped to the custom
+// theme (unlike the editor's `:root` live preview), so it only paints when `custom` is the selected
+// theme; tokens the draft omits fall back to the :root/midnight defaults, as the contract promises.
+function applyCustomThemeStyle(draft){
+  let el=$('#theme-custom');
+  if(!el){el=document.createElement('style');el.id='theme-custom';document.head.appendChild(el);}
+  const rules=Object.entries(draft&&draft.tokens||{}).filter(([k,v])=>safeThemeToken(k,v)).map(([k,v])=>`${k}:${v};`).join('');
+  el.textContent=`[data-theme="custom"]{${rules}}`;
+}
+
+// Reflect the local draft as a `custom` entry in the picker: register it in THEMES (so it resolves
+// like any theme), inject its `<style>`, and add/refresh its <option>. With no draft, tear all three
+// down so a cleared draft leaves no dangling entry.
+function surfaceCustomDraft(){
+  const sel=$('#theme');
+  const opt=sel?sel.querySelector('option[value="custom"]'):null;
+  const draft=readCustomDraft();
+  if(!draft){
+    if(opt)opt.remove();
+    const el=$('#theme-custom');if(el)el.remove();
+    const i=THEMES.findIndex(x=>x.id==='custom');if(i>=0)THEMES.splice(i,1);
+    return;
+  }
+  const label=draft.name||'custom',kind=draft.kind==='light'?'light':'dark';
+  const entry=THEMES.find(x=>x.id==='custom');
+  if(entry){entry.name=label;entry.kind=kind;}else{THEMES.push({id:'custom',name:label,kind:kind});}
+  applyCustomThemeStyle(draft);
+  if(!sel)return;
+  if(opt){opt.textContent=label;}
+  else{
+    const o=document.createElement('option');o.value='custom';o.textContent=label;
+    (sel.querySelector(`optgroup[label="${kind==='light'?'Light':'Dark'}"]`)||sel).appendChild(o);
+  }
+}
+
 function initTheme(){
   const sel=$('#theme');
+  // Register any saved local draft before resolving the active theme, so a previously-selected
+  // `custom` pick (persisted in localStorage) both lists in the picker and paints on load.
+  surfaceCustomDraft();
   applyTheme(currentTheme(),false);
   // An explicit pick wins and is remembered until the OS scheme changes.
   sel.addEventListener('change',()=>applyTheme(sel.value,true));
@@ -669,12 +712,19 @@ async function initThemeEditor(){
   if(contract.error){setStatus($('#themestatus'),'contract not available','ng');return;}
 
   const htmlParts=[];
+  // Reopen onto the saved local draft if one exists, so editing continues where it left off rather
+  // than resetting to the contract defaults every open.
+  const draft=readCustomDraft();
 
+  // The name seeds the export filename, the `custom` picker entry, and the uploaded theme's id — so
+  // the author names the theme here rather than it defaulting to a fixed "custom".
+  htmlParts.push('<div class="setsection"><div class="setlabel">Theme</div>');
+  htmlParts.push('<label class="keylabel" for="theme-name">name</label>');
+  htmlParts.push(`<input type="text" id="theme-name" data-testid="theme.name" class="keyinput" value="${esc(draft&&draft.name||'')}" placeholder="e.g. Ocean">`);
   // Kind decides how the OS-scheme picker matches this theme once dropped in — a real property, not
   // cosmetic — so the author picks it rather than it being hardcoded.
-  htmlParts.push('<div class="setsection"><div class="setlabel">Theme</div>');
   htmlParts.push('<label class="keylabel" for="theme-kind">kind</label>');
-  htmlParts.push('<select id="theme-kind" class="keyinput"><option value="dark">dark</option><option value="light">light</option></select>');
+  htmlParts.push('<select id="theme-kind" data-testid="theme.kind" class="keyinput"><option value="dark">dark</option><option value="light">light</option></select>');
   htmlParts.push('</div>');
 
   // Color token inputs. A native color swatch only when the default is a plain hex, since it silently
@@ -708,7 +758,20 @@ async function initThemeEditor(){
   }
 
   $('#themecontent').innerHTML=htmlParts.join('');
+  // Overlay the saved draft's kind + token values onto the freshly built form (which defaulted to the
+  // contract), so reopening resumes the draft rather than discarding it.
+  if(draft){
+    if(draft.kind)$('#theme-kind').value=draft.kind;
+    for(const[k,v] of Object.entries(draft.tokens||{})){const el=document.getElementById(k);if(el)el.value=v;}
+    applyThemePreview(collectThemeTokens());
+  }
   document.querySelectorAll('#themecontent [class^="theme-"]').forEach(el=>el.addEventListener('input',()=>applyThemePreview(collectThemeTokens())));
+}
+
+// The saved local draft ({tokens,name,kind}) or null. A parse/quota failure degrades to "no draft"
+// rather than throwing — the editor still opens on the contract defaults.
+function readCustomDraft(){
+  try{const s=localStorage.getItem('bajutsu-custom-theme-draft');return s?JSON.parse(s):null;}catch(e){return null;}
 }
 
 // The current form's token values, keyed by token name.
@@ -738,25 +801,45 @@ function applyThemePreview(tokens){
   styleEl.textContent=`:root{${rules}}`;
 }
 
-// Save edited theme to localStorage as a local draft.
+// The author's chosen name (empty if the form isn't built yet).
+function currentThemeName(){const el=$('#theme-name');return el?el.value.trim():'';}
+
+// Save the edited theme to localStorage as a local draft, then surface it as the `custom` picker
+// entry and switch to it — so "Save to Local Draft" makes the look immediately selectable.
 function saveThemeLocal(){
-  const draft={tokens:collectThemeTokens(),name:'custom',kind:currentThemeKind()};
+  const draft={tokens:collectThemeTokens(),name:currentThemeName()||'custom',kind:currentThemeKind()};
   try{localStorage.setItem('bajutsu-custom-theme-draft',JSON.stringify(draft))}catch(e){
     setStatus($('#themestatus'),'failed to save (quota exceeded?)','ng');return;
   }
+  surfaceCustomDraft();
+  applyTheme('custom',true);
   setStatus($('#themestatus'),'saved to local draft','ok');
 }
 
 // Export theme as a CSS file that round-trips with the drop-in format (manifest comment + block).
+// The id (its `[data-theme]` selector and filename stem) is the slug of the name — the same id the
+// server derives on upload — so an exported file, dropped into --themes, discovers under that id.
 function exportTheme(){
-  const tokens=collectThemeTokens(),kind=currentThemeKind();
-  const manifest=`/* bajutsu-theme\nname: custom\nkind: ${kind}\n*/\n`;
-  const css=`[data-theme="custom"]{\n${Object.entries(tokens).filter(([k,v])=>safeThemeToken(k,v)).map(([k,v])=>`  ${k}: ${v};`).join('\n')}\n}\n`;
+  const tokens=collectThemeTokens(),kind=currentThemeKind(),name=currentThemeName()||'custom';
+  const id=slugTheme(name)||'custom';
+  const manifest=`/* bajutsu-theme\nname: ${name}\nkind: ${kind}\n*/\n`;
+  const css=`[data-theme="${id}"]{\n${Object.entries(tokens).filter(([k,v])=>safeThemeToken(k,v)).map(([k,v])=>`  ${k}: ${v};`).join('\n')}\n}\n`;
   const blob=new Blob([manifest+css],{type:'text/css'});
   const url=URL.createObjectURL(blob);
   const a=document.createElement('a');
-  a.href=url;a.download='custom-theme.css';a.click();
+  a.href=url;a.download=`${id}-theme.css`;a.click();
   URL.revokeObjectURL(url);
+}
+
+// Upload the edited theme to the serve instance's --themes dir (BE-0191 unit 6, part 2). The server
+// slugs the name into the id, composes the canonical file, and rescans — so it becomes a discoverable
+// drop-in on the next load. Only wired when the instance was started with --themes (see below).
+async function uploadTheme(){
+  const name=currentThemeName();
+  if(!name){setStatus($('#themestatus'),'a theme name is required to upload','ng');return;}
+  const res=await postJSON('/api/theme',{name:name,kind:currentThemeKind(),tokens:collectThemeTokens()},{error:'upload failed'});
+  if(res&&res.ok)setStatus($('#themestatus'),'uploaded'+(res.overwritten?' (overwritten)':'')+' — reload to see it in the picker','ok');
+  else setStatus($('#themestatus'),(res&&res.error)||'upload failed','ng');
 }
 
 // Import a theme file: parse the [data-theme] block, populate the form, and preview. Values that a
@@ -805,3 +888,6 @@ $('#themesave-local').addEventListener('click',saveThemeLocal);
 $('#themeexport').addEventListener('click',exportTheme);
 $('#themeimport-input').addEventListener('change',importThemeFile);
 $('#themeimport').addEventListener('click',()=>$('#themeimport-input').click());
+// The "Upload to Server" button ships hidden; reveal + wire it only when the instance was started
+// with --themes (there's a directory to write into), signaled by the server-set writable flag.
+if(window.__bajutsuThemesWritable){$('#themesave-upload').hidden=false;$('#themesave-upload').addEventListener('click',uploadTheme);}

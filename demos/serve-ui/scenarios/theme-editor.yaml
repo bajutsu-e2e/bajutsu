@@ -1,0 +1,45 @@
+# Theme editor (BE-0191 unit 6) — the in-UI authoring path. The "Edit" header button opens a modal
+# whose form is generated from the token contract (GET /api/themecontract). Saving to the local draft
+# stores it in localStorage as the `custom` theme and surfaces it in the header picker at once, so the
+# author can select their look immediately. Deterministic and side-effect-free: the local-draft path
+# is entirely client-side (no server write, no file touched), and each scenario starts from a fresh
+# browser context, so localStorage begins empty and the assertions hold on every run.
+#
+# The server upload path (POST /api/theme) is exercised by the Python HTTP tests instead: it needs
+# the instance started with --themes and writes a file, neither of which suits an idempotent dogfood.
+# Here we assert its gating — the "Upload to Server" button stays hidden when --themes is absent (the
+# dogfood serve is started without it), proving the client only offers upload when it can succeed.
+description: >-
+  Theme editor — opening the editor renders the contract-generated form, saving a local draft
+  surfaces it as the `custom` theme in the header picker, and the server-upload button is hidden when
+  the instance runs without --themes.
+scenarios:
+  - name: saving a local draft surfaces it as the custom theme in the picker
+    description: >-
+      Open the editor, name the draft, save it to the local draft — the header picker gains the
+      `custom` theme and switches to it, all client-side.
+    steps:
+      - wait: { for: { id: view.record }, timeout: 10 }
+      - tap: { id: nav.open-theme }
+      - wait: { for: { id: theme.name }, timeout: 10 }   # the contract-generated form has rendered
+      - type: { text: "Dogfood Custom", into: { id: theme.name } }
+      - tap: { id: theme.save-local }
+      - wait: { for: { id: theme.status }, timeout: 5 }
+      - assert:
+          - label: { sel: { id: theme.status }, contains: "saved to local draft" }
+    expect:
+      - value: { sel: { id: nav.theme-picker }, equals: custom }   # the draft is now the selected theme
+
+  - name: the upload button is hidden without a themes directory
+    description: >-
+      With the serve instance started without --themes, there is nowhere to persist a theme, so the
+      "Upload to Server" button is not offered (it stays hidden); the local-draft and export paths
+      remain available.
+    steps:
+      - wait: { for: { id: view.record }, timeout: 10 }
+      - tap: { id: nav.open-theme }
+      - wait: { for: { id: theme.name }, timeout: 10 }
+      - assert:
+          - exists: { id: theme.save-local }              # the client-only paths are always offered
+          - exists: { id: theme.export }
+          - exists: { id: theme.save-upload, negate: true }   # upload gated off without --themes

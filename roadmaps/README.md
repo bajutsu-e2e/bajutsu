@@ -181,6 +181,7 @@ The AI-driven `record` (Tier 1) is implemented ([recording.md](../docs/recording
 | [BE-0178](BE-0178-record-multi-action-turn/BE-0178-record-multi-action-turn.md) | Multi-action record turns (batch intra-screen actions) | Implemented |
 | [BE-0179](BE-0179-record-human-handoff/BE-0179-record-human-handoff.md) | Human-in-the-loop handoff during record (pause / hand off / resume) | Implemented |
 | [BE-0180](BE-0180-crawl-history-viewer/BE-0180-crawl-history-viewer.md) | Crawl history viewer in the Web UI | Implemented |
+| [BE-0191](BE-0191-pluggable-theme-system-serve-ui/BE-0191-pluggable-theme-system-serve-ui.md) | Pluggable theme system for the serve Web UI (visual tokens and swappable transitions) | Implemented |
 | [BE-0192](BE-0192-record-vision-on-demand/BE-0192-record-vision-on-demand.md) | Vision-on-demand in record (attach a screenshot only when it adds information) | Implemented |
 | [BE-0193](BE-0193-record-screenshot-downscale/BE-0193-record-screenshot-downscale.md) | Right-size the record screenshot with a deterministic client-side downscale | Implemented |
 | [BE-0194](BE-0194-record-turn-payload-diet/BE-0194-record-turn-payload-diet.md) | Lean the record turn payload (compact the element tree, token-budget controls, per-category usage) | Implemented |
@@ -592,9 +593,7 @@ Bringing the CLI's own tools into the serve Web UI, where authoring happens. The
 ### Authoring experience (record / GUI editor)
 
 <!-- GENERATED:in-progress-authoring -->
-| ID | Item | Status |
-|---|---|---|
-| [BE-0191](BE-0191-pluggable-theme-system-serve-ui/BE-0191-pluggable-theme-system-serve-ui.md) | Pluggable theme system for the serve Web UI (visual tokens and swappable transitions) | In progress |
+
 <!-- /GENERATED:in-progress-authoring -->
 
 ### Codebase quality & technical debt

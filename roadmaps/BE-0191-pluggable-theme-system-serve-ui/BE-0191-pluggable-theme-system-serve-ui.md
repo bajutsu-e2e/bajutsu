@@ -7,9 +7,9 @@
 |---|---|
 | Proposal | [BE-0191](BE-0191-pluggable-theme-system-serve-ui.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **In progress** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0191") |
-| Implementing PR | [#826](https://github.com/bajutsu-e2e/bajutsu/pull/826), [#837](https://github.com/bajutsu-e2e/bajutsu/pull/837), [#855](https://github.com/bajutsu-e2e/bajutsu/pull/855), [#859](https://github.com/bajutsu-e2e/bajutsu/pull/859), [#881](https://github.com/bajutsu-e2e/bajutsu/pull/881), [#883](https://github.com/bajutsu-e2e/bajutsu/pull/883) |
+| Implementing PR | [#826](https://github.com/bajutsu-e2e/bajutsu/pull/826), [#837](https://github.com/bajutsu-e2e/bajutsu/pull/837), [#855](https://github.com/bajutsu-e2e/bajutsu/pull/855), [#859](https://github.com/bajutsu-e2e/bajutsu/pull/859), [#881](https://github.com/bajutsu-e2e/bajutsu/pull/881), [#883](https://github.com/bajutsu-e2e/bajutsu/pull/883), _pending_ |
 | Topic | Authoring experience (record / GUI editor) |
 <!-- /BE-METADATA -->
 
@@ -230,7 +230,7 @@ filesystem, building directly on the token contract of unit 1.
 - [x] 3. Theme picker UI (header dropdown replacing the binary toggle, persistence + pre-paint seeding, `data-testid` convention, tiler-safe placement).
 - [x] 4. Swappable, theme-defined transitions (semantic state classes + `--motion-*` tokens across the four surfaces; tiler `rebuild()` refactor; `prefers-reduced-motion` collapse).
 - [x] 5. Determinism and dogfood alignment (reduced-motion guarantees condition-wait safety; update `demos/serve-ui/scenarios/theme.yaml` for the picker).
-- [ ] 6. In-UI theme editor, live preview, and upload / export (contract-derived form, client-side live preview, local-draft + upload persistence tiers reusing the BE-0073 upload seam, export/import round-trip).
+- [x] 6. In-UI theme editor, live preview, and upload / export (contract-derived form, client-side live preview, local-draft + upload persistence tiers reusing the BE-0073 upload seam, export/import round-trip).
 
 ### Log
 
@@ -305,6 +305,27 @@ filesystem, building directly on the token contract of unit 1.
   contract endpoint reads the real bundled CSS and fills defaults). Still to land in part 2: surfacing
   the local draft in the picker, server upload into `--themes` (BE-0073 seam) with a bounded
   `lru_cache` invalidation, and the dogfood scenario. ([#883](https://github.com/bajutsu-e2e/bajutsu/pull/883))
+- Unit 6 (part 2 of 2) — local-draft picker surfacing + server upload, completing the unit. The
+  client (`serve.core.js`) now surfaces the saved local draft as a `custom` entry in the header
+  picker: `surfaceCustomDraft` registers it in the theme list, injects a scoped
+  `<style id="theme-custom">[data-theme="custom"]{…}</style>` (so it paints only when selected, with
+  omitted tokens falling back to `:root`), and adds/refreshes its `<option>`; "Save to Local Draft"
+  then switches to it, and the editor gained a name field so a draft/export/upload is named.
+  Server upload lands as a dedicated `POST /api/theme` (`{name, kind, tokens}`) rather than the
+  BE-0073 zip seam — a theme is a single small declarative file, so the write mirrors the
+  apikey/config write pattern: `theme_editor.upload_theme` requires `--themes`, slugs the name into
+  the `[data-theme]` id (so the selector always matches the filename stem), guards every token
+  name/value against breaking out of the rule, refuses a built-in-id collision, composes the
+  canonical manifest + rule, and invalidates the `_index_html` `lru_cache` (the one place unit 2's
+  live-reload exclusion is lifted) so the drop-in lists on the next render. Both the contract GET and
+  the upload POST are wired into the FastAPI backend too (`server/app.py`), closing a part-1 gap
+  where the editor only worked on the stdlib handler. The upload button ships hidden and is revealed
+  only when `--themes` is configured (a server-set `window.__bajutsuThemesWritable` flag). The theme
+  modal was made to scroll its form within a capped box with a pinned action footer, so Save/Upload
+  never fall below the fold. Tests: `tests/serve/test_theme_upload.py` (op + stdlib route + cache
+  invalidation), `test_server_app.py` (both FastAPI routes), and the `demos/serve-ui/scenarios/theme-editor.yaml`
+  dogfood (local-draft → `custom` picker surfacing; upload button gated off without `--themes`); docs
+  updated in `docs/web-ui.md` (+ ja mirror). ([#_pending_](https://github.com/bajutsu-e2e/bajutsu/pulls))
 
 ## References
 

@@ -84,12 +84,17 @@ because a run drives the browser with that preference forced on, animation never
 deterministic `run`.
 
 **Theme editor.** Click the **Edit** button next to the picker to open the in-UI theme editor. It
-generates a form from the live token contract: a native color swatch per color token and a text
-field per motion token. Edits apply instantly as a live preview — the running UI reflects the
-change with no page reload. From the editor you can:
-- **Save to Local Draft** — persists the edited theme in the browser's local storage. The draft
-  survives page reloads but is browser-local (not shared across serve sessions).
-- **Export** — downloads a `custom-theme.css` file in the same drop-in format that `--themes`
+generates a form from the live token contract: a **name** and **kind** (dark/light) at the top, then
+a native color swatch per color token and a text field per motion token. Edits apply instantly as a
+live preview — the running UI reflects the change with no page reload. From the editor you can:
+- **Save to Local Draft** — persists the edited theme in the browser's local storage and immediately
+  surfaces it as a **custom** entry in the header picker, selecting it. The draft survives page
+  reloads but is browser-local (not shared across serve sessions); reopening the editor resumes it.
+- **Upload to Server** — writes the theme into the `--themes` directory as a discoverable drop-in,
+  shared across sessions on that instance. The server derives the theme's id from the name, so an
+  uploaded theme lists in the picker on the next load. This button appears **only when the instance
+  was started with `--themes`** — without a themes directory there is nowhere to persist it.
+- **Export** — downloads a `<name>-theme.css` file in the same drop-in format that `--themes`
   accepts, so a locally authored theme can be committed to a repo and shared.
 - **Import** — loads a previously exported (or hand-authored) `.css` file and populates the form;
   any token in the file with no matching form field is reported rather than silently dropped.
