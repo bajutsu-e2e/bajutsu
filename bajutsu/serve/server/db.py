@@ -351,26 +351,32 @@ class SqlRepository:
             session.commit()
 
     def register_worker(self, worker_id: str, capabilities: Iterable[str]) -> None:
-        from sqlalchemy import select
+        from sqlalchemy.exc import IntegrityError
         from sqlalchemy.orm import Session
 
         from bajutsu.serve.server.models import WorkerRecord
 
         caps = list(capabilities)
         now = datetime.now(UTC)
+        # Insert-or-update keyed by worker_id (same pattern as `upsert_user`): a plain
+        # `SELECT ... FOR UPDATE` can't serialize two *first-ever* polls for the same id — it takes
+        # no gap lock — so a concurrent insert (a client retry, or two replicas briefly sharing an
+        # explicit --worker-id) would make the second commit raise. Catch that and fall through to
+        # the update branch instead of crashing the lease poll.
         with Session(self._engine) as session:
-            # Upsert without a dialect-specific ON CONFLICT: the lock+read+write serializes two polls
-            # from the same worker_id (rare), and the table is tiny (one row per live worker).
-            stmt = select(WorkerRecord).where(WorkerRecord.id == worker_id)
-            if self._engine.dialect.name != "sqlite":
-                stmt = stmt.with_for_update()
-            row = session.scalars(stmt).first()
+            row = session.get(WorkerRecord, worker_id)
             if row is None:
                 session.add(WorkerRecord(id=worker_id, capabilities=caps, last_seen=now))
-            else:
+                try:
+                    session.commit()
+                    return
+                except IntegrityError:
+                    session.rollback()
+                    row = session.get(WorkerRecord, worker_id)
+            if row is not None:  # update in place (last-writer-wins on caps + last_seen)
                 row.capabilities = caps
                 row.last_seen = now
-            session.commit()
+                session.commit()
 
     def lease_job(self, worker_id: str, capabilities: Iterable[str] = ()) -> LeasedJob | None:
         from sqlalchemy import select
