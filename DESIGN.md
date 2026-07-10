@@ -140,8 +140,11 @@ class Element(TypedDict):
     frame: tuple[float, float, float, float]  # x, y, w, h (points)
 
 class Selector(TypedDict, total=False):
-    id: str               # accessibilityIdentifier 完全一致（第一候補）
-    idMatches: str        # glob パターン（複数マッチ前提。例 "*.submit"）
+    # id / idMatches は単一値でもリストでもよい。リストは候補の OR で、要素の id が
+    # いずれかに一致（または glob 一致）すればマッチする。1 つの共有シナリオが各プラット
+    # フォームの id 表記を持てる（例 [stable.refresh, stable_refresh]。BE-0221）
+    id: str | list[str]        # accessibilityIdentifier 完全一致（第一候補）
+    idMatches: str | list[str] # glob パターン（複数マッチ前提。例 "*.submit"）
     label: str            # accessibilityLabel 完全一致（補助・曖昧解消のみ）
     labelMatches: str     # label の部分一致 / 正規表現
     traits: list[str]     # 型で絞る（例 ["button"]）
