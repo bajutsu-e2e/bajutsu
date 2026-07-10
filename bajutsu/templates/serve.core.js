@@ -775,15 +775,18 @@ function importThemeFile(){
         const idx=line.indexOf(':');
         if(idx>0){const k=line.slice(0,idx).trim();if(k.startsWith('--'))tokens[k]=line.slice(idx+1).trim();}
       }
-      const rejected=[];
+      const rejected=[],unknown=[];
       for(const[k,v] of Object.entries(tokens)){
         const el=document.getElementById(k);
-        if(!el)continue;
+        if(!el){unknown.push(k);continue;}  // token in the file has no form field (older export or typo)
         el.value=v;
         if(el.value.toLowerCase()!==v.toLowerCase()&&el.type==='color')rejected.push(k);  // the color input coerced/dropped it
       }
       applyThemePreview(collectThemeTokens());
-      if(rejected.length)setStatus($('#themestatus'),'imported; invalid value for '+rejected.join(', '),'ng');
+      const msgs=[];
+      if(rejected.length)msgs.push('invalid value for '+rejected.join(', '));
+      if(unknown.length)msgs.push('unknown token(s): '+unknown.join(', '));
+      if(msgs.length)setStatus($('#themestatus'),'imported; '+msgs.join('; '),'ng');
       else setStatus($('#themestatus'),'imported','ok');
     }catch(e){
       setStatus($('#themestatus'),'import failed','ng');

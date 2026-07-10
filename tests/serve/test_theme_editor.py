@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from unittest.mock import patch
 
 from _shared import _get_json, _serve, project
 
@@ -35,6 +36,15 @@ def test_get_theme_contract_populates_defaults():
     assert payload["colors"]["--bg"]["default"].startswith("#")
     # A motion duration default is filled too.
     assert payload["transitions"]["--motion-view"]["default"]
+
+
+def test_get_theme_contract_read_failure_returns_500(tmp_path: Path) -> None:
+    """A read failure (missing bundled file) returns a 500 payload, not a 200 with an error body."""
+    missing = tmp_path / "nonexistent.css"
+    with patch.object(theme_editor, "_CONTRACT_PATH", missing):
+        payload, status = theme_editor.get_theme_contract(None)  # type: ignore[arg-type]
+    assert status == 500
+    assert "error" in payload
 
 
 def test_api_theme_contract_route(tmp_path: Path) -> None:

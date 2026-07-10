@@ -139,10 +139,13 @@ def parse_theme_tokens(contract_css: str) -> dict[str, dict[str, dict[str, str]]
         token_name = f"--{match.group(1)}"
         # Categorize: motion tokens are --motion-*, others are colors.
         if token_name.startswith("--motion-"):
-            # Infer type: enter/leave = keyframe, ease = easing, else = duration.
-            if "enter" in token_name or "leave" in token_name:
+            # Infer type from the trailing segment (after the last hyphen) so a future
+            # token whose name merely *contains* "ease" as a substring (e.g. --motion-release)
+            # is not misclassified as easing.
+            last_seg = token_name.rsplit("-", 1)[-1]
+            if last_seg in ("enter", "leave"):
                 t = "keyframe"
-            elif "ease" in token_name:
+            elif last_seg == "ease":
                 t = "easing"
             else:
                 t = "duration"
