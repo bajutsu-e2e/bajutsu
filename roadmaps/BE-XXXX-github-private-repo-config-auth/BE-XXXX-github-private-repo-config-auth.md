@@ -128,18 +128,20 @@ as BE-0063 already requires.
   [docs/self-hosting.md](../../docs/self-hosting.md), bilingually, steering operators to the narrow
   grant.
 - **Make the auth failure legible.** Wrap the transport's `HTTPError` and map it by status *and*
-  sub-type, so the message names the real cause rather than always blaming access:
-  - **404**, or a **403** that is not one of the cases below → "repository not found *or* access not
-    granted — provide a credential with Contents: read for `<owner>/<repo>`". Naming the
-    most-likely-missing grant is the point.
+  sub-type, checking the specific cases first so the message names the real cause rather than always
+  blaming access:
   - a **403 with `X-RateLimit-Remaining: 0`** (or a `Retry-After` header) → a rate-limit / abuse
     message (wait, or authenticate to raise the limit), *not* an access message — more repo
     permission does not fix a rate limit.
-  - a **403 whose body signals SSO enforcement** (org SAML single sign-on authorization required) →
-    "authorize this credential for the org's SSO", again distinct from granting more repo access.
+  - a **403 carrying an `X-GitHub-SSO` response header** (org SAML single sign-on authorization
+    required) → "authorize this credential for the org's SSO", again distinct from granting more repo
+    access.
   - **401** → "the supplied token was rejected".
+  - **404**, or any other **403** → "repository not found *or* access not granted — provide a
+    credential with Contents: read for `<owner>/<repo>`". Naming the most-likely-missing grant is the
+    point, but only as the fall-through after the specific cases above.
 
-  Inspecting the `403` sub-type (headers / body) before proposing "Contents: read" is what keeps the
+  Inspecting the `403` sub-type (headers) before proposing "Contents: read" is what keeps the
   diagnostic from sending an operator down the wrong path. This needs no credential-provider change
   and can land first.
 
