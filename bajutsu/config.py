@@ -265,6 +265,10 @@ class Defaults(_Model):
     visual_compare: Literal["exact", "pixelmatch"] | None = Field(
         default=None, alias="visualCompare"
     )
+    # Team-wide capability tokens every target requires of the worker that runs it (BE-0166), e.g.
+    # `[ios18, ipad]`. On the hosted backend these route the job to a worker advertising them; a
+    # per-target `requires` adds to (never replaces) this. Empty = only the platform axis routes.
+    requires: list[str] = Field(default_factory=list)
 
     @field_validator("backend", mode="before")
     @classmethod
@@ -318,6 +322,10 @@ class TargetConfig(_Model):
     backend: list[str] | None = None
     device: str | None = None
     locale: str | None = None
+    # Capability tokens this target requires of the worker that runs it (BE-0166), added to the
+    # team-wide `defaults.requires`. On the hosted backend a job is routed only to a worker that
+    # advertises all of them (e.g. `ios18`, `ipad`); ignored by local single-worker runs.
+    requires: list[str] = Field(default_factory=list)
     launch_env: dict[str, str] = Field(default_factory=dict, alias="launchEnv")
     launch_args: list[str] = Field(default_factory=list, alias="launchArgs")
     # Selector the launch waits for before a run starts (e.g. `{ id: onboarding.start }`). For an app
@@ -524,6 +532,10 @@ class Effective:
     # Webhook notification sinks (BE-0099). Empty when no `notify:` is configured.
     notify: list[NotifyEndpoint] = field(default_factory=list)
     visual_compare: str = "exact"
+    # Capability tokens the worker running this target must advertise (BE-0166): the union of
+    # `defaults.requires` and the target's own `requires`. Empty when neither is set (only the
+    # platform axis routes). Consumed by the hosted job router, not the deterministic run.
+    requires: list[str] = field(default_factory=list)
     # Per-app run-behavior defaults (BE-0177), resolved from the target: the layer the run consults
     # when neither a CLI flag nor the scenario sets the value. `dismiss_alerts` None = built-in on with
     # the default instruction; `erase` / `network` are the concrete built-in defaults when unset.
@@ -799,6 +811,7 @@ def resolve(config: Config, target: str) -> Effective:
         capture=list(d.capture),
         redact=_merge_redact(d.redact, a.redact),
         secrets=list(dict.fromkeys([*d.secrets, *a.secrets])),
+        requires=list(dict.fromkeys([*d.requires, *a.requires])),
         ai=_merge_ai(d.ai, a.ai),
         scenarios=a.scenarios,
         baselines=a.baselines,

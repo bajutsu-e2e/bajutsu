@@ -70,6 +70,20 @@ def test_queue_and_lease_counts_from_repository(tmp_path: Path) -> None:
     assert 'bajutsu_worker_heartbeat_age_seconds{worker="w1"}' in text
 
 
+def test_unroutable_jobs_render_through_the_endpoint(tmp_path: Path) -> None:
+    # BE-0166: a queued job no live worker can serve is counted and rendered as bajutsu_unroutable_jobs.
+    repo = _repo()
+    repo.enqueue_job("routable", org_id="acme", spec={"cmd": []}, capabilities=["platform:ios"])
+    repo.enqueue_job("stuck", org_id="acme", spec={"cmd": []}, capabilities=["platform:android"])
+    repo.register_worker("w1", ["platform:ios"])  # only an iOS worker is live
+    state = srv.ServeState(runs_dir=tmp_path / "runs", repository=repo)
+
+    text, _ = ops.render_metrics(state)
+
+    assert "# TYPE bajutsu_unroutable_jobs gauge" in text
+    assert "bajutsu_unroutable_jobs 1" in text  # the android job matches no live worker
+
+
 def test_no_repository_omits_queue_metrics(tmp_path: Path) -> None:
     state = srv.ServeState(runs_dir=tmp_path / "runs")
 

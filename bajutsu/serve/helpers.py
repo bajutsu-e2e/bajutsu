@@ -21,6 +21,7 @@ from bajutsu.backends import KNOWN_ACTUATORS, PLATFORMS
 from bajutsu.config import Config, IosConfig, resolve
 from bajutsu.device_id import is_valid_device_id
 from bajutsu.scenario import load_scenario_file
+from bajutsu.serve.capabilities import required_capabilities
 from bajutsu.serve.orgs import OrgConfig, load_serve_config
 
 # Tokens a `--backend` may name: a platform (ios/android/web/fake) or a known actuator (idb/…).
@@ -146,6 +147,22 @@ def target_build_info(config_path: Path, target: str) -> tuple[str | None, str |
     ios = eff.platform_config
     # Only an iOS target carries an on-demand build; other platforms have no .app to build.
     return (ios.app_path, ios.build) if isinstance(ios, IosConfig) else (None, None)
+
+
+def target_capabilities(config_path: Path, target: str) -> list[str]:
+    """The capability tokens a worker must advertise to run *target* (BE-0166): its resolved
+    platform axis (`platform:ios` / `platform:web`) plus the target's operator-declared `requires`.
+
+    Empty on any load/resolve error, so a job with an unreadable config routes as before: with no
+    required capabilities it is servable by any worker (an empty set is always a subset in
+    `can_serve`) — including one that can't actually run it — rather than crashing dispatch. In
+    practice `start_run` resolves the same config a step earlier (`target_build_info`), so this
+    error path is not reached on the normal dispatch flow."""
+    try:
+        eff = resolve(_load_config_cached(config_path), target)
+    except (OSError, ValueError, KeyError):
+        return []
+    return required_capabilities(eff.platform, eff.requires)
 
 
 def target_scenarios_dir(config_path: Path, target: str) -> Path | None:

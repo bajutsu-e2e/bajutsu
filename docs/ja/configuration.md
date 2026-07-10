@@ -74,6 +74,7 @@ targets:
 | `capture` | defaults | 既定証跡（[evidence の注記](evidence.md#証跡の指示方法3-つ)） |
 | `redact` | defaults ∪ app | マージ（下記） |
 | `secrets` | defaults ∪ app | `${secrets.X}` を宣言する環境変数名。実値は証跡でマスク（[evidence](evidence.md#マスキングredact)） |
+| `requires` | defaults ∪ app | ホスト型バックエンドでこのターゲットを実行するために、ワーカーが広告していなければならない capability トークン（[self-hosting](self-hosting.md#能力に基づくキューの振り分けbe-0166)、[BE-0166](../../roadmaps/BE-0166-capability-routed-queues/BE-0166-capability-routed-queues-ja.md)）。たとえば `[ios18, ipad]`。プラットフォーム軸は自動で加わるので、ランタイムやデバイス種別を固定したいときだけここにトークンを足します。ローカルの単一ワーカー実行では無視されます |
 | `ai` | defaults < app（フィールドごと） | AI 経路のプロバイダ / モデル / エンドポイント / キー（[下記](#ai-プロバイダai-be-0047)）。省略（`None`）なら環境だけで決まります |
 | `defaults.doctor.idCoverageOk` / `defaults.doctor.idCoverageFail` | defaults | doctor のグレード判定に使う id カバレッジのしきい値（[下記](#しきい値の設定defaultsdoctorbe-0024)）。既定は 0.9 / 0.7 です |
 

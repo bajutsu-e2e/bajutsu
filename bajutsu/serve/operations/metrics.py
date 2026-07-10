@@ -66,6 +66,13 @@ def render_metrics(state: ServeState) -> tuple[str, int]:
             " a slow-run signal.",
             snap.oldest_in_flight_seconds,
         )
+        _scalar(
+            lines,
+            "bajutsu_unroutable_jobs",
+            "Queued jobs no live worker can serve (their required capabilities match no worker) —"
+            " add a worker with the missing capability (BE-0166).",
+            snap.unroutable_queued,
+        )
 
     return "\n".join(lines) + "\n", 200
 

@@ -76,12 +76,22 @@ class Run(Base):
 class JobRecord(Base):
     __tablename__ = "jobs"
     # The lease/reclaim hot paths filter on status (and leased_at for reclaim), swept on every poll,
-    # so this composite index keeps them off a full-table scan as the jobs table grows.
-    __table_args__ = (Index("ix_jobs_status_leased_at", "status", "leased_at"),)
+    # so these composite indexes keep them off a full-table scan as the jobs table grows. The second
+    # (status, created_at) serves the capability-aware lease scan (BE-0166), which reads queued rows
+    # `ORDER BY created_at` — the index provides both the filter and the order.
+    __table_args__ = (
+        Index("ix_jobs_status_leased_at", "status", "leased_at"),
+        Index("ix_jobs_status_created_at", "status", "created_at"),
+    )
 
     id: Mapped[str] = mapped_column(primary_key=True)
     org_id: Mapped[str] = mapped_column(default="")
     spec: Mapped[dict[str, Any]] = mapped_column(_JSON, default=dict)
+    # Capability tokens a worker must advertise to lease this job (BE-0166): its platform axis plus
+    # the target's `requires`. The routing key lives on the row (not a new store); the lease filter
+    # serves a job only to a worker whose advertised set is a superset. Empty = any worker (a job
+    # with no declared requirement, e.g. triage), preserving the pre-routing single-queue behavior.
+    capabilities: Mapped[list[str]] = mapped_column(_JSON, default=list)
     status: Mapped[str] = mapped_column(default="queued")  # queued | leased | done | failed
     leased_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), default=None)
     leased_by: Mapped[str | None] = mapped_column(default=None)
@@ -90,6 +100,24 @@ class JobRecord(Base):
     attempts: Mapped[int] = mapped_column(default=0, server_default="0")
     result: Mapped[dict[str, Any]] = mapped_column(_JSON, default=dict)
     created_at: Mapped[datetime] = _created_at()
+
+
+class WorkerRecord(Base):
+    """A worker's advertised capabilities and liveness, refreshed on every lease poll (BE-0166).
+
+    The post-completion worker model (BE-0106) keeps no standing worker table — a worker is known
+    only transiently as `jobs.leased_by`. Capability routing needs one more thing: what the *live*
+    pool can serve, so the control plane can tell an operator a queued job is **unroutable** (no
+    worker advertises its required capabilities) rather than letting it hang silently. The lease
+    path upserts this row each poll (`last_seen` = the poll clock); a worker is "live" while
+    `last_seen` is within the lease timeout, the same freshness window heartbeats use.
+    """
+
+    __tablename__ = "workers"
+
+    id: Mapped[str] = mapped_column(primary_key=True)  # the worker_id it leases under
+    capabilities: Mapped[list[str]] = mapped_column(_JSON, default=list)
+    last_seen: Mapped[datetime] = _created_at()  # refreshed on every lease poll / heartbeat
 
 
 class SessionRecord(Base):

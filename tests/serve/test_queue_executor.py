@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from _shared import FakeProc, fake_popen, project
+from _shared import SCENARIO, FakeProc, fake_popen, project
 
 from bajutsu import serve as srv
 from bajutsu.serve import operations as ops
@@ -101,6 +101,40 @@ def test_start_run_carries_a_valid_evidence_prefix_end_to_end(tmp_path: Path) ->
     )
     assert code == 200
     assert q.enqueued[0][1][0]["evidence_prefix"] == "main/abc1234/"
+
+
+def test_start_run_derives_the_jobs_required_capabilities(tmp_path: Path) -> None:
+    # BE-0166: the dispatched job carries the target's required capabilities (its platform axis plus
+    # any `requires:`), so the DB router leases it only to a capable worker. `demo` is an idb (iOS)
+    # target and declares `requires: [ios18]`.
+    scn_dir = tmp_path / "scenarios"
+    scn_dir.mkdir()
+    (scn_dir / "smoke.yaml").write_text(SCENARIO, encoding="utf-8")
+    cfg = tmp_path / "bajutsu.config.yaml"
+    cfg.write_text(
+        "defaults: { backend: [idb] }\ntargets:\n"
+        f"  demo: {{ bundleId: com.example.demo, scenarios: {scn_dir}, requires: [ios18] }}\n",
+        encoding="utf-8",
+    )
+    runs = tmp_path / "runs"
+    runs.mkdir()
+
+    dispatched: list[Any] = []
+
+    class _CapturingExecutor:
+        def dispatch(self, state: Any, job: Any) -> None:
+            dispatched.append(job)
+
+    state = srv.ServeState(
+        scenarios_dir=scn_dir,
+        config=cfg,
+        runs_dir=runs,
+        cwd=tmp_path,
+        executor=_CapturingExecutor(),
+    )
+    _, code = ops.start_run(state, {"scenario": "smoke.yaml", "target": "demo"})
+    assert code == 200
+    assert dispatched[0].capabilities == ["ios18", "platform:ios"]
 
 
 def test_execute_job_spec_records_the_run_into_an_injected_repository(tmp_path: Path) -> None:

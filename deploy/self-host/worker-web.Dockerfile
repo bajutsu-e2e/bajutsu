@@ -46,4 +46,7 @@ WORKDIR /home/worker
 # authenticates. Left empty here so compose / `docker run -e` supply them.
 ENV BAJUTSU_SERVER_URL="" \
     BAJUTSU_TOKEN=""
-ENTRYPOINT ["bajutsu", "worker"]
+# `--platform web`: this image is web-only by construction, so it advertises the `web` capability
+# and leases only web jobs (BE-0166) — never an idb job it cannot run. The Simulator inventory probe
+# is skipped for a non-iOS platform, so no `xcrun` is attempted on Linux.
+ENTRYPOINT ["bajutsu", "worker", "--platform", "web"]

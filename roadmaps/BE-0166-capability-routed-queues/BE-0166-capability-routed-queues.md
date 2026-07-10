@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0166](BE-0166-capability-routed-queues.md) |
 | Author | [@hirosassa](https://github.com/hirosassa) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0166") |
+| Implementing PR | [#872](https://github.com/bajutsu-e2e/bajutsu/pull/872) |
 | Topic | Hosting the web UI (cloud / self-hosted) |
 | Related | [BE-0016](../BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md), [BE-0106](../BE-0106-post-completion-worker-model/BE-0106-post-completion-worker-model.md), [BE-0173](../BE-0173-slim-web-worker-image/BE-0173-slim-web-worker-image.md) |
 | Origin | [BE-0016](../BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md) |
@@ -91,11 +92,19 @@ confirming that a mixed fleet drains each capability's work onto the right machi
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Workers advertise their capabilities (iOS runtimes, device classes) at lease time.
-- [ ] Control plane routes a job to the queue matching its target's required capability.
-- [ ] Capability-aware `lease` filter so a worker only leases jobs it can run.
-- [ ] Unroutable jobs stay queued and are surfaced, never leased by an incompatible worker.
-- [ ] `backend` (idb vs web) as a capability axis so web jobs route only to web workers (BE-0173).
+- [x] Workers advertise their capabilities (iOS runtimes, device classes) at lease time.
+- [x] Control plane routes a job to the queue matching its target's required capability.
+- [x] Capability-aware `lease` filter so a worker only leases jobs it can run.
+- [x] Unroutable jobs stay queued and are surfaced, never leased by an incompatible worker.
+- [x] `backend` (idb vs web) as a capability axis so web jobs route only to web workers (BE-0173).
+
+Log:
+
+- Implemented capability-routed leasing end to end: a pure capability-token module
+  (`bajutsu/serve/capabilities.py`), a `requires:` config axis, a `jobs.capabilities` routing key
+  plus a `workers` liveness registry (migration 0007), a capability-filtered `lease_job`, worker
+  advertisement (`bajutsu worker --platform/--capabilities` + Simulator-inventory derivation), and a
+  `bajutsu_unroutable_jobs` metric surfacing jobs no live worker can serve.
 
 ## References
 
