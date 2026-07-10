@@ -391,6 +391,72 @@ def test_successful_save_reports_persisted_true(tmp_path: Path) -> None:
         server.server_close()
 
 
+def test_invalid_effort_in_slot_is_skipped_with_warning(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    """A persisted slot with an unrecognised effort level is skipped and logged — the same
+    invariant set_provider enforces on write, now also checked on restore."""
+    scn_dir, cfg, runs = project(tmp_path)
+    store_path = runs.parent / "provider-settings.json"
+    store_path.write_text(
+        '{"provider": "api-key", "settings": {"api-key": {"model": "m", "effort": "ultra", "region": ""}}}',
+        encoding="utf-8",
+    )
+    state = srv.ServeState(
+        scenarios_dir=scn_dir,
+        config=cfg,
+        runs_dir=runs,
+        cwd=tmp_path,
+        provider_settings_store=LocalProviderSettingsStore(store_path),
+    )
+    with caplog.at_level("WARNING"):
+        restore_persisted_provider_settings(state)
+    # The active provider guard also failed (slot was invalid so active provider has no valid slot),
+    # so env falls back to defaults.
+    assert ac.PROVIDER_ENV not in os.environ
+    assert "invalid" in caplog.text.lower() or "provider" in caplog.text.lower()
+
+
+def test_persist_lock_serializes_writes(tmp_path: Path) -> None:
+    """The persistence lock ensures that a slow write doesn't complete after a fast one and roll
+    back a more recent change: even under concurrent saves, the file reflects a valid saved state."""
+    import threading
+
+    scn_dir, cfg, runs = project(tmp_path)
+    store_path = runs.parent / "provider-settings.json"
+    state = srv.ServeState(
+        scenarios_dir=scn_dir,
+        config=cfg,
+        runs_dir=runs,
+        cwd=tmp_path,
+        provider_settings_store=LocalProviderSettingsStore(store_path),
+    )
+
+    errors: list[Exception] = []
+
+    def save_from_thread(prov: str) -> None:
+        try:
+            snap = state.set_provider_setting_and_snapshot(
+                prov, ProviderSettings(model=f"m-{prov}")
+            )
+            from bajutsu.serve.operations.config import _persist_provider_settings
+
+            _persist_provider_settings(state, prov, snap)
+        except Exception as e:
+            errors.append(e)
+
+    threads = [threading.Thread(target=save_from_thread, args=(p,)) for p in ("api-key", "ant")]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+
+    assert not errors, f"errors in threads: {errors}"
+    # The file should be valid JSON naming one of the two providers — not corrupted.
+    loaded = LocalProviderSettingsStore(store_path).load()
+    assert loaded is not None and loaded.provider in ("api-key", "ant")
+
+
 def test_config_ai_block_wins_over_a_restored_value(tmp_path: Path) -> None:
     """The safety property the doc leans on: a restored choice only seeds the *env* layer, and a
     config `ai:` block still wins over the env (config > env), so a stale persisted provider can

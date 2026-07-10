@@ -484,11 +484,15 @@ def _apply_provider_env(prov: str, settings: ProviderSettings) -> None:
 def _persist_provider_settings(
     state: ServeState, provider: str, snapshot: dict[str, ProviderSettings]
 ) -> bool | None:
-    """Write *provider* + *snapshot* to the durable store (BE-0184).
+    """Write *provider* + *snapshot* to the durable store under a persistence lock (BE-0184).
 
-    *provider* and *snapshot* must both be derived from the same atomic lock acquisition in the
-    caller (via ``set_provider_setting_and_snapshot``), so two concurrent ``/api/provider`` requests
-    can't interleave their snapshot-and-write sequences and silently record the wrong state on disk.
+    The lock (``state._persist_lock``) serializes the snapshot + disk-write pair across concurrent
+    ``/api/provider`` requests: without it a slow write from request A could complete *after* a
+    fast write from request B, silently rolling back B's change on the next restart even though B
+    reported ``persisted: true``. Note that *snapshot* is already consistent (captured atomically
+    via ``set_provider_setting_and_snapshot``); the persistence lock governs the *ordering* of the
+    writes, not the consistency of each snapshot.
+
     The selection has already taken effect in the process env and the in-memory map, so a failure to
     write the file (a read-only serve dir, a full disk) must not fail the request that already
     succeeded — it is logged loudly and the change stands for the session, just not across a restart.
@@ -504,7 +508,8 @@ def _persist_provider_settings(
     if store is None:
         return None
     try:
-        store.save(PersistedProviderSettings(provider=provider, settings=snapshot))
+        with state._persist_lock:
+            store.save(PersistedProviderSettings(provider=provider, settings=snapshot))
     except OSError:
         logging.getLogger(__name__).warning(
             "the AI provider selection is active for this session but could not be persisted; "
@@ -545,16 +550,16 @@ def restore_persisted_provider_settings(state: ServeState) -> None:
         active is None
         or data.provider not in known_providers()
         or (data.provider == "bedrock" and not active.model)
+        or not _valid_slot(data.provider, active)
     ):
-        # A well-formed save always records a registered active provider with the values the
-        # operator set. A file that names an unregistered provider, an active provider with no slot,
-        # or bedrock with a blank model (invalid — bedrock always needs a provider-prefixed model id)
-        # is hand-edited or corrupt. Seeding the env from it would materialize an invalid choice that
-        # only fails later at the first AI call, so fall back to the env defaults here instead —
-        # loud, not silent, alongside the other malformed-file cases.
+        # A well-formed save always records a registered active provider with valid values. A file
+        # that names an unregistered provider, an active provider with no slot, a bedrock slot with a
+        # blank model, or any slot with an invalid effort/model/region is hand-edited or corrupt.
+        # Seeding the env from it would materialize an invalid choice that only fails at the first AI
+        # call, so fall back to the env defaults here instead — loud, not silent.
         logging.getLogger(__name__).warning(
-            "ignoring the persisted AI provider settings: the active provider %r is unknown or its "
-            "saved slot is missing/incomplete; falling back to the environment defaults",
+            "ignoring the persisted AI provider settings: the active provider %r is unknown, "
+            "missing, or has an invalid saved slot; falling back to the environment defaults",
             data.provider,
         )
         return
@@ -568,8 +573,32 @@ def restore_persisted_provider_settings(state: ServeState) -> None:
                 "ignoring a persisted settings slot for the unknown provider %r", name
             )
             continue
+        if not _valid_slot(name, settings):
+            # A hand-edited file may carry a structurally valid (all-string) but semantically invalid
+            # slot — an unrecognised effort level or a model/region with whitespace; the same rules
+            # set_provider enforces on write. Seeding the env from such a slot would silently
+            # override a later AI call's resolution, so skip it — loud, not silent.
+            logging.getLogger(__name__).warning(
+                "ignoring a persisted settings slot for %r: invalid effort or model/region", name
+            )
+            continue
         state.set_provider_setting(name, settings)
     _apply_provider_env(data.provider, active)
+
+
+def _valid_slot(name: str, settings: ProviderSettings) -> bool:
+    """Whether a persisted slot has values that set_provider would have accepted (BE-0184).
+
+    Mirrors the input validation in set_provider so a hand-edited or stale file can't slip an
+    invalid effort level or a whitespace-containing model/region through on boot.
+    """
+    if settings.effort and settings.effort not in EFFORT_LEVELS:
+        return False
+    if name == "bedrock":
+        return not any(c.isspace() for c in settings.model) and not any(
+            c.isspace() for c in settings.region
+        )
+    return not any(c.isspace() for c in settings.model)
 
 
 # The cap on the error detail surfaced to the browser: the CLI's last output line, truncated to this

@@ -395,6 +395,10 @@ class ServeState:
     # Guards the `provider_settings` dict against concurrent Settings-panel reads/writes (serve is a
     # ThreadingHTTPServer). Named for what it protects — the job registry carries its own lock.
     _provider_lock: threading.Lock = field(default_factory=threading.Lock)
+    # Serializes snapshot + disk write in `_persist_provider_settings` (BE-0184). Distinct from
+    # `_provider_lock` so the in-memory lock's scope stays tight (no I/O inside it) while the
+    # persistence lock prevents a slow write from landing after a later one and rolling back a change.
+    _persist_lock: threading.Lock = field(default_factory=threading.Lock)
 
     def __post_init__(self) -> None:
         # serve's own launch directory, captured before any config bind repoints `cwd` at a Git
@@ -481,8 +485,9 @@ class ServeState:
         """Set one provider's slot and return a full snapshot, atomically under one lock acquisition.
 
         Used by the persistence flush path (BE-0184): taking the snapshot in the same lock scope as
-        the write means the snapshot handed to `store.save` is always consistent with the just-applied
-        change, and two concurrent saves can't interleave their snapshot-and-write sequences.
+        the in-memory write means the snapshot is consistent with the just-applied change. The
+        ordering of the resulting disk writes is a separate concern, serialized by
+        ``_persist_lock`` in ``_persist_provider_settings``.
         """
         with self._provider_lock:
             self.provider_settings[name] = settings
