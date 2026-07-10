@@ -48,7 +48,7 @@ def test_get_theme_contract_read_failure_returns_500(tmp_path: Path) -> None:
 
 
 def test_api_theme_contract_route(tmp_path: Path) -> None:
-    """GET /api/theme-contract serves the contract JSON end to end (like sibling routes)."""
+    """GET /api/themecontract serves the contract JSON end to end (like sibling routes)."""
     scn_dir, cfg, runs = project(tmp_path)
     state = srv.ServeState(scenarios_dir=scn_dir, config=cfg, runs_dir=runs, cwd=tmp_path)
     server, port = _serve(state)
