@@ -9,7 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0219") |
-| 実装 PR | _追って記入_ |
+| 実装 PR | [#888](https://github.com/bajutsu-e2e/bajutsu/pull/888) |
 | トピック | Development infrastructure (contributor workflow) |
 | 関連 | [BE-0094](../BE-0094-roadmap-status-dashboard/BE-0094-roadmap-status-dashboard-ja.md) |
 <!-- /BE-METADATA -->
