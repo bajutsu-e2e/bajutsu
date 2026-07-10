@@ -20,7 +20,7 @@ off-screen content, and the authoring agent is told to "swipe to scroll it into 
 web the step moves nothing. This proposal makes `swipe` produce a real scroll on the web backend
 by dispatching the gesture to the input primitive that actually scrolls, and structures that
 dispatch to branch on the browser's input mode (pointer vs. touch) so it stays correct once a
-mobile emulation mode exists (the companion `web-device-mode-emulation` item).
+mobile emulation mode exists (the companion **web-device-mode-emulation** item).
 
 ## Motivation
 
