@@ -41,7 +41,7 @@ def get_theme_contract(state: ServeState) -> tuple[dict[str, Any], int]:
     root_match = re.search(r':root(?:\s*,\s*\[data-theme="midnight"\])?\s*{([^}]*)}', contract_css)
     if root_match:
         root_block = root_match.group(1)
-        for match in re.finditer(r"--([a-z0-9-]+)\s*:\s*([^;]+);", root_block):
+        for match in re.finditer(r"--([\w-]+)\s*:\s*([^;]+);", root_block):
             token_name = f"--{match.group(1)}"
             value = match.group(2).strip()
             if token_name in tokens["colors"]:

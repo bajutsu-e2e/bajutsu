@@ -129,9 +129,13 @@ def parse_theme_tokens(contract_css: str) -> dict[str, dict[str, dict[str, str]]
     Returns a dict with keys "colors" and "transitions", each holding a dict of token metadata.
     Finds all --token declarations in CSS rules and categorizes them by name prefix.
     """
+    # Strip /* … */ comment blocks before scanning so a `--token` mention inside a prose comment
+    # (e.g. the contract's own documentation of each token) can never be mistaken for a declaration.
+    css_no_comments = re.sub(r"/\*.*?\*/", "", contract_css, flags=re.DOTALL)
+
     # Find all CSS custom property declarations: --name: value;
     tokens_found: dict[str, dict[str, str]] = {}
-    for match in re.finditer(r"--([\w-]+)\s*:", contract_css):
+    for match in re.finditer(r"--([\w-]+)\s*:", css_no_comments):
         token_name = f"--{match.group(1)}"
         # Categorize: motion tokens are --motion-*, others are colors.
         if token_name.startswith("--motion-"):

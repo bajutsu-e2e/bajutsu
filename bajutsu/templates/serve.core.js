@@ -780,7 +780,7 @@ function importThemeFile(){
         const el=document.getElementById(k);
         if(!el)continue;
         el.value=v;
-        if(el.value!==v&&el.type==='color')rejected.push(k);  // the color input coerced/dropped it
+        if(el.value.toLowerCase()!==v.toLowerCase()&&el.type==='color')rejected.push(k);  // the color input coerced/dropped it
       }
       applyThemePreview(collectThemeTokens());
       if(rejected.length)setStatus($('#themestatus'),'imported; invalid value for '+rejected.join(', '),'ng');
