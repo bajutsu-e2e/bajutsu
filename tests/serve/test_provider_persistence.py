@@ -17,6 +17,7 @@ from _shared import _get_json, _post, _serve, project
 
 from bajutsu import anthropic_client as ac
 from bajutsu import serve as srv
+from bajutsu.ai import resolved_provider
 from bajutsu.serve.operations.config import restore_persisted_provider_settings
 from bajutsu.serve.provider_store import (
     LocalProviderSettingsStore,
@@ -318,11 +319,58 @@ def test_persist_failure_keeps_the_session_change_and_warns(
         with caplog.at_level("WARNING"):
             code, body = _post(port, "/api/provider", {"provider": "ant"})
         assert code == 200 and body["provider"] == "ant"
+        assert body["persisted"] is False  # the response tells the UI the choice was not saved
         assert os.environ[ac.PROVIDER_ENV] == "ant"  # the session change took effect
         assert "persist" in caplog.text.lower()
     finally:
         server.shutdown()
         server.server_close()
+
+
+def test_successful_save_reports_persisted_true(tmp_path: Path) -> None:
+    """A normal save reports `persisted: true`, so the Settings panel shows no warning."""
+    scn_dir, cfg, runs = project(tmp_path)
+    state = srv.ServeState(
+        scenarios_dir=scn_dir,
+        config=cfg,
+        runs_dir=runs,
+        cwd=tmp_path,
+        provider_settings_store=LocalProviderSettingsStore(runs.parent / "provider-settings.json"),
+    )
+    server, port = _serve(state)
+    try:
+        code, body = _post(port, "/api/provider", {"provider": "ant"})
+        assert code == 200 and body["persisted"] is True
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+def test_config_ai_block_wins_over_a_restored_value(tmp_path: Path) -> None:
+    """The safety property the doc leans on: a restored choice only seeds the *env* layer, and a
+    config `ai:` block still wins over the env (config > env), so a stale persisted provider can
+    never override an explicit config."""
+    scn_dir, cfg, runs = project(tmp_path)
+    store_path = runs.parent / "provider-settings.json"
+    LocalProviderSettingsStore(store_path).save(
+        PersistedProviderSettings(
+            provider="bedrock",
+            settings={"bedrock": ProviderSettings(model=_BEDROCK_MODEL, region="us-east-1")},
+        )
+    )
+    state = srv.ServeState(
+        scenarios_dir=scn_dir,
+        config=cfg,
+        runs_dir=runs,
+        cwd=tmp_path,
+        provider_settings_store=LocalProviderSettingsStore(store_path),
+    )
+    restore_persisted_provider_settings(state)
+    assert os.environ[ac.PROVIDER_ENV] == "bedrock"  # restore seeded the env layer
+    # A config ai: block overrides that restored env value (config > env), for both provider and model.
+    cfg_ai = ac.AiConfig(provider="api-key", model="cfg-model")
+    assert resolved_provider(cfg_ai) == "api-key"
+    assert ac.resolve_model("fallback", cfg_ai) == "cfg-model"
 
 
 # --- local construction wires the store; the boot path restores it ----------------------

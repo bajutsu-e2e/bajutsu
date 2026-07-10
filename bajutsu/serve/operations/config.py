@@ -420,13 +420,16 @@ def set_provider(state: ServeState, body: dict[str, Any]) -> tuple[Any, int]:
         settings = ProviderSettings(model=ai_model, effort=effort)
         _apply_provider_env(prov, settings)
         state.set_provider_setting(prov, settings)
-        _persist_provider_settings(state)
+        persisted = _persist_provider_settings(state)
         return {
             "ok": True,
             "provider": prov,
             "model": ai_model,
             "effort": effort,
             "language": language,
+            # False only when a durable save was attempted and failed (BE-0184), so the Settings
+            # panel can warn the choice won't survive a restart; True when saved or session-only.
+            "persisted": persisted,
         }, 200
     # Bedrock needs a provider-prefixed model id (the bare Anthropic id is invalid there); region is
     # optional and falls back to AWS_REGION already in the environment.
@@ -439,7 +442,7 @@ def set_provider(state: ServeState, body: dict[str, Any]) -> tuple[Any, int]:
     settings = ProviderSettings(model=model, effort=effort, region=region)
     _apply_provider_env("bedrock", settings)
     state.set_provider_setting("bedrock", settings)
-    _persist_provider_settings(state)
+    persisted = _persist_provider_settings(state)
     return {
         "ok": True,
         "provider": "bedrock",
@@ -447,6 +450,7 @@ def set_provider(state: ServeState, body: dict[str, Any]) -> tuple[Any, int]:
         "model": model,
         "effort": effort,
         "language": language,
+        "persisted": persisted,
     }, 200
 
 
@@ -477,21 +481,24 @@ def _apply_provider_env(prov: str, settings: ProviderSettings) -> None:
     os.environ[PROVIDER_ENV] = prov
 
 
-def _persist_provider_settings(state: ServeState) -> None:
+def _persist_provider_settings(state: ServeState) -> bool:
     """Flush the active provider choice + the per-provider map to the durable store (BE-0184).
 
-    A no-op when no store is wired (a hosted server, or the pre-BE-0184 session-only shape), so the
-    save path is unchanged there. The active provider is read back from the env `set_provider` just
-    wrote, so it is exactly the selection being saved.
+    The active provider is read back from the env `set_provider` just wrote, so it is exactly the
+    selection being saved. The selection has already taken effect in the process env and the
+    in-memory map by the time this runs, so a failure to write the file (a read-only serve dir, a
+    full disk) must not fail the request that already succeeded — it is logged loudly and the change
+    stands for the session, just not across a restart.
 
-    The selection has already taken effect in the process env and the in-memory map by the time this
-    runs, so a failure to write the file (a read-only serve dir, a full disk) must not fail the
-    request that already succeeded — it is logged loudly and the change stands for the session,
-    just not across a restart.
+    Returns:
+        Whether the choice was durably saved: True when written, or when no store is wired (the
+        session-only shape — a hosted server, or pre-BE-0184 — has nothing to persist and nothing to
+        fail). False only when a wired store's write failed, so the caller can tell the operator the
+        choice will not survive a restart.
     """
     store = state.provider_settings_store
     if store is None:
-        return
+        return True
     try:
         store.save(
             PersistedProviderSettings(
@@ -505,6 +512,8 @@ def _persist_provider_settings(state: ServeState) -> None:
             "it will not survive a restart",
             exc_info=True,
         )
+        return False
+    return True
 
 
 def restore_persisted_provider_settings(state: ServeState) -> None:
@@ -532,16 +541,20 @@ def restore_persisted_provider_settings(state: ServeState) -> None:
     if data is None:
         return
     active = data.settings.get(data.provider)
-    if active is None or (data.provider == "bedrock" and not active.model):
-        # A well-formed save always records the active provider's own slot with the values the
-        # operator set; a file that names an active provider with no slot, or names bedrock with a
-        # blank model (which is invalid — bedrock always needs a provider-prefixed model id), is
-        # either hand-edited or corrupt. Seeding the env from such a slot would materialize an
-        # invalid choice (a blank BAJUTSU_BEDROCK_MODEL), so fall back to the env defaults instead
-        # — loud, not silent.
+    if (
+        active is None
+        or data.provider not in known_providers()
+        or (data.provider == "bedrock" and not active.model)
+    ):
+        # A well-formed save always records a registered active provider with the values the
+        # operator set. A file that names an unregistered provider, an active provider with no slot,
+        # or bedrock with a blank model (invalid — bedrock always needs a provider-prefixed model id)
+        # is hand-edited or corrupt. Seeding the env from it would materialize an invalid choice that
+        # only fails later at the first AI call, so fall back to the env defaults here instead —
+        # loud, not silent, alongside the other malformed-file cases.
         logging.getLogger(__name__).warning(
-            "ignoring the persisted AI provider settings: the active provider %r has no saved "
-            "slot or an incomplete one; falling back to the environment defaults",
+            "ignoring the persisted AI provider settings: the active provider %r is unknown or its "
+            "saved slot is missing/incomplete; falling back to the environment defaults",
             data.provider,
         )
         return
