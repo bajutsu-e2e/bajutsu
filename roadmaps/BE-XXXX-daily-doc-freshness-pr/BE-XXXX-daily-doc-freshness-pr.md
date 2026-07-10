@@ -76,6 +76,15 @@ Two scheduled workflows — `.github/workflows/roadmap-refresh.yml` and
 reconciles and *which* files each may touch. Every AI-authored change flows through a human-reviewed,
 gate-checked PR; nothing lands on `main` directly.
 
+**Keep the shared shape shared in code, not just in this doc.** The commonality below is a design
+commitment, but two independent YAML files can drift apart as each is edited (a later tweak to the
+two-credential gate landing in one and not the other). The implementation must therefore factor the
+shared shape — the dormancy gate, concurrency/timeout, in-job `make check`, the rolling-branch clobber
+guard, and PR open/update — into a single reusable unit (a `workflow_call` reusable workflow, or a
+composite action) that both thin workflow files call with only their differing parameters (branch,
+contract path, allowlist). That way the two stay in lockstep by construction rather than by
+remembering to edit both identically.
+
 ### The shared shape (both workflows)
 
 1. **Triggers, concurrency, and timeout.** `schedule` (a daily cron) and `workflow_dispatch`
@@ -189,6 +198,7 @@ and tests, so it cannot affect determinism or the app-agnostic core.
 - [ ] `roadmap-refresh.yml` — daily workflow reconciling BE `Status` / `Progress` / `Implementing PR`, its own contract, branch, and rolling Draft PR
 - [ ] `docs-refresh.yml` — daily workflow reconciling `docs/` / `DESIGN.md` prose vs behavior, its own contract, branch, and rolling Draft PR
 - [ ] Shared shape wired into both: two-credential dormancy gate, concurrency + timeout, in-job `make check` surfaced in the PR body, idempotent no-diff exit
+- [ ] Shared shape factored into a reusable `workflow_call` workflow (or composite action) both thin workflow files call, so they can't drift apart
 - [ ] Rolling-branch clobber guard: force-update only over the automation's own tip; skip loudly if a human pushed onto the branch
 - [ ] Path allowlists enforced per workflow (roadmap-only; docs-only, excluding `README*` / `CLAUDE.md`) so neither touches product code or the contract surface
 
