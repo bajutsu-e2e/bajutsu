@@ -77,10 +77,16 @@ class RemoteTip:
 def parse_porcelain(output: str) -> list[Change]:
     """The changed paths in ``git status --porcelain`` output.
 
-    Handles the shapes a refresh actually produces — modified/added/deleted files and the occasional
-    rename (``make roadmap-index`` rewrites tracked files; the agent's ``Write`` creates untracked
-    ones). A rename reports the destination path, the one a later ``git add`` would stage. Read with
-    ``core.quotePath=false`` (see ``_git_status``) so non-ASCII paths arrive literal, not octal-escaped.
+    Handles the shapes a refresh actually produces — modified/added/deleted files (``make
+    roadmap-index`` rewrites tracked files in place; the agent's ``Write`` creates untracked ones).
+    Read with ``core.quotePath=false`` (see ``_git_status``) so non-ASCII paths arrive literal, not
+    octal-escaped.
+
+    A rename (``R``) is kept only as its destination path, and ``_restore`` would not fully undo a
+    *disallowed* rename (it can't see the vanished source). This is sound only because a rename can't
+    occur here: the agent's allowed tools (``Read``/``Grep``/``Glob``/``Edit``/``Write`` + a fixed
+    ``Bash`` allowlist) have no move/delete, so nothing produces an ``R`` status. If that toolset ever
+    gains a move/delete, ``_restore`` must track both sides of a rename before this stays safe.
     """
     changes: list[Change] = []
     for raw in output.splitlines():
