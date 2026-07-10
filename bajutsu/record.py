@@ -47,7 +47,7 @@ def _describe_selector(sel: Selector | None) -> str:
     if sel is None:
         return "?"
     if sel.id:
-        return f"#{sel.id}"
+        return f"#{sel.first_id()}"  # primary candidate, not a raw list, for a candidate-list id
     parts = []
     if sel.label is not None:
         parts.append(f"label={sel.label!r}")

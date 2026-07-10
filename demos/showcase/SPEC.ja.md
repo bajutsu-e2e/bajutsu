@@ -86,8 +86,10 @@ Android では、どちらのツールキットも状態の値を `content-desc`
 
 Compose の testTag はドット区切り id をそのまま再現するので、共有の [`scenarios/`](scenarios)
 一式が `showcase-compose` に無改変で通ります。Views の id はアンダースコアへの対応づけです
-（`android:id` の名前には `.` も `-` も使えません）。ドライバーが照合時に `.` と `_` を同一視
-するか、Views 用のシナリオ variant を用意するかは BE-0007 側の設計判断です。ネットワークは素の
+（`android:id` の名前には `.` も `-` も使えません）が、共有一式は `showcase-views` にも無改変で
+通ります。各セレクタが id を**両方の形**で持ち（`id: [stable.refresh, stable_refresh]`）、画面に
+現れたほうにマッチする OR として決定論的コアが解決するからです。id 規約はドライバー側の
+`.` と `_` の書き換えではなく、シナリオに明示的に残します（BE-0221）。ネットワークは素の
 `HttpURLConnection` で、Android 版 BajutsuKit はまだありません（`network` の証跡とモックは
 BE-0007 が担当し、§6 は iOS に適用されます）。それ以外の以下の記述は、Android の 4 プロダクト
 すべてに当てはまります。

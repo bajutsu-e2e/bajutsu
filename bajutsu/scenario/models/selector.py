@@ -51,7 +51,12 @@ class Selector(_Model):
             # bucketing (namespace_of splits on `.`), the XCUITest/Playwright codegen emitters — take
             # candidate[0] as the portable representative. A dotted candidate after a non-dotted first
             # one means the platform-specific alternate leads, which resolves at runtime but skews
-            # those consumers, so reject the misordering deterministically (BE-0221).
+            # those consumers, so reject the misordering deterministically (BE-0221). Validation, not
+            # just documentation: OR resolution is order-independent so a misorder never breaks a run
+            # (prime directive 2 isn't at stake), but its damage — miscounted coverage, a codegen
+            # emitting the non-portable id — is silent, and the fixed rule ("dotted first") is exactly
+            # the kind of authoring mistake that is cheaper to catch loudly at load than to debug in a
+            # report. Catching it here keeps `first_id()`/coverage/codegen free of the ordering worry.
             if "." not in val[0] and any("." in c for c in val[1:]):
                 raise ValueError(
                     f"{field_name} list must put the canonical (dotted) id first: {val!r} (§5)"
