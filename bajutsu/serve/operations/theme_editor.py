@@ -44,8 +44,14 @@ def get_theme_contract(_state: ServeState) -> tuple[dict[str, Any], int]:
 
     tokens = themes_module.parse_theme_tokens(contract_css)
 
+    # Strip comments before the default-fill pass so both parsers operate on the same
+    # comment-free text — matching what parse_theme_tokens already does before its scan.
+    css_no_comments = re.sub(r"/\*.*?\*/", "", contract_css, flags=re.DOTALL)
+
     # Fill defaults from the :root/midnight block, which the CSS writes with double quotes.
-    root_match = re.search(r':root(?:\s*,\s*\[data-theme="midnight"\])?\s*{([^}]*)}', contract_css)
+    root_match = re.search(
+        r':root(?:\s*,\s*\[data-theme="midnight"\])?\s*{([^}]*)}', css_no_comments
+    )
     if root_match:
         root_block = root_match.group(1)
         for match in re.finditer(r"--([\w-]+)\s*:\s*([^;]+);", root_block):

@@ -83,6 +83,17 @@ renders that transition instantly. All motion collapses to instant under the ope
 because a run drives the browser with that preference forced on, animation never affects a
 deterministic `run`.
 
+**Theme editor.** Click the **Edit** button next to the picker to open the in-UI theme editor. It
+generates a form from the live token contract: a native color swatch per color token and a text
+field per motion token. Edits apply instantly as a live preview — the running UI reflects the
+change with no page reload. From the editor you can:
+- **Save to Local Draft** — persists the edited theme in the browser's local storage. The draft
+  survives page reloads but is browser-local (not shared across serve sessions).
+- **Export** — downloads a `custom-theme.css` file in the same drop-in format that `--themes`
+  accepts, so a locally authored theme can be committed to a repo and shared.
+- **Import** — loads a previously exported (or hand-authored) `.css` file and populates the form;
+  any token in the file with no matching form field is reported rather than silently dropped.
+
 **Panel management (desktop).** On a desktop-width window, the Record, Replay, and Crawl tabs tile
 their panels: drag the divider between two panels to redistribute that pair's widths (the other
 panels keep their share), and drag a panel's **⠿** grip onto another panel to swap them (drop on the
