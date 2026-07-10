@@ -418,8 +418,8 @@ def test_invalid_effort_in_slot_is_skipped_with_warning(
 
 
 def test_persist_lock_serializes_writes(tmp_path: Path) -> None:
-    """The persistence lock ensures that a slow write doesn't complete after a fast one and roll
-    back a more recent change: even under concurrent saves, the file reflects a valid saved state."""
+    """The persistence lock + in-lock re-snapshot ensures the thread that finishes last writes the
+    most up-to-date state: the file always reflects both mutations, not just the faster thread's."""
     import threading
 
     scn_dir, cfg, runs = project(tmp_path)
@@ -433,15 +433,15 @@ def test_persist_lock_serializes_writes(tmp_path: Path) -> None:
     )
 
     errors: list[Exception] = []
+    last_provider: list[str] = []
 
     def save_from_thread(prov: str) -> None:
         try:
-            snap = state.set_provider_setting_and_snapshot(
-                prov, ProviderSettings(model=f"m-{prov}")
-            )
             from bajutsu.serve.operations.config import _persist_provider_settings
 
-            _persist_provider_settings(state, prov, snap)
+            state.set_provider_setting(prov, ProviderSettings(model=f"m-{prov}"))
+            _persist_provider_settings(state, prov)
+            last_provider.append(prov)
         except Exception as e:
             errors.append(e)
 
@@ -452,9 +452,13 @@ def test_persist_lock_serializes_writes(tmp_path: Path) -> None:
         t.join()
 
     assert not errors, f"errors in threads: {errors}"
-    # The file should be valid JSON naming one of the two providers — not corrupted.
     loaded = LocalProviderSettingsStore(store_path).load()
-    assert loaded is not None and loaded.provider in ("api-key", "ant")
+    assert loaded is not None
+    # The last writer's provider is recorded as active.
+    assert loaded.provider == last_provider[-1]
+    # Both mutations are in the file — the re-snapshot inside _persist_lock picked them both up.
+    assert "api-key" in loaded.settings
+    assert "ant" in loaded.settings
 
 
 def test_config_ai_block_wins_over_a_restored_value(tmp_path: Path) -> None:

@@ -395,9 +395,10 @@ class ServeState:
     # Guards the `provider_settings` dict against concurrent Settings-panel reads/writes (serve is a
     # ThreadingHTTPServer). Named for what it protects — the job registry carries its own lock.
     _provider_lock: threading.Lock = field(default_factory=threading.Lock)
-    # Serializes snapshot + disk write in `_persist_provider_settings` (BE-0184). Distinct from
-    # `_provider_lock` so the in-memory lock's scope stays tight (no I/O inside it) while the
-    # persistence lock prevents a slow write from landing after a later one and rolling back a change.
+    # Serializes the re-snapshot + disk write in `_persist_provider_settings` (BE-0184). Kept
+    # separate from `_provider_lock` so I/O never runs inside the in-memory lock. A thread that wins
+    # this lock last re-reads `provider_settings_snapshot()` inside it and therefore always writes
+    # the most up-to-date state — see `_persist_provider_settings` for the full reasoning.
     _persist_lock: threading.Lock = field(default_factory=threading.Lock)
 
     def __post_init__(self) -> None:
@@ -478,20 +479,6 @@ class ServeState:
         concurrent `provider_settings_snapshot` read on another request thread."""
         with self._provider_lock:
             self.provider_settings[name] = settings
-
-    def set_provider_setting_and_snapshot(
-        self, name: str, settings: ProviderSettings
-    ) -> dict[str, ProviderSettings]:
-        """Set one provider's slot and return a full snapshot, atomically under one lock acquisition.
-
-        Used by the persistence flush path (BE-0184): taking the snapshot in the same lock scope as
-        the in-memory write means the snapshot is consistent with the just-applied change. The
-        ordering of the resulting disk writes is a separate concern, serialized by
-        ``_persist_lock`` in ``_persist_provider_settings``.
-        """
-        with self._provider_lock:
-            self.provider_settings[name] = settings
-            return dict(self.provider_settings)
 
     def active_jobs(self) -> int:
         """How many spawned jobs are still running (not yet finished). Delegates to the registry."""

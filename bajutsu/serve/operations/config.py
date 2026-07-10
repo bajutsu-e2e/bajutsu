@@ -419,8 +419,8 @@ def set_provider(state: ServeState, body: dict[str, Any]) -> tuple[Any, int]:
             return {"error": "model must not contain whitespace"}, 400
         settings = ProviderSettings(model=ai_model, effort=effort)
         _apply_provider_env(prov, settings)
-        snapshot = state.set_provider_setting_and_snapshot(prov, settings)
-        persisted = _persist_provider_settings(state, prov, snapshot)
+        state.set_provider_setting(prov, settings)
+        persisted = _persist_provider_settings(state, prov)
         return {
             "ok": True,
             "provider": prov,
@@ -441,8 +441,8 @@ def set_provider(state: ServeState, body: dict[str, Any]) -> tuple[Any, int]:
         return {"error": "region and model must not contain whitespace"}, 400
     settings = ProviderSettings(model=model, effort=effort, region=region)
     _apply_provider_env("bedrock", settings)
-    snapshot = state.set_provider_setting_and_snapshot("bedrock", settings)
-    persisted = _persist_provider_settings(state, "bedrock", snapshot)
+    state.set_provider_setting("bedrock", settings)
+    persisted = _persist_provider_settings(state, "bedrock")
     return {
         "ok": True,
         "provider": "bedrock",
@@ -481,17 +481,16 @@ def _apply_provider_env(prov: str, settings: ProviderSettings) -> None:
     os.environ[PROVIDER_ENV] = prov
 
 
-def _persist_provider_settings(
-    state: ServeState, provider: str, snapshot: dict[str, ProviderSettings]
-) -> bool | None:
-    """Write *provider* + *snapshot* to the durable store under a persistence lock (BE-0184).
+def _persist_provider_settings(state: ServeState, provider: str) -> bool | None:
+    """Write *provider* + the current in-memory settings map to the durable store (BE-0184).
 
-    The lock (``state._persist_lock``) serializes the snapshot + disk-write pair across concurrent
-    ``/api/provider`` requests: without it a slow write from request A could complete *after* a
-    fast write from request B, silently rolling back B's change on the next restart even though B
-    reported ``persisted: true``. Note that *snapshot* is already consistent (captured atomically
-    via ``set_provider_setting_and_snapshot``); the persistence lock governs the *ordering* of the
-    writes, not the consistency of each snapshot.
+    The snapshot and the disk write happen inside ``state._persist_lock`` so that the *ordering*
+    of writes matches the *ordering* of mutations: whichever thread wins the lock last re-reads
+    ``provider_settings_snapshot()`` at that point and therefore writes the most up-to-date state —
+    including every mutation from threads that already released ``_provider_lock``. This prevents
+    a slow write from overwriting a newer one: without the in-lock re-read, thread A could win
+    ``_persist_lock`` with a snapshot from before B's mutation, and A's write would silently roll
+    back B's change even though B already reported ``persisted: true``.
 
     The selection has already taken effect in the process env and the in-memory map, so a failure to
     write the file (a read-only serve dir, a full disk) must not fail the request that already
@@ -509,6 +508,9 @@ def _persist_provider_settings(
         return None
     try:
         with state._persist_lock:
+            # Re-read the snapshot inside the lock so the thread that wins last always writes the
+            # most recent in-memory state, regardless of when each thread's mutation was applied.
+            snapshot = state.provider_settings_snapshot()
             store.save(PersistedProviderSettings(provider=provider, settings=snapshot))
     except OSError:
         logging.getLogger(__name__).warning(
@@ -595,8 +597,13 @@ def _valid_slot(name: str, settings: ProviderSettings) -> bool:
     if settings.effort and settings.effort not in EFFORT_LEVELS:
         return False
     if name == "bedrock":
-        return not any(c.isspace() for c in settings.model) and not any(
-            c.isspace() for c in settings.region
+        # A blank Bedrock model is invalid — bedrock always needs a provider-prefixed model id.
+        # `not any(c.isspace() for c in "")` is True, so the explicit `bool(settings.model)` is
+        # necessary to catch an empty string that the whitespace check alone would pass.
+        return (
+            bool(settings.model)
+            and not any(c.isspace() for c in settings.model)
+            and not any(c.isspace() for c in settings.region)
         )
     return not any(c.isspace() for c in settings.model)
 
