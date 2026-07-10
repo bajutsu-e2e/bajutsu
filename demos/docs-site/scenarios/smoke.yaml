@@ -2,6 +2,9 @@
 # The homepage hides the nav sidebar and toc (index.md front matter `hide: [navigation, toc]`),
 # so the only links here are the header (English / 日本語 / GitHub / search), the two hero
 # buttons, and the "Learn more" body links — no `data-testid`, so we match by text.
+# NOTE: this asserts against live copy on the public docs site (hero wording, link count), so a
+# future docs redesign can break it with no relation to any Bajutsu code change — a failure here
+# is a content drift signal, not necessarily a regression.
 description: >-
   Docs-site smoke — the landing page loads and shows its "Get started" and "GitHub"
   hero buttons. The fastest check that the Playwright backend reaches the live site.

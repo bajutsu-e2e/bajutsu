@@ -32,6 +32,13 @@ iOS のデモはどれも同じフィクスチャ、showcase 群（[`showcase/`]
 > シナリオ形式も決定的ランナーも同じで、**違うのは backend だけ**です。backend を差し替えればプラット
 > フォームが変わる、という要点をそのまま示します。
 
+> **公開 URL を対象にした web バックエンド。** [`docs-site/`](docs-site/README.ja.md) は、ローカルの
+> フィクスチャではなく公開中の Bajutsu ドキュメントサイト（<https://bajutsu-e2e.github.io/bajutsu/>）に
+> Playwright backend を向けます。配信するサーバはなく、backend はその URL へ直接ナビゲートします:
+> `uv run bajutsu run --target docs --backend web --config demos/docs-site/docs-site.config.yaml`。
+> このサイトは `data-testid` の id を持たないため、シナリオは可視テキストと種別で要素を指定します。また
+> `smoke` はライブのコピーに対してアサートするので、コードではなくドキュメントの改修で壊れることがあります。
+
 ## どれを実行すればいい？
 
 - **実機での最初の一歩？** → [`tour`](tour/README.ja.md)。コマンド一つで showcase カタログの馬を開いて

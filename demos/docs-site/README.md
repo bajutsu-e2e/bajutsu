@@ -14,10 +14,10 @@ uv sync --extra web                 # the Playwright python package
 uv run playwright install chromium  # the Chromium binary (once)
 
 # whole suite
-uv run bajutsu run --target docs --backend web --config demos/docs-site/bajutsu.config.yaml
+uv run bajutsu run --target docs --backend web --config demos/docs-site/docs-site.config.yaml
 # one scenario
 uv run bajutsu run --scenario demos/docs-site/scenarios/smoke.yaml \
-  --target docs --backend web --config demos/docs-site/bajutsu.config.yaml
+  --target docs --backend web --config demos/docs-site/docs-site.config.yaml
 ```
 
 `run` exits 0 when every scenario passes, 1 on any failure; each run writes

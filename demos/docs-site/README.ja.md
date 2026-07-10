@@ -13,10 +13,10 @@ uv sync --extra web                 # Playwright の python パッケージ
 uv run playwright install chromium  # Chromium バイナリ（初回のみ）
 
 # スイート全体
-uv run bajutsu run --target docs --backend web --config demos/docs-site/bajutsu.config.yaml
+uv run bajutsu run --target docs --backend web --config demos/docs-site/docs-site.config.yaml
 # シナリオ単体
 uv run bajutsu run --scenario demos/docs-site/scenarios/smoke.yaml \
-  --target docs --backend web --config demos/docs-site/bajutsu.config.yaml
+  --target docs --backend web --config demos/docs-site/docs-site.config.yaml
 ```
 
 `run` はすべてのシナリオが通れば終了コード 0、一つでも失敗すれば 1 を返します。各実行は

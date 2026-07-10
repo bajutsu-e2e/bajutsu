@@ -2,7 +2,7 @@
 # Unlike demos/web (which serves a local app), the target here is a live public URL — the
 # Playwright backend navigates straight to it, so there is no server to start or tear down.
 #
-#   uv run bajutsu run --target docs --backend web --config demos/docs-site/bajutsu.config.yaml
+#   uv run bajutsu run --target docs --backend web --config demos/docs-site/docs-site.config.yaml
 #
 # The site is Material for MkDocs and carries no `data-testid` ids, so its scenarios address
 # elements by visible text (`label` / `labelMatches`) and kind (`traits: [link]` / `[button]`)
