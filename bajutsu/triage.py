@@ -420,9 +420,9 @@ def _target_id(step: Step) -> str | None:
     ]
     for sel in selectors:
         if sel is not None and sel.id:
-            return sel.id
+            return sel.first_id()
     if step.wait is not None and isinstance(step.wait.until, Gone):
-        return step.wait.until.gone.id
+        return step.wait.until.gone.first_id()
     return None
 
 

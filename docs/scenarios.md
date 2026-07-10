@@ -141,8 +141,8 @@ A selector identifies **which element** to act on or assert against. Provide one
 
 | Field | Type | Description |
 |---|---|---|
-| `id` | str | Exact `accessibilityIdentifier` — **first choice** (stable, non-localized) |
-| `idMatches` | str | Glob over the id (e.g. `"list.row.*"`; assumes multiple matches) |
+| `id` | str \| list[str] | Exact `accessibilityIdentifier` — **first choice** (stable, non-localized). A list is an **OR** of candidates: the element's id must equal *any* one |
+| `idMatches` | str \| list[str] | Glob over the id (e.g. `"list.row.*"`; assumes multiple matches). A list matches if the id matches *any* glob |
 | `label` | str | Exact `accessibilityLabel` (visible text) — auxiliary / disambiguation |
 | `labelMatches` | str | Regex / substring over the label (`re.search`) |
 | `traits` | list[str] | Narrow by accessibility trait (subset test, e.g. `[button]`) |
@@ -152,12 +152,24 @@ A selector identifies **which element** to act on or assert against. Provide one
 
 ```yaml
 - tap: { id: counter.increment }                               # by id (recommended)
+- tap: { id: [stable.refresh, stable_refresh] }                # OR of id candidates (see below)
 - tap: { label: "Delete" }                                     # by visible label (e.g. an alert button)
 - tap: { id: row.action, within: { id: list.row.3 } }          # scoped to a container's subtree
 - tap: { labelMatches: "^Item ", traits: [button], index: 0 }  # first matching button, fields AND-ed
 ```
 
 > Prefer `id`. For a set of elements (count / existence) use `idMatches`. Use `index` only as a last resort — it breaks when order changes. Full resolution semantics: [selectors](selectors.md).
+
+### Cross-platform ids: a candidate list (BE-0221)
+
+A scenario is shared across platforms only to the extent its selectors are by `id`, and which app-side attribute satisfies that `id` lives in the driver. But some platforms can't reproduce the SPEC id **verbatim**: Android's `android:id` (the Views toolkit) allows neither `.` nor `-`, so `stable.refresh` surfaces as `stable_refresh` and `search.results-empty` as `search_results_empty`. To keep **one** scenario running unchanged everywhere, give `id` / `idMatches` a **list of candidates** and the match becomes an OR over them:
+
+```yaml
+- wait: { for: { id: [stable.refresh, stable_refresh] }, timeout: 10 }
+- count: { sel: { idMatches: [stable.row.*, stable_row_*] }, equals: 5 }
+```
+
+The dotted form matches on iOS and Android Compose (which reproduce it verbatim); the underscore form matches on Android Views. Only one form is ever on screen for a given app, so this stays deterministic: if **both** candidate forms happened to be present at once, the selector is ambiguous and fails fast — an OR never turns a 2+ match into a silent pick. This keeps the id convention **explicit in the scenario**, rather than a hidden driver-side `.`↔`_` rewrite that could conflate distinct ids. The showcase's shared scenarios use this so `showcase-swiftui` / `showcase-compose` / `showcase-views` all run the same files.
 
 ## Step grammar (`steps`)
 

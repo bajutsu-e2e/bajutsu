@@ -1,7 +1,9 @@
 # Data-driven runs: one scenario, three rows. Each row runs in its own clean environment
 # (preconditions carry over), so the Search filter starts empty every time. `${row.*}` tokens
 # are substituted per row — here in both the typed query and the asserted row id, so each row
-# proves the filter found exactly the horse it searched for.
+# proves the filter found exactly the horse it searched for. Each id lists both its dotted SPEC
+# form and its underscore Android Views form (the `${row.n}` token is substituted in both), so
+# one scenario runs unchanged on every target (BE-0221).
 #   bajutsu run --scenario data_driven.yaml --target showcase-swiftui ...
 - name: search finds the seeded horse
   data:
@@ -13,9 +15,9 @@
   steps:
     - tap: { label: "Search", traits: [button] }
       capture: [video]
-    - wait: { for: { id: search.field }, timeout: 10 }
-    - type: { into: { id: search.field }, text: "${row.q}" }
-    - wait: { for: { id: "search.row.${row.n}" }, timeout: 5 }
+    - wait: { for: { id: [search.field, search_field] }, timeout: 10 }
+    - type: { into: { id: [search.field, search_field] }, text: "${row.q}" }
+    - wait: { for: { id: ["search.row.${row.n}", "search_row_${row.n}"] }, timeout: 5 }
   expect:
-    - value: { sel: { id: search.count }, equals: "1" }
-    - exists: { id: "search.row.${row.n}" }
+    - value: { sel: { id: [search.count, search_count] }, equals: "1" }
+    - exists: { id: ["search.row.${row.n}", "search_row_${row.n}"] }

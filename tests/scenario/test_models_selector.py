@@ -35,3 +35,27 @@ def test_selector_resolves_via_base() -> None:
 def test_empty_selector_rejected() -> None:
     with pytest.raises(ValidationError):
         Selector.model_validate({})
+
+
+def test_id_candidate_list_round_trips() -> None:
+    # A list of OR candidates (BE-0221) round-trips through the model into base resolution.
+    sel = Selector.model_validate({"id": ["stable.refresh", "stable_refresh"]})
+    assert sel.id == ["stable.refresh", "stable_refresh"]
+    assert sel.as_selector() == {"id": ["stable.refresh", "stable_refresh"]}
+    assert sel.first_id() == "stable.refresh"  # primary candidate for single-id consumers
+
+
+def test_id_matches_candidate_list_round_trips() -> None:
+    sel = Selector.model_validate({"idMatches": ["stable.row.*", "stable_row_*"]})
+    assert sel.as_selector() == {"idMatches": ["stable.row.*", "stable_row_*"]}
+
+
+@pytest.mark.parametrize("bad", [[], [""], ["ok", ""]])
+def test_empty_or_blank_candidate_list_rejected(bad: list[str]) -> None:
+    # An empty list or a blank entry reads as "a condition is set" yet matches nothing — reject it.
+    with pytest.raises(ValidationError):
+        Selector.model_validate({"id": bad})
+
+
+def test_first_id_none_when_absent() -> None:
+    assert Selector.model_validate({"label": "設定"}).first_id() is None

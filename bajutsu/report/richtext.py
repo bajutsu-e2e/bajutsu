@@ -24,12 +24,17 @@ def _join(*groups: list[Part]) -> list[Part]:
     return out
 
 
+def _id_text(v: Any) -> str:
+    """An id / idMatches value for display; a list of OR candidates joins with ` | ` (BE-0221)."""
+    return " | ".join(str(c) for c in v) if isinstance(v, list) else str(v)
+
+
 def _sel_parts(sel: dict[str, Any]) -> list[Part]:
     groups: list[list[Part]] = []
     if sel.get("id") is not None:
-        groups.append([("id", "#" + str(sel["id"]))])
+        groups.append([("id", "#" + _id_text(sel["id"]))])
     if sel.get("idMatches") is not None:
-        groups.append([("id", "id~" + str(sel["idMatches"]))])
+        groups.append([("id", "id~" + _id_text(sel["idMatches"]))])
     if sel.get("label") is not None:
         groups.append([("str", f"“{sel['label']}”")])
     if sel.get("labelMatches") is not None:

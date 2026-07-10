@@ -393,7 +393,7 @@ def _run_steps(
                         )
                         host_sel = Selector.model_validate(sel).as_selector()
                         base.resolve_unique(active_driver.query(), host_sel)
-                        host_id = step.web.within.id
+                        host_id = step.web.within.first_id()
                         if host_id is None:
                             ok, reason = False, "web: within selector must specify an id"
                         else:

@@ -4,22 +4,24 @@
 # These scenarios use launchEnv + taps only (no literal-scheme deeplinks), so the one
 # file drives both showcase-swiftui and showcase-uikit unchanged. Deeplinks are
 # per-target (their schemes differ); see ../README.md for the per-scheme `openurl` form.
+# Each id lists both its dotted SPEC form (iOS / Compose) and its underscore Android Views
+# form, so this one scenario runs unchanged on every target (BE-0221).
 - name: push horse detail and pop back
   preconditions:
     launchEnv: { SHOWCASE_UITEST: "1" }
   steps:
-    - wait: { for: { id: stable.row.3 }, timeout: 10 }
+    - wait: { for: { id: [stable.row.3, stable_row_3] }, timeout: 10 }
       capture: [video]
-    - tap: { id: stable.row.3 }
-    - wait: { for: { id: horse.title }, timeout: 5 }
+    - tap: { id: [stable.row.3, stable_row_3] }
+    - wait: { for: { id: [horse.title, horse_title] }, timeout: 5 }
     - assert:
-        - value: { sel: { id: horse.id.value }, equals: "3" }
-        - value: { sel: { id: horse.favorite.value }, equals: "off" }
-    - tap: { id: horse.favorite }
+        - value: { sel: { id: [horse.id.value, horse_id_value] }, equals: "3" }
+        - value: { sel: { id: [horse.favorite.value, horse_favorite_value] }, equals: "off" }
+    - tap: { id: [horse.favorite, horse_favorite] }
     - assert:
-        - value: { sel: { id: horse.favorite.value }, equals: "on" }
+        - value: { sel: { id: [horse.favorite.value, horse_favorite_value] }, equals: "on" }
     - back: {}
-    - wait: { for: { id: stable.row.3 }, timeout: 5 }
+    - wait: { for: { id: [stable.row.3, stable_row_3] }, timeout: 5 }
   expect:
-    - exists: { id: stable.row.3 }
-    - exists: { id: horse.title, negate: true }
+    - exists: { id: [stable.row.3, stable_row_3] }
+    - exists: { id: [horse.title, horse_title], negate: true }

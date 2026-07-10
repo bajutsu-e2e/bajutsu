@@ -110,8 +110,13 @@ class Selector(TypedDict, total=False):
     `labelMatches` are auxiliary; `index` is a last resort (flaky).
     """
 
-    id: str  # exact accessibilityIdentifier (first choice)
-    idMatches: str  # glob pattern (assumes multiple matches, e.g. "*.submit")
+    # `id` / `idMatches` accept a single value or a list of candidates; a list matches an element
+    # whose identifier equals (or glob-matches) *any* candidate — an OR (BE-0221). This lets one
+    # shared scenario carry every platform's form of an id (`[stable.refresh, stable_refresh]`) so it
+    # runs unchanged where the native id syntax differs (Android `android:id` can't hold `.`/`-`).
+    # Ambiguity is unchanged: 2+ matching elements still fail fast in `resolve_unique`.
+    id: str | list[str]  # exact accessibilityIdentifier (first choice)
+    idMatches: str | list[str]  # glob pattern (assumes multiple matches, e.g. "*.submit")
     label: str  # exact accessibilityLabel (auxiliary / disambiguation only)
     labelMatches: str  # substring / regex over label
     traits: list[str]  # narrow by type (e.g. ["button"])
@@ -222,6 +227,11 @@ class AmbiguousSelector(SelectorError):
     """2+ candidates with no way to disambiguate; needs `within` or `index`."""
 
 
+def id_candidates(v: str | list[str]) -> list[str]:
+    """A single id/pattern or a list of OR candidates, normalized to a list (BE-0221)."""
+    return [v] if isinstance(v, str) else v
+
+
 def matches(el: Element, sel: Selector) -> bool:
     """Whether an element satisfies a selector's per-element conditions (all AND-ed).
 
@@ -230,15 +240,18 @@ def matches(el: Element, sel: Selector) -> bool:
         sel: The selector to test. Only the per-element fields are checked here
             (`id` / `idMatches` / `label` / `labelMatches` / `traits` / `value`); `within` (a
             cross-element spatial constraint, resolved by `find_all`) and `index` (a positional
-            pick among matches, applied by `resolve_unique`) are ignored.
+            pick among matches, applied by `resolve_unique`) are ignored. `id` / `idMatches` may be a
+            list of candidates, satisfied when the element matches *any* one (BE-0221).
 
     Returns:
         True when every per-element field set on the selector matches the element.
     """
-    if "id" in sel and el["identifier"] != sel["id"]:
+    ident = el["identifier"]
+    if "id" in sel and ident not in id_candidates(sel["id"]):
         return False
     if "idMatches" in sel and not (
-        el["identifier"] is not None and fnmatch.fnmatchcase(el["identifier"], sel["idMatches"])
+        ident is not None
+        and any(fnmatch.fnmatchcase(ident, p) for p in id_candidates(sel["idMatches"]))
     ):
         return False
     if "label" in sel and el["label"] != sel["label"]:
@@ -295,8 +308,9 @@ def find_all(elements: list[Element], sel: Selector) -> list[Element]:
         The matching elements, in `elements` order.
     """
     base_sel = cast(Selector, {k: v for k, v in sel.items() if k != "within"})
-    # Fast path: id-only selector uses cached index for O(1) lookup.
-    if set(base_sel.keys()) == {"id"}:
+    # Fast path: single-id-only selector uses the cached index for O(1) lookup. A list of candidate
+    # ids (BE-0221) takes the general scan, which matches in `elements` order across all candidates.
+    if set(base_sel.keys()) == {"id"} and isinstance(base_sel["id"], str):
         found = list(_id_index(elements).get(base_sel["id"], []))
     else:
         found = [el for el in elements if matches(el, base_sel)]

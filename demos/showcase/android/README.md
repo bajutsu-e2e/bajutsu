@@ -39,9 +39,12 @@ The two modules deliberately exercise BE-0007's two Android id paths:
   [`views/src/main/res/values/ids.xml`](views/src/main/res/values/ids.xml)), which UI Automator
   surfaces natively. An `android:id` name allows neither `.` nor `-`, so the SPEC ids map
   mechanically: both become `_` (`stable.refresh` → `stable_refresh`,
-  `search.results-empty` → `search_results_empty`). Whether the BE-0007 driver normalizes
-  `.` ↔ `_` when matching, or the Views targets get their own scenario variant, is a BE-0007
-  design decision — the fixture exposes the honest native convention rather than papering over it.
+  `search.results-empty` → `search_results_empty`). The shared [`../scenarios/`](../scenarios) set
+  still drives Views unchanged because each selector **lists both id forms** —
+  `id: [stable.refresh, stable_refresh]` matches whichever the tree renders, an OR resolved by the
+  deterministic core (BE-0221). The id convention stays **explicit in the scenario**, never a hidden
+  driver-side `.` ↔ `_` rewrite, and the fixture exposes the honest native convention rather than
+  papering over it.
 
 State mirroring is the same in both toolkits: each mirrors the value to `content-desc`, the channel
 a `uiautomator dump` exposes (Compose's `stateDescription` is not in the dump). See SPEC §2.1.

@@ -51,6 +51,15 @@ the new Driver, never in the scenario. Realistically the model is **per-platform
 one DSL, one runner, and one toolchain**; cross-platform *reuse* is an **opt-in** for the slices that
 genuinely match, expressed through shared id namespaces (`auth.*`, `nav.*`) kept in parity.
 
+One wrinkle: a platform's native id syntax may not reproduce the SPEC id **verbatim**. Android's
+`android:id` (the Views toolkit) allows neither `.` nor `-`, so `stable.refresh` surfaces as
+`stable_refresh`. Rather than a hidden driver-side `.`↔`_` rewrite — which would conflate distinct ids
+and erode determinism — the scenario keeps the difference **explicit** by giving `id` / `idMatches` a
+**list of candidates** (`id: [stable.refresh, stable_refresh]`), matched as an OR; only one form is
+ever on screen for a given app, so it stays deterministic. This is what lets the showcase's shared
+scenarios run unchanged on both Android UI toolkits (BE-0221); see
+[scenarios](scenarios.md#cross-platform-ids-a-candidate-list-be-0221).
+
 ## Direction & phasing (what's planned)
 
 The deterministic core does not change; each platform only adds its triple. The first slice has

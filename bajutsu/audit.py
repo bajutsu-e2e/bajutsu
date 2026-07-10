@@ -153,10 +153,12 @@ def referenced_ids(scenario: Scenario) -> set[str]:
     """
     ids: set[str] = set()
     for _, sel in _located_selectors(scenario):
+        # `id` / `idMatches` may each be a list of OR candidates (BE-0221); every candidate is a
+        # referenced id, so coverage grades them all against the app's declared namespaces.
         if "id" in sel:
-            ids.add(sel["id"])
+            ids.update(base.id_candidates(sel["id"]))
         if "idMatches" in sel:
-            ids.add(sel["idMatches"])
+            ids.update(base.id_candidates(sel["idMatches"]))
     return ids
 
 

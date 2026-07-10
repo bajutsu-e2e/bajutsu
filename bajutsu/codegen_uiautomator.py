@@ -112,14 +112,16 @@ def _by(sel: base.Selector) -> str | None:
     than a broadened match that drops a constraint.
     """
     keys = set(sel)
+    # A generated test targets one platform, so an `id` / `idMatches` list of cross-platform OR
+    # candidates (BE-0221) emits its primary (first) form — the id UI Automator actually surfaces.
     if keys == {"id"}:
-        return f"byId({_s(sel['id'])})"
+        return f"byId({_s(base.id_candidates(sel['id'])[0])})"
     if keys == {"label"}:
         return f"By.text({_s(sel['label'])})"
     if keys == {"value"}:
         return f"By.desc({_s(sel['value'])})"
     if keys == {"idMatches"}:
-        regex = _glob_to_regex(sel["idMatches"])
+        regex = _glob_to_regex(base.id_candidates(sel["idMatches"])[0])
         return f"By.res(Pattern.compile({_s(regex)}))" if regex is not None else None
     if keys == {"labelMatches"}:
         # `By.text(Pattern)` is a full-string match, unlike `labelMatches`' `re.search`, so only a

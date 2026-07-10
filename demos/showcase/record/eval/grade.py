@@ -118,7 +118,13 @@ def _selector_texts(sel: Selector | None) -> tuple[str, ...]:
     """
     if sel is None:
         return ()
-    texts = (sel.id, sel.id_matches, sel.label, sel.label_matches, sel.value)
+
+    # `id` / `idMatches` may each be a list of OR candidates (BE-0221); every candidate is matchable
+    # text, so flatten them alongside the single-valued label/value fields.
+    def _flat(v: str | list[str] | None) -> list[str]:
+        return [] if v is None else ([v] if isinstance(v, str) else v)
+
+    texts = [*_flat(sel.id), *_flat(sel.id_matches), sel.label, sel.label_matches, sel.value]
     return tuple(t.casefold() for t in texts if t)
 
 

@@ -55,6 +55,15 @@ E2E_SCENARIOS := smoke firstlook navigation search data_driven relaunch system c
 # it is satisfied, so this is a safe upper bound, not a fixed delay (bajutsu/orchestrator/waits.py).
 E2E_WAIT_FLOOR ?= 15
 
+# The second Android UI toolkit (BE-0221): Compose surfaces the dotted SPEC id verbatim, Views maps
+# it to underscores (`android:id` allows neither `.` nor `-`), and each scenario's selectors list both
+# forms (`id: [stable.refresh, stable_refresh]`) so one file resolves against either tree. Running the
+# shared scenarios on Views too turns "the shared scenarios run unchanged on Android" from a claim
+# true for one toolkit into a guarantee checked for both, on every push/PR. Views runs the subset
+# whose selectors carry both id forms and that is verified on the Views tree; `components` / `modals`
+# stay Compose-only until their id forms and modal timing are confirmed on Views (a BE-0221 follow-up).
+E2E_VIEWS_SCENARIOS := smoke firstlook navigation search data_driven relaunch system
+
 # The wrapper jar IS committed (like any standard Android repo), so a fresh clone builds with no
 # extra step. Only run this to bump the pinned Gradle version — never as part of a build, since it
 # rewrites the tracked gradlew/properties and would dirty the tree. It goes through the committed
@@ -76,21 +85,28 @@ views-build:
 views-noax-build:
 	cd $(HERE) && $(GRADLEW) :views:assembleNoaxDebug
 
-# On-device e2e for the Compose a11y twin over the adb backend (BE-0007). Builds the APK — bajutsu's
-# launch installs it from the config's appPath — then runs each passing scenario with a clean state
-# (the default erase = `pm clear`). Not part of `make check`: it needs a booted AVD, so it is driven
-# by .github/workflows/android-e2e.yml (Linux + KVM), the Android twin of the idb and web e2e lanes.
+# On-device e2e for both a11y twins over the adb backend (BE-0007 / BE-0221). Builds each APK —
+# bajutsu's launch installs it from the config's appPath — then runs each passing scenario with a
+# clean state (the default erase = `pm clear`): Compose over the full set, Views over the id-form-
+# verified subset. Not part of `make check`: it needs a booted AVD, so it is driven by
+# .github/workflows/android-e2e.yml (Linux + KVM), the Android twin of the idb and web e2e lanes.
 # `adb root` restarts adbd as root so the `gestures` double-tap can write /dev/input via `sendevent`
 # (the google_apis image allows it; the driver falls back to `input tap` when it cannot). `wait-for-
 # device` blocks until the restarted adbd reconnects before the first scenario runs. Both act on the
 # single attached AVD (this lane, like the local flow, only ever has one) rather than `-s $(SERIAL)`.
-e2e: compose-build
+e2e: compose-build views-build
 	adb root && adb wait-for-device
 	cd $(ROOT) && for s in $(E2E_SCENARIOS); do \
-		echo "=== $$s ==="; \
+		echo "=== showcase-compose / $$s ==="; \
 		BAJUTSU_MIN_WAIT_TIMEOUT=$(E2E_WAIT_FLOOR) \
 		uv run bajutsu run --scenario demos/showcase/scenarios/$$s.yaml \
 			--target showcase-compose --udid $(SERIAL) --backend android --config $(CONFIG) || exit 1; \
+	done
+	cd $(ROOT) && for s in $(E2E_VIEWS_SCENARIOS); do \
+		echo "=== showcase-views / $$s ==="; \
+		BAJUTSU_MIN_WAIT_TIMEOUT=$(E2E_WAIT_FLOOR) \
+		uv run bajutsu run --scenario demos/showcase/scenarios/$$s.yaml \
+			--target showcase-views --udid $(SERIAL) --backend android --config $(CONFIG) || exit 1; \
 	done
 
 # On-device golden element-tree assertion (BE-0006, BE-0208 unit 4) for the Compose a11y twin over

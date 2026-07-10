@@ -81,12 +81,14 @@ def _predicate(sel: base.Selector) -> tuple[str, list[str]] | None:
     """
     clauses: list[str] = []
     args: list[str] = []
+    # A generated test targets one platform, so an `id` / `idMatches` list of cross-platform OR
+    # candidates (BE-0221) emits its primary (first) form — the id this platform actually surfaces.
     if "id" in sel:
         clauses.append("identifier == %@")
-        args.append(_s(sel["id"]))
+        args.append(_s(base.id_candidates(sel["id"])[0]))
     if "idMatches" in sel:
         clauses.append("identifier LIKE %@")
-        args.append(_s(sel["idMatches"]))
+        args.append(_s(base.id_candidates(sel["idMatches"])[0]))
     if "label" in sel:
         clauses.append("label == %@")
         args.append(_s(sel["label"]))
@@ -149,11 +151,11 @@ def _element(sel: base.Selector) -> str:
     """
     keys = set(sel)
     if keys == {"id"}:
-        return f"el({_s(sel['id'])})"
+        return f"el({_s(base.id_candidates(sel['id'])[0])})"
     if keys == {"label"}:
         return f"byLabel({_s(sel['label'])})"
     if keys == {"idMatches"}:
-        return f"matchingId({_s(sel['idMatches'])}).firstMatch"
+        return f"matchingId({_s(base.id_candidates(sel['idMatches'])[0])}).firstMatch"
     query = _query(sel)
     if query is None:
         return _UNSUPPORTED
@@ -169,7 +171,7 @@ def _element(sel: base.Selector) -> str:
 
 def _count_expr(sel: base.Selector) -> str:
     if set(sel) == {"idMatches"}:
-        return f"matchingId({_s(sel['idMatches'])}).count"
+        return f"matchingId({_s(base.id_candidates(sel['idMatches'])[0])}).count"
     query = _query(sel)
     return f"{query}.count" if query is not None else "0"
 

@@ -1,21 +1,23 @@
 # Relaunch: in-app state is in-memory, so relaunching the process resets it. Flip a control,
 # relaunch, and assert it is back to its default — the fixture for the `relaunch` step and its
 # fresh-state evidence. The app has no launch-time tab shortcut (BE-0107), so a relaunch lands
-# back on the Stable tab; the scenario taps the Log tab again to return to the control.
+# back on the Stable tab; the scenario taps the Log tab again to return to the control. Each id
+# lists both its dotted SPEC form and its underscore Android Views form, so one scenario runs
+# unchanged on every target (BE-0221).
 - name: relaunch resets in-app state
   preconditions:
     launchEnv: { SHOWCASE_UITEST: "1" }
   steps:
     - tap: { label: "Log", traits: [button] }
       capture: [video]
-    - wait: { for: { id: log.intense }, timeout: 10 }
+    - wait: { for: { id: [log.intense, log_intense] }, timeout: 10 }
     - assert:
-        - value: { sel: { id: log.intense.value }, equals: "off" }
-    - tap: { id: log.intense }
+        - value: { sel: { id: [log.intense.value, log_intense_value] }, equals: "off" }
+    - tap: { id: [log.intense, log_intense] }
     - assert:
-        - value: { sel: { id: log.intense.value }, equals: "on" }
+        - value: { sel: { id: [log.intense.value, log_intense_value] }, equals: "on" }
     - relaunch: {}
     - tap: { label: "Log", traits: [button] }
-    - wait: { for: { id: log.intense }, timeout: 10 }
+    - wait: { for: { id: [log.intense, log_intense] }, timeout: 10 }
   expect:
-    - value: { sel: { id: log.intense.value }, equals: "off" }
+    - value: { sel: { id: [log.intense.value, log_intense_value] }, equals: "off" }

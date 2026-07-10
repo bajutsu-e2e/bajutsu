@@ -127,8 +127,8 @@ CLI の `--dismiss-alerts` / `--no-dismiss-alerts` フラグは**全シナリオ
 
 | フィールド | 型 | 説明 |
 |---|---|---|
-| `id` | str | 完全一致の `accessibilityIdentifier`。**第一候補**（安定していてローカライズされない） |
-| `idMatches` | str | id へのグロブ（例 `"list.row.*"`。複数一致を前提とする） |
+| `id` | str \| list[str] | 完全一致の `accessibilityIdentifier`。**第一候補**（安定していてローカライズされない）。リストは候補の **OR** で、要素の id が*いずれか*に一致すればよい |
+| `idMatches` | str \| list[str] | id へのグロブ（例 `"list.row.*"`。複数一致を前提とする）。リストは*いずれか*のグロブに一致すればよい |
 | `label` | str | 完全一致の `accessibilityLabel`（可視テキスト）。補助や曖昧性解消に使う |
 | `labelMatches` | str | label への正規表現 / 部分一致（`re.search`） |
 | `traits` | list[str] | アクセシビリティ trait で絞る（部分集合判定、例 `[button]`） |
@@ -138,12 +138,24 @@ CLI の `--dismiss-alerts` / `--no-dismiss-alerts` フラグは**全シナリオ
 
 ```yaml
 - tap: { id: counter.increment }                               # by id (recommended)
+- tap: { id: [stable.refresh, stable_refresh] }                # id 候補の OR（下記参照）
 - tap: { label: "Delete" }                                     # by visible label (e.g. an alert button)
 - tap: { id: row.action, within: { id: list.row.3 } }          # scoped to a container's subtree
 - tap: { labelMatches: "^Item ", traits: [button], index: 0 }  # first matching button, fields AND-ed
 ```
 
 > まず `id` を使います。要素の集合（count / 存在確認）には `idMatches` を使います。`index` は最終手段です。順序が変わると壊れます。解決の完全な意味論は [selectors](selectors.md) にあります。
+
+### プラットフォームをまたぐ id：候補のリスト（BE-0221）
+
+シナリオがプラットフォーム間で共有できるのは、セレクタが `id` による範囲までであり、その `id` をアプリ側のどの属性が満たすかはドライバ内に閉じています。ただし SPEC の id を**そのまま**再現できないプラットフォームがあります。Android の `android:id`（Views toolkit）は `.` も `-` も許さないので、`stable.refresh` は `stable_refresh`、`search.results-empty` は `search_results_empty` として現れます。**1 つ**のシナリオをどこでもそのまま走らせるため、`id` / `idMatches` に**候補のリスト**を与えると、照合はその OR になります。
+
+```yaml
+- wait: { for: { id: [stable.refresh, stable_refresh] }, timeout: 10 }
+- count: { sel: { idMatches: [stable.row.*, stable_row_*] }, equals: 5 }
+```
+
+ドット形は iOS と Android Compose（どちらもそのまま再現します）に、アンダースコア形は Android Views に一致します。あるアプリの画面に現れる形は常に一方だけなので、決定論的なままです。仮に両方の形が同時に画面にあれば、そのセレクタは曖昧として即座に失敗します。OR が 2 件以上の一致を暗黙に 1 つへ絞ることはありません。これにより id 規約はシナリオに**明示的に**残り、別々の id を取り違えかねないドライバ側の暗黙の `.`↔`_` 書き換えに頼りません。showcase の共有シナリオはこれを使い、`showcase-swiftui` / `showcase-compose` / `showcase-views` が同じファイルで走ります。
 
 ## ステップ文法（`steps`）
 
