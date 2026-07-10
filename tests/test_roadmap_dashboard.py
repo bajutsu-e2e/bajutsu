@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import html
 import importlib.util
+import re
 import sys
 from pathlib import Path
 
@@ -90,7 +91,9 @@ def test_search_box_is_rendered_and_wired() -> None:
     assert _PAGE.count('type="search"') == 1
     assert 'class="be-search"' in _PAGE
     assert 'aria-label="Search roadmap items"' in _PAGE
-    assert "search.addEventListener('input', apply)" in _PAGE
+    # Wired to the input event — matched loosely so a harmless reformat of the script (quote style,
+    # spacing) doesn't break the test, only the actual wiring does.
+    assert re.search(r"""search\.addEventListener\(\s*['"]input['"]\s*,\s*apply\s*\)""", _PAGE)
     # The always-present live region the script fills when the filters leave nothing visible.
     assert 'class="be-empty" role="status"' in _PAGE
     # Its empty-state reasons, so the grid never goes silently blank: the query matches nothing, its
