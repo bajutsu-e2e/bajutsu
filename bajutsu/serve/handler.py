@@ -9,10 +9,8 @@ FastAPI control plane so the two backends stay in lockstep (BE-0015).
 from __future__ import annotations
 
 import functools
-import hashlib
 import json
 import logging
-import tempfile
 from http.cookies import SimpleCookie
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -26,7 +24,7 @@ from bajutsu.serve import oplog
 from bajutsu.serve._paths import TEMPLATES_DIR as _TEMPLATE_DIR
 from bajutsu.serve.helpers import valid_run_id
 from bajutsu.serve.state import ServeState
-from bajutsu.serve.uploads import MAX_UPLOAD_BYTES
+from bajutsu.serve.uploads import MAX_UPLOAD_BYTES, BoundedZipReceiver, UploadTooLarge
 
 # Stream an uploaded bundle to disk in 1 MiB chunks so a large app binary never loads into memory.
 _UPLOAD_CHUNK = 1024 * 1024
@@ -419,21 +417,15 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
                 self._json({"error": f"upload too large (max {MAX_UPLOAD_BYTES} bytes)"}, 413)
                 return
             filename = self._qs("name") or "bundle.zip"
-            tmp = tempfile.NamedTemporaryFile(suffix=".zip", delete=False)  # noqa: SIM115
-            tmp_path = Path(tmp.name)
-            digest = (
-                hashlib.sha256()
-            )  # hash while streaming so the file is read once, not again to hash
+            receiver = BoundedZipReceiver()
             try:
                 remaining = length
-                with tmp:
-                    while remaining > 0:
-                        chunk = self.rfile.read(min(_UPLOAD_CHUNK, remaining))
-                        if not chunk:
-                            break  # client closed early; `remaining > 0` below catches the short read
-                        remaining -= len(chunk)
-                        digest.update(chunk)
-                        tmp.write(chunk)
+                while remaining > 0:
+                    chunk = self.rfile.read(min(_UPLOAD_CHUNK, remaining))
+                    if not chunk:
+                        break  # client closed early; `remaining > 0` below catches the short read
+                    remaining -= len(chunk)
+                    receiver.write(chunk)
                 if remaining > 0:
                     # Body ended before Content-Length: a truncated upload. Fail explicitly (don't
                     # hand a partial zip downstream as an "invalid bundle"), and close the connection
@@ -443,14 +435,24 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
                     return
                 self._json(
                     *ops.bind_upload_config(
-                        state, tmp_path, filename, sha256=digest.hexdigest(), actor=self._actor()
+                        state,
+                        receiver.path,
+                        filename,
+                        sha256=receiver.digest(),
+                        actor=self._actor(),
                     )
                 )
+            except UploadTooLarge:
+                # Belt-and-suspenders: length <= MAX_UPLOAD_BYTES is checked above, so this loop
+                # never actually exceeds the cap — kept only so the shared receiver's contract holds
+                # for both backends alike.
+                self.close_connection = True
+                self._json({"error": f"upload too large (max {MAX_UPLOAD_BYTES} bytes)"}, 413)
             except OSError:
                 self.close_connection = True
                 self._json({"error": "upload interrupted"}, 400)
             finally:
-                tmp_path.unlink(missing_ok=True)
+                receiver.cleanup()
 
         def _post_login(self, body: dict[str, Any]) -> None:
             """Exchange the shared token for a session cookie (BE-0051). The token is sent in the
