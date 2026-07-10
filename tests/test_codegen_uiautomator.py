@@ -153,6 +153,24 @@ def test_id_matches_glob_maps_to_res_pattern() -> None:
     assert 'By.res(Pattern.compile("(.*:id/)?row\\\\..*"))' in code
 
 
+def test_id_candidate_list_emits_byanyid() -> None:
+    # A cross-platform selector (BE-0221) targets either Android toolkit: uiautomator can't tell
+    # whether the build surfaces the dotted (Compose) or underscore (Views) id, so it matches ANY
+    # candidate via byAnyId rather than picking the first — otherwise a Views target never resolves.
+    code = _gen("- name: x\n  steps:\n    - tap: { id: [stable.refresh, stable_refresh] }\n")
+    assert 'device.findObject(byAnyId("stable.refresh", "stable_refresh")).click()' in code
+    # The byAnyId helper is defined in the generated preamble.
+    assert "private fun byAnyId(vararg ids: String)" in code
+
+
+def test_id_matches_candidate_list_alternates_res_patterns() -> None:
+    code = _gen("- name: x\n  steps:\n    - tap: { idMatches: ['stable.row.*', 'stable_row_*'] }\n")
+    assert (
+        'By.res(Pattern.compile("(?:(.*:id/)?stable\\\\.row\\\\..*)|(?:(.*:id/)?stable_row_.*)"))'
+        in code
+    )
+
+
 def test_label_matches_substring_maps_to_contains_but_regex_is_todo() -> None:
     # `By.text(Pattern)` is a full-string match, unlike labelMatches' re.search — so a plain
     # substring maps to By.textContains, while a real regex (e.g. `^Item `) has no faithful form.

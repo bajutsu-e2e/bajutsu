@@ -112,17 +112,26 @@ def _by(sel: base.Selector) -> str | None:
     than a broadened match that drops a constraint.
     """
     keys = set(sel)
-    # A generated test targets one platform, so an `id` / `idMatches` list of cross-platform OR
-    # candidates (BE-0221) emits its primary (first) form — the id UI Automator actually surfaces.
+    # An `id` / `idMatches` list of OR candidates (BE-0221) matches *any* candidate. This emitter
+    # targets either Android toolkit — Compose surfaces the dotted SPEC id, Views the underscore
+    # form — so it emits an alternation over all candidates rather than picking one, and the
+    # generated test resolves against whichever id the target build actually exposes.
     if keys == {"id"}:
-        return f"byId({_s(base.id_candidates(sel['id'])[0])})"
+        ids = base.id_candidates(sel["id"])
+        if len(ids) == 1:
+            return f"byId({_s(ids[0])})"
+        return "byAnyId(" + ", ".join(_s(i) for i in ids) + ")"
     if keys == {"label"}:
         return f"By.text({_s(sel['label'])})"
     if keys == {"value"}:
         return f"By.desc({_s(sel['value'])})"
     if keys == {"idMatches"}:
-        regex = _glob_to_regex(base.id_candidates(sel["idMatches"])[0])
-        return f"By.res(Pattern.compile({_s(regex)}))" if regex is not None else None
+        regexes = [_glob_to_regex(g) for g in base.id_candidates(sel["idMatches"])]
+        if any(r is None for r in regexes):
+            return None  # a `[…]` class in any candidate has no faithful regex form (→ TODO)
+        present = [r for r in regexes if r is not None]
+        pattern = present[0] if len(present) == 1 else "|".join(f"(?:{r})" for r in present)
+        return f"By.res(Pattern.compile({_s(pattern)}))"
     if keys == {"labelMatches"}:
         # `By.text(Pattern)` is a full-string match, unlike `labelMatches`' `re.search`, so only a
         # metacharacter-free pattern (a plain substring) maps faithfully — via `By.textContains`. A
@@ -339,6 +348,13 @@ class _UiAutomatorGen:
             "  // the reverse of the adb driver stripping that prefix (drivers/adb.py).",
             "  private fun byId(id: String) =",
             f'    By.res(Pattern.compile("{_ID_PREFIX}" + Pattern.quote(id)))',
+            "",
+            "  // Match any of several candidate ids (a cross-platform selector, BE-0221) — the id"
+            + " form",
+            "  // this target's build actually surfaces (Compose: dotted; Views: underscore).",
+            "  private fun byAnyId(vararg ids: String) =",
+            f'    By.res(Pattern.compile("{_ID_PREFIX}(" +'
+            + ' ids.joinToString("|") { Pattern.quote(it) } + ")"))',
             "",
             "  // Launch (or relaunch) the app, forwarding launchEnv as intent extras (the reverse"
             + " of the",
