@@ -10,7 +10,7 @@
 | 状態 | **提案** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
 | トピック | Authoring experience (record / GUI editor) |
-| 関連 | [BE-0015](../BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting-ja.md), [BE-0102](../BE-0102-run-stats-dashboard/BE-0102-run-stats-dashboard-ja.md), [BE-0187](../BE-0187-serve-config-view/BE-0187-serve-config-view-ja.md), [BE-0108](../BE-0108-hosted-config-source-restriction/BE-0108-hosted-config-source-restriction-ja.md) |
+| 関連 | [BE-0015](../BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting-ja.md), [BE-0102](../BE-0102-run-stats-dashboard/BE-0102-run-stats-dashboard-ja.md), [BE-0187](../BE-0187-serve-config-view/BE-0187-serve-config-view-ja.md), [BE-0108](../BE-0108-hosted-config-source-restriction/BE-0108-hosted-config-source-restriction-ja.md), [BE-0099](../BE-0099-webhook-run-notifications/BE-0099-webhook-run-notifications-ja.md) |
 <!-- /BE-METADATA -->
 
 ## はじめに
@@ -115,14 +115,14 @@ BE-0015 が宙吊りにしていた外部キーがようやく使われます。
 コントロールプレーンに新しいエンドポイントを追加します。いずれも決定的で、org スコープ（ローカルでは
 `default` に解決）です。
 
-- `GET /api/projects` — 登録済みプロジェクトの一覧（名前、config ソース、直近の実行サマリ）。
-- `POST /api/projects` — config ソースからプロジェクトを登録する（[BE-0108](../BE-0108-hosted-config-source-restriction/BE-0108-hosted-config-source-restriction-ja.md)
+- `GET /api/projects`：登録済みプロジェクトの一覧（名前、config ソース、直近の実行サマリ）。
+- `POST /api/projects`：config ソースからプロジェクトを登録する（[BE-0108](../BE-0108-hosted-config-source-restriction/BE-0108-hosted-config-source-restriction-ja.md)
   が定めるホスト時の config ソース allowlist（アップロードと Git のみ）で検証し、ホスト時はクライアント
   指定のファイルシステムパスを受けない）。
-- `DELETE /api/projects/<name>` — 登録解除する（履歴は残し、バインディングだけを外す）。
-- `POST /api/projects/<name>/run` — 既存の `RunExecutor` シームを通じてそのプロジェクトの実行を投入し、
+- `DELETE /api/projects/<name>`：登録解除する（履歴は残し、バインディングだけを外す）。
+- `POST /api/projects/<name>/run`：既存の `RunExecutor` シームを通じてそのプロジェクトの実行を投入し、
   `project_id` に印を付ける。これが外部トリガーの宛先。
-- `GET /api/projects/<name>/runs` — そのプロジェクトの実行履歴（cross-project ダッシュボードが集計する
+- `GET /api/projects/<name>/runs`：そのプロジェクトの実行履歴（cross-project ダッシュボードが集計する
   プロジェクト単位のスライス）。
 
 既存の単一 config 向けエンドポイントはそのまま動き続けます。プロジェクトスコープのものは追加であって、
@@ -142,7 +142,7 @@ CI や cron が Web UI なしにハブをヘッドレスで駆動できるよう
 
 - `bajutsu project add <name> --config <source>` / `bajutsu project ls` /
   `bajutsu project rm <name>`。
-- `bajutsu run --project <name>` — プロジェクトの config を解決して実行する。`POST
+- `bajutsu run --project <name>`：プロジェクトの config を解決して実行する。`POST
   /api/projects/<name>/run` トリガーと等価です。cron のエントリや CI のステップが呼ぶのはこれで、実行の
   頻度は Bajutsu ではなくその外部システムに置かれます。
 
@@ -157,7 +157,7 @@ CI や cron が Web UI なしにハブをヘッドレスで駆動できるよう
   動かしてポートをブックマークするやり方です。却下しました。履歴が共有されず、切り替えもできず、実行を
   トリガーする一か所もありません。本項目が閉じようとしている隙間そのものです。
 - **Bajutsu が一定の頻度でプロジェクトを実行する組み込みスケジューラを足す。** スコープ外であり、かつ
-  ロードマップの確定した判断（*Not adopting: scheduling — CI/通知層の領分*）に反するため却下しました。
+  ロードマップの確定した判断（*Not adopting: scheduling*、つまり「CI/通知層の領分」）に反するため却下しました。
   ハブはプロジェクトで指定できるトリガーを公開し、頻度は CI/cron に委ね、通知の側は
   [BE-0099](../BE-0099-webhook-run-notifications/BE-0099-webhook-run-notifications-ja.md) と組みます。
 - **BE-0015 に取り込む。** 却下しました。BE-0015 はホスト版のマルチテナントなトポロジー（OAuth、
@@ -171,11 +171,11 @@ CI や cron が Web UI なしにハブをヘッドレスで駆動できるよう
 > 作業分解（作業の単位ごとに 1 つ）に対応し、ログには変更内容と時期（古い順）を PR へのリンクと
 > ともに記録します。
 
-- [ ] 1 — プロジェクトのモデル：BE-0015 の `projects` 行に config ソースのレコードを足し、`runs.project_id` に印を付ける。
-- [ ] 2 — 永続化：`ProjectRegistry` シーム（リポジトリがあれば DB 上、なければディスク上の JSON）、どちらの経路でもプロジェクト単位に分割した実行履歴（DB なら `project_id` 列、なければプロジェクト→実行 ID の索引）、起動時 config の active プロジェクトへの自動登録。
-- [ ] 3 — API：org スコープの五つの `/api/projects…` エンドポイント（既存の単一 config 向けへの追加）。
-- [ ] 4 — UI：プロジェクトスイッチャーとプロジェクト一覧。再起動なしで active プロジェクトを切り替える。
-- [ ] 5 — CLI：`bajutsu project add/ls/rm` と、ヘッドレスなトリガーとしての `bajutsu run --project <name>`。
+- [ ] 1. プロジェクトのモデル：BE-0015 の `projects` 行に config ソースのレコードを足し、`runs.project_id` に印を付ける。
+- [ ] 2. 永続化：`ProjectRegistry` シーム（リポジトリがあれば DB 上、なければディスク上の JSON）、どちらの経路でもプロジェクト単位に分割した実行履歴（DB なら `project_id` 列、なければプロジェクト→実行 ID の索引）、起動時 config の active プロジェクトへの自動登録。
+- [ ] 3. API：org スコープの五つの `/api/projects…` エンドポイント（既存の単一 config 向けへの追加）。
+- [ ] 4. UI：プロジェクトスイッチャーとプロジェクト一覧。再起動なしで active プロジェクトを切り替える。
+- [ ] 5. CLI：`bajutsu project add/ls/rm` と、ヘッドレスなトリガーとしての `bajutsu run --project <name>`。
 
 ## 参考
 
