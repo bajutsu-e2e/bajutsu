@@ -10,7 +10,7 @@
 | Status | **Proposal** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
 | Topic | Configuration sourcing |
-| Related | [BE-0063](../BE-0063-git-config-source/BE-0063-git-config-source.md), [BE-0016](../BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md), [BE-0051](../BE-0051-serve-hardening-for-hosting/BE-0051-serve-hardening-for-hosting.md), [BE-0108](../BE-0108-hosted-config-source-restriction/BE-0108-hosted-config-source-restriction.md), [BE-0136](../BE-0136-serve-write-once-secrets/BE-0136-serve-write-once-secrets.md) |
+| Related | [BE-0063](../BE-0063-git-config-source/BE-0063-git-config-source.md), [BE-0016](../BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md), [BE-0051](../BE-0051-serve-hardening-for-hosting/BE-0051-serve-hardening-for-hosting.md), [BE-0108](../BE-0108-hosted-config-source-restriction/BE-0108-hosted-config-source-restriction.md), [BE-0136](../BE-0136-serve-write-once-secrets/BE-0136-serve-write-once-secrets.md), [BE-0184](../BE-0184-persist-serve-ai-provider-settings/BE-0184-persist-serve-ai-provider-settings.md) |
 <!-- /BE-METADATA -->
 
 ## Introduction
@@ -74,7 +74,7 @@ difference lives in the environment or config, not in the tool, drivers, or runn
 
 ## Detailed design
 
-The design organizes private-repo access into four mutually exclusive, collectively exhaustive
+The design organizes private-repo access into five mutually exclusive, collectively exhaustive (MECE)
 pieces. All are github.com-only. #4 is independently shippable.
 
 ### 1. The accepted credential types (a defined, documented set)
