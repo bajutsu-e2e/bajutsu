@@ -38,7 +38,7 @@ Playwright に組み込まれたデバイスエミュレーションを使いま
 挙動を与えます。
 
 Playwright は仕組みを既に備えています。`playwright.devices["iPhone 13"]`（ほかも同様）は、viewport、
-`deviceScaleFactor`、`isMobile`、`hasTouch`、`userAgent` をまとめたプリセット記述子で、`new_context` に
+`device_scale_factor`、`is_mobile`、`has_touch`、`user_agent` をまとめたプリセット記述子で、`new_context` に
 適用します。作業は、これを決定的でアプリ非依存の設定として露出し、バックエンドのコンテキスト生成に通すこと
 であり、エミュレーションを発明することではありません。
 
@@ -58,7 +58,7 @@ web ターゲットの設定に**デバイスモード**を追加し、Playwrigh
 解決します。自然な形は Playwright 自身のモデルに倣います。
 
 - **名前付きデバイスプリセット**（例：`device: "iPhone 13"`）。`playwright.devices` に対して解決し、
-  viewport / `deviceScaleFactor` / `isMobile` / `hasTouch` / `userAgent` に展開する。あるいは
+  viewport / `device_scale_factor` / `is_mobile` / `has_touch` / `user_agent` に展開する。あるいは
 - 任意の viewport を伴う明示的な**デスクトップ／モバイルのモード**。特定の機種を固定せずに、素の
   デスクトップや汎用的なモバイルのコンテキストが欲しいチームのため。
 
@@ -72,8 +72,9 @@ web ターゲットの設定に**デバイスモード**を追加し、Playwrigh
 モードはブラウザのライフサイクル全体を通して安定します。`reduced_motion` と選択したエンジン（BE-0076）が
 既に守っているのと同じ不変条件です。
 
-**入力との関係。** コンテキストが `hasTouch` を true にして生成されれば、web-swipe-scroll-fidelity の
-振り分けが自動的に `swipe` を CDP タッチドラッグへ通します。そこにさらなる変更は要りません。本項目の責務は
+**入力との関係。** コンテキストが `has_touch` を true にして生成されれば、web-swipe-scroll-fidelity の
+振り分けが自動的に `swipe` を CDP（Chrome DevTools Protocol）タッチドラッグへ通します。そこにさらなる変更は
+要りません。本項目の責務は
 正しく設定されたコンテキストを生み出すところまでであり、その中でジェスチャーをどう実現するかは対になる
 項目のものです。
 

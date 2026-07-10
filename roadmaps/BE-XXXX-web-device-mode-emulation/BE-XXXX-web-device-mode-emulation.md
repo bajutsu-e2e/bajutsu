@@ -38,7 +38,7 @@ configure a touch context, only the desktop path is ever exercised. This item su
 behaviour on both desktop and mobile.
 
 Playwright already ships the mechanism: `playwright.devices["iPhone 13"]` (and the rest) are
-preset descriptors of viewport, `deviceScaleFactor`, `isMobile`, `hasTouch`, and `userAgent`,
+preset descriptors of viewport, `device_scale_factor`, `is_mobile`, `has_touch`, and `user_agent`,
 applied at `new_context`. The work is to surface that as deterministic, app-agnostic config and
 thread it through the backend's context creation — not to invent emulation.
 
@@ -58,7 +58,7 @@ creates a browser context.
 config layering (`bajutsu/config.py`). The natural shape follows Playwright's own model:
 
 - a **named device preset** (e.g. `device: "iPhone 13"`), resolved against `playwright.devices`,
-  which expands to viewport / `deviceScaleFactor` / `isMobile` / `hasTouch` / `userAgent`; or
+  which expands to viewport / `device_scale_factor` / `is_mobile` / `has_touch` / `user_agent`; or
 - an explicit **desktop / mobile mode** with an optional viewport, for teams that want a plain
   desktop or a generic mobile context without pinning a specific phone.
 
@@ -73,8 +73,9 @@ the resolved device descriptor into the `new_context(**kwargs)` call, alongside 
 rebuild the same descriptor, so the mode is stable across the browser's whole lifecycle — the same
 invariant `reduced_motion` and the selected engine (BE-0076) already hold.
 
-**Interaction with input.** Once a context is created with `hasTouch` true, the
-web-swipe-scroll-fidelity dispatch routes `swipe` through the CDP touch drag automatically — no
+**Interaction with input.** Once a context is created with `has_touch` true, the
+web-swipe-scroll-fidelity dispatch routes `swipe` through the CDP (Chrome DevTools Protocol) touch
+drag automatically — no
 further change is needed there. This item's responsibility ends at producing a correctly
 configured context; how gestures are realised in it is that companion item's.
 
