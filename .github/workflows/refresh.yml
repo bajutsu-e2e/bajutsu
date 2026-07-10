@@ -147,6 +147,11 @@ jobs:
           # The App token so any read-only `gh` the contract uses (e.g. `gh pr list --state merged`)
           # runs as the bot; file edits stay in the working tree for the deterministic step to handle.
           github_token: ${{ steps.app-token.outputs.token }}
+          # `Edit`/`Write` are granted unscoped on purpose: the path allowlist is enforced by the
+          # deterministic `enforce` step below (restore anything outside it), not at the tool layer.
+          # That boundary is the authoritative one because it is verifiable and unit-tested, and it
+          # lets the agent stray and be cleanly reverted rather than hard-failing mid-run on a denied
+          # write — a single deterministic guard, not two layers that could disagree.
           claude_args: |
             --allowedTools "${{ inputs.allowed_tools }}"
           prompt: "Read the contract at ${{ inputs.contract }} and follow it exactly to author a ${{ inputs.label }} refresh. Edit only files in the working tree — do NOT commit, push, or open a pull request; a later deterministic step does that. When there is no concrete evidence of drift, change nothing."
