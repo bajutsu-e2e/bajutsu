@@ -250,11 +250,12 @@ _STYLE = """
 # status is on AND it matches the query (empty query matches everything); a category (or group) left
 # with no visible card is hidden. With no query and every status on, categories collapse to a compact
 # overview (just the heading and its progress bar); turning a status off, or typing a query, expands the
-# categories that still have a match so results are visible without a click. When a non-empty query
-# matches no card, a small "no items match" line replaces the empty grid. The collapsed state is applied
-# by JS, never baked into the markup, so with scripting off every status is on, every category open, no
-# empty-state line, and the page fully readable. Each heading also toggles its own category. Nothing
-# fetches or computes — it only shows and hides already-rendered markup.
+# categories that still have a match so results are visible without a click. A non-empty query that
+# matches no card shows "no items match"; one that matches a card the status chips are hiding says so
+# instead — either way the grid never goes silently blank with no explanation. The collapsed state is
+# applied by JS, never baked into the markup, so with scripting off every status is on, every category
+# open, no empty-state line, and the page fully readable. Each heading also toggles its own category.
+# Nothing fetches or computes — it only shows and hides already-rendered markup.
 _SCRIPT = """
 <script>
 (function(){
@@ -285,11 +286,13 @@ _SCRIPT = """
   }
   function apply(){
     var allOn=Object.keys(on).every(function(s){ return on[s]; });
-    var q=terms(), hasQuery=q.length>0, matched=0;
+    var q=terms(), hasQuery=q.length>0, matched=0, shown=0;
     cards.forEach(function(c, i){
       var match=q.every(function(t){ return hay[i].indexOf(t)>=0; });
       if(match) matched++;
-      c.classList.toggle('is-hidden', !(on[c.getAttribute('data-status')] && match));
+      var visible=on[c.getAttribute('data-status')] && match;
+      if(visible) shown++;
+      c.classList.toggle('is-hidden', !visible);
     });
     cats.forEach(function(cat){
       var hasMatch=!!cat.querySelector('.be-card:not(.is-hidden)');
@@ -303,11 +306,17 @@ _SCRIPT = """
       c.closest('.be-filter').classList.toggle('is-active', c.checked);
     });
     if(empty){
-      // "No items match" gates on cards matching the query itself, not the status-filtered view: a
-      // card the query matches but a chip hides is still a match, so the message stays truthful.
-      var none=hasQuery && matched===0;
-      empty.classList.toggle('is-hidden', !none);
-      empty.textContent=none ? ('No items match \\u201C'+search.value.trim()+'\\u201D') : '';
+      // Two distinct empty reasons, so the message stays truthful either way: the query itself
+      // matches nothing ("No items match"), vs. it matches something but every match is in a
+      // status the chips have hidden (the grid would otherwise go silently blank with no
+      // explanation — a query-matched-but-chip-hidden card is a real match, not a non-match).
+      var q_text='\\u201C'+search.value.trim()+'\\u201D';
+      var noMatch=hasQuery && matched===0;
+      var hiddenByChips=hasQuery && matched>0 && shown===0;
+      empty.classList.toggle('is-hidden', !(noMatch || hiddenByChips));
+      empty.textContent=noMatch ? ('No items match '+q_text)
+        : hiddenByChips ? (matched+' item(s) match '+q_text+', but the status filter above is hiding them')
+        : '';
     }
   }
   checks.forEach(function(c){

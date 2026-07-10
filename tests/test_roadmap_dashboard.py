@@ -93,6 +93,10 @@ def test_search_box_is_rendered_and_wired() -> None:
     assert "search.addEventListener('input', apply)" in _PAGE
     # The empty-state line the script fills when a query matches nothing.
     assert 'class="be-empty is-hidden"' in _PAGE
+    # Two distinct empty-state messages: the query itself has no match, vs. it matches a card the
+    # status chips are hiding — so the grid never goes silently blank with no explanation.
+    assert "No items match " in _PAGE
+    assert "but the status filter above is hiding them" in _PAGE
 
 
 def test_every_card_carries_its_topic() -> None:
