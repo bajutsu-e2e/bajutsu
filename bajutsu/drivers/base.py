@@ -237,10 +237,11 @@ def validate_id_candidates(field: str, value: str | list[str] | None) -> None:
 
     Shared by the scenario `Selector` model and config's `readyWhen` (a `base.Selector`) so a
     candidate list is checked the same way wherever it is authored. A list must be non-empty with no
-    blank entry, and must lead with the canonical (dotted SPEC) form: single-id consumers — the
-    resolver's representative pick, `audit` coverage bucketing (`namespace_of` splits on `.`), the
-    XCUITest / Playwright codegen emitters — take candidate[0], so an underscore-first list resolves
-    fine at runtime but silently skews them. Failing at load beats debugging a skewed report.
+    blank entry, and if it contains any dotted (SPEC-form) candidate, that candidate must lead:
+    single-id consumers — the resolver's representative pick, `audit` coverage bucketing
+    (`namespace_of` splits on `.`), the XCUITest / Playwright codegen emitters — take candidate[0], so
+    a dotted-but-not-first list resolves fine at runtime but silently skews them. Failing at load
+    beats debugging a skewed report. An all-underscore list (no dotted candidate) is accepted as-is.
 
     Raises:
         ValueError: the list is empty / has a blank entry, or a dotted candidate follows a
