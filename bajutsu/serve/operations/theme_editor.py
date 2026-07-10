@@ -76,7 +76,7 @@ def upload_theme(
 
     Returns:
         A ``(payload, status)`` pair. On success ``{"ok": True, "id": <slug>, "overwritten": bool}``
-        with 200; on a bad request an ``{"error": …}`` body with 400.
+        with 200; on a bad request an ``{"error": …}`` body with 400, or a write failure with 500.
     """
     if state.themes_dir is None:
         return {
@@ -90,8 +90,9 @@ def upload_theme(
     if theme_id in {b.id for b in themes.BUILTIN_THEMES}:
         return {"error": f"'{theme_id}' collides with a built-in theme; choose another name"}, 400
 
-    kind = body.get("kind")
-    kind = kind if kind in ("dark", "light") else "dark"
+    kind = body.get("kind", "dark")
+    if kind not in ("dark", "light"):
+        return {"error": "kind must be 'dark' or 'light'"}, 400
 
     tokens = body.get("tokens")
     if not isinstance(tokens, dict) or not tokens:

@@ -94,6 +94,30 @@ def test_upload_theme_rejects_unsafe_token(tmp_path: Path) -> None:
     assert not (themes_dir / "bad.css").exists()
 
 
+def test_upload_theme_rejects_invalid_kind(tmp_path: Path) -> None:
+    """An unrecognized kind is refused (fail-loudly), not silently coerced to a default."""
+    themes_dir = tmp_path / "themes"
+    themes_dir.mkdir()
+    state = _state(tmp_path, themes_dir)
+    _, status = theme_editor.upload_theme(
+        state, {"name": "weird", "kind": "neon", "tokens": {"--bg": "#000"}}, None
+    )
+    assert status == 400
+    assert not (themes_dir / "weird.css").exists()
+
+
+def test_upload_theme_defaults_kind_when_absent(tmp_path: Path) -> None:
+    """An omitted kind defaults to dark — only an explicitly wrong value is rejected."""
+    themes_dir = tmp_path / "themes"
+    themes_dir.mkdir()
+    state = _state(tmp_path, themes_dir)
+    _, status = theme_editor.upload_theme(
+        state, {"name": "plain", "tokens": {"--bg": "#000"}}, None
+    )
+    assert status == 200
+    assert "kind: dark" in (themes_dir / "plain.css").read_text(encoding="utf-8")
+
+
 def test_upload_theme_rejects_no_tokens(tmp_path: Path) -> None:
     """An empty token set would write an empty rule — refused."""
     themes_dir = tmp_path / "themes"
