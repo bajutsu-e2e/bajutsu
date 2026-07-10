@@ -307,10 +307,28 @@ def build_page(items: list[Any]) -> str:
     return f"{_INTRO}{render_html(items)}\n{_STYLE}{_SCRIPT}"
 
 
+def filter_script() -> str:
+    """The dashboard's client-side filter JS, without its ``<script>`` tags — for ``node --check``.
+
+    The script lives inline in this module rather than under ``bajutsu/templates/`` where
+    ``make lint-js``'s glob would catch it, so lint-js emits this (``--emit-script``) to a temp file
+    and syntax-checks it there.
+    """
+    return _SCRIPT.replace("<script>", "").replace("</script>", "").strip() + "\n"
+
+
 def main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--out", type=Path, default=DEFAULT_OUT, help="output path for the page")
+    parser.add_argument(
+        "--emit-script",
+        action="store_true",
+        help="write only the embedded filter JS (no <script> tags) to stdout, for lint-js",
+    )
     args = parser.parse_args(argv)
+    if args.emit_script:
+        sys.stdout.write(filter_script())
+        return 0
     try:
         items = bri.load_items(bri.ROADMAP)
     except ValueError as exc:
