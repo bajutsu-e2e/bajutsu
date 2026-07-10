@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import json
 import os
+import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Protocol
@@ -92,10 +93,19 @@ class LocalProviderSettingsStore:
             },
         }
         # Write-then-replace so a crash mid-write never leaves a half-written file that load()
-        # would reject on the next boot.
-        tmp = self._path.with_suffix(self._path.suffix + ".tmp")
-        tmp.write_text(json.dumps(payload, indent=2), encoding="utf-8")
-        os.replace(tmp, self._path)
+        # would reject on the next boot. The temp name is unique per call (mkstemp) — serve is a
+        # ThreadingHTTPServer, so a fixed `<path>.tmp` suffix would let two concurrent saves clobber
+        # each other's in-flight write before either os.replace() lands.
+        fd, tmp_name = tempfile.mkstemp(
+            dir=self._path.parent, prefix=self._path.name + ".", suffix=".tmp"
+        )
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as f:
+                f.write(json.dumps(payload, indent=2))
+            os.replace(tmp_name, self._path)
+        except OSError:
+            os.unlink(tmp_name)
+            raise
 
 
 def _decode(raw: object, path: Path) -> PersistedProviderSettings:
