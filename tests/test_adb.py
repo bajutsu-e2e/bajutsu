@@ -146,6 +146,28 @@ def test_non_clickable_container_does_not_derive_a_label() -> None:
     assert container["label"] is None
 
 
+def test_derived_label_skips_nested_clickable_subtree() -> None:
+    # A clickable descendant is its own control (its own button + derived label), so its text is
+    # not folded into the outer control's label. Here the outer tab derives "Log" (not "Log 9")
+    # and the nested badge derives "9" — two distinct buttons, so `{ label: "Log", traits: [button] }`
+    # still resolves the outer one uniquely rather than colliding with the badge.
+    xml = """<hierarchy rotation="0">
+      <node class="android.view.View" text="" clickable="true" bounds="[0,2120][200,2340]">
+        <node class="android.widget.TextView" text="Log" clickable="false" bounds="[10,2250][90,2300]" />
+        <node class="android.view.View" text="" clickable="true" bounds="[100,2130][190,2180]">
+          <node class="android.widget.TextView" text="9" clickable="false" bounds="[110,2130][180,2180]" />
+        </node>
+      </node>
+    </hierarchy>"""
+    els = parse_hierarchy(xml)
+    outer = next(e for e in els if e["frame"] == (0.0, 2120.0, 200.0, 220.0))
+    assert outer["label"] == "Log"
+    assert base.Trait.BUTTON in outer["traits"]
+    badge = next(e for e in els if e["frame"] == (100.0, 2130.0, 90.0, 50.0))
+    assert badge["label"] == "9"
+    assert base.Trait.BUTTON in badge["traits"]
+
+
 def test_parse_hierarchy_null_root_is_empty() -> None:
     # The transient bridge failure has no <hierarchy>, so it parses to an empty tree (retried later).
     assert parse_hierarchy(NULL_ROOT) == []

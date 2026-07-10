@@ -13,7 +13,8 @@ The XML attribute names follow UI Automator's `uiautomator dump` schema; the sel
 `clickable` node also carries the `button` trait, and a clickable node with no own `text`/
 `content-desc` derives its `label` from its descendants' text — so a Compose `NavigationBarItem`
 (a clickable `android.view.View` whose caption lives in a child `TextView`) resolves the shared
-cross-backend tab selector `{ label, traits: [button] }`, the same way iOS reaches a tab (BE-0223).
+cross-backend tab selector `{ label, traits: [button] }` (BE-0107), the same way iOS reaches a tab:
+the adb driver catching up to that established contract (BE-0223).
 The value channel
 is `content-desc`, not `text`, because the showcase mirrors its assertion state value into
 `content-desc` (SPEC §2.1: a `uiautomator dump` exposes `content-desc` but not Compose's
@@ -78,10 +79,24 @@ def _derived_label(node: ET.Element) -> str | None:
     with no own `text`/`content-desc`; its visible caption lives in a child `TextView`. Mirroring
     how an accessibility service names a focusable container, the control's label is its
     descendants' text in document order — so a tab is addressable by its caption ("Log"), the same
-    way the XCUITest backend exposes each tab as a label-bearing button (BE-0223).
+    way the XCUITest backend exposes each tab as a label-bearing button (BE-0107).
+
+    A nested clickable descendant is its own control (it independently gains the `button` trait and
+    derives its own label), so its subtree is skipped rather than folded into this label — which
+    also keeps two nested clickables from both deriving the same joined text (BE-0223).
     """
-    texts = [t for n in node.iter("node") if n is not node and (t := n.get("text"))]
-    return " ".join(texts) or None
+    parts: list[str] = []
+
+    def collect(parent: ET.Element) -> None:
+        for child in parent:
+            if child.get("clickable") == "true":
+                continue  # a separate control; its text belongs to its own element
+            if text := child.get("text"):
+                parts.append(text)
+            collect(child)
+
+    collect(node)
+    return " ".join(parts) or None
 
 
 def _traits(node: ET.Element) -> list[str]:
