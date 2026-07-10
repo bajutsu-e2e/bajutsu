@@ -16,36 +16,36 @@ from bajutsu.serve.state import ServeState
 
 _log = logging.getLogger(__name__)
 
+# serve.themes.css lives in bajutsu/templates/; this module is two packages deeper
+# (bajutsu/serve/operations/), so three .parent hops reach the bajutsu package root.
+_CONTRACT_PATH = Path(__file__).parent.parent.parent / "templates" / "serve.themes.css"
 
-def get_theme_contract(state: ServeState) -> dict[str, Any]:
+
+def get_theme_contract(state: ServeState) -> tuple[dict[str, Any], int]:
     """The design-token contract (BE-0191 unit 1) exposed as JSON for the editor.
 
-    Reads serve.themes.css, extracts the comment block (the documented token API), and returns
-    the full token set with their defaults from the :root fallback block.
+    Reads serve.themes.css, extracts the token list, and fills each token's default from the
+    :root fallback block. Follows the operations `(payload, status)` convention so a read failure
+    can report a non-200 status rather than a 200 with an error body.
     """
-    # Read the contract file (serve.themes.css).
-    contract_path = Path(__file__).parent.parent / "templates" / "serve.themes.css"
     try:
-        contract_css = contract_path.read_text(encoding="utf-8")
+        contract_css = _CONTRACT_PATH.read_text(encoding="utf-8")
     except (OSError, UnicodeDecodeError) as e:
         _log.error("failed to read theme contract: %s", e)
-        return {"error": "contract not available", "colors": {}, "transitions": {}}
+        return {"error": "contract not available", "colors": {}, "transitions": {}}, 500
 
-    # Parse the contract comment to get the token list.
     tokens = themes_module.parse_theme_tokens(contract_css)
 
-    # Extract the :root default block to populate default values.
-    root_match = re.search(r":root(?:\s*,\s*\[data-theme='midnight'\])?\s*{([^}]*)}", contract_css)
+    # Fill defaults from the :root/midnight block, which the CSS writes with double quotes.
+    root_match = re.search(r':root(?:\s*,\s*\[data-theme="midnight"\])?\s*{([^}]*)}', contract_css)
     if root_match:
         root_block = root_match.group(1)
-        # Parse CSS custom properties: --name: value;
         for match in re.finditer(r"--([a-z0-9-]+)\s*:\s*([^;]+);", root_block):
             token_name = f"--{match.group(1)}"
             value = match.group(2).strip()
-
             if token_name in tokens["colors"]:
                 tokens["colors"][token_name]["default"] = value
             elif token_name in tokens["transitions"]:
                 tokens["transitions"][token_name]["default"] = value
 
-    return tokens
+    return tokens, 200

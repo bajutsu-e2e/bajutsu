@@ -707,8 +707,8 @@ async function initThemeEditor(){
   $('#themeclose').addEventListener('click',()=>closeModal($('#thememodal')));
   $('#themesave-local').addEventListener('click',saveThemeLocal);
   $('#themeexport').addEventListener('click',exportTheme);
-  $('#themeimport-file').addEventListener('change',importThemeFile);
-  $('#themeimport').addEventListener('click',()=>$('#themeimport-file').click());
+  $('#themeimport-input').addEventListener('change',importThemeFile);
+  $('#themeimport').addEventListener('click',()=>$('#themeimport-input').click());
 }
 
 // Apply live preview: inject or update a <style> block with the edited token values.
@@ -755,7 +755,7 @@ function exportTheme(){
 
 // Import theme from file.
 function importThemeFile(){
-  const file=$('#themeimport-file').files[0];
+  const file=$('#themeimport-input').files[0];
   if(!file){return;}
   const reader=new FileReader();
   reader.onload=e=>{

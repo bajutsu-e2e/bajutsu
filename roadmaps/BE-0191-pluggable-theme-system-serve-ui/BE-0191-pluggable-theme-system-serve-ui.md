@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0191") |
-| Implementing PR | [#826](https://github.com/bajutsu-e2e/bajutsu/pull/826), [#837](https://github.com/bajutsu-e2e/bajutsu/pull/837), [#855](https://github.com/bajutsu-e2e/bajutsu/pull/855), [#859](https://github.com/bajutsu-e2e/bajutsu/pull/859), [#881](https://github.com/bajutsu-e2e/bajutsu/pull/881) |
+| Implementing PR | [#826](https://github.com/bajutsu-e2e/bajutsu/pull/826), [#837](https://github.com/bajutsu-e2e/bajutsu/pull/837), [#855](https://github.com/bajutsu-e2e/bajutsu/pull/855), [#859](https://github.com/bajutsu-e2e/bajutsu/pull/859), [#881](https://github.com/bajutsu-e2e/bajutsu/pull/881), [#883](https://github.com/bajutsu-e2e/bajutsu/pull/883) |
 | Topic | Authoring experience (record / GUI editor) |
 <!-- /BE-METADATA -->
 
@@ -292,6 +292,19 @@ filesystem, building directly on the token contract of unit 1.
   `--motion-*` contract + reduced-motion collapse in `tests/serve/test_theme_tokens.py`, the
   `reduced_motion` context assertion in `tests/test_playwright.py`; docs updated in `docs/web-ui.md`
   (+ ja mirror). ([#881](https://github.com/bajutsu-e2e/bajutsu/pull/881))
+- Unit 6 (part 1 of 2) — in-UI theme editor, live preview, client-side export/import. Exposed the
+  design-token contract as JSON: `themes.parse_theme_tokens` extracts every `--*` declaration from
+  `serve.themes.css` and categorizes it (color vs `--motion-*`, inferring duration/easing/keyframe),
+  and a new `serve/operations/theme_editor.py::get_theme_contract` fills each token's default from the
+  `:root`/midnight block, served at `GET /api/theme-contract`. The client (`serve.core.js`) generates
+  the editor form from that contract — a color input per color token, a text input per motion token —
+  in a tiler-safe `#thememodal`; editing injects a `<style id="theme-editor-preview">` block so the
+  change previews live with no server round trip. Save-to-local-draft (`localStorage`), CSS export
+  (round-trips with the drop-in format), and import round out the client side. Tests:
+  `tests/serve/test_theme_contract_parse.py` (parser) and `tests/serve/test_theme_editor.py` (the
+  contract endpoint reads the real bundled CSS and fills defaults). Still to land in part 2: surfacing
+  the local draft in the picker, server upload into `--themes` (BE-0073 seam) with a bounded
+  `lru_cache` invalidation, and the dogfood scenario. ([#883](https://github.com/bajutsu-e2e/bajutsu/pull/883))
 
 ## References
 
