@@ -76,8 +76,13 @@ class Run(Base):
 class JobRecord(Base):
     __tablename__ = "jobs"
     # The lease/reclaim hot paths filter on status (and leased_at for reclaim), swept on every poll,
-    # so this composite index keeps them off a full-table scan as the jobs table grows.
-    __table_args__ = (Index("ix_jobs_status_leased_at", "status", "leased_at"),)
+    # so these composite indexes keep them off a full-table scan as the jobs table grows. The second
+    # (status, created_at) serves the capability-aware lease scan (BE-0166), which reads queued rows
+    # `ORDER BY created_at` — the index provides both the filter and the order.
+    __table_args__ = (
+        Index("ix_jobs_status_leased_at", "status", "leased_at"),
+        Index("ix_jobs_status_created_at", "status", "created_at"),
+    )
 
     id: Mapped[str] = mapped_column(primary_key=True)
     org_id: Mapped[str] = mapped_column(default="")

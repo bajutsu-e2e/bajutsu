@@ -29,6 +29,10 @@ def upgrade() -> None:
         "jobs",
         sa.Column("capabilities", _JSON, nullable=False, server_default=sa.text("'[]'")),
     )
+    # Serves the capability-aware lease scan, which reads queued rows ORDER BY created_at — the index
+    # provides both the `status = 'queued'` filter and the ordering, alongside the existing
+    # (status, leased_at) index the reclaim path uses.
+    op.create_index("ix_jobs_status_created_at", "jobs", ["status", "created_at"])
     # The live-worker registry: what the pool advertises, refreshed each lease poll — the read the
     # control plane needs to surface an unroutable queued job (no worker can serve it).
     op.create_table(
@@ -46,4 +50,5 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     op.drop_table("workers")
+    op.drop_index("ix_jobs_status_created_at", table_name="jobs")
     op.drop_column("jobs", "capabilities")
