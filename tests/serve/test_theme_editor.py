@@ -2,6 +2,11 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
+from _shared import _get_json, _serve, project
+
+from bajutsu import serve as srv
 from bajutsu.serve.operations import theme_editor
 
 
@@ -30,3 +35,18 @@ def test_get_theme_contract_populates_defaults():
     assert payload["colors"]["--bg"]["default"].startswith("#")
     # A motion duration default is filled too.
     assert payload["transitions"]["--motion-view"]["default"]
+
+
+def test_api_theme_contract_route(tmp_path: Path) -> None:
+    """GET /api/theme-contract serves the contract JSON end to end (like sibling routes)."""
+    scn_dir, cfg, runs = project(tmp_path)
+    state = srv.ServeState(scenarios_dir=scn_dir, config=cfg, runs_dir=runs, cwd=tmp_path)
+    server, port = _serve(state)
+    try:
+        payload = _get_json(port, "/api/theme-contract")
+        assert "--bg" in payload["colors"]
+        assert "--motion-view" in payload["transitions"]
+        assert payload["colors"]["--bg"]["default"].startswith("#")
+    finally:
+        server.shutdown()
+        server.server_close()

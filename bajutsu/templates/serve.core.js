@@ -661,7 +661,11 @@ async function loadSims(){
 // stack. The modal's *static* buttons are wired once at page load (see the bottom of this file), so
 // re-opening the editor cannot duplicate their listeners.
 async function initThemeEditor(){
-  const contract=await getJSON('/api/theme-contract',{colors:{},transitions:{}});
+  // A distinct sentinel on fetch failure: getJSON swallows a network error into its fallback, so an
+  // empty {colors,transitions} could mean either "server returned nothing" or "request failed". Mark
+  // the fallback so a real failure shows the same "contract not available" status a 500 body gets,
+  // rather than silently rendering an empty form.
+  const contract=await getJSON('/api/theme-contract',{error:'unreachable',colors:{},transitions:{}});
   if(contract.error){setStatus($('#themestatus'),'contract not available','ng');return;}
 
   const htmlParts=[];
@@ -710,6 +714,12 @@ function collectThemeTokens(){
 // The author's chosen kind (defaults to dark if the form isn't built yet).
 function currentThemeKind(){const s=$('#theme-kind');return s?s.value:'dark';}
 
+// A token name/value that can't break out of the `:root{ … }` rule it's interpolated into. A theme
+// is operator-trusted (drop-in / their own upload — BE-0191), so this isn't a security boundary; it
+// stops a malformed *imported* value (a stray `{`/`}`/`;`) from silently corrupting the whole preview
+// stylesheet. The token name must be a plain custom property; the value carries no rule-delimiters.
+const safeThemeToken=(k,v)=>/^--[\w-]+$/.test(k)&&!/[{};]/.test(v);
+
 // Apply live preview: inject or update a <style> block with the edited token values.
 function applyThemePreview(tokens){
   let styleEl=$('#theme-editor-preview');
@@ -718,7 +728,7 @@ function applyThemePreview(tokens){
     styleEl.id='theme-editor-preview';
     document.head.appendChild(styleEl);
   }
-  const rules=Object.entries(tokens).map(([k,v])=>`${k}:${v};`).join('');
+  const rules=Object.entries(tokens).filter(([k,v])=>safeThemeToken(k,v)).map(([k,v])=>`${k}:${v};`).join('');
   styleEl.textContent=`:root{${rules}}`;
 }
 
@@ -735,7 +745,7 @@ function saveThemeLocal(){
 function exportTheme(){
   const tokens=collectThemeTokens(),kind=currentThemeKind();
   const manifest=`/* bajutsu-theme\nname: custom\nkind: ${kind}\n*/\n`;
-  const css=`[data-theme="custom"]{\n${Object.entries(tokens).map(([k,v])=>`  ${k}: ${v};`).join('\n')}\n}\n`;
+  const css=`[data-theme="custom"]{\n${Object.entries(tokens).filter(([k,v])=>safeThemeToken(k,v)).map(([k,v])=>`  ${k}: ${v};`).join('\n')}\n}\n`;
   const blob=new Blob([manifest+css],{type:'text/css'});
   const url=URL.createObjectURL(blob);
   const a=document.createElement('a');
