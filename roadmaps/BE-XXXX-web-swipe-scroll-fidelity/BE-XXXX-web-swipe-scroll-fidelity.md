@@ -65,7 +65,7 @@ that dispatch **mode-aware** so it is correct for both a desktop pointer browser
   the user pushes the surface up) scrolls the page **down** (positive `delta_y`), mirroring the
   physical gesture, and the `amount` fraction sets the magnitude from the same screen-relative
   distance the gesture math already computes.
-- **Touch / mobile mode** — a CDP touch drag, the exact path `pinch` / `rotate` already use
+- **Touch / mobile mode** — a CDP (Chrome DevTools Protocol) touch drag, the exact path `pinch` / `rotate` already use
   (`_touch_drag` → `Input.dispatchTouchEvent`). A real touch drag is what scrolls a touch page,
   and it fires the page's touch / gesture listeners, unlike a synthetic DOM event. `swipe` would
   reuse `_touch_drag` with the two endpoints collapsed to a single finger.
