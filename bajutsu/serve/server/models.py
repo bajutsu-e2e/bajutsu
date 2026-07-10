@@ -112,7 +112,7 @@ class WorkerRecord(Base):
 
     id: Mapped[str] = mapped_column(primary_key=True)  # the worker_id it leases under
     capabilities: Mapped[list[str]] = mapped_column(_JSON, default=list)
-    last_seen: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    last_seen: Mapped[datetime] = _created_at()  # refreshed on every lease poll / heartbeat
 
 
 class SessionRecord(Base):

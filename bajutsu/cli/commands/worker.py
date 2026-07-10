@@ -25,6 +25,7 @@ from urllib.request import Request, urlopen
 import typer
 
 from bajutsu import simctl
+from bajutsu.backends import PLATFORMS
 from bajutsu.object_store import content_type_for
 from bajutsu.serve import InMemoryLogBus
 from bajutsu.serve.capabilities import WORKER_CAPABILITIES_ENV, worker_capabilities
@@ -67,6 +68,13 @@ def _advertised_capabilities(platform: str, capabilities: str) -> list[str]:
     to an absent ``xcrun``.
     """
     platforms = [p.strip() for p in platform.split(",") if p.strip()]
+    # Fail loudly on a typo'd platform (e.g. `--platform iso`) rather than silently advertising a
+    # `platform:iso` token that matches no job — the worker would otherwise poll forever leasing
+    # nothing (BE-0166, "determinism first"). Same known set config's `_check_platform` validates.
+    if unknown := [p for p in platforms if p not in PLATFORMS]:
+        raise typer.BadParameter(
+            f"invalid --platform {', '.join(unknown)}: use one of {', '.join(PLATFORMS)}"
+        )
     return sorted(
         worker_capabilities(
             platforms,

@@ -228,6 +228,13 @@ def test_advertised_capabilities_splits_platforms_and_falls_back_to_env(
     assert caps == ["platform:ios", "platform:web"]  # sorted
 
 
+def test_advertised_capabilities_rejects_an_unknown_platform() -> None:
+    # BE-0166: a typo'd --platform fails loudly rather than silently advertising a token no job
+    # requires (which would leave the worker leasing nothing forever).
+    with pytest.raises(typer.BadParameter):
+        _advertised_capabilities("iso", "")
+
+
 def test_worker_advertises_capabilities_on_every_lease(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
