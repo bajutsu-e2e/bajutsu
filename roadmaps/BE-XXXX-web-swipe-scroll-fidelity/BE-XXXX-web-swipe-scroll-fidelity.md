@@ -71,7 +71,10 @@ that dispatch **mode-aware** so it is correct for both a desktop pointer browser
   reuse `_touch_drag` with the two endpoints collapsed to a single finger.
 
 **Selecting the mode.** The branch keys off whether the active browser context has touch input
-enabled — Playwright's `has_touch` context option, readable from the driver. Today the web
+enabled — the `has_touch` value the context was created with. Playwright's Python `BrowserContext`
+has no public getter for it (it is a `new_context()` creation-time option only), so the driver
+records the touch mode at context-creation time (alongside `self._context`) rather than reading it
+back from the context object. Today the web
 backend always launches a plain desktop context (`has_touch` is false), so this proposal ships
 the **desktop / wheel** path as the live behaviour and wires the branch so the touch path
 activates automatically once a context can be configured for touch. Standing up that
