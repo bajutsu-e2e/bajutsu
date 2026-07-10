@@ -143,6 +143,6 @@ This stays within the prime directives:
 - [Playwright — device emulation](https://playwright.dev/python/docs/emulation)
 - [configuration.md](../../docs/configuration.md)
 - [drivers.md](../../docs/drivers.md)
-- [BE-0076 — Selectable browser engines & cross-browser matrix](../BE-0076-web-cross-browser-engines/BE-0076-web-cross-browser-engines.md)
+- [BE-0076 — Selectable browser engines & cross-browser compatibility matrix (web backend)](../BE-0076-web-cross-browser-engines/BE-0076-web-cross-browser-engines.md)
 - Companion item: **web-swipe-scroll-fidelity** (branches `swipe` on the input mode this item
   configures)

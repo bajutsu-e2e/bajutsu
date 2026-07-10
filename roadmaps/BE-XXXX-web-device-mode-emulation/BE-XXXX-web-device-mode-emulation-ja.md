@@ -58,7 +58,7 @@ web ターゲットの設定に**デバイスモード**を追加し、Playwrigh
 解決します。自然な形は Playwright 自身のモデルに倣います。
 
 - **名前付きデバイスプリセット**（例：`device: "iPhone 13"`）。`playwright.devices` に対して解決し、
-  viewport / `device_scale_factor` / `is_mobile` / `has_touch` / `user_agent` に展開する。あるいは
+  viewport / `device_scale_factor` / `is_mobile` / `has_touch` / `user_agent` に展開します。あるいは
 - 任意の viewport を伴う明示的な**デスクトップ／モバイルのモード**。特定の機種を固定せずに、素の
   デスクトップや汎用的なモバイルのコンテキストが欲しいチームのため。
 
@@ -84,17 +84,17 @@ web ターゲットの設定に**デバイスモード**を追加し、Playwrigh
 作業分解（MECE）：
 
 1. **設定の露出**：web ターゲット設定（`bajutsu/config.py`）にデバイスモードの設定を追加し、デスクトップを
-   既定とし、検証する（不明なプリセットは明確なエラー）。
-2. **記述子の解決**：プリセット名を `playwright.devices` に対して解決する（または明示的なデスクトップ／
-   モバイルと viewport から記述子を組む）。設定の import が Playwright を import しないよう遅延で行う。
+   既定とし、検証します（不明なプリセットは明確なエラー）。
+2. **記述子の解決**：プリセット名を `playwright.devices` に対して解決します（または明示的なデスクトップ／
+   モバイルと viewport から記述子を組みます）。設定の import が Playwright を import しないよう遅延で行います。
 3. **コンテキストへの配線**：記述子を `_new_context` とスターターの初回コンテキストに適用し、
-   `reset_context` / `relaunch` をまたいで保つ。
+   `reset_context` / `relaunch` をまたいで保ちます。
 4. **ケイパビリティとプリフライトの見直し**：表明するケイパビリティとプリフライトがモバイルコンテキストで
-   正しいことを確認する。
+   正しいことを確認します。
 5. **テスト**：プリセットの解決、デスクトップ既定（挙動不変）、記述子を載せたコンテキストの kwargs、
-   reset／relaunch をまたいだ安定性を確認する。
-6. **ドキュメント**：`docs/configuration.md` / `docs/drivers.md`（と日本語ミラー）にデバイスモードを記す。
-   モバイルモードが実機ではなくデスクトップブラウザのエミュレーションである点も含める。
+   reset／relaunch をまたいだ安定性を確認します。
+6. **ドキュメント**：`docs/configuration.md` / `docs/drivers.md`（と日本語ミラー）にデバイスモードを記します。
+   モバイルモードが実機ではなくデスクトップブラウザのエミュレーションである点も含めます。
 
 以下のとおり、いずれもプライムディレクティブの範囲内です。
 
@@ -140,5 +140,5 @@ web ターゲットの設定に**デバイスモード**を追加し、Playwrigh
 - [Playwright — device emulation](https://playwright.dev/python/docs/emulation)
 - [configuration.md](../../docs/ja/configuration.md)
 - [drivers.md](../../docs/ja/drivers.md)
-- [BE-0076 — 選択可能なブラウザエンジンとクロスブラウザ対応表](../BE-0076-web-cross-browser-engines/BE-0076-web-cross-browser-engines-ja.md)
+- [BE-0076 — ブラウザエンジンの選択とクロスブラウザ互換マトリクス（web backend）](../BE-0076-web-cross-browser-engines/BE-0076-web-cross-browser-engines-ja.md)
 - 対になる項目：**web-swipe-scroll-fidelity**（本項目が設定する入力モードで `swipe` を分岐する）
