@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0007") |
-| Implementing PR | [#658](https://github.com/bajutsu-e2e/bajutsu/pull/658), [#821](https://github.com/bajutsu-e2e/bajutsu/pull/821), [#851](https://github.com/bajutsu-e2e/bajutsu/pull/851), [#854](https://github.com/bajutsu-e2e/bajutsu/pull/854), [#858](https://github.com/bajutsu-e2e/bajutsu/pull/858) |
+| Implementing PR | [#658](https://github.com/bajutsu-e2e/bajutsu/pull/658), [#821](https://github.com/bajutsu-e2e/bajutsu/pull/821) |
 | Topic | Platform expansion (Android / Web / Flutter) |
 | Related | [BE-0208](../BE-0208-android-emulator-e2e-ci/BE-0208-android-emulator-e2e-ci.md), [BE-0209](../BE-0209-android-codegen-emitter/BE-0209-android-codegen-emitter.md), [BE-0210](../BE-0210-android-actuation-fidelity/BE-0210-android-actuation-fidelity.md), [BE-0211](../BE-0211-android-device-control/BE-0211-android-device-control.md), [BE-0212](../BE-0212-granular-device-control-capabilities/BE-0212-granular-device-control-capabilities.md) |
 <!-- /BE-METADATA -->
@@ -183,8 +183,10 @@ the **lean** end of `capabilities()`.
   alternative to Espresso, landed as [BE-0209](../BE-0209-android-codegen-emitter/BE-0209-android-codegen-emitter.md) **(#854)**.
 - [x] Validation — fast-gate driver/registry tests over dump fixtures **(done)**; core scenarios
   driven on a local arm64 emulator **(done, 2026-07-07)**; the on-device e2e wired into KVM CI as
-  [BE-0208](../BE-0208-android-emulator-e2e-ci/BE-0208-android-emulator-e2e-ci.md) **(#851)** —
-  the residual on-device actuation tuning (double-tap timing, scroll-into-view, the held-back
+  [BE-0208](../BE-0208-android-emulator-e2e-ci/BE-0208-android-emulator-e2e-ci.md) **(#851)**. This
+  unit is done once the CI lane exists and the core scenarios run — it does not wait for BE-0208 to
+  close its own remaining boxes (visual/golden-baseline parity, scenario growth as later slices
+  land). Residual on-device actuation tuning (double-tap timing, scroll-into-view, the held-back
   scenarios) belongs to [BE-0210](../BE-0210-android-actuation-fidelity/BE-0210-android-actuation-fidelity.md)
   (still Proposal), not to BE-0208 (the CI-wiring item).
 
