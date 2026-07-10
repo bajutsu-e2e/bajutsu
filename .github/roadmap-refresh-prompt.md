@@ -32,9 +32,8 @@ wastes the run.
 Propose an update **only where there is concrete evidence of drift** — a merged PR that references
 the item, a shipped capability, a ticked box that clearly matches landed work. When the evidence is
 ambiguous (you cannot tell whether a PR fully implemented an item, whether `Status` should advance),
-**leave the file unchanged** and note the uncertainty in a short line for the PR body rather than
-guessing. A missed update is cheap — the next daily run catches it; a wrong `Status` flip misleads.
-Never invent PR numbers, dates, or log entries.
+**leave the file unchanged** rather than guessing. A missed update is cheap — the next daily run
+catches it; a wrong `Status` flip misleads. Never invent PR numbers, dates, or log entries.
 
 ## Bilingual rule (BE-0065 / house convention)
 

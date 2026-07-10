@@ -68,6 +68,7 @@ jobs:
           MODEL_ID: ${{ vars.BEDROCK_MODEL_ID }}
           APP_ID: ${{ secrets.AUTOMATION_BOT_APP_ID }}
           APP_KEY: ${{ secrets.AUTOMATION_BOT_PRIVATE_KEY }}
+          LABEL: ${{ inputs.label }}
         run: |
           # All-or-nothing dormancy on BOTH credentials: an AI provider to author the update, AND the
           # automation App so the bot-opened PR actually triggers its own `check` CI (a PR opened with
@@ -87,9 +88,9 @@ jobs:
           else
             echo "enabled=false" >> "$GITHUB_OUTPUT"
             if [ "$provider" = "none" ]; then
-              echo "::notice::No AI provider (CLAUDE_CODE_OAUTH_TOKEN, or AWS_BEDROCK_ROLE_ARN + BEDROCK_MODEL_ID) — ${{ inputs.label }}-refresh is dormant (BE-0222). No-op."
+              echo "::notice::No AI provider (CLAUDE_CODE_OAUTH_TOKEN, or AWS_BEDROCK_ROLE_ARN + BEDROCK_MODEL_ID) — ${LABEL}-refresh is dormant (BE-0222). No-op."
             else
-              echo "::notice::AUTOMATION_BOT_APP_ID / AUTOMATION_BOT_PRIVATE_KEY are not both set — ${{ inputs.label }}-refresh is dormant (BE-0222). No-op."
+              echo "::notice::AUTOMATION_BOT_APP_ID / AUTOMATION_BOT_PRIVATE_KEY are not both set — ${LABEL}-refresh is dormant (BE-0222). No-op."
             fi
           fi
 

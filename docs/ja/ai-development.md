@@ -404,6 +404,39 @@ Amazon Bedrock のロールと `BEDROCK_MODEL_ID` 変数）が設定されると
   設定で **Copilot の自動レビューを無効にします**。これは PR では持ち運べない管理状態であり（BE-0122 や
   BE-0089 が指摘するブランチ保護ルールセットの編集と同じ形です）、明示的な手動の手順です。
 
+### 定期リフレッシュ（Claude Code、BE-0222）
+
+人手で維持しているリポジトリの部分を、出荷済みの内容と毎日照合する 2 本の定期ワークフローです。上記の自動
+レビュアーに対する**起草側**の対応物にあたります。BE-0203 がマージを止めない AI レビュアーを足したのに対し、
+こちらはマージしない AI 起草者を足します。
+
+- [`roadmap-refresh`](../../.github/workflows/roadmap-refresh.yml) は、各 BE 項目の `Status` /
+  `Progress` / `Implementing PR` を `main` にマージ済みの内容と照合します。
+- [`docs-refresh`](../../.github/workflows/docs-refresh.yml) は、挙動に対してずれる文章、すなわち
+  `docs/architecture.md#implementation-status` と、`DESIGN.md` / `docs/architecture.md` の文章とコードの
+  対応（[BE-0113](../../roadmaps/BE-0113-design-doc-realignment/BE-0113-design-doc-realignment-ja.md)
+  のレビュー時の規範）を照合します。
+
+どちらも 1 本の再利用ワークフロー [`refresh.yml`](../../.github/workflows/refresh.yml) の薄い呼び出し側です。
+共有された型をそこにまとめることで、2 本がドリフトしないようにしています。違うのはブランチ、契約ファイル
+（[`.github/roadmap-refresh-prompt.md`](../../.github/roadmap-refresh-prompt.md)、
+[`.github/docs-refresh-prompt.md`](../../.github/docs-refresh-prompt.md)）、そして**パス許可リスト**
+（`roadmaps/**`、または `docs/**` と `DESIGN.md`。`README*` / `CLAUDE.md` の契約面は意図的に除外します）
+だけです。要点は、いずれも既存の自動化と揃えてあります。
+
+- **設定が揃うまで休止します。** 各実行は、AI プロバイダ（レビュアーが使うのと同じ `claude-review`
+  Environment の資格情報）と自動化 App トークン（`roadmap-id.yml` と同じ）の**両方**が揃わない限り、緑の
+  no-op です。bot が開いた PR に自身の `check` CI を走らせられるのは、App の身元があるからです。設定が中途
+  半端なリポジトリが赤になることはありません。
+- **AI が起草し、ゲートと人間が判断します。** Claude Code アクションは作業ツリーを編集するだけです。その
+  あと決定論的なステップがパス許可リストを強制し（許可外の編集は復元します）、ジョブ内で `make check` を
+  実行し、ワークフローごとに**1 本の更新用ドラフト PR** を開きます。`run`/CI の合否に LLM は載りません
+  （プライムディレクティブ 1）。ready にしてマージするのは人間だけです。
+- **冪等で、人間の作業を上書きしません。** 差分がない日は PR を開きません。ドリフトがあれば、そのワーク
+  フローの固定ブランチを再利用し、その tip を bot 自身がコミットしていたときだけ `--force-with-lease` で
+  force-update します。レビュアーがブランチに push した fixup を上書きすることはなく、その場合は声高に
+  スキップします。
+
 ## ロードマップ項目: BE ID（厳守）
 
 ロードマップは [`roadmaps/`](../../roadmaps/README-ja.md) 配下に**1 項目 1 ディレクトリ**で置きます。各項目は

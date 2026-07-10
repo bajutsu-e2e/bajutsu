@@ -31,9 +31,9 @@ the PR is opened, so straying only wastes the run.
 Propose an update **only where there is concrete evidence of drift** — a shipped capability the doc
 omits or misdescribes, a behavior the code demonstrably changed. When you are unsure whether the prose
 is actually stale (it may be describing a deliberate design intent, not the current implementation),
-**leave it unchanged** and note the uncertainty in a short line for the PR body rather than rewriting
-on a guess. A missed update is cheap — the next daily run catches it; a confidently wrong rewrite of
-the design doc misleads every future reader. Prefer small, surgical edits over broad rewrites.
+**leave it unchanged** rather than rewriting on a guess. A missed update is cheap — the next daily run
+catches it; a confidently wrong rewrite of the design doc misleads every future reader. Prefer small,
+surgical edits over broad rewrites.
 
 ## Bilingual rule (house convention)
 
