@@ -9,7 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0107") |
-| 実装 PR | _pending_ |
+| 実装 PR | [#875](https://github.com/bajutsu-e2e/bajutsu/pull/875) |
 | トピック | Dogfood フィクスチャ（デモアプリ） |
 | 関連 | [BE-0079](../BE-0079-consolidate-demos-on-showcase/BE-0079-consolidate-demos-on-showcase-ja.md), [BE-0019](../BE-0019-xcuitest-backend/BE-0019-xcuitest-backend-ja.md) |
 | 由来 | Dogfooding |

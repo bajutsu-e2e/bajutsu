@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0107") |
-| Implementing PR | _pending_ |
+| Implementing PR | [#875](https://github.com/bajutsu-e2e/bajutsu/pull/875) |
 | Topic | Dogfood fixtures (demo apps) |
 | Related | [BE-0079](../BE-0079-consolidate-demos-on-showcase/BE-0079-consolidate-demos-on-showcase.md), [BE-0019](../BE-0019-xcuitest-backend/BE-0019-xcuitest-backend.md) |
 | Origin | Dogfooding |
