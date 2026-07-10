@@ -344,6 +344,10 @@ def make_app(state: ServeState) -> FastAPI:
             # Starlette raises this from `request.stream()` on an early client disconnect — the ASGI
             # analogue of the stdlib handler's short read, so it gets the same graceful 400.
             return _result(({"error": "upload interrupted"}, 400))
+        except OSError:
+            # Mirrors the stdlib handler's `_handle_upload`, which returns the same 400 on a
+            # write failure (e.g. disk full) instead of letting it surface as a 500.
+            return _result(({"error": "upload interrupted"}, 400))
         finally:
             receiver.cleanup()
 

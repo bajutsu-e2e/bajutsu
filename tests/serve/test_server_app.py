@@ -157,6 +157,23 @@ def test_upload_route_rejects_truncated_body(tmp_path: Path) -> None:
     assert resp.status_code == 400 and "incomplete" in resp.json()["error"]
 
 
+def test_upload_route_returns_400_on_write_failure(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # A disk-write failure (e.g. ENOSPC) while streaming must get the same graceful 400 the stdlib
+    # handler's `_handle_upload` gives for an `OSError`, not an unhandled 500.
+    from bajutsu.serve import uploads as uploads_mod
+
+    def _boom(self: object, chunk: bytes) -> None:
+        raise OSError("disk full")
+
+    monkeypatch.setattr(uploads_mod.BoundedZipReceiver, "write", _boom)
+    state = srv.ServeState(runs_dir=tmp_path / "runs", cwd=tmp_path, root=tmp_path)
+    (tmp_path / "runs").mkdir()
+    resp = _client(state).post("/api/upload?name=x.zip", content=b"zip bytes here")
+    assert resp.status_code == 400 and "interrupted" in resp.json()["error"]
+
+
 def test_upload_urls_route_signs_put_urls(tmp_path: Path) -> None:
     # The FastAPI shell reaches the same evidence operation as the stdlib handler (BE-0110).
     class _FakeStore:
