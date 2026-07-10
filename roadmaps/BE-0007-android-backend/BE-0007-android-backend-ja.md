@@ -164,7 +164,7 @@ Linux CI で動き、`capabilities()` の **小さい端**を行使します。
 - [x] 証跡とデバイス制御：`logcat` の deviceLog、`screenrecord` の video、モックネットワーク**（完了、2026-07-08、#821）**。対応するデバイス状態のステップ（`setLocation` と clipboard。エミュレータが honor する範囲）は [BE-0211](../BE-0211-android-device-control/BE-0211-android-device-control-ja.md) **（#858）** として着地しました。残る操作（`deviceControl.push` / `.clearKeychain` / `.statusBar`）は、[BE-0212](../BE-0212-granular-device-control-capabilities/BE-0212-granular-device-control-capabilities-ja.md) が導入した per-operation トークンで正直に gate したままです。
 - [x] doctor と開示：idb の隣に `doctor --target` の可用性、マニフェストに `backend: "adb"` を記録。
 - [x] codegen 変換先：作業分解が Espresso の代替として挙げた UI Automator（Kotlin）ジェネレータを [BE-0209](../BE-0209-android-codegen-emitter/BE-0209-android-codegen-emitter-ja.md) **（#854）** として着地させました。
-- [x] 検証：dump フィクスチャに対する高速ゲートの driver/レジストリテスト**（完了）**、コアシナリオをローカルの arm64 エミュレータで駆動**（完了、2026-07-07）**、実機 e2e を KVM CI へ [BE-0208](../BE-0208-android-emulator-e2e-ci/BE-0208-android-emulator-e2e-ci-ja.md) **（#851）** として組み込みました。この作業分解の単位は、CI レーンが存在してコアシナリオが動けば完了です。BE-0208 自身の残作業（visual/golden-baseline のパリティ、後続スライスが着地するにつれたシナリオ追加）を待つ必要はありません。実機でのアクチュエーション微調整（double-tap の受付時間、スクロールによる表示、保留中のシナリオ）は
+- [x] 検証：dump フィクスチャに対する高速ゲートの driver/レジストリテスト**（完了）**、コアシナリオをローカルの arm64 エミュレータで駆動**（完了、2026-07-07）**、実機 e2e を KVM CI へ [BE-0208](../BE-0208-android-emulator-e2e-ci/BE-0208-android-emulator-e2e-ci-ja.md) **（#851）** として組み込みました。この作業分解の単位は、CI レーンが存在してコアシナリオが動けば完了です。BE-0208 自身の残作業（visual/golden-baseline のパリティ、後続スライスの着地に伴うシナリオ追加）を待つ必要はありません。実機でのアクチュエーション微調整（double-tap の受付時間、スクロールによる表示、保留中のシナリオ）は
   [BE-0210](../BE-0210-android-actuation-fidelity/BE-0210-android-actuation-fidelity-ja.md)
   （まだ提案、未着手）の担当であり、BE-0208（CI 配線の項目）ではありません。
 
