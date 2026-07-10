@@ -398,6 +398,14 @@ class SqlRepository:
             # chosen candidate is then locked on its own — `FOR UPDATE SKIP LOCKED` on that single row —
             # and re-checked for `queued`: if another worker took it between the scan and the lock, the
             # row reads as gone/leased and this worker moves on to the next candidate.
+            #
+            # The scan is deliberately unbounded rather than capped at the oldest N: an unroutable
+            # backlog piles up at the *head* (oldest), so a fixed N would let it hide a servable
+            # younger job forever — the same starvation `.limit(1)` has. The only bounded-and-correct
+            # alternative pushes the subset test into SQL (Postgres JSONB `<@`), which the SQLite gate
+            # can't exercise. Kept simple for the intended small self-hosted pool, where the backlog is
+            # a misconfiguration `bajutsu_unroutable_jobs` surfaces; keyset pagination is the escalation
+            # if a deep-queue / large-fleet deployment ever needs it.
             candidates = session.execute(
                 select(JobRecord.id, JobRecord.capabilities)
                 .where(JobRecord.status == "queued")
