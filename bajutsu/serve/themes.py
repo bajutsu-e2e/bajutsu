@@ -126,22 +126,22 @@ def theme_manifests(themes_dir: Path | None) -> list[ThemeManifest]:
 def parse_theme_tokens(contract_css: str) -> dict[str, dict[str, dict[str, str]]]:
     """Extract the design-token contract from the serve.themes.css CSS blocks (BE-0191 unit 6).
 
-    Returns a dict with keys "colors" and "transitions", each holding a dict of token metadata.
-    Finds all --token declarations in CSS rules and categorizes them by name prefix.
+    Returns a dict with keys ``"colors"`` and ``"transitions"``, each holding a dict of token
+    metadata — including ``"default"`` values filled from the ``:root``/midnight fallback block.
+    CSS-token parsing is the single source of truth here: the comment-stripping, token discovery,
+    and default-fill all share the same comment-free text so there is no duplication.
     """
-    # Strip /* … */ comment blocks before scanning so a `--token` mention inside a prose comment
-    # (e.g. the contract's own documentation of each token) can never be mistaken for a declaration.
+    # Strip /* … */ comment blocks once; both the token-discovery scan and the default-fill scan
+    # operate on this same text so there is no risk of the two getting out of sync.
     css_no_comments = re.sub(r"/\*.*?\*/", "", contract_css, flags=re.DOTALL)
 
-    # Find all CSS custom property declarations: --name: value;
+    # Discover all CSS custom property declarations (--name:) and categorize by name prefix.
     tokens_found: dict[str, dict[str, str]] = {}
     for match in re.finditer(r"--([\w-]+)\s*:", css_no_comments):
         token_name = f"--{match.group(1)}"
-        # Categorize: motion tokens are --motion-*, others are colors.
         if token_name.startswith("--motion-"):
-            # Infer type from the trailing segment (after the last hyphen) so a future
-            # token whose name merely *contains* "ease" as a substring (e.g. --motion-release)
-            # is not misclassified as easing.
+            # Infer type from the trailing segment so a token whose name merely *contains* a
+            # keyword as a substring (e.g. --motion-release containing "ease") is not misclassified.
             last_seg = token_name.rsplit("-", 1)[-1]
             if last_seg in ("enter", "leave"):
                 t = "keyframe"
@@ -153,10 +153,19 @@ def parse_theme_tokens(contract_css: str) -> dict[str, dict[str, dict[str, str]]
         else:
             tokens_found[token_name] = {"description": "", "default": ""}
 
-    # Separate into colors and transitions.
+    # Fill defaults from the :root/midnight block (the CSS uses double-quoted attribute selectors).
+    root_match = re.search(
+        r':root(?:\s*,\s*\[data-theme="midnight"\])?\s*{([^}]*)}', css_no_comments
+    )
+    if root_match:
+        for match in re.finditer(r"--([\w-]+)\s*:\s*([^;]+);", root_match.group(1)):
+            token_name = f"--{match.group(1)}"
+            value = match.group(2).strip()
+            if token_name in tokens_found:
+                tokens_found[token_name]["default"] = value
+
     colors = {k: v for k, v in tokens_found.items() if not k.startswith("--motion-")}
     transitions = {k: v for k, v in tokens_found.items() if k.startswith("--motion-")}
-
     return {"colors": colors, "transitions": transitions}
 
 
