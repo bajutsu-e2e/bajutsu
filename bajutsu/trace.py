@@ -62,7 +62,8 @@ def _step_label(step: Step, index: int) -> str:
     from bajutsu.orchestrator.evidence_rules import _primary_selector
 
     primary = _primary_selector(step)
-    target = primary.id if primary is not None and primary.id is not None else ""
+    # `first_id()` renders a candidate-list selector (BE-0221) as its primary id, not a raw list.
+    target = (primary.first_id() if primary is not None else None) or ""
     return f"#{index} {_action_of(step)}{f' {target}' if target else ''}"
 
 

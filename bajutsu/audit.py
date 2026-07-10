@@ -153,12 +153,14 @@ def referenced_ids(scenario: Scenario) -> set[str]:
     """
     ids: set[str] = set()
     for _, sel in _located_selectors(scenario):
-        # `id` / `idMatches` may each be a list of OR candidates (BE-0221); every candidate is a
-        # referenced id, so coverage grades them all against the app's declared namespaces.
+        # `id` / `idMatches` may each be a list of OR candidates (BE-0221) — the same logical id in
+        # each platform's spelling. Coverage buckets by `namespace_of` (splits on `.`), so only the
+        # primary (SPEC, dotted) candidate is the referenced id; a platform's underscore alternate
+        # (`stable_row_1`) has no `.` and would otherwise register as a spurious off-namespace id.
         if "id" in sel:
-            ids.update(base.id_candidates(sel["id"]))
+            ids.add(base.id_candidates(sel["id"])[0])
         if "idMatches" in sel:
-            ids.update(base.id_candidates(sel["idMatches"]))
+            ids.add(base.id_candidates(sel["idMatches"])[0])
     return ids
 
 
