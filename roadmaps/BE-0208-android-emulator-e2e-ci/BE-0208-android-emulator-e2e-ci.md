@@ -9,7 +9,7 @@
 | Author | [@hirosassa](https://github.com/hirosassa) |
 | Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0208") |
-| Implementing PR | [#851](https://github.com/bajutsu-e2e/bajutsu/pull/851), [#880](https://github.com/bajutsu-e2e/bajutsu/pull/880) |
+| Implementing PR | [#851](https://github.com/bajutsu-e2e/bajutsu/pull/851), [#880](https://github.com/bajutsu-e2e/bajutsu/pull/880), [#899](https://github.com/bajutsu-e2e/bajutsu/pull/899) |
 | Topic | Platform expansion (Android / Web / Flutter) |
 | Related | [BE-0007](../BE-0007-android-backend/BE-0007-android-backend.md) |
 <!-- /BE-METADATA -->
@@ -73,7 +73,8 @@ within the prime directives.
 - [x] The workflow (`.github/workflows/android-e2e.yml`) — `android-emulator-runner` + KVM, path-gated.
 - [x] Build and install the Android showcase on the booted emulator.
 - [x] Run the passing core scenarios over `--backend android`.
-- [ ] Visual/golden baseline parity check.
+- [x] Visual/golden baseline parity check — **golden** element-tree dimension (Compose Stable catalog).
+- [ ] Visual/golden baseline parity check — **visual** screenshot dimension (deferred; host-sensitive baseline needs a CI capture).
 - [ ] Grow the scenario set with the actuation-fidelity and device-control slices as they land.
 
 ### Log
@@ -110,6 +111,22 @@ within the prime directives.
   check`); the lane runs in CI (no local emulator). The rest of unit 5 (the tab-dependent scenarios)
   is blocked on adb tab-bar navigation, and unit 4 (visual/golden parity) stays open. Item stays **In
   progress**.
+- 2026-07-10 — Unit 4 (golden dimension): added the on-device golden element-tree check to the lane.
+  A new scenario `demos/showcase/scenarios/golden/golden_android.yaml` pins the Compose Stable
+  catalog's normalized tree (rows, refresh button, mirrored status) against a recorded baseline
+  `demos/showcase/scenarios/golden/goldens/lists_android.json` — a backend-specific baseline, the
+  adb twin of idb's `lists.json` and XCUITest's `controls.json` (each backend renders a distinct
+  accessibility tree; the adb tree traits are `view` / `textView`, not idb's `button` /
+  `staticText`). It runs on the Stable tab (the launch tab), so it needs no tab-bar navigation, and
+  is wired as a separate `e2e-golden` target in `demos/showcase/android/Makefile`, run in the same
+  emulator session as `e2e` in `android-e2e.yml`. The baseline was recorded on a **local arm64**
+  emulator (API 34, `google_apis`); it passes on the CI **x86_64** emulator because the golden
+  comparison is field-level — identity / label / traits exact, frame only sanity-checked
+  (`bajutsu/golden.py`) — and identity / label / traits are stable across the ABI, so only the
+  density-scaled frame differs and it is tolerated. The **visual** (screenshot pixel) dimension of
+  unit 4 is deliberately deferred: a pixel baseline is host-sensitive (local arm64 vs CI x86_64
+  software rendering diverge per-pixel), so it needs a CI-captured baseline — left to a later slice.
+  Item stays **In progress** (visual dimension of unit 4 and the tab-dependent rest of unit 5 remain).
 
 ## References
 

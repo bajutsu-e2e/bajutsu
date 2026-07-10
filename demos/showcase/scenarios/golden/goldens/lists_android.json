@@ -1,0 +1,100 @@
+{
+  "stable.refresh": {
+    "identifier": "stable.refresh",
+    "label": null,
+    "value": null,
+    "traits": [
+      "view"
+    ],
+    "frame": [
+      876.0,
+      150.0,
+      193.0,
+      126.0
+    ]
+  },
+  "stable.row.1": {
+    "identifier": "stable.row.1",
+    "label": "Horse 1",
+    "value": null,
+    "traits": [
+      "textView"
+    ],
+    "frame": [
+      0.0,
+      296.0,
+      1080.0,
+      147.0
+    ]
+  },
+  "stable.row.2": {
+    "identifier": "stable.row.2",
+    "label": "Horse 2",
+    "value": null,
+    "traits": [
+      "textView"
+    ],
+    "frame": [
+      0.0,
+      446.0,
+      1080.0,
+      147.0
+    ]
+  },
+  "stable.row.3": {
+    "identifier": "stable.row.3",
+    "label": "Horse 3",
+    "value": null,
+    "traits": [
+      "textView"
+    ],
+    "frame": [
+      0.0,
+      596.0,
+      1080.0,
+      147.0
+    ]
+  },
+  "stable.row.4": {
+    "identifier": "stable.row.4",
+    "label": "Horse 4",
+    "value": null,
+    "traits": [
+      "textView"
+    ],
+    "frame": [
+      0.0,
+      746.0,
+      1080.0,
+      147.0
+    ]
+  },
+  "stable.row.5": {
+    "identifier": "stable.row.5",
+    "label": "Horse 5",
+    "value": null,
+    "traits": [
+      "textView"
+    ],
+    "frame": [
+      0.0,
+      896.0,
+      1080.0,
+      147.0
+    ]
+  },
+  "stable.status": {
+    "identifier": "stable.status",
+    "label": "Status: idle",
+    "value": "idle",
+    "traits": [
+      "textView"
+    ],
+    "frame": [
+      21.0,
+      2064.0,
+      167.0,
+      42.0
+    ]
+  }
+}
