@@ -48,6 +48,12 @@ def test_command_builders() -> None:
     assert adb.tap_cmd("S", 12.6, 20.4) == ["adb", "-s", "S", "shell", "input", "tap", "13", "20"]
     assert adb.pm_clear_cmd("S", "com.x") == ["adb", "-s", "S", "shell", "pm", "clear", "com.x"]
     assert adb.install_cmd("S", "a.apk") == ["adb", "-s", "S", "install", "-r", "-t", "a.apk"]
+    assert adb.keyevent_cmd("S", adb.KEYCODE_BACK) == [
+        "adb", "-s", "S", "shell", "input", "keyevent", "4",
+    ]  # fmt: skip
+    assert adb.double_tap_cmd("S", 12.6, 20.4) == [
+        "adb", "-s", "S", "shell", "input", "tap", "13", "20", ";", "input", "tap", "13", "20",
+    ]  # fmt: skip
 
 
 def test_evidence_command_builders() -> None:
@@ -68,6 +74,33 @@ def test_evidence_command_builders() -> None:
         "-f",
         "/sdcard/x.mp4",
     ]
+
+
+def test_pm_grant_cmd() -> None:
+    assert adb.pm_grant_cmd("S", "com.x", "android.permission.CAMERA") == [
+        "adb", "-s", "S", "shell", "pm", "grant", "com.x", "android.permission.CAMERA",
+    ]  # fmt: skip
+
+
+def test_env_grants_each_permission_in_order() -> None:
+    calls: list[list[str]] = []
+    adb.Env("S", run=lambda a: calls.append(a) or "").grant_permissions(
+        "com.x", ["android.permission.CAMERA", "android.permission.POST_NOTIFICATIONS"]
+    )
+    assert calls == [
+        adb.pm_grant_cmd("S", "com.x", "android.permission.CAMERA"),
+        adb.pm_grant_cmd("S", "com.x", "android.permission.POST_NOTIFICATIONS"),
+    ]
+
+
+def test_grant_permissions_surfaces_a_stdout_error() -> None:
+    # `pm grant` exits 0 even for an unknown permission, printing the error to stdout; a silently
+    # swallowed grant would surface only as a later misleading failure, so any stdout fails loudly.
+    def run(_a: list[str]) -> str:
+        return "java.lang.IllegalArgumentException: Unknown permission: android.permission.BOGUS\n"
+
+    with pytest.raises(adb.DeviceError, match="pm grant failed"):
+        adb.Env("S", run=run).grant_permissions("com.x", ["android.permission.BOGUS"])
 
 
 def test_launch_cmd_forwards_extras_as_intent_extras() -> None:
@@ -129,12 +162,17 @@ def test_env_resolve_activity_ignores_a_stray_path_line() -> None:
 
 
 def _eff(
-    *, package: str = "com.bajutsu.showcase.android.compose", app_path: str | None = None
+    *,
+    package: str = "com.bajutsu.showcase.android.compose",
+    app_path: str | None = None,
+    grant_permissions: list[str] | None = None,
 ) -> Effective:
-    # The Android platform sub-config (BE-0126) carries package / app_path.
+    # The Android platform sub-config (BE-0126) carries package / app_path / grant_permissions.
     return Effective(
         target="showcase-compose",
-        platform_config=AndroidConfig(package=package, app_path=app_path),
+        platform_config=AndroidConfig(
+            package=package, app_path=app_path, grant_permissions=grant_permissions or []
+        ),
         backend=["android"],
         device="booted",
         locale="en_US",
@@ -185,6 +223,46 @@ def test_android_environment_start_runs_the_adb_sequence() -> None:
     assert any("pm clear com.bajutsu.showcase.android.compose" in j for j in joined)
     assert any("--es SHOWCASE_UITEST 1" in j for j in joined)
     assert any("action.VIEW -d showcasecompose://permissions" in j for j in joined)
+
+
+def test_android_environment_start_grants_configured_permissions_after_clear() -> None:
+    # BE-0210: runtime permissions are granted up front (`pm grant`) so a permission prompt never
+    # blocks the run — deterministic, no timing on the run path. It must run AFTER `pm clear` (which
+    # resets granted permissions) so the grants survive the clean-state reset.
+    calls: list[list[str]] = []
+    env = AndroidEnvironment("adb", "S", adb_run=_resolve_activity_run(calls))
+    env.start(
+        _eff(grant_permissions=["android.permission.POST_NOTIFICATIONS"]),
+        Preconditions(erase=True),
+    )
+    joined = [" ".join(c) for c in calls]
+    assert any("pm grant com.bajutsu.showcase.android.compose "
+               "android.permission.POST_NOTIFICATIONS" in j for j in joined)  # fmt: skip
+    clear_at = next(i for i, j in enumerate(joined) if "pm clear" in j)
+    grant_at = next(i for i, j in enumerate(joined) if "pm grant" in j)
+    assert grant_at > clear_at  # granted after the clean-state reset, so the grant is not wiped
+
+
+def test_android_environment_start_grants_nothing_when_unconfigured() -> None:
+    calls: list[list[str]] = []
+    env = AndroidEnvironment("adb", "S", adb_run=_resolve_activity_run(calls))
+    env.start(_eff(), Preconditions())
+    assert not any("pm grant" in " ".join(c) for c in calls)
+
+
+def test_android_environment_grants_permissions_even_on_overwrite() -> None:
+    # An `overwrite` reinstall skips `pm clear` (keeps app data), but configured permissions must
+    # still be granted — a kept-data app can still need a permission the run relies on.
+    calls: list[list[str]] = []
+    env = AndroidEnvironment("adb", "S", adb_run=_resolve_activity_run(calls))
+    env.start(
+        _eff(grant_permissions=["android.permission.CAMERA"]),
+        Preconditions(reinstall="overwrite"),
+    )
+    joined = [" ".join(c) for c in calls]
+    assert not any("pm clear" in j for j in joined)  # overwrite keeps data
+    assert any("pm grant com.bajutsu.showcase.android.compose android.permission.CAMERA" in j
+               for j in joined)  # fmt: skip
 
 
 def test_android_environment_start_forwards_collector_env_for_network_mocks() -> None:

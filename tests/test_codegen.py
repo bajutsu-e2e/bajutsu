@@ -77,6 +77,14 @@ def test_tap_by_label() -> None:
     assert 'byLabel("Delete").tap()' in code
 
 
+def test_back_taps_the_os_back_button() -> None:
+    # BE-0210: iOS has no hardware back, so the generated XCUITest taps the OS navigation back
+    # button ("BackButton") — the same element the idb/XCUITest drivers tap at runtime.
+    code = _gen("- name: x\n  steps:\n    - back: {}\n")
+    assert 'el("BackButton").tap()' in code
+    assert "TODO" not in code
+
+
 def test_assertions_exists_value_count() -> None:
     code = _gen(
         "- name: x\n  steps:\n    - tap: { id: a }\n  expect:\n"

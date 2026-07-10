@@ -367,6 +367,10 @@ class IdbDriver:
             "selectOption は <select> を持つ web バックエンド専用; iOS ネイティブに <select> はない"
         )
 
+    def back(self) -> None:
+        # No hardware back on iOS: tap the OS navigation back button (BE-0210).
+        self.tap({"id": base.OS_BACK_BUTTON})
+
     def type_text(self, text: str) -> None:
         # Via _type_text (a patchable class attribute), so tests can intercept the value
         # without a companion, and so it never touches argv — see _type_text_via_companion.

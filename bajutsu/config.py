@@ -303,6 +303,9 @@ class TargetConfig(_Model):
         default=None, alias="baseUrl"
     )  # web target (e.g. http://host/page)
     package: str = Field(default="", alias="package")  # Android target (e.g. com.example.app)
+    # Android only: runtime permissions granted up front (`pm grant`) before launch, so a permission
+    # prompt never blocks a scenario (BE-0210). App-specific, so it lives in config, not the driver.
+    grant_permissions: list[str] = Field(default_factory=list, alias="grantPermissions")
     # Web backend only: run with a visible (headed) browser instead of headless. iOS ignores it.
     # The `bajutsu run --headed/--no-headed` flag (and the Web UI's "Show browser" toggle) override.
     headless: bool = True
@@ -462,6 +465,9 @@ class AndroidConfig:
     # Shell command that builds `app_path`; `bajutsu serve` runs it on demand if the binary is
     # missing. None = no on-demand build.
     build: str | None = None
+    # Runtime permissions granted up front (`pm grant`) at lease time, so a permission prompt never
+    # blocks a scenario (BE-0210). Empty = grant nothing.
+    grant_permissions: list[str] = field(default_factory=list)
 
 
 # The resolved platform-specific config, keyed by platform (BE-0126). The concrete type *is* the
@@ -752,7 +758,12 @@ def _platform_config(platform: str, a: TargetConfig, d: Defaults) -> PlatformCon
     if platform == "web":
         return WebConfig(base_url=a.base_url, headless=a.headless, browser=a.browser)
     if platform == "android":
-        return AndroidConfig(package=a.package, app_path=a.app_path, build=a.build)
+        return AndroidConfig(
+            package=a.package,
+            app_path=a.app_path,
+            build=a.build,
+            grant_permissions=a.grant_permissions,
+        )
     return IosConfig(
         bundle_id=a.bundle_id,
         deeplink_scheme=a.deeplink_scheme,

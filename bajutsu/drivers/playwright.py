@@ -76,6 +76,9 @@ class _Page(Protocol):
     def goto(self, url: str) -> object:
         pass
 
+    def go_back(self) -> object:
+        pass
+
     def screenshot(self, *, path: str) -> object:
         pass
 
@@ -478,6 +481,12 @@ class PlaywrightDriver:
         self._page.mouse.down()
         self._page.mouse.move(to[0], to[1])
         self._page.mouse.up()
+
+    @_wedge_guard
+    def back(self) -> None:
+        # The web's "back" is browser history; the platform peer of Android's system back key and
+        # iOS's OS back button (BE-0210).
+        self._page.go_back()
 
     @_wedge_guard
     def pinch(self, sel: base.Selector, scale: float) -> None:

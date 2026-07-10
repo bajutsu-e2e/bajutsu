@@ -8,6 +8,8 @@ for those gestures is the generated XCUITest.
 
 from __future__ import annotations
 
+import json
+
 import pytest
 
 from bajutsu.codegen import to_xcuitest
@@ -69,6 +71,40 @@ def test_orchestrator_dispatches_gestures() -> None:
     assert result.ok, result.failure
     kinds = [a[0] for a in driver.actions]
     assert kinds == ["double_tap", "pinch", "rotate"]
+
+
+# --- back: a cross-backend navigation step (BE-0210) ---
+
+
+def test_orchestrator_dispatches_back() -> None:
+    # `back` resolves no selector, so an empty screen still dispatches — the handler calls the
+    # driver's platform-correct back (Android keyevent / iOS OS BackButton / web history).
+    driver = FakeDriver(screen=[])
+    scenario = load_scenarios("- name: b\n  steps:\n    - back: {}\n")[0]
+    result = run_scenario(driver, scenario)
+    assert result.ok, result.failure
+    assert driver.actions == [("back", None)]
+
+
+def test_idb_back_taps_the_os_back_button() -> None:
+    # iOS has no hardware/system back; navigating back means tapping the OS-provided nav back
+    # button (identifier "BackButton"), which is exactly what the shared scenarios did before the
+    # `back` step existed — so idb's `back` preserves that behavior.
+    button: dict[str, object] = {
+        "AXUniqueId": "BackButton",
+        "frame": {"x": 0, "y": 0, "width": 60, "height": 40},
+    }
+
+    calls: list[list[str]] = []
+
+    def run(args: list[str]) -> str:
+        if "describe-all" in args:
+            return json.dumps([button])
+        calls.append(args)
+        return ""
+
+    IdbDriver("U", run=run).back()
+    assert calls == [tap_cmd("U", 30, 20)]  # centre of the back button
 
 
 # --- swipe amount: how far a directional scroll travels ---

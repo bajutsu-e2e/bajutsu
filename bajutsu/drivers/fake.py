@@ -84,6 +84,9 @@ class FakeDriver:
     def swipe(self, frm: base.Point, to: base.Point) -> None:
         self._record("swipe", (frm, to))
 
+    def back(self) -> None:
+        self._record("back", None)
+
     def pinch(self, sel: base.Selector, scale: float) -> None:
         base.resolve_unique(self.screen, sel)
         self._record("pinch", (sel, scale))

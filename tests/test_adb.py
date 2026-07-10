@@ -271,7 +271,10 @@ def test_parse_hierarchy_malformed_xml_is_empty() -> None:
     assert parse_hierarchy("<hierarchy><node bounds=</hierarchy>") == []
 
 
-def test_double_tap_issues_two_taps() -> None:
+def test_double_tap_is_a_single_round_trip() -> None:
+    # BE-0210: both taps go through one `adb shell` round-trip (`input tap …; input tap …`) rather
+    # than two separate adb invocations, so the adb transport round-trip does not sit between the
+    # taps and widen the gap past the platform's double-tap window.
     calls: list[list[str]] = []
 
     def run(args: list[str]) -> str:
@@ -281,7 +284,24 @@ def test_double_tap_issues_two_taps() -> None:
         return ""
 
     AdbDriver("U", run=run).double_tap({"id": "stable_refresh"})
-    assert calls == [["adb", "-s", "U", "shell", "input", "tap", "100", "150"]] * 2
+    # centre of (0,100,200,100) → (100, 150); one call, both taps chained in the device shell.
+    assert calls == [
+        ["adb", "-s", "U", "shell", "input", "tap", "100", "150", ";", "input", "tap", "100", "150"]
+    ]
+
+
+def test_back_sends_keycode_back() -> None:
+    # Android's true system back is a key event, not a tap on an on-screen "back" element — the
+    # gap BE-0210 closes (a tap on the iOS OS BackButton has no Android peer). No dump: `back` is a
+    # pure keyevent that never resolves a selector.
+    calls: list[list[str]] = []
+
+    def run(args: list[str]) -> str:
+        calls.append(args)
+        return ""
+
+    AdbDriver("U", run=run).back()
+    assert calls == [["adb", "-s", "U", "shell", "input", "keyevent", "4"]]  # KEYCODE_BACK
 
 
 def test_long_press_is_a_zero_length_swipe_with_duration() -> None:
@@ -298,6 +318,111 @@ def test_long_press_is_a_zero_length_swipe_with_duration() -> None:
     assert calls == [
         ["adb", "-s", "U", "shell", "input", "swipe", "100", "150", "100", "150", "1500"]
     ]
+
+
+# A 1080x2400 screen whose `target` sits off the current viewport; a scroll brings it into the tree.
+_OFFSCREEN = (
+    "<hierarchy><node class='android.widget.FrameLayout' bounds='[0,0][1080,2400]'>"
+    "<node resource-id='top' class='android.widget.View' bounds='[0,0][1080,100]' />"
+    "</node></hierarchy>"
+)
+_ONSCREEN = (
+    "<hierarchy><node class='android.widget.FrameLayout' bounds='[0,0][1080,2400]'>"
+    "<node resource-id='top' class='android.widget.View' bounds='[0,0][1080,100]' />"
+    "<node resource-id='target' class='android.widget.Button' bounds='[0,200][200,300]' />"
+    "</node></hierarchy>"
+)
+
+
+def test_scroll_into_view_scrolls_then_resolves() -> None:
+    # BE-0210: a selector that resolves to nothing in the current viewport triggers a bounded
+    # scroll-and-re-query, not an immediate failure — a condition wait (no fixed sleep). tap() must
+    # swipe (default: up, revealing content below), re-query, then tap the now-resolved centre.
+    scrolled = {"done": False}
+    calls: list[list[str]] = []
+
+    def run(args: list[str]) -> str:
+        if "dump" in args:
+            return _ONSCREEN if scrolled["done"] else _OFFSCREEN
+        if "swipe" in args:
+            scrolled["done"] = True
+        calls.append(args)
+        return ""
+
+    driver = AdbDriver("U", run=run)
+    driver._RESOLVE_TIMEOUT_S = (
+        0  # the initial (no-scroll) resolve fails fast; scrolling takes over
+    )
+    driver.tap({"id": "target"})
+
+    kinds = [a[5] for a in calls]  # the `input` subcommand of each shell call (a[4] is "input")
+    assert kinds == ["swipe", "tap"]  # scrolled once (up), then tapped
+    assert calls[0][6:10] == ["540", "1680", "540", "720"]  # up-swipe: 0.7h→0.3h at screen centre x
+    assert calls[1][6:8] == ["100", "250"]  # centre of target (0,200,200,100)
+
+
+def test_scroll_into_view_fails_deterministically_after_bounded_scrolls() -> None:
+    # A selector that never appears still fails — bounded by a retry count, not an unbounded scroll.
+    swipes = {"n": 0}
+
+    def run(args: list[str]) -> str:
+        if "dump" in args:
+            return _OFFSCREEN  # target never renders, however far we scroll
+        if "swipe" in args:
+            swipes["n"] += 1
+        return ""
+
+    driver = AdbDriver("U", run=run)
+    driver._RESOLVE_TIMEOUT_S = 0
+    with pytest.raises(base.ElementNotFound):
+        driver.tap({"id": "target"})
+    assert swipes["n"] == AdbDriver._SCROLL_RETRIES  # bounded, then deterministic failure
+
+
+def test_scroll_into_view_still_fails_fast_on_ambiguity() -> None:
+    # Determinism first: if a scroll reveals *two* matches, the tap fails immediately with
+    # AmbiguousSelector (never taps the first) — only not-found triggers a scroll, so ambiguity
+    # is not caught by the retry loop and no further scroll happens.
+    ambiguous = (
+        "<hierarchy><node class='android.widget.FrameLayout' bounds='[0,0][1080,2400]'>"
+        "<node resource-id='target' class='android.widget.Button' bounds='[0,200][200,300]' />"
+        "<node resource-id='target' class='android.widget.Button' bounds='[0,400][200,500]' />"
+        "</node></hierarchy>"
+    )
+    swipes = {"n": 0}
+
+    def run(args: list[str]) -> str:
+        if "dump" in args:
+            return ambiguous if swipes["n"] else _OFFSCREEN
+        if "swipe" in args:
+            swipes["n"] += 1
+        return ""
+
+    driver = AdbDriver("U", run=run)
+    driver._RESOLVE_TIMEOUT_S = 0
+    with pytest.raises(base.AmbiguousSelector):
+        driver.tap({"id": "target"})
+    assert swipes["n"] == 1  # scrolled once, hit ambiguity, stopped — did not keep scrolling
+
+
+def test_scroll_on_empty_tree_fails_loudly_without_bogus_swipes() -> None:
+    # A genuinely empty tree has no screen extent to swipe across; rather than issue zero-length
+    # (no-op) swipes and then fail with a misleading "not found after scroll", it fails loudly with
+    # the real cause and issues no swipe.
+    swipes = {"n": 0}
+
+    def run(args: list[str]) -> str:
+        if "dump" in args:
+            return NULL_ROOT  # empty tree, always
+        if "swipe" in args:
+            swipes["n"] += 1
+        return ""
+
+    driver = AdbDriver("U", run=run)
+    driver._RESOLVE_TIMEOUT_S = 0
+    with pytest.raises(base.ElementNotFound, match="空"):
+        driver.tap({"id": "target"})
+    assert swipes["n"] == 0  # no bogus (0,0) swipe issued
 
 
 # A tree with the same ids but shifted frames (mid-animation), then it settles.

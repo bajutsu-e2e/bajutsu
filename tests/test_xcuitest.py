@@ -108,6 +108,21 @@ def test_tap_resolves_unique_then_sends_that_elements_snapshot_handle() -> None:
     ]  # the resolved element's handle, not coords
 
 
+def test_back_taps_the_os_back_button() -> None:
+    # iOS has no hardware back: `back` resolves and taps the OS navigation back button
+    # (identifier "BackButton"), the same element idb taps — BE-0210.
+    sent: list[tuple[str, str, dict[str, Any] | None]] = []
+
+    def transport(method: str, path: str, body: dict[str, Any] | None) -> _Reply:
+        if path == "/elements":
+            return _elements(_el_wire("h-back", "BackButton", "Back", traits=["button"]))
+        sent.append((method, path, body))
+        return _Reply(status="ok")
+
+    _driver(transport).back()
+    assert sent == [("POST", "/tap", {"handle": "h-back"})]
+
+
 def test_pinch_and_rotate_emit_gesture_requests_with_the_handle() -> None:
     sent: list[tuple[str, dict[str, Any] | None]] = []
 

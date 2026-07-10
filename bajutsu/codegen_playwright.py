@@ -301,6 +301,10 @@ def _emit_step(step: Step) -> list[str]:
         return _act(step.tap.as_selector(), "click()")
     if step.double_tap is not None:
         return _act(step.double_tap.as_selector(), "dblclick()")
+    if step.back is not None:
+        # The web's `back` is browser history — the same primitive the driver's `back()` uses
+        # (`page.go_back()`), so codegen emits it faithfully rather than an unlabeled TODO (BE-0210).
+        return ["await page.goBack();"]
     if step.long_press is not None:
         return _act(
             step.long_press.sel.as_selector(),

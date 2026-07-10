@@ -1,6 +1,6 @@
 # Notices: a long vertical list (20 rows) whose bottom rows start off-screen. With lazy
 # row rendering, an off-screen row is not in the accessibility tree at all until scrolled
-# into view — so reaching it genuinely requires a scroll. launchEnv + taps/swipes only
+# into view — so reaching it genuinely requires a scroll. launchEnv + taps/swipes/back only
 # (no literal-scheme deeplinks), so this drives both a11y targets.
 - name: the list has off-screen rows
   preconditions:
@@ -23,7 +23,7 @@
     - wait: { for: { id: notice.detail.title }, timeout: 5 }
     - assert:
         - exists: { id: notice.detail.body }
-    - tap: { id: BackButton }
+    - back: {}
     - wait: { for: { id: notice.row.1 }, timeout: 5 }
   expect:
     - exists: { id: notice.row.1 }

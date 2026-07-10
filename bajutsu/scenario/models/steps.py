@@ -18,6 +18,7 @@ from bajutsu.scenario.models._base import (
     _validate_capture,
 )
 from bajutsu.scenario.models.actions import (
+    Back,
     Background,
     ClearClipboard,
     ClearKeychain,
@@ -105,6 +106,7 @@ class Step(_Model):
     type: TypeText | None = None
     select_option: SelectOption | None = Field(default=None, alias="selectOption")
     swipe: Swipe | None = None
+    back: Back | None = None
     pinch: Pinch | None = None
     rotate: Rotate | None = None
     wait: Wait | None = None

@@ -26,6 +26,11 @@ def _compile(pattern: str) -> re.Pattern[str]:
     return re.compile(pattern)
 
 
+# The iOS navigation bar's OS-provided back button (accessibility identifier "BackButton"). iOS has
+# no hardware/system back, so both iOS backends (idb / XCUITest) navigate back by tapping it — a
+# platform convention, not app-specific — so the id lives in one shared place (BE-0210).
+OS_BACK_BUTTON = "BackButton"
+
 # Coordinates in points: x, y.
 Point = tuple[float, float]
 # frame: x, y, w, h in points.
@@ -134,6 +139,9 @@ class Driver(Protocol):
     def double_tap(self, sel: Selector) -> None: ...
     def long_press(self, sel: Selector, duration: float) -> None: ...
     def swipe(self, frm: Point, to: Point) -> None: ...
+    # Navigate back one level, each backend using its platform-correct primitive (BE-0210):
+    # Android's system back key, iOS's on-screen OS back button, the browser's history.
+    def back(self) -> None: ...
     # Two-finger gestures. scale > 1 zooms in, < 1 zooms out; radians > 0 rotates
     # clockwise. Only backends advertising MULTI_TOUCH support these.
     def pinch(self, sel: Selector, scale: float) -> None: ...
