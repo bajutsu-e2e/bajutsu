@@ -128,6 +128,20 @@ def test_upload_theme_rejects_non_ascii_token_name(tmp_path: Path) -> None:
     assert not (themes_dir / "uni.css").exists()
 
 
+def test_upload_theme_name_cannot_smuggle_kind(tmp_path: Path) -> None:
+    """A crafted name (CR + embedded `kind:`) cannot override the authoritative kind on re-parse."""
+    themes_dir = tmp_path / "themes"
+    themes_dir.mkdir()
+    state = _state(tmp_path, themes_dir)
+    payload, status = theme_editor.upload_theme(
+        state, {"name": "Evil\rkind: light", "kind": "dark", "tokens": {"--bg": "#000"}}, None
+    )
+    assert status == 200
+    # Discovery re-parses the written manifest; the real kind (dark) must win, not the smuggled one.
+    manifests = {m.id: m for m in themes.theme_manifests(themes_dir)}
+    assert manifests[payload["id"]].kind == "dark"
+
+
 def test_upload_theme_rejects_no_tokens(tmp_path: Path) -> None:
     """An empty token set would write an empty rule — refused."""
     themes_dir = tmp_path / "themes"

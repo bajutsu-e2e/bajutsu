@@ -826,9 +826,10 @@ function saveThemeLocal(){
 function exportTheme(){
   const tokens=collectThemeTokens(),kind=currentThemeKind(),name=currentThemeName()||'custom';
   const id=slugTheme(name)||'custom';
-  // Mirror the server's manifest-name guard (upload_theme): strip `*/` and newlines so a name can't
-  // close the comment early and let whatever follows become live CSS in the round-tripped file.
-  const manifest=`/* bajutsu-theme\nname: ${name.replace(/\*\//g,'').replace(/\n/g,' ').trim()||id}\nkind: ${kind}\n*/\n`;
+  // Mirror the server's manifest-name guard (upload_theme): strip `*/` and newlines/CR so a name
+  // can't close the comment early or introduce its own field line, and emit kind before name so the
+  // authoritative kind wins the parser's unanchored first-match `kind:` search.
+  const manifest=`/* bajutsu-theme\nkind: ${kind}\nname: ${name.replace(/\*\//g,'').replace(/[\r\n]/g,' ').trim()||id}\n*/\n`;
   const css=`[data-theme="${id}"]{\n${Object.entries(tokens).filter(([k,v])=>safeThemeToken(k,v)).map(([k,v])=>`  ${k}: ${v};`).join('\n')}\n}\n`;
   const blob=new Blob([manifest+css],{type:'text/css'});
   const url=URL.createObjectURL(blob);

@@ -106,10 +106,13 @@ def upload_theme(
             return {"error": f"invalid token {raw_k!r}"}, 400
         rules.append(f"  {k}: {v};")
 
-    # Keep the display name from closing the manifest comment early or spilling onto the kind line.
-    display = name.replace("*/", "").replace("\n", " ").strip() or theme_id
+    # Keep the display name from closing the manifest comment early (`*/`) or introducing its own
+    # field line via an embedded newline/CR. Emit `kind:` *before* `name:` as the belt to that
+    # suspenders: `themes._KIND` is an unanchored first-match search, so writing the authoritative
+    # kind first means it wins even if a crafted name still smuggles a `kind:` token after it.
+    display = name.replace("*/", "").replace("\n", " ").replace("\r", " ").strip() or theme_id
     css = (
-        f"/* bajutsu-theme\nname: {display}\nkind: {kind}\n*/\n"
+        f"/* bajutsu-theme\nkind: {kind}\nname: {display}\n*/\n"
         f'[data-theme="{theme_id}"]{{\n' + "\n".join(rules) + "\n}\n"
     )
 
