@@ -194,16 +194,22 @@ function initTiling(){
       // coexisting; CSS source order then resolves the conflicting animation shorthand, not intent.
       // Strip data-testid AND id so the ghost can't be reached by the selector ladder, by
       // document.getElementById, or by aria-* idrefs / <label for> while the leave animation plays.
-      ghost.classList.remove('is-entering');ghost.classList.add('is-leaving');ghost.removeAttribute('data-testid');ghost.removeAttribute('id');
+      // aria-hidden so assistive tech ignores the stale ghost content during the ~150ms it's in the DOM.
+      ghost.classList.remove('is-entering');ghost.classList.add('is-leaving');ghost.removeAttribute('data-testid');ghost.removeAttribute('id');ghost.setAttribute('aria-hidden','true');
       ghost.querySelectorAll('[data-testid],[id]').forEach(n=>{n.removeAttribute('data-testid');n.removeAttribute('id');});
       // Match on e.target so a descendant's animationend (e.g. a .running spinner bubbling up) doesn't
       // tear the listener down early — the root's own leave/enter animation is the one that ends it.
       const drop=e=>{if(e.target!==ghost)return;ghost.removeEventListener('animationend',drop);ghost.remove();};
       ghost.addEventListener('animationend',drop);
       V.view.appendChild(ghost);
-      r.classList.add('is-entering');
-      const done=e=>{if(e.target!==r)return;r.removeEventListener('animationend',done);r.classList.remove('is-entering');};
-      r.addEventListener('animationend',done);
+      // Guard the enter with the same motionOff check closeModal uses for the leave side: if a theme
+      // sets --motion-view-enter:none (an asymmetric per-token override the contract explicitly allows),
+      // animation-name:none means no animationend fires and the class + listener would leak without it.
+      if(!motionOff('--motion-view-enter')){
+        r.classList.add('is-entering');
+        const done=e=>{if(e.target!==r)return;r.removeEventListener('animationend',done);r.classList.remove('is-entering');};
+        r.addEventListener('animationend',done);
+      }
     }
     reflectSizes(V);
   };

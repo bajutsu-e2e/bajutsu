@@ -692,7 +692,7 @@ def test_starter_context_carries_reduced_motion() -> None:
     # test — only an actual removal of reduced_motion from new_context() would cause failure.
     assert re.search(r'reduced_motion\s*=\s*[\'"]reduce[\'"]', src), (
         '_start_browser start() must pass reduced_motion="reduce" to new_context() '
-        "(the BE-0191 unit 5 determinism lever — revert playwright.py:127 to see this fail)"
+        "(the BE-0191 unit 5 determinism lever — revert new_context(reduced_motion=...) in playwright.py's start() to see this fail)"
     )
 
 
