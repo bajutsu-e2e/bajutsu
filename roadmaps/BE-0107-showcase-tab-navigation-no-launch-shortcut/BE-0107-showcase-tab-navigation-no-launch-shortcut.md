@@ -88,7 +88,9 @@ would make the showcase's on-device path flaky, which the determinism directive 
 
 Android tab navigation (the shared scenarios' Android twin) is left as a BE-0007 follow-up: the
 Android apps still read `SHOWCASE_TAB`, and driving the native tab bar via adb is a separate driver
-concern outside this iOS-scoped item.
+concern outside this iOS-scoped item. Since adb cannot tap the tab bar either, the adb e2e lane
+(`demos/showcase/android/Makefile`) now runs only the Stable-tab scenarios (`smoke`, `firstlook`);
+`search` / `data_driven` / `relaunch` / `system` rejoin it once the adb backend can drive the tabs.
 
 - 2026-07-10: implemented on `claude/be-0107-tab-navigation` (PR pending) — retired `SHOWCASE_TAB` in
   the SwiftUI and UIKit apps, prepended tab-taps to the tab-crossing scenarios, split the golden into
