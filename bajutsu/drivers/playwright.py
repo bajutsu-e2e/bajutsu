@@ -120,7 +120,11 @@ def _start_browser(engine: str) -> Starter:  # pragma: no cover - needs a browse
         # A headed run adds a small slow-motion so a human can actually follow each action; headless
         # (the default / CI) stays at full speed.
         browser = getattr(pw, engine).launch(headless=headless, slow_mo=0 if headless else 250)
-        context = browser.new_context()
+        # reduced_motion="reduce" is the determinism lever (BE-0191 unit 5): CSS transitions the app
+        # under test may run (e.g. the serve UI's own themable motion, dogfooded in demos/serve-ui/)
+        # collapse to instant, so condition-wait assertions never race an animation and an element is
+        # never briefly duplicated mid-transition. Motion is a look, never part of the verdict.
+        context = browser.new_context(reduced_motion="reduce")
         page = context.new_page()
         # cast bridges playwright's real Page to our structural _Page: mypy only sees the real type
         # when the web extra is installed, and a bare `# type: ignore` would be flagged unused when
@@ -241,8 +245,14 @@ class PlaywrightDriver:
         self._bind(page)
 
     def _new_context(self) -> Any:
-        """Open a BrowserContext, recording video into `record_video_dir` when one is configured."""
-        kwargs = {"record_video_dir": str(self._record_video_dir)} if self._record_video_dir else {}
+        """Open a BrowserContext, recording video into `record_video_dir` when one is configured.
+
+        Every context carries `reduced_motion="reduce"` — the determinism lever (BE-0191 unit 5) that
+        collapses the app-under-test's CSS transitions to instant (matches the starter's context).
+        """
+        kwargs: dict[str, Any] = {"reduced_motion": "reduce"}
+        if self._record_video_dir:
+            kwargs["record_video_dir"] = str(self._record_video_dir)
         return self._browser.new_context(**kwargs)
 
     def _bind(self, page: _Page) -> None:

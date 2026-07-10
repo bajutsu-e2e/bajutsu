@@ -626,9 +626,11 @@ class _FakeBrowser:
     def __init__(self, pages: list[_FakePage]) -> None:
         self._pages = list(pages)  # one handed out per new_context().new_page()
         self.contexts: list[_FakeContext] = []
+        self.context_kwargs: list[dict[str, Any]] = []  # kwargs each new_context() was opened with
         self.closed = 0
 
-    def new_context(self) -> _FakeContext:
+    def new_context(self, **kwargs: Any) -> _FakeContext:
+        self.context_kwargs.append(kwargs)
         ctx = _FakeContext(self._pages.pop(0))
         self.contexts.append(ctx)
         return ctx
@@ -664,6 +666,34 @@ def test_reset_context_opens_a_fresh_context_closing_the_old_one() -> None:
     assert fresh.goto_url == "http://app.test/index.html"  # navigated on the fresh page
     fresh.fire("pageerror", "boom")  # health handlers rebound to the fresh page
     assert drv.pop_page_errors() == ["boom"]
+    # The determinism lever (BE-0191 unit 5): every context collapses the app's CSS motion to instant.
+    assert browser.context_kwargs[-1].get("reduced_motion") == "reduce"
+
+
+def test_starter_context_carries_reduced_motion() -> None:
+    """The real `_start_browser` passes reduced_motion="reduce" to new_context() (BE-0191 unit 5).
+
+    The inner `start` function imports Playwright at call time, so a live browser is never needed to
+    inspect its source. A source-level assertion mirrors how tests/serve/test_theme_tokens.py regexes
+    CSS/JS: it fails if the line in playwright.py is reverted, which a fake-starter that independently
+    re-implements the behavior would not catch.
+    """
+    import inspect
+
+    # _start_browser(engine) returns the inner `start` closure; Playwright is imported lazily inside
+    # it (only when start(headless) is actually called), so this is safe in the fast suite.
+    import re
+
+    from bajutsu.drivers import playwright as pw_module
+
+    start_fn = pw_module._start_browser("chromium")
+    src = inspect.getsource(start_fn)
+    # Regex on the semantic content so a harmless quote-style / spacing reformat doesn't break the
+    # test — only an actual removal of reduced_motion from new_context() would cause failure.
+    assert re.search(r'reduced_motion\s*=\s*[\'"]reduce[\'"]', src), (
+        '_start_browser start() must pass reduced_motion="reduce" to new_context() '
+        "(the BE-0191 unit 5 determinism lever — revert new_context(reduced_motion=...) in playwright.py's start() to see this fail)"
+    )
 
 
 def test_relaunch_replaces_the_browser_process() -> None:

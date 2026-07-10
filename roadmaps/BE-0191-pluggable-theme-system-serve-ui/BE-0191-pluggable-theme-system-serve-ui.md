@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0191") |
-| Implementing PR | [#826](https://github.com/bajutsu-e2e/bajutsu/pull/826), [#837](https://github.com/bajutsu-e2e/bajutsu/pull/837), [#855](https://github.com/bajutsu-e2e/bajutsu/pull/855), [#859](https://github.com/bajutsu-e2e/bajutsu/pull/859) |
+| Implementing PR | [#826](https://github.com/bajutsu-e2e/bajutsu/pull/826), [#837](https://github.com/bajutsu-e2e/bajutsu/pull/837), [#855](https://github.com/bajutsu-e2e/bajutsu/pull/855), [#859](https://github.com/bajutsu-e2e/bajutsu/pull/859), [#881](https://github.com/bajutsu-e2e/bajutsu/pull/881) |
 | Topic | Authoring experience (record / GUI editor) |
 <!-- /BE-METADATA -->
 
@@ -228,7 +228,7 @@ filesystem, building directly on the token contract of unit 1.
 - [x] 1. Complete the design-token contract (fix `--accent`/`--muted`/`--bad` drift; route raw hex through tokens; document the contract; define fallback).
 - [x] 2. Pluggable theme discovery and registration (`--themes` flag, `ui.default_theme`, declarative theme + manifest, startup scan folded into the cached render).
 - [x] 3. Theme picker UI (header dropdown replacing the binary toggle, persistence + pre-paint seeding, `data-testid` convention, tiler-safe placement).
-- [ ] 4. Swappable, theme-defined transitions (semantic state classes + `--transition-*` tokens across the four surfaces; tiler `rebuild()` refactor; `prefers-reduced-motion` collapse).
+- [x] 4. Swappable, theme-defined transitions (semantic state classes + `--motion-*` tokens across the four surfaces; tiler `rebuild()` refactor; `prefers-reduced-motion` collapse).
 - [x] 5. Determinism and dogfood alignment (reduced-motion guarantees condition-wait safety; update `demos/serve-ui/scenarios/theme.yaml` for the picker).
 - [ ] 6. In-UI theme editor, live preview, and upload / export (contract-derived form, client-side live preview, local-draft + upload persistence tiers reusing the BE-0073 upload seam, export/import round-trip).
 
@@ -276,6 +276,22 @@ filesystem, building directly on the token contract of unit 1.
   with unit 4's motion. Tests: `tests/test_select_option.py`, plus `select_option` cases in
   `tests/test_playwright.py` / `test_idb.py` / `test_adb.py` / `test_xcuitest.py`; docs updated in
   `docs/scenarios.md` and `docs/dsl-grammar.md` (+ ja mirrors). ([#859](https://github.com/bajutsu-e2e/bajutsu/pull/859))
+- Unit 4 — swappable, theme-defined transitions. Extended the token contract with a `--motion-*` set
+  (view / modal / pane durations, a shared easing, and enter/leave animation-name tokens) defined in
+  the `:root`/midnight fallback block and documented inline in `serve.themes.css`. The client applies
+  only semantic state classes: `showView` plays an enter animation on the incoming view; a
+  `MutationObserver` plays a modal's enter whenever it is unhidden (so no open site changed) and a new
+  `closeModal` helper animates the leave before hiding; the phone-tier pane switch fades the pane
+  brought to full width; and the tiler `rebuild()` (`serve.author.js`) is double-buffered — because
+  `render()` moves the live panel nodes into the new root, a `data-testid`-stripped deep clone of the
+  outgoing root is held absolute over the view as a visual ghost while the rebuilt root animates in,
+  so no selector is ever briefly ambiguous. All motion collapses under `prefers-reduced-motion:
+  reduce`, and the Playwright backend now opens every context with `reduced_motion="reduce"` — the
+  determinism lever (unit 5): in the dogfood and CI every transition is instant, the ghost double-buffer
+  reduces to the original instant `replaceChildren`, and no condition-wait races an animation. Tests:
+  `--motion-*` contract + reduced-motion collapse in `tests/serve/test_theme_tokens.py`, the
+  `reduced_motion` context assertion in `tests/test_playwright.py`; docs updated in `docs/web-ui.md`
+  (+ ja mirror). ([#881](https://github.com/bajutsu-e2e/bajutsu/pull/881))
 
 ## References
 

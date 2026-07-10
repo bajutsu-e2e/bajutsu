@@ -173,7 +173,46 @@ function initTiling(){
       r.textContent=k in out?String(out[k]):'';
     }
   }
-  const rebuild=V=>{V.dvc=0;const r=render(V,V.tree);r.classList.add('tile-root');V.view.replaceChildren(r);reflectSizes(V);};
+  const rebuild=V=>{
+    V.dvc=0;
+    // Double-buffered pane reconstruction (BE-0191 unit 4): render() *moves* the live panel nodes into
+    // the new root, so to animate the old layout out we keep a deep clone of it — a visual ghost held
+    // absolute over the view — while the rebuilt root animates in, then drop the ghost. The ghost's
+    // data-testid attributes are stripped so the primary selector ladder can't match it. What actually
+    // keeps a run deterministic, though, is the reduced-motion guard: with reduced_motion=reduce forced
+    // by the Playwright backend the ghost is never created and this collapses to a plain replaceChildren
+    // with no duplicate DOM at all. It is also skipped when the theme opts out (--motion-view-leave:none).
+    const old=V.view.querySelector(':scope>.tile-root');
+    const leave=getComputedStyle(document.documentElement).getPropertyValue('--motion-view-leave').trim();
+    const ghost=(old&&!prefersReducedMotion()&&leave&&leave!=='none')?old.cloneNode(true):null;
+    const r=render(V,V.tree);r.classList.add('tile-root');
+    V.view.replaceChildren(r);
+    if(ghost){
+      // Strip stale state classes first: if rebuild() fires again before a prior transition's
+      // animationend (two rapid drag-drop reorders, or recReportShow/recReportHide toggled fast),
+      // the cloned root still carries .is-entering. Adding .is-leaving on top would leave both classes
+      // coexisting; CSS source order then resolves the conflicting animation shorthand, not intent.
+      // Strip data-testid AND id so the ghost can't be reached by the selector ladder, by
+      // document.getElementById, or by aria-* idrefs / <label for> while the leave animation plays.
+      // aria-hidden so assistive tech ignores the stale ghost content during the ~150ms it's in the DOM.
+      ghost.classList.remove('is-entering');ghost.classList.add('is-leaving');ghost.removeAttribute('data-testid');ghost.removeAttribute('id');ghost.setAttribute('aria-hidden','true');
+      ghost.querySelectorAll('[data-testid],[id]').forEach(n=>{n.removeAttribute('data-testid');n.removeAttribute('id');});
+      // Match on e.target so a descendant's animationend (e.g. a .running spinner bubbling up) doesn't
+      // tear the listener down early — the root's own leave/enter animation is the one that ends it.
+      const drop=e=>{if(e.target!==ghost)return;ghost.removeEventListener('animationend',drop);ghost.remove();};
+      ghost.addEventListener('animationend',drop);
+      V.view.appendChild(ghost);
+      // Guard the enter with the same motionOff check closeModal uses for the leave side: if a theme
+      // sets --motion-view-enter:none (an asymmetric per-token override the contract explicitly allows),
+      // animation-name:none means no animationend fires and the class + listener would leak without it.
+      if(!motionOff('--motion-view-enter')){
+        r.classList.add('is-entering');
+        const done=e=>{if(e.target!==r)return;r.removeEventListener('animationend',done);r.classList.remove('is-entering');};
+        r.addEventListener('animationend',done);
+      }
+    }
+    reflectSizes(V);
+  };
   function startResize(V,e,dv,node,i){
     e.preventDefault();const row=node.d==='row',a=dv.previousElementSibling,b=dv.nextElementSibling;
     const ra=a.getBoundingClientRect(),rb=b.getBoundingClientRect(),tot=row?ra.width+rb.width:ra.height+rb.height,start=row?e.clientX:e.clientY,s0=row?ra.width:ra.height;

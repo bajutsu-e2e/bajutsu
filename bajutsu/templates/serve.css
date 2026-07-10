@@ -35,7 +35,9 @@ main[hidden]{display:none}
 /* Record view: form on the left, the log + generated-YAML panels stacked vertically beside it. */
 /* Record & Replay are tiled (see initTiling); the tile-root fills the block-level <main>.
    The :not([hidden]) keeps these id-level rules from overriding main[hidden]{display:none}. */
-#view-record:not([hidden]),#view-replay:not([hidden]),#view-crawl:not([hidden]){display:block}
+/* position:relative anchors the tiler's double-buffered leave (BE-0191 unit 4): during a rebuild the
+   outgoing .tile-root is held absolute over the view while it animates out (see initTiling rebuild). */
+#view-record:not([hidden]),#view-replay:not([hidden]),#view-crawl:not([hidden]){display:block;position:relative}
 .rec-stack{display:grid;grid-template-rows:var(--rec-top,1fr) var(--gw) 1fr;gap:0;height:100%;min-height:0}
 .rec-stack>.logpanel,.rec-stack>.yamlpanel{min-height:0;height:auto}
 /* Crawl view: config on the left, the live screen-map graph (+ progress log) filling the rest. */
@@ -96,7 +98,7 @@ body.reordering-active iframe{pointer-events:none}
 .planhd{display:flex;justify-content:space-between;align-items:baseline}
 .planpct{font-weight:700;color:var(--ok);text-transform:none}
 .planbar{flex:0 0 auto;height:5px;margin:.45rem 0;background:var(--bg);border:1px solid var(--line);border-radius:3px;overflow:hidden}
-.planfill{height:100%;width:0;background:var(--ok);transition:width .3s ease}
+.planfill{height:100%;width:0;background:var(--ok);transition:width var(--motion-fast) var(--motion-ease)}
 .crawlplan{flex:1;min-height:0;overflow:auto;background:var(--bg2);border:1px solid var(--line);border-radius:8px;padding:.35rem}
 .crawlplan .empty{height:100%}
 /* The graph viewport: the outer .graphpan layer translates (drag-pan, GPU-composited); the inner
@@ -552,4 +554,50 @@ header .cfgname{color:var(--mut);font-size:.82em;max-width:32vw;overflow:hidden;
 .codegen-head .ttl{font-weight:600;font-size:.85em;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .codegen-actions{display:flex;gap:.3em;flex:0 0 auto}
 .codegen-actions .savebtn{background:var(--acc);color:var(--on-acc);border:0;border-radius:6px;font-weight:700;padding:.3rem .7rem;font-size:.85em;cursor:pointer}
+
+/* ===== Themable screen transitions (BE-0191 unit 4) =============================================
+   The JS applies only semantic state classes (.is-entering / .is-leaving) at each transition point;
+   the theme decides what those states look like via the --motion-* tokens (serve.themes.css). A
+   theme that overrides none keeps this built-in motion; one that sets an *-enter/-leave token to
+   `none` opts out. Everything collapses to instant under prefers-reduced-motion (block at the end),
+   which is both the accessibility guarantee and the determinism lever (unit 5): with motion off, a
+   transition never races a condition-wait and the tiler's double-buffer never briefly duplicates an
+   element. The built-in animation keyframes below are the fallback the tokens point at; a drop-in
+   theme may define its own top-level @keyframes and point a token at them. */
+@keyframes bj-view-in{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+@keyframes bj-view-out{from{opacity:1;transform:none}to{opacity:0;transform:translateY(-6px)}}
+@keyframes bj-modal-in{from{opacity:0}to{opacity:1}}
+@keyframes bj-modal-out{from{opacity:1}to{opacity:0}}
+@keyframes bj-pop-in{from{transform:scale(.98)}to{transform:none}}
+@keyframes bj-pop-out{from{transform:none}to{transform:scale(.98)}}
+/* Top-level view (tab) switch: the incoming <main> animates in (enter-only — the outgoing view is
+   hidden instantly, so two sibling views never overlap in the flex column). */
+main.is-entering{animation:var(--motion-view-enter) var(--motion-view) var(--motion-ease) both}
+/* Tiler pane reconstruction (BE-0072): the double-buffered rebuild appends the new .tile-root and
+   holds the old one absolute over the view to animate it out, then drops it (see initTiling). */
+.tile-root.is-entering{animation:var(--motion-view-enter) var(--motion-pane) var(--motion-ease) both}
+.tile-root.is-leaving{animation:var(--motion-view-leave) var(--motion-pane) var(--motion-ease) both;
+  position:absolute;inset:0;pointer-events:none}
+/* Responsive pane switch (BE-0072): fade the pane brought to full width at the phone tier. Only the
+   pane the narrow CSS leaves displayed animates (the rest are display:none, so the rule is inert on
+   them); on desktop the switcher is hidden and .pane-switching is never applied. */
+main.pane-switching [data-pane]{animation:var(--motion-view-enter) var(--motion-pane) var(--motion-ease) both}
+/* Modals: the scrim fades and the box pops on enter; on leave (held displayed by closeModal until
+   the animation ends) both reverse before the element is hidden. */
+.modal.is-entering{animation:var(--motion-modal-enter) var(--motion-modal) var(--motion-ease) both}
+.modal.is-leaving{animation:var(--motion-modal-leave) var(--motion-modal) var(--motion-ease) both}
+.modal.is-entering .fsbox,.modal.is-entering .shotbox{animation:bj-pop-in var(--motion-modal) var(--motion-ease) both}
+.modal.is-leaving .fsbox,.modal.is-leaving .shotbox{animation:bj-pop-out var(--motion-modal) var(--motion-ease) both}
+
+/* Collapse all motion to instant (accessibility + the unit-5 determinism lever). The token zeroing
+   handles transitions (e.g. .planfill); the !important animation reset handles the enter/leave
+   states even when a theme points a token at a keyframe of its own. */
+@media (prefers-reduced-motion: reduce){
+  :root{
+    --motion-view:0s; --motion-modal:0s; --motion-pane:0s; --motion-fast:0s;
+    --motion-view-enter:none; --motion-view-leave:none; --motion-modal-enter:none; --motion-modal-leave:none;
+  }
+  main.is-entering,.tile-root.is-entering,.tile-root.is-leaving,main.pane-switching [data-pane],
+  .modal.is-entering,.modal.is-leaving,.modal .fsbox,.modal .shotbox{animation:none!important}
+}
 .codegen-code{margin:0;max-height:340px;overflow:auto;background:var(--bg2);border:1px solid var(--line);border-radius:6px;padding:.6em;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;line-height:18px;white-space:pre;tab-size:2}

@@ -73,6 +73,16 @@ preference (or the configured `ui.default_theme`) until you choose one; an expli
 remembered (in the browser's local storage) until the system preference next changes, which drops
 the override and re-adopts the system mode.
 
+A theme also defines the UI's **motion** — how views, modals, and panels animate as they switch.
+Screen transitions are part of the look, not hard-coded: a theme decides the duration, easing, and
+enter/leave animation of a view switch, a modal open/close, and a tiler pane reconstruction through
+its `--motion-*` tokens (documented alongside the color tokens in `serve.themes.css`). A theme that
+sets no motion tokens keeps the built-in animation; one that sets an enter/leave token to `none`
+renders that transition instantly. All motion collapses to instant under the operating system's
+**reduce motion** accessibility preference, so the UI never animates against a user's wishes — and,
+because a run drives the browser with that preference forced on, animation never affects a
+deterministic `run`.
+
 **Panel management (desktop).** On a desktop-width window, the Record, Replay, and Crawl tabs tile
 their panels: drag the divider between two panels to redistribute that pair's widths (the other
 panels keep their share), and drag a panel's **⠿** grip onto another panel to swap them (drop on the
