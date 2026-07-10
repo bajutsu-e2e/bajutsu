@@ -419,8 +419,8 @@ def set_provider(state: ServeState, body: dict[str, Any]) -> tuple[Any, int]:
             return {"error": "model must not contain whitespace"}, 400
         settings = ProviderSettings(model=ai_model, effort=effort)
         _apply_provider_env(prov, settings)
-        state.set_provider_setting(prov, settings)
-        persisted = _persist_provider_settings(state, prov)
+        snapshot = state.set_provider_setting_and_snapshot(prov, settings)
+        persisted = _persist_provider_settings(state, prov, snapshot)
         return {
             "ok": True,
             "provider": prov,
@@ -441,8 +441,8 @@ def set_provider(state: ServeState, body: dict[str, Any]) -> tuple[Any, int]:
         return {"error": "region and model must not contain whitespace"}, 400
     settings = ProviderSettings(model=model, effort=effort, region=region)
     _apply_provider_env("bedrock", settings)
-    state.set_provider_setting("bedrock", settings)
-    persisted = _persist_provider_settings(state, "bedrock")
+    snapshot = state.set_provider_setting_and_snapshot("bedrock", settings)
+    persisted = _persist_provider_settings(state, "bedrock", snapshot)
     return {
         "ok": True,
         "provider": "bedrock",
@@ -481,33 +481,30 @@ def _apply_provider_env(prov: str, settings: ProviderSettings) -> None:
     os.environ[PROVIDER_ENV] = prov
 
 
-def _persist_provider_settings(state: ServeState, provider: str) -> bool:
-    """Flush the per-provider map + *provider* as the active choice to the durable store (BE-0184).
+def _persist_provider_settings(
+    state: ServeState, provider: str, snapshot: dict[str, ProviderSettings]
+) -> bool | None:
+    """Write *provider* + *snapshot* to the durable store (BE-0184).
 
-    *provider* is the just-validated selection the caller applied — passed in rather than re-derived
-    from ``os.environ[PROVIDER_ENV]``, so a concurrent `/api/provider` on another thread (serve is a
-    `ThreadingHTTPServer`) can't slip in between the env write and this read and get a *different*
-    provider recorded as active than the one this request reports saved. The selection has already
-    taken effect in the process env and the in-memory map by the time this runs, so a failure to
+    *provider* and *snapshot* must both be derived from the same atomic lock acquisition in the
+    caller (via ``set_provider_setting_and_snapshot``), so two concurrent ``/api/provider`` requests
+    can't interleave their snapshot-and-write sequences and silently record the wrong state on disk.
+    The selection has already taken effect in the process env and the in-memory map, so a failure to
     write the file (a read-only serve dir, a full disk) must not fail the request that already
     succeeded — it is logged loudly and the change stands for the session, just not across a restart.
 
     Returns:
-        Whether the choice was durably saved: True when written, or when no store is wired (the
-        session-only shape — a hosted server, or pre-BE-0184 — has nothing to persist and nothing to
-        fail). False only when a wired store's write failed, so the caller can tell the operator the
-        choice will not survive a restart.
+        ``True`` when durably saved to disk; ``False`` when a wired store's write failed (the
+        operator's choice is active for the session but won't survive a restart); ``None`` when no
+        store is wired (a hosted deployment or the pre-BE-0184 session-only shape — persistence is
+        not applicable, so neither ``True`` nor ``False`` applies). The caller surfaces this as the
+        ``persisted`` field in the HTTP response so the Settings panel can signal accordingly.
     """
     store = state.provider_settings_store
     if store is None:
-        return True
+        return None
     try:
-        store.save(
-            PersistedProviderSettings(
-                provider=provider,
-                settings=state.provider_settings_snapshot(),
-            )
-        )
+        store.save(PersistedProviderSettings(provider=provider, settings=snapshot))
     except OSError:
         logging.getLogger(__name__).warning(
             "the AI provider selection is active for this session but could not be persisted; "

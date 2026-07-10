@@ -355,6 +355,23 @@ def test_persist_failure_keeps_the_session_change_and_warns(
         server.server_close()
 
 
+def test_no_store_reports_persisted_null(tmp_path: Path) -> None:
+    """With no store wired (the hosted / session-only case), the response carries persisted: null —
+    distinct from persisted: true (durably saved) so the hosted operator's 'saved' and the local
+    operator's 'durably saved' don't conflate."""
+    scn_dir, cfg, runs = project(tmp_path)
+    state = srv.ServeState(
+        scenarios_dir=scn_dir, config=cfg, runs_dir=runs, cwd=tmp_path
+    )  # no provider_settings_store
+    server, port = _serve(state)
+    try:
+        code, body = _post(port, "/api/provider", {"provider": "ant"})
+        assert code == 200 and body["persisted"] is None
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
 def test_successful_save_reports_persisted_true(tmp_path: Path) -> None:
     """A normal save reports `persisted: true`, so the Settings panel shows no warning."""
     scn_dir, cfg, runs = project(tmp_path)

@@ -517,8 +517,8 @@ async function saveSettings(){
       $('#cctoken').value='';ccTokState={set:true,masked:t.masked||''};renderCcTok();
     }
   }
-  // persisted===false means the choice took effect for this session but the durable write failed
-  // (e.g. a read-only serve dir), so it won't survive a restart (BE-0184); warn rather than claim it saved.
+  // persisted: true = durably saved; false = save failed (won't survive restart); null = session-only
+  // (hosted deployment, no durable store). Only false warrants a warning (BE-0184).
   if(d.persisted===false){setSettingsStatus('active for this session, but could not be saved — it will reset on restart','ng');}
   else{setSettingsStatus('saved','ok');}
   refreshAiAvailability();  // a just-saved key / provider can flip the record/crawl gate live

@@ -475,6 +475,19 @@ class ServeState:
         with self._provider_lock:
             self.provider_settings[name] = settings
 
+    def set_provider_setting_and_snapshot(
+        self, name: str, settings: ProviderSettings
+    ) -> dict[str, ProviderSettings]:
+        """Set one provider's slot and return a full snapshot, atomically under one lock acquisition.
+
+        Used by the persistence flush path (BE-0184): taking the snapshot in the same lock scope as
+        the write means the snapshot handed to `store.save` is always consistent with the just-applied
+        change, and two concurrent saves can't interleave their snapshot-and-write sequences.
+        """
+        with self._provider_lock:
+            self.provider_settings[name] = settings
+            return dict(self.provider_settings)
+
     def active_jobs(self) -> int:
         """How many spawned jobs are still running (not yet finished). Delegates to the registry."""
         return self.job_registry.active_jobs()
