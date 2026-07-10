@@ -123,6 +123,36 @@ def theme_manifests(themes_dir: Path | None) -> list[ThemeManifest]:
     return [*BUILTIN_THEMES, *(t.manifest for t in discover_themes(themes_dir))]
 
 
+def parse_theme_tokens(contract_css: str) -> dict[str, dict[str, dict[str, str]]]:
+    """Extract the design-token contract from the serve.themes.css CSS blocks (BE-0191 unit 6).
+
+    Returns a dict with keys "colors" and "transitions", each holding a dict of token metadata.
+    Finds all --token declarations in CSS rules and categorizes them by name prefix.
+    """
+    # Find all CSS custom property declarations: --name: value;
+    tokens_found: dict[str, dict[str, str]] = {}
+    for match in re.finditer(r"--([\w-]+)\s*:", contract_css):
+        token_name = f"--{match.group(1)}"
+        # Categorize: motion tokens are --motion-*, others are colors.
+        if token_name.startswith("--motion-"):
+            # Infer type: enter/leave = keyframe, ease = easing, else = duration.
+            if "enter" in token_name or "leave" in token_name:
+                t = "keyframe"
+            elif "ease" in token_name:
+                t = "easing"
+            else:
+                t = "duration"
+            tokens_found[token_name] = {"type": t, "default": ""}
+        else:
+            tokens_found[token_name] = {"description": "", "default": ""}
+
+    # Separate into colors and transitions.
+    colors = {k: v for k, v in tokens_found.items() if not k.startswith("--motion-")}
+    transitions = {k: v for k, v in tokens_found.items() if k.startswith("--motion-")}
+
+    return {"colors": colors, "transitions": transitions}
+
+
 def read_default_theme(config_path: Path | None) -> str | None:
     """The `ui.default_theme` from *config_path*, or None when unset / no config / unparseable.
 
