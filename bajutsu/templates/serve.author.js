@@ -188,9 +188,13 @@ function initTiling(){
     const r=render(V,V.tree);r.classList.add('tile-root');
     V.view.replaceChildren(r);
     if(ghost){
+      // Strip stale state classes first: if rebuild() fires again before a prior transition's
+      // animationend (two rapid drag-drop reorders, or recReportShow/recReportHide toggled fast),
+      // the cloned root still carries .is-entering. Adding .is-leaving on top would leave both classes
+      // coexisting; CSS source order then resolves the conflicting animation shorthand, not intent.
       // Strip data-testid AND id so the ghost can't be reached by the selector ladder, by
       // document.getElementById, or by aria-* idrefs / <label for> while the leave animation plays.
-      ghost.classList.add('is-leaving');ghost.removeAttribute('data-testid');ghost.removeAttribute('id');
+      ghost.classList.remove('is-entering');ghost.classList.add('is-leaving');ghost.removeAttribute('data-testid');ghost.removeAttribute('id');
       ghost.querySelectorAll('[data-testid],[id]').forEach(n=>{n.removeAttribute('data-testid');n.removeAttribute('id');});
       // Match on e.target so a descendant's animationend (e.g. a .running spinner bubbling up) doesn't
       // tear the listener down early — the root's own leave/enter animation is the one that ends it.

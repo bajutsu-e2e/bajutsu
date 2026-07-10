@@ -680,13 +680,17 @@ def test_starter_context_carries_reduced_motion() -> None:
     """
     import inspect
 
-    from bajutsu.drivers import playwright as pw_module
-
     # _start_browser(engine) returns the inner `start` closure; Playwright is imported lazily inside
     # it (only when start(headless) is actually called), so this is safe in the fast suite.
+    import re
+
+    from bajutsu.drivers import playwright as pw_module
+
     start_fn = pw_module._start_browser("chromium")
     src = inspect.getsource(start_fn)
-    assert 'reduced_motion="reduce"' in src, (
+    # Regex on the semantic content so a harmless quote-style / spacing reformat doesn't break the
+    # test — only an actual removal of reduced_motion from new_context() would cause failure.
+    assert re.search(r'reduced_motion\s*=\s*[\'"]reduce[\'"]', src), (
         '_start_browser start() must pass reduced_motion="reduce" to new_context() '
         "(the BE-0191 unit 5 determinism lever — revert playwright.py:127 to see this fail)"
     )
