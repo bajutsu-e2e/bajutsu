@@ -113,7 +113,7 @@ def _progress_bar(counts: dict[str, int], total: int) -> str:
 
 
 def render_html(items: list[Any]) -> str:
-    """Render the dashboard body: a status filter, then one section per category with its progress.
+    """Render the dashboard body: a search box + status filter, then one section per category.
 
     Sections are category-major (by Topic); each item card carries its own status (colour + badge),
     and each category shows a progress figure derived purely from the Status field — the share of its
@@ -206,7 +206,7 @@ _STYLE = """
 .be-summary{display:flex;flex-wrap:wrap;align-items:center;gap:.6rem;margin:.5rem 0 1.5rem}
 .be-search{flex:1 1 220px;min-width:180px;font:inherit;font-size:13px;padding:.3rem .6rem;
   border:1px solid rgba(128,128,128,.35);border-radius:8px;background:transparent;color:inherit}
-.be-search:focus{outline:none;border-color:currentColor}
+.be-search:focus{border-color:currentColor}
 .be-empty{color:#888;font-size:13px;margin:1rem 0}
 .be-stat{border:1px solid;border-radius:8px;padding:.25rem .7rem;font-size:13px}
 .be-stat b{font-weight:600}
@@ -315,7 +315,8 @@ _SCRIPT = """
       var hiddenByChips=hasQuery && matched>0 && shown===0;
       empty.classList.toggle('is-hidden', !(noMatch || hiddenByChips));
       empty.textContent=noMatch ? ('No items match '+qText)
-        : hiddenByChips ? (matched+(matched===1?' item matches ':' items match ')+qText+', but the status filter above is hiding them')
+        : hiddenByChips ? (matched+(matched===1?' item matches ':' items match ')+qText
+          +', but the status filter above is hiding '+(matched===1?'it':'them'))
         : '';
     }
   }
