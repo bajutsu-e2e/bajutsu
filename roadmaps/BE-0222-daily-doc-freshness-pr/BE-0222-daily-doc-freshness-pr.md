@@ -9,6 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0222") |
+| Implementing PR | [#882](https://github.com/bajutsu-e2e/bajutsu/pull/882) |
 | Topic | Development infrastructure (contributor workflow) |
 | Related | [BE-0203](../BE-0203-claude-code-pr-review/BE-0203-claude-code-pr-review.md) |
 <!-- /BE-METADATA -->
@@ -204,7 +205,7 @@ and tests, so it cannot affect determinism or the app-agnostic core.
 
 ### Log
 
-- Shipped in one PR: the reusable `refresh.yml` (shared shape — two-credential dormancy gate,
+- [#882](https://github.com/bajutsu-e2e/bajutsu/pull/882): shipped in one PR — the reusable `refresh.yml` (shared shape — two-credential dormancy gate,
   concurrency/timeout, App-token checkout, AI-authoring step, in-job `make check`), the two thin
   callers `roadmap-refresh.yml` / `docs-refresh.yml`, their contracts
   (`.github/{roadmap,docs}-refresh-prompt.md`), and the deterministic `scripts/refresh_pr.py`
