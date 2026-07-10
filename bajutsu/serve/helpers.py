@@ -21,6 +21,7 @@ from bajutsu.backends import KNOWN_ACTUATORS, PLATFORMS
 from bajutsu.config import Config, IosConfig, resolve
 from bajutsu.device_id import is_valid_device_id
 from bajutsu.scenario import load_scenario_file
+from bajutsu.serve.capabilities import required_capabilities
 from bajutsu.serve.orgs import OrgConfig, load_serve_config
 
 # Tokens a `--backend` may name: a platform (ios/android/web/fake) or a known actuator (idb/…).
@@ -157,8 +158,6 @@ def target_capabilities(config_path: Path, target: str) -> list[str]:
     `can_serve`) — including one that can't actually run it — rather than crashing dispatch. In
     practice `start_run` resolves the same config a step earlier (`target_build_info`), so this
     error path is not reached on the normal dispatch flow."""
-    from bajutsu.serve.capabilities import required_capabilities
-
     try:
         eff = resolve(_load_config_cached(config_path), target)
     except (OSError, ValueError, KeyError):
