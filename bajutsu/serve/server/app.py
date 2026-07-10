@@ -14,7 +14,10 @@ response headers. Live-log SSE streaming arrives with a later slice; the rest of
 
 from __future__ import annotations
 
+import hashlib
+import tempfile
 from collections.abc import AsyncIterator
+from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
 
@@ -26,6 +29,7 @@ from bajutsu.serve import operations as ops
 from bajutsu.serve import oplog
 from bajutsu.serve.handler import _OAUTH_STATE_COOKIE, _SESSION_COOKIE, _index_html
 from bajutsu.serve.state import ServeState
+from bajutsu.serve.uploads import MAX_UPLOAD_BYTES
 
 # How long an idle SSE stream waits before sending a `:keepalive` comment (and rechecking for a
 # client disconnect). Short enough to stay under a reverse proxy's idle timeout (BE-0015).
@@ -305,6 +309,48 @@ def make_app(state: ServeState) -> FastAPI:
                 await run_in_threadpool(ops.bind_git_config, state, str(body.get("git") or ""))
             )
         return _result(ops.bind_config(state, str(body.get("path", "") or "")))
+
+    @app.post("/api/upload")
+    async def upload(request: Request) -> JSONResponse:
+        """Stream a raw-body zip upload to a temp file (bounded), then bind it as the active config
+        (BE-0073) — the FastAPI mirror of the stdlib handler's `_handle_upload`. Raw body
+        (`?name=` for the filename), not multipart: the SPA controls the request, and streaming
+        avoids buffering the whole (up to 1 GiB) body in memory. CSRF/Origin is already enforced
+        unconditionally by the `gate` middleware above, so this only needs the size cap and the bind."""
+        length = int(request.headers.get("content-length") or 0)
+        if length <= 0:
+            return _result(({"error": "empty upload"}, 400))
+        if length > MAX_UPLOAD_BYTES:
+            return _result(({"error": f"upload too large (max {MAX_UPLOAD_BYTES} bytes)"}, 413))
+        filename = request.query_params.get("name") or "bundle.zip"
+        digest = hashlib.sha256()
+        fd, tmp_name = tempfile.mkstemp(suffix=".zip")
+        tmp_path = Path(tmp_name)
+        try:
+            received = 0
+            with open(fd, "wb") as tmp:
+                async for chunk in request.stream():
+                    received += len(chunk)
+                    if received > MAX_UPLOAD_BYTES:
+                        return _result(
+                            ({"error": f"upload too large (max {MAX_UPLOAD_BYTES} bytes)"}, 413)
+                        )
+                    digest.update(chunk)
+                    tmp.write(chunk)
+            if received < length:
+                return _result(({"error": "upload incomplete (body ended early)"}, 400))
+            return _result(
+                await run_in_threadpool(
+                    ops.bind_upload_config,
+                    state,
+                    tmp_path,
+                    filename,
+                    sha256=digest.hexdigest(),
+                    actor=_actor(request),
+                )
+            )
+        finally:
+            tmp_path.unlink(missing_ok=True)
 
     @app.post("/api/apikey")
     async def set_api_key(body: dict[str, Any], request: Request) -> JSONResponse:

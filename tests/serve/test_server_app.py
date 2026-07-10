@@ -92,6 +92,45 @@ def test_audit_route_delegates_to_operations(tmp_path: Path) -> None:
     )
 
 
+def test_upload_route_binds_bundle_like_stdlib(tmp_path: Path) -> None:
+    # The FastAPI shell reaches the same shared op as the stdlib handler (BE-0073); the bind logic
+    # itself (extraction, path confinement, sandboxing) is covered once via the stdlib suite
+    # (test_http_upload.py) — this only proves the ASGI route exists and delegates to it.
+    import io
+    import zipfile
+
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr(
+            "bajutsu.config.yaml",
+            "defaults: { backend: [fake] }\n"
+            "targets:\n  demo: { bundleId: com.example.demo, scenarios: ./scenarios }\n",
+        )
+        zf.writestr("scenarios/smoke.yaml", "- name: alpha\n  steps:\n    - tap: { id: x }\n")
+    zip_bytes = buf.getvalue()
+
+    state = srv.ServeState(
+        runs_dir=tmp_path / "runs", cwd=tmp_path, root=tmp_path, uploads_dir=tmp_path / "uploads"
+    )
+    (tmp_path / "runs").mkdir()
+    resp = _client(state).post(
+        "/api/upload?name=suite.zip", content=zip_bytes, headers={"content-type": "application/zip"}
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["ok"] is True and "demo" in body["targets"]
+    assert body["source"]["kind"] == "upload" and body["source"]["filename"] == "suite.zip"
+    assert len(body["source"]["sha256"]) == 64
+    assert _client(state).get("/api/config").json()["hasConfig"] is True
+
+
+def test_upload_route_requires_auth_when_token_set(tmp_path: Path) -> None:
+    state = srv.ServeState(runs_dir=tmp_path / "runs", cwd=tmp_path, root=tmp_path, token="s3cret")
+    (tmp_path / "runs").mkdir()
+    resp = _client(state).post("/api/upload?name=x.zip", content=b"x")
+    assert resp.status_code == 401  # behind BE-0051 token auth like every other mutating endpoint
+
+
 def test_upload_urls_route_signs_put_urls(tmp_path: Path) -> None:
     # The FastAPI shell reaches the same evidence operation as the stdlib handler (BE-0110).
     class _FakeStore:
