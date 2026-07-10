@@ -119,11 +119,20 @@ owner/repo、または org 単位です。これにより、マルチ org のセ
 - 各種類の**最小の付与を文書化**します。fine-grained PAT や App のインストールなら対象リポジトリに
   Contents: read です。[docs/configuration.md](../../docs/configuration.md) と
   [docs/self-hosting.md](../../docs/self-hosting.md) に日英両方で書き、運用者を狭い付与へ誘導します。
-- **認証の失敗を読み取れるようにします。** トランスポートの `HTTPError` を包みます。リポジトリに対する
-  **404 / 403** は「リポジトリが見つからない、*または*アクセス権限が付与されていません。`<owner>/<repo>` に
-  Contents: read を持つ認証情報を渡してください」に、**401** は「渡されたトークンが拒否されました」になります。
-  最も不足していそうな付与を名指しすることが要点です。これは認証情報プロバイダの変更を必要とせず、最初に
-  出せます。
+- **認証の失敗を読み取れるようにします。** トランスポートの `HTTPError` を包み、ステータス*と*サブタイプで
+  振り分けて、常にアクセス不足のせいにするのではなく本当の原因を名指しします。
+  - **404**、または下記のいずれにも当たらない **403** →「リポジトリが見つからない、*または*アクセス権限が
+    付与されていません。`<owner>/<repo>` に Contents: read を持つ認証情報を渡してください」。最も不足して
+    いそうな付与を名指しすることが要点です。
+  - **`X-RateLimit-Remaining: 0`（または `Retry-After` ヘッダ）を伴う 403** → レート制限／濫用検知の
+    メッセージ（待つか、認証して上限を上げる）。アクセスのメッセージ*ではありません*。リポジトリ権限を
+    増やしてもレート制限は解消しません。
+  - **本文が SSO 強制を示す 403**（org の SAML シングルサインオンの認可が必要）→「この認証情報を org の
+    SSO に対して認可してください」。これもリポジトリ権限の付与とは別です。
+  - **401** →「渡されたトークンが拒否されました」。
+
+  「Contents: read」を提案する前に 403 のサブタイプ（ヘッダ／本文）を調べることが、運用者を誤った道へ
+  送らないための要点です。これは認証情報プロバイダの変更を必要とせず、最初に出せます。
 
 ### 5. serve（Web UI）の面
 
@@ -137,9 +146,12 @@ owner/repo、または org 単位です。これにより、マルチ org のセ
 - **新しいストアではなく既存の `SecretStore` の継ぎ目に保存する。** serve には、これに合う継ぎ目が既に
   あります。local の単一利用者向けの `EnvSecretStore` と、hosted バックエンド向けの org 単位で保存時暗号化
   される `DbSecretStore` です（[BE-0136](../BE-0136-serve-write-once-secrets/BE-0136-serve-write-once-secrets-ja.md)。
-  `bajutsu/serve/secrets.py`、`bajutsu/serve/server/secrets.py`）。UI で入力した Git 認証情報はそこへ
-  保存されます。マスク済みプレビューのみで、HTTP ハンドラが平文を読み返せません。これが #3 の**取得元ごと／
-  org ごとのスコープ**を具体化する部分でもあります。hosted バックエンドでは認証情報は既に `org_id` で
+  `bajutsu/serve/secrets.py`、`bajutsu/serve/server/secrets.py`）。UI で入力した Git 認証情報はこの継ぎ目を
+  通ります。マスク済みプレビューのみで、HTTP ハンドラは平文を読み返せません。永続性は各バックエンドが既に
+  持つとおりで、local serve では**プロセスの生存期間だけ保持**され（`EnvSecretStore` はメモリに置くので、
+  local の単一利用者の認証情報は現状の env 経路と同じく再起動をまたぎません）、hosted バックエンドでは
+  **org ごとに保存時暗号化して永続化**されます（`DbSecretStore`）。hosted の経路は、#3 の**取得元ごと／
+  org ごとのスコープ**を具体化する部分でもあります。認証情報は既に `org_id` で
   スコープされるので、各テナントの保存済み Git 認証情報は自然にそれぞれのものになります（AI プロバイダ設定を
   保存する読み取り可能な `provider_store`、
   [BE-0184](../BE-0184-persist-serve-ai-provider-settings/BE-0184-persist-serve-ai-provider-settings-ja.md)

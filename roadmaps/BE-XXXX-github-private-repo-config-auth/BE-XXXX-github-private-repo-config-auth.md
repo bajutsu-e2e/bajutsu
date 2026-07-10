@@ -127,10 +127,21 @@ as BE-0063 already requires.
   [docs/configuration.md](../../docs/configuration.md) and
   [docs/self-hosting.md](../../docs/self-hosting.md), bilingually, steering operators to the narrow
   grant.
-- **Make the auth failure legible.** Wrap the transport's `HTTPError`: a **404 / 403** on the repo
-  becomes "repository not found *or* access not granted — provide a credential with Contents: read
-  for `<owner>/<repo>`", and a **401** becomes "the supplied token was rejected". Naming the
-  most-likely-missing grant is the point. This needs no credential-provider change and can land first.
+- **Make the auth failure legible.** Wrap the transport's `HTTPError` and map it by status *and*
+  sub-type, so the message names the real cause rather than always blaming access:
+  - **404**, or a **403** that is not one of the cases below → "repository not found *or* access not
+    granted — provide a credential with Contents: read for `<owner>/<repo>`". Naming the
+    most-likely-missing grant is the point.
+  - a **403 with `X-RateLimit-Remaining: 0`** (or a `Retry-After` header) → a rate-limit / abuse
+    message (wait, or authenticate to raise the limit), *not* an access message — more repo
+    permission does not fix a rate limit.
+  - a **403 whose body signals SSO enforcement** (org SAML single sign-on authorization required) →
+    "authorize this credential for the org's SSO", again distinct from granting more repo access.
+  - **401** → "the supplied token was rejected".
+
+  Inspecting the `403` sub-type (headers / body) before proposing "Contents: read" is what keeps the
+  diagnostic from sending an operator down the wrong path. This needs no credential-provider change
+  and can land first.
 
 ### 5. serve (Web UI) surface
 
@@ -146,10 +157,14 @@ to reach the screen — reusing serve's existing seams, not inventing a parallel
   fits this: `EnvSecretStore` for a local single-user serve and the per-org, encrypted-at-rest
   `DbSecretStore` for the hosted backend
   ([BE-0136](../BE-0136-serve-write-once-secrets/BE-0136-serve-write-once-secrets.md);
-  `bajutsu/serve/secrets.py`, `bajutsu/serve/server/secrets.py`). A UI-entered Git credential is
-  persisted there — masked-preview only, no plaintext an HTTP handler can read back — which is also
-  what makes #3's **per-source / per-org scoping** concrete: on the hosted backend the credential is
-  already scoped by `org_id`, so each tenant's stored Git credential is naturally its own. (The
+  `bajutsu/serve/secrets.py`, `bajutsu/serve/server/secrets.py`). A UI-entered Git credential goes
+  through that seam — masked-preview only, no plaintext an HTTP handler can read back — with the
+  durability the two backends already have: **held for the process lifetime** on a local serve
+  (`EnvSecretStore` keeps it in memory, so a local single-user credential does not survive a restart,
+  exactly as today's env path) and **persisted per-org, encrypted at rest** on the hosted backend
+  (`DbSecretStore`). The hosted path is also what makes #3's **per-source / per-org scoping**
+  concrete: the credential is already scoped by `org_id`, so each tenant's stored Git credential is
+  naturally its own. (The
   readable `provider_store` that persists AI-provider settings,
   [BE-0184](../BE-0184-persist-serve-ai-provider-settings/BE-0184-persist-serve-ai-provider-settings.md),
   is the precedent for a serve settings surface — but a Git credential belongs in the *write-once*
