@@ -118,6 +118,16 @@ def test_upload_theme_defaults_kind_when_absent(tmp_path: Path) -> None:
     assert "kind: dark" in (themes_dir / "plain.css").read_text(encoding="utf-8")
 
 
+def test_upload_theme_rejects_non_ascii_token_name(tmp_path: Path) -> None:
+    """A non-ASCII token name is refused, matching the client's ASCII-only guard (no `\\w` drift)."""
+    themes_dir = tmp_path / "themes"
+    themes_dir.mkdir()
+    state = _state(tmp_path, themes_dir)
+    _, status = theme_editor.upload_theme(state, {"name": "uni", "tokens": {"--bĝ": "#000"}}, None)
+    assert status == 400
+    assert not (themes_dir / "uni.css").exists()
+
+
 def test_upload_theme_rejects_no_tokens(tmp_path: Path) -> None:
     """An empty token set would write an empty rule — refused."""
     themes_dir = tmp_path / "themes"

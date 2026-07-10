@@ -28,7 +28,9 @@ _SLUG_SEP = re.compile(r"[^a-z0-9]+")
 # that would let it break out of the `[data-theme]{ … }` rule it is interpolated into. This mirrors
 # the client's `safeThemeToken` guard: a theme is operator-trusted, so this is a corruption guard,
 # not a security boundary.
-_SAFE_NAME = re.compile(r"^--[\w-]+$")
+# ASCII-only (not `\w`, which is Unicode-aware in a Python str regex) so this stays identical to the
+# client's `safeThemeToken` mirror (`/^--[\w-]+$/`, ASCII in JS) — the two guards must not drift.
+_SAFE_NAME = re.compile(r"^--[A-Za-z0-9_-]+$")
 _UNSAFE_VALUE = re.compile(r"[{};]")
 
 

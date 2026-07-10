@@ -230,7 +230,7 @@ filesystem, building directly on the token contract of unit 1.
 - [x] 3. Theme picker UI (header dropdown replacing the binary toggle, persistence + pre-paint seeding, `data-testid` convention, tiler-safe placement).
 - [x] 4. Swappable, theme-defined transitions (semantic state classes + `--motion-*` tokens across the four surfaces; tiler `rebuild()` refactor; `prefers-reduced-motion` collapse).
 - [x] 5. Determinism and dogfood alignment (reduced-motion guarantees condition-wait safety; update `demos/serve-ui/scenarios/theme.yaml` for the picker).
-- [x] 6. In-UI theme editor, live preview, and upload / export (contract-derived form, client-side live preview, local-draft + upload persistence tiers reusing the BE-0073 upload seam, export/import round-trip).
+- [x] 6. In-UI theme editor, live preview, and upload / export (contract-derived form, client-side live preview, local-draft + server-upload persistence tiers via a dedicated `POST /api/theme` endpoint, export/import round-trip).
 
 ### Log
 
