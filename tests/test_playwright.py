@@ -671,25 +671,24 @@ def test_reset_context_opens_a_fresh_context_closing_the_old_one() -> None:
 
 
 def test_starter_context_carries_reduced_motion() -> None:
-    """The starter's initial browser.new_context() must set reduced_motion="reduce" (BE-0191 unit 5).
+    """The real `_start_browser` passes reduced_motion="reduce" to new_context() (BE-0191 unit 5).
 
-    `_start_browser` is untestable in the fast suite (it imports the real Playwright), so instead we
-    write a starter that calls _FakeBrowser.new_context() directly — the same pattern _start_browser
-    uses — and assert the kwarg is passed. This pins the real code path (the call at playwright.py:127)
-    without needing a live browser.
+    The inner `start` function imports Playwright at call time, so a live browser is never needed to
+    inspect its source. A source-level assertion mirrors how tests/serve/test_theme_tokens.py regexes
+    CSS/JS: it fails if the line in playwright.py is reverted, which a fake-starter that independently
+    re-implements the behavior would not catch.
     """
-    page = _FakePage([])
-    browser = _FakeBrowser([page])
-    pw = _FakePw()
+    import inspect
 
-    def fake_starter(_headless: bool) -> Any:
-        ctx = browser.new_context(reduced_motion="reduce")  # mirrors _start_browser's call
-        return (pw, browser, ctx, ctx.new_page())
+    from bajutsu.drivers import playwright as pw_module
 
-    PlaywrightDriver("http://app.test/", starter=fake_starter)
-
-    assert browser.context_kwargs[0].get("reduced_motion") == "reduce", (
-        "initial starter context must collapse CSS motion (the BE-0191 unit 5 determinism lever)"
+    # _start_browser(engine) returns the inner `start` closure; Playwright is imported lazily inside
+    # it (only when start(headless) is actually called), so this is safe in the fast suite.
+    start_fn = pw_module._start_browser("chromium")
+    src = inspect.getsource(start_fn)
+    assert 'reduced_motion="reduce"' in src, (
+        '_start_browser start() must pass reduced_motion="reduce" to new_context() '
+        "(the BE-0191 unit 5 determinism lever — revert playwright.py:127 to see this fail)"
     )
 
 

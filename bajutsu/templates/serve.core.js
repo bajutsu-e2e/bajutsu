@@ -217,8 +217,9 @@ document.querySelectorAll('.viewswitch').forEach(sw=>{
   sw.querySelectorAll('.vstab').forEach(b=>b.addEventListener('click',()=>{
     view.dataset.pane=b.dataset.pane;
     sw.querySelectorAll('.vstab').forEach(x=>x.classList.toggle('active',x===b));
-    // Fade the pane brought to full width (BE-0191 unit 4); a no-op on desktop / under reduced motion.
-    if(!prefersReducedMotion()){
+    // Fade the pane brought to full width (BE-0191 unit 4); a no-op on desktop, under reduced motion,
+    // or when the theme opts the enter animation out (--motion-view-enter:none → animationend never fires).
+    if(!prefersReducedMotion()&&!motionOff('--motion-view-enter')){
       view.classList.remove('pane-switching');void view.offsetWidth;view.classList.add('pane-switching');
       // End on the pane's own fade — guard e.target so an unrelated descendant animation (e.g. a
       // .running spinner bubbling up) doesn't strip the class early and cut the fade short.
@@ -235,17 +236,19 @@ document.querySelectorAll('.viewswitch').forEach(sw=>{
 // dogfood every transition is instant and no condition-wait ever races an animation.
 const REDUCED_MOTION=matchMedia('(prefers-reduced-motion: reduce)');
 const prefersReducedMotion=()=>REDUCED_MOTION.matches;
+// Read a --motion-* animation-name token off <html> (where the theme sets it); '' / 'none' means the
+// theme opts that transition out, so it plays instantly.
+const motionOff=tok=>{const v=getComputedStyle(document.documentElement).getPropertyValue(tok).trim();return !v||v==='none';};
 // Restart-and-play an enter animation: toggling the class off, forcing a reflow, then on again lets
-// the same element re-animate on a repeat (a second view switch to the same view).
-function playEnter(el){
-  if(prefersReducedMotion())return;
+// the same element re-animate on a repeat (a second view switch to the same view). `tok` is the
+// --motion-* enter token for this surface; if the theme sets it to `none`, skip immediately — with
+// animation-name:none no animationend fires, so the class and its listener would otherwise leak.
+function playEnter(el,tok){
+  if(prefersReducedMotion()||motionOff(tok))return;
   el.classList.remove('is-entering');void el.offsetWidth;el.classList.add('is-entering');
   const done=e=>{if(e.target!==el)return;el.removeEventListener('animationend',done);el.classList.remove('is-entering');};
   el.addEventListener('animationend',done);
 }
-// Read a --motion-* animation-name token off <html> (where the theme sets it); '' / 'none' means the
-// theme opts that transition out, so it plays instantly.
-const motionOff=tok=>{const v=getComputedStyle(document.documentElement).getPropertyValue(tok).trim();return !v||v==='none';};
 // Close a modal with its leave animation, then hide it (and run an optional content-reset once the
 // animation is done, so nothing blanks mid-fade). Hidden instantly under reduced motion or when the
 // theme sets --motion-modal-leave:none (no animationend would fire) — the dogfood path is the former.
@@ -267,7 +270,7 @@ document.querySelectorAll('.modal').forEach(m=>new MutationObserver(muts=>{
   for(const mu of muts){
     if(mu.attributeName==='hidden'&&!m.hidden){
       if(m._closeAbort){m._closeAbort.abort();m._closeAbort=null;}  // reopened mid-close: cancel the pending hide
-      m.classList.remove('is-leaving');playEnter(m);
+      m.classList.remove('is-leaving');playEnter(m,'--motion-modal-enter');
     }
   }
 }).observe(m,{attributes:true,attributeFilter:['hidden']}));
@@ -278,7 +281,7 @@ function showView(name){
   $('#view-record').hidden=name!=='record';$('#view-replay').hidden=name!=='replay';$('#view-crawl').hidden=name!=='crawl';$('#view-author').hidden=name!=='author';$('#view-stats').hidden=name!=='stats';$('#view-usage').hidden=name!=='usage';$('#view-coverage').hidden=name!=='coverage';
   // The incoming view animates in (enter-only: the outgoing one is hidden instantly, so two sibling
   // views never overlap in the flex column). The picked theme decides the motion via --motion-view-*.
-  const shown=$('#view-'+name);if(shown)playEnter(shown);
+  const shown=$('#view-'+name);if(shown)playEnter(shown,'--motion-view-enter');
   if(name==='replay')loadHistory();
   if(name==='author')authorInit();
   if(name==='stats')loadStats();
