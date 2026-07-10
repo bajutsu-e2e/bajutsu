@@ -685,7 +685,7 @@ async function initThemeEditor(){
     for(const[token,meta] of Object.entries(contract.colors||{})){
       const val=meta.default||'';
       htmlParts.push(`<label class="keylabel" for="${esc(token)}">${esc(token)}</label>`);
-      if(/^#[0-9a-fA-F]{3,8}$/.test(val)){
+      if(/^#[0-9a-fA-F]{6}$/.test(val)){
         htmlParts.push(`<input type="color" id="${esc(token)}" value="${esc(val)}" class="theme-color" data-token="${esc(token)}">`);
       }else{
         htmlParts.push(`<input type="text" id="${esc(token)}" value="${esc(val||'#ffffff')}" class="theme-color" data-token="${esc(token)}" placeholder="e.g. rgba(0,0,0,.5)">`);

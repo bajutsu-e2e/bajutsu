@@ -17,17 +17,24 @@ from bajutsu.serve.state import ServeState
 
 _log = logging.getLogger(__name__)
 
-# serve.themes.css lives in bajutsu/templates/; this module is two packages deeper
-# (bajutsu/serve/operations/), so three .parent hops reach the bajutsu package root.
+# serve.themes.css lives in bajutsu/templates/. The templates dir is also computed in
+# bajutsu/serve/handler.py (_TEMPLATE_DIR = Path(__file__).parent.parent / "templates"),
+# but importing it from there risks a circular import. This module sits one package deeper
+# (bajutsu/serve/operations/), so the hop count differs. The two paths share the same
+# anchor (bajutsu package root), but are maintained independently — something to unify
+# when a shared _paths.py or importlib.resources is introduced.
 _CONTRACT_PATH = Path(__file__).parent.parent.parent / "templates" / "serve.themes.css"
 
 
-def get_theme_contract(state: ServeState) -> tuple[dict[str, Any], int]:
+def get_theme_contract(_state: ServeState) -> tuple[dict[str, Any], int]:
     """The design-token contract (BE-0191 unit 1) exposed as JSON for the editor.
 
     Reads serve.themes.css, extracts the token list, and fills each token's default from the
     :root fallback block. Follows the operations `(payload, status)` convention so a read failure
     can report a non-200 status rather than a 200 with an error body.
+
+    ``_state`` is accepted for dispatch-signature uniformity (every ``ops.*`` handler takes the
+    serve state) but is not read here — the contract is a bundled static file, not state-derived.
     """
     try:
         contract_css = _CONTRACT_PATH.read_text(encoding="utf-8")
