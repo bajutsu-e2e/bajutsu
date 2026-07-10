@@ -52,7 +52,7 @@ concurrency:
 
 jobs:
   android-e2e:
-    name: smoke (adb)
+    name: smoke + golden (adb)
     runs-on: ubuntu-latest
     # Booting an emulator, building the APK, and running the Stable-tab scenarios is ~8min end to end;
     # 30 catches a real hang (a wedged AVD boot or adb) with comfortable headroom.
