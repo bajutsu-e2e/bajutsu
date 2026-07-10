@@ -123,6 +123,55 @@ def theme_manifests(themes_dir: Path | None) -> list[ThemeManifest]:
     return [*BUILTIN_THEMES, *(t.manifest for t in discover_themes(themes_dir))]
 
 
+def parse_theme_tokens(contract_css: str) -> dict[str, dict[str, dict[str, str]]]:
+    """Extract the design-token contract from the serve.themes.css CSS blocks (BE-0191 unit 6).
+
+    Returns a dict with keys ``"colors"`` and ``"transitions"``, each holding a dict of token
+    metadata — including ``"default"`` values filled from the ``:root``/midnight fallback block.
+    CSS-token parsing is the single source of truth here: the comment-stripping, token discovery,
+    and default-fill all share the same comment-free text so there is no duplication.
+    """
+    # Strip /* … */ comment blocks once; both the token-discovery scan and the default-fill scan
+    # operate on this same text so there is no risk of the two getting out of sync.
+    css_no_comments = re.sub(r"/\*.*?\*/", "", contract_css, flags=re.DOTALL)
+
+    # Discover all CSS custom property declarations (--name:) and categorize by name prefix.
+    tokens_found: dict[str, dict[str, str]] = {}
+    for match in re.finditer(r"--([\w-]+)\s*:", css_no_comments):
+        token_name = f"--{match.group(1)}"
+        if token_name.startswith("--motion-"):
+            # Infer type from the trailing segment so a token whose name merely *contains* a
+            # keyword as a substring (e.g. --motion-release containing "ease") is not misclassified.
+            last_seg = token_name.rsplit("-", 1)[-1]
+            if last_seg in ("enter", "leave"):
+                t = "keyframe"
+            elif last_seg == "ease":
+                t = "easing"
+            else:
+                t = "duration"
+            tokens_found[token_name] = {"type": t, "default": ""}
+        else:
+            # "description" is intentionally omitted: the CSS-rule scanner can't read it from the
+            # comment block, the client doesn't use it, and shipping empty strings wastes wire space.
+            # A future unit that wants descriptions can populate them from the contract comment.
+            tokens_found[token_name] = {"default": ""}
+
+    # Fill defaults from the :root fallback block. `:root` may be combined with a `[data-theme]`
+    # selector in the same rule (`[data-theme="midnight"]` today) — match either shape without
+    # hardcoding the theme name so a rename or reorder doesn't silently zero every default.
+    root_match = re.search(r":root\b[^{]*\{([^}]*)\}", css_no_comments)
+    if root_match:
+        for match in re.finditer(r"--([\w-]+)\s*:\s*([^;]+);", root_match.group(1)):
+            token_name = f"--{match.group(1)}"
+            value = match.group(2).strip()
+            if token_name in tokens_found:
+                tokens_found[token_name]["default"] = value
+
+    colors = {k: v for k, v in tokens_found.items() if not k.startswith("--motion-")}
+    transitions = {k: v for k, v in tokens_found.items() if k.startswith("--motion-")}
+    return {"colors": colors, "transitions": transitions}
+
+
 def read_default_theme(config_path: Path | None) -> str | None:
     """The `ui.default_theme` from *config_path*, or None when unset / no config / unparseable.
 

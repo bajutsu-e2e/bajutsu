@@ -655,3 +655,153 @@ async function loadSims(){
   $('#rec-device').innerHTML=single;
 }
 
+// ---- theme editor (BE-0191 unit 6): modal form generated from the token contract ----
+// (Re)build the editor form from the token contract. Called on every open — the form's inputs are
+// replaced wholesale (innerHTML), so their `input` listeners live on the fresh elements and never
+// stack. The modal's *static* buttons are wired once at page load (see the bottom of this file), so
+// re-opening the editor cannot duplicate their listeners.
+async function initThemeEditor(){
+  // A distinct sentinel on fetch failure: getJSON swallows a network error into its fallback, so an
+  // empty {colors,transitions} could mean either "server returned nothing" or "request failed". Mark
+  // the fallback so a real failure shows the same "contract not available" status a 500 body gets,
+  // rather than silently rendering an empty form.
+  const contract=await getJSON('/api/themecontract',{error:'unreachable',colors:{},transitions:{}});
+  if(contract.error){setStatus($('#themestatus'),'contract not available','ng');return;}
+
+  const htmlParts=[];
+
+  // Kind decides how the OS-scheme picker matches this theme once dropped in — a real property, not
+  // cosmetic — so the author picks it rather than it being hardcoded.
+  htmlParts.push('<div class="setsection"><div class="setlabel">Theme</div>');
+  htmlParts.push('<label class="keylabel" for="theme-kind">kind</label>');
+  htmlParts.push('<select id="theme-kind" class="keyinput"><option value="dark">dark</option><option value="light">light</option></select>');
+  htmlParts.push('</div>');
+
+  // Color token inputs. A native color swatch only when the default is a plain hex, since it silently
+  // coerces anything else (e.g. --scrim's rgba(...)) to #000000; a non-hex color (rgba/hsl) gets a
+  // text input so its value round-trips untouched.
+  if(Object.keys(contract.colors||{}).length>0){
+    htmlParts.push('<div class="setsection"><div class="setlabel">Colors</div>');
+    for(const[token,meta] of Object.entries(contract.colors||{})){
+      const val=meta.default||'';
+      htmlParts.push(`<label class="keylabel" for="${esc(token)}">${esc(token)}</label>`);
+      if(/^#[0-9a-fA-F]{6}$/.test(val)){
+        htmlParts.push(`<input type="color" id="${esc(token)}" value="${esc(val)}" class="theme-color" data-token="${esc(token)}">`);
+      }else{
+        htmlParts.push(`<input type="text" id="${esc(token)}" value="${esc(val||'#ffffff')}" class="theme-color" data-token="${esc(token)}" placeholder="e.g. rgba(0,0,0,.5)">`);
+      }
+    }
+    htmlParts.push('</div>');
+  }
+
+  // Motion token inputs (text: durations, easing, and keyframe names are all free-form CSS values).
+  if(Object.keys(contract.transitions||{}).length>0){
+    htmlParts.push('<div class="setsection"><div class="setlabel">Motion</div>');
+    for(const[token,meta] of Object.entries(contract.transitions||{})){
+      const val=meta.default||'';
+      const type=meta.type||'unknown';
+      const ph=type==='duration'?'e.g. 0.18s':type==='easing'?'e.g. cubic-bezier(.4,0,.2,1)':'keyframe name';
+      htmlParts.push(`<label class="keylabel" for="${esc(token)}">${esc(token)}</label>`);
+      htmlParts.push(`<input type="text" id="${esc(token)}" value="${esc(val)}" class="theme-motion" data-token="${esc(token)}" placeholder="${ph}">`);
+    }
+    htmlParts.push('</div>');
+  }
+
+  $('#themecontent').innerHTML=htmlParts.join('');
+  document.querySelectorAll('#themecontent [class^="theme-"]').forEach(el=>el.addEventListener('input',()=>applyThemePreview(collectThemeTokens())));
+}
+
+// The current form's token values, keyed by token name.
+function collectThemeTokens(){
+  const tokens={};
+  document.querySelectorAll('#themecontent [class^="theme-"]').forEach(el=>{tokens[el.dataset.token]=el.value;});
+  return tokens;
+}
+// The author's chosen kind (defaults to dark if the form isn't built yet).
+function currentThemeKind(){const s=$('#theme-kind');return s?s.value:'dark';}
+
+// A token name/value that can't break out of the `:root{ … }` rule it's interpolated into. A theme
+// is operator-trusted (drop-in / their own upload — BE-0191), so this isn't a security boundary; it
+// stops a malformed *imported* value (a stray `{`/`}`/`;`) from silently corrupting the whole preview
+// stylesheet. The token name must be a plain custom property; the value carries no rule-delimiters.
+const safeThemeToken=(k,v)=>/^--[\w-]+$/.test(k)&&!/[{};]/.test(v);
+
+// Apply live preview: inject or update a <style> block with the edited token values.
+function applyThemePreview(tokens){
+  let styleEl=$('#theme-editor-preview');
+  if(!styleEl){
+    styleEl=document.createElement('style');
+    styleEl.id='theme-editor-preview';
+    document.head.appendChild(styleEl);
+  }
+  const rules=Object.entries(tokens).filter(([k,v])=>safeThemeToken(k,v)).map(([k,v])=>`${k}:${v};`).join('');
+  styleEl.textContent=`:root{${rules}}`;
+}
+
+// Save edited theme to localStorage as a local draft.
+function saveThemeLocal(){
+  const draft={tokens:collectThemeTokens(),name:'custom',kind:currentThemeKind()};
+  try{localStorage.setItem('bajutsu-custom-theme-draft',JSON.stringify(draft))}catch(e){
+    setStatus($('#themestatus'),'failed to save (quota exceeded?)','ng');return;
+  }
+  setStatus($('#themestatus'),'saved to local draft','ok');
+}
+
+// Export theme as a CSS file that round-trips with the drop-in format (manifest comment + block).
+function exportTheme(){
+  const tokens=collectThemeTokens(),kind=currentThemeKind();
+  const manifest=`/* bajutsu-theme\nname: custom\nkind: ${kind}\n*/\n`;
+  const css=`[data-theme="custom"]{\n${Object.entries(tokens).filter(([k,v])=>safeThemeToken(k,v)).map(([k,v])=>`  ${k}: ${v};`).join('\n')}\n}\n`;
+  const blob=new Blob([manifest+css],{type:'text/css'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');
+  a.href=url;a.download='custom-theme.css';a.click();
+  URL.revokeObjectURL(url);
+}
+
+// Import a theme file: parse the [data-theme] block, populate the form, and preview. Values that a
+// native color input rejects are reported rather than silently dropped, so an invalid file fails
+// loudly instead of appearing to import while leaving those swatches unchanged.
+function importThemeFile(){
+  const file=$('#themeimport-input').files[0];
+  if(!file){return;}
+  const reader=new FileReader();
+  reader.onerror=()=>setStatus($('#themestatus'),'failed to read file','ng');
+  reader.onload=e=>{
+    try{
+      const match=e.target.result.match(/\[data-theme="[^"]+"\]\s*{([^}]*)}/);
+      if(!match){setStatus($('#themestatus'),'invalid theme file (no [data-theme] rule)','ng');return;}
+      const tokens={};
+      for(const line of match[1].split(';')){
+        const idx=line.indexOf(':');
+        if(idx>0){const k=line.slice(0,idx).trim();if(k.startsWith('--'))tokens[k]=line.slice(idx+1).trim();}
+      }
+      const rejected=[],unknown=[];
+      for(const[k,v] of Object.entries(tokens)){
+        const el=document.getElementById(k);
+        if(!el){unknown.push(k);continue;}  // token in the file has no form field (older export or typo)
+        el.value=v;
+        if(el.value.toLowerCase()!==v.toLowerCase()&&el.type==='color')rejected.push(k);  // the color input coerced/dropped it
+      }
+      applyThemePreview(collectThemeTokens());
+      const msgs=[];
+      if(rejected.length)msgs.push('invalid value for '+rejected.join(', '));
+      if(unknown.length)msgs.push('unknown token(s): '+unknown.join(', '));
+      if(msgs.length)setStatus($('#themestatus'),'imported; '+msgs.join('; '),'ng');
+      else setStatus($('#themestatus'),'imported','ok');
+    }catch(e){
+      setStatus($('#themestatus'),'import failed','ng');
+    }
+  };
+  reader.readAsText(file);
+}
+
+// ---- one-time wiring (page load) ----
+// The modal's static controls are wired exactly once; only the generated form inputs are rebuilt
+// (and re-listened) per open, so reopening the editor never stacks duplicate button listeners.
+$('#opentheme').addEventListener('click',()=>{initThemeEditor();$('#thememodal').hidden=false;});
+$('#themeclose').addEventListener('click',()=>closeModal($('#thememodal')));
+$('#themesave-local').addEventListener('click',saveThemeLocal);
+$('#themeexport').addEventListener('click',exportTheme);
+$('#themeimport-input').addEventListener('change',importThemeFile);
+$('#themeimport').addEventListener('click',()=>$('#themeimport-input').click());

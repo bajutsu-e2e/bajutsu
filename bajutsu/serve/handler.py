@@ -23,6 +23,7 @@ from jinja2 import Environment, FileSystemLoader
 
 from bajutsu.serve import operations as ops
 from bajutsu.serve import oplog
+from bajutsu.serve._paths import TEMPLATES_DIR as _TEMPLATE_DIR
 from bajutsu.serve.helpers import valid_run_id
 from bajutsu.serve.state import ServeState
 from bajutsu.serve.uploads import MAX_UPLOAD_BYTES
@@ -208,6 +209,8 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
                     self._json(*ops.claude_code_token_info(state, self._actor()))
                 case "/api/provider":
                     self._json(*ops.provider_info(state))
+                case "/api/themecontract":
+                    self._json(*ops.get_theme_contract(state))
                 case "/api/ant/login":
                     self._json(*ops.ant_login_status(state))
                 case "/api/simulators":
@@ -570,7 +573,8 @@ def make_server(state: ServeState, host: str = "127.0.0.1", port: int = 0) -> Th
 # The SPA shell + its CSS/JS/themes live in bajutsu/templates/serve.* — split out of this
 # module so they read/edit as real files. We inline them into one self-contained response,
 # mirroring report.py (no separate /static routes; this is a localhost dev tool).
-_TEMPLATE_DIR = Path(__file__).parent.parent / "templates"
+# _TEMPLATE_DIR is imported from bajutsu.serve._paths (shared constant, avoids independent
+# hand-counted .parent chains across modules at different package depths).
 
 
 @functools.lru_cache(maxsize=1)

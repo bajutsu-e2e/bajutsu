@@ -92,6 +92,7 @@ from bajutsu.serve.operations.sse import (
     job_log_events,
     job_sse,
 )
+from bajutsu.serve.operations.theme_editor import get_theme_contract
 from bajutsu.serve.operations.triage import start_triage
 from bajutsu.serve.operations.upload import (
     _safe_filename,
@@ -148,6 +149,7 @@ __all__ = [
     "format_sse",
     "generate_codegen",
     "generate_upload_urls",
+    "get_theme_contract",
     "job_log_events",
     "job_sse",
     "job_view",
