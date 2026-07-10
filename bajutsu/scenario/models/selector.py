@@ -19,6 +19,12 @@ class Selector(_Model):
     where the native id syntax differs — e.g. Android's `android:id`, which allows neither `.` nor
     `-`, surfaces `stable.refresh` as `stable_refresh` (BE-0221). Ambiguity is unchanged: 2+ matching
     elements on screen still fail fast.
+
+    **List the canonical (dotted SPEC) form first.** OR matching is order-independent, but single-id
+    consumers take the *first* candidate as the representative — `first_id()`, `audit.referenced_ids`
+    coverage bucketing (`namespace_of` splits on `.`), and the XCUITest / Playwright codegen emitters.
+    Leading with the dotted SPEC id keeps their output correct; an underscore-first list would still
+    resolve at runtime but skew coverage and generate the non-portable id.
     """
 
     id: str | list[str] | None = None
@@ -49,7 +55,8 @@ class Selector(_Model):
         """The primary id candidate (the first when `id` is a list), or None (BE-0221).
 
         For single-id consumers — triage rename suggestions, capturePolicy `on:` matching, the
-        WebView host — that want one representative id rather than the whole OR set.
+        WebView host — that want one representative id rather than the whole OR set. Selectors list
+        the canonical (dotted SPEC) form first (see the class docstring), so "first" is the portable id.
         """
         if self.id is None:
             return None

@@ -198,6 +198,19 @@ def test_simple_selectors_keep_their_helpers() -> None:
     assert 'matchingId("r.*").firstMatch.tap()' in code
 
 
+def test_id_candidate_list_emits_primary_candidate() -> None:
+    # A generated test targets one platform (iOS here), so a cross-platform candidate list (BE-0221)
+    # emits its primary (first, dotted SPEC) candidate — the id this platform surfaces.
+    code = _gen(
+        "- name: x\n  steps:\n"
+        "    - tap: { id: [stable.refresh, stable_refresh] }\n"
+        "    - tap: { idMatches: [stable.row.*, stable_row_*] }\n"
+    )
+    assert 'el("stable.refresh").tap()' in code
+    assert 'matchingId("stable.row.*").firstMatch.tap()' in code
+    assert "stable_refresh" not in code  # the underscore alternate is not emitted for iOS
+
+
 def test_device_control_steps_emit_labeled_todo() -> None:
     code = _gen(
         "- name: x\n  steps:\n"
