@@ -209,9 +209,7 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
                 case "/api/provider":
                     self._json(*ops.provider_info(state))
                 case "/api/theme-contract":
-                    from bajutsu.serve.operations import theme_editor
-
-                    self._json(*theme_editor.get_theme_contract(state))
+                    self._json(*ops.get_theme_contract(state))
                 case "/api/ant/login":
                     self._json(*ops.ant_login_status(state))
                 case "/api/simulators":

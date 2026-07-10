@@ -677,13 +677,19 @@ async function initThemeEditor(){
   htmlParts.push('<select id="theme-kind" class="keyinput"><option value="dark">dark</option><option value="light">light</option></select>');
   htmlParts.push('</div>');
 
-  // Color token inputs (native color swatches).
+  // Color token inputs. A native color swatch only when the default is a plain hex, since it silently
+  // coerces anything else (e.g. --scrim's rgba(...)) to #000000; a non-hex color (rgba/hsl) gets a
+  // text input so its value round-trips untouched.
   if(Object.keys(contract.colors||{}).length>0){
     htmlParts.push('<div class="setsection"><div class="setlabel">Colors</div>');
     for(const[token,meta] of Object.entries(contract.colors||{})){
-      const hex=meta.default||'#ffffff';
+      const val=meta.default||'';
       htmlParts.push(`<label class="keylabel" for="${esc(token)}">${esc(token)}</label>`);
-      htmlParts.push(`<input type="color" id="${esc(token)}" value="${esc(hex)}" class="theme-color" data-token="${esc(token)}">`);
+      if(/^#[0-9a-fA-F]{3,8}$/.test(val)){
+        htmlParts.push(`<input type="color" id="${esc(token)}" value="${esc(val)}" class="theme-color" data-token="${esc(token)}">`);
+      }else{
+        htmlParts.push(`<input type="text" id="${esc(token)}" value="${esc(val||'#ffffff')}" class="theme-color" data-token="${esc(token)}" placeholder="e.g. rgba(0,0,0,.5)">`);
+      }
     }
     htmlParts.push('</div>');
   }

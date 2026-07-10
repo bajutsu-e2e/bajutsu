@@ -1,7 +1,8 @@
 """Theme editor support for the serve Web UI (BE-0191 unit 6).
 
-Provides contract discovery and theme persistence: contract exposure to the client (for form
-generation), local draft persistence, and server upload of custom themes to the --themes directory.
+Exposes the design-token contract to the client so the in-UI editor can generate its form from it.
+Server-side persistence (upload into the ``--themes`` directory, reusing the BE-0073 seam) lands in
+part 2 of unit 6; the local-draft and export/import paths live entirely in the client.
 """
 
 from __future__ import annotations
