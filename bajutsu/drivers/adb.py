@@ -9,8 +9,7 @@ still fail immediately on an ambiguous (2+) match rather than tapping whatever m
 
 The XML attribute names follow UI Automator's `uiautomator dump` schema; the selector mapping is
 `resource-id` (id, package prefix stripped) → `identifier`, `text` → `label`, `content-desc` →
-`value`, and the widget `class` (plus `clickable` and enabled/selected/checked state) → `traits`.
-The value channel
+`value`, and the widget `class` (plus `clickable` and enabled/selected/checked state) → `traits`. The value channel
 is `content-desc`, not `text`, because the showcase mirrors its assertion state value into
 `content-desc` (SPEC §2.1: a `uiautomator dump` exposes `content-desc` but not Compose's
 `stateDescription`), while `text` carries the visible label — the Android peer of iOS's
