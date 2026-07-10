@@ -296,7 +296,7 @@ filesystem, building directly on the token contract of unit 1.
   design-token contract as JSON: `themes.parse_theme_tokens` extracts every `--*` declaration from
   `serve.themes.css` and categorizes it (color vs `--motion-*`, inferring duration/easing/keyframe),
   and a new `serve/operations/theme_editor.py::get_theme_contract` fills each token's default from the
-  `:root`/midnight block, served at `GET /api/theme-contract`. The client (`serve.core.js`) generates
+  `:root`/midnight block, served at `GET /api/themecontract`. The client (`serve.core.js`) generates
   the editor form from that contract — a color input per color token, a text input per motion token —
   in a tiler-safe `#thememodal`; editing injects a `<style id="theme-editor-preview">` block so the
   change previews live with no server round trip. Save-to-local-draft (`localStorage`), CSS export
