@@ -35,11 +35,13 @@ When BE-0107 removed `SHOWCASE_TAB`, reaching a non-Stable tab became a tab-bar 
 `{ label, traits: [button] }` on every backend. On the adb backend the tap *mechanism* works — the
 driver resolves a selector to an element frame and taps its centre — but the *resolution* fails.
 `uiautomator dump` surfaces the Compose `NavigationBarItem` with its visible text as the `label`
-channel (so "Log" matches), but the item's widget `class` is not `android.widget.Button`, so the
-driver's class-to-trait mapping ([`_norm_class`](../../bajutsu/drivers/adb.py)) never emits the
-`button` trait the shared selector requires. The element is found by label and then rejected by
-trait, and — correctly, under determinism — the run fails rather than tapping something that only
-half-matched.
+channel (so "Log" matches). On the evidence of how Compose renders the bar (`NavigationBarItem`,
+not an `android.widget.Button`), the item's widget `class` is expected not to be one the driver's
+class-to-trait mapping ([`_norm_class`](../../bajutsu/drivers/adb.py)) renders as the `button` trait
+the shared selector requires. If so, the trait is never emitted: the element is found by label and
+then rejected by trait, and — correctly, under determinism — the run fails rather than tapping
+something that only half-matched. Work item 1 pins this against a real `uiautomator dump` before the
+fix is designed.
 
 The cost is concrete. BE-0208's Android e2e lane holds out `search`, `data_driven`, `relaunch`,
 `system`, and the Log/Notices-tab flows (`components`, `modals`, `gestures`, `controls`, `notices`)
