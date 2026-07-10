@@ -75,7 +75,8 @@ directive の枠内にとどまります。
 - [x] ワークフロー（`.github/workflows/android-e2e.yml`）。`android-emulator-runner` ＋ KVM、パスでゲート。
 - [x] 起動したエミュレータへの Android showcase のビルドとインストール。
 - [x] 通る中核シナリオを `--backend android` で実行。
-- [ ] visual／golden ベースラインの同等性チェック。
+- [x] visual／golden ベースラインの同等性チェックのうち、**golden**（要素ツリー）の次元（Compose の Stable カタログ）。
+- [ ] visual／golden ベースラインの同等性チェックのうち、**visual**（スクリーンショット）の次元（ホスト依存のベースラインで、CI での採取が要るため保留）。
 - [ ] アクチュエーション忠実度とデバイス制御のスライスの着地に合わせたシナリオ集合の拡張。
 
 ### ログ
@@ -112,6 +113,22 @@ directive の枠内にとどまります。
   レーンのカバレッジに加えます。検証は Python ゲート（`make check`）で行い、レーン自体は CI で回します
   （ローカルにエミュレータはありません）。ユニット 5 の残り（タブに依存するシナリオ）は adb のタブバー
   移動にブロックされ、ユニット 4（visual／golden の同等性）は残します。項目は**実装中**のままです。
+- 2026-07-10 — ユニット 4（golden の次元）。実機での golden 要素ツリーのチェックをレーンに加えました。
+  新しいシナリオ `demos/showcase/scenarios/golden/golden_android.yaml` が、Compose の Stable カタログの
+  正規化ツリー（行、refresh ボタン、値を反映した status）を、採取したベースライン
+  `demos/showcase/scenarios/golden/goldens/lists_android.json` と突き合わせます。これはバックエンド固有の
+  ベースラインで、idb の `lists.json` や XCUITest の `controls.json` の adb 版にあたります（バックエンド
+  ごとにアクセシビリティツリーの見え方が異なり、adb のツリーの trait は idb の `button`／`staticText` では
+  なく `view`／`textView` です）。シナリオは（起動タブである）Stable タブで動くため、タブバー移動を必要と
+  しません。`demos/showcase/android/Makefile` に独立した `e2e-golden` ターゲットとして配線し、
+  `android-e2e.yml` では `e2e` と同じエミュレータセッションで実行します。ベースラインは**ローカルの arm64**
+  エミュレータ（API 34、`google_apis`）で採取しましたが、CI の **x86_64** エミュレータでも通ります。golden の
+  比較がフィールド単位で、identity／label／trait は厳密一致、frame は健全性チェックだけ（`bajutsu/golden.py`）
+  だからです。identity／label／trait は ABI をまたいでも変わらず、密度で拡縮する frame だけが異なり、それは
+  許容されます。ユニット 4 の visual（スクリーンショットの画素比較）の次元は意図的に保留します。画素
+  ベースラインはホスト依存で（ローカルの arm64 と CI の x86_64 ではソフトウェア描画が画素単位で食い違います）、
+  CI で採取したベースラインが要るためです。これは後続のスライスに回します。項目は**実装中**のままです
+  （ユニット 4 の visual の次元と、タブに依存するユニット 5 の残りが残ります）。
 
 ## 参考
 

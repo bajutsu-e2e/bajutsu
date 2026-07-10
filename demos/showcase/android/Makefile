@@ -4,7 +4,7 @@
 #
 # `run` / `doctor` land with the BE-0007 adb backend; until then these targets only build.
 .PHONY: build-all wrapper \
-	compose-build compose-noax-build views-build views-noax-build e2e clean
+	compose-build compose-noax-build views-build views-noax-build e2e e2e-golden clean
 
 HERE := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
 GRADLEW := $(HERE)/gradlew
@@ -22,8 +22,9 @@ SERIAL ?= booted
 # `navigation` joins the two smoke scenarios (BE-0208 unit 5): it never leaves the Stable tab the app
 # launches on — tap a catalog row to push Horse Detail, toggle the favorite, then pop back via the
 # cross-backend `back` step (Android system key) — so it needs no tab bar, and grows the lane's
-# coverage to detail-screen assertions and back-navigation. The remaining slices (multi-touch,
-# device control, mocked network, visual/golden) stay out too (BE-0007 follow-ups / BE-0208 unit 4).
+# coverage to detail-screen assertions and back-navigation. The golden element-tree check is a
+# separate target (`e2e-golden`, BE-0208 unit 4). The remaining slices (multi-touch, device control,
+# mocked network, visual screenshots) stay out too (BE-0007 follow-ups / a later BE-0208 slice).
 E2E_SCENARIOS := smoke firstlook navigation
 
 # The wrapper jar IS committed (like any standard Android repo), so a fresh clone builds with no
@@ -57,6 +58,22 @@ e2e: compose-build
 		uv run bajutsu run --scenario demos/showcase/scenarios/$$s.yaml \
 			--target showcase-compose --udid $(SERIAL) --backend android --config $(CONFIG) || exit 1; \
 	done
+
+# On-device golden element-tree assertion (BE-0006, BE-0208 unit 4) for the Compose a11y twin over
+# adb. The Stable catalog's normalized tree is pinned in
+# demos/showcase/scenarios/golden/goldens/lists_android.json — a backend-specific baseline (the adb
+# tree differs from idb's lists.json and XCUITest's controls.json; each backend renders a distinct
+# accessibility tree). The comparison is field-level with a tolerant frame check (bajutsu/golden.py),
+# so the baseline recorded on the local arm64 emulator also passes on the CI x86_64 one: identity /
+# label / traits are stable across the ABI, only the density-scaled frame differs and it is only
+# sanity-checked. The scenario runs on the Stable tab (the launch tab), so it needs no tab-bar
+# navigation. The goldens dir resolves by default to `goldens/` beside the scenario, so no --goldens
+# flag is needed. Not part of `make check`: it needs a booted AVD, so android-e2e.yml drives it in
+# the same emulator session as `e2e`.
+e2e-golden: compose-build
+	cd $(ROOT) && uv run bajutsu run \
+		--scenario demos/showcase/scenarios/golden/golden_android.yaml \
+		--target showcase-compose --udid $(SERIAL) --backend android --config $(CONFIG)
 
 clean:
 	rm -rf $(HERE)/build $(HERE)/compose/build $(HERE)/views/build $(HERE)/.gradle

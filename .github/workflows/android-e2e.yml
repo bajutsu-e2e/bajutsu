@@ -122,9 +122,12 @@ jobs:
           script: echo "Generated AVD snapshot for caching."
 
       # Boot the AVD under KVM and run the passing scenarios over the adb backend. The action owns
-      # boot + readiness; `make -C demos/showcase/android e2e` drives the scenarios (default
-      # serial `booted` resolves to the one running emulator).
-      - name: Run the core scenarios (adb)
+      # boot + readiness; `make -C demos/showcase/android e2e` drives the core scenarios and
+      # `e2e-golden` the BE-0006 element-tree golden (BE-0208 unit 4), both in this one emulator
+      # session (default serial `booted` resolves to the one running emulator). The golden's
+      # baseline was recorded on a local arm64 emulator; it passes here on x86_64 because the
+      # comparison is field-level with a tolerant frame check (identity/label/traits are ABI-stable).
+      - name: Run the core scenarios and golden (adb)
         uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d  # v2.38.0
         with:
           api-level: 34
@@ -133,7 +136,7 @@ jobs:
           force-avd-creation: false
           emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front none
           disable-animations: true
-          script: make -C demos/showcase/android e2e
+          script: make -C demos/showcase/android e2e && make -C demos/showcase/android e2e-golden
 
       - name: Upload run artifacts
         if: always()
