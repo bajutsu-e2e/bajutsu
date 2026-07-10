@@ -10,6 +10,7 @@
 | Status | **Proposal** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
 | Topic | Development infrastructure (contributor workflow) |
+| Related | [BE-0203](../BE-0203-claude-code-pr-review/BE-0203-claude-code-pr-review.md) |
 <!-- /BE-METADATA -->
 
 ## Introduction
