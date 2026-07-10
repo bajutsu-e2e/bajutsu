@@ -53,7 +53,7 @@ def test_api_theme_contract_route(tmp_path: Path) -> None:
     state = srv.ServeState(scenarios_dir=scn_dir, config=cfg, runs_dir=runs, cwd=tmp_path)
     server, port = _serve(state)
     try:
-        payload = _get_json(port, "/api/theme-contract")
+        payload = _get_json(port, "/api/themecontract")
         assert "--bg" in payload["colors"]
         assert "--motion-view" in payload["transitions"]
         assert payload["colors"]["--bg"]["default"].startswith("#")

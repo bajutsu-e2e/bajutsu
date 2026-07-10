@@ -665,7 +665,7 @@ async function initThemeEditor(){
   // empty {colors,transitions} could mean either "server returned nothing" or "request failed". Mark
   // the fallback so a real failure shows the same "contract not available" status a 500 body gets,
   // rather than silently rendering an empty form.
-  const contract=await getJSON('/api/theme-contract',{error:'unreachable',colors:{},transitions:{}});
+  const contract=await getJSON('/api/themecontract',{error:'unreachable',colors:{},transitions:{}});
   if(contract.error){setStatus($('#themestatus'),'contract not available','ng');return;}
 
   const htmlParts=[];
@@ -766,6 +766,7 @@ function importThemeFile(){
   const file=$('#themeimport-input').files[0];
   if(!file){return;}
   const reader=new FileReader();
+  reader.onerror=()=>setStatus($('#themestatus'),'failed to read file','ng');
   reader.onload=e=>{
     try{
       const match=e.target.result.match(/\[data-theme="[^"]+"\]\s*{([^}]*)}/);
