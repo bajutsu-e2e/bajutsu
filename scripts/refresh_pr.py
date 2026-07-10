@@ -15,13 +15,19 @@ It runs in two phases, one subcommand each, so the workflow can run the heavy ``
   then report whether any allowed change remains and which strays were discarded. The caller runs
   the gate and ``publish`` only when something allowed changed, *after* this restore — so the gate
   validates the same tree the PR ships, and a quiet day opens or touches no PR.
-- ``publish`` — guard the rolling branch against clobbering a human's work (force-update only when
-  the branch does not exist yet or its remote tip was committed by the automation bot itself, and
-  even then with ``--force-with-lease`` against the fetched tip so a human push landing in the race
-  window fails loudly instead of being overwritten; the same *reason* `check_stale_roadmap_prs.py`
-  guards its fix branch, by a mechanism suited to a single shared rolling branch), then push the
-  reconciliation and open (or reuse) one always-Draft PR, recording the in-job ``make check`` result
-  and any discarded strays in the body. Only a human ever marks it ready and merges.
+- ``publish`` — guard the rolling branch against clobbering a human's work: force-update only when
+  the branch's remote tip was committed by the automation bot itself, and even then with
+  ``--force-with-lease`` against the fetched tip so a human push landing in the read→push window
+  fails loudly instead of being overwritten; a brand-new branch is created with a plain
+  (non-force) push, which likewise fails loudly if someone raced it into existence. (The same
+  *reason* `check_stale_roadmap_prs.py` guards its fix branch, by a mechanism suited to a single
+  shared rolling branch.) Then push the reconciliation and open (or reuse) one always-Draft PR,
+  recording the in-job ``make check`` result and any discarded strays in the body. Only a human
+  ever marks it ready and merges.
+
+The list of discarded strays travels ``enforce`` → ``publish`` through a plain newline-delimited
+file (``--strays-file``), never a shell-interpolated workflow value: the paths are AI-authored, so
+routing them through ``${{ }}`` into a ``run:`` block would be a script-injection sink.
 
 The git/``gh`` orchestration calls the network, so — like ``check_stale_roadmap_prs.py`` and
 ``sync_roadmap_tracking_issues.py`` — it never runs inside ``make check``; the tests cover the pure
@@ -220,12 +226,14 @@ def open_or_update_pr(*, branch: str, base: str, title: str, body: str) -> None:
         print(f"Opened a Draft PR for `{branch}` against `{base}`.")
 
 
-def _enforce(allowlist: list[str]) -> int:
-    """Restore out-of-allowlist edits and report drift + strays (step outputs) for the caller."""
+def _enforce(allowlist: list[str], strays_file: str | None) -> int:
+    """Restore out-of-allowlist edits, record the strays, and report drift (a step output)."""
     allowed, disallowed = _git_status(allowlist)
     _restore(disallowed)
     _set_output("changed", "true" if allowed else "false")
-    _set_output("strays", ",".join(c.path for c in disallowed))
+    if strays_file:
+        # Newline-delimited, not a shell-interpolated output: these paths are AI-authored.
+        Path(strays_file).write_text("".join(f"{c.path}\n" for c in disallowed), encoding="utf-8")
     if not allowed:
         print("No allowed changes; the workflow will open no PR (no-op).")
     return 0
@@ -250,7 +258,9 @@ def _publish(args: argparse.Namespace) -> int:
     _git(["add", *(c.path for c in allowed)])  # only allowed paths — never a make-check byproduct
     _git(["commit", "-m", args.title])
     if tip is None:
-        _git(["push", "--force", "origin", f"{args.branch}:{args.branch}"])
+        # Brand-new branch: a plain (non-force) push creates it, and is rejected loudly if someone
+        # raced a branch of that name into existence in the read→push window.
+        _git(["push", "origin", f"{args.branch}:{args.branch}"])
     else:
         # Lease against the tip we just inspected: a human push landing in the read→push window makes
         # this fail loudly rather than silently clobbering it.
@@ -263,14 +273,20 @@ def _publish(args: argparse.Namespace) -> int:
             ]
         )
 
-    strays = [s for s in args.strays.split(",") if s]
     open_or_update_pr(
         branch=args.branch,
         base=args.base,
         title=args.title,
-        body=pr_body(args.label, args.base, args.check_result, strays),
+        body=pr_body(args.label, args.base, args.check_result, _read_strays(args.strays_file)),
     )
     return 0
+
+
+def _read_strays(strays_file: str | None) -> list[str]:
+    """The paths ``enforce`` discarded, from its newline-delimited file (empty if none / no file)."""
+    if not strays_file or not Path(strays_file).exists():
+        return []
+    return [line for line in Path(strays_file).read_text(encoding="utf-8").splitlines() if line]
 
 
 def _split_allow(raw: list[str]) -> list[str]:
@@ -286,6 +302,7 @@ def main(argv: list[str]) -> int:
     enforce.add_argument(
         "--allow", action="append", default=[], help="allowlist glob(s), one per line"
     )
+    enforce.add_argument("--strays-file", help="write discarded paths here (newline-delimited)")
 
     publish = sub.add_parser("publish", help="push the rolling branch and open/update the Draft PR")
     publish.add_argument(
@@ -296,14 +313,14 @@ def main(argv: list[str]) -> int:
     publish.add_argument("--title", required=True, help="the PR title (used only when creating)")
     publish.add_argument("--bot-email", required=True, help="the automation bot's commit email")
     publish.add_argument("--check-result", choices=["pass", "fail"], required=True)
-    publish.add_argument("--strays", default="", help="comma-separated paths enforce discarded")
+    publish.add_argument("--strays-file", help="newline-delimited paths enforce discarded")
     publish.add_argument(
         "--allow", action="append", default=[], help="allowlist glob(s), one per line"
     )
 
     args = parser.parse_args(argv)
     args.allow = _split_allow(args.allow)
-    return _enforce(args.allow) if args.command == "enforce" else _publish(args)
+    return _enforce(args.allow, args.strays_file) if args.command == "enforce" else _publish(args)
 
 
 if __name__ == "__main__":

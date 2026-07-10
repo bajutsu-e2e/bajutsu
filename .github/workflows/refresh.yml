@@ -161,7 +161,8 @@ jobs:
         run: |
           git config user.name "${APP_SLUG}[bot]"
           git config user.email "${APP_SLUG}[bot]@users.noreply.github.com"
-          uv run --no-sync python scripts/refresh_pr.py enforce --allow "$ALLOW"
+          uv run --no-sync python scripts/refresh_pr.py enforce \
+            --allow "$ALLOW" --strays-file "$RUNNER_TEMP/refresh-strays.txt"
 
       # Run the deterministic gate only when there is drift to open — no point burning the full suite
       # on a quiet day. It never fails the job (it is an `if` condition, so the Actions default shell's
@@ -170,25 +171,33 @@ jobs:
       - name: Run the gate on the allowed-only tree
         id: check
         if: steps.gate.outputs.enabled == 'true' && steps.prep.outputs.changed == 'true'
+        env:
+          LABEL: ${{ inputs.label }}
         run: |
           if make check; then
             echo "result=pass" >> "$GITHUB_OUTPUT"
           else
             echo "result=fail" >> "$GITHUB_OUTPUT"
-            echo "::warning::in-job make check failed for the ${{ inputs.label }}-refresh; the Draft PR opens anyway and its own check CI is authoritative."
+            echo "::warning::in-job make check failed for the ${LABEL}-refresh; the Draft PR opens anyway and its own check CI is authoritative."
           fi
 
+      # Every value the script reads is passed through `env:` and referenced as `"$VAR"` — never
+      # interpolated with `${{ }}` into the shell. The strays list in particular is AI-authored path
+      # text (read from a file the enforce step wrote), so interpolating it would be an injection sink.
       - name: Open or update the rolling Draft PR
         if: steps.gate.outputs.enabled == 'true' && steps.prep.outputs.changed == 'true'
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           APP_SLUG: ${{ steps.app-token.outputs.app-slug }}
           ALLOW: ${{ inputs.allow }}
+          BRANCH: ${{ inputs.branch }}
+          LABEL: ${{ inputs.label }}
+          TITLE: ${{ inputs.title }}
+          CHECK_RESULT: ${{ steps.check.outputs.result }}
         run: |
           uv run --no-sync python scripts/refresh_pr.py publish \
-            --branch "${{ inputs.branch }}" --base main --label "${{ inputs.label }}" \
-            --title "${{ inputs.title }}" \
+            --branch "$BRANCH" --base main --label "$LABEL" --title "$TITLE" \
             --bot-email "${APP_SLUG}[bot]@users.noreply.github.com" \
-            --check-result "${{ steps.check.outputs.result }}" \
-            --strays "${{ steps.prep.outputs.strays }}" \
+            --check-result "$CHECK_RESULT" \
+            --strays-file "$RUNNER_TEMP/refresh-strays.txt" \
             --allow "$ALLOW"
