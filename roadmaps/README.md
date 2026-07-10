@@ -633,8 +633,7 @@ A platform is just a backend behind the one driver interface ([DESIGN §1](../DE
 ### Dogfood fixtures (demo apps)
 
 <!-- GENERATED:proposals-dogfood -->
-| ID | Item | Status | Origin |
-|---|---|---|---|
+
 <!-- /GENERATED:proposals-dogfood -->
 
 ### Dogfood fixtures (web UI)
