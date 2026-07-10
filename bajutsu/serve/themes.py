@@ -151,12 +151,15 @@ def parse_theme_tokens(contract_css: str) -> dict[str, dict[str, dict[str, str]]
                 t = "duration"
             tokens_found[token_name] = {"type": t, "default": ""}
         else:
-            tokens_found[token_name] = {"description": "", "default": ""}
+            # "description" is intentionally omitted: the CSS-rule scanner can't read it from the
+            # comment block, the client doesn't use it, and shipping empty strings wastes wire space.
+            # A future unit that wants descriptions can populate them from the contract comment.
+            tokens_found[token_name] = {"default": ""}
 
-    # Fill defaults from the :root/midnight block (the CSS uses double-quoted attribute selectors).
-    root_match = re.search(
-        r':root(?:\s*,\s*\[data-theme="midnight"\])?\s*{([^}]*)}', css_no_comments
-    )
+    # Fill defaults from the :root fallback block. `:root` may be combined with a `[data-theme]`
+    # selector in the same rule (`[data-theme="midnight"]` today) — match either shape without
+    # hardcoding the theme name so a rename or reorder doesn't silently zero every default.
+    root_match = re.search(r":root\b[^{]*\{([^}]*)\}", css_no_comments)
     if root_match:
         for match in re.finditer(r"--([\w-]+)\s*:\s*([^;]+);", root_match.group(1)):
             token_name = f"--{match.group(1)}"
