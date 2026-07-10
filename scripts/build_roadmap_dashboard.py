@@ -315,7 +315,7 @@ _SCRIPT = """
       var hiddenByChips=hasQuery && matched>0 && shown===0;
       empty.classList.toggle('is-hidden', !(noMatch || hiddenByChips));
       empty.textContent=noMatch ? ('No items match '+qText)
-        : hiddenByChips ? (matched+' item(s) match '+qText+', but the status filter above is hiding them')
+        : hiddenByChips ? (matched+(matched===1?' item matches ':' items match ')+qText+', but the status filter above is hiding them')
         : '';
     }
   }
