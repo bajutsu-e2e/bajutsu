@@ -10,7 +10,7 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from bajutsu.serve import themes as themes_module
+from bajutsu.serve import themes
 from bajutsu.serve._paths import TEMPLATES_DIR
 from bajutsu.serve.state import ServeState
 
@@ -36,4 +36,4 @@ def get_theme_contract(_state: ServeState) -> tuple[dict[str, Any], int]:
         _log.error("failed to read theme contract: %s", e)
         return {"error": "contract not available", "colors": {}, "transitions": {}}, 500
 
-    return themes_module.parse_theme_tokens(contract_css), 200
+    return themes.parse_theme_tokens(contract_css), 200
