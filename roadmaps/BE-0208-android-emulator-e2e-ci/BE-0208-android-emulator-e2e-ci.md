@@ -11,7 +11,7 @@
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0208") |
 | Implementing PR | [#851](https://github.com/bajutsu-e2e/bajutsu/pull/851), [#880](https://github.com/bajutsu-e2e/bajutsu/pull/880), [#899](https://github.com/bajutsu-e2e/bajutsu/pull/899) |
 | Topic | Platform expansion (Android / Web / Flutter) |
-| Related | [BE-0007](../BE-0007-android-backend/BE-0007-android-backend.md) |
+| Related | [BE-0007](../BE-0007-android-backend/BE-0007-android-backend.md), [BE-0223](../BE-0223-adb-tab-bar-navigation/BE-0223-adb-tab-bar-navigation.md) |
 <!-- /BE-METADATA -->
 
 ## Introduction
@@ -127,6 +127,15 @@ within the prime directives.
   unit 4 is deliberately deferred: a pixel baseline is host-sensitive (local arm64 vs CI x86_64
   software rendering diverge per-pixel), so it needs a CI-captured baseline — left to a later slice.
   Item stays **In progress** (visual dimension of unit 4 and the tab-dependent rest of unit 5 remain).
+- 2026-07-10 — Unit 5 (tab-dependent scenarios): [BE-0223](../BE-0223-adb-tab-bar-navigation/BE-0223-adb-tab-bar-navigation.md)
+  taught the adb driver to drive the native tab bar (a Compose `NavigationBarItem` resolves the
+  shared `{ label, traits: [button] }` selector), unblocking this unit. With the tab bar drivable,
+  `search`, `data_driven`, `relaunch`, and `system` rejoined `E2E_SCENARIOS`, all verified on a local
+  arm64 emulator. The remaining held-out scenarios stay out for reasons unrelated to the tab bar:
+  `components` / `modals` pass locally but their 5s sheet-open waits risk the CI x86_64 software
+  renderer, and `gestures` (multi-touch, BE-0210) / `controls` (segmented-control value) / `notices`
+  (deep scroll) need their own BE-0007 follow-up slices. The **visual** dimension of unit 4 still
+  needs a CI-captured baseline. Item stays **In progress**.
 
 ## References
 

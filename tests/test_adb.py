@@ -67,6 +67,85 @@ def test_parse_hierarchy_selector_mapping() -> None:
     assert toggle["traits"] == ["switch", base.Trait.SELECTED]
 
 
+# The Compose tab bar (BE-0223, captured on device): a NavigationBarItem dumps as a *clickable*
+# `android.view.View` with no own text — the visible label lives in a child `TextView`. So neither
+# channel the shared cross-backend selector `{ label, traits: [button] }` needs is on the tappable
+# node: its class ("view") is not the button trait, and its own text is empty. The driver bridges
+# both — a clickable node is a button, and a clickable node without its own label derives one from
+# its descendants' text — so the tab resolves the same way iOS reaches it (BE-0107).
+COMPOSE_TAB = """<hierarchy rotation="0">
+  <node index="0" class="android.view.View" text="" content-desc="" clickable="true"
+    bounds="[440,2120][640,2340]">
+    <node index="0" class="android.widget.TextView" text="Log" clickable="false"
+      bounds="[510,2250][570,2300]" />
+    <node index="1" class="android.view.View" text="" clickable="false"
+      bounds="[500,2160][580,2230]" />
+  </node>
+</hierarchy>"""
+
+# The Views tab bar renders each tab as a plain clickable `android.widget.Button` carrying its own
+# text — so class ("button") already yields the trait and text already the label. The clickable
+# fix must not regress this: the button trait stays present exactly once, not duplicated.
+VIEWS_TAB = """<hierarchy rotation="0">
+  <node index="0" class="android.widget.Button" text="Log" content-desc="" clickable="true"
+    bounds="[440,2120][640,2340]" />
+</hierarchy>"""
+
+
+def test_compose_navigation_bar_item_derives_label_and_button_trait() -> None:
+    # The tappable node is the clickable View: it gains the button trait and derives its label
+    # ("Log") from the child TextView, so `{ label, traits: [button] }` resolves to it — while the
+    # child TextView, having label "Log" but no button trait, does not, keeping the match unique.
+    els = parse_hierarchy(COMPOSE_TAB)
+    tab = next(e for e in els if base.Trait.BUTTON in e["traits"])
+    assert tab["label"] == "Log"
+    assert tab["traits"] == ["view", base.Trait.BUTTON]
+    assert tab["frame"] == (
+        440.0,
+        2120.0,
+        200.0,
+        220.0,
+    )  # the clickable node's frame, not the label's
+    child = next(e for e in els if e["traits"] == ["textView"])
+    assert child["label"] == "Log"
+    assert base.Trait.BUTTON not in child["traits"]
+
+
+def test_tap_resolves_compose_tab_by_label_and_button_trait() -> None:
+    calls: list[list[str]] = []
+
+    def run(args: list[str]) -> str:
+        if "dump" in args:
+            return COMPOSE_TAB
+        calls.append(args)
+        return ""
+
+    driver = AdbDriver("U", run=run)
+    driver.tap({"label": "Log", "traits": ["button"]})
+    # centre of the clickable View (440,2120,200,220) → (540, 2230), not the label TextView's centre.
+    assert calls == [["adb", "-s", "U", "shell", "input", "tap", "540", "2230"]]
+
+
+def test_views_tab_button_resolves_without_duplicate_button_trait() -> None:
+    # A clickable android.widget.Button already carries the button trait from its class; the
+    # clickable rule must not add a second one, and the own text stays the label (no derivation).
+    (tab,) = parse_hierarchy(VIEWS_TAB)
+    assert tab["label"] == "Log"
+    assert tab["traits"] == ["button"]
+
+
+def test_non_clickable_container_does_not_derive_a_label() -> None:
+    # Label derivation is scoped to clickable (interactive) nodes: a plain layout container with a
+    # text child stays label-less, so the tree is not flooded with synthetic container labels.
+    xml = (
+        '<hierarchy><node class="android.view.View" text="" clickable="false" bounds="[0,0][100,100]">'
+        '<node class="android.widget.TextView" text="Inside" clickable="false" bounds="[0,0][50,50]" />'
+        "</node></hierarchy>"
+    )
+    container = next(e for e in parse_hierarchy(xml) if e["traits"] == ["view"])
+    assert container["label"] is None
+
+
 def test_parse_hierarchy_null_root_is_empty() -> None:
     # The transient bridge failure has no <hierarchy>, so it parses to an empty tree (retried later).
     assert parse_hierarchy(NULL_ROOT) == []

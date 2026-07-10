@@ -42,13 +42,21 @@ def _render(elements: list[base.Element]) -> str:
     Each element is a `data-testid` node with an explicit size and margin so it is visible,
     non-zero (`QUERY_JS` drops collapsed nodes), and on-screen (so the resolved center is a
     real, clickable point) — the seeded ids come through as the driver's element identifiers.
+    An element seeded with the `button` trait renders as a `<button>` (which `QUERY_JS` maps back
+    to that trait), so the cross-backend `{ label, traits: [button] }` case resolves on Chromium
+    too (BE-0223); every other element stays a plain `<div>`.
     """
-    nodes = "".join(
-        f'<div data-testid="{html.escape(el["identifier"] or "", quote=True)}"'
-        f' style="width:100px;height:100px;margin:8px">{html.escape(el["label"] or "")}</div>'
-        for el in elements
-    )
+    nodes = "".join(_node(el) for el in elements)
     return f"<!doctype html><html><body>{nodes}</body></html>"
+
+
+def _node(el: base.Element) -> str:
+    tag = "button" if base.Trait.BUTTON in el["traits"] else "div"
+    testid = html.escape(el["identifier"] or "", quote=True)
+    label = html.escape(el["label"] or "")
+    return (
+        f'<{tag} data-testid="{testid}" style="width:100px;height:100px;margin:8px">{label}</{tag}>'
+    )
 
 
 class PlaywrightConformanceHarness:

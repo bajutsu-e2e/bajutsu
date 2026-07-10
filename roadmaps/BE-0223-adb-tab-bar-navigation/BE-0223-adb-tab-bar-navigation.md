@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0223](BE-0223-adb-tab-bar-navigation.md) |
 | Author | [@hirosassa](https://github.com/hirosassa) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0223") |
+| Implementing PR | _pending_ |
 | Topic | Platform expansion (Android / Web / Flutter) |
 | Related | [BE-0007](../BE-0007-android-backend/BE-0007-android-backend.md), [BE-0208](../BE-0208-android-emulator-e2e-ci/BE-0208-android-emulator-e2e-ci.md), [BE-0107](../BE-0107-showcase-tab-navigation-no-launch-shortcut/BE-0107-showcase-tab-navigation-no-launch-shortcut.md), [BE-0114](../BE-0114-driver-conformance-suite/BE-0114-driver-conformance-suite.md) |
 <!-- /BE-METADATA -->
@@ -111,11 +112,37 @@ it changes no shared scenario (that is the point) and adds no LLM to any path.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Diagnose the Compose / Views tab-bar tree via `uiautomator dump` on device.
-- [ ] Resolve `{ label, traits: [button] }` to the tab item in the adb driver (fail-fast on ambiguity).
-- [ ] Cover both toolkits: confirm Views (plain `android.widget.Button`s) already resolves, and the Compose fix does not regress it.
-- [ ] Reintroduce the held-out shared scenarios into the Android e2e lane (BE-0208 Unit 5).
-- [ ] Add a tab-navigation case to the driver conformance suite (BE-0114).
+- [x] Diagnose the Compose / Views tab-bar tree via `uiautomator dump` on device.
+- [x] Resolve `{ label, traits: [button] }` to the tab item in the adb driver (fail-fast on ambiguity).
+- [x] Cover both toolkits: confirm Views (plain `android.widget.Button`s) already resolves, and the Compose fix does not regress it.
+- [x] Reintroduce the held-out shared scenarios into the Android e2e lane (BE-0208 Unit 5).
+- [x] Add a tab-navigation case to the driver conformance suite (BE-0114).
+
+### Log
+
+- 2026-07-10 — Shipped (units 1-5) on a local arm64 emulator (API 34). **Diagnosis** (unit 1): a
+  Compose `NavigationBarItem` dumps as a *clickable* `android.view.View` with **no own text** — the
+  caption lives in a child `TextView` — so neither channel the shared selector needs is on the
+  tappable node (its class is `view`, its own label empty); the Motivation's guess that the label
+  was on the item node was wrong on the label channel, not only the trait. Views renders each tab as
+  a plain clickable `android.widget.Button` carrying its own text, already resolving today. **Driver
+  fix** (units 2-3, `bajutsu/drivers/adb.py`): a `clickable` node carries the `button` trait (guarded
+  so a class-mapped `android.widget.Button` is not tagged twice), and a clickable node with no own
+  `text`/`content-desc` derives its label from its descendants' text — so the Compose tab resolves
+  `{ label, traits: [button] }` the way iOS does, Views stays unaffected, and non-interactive
+  containers stay label-less. Ambiguity stays fail-fast (the child `TextView` shares the label but
+  not the button trait, so the match is unique). **Scenarios** (unit 4, BE-0208 Unit 5): `search`,
+  `data_driven`, `relaunch`, `system` rejoin `demos/showcase/android/Makefile`'s `E2E_SCENARIOS`,
+  all verified on device; `components` / `modals` pass on the local hardware emulator but their 5s
+  sheet-open waits risk the CI x86_64 software renderer (shared scenarios can't be retuned per
+  backend), and `gestures` (multi-touch, BE-0210) / `controls` (segmented-control value) / `notices`
+  (deep scroll) fail for reasons unrelated to the tab bar — all held for BE-0007 follow-ups.
+  **Conformance** (unit 5, BE-0114): a `test_label_and_trait_selector_resolves_a_button` case pins
+  the `{ label, traits: [button] }` resolution as a contract invariant across backends (the web
+  harness now renders a `button`-trait seed as `<button>`). The Android golden baseline was
+  re-recorded (`lists_android.json`): `stable.refresh` gains its accessible name "Refresh" and the
+  button trait, the catalog rows gain the button trait — both consequences of the driver fix. Python
+  gate green; the on-device adb lane and the golden run were verified on the local emulator.
 
 ## References
 

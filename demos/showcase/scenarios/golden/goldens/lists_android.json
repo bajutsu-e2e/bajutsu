@@ -1,10 +1,11 @@
 {
   "stable.refresh": {
     "identifier": "stable.refresh",
-    "label": null,
+    "label": "Refresh",
     "value": null,
     "traits": [
-      "view"
+      "view",
+      "button"
     ],
     "frame": [
       876.0,
@@ -18,7 +19,8 @@
     "label": "Horse 1",
     "value": null,
     "traits": [
-      "textView"
+      "textView",
+      "button"
     ],
     "frame": [
       0.0,
@@ -32,7 +34,8 @@
     "label": "Horse 2",
     "value": null,
     "traits": [
-      "textView"
+      "textView",
+      "button"
     ],
     "frame": [
       0.0,
@@ -46,7 +49,8 @@
     "label": "Horse 3",
     "value": null,
     "traits": [
-      "textView"
+      "textView",
+      "button"
     ],
     "frame": [
       0.0,
@@ -60,7 +64,8 @@
     "label": "Horse 4",
     "value": null,
     "traits": [
-      "textView"
+      "textView",
+      "button"
     ],
     "frame": [
       0.0,
@@ -74,7 +79,8 @@
     "label": "Horse 5",
     "value": null,
     "traits": [
-      "textView"
+      "textView",
+      "button"
     ],
     "frame": [
       0.0,

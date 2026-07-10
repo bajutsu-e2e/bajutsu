@@ -9,7 +9,12 @@ still fail immediately on an ambiguous (2+) match rather than tapping whatever m
 
 The XML attribute names follow UI Automator's `uiautomator dump` schema; the selector mapping is
 `resource-id` (id, package prefix stripped) → `identifier`, `text` → `label`, `content-desc` →
-`value`, and the widget `class` (plus enabled/selected/checked state) → `traits`. The value channel
+`value`, and the widget `class` (plus `clickable` and enabled/selected/checked state) → `traits`. A
+`clickable` node also carries the `button` trait, and a clickable node with no own `text`/
+`content-desc` derives its `label` from its descendants' text — so a Compose `NavigationBarItem`
+(a clickable `android.view.View` whose caption lives in a child `TextView`) resolves the shared
+cross-backend tab selector `{ label, traits: [button] }`, the same way iOS reaches a tab (BE-0223).
+The value channel
 is `content-desc`, not `text`, because the showcase mirrors its assertion state value into
 `content-desc` (SPEC §2.1: a `uiautomator dump` exposes `content-desc` but not Compose's
 `stateDescription`), while `text` carries the visible label — the Android peer of iOS's
@@ -66,11 +71,31 @@ def _bounds(raw: str) -> base.Frame:
     return (x1, y1, x2 - x1, y2 - y1)
 
 
+def _derived_label(node: ET.Element) -> str | None:
+    """The accessible name of a labelless control, joined from its descendants' visible text.
+
+    A Compose `NavigationBarItem` (and any icon-plus-caption control) dumps as a clickable node
+    with no own `text`/`content-desc`; its visible caption lives in a child `TextView`. Mirroring
+    how an accessibility service names a focusable container, the control's label is its
+    descendants' text in document order — so a tab is addressable by its caption ("Log"), the same
+    way the XCUITest backend exposes each tab as a label-bearing button (BE-0223).
+    """
+    texts = [t for n in node.iter("node") if n is not node and (t := n.get("text"))]
+    return " ".join(texts) or None
+
+
 def _traits(node: ET.Element) -> list[str]:
     out: list[str] = []
     cls = node.get("class") or ""
     if cls:
         out.append(_norm_class(cls))
+    # A clickable node is an actionable control — the Android peer of iOS's button trait, so the
+    # shared cross-backend tab selector `{ label, traits: [button] }` (BE-0107) resolves on adb: a
+    # Compose NavigationBarItem dumps as a clickable `android.view.View`, whose class alone ("view")
+    # never yields the button trait the scenario needs (BE-0223). Guarded so a widget already mapped
+    # to `button` by class (a Views `android.widget.Button`) is not tagged twice.
+    if node.get("clickable") == "true" and base.Trait.BUTTON not in out:
+        out.append(base.Trait.BUTTON)
     if node.get("enabled") == "false":
         out.append(base.Trait.NOT_ENABLED)
     # A UI Automator checkbox/switch reports its state as `checked`; a list selection as `selected`.
@@ -82,12 +107,17 @@ def _traits(node: ET.Element) -> list[str]:
 def _to_element(node: ET.Element) -> base.Element:
     desc = node.get("content-desc") or ""
     text = node.get("text") or ""
+    # `text` is the visible label; `content-desc` is where the showcase mirrors the assertion value
+    # (SPEC §2.1). `label` falls back to `content-desc` for an element that carries only a content
+    # description (an icon-only control). A clickable control with neither derives its label from
+    # its descendants' text (BE-0223); derivation is scoped to clickable nodes so non-interactive
+    # layout containers stay label-less rather than flooding the tree with synthetic labels.
+    label: str | None = text or desc
+    if not label and node.get("clickable") == "true":
+        label = _derived_label(node)
     return {
-        # `text` is the visible label; `content-desc` is where the showcase mirrors the assertion
-        # value (SPEC §2.1). `label` falls back to `content-desc` for an element that carries only a
-        # content description (an icon-only control), so it is never left blank when one exists.
         "identifier": _strip_pkg(node.get("resource-id") or ""),
-        "label": text or desc or None,
+        "label": label or None,
         "value": desc or None,
         "traits": _traits(node),
         "frame": _bounds(node.get("bounds") or ""),
