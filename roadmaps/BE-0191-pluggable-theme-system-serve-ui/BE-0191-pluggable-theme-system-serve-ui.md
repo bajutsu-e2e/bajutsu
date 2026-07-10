@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0191") |
-| Implementing PR | [#826](https://github.com/bajutsu-e2e/bajutsu/pull/826), [#837](https://github.com/bajutsu-e2e/bajutsu/pull/837), [#855](https://github.com/bajutsu-e2e/bajutsu/pull/855), [#859](https://github.com/bajutsu-e2e/bajutsu/pull/859), [#881](https://github.com/bajutsu-e2e/bajutsu/pull/881), [#883](https://github.com/bajutsu-e2e/bajutsu/pull/883), _pending_ |
+| Implementing PR | [#826](https://github.com/bajutsu-e2e/bajutsu/pull/826), [#837](https://github.com/bajutsu-e2e/bajutsu/pull/837), [#855](https://github.com/bajutsu-e2e/bajutsu/pull/855), [#859](https://github.com/bajutsu-e2e/bajutsu/pull/859), [#881](https://github.com/bajutsu-e2e/bajutsu/pull/881), [#883](https://github.com/bajutsu-e2e/bajutsu/pull/883), [#900](https://github.com/bajutsu-e2e/bajutsu/pull/900) |
 | Topic | Authoring experience (record / GUI editor) |
 <!-- /BE-METADATA -->
 
@@ -325,7 +325,7 @@ filesystem, building directly on the token contract of unit 1.
   never fall below the fold. Tests: `tests/serve/test_theme_upload.py` (op + stdlib route + cache
   invalidation), `test_server_app.py` (both FastAPI routes), and the `demos/serve-ui/scenarios/theme-editor.yaml`
   dogfood (local-draft → `custom` picker surfacing; upload button gated off without `--themes`); docs
-  updated in `docs/web-ui.md` (+ ja mirror). ([#_pending_](https://github.com/bajutsu-e2e/bajutsu/pulls))
+  updated in `docs/web-ui.md` (+ ja mirror). ([#900](https://github.com/bajutsu-e2e/bajutsu/pull/900))
 
 ## References
 
