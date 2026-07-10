@@ -1,14 +1,14 @@
-[English](BE-XXXX-github-private-repo-config-auth.md) · **日本語**
+[English](BE-0224-github-private-repo-config-auth.md) · **日本語**
 
-# BE-XXXX — GitHub を取得元とする config での private リポジトリへのアクセス権限の付与
+# BE-0224 — GitHub を取得元とする config での private リポジトリへのアクセス権限の付与
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
 |---|---|
-| 提案 | [BE-XXXX](BE-XXXX-github-private-repo-config-auth-ja.md) |
+| 提案 | [BE-0224](BE-0224-github-private-repo-config-auth-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **提案** |
-| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0224") |
 | トピック | config の取得元 |
 | 関連 | [BE-0063](../BE-0063-git-config-source/BE-0063-git-config-source-ja.md), [BE-0016](../BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting-ja.md), [BE-0051](../BE-0051-serve-hardening-for-hosting/BE-0051-serve-hardening-for-hosting-ja.md), [BE-0108](../BE-0108-hosted-config-source-restriction/BE-0108-hosted-config-source-restriction-ja.md), [BE-0136](../BE-0136-serve-write-once-secrets/BE-0136-serve-write-once-secrets-ja.md), [BE-0184](../BE-0184-persist-serve-ai-provider-settings/BE-0184-persist-serve-ai-provider-settings-ja.md) |
 <!-- /BE-METADATA -->
