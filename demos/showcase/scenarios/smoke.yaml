@@ -1,5 +1,5 @@
 # Smoke: the app launches on the Stable tab, the fixed catalog is present, and the seeded
-# rows show. Runs identically across every target (same ids). The catalog is fixed at five
+# rows show. Runs identically across every target. The catalog is fixed at five
 # (no launch-env seed knob, BE-0079), so the count is a constant. Each id lists both its dotted
 # SPEC form (iOS / Compose) and its underscore form (Android Views, whose android:id can't hold
 # `.`/`-`), so this one scenario runs unchanged on every target (BE-0221).

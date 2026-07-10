@@ -59,3 +59,19 @@ def test_empty_or_blank_candidate_list_rejected(bad: list[str]) -> None:
 
 def test_first_id_none_when_absent() -> None:
     assert Selector.model_validate({"label": "設定"}).first_id() is None
+
+
+@pytest.mark.parametrize("field", ["id", "idMatches"])
+def test_non_canonical_first_candidate_rejected(field: str) -> None:
+    # The canonical (dotted SPEC) form must lead, since first_id / coverage / codegen take
+    # candidate[0]; a dotted candidate after a non-dotted first one is the misordering (BE-0221).
+    with pytest.raises(ValidationError, match="canonical"):
+        Selector.model_validate({field: ["stable_refresh", "stable.refresh"]})
+
+
+def test_dotted_first_and_all_underscore_lists_accepted() -> None:
+    # Dotted-first is the norm; an all-underscore list (no dotted candidate to prioritize) is fine.
+    assert Selector.model_validate({"id": ["stable.refresh", "stable_refresh"]}).first_id() == (
+        "stable.refresh"
+    )
+    assert Selector.model_validate({"id": ["a_b", "c_d"]}).first_id() == "a_b"
