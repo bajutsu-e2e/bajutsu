@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-adb-tab-bar-navigation-ja.md)
+**English** · [日本語](BE-0223-adb-tab-bar-navigation-ja.md)
 
-# BE-XXXX — Reach every Android tab by driving the tab bar over adb
+# BE-0223 — Reach every Android tab by driving the tab bar over adb
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-adb-tab-bar-navigation.md) |
+| Proposal | [BE-0223](BE-0223-adb-tab-bar-navigation.md) |
 | Author | [@hirosassa](https://github.com/hirosassa) |
 | Status | **Proposal** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0223") |
 | Topic | Platform expansion (Android / Web / Flutter) |
 | Related | [BE-0007](../BE-0007-android-backend/BE-0007-android-backend.md), [BE-0208](../BE-0208-android-emulator-e2e-ci/BE-0208-android-emulator-e2e-ci.md), [BE-0107](../BE-0107-showcase-tab-navigation-no-launch-shortcut/BE-0107-showcase-tab-navigation-no-launch-shortcut.md), [BE-0114](../BE-0114-driver-conformance-suite/BE-0114-driver-conformance-suite.md) |
 <!-- /BE-METADATA -->

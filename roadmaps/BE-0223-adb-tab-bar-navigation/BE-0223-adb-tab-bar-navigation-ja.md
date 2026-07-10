@@ -1,14 +1,14 @@
-[English](BE-XXXX-adb-tab-bar-navigation.md) · **日本語**
+[English](BE-0223-adb-tab-bar-navigation.md) · **日本語**
 
-# BE-XXXX — adb で tab bar を操作して Android の全タブへ到達する
+# BE-0223 — adb で tab bar を操作して Android の全タブへ到達する
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
 |---|---|
-| 提案 | [BE-XXXX](BE-XXXX-adb-tab-bar-navigation-ja.md) |
+| 提案 | [BE-0223](BE-0223-adb-tab-bar-navigation-ja.md) |
 | 提案者 | [@hirosassa](https://github.com/hirosassa) |
 | 状態 | **提案** |
-| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0223") |
 | トピック | Platform expansion (Android / Web / Flutter) |
 | 関連 | [BE-0007](../BE-0007-android-backend/BE-0007-android-backend-ja.md), [BE-0208](../BE-0208-android-emulator-e2e-ci/BE-0208-android-emulator-e2e-ci-ja.md), [BE-0107](../BE-0107-showcase-tab-navigation-no-launch-shortcut/BE-0107-showcase-tab-navigation-no-launch-shortcut-ja.md), [BE-0114](../BE-0114-driver-conformance-suite/BE-0114-driver-conformance-suite-ja.md) |
 <!-- /BE-METADATA -->
