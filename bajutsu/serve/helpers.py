@@ -152,9 +152,11 @@ def target_capabilities(config_path: Path, target: str) -> list[str]:
     """The capability tokens a worker must advertise to run *target* (BE-0166): its resolved
     platform axis (`platform:ios` / `platform:web`) plus the target's operator-declared `requires`.
 
-    Empty on any load/resolve error, so a job with an unreadable config routes as before (platform
-    axis only would be lost, but an unroutable-by-mistake job would fail loudly at lease — see the
-    router) rather than crashing dispatch."""
+    Empty on any load/resolve error, so a job with an unreadable config routes as before: with no
+    required capabilities it is servable by any worker (an empty set is always a subset in
+    `can_serve`) — including one that can't actually run it — rather than crashing dispatch. In
+    practice `start_run` resolves the same config a step earlier (`target_build_info`), so this
+    error path is not reached on the normal dispatch flow."""
     from bajutsu.serve.capabilities import required_capabilities
 
     try:

@@ -377,6 +377,14 @@ deterministic `run` verdict.
   capability. A homogeneous pool is unaffected: every worker advertises the same axis, so every job
   routes as before.
 
+> [!NOTE]
+> **Upgrade the workers alongside or before the control plane.** Every dispatched job now carries at
+> least its `platform:*` requirement, and a worker on a pre-capability-routing build sends no
+> advertised set — so it advertises nothing and can lease no real job. It fails safe (it never
+> mis-routes), but an old worker left running against an upgraded control plane silently stops
+> leasing, showing up only as a rising `bajutsu_unroutable_jobs`. Roll the worker binaries first (or
+> together), not after.
+
 ### Evidence upload to object storage (optional, BE-0110)
 
 The worker upload above writes each run tree to the **artifact store** the control plane serves reports
