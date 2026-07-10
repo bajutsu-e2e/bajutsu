@@ -6,10 +6,11 @@
 # on Location which is still visible after the first) before tapping.
 - name: copy then paste round-trips through the mirror
   preconditions:
-    launchEnv: { SHOWCASE_UITEST: "1", SHOWCASE_TAB: permissions }
+    launchEnv: { SHOWCASE_UITEST: "1" }
   steps:
-    - wait: { for: { id: perm.requestNotif }, timeout: 10 }
+    - tap: { label: "Permissions", traits: [button] }
       capture: [video]
+    - wait: { for: { id: perm.requestNotif }, timeout: 10 }
     - swipe: { on: { id: perm.requestNotif }, direction: up }
     - swipe: { on: { id: perm.requestLocation }, direction: up }
     - wait: { for: { id: sys.paste.value }, timeout: 5 }

@@ -7,13 +7,14 @@
 # policy those are masked in the captured evidence (SPEC §6 / DESIGN §9).
 - name: log submit answered by a mock, toast appears and clears
   preconditions:
-    launchEnv: { SHOWCASE_UITEST: "1", SHOWCASE_TAB: log }
+    launchEnv: { SHOWCASE_UITEST: "1" }
   mocks:
     - match: { method: POST, pathMatches: "/post$" }
       respond: { status: 201, body: "{\"ok\":true}" }
   steps:
-    - wait: { for: { id: log.submit }, timeout: 10 }
+    - tap: { label: "Log", traits: [button] }
       capture: [video]
+    - wait: { for: { id: log.submit }, timeout: 10 }
     - tap: { id: log.submit }
     - wait: { until: { request: { method: POST, path: /post, status: 201 } }, timeout: 6 }
     - wait: { for: { id: log.toast }, timeout: 4 }

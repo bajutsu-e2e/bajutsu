@@ -57,6 +57,11 @@ targets:
     appPath: demos/showcase/ios/uikit/build/dd/Build/Products/Debug-iphonesimulator/BajutsuShowcaseUIKit.app
     build: make -C demos/showcase uikit-build
     scenarios: demos/showcase/scenarios
+    # XCUITest backend (BE-0019): the a11y UIKit scenarios now cross tabs by tapping the native tab
+    # bar (BE-0107), which idb can't do, so `--backend ios` needs the generic runner wired here too.
+    xcuitest:
+      testRunner: BajutsuKit/Runner/build/dd/Build/Products/BajutsuRunner.xctestrun
+      build: make -C demos/showcase runner-build
 
   # ---- UIKit, accessibility OFF -------------------------------------------------
   showcase-uikit-noax:

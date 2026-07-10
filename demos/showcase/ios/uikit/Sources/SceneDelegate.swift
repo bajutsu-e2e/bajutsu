@@ -19,7 +19,9 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         self.window = window
 
         tabController = MainTabBarController(model: model)
-        tabController.selectedIndex = model.initialTab.rawValue
+        // Always launch on the Stable tab; other tabs are reached by tapping the native tab bar
+        // under the XCUITest backend (BE-0107 retired the SHOWCASE_TAB launch-env shortcut).
+        tabController.selectedIndex = AppModel.Tab.stable.rawValue
         window.rootViewController = tabController
         window.makeKeyAndVisible()
 

@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0107](BE-0107-showcase-tab-navigation-no-launch-shortcut.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0107") |
+| Implementing PR | [#875](https://github.com/bajutsu-e2e/bajutsu/pull/875) |
 | Topic | Dogfood fixtures (demo apps) |
 | Related | [BE-0079](../BE-0079-consolidate-demos-on-showcase/BE-0079-consolidate-demos-on-showcase.md), [BE-0019](../BE-0019-xcuitest-backend/BE-0019-xcuitest-backend.md) |
 | Origin | Dogfooding |
@@ -78,9 +79,26 @@ would make the showcase's on-device path flaky, which the determinism directive 
 
 ## Progress
 
-- [ ] Retire `SHOWCASE_TAB` (both toolkits); settle the deeplink tab-select question.
-- [ ] Move tab-crossing scenarios onto `--backend ios`; settle the idb/XCUITest split and CI wiring.
-- [ ] Re-record navigation-reached goldens; update `SPEC.md` §3–§5 (EN + JA).
+- [x] Retire `SHOWCASE_TAB` (both toolkits); deeplinks kept as a feature demo.
+- [x] Move tab-crossing scenarios onto `--backend ios`; idb/XCUITest split settled — smoke and the
+  Stable-tab golden stay on idb (the BE-0005/BE-0006 signal is preserved), the Log-tab control golden
+  split into `golden_xcuitest.yaml`, and the CI comments were updated to match.
+- [x] Update `SPEC.md` §3–§5 (EN + JA) and the showcase / scenarios / codegen docs.
+- [x] Re-record the navigation-reached golden on-device (the XCUITest Log-controls `controls.json`).
+
+Android tab navigation (the shared scenarios' Android twin) is left as a BE-0007 follow-up: the
+Android apps still read `SHOWCASE_TAB`, and driving the native tab bar via adb is a separate driver
+concern outside this iOS-scoped item. Since adb cannot tap the tab bar either, the adb e2e lane
+(`demos/showcase/android/Makefile`) now runs only the Stable-tab scenarios (`smoke`, `firstlook`);
+`search` / `data_driven` / `relaunch` / `system` rejoin it once the adb backend can drive the tabs.
+
+- 2026-07-10: implemented on `claude/be-0107-tab-navigation` (PR pending) — retired `SHOWCASE_TAB` in
+  the SwiftUI and UIKit apps, prepended tab-taps to the tab-crossing scenarios, split the golden into
+  idb (Stable) and XCUITest (Log) files, regenerated `ComponentsUITests.swift`, and updated the docs.
+- 2026-07-10: on-device verification on iPhone 17 Pro (Simulator) — `controls.yaml` and `notices.yaml`
+  pass on `--backend ios` (the tab-tap reaches the tab; run manifest confirms `backend: xcuitest` with
+  the tap as step 0), `golden_xcuitest.yaml` passes against the re-recorded XCUITest `controls.json`,
+  and `golden.yaml` + `smoke.yaml` still pass on idb (the BE-0005/BE-0006 signal is intact).
 
 ## References
 

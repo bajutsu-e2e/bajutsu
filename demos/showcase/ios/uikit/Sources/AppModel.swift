@@ -27,7 +27,6 @@ final class AppModel {
         case stable, search, log, notices, permissions
     }
 
-    let initialTab: Tab
     let animationsDisabled: Bool
     let apiBase: String
     let httpBase: String
@@ -43,18 +42,5 @@ final class AppModel {
         animationsDisabled = env["SHOWCASE_UITEST"] != nil
         apiBase = env["SHOWCASE_API_URL"] ?? "https://example.com"
         httpBase = env["SHOWCASE_HTTP_BASE"] ?? "https://httpbin.org"
-
-        initialTab = Self.tab(env["SHOWCASE_TAB"]) ?? .stable
-    }
-
-    static func tab(_ name: String?) -> Tab? {
-        switch name {
-        case "stable": return .stable
-        case "search": return .search
-        case "log": return .log
-        case "notices": return .notices
-        case "permissions": return .permissions
-        default: return nil
-        }
     }
 }

@@ -14,12 +14,16 @@ CONFIG := $(HERE)/../showcase.config.yaml
 SERIAL ?= booted
 # The core id/tap/type/value scenarios BE-0007 confirmed pass on device (2026-07-07): id resolution,
 # taps, text entry, and value assertions against the Compose a11y twin (dotted SPEC ids verbatim).
+# Only the Stable-tab scenarios run here: BE-0107 retired the SHOWCASE_TAB launch shortcut, so every
+# other tab is now reached by tapping the native tab bar — which adb cannot do (idb can't either;
+# only the XCUITest backend can). `search` / `data_driven` (Search), `relaunch` (Log), and `system`
+# (Permissions) therefore leave the adb lane until the adb backend can drive the tab bar (BE-0007).
 # `components` and `modals` are held back: their sheet/cover flows wait 5s for a modal to present,
 # and the CI emulator (x86_64 + swiftshader software rendering) presents one too slowly for that
 # bound — they pass on the local hardware-accelerated arm64 device but flake here. They rejoin once
 # their on-device timing is tuned (BE-0208 unit 5). The deferred slices (gestures, multi-touch,
 # scroll, notices, device control, mocked network, visual/golden) stay out too (BE-0007 follow-ups).
-E2E_SCENARIOS := smoke firstlook search data_driven relaunch system
+E2E_SCENARIOS := smoke firstlook
 
 # The wrapper jar IS committed (like any standard Android repo), so a fresh clone builds with no
 # extra step. Only run this to bump the pinned Gradle version — never as part of a build, since it

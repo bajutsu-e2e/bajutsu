@@ -52,15 +52,15 @@ build is rarely needed first.
 Driven via `launchEnv` and passed as `SIMCTL_CHILD_<NAME>` ([drivers](drivers.md#environment-management-simctl)).
 BE-0079 removed the launch-env shortcuts to a *data state* and to a *pushed screen*: the catalog is
 fixed (no seed knob), and a deeplink no longer jumps onto a detail — a detail is reached only by
-tapping its row. `SHOWCASE_TAB` still selects the initial **tab**, a temporary exception: idb cannot
-tap a native tab bar, so retiring it is a follow-up on the XCUITest backend (a separate proposal).
-Every screen beyond the initial tab is reached by driving the UI, and a scenario observes the app's
-own data rather than injecting one.
+tapping its row. BE-0107 finished the job by retiring `SHOWCASE_TAB`, the last launch-env shortcut to
+a screen: the app always launches on the Stable tab, and every other tab is reached by tapping the
+native tab bar. Only the XCUITest backend can tap the tab bar (idb collapses it into one opaque
+group), so the tab-crossing scenarios run on `--backend ios`. Every screen beyond the launch tab is
+reached by driving the UI, and a scenario observes the app's own data rather than injecting one.
 
 | Variable | Effect |
 |---|---|
 | `SHOWCASE_UITEST=1` | disable animations (keeps condition waits tight) |
-| `SHOWCASE_TAB=<name>` | initial tab: `stable` (default) / `search` / `log` / `notices` / `permissions` |
 | `SHOWCASE_API_URL` / `SHOWCASE_HTTP_BASE` | base URLs for the catalog GET and the echo POST/DELETE endpoints |
 
 The full identifier catalog, the deeplink grammar, and the primitive-to-scenario mapping are in

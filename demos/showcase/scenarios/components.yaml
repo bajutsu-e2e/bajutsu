@@ -12,10 +12,12 @@
 # exercised by the idb scenarios (modals.yaml) instead.
 - name: filter sheet opens then closes
   preconditions:
-    launchEnv: { SHOWCASE_UITEST: "1", SHOWCASE_TAB: "log" }
+    launchEnv: { SHOWCASE_UITEST: "1" }
   steps:
-    - tap: { id: log.openFilter }
+    - tap: { label: "Log", traits: [button] }
       capture: [video]
+    - wait: { for: { id: log.openFilter }, timeout: 10 }
+    - tap: { id: log.openFilter }
     - wait: { for: { id: log.sheet.title }, timeout: 5 }
     - tap: { id: log.sheet.apply }
     - wait: { until: { gone: { id: log.sheet.title } }, timeout: 5 }
@@ -24,10 +26,12 @@
 
 - name: gallery cover opens then closes
   preconditions:
-    launchEnv: { SHOWCASE_UITEST: "1", SHOWCASE_TAB: "log" }
+    launchEnv: { SHOWCASE_UITEST: "1" }
   steps:
-    - tap: { id: log.openGallery }
+    - tap: { label: "Log", traits: [button] }
       capture: [video]
+    - wait: { for: { id: log.openGallery }, timeout: 10 }
+    - tap: { id: log.openGallery }
     - wait: { for: { id: log.cover.title }, timeout: 5 }
     - tap: { id: log.cover.close }
     - wait: { until: { gone: { id: log.cover.title } }, timeout: 5 }
@@ -36,11 +40,13 @@
 
 - name: search filters the catalog
   preconditions:
-    launchEnv: { SHOWCASE_UITEST: "1", SHOWCASE_TAB: "search" }
+    launchEnv: { SHOWCASE_UITEST: "1" }
   steps:
+    - tap: { label: "Search", traits: [button] }
+      capture: [video]
+    - wait: { for: { id: search.field }, timeout: 5 }
     - assert:
         - value: { sel: { id: search.count }, equals: "5" }
-      capture: [video]
     - type: { text: "Horse 5", into: { id: search.field } }
     - wait: { for: { id: search.row.5 }, timeout: 5 }
   expect:

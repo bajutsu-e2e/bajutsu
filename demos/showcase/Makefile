@@ -50,14 +50,17 @@ runner-build:
 		-destination 'generic/platform=iOS Simulator' -derivedDataPath build/dd
 	cp $(RUNNER_PRODUCTS)/BajutsuRunner_*.xctestrun $(RUNNER_PRODUCTS)/BajutsuRunner.xctestrun
 
-# Run the shared id-based scenarios against the a11y apps on a booted Simulator (idb).
-# Prereqs: a booted simulator, `brew install facebook/fb/idb-companion`, `uv sync --extra idb`.
+# Run the shared id-based scenarios against the a11y apps on a booted Simulator. The suite now
+# crosses tabs by tapping the native tab bar (BE-0107 retired the SHOWCASE_TAB launch shortcut),
+# which only the XCUITest backend can do — idb collapses the tab bar into one opaque group — so
+# these run on `--backend ios` (XCUITest preferred, idb fallback) and need the runner built.
+# Prereqs: a booted simulator, `make runner-build`.
 SIM ?= $(shell xcrun simctl list devices booted | grep -oE '[0-9A-F-]{36}' | head -1)
 
-run-swiftui: swiftui-build
-	cd $(ROOT) && uv run bajutsu run --target showcase-swiftui --udid $(SIM) --backend idb --config $(CONFIG)
-run-uikit: uikit-build
-	cd $(ROOT) && uv run bajutsu run --target showcase-uikit --udid $(SIM) --backend idb --config $(CONFIG)
+run-swiftui: swiftui-build runner-build
+	cd $(ROOT) && uv run bajutsu run --target showcase-swiftui --udid $(SIM) --backend ios --config $(CONFIG)
+run-uikit: uikit-build runner-build
+	cd $(ROOT) && uv run bajutsu run --target showcase-uikit --udid $(SIM) --backend ios --config $(CONFIG)
 
 # The accessibility A/B: doctor grades the a11y app Ready and the no-a11y app Blocked.
 doctor: swiftui-build swiftui-noax-build
@@ -99,15 +102,15 @@ BASELINES_UIKIT   = $(HERE)/ios/scenarios/baselines/uikit
 vrt: vrt-swiftui vrt-uikit
 vrt-approve: vrt-swiftui-approve vrt-uikit-approve
 
-vrt-swiftui: swiftui-build
+vrt-swiftui: swiftui-build runner-build
 	-cd $(ROOT) && uv run bajutsu run --scenario demos/showcase/scenarios/visual.yaml --target showcase-swiftui \
-		--udid $(SIM) --backend idb --config $(CONFIG) --no-erase --baselines $(BASELINES_SWIFTUI)
+		--udid $(SIM) --backend ios --config $(CONFIG) --no-erase --baselines $(BASELINES_SWIFTUI)
 vrt-swiftui-approve: vrt-swiftui
 	cd $(ROOT) && uv run bajutsu approve --baselines $(BASELINES_SWIFTUI)
 
-vrt-uikit: uikit-build
+vrt-uikit: uikit-build runner-build
 	-cd $(ROOT) && uv run bajutsu run --scenario demos/showcase/scenarios/visual.yaml --target showcase-uikit \
-		--udid $(SIM) --backend idb --config $(CONFIG) --no-erase --baselines $(BASELINES_UIKIT)
+		--udid $(SIM) --backend ios --config $(CONFIG) --no-erase --baselines $(BASELINES_UIKIT)
 vrt-uikit-approve: vrt-uikit
 	cd $(ROOT) && uv run bajutsu approve --baselines $(BASELINES_UIKIT)
 

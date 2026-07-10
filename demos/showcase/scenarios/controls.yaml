@@ -7,10 +7,11 @@
 # section's still-visible top control until the segment is on-screen.
 - name: segmented control mirrors the selected choice
   preconditions:
-    launchEnv: { SHOWCASE_UITEST: "1", SHOWCASE_TAB: log }
+    launchEnv: { SHOWCASE_UITEST: "1" }
   steps:
-    - wait: { for: { id: log.note }, timeout: 10 }
+    - tap: { label: "Log", traits: [button] }
       capture: [video]
+    - wait: { for: { id: log.note }, timeout: 10 }
     - swipe: { on: { id: log.note }, direction: up }
     - swipe: { on: { id: log.openFilter }, direction: up }
     - swipe: { on: { id: log.longpress }, direction: up }

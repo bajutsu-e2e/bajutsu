@@ -5,7 +5,7 @@
 # first-look slice of the showcase, the no-login successor to the old demo app's counter flow.
 - name: favorite a horse
   preconditions:
-    launchEnv: { SHOWCASE_UITEST: "1", SHOWCASE_TAB: stable }
+    launchEnv: { SHOWCASE_UITEST: "1" }
   steps:
     - wait: { for: { id: stable.row.3 }, timeout: 10 }
     - tap: { id: stable.row.3 }

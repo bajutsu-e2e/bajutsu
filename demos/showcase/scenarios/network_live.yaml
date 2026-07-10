@@ -4,7 +4,7 @@
 # asserts only the deterministic fact — that the request was observed — not a specific status.
 - name: refresh issues an observed catalog request
   preconditions:
-    launchEnv: { SHOWCASE_UITEST: "1", SHOWCASE_TAB: stable }
+    launchEnv: { SHOWCASE_UITEST: "1" }
   steps:
     - wait: { for: { id: stable.refresh }, timeout: 10 }
       capture: [video, network]

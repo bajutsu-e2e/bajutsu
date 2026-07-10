@@ -3,7 +3,7 @@
 # catalog is fixed at five (no launch-env seed knob, BE-0079), so the count is a constant.
 - name: stable catalog smoke
   preconditions:
-    launchEnv: { SHOWCASE_UITEST: "1", SHOWCASE_TAB: stable }
+    launchEnv: { SHOWCASE_UITEST: "1" }
   steps:
     - wait: { for: { id: stable.row.1 }, timeout: 10 }
       capture: [video]

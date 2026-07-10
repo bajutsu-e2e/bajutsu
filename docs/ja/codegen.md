@@ -46,9 +46,9 @@ final class ComponentsUITests: XCTestCase {
 
   func test_open_filter_shows_the_sheet() {
     app.launchEnvironment["SHOWCASE_UITEST"] = "1"
-    app.launchEnvironment["SHOWCASE_TAB"] = "log"
     app.launch()
 
+    byLabel("Log").tap()
     XCTAssertFalse(el("log.sheet.title").exists)
     el("log.openFilter").tap()
 

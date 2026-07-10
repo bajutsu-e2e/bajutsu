@@ -6,7 +6,7 @@
 # per-target (their schemes differ); see ../README.md for the per-scheme `openurl` form.
 - name: push horse detail and pop back
   preconditions:
-    launchEnv: { SHOWCASE_UITEST: "1", SHOWCASE_TAB: stable }
+    launchEnv: { SHOWCASE_UITEST: "1" }
   steps:
     - wait: { for: { id: stable.row.3 }, timeout: 10 }
       capture: [video]

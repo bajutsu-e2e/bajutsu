@@ -3,10 +3,11 @@
 # assertions are ordinary UI checks — the point is the captured evidence, not new behaviour.
 - name: capture video, device log, and app trace around a log interaction
   preconditions:
-    launchEnv: { SHOWCASE_UITEST: "1", SHOWCASE_TAB: log }
+    launchEnv: { SHOWCASE_UITEST: "1" }
   steps:
-    - wait: { for: { id: log.note }, timeout: 10 }
+    - tap: { label: "Log", traits: [button] }
       capture: [video, deviceLog, appTrace]
+    - wait: { for: { id: log.note }, timeout: 10 }
     - type: { text: "morning ride", into: { id: log.note } }
     - tap: { id: log.intense }
   expect:

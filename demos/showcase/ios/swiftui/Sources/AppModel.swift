@@ -64,7 +64,9 @@ final class AppModel: ObservableObject {
         self.env = env
         animationsDisabled = env["SHOWCASE_UITEST"] != nil
 
-        selectedTab = Self.tab(env["SHOWCASE_TAB"])
+        // Always launch on the Stable tab; every other tab is reached by tapping the native tab
+        // bar under the XCUITest backend (BE-0107 retired the SHOWCASE_TAB launch-env shortcut).
+        selectedTab = .stable
         gesturesMode = env["SHOWCASE_GESTURES"] != nil
         conformanceIDs = Self.conformanceIDs(env["SHOWCASE_CONFORMANCE"])
         if conformanceIDs != nil {
@@ -96,17 +98,6 @@ final class AppModel: ObservableObject {
             else { return }
             let ids = Self.conformanceIDs(raw.trimmingCharacters(in: .whitespacesAndNewlines))
             if self.conformanceIDs != ids { self.conformanceIDs = ids }
-        }
-    }
-
-    /// Map a `SHOWCASE_TAB` value (and deeplink host) to a tab.
-    private static func tab(_ name: String?) -> Tab {
-        switch name {
-        case "search": return .search
-        case "log": return .log
-        case "notices": return .notices
-        case "permissions": return .permissions
-        default: return .stable
         }
     }
 

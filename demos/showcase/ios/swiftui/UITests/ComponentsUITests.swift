@@ -18,9 +18,10 @@ final class ComponentsuitestsUITests: XCTestCase {
 
   func test_filter_sheet_opens_then_closes() {
     app.launchEnvironment["SHOWCASE_UITEST"] = "1"
-    app.launchEnvironment["SHOWCASE_TAB"] = "log"
     app.launch()
 
+    app.descendants(matching: .any).matching(NSPredicate(format: "label == %@ AND elementType == %ld", "Log", XCUIElement.ElementType.button.rawValue)).firstMatch.tap()
+    XCTAssertTrue(el("log.openFilter").waitForExistence(timeout: 10.0), "wait for element")
     el("log.openFilter").tap()
     XCTAssertTrue(el("log.sheet.title").waitForExistence(timeout: 5.0), "wait for element")
     el("log.sheet.apply").tap()
@@ -32,9 +33,10 @@ final class ComponentsuitestsUITests: XCTestCase {
 
   func test_gallery_cover_opens_then_closes() {
     app.launchEnvironment["SHOWCASE_UITEST"] = "1"
-    app.launchEnvironment["SHOWCASE_TAB"] = "log"
     app.launch()
 
+    app.descendants(matching: .any).matching(NSPredicate(format: "label == %@ AND elementType == %ld", "Log", XCUIElement.ElementType.button.rawValue)).firstMatch.tap()
+    XCTAssertTrue(el("log.openGallery").waitForExistence(timeout: 10.0), "wait for element")
     el("log.openGallery").tap()
     XCTAssertTrue(el("log.cover.title").waitForExistence(timeout: 5.0), "wait for element")
     el("log.cover.close").tap()
@@ -46,9 +48,10 @@ final class ComponentsuitestsUITests: XCTestCase {
 
   func test_search_filters_the_catalog() {
     app.launchEnvironment["SHOWCASE_UITEST"] = "1"
-    app.launchEnvironment["SHOWCASE_TAB"] = "search"
     app.launch()
 
+    app.descendants(matching: .any).matching(NSPredicate(format: "label == %@ AND elementType == %ld", "Search", XCUIElement.ElementType.button.rawValue)).firstMatch.tap()
+    XCTAssertTrue(el("search.field").waitForExistence(timeout: 5.0), "wait for element")
     XCTAssertEqual(el("search.count").value as? String, "5")
     el("search.field").tap()
     el("search.field").typeText("Horse 5")

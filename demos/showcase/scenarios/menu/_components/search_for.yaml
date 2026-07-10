@@ -3,5 +3,6 @@
 # of the old demo app's shared login component.
 params: [query]
 steps:
+  - tap: { label: "Search", traits: [button] }
   - wait: { for: { id: search.field }, timeout: 10 }
   - type: { into: { id: search.field }, text: "${params.query}" }

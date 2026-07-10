@@ -4,10 +4,11 @@
 # (no literal-scheme deeplinks), so this drives both a11y targets.
 - name: the list has off-screen rows
   preconditions:
-    launchEnv: { SHOWCASE_UITEST: "1", SHOWCASE_TAB: notices }
+    launchEnv: { SHOWCASE_UITEST: "1" }
   steps:
-    - wait: { for: { id: notice.row.1 }, timeout: 10 }
+    - tap: { label: "Notices", traits: [button] }
       capture: [video]
+    - wait: { for: { id: notice.row.1 }, timeout: 10 }
   expect:
     - exists: { id: notice.row.1 }     # top rows are on-screen
     - exists: { id: notice.row.2 }
@@ -15,10 +16,11 @@
 
 - name: tap a visible notice to open its detail, then pop back
   preconditions:
-    launchEnv: { SHOWCASE_UITEST: "1", SHOWCASE_TAB: notices }
+    launchEnv: { SHOWCASE_UITEST: "1" }
   steps:
-    - wait: { for: { id: notice.row.2 }, timeout: 10 }
+    - tap: { label: "Notices", traits: [button] }
       capture: [video]
+    - wait: { for: { id: notice.row.2 }, timeout: 10 }
     - tap: { id: notice.row.2 }
     - wait: { for: { id: notice.detail.title }, timeout: 5 }
     - assert:
@@ -36,10 +38,11 @@
 # screen may need one more.)
 - name: scroll to an off-screen notice and open it
   preconditions:
-    launchEnv: { SHOWCASE_UITEST: "1", SHOWCASE_TAB: notices }
+    launchEnv: { SHOWCASE_UITEST: "1" }
   steps:
-    - wait: { for: { id: notice.row.1 }, timeout: 10 }
+    - tap: { label: "Notices", traits: [button] }
       capture: [video]
+    - wait: { for: { id: notice.row.1 }, timeout: 10 }
     - assert:
         - exists: { id: notice.row.20, negate: true }   # off-screen before scrolling
     - swipe: { on: { id: notice.row.4 }, direction: up }
