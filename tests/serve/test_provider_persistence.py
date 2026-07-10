@@ -99,6 +99,34 @@ def test_local_store_rejects_a_corrupt_file(tmp_path: Path) -> None:
         LocalProviderSettingsStore(path).load()
 
 
+def test_restore_skips_a_slot_for_an_unknown_provider(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    """A non-active slot naming a provider that no longer exists is skipped, not written into the
+    in-memory map (which the Settings UI would otherwise surface). The valid active slot still
+    restores."""
+    scn_dir, cfg, runs = project(tmp_path)
+    store_path = runs.parent / "provider-settings.json"
+    store_path.write_text(
+        '{"provider": "api-key", "settings": '
+        '{"api-key": {"model": "m"}, "legacy-gone": {"model": "x"}}}',
+        encoding="utf-8",
+    )
+    state = srv.ServeState(
+        scenarios_dir=scn_dir,
+        config=cfg,
+        runs_dir=runs,
+        cwd=tmp_path,
+        provider_settings_store=LocalProviderSettingsStore(store_path),
+    )
+    with caplog.at_level("WARNING"):
+        restore_persisted_provider_settings(state)
+    remembered = state.provider_settings_snapshot()
+    assert "api-key" in remembered  # the valid active slot restored
+    assert "legacy-gone" not in remembered  # the unknown slot was skipped
+    assert "legacy-gone" in caplog.text
+
+
 def test_rejects_a_non_string_leaf_field(tmp_path: Path) -> None:
     """A structurally valid file with a non-string leaf (e.g. a numeric model) is rejected, not
     coerced to a string — the store fails on a malformed value rather than guessing."""

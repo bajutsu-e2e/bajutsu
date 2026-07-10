@@ -420,7 +420,7 @@ def set_provider(state: ServeState, body: dict[str, Any]) -> tuple[Any, int]:
         settings = ProviderSettings(model=ai_model, effort=effort)
         _apply_provider_env(prov, settings)
         state.set_provider_setting(prov, settings)
-        persisted = _persist_provider_settings(state)
+        persisted = _persist_provider_settings(state, prov)
         return {
             "ok": True,
             "provider": prov,
@@ -442,7 +442,7 @@ def set_provider(state: ServeState, body: dict[str, Any]) -> tuple[Any, int]:
     settings = ProviderSettings(model=model, effort=effort, region=region)
     _apply_provider_env("bedrock", settings)
     state.set_provider_setting("bedrock", settings)
-    persisted = _persist_provider_settings(state)
+    persisted = _persist_provider_settings(state, "bedrock")
     return {
         "ok": True,
         "provider": "bedrock",
@@ -481,14 +481,16 @@ def _apply_provider_env(prov: str, settings: ProviderSettings) -> None:
     os.environ[PROVIDER_ENV] = prov
 
 
-def _persist_provider_settings(state: ServeState) -> bool:
-    """Flush the active provider choice + the per-provider map to the durable store (BE-0184).
+def _persist_provider_settings(state: ServeState, provider: str) -> bool:
+    """Flush the per-provider map + *provider* as the active choice to the durable store (BE-0184).
 
-    The active provider is read back from the env `set_provider` just wrote, so it is exactly the
-    selection being saved. The selection has already taken effect in the process env and the
-    in-memory map by the time this runs, so a failure to write the file (a read-only serve dir, a
-    full disk) must not fail the request that already succeeded — it is logged loudly and the change
-    stands for the session, just not across a restart.
+    *provider* is the just-validated selection the caller applied — passed in rather than re-derived
+    from ``os.environ[PROVIDER_ENV]``, so a concurrent `/api/provider` on another thread (serve is a
+    `ThreadingHTTPServer`) can't slip in between the env write and this read and get a *different*
+    provider recorded as active than the one this request reports saved. The selection has already
+    taken effect in the process env and the in-memory map by the time this runs, so a failure to
+    write the file (a read-only serve dir, a full disk) must not fail the request that already
+    succeeded — it is logged loudly and the change stands for the session, just not across a restart.
 
     Returns:
         Whether the choice was durably saved: True when written, or when no store is wired (the
@@ -502,7 +504,7 @@ def _persist_provider_settings(state: ServeState) -> bool:
     try:
         store.save(
             PersistedProviderSettings(
-                provider=resolved_provider(),
+                provider=provider,
                 settings=state.provider_settings_snapshot(),
             )
         )
@@ -559,7 +561,16 @@ def restore_persisted_provider_settings(state: ServeState) -> None:
             data.provider,
         )
         return
+    known = known_providers()
     for name, settings in data.settings.items():
+        if name not in known:
+            # A stale/hand-edited file can carry a slot for a provider that no longer exists; skip it
+            # rather than populating the in-memory map with a bogus entry the Settings UI would then
+            # surface (via `_provider_settings_map`). Loud, like the active-provider guard above.
+            logging.getLogger(__name__).warning(
+                "ignoring a persisted settings slot for the unknown provider %r", name
+            )
+            continue
         state.set_provider_setting(name, settings)
     _apply_provider_env(data.provider, active)
 
