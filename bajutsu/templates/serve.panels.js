@@ -67,7 +67,7 @@ function hideReportPanel(){if(recReportHide)recReportHide();else{const p=$('#rec
 // below the fold; the human resumes by POSTing a response — a supplied value, "I operated the
 // device", or a cancel — back to the job.
 function showHandoffPanel(){$('#rec-handoffmodal').hidden=false;}
-function hideHandoffPanel(){$('#rec-handoffmodal').hidden=true;}
+function hideHandoffPanel(){closeModal($('#rec-handoffmodal'));}
 function onHandoffRequest(req){
   $('#rec-handoff-reason').textContent=req.reason||'the agent needs a human to continue';
   $('#rec-handoff-screen').textContent=[req.target&&('target: '+req.target),req.screen].filter(Boolean).join(' · ');

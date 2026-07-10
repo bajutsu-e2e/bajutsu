@@ -71,3 +71,38 @@ def test_pre_be0191_drift_names_are_gone() -> None:
     """The old names never defined by the registry (--accent/--muted/--bad/--border) are migrated."""
     drifted = [name for name in ("--accent", "--muted", "--bad", "--border") if name in _SERVE_CSS]
     assert not drifted, f"serve.css still references drifted token names: {drifted}"
+
+
+# --- Motion / transition contract (BE-0191 unit 4) ---------------------------------------------
+# Transitions are a themable part of the look: JS applies only semantic state classes, and the
+# theme decides the motion via `--motion-*` tokens (duration / easing / animation-name). Like the
+# color tokens, the motion tokens must all be defined in the :root/midnight fallback block so a
+# partial drop-in theme degrades to the built-in motion rather than to unset values.
+_MOTION = re.compile(r"(--motion-[a-z0-9-]+)\s*:")
+
+
+def test_motion_tokens_defined_in_fallback_block() -> None:
+    """Every `--motion-*` token used anywhere resolves to a definition in the :root/midnight block.
+
+    A theme only overrides the motion it wants to change; anything it omits must inherit the
+    built-in value from midnight, exactly as the color tokens do (unit 1's fallback rule).
+    """
+    root_defined = set(_MOTION.findall(_root_block()))
+    referenced = set(re.findall(r"var\(\s*(--motion-[a-z0-9-]+)", _SERVE_CSS + _JS))
+    missing = sorted(referenced - root_defined)
+    assert not missing, (
+        f"serve.css/js references --motion-* tokens undefined in the fallback block: {missing}"
+    )
+    assert root_defined, "the theme registry defines no --motion-* tokens (unit 4 contract missing)"
+    assert referenced, "no rule consumes a --motion-* token (motion tokens are dead)"
+
+
+def test_reduced_motion_collapse_present() -> None:
+    """`serve.css` collapses all motion to instant under `prefers-reduced-motion: reduce`.
+
+    This is both the accessibility guarantee and the determinism lever (unit 5): with motion off,
+    every transition is instant and the dogfood's condition-wait assertions hold unchanged.
+    """
+    assert re.search(r"@media\s*\(\s*prefers-reduced-motion\s*:\s*reduce\s*\)", _SERVE_CSS), (
+        "serve.css has no `prefers-reduced-motion: reduce` collapse block (unit 4 determinism lever)"
+    )

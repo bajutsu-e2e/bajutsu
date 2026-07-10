@@ -27,12 +27,26 @@
                 --run       in-progress / warning;        --on-run  text on --run
      Run groups --rung-id / --rung-label / --rung-labelidx  the run-grouping legend chips;
                 --on-rung   text on those chips
+
+   Motion (BE-0191 unit 4) — transitions are part of the look too. JS only applies semantic state
+   classes (.is-entering / .is-leaving on views and modals); the theme decides what those states
+   look like via these tokens. A theme that overrides none of them keeps the built-in motion; a
+   theme setting an *-enter/-leave token to `none` (or a keyframe name of its own, defined as a
+   top-level @keyframes in the theme file) opts out of or replaces that animation. All motion
+   collapses to instant under `prefers-reduced-motion: reduce` regardless of the active theme.
+     Durations --motion-view     top-level view (tab) switch
+                --motion-modal    modal open / close
+                --motion-pane     tiler pane reconstruction & responsive pane switch (BE-0072)
+                --motion-fast     small state changes (progress fills, hovers)
+     Easing     --motion-ease     shared easing curve for the above
+     Keyframes  --motion-view-enter / --motion-view-leave    view enter / leave animation names
+                --motion-modal-enter / --motion-modal-leave  modal enter / leave animation names
    (Non-themed globals such as the monospace font stack live in serve.css's own :root, not here —
    this registry is only the swappable look.)
 
-   The header control is still a binary dark / light toggle (unchecked = midnight, checked =
-   daylight; see initTheme/applyTheme in serve.core.js). Adding a third theme needs the wider
-   picker BE-0191 unit 3 introduces. */
+   The header control is a theme picker (a <select> of every registered theme; see initTheme in
+   serve.core.js), which BE-0191 unit 3 introduced in place of the original binary dark/light
+   toggle. */
 :root,[data-theme="midnight"]{
   --bg:#0f172a; --bg2:#0b1220; --card:#1e293b; --canvas:#ffffff; --line:#334155;
   --fg:#e2e8f0; --mut:#94a3b8; --on-mut:#0f172a; --acc:#38bdf8; --on-acc:#082f49;
@@ -40,6 +54,11 @@
   --run:#f59e0b; --on-run:#1c1402;
   --rung-id:#22aa66; --rung-label:#ddaa33; --rung-labelidx:#cc7733; --on-rung:#ffffff;
   --scrim:rgba(2,6,23,.7);
+  /* Motion (unit 4): the built-in, theme-neutral look; the fallback for every theme. */
+  --motion-view:.18s; --motion-modal:.16s; --motion-pane:.16s; --motion-fast:.3s;
+  --motion-ease:cubic-bezier(.4,0,.2,1);
+  --motion-view-enter:bj-view-in; --motion-view-leave:bj-view-out;
+  --motion-modal-enter:bj-modal-in; --motion-modal-leave:bj-modal-out;
 }
 [data-theme="daylight"]{
   --bg:#f8fafc; --bg2:#eef2f7; --card:#ffffff; --canvas:#ffffff; --line:#cbd5e1;

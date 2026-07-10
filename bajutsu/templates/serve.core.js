@@ -217,13 +217,68 @@ document.querySelectorAll('.viewswitch').forEach(sw=>{
   sw.querySelectorAll('.vstab').forEach(b=>b.addEventListener('click',()=>{
     view.dataset.pane=b.dataset.pane;
     sw.querySelectorAll('.vstab').forEach(x=>x.classList.toggle('active',x===b));
+    // Fade the pane brought to full width (BE-0191 unit 4); a no-op on desktop / under reduced motion.
+    if(!prefersReducedMotion()){
+      view.classList.remove('pane-switching');void view.offsetWidth;view.classList.add('pane-switching');
+      // End on the pane's own fade — guard e.target so an unrelated descendant animation (e.g. a
+      // .running spinner bubbling up) doesn't strip the class early and cut the fade short.
+      const done=e=>{if(!e.target.matches('[data-pane]'))return;view.removeEventListener('animationend',done);view.classList.remove('pane-switching');};
+      view.addEventListener('animationend',done);
+    }
   }));
 });
+
+// ---- themable screen transitions (BE-0191 unit 4) ----
+// JS only applies semantic state classes; the theme's CSS (--motion-* tokens + keyframes) decides
+// what they look like. Everything below is a no-op under prefers-reduced-motion, which is also the
+// determinism lever (unit 5): the Playwright backend runs with reduced_motion=reduce, so in the
+// dogfood every transition is instant and no condition-wait ever races an animation.
+const REDUCED_MOTION=matchMedia('(prefers-reduced-motion: reduce)');
+const prefersReducedMotion=()=>REDUCED_MOTION.matches;
+// Restart-and-play an enter animation: toggling the class off, forcing a reflow, then on again lets
+// the same element re-animate on a repeat (a second view switch to the same view).
+function playEnter(el){
+  if(prefersReducedMotion())return;
+  el.classList.remove('is-entering');void el.offsetWidth;el.classList.add('is-entering');
+  const done=e=>{if(e.target!==el)return;el.removeEventListener('animationend',done);el.classList.remove('is-entering');};
+  el.addEventListener('animationend',done);
+}
+// Read a --motion-* animation-name token off <html> (where the theme sets it); '' / 'none' means the
+// theme opts that transition out, so it plays instantly.
+const motionOff=tok=>{const v=getComputedStyle(document.documentElement).getPropertyValue(tok).trim();return !v||v==='none';};
+// Close a modal with its leave animation, then hide it (and run an optional content-reset once the
+// animation is done, so nothing blanks mid-fade). Hidden instantly under reduced motion or when the
+// theme sets --motion-modal-leave:none (no animationend would fire) — the dogfood path is the former.
+function closeModal(el,cleanup){
+  if(el.hidden){if(cleanup)cleanup();return;}
+  const finish=()=>{el.classList.remove('is-leaving');el.hidden=true;el._closeAbort=null;if(cleanup)cleanup();};
+  if(prefersReducedMotion()||motionOff('--motion-modal-leave')){finish();return;}
+  el.classList.remove('is-entering');  // cancel an in-flight enter so the leave starts clean
+  el.classList.add('is-leaving');
+  // Arm the hide on the modal's own leave animation. An AbortController lets a reopen (the observer
+  // below) cancel this pending listener, so a modal reopened mid-close is not hidden by a stale event.
+  if(el._closeAbort)el._closeAbort.abort();
+  el._closeAbort=new AbortController();
+  el.addEventListener('animationend',e=>{if(e.target===el)finish();},{signal:el._closeAbort.signal});
+}
+// Play the enter animation whenever a modal becomes visible (its `hidden` attribute is removed),
+// regardless of which open path unhid it — so the many openFs/openSettings/… sites need no change.
+document.querySelectorAll('.modal').forEach(m=>new MutationObserver(muts=>{
+  for(const mu of muts){
+    if(mu.attributeName==='hidden'&&!m.hidden){
+      if(m._closeAbort){m._closeAbort.abort();m._closeAbort=null;}  // reopened mid-close: cancel the pending hide
+      m.classList.remove('is-leaving');playEnter(m);
+    }
+  }
+}).observe(m,{attributes:true,attributeFilter:['hidden']}));
 
 // ---- top-level Record / Replay / Crawl views ----
 function showView(name){
   document.querySelectorAll('.toptab').forEach(t=>t.classList.toggle('active',t.dataset.view===name));
   $('#view-record').hidden=name!=='record';$('#view-replay').hidden=name!=='replay';$('#view-crawl').hidden=name!=='crawl';$('#view-author').hidden=name!=='author';$('#view-stats').hidden=name!=='stats';$('#view-usage').hidden=name!=='usage';$('#view-coverage').hidden=name!=='coverage';
+  // The incoming view animates in (enter-only: the outgoing one is hidden instantly, so two sibling
+  // views never overlap in the flex column). The picked theme decides the motion via --motion-view-*.
+  const shown=$('#view-'+name);if(shown)playEnter(shown);
   if(name==='replay')loadHistory();
   if(name==='author')authorInit();
   if(name==='stats')loadStats();
@@ -260,13 +315,13 @@ async function browseFs(dir){
   $('#fslist').querySelectorAll('li[data-file]').forEach(li=>li.addEventListener('click',()=>chooseConfig(li.dataset.file)));
 }
 function openFs(){$('#fsmodal').hidden=false;if(fsSourceEnabled)browseFs('')}
-function closeFs(){$('#fsmodal').hidden=true}
+function closeFs(){closeModal($('#fsmodal'))}
 $('#opencfg').addEventListener('click',openFs);
 $('#fsclose').addEventListener('click',closeFs);
 $('#fsmodal').addEventListener('click',e=>{if(e.target===$('#fsmodal'))closeFs()});
 
 // ---- view the loaded config: a structured key/value tree (or the raw YAML) + its Git origin ----
-function closeCfgView(){$('#cfgviewmodal').hidden=true}
+function closeCfgView(){closeModal($('#cfgviewmodal'))}
 // Toggle between the collapsible structured tree and the raw YAML text.
 function cfgViewMode(raw){
   $('#cfgviewtree').hidden=raw;$('#cfgviewbody').hidden=!raw;
@@ -526,7 +581,7 @@ async function saveSettings(){
 }
 // ---- Settings modal: one panel for the provider + API-key controls ----
 function openSettings(){$('#settingsmodal').hidden=false;$('#apikey').value='';$('#cctoken').value='';setSettingsStatus('','');loadKey();loadCcTok();loadProv()}
-function closeSettings(){$('#settingsmodal').hidden=true}
+function closeSettings(){closeModal($('#settingsmodal'))}
 $('#opensettings').addEventListener('click',openSettings);
 $('#settingsclose').addEventListener('click',closeSettings);
 $('#settingsmodal').addEventListener('click',e=>{if(e.target===$('#settingsmodal'))closeSettings()});

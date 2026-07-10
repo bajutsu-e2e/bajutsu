@@ -626,9 +626,11 @@ class _FakeBrowser:
     def __init__(self, pages: list[_FakePage]) -> None:
         self._pages = list(pages)  # one handed out per new_context().new_page()
         self.contexts: list[_FakeContext] = []
+        self.context_kwargs: list[dict[str, Any]] = []  # kwargs each new_context() was opened with
         self.closed = 0
 
-    def new_context(self) -> _FakeContext:
+    def new_context(self, **kwargs: Any) -> _FakeContext:
+        self.context_kwargs.append(kwargs)
         ctx = _FakeContext(self._pages.pop(0))
         self.contexts.append(ctx)
         return ctx
@@ -664,6 +666,8 @@ def test_reset_context_opens_a_fresh_context_closing_the_old_one() -> None:
     assert fresh.goto_url == "http://app.test/index.html"  # navigated on the fresh page
     fresh.fire("pageerror", "boom")  # health handlers rebound to the fresh page
     assert drv.pop_page_errors() == ["boom"]
+    # The determinism lever (BE-0191 unit 5): every context collapses the app's CSS motion to instant.
+    assert browser.context_kwargs[-1].get("reduced_motion") == "reduce"
 
 
 def test_relaunch_replaces_the_browser_process() -> None:

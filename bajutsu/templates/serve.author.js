@@ -173,7 +173,34 @@ function initTiling(){
       r.textContent=k in out?String(out[k]):'';
     }
   }
-  const rebuild=V=>{V.dvc=0;const r=render(V,V.tree);r.classList.add('tile-root');V.view.replaceChildren(r);reflectSizes(V);};
+  const rebuild=V=>{
+    V.dvc=0;
+    // Double-buffered pane reconstruction (BE-0191 unit 4): render() *moves* the live panel nodes into
+    // the new root, so to animate the old layout out we keep a deep clone of it — a visual ghost held
+    // absolute over the view — while the rebuilt root animates in, then drop the ghost. The ghost's
+    // data-testid attributes are stripped so the primary selector ladder can't match it. What actually
+    // keeps a run deterministic, though, is the reduced-motion guard: with reduced_motion=reduce forced
+    // by the Playwright backend the ghost is never created and this collapses to a plain replaceChildren
+    // with no duplicate DOM at all. It is also skipped when the theme opts out (--motion-view-leave:none).
+    const old=V.view.querySelector(':scope>.tile-root');
+    const leave=getComputedStyle(document.documentElement).getPropertyValue('--motion-view-leave').trim();
+    const ghost=(old&&!prefersReducedMotion()&&leave&&leave!=='none')?old.cloneNode(true):null;
+    const r=render(V,V.tree);r.classList.add('tile-root');
+    V.view.replaceChildren(r);
+    if(ghost){
+      ghost.classList.add('is-leaving');ghost.removeAttribute('data-testid');
+      ghost.querySelectorAll('[data-testid]').forEach(n=>n.removeAttribute('data-testid'));
+      // Match on e.target so a descendant's animationend (e.g. a .running spinner bubbling up) doesn't
+      // tear the listener down early — the root's own leave/enter animation is the one that ends it.
+      const drop=e=>{if(e.target!==ghost)return;ghost.removeEventListener('animationend',drop);ghost.remove();};
+      ghost.addEventListener('animationend',drop);
+      V.view.appendChild(ghost);
+      r.classList.add('is-entering');
+      const done=e=>{if(e.target!==r)return;r.removeEventListener('animationend',done);r.classList.remove('is-entering');};
+      r.addEventListener('animationend',done);
+    }
+    reflectSizes(V);
+  };
   function startResize(V,e,dv,node,i){
     e.preventDefault();const row=node.d==='row',a=dv.previousElementSibling,b=dv.nextElementSibling;
     const ra=a.getBoundingClientRect(),rb=b.getBoundingClientRect(),tot=row?ra.width+rb.width:ra.height+rb.height,start=row?e.clientX:e.clientY,s0=row?ra.width:ra.height;

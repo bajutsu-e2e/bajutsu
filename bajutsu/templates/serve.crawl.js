@@ -565,7 +565,7 @@ function shotStep(dir){
   const e=dir==='fwd'?edges.find(x=>x.src===shotFp&&x.dst!==shotFp):edges.find(x=>x.dst===shotFp&&x.src!==shotFp);
   if(e)openShot(dir==='fwd'?e.dst:e.src);
 }
-function closeShot(){$('#shotmodal').hidden=true;$('#shotimg').removeAttribute('src');$('#shothots').innerHTML='';shotFp=null;hideHi()}
+function closeShot(){closeModal($('#shotmodal'),()=>{$('#shotimg').removeAttribute('src');$('#shothots').innerHTML='';shotFp=null;hideHi()})}
 $('#shotmodal').addEventListener('click',e=>{if(e.target===$('#shotmodal')||e.target===$('#shotclose'))closeShot()});
 $('#shotnext').addEventListener('click',e=>{const b=e.target.closest('.nextrow');if(b&&b.dataset.fp)openShot(b.dataset.fp)});
 // Click an actionable spot on the shot that has a known destination to step there.
