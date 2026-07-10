@@ -74,7 +74,11 @@ that dispatch **mode-aware** so it is correct for both a desktop pointer browser
 enabled — the `has_touch` value the context was created with. Playwright's Python `BrowserContext`
 has no public getter for it (it is a `new_context()` creation-time option only), so the driver
 records the touch mode at context-creation time (alongside `self._context`) rather than reading it
-back from the context object. Today the web
+back from the context object. Note that `self._context` is created from two independent sites — the
+`_start_browser` starter closure (the initial launch *and* `relaunch()`) and `_new_context()`
+(`reset_context()` and the video-recording swap) — so the companion item must set `has_touch` and
+refresh the cached touch mode at **both**, or a `relaunch()` (which goes through the starter, not
+`_new_context()`) could leave the cached mode stale relative to the freshly created context. Today the web
 backend always launches a plain desktop context (`has_touch` is false), so this proposal ships
 the **desktop / wheel** path as the live behaviour and wires the branch so the touch path
 activates automatically once a context can be configured for touch. Standing up that
