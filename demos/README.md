@@ -38,6 +38,13 @@ Every iOS demo drives the same fixture: the **showcase** suite ([`showcase/`](sh
 > (real Claude, needs an API key) and `make -C demos/web record-offline` (the API-key-free twin,
 > in the `make check` toolchain).
 
+> **Web backend against a live public URL.** [`docs-site/`](docs-site/README.md) points the
+> Playwright backend at the public Bajutsu docs site (<https://bajutsu-e2e.github.io/bajutsu/>)
+> instead of a local fixture — no server to serve, the backend navigates straight to the URL:
+> `uv run bajutsu run --target docs --backend web --config demos/docs-site/docs-site.config.yaml`.
+> Since the site carries no `data-testid` ids, its scenarios match by visible text and kind, and
+> its `smoke` asserts against live copy (so a docs redesign, not a code change, can break it).
+
 ## Which one should I run?
 
 - **First look, on a real device?** → [`tour`](tour/README.md). One command opens a horse from
