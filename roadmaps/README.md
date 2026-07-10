@@ -316,6 +316,7 @@ Purpose-built test subjects that exercise the commands end-to-end. The showcase 
 |---|---|---|---|
 | [BE-0045](BE-0045-dogfood-showcase-apps/BE-0045-dogfood-showcase-apps.md) | Dogfood showcase apps (UIKit × SwiftUI, accessibility-paired) | Implemented | Dogfooding |
 | [BE-0079](BE-0079-consolidate-demos-on-showcase/BE-0079-consolidate-demos-on-showcase.md) | Consolidate the demo & dogfood apps onto the showcase suite | Implemented | Dogfooding |
+| [BE-0107](BE-0107-showcase-tab-navigation-no-launch-shortcut/BE-0107-showcase-tab-navigation-no-launch-shortcut.md) | Reach every showcase tab by navigation, not a launch-env shortcut | Implemented | Dogfooding |
 <!-- /GENERATED:implemented-dogfood -->
 
 ### Dogfood fixtures (web UI)
@@ -634,7 +635,6 @@ A platform is just a backend behind the one driver interface ([DESIGN §1](../DE
 <!-- GENERATED:proposals-dogfood -->
 | ID | Item | Status | Origin |
 |---|---|---|---|
-| [BE-0107](BE-0107-showcase-tab-navigation-no-launch-shortcut/BE-0107-showcase-tab-navigation-no-launch-shortcut.md) | Reach every showcase tab by navigation, not a launch-env shortcut | Proposal | Dogfooding |
 <!-- /GENERATED:proposals-dogfood -->
 
 ### Dogfood fixtures (web UI)

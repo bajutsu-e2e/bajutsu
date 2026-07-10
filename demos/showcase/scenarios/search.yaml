@@ -2,10 +2,11 @@
 # to an a11y value, and a no-match query shows the empty state. Seed is "Horse 1".."Horse 5".
 - name: filter narrows the catalog
   preconditions:
-    launchEnv: { SHOWCASE_UITEST: "1", SHOWCASE_TAB: search }
+    launchEnv: { SHOWCASE_UITEST: "1" }
   steps:
-    - wait: { for: { id: search.field }, timeout: 10 }
+    - tap: { label: "Search", traits: [button] }
       capture: [video]
+    - wait: { for: { id: search.field }, timeout: 10 }
     - type: { text: "Horse 3", into: { id: search.field } }
     - wait: { for: { id: search.row.3 }, timeout: 5 }
   expect:
@@ -15,10 +16,11 @@
 
 - name: no match shows the empty state
   preconditions:
-    launchEnv: { SHOWCASE_UITEST: "1", SHOWCASE_TAB: search }
+    launchEnv: { SHOWCASE_UITEST: "1" }
   steps:
-    - wait: { for: { id: search.field }, timeout: 10 }
+    - tap: { label: "Search", traits: [button] }
       capture: [video]
+    - wait: { for: { id: search.field }, timeout: 10 }
     - type: { text: "zzz", into: { id: search.field } }
     - wait: { for: { id: search.results-empty }, timeout: 5 }
   expect:

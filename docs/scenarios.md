@@ -78,8 +78,9 @@ misinterpret rather than merely reject; a purely additive optional field needs n
 ```yaml
 - name: filter narrows the catalog
   preconditions:
-    launchEnv: { SHOWCASE_UITEST: "1", SHOWCASE_TAB: search }
+    launchEnv: { SHOWCASE_UITEST: "1" }
   steps:
+    - tap: { label: "Search", traits: [button] }
     - type: { text: "Horse 3", into: { id: search.field } }
     - wait: { for: { id: search.row.3 }, timeout: 5 }
   expect:

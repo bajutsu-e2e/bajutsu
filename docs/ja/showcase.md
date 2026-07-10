@@ -52,14 +52,15 @@ make -C demos/showcase ui-test             # codegen 経路：シナリオ → X
 `launchEnv` で注入し、`SIMCTL_CHILD_<NAME>` として渡します（[drivers](drivers.md#simctl-による環境管理)）。
 BE-0079 で、*データ状態*と *push で開く画面*への起動時の近道を取り除きました。カタログは固定で（シードの
 口はありません）、deeplink が詳細へ直接飛ぶこともありません（詳細は行のタップでのみ到達します）。
-`SHOWCASE_TAB` は初期**タブ**の選択に限って残しています。これは暫定的な例外で、idb がネイティブのタブバーを
-タップできないためです。退役は XCUITest backend を使う後続作業になります（別の提案として扱います）。
-初期タブより先の画面はすべて UI を操作して辿り、シナリオはデータを注入せずアプリ自身のものを観測します。
+BE-0107 では、画面への最後の起動時ショートカットである `SHOWCASE_TAB` を廃止して、この作業を完了しました。
+アプリはつねに Stable タブで起動し、ほかのタブへはネイティブのタブバーをタップして移動します。タブバーを
+タップできるのは XCUITest backend だけなので（idb はタブバーを 1 つの不透明なグループにまとめてしまいます）、
+タブをまたぐシナリオは `--backend ios` で実行します。起動タブより先の画面はすべて UI を操作して辿り、
+シナリオはデータを注入せずアプリ自身のものを観測します。
 
 | 変数 | 効果 |
 |---|---|
 | `SHOWCASE_UITEST=1` | アニメーションを無効化（条件待機を締める） |
-| `SHOWCASE_TAB=<name>` | 初期タブ：`stable`（既定）/ `search` / `log` / `notices` / `permissions` |
 | `SHOWCASE_API_URL` / `SHOWCASE_HTTP_BASE` | カタログ GET とエコー POST/DELETE エンドポイントの base URL |
 
 識別子カタログの全体、deeplink 文法、プリミティブとシナリオの対応は

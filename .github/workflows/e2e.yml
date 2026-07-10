@@ -7,8 +7,9 @@
 # The SwiftUI a11y product is the smoke / codegen subject; the UIKit twin shares the identifier
 # contract, so one toolkit suffices for the gate.
 # The BE-0006 element-tree goldens now live on the showcase
-# (demos/showcase/scenarios/golden.yaml, ported in BE-0079's retirement); the weekly idb-monitor
-# runs them against the latest idb_companion, so per-PR golden coverage stays off this fast gate.
+# (demos/showcase/scenarios/golden/, ported in BE-0079's retirement, split by backend in BE-0107);
+# the weekly idb-monitor runs the idb golden against the latest idb_companion, so per-PR golden
+# coverage stays off this fast gate.
 # Runs on every relevant PR and on demand (the Actions tab / `gh workflow run e2e.yml`).
 name: E2E (Simulator)
 

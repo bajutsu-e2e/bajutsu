@@ -8,10 +8,11 @@
 - name: grant notification permission
   dismissAlerts: { instruction: "tap Allow" }   # grant the prompt instead of dismissing it
   preconditions:
-    launchEnv: { SHOWCASE_UITEST: "1", SHOWCASE_TAB: permissions }
+    launchEnv: { SHOWCASE_UITEST: "1" }
   steps:
-    - wait: { for: { id: perm.requestNotif }, timeout: 10 }
+    - tap: { label: "Permissions", traits: [button] }
       capture: [video]
+    - wait: { for: { id: perm.requestNotif }, timeout: 10 }
     - assert:
         - value: { sel: { id: perm.notif.value }, equals: "notDetermined" }
     - tap: { id: perm.requestNotif }

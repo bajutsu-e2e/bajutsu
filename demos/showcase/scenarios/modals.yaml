@@ -3,10 +3,11 @@
 # In-app modals are visible to idb (unlike the OS alerts in permission.yaml).
 - name: open and dismiss the detented sheet
   preconditions:
-    launchEnv: { SHOWCASE_UITEST: "1", SHOWCASE_TAB: log }
+    launchEnv: { SHOWCASE_UITEST: "1" }
   steps:
-    - wait: { for: { id: log.openFilter }, timeout: 10 }
+    - tap: { label: "Log", traits: [button] }
       capture: [video]
+    - wait: { for: { id: log.openFilter }, timeout: 10 }
     - tap: { id: log.openFilter }
     - wait: { for: { id: log.sheet.title }, timeout: 5 }
     - assert:
@@ -19,10 +20,11 @@
 
 - name: open and dismiss the full-screen cover
   preconditions:
-    launchEnv: { SHOWCASE_UITEST: "1", SHOWCASE_TAB: log }
+    launchEnv: { SHOWCASE_UITEST: "1" }
   steps:
-    - wait: { for: { id: log.openGallery }, timeout: 10 }
+    - tap: { label: "Log", traits: [button] }
       capture: [video]
+    - wait: { for: { id: log.openGallery }, timeout: 10 }
     - tap: { id: log.openGallery }
     - wait: { for: { id: log.cover.title }, timeout: 5 }
     - tap: { id: log.cover.close }
@@ -32,10 +34,11 @@
 
 - name: action sheet records its choice
   preconditions:
-    launchEnv: { SHOWCASE_UITEST: "1", SHOWCASE_TAB: log }
+    launchEnv: { SHOWCASE_UITEST: "1" }
   steps:
-    - wait: { for: { id: log.submit }, timeout: 10 }
+    - tap: { label: "Log", traits: [button] }
       capture: [video]
+    - wait: { for: { id: log.submit }, timeout: 10 }
     # The Modals section's lower controls (openDelete, dialog.value) start behind the floating
     # tab bar, so scroll them well clear before tapping — two swipes anchored on controls that
     # stay visible, so openDelete lands in the upper screen where an instant tap is reliable.
@@ -54,10 +57,11 @@
 # Form controls: the stepper and toggle mirror their state to a11y values.
 - name: stepper and toggle mirror state
   preconditions:
-    launchEnv: { SHOWCASE_UITEST: "1", SHOWCASE_TAB: log }
+    launchEnv: { SHOWCASE_UITEST: "1" }
   steps:
-    - wait: { for: { id: log.intense }, timeout: 10 }
+    - tap: { label: "Log", traits: [button] }
       capture: [video]
+    - wait: { for: { id: log.intense }, timeout: 10 }
     - assert:
         - value: { sel: { id: log.intense.value }, equals: "off" }
     - tap: { id: log.intense }

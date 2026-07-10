@@ -91,13 +91,15 @@ jobs:
           udid: ${{ steps.sim.outputs.udid }}
           artifact-name: idb-monitor-run
 
-      # Golden element-tree assertion (BE-0006): pins the normalized tree shape for standard
-      # SwiftUI controls. Running it on the weekly cadence catches upstream idb/iOS drift that
-      # reshapes `describe-all` output between PRs.
+      # Golden element-tree assertion (BE-0006): pins the normalized tree shape for the Stable
+      # catalog's list rows, reached on the launch tab so idb needs no tab navigation. Running it
+      # on the weekly cadence catches upstream idb/iOS drift that reshapes `describe-all` output
+      # between PRs. The Log tab's control golden moved to golden_xcuitest.yaml (BE-0107) — idb can
+      # no longer tap to the Log tab, so that golden runs on the XCUITest backend, not here.
       - name: Run golden scenarios (BE-0006)
         uses: ./.github/actions/bajutsu-e2e
         with:
-          scenarios: demos/showcase/scenarios/golden.yaml
+          scenarios: demos/showcase/scenarios/golden/golden.yaml
           target: showcase-swiftui
           config: demos/showcase/showcase.config.yaml
           udid: ${{ steps.sim.outputs.udid }}

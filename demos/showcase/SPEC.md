@@ -100,14 +100,15 @@ Driven via `launchEnv` ([DESIGN §6.1](../../DESIGN.md)). All are read once at l
 | Variable | Effect | Default |
 |---|---|---|
 | `SHOWCASE_UITEST` | disable animations (tight condition waits) | unset |
-| `SHOWCASE_TAB` | initial tab: `stable`/`search`/`log`/`notices`/`permissions` | `stable` |
 | `SHOWCASE_API_URL` | base URL for the catalog GET (`/horses`) | `https://example.com` |
 | `SHOWCASE_HTTP_BASE` | base for the echo POST/DELETE endpoints | `https://httpbin.org` |
 
-> There is **no auth gate**: the app launches straight into the tab UI, on the Stable tab
-> (`SHOWCASE_TAB` may pick another). The catalog is **fixed** at five horses — there is no
-> launch-env seed knob (BE-0079): a scenario observes the app's own data, it cannot inject a
-> data state. Likewise there is no launch-env shortcut onto a *pushed* screen (see §4).
+> There is **no auth gate**: the app launches straight into the tab UI, always on the Stable tab.
+> Every other tab is reached by tapping the native tab bar, which the XCUITest backend does by
+> label (BE-0107 retired the `SHOWCASE_TAB` launch shortcut; idb cannot tap the tab bar). The
+> catalog is **fixed** at five horses — there is no launch-env seed knob (BE-0079): a scenario
+> observes the app's own data, it cannot inject a data state. Likewise there is no launch-env
+> shortcut onto a *pushed* screen (see §4).
 
 ## 4. Deeplinks
 

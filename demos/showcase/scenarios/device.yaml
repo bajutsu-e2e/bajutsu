@@ -4,7 +4,7 @@
 #   bajutsu run --scenario device.yaml --target showcase-swiftui ...
 - name: set location then receive a push
   preconditions:
-    launchEnv: { SHOWCASE_UITEST: "1", SHOWCASE_TAB: stable }
+    launchEnv: { SHOWCASE_UITEST: "1" }
   steps:
     - wait: { for: { id: stable.row.1 }, timeout: 10 }
       capture: [video]

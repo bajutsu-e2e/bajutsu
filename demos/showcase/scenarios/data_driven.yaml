@@ -9,10 +9,11 @@
     - { q: "Horse 3", n: "3" }
     - { q: "Horse 5", n: "5" }
   preconditions:
-    launchEnv: { SHOWCASE_UITEST: "1", SHOWCASE_TAB: search }
+    launchEnv: { SHOWCASE_UITEST: "1" }
   steps:
-    - wait: { for: { id: search.field }, timeout: 10 }
+    - tap: { label: "Search", traits: [button] }
       capture: [video]
+    - wait: { for: { id: search.field }, timeout: 10 }
     - type: { into: { id: search.field }, text: "${row.q}" }
     - wait: { for: { id: "search.row.${row.n}" }, timeout: 5 }
   expect:
