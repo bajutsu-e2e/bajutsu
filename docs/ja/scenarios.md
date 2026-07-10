@@ -72,6 +72,7 @@ scenarios:
     launchEnv: { SHOWCASE_UITEST: "1" }
   steps:
     - tap: { label: "Search", traits: [button] }
+    - wait: { for: { id: search.field }, timeout: 10 }
     - type: { text: "Horse 3", into: { id: search.field } }
     - wait: { for: { id: search.row.3 }, timeout: 5 }
   expect:

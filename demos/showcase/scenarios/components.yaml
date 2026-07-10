@@ -16,6 +16,7 @@
   steps:
     - tap: { label: "Log", traits: [button] }
       capture: [video]
+    - wait: { for: { id: log.openFilter }, timeout: 10 }
     - tap: { id: log.openFilter }
     - wait: { for: { id: log.sheet.title }, timeout: 5 }
     - tap: { id: log.sheet.apply }
@@ -29,6 +30,7 @@
   steps:
     - tap: { label: "Log", traits: [button] }
       capture: [video]
+    - wait: { for: { id: log.openGallery }, timeout: 10 }
     - tap: { id: log.openGallery }
     - wait: { for: { id: log.cover.title }, timeout: 5 }
     - tap: { id: log.cover.close }

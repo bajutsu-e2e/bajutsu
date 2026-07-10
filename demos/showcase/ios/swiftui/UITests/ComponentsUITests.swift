@@ -21,6 +21,7 @@ final class ComponentsuitestsUITests: XCTestCase {
     app.launch()
 
     app.descendants(matching: .any).matching(NSPredicate(format: "label == %@ AND elementType == %ld", "Log", XCUIElement.ElementType.button.rawValue)).firstMatch.tap()
+    XCTAssertTrue(el("log.openFilter").waitForExistence(timeout: 10.0), "wait for element")
     el("log.openFilter").tap()
     XCTAssertTrue(el("log.sheet.title").waitForExistence(timeout: 5.0), "wait for element")
     el("log.sheet.apply").tap()
@@ -35,6 +36,7 @@ final class ComponentsuitestsUITests: XCTestCase {
     app.launch()
 
     app.descendants(matching: .any).matching(NSPredicate(format: "label == %@ AND elementType == %ld", "Log", XCUIElement.ElementType.button.rawValue)).firstMatch.tap()
+    XCTAssertTrue(el("log.openGallery").waitForExistence(timeout: 10.0), "wait for element")
     el("log.openGallery").tap()
     XCTAssertTrue(el("log.cover.title").waitForExistence(timeout: 5.0), "wait for element")
     el("log.cover.close").tap()
