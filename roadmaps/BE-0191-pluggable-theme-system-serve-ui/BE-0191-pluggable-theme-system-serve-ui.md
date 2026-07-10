@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0191") |
-| Implementing PR | [#826](https://github.com/bajutsu-e2e/bajutsu/pull/826), [#837](https://github.com/bajutsu-e2e/bajutsu/pull/837), [#855](https://github.com/bajutsu-e2e/bajutsu/pull/855), [#859](https://github.com/bajutsu-e2e/bajutsu/pull/859) |
+| Implementing PR | [#826](https://github.com/bajutsu-e2e/bajutsu/pull/826), [#837](https://github.com/bajutsu-e2e/bajutsu/pull/837), [#855](https://github.com/bajutsu-e2e/bajutsu/pull/855), [#859](https://github.com/bajutsu-e2e/bajutsu/pull/859), [#881](https://github.com/bajutsu-e2e/bajutsu/pull/881) |
 | Topic | Authoring experience (record / GUI editor) |
 <!-- /BE-METADATA -->
 
@@ -291,7 +291,7 @@ filesystem, building directly on the token contract of unit 1.
   reduces to the original instant `replaceChildren`, and no condition-wait races an animation. Tests:
   `--motion-*` contract + reduced-motion collapse in `tests/serve/test_theme_tokens.py`, the
   `reduced_motion` context assertion in `tests/test_playwright.py`; docs updated in `docs/web-ui.md`
-  (+ ja mirror). ([_pending_](https://github.com/bajutsu-e2e/bajutsu/pulls))
+  (+ ja mirror). ([#881](https://github.com/bajutsu-e2e/bajutsu/pull/881))
 
 ## References
 
