@@ -557,7 +557,6 @@ def restore_persisted_provider_settings(state: ServeState) -> None:
     if (
         active is None
         or data.provider not in known_providers()
-        or (data.provider == "bedrock" and not active.model)
         or not _valid_slot(data.provider, active)
     ):
         # A well-formed save always records a registered active provider with valid values. A file
