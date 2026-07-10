@@ -2,7 +2,7 @@
   "log.note": {
     "identifier": "log.note",
     "label": null,
-    "value": "Note",
+    "value": null,
     "traits": [
       "textField"
     ],

@@ -84,7 +84,7 @@ would make the showcase's on-device path flaky, which the determinism directive 
   Stable-tab golden stay on idb (the BE-0005/BE-0006 signal is preserved), the Log-tab control golden
   split into `golden_xcuitest.yaml`, and the CI comments were updated to match.
 - [x] Update `SPEC.md` §3–§5 (EN + JA) and the showcase / scenarios / codegen docs.
-- [ ] Re-record the navigation-reached golden on-device (the XCUITest Log-controls `controls.json`).
+- [x] Re-record the navigation-reached golden on-device (the XCUITest Log-controls `controls.json`).
 
 Android tab navigation (the shared scenarios' Android twin) is left as a BE-0007 follow-up: the
 Android apps still read `SHOWCASE_TAB`, and driving the native tab bar via adb is a separate driver
@@ -93,6 +93,10 @@ concern outside this iOS-scoped item.
 - 2026-07-10: implemented on `claude/be-0107-tab-navigation` (PR pending) — retired `SHOWCASE_TAB` in
   the SwiftUI and UIKit apps, prepended tab-taps to the tab-crossing scenarios, split the golden into
   idb (Stable) and XCUITest (Log) files, regenerated `ComponentsUITests.swift`, and updated the docs.
+- 2026-07-10: on-device verification on iPhone 17 Pro (Simulator) — `controls.yaml` and `notices.yaml`
+  pass on `--backend ios` (the tab-tap reaches the tab; run manifest confirms `backend: xcuitest` with
+  the tap as step 0), `golden_xcuitest.yaml` passes against the re-recorded XCUITest `controls.json`,
+  and `golden.yaml` + `smoke.yaml` still pass on idb (the BE-0005/BE-0006 signal is intact).
 
 ## References
 
