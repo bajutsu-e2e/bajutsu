@@ -733,6 +733,7 @@ Keeping the autonomous crawl fast and its code lean as it grows.
 | ID | Item | Status |
 |---|---|---|
 | [BE-0219](BE-0219-roadmap-dashboard-search/BE-0219-roadmap-dashboard-search.md) | Text search on the roadmap status dashboard | Proposal |
+| [BE-0222](BE-0222-daily-doc-freshness-pr/BE-0222-daily-doc-freshness-pr.md) | Scheduled daily workflows that refresh the roadmap and docs separately, each opening its own review PR | Proposal |
 <!-- /GENERATED:proposals-developer-experience -->
 
 ### Codebase quality & technical debt

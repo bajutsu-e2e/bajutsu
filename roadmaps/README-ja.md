@@ -726,6 +726,7 @@ AI を使う経路（`record` ／ `crawl` ／ `triage --ai` ／ `run --apply`）
 | ID | 項目 | 状態 |
 |---|---|---|
 | [BE-0219](BE-0219-roadmap-dashboard-search/BE-0219-roadmap-dashboard-search-ja.md) | ロードマップ status ダッシュボードへのテキスト検索の追加 | 提案 |
+| [BE-0222](BE-0222-daily-doc-freshness-pr/BE-0222-daily-doc-freshness-pr-ja.md) | ロードマップとドキュメントを別々に毎日更新し、それぞれがレビュー用 PR を開く定期ワークフロー | 提案 |
 <!-- /GENERATED:proposals-developer-experience -->
 
 ### コードベース品質・技術的負債

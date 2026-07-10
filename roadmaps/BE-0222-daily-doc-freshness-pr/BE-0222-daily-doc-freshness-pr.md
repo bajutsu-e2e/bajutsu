@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-daily-doc-freshness-pr-ja.md)
+**English** · [日本語](BE-0222-daily-doc-freshness-pr-ja.md)
 
-# BE-XXXX — Scheduled daily workflows that refresh the roadmap and docs separately, each opening its own review PR
+# BE-0222 — Scheduled daily workflows that refresh the roadmap and docs separately, each opening its own review PR
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-daily-doc-freshness-pr.md) |
+| Proposal | [BE-0222](BE-0222-daily-doc-freshness-pr.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0222") |
 | Topic | Development infrastructure (contributor workflow) |
 | Related | [BE-0203](../BE-0203-claude-code-pr-review/BE-0203-claude-code-pr-review.md) |
 <!-- /BE-METADATA -->
