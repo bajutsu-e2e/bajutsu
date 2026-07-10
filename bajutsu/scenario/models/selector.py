@@ -40,27 +40,11 @@ class Selector(_Model):
     def _non_empty(self) -> Self:
         if not self.model_dump(exclude_none=True, by_alias=True):
             raise ValueError("selector requires at least one condition (§5)")
-        for field_name, val in (("id", self.id), ("idMatches", self.id_matches)):
-            if not isinstance(val, list):
-                continue
-            # A candidate list must hold at least one non-empty id/pattern; an empty list or a blank
-            # entry would match nothing yet read as "a condition is set", so reject it loudly (§5).
-            if not (val and all(c for c in val)):
-                raise ValueError(f"{field_name} list must hold non-empty candidates (§5)")
-            # Canonical (dotted SPEC) form first: single-id consumers — first_id(), coverage
-            # bucketing (namespace_of splits on `.`), the XCUITest/Playwright codegen emitters — take
-            # candidate[0] as the portable representative. A dotted candidate after a non-dotted first
-            # one means the platform-specific alternate leads, which resolves at runtime but skews
-            # those consumers, so reject the misordering deterministically (BE-0221). Validation, not
-            # just documentation: OR resolution is order-independent so a misorder never breaks a run
-            # (prime directive 2 isn't at stake), but its damage — miscounted coverage, a codegen
-            # emitting the non-portable id — is silent, and the fixed rule ("dotted first") is exactly
-            # the kind of authoring mistake that is cheaper to catch loudly at load than to debug in a
-            # report. Catching it here keeps `first_id()`/coverage/codegen free of the ordering worry.
-            if "." not in val[0] and any("." in c for c in val[1:]):
-                raise ValueError(
-                    f"{field_name} list must put the canonical (dotted) id first: {val!r} (§5)"
-                )
+        # Reject a malformed candidate list (empty / blank / non-canonical-first) the same way a
+        # config `readyWhen` is checked — shared in `base` so the rule holds wherever a selector is
+        # authored (BE-0221). See `base.validate_id_candidates` for why the order is enforced.
+        base.validate_id_candidates("id", self.id)
+        base.validate_id_candidates("idMatches", self.id_matches)
         return self
 
     def as_selector(self) -> base.Selector:

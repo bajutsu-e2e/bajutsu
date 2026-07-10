@@ -232,6 +232,28 @@ def id_candidates(v: str | list[str]) -> list[str]:
     return [v] if isinstance(v, str) else v
 
 
+def validate_id_candidates(field: str, value: str | list[str] | None) -> None:
+    """Reject a malformed `id` / `idMatches` OR-candidate list; a no-op for a string or None (BE-0221).
+
+    Shared by the scenario `Selector` model and config's `readyWhen` (a `base.Selector`) so a
+    candidate list is checked the same way wherever it is authored. A list must be non-empty with no
+    blank entry, and must lead with the canonical (dotted SPEC) form: single-id consumers — the
+    resolver's representative pick, `audit` coverage bucketing (`namespace_of` splits on `.`), the
+    XCUITest / Playwright codegen emitters — take candidate[0], so an underscore-first list resolves
+    fine at runtime but silently skews them. Failing at load beats debugging a skewed report.
+
+    Raises:
+        ValueError: the list is empty / has a blank entry, or a dotted candidate follows a
+            non-dotted first one.
+    """
+    if not isinstance(value, list):
+        return
+    if not (value and all(c for c in value)):
+        raise ValueError(f"{field} list must hold non-empty candidates (§5)")
+    if "." not in value[0] and any("." in c for c in value[1:]):
+        raise ValueError(f"{field} list must put the canonical (dotted) id first: {value!r} (§5)")
+
+
 def matches(el: Element, sel: Selector) -> bool:
     """Whether an element satisfies a selector's per-element conditions (all AND-ed).
 
@@ -308,10 +330,16 @@ def find_all(elements: list[Element], sel: Selector) -> list[Element]:
         The matching elements, in `elements` order.
     """
     base_sel = cast(Selector, {k: v for k, v in sel.items() if k != "within"})
-    # Fast path: single-id-only selector uses the cached index for O(1) lookup. A list of candidate
-    # ids (BE-0221) takes the general scan, which matches in `elements` order across all candidates.
-    if set(base_sel.keys()) == {"id"} and isinstance(base_sel["id"], str):
-        found = list(_id_index(elements).get(base_sel["id"], []))
+    # Fast path: an id-only selector that resolves to a *single* id (a bare string or a one-element
+    # candidate list) uses the cached index for O(1) lookup. A multi-candidate list (BE-0221) takes
+    # the general scan, which matches in `elements` order across all candidates.
+    single_id = (
+        id_candidates(base_sel["id"])[0]
+        if set(base_sel.keys()) == {"id"} and len(id_candidates(base_sel["id"])) == 1
+        else None
+    )
+    if single_id is not None:
+        found = list(_id_index(elements).get(single_id, []))
     else:
         found = [el for el in elements if matches(el, base_sel)]
     if "within" in sel:
