@@ -131,6 +131,32 @@ def test_upload_route_requires_auth_when_token_set(tmp_path: Path) -> None:
     assert resp.status_code == 401  # behind BE-0051 token auth like every other mutating endpoint
 
 
+def test_upload_route_rejects_body_exceeding_cap_mid_stream(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # A body under the declared Content-Length passes the upfront check but must still be rejected
+    # once the loop-internal cap (BoundedZipReceiver, shared with the stdlib handler) is crossed —
+    # a distinct guard from the upfront Content-Length check exercised by the stdlib suite.
+    from bajutsu.serve import uploads as uploads_mod
+
+    monkeypatch.setattr(uploads_mod, "MAX_UPLOAD_BYTES", 4)
+    state = srv.ServeState(runs_dir=tmp_path / "runs", cwd=tmp_path, root=tmp_path)
+    (tmp_path / "runs").mkdir()
+    resp = _client(state).post("/api/upload?name=x.zip", content=b"more than four bytes")
+    assert resp.status_code == 413 and "too large" in resp.json()["error"]
+
+
+def test_upload_route_rejects_truncated_body(tmp_path: Path) -> None:
+    # A body shorter than its declared Content-Length (a connection that dropped mid-upload) is an
+    # explicit 400, not a partial bundle handed downstream as "invalid".
+    state = srv.ServeState(runs_dir=tmp_path / "runs", cwd=tmp_path, root=tmp_path)
+    (tmp_path / "runs").mkdir()
+    resp = _client(state).post(
+        "/api/upload?name=x.zip", content=b"short", headers={"content-length": "1000"}
+    )
+    assert resp.status_code == 400 and "incomplete" in resp.json()["error"]
+
+
 def test_upload_urls_route_signs_put_urls(tmp_path: Path) -> None:
     # The FastAPI shell reaches the same evidence operation as the stdlib handler (BE-0110).
     class _FakeStore:
