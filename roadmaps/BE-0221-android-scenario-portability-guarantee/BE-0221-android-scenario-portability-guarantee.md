@@ -102,6 +102,20 @@ backward-compatible candidate list, but changes no other DSL surface, and does n
 portability beyond the id-namespace opt-in model BE-0009 already establishes — it closes a specific,
 already-named gap in that model's Android coverage, nothing broader.
 
+### Scaling beyond two id forms
+
+Two forms (dotted / underscore) is what the current roadmap needs — iOS and Android Compose surface
+the SPEC id verbatim, Android Views maps it to underscores. A candidate list grows by one entry per
+platform whose native id syntax differs, and the canonical-form-first rule keeps holding as it grows.
+That hand-maintenance is deliberately not generalized here: a third id spelling isn't concrete yet
+(a Flutter backend, [BE-0008](../BE-0008-flutter-support/BE-0008-flutter-support.md), is still a
+Proposal), and the failure mode is loud per target (a selector missing a candidate fails *that*
+target's run, not silently everywhere), so an omission surfaces the moment the new target is
+exercised. When a third platform actually lands, the natural fit is an `audit`-side coverage check
+that cross-references each configured target's id convention against every selector's candidates —
+an extension of `referenced_ids`, which already enumerates them — built *with* that platform so it
+has a concrete convention to validate against, rather than a speculative N-form mechanism now.
+
 ## Alternatives considered
 
 - **Driver-side `.`↔`_` normalization (the proposal's original recommendation).** A first design had
