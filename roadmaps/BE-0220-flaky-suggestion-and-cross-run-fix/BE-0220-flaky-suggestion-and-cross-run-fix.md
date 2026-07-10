@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-flaky-suggestion-and-cross-run-fix-ja.md)
+**English** · [日本語](BE-0220-flaky-suggestion-and-cross-run-fix-ja.md)
 
-# BE-XXXX — Flaky-test suggestion and cross-run fix proposals from DB run history
+# BE-0220 — Flaky-test suggestion and cross-run fix proposals from DB run history
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-flaky-suggestion-and-cross-run-fix.md) |
+| Proposal | [BE-0220](BE-0220-flaky-suggestion-and-cross-run-fix.md) |
 | Author | [@hirosassa](https://github.com/hirosassa) |
 | Status | **Proposal** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0220") |
 | Topic | Self-healing triage (M4) |
 <!-- /BE-METADATA -->
 

@@ -628,7 +628,9 @@ A platform is just a backend behind the one driver interface ([DESIGN §1](../DE
 Lower the maintenance cost of regressions while keeping AI out of the judge role and limited to an investigator.
 
 <!-- GENERATED:proposals-self-healing -->
-
+| ID | Item | Status |
+|---|---|---|
+| [BE-0220](BE-0220-flaky-suggestion-and-cross-run-fix/BE-0220-flaky-suggestion-and-cross-run-fix.md) | Flaky-test suggestion and cross-run fix proposals from DB run history | Proposal |
 <!-- /GENERATED:proposals-self-healing -->
 
 ### Surfacing CLI features in the serve Web UI
