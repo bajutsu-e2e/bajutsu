@@ -623,6 +623,14 @@ A platform is just a backend behind the one driver interface ([DESIGN §1](../DE
 | [BE-0185](BE-0185-record-human-takeover-step/BE-0185-record-human-takeover-step.md) | Human takeover step during record (CAPTCHA / biometrics / unresolvable gestures) | Proposal |
 <!-- /GENERATED:proposals-authoring -->
 
+### Self-healing triage (M4)
+
+Lower the maintenance cost of regressions while keeping AI out of the judge role and limited to an investigator.
+
+<!-- GENERATED:proposals-self-healing -->
+
+<!-- /GENERATED:proposals-self-healing -->
+
 ### Surfacing CLI features in the serve Web UI
 
 <!-- GENERATED:proposals-serve-cli-features -->
