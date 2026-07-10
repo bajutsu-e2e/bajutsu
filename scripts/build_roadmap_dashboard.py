@@ -310,12 +310,12 @@ _SCRIPT = """
       // matches nothing ("No items match"), vs. it matches something but every match is in a
       // status the chips have hidden (the grid would otherwise go silently blank with no
       // explanation — a query-matched-but-chip-hidden card is a real match, not a non-match).
-      var q_text=search ? ('\\u201C'+search.value.trim()+'\\u201D') : '';
+      var qText=search ? ('\\u201C'+search.value.trim()+'\\u201D') : '';
       var noMatch=hasQuery && matched===0;
       var hiddenByChips=hasQuery && matched>0 && shown===0;
       empty.classList.toggle('is-hidden', !(noMatch || hiddenByChips));
-      empty.textContent=noMatch ? ('No items match '+q_text)
-        : hiddenByChips ? (matched+' item(s) match '+q_text+', but the status filter above is hiding them')
+      empty.textContent=noMatch ? ('No items match '+qText)
+        : hiddenByChips ? (matched+' item(s) match '+qText+', but the status filter above is hiding them')
         : '';
     }
   }
