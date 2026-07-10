@@ -1,0 +1,43 @@
+# Daily roadmap-freshness refresh (BE-0222).
+#
+# Reconciles BE items' `Status` / `Progress` / `Implementing PR` against what has actually merged on
+# `main`, and — only when it finds drift — opens/updates one rolling Draft PR for a human to review
+# and merge. This is a thin caller of the shared `refresh.yml`; all the machinery (dormancy gate,
+# App-token checkout, AI authoring, path-allowlist enforcement, in-job `make check`, clobber-guarded
+# Draft PR) lives there so the roadmap and docs refreshes can't drift apart. The AI only authors; the
+# deterministic gate and a human decide everything (prime directive 1).
+name: roadmap-refresh
+
+on:
+  # A daily cron, offset from docs-refresh (17:07 vs 17:37 UTC) so the two never contend for a runner.
+  schedule:
+    - cron: "7 17 * * *"
+  workflow_dispatch: {}
+
+# Per-workflow group so a manual dispatch never races this workflow's own nightly run; never drop a
+# queued run (cancel-in-progress: false), matching claude-review.yml's concurrency precedent.
+concurrency:
+  group: roadmap-refresh
+  cancel-in-progress: false
+
+# A reusable workflow's token is capped by the caller's, so the ceiling must be granted here for the
+# called `refresh.yml` to actually receive it (id-token for the Bedrock OIDC exchange in particular).
+permissions:
+  contents: write
+  pull-requests: write
+  id-token: write
+
+jobs:
+  refresh:
+    uses: ./.github/workflows/refresh.yml
+    secrets: inherit
+    with:
+      label: roadmap
+      branch: chore/roadmap-refresh
+      contract: .github/roadmap-refresh-prompt.md
+      title: "chore(roadmap): refresh BE Status/Progress/Implementing PR"
+      # Roadmap items and the generated index only.
+      allow: |
+        roadmaps/**
+      # Read the repo and merged-PR history, edit BE files, regenerate the index. No push/PR tools.
+      allowed_tools: "Read,Grep,Glob,Edit,Write,Bash(gh pr list:*),Bash(gh pr view:*),Bash(git log:*),Bash(make roadmap-index)"

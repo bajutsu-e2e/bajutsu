@@ -1,0 +1,43 @@
+# Daily docs-freshness refresh (BE-0222).
+#
+# Reconciles the prose that drifts against behavior — `docs/architecture.md#implementation-status`,
+# and `DESIGN.md` / `docs/architecture.md` prose vs the code (the review-time norm BE-0113 names) —
+# and, only on drift, opens/updates one rolling Draft PR for a human to review and merge. Thin caller
+# of the shared `refresh.yml`; the machinery lives there. The allowlist is `docs/**` and `DESIGN.md`
+# only: it deliberately excludes the top-level `README*` / `CLAUDE.md`, the project's contract surface
+# (CLAUDE.md states the very prime directives the AI author is bound by), so the agent never drafts
+# edits to its own operating contract. The AI only authors; the gate and a human decide.
+name: docs-refresh
+
+on:
+  # A daily cron, offset from roadmap-refresh (17:37 vs 17:07 UTC) so the two never contend for a runner.
+  schedule:
+    - cron: "37 17 * * *"
+  workflow_dispatch: {}
+
+concurrency:
+  group: docs-refresh
+  cancel-in-progress: false
+
+# A reusable workflow's token is capped by the caller's, so the ceiling must be granted here for the
+# called `refresh.yml` to actually receive it (id-token for the Bedrock OIDC exchange in particular).
+permissions:
+  contents: write
+  pull-requests: write
+  id-token: write
+
+jobs:
+  refresh:
+    uses: ./.github/workflows/refresh.yml
+    secrets: inherit
+    with:
+      label: docs
+      branch: chore/docs-refresh
+      contract: .github/docs-refresh-prompt.md
+      title: "docs: refresh prose to match shipped behavior"
+      # Prose docs and the design doc only — never README* / CLAUDE.md (the contract surface).
+      allow: |
+        docs/**
+        DESIGN.md
+      # Read the repo and history, edit docs. No push/PR tools.
+      allowed_tools: "Read,Grep,Glob,Edit,Write,Bash(git log:*),Bash(gh pr view:*)"

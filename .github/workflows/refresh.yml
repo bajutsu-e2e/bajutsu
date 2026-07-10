@@ -1,0 +1,194 @@
+# Shared shape for the scheduled refresh workflows (BE-0222).
+#
+# Both `roadmap-refresh.yml` and `docs-refresh.yml` are thin callers of this one reusable workflow:
+# they differ only in *what* they reconcile and *which* files they may touch (branch, contract,
+# allowlist, the AI's tool set), which they pass in as inputs. Factoring the shared shape here — the
+# two-credential dormancy gate, the App-token checkout, the AI-authoring step, the path-allowlist
+# enforcement, the in-job `make check`, and the rolling clobber-guarded Draft PR — means the two
+# workflows stay in lockstep by construction instead of by remembering to edit both identically.
+#
+# The LLM is used purely to *author* edits into the working tree; everything that decides and acts —
+# what the PR may contain, whether to open one at all, and never clobbering a human — is the
+# deterministic `scripts/refresh_pr.py` and the gate. No LLM is added to `run` or any required
+# status check (prime directive 1); the PR is always Draft and only a human merges it.
+name: refresh (reusable)
+
+on:
+  workflow_call:
+    inputs:
+      label:
+        description: "'roadmap' or 'docs' — names the refresh in logs and the PR body"
+        required: true
+        type: string
+      branch:
+        description: "the fixed rolling branch, e.g. chore/roadmap-refresh"
+        required: true
+        type: string
+      contract:
+        description: "path to the tracked contract file the AI follows"
+        required: true
+        type: string
+      title:
+        description: "the Draft PR title (used only when the PR is first created)"
+        required: true
+        type: string
+      allow:
+        description: "newline-separated path-allowlist globs; the PR can carry nothing else"
+        required: true
+        type: string
+      allowed_tools:
+        description: "the Claude Code action --allowedTools list for this refresh"
+        required: true
+        type: string
+
+# Least privilege: push the rolling branch, open/update the PR, mint the OIDC token the Bedrock
+# credential exchange needs (unused and harmless on the subscription path).
+permissions:
+  contents: write
+  pull-requests: write
+  id-token: write
+
+jobs:
+  refresh:
+    name: ${{ inputs.label }} refresh
+    runs-on: ubuntu-latest
+    # Fail fast rather than tie up a runner if a provider call hangs; a live refresh runs in minutes.
+    timeout-minutes: 30
+    # Reuse the `claude-review` Environment so the AI-provider credential (OAuth token / Bedrock role)
+    # is scoped exactly as BE-0203 scopes it; the repo-level AUTOMATION_BOT_* secrets layer under it.
+    environment: claude-review
+    steps:
+      - name: Pick the AI provider, and require the automation App (or no-op)
+        id: gate
+        env:
+          OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          ROLE_ARN: ${{ secrets.AWS_BEDROCK_ROLE_ARN }}
+          MODEL_ID: ${{ vars.BEDROCK_MODEL_ID }}
+          APP_ID: ${{ secrets.AUTOMATION_BOT_APP_ID }}
+          APP_KEY: ${{ secrets.AUTOMATION_BOT_PRIVATE_KEY }}
+        run: |
+          # All-or-nothing dormancy on BOTH credentials: an AI provider to author the update, AND the
+          # automation App so the bot-opened PR actually triggers its own `check` CI (a PR opened with
+          # GITHUB_TOKEN does not). Either half missing => a green no-op, never a red scheduled run on
+          # a half-provisioned repo. Combines claude-review.yml's provider gate with roadmap-id.yml's
+          # App gate (this is the first workflow to require the pair).
+          provider=none
+          if [ -n "$OAUTH_TOKEN" ]; then
+            provider=oauth
+          elif [ -n "$ROLE_ARN" ] && [ -n "$MODEL_ID" ]; then
+            provider=bedrock
+          fi
+          echo "provider=${provider}" >> "$GITHUB_OUTPUT"
+
+          if [ "$provider" != "none" ] && [ -n "$APP_ID" ] && [ -n "$APP_KEY" ]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            if [ "$provider" = "none" ]; then
+              echo "::notice::No AI provider (CLAUDE_CODE_OAUTH_TOKEN, or AWS_BEDROCK_ROLE_ARN + BEDROCK_MODEL_ID) — ${{ inputs.label }}-refresh is dormant (BE-0222). No-op."
+            else
+              echo "::notice::AUTOMATION_BOT_APP_ID / AUTOMATION_BOT_PRIVATE_KEY are not both set — ${{ inputs.label }}-refresh is dormant (BE-0222). No-op."
+            fi
+          fi
+
+      - name: Mint a short-lived installation token for the automation App
+        if: steps.gate.outputs.enabled == 'true'
+        id: app-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1  # v3.2.0
+        with:
+          app-id: ${{ secrets.AUTOMATION_BOT_APP_ID }}
+          private-key: ${{ secrets.AUTOMATION_BOT_PRIVATE_KEY }}
+
+      # Check out the DEFAULT branch under the App token — the refresh reconciles what has shipped on
+      # `main`, and pushing the rolling branch / opening the PR needs the App identity. fetch-depth: 0
+      # so the AI can read merged-PR history (`git log`) and the clobber guard can inspect the branch.
+      - name: Check out main with the App token
+        if: steps.gate.outputs.enabled == 'true'
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+        with:
+          ref: main
+          fetch-depth: 0
+          token: ${{ steps.app-token.outputs.token }}
+
+      - name: Install uv
+        if: steps.gate.outputs.enabled == 'true'
+        uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39  # v8.2.0
+        with:
+          enable-cache: true
+
+      # The agent may run `make roadmap-index`, and the in-job gate below runs `make check`; both need
+      # the dev environment present.
+      - name: Install dependencies
+        if: steps.gate.outputs.enabled == 'true'
+        run: uv sync --group dev
+
+      - name: Exchange OIDC token for Bedrock AWS credentials
+        if: steps.gate.outputs.enabled == 'true' && steps.gate.outputs.provider == 'bedrock'
+        uses: aws-actions/configure-aws-credentials@517a711dbcd0e402f90c77e7e2f81e849156e31d  # v6.2.2
+        with:
+          role-to-assume: ${{ secrets.AWS_BEDROCK_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION || 'us-east-1' }}
+
+      # The AI *authors* the reconciliation: it reads the tracked contract and edits files in the
+      # working tree. It is deliberately given no way to commit, push, or open a PR — the allowlisted
+      # tools cover reading, editing, and the few read-only `gh`/`git`/`make` commands the contract
+      # needs — so authoring is all it can do; the deterministic step below turns the edits into a PR.
+      - name: Author the refresh with the Claude Code action
+        if: steps.gate.outputs.enabled == 'true'
+        uses: anthropics/claude-code-action@ba0aafd4308cbba7165f9f2cdb0cfbed5a3c99ce  # v1.0.168
+        env:
+          ANTHROPIC_MODEL: ${{ steps.gate.outputs.provider == 'bedrock' && vars.BEDROCK_MODEL_ID || '' }}
+        with:
+          use_bedrock: ${{ steps.gate.outputs.provider == 'bedrock' }}
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          # The App token so any read-only `gh` the contract uses (e.g. `gh pr list --state merged`)
+          # runs as the bot; file edits stay in the working tree for the deterministic step to handle.
+          github_token: ${{ steps.app-token.outputs.token }}
+          claude_args: |
+            --allowedTools "${{ inputs.allowed_tools }}"
+          prompt: "Read the contract at ${{ inputs.contract }} and follow it exactly to author a ${{ inputs.label }} refresh. Edit only files in the working tree — do NOT commit, push, or open a pull request; a later deterministic step does that. When there is no concrete evidence of drift, change nothing."
+
+      # Enforce the path allowlist FIRST: restore any edit outside it, and report whether anything
+      # allowed changed. Doing this before the gate means `make check` (and the PR) see exactly the
+      # allowed-only tree — the surfaced gate result matches what the PR ships. `git config` set here
+      # persists in .git/config for the publish step.
+      - name: Enforce the path allowlist and detect drift
+        id: prep
+        if: steps.gate.outputs.enabled == 'true'
+        env:
+          APP_SLUG: ${{ steps.app-token.outputs.app-slug }}
+          ALLOW: ${{ inputs.allow }}
+        run: |
+          git config user.name "${APP_SLUG}[bot]"
+          git config user.email "${APP_SLUG}[bot]@users.noreply.github.com"
+          uv run --no-sync python scripts/refresh_pr.py enforce --allow "$ALLOW"
+
+      # Run the deterministic gate only when there is drift to open — no point burning the full suite
+      # on a quiet day. It never fails the job (it is an `if` condition, so the Actions default shell's
+      # `set -e` does not abort on it): the PR opens as Draft regardless and its own required `check`
+      # CI is the real gate; this in-job result is only surfaced in the PR body.
+      - name: Run the gate on the allowed-only tree
+        id: check
+        if: steps.gate.outputs.enabled == 'true' && steps.prep.outputs.changed == 'true'
+        run: |
+          if make check; then
+            echo "result=pass" >> "$GITHUB_OUTPUT"
+          else
+            echo "result=fail" >> "$GITHUB_OUTPUT"
+            echo "::warning::in-job make check failed for the ${{ inputs.label }}-refresh; the Draft PR opens anyway and its own check CI is authoritative."
+          fi
+
+      - name: Open or update the rolling Draft PR
+        if: steps.gate.outputs.enabled == 'true' && steps.prep.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          APP_SLUG: ${{ steps.app-token.outputs.app-slug }}
+          ALLOW: ${{ inputs.allow }}
+        run: |
+          uv run --no-sync python scripts/refresh_pr.py publish \
+            --branch "${{ inputs.branch }}" --base main --label "${{ inputs.label }}" \
+            --title "${{ inputs.title }}" \
+            --bot-email "${APP_SLUG}[bot]@users.noreply.github.com" \
+            --check-result "${{ steps.check.outputs.result }}" \
+            --strays "${{ steps.prep.outputs.strays }}" \
+            --allow "$ALLOW"
