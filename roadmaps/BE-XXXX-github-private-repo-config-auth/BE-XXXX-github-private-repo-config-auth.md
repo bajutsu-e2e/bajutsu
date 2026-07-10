@@ -57,7 +57,7 @@ BE-0016 intends:
 
 A fourth, smaller gap makes all of the above harder to operate: a private repo the caller cannot see
 returns **404** (not 403), and `_get` lets that `HTTPError` propagate raw
-([`config_source.py:127`](../../bajutsu/config_source.py)), so "you have not granted access" looks
+([`config_source.py:126`](../../bajutsu/config_source.py)), so "you have not granted access" looks
 like "the repository does not exist".
 
 The web UI sharpens every one of these. serve's "Open config" dialog already offers a **"From a Git
@@ -204,8 +204,8 @@ its acquisition changes", narrowed to the private-access question.
 
 - [BE-0063](../BE-0063-git-config-source/BE-0063-git-config-source.md) — the Git config source this
   extends; [`bajutsu/config_source.py`](../../bajutsu/config_source.py) (`github_token()` at `:100`,
-  `_GitHubTransport` bearer header at `:123`, the `api.github.com` requests at `:133,137`, `_get` at
-  `:127`).
+  `_GitHubTransport` bearer header at `:124`, the `api.github.com` requests at `:133,137`, `_get` at
+  `:126`).
 - [BE-0016](../BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md) (self-hosting and its
   multi-org isolation — why per-source scoping matters),
   [BE-0051](../BE-0051-serve-hardening-for-hosting/BE-0051-serve-hardening-for-hosting.md) (serve

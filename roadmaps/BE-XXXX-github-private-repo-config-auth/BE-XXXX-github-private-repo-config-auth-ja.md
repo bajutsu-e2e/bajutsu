@@ -54,7 +54,7 @@
   最も抵抗の少ない道が最も過剰な権限の認証情報になります。
 
 4 つ目の小さな欠落が、以上のすべてを運用しづらくします。呼び出し元から見えない private リポジトリは 403 では
-なく **404** を返し、`_get` はその `HTTPError` をそのまま伝播させる（[`config_source.py:127`](../../bajutsu/config_source.py)）
+なく **404** を返し、`_get` はその `HTTPError` をそのまま伝播させる（[`config_source.py:126`](../../bajutsu/config_source.py)）
 ため、「アクセス権限を付与していない」が「リポジトリが存在しない」に見えます。
 
 Web UI は、これらすべてをいっそう際立たせます。serve の「Open config」ダイアログは既に「**From a Git
@@ -194,8 +194,8 @@ github.com リポジトリ向けの認証情報を、どう選び、どう束ね
 
 - [BE-0063](../BE-0063-git-config-source/BE-0063-git-config-source-ja.md) — 本項目が拡張する Git を
   取得元とする経路。[`bajutsu/config_source.py`](../../bajutsu/config_source.py)（`:100` の
-  `github_token()`、`:123` の `_GitHubTransport` の bearer ヘッダ、`:133,137` の `api.github.com` への
-  リクエスト、`:127` の `_get`）。
+  `github_token()`、`:124` の `_GitHubTransport` の bearer ヘッダ、`:133,137` の `api.github.com` への
+  リクエスト、`:126` の `_get`）。
 - [BE-0016](../BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting-ja.md)（セルフホストとそのマルチ org
   分離。取得元ごとのスコープが要る理由）、
   [BE-0051](../BE-0051-serve-hardening-for-hosting/BE-0051-serve-hardening-for-hosting-ja.md)（serve の
