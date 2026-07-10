@@ -225,10 +225,14 @@ function surfaceCustomDraft(){
   if(entry){entry.name=label;entry.kind=kind;}else{THEMES.push({id:'custom',name:label,kind:kind});}
   applyCustomThemeStyle(draft);
   if(!sel)return;
-  if(opt){opt.textContent=label;}
+  // Always route through the optgroup for the current kind; appendChild re-parents an already-attached
+  // <option> (keeping its selected state), so editing the draft's kind moves `custom` under the right
+  // Dark/Light section header rather than stranding it under the old one.
+  const target=sel.querySelector(`optgroup[label="${kind==='light'?'Light':'Dark'}"]`)||sel;
+  if(opt){opt.textContent=label;target.appendChild(opt);}
   else{
     const o=document.createElement('option');o.value='custom';o.textContent=label;
-    (sel.querySelector(`optgroup[label="${kind==='light'?'Light':'Dark'}"]`)||sel).appendChild(o);
+    target.appendChild(o);
   }
 }
 
