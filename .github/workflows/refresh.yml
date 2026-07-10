@@ -41,11 +41,13 @@ on:
         required: true
         type: string
 
-# Least privilege: push the rolling branch, open/update the PR, mint the OIDC token the Bedrock
-# credential exchange needs (unused and harmless on the subscription path).
+# Least privilege for the default GITHUB_TOKEN: this job does every write (push the rolling branch,
+# open/update the PR) through the minted App installation token instead — `actions/checkout`, the
+# Claude Code action, and the publish step's `gh` all authenticate with it — so the default token
+# only needs `contents: read`. The one scope it must carry is `id-token: write`, for the Bedrock OIDC
+# exchange (unused and harmless on the subscription path). The App's own write scopes live on the App.
 permissions:
-  contents: write
-  pull-requests: write
+  contents: read
   id-token: write
 
 jobs:

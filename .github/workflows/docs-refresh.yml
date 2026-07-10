@@ -20,10 +20,10 @@ concurrency:
   cancel-in-progress: false
 
 # A reusable workflow's token is capped by the caller's, so the ceiling must be granted here for the
-# called `refresh.yml` to actually receive it (id-token for the Bedrock OIDC exchange in particular).
+# called `refresh.yml` to receive it. It needs only `id-token: write` (the Bedrock OIDC exchange) and
+# `contents: read`: every write goes through the App token, not this default GITHUB_TOKEN.
 permissions:
-  contents: write
-  pull-requests: write
+  contents: read
   id-token: write
 
 jobs:
