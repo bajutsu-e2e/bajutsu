@@ -19,10 +19,16 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 
 from bajutsu.audit import classify_stability
 from bajutsu.serve.server.db import RunRecord
+
+
+def _as_utc(dt: datetime) -> datetime:
+    """Return dt as a UTC-aware datetime. SQLite (the gate backend) hands back naive datetimes for
+    ``DateTime(timezone=True)`` columns; assume UTC when tzinfo is absent, mirroring db._as_utc."""
+    return dt if dt.tzinfo is not None else dt.replace(tzinfo=UTC)
 
 
 @dataclass(frozen=True)
@@ -59,8 +65,12 @@ def _scenario_name(record: RunRecord) -> str:
 
 def _recency_key(record: RunRecord) -> tuple[bool, datetime | None]:
     """Sort key ordering newest-first while keeping records with no timestamp last (never comparing
-    a datetime against None)."""
-    return (record.created_at is not None, record.created_at)
+    a datetime against None). Normalises to UTC-aware to avoid naive/aware comparison errors from
+    SQLite-backed runs."""
+    return (
+        record.created_at is not None,
+        _as_utc(record.created_at) if record.created_at is not None else None,
+    )
 
 
 def rank_flakiness(
@@ -92,7 +102,9 @@ def rank_flakiness(
     groups: dict[str, list[RunRecord]] = {}
     skipped = 0
     for record in records:
-        if since is not None and (record.created_at is None or record.created_at < since):
+        if since is not None and (
+            record.created_at is None or _as_utc(record.created_at) < _as_utc(since)
+        ):
             continue  # outside the window — not counted, not skipped
         if not isinstance(record.scenario_hash, str) or record.ok is None:
             skipped += 1

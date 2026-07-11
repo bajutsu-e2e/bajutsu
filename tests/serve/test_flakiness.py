@@ -168,3 +168,38 @@ def test_window_runs_negative_raises() -> None:
 
     with pytest.raises(ValueError, match="window_runs"):
         rank_flakiness([_run("r1", ok=True)], window_runs=-1)
+
+
+def test_naive_created_at_does_not_raise_with_since() -> None:
+    # SQLite hands back naive datetimes for DateTime(timezone=True) columns; a tz-aware `since`
+    # must not raise TypeError when compared against a naive record.created_at.
+    naive_at = datetime(2026, 7, 1)  # noqa: DTZ001 — intentionally naive, simulating SQLite output
+    aware_since = _EPOCH + timedelta(days=1)  # tz-aware
+    record = RunRecord(
+        id="r1",
+        org_id="o1",
+        status="finished",
+        ok=True,
+        created_at=naive_at,
+        summary={"scenarios": ["s"]},
+        scenario_hash="h1",
+    )
+    report = rank_flakiness([record], since=aware_since)
+    # naive_at (UTC equivalent: 2026-07-01) is before since (2026-07-02), so it's dropped
+    assert report.scenarios == []
+
+
+def test_naive_created_at_included_when_after_since() -> None:
+    naive_at = datetime(2026, 7, 10)  # noqa: DTZ001 — intentionally naive, simulating SQLite output
+    aware_since = _EPOCH  # 2026-07-01 UTC
+    record = RunRecord(
+        id="r1",
+        org_id="o1",
+        status="finished",
+        ok=True,
+        created_at=naive_at,
+        summary={"scenarios": ["s"]},
+        scenario_hash="h1",
+    )
+    report = rank_flakiness([record], since=aware_since)
+    assert len(report.scenarios) == 1
