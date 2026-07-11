@@ -246,17 +246,46 @@ def _record_provenance(state: ServeState, job: Job) -> None:
 
 def _persist_run(state: ServeState, job: Job) -> None:
     """Record a finished `run` into the system of record so the history list survives independently
-    of the artifact store and is org-scoped (BE-0015). A no-op without a repository (local / stdlib
-    serve) or for a job that produced no run id (record/crawl, or a build/boot failure). The run is
-    recorded under its actor's org (the single `default` org for a token/CI run or an unknown user),
-    so it shows in that org's history.
+    of the artifact store and is org-scoped (BE-0015), and label it with the active project (BE-0225).
+    A no-op only for a job that produced no run id (record/crawl, or a build/boot failure). With a
+    repository the run is recorded under its actor's org (the single `default` org for a token/CI run
+    or an unknown user) so it shows in that org's history; without one (local / stdlib serve) there is
+    no history table, so the local registry instead tags the run into its project→run-ids index — the
+    stand-in for the `runs.project_id` column — when a project is active.
 
     Persistence must never break job finalization: this runs inside `run_job`'s `finally`, just
     before the live-log stream is closed, so any error (a missing org/user row, an FK violation on
     Postgres, a flaky DB) is caught and logged rather than stranding the stream."""
-    if state.repository is None or job.run_id is None:
+    if job.run_id is None:
         return
-    repo, run_id = state.repository, job.run_id
+    run_id = job.run_id
+    org = job.org
+    # The active project owns the run so a per-project listing (BE-0225) and the cross-project
+    # dashboard (BE-0226) can partition it. Resolved once here from the registry; None when no hub is
+    # wired or no project is active, leaving the run unlabeled exactly as before.
+    registry = state.project_registry
+    project_id: str | None = None
+    if registry is not None:
+        try:
+            active = registry.resolve_active(org_id=org)
+            project_id = active.id if active is not None else None
+        except Exception:
+            # Resolving the active project reaches the registry backend (a database for
+            # `SqlProjectRegistry`), so it can fail like the persistence write below — and this runs in
+            # `run_job`'s `finally`, so an escape would strand the live-log stream (the docstring's
+            # contract). A failure leaves the run unlabeled, exactly as when no hub is wired.
+            logger.warning("failed to resolve the active project for run %s", run_id, exc_info=True)
+    if state.repository is None:
+        # Local / stdlib serve: no system of record, so the local registry keeps the project→run-ids
+        # index (the stand-in for the runs.project_id column). Guarded like the DB path so a registry
+        # error can never break job finalization.
+        if registry is not None and project_id is not None:
+            try:
+                registry.tag_run(org_id=org, project_id=project_id, run_id=run_id)
+            except Exception:
+                logger.warning("failed to tag run %s to its project", run_id, exc_info=True)
+        return
+    repo = state.repository
     try:
         # Lazy import: only a server backend has a repository, where SQLAlchemy is already loaded,
         # so the default serve path never pulls server.db in (the import guard stays green).
@@ -266,7 +295,6 @@ def _persist_run(state: ServeState, job: Job) -> None:
         # The run's org was decided at job creation (and travels to a worker in the spec). Attribute
         # `created_by` only to a user that actually exists, so the foreign key can't fail (a token /
         # CI run has no actor; an OAuth run's user was upserted at login).
-        org = job.org
         repo.ensure_org(org, slug=org, name=org)
         created_by = job.actor if job.actor and repo.user_org(job.actor) is not None else None
         # Read + parse the manifest once and feed both the summary and the provenance stamp: a hosted
@@ -279,6 +307,7 @@ def _persist_run(state: ServeState, job: Job) -> None:
                 id=run_id,
                 org_id=org,
                 status="done",
+                project_id=project_id,
                 created_by=created_by,
                 ok=ok,
                 summary=_run_summary(run_id, manifest, ok=ok),

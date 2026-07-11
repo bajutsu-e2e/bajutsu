@@ -54,8 +54,8 @@ default, or the `--port` you passed). The full option list — `--port`, `--conf
 
 ## The layout
 
-The header holds seven top-level tabs: **Record**, **Replay**, **Crawl**, **Author**, **Stats**,
-**Usage**, and **Coverage**.
+The header holds eight top-level tabs: **Record**, **Replay**, **Crawl**, **Author**, **Stats**,
+**Flaky**, **Usage**, and **Coverage**.
 To their right are **Open config** (with the active config's name shown beside it once one is bound,
 and a **View** button to inspect it — see below), **Settings**, and a theme picker that
 follows your system by default. Each tab is a full screen of its own; switching tabs never discards
@@ -113,7 +113,7 @@ feature is lost — only the arrangement changes.
 [Settings](#settings)). While Claude cannot be reached — no key, no signed-in CLI — those two tabs
 read as disabled, their start buttons grey out, and an inline banner names what is missing with an
 **Open Settings** shortcut. The state flips live as soon as a provider is configured; everything
-else (Replay, Author, Stats, Usage, Coverage) works without any AI setup.
+else (Replay, Author, Stats, Flaky, Usage, Coverage) works without any AI setup.
 
 ## Choosing the active config
 
@@ -381,6 +381,20 @@ stored `manifest.json`.
 
 **How to use it.** Open the tab to load the dashboard; use the refresh button to recompute it over
 the current run history. No device, AI, or run is involved.
+
+## Flaky — the ranked flaky-scenario surface
+
+**What it does.** Ranks the server's run history by how much each scenario's verdict flips at a
+constant content fingerprint — the `flakiness` command in the browser. It is **read-only and
+advisory, not a verdict**: scenarios sorted flaky-first by verdict flip rate, each row showing the
+pass/fail counts and its class (`flaky` / `deterministic` / `unproven`, reused from the determinism
+audit) and linking to the representative passing and failing runs' evidence. When a database is wired
+it groups straight from the provenance stamp on each run row (org-scoped); otherwise it builds the
+same records from each run's stored `manifest.json`.
+
+**How to use it.** Open the tab to load the ranking; use the refresh button to recompute it over the
+current run history. A run with no scenario fingerprint or no recorded verdict can't be grouped and
+is reported as skipped. No device, AI, or run is involved.
 
 ## Usage — the AI token-usage and cost dashboard
 

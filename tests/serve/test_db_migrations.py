@@ -6,10 +6,11 @@ gate needs no live Postgres."""
 
 from __future__ import annotations
 
+import importlib.util
 from pathlib import Path
 from typing import Any
 
-from sqlalchemy import create_engine, inspect
+from sqlalchemy import Column, ForeignKey, MetaData, String, Table, create_engine, inspect
 
 import bajutsu.serve.server as server_pkg
 from bajutsu.serve.server.models import Base
@@ -40,6 +41,37 @@ def _schema_signature(engine) -> dict[str, Any]:
         uniques = {tuple(u["column_names"]) for u in insp.get_unique_constraints(table)}
         signature[table] = (columns, foreign_keys, uniques)
     return signature
+
+
+def _load_migration(name: str):
+    """Load a migration module by filename stem (e.g. '0010_run_project_fk_set_null')."""
+    path = Path(server_pkg.__file__).parent / "migrations" / "versions" / f"{name}.py"
+    spec = importlib.util.spec_from_file_location(name, path)
+    assert spec is not None and spec.loader is not None
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)  # type: ignore[union-attr]
+    return mod
+
+
+def test_project_id_fk_name_reflects_the_correct_constraint() -> None:
+    # Exercises the reflection helper from migration 0010 against a SQLite schema where the FK
+    # is created with an explicit name — simulating the Postgres auto-name the migration assumes.
+    # Guards that the constrained_columns filter and name extraction work correctly.
+    meta = MetaData()
+    Table("projects", meta, Column("id", String, primary_key=True))
+    Table(
+        "runs",
+        meta,
+        Column("id", String, primary_key=True),
+        Column("project_id", String, ForeignKey("projects.id", name="runs_project_id_fkey")),
+    )
+    engine = create_engine("sqlite://")
+    meta.create_all(engine)
+
+    mod = _load_migration("0010_run_project_fk_set_null")
+    with engine.connect() as conn:
+        name = mod._project_id_fk_name(conn)
+    assert name == "runs_project_id_fkey"
 
 
 def test_initial_migration_matches_the_orm_schema(tmp_path, monkeypatch) -> None:

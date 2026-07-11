@@ -1,6 +1,7 @@
-"""The `Repository` seam (BE-0015 7a): the run round-trip, org-scoped listing, and the env-driven
-factory, all against an in-memory SQLite database built inside each test (no live Postgres). Only
-the `runs` methods exist in 7a; orgs/users/projects/audit_log arrive with 7b/7c."""
+"""The `Repository` seam (BE-0015 7a / BE-0225): the run round-trip, org-scoped listing, the
+env-driven factory, and the project CRUD methods, all against an in-memory SQLite database built
+inside each test (no live Postgres). `ProjectRecord` and the project methods arrived with BE-0225;
+orgs/users/audit_log are tested elsewhere in this file (implemented in 7b/7c)."""
 
 from __future__ import annotations
 
@@ -8,11 +9,13 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
-from sqlalchemy import create_engine, select
+from sqlalchemy import create_engine, event, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from bajutsu import serve as srv
 from bajutsu.serve.server.db import (
+    ProjectRecord,
     RunRecord,
     SqlRepository,
     engine_from_url,
@@ -25,6 +28,19 @@ from bajutsu.serve.server.post_completion_logbus import PostCompletionLogBus
 
 def _repo() -> SqlRepository:
     engine = create_engine("sqlite://")
+    Base.metadata.create_all(engine)
+    return SqlRepository(engine)
+
+
+def _repo_fk() -> SqlRepository:
+    """Like `_repo()` but with SQLite FK enforcement enabled.
+
+    Needed for tests that verify ON DELETE behaviour (e.g. SET NULL on project deletion) that
+    SQLite only enacts when ``PRAGMA foreign_keys=ON`` is set. Callers must satisfy *all* FKs,
+    so an org row must be created via ``ensure_org`` before inserting projects or runs.
+    """
+    engine = create_engine("sqlite://")
+    event.listen(engine, "connect", lambda c, _: c.execute("PRAGMA foreign_keys=ON"))
     Base.metadata.create_all(engine)
     return SqlRepository(engine)
 
@@ -162,6 +178,122 @@ def test_record_run_is_idempotent_by_id() -> None:
     assert got.status == "done"
     assert got.ok is True
     assert len(repo.list_runs(org_id="o1")) == 1
+
+
+def test_create_then_list_and_get_project() -> None:
+    repo = _repo()
+    repo.create_project(
+        ProjectRecord(
+            id="p1",
+            org_id="o1",
+            name="checkout",
+            source={"kind": "file", "locator": {"path": "a.yaml"}},
+        )
+    )
+    repo.create_project(ProjectRecord(id="p2", org_id="o1", name="search"))
+    repo.create_project(ProjectRecord(id="p3", org_id="o2", name="other"))
+
+    assert [p.name for p in repo.list_projects(org_id="o1")] == ["checkout", "search"]
+    got = repo.get_project(org_id="o1", name="checkout")
+    assert got is not None
+    assert got.id == "p1"
+    assert got.source == {"kind": "file", "locator": {"path": "a.yaml"}}
+    # A missing name, and another org's project, both read as not found (org-scoped).
+    assert repo.get_project(org_id="o1", name="nope") is None
+    assert repo.get_project(org_id="o1", name="other") is None
+
+
+def test_create_project_is_idempotent_by_id_and_rebinds_source() -> None:
+    repo = _repo()
+    repo.create_project(
+        ProjectRecord(id="p1", org_id="o1", name="checkout", source={"kind": "file"})
+    )
+    # Re-registering the same id rebinds the source in place rather than colliding (BE-0225).
+    repo.create_project(
+        ProjectRecord(id="p1", org_id="o1", name="checkout", source={"kind": "git"})
+    )
+    got = repo.get_project(org_id="o1", name="checkout")
+    assert got is not None
+    assert got.source == {"kind": "git"}
+    assert len(repo.list_projects(org_id="o1")) == 1
+
+
+def test_create_project_rejects_a_name_collision_under_a_different_id() -> None:
+    # `Project` carries UniqueConstraint("org_id", "name") and create_project merges by id only,
+    # so minting a *fresh* id for a name the org already uses is a genuine collision — not an
+    # idempotent rebind. The DB-backed Repository surfaces it as IntegrityError; a caller must
+    # resolve the existing id via get_project first rather than rely on this to upsert by name.
+    repo = _repo()
+    repo.create_project(ProjectRecord(id="p1", org_id="o1", name="checkout"))
+    with pytest.raises(IntegrityError):
+        repo.create_project(ProjectRecord(id="p2", org_id="o1", name="checkout"))
+
+
+def test_delete_project_on_delete_set_null_keeps_run_history_fk_enforced() -> None:
+    # Uses FK-enforcing helper to catch the Postgres-vs-SQLite gap: without ondelete="SET NULL"
+    # on Run.project_id, deleting a project raises IntegrityError on Postgres but silently
+    # succeeds on the gate's SQLite. With the fix, the run is retained and project_id is NULL.
+    repo = _repo_fk()
+    repo.ensure_org("o1", slug="o1", name="Org1")
+    repo.create_project(ProjectRecord(id="p1", org_id="o1", name="checkout"))
+    repo.record_run(RunRecord(id="r1", org_id="o1", status="done", project_id="p1"))
+
+    repo.delete_project(org_id="o1", name="checkout")
+
+    assert repo.list_projects(org_id="o1") == []
+    got = repo.get_run("r1")
+    assert got is not None
+    assert got.project_id is None  # SET NULL by FK — run history retained, association cleared
+
+
+def test_create_project_source_none_does_not_clobber_existing_binding() -> None:
+    repo = _repo()
+    repo.create_project(
+        ProjectRecord(id="p1", org_id="o1", name="checkout", source={"kind": "file"})
+    )
+    # Re-registering with source=None (the default) must not wipe out an existing binding.
+    repo.create_project(ProjectRecord(id="p1", org_id="o1", name="checkout"))
+    got = repo.get_project(org_id="o1", name="checkout")
+    assert got is not None
+    assert got.source == {"kind": "file"}
+
+
+def test_delete_project_removes_binding_but_keeps_run_history() -> None:
+    repo = _repo()
+    repo.create_project(ProjectRecord(id="p1", org_id="o1", name="checkout"))
+    repo.record_run(RunRecord(id="r1", org_id="o1", status="done", project_id="p1"))
+
+    repo.delete_project(org_id="o1", name="checkout")
+
+    assert repo.list_projects(org_id="o1") == []
+    # Deregistering removes only the binding — the run history is retained (BE-0225).
+    got = repo.get_run("r1")
+    assert got is not None
+    assert got.project_id == "p1"
+
+
+def test_list_runs_filters_by_project() -> None:
+    repo = _repo()
+    base = datetime(2026, 1, 1, tzinfo=UTC)
+    repo.record_run(
+        RunRecord(
+            id="a", org_id="o1", status="done", project_id="p1", created_at=base.replace(hour=1)
+        )
+    )
+    repo.record_run(
+        RunRecord(
+            id="b", org_id="o1", status="done", project_id="p2", created_at=base.replace(hour=2)
+        )
+    )
+    repo.record_run(
+        RunRecord(
+            id="c", org_id="o1", status="done", project_id="p1", created_at=base.replace(hour=3)
+        )
+    )
+
+    assert [r.id for r in repo.list_runs(org_id="o1", project_id="p1")] == ["c", "a"]
+    # No project filter → the whole org's run history, as before.
+    assert len(repo.list_runs(org_id="o1")) == 3
 
 
 def test_engine_from_url_builds_a_usable_engine() -> None:

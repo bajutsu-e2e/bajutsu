@@ -34,6 +34,7 @@ from bajutsu.config_source import materialize, parse_config_spec, source_provena
 from bajutsu.serve.helpers import (
     list_targets,
 )
+from bajutsu.serve.orgs import DEFAULT_ORG
 from bajutsu.serve.provider_store import (
     PersistedProviderSettings,
     ProviderSettingsError,
@@ -591,6 +592,50 @@ def restore_persisted_provider_settings(state: ServeState) -> None:
             continue
         state.set_provider_setting(name, settings)
     _apply_provider_env(data.provider, active)
+
+
+def launch_project_identity(
+    config: Path, provenance: dict[str, str] | None
+) -> tuple[str, dict[str, Any]]:
+    """The project name and config-source record to auto-register the launch config under (BE-0225).
+
+    A Git-materialized config (its *provenance* stamp is present) is named for its repository and
+    records a ``git`` source with the resolved commit; any other config is a local file, named for
+    the config's file stem with a ``file`` source locating its path. The ``{"kind", "locator"}``
+    shape is the discriminated source record unit 1 stores.
+
+    A serve process launches exactly one config, so this default name never collides within a
+    deployment. Two deployments launching different config files from the *same* repo would auto-name
+    both for that repo; disambiguating by the in-repo config path is unit 3's territory, where
+    explicit `POST /api/projects` naming lands (the provenance stamp carries no config path today).
+    """
+    if provenance is not None and "repo" in provenance:
+        return provenance["repo"], {"kind": "git", "locator": provenance}
+    return config.stem, {"kind": "file", "locator": {"path": str(config)}}
+
+
+def register_launch_project(state: ServeState) -> None:
+    """Auto-register the launch config as the active project on serve boot (BE-0225).
+
+    So a bare ``serve --config X`` gains the project hub for free: X becomes the active project that
+    owns runs started before any explicit project is created, and the switcher/cross-project
+    dashboard have a first entry. Idempotent — safe to run on every boot. A no-op when no registry is
+    wired or no config is bound (nothing to register until one is opened in the UI).
+    """
+    registry = state.project_registry
+    if registry is None or state.config is None:
+        return
+    name, source = launch_project_identity(state.config, state.config_provenance)
+    # A convenience, never a reason to fail boot: a registry I/O error (a read-only runs dir) or a
+    # DB error must be logged and skipped, not propagated out of serve() — the same "logged, not
+    # crashing" contract the sibling boot seam restore_persisted_provider_settings holds.
+    try:
+        registry.add(org_id=DEFAULT_ORG, name=name, source=source)
+        registry.set_active(org_id=DEFAULT_ORG, name=name)
+    except Exception:
+        logging.getLogger(__name__).warning(
+            "failed to auto-register the launch config as the active project", exc_info=True
+        )
 
 
 def _valid_slot(name: str, settings: ProviderSettings) -> bool:

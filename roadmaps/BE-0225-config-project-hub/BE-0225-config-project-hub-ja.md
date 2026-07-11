@@ -7,8 +7,9 @@
 |---|---|
 | 提案 | [BE-0225](BE-0225-config-project-hub-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **提案** |
+| 状態 | **実装中** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0225") |
+| 実装 PR | [#909](https://github.com/bajutsu-e2e/bajutsu/pull/909), [#921](https://github.com/bajutsu-e2e/bajutsu/pull/921) |
 | トピック | Authoring experience (record / GUI editor) |
 | 関連 | [BE-0015](../BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting-ja.md), [BE-0102](../BE-0102-run-stats-dashboard/BE-0102-run-stats-dashboard-ja.md), [BE-0187](../BE-0187-serve-config-view/BE-0187-serve-config-view-ja.md), [BE-0108](../BE-0108-hosted-config-source-restriction/BE-0108-hosted-config-source-restriction-ja.md), [BE-0099](../BE-0099-webhook-run-notifications/BE-0099-webhook-run-notifications-ja.md) |
 <!-- /BE-METADATA -->
@@ -171,11 +172,44 @@ CI や cron が Web UI なしにハブをヘッドレスで駆動できるよう
 > 作業分解（作業の単位ごとに 1 つ）に対応し、ログには変更内容と時期（古い順）を PR へのリンクと
 > ともに記録します。
 
-- [ ] 1. プロジェクトのモデル：BE-0015 の `projects` 行に config ソースのレコードを足し、`runs.project_id` に印を付ける。
-- [ ] 2. 永続化：`ProjectRegistry` シーム（リポジトリがあれば DB 上、なければディスク上の JSON）、どちらの経路でもプロジェクト単位に分割した実行履歴（DB なら `project_id` 列、なければプロジェクト→実行 ID の索引）、起動時 config の active プロジェクトへの自動登録。
-- [ ] 3. API：org スコープの五つの `/api/projects…` エンドポイント（既存の単一 config 向けへの追加）。
+- [x] 1. プロジェクトのモデル：BE-0015 の `projects` 行に config ソースのレコードを足し、`runs.project_id` に印を付ける。
+- [x] 2. 永続化：`ProjectRegistry` シーム（リポジトリがあれば DB 上、なければディスク上の JSON）、どちらの経路でもプロジェクト単位に分割した実行履歴（DB なら `project_id` 列、なければプロジェクト→実行 ID の索引）、起動時 config の active プロジェクトへの自動登録。
+- [ ] 3. API：org スコープの五つの `/api/projects…` エンドポイント（既存の単一 config 向けへの追加）。（#921 のレビューで挙がったユニット 2 からの持ち越しがあります。解決済みの `project_id` を `job_spec` に載せてリモートワーカーの `_persist_run` が刻印できるようにすること、自動有効化を org 対応にすること、同じ Git リポジトリの二つの config を明示的な命名で区別できるようにすること、の三つです。二つ目についてはそれまで `default` 以外の org には active プロジェクトが付かず、三つ目についてはユニット 2 のリポジトリ名だけの自動命名では両者が一つにまとまってしまいます。）
 - [ ] 4. UI：プロジェクトスイッチャーとプロジェクト一覧。再起動なしで active プロジェクトを切り替える。
 - [ ] 5. CLI：`bajutsu project add/ls/rm` と、ヘッドレスなトリガーとしての `bajutsu run --project <name>`。
+
+### ログ
+
+- 2026-07-11：ユニット 1 と 2 のうち DB 経路を実装しました（#909）。BE-0015 の `projects` 行に、
+  プロジェクトが束ねる config ソースを表すレコード（`kind` と `locator`）を持つ nullable な
+  `source` 列を alembic マイグレーション `0009` で追加し、シームの境界型 `ProjectRecord` を足し
+  ました。`Repository` シームには、org スコープのプロジェクト操作（`create_project` /
+  `get_project` / `list_projects` / `delete_project`。登録を解除しても実行履歴は残します）と、実行
+  履歴をプロジェクト単位に分割できるよう `list_runs` の `project_id` フィルタを追加しました。
+  `create_project` は id を鍵にした冪等な upsert（`session.merge`）です。ユニット 3 の
+  `POST /api/projects` ハンドラは、既存の `(org_id, name)` を先に `get_project` で解決して
+  その id を再利用しながらソースを束ね直す必要があります。こうすれば id を鍵にした経路の
+  ままとなり、`(org_id, name)` の一意制約に抵触しません。また、マイグレーション `0010` で
+  `runs.project_id` の FK に `ON DELETE SET NULL` を追加しました。これにより、実行履歴を持つ
+  プロジェクトを削除しても Postgres で `IntegrityError` が発生しなくなり、「登録を解除しても
+  実行履歴は残す」という契約が成立します。これらのユニットで残るのは、この DB 経路と
+  データベースを持たないローカルの `serve` 向けのディスク上 JSON ストアを一つの
+  `ProjectRegistry` シームに束ねること、および起動時 config を active プロジェクトとして
+  自動登録することです。
+- 2026-07-11：ユニット 2 のレジストリシームと配線を実装しました（#921）。`bajutsu/serve/project_registry.py`
+  を追加し、一つの `ProjectRegistry` プロトコルの下に二つのバックエンドを置きました。`SqlProjectRegistry`
+  はユニット 1 の `Repository` へ委譲し、実行履歴を `project_id` 列で分割します（active プロジェクトは
+  プロセス内で保持します）。`LocalProjectRegistry` はデータベースを持たない場合の既定で、`runs_dir` の
+  隣に置く JSON ファイルにプロジェクト一覧と active プロジェクト、プロジェクト→実行 ID の索引を持ち、
+  書き込みは `LocalProviderSettingsStore` にならって原子的に行います。`add` は既存の `(org, name)` の
+  id を再利用するため一意制約に抵触しません。`remove` はどちらの経路でも実行そのものは残したまま
+  プロジェクトの印だけを外します（DB は SET NULL、ローカルは索引の削除）。このシームを
+  `_build_state` と `_build_server_state` に配線し（`ServeState.project_registry` フィールドを新設）、
+  `serve()` は起動時に config を active プロジェクトとして自動登録します（`register_launch_project` と
+  `launch_project_identity`）。さらに `_persist_run` は、終了した実行に active プロジェクトの印を付けます
+  （データベースがあれば `project_id` 列、なければローカル索引への `tag_run`）。レジストリのエラーが
+  ジョブの後処理を壊さないよう防御し、ハブが配線されていなければ何もしません。ユニット 2 は完了し、
+  ユニット 3（API）、4（UI）、5（CLI）が残ります。
 
 ## 参考
 
