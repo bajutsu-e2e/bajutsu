@@ -56,7 +56,8 @@ class ProjectRegistry(Protocol):
         """Register ``(org_id, name)`` bound to *source*, or rebind *source* if it already exists.
 
         Idempotent by name: re-adding an existing name reuses its id and updates its source rather
-        than duplicating or colliding, so a caller need not resolve the id first.
+        than duplicating or colliding, so a caller need not resolve the id first. A ``None`` *source*
+        never clobbers an existing binding — only a non-``None`` value rebinds it.
         """
         ...
 
