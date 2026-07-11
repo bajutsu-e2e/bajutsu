@@ -28,8 +28,8 @@
       <button class="cfgbtn" id="viewcfg" data-testid="nav.view-config" hidden>View</button>
       {#- Project hub switcher (BE-0225 unit 4): next to the config viewer. A native <select> lists the
           org's registered projects; changing it activates one, rebinding the live config so every tab
-          runs against it. Both this and the "Projects" list button stay hidden until a hub exists (at
-          least one project), so a single-config `serve` looks exactly as before. -#}
+          runs against it. Both this and the "Projects" list button stay hidden until a hub exists (more
+          than one project to switch between), so a single-config `serve` looks exactly as before. -#}
       <select class="projectsw" id="projectsw" data-testid="nav.projects" aria-label="active project" hidden></select>
       <button class="cfgbtn" id="openprojects" data-testid="nav.open-projects" hidden>Projects</button>
       <button class="cfgbtn" id="opensettings" data-testid="nav.settings">Settings</button>

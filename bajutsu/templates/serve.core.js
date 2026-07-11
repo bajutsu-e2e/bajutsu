@@ -374,15 +374,16 @@ $('#fsmodal').addEventListener('click',e=>{if(e.target===$('#fsmodal'))closeFs()
 // ---- project hub (BE-0225 unit 4): the header switcher + the projects list ----
 // `serve` is a hub over several named config bindings. Activating one rebinds state.config on the
 // server; we then reload the config label and the shared target/scenario lists so every tab runs
-// against the switched-to config with no restart. The switcher + Projects button stay hidden until a
-// hub exists (>=1 project), so a single-config serve is unchanged. Projects are added/removed with
-// the `bajutsu project` CLI (unit 5), not here — this surface switches and inspects them.
+// against the switched-to config with no restart. Every `serve` implicitly registers its loaded
+// config as one project, so the switcher + Projects button stay hidden until a real hub exists (more
+// than one project to choose between) — a single-config serve is unchanged. Projects are added/removed
+// with the `bajutsu project` CLI (unit 5), not here — this surface switches and inspects them.
 let projectsCache=[];
 async function loadProjects(){
   const list=await getJSON('/api/projects',[]);
   projectsCache=Array.isArray(list)?list:[];
-  const has=projectsCache.length>0;
-  $('#projectsw').hidden=!has;$('#openprojects').hidden=!has;
+  const hub=projectsCache.length>1;
+  $('#projectsw').hidden=!hub;$('#openprojects').hidden=!hub;
   renderSwitcher();renderProjectsList();
 }
 function renderSwitcher(){
