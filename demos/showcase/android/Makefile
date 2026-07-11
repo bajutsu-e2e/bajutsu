@@ -44,11 +44,17 @@ SERIAL ?= booted
 # rooted device (the `e2e` target roots the emulator below), which fires both taps inside the window;
 # on a non-rooted device it falls back to `input tap` unchanged. Verified on a local arm64 emulator.
 #
+# The runtime-permission flow `permission_android` joins the lane (BE-0208 unit 6, exercising
+# BE-0210's up-front grant). It is the deterministic Android twin of the idb `permission.yaml`: rather
+# than tapping the out-of-process prompt through the vision alert guard, showcase-compose grants
+# POST_NOTIFICATIONS up front (`grantPermissions` → `pm grant`), so the RequestPermission contract
+# short-circuits to granted with no dialog — no LLM, no fixed sleep on the CI lane. Verified on a
+# local arm64 emulator.
+#
 # Still held out: `gestures_multitouch` (pinch / rotate) needs multi-touch (adb is single-touch).
-# Device control, mocked network, and visual screenshots stay out too (BE-0007 follow-ups / a later
-# BE-0208 slice — the visual dimension of unit 4).
+# Device control and mocked network stay out too (BE-0007 follow-ups).
 E2E_SCENARIOS := smoke firstlook navigation search data_driven relaunch system components modals \
-	controls notices gestures
+	controls notices gestures permission_android
 
 # Raise the condition-wait ceiling for this lane only: the CI x86_64 software-rendered emulator
 # presents sheets/covers slower than the shared scenarios' 5s waits allow. A wait returns as soon as

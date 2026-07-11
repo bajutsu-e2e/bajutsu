@@ -206,6 +206,23 @@ within the prime directives.
   (Pillow) — the adb backend pulls none, and the missing-baseline path short-circuits before Pillow,
   so this surfaced only once the baseline was present; with both in place the lane run is green and
   the checklist box is checked. Item stays **In progress** for the remaining actuation-fidelity slices.
+- 2026-07-11 — Unit 6 (runtime permission): `permission_android` joins `E2E_SCENARIOS`, exercising
+  the up-front grant [BE-0210](../BE-0210-android-actuation-fidelity/BE-0210-android-actuation-fidelity.md)
+  delivered but no lane scenario had validated. It is the deterministic Android twin of the idb
+  `permission.yaml`: rather than tapping the out-of-process notification prompt through the vision
+  alert guard (`dismissAlerts`, an LLM path needing an API key — off-limits on the deterministic
+  lane), `showcase-compose` now lists `POST_NOTIFICATIONS` under `grantPermissions`
+  (`demos/showcase/showcase.config.yaml`), so the lease grants it with `pm grant` after `pm clear`
+  but before launch. A pre-granted permission makes Android's `RequestPermission` contract
+  short-circuit to granted without ever raising the dialog, so the flow reaches `authorized` with no
+  alert guard and no fixed sleep (prime directives 1 and 2 hold). The new scenario
+  `demos/showcase/scenarios/permission_android.yaml` reaches the Permissions tab through the native
+  tab bar (BE-0223) and mirrors `permission.yaml`'s notDetermined → authorized assertions; the app
+  model still starts notDetermined regardless of the OS grant, so only the grant mechanism differs.
+  Documented in `docs/ci.md` (+ ja). Verified on a local arm64 emulator (the full lane, now 13
+  scenarios, passes) and the Python gate (`make check`) is green. The last held-out scenario
+  `gestures_multitouch` (pinch / rotate) still needs multi-touch (adb is single-touch), so unit 6
+  stays open and the item stays **In progress**.
 
 ## References
 
