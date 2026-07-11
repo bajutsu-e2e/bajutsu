@@ -4,7 +4,7 @@
 #
 # `run` / `doctor` land with the BE-0007 adb backend; until then these targets only build.
 .PHONY: build-all wrapper \
-	compose-build compose-noax-build views-build views-noax-build e2e e2e-golden clean
+	compose-build compose-noax-build views-build views-noax-build e2e e2e-golden e2e-visual clean
 
 HERE := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
 GRADLEW := $(HERE)/gradlew
@@ -107,6 +107,21 @@ e2e: compose-build
 e2e-golden: compose-build
 	cd $(ROOT) && uv run bajutsu run \
 		--scenario demos/showcase/scenarios/golden/golden_android.yaml \
+		--target showcase-compose --udid $(SERIAL) --backend android --config $(CONFIG)
+
+# On-device visual regression (VRT, BE-0208 unit 4 visual dimension) for the Compose a11y twin over
+# adb: pixel-compare the Stable catalog against the committed baseline
+# demos/showcase/scenarios/visual/baselines_android/stable.png. Unlike the element-tree golden, a
+# pixel baseline is host-specific — the CI x86_64 software renderer (swiftshader) and a local arm64
+# emulator diverge per pixel — so the baseline is RECORDED ON CI and committed (see that dir's
+# README); this target reads it via --baselines. Runs on the Stable (launch) tab, so it needs no
+# tab-bar navigation. Not part of `make check`: it needs a booted AVD, so android-e2e.yml drives it
+# in the same emulator session as `e2e` / `e2e-golden`. The pixel compare needs Pillow, so this
+# pulls in the `visual` extra (the element-tree golden does not) — the adb backend itself has none.
+e2e-visual: compose-build
+	cd $(ROOT) && uv run --extra visual bajutsu run \
+		--scenario demos/showcase/scenarios/visual/visual_android.yaml \
+		--baselines demos/showcase/scenarios/visual/baselines_android \
 		--target showcase-compose --udid $(SERIAL) --backend android --config $(CONFIG)
 
 clean:

@@ -52,11 +52,11 @@ concurrency:
 
 jobs:
   android-e2e:
-    name: smoke + golden (adb)
+    name: smoke + golden + visual (adb)
     runs-on: ubuntu-latest
     # Booting an emulator, building the APK, and running the Stable-tab scenarios plus the golden
-    # check is ~8min end to end; 30 catches a real hang (a wedged AVD boot or adb) with comfortable
-    # headroom.
+    # element-tree and pixel-visual checks is ~9min end to end; 30 catches a real hang (a wedged AVD
+    # boot or adb) with comfortable headroom.
     timeout-minutes: 30
     # The adb backend is pure subprocess (no Python extra), so the base package suffices; skip the
     # dev group (mypy / pytest / ruff), which the Linux `check` gate owns.
@@ -128,12 +128,15 @@ jobs:
           script: echo "Generated AVD snapshot for caching."
 
       # Boot the AVD under KVM and run the passing scenarios over the adb backend. The action owns
-      # boot + readiness; `make -C demos/showcase/android e2e` drives the core scenarios and
-      # `e2e-golden` the BE-0006 element-tree golden (BE-0208 unit 4), both in this one emulator
-      # session (default serial `booted` resolves to the one running emulator). The golden's
-      # baseline was recorded on a local arm64 emulator; it passes here on x86_64 because the
-      # comparison is field-level with a tolerant frame check (identity/label/traits are ABI-stable).
-      - name: Run the core scenarios and golden (adb)
+      # boot + readiness; `make -C demos/showcase/android e2e` drives the core scenarios, `e2e-golden`
+      # the BE-0006 element-tree golden, and `e2e-visual` the pixel VRT check (both BE-0208 unit 4),
+      # all in this one emulator session (default serial `booted` resolves to the one running
+      # emulator). The golden's baseline was recorded on a local arm64 emulator; it passes here on
+      # x86_64 because the comparison is field-level with a tolerant frame check (identity/label/traits
+      # are ABI-stable). The visual baseline, being pixel-exact, is host-specific — it is instead
+      # recorded here on this x86_64 lane and committed (see
+      # demos/showcase/scenarios/visual/baselines_android/README.md); this step compares against it.
+      - name: Run the core scenarios, golden, and visual (adb)
         uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d  # v2.38.0
         with:
           api-level: 34
@@ -143,7 +146,7 @@ jobs:
           force-avd-creation: false
           emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front none
           disable-animations: true
-          script: make -C demos/showcase/android e2e && make -C demos/showcase/android e2e-golden
+          script: make -C demos/showcase/android e2e && make -C demos/showcase/android e2e-golden && make -C demos/showcase/android e2e-visual
 
       - name: Upload run artifacts
         if: always()

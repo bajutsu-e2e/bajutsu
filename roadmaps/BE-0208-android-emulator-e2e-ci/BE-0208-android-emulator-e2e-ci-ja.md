@@ -9,7 +9,7 @@
 | 提案者 | [@hirosassa](https://github.com/hirosassa) |
 | 状態 | **実装中** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0208") |
-| 実装 PR | [#851](https://github.com/bajutsu-e2e/bajutsu/pull/851)、[#880](https://github.com/bajutsu-e2e/bajutsu/pull/880)、[#899](https://github.com/bajutsu-e2e/bajutsu/pull/899)、[#901](https://github.com/bajutsu-e2e/bajutsu/pull/901)、[#906](https://github.com/bajutsu-e2e/bajutsu/pull/906)、[#910](https://github.com/bajutsu-e2e/bajutsu/pull/910)、[#924](https://github.com/bajutsu-e2e/bajutsu/pull/924) |
+| 実装 PR | [#851](https://github.com/bajutsu-e2e/bajutsu/pull/851)、[#880](https://github.com/bajutsu-e2e/bajutsu/pull/880)、[#899](https://github.com/bajutsu-e2e/bajutsu/pull/899)、[#901](https://github.com/bajutsu-e2e/bajutsu/pull/901)、[#906](https://github.com/bajutsu-e2e/bajutsu/pull/906)、[#910](https://github.com/bajutsu-e2e/bajutsu/pull/910)、[#924](https://github.com/bajutsu-e2e/bajutsu/pull/924)、[#925](https://github.com/bajutsu-e2e/bajutsu/pull/925) |
 | トピック | Platform expansion (Android / Web / Flutter) |
 | 関連 | [BE-0007](../BE-0007-android-backend/BE-0007-android-backend-ja.md)、[BE-0223](../BE-0223-adb-tab-bar-navigation/BE-0223-adb-tab-bar-navigation-ja.md) |
 <!-- /BE-METADATA -->
@@ -76,7 +76,7 @@ directive の枠内にとどまります。
 - [x] 起動したエミュレータへの Android showcase のビルドとインストール。
 - [x] 通る中核シナリオを `--backend android` で実行。
 - [x] visual／golden ベースラインの同等性チェックのうち、**golden**（要素ツリー）の次元（Compose の Stable カタログ）。
-- [ ] visual／golden ベースラインの同等性チェックのうち、**visual**（スクリーンショット）の次元（ホスト依存のベースラインで、CI での採取が要るため保留）。
+- [x] visual／golden ベースラインの同等性チェックのうち、**visual**（スクリーンショット）の次元。シナリオと `e2e-visual` ターゲット（`visual` extra 付き）、CI ステップは配線済みです。この x86_64 レーンで採取したベースライン `stable.png` をコミットし、レーンの実行は緑になりました。
 - [ ] アクチュエーション忠実度とデバイス制御のスライスの着地に合わせたシナリオ集合の拡張。
 
 ### ログ
@@ -188,6 +188,29 @@ directive の枠内にとどまります。
   double-tap のカウンタが 1 に達します）、Python ゲート（`make check`）も緑です。`gestures_multitouch`
   （pinch／rotate）はマルチタッチを必要とし（adb は単一タッチです）、ユニット 4 の visual の次元は、CI で
   採取したベースラインが引き続き必要です。項目は**実装中**のままです。
+- 2026-07-11 — ユニット 4（visual の次元）の足場づくり。要素ツリーの golden に対応するスクリーンショット版
+  として、画素の視覚回帰チェックを配線しました。新しいシナリオ
+  `demos/showcase/scenarios/visual/visual_android.yaml` は、Compose の Stable カタログ（起動タブなので
+  タブバーの移動は不要です）を `visual` アサーションで固定します。adb ドライバは `screenshot` 能力を
+  提供しているため preflight を通り、既存の画素比較エンジン（`bajutsu/visual.py`）をそのまま再利用します。
+  上部のステータスバーはマスクするので、時計が差分を揺らすことはありません。新しい `e2e-visual` ターゲット
+  （`demos/showcase/android/Makefile`）は、コミットする専用ディレクトリ
+  `demos/showcase/scenarios/visual/baselines_android/` を `--baselines` で指し示して実行し、
+  `android-e2e.yml` が同じエミュレータセッションで `e2e-golden` の後に実行します。要素ツリーの golden は
+  フィールド単位の比較なので arm64 のベースラインが x86_64 でも通りますが、画素のベースラインはホスト依存
+  です。CI の x86_64 ソフトウェアレンダラ（swiftshader）とローカルの arm64 エミュレータはピクセル単位で
+  食い違うため、ベースラインをローカルで採取できません。このレーンで採取する必要があります。最初の CI 実行
+  はベースラインの不在を報告しますが、撮影したスクリーンショットを `android-e2e-run` アーティファクトに
+  アップロードします。それを昇格させ（`bajutsu approve`）、`stable.png` をコミットするとチェックが緑に
+  なります（手順はベースラインディレクトリの README に記載しています）。`docs/ci.md`（および ja）に記載
+  しました。ローカルの arm64 での予備実行は省きました（新しい worktree にビルド済みの APK がなく、この
+  シナリオは検証済みの `golden_android.yaml` のツインで、差分は検証済みの `visual` アサーションだけです。
+  必須の CI 採取の往復が端から端まで検証します）。その後、x86_64 のベースライン `stable.png` をレーンの
+  `android-e2e-run` アーティファクトから採取してコミットしました。あわせて `e2e-visual` ターゲットに `visual`
+  extra（Pillow）を渡しました。adb バックエンドは extra を持たず、ベースラインが無いあいだは Pillow を読み込む
+  前に「ベースラインなし」で短絡するため、この不足はベースラインのコミット後に初めて表面化しました。両方が
+  そろってレーンの実行は緑になり、チェックリストの箱もチェック済みです。残るアクチュエーション忠実度の
+  スライスのぶん、項目は**実装中**のままです。
 
 ## 参考
 
