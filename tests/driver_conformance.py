@@ -105,6 +105,17 @@ class DriverConformanceContract:
         driver = harness.with_screen([element(identifier="ok")])
         driver.tap({"id": "ok"})
 
+    def test_label_and_trait_selector_resolves_a_button(self, harness: ConformanceHarness) -> None:
+        # A tab bar is reached cross-backend by `{ label, traits: [button] }` (BE-0107 / BE-0223):
+        # the trait narrows the label to the tappable control, so a scenario authored once switches
+        # tabs on every backend. This pins that resolution path as a contract invariant, not merely
+        # an emergent property of the showcase lane. The seed's identifier equals its label so the
+        # on-device harness — which renders each seeded id as a labelled button — realizes it too.
+        driver = harness.with_screen(
+            [element(identifier="Log", label="Log", traits=[base.Trait.BUTTON])]
+        )
+        driver.tap({"label": "Log", "traits": [base.Trait.BUTTON]})
+
     def test_query_reports_the_seeded_screen(self, harness: ConformanceHarness) -> None:
         driver = harness.with_screen([element(identifier="a"), element(identifier="b")])
         identifiers = {el["identifier"] for el in driver.query()}

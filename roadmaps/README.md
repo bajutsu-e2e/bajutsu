@@ -139,6 +139,7 @@ The first slices of the multi-platform direction that have shipped: a **platform
 | [BE-0210](BE-0210-android-actuation-fidelity/BE-0210-android-actuation-fidelity.md) | Android on-device actuation fidelity | Implemented |
 | [BE-0211](BE-0211-android-device-control/BE-0211-android-device-control.md) | Android device control (setLocation, clipboard) | Implemented |
 | [BE-0212](BE-0212-granular-device-control-capabilities/BE-0212-granular-device-control-capabilities.md) | Split the coarse deviceControl capability into per-operation tokens | Implemented |
+| [BE-0223](BE-0223-adb-tab-bar-navigation/BE-0223-adb-tab-bar-navigation.md) | Reach every Android tab by driving the tab bar over adb | Implemented |
 <!-- /GENERATED:implemented-platform -->
 
 ### Backend expansion (iOS actuators)
@@ -623,7 +624,6 @@ A platform is just a backend behind the one driver interface ([DESIGN §1](../DE
 |---|---|---|
 | [BE-0008](BE-0008-flutter-support/BE-0008-flutter-support.md) | Flutter support | Proposal |
 | [BE-0221](BE-0221-android-scenario-portability-guarantee/BE-0221-android-scenario-portability-guarantee.md) | Guarantee shared showcase scenarios run unchanged on Android | Proposal |
-| [BE-0223](BE-0223-adb-tab-bar-navigation/BE-0223-adb-tab-bar-navigation.md) | Reach every Android tab by driving the tab bar over adb | Proposal |
 <!-- /GENERATED:proposals-platform -->
 
 ### Authoring experience (record / GUI editor)
