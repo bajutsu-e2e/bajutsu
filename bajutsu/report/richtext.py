@@ -7,6 +7,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from bajutsu.drivers import base
 from bajutsu.report.format import Part, _gnum
 
 # --- rich-text decomposition (selectors / matchers -> token parts) ---
@@ -26,7 +27,7 @@ def _join(*groups: list[Part]) -> list[Part]:
 
 def _id_text(v: Any) -> str:
     """An id / idMatches value for display; a list of OR candidates joins with ` | ` (BE-0221)."""
-    return " | ".join(str(c) for c in v) if isinstance(v, list) else str(v)
+    return " | ".join(base.id_candidates(v))
 
 
 def _sel_parts(sel: dict[str, Any]) -> list[Part]:
