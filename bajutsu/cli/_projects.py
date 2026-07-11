@@ -22,6 +22,12 @@ def open_registry(runs: str) -> ProjectRegistry:
     The DB `Repository` when `BAJUTSU_DATABASE_URL` is set, else the on-disk JSON store beside *runs*
     (the same store a local `serve` uses). Imported lazily to keep `bajutsu --help` off the serve
     import path.
+
+    The CLI is local-first: unlike the API's `register_project`, it does not apply the deployment
+    source-kind allowlist (BE-0108). That allowlist is `serve`-state policy guarding a browser
+    client from the server's filesystem, whereas `file` is the CLI's primary source and its operator
+    already has that access — so pointing the CLI at a hosted DB is an operator responsibility, not a
+    screened path.
     """
     from bajutsu.serve.project_registry import LocalProjectRegistry, SqlProjectRegistry
     from bajutsu.serve.server.db import repository_from_env
