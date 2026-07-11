@@ -7,9 +7,9 @@
 |---|---|
 | Proposal | [BE-0225](BE-0225-config-project-hub.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **In progress** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0225") |
-| Implementing PR | [#909](https://github.com/bajutsu-e2e/bajutsu/pull/909), [#921](https://github.com/bajutsu-e2e/bajutsu/pull/921), [#923](https://github.com/bajutsu-e2e/bajutsu/pull/923), [#926](https://github.com/bajutsu-e2e/bajutsu/pull/926) |
+| Implementing PR | [#909](https://github.com/bajutsu-e2e/bajutsu/pull/909), [#921](https://github.com/bajutsu-e2e/bajutsu/pull/921), [#923](https://github.com/bajutsu-e2e/bajutsu/pull/923), [#926](https://github.com/bajutsu-e2e/bajutsu/pull/926), [#928](https://github.com/bajutsu-e2e/bajutsu/pull/928) |
 | Topic | Authoring experience (record / GUI editor) |
 | Related | [BE-0015](../BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md), [BE-0102](../BE-0102-run-stats-dashboard/BE-0102-run-stats-dashboard.md), [BE-0187](../BE-0187-serve-config-view/BE-0187-serve-config-view.md), [BE-0108](../BE-0108-hosted-config-source-restriction/BE-0108-hosted-config-source-restriction.md), [BE-0099](../BE-0099-webhook-run-notifications/BE-0099-webhook-run-notifications.md) |
 <!-- /BE-METADATA -->
@@ -176,7 +176,7 @@ A thin CLI mirror so CI and cron can drive the hub headlessly, without the Web U
 - [x] 1 — The project model: extend BE-0015's `projects` row with a config-source record; stamp `runs.project_id`.
 - [x] 2 — Persistence: the `ProjectRegistry` seam (DB-backed when a repository is present, on-disk JSON otherwise), run history partitioned by project on both paths (the `project_id` column with a DB, a project→run-ids index without); auto-register the launch config as the active project.
 - [x] 3 — API: the five `/api/projects…` endpoints, org-scoped, additive to the existing single-config ones. All three unit-2 #921 review carry-overs land here: the resolved `project_id` travels through `job_spec` so a remote worker's `_persist_run` stamps it; auto-activation is org-aware (the first project registered in an org with no active one becomes active, via `POST /api/projects`); and an explicit `name` disambiguates two configs from the same Git repo.
-- [ ] 4 — UI: the project switcher + projects list, rebinding the active project without a restart.
+- [x] 4 — UI: the project switcher + projects list, rebinding the active project without a restart.
 - [x] 5 — CLI: `bajutsu project add/ls/rm` and `bajutsu run --project <name>` as the headless trigger.
 
 ### Log
@@ -234,6 +234,20 @@ A thin CLI mirror so CI and cron can drive the hub headlessly, without the Web U
   trigger, the stateless CLI resolves the config fresh each call and so runs any named project without
   the active-binding switch (no 409). `upload` sources have no local checkout and are refused. Unit 4
   (UI) remains.
+- 2026-07-11 — Unit 4, the UI (#928): added `POST /api/projects/<name>/activate` — the live
+  rebind unit 3's `run_project` deferred to. `activate_project` reconstructs the `--config` spec from
+  the project's stored source (`config_from_source`, relocated from `cli/_projects.py` to
+  `bajutsu.config_source` so `serve` reaches it without importing the CLI) and re-points `state.config`
+  through the existing binders (`bind_git_config` for git, `bind_config` for file); the active project
+  flips only after a successful bind, so a failed rebind never leaves the hub on a config it could not
+  load. A `None` source is nothing to bind (400) and an `upload` bundle has no checkout to
+  re-materialize (409). RBAC treats activate as admin (it repoints a config binding, like
+  `/api/config`). The serve shell gains a header **switcher** (a native `<select>` next to the config
+  viewer) and a **Projects** list modal — each row shows the project name, its config source, and its
+  latest run verdict, with a **Run** that activates the project then opens Replay. Both stay hidden
+  until a hub exists (≥1 project), so a single-config `serve` is unchanged. Activating reloads the
+  config label and the shared target/scenario lists, so every tab runs against the switched-to config
+  with no restart. Projects are added/removed with the unit-5 `bajutsu project` CLI. BE-0225 complete.
 
 ## References
 

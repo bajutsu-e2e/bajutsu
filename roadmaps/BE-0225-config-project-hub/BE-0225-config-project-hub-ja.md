@@ -7,9 +7,9 @@
 |---|---|
 | 提案 | [BE-0225](BE-0225-config-project-hub-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **実装中** |
+| 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0225") |
-| 実装 PR | [#909](https://github.com/bajutsu-e2e/bajutsu/pull/909), [#921](https://github.com/bajutsu-e2e/bajutsu/pull/921), [#923](https://github.com/bajutsu-e2e/bajutsu/pull/923), [#926](https://github.com/bajutsu-e2e/bajutsu/pull/926) |
+| 実装 PR | [#909](https://github.com/bajutsu-e2e/bajutsu/pull/909), [#921](https://github.com/bajutsu-e2e/bajutsu/pull/921), [#923](https://github.com/bajutsu-e2e/bajutsu/pull/923), [#926](https://github.com/bajutsu-e2e/bajutsu/pull/926), [#928](https://github.com/bajutsu-e2e/bajutsu/pull/928) |
 | トピック | Authoring experience (record / GUI editor) |
 | 関連 | [BE-0015](../BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting-ja.md), [BE-0102](../BE-0102-run-stats-dashboard/BE-0102-run-stats-dashboard-ja.md), [BE-0187](../BE-0187-serve-config-view/BE-0187-serve-config-view-ja.md), [BE-0108](../BE-0108-hosted-config-source-restriction/BE-0108-hosted-config-source-restriction-ja.md), [BE-0099](../BE-0099-webhook-run-notifications/BE-0099-webhook-run-notifications-ja.md) |
 <!-- /BE-METADATA -->
@@ -175,7 +175,7 @@ CI や cron が Web UI なしにハブをヘッドレスで駆動できるよう
 - [x] 1. プロジェクトのモデル：BE-0015 の `projects` 行に config ソースのレコードを足し、`runs.project_id` に印を付ける。
 - [x] 2. 永続化：`ProjectRegistry` シーム（リポジトリがあれば DB 上、なければディスク上の JSON）、どちらの経路でもプロジェクト単位に分割した実行履歴（DB なら `project_id` 列、なければプロジェクト→実行 ID の索引）、起動時 config の active プロジェクトへの自動登録。
 - [x] 3. API：org スコープの五つの `/api/projects…` エンドポイント（既存の単一 config 向けへの追加）。#921 のレビューで挙がったユニット 2 からの持ち越し三点をここで解決しました。解決済みの `project_id` は `job_spec` に載ってリモートワーカーまで届き、ワーカー側の `_persist_run` が刻印します。自動有効化は org 対応となり、active プロジェクトのない org で最初に登録したプロジェクト（`POST /api/projects`）が active になります。明示的な `name` により、同じ Git リポジトリの二つの config を区別できます。
-- [ ] 4. UI：プロジェクトスイッチャーとプロジェクト一覧。再起動なしで active プロジェクトを切り替える。
+- [x] 4. UI：プロジェクトスイッチャーとプロジェクト一覧。再起動なしで active プロジェクトを切り替える。
 - [x] 5. CLI：`bajutsu project add/ls/rm` と、ヘッドレスなトリガーとしての `bajutsu run --project <name>`。
 
 ### ログ
@@ -238,6 +238,21 @@ CI や cron が Web UI なしにハブをヘッドレスで駆動できるよう
   ステートレスな CLI は呼び出しごとに config を解決し直すので、active バインディングへの切り替えなしに
   任意の名前のプロジェクトを実行します（409 はありません）。`upload` ソースはローカルにチェックアウトが
   ないため拒否します。ユニット 4（UI）が残ります。
+- 2026-07-11：ユニット 4 の UI を実装しました（#928）。ユニット 3 の `run_project` が先送りにした
+  ライブな再バインドとして、`POST /api/projects/<name>/activate` を追加しました。`activate_project` は
+  プロジェクトの保存済みソースから `--config` の spec を復元し（`config_from_source`。`serve` が CLI を
+  import せずに使えるよう、`cli/_projects.py` から `bajutsu.config_source` へ移しました）、既存のバインダ
+  （git は `bind_git_config`、file は `bind_config`）で `state.config` を貼り替えます。active プロジェクト
+  はバインドが成功したあとにだけ切り替わるので、失敗した再バインドがハブを読み込めない config に残す
+  ことはありません。`None` のソースは束ねる対象がなく（400）、`upload` のバンドルは再展開するチェック
+  アウトがありません（409）。RBAC は activate を admin として扱います（config の束ね直しにあたり、
+  `/api/config` と同じです）。serve のシェルには、ヘッダのスイッチャー（config ビューアの隣に置く
+  ネイティブな `<select>`）とプロジェクト一覧のモーダルが加わります。各行はプロジェクト名とその config
+  ソース、最新の実行結果を示し、**Run** でそのプロジェクトを active にしてから Replay を開きます。どちらも
+  ハブが存在する（プロジェクトが 1 件以上ある）まで隠すので、単一 config の `serve` は従来どおりです。
+  active にすると config ラベルと共有のターゲットおよびシナリオ一覧を読み込み直すので、再起動なしで
+  どのタブも切り替え先の config に対して動きます。プロジェクトの追加と削除はユニット 5 の
+  `bajutsu project` CLI で行います。BE-0225 は完了です。
 
 ## 参考
 

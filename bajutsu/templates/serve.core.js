@@ -371,6 +371,65 @@ $('#opencfg').addEventListener('click',openFs);
 $('#fsclose').addEventListener('click',closeFs);
 $('#fsmodal').addEventListener('click',e=>{if(e.target===$('#fsmodal'))closeFs()});
 
+// ---- project hub (BE-0225 unit 4): the header switcher + the projects list ----
+// `serve` is a hub over several named config bindings. Activating one rebinds state.config on the
+// server; we then reload the config label and the shared target/scenario lists so every tab runs
+// against the switched-to config with no restart. Every `serve` implicitly registers its loaded
+// config as one project, so the switcher + Projects button stay hidden until a real hub exists (more
+// than one project to choose between) — a single-config serve is unchanged. Projects are added/removed
+// with the `bajutsu project` CLI (unit 5), not here — this surface switches and inspects them.
+let projectsCache=[];
+async function loadProjects(){
+  const list=await getJSON('/api/projects',[]);
+  projectsCache=Array.isArray(list)?list:[];
+  const hub=projectsCache.length>1;
+  $('#projectsw').hidden=!hub;$('#openprojects').hidden=!hub;
+  renderSwitcher();renderProjectsList();
+}
+function renderSwitcher(){
+  $('#projectsw').innerHTML=projectsCache.map(p=>`<option value="${esc(p.name)}"${p.active?' selected':''}>${esc(p.name)}</option>`).join('');
+}
+// A one-line, human-readable summary of a project's config source for the list.
+function projectSourceLabel(source){
+  if(!source||typeof source!=='object')return 'unbound';
+  const loc=source.locator||{};
+  if(source.kind==='git')return 'git: '+[loc.owner,loc.repo].filter(Boolean).join('/')+(loc.ref?('@'+loc.ref):'');
+  if(source.kind==='file')return 'file: '+(loc.path||'');
+  if(source.kind==='upload')return 'uploaded bundle';
+  return source.kind||'unbound';
+}
+function projectVerdict(run){
+  if(!run)return '<span class="prjv none">no runs</span>';
+  return `<span class="prjv ${run.ok?'ok':'ng'}">${run.ok?'PASS':'FAIL'} ${run.passed}/${run.total}</span>`;
+}
+function renderProjectsList(){
+  const ul=$('#projectslist');if(!ul)return;
+  if(!projectsCache.length){ul.innerHTML='<li class="muted">no projects yet — add one with <code>bajutsu project add</code></li>';return}
+  ul.innerHTML=projectsCache.map(p=>`<li class="prjrow" data-testid="projects.row" data-name="${esc(p.name)}"${p.active?' data-active="1"':''}>
+    <span class="prjname" data-testid="projects.name">${esc(p.name)}</span>
+    <span class="prjsrc">${esc(projectSourceLabel(p.source))}</span>
+    ${projectVerdict(p.lastRun)}
+    ${p.active?'<span class="prjactive" data-testid="projects.active">active</span>':'<button class="cfgbtn" data-act="run" data-testid="projects.run">Run</button>'}
+  </li>`).join('');
+  ul.querySelectorAll('button[data-act="run"]').forEach(b=>b.addEventListener('click',()=>switchProject(b.closest('.prjrow').dataset.name,{goReplay:true})));
+}
+// Activate a project (rebind the live config), then re-sync the config label + shared lists + the
+// switcher. A refused switch (e.g. an uploaded bundle with no checkout, a moved file) surfaces the
+// server's error and re-syncs the select so it never lies about what is active.
+async function switchProject(name,opts){
+  const d=await postJSON('/api/projects/'+encodeURIComponent(name)+'/activate',{},{error:'switch failed'});
+  if(d.error){alert(d.error);await loadProjects();return}
+  await loadConfig();
+  await loadProjects();
+  if(opts&&opts.goReplay){closeProjects();showView('replay')}
+}
+function openProjects(){loadProjects();$('#projectsmodal').hidden=false}
+function closeProjects(){closeModal($('#projectsmodal'))}
+$('#projectsw').addEventListener('change',e=>switchProject(e.target.value));
+$('#openprojects').addEventListener('click',openProjects);
+$('#projectsclose').addEventListener('click',closeProjects);
+$('#projectsmodal').addEventListener('click',e=>{if(e.target===$('#projectsmodal'))closeProjects()});
+
 // ---- view the loaded config: a structured key/value tree (or the raw YAML) + its Git origin ----
 function closeCfgView(){closeModal($('#cfgviewmodal'))}
 // Toggle between the collapsible structured tree and the raw YAML text.

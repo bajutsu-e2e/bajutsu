@@ -89,6 +89,75 @@ def _spec(host: str, m: re.Match[str]) -> GitConfigSpec:
     return GitConfigSpec(host, m["owner"], m["repo"], m["ref"], m["path"])
 
 
+def source_from_config(config: str) -> dict[str, object]:
+    """A config-source record (`kind` + `locator`) for *config* (BE-0225).
+
+    A Git spec becomes a `git` source, anything else a local `file` source — the discriminated shape
+    the project registry stores and `serve` auto-registers (`launch_project_identity`), so a config
+    registered from the CLI or the API round-trips back through the run/bind path.
+    """
+    spec = parse_config_spec(config)
+    if spec is None:
+        return {"kind": "file", "locator": {"path": str(config)}}
+    locator: dict[str, str] = {"host": spec.host, "owner": spec.owner, "repo": spec.repo}
+    if spec.ref:
+        locator["ref"] = spec.ref
+    if spec.path:
+        locator["path"] = spec.path
+    return {"kind": "git", "locator": locator}
+
+
+def config_from_source(source: object) -> str:
+    """Reconstruct a `--config` spec from a stored config-source record (BE-0225).
+
+    The inverse of `source_from_config`, so a registered project drives the ordinary run/bind path. A
+    `git` source rebuilds the `github:` / `git+https://` spec, preferring the resolved `sha` (an
+    immutable pin the launch auto-register stamps) over a moving `ref`. A `file` source is its path.
+
+    Raises:
+        ValueError: the record is malformed (not a record, no locator, a `file` with no path, a `git`
+            missing a required field) or names a source kind with no spec form — an `upload` bundle
+            has no local checkout to point `--config` at.
+    """
+    if not isinstance(source, dict):
+        raise ValueError(f"config source is not a record: {source!r}")
+    kind = source.get("kind")
+    locator = source.get("locator")
+    if not isinstance(locator, dict):
+        raise ValueError(f"config source has no locator: {source!r}")
+    if kind == "file":
+        path = locator.get("path")
+        if path is None:
+            raise ValueError(f"config source has no path: {source!r}")
+        return str(path)
+    if kind == "git":
+        return _git_spec(locator)
+    raise ValueError(f"cannot bind a {kind!r} config source (only git or file)")
+
+
+def _git_spec(locator: dict[str, object]) -> str:
+    """A `github:` / `git+https://` spec from a git locator, pinning `sha` when present."""
+    missing = [k for k in ("host", "owner", "repo") if k not in locator]
+    if missing:
+        raise ValueError(f"git config source locator is missing {missing}: {locator!r}")
+    host, owner, repo = locator["host"], locator["owner"], locator["repo"]
+    ref = locator.get("sha") or locator.get("ref")
+    path = locator.get("path")
+    if host == "github.com":
+        spec = f"github:{owner}/{repo}"
+        if ref:
+            spec += f"@{ref}"
+        if path:
+            spec += f":{path}"
+        return spec
+    spec = f"git+https://{host}/{owner}/{repo}"
+    if ref:
+        spec += f"@{ref}"
+    if path:
+        spec += f"#{path}"
+    return spec
+
+
 class Transport(Protocol):
     """The Git-host calls materialization makes — injected so the logic tests offline."""
 
