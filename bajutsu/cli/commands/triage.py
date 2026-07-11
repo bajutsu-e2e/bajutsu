@@ -219,7 +219,9 @@ def _flaky_triage(
         pass_dirs, fail_dirs, scenario=name, scenario_hash=scenario_hash
     )
     if context is None:
-        typer.echo(f"{name}: no failing run to contrast — nothing to diagnose as flaky")
+        # assemble_cross_run returns None when either side is empty; name the one that's missing.
+        missing = "failing" if not fail_dirs else "passing"
+        typer.echo(f"{name}: no {missing} run to contrast — nothing to diagnose as flaky")
         raise typer.Exit(0)
     from bajutsu.claude_triage import ClaudeCrossRunTriageAgent
 

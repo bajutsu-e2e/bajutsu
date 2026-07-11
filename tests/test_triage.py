@@ -893,3 +893,17 @@ def test_cli_flaky_no_failing_run_is_advisory(
     )
     assert r.exit_code == 0
     assert "nothing to diagnose" in r.output.lower() or "no failing" in r.output.lower()
+
+
+def test_cli_flaky_no_passing_run_names_the_missing_side(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    hist = tmp_path / "hist"
+    _write_flaky_run(hist / "r1", ok=False, reason="x")  # all red — no pass to contrast
+    _stub_ai_cli(monkeypatch, None)
+    r = runner.invoke(
+        app, ["triage", "--flaky", "--scenario", "login", "--history", str(hist), "--ai"]
+    )
+    assert r.exit_code == 0
+    # the advisory must name the side that is actually missing, not the opposite
+    assert "no passing" in r.output.lower()
