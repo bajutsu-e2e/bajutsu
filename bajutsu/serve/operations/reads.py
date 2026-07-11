@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Iterable
 from pathlib import Path
 from typing import Any
 
@@ -164,8 +165,20 @@ def _run_manifests(state: ServeState, actor: str | None) -> list[dict[str, Any]]
         ids = [r.id for r in state.repository.list_runs(org_id=org, limit=_STATS_RUN_LIMIT)]
     else:
         ids = [r.get("id") for r in artifacts.list_runs()[:_STATS_RUN_LIMIT]]
+    return run_set_manifests(artifacts, ids)
+
+
+def run_set_manifests(store: ArtifactStore, run_ids: Iterable[Any]) -> list[dict[str, Any]]:
+    """Read the parsed `manifest.json` of each run in *run_ids* from *store*, skipping bad ones.
+
+    The `ServeState`/actor-free core of `_run_manifests`: it takes the run set explicitly, so the
+    same aggregation can be run once per project over a project-scoped run set (BE-0226) rather than
+    only over the active config's org run history. An id that is not a single safe segment is
+    rejected before it becomes a path (serve's containment model, BE-0015), and an unreadable or
+    malformed manifest is skipped — the aggregator never fails on one bad run.
+    """
     manifests: list[dict[str, Any]] = []
-    for run_id in ids:
+    for run_id in run_ids:
         # Reject a non-string or a multi-segment id (e.g. "r1/sub") before it becomes a path, matching
         # serve's containment model for run ids everywhere else (BE-0015).
         if not isinstance(run_id, str) or not valid_run_id(run_id):
@@ -174,7 +187,7 @@ def _run_manifests(state: ServeState, actor: str | None) -> list[dict[str, Any]]
             # `open_bytes` can raise (a run deleted between listing and read; a remote store's I/O
             # error), so an OSError is a skip too — the same "unreadable ones are skipped" promise as
             # malformed JSON, never a failed dashboard.
-            raw = artifacts.open_bytes(f"{run_id}/manifest.json")
+            raw = store.open_bytes(f"{run_id}/manifest.json")
             data = json.loads(raw) if raw is not None else None
         except (OSError, json.JSONDecodeError, ValueError):
             continue
