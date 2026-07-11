@@ -37,6 +37,18 @@ def test_add_then_ls_marks_the_first_project_active(tmp_path: Path) -> None:
     assert "* checkout" in ls.output
 
 
+def test_add_rejects_a_slash_in_the_name(tmp_path: Path) -> None:
+    # The web hub splices the name straight into REST paths (`/api/projects/{name}/run`), so a name
+    # with a '/' would be unaddressable there — reject it at the CLI just as the API twin does, or
+    # the "visible in the web hub and vice versa" round-trip breaks.
+    runs = tmp_path / "runs"
+    add = runner.invoke(
+        app, ["project", "add", "a/b", "--config", "shop.yaml", "--runs", str(runs)]
+    )
+    assert add.exit_code != 0
+    assert "must not contain '/'" in add.output
+
+
 def test_use_switches_the_active_marker(tmp_path: Path) -> None:
     runs = tmp_path / "runs"
     for name in ("shop", "docs"):

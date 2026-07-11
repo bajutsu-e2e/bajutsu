@@ -35,6 +35,11 @@ def add(
     """
     from bajutsu.serve.orgs import DEFAULT_ORG
 
+    # The web hub addresses a project by splicing its name into REST paths (`/api/projects/{name}/…`),
+    # so a '/' would make it unreachable there — reject it here as `register_project` does, keeping the
+    # CLI-hub round-trip intact.
+    if "/" in name:
+        raise typer.BadParameter("name must not contain '/'", param_hint="name")
     registry = open_registry(runs)
     had_active = registry.resolve_active(org_id=DEFAULT_ORG) is not None
     registry.add(org_id=DEFAULT_ORG, name=name, source=source_from_config(config))
