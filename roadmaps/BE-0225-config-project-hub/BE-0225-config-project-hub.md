@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0225") |
-| Implementing PR | [#909](https://github.com/bajutsu-e2e/bajutsu/pull/909) |
+| Implementing PR | [#909](https://github.com/bajutsu-e2e/bajutsu/pull/909), [#921](https://github.com/bajutsu-e2e/bajutsu/pull/921) |
 | Topic | Authoring experience (record / GUI editor) |
 | Related | [BE-0015](../BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md), [BE-0102](../BE-0102-run-stats-dashboard/BE-0102-run-stats-dashboard.md), [BE-0187](../BE-0187-serve-config-view/BE-0187-serve-config-view.md), [BE-0108](../BE-0108-hosted-config-source-restriction/BE-0108-hosted-config-source-restriction.md), [BE-0099](../BE-0099-webhook-run-notifications/BE-0099-webhook-run-notifications.md) |
 <!-- /BE-METADATA -->
@@ -174,7 +174,7 @@ A thin CLI mirror so CI and cron can drive the hub headlessly, without the Web U
 > (oldest first), linking the PRs.
 
 - [x] 1 — The project model: extend BE-0015's `projects` row with a config-source record; stamp `runs.project_id`.
-- [ ] 2 — Persistence: the `ProjectRegistry` seam (DB-backed when a repository is present, on-disk JSON otherwise), run history partitioned by project on both paths (the `project_id` column with a DB, a project→run-ids index without); auto-register the launch config as the active project.
+- [x] 2 — Persistence: the `ProjectRegistry` seam (DB-backed when a repository is present, on-disk JSON otherwise), run history partitioned by project on both paths (the `project_id` column with a DB, a project→run-ids index without); auto-register the launch config as the active project.
 - [ ] 3 — API: the five `/api/projects…` endpoints, org-scoped, additive to the existing single-config ones.
 - [ ] 4 — UI: the project switcher + projects list, rebinding the active project without a restart.
 - [ ] 5 — CLI: `bajutsu project add/ls/rm` and `bajutsu run --project <name>` as the headless trigger.
@@ -194,6 +194,19 @@ A thin CLI mirror so CI and cron can drive the hub headlessly, without the Web U
   `serve`, and auto-registering the launch config as the active project. Also lands migration `0010`,
   adding `ON DELETE SET NULL` to `runs.project_id`'s FK so deleting a project with run history
   doesn't raise `IntegrityError` on Postgres — matching the deregister-retains-history contract.
+- 2026-07-11 — Unit 2, the registry seam + wiring (#921): added `bajutsu/serve/project_registry.py`
+  — one `ProjectRegistry` protocol with `SqlProjectRegistry` (delegates to the unit-1 `Repository`,
+  runs partitioned by the `project_id` column, active project held in memory) and
+  `LocalProjectRegistry` (the no-database default: a JSON file beside `runs_dir` holding the project
+  list, the active project, and a project→run-ids index, atomic writes mirroring
+  `LocalProviderSettingsStore`). `add` reuses an existing `(org, name)`'s id so it never trips the
+  unique constraint; `remove` retains the runs but drops the project label on both paths (SET NULL /
+  index removal). Wired into `_build_state` / `_build_server_state` (new `ServeState.project_registry`
+  field), `serve()` auto-registers the launch config as the active project on boot
+  (`register_launch_project` / `launch_project_identity`), and `_persist_run` stamps the active
+  project onto the finished run (the `project_id` column with a database, `tag_run` into the local
+  index without one) — guarded so a registry error never breaks job finalization, a no-op when no hub
+  is wired. Unit 2 done; units 3 (API), 4 (UI), 5 (CLI) remain.
 
 ## References
 
