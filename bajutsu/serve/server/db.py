@@ -19,7 +19,7 @@ from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 if TYPE_CHECKING:
     from sqlalchemy.engine import Engine
 
-    from bajutsu.serve.server.models import Run
+    from bajutsu.serve.server.models import Project, Run
 
 # A lease with no heartbeat for this long is treated as a dead worker and reclaimed; a job that is
 # reclaimed this many times is failed rather than re-queued forever (BE-0016 worker liveness). The
@@ -61,6 +61,21 @@ class JobMetrics:
 
 
 @dataclass
+class ProjectRecord:
+    """A registered project as the seam exchanges it — a named config binding within an org.
+
+    `source` is the discriminated config-source record (`{"kind": ..., "locator": ...}`) the project
+    binds, or None for a row that predates the binding (BE-0015's unwired `projects` scaffolding).
+    """
+
+    id: str
+    org_id: str
+    name: str
+    source: dict[str, Any] | None = None
+    created_at: datetime | None = None
+
+
+@dataclass
 class RunRecord:
     """A run as the seam exchanges it — the relational core plus the JSON manifest summary."""
 
@@ -89,8 +104,22 @@ class Repository(Protocol):
     def get_run(self, run_id: str) -> RunRecord | None:
         """The run with *run_id*, or None if there is none."""
 
-    def list_runs(self, *, org_id: str, limit: int = 50) -> list[RunRecord]:
-        """An org's runs, newest first, capped at *limit*."""
+    def list_runs(
+        self, *, org_id: str, project_id: str | None = None, limit: int = 50
+    ) -> list[RunRecord]:
+        """An org's runs, newest first, capped at *limit*; only *project_id*'s when given (BE-0225)."""
+
+    def create_project(self, project: ProjectRecord) -> None:
+        """Register *project*, or update it in place when its id already exists (BE-0225)."""
+
+    def get_project(self, *, org_id: str, name: str) -> ProjectRecord | None:
+        """The org's project named *name*, or None if there is none (org-scoped, BE-0225)."""
+
+    def list_projects(self, *, org_id: str) -> list[ProjectRecord]:
+        """An org's registered projects, ordered by name (BE-0225)."""
+
+    def delete_project(self, *, org_id: str, name: str) -> None:
+        """Deregister the org's project named *name*; its run history is retained (BE-0225)."""
 
     def ensure_org(self, org_id: str, *, slug: str, name: str) -> None:
         """Create the org if it does not exist yet (idempotent) — 7c-1's single default org."""
@@ -181,6 +210,16 @@ class Repository(Protocol):
         """A one-pass aggregate of the jobs table for the ``/metrics`` endpoint (BE-0169)."""
 
 
+def _to_project(row: Project) -> ProjectRecord:
+    return ProjectRecord(
+        id=row.id,
+        org_id=row.org_id,
+        name=row.name,
+        source=dict(row.source) if row.source is not None else None,
+        created_at=row.created_at,
+    )
+
+
 def _to_record(row: Run) -> RunRecord:
     return RunRecord(
         id=row.id,
@@ -246,15 +285,72 @@ class SqlRepository:
             row = session.get(Run, run_id)
             return _to_record(row) if row is not None else None
 
-    def list_runs(self, *, org_id: str, limit: int = 50) -> list[RunRecord]:
+    def list_runs(
+        self, *, org_id: str, project_id: str | None = None, limit: int = 50
+    ) -> list[RunRecord]:
         from sqlalchemy import select
         from sqlalchemy.orm import Session
 
         from bajutsu.serve.server.models import Run
 
-        stmt = select(Run).where(Run.org_id == org_id).order_by(Run.created_at.desc()).limit(limit)
+        stmt = select(Run).where(Run.org_id == org_id)
+        if project_id is not None:
+            stmt = stmt.where(Run.project_id == project_id)
+        stmt = stmt.order_by(Run.created_at.desc()).limit(limit)
         with Session(self._engine) as session:
             return [_to_record(row) for row in session.scalars(stmt)]
+
+    def create_project(self, project: ProjectRecord) -> None:
+        from sqlalchemy.orm import Session
+
+        from bajutsu.serve.server.models import Project
+
+        # `merge` upserts by primary key, so re-registering a project (e.g. rebinding its source)
+        # updates it rather than colliding — the same idempotent shape as `record_run`.
+        fields: dict[str, Any] = {
+            "id": project.id,
+            "org_id": project.org_id,
+            "name": project.name,
+            "source": project.source,
+        }
+        if project.created_at is not None:
+            fields["created_at"] = project.created_at
+        with Session(self._engine) as session:
+            session.merge(Project(**fields))
+            session.commit()
+
+    def get_project(self, *, org_id: str, name: str) -> ProjectRecord | None:
+        from sqlalchemy import select
+        from sqlalchemy.orm import Session
+
+        from bajutsu.serve.server.models import Project
+
+        stmt = select(Project).where(Project.org_id == org_id, Project.name == name)
+        with Session(self._engine) as session:
+            row = session.scalars(stmt).first()
+            return _to_project(row) if row is not None else None
+
+    def list_projects(self, *, org_id: str) -> list[ProjectRecord]:
+        from sqlalchemy import select
+        from sqlalchemy.orm import Session
+
+        from bajutsu.serve.server.models import Project
+
+        stmt = select(Project).where(Project.org_id == org_id).order_by(Project.name)
+        with Session(self._engine) as session:
+            return [_to_project(row) for row in session.scalars(stmt)]
+
+    def delete_project(self, *, org_id: str, name: str) -> None:
+        from sqlalchemy import delete
+        from sqlalchemy.orm import Session
+
+        from bajutsu.serve.server.models import Project
+
+        # Only the binding is removed; `runs.project_id` is left as-is so the history is retained
+        # (BE-0225) — a run of a since-deregistered project keeps pointing at its now-absent id.
+        with Session(self._engine) as session:
+            session.execute(delete(Project).where(Project.org_id == org_id, Project.name == name))
+            session.commit()
 
     def ensure_org(self, org_id: str, *, slug: str, name: str) -> None:
         from sqlalchemy.exc import IntegrityError

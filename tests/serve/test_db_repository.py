@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 
 from bajutsu import serve as srv
 from bajutsu.serve.server.db import (
+    ProjectRecord,
     RunRecord,
     SqlRepository,
     engine_from_url,
@@ -162,6 +163,67 @@ def test_record_run_is_idempotent_by_id() -> None:
     assert got.status == "done"
     assert got.ok is True
     assert len(repo.list_runs(org_id="o1")) == 1
+
+
+def test_create_then_list_and_get_project() -> None:
+    repo = _repo()
+    repo.create_project(
+        ProjectRecord(
+            id="p1",
+            org_id="o1",
+            name="checkout",
+            source={"kind": "file", "locator": {"path": "a.yaml"}},
+        )
+    )
+    repo.create_project(ProjectRecord(id="p2", org_id="o1", name="search"))
+    repo.create_project(ProjectRecord(id="p3", org_id="o2", name="other"))
+
+    assert [p.name for p in repo.list_projects(org_id="o1")] == ["checkout", "search"]
+    got = repo.get_project(org_id="o1", name="checkout")
+    assert got is not None
+    assert got.id == "p1"
+    assert got.source == {"kind": "file", "locator": {"path": "a.yaml"}}
+    # A missing name, and another org's project, both read as not found (org-scoped).
+    assert repo.get_project(org_id="o1", name="nope") is None
+    assert repo.get_project(org_id="o1", name="other") is None
+
+
+def test_delete_project_removes_binding_but_keeps_run_history() -> None:
+    repo = _repo()
+    repo.create_project(ProjectRecord(id="p1", org_id="o1", name="checkout"))
+    repo.record_run(RunRecord(id="r1", org_id="o1", status="done", project_id="p1"))
+
+    repo.delete_project(org_id="o1", name="checkout")
+
+    assert repo.list_projects(org_id="o1") == []
+    # Deregistering removes only the binding — the run history is retained (BE-0225).
+    got = repo.get_run("r1")
+    assert got is not None
+    assert got.project_id == "p1"
+
+
+def test_list_runs_filters_by_project() -> None:
+    repo = _repo()
+    base = datetime(2026, 1, 1, tzinfo=UTC)
+    repo.record_run(
+        RunRecord(
+            id="a", org_id="o1", status="done", project_id="p1", created_at=base.replace(hour=1)
+        )
+    )
+    repo.record_run(
+        RunRecord(
+            id="b", org_id="o1", status="done", project_id="p2", created_at=base.replace(hour=2)
+        )
+    )
+    repo.record_run(
+        RunRecord(
+            id="c", org_id="o1", status="done", project_id="p1", created_at=base.replace(hour=3)
+        )
+    )
+
+    assert [r.id for r in repo.list_runs(org_id="o1", project_id="p1")] == ["c", "a"]
+    # No project filter → the whole org's run history, as before.
+    assert len(repo.list_runs(org_id="o1")) == 3
 
 
 def test_engine_from_url_builds_a_usable_engine() -> None:
