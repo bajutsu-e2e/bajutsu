@@ -9,7 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装中** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0225") |
-| 実装 PR | [#909](https://github.com/bajutsu-e2e/bajutsu/pull/909), [#921](https://github.com/bajutsu-e2e/bajutsu/pull/921) |
+| 実装 PR | [#909](https://github.com/bajutsu-e2e/bajutsu/pull/909), [#921](https://github.com/bajutsu-e2e/bajutsu/pull/921), [#923](https://github.com/bajutsu-e2e/bajutsu/pull/923) |
 | トピック | Authoring experience (record / GUI editor) |
 | 関連 | [BE-0015](../BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting-ja.md), [BE-0102](../BE-0102-run-stats-dashboard/BE-0102-run-stats-dashboard-ja.md), [BE-0187](../BE-0187-serve-config-view/BE-0187-serve-config-view-ja.md), [BE-0108](../BE-0108-hosted-config-source-restriction/BE-0108-hosted-config-source-restriction-ja.md), [BE-0099](../BE-0099-webhook-run-notifications/BE-0099-webhook-run-notifications-ja.md) |
 <!-- /BE-METADATA -->
@@ -174,7 +174,7 @@ CI や cron が Web UI なしにハブをヘッドレスで駆動できるよう
 
 - [x] 1. プロジェクトのモデル：BE-0015 の `projects` 行に config ソースのレコードを足し、`runs.project_id` に印を付ける。
 - [x] 2. 永続化：`ProjectRegistry` シーム（リポジトリがあれば DB 上、なければディスク上の JSON）、どちらの経路でもプロジェクト単位に分割した実行履歴（DB なら `project_id` 列、なければプロジェクト→実行 ID の索引）、起動時 config の active プロジェクトへの自動登録。
-- [ ] 3. API：org スコープの五つの `/api/projects…` エンドポイント（既存の単一 config 向けへの追加）。（#921 のレビューで挙がったユニット 2 からの持ち越しがあります。解決済みの `project_id` を `job_spec` に載せてリモートワーカーの `_persist_run` が刻印できるようにすること、自動有効化を org 対応にすること、同じ Git リポジトリの二つの config を明示的な命名で区別できるようにすること、の三つです。二つ目についてはそれまで `default` 以外の org には active プロジェクトが付かず、三つ目についてはユニット 2 のリポジトリ名だけの自動命名では両者が一つにまとまってしまいます。）
+- [x] 3. API：org スコープの五つの `/api/projects…` エンドポイント（既存の単一 config 向けへの追加）。#921 のレビューで挙がったユニット 2 からの持ち越し三点をここで解決しました。解決済みの `project_id` は `job_spec` に載ってリモートワーカーまで届き、ワーカー側の `_persist_run` が刻印します。自動有効化は org 対応となり、active プロジェクトのない org で最初に登録したプロジェクト（`POST /api/projects`）が active になります。明示的な `name` により、同じ Git リポジトリの二つの config を区別できます。
 - [ ] 4. UI：プロジェクトスイッチャーとプロジェクト一覧。再起動なしで active プロジェクトを切り替える。
 - [ ] 5. CLI：`bajutsu project add/ls/rm` と、ヘッドレスなトリガーとしての `bajutsu run --project <name>`。
 
@@ -210,6 +210,24 @@ CI や cron が Web UI なしにハブをヘッドレスで駆動できるよう
   （データベースがあれば `project_id` 列、なければローカル索引への `tag_run`）。レジストリのエラーが
   ジョブの後処理を壊さないよう防御し、ハブが配線されていなければ何もしません。ユニット 2 は完了し、
   ユニット 3（API）、4（UI）、5（CLI）が残ります。
+- 2026-07-11：ユニット 3 の API を実装しました（#923）。`bajutsu/serve/operations/projects.py`
+  に五つのエンドポイントを追加しました。`GET /api/projects`（一覧。各プロジェクトのソース、active か
+  どうか、最新の実行要約を返します）、`POST /api/projects`（登録と束ね直し。BE-0108 の config ソース
+  許可リストで検査し、ホスト版はファイルソースを拒否します）、`DELETE /api/projects/<name>`（登録解除。
+  実行履歴は残します）、`POST /api/projects/<name>/run`（外部トリガー）、`GET /api/projects/<name>/runs`
+  （プロジェクト単位のスライス）です。両トランスポートに配線しました。stdlib ハンドラには `do_DELETE`
+  を新設し、`do_POST` と同じクロスオリジンブロックを掛けます。FastAPI コントロールプレーンには
+  `@app.delete` を追加し、CSRF ミドルウェアの対象を DELETE まで広げました。RBAC は `required_role` で
+  与えます。登録と登録解除は config の束ね直しにあたるため admin（`/api/config` と同じ）、プロジェクトの
+  実行は editor（`/api/run` と同じ）、一覧は読み取りです。#921 の持ち越し三点はここで解決しました。
+  `start_run` は active プロジェクトを enqueue の時点で一度だけ解決し、その id を `Job` に載せます
+  （`job_spec` を通じてリモートワーカーまで届き、ワーカーの `_persist_run` は自前のレジストリなしで
+  `runs.project_id` を刻印します。終了時に解決する競合と、サーバーバックエンドで刻印されない問題が
+  解消します）。`POST /api/projects` は、active プロジェクトのない org で最初に登録したプロジェクトを
+  active にします（`default` 以外の org も API 経由で active プロジェクトを持てます）。明示的な `name` は
+  同じ Git リポジトリの二つの config を区別します。active でないプロジェクトの実行は 409 です。ライブな
+  再バインドはユニット 4 のスイッチャーが担います。この MVP の範囲は作者と確認しました。ユニット 4
+  （UI）と 5（CLI）が残ります。
 
 ## 参考
 

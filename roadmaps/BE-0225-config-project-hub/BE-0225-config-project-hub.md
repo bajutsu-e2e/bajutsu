@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0225") |
-| Implementing PR | [#909](https://github.com/bajutsu-e2e/bajutsu/pull/909), [#921](https://github.com/bajutsu-e2e/bajutsu/pull/921) |
+| Implementing PR | [#909](https://github.com/bajutsu-e2e/bajutsu/pull/909), [#921](https://github.com/bajutsu-e2e/bajutsu/pull/921), [#923](https://github.com/bajutsu-e2e/bajutsu/pull/923) |
 | Topic | Authoring experience (record / GUI editor) |
 | Related | [BE-0015](../BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md), [BE-0102](../BE-0102-run-stats-dashboard/BE-0102-run-stats-dashboard.md), [BE-0187](../BE-0187-serve-config-view/BE-0187-serve-config-view.md), [BE-0108](../BE-0108-hosted-config-source-restriction/BE-0108-hosted-config-source-restriction.md), [BE-0099](../BE-0099-webhook-run-notifications/BE-0099-webhook-run-notifications.md) |
 <!-- /BE-METADATA -->
@@ -175,7 +175,7 @@ A thin CLI mirror so CI and cron can drive the hub headlessly, without the Web U
 
 - [x] 1 — The project model: extend BE-0015's `projects` row with a config-source record; stamp `runs.project_id`.
 - [x] 2 — Persistence: the `ProjectRegistry` seam (DB-backed when a repository is present, on-disk JSON otherwise), run history partitioned by project on both paths (the `project_id` column with a DB, a project→run-ids index without); auto-register the launch config as the active project.
-- [ ] 3 — API: the five `/api/projects…` endpoints, org-scoped, additive to the existing single-config ones. (Carries over from unit 2's #921 review: thread the resolved `project_id` through `job_spec` so a remote worker's `_persist_run` stamps it; make auto-activation org-aware — until then a non-`default` org has no active project; and let explicit naming disambiguate two configs from the same Git repo, which unit 2's repo-only auto-name folds together.)
+- [x] 3 — API: the five `/api/projects…` endpoints, org-scoped, additive to the existing single-config ones. All three unit-2 #921 review carry-overs land here: the resolved `project_id` travels through `job_spec` so a remote worker's `_persist_run` stamps it; auto-activation is org-aware (the first project registered in an org with no active one becomes active, via `POST /api/projects`); and an explicit `name` disambiguates two configs from the same Git repo.
 - [ ] 4 — UI: the project switcher + projects list, rebinding the active project without a restart.
 - [ ] 5 — CLI: `bajutsu project add/ls/rm` and `bajutsu run --project <name>` as the headless trigger.
 
@@ -207,6 +207,23 @@ A thin CLI mirror so CI and cron can drive the hub headlessly, without the Web U
   project onto the finished run (the `project_id` column with a database, `tag_run` into the local
   index without one) — guarded so a registry error never breaks job finalization, a no-op when no hub
   is wired. Unit 2 done; units 3 (API), 4 (UI), 5 (CLI) remain.
+- 2026-07-11 — Unit 3, the API (#923): added `bajutsu/serve/operations/projects.py` with the
+  five endpoints — `GET /api/projects` (list, each with its source, whether active, and its latest run
+  summary), `POST /api/projects` (register/rebind, screened against the BE-0108 config-source allowlist
+  so a hosted server refuses a filesystem source), `DELETE /api/projects/<name>` (deregister, runs
+  retained), `POST /api/projects/<name>/run` (the external trigger), and `GET /api/projects/<name>/runs`
+  (the per-project slice). Wired into both transports — the stdlib handler (a new `do_DELETE`, with the
+  same unconditional cross-origin block as `do_POST`) and the FastAPI control plane (`@app.delete`, and
+  the CSRF middleware widened to DELETE) — and RBAC-gated in `required_role`: register/deregister are
+  admin (they repoint a config binding, like `/api/config`), a project run is editor (like `/api/run`),
+  listing is a read. The three #921 carry-overs land here: `start_run` resolves the active project once
+  **at enqueue** and carries the id on the `Job` (through `job_spec` to a remote worker, whose
+  `_persist_run` stamps `runs.project_id` without a registry of its own — fixing the finish-time race and
+  the server-backend gap); `POST /api/projects` auto-activates the first project in an org with no active
+  one (so a non-`default` org gains an active project through the API); and the explicit `name`
+  disambiguates two configs from the same Git repo. Running a project other than the active binding is a
+  409 — the live rebind is unit 4's switcher. MVP scope confirmed with the author. Units 4 (UI) and 5
+  (CLI) remain.
 
 ## References
 

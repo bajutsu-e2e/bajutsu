@@ -101,6 +101,11 @@ class Job:
     # `ipad`). Travels in the job spec so the hosted router leases it only to a capable worker; empty
     # for a local run (one worker, no routing).
     capabilities: list[str] = field(default_factory=list)
+    # The project this run belongs to, resolved from the active project when the run is enqueued
+    # (BE-0225 unit 3). Travels in the job spec so a remote worker's `_persist_run` stamps
+    # `runs.project_id` without a registry of its own — a run started for project A stays labeled A
+    # even if the active project changed before it finished. None when no project hub is wired.
+    project_id: str | None = None
 
     def view(self, *, include_lines: bool = True) -> dict[str, Any]:
         """The job's state for the UI. `include_lines=False` omits the log buffer — used for the

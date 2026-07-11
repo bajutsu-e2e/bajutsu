@@ -61,6 +61,13 @@ from bajutsu.serve.operations.enrich import start_enrich
 from bajutsu.serve.operations.evidence import generate_upload_urls
 from bajutsu.serve.operations.lint import lint_scenario, scenario_schema
 from bajutsu.serve.operations.metrics import PROMETHEUS_CONTENT_TYPE, render_metrics
+from bajutsu.serve.operations.projects import (
+    deregister_project,
+    list_projects_view,
+    project_runs,
+    register_project,
+    run_project,
+)
 from bajutsu.serve.operations.reads import (
     _find_sid,
     _primary_backend,
@@ -144,6 +151,7 @@ __all__ = [
     "config_info",
     "coverage_view",
     "crawl_runs_payload",
+    "deregister_project",
     "doctor_check",
     "finish_capture",
     "flakiness_html",
@@ -156,14 +164,17 @@ __all__ = [
     "job_sse",
     "job_view",
     "lint_scenario",
+    "list_projects_view",
     "list_scenarios",
     "list_targets_payload",
     "login",
     "mark_capture",
     "oauth_callback",
     "oauth_login",
+    "project_runs",
     "provider_info",
     "read_scenario",
+    "register_project",
     "render_metrics",
     "required_role",
     "resolve_scenario_pick",
@@ -171,6 +182,7 @@ __all__ = [
     "role_allows",
     "role_for",
     "run_file",
+    "run_project",
     "runs_payload",
     "save_scenario",
     "scenario_schema",

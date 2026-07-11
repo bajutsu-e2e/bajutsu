@@ -61,6 +61,7 @@ def test_dispatch_enqueues_a_serializable_job_spec(tmp_path: Path) -> None:
         "org": "default",  # single-tenant default org (BE-0015 multi-tenancy)
         "actor": None,  # no OAuth identity for this locally-built job
         "evidence_prefix": "",  # no per-run evidence prefix requested (BE-0110)
+        "project_id": None,  # no project hub wired for this locally-built job (BE-0225)
     }
     json.dumps(spec)  # must carry no live objects (locks/Popen/bus) — JSON round-trips
 
@@ -87,6 +88,55 @@ def test_job_spec_carries_the_evidence_prefix(tmp_path: Path) -> None:
     state = srv.ServeState(runs_dir=tmp_path / "runs")
     job = state.register(srv.Job(cmd=["run"], evidence_prefix="main/abc1234/"))
     assert job_spec(job)["evidence_prefix"] == "main/abc1234/"
+
+
+def test_job_spec_carries_the_project_id(tmp_path: Path) -> None:
+    # The project resolved at enqueue travels so the worker's `_persist_run` stamps `runs.project_id`
+    # without a registry of its own (BE-0225 unit 3, unit 2 review carry-over).
+    state = srv.ServeState(runs_dir=tmp_path / "runs")
+    job = state.register(srv.Job(cmd=["run"], project_id="proj-1"))
+    assert job_spec(job)["project_id"] == "proj-1"
+
+
+def test_execute_job_spec_stamps_the_project_id_carried_in_the_spec(tmp_path: Path) -> None:
+    # The worker has no project registry; the run must still be labeled with the project the control
+    # plane resolved at enqueue and shipped in the spec (BE-0225 unit 3).
+    from sqlalchemy import create_engine
+
+    from bajutsu.serve.server.db import SqlRepository
+    from bajutsu.serve.server.models import Base
+
+    project(tmp_path)
+    engine = create_engine("sqlite://")
+    Base.metadata.create_all(engine)
+    repo = SqlRepository(engine)
+    repo.ensure_org("acme", slug="acme", name="acme")
+    repo.create_project(_project_record("proj-1", "acme", "checkout"))
+
+    spec = {
+        "job_id": "1",
+        "cmd": ["bajutsu", "run"],
+        "udids": [],
+        "app_path": None,
+        "build": None,
+        "org": "acme",
+        "project_id": "proj-1",
+    }
+    execute_job_spec(
+        spec,
+        popen=fake_popen(["PASS  runs/20260610-2/manifest.json\n"]),
+        cwd=tmp_path,
+        bus=srv.InMemoryLogBus(),
+        repository=repo,
+    )
+    rec = repo.get_run("20260610-2")
+    assert rec is not None and rec.project_id == "proj-1"
+
+
+def _project_record(pid: str, org_id: str, name: str) -> Any:
+    from bajutsu.serve.server.db import ProjectRecord
+
+    return ProjectRecord(id=pid, org_id=org_id, name=name, source=None)
 
 
 def test_start_run_carries_a_valid_evidence_prefix_end_to_end(tmp_path: Path) -> None:

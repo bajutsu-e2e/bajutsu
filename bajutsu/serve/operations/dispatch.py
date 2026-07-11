@@ -37,6 +37,24 @@ def _governed_build(state: ServeState, build: str | None) -> str | None:
     return build
 
 
+def _active_project_id(state: ServeState, org: str) -> str | None:
+    """The org's active project id, resolved at enqueue so it travels with the job (BE-0225 unit 3).
+
+    None when no hub is wired or no project is active. Guarded like `_persist_run`: resolving reaches
+    the registry backend (a database for `SqlProjectRegistry`), so a flaky backend leaves the run
+    unlabeled rather than failing the dispatch it never used to touch.
+    """
+    registry = state.project_registry
+    if registry is None:
+        return None
+    try:
+        active = registry.resolve_active(org_id=org)
+    except Exception:
+        _logger.warning("failed to resolve the active project at enqueue", exc_info=True)
+        return None
+    return active.id if active is not None else None
+
+
 def _boot_targets(udid: str) -> list[str]:
     """The concrete devices to boot before a run/record/crawl. Picked devices are booted (and
     waited on) first; the "booted" alias names whatever is already up, so it's not a boot target."""
@@ -189,6 +207,10 @@ def start_run(
             org=org,
             evidence_prefix=evidence_prefix,
             capabilities=target_capabilities(cfg, target),
+            # Resolve the active project once, at enqueue, and carry it on the job (BE-0225 unit 3):
+            # this fixes the finish-time race and lets a remote worker's `_persist_run` stamp the run
+            # without a registry. None when no hub is wired, leaving the run unlabeled as before.
+            project_id=_active_project_id(state, org),
         ),
     )
     if capped:
