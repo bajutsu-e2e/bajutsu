@@ -191,7 +191,9 @@ A thin CLI mirror so CI and cron can drive the hub headlessly, without the Web U
   `get_project` and reuse its id when rebinding a source, so it stays on the merge-by-id path and
   never trips the `(org_id, name)` unique constraint. Still owed on these units: the
   `ProjectRegistry` seam unifying this DB path with an on-disk JSON store for the no-database local
-  `serve`, and auto-registering the launch config as the active project.
+  `serve`, and auto-registering the launch config as the active project. Also lands migration `0010`,
+  adding `ON DELETE SET NULL` to `runs.project_id`'s FK so deleting a project with run history
+  doesn't raise `IntegrityError` on Postgres — matching the deregister-retains-history contract.
 
 ## References
 
