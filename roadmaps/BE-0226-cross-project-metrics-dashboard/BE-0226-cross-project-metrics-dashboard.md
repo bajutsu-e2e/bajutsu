@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0226](BE-0226-cross-project-metrics-dashboard.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0226") |
+| Implementing PR | [#936](https://github.com/bajutsu-e2e/bajutsu/pull/936) |
 | Topic | Authoring experience (record / GUI editor) |
 | Related | [BE-0102](../BE-0102-run-stats-dashboard/BE-0102-run-stats-dashboard.md), [BE-0015](../BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md), [BE-0220](../BE-0220-flaky-suggestion-and-cross-run-fix/BE-0220-flaky-suggestion-and-cross-run-fix.md) |
 <!-- /BE-METADATA -->
@@ -120,9 +121,17 @@ is the entry point and BE-0102 is the drill-down.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] 1 — Cross-project aggregation: factor BE-0102's per-config computation to take a run set, run it per project, roll its per-scenario flakiness classification up into a per-project flaky-rate scalar, assemble the comparison model.
+- [x] 1 — Cross-project aggregation: factor BE-0102's per-config computation to take a run set, run it per project, roll its per-scenario flakiness classification up into a per-project flaky-rate scalar, assemble the comparison model.
 - [ ] 2 — API: `GET /api/metrics/projects`, org-scoped, alongside BE-0102's single-config endpoint.
 - [ ] 3 — UI: the sortable comparison table + per-project trend sparklines, deep-linking into BE-0102's single-config dashboard.
+
+**Log**
+
+- [#936](https://github.com/bajutsu-e2e/bajutsu/pull/936) — Unit 1. `stats.project_metrics` rolls
+  `aggregate_runs` up into a per-project headline (pass-rate, flaky-rate as the share of
+  flaky-classified scenarios, median/p95 per-run duration, daily pass-rate trend);
+  `serve.operations.project_comparison.compare_projects` iterates the `ProjectRegistry` and reads
+  each project's runs via the `run_set_manifests` seam. Pure, read-only, off the run/CI path.
 
 ## References
 
