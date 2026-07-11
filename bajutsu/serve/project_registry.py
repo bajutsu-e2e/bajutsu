@@ -260,4 +260,8 @@ class SqlProjectRegistry:
         return
 
     def run_ids(self, *, org_id: str, project_id: str) -> list[str]:
-        return [r.id for r in self._repo.list_runs(org_id=org_id, project_id=project_id)]
+        # limit=None: the seam promises *all* of a project's runs (matching LocalProjectRegistry's
+        # unbounded index), not list_runs' default 50-run page.
+        return [
+            r.id for r in self._repo.list_runs(org_id=org_id, project_id=project_id, limit=None)
+        ]

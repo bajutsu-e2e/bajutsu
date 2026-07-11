@@ -111,6 +111,23 @@ def test_run_ids_partition_by_the_project_id_column() -> None:
     assert "run-3" not in ids
 
 
+def test_run_ids_is_not_capped_at_the_list_runs_default() -> None:
+    """The seam's `run_ids` docstring promises *all* of a project's runs, and `LocalProjectRegistry`
+    returns an unbounded list — so the DB backend must not silently cap at `list_runs`'s default
+    page of 50, or the two backends (and the cross-project dashboard reading them) disagree once a
+    project passes 50 runs."""
+    repo, reg = _repo_and_registry()
+    p = reg.add(org_id="default", name="checkout", source=None)
+    for i in range(60):
+        repo.record_run(
+            RunRecord(id=f"run-{i:03d}", org_id="default", status="done", project_id=p.id)
+        )
+
+    ids = reg.run_ids(org_id="default", project_id=p.id)
+
+    assert len(ids) == 60
+
+
 def test_deregister_retains_the_runs_unlabeled() -> None:
     repo, reg = _repo_and_registry()
     p = reg.add(org_id="default", name="checkout", source=None)
