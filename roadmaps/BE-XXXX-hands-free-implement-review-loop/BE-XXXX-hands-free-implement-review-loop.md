@@ -36,10 +36,13 @@ repetitive:
 1. A human opens a Draft PR.
 2. CI runs; if it fails, someone re-reads the log and pushes a fix.
 3. Reviewers comment; someone answers, edits, and resolves threads.
-4. `main` moves; someone rebases and resolves conflicts.
+4. `main` moves; a conflict may appear — someone rebases when it does.
 
-Each of these is exactly what `pr-followup` automates, but firing it is a manual, attention-hungry
-poll: the author has to keep checking whether CI finished or a review landed. That polling is both
+Steps 1–3 are exactly what `pr-followup` can automate, but firing it is a manual,
+attention-hungry poll: the author has to keep checking whether CI finished or a review landed.
+Step 4 (rebase) stays a human step even in this proposal, because the bajutsu-specific
+`pr-followup` skill explicitly does not rebase or force-push. A conflict is detected and
+escalated immediately; the human rebases and re-enters the loop. That polling is both
 tedious and a poor use of a long-lived, large-context session — the implement session carries the
 full design conversation, so every manual follow-up turn re-reads an expensive context.
 
@@ -97,11 +100,10 @@ session: *"Run `/loop /pr-followup #NNN`"*. The `/loop` skill drives the pacing:
 guidance: a shorter interval while CI is actively running (waiting on a run to finish), a longer
 interval while waiting on human review.
 
-The loop **stops** only when **all** of these hold:
+The loop **stops** only when **both** of these hold:
 
 1. **CI is green** — every required check passing.
-2. **No merge conflict** — the branch is cleanly mergeable into `main`.
-3. **Two consecutive polls with no new review comments** — the review surface has gone quiet (one
+2. **Two consecutive polls with no new review comments** — the review surface has gone quiet (one
    empty poll is not enough; the second confirms quiescence).
 
 When the loop stops under these conditions, **Draft → Ready is a deliberate human step**. The loop
@@ -109,13 +111,18 @@ reports that the PR has reached a quiet-and-green state, but it does not call `g
 This preserves a human final-sign-off checkpoint before the PR enters the merge queue: the human
 can inspect the conversation, confirm no subtle reviewer concern was left unaddressed, and mark it
 ready when satisfied. The "hands-free" claim covers the mechanical tail (CI fixes, replying to
-comments, rebasing); the merge decision stays with the human.
+comments); rebasing and the merge decision stay with the human.
 
-The loop also **halts and escalates to the human** the moment `pr-followup` hits a comment that
-requires a design or spec change — that is `pr-followup`'s existing, unchanged escalation rule, and
-it takes priority over the stop conditions above (a design decision is the human's, not the loop's).
-A bounded backstop (a maximum number of iterations / wall-clock ceiling) prevents an unbounded loop
-if the PR never converges; on hitting it, the skill stops and reports state rather than looping
+The loop also **halts and escalates to the human** in two additional cases:
+- `pr-followup` encounters a comment that requires a design or spec change (its existing, unchanged
+  escalation rule — a design decision is the human's, not the loop's).
+- A **merge conflict** is detected (`mergeable: CONFLICTING`). The bajutsu-specific `pr-followup`
+  skill explicitly does not rebase or force-push; the loop escalates, the human rebases and resolves
+  the conflict, and the loop can be restarted.
+
+A bounded backstop prevents an unbounded loop if the PR never converges: the loop runs for a
+maximum of **20 polling iterations or 24 hours, whichever comes first**. On hitting the backstop,
+the skill stops and reports the current state (CI status, open comment count) rather than looping
 forever.
 
 Prime-directive check: nothing here puts an LLM on the `run`/CI verdict. `pr-followup` fixes are
