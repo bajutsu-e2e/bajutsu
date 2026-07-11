@@ -116,9 +116,10 @@ e2e-golden: compose-build
 # emulator diverge per pixel — so the baseline is RECORDED ON CI and committed (see that dir's
 # README); this target reads it via --baselines. Runs on the Stable (launch) tab, so it needs no
 # tab-bar navigation. Not part of `make check`: it needs a booted AVD, so android-e2e.yml drives it
-# in the same emulator session as `e2e` / `e2e-golden`.
+# in the same emulator session as `e2e` / `e2e-golden`. The pixel compare needs Pillow, so this
+# pulls in the `visual` extra (the element-tree golden does not) — the adb backend itself has none.
 e2e-visual: compose-build
-	cd $(ROOT) && uv run bajutsu run \
+	cd $(ROOT) && uv run --extra visual bajutsu run \
 		--scenario demos/showcase/scenarios/visual/visual_android.yaml \
 		--baselines demos/showcase/scenarios/visual/baselines_android \
 		--target showcase-compose --udid $(SERIAL) --backend android --config $(CONFIG)
