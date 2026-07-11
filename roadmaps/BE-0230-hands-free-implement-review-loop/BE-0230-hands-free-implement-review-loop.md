@@ -115,8 +115,9 @@ isolation away.
 and to **delegate each iteration's work to a subagent** (Unit 2) — concretely, it tells the session:
 *"Run `/loop run pr-followup for #NNN`"*. The `/loop` skill drives the pacing with `ScheduleWakeup`
 (the harness's self-pacing mechanism for `/loop` dynamic mode); each iteration, the loop layer
-checks `mergeable`, spawns a subagent (the `Agent` tool) to run `pr-followup` for the PR in a fresh
-context, and reads the subagent's short summary to evaluate the stop conditions. Pacing follows the
+checks `mergeable`, spawns a subagent (the `Agent` tool) with `pr-followup`'s steps handed to it in
+its prompt (the `Skill` tool runs only in the main conversation, so a subagent cannot invoke
+`/pr-followup` itself), and reads the subagent's short summary to evaluate the stop conditions. Pacing follows the
 standard cache-window guidance: a shorter interval while CI is actively running (waiting on a run to
 finish), a longer interval while waiting on human review.
 
