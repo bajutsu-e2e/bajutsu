@@ -10,6 +10,7 @@
 | Status | **Proposal** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
 | Topic | Development infrastructure (contributor workflow) |
+| Related | [BE-0089](../BE-0089-merge-time-be-id-allocation/BE-0089-merge-time-be-id-allocation.md) |
 <!-- /BE-METADATA -->
 
 ## Introduction
@@ -139,15 +140,19 @@ The loop also **halts and escalates to the human** in two additional cases:
   skill explicitly does not rebase or force-push; once the human rebases and resolves the conflict,
   the loop can be restarted.
 
-A bounded backstop prevents an unbounded loop if the PR never converges. The loop runs for at most
-**20 review-wait polling iterations**, counting only iterations spent waiting on human review, not
-the short CI-wait polls. At the recommended 20–30 min cadence for review-waiting (the harness's
-cache-window guidance for this case), that cap represents roughly **7–10 hours** of maximum
-review-wait; at the hard ceiling of 3600 s per `ScheduleWakeup` call, it tops out at about 20
-hours. On hitting the cap, the skill stops and reports the current state (CI status, open comment
-count) rather than looping forever. The human can interrupt or restart the loop at any time by
-stopping the session — there is no separate 24-hour wall-clock ceiling, because `ScheduleWakeup`'s
-constraints ensure the iteration cap fires first.
+Two bounded backstops prevent an unbounded loop:
+
+- **Review-wait cap: 20 iterations** (≈ 7–10 h at the recommended 20–30 min cadence; ≤ 20 h at
+  the 3600 s `ScheduleWakeup` maximum). Counts only iterations spent waiting on human review, not
+  CI-wait polls.
+- **CI-wait cap: 30 iterations** without CI turning green. This catches the case where CI stays
+  red for a reason `pr-followup` cannot resolve — flaky infrastructure, an unrelated external
+  failure, or a fix that does not take effect — and `pr-followup`'s own escalation rule (which
+  fires only on a design/spec-change comment) would not trigger. CI-wait and review-wait
+  iterations are counted separately.
+
+On hitting either cap, the skill stops and reports the current state (CI status, open comment
+count). The human can interrupt or restart the loop at any time by stopping the session.
 Session-local `/loop` (rather than a scheduled cloud agent) is the chosen mechanism because it is
 simpler — no cloud setup or separate scheduling context — and interruptible at any point.
 
@@ -201,7 +206,7 @@ either skill discovers the flow. No other skill changes behavior.
 
 - [ ] Unit 1 — `implement-be` step 10 rewritten to auto-open a Draft PR after the gate.
 - [ ] Unit 2 — compact-before-loop step added with its token-economy rationale.
-- [ ] Unit 3 — paced pr-followup loop with three stop conditions (CI green + no CHANGES_REQUESTED + two quiet polls) + escalation triggers (design change / conflict) + backstop (20 review-wait iterations ≈ 7–10h at recommended cadence).
+- [ ] Unit 3 — paced pr-followup loop with three stop conditions (CI green + no CHANGES_REQUESTED + two quiet polls) + escalation triggers (design change / conflict) + two backstops (20 review-wait iterations + 30 CI-wait iterations, counted separately).
 - [ ] Unit 4 — `CLAUDE.md` PR rules split into BE-creation vs. implementation paths.
 - [ ] Unit 5 — cross-references between `implement-be` and `pr-followup` updated.
 
