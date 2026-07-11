@@ -154,3 +154,17 @@ def test_representative_pass_and_fail_runs_are_the_newest_of_each() -> None:
     (s,) = report.scenarios
     assert s.representative_pass_run_id == "p-new"
     assert s.representative_fail_run_id == "f-new"
+
+
+def test_window_runs_zero_raises() -> None:
+    import pytest
+
+    with pytest.raises(ValueError, match="window_runs"):
+        rank_flakiness([_run("r1", ok=True)], window_runs=0)
+
+
+def test_window_runs_negative_raises() -> None:
+    import pytest
+
+    with pytest.raises(ValueError, match="window_runs"):
+        rank_flakiness([_run("r1", ok=True)], window_runs=-1)

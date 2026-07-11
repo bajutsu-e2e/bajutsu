@@ -79,13 +79,16 @@ def rank_flakiness(
     Args:
         records: Run records to mine, in any order.
         window_runs: Keep only each scenario's newest this-many runs (by `created_at`); unbounded
-            when None.
+            when None. Must be a positive integer when set — zero or negative is caller-invalid
+            and raises ValueError.
         since: Drop runs created before this instant (and any run with no `created_at`) when set.
 
     Returns:
         The ranked scenarios (flaky first, then descending flip rate, then run count) plus the count
         of runs skipped for lacking a fingerprint or verdict.
     """
+    if window_runs is not None and window_runs <= 0:
+        raise ValueError(f"window_runs must be a positive integer, got {window_runs!r}")
     groups: dict[str, list[RunRecord]] = {}
     skipped = 0
     for record in records:
