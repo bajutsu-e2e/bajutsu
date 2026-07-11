@@ -160,6 +160,24 @@ def test_state_survives_a_reopen(tmp_path: Path) -> None:
     assert got.source == {"kind": "file", "locator": {"path": "a.yaml"}}
 
 
+def test_add_with_no_source_preserves_an_existing_binding(tmp_path: Path) -> None:
+    """Parity with the DB backend behind the same seam: `SqlProjectRegistry.add` → `create_project`
+    only writes `source` when it is non-None, so a rename-only re-add can't wipe an existing
+    binding. The local store must hold the same contract — re-adding with `source=None` keeps the
+    stored source rather than clobbering it to null."""
+    path = tmp_path / "projects.json"
+    reg = LocalProjectRegistry(path)
+    reg.add(
+        org_id="default", name="checkout", source={"kind": "file", "locator": {"path": "a.yaml"}}
+    )
+
+    reg.add(org_id="default", name="checkout", source=None)
+
+    got = reg.get(org_id="default", name="checkout")
+    assert got is not None
+    assert got.source == {"kind": "file", "locator": {"path": "a.yaml"}}
+
+
 def test_a_malformed_store_falls_back_to_empty_and_is_logged(
     tmp_path: Path, caplog: pytest.LogCaptureFixture
 ) -> None:

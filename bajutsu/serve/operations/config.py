@@ -603,6 +603,11 @@ def launch_project_identity(
     records a ``git`` source with the resolved commit; any other config is a local file, named for
     the config's file stem with a ``file`` source locating its path. The ``{"kind", "locator"}``
     shape is the discriminated source record unit 1 stores.
+
+    A serve process launches exactly one config, so this default name never collides within a
+    deployment. Two deployments launching different config files from the *same* repo would auto-name
+    both for that repo; disambiguating by the in-repo config path is unit 3's territory, where
+    explicit `POST /api/projects` naming lands (the provenance stamp carries no config path today).
     """
     if provenance is not None and "repo" in provenance:
         return provenance["repo"], {"kind": "git", "locator": provenance}

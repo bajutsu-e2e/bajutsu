@@ -111,7 +111,11 @@ class LocalProjectRegistry:
         rows = self._org(org_id)
         existing = next((r for r in rows if r["name"] == name), None)
         if existing is not None:
-            existing["source"] = source
+            # Only rebind when a source is supplied: a rename-only re-add (source=None) must not wipe
+            # the stored binding, matching the DB backend's create_project no-clobber guard so the
+            # two registries behind this seam agree on the same input.
+            if source is not None:
+                existing["source"] = source
             record = _from_json(existing)
         else:
             record = ProjectRecord(
