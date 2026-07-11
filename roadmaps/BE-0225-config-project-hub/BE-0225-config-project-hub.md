@@ -186,9 +186,12 @@ A thin CLI mirror so CI and cron can drive the hub headlessly, without the Web U
   `0009`, added the `ProjectRecord` boundary type, and gave the `Repository` seam its project
   methods (`create_project` / `get_project` / `list_projects` / `delete_project`, org-scoped;
   deregister retains the run history) plus a `project_id` filter on `list_runs` so the run history
-  is partitionable by project. Still owed on these units: the `ProjectRegistry` seam unifying this
-  DB path with an on-disk JSON store for the no-database local `serve`, and auto-registering the
-  launch config as the active project.
+  is partitionable by project. `create_project` is idempotent by **id** (a `session.merge` upsert);
+  the unit-3 `POST /api/projects` handler must resolve an existing `(org_id, name)` through
+  `get_project` and reuse its id when rebinding a source, so it stays on the merge-by-id path and
+  never trips the `(org_id, name)` unique constraint. Still owed on these units: the
+  `ProjectRegistry` seam unifying this DB path with an on-disk JSON store for the no-database local
+  `serve`, and auto-registering the launch config as the active project.
 
 ## References
 

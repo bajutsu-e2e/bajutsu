@@ -185,7 +185,11 @@ CI や cron が Web UI なしにハブをヘッドレスで駆動できるよう
   `source` 列を alembic マイグレーション `0009` で追加し、シームの境界型 `ProjectRecord` を足し
   ました。`Repository` シームには、org スコープのプロジェクト操作（`create_project` /
   `get_project` / `list_projects` / `delete_project`。登録を解除しても実行履歴は残します）と、実行
-  履歴をプロジェクト単位に分割できるよう `list_runs` の `project_id` フィルタを追加しました。これ
+  履歴をプロジェクト単位に分割できるよう `list_runs` の `project_id` フィルタを追加しました。
+  `create_project` は id を鍵にした冪等な upsert（`session.merge`）です。ユニット 3 の
+  `POST /api/projects` ハンドラは、既存の `(org_id, name)` を先に `get_project` で解決してその id を
+  再利用しながらソースを束ね直す必要があります。こうすれば id を鍵にした経路のままとなり、
+  `(org_id, name)` の一意制約に抵触しません。これ
   らのユニットで残るのは、この DB 経路とデータベースを持たないローカルの `serve` 向けのディスク上
   JSON ストアを一つの `ProjectRegistry` シームに束ねること、および起動時 config を active プロジェ
   クトとして自動登録することです。
