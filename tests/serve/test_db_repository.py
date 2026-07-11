@@ -188,6 +188,21 @@ def test_create_then_list_and_get_project() -> None:
     assert repo.get_project(org_id="o1", name="other") is None
 
 
+def test_create_project_is_idempotent_by_id_and_rebinds_source() -> None:
+    repo = _repo()
+    repo.create_project(
+        ProjectRecord(id="p1", org_id="o1", name="checkout", source={"kind": "file"})
+    )
+    # Re-registering the same id rebinds the source in place rather than colliding (BE-0225).
+    repo.create_project(
+        ProjectRecord(id="p1", org_id="o1", name="checkout", source={"kind": "git"})
+    )
+    got = repo.get_project(org_id="o1", name="checkout")
+    assert got is not None
+    assert got.source == {"kind": "git"}
+    assert len(repo.list_projects(org_id="o1")) == 1
+
+
 def test_delete_project_removes_binding_but_keeps_run_history() -> None:
     repo = _repo()
     repo.create_project(ProjectRecord(id="p1", org_id="o1", name="checkout"))
