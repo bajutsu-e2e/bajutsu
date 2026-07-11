@@ -88,50 +88,61 @@ is green and the branch is pushed:
   review" rule takes precedence: the PR is opened Ready (not Draft), with `steering-committee` as
   reviewer. This exception is exactly the situation this item's own implementation will land in.
 
-### Unit 2 — compact the session before entering the loop
+### Unit 2 — keep the follow-up loop lean by isolating it in subagents
 
-Between opening the PR (Unit 1) and starting the follow-up loop (Unit 3), the skill instructs the
-session to **compact** (the harness `/compact`), so the follow-up polling runs against a lean
-context rather than the full implement transcript. The rationale (token economy) is recorded inline
-so a future editor does not "optimize" the compact away. The design conversation and file reads
-from the implement phase are not needed by the follow-up loop; the PR, its branch, and the BE files
-are the only state that carries forward.
+The follow-up work does not need the implement phase's context (the design conversation, the file
+reads); the PR, its branch, and the BE files are the only state that carries forward. Running the
+token-heavy follow-up work on top of the full implement transcript, every iteration, is exactly the
+cost the project's token economy cares about on a long-lived session.
 
-**Implementation note:** exactly *how* a skill mid-execution directs the harness to compact — for
-example, whether the skill text ends with a `/compact` directive that the harness intercepts, or
-whether a different integration point is required — is an open question to be established when
-Unit 2 is implemented. This proposal records the *intent* (compact once at the hand-off point),
-leaving the concrete invocation path to the implementer of `implement-be`.
+The intent recorded by the original proposal was "compact once at the hand-off point," leaving the
+concrete invocation path open. Implementation resolved that open question against `/compact`: **a
+skill cannot issue a slash command mid-execution**
+([claude-code#68629](https://github.com/anthropics/claude-code/issues/68629)), so the loop cannot
+compact itself. (An *external* SDK driver can send `/compact` as input — see *Alternatives
+considered* — but that is a different, heavier execution model than the session-local `/loop` this
+item deliberately chose.) The same token-economy benefit is instead obtained **structurally**: each
+iteration's `pr-followup` work runs in a **fresh subagent context** (Unit 3), so the expensive
+investigation — reading CI logs, diffs, and review comments, making fixes — never carries the
+implement transcript or the previous iteration's logs. The loop layer that stays in the session
+does almost nothing per turn (one `gh` call, then it reads the subagent's short summary), so its own
+turns stay light. The rationale is recorded inline so a future editor does not "optimize" the
+isolation away.
 
 ### Unit 3 — the paced pr-followup loop and its stop conditions
 
-After compacting, `implement-be` instructs the session to invoke the built-in **`/loop`
-skill** with `pr-followup` as its target — concretely, it tells the
-session: *"Run `/loop /pr-followup #NNN`"*. The `/loop` skill drives the pacing: it invokes
-`pr-followup` once per iteration and uses `ScheduleWakeup` (the harness's self-pacing mechanism for
-`/loop` dynamic mode) to sleep between iterations. Pacing follows the standard cache-window
-guidance: a shorter interval while CI is actively running (waiting on a run to finish), a longer
-interval while waiting on human review.
+`implement-be` instructs the session to invoke the built-in **`/loop` skill** to pace the follow-up,
+and to **delegate each iteration's work to a subagent** (Unit 2) — concretely, it tells the session:
+*"Run `/loop run pr-followup for #NNN`"*. The `/loop` skill drives the pacing with `ScheduleWakeup`
+(the harness's self-pacing mechanism for `/loop` dynamic mode); each iteration, the loop layer
+checks `mergeable`, spawns a subagent (the `Agent` tool) to run `pr-followup` for the PR in a fresh
+context, and reads the subagent's short summary to evaluate the stop conditions. Pacing follows the
+standard cache-window guidance: a shorter interval while CI is actively running (waiting on a run to
+finish), a longer interval while waiting on human review.
 
 The loop **stops** only when **all** of these hold:
 
-1. **CI is green** — every required check passing.
+1. **CI is green** — every required check passing. A required check that only a human can satisfy
+   (e.g. a required approval count, such as the "two approvals for BE proposals" gate) never goes
+   green from the loop; when that is the *only* thing left red and the review surface is quiet, the
+   loop treats the PR as quiet-and-green-pending-approval and stops, reporting what still awaits the
+   human, rather than spinning until the CI-wait cap fires.
 2. **No outstanding "Request changes" review decision** — `reviewDecision` is not
    `CHANGES_REQUESTED`. A reviewer can submit a top-level "Request changes" review with no new
    inline comments; the loop must not stop while that standing veto sits unaddressed, even if the
    two-quiet-poll condition is met. Note: `pr-followup` reads inline comments only (filtered by
    `position != null`) and does not read `/pulls/{pr}/reviews` — so a top-level-body-only
-   objection is invisible to it. When the loop layer detects `CHANGES_REQUESTED` with zero
-   active inline comment threads, it **escalates immediately** (same as a merge conflict) rather
-   than silently waiting for the review-wait cap to fire. Additionally, GitHub only clears a
-   `CHANGES_REQUESTED` decision when the *same reviewer* re-reviews or when a maintainer dismisses
-   the stale review — resolving inline threads alone does not clear it. To avoid the loop silently
-   burning review-wait iterations while waiting for a reviewer who may not know all their threads
-   are resolved, the loop should post a PR comment (via `gh pr comment`) nudging the reviewer to
-   re-review once all inline threads are resolved and `CHANGES_REQUESTED` is still set — but only
-   once per stale-review episode (e.g., skip re-posting while it is still the PR's most recent
-   comment), so a reviewer who is away for a few hours isn't paged by an identical comment on every
-   20–30 minute poll.
+   objection is invisible to it. The loop layer discriminates by history, because two different
+   situations present as the same polled state (`CHANGES_REQUESTED`, zero active inline threads):
+   if **no inline threads were ever left** to resolve, it **escalates immediately** (same as a
+   merge conflict) — there is nothing for `pr-followup` to act on. If inline threads **were** left
+   and have since all been resolved but the decision still stands, it **nudges instead** — because
+   GitHub clears a `CHANGES_REQUESTED` decision only when the *same reviewer* re-reviews or a
+   maintainer dismisses the stale review (resolving inline threads alone does not clear it), the
+   loop posts a PR comment (via `gh pr comment`) asking the reviewer to re-review, but only once
+   per stale-review episode (e.g., skip re-posting while it is still the PR's most recent comment),
+   so a reviewer who is away for a few hours isn't paged by an identical comment on every 20–30
+   minute poll.
 3. **Two consecutive polls with no new review comments** — the review surface has gone quiet (one
    empty poll is not enough; the second confirms quiescence).
 
@@ -205,9 +216,21 @@ either skill discovers the flow. No other skill changes behavior.
   is a deliberate human checkpoint and its id is allocated only on human merge (BE-0089).
   Auto-opening it would erode that checkpoint. Narrowing to `implement-be` keeps the automation
   where the output is unambiguously ready.
-- **Skip the compact; just loop.** Rejected on token economy: the implement transcript is large and
-  irrelevant to follow-up, so every polling turn would re-read expensive dead context. Compacting
-  once at the hand-off is a cheap, large saving.
+- **`/compact` once at the hand-off (the original intent).** Not available: a skill cannot issue a
+  slash command mid-execution ([claude-code#68629](https://github.com/anthropics/claude-code/issues/68629)),
+  so the loop cannot compact itself. Unit 2 keeps the token-economy goal but reaches it structurally
+  — each iteration's `pr-followup` runs in a fresh subagent context, so the implement transcript is
+  never re-read by the expensive work.
+- **Drive the loop from an external SDK program that sends `/compact` between iterations.** The
+  Claude Agent SDK *does* honor `/compact` sent as input (`query({prompt: "/compact", options:
+  {continue: true}})`, emitting a `compact_boundary` system message), so this would work. Rejected
+  for the same reason as the CI-bot alternative below: it is a separate, heavier execution model
+  (an external orchestrator with its own scheduling context), whereas this item deliberately chose
+  the simpler, interruptible session-local `/loop`. Recorded as the path to revisit if a future
+  item moves the loop out of the session.
+- **Skip the isolation; just loop in-session.** Rejected on token economy: the implement transcript
+  is large and irrelevant to follow-up, so running the expensive per-iteration investigation on top
+  of it would re-read dead context every time. Subagent isolation is a cheap, large saving.
 - **Stop the loop on the first quiet poll (CI green + no conflict + zero new comments once).**
   Rejected as too eager: a single empty poll can race a reviewer who is mid-comment. Requiring two
   consecutive quiet polls is the agreed, slightly-conservative stop.
@@ -225,19 +248,23 @@ either skill discovers the flow. No other skill changes behavior.
 > (oldest first), linking the PRs.
 
 - [x] Unit 1 — `implement-be` step 10 rewritten to auto-open a Draft PR after the gate.
-- [x] Unit 2 — compact-before-loop step added with its token-economy rationale.
-- [x] Unit 3 — paced pr-followup loop with three stop conditions (CI green + no CHANGES_REQUESTED + two quiet polls) + escalation triggers (design change / conflict) + two backstops (20 review-wait iterations + 30 CI-wait iterations, counted separately).
+- [x] Unit 2 — follow-up loop kept lean by isolating each iteration's `pr-followup` in a fresh subagent context (token-economy rationale recorded), since a skill cannot self-`/compact` (claude-code#68629).
+- [x] Unit 3 — paced loop that delegates each iteration to a subagent, with three stop conditions (CI green + no CHANGES_REQUESTED + two quiet polls) + escalation triggers (design change / conflict / CHANGES_REQUESTED with no threads to act on) + two backstops (20 review-wait iterations + 30 CI-wait iterations, counted separately).
 - [x] Unit 4 — `CLAUDE.md` PR rules split into BE-creation vs. implementation paths.
 - [x] Unit 5 — cross-references between `implement-be` and `pr-followup` updated.
 
 Log:
 
-- [#932](https://github.com/bajutsu-e2e/bajutsu/pull/932) — All five units landed together: `implement-be` step 10 became steps 10–12
-  (auto Draft PR → compact → paced `/loop /pr-followup` with its stop conditions, escalation
-  triggers, and backstops), `pr-followup` gained a framing note, `CLAUDE.md` PR rules split into
-  BE-creation vs. implementation paths, and the two skills now cross-reference the composed tail.
-  Unit 2's compact is issued as a `/compact` directive in step 11's opening instruction (the open
-  question in *Detailed design* resolved to the simplest integration point).
+- [#932](https://github.com/bajutsu-e2e/bajutsu/pull/932) — All five units landed together:
+  `implement-be` step 10 became steps 10–12 (auto Draft PR → lean-loop setup → paced `/loop` that
+  delegates each iteration to a subagent, with its stop conditions, escalation triggers, and
+  backstops), `pr-followup` gained a framing note, `CLAUDE.md` PR rules split into BE-creation vs.
+  implementation paths, and the two skills now cross-reference the composed tail. During review on
+  this PR, Unit 2 was reworked: the original `/compact`-at-the-hand-off intent turned out to be
+  unreachable from a skill (claude-code#68629 — a skill cannot issue a slash command mid-execution),
+  so the token-economy goal is met structurally by running each iteration's `pr-followup` in a fresh
+  subagent context instead. The SDK-driven-`/compact` path is recorded under *Alternatives
+  considered* as the option to revisit if the loop ever moves out of the session.
 
 ## References
 

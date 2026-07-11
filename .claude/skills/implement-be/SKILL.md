@@ -248,54 +248,68 @@ checkpoint whose id is allocated only on merge (see [`CLAUDE.md`](../../../CLAUD
 - The Draft + never-mark-ready-while-red rules from `CLAUDE.md` still hold: a Draft PR is only
   marked ready (`gh pr ready`) by the **human**, never automatically while CI is red.
 
-### 11. Compact before the follow-up loop
+### 11. Keep the follow-up loop lean — isolate it in subagents
 
-Before entering the loop, **compact the session** (issue the harness `/compact`). The implement
-phase's context — the design back-and-forth and the file reads — is dead weight once the PR exists;
-the PR, its branch, and the BE files are the only state the loop needs. Compacting once here lets
-every polling turn run against a lean context instead of the full implement transcript, which
-matters because this is a long-lived, large-context session and token economy on such sessions is a
-standing project concern. **Don't skip this to "save a step" — the saving is the point.**
+The implement phase's context (the design back-and-forth, the file reads) is dead weight for the
+follow-up work, and this is a long-lived, large-context session, so re-running the token-heavy
+follow-up work on top of that transcript is exactly the kind of cost the project's token economy
+cares about. The obvious fix — `/compact` once here — is not available: **a skill cannot issue a
+slash command mid-execution**
+([claude-code#68629](https://github.com/anthropics/claude-code/issues/68629)), so the loop can't
+compact itself. Get the benefit structurally instead: run the token-heavy follow-up work (reading
+CI logs, diffs, and review comments, making fixes) in a **fresh subagent context** each iteration
+(step 12), so that expensive investigation never carries the implement transcript or the previous
+iteration's logs. The loop layer left in this session does almost nothing per turn — one `gh` call,
+then it reads the subagent's short summary — so its own turns stay light.
 
 ### 12. Run the hands-free pr-followup loop
 
-Hand the mechanical tail off to the built-in **`/loop`** skill with
-[`pr-followup`](../pr-followup/SKILL.md) as its target — tell the session to run:
+Drive the pacing with the built-in **`/loop`** skill and delegate each iteration's work to a
+subagent. Tell the session to run:
 
 ```
-/loop /pr-followup #NNN
+/loop run pr-followup for #NNN
 ```
 
-`/loop` drives the pacing: it invokes `pr-followup` once per iteration and uses `ScheduleWakeup` to
-sleep between them. Pace by cache window — a **short** interval (~270 s) while CI is actively
-running, a **longer** one (~20–30 min) while waiting on human review.
+`/loop` self-paces with `ScheduleWakeup` — a **short** interval (~270 s) while CI is actively
+running, a **longer** one (~20–30 min) while waiting on human review (cache-window guidance). Each
+iteration, the loop layer (this session — *not* `pr-followup`, which stays unchanged) does three
+things:
 
-**At the start of each iteration**, the loop layer (this step — *not* `pr-followup`, which stays
-unchanged) checks for a merge conflict, because today's `pr-followup` does not query `mergeable`:
-
-```bash
-gh pr view <PR> --json mergeable --jq .mergeable
-```
-
-- `CONFLICTING` → **stop and escalate** immediately (don't invoke `pr-followup`). `pr-followup`
-  never rebases or force-pushes; the human rebases and resolves, then restarts the loop.
-- `UNKNOWN` → GitHub is still computing mergeability (e.g. right after a push); treat as "no
-  conflict yet", proceed, and re-check next iteration.
-- `MERGEABLE` → proceed to `pr-followup`.
+1. **Check for a merge conflict**, because today's `pr-followup` does not query `mergeable`:
+   ```bash
+   gh pr view <PR> --json mergeable --jq .mergeable
+   ```
+   - `CONFLICTING` → **stop and escalate** immediately (don't spawn the subagent). `pr-followup`
+     never rebases or force-pushes; the human rebases and resolves, then restarts the loop.
+   - `UNKNOWN` → GitHub is still computing mergeability (e.g. right after a push); treat as "no
+     conflict yet", proceed, and re-check next iteration.
+   - `MERGEABLE` → proceed.
+2. **Spawn a subagent** (the `Agent` tool) to run the [`pr-followup`](../pr-followup/SKILL.md) skill
+   for the PR: assess CI and review comments, make targeted fixes, run `make check`, push, reply to
+   and resolve threads, and **return a short structured summary** — what it changed, whether it
+   pushed, the resulting CI/review state, and whether it hit `pr-followup`'s design-change
+   escalation. The fresh context is what keeps the implement transcript out of the expensive work
+   (step 11).
+3. **Read the summary and evaluate the stop conditions** below. The loop layer owns the
+   conflict / `CHANGES_REQUESTED` checks and the counters; `pr-followup` itself is unchanged.
 
 **Stop the loop only when all three hold:**
 
-1. **CI green** — every required check passing.
+1. **CI green** — every required check passing. A required check that only a human can satisfy
+   (e.g. a required approval count) never goes green from the loop; when that is the *only* thing
+   left red and the review surface is quiet, treat the PR as quiet-and-green-pending-approval and
+   stop, reporting what still awaits the human, rather than burning iterations until a cap.
 2. **No `CHANGES_REQUESTED`** — `reviewDecision != CHANGES_REQUESTED`. A top-level "Request
    changes" review can carry no inline comments, and `pr-followup` reads only inline comments
-   (`position != null`), so it can't see such a standing veto — the loop layer must. If
-   `CHANGES_REQUESTED` is set with **zero active inline threads**, escalate immediately (like a
-   conflict) rather than burning review-wait iterations. And because GitHub clears
-   `CHANGES_REQUESTED` only when the *same reviewer* re-reviews (resolving threads alone doesn't),
-   once all inline threads are resolved but the decision still stands, post **one** nudge
-   (`gh pr comment`) asking the reviewer to re-review — once per stale-review episode (skip
-   re-posting while your nudge is still the latest comment), so an away reviewer isn't paged on
-   every poll.
+   (`position != null`), so it can't see such a standing veto — the loop layer must. Discriminate
+   by history: if `CHANGES_REQUESTED` is set and **no inline threads were ever left** to resolve,
+   escalate immediately (like a conflict) — there is nothing for `pr-followup` to act on. If inline
+   threads **were** left and the subagent has since resolved every one but the decision still
+   stands — GitHub clears `CHANGES_REQUESTED` only when the *same reviewer* re-reviews, not when
+   threads are resolved — post **one** nudge (`gh pr comment`) asking the reviewer to re-review,
+   once per stale-review episode (skip re-posting while your nudge is still the latest comment), so
+   an away reviewer isn't paged on every poll.
 3. **Two consecutive quiet polls** — no new review comments across two polls in a row (one empty
    poll can race a reviewer mid-comment; the second confirms quiescence).
 
@@ -309,8 +323,9 @@ mechanical tail (CI fixes, replies), not the merge decision or a rebase.
 - a `pr-followup` comment that needs a **design or spec change** (its existing, unchanged
   escalation rule — a design call is the human's, and outranks the stop conditions above);
 - a **merge conflict** (the `mergeable` check above);
-- `CHANGES_REQUESTED` with **zero active inline threads** (stop condition 2 above) — there is no
-  inline comment for `pr-followup` to act on, so waiting out the poll cadence wastes cycles.
+- `CHANGES_REQUESTED` with **no inline threads ever left to act on** (stop condition 2's
+  never-had-threads branch — the resolved-threads branch nudges instead, so this covers only the
+  case where `pr-followup` has nothing to fix).
 
 **Two backstops** bound the loop. Count the two kinds of iteration **separately**, classifying each
 as **CI-wait whenever any required check is not yet green** (so the common post-open state — CI
@@ -337,8 +352,9 @@ reviewers, and every genuine decision escalates to the human.
   gate, and the strict BE-ID lifecycle (Status ⇒ index bucket, flat one-directory layout, permanent IDs).
 - [`roadmaps/README.md`](../../../roadmaps/README.md) — the index and the per-item format.
 - [`pr-followup`](../pr-followup/SKILL.md) — the skill steps 11–12 loop over: after this skill
-  opens the Draft PR and compacts, `/loop /pr-followup` drives the mechanical tail (CI fixes,
-  review replies) to quiet-and-green, so implement → PR → followup is one automated flow.
+  opens the Draft PR, a paced `/loop` drives the mechanical tail (CI fixes, review replies) to
+  quiet-and-green, running each iteration's `pr-followup` in a fresh subagent, so implement → PR →
+  followup is one automated flow.
 - [`ideation`](../ideation/SKILL.md) — the upstream skill that authors the proposal this one builds.
 - [`propose-and-build`](../propose-and-build/SKILL.md) — composes `ideation` + this skill for a
   small, settled item: author the proposal and implement it in parallel as a temporary two-PR
