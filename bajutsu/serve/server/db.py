@@ -359,8 +359,9 @@ class SqlRepository:
 
         from bajutsu.serve.server.models import Project
 
-        # Only the binding is removed; `runs.project_id` is left as-is so the history is retained
-        # (BE-0225) — a run of a since-deregistered project keeps pointing at its now-absent id.
+        # Only the binding is removed; the run history is retained (BE-0225). On Postgres, the FK's
+        # ON DELETE SET NULL (migration 0010) clears `runs.project_id` on the retained rows; on the
+        # SQLite gate (FKs unenforced by default) it stays pointing at the now-deregistered id.
         with Session(self._engine) as session:
             session.execute(delete(Project).where(Project.org_id == org_id, Project.name == name))
             session.commit()

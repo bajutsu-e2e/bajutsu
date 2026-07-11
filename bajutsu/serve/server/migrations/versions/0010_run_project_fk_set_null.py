@@ -42,8 +42,10 @@ def upgrade() -> None:
     # contract ("only the binding is removed; run history is retained", BE-0225).
     #
     # SQLite: FKs aren't enforced at runtime (no PRAGMA foreign_keys=ON on the gate) and the
-    # dialect doesn't store named FK constraints, so the operation is a no-op there — the
-    # ondelete="SET NULL" in models.py covers newly-created schemas (test_db_migrations gate).
+    # dialect doesn't store named FK constraints, so the operation is a no-op there — a
+    # newly-created SQLite schema gets ondelete="SET NULL" straight from models.py. (The
+    # schema-parity test in test_db_migrations compares FK columns/target, not the ondelete
+    # action, so it does not by itself guard that action against regression.)
     bind = op.get_bind()
     if bind.dialect.name == "postgresql":
         op.drop_constraint(_project_id_fk_name(bind), "runs", type_="foreignkey")
