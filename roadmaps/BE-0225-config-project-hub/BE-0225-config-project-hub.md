@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0225](BE-0225-config-project-hub.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0225") |
+| Implementing PR | [#909](https://github.com/bajutsu-e2e/bajutsu/pull/909) |
 | Topic | Authoring experience (record / GUI editor) |
 | Related | [BE-0015](../BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md), [BE-0102](../BE-0102-run-stats-dashboard/BE-0102-run-stats-dashboard.md), [BE-0187](../BE-0187-serve-config-view/BE-0187-serve-config-view.md), [BE-0108](../BE-0108-hosted-config-source-restriction/BE-0108-hosted-config-source-restriction.md), [BE-0099](../BE-0099-webhook-run-notifications/BE-0099-webhook-run-notifications.md) |
 <!-- /BE-METADATA -->
@@ -172,11 +173,27 @@ A thin CLI mirror so CI and cron can drive the hub headlessly, without the Web U
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] 1 — The project model: extend BE-0015's `projects` row with a config-source record; stamp `runs.project_id`.
+- [x] 1 — The project model: extend BE-0015's `projects` row with a config-source record; stamp `runs.project_id`.
 - [ ] 2 — Persistence: the `ProjectRegistry` seam (DB-backed when a repository is present, on-disk JSON otherwise), run history partitioned by project on both paths (the `project_id` column with a DB, a project→run-ids index without); auto-register the launch config as the active project.
 - [ ] 3 — API: the five `/api/projects…` endpoints, org-scoped, additive to the existing single-config ones.
 - [ ] 4 — UI: the project switcher + projects list, rebinding the active project without a restart.
 - [ ] 5 — CLI: `bajutsu project add/ls/rm` and `bajutsu run --project <name>` as the headless trigger.
+
+### Log
+
+- 2026-07-11 — Units 1+2, DB path (#909): extended BE-0015's `projects` row with a nullable
+  `source` column (the discriminated config-source record `kind` + `locator`) via alembic migration
+  `0009`, added the `ProjectRecord` boundary type, and gave the `Repository` seam its project
+  methods (`create_project` / `get_project` / `list_projects` / `delete_project`, org-scoped;
+  deregister retains the run history) plus a `project_id` filter on `list_runs` so the run history
+  is partitionable by project. `create_project` is idempotent by **id** (a `session.merge` upsert);
+  the unit-3 `POST /api/projects` handler must resolve an existing `(org_id, name)` through
+  `get_project` and reuse its id when rebinding a source, so it stays on the merge-by-id path and
+  never trips the `(org_id, name)` unique constraint. Still owed on these units: the
+  `ProjectRegistry` seam unifying this DB path with an on-disk JSON store for the no-database local
+  `serve`, and auto-registering the launch config as the active project. Also lands migration `0010`,
+  adding `ON DELETE SET NULL` to `runs.project_id`'s FK so deleting a project with run history
+  doesn't raise `IntegrityError` on Postgres — matching the deregister-retains-history contract.
 
 ## References
 
