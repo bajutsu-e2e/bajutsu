@@ -122,7 +122,12 @@ The loop **stops** only when **all** of these hold:
    `position != null`) and does not read `/pulls/{pr}/reviews` — so a top-level-body-only
    objection is invisible to it. When the loop layer detects `CHANGES_REQUESTED` with zero
    active inline comment threads, it **escalates immediately** (same as a merge conflict) rather
-   than silently waiting for the review-wait cap to fire.
+   than silently waiting for the review-wait cap to fire. Additionally, GitHub only clears a
+   `CHANGES_REQUESTED` decision when the *same reviewer* re-reviews or when a maintainer dismisses
+   the stale review — resolving inline threads alone does not clear it. To avoid the loop silently
+   burning review-wait iterations while waiting for a reviewer who may not know all their threads
+   are resolved, the loop should post a PR comment (via `gh pr comment`) nudging the reviewer to
+   re-review once all inline threads are resolved and `CHANGES_REQUESTED` is still set.
 3. **Two consecutive polls with no new review comments** — the review surface has gone quiet (one
    empty poll is not enough; the second confirms quiescence).
 
