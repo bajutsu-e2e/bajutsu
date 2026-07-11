@@ -110,13 +110,11 @@ colliding or regressing each other. Full guide: [`docs/ai-development.md`](docs/
 - Comments explain **why**, not what; match the surrounding density and tone (the codebase
   favors short, purposeful comments). Don't add narration.
 - **Docstrings (BE-0065).** The public API surface (`Driver` + shared types, CLI, MCP tools,
-  scenario schema, the public functions of runner / `assertions` / `network`) uses **Google-style**
+  scenario schema, public functions of runner / `assertions` / `network`) uses **Google-style**
   docstrings — a one-line summary then `Args:` / `Returns:` / `Raises:` *only where they add
-  information*; internal `_helpers` keep one prose line of *why*, and `TypedDict` / constant classes
-  keep their per-field inline comments. **Never restate types** (they live in the annotations);
-  describe meaning. English, like all code. The generated reference is `make docs` (out of the gate).
-  Migrate to the structured form module by module in small PRs — don't rewrite a module's docstrings
-  as a side effect. Full rule: [`docs/ai-development.md`](docs/ai-development.md).
+  information*; internal `_helpers` keep one prose line of *why*. **Never restate types**; describe
+  meaning. English, like all code. Migrate module by module in small PRs. Full rule:
+  [`docs/ai-development.md`](docs/ai-development.md).
 - **Always follow the [`japanese-tech-writing`](.claude/skills/japanese-tech-writing/) skill
   whenever you generate Japanese — without exception.** This is not limited to `docs/ja/` and
   roadmap `*-ja.md`: it covers *any* Japanese you produce, including freshly written prose,
@@ -131,95 +129,40 @@ colliding or regressing each other. Full guide: [`docs/ai-development.md`](docs/
   gate: checking that a paragraph of prose still matches the code needs semantic judgment, which
   would put an LLM on the `run` / CI verdict path (prime directive 1) — so it holds the same way as
   the bilingual-docs rule above.
-- **Documentation style (both languages, every doc and every update).** Write natural prose —
-  natural Japanese in `docs/ja/`, natural English in `docs/` — and report the same way. **No coined
-  terms:** use established, widely-used technical terms and ordinary words. **No forced
-  translation:** use the conventional translation; if rendering a term would read unnaturally, keep
-  the original (usually English) term (e.g. `selector`, `actuator`, `backend`). **No omissions:**
-  each document must be self-contained — spell out abbreviations on first use and give the context
-  a reader needs, without assuming they read another page first. **The first time an acronym
-  appears, spell it out in full with the acronym in parentheses right after** (e.g. role-based
-  access control (RBAC)) — after that, the acronym alone is fine.
-  **When generating the Japanese side — writing it fresh, or translating the English `docs/` into
-  `docs/ja/` (and roadmap `*-ja.md`) — follow the [`japanese-tech-writing`](.claude/skills/japanese-tech-writing/)
-  skill: it is the authoritative style for Japanese prose here, and a translation must read as
-  natural Japanese under those norms, not a literal rendering of the English.** Every Japanese
-  document — `docs/ja/` and every roadmap `*-ja.md` — is written in **敬体 (the polite *desu/masu*
-  style, ですます調)**, never the plain *da/dearu* style (常体). Full guidance:
+- **Documentation style (both languages, every doc and every update).** Write natural prose. **No
+  coined terms** (use established technical/ordinary words); **no forced translation** (keep the
+  original term — `selector`, `actuator`, `backend` — when a translation reads unnaturally); **no
+  omissions** (each document self-contained; spell out an acronym in full on first use with the
+  acronym in parentheses, e.g. role-based access control (RBAC), then the acronym alone). Japanese
+  docs — `docs/ja/` and every roadmap `*-ja.md` — are written in **敬体 (ですます調)**, never 常体,
+  under the [`japanese-tech-writing`](.claude/skills/japanese-tech-writing/) skill (above). Full
+  guidance: [`docs/ai-development.md`](docs/ai-development.md).
+- **Roadmap items use BE IDs (strict).** Every item is a directory `roadmaps/BE-NNNN-<slug>/`
+  holding **both** language files `BE-NNNN-<slug>.md` and `BE-NNNN-<slug>-ja.md` (`BE` = *Bajutsu
+  Evolution*, `NNNN` a zero-padded monotonic ID). The path is fixed when the ID is allocated and
+  **never moves**; `Status` (`Implemented` / `In progress` / `Proposal` / `Proposal (deferred)`)
+  decides only the index bucket. Name new items with the `BE-XXXX` placeholder — the number is
+  allocated **on `main` after merge** (BE-0089). Each file uses the **Swift-Evolution format** with a
+  `<!-- BE-METADATA -->` `| Field | Value |` block; **`Detailed design` enumerates the work MECE**
+  and **`Progress` is a living checklist + PR-linked log** kept current as work proceeds (BE-0100).
+  Never hand-edit the index tables — run `make roadmap-index` (`make test` fails on drift).
+  `tests/test_roadmap_format.py` checks the file shape (BE-0074). **IDs are permanent — never
+  renumber.** Full rule (metadata fields, both-way PR links, author handle, reciprocal
+  `Related`/`Superseded by`): [`roadmaps/README.md`](roadmaps/README.md) ·
   [`docs/ai-development.md`](docs/ai-development.md).
-- **Roadmap items use BE IDs (strict).** Every roadmap item is a directory
-  `roadmaps/BE-NNNN-<slug>/` holding the English file `BE-NNNN-<slug>.md`
-  and its Japanese version `BE-NNNN-<slug>-ja.md` — `BE` = *Bajutsu Evolution*, `NNNN` a
-  zero-padded 4-digit monotonically increasing ID. Every item lives directly under `roadmaps/`; its
-  path is fixed the moment its ID is allocated and never moves (BE-0159 retired the per-`Status`
-  folders BE-0078 introduced — `Status` now decides only the index/dashboard bucket, not the
-  location). When you add
-  one: name it with the `BE-XXXX` placeholder — the norm, since the number is allocated **on `main`
-  after the PR merges** (contiguous in merge order; BE-0089) — or allocate the next ID by hand (`ls -d
-  roadmaps/BE-*/ | sort | tail -1`, then +1; never
-  reuse, skip, or guess) when you want it fixed up front. Create **both** language files in a new
-  directory under `roadmaps/`, setting `Status: Proposal` for a proposal, or `Status:
-  Implemented` when the **same PR ships the implementation** (a new item is a proposal first
-  *unless* its code lands with it). Don't hand-edit the index
-  tables — run `make roadmap-index` to regenerate the tables in **both** index pages
-  (`roadmaps/README.md` and `roadmaps/README-ja.md`) from each item's metadata;
-  `make test` fails if the committed index drifts.
-  Each file uses the **Swift-Evolution proposal format** (metadata block + Introduction /
-  Motivation / Detailed design / Alternatives considered / Progress / References), with the metadata
-  as a fenced `| Field | Value |` table — `<!-- BE-METADATA -->` … `<!-- /BE-METADATA -->`, opening
-  with a `| Field | Value |` header row (`| 項目 | 値 |` on the Japanese side) and holding
-  `Proposal` / `Author` / `Status` / `Tracking issue` / `Topic` (`Tracking issue`, BE-0139, is a
-  GitHub issue-search URL computed purely from the item's id — added automatically by the scaffold,
-  never hand-written; plus `Implementing PR` once shipped, the optional cross-item links `Related` /
-  `Superseded by`, and `Origin` last, when applicable); the Japanese mirror uses
-  `提案` / `提案者` / `状態` / `トラッキング Issue` / `トピック` / `関連` / `無効化` / `由来`. **`Detailed
-  design` enumerates the work MECE** (mutually exclusive, collectively exhaustive), and **`Progress`
-  is a living section kept current as work proceeds** (BE-0100): a checklist mirroring that breakdown
-  (one `- [ ]` box per unit, ticked as it lands) plus a short chronological PR-linked log. Every PR
-  that advances an item ticks its boxes and adds a log entry in the same change, exactly as it fills
-  `Implementing PR`. `Related` / `Superseded by` are reciprocal: the superseding item lists the other
-  under `Related`, the superseded one names its successor under `Superseded by`. The metadata block
-  must name the author by GitHub handle — `| Author |
-  [@handle](https://github.com/handle) |`, the account of whoever first authored the item (for an
-  AI-assisted draft, the person who drove and committed it). `tests/test_roadmap_format.py` checks
-  this shape (BE-0074). `Status` is the single source of truth for an item's
-  index bucket — one of `Implemented` / `In progress` / `Proposal` / `Proposal (deferred)`. When an
-  item's status changes (it starts being built, or it ships), set its `Status` and run `make
-  roadmap-index` to rebuild the bucket tables; the item's directory never moves (BE-0159). `make
-  test` fails if the committed index drifts from an item's `Status`. **IDs are permanent — never
-  renumber an existing item.** Full rule:
-  [`roadmaps/README.md`](roadmaps/README.md) · [`docs/ai-development.md`](docs/ai-development.md).
 - Commit messages: imperative, scoped (`feat(run): …`, `fix(record): …`, `docs: …`).
-- **PR titles and bodies are always in English**, regardless of the language used in the
-  session. This keeps the project history readable for every contributor.
-- **Write a thorough PR body — never a one-line restatement of the title.** A reviewer should
-  understand the change from the body without reconstructing it from the diff: explain *what*
-  changed and *why* (the motivation/context), give a short summary of the key changes (grouped by
-  area when the diff is large), say how you verified it (e.g. `make check`), and include the
-  relevant links (roadmap item, issue) and call-outs (trade-offs, follow-ups, anything a reviewer
-  should look at closely). This expectation holds for humans and AI alike. Concretely: lead with
-  `## Summary`, close with the `make check` verification (the green numbers), and add `What changed`
-  / `Prime-directive compliance` / `Scope` / `Notes` as the change warrants — depth proportional to
-  the diff. **When you (AI) draft a PR, follow the tracked body template
-  [`.github/PULL_REQUEST_TEMPLATE.md`](.github/PULL_REQUEST_TEMPLATE.md)** — fill the sections that
-  apply and delete the rest; the recurring `Prime-directive compliance` and `Verification` blocks it
-  ships pre-filled are the canonical wording, so trim them rather than re-inventing the phrasing.
-  Full title-and-body rule:
+- **PR titles and bodies are always in English**, regardless of the session language, so the
+  history stays readable for every contributor.
+- **Prefix the PR title with `[BE-NNNN]`** when the PR *implements an already-numbered* item (e.g.
+  `[BE-0017] feat(mcp): add MCP server`). A PR with no item — and a **BE-creation PR** (id allocated
+  on `main` after merge, BE-0089) — keeps the plain scoped title. **CI enforces this**
+  ([`pr-title.yml`](.github/workflows/pr-title.yml)): a branch encoding a roadmap id
+  (`claude/be-0050-<slug>`) must carry the matching `[BE-0050]` prefix.
+- **Write a thorough PR body — never a one-line restatement.** Lead with `## Summary`, follow the
+  tracked template [`.github/PULL_REQUEST_TEMPLATE.md`](.github/PULL_REQUEST_TEMPLATE.md) (fill what
+  applies, trim the rest — its `Prime-directive compliance` / `Verification` blocks are the canonical
+  wording), and close with the `make check` verification. Full rule:
   [`docs/ai-development.md`](docs/ai-development.md#pull-requests-title-and-body).
-- **Prefix the PR title with the roadmap ID** when the PR *implements an already-numbered* item:
-  start the title with the ID in brackets, e.g. `[BE-0017] feat(mcp): add MCP server`. A PR with no
-  roadmap item — and a **BE-creation PR**, whose id is allocated on `main` only after the merge
-  (BE-0089) — keeps the plain scoped title with no prefix. **CI enforces this**
-  ([`pr-title.yml`](.github/workflows/pr-title.yml) runs `scripts/lint_pr.py --title-only` on every
-  PR): the title must be a scoped conventional subject, and when the branch name encodes a roadmap id
-  (`claude/be-0050-<slug>`) the title must carry the matching `[BE-0050]` prefix — a missing or
-  mismatched id fails the check.
-- **Always link a PR and its BE item, both ways.** Any PR that advances a roadmap item must name
-  that item, and any roadmap item that has been worked on must name the PRs behind it — the link is
-  never one-directional. Concretely: (1) the PR carries the `[BE-NNNN]` title prefix (above) and
-  references the item in its body; (2) the BE item records every PR that delivered code under its
-  `Implementing PR` row (`実装 PR` on the Japanese side) — a single `[#NNN](…)` or a
-  comma-separated list when several PRs landed, kept in both language files. This holds for
-  `In progress` items too, not just shipped ones: when a PR lands, add it to the item's
-  `Implementing PR` row in the same change. A roadmap item is `Implemented` or `In progress` only
-  if its PRs are discoverable from the item, and a roadmap-tied PR is traceable to its item.
+- **Always link a PR and its BE item, both ways.** The PR carries the `[BE-NNNN]` prefix and
+  references the item; the item records every delivering PR under its `Implementing PR` row (`実装
+  PR`, both languages) — including `In progress` items, updated in the same change the PR lands.
