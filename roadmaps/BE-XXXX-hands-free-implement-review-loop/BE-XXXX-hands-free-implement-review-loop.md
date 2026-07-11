@@ -127,7 +127,10 @@ The loop **stops** only when **all** of these hold:
    the stale review — resolving inline threads alone does not clear it. To avoid the loop silently
    burning review-wait iterations while waiting for a reviewer who may not know all their threads
    are resolved, the loop should post a PR comment (via `gh pr comment`) nudging the reviewer to
-   re-review once all inline threads are resolved and `CHANGES_REQUESTED` is still set.
+   re-review once all inline threads are resolved and `CHANGES_REQUESTED` is still set — but only
+   once per stale-review episode (e.g., skip re-posting while it is still the PR's most recent
+   comment), so a reviewer who is away for a few hours isn't paged by an identical comment on every
+   20–30 minute poll.
 3. **Two consecutive polls with no new review comments** — the review surface has gone quiet (one
    empty poll is not enough; the second confirms quiescence).
 
