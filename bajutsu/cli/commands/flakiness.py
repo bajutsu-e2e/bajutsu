@@ -6,7 +6,7 @@ fingerprint (`2·min(passed, failed)/runs`), reusing the BE-0049 classification.
 one ranking — `--history <runs-dir>` mines a directory of run manifests (the CI / scripting form),
 and the default reads the serve database (`BAJUTSU_DATABASE_URL`), grouping straight from the
 provenance stamp on each run row. No device, no AI, no verdict; it never gates CI. A missing runs
-directory or an unconfigured database exits 2.
+directory, an unconfigured database, or a negative `--window` exits 2.
 """
 
 from __future__ import annotations
