@@ -112,6 +112,22 @@ def test_tag_run_partitions_runs_by_project_newest_first(tmp_path: Path) -> None
     assert reg.run_ids(org_id="default", project_id=p.id) == ["run-2", "run-1"]
 
 
+def test_run_ids_and_tag_run_are_scoped_by_org(tmp_path: Path) -> None:
+    """Parity with `SqlProjectRegistry`, whose `run_ids` filters by `org_id` *and* `project_id`
+    together (via `list_runs`): a project's runs are visible, and taggable, only under the project's
+    own org. A mismatched `org_id` returns `[]` and tags nothing — not the project's runs — so the
+    two backends behind one seam agree once unit 3 threads a request's org straight through."""
+    reg = LocalProjectRegistry(tmp_path / "projects.json")
+    p = reg.add(org_id="default", name="checkout", source=None)
+    reg.tag_run(org_id="default", project_id=p.id, run_id="run-1")
+
+    # A run is not surfaced under the wrong org.
+    assert reg.run_ids(org_id="other", project_id=p.id) == []
+    # Nor tagged under the wrong org.
+    reg.tag_run(org_id="other", project_id=p.id, run_id="run-x")
+    assert reg.run_ids(org_id="default", project_id=p.id) == ["run-1"]
+
+
 def test_tag_run_is_idempotent(tmp_path: Path) -> None:
     reg = LocalProjectRegistry(tmp_path / "projects.json")
     p = reg.add(org_id="default", name="checkout", source=None)

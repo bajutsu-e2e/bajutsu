@@ -153,6 +153,11 @@ class LocalProjectRegistry:
         self._save()
 
     def tag_run(self, *, org_id: str, project_id: str, run_id: str) -> None:
+        # Scope by org like the DB backend (whose list_runs filters org_id AND project_id): a run is
+        # tagged only when the project actually belongs to this org, so a mismatched pair is a no-op
+        # rather than tagging under a foreign org — parity ahead of unit 3 threading real orgs.
+        if not self._project_in_org(org_id, project_id):
+            return
         index = self._data["run_ids"].setdefault(project_id, [])
         # Front-insert, dropping any prior entry, so the list stays newest-first and idempotent.
         if run_id in index:
@@ -161,10 +166,18 @@ class LocalProjectRegistry:
         self._save()
 
     def run_ids(self, *, org_id: str, project_id: str) -> list[str]:
+        if not self._project_in_org(org_id, project_id):
+            return []
         return list(self._data["run_ids"].get(project_id, []))
 
     def _org(self, org_id: str) -> list[dict[str, Any]]:
         return self._data["projects"].setdefault(org_id, [])
+
+    def _project_in_org(self, org_id: str, project_id: str) -> bool:
+        """Whether *project_id* is one of *org_id*'s projects — the local stand-in for the DB's
+        ``WHERE org_id AND project_id``, since the run index is keyed by the (globally unique) id
+        alone."""
+        return any(r["id"] == project_id for r in self._org(org_id))
 
     def _load(self) -> _Store:
         empty: _Store = {"projects": {}, "active": {}, "run_ids": {}}
