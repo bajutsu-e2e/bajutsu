@@ -98,6 +98,13 @@ Log:
   `deviceControl.setLocation` + `deviceControl.clipboard` (against the BE-0212 tokens). Fast-gate
   tests cover command shape, the clipboard round-trip, delegation / unsupported raises, and preflight
   admit/reject on the adb capability set. Depends on BE-0212 (per-operation tokens).
+- 2026-07-12 — While shipping BE-0208's device-control e2e lane
+  ([#934](https://github.com/bajutsu-e2e/bajutsu/pull/934)), the clipboard round-trip was found to
+  fail on the google_apis API 34 emulator: `cmd clipboard set/get-primary-clip` answers "No shell
+  command implementation", so the command builders and the fast-gate round-trip here exercise only a
+  fake runner, not the real device. The lane therefore ships `setLocation` only. This on-device gap
+  does not change what the adb backend advertises; it is tracked separately by the
+  adb-clipboard-fidelity proposal ([#935](https://github.com/bajutsu-e2e/bajutsu/pull/935)).
 
 ## References
 

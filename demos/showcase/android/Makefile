@@ -51,10 +51,18 @@ SERIAL ?= booted
 # short-circuits to granted with no dialog — no LLM, no fixed sleep on the CI lane. Verified on a
 # local arm64 emulator.
 #
+# The device-control flow `device_android` joins the lane (BE-0208 unit 5): it overrides the GPS
+# location (`emu geo fix`) and re-asserts the settled screen — the deterministic Android twin of the
+# idb `device.yaml`. It runs on the Stable launch tab, needing no tab-bar navigation. Only setLocation
+# of the device-control family is exercised: adb advertises `clipboard` too, but `cmd clipboard` is
+# unimplemented on the google_apis API 34 image ("No shell command implementation"), so a clipboard
+# read-back cannot run on-device (tracked separately). Verified on a local arm64 emulator.
+#
 # Still held out: `gestures_multitouch` (pinch / rotate) needs multi-touch (adb is single-touch).
-# Device control and mocked network stay out too (BE-0007 follow-ups).
+# The adb clipboard round-trip and mocked network stay out too (adb-clipboard-fidelity proposal
+# PR #935 / BE-0007 follow-ups).
 E2E_SCENARIOS := smoke firstlook navigation search data_driven relaunch system components modals \
-	controls notices gestures permission_android
+	controls notices gestures permission_android device_android
 
 # Raise the condition-wait ceiling for this lane only: the CI x86_64 software-rendered emulator
 # presents sheets/covers slower than the shared scenarios' 5s waits allow. A wait returns as soon as

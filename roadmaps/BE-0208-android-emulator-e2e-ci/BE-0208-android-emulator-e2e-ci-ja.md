@@ -9,7 +9,7 @@
 | 提案者 | [@hirosassa](https://github.com/hirosassa) |
 | 状態 | **実装中** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0208") |
-| 実装 PR | [#851](https://github.com/bajutsu-e2e/bajutsu/pull/851)、[#880](https://github.com/bajutsu-e2e/bajutsu/pull/880)、[#899](https://github.com/bajutsu-e2e/bajutsu/pull/899)、[#901](https://github.com/bajutsu-e2e/bajutsu/pull/901)、[#906](https://github.com/bajutsu-e2e/bajutsu/pull/906)、[#910](https://github.com/bajutsu-e2e/bajutsu/pull/910)、[#924](https://github.com/bajutsu-e2e/bajutsu/pull/924)、[#925](https://github.com/bajutsu-e2e/bajutsu/pull/925)、[#927](https://github.com/bajutsu-e2e/bajutsu/pull/927) |
+| 実装 PR | [#851](https://github.com/bajutsu-e2e/bajutsu/pull/851)、[#880](https://github.com/bajutsu-e2e/bajutsu/pull/880)、[#899](https://github.com/bajutsu-e2e/bajutsu/pull/899)、[#901](https://github.com/bajutsu-e2e/bajutsu/pull/901)、[#906](https://github.com/bajutsu-e2e/bajutsu/pull/906)、[#910](https://github.com/bajutsu-e2e/bajutsu/pull/910)、[#924](https://github.com/bajutsu-e2e/bajutsu/pull/924)、[#925](https://github.com/bajutsu-e2e/bajutsu/pull/925)、[#927](https://github.com/bajutsu-e2e/bajutsu/pull/927)、[#934](https://github.com/bajutsu-e2e/bajutsu/pull/934) |
 | トピック | Platform expansion (Android / Web / Flutter) |
 | 関連 | [BE-0007](../BE-0007-android-backend/BE-0007-android-backend-ja.md)、[BE-0223](../BE-0223-adb-tab-bar-navigation/BE-0223-adb-tab-bar-navigation-ja.md) |
 <!-- /BE-METADATA -->
@@ -227,6 +227,19 @@ directive の枠内にとどまります。
   （および ja）に記載しました。ローカルの arm64 エミュレータで検証し（13 本になったレーン全体が通ります）、
   Python のゲート（`make check`）は緑です。最後に残るシナリオ `gestures_multitouch`（ピンチ／回転）は
   マルチタッチを要する（adb は単一タッチ）ため、ユニット 6 は開いたまま、項目は**実装中**のままです。
+- 2026-07-12 — ユニット 5（デバイス制御のスライス）。`device_android` を `E2E_SCENARIOS` に加えました。
+  GPS の位置を上書きし（`emu geo fix`）、落ち着いた Stable カタログを再度確認します。idb の `device.yaml`
+  に対応する Android 版の決定的なフローで、起動タブで動くのでタブバーの移動は要りません
+  （`demos/showcase/scenarios/device_android.yaml`）。デバイス制御ファミリのうち動かしているのは
+  `setLocation` だけです。クリップボードの側は、実機検証で `cmd clipboard set/get-primary-clip` が
+  google_apis API 34 のエミュレータイメージでは未実装だと分かった（`No shell command implementation` を
+  返します）ため落としました。読み戻しが空で返ってきたのです。BE-0211 のクリップボード往復は、注入した
+  fake のランナーに対してしか実行しておらず実機を叩いていなかったので、このギャップが見えていませんでした。
+  adb は引き続き `DC_CLIPBOARD` を宣言しているので、これを実機で機能させること（あるいは capability を
+  狭めること）は独自のロードマップ項目として切り出します。`docs/ci.md`（および ja）に記載しました。
+  ローカルの arm64 エミュレータで検証し（シナリオは通ります）、Python のゲート（`make check`）は緑です。
+  残る除外中のフローは `gestures_multitouch`（ピンチ／回転）で、マルチタッチを要し（adb は単一タッチ）、
+  独自のロードマップ項目を持ちます。項目は**実装中**のままです。
 
 ## 参考
 

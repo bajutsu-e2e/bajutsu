@@ -9,7 +9,7 @@
 | Author | [@hirosassa](https://github.com/hirosassa) |
 | Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0208") |
-| Implementing PR | [#851](https://github.com/bajutsu-e2e/bajutsu/pull/851), [#880](https://github.com/bajutsu-e2e/bajutsu/pull/880), [#899](https://github.com/bajutsu-e2e/bajutsu/pull/899), [#901](https://github.com/bajutsu-e2e/bajutsu/pull/901), [#906](https://github.com/bajutsu-e2e/bajutsu/pull/906), [#910](https://github.com/bajutsu-e2e/bajutsu/pull/910), [#924](https://github.com/bajutsu-e2e/bajutsu/pull/924), [#925](https://github.com/bajutsu-e2e/bajutsu/pull/925), [#927](https://github.com/bajutsu-e2e/bajutsu/pull/927) |
+| Implementing PR | [#851](https://github.com/bajutsu-e2e/bajutsu/pull/851), [#880](https://github.com/bajutsu-e2e/bajutsu/pull/880), [#899](https://github.com/bajutsu-e2e/bajutsu/pull/899), [#901](https://github.com/bajutsu-e2e/bajutsu/pull/901), [#906](https://github.com/bajutsu-e2e/bajutsu/pull/906), [#910](https://github.com/bajutsu-e2e/bajutsu/pull/910), [#924](https://github.com/bajutsu-e2e/bajutsu/pull/924), [#925](https://github.com/bajutsu-e2e/bajutsu/pull/925), [#927](https://github.com/bajutsu-e2e/bajutsu/pull/927), [#934](https://github.com/bajutsu-e2e/bajutsu/pull/934) |
 | Topic | Platform expansion (Android / Web / Flutter) |
 | Related | [BE-0007](../BE-0007-android-backend/BE-0007-android-backend.md), [BE-0223](../BE-0223-adb-tab-bar-navigation/BE-0223-adb-tab-bar-navigation.md) |
 <!-- /BE-METADATA -->
@@ -223,6 +223,19 @@ within the prime directives.
   scenarios, passes) and the Python gate (`make check`) is green. The last held-out scenario
   `gestures_multitouch` (pinch / rotate) still needs multi-touch (adb is single-touch), so unit 6
   stays open and the item stays **In progress**.
+- 2026-07-12 — Unit 5 (device-control slice): `device_android` joins `E2E_SCENARIOS`. It overrides
+  the GPS location (`emu geo fix`) and re-asserts the settled Stable catalog — the deterministic
+  Android twin of the idb `device.yaml`, on the launch tab so it needs no tab-bar navigation
+  (`demos/showcase/scenarios/device_android.yaml`). Only `setLocation` of the device-control family
+  runs: the clipboard half was cut after on-device validation showed `cmd clipboard
+  set/get-primary-clip` is unimplemented on the google_apis API 34 emulator image (it returns "No
+  shell command implementation"), so the read-back came back empty. BE-0211's clipboard round-trip
+  had only ever run against a fake injected runner, never a device, which masked the gap. adb still
+  advertises `DC_CLIPBOARD`, so making it functional on-device (or narrowing the capability) is
+  carved out to its own roadmap item. Documented in `docs/ci.md` (+ ja). Verified on a local arm64
+  emulator (the scenario passes) and the Python gate (`make check`) is green. The remaining held-out
+  flow is `gestures_multitouch` (pinch / rotate), which needs multi-touch (adb is single-touch) and
+  has its own roadmap item. Item stays **In progress**.
 
 ## References
 
