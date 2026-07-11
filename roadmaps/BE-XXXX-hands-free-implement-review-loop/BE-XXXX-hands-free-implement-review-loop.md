@@ -141,12 +141,13 @@ The loop also **halts and escalates to the human** in two additional cases:
 
 A bounded backstop prevents an unbounded loop if the PR never converges. The primary backstop is
 **24 hours of wall-clock time** — the loop stops and reports the current state (CI status, open
-comment count) if that ceiling is reached. A secondary safety net of **20 polling iterations**
-applies on top: since a short CI-wait interval can consume many iterations before the review-quiet
-condition is even reached (a single CI run may span several cache-window sleeps, and a PR can cycle
-through push→CI multiple times), treating the iteration count as a co-equal backstop risks hitting
-it before the PR has had a real chance to converge. The 24-hour ceiling is the natural "the human
-should check in now" signal; the 20-iteration count is a failsafe against runaway tight loops only.
+comment count) if that ceiling is reached. A secondary safety net of **20 review-wait polling
+iterations** applies on top, counting only iterations spent waiting on human review, not the
+short CI-wait polls: a single CI run can already span several cache-window sleeps, and folding
+those into the same counter would risk hitting the 20-iteration cap long before 24 hours have
+elapsed — undermining the very risk this backstop exists to catch (a runaway tight loop, not a
+slow-but-converging PR). The 24-hour ceiling is the natural "the human should check in now"
+signal; the 20-iteration count is a failsafe against runaway tight loops only.
 Session-local `/loop` (rather than a scheduled cloud agent) is the chosen mechanism because it is
 simpler — no cloud setup or separate scheduling context — and the human can interrupt or restart the
 loop at any time by stopping the session.
