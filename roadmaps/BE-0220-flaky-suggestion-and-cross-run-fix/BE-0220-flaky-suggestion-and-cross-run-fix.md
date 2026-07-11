@@ -163,7 +163,7 @@ first-class.
 > (oldest first), linking the PRs.
 
 - [x] Prerequisite — run provenance (`scenarioHash` / `toolVersion` / `gitRevision`) stamped onto the DB run record (delivered here; not previously shipped under BE-0015).
-- [ ] Half 1 — cross-run flakiness score over the DB run history, reusing the `audit --history` classification.
+- [x] Half 1 — cross-run flakiness score over the DB run history, reusing the `audit --history` classification.
 - [ ] Half 1 — ranked flaky-scenario panel in the serve Web UI (+ `--json` / CLI form) linking to representative passing / failing run evidence.
 - [ ] Half 2 — cross-run `TriageContext` assembling evidence from both passing and failing runs of one flaky scenario.
 - [ ] Half 2 — pattern diagnosis + fix proposal (targeted edit through full YAML rewrite) behind the `TriageAgent` protocol, as a reviewable proposal diff.
@@ -177,6 +177,14 @@ first-class.
   populated them in `_persist_run` from the run's `manifest.json` provenance block (BE-0049). A
   pre-provenance run records with null provenance — ungroupable, never blocking. Historical backfill
   of already-stored runs is deferred (it needs artifact-store access, not a schema migration).
+- 2026-07-11 — Half 1: added the deterministic cross-run flakiness score
+  (`bajutsu/serve/flakiness.py:rank_flakiness`) over the DB run records. It groups runs by
+  `scenario_hash`, reuses the `audit --history` classification (extracted as the shared
+  `audit.classify_stability`), and ranks scenarios flaky-first then by verdict flip rate
+  (`2·min(passed, failed)/runs`), with a configurable window (`window_runs` / `since`) and the
+  newest passing/failing run ids for evidence linking. A run with no `scenario_hash` or no verdict
+  is skipped, mirroring `audit --history`. Read-only over history: it computes no verdict and gates
+  nothing. The Web UI / CLI surface for this score is the next Half 1 unit.
 
 ## References
 
