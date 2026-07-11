@@ -296,9 +296,13 @@ def _run_provenance(state: ServeState, run_id: str) -> tuple[str | None, str | N
     if raw is None:
         return None, None, None
     try:
-        prov = json.loads(raw).get("provenance")
+        manifest = json.loads(raw)
     except (json.JSONDecodeError, ValueError):
         return None, None, None
+    # A parseable but non-object manifest (a corrupted/partial write left a bare list/string/`null`)
+    # has no provenance block — treat it like a pre-provenance run, never let `.get` on a non-dict
+    # raise past the catch above and abort the whole record_run.
+    prov = manifest.get("provenance") if isinstance(manifest, dict) else None
     if not isinstance(prov, dict):
         return None, None, None
 
@@ -320,6 +324,8 @@ def _run_summary(state: ServeState, run_id: str, *, ok: bool) -> dict[str, Any]:
     try:
         data = json.loads(raw)
     except (json.JSONDecodeError, ValueError):
+        return minimal
+    if not isinstance(data, dict):  # a parseable but non-object manifest carries no summary
         return minimal
     scenarios = [s for s in (data.get("scenarios") or []) if isinstance(s, dict)]
     return {

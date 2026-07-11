@@ -120,6 +120,34 @@ def test_run_job_leaves_provenance_null_for_a_pre_provenance_run(tmp_path: Path)
     assert rec.git_revision is None
 
 
+def test_run_job_records_a_malformed_manifest_with_null_provenance(tmp_path: Path) -> None:
+    # A manifest that parses but isn't a JSON object (a corrupted/partial write left a bare list,
+    # string, or `null`) must not abort the whole record_run: the run still persists, just with null
+    # provenance and a minimal summary. Guards against `json.loads(...).get(...)` raising
+    # AttributeError past the (JSONDecodeError, ValueError) catch and escaping to the outer handler.
+    scn_dir, cfg, runs = project(tmp_path)
+    run_dir = runs / "20260621-6"
+    run_dir.mkdir(parents=True)
+    (run_dir / "manifest.json").write_text(json.dumps([1, 2, 3]), encoding="utf-8")
+    (run_dir / "report.html").write_text("<html></html>", encoding="utf-8")
+    repo = _repo()
+    state = srv.ServeState(
+        scenarios_dir=scn_dir,
+        config=cfg,
+        runs_dir=runs,
+        cwd=tmp_path,
+        repository=repo,
+        popen=fake_popen(["PASS  runs/20260621-6/manifest.json\n"]),
+    )
+    srv.run_job(state, state.register(srv.Job(cmd=["x"])))
+
+    rec = repo.get_run("20260621-6")
+    assert rec is not None
+    assert rec.scenario_hash is None
+    assert rec.tool_version is None
+    assert rec.git_revision is None
+
+
 def test_run_job_does_not_attribute_to_an_unknown_user(tmp_path: Path) -> None:
     # A run whose actor has no user row (shouldn't happen in practice) is still recorded, just with
     # no created_by — so the foreign key can't break job finalization.
