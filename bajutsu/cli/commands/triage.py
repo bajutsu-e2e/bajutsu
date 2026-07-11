@@ -147,8 +147,11 @@ def _split_flaky_runs(
 
     The scenario's exact name is resolved from the first run whose scenario name contains
     `scenario_filter`; only runs holding that exact scenario are then classified by its verdict, so a
-    substring shared by two scenarios never mixes them. The content fingerprint comes from the same
-    first run's provenance. Returns `(None, [], [], None)` when no run matches.
+    substring shared by two scenarios never mixes them. The content fingerprint comes from that same
+    first run's provenance, and later runs whose fingerprint differs are dropped: `--flaky` contrasts
+    verdict flips at ONE definition, so a run recorded after the scenario was edited is a different
+    test, not flaky evidence. Runs with no stamped fingerprint are kept (the pre-provenance grace).
+    Returns `(None, [], [], None)` when no run matches.
     """
     name: str | None = None
     scenario_hash: str | None = None
@@ -165,14 +168,16 @@ def _split_flaky_runs(
         match = next((s for s in scenarios if scenario_filter in str(s.get("scenario", ""))), None)
         if match is None:
             continue
+        provenance = manifest.get("provenance")
+        stamped = provenance.get("scenarioHash") if isinstance(provenance, dict) else None
+        run_hash = stamped if isinstance(stamped, str) else None
         if name is None:
             name = str(match.get("scenario"))
-            provenance = manifest.get("provenance")
-            if isinstance(provenance, dict):
-                stamped = provenance.get("scenarioHash")
-                scenario_hash = stamped if isinstance(stamped, str) else None
+            scenario_hash = run_hash
         if str(match.get("scenario")) != name:
             continue
+        if scenario_hash is not None and run_hash != scenario_hash:
+            continue  # a different content fingerprint isn't the same flaky scenario
         (pass_dirs if match.get("ok") else fail_dirs).append(run_dir)
     return name, pass_dirs, fail_dirs, scenario_hash
 
@@ -222,7 +227,9 @@ def _flaky_triage(
     _require_ai_credential(eff)
     # The representative screenshots, when attached, are sent to the AI as-is (BE-0151).
     _warn_onscreen_secrets(eff)
-    agent = ClaudeCrossRunTriageAgent(ai=eff.ai, redactor=_ai_redactor(eff))
+    agent: _triage.CrossRunTriageAgent = ClaudeCrossRunTriageAgent(
+        ai=eff.ai, redactor=_ai_redactor(eff)
+    )
     _install_usage_ledger(eff, "triage")
     before = _usage.snapshot()
     result = agent.triage_flaky(context)

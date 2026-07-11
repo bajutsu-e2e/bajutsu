@@ -143,6 +143,17 @@ class TriageAgent(Protocol):
     def triage(self, context: TriageContext) -> Triage: ...
 
 
+class CrossRunTriageAgent(Protocol):
+    """The cross-run interface: diagnose why one scenario intermittently flips at a fixed fingerprint.
+
+    The single-run `TriageAgent` reasons about one failure; this reasons about the delta between
+    passing and failing runs of the same definition. AI-only — there is no deterministic
+    implementation, since spotting the discriminating difference is exactly the judgement an LLM adds.
+    """
+
+    def triage_flaky(self, context: CrossRunTriageContext) -> Triage: ...
+
+
 # --- applying a fix (pure) ---
 
 

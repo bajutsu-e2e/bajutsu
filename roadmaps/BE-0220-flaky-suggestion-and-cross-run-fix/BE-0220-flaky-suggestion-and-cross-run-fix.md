@@ -103,8 +103,9 @@ unit of work here (add the columns, backfill from stored `manifest.json` where p
   message / failed step / element tree / screenshot from representative *failing* runs **and** the
   corresponding evidence from representative *passing* runs, plus the scenario definition and the
   selector ids involved. The context is the delta material.
-- **Pattern diagnosis + fix proposal behind the existing protocol.** Reuse the `TriageAgent`
-  protocol. A `ClaudeTriageAgent`-style implementation reads the cross-run context and is forced,
+- **Pattern diagnosis + fix proposal behind a parallel protocol.** Mirror the `TriageAgent`
+  pattern with a `CrossRunTriageAgent` protocol (its `triage_flaky` takes the cross-run context). A
+  `ClaudeTriageAgent`-style implementation reads the cross-run context and is forced,
   via a structured tool call, to return (a) a root-cause category for the *intermittency*
   (`selector-ambiguity` / `timing` / `network-variance` / `state-leak` / `unknown`) and (b) a
   proposed fix. The fix ranges from a targeted structured edit (promote a `label` selector to
@@ -166,7 +167,7 @@ first-class.
 - [x] Half 1 — cross-run flakiness score over the DB run history, reusing the `audit --history` classification.
 - [x] Half 1 — ranked flaky-scenario panel in the serve Web UI (+ `--json` / CLI form) linking to representative passing / failing run evidence.
 - [x] Half 2 — cross-run `TriageContext` assembling evidence from both passing and failing runs of one flaky scenario.
-- [x] Half 2 — pattern diagnosis + fix proposal (targeted structured edit — full YAML rewrite deferred to a follow-up) behind the `TriageAgent` protocol, as a reviewable proposal diff.
+- [x] Half 2 — pattern diagnosis + fix proposal (targeted structured edit — full YAML rewrite deferred to a follow-up) behind a `CrossRunTriageAgent` protocol, as a reviewable proposal diff.
 - [x] Half 2 — laxer guard (BE-0023) flagging any proposal that weakens assertions.
 
 ### Log
