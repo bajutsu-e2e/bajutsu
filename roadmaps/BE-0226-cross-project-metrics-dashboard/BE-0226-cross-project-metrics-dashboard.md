@@ -122,7 +122,7 @@ is the entry point and BE-0102 is the drill-down.
 > (oldest first), linking the PRs.
 
 - [x] 1 — Cross-project aggregation: factor BE-0102's per-config computation to take a run set, run it per project, roll its per-scenario flakiness classification up into a per-project flaky-rate scalar, assemble the comparison model.
-- [ ] 2 — API: `GET /api/metrics/projects`, org-scoped, alongside BE-0102's single-config endpoint.
+- [x] 2 — API: `GET /api/metrics/projects`, org-scoped, alongside BE-0102's single-config endpoint.
 - [ ] 3 — UI: the sortable comparison table + per-project trend sparklines, deep-linking into BE-0102's single-config dashboard.
 
 **Log**

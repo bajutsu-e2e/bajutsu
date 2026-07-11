@@ -194,6 +194,10 @@ def make_app(state: ServeState) -> FastAPI:
     async def project_runs(name: str, request: Request) -> JSONResponse:
         return _result(ops.project_runs(state, name, actor=_actor(request)))
 
+    @app.get("/api/metrics/projects")
+    async def project_metrics(request: Request) -> JSONResponse:
+        return _result(ops.project_metrics_view(state, actor=_actor(request)))
+
     @app.get("/stats", response_class=HTMLResponse)
     async def stats(request: Request) -> HTMLResponse:
         html, code = ops.stats_html(state, actor=_actor(request))
