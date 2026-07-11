@@ -14,9 +14,11 @@ is forwarded through the parent process.
 from __future__ import annotations
 
 import contextlib
+import re
 import shlex
 import subprocess
 from collections.abc import Callable, Mapping
+from dataclasses import dataclass
 
 from bajutsu import simctl
 from bajutsu.device_id import is_valid_device_id
@@ -135,17 +137,142 @@ def tap_cmd(serial: str, x: float, y: float) -> list[str]:
 
 
 def double_tap_cmd(serial: str, x: float, y: float) -> list[str]:
-    """Both taps of a double-tap in a single `adb shell` round-trip (BE-0210).
+    """Both taps of a double-tap in a single `adb shell` round-trip (BE-0210) — the non-root fallback.
 
     Two separate `adb shell input tap` invocations put a whole adb transport round-trip between the
     taps, widening the inter-tap gap past the platform's double-tap window. Chaining both `input tap`
     calls in one round-trip (`input tap x y ; input tap x y`, run by the device shell) removes that
     transport latency; the residual gap is the on-device `input` startup, which stock `input` cannot
-    avoid — if that alone still overruns the window on a slow device, the next step is a raw
-    `sendevent` touch sequence, validated on the emulator e2e lane.
+    avoid. A rooted device closes that gap instead with `sendevent_double_tap_cmd` (BE-0208); this
+    remains the fallback when root or the touchscreen node is unavailable.
     """
     xs, ys = _num(x), _num(y)
     return _adb(serial, "shell", "input", "tap", xs, ys, ";", "input", "tap", xs, ys)
+
+
+# --- raw touch injection for a reliable double-tap (BE-0208) ---
+#
+# `input tap x y ; input tap x y` starts a fresh JVM per tap, so the inter-tap gap overruns the
+# platform's double-tap window even chained in one round-trip (BE-0210). `sendevent` is a tiny native
+# binary, so two contacts fire well inside the window — but it writes `/dev/input` directly, so it
+# needs root and the concrete touchscreen node (discovered from `getevent -lp`). The driver gates on
+# `id -u` and falls back to `input tap` when either is unavailable, so a non-rooted device is
+# unaffected. Linux input protocol B, one finger: type/code constants below name the raw events.
+_EV_SYN, _EV_KEY, _EV_ABS = 0, 1, 3
+_SYN_REPORT = 0
+_BTN_TOUCH = 330
+_ABS_MT_SLOT, _ABS_MT_POSITION_X, _ABS_MT_POSITION_Y = 47, 53, 54
+_ABS_MT_TRACKING_ID, _ABS_MT_PRESSURE = 57, 58
+_TOUCH_PRESSURE = 50  # a nominal non-zero pressure so the contact reads as a real finger
+# sendevent parses values as unsigned, so the -1 that lifts a protocol-B contact wraps to 2**32-1.
+_MT_TRACKING_ID_LIFT = (1 << 32) - 1
+_TAP_TRACKING_IDS = (100, 101)  # a distinct contact id per tap of the double-tap
+
+_ADD_DEVICE = re.compile(r"add device \d+:\s*(\S+)")
+_AXIS_MAX = re.compile(r"\bmax (\d+)")
+_EVENT_INDEX = re.compile(r"(\d+)$")
+
+
+@dataclass(frozen=True)
+class TouchDevice:
+    """A touchscreen `/dev/input` node and its raw coordinate range, from `getevent -lp`."""
+
+    path: str
+    max_x: int
+    max_y: int
+
+
+def getevent_probe_cmd(serial: str) -> list[str]:
+    """List input devices and their axes (`getevent -lp`) to find the touchscreen; needs no root."""
+    return _adb(serial, "shell", "getevent", "-lp")
+
+
+def id_u_cmd(serial: str) -> list[str]:
+    """The shell user id (`id -u`); `"0"` means adbd runs as root, required to write `/dev/input`."""
+    return _adb(serial, "shell", "id", "-u")
+
+
+def parse_touch_device(text: str) -> TouchDevice | None:
+    """The touchscreen node from `getevent -lp`: the one exposing both ABS_MT_POSITION axes.
+
+    The Android emulator lists several identical `virtio_input_multi_touch_*` nodes but wires only
+    the lowest-numbered `/dev/input/eventN` to the display, so the lowest N among the candidates is
+    chosen; a real device has one touchscreen, picked trivially. Returns None when no node carries
+    both position axes — there is nothing to drive, and the caller falls back to `input tap`.
+    """
+    axes: dict[str, dict[str, int]] = {}
+    path: str | None = None
+    for line in text.splitlines():
+        if m := _ADD_DEVICE.search(line):
+            path = m.group(1)
+        elif path is not None and (mm := _AXIS_MAX.search(line)):
+            if "ABS_MT_POSITION_X" in line:
+                axes.setdefault(path, {})["x"] = int(mm.group(1))
+            elif "ABS_MT_POSITION_Y" in line:
+                axes.setdefault(path, {})["y"] = int(mm.group(1))
+    candidates = [
+        TouchDevice(path=p, max_x=a["x"], max_y=a["y"])
+        for p, a in axes.items()
+        if "x" in a and "y" in a
+    ]
+    return min(candidates, key=lambda d: _event_index(d.path), default=None)
+
+
+def _event_index(path: str) -> int:
+    m = _EVENT_INDEX.search(path)
+    return int(m.group(1)) if m else 0
+
+
+def scale_to_touch(
+    point: tuple[float, float], screen: tuple[float, float], dev: TouchDevice
+) -> tuple[int, int]:
+    """Screen-pixel (x, y) into the device's raw coordinate range, proportional on each axis.
+
+    Points on a dense screen and the device's raw range differ per axis, so each is scaled
+    independently against its own maximum (a degenerate zero screen extent scales to 0). The result
+    is clamped to `[0, max]` so a point resolved just outside the screen extent never sends an
+    out-of-range raw coordinate.
+    """
+    x, y = point
+    w, h = screen
+    raw_x = round(x / w * dev.max_x) if w else 0
+    raw_y = round(y / h * dev.max_y) if h else 0
+    return _clamp(raw_x, dev.max_x), _clamp(raw_y, dev.max_y)
+
+
+def _clamp(value: int, maximum: int) -> int:
+    return max(0, min(value, maximum))
+
+
+def _tap_events(dev: str, x: int, y: int, tracking_id: int) -> list[str]:
+    """One protocol-B slot-0 down/up contact at (x, y) as `sendevent` command lines."""
+    dev = shlex.quote(dev)
+    return [
+        f"sendevent {dev} {_EV_ABS} {_ABS_MT_SLOT} 0",
+        f"sendevent {dev} {_EV_ABS} {_ABS_MT_TRACKING_ID} {tracking_id}",
+        f"sendevent {dev} {_EV_ABS} {_ABS_MT_POSITION_X} {x}",
+        f"sendevent {dev} {_EV_ABS} {_ABS_MT_POSITION_Y} {y}",
+        f"sendevent {dev} {_EV_KEY} {_BTN_TOUCH} 1",
+        f"sendevent {dev} {_EV_ABS} {_ABS_MT_PRESSURE} {_TOUCH_PRESSURE}",
+        f"sendevent {dev} {_EV_SYN} {_SYN_REPORT} 0",
+        f"sendevent {dev} {_EV_ABS} {_ABS_MT_TRACKING_ID} {_MT_TRACKING_ID_LIFT}",
+        f"sendevent {dev} {_EV_KEY} {_BTN_TOUCH} 0",
+        f"sendevent {dev} {_EV_SYN} {_SYN_REPORT} 0",
+    ]
+
+
+def sendevent_double_tap_cmd(serial: str, device_path: str, raw_x: int, raw_y: int) -> list[str]:
+    """A double-tap as two raw `sendevent` contacts in one `adb shell` round-trip (BE-0208).
+
+    Both contacts fire in a single device shell, so only `sendevent`'s tiny native startup — not a
+    per-tap JVM — sits between the taps, keeping the gap inside the platform's double-tap window.
+    """
+    script = " ; ".join(
+        line
+        for tracking_id in _TAP_TRACKING_IDS
+        for line in _tap_events(device_path, raw_x, raw_y, tracking_id)
+    )
+    return _adb(serial, "shell", script)
 
 
 def keyevent_cmd(serial: str, keycode: int) -> list[str]:
