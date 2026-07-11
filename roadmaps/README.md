@@ -8,7 +8,7 @@
 > single source of truth for who, if anyone, is working on it — no field in this repo tracks that.
 > Browse [issues labeled `roadmap-tracking`](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+is%3Aopen+label%3Aroadmap-tracking):
 > `no:assignee` for the unclaimed backlog, `assignee:<user>` for one person's plate. See
-> [BE-0109](implemented/BE-0109-roadmap-tracking-issues/BE-0109-roadmap-tracking-issues.md) for
+> [BE-0109](BE-)0109-roadmap-tracking-issues/BE-0109-roadmap-tracking-issues.md) for
 > details.
 
 > This document tracks features planned for future implementation. Each item has its own file
@@ -28,21 +28,20 @@
 
 ## Adding a roadmap item — BE IDs (agents MUST follow)
 
-Every roadmap item is a directory `BE-NNNN-<slug>/` holding the English file `BE-NNNN-<slug>.md`
-and its Japanese version `BE-NNNN-<slug>-ja.md` (same ID and slug). **BE** stands for *Bajutsu
-Evolution* and `NNNN` is a **zero-padded, 4-digit, monotonically increasing** ID. Each item
-directory lives under one of **four** folders, one per `Status` value (BE-0078) —
-`roadmaps/implemented/` (`Implemented`), `roadmaps/in-progress/` (`In progress`),
-`roadmaps/proposals/` (`Proposal`), `roadmaps/deferred/` (`Proposal (deferred)`). `Status` is the
-single source of truth: it decides both the folder an item lives in and the index bucket it lists
-under, so the two can never disagree.
+Every roadmap item is a directory `roadmaps/BE-NNNN-<slug>/` holding the English file
+`BE-NNNN-<slug>.md` and its Japanese version `BE-NNNN-<slug>-ja.md` (same ID and slug). **BE**
+stands for *Bajutsu Evolution* and `NNNN` is a **zero-padded, 4-digit, monotonically increasing**
+ID. Every item lives directly under `roadmaps/` in a **flat layout**: its path is fixed the moment
+its ID is allocated and **never moves** (BE-0159 retired the per-`Status` folders BE-0078
+introduced). `Status` is the single source of truth for the **index bucket** an item lists under —
+it no longer decides the item's location.
 
 When you add a roadmap item:
 
-1. **Allocate the next ID** = the highest existing `BE-NNNN` + 1, counting items in **all four**
-   folders. Find it with:
+1. **Allocate the next ID** = the highest existing `BE-NNNN` + 1, over every item under
+   `roadmaps/`. Find it with:
    ```bash
-   ls -d roadmaps/{implemented,in-progress,proposals,deferred}/BE-*/ | sort | tail -1
+   ls -d roadmaps/BE-*/ | sort | tail -1
    ```
    Never reuse, skip, or guess a number. **The norm, though, is to leave it undetermined:** name the
    item `BE-XXXX-<slug>` (the literal placeholder) and let CI assign the number. The item keeps
@@ -53,11 +52,11 @@ When you add a roadmap item:
    contiguous (a rejected PR never spends a number) and avoids two in-flight branches racing for one.
    A BE-creation PR therefore carries **no `[BE-NNNN]` title prefix** — the real number is not known
    until after the merge.
-2. **Create the item directory and both language files** — under `roadmaps/proposals/` for a
-   proposal, or under `roadmaps/implemented/` with `Status: Implemented` when the same PR also ships
-   the implementation (a new item is a proposal first *unless* its code lands with it) —
-   `roadmaps/proposals/BE-NNNN-<slug>/BE-NNNN-<slug>.md` (English) and
-   `roadmaps/proposals/BE-NNNN-<slug>/BE-NNNN-<slug>-ja.md` (Japanese, same ID & slug). **Don't hand-edit the
+2. **Create the item directory and both language files** — `Status: Proposal` for a proposal, or
+   `Status: Implemented` when the same PR also ships the implementation (a new item is a proposal
+   first *unless* its code lands with it) — at
+   `roadmaps/BE-NNNN-<slug>/BE-NNNN-<slug>.md` (English) and
+   `roadmaps/BE-NNNN-<slug>/BE-NNNN-<slug>-ja.md` (Japanese, same ID & slug). **Don't hand-edit the
    index tables below** — they are generated from each item's own metadata. Run `make roadmap-index`
    (or `python scripts/build_roadmap_index.py`) to regenerate the tables between the `<!-- GENERATED:* -->`
    markers in **both** index pages. The item's `Status` (its bucket) + `Topic` decide its section, so an
@@ -77,11 +76,10 @@ what you can; mark unknowns `TBD`). The metadata is a fenced `| Field | Value |`
 `提案`, `提案者`, `状態`, `トピック`. **Name the author by GitHub handle** —
 `| Author | [@handle](https://github.com/handle) |`, the account of whoever first authored the item
 (for an AI-assisted draft, the person who drove and committed it). `tests/test_roadmap_format.py`
-checks this shape. The **Status** decides the folder and the index bucket: `Implemented` /
-`In progress` / `Proposal` / `Proposal (deferred)`. When an item's status changes — it starts being
-built, or it ships — set its `Status` and **move its directory** to the matching folder (keeping the
-same ID and slug), then regenerate the index. `make roadmap-promote` reconciles any misfiled item
-for you.
+checks this shape. The **Status** decides only the index bucket: `Implemented` / `In progress` /
+`Proposal` / `Proposal (deferred)`. When an item's status changes — it starts being built, or it
+ships — set its `Status` and regenerate the index (`make roadmap-index`); the item **stays in its
+original directory** (BE-0159), and the table moves it to the matching bucket automatically.
 
 Write the Japanese file (`*-ja.md`) in **敬体 (the polite *desu/masu* style, ですます調)**,
 consistent with `docs/ja/` — never the plain *da/dearu* style (常体). This is part of the
@@ -324,7 +322,7 @@ Purpose-built test subjects that exercise the commands end-to-end. The showcase 
 
 ### Dogfood fixtures (web UI)
 
-Bajutsu's own `serve` Web UI is a web app, so the Web (Playwright) backend drives it — a deterministic, Tier-2 regression net for the UI, the web-side counterpart to the iOS [BE-0045](implemented/BE-0045-dogfood-showcase-apps/BE-0045-dogfood-showcase-apps.md) showcase fixtures.
+Bajutsu's own `serve` Web UI is a web app, so the Web (Playwright) backend drives it — a deterministic, Tier-2 regression net for the UI, the web-side counterpart to the iOS [BE-0045](BE-)0045-dogfood-showcase-apps/BE-0045-dogfood-showcase-apps.md) showcase fixtures.
 
 <!-- GENERATED:implemented-dogfood-web-ui -->
 | ID | Item | Status | Origin |
@@ -616,7 +614,7 @@ The deterministic core runs end-to-end on the FakeDriver, and the idb backend's 
 
 ### Platform expansion (Android / Web / Flutter)
 
-A platform is just a backend behind the one driver interface ([DESIGN §1](../DESIGN.md)), so going multi-platform means adding backends, not changing the deterministic core. This section covers that expansion by leveraging the driver / backend abstractions. The big-picture overview is in [multi-platform.md](../docs/multi-platform.md); the concrete per-platform design lives in the items below: [BE-0009](proposals/BE-0009-cross-platform-abstractions/BE-0009-cross-platform-abstractions.md) holds the shared abstractions, then Web (recommended first), Android, and Flutter.
+A platform is just a backend behind the one driver interface ([DESIGN §1](../DESIGN.md)), so going multi-platform means adding backends, not changing the deterministic core. This section covers that expansion by leveraging the driver / backend abstractions. The big-picture overview is in [multi-platform.md](../docs/multi-platform.md); the concrete per-platform design lives in the items below: [BE-0009](BE-)0009-cross-platform-abstractions/BE-0009-cross-platform-abstractions.md) holds the shared abstractions, then Web (recommended first), Android, and Flutter.
 
 <!-- GENERATED:proposals-platform -->
 | ID | Item | Status |
@@ -681,7 +679,7 @@ Measuring what the AI paths (`record` / `crawl` / `triage --ai` / `run --apply`)
 
 ### Hosting the web UI (cloud / self-hosted)
 
-Turn the local `bajutsu serve` launcher into a shared service. The runner drives an iOS Simulator and so needs a Mac, which forces a control-plane (Linux) ⇄ macOS-worker split. [BE-0015](in-progress/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md) selects a managed, multi-tenant public stack; [BE-0016](in-progress/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md) covers running it on your own Mac(s).
+Turn the local `bajutsu serve` launcher into a shared service. The runner drives an iOS Simulator and so needs a Mac, which forces a control-plane (Linux) ⇄ macOS-worker split. [BE-0015](BE-)0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md) selects a managed, multi-tenant public stack; [BE-0016](BE-)0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md) covers running it on your own Mac(s).
 
 <!-- GENERATED:proposals-hosting -->
 | ID | Item | Status |
