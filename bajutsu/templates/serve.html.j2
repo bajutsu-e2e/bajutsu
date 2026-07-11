@@ -23,6 +23,7 @@
       <button class="toptab" data-view="flaky" data-testid="nav.flaky">Flaky</button>
       <button class="toptab" data-view="usage" data-testid="nav.usage">Usage</button>
       <button class="toptab" data-view="coverage" data-testid="nav.coverage">Coverage</button>
+      <button class="toptab" data-view="metrics" data-testid="nav.metrics" hidden>Metrics</button>
       <button class="cfgbtn" id="opencfg" data-testid="nav.open-config">Open config</button>
       <span class="cfgname" id="cfgname" data-testid="nav.config-name"></span>
       <button class="cfgbtn" id="viewcfg" data-testid="nav.view-config" hidden>View</button>
@@ -502,6 +503,18 @@
       <button class="run" id="cov-go" data-testid="coverage.compute" data-idle="Compute">Compute</button>
     </div>
     <div class="statshost" id="cov-host" data-testid="coverage.host"><div class="empty" data-testid="coverage.empty">Pick a target and compute the coverage map.</div></div>
+  </div>
+</main>
+
+<!-- ===== Metrics (BE-0226): cross-project comparison — ranks the hub's projects side by side ===== -->
+<main id="view-metrics" data-testid="view.metrics" hidden>
+  <div class="card statscard">
+    <div class="yamlhead">
+      <span class="ttl">Project comparison</span>
+      <span class="muted" style="font-size:.8em">Read-only ranking of the hub's projects — pick a row to open its single-config dashboard. Advisory, never a gate.</span>
+      <button class="refresh" id="metrics-refresh" data-testid="metrics.refresh" title="refresh">&#8635;</button>
+    </div>
+    <div class="statshost" id="metrics-host" data-testid="metrics.host"><div class="empty" data-testid="metrics.empty">Loading project comparison…</div></div>
   </div>
 </main>
 

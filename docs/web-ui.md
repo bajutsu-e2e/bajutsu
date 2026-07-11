@@ -55,7 +55,9 @@ default, or the `--port` you passed). The full option list — `--port`, `--conf
 ## The layout
 
 The header holds eight top-level tabs: **Record**, **Replay**, **Crawl**, **Author**, **Stats**,
-**Flaky**, **Usage**, and **Coverage**.
+**Flaky**, **Usage**, and **Coverage**. A ninth, **Metrics**, appears only once a
+[project hub](#switching-between-projects) exists (more than one project registered), since it
+compares projects against each other — see [Comparing projects](#comparing-projects).
 To their right are **Open config** (with the active config's name shown beside it once one is bound,
 and a **View** button to inspect it — see below), **Settings**, and a theme picker that
 follows your system by default. Each tab is a full screen of its own; switching tabs never discards
@@ -166,6 +168,20 @@ Stats dashboard) then operates against it. Each row in the Projects list shows t
 config source, and its latest run verdict. A project whose source is an uploaded bundle cannot be
 switched to (there is no checkout to re-materialize); re-upload its config to bind it. Switching
 rebinds the config, so in a hosted deployment it is an admin action like binding a config.
+
+### Comparing projects
+
+Once a hub holds more than one project, the **Metrics** tab opens a read-only comparison across all
+of them at once — the question a single project's [Stats](#stats--the-run-history-dashboard)
+dashboard cannot answer. Each project is one row: its run count, latest pass-rate, flaky-rate (the
+share of its scenarios classified flaky over the window), and median (p50) and 95th-percentile (p95)
+per-run duration, plus a pass-rate trend sparkline. Click a column header to rank by pass-rate,
+flaky-rate, or duration — the first click surfaces the worst offender (lowest pass-rate, highest
+flaky-rate or duration), a second click flips the order. A project with no runs yet charts as a blank
+row rather than a misleading zero. Clicking a row switches to that project and opens its single-config
+Stats dashboard, so the comparison is the entry point and the per-project view is the drill-down. Like
+the other dashboards it is advisory only: it re-presents verdicts `run` already decided and never
+gates anything.
 
 ## Settings
 

@@ -628,7 +628,13 @@ def _env() -> Environment:
 # inlined <script>, sharing a single global scope with no build step — the same pattern the two CSS
 # assets already use (themes_css + css into one <style>). Order is load-bearing: core defines the
 # shared helpers the later sections call, and author.js ends with the boot sequence.
-_JS_ASSETS = ("serve.core.js", "serve.panels.js", "serve.crawl.js", "serve.author.js")
+_JS_ASSETS = (
+    "serve.core.js",
+    "serve.panels.js",
+    "serve.crawl.js",
+    "serve.metrics.js",
+    "serve.author.js",
+)
 
 
 @functools.lru_cache(maxsize=8)

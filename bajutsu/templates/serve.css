@@ -399,6 +399,22 @@ header .cfgname{color:var(--mut);font-size:.82em;max-width:32vw;overflow:hidden;
 .prjv{font-size:.8em;font-weight:600;padding:.1rem .4rem;border-radius:6px}
 .prjv.ok{color:var(--ok)}.prjv.ng{color:var(--ng)}.prjv.none{color:var(--mut);font-weight:400}
 .prjactive{color:var(--ok);font-size:.8em;font-weight:600}
+/* Cross-project comparison (BE-0226 unit 3): the sortable ranking table + per-project sparkline. */
+.mtable{width:100%;border-collapse:collapse;font-size:.9em}
+.mtable th,.mtable td{padding:.45rem .6rem;text-align:right;border-bottom:1px solid var(--line);white-space:nowrap}
+.mtable th:first-child,.mtable td:first-child{text-align:left}
+.mtable th.msort{cursor:pointer;user-select:none;color:var(--mut);font-weight:600}
+.mtable th.msort:hover{color:var(--fg)}
+.mtable th.msort.active{color:var(--acc)}
+.mtable th.msort .arrow{font-size:.8em;margin-left:.2em}
+.mrow{cursor:pointer}
+.mrow:hover{background:var(--bg2)}
+.mname{font-weight:600;color:var(--acc)}
+.mrow .none{color:var(--mut);font-weight:400}
+.mspark{width:80px;height:22px;vertical-align:middle}
+.mspark polyline{fill:none;stroke:var(--ok);stroke-width:2}
+.mspark .axis{stroke:var(--line);stroke-width:1}
+.mempty{color:var(--mut);font-style:italic}
 .fshint{color:var(--mut);font-size:.78em;margin-top:.5rem}
 /* From-Git config source (BE-0063), above the local file browser */
 .gitsrc{margin-bottom:.6rem}

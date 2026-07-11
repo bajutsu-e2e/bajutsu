@@ -7,9 +7,9 @@
 |---|---|
 | Proposal | [BE-0226](BE-0226-cross-project-metrics-dashboard.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **In progress** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0226") |
-| Implementing PR | [#936](https://github.com/bajutsu-e2e/bajutsu/pull/936), [#940](https://github.com/bajutsu-e2e/bajutsu/pull/940) |
+| Implementing PR | [#936](https://github.com/bajutsu-e2e/bajutsu/pull/936), [#940](https://github.com/bajutsu-e2e/bajutsu/pull/940), [#942](https://github.com/bajutsu-e2e/bajutsu/pull/942) |
 | Topic | Authoring experience (record / GUI editor) |
 | Related | [BE-0102](../BE-0102-run-stats-dashboard/BE-0102-run-stats-dashboard.md), [BE-0015](../BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md), [BE-0220](../BE-0220-flaky-suggestion-and-cross-run-fix/BE-0220-flaky-suggestion-and-cross-run-fix.md) |
 <!-- /BE-METADATA -->
@@ -123,7 +123,7 @@ is the entry point and BE-0102 is the drill-down.
 
 - [x] 1 — Cross-project aggregation: factor BE-0102's per-config computation to take a run set, run it per project, roll its per-scenario flakiness classification up into a per-project flaky-rate scalar, assemble the comparison model.
 - [x] 2 — API: `GET /api/metrics/projects`, org-scoped, alongside BE-0102's single-config endpoint.
-- [ ] 3 — UI: the sortable comparison table + per-project trend sparklines, deep-linking into BE-0102's single-config dashboard.
+- [x] 3 — UI: the sortable comparison table + per-project trend sparklines, deep-linking into BE-0102's single-config dashboard.
 
 **Log**
 
@@ -137,6 +137,13 @@ is the entry point and BE-0102 is the drill-down.
   FastAPI), org-scoped and returning an empty list when no hub is wired. A read `GET`, so no RBAC
   gate; window parity with BE-0102's fixed `_STATS_RUN_LIMIT`. Sits alongside the single-config
   `/stats`, not replacing it.
+- [#942](https://github.com/bajutsu-e2e/bajutsu/pull/942) — Unit 3. A **Metrics** tab in serve renders the comparison model client-side: a
+  sortable table (pass-rate, flaky-rate, p50/p95 duration) with a per-project pass-rate sparkline,
+  reusing the `/stats` SVG-polyline trend shape. Clicking a row rebinds the project through the hub
+  switcher (`switchProject(..., {goStats:true})`) and opens its BE-0102 single-config dashboard, so
+  the comparison is the entry point and the per-project view is the drill-down. The tab tracks the
+  switcher's `>1` visibility, so a single-config serve never shows it. This flips the item to
+  Implemented.
 
 ## References
 
