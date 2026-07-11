@@ -262,8 +262,17 @@ def _persist_run(state: ServeState, job: Job) -> None:
     # dashboard (BE-0226) can partition it. Resolved once here from the registry; None when no hub is
     # wired or no project is active, leaving the run unlabeled exactly as before.
     registry = state.project_registry
-    active = registry.resolve_active(org_id=org) if registry is not None else None
-    project_id = active.id if active is not None else None
+    project_id: str | None = None
+    if registry is not None:
+        try:
+            active = registry.resolve_active(org_id=org)
+            project_id = active.id if active is not None else None
+        except Exception:
+            # Resolving the active project reaches the registry backend (a database for
+            # `SqlProjectRegistry`), so it can fail like the persistence write below — and this runs in
+            # `run_job`'s `finally`, so an escape would strand the live-log stream (the docstring's
+            # contract). A failure leaves the run unlabeled, exactly as when no hub is wired.
+            logger.warning("failed to resolve the active project for run %s", run_id, exc_info=True)
     if state.repository is None:
         # Local / stdlib serve: no system of record, so the local registry keeps the project→run-ids
         # index (the stand-in for the runs.project_id column). Guarded like the DB path so a registry

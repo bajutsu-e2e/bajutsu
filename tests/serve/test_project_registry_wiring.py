@@ -97,6 +97,35 @@ def test_finished_run_is_tagged_to_the_active_project_locally(tmp_path: Path) ->
     assert reg.run_ids(org_id="default", project_id=p.id) == ["20260711-1"]
 
 
+def test_a_registry_error_never_strands_run_finalization(tmp_path: Path) -> None:
+    """`_persist_run`'s contract (its docstring): any error is caught and logged, never stranding the
+    live-log stream that `run_job` closes right after it. Resolving the active project is a registry
+    call — `SqlProjectRegistry` reaches the database — so a flaky backend must be caught there too, not
+    only around the persistence write. A registry whose `resolve_active` raises must let the run
+    finish (unlabeled), not propagate out of `run_job`."""
+    scn_dir, cfg, runs = project(tmp_path)
+    write_run(runs, "20260711-3", ok=True, scenarios=[("alpha", True)])
+
+    class _FlakyRegistry(LocalProjectRegistry):
+        def resolve_active(self, *, org_id: str) -> None:
+            raise RuntimeError("registry backend unavailable")
+
+    reg = _FlakyRegistry(tmp_path / "projects.json")
+    state = srv.ServeState(
+        scenarios_dir=scn_dir,
+        config=cfg,
+        runs_dir=runs,
+        cwd=tmp_path,
+        project_registry=reg,
+        popen=fake_popen(["PASS  runs/20260711-3/manifest.json\n"]),
+    )
+    job = state.register(srv.Job(cmd=["x"]))
+
+    srv.run_job(state, job)  # must not raise, despite resolve_active blowing up
+
+    assert job.run_id == "20260711-3"
+
+
 def test_finished_run_is_stamped_with_the_active_project_id_in_the_db(tmp_path: Path) -> None:
     scn_dir, cfg, runs = project(tmp_path)
     write_run(runs, "20260711-2", ok=True, scenarios=[("alpha", True)])
