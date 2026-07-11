@@ -49,7 +49,7 @@ which had to drop the clipboard half and ship `setLocation` alone.
 This matters beyond the one emulator image. The device-control family is a cross-backend surface
 (idb honors the full set via `simctl`; adb the emulator subset), and an assertion kind
 (`clipboard`) depends on the read-back working. Leaving `DC_CLIPBOARD` advertised-but-broken
-erodes trust in the capability model that keeps the tool app-agnostic (prime directive 3).
+erodes trust in the capability model that keeps the tool backend-agnostic (the "platform is a backend" premise in `CLAUDE.md` — distinct from prime directive 3, which covers per-app, not per-backend, agnosticism).
 
 ## Detailed design
 
