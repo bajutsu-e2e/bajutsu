@@ -9,7 +9,7 @@
 | 提案者 | [@hirosassa](https://github.com/hirosassa) |
 | 状態 | **実装中** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0208") |
-| 実装 PR | [#851](https://github.com/bajutsu-e2e/bajutsu/pull/851)、[#880](https://github.com/bajutsu-e2e/bajutsu/pull/880)、[#899](https://github.com/bajutsu-e2e/bajutsu/pull/899)、[#901](https://github.com/bajutsu-e2e/bajutsu/pull/901)、[#906](https://github.com/bajutsu-e2e/bajutsu/pull/906)、[#910](https://github.com/bajutsu-e2e/bajutsu/pull/910)、[#924](https://github.com/bajutsu-e2e/bajutsu/pull/924)、[#925](https://github.com/bajutsu-e2e/bajutsu/pull/925) |
+| 実装 PR | [#851](https://github.com/bajutsu-e2e/bajutsu/pull/851)、[#880](https://github.com/bajutsu-e2e/bajutsu/pull/880)、[#899](https://github.com/bajutsu-e2e/bajutsu/pull/899)、[#901](https://github.com/bajutsu-e2e/bajutsu/pull/901)、[#906](https://github.com/bajutsu-e2e/bajutsu/pull/906)、[#910](https://github.com/bajutsu-e2e/bajutsu/pull/910)、[#924](https://github.com/bajutsu-e2e/bajutsu/pull/924)、[#925](https://github.com/bajutsu-e2e/bajutsu/pull/925)、[#927](https://github.com/bajutsu-e2e/bajutsu/pull/927) |
 | トピック | Platform expansion (Android / Web / Flutter) |
 | 関連 | [BE-0007](../BE-0007-android-backend/BE-0007-android-backend-ja.md)、[BE-0223](../BE-0223-adb-tab-bar-navigation/BE-0223-adb-tab-bar-navigation-ja.md) |
 <!-- /BE-METADATA -->
@@ -211,6 +211,22 @@ directive の枠内にとどまります。
   前に「ベースラインなし」で短絡するため、この不足はベースラインのコミット後に初めて表面化しました。両方が
   そろってレーンの実行は緑になり、チェックリストの箱もチェック済みです。残るアクチュエーション忠実度の
   スライスのぶん、項目は**実装中**のままです。
+- 2026-07-11 — ユニット 6（ランタイム権限）。`permission_android` を `E2E_SCENARIOS` に加えました。
+  [BE-0210](../BE-0210-android-actuation-fidelity/BE-0210-android-actuation-fidelity-ja.md) が出荷した
+  事前付与を、レーンのシナリオがまだ検証していなかったため、ここで検証します。idb の `permission.yaml`
+  に対応する Android 版の決定的なフローです。プロセス外の通知プロンプトを画面認識によるアラートガード
+  （`dismissAlerts`。API キーを要する LLM の経路で、決定的なレーンでは使えません）でタップする代わりに、
+  `showcase-compose` が `POST_NOTIFICATIONS` を `grantPermissions` に列挙するようにしました
+  （`demos/showcase/showcase.config.yaml`）。これにより、lease が `pm clear` のあと起動の前に `pm grant`
+  で権限を付与します。事前に付与しておくと Android の `RequestPermission` コントラクトがダイアログを
+  出さずに付与済みとして短絡するので、アラートガードも固定の待ち時間もなしに `authorized` へ到達します
+  （プライムディレクティブ 1 と 2 は保たれます）。新しいシナリオ
+  `demos/showcase/scenarios/permission_android.yaml` は、ネイティブのタブバー（BE-0223）から Permissions
+  タブへ到達し、`permission.yaml` の notDetermined → authorized のアサーションをそのままなぞります。アプリの
+  モデルは OS の付与にかかわらず notDetermined から始まるので、違うのは付与の仕組みだけです。`docs/ci.md`
+  （および ja）に記載しました。ローカルの arm64 エミュレータで検証し（13 本になったレーン全体が通ります）、
+  Python のゲート（`make check`）は緑です。最後に残るシナリオ `gestures_multitouch`（ピンチ／回転）は
+  マルチタッチを要する（adb は単一タッチ）ため、ユニット 6 は開いたまま、項目は**実装中**のままです。
 
 ## 参考
 
