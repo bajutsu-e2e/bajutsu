@@ -116,14 +116,20 @@ comments); rebasing and the merge decision stay with the human.
 The loop also **halts and escalates to the human** in two additional cases:
 - `pr-followup` encounters a comment that requires a design or spec change (its existing, unchanged
   escalation rule — a design decision is the human's, not the loop's).
-- A **merge conflict** is detected (`mergeable: CONFLICTING`). The bajutsu-specific `pr-followup`
-  skill explicitly does not rebase or force-push; the loop escalates, the human rebases and resolves
-  the conflict, and the loop can be restarted.
+- A **merge conflict** is detected. This check is owned by the **loop layer in `implement-be`**,
+  not by `pr-followup` itself (Unit 5 leaves `pr-followup` unchanged, and today's `pr-followup`
+  does not query `mergeable`). At the start of each iteration the loop queries
+  `gh pr view --json mergeable`; if the result is `CONFLICTING`, it escalates immediately without
+  invoking `pr-followup`. The bajutsu-specific `pr-followup` skill explicitly does not rebase or
+  force-push; once the human rebases and resolves the conflict, the loop can be restarted.
 
 A bounded backstop prevents an unbounded loop if the PR never converges: the loop runs for a
 maximum of **20 polling iterations or 24 hours, whichever comes first**. On hitting the backstop,
 the skill stops and reports the current state (CI status, open comment count) rather than looping
-forever.
+forever. Session-local `/loop` (rather than a scheduled cloud agent) is the chosen mechanism
+because it is simpler — no cloud setup or separate scheduling context — and the human can interrupt
+or restart the loop at any time by stopping the session. The 24-hour ceiling is a safety backstop,
+not the expected run time; most PR review loops complete in a few hours.
 
 Prime-directive check: nothing here puts an LLM on the `run`/CI verdict. `pr-followup` fixes are
 still judged by `make check` and CI; the loop only *schedules* those deterministic checks and
