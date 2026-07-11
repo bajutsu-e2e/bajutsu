@@ -144,6 +144,13 @@ jobs:
           use_bedrock: ${{ steps.gate.outputs.provider == 'bedrock' }}
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           github_token: ${{ secrets.GITHUB_TOKEN }}
+          # The action rejects any non-human (Bot/App) actor unless it is allow-listed, so PRs opened
+          # by our own automation bot (bajutsu-automation-bot — roadmap-refresh, docs-refresh, etc.)
+          # would otherwise fail the review with "Workflow initiated by non-human actor". Allow-list
+          # exactly that trusted internal bot rather than using '*' (which the action warns can let
+          # external Apps invoke it with attacker-controlled prompts on public repos). The match is
+          # case-insensitive and strips a trailing `[bot]`, so this covers both actor spellings.
+          allowed_bots: "bajutsu-automation-bot"
           # Inline comments post through the action's native tool (the action buffers and posts them);
           # the summary and diff read go through the narrowly-scoped `gh pr …` commands. The built-in
           # `/code-review` skill posts via unrestricted `gh` (Bash), which the action sandboxes out —
