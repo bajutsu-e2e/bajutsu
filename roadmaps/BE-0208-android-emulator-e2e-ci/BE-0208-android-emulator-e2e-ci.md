@@ -74,7 +74,7 @@ within the prime directives.
 - [x] Build and install the Android showcase on the booted emulator.
 - [x] Run the passing core scenarios over `--backend android`.
 - [x] Visual/golden baseline parity check — **golden** element-tree dimension (Compose Stable catalog).
-- [ ] Visual/golden baseline parity check — **visual** screenshot dimension (deferred; host-sensitive baseline needs a CI capture).
+- [ ] Visual/golden baseline parity check — **visual** screenshot dimension. Scenario + `e2e-visual` target + CI step wired; pending the CI-captured x86_64 baseline commit (host-sensitive, must be recorded on the lane).
 - [ ] Grow the scenario set with the actuation-fidelity and device-control slices as they land.
 
 ### Log
@@ -184,6 +184,25 @@ within the prime directives.
   (3/3 runs pass, the double-tap counter reaches 1) and the Python gate (`make check`) is green.
   `gestures_multitouch` (pinch / rotate) still needs multi-touch (adb is single-touch), and the
   **visual** dimension of unit 4 still needs a CI-captured baseline. Item stays **In progress**.
+- 2026-07-11 — Unit 4 (visual dimension), scaffold: wired the pixel visual-regression check that is
+  the screenshot twin of the element-tree golden. A new scenario
+  `demos/showcase/scenarios/visual/visual_android.yaml` pins the Compose Stable catalog (the launch
+  tab, so no tab-bar navigation) with a `visual` assertion — the adb driver advertises the
+  `screenshot` capability, so it passes preflight and reuses the existing pixel-compare engine
+  (`bajutsu/visual.py`) unchanged; the top status bar is masked so the wall clock never churns the
+  diff. A new `e2e-visual` target (`demos/showcase/android/Makefile`) runs it with `--baselines`
+  pointing at a **committed** dir `demos/showcase/scenarios/visual/baselines_android/`, and
+  `android-e2e.yml` runs it after `e2e-golden` in the same emulator session. Unlike the element-tree
+  golden — field-level, so its arm64 baseline passes on x86_64 — a pixel baseline is host-specific:
+  the CI x86_64 software renderer (swiftshader) and a local arm64 emulator diverge per pixel, so the
+  baseline **cannot** be recorded locally. It must be captured on this lane: the first CI run reports
+  a missing baseline but uploads the captured screenshot in the `android-e2e-run` artifact; promoting
+  it (`bajutsu approve`) and committing `stable.png` turns the check green (procedure documented in
+  the baselines dir's README). Documented in `docs/ci.md` (+ ja). The local arm64 dry-run was skipped
+  (the fresh worktree has no built APK, and the scenario is a proven twin of `golden_android.yaml`
+  differing only in the already-tested `visual` assertion — the required CI capture round-trip
+  validates it end to end). The checklist box stays unchecked until the x86_64 baseline is committed
+  and the lane is green. Item stays **In progress**.
 
 ## References
 
