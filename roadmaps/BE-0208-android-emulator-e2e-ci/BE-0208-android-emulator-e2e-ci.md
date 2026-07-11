@@ -74,7 +74,7 @@ within the prime directives.
 - [x] Build and install the Android showcase on the booted emulator.
 - [x] Run the passing core scenarios over `--backend android`.
 - [x] Visual/golden baseline parity check — **golden** element-tree dimension (Compose Stable catalog).
-- [ ] Visual/golden baseline parity check — **visual** screenshot dimension. Scenario + `e2e-visual` target + CI step wired; pending the CI-captured x86_64 baseline commit (host-sensitive, must be recorded on the lane).
+- [x] Visual/golden baseline parity check — **visual** screenshot dimension. Scenario + `e2e-visual` target (with the `visual` extra) + CI step wired; the x86_64 `stable.png` baseline was captured on this lane and committed, and the lane run is green.
 - [ ] Grow the scenario set with the actuation-fidelity and device-control slices as they land.
 
 ### Log
@@ -201,8 +201,11 @@ within the prime directives.
   the baselines dir's README). Documented in `docs/ci.md` (+ ja). The local arm64 dry-run was skipped
   (the fresh worktree has no built APK, and the scenario is a proven twin of `golden_android.yaml`
   differing only in the already-tested `visual` assertion — the required CI capture round-trip
-  validates it end to end). The checklist box stays unchecked until the x86_64 baseline is committed
-  and the lane is green. Item stays **In progress**.
+  validates it end to end). The x86_64 baseline (`stable.png`) was then captured from the lane's
+  `android-e2e-run` artifact and committed, and the `e2e-visual` target was given the `visual` extra
+  (Pillow) — the adb backend pulls none, and the missing-baseline path short-circuits before Pillow,
+  so this surfaced only once the baseline was present; with both in place the lane run is green and
+  the checklist box is checked. Item stays **In progress** for the remaining actuation-fidelity slices.
 
 ## References
 
