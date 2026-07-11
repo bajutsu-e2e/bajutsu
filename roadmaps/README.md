@@ -284,6 +284,7 @@ Reduce friction for the many parallel sessions working this repo — treat merge
 | [BE-0217](BE-0217-harden-review-prompt/BE-0217-harden-review-prompt.md) | Harden the automated PR review prompt with research-backed policy | Implemented |
 | [BE-0219](BE-0219-roadmap-dashboard-search/BE-0219-roadmap-dashboard-search.md) | Text search on the roadmap status dashboard | Implemented |
 | [BE-0222](BE-0222-daily-doc-freshness-pr/BE-0222-daily-doc-freshness-pr.md) | Scheduled daily workflows that refresh the roadmap and docs separately, each opening its own review PR | Implemented |
+| [BE-0230](BE-0230-hands-free-implement-review-loop/BE-0230-hands-free-implement-review-loop.md) | Hands-free implement-review loop: auto-PR and pr-followup polling in implement-be | Implemented |
 <!-- /GENERATED:implemented-developer-experience -->
 
 ### Codebase quality & technical debt
@@ -748,9 +749,7 @@ Keeping the autonomous crawl fast and its code lean as it grows.
 ### Development infrastructure (contributor workflow)
 
 <!-- GENERATED:proposals-developer-experience -->
-| ID | Item | Status |
-|---|---|---|
-| [BE-0230](BE-0230-hands-free-implement-review-loop/BE-0230-hands-free-implement-review-loop.md) | Hands-free implement-review loop: auto-PR and pr-followup polling in implement-be | Proposal |
+
 <!-- /GENERATED:proposals-developer-experience -->
 
 ### Codebase quality & technical debt
