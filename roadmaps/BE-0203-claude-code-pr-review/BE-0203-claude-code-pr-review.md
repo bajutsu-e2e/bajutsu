@@ -248,6 +248,15 @@ Log:
   `gh pr diff`, instead of checking out the untrusted PR head. So the review contract
   (`.github/claude-review-prompt.md`) is always read from the default branch (same for every PR,
   and it resolves on comment events too), and a PR cannot rewrite the rules it is reviewed under.
+- Cut the re-review "rally" the per-push auto-trigger produced: because every push re-reviewed the
+  *whole* PR diff with no memory of prior comments, the reviewer re-posted the same findings on each
+  push. The review now scopes a re-push (`synchronize`) to the **incremental** diff (`gh api
+  …/compare/{before}...{after}`, falling back to the full `gh pr diff` after a force-push/rebase) and
+  **skips findings already on the PR** (it fetches the existing inline comments via `gh api
+  …/pulls/N/comments` first). Wired through the workflow `prompt` (which now passes the event action
+  and before/after head SHAs) plus a matching `Bash(gh api:*)` allowlist entry, and a new *Scope*
+  section in the review contract. Still advisory, still not a required check — behavior of the
+  reviewer only, no change to the gate.
 
 ## References
 

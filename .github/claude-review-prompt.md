@@ -26,6 +26,26 @@ merge blocker, and do not fail — findings are a *successful* review.
 
 Review against **this repository's own contract**, which a generic reviewer cannot know.
 
+## Scope: review the change you're told to, and never repeat a finding
+
+You run again on every push, so two habits keep the review constructive instead of a rally of the
+same notes. The workflow prompt tells you which scope and which diff command applies to this run;
+follow it exactly.
+
+- **Review only the scope you're given.** On a re-push (`synchronize`) the prompt points you at the
+  *incremental* diff — just the newly pushed commits, read via the `compare` endpoint — not the whole
+  PR. Review that. Do **not** re-read the full PR diff and re-flag code the push didn't touch: an
+  unchanged line you already commented on (or chose not to) is not a new finding. On the first review
+  (`opened` / `reopened`) or an on-demand `@claude review`, the full change set is the scope.
+- **Do not repeat findings already on the PR.** Before posting anything, fetch the inline review
+  comments already on the PR (the workflow prompt gives the exact `gh api …/comments` command). Skip
+  any finding **substantially equivalent** to one already there — same file, same concern — whether
+  you posted it on an earlier push or a human reviewer raised it. If a prior point was discussed and
+  deliberately not acted on, treat that as settled and do not re-raise it; a human can always ask
+  again with `@claude review`. Repetition is noise that trains contributors to ignore the review.
+- **When the increment warrants nothing new, say so briefly.** A push that only addresses earlier
+  comments deserves a one-line summary acknowledging that, not a re-run of the whole review.
+
 ## Review what the gate can't see
 
 Your value is in what the deterministic gate structurally cannot check — not in re-flagging what it
