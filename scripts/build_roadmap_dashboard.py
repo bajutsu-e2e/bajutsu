@@ -85,6 +85,7 @@ def _card(item: Any) -> str:
     issue_url = html.escape(bri.tracking_issue_url(en.id))
     return (
         f'<div class="be-card" data-status="{html.escape(item.bucket)}" '
+        f'data-topic="{html.escape(item.topic)}" '
         f'style="border-left-color:{color}">'
         f'<a class="be-card-main" href="{_item_href(item)}">'
         '<span class="be-card-top">'
@@ -112,7 +113,7 @@ def _progress_bar(counts: dict[str, int], total: int) -> str:
 
 
 def render_html(items: list[Any]) -> str:
-    """Render the dashboard body: a status filter, then one section per category with its progress.
+    """Render the dashboard body: search box, status filter, category sections, empty-state region.
 
     Sections are category-major (by Topic); each item card carries its own status (colour + badge),
     and each category shows a progress figure derived purely from the Status field — the share of its
@@ -136,7 +137,17 @@ def render_html(items: list[Any]) -> str:
         "</label>"
         for name, _key in bri.BUCKETS
     )
-    summary = f'<div class="be-summary" role="group" aria-label="Filter by status">{chips}</div>'
+    # A free-text search sits beside the status chips in the same filter row. It matches an item's id,
+    # title, topic, and status (all readable off each card) and composes with the chips (AND). Inert
+    # without JavaScript, like the chips, so the no-JS page is unchanged (progressive enhancement).
+    search = (
+        '<input type="search" class="be-search" '
+        'placeholder="Search id, title, topic, status…" aria-label="Search roadmap items">'
+    )
+    summary = (
+        f'<div class="be-summary" role="group" aria-label="Filter roadmap items">'
+        f"{search}{chips}</div>"
+    )
 
     # Split categories into those with work left and those fully implemented; the 100% ones move to a
     # separate "Completed" group so the main view is the work still in flight.
@@ -183,13 +194,23 @@ def render_html(items: list[Any]) -> str:
             f"{''.join(completed)}</div>"
         )
 
-    return f'<div class="be-dash">{summary}{groups}</div>'
+    # A live region the filter script fills when the current filters leave the grid empty. It stays in
+    # the DOM at all times (empty = collapsed via `:empty`, so no layout cost and no-JS shows nothing);
+    # the script only ever mutates its text, never its presence — the reliable pattern for an
+    # `aria-live` status region to announce. The message text is set via textContent, never as markup.
+    empty = '<div class="be-empty" role="status"></div>'
+    return f'<div class="be-dash">{summary}{groups}{empty}</div>'
 
 
 _STYLE = """
 <style>
 .be-dash{font-size:14px}
-.be-summary{display:flex;flex-wrap:wrap;gap:.6rem;margin:.5rem 0 1.5rem}
+.be-summary{display:flex;flex-wrap:wrap;align-items:center;gap:.6rem;margin:.5rem 0 1.5rem}
+.be-search{flex:1 1 220px;min-width:180px;font:inherit;font-size:13px;padding:.3rem .6rem;
+  border:1px solid rgba(128,128,128,.35);border-radius:8px;background:transparent;color:inherit}
+.be-search:focus{border-color:currentColor}
+.be-empty{color:#888;font-size:13px;margin:1rem 0}
+.be-empty:empty{margin:0}
 .be-stat{border:1px solid;border-radius:8px;padding:.25rem .7rem;font-size:13px}
 .be-stat b{font-weight:600}
 .be-filter{display:inline-flex;align-items:center;gap:.45rem;cursor:pointer;user-select:none;opacity:.5}
@@ -227,22 +248,41 @@ _STYLE = """
 </style>
 """
 
-# Progressive enhancement. Each status is an independent on/off toggle, all on by default; a card
-# shows only while its status is on, and a category (or group) left with no visible card is hidden.
-# On load — and whenever every status is back on — categories collapse to a compact overview (just the
-# heading and its progress bar); turning a status off expands the categories that still have a match.
-# The collapsed state is applied by JS, never baked into the markup, so with scripting off every
-# status is on, every category open, and the page fully readable. Each heading also toggles its own
-# category. Nothing fetches or computes — it only shows and hides already-rendered markup.
+# Progressive enhancement. Two composing filters: each status is an independent on/off toggle (all on
+# by default) and a free-text query over each card's id/title/topic/status. A card shows only while its
+# status is on AND it matches the query (empty query matches everything); a category (or group) left
+# with no visible card is hidden. With no query and every status on, categories collapse to a compact
+# overview (just the heading and its progress bar); turning a status off, or typing a query, expands the
+# categories that still have a match so results are visible without a click. Whenever the filters leave
+# nothing visible, a live-region line explains why rather than leaving the grid silently blank — the
+# query matched nothing, its matches are hidden by the status chips, or (no query) every chip is off or
+# the on chips have no items. The collapsed state is applied by JS, never baked into the markup, so with scripting
+# off every status is on, every category open, the empty-state region empty, and the page fully
+# readable. Each heading also toggles its own category. Nothing fetches or computes — it only shows and
+# hides already-rendered markup.
 _SCRIPT = """
 <script>
 (function(){
+  var search=document.querySelector('.be-search');
   var checks=document.querySelectorAll('.be-check');
   var cards=document.querySelectorAll('.be-card');
   var cats=document.querySelectorAll('.be-cat');
   var groups=document.querySelectorAll('.be-group');
+  var empty=document.querySelector('.be-empty');
   var on={};
   checks.forEach(function(c){ on[c.getAttribute('data-filter')]=c.checked; });
+  // The searchable text of each card, lower-cased once: id + title + topic + status.
+  var hay=[];
+  cards.forEach(function(c){
+    var id=c.querySelector('.be-id'), title=c.querySelector('.be-title');
+    hay.push([
+      id?id.textContent:'', title?title.textContent:'',
+      c.getAttribute('data-topic')||'', c.getAttribute('data-status')||''
+    ].join(' ').toLowerCase());
+  });
+  function terms(){
+    return (search?search.value:'').toLowerCase().split(/\\s+/).filter(Boolean);
+  }
   function setCollapsed(cat, collapsed){
     cat.classList.toggle('is-collapsed', collapsed);
     var head=cat.querySelector('.be-cat-head');
@@ -250,13 +290,18 @@ _SCRIPT = """
   }
   function apply(){
     var allOn=Object.keys(on).every(function(s){ return on[s]; });
-    cards.forEach(function(c){
-      c.classList.toggle('is-hidden', !on[c.getAttribute('data-status')]);
+    var q=terms(), hasQuery=q.length>0, matched=0, shown=0;
+    cards.forEach(function(c, i){
+      var match=q.every(function(t){ return hay[i].indexOf(t)>=0; });
+      if(match) matched++;
+      var visible=on[c.getAttribute('data-status')] && match;
+      if(visible) shown++;
+      c.classList.toggle('is-hidden', !visible);
     });
     cats.forEach(function(cat){
       var hasMatch=!!cat.querySelector('.be-card:not(.is-hidden)');
       cat.classList.toggle('is-hidden', !hasMatch);
-      setCollapsed(cat, allOn ? true : !hasMatch);
+      setCollapsed(cat, (allOn && !hasQuery) ? true : !hasMatch);
     });
     groups.forEach(function(g){
       g.classList.toggle('is-hidden', !g.querySelector('.be-cat:not(.is-hidden)'));
@@ -264,10 +309,32 @@ _SCRIPT = """
     checks.forEach(function(c){
       c.closest('.be-filter').classList.toggle('is-active', c.checked);
     });
+    if(empty){
+      // Whenever the current filters leave nothing visible, say why — so the grid is never silently
+      // blank, whether search or the chips (or both) emptied it. The query cases are match-count
+      // driven; the no-query case is chip-state driven (every chip off vs. the on chips just having no
+      // items), so the wording can't contradict a chip the reader still sees checked. '' ⇒ collapses.
+      var qText=search ? ('\\u201C'+search.value.trim()+'\\u201D') : '';
+      var allOff=Object.keys(on).every(function(s){ return !on[s]; });
+      var msg='';
+      if(hasQuery && matched===0){ msg='No items match '+qText; }
+      else if(hasQuery && shown===0){
+        msg=matched+(matched===1?' item matches ':' items match ')+qText
+          +', but the status filter above is hiding '+(matched===1?'it':'them');
+      }
+      else if(shown===0 && allOff){
+        msg='Every status is turned off — switch a status filter above back on to see items';
+      }
+      else if(shown===0){
+        msg='No items in the selected statuses — turn on another status filter above to see more';
+      }
+      empty.textContent=msg;
+    }
   }
   checks.forEach(function(c){
     c.addEventListener('change', function(){ on[c.getAttribute('data-filter')]=c.checked; apply(); });
   });
+  if(search) search.addEventListener('input', apply);
   cats.forEach(function(cat){
     var head=cat.querySelector('.be-cat-head');
     function toggle(){ setCollapsed(cat, !cat.classList.contains('is-collapsed')); }
@@ -296,7 +363,8 @@ _INTRO = (
     "its items already implemented, and each card its own status. Regenerated from item metadata on "
     "every docs build, so it always reflects the committed roadmap. Fully-implemented categories are "
     "grouped separately under Completed. Categories start collapsed to a progress overview — click a "
-    "heading to expand it, or toggle the status chips on and off to filter. Each card links to its "
+    "heading to expand it, toggle the status chips on and off, or type in the search box to narrow the "
+    "cards by id, title, topic, or status. Each card links to its "
     "full proposal on GitHub. The full index with both languages "
     "lives in [`roadmaps/README.md`](https://github.com/bajutsu-e2e/bajutsu/blob/main/roadmaps/README.md).\n\n"
 )
