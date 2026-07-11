@@ -101,6 +101,13 @@ iOS では `DeviceControl` Protocol を simctl が完全に裏付けており（
   `deviceControl.setLocation` と `deviceControl.clipboard` を公開します。fast ゲートのテストで、
   コマンドの形、クリップボードの往復、委譲／非対応の送出、adb の能力集合での preflight の通過／拒否を
   検証します。BE-0212（操作単位のトークン）に依存します。
+- 2026-07-12 — BE-0208 のデバイス制御 e2e レーン
+  （[#934](https://github.com/bajutsu-e2e/bajutsu/pull/934)）を出荷する過程で、クリップボードの
+  往復が google_apis API 34 エミュレータでは失敗することがわかりました。`cmd clipboard set/get-primary-clip`
+  は「No shell command implementation」を返すため、ここのコマンドビルダと fast ゲートの往復は実機ではなく
+  フェイクのランナーだけを動かしています。そのためこのレーンは `setLocation` だけを出荷します。この実機での
+  ギャップは adb バックエンドが公開する内容を変えるものではなく、adb-clipboard-fidelity 提案
+  （[#935](https://github.com/bajutsu-e2e/bajutsu/pull/935)）で別途追跡します。
 
 ## 参考
 

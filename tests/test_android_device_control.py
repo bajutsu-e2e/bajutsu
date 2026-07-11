@@ -1,11 +1,15 @@
 """Android device control (BE-0211): the emulator-backed subset of the `DeviceControl` family.
 
-The emulator honors `setLocation` (`emu geo fix`) and the clipboard operations (`cmd clipboard`);
-`push` / `clearKeychain` / the status-bar overrides / app lifecycle have no faithful equivalent and
-stay unsupported. Fast gate over an injected `adb` runner (no device): command shape, the clipboard
-read-back round-trip, that the supported subset delegates and the rest raise, and that the adb
-backend advertises exactly `setLocation` + `clipboard` so preflight (BE-0212) admits those and fails
-the rest fast.
+The emulator honors `setLocation` (`emu geo fix`); the adb backend also *advertises* the clipboard
+operations (`cmd clipboard`), but that command is unimplemented on the google_apis API 34 emulator
+(it answers "No shell command implementation"), so the clipboard round-trip does not actually run
+on-device — the device-control e2e lane (BE-0208, PR #934) ships `setLocation` only, and that
+on-device gap is tracked separately by the adb-clipboard-fidelity proposal (PR #935). `push` /
+`clearKeychain` / the status-bar overrides / app lifecycle have no faithful equivalent and stay
+unsupported. Fast gate over an injected `adb` runner (no device): command shape, the clipboard
+read-back round-trip against the fake runner, that the supported subset delegates and the rest
+raise, and that the adb backend advertises exactly `setLocation` + `clipboard` so preflight
+(BE-0212) admits those and fails the rest fast.
 """
 
 from __future__ import annotations
