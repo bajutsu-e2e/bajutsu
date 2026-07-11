@@ -98,8 +98,10 @@ jobs:
       # Build both a11y APKs outside the emulator session so the AVD is only alive during the run
       # itself; bajutsu's launch installs each from the config's appPath. The `make e2e` step below
       # depends on both builds too, but Gradle finds them up to date there, so they are not rebuilt.
-      # Views joins Compose here (BE-0221): the same scenario set drives both toolkits, whose ids
-      # differ only in `.`/`-` vs `_` — each scenario's selectors list both forms.
+      # Views joins Compose here (BE-0221): the Stable-tab scenario subset (see
+      # `E2E_VIEWS_SCENARIOS` in demos/showcase/android/Makefile) drives both toolkits, whose ids
+      # differ only in `.`/`-` vs `_` — each scenario's selectors list both forms. `components` /
+      # `modals` stay Compose-only for now.
       - name: Build the Compose + Views showcase APKs
         run: make -C demos/showcase/android compose-build views-build
 
