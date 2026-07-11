@@ -147,7 +147,7 @@ def render_html(items: list[Any]) -> str:
     filters = (
         f'<div class="be-filters" role="group" aria-label="Filter roadmap items">'
         f'<div class="be-search-row">{search}</div>'
-        f'<div class="be-summary">{chips}</div>'
+        f'<div class="be-chips">{chips}</div>'
         "</div>"
     )
 
@@ -209,7 +209,7 @@ _STYLE = """
 .be-dash{font-size:14px}
 .be-filters{margin:.5rem 0 1.5rem}
 .be-search-row{margin-bottom:.6rem}
-.be-summary{display:flex;flex-wrap:wrap;align-items:center;gap:.6rem}
+.be-chips{display:flex;flex-wrap:wrap;align-items:center;gap:.6rem}
 .be-search{width:100%;box-sizing:border-box;max-width:420px;font:inherit;font-size:13px;
   padding:.3rem .6rem;
   border:1px solid rgba(128,128,128,.35);border-radius:8px;background:transparent;color:inherit}
