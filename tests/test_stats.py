@@ -400,3 +400,97 @@ def test_non_numeric_duration_is_excluded_from_average() -> None:
     )
     assert stats.scenarios[0].avg_duration_s == 2.0
     assert stats.scenarios[0].max_duration_s == 2.0
+
+
+# --- BE-0226 Unit 1: per-project roll-up over the same aggregation ---
+
+
+def test_project_metrics_rolls_up_headline_numbers() -> None:
+    m = _stats.project_metrics(
+        "proj-1",
+        "checkout",
+        [
+            _manifest("20260101-000000", ok=True),
+            _manifest("20260102-000000", ok=False),
+            _manifest("20260103-000000", ok=True),
+            _manifest("20260104-000000", ok=True),
+        ],
+    )
+    assert m.project_id == "proj-1"
+    assert m.name == "checkout"
+    assert m.runs == 4
+    assert m.pass_rate == 0.75  # reuses Stats.pass_rate over the window
+
+
+def test_project_metrics_flaky_rate_is_share_of_flaky_scenarios() -> None:
+    # One scenario flips its verdict at a constant fingerprint (flaky); the other is stable.
+    m = _stats.project_metrics(
+        "p",
+        "app",
+        [
+            _manifest(
+                "20260101-000000",
+                scenario_hash="sha256:flaky",
+                scenarios=[{"scenario": "a", "ok": True}],
+            ),
+            _manifest(
+                "20260102-000000",
+                scenario_hash="sha256:flaky",
+                scenarios=[{"scenario": "a", "ok": False}],
+            ),
+            _manifest(
+                "20260103-000000",
+                scenario_hash="sha256:stable",
+                scenarios=[{"scenario": "b", "ok": True}],
+            ),
+            _manifest(
+                "20260104-000000",
+                scenario_hash="sha256:stable",
+                scenarios=[{"scenario": "b", "ok": True}],
+            ),
+        ],
+    )
+    # 1 flaky-classified scenario out of 2 fingerprinted scenarios.
+    assert m.flaky_rate == 0.5
+
+
+def test_project_metrics_duration_percentiles_over_runs() -> None:
+    m = _stats.project_metrics(
+        "p",
+        "app",
+        [
+            _manifest(
+                f"2026010{i}-000000",
+                ok=True,
+                scenarios=[{"scenario": "s", "ok": True, "duration_s": float(d)}],
+            )
+            for i, d in enumerate([1.0, 2.0, 3.0, 4.0, 5.0], start=1)
+        ],
+    )
+    assert m.duration_p50_s == 3.0
+    assert m.duration_p95_s == 4.8  # linear interpolation: 4.0 + 0.8*(5.0-4.0)
+
+
+def test_project_metrics_trend_is_daily_pass_rate_oldest_first() -> None:
+    m = _stats.project_metrics(
+        "p",
+        "app",
+        [
+            _manifest("20260101-000000", ok=True),
+            _manifest("20260102-000000", ok=False),
+        ],
+    )
+    assert [(d.day, d.pass_rate) for d in m.trend] == [
+        ("2026-01-01", 1.0),
+        ("2026-01-02", 0.0),
+    ]
+
+
+def test_project_metrics_empty_run_set_degrades_to_zeros() -> None:
+    m = _stats.project_metrics("empty", "unrun", [])
+    assert m.runs == 0
+    assert m.pass_rate == 0.0
+    assert m.flaky_rate == 0.0
+    assert m.duration_p50_s == 0.0
+    assert m.duration_p95_s == 0.0
+    assert m.trend == []

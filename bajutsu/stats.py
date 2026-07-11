@@ -103,6 +103,26 @@ class Stats:
     scenarios_skipped: int  # runs with no scenarioHash — can't join a fingerprinted series
 
 
+@dataclass(frozen=True)
+class ProjectMetrics:
+    """One project's headline numbers for the cross-project comparison (BE-0226).
+
+    A per-project roll-up of the same `Stats` `aggregate_runs` already computes, reduced to the
+    scalars a comparison ranks on plus a trend series for a sparkline. `flaky_rate` is a plain
+    count over the BE-0102/BE-0049 per-scenario classification (flaky-classified ÷ total),
+    adding no new flakiness heuristic.
+    """
+
+    project_id: str
+    name: str
+    runs: int
+    pass_rate: float  # Stats.pass_rate over the window
+    flaky_rate: float  # flaky-classified scenarios / total scenarios (0.0 when none)
+    duration_p50_s: float  # median per-run wall-clock over the window
+    duration_p95_s: float  # 95th-percentile per-run wall-clock
+    trend: list[DayPoint]  # daily pass-rate, oldest first — the comparison sparkline
+
+
 def aggregate_runs(manifests: Iterable[Mapping[str, object]]) -> Stats:
     """Aggregate a set of run manifests into the whole-suite trend (BE-0102).
 
@@ -165,6 +185,52 @@ def aggregate_runs(manifests: Iterable[Mapping[str, object]]) -> Stats:
         failing_assertions=_failing_assertions(runs),
         scenarios_skipped=hist.skipped,
     )
+
+
+def project_metrics(
+    project_id: str, name: str, manifests: Iterable[Mapping[str, object]]
+) -> ProjectMetrics:
+    """Roll one project's run manifests up into its comparison headline (BE-0226).
+
+    Runs the same `aggregate_runs` over the project's `project_id`-scoped run set, then reduces
+    the result to the scalars the cross-project view ranks on — pass-rate, flaky-rate, and the
+    median/95th-percentile per-run duration — plus the daily pass-rate trend. An empty run set
+    degrades to zeros (an unrun project charts as a blank row rather than an error).
+
+    Args:
+        project_id: The registry id the metrics are labelled with.
+        name: The project's display name.
+        manifests: Parsed `manifest.json` mappings for this project's runs, in any order.
+
+    Returns:
+        The project's `ProjectMetrics`.
+    """
+    s = aggregate_runs(manifests)
+    flaky = sum(1 for sc in s.scenarios if sc.classification == "flaky")
+    durations = [p.duration_s for p in s.by_run]
+    return ProjectMetrics(
+        project_id=project_id,
+        name=name,
+        runs=s.runs,
+        pass_rate=s.pass_rate,
+        flaky_rate=(flaky / len(s.scenarios)) if s.scenarios else 0.0,
+        duration_p50_s=_percentile(durations, 0.5),
+        duration_p95_s=_percentile(durations, 0.95),
+        trend=s.by_day,
+    )
+
+
+def _percentile(values: list[float], q: float) -> float:
+    """The *q*-quantile (0..1) with linear interpolation between ranks; 0.0 on no samples."""
+    if not values:
+        return 0.0
+    ordered = sorted(values)
+    if len(ordered) == 1:
+        return ordered[0]
+    pos = q * (len(ordered) - 1)
+    lo = int(pos)
+    hi = min(lo + 1, len(ordered) - 1)
+    return ordered[lo] + (ordered[hi] - ordered[lo]) * (pos - lo)
 
 
 def _run_point(m: Mapping[str, object]) -> RunPoint:
