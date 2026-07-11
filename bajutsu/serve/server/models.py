@@ -62,6 +62,8 @@ class Project(Base):
 
 class Run(Base):
     __tablename__ = "runs"
+    # scenario_hash is the flakiness grouping key (GROUP BY scenario_hash, then per-scenario name).
+    __table_args__ = (Index("ix_runs_scenario_hash", "scenario_hash"),)
 
     id: Mapped[str] = mapped_column(primary_key=True)
     org_id: Mapped[str] = mapped_column(ForeignKey("orgs.id"))
@@ -77,9 +79,6 @@ class Run(Base):
     scenario_hash: Mapped[str | None] = mapped_column(default=None)
     tool_version: Mapped[str | None] = mapped_column(default=None)
     git_revision: Mapped[str | None] = mapped_column(default=None)
-
-    # scenario_hash is the flakiness grouping key (GROUP BY scenario_hash, then per-scenario name).
-    __table_args__ = (Index("ix_runs_scenario_hash", "scenario_hash"),)
 
 
 class JobRecord(Base):
