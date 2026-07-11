@@ -111,7 +111,14 @@ class Repository(Protocol):
         """An org's runs, newest first, capped at *limit*; only *project_id*'s when given (BE-0225)."""
 
     def create_project(self, project: ProjectRecord) -> None:
-        """Register *project*, or update it in place when its id already exists (BE-0225)."""
+        """Register *project*, or update it in place when its id already exists (BE-0225).
+
+        Raises:
+            IntegrityError: The org already has a project named ``project.name`` under a
+                different id — this merges by id only, so a caller must resolve the
+                existing id via ``get_project`` first rather than relying on this to upsert
+                by name.
+        """
 
     def get_project(self, *, org_id: str, name: str) -> ProjectRecord | None:
         """The org's project named *name*, or None if there is none (org-scoped, BE-0225)."""
