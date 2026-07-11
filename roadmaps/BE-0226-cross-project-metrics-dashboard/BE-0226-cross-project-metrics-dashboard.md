@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0226") |
-| Implementing PR | [#936](https://github.com/bajutsu-e2e/bajutsu/pull/936) |
+| Implementing PR | [#936](https://github.com/bajutsu-e2e/bajutsu/pull/936), [#940](https://github.com/bajutsu-e2e/bajutsu/pull/940) |
 | Topic | Authoring experience (record / GUI editor) |
 | Related | [BE-0102](../BE-0102-run-stats-dashboard/BE-0102-run-stats-dashboard.md), [BE-0015](../BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md), [BE-0220](../BE-0220-flaky-suggestion-and-cross-run-fix/BE-0220-flaky-suggestion-and-cross-run-fix.md) |
 <!-- /BE-METADATA -->
@@ -122,7 +122,7 @@ is the entry point and BE-0102 is the drill-down.
 > (oldest first), linking the PRs.
 
 - [x] 1 — Cross-project aggregation: factor BE-0102's per-config computation to take a run set, run it per project, roll its per-scenario flakiness classification up into a per-project flaky-rate scalar, assemble the comparison model.
-- [ ] 2 — API: `GET /api/metrics/projects`, org-scoped, alongside BE-0102's single-config endpoint.
+- [x] 2 — API: `GET /api/metrics/projects`, org-scoped, alongside BE-0102's single-config endpoint.
 - [ ] 3 — UI: the sortable comparison table + per-project trend sparklines, deep-linking into BE-0102's single-config dashboard.
 
 **Log**
@@ -132,6 +132,11 @@ is the entry point and BE-0102 is the drill-down.
   flaky-classified scenarios, median/p95 per-run duration, daily pass-rate trend);
   `serve.operations.project_comparison.compare_projects` iterates the `ProjectRegistry` and reads
   each project's runs via the `run_set_manifests` seam. Pure, read-only, off the run/CI path.
+- [#940](https://github.com/bajutsu-e2e/bajutsu/pull/940) — Unit 2. `project_metrics_view` exposes
+  `compare_projects` as JSON at `GET /api/metrics/projects` over both transports (stdlib handler +
+  FastAPI), org-scoped and returning an empty list when no hub is wired. A read `GET`, so no RBAC
+  gate; window parity with BE-0102's fixed `_STATS_RUN_LIMIT`. Sits alongside the single-config
+  `/stats`, not replacing it.
 
 ## References
 

@@ -11,9 +11,13 @@ The API endpoint (unit 2) and the comparison dashboard (unit 3) build on the mod
 
 from __future__ import annotations
 
+from dataclasses import asdict
+from typing import Any
+
 from bajutsu.serve.artifacts import ArtifactStore
 from bajutsu.serve.operations.reads import _STATS_RUN_LIMIT, run_set_manifests
 from bajutsu.serve.project_registry import ProjectRegistry
+from bajutsu.serve.state import ServeState
 from bajutsu.stats import ProjectMetrics, project_metrics
 
 
@@ -44,3 +48,21 @@ def compare_projects(
         manifests = run_set_manifests(store, ids)
         rows.append(project_metrics(project.id, project.name, manifests))
     return rows
+
+
+def project_metrics_view(state: ServeState, *, actor: str | None = None) -> tuple[Any, int]:
+    """`GET /api/metrics/projects`: the cross-project comparison model as JSON (BE-0226 unit 2).
+
+    One row per registered project — the headline pass-rate, flaky-rate, and duration percentiles the
+    ranking sorts on, plus the daily pass-rate trend for a sparkline. Org-scoped through the same seam
+    as the hub's own endpoints (resolving to `default` locally), and it returns an empty list when no
+    project hub is wired, so a single-config serve reports "nothing to compare" rather than an error.
+    Read-only: it re-presents the deterministic verdicts `run` already decided, adding no LLM to the
+    path, and sits alongside — not replacing — BE-0102's single-config `/stats` view.
+    """
+    registry = state.project_registry
+    if registry is None:
+        return [], 200
+    org = state.org_of(actor)
+    store = state.for_org(org).artifacts
+    return [asdict(row) for row in compare_projects(registry, store, org=org)], 200

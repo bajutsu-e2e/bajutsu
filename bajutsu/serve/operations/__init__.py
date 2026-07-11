@@ -61,6 +61,7 @@ from bajutsu.serve.operations.enrich import start_enrich
 from bajutsu.serve.operations.evidence import generate_upload_urls
 from bajutsu.serve.operations.lint import lint_scenario, scenario_schema
 from bajutsu.serve.operations.metrics import PROMETHEUS_CONTENT_TYPE, render_metrics
+from bajutsu.serve.operations.project_comparison import project_metrics_view
 from bajutsu.serve.operations.projects import (
     activate_project,
     deregister_project,
@@ -173,6 +174,7 @@ __all__ = [
     "mark_capture",
     "oauth_callback",
     "oauth_login",
+    "project_metrics_view",
     "project_runs",
     "provider_info",
     "read_scenario",
