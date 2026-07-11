@@ -112,6 +112,21 @@ def test_tag_run_partitions_runs_by_project_newest_first(tmp_path: Path) -> None
     assert reg.run_ids(org_id="default", project_id=p.id) == ["run-2", "run-1"]
 
 
+def test_run_ids_honours_a_limit_keeping_the_newest(tmp_path: Path) -> None:
+    reg = LocalProjectRegistry(tmp_path / "projects.json")
+    p = reg.add(org_id="default", name="checkout", source=None)
+    for i in range(1, 4):
+        reg.tag_run(org_id="default", project_id=p.id, run_id=f"run-{i}")
+
+    # Newest-first, capped to the requested bound; None asks for all.
+    assert reg.run_ids(org_id="default", project_id=p.id, limit=2) == ["run-3", "run-2"]
+    assert reg.run_ids(org_id="default", project_id=p.id, limit=None) == [
+        "run-3",
+        "run-2",
+        "run-1",
+    ]
+
+
 def test_run_ids_and_tag_run_are_scoped_by_org(tmp_path: Path) -> None:
     """Parity with `SqlProjectRegistry`, whose `run_ids` filters by `org_id` *and* `project_id`
     together (via `list_runs`): a project's runs are visible, and taggable, only under the project's

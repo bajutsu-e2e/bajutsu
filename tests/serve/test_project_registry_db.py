@@ -128,6 +128,21 @@ def test_run_ids_is_not_capped_at_the_list_runs_default() -> None:
     assert len(ids) == 60
 
 
+def test_run_ids_honours_a_limit_at_the_db_query() -> None:
+    """A caller wanting a bounded window (the cross-project dashboard) can cap the read so the DB
+    fetches only the newest N rows, rather than every run and a client-side truncation."""
+    repo, reg = _repo_and_registry()
+    p = reg.add(org_id="default", name="checkout", source=None)
+    for i in range(10):
+        repo.record_run(
+            RunRecord(id=f"run-{i:03d}", org_id="default", status="done", project_id=p.id)
+        )
+
+    ids = reg.run_ids(org_id="default", project_id=p.id, limit=3)
+
+    assert len(ids) == 3
+
+
 def test_deregister_retains_the_runs_unlabeled() -> None:
     repo, reg = _repo_and_registry()
     p = reg.add(org_id="default", name="checkout", source=None)

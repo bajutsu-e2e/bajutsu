@@ -77,8 +77,13 @@ class ProjectRegistry(Protocol):
         """Associate *run_id* with *project_id* so a per-project run listing can find it."""
         ...
 
-    def run_ids(self, *, org_id: str, project_id: str) -> list[str]:
-        """The ids of *project_id*'s runs, newest first."""
+    def run_ids(self, *, org_id: str, project_id: str, limit: int | None = None) -> list[str]:
+        """The ids of *project_id*'s runs, newest first; at most *limit* (all when None).
+
+        A bounded *limit* is honoured at the source — the DB backend fetches only that many rows
+        rather than reading the whole history and truncating — so a caller wanting a fixed window
+        (the cross-project dashboard, BE-0226) stays a fixed-cost read.
+        """
         ...
 
 
@@ -166,10 +171,11 @@ class LocalProjectRegistry:
         index.insert(0, run_id)
         self._save()
 
-    def run_ids(self, *, org_id: str, project_id: str) -> list[str]:
+    def run_ids(self, *, org_id: str, project_id: str, limit: int | None = None) -> list[str]:
         if not self._project_in_org(org_id, project_id):
             return []
-        return list(self._data["run_ids"].get(project_id, []))
+        # The index is already newest-first; slicing keeps the newest window (``[:None]`` = all).
+        return list(self._data["run_ids"].get(project_id, []))[:limit]
 
     def _org(self, org_id: str) -> list[dict[str, Any]]:
         return self._data["projects"].setdefault(org_id, [])
@@ -289,9 +295,10 @@ class SqlProjectRegistry:
         # so the partition is the column itself — there is no separate index to maintain here.
         return
 
-    def run_ids(self, *, org_id: str, project_id: str) -> list[str]:
-        # limit=None: the seam promises *all* of a project's runs (matching LocalProjectRegistry's
-        # unbounded index), not list_runs' default 50-run page.
+    def run_ids(self, *, org_id: str, project_id: str, limit: int | None = None) -> list[str]:
+        # Pass the bound straight to the query: limit=None keeps the seam's "*all* of a project's
+        # runs" default (matching LocalProjectRegistry's unbounded index) rather than list_runs'
+        # 50-run page, while a bounded caller fetches only its window from the DB.
         return [
-            r.id for r in self._repo.list_runs(org_id=org_id, project_id=project_id, limit=None)
+            r.id for r in self._repo.list_runs(org_id=org_id, project_id=project_id, limit=limit)
         ]
