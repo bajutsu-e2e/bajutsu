@@ -266,8 +266,8 @@ bajutsu triage --flaky --scenario <name> --history <runs-dir> --ai [--apply <fil
   当て、`--json` が機械可読の結果を書き出します。アサーションを弱める編集は、両方の提示面で inline に
   **甘くする（laxer）**フラグが付きます（[BE-0023](../../roadmaps/BE-0023-self-healing-guards/BE-0023-self-healing-guards-ja.md)）。
   YAML 全体の書き直しはフォローアップに送っており、現在の fix は的を絞った構造化編集です。
-- 履歴に失敗 run が 1 つも無いとき（フラッキーとして診断する対象が無いとき）は**終了 0** です。他の
-  読み取り専用モードと同じく助言的です。
+- 履歴に失敗 run または成功 run のどちらかが無いとき（対比する相手がなく、フラッキーとして診断する対象が
+  無いとき）は**終了 0** です。他の読み取り専用モードと同じく助言的です。
 
 ## `record`
 

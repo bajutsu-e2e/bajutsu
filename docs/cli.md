@@ -377,8 +377,8 @@ bajutsu triage --flaky --scenario <name> --history <runs-dir> --ai [--apply <fil
   is flagged as **laxer** ([BE-0023](../roadmaps/BE-0023-self-healing-guards/BE-0023-self-healing-guards.md))
   inline in both surfaces. A full YAML rewrite is deferred to a follow-up; the current fixes are the
   targeted structured edits.
-- **Exits 0** when the scenario has no failing run in the history (nothing to diagnose as flaky) —
-  advisory, like the other read-only modes.
+- **Exits 0** when the scenario's history has no failing run or no passing run to contrast
+  (nothing to diagnose as flaky) — advisory, like the other read-only modes.
 
 ## `record`
 
