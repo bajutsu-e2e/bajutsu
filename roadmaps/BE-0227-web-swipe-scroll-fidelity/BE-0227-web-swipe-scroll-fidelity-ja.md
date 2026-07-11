@@ -1,14 +1,14 @@
-[English](BE-XXXX-web-swipe-scroll-fidelity.md) · **日本語**
+[English](BE-0227-web-swipe-scroll-fidelity.md) · **日本語**
 
-# BE-XXXX — Web の swipe スクロール忠実度（入力モードに応じたスクロールの振り分け）
+# BE-0227 — Web の swipe スクロール忠実度（入力モードに応じたスクロールの振り分け）
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
 |---|---|
-| 提案 | [BE-XXXX](BE-XXXX-web-swipe-scroll-fidelity-ja.md) |
+| 提案 | [BE-0227](BE-0227-web-swipe-scroll-fidelity-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **提案** |
-| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0227") |
 | トピック | Platform expansion (Android / Web / Flutter) |
 <!-- /BE-METADATA -->
 

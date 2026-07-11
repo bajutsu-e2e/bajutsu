@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-web-swipe-scroll-fidelity-ja.md)
+**English** · [日本語](BE-0227-web-swipe-scroll-fidelity-ja.md)
 
-# BE-XXXX — Web swipe scroll fidelity (mode-aware scroll dispatch)
+# BE-0227 — Web swipe scroll fidelity (mode-aware scroll dispatch)
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-web-swipe-scroll-fidelity.md) |
+| Proposal | [BE-0227](BE-0227-web-swipe-scroll-fidelity.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0227") |
 | Topic | Platform expansion (Android / Web / Flutter) |
 <!-- /BE-METADATA -->
 
