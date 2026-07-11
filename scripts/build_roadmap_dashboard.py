@@ -320,8 +320,11 @@ def filter_script() -> str:
 
 def main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--out", type=Path, default=DEFAULT_OUT, help="output path for the page")
-    parser.add_argument(
+    # Two alternative modes: write the page (--out), or print just the filter JS (--emit-script).
+    # A mutually exclusive group makes passing both fail loudly instead of silently ignoring --out.
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument("--out", type=Path, default=DEFAULT_OUT, help="output path for the page")
+    mode.add_argument(
         "--emit-script",
         action="store_true",
         help="write only the embedded filter JS (no <script> tags) to stdout, for lint-js",
