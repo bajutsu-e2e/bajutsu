@@ -1,14 +1,14 @@
-[English](BE-XXXX-per-org-provider-settings-resolution.md) · **日本語**
+[English](BE-0229-per-org-provider-settings-resolution.md) · **日本語**
 
-# BE-XXXX — serve の AI プロバイダー設定を組織ごとに実行時に解決する
+# BE-0229 — serve の AI プロバイダー設定を組織ごとに実行時に解決する
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
 |---|---|
-| 提案 | [BE-XXXX](BE-XXXX-per-org-provider-settings-resolution-ja.md) |
+| 提案 | [BE-0229](BE-0229-per-org-provider-settings-resolution-ja.md) |
 | 提案者 | [@hirosassa](https://github.com/hirosassa) |
 | 状態 | **提案** |
-| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0229") |
 | トピック | AI provider configuration |
 | 関連 | [BE-0184](../BE-0184-persist-serve-ai-provider-settings/BE-0184-persist-serve-ai-provider-settings-ja.md), [BE-0183](../BE-0183-per-provider-serve-settings/BE-0183-per-provider-serve-settings-ja.md), [BE-0015](../BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting-ja.md) |
 <!-- /BE-METADATA -->

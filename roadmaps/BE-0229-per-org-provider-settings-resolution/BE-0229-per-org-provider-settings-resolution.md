@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-per-org-provider-settings-resolution-ja.md)
+**English** · [日本語](BE-0229-per-org-provider-settings-resolution-ja.md)
 
-# BE-XXXX — Resolve serve AI provider settings per organization at runtime
+# BE-0229 — Resolve serve AI provider settings per organization at runtime
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-per-org-provider-settings-resolution.md) |
+| Proposal | [BE-0229](BE-0229-per-org-provider-settings-resolution.md) |
 | Author | [@hirosassa](https://github.com/hirosassa) |
 | Status | **Proposal** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0229") |
 | Topic | AI provider configuration |
 | Related | [BE-0184](../BE-0184-persist-serve-ai-provider-settings/BE-0184-persist-serve-ai-provider-settings.md), [BE-0183](../BE-0183-per-provider-serve-settings/BE-0183-per-provider-serve-settings.md), [BE-0015](../BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md) |
 <!-- /BE-METADATA -->

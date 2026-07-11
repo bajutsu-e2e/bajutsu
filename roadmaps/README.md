@@ -675,7 +675,9 @@ Lower the maintenance cost of regressions while keeping AI out of the judge role
 ### AI provider configuration
 
 <!-- GENERATED:proposals-ai-provider -->
-
+| ID | Item | Status |
+|---|---|---|
+| [BE-0229](BE-0229-per-org-provider-settings-resolution/BE-0229-per-org-provider-settings-resolution.md) | Resolve serve AI provider settings per organization at runtime | Proposal |
 <!-- /GENERATED:proposals-ai-provider -->
 
 ### AI usage and cost observability
