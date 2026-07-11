@@ -1,7 +1,7 @@
 """The `Repository` seam (BE-0015 7a / BE-0225): the run round-trip, org-scoped listing, the
 env-driven factory, and the project CRUD methods, all against an in-memory SQLite database built
 inside each test (no live Postgres). `ProjectRecord` and the project methods arrived with BE-0225;
-orgs/users/audit_log are also tested above (implemented in 7b/7c)."""
+orgs/users/audit_log are tested elsewhere in this file (implemented in 7b/7c)."""
 
 from __future__ import annotations
 
