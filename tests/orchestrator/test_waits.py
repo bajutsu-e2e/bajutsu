@@ -224,6 +224,19 @@ def test_wait_floor_never_shrinks_a_larger_scenario_timeout(monkeypatch) -> None
     assert reason == ""
 
 
+def test_wait_floor_raises_on_malformed_env(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    """A malformed BAJUTSU_MIN_WAIT_TIMEOUT (e.g. '15s') must raise ValueError immediately,
+    not silently fall back to 0 — a silent fallback would quietly disable the floor and
+    reintroduce the very timeout flakiness the env var is meant to prevent."""
+    import pytest
+
+    from bajutsu.orchestrator.waits import _timeout_floor
+
+    monkeypatch.setenv("BAJUTSU_MIN_WAIT_TIMEOUT", "15s")
+    with pytest.raises(ValueError, match="BAJUTSU_MIN_WAIT_TIMEOUT"):
+        _timeout_floor()
+
+
 def test_wait_still_sleeps_when_query_is_fast() -> None:
     """When query() is fast, sleep remains at _POLL as before."""
     from bajutsu.orchestrator import _POLL, _wait

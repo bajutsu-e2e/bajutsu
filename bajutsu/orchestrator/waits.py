@@ -27,7 +27,7 @@ def _timeout_floor() -> float:
     try:
         return max(0.0, float(raw))
     except ValueError:
-        return 0.0
+        raise ValueError(f"{_FLOOR_ENV}={raw!r} is not a valid float") from None
 
 
 def _effective_timeout(w: Wait) -> float:
