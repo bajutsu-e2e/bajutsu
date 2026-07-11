@@ -144,7 +144,7 @@ def render_html(items: list[Any]) -> str:
         '<input type="search" class="be-search" '
         'placeholder="Search id, title, topic, status…" aria-label="Search roadmap items">'
     )
-    summary = (
+    filters = (
         f'<div class="be-filters" role="group" aria-label="Filter roadmap items">'
         f'<div class="be-search-row">{search}</div>'
         f'<div class="be-summary">{chips}</div>'
@@ -201,7 +201,7 @@ def render_html(items: list[Any]) -> str:
     # the script only ever mutates its text, never its presence — the reliable pattern for an
     # `aria-live` status region to announce. The message text is set via textContent, never as markup.
     empty = '<div class="be-empty" role="status"></div>'
-    return f'<div class="be-dash">{summary}{groups}{empty}</div>'
+    return f'<div class="be-dash">{filters}{groups}{empty}</div>'
 
 
 _STYLE = """
