@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import html
 import importlib.util
+import re
 import sys
 from pathlib import Path
 
@@ -79,6 +80,37 @@ def test_status_filter_toggles_present() -> None:
         assert f'data-filter="{name}" checked' in _PAGE
     for item in _ITEMS:
         assert f'data-status="{item.bucket}"' in _PAGE
+
+
+def test_search_box_is_rendered_and_wired() -> None:
+    """A free-text search input sits in the filter row and the filter script listens to its input.
+
+    This is BE-0219's machine-checkable outcome: the input exists (progressive enhancement, one per
+    page), and the script wires the ``input`` event so typing narrows the cards.
+    """
+    assert _PAGE.count('type="search"') == 1
+    assert 'class="be-search"' in _PAGE
+    assert 'aria-label="Search roadmap items"' in _PAGE
+    # Wired to the input event — matched loosely so a harmless reformat of the script (quote style,
+    # spacing) doesn't break the test, only the actual wiring does.
+    assert re.search(r"""search\.addEventListener\(\s*['"]input['"]\s*,\s*apply\s*\)""", _PAGE)
+    # The always-present live region the script fills when the filters leave nothing visible.
+    assert 'class="be-empty" role="status"' in _PAGE
+    # Its empty-state reasons, so the grid never goes silently blank: the query matches nothing, its
+    # matches are hidden by the status chips, or — with no query — every chip is off or the on chips
+    # have no items. Pinned to the user-facing phrases (not the JS literal's quoting) a reader sees.
+    assert "No items match " in _PAGE
+    assert "but the status filter above is hiding " in _PAGE
+    assert "item matches " in _PAGE and "items match " in _PAGE
+    assert "Every status is turned off" in _PAGE
+    assert "No items in the selected statuses" in _PAGE
+
+
+def test_every_card_carries_its_topic() -> None:
+    """Each card exposes its Topic as ``data-topic`` so search can match it without scraping markup."""
+    for item in _ITEMS:
+        assert f'data-topic="{html.escape(item.topic)}"' in _PAGE
+    assert _PAGE.count("data-topic=") == len(_ITEMS)
 
 
 def test_fully_implemented_categories_are_separated() -> None:

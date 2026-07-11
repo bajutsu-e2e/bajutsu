@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0073") |
-| Implementing PR | [#216](https://github.com/bajutsu-e2e/bajutsu/pull/216) |
+| Implementing PR | [#216](https://github.com/bajutsu-e2e/bajutsu/pull/216), [#890](https://github.com/bajutsu-e2e/bajutsu/pull/890) |
 | Topic | Configuration sourcing |
 | Related | [BE-0108](../BE-0108-hosted-config-source-restriction/BE-0108-hosted-config-source-restriction.md) |
 <!-- /BE-METADATA -->

@@ -280,6 +280,7 @@ Reduce friction for the many parallel sessions working this repo — treat merge
 | [BE-0214](BE-0214-web-only-beginner-tutorial/BE-0214-web-only-beginner-tutorial.md) | Web-only beginner tutorial (no Xcode/Simulator required) | Implemented |
 | [BE-0216](BE-0216-propose-and-build-parallel-skill/BE-0216-propose-and-build-parallel-skill.md) | propose-and-build: author a BE proposal and its implementation in parallel, stacked | Implemented |
 | [BE-0217](BE-0217-harden-review-prompt/BE-0217-harden-review-prompt.md) | Harden the automated PR review prompt with research-backed policy | Implemented |
+| [BE-0219](BE-0219-roadmap-dashboard-search/BE-0219-roadmap-dashboard-search.md) | Text search on the roadmap status dashboard | Implemented |
 | [BE-0222](BE-0222-daily-doc-freshness-pr/BE-0222-daily-doc-freshness-pr.md) | Scheduled daily workflows that refresh the roadmap and docs separately, each opening its own review PR | Implemented |
 <!-- /GENERATED:implemented-developer-experience -->
 
@@ -630,6 +631,8 @@ A platform is just a backend behind the one driver interface ([DESIGN §1](../DE
 |---|---|---|
 | [BE-0008](BE-0008-flutter-support/BE-0008-flutter-support.md) | Flutter support | Proposal |
 | [BE-0221](BE-0221-android-scenario-portability-guarantee/BE-0221-android-scenario-portability-guarantee.md) | Guarantee shared showcase scenarios run unchanged on Android | Proposal |
+| [BE-0227](BE-0227-web-swipe-scroll-fidelity/BE-0227-web-swipe-scroll-fidelity.md) | Web swipe scroll fidelity (mode-aware scroll dispatch) | Proposal |
+| [BE-0228](BE-0228-web-device-mode-emulation/BE-0228-web-device-mode-emulation.md) | Web device mode (desktop / mobile emulation) | Proposal |
 <!-- /GENERATED:proposals-platform -->
 
 ### Authoring experience (record / GUI editor)
@@ -672,7 +675,9 @@ Lower the maintenance cost of regressions while keeping AI out of the judge role
 ### AI provider configuration
 
 <!-- GENERATED:proposals-ai-provider -->
-
+| ID | Item | Status |
+|---|---|---|
+| [BE-0229](BE-0229-per-org-provider-settings-resolution/BE-0229-per-org-provider-settings-resolution.md) | Resolve serve AI provider settings per organization at runtime | Proposal |
 <!-- /GENERATED:proposals-ai-provider -->
 
 ### AI usage and cost observability
@@ -744,9 +749,7 @@ Keeping the autonomous crawl fast and its code lean as it grows.
 ### Development infrastructure (contributor workflow)
 
 <!-- GENERATED:proposals-developer-experience -->
-| ID | Item | Status |
-|---|---|---|
-| [BE-0219](BE-0219-roadmap-dashboard-search/BE-0219-roadmap-dashboard-search.md) | Text search on the roadmap status dashboard | Proposal |
+
 <!-- /GENERATED:proposals-developer-experience -->
 
 ### Codebase quality & technical debt

@@ -79,8 +79,9 @@ that structure's values come from at boot and where they go on save, not about i
 - [ ] Add the per-organization, DB-backed store shape for a hosted deployment. **Deferred:** in
   today's serve, provider/model/effort resolve process-globally (`os.environ` + a single
   `ServeState.provider_settings` map), not per organization, so a per-org store would persist
-  values nothing reads per org. This needs per-org runtime resolution first, tracked as a
-  follow-up rather than done here.
+  values nothing reads per org. This needs per-org runtime resolution first, tracked as the
+  follow-up item *"Resolve serve AI provider settings per organization at runtime"* rather than
+  done here.
 - [x] Load persisted settings on serve boot, falling back to today's env-derived defaults.
 - [x] Confirm the AI-free zero-config path is unaffected when nothing is persisted.
 

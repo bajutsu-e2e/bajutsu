@@ -355,7 +355,7 @@ class ScenarioHistory:
     passed: int  # runs in which it passed
     failed: int  # runs in which it failed
     pass_rate: float  # passed / runs
-    classification: str  # flaky | deterministic | unproven (see `_history`)
+    classification: str  # flaky | deterministic | unproven (see `classify_stability`)
 
 
 @dataclass(frozen=True)
@@ -407,21 +407,30 @@ def longitudinal(manifests: Iterable[Mapping[str, object]]) -> LongitudinalRepor
     return LongitudinalReport(histories=histories, skipped=skipped)
 
 
-def _history(scenario_hash: str, name: str, oks: list[bool]) -> ScenarioHistory:
-    """Tally one scenario's verdicts at a fingerprint into a classified history.
+def classify_stability(passed: int, runs: int) -> str:
+    """Classify a scenario's verdict history as `flaky` / `deterministic` / `unproven`.
 
-    A single run proves nothing (mirrors repeat-and-diff with K<2): `unproven`, not flaky. With two
-    or more, a mix of pass and fail at the *same* fingerprint is true flakiness; an all-pass or
-    all-fail history is `deterministic` (a consistent failure is reproducible, not flaky).
+    The single classification rule shared by the longitudinal audit and the DB-backed cross-run
+    flakiness score (BE-0220), so both label identically. A single run proves nothing (mirrors
+    repeat-and-diff with K<2): `unproven`, not flaky. With two or more, a mix of pass and fail at
+    the *same* fingerprint is true flakiness; an all-pass or all-fail history is `deterministic` (a
+    consistent failure is reproducible, not flaky).
+
+    Args:
+        passed: Runs in which the scenario passed.
+        runs: Total runs observed at one content fingerprint.
     """
+    if runs < 2:
+        return "unproven"
+    if passed and passed < runs:
+        return "flaky"
+    return "deterministic"
+
+
+def _history(scenario_hash: str, name: str, oks: list[bool]) -> ScenarioHistory:
+    """Tally one scenario's verdicts at a fingerprint into a classified history."""
     passed = sum(oks)
     runs = len(oks)
-    if runs < 2:
-        classification = "unproven"
-    elif passed and passed < runs:
-        classification = "flaky"
-    else:
-        classification = "deterministic"
     return ScenarioHistory(
         scenario_hash=scenario_hash,
         name=name,
@@ -429,7 +438,7 @@ def _history(scenario_hash: str, name: str, oks: list[bool]) -> ScenarioHistory:
         passed=passed,
         failed=runs - passed,
         pass_rate=passed / runs,
-        classification=classification,
+        classification=classify_stability(passed, runs),
     )
 
 

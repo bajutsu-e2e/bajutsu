@@ -104,6 +104,12 @@ colliding or regressing each other. Full guide: [`docs/ai-development.md`](docs/
   `gh pr create --draft`, then keep pushing fixes until `make check` and CI are both green before
   marking it ready for review (`gh pr ready`). Never mark a Claude-Code-created PR ready while any
   check is red.
+- **Exception — documentation-only PRs open Ready for review.** A PR whose changes are purely
+  documentation/prose (`docs/`, roadmap `*.md`/`*-ja.md` prose, `CLAUDE.md`/`CONTRIBUTING`, and
+  other prose-only changes) is opened **Ready for review, not Draft**, with the `steering-committee`
+  team assigned as reviewer: `gh pr create --reviewer bajutsu-e2e/steering-committee …` (omit
+  `--draft`). Everything else — anything touching product code — still starts as Draft per the rule
+  above.
 
 ## Conventions
 

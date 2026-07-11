@@ -39,7 +39,7 @@ flowchart TB
 
     verdict{"Pass / Fail<br/>machine assertions only"}
     report["📊 Reporter<br/>manifest.json · JUnit · CTRF · HTML"]
-    codegen["codegen<br/>→ XCUITest (Swift)"]
+    codegen["codegen<br/>→ XCUITest / Playwright / UI Automator"]
     triage["triage<br/>root cause + fixes · advisory"]
 
     goal --> record
@@ -96,7 +96,7 @@ The `bajutsu/` package (Python 3.13+, pydantic v2 / typer / anthropic / pyyaml /
 | `record.py` | The record loop (observe → propose → execute → emit) | [recording](recording.md#the-record-loop) |
 | `crawl.py` | Autonomous breadth-first crawl → screen map (`crawl_guide` / `crawl_tabs` helpers) | [recording](recording.md) |
 | `alerts.py` | System-alert detection / dismissal (vision locator) | [recording](recording.md#dismissing-system-alerts-automatically) |
-| `codegen.py` | Scenario → XCUITest (Swift) generation | [codegen](codegen.md) |
+| `codegen.py` | Scenario → native test generation: XCUITest (Swift), Playwright (TypeScript), UI Automator (Kotlin) | [codegen](codegen.md) |
 | `visual.py` | Visual-regression image comparison (the `visual` assertion) | [evidence](evidence.md) |
 | `trace.py` | Text timeline over a saved run (the `trace` command) | [cli](cli.md) |
 | `triage.py` | M4 self-heal: rule-based `HeuristicTriageAgent` + structured fixes (`renameId`/`addIndex`/`raiseTimeout`), `--apply`/`--write`/`--rerun` | [cli](cli.md) |
@@ -245,16 +245,28 @@ workers would collide).
 - Selector resolution and ambiguity detection (the determinism core)
 - Platform-aware backend registry: `--backend` / `backend:` accept `ios` / `android` / `web` /
   `fake` tokens, each expanding to its actuator in stability order (`backends.py`)
-- The **Playwright web backend** (`drivers/playwright.py`): a first slice — a deterministic `run`
-  against a browser, on the Linux gate (`demos/web`); rich-end web capture is planned (BE-0054)
+- The **Playwright web backend** (`drivers/playwright.py`): a deterministic `run` against a browser
+  on the Linux gate (`demos/web`), raised to the rich end of the capability model (BE-0054) — native
+  `network` observation + stubbing (`page.route()`), `video` and `deviceLog`-equivalent console /
+  page-error interval evidence through the shared `driver_interval` seam, emulated `multiTouch`
+  (pinch / rotate), and parallel runs across N `BrowserContext` lanes; `appTrace` stays iOS-only
+  (`os_log`/simctl-based)
 - The **Android adb backend** (`drivers/adb.py` + `adb.py`): the coordinate driver
   (`uiautomator dump` → frame-center tap), the `AndroidEnvironment` launch sequence, `doctor`
   reporting, interval evidence (`video` via `screenrecord`, `deviceLog` via `logcat`, both through
   the driver-supplied `driver_interval` seam) plus the mocked-network story reused from iOS, and
-  fast-gate unit tests over captured XML fixtures; device control and codegen are follow-ups, and the
-  on-device emulator e2e is a separate heavier path (BE-0007)
+  fast-gate unit tests over captured XML fixtures; on-device actuation parity with idb — system
+  `back`, deeplink, a single-round-trip `doubleTap`, scroll-into-view resolution, and up-front
+  runtime-permission grants (BE-0210); a device-control subset — `setLocation` and clipboard
+  read/write/clear, gated by per-operation capability tokens (BE-0211 / BE-0212), while `push` /
+  `clearKeychain` / status-bar overrides / `background` / `foreground` stay unsupported (no emulator
+  equivalent); a UI Automator (Kotlin) codegen target (BE-0209); an Android e2e CI lane (emulator
+  under KVM) is in progress (BE-0208), and adb cannot yet drive the native tab bar, so tab-scoped
+  scenarios stay iOS-only until BE-0223 lands (BE-0007)
 - Scenario schema (strict validation) and YAML round-trip
-- Evaluation of the assertion kinds (`exists` / `value` / `label` / `count` / `enabled` / `disabled` / `selected` / `request` / `visual`)
+- Evaluation of the assertion kinds (`exists` / `value` / `label` / `count` / `enabled` / `disabled` /
+  `selected` / `request` / `requestSequence` / `event` / `responseSchema` / `visual` / `clipboard` /
+  `golden`)
 - The Tier 2 run loop (act → wait → verify), verified with `FakeDriver`
 - DSL: the `within` selector (geometric scoping), the `relaunch` step (validated on-device),
   reusable `setup` preludes, `locale` applied at launch, and parallel runs (`--workers`) over a
@@ -287,10 +299,11 @@ workers would collide).
   `--apply`/`--write` patches the scenario source (diff-previewed, opt-in) and `--rerun` re-runs it
 - The CLI: `run` / `doctor` / `record` / `crawl` / `codegen` / `trace` / `triage` / `approve` / `serve` / `mcp` / `worker` / `lint` / `schema` — with `record` + `crawl` as the Tier 1 AI authoring paths and the alert guard
 - AI **crawl** (`crawl.py`): autonomous breadth-first exploration of an app → a screen map (`screenmap.json`)
-- The `serve` local web UI (Tier 1): author (`record` / `crawl`), edit, and run scenarios; **open a `.zip` bundle** of config + scenarios + the built app binary as the active config the tabs run from (BE-0073); browse reports and evidence; a read-only aggregate **run-stats dashboard** across the run history (BE-0102); a pre-run **readiness panel** (`doctor`: environment runnability + the current screen's convention score) in the Record and Replay forms (BE-0148); approve visual baselines; live job streaming — from a browser (not for CI)
+- The `serve` local web UI (Tier 1): author (`record` / `crawl`), edit, and run scenarios; **open a `.zip` bundle** of config + scenarios + the built app binary as the active config the tabs run from (BE-0073); browse reports and evidence; a read-only aggregate **run-stats dashboard** across the run history (BE-0102); a pre-run **readiness panel** (`doctor`: environment runnability + the current screen's convention score) in the Record and Replay forms (BE-0148); a **pluggable theme system** — drop-in visual tokens + swappable transitions, a header picker, and an in-UI editor with live preview and local-draft/server-upload persistence (BE-0191); approve visual baselines; live job streaming — from a browser (not for CI)
 - **MCP server** (`bajutsu mcp`): `bajutsu_run` and `bajutsu_doctor` as MCP tools + run evidence as resources, for Claude Desktop / Code integration (optional dependency `fastmcp`)
 - **Scenario linter** (`bajutsu lint` / `bajutsu schema`): validate scenarios without running them; JSON Schema output for editor integration
-- XCUITest code generation
+- Codegen: scenario → native test, three targets behind a shared scenario walk (BE-0083) — XCUITest
+  (Swift, iOS), Playwright (TypeScript, web), UI Automator (Kotlin, Android; BE-0209)
 
 ### Validated on a real Simulator (iPhone 17 Pro, recent iOS)
 
@@ -303,14 +316,14 @@ workers would collide).
 
 - The Playwright web backend runs the `demos/web` scenarios deterministically inside the same
   `make check` gate as CI (the `web-e2e` job in `ci.yml`), confirming the deterministic core is
-  platform-neutral. Rich-end web capture (network / video / multi-touch) is planned (BE-0054); a
-  parallel web crawl across N browser processes ([BE-0077](../roadmaps/BE-0077-parallel-web-crawl/BE-0077-parallel-web-crawl.md)) runs on this same gate.
+  platform-neutral. Rich-end web capture (network / video / multi-touch) has since shipped
+  (BE-0054); a parallel web crawl across N browser processes ([BE-0077](../roadmaps/BE-0077-parallel-web-crawl/BE-0077-parallel-web-crawl.md)) runs on this same gate.
 
 ### Not yet wired (schema/flags exist but have no runtime effect)
 
 | Feature | Status | Location |
 |---|---|---|
 | `mockServer` (external mock command) | config schema only; the `cmd`/`port` external server is **not implemented** — superseded by scenario `mocks` (declarative in-protocol stubs, implemented) | `config.py` `MockServer` |
-| interval evidence (`video` / `deviceLog` / `appTrace`) on the **web** backend | the `capturePolicy` rules parse, but these captures are simctl-based and run on iOS only; the Playwright backend records `screenshot` / `elements` — web rich-end capture (incl. video / network) is planned (BE-0054) | `intervals.py` · `drivers/playwright.py` |
+| `appTrace` interval evidence on the **web** backend | `appTrace` is `os_log`/simctl-based (iOS only); the Playwright backend implements the `video` and `deviceLog`-equivalent (console / page-error) interval kinds instead (BE-0054), but has no `appTrace` analogue | `intervals.py` · `drivers/playwright.py` |
 
 These are also flagged inline on the relevant feature pages.

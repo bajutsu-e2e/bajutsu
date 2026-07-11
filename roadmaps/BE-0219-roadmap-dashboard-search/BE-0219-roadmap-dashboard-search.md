@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0219](BE-0219-roadmap-dashboard-search.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0219") |
+| Implementing PR | [#888](https://github.com/bajutsu-e2e/bajutsu/pull/888) |
 | Topic | Development infrastructure (contributor workflow) |
 | Related | [BE-0094](../BE-0094-roadmap-status-dashboard/BE-0094-roadmap-status-dashboard.md) |
 <!-- /BE-METADATA -->
@@ -101,12 +102,24 @@ PR (BE-0113).
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Search input rendered into the filter row (progressive enhancement).
-- [ ] `data-topic` on each card; four searchable fields readable off the card.
-- [ ] Filter logic composing search with the status chips (AND); matching categories expand.
-- [ ] Empty-state ("no items match") message.
-- [ ] Styling for both light and dark themes.
-- [ ] Tests in `tests/test_roadmap_dashboard.py`.
+- [x] Search input rendered into the filter row (progressive enhancement).
+- [x] `data-topic` on each card; four searchable fields readable off the card.
+- [x] Filter logic composing search with the status chips (AND); matching categories expand.
+- [x] Empty-state ("no items match") message.
+- [x] Styling for both light and dark themes.
+- [x] Tests in `tests/test_roadmap_dashboard.py`.
+
+Log:
+
+- Implemented all six units in `scripts/build_roadmap_dashboard.py` and its test — the search input,
+  per-card `data-topic`, the query-aware `apply()` (AND with the status chips, matching categories
+  expand), the empty-state line, the CSS, and the assertions. Verified the filter end to end in a
+  browser (id/title/topic/status matching, chip composition, empty state, and reset to the collapsed
+  overview) beyond the deterministic tests.
+- Review follow-ups (PR #888): number-agreed the chip-hidden empty-state message, kept the native
+  focus ring on the search input, and generalised the empty-state into an always-present `aria-live`
+  region that explains *any* empty grid — the query matched nothing, its matches are chip-hidden, or
+  (no query) the chips alone hid everything — so the page never goes silently blank.
 
 ## References
 
