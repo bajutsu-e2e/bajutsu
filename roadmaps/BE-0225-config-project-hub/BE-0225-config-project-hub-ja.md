@@ -7,8 +7,9 @@
 |---|---|
 | 提案 | [BE-0225](BE-0225-config-project-hub-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **提案** |
+| 状態 | **実装中** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0225") |
+| 実装 PR | [#909](https://github.com/bajutsu-e2e/bajutsu/pull/909) |
 | トピック | Authoring experience (record / GUI editor) |
 | 関連 | [BE-0015](../BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting-ja.md), [BE-0102](../BE-0102-run-stats-dashboard/BE-0102-run-stats-dashboard-ja.md), [BE-0187](../BE-0187-serve-config-view/BE-0187-serve-config-view-ja.md), [BE-0108](../BE-0108-hosted-config-source-restriction/BE-0108-hosted-config-source-restriction-ja.md), [BE-0099](../BE-0099-webhook-run-notifications/BE-0099-webhook-run-notifications-ja.md) |
 <!-- /BE-METADATA -->
@@ -176,6 +177,18 @@ CI や cron が Web UI なしにハブをヘッドレスで駆動できるよう
 - [ ] 3. API：org スコープの五つの `/api/projects…` エンドポイント（既存の単一 config 向けへの追加）。
 - [ ] 4. UI：プロジェクトスイッチャーとプロジェクト一覧。再起動なしで active プロジェクトを切り替える。
 - [ ] 5. CLI：`bajutsu project add/ls/rm` と、ヘッドレスなトリガーとしての `bajutsu run --project <name>`。
+
+### ログ
+
+- 2026-07-11：ユニット 1 と 2 のうち DB 経路を実装しました（#909）。BE-0015 の `projects` 行に、
+  プロジェクトが束ねる config ソースを表すレコード（`kind` と `locator`）を持つ nullable な
+  `source` 列を alembic マイグレーション `0009` で追加し、シームの境界型 `ProjectRecord` を足し
+  ました。`Repository` シームには、org スコープのプロジェクト操作（`create_project` /
+  `get_project` / `list_projects` / `delete_project`。登録を解除しても実行履歴は残します）と、実行
+  履歴をプロジェクト単位に分割できるよう `list_runs` の `project_id` フィルタを追加しました。これ
+  らのユニットで残るのは、この DB 経路とデータベースを持たないローカルの `serve` 向けのディスク上
+  JSON ストアを一つの `ProjectRegistry` シームに束ねること、および起動時 config を active プロジェ
+  クトとして自動登録することです。
 
 ## 参考
 
