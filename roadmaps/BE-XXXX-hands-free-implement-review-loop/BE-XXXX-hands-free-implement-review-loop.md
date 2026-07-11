@@ -50,7 +50,8 @@ Two changes remove the overhead:
 
 - **Auto-PR + auto-followup** turns the hand-offs into one continuous flow: implement → gate →
   Draft PR → follow-up loop, with the human pulled in only when a *decision* is needed (a review
-  comment that demands a design change, per `pr-followup`'s existing escalation rule).
+  comment that demands a design change, a conflict-triggered rebase, or the final Draft → Ready
+  call, per `pr-followup`'s existing escalation rule and Unit 3's stop conditions).
 - **Compact before the loop** cuts the token cost of that flow. The implement phase's context (the
   design back-and-forth, the file reads) is dead weight once the PR exists; compacting before
   entering the follow-up loop lets each polling turn run against a lean context instead of the full
@@ -115,13 +116,18 @@ comments); rebasing and the merge decision stay with the human.
 
 The loop also **halts and escalates to the human** in two additional cases:
 - `pr-followup` encounters a comment that requires a design or spec change (its existing, unchanged
-  escalation rule — a design decision is the human's, not the loop's).
+  escalation rule — a design decision is the human's, not the loop's, and takes priority over the
+  stop conditions above).
 - A **merge conflict** is detected. This check is owned by the **loop layer in `implement-be`**,
   not by `pr-followup` itself (Unit 5 leaves `pr-followup` unchanged, and today's `pr-followup`
   does not query `mergeable`). At the start of each iteration the loop queries
   `gh pr view --json mergeable`; if the result is `CONFLICTING`, it escalates immediately without
-  invoking `pr-followup`. The bajutsu-specific `pr-followup` skill explicitly does not rebase or
-  force-push; once the human rebases and resolves the conflict, the loop can be restarted.
+  invoking `pr-followup`. Only `CONFLICTING` escalates: GitHub computes mergeability
+  asynchronously and returns `UNKNOWN` while that is in flight (e.g. right after a push), so the
+  loop treats `UNKNOWN` as "no conflict yet — proceed to `pr-followup`" and re-checks on the next
+  iteration, catching a real conflict once GitHub resolves it. The bajutsu-specific `pr-followup`
+  skill explicitly does not rebase or force-push; once the human rebases and resolves the conflict,
+  the loop can be restarted.
 
 A bounded backstop prevents an unbounded loop if the PR never converges: the loop runs for a
 maximum of **20 polling iterations or 24 hours, whichever comes first**. On hitting the backstop,

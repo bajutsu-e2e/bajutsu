@@ -114,8 +114,11 @@ compact のあと、`implement-be` はセッションに組み込みの **`/loop
 - **マージコンフリクトが検出された**とき。このチェックは **`implement-be` のループ層**が担います。
   `pr-followup` 自体は変更しないため（Unit 5）、今の `pr-followup` は `mergeable` を参照していません。
   各周回の先頭でループ層が `gh pr view --json mergeable` を照会し、`CONFLICTING` であれば `pr-followup`
-  を呼ばずに即エスカレートします。bajutsu 固有の `pr-followup` スキルは rebase や force-push を行わず、
-  人間が rebase してコンフリクトを解消したあとにループを再起動できます。
+  を呼ばずに即エスカレートします。エスカレートするのは `CONFLICTING` のときだけです。GitHub は
+  マージ可否を非同期に計算し、算出中（たとえば push の直後）は `UNKNOWN` を返すため、ループは
+  `UNKNOWN` を「まだコンフリクトなし。`pr-followup` へ進む」とみなし、次の周回で再確認して、GitHub が
+  確定したあとに本当のコンフリクトを捉えます。bajutsu 固有の `pr-followup` スキルは rebase や
+  force-push を行わず、人間が rebase してコンフリクトを解消したあとにループを再起動できます。
 
 PR が収束しない場合の歯止めとして、ループは**最大20周回または24時間のいずれか早い方**で停止します。上限に
 達したら、ループを続けるのではなく、現在の状態（CI 状態、未解決コメント数）を報告して終了します。
