@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-web-device-mode-emulation-ja.md)
+**English** · [日本語](BE-0228-web-device-mode-emulation-ja.md)
 
-# BE-XXXX — Web device mode (desktop / mobile emulation)
+# BE-0228 — Web device mode (desktop / mobile emulation)
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-web-device-mode-emulation.md) |
+| Proposal | [BE-0228](BE-0228-web-device-mode-emulation.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0228") |
 | Topic | Platform expansion (Android / Web / Flutter) |
 <!-- /BE-METADATA -->
 
