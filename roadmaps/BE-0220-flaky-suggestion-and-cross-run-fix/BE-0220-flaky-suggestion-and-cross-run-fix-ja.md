@@ -9,7 +9,7 @@
 | 提案者 | [@hirosassa](https://github.com/hirosassa) |
 | 状態 | **実装中** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0220") |
-| 実装 PR | [#904](https://github.com/bajutsu-e2e/bajutsu/pull/904), [#907](https://github.com/bajutsu-e2e/bajutsu/pull/907) |
+| 実装 PR | [#904](https://github.com/bajutsu-e2e/bajutsu/pull/904), [#907](https://github.com/bajutsu-e2e/bajutsu/pull/907), [#919](https://github.com/bajutsu-e2e/bajutsu/pull/919) |
 | トピック | 自己修復トリアージ（M4） |
 <!-- /BE-METADATA -->
 
