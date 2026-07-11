@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0220](BE-0220-flaky-suggestion-and-cross-run-fix.md) |
 | Author | [@hirosassa](https://github.com/hirosassa) |
-| Status | **Proposal** |
+| Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0220") |
+| Implementing PR | [#904](https://github.com/bajutsu-e2e/bajutsu/pull/904) |
 | Topic | Self-healing triage (M4) |
 <!-- /BE-METADATA -->
 
@@ -161,12 +162,21 @@ first-class.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Prerequisite — run provenance (`scenarioHash` / `toolVersion` / `gitRevision`) stamped onto the DB run record (deliver if not already shipped under BE-0015).
+- [x] Prerequisite — run provenance (`scenarioHash` / `toolVersion` / `gitRevision`) stamped onto the DB run record (delivered here; not previously shipped under BE-0015).
 - [ ] Half 1 — cross-run flakiness score over the DB run history, reusing the `audit --history` classification.
 - [ ] Half 1 — ranked flaky-scenario panel in the serve Web UI (+ `--json` / CLI form) linking to representative passing / failing run evidence.
 - [ ] Half 2 — cross-run `TriageContext` assembling evidence from both passing and failing runs of one flaky scenario.
 - [ ] Half 2 — pattern diagnosis + fix proposal (targeted edit through full YAML rewrite) behind the `TriageAgent` protocol, as a reviewable proposal diff.
 - [ ] Half 2 — laxer guard (BE-0023) flagging any proposal that weakens assertions.
+
+### Log
+
+- 2026-07-11 — Prerequisite: stamped run provenance onto the serve DB `Run` record. Added nullable
+  `scenario_hash` / `tool_version` / `git_revision` columns (indexed on `scenario_hash`, the
+  flakiness grouping key) with alembic migration `0008`, threaded them through `RunRecord`, and
+  populated them in `_persist_run` from the run's `manifest.json` provenance block (BE-0049). A
+  pre-provenance run records with null provenance — ungroupable, never blocking. Historical backfill
+  of already-stored runs is deferred (it needs artifact-store access, not a schema migration).
 
 ## References
 

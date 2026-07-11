@@ -62,6 +62,8 @@ class Project(Base):
 
 class Run(Base):
     __tablename__ = "runs"
+    # scenario_hash is the flakiness grouping key (GROUP BY scenario_hash, then per-scenario name).
+    __table_args__ = (Index("ix_runs_scenario_hash", "scenario_hash"),)
 
     id: Mapped[str] = mapped_column(primary_key=True)
     org_id: Mapped[str] = mapped_column(ForeignKey("orgs.id"))
@@ -71,6 +73,12 @@ class Run(Base):
     ok: Mapped[bool | None] = mapped_column(default=None)
     created_at: Mapped[datetime] = _created_at()
     summary: Mapped[dict[str, Any]] = mapped_column(_JSON, default=dict)
+    # Run provenance mirrored from the run's manifest.json (BE-0049 stamp), so cross-run flakiness
+    # can group by scenario identity straight from the DB (BE-0220) without re-reading every
+    # manifest from object storage. Null for a pre-provenance run — unstamped, so ungroupable.
+    scenario_hash: Mapped[str | None] = mapped_column(default=None)
+    tool_version: Mapped[str | None] = mapped_column(default=None)
+    git_revision: Mapped[str | None] = mapped_column(default=None)
 
 
 class JobRecord(Base):

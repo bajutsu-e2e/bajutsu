@@ -7,8 +7,9 @@
 |---|---|
 | 提案 | [BE-0220](BE-0220-flaky-suggestion-and-cross-run-fix-ja.md) |
 | 提案者 | [@hirosassa](https://github.com/hirosassa) |
-| 状態 | **提案** |
+| 状態 | **実装中** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0220") |
+| 実装 PR | [#904](https://github.com/bajutsu-e2e/bajutsu/pull/904) |
 | トピック | 自己修復トリアージ（M4） |
 <!-- /BE-METADATA -->
 
@@ -72,12 +73,22 @@ DB を対象とした Run 横断のフラッキー検出には、「同一シナ
 > 作業分解（作業の単位ごとに 1 つ）に対応し、ログには変更内容と時期（古い順）を PR へのリンクと
 > ともに記録します。
 
-- [ ] 前提：DB の Run レコードへの Run provenance（`scenarioHash` / `toolVersion` / `gitRevision`）のスタンプ（BE-0015 配下でまだ出荷されていなければここで届ける）。
+- [x] 前提：DB の Run レコードへの Run provenance（`scenarioHash` / `toolVersion` / `gitRevision`）のスタンプ（BE-0015 配下では未出荷だったため、ここで届けました）。
 - [ ] 前半：`audit --history` の分類を再利用した、DB の Run 履歴に対する Run 横断のフラッキースコア。
 - [ ] 前半：serve Web UI の順位付きフラッキーシナリオパネル（および `--json` / CLI 形式）。代表的な成功 / 失敗 Run の証跡へリンクする。
 - [ ] 後半：1 つのフラッキーシナリオについて、成功 Run と失敗 Run の両方から証跡を集める Run 横断の `TriageContext`。
 - [ ] 後半：`TriageAgent` プロトコルの背後での、パターン診断と修正提案（的を絞った編集から YAML 全体の書き直しまで）。レビュー可能な提案差分として出す。
 - [ ] 後半：アサーションを弱める提案を明示する、甘くしないためのガード（BE-0023）。
+
+### ログ
+
+- 2026-07-11 — 前提：serve の DB `Run` レコードに Run provenance をスタンプしました。null 許容の
+  `scenario_hash` / `tool_version` / `git_revision` 列（フラッキー判定のグルーピングキーである
+  `scenario_hash` にインデックスを付与）を alembic マイグレーション `0008` で追加し、`RunRecord`
+  を通して受け渡し、`_persist_run` で Run の `manifest.json` の provenance ブロック（BE-0049）から
+  値を埋めます。provenance より前の Run は provenance が null のまま記録され、グルーピングの対象外
+  にはなりますが、処理を妨げることはありません。既存 Run への遡及的なバックフィルは、スキーマ
+  マイグレーションではなくアーティファクトストアへのアクセスを要するため、見送りました。
 
 ## 参考
 

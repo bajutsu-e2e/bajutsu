@@ -269,6 +269,11 @@ def _persist_run(state: ServeState, job: Job) -> None:
         org = job.org
         repo.ensure_org(org, slug=org, name=org)
         created_by = job.actor if job.actor and repo.user_org(job.actor) is not None else None
+        # Read + parse the manifest once and feed both the summary and the provenance stamp: a hosted
+        # `open_bytes` can be an object-storage round trip, so a second read per run would double the
+        # cost `_run_summary` was written to avoid.
+        manifest = _read_manifest(state, run_id)
+        scenario_hash, tool_version, git_revision = _run_provenance(manifest)
         repo.record_run(
             RunRecord(
                 id=run_id,
@@ -276,29 +281,57 @@ def _persist_run(state: ServeState, job: Job) -> None:
                 status="done",
                 created_by=created_by,
                 ok=ok,
-                summary=_run_summary(state, run_id, ok=ok),
+                summary=_run_summary(run_id, manifest, ok=ok),
+                scenario_hash=scenario_hash,
+                tool_version=tool_version,
+                git_revision=git_revision,
             )
         )
     except Exception:
         logger.warning("failed to persist run %s to the system of record", run_id, exc_info=True)
 
 
-def _run_summary(state: ServeState, run_id: str, *, ok: bool) -> dict[str, Any]:
-    """The run's history-list summary, read from just this run's `manifest.json` (not a full
-    `list_runs()` scan, which re-reads every run's manifest from object storage). `write_report`
-    writes `report.html` alongside the manifest, so a readable manifest means the report exists."""
-    minimal = {"id": run_id, "ok": ok, "report": False, "scenarios": [], "passed": 0, "total": 0}
+def _read_manifest(state: ServeState, run_id: str) -> dict[str, Any] | None:
+    """Parse a run's `manifest.json` once, or None if it's missing, unreadable, or not a JSON object
+    (a corrupted/partial write left a bare list/string/`null`). `_persist_run` reads it a single time
+    and hands the parsed value to both the summary and the provenance stamp, since a hosted
+    `open_bytes` can be a real object-storage round trip."""
     raw = state.artifacts.open_bytes(f"{run_id}/manifest.json")
     if raw is None:
-        return minimal
+        return None
     try:
-        data = json.loads(raw)
+        manifest = json.loads(raw)
     except (json.JSONDecodeError, ValueError):
-        return minimal
-    scenarios = [s for s in (data.get("scenarios") or []) if isinstance(s, dict)]
+        return None
+    return manifest if isinstance(manifest, dict) else None
+
+
+def _run_provenance(manifest: dict[str, Any] | None) -> tuple[str | None, str | None, str | None]:
+    """The run's identity stamp — (scenarioHash, toolVersion, gitRevision) — from its `manifest.json`
+    provenance block (BE-0049), mirrored onto the DB record so cross-run flakiness groups by scenario
+    identity straight from the DB (BE-0220). All None for a pre-provenance run or an unreadable /
+    malformed manifest — ungroupable, never blocking (mirrors audit --history's `skipped`)."""
+    prov = manifest.get("provenance") if manifest is not None else None
+    if not isinstance(prov, dict):
+        return None, None, None
+
+    def _str(key: str) -> str | None:
+        value = prov.get(key)
+        return value if isinstance(value, str) else None
+
+    return _str("scenarioHash"), _str("toolVersion"), _str("gitRevision")
+
+
+def _run_summary(run_id: str, manifest: dict[str, Any] | None, *, ok: bool) -> dict[str, Any]:
+    """The run's history-list summary, from just this run's parsed `manifest.json` (not a full
+    `list_runs()` scan, which re-reads every run's manifest from object storage). `write_report`
+    writes `report.html` alongside the manifest, so a readable manifest means the report exists."""
+    if manifest is None:
+        return {"id": run_id, "ok": ok, "report": False, "scenarios": [], "passed": 0, "total": 0}
+    scenarios = [s for s in (manifest.get("scenarios") or []) if isinstance(s, dict)]
     return {
         "id": run_id,
-        "ok": bool(data.get("ok")),
+        "ok": bool(manifest.get("ok")),
         "report": True,
         "scenarios": [str(s.get("scenario", "")) for s in scenarios],
         "passed": sum(1 for s in scenarios if s.get("ok")),

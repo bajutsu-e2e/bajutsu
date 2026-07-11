@@ -5,8 +5,10 @@ mock); `run_job` runs synchronously in the test thread, so the single connection
 
 from __future__ import annotations
 
+import json
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 
 from _shared import fake_popen, project, write_run
 from sqlalchemy import create_engine
@@ -54,6 +56,136 @@ def test_run_job_records_finished_run_into_the_repository(tmp_path: Path) -> Non
     assert rec.summary["passed"] == 2
     assert rec.summary["total"] == 2
     assert rec.summary["report"] is True
+
+
+def test_run_job_stamps_run_provenance_from_the_manifest(tmp_path: Path) -> None:
+    # BE-0220: the run's manifest.json provenance (the BE-0049 stamp) is mirrored onto the DB record
+    # so cross-run flakiness can group by scenario identity straight from the DB.
+    scn_dir, cfg, runs = project(tmp_path)
+    run_dir = runs / "20260621-4"
+    run_dir.mkdir(parents=True)
+    (run_dir / "manifest.json").write_text(
+        json.dumps(
+            {
+                "runId": "20260621-4",
+                "ok": True,
+                "scenarios": [{"scenario": "alpha", "ok": True}],
+                "provenance": {
+                    "scenarioHash": "sha256:abc123",
+                    "toolVersion": "9.9.9",
+                    "gitRevision": "deadbeef",
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    (run_dir / "report.html").write_text("<html></html>", encoding="utf-8")
+    repo = _repo()
+    state = srv.ServeState(
+        scenarios_dir=scn_dir,
+        config=cfg,
+        runs_dir=runs,
+        cwd=tmp_path,
+        repository=repo,
+        popen=fake_popen(["PASS  runs/20260621-4/manifest.json\n"]),
+    )
+    srv.run_job(state, state.register(srv.Job(cmd=["x"])))
+
+    rec = repo.get_run("20260621-4")
+    assert rec is not None
+    assert rec.scenario_hash == "sha256:abc123"
+    assert rec.tool_version == "9.9.9"
+    assert rec.git_revision == "deadbeef"
+
+
+def test_run_job_leaves_provenance_null_for_a_pre_provenance_run(tmp_path: Path) -> None:
+    # A run whose manifest predates the provenance stamp records with null provenance — ungroupable
+    # by scenario identity, but never blocking (mirrors audit --history's `skipped`, BE-0049).
+    scn_dir, cfg, runs = project(tmp_path)
+    write_run(runs, "20260621-5", ok=True, scenarios=[("alpha", True)])
+    repo = _repo()
+    state = srv.ServeState(
+        scenarios_dir=scn_dir,
+        config=cfg,
+        runs_dir=runs,
+        cwd=tmp_path,
+        repository=repo,
+        popen=fake_popen(["PASS  runs/20260621-5/manifest.json\n"]),
+    )
+    srv.run_job(state, state.register(srv.Job(cmd=["x"])))
+
+    rec = repo.get_run("20260621-5")
+    assert rec is not None
+    assert rec.scenario_hash is None
+    assert rec.tool_version is None
+    assert rec.git_revision is None
+
+
+def test_run_job_records_a_malformed_manifest_with_null_provenance(tmp_path: Path) -> None:
+    # A manifest that parses but isn't a JSON object (a corrupted/partial write left a bare list,
+    # string, or `null`) must not abort the whole record_run: the run still persists, just with null
+    # provenance and a minimal summary. Guards against `json.loads(...).get(...)` raising
+    # AttributeError past the (JSONDecodeError, ValueError) catch and escaping to the outer handler.
+    scn_dir, cfg, runs = project(tmp_path)
+    run_dir = runs / "20260621-6"
+    run_dir.mkdir(parents=True)
+    (run_dir / "manifest.json").write_text(json.dumps([1, 2, 3]), encoding="utf-8")
+    (run_dir / "report.html").write_text("<html></html>", encoding="utf-8")
+    repo = _repo()
+    state = srv.ServeState(
+        scenarios_dir=scn_dir,
+        config=cfg,
+        runs_dir=runs,
+        cwd=tmp_path,
+        repository=repo,
+        popen=fake_popen(["PASS  runs/20260621-6/manifest.json\n"]),
+    )
+    srv.run_job(state, state.register(srv.Job(cmd=["x"])))
+
+    rec = repo.get_run("20260621-6")
+    assert rec is not None
+    assert rec.scenario_hash is None
+    assert rec.tool_version is None
+    assert rec.git_revision is None
+
+
+def test_run_job_reads_the_run_manifest_only_once(tmp_path: Path) -> None:
+    # `_persist_run` feeds both the history summary and the provenance stamp from a single manifest
+    # read. On a hosted backend `open_bytes` is a real object-storage round trip, so reading it once
+    # per helper (twice per finished run) doubles exactly the cost `_run_summary` was written to avoid.
+    scn_dir, cfg, runs = project(tmp_path)
+    write_run(runs, "20260621-r", ok=True, scenarios=[("alpha", True)])
+    repo = _repo()
+    state = srv.ServeState(
+        scenarios_dir=scn_dir,
+        config=cfg,
+        runs_dir=runs,
+        cwd=tmp_path,
+        repository=repo,
+        popen=fake_popen(["PASS  runs/20260621-r/manifest.json\n"]),
+    )
+
+    class CountingStore:
+        # A pass-through over the real LocalArtifactStore that tallies manifest reads — the same
+        # store-swap seam test_http_artifacts uses to inject a server-style store.
+        def __init__(self, inner: object) -> None:
+            self._inner = inner
+            self.manifest_reads = 0
+
+        def open_bytes(self, rel: str) -> bytes | None:
+            if rel.endswith("manifest.json"):
+                self.manifest_reads += 1
+            return self._inner.open_bytes(rel)  # type: ignore[attr-defined]
+
+        def __getattr__(self, name: str) -> Any:
+            return getattr(self._inner, name)
+
+    counting = CountingStore(state.artifacts)
+    state.artifacts = counting  # type: ignore[assignment]
+    srv.run_job(state, state.register(srv.Job(cmd=["x"])))
+
+    assert repo.get_run("20260621-r") is not None
+    assert counting.manifest_reads == 1
 
 
 def test_run_job_does_not_attribute_to_an_unknown_user(tmp_path: Path) -> None:
