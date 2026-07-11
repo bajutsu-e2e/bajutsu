@@ -104,8 +104,18 @@ def test_triage_flag_surface_is_fully_classified() -> None:
     # The CLI-only apply/rerun flow: serve previews with --apply then writes through POST /api/scenario,
     # so it never drives --write/--rerun (nor the --rerun-only backend/udid), passes the run dir
     # positionally rather than via --runs, and triages the run's first failed scenario rather than
-    # forwarding a --scenario name filter (BE-0147).
-    not_serve_exposed = {"runs", "write", "rerun", "backend", "udid", "scenario"}
+    # forwarding a --scenario name filter (BE-0147). --flaky/--history are the CLI-only cross-run mode
+    # (BE-0220 Half 2); the serve panel is Half 1's flakiness ranking, not this AI proposal.
+    not_serve_exposed = {
+        "runs",
+        "write",
+        "rerun",
+        "backend",
+        "udid",
+        "scenario",
+        "flaky",
+        "history",
+    }
     pass_through = {"target_name", "ai", "apply", "json_out"}
     assert base_handled | not_serve_exposed | pass_through == _option_names("triage")
 

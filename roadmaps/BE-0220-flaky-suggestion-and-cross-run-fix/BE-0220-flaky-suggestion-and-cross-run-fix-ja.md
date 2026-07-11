@@ -7,7 +7,7 @@
 |---|---|
 | 提案 | [BE-0220](BE-0220-flaky-suggestion-and-cross-run-fix-ja.md) |
 | 提案者 | [@hirosassa](https://github.com/hirosassa) |
-| 状態 | **実装中** |
+| 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0220") |
 | 実装 PR | [#904](https://github.com/bajutsu-e2e/bajutsu/pull/904), [#907](https://github.com/bajutsu-e2e/bajutsu/pull/907), [#919](https://github.com/bajutsu-e2e/bajutsu/pull/919) |
 | トピック | 自己修復トリアージ（M4） |
@@ -76,9 +76,9 @@ DB を対象とした Run 横断のフラッキー検出には、「同一シナ
 - [x] 前提：DB の Run レコードへの Run provenance（`scenarioHash` / `toolVersion` / `gitRevision`）のスタンプ（BE-0015 配下では未出荷だったため、ここで届けました）。
 - [x] 前半：`audit --history` の分類を再利用した、DB の Run 履歴に対する Run 横断のフラッキースコア。
 - [x] 前半：serve Web UI の順位付きフラッキーシナリオパネル（および `--json` / CLI 形式）。代表的な成功 / 失敗 Run の証跡へリンクする。
-- [ ] 後半：1 つのフラッキーシナリオについて、成功 Run と失敗 Run の両方から証跡を集める Run 横断の `TriageContext`。
-- [ ] 後半：`TriageAgent` プロトコルの背後での、パターン診断と修正提案（的を絞った編集から YAML 全体の書き直しまで）。レビュー可能な提案差分として出す。
-- [ ] 後半：アサーションを弱める提案を明示する、甘くしないためのガード（BE-0023）。
+- [x] 後半：1 つのフラッキーシナリオについて、成功 Run と失敗 Run の両方から証跡を集める Run 横断の `TriageContext`。
+- [x] 後半：`TriageAgent` プロトコルの背後での、パターン診断と修正提案（的を絞った構造化編集。YAML 全体の書き直しはフォローアップに送りました）。レビュー可能な提案差分として出す。
+- [x] 後半：アサーションを弱める提案を明示する、甘くしないためのガード（BE-0023）。
 
 ### ログ
 
@@ -107,6 +107,19 @@ DB を対象とした Run 横断のフラッキー検出には、「同一シナ
   `render_html` を `serve/flakiness.py` に追加し、各行は代表的な成功 / 失敗 Run の証跡へリンクします。
   読み取り専用かつ org スコープで、判定もゲートもありません。これで前半は完了し、後半（AI による Run
   横断の修正提案）が残ります。
+- 2026-07-11 — 後半：AI による Run 横断の修正提案を、CLI 専用の提示面として追加しました
+  （`bajutsu triage --flaky --scenario <name> --history <runs-dir> --ai`）。Run 横断の
+  `TriageContext`（`RunEvidence` / `CrossRunTriageContext` と `assemble_cross_run`。1 つのシナリオの
+  成功 Run と失敗 Run を対比します）、`CrossRunTriageAgent` プロトコルの背後の
+  `ClaudeCrossRunTriageAgent`（差分を読み解き、`selector-ambiguity` / `timing` / `network-variance` /
+  `state-leak` / `unknown` という間欠性のカテゴリと構造化された修正を必ず返します）、すべての triage
+  結果に配線した `flag_laxer` ガード（BE-0023。修正が申告する種類を信用せず、適用前後のシナリオを構造で
+  比較する決定的な判定です）、そして提示面（`render_cross_run` の提案差分と `cross_run_payload` の JSON、
+  `triage` への `--flaky` / `--history`）を実装しました。Run 横断の診断は AI 専用（ルールベースの
+  エージェントはありません）なので、`--flaky` は `--ai` を必須にします。あくまで助言的で、判定は Run が
+  すでに下しており、これは説明と提案だけを行い、判定経路には決して乗りません。修正の範囲は的を絞った
+  構造化編集（`renameId` / `addIndex` / `raiseTimeout`）で、YAML 全体の書き直しはフォローアップに送りました。
+  これで後半、そして本項目が完了します。
 
 ## 参考
 

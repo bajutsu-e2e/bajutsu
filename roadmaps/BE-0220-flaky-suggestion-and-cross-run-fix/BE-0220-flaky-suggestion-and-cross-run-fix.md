@@ -7,7 +7,7 @@
 |---|---|
 | Proposal | [BE-0220](BE-0220-flaky-suggestion-and-cross-run-fix.md) |
 | Author | [@hirosassa](https://github.com/hirosassa) |
-| Status | **In progress** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0220") |
 | Implementing PR | [#904](https://github.com/bajutsu-e2e/bajutsu/pull/904), [#907](https://github.com/bajutsu-e2e/bajutsu/pull/907), [#919](https://github.com/bajutsu-e2e/bajutsu/pull/919) |
 | Topic | Self-healing triage (M4) |
@@ -165,9 +165,9 @@ first-class.
 - [x] Prerequisite — run provenance (`scenarioHash` / `toolVersion` / `gitRevision`) stamped onto the DB run record (delivered here; not previously shipped under BE-0015).
 - [x] Half 1 — cross-run flakiness score over the DB run history, reusing the `audit --history` classification.
 - [x] Half 1 — ranked flaky-scenario panel in the serve Web UI (+ `--json` / CLI form) linking to representative passing / failing run evidence.
-- [ ] Half 2 — cross-run `TriageContext` assembling evidence from both passing and failing runs of one flaky scenario.
-- [ ] Half 2 — pattern diagnosis + fix proposal (targeted edit through full YAML rewrite) behind the `TriageAgent` protocol, as a reviewable proposal diff.
-- [ ] Half 2 — laxer guard (BE-0023) flagging any proposal that weakens assertions.
+- [x] Half 2 — cross-run `TriageContext` assembling evidence from both passing and failing runs of one flaky scenario.
+- [x] Half 2 — pattern diagnosis + fix proposal (targeted structured edit — full YAML rewrite deferred to a follow-up) behind the `TriageAgent` protocol, as a reviewable proposal diff.
+- [x] Half 2 — laxer guard (BE-0023) flagging any proposal that weakens assertions.
 
 ### Log
 
@@ -194,6 +194,19 @@ first-class.
   `serve/flakiness.py` so the file-backed and DB paths feed one ranking, each row linking to the
   representative passing / failing runs' evidence. Read-only and org-scoped; no verdict, no gate.
   This completes Half 1; Half 2 (the AI cross-run fix proposal) remains.
+- 2026-07-11 — Half 2: the AI cross-run fix proposal, as a CLI-only surface (`bajutsu triage
+  --flaky --scenario <name> --history <runs-dir> --ai`). Added the cross-run `TriageContext`
+  (`RunEvidence` / `CrossRunTriageContext` + `assemble_cross_run`, contrasting a scenario's passing
+  and failing runs), the `ClaudeCrossRunTriageAgent` behind a `CrossRunTriageAgent` protocol
+  (forced to a `selector-ambiguity` / `timing` / `network-variance` / `state-leak` / `unknown`
+  intermittency category plus a structured fix, reasoning over the delta), the `flag_laxer` guard
+  (BE-0023 — a deterministic structural before/after comparison, not trusting the fix's declared
+  kind) wired into every triage result, and the surface (`render_cross_run` proposal diff /
+  `cross_run_payload` JSON, `--flaky` / `--history` on `triage`). Cross-run diagnosis is AI-only (no
+  rule-based agent), so `--flaky` requires `--ai`; it stays advisory (the runs decided pass/fail,
+  this only explains and proposes — never the verdict path). The fix set is the targeted structured
+  edits (`renameId` / `addIndex` / `raiseTimeout`); a full YAML rewrite is deferred to a follow-up.
+  This completes Half 2 and the item.
 
 ## References
 

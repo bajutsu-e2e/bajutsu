@@ -237,6 +237,38 @@ bajutsu triage [<run-dir>] --ai --apply <scenario-file> [--write] \
   どおり `--write` が必要です。`serve` の Web UI は、triage をブラウザに出すためにこの `--json` を
   使います（BE-0147）。
 
+### Run 横断のフラッキートリアージ（`--flaky`）
+
+既定の `triage` が*ある 1 つの*失敗 run を説明するのに対し、`--flaky` は*パターン*を説明します。すなわち、
+コンテンツのフィンガープリントが変わっていないのに、1 つのシナリオがなぜ間欠的に成功したり失敗したりするのか
+を診断します（[BE-0220](../../roadmaps/BE-0220-flaky-suggestion-and-cross-run-fix/BE-0220-flaky-suggestion-and-cross-run-fix-ja.md)）。
+これは [`flakiness`](#flakiness) の修正提案版にあたります。`flakiness` が*どの*シナリオがブレるかを順位付けするのに対し、
+`--flaky` はそのうちの 1 つが*なぜ*ブレるのかを診断して修正を提案します。対象シナリオの成功 run と失敗 run の
+両方の証跡を読み、両者の**差分**を推論します（ある run では解決したのに別の run では曖昧だったセレクタ、
+多くの場合スピナーに勝った wait、内容が揺れたネットワーク応答など）。
+
+```bash
+bajutsu triage --flaky --scenario <name> --history <runs-dir> --ai [--apply <file> [--write]] [--json <path>]
+```
+
+- **`--ai` が必須です。** Run 横断の診断にはルールベースのエージェントがありません。差分の推論は、まさに
+  LLM が担う判断抜きの調査役の仕事だからです。そのため `--ai` を付けない `--flaky` は終了 2 になります。
+  あくまで助言的で、判定は run がすでに下しており、これは説明と提案だけを行い、判定経路には乗りません
+  （第一原則 1）。
+- `--scenario <name>` がフラッキーなシナリオを選び（run のシナリオ名の部分一致で拾い、1 つの厳密な名前に
+  解決するので、部分文字列を共有する 2 つのシナリオが混ざりません）、`--history <runs-dir>` は対比する過去の
+  run（それぞれ `manifest.json` を持つ）のディレクトリです。`bajutsu flakiness --history` や `audit --history`
+  が読むものと同じディレクトリ形です。どちらも必須で、欠けると終了 2 になります。
+- レポートは、成功 / 失敗 run の件数、フィンガープリント、間欠性のカテゴリ（`selector-ambiguity` / `timing`
+  / `network-variance` / `state-leak` / `unknown`）、そして提案された修正を、現在のシナリオに対する
+  **レビュー可能な差分**として表示します。単独で適用されることはありません。
+- 単一 run の triage と同じ構造化 fix とフラグを再利用します。`--apply` / `--write` がシナリオにパッチを
+  当て、`--json` が機械可読の結果を書き出します。アサーションを弱める編集は、両方の提示面で inline に
+  **甘くする（laxer）**フラグが付きます（[BE-0023](../../roadmaps/BE-0023-self-healing-guards/BE-0023-self-healing-guards-ja.md)）。
+  YAML 全体の書き直しはフォローアップに送っており、現在の fix は的を絞った構造化編集です。
+- 履歴に失敗 run が 1 つも無いとき（フラッキーとして診断する対象が無いとき）は**終了 0** です。他の
+  読み取り専用モードと同じく助言的です。
+
 ## `record`
 
 AI でゴールに向けて探索し、**記録したシナリオを書き出します**（Tier 1、[recording](recording.md)）。

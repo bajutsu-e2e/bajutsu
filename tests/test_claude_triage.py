@@ -7,11 +7,16 @@ from typing import Any
 from conftest import FakeBackend, FakeBlock
 
 from bajutsu.ai.base import AnyTool, ImagePart, TextPart
-from bajutsu.claude_triage import ClaudeTriageAgent, _render
+from bajutsu.claude_triage import (
+    ClaudeCrossRunTriageAgent,
+    ClaudeTriageAgent,
+    _render,
+    _render_cross_run,
+)
 from bajutsu.drivers import base
 from bajutsu.redaction import Redactor
 from bajutsu.scenario import Redact
-from bajutsu.triage import FailedStep, TriageContext
+from bajutsu.triage import CrossRunTriageContext, FailedStep, RunEvidence, TriageContext
 
 
 def _el(identifier: str, label: str) -> base.Element:
@@ -227,3 +232,131 @@ def test_tool_schema_exposes_optional_fix() -> None:
         "raiseTimeout",
     ]
     assert "fix" not in schema["required"]  # advisory-by-default; fix is opt-in for the model
+
+
+# --- cross-run flaky triage (BE-0220 Half 2) ---
+
+
+def _ev(ok: bool, **over: Any) -> RunEvidence:
+    base_ev = {
+        "run_id": "r",
+        "ok": ok,
+        "failure": "" if ok else "step0 tap: 一致なし",
+        "failed_step": None if ok else FailedStep(0, "tap", "一致なし: home.titel"),
+        "failed_expectations": [],
+        "elements": [_el("home.title", "Home")],
+        "screenshot": None,
+    }
+    base_ev.update(over)
+    return RunEvidence(**base_ev)
+
+
+def _cross_ctx(**over: Any) -> CrossRunTriageContext:
+    base_ctx = {
+        "scenario": "s",
+        "scenario_hash": "abc",
+        "scenario_yaml": "- name: s\n  steps:\n    - tap: { id: home.titel }\n",
+        "target_id": "home.titel",
+        "passing": [_ev(True, run_id="p1")],
+        "failing": [_ev(False, run_id="f1")],
+    }
+    base_ctx.update(over)
+    return CrossRunTriageContext(**base_ctx)
+
+
+def _diagnose_cr(
+    category: str = "timing",
+    summary: str = "races a spinner",
+    suggestions: list[str] | None = None,
+    fix: dict[str, Any] | None = None,
+) -> FakeBlock:
+    payload: dict[str, Any] = {
+        "category": category,
+        "summary": summary,
+        "suggestions": suggestions if suggestions is not None else ["add an explicit wait"],
+    }
+    if fix is not None:
+        payload["fix"] = fix
+    return FakeBlock("diagnose", payload)
+
+
+def test_cross_run_diagnose_maps_to_triage() -> None:
+    agent = ClaudeCrossRunTriageAgent(backend=FakeBackend(_diagnose_cr()))
+    result = agent.triage_flaky(_cross_ctx())
+    assert result.category == "timing"
+    assert result.summary == "races a spinner"
+    assert result.suggestions == ["add an explicit wait"]
+
+
+def test_cross_run_new_category_is_allowed() -> None:
+    agent = ClaudeCrossRunTriageAgent(
+        backend=FakeBackend(_diagnose_cr(category="network-variance"))
+    )
+    assert agent.triage_flaky(_cross_ctx()).category == "network-variance"
+
+
+def test_cross_run_unknown_category_is_clamped() -> None:
+    # "selector" is the single-run category name; cross-run uses "selector-ambiguity"
+    agent = ClaudeCrossRunTriageAgent(backend=FakeBackend(_diagnose_cr(category="selector")))
+    assert agent.triage_flaky(_cross_ctx()).category == "unknown"
+
+
+def test_cross_run_tool_schema_and_forced_choice() -> None:
+    backend = FakeBackend(_diagnose_cr())
+    ClaudeCrossRunTriageAgent(backend=backend, model="claude-opus-4-8").triage_flaky(_cross_ctx())
+    request = backend.requests[0]
+    assert request.model == "claude-opus-4-8"
+    assert isinstance(request.tool_choice, AnyTool)
+    assert [t.name for t in request.tools] == ["diagnose"]
+    assert request.tools[0].input_schema["properties"]["category"]["enum"] == [
+        "selector-ambiguity",
+        "timing",
+        "network-variance",
+        "state-leak",
+        "unknown",
+    ]
+
+
+def test_cross_run_render_contrasts_passing_and_failing() -> None:
+    text = _render_cross_run(_cross_ctx())
+    assert "Scenario: s" in text
+    assert "Failing run" in text and "Passing run" in text
+    assert "一致なし: home.titel" in text  # the failure detail
+    assert "Scenario definition (YAML):" in text
+    assert text.rstrip().endswith("Call the `diagnose` tool exactly once.")
+
+
+def test_cross_run_fix_is_parsed() -> None:
+    fix = {"kind": "raiseTimeout", "find": "timeout: 5", "replace": "timeout: 15"}
+    res = ClaudeCrossRunTriageAgent(backend=FakeBackend(_diagnose_cr(fix=fix))).triage_flaky(
+        _cross_ctx()
+    )
+    assert res.fix is not None and res.fix.kind == "raiseTimeout"
+    assert (res.fix.find, res.fix.replace) == ("timeout: 5", "timeout: 15")
+
+
+def test_cross_run_secret_is_masked_before_send() -> None:
+    backend = FakeBackend(_diagnose_cr())
+    redactor = Redactor(Redact(), values=["sk-secret-token"])
+    ctx = _cross_ctx(
+        failing=[
+            _ev(
+                False,
+                failure="auth failed with token sk-secret-token",
+                elements=[
+                    {
+                        "identifier": "tok",
+                        "label": "Authorization: sk-secret-token",
+                        "traits": ["staticText"],
+                        "value": "sk-secret-token",
+                        "frame": (0.0, 0.0, 1.0, 1.0),
+                    }
+                ],
+            )
+        ],
+        scenario_yaml="- name: s\n  steps:\n    - type: { into: { id: f }, text: sk-secret-token }\n",
+    )
+    ClaudeCrossRunTriageAgent(backend=backend, redactor=redactor).triage_flaky(ctx)
+    text = next(p.text for p in backend.requests[0].messages[0].content if isinstance(p, TextPart))
+    assert "sk-secret-token" not in text
+    assert "[REDACTED]" in text
