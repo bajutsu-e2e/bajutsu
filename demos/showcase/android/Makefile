@@ -82,7 +82,8 @@ views-noax-build:
 # by .github/workflows/android-e2e.yml (Linux + KVM), the Android twin of the idb and web e2e lanes.
 # `adb root` restarts adbd as root so the `gestures` double-tap can write /dev/input via `sendevent`
 # (the google_apis image allows it; the driver falls back to `input tap` when it cannot). `wait-for-
-# device` blocks until the restarted adbd reconnects before the first scenario runs.
+# device` blocks until the restarted adbd reconnects before the first scenario runs. Both act on the
+# single attached AVD (this lane, like the local flow, only ever has one) rather than `-s $(SERIAL)`.
 e2e: compose-build
 	adb root && adb wait-for-device
 	cd $(ROOT) && for s in $(E2E_SCENARIOS); do \

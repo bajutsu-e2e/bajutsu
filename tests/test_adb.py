@@ -439,7 +439,7 @@ def test_double_tap_uses_sendevent_when_root() -> None:
     def run(args: list[str]) -> str:
         if "dump" in args:
             return FIXTURE
-        if "getprop" not in args and args[-2:] == ["id", "-u"]:
+        if args[-2:] == ["id", "-u"]:
             return "0\n"
         if "getevent" in args:
             return GETEVENT_LP

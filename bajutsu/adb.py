@@ -246,6 +246,7 @@ def _clamp(value: int, maximum: int) -> int:
 
 def _tap_events(dev: str, x: int, y: int, tracking_id: int) -> list[str]:
     """One protocol-B slot-0 down/up contact at (x, y) as `sendevent` command lines."""
+    dev = shlex.quote(dev)
     return [
         f"sendevent {dev} {_EV_ABS} {_ABS_MT_SLOT} 0",
         f"sendevent {dev} {_EV_ABS} {_ABS_MT_TRACKING_ID} {tracking_id}",
