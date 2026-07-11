@@ -175,7 +175,7 @@ A thin CLI mirror so CI and cron can drive the hub headlessly, without the Web U
 
 - [x] 1 — The project model: extend BE-0015's `projects` row with a config-source record; stamp `runs.project_id`.
 - [x] 2 — Persistence: the `ProjectRegistry` seam (DB-backed when a repository is present, on-disk JSON otherwise), run history partitioned by project on both paths (the `project_id` column with a DB, a project→run-ids index without); auto-register the launch config as the active project.
-- [ ] 3 — API: the five `/api/projects…` endpoints, org-scoped, additive to the existing single-config ones.
+- [ ] 3 — API: the five `/api/projects…` endpoints, org-scoped, additive to the existing single-config ones. (Carries over from unit 2's #921 review: thread the resolved `project_id` through `job_spec` so a remote worker's `_persist_run` stamps it, and make auto-activation org-aware — until then a non-`default` org has no active project.)
 - [ ] 4 — UI: the project switcher + projects list, rebinding the active project without a restart.
 - [ ] 5 — CLI: `bajutsu project add/ls/rm` and `bajutsu run --project <name>` as the headless trigger.
 
