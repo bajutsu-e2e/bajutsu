@@ -9,7 +9,7 @@
 | 提案者 | [@hirosassa](https://github.com/hirosassa) |
 | 状態 | **実装中** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0208") |
-| 実装 PR | [#851](https://github.com/bajutsu-e2e/bajutsu/pull/851)、[#880](https://github.com/bajutsu-e2e/bajutsu/pull/880)、[#899](https://github.com/bajutsu-e2e/bajutsu/pull/899)、[#901](https://github.com/bajutsu-e2e/bajutsu/pull/901)、[#906](https://github.com/bajutsu-e2e/bajutsu/pull/906) |
+| 実装 PR | [#851](https://github.com/bajutsu-e2e/bajutsu/pull/851)、[#880](https://github.com/bajutsu-e2e/bajutsu/pull/880)、[#899](https://github.com/bajutsu-e2e/bajutsu/pull/899)、[#901](https://github.com/bajutsu-e2e/bajutsu/pull/901)、[#906](https://github.com/bajutsu-e2e/bajutsu/pull/906)、[#910](https://github.com/bajutsu-e2e/bajutsu/pull/910) |
 | トピック | Platform expansion (Android / Web / Flutter) |
 | 関連 | [BE-0007](../BE-0007-android-backend/BE-0007-android-backend-ja.md)、[BE-0223](../BE-0223-adb-tab-bar-navigation/BE-0223-adb-tab-bar-navigation-ja.md) |
 <!-- /BE-METADATA -->
@@ -152,6 +152,25 @@ directive の枠内にとどまります。
   BE-0210）、`controls`（segmented control の value）、`notices`（深いスクロール）はそれぞれ BE-0007 の
   フォローアップです。ユニット 4 の visual の次元は、CI で採取したベースラインが引き続き必要です。項目は
   **実装中**のままです。
+- 2026-07-11 — ユニット 5（深いスクロールのフロー）。`controls` と `notices` が `E2E_SCENARIOS` へ
+  戻りました。どちらも遠くの対象を画面内までスクロールします。`controls` はボタンの下にある segmented
+  control の値ノードを、`notices` は折り返しよりかなり下の一覧の行を対象にします。実機ではどちらも失敗し
+  ましたが、原因は segmented control の値ノードや行が存在しないことではありませんでした（以前の「segmented
+  control の value を adb が公開していない」という診断は誤りで、ノードは公開されています）。既定の方向
+  スワイプが対象を画面内に運ぶほど十分にスクロールしなかっただけです。既定のスワイプは固定の座標量を移動して
+  おり、その量は frame の単位に依存します。iOS はポイント、Android は生ピクセルなので、iOS 向けの量では
+  密度の高い Android の 2400px の画面を約 2.6 分の 1 しかスクロールできず、対象に届きませんでした。修正では
+  既定のスワイプが画面に対する割合分を移動するようにしました（`bajutsu/orchestrator/actions/handlers/
+  gestures.py` の `_SWIPE_FRACTION = 0.125`）。これで、どちらのバックエンドでも同じ割合まで届きます。0.125
+  は歴史的な高さ 800 の基準画面で従来の 100 単位の移動量を再現するので、既存の iOS／web のスワイプは変わらず、
+  共有シナリオにも手を入れません。`docs/ci.md`、`docs/run-loop.md`、`docs/scenarios.md`、
+  `docs/dsl-grammar.md`（と ja）に記載しました。ローカルの arm64 エミュレータで検証しました。新しい 2 本を
+  含むレーン全体の 11 シナリオが通り、Python ゲート（`make check`）も緑です。最後に除外したままの `gestures`
+  は理由が異なります。long-press は届きますが、double-tap が adb の `input tap ; input tap` では登録され
+  ません。各 tap が新しい `input` プロセスを起動するため、速い実機でも tap 間の間隔がプラットフォームの
+  double-tap ウィンドウを超過します。raw な `sendevent` による double-tap は別のスライスにします。
+  `gestures_multitouch`（pinch／rotate）はマルチタッチを必要とし（adb は単一タッチです）、ユニット 4 の
+  visual の次元は、CI で採取したベースラインが引き続き必要です。項目は**実装中**のままです。
 
 ## 参考
 

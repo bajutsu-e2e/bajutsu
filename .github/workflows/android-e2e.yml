@@ -108,7 +108,7 @@ jobs:
           path: |
             ~/.android/avd/*
             ~/.android/adb*
-          key: avd-api34-x86_64
+          key: avd-api34-x86_64-pixel6
 
       - name: Create AVD and generate snapshot for caching
         if: steps.avd-cache.outputs.cache-hit != 'true'
@@ -117,6 +117,11 @@ jobs:
           api-level: 34
           arch: x86_64
           target: google_apis
+          # Pin the device profile so the CI emulator's screen geometry matches the local arm64
+          # validation (pixel_6). The deep-scroll scenarios (`notices`, `controls`) reach a far target
+          # with a fixed number of screen-fraction swipes, sized for this device — a different default
+          # profile scrolls a different number of rows per swipe and never reaches the target (BE-0208).
+          profile: pixel_6
           force-avd-creation: false
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front none
           disable-animations: false
@@ -134,6 +139,7 @@ jobs:
           api-level: 34
           arch: x86_64
           target: google_apis
+          profile: pixel_6  # match the local validation geometry (see the create-AVD step above)
           force-avd-creation: false
           emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front none
           disable-animations: true

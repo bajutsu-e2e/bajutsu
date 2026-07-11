@@ -50,7 +50,7 @@ def run_scenario(driver, scenario, clock=None, sink=None, on_blocked=None) -> Ru
 | `tap` | `driver.tap(sel)` |
 | `longPress` | `driver.long_press(sel, duration)` |
 | `type` | `into` があれば先に `driver.tap(into)` → `driver.type_text(text)` |
-| `swipe` | `{from,to}` ならそのまま `driver.swipe`。`{on,direction}` なら対象を `resolve_unique` → frame 中心から方向へ 100pt（`_SWIPE_DIST`） |
+| `swipe` | `{from,to}` ならそのまま `driver.swipe`。`{on,direction}` なら対象を `resolve_unique` → frame 中心から方向へ画面に対する割合分（`_SWIPE_FRACTION`、既定 0.125。`amount` で上書き）。固定量ではなく割合にすることで、frame の単位が異なる backend 間（iOS はポイント、Android はピクセル）でもスクロール到達量が揃います |
 | `relaunch` | runner が注入する relauncher でアプリを terminate + 再起動します（launch env/args 再適用＋上書き）。ready まで待ちます |
 
 ## 待機（条件待機）

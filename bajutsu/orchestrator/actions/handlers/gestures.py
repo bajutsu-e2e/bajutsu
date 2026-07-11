@@ -7,7 +7,13 @@ from bajutsu.elements import screen_size_from_elements
 from bajutsu.orchestrator.actions._registry import _handler
 from bajutsu.scenario import Step
 
-_SWIPE_DIST = 100.0  # default travel in points when `amount` isn't given (a small nudge)
+# The default directional swipe travels a fraction of the screen, not a fixed coordinate count, so
+# it scrolls a consistent proportion of any device regardless of its coordinate unit — iOS reports
+# frames in points, Android in raw pixels, web in CSS pixels. A fixed count scrolls far less of a
+# dense Android screen (2400px) than of an iOS one (~900pt), so a swipe sized for iOS barely moves an
+# Android list; a screen fraction keeps the scroll reach at parity across backends (BE-0208). 0.125
+# reproduces the previous 100-unit nudge on the historical 800-tall reference screen.
+_SWIPE_FRACTION = 0.125  # default travel as a fraction of the screen when `amount` isn't given
 _SWIPE_MARGIN = 4.0  # keep both gesture endpoints this far inside the screen edges
 
 
@@ -22,7 +28,7 @@ def _scroll_gesture(
     """The (from, to) points for a directional swipe that travels `amount` of the screen.
 
     `amount` is a fraction of the screen (height for up/down, width for left/right); ``None`` uses
-    the default nudge. The gesture *begins on* `center` when there is room, and travels a segment of
+    the default fraction. The gesture *begins on* `center` when there is room, and travels a segment of
     that length in the direction (`up`/`left` toward the smaller coordinate), so a bigger `amount`
     scrolls proportionally further. Beginning on the element — rather than centering the travel
     across it — is what lets a swipe grab a small handle (e.g. a resize divider) it would otherwise
@@ -33,7 +39,7 @@ def _scroll_gesture(
     sw, sh = screen
     vertical = direction in ("up", "down")
     dim = sh if vertical else sw
-    dist = amount * dim if amount is not None else _SWIPE_DIST
+    dist = (amount if amount is not None else _SWIPE_FRACTION) * dim
     span = min(dist, max(0.0, dim - 2 * _SWIPE_MARGIN))
     anchor = cy if vertical else cx
     start = min(max(anchor, _SWIPE_MARGIN), dim - _SWIPE_MARGIN)

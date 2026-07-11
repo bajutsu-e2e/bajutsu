@@ -58,7 +58,7 @@ For each step `i` (in `orchestrator.py`):
 | `tap` | `driver.tap(sel)` |
 | `longPress` | `driver.long_press(sel, duration)` |
 | `type` | if `into`, `driver.tap(into)` first → `driver.type_text(text)` |
-| `swipe` | `{from,to}` → `driver.swipe` directly. `{on,direction}` → `resolve_unique` the target → from the frame center, 100pt in the direction (`_SWIPE_DIST`) |
+| `swipe` | `{from,to}` → `driver.swipe` directly. `{on,direction}` → `resolve_unique` the target → from the frame center, a screen fraction in the direction (`_SWIPE_FRACTION`, default 0.125; `amount` overrides). A fraction, not a fixed count, keeps the scroll reach at parity across backends whose frames use different units (iOS points, Android pixels) |
 | `relaunch` | terminate + relaunch the app (re-applying launch env/args + overrides) via the runner-injected relauncher, then wait until ready |
 
 ## Waits (condition waits only)

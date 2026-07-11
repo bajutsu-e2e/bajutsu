@@ -9,7 +9,7 @@
 | Author | [@hirosassa](https://github.com/hirosassa) |
 | Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0208") |
-| Implementing PR | [#851](https://github.com/bajutsu-e2e/bajutsu/pull/851), [#880](https://github.com/bajutsu-e2e/bajutsu/pull/880), [#899](https://github.com/bajutsu-e2e/bajutsu/pull/899), [#901](https://github.com/bajutsu-e2e/bajutsu/pull/901), [#906](https://github.com/bajutsu-e2e/bajutsu/pull/906) |
+| Implementing PR | [#851](https://github.com/bajutsu-e2e/bajutsu/pull/851), [#880](https://github.com/bajutsu-e2e/bajutsu/pull/880), [#899](https://github.com/bajutsu-e2e/bajutsu/pull/899), [#901](https://github.com/bajutsu-e2e/bajutsu/pull/901), [#906](https://github.com/bajutsu-e2e/bajutsu/pull/906), [#910](https://github.com/bajutsu-e2e/bajutsu/pull/910) |
 | Topic | Platform expansion (Android / Web / Flutter) |
 | Related | [BE-0007](../BE-0007-android-backend/BE-0007-android-backend.md), [BE-0223](../BE-0223-adb-tab-bar-navigation/BE-0223-adb-tab-bar-navigation.md) |
 <!-- /BE-METADATA -->
@@ -148,6 +148,26 @@ within the prime directives.
   scenarios stay out for reasons unrelated to timing: `gestures` (multi-touch, BE-0210), `controls`
   (segmented-control value), `notices` (deep scroll) — each a BE-0007 follow-up. The **visual**
   dimension of unit 4 still needs a CI-captured baseline. Item stays **In progress**.
+- 2026-07-11 — Unit 5 (deep-scroll flows): `controls` and `notices` rejoin `E2E_SCENARIOS`. Both
+  scroll a far target into view — `controls` the segmented-control value node below the buttons,
+  `notices` a list row well below the fold. On device both failed, and the cause was not the
+  segmented-control value node or the row being absent (the earlier "segmented-control value adb does
+  not expose" diagnosis was wrong — the node is exposed): the default directional swipe simply did
+  not scroll far enough to bring it on-screen. The default swipe travelled a fixed coordinate count,
+  and that count is in the frame's native unit — points on iOS, raw pixels on Android — so a swipe
+  sized for iOS scrolled ~2.6x less of Android's dense 2400px screen and never reached the target.
+  The fix makes the default swipe travel a *fraction* of the screen (`_SWIPE_FRACTION = 0.125` in
+  `bajutsu/orchestrator/actions/handlers/gestures.py`), so it covers the same proportion on either
+  backend; 0.125 reproduces the previous 100-unit nudge on the historical 800-tall reference screen,
+  so existing iOS / web swipes are unchanged and the shared scenarios stay untouched. Documented in
+  `docs/ci.md`, `docs/run-loop.md`, `docs/scenarios.md`, `docs/dsl-grammar.md` (+ ja). Verified on a
+  local arm64 emulator: the full lane — 11 scenarios including the new two — passes; the Python gate
+  (`make check`) is green. The last held-out scenario `gestures` stays out for a different reason: its
+  long-press lands, but the double-tap does not register through adb's `input tap ; input tap` (each
+  tap spawns a fresh `input` process, so the inter-tap gap overruns the platform double-tap window
+  even on a fast device) — a raw `sendevent` double-tap is a separate slice. `gestures_multitouch`
+  (pinch / rotate) needs multi-touch (adb is single-touch), and the **visual** dimension of unit 4
+  still needs a CI-captured baseline. Item stays **In progress**.
 
 ## References
 
