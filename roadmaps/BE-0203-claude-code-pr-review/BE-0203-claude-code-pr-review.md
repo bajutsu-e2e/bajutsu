@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0203") |
-| Implementing PR | [#807](https://github.com/bajutsu-e2e/bajutsu/pull/807) |
+| Implementing PR | [#807](https://github.com/bajutsu-e2e/bajutsu/pull/807), [#915](https://github.com/bajutsu-e2e/bajutsu/pull/915) |
 | Topic | Development infrastructure (contributor workflow) |
 <!-- /BE-METADATA -->
 
@@ -248,6 +248,14 @@ Log:
   `gh pr diff`, instead of checking out the untrusted PR head. So the review contract
   (`.github/claude-review-prompt.md`) is always read from the default branch (same for every PR,
   and it resolves on comment events too), and a PR cannot rewrite the rules it is reviewed under.
+- Fixed a gap the automation-bot PRs exposed: `claude-code-action` rejects any non-human (Bot/App)
+  actor unless it is allow-listed, so PRs opened by our own `bajutsu-automation-bot` (roadmap-refresh,
+  docs-refresh, etc.) failed the review with "Workflow initiated by non-human actor" instead of being
+  reviewed. The workflow now sets `allowed_bots: "bajutsu-automation-bot"` — allow-listing exactly that
+  trusted internal bot rather than `'*'` (which the action warns can let external Apps invoke it with
+  attacker-controlled prompts on public repos); the match is case-insensitive and strips a trailing
+  `[bot]`, so it covers both actor spellings. Implementing PR:
+  [#915](https://github.com/bajutsu-e2e/bajutsu/pull/915).
 
 ## References
 
