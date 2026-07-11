@@ -147,11 +147,11 @@ def _split_flaky_runs(
 
     The scenario's exact name is resolved from the first run whose scenario name contains
     `scenario_filter`; only runs holding that exact scenario are then classified by its verdict, so a
-    substring shared by two scenarios never mixes them. The content fingerprint comes from that same
-    first run's provenance, and later runs whose fingerprint differs are dropped: `--flaky` contrasts
-    verdict flips at ONE definition, so a run recorded after the scenario was edited is a different
-    test, not flaky evidence. Runs with no stamped fingerprint are kept (the pre-provenance grace).
-    Returns `(None, [], [], None)` when no run matches.
+    substring shared by two scenarios never mixes them. The content fingerprint is adopted from the
+    first run that actually carries one, and later runs whose fingerprint differs are dropped:
+    `--flaky` contrasts verdict flips at ONE definition, so a run recorded after the scenario was
+    edited is a different test, not flaky evidence. Runs with no stamped fingerprint are kept (the
+    pre-provenance grace). Returns `(None, [], [], None)` when no run matches.
     """
     name: str | None = None
     scenario_hash: str | None = None
@@ -173,11 +173,16 @@ def _split_flaky_runs(
         run_hash = stamped if isinstance(stamped, str) else None
         if name is None:
             name = str(match.get("scenario"))
-            scenario_hash = run_hash
         if str(match.get("scenario")) != name:
             continue
-        if scenario_hash is not None and run_hash != scenario_hash:
-            continue  # a different content fingerprint isn't the same flaky scenario
+        if run_hash is not None:
+            # Adopt the reference fingerprint from the first run that actually has one — not the
+            # literal first match, which may predate provenance stamping. Locking `None` there
+            # would disable this guard for every later run and let two definitions mix again.
+            if scenario_hash is None:
+                scenario_hash = run_hash
+            elif run_hash != scenario_hash:
+                continue  # a different content fingerprint isn't the same flaky scenario
         (pass_dirs if match.get("ok") else fail_dirs).append(run_dir)
     return name, pass_dirs, fail_dirs, scenario_hash
 

@@ -677,7 +677,7 @@ def _cross_context() -> triage.CrossRunTriageContext:
 
 
 def _write_flaky_run(
-    run_dir: Path, *, ok: bool, reason: str = "", scenario_hash: str = "sha-abc"
+    run_dir: Path, *, ok: bool, reason: str = "", scenario_hash: str | None = "sha-abc"
 ) -> Path:
     """A complete run of the `login` scenario under `run_dir` (manifest + scenario + elements)."""
     (run_dir / "00-login" / "step0").mkdir(parents=True)
@@ -794,6 +794,23 @@ def test_split_flaky_runs_excludes_other_fingerprint(tmp_path: Path) -> None:
     assert name == "login" and scenario_hash == "sha-abc"
     assert [d.name for d in pass_dirs] == ["r1"]
     assert [d.name for d in fail_dirs] == ["r2"]  # r3 (different fingerprint) excluded
+
+
+def test_split_flaky_runs_reference_hash_from_first_stamped_run(tmp_path: Path) -> None:
+    # The reference fingerprint must come from the first run that actually HAS one, not the
+    # literal first match. If the first match predates provenance stamping (no scenarioHash),
+    # locking `scenario_hash = None` would disable the guard for every later run, letting two
+    # genuinely different fingerprints mix — the very bug the fingerprint filter prevents.
+    from bajutsu.cli.commands.triage import _split_flaky_runs
+
+    hist = tmp_path / "hist"
+    _write_flaky_run(hist / "r1", ok=True, scenario_hash=None)  # pre-provenance: no stamp
+    _write_flaky_run(hist / "r2", ok=False, scenario_hash="sha-x")  # first stamped -> reference
+    _write_flaky_run(hist / "r3", ok=False, scenario_hash="sha-y")  # different fingerprint
+    name, pass_dirs, fail_dirs, scenario_hash = _split_flaky_runs(hist, "login")
+    assert name == "login" and scenario_hash == "sha-x"
+    assert [d.name for d in pass_dirs] == ["r1"]  # unstamped run kept (grace)
+    assert [d.name for d in fail_dirs] == ["r2"]  # r3 (sha-y) dropped as a different definition
 
 
 def test_split_flaky_runs_no_match_returns_none(tmp_path: Path) -> None:
