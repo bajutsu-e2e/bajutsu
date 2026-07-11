@@ -72,6 +72,8 @@ The `bajutsu/` package (Python 3.13+, pydantic v2 / typer / anthropic / pyyaml /
 | `drivers/base.py` | Driver Protocol + shared types (`Element`/`Selector`/`Point`) + **selector resolution** (the determinism core) | [selectors](selectors.md) / [drivers](drivers.md) |
 | `drivers/fake.py` | In-memory `FakeDriver` (for tests without a device) | [drivers](drivers.md#fakedriver) |
 | `drivers/idb.py` | idb backend (iOS Simulator; headless, coordinate tap) | [drivers](drivers.md#idb) |
+| `drivers/xcuitest.py` | XCUITest backend (iOS; ahead of idb in the stability-order ladder — semantic tap, native condition-wait, and multi-touch via a resident on-device runner, idb the headless fallback; BE-0019) | [drivers](drivers.md#backend-selection-and-the-actuator) |
+| `drivers/adb.py` | adb backend (Android; `uiautomator dump` frame-center coordinate tap, the idb-equivalent second platform) | [drivers](drivers.md#adb-android) |
 | `drivers/playwright.py` | Playwright web backend (browser; first slice — deterministic run) | [drivers](drivers.md#playwright-web) |
 | `scenario/` | Scenario schema (strict pydantic validation) + YAML load / dump (package: `models` / `load` / `expand` / `select` / `serialize`) | [scenarios](scenarios.md) |
 | `assertions.py` | Machine assertion evaluation (total function — never raises) | [selectors](selectors.md#assertion-evaluation) |
@@ -105,7 +107,8 @@ The `bajutsu/` package (Python 3.13+, pydantic v2 / typer / anthropic / pyyaml /
 | `serve/` | Local web UI (the `serve` command): author / run / reports / triage a failed run | [cli](cli.md) |
 | `mcp/` | MCP server: exposes `run`/`doctor` as tools + run evidence as resources | [cli](cli.md) |
 | `lint.py` | Scenario linter + JSON Schema generation (`lint` / `schema` commands) | [cli](cli.md) |
-| `cli/` | Typer-based CLI; one file per command in `cli/commands/` (`run`/`doctor`/`record`/`crawl`/`codegen`/`trace`/`triage`/`approve`/`serve`/`mcp`/`worker`/`lint`/`schema`) | [cli](cli.md) |
+| `audit.py` · `coverage.py` · `stats.py` · `serve/flakiness.py` | Read-only advisory analysis, no device/AI, never gates CI: determinism/flakiness audit (`audit`, BE-0049), scenario id-namespace coverage (`coverage`, BE-0050), the aggregate run-stats dashboard (`stats`, BE-0102), cross-run flakiness ranking (`flakiness`, BE-0220) | [cli](cli.md) |
+| `cli/` | Typer-based CLI; one file per command in `cli/commands/` (`run`/`project`/`doctor`/`audit`/`coverage`/`stats`/`flakiness`/`export`/`trace`/`report`/`triage`/`record`/`crawl`/`codegen`/`approve`/`serve`/`mcp`/`worker`/`lint`/`schema`) | [cli](cli.md) |
 | `dotenv.py` | Minimal `.env` loader (never overrides an existing var) | [cli](cli.md#environment-variables-env) |
 | `_yaml.py` | YAML loader that keeps `on`/`off`/`yes`/`no` as strings | [scenarios](scenarios.md#yaml-caveat) |
 
@@ -115,7 +118,7 @@ Lower layers are more stable; upper layers depend on lower ones. The core is `dr
 (selector resolution), which every execution path depends on.
 
 ```
-                       cli/             ← user entry (Typer): run / doctor / record / crawl / codegen / trace / triage / approve / serve / mcp / worker / lint / schema
+                       cli/             ← user entry (Typer): run / project / doctor / audit / coverage / stats / flakiness / export / trace / report / triage / record / crawl / codegen / approve / serve / mcp / worker / lint / schema
         ┌─────────────┬───┴───────┬───────────────┬───────────┐
      runner/    record.py / crawl.py  codegen.py   trace.py     triage.py / claude_triage.py
         │          (Tier 1 / AI)   (structural)   (timeline)   (self-heal · advisory)
@@ -130,8 +133,8 @@ assertions.py  evidence.py ── intervals.py · network.py · visual.py · red
                        ▼
                 drivers/base.py  ←── the determinism core (Element / Selector / resolve_unique)
                        ▲
-        ┌──────────────┼───────────────┐
-   drivers/fake   drivers/idb    drivers/playwright
+        ┌──────────────┼───────────────────────────┐
+   drivers/fake   drivers/idb · xcuitest · adb   drivers/playwright
 ```
 
 - `orchestrator/` depends only on `base.Driver` and **is not coupled to any concrete driver**.
@@ -244,7 +247,13 @@ workers would collide).
 
 - Selector resolution and ambiguity detection (the determinism core)
 - Platform-aware backend registry: `--backend` / `backend:` accept `ios` / `android` / `web` /
-  `fake` tokens, each expanding to its actuator in stability order (`backends.py`)
+  `fake` tokens, each expanding to its actuator in stability order (`backends.py`) — `ios` expands to
+  `xcuitest` then `idb`
+- The **XCUITest backend** (`drivers/xcuitest.py`): the default iOS actuator, ahead of idb in the
+  stability-order ladder — a resident on-device runner (`BajutsuKit`) driven over a loopback HTTP
+  channel, adding semantic (identifier) tap, a native condition-wait, and the `pinch`/`rotate`
+  multi-touch gestures idb cannot perform (`UnsupportedAction`); idb stays the coordinate-tap,
+  headless fallback for hosts where XCUITest cannot run (BE-0019)
 - The **Playwright web backend** (`drivers/playwright.py`): a deterministic `run` against a browser
   on the Linux gate (`demos/web`), raised to the rich end of the capability model (BE-0054) — native
   `network` observation + stubbing (`page.route()`), `video` and `deviceLog`-equivalent console /
@@ -297,7 +306,9 @@ workers would collide).
   a `TriageAgent` diagnosis (rule-based `HeuristicTriageAgent`, or `--ai` Claude with the failure
   screenshot). An agent can propose a structured fix (`renameId` / `addIndex` / `raiseTimeout`);
   `--apply`/`--write` patches the scenario source (diff-previewed, opt-in) and `--rerun` re-runs it
-- The CLI: `run` / `doctor` / `record` / `crawl` / `codegen` / `trace` / `triage` / `approve` / `serve` / `mcp` / `worker` / `lint` / `schema` — with `record` + `crawl` as the Tier 1 AI authoring paths and the alert guard
+- The CLI: `run` / `project` / `doctor` / `audit` / `coverage` / `stats` / `flakiness` / `export` / `trace` / `report` / `triage` / `record` / `crawl` / `codegen` / `approve` / `serve` / `mcp` / `worker` / `lint` / `schema` — with `record` + `crawl` as the Tier 1 AI authoring paths and the alert guard
+- Read-only advisory analysis commands (no device, no AI, never gate CI — only a missing/unreadable input exits non-zero): a determinism/flakiness **audit** with static, repeat-and-diff, and longitudinal modes (`audit`, BE-0049); a scenario id-namespace **coverage** map (`coverage`, BE-0050); the aggregate run-stats dashboard as CLI/HTML output (`stats`, BE-0102); cross-run **flakiness** ranking, from a runs directory or the `serve` database (`flakiness`, BE-0220); a finished run's **export** as a portable `.zip` (`export`, BE-0060); and **report** re-rendering (`report.html`/`junit.xml`/`ctrf.json`) from stored run data with no re-run (`report`, BE-0068)
+- The **config project hub** (`project add`/`ls`/`use`/`rm` and `run --project`, BE-0225): a named registry binding a project name to a config source, shared between the CLI and the `serve` web UI (DB-backed when configured, on-disk JSON otherwise); the `serve` project-switcher UI is still unwired
 - AI **crawl** (`crawl.py`): autonomous breadth-first exploration of an app → a screen map (`screenmap.json`)
 - The `serve` local web UI (Tier 1): author (`record` / `crawl`), edit, and run scenarios; **open a `.zip` bundle** of config + scenarios + the built app binary as the active config the tabs run from (BE-0073); browse reports and evidence; a read-only aggregate **run-stats dashboard** across the run history (BE-0102); a pre-run **readiness panel** (`doctor`: environment runnability + the current screen's convention score) in the Record and Replay forms (BE-0148); a **pluggable theme system** — drop-in visual tokens + swappable transitions, a header picker, and an in-UI editor with live preview and local-draft/server-upload persistence (BE-0191); approve visual baselines; live job streaming — from a browser (not for CI)
 - **MCP server** (`bajutsu mcp`): `bajutsu_run` and `bajutsu_doctor` as MCP tools + run evidence as resources, for Claude Desktop / Code integration (optional dependency `fastmcp`)
@@ -311,6 +322,9 @@ workers would collide).
   swipe, and the simctl launch sequencing — confirmed against the installed `idb` /
   `idb_companion` by running the showcase scenarios, evidence capture, and the triage self-heal
   loop on-device (`make -C demos/showcase run-swiftui`; the `e2e.yml` CI workflow also exercises the idb smoke path).
+- The XCUITest backend's resident runner — element resolution by snapshot handle, semantic tap, and
+  the `pinch`/`rotate` multi-touch gestures idb cannot run — confirmed on-device via the `e2e.yml`
+  `xcuitest (multi-touch)` job (`scenarios/gestures_multitouch.yaml`, `--backend xcuitest`).
 
 ### Validated in a browser (Linux, no Mac)
 
