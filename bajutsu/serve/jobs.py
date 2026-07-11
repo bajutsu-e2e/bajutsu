@@ -269,6 +269,7 @@ def _persist_run(state: ServeState, job: Job) -> None:
         org = job.org
         repo.ensure_org(org, slug=org, name=org)
         created_by = job.actor if job.actor and repo.user_org(job.actor) is not None else None
+        scenario_hash, tool_version, git_revision = _run_provenance(state, run_id)
         repo.record_run(
             RunRecord(
                 id=run_id,
@@ -277,10 +278,35 @@ def _persist_run(state: ServeState, job: Job) -> None:
                 created_by=created_by,
                 ok=ok,
                 summary=_run_summary(state, run_id, ok=ok),
+                scenario_hash=scenario_hash,
+                tool_version=tool_version,
+                git_revision=git_revision,
             )
         )
     except Exception:
         logger.warning("failed to persist run %s to the system of record", run_id, exc_info=True)
+
+
+def _run_provenance(state: ServeState, run_id: str) -> tuple[str | None, str | None, str | None]:
+    """The run's identity stamp — (scenarioHash, toolVersion, gitRevision) — read from its
+    `manifest.json` provenance block (BE-0049), mirrored onto the DB record so cross-run flakiness
+    groups by scenario identity straight from the DB (BE-0220). All None for a pre-provenance run or
+    an unreadable manifest — ungroupable, never blocking (mirrors audit --history's `skipped`)."""
+    raw = state.artifacts.open_bytes(f"{run_id}/manifest.json")
+    if raw is None:
+        return None, None, None
+    try:
+        prov = json.loads(raw).get("provenance")
+    except (json.JSONDecodeError, ValueError):
+        return None, None, None
+    if not isinstance(prov, dict):
+        return None, None, None
+
+    def _str(key: str) -> str | None:
+        value = prov.get(key)
+        return value if isinstance(value, str) else None
+
+    return _str("scenarioHash"), _str("toolVersion"), _str("gitRevision")
 
 
 def _run_summary(state: ServeState, run_id: str, *, ok: bool) -> dict[str, Any]:

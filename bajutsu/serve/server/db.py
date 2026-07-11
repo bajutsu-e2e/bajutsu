@@ -72,6 +72,11 @@ class RunRecord:
     ok: bool | None = None
     created_at: datetime | None = None
     summary: dict[str, Any] = field(default_factory=dict)
+    # Run provenance mirrored from the run's manifest.json (BE-0049 stamp), the grouping key for
+    # cross-run flakiness (BE-0220); None for a pre-provenance run.
+    scenario_hash: str | None = None
+    tool_version: str | None = None
+    git_revision: str | None = None
 
 
 @runtime_checkable
@@ -186,6 +191,9 @@ def _to_record(row: Run) -> RunRecord:
         ok=row.ok,
         created_at=row.created_at,
         summary=dict(row.summary),
+        scenario_hash=row.scenario_hash,
+        tool_version=row.tool_version,
+        git_revision=row.git_revision,
     )
 
 
@@ -219,6 +227,9 @@ class SqlRepository:
             "created_by": run.created_by,
             "ok": run.ok,
             "summary": run.summary,
+            "scenario_hash": run.scenario_hash,
+            "tool_version": run.tool_version,
+            "git_revision": run.git_revision,
         }
         if run.created_at is not None:
             fields["created_at"] = run.created_at

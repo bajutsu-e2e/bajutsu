@@ -504,6 +504,14 @@ Running the autonomous crawl across more than one device so a full screen map is
 
 Accepted and actively being built — a PR is in flight or imminent.
 
+### Self-healing triage (M4)
+
+<!-- GENERATED:in-progress-self-healing -->
+| ID | Item | Status |
+|---|---|---|
+| [BE-0220](BE-0220-flaky-suggestion-and-cross-run-fix/BE-0220-flaky-suggestion-and-cross-run-fix.md) | Flaky-test suggestion and cross-run fix proposals from DB run history | In progress |
+<!-- /GENERATED:in-progress-self-healing -->
+
 ### Platform expansion (landed slices)
 
 The Web (Playwright) backend and its completion (rich capabilities, parallel runs) — the rich end of the capability model, on the existing Linux gate.
@@ -642,9 +650,7 @@ A platform is just a backend behind the one driver interface ([DESIGN §1](../DE
 Lower the maintenance cost of regressions while keeping AI out of the judge role and limited to an investigator.
 
 <!-- GENERATED:proposals-self-healing -->
-| ID | Item | Status |
-|---|---|---|
-| [BE-0220](BE-0220-flaky-suggestion-and-cross-run-fix/BE-0220-flaky-suggestion-and-cross-run-fix.md) | Flaky-test suggestion and cross-run fix proposals from DB run history | Proposal |
+
 <!-- /GENERATED:proposals-self-healing -->
 
 ### Surfacing CLI features in the serve Web UI

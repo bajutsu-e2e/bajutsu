@@ -5,6 +5,7 @@ mock); `run_job` runs synchronously in the test thread, so the single connection
 
 from __future__ import annotations
 
+import json
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -54,6 +55,69 @@ def test_run_job_records_finished_run_into_the_repository(tmp_path: Path) -> Non
     assert rec.summary["passed"] == 2
     assert rec.summary["total"] == 2
     assert rec.summary["report"] is True
+
+
+def test_run_job_stamps_run_provenance_from_the_manifest(tmp_path: Path) -> None:
+    # BE-0220: the run's manifest.json provenance (the BE-0049 stamp) is mirrored onto the DB record
+    # so cross-run flakiness can group by scenario identity straight from the DB.
+    scn_dir, cfg, runs = project(tmp_path)
+    run_dir = runs / "20260621-4"
+    run_dir.mkdir(parents=True)
+    (run_dir / "manifest.json").write_text(
+        json.dumps(
+            {
+                "runId": "20260621-4",
+                "ok": True,
+                "scenarios": [{"scenario": "alpha", "ok": True}],
+                "provenance": {
+                    "scenarioHash": "sha256:abc123",
+                    "toolVersion": "9.9.9",
+                    "gitRevision": "deadbeef",
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    (run_dir / "report.html").write_text("<html></html>", encoding="utf-8")
+    repo = _repo()
+    state = srv.ServeState(
+        scenarios_dir=scn_dir,
+        config=cfg,
+        runs_dir=runs,
+        cwd=tmp_path,
+        repository=repo,
+        popen=fake_popen(["PASS  runs/20260621-4/manifest.json\n"]),
+    )
+    srv.run_job(state, state.register(srv.Job(cmd=["x"])))
+
+    rec = repo.get_run("20260621-4")
+    assert rec is not None
+    assert rec.scenario_hash == "sha256:abc123"
+    assert rec.tool_version == "9.9.9"
+    assert rec.git_revision == "deadbeef"
+
+
+def test_run_job_leaves_provenance_null_for_a_pre_provenance_run(tmp_path: Path) -> None:
+    # A run whose manifest predates the provenance stamp records with null provenance — ungroupable
+    # by scenario identity, but never blocking (mirrors audit --history's `skipped`, BE-0049).
+    scn_dir, cfg, runs = project(tmp_path)
+    write_run(runs, "20260621-5", ok=True, scenarios=[("alpha", True)])
+    repo = _repo()
+    state = srv.ServeState(
+        scenarios_dir=scn_dir,
+        config=cfg,
+        runs_dir=runs,
+        cwd=tmp_path,
+        repository=repo,
+        popen=fake_popen(["PASS  runs/20260621-5/manifest.json\n"]),
+    )
+    srv.run_job(state, state.register(srv.Job(cmd=["x"])))
+
+    rec = repo.get_run("20260621-5")
+    assert rec is not None
+    assert rec.scenario_hash is None
+    assert rec.tool_version is None
+    assert rec.git_revision is None
 
 
 def test_run_job_does_not_attribute_to_an_unknown_user(tmp_path: Path) -> None:

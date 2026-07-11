@@ -30,6 +30,10 @@ def test_runs_has_its_columns_and_foreign_keys() -> None:
         "ok",
         "created_at",
         "summary",
+        # Run provenance mirrored from manifest.json so flakiness can group by scenario (BE-0220).
+        "scenario_hash",
+        "tool_version",
+        "git_revision",
     } <= cols
     referred = {fk["referred_table"] for fk in insp.get_foreign_keys("runs")}
     assert {"orgs", "projects", "users"} <= referred
