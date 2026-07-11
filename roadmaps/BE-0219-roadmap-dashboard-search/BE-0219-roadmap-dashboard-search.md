@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0219") |
-| Implementing PR | [#888](https://github.com/bajutsu-e2e/bajutsu/pull/888) |
+| Implementing PR | [#888](https://github.com/bajutsu-e2e/bajutsu/pull/888), [#918](https://github.com/bajutsu-e2e/bajutsu/pull/918) |
 | Topic | Development infrastructure (contributor workflow) |
 | Related | [BE-0094](../BE-0094-roadmap-status-dashboard/BE-0094-roadmap-status-dashboard.md) |
 <!-- /BE-METADATA -->
@@ -49,8 +49,9 @@ progressively enhances the status chips. The search box slots into exactly that 
 The work is MECE across these units:
 
 1. **Search input in the markup.** Render a labelled `<input type="search">` (with a placeholder and
-   an `aria-label`) into the `.be-summary` filter row, beside the status chips. It is inert without
-   JavaScript, so the no-JS page is unchanged (progressive enhancement, matching the existing filter).
+   an `aria-label`) on its own row (`.be-search-row`) above the status chips, both inside the
+   `.be-filters` container (the chips sit in a `.be-chips` row). It is inert without JavaScript, so
+   the no-JS page is unchanged (progressive enhancement, matching the existing filter).
 
 2. **Card-level searchable metadata.** So the matcher needn't scrape rendered text, give each
    `.be-card` a `data-topic` attribute (the id, title, and status are already present as
@@ -120,6 +121,9 @@ Log:
   focus ring on the search input, and generalised the empty-state into an always-present `aria-live`
   region that explains *any* empty grid — the query matched nothing, its matches are chip-hidden, or
   (no query) the chips alone hid everything — so the page never goes silently blank.
+- Layout follow-up (PR #918): moved the search box onto its own row (`.be-search-row`) above the
+  status chips instead of sharing one row with them, wrapping both in a `.be-filters` container (the
+  chips now sit in `.be-chips`). Detailed design §1 above is updated to match.
 
 ## References
 

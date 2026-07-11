@@ -9,7 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0219") |
-| 実装 PR | [#888](https://github.com/bajutsu-e2e/bajutsu/pull/888) |
+| 実装 PR | [#888](https://github.com/bajutsu-e2e/bajutsu/pull/888), [#918](https://github.com/bajutsu-e2e/bajutsu/pull/918) |
 | トピック | Development infrastructure (contributor workflow) |
 | 関連 | [BE-0094](../BE-0094-roadmap-status-dashboard/BE-0094-roadmap-status-dashboard-ja.md) |
 <!-- /BE-METADATA -->
@@ -48,8 +48,9 @@
 作業は次の単位に MECE（漏れなく重複なく）で分解できます。
 
 1. **マークアップへの検索入力欄の追加**。ラベル付きの `<input type="search">`（プレースホルダーと `aria-label`
-   を持つ）を、状態チップの隣、`.be-summary` の絞り込み行に描画します。JavaScript がなくても無害に無効化される
-   ので、JavaScript を切ったページの見え方は変わりません（既存の絞り込みと同じ段階的拡張です）。
+   を持つ）を、状態チップの上に、`.be-filters` コンテナ内の独立した行（`.be-search-row`）として描画します
+   （チップは同じコンテナの `.be-chips` 行に入ります）。JavaScript がなくても無害に無効化されるので、JavaScript
+   を切ったページの見え方は変わりません（既存の絞り込みと同じ段階的拡張です）。
 
 2. **カード単位の検索可能なメタデータ**。マッチ処理がレンダリング済みの文字列を走査せずに済むよう、各 `.be-card`
    に `data-topic` 属性を与えます（ID、タイトル、状態はすでに `data-status` や描画済みテキストとして存在します）。
@@ -115,6 +116,9 @@
   残し、該当なし表示を常設の `aria-live` 領域へ一般化しました。この領域は、クエリが 0 件一致・一致がチップで
   隠れている・（クエリなしで）チップだけで全件隠れている、のいずれの理由でも空になった訳を示すので、ページが
   無言で空白になりません。
+- レイアウトの追従（PR #918）：検索ボックスをチップと同じ行に並べるのをやめ、状態チップの上の独立した行
+  （`.be-search-row`）へ移し、両者を `.be-filters` コンテナにまとめました（チップは `.be-chips` に入ります）。
+  上の詳細設計 1 もこれに合わせて更新しました。
 
 ## 参考
 
