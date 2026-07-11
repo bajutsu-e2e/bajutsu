@@ -38,18 +38,19 @@ work around — anything that brushes a boundary:
    verdict, you've misread it — re-read, then ask.
 2. **Determinism first.** No fixed `sleep` (condition waits only); an ambiguous selector
    fails immediately rather than tapping the first match.
-3. **App-agnostic.** Per-app differences live in config (`apps.<name>`); the tool,
-   drivers, and runner stay unchanged across apps.
+3. **App-agnostic.** Per-app differences live in config (`targets.<name>`); the tool,
+   drivers, and runner stay unchanged across targets.
 
 ## Workflow
 
 ### 1. Resolve the item
 
 Accept any of: a full ID (`BE-0066`), a bare number (`66` / `0066`), or a slug fragment.
-Locate its directory:
+Locate its directory (every item lives at a permanent flat `roadmaps/BE-NNNN-<slug>/`
+path — BE-0159; there are no `proposals/` / `implemented/` subdirectories):
 
 ```bash
-ls -d roadmaps/{proposals,implemented}/BE-*<id-or-slug>*/
+ls -d roadmaps/BE-*<id-or-slug>*/
 ```
 
 Read **both** language files; the **English** `BE-NNNN-<slug>.md` is the authoritative
@@ -61,11 +62,11 @@ why (Introduction/Motivation in your own words, not copy-pasted), and its curren
 (proposal / already implemented / deferred). This orients the user before any branching,
 planning, or code — every run of this skill starts with it, not just the first time.
 
-Then branch on where it sits:
+Then branch on its `Status` (the metadata field, not a directory — the layout is flat):
 
-- **Under `proposals/` with `Status: Proposal`** — the normal case. Note that implementing
-  it *accepts* it: this PR flips it to `Implemented`. Say so.
-- **Already under `implemented/` (`Status: Implemented`)** — it has shipped. Stop and
+- **`Status: Proposal`** — the normal case. Note that implementing it *accepts* it: this PR
+  flips it to `Implemented`. Say so.
+- **`Status: Implemented`** — it has shipped. Stop and
   confirm what the user actually wants (extend it? a follow-up item? a bug fix?) before
   doing anything.
 - **`Proposal (deferred)`** — surface that it was deliberately parked; confirm the user
@@ -116,7 +117,7 @@ Don't start typing from the title. Build the real picture first:
   source of truth for what already exists, so you neither rebuild something shipped nor
   assume something absent.
 - **Check dependencies.** If the References / design lean on another BE item, verify that
-  item's status. A prerequisite still sitting in `proposals/` is a blocker — surface it and
+  item's status. A prerequisite still at `Status: Proposal` is a blocker — surface it and
   ask how to proceed (build the prerequisite first? a thinner first slice?).
 
 For a large item, fan this reading out to the `Explore` agent, and use the `Plan` agent to
@@ -157,7 +158,7 @@ Build to the Detailed design, matching the codebase's grain:
   density — no narration. `mypy` is **strict** and `ruff` is configured in
   [`pyproject.toml`](../../../pyproject.toml); fullwidth/Japanese strings are intentional.
 - **Honor the directives in the code itself** — determinism (condition waits, no `sleep`;
-  ambiguous selectors fail), app-agnostic (new knobs go in `apps.<name>` config), and no
+  ambiguous selectors fail), app-agnostic (new knobs go in `targets.<name>` config), and no
   LLM anywhere on the `run`/CI path.
 - **Tests are the regression net.** If you change behavior, a test changes with it. The
   Python core needs no Simulator, so cover the logic in the fast suite.
@@ -219,7 +220,7 @@ make check    # lock-check + format + lint + lint-sh + lint-actions + typecheck 
 ```
 
 It must be green; **never push red** (the tracked pre-push hook runs it for you). It needs
-no Simulator and runs anywhere. On-device E2E (`make -C demos/features e2e`) is a separate,
+no Simulator and runs anywhere. On-device E2E (`make -C demos/showcase run-swiftui`) is a separate,
 heavier path and is **not** part of this gate — don't block core work on it. But if the
 item's correctness genuinely depends on a Simulator/browser run, drive that run with the
 `verify` skill (launch the app, exercise the behavior, report what you saw) rather than
