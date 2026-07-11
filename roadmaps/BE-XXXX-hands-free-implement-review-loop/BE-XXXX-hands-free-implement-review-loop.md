@@ -89,10 +89,13 @@ are the only state that carries forward.
 
 ### Unit 3 — the paced pr-followup loop and its stop conditions
 
-After compacting, the skill enters a **paced loop** that invokes `pr-followup` each iteration and
-sleeps between iterations (via the harness's self-pacing wake-up / `loop` mechanism). Pacing follows
-the standard cache-window guidance: a shorter interval while CI is actively running (waiting on a
-run to finish), a longer interval while waiting on human review.
+After compacting, `implement-be` instructs the session to invoke the built-in **[`/loop`
+skill](../../.claude/skills/loop/)** with `pr-followup` as its target — concretely, it tells the
+session: *"Run `/loop /pr-followup #NNN`"*. The `/loop` skill drives the pacing: it invokes
+`pr-followup` once per iteration and uses `ScheduleWakeup` (the harness's self-pacing mechanism for
+`/loop` dynamic mode) to sleep between iterations. Pacing follows the standard cache-window
+guidance: a shorter interval while CI is actively running (waiting on a run to finish), a longer
+interval while waiting on human review.
 
 The loop **stops** only when **all** of these hold:
 
@@ -100,6 +103,13 @@ The loop **stops** only when **all** of these hold:
 2. **No merge conflict** — the branch is cleanly mergeable into `main`.
 3. **Two consecutive polls with no new review comments** — the review surface has gone quiet (one
    empty poll is not enough; the second confirms quiescence).
+
+When the loop stops under these conditions, **Draft → Ready is a deliberate human step**. The loop
+reports that the PR has reached a quiet-and-green state, but it does not call `gh pr ready` itself.
+This preserves a human final-sign-off checkpoint before the PR enters the merge queue: the human
+can inspect the conversation, confirm no subtle reviewer concern was left unaddressed, and mark it
+ready when satisfied. The "hands-free" claim covers the mechanical tail (CI fixes, replying to
+comments, rebasing); the merge decision stays with the human.
 
 The loop also **halts and escalates to the human** the moment `pr-followup` hits a comment that
 requires a design or spec change — that is `pr-followup`'s existing, unchanged escalation rule, and
