@@ -15,10 +15,13 @@ testable pieces:
 
 - ``is_relevant`` is the positive-list: each changed path is matched against the patterns the
   on-device jobs exercise. Subpackages are listed explicitly (runner, scenario, drivers,
-  orchestrator); ``bajutsu/*.py`` covers the single-level modules in the run path while inherently
-  excluding subpackages the E2E never touches (serve/, mcp/, templates/, report/). CLI commands are
-  limited to the three entry points the E2E invokes. A new subpackage or CLI command defaults to
-  NOT triggering — add its pattern here when it becomes on-device-relevant.
+  orchestrator); top-level ``bajutsu/*.py`` modules are allow-listed by name — only the ones the run
+  / codegen / record path actually imports — because the top level also holds serve/analytics/crawl
+  modules (stats, audit, coverage, usage*, crawl*, alerts, github, …) the E2E never touches; a bare
+  ``bajutsu/*.py`` glob swept those in and burned the metered macOS jobs on, e.g., a serve-only PR.
+  CLI commands are limited to the three entry points the E2E invokes. A new subpackage, top-level
+  module, or CLI command defaults to NOT triggering — add its pattern here when it becomes
+  on-device-relevant.
 
 Invoked by the workflow with ``BASE_SHA`` / ``HEAD_SHA`` in the environment; it writes
 ``relevant=true|false`` to ``GITHUB_OUTPUT``. An empty ``BASE_SHA`` (a manual ``workflow_dispatch``
@@ -37,7 +40,18 @@ from collections.abc import Iterable
 _RELEVANT = re.compile(
     r"^(?:"
     r"bajutsu/(?:runner|scenario|drivers|orchestrator)/"
-    r"|bajutsu/[^/]+\.py$"
+    # Top-level modules are allow-listed by name: only the ones the on-device run / codegen / record
+    # path actually imports. A bare `bajutsu/*.py` also swept in the serve/analytics/crawl modules
+    # that live at the top level but never run here (stats, audit, coverage, usage*, crawl*, alerts,
+    # notify, github, the AI/enrich/triage helpers) — burning the metered macOS jobs on, e.g., a
+    # serve-only PR. A new top-level module defaults to NOT triggering; add it here when it becomes
+    # on-device-relevant.
+    r"|bajutsu/(?:"
+    r"_yaml|adb|assertions|backends|capabilities|capability_preflight"
+    r"|codegen|codegen_common|codegen_emit|codegen_playwright|codegen_uiautomator"
+    r"|config|config_source|device_id|dom|dotenv|elements|golden|idb_version|interp"
+    r"|network|platform_lifecycle|record|run_id|simctl|totp|visual|web_network|webview"
+    r")\.py$"
     r"|bajutsu/cli/__init__\.py$"
     r"|bajutsu/cli/_shared\.py$"
     r"|bajutsu/cli/commands/__init__\.py$"

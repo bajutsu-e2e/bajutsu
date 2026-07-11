@@ -5,13 +5,15 @@
 # gate. Neither is a required check, so a path filter is enough: they simply don't run on a PR that
 # can't affect the web path, and an unrelated PR isn't blocked.
 #
-# Positive-list filter: only paths the web jobs actually exercise. Subdirectories are listed
-# explicitly (runner, scenario, drivers, orchestrator for the smoke; serve, templates, serve-ui for
-# the serve-UI dogfood, which drives the served SPA); `bajutsu/*.py` covers the single-level
-# top-level modules (most are in the run path) while inherently excluding the subpackages no web job
-# touches (mcp/, report/). CLI commands are limited to the three entry points the smoke invokes,
-# plus the conformance suite's own files. A new subpackage or CLI command defaults to NOT triggering
-# this workflow — add it here when it becomes web-CI-relevant.
+# Positive-list filter (mirrors android-e2e.yml and e2e.yml's scripts/e2e_changes.py): only paths
+# the web jobs actually exercise. Subdirectories are listed explicitly (runner, scenario, drivers,
+# orchestrator for the smoke; serve, templates, serve-ui for the serve-UI dogfood, which drives the
+# served SPA); top-level `bajutsu/*.py` modules are allow-listed by name (the run/assert/codegen
+# path) rather than swept by a `bajutsu/*.py` wildcard, which also caught the serve/analytics/crawl
+# modules (stats, audit, usage*, crawl*, …) that live at the top level but no web job runs. CLI
+# commands are limited to the three entry points the smoke invokes, plus the conformance suite's own
+# files. A new subpackage, top-level module, or CLI command defaults to NOT triggering this
+# workflow — add it here when it becomes web-CI-relevant.
 name: Web E2E (Playwright)
 
 on:
@@ -23,7 +25,38 @@ on:
       - 'bajutsu/scenario/**'
       - 'bajutsu/drivers/**'
       - 'bajutsu/orchestrator/**'
-      - 'bajutsu/*.py'
+      # Top-level modules the run / codegen / record path imports (allow-listed by name; kept in
+      # sync with android-e2e.yml and scripts/e2e_changes.py). Excludes serve/analytics/crawl
+      # modules — the serve backend is covered by the 'bajutsu/serve/**' entry below.
+      - 'bajutsu/_yaml.py'
+      - 'bajutsu/adb.py'
+      - 'bajutsu/assertions.py'
+      - 'bajutsu/backends.py'
+      - 'bajutsu/capabilities.py'
+      - 'bajutsu/capability_preflight.py'
+      - 'bajutsu/codegen.py'
+      - 'bajutsu/codegen_common.py'
+      - 'bajutsu/codegen_emit.py'
+      - 'bajutsu/codegen_playwright.py'
+      - 'bajutsu/codegen_uiautomator.py'
+      - 'bajutsu/config.py'
+      - 'bajutsu/config_source.py'
+      - 'bajutsu/device_id.py'
+      - 'bajutsu/dom.py'
+      - 'bajutsu/dotenv.py'
+      - 'bajutsu/elements.py'
+      - 'bajutsu/golden.py'
+      - 'bajutsu/idb_version.py'
+      - 'bajutsu/interp.py'
+      - 'bajutsu/network.py'
+      - 'bajutsu/platform_lifecycle.py'
+      - 'bajutsu/record.py'
+      - 'bajutsu/run_id.py'
+      - 'bajutsu/simctl.py'
+      - 'bajutsu/totp.py'
+      - 'bajutsu/visual.py'
+      - 'bajutsu/web_network.py'
+      - 'bajutsu/webview.py'
       - 'bajutsu/cli/__init__.py'
       - 'bajutsu/cli/_shared.py'
       - 'bajutsu/cli/commands/__init__.py'

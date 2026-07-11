@@ -34,13 +34,43 @@ def test_run_path_subpackage_is_relevant() -> None:
     assert is_relevant(["bajutsu/runner/pipeline.py"]) is True
 
 
-def test_top_level_module_is_relevant() -> None:
-    # bajutsu/*.py (single-level) is in the run path...
-    assert is_relevant(["bajutsu/interp.py"]) is True
+def test_run_path_top_level_modules_are_relevant() -> None:
+    # The top-level allow-list: only the single-level modules the on-device run / codegen / record
+    # path actually imports (the run loop, assertions, the element model, the driver helpers, the
+    # visual/golden dimensions, codegen). Each is listed explicitly rather than swept by a
+    # `bajutsu/*.py` blanket, which also caught serve/analytics/crawl modules that never run here.
+    for module in (
+        "bajutsu/interp.py",
+        "bajutsu/assertions.py",
+        "bajutsu/elements.py",
+        "bajutsu/visual.py",
+        "bajutsu/golden.py",
+        "bajutsu/codegen_emit.py",
+        "bajutsu/record.py",
+        "bajutsu/adb.py",
+        "bajutsu/simctl.py",
+    ):
+        assert is_relevant([module]) is True, module
+
+
+def test_non_run_path_top_level_modules_are_not_relevant() -> None:
+    # The regression this fixes: a serve/analytics/crawl module lives at the top level too, but the
+    # on-device jobs never import it, so touching it must not burn the metered macOS jobs. (PR #936,
+    # a serve-only change to bajutsu/stats.py, wrongly fired all four.)
+    for module in (
+        "bajutsu/stats.py",
+        "bajutsu/audit.py",
+        "bajutsu/coverage.py",
+        "bajutsu/usage_stats.py",
+        "bajutsu/crawl.py",
+        "bajutsu/alerts.py",
+        "bajutsu/github.py",
+    ):
+        assert is_relevant([module]) is False, module
 
 
 def test_untouched_subpackage_is_not_relevant() -> None:
-    # ...but a subpackage the E2E never exercises (serve/mcp/report/templates) is not.
+    # ...and a subpackage the E2E never exercises (serve/mcp/report/templates) is not.
     assert is_relevant(["bajutsu/mcp/server.py"]) is False
     assert is_relevant(["bajutsu/report/manifest.py"]) is False
 

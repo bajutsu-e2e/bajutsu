@@ -10,14 +10,17 @@
 # (arm64) image would fall back to slow software emulation and time the job out. The API level (34)
 # matches the local validation; only the ABI tracks the CI host.
 #
-# Positive-list path filter (mirrors web-e2e.yml): only the paths this lane exercises — the adb
-# driver, the run pipeline and scenario loader, the CLI entry points `bajutsu run` wires through,
-# the Android showcase and the shared scenarios, the config, and this workflow. `bajutsu/*.py`
-# covers the single-level top-level modules (the adb command layer, the backend registry, and the
-# platform lifecycle live there); `bajutsu/drivers/adb.py` is listed on its own because the wildcard
-# does not reach into subdirectories. Neither a required check nor gated by the `changes` job, so a
-# plain `paths:` filter is enough: an unrelated PR simply doesn't run it. A new adb-relevant path
-# defaults to NOT triggering — add it here.
+# Positive-list path filter (mirrors web-e2e.yml and e2e.yml's scripts/e2e_changes.py): only the
+# paths this lane exercises — the adb driver, the run pipeline and scenario loader, the CLI entry
+# points `bajutsu run` wires through, the Android showcase and the shared scenarios, the config, and
+# this workflow. Top-level `bajutsu/*.py` modules are allow-listed by name (the adb command layer,
+# the backend registry, the platform lifecycle, the run/assert/codegen path) rather than swept by a
+# `bajutsu/*.py` wildcard, which also caught serve/analytics/crawl modules (stats, audit, usage*,
+# crawl*, …) the emulator job never runs — burning ~9min of KVM on, e.g., a serve-only PR;
+# `bajutsu/drivers/adb.py` is listed on its own because the top-level list does not reach into
+# subdirectories. Neither a required check nor gated by the `changes` job, so a plain `paths:`
+# filter is enough: an unrelated PR simply doesn't run it. A new adb-relevant path defaults to NOT
+# triggering — add it here.
 name: Android E2E (emulator)
 
 on:
@@ -29,7 +32,37 @@ on:
       - 'bajutsu/runner/**'
       - 'bajutsu/scenario/**'
       - 'bajutsu/orchestrator/**'
-      - 'bajutsu/*.py'
+      # Top-level modules the run / codegen / record path imports (allow-listed by name; kept in
+      # sync with web-e2e.yml and scripts/e2e_changes.py). Excludes serve/analytics/crawl modules.
+      - 'bajutsu/_yaml.py'
+      - 'bajutsu/adb.py'
+      - 'bajutsu/assertions.py'
+      - 'bajutsu/backends.py'
+      - 'bajutsu/capabilities.py'
+      - 'bajutsu/capability_preflight.py'
+      - 'bajutsu/codegen.py'
+      - 'bajutsu/codegen_common.py'
+      - 'bajutsu/codegen_emit.py'
+      - 'bajutsu/codegen_playwright.py'
+      - 'bajutsu/codegen_uiautomator.py'
+      - 'bajutsu/config.py'
+      - 'bajutsu/config_source.py'
+      - 'bajutsu/device_id.py'
+      - 'bajutsu/dom.py'
+      - 'bajutsu/dotenv.py'
+      - 'bajutsu/elements.py'
+      - 'bajutsu/golden.py'
+      - 'bajutsu/idb_version.py'
+      - 'bajutsu/interp.py'
+      - 'bajutsu/network.py'
+      - 'bajutsu/platform_lifecycle.py'
+      - 'bajutsu/record.py'
+      - 'bajutsu/run_id.py'
+      - 'bajutsu/simctl.py'
+      - 'bajutsu/totp.py'
+      - 'bajutsu/visual.py'
+      - 'bajutsu/web_network.py'
+      - 'bajutsu/webview.py'
       - 'bajutsu/cli/commands/run.py'
       - 'bajutsu/cli/__init__.py'
       - 'bajutsu/cli/_shared.py'
