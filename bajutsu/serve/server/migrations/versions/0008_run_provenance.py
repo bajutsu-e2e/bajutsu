@@ -26,7 +26,7 @@ def upgrade() -> None:
     op.add_column("runs", sa.Column("scenario_hash", sa.String(), nullable=True))
     op.add_column("runs", sa.Column("tool_version", sa.String(), nullable=True))
     op.add_column("runs", sa.Column("git_revision", sa.String(), nullable=True))
-    # The grouping key for the flakiness query (GROUP BY scenario_hash, then per-scenario name).
+    # The grouping key for the DB-level flakiness score (groups by scenario_hash at the run level).
     op.create_index("ix_runs_scenario_hash", "runs", ["scenario_hash"])
 
 

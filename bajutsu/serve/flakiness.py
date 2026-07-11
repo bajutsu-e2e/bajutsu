@@ -147,8 +147,10 @@ def _score(scenario_hash: str, runs: list[RunRecord]) -> FlakyScenario:
 
 
 def _representatives(runs: list[RunRecord]) -> tuple[str | None, str | None]:
-    """The newest passing and newest failing run ids, for linking a row to both evidences."""
-    newest_first = sorted(runs, key=_recency_key, reverse=True)
-    passing = next((r.id for r in newest_first if r.ok), None)
-    failing = next((r.id for r in newest_first if not r.ok), None)
+    """The newest passing and newest failing run ids, for linking a row to both evidences.
+
+    Assumes *runs* is already newest-first — true for the only caller (_score, via _window).
+    """
+    passing = next((r.id for r in runs if r.ok), None)
+    failing = next((r.id for r in runs if not r.ok), None)
     return passing, failing
