@@ -90,10 +90,12 @@ a still-ambiguous selector still fails rather than guessing.
 - [x] Scroll-into-view (bounded scroll-and-re-query condition wait).
 - [x] Runtime permission handling (deterministic up-front `pm grant`).
 - [x] Validation — fast-gate command builders and the scroll-and-re-query loop are covered over
-      injected `run`. On-device acceptance of the four scenarios (`notices` / `gestures` /
-      `controls` / permission-gated) is still a follow-up: the emulator e2e lane's `E2E_SCENARIOS`
-      (`demos/showcase/android/Makefile`) does not yet run them (deferred to BE-0007 / BE-0208), and
-      `permission.yaml` is not yet shaped for the deterministic `grantPermissions` / `pm grant` path.
+      injected `run`. On-device acceptance is now partial: `notices` and `controls` run and pass on
+      the emulator e2e lane (`E2E_SCENARIOS` in `demos/showcase/android/Makefile`) as of
+      [BE-0208](../BE-0208-android-emulator-e2e-ci/BE-0208-android-emulator-e2e-ci.md). `gestures` and
+      the permission-gated flow are still follow-ups (the former's double-tap does not yet register on
+      device through `input tap ; input tap`, and `permission.yaml` is not yet shaped for the
+      deterministic `grantPermissions` / `pm grant` path).
 
 Log:
 
