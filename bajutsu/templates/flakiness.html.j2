@@ -61,9 +61,9 @@ mined from the run history. Read-only and advisory — nothing here decides a pa
 <td class="num">{{ s.runs }}</td>
 <td>{{ bar(s.flip_rate) }}{{ "%.0f%%" | format(s.flip_rate * 100) }}</td>
 <td>
-{%- if s.representative_pass_run_id %}<a href="/runs/{{ s.representative_pass_run_id }}/report.html" target="_blank">pass</a>{% endif %}
+{%- if s.representative_pass_run_id %}<a href="/runs/{{ s.representative_pass_run_id }}/report.html" target="_blank" rel="noopener">pass</a>{% endif %}
 {%- if s.representative_pass_run_id and s.representative_fail_run_id %} · {% endif %}
-{%- if s.representative_fail_run_id %}<a href="/runs/{{ s.representative_fail_run_id }}/report.html" target="_blank">fail</a>{% endif %}
+{%- if s.representative_fail_run_id %}<a href="/runs/{{ s.representative_fail_run_id }}/report.html" target="_blank" rel="noopener">fail</a>{% endif %}
 </td>
 </tr>
 {%- endfor %}

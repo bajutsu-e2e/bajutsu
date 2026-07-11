@@ -104,3 +104,6 @@ def test_render_html_is_self_contained_with_links() -> None:
     # Rows link to the representative passing / failing runs' evidence.
     assert "/runs/20260101-000000/report.html" in html
     assert "/runs/20260102-000000/report.html" in html
+    # New-tab evidence links carry rel="noopener", like every other target="_blank" in the codebase.
+    assert 'target="_blank" rel="noopener"' in html
+    assert 'target="_blank">' not in html
