@@ -9,7 +9,7 @@
 | Author | [@hirosassa](https://github.com/hirosassa) |
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0210") |
-| Implementing PR | [#857](https://github.com/bajutsu-e2e/bajutsu/pull/857) |
+| Implementing PR | [#857](https://github.com/bajutsu-e2e/bajutsu/pull/857), [#910](https://github.com/bajutsu-e2e/bajutsu/pull/910) |
 | Topic | Platform expansion (Android / Web / Flutter) |
 | Related | [BE-0007](../BE-0007-android-backend/BE-0007-android-backend.md) |
 <!-- /BE-METADATA -->
