@@ -120,7 +120,7 @@ def _score(scenario_hash: str, runs: list[RunRecord]) -> FlakyScenario:
     representatives = _representatives(runs)
     return FlakyScenario(
         scenario_hash=scenario_hash,
-        name=next((_scenario_name(r) for r in runs if _scenario_name(r)), ""),
+        name=next((name for r in runs if (name := _scenario_name(r))), ""),
         runs=total,
         passed=passed,
         failed=failed,

@@ -355,7 +355,7 @@ class ScenarioHistory:
     passed: int  # runs in which it passed
     failed: int  # runs in which it failed
     pass_rate: float  # passed / runs
-    classification: str  # flaky | deterministic | unproven (see `_history`)
+    classification: str  # flaky | deterministic | unproven (see `classify_stability`)
 
 
 @dataclass(frozen=True)
