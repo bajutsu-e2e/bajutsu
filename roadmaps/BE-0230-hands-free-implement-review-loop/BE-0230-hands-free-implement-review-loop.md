@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0230](BE-0230-hands-free-implement-review-loop.md) |
 | Author | [@hirosassa](https://github.com/hirosassa) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0230") |
+| Implementing PR | _pending_ |
 | Topic | Development infrastructure (contributor workflow) |
 | Related | [BE-0089](../BE-0089-merge-time-be-id-allocation/BE-0089-merge-time-be-id-allocation.md) |
 <!-- /BE-METADATA -->
@@ -223,15 +224,24 @@ either skill discovers the flow. No other skill changes behavior.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Unit 1 — `implement-be` step 10 rewritten to auto-open a Draft PR after the gate.
-- [ ] Unit 2 — compact-before-loop step added with its token-economy rationale.
-- [ ] Unit 3 — paced pr-followup loop with three stop conditions (CI green + no CHANGES_REQUESTED + two quiet polls) + escalation triggers (design change / conflict) + two backstops (20 review-wait iterations + 30 CI-wait iterations, counted separately).
-- [ ] Unit 4 — `CLAUDE.md` PR rules split into BE-creation vs. implementation paths.
-- [ ] Unit 5 — cross-references between `implement-be` and `pr-followup` updated.
+- [x] Unit 1 — `implement-be` step 10 rewritten to auto-open a Draft PR after the gate.
+- [x] Unit 2 — compact-before-loop step added with its token-economy rationale.
+- [x] Unit 3 — paced pr-followup loop with three stop conditions (CI green + no CHANGES_REQUESTED + two quiet polls) + escalation triggers (design change / conflict) + two backstops (20 review-wait iterations + 30 CI-wait iterations, counted separately).
+- [x] Unit 4 — `CLAUDE.md` PR rules split into BE-creation vs. implementation paths.
+- [x] Unit 5 — cross-references between `implement-be` and `pr-followup` updated.
+
+Log:
+
+- _pending_ — All five units landed together: `implement-be` step 10 became steps 10–12
+  (auto Draft PR → compact → paced `/loop /pr-followup` with its stop conditions, escalation
+  triggers, and backstops), `pr-followup` gained a framing note, `CLAUDE.md` PR rules split into
+  BE-creation vs. implementation paths, and the two skills now cross-reference the composed tail.
+  Unit 2's compact is issued as a `/compact` directive at the end of step 11 (the open question in
+  *Detailed design* resolved to the simplest integration point).
 
 ## References
 
-- [`implement-be`](../../.claude/skills/implement-be/SKILL.md) — the skill this item extends (step 10).
+- [`implement-be`](../../.claude/skills/implement-be/SKILL.md) — the skill this item extends (steps 10–12).
 - [`pr-followup`](../../.claude/skills/pr-followup/SKILL.md) — the skill the loop invokes each iteration.
 - [`ideation`](../../.claude/skills/ideation/SKILL.md) · [`propose-and-build`](../../.claude/skills/propose-and-build/SKILL.md)
   — the BE-authoring skills explicitly excluded from auto-PR.

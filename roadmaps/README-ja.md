@@ -277,6 +277,7 @@ Bajutsu の「契約としての決定性」という立場を、Maestro の fla
 | [BE-0217](BE-0217-harden-review-prompt/BE-0217-harden-review-prompt-ja.md) | 調査に基づく方針で自動 PR レビュープロンプトを強化する | 実装済み |
 | [BE-0219](BE-0219-roadmap-dashboard-search/BE-0219-roadmap-dashboard-search-ja.md) | ロードマップ status ダッシュボードへのテキスト検索の追加 | 実装済み |
 | [BE-0222](BE-0222-daily-doc-freshness-pr/BE-0222-daily-doc-freshness-pr-ja.md) | ロードマップとドキュメントを別々に毎日更新し、それぞれがレビュー用 PR を開く定期ワークフロー | 実装済み |
+| [BE-0230](BE-0230-hands-free-implement-review-loop/BE-0230-hands-free-implement-review-loop-ja.md) | implement から review まで一気通貫にする自動ループ（implement-be の auto-PR と pr-followup ポーリング） | 実装済み |
 <!-- /GENERATED:implemented-developer-experience -->
 
 ### コードベース品質・技術的負債
@@ -741,9 +742,7 @@ AI を使う経路（`record` ／ `crawl` ／ `triage --ai` ／ `run --apply`）
 ### 開発基盤（コントリビュータ体験）
 
 <!-- GENERATED:proposals-developer-experience -->
-| ID | 項目 | 状態 |
-|---|---|---|
-| [BE-0230](BE-0230-hands-free-implement-review-loop/BE-0230-hands-free-implement-review-loop-ja.md) | implement から review まで一気通貫にする自動ループ（implement-be の auto-PR と pr-followup ポーリング） | 提案 |
+
 <!-- /GENERATED:proposals-developer-experience -->
 
 ### コードベース品質・技術的負債

@@ -99,7 +99,18 @@ colliding or regressing each other. Full guide: [`docs/ai-development.md`](docs/
   `model:` in their frontmatter, so the economical choice is automatic and still overridable. The
   task→capability matrix and the phase/subagent guidance live in
   [`docs/ai-development.md`](docs/ai-development.md#right-sizing-the-model-and-reasoning-effort-be-0103).
-- **Don't create PRs unless asked.** Push to your branch; let the human open the PR.
+- **Who opens the PR depends on the work (BE-0230).** Two paths:
+  - **BE-creation work** — a proposal PR from [`ideation`](.claude/skills/ideation/SKILL.md) or the
+    proposal phase of [`propose-and-build`](.claude/skills/propose-and-build/SKILL.md): **don't
+    auto-create it.** Push to your branch and let the human open the PR. A proposal is a human
+    checkpoint, and its BE id is allocated only when a human merges it (BE-0089) — auto-opening
+    would erode that checkpoint.
+  - **Implementation work** — [`implement-be`](.claude/skills/implement-be/SKILL.md), whose output
+    is always a self-contained, gate-green change: **auto-open the Draft PR after the gate, then run
+    the `pr-followup` loop** (`/loop /pr-followup #NNN`) to drive the mechanical tail (CI fixes,
+    review replies) to quiet-and-green. The loop escalates to the human on a design-change comment
+    or a merge conflict, and never marks the PR ready itself. See `implement-be` steps 10–12.
+  - For any other request, the default is still: push and let the human open the PR unless they ask.
 - **PRs created by Claude Code always start as Draft.** When asked to open a PR, create it with
   `gh pr create --draft`, then keep pushing fixes until `make check` and CI are both green before
   marking it ready for review (`gh pr ready`). Never mark a Claude-Code-created PR ready while any

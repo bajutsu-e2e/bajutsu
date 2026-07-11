@@ -225,15 +225,107 @@ item's correctness genuinely depends on a Simulator/browser run, drive that run 
 `verify` skill (launch the app, exercise the behavior, report what you saw) rather than
 claiming it works untested.
 
-### 10. PR only when asked
+### 10. Auto-open a Draft PR
 
-Push to your branch. **Don't open a PR unless the user asks** — the human usually opens it.
-When you do:
+Once step 9's `make check` is green and the branch is pushed, **open the PR yourself** — this
+skill's output is always a self-contained, gate-green change, so there is no reason to wait for a
+human to open it. This is the *one* skill that auto-opens: the BE-*authoring* skills
+([`ideation`](../ideation/SKILL.md), the proposal phase of
+[`propose-and-build`](../propose-and-build/SKILL.md)) never do, because a proposal PR is a human
+checkpoint whose id is allocated only on merge (see [`CLAUDE.md`](../../../CLAUDE.md)).
 
-- **Title and body in English**, always. Prefix the title with the ID:
-  `[BE-NNNN] feat(<scope>): …`. Commits are imperative and scoped (`feat(run): …`).
-- Then **fill the `* Implementing PR:` line** in both BE files with the real number and
-  push that follow-up, so the shipped record points at its PR.
+- **Draft by default:** `gh pr create --draft`. **Title and body in English**, always — prefix the
+  title with the ID (`[BE-NNNN] feat(<scope>): …`), write a thorough body from
+  [the template](../../../.github/PULL_REQUEST_TEMPLATE.md), and close with the `make check`
+  verification line. Commits are imperative and scoped (`feat(run): …`).
+- **Doc-only exception:** if this item's change is purely documentation/prose (skills, `CLAUDE.md`,
+  roadmap `*.md`/`*-ja.md` — no product code under `bajutsu/` / `BajutsuKit/` / runner / drivers),
+  `CLAUDE.md`'s "documentation-only PRs open Ready for review" rule takes precedence: open it
+  **Ready** (omit `--draft`) with `--reviewer bajutsu-e2e/steering-committee`. (BE-0230 itself is
+  exactly this case.)
+- Then **fill the `Implementing PR:` row** in both BE files with the real number and push that
+  follow-up, so the shipped record points at its PR.
+- The Draft + never-mark-ready-while-red rules from `CLAUDE.md` still hold: a Draft PR is only
+  marked ready (`gh pr ready`) by the **human**, never automatically while CI is red.
+
+### 11. Compact before the follow-up loop
+
+Before entering the loop, **compact the session** (issue the harness `/compact`). The implement
+phase's context — the design back-and-forth and the file reads — is dead weight once the PR exists;
+the PR, its branch, and the BE files are the only state the loop needs. Compacting once here lets
+every polling turn run against a lean context instead of the full implement transcript, which
+matters because this is a long-lived, large-context session and token economy on such sessions is a
+standing project concern. **Don't skip this to "save a step" — the saving is the point.**
+
+### 12. Run the hands-free pr-followup loop
+
+Hand the mechanical tail off to the built-in **`/loop`** skill with
+[`pr-followup`](../pr-followup/SKILL.md) as its target — tell the session to run:
+
+```
+/loop /pr-followup #NNN
+```
+
+`/loop` drives the pacing: it invokes `pr-followup` once per iteration and uses `ScheduleWakeup` to
+sleep between them. Pace by cache window — a **short** interval (~270 s) while CI is actively
+running, a **longer** one (~20–30 min) while waiting on human review.
+
+**At the start of each iteration**, the loop layer (this step — *not* `pr-followup`, which stays
+unchanged) checks for a merge conflict, because today's `pr-followup` does not query `mergeable`:
+
+```bash
+gh pr view <PR> --json mergeable --jq .mergeable
+```
+
+- `CONFLICTING` → **stop and escalate** immediately (don't invoke `pr-followup`). `pr-followup`
+  never rebases or force-pushes; the human rebases and resolves, then restarts the loop.
+- `UNKNOWN` → GitHub is still computing mergeability (e.g. right after a push); treat as "no
+  conflict yet", proceed, and re-check next iteration.
+- `MERGEABLE` → proceed to `pr-followup`.
+
+**Stop the loop only when all three hold:**
+
+1. **CI green** — every required check passing.
+2. **No `CHANGES_REQUESTED`** — `reviewDecision != CHANGES_REQUESTED`. A top-level "Request
+   changes" review can carry no inline comments, and `pr-followup` reads only inline comments
+   (`position != null`), so it can't see such a standing veto — the loop layer must. If
+   `CHANGES_REQUESTED` is set with **zero active inline threads**, escalate immediately (like a
+   conflict) rather than burning review-wait iterations. And because GitHub clears
+   `CHANGES_REQUESTED` only when the *same reviewer* re-reviews (resolving threads alone doesn't),
+   once all inline threads are resolved but the decision still stands, post **one** nudge
+   (`gh pr comment`) asking the reviewer to re-review — once per stale-review episode (skip
+   re-posting while your nudge is still the latest comment), so an away reviewer isn't paged on
+   every poll.
+3. **Two consecutive quiet polls** — no new review comments across two polls in a row (one empty
+   poll can race a reviewer mid-comment; the second confirms quiescence).
+
+When all three hold, **report that the PR is quiet-and-green, and stop — do not call
+`gh pr ready`.** Draft → Ready is a deliberate human sign-off: the human inspects the conversation,
+confirms no subtle concern was left unaddressed, and marks it ready. "Hands-free" covers the
+mechanical tail (CI fixes, replies), not the merge decision or a rebase.
+
+**Escalate (stop and hand to the human)** on either:
+
+- a `pr-followup` comment that needs a **design or spec change** (its existing, unchanged
+  escalation rule — a design call is the human's, and outranks the stop conditions above);
+- a **merge conflict** (the `mergeable` check above).
+
+**Two backstops** bound the loop. Count the two kinds of iteration **separately**, classifying each
+as **CI-wait whenever any required check is not yet green** (so the common post-open state — CI
+running, no review yet — counts as CI-wait) and **review-wait otherwise**:
+
+- **Review-wait cap — 20 iterations** (≈ 7–10 h at the 20–30 min cadence; ≤ 20 h at the 3600 s
+  `ScheduleWakeup` maximum).
+- **CI-wait cap — 30 iterations** without CI turning green — catches CI stuck red for a reason
+  `pr-followup` can't fix (flaky infra, an unrelated external failure) that its escalation rule
+  (which fires only on a design-change comment) wouldn't catch.
+
+On hitting either cap, stop and report the current state (CI status, open comment count). The human
+can interrupt or restart the loop at any time by stopping the session.
+
+**Prime-directive check:** no LLM touches the `run`/CI verdict. `pr-followup`'s fixes are still
+judged by `make check` and CI; the loop only *schedules* those deterministic checks and answers
+reviewers, and every genuine decision escalates to the human.
 
 ## References
 
@@ -242,6 +334,9 @@ When you do:
 - [`docs/ai-development.md`](../../../docs/ai-development.md) — parallel-work rules, the
   gate, and the strict BE-ID lifecycle (Status ⇒ index bucket, flat one-directory layout, permanent IDs).
 - [`roadmaps/README.md`](../../../roadmaps/README.md) — the index and the per-item format.
+- [`pr-followup`](../pr-followup/SKILL.md) — the skill steps 11–12 loop over: after this skill
+  opens the Draft PR and compacts, `/loop /pr-followup` drives the mechanical tail (CI fixes,
+  review replies) to quiet-and-green, so implement → PR → followup is one automated flow.
 - [`ideation`](../ideation/SKILL.md) — the upstream skill that authors the proposal this one builds.
 - [`propose-and-build`](../propose-and-build/SKILL.md) — composes `ideation` + this skill for a
   small, settled item: author the proposal and implement it in parallel as a temporary two-PR
