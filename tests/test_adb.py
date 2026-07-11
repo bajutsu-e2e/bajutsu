@@ -168,31 +168,6 @@ def test_derived_label_skips_nested_clickable_subtree() -> None:
     assert base.Trait.BUTTON in badge["traits"]
 
 
-def test_clickable_container_is_actionable_to_crawl_and_doctor() -> None:
-    # The clickable→button mapping (BE-0223) deliberately widens what crawl and doctor treat as
-    # actionable on Android: an id-bearing clickable wrapper whose class maps to a non-actionable
-    # trait (a plain FrameLayout) now counts as a crawl tap-candidate and a doctor id-coverage
-    # subject, matching the semantic that a clickable node is tappable. A non-clickable wrapper of
-    # the same class stays outside both — the widening is scoped to clickability, not the class.
-    from bajutsu import crawl, doctor
-
-    xml = (
-        '<hierarchy><node class="android.widget.FrameLayout" resource-id="stable.row.1"'
-        ' text="Horse 1" clickable="true" bounds="[0,0][100,100]" />'
-        '<node class="android.widget.FrameLayout" resource-id="deco" text=""'
-        ' clickable="false" bounds="[0,100][100,200]" /></hierarchy>'
-    )
-    els = parse_hierarchy(xml)
-    row = _by_id(els, "stable.row.1")
-    assert base.Trait.BUTTON in row["traits"]
-    assert doctor._is_actionable(row)
-    assert crawl.TAP_TRAITS & set(row["traits"])
-    deco = _by_id(els, "deco")
-    assert base.Trait.BUTTON not in deco["traits"]
-    assert not doctor._is_actionable(deco)
-    assert not crawl.TAP_TRAITS & set(deco["traits"])
-
-
 def test_parse_hierarchy_null_root_is_empty() -> None:
     # The transient bridge failure has no <hierarchy>, so it parses to an empty tree (retried later).
     assert parse_hierarchy(NULL_ROOT) == []

@@ -195,6 +195,31 @@ def test_web_traits_are_actionable() -> None:
     assert s.grade == "Ready"
 
 
+def test_android_clickable_trait_is_actionable() -> None:
+    """An adb clickable node's `button` trait (BE-0223) must count as actionable to doctor — and a
+    crawl tap-candidate — so a tappable Android container is scored and crawled, scoped to
+    clickability rather than the widget class (the twin of `test_web_traits_are_actionable`)."""
+    from bajutsu import crawl
+    from bajutsu.drivers.adb import parse_hierarchy
+
+    # Two same-class `FrameLayout` wrappers with ids: only the clickable one gains the button trait.
+    xml = (
+        '<hierarchy><node class="android.widget.FrameLayout" resource-id="stable.row.1"'
+        ' text="Horse 1" clickable="true" bounds="[0,0][100,100]" />'
+        '<node class="android.widget.FrameLayout" resource-id="stable.deco" text=""'
+        ' clickable="false" bounds="[0,100][100,200]" /></hierarchy>'
+    )
+    elements = parse_hierarchy(xml)
+    s = score(elements, ["stable"])
+    # The clickable wrapper is the sole actionable element (with its id); the non-clickable one of
+    # the same class is not actionable, so it never enters the id-coverage denominator.
+    assert s.actionable == 1
+    assert s.with_id == 1
+    row = next(e for e in elements if e["identifier"] == "stable.row.1")
+    assert base.Trait.BUTTON in row["traits"]
+    assert crawl.TAP_TRAITS & set(row["traits"])
+
+
 # --- shared screen probe (BE-0199) ---
 
 
