@@ -175,7 +175,7 @@ either skill discovers the flow. No other skill changes behavior.
 
 - [ ] Unit 1 — `implement-be` step 10 rewritten to auto-open a Draft PR after the gate.
 - [ ] Unit 2 — compact-before-loop step added with its token-economy rationale.
-- [ ] Unit 3 — paced pr-followup loop with the three stop conditions + escalation + backstop.
+- [ ] Unit 3 — paced pr-followup loop with two stop conditions (CI green + two quiet polls) + escalation triggers (design change / conflict) + backstop.
 - [ ] Unit 4 — `CLAUDE.md` PR rules split into BE-creation vs. implementation paths.
 - [ ] Unit 5 — cross-references between `implement-be` and `pr-followup` updated.
 
