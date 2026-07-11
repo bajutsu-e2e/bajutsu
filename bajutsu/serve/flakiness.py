@@ -50,7 +50,7 @@ class FlakinessReport:
 
 def _scenario_name(record: RunRecord) -> str:
     """A representative scenario name from a run's summary, or empty when it lists none."""
-    summary = record.summary if isinstance(record.summary, dict) else {}
+    summary = record.summary
     scenarios = summary.get("scenarios")
     if isinstance(scenarios, list) and scenarios and scenarios[0]:
         return str(scenarios[0])
