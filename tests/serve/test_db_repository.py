@@ -10,6 +10,7 @@ from pathlib import Path
 
 import pytest
 from sqlalchemy import create_engine, event, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from bajutsu import serve as srv
@@ -215,6 +216,17 @@ def test_create_project_is_idempotent_by_id_and_rebinds_source() -> None:
     assert got is not None
     assert got.source == {"kind": "git"}
     assert len(repo.list_projects(org_id="o1")) == 1
+
+
+def test_create_project_rejects_a_name_collision_under_a_different_id() -> None:
+    # `Project` carries UniqueConstraint("org_id", "name") and create_project merges by id only,
+    # so minting a *fresh* id for a name the org already uses is a genuine collision — not an
+    # idempotent rebind. The DB-backed Repository surfaces it as IntegrityError; a caller must
+    # resolve the existing id via get_project first rather than rely on this to upsert by name.
+    repo = _repo()
+    repo.create_project(ProjectRecord(id="p1", org_id="o1", name="checkout"))
+    with pytest.raises(IntegrityError):
+        repo.create_project(ProjectRecord(id="p2", org_id="o1", name="checkout"))
 
 
 def test_delete_project_on_delete_set_null_keeps_run_history_fk_enforced() -> None:

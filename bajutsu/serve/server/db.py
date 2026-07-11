@@ -113,11 +113,10 @@ class Repository(Protocol):
     def create_project(self, project: ProjectRecord) -> None:
         """Register *project*, or update it in place when its id already exists (BE-0225).
 
-        Raises:
-            IntegrityError: The org already has a project named ``project.name`` under a
-                different id — this merges by id only, so a caller must resolve the
-                existing id via ``get_project`` first rather than relying on this to upsert
-                by name.
+        Merges by id, so re-registering the same id rebinds it. Registering a *fresh* id for a
+        name the org already uses breaks the ``(org_id, name)`` uniqueness and raises — each
+        backend maps this to its own error, so a caller must resolve the existing id via
+        ``get_project`` first rather than relying on this to upsert by name.
         """
 
     def get_project(self, *, org_id: str, name: str) -> ProjectRecord | None:
@@ -314,7 +313,9 @@ class SqlRepository:
         from bajutsu.serve.server.models import Project
 
         # `merge` upserts by primary key, so re-registering a project (e.g. rebinding its source)
-        # updates it rather than colliding — the same idempotent shape as `record_run`.
+        # updates it rather than colliding — the same idempotent shape as `record_run`. A fresh
+        # id reusing an existing `(org_id, name)` breaks the unique constraint; this backend
+        # surfaces the Protocol's documented collision as SQLAlchemy's `IntegrityError`.
         # `source` and `created_at` are only injected when non-None: a caller that doesn't
         # re-supply them (e.g. a rename-only update) must not clobber an existing binding or
         # the DB-generated timestamp — same guard pattern as `record_run` with `created_at`.
