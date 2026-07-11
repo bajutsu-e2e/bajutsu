@@ -37,6 +37,16 @@ def test_add_then_ls_marks_the_first_project_active(tmp_path: Path) -> None:
     assert "* checkout" in ls.output
 
 
+def test_add_rejects_an_empty_name(tmp_path: Path) -> None:
+    # A blank name registers an unaddressable, unlabeled row — reject it as the API twin does.
+    runs = tmp_path / "runs"
+    add = runner.invoke(
+        app, ["project", "add", "   ", "--config", "shop.yaml", "--runs", str(runs)]
+    )
+    assert add.exit_code != 0
+    assert "name is required" in add.output
+
+
 def test_add_rejects_a_slash_in_the_name(tmp_path: Path) -> None:
     # The web hub splices the name straight into REST paths (`/api/projects/{name}/run`), so a name
     # with a '/' would be unaddressable there — reject it at the CLI just as the API twin does, or

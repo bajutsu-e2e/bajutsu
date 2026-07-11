@@ -35,9 +35,11 @@ def add(
     """
     from bajutsu.serve.orgs import DEFAULT_ORG
 
-    # The web hub addresses a project by splicing its name into REST paths (`/api/projects/{name}/…`),
-    # so a '/' would make it unreachable there — reject it here as `register_project` does, keeping the
-    # CLI-hub round-trip intact.
+    # Match the API twin's name guards (`register_project`): a blank name is an unaddressable,
+    # unlabeled row, and a '/' would be unreachable through the web hub's REST paths
+    # (`/api/projects/{name}/…`) — reject both here, keeping the CLI-hub round-trip intact.
+    if not name.strip():
+        raise typer.BadParameter("name is required", param_hint="name")
     if "/" in name:
         raise typer.BadParameter("name must not contain '/'", param_hint="name")
     registry = open_registry(runs)
