@@ -37,8 +37,10 @@ def test_run_path_subpackage_is_relevant() -> None:
 def test_run_path_top_level_modules_are_relevant() -> None:
     # The top-level allow-list: only the single-level modules the on-device run / codegen / record
     # path actually imports (the run loop, assertions, the element model, the driver helpers, the
-    # visual/golden dimensions, codegen). Each is listed explicitly rather than swept by a
-    # `bajutsu/*.py` blanket, which also caught serve/analytics/crawl modules that never run here.
+    # visual/golden dimensions, codegen, plus the run-pipeline's direct dependencies: evidence,
+    # redaction, artifact_perms, mailbox; and record.py's direct imports: agent, crawl, handoff).
+    # Each is listed explicitly rather than swept by a `bajutsu/*.py` blanket, which also caught
+    # serve/analytics/crawl modules that never run here.
     for module in (
         "bajutsu/interp.py",
         "bajutsu/assertions.py",
@@ -49,6 +51,15 @@ def test_run_path_top_level_modules_are_relevant() -> None:
         "bajutsu/record.py",
         "bajutsu/adb.py",
         "bajutsu/simctl.py",
+        # runner/pipeline.py and orchestrator/loop.py unconditional imports
+        "bajutsu/evidence.py",
+        "bajutsu/redaction.py",
+        "bajutsu/artifact_perms.py",
+        "bajutsu/mailbox.py",
+        # record.py unconditional imports (record is an E2E verb)
+        "bajutsu/agent.py",
+        "bajutsu/crawl.py",
+        "bajutsu/handoff.py",
     ):
         assert is_relevant([module]) is True, module
 
@@ -62,7 +73,6 @@ def test_non_run_path_top_level_modules_are_not_relevant() -> None:
         "bajutsu/audit.py",
         "bajutsu/coverage.py",
         "bajutsu/usage_stats.py",
-        "bajutsu/crawl.py",
         "bajutsu/alerts.py",
         "bajutsu/github.py",
     ):
