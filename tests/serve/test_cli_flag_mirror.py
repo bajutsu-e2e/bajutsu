@@ -20,10 +20,12 @@ def _option_names(name: cf.Command) -> set[str]:
 
 
 def test_run_flag_surface_is_fully_classified() -> None:
-    # Base args run_command emits by position, and the one flag serve intentionally does not expose
-    # (evidence_store is env-driven, BAJUTSU_EVIDENCE_STORE). Everything else must be pass-through-able.
+    # Base args run_command emits by position, and the flags serve intentionally does not expose:
+    # evidence_store is env-driven (BAJUTSU_EVIDENCE_STORE), and project is the CLI-only headless
+    # trigger (serve resolves the project through its own run_project op onto the bound config, so it
+    # never spawns `run --project`). Everything else must be pass-through-able.
     base_handled = {"target_name", "scenario", "config", "progress"}
-    not_serve_exposed = {"evidence_store"}
+    not_serve_exposed = {"evidence_store", "project"}
     pass_through = {
         "backend",
         "udid",

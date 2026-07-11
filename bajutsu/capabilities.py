@@ -58,6 +58,7 @@ CAPABILITIES: tuple[Capability, ...] = (
     Capability("flakiness", uses_claude=False),
     Capability("export", uses_claude=False),
     Capability("serve", uses_claude=False),
+    Capability("project", uses_claude=False),
 )
 
 _BY_COMMAND = {c.command: c for c in CAPABILITIES}
