@@ -81,9 +81,10 @@ def make_app(state: ServeState) -> FastAPI:
                 return _hardened(JSONResponse({"error": "host not allowed"}, status_code=403))
         # Block cross-origin state-changing requests unconditionally (BE-0121) — not only when a token
         # is configured. A no-token server would otherwise leave every POST as an unguarded CSRF
-        # surface (the CSRF-to-arbitrary-config hole this closes). No Origin (a non-browser client)
+        # surface (the CSRF-to-arbitrary-config hole this closes). DELETE (deregister a project,
+        # BE-0225) is equally state-changing, so it is guarded too. No Origin (a non-browser client)
         # passes, matching the stdlib `_csrf_ok`.
-        if request.method == "POST":
+        if request.method in ("POST", "DELETE"):
             origin = request.headers.get("origin")
             if origin and urlparse(origin).netloc != (request.headers.get("host") or ""):
                 return _hardened(
@@ -184,6 +185,14 @@ def make_app(state: ServeState) -> FastAPI:
     @app.get("/api/crawl/runs")
     async def crawl_runs(request: Request) -> JSONResponse:
         return _result(ops.crawl_runs_payload(state, actor=_actor(request)))
+
+    @app.get("/api/projects")
+    async def list_projects(request: Request) -> JSONResponse:
+        return _result(ops.list_projects_view(state, actor=_actor(request)))
+
+    @app.get("/api/projects/{name}/runs")
+    async def project_runs(name: str, request: Request) -> JSONResponse:
+        return _result(ops.project_runs(state, name, actor=_actor(request)))
 
     @app.get("/stats", response_class=HTMLResponse)
     async def stats(request: Request) -> HTMLResponse:
@@ -379,6 +388,18 @@ def make_app(state: ServeState) -> FastAPI:
     @app.post("/api/run")
     async def run(body: dict[str, Any], request: Request) -> JSONResponse:
         return _result(ops.start_run(state, body, actor=_actor(request)))
+
+    @app.post("/api/projects")
+    async def register_project(body: dict[str, Any], request: Request) -> JSONResponse:
+        return _result(ops.register_project(state, body, actor=_actor(request)))
+
+    @app.post("/api/projects/{name}/run")
+    async def run_project(name: str, body: dict[str, Any], request: Request) -> JSONResponse:
+        return _result(ops.run_project(state, name, body, actor=_actor(request)))
+
+    @app.delete("/api/projects/{name}")
+    async def deregister_project(name: str, request: Request) -> JSONResponse:
+        return _result(ops.deregister_project(state, name, actor=_actor(request)))
 
     @app.post("/api/record")
     async def record(body: dict[str, Any], request: Request) -> JSONResponse:

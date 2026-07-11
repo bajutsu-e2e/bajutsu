@@ -69,6 +69,10 @@ def job_spec(job: Job) -> dict[str, Any]:
         # Per-run evidence-upload prefix (BE-0110): the worker relays it when requesting presigned
         # PUT URLs, so the run's evidence lands under the lifecycle path CI chose.
         "evidence_prefix": job.evidence_prefix,
+        # The project the run belongs to (BE-0225 unit 3), resolved on the control plane at enqueue.
+        # The worker's `_persist_run` stamps `runs.project_id` from this — the worker has no registry
+        # to resolve an active project of its own.
+        "project_id": job.project_id,
     }
 
 
@@ -152,6 +156,9 @@ def execute_job_spec(
         # Carry org + actor so the recorded run is attributed correctly (BE-0015).
         org=org,
         actor=spec.get("actor"),
+        # Carry the project the control plane resolved at enqueue, so `_persist_run` stamps
+        # `runs.project_id` here where the run actually executes (BE-0225 unit 3).
+        project_id=spec.get("project_id"),
     )
     # Bind the job's ids so every operational record on this worker correlates to it (BE-0055);
     # `run_id` is the run's own id, minted by `run_job`, so it binds only once the run has started.

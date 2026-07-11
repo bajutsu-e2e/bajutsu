@@ -260,12 +260,14 @@ def _persist_run(state: ServeState, job: Job) -> None:
         return
     run_id = job.run_id
     org = job.org
-    # The active project owns the run so a per-project listing (BE-0225) and the cross-project
-    # dashboard (BE-0226) can partition it. Resolved once here from the registry; None when no hub is
-    # wired or no project is active, leaving the run unlabeled exactly as before.
+    # The project that owns the run so a per-project listing (BE-0225) and the cross-project dashboard
+    # (BE-0226) can partition it. Prefer the id `start_run` resolved at enqueue and carried on the job
+    # (also the only source on a remote worker, whose state has no registry); fall back to resolving
+    # the active project here for a job built without going through the enqueue path. None when no hub
+    # is wired or no project is active, leaving the run unlabeled exactly as before.
     registry = state.project_registry
-    project_id: str | None = None
-    if registry is not None:
+    project_id: str | None = job.project_id
+    if project_id is None and registry is not None:
         try:
             active = registry.resolve_active(org_id=org)
             project_id = active.id if active is not None else None

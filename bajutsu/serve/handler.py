@@ -215,6 +215,11 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
                     self._json(*ops.simulators_payload(state))
                 case "/api/runs":
                     self._json(*ops.runs_payload(state, actor=self._actor()))
+                case "/api/projects":
+                    self._json(*ops.list_projects_view(state, actor=self._actor()))
+                case _ if path.startswith("/api/projects/") and path.endswith("/runs"):
+                    name = unquote(path[len("/api/projects/") : -len("/runs")])
+                    self._json(*ops.project_runs(state, name, actor=self._actor()))
                 case "/api/crawl/runs":
                     self._json(*ops.crawl_runs_payload(state, actor=self._actor()))
                 case "/metrics":
@@ -338,6 +343,11 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
                     self._json(*ops.ant_login(state))
                 case "/api/run":
                     self._json(*ops.start_run(state, body, actor=self._actor()))
+                case "/api/projects":
+                    self._json(*ops.register_project(state, body, actor=self._actor()))
+                case _ if path.startswith("/api/projects/") and path.endswith("/run"):
+                    name = unquote(path[len("/api/projects/") : -len("/run")])
+                    self._json(*ops.run_project(state, name, body, actor=self._actor()))
                 case "/api/record":
                     self._json(*ops.start_record(state, body, actor=self._actor()))
                 case "/api/crawl":
@@ -399,6 +409,23 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
                     self._json(*ops.generate_upload_urls(state, run_id, body))
                 case _:
                     self._json({"error": "not found"}, 404)
+
+        def do_DELETE(self) -> None:
+            # The only DELETE surface is deregistering a project (BE-0225). It mutates server state,
+            # so it runs behind the same auth gate as every route and the same unconditional
+            # cross-origin block as do_POST (BE-0121) — a DELETE is as CSRF-sensitive as a POST.
+            oplog.bind_request(oplog.new_request_id())
+            if not self._gate():
+                return
+            if not self._csrf_ok():
+                self._json({"error": "cross-origin request blocked"}, 403)
+                return
+            path = urlparse(self.path).path
+            if path.startswith("/api/projects/"):
+                name = unquote(path[len("/api/projects/") :])
+                self._json(*ops.deregister_project(state, name, actor=self._actor()))
+                return
+            self._json({"error": "not found"}, 404)
 
         def _handle_upload(self) -> None:
             """Stream a raw-body zip upload to a temp file (bounded), then bind it as the active config
