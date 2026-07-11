@@ -107,10 +107,14 @@ session: *"Run `/loop /pr-followup #NNN`"*. The `/loop` skill drives the pacing:
 guidance: a shorter interval while CI is actively running (waiting on a run to finish), a longer
 interval while waiting on human review.
 
-The loop **stops** only when **both** of these hold:
+The loop **stops** only when **all** of these hold:
 
 1. **CI is green** — every required check passing.
-2. **Two consecutive polls with no new review comments** — the review surface has gone quiet (one
+2. **No outstanding "Request changes" review decision** — `reviewDecision` is not
+   `CHANGES_REQUESTED`. A reviewer can submit a top-level "Request changes" review with no new
+   inline comments; the loop must not stop while that standing veto sits unaddressed, even if the
+   two-quiet-poll condition is met.
+3. **Two consecutive polls with no new review comments** — the review surface has gone quiet (one
    empty poll is not enough; the second confirms quiescence).
 
 When the loop stops under these conditions, **Draft → Ready is a deliberate human step**. The loop
@@ -135,13 +139,17 @@ The loop also **halts and escalates to the human** in two additional cases:
   skill explicitly does not rebase or force-push; once the human rebases and resolves the conflict,
   the loop can be restarted.
 
-A bounded backstop prevents an unbounded loop if the PR never converges: the loop runs for a
-maximum of **20 polling iterations or 24 hours, whichever comes first**. On hitting the backstop,
-the skill stops and reports the current state (CI status, open comment count) rather than looping
-forever. Session-local `/loop` (rather than a scheduled cloud agent) is the chosen mechanism
-because it is simpler — no cloud setup or separate scheduling context — and the human can interrupt
-or restart the loop at any time by stopping the session. The 24-hour ceiling is a safety backstop,
-not the expected run time; most PR review loops complete in a few hours.
+A bounded backstop prevents an unbounded loop if the PR never converges. The primary backstop is
+**24 hours of wall-clock time** — the loop stops and reports the current state (CI status, open
+comment count) if that ceiling is reached. A secondary safety net of **20 polling iterations**
+applies on top: since a short CI-wait interval can consume many iterations before the review-quiet
+condition is even reached (a single CI run may span several cache-window sleeps, and a PR can cycle
+through push→CI multiple times), treating the iteration count as a co-equal backstop risks hitting
+it before the PR has had a real chance to converge. The 24-hour ceiling is the natural "the human
+should check in now" signal; the 20-iteration count is a failsafe against runaway tight loops only.
+Session-local `/loop` (rather than a scheduled cloud agent) is the chosen mechanism because it is
+simpler — no cloud setup or separate scheduling context — and the human can interrupt or restart the
+loop at any time by stopping the session.
 
 Prime-directive check: nothing here puts an LLM on the `run`/CI verdict. `pr-followup` fixes are
 still judged by `make check` and CI; the loop only *schedules* those deterministic checks and
@@ -193,7 +201,7 @@ either skill discovers the flow. No other skill changes behavior.
 
 - [ ] Unit 1 — `implement-be` step 10 rewritten to auto-open a Draft PR after the gate.
 - [ ] Unit 2 — compact-before-loop step added with its token-economy rationale.
-- [ ] Unit 3 — paced pr-followup loop with two stop conditions (CI green + two quiet polls) + escalation triggers (design change / conflict) + backstop.
+- [ ] Unit 3 — paced pr-followup loop with three stop conditions (CI green + no CHANGES_REQUESTED + two quiet polls) + escalation triggers (design change / conflict) + backstop (24h primary, 20-iteration secondary).
 - [ ] Unit 4 — `CLAUDE.md` PR rules split into BE-creation vs. implementation paths.
 - [ ] Unit 5 — cross-references between `implement-be` and `pr-followup` updated.
 
