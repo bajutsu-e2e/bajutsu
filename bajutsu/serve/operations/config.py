@@ -621,8 +621,16 @@ def register_launch_project(state: ServeState) -> None:
     if registry is None or state.config is None:
         return
     name, source = launch_project_identity(state.config, state.config_provenance)
-    registry.add(org_id=DEFAULT_ORG, name=name, source=source)
-    registry.set_active(org_id=DEFAULT_ORG, name=name)
+    # A convenience, never a reason to fail boot: a registry I/O error (a read-only runs dir) or a
+    # DB error must be logged and skipped, not propagated out of serve() — the same "logged, not
+    # crashing" contract the sibling boot seam restore_persisted_provider_settings holds.
+    try:
+        registry.add(org_id=DEFAULT_ORG, name=name, source=source)
+        registry.set_active(org_id=DEFAULT_ORG, name=name)
+    except Exception:
+        logging.getLogger(__name__).warning(
+            "failed to auto-register the launch config as the active project", exc_info=True
+        )
 
 
 def _valid_slot(name: str, settings: ProviderSettings) -> bool:

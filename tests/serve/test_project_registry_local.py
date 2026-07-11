@@ -5,7 +5,10 @@ no Simulator, no Postgres — against a real JSON file under ``tmp_path`` (no mo
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
+
+import pytest
 
 from bajutsu.serve.project_registry import LocalProjectRegistry
 
@@ -155,3 +158,30 @@ def test_state_survives_a_reopen(tmp_path: Path) -> None:
     got = reopened.get(org_id="default", name="checkout")
     assert got is not None
     assert got.source == {"kind": "file", "locator": {"path": "a.yaml"}}
+
+
+def test_a_malformed_store_falls_back_to_empty_and_is_logged(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    """A corrupt or unreadable store must not crash serve boot — but wiping the hub silently on
+    every subsequent boot is worse. It resets to empty (determinism-first: the operator
+    re-registers) *and* logs a warning, matching the "loud, not silent" fallback the sibling
+    provider-settings store uses. A first boot with no file yet stays silent (not a corruption)."""
+    path = tmp_path / "projects.json"
+    path.write_text("{ not valid json", encoding="utf-8")
+
+    with caplog.at_level(logging.WARNING):
+        reg = LocalProjectRegistry(path)
+
+    assert reg.list_projects(org_id="default") == []
+    assert any("project" in r.message.lower() for r in caplog.records)
+
+
+def test_a_first_boot_with_no_store_is_silent(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    with caplog.at_level(logging.WARNING):
+        reg = LocalProjectRegistry(tmp_path / "projects.json")
+
+    assert reg.list_projects(org_id="default") == []
+    assert caplog.records == []

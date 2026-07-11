@@ -97,6 +97,24 @@ def test_finished_run_is_tagged_to_the_active_project_locally(tmp_path: Path) ->
     assert reg.run_ids(org_id="default", project_id=p.id) == ["20260711-1"]
 
 
+def test_register_launch_project_never_crashes_boot_on_a_registry_error(tmp_path: Path) -> None:
+    """Auto-registration is a boot-time convenience (its docstring: "for free", "a no-op when no
+    registry is wired") — it must not be able to crash `serve()` startup. A registry whose `add`
+    raises (a read-only `runs_dir.parent`, a DB error) is logged and skipped, matching the sibling
+    boot seam `restore_persisted_provider_settings`, not propagated out of the boot path."""
+
+    class _FlakyRegistry(LocalProjectRegistry):
+        def add(self, *, org_id: str, name: str, source: dict[str, object] | None) -> None:  # type: ignore[override]
+            raise RuntimeError("read-only runs dir")
+
+    reg = _FlakyRegistry(tmp_path / "projects.json")
+    state = srv.ServeState(
+        runs_dir=tmp_path / "runs", config=Path("/apps/checkout.yaml"), project_registry=reg
+    )
+
+    register_launch_project(state)  # must not raise
+
+
 def test_a_registry_error_never_strands_run_finalization(tmp_path: Path) -> None:
     """`_persist_run`'s contract (its docstring): any error is caught and logged, never stranding the
     live-log stream that `run_job` closes right after it. Resolving the active project is a registry

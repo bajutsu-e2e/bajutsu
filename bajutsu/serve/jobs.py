@@ -246,10 +246,12 @@ def _record_provenance(state: ServeState, job: Job) -> None:
 
 def _persist_run(state: ServeState, job: Job) -> None:
     """Record a finished `run` into the system of record so the history list survives independently
-    of the artifact store and is org-scoped (BE-0015). A no-op without a repository (local / stdlib
-    serve) or for a job that produced no run id (record/crawl, or a build/boot failure). The run is
-    recorded under its actor's org (the single `default` org for a token/CI run or an unknown user),
-    so it shows in that org's history.
+    of the artifact store and is org-scoped (BE-0015), and label it with the active project (BE-0225).
+    A no-op only for a job that produced no run id (record/crawl, or a build/boot failure). With a
+    repository the run is recorded under its actor's org (the single `default` org for a token/CI run
+    or an unknown user) so it shows in that org's history; without one (local / stdlib serve) there is
+    no history table, so the local registry instead tags the run into its project→run-ids index — the
+    stand-in for the `runs.project_id` column — when a project is active.
 
     Persistence must never break job finalization: this runs inside `run_job`'s `finally`, just
     before the live-log stream is closed, so any error (a missing org/user row, an FK violation on

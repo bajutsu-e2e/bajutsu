@@ -18,6 +18,7 @@ stay on disk, they just lose their project label.
 from __future__ import annotations
 
 import json
+import logging
 import os
 import tempfile
 import uuid
@@ -26,6 +27,8 @@ from pathlib import Path
 from typing import Any, Protocol, TypedDict
 
 from bajutsu.serve.server.db import ProjectRecord, Repository
+
+logger = logging.getLogger(__name__)
 
 
 class ProjectRegistry(Protocol):
@@ -161,11 +164,15 @@ class LocalProjectRegistry:
         # A malformed store falls back to empty rather than crashing the serve boot — the registry is
         # a convenience over the run tree, not the system of record, so a corrupt file must not wedge
         # startup (determinism-first: the operator re-registers rather than serve refusing to start).
+        # Loud, not silent (as the sibling provider-settings store): log it, or the hub is wiped
+        # quietly on every subsequent boot with no clue why.
         try:
             raw = json.loads(self._path.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError):
+            logger.warning("ignoring the malformed project store %s", self._path, exc_info=True)
             return empty
         if not isinstance(raw, dict):
+            logger.warning("ignoring the malformed project store %s: not a JSON object", self._path)
             return empty
         return {
             "projects": raw.get("projects") or {},
