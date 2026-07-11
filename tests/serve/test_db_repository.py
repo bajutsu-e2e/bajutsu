@@ -1,6 +1,7 @@
-"""The `Repository` seam (BE-0015 7a): the run round-trip, org-scoped listing, and the env-driven
-factory, all against an in-memory SQLite database built inside each test (no live Postgres). Only
-the `runs` methods exist in 7a; orgs/users/projects/audit_log arrive with 7b/7c."""
+"""The `Repository` seam (BE-0015 7a / BE-0225): the run round-trip, org-scoped listing, the
+env-driven factory, and the project CRUD methods, all against an in-memory SQLite database built
+inside each test (no live Postgres). `ProjectRecord` and the project methods arrived with BE-0225;
+orgs/users/audit_log remain in 7b/7c."""
 
 from __future__ import annotations
 

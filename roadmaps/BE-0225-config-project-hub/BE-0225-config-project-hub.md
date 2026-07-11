@@ -173,7 +173,7 @@ A thin CLI mirror so CI and cron can drive the hub headlessly, without the Web U
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] 1 — The project model: extend BE-0015's `projects` row with a config-source record; stamp `runs.project_id`.
+- [x] 1 — The project model: extend BE-0015's `projects` row with a config-source record; stamp `runs.project_id`.
 - [ ] 2 — Persistence: the `ProjectRegistry` seam (DB-backed when a repository is present, on-disk JSON otherwise), run history partitioned by project on both paths (the `project_id` column with a DB, a project→run-ids index without); auto-register the launch config as the active project.
 - [ ] 3 — API: the five `/api/projects…` endpoints, org-scoped, additive to the existing single-config ones.
 - [ ] 4 — UI: the project switcher + projects list, rebinding the active project without a restart.

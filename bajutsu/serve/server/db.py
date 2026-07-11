@@ -3,8 +3,9 @@
 Shaped like the other server seams (`object_store.py`): a `Protocol`, a SQLAlchemy implementation,
 and an env-driven factory — with SQLAlchemy and the ORM models lazy-imported inside the functions
 that need them, so the default `serve`/CLI path never loads them (the import guard locks this).
-7a implements only the `runs` methods; `RunRecord` is the boundary type so ORM rows never leak
-past the seam."""
+7a ships the `runs` methods (`RunRecord`); BE-0225 extends the same seam with project methods
+(`ProjectRecord`: `create_project`, `get_project`, `list_projects`, `delete_project`). ORM rows
+never leak past the seam — only the boundary types cross."""
 
 from __future__ import annotations
 
