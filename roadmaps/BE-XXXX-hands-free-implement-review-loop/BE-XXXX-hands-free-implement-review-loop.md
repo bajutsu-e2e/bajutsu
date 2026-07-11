@@ -91,6 +91,12 @@ so a future editor does not "optimize" the compact away. The design conversation
 from the implement phase are not needed by the follow-up loop; the PR, its branch, and the BE files
 are the only state that carries forward.
 
+**Implementation note:** exactly *how* a skill mid-execution directs the harness to compact — for
+example, whether the skill text ends with a `/compact` directive that the harness intercepts, or
+whether a different integration point is required — is an open question to be established when
+Unit 2 is implemented. This proposal records the *intent* (compact once at the hand-off point),
+leaving the concrete invocation path to the implementer of `implement-be`.
+
 ### Unit 3 — the paced pr-followup loop and its stop conditions
 
 After compacting, `implement-be` instructs the session to invoke the built-in **`/loop`
