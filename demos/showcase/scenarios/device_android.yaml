@@ -1,0 +1,22 @@
+# Device-environment step on the Android emulator (adb-backed): override the GPS location, then
+# re-assert the settled screen — the deterministic Android twin of device.yaml (idb/simctl). The step
+# drives the device, not the app UI, so it runs on the Stable catalog (the launch tab, needing no
+# tab-bar navigation) and the assertion is that the app stays on that screen afterwards, exactly as
+# the iOS device.yaml re-asserts its seeded catalog. adb advertises `setLocation` of the
+# device-control family (BE-0211), so the flow is preflight-clean (BE-0212).
+#
+# Clipboard is intentionally left out. adb advertises `clipboard` too, but `cmd clipboard
+# set/get-primary-clip` is unimplemented on the google_apis API 34 emulator image (it returns "No
+# shell command implementation"), so a clipboard read-back cannot run on this lane. Making the adb
+# clipboard functional on-device is tracked as a separate roadmap item.
+#   bajutsu run --scenario device_android.yaml --target showcase-compose --backend android ...
+- name: override the device location (android)
+  tags: [system]
+  preconditions:
+    launchEnv: { SHOWCASE_UITEST: "1" }
+  steps:
+    - wait: { for: { id: stable.row.1 }, timeout: 10 }
+      capture: [video]
+    - setLocation: { lat: 35.681, lon: 139.767 }
+  expect:
+    - exists: { id: stable.row.1 }

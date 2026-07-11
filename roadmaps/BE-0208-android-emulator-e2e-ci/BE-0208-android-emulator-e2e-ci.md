@@ -223,6 +223,19 @@ within the prime directives.
   scenarios, passes) and the Python gate (`make check`) is green. The last held-out scenario
   `gestures_multitouch` (pinch / rotate) still needs multi-touch (adb is single-touch), so unit 6
   stays open and the item stays **In progress**.
+- 2026-07-12 — Unit 5 (device-control slice): `device_android` joins `E2E_SCENARIOS`. It overrides
+  the GPS location (`emu geo fix`) and re-asserts the settled Stable catalog — the deterministic
+  Android twin of the idb `device.yaml`, on the launch tab so it needs no tab-bar navigation
+  (`demos/showcase/scenarios/device_android.yaml`). Only `setLocation` of the device-control family
+  runs: the clipboard half was cut after on-device validation showed `cmd clipboard
+  set/get-primary-clip` is unimplemented on the google_apis API 34 emulator image (it returns "No
+  shell command implementation"), so the read-back came back empty. BE-0211's clipboard round-trip
+  had only ever run against a fake injected runner, never a device, which masked the gap. adb still
+  advertises `DC_CLIPBOARD`, so making it functional on-device (or narrowing the capability) is
+  carved out to its own roadmap item. Documented in `docs/ci.md` (+ ja). Verified on a local arm64
+  emulator (the scenario passes) and the Python gate (`make check`) is green. The remaining held-out
+  flow is `gestures_multitouch` (pinch / rotate), which needs multi-touch (adb is single-touch) and
+  has its own roadmap item. Item stays **In progress**.
 
 ## References
 

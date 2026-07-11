@@ -227,6 +227,19 @@ directive の枠内にとどまります。
   （および ja）に記載しました。ローカルの arm64 エミュレータで検証し（13 本になったレーン全体が通ります）、
   Python のゲート（`make check`）は緑です。最後に残るシナリオ `gestures_multitouch`（ピンチ／回転）は
   マルチタッチを要する（adb は単一タッチ）ため、ユニット 6 は開いたまま、項目は**実装中**のままです。
+- 2026-07-12 — ユニット 5（デバイス制御のスライス）。`device_android` を `E2E_SCENARIOS` に加えました。
+  GPS の位置を上書きし（`emu geo fix`）、落ち着いた Stable カタログを再度確認します。idb の `device.yaml`
+  に対応する Android 版の決定的なフローで、起動タブで動くのでタブバーの移動は要りません
+  （`demos/showcase/scenarios/device_android.yaml`）。デバイス制御ファミリのうち動かしているのは
+  `setLocation` だけです。クリップボードの側は、実機検証で `cmd clipboard set/get-primary-clip` が
+  google_apis API 34 のエミュレータイメージでは未実装だと分かった（`No shell command implementation` を
+  返します）ため落としました。読み戻しが空で返ってきたのです。BE-0211 のクリップボード往復は、注入した
+  fake のランナーに対してしか実行しておらず実機を叩いていなかったので、このギャップが見えていませんでした。
+  adb は引き続き `DC_CLIPBOARD` を宣言しているので、これを実機で機能させること（あるいは capability を
+  狭めること）は独自のロードマップ項目として切り出します。`docs/ci.md`（および ja）に記載しました。
+  ローカルの arm64 エミュレータで検証し（シナリオは通ります）、Python のゲート（`make check`）は緑です。
+  残る除外中のフローは `gestures_multitouch`（ピンチ／回転）で、マルチタッチを要し（adb は単一タッチ）、
+  独自のロードマップ項目を持ちます。項目は**実装中**のままです。
 
 ## 参考
 

@@ -10,12 +10,14 @@ the rest fast.
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 from bajutsu import adb, capability_preflight, platform_lifecycle
 from bajutsu.drivers import base
 from bajutsu.drivers.adb import AdbDriver
-from bajutsu.scenario import Scenario
+from bajutsu.scenario import Scenario, load_scenarios
 
 # --- pure command builders ---
 
@@ -185,3 +187,37 @@ def test_preflight_rejects_unsupported_steps_on_adb(step: dict[str, object]) -> 
     reasons = capability_preflight.unsupported(_sc(steps=[step]), AdbDriver.CAPABILITIES)
     assert len(reasons) == 1
     assert reasons[0].startswith("step 1: ")
+
+
+# --- the CI-lane scenario itself: device_android.yaml exercises the emulator subset (BE-0208 unit 5)
+
+_DEVICE_ANDROID = (
+    Path(__file__).resolve().parent.parent
+    / "demos"
+    / "showcase"
+    / "scenarios"
+    / "device_android.yaml"
+)
+
+
+def _device_android() -> Scenario:
+    scenarios = load_scenarios(_DEVICE_ANDROID.read_text(encoding="utf-8"))
+    assert len(scenarios) == 1  # a single device-control flow on the Stable launch tab
+    return scenarios[0]
+
+
+def test_device_android_overrides_the_location_on_the_stable_tab() -> None:
+    # The Android device-control lane scenario: setLocation on the Stable launch tab, re-asserting
+    # the settled screen — the deterministic Android twin of iOS device.yaml. Clipboard is left out
+    # (`cmd clipboard` is unimplemented on the google_apis API 34 image, so DC_CLIPBOARD cannot run
+    # on-device; tracked separately), but adb's setLocation over `emu geo fix` does.
+    scn = _device_android()
+    assert any(s.set_location is not None for s in scn.steps), "expected a setLocation step"
+    assert not any(s.set_clipboard is not None for s in scn.steps), "clipboard is left off the lane"
+    assert any(a.exists is not None for a in scn.expect), "expected a settled-screen re-assert"
+
+
+def test_device_android_is_preflight_clean_on_adb() -> None:
+    # Every step falls inside the adb backend's advertised capabilities (setLocation), so the lane
+    # never trips a runtime UnsupportedAction (BE-0212 preflight).
+    assert capability_preflight.unsupported(_device_android(), AdbDriver.CAPABILITIES) == []
