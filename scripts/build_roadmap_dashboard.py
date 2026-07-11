@@ -137,16 +137,18 @@ def render_html(items: list[Any]) -> str:
         "</label>"
         for name, _key in bri.BUCKETS
     )
-    # A free-text search sits beside the status chips in the same filter row. It matches an item's id,
-    # title, topic, and status (all readable off each card) and composes with the chips (AND). Inert
-    # without JavaScript, like the chips, so the no-JS page is unchanged (progressive enhancement).
+    # A free-text search sits on its own row above the status chips. It matches an item's id, title,
+    # topic, and status (all readable off each card) and composes with the chips (AND). Inert without
+    # JavaScript, like the chips, so the no-JS page is unchanged (progressive enhancement).
     search = (
         '<input type="search" class="be-search" '
         'placeholder="Search id, title, topic, status…" aria-label="Search roadmap items">'
     )
-    summary = (
-        f'<div class="be-summary" role="group" aria-label="Filter roadmap items">'
-        f"{search}{chips}</div>"
+    filters = (
+        f'<div class="be-filters" role="group" aria-label="Filter roadmap items">'
+        f'<div class="be-search-row">{search}</div>'
+        f'<div class="be-chips">{chips}</div>'
+        "</div>"
     )
 
     # Split categories into those with work left and those fully implemented; the 100% ones move to a
@@ -199,14 +201,17 @@ def render_html(items: list[Any]) -> str:
     # the script only ever mutates its text, never its presence — the reliable pattern for an
     # `aria-live` status region to announce. The message text is set via textContent, never as markup.
     empty = '<div class="be-empty" role="status"></div>'
-    return f'<div class="be-dash">{summary}{groups}{empty}</div>'
+    return f'<div class="be-dash">{filters}{groups}{empty}</div>'
 
 
 _STYLE = """
 <style>
 .be-dash{font-size:14px}
-.be-summary{display:flex;flex-wrap:wrap;align-items:center;gap:.6rem;margin:.5rem 0 1.5rem}
-.be-search{flex:1 1 220px;min-width:180px;font:inherit;font-size:13px;padding:.3rem .6rem;
+.be-filters{margin:.5rem 0 1.5rem}
+.be-search-row{margin-bottom:.6rem}
+.be-chips{display:flex;flex-wrap:wrap;align-items:center;gap:.6rem}
+.be-search{width:100%;box-sizing:border-box;max-width:420px;font:inherit;font-size:13px;
+  padding:.3rem .6rem;
   border:1px solid rgba(128,128,128,.35);border-radius:8px;background:transparent;color:inherit}
 .be-search:focus{border-color:currentColor}
 .be-empty{color:#888;font-size:13px;margin:1rem 0}

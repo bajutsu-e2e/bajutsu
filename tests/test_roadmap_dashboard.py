@@ -106,6 +106,22 @@ def test_search_box_is_rendered_and_wired() -> None:
     assert "No items in the selected statuses" in _PAGE
 
 
+def test_search_box_sits_in_its_own_row_above_the_chips() -> None:
+    """The search input and the status chips live in separate rows, not one shared filter line.
+
+    Guards the layout: the search box is wrapped in ``.be-search-row`` and the chips in
+    ``.be-chips``, both inside ``.be-filters`` — so a later refactor can't silently re-merge them
+    back onto a single row. Pinned structurally: the search row opens (and its input closes) before
+    the chip container begins.
+    """
+    assert 'class="be-filters"' in _PAGE
+    search_row = _PAGE.index('class="be-search-row"')
+    chip_row = _PAGE.index('class="be-chips"')
+    assert search_row < chip_row, "search row must render before the chip container"
+    # The search input belongs to the search row, not the chip container.
+    assert _PAGE.index('class="be-search"') < chip_row
+
+
 def test_every_card_carries_its_topic() -> None:
     """Each card exposes its Topic as ``data-topic`` so search can match it without scraping markup."""
     for item in _ITEMS:
