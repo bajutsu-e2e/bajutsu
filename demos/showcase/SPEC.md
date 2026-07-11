@@ -228,7 +228,7 @@ A `NavigationStack` (SwiftUI) / `UINavigationController` (UIKit) holding a plain
 list is **intentionally longer than one screen**: the bottom rows start *off-screen*, and because
 rows render lazily an off-screen row is **not in the accessibility tree at all** until scrolled
 into view. So `notice.row.20` is the canonical **scroll-to-element** target — a scenario must
-`swipe` the list (each swipe scrolls a fixed ~100pt, §6.2) until the row appears, then `tap` it.
+`swipe` the list (each swipe scrolls a fraction of the screen, §6.2) until the row appears, then `tap` it.
 A plain list → detail flow distinct from the data-loading Stable catalog; a clean target for
 navigation, scroll, and crawl scenarios.
 
