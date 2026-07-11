@@ -17,11 +17,12 @@ Fix CI failures and address review comments on an existing PR.
 This is a **focused fix-and-reply** skill — scoped to the PR's branch.
 
 Invoked directly, or as one iteration of an automated tail: after
-[`implement-be`](../implement-be/SKILL.md) opens the Draft PR, it runs a paced `/loop` that spawns
-this skill in a fresh subagent each iteration until the PR is quiet and green. The conflict check,
-the `CHANGES_REQUESTED` stop condition, and the iteration backstops all live in that loop layer —
-this skill itself is unchanged and behaves identically whether looped, run as a subagent, or called
-by hand.
+[`implement-be`](../implement-be/SKILL.md) opens the Draft PR, it runs a paced `/loop` that spawns a
+fresh subagent each iteration and hands it this skill's steps directly in its prompt (the `Skill`
+tool runs only in the main conversation, so the subagent can't invoke `/pr-followup` itself),
+driving the PR to quiet and green. The conflict check, the `CHANGES_REQUESTED` stop condition, and
+the iteration backstops all live in that loop layer — this skill itself is unchanged and behaves
+identically whether looped, run as a subagent, or called by hand.
 
 ## Inputs
 
