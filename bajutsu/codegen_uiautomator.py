@@ -126,11 +126,11 @@ def _by(sel: base.Selector) -> str | None:
     if keys == {"value"}:
         return f"By.desc({_s(sel['value'])})"
     if keys == {"idMatches"}:
-        regexes = [_glob_to_regex(g) for g in base.id_candidates(sel["idMatches"])]
-        if any(r is None for r in regexes):
+        cands = base.id_candidates(sel["idMatches"])
+        regexes = [r for g in cands if (r := _glob_to_regex(g)) is not None]
+        if len(regexes) != len(cands):
             return None  # a `[…]` class in any candidate has no faithful regex form (→ TODO)
-        present = [r for r in regexes if r is not None]
-        pattern = present[0] if len(present) == 1 else "|".join(f"(?:{r})" for r in present)
+        pattern = regexes[0] if len(regexes) == 1 else "|".join(f"(?:{r})" for r in regexes)
         return f"By.res(Pattern.compile({_s(pattern)}))"
     if keys == {"labelMatches"}:
         # `By.text(Pattern)` is a full-string match, unlike `labelMatches`' `re.search`, so only a
