@@ -304,11 +304,13 @@ When all three hold, **report that the PR is quiet-and-green, and stop — do no
 confirms no subtle concern was left unaddressed, and marks it ready. "Hands-free" covers the
 mechanical tail (CI fixes, replies), not the merge decision or a rebase.
 
-**Escalate (stop and hand to the human)** on either:
+**Escalate (stop and hand to the human)** on any of:
 
 - a `pr-followup` comment that needs a **design or spec change** (its existing, unchanged
   escalation rule — a design call is the human's, and outranks the stop conditions above);
-- a **merge conflict** (the `mergeable` check above).
+- a **merge conflict** (the `mergeable` check above);
+- `CHANGES_REQUESTED` with **zero active inline threads** (stop condition 2 above) — there is no
+  inline comment for `pr-followup` to act on, so waiting out the poll cadence wastes cycles.
 
 **Two backstops** bound the loop. Count the two kinds of iteration **separately**, classifying each
 as **CI-wait whenever any required check is not yet green** (so the common post-open state — CI

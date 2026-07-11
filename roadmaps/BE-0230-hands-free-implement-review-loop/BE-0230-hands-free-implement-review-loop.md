@@ -236,8 +236,8 @@ Log:
   (auto Draft PR → compact → paced `/loop /pr-followup` with its stop conditions, escalation
   triggers, and backstops), `pr-followup` gained a framing note, `CLAUDE.md` PR rules split into
   BE-creation vs. implementation paths, and the two skills now cross-reference the composed tail.
-  Unit 2's compact is issued as a `/compact` directive at the end of step 11 (the open question in
-  *Detailed design* resolved to the simplest integration point).
+  Unit 2's compact is issued as a `/compact` directive in step 11's opening instruction (the open
+  question in *Detailed design* resolved to the simplest integration point).
 
 ## References
 
