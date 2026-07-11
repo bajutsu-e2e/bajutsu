@@ -142,6 +142,22 @@ bajutsu stats --runs <dir> [--json] [--html <path>]
 - **`--html <path>`** を渡すと、同じ数値を**自己完結した HTML ダッシュボード**にも書き出します（CSS は埋め込み、推移は最小限のインライン SVG。JavaScript も外部アセットも無く、ディスクから直接開けます）。テキスト（または `--json`）の出力は変わらず、書き出し先は標準エラー出力で知らせます。
 - **助言的かつ read-only** です。シナリオを再実行せず、判定を再計算せず、**CI ゲートにもなりません**。新しいフィールドを欠く古い manifest は「未取得」として描画し、失敗としては扱いません。数値にチームが設けるしきい値は、そのチーム自身の参考用チェックです。
 
+## `flakiness`
+
+run 履歴を横断してシナリオをフレーキネス順に並べる、**ランク付きのフレーキシナリオ一覧**です。`audit --history` を実際に活かせる形にした対応物にあたります（AI 非依存。[BE-0220](../../roadmaps/BE-0220-flaky-suggestion-and-cross-run-fix/BE-0220-flaky-suggestion-and-cross-run-fix-ja.md)）。`audit --history` が各シナリオを `flaky` / `deterministic` / `unproven` に分類するのに対し、`flakiness` はスイート全体を flaky を先頭に並べ、それぞれがどれだけブレるかを採点します。チームは最も問題のあるシナリオを一目で把握できます。デバイスも AI も判定も使いません。
+
+```bash
+bajutsu flakiness --history <runs-dir> [--json] [--window N]   # run manifest のディレクトリを掘り起こす
+bajutsu flakiness [--org <org>] [--json] [--window N]          # serve のデータベースを読む（BAJUTSU_DATABASE_URL）
+```
+
+- **入力元は二つ、ランク付けは一つ**です。`--history <runs-dir>` は過去の run の `manifest.json` を集めたディレクトリを掘り起こします（CI やスクリプト向けの形）。省略するとデータベース（`BAJUTSU_DATABASE_URL`）を読み、各 run の行に刻まれた `provenance.scenarioHash` から直接グルーピングします。runs ディレクトリが無いとき、またはデータベースが未設定のときは終了 2 です。
+- run は `provenance.scenarioHash` でグルーピングし、各シナリオを**判定の反転率**（`2·min(passed, failed)/runs`。一貫していれば 0、五分五分で 1）で採点します。分類は [BE-0049](../../roadmaps/BE-0049-determinism-flakiness-audit/BE-0049-determinism-flakiness-audit-ja.md) から再利用します。出力は flaky を先頭に、次いで反転率の降順、さらに run 数の降順で並びます。
+- 各エントリは最新の合格 run と最新の失敗 run の id を持ちます。`--json` の利用側や serve パネルは、両側の代表的な証跡へ直接リンクできます。
+- **`--window N`** は採点前に各シナリオの最新 N run だけを残します（既定の 0 は履歴全体です）。**`--org <org>`** はデータベースを読むときに掘り起こす対象のテナントを選びます。
+- `provenance.scenarioHash` を持たない run（provenance 導入前）や、判定が記録されていない run はグルーピングできず、`audit --history` と同様にスキップとして報告します。
+- **助言的かつ read-only** です。履歴にすでに記録されたフレーキネスを報告するだけで、何も再実行せず、判定を再計算せず、**CI ゲートにもなりません**。
+
 ## `export`
 
 完了した run を1つの可搬な `.zip` にまとめます。`report.html` に加えて `manifest.json`、`junit.xml`、実行した `scenario.yaml`、**すべての**証跡（スクリーンショット、動画、`network.json` …）を含みます（[BE-0060](../../roadmaps/BE-0060-run-report-zip-export/BE-0060-run-report-zip-export-ja.md)）。`runs/<id>/` のツリー全体を単一の `<id>/` フォルダ直下に収めるので、`report.html` の**相対**リンクがオフラインで解決します。ダブルクリックで開け、サーバは要りません。
@@ -500,6 +516,11 @@ bajutsu serve [--port 8765] [--config bajutsu.config.yaml] [--root .] [--runs ru
   `manifest.json` を artifact store から読みます（run-id の一覧は、データベースを配線しているときは system of record
   から org スコープで、そうでなければ artifact store から取得）。デバイスも AI も判定も使いません。`GET /stats` で配信し、
   タブの更新ボタンで再取得します。
+- **Flaky** タブはランク付きのフレーキシナリオ一覧（[BE-0220](../../roadmaps/BE-0220-flaky-suggestion-and-cross-run-fix/BE-0220-flaky-suggestion-and-cross-run-fix-ja.md)）を
+  描きます。`bajutsu flakiness` と同じ read-only のランク付けを、サーバの run 履歴に対してライブで表示します。判定の反転率で
+  flaky を先頭に並べ、各行は代表的な合格 run と失敗 run の証跡へリンクします。データベースを配線しているときは各 run の行に
+  刻まれた provenance から直接グルーピングし（org スコープ）、そうでなければ各 run の `manifest.json` から同じレコードを組み立てます。
+  デバイスも AI も判定も使いません。`GET /flakiness` で配信し、タブの更新ボタンで再取得します。
 - **バンドルのアップロード（[BE-0073](../../roadmaps/BE-0073-serve-zip-bundle-upload/BE-0073-serve-zip-bundle-upload-ja.md)）。**
   「Open config」ダイアログには 3 つめのソース **Upload a bundle** があり、ホストのファイルシステムに触れない
   ブラウザ利用者が、ホスト型の `serve` に**自分のスイートを持ち込め**ます。レイアウトが動くローカル checkout

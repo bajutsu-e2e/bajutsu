@@ -17,12 +17,22 @@ For the common single-scenario run the two coincide.
 
 from __future__ import annotations
 
-from collections.abc import Iterable
+import functools
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from pathlib import Path
+
+from jinja2 import Environment, FileSystemLoader
 
 from bajutsu.audit import classify_stability
+from bajutsu.run_id import parse_run_id_timestamp
 from bajutsu.serve.server.db import RunRecord
+
+# The newest-N run window both flakiness surfaces mine from the database — the serve panel
+# (`operations.reads._flakiness_report`) and the `bajutsu flakiness` CLI (`_db_flakiness`) — so the
+# two rank over the same bounded history. A window large enough to read a trend, not the whole log.
+DEFAULT_RUN_LIMIT = 200
 
 
 def _as_utc(dt: datetime) -> datetime:
@@ -154,3 +164,95 @@ def _representatives(runs: list[RunRecord]) -> tuple[str | None, str | None]:
     passing = next((r.id for r in runs if r.ok), None)
     failing = next((r.id for r in runs if not r.ok), None)
     return passing, failing
+
+
+def records_from_manifests(manifests: Iterable[Mapping[str, object]]) -> list[RunRecord]:
+    """Build the minimal `RunRecord`s the flakiness score reads from parsed run manifests.
+
+    The provenance stamp lives on the DB record (BE-0220 prerequisite), so the DB surface groups
+    straight from it; the file-backed `--history` CLI form and a local (no-database) serve have only
+    the runs' `manifest.json` to read. This reduces each manifest to the same shape — the run-level
+    verdict, the `provenance.scenarioHash` grouping key, a representative scenario name, and the run
+    id (as both the identity and, parsed, the `created_at` used for windowing) — so all three inputs
+    feed `rank_flakiness` identically. Read-only: it carries over recorded verdicts, deciding none.
+
+    Args:
+        manifests: Parsed `manifest.json` mappings, in any order. A manifest with no run-level `ok`
+            or no `provenance.scenarioHash` still yields a record — `rank_flakiness` counts it in
+            `skipped`, exactly as it does a pre-provenance DB row.
+    """
+    return [_record_from_manifest(m) for m in manifests]
+
+
+def _record_from_manifest(manifest: Mapping[str, object]) -> RunRecord:
+    """Reduce one parsed manifest to the fields the flakiness score reads (see records_from_manifests)."""
+    run_id = manifest.get("runId")
+    run_id = run_id if isinstance(run_id, str) else ""
+    raw_ok = manifest.get("ok")
+    prov = manifest.get("provenance")
+    scenario_hash = prov.get("scenarioHash") if isinstance(prov, Mapping) else None
+    scenarios = manifest.get("scenarios")
+    names = [
+        name
+        for s in (scenarios if isinstance(scenarios, list) else [])
+        if isinstance(s, Mapping) and (name := s.get("scenario"))
+    ]
+    return RunRecord(
+        id=run_id,
+        org_id="",
+        status="",
+        ok=raw_ok if isinstance(raw_ok, bool) else None,
+        created_at=parse_run_id_timestamp(run_id),
+        summary={"scenarios": names},
+        scenario_hash=scenario_hash if isinstance(scenario_hash, str) else None,
+    )
+
+
+def render(report: FlakinessReport) -> str:
+    """The CLI text form of the ranked report — flaky scenarios first, one block each.
+
+    The `--json` form emits the report verbatim (`dataclasses.asdict`); this is the human-readable
+    counterpart, mirroring `audit --history`'s `render_longitudinal`. Read-only, no verdict.
+    """
+    if not report.scenarios:
+        body = ["no runs with a scenario fingerprint to rank"]
+    else:
+        body = [_render_scenario(s) for s in report.scenarios]
+    if report.skipped:
+        body.append(f"skipped {report.skipped} run(s) with no fingerprint or verdict")
+    return "\n".join(body)
+
+
+def _render_scenario(s: FlakyScenario) -> str:
+    """One scenario's text block: its class, verdict tally, flip rate, and representative run ids."""
+    head = f"{s.name or s.scenario_hash}: {s.classification} "
+    head += f"({s.runs} runs · {s.passed} passed / {s.failed} failed · flip {s.flip_rate:.0%})"
+    evidence = " · ".join(
+        part
+        for part in (
+            f"pass {s.representative_pass_run_id}" if s.representative_pass_run_id else "",
+            f"fail {s.representative_fail_run_id}" if s.representative_fail_run_id else "",
+        )
+        if part
+    )
+    return f"{head}\n  {evidence}" if evidence else head
+
+
+_TEMPLATE_DIR = Path(__file__).resolve().parent.parent / "templates"
+
+
+@functools.lru_cache(maxsize=1)
+def _env() -> Environment:
+    # autoescape so a stray "<" in a scenario name can never inject markup into the page.
+    return Environment(loader=FileSystemLoader(str(_TEMPLATE_DIR)), autoescape=True)
+
+
+def render_html(report: FlakinessReport) -> str:
+    """The serve panel: a self-contained HTML page ranking the suite by flakiness (BE-0220, Half 1).
+
+    Inline CSS, no JS, no external asset — like the stats dashboard (BE-0102), so it renders inside
+    the serve tab's shadow root and opens straight from disk. Each row links to the representative
+    passing and failing runs' evidence under the existing `/runs/<id>/...` mount. Read-only and
+    AI-free: it displays the ranking, computing and gating nothing.
+    """
+    return _env().get_template("flakiness.html.j2").render(report=report)

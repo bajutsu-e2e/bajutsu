@@ -55,6 +55,7 @@ CAPABILITIES: tuple[Capability, ...] = (
     Capability("audit", uses_claude=False),
     Capability("coverage", uses_claude=False),
     Capability("stats", uses_claude=False),
+    Capability("flakiness", uses_claude=False),
     Capability("export", uses_claude=False),
     Capability("serve", uses_claude=False),
 )

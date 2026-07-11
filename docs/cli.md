@@ -212,6 +212,37 @@ bajutsu stats --runs <dir> [--json] [--html <path>]
   gates CI** — an older manifest missing a newer field renders as "not captured", never as a failure.
   Any threshold a team sets on its numbers is their own informational check.
 
+## `flakiness`
+
+A **ranked flaky-scenario surface** over the run history — the actionable counterpart to `audit
+--history` (AI-independent;
+[BE-0220](../roadmaps/BE-0220-flaky-suggestion-and-cross-run-fix/BE-0220-flaky-suggestion-and-cross-run-fix.md)).
+Where `audit --history` labels each scenario `flaky` / `deterministic` / `unproven`, `flakiness`
+sorts the whole suite flaky-first and scores how badly each one flips, so a team sees its worst
+offenders at a glance — no device, no AI, no verdict.
+
+```bash
+bajutsu flakiness --history <runs-dir> [--json] [--window N]   # mine a directory of run manifests
+bajutsu flakiness [--org <org>] [--json] [--window N]          # read the serve database (BAJUTSU_DATABASE_URL)
+```
+
+- **Two sources, one ranking.** `--history <runs-dir>` mines a directory of past runs' `manifest.json`
+  (the CI / scripting form); omitting it reads the serve database (`BAJUTSU_DATABASE_URL`), grouping
+  straight from the `provenance.scenarioHash` stamped on each run row. A missing runs directory or an
+  unconfigured database exits 2.
+- Runs are grouped by `provenance.scenarioHash` and each scenario is scored by its **verdict flip
+  rate** — `2·min(passed, failed)/runs` (0 when consistent, 1 at a 50/50 split) — reusing the
+  [BE-0049](../roadmaps/BE-0049-determinism-flakiness-audit/BE-0049-determinism-flakiness-audit.md)
+  classification. The output is ordered flaky-first, then by descending flip rate, then by run count.
+- Each entry carries the newest passing and newest failing run ids, so `--json` consumers (and the
+  serve panel) can link straight to the representative evidence on both sides.
+- **`--window N`** keeps only each scenario's newest `N` runs before scoring (0, the default, uses the
+  whole history); **`--org <org>`** picks the tenant whose runs the database read mines.
+- A run with no `provenance.scenarioHash` (a pre-provenance run) or no recorded verdict can't be
+  grouped and is reported as skipped, exactly as in `audit --history`.
+- **Advisory and read-only**: it only reports flakiness already recorded in history — it re-runs
+  nothing, recomputes no verdict, and **never gates CI**.
+
 ## `export`
 
 Bundles a finished run into a single portable `.zip` — `report.html` together with `manifest.json`,
@@ -626,6 +657,13 @@ bajutsu serve [--port 8765] [--config bajutsu.config.yaml] [--root .] [--runs ru
   aggregator, reading each run's `manifest.json` from the artifact store (the run-id list comes from
   the system of record when a database is wired, org-scoped, else the artifact store) — no device, no
   AI, no verdict. It is served at `GET /stats` and refreshed with the tab's refresh button.
+- The **Flaky** tab renders the ranked flaky-scenario surface
+  ([BE-0220](../roadmaps/BE-0220-flaky-suggestion-and-cross-run-fix/BE-0220-flaky-suggestion-and-cross-run-fix.md)) —
+  the same read-only ranking as `bajutsu flakiness`, live over the server's run history: scenarios
+  sorted flaky-first by verdict flip rate, each row linking to the representative passing and failing
+  runs' evidence. When a database is wired it groups straight from the provenance stamp on each run
+  row (org-scoped); otherwise it builds the same records from each run's `manifest.json`. No device,
+  no AI, no verdict. It is served at `GET /flakiness` and refreshed with the tab's refresh button.
 - **Upload a bundle ([BE-0073](../roadmaps/BE-0073-serve-zip-bundle-upload/BE-0073-serve-zip-bundle-upload.md)).**
   The "Open config" dialog has a third source, **Upload a bundle**, that lets a browser user **bring
   their own suite** to a hosted `serve` with no file-system access to the host. Drop a `.zip` whose

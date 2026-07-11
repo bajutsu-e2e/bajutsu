@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+{#- Self-contained cross-run flakiness panel (BE-0220, Half 1). flakiness.py builds the context;
+    all markup lives here. CSS is inlined and there is no JS, so the page renders inside the serve
+    tab's shadow root and opens straight from disk — mirroring the stats dashboard (BE-0102).
+    Read-only over the run history: it ranks recorded verdicts and computes no verdict of its own. -#}
+{%- macro bar(fraction) -%}
+<div class="bar"><div class="fill" style="width: {{ (fraction * 100) | round(1) }}%"></div></div>
+{%- endmacro -%}
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Flaky scenarios</title>
+<style>
+:root { color-scheme: light dark; }
+body { font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  margin: 0; padding: 2rem; max-width: 880px; margin: 0 auto; color: #1d1d1f; background: #fff; }
+h1 { font-size: 1.5rem; margin: 0 0 .25rem; }
+.sub { color: #6e6e73; margin: 0 0 1.5rem; }
+table { border-collapse: collapse; width: 100%; }
+th, td { text-align: left; padding: .4rem .6rem; border-bottom: 1px solid #ececec; vertical-align: top; }
+th { color: #6e6e73; font-weight: 600; font-size: .85rem; }
+td.num { text-align: right; font-variant-numeric: tabular-nums; }
+code { background: #f2f2f7; border-radius: 4px; padding: .1rem .35rem; font-size: .85em; }
+a { color: #0066cc; text-decoration: none; }
+a:hover { text-decoration: underline; }
+.empty { color: #6e6e73; font-style: italic; }
+.tag { display: inline-block; border-radius: 4px; padding: .1rem .4rem; font-size: .85em; }
+.flaky { background: #fde8e8; color: #b00020; }
+.bar { background: #e8e8ed; border-radius: 5px; height: 8px; overflow: hidden; margin: .15rem 0; width: 90px; }
+.fill { background: #ff9500; height: 100%; }
+@media (prefers-color-scheme: dark) {
+  body { color: #f5f5f7; background: #1c1c1e; }
+  .sub, th { color: #98989d; }
+  code { background: #2c2c2e; }
+  a { color: #4aa3ff; }
+  th, td { border-color: #2c2c2e; }
+  .bar { background: #3a3a3c; }
+  .flaky { background: #3a1f1f; color: #ff6961; }
+}
+</style>
+</head>
+<body>
+<h1>Flaky scenarios</h1>
+<p class="sub">Scenarios ranked by how much their verdict flips at a constant content fingerprint,
+mined from the run history. Read-only and advisory — nothing here decides a pass/fail.</p>
+{%- if not report.scenarios %}
+<p class="empty">No runs with a scenario fingerprint to rank
+{%- if report.skipped %} ({{ report.skipped }} run(s) had no fingerprint or verdict){% endif %}.</p>
+{%- else %}
+<table><thead><tr>
+<th>scenario</th><th>class</th><th class="num">passed</th><th class="num">failed</th>
+<th class="num">runs</th><th>flip rate</th><th>evidence</th>
+</tr></thead><tbody>
+{%- for s in report.scenarios %}
+<tr>
+<td>{{ s.name or s.scenario_hash }}<br><code>{{ s.scenario_hash }}</code></td>
+<td>{% if s.classification == "flaky" %}<span class="tag flaky">flaky</span>{% else %}{{ s.classification }}{% endif %}</td>
+<td class="num">{{ s.passed }}</td>
+<td class="num">{{ s.failed }}</td>
+<td class="num">{{ s.runs }}</td>
+<td>{{ bar(s.flip_rate) }}{{ "%.0f%%" | format(s.flip_rate * 100) }}</td>
+<td>
+{%- if s.representative_pass_run_id %}<a href="/runs/{{ s.representative_pass_run_id }}/report.html" target="_blank" rel="noopener">pass</a>{% endif %}
+{%- if s.representative_pass_run_id and s.representative_fail_run_id %} · {% endif %}
+{%- if s.representative_fail_run_id %}<a href="/runs/{{ s.representative_fail_run_id }}/report.html" target="_blank" rel="noopener">fail</a>{% endif %}
+</td>
+</tr>
+{%- endfor %}
+</tbody></table>
+{%- if report.skipped %}
+<p class="sub">{{ report.skipped }} run(s) skipped — no scenario fingerprint or no recorded verdict.</p>
+{%- endif %}
+{%- endif %}
+</body>
+</html>
