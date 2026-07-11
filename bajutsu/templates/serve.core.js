@@ -325,7 +325,7 @@ document.querySelectorAll('.modal').forEach(m=>new MutationObserver(muts=>{
 // ---- top-level Record / Replay / Crawl views ----
 function showView(name){
   document.querySelectorAll('.toptab').forEach(t=>t.classList.toggle('active',t.dataset.view===name));
-  $('#view-record').hidden=name!=='record';$('#view-replay').hidden=name!=='replay';$('#view-crawl').hidden=name!=='crawl';$('#view-author').hidden=name!=='author';$('#view-stats').hidden=name!=='stats';$('#view-flaky').hidden=name!=='flaky';$('#view-usage').hidden=name!=='usage';$('#view-coverage').hidden=name!=='coverage';
+  $('#view-record').hidden=name!=='record';$('#view-replay').hidden=name!=='replay';$('#view-crawl').hidden=name!=='crawl';$('#view-author').hidden=name!=='author';$('#view-stats').hidden=name!=='stats';$('#view-flaky').hidden=name!=='flaky';$('#view-usage').hidden=name!=='usage';$('#view-coverage').hidden=name!=='coverage';$('#view-metrics').hidden=name!=='metrics';
   // The incoming view animates in (enter-only: the outgoing one is hidden instantly, so two sibling
   // views never overlap in the flex column). The picked theme decides the motion via --motion-view-*.
   const shown=$('#view-'+name);if(shown)playEnter(shown,'--motion-view-enter');
@@ -335,6 +335,7 @@ function showView(name){
   if(name==='flaky')loadFlaky();
   if(name==='usage')loadUsage();
   if(name==='coverage')coverageInit();
+  if(name==='metrics')loadMetrics();
 }
 document.querySelectorAll('.toptab').forEach(t=>t.addEventListener('click',()=>showView(t.dataset.view)));
 
@@ -384,6 +385,9 @@ async function loadProjects(){
   projectsCache=Array.isArray(list)?list:[];
   const hub=projectsCache.length>1;
   $('#projectsw').hidden=!hub;$('#openprojects').hidden=!hub;
+  // The cross-project comparison (BE-0226) only means anything with a real hub, so its tab tracks the
+  // switcher's visibility — a single-config serve has nothing to compare and never shows it.
+  const mtab=document.querySelector('.toptab[data-view="metrics"]');if(mtab)mtab.hidden=!hub;
   renderSwitcher();renderProjectsList();
 }
 function renderSwitcher(){
@@ -422,6 +426,9 @@ async function switchProject(name,opts){
   await loadConfig();
   await loadProjects();
   if(opts&&opts.goReplay){closeProjects();showView('replay')}
+  // Deep-link from the comparison view (BE-0226): land on the switched-to project's single-config
+  // dashboard so the comparison is the entry point and BE-0102's Stats view is the drill-down.
+  if(opts&&opts.goStats){closeProjects();showView('stats')}
 }
 function openProjects(){loadProjects();$('#projectsmodal').hidden=false}
 function closeProjects(){closeModal($('#projectsmodal'))}
