@@ -56,6 +56,7 @@ def test_run_path_top_level_modules_are_relevant() -> None:
         "bajutsu/redaction.py",
         "bajutsu/artifact_perms.py",
         "bajutsu/mailbox.py",
+        "bajutsu/intervals.py",
         # record.py unconditional imports (record is an E2E verb)
         "bajutsu/agent.py",
         "bajutsu/crawl.py",
