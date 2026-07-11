@@ -131,10 +131,15 @@ lint-actions:
 # top-level `const`/`let` is a SyntaxError only in the combined script, invisible to the per-file
 # pass. That combined script is built from `handler._JS_ASSETS` (via `uv run`, when available) so it
 # is byte-for-byte what the server inlines — same file order and "\n" join — rather than shell-glob
-# (lexicographic) order, which would diverge. If uv isn't set up the concat pass skips with a notice
-# (the per-file pass already ran). The flat-config eslint (eslint.config.mjs) adds a few structural
-# checks and runs only when eslint is already resolvable, so the gate never downloads it. Node
-# absence skips with a notice — the same pattern lint-actions uses for actionlint — so `check` runs anywhere.
+# (lexicographic) order, which would diverge. The roadmap dashboard's embedded filter script
+# (build_roadmap_dashboard.py `_SCRIPT`) lives inline in a Python string, not under templates/, so the
+# glob above misses it; we emit it (`--emit-script`) and `node --check` it too, so a typo there fails
+# the gate rather than only surfacing in a browser. Both uv-driven emits skip with a notice when uv
+# isn't set up: the concat check still has the per-file pass as a partial fallback, but the dashboard
+# script has no non-uv fallback (the glob never touched it), so it goes unchecked — CI always has uv,
+# so the gate is unaffected. The flat-config eslint (eslint.config.mjs) adds a few
+# structural checks and runs only when eslint is already resolvable, so the gate never downloads it.
+# Node absence skips with a notice — the same pattern lint-actions uses for actionlint — so `check` runs anywhere.
 lint-js:
 	@set -e; \
 	if ! command -v node >/dev/null 2>&1; then \
@@ -145,8 +150,10 @@ lint-js:
 			dir="$$(mktemp -d)"; trap 'rm -rf "$$dir"' EXIT; \
 			uv run --no-sync python -c "from bajutsu.serve.handler import _JS_ASSETS, _TEMPLATE_DIR; import sys; sys.stdout.write(chr(10).join((_TEMPLATE_DIR/n).read_text(encoding='utf-8') for n in _JS_ASSETS))" > "$$dir/concat.js"; \
 			node --check "$$dir/concat.js"; \
+			uv run --no-sync python scripts/build_roadmap_dashboard.py --emit-script > "$$dir/dashboard.js"; \
+			node --check "$$dir/dashboard.js"; \
 		else \
-			echo "lint-js: uv not available — skipping the concatenation check (ran per-file node --check)"; \
+			echo "lint-js: uv not available — skipping the concatenation check (ran per-file node --check) and the dashboard check (no fallback without uv)"; \
 		fi; \
 		if npx --no-install eslint --version >/dev/null 2>&1; then \
 			npx --no-install eslint 'bajutsu/templates/serve.*.js'; \

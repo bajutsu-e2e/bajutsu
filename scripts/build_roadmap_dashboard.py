@@ -17,8 +17,9 @@ it first; the ``docs`` workflow does the same before publishing.
 
 Usage::
 
-    python scripts/build_roadmap_dashboard.py            # write docs/api/roadmap.md
+    python scripts/build_roadmap_dashboard.py  # write docs/api/roadmap.md
     python scripts/build_roadmap_dashboard.py --out PATH  # write elsewhere (tests)
+    python scripts/build_roadmap_dashboard.py --emit-script  # print the embedded filter JS (lint-js)
 
 Only facts the metadata carries are shown. The per-category progress percentage is derived purely
 from the Status field (Implemented items / total items in the category), so it has a source of truth;
@@ -380,10 +381,31 @@ def build_page(items: list[Any]) -> str:
     return f"{_INTRO}{render_html(items)}\n{_STYLE}{_SCRIPT}"
 
 
+def filter_script() -> str:
+    """The dashboard's client-side filter JS, without its ``<script>`` tags — for ``node --check``.
+
+    The script lives inline in this module rather than under ``bajutsu/templates/`` where
+    ``make lint-js``'s glob would catch it, so lint-js emits this (``--emit-script``) to a temp file
+    and syntax-checks it there.
+    """
+    return _SCRIPT.replace("<script>", "").replace("</script>", "").strip() + "\n"
+
+
 def main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--out", type=Path, default=DEFAULT_OUT, help="output path for the page")
+    # Two alternative modes: write the page (--out), or print just the filter JS (--emit-script).
+    # A mutually exclusive group makes passing both fail loudly instead of silently ignoring --out.
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument("--out", type=Path, default=DEFAULT_OUT, help="output path for the page")
+    mode.add_argument(
+        "--emit-script",
+        action="store_true",
+        help="write only the embedded filter JS (no <script> tags) to stdout, for lint-js",
+    )
     args = parser.parse_args(argv)
+    if args.emit_script:
+        sys.stdout.write(filter_script())
+        return 0
     try:
         items = bri.load_items(bri.ROADMAP)
     except ValueError as exc:

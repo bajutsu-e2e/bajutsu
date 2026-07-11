@@ -157,6 +157,24 @@ def test_placeholder_is_excluded() -> None:
     assert "BE-XXXX" not in _PAGE
 
 
+def test_emit_script_is_the_tagless_filter_js() -> None:
+    """``filter_script`` / ``--emit-script`` yield the embedded JS with no ``<script>`` tags.
+
+    ``make lint-js`` emits this and runs ``node --check`` on it, so the gate syntax-checks the
+    dashboard's inline filter script (which lives in a Python string, outside lint-js's template
+    glob). The test pins that the emitted text is the script body and carries no markup, so a stray
+    tag can't slip into what ``node --check`` parses.
+    """
+    js = brd.filter_script()
+    assert "<script>" not in js and "</script>" not in js
+    # It is the real filter script, wrapped as an IIFE — pinned by its actual content (the wrapper
+    # and a selector/API it must use to work), not by re-deriving filter_script's own transformation.
+    assert js.lstrip().startswith("(function()")
+    assert js.rstrip().endswith("})();")
+    assert "addEventListener" in js
+    assert ".be-check" in js and "querySelectorAll" in js
+
+
 def test_html_is_escaped() -> None:
     """Titles flow through html.escape, so a stray angle bracket can't break the markup."""
     entry_cls = type(_ITEMS[0].by_lang["en"])
