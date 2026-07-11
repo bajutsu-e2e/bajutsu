@@ -82,6 +82,10 @@ is green and the branch is pushed:
 - The "don't open a PR unless the user asks" caveat is removed **for this skill**. The Draft +
   never-mark-ready-while-red rules from `CLAUDE.md` still hold: the PR is created as a Draft and is
   only marked ready by the human (or a later explicit step), never automatically while CI is red.
+  Exception: if the `implement-be` output is itself documentation-only (skills, `CLAUDE.md`,
+  roadmap prose — no product code), `CLAUDE.md`'s existing "documentation-only PRs open Ready for
+  review" rule takes precedence: the PR is opened Ready (not Draft), with `steering-committee` as
+  reviewer. This exception is exactly the situation this item's own implementation will land in.
 
 ### Unit 2 — compact the session before entering the loop
 
@@ -153,7 +157,10 @@ Two bounded backstops prevent an unbounded loop:
   red for a reason `pr-followup` cannot resolve — flaky infrastructure, an unrelated external
   failure, or a fix that does not take effect — and `pr-followup`'s own escalation rule (which
   fires only on a design/spec-change comment) would not trigger. CI-wait and review-wait
-  iterations are counted separately.
+  iterations are counted separately. **Classification rule**: an iteration counts as CI-wait
+  whenever any required check is not yet green (regardless of review activity); it counts as
+  review-wait otherwise. This means the common post-open-PR state — CI running and no review yet —
+  counts as CI-wait, not review-wait.
 
 On hitting either cap, the skill stops and reports the current state (CI status, open comment
 count). The human can interrupt or restart the loop at any time by stopping the session.
