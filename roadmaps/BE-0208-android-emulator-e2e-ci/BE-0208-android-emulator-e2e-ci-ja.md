@@ -9,7 +9,7 @@
 | 提案者 | [@hirosassa](https://github.com/hirosassa) |
 | 状態 | **実装中** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0208") |
-| 実装 PR | [#851](https://github.com/bajutsu-e2e/bajutsu/pull/851)、[#880](https://github.com/bajutsu-e2e/bajutsu/pull/880)、[#899](https://github.com/bajutsu-e2e/bajutsu/pull/899)、[#901](https://github.com/bajutsu-e2e/bajutsu/pull/901) |
+| 実装 PR | [#851](https://github.com/bajutsu-e2e/bajutsu/pull/851)、[#880](https://github.com/bajutsu-e2e/bajutsu/pull/880)、[#899](https://github.com/bajutsu-e2e/bajutsu/pull/899)、[#901](https://github.com/bajutsu-e2e/bajutsu/pull/901)、[#906](https://github.com/bajutsu-e2e/bajutsu/pull/906) |
 | トピック | Platform expansion (Android / Web / Flutter) |
 | 関連 | [BE-0007](../BE-0007-android-backend/BE-0007-android-backend-ja.md)、[BE-0223](../BE-0223-adb-tab-bar-navigation/BE-0223-adb-tab-bar-navigation-ja.md) |
 <!-- /BE-METADATA -->
@@ -139,6 +139,19 @@ directive の枠内にとどまります。
   （segmented control の value）・`notices`（深いスクロール）はそれぞれ BE-0007 のフォローアップのスライスを
   待ちます。ユニット 4 の visual の次元は、CI で採取したベースラインが引き続き必要です。項目は**実装中**の
   ままです。
+- 2026-07-11 — ユニット 5（シート/カバーのフロー）。`components` と `modals` が `E2E_SCENARIOS` へ
+  戻りました。どちらもローカルの arm64 エミュレータでは通りますが、共有している 5 秒のシート表示待ちが、
+  モーダルの描画が遅い CI の x86_64 ソフトウェアレンダリングで超過する恐れがありました。共有シナリオを
+  バックエンドごとに調整し直す（`timeout: 5` はどのバックエンドでも同じです）のではなく、Android の
+  レーンだけが待ちの上限を引き上げます。`bajutsu/orchestrator/waits.py` が `BAJUTSU_MIN_WAIT_TIMEOUT`
+  を各待ちのタイムアウトの下限として尊重するようになり、`demos/showcase/android/Makefile` の `e2e`
+  ターゲットがこれを渡します（既定 15 秒）。条件待ちは条件が満たされた瞬間に返るので、上限を広げても固定の
+  待ち時間にはならず安全な上限にとどまります（プライムディレクティブ 2 は保たれます。依然として条件待ちで
+  あり、固定の sleep ではありません）。ほかのバックエンドには影響しません。`docs/ci.md`（と ja）に記載
+  しました。残りの除外シナリオは、待ち時間とは無関係の理由で除外したままです。`gestures`（マルチタッチ、
+  BE-0210）、`controls`（segmented control の value）、`notices`（深いスクロール）はそれぞれ BE-0007 の
+  フォローアップです。ユニット 4 の visual の次元は、CI で採取したベースラインが引き続き必要です。項目は
+  **実装中**のままです。
 
 ## 参考
 

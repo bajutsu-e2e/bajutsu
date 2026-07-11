@@ -22,15 +22,24 @@ SERIAL ?= booted
 # system key) — detail-screen assertions and back-navigation. The golden element-tree check is a
 # separate target (`e2e-golden`, BE-0208 unit 4).
 #
-# Still held out (each for a reason unrelated to the tab bar, now that it is drivable): the sheet/cover
-# flows `components` / `modals` pass on the local hardware-accelerated arm64 emulator but their 5s
-# sheet-open waits risk timing out on the CI x86_64 software renderer (the shared scenarios can't be
-# retuned per backend), so they wait on confirmed CI timing; `gestures` needs multi-touch (adb is
-# single-touch, BE-0210); `controls` asserts a segmented-control value adb does not yet expose; and
-# `notices` swipes to a far list row the scroll does not yet reach — all BE-0007 follow-ups. Device
-# control, mocked network, and visual screenshots stay out too (BE-0007 follow-ups / a later BE-0208
-# slice).
-E2E_SCENARIOS := smoke firstlook navigation search data_driven relaunch system
+# The sheet/cover flows `components` / `modals` rejoin the lane (BE-0208 unit 5): they pass on the
+# local hardware-accelerated arm64 emulator but their 5s sheet-open waits risk timing out on the CI
+# x86_64 software renderer, which draws a modal more slowly. The shared scenarios can't be retuned
+# per backend, so instead this lane raises the wait *ceiling* via BAJUTSU_MIN_WAIT_TIMEOUT (below):
+# a condition wait returns the instant the sheet presents, so the larger floor never slows the flow
+# — it only gives the software renderer time before the step is failed.
+#
+# Still held out (each for a reason unrelated to the tab bar or the renderer): `gestures` needs
+# multi-touch (adb is single-touch, BE-0210); `controls` asserts a segmented-control value adb does
+# not yet expose; and `notices` swipes to a far list row the scroll does not yet reach — all BE-0007
+# follow-ups. Device control, mocked network, and visual screenshots stay out too (BE-0007
+# follow-ups / a later BE-0208 slice — the visual dimension of unit 4).
+E2E_SCENARIOS := smoke firstlook navigation search data_driven relaunch system components modals
+
+# Raise the condition-wait ceiling for this lane only: the CI x86_64 software-rendered emulator
+# presents sheets/covers slower than the shared scenarios' 5s waits allow. A wait returns as soon as
+# it is satisfied, so this is a safe upper bound, not a fixed delay (bajutsu/orchestrator/waits.py).
+E2E_WAIT_FLOOR ?= 15
 
 # The wrapper jar IS committed (like any standard Android repo), so a fresh clone builds with no
 # extra step. Only run this to bump the pinned Gradle version — never as part of a build, since it
@@ -60,6 +69,7 @@ views-noax-build:
 e2e: compose-build
 	cd $(ROOT) && for s in $(E2E_SCENARIOS); do \
 		echo "=== $$s ==="; \
+		BAJUTSU_MIN_WAIT_TIMEOUT=$(E2E_WAIT_FLOOR) \
 		uv run bajutsu run --scenario demos/showcase/scenarios/$$s.yaml \
 			--target showcase-compose --udid $(SERIAL) --backend android --config $(CONFIG) || exit 1; \
 	done
