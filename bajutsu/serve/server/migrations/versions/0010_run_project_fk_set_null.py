@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 
+import sqlalchemy as sa
 from alembic import op
 
 # revision identifiers, used by Alembic.
@@ -18,6 +19,22 @@ branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
 
+def _project_id_fk_name(bind: sa.engine.Connection) -> str:
+    """Reflect the actual name of the runs.project_id FK from the live schema.
+
+    Avoids hardcoding the Postgres auto-generated name, which can vary when a
+    ``naming_convention`` is added to ``Base.metadata`` in the future.
+    """
+    inspector = sa.inspect(bind)
+    for fk in inspector.get_foreign_keys("runs"):
+        if fk["constrained_columns"] == ["project_id"]:
+            name = fk["name"]
+            if name is None:
+                raise RuntimeError("runs.project_id FK has no name — schema out of sync?")
+            return name
+    raise RuntimeError("runs.project_id FK not found — schema out of sync?")
+
+
 def upgrade() -> None:
     # The original FK (0001_initial) had no ondelete= action, so deleting a project with run
     # history would raise IntegrityError on Postgres. Adding ON DELETE SET NULL lets deregister
@@ -25,13 +42,11 @@ def upgrade() -> None:
     # contract ("only the binding is removed; run history is retained", BE-0225).
     #
     # SQLite: FKs aren't enforced at runtime (no PRAGMA foreign_keys=ON on the gate) and the
-    # dialect doesn't store named FK constraints, so the batch operation is a no-op there — the
+    # dialect doesn't store named FK constraints, so the operation is a no-op there — the
     # ondelete="SET NULL" in models.py covers newly-created schemas (test_db_migrations gate).
     bind = op.get_bind()
     if bind.dialect.name == "postgresql":
-        # On Postgres the unnamed FK from 0001_initial is named "runs_project_id_fkey" by
-        # convention (Postgres auto-names unnamed FKs as <table>_<col>_fkey).
-        op.drop_constraint("runs_project_id_fkey", "runs", type_="foreignkey")
+        op.drop_constraint(_project_id_fk_name(bind), "runs", type_="foreignkey")
         op.create_foreign_key(
             None,
             "runs",
@@ -45,8 +60,7 @@ def upgrade() -> None:
 def downgrade() -> None:
     bind = op.get_bind()
     if bind.dialect.name == "postgresql":
-        # Restore the unnamed FK without ondelete (Postgres re-names it automatically).
-        op.drop_constraint("runs_project_id_fkey", "runs", type_="foreignkey")
+        op.drop_constraint(_project_id_fk_name(bind), "runs", type_="foreignkey")
         op.create_foreign_key(
             None,
             "runs",
