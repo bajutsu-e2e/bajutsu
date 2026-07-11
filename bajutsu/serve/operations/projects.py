@@ -74,9 +74,10 @@ def register_project(
     """Register a project from a config source, or rebind an existing one by name (BE-0108-screened).
 
     Idempotent by name (the `add` seam reuses an existing id), so an explicit name disambiguates two
-    configs from the same Git repo that unit 2's repo-only auto-name would fold together. The first
-    project registered in an org with no active project becomes active, so a non-`default` org gains
-    an active project through the API — unit 2's boot auto-registration only covered the launch config.
+    configs from the same Git repo that unit 2's repo-only auto-name would fold together. When an org
+    has no active project the first concurrent registration to call `set_active` wins (the check-then-
+    set is not atomic today — a future `add_and_activate_if_unset` seam method would harden this for
+    parallel CI registrations, but the current single-bootstrap usage makes it low priority).
     """
     registry = state.project_registry
     if registry is None:
