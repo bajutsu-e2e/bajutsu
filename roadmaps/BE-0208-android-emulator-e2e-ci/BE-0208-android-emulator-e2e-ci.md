@@ -7,7 +7,7 @@
 |---|---|
 | Proposal | [BE-0208](BE-0208-android-emulator-e2e-ci.md) |
 | Author | [@hirosassa](https://github.com/hirosassa) |
-| Status | **In progress** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0208") |
 | Implementing PR | [#851](https://github.com/bajutsu-e2e/bajutsu/pull/851), [#880](https://github.com/bajutsu-e2e/bajutsu/pull/880), [#899](https://github.com/bajutsu-e2e/bajutsu/pull/899), [#901](https://github.com/bajutsu-e2e/bajutsu/pull/901), [#906](https://github.com/bajutsu-e2e/bajutsu/pull/906), [#910](https://github.com/bajutsu-e2e/bajutsu/pull/910), [#924](https://github.com/bajutsu-e2e/bajutsu/pull/924), [#925](https://github.com/bajutsu-e2e/bajutsu/pull/925), [#927](https://github.com/bajutsu-e2e/bajutsu/pull/927), [#934](https://github.com/bajutsu-e2e/bajutsu/pull/934) |
 | Topic | Platform expansion (Android / Web / Flutter) |
@@ -75,7 +75,7 @@ within the prime directives.
 - [x] Run the passing core scenarios over `--backend android`.
 - [x] Visual/golden baseline parity check — **golden** element-tree dimension (Compose Stable catalog).
 - [x] Visual/golden baseline parity check — **visual** screenshot dimension. Scenario + `e2e-visual` target (with the `visual` extra) + CI step wired; the x86_64 `stable.png` baseline was captured on this lane and committed, and the lane run is green.
-- [ ] Grow the scenario set with the actuation-fidelity and device-control slices as they land.
+- [x] Grow the scenario set with the actuation-fidelity and device-control slices as they land.
 
 ### Log
 
@@ -236,6 +236,14 @@ within the prime directives.
   emulator (the scenario passes) and the Python gate (`make check`) is green. The remaining held-out
   flow is `gestures_multitouch` (pinch / rotate), which needs multi-touch (adb is single-touch) and
   has its own roadmap item. Item stays **In progress**.
+- 2026-07-12 — Scope complete; item moves to **Implemented**. Every unit of the work breakdown has
+  landed: the workflow, showcase build/install, the core scenarios, the golden and visual baseline
+  dimensions, and the scenario set grown with the actuation-fidelity and device-control slices — the
+  device-control slice landed with `device_android` (`setLocation`) in [#934](https://github.com/bajutsu-e2e/bajutsu/pull/934)
+  (merged). The one remaining actuation-fidelity flow, `gestures_multitouch` (pinch / rotate), is not
+  in scope for this lane because adb is single-touch; it is tracked separately by the
+  adb-multitouch-gestures proposal ([#931](https://github.com/bajutsu-e2e/bajutsu/pull/931)). With
+  its own scope done, the item is Implemented.
 
 ## References
 
