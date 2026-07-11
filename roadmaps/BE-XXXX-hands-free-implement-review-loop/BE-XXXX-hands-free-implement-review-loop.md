@@ -92,8 +92,8 @@ are the only state that carries forward.
 
 ### Unit 3 — the paced pr-followup loop and its stop conditions
 
-After compacting, `implement-be` instructs the session to invoke the built-in **[`/loop`
-skill](../../.claude/skills/loop/)** with `pr-followup` as its target — concretely, it tells the
+After compacting, `implement-be` instructs the session to invoke the built-in **`/loop`
+skill** with `pr-followup` as its target — concretely, it tells the
 session: *"Run `/loop /pr-followup #NNN`"*. The `/loop` skill drives the pacing: it invokes
 `pr-followup` once per iteration and uses `ScheduleWakeup` (the harness's self-pacing mechanism for
 `/loop` dynamic mode) to sleep between iterations. Pacing follows the standard cache-window
