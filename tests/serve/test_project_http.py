@@ -83,7 +83,8 @@ def test_fastapi_transport_register_list_run_and_delete(tmp_path: Path) -> None:
     )
     assert run.status_code == 200 and "jobId" in run.json()
 
-    assert client.delete("/api/projects/checkout").status_code == 200
+    deleted = client.delete("/api/projects/checkout")
+    assert deleted.status_code == 200
     assert client.get("/api/projects").json() == []
 
 
