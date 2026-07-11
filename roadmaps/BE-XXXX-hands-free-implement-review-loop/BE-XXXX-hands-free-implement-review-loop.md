@@ -114,7 +114,11 @@ The loop **stops** only when **all** of these hold:
 2. **No outstanding "Request changes" review decision** — `reviewDecision` is not
    `CHANGES_REQUESTED`. A reviewer can submit a top-level "Request changes" review with no new
    inline comments; the loop must not stop while that standing veto sits unaddressed, even if the
-   two-quiet-poll condition is met.
+   two-quiet-poll condition is met. Note: `pr-followup` reads inline comments only (filtered by
+   `position != null`) and does not read `/pulls/{pr}/reviews` — so a top-level-body-only
+   objection is invisible to it. When the loop layer detects `CHANGES_REQUESTED` with zero
+   active inline comment threads, it **escalates immediately** (same as a merge conflict) rather
+   than silently waiting for the review-wait cap to fire.
 3. **Two consecutive polls with no new review comments** — the review surface has gone quiet (one
    empty poll is not enough; the second confirms quiescence).
 
