@@ -9,9 +9,9 @@
 | 提案者 | [@hirosassa](https://github.com/hirosassa) |
 | 状態 | **実装中** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0208") |
-| 実装 PR | [#851](https://github.com/bajutsu-e2e/bajutsu/pull/851)、[#880](https://github.com/bajutsu-e2e/bajutsu/pull/880)、[#899](https://github.com/bajutsu-e2e/bajutsu/pull/899) |
+| 実装 PR | [#851](https://github.com/bajutsu-e2e/bajutsu/pull/851)、[#880](https://github.com/bajutsu-e2e/bajutsu/pull/880)、[#899](https://github.com/bajutsu-e2e/bajutsu/pull/899)、[#901](https://github.com/bajutsu-e2e/bajutsu/pull/901) |
 | トピック | Platform expansion (Android / Web / Flutter) |
-| 関連 | [BE-0007](../BE-0007-android-backend/BE-0007-android-backend-ja.md) |
+| 関連 | [BE-0007](../BE-0007-android-backend/BE-0007-android-backend-ja.md)、[BE-0223](../BE-0223-adb-tab-bar-navigation/BE-0223-adb-tab-bar-navigation-ja.md) |
 <!-- /BE-METADATA -->
 
 ## はじめに
@@ -129,6 +129,16 @@ directive の枠内にとどまります。
   ベースラインはホスト依存で（ローカルの arm64 と CI の x86_64 ではソフトウェア描画が画素単位で食い違います）、
   CI で採取したベースラインが要るためです。これは後続のスライスに回します。項目は**実装中**のままです
   （ユニット 4 の visual の次元と、タブに依存するユニット 5 の残りが残ります）。
+- 2026-07-10 — ユニット 5（タブに依存するシナリオ）：[BE-0223](../BE-0223-adb-tab-bar-navigation/BE-0223-adb-tab-bar-navigation-ja.md)
+  で adb ドライバーがネイティブのタブバーを操作できるようになり（Compose の `NavigationBarItem` が共有の
+  `{ label, traits: [button] }` セレクターに解決します）、このユニットのブロックが解けました。タブバーを
+  操作できるようになったことで、`search`・`data_driven`・`relaunch`・`system` が `E2E_SCENARIOS` へ戻り、
+  いずれもローカルの arm64 エミュレータで確認しました。残りの除外シナリオは、タブバーとは無関係の理由で
+  除外したままです。`components` と `modals` はローカルでは通りますが、5 秒のシート表示待ちが CI の
+  x86_64 ソフトウェアレンダリングで超過する恐れがあり、`gestures`（マルチタッチ、BE-0210）・`controls`
+  （segmented control の value）・`notices`（深いスクロール）はそれぞれ BE-0007 のフォローアップのスライスを
+  待ちます。ユニット 4 の visual の次元は、CI で採取したベースラインが引き続き必要です。項目は**実装中**の
+  ままです。
 
 ## 参考
 

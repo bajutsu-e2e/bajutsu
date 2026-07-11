@@ -14,18 +14,23 @@ CONFIG := $(HERE)/../showcase.config.yaml
 SERIAL ?= booted
 # The core id/tap/type/value scenarios BE-0007 confirmed pass on device (2026-07-07): id resolution,
 # taps, text entry, and value assertions against the Compose a11y twin (dotted SPEC ids verbatim).
-# Only the Stable-tab scenarios run here: BE-0107 retired the SHOWCASE_TAB launch shortcut, so every
-# other tab is now reached by tapping the native tab bar — which adb cannot do (idb can't either;
-# only the XCUITest backend can). `search` / `data_driven` (Search), `relaunch` (Log), `system`
-# (Permissions), and the Log/Notices-tab flows (`components`, `modals`, `gestures`, `controls`,
-# `notices`) therefore leave the adb lane until the adb backend can drive the tab bar (BE-0007).
-# `navigation` joins the two smoke scenarios (BE-0208 unit 5): it never leaves the Stable tab the app
-# launches on — tap a catalog row to push Horse Detail, toggle the favorite, then pop back via the
-# cross-backend `back` step (Android system key) — so it needs no tab bar, and grows the lane's
-# coverage to detail-screen assertions and back-navigation. The golden element-tree check is a
-# separate target (`e2e-golden`, BE-0208 unit 4). The remaining slices (multi-touch, device control,
-# mocked network, visual screenshots) stay out too (BE-0007 follow-ups / a later BE-0208 slice).
-E2E_SCENARIOS := smoke firstlook navigation
+# BE-0223 taught the adb driver to drive the native tab bar (a Compose NavigationBarItem resolves the
+# shared cross-backend selector `{ label, traits: [button] }`), so the tab-switching scenarios rejoin
+# the lane: `search` / `data_driven` (Search), `relaunch` (Log), `system` (Permissions) — all verified
+# on device. `navigation` (BE-0208 unit 5) never leaves the launch (Stable) tab: tap a catalog row to
+# push Horse Detail, toggle the favorite, then pop back via the cross-backend `back` step (Android
+# system key) — detail-screen assertions and back-navigation. The golden element-tree check is a
+# separate target (`e2e-golden`, BE-0208 unit 4).
+#
+# Still held out (each for a reason unrelated to the tab bar, now that it is drivable): the sheet/cover
+# flows `components` / `modals` pass on the local hardware-accelerated arm64 emulator but their 5s
+# sheet-open waits risk timing out on the CI x86_64 software renderer (the shared scenarios can't be
+# retuned per backend), so they wait on confirmed CI timing; `gestures` needs multi-touch (adb is
+# single-touch, BE-0210); `controls` asserts a segmented-control value adb does not yet expose; and
+# `notices` swipes to a far list row the scroll does not yet reach — all BE-0007 follow-ups. Device
+# control, mocked network, and visual screenshots stay out too (BE-0007 follow-ups / a later BE-0208
+# slice).
+E2E_SCENARIOS := smoke firstlook navigation search data_driven relaunch system
 
 # The wrapper jar IS committed (like any standard Android repo), so a fresh clone builds with no
 # extra step. Only run this to bump the pinned Gradle version — never as part of a build, since it
