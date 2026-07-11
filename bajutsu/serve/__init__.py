@@ -59,8 +59,12 @@ from bajutsu.serve.helpers import (
 from bajutsu.serve.jobs import cancel_job, run_job
 from bajutsu.serve.launchagent import launchagent_plist
 from bajutsu.serve.logbus import InMemoryLogBus, LogBus
-from bajutsu.serve.operations.config import restore_persisted_provider_settings
+from bajutsu.serve.operations.config import (
+    register_launch_project,
+    restore_persisted_provider_settings,
+)
 from bajutsu.serve.orgs import DEFAULT_ORG, targets_for_org
+from bajutsu.serve.project_registry import LocalProjectRegistry, SqlProjectRegistry
 from bajutsu.serve.provider_store import LocalProviderSettingsStore
 from bajutsu.serve.scenarios import (
     LocalScenarioScope,
@@ -243,6 +247,10 @@ def _build_state(
         provider_settings_store=LocalProviderSettingsStore(
             runs_dir.parent / "provider-settings.json"
         ),
+        # The project hub's registry (BE-0225): local serve persists it to a JSON file beside
+        # runs_dir, the local stand-in for the DB's projects/runs tables. serve() auto-registers the
+        # launch config as the active project on boot, once logging is live.
+        project_registry=LocalProjectRegistry(runs_dir.parent / "projects.json"),
     )
 
 
@@ -360,6 +368,14 @@ def _build_server_state(
             else InMemorySessionStore()
         ),
         repository=repo,
+        # The project hub's registry (BE-0225): DB-backed when a database is wired, else the same
+        # local JSON store the local backend uses — matching how the executor/logbus above fall back
+        # to their in-process defaults when no repository is present.
+        project_registry=(
+            SqlProjectRegistry(repo)
+            if repo is not None
+            else LocalProjectRegistry(runs_dir.parent / "projects.json")
+        ),
         oauth=oauth,
         oauth_allowed_users=allowed_users,
         oauth_admins=oauth_admins,
@@ -501,6 +517,10 @@ def serve(
     # reflects it rather than resetting to the launch environment (BE-0184). After `_configure_oplog`
     # so a malformed-file warning reaches the live log sink; a no-op when nothing is persisted (BE-0101).
     restore_persisted_provider_settings(state)
+    # Auto-register the launch config as the active project (BE-0225), so a bare `serve --config X`
+    # gains the project hub and its runs are attributed to X from the first one. After the provider
+    # restore, sharing its boot placement; a no-op when no config is bound or no registry is wired.
+    register_launch_project(state)
     hint = str(config) if config else "open a config.yml in the UI"
     if not _allowed_hosts(host):
         # A wildcard bind can't enumerate its reachable hostnames, so the Host allowlist is off
