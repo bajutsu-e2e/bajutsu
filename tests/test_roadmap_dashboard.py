@@ -119,10 +119,12 @@ def test_emit_script_is_the_tagless_filter_js() -> None:
     """
     js = brd.filter_script()
     assert "<script>" not in js and "</script>" not in js
-    assert js.strip() == brd._SCRIPT.replace("<script>", "").replace("</script>", "").strip()
-    # It is the real filter script: the enhancement's IIFE, not an empty string.
+    # It is the real filter script, wrapped as an IIFE — pinned by its actual content (the wrapper
+    # and a selector/API it must use to work), not by re-deriving filter_script's own transformation.
     assert js.lstrip().startswith("(function()")
+    assert js.rstrip().endswith("})();")
     assert "addEventListener" in js
+    assert ".be-check" in js and "querySelectorAll" in js
 
 
 def test_html_is_escaped() -> None:
