@@ -489,6 +489,13 @@ def test_assemble_cross_run_none_without_failing_evidence(tmp_path: Path) -> Non
     assert triage.assemble_cross_run([passing], [], scenario="s") is None
 
 
+def test_assemble_cross_run_none_without_passing_evidence(tmp_path: Path) -> None:
+    failing = _write_run(tmp_path / "fail", ok=False, reason="x")
+    # the guard is symmetric: with no pass to contrast against a fail, the prompt's "some runs
+    # pass, some fail" premise no longer holds, so there is no intermittency to diagnose
+    assert triage.assemble_cross_run([], [failing], scenario="s") is None
+
+
 def test_assemble_cross_run_passing_evidence_is_run_end(tmp_path: Path) -> None:
     passing = _write_run(tmp_path / "pass", ok=True)
     failing = _write_run(tmp_path / "fail", ok=False, reason="x")

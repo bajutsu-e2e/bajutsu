@@ -607,12 +607,13 @@ def assemble_cross_run(
     readable manifest or the named scenario) and reads the scenario definition and the failing
     step's selector id from the first failing run that yields them.
 
-    Returns None when no failing run provides evidence for `scenario`: with nothing failing to
-    contrast against a pass, there is no intermittency to diagnose.
+    Returns None unless both a passing and a failing run provide evidence for `scenario`: the
+    contrast between a pass and a fail is the whole diagnosis, so with one side missing there is
+    no intermittency to reason about.
     """
     passing = [ev for d in pass_run_dirs if (ev := _run_evidence(d, scenario)) is not None]
     failing = [ev for d in fail_run_dirs if (ev := _run_evidence(d, scenario)) is not None]
-    if not failing:
+    if not failing or not passing:
         return None
     scenario_yaml, target_id = "", None
     for run_dir in fail_run_dirs:
