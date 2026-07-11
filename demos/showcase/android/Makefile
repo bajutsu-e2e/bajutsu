@@ -59,7 +59,8 @@ SERIAL ?= booted
 # read-back cannot run on-device (tracked separately). Verified on a local arm64 emulator.
 #
 # Still held out: `gestures_multitouch` (pinch / rotate) needs multi-touch (adb is single-touch).
-# The adb clipboard round-trip and mocked network stay out too (BE-0211 / BE-0007 follow-ups).
+# The adb clipboard round-trip and mocked network stay out too (adb-clipboard-fidelity proposal
+# PR #935 / BE-0007 follow-ups).
 E2E_SCENARIOS := smoke firstlook navigation search data_driven relaunch system components modals \
 	controls notices gestures permission_android device_android
 
