@@ -57,11 +57,10 @@ class Project(Base):
     id: Mapped[str] = mapped_column(primary_key=True)
     org_id: Mapped[str] = mapped_column(ForeignKey("orgs.id"))
     name: Mapped[str]  # the config target name
-    # The config source this project binds, as a forward-looking discriminated record
-    # (`kind` + `locator`) — shape defined by BE-0225's still-owed unit 3 to cover file /
-    # Git / zip upload sources, stored here so the hosted backend can resolve it through its
-    # own store without a schema change. Null for a row created before the binding was
-    # recorded (e.g. BE-0015's unwired scaffolding).
+    # The config source this project binds, as a discriminated record (`kind` + `locator`)
+    # covering file / Git / zip upload sources — the shape BE-0225 unit 1 defines, stored here
+    # so the hosted backend can resolve it through its own store without a schema change. Null
+    # for a row created before the binding was recorded (e.g. BE-0015's unwired scaffolding).
     source: Mapped[dict[str, Any] | None] = mapped_column(_JSON, default=None)
     created_at: Mapped[datetime] = _created_at()
 
