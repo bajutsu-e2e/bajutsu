@@ -135,7 +135,9 @@ lint-actions:
 # (build_roadmap_dashboard.py `_SCRIPT`) lives inline in a Python string, not under templates/, so the
 # glob above misses it; we emit it (`--emit-script`) and `node --check` it too, so a typo there fails
 # the gate rather than only surfacing in a browser. Both uv-driven emits skip with a notice when uv
-# isn't set up (the per-file pass already ran). The flat-config eslint (eslint.config.mjs) adds a few
+# isn't set up: the concat check still has the per-file pass as a partial fallback, but the dashboard
+# script has no non-uv fallback (the glob never touched it), so it goes unchecked — CI always has uv,
+# so the gate is unaffected. The flat-config eslint (eslint.config.mjs) adds a few
 # structural checks and runs only when eslint is already resolvable, so the gate never downloads it.
 # Node absence skips with a notice — the same pattern lint-actions uses for actionlint — so `check` runs anywhere.
 lint-js:
@@ -151,7 +153,7 @@ lint-js:
 			uv run --no-sync python scripts/build_roadmap_dashboard.py --emit-script > "$$dir/dashboard.js"; \
 			node --check "$$dir/dashboard.js"; \
 		else \
-			echo "lint-js: uv not available — skipping the concatenation + dashboard checks (ran per-file node --check)"; \
+			echo "lint-js: uv not available — skipping the concatenation check (ran per-file node --check) and the dashboard check (no fallback without uv)"; \
 		fi; \
 		if npx --no-install eslint --version >/dev/null 2>&1; then \
 			npx --no-install eslint 'bajutsu/templates/serve.*.js'; \
