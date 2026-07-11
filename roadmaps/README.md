@@ -8,7 +8,7 @@
 > single source of truth for who, if anyone, is working on it — no field in this repo tracks that.
 > Browse [issues labeled `roadmap-tracking`](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+is%3Aopen+label%3Aroadmap-tracking):
 > `no:assignee` for the unclaimed backlog, `assignee:<user>` for one person's plate. See
-> [BE-0109](BE-)0109-roadmap-tracking-issues/BE-0109-roadmap-tracking-issues.md) for
+> [BE-0109](BE-0109-roadmap-tracking-issues/BE-0109-roadmap-tracking-issues.md) for
 > details.
 
 > This document tracks features planned for future implementation. Each item has its own file
@@ -322,7 +322,7 @@ Purpose-built test subjects that exercise the commands end-to-end. The showcase 
 
 ### Dogfood fixtures (web UI)
 
-Bajutsu's own `serve` Web UI is a web app, so the Web (Playwright) backend drives it — a deterministic, Tier-2 regression net for the UI, the web-side counterpart to the iOS [BE-0045](BE-)0045-dogfood-showcase-apps/BE-0045-dogfood-showcase-apps.md) showcase fixtures.
+Bajutsu's own `serve` Web UI is a web app, so the Web (Playwright) backend drives it — a deterministic, Tier-2 regression net for the UI, the web-side counterpart to the iOS [BE-0045](BE-0045-dogfood-showcase-apps/BE-0045-dogfood-showcase-apps.md) showcase fixtures.
 
 <!-- GENERATED:implemented-dogfood-web-ui -->
 | ID | Item | Status | Origin |
@@ -614,7 +614,7 @@ The deterministic core runs end-to-end on the FakeDriver, and the idb backend's 
 
 ### Platform expansion (Android / Web / Flutter)
 
-A platform is just a backend behind the one driver interface ([DESIGN §1](../DESIGN.md)), so going multi-platform means adding backends, not changing the deterministic core. This section covers that expansion by leveraging the driver / backend abstractions. The big-picture overview is in [multi-platform.md](../docs/multi-platform.md); the concrete per-platform design lives in the items below: [BE-0009](BE-)0009-cross-platform-abstractions/BE-0009-cross-platform-abstractions.md) holds the shared abstractions, then Web (recommended first), Android, and Flutter.
+A platform is just a backend behind the one driver interface ([DESIGN §1](../DESIGN.md)), so going multi-platform means adding backends, not changing the deterministic core. This section covers that expansion by leveraging the driver / backend abstractions. The big-picture overview is in [multi-platform.md](../docs/multi-platform.md); the concrete per-platform design lives in the items below: [BE-0009](BE-0009-cross-platform-abstractions/BE-0009-cross-platform-abstractions.md) holds the shared abstractions, then Web (recommended first), Android, and Flutter.
 
 <!-- GENERATED:proposals-platform -->
 | ID | Item | Status |
@@ -679,7 +679,7 @@ Measuring what the AI paths (`record` / `crawl` / `triage --ai` / `run --apply`)
 
 ### Hosting the web UI (cloud / self-hosted)
 
-Turn the local `bajutsu serve` launcher into a shared service. The runner drives an iOS Simulator and so needs a Mac, which forces a control-plane (Linux) ⇄ macOS-worker split. [BE-0015](BE-)0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md) selects a managed, multi-tenant public stack; [BE-0016](BE-)0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md) covers running it on your own Mac(s).
+Turn the local `bajutsu serve` launcher into a shared service. The runner drives an iOS Simulator and so needs a Mac, which forces a control-plane (Linux) ⇄ macOS-worker split. [BE-0015](BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md) selects a managed, multi-tenant public stack; [BE-0016](BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md) covers running it on your own Mac(s).
 
 <!-- GENERATED:proposals-hosting -->
 | ID | Item | Status |
