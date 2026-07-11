@@ -149,7 +149,7 @@ it changes no shared scenario (that is the point) and adds no LLM to any path.
   counts as a crawl tap-candidate and toward doctor's id-coverage denominator — not only tab items.
   This is intended (a clickable node *is* tappable, so it is a legitimate actionable), and improves
   Android crawl/doctor accuracy rather than regressing it; a future crawl-tuning session should
-  expect the wider candidate set. Pinned by `test_clickable_container_is_actionable_to_crawl_and_doctor`
+  expect the wider candidate set. Pinned by `test_android_clickable_trait_is_actionable`
   (an id-bearing clickable `FrameLayout` is actionable to both, a non-clickable one is not; `crawl`
   still requires an id, so idless generic wrappers stay out). Also noted in `_derived_label` that
   folding only `text` (not the `content-desc` value channel) into a derived label is a deliberate
