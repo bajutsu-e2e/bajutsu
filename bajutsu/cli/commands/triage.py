@@ -30,6 +30,16 @@ def triage(
     scenario: str = typer.Option(
         "", "--scenario", help="only the scenario whose name contains this"
     ),
+    flaky: bool = typer.Option(
+        False,
+        "--flaky",
+        help="cross-run mode: diagnose why --scenario intermittently passes/fails across --history",
+    ),
+    history: str = typer.Option(
+        "",
+        "--history",
+        help="with --flaky, a dir of past runs (each with a manifest.json) to contrast",
+    ),
     runs: str = typer.Option("runs", help="runs root (used when run_dir is omitted)"),
     ai: bool = typer.Option(
         False,
@@ -62,6 +72,9 @@ def triage(
     config: str = typer.Option(DEFAULT_CONFIG, "--config", help="config path, for --rerun"),
 ) -> None:
     """Diagnose a failed run and suggest a minimal fix (advisory — never the pass/fail judge)."""
+    if flaky:
+        _flaky_triage(scenario, history, ai, apply, write, json_out, config, target_name)
+        return
     path = Path(run_dir) if run_dir else _trace.latest_run(Path(runs))
     if path is None or not (path / "manifest.json").exists():
         typer.echo(f"no run found{f': {run_dir}' if run_dir else f' under {runs}/'}")
@@ -125,6 +138,126 @@ def triage(
             typer.echo("\n--rerun needs --target to run the patched scenario.")
         else:
             _verify_rerun(apply, target_name, backend, udid, config)
+
+
+def _split_flaky_runs(
+    runs_dir: Path, scenario_filter: str
+) -> tuple[str | None, list[Path], list[Path], str | None]:
+    """Split a runs dir into one scenario's passing / failing run dirs (the cross-run inputs).
+
+    The scenario's exact name is resolved from the first run whose scenario name contains
+    `scenario_filter`; only runs holding that exact scenario are then classified by its verdict, so a
+    substring shared by two scenarios never mixes them. The content fingerprint is adopted from the
+    first run that actually carries one, and later runs whose fingerprint differs are dropped:
+    `--flaky` contrasts verdict flips at ONE definition, so a run recorded after the scenario was
+    edited is a different test, not flaky evidence. Runs with no stamped fingerprint are kept (the
+    pre-provenance grace). Returns `(None, [], [], None)` when no run matches.
+    """
+    name: str | None = None
+    scenario_hash: str | None = None
+    pass_dirs: list[Path] = []
+    fail_dirs: list[Path] = []
+    for run_dir in sorted(d for d in runs_dir.iterdir() if (d / "manifest.json").is_file()):
+        try:
+            manifest = json.loads((run_dir / "manifest.json").read_text(encoding="utf-8"))
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+            continue
+        if not isinstance(manifest, dict):
+            continue
+        scenarios = manifest.get("scenarios") or []
+        match = next((s for s in scenarios if scenario_filter in str(s.get("scenario", ""))), None)
+        if match is None:
+            continue
+        provenance = manifest.get("provenance")
+        stamped = provenance.get("scenarioHash") if isinstance(provenance, dict) else None
+        run_hash = stamped if isinstance(stamped, str) else None
+        if name is None:
+            name = str(match.get("scenario"))
+        if str(match.get("scenario")) != name:
+            continue
+        if run_hash is not None:
+            # Adopt the reference fingerprint from the first run that actually has one — not the
+            # literal first match, which may predate provenance stamping. Locking `None` there
+            # would disable this guard for every later run and let two definitions mix again.
+            if scenario_hash is None:
+                scenario_hash = run_hash
+            elif run_hash != scenario_hash:
+                continue  # a different content fingerprint isn't the same flaky scenario
+        (pass_dirs if match.get("ok") else fail_dirs).append(run_dir)
+    return name, pass_dirs, fail_dirs, scenario_hash
+
+
+def _flaky_triage(
+    scenario: str,
+    history: str,
+    ai: bool,
+    apply: str,
+    write: bool,
+    json_out: str,
+    config: str,
+    target_name: str,
+) -> None:
+    """Cross-run flaky triage: contrast a scenario's passing/failing runs and propose a fix (BE-0220).
+
+    The Half-2 counterpart to single-run triage. It reasons over the delta between a scenario's
+    passing and failing runs, so its only agent is AI-backed (`--ai` required); the output is a
+    reviewable proposal diff with any laxer warnings — never a verdict, never an auto-edit.
+    """
+    if not scenario:
+        typer.echo("--flaky needs --scenario <name> to pick the flaky scenario")
+        raise typer.Exit(2)
+    if not history:
+        typer.echo("--flaky needs --history <runs-dir> to contrast passing and failing runs")
+        raise typer.Exit(2)
+    if not ai:
+        typer.echo("--flaky diagnosis needs --ai (cross-run triage has no rule-based agent)")
+        raise typer.Exit(2)
+    runs_dir = Path(history)
+    if not runs_dir.is_dir():
+        typer.echo(f"runs directory not found: {history}")
+        raise typer.Exit(2)
+    name, pass_dirs, fail_dirs, scenario_hash = _split_flaky_runs(runs_dir, scenario)
+    if name is None:
+        typer.echo(f"no run under {history}/ holds a scenario matching {scenario!r}")
+        raise typer.Exit(2)
+    context = _triage.assemble_cross_run(
+        pass_dirs, fail_dirs, scenario=name, scenario_hash=scenario_hash
+    )
+    if context is None:
+        # assemble_cross_run returns None when either side is empty; name the one that's missing.
+        missing = "failing" if not fail_dirs else "passing"
+        typer.echo(f"{name}: no {missing} run to contrast — nothing to diagnose as flaky")
+        raise typer.Exit(0)
+    from bajutsu.claude_triage import ClaudeCrossRunTriageAgent
+
+    eff = _ai_effective(config, target_name)
+    _require_ai_credential(eff)
+    # The representative screenshots, when attached, are sent to the AI as-is (BE-0151).
+    _warn_onscreen_secrets(eff)
+    agent: _triage.CrossRunTriageAgent = ClaudeCrossRunTriageAgent(
+        ai=eff.ai, redactor=_ai_redactor(eff)
+    )
+    _install_usage_ledger(eff, "triage")
+    before = _usage.snapshot()
+    result = agent.triage_flaky(context)
+    typer.echo(_triage.render_cross_run(context, result))
+    spent = _usage.snapshot() - before
+    if spent.calls:
+        typer.echo(spent.render(), err=True)
+    if json_out:
+        applied = (
+            _triage.apply_result(context.scenario_yaml, apply, result.fix)
+            if apply and result.fix is not None
+            else None
+        )
+        Path(json_out).write_text(
+            json.dumps(
+                _triage.cross_run_payload(context, result, applied), ensure_ascii=False, indent=2
+            ),
+            encoding="utf-8",
+        )
+    if apply:
+        _apply_fix(result, apply, write)
 
 
 def _ai_effective(config: str, target_name: str) -> Effective:

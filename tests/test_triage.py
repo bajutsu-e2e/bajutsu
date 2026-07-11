@@ -464,3 +464,463 @@ def test_read_artifact_applies_loader_and_returns_default_on_miss(tmp_path: Path
     result3 = _read_artifact(tmp_path, steps, 1, "video", loader, sentinel)
     assert calls == []  # no artifact of that kind -> loader never invoked
     assert result3 is sentinel
+
+
+# --- cross-run assembly (BE-0220 Half 2) ---
+
+
+def test_assemble_cross_run_gathers_pass_and_fail(tmp_path: Path) -> None:
+    passing = _write_run(tmp_path / "pass", ok=True)
+    failing = _write_run(tmp_path / "fail", ok=False, reason="一致なし: {'id': 'home.titel'}")
+    ctx = triage.assemble_cross_run([passing], [failing], scenario="s", scenario_hash="abc")
+    assert ctx is not None
+    assert ctx.scenario == "s"
+    assert ctx.scenario_hash == "abc"
+    assert len(ctx.passing) == 1 and ctx.passing[0].ok is True
+    assert len(ctx.failing) == 1 and ctx.failing[0].ok is False
+    assert ctx.failing[0].failed_step is not None and ctx.failing[0].failed_step.action == "tap"
+    assert ctx.target_id == "home.titel"  # from the failing run's scenario.yaml
+    assert "name: s" in ctx.scenario_yaml
+
+
+def test_assemble_cross_run_none_without_failing_evidence(tmp_path: Path) -> None:
+    passing = _write_run(tmp_path / "pass", ok=True)
+    # nothing to contrast against a pass -> nothing to diagnose
+    assert triage.assemble_cross_run([passing], [], scenario="s") is None
+
+
+def test_assemble_cross_run_none_without_passing_evidence(tmp_path: Path) -> None:
+    failing = _write_run(tmp_path / "fail", ok=False, reason="x")
+    # the guard is symmetric: with no pass to contrast against a fail, the prompt's "some runs
+    # pass, some fail" premise no longer holds, so there is no intermittency to diagnose
+    assert triage.assemble_cross_run([], [failing], scenario="s") is None
+
+
+def test_assemble_cross_run_passing_evidence_is_run_end(tmp_path: Path) -> None:
+    passing = _write_run(tmp_path / "pass", ok=True)
+    failing = _write_run(tmp_path / "fail", ok=False, reason="x")
+    ctx = triage.assemble_cross_run([passing], [failing], scenario="s")
+    assert ctx is not None
+    # a passing run has no failed step; its evidence is the element tree captured at the run's end
+    assert ctx.passing[0].failed_step is None
+    assert any(e["identifier"] == "home.title" for e in ctx.passing[0].elements)
+
+
+def test_assemble_cross_run_skips_runs_missing_the_scenario(tmp_path: Path) -> None:
+    passing = _write_run(tmp_path / "pass", ok=True)
+    failing = _write_run(tmp_path / "fail", ok=False, reason="x")
+    ctx = triage.assemble_cross_run([passing], [failing], scenario="other")
+    assert ctx is None  # neither run holds a scenario named "other"
+
+
+# --- laxer guard (BE-0023) ---
+
+_LAXER_YAML = """- name: login
+  steps:
+    - tap: {id: submit}
+    - wait:
+        for: {id: home.title}
+        timeout: 5
+    - assert:
+        - value: {sel: {id: home.title}, equals: Welcome}
+        - exists: {id: avatar}
+"""
+
+
+def test_flag_laxer_clean_fix_is_not_flagged() -> None:
+    # renaming an id token touches no assertion, wait, or selector uniqueness
+    fix = Fix("renameId", "rename", "submit", "submitButton")
+    assert triage.flag_laxer(_LAXER_YAML, fix) == []
+
+
+def test_flag_laxer_raising_a_timeout_is_not_flagged() -> None:
+    # lengthening a wait does not change what is asserted (BE-0023: raiseTimeout is allowed)
+    fix = Fix("raiseTimeout", "raise timeout", "timeout: 5", "timeout: 30")
+    assert triage.flag_laxer(_LAXER_YAML, fix) == []
+
+
+def test_flag_laxer_lowering_a_timeout_is_flagged() -> None:
+    fix = Fix("raiseTimeout", "raise timeout", "timeout: 5", "timeout: 1")
+    warnings = triage.flag_laxer(_LAXER_YAML, fix)
+    assert any("timeout" in w.lower() for w in warnings)
+
+
+def test_flag_laxer_dropping_a_wait_is_flagged() -> None:
+    fix = Fix(
+        "raiseTimeout",
+        "drop wait",
+        "    - wait:\n        for: {id: home.title}\n        timeout: 5\n",
+        "",
+    )
+    warnings = triage.flag_laxer(_LAXER_YAML, fix)
+    assert any("wait" in w.lower() for w in warnings)
+
+
+def test_flag_laxer_removing_an_assertion_is_flagged() -> None:
+    fix = Fix("addIndex", "drop assert", "        - exists: {id: avatar}\n", "")
+    warnings = triage.flag_laxer(_LAXER_YAML, fix)
+    assert any("assert" in w.lower() for w in warnings)
+
+
+def test_flag_laxer_loosening_a_value_match_is_flagged() -> None:
+    # equals -> contains widens what passes: a weaker check
+    fix = Fix("addIndex", "loosen", "equals: Welcome", "contains: Wel")
+    warnings = triage.flag_laxer(_LAXER_YAML, fix)
+    assert any(
+        "value" in w.lower() or "label" in w.lower() or "match" in w.lower() for w in warnings
+    )
+
+
+def test_flag_laxer_widening_a_selector_is_flagged() -> None:
+    # dropping the id from an assertion's selector widens it past uniqueness
+    fix = Fix("addIndex", "widen", "sel: {id: home.title}", "sel: {label: Welcome}")
+    warnings = triage.flag_laxer(_LAXER_YAML, fix)
+    assert any(
+        "selector" in w.lower() or "uniqueness" in w.lower() or "id" in w.lower() for w in warnings
+    )
+
+
+def test_flag_laxer_no_fix_is_empty() -> None:
+    assert triage.flag_laxer(_LAXER_YAML, None) == []
+
+
+def test_flag_laxer_unparseable_patch_is_reported() -> None:
+    # a fix that corrupts the YAML can't be verified; the reviewer should be told, not misled
+    fix = Fix("addIndex", "break", "steps:", "steps: : :")
+    warnings = triage.flag_laxer(_LAXER_YAML, fix)
+    assert warnings and any("parse" in w.lower() or "analyze" in w.lower() for w in warnings)
+
+
+def test_result_payload_surfaces_laxer_warnings() -> None:
+    # result_payload derives the guard from the context's scenario source + the proposed fix
+    ctx = TriageContext(
+        scenario="login",
+        failure="x",
+        failed_step=None,
+        failed_expectations=[],
+        elements=[],
+        scenario_yaml=_LAXER_YAML,
+        target_id=None,
+    )
+    tri = triage.Triage(
+        "s", "timing", ["look"], Fix("raiseTimeout", "t", "timeout: 5", "timeout: 1")
+    )
+    p = triage.result_payload(ctx, tri)
+    assert any("timeout" in w.lower() for w in p["laxer"])
+
+
+def test_result_payload_no_laxer_key_is_empty() -> None:
+    ctx = TriageContext(
+        scenario="s",
+        failure="f",
+        failed_step=None,
+        failed_expectations=[],
+        elements=[],
+        scenario_yaml="",
+        target_id=None,
+    )
+    p = triage.result_payload(ctx, triage.Triage("s", "unknown", ["look"]))
+    assert p["laxer"] == []
+
+
+# --- cross-run surface (BE-0220 Half 2) ---
+
+_CROSS_YAML = """- name: login
+  steps:
+    - tap: {id: home.titel}
+    - assert:
+        - exists: {id: avatar}
+"""
+
+
+def _cross_context() -> triage.CrossRunTriageContext:
+    failing = triage.RunEvidence(
+        run_id="rF",
+        ok=False,
+        failure="一致なし: {'id': 'home.titel'}",
+        failed_step=FailedStep(0, "tap", "一致なし"),
+        failed_expectations=[],
+        elements=[
+            {
+                "identifier": "home.title",
+                "label": "Home",
+                "traits": ["button"],
+                "value": None,
+                "frame": [0, 0, 1, 1],
+            }
+        ],
+    )
+    passing = triage.RunEvidence(
+        run_id="rP",
+        ok=True,
+        failure="",
+        failed_step=None,
+        failed_expectations=[],
+        elements=[
+            {
+                "identifier": "home.title",
+                "label": "Home",
+                "traits": ["button"],
+                "value": None,
+                "frame": [0, 0, 1, 1],
+            }
+        ],
+    )
+    return triage.CrossRunTriageContext(
+        scenario="login",
+        scenario_hash="abc",
+        scenario_yaml=_CROSS_YAML,
+        target_id="home.titel",
+        passing=[passing],
+        failing=[failing],
+    )
+
+
+def _write_flaky_run(
+    run_dir: Path, *, ok: bool, reason: str = "", scenario_hash: str | None = "sha-abc"
+) -> Path:
+    """A complete run of the `login` scenario under `run_dir` (manifest + scenario + elements)."""
+    (run_dir / "00-login" / "step0").mkdir(parents=True)
+    manifest = {
+        "runId": run_dir.name,
+        "ok": ok,
+        "provenance": {"scenarioHash": scenario_hash},
+        "scenarios": [
+            {
+                "scenario": "login",
+                "ok": ok,
+                "steps": [
+                    {
+                        "index": 0,
+                        "action": "tap",
+                        "ok": ok,
+                        "reason": reason,
+                        "artifacts": [
+                            {
+                                "name": "00-login/step0/elements.json",
+                                "kind": "elements",
+                                "provider": "driver",
+                            }
+                        ],
+                    }
+                ],
+                "expect_results": [],
+                "failure": None if ok else f"step0 tap: {reason}",
+            }
+        ],
+    }
+    (run_dir / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+    (run_dir / "scenario.yaml").write_text(
+        "- name: login\n  steps:\n    - tap: {id: home.titel}\n", encoding="utf-8"
+    )
+    (run_dir / "00-login" / "step0" / "elements.json").write_text(
+        json.dumps(
+            [
+                {
+                    "identifier": "home.title",
+                    "label": "Home",
+                    "traits": ["button"],
+                    "value": None,
+                    "frame": [0, 0, 1, 1],
+                }
+            ]
+        ),
+        encoding="utf-8",
+    )
+    return run_dir
+
+
+def test_render_cross_run_shows_counts_diagnosis_and_diff() -> None:
+    ctx = _cross_context()
+    fix = Fix("renameId", "rename id `home.titel` -> `home.title`", "home.titel", "home.title")
+    tri = triage.Triage("intermittent selector", "selector-ambiguity", ["promote to id"], fix)
+    out = triage.render_cross_run(ctx, tri)
+    assert "flaky triage · login" in out
+    assert "1 passing" in out and "1 failing" in out
+    assert "abc" in out  # the content fingerprint
+    assert "[selector-ambiguity]" in out
+    # the fix is shown as a reviewable proposal diff, not silently applied
+    assert "-    - tap: {id: home.titel}" in out
+    assert "+    - tap: {id: home.title}" in out
+
+
+def test_render_cross_run_flags_laxer_fix() -> None:
+    ctx = _cross_context()
+    # dropping the assertion weakens the test; the render must surface the laxer warning
+    fix = Fix("addIndex", "drop assert", "        - exists: {id: avatar}\n", "")
+    tri = triage.Triage("s", "unknown", [], fix)
+    out = triage.render_cross_run(ctx, tri)
+    assert "laxer" in out.lower() and "assert" in out.lower()
+
+
+def test_cross_run_payload_shape() -> None:
+    ctx = _cross_context()
+    fix = Fix("raiseTimeout", "raise", "timeout: 5", "timeout: 30")
+    tri = triage.Triage("s", "timing", ["wait longer"], fix)
+    p = triage.cross_run_payload(ctx, tri)
+    assert p["scenario"] == "login" and p["scenarioHash"] == "abc"
+    assert p["category"] == "timing"
+    assert [ev["runId"] for ev in p["failing"]] == ["rF"]
+    assert [ev["runId"] for ev in p["passing"]] == ["rP"]
+    assert p["fix"]["kind"] == "raiseTimeout"
+    assert p["laxer"] == []  # no wait in this scenario, so the fix is a no-op and not laxer
+
+
+def test_split_flaky_runs_classifies_by_scenario_verdict(tmp_path: Path) -> None:
+    from bajutsu.cli.commands.triage import _split_flaky_runs
+
+    hist = tmp_path / "hist"
+    _write_flaky_run(hist / "r1", ok=True)
+    _write_flaky_run(hist / "r2", ok=False, reason="一致なし: {'id': 'home.titel'}")
+    _write_flaky_run(hist / "r3", ok=True)
+    name, pass_dirs, fail_dirs, scenario_hash = _split_flaky_runs(hist, "login")
+    assert name == "login"
+    assert scenario_hash == "sha-abc"
+    assert sorted(d.name for d in pass_dirs) == ["r1", "r3"]
+    assert [d.name for d in fail_dirs] == ["r2"]
+
+
+def test_split_flaky_runs_excludes_other_fingerprint(tmp_path: Path) -> None:
+    # `--flaky` contrasts runs at ONE content fingerprint. A run recorded after the
+    # scenario was edited (different scenarioHash) is a different test, not flaky evidence,
+    # so it must be dropped rather than fed to the model as a contradictory contrast.
+    from bajutsu.cli.commands.triage import _split_flaky_runs
+
+    hist = tmp_path / "hist"
+    _write_flaky_run(hist / "r1", ok=True)  # reference fingerprint sha-abc
+    _write_flaky_run(hist / "r2", ok=False, reason="一致なし: {'id': 'home.titel'}")
+    _write_flaky_run(hist / "r3", ok=False, scenario_hash="sha-edited")
+    name, pass_dirs, fail_dirs, scenario_hash = _split_flaky_runs(hist, "login")
+    assert name == "login" and scenario_hash == "sha-abc"
+    assert [d.name for d in pass_dirs] == ["r1"]
+    assert [d.name for d in fail_dirs] == ["r2"]  # r3 (different fingerprint) excluded
+
+
+def test_split_flaky_runs_reference_hash_from_first_stamped_run(tmp_path: Path) -> None:
+    # The reference fingerprint must come from the first run that actually HAS one, not the
+    # literal first match. If the first match predates provenance stamping (no scenarioHash),
+    # locking `scenario_hash = None` would disable the guard for every later run, letting two
+    # genuinely different fingerprints mix — the very bug the fingerprint filter prevents.
+    from bajutsu.cli.commands.triage import _split_flaky_runs
+
+    hist = tmp_path / "hist"
+    _write_flaky_run(hist / "r1", ok=True, scenario_hash=None)  # pre-provenance: no stamp
+    _write_flaky_run(hist / "r2", ok=False, scenario_hash="sha-x")  # first stamped -> reference
+    _write_flaky_run(hist / "r3", ok=False, scenario_hash="sha-y")  # different fingerprint
+    name, pass_dirs, fail_dirs, scenario_hash = _split_flaky_runs(hist, "login")
+    assert name == "login" and scenario_hash == "sha-x"
+    assert [d.name for d in pass_dirs] == ["r1"]  # unstamped run kept (grace)
+    assert [d.name for d in fail_dirs] == ["r2"]  # r3 (sha-y) dropped as a different definition
+
+
+def test_split_flaky_runs_no_match_returns_none(tmp_path: Path) -> None:
+    from bajutsu.cli.commands.triage import _split_flaky_runs
+
+    hist = tmp_path / "hist"
+    _write_flaky_run(hist / "r1", ok=True)
+    name, pass_dirs, fail_dirs, _ = _split_flaky_runs(hist, "nope")
+    assert name is None and pass_dirs == [] and fail_dirs == []
+
+
+def test_cli_flaky_requires_scenario(tmp_path: Path) -> None:
+    r = runner.invoke(app, ["triage", "--flaky", "--history", str(tmp_path), "--ai"])
+    assert r.exit_code == 2 and "--scenario" in r.output
+
+
+def test_cli_flaky_requires_history() -> None:
+    r = runner.invoke(app, ["triage", "--flaky", "--scenario", "login", "--ai"])
+    assert r.exit_code == 2 and "--history" in r.output
+
+
+def test_cli_flaky_requires_ai() -> None:
+    r = runner.invoke(app, ["triage", "--flaky", "--scenario", "login", "--history", "x"])
+    assert r.exit_code == 2 and "--ai" in r.output
+
+
+def _fake_cross_run_agent(fix: Fix | None) -> type:
+    class _FakeAgent:
+        def __init__(self, *args: object, **kwargs: object) -> None:
+            pass
+
+        def triage_flaky(self, context: triage.CrossRunTriageContext) -> triage.Triage:
+            assert context.scenario == "login"
+            return triage.Triage("flaky selector", "selector-ambiguity", ["promote to id"], fix)
+
+    return _FakeAgent
+
+
+def _stub_ai_cli(monkeypatch: pytest.MonkeyPatch, fix: Fix | None) -> None:
+    monkeypatch.setattr(
+        "bajutsu.claude_triage.ClaudeCrossRunTriageAgent", _fake_cross_run_agent(fix)
+    )
+    monkeypatch.setattr("bajutsu.cli.commands.triage._require_ai_credential", lambda eff: None)
+    monkeypatch.setattr("bajutsu.cli.commands.triage._install_usage_ledger", lambda eff, cmd: None)
+    monkeypatch.setattr("bajutsu.cli.commands.triage._warn_onscreen_secrets", lambda eff: None)
+
+
+def test_cli_flaky_end_to_end(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    hist = tmp_path / "hist"
+    _write_flaky_run(hist / "r1", ok=True)
+    _write_flaky_run(hist / "r2", ok=False, reason="一致なし: {'id': 'home.titel'}")
+    _stub_ai_cli(monkeypatch, Fix("renameId", "rename id", "home.titel", "home.title"))
+    r = runner.invoke(
+        app, ["triage", "--flaky", "--scenario", "login", "--history", str(hist), "--ai"]
+    )
+    assert r.exit_code == 0, r.output
+    assert "flaky triage · login" in r.output
+    assert "[selector-ambiguity]" in r.output
+    assert "home.titel" in r.output  # the reviewable proposal diff
+
+
+def test_cli_flaky_json_writes_payload(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    hist = tmp_path / "hist"
+    _write_flaky_run(hist / "r1", ok=True)
+    _write_flaky_run(hist / "r2", ok=False, reason="一致なし: {'id': 'home.titel'}")
+    _stub_ai_cli(monkeypatch, Fix("renameId", "rename id", "home.titel", "home.title"))
+    out = tmp_path / "flaky.json"
+    r = runner.invoke(
+        app,
+        [
+            "triage",
+            "--flaky",
+            "--scenario",
+            "login",
+            "--history",
+            str(hist),
+            "--ai",
+            "--json",
+            str(out),
+        ],
+    )
+    assert r.exit_code == 0, r.output
+    payload = json.loads(out.read_text(encoding="utf-8"))
+    assert payload["scenario"] == "login" and payload["category"] == "selector-ambiguity"
+    assert payload["fix"]["kind"] == "renameId"
+    assert "laxer" in payload
+
+
+def test_cli_flaky_no_failing_run_is_advisory(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    hist = tmp_path / "hist"
+    _write_flaky_run(hist / "r1", ok=True)  # all green — nothing flaky to contrast
+    _stub_ai_cli(monkeypatch, None)
+    r = runner.invoke(
+        app, ["triage", "--flaky", "--scenario", "login", "--history", str(hist), "--ai"]
+    )
+    assert r.exit_code == 0
+    assert "nothing to diagnose" in r.output.lower() or "no failing" in r.output.lower()
+
+
+def test_cli_flaky_no_passing_run_names_the_missing_side(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    hist = tmp_path / "hist"
+    _write_flaky_run(hist / "r1", ok=False, reason="x")  # all red — no pass to contrast
+    _stub_ai_cli(monkeypatch, None)
+    r = runner.invoke(
+        app, ["triage", "--flaky", "--scenario", "login", "--history", str(hist), "--ai"]
+    )
+    assert r.exit_code == 0
+    # the advisory must name the side that is actually missing, not the opposite
+    assert "no passing" in r.output.lower()

@@ -396,6 +396,12 @@ same records from each run's stored `manifest.json`.
 current run history. A run with no scenario fingerprint or no recorded verdict can't be grouped and
 is reported as skipped. No device, AI, or run is involved.
 
+**Diagnosing a flaky scenario.** Once this panel names a flaky scenario, the AI cross-run *fix
+proposal* — reading its passing and failing runs together and explaining the delta — is a CLI
+feature, `bajutsu triage --flaky` (see [CLI reference](cli.md#cross-run-flaky-triage---flaky)). It
+is CLI-only by design: this panel is the deterministic ranking (no AI), while the cross-run proposal
+needs an AI provider and stays a reviewable diff a human applies.
+
 ## Usage — the AI token-usage and cost dashboard
 
 **What it does.** Renders the AI usage and cost dashboard over the attributed usage ledger the AI

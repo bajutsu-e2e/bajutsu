@@ -345,6 +345,41 @@ bajutsu triage [<run-dir>] --ai --apply <scenario-file> [--write] \
   source still requires `--write` (as it always has). The `serve` Web UI uses `--json` to surface
   triage in the browser (BE-0147).
 
+### Cross-run flaky triage (`--flaky`)
+
+Where the default `triage` explains *one* failed run, `--flaky` explains a *pattern*: why one
+scenario intermittently passes and fails while its content fingerprint is unchanged
+([BE-0220](../roadmaps/BE-0220-flaky-suggestion-and-cross-run-fix/BE-0220-flaky-suggestion-and-cross-run-fix.md)).
+It is the fix-proposal counterpart to [`flakiness`](#flakiness): `flakiness` ranks *which*
+scenarios flip, and `--flaky` diagnoses *why* one of them does and proposes a fix. It reads the
+evidence of both the passing and the failing runs of the scenario and reasons about the **delta**
+between them (a selector that resolved in one run but was ambiguous in another, a wait that beat a
+spinner most of the time, a network response that varied).
+
+```bash
+bajutsu triage --flaky --scenario <name> --history <runs-dir> --ai [--apply <file> [--write]] [--json <path>]
+```
+
+- **Requires `--ai`.** Cross-run diagnosis has no rule-based agent — the delta reasoning is exactly
+  the judgement-free investigator work the LLM does — so `--flaky` without `--ai` exits 2. It stays
+  advisory: the runs already decided pass/fail; this only explains and proposes, never on the
+  verdict path (prime directive 1).
+- `--scenario <name>` picks the flaky scenario (matched as a substring of the run's scenario name,
+  resolved to one exact name so two scenarios sharing a substring never mix), and `--history
+  <runs-dir>` is a directory of past runs (each with a `manifest.json`) to contrast — the same
+  directory shape `bajutsu flakiness --history` and `audit --history` read. Both are required; a
+  missing one exits 2.
+- The report shows the passing / failing run counts, the fingerprint, the intermittency category
+  (`selector-ambiguity` / `timing` / `network-variance` / `state-leak` / `unknown`), and the
+  proposed fix as a **reviewable diff** against the current scenario — never applied on its own.
+- Reuses the same structured fixes and flags as single-run triage: `--apply` / `--write` patch the
+  scenario, `--json` writes the machine-readable result, and any edit that would weaken an assertion
+  is flagged as **laxer** ([BE-0023](../roadmaps/BE-0023-self-healing-guards/BE-0023-self-healing-guards.md))
+  inline in both surfaces. A full YAML rewrite is deferred to a follow-up; the current fixes are the
+  targeted structured edits.
+- **Exits 0** when the scenario's history has no failing run or no passing run to contrast
+  (nothing to diagnose as flaky) — advisory, like the other read-only modes.
+
 ## `record`
 
 Explores toward a goal with AI and **writes the recorded scenario** (Tier 1; [recording](recording.md)).
