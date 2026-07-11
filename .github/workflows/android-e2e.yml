@@ -59,6 +59,7 @@ on:
       - 'bajutsu/handoff.py'
       - 'bajutsu/idb_version.py'
       - 'bajutsu/interp.py'
+      - 'bajutsu/intervals.py'
       - 'bajutsu/mailbox.py'
       - 'bajutsu/network.py'
       - 'bajutsu/platform_lifecycle.py'
