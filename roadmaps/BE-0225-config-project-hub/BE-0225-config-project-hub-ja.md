@@ -9,7 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0225") |
-| 実装 PR | [#909](https://github.com/bajutsu-e2e/bajutsu/pull/909), [#921](https://github.com/bajutsu-e2e/bajutsu/pull/921), [#923](https://github.com/bajutsu-e2e/bajutsu/pull/923), [#926](https://github.com/bajutsu-e2e/bajutsu/pull/926), _pending_ |
+| 実装 PR | [#909](https://github.com/bajutsu-e2e/bajutsu/pull/909), [#921](https://github.com/bajutsu-e2e/bajutsu/pull/921), [#923](https://github.com/bajutsu-e2e/bajutsu/pull/923), [#926](https://github.com/bajutsu-e2e/bajutsu/pull/926), [#928](https://github.com/bajutsu-e2e/bajutsu/pull/928) |
 | トピック | Authoring experience (record / GUI editor) |
 | 関連 | [BE-0015](../BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting-ja.md), [BE-0102](../BE-0102-run-stats-dashboard/BE-0102-run-stats-dashboard-ja.md), [BE-0187](../BE-0187-serve-config-view/BE-0187-serve-config-view-ja.md), [BE-0108](../BE-0108-hosted-config-source-restriction/BE-0108-hosted-config-source-restriction-ja.md), [BE-0099](../BE-0099-webhook-run-notifications/BE-0099-webhook-run-notifications-ja.md) |
 <!-- /BE-METADATA -->
@@ -238,7 +238,7 @@ CI や cron が Web UI なしにハブをヘッドレスで駆動できるよう
   ステートレスな CLI は呼び出しごとに config を解決し直すので、active バインディングへの切り替えなしに
   任意の名前のプロジェクトを実行します（409 はありません）。`upload` ソースはローカルにチェックアウトが
   ないため拒否します。ユニット 4（UI）が残ります。
-- 2026-07-11：ユニット 4 の UI を実装しました（_pending_）。ユニット 3 の `run_project` が先送りにした
+- 2026-07-11：ユニット 4 の UI を実装しました（#928）。ユニット 3 の `run_project` が先送りにした
   ライブな再バインドとして、`POST /api/projects/<name>/activate` を追加しました。`activate_project` は
   プロジェクトの保存済みソースから `--config` の spec を復元し（`config_from_source`。`serve` が CLI を
   import せずに使えるよう、`cli/_projects.py` から `bajutsu.config_source` へ移しました）、既存のバインダ

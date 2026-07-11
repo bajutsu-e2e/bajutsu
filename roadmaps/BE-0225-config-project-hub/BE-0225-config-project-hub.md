@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0225") |
-| Implementing PR | [#909](https://github.com/bajutsu-e2e/bajutsu/pull/909), [#921](https://github.com/bajutsu-e2e/bajutsu/pull/921), [#923](https://github.com/bajutsu-e2e/bajutsu/pull/923), [#926](https://github.com/bajutsu-e2e/bajutsu/pull/926), _pending_ |
+| Implementing PR | [#909](https://github.com/bajutsu-e2e/bajutsu/pull/909), [#921](https://github.com/bajutsu-e2e/bajutsu/pull/921), [#923](https://github.com/bajutsu-e2e/bajutsu/pull/923), [#926](https://github.com/bajutsu-e2e/bajutsu/pull/926), [#928](https://github.com/bajutsu-e2e/bajutsu/pull/928) |
 | Topic | Authoring experience (record / GUI editor) |
 | Related | [BE-0015](../BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md), [BE-0102](../BE-0102-run-stats-dashboard/BE-0102-run-stats-dashboard.md), [BE-0187](../BE-0187-serve-config-view/BE-0187-serve-config-view.md), [BE-0108](../BE-0108-hosted-config-source-restriction/BE-0108-hosted-config-source-restriction.md), [BE-0099](../BE-0099-webhook-run-notifications/BE-0099-webhook-run-notifications.md) |
 <!-- /BE-METADATA -->
@@ -234,7 +234,7 @@ A thin CLI mirror so CI and cron can drive the hub headlessly, without the Web U
   trigger, the stateless CLI resolves the config fresh each call and so runs any named project without
   the active-binding switch (no 409). `upload` sources have no local checkout and are refused. Unit 4
   (UI) remains.
-- 2026-07-11 — Unit 4, the UI (_pending_): added `POST /api/projects/<name>/activate` — the live
+- 2026-07-11 — Unit 4, the UI (#928): added `POST /api/projects/<name>/activate` — the live
   rebind unit 3's `run_project` deferred to. `activate_project` reconstructs the `--config` spec from
   the project's stored source (`config_from_source`, relocated from `cli/_projects.py` to
   `bajutsu.config_source` so `serve` reaches it without importing the CLI) and re-points `state.config`
