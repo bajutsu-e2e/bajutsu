@@ -127,6 +127,7 @@
 | [BE-0126](BE-0126-per-platform-effective-config/BE-0126-per-platform-effective-config-ja.md) | Effective をプラットフォームごとの設定に分割する | 実装済み |
 | [BE-0128](BE-0128-device-step-capability-preflight/BE-0128-device-step-capability-preflight-ja.md) | デバイス制御ステップをケイパビリティで preflight ゲートする | 実装済み |
 | [BE-0141](BE-0141-backend-lifecycle-protocol/BE-0141-backend-lifecycle-protocol-ja.md) | backend のライフサイクルを型システムに載せる | 実装済み |
+| [BE-0208](BE-0208-android-emulator-e2e-ci/BE-0208-android-emulator-e2e-ci-ja.md) | Android の実機 e2e を CI に配線する（KVM 経由のエミュレータ） | 実装済み |
 | [BE-0210](BE-0210-android-actuation-fidelity/BE-0210-android-actuation-fidelity-ja.md) | Android 実機アクチュエーションの忠実度 | 実装済み |
 | [BE-0211](BE-0211-android-device-control/BE-0211-android-device-control-ja.md) | Android のデバイス制御（setLocation、クリップボード） | 実装済み |
 | [BE-0212](BE-0212-granular-device-control-capabilities/BE-0212-granular-device-control-capabilities-ja.md) | 粗い deviceControl 能力を操作単位のトークンに分割する | 実装済み |
@@ -517,9 +518,7 @@ Web（Playwright）backend とその完成（リッチな capability、並列実
 ### プラットフォーム拡張（Android / Web / Flutter）
 
 <!-- GENERATED:in-progress-platform -->
-| ID | 項目 | 状態 |
-|---|---|---|
-| [BE-0208](BE-0208-android-emulator-e2e-ci/BE-0208-android-emulator-e2e-ci-ja.md) | Android の実機 e2e を CI に配線する（KVM 経由のエミュレータ） | 実装中 |
+
 <!-- /GENERATED:in-progress-platform -->
 
 ### 競合調査（MagicPod / Autify）由来の候補

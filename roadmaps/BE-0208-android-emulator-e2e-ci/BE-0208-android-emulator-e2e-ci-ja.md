@@ -7,7 +7,7 @@
 |---|---|
 | 提案 | [BE-0208](BE-0208-android-emulator-e2e-ci-ja.md) |
 | 提案者 | [@hirosassa](https://github.com/hirosassa) |
-| 状態 | **実装中** |
+| 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0208") |
 | 実装 PR | [#851](https://github.com/bajutsu-e2e/bajutsu/pull/851)、[#880](https://github.com/bajutsu-e2e/bajutsu/pull/880)、[#899](https://github.com/bajutsu-e2e/bajutsu/pull/899)、[#901](https://github.com/bajutsu-e2e/bajutsu/pull/901)、[#906](https://github.com/bajutsu-e2e/bajutsu/pull/906)、[#910](https://github.com/bajutsu-e2e/bajutsu/pull/910)、[#924](https://github.com/bajutsu-e2e/bajutsu/pull/924)、[#925](https://github.com/bajutsu-e2e/bajutsu/pull/925)、[#927](https://github.com/bajutsu-e2e/bajutsu/pull/927)、[#934](https://github.com/bajutsu-e2e/bajutsu/pull/934) |
 | トピック | Platform expansion (Android / Web / Flutter) |
@@ -77,7 +77,7 @@ directive の枠内にとどまります。
 - [x] 通る中核シナリオを `--backend android` で実行。
 - [x] visual／golden ベースラインの同等性チェックのうち、**golden**（要素ツリー）の次元（Compose の Stable カタログ）。
 - [x] visual／golden ベースラインの同等性チェックのうち、**visual**（スクリーンショット）の次元。シナリオと `e2e-visual` ターゲット（`visual` extra 付き）、CI ステップは配線済みです。この x86_64 レーンで採取したベースライン `stable.png` をコミットし、レーンの実行は緑になりました。
-- [ ] アクチュエーション忠実度とデバイス制御のスライスの着地に合わせたシナリオ集合の拡張。
+- [x] アクチュエーション忠実度とデバイス制御のスライスの着地に合わせたシナリオ集合の拡張。
 
 ### ログ
 
@@ -240,6 +240,15 @@ directive の枠内にとどまります。
   ローカルの arm64 エミュレータで検証し（シナリオは通ります）、Python のゲート（`make check`）は緑です。
   残る除外中のフローは `gestures_multitouch`（ピンチ／回転）で、マルチタッチを要し（adb は単一タッチ）、
   独自のロードマップ項目を持ちます。項目は**実装中**のままです。
+- 2026-07-12 — スコープが完了したので、項目を**実装済み**へ移します。作業分解のすべてのユニットが
+  着地しました。ワークフロー、showcase のビルドとインストール、コアのシナリオ、golden と visual の
+  ベースラインの次元、そしてアクチュエーション忠実度とデバイス制御のスライスに合わせて広げた
+  シナリオ集合がそろい、デバイス制御のスライスは `device_android`（`setLocation`）として
+  [#934](https://github.com/bajutsu-e2e/bajutsu/pull/934)（マージ済み）で着地しました。残る
+  アクチュエーション忠実度のフローは `gestures_multitouch`（ピンチと回転）1 本ですが、adb が
+  単一タッチのため本レーンのスコープには入れず、adb-multitouch-gestures の提案
+  （[#931](https://github.com/bajutsu-e2e/bajutsu/pull/931)）が独立して追跡します。本項目のスコープは
+  完了したので、項目は実装済みです。
 
 ## 参考
 
