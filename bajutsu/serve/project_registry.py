@@ -24,9 +24,14 @@ import tempfile
 import uuid
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Protocol, TypedDict
+from typing import TYPE_CHECKING, Any, Protocol, TypedDict
 
-from bajutsu.serve.server.db import ProjectRecord, Repository
+from bajutsu.serve.server.db import ProjectRecord
+
+if TYPE_CHECKING:
+    # Annotation-only: keep it off the default serve/CLI import path (as state.py does for the same
+    # type). ProjectRecord stays a real import — it is instantiated at runtime here.
+    from bajutsu.serve.server.db import Repository
 
 logger = logging.getLogger(__name__)
 
