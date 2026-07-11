@@ -211,7 +211,11 @@ def test_run_off_bundle_never_builds_from_uploaded_config(tmp_path: Path) -> Non
         _wait_done(port, resp["jobId"])
         # Exactly one spawn — the run — and it is `bajutsu run`, never the config's `build` command.
         assert len(spawned) == 1 and "run" in spawned[0]
-        assert all("touch" not in arg for arg in spawned[0])
+        # The build (`touch …`) must not have been spawned. Match on each spawned command's
+        # executable, not a substring of its args: the run's interpreter path can legitimately
+        # contain "touch" (e.g. a checkout under a "multitouch" directory), which a substring
+        # test would misread as the build having run.
+        assert not any(cmd and cmd[0] == "touch" for cmd in spawned)
     finally:
         server.shutdown()
         server.server_close()
