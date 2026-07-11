@@ -74,7 +74,9 @@ class Run(Base):
 
     id: Mapped[str] = mapped_column(primary_key=True)
     org_id: Mapped[str] = mapped_column(ForeignKey("orgs.id"))
-    project_id: Mapped[str | None] = mapped_column(ForeignKey("projects.id"), default=None)
+    project_id: Mapped[str | None] = mapped_column(
+        ForeignKey("projects.id", ondelete="SET NULL"), default=None
+    )
     created_by: Mapped[str | None] = mapped_column(ForeignKey("users.id"), default=None)
     status: Mapped[str] = mapped_column(default="")
     ok: Mapped[bool | None] = mapped_column(default=None)

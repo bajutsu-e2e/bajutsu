@@ -8,7 +8,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
-from sqlalchemy import create_engine, select
+from sqlalchemy import create_engine, event, select
 from sqlalchemy.orm import Session
 
 from bajutsu import serve as srv
@@ -26,6 +26,19 @@ from bajutsu.serve.server.post_completion_logbus import PostCompletionLogBus
 
 def _repo() -> SqlRepository:
     engine = create_engine("sqlite://")
+    Base.metadata.create_all(engine)
+    return SqlRepository(engine)
+
+
+def _repo_fk() -> SqlRepository:
+    """Like `_repo()` but with SQLite FK enforcement enabled.
+
+    Needed for tests that verify ON DELETE behaviour (e.g. SET NULL on project deletion) that
+    SQLite only enacts when ``PRAGMA foreign_keys=ON`` is set. Callers must satisfy *all* FKs,
+    so an org row must be created via ``ensure_org`` before inserting projects or runs.
+    """
+    engine = create_engine("sqlite://")
+    event.listen(engine, "connect", lambda c, _: c.execute("PRAGMA foreign_keys=ON"))
     Base.metadata.create_all(engine)
     return SqlRepository(engine)
 
@@ -201,6 +214,35 @@ def test_create_project_is_idempotent_by_id_and_rebinds_source() -> None:
     assert got is not None
     assert got.source == {"kind": "git"}
     assert len(repo.list_projects(org_id="o1")) == 1
+
+
+def test_delete_project_on_delete_set_null_keeps_run_history_fk_enforced() -> None:
+    # Uses FK-enforcing helper to catch the Postgres-vs-SQLite gap: without ondelete="SET NULL"
+    # on Run.project_id, deleting a project raises IntegrityError on Postgres but silently
+    # succeeds on the gate's SQLite. With the fix, the run is retained and project_id is NULL.
+    repo = _repo_fk()
+    repo.ensure_org("o1", slug="o1", name="Org1")
+    repo.create_project(ProjectRecord(id="p1", org_id="o1", name="checkout"))
+    repo.record_run(RunRecord(id="r1", org_id="o1", status="done", project_id="p1"))
+
+    repo.delete_project(org_id="o1", name="checkout")
+
+    assert repo.list_projects(org_id="o1") == []
+    got = repo.get_run("r1")
+    assert got is not None
+    assert got.project_id is None  # SET NULL by FK — run history retained, association cleared
+
+
+def test_create_project_source_none_does_not_clobber_existing_binding() -> None:
+    repo = _repo()
+    repo.create_project(
+        ProjectRecord(id="p1", org_id="o1", name="checkout", source={"kind": "file"})
+    )
+    # Re-registering with source=None (the default) must not wipe out an existing binding.
+    repo.create_project(ProjectRecord(id="p1", org_id="o1", name="checkout"))
+    got = repo.get_project(org_id="o1", name="checkout")
+    assert got is not None
+    assert got.source == {"kind": "file"}
 
 
 def test_delete_project_removes_binding_but_keeps_run_history() -> None:

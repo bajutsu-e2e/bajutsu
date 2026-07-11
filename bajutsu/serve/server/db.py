@@ -307,12 +307,16 @@ class SqlRepository:
 
         # `merge` upserts by primary key, so re-registering a project (e.g. rebinding its source)
         # updates it rather than colliding — the same idempotent shape as `record_run`.
+        # `source` and `created_at` are only injected when non-None: a caller that doesn't
+        # re-supply them (e.g. a rename-only update) must not clobber an existing binding or
+        # the DB-generated timestamp — same guard pattern as `record_run` with `created_at`.
         fields: dict[str, Any] = {
             "id": project.id,
             "org_id": project.org_id,
             "name": project.name,
-            "source": project.source,
         }
+        if project.source is not None:
+            fields["source"] = project.source
         if project.created_at is not None:
             fields["created_at"] = project.created_at
         with Session(self._engine) as session:
