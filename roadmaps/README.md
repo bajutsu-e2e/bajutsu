@@ -601,7 +601,9 @@ Bringing the CLI's own tools into the serve Web UI, where authoring happens. The
 ### Authoring experience (record / GUI editor)
 
 <!-- GENERATED:in-progress-authoring -->
-
+| ID | Item | Status |
+|---|---|---|
+| [BE-0226](BE-0226-cross-project-metrics-dashboard/BE-0226-cross-project-metrics-dashboard.md) | Cross-project metrics comparison dashboard | In progress |
 <!-- /GENERATED:in-progress-authoring -->
 
 ### Codebase quality & technical debt
@@ -642,7 +644,6 @@ A platform is just a backend behind the one driver interface ([DESIGN §1](../DE
 |---|---|---|
 | [BE-0182](BE-0182-record-human-value-prompt/BE-0182-record-human-value-prompt.md) | Human value entry during record (OTP / random / one-off values) | Proposal |
 | [BE-0185](BE-0185-record-human-takeover-step/BE-0185-record-human-takeover-step.md) | Human takeover step during record (CAPTCHA / biometrics / unresolvable gestures) | Proposal |
-| [BE-0226](BE-0226-cross-project-metrics-dashboard/BE-0226-cross-project-metrics-dashboard.md) | Cross-project metrics comparison dashboard | Proposal |
 <!-- /GENERATED:proposals-authoring -->
 
 ### Self-healing triage (M4)
