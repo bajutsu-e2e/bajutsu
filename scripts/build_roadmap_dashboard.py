@@ -17,8 +17,9 @@ it first; the ``docs`` workflow does the same before publishing.
 
 Usage::
 
-    python scripts/build_roadmap_dashboard.py            # write docs/api/roadmap.md
+    python scripts/build_roadmap_dashboard.py             # write docs/api/roadmap.md
     python scripts/build_roadmap_dashboard.py --out PATH  # write elsewhere (tests)
+    python scripts/build_roadmap_dashboard.py --emit-script  # print the embedded filter JS (lint-js)
 
 Only facts the metadata carries are shown. The per-category progress percentage is derived purely
 from the Status field (Implemented items / total items in the category), so it has a source of truth;
