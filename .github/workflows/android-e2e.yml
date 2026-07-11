@@ -1,11 +1,13 @@
 # On-device Android e2e (Linux + KVM) — the third backend's lane, the Android twin of the iOS
 # `e2e.yml` (macOS / idb) and `web-e2e.yml` (Linux / Playwright). It boots an AVD under KVM on a
 # Linux runner and drives the showcase's core id/tap/type/value scenarios over `--backend android`
-# (the adb driver, BE-0007), asserting the deterministic pass/fail. The *same* scenario set runs
-# against both Android UI toolkits — Compose (dotted SPEC ids verbatim) and Views (`android:id`
-# underscore ids) — since each scenario's selectors list both id forms (BE-0221). It runs no LLM — a
-# deterministic `run` over fixed scenarios — so it stays within the prime directives, and it is kept
-# off the fast `make check` gate exactly as the idb and web e2e lanes are.
+# (the adb driver, BE-0007), asserting the deterministic pass/fail. It runs against both Android UI
+# toolkits — Compose over the full `E2E_SCENARIOS` (dotted SPEC ids verbatim) and Views over the
+# Stable-tab `E2E_VIEWS_SCENARIOS` subset (`android:id` underscore ids; `components`/`modals` stay
+# Compose-only for now), the sets defined in the Android Makefile — since each scenario's selectors
+# list both id forms (BE-0221). It runs no LLM — a deterministic `run` over fixed scenarios — so it
+# stays within the prime directives, and it is kept off the fast `make check` gate exactly as the
+# idb and web e2e lanes are.
 #
 # The AVD is x86_64 API 34, not the arm64 image the local 2026-07-07 validation used: KVM
 # acceleration on the x86_64 GitHub Linux runner needs an x86_64 system image, and a foreign-arch
