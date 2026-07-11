@@ -26,6 +26,23 @@ merge blocker, and do not fail — findings are a *successful* review.
 
 Review against **this repository's own contract**, which a generic reviewer cannot know.
 
+## Read the existing discussion first — don't repeat what's already been said
+
+This job re-runs on **every push** to the PR, and you are **not the only reviewer**: humans, GitHub
+Copilot's native review, and your own earlier runs all leave comments. Before writing anything, read
+the current conversation with `gh pr view <PR_NUMBER> --comments` (it returns the PR body plus the
+comment timeline). Then hold yourself to these rules — a review that repeats settled points is noise,
+not signal:
+
+- **Never restate a point already raised** by a human, by Copilot, or by an earlier Claude Code run —
+  and never re-post a finding you made on a previous push. If it's already on the thread, leave it.
+- **Respect resolved discussion.** If a thread already decided a concern is out of scope, a deliberate
+  trade-off, or a deferred follow-up, treat it as settled; don't reopen it.
+- **On a re-run, focus on what the latest push changed.** Review the new or still-unaddressed parts of
+  the diff, not code an earlier pass already covered.
+- **Read the PR description and linked BE item** to understand intent before judging the change — a
+  choice the author already explained is not a finding.
+
 ## Review what the gate can't see
 
 Your value is in what the deterministic gate structurally cannot check — not in re-flagging what it
@@ -36,9 +53,9 @@ all **blocking**. Do not re-flag anything in that set; the gate already stops th
 re-litigate a documented, file-scoped `ruff` ignore (e.g. `S101` for `assert`, `S603` for bare
 `subprocess` argv, and the file-level ignores in [`pyproject.toml`](../pyproject.toml)) — each carries
 recorded rationale there, so flagging it contradicts a decision already made. Spend your attention on
-the seams the gate can't reach: cross-file semantic drift, a type-checking-but-wrong `Protocol` body,
-and injection-shaped bugs in the JS templates the gate only syntax-checks (below). Every lens that
-follows targets one of those.
+the seams the gate can't reach — design and coupling, semantic and data-flow vulnerabilities,
+cross-file semantic drift, a type-checking-but-wrong `Protocol` body, injection-shaped bugs in the JS
+templates the gate only syntax-checks, and prose quality. Every lens below targets one of these seams.
 
 ## The three prime directives (`CLAUDE.md`) — highest priority
 
@@ -56,8 +73,48 @@ Weigh the shape of the change itself, the dimension [Google's reviewer
 guide](https://google.github.io/eng-practices/review/reviewer/looking-for.html) ranks above
 functionality, tests, and style. Comment on whether the change **belongs where it's placed**, whether
 it **over- or under-engineers** the problem it solves, and whether it **fits the surrounding module
-boundaries and existing seams** rather than cutting across them. Frame this as critique and
-suggestion — never a verdict, consistent with prime directive 1.
+boundaries and existing seams** rather than cutting across them.
+
+Look specifically for the shapes that become **debt you pay for on every later change** — name the
+future maintenance cost concretely, not as a general "this could be cleaner":
+
+- **Coupling that entangles previously independent modules.** A change that reaches across a seam
+  and now forces two modules to move together, a new hidden dependency, or logic that must be edited
+  in two places to stay correct.
+- **A leak in the backend-agnostic `Driver` abstraction** — the deterministic core taking on
+  knowledge of a specific backend (idb / Playwright / Android). This is the "platform is a backend"
+  seam from `CLAUDE.md`'s "What this is" section — distinct from prime directive 3, which covers
+  per-app (not per-backend) agnosticism; a leak here makes every future backend harder to add.
+- **Premature abstraction** introduced before a second caller justifies it, and **duplicated logic**
+  that will silently drift out of sync.
+
+Frame all of this as critique and suggestion — never a verdict, consistent with prime directive 1.
+
+## Security — the vulnerabilities the gate's pattern rules can't follow
+
+The gate's `ruff` S/Bandit family is **pattern-level**: it matches a fixed set of shapes (hardcoded
+secrets, `yaml.load`, `subprocess(shell=True)`, weak randomness, missing timeouts, disabled cert
+verification) and already blocks the PR on them — don't re-flag those. What it structurally **cannot**
+follow is data flow and semantics, so that is your security lens:
+
+- **Untrusted input reaching a sink.** Trace a value that originates outside the process — an HTTP
+  request to `serve`, a scenario file, a selector, an environment value, a filename — into a file
+  path, a subprocess argument, a rendered response, or a template. Flag path traversal (`..`,
+  absolute paths escaping a base dir), argument injection, and untrusted text reflected back into a
+  response unescaped.
+- **The `serve` web surface.** `bajutsu serve` exposes HTTP endpoints; weigh **missing
+  authorization** on a state-changing or file-reading endpoint, **information disclosure** (leaking
+  absolute paths, tokens, or raw internal errors to the client), and unvalidated request parameters.
+  (CodeQL catches some of these; cover what it can't — and do not re-flag a documented, dismissed
+  false positive in `bajutsu/serve`.)
+- **Unsafe deserialization or dynamic execution** beyond the `yaml.load` the gate already covers —
+  `pickle`, `eval` / `exec`, or dynamic import driven by untrusted data.
+- **Unescaped structured-data interpolation.** Flag string concatenation or interpolation that builds
+  YAML, JSON, HTML, or shell text from a variable without escaping. Call out
+  [`bajutsu/templates/serve.*.js`](../bajutsu/templates) specifically: `make lint-js` only runs
+  `node --check` on those (syntax alone, no security or escaping lint — see the
+  [`Makefile`](../Makefile)), so an id containing a `:` or `"` silently produces invalid YAML/JSON
+  there with nothing in the gate to stop it.
 
 ## The review lenses `implement-be` already trusts
 
@@ -75,13 +132,8 @@ suggestion — never a verdict, consistent with prime directive 1.
 - **Docstring-only `Protocol` / abstract-method bodies.** Flag a `Protocol` or `abc` method whose
   body is *only* a docstring — no `...`, `raise NotImplementedError`, or real implementation — when
   its return annotation is non-`None`. It reads as a concrete method that silently returns `None`
-  against its annotation, and `mypy --strict` does not catch it.
-- **Unescaped structured-data interpolation.** Flag string concatenation or interpolation that builds
-  YAML, JSON, HTML, or shell text from a variable without escaping. Call out
-  [`bajutsu/templates/serve.*.js`](../bajutsu/templates) specifically: `make lint-js` only runs
-  `node --check` on those (syntax alone, no security or escaping lint — see the
-  [`Makefile`](../Makefile)), so an id containing a `:` or `"` silently produces invalid YAML/JSON
-  there with nothing in the gate to stop it.
+  against its annotation, and `mypy --strict` does not catch it. (Unescaped structured-data
+  interpolation is a semantic gap too, but it is a security one — see the Security lens above.)
 
 ## Test quality — determinism, extended to the suite
 
@@ -98,6 +150,15 @@ Prime directive 2 is "determinism first"; hold the *test suite* to it too, not o
   `docs/ja/` mirror, or vice versa).
 - **Docstring standard** — the public API surface uses Google-style docstrings that describe
   meaning, never restating types (BE-0065).
+- **Japanese prose quality.** Any Japanese the PR adds or edits — `docs/ja/`, roadmap `*-ja.md`, or
+  Japanese in comments — must follow this project's Japanese technical-writing norms (the
+  [`japanese-tech-writing`](../.claude/skills/japanese-tech-writing) skill, mandated by
+  [`CLAUDE.md`](../CLAUDE.md)). Flag, with a concrete rewrite: **常体** where docs/roadmap prose must
+  be **敬体 (ですます調)**; **coined terms** where an established word exists; **forced/unnatural
+  translation** where the original term (`selector`, `backend`, `actuator`) reads better left as-is;
+  **LLM-ish empty filler** (hollow topic sentences, padding like 「〜な点に注意しましょう」 that adds no
+  information); and plain **redundancy**. Judge whether the Japanese reads as if a person wrote it,
+  not a machine.
 - **Roadmap links** — a roadmap PR that doesn't link its BE item both ways (the `[BE-NNNN]` title
   prefix and body reference; the item's `Implementing PR` row), and a `## Progress` section left
   stale rather than ticked and logged in the same change.
@@ -106,6 +167,9 @@ Prime directive 2 is "determinism first"; hold the *test suite* to it too, not o
   files the diff touches, an acronym used unexpanded on first appearance, and a PR body or roadmap
   `Progress` claim that doesn't match the diff it describes.
 
-Keep every comment short and grounded in the diff. Prefer a `suggestion` block over prose when the
-fix is mechanical. When nothing warrants a comment, say so briefly in the summary rather than
+Keep every comment short and grounded in the diff, and make every actionable finding **concrete**:
+name exactly what to change and why, and attach a GitHub `suggestion` block whenever the fix is
+mechanical enough to express as replacement lines. Do **not** post vague findings ("consider
+refactoring", "this could be cleaner") that propose no specific change — if you can't name a concrete
+improvement, don't post it. When nothing warrants a comment, say so briefly in the summary rather than
 inventing findings.
