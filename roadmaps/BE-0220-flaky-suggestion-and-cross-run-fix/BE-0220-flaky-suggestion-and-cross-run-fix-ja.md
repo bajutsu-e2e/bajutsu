@@ -75,7 +75,7 @@ DB を対象とした Run 横断のフラッキー検出には、「同一シナ
 
 - [x] 前提：DB の Run レコードへの Run provenance（`scenarioHash` / `toolVersion` / `gitRevision`）のスタンプ（BE-0015 配下では未出荷だったため、ここで届けました）。
 - [x] 前半：`audit --history` の分類を再利用した、DB の Run 履歴に対する Run 横断のフラッキースコア。
-- [ ] 前半：serve Web UI の順位付きフラッキーシナリオパネル（および `--json` / CLI 形式）。代表的な成功 / 失敗 Run の証跡へリンクする。
+- [x] 前半：serve Web UI の順位付きフラッキーシナリオパネル（および `--json` / CLI 形式）。代表的な成功 / 失敗 Run の証跡へリンクする。
 - [ ] 後半：1 つのフラッキーシナリオについて、成功 Run と失敗 Run の両方から証跡を集める Run 横断の `TriageContext`。
 - [ ] 後半：`TriageAgent` プロトコルの背後での、パターン診断と修正提案（的を絞った編集から YAML 全体の書き直しまで）。レビュー可能な提案差分として出す。
 - [ ] 後半：アサーションを弱める提案を明示する、甘くしないためのガード（BE-0023）。
@@ -97,6 +97,16 @@ DB を対象とした Run 横断のフラッキー検出には、「同一シナ
   の成功 Run と失敗 Run の ID を保持します。`scenario_hash` も判定も持たない Run は、`audit
   --history` と同様に対象外にします。履歴に対する読み取り専用であり、判定を計算せず、何もゲート
   しません。このスコアの Web UI / CLI 提示面は、前半の次の作業単位です。
+- 2026-07-11 — 前半：スコアを提示面にしました。serve の **Flaky** タブ（`GET /flakiness`、
+  `flakiness_html` オペレーション、`/stats` と同様にタブの shadow root へ描画する自己完結した
+  `flakiness.html.j2` パネル）と、`bajutsu flakiness` CLI（`--json` / テキスト、`--window`、`--org`）を
+  追加しました。どちらも `rank_flakiness` を再利用します。パネルはリポジトリを配線しているときは DB の
+  provenance スタンプから直接グループ化し（そうでなければ各 Run の `manifest.json` から）、CLI は
+  `--history` の Run ディレクトリか serve のデータベース（`BAJUTSU_DATABASE_URL`）を読みます。ファイル
+  由来と DB 由来の入力を一つのランク付けに束ねるため、`records_from_manifests` と `render` /
+  `render_html` を `serve/flakiness.py` に追加し、各行は代表的な成功 / 失敗 Run の証跡へリンクします。
+  読み取り専用かつ org スコープで、判定もゲートもありません。これで前半は完了し、後半（AI による Run
+  横断の修正提案）が残ります。
 
 ## 参考
 

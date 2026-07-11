@@ -343,6 +343,16 @@ async function loadStats(){
   catch(e){setShadowContent(host,'<div style="color:#6e6e73;font-style:italic">stats unavailable</div>');return;}
   renderReportInShadow(host,html);
 }
+// Flaky (BE-0220): fetch the self-contained flaky-scenario panel and render it into a shadow root,
+// the same isolation as loadStats. The ranking stays server-side (/flakiness over the run history);
+// the view only displays. A network error or non-2xx replaces the stale panel with an unavailable notice.
+async function loadFlaky(){
+  const host=$('#flaky-host');
+  let html;
+  try{const r=await fetch('/flakiness');if(!r.ok)throw 0;html=await r.text();}
+  catch(e){setShadowContent(host,'<div style="color:#6e6e73;font-style:italic">flaky scenarios unavailable</div>');return;}
+  renderReportInShadow(host,html);
+}
 // Usage (BE-0195): fetch the self-contained AI usage/cost dashboard and render it into a shadow root,
 // the same isolation as loadStats. Aggregation stays server-side (/usage over the ledger); the view
 // only displays. A network error or non-2xx replaces the stale dashboard with an unavailable notice.
@@ -363,6 +373,7 @@ async function loadHistory(){
 }
 $('#refresh').addEventListener('click',loadHistory);
 $('#stats-refresh').addEventListener('click',loadStats);
+$('#flaky-refresh').addEventListener('click',loadFlaky);
 $('#usage-refresh').addEventListener('click',loadUsage);
 
 // Coverage (BE-0146): POST the target (+ optional run set) to /api/coverage and render the returned

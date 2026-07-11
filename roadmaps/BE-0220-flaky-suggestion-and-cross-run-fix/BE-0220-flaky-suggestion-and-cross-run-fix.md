@@ -164,7 +164,7 @@ first-class.
 
 - [x] Prerequisite — run provenance (`scenarioHash` / `toolVersion` / `gitRevision`) stamped onto the DB run record (delivered here; not previously shipped under BE-0015).
 - [x] Half 1 — cross-run flakiness score over the DB run history, reusing the `audit --history` classification.
-- [ ] Half 1 — ranked flaky-scenario panel in the serve Web UI (+ `--json` / CLI form) linking to representative passing / failing run evidence.
+- [x] Half 1 — ranked flaky-scenario panel in the serve Web UI (+ `--json` / CLI form) linking to representative passing / failing run evidence.
 - [ ] Half 2 — cross-run `TriageContext` assembling evidence from both passing and failing runs of one flaky scenario.
 - [ ] Half 2 — pattern diagnosis + fix proposal (targeted edit through full YAML rewrite) behind the `TriageAgent` protocol, as a reviewable proposal diff.
 - [ ] Half 2 — laxer guard (BE-0023) flagging any proposal that weakens assertions.
@@ -185,6 +185,15 @@ first-class.
   newest passing/failing run ids for evidence linking. A run with no `scenario_hash` or no verdict
   is skipped, mirroring `audit --history`. Read-only over history: it computes no verdict and gates
   nothing. The Web UI / CLI surface for this score is the next Half 1 unit.
+- 2026-07-11 — Half 1: surfaced the score. Added the serve **Flaky** tab (`GET /flakiness`,
+  `flakiness_html` operation, self-contained `flakiness.html.j2` panel rendered into the tab's shadow
+  root like `/stats`) and the `bajutsu flakiness` CLI (`--json` / text, `--window`, `--org`). Both
+  reuse `rank_flakiness`: the panel groups straight from the DB provenance stamp when a repository is
+  wired (else from each run's `manifest.json`), and the CLI reads a `--history` runs dir or the serve
+  database (`BAJUTSU_DATABASE_URL`). Added `records_from_manifests` + `render` / `render_html` to
+  `serve/flakiness.py` so the file-backed and DB paths feed one ranking, each row linking to the
+  representative passing / failing runs' evidence. Read-only and org-scoped; no verdict, no gate.
+  This completes Half 1; Half 2 (the AI cross-run fix proposal) remains.
 
 ## References
 

@@ -325,13 +325,14 @@ document.querySelectorAll('.modal').forEach(m=>new MutationObserver(muts=>{
 // ---- top-level Record / Replay / Crawl views ----
 function showView(name){
   document.querySelectorAll('.toptab').forEach(t=>t.classList.toggle('active',t.dataset.view===name));
-  $('#view-record').hidden=name!=='record';$('#view-replay').hidden=name!=='replay';$('#view-crawl').hidden=name!=='crawl';$('#view-author').hidden=name!=='author';$('#view-stats').hidden=name!=='stats';$('#view-usage').hidden=name!=='usage';$('#view-coverage').hidden=name!=='coverage';
+  $('#view-record').hidden=name!=='record';$('#view-replay').hidden=name!=='replay';$('#view-crawl').hidden=name!=='crawl';$('#view-author').hidden=name!=='author';$('#view-stats').hidden=name!=='stats';$('#view-flaky').hidden=name!=='flaky';$('#view-usage').hidden=name!=='usage';$('#view-coverage').hidden=name!=='coverage';
   // The incoming view animates in (enter-only: the outgoing one is hidden instantly, so two sibling
   // views never overlap in the flex column). The picked theme decides the motion via --motion-view-*.
   const shown=$('#view-'+name);if(shown)playEnter(shown,'--motion-view-enter');
   if(name==='replay')loadHistory();
   if(name==='author')authorInit();
   if(name==='stats')loadStats();
+  if(name==='flaky')loadFlaky();
   if(name==='usage')loadUsage();
   if(name==='coverage')coverageInit();
 }

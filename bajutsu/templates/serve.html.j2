@@ -20,6 +20,7 @@
       <button class="toptab" data-view="crawl" data-testid="nav.crawl">Crawl</button>
       <button class="toptab" data-view="author" data-testid="nav.author">Author</button>
       <button class="toptab" data-view="stats" data-testid="nav.stats">Stats</button>
+      <button class="toptab" data-view="flaky" data-testid="nav.flaky">Flaky</button>
       <button class="toptab" data-view="usage" data-testid="nav.usage">Usage</button>
       <button class="toptab" data-view="coverage" data-testid="nav.coverage">Coverage</button>
       <button class="cfgbtn" id="opencfg" data-testid="nav.open-config">Open config</button>
@@ -454,6 +455,18 @@
       <button class="refresh" id="stats-refresh" data-testid="stats.refresh" title="refresh">&#8635;</button>
     </div>
     <div class="statshost" id="stats-host" data-testid="stats.host"><div class="empty" data-testid="stats.empty">Loading run stats…</div></div>
+  </div>
+</main>
+
+<!-- ===== Flaky (BE-0220): the read-only ranked flaky-scenario surface across the run history ===== -->
+<main id="view-flaky" data-testid="view.flaky" hidden>
+  <div class="card statscard">
+    <div class="yamlhead">
+      <span class="ttl">Flaky scenarios</span>
+      <span class="muted" style="font-size:.8em">Read-only ranking of scenarios whose verdict flips at a constant fingerprint — advisory, never a gate.</span>
+      <button class="refresh" id="flaky-refresh" data-testid="flaky.refresh" title="refresh">&#8635;</button>
+    </div>
+    <div class="statshost" id="flaky-host" data-testid="flaky.host"><div class="empty" data-testid="flaky.empty">Loading flaky scenarios…</div></div>
   </div>
 </main>
 

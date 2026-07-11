@@ -17,6 +17,7 @@ from bajutsu.config import Config, load_config
 from bajutsu.drivers import base as driver_base
 from bajutsu.scenario import load_scenario_file
 from bajutsu.scenario.models import STEP_ACTIONS, Step
+from bajutsu.serve import flakiness as _flakiness
 from bajutsu.serve import jobs
 from bajutsu.serve.artifacts import Artifact, ArtifactStore
 from bajutsu.serve.authz import _target_forbidden
@@ -147,6 +148,28 @@ def stats_html(state: ServeState, *, actor: str | None = None) -> tuple[str, int
     way, since the DB `summary` carries only the compact history-list shape.
     """
     return _stats.render_html(_stats.aggregate_runs(_run_manifests(state, actor))), 200
+
+
+def flakiness_html(state: ServeState, *, actor: str | None = None) -> tuple[str, int]:
+    """The ranked flaky-scenario panel (BE-0220, Half 1) as a self-contained HTML page, org-scoped.
+
+    Ranks the actor's org run history by how much each scenario's verdict flips at a constant
+    content fingerprint. When a repository is wired the records come straight from it — the
+    provenance stamp the BE-0220 prerequisite added to the run row is the grouping key, so no
+    manifest re-read is needed; without one (local / stdlib serve) the same records are built from
+    each run's `manifest.json`. Read-only and AI-free: it displays the ranking, deciding no verdict.
+    """
+    return _flakiness.render_html(_flakiness_report(state, actor)), 200
+
+
+def _flakiness_report(state: ServeState, actor: str | None) -> _flakiness.FlakinessReport:
+    """Rank the actor's org run history — from the DB provenance stamp when wired, else manifests."""
+    org = state.org_of(actor)
+    if state.repository is not None:
+        records = state.repository.list_runs(org_id=org, limit=_STATS_RUN_LIMIT)
+    else:
+        records = _flakiness.records_from_manifests(_run_manifests(state, actor))
+    return _flakiness.rank_flakiness(records)
 
 
 def _run_manifests(state: ServeState, actor: str | None) -> list[dict[str, Any]]:
