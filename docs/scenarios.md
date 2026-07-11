@@ -231,7 +231,7 @@ so those backends fail the step with a clear "unsupported action" reason rather 
 ### `swipe`
 
 ```yaml
-- swipe: { on: { id: comp.swipearea }, direction: left }   # frame center → 100pt in a direction
+- swipe: { on: { id: comp.swipearea }, direction: left }   # frame center → a screen fraction in a direction (default 0.125)
 - swipe: { from: [100, 400], to: [100, 200] }              # raw coordinates (last resort)
 ```
 

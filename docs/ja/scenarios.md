@@ -209,7 +209,7 @@ CLI の `--dismiss-alerts` / `--no-dismiss-alerts` フラグは**全シナリオ
 ### `swipe`
 
 ```yaml
-- swipe: { on: { id: comp.swipearea }, direction: left }   # frame center → 100pt in a direction
+- swipe: { on: { id: comp.swipearea }, direction: left }   # frame 中心 → 方向へ画面に対する割合分（既定 0.125）
 - swipe: { from: [100, 400], to: [100, 200] }              # raw coordinates (last resort)
 ```
 

@@ -133,18 +133,41 @@ def _swipe_travel(spec: str) -> float:
 def test_swipe_amount_scales_scroll_distance() -> None:
     default = _swipe_travel("swipe: { on: { label: list }, direction: up }")
     half = _swipe_travel("swipe: { on: { label: list }, direction: up, amount: 0.5 }")
-    assert default == 100.0  # the small default nudge
+    assert default == 100.0  # the default fraction (0.125) of the 800pt reference screen
     assert half == 400.0 and half > default  # 0.5 of the 800pt screen height
+
+
+def _swipe_travel_on(screen_h: float, spec: str) -> float:
+    """The vertical travel of a directional swipe on a screen of the given height (width 400)."""
+    win: base.Element = {"identifier": None, "label": None, "traits": ["application"], "value": None,
+                         "frame": (0.0, 0.0, 400.0, screen_h)}  # fmt: skip
+    lst: base.Element = {"identifier": None, "label": "list", "traits": ["table"], "value": None,
+                         "frame": (0.0, screen_h / 3, 400.0, screen_h / 4)}  # fmt: skip
+    driver = FakeDriver(screen=[win, lst])
+    result = run_scenario(driver, load_scenarios(f"- name: s\n  steps:\n    - {spec}\n")[0])
+    assert result.ok, result.failure
+    frm, to = next(arg for kind, arg in driver.actions if kind == "swipe")
+    return abs(frm[1] - to[1])
+
+
+def test_swipe_default_travel_is_screen_relative() -> None:
+    # The default swipe (no `amount`) travels a fraction of the screen, not a fixed count, so it
+    # scrolls the same proportion of a dense device (Android's 2400px screen) as of a sparse one
+    # (iOS's ~900pt) — a fixed count scrolls ~2.6x less of the Android screen, so a swipe sized for
+    # iOS barely moves an Android list (BE-0208).
+    spec = "swipe: { on: { label: list }, direction: up }"
+    assert _swipe_travel_on(800.0, spec) == 100.0  # 0.125 of 800
+    assert _swipe_travel_on(2400.0, spec) == 300.0  # 0.125 of 2400 — scales with the screen
 
 
 def test_swipe_begins_on_the_element() -> None:
     # A directional swipe must put its `down` ON the target, not offset by half the travel — else a
     # swipe that grabs a small handle (a resize divider) lands beside it and drags nothing. The list
     # spans y 300..500 (center 400) with room in both directions, so the gesture starts exactly at
-    # the center and travels the default nudge upward from there.
+    # the center and travels the default fraction upward from there.
     frm, to = _swipe_points("swipe: { on: { label: list }, direction: up }")
     assert frm == (200.0, 400.0)  # down on the element center
-    assert to == (200.0, 300.0)  # up by the 100pt default nudge
+    assert to == (200.0, 300.0)  # up by 0.125 of the 800pt screen (100pt) from the center
 
 
 def test_swipe_amount_must_be_a_screen_fraction() -> None:

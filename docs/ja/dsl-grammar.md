@@ -151,7 +151,7 @@ ForEach ::= { sel: <Selector>, as: string, steps: list(<Step>) }
 Swipe ::=
     { on: <Selector>, direction: ("up"|"down"|"left"|"right"), amount?: number }   # セレクタ形  ┐ XOR
   | { from: <Point>,  to: <Point> }                                                # 座標形      ┘
-    # amount（セレクタ形のみ）: 画面に対する移動量の割合。0 < amount ≤ 1。省略時は小さめの既定量
+    # amount（セレクタ形のみ）: 画面に対する移動量の割合。0 < amount ≤ 1。省略時は小さめの既定割合（0.125）
 Point ::= [ number, number ]
 
 # ── Selector（1 条件以上・指定フィールドは AND）────────────────────────

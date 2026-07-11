@@ -29,12 +29,22 @@ SERIAL ?= booted
 # a condition wait returns the instant the sheet presents, so the larger floor never slows the flow
 # — it only gives the software renderer time before the step is failed.
 #
-# Still held out (each for a reason unrelated to the tab bar or the renderer): `gestures` needs
-# multi-touch (adb is single-touch, BE-0210); `controls` asserts a segmented-control value adb does
-# not yet expose; and `notices` swipes to a far list row the scroll does not yet reach — all BE-0007
-# follow-ups. Device control, mocked network, and visual screenshots stay out too (BE-0007
+# The deep-scroll flows `controls` / `notices` rejoin the lane (BE-0208 unit 5). Both scroll a far
+# target into view — `controls` the segmented-control value node below the buttons, `notices` a list
+# row that starts well below the fold. They failed before because the default directional swipe
+# travelled a fixed coordinate count, which scrolls far less of Android's dense screen (2400px) than
+# of iOS's (~900pt); the default is now a screen fraction (bajutsu/orchestrator/actions/handlers/
+# gestures.py), so a swipe reaches the same proportion on either backend. Verified on a local arm64
+# emulator.
+#
+# Still held out: `gestures` — its long-press lands, but the double-tap does not register through
+# adb's `input tap ; input tap` (each tap spawns a fresh `input` process, so the inter-tap gap
+# overruns the platform double-tap window even on a fast device); the fix is a raw `sendevent`
+# double-tap, a separate slice. `gestures_multitouch` (pinch / rotate) needs multi-touch (adb is
+# single-touch). Device control, mocked network, and visual screenshots stay out too (BE-0007
 # follow-ups / a later BE-0208 slice — the visual dimension of unit 4).
-E2E_SCENARIOS := smoke firstlook navigation search data_driven relaunch system components modals
+E2E_SCENARIOS := smoke firstlook navigation search data_driven relaunch system components modals \
+	controls notices
 
 # Raise the condition-wait ceiling for this lane only: the CI x86_64 software-rendered emulator
 # presents sheets/covers slower than the shared scenarios' 5s waits allow. A wait returns as soon as

@@ -31,11 +31,12 @@
     - exists: { id: notice.row.1 }
     - exists: { id: notice.detail.title, negate: true }
 
-# The headline: scroll an off-screen target into view, then tap it. Each swipe scrolls
-# ~100pt (the fixed swipe distance, DESIGN §5/§6.2) and is anchored on a row that stays
-# visible as the list scrolls down; the condition wait stops once the target appears.
-# (The number of swipes is sized for the configured device — iPhone 17 Pro; a shorter
-# screen may need one more.)
+# The headline: scroll an off-screen target into view, then tap it. Each swipe scrolls a
+# fraction of the screen (the default swipe travel) and is anchored on a row that stays
+# visible as the list scrolls down; the condition wait stops once the target appears. A
+# screen-relative travel keeps the same reach across devices of different densities (a fixed
+# pixel count would scroll far less of a dense screen), so the swipe count carries across
+# backends — iPhone 17 Pro and the Android emulator alike.
 - name: scroll to an off-screen notice and open it
   preconditions:
     launchEnv: { SHOWCASE_UITEST: "1" }
