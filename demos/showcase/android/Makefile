@@ -37,14 +37,18 @@ SERIAL ?= booted
 # gestures.py), so a swipe reaches the same proportion on either backend. Verified on a local arm64
 # emulator.
 #
-# Still held out: `gestures` — its long-press lands, but the double-tap does not register through
-# adb's `input tap ; input tap` (each tap spawns a fresh `input` process, so the inter-tap gap
-# overruns the platform double-tap window even on a fast device); the fix is a raw `sendevent`
-# double-tap, a separate slice. `gestures_multitouch` (pinch / rotate) needs multi-touch (adb is
-# single-touch). Device control, mocked network, and visual screenshots stay out too (BE-0007
-# follow-ups / a later BE-0208 slice — the visual dimension of unit 4).
+# The single-touch gesture flow `gestures` rejoins the lane (BE-0208 unit 5): its long-press already
+# landed, but the double-tap did not register through adb's `input tap ; input tap` (each tap spawns
+# a fresh `input` JVM, so the inter-tap gap overruns the platform double-tap window even chained in
+# one round-trip). The adb driver now drives a double-tap with a raw `sendevent` touch sequence on a
+# rooted device (the `e2e` target roots the emulator below), which fires both taps inside the window;
+# on a non-rooted device it falls back to `input tap` unchanged. Verified on a local arm64 emulator.
+#
+# Still held out: `gestures_multitouch` (pinch / rotate) needs multi-touch (adb is single-touch).
+# Device control, mocked network, and visual screenshots stay out too (BE-0007 follow-ups / a later
+# BE-0208 slice — the visual dimension of unit 4).
 E2E_SCENARIOS := smoke firstlook navigation search data_driven relaunch system components modals \
-	controls notices
+	controls notices gestures
 
 # Raise the condition-wait ceiling for this lane only: the CI x86_64 software-rendered emulator
 # presents sheets/covers slower than the shared scenarios' 5s waits allow. A wait returns as soon as
@@ -76,7 +80,11 @@ views-noax-build:
 # launch installs it from the config's appPath — then runs each passing scenario with a clean state
 # (the default erase = `pm clear`). Not part of `make check`: it needs a booted AVD, so it is driven
 # by .github/workflows/android-e2e.yml (Linux + KVM), the Android twin of the idb and web e2e lanes.
+# `adb root` restarts adbd as root so the `gestures` double-tap can write /dev/input via `sendevent`
+# (the google_apis image allows it; the driver falls back to `input tap` when it cannot). `wait-for-
+# device` blocks until the restarted adbd reconnects before the first scenario runs.
 e2e: compose-build
+	adb root && adb wait-for-device
 	cd $(ROOT) && for s in $(E2E_SCENARIOS); do \
 		echo "=== $$s ==="; \
 		BAJUTSU_MIN_WAIT_TIMEOUT=$(E2E_WAIT_FLOOR) \

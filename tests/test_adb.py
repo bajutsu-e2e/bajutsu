@@ -372,20 +372,103 @@ def test_parse_hierarchy_malformed_xml_is_empty() -> None:
     assert parse_hierarchy("<hierarchy><node bounds=</hierarchy>") == []
 
 
-def test_double_tap_is_a_single_round_trip() -> None:
-    # BE-0210: both taps go through one `adb shell` round-trip (`input tap …; input tap …`) rather
-    # than two separate adb invocations, so the adb transport round-trip does not sit between the
-    # taps and widen the gap past the platform's double-tap window.
+# `getevent -lp` on the Android emulator: several identical `virtio_input_multi_touch_*` nodes, of
+# which only the lowest-numbered `/dev/input/eventN` is wired to the display (BE-0208), plus a
+# non-touch key node that must be ignored. Trimmed to the axes the parser reads.
+GETEVENT_LP = """add device 1: /dev/input/event11
+  name:     "virtio_input_multi_touch_11"
+    events:
+        ABS_MT_POSITION_X     : value 0, min 0, max 32767, fuzz 0, flat 0, resolution 0
+        ABS_MT_POSITION_Y     : value 0, min 0, max 32767, fuzz 0, flat 0, resolution 0
+add device 11: /dev/input/event1
+  name:     "virtio_input_multi_touch_1"
+    events:
+        ABS_MT_POSITION_X     : value 0, min 0, max 32767, fuzz 0, flat 0, resolution 0
+        ABS_MT_POSITION_Y     : value 0, min 0, max 32767, fuzz 0, flat 0, resolution 0
+add device 12: /dev/input/event0
+  name:     "gpio-keys"
+    events:
+        KEY (0001): 0072  0073  0074
+"""
+
+
+def test_parse_touch_device_picks_lowest_numbered_touch_node() -> None:
+    # The emulator exposes many identical multi-touch nodes; only the lowest-numbered eventN reaches
+    # the display, so that one is chosen (event1, not the first-listed event11) with its axis maxima.
+    dev = adb.parse_touch_device(GETEVENT_LP)
+    assert dev == adb.TouchDevice(path="/dev/input/event1", max_x=32767, max_y=32767)
+
+
+def test_parse_touch_device_none_without_position_axes() -> None:
+    # A node with no ABS_MT_POSITION axes is not a touchscreen — nothing to drive, so None (the
+    # driver then falls back to `input tap`).
+    only_keys = 'add device 1: /dev/input/event0\n  name: "gpio-keys"\n    KEY (0001): 0072\n'
+    assert adb.parse_touch_device(only_keys) is None
+
+
+def test_scale_to_touch_is_proportional_per_axis() -> None:
+    # Screen pixels → the device's raw range, proportionally on each axis independently.
+    dev = adb.TouchDevice(path="/dev/input/event1", max_x=32767, max_y=32767)
+    assert adb.scale_to_touch((540.0, 1200.0), (1080.0, 2400.0), dev) == (16384, 16384)
+    assert adb.scale_to_touch((0.0, 0.0), (1080.0, 2400.0), dev) == (0, 0)
+    # A point resolved just outside the screen extent is clamped into the device's raw range.
+    assert adb.scale_to_touch((1200.0, -10.0), (1080.0, 2400.0), dev) == (32767, 0)
+
+
+def test_sendevent_double_tap_cmd_is_two_protocol_b_contacts() -> None:
+    # Two down/up contacts at the same point, each a protocol-B slot-0 sequence, chained into one
+    # `adb shell` round-trip so no JVM start sits between them (BE-0208).
+    cmd = adb.sendevent_double_tap_cmd("U", "/dev/input/event1", 3034, 2048)
+    assert cmd[:4] == ["adb", "-s", "U", "shell"]
+    script = cmd[4]
+    d = "/dev/input/event1"
+    one_tap = (
+        f"sendevent {d} 3 47 0 ; sendevent {d} 3 57 {{tid}} ; "
+        f"sendevent {d} 3 53 3034 ; sendevent {d} 3 54 2048 ; "
+        f"sendevent {d} 1 330 1 ; sendevent {d} 3 58 50 ; sendevent {d} 0 0 0 ; "
+        f"sendevent {d} 3 57 4294967295 ; sendevent {d} 1 330 0 ; sendevent {d} 0 0 0"
+    )
+    assert script == one_tap.format(tid=100) + " ; " + one_tap.format(tid=101)
+
+
+def test_double_tap_uses_sendevent_when_root() -> None:
+    # BE-0208: on a rooted device with a discoverable touchscreen, a double-tap is a raw `sendevent`
+    # sequence — `input tap` starts a JVM per tap, overrunning the double-tap window even chained.
     calls: list[list[str]] = []
 
     def run(args: list[str]) -> str:
         if "dump" in args:
             return FIXTURE
+        if "getprop" not in args and args[-2:] == ["id", "-u"]:
+            return "0\n"
+        if "getevent" in args:
+            return GETEVENT_LP
         calls.append(args)
         return ""
 
     AdbDriver("U", run=run).double_tap({"id": "stable_refresh"})
-    # centre of (0,100,200,100) → (100, 150); one call, both taps chained in the device shell.
+    # centre (100,150) on the 1080x2400 FIXTURE screen → raw (3034, 2048) in the 32767 range.
+    assert len(calls) == 1
+    assert calls[0][:4] == ["adb", "-s", "U", "shell"]
+    assert "sendevent /dev/input/event1 3 53 3034" in calls[0][4]
+    assert "sendevent /dev/input/event1 3 54 2048" in calls[0][4]
+
+
+def test_double_tap_falls_back_to_input_tap_when_not_root() -> None:
+    # Without root, `/dev/input` is not writable, so a non-rooted device keeps the `input tap ; input
+    # tap` behaviour (BE-0210) — the sendevent path never regresses it. Both taps in one round-trip.
+    calls: list[list[str]] = []
+
+    def run(args: list[str]) -> str:
+        if "dump" in args:
+            return FIXTURE
+        if args[-2:] == ["id", "-u"]:
+            return "2000\n"  # a normal shell user, not root
+        calls.append(args)
+        return ""
+
+    AdbDriver("U", run=run).double_tap({"id": "stable_refresh"})
+    # Not root → no getevent probe, straight to the `input tap` fallback.
     assert calls == [
         ["adb", "-s", "U", "shell", "input", "tap", "100", "150", ";", "input", "tap", "100", "150"]
     ]

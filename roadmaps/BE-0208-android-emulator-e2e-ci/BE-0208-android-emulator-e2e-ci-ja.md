@@ -171,6 +171,23 @@ directive の枠内にとどまります。
   double-tap ウィンドウを超過します。raw な `sendevent` による double-tap は別のスライスにします。
   `gestures_multitouch`（pinch／rotate）はマルチタッチを必要とし（adb は単一タッチです）、ユニット 4 の
   visual の次元は、CI で採取したベースラインが引き続き必要です。項目は**実装中**のままです。
+- 2026-07-11 — ユニット 5（gestures の double-tap）。最後に除外したままだった単一タッチのフロー
+  `gestures` が `E2E_SCENARIOS` へ戻りました。long-press はすでに届いていましたが、double-tap は届き
+  ませんでした。`input tap ; input tap` は tap ごとに新しい `input` の JVM を起動するため、1 回のラウンド
+  トリップに連ねても tap 間の間隔がプラットフォームの double-tap ウィンドウを超過していたためです。adb
+  ドライバは、double-tap を生の `sendevent` によるタッチ列で実行するようになりました（`bajutsu/adb.py`
+  の `sendevent_double_tap_cmd` と `parse_touch_device`／`scale_to_touch`、配線は
+  `bajutsu/drivers/adb.py`）。protocol B の 2 つの接触を 1 回の `adb shell` のなかで発火するので、tap の
+  間には JVM ではなく `sendevent` の小さなネイティブ起動だけが挟まり、間隔がウィンドウの内側に収まります。
+  `sendevent` は `/dev/input` に直接書き込むので、root と具体的なタッチスクリーンのノードが必要です。
+  ドライバは `getevent -lp` でノードを探索し（エミュレータは同一の `virtio_input_multi_touch_*` ノードを
+  複数並べますが、画面につながっているのは最小番号の `eventN` だけです）、`id -u` でゲートして、いずれかが
+  欠けるときは `input tap` にフォールバックします。これで、root 化していないデバイスが従来より悪くなること
+  はありません。`e2e` の Makefile ターゲットは、実行前にエミュレータを root 化します（`adb root`、
+  google_apis イメージで許可されています）。ローカルの arm64 エミュレータで検証し（3 回とも通り、
+  double-tap のカウンタが 1 に達します）、Python ゲート（`make check`）も緑です。`gestures_multitouch`
+  （pinch／rotate）はマルチタッチを必要とし（adb は単一タッチです）、ユニット 4 の visual の次元は、CI で
+  採取したベースラインが引き続き必要です。項目は**実装中**のままです。
 
 ## 参考
 

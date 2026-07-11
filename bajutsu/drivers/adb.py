@@ -202,6 +202,12 @@ class AdbDriver:
         self._run = run
         self._max_seen = 0  # richest tree seen on this device; gates the empty retry
         self._last_stable_key: _StableKey | None = None
+        # Lazily resolved once for the sendevent double-tap path (BE-0208): whether adbd is root and
+        # which node is the touchscreen. `_touch_probed` distinguishes "not yet looked" from "looked,
+        # found nothing" so a device with no touchscreen is not re-probed on every double-tap.
+        self._is_root: bool | None = None
+        self._touch_dev: adb.TouchDevice | None = None
+        self._touch_probed = False
 
     def query(self) -> list[base.Element]:
         """Dump the UI Automator hierarchy, parsed and normalized into Elements.
@@ -277,6 +283,16 @@ class AdbDriver:
                 tree = self.query()
 
     def _center(self, sel: base.Selector) -> base.Point:
+        point, _ = self._center_with_screen(sel)
+        return point
+
+    def _center_with_screen(self, sel: base.Selector) -> tuple[base.Point, base.Point]:
+        """The target's frame center and the screen extent, both in tree (pixel) coordinates.
+
+        The screen extent lets the sendevent double-tap scale a center into the touch device's raw
+        range (BE-0208); it is constant across a scroll, so the settled tree gives it even when the
+        target itself was only reached by scrolling.
+        """
         tree = self._settle()
         try:
             el = self._resolve(sel, timeout=self._RESOLVE_TIMEOUT_S, initial_tree=tree)
@@ -287,7 +303,7 @@ class AdbDriver:
             # is oriented on stable frames rather than a fresh (possibly mid-transition) read.
             el = self._scroll_into_view(sel, tree)
         x, y, w, h = el["frame"]
-        return (x + w / 2, y + h / 2)
+        return (x + w / 2, y + h / 2), screen_size_from_elements(tree)
 
     def _scroll_into_view(self, sel: base.Selector, tree: list[base.Element]) -> base.Element:
         """Scroll toward `sel` and re-query, bounded by `_SCROLL_RETRIES`, then fail deterministically.
@@ -324,10 +340,39 @@ class AdbDriver:
         self._run(adb.tap_cmd(self.serial, p[0], p[1]))
 
     def double_tap(self, sel: base.Selector) -> None:
-        # No native double-tap; both taps go through one `adb shell` round-trip so the adb transport
-        # round-trip does not sit between them and overrun the double-tap window (BE-0210).
-        x, y = self._center(sel)
-        self._run(adb.double_tap_cmd(self.serial, x, y))
+        # adb has no native double-tap. `input tap ; input tap` chains both taps in one round-trip,
+        # but each `input` starts a JVM, so the gap still overruns the platform's double-tap window
+        # (BE-0210). On a rooted device with a discoverable touchscreen, a raw `sendevent` sequence
+        # closes that gap (BE-0208); otherwise fall back to `input tap`, so a non-rooted device is
+        # never worse off than before.
+        point, screen = self._center_with_screen(sel)
+        dev = self._touch_device() if self._rooted() else None
+        if dev is not None:
+            raw_x, raw_y = adb.scale_to_touch(point, screen, dev)
+            self._run(adb.sendevent_double_tap_cmd(self.serial, dev.path, raw_x, raw_y))
+        else:
+            self._run(adb.double_tap_cmd(self.serial, point[0], point[1]))
+
+    def _rooted(self) -> bool:
+        """Whether adbd runs as root (`id -u` is 0), cached — a precondition for `sendevent`."""
+        if self._is_root is None:
+            try:
+                self._is_root = self._run(adb.id_u_cmd(self.serial)).strip() == "0"
+            except (subprocess.CalledProcessError, OSError):
+                self._is_root = False
+        return self._is_root
+
+    def _touch_device(self) -> adb.TouchDevice | None:
+        """The touchscreen node from `getevent -lp`, probed once and cached (None if none / failure)."""
+        if not self._touch_probed:
+            self._touch_probed = True
+            try:
+                self._touch_dev = adb.parse_touch_device(
+                    self._run(adb.getevent_probe_cmd(self.serial))
+                )
+            except (subprocess.CalledProcessError, OSError):
+                self._touch_dev = None
+        return self._touch_dev
 
     def long_press(self, sel: base.Selector, duration: float) -> None:
         # `input` has no press-and-hold, so a zero-length swipe with a duration acts as a long press.

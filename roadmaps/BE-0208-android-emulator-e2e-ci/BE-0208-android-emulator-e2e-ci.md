@@ -168,6 +168,22 @@ within the prime directives.
   even on a fast device) — a raw `sendevent` double-tap is a separate slice. `gestures_multitouch`
   (pinch / rotate) needs multi-touch (adb is single-touch), and the **visual** dimension of unit 4
   still needs a CI-captured baseline. Item stays **In progress**.
+- 2026-07-11 — Unit 5 (gestures double-tap): `gestures` rejoins `E2E_SCENARIOS`, the last single-touch
+  flow held out. Its long-press already landed; the double-tap did not, because `input tap ; input
+  tap` starts a fresh `input` JVM per tap, so the inter-tap gap overran the platform's double-tap
+  window even chained in one round-trip. The adb driver now drives a double-tap with a raw
+  `sendevent` touch sequence (`bajutsu/adb.py`'s `sendevent_double_tap_cmd` + `parse_touch_device` /
+  `scale_to_touch`, wired in `bajutsu/drivers/adb.py`): two protocol-B contacts fired in one `adb
+  shell` round-trip, so only `sendevent`'s tiny native startup — not a JVM — sits between the taps,
+  keeping the gap inside the window. `sendevent` writes `/dev/input` directly, so it needs root and
+  the concrete touchscreen node: the driver probes `getevent -lp` for the node (the emulator lists
+  several identical `virtio_input_multi_touch_*` nodes but wires only the lowest-numbered `eventN` to
+  the display) and gates on `id -u`, falling back to `input tap` when either is missing — so a
+  non-rooted device is never worse off than before. The `e2e` Makefile target roots the emulator
+  (`adb root`, allowed on the google_apis image) before the run. Verified on a local arm64 emulator
+  (3/3 runs pass, the double-tap counter reaches 1) and the Python gate (`make check`) is green.
+  `gestures_multitouch` (pinch / rotate) still needs multi-touch (adb is single-touch), and the
+  **visual** dimension of unit 4 still needs a CI-captured baseline. Item stays **In progress**.
 
 ## References
 
