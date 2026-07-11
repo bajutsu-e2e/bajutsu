@@ -9,7 +9,7 @@
 | 提案者 | [@hirosassa](https://github.com/hirosassa) |
 | 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0220") |
-| 実装 PR | [#904](https://github.com/bajutsu-e2e/bajutsu/pull/904), [#907](https://github.com/bajutsu-e2e/bajutsu/pull/907), [#919](https://github.com/bajutsu-e2e/bajutsu/pull/919) |
+| 実装 PR | [#904](https://github.com/bajutsu-e2e/bajutsu/pull/904), [#907](https://github.com/bajutsu-e2e/bajutsu/pull/907), [#919](https://github.com/bajutsu-e2e/bajutsu/pull/919), [#922](https://github.com/bajutsu-e2e/bajutsu/pull/922) |
 | トピック | 自己修復トリアージ（M4） |
 <!-- /BE-METADATA -->
 
@@ -119,7 +119,7 @@ DB を対象とした Run 横断のフラッキー検出には、「同一シナ
   エージェントはありません）なので、`--flaky` は `--ai` を必須にします。あくまで助言的で、判定は Run が
   すでに下しており、これは説明と提案だけを行い、判定経路には決して乗りません。修正の範囲は的を絞った
   構造化編集（`renameId` / `addIndex` / `raiseTimeout`）で、YAML 全体の書き直しはフォローアップに送りました。
-  これで後半、そして本項目が完了します。
+  これで後半、そして本項目が完了します（[#922](https://github.com/bajutsu-e2e/bajutsu/pull/922)）。
 
 ## 参考
 

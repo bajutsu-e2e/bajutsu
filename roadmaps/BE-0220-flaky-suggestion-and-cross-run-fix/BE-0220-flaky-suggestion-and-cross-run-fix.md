@@ -9,7 +9,7 @@
 | Author | [@hirosassa](https://github.com/hirosassa) |
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0220") |
-| Implementing PR | [#904](https://github.com/bajutsu-e2e/bajutsu/pull/904), [#907](https://github.com/bajutsu-e2e/bajutsu/pull/907), [#919](https://github.com/bajutsu-e2e/bajutsu/pull/919) |
+| Implementing PR | [#904](https://github.com/bajutsu-e2e/bajutsu/pull/904), [#907](https://github.com/bajutsu-e2e/bajutsu/pull/907), [#919](https://github.com/bajutsu-e2e/bajutsu/pull/919), [#922](https://github.com/bajutsu-e2e/bajutsu/pull/922) |
 | Topic | Self-healing triage (M4) |
 <!-- /BE-METADATA -->
 
@@ -206,7 +206,7 @@ first-class.
   rule-based agent), so `--flaky` requires `--ai`; it stays advisory (the runs decided pass/fail,
   this only explains and proposes — never the verdict path). The fix set is the targeted structured
   edits (`renameId` / `addIndex` / `raiseTimeout`); a full YAML rewrite is deferred to a follow-up.
-  This completes Half 2 and the item.
+  This completes Half 2 and the item ([#922](https://github.com/bajutsu-e2e/bajutsu/pull/922)).
 
 ## References
 
