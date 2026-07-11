@@ -9,7 +9,7 @@
 | Author | [@hirosassa](https://github.com/hirosassa) |
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0230") |
-| Implementing PR | _pending_ |
+| Implementing PR | [#932](https://github.com/bajutsu-e2e/bajutsu/pull/932) |
 | Topic | Development infrastructure (contributor workflow) |
 | Related | [BE-0089](../BE-0089-merge-time-be-id-allocation/BE-0089-merge-time-be-id-allocation.md) |
 <!-- /BE-METADATA -->
@@ -232,7 +232,7 @@ either skill discovers the flow. No other skill changes behavior.
 
 Log:
 
-- _pending_ — All five units landed together: `implement-be` step 10 became steps 10–12
+- [#932](https://github.com/bajutsu-e2e/bajutsu/pull/932) — All five units landed together: `implement-be` step 10 became steps 10–12
   (auto Draft PR → compact → paced `/loop /pr-followup` with its stop conditions, escalation
   triggers, and backstops), `pr-followup` gained a framing note, `CLAUDE.md` PR rules split into
   BE-creation vs. implementation paths, and the two skills now cross-reference the composed tail.
