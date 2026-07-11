@@ -106,9 +106,11 @@ class Repository(Protocol):
         """The run with *run_id*, or None if there is none."""
 
     def list_runs(
-        self, *, org_id: str, project_id: str | None = None, limit: int = 50
+        self, *, org_id: str, project_id: str | None = None, limit: int | None = 50
     ) -> list[RunRecord]:
-        """An org's runs, newest first, capped at *limit*; only *project_id*'s when given (BE-0225)."""
+        """An org's runs, newest first, capped at *limit*; ``None`` means unbounded (the per-project
+        `ProjectRegistry.run_ids` partition, which promises *all* of a project's runs). Only
+        *project_id*'s when given (BE-0225)."""
 
     def create_project(self, project: ProjectRecord) -> None:
         """Register *project*, or update it in place when its id already exists (BE-0225).
@@ -293,7 +295,7 @@ class SqlRepository:
             return _to_record(row) if row is not None else None
 
     def list_runs(
-        self, *, org_id: str, project_id: str | None = None, limit: int = 50
+        self, *, org_id: str, project_id: str | None = None, limit: int | None = 50
     ) -> list[RunRecord]:
         from sqlalchemy import select
         from sqlalchemy.orm import Session

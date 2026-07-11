@@ -22,6 +22,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
+    from bajutsu.serve.project_registry import ProjectRegistry
     from bajutsu.serve.provider_store import ProviderSettingsStore
     from bajutsu.serve.server.db import Repository
     from bajutsu.serve.server.oauth import OAuthClient
@@ -324,6 +325,11 @@ class ServeState:
     # server backend assigns a SqlRepository only when BAJUTSU_DATABASE_URL is set, so behavior is
     # unchanged without one. Annotated as a string (lazy) so the default path never loads SQLAlchemy.
     repository: Repository | None = None
+    # The project registry seam (BE-0225): list/switch the configs this serve holds and partition
+    # runs by project. Local serve wires a JSON-file-backed store; a server backend with a database
+    # wires the DB-backed one, else the same local JSON store. None leaves the single-config behavior
+    # unchanged (no hub) — set in `_build_state`/`_build_server_state`, like the seams above.
+    project_registry: ProjectRegistry | None = None
     simctl: _simctl.RunFn = (
         _simctl._real_run
     )  # runs `xcrun simctl …` (booting devices, listing them)
