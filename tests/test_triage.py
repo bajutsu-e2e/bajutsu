@@ -797,7 +797,8 @@ def test_cli_flaky_requires_ai() -> None:
 
 def _fake_cross_run_agent(fix: Fix | None) -> type:
     class _FakeAgent:
-        def __init__(self, *args: object, **kwargs: object) -> None: ...
+        def __init__(self, *args: object, **kwargs: object) -> None:
+            pass
 
         def triage_flaky(self, context: triage.CrossRunTriageContext) -> triage.Triage:
             assert context.scenario == "login"
