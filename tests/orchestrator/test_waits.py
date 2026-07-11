@@ -159,6 +159,71 @@ def test_wait_skips_sleep_when_query_exceeds_poll_interval() -> None:
     assert all(s < 0.01 for s in sleeps), f"expected near-zero sleeps, got {sleeps}"
 
 
+class _LogicalClock:
+    """A clock whose only motion is `sleep` advancing logical time (no real waiting)."""
+
+    def __init__(self) -> None:
+        self._t = 0.0
+
+    def now(self) -> float:
+        return self._t
+
+    def sleep(self, seconds: float) -> None:
+        self._t += seconds
+
+
+def _slow_render_driver(clock: _LogicalClock, reveal_at: float) -> base.Driver:
+    """A driver standing in for a slow (software) renderer: the target only presents once
+    logical time passes `reveal_at` — modelling the CI x86_64 emulator taking longer than a
+    hardware-accelerated one to draw a sheet/cover."""
+
+    class SlowRenderDriver:
+        name = "slow-render"
+
+        def query(self) -> list[base.Element]:
+            return [el("target", "T")] if clock.now() >= reveal_at else []
+
+    return SlowRenderDriver()  # type: ignore[return-value]
+
+
+def test_wait_floor_env_extends_the_ceiling(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    """BAJUTSU_MIN_WAIT_TIMEOUT raises a wait's ceiling so a slow renderer has time to present,
+    without editing the shared scenario (its `timeout: 5` is the same across every backend)."""
+    from bajutsu.orchestrator import _wait
+    from bajutsu.scenario import Wait
+
+    # The sheet presents at t=8s — past the shared 5s ceiling, under a 15s floor.
+    reveal_at = 8.0
+    w = Wait.model_validate({"for": {"id": "target"}, "timeout": 5.0})
+
+    # Without the floor, the 5s ceiling times out before the slow renderer draws the element.
+    clock = _LogicalClock()
+    ok, reason = _wait(_slow_render_driver(clock, reveal_at), w, clock)
+    assert not ok
+    assert "timeout" in reason
+
+    # The Android lane opts in to a larger floor, so the same 5s scenario tolerates the slow draw.
+    monkeypatch.setenv("BAJUTSU_MIN_WAIT_TIMEOUT", "15")
+    clock2 = _LogicalClock()
+    ok2, reason2 = _wait(_slow_render_driver(clock2, reveal_at), w, clock2)
+    assert ok2
+    assert reason2 == ""
+
+
+def test_wait_floor_never_shrinks_a_larger_scenario_timeout(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    """The floor is a minimum, not an override: a scenario asking for more than the floor keeps it."""
+    from bajutsu.orchestrator import _wait
+    from bajutsu.scenario import Wait
+
+    monkeypatch.setenv("BAJUTSU_MIN_WAIT_TIMEOUT", "3")
+    # Element presents at t=8s: below the 3s floor but within the scenario's own 10s ceiling.
+    w = Wait.model_validate({"for": {"id": "target"}, "timeout": 10.0})
+    clock = _LogicalClock()
+    ok, reason = _wait(_slow_render_driver(clock, 8.0), w, clock)
+    assert ok
+    assert reason == ""
+
+
 def test_wait_still_sleeps_when_query_is_fast() -> None:
     """When query() is fast, sleep remains at _POLL as before."""
     from bajutsu.orchestrator import _POLL, _wait

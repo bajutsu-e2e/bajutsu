@@ -136,6 +136,18 @@ within the prime directives.
   renderer, and `gestures` (multi-touch, BE-0210) / `controls` (segmented-control value) / `notices`
   (deep scroll) need their own BE-0007 follow-up slices. The **visual** dimension of unit 4 still
   needs a CI-captured baseline. Item stays **In progress**.
+- 2026-07-11 — Unit 5 (sheet/cover flows): `components` and `modals` rejoin `E2E_SCENARIOS`. They
+  pass on the local arm64 emulator, but their shared 5s sheet-open waits risked timing out on the CI
+  x86_64 software renderer, which draws a modal more slowly. Rather than retune the shared scenarios
+  per backend (their `timeout: 5` is the same on every backend), the Android lane raises the wait
+  *ceiling*: `bajutsu/orchestrator/waits.py` now honours `BAJUTSU_MIN_WAIT_TIMEOUT` as a floor under
+  each wait's own timeout, and `demos/showcase/android/Makefile`'s `e2e` target exports it (default
+  15s). A condition wait returns the instant it is satisfied, so the larger ceiling is a safe upper
+  bound, not a fixed delay (prime directive 2 holds — still a condition wait, never a fixed sleep),
+  and no other backend is affected. Documented in `docs/ci.md` (+ ja). The remaining held-out
+  scenarios stay out for reasons unrelated to timing: `gestures` (multi-touch, BE-0210), `controls`
+  (segmented-control value), `notices` (deep scroll) — each a BE-0007 follow-up. The **visual**
+  dimension of unit 4 still needs a CI-captured baseline. Item stays **In progress**.
 
 ## References
 
