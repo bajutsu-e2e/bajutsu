@@ -51,6 +51,7 @@ bajutsu run --target <name> [--scenario <file.yaml>] [options]
 | `--runs-dir` | `runs` | run ツリーを書き出すディレクトリ。作業ディレクトリと出力先を分けられる。`serve` は、アクティブな config が別のツリー（Git チェックアウトやアップロードされたバンドル）からバインドされているとき、そのツリーで走らせつつ run を `serve` のストアに残すためにこれを使う（[BE-0073](../../roadmaps/BE-0073-serve-zip-bundle-upload/BE-0073-serve-zip-bundle-upload-ja.md)） |
 | `--evidence-store` | "" (環境変数 `BAJUTSU_EVIDENCE_STORE` も可) | run の後に、run ツリー全体をこの URI のオブジェクトストレージへアップロードする。`s3://bucket/prefix`（AWS / R2 / MinIO）または `gs://bucket/prefix`（Google Cloud Storage）を指定する。リモートのレイアウトはローカルと同じ構造を prefix 配下に再現するので（`<prefix><runId>/…`）、アップロード先のパスがクラウドのライフサイクルポリシーを選ぶことになる（main ブランチの証跡は保持し、feature ブランチの証跡は短期で失効させる、など）。**判定の後**に走るので、アップロードが失敗しても警告を出すだけで pass/fail には影響しない。`s3` または `gcs` の extra が必要（[BE-0110](../../roadmaps/BE-0110-evidence-store-uri/BE-0110-evidence-store-uri-ja.md)） |
 | `--config` | `bajutsu.config.yaml` | config ファイル |
+| `--project` | "" | [`project add`](#project) で登録したプロジェクトを名前で実行します。保存された config ソースを `--config` の spec に戻して実行する、CI や cron のステップが呼ぶヘッドレスなトリガーで、`POST /api/projects/<name>/run` の CLI 版です（[BE-0225](../../roadmaps/BE-0225-config-project-hub/BE-0225-config-project-hub.md)）。`--config` とは同時に指定できません |
 
 - 証跡は `FileSink(runs/<runId>, udid=..., log_predicate=...)` に書きます（[evidence](evidence.md#sink証跡の出力先)）。
 - `runId` は `YYYYMMDD-HHMMSS`。
@@ -63,6 +64,19 @@ bajutsu run --target <name> [--scenario <file.yaml>] [options]
 bajutsu run --target showcase-swiftui --udid <UDID> --backend idb --no-erase            # アプリのシナリオディレクトリ全体
 bajutsu run --scenario demos/showcase/scenarios/smoke.yaml --target showcase-swiftui --no-erase   # 単一ファイル
 ```
+
+## `project`
+
+**config プロジェクトハブ**をヘッドレスに扱う CLI です。`serve` が HTTP で公開するのと同じストアを操作するので、ここで登録したプロジェクトは web のハブからも見え、その逆も成り立ちます（[BE-0225](../../roadmaps/BE-0225-config-project-hub/BE-0225-config-project-hub.md)）。プロジェクトは config ソースへの名前付きバインディングで、上の `run --project <name>` がそれを解決して実行します。ストアは `BAJUTSU_DATABASE_URL` が設定されていれば DB、なければ runs ディレクトリ（`--runs`、既定は `runs`）の隣に置く on-disk の JSON です。各コマンドはローカルでは単一の `default` org に解決します。
+
+```bash
+bajutsu project add <name> --config <source>   # プロジェクトを登録（または再バインド）。最初の 1 件がアクティブになる
+bajutsu project ls                              # プロジェクト一覧。アクティブなものは先頭の '*' で示す
+bajutsu project use <name>                      # 指定プロジェクトをアクティブなバインディングにする
+bajutsu project rm <name>                       # プロジェクトを登録解除する（その run はディスク上に残る）
+```
+
+`--config` はローカルパスと Git spec（`github:owner/repo@ref:path`）を受け付けます。[`run --config`](#run) と同じ形式です（[BE-0063](../../roadmaps/BE-0063-git-config-source/BE-0063-git-config-source.md)）。実行のタイミングは `run --project` を呼ぶ CI や cron の側が持ち、Bajutsu は持ちません。
 
 ## `doctor`
 

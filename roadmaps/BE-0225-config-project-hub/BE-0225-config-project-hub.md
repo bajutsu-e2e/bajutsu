@@ -177,7 +177,7 @@ A thin CLI mirror so CI and cron can drive the hub headlessly, without the Web U
 - [x] 2 — Persistence: the `ProjectRegistry` seam (DB-backed when a repository is present, on-disk JSON otherwise), run history partitioned by project on both paths (the `project_id` column with a DB, a project→run-ids index without); auto-register the launch config as the active project.
 - [x] 3 — API: the five `/api/projects…` endpoints, org-scoped, additive to the existing single-config ones. All three unit-2 #921 review carry-overs land here: the resolved `project_id` travels through `job_spec` so a remote worker's `_persist_run` stamps it; auto-activation is org-aware (the first project registered in an org with no active one becomes active, via `POST /api/projects`); and an explicit `name` disambiguates two configs from the same Git repo.
 - [ ] 4 — UI: the project switcher + projects list, rebinding the active project without a restart.
-- [ ] 5 — CLI: `bajutsu project add/ls/rm` and `bajutsu run --project <name>` as the headless trigger.
+- [x] 5 — CLI: `bajutsu project add/ls/rm` and `bajutsu run --project <name>` as the headless trigger.
 
 ### Log
 
@@ -224,6 +224,16 @@ A thin CLI mirror so CI and cron can drive the hub headlessly, without the Web U
   disambiguates two configs from the same Git repo. Running a project other than the active binding is a
   409 — the live rebind is unit 4's switcher. MVP scope confirmed with the author. Units 4 (UI) and 5
   (CLI) remain.
+- 2026-07-11 — Unit 5, the CLI: added `bajutsu/cli/commands/project.py` (`project add` / `ls` / `use`
+  / `rm`) and `run --project <name>`, both over the same store `serve` uses — the DB `Repository` when
+  `BAJUTSU_DATABASE_URL` is set, else the on-disk JSON beside the runs dir — so a CLI-registered
+  project shows up in the web hub and vice versa. The shared `bajutsu/cli/_projects.py` holds
+  `open_registry` and the `source_from_config` / `config_from_source` pair; the second is the inverse
+  of the first, reconstructing a `--config` spec (preferring a pinned `sha` over a moving `ref`) so
+  `run --project X` resolves X's stored source and drives the ordinary run path. Unlike the API
+  trigger, the stateless CLI resolves the config fresh each call and so runs any named project without
+  the active-binding switch (no 409). `upload` sources have no local checkout and are refused. Unit 4
+  (UI) remains.
 
 ## References
 

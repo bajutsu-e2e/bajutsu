@@ -54,6 +54,7 @@ to run. Pass `--scenario <file>` to run a single file instead.
 | `--runs-dir` | `runs` | directory to write the run tree into. Lets a caller run from one working directory but persist the run elsewhere — `serve` uses it when the active config is bound from a different tree (a Git checkout or an uploaded bundle) to run from that tree while keeping the run in `serve`'s store ([BE-0073](../roadmaps/BE-0073-serve-zip-bundle-upload/BE-0073-serve-zip-bundle-upload.md)) |
 | `--evidence-store` | "" (also `BAJUTSU_EVIDENCE_STORE`) | after the run, upload the whole run tree to object storage at this URI — `s3://bucket/prefix` (AWS / R2 / MinIO) or `gs://bucket/prefix` (Google Cloud Storage). The remote layout mirrors the local one under the prefix (`<prefix><runId>/…`), so the upload path selects the cloud lifecycle policy (retain main-branch evidence, expire feature-branch evidence). Runs **after** the verdict, so an upload failure is reported as a warning and can't affect pass/fail. Needs the `s3` or `gcs` extra ([BE-0110](../roadmaps/BE-0110-evidence-store-uri/BE-0110-evidence-store-uri.md)) |
 | `--config` | `bajutsu.config.yaml` | the config file |
+| `--project` | "" | run a project registered with [`project add`](#project) by name — resolves its stored config source back to a `--config` spec and runs it. The headless trigger a CI/cron step calls, the CLI mirror of `POST /api/projects/<name>/run` ([BE-0225](../roadmaps/BE-0225-config-project-hub/BE-0225-config-project-hub.md)). Mutually exclusive with `--config` |
 
 - Evidence is written to `FileSink(runs/<runId>, udid=..., log_predicate=...)`
   ([evidence](evidence.md#sinks-where-evidence-goes)).
@@ -67,6 +68,25 @@ to run. Pass `--scenario <file>` to run a single file instead.
 bajutsu run --target showcase-swiftui --udid <UDID> --backend idb --no-erase            # the app's whole scenarios dir
 bajutsu run --scenario demos/showcase/scenarios/smoke.yaml --target showcase-swiftui --no-erase   # one file
 ```
+
+## `project`
+
+The **config project hub** as a headless CLI — the same store `serve` exposes over HTTP, so a
+project registered here is visible in the web hub and vice versa ([BE-0225](../roadmaps/BE-0225-config-project-hub/BE-0225-config-project-hub.md)).
+A project is a named binding to a config source; `run --project <name>` (above) resolves and runs
+it. The store is the DB when `BAJUTSU_DATABASE_URL` is set, else the on-disk JSON beside the runs
+directory (`--runs`, default `runs`). Every command resolves to the single `default` org locally.
+
+```bash
+bajutsu project add <name> --config <source>   # register (or rebind) a project; first one becomes active
+bajutsu project ls                              # list projects; the active one is marked with a leading '*'
+bajutsu project use <name>                      # make a project the active binding
+bajutsu project rm <name>                       # deregister a project (its runs are retained on disk)
+```
+
+`--config` accepts a local path or a Git spec (`github:owner/repo@ref:path`), the same forms
+[`run --config`](#run) takes ([BE-0063](../roadmaps/BE-0063-git-config-source/BE-0063-git-config-source.md)).
+The cadence lives in the CI/cron system that calls `run --project`, not in Bajutsu.
 
 ## `doctor`
 

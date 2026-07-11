@@ -176,7 +176,7 @@ CI や cron が Web UI なしにハブをヘッドレスで駆動できるよう
 - [x] 2. 永続化：`ProjectRegistry` シーム（リポジトリがあれば DB 上、なければディスク上の JSON）、どちらの経路でもプロジェクト単位に分割した実行履歴（DB なら `project_id` 列、なければプロジェクト→実行 ID の索引）、起動時 config の active プロジェクトへの自動登録。
 - [x] 3. API：org スコープの五つの `/api/projects…` エンドポイント（既存の単一 config 向けへの追加）。#921 のレビューで挙がったユニット 2 からの持ち越し三点をここで解決しました。解決済みの `project_id` は `job_spec` に載ってリモートワーカーまで届き、ワーカー側の `_persist_run` が刻印します。自動有効化は org 対応となり、active プロジェクトのない org で最初に登録したプロジェクト（`POST /api/projects`）が active になります。明示的な `name` により、同じ Git リポジトリの二つの config を区別できます。
 - [ ] 4. UI：プロジェクトスイッチャーとプロジェクト一覧。再起動なしで active プロジェクトを切り替える。
-- [ ] 5. CLI：`bajutsu project add/ls/rm` と、ヘッドレスなトリガーとしての `bajutsu run --project <name>`。
+- [x] 5. CLI：`bajutsu project add/ls/rm` と、ヘッドレスなトリガーとしての `bajutsu run --project <name>`。
 
 ### ログ
 
@@ -228,6 +228,16 @@ CI や cron が Web UI なしにハブをヘッドレスで駆動できるよう
   同じ Git リポジトリの二つの config を区別します。active でないプロジェクトの実行は 409 です。ライブな
   再バインドはユニット 4 のスイッチャーが担います。この MVP の範囲は作者と確認しました。ユニット 4
   （UI）と 5（CLI）が残ります。
+- 2026-07-11：ユニット 5 の CLI を実装しました。`bajutsu/cli/commands/project.py`（`project add` /
+  `ls` / `use` / `rm`）と `run --project <name>` を追加しました。どちらも `serve` と同じストアを操作
+  します。`BAJUTSU_DATABASE_URL` があれば DB の `Repository`、なければ runs ディレクトリの隣の on-disk
+  JSON です。CLI で登録したプロジェクトは web のハブにも現れ、その逆も成り立ちます。共有モジュール
+  `bajutsu/cli/_projects.py` が `open_registry` と `source_from_config` / `config_from_source` の組を
+  持ちます。後者は前者の逆変換で、`--config` の spec を復元し（動く `ref` より固定の `sha` を優先）、
+  `run --project X` は X の保存済みソースを解決して通常の run 経路を駆動します。API のトリガーと違い、
+  ステートレスな CLI は呼び出しごとに config を解決し直すので、active バインディングへの切り替えなしに
+  任意の名前のプロジェクトを実行します（409 はありません）。`upload` ソースはローカルにチェックアウトが
+  ないため拒否します。ユニット 4（UI）が残ります。
 
 ## 参考
 

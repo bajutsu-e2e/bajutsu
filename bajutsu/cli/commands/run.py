@@ -24,6 +24,7 @@ from bajutsu.anthropic_client import key_env as ac_key_env
 from bajutsu.artifact_perms import make_run_dir
 from bajutsu.assertions import GoldenContext
 from bajutsu.backends import ensure_web_runtime, select_actuator
+from bajutsu.cli._projects import config_from_source, open_registry
 from bajutsu.cli._shared import (
     DEFAULT_CONFIG,
     _ai_redactor,
@@ -702,6 +703,27 @@ def _finish(
     raise typer.Exit(0 if ok else 1)
 
 
+def _resolve_project_config(project: str, runs_dir: str) -> str:
+    """The `--config` spec for the named project — so `run --project X` is `run --config <X's source>`.
+
+    Reads the same project store the `project` subcommands and `serve` share (the DB when
+    `BAJUTSU_DATABASE_URL` is set, else the on-disk JSON beside *runs_dir*), resolves the project in
+    the local `default` org, and reconstructs its config spec. Unlike the API trigger — which runs the
+    serve-bound active project only — the CLI is stateless and resolves the config fresh each call, so
+    it runs any named project without a switch.
+    """
+    from bajutsu.serve.orgs import DEFAULT_ORG
+
+    registry = open_registry(runs_dir)
+    record = registry.get(org_id=DEFAULT_ORG, name=project)
+    if record is None:
+        raise typer.BadParameter(f"no project named {project!r}", param_hint="--project")
+    try:
+        return config_from_source(record.source)
+    except ValueError as e:
+        raise typer.BadParameter(str(e), param_hint="--project") from e
+
+
 def run(
     # --- Target & scenario selection ---
     target_name: str = typer.Option(..., "--target"),
@@ -827,6 +849,13 @@ def run(
     ),
     # --- Config sourcing ---
     config: str = typer.Option(DEFAULT_CONFIG),
+    project: str = typer.Option(
+        "",
+        "--project",
+        help="run a project registered with `bajutsu project add` by name — resolves its config "
+        "source and runs it, the headless trigger a CI/cron step calls (BE-0225). Mutually "
+        "exclusive with --config",
+    ),
     config_offline: bool = typer.Option(
         False,
         "--config-offline",
@@ -843,6 +872,14 @@ def run(
     Pass/fail is machine-only; the sole AI is the alert guard (on by default per scenario), which
     only fires to clear an OS prompt that blocked a step — see each scenario's `dismissAlerts`.
     """
+    # `--project` names a registered project; resolve its config source into the ordinary `--config`
+    # spec so the rest of the run path is unchanged — a project only says where the config comes from.
+    if project:
+        if config != DEFAULT_CONFIG:
+            raise typer.BadParameter(
+                "pass one of --project or --config, not both", param_hint="--project"
+            )
+        config = _resolve_project_config(project, runs_dir)
     # Resolve the run's inputs from the flags — each step is an independently testable helper — then
     # assemble the plan and hand it to dispatch/finish. `run` itself stays a thin sequence.
     eff, config_source, engines = _resolve_config_and_engines(
