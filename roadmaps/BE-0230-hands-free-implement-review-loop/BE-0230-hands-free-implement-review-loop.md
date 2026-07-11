@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-hands-free-implement-review-loop-ja.md)
+**English** · [日本語](BE-0230-hands-free-implement-review-loop-ja.md)
 
-# BE-XXXX — Hands-free implement-review loop: auto-PR and pr-followup polling in implement-be
+# BE-0230 — Hands-free implement-review loop: auto-PR and pr-followup polling in implement-be
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-hands-free-implement-review-loop.md) |
+| Proposal | [BE-0230](BE-0230-hands-free-implement-review-loop.md) |
 | Author | [@hirosassa](https://github.com/hirosassa) |
 | Status | **Proposal** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0230") |
 | Topic | Development infrastructure (contributor workflow) |
 | Related | [BE-0089](../BE-0089-merge-time-be-id-allocation/BE-0089-merge-time-be-id-allocation.md) |
 <!-- /BE-METADATA -->

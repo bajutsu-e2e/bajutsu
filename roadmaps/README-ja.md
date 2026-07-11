@@ -742,7 +742,9 @@ AI を使う経路（`record` ／ `crawl` ／ `triage --ai` ／ `run --apply`）
 ### 開発基盤（コントリビュータ体験）
 
 <!-- GENERATED:proposals-developer-experience -->
-
+| ID | 項目 | 状態 |
+|---|---|---|
+| [BE-0230](BE-0230-hands-free-implement-review-loop/BE-0230-hands-free-implement-review-loop-ja.md) | implement から review まで一気通貫にする自動ループ（implement-be の auto-PR と pr-followup ポーリング） | 提案 |
 <!-- /GENERATED:proposals-developer-experience -->
 
 ### コードベース品質・技術的負債

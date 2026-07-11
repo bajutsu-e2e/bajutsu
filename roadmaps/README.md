@@ -749,7 +749,9 @@ Keeping the autonomous crawl fast and its code lean as it grows.
 ### Development infrastructure (contributor workflow)
 
 <!-- GENERATED:proposals-developer-experience -->
-
+| ID | Item | Status |
+|---|---|---|
+| [BE-0230](BE-0230-hands-free-implement-review-loop/BE-0230-hands-free-implement-review-loop.md) | Hands-free implement-review loop: auto-PR and pr-followup polling in implement-be | Proposal |
 <!-- /GENERATED:proposals-developer-experience -->
 
 ### Codebase quality & technical debt
