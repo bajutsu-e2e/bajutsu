@@ -76,7 +76,7 @@ directive の枠内にとどまります。
 - [x] 起動したエミュレータへの Android showcase のビルドとインストール。
 - [x] 通る中核シナリオを `--backend android` で実行。
 - [x] visual／golden ベースラインの同等性チェックのうち、**golden**（要素ツリー）の次元（Compose の Stable カタログ）。
-- [x] visual／golden ベースラインの同等性チェックのうち、**visual**（スクリーンショット）の次元。シナリオと `e2e-visual` ターゲット（`visual` extra 付き）、CI ステップは配線済みです。この x86_64 レーンで採取したベースライン `stable.png` を commit し、レーンの実行は緑になりました。
+- [x] visual／golden ベースラインの同等性チェックのうち、**visual**（スクリーンショット）の次元。シナリオと `e2e-visual` ターゲット（`visual` extra 付き）、CI ステップは配線済みです。この x86_64 レーンで採取したベースライン `stable.png` をコミットし、レーンの実行は緑になりました。
 - [ ] アクチュエーション忠実度とデバイス制御のスライスの着地に合わせたシナリオ集合の拡張。
 
 ### ログ
@@ -194,21 +194,21 @@ directive の枠内にとどまります。
   タブバーの移動は不要です）を `visual` アサーションで固定します。adb ドライバは `screenshot` 能力を
   提供しているため preflight を通り、既存の画素比較エンジン（`bajutsu/visual.py`）をそのまま再利用します。
   上部のステータスバーはマスクするので、時計が差分を揺らすことはありません。新しい `e2e-visual` ターゲット
-  （`demos/showcase/android/Makefile`）は、commit する専用ディレクトリ
+  （`demos/showcase/android/Makefile`）は、コミットする専用ディレクトリ
   `demos/showcase/scenarios/visual/baselines_android/` を `--baselines` で指し示して実行し、
   `android-e2e.yml` が同じエミュレータセッションで `e2e-golden` の後に実行します。要素ツリーの golden は
   フィールド単位の比較なので arm64 のベースラインが x86_64 でも通りますが、画素のベースラインはホスト依存
   です。CI の x86_64 ソフトウェアレンダラ（swiftshader）とローカルの arm64 エミュレータはピクセル単位で
   食い違うため、ベースラインをローカルで採取できません。このレーンで採取する必要があります。最初の CI 実行
   はベースラインの不在を報告しますが、撮影したスクリーンショットを `android-e2e-run` アーティファクトに
-  アップロードします。それを昇格させ（`bajutsu approve`）、`stable.png` を commit するとチェックが緑に
+  アップロードします。それを昇格させ（`bajutsu approve`）、`stable.png` をコミットするとチェックが緑に
   なります（手順はベースラインディレクトリの README に記載しています）。`docs/ci.md`（および ja）に記載
   しました。ローカルの arm64 での予備実行は省きました（新しい worktree にビルド済みの APK がなく、この
   シナリオは検証済みの `golden_android.yaml` のツインで、差分は検証済みの `visual` アサーションだけです。
   必須の CI 採取の往復が端から端まで検証します）。その後、x86_64 のベースライン `stable.png` をレーンの
-  `android-e2e-run` アーティファクトから採取して commit しました。あわせて `e2e-visual` ターゲットに `visual`
+  `android-e2e-run` アーティファクトから採取してコミットしました。あわせて `e2e-visual` ターゲットに `visual`
   extra（Pillow）を渡しました。adb バックエンドは extra を持たず、ベースラインが無いあいだは Pillow を読み込む
-  前に「ベースラインなし」で短絡するため、この不足はベースラインの commit 後に初めて表面化しました。両方が
+  前に「ベースラインなし」で短絡するため、この不足はベースラインのコミット後に初めて表面化しました。両方が
   そろってレーンの実行は緑になり、チェックリストの箱もチェック済みです。残るアクチュエーション忠実度の
   スライスのぶん、項目は**実装中**のままです。
 
