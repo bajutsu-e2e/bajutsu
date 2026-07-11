@@ -9,7 +9,7 @@
 | 提案者 | [@hirosassa](https://github.com/hirosassa) |
 | 状態 | **実装中** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0208") |
-| 実装 PR | [#851](https://github.com/bajutsu-e2e/bajutsu/pull/851)、[#880](https://github.com/bajutsu-e2e/bajutsu/pull/880)、[#899](https://github.com/bajutsu-e2e/bajutsu/pull/899)、[#901](https://github.com/bajutsu-e2e/bajutsu/pull/901)、[#906](https://github.com/bajutsu-e2e/bajutsu/pull/906)、[#910](https://github.com/bajutsu-e2e/bajutsu/pull/910)、[#924](https://github.com/bajutsu-e2e/bajutsu/pull/924)、[#925](https://github.com/bajutsu-e2e/bajutsu/pull/925)、[#927](https://github.com/bajutsu-e2e/bajutsu/pull/927) |
+| 実装 PR | [#851](https://github.com/bajutsu-e2e/bajutsu/pull/851)、[#880](https://github.com/bajutsu-e2e/bajutsu/pull/880)、[#899](https://github.com/bajutsu-e2e/bajutsu/pull/899)、[#901](https://github.com/bajutsu-e2e/bajutsu/pull/901)、[#906](https://github.com/bajutsu-e2e/bajutsu/pull/906)、[#910](https://github.com/bajutsu-e2e/bajutsu/pull/910)、[#924](https://github.com/bajutsu-e2e/bajutsu/pull/924)、[#925](https://github.com/bajutsu-e2e/bajutsu/pull/925)、[#927](https://github.com/bajutsu-e2e/bajutsu/pull/927)、[#934](https://github.com/bajutsu-e2e/bajutsu/pull/934) |
 | トピック | Platform expansion (Android / Web / Flutter) |
 | 関連 | [BE-0007](../BE-0007-android-backend/BE-0007-android-backend-ja.md)、[BE-0223](../BE-0223-adb-tab-bar-navigation/BE-0223-adb-tab-bar-navigation-ja.md) |
 <!-- /BE-METADATA -->
