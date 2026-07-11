@@ -198,6 +198,104 @@ def test_start_run_carries_the_active_project_id_onto_the_job(tmp_path: Path) ->
     assert state.jobs[payload["jobId"]].project_id == pid
 
 
+def _file_config(path: Path, target: str = "demo") -> Path:
+    """A minimal, loadable config file so `bind_config` accepts it when a project is activated."""
+    path.write_text(
+        f"defaults: {{ backend: [idb] }}\ntargets:\n  {target}: {{ bundleId: com.example.{target} }}\n",
+        encoding="utf-8",
+    )
+    return path
+
+
+def test_activate_switches_the_active_project_and_rebinds_the_config(tmp_path: Path) -> None:
+    # A file source can only bind when confined to the browse root, so the hub's root is tmp_path.
+    state = _hub_state(tmp_path, root=tmp_path)
+    first = _file_config(tmp_path / "first.config.yaml", "first")
+    second = _file_config(tmp_path / "second.config.yaml", "second")
+    ops.register_project(
+        state, {"name": "first", "source": {"kind": "file", "locator": {"path": str(first)}}}
+    )
+    ops.register_project(
+        state, {"name": "second", "source": {"kind": "file", "locator": {"path": str(second)}}}
+    )
+    reg = state.project_registry
+    assert reg is not None
+
+    payload, status = ops.activate_project(state, "second")
+
+    assert status == 200
+    assert payload["active"] is True
+    # The active project flips *and* the whole UI now runs against the switched-to config, without a
+    # restart — the hub behavior unit 4 owns (unit 3 refused a non-active run with a 409).
+    assert reg.resolve_active(org_id="default").name == "second"  # type: ignore[union-attr]
+    assert Path(state.config).resolve() == second.resolve()
+
+
+def test_run_project_after_activating_it_dispatches(tmp_path: Path) -> None:
+    state = _hub_state(
+        tmp_path,
+        root=tmp_path,
+        popen=fake_popen(["PASS  runs/20260711-5/manifest.json\n"]),  # type: ignore[arg-type]
+    )
+    first = _file_config(tmp_path / "first.config.yaml", "first")
+    second = _file_config(tmp_path / "second.config.yaml", "second")
+    ops.register_project(
+        state, {"name": "first", "source": {"kind": "file", "locator": {"path": str(first)}}}
+    )
+    ops.register_project(
+        state, {"name": "second", "source": {"kind": "file", "locator": {"path": str(second)}}}
+    )
+
+    # Before switching, running the non-active project is refused (unit 3's 409).
+    _, before = ops.run_project(state, "second", {"target": "demo", "scenario": "smoke.yaml"})
+    assert before == 409
+
+    ops.activate_project(state, "second")
+    payload, status = ops.run_project(state, "second", {"target": "demo", "scenario": "smoke.yaml"})
+
+    assert status == 200 and "jobId" in payload
+
+
+def test_activate_unknown_project_is_404(tmp_path: Path) -> None:
+    state = _hub_state(tmp_path)
+    _, status = ops.activate_project(state, "nope")
+    assert status == 404
+
+
+def test_activate_a_project_with_no_source_is_400(tmp_path: Path) -> None:
+    state = _hub_state(tmp_path)
+    ops.register_project(state, {"name": "checkout", "source": None})
+    _, status = ops.activate_project(state, "checkout")
+    # A rename-only registration has no config source to bind, so it cannot become the live target.
+    assert status == 400
+
+
+def test_activate_an_upload_project_is_409(tmp_path: Path) -> None:
+    state = _hub_state(tmp_path)
+    ops.register_project(state, {"name": "bundle", "source": {"kind": "upload", "locator": {}}})
+    _, status = ops.activate_project(state, "bundle")
+    # An uploaded bundle has no local checkout to re-materialize, so switching to it is refused with a
+    # 409 rather than silently binding nothing — the operator re-uploads it instead.
+    assert status == 409
+
+
+def test_activate_a_malformed_git_source_is_400(tmp_path: Path) -> None:
+    state = _hub_state(tmp_path)
+    # A git locator missing its host cannot rebuild a spec; refuse cleanly rather than 500.
+    ops.register_project(
+        state, {"name": "gitp", "source": {"kind": "git", "locator": {"owner": "a", "repo": "b"}}}
+    )
+    _, status = ops.activate_project(state, "gitp")
+    assert status == 400
+
+
+def test_activate_when_no_hub_is_configured_is_400(tmp_path: Path) -> None:
+    scn_dir, cfg, runs = project(tmp_path)
+    state = srv.ServeState(scenarios_dir=scn_dir, config=cfg, runs_dir=runs, cwd=tmp_path)
+    _, status = ops.activate_project(state, "anything")
+    assert status == 400
+
+
 def test_register_project_rejects_a_name_containing_a_slash(tmp_path: Path) -> None:
     state = _hub_state(tmp_path)
     _, status = ops.register_project(state, {"name": "a/b", "source": None})

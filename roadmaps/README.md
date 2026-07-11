@@ -184,6 +184,7 @@ The AI-driven `record` (Tier 1) is implemented ([recording.md](../docs/recording
 | [BE-0192](BE-0192-record-vision-on-demand/BE-0192-record-vision-on-demand.md) | Vision-on-demand in record (attach a screenshot only when it adds information) | Implemented |
 | [BE-0193](BE-0193-record-screenshot-downscale/BE-0193-record-screenshot-downscale.md) | Right-size the record screenshot with a deterministic client-side downscale | Implemented |
 | [BE-0194](BE-0194-record-turn-payload-diet/BE-0194-record-turn-payload-diet.md) | Lean the record turn payload (compact the element tree, token-budget controls, per-category usage) | Implemented |
+| [BE-0225](BE-0225-config-project-hub/BE-0225-config-project-hub.md) | Config project hub in serve (register, list, switch, run) | Implemented |
 <!-- /GENERATED:implemented-authoring -->
 
 ### Self-healing triage (M4)
@@ -600,9 +601,7 @@ Bringing the CLI's own tools into the serve Web UI, where authoring happens. The
 ### Authoring experience (record / GUI editor)
 
 <!-- GENERATED:in-progress-authoring -->
-| ID | Item | Status |
-|---|---|---|
-| [BE-0225](BE-0225-config-project-hub/BE-0225-config-project-hub.md) | Config project hub in serve (register, list, switch, run) | In progress |
+
 <!-- /GENERATED:in-progress-authoring -->
 
 ### Codebase quality & technical debt

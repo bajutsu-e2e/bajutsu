@@ -30,13 +30,15 @@ def test_required_role_maps_endpoints() -> None:
     # The one gated read: the config body is a wider disclosure than the path-only /api/config.
     assert ops.required_role("GET", "/api/config/content") == "admin"
     assert ops.required_role("GET", "/api/config") is None  # the path-only read stays ungated
-    # Project hub (BE-0225): register/deregister repoint a config binding (admin, like /api/config);
-    # triggering a run is an editor action (like /api/run); listing / per-project runs are reads.
+    # Project hub (BE-0225): register/deregister/activate repoint a config binding (admin, like
+    # /api/config); triggering a run is an editor action (like /api/run); listing / per-project runs
+    # are reads.
     assert ops.required_role("GET", "/api/projects") is None
     assert ops.required_role("GET", "/api/projects/checkout/runs") is None
     assert ops.required_role("POST", "/api/projects") == "admin"
     assert ops.required_role("DELETE", "/api/projects/checkout") == "admin"
     assert ops.required_role("POST", "/api/projects/checkout/run") == "editor"
+    assert ops.required_role("POST", "/api/projects/checkout/activate") == "admin"
 
 
 def test_role_allows_ranks_viewer_editor_admin() -> None:

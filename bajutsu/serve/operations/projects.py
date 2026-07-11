@@ -12,7 +12,8 @@ from __future__ import annotations
 
 from typing import Any
 
-from bajutsu.serve.operations.config import config_sources
+from bajutsu.config_source import config_from_source
+from bajutsu.serve.operations.config import bind_config, bind_git_config, config_sources
 from bajutsu.serve.operations.dispatch import start_run
 from bajutsu.serve.state import ServeState
 
@@ -137,6 +138,45 @@ def run_project(
     if active is None or active.id != project.id:
         return {"error": f"project {name!r} is not the active binding; switch to it first"}, 409
     return start_run(state, body, actor=actor)
+
+
+def activate_project(state: ServeState, name: str, *, actor: str | None = None) -> tuple[Any, int]:
+    """Make a project the live active binding — the switcher's action (BE-0225 unit 4).
+
+    Rebinds `state.config` from the project's stored config source (git → the Git binder, file → the
+    local binder), then flips the active project, so every tab (run / record / crawl / the dashboard)
+    operates against the switched-to config with no `serve` restart — the live rebind unit 3's
+    `run_project` deferred to here. A `None` source has nothing to bind (400); an `upload` bundle has
+    no local checkout to re-materialize (409). The active project flips only after a successful bind,
+    so a failed rebind never leaves the hub pointing at a config it could not load.
+    """
+    registry = state.project_registry
+    if registry is None:
+        return _NO_HUB
+    org = state.org_of(actor)
+    project = registry.get(org_id=org, name=name)
+    if project is None:
+        return {"error": f"no project named {name!r}"}, 404
+    source = project.source
+    if source is None:
+        return {"error": f"project {name!r} has no config source to bind"}, 400
+    kind = source.get("kind") if isinstance(source, dict) else None
+    if kind == "upload":
+        return {
+            "error": f"cannot switch to the uploaded-bundle project {name!r}; "
+            "re-upload its config to bind it"
+        }, 409
+    try:
+        spec = config_from_source(source)
+    except ValueError as e:
+        return {"error": str(e)}, 400
+    result, status = bind_git_config(state, spec) if kind == "git" else bind_config(state, spec)
+    if status != 200:
+        # The bind failed (a moved file, an unreachable repo). Leave the active project unchanged
+        # rather than flipping it to a config we could not load, and surface the binder's own error.
+        return result, status
+    registry.set_active(org_id=org, name=name)
+    return {"ok": True, "name": name, "active": True, "config": result.get("config")}, 200
 
 
 def project_runs(state: ServeState, name: str, *, actor: str | None = None) -> tuple[Any, int]:

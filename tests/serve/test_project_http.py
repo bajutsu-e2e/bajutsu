@@ -15,6 +15,7 @@ from _shared import _get_json, _post, _serve, fake_popen, project
 from fastapi.testclient import TestClient
 
 from bajutsu import serve as srv
+from bajutsu.config_source import source_from_config
 from bajutsu.serve.project_registry import LocalProjectRegistry
 from bajutsu.serve.server.app import make_app
 
@@ -31,6 +32,17 @@ def _hub_state(tmp_path: Path, **kw: object) -> srv.ServeState:
         project_registry=reg,
         **kw,  # type: ignore[arg-type]
     )
+
+
+def _second_config(tmp_path: Path) -> Path:
+    """A second valid config under `tmp_path` so an activate can switch `state.config` to a real,
+    `bind_config`-loadable file (its `root` is `tmp_path`)."""
+    cfg = tmp_path / "other.config.yaml"
+    cfg.write_text(
+        "defaults: { backend: [idb] }\ntargets:\n  demo: { bundleId: com.example.two }\n",
+        encoding="utf-8",
+    )
+    return cfg
 
 
 def _delete(port: int, path: str) -> tuple[int, object]:
@@ -96,3 +108,42 @@ def test_fastapi_run_of_a_non_active_project_is_409(tmp_path: Path) -> None:
         "/api/projects/billing/run", json={"target": "demo", "scenario": "smoke.yaml"}
     )
     assert resp.status_code == 409
+
+
+def test_stdlib_handler_activate_route_switches_the_active_project(tmp_path: Path) -> None:
+    other = source_from_config(str(_second_config(tmp_path)))
+    server, port = _serve(_hub_state(tmp_path))
+    try:
+        _post(port, "/api/projects", {"name": "primary", "source": None})  # first → active
+        _post(port, "/api/projects", {"name": "secondary", "source": other})  # not active
+
+        status, payload = _post(port, "/api/projects/secondary/activate", {})
+        assert status == 200 and payload["active"] is True and payload["name"] == "secondary"
+
+        active = {p["name"]: p["active"] for p in _get_json(port, "/api/projects")}
+        assert active == {"primary": False, "secondary": True}
+    finally:
+        server.shutdown()
+
+
+def test_stdlib_handler_activate_unknown_project_is_404(tmp_path: Path) -> None:
+    server, port = _serve(_hub_state(tmp_path))
+    try:
+        status, payload = _post(port, "/api/projects/ghost/activate", {})
+        assert status == 404 and "ghost" in payload["error"]
+    finally:
+        server.shutdown()
+
+
+def test_fastapi_transport_activate_route_switches_the_active_project(tmp_path: Path) -> None:
+    other = source_from_config(str(_second_config(tmp_path)))
+    client = TestClient(make_app(_hub_state(tmp_path)))
+    client.post("/api/projects", json={"name": "primary", "source": None})  # first → active
+    client.post("/api/projects", json={"name": "secondary", "source": other})  # not active
+
+    resp = client.post("/api/projects/secondary/activate")
+    assert resp.status_code == 200 and resp.json()["active"] is True
+
+    # The switch lets the newly active project run without the 409 a non-active project gets.
+    active = {p["name"]: p["active"] for p in client.get("/api/projects").json()}
+    assert active == {"primary": False, "secondary": True}

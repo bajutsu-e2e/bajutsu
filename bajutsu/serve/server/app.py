@@ -397,6 +397,10 @@ def make_app(state: ServeState) -> FastAPI:
     async def run_project(name: str, body: dict[str, Any], request: Request) -> JSONResponse:
         return _result(ops.run_project(state, name, body, actor=_actor(request)))
 
+    @app.post("/api/projects/{name}/activate")
+    async def activate_project(name: str, request: Request) -> JSONResponse:
+        return _result(ops.activate_project(state, name, actor=_actor(request)))
+
     @app.delete("/api/projects/{name}")
     async def deregister_project(name: str, request: Request) -> JSONResponse:
         return _result(ops.deregister_project(state, name, actor=_actor(request)))

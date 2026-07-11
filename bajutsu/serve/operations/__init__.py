@@ -62,6 +62,7 @@ from bajutsu.serve.operations.evidence import generate_upload_urls
 from bajutsu.serve.operations.lint import lint_scenario, scenario_schema
 from bajutsu.serve.operations.metrics import PROMETHEUS_CONTENT_TYPE, render_metrics
 from bajutsu.serve.operations.projects import (
+    activate_project,
     deregister_project,
     list_projects_view,
     project_runs,
@@ -135,6 +136,7 @@ __all__ = [
     "_terminal_payload",
     "_valid_key_env_name",
     "_valid_step_id",
+    "activate_project",
     "active_key_env",
     "ant_login",
     "ant_login_status",

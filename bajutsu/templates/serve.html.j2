@@ -26,6 +26,12 @@
       <button class="cfgbtn" id="opencfg" data-testid="nav.open-config">Open config</button>
       <span class="cfgname" id="cfgname" data-testid="nav.config-name"></span>
       <button class="cfgbtn" id="viewcfg" data-testid="nav.view-config" hidden>View</button>
+      {#- Project hub switcher (BE-0225 unit 4): next to the config viewer. A native <select> lists the
+          org's registered projects; changing it activates one, rebinding the live config so every tab
+          runs against it. Both this and the "Projects" list button stay hidden until a hub exists (at
+          least one project), so a single-config `serve` looks exactly as before. -#}
+      <select class="projectsw" id="projectsw" data-testid="nav.projects" aria-label="active project" hidden></select>
+      <button class="cfgbtn" id="openprojects" data-testid="nav.open-projects" hidden>Projects</button>
       <button class="cfgbtn" id="opensettings" data-testid="nav.settings">Settings</button>
     </div>
   </div>
@@ -554,6 +560,15 @@
     <div class="cfgtree" id="cfgviewtree" data-testid="config.view-tree"></div>
     <pre class="cfgview" id="cfgviewbody" data-testid="config.view-content" hidden></pre>
     <div class="gitsrchint">The config is shown verbatim. <code>${secrets.*}</code> placeholders are not resolved (they resolve from the server's environment at run time), but a secret written <b>literally</b> into the file would be shown as-is &mdash; keep secrets in <code>${secrets.*}</code> refs, not in the file.</div>
+  </div>
+</div>
+
+<!-- ===== Projects: the hub's registered config bindings (BE-0225 unit 4) ===== -->
+<div class="modal" id="projectsmodal" data-testid="projects.modal" hidden>
+  <div class="fsbox">
+    <div class="fshead"><span class="ttl">Projects</span><button class="fsclose" id="projectsclose" data-testid="projects.close">&#10005;</button></div>
+    <div class="gitsrchint">Each project is a named binding to a config source. <b>Run</b> switches to a project &mdash; rebinding the active config so every tab (Replay / Record / Crawl / Stats) runs against it &mdash; then opens Replay. Add or remove projects with <code>bajutsu project add</code> / <code>rm</code>.</div>
+    <ul class="fslist prjlist" id="projectslist" data-testid="projects.list"></ul>
   </div>
 </div>
 

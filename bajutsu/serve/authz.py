@@ -162,9 +162,10 @@ def required_role(method: str, path: str) -> str | None:
     # secrets. Gate it like binding the config (admin) so a viewer/editor can't read it.
     if method == "GET" and path == "/api/config/content":
         return "admin"
-    # Project hub (BE-0225): registering / deregistering a project repoints a config binding, so it is
-    # an admin action like `/api/config`; triggering a run is an editor action like `/api/run`. Listing
-    # is a read. Handled ahead of the `method != "POST"` guard below because deregister is a DELETE.
+    # Project hub (BE-0225): registering / deregistering a project, or activating one (unit 4's
+    # switcher rebinds the live config), all repoint a config binding, so each is an admin action like
+    # `/api/config`; triggering a run is an editor action like `/api/run`. Listing is a read. Handled
+    # ahead of the `method != "POST"` guard below because deregister is a DELETE.
     if path == "/api/projects" or path.startswith("/api/projects/"):
         if method == "POST" and path.endswith("/run"):
             return "editor"

@@ -150,6 +150,23 @@ disclosure beyond the file itself. It is not a redactor, though — a secret wri
 a local or uploaded config is shown as-is, so keeping secrets in `${secrets.*}` refs rather than in
 the file is what keeps them out of this view. In a hosted deployment the endpoint is admin-only.
 
+### Switching between projects
+
+When you maintain several configs — several apps, or several targets of one app — `serve` is a
+**hub** over them, not a single-config launcher. A **project** is a named binding to a config source,
+and the header carries a **switcher** (a picker beside the config viewer) plus a **Projects** button.
+Both stay hidden until at least one project is registered, so a single-config `serve` looks exactly as
+before.
+
+Register projects with the [`bajutsu project` CLI](cli.md#project) (`project add` / `rm`); the store
+is shared, so a project added there appears in the switcher and vice versa. Picking a project in the
+switcher — or clicking **Run** on a row in the Projects list — **activates** it: the server rebinds
+the active config to that project's source with no restart, and every tab (Replay, Record, Crawl, the
+Stats dashboard) then operates against it. Each row in the Projects list shows the project name, its
+config source, and its latest run verdict. A project whose source is an uploaded bundle cannot be
+switched to (there is no checkout to re-materialize); re-upload its config to bind it. Switching
+rebinds the config, so in a hosted deployment it is an admin action like binding a config.
+
 ## Settings
 
 **Settings** holds the two choices the AI paths need. Nothing here is written to disk: settings live

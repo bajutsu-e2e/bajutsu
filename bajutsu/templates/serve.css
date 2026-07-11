@@ -389,6 +389,16 @@ header .cfgname{color:var(--mut);font-size:.82em;max-width:32vw;overflow:hidden;
 .fslist li .ic{width:1.2em;text-align:center}
 .fslist li.file .nm{color:var(--acc)}
 .fslist li.muted{color:var(--mut);cursor:default}.fslist li.muted:hover{background:none}
+/* Project hub (BE-0225 unit 4): the header switcher + the projects list rows. */
+.projectsw{max-width:11rem;color:var(--fg);background:var(--bg2);border:1px solid var(--line);border-radius:6px;padding:.2rem .5rem;font:inherit;cursor:pointer}
+.projectsw:hover{border-color:var(--acc)}
+.prjlist li.prjrow{cursor:default;gap:.6rem}
+.prjlist li.prjrow:hover{background:none}
+.prjname{font-weight:600}
+.prjsrc{color:var(--mut);font-size:.85em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1}
+.prjv{font-size:.8em;font-weight:600;padding:.1rem .4rem;border-radius:6px}
+.prjv.ok{color:var(--ok)}.prjv.ng{color:var(--ng)}.prjv.none{color:var(--mut);font-weight:400}
+.prjactive{color:var(--ok);font-size:.8em;font-weight:600}
 .fshint{color:var(--mut);font-size:.78em;margin-top:.5rem}
 /* From-Git config source (BE-0063), above the local file browser */
 .gitsrc{margin-bottom:.6rem}

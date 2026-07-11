@@ -1059,6 +1059,7 @@ if(!NARROW_MQ.matches)initTiling();
 
 initTheme();
 loadConfig();
+loadProjects();
 refreshAiAvailability();
 loadSims();
 loadHistory();

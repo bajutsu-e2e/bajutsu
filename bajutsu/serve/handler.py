@@ -348,6 +348,9 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
                 case _ if path.startswith("/api/projects/") and path.endswith("/run"):
                     name = unquote(path[len("/api/projects/") : -len("/run")])
                     self._json(*ops.run_project(state, name, body, actor=self._actor()))
+                case _ if path.startswith("/api/projects/") and path.endswith("/activate"):
+                    name = unquote(path[len("/api/projects/") : -len("/activate")])
+                    self._json(*ops.activate_project(state, name, actor=self._actor()))
                 case "/api/record":
                     self._json(*ops.start_record(state, body, actor=self._actor()))
                 case "/api/crawl":
