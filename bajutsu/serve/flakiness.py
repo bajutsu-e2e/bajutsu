@@ -29,6 +29,11 @@ from bajutsu.audit import classify_stability
 from bajutsu.run_id import parse_run_id_timestamp
 from bajutsu.serve.server.db import RunRecord
 
+# The newest-N run window both flakiness surfaces mine from the database — the serve panel
+# (`operations.reads._flakiness_report`) and the `bajutsu flakiness` CLI (`_db_flakiness`) — so the
+# two rank over the same bounded history. A window large enough to read a trend, not the whole log.
+DEFAULT_RUN_LIMIT = 200
+
 
 def _as_utc(dt: datetime) -> datetime:
     """Return dt as a UTC-aware datetime. SQLite (the gate backend) hands back naive datetimes for

@@ -63,6 +63,35 @@ def test_history_json_output(tmp_path: Path) -> None:
     assert scenario["representative_fail_run_id"] == "20260102-000000"
 
 
+def test_negative_window_exits_2(tmp_path: Path) -> None:
+    _write_run(tmp_path, "20260101-000000", ok=True)
+
+    result = runner.invoke(app, ["flakiness", "--history", str(tmp_path), "--window", "-1"])
+
+    assert result.exit_code == 2
+    assert "--window" in result.stdout
+
+
+def test_positive_window_trims_to_newest_runs(tmp_path: Path) -> None:
+    # Oldest fails, the two newest pass — the whole history is flaky, but the newest run alone is not.
+    _write_run(tmp_path, "20260101-000000", ok=False)
+    _write_run(tmp_path, "20260102-000000", ok=True)
+    _write_run(tmp_path, "20260103-000000", ok=True)
+
+    full = runner.invoke(app, ["flakiness", "--history", str(tmp_path), "--json"])
+    (whole,) = json.loads(full.stdout)["scenarios"]
+    assert whole["runs"] == 3
+    assert whole["classification"] == "flaky"
+
+    windowed = runner.invoke(
+        app, ["flakiness", "--history", str(tmp_path), "--window", "1", "--json"]
+    )
+    (newest,) = json.loads(windowed.stdout)["scenarios"]
+    assert newest["runs"] == 1
+    assert newest["passed"] == 1
+    assert newest["classification"] != "flaky"
+
+
 def test_missing_runs_dir_exits_2(tmp_path: Path) -> None:
     result = runner.invoke(app, ["flakiness", "--history", str(tmp_path / "nope")])
     assert result.exit_code == 2

@@ -166,7 +166,7 @@ def _flakiness_report(state: ServeState, actor: str | None) -> _flakiness.Flakin
     """Rank the actor's org run history — from the DB provenance stamp when wired, else manifests."""
     org = state.org_of(actor)
     if state.repository is not None:
-        records = state.repository.list_runs(org_id=org, limit=_STATS_RUN_LIMIT)
+        records = state.repository.list_runs(org_id=org, limit=_flakiness.DEFAULT_RUN_LIMIT)
     else:
         records = _flakiness.records_from_manifests(_run_manifests(state, actor))
     return _flakiness.rank_flakiness(records)

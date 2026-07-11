@@ -19,15 +19,12 @@ import typer
 
 from bajutsu.cli._shared import read_manifests
 from bajutsu.serve.flakiness import (
+    DEFAULT_RUN_LIMIT,
     FlakinessReport,
     rank_flakiness,
     records_from_manifests,
     render,
 )
-
-# The newest-N run window the database read mines, matching the serve panel's `_STATS_RUN_LIMIT` so
-# the CLI and the Web UI rank over the same bounded history.
-_DB_RUN_LIMIT = 200
 
 
 def flakiness(
@@ -81,7 +78,7 @@ def _db_flakiness(org: str, window_runs: int | None) -> FlakinessReport:
     if repo is None:
         typer.echo("no database configured; set BAJUTSU_DATABASE_URL or pass --history <runs-dir>")
         raise typer.Exit(2)
-    records = repo.list_runs(org_id=org, limit=_DB_RUN_LIMIT)
+    records = repo.list_runs(org_id=org, limit=DEFAULT_RUN_LIMIT)
     return rank_flakiness(records, window_runs=window_runs)
 
 
