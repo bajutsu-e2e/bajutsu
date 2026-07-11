@@ -16,8 +16,9 @@ from _shared import _get, _serve, project
 from sqlalchemy import create_engine
 
 from bajutsu import serve as srv
-from bajutsu.serve.artifacts import Artifact
+from bajutsu.serve.artifacts import Artifact, LocalArtifactStore
 from bajutsu.serve.operations import stats_html
+from bajutsu.serve.operations.reads import run_set_manifests
 from bajutsu.serve.server.db import RunRecord, SqlRepository
 from bajutsu.serve.server.models import Base
 from bajutsu.serve.state import StoreBundle
@@ -59,6 +60,22 @@ def _write_manifest(
         encoding="utf-8",
     )
     (d / "report.html").write_text("<html></html>", encoding="utf-8")
+
+
+def test_run_set_manifests_reads_explicit_run_set(tmp_path: Path) -> None:
+    # The state/actor-free seam BE-0226 reuses to aggregate once per project: given an explicit
+    # run-id list and a store, it reads each valid run's manifest and skips ids that are unsafe
+    # (a traversal segment) or unreadable (no such run), with no dependence on ServeState.
+    _, _, runs = project(tmp_path)
+    _write_manifest(runs, "20260101-000000", ok=True, scenario_hash="sha256:a", duration_s=2.0)
+    _write_manifest(runs, "20260102-000000", ok=False, scenario_hash="sha256:a", duration_s=4.0)
+    store = LocalArtifactStore(runs)
+
+    manifests = run_set_manifests(
+        store, ["20260101-000000", "../secret", "20260102-000000", "20260109-000000"]
+    )
+
+    assert [m["runId"] for m in manifests] == ["20260101-000000", "20260102-000000"]
 
 
 def test_stats_html_from_artifact_store(tmp_path: Path) -> None:
