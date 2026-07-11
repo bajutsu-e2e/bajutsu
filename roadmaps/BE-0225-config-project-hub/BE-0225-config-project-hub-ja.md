@@ -9,7 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装中** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0225") |
-| 実装 PR | [#909](https://github.com/bajutsu-e2e/bajutsu/pull/909), [#921](https://github.com/bajutsu-e2e/bajutsu/pull/921) |
+| 実装 PR | [#909](https://github.com/bajutsu-e2e/bajutsu/pull/909), [#921](https://github.com/bajutsu-e2e/bajutsu/pull/921), [#923](https://github.com/bajutsu-e2e/bajutsu/pull/923) |
 | トピック | Authoring experience (record / GUI editor) |
 | 関連 | [BE-0015](../BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting-ja.md), [BE-0102](../BE-0102-run-stats-dashboard/BE-0102-run-stats-dashboard-ja.md), [BE-0187](../BE-0187-serve-config-view/BE-0187-serve-config-view-ja.md), [BE-0108](../BE-0108-hosted-config-source-restriction/BE-0108-hosted-config-source-restriction-ja.md), [BE-0099](../BE-0099-webhook-run-notifications/BE-0099-webhook-run-notifications-ja.md) |
 <!-- /BE-METADATA -->
@@ -210,7 +210,7 @@ CI や cron が Web UI なしにハブをヘッドレスで駆動できるよう
   （データベースがあれば `project_id` 列、なければローカル索引への `tag_run`）。レジストリのエラーが
   ジョブの後処理を壊さないよう防御し、ハブが配線されていなければ何もしません。ユニット 2 は完了し、
   ユニット 3（API）、4（UI）、5（CLI）が残ります。
-- 2026-07-11：ユニット 3 の API を実装しました（#_pending_）。`bajutsu/serve/operations/projects.py`
+- 2026-07-11：ユニット 3 の API を実装しました（#923）。`bajutsu/serve/operations/projects.py`
   に五つのエンドポイントを追加しました。`GET /api/projects`（一覧。各プロジェクトのソース、active か
   どうか、最新の実行要約を返します）、`POST /api/projects`（登録と束ね直し。BE-0108 の config ソース
   許可リストで検査し、ホスト版はファイルソースを拒否します）、`DELETE /api/projects/<name>`（登録解除。

@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0225") |
-| Implementing PR | [#909](https://github.com/bajutsu-e2e/bajutsu/pull/909), [#921](https://github.com/bajutsu-e2e/bajutsu/pull/921) |
+| Implementing PR | [#909](https://github.com/bajutsu-e2e/bajutsu/pull/909), [#921](https://github.com/bajutsu-e2e/bajutsu/pull/921), [#923](https://github.com/bajutsu-e2e/bajutsu/pull/923) |
 | Topic | Authoring experience (record / GUI editor) |
 | Related | [BE-0015](../BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md), [BE-0102](../BE-0102-run-stats-dashboard/BE-0102-run-stats-dashboard.md), [BE-0187](../BE-0187-serve-config-view/BE-0187-serve-config-view.md), [BE-0108](../BE-0108-hosted-config-source-restriction/BE-0108-hosted-config-source-restriction.md), [BE-0099](../BE-0099-webhook-run-notifications/BE-0099-webhook-run-notifications.md) |
 <!-- /BE-METADATA -->
@@ -207,7 +207,7 @@ A thin CLI mirror so CI and cron can drive the hub headlessly, without the Web U
   project onto the finished run (the `project_id` column with a database, `tag_run` into the local
   index without one) — guarded so a registry error never breaks job finalization, a no-op when no hub
   is wired. Unit 2 done; units 3 (API), 4 (UI), 5 (CLI) remain.
-- 2026-07-11 — Unit 3, the API (#_pending_): added `bajutsu/serve/operations/projects.py` with the
+- 2026-07-11 — Unit 3, the API (#923): added `bajutsu/serve/operations/projects.py` with the
   five endpoints — `GET /api/projects` (list, each with its source, whether active, and its latest run
   summary), `POST /api/projects` (register/rebind, screened against the BE-0108 config-source allowlist
   so a hosted server refuses a filesystem source), `DELETE /api/projects/<name>` (deregister, runs
