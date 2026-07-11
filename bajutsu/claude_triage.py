@@ -12,6 +12,7 @@ injectable for testing — mirroring `claude_agent.ClaudeAgent`.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from typing import Any
 
 from bajutsu import usage
@@ -362,8 +363,17 @@ CROSS_RUN_TOOLS: list[ToolDef] = [
 ]
 
 
+def _representative_screenshot_run(runs: Sequence[RunEvidence]) -> RunEvidence | None:
+    """The one run per group whose screenshot is actually attached (the payload is bounded to one).
+
+    `_render_evidence` and `_cross_run_user_content` both key off this, so the note a run carries and
+    the image actually sent stay in lockstep.
+    """
+    return next((ev for ev in runs if ev.screenshot is not None), None)
+
+
 def _render_evidence(
-    ev: RunEvidence, label: str, scrub: Any, redactor: Redactor | None
+    ev: RunEvidence, label: str, scrub: Any, redactor: Redactor | None, *, screenshot_attached: bool
 ) -> list[str]:
     """One run's block in the cross-run message: its verdict plus the state nearest its end/failure."""
     lines = [f"{label} {ev.run_id} ({'passed' if ev.ok else 'failed'}):"]
@@ -384,17 +394,17 @@ def _render_evidence(
         ]
     else:
         lines.append("    (no element tree captured)")
-    if ev.screenshot is not None:
+    if screenshot_attached:
         lines.append("  A screenshot of this run's screen is attached above.")
     return lines
 
 
 def _render_cross_run(context: CrossRunTriageContext, redactor: Redactor | None = None) -> str:
-    """The user message: the flaky scenario's passing and failing runs, laid out to contrast (BE-0047).
+    """The user message: the flaky scenario's passing and failing runs, laid out to contrast.
 
     Every textual field that could carry a secret is masked via `redactor` before it reaches the
-    model, exactly as the single-run `_render` does; the screenshots (sent in `_cross_run_user_content`)
-    cannot be.
+    model (BE-0047), exactly as the single-run `_render` does; the screenshots (sent in
+    `_cross_run_user_content`) cannot be.
     """
     scrub = redactor.redact_text if redactor is not None else (lambda t: t)
     lines = [f"Scenario: {context.scenario}"]
@@ -406,10 +416,14 @@ def _render_cross_run(context: CrossRunTriageContext, redactor: Redactor | None 
         "This scenario flips verdict at one fixed fingerprint. Contrast its failing and passing "
         "runs and explain what VARIES between them."
     )
-    for ev in context.failing:
-        lines += ["", *_render_evidence(ev, "Failing run", scrub, redactor)]
-    for ev in context.passing:
-        lines += ["", *_render_evidence(ev, "Passing run", scrub, redactor)]
+    for group, label in ((context.failing, "Failing run"), (context.passing, "Passing run")):
+        shot_run = _representative_screenshot_run(group)
+        for ev in group:
+            attached = ev is shot_run
+            lines += [
+                "",
+                *_render_evidence(ev, label, scrub, redactor, screenshot_attached=attached),
+            ]
     if context.scenario_yaml:
         lines += ["", "Scenario definition (YAML):", scrub(context.scenario_yaml).rstrip()]
     lines += ["", "Call the `diagnose` tool exactly once."]
@@ -426,9 +440,9 @@ def _cross_run_user_content(
     """
     content: list[ContentPart] = []
     for runs in (context.failing, context.passing):
-        shot = next((ev.screenshot for ev in runs if ev.screenshot is not None), None)
-        if shot is not None:
-            content.append(ImagePart(data=shot))
+        shot_run = _representative_screenshot_run(runs)
+        if shot_run is not None and shot_run.screenshot is not None:
+            content.append(ImagePart(data=shot_run.screenshot))
     content.append(TextPart(text=_render_cross_run(context, redactor)))
     return content
 

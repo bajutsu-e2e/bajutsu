@@ -10,6 +10,7 @@ from bajutsu.ai.base import AnyTool, ImagePart, TextPart
 from bajutsu.claude_triage import (
     ClaudeCrossRunTriageAgent,
     ClaudeTriageAgent,
+    _cross_run_user_content,
     _render,
     _render_cross_run,
 )
@@ -324,6 +325,24 @@ def test_cross_run_render_contrasts_passing_and_failing() -> None:
     assert "一致なし: home.titel" in text  # the failure detail
     assert "Scenario definition (YAML):" in text
     assert text.rstrip().endswith("Call the `diagnose` tool exactly once.")
+
+
+def test_cross_run_screenshot_note_matches_what_is_attached() -> None:
+    # Only the first screenshot per group is attached (payload is bounded), so the "attached
+    # above" note must appear once per group — never for a run whose image was not sent, which
+    # would hand the model a false premise about the evidence.
+    png = b"\x89PNG\r\n\x1a\nfake"
+    ctx = _cross_ctx(
+        failing=[
+            _ev(False, run_id="f1", screenshot=png),
+            _ev(False, run_id="f2", screenshot=png),
+        ],
+        passing=[_ev(True, run_id="p1", screenshot=png)],
+    )
+    text = _render_cross_run(ctx)
+    assert text.count("A screenshot of this run's screen is attached above.") == 2
+    images = [p for p in _cross_run_user_content(ctx) if isinstance(p, ImagePart)]
+    assert len(images) == 2  # one representative per group, matching the two notes
 
 
 def test_cross_run_fix_is_parsed() -> None:
