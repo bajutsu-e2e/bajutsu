@@ -17,7 +17,7 @@ it first; the ``docs`` workflow does the same before publishing.
 
 Usage::
 
-    python scripts/build_roadmap_dashboard.py             # write docs/api/roadmap.md
+    python scripts/build_roadmap_dashboard.py  # write docs/api/roadmap.md
     python scripts/build_roadmap_dashboard.py --out PATH  # write elsewhere (tests)
     python scripts/build_roadmap_dashboard.py --emit-script  # print the embedded filter JS (lint-js)
 
