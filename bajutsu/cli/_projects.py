@@ -73,7 +73,10 @@ def config_from_source(source: object) -> str:
     if not isinstance(locator, dict):
         raise ValueError(f"config source has no locator: {source!r}")
     if kind == "file":
-        return str(locator["path"])
+        path = locator.get("path")
+        if path is None:
+            raise ValueError(f"config source has no path: {source!r}")
+        return str(path)
     if kind == "git":
         return _git_spec(locator)
     raise ValueError(f"cannot run a {kind!r} config source from the CLI (only git or file)")
@@ -81,6 +84,9 @@ def config_from_source(source: object) -> str:
 
 def _git_spec(locator: dict[str, object]) -> str:
     """A `github:` / `git+https://` spec from a git locator, pinning `sha` when present."""
+    missing = [k for k in ("host", "owner", "repo") if k not in locator]
+    if missing:
+        raise ValueError(f"git config source locator is missing {missing}: {locator!r}")
     host, owner, repo = locator["host"], locator["owner"], locator["repo"]
     ref = locator.get("sha") or locator.get("ref")
     path = locator.get("path")

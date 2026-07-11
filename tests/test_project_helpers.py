@@ -50,3 +50,16 @@ def test_upload_source_cannot_be_resolved_on_the_cli() -> None:
     source = {"kind": "upload", "locator": {"path": "bundle.zip"}}
     with pytest.raises(ValueError, match="upload"):
         config_from_source(source)
+
+
+def test_file_source_without_a_path_raises_value_error() -> None:
+    # Nothing upstream validates the locator's shape (the API's `_validate_source` only screens
+    # `kind`), so a hand-edited store can persist `{"kind": "file", "locator": {}}`. `run --project`
+    # only catches ValueError, so a raw KeyError here would crash it with an unhandled traceback.
+    with pytest.raises(ValueError, match="path"):
+        config_from_source({"kind": "file", "locator": {}})
+
+
+def test_git_source_missing_a_locator_field_raises_value_error() -> None:
+    with pytest.raises(ValueError, match="missing"):
+        config_from_source({"kind": "git", "locator": {"owner": "acme", "repo": "shop"}})
