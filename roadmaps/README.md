@@ -601,7 +601,9 @@ Bringing the CLI's own tools into the serve Web UI, where authoring happens. The
 ### Authoring experience (record / GUI editor)
 
 <!-- GENERATED:in-progress-authoring -->
-
+| ID | Item | Status |
+|---|---|---|
+| [BE-0225](BE-0225-config-project-hub/BE-0225-config-project-hub.md) | Config project hub in serve (register, list, switch, run) | In progress |
 <!-- /GENERATED:in-progress-authoring -->
 
 ### Codebase quality & technical debt
