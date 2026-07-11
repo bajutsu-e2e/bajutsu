@@ -196,3 +196,34 @@ def test_start_run_carries_the_active_project_id_onto_the_job(tmp_path: Path) ->
 
     assert status == 200
     assert state.jobs[payload["jobId"]].project_id == pid
+
+
+def test_register_project_rejects_a_name_containing_a_slash(tmp_path: Path) -> None:
+    state = _hub_state(tmp_path)
+    _, status = ops.register_project(state, {"name": "a/b", "source": None})
+    assert status == 400
+
+
+def test_a_registry_error_at_enqueue_leaves_the_run_unlabeled(tmp_path: Path) -> None:
+    """`_active_project_id` in `dispatch.py` guards the same way as `_persist_run`: a flaky registry
+    at enqueue time degrades to an unlabeled run (project_id=None) rather than breaking start_run."""
+
+    class _FlakyRegistry(LocalProjectRegistry):
+        def resolve_active(self, *, org_id: str) -> None:  # type: ignore[override]
+            raise RuntimeError("registry backend unavailable")
+
+    scn_dir, cfg, runs = project(tmp_path)
+    state = srv.ServeState(
+        scenarios_dir=scn_dir,
+        config=cfg,
+        runs_dir=runs,
+        cwd=tmp_path,
+        project_registry=_FlakyRegistry(tmp_path / "projects.json"),
+        popen=fake_popen(["PASS  runs/20260711-7/manifest.json\n"]),  # type: ignore[arg-type]
+    )
+
+    payload, status = ops.start_run(state, {"target": "demo", "scenario": "smoke.yaml"})
+
+    assert status == 200
+    # resolve_active raised, so the job is enqueued but unlabeled (project_id=None).
+    assert state.jobs[payload["jobId"]].project_id is None

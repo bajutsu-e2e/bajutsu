@@ -417,7 +417,10 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
             oplog.bind_request(oplog.new_request_id())
             if not self._gate():
                 return
+            length = int(self.headers.get("Content-Length") or 0)
             if not self._csrf_ok():
+                if length:
+                    self.rfile.read(length)  # drain so keep-alive isn't left with unread bytes
                 self._json({"error": "cross-origin request blocked"}, 403)
                 return
             path = urlparse(self.path).path

@@ -44,7 +44,7 @@ def _validate_source(state: ServeState, source: Any) -> tuple[Any, int] | None:
     return None
 
 
-def _project_view(state: ServeState, name: str, source: Any, *, active: bool) -> dict[str, Any]:
+def _project_view(name: str, source: Any, *, active: bool) -> dict[str, Any]:
     return {"name": name, "source": source, "active": active}
 
 
@@ -57,13 +57,14 @@ def list_projects_view(state: ServeState, *, actor: str | None = None) -> tuple[
     org = state.org_of(actor)
     active = registry.resolve_active(org_id=org)
     active_id = active.id if active is not None else None
-    latest = _latest_run_summaries(state, org)
+    projects = registry.list_projects(org_id=org)
+    latest = _latest_run_summaries(state, org, projects)
     return [
         {
-            **_project_view(state, p.name, p.source, active=p.id == active_id),
+            **_project_view(p.name, p.source, active=p.id == active_id),
             "lastRun": latest.get(p.id),
         }
-        for p in registry.list_projects(org_id=org)
+        for p in projects
     ], 200
 
 
@@ -83,6 +84,8 @@ def register_project(
     name = str(body.get("name") or "").strip()
     if not name:
         return {"error": "name is required"}, 400
+    if "/" in name:
+        return {"error": "name must not contain '/'"}, 400
     source = body.get("source")
     invalid = _validate_source(state, source)
     if invalid is not None:
@@ -94,7 +97,7 @@ def register_project(
         registry.set_active(org_id=org, name=name)
     active = registry.resolve_active(org_id=org)
     return _project_view(
-        state, project.name, project.source, active=active is not None and active.id == project.id
+        project.name, project.source, active=active is not None and active.id == project.id
     ), 200
 
 
@@ -158,11 +161,13 @@ def project_runs(state: ServeState, name: str, *, actor: str | None = None) -> t
     return [r for r in listing if r.get("id") in tagged], 200
 
 
-def _latest_run_summaries(state: ServeState, org: str) -> dict[str, dict[str, Any]]:
+def _latest_run_summaries(
+    state: ServeState, org: str, projects: list[Any]
+) -> dict[str, dict[str, Any]]:
     """Each project's newest run summary, keyed by project id, for `list_projects_view`.
 
-    Reads the org's run listing once and indexes it, so listing N projects is one store scan, not one
-    per project. Empty for a project with no runs (its `lastRun` is then None).
+    Accepts the pre-fetched project list from the caller so `list_projects` is not called a second
+    time — one query for the list, then one per project (DB) or one store scan (local).
     """
     registry = state.project_registry
     if registry is None:
@@ -170,14 +175,14 @@ def _latest_run_summaries(state: ServeState, org: str) -> dict[str, dict[str, An
     if state.repository is not None:
         # The DB partitions by the column; ask for each project's newest run only.
         out: dict[str, dict[str, Any]] = {}
-        for p in registry.list_projects(org_id=org):
+        for p in projects:
             recent = state.repository.list_runs(org_id=org, project_id=p.id, limit=1)
             if recent:
                 out[p.id] = recent[0].summary
         return out
     by_id = {r.get("id"): r for r in state.for_org(org).artifacts.list_runs()}
     latest: dict[str, dict[str, Any]] = {}
-    for p in registry.list_projects(org_id=org):
+    for p in projects:
         ids = registry.run_ids(org_id=org, project_id=p.id)  # newest first
         summary = next((by_id[rid] for rid in ids if rid in by_id), None)
         if summary is not None:
