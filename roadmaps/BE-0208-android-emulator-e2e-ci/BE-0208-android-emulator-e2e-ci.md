@@ -9,7 +9,7 @@
 | Author | [@hirosassa](https://github.com/hirosassa) |
 | Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0208") |
-| Implementing PR | [#851](https://github.com/bajutsu-e2e/bajutsu/pull/851), [#880](https://github.com/bajutsu-e2e/bajutsu/pull/880), [#899](https://github.com/bajutsu-e2e/bajutsu/pull/899), [#901](https://github.com/bajutsu-e2e/bajutsu/pull/901), [#906](https://github.com/bajutsu-e2e/bajutsu/pull/906), [#910](https://github.com/bajutsu-e2e/bajutsu/pull/910), [#924](https://github.com/bajutsu-e2e/bajutsu/pull/924) |
+| Implementing PR | [#851](https://github.com/bajutsu-e2e/bajutsu/pull/851), [#880](https://github.com/bajutsu-e2e/bajutsu/pull/880), [#899](https://github.com/bajutsu-e2e/bajutsu/pull/899), [#901](https://github.com/bajutsu-e2e/bajutsu/pull/901), [#906](https://github.com/bajutsu-e2e/bajutsu/pull/906), [#910](https://github.com/bajutsu-e2e/bajutsu/pull/910), [#924](https://github.com/bajutsu-e2e/bajutsu/pull/924), [#925](https://github.com/bajutsu-e2e/bajutsu/pull/925) |
 | Topic | Platform expansion (Android / Web / Flutter) |
 | Related | [BE-0007](../BE-0007-android-backend/BE-0007-android-backend.md), [BE-0223](../BE-0223-adb-tab-bar-navigation/BE-0223-adb-tab-bar-navigation.md) |
 <!-- /BE-METADATA -->
