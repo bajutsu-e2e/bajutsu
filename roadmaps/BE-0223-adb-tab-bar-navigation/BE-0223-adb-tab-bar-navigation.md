@@ -143,6 +143,17 @@ it changes no shared scenario (that is the point) and adds no LLM to any path.
   re-recorded (`lists_android.json`): `stable.refresh` gains its accessible name "Refresh" and the
   button trait, the catalog rows gain the button trait — both consequences of the driver fix. Python
   gate green; the on-device adb lane and the golden run were verified on the local emulator.
+- 2026-07-11 — Review follow-up (PR #901): documented a deliberate side effect of the `clickable` →
+  `button` mapping. Because `crawl.TAP_TRAITS` and `doctor.ACTIONABLE_TRAITS` both key off `button`,
+  every id-bearing `Modifier.clickable` wrapper on Android (a list row, card, dismiss overlay) now
+  counts as a crawl tap-candidate and toward doctor's id-coverage denominator — not only tab items.
+  This is intended (a clickable node *is* tappable, so it is a legitimate actionable), and improves
+  Android crawl/doctor accuracy rather than regressing it; a future crawl-tuning session should
+  expect the wider candidate set. Pinned by `test_clickable_container_is_actionable_to_crawl_and_doctor`
+  (an id-bearing clickable `FrameLayout` is actionable to both, a non-clickable one is not; `crawl`
+  still requires an id, so idless generic wrappers stay out). Also noted in `_derived_label` that
+  folding only `text` (not the `content-desc` value channel) into a derived label is a deliberate
+  limit. Docs/tests only, no behavior change.
 
 ## References
 

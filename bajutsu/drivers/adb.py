@@ -87,6 +87,12 @@ def _derived_label(node: ET.Element) -> str | None:
     A nested clickable descendant is its own control (it independently gains the `button` trait and
     derives its own label), so its subtree is skipped rather than folded into this label — which
     also keeps two nested clickables from both deriving the same joined text (BE-0223).
+
+    Only `text` is folded in, not `content-desc`: `content-desc` is this driver's *value* channel
+    (SPEC §2.1 mirrors assertion state into it), so pulling it into the label would risk a mirrored
+    value bleeding into the name. This is a deliberate limit — an icon-only caption carried solely
+    in `content-desc` (no `TextView`) is not a showcase pattern, and would need the value/label
+    split reconciled first.
     """
     parts: list[str] = []
 
