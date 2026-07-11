@@ -55,8 +55,8 @@ jobs:
     name: smoke + golden + visual (adb)
     runs-on: ubuntu-latest
     # Booting an emulator, building the APK, and running the Stable-tab scenarios plus the golden
-    # check is ~8min end to end; 30 catches a real hang (a wedged AVD boot or adb) with comfortable
-    # headroom.
+    # element-tree and pixel-visual checks is ~9min end to end; 30 catches a real hang (a wedged AVD
+    # boot or adb) with comfortable headroom.
     timeout-minutes: 30
     # The adb backend is pure subprocess (no Python extra), so the base package suffices; skip the
     # dev group (mypy / pytest / ruff), which the Linux `check` gate owns.
