@@ -22,7 +22,10 @@ class ClipboardReceiver : BroadcastReceiver() {
         val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
         when (intent.getStringExtra("op")) {
             "set" -> {
-                val text = intent.getStringExtra("b64")?.let(::decode).orEmpty()
+                // Guard the decode: the receiver is exported, so any local app can send garbage in
+                // `b64`; a decode throw must not crash the app under test. bajutsu always sends valid
+                // base64, so this only softens malformed third-party input to an empty clip.
+                val text = runCatching { intent.getStringExtra("b64")?.let(::decode) }.getOrNull().orEmpty()
                 clipboard.setPrimaryClip(ClipData.newPlainText("bajutsu", text))
                 succeed(null)
             }
