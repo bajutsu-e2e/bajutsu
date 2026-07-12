@@ -244,6 +244,10 @@ within the prime directives.
   in scope for this lane because adb is single-touch; it is tracked separately by the
   adb-multitouch-gestures proposal ([#931](https://github.com/bajutsu-e2e/bajutsu/pull/931)). With
   its own scope done, the item is Implemented.
+- 2026-07-12 — Follow-up: the clipboard half of the `device_android` slice, cut here for the on-device
+  `cmd clipboard` gap, was restored by [BE-0233](../BE-0233-adb-clipboard-fidelity/BE-0233-adb-clipboard-fidelity.md)
+  (PR #949): it drives the clipboard through an in-app receiver, so `device_android` now seeds and
+  reads back the primary clip — the strong assertion PR #934 wanted.
 
 ## References
 

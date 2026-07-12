@@ -48,6 +48,15 @@ EFFORT_ENV = "BAJUTSU_AI_EFFORT"  # reasoning-effort override (config `ai.effort
 LANGUAGE_ENV = "BAJUTSU_AI_LANGUAGE"
 BEDROCK_MODEL_ENV = "BAJUTSU_BEDROCK_MODEL"
 ANTHROPIC_KEY_ENV = "ANTHROPIC_API_KEY"
+# The env vars serve manages when it materializes an AI provider selection into a spawned job's
+# environment (BE-0229). A per-job overlay that names a provider clears these from the inherited
+# env before applying its own values, so one org's selection can't leak into another org's jobs
+# through a stale process-env var. AWS_REGION is deliberately excluded: it is a general AWS setting
+# a deployment may set independently of the provider selection, so the overlay only ever adds it
+# (for bedrock, when a region is chosen), never clears it.
+PROVIDER_MANAGED_ENV = frozenset(
+    {PROVIDER_ENV, MODEL_ENV, EFFORT_ENV, LANGUAGE_ENV, BEDROCK_MODEL_ENV}
+)
 # The reasoning-effort levels the `claude` CLI accepts (`--effort`); other levels are ignored.
 EFFORT_LEVELS = ("low", "medium", "high", "xhigh", "max")
 # The AI output languages `ai.language` / `--language` accept (BE-0188). `auto` keeps today's

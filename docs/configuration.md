@@ -134,8 +134,12 @@ defaults:
   saved provider, model, and effort now persist to a serve-owned file and are restored on the next
   start ([BE-0184](../roadmaps/BE-0184-persist-serve-ai-provider-settings/BE-0184-persist-serve-ai-provider-settings.md)),
   so a restart no longer resets them to the launch environment; a config `ai:` block still wins over
-  a restored value. `record` prints the resolved choice up front (`🤖 AI: <provider> · model <model>
-  · effort <effort>`).
+  a restored value. On a **hosted, multi-tenant** `serve` the selection resolves and persists **per
+  organization** ([BE-0229](../roadmaps/BE-0229-per-org-provider-settings-resolution/BE-0229-per-org-provider-settings-resolution.md)),
+  so each org's `record` / triage / draft paths use that org's own saved choice; the selection reaches
+  a spawned job as a per-job environment overlay rather than the shared process environment, so one
+  org's save never changes another org's AI runs. `record` prints the resolved choice up front
+  (`🤖 AI: <provider> · model <model> · effort <effort>`).
 
 - **Output language is a separate, config-first knob**
   ([BE-0188](../roadmaps/BE-0188-configurable-ai-output-language/BE-0188-configurable-ai-output-language.md)).
@@ -249,6 +253,7 @@ scenario):
 targets:
   myapp:
     mailbox:
+      kind: http                                          # transport adapter; defaults to http when omitted
       url: "${secrets.MAILBOX_URL}"                       # inbox endpoint (GET); ${secrets.*} resolved at run time
       headers: { Authorization: "Bearer ${secrets.MAILBOX_TOKEN}" }
       # Optional response mapping, to read any provider's JSON without per-provider code:
@@ -261,6 +266,15 @@ The defaults match the common shape (an array of messages with `to` / `subject` 
 reads the inbox over HTTP, keeps only messages newer than the step's start (keyed on `id`), waits
 for one that matches, and extracts the code — deterministic and LLM-free
 ([BE-0046](../roadmaps/BE-0046-otp-email-steps/BE-0046-otp-email-steps.md)).
+
+`kind` selects the transport adapter behind the mailbox — a mailbox is a backend behind one
+interface, keyed by transport (`http`, later `imap`) rather than by vendor, so adding a transport
+registers an adapter instead of branching the runner
+([BE-0186](../roadmaps/BE-0186-mailbox-provider-registry/BE-0186-mailbox-provider-registry.md)). It
+is optional and defaults to `http`, so an existing `mailbox:` block is unchanged; an unknown `kind`
+fails the run with a clean config error rather than falling back. Only `http` ships today — it keys
+on transport, not on the mail vendor, because vendors differ only in JSON field names, which
+`fields` already absorbs.
 
 ### Orgs (`orgs:`, the multi-tenant server backend)
 

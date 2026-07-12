@@ -143,6 +143,7 @@ The first slices of the multi-platform direction that have shipped: a **platform
 | [BE-0227](BE-0227-web-swipe-scroll-fidelity/BE-0227-web-swipe-scroll-fidelity.md) | Web swipe scroll fidelity (mode-aware scroll dispatch) | Implemented |
 | [BE-0228](BE-0228-web-device-mode-emulation/BE-0228-web-device-mode-emulation.md) | Web device mode (desktop / mobile emulation) | Implemented |
 | [BE-0232](BE-0232-adb-multitouch-gestures/BE-0232-adb-multitouch-gestures.md) | Multi-touch gestures on the adb driver (pinch / rotate) | Implemented |
+| [BE-0233](BE-0233-adb-clipboard-fidelity/BE-0233-adb-clipboard-fidelity.md) | adb clipboard on-device fidelity | Implemented |
 <!-- /GENERATED:implemented-platform -->
 
 ### Backend expansion (iOS actuators)
@@ -228,6 +229,7 @@ MagicPod and Autify are built around **AI self-healing + no-code + cloud device 
 | [BE-0052](BE-0052-device-state-timezone-clipboard-shake/BE-0052-device-state-timezone-clipboard-shake.md) | Device-state primitives: timezone, clipboard, shake | Implemented | MagicPod |
 | [BE-0165](BE-0165-visual-compare-engines/BE-0165-visual-compare-engines.md) | Selectable perceptual compare engines for visual regression | Implemented |  |
 | [BE-0171](BE-0171-element-scoped-visual-assertions/BE-0171-element-scoped-visual-assertions.md) | Element-scoped visual assertions and selector-based masking | Implemented |  |
+| [BE-0186](BE-0186-mailbox-provider-registry/BE-0186-mailbox-provider-registry.md) | Mailbox provider registry for the email step | Implemented |  |
 <!-- /GENERATED:implemented-competitive -->
 
 ### Candidates from competitive research (Maestro)
@@ -360,6 +362,7 @@ The Tier-1 AI paths (`record` / `triage` / `--dismiss-alerts` / `crawl`) call Cl
 | [BE-0183](BE-0183-per-provider-serve-settings/BE-0183-per-provider-serve-settings.md) | Per-provider AI settings in the serve Web UI | Implemented |
 | [BE-0188](BE-0188-configurable-ai-output-language/BE-0188-configurable-ai-output-language.md) | Configurable AI output language for record and crawl | Implemented |
 | [BE-0215](BE-0215-claude-code-oauth-token-credential/BE-0215-claude-code-oauth-token-credential.md) | Explicit CLAUDE_CODE_OAUTH_TOKEN credential for the claude-code provider | Implemented |
+| [BE-0229](BE-0229-per-org-provider-settings-resolution/BE-0229-per-org-provider-settings-resolution.md) | Resolve serve AI provider settings per organization at runtime | Implemented |
 <!-- /GENERATED:implemented-ai-provider -->
 
 ### Hosting the web UI (cloud / self-hosted)
@@ -637,7 +640,6 @@ A platform is just a backend behind the one driver interface ([DESIGN §1](../DE
 | ID | Item | Status |
 |---|---|---|
 | [BE-0008](BE-0008-flutter-support/BE-0008-flutter-support.md) | Flutter support | Proposal |
-| [BE-0233](BE-0233-adb-clipboard-fidelity/BE-0233-adb-clipboard-fidelity.md) | adb clipboard on-device fidelity | Proposal |
 <!-- /GENERATED:proposals-platform -->
 
 ### Authoring experience (record / GUI editor)
@@ -678,9 +680,7 @@ Lower the maintenance cost of regressions while keeping AI out of the judge role
 ### AI provider configuration
 
 <!-- GENERATED:proposals-ai-provider -->
-| ID | Item | Status |
-|---|---|---|
-| [BE-0229](BE-0229-per-org-provider-settings-resolution/BE-0229-per-org-provider-settings-resolution.md) | Resolve serve AI provider settings per organization at runtime | Proposal |
+
 <!-- /GENERATED:proposals-ai-provider -->
 
 ### AI usage and cost observability
@@ -774,9 +774,7 @@ Sending a run's result out to a service the team already lives in. These are pos
 ### Candidates from competitive research (MagicPod / Autify)
 
 <!-- GENERATED:proposals-competitive -->
-| ID | Item | Status | Origin |
-|---|---|---|---|
-| [BE-0186](BE-0186-mailbox-provider-registry/BE-0186-mailbox-provider-registry.md) | Mailbox provider registry for the email step | Proposal |  |
+
 <!-- /GENERATED:proposals-competitive -->
 
 ### Candidates from competitive research (Maestro)

@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The library ships no components of its own: the clipboard receiver is registered at runtime by
+     Bajutsu.startClipboard(), gated on the app's test/debug build, so nothing here reaches release. -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" />

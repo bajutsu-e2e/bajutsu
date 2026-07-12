@@ -498,11 +498,13 @@ class AdbDriver:
         return None
 
     # No semantic tap and no native network monitoring — the lean end of the capability model,
-    # alongside idb. Of the device-control family it advertises only `setLocation` + `clipboard`,
-    # the operations the emulator can honor (BE-0211); the per-operation tokens (BE-0212) let it
-    # declare exactly that subset, so preflight admits those steps and fails the rest fast. A class
-    # constant so the preflight (BE-0082) reads it via `backends.capabilities_for` with no device.
-    # `multiTouch` is declared statically here — preflight reads the set with no device — so
+    # alongside idb. Of the device-control family it advertises only `setLocation` + `clipboard`:
+    # `setLocation` over the emulator console (BE-0211), `clipboard` over an ordered `am broadcast`
+    # to the app's in-app receiver (BajutsuAndroid, BE-0233) — like idb, whose clipboard rides
+    # simctl, adb declares it because the backend can drive it given a cooperating app. The
+    # per-operation tokens (BE-0212) let it declare exactly that subset, so preflight admits those
+    # steps and fails the rest fast. A class constant so the preflight (BE-0082) reads it via
+    # `backends.capabilities_for` with no device. `multiTouch` is declared statically here too, so
     # `gestures_multitouch` is admitted on adb; the rooted-device precondition for the two-finger
     # `sendevent` sweep is enforced at actuation time (`_two_finger_gesture`), not in the set, so on a
     # non-rooted device the gesture step fails fast with a clear `UnsupportedAction` (BE-0232).

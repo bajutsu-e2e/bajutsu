@@ -13,6 +13,7 @@ is forwarded through the parent process.
 
 from __future__ import annotations
 
+import base64
 import contextlib
 import math
 import re
@@ -479,24 +480,90 @@ def geo_fix_cmd(serial: str, lat: float, lon: float) -> list[str]:
     return _adb(serial, "emu", "geo", "fix", str(lon), str(lat))
 
 
-def set_primary_clip_cmd(serial: str, text: str) -> list[str]:
-    """Write `text` to the primary clipboard (`cmd clipboard set-primary-clip`).
+# Clipboard runs through the app's in-app receiver (BajutsuAndroid), not `cmd clipboard`: on a real
+# device / the google_apis image `cmd clipboard set/get-primary-clip` answers "No shell command
+# implementation" (exit 0, a silent no-op), and since Android 10 only the foreground app / default
+# IME may touch the clipboard, so a shell-uid process cannot (`service call clipboard` hits
+# ClipboardService.checkAndSetPrimaryClip and is brittle across API levels) — BE-0233. The app under
+# test *is* foreground while a scenario drives it, so bajutsu sends an ordered `am broadcast` to a
+# receiver inside the app, which reads/writes the clipboard from the app process and returns the
+# value in the broadcast result. `am broadcast` acts as the finish-receiver, so the receiver's
+# `setResultCode`/`setResultData` come back on stdout.
+CLIPBOARD_ACTION = "dev.bajutsu.CLIPBOARD"
 
-    `text` is free-form scenario input, and `adb shell` joins its argv into one command string run
-    by the device shell — so it is single-quoted (as `text_script` does for `input text`) to seed it
-    literally rather than let shell metacharacters execute on the device.
+# The receiver sets this result code so a run can tell "the app handled it" from "no receiver was
+# present" (am leaves the code at 0). Must match BajutsuAndroid's receiver.
+CLIPBOARD_RESULT_OK = 1
+
+_RESULT_CODE_RE = re.compile(r"result=(-?\d+)")
+_RESULT_DATA_RE = re.compile(r'data="([^"]*)"')
+
+
+def _b64(text: str) -> str:
+    return base64.b64encode(text.encode()).decode("ascii")
+
+
+def _clipboard_broadcast_cmd(serial: str, package: str, op: str, *extra: str) -> list[str]:
+    # `-p <package>` limits delivery to the app under test's receiver. Payloads travel base64-encoded
+    # (a shell-safe alphabet), so `adb shell`'s one-string argv join needs no quoting and no scenario
+    # text can execute on the device — the same threat `text_script` guards with `shlex.quote`.
+    return _adb(
+        serial,
+        "shell",
+        "am",
+        "broadcast",
+        "-a",
+        CLIPBOARD_ACTION,
+        "-p",
+        package,
+        "--es",
+        "op",
+        op,
+        *extra,
+    )
+
+
+def set_primary_clip_cmd(serial: str, package: str, text: str) -> list[str]:
+    """Broadcast a `set` of `text` to the app's clipboard receiver (base64-encoded, see above).
+
+    Empty `text` omits the `b64` extra: `base64("")` is `""`, and `adb shell` drops an empty trailing
+    argv element when it rejoins the command string, so the extra would reach `am` value-less and
+    error. The receiver reads a missing `b64` as empty, seeding an empty clip.
     """
-    return _adb(serial, "shell", "cmd", "clipboard", "set-primary-clip", shlex.quote(text))
+    extra = ("--es", "b64", _b64(text)) if text else ()
+    return _clipboard_broadcast_cmd(serial, package, "set", *extra)
 
 
-def get_primary_clip_cmd(serial: str) -> list[str]:
-    """Read the primary clipboard (`cmd clipboard get-primary-clip`); content comes back on stdout."""
-    return _adb(serial, "shell", "cmd", "clipboard", "get-primary-clip")
+def get_primary_clip_cmd(serial: str, package: str) -> list[str]:
+    """Broadcast a `get` to the app's clipboard receiver; the value comes back as broadcast result."""
+    return _clipboard_broadcast_cmd(serial, package, "get")
 
 
-def clear_primary_clip_cmd(serial: str) -> list[str]:
-    """Clear the primary clipboard (`cmd clipboard clear-primary-clip`)."""
-    return _adb(serial, "shell", "cmd", "clipboard", "clear-primary-clip")
+def clear_primary_clip_cmd(serial: str, package: str) -> list[str]:
+    """Broadcast a `clear` to the app's clipboard receiver."""
+    return _clipboard_broadcast_cmd(serial, package, "clear")
+
+
+def parse_clipboard_result(out: str) -> str:
+    """The clipboard text from an `am broadcast` reply, raising loudly if the app had no receiver.
+
+    `am broadcast` prints the ordered broadcast's final `result=<code>, data="<b64>"`. The
+    BajutsuAndroid receiver sets `result=CLIPBOARD_RESULT_OK` and base64-encodes the clip into
+    `data`; `get` returns the decoded text, `set` / `clear` return `""`.
+
+    Raises:
+        DeviceError: the code is not `CLIPBOARD_RESULT_OK` — the app under test embeds no
+            BajutsuAndroid clipboard receiver, so nothing was read or written. Surfaced loudly
+            (prime directive 2) rather than the silent empty the old `cmd clipboard` path returned.
+    """
+    m = _RESULT_CODE_RE.search(out)
+    if (int(m.group(1)) if m else 0) != CLIPBOARD_RESULT_OK:
+        raise DeviceError(
+            "clipboard broadcast was not handled: the app under test has no BajutsuAndroid "
+            "clipboard receiver. adb clipboard needs the in-app SDK (see BajutsuAndroid/README.md)."
+        )
+    d = _RESULT_DATA_RE.search(out)
+    return base64.b64decode(d.group(1)).decode() if d else ""  # no data (set/clear) → empty read
 
 
 # --- device catalog / serial resolution ---
@@ -642,19 +709,20 @@ class Env:
         with open(path, "wb") as f:
             f.write(out)
 
-    # Device control (BE-0211): the subset the emulator can honor, the Android peer of simctl's
-    # setLocation / clipboard. The rest of the DeviceControl family has no faithful emulator
-    # equivalent and is not wired (see `platform_lifecycle.android_device_control`).
+    # Device control: the subset the emulator can honor, the Android peer of simctl's setLocation /
+    # clipboard. setLocation is a pure emulator-console op (BE-0211); clipboard goes through the app's
+    # in-app receiver (BE-0233), so its methods take the target package to address the broadcast. The
+    # rest of the DeviceControl family has no faithful emulator equivalent and is not wired (see
+    # `platform_lifecycle.android_device_control`).
 
     def set_location(self, lat: float, lon: float) -> None:
         self._run(geo_fix_cmd(self.serial, lat, lon))
 
-    def set_clipboard(self, text: str) -> None:
-        self._run(set_primary_clip_cmd(self.serial, text))
+    def set_clipboard(self, package: str, text: str) -> None:
+        parse_clipboard_result(self._run(set_primary_clip_cmd(self.serial, package, text)))
 
-    def clear_clipboard(self) -> None:
-        self._run(clear_primary_clip_cmd(self.serial))
+    def clear_clipboard(self, package: str) -> None:
+        parse_clipboard_result(self._run(clear_primary_clip_cmd(self.serial, package)))
 
-    def get_clipboard(self) -> str:
-        # The device shell appends a trailing newline; strip it so the read-back matches the seed.
-        return self._run(get_primary_clip_cmd(self.serial)).rstrip("\n")
+    def get_clipboard(self, package: str) -> str:
+        return parse_clipboard_result(self._run(get_primary_clip_cmd(self.serial, package)))

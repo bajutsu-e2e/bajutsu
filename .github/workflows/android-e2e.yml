@@ -16,8 +16,9 @@
 #
 # Positive-list path filter (mirrors web-e2e.yml and e2e.yml's scripts/e2e_changes.py): only the
 # paths this lane exercises — the adb driver, the run pipeline and scenario loader, the CLI entry
-# points `bajutsu run` wires through, the Android showcase and the shared scenarios, the config, and
-# this workflow. Top-level `bajutsu/*.py` modules are allow-listed by name (the adb command layer,
+# points `bajutsu run` wires through, the Android showcase and the shared scenarios, the app-side
+# clipboard SDK the showcase builds in (BajutsuAndroid), the config, and this workflow. Top-level
+# `bajutsu/*.py` modules are allow-listed by name (the adb command layer,
 # the backend registry, the platform lifecycle, the run/assert/codegen path) rather than swept by a
 # `bajutsu/*.py` wildcard, which also caught serve/analytics/crawl modules (stats, audit, usage*,
 # crawl*, …) the emulator job never runs — burning ~9min of KVM on, e.g., a serve-only PR;
@@ -82,6 +83,7 @@ on:
       - 'demos/showcase/android/**'
       - 'demos/showcase/scenarios/**'
       - 'demos/showcase/showcase.config.yaml'
+      - 'BajutsuAndroid/**'  # the app-side clipboard SDK the showcase APKs build in (BE-0233)
       - 'pyproject.toml'
       - 'uv.lock'
       - '.github/workflows/android-e2e.yml'

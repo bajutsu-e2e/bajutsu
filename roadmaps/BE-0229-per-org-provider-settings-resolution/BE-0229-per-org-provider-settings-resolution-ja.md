@@ -7,8 +7,9 @@
 |---|---|
 | 提案 | [BE-0229](BE-0229-per-org-provider-settings-resolution-ja.md) |
 | 提案者 | [@hirosassa](https://github.com/hirosassa) |
-| 状態 | **提案** |
+| 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0229") |
+| 実装 PR | [#955](https://github.com/bajutsu-e2e/bajutsu/pull/955) |
 | トピック | AI provider configuration |
 | 関連 | [BE-0184](../BE-0184-persist-serve-ai-provider-settings/BE-0184-persist-serve-ai-provider-settings-ja.md), [BE-0183](../BE-0183-per-provider-serve-settings/BE-0183-per-provider-serve-settings-ja.md), [BE-0015](../BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting-ja.md) |
 <!-- /BE-METADATA -->
@@ -73,12 +74,21 @@ BE-0184 はプロバイダー設定の永続化を実装したうえで、組織
 > 作業分解（作業の単位ごとに 1 つ）に対応し、ログには変更内容と時期（古い順）を PR へのリンクと
 > ともに記録します。
 
-- [ ] 組織ごとのプロバイダー設定状態を、組織ごとの `StoreBundle` と同じキーで導入する。
-- [ ] プロバイダー・model・effort をリクエスト／ジョブごとに組織の設定から解決し、共有プロセス環境を書き
+- [x] 組織ごとのプロバイダー設定状態を、組織ごとの `StoreBundle` と同じキーで導入する。
+- [x] プロバイダー・model・effort をリクエスト／ジョブごとに組織の設定から解決し、共有プロセス環境を書き
   換えるのではなくジョブ単位の環境オーバーレイとして渡す。
-- [ ] 組織ごとの DB ベースの `ProviderSettingsStore` 版（BE-0184 が保留した項目）を追加する。
-- [ ] ローカルとのパリティ（組織は `default` の 1 つ、ファイルベースのストア）とゼロコンフィグ経路が変わら
+- [x] 組織ごとの DB ベースの `ProviderSettingsStore` 版（BE-0184 が保留した項目）を追加する。
+- [x] ローカルとのパリティ（組織は `default` の 1 つ、ファイルベースのストア）とゼロコンフィグ経路が変わら
   ないことを確認する。
+
+### ログ
+
+- 組織ごとのプロバイダー解決とジョブ単位の環境オーバーレイ、DB ベースのストアを実装しました。
+  `ServeState.provider_settings`（組織をキーとする）、`serve.operations.config`（`provider_env` ／
+  `resolve_provider_env` ／遅延読み込みの `_org_settings`）、`_spawn_env`（管理対象の環境変数を消して
+  からオーバーレイを適用）、`_register_and_dispatch` の接続点、ワーカーのジョブ仕様、マイグレーション
+  `0011_provider_settings` を通して配線しています。ローカル serve とゼロコンフィグ経路は変わりません。
+  ([#955](https://github.com/bajutsu-e2e/bajutsu/pull/955))
 
 ## 参考
 

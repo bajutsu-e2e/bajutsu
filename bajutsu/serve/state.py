@@ -106,6 +106,13 @@ class Job:
     # `runs.project_id` without a registry of its own — a run started for project A stays labeled A
     # even if the active project changed before it finished. None when no project hub is wired.
     project_id: str | None = None
+    # The requesting org's resolved AI provider env (BE-0229): provider/model/effort/language, merged
+    # onto the spawn's inherited env by `_spawn_env` so the job uses *this* org's selection without
+    # the serve process ever mutating its shared `os.environ` — the tenant-isolation guarantee.
+    # Resolved at enqueue on the control plane (from the org's settings) and carried in the job spec,
+    # so a remote worker needs no settings of its own. Empty when no provider is selected (the
+    # zero-config path, BE-0101, then falls back to the job's inherited env unchanged).
+    env_overlay: dict[str, str] = field(default_factory=dict)
 
     def view(self, *, include_lines: bool = True) -> dict[str, Any]:
         """The job's state for the UI. `include_lines=False` omits the log buffer — used for the
@@ -140,6 +147,11 @@ class StoreBundle:
     scenarios: ScenarioStore
     baselines: BaselineStore
     secrets: SecretStore
+    # The org's durable AI provider settings (BE-0229): the per-organization, DB-backed store on a
+    # hosted deployment, the single file-backed store on local serve. None when persistence is not
+    # wired (a server backend without a database) — the selection is then session-only in-memory,
+    # the pre-BE-0184 shape. Read/written through `for_org(org)` like the other per-tenant seams.
+    provider_settings: ProviderSettingsStore | None = None
 
 
 @dataclass
@@ -156,6 +168,24 @@ class ProviderSettings:
     model: str = ""
     effort: str = ""
     region: str = ""
+
+
+@dataclass
+class OrgProviderSettings:
+    """One organization's AI provider selection (BE-0229): the active provider, its per-provider
+    model/effort/region slots (BE-0183), and the output language (BE-0188).
+
+    Replaces the single process-global selection with a per-org one, so a hosted multi-tenant serve
+    resolves provider/model/effort per organization — whoever saved last no longer wins for everyone.
+    `slots` maps a provider name to its remembered `ProviderSettings`; `provider` is the active one
+    (empty = none selected, so resolution falls back to the launch env / default). `language` is the
+    org-wide output-language override; blank/`auto` means the no-override default. Held in memory
+    (keyed by org on `ServeState`) and, on a wired deployment, backed by the org's persistent store.
+    """
+
+    provider: str = ""
+    slots: dict[str, ProviderSettings] = field(default_factory=dict)
+    language: str = ""
 
 
 @dataclass
@@ -374,15 +404,19 @@ class ServeState:
     # back to the default stores when unset, so local behavior is unchanged.
     org_stores: Callable[[str], StoreBundle] | None = None
     capture: CaptureSession | None = None
-    # Per-provider AI settings the Settings panel reads/writes (BE-0183), keyed by provider name.
-    # Holds each provider's own model/effort/region so switching the dropdown stops discarding the
-    # one left behind; the active provider's slot is materialized into the env vars spawned jobs read.
-    # In memory, but flushed to `provider_settings_store` on save and reloaded on boot (BE-0184).
-    provider_settings: dict[str, ProviderSettings] = field(default_factory=dict)
-    # Durable backing for `provider_settings` + the active provider choice (BE-0184). Set on local
-    # serve to a file-backed store so a saved choice survives a restart; None leaves the pre-BE-0184
-    # session-only behavior (a hosted deployment resolves these per process, not per org, so it does
-    # not wire a store yet). `set_provider` flushes here on save; boot restores from it.
+    # AI provider selection the Settings panel reads/writes, keyed by org (BE-0229) — the per-org
+    # replacement for the single process-global selection. Each org's `OrgProviderSettings` holds its
+    # active provider, its per-provider model/effort/region slots (BE-0183), and its output language
+    # (BE-0188), so a hosted multi-tenant serve resolves these per organization instead of sharing one
+    # choice. Loaded lazily from the org's store on first access; a request/job resolves its env
+    # overlay from the requesting org's entry rather than a shared `os.environ`. Local serve has the
+    # single `default` org, so this is one entry — exactly today's shape.
+    provider_settings: dict[str, OrgProviderSettings] = field(default_factory=dict)
+    # Durable backing for the `default` org's `provider_settings` on local serve (BE-0184): a
+    # file-backed store so a saved choice survives a restart. `for_org(default)` exposes it as the
+    # bundle's `provider_settings` seam, so the operations layer reads/writes it uniformly with the
+    # hosted per-org store. None on a hosted deployment (its per-org stores come from `org_stores`)
+    # and on a server backend without a database (the selection is then session-only in-memory).
     provider_settings_store: ProviderSettingsStore | None = None
     # The in-flight `ant auth login` subprocess (BE-0175), or None when no sign-in is running. Held
     # between the POST that starts it and the GET that polls it, so a second click doesn't spawn a
@@ -413,8 +447,8 @@ class ServeState:
     _provider_lock: threading.Lock = field(default_factory=threading.Lock)
     # Serializes the re-snapshot + disk write in `_persist_provider_settings` (BE-0184). Kept
     # separate from `_provider_lock` so I/O never runs inside the in-memory lock. A thread that wins
-    # this lock last re-reads `provider_settings_snapshot()` inside it and therefore always writes
-    # the most up-to-date state — see `_persist_provider_settings` for the full reasoning.
+    # this lock last re-reads the org's settings (`org_provider_settings`) inside it and therefore
+    # always writes the most up-to-date state — see `_persist_provider_settings` for the full reasoning.
     _persist_lock: threading.Lock = field(default_factory=threading.Lock)
 
     def __post_init__(self) -> None:
@@ -469,7 +503,13 @@ class ServeState:
         serve has a single tenant, so this is just the default stores (BE-0015 multi-tenancy)."""
         if self.org_stores is not None:
             return self.org_stores(org)
-        return StoreBundle(self.artifacts, self.scenarios, self.baselines, self.secrets)
+        return StoreBundle(
+            self.artifacts,
+            self.scenarios,
+            self.baselines,
+            self.secrets,
+            self.provider_settings_store,
+        )
 
     def check_token(self, candidate: str) -> bool:
         """Constant-time compare of a presented token against the configured one."""
@@ -483,18 +523,50 @@ class ServeState:
     def valid_session(self, sid: str) -> bool:
         return self.sessions.valid(sid)
 
-    def provider_settings_snapshot(self) -> dict[str, ProviderSettings]:
-        """A shallow copy of the per-provider AI settings, taken under the lock (BE-0183). serve is a
-        ThreadingHTTPServer, so a bare `dict(...)` here could race a concurrent `set_provider_setting`
-        write and raise "dictionary changed size during iteration"; the lock makes the snapshot safe."""
+    def org_provider_settings(self, org: str) -> OrgProviderSettings | None:
+        """A copy of *org*'s AI provider selection, or None when the org has no in-memory entry yet
+        (BE-0229). Taken under the lock — serve is a ThreadingHTTPServer, so a bare read could race a
+        concurrent `set_org_provider_choice` write. Returns a copy (the slots dict too) so the caller
+        can never mutate the live entry. None means "not loaded"; the operations layer lazily loads
+        it from the org's store on first access."""
         with self._provider_lock:
-            return dict(self.provider_settings)
+            current = self.provider_settings.get(org)
+            if current is None:
+                return None
+            return OrgProviderSettings(
+                provider=current.provider,
+                slots=dict(current.slots),
+                language=current.language,
+            )
 
-    def set_provider_setting(self, name: str, settings: ProviderSettings) -> None:
-        """Store one provider's AI settings slot under the lock (BE-0183), so a write can't corrupt a
-        concurrent `provider_settings_snapshot` read on another request thread."""
+    def put_org_provider_settings(self, org: str, settings: OrgProviderSettings) -> None:
+        """Seed *org*'s in-memory entry from a freshly loaded snapshot (BE-0229), under the lock.
+        Stores an independent copy so a later store reload can't alias a live entry."""
         with self._provider_lock:
-            self.provider_settings[name] = settings
+            self.provider_settings[org] = OrgProviderSettings(
+                provider=settings.provider,
+                slots=dict(settings.slots),
+                language=settings.language,
+            )
+
+    def set_org_provider_choice(
+        self, org: str, *, provider: str, slot: ProviderSettings, language: str
+    ) -> None:
+        """Apply one save to *org*'s selection under the lock (BE-0229): set the active *provider*,
+        store its *slot* (BE-0183), and set the org-wide output *language* (BE-0188). The slot is
+        written into the existing entry in place, so a provider left behind keeps its remembered slot
+        — and a concurrent save for a *different* provider adds its own slot rather than clobbering
+        this one (mirroring the pre-BE-0229 per-key map write). The active provider and language are
+        last-writer-wins, as they were process-globally. Assumes the org's persisted slots are
+        already loaded (the caller loads them first) so this never drops them."""
+        with self._provider_lock:
+            current = self.provider_settings.get(org)
+            if current is None:
+                current = OrgProviderSettings()
+                self.provider_settings[org] = current
+            current.slots[provider] = slot
+            current.provider = provider
+            current.language = language
 
     def active_jobs(self) -> int:
         """How many spawned jobs are still running (not yet finished). Delegates to the registry."""

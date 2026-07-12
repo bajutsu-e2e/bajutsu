@@ -258,8 +258,9 @@ workers would collide).
   on the Linux gate (`demos/web`), raised to the rich end of the capability model (BE-0054) — native
   `network` observation + stubbing (`page.route()`), `video` and `deviceLog`-equivalent console /
   page-error interval evidence through the shared `driver_interval` seam, emulated `multiTouch`
-  (pinch / rotate), and parallel runs across N `BrowserContext` lanes; `appTrace` stays iOS-only
-  (`os_log`/simctl-based)
+  (pinch / rotate), parallel runs across N `BrowserContext` lanes, and a target-level `deviceMode`
+  (desktop default, or a Playwright device preset for mobile emulation; BE-0228); `appTrace` stays
+  iOS-only (`os_log`/simctl-based)
 - The **Android adb backend** (`drivers/adb.py` + `adb.py`): the coordinate driver
   (`uiautomator dump` → frame-center tap), the `AndroidEnvironment` launch sequence, `doctor`
   reporting, interval evidence (`video` via `screenrecord`, `deviceLog` via `logcat`, both through
@@ -267,15 +268,17 @@ workers would collide).
   fast-gate unit tests over captured XML fixtures; on-device actuation parity with idb — system
   `back`, deeplink, a single-round-trip `doubleTap`, scroll-into-view resolution, and up-front
   runtime-permission grants (BE-0210); a device-control subset — `setLocation` and clipboard
-  read/write/clear, gated by per-operation capability tokens (BE-0211 / BE-0212), while `push` /
-  `clearKeychain` / status-bar overrides / `background` / `foreground` stay unsupported (no emulator
-  equivalent); a UI Automator (Kotlin) codegen target (BE-0209); an Android e2e CI lane (emulator
-  under KVM) is in progress (BE-0208), and adb cannot yet drive the native tab bar, so tab-scoped
-  scenarios stay iOS-only until BE-0223 lands (BE-0007). **Id matching** stays verbatim in the
-  driver: where a native id syntax can't reproduce the SPEC id (Android Views `android:id` maps
-  `stable.refresh` → `stable_refresh`), the scenario's selector lists **both id forms** and the
-  shared resolver matches either as an OR — an explicit scenario-side convention, not a driver-side
-  `.`↔`_` rewrite (BE-0221)
+  read/write/clear, gated by per-operation capability tokens (BE-0211 / BE-0212), the clipboard
+  through an in-app receiver (`BajutsuAndroid`, BE-0233) since a shell process cannot reach the
+  clipboard on Android 10+, while `push` / `clearKeychain` / status-bar overrides / `background` /
+  `foreground` stay unsupported (no emulator equivalent); `pinch`/`rotate` two-finger multi-touch
+  gated on a rooted device (protocol-B `sendevent`, no single-touch fallback; BE-0232); a UI
+  Automator (Kotlin) codegen target (BE-0209); an Android e2e CI lane (emulator under KVM,
+  `android-e2e.yml`; BE-0208), and adb cannot yet drive the native tab bar, so tab-scoped scenarios
+  stay iOS-only until BE-0223 lands (BE-0007). **Id matching** stays verbatim in the driver: where a
+  native id syntax can't reproduce the SPEC id (Android Views `android:id` maps `stable.refresh` →
+  `stable_refresh`), the scenario's selector lists **both id forms** and the shared resolver matches
+  either as an OR — an explicit scenario-side convention, not a driver-side `.`↔`_` rewrite (BE-0221)
 - Scenario schema (strict validation) and YAML round-trip; `id` / `idMatches` accept a list of OR
   candidates for cross-platform id forms (BE-0221)
 - Evaluation of the assertion kinds (`exists` / `value` / `label` / `count` / `enabled` / `disabled` /
@@ -313,7 +316,8 @@ workers would collide).
   `--apply`/`--write` patches the scenario source (diff-previewed, opt-in) and `--rerun` re-runs it
 - The CLI: `run` / `project` / `doctor` / `audit` / `coverage` / `stats` / `flakiness` / `export` / `trace` / `report` / `triage` / `record` / `crawl` / `codegen` / `approve` / `serve` / `mcp` / `worker` / `lint` / `schema` — with `record` + `crawl` as the Tier 1 AI authoring paths and the alert guard
 - Read-only advisory analysis commands (no device, no AI, never gate CI — only a missing/unreadable input exits non-zero): a determinism/flakiness **audit** with static, repeat-and-diff, and longitudinal modes (`audit`, BE-0049); a scenario id-namespace **coverage** map (`coverage`, BE-0050); the aggregate run-stats dashboard as CLI/HTML output (`stats`, BE-0102); cross-run **flakiness** ranking, from a runs directory or the `serve` database (`flakiness`, BE-0220); a finished run's **export** as a portable `.zip` (`export`, BE-0060); and **report** re-rendering (`report.html`/`junit.xml`/`ctrf.json`) from stored run data with no re-run (`report`, BE-0068)
-- The **config project hub** (`project add`/`ls`/`use`/`rm` and `run --project`, BE-0225): a named registry binding a project name to a config source, shared between the CLI and the `serve` web UI (DB-backed when configured, on-disk JSON otherwise); the `serve` project-switcher UI is still unwired
+- The **config project hub** (`project add`/`ls`/`use`/`rm` and `run --project`, BE-0225): a named registry binding a project name to a config source, shared between the CLI and the `serve` web UI (DB-backed when configured, on-disk JSON otherwise); `serve` carries a header **project switcher** + Projects list that rebinds the active config with no restart
+- The **cross-project metrics comparison dashboard** (BE-0226): a `serve` **Metrics** tab that ranks the registered projects side by side — pass-rate, flaky-rate, and p50/p95 run duration, plus a per-project trend sparkline — reusing BE-0102's per-config aggregation computed once per project (`GET /api/metrics/projects`); read-only and advisory, like BE-0102
 - AI **crawl** (`crawl.py`): autonomous breadth-first exploration of an app → a screen map (`screenmap.json`)
 - The `serve` local web UI (Tier 1): author (`record` / `crawl`), edit, and run scenarios; **open a `.zip` bundle** of config + scenarios + the built app binary as the active config the tabs run from (BE-0073); browse reports and evidence; a read-only aggregate **run-stats dashboard** across the run history (BE-0102); a pre-run **readiness panel** (`doctor`: environment runnability + the current screen's convention score) in the Record and Replay forms (BE-0148); a **pluggable theme system** — drop-in visual tokens + swappable transitions, a header picker, and an in-UI editor with live preview and local-draft/server-upload persistence (BE-0191); approve visual baselines; live job streaming — from a browser (not for CI)
 - **MCP server** (`bajutsu mcp`): `bajutsu_run` and `bajutsu_doctor` as MCP tools + run evidence as resources, for Claude Desktop / Code integration (optional dependency `fastmcp`)
@@ -337,6 +341,15 @@ workers would collide).
   `make check` gate as CI (the `web-e2e` job in `ci.yml`), confirming the deterministic core is
   platform-neutral. Rich-end web capture (network / video / multi-touch) has since shipped
   (BE-0054); a parallel web crawl across N browser processes ([BE-0077](../roadmaps/BE-0077-parallel-web-crawl/BE-0077-parallel-web-crawl.md)) runs on this same gate.
+
+### Validated on an Android emulator (Linux, no Mac)
+
+- The adb backend's subprocess execution — `uiautomator dump` parsing, frame-center tap, the
+  `AndroidEnvironment` launch sequence, actuation-fidelity parity with idb, and the `pinch`/`rotate`
+  multi-touch and device-control slices — is confirmed against a booted x86_64 API 34 AVD under KVM
+  (`android-e2e.yml`; BE-0208), driving both the Compose and Views showcase builds over the same
+  shared scenarios idb runs, plus a golden element-tree check and a pixel visual-regression baseline
+  for the Compose catalog.
 
 ### Not yet wired (schema/flags exist but have no runtime effect)
 

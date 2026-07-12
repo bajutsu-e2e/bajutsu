@@ -54,7 +54,7 @@ resolution, and the **preflight capability check** (below).
 | `semanticTap` | tap directly by id/label (no coordinates) | — | — | ✅ | ✅ |
 | `conditionWait` | native condition waiting | — | — | ✅ | ✅ |
 | `network` | native network monitoring | — | — | ✅ | — |
-| `multiTouch` | two-finger gestures (pinch / rotate) | — | — | ✅ | ✅ |
+| `multiTouch` | two-finger gestures (pinch / rotate) | — | ✅ | ✅ | ✅ |
 | `deviceControl.setLocation` | set the simulated GPS location | ✅ | ✅ | — | — |
 | `deviceControl.clipboard` | read / write / clear the clipboard | ✅ | ✅ | — | — |
 | `deviceControl.push` | deliver a push notification | ✅ | — | — | — |
@@ -69,11 +69,12 @@ resolution, and the **preflight capability check** (below).
 > the split makes expressible without green-lighting the rest.
 
 > idb and adb sit at the **lean end**, both actuating by **frame-center coordinates** — they expose
-> no semantic tap, so the run loop resolves a unique element via `query()` and taps its center.
-> `pinch` / `rotate` raise `UnsupportedAction` (single-touch); on iOS those go through codegen →
-> XCUITest. adb advertises `query` / `elements` / `screenshot` plus the emulator-backed
-> device-control subset `deviceControl.setLocation` + `deviceControl.clipboard` (BE-0211); the rest
-> of the family has no faithful emulator equivalent and stays unadvertised. The `fake` driver
+> no semantic tap, so the run loop resolves a unique element via `query()` and taps its center. On
+> idb, `pinch` / `rotate` raise `UnsupportedAction` (single-touch); on iOS those go through codegen →
+> XCUITest. adb advertises `query` / `elements` / `screenshot`, `multiTouch` (a rooted-device
+> `sendevent` two-finger sweep; BE-0232), plus the emulator-backed device-control subset
+> `deviceControl.setLocation` + `deviceControl.clipboard` (BE-0211); the rest of the device-control
+> family has no faithful emulator equivalent and stays unadvertised. The `fake` driver
 > advertises a
 > richer
 > capability set (semanticTap / conditionWait / multiTouch) purely to exercise those code paths in
@@ -189,7 +190,14 @@ abstraction resolves **id → frame center → coordinate tap**, exactly as on i
   > portable idiom stays an **explicit `swipe` step** (see `demos/showcase/scenarios/notices.yaml`);
   > the adb auto-scroll is a robustness net, not a substitute for it. Widening it to the other
   > backends is a follow-up (BE-0210 scoped it to adb).
-- `pinch` / `rotate` raise `UnsupportedAction` (single-touch `input`, just like idb).
+- **Multi-touch** (BE-0232): `pinch` / `rotate` drive a two-slot protocol-B `sendevent` sweep
+  (`pinch_contacts` / `rotate_contacts` compute the two contacts' geometry; `rotate` sweeps the
+  straight chord between the endpoints, a linear approximation of the arc, like the web backend's
+  rotate). This needs a rooted device with a discoverable touchscreen; `_two_finger_gesture` fails
+  loudly with `UnsupportedAction` otherwise — there is no single-touch fallback, unlike the
+  double-tap path below. `MULTI_TOUCH` is declared statically in the capability set regardless of
+  root, so preflight admits `gestures_multitouch` on adb; the root check is enforced at actuation
+  time, not in the capability set.
 - `screenshot` writes the PNG bytes from `adb exec-out screencap -p` (binary-clean stdout).
 - Lifecycle (`AndroidEnvironment`, the twin of the iOS `simctl` sequence): boot-readiness wait
   (polling `getprop sys.boot_completed` to a bounded deadline — a condition wait, no fixed sleep, and
@@ -213,8 +221,14 @@ abstraction resolves **id → frame center → coordinate tap**, exactly as on i
   `capture` policy drives them unchanged (see [evidence](evidence.md)).
 - **Network** is not observed natively (no `NETWORK` capability) — the same mocked story as iOS: the
   app-side collector URL is forwarded through the launch env as an intent extra, so `mocks` work with
-  no new code path. Device control backs the emulator subset `setLocation` (`emu geo fix`) and the
-  clipboard operations (`cmd clipboard`, BE-0211); the rest of the family stays unsupported.
+  no new code path. Device control backs the emulator subset `setLocation` (`emu geo fix`, BE-0211)
+  and the clipboard operations; the rest of the family stays unsupported. The clipboard runs through
+  an in-app receiver (`BajutsuAndroid`, BE-0233), not `cmd clipboard`: on-device that command is a
+  silent no-op, and since Android 10 only the foreground app / default IME may touch the clipboard —
+  so bajutsu sends an ordered `am broadcast` that a receiver inside the app handles from the app
+  process (base64 both ways, so the argv needs no quoting; a missing receiver fails loudly rather
+  than reading an empty clip). adb still advertises `clipboard` because, like idb's over simctl, the
+  backend can drive it given a cooperating app. See [`BajutsuAndroid`](../BajutsuAndroid/README.md).
 
 > The XML attribute names follow UI Automator's `uiautomator dump` schema. The Views `android:id`
 > `.`↔`_` case is resolved scenario-side: a selector lists both id forms and matches either (BE-0221),

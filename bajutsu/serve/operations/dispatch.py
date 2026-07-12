@@ -16,6 +16,7 @@ from bajutsu.serve.helpers import (
     valid_run_id,
 )
 from bajutsu.serve.operations._common import _device_args, _resolve_org_or_forbid
+from bajutsu.serve.operations.config import resolve_provider_env
 from bajutsu.serve.state import Job, ServeState
 
 _logger = logging.getLogger("bajutsu.serve.operations")
@@ -74,6 +75,12 @@ def _register_and_dispatch(
     """Register *job* under the concurrency cap and dispatch it, the tail shared by every start_*
     endpoint. Returns ``(job, None)`` once dispatched, or ``(None, (error, 429))`` when the cap is
     hit. The atomic count+create in `try_register` is what keeps concurrent dispatches under the cap."""
+    # Resolve the requesting org's AI provider selection into this job's env overlay (BE-0229), so
+    # the spawn uses that org's provider/model/effort without the serve process mutating its shared
+    # os.environ. Empty when no provider is selected (the zero-config path). Travels in the job spec,
+    # so a remote worker needs no settings of its own. Done here — the single tail every start_*
+    # endpoint (run / record / crawl / triage) funnels through — so every AI-capable job is covered.
+    job.env_overlay = resolve_provider_env(state, job.org)
     registered = state.try_register(job)
     if registered is None:
         oplog.log_event(

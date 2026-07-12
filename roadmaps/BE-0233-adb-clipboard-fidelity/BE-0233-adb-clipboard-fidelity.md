@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0233](BE-0233-adb-clipboard-fidelity.md) |
 | Author | [@hirosassa](https://github.com/hirosassa) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0233") |
+| Implementing PR | [#949](https://github.com/bajutsu-e2e/bajutsu/pull/949) |
 | Topic | Platform expansion (Android / Web / Flutter) |
 | Related | [BE-0211](../BE-0211-android-device-control/BE-0211-android-device-control.md), [BE-0208](../BE-0208-android-emulator-e2e-ci/BE-0208-android-emulator-e2e-ci.md) |
 <!-- /BE-METADATA -->
@@ -106,12 +107,37 @@ erodes trust in the capability model that keeps the tool backend-agnostic (the "
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Unit 1 — establish the on-device clipboard baseline across the targeted API levels / ABIs.
-- [ ] Unit 2 — decide repair vs. narrow, and record the decision (+ DESIGN/architecture if the
+- [x] Unit 1 — establish the on-device clipboard baseline across the targeted API levels / ABIs.
+- [x] Unit 2 — decide repair vs. narrow, and record the decision (+ DESIGN/architecture if the
   capability surface changes).
-- [ ] Unit 3 — implement the chosen direction within the adb backend.
-- [ ] Unit 4 — add on-device (or preflight-rejection) coverage that would have caught the gap.
-- [ ] Unit 5 — reconcile BE-0208's `device_android` lane scenario with the outcome.
+- [x] Unit 3 — implement the chosen direction within the adb backend.
+- [x] Unit 4 — add on-device (or preflight-rejection) coverage that would have caught the gap.
+- [x] Unit 5 — reconcile BE-0208's `device_android` lane scenario with the outcome.
+
+**Log**
+
+- Unit 1 (baseline, arm64 API 34 emulator): `cmd clipboard set/get-primary-clip` returns `No shell
+  command implementation` and exits 0 (a silent no-op); `service call clipboard` requires
+  hand-marshaled `ClipData` parcels whose transaction codes shift across API levels and routes
+  through `ClipboardService.checkAndSetPrimaryClip`, so it is brittle and blocked; a shell-uid process
+  cannot reach the clipboard at all (Android 10+ restricts it to the foreground app / default IME).
+  The finding is platform-, not ABI-, specific, matching the x86_64 image PR #934 observed.
+- Unit 2 (decision): **repair**, not narrow. Since no shell mechanism works, the clipboard is driven
+  from inside the app — the app under test is foreground while a scenario runs it. This leverages a
+  uniform, opt-in app-side SDK, which stays app-agnostic (every app embeds the same library, not a
+  per-app config difference), the same model BajutsuKit uses for network capture on iOS. `DC_CLIPBOARD`
+  stays advertised on adb (the backend can drive it given a cooperating app, as idb's clipboard rides
+  simctl). The capability-model clarification is recorded in `DESIGN.md` §8 and `docs/architecture.md`
+  / `docs/drivers.md` (BE-0113).
+- Unit 3 (PR #949): new reusable library `BajutsuAndroid/` (the Android peer of `BajutsuKit/`) with a
+  clipboard `BroadcastReceiver`; `bajutsu/adb.py` drives it over an ordered `am broadcast` (base64
+  both ways, loud-fail when the app has no receiver), `platform_lifecycle.android_device_control`
+  threads the package through, `drivers/adb.py` keeps `DC_CLIPBOARD`.
+- Unit 4: fast-gate tests cover the broadcast builders, the result parse (base64 + loud-fail), the
+  round-trip against a fake receiver, and the kept capability / preflight admit. On-device: the
+  `device_android` clipboard read-back passes on a local arm64 API 34 emulator.
+- Unit 5 (PR #949): `device_android.yaml` regained the clipboard seed + read-back (the strong
+  assertion PR #934 wanted); the showcase compose/views apps embed the receiver in debug builds.
 
 ## References
 
