@@ -9,6 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0224") |
+| Implementing PR | [#956](https://github.com/bajutsu-e2e/bajutsu/pull/956) |
 | Topic | Configuration sourcing |
 | Related | [BE-0063](../BE-0063-git-config-source/BE-0063-git-config-source.md), [BE-0016](../BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md), [BE-0051](../BE-0051-serve-hardening-for-hosting/BE-0051-serve-hardening-for-hosting.md), [BE-0108](../BE-0108-hosted-config-source-restriction/BE-0108-hosted-config-source-restriction.md), [BE-0136](../BE-0136-serve-write-once-secrets/BE-0136-serve-write-once-secrets.md), [BE-0184](../BE-0184-persist-serve-ai-provider-settings/BE-0184-persist-serve-ai-provider-settings.md) |
 <!-- /BE-METADATA -->
@@ -219,7 +220,7 @@ its acquisition changes", narrowed to the private-access question.
 
 **Log**
 
-- Implemented #1–#5 in one change: the credential seam + App provider + diagnostics in `config_source.py` / `github_app.py`, the serve `/api/gitcredential` endpoint + UI field, and the bilingual docs. Per-source (owner/repo) scoping deferred (#3 delivered as per-org). PR: _(to be linked)_.
+- Implemented #1–#5 in one change: the credential seam + App provider + diagnostics in `config_source.py` / `github_app.py`, the serve `/api/gitcredential` endpoint + UI field, and the bilingual docs. Per-source (owner/repo) scoping deferred (#3 delivered as per-org). PR: [#956](https://github.com/bajutsu-e2e/bajutsu/pull/956).
 
 ## References
 

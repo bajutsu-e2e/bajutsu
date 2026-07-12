@@ -9,6 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0224") |
+| 実装 PR | [#956](https://github.com/bajutsu-e2e/bajutsu/pull/956) |
 | トピック | config の取得元 |
 | 関連 | [BE-0063](../BE-0063-git-config-source/BE-0063-git-config-source-ja.md), [BE-0016](../BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting-ja.md), [BE-0051](../BE-0051-serve-hardening-for-hosting/BE-0051-serve-hardening-for-hosting-ja.md), [BE-0108](../BE-0108-hosted-config-source-restriction/BE-0108-hosted-config-source-restriction-ja.md), [BE-0136](../BE-0136-serve-write-once-secrets/BE-0136-serve-write-once-secrets-ja.md), [BE-0184](../BE-0184-persist-serve-ai-provider-settings/BE-0184-persist-serve-ai-provider-settings-ja.md) |
 <!-- /BE-METADATA -->
@@ -204,7 +205,7 @@ github.com リポジトリ向けの認証情報を、どう選び、どう束ね
 
 **ログ**
 
-- #1〜#5 を一つの変更で実装しました。`config_source.py` / `github_app.py` の認証情報の継ぎ目と App プロバイダと診断、serve の `/api/gitcredential` エンドポイントと UI 欄、そして日英のドキュメントです。取得元ごと（owner/repo）のスコープは見送り（#3 は組織ごととして実装）。PR: _（後でリンクします）_。
+- #1〜#5 を一つの変更で実装しました。`config_source.py` / `github_app.py` の認証情報の継ぎ目と App プロバイダと診断、serve の `/api/gitcredential` エンドポイントと UI 欄、そして日英のドキュメントです。取得元ごと（owner/repo）のスコープは見送り（#3 は組織ごととして実装）。PR: [#956](https://github.com/bajutsu-e2e/bajutsu/pull/956)。
 
 ## 参考
 
