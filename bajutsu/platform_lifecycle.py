@@ -533,6 +533,7 @@ class WebEnvironment:
             base_url=web.base_url,
             headless=web.headless,
             browser=web.browser,
+            device_mode=web.device_mode,
             record_video_dir=record_video_dir,
         )
         cast(base.BackendLifecycle, driver).navigate()  # web-only lifecycle, confined to this env

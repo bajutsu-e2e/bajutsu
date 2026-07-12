@@ -105,12 +105,38 @@ class _Started(NamedTuple):
 Starter = Callable[[bool], _Started]
 
 
-def _start_browser(engine: str) -> Starter:  # pragma: no cover - needs a browser
+def _device_context_kwargs(pw: Any, device_mode: str) -> dict[str, Any]:
+    """Resolve a web target's device mode (BE-0228) to `new_context` kwargs.
+
+    "desktop" (the default) is a plain context with no emulation, so the mapping is empty and today's
+    behaviour is unchanged — `playwright.devices` is never consulted. Any other value is a Playwright
+    device preset name whose descriptor (viewport / device_scale_factor / is_mobile / has_touch /
+    user_agent) spreads straight into `new_context`. An unknown name fails loudly here, at driver
+    start before any scenario step runs, rather than silently driving the desktop layout.
+    """
+    if device_mode == "desktop":
+        return {}
+    try:
+        descriptor = pw.devices[device_mode]
+    except KeyError:
+        # Only the lookup is guarded: a KeyError raised while *copying* the descriptor below would be
+        # a real fault, not a bad name, and must not be mislabelled as an unknown preset.
+        raise ValueError(
+            f"unknown deviceMode {device_mode!r}: use 'desktop' or a Playwright device preset name "
+            "(e.g. 'iPhone 13'); see playwright.devices for the full list"
+        ) from None
+    return dict(descriptor)
+
+
+def _start_browser(
+    engine: str, device_mode: str = "desktop"
+) -> Starter:  # pragma: no cover - needs a browser
     """A `Starter` that launches the named Playwright engine (chromium / firefox / webkit, BE-0076).
 
     Each engine is reached the same way — `getattr(pw, engine)` — so firefox / webkit launch through
     the identical path that was hard-wired to Chromium. A fresh context is the `erase` equivalent (no
-    cookies / storage carried over). Playwright is imported lazily so the default path stays free.
+    cookies / storage carried over). `device_mode` emulates a phone (BE-0228); desktop is unchanged.
+    Playwright is imported lazily so the default path stays free.
     """
 
     def start(headless: bool) -> _Started:
@@ -123,8 +149,11 @@ def _start_browser(engine: str) -> Starter:  # pragma: no cover - needs a browse
         # reduced_motion="reduce" is the determinism lever (BE-0191 unit 5): CSS transitions the app
         # under test may run (e.g. the serve UI's own themable motion, dogfooded in demos/serve-ui/)
         # collapse to instant, so condition-wait assertions never race an animation and an element is
-        # never briefly duplicated mid-transition. Motion is a look, never part of the verdict.
-        context = browser.new_context(reduced_motion="reduce")
+        # never briefly duplicated mid-transition. Motion is a look, never part of the verdict. The
+        # device descriptor (BE-0228) rides alongside it, empty for the desktop default.
+        context = browser.new_context(
+            reduced_motion="reduce", **_device_context_kwargs(pw, device_mode)
+        )
         page = context.new_page()
         # cast bridges playwright's real Page to our structural _Page: mypy only sees the real type
         # when the web extra is installed, and a bare `# type: ignore` would be flagged unused when
@@ -207,6 +236,7 @@ class PlaywrightDriver:
         *,
         headless: bool = True,
         browser: str = "chromium",
+        device_mode: str = "desktop",
         page: _Page | None = None,
         starter: Starter | None = None,
         record_video_dir: Path | None = None,
@@ -214,9 +244,14 @@ class PlaywrightDriver:
         self._base_url = base_url
         # Kept so a wedged browser can be relaunched in place (BE-0077): the same starter + headless
         # mode build the replacement process. An explicit `starter` (the test seam) wins; otherwise
-        # build one for the requested engine so relaunch() rebuilds the *same* engine (BE-0076).
+        # build one for the requested engine so relaunch() rebuilds the *same* engine (BE-0076) and
+        # the *same* device emulation (BE-0228).
         self._headless = headless
-        self._starter = starter if starter is not None else _start_browser(browser)
+        # The device mode (BE-0228) every context is created with; resolved against the live pw's
+        # `devices` registry, cached so reset/relaunch re-apply the identical descriptor.
+        self._device_mode = device_mode
+        self._device_kwargs: dict[str, Any] | None = None
+        self._starter = starter if starter is not None else _start_browser(browser, device_mode)
         # When set, contexts are created with Playwright's record_video_dir so the whole scenario is
         # filmed (BE-0054); the `video` interval finalizes and collects it. None = no recording.
         self._record_video_dir = record_video_dir
@@ -248,12 +283,24 @@ class PlaywrightDriver:
         """Open a BrowserContext, recording video into `record_video_dir` when one is configured.
 
         Every context carries `reduced_motion="reduce"` — the determinism lever (BE-0191 unit 5) that
-        collapses the app-under-test's CSS transitions to instant (matches the starter's context).
+        collapses the app-under-test's CSS transitions to instant — and the resolved device
+        descriptor (BE-0228), so a fresh context (the crawl's `reset_context` erase) keeps emulating
+        the same phone rather than falling back to desktop. Both match the starter's context.
         """
-        kwargs: dict[str, Any] = {"reduced_motion": "reduce"}
+        kwargs: dict[str, Any] = {"reduced_motion": "reduce", **self._resolved_device_kwargs()}
         if self._record_video_dir:
             kwargs["record_video_dir"] = str(self._record_video_dir)
         return self._browser.new_context(**kwargs)
+
+    def _resolved_device_kwargs(self) -> dict[str, Any]:
+        """The device descriptor for the current mode (BE-0228), resolved once against the live pw.
+
+        A preset's descriptor is fixed data, so it is cached: the desktop default resolves to an
+        empty mapping without ever touching `playwright.devices`.
+        """
+        if self._device_kwargs is None:
+            self._device_kwargs = _device_context_kwargs(self._pw, self._device_mode)
+        return self._device_kwargs
 
     def _bind(self, page: _Page) -> None:
         """Adopt a freshly created page (a new context, or a relaunched browser) as the live page.

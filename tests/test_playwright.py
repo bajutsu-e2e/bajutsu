@@ -299,10 +299,12 @@ class _FakeEngine:
     def __init__(self, name: str) -> None:
         self.name = name
         self.launched: dict[str, Any] | None = None
+        self.browser: _FakeBrowser | None = None  # the most recent browser launched (device tests)
 
     def launch(self, **kwargs: Any) -> _FakeBrowser:
         self.launched = kwargs
-        return _FakeBrowser([_FakePage([])])
+        self.browser = _FakeBrowser([_FakePage([])])
+        return self.browser
 
 
 class _FakeSyncPw:
@@ -313,6 +315,8 @@ class _FakeSyncPw:
         self.firefox = _FakeEngine("firefox")
         self.webkit = _FakeEngine("webkit")
         self.stopped = 0
+        # Playwright's device-preset registry (BE-0228): a test populates the presets it drives.
+        self.devices: dict[str, dict[str, Any]] = {}
 
     def start(self) -> _FakeSyncPw:
         return self
@@ -373,6 +377,122 @@ def test_relaunch_rebuilds_the_same_engine(monkeypatch: pytest.MonkeyPatch) -> N
     pw.webkit.launched = None  # reset to observe only the relaunch
     drv.relaunch()
     assert pw.webkit.launched is not None
+
+
+# --- device mode (BE-0228): a context is created with a Playwright device preset's emulation ---
+
+_IPHONE_13 = {
+    "viewport": {"width": 390, "height": 844},
+    "device_scale_factor": 3,
+    "is_mobile": True,
+    "has_touch": True,
+    "user_agent": "Mozilla/5.0 (iPhone; ...)",
+}
+
+
+def test_device_context_kwargs_desktop_is_empty() -> None:
+    # "desktop" is a plain context — no emulation — so the mapping is empty and playwright.devices is
+    # never consulted (the default path stays free).
+    from bajutsu.drivers.playwright import _device_context_kwargs
+
+    class _NoDevices:
+        @property
+        def devices(self) -> dict[str, Any]:
+            raise AssertionError("desktop must not consult playwright.devices")
+
+    assert _device_context_kwargs(_NoDevices(), "desktop") == {}
+
+
+def test_device_context_kwargs_resolves_a_preset() -> None:
+    # A preset name expands to its Playwright descriptor, ready to spread into new_context.
+    from bajutsu.drivers.playwright import _device_context_kwargs
+
+    pw = _FakeSyncPw()
+    pw.devices["iPhone 13"] = dict(_IPHONE_13)
+    assert _device_context_kwargs(pw, "iPhone 13") == _IPHONE_13
+
+
+def test_device_context_kwargs_unknown_preset_raises() -> None:
+    # An unknown preset fails loudly (at driver start), not silently as the desktop layout.
+    from bajutsu.drivers.playwright import _device_context_kwargs
+
+    with pytest.raises(ValueError, match="unknown deviceMode"):
+        _device_context_kwargs(_FakeSyncPw(), "iPhone 999")
+
+
+def test_driver_device_mode_emulates_the_initial_context(monkeypatch: pytest.MonkeyPatch) -> None:
+    # PlaywrightDriver(..., device_mode="iPhone 13") builds its starter for that preset, so the very
+    # first context is created with the mobile viewport/touch alongside the reduced_motion lever.
+    pw = _FakeSyncPw()
+    pw.devices["iPhone 13"] = dict(_IPHONE_13)
+    _patch_playwright(monkeypatch, pw)
+    PlaywrightDriver("http://app.test/", device_mode="iPhone 13")
+    assert pw.chromium.browser is not None
+    kwargs = pw.chromium.browser.context_kwargs[0]
+    assert kwargs["reduced_motion"] == "reduce"
+    assert kwargs["is_mobile"] is True and kwargs["has_touch"] is True
+
+
+def test_driver_desktop_adds_no_device_kwargs(monkeypatch: pytest.MonkeyPatch) -> None:
+    # The default (desktop) context carries only the reduced_motion lever — unchanged from before.
+    pw = _FakeSyncPw()
+    _patch_playwright(monkeypatch, pw)
+    PlaywrightDriver("http://app.test/")
+    assert pw.chromium.browser is not None
+    assert pw.chromium.browser.context_kwargs[0] == {"reduced_motion": "reduce"}
+
+
+def test_reset_context_carries_device_mode() -> None:
+    # The web `erase` (reset_context) opens a fresh context; it must re-apply the device emulation so
+    # a crawl's clean start keeps driving the mobile face, not silently fall back to desktop.
+    pw = _FakePw()
+    pw.devices["iPhone 13"] = dict(_IPHONE_13)
+    initial_ctx = _FakeContext(_FakePage([]))
+    fresh = _FakePage([])
+    browser = _FakeBrowser([fresh])
+    drv = PlaywrightDriver(
+        "http://app.test/",
+        device_mode="iPhone 13",
+        starter=lambda _h: (pw, browser, initial_ctx, initial_ctx.page),
+    )
+
+    drv.reset_context()
+
+    assert browser.context_kwargs[-1]["is_mobile"] is True
+    assert browser.context_kwargs[-1]["reduced_motion"] == "reduce"
+
+
+def test_device_mode_descriptor_is_resolved_once() -> None:
+    # The descriptor is fixed data, so it is resolved against playwright.devices once and cached: a
+    # later context reuses the memoized value rather than re-resolving. Proven by deleting the preset
+    # after the first resolution — a re-resolution would raise "unknown deviceMode"; the memo doesn't.
+    pw = _FakePw()
+    pw.devices["iPhone 13"] = dict(_IPHONE_13)
+    initial_ctx = _FakeContext(_FakePage([]))
+    browser = _FakeBrowser([_FakePage([]), _FakePage([])])  # two fresh contexts to open
+    drv = PlaywrightDriver(
+        "http://app.test/",
+        device_mode="iPhone 13",
+        starter=lambda _h: (pw, browser, initial_ctx, initial_ctx.page),
+    )
+
+    drv.reset_context()  # first _new_context: resolves + caches the descriptor
+    del pw.devices["iPhone 13"]  # a re-resolution from here on would fail
+    drv.reset_context()  # second _new_context: must reuse the cache, not re-resolve
+
+    assert browser.context_kwargs[-1]["is_mobile"] is True
+
+
+def test_relaunch_keeps_device_mode(monkeypatch: pytest.MonkeyPatch) -> None:
+    # relaunch() re-invokes the device-aware starter, so a recovered lane comes back emulating the
+    # same phone rather than silently as desktop (BE-0077 recovery + BE-0228 stability).
+    pw = _FakeSyncPw()
+    pw.devices["iPhone 13"] = dict(_IPHONE_13)
+    _patch_playwright(monkeypatch, pw)
+    drv = PlaywrightDriver("http://app.test/", device_mode="iPhone 13")
+    drv.relaunch()
+    assert pw.chromium.browser is not None  # the relaunch's fresh browser
+    assert pw.chromium.browser.context_kwargs[0]["is_mobile"] is True
 
 
 def test_query_parses_page() -> None:
@@ -642,6 +762,8 @@ class _FakeBrowser:
 class _FakePw:
     def __init__(self) -> None:
         self.stopped = 0
+        # Playwright's device-preset registry (BE-0228); a device-mode test populates what it drives.
+        self.devices: dict[str, dict[str, Any]] = {}
 
     def stop(self) -> None:
         self.stopped += 1

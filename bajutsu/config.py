@@ -316,6 +316,13 @@ class TargetConfig(_Model):
     # Web backend only: which Playwright engine to drive — chromium (default) / firefox / webkit.
     # iOS ignores it. The `bajutsu run/record --browser <engine>` flag overrides per run (BE-0076).
     browser: str = "chromium"
+    # Web backend only: the device mode a context is created with (BE-0228). "desktop" (default) is
+    # the plain desktop context of before; any other value is a Playwright device preset name
+    # (`playwright.devices`, e.g. "iPhone 13") that emulates its viewport / touch / scale / user
+    # agent. Resolved lazily in the driver so config load never imports Playwright — an unknown
+    # preset fails loudly at driver start, not here. Distinct from the top-level `device` (the iOS
+    # simulator name), which a web target ignores.
+    device_mode: str = Field(default="desktop", alias="deviceMode")
     # How to bring up baseUrl's host for a run (start → readiness probe → teardown). See LaunchServer.
     launch_server: LaunchServer | None = Field(default=None, alias="launchServer")
     deeplink_scheme: str | None = Field(default=None, alias="deeplinkScheme")
@@ -460,6 +467,10 @@ class WebConfig:
     # The rendering engine to drive — chromium (default) / firefox / webkit. The `--browser` flag
     # overrides per run (BE-0076).
     browser: str = "chromium"
+    # The device mode a browser context is created with (BE-0228): "desktop" (default, unchanged) or
+    # a Playwright device preset name (e.g. "iPhone 13") emulating a mobile viewport / touch / user
+    # agent. Resolved against `playwright.devices` in the driver, lazily.
+    device_mode: str = "desktop"
 
 
 @dataclass(frozen=True)
@@ -768,7 +779,12 @@ def _platform_config(platform: str, a: TargetConfig, d: Defaults) -> PlatformCon
     iOS knobs come from the target except `idb_version`, an environment-level default (BE-0005).
     """
     if platform == "web":
-        return WebConfig(base_url=a.base_url, headless=a.headless, browser=a.browser)
+        return WebConfig(
+            base_url=a.base_url,
+            headless=a.headless,
+            browser=a.browser,
+            device_mode=a.device_mode,
+        )
     if platform == "android":
         return AndroidConfig(
             package=a.package,

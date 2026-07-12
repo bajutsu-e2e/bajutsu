@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0228](BE-0228-web-device-mode-emulation.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0228") |
+| Implementing PR | _pending_ |
 | Topic | Platform expansion (Android / Web / Flutter) |
 <!-- /BE-METADATA -->
 
@@ -131,12 +132,30 @@ This stays within the prime directives:
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Config surface (device-mode setting, desktop default, validation)
-- [ ] Descriptor resolution (`playwright.devices` preset / explicit desktop-mobile + viewport)
-- [ ] Context wiring (`_new_context` + starter; stable across reset / relaunch)
-- [ ] Capability / preflight review
-- [ ] Tests (preset resolution, desktop default, context kwargs, reset / relaunch stability)
-- [ ] Docs (`configuration.md` / `drivers.md`, both languages)
+- [x] Config surface (device-mode setting, desktop default, validation)
+- [x] Descriptor resolution (`playwright.devices` preset / explicit desktop-mobile + viewport)
+- [x] Context wiring (`_new_context` + starter; stable across reset / relaunch)
+- [x] Capability / preflight review
+- [x] Tests (preset resolution, desktop default, context kwargs, reset / relaunch stability)
+- [x] Docs (`configuration.md` / `drivers.md`, both languages)
+
+**Log**
+
+- _pending_ — implemented as a target-level `deviceMode` string: `"desktop"` (default, no
+  emulation) or a Playwright device preset name (e.g. `"iPhone 13"`). The explicit
+  desktop/mobile-plus-viewport structured variant floated in *Detailed design* / *Alternatives* was
+  **descoped** — the string form covers the named-preset case that motivated the item, and a custom
+  breakpoint can be added later without a config break (a string stays forward-compatible with a
+  future object form). `device_mode` lives on the web target only (`TargetConfig` / `WebConfig`),
+  alongside `headless` / `browser`, and is distinct from the top-level `device` (the iOS Simulator
+  name). The preset is resolved **lazily** in `PlaywrightDriver` (`_device_context_kwargs` against
+  `playwright.devices`) so config load never imports Playwright; an unknown preset fails loudly with
+  a `ValueError` at driver start, and the resolved descriptor is memoized so `reset_context` /
+  `relaunch` rebuild an identical context. Threaded through `make_driver` /
+  `WebEnvironment.start` / `doctor.probe_screen`. **Capability / preflight review:** no change — a
+  mobile context's touch input is already covered by the existing `multiTouch` capability, and
+  device mode is a context-creation config knob, not a per-scenario capability, so nothing new is
+  gated on the deterministic run/CI path.
 
 ## References
 
