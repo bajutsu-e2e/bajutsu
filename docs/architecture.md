@@ -324,7 +324,7 @@ workers would collide).
   loop on-device (`make -C demos/showcase run-swiftui`; the `e2e.yml` CI workflow also exercises the idb smoke path).
 - The XCUITest backend's resident runner — element resolution by snapshot handle, semantic tap, and
   the `pinch`/`rotate` multi-touch gestures idb cannot run — confirmed on-device via the `e2e.yml`
-  `xcuitest (multi-touch)` job (`scenarios/gestures_multitouch.yaml`, `--backend xcuitest`).
+  `xcuitest (multi-touch)` job (`demos/showcase/scenarios/gestures_multitouch.yaml`, `--backend xcuitest`).
 
 ### Validated in a browser (Linux, no Mac)
 
