@@ -313,7 +313,11 @@ def rotate_contacts(center: _Point, half: float, radians: float) -> tuple[_Conta
     """The two contacts' start and end points for a rotation about `center` (BE-0232).
 
     Both fingers start level on a diameter, `half` out to either side, and sweep through `radians`
-    about the centre (positive is clockwise in screen coordinates, where y grows downward).
+    about the centre (positive is clockwise in screen coordinates, where y grows downward). Only the
+    endpoints are returned: `sendevent_gesture_cmd` interpolates each contact along the straight chord
+    between them, not the arc — as the web backend's rotate does too. That approximates a real
+    rotation for the sub-π turns a rotate gesture uses (the showcase drives ~1 rad); a `|radians| ≥ π`
+    turn would collapse the chord through the centre, which is out of scope here.
     """
     cx, cy = center
     start = ((cx - half, cy), (cx + half, cy))
