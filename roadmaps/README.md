@@ -602,7 +602,9 @@ Bringing the CLI's own tools into the serve Web UI, where authoring happens. The
 ### On-device validation (M1 close-out)
 
 <!-- GENERATED:in-progress-on-device -->
-
+| ID | Item | Status |
+|---|---|---|
+| [BE-0231](BE-0231-smoke-idb-first-wait-settling/BE-0231-smoke-idb-first-wait-settling.md) | Harden the E2E first-wait against Simulator settling flake | In progress |
 <!-- /GENERATED:in-progress-on-device -->
 
 ### Authoring experience (record / GUI editor)
@@ -626,9 +628,7 @@ Under consideration — not yet decided. Promote an item to *In progress* once w
 The deterministic core runs end-to-end on the FakeDriver, and the idb backend's subprocess execution (`describe-all` parsing, frame-center tap/text/swipe) and the simctl launch sequence are validated on a real device. What remains is only ongoing maintenance monitoring.
 
 <!-- GENERATED:proposals-on-device -->
-| ID | Item | Status |
-|---|---|---|
-| [BE-0231](BE-0231-smoke-idb-first-wait-settling/BE-0231-smoke-idb-first-wait-settling.md) | Harden the E2E first-wait against Simulator settling flake | Proposal |
+
 <!-- /GENERATED:proposals-on-device -->
 
 ### Platform expansion (Android / Web / Flutter)
