@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0186") |
-| Implementing PR | _pending_ |
+| Implementing PR | [#953](https://github.com/bajutsu-e2e/bajutsu/pull/953) |
 | Topic | Candidates from competitive research (MagicPod / Autify) |
 <!-- /BE-METADATA -->
 
@@ -173,7 +173,7 @@ targets:
 ### Log
 
 - Registry + `http` reference adapter, `mailbox.kind` config field, unit tests, and bilingual config
-  docs — the full in-scope slice; IMAP and named mailboxes stay deferred. _(PR pending)_
+  docs — the full in-scope slice; IMAP and named mailboxes stay deferred. [#953](https://github.com/bajutsu-e2e/bajutsu/pull/953)
 
 ## References
 
