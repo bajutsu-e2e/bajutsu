@@ -36,7 +36,10 @@ class MainActivity : ComponentActivity() {
     // launchEnv (SPEC §3) arrives as string intent extras; read once, defaults live in AppModel.
     private fun readLaunchEnv(intent: Intent?): Map<String, String> {
         val extras = intent?.extras ?: return emptyMap()
-        val keys = listOf("SHOWCASE_UITEST", "SHOWCASE_TAB", "SHOWCASE_API_URL", "SHOWCASE_HTTP_BASE")
+        val keys = listOf(
+            "SHOWCASE_UITEST", "SHOWCASE_TAB", "SHOWCASE_API_URL", "SHOWCASE_HTTP_BASE",
+            "SHOWCASE_GESTURES",
+        )
         return keys.mapNotNull { key -> extras.getString(key)?.let { key to it } }.toMap()
     }
 }

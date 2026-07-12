@@ -14,6 +14,7 @@ is forwarded through the parent process.
 from __future__ import annotations
 
 import contextlib
+import math
 import re
 import shlex
 import subprocess
@@ -273,6 +274,117 @@ def sendevent_double_tap_cmd(serial: str, device_path: str, raw_x: int, raw_y: i
         for line in _tap_events(device_path, raw_x, raw_y, tracking_id)
     )
     return _adb(serial, "shell", script)
+
+
+# --- two-contact raw gestures: pinch / rotate (BE-0232) ---
+#
+# A pinch or a rotate needs two contacts moving at once, which `input` cannot express — so, like the
+# double-tap (BE-0210), they go through `sendevent` protocol B, extended from one slot to two. Both
+# contacts go down, sweep together across several interleaved SYN_REPORT frames, then lift; a teleport
+# reads as a tap, not a gesture, because the platform's GestureDetector needs the motion to classify a
+# scale or a rotation. Unlike the double-tap there is no single-touch approximation of two fingers, so
+# the driver requires a rooted device and fails loudly otherwise (BE-0232) rather than falling back.
+_GESTURE_TRACKING_IDS = (200, 201)  # a distinct contact id per finger (slot 0 / slot 1)
+# Interleaved move frames between the down and the up: enough travel for the platform to carry the
+# gesture past its touch slop and classify it. A condition wait on the mirrored a11y value — not a
+# fixed count — is what proves the gesture landed, so this only shapes the motion, never the verdict.
+_GESTURE_STEPS = 8
+
+# A point in tree (pixel) coordinates, and a (slot-0, slot-1) pair of them. Geometry is computed in
+# pixel space (below) and scaled per-axis to the device's raw range by the driver, because the raw
+# axes are square while the screen is not — rotating in raw space would distort the sweep.
+_Point = tuple[float, float]
+_Contacts = tuple[_Point, _Point]
+
+
+def pinch_contacts(center: _Point, half: float, scale: float) -> tuple[_Contacts, _Contacts]:
+    """The two contacts' start and end points for a pinch about `center` (BE-0232).
+
+    Both fingers sit level on a line through the centre, `half` out to either side, and move to
+    `half * scale`: `scale > 1` spreads them (zoom in), `scale < 1` closes them (zoom out).
+    """
+    cx, cy = center
+    start = ((cx - half, cy), (cx + half, cy))
+    end = ((cx - half * scale, cy), (cx + half * scale, cy))
+    return start, end
+
+
+def rotate_contacts(center: _Point, half: float, radians: float) -> tuple[_Contacts, _Contacts]:
+    """The two contacts' start and end points for a rotation about `center` (BE-0232).
+
+    Both fingers start level on a diameter, `half` out to either side, and sweep through `radians`
+    about the centre (positive is clockwise in screen coordinates, where y grows downward). Only the
+    endpoints are returned: `sendevent_gesture_cmd` interpolates each contact along the straight chord
+    between them, not the arc — as the web backend's rotate does too. That approximates a real
+    rotation for the sub-π turns a rotate gesture uses (the showcase drives ~1 rad); a `|radians| ≥ π`
+    turn would collapse the chord through the centre, which is out of scope here.
+    """
+    cx, cy = center
+    start = ((cx - half, cy), (cx + half, cy))
+    end = (_rotate_point(start[0], center, radians), _rotate_point(start[1], center, radians))
+    return start, end
+
+
+def _rotate_point(point: _Point, origin: _Point, radians: float) -> _Point:
+    """Rotate `point` about `origin` by `radians` (positive is clockwise in screen coordinates)."""
+    px, py = point
+    ox, oy = origin
+    dx, dy = px - ox, py - oy
+    c, s = math.cos(radians), math.sin(radians)
+    return (ox + dx * c - dy * s, oy + dx * s + dy * c)
+
+
+def sendevent_gesture_cmd(
+    serial: str,
+    device_path: str,
+    start: _Contacts,
+    end: _Contacts,
+    steps: int = _GESTURE_STEPS,
+) -> list[str]:
+    """A two-finger gesture as a raw two-slot protocol-B sequence in one `adb shell` round-trip (BE-0232).
+
+    Both contacts go down, sweep from `start` to `end` across `steps` interleaved SYN_REPORT frames —
+    so the platform sees motion, not a teleport, and classifies a scale or a rotation — then lift.
+    `start` and `end` are each a (slot-0, slot-1) pair of raw device coordinates. Contacts are already
+    scaled into the touch device's raw range by the driver; this only formats the `sendevent` lines.
+    """
+    dev = shlex.quote(device_path)
+    lines: list[str] = []
+    for slot, ((x, y), tracking_id) in enumerate(zip(start, _GESTURE_TRACKING_IDS, strict=True)):
+        lines += _contact_down(dev, slot, tracking_id, round(x), round(y))
+    lines.append(f"sendevent {dev} {_EV_KEY} {_BTN_TOUCH} 1")  # one press for the whole gesture
+    lines.append(f"sendevent {dev} {_EV_SYN} {_SYN_REPORT} 0")
+    for k in range(1, steps + 1):
+        t = k / steps
+        for slot, ((sx, sy), (ex, ey)) in enumerate(zip(start, end, strict=True)):
+            lines += _contact_move(dev, slot, round(sx + (ex - sx) * t), round(sy + (ey - sy) * t))
+        lines.append(f"sendevent {dev} {_EV_SYN} {_SYN_REPORT} 0")
+    for slot in (0, 1):
+        lines.append(f"sendevent {dev} {_EV_ABS} {_ABS_MT_SLOT} {slot}")
+        lines.append(f"sendevent {dev} {_EV_ABS} {_ABS_MT_TRACKING_ID} {_MT_TRACKING_ID_LIFT}")
+    lines.append(f"sendevent {dev} {_EV_KEY} {_BTN_TOUCH} 0")  # release once both contacts are up
+    lines.append(f"sendevent {dev} {_EV_SYN} {_SYN_REPORT} 0")
+    return _adb(serial, "shell", " ; ".join(lines))
+
+
+def _contact_down(dev: str, slot: int, tracking_id: int, x: int, y: int) -> list[str]:
+    """Place one protocol-B contact in `slot` at (x, y). `dev` is already shell-quoted."""
+    return [
+        f"sendevent {dev} {_EV_ABS} {_ABS_MT_SLOT} {slot}",
+        f"sendevent {dev} {_EV_ABS} {_ABS_MT_TRACKING_ID} {tracking_id}",
+        f"sendevent {dev} {_EV_ABS} {_ABS_MT_POSITION_X} {x}",
+        f"sendevent {dev} {_EV_ABS} {_ABS_MT_POSITION_Y} {y}",
+        f"sendevent {dev} {_EV_ABS} {_ABS_MT_PRESSURE} {_TOUCH_PRESSURE}",
+    ]
+
+
+def _contact_move(dev: str, slot: int, x: int, y: int) -> list[str]:
+    """Move the contact already down in `slot` to (x, y). `dev` is already shell-quoted."""
+    return [
+        f"sendevent {dev} {_EV_ABS} {_ABS_MT_SLOT} {slot}",
+        f"sendevent {dev} {_EV_ABS} {_ABS_MT_POSITION_X} {x}",
+        f"sendevent {dev} {_EV_ABS} {_ABS_MT_POSITION_Y} {y}",
+    ]
 
 
 def keyevent_cmd(serial: str, keycode: int) -> list[str]:

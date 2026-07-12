@@ -53,7 +53,10 @@ a `uiautomator dump` exposes (Compose's `stateDescription` is not in the dump). 
 
 `launchEnv` (SPEC §3) arrives as **intent extras** on the launcher Activity — BE-0007's launch
 sequence passes them via `am start` — read once at launch: `SHOWCASE_UITEST`, `SHOWCASE_TAB`,
-`SHOWCASE_API_URL`, `SHOWCASE_HTTP_BASE`. Deeplinks (SPEC §4) use the per-product scheme above
+`SHOWCASE_API_URL`, `SHOWCASE_HTTP_BASE`, `SHOWCASE_GESTURES`. `SHOWCASE_GESTURES` (BE-0232) swaps the
+whole five-tab UI for a flat, scroll-free pinch/rotate screen (`log.pinch` / `log.rotate`), mirroring
+the iOS `GestureView`, so the shared `gestures_multitouch` scenario drives the adb two-finger
+`sendevent` gesture without depending on scroll. Deeplinks (SPEC §4) use the per-product scheme above
 with the shared host grammar (`…://stable` … `…://permissions`); the launcher Activity is
 `singleTask`, so a deeplink selects the tab in the running app and pops any pushed detail.
 
