@@ -1,7 +1,9 @@
-// Plugin versions declared once for both modules; each module applies the ones it needs.
-// The `views` module skips the Compose compiler plugin.
+// Plugin versions declared once for every module; each module applies the ones it needs.
+// The `views` module skips the Compose compiler plugin; the included `bajutsu-android` library
+// applies `com.android.library` (BE-0233).
 plugins {
     id("com.android.application") version "8.7.3" apply false
+    id("com.android.library") version "8.7.3" apply false
     id("org.jetbrains.kotlin.android") version "2.0.20" apply false
     id("org.jetbrains.kotlin.plugin.compose") version "2.0.20" apply false
 }

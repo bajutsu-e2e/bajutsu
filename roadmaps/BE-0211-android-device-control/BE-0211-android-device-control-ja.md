@@ -108,6 +108,11 @@ iOS では `DeviceControl` Protocol を simctl が完全に裏付けており（
   フェイクのランナーだけを動かしています。そのためこのレーンは `setLocation` だけを出荷します。この実機での
   ギャップは adb バックエンドが公開する内容を変えるものではなく、adb-clipboard-fidelity 提案
   （[#935](https://github.com/bajutsu-e2e/bajutsu/pull/935)）で別途追跡します。
+- 2026-07-12 — [BE-0233](../BE-0233-adb-clipboard-fidelity/BE-0233-adb-clipboard-fidelity-ja.md)
+  （PR #949）で解決しました。shell プロセスは Android 10 以降クリップボードに到達できないため、
+  `cmd clipboard` のビルダをアプリ内レシーバ（`BajutsuAndroid`）への順序付き `am broadcast` に
+  置き換えました。`DeviceControl` のインタフェースと `DC_CLIPBOARD` capability は変わらないので、
+  この是正はシナリオには透過です。
 
 ## 参考
 

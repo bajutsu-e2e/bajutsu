@@ -379,7 +379,8 @@ class AndroidEnvironment:
     `_DeviceEnvironment`, over `adb` instead of `simctl`: the same seam, a different subprocess tool.
     Network is not observed natively (no `NETWORK` capability), so that path degrades the same honest
     way iOS's mocked network does. Device control backs the subset the emulator can honor
-    (`setLocation` + clipboard, BE-0211); the rest of the family stays unsupported.
+    (`setLocation`, BE-0211, plus clipboard through the app's in-app receiver, BE-0233); the rest of
+    the family stays unsupported.
     """
 
     def __init__(self, actuator: str, serial: str, adb_run: adb.RunFn = adb._real_run) -> None:
@@ -469,9 +470,11 @@ class AndroidEnvironment:
         return relaunch
 
     def controller(self, eff: Effective) -> DeviceControl | None:
-        # The emulator-backed subset (setLocation + clipboard); the rest of the family raises
-        # UnsupportedAction, and preflight (BE-0212) rejects it up front from the adb capability set.
-        return android_device_control(self._serial, self._run)
+        # The emulator-backed subset (setLocation over the console + clipboard over the app's in-app
+        # receiver, BE-0233); the rest of the family raises UnsupportedAction, and preflight (BE-0212)
+        # rejects it up front from the adb capability set. Clipboard addresses its broadcast at the
+        # app under test, so the package is threaded through.
+        return android_device_control(self._serial, require_android(eff).package, self._run)
 
     def teardown(self, driver: base.Driver, eff: Effective) -> None:
         adb.Env(self._serial, run=self._run).force_stop(require_android(eff).package)
@@ -990,16 +993,21 @@ def device_control(
     return _Control()
 
 
-def android_device_control(serial: str, env_run: adb.RunFn = adb._real_run) -> DeviceControl:
-    """A `DeviceControl` for the Android emulator, backing only the operations it can honor (BE-0211).
+def android_device_control(
+    serial: str, package: str, env_run: adb.RunFn = adb._real_run
+) -> DeviceControl:
+    """A `DeviceControl` for the Android emulator, backing only the operations it can honor.
 
-    `setLocation` (`emu geo fix`) and the clipboard operations run over adb; `push` / `clearKeychain`
-    / the status-bar overrides / the app-lifecycle steps have no faithful emulator equivalent and
-    raise `UnsupportedAction`. Preflight (BE-0212) rejects those steps up front from the adb backend's
-    advertised subset, so this raise is the runtime backstop, never a silent no-op.
+    `setLocation` (`emu geo fix`) runs over the emulator console; the clipboard operations run over
+    an ordered `am broadcast` to the app's in-app receiver (BajutsuAndroid, BE-0233) — hence `package`,
+    to address the broadcast at the app under test. `push` / `clearKeychain` / the status-bar overrides
+    / the app-lifecycle steps have no faithful emulator equivalent and raise `UnsupportedAction`.
+    Preflight (BE-0212) rejects those steps up front from the adb backend's advertised subset, so this
+    raise is the runtime backstop, never a silent no-op.
 
     Args:
         serial: The target emulator/device serial.
+        package: The app under test's package, addressed by the clipboard broadcast.
         env_run: The subprocess runner for adb, injectable for tests.
     """
     e = adb.Env(serial, run=env_run)
@@ -1012,13 +1020,13 @@ def android_device_control(serial: str, env_run: adb.RunFn = adb._real_run) -> D
             e.set_location(lat, lon)
 
         def set_clipboard(self, text: str) -> None:
-            e.set_clipboard(text)
+            e.set_clipboard(package, text)
 
         def get_clipboard(self) -> str:
-            return e.get_clipboard()
+            return e.get_clipboard(package)
 
         def clear_clipboard(self) -> None:
-            e.clear_clipboard()
+            e.clear_clipboard(package)
 
         def push(self, payload: dict[str, object]) -> None:
             raise _unsupported("push")

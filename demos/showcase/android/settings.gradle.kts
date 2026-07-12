@@ -21,3 +21,9 @@ dependencyResolutionManagement {
 rootProject.name = "BajutsuShowcaseAndroid"
 
 include(":compose", ":views")
+
+// The reusable app-side test-support library (BE-0233), living at the repo root like iOS's
+// BajutsuKit. Included by path (not published), so the showcase pair can embed its clipboard
+// receiver; any other app would include it the same way (or publish it as an aar).
+include(":bajutsu-android")
+project(":bajutsu-android").projectDir = file("../../../BajutsuAndroid")

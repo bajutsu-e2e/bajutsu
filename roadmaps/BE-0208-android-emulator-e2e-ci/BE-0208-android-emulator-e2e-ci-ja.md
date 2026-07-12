@@ -249,6 +249,10 @@ directive の枠内にとどまります。
   単一タッチのため本レーンのスコープには入れず、adb-multitouch-gestures の提案
   （[#931](https://github.com/bajutsu-e2e/bajutsu/pull/931)）が独立して追跡します。本項目のスコープは
   完了したので、項目は実装済みです。
+- 2026-07-12 — フォローアップ：`device_android` スライスで実機の `cmd clipboard` のギャップのために
+  落としたクリップボードの側を、[BE-0233](../BE-0233-adb-clipboard-fidelity/BE-0233-adb-clipboard-fidelity-ja.md)
+  （PR #949）が復活させました。クリップボードをアプリ内レシーバ経由で駆動するので、`device_android` は
+  プライマリクリップの書き込みと読み戻しを行うようになりました（PR #934 が求めていた強い assertion です）。
 
 ## 参考
 

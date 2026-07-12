@@ -377,6 +377,8 @@ result.row.<recordId>       # 動的行: 末尾は「データ由来の安定キ
 
 ツール本体はアプリ非依存です。**アプリ固有の差分はすべて config に寄せ**、同じバイナリと同じドライバで複数アプリを回します。
 
+プラットフォームがアプリプロセスの内側からしか公開しない機能は、アプリに組み込む一律のテスト支援 SDK を通じて実現します。この SDK はどのアプリにも同じものを組み込むので、config に寄せる per-app の差分ではありません。ドライバやランナーがアプリごとに変わらないというアプリ非依存の原則を保ったまま、アプリの協力が要る機能を扱えます。iOS では BajutsuKit が `URLSession` の通信を捕捉してネットワークのアサーションを支え、Android では BajutsuAndroid がクリップボードを担います（[BE-0233](roadmaps/BE-0233-adb-clipboard-fidelity/BE-0233-adb-clipboard-fidelity-ja.md)）。クリップボードは Android 10 以降フォアグラウンドのアプリと既定の IME しか触れず、シェルからは操作できないので、アプリ内で処理するこの経路が唯一の決定的で保守可能な方法です。SDK は test/debug ビルドに限って有効化し、リリースには載せません。この方式では、機能が実際に動くかどうかがアプリの協力に依存します。そのため対象アプリが SDK を組み込んでいない場合は、空の結果を成功と見なさず、明確なエラーで失敗させます。
+
 ```
 bajutsu run --target <name> [--scenario file.yaml] [--backend idb] [--udid booted] [--workers N]   # 既定は config の scenarios ディレクトリ全体
 bajutsu record --target <name> [--out file.yaml]   # AI で探索しつつ操作・証跡指示を記録（既定は config の scenarios へ自動命名）

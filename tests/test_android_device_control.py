@@ -1,19 +1,20 @@
-"""Android device control (BE-0211): the emulator-backed subset of the `DeviceControl` family.
+"""Android device control: the emulator-backed subset of the `DeviceControl` family.
 
-The emulator honors `setLocation` (`emu geo fix`); the adb backend also *advertises* the clipboard
-operations (`cmd clipboard`), but that command is unimplemented on the google_apis API 34 emulator
-(it answers "No shell command implementation"), so the clipboard round-trip does not actually run
-on-device — the device-control e2e lane (BE-0208, PR #934) ships `setLocation` only, and that
-on-device gap is tracked separately by the adb-clipboard-fidelity proposal (PR #935). `push` /
-`clearKeychain` / the status-bar overrides / app lifecycle have no faithful equivalent and stay
-unsupported. Fast gate over an injected `adb` runner (no device): command shape, the clipboard
-read-back round-trip against the fake runner, that the supported subset delegates and the rest
-raise, and that the adb backend advertises exactly `setLocation` + `clipboard` so preflight
-(BE-0212) admits those and fails the rest fast.
+`setLocation` (`emu geo fix`, BE-0211) runs over the emulator console. Clipboard (BE-0233) runs
+over an ordered `am broadcast` to an in-app receiver (BajutsuAndroid), because since Android 10 only
+the foreground app / default IME may touch the clipboard — `cmd clipboard` answers "No shell command
+implementation" on-device, a silent no-op. The backend still advertises `clipboard` (it can drive it
+given a cooperating app, as idb's clipboard rides simctl). `push` / `clearKeychain` / the status-bar
+overrides / app lifecycle have no faithful equivalent and stay unsupported. Fast gate over an
+injected `adb` runner (no device): command shape, the broadcast result parse (base64 + loud-fail on
+no receiver), the clipboard round-trip against a fake receiver, that the supported subset delegates
+and the rest raise, and that the adb backend advertises exactly `setLocation` + `clipboard` so
+preflight (BE-0212) admits those and fails the rest fast.
 """
 
 from __future__ import annotations
 
+import base64
 from pathlib import Path
 
 import pytest
@@ -22,6 +23,15 @@ from bajutsu import adb, capability_preflight, platform_lifecycle
 from bajutsu.drivers import base
 from bajutsu.drivers.adb import AdbDriver
 from bajutsu.scenario import Scenario, load_scenarios
+
+_PKG = "com.bajutsu.showcase.android.compose"
+
+
+def _ok_reply(data: str | None = None) -> str:
+    """An `am broadcast` reply the BajutsuAndroid receiver would produce (result OK, optional data)."""
+    line = f"Broadcast completed: result={adb.CLIPBOARD_RESULT_OK}"
+    return line + (f', data="{data}"' if data is not None else "")
+
 
 # --- pure command builders ---
 
@@ -40,40 +50,43 @@ def test_geo_fix_command_builder_puts_longitude_before_latitude() -> None:
     ]
 
 
-def test_clipboard_command_builders() -> None:
-    assert adb.set_primary_clip_cmd("E", "COUPON123") == [
-        "adb",
-        "-s",
-        "E",
-        "shell",
-        "cmd",
-        "clipboard",
-        "set-primary-clip",
-        "COUPON123",
-    ]
-    # Scenario-supplied text is single-quoted for the device shell: `adb shell` joins its argv into
-    # one command string, so shell metacharacters in `text` would otherwise execute on the device
-    # rather than being seeded literally (the same reason `text_script` quotes `input text`).
-    assert adb.set_primary_clip_cmd("E", "a; rm -rf /sdcard")[-1] == "'a; rm -rf /sdcard'"
-    assert adb.set_primary_clip_cmd("E", "with space")[-1] == "'with space'"
-    assert adb.get_primary_clip_cmd("E") == [
-        "adb",
-        "-s",
-        "E",
-        "shell",
-        "cmd",
-        "clipboard",
-        "get-primary-clip",
-    ]
-    assert adb.clear_primary_clip_cmd("E") == [
-        "adb",
-        "-s",
-        "E",
-        "shell",
-        "cmd",
-        "clipboard",
-        "clear-primary-clip",
-    ]
+def test_clipboard_broadcast_command_builders() -> None:
+    assert adb.set_primary_clip_cmd("E", _PKG, "COUPON123") == [
+        "adb", "-s", "E", "shell", "am", "broadcast",
+        "-a", "dev.bajutsu.CLIPBOARD", "-p", _PKG,
+        "--es", "op", "set",
+        "--es", "b64", base64.b64encode(b"COUPON123").decode(),
+    ]  # fmt: skip
+    # Free-form text travels base64-encoded, so shell metacharacters never reach the device shell —
+    # nothing to execute there (the reason the argv needs no `shlex.quote`, unlike `cmd clipboard`).
+    danger = adb.set_primary_clip_cmd("E", _PKG, "a; rm -rf /sdcard")
+    assert danger[-1] == base64.b64encode(b"a; rm -rf /sdcard").decode()
+    assert ";" not in " ".join(danger)
+    assert adb.get_primary_clip_cmd("E", _PKG) == [
+        "adb", "-s", "E", "shell", "am", "broadcast",
+        "-a", "dev.bajutsu.CLIPBOARD", "-p", _PKG, "--es", "op", "get",
+    ]  # fmt: skip
+    assert adb.clear_primary_clip_cmd("E", _PKG)[-3:] == ["--es", "op", "clear"]
+
+
+def test_set_clipboard_empty_text_omits_the_b64_extra() -> None:
+    # base64("") is "", and `adb shell` drops an empty trailing argv element when it rejoins the
+    # command, so an empty clip omits the extra rather than sending a value-less `--es b64` that `am`
+    # rejects; the receiver reads a missing `b64` as an empty clip.
+    cmd = adb.set_primary_clip_cmd("E", _PKG, "")
+    assert "b64" not in cmd
+    assert cmd[-3:] == ["--es", "op", "set"]
+
+
+def test_parse_clipboard_result_decodes_and_loud_fails() -> None:
+    got = _ok_reply(base64.b64encode("よ COUPON".encode()).decode())
+    assert adb.parse_clipboard_result(got) == "よ COUPON"
+    # set / clear replies carry no data → an empty read-back, not a failure.
+    assert adb.parse_clipboard_result(_ok_reply()) == ""
+    # No receiver in the app: `am` leaves the result at 0, so this is a loud failure (prime
+    # directive 2), never the silent empty the old `cmd clipboard` no-op returned.
+    with pytest.raises(adb.DeviceError):
+        adb.parse_clipboard_result("Broadcast completed: result=0")
 
 
 # --- adb.Env device-control wrappers over an injected runner ---
@@ -85,21 +98,32 @@ def test_env_set_location_runs_geo_fix() -> None:
     assert calls == [["adb", "-s", "E", "emu", "geo", "fix", "2.0", "1.0"]]
 
 
-def test_env_set_and_clear_clipboard_run_commands() -> None:
+def test_env_set_and_clear_clipboard_broadcast_to_the_package() -> None:
     calls: list[list[str]] = []
-    env = adb.Env("E", run=lambda a: calls.append(a) or "")
-    env.set_clipboard("COUPON123")
-    env.clear_clipboard()
+
+    def run(a: list[str]) -> str:
+        calls.append(a)
+        return _ok_reply()
+
+    env = adb.Env("E", run=run)
+    env.set_clipboard(_PKG, "COUPON123")
+    env.clear_clipboard(_PKG)
     assert calls == [
-        ["adb", "-s", "E", "shell", "cmd", "clipboard", "set-primary-clip", "COUPON123"],
-        ["adb", "-s", "E", "shell", "cmd", "clipboard", "clear-primary-clip"],
+        adb.set_primary_clip_cmd("E", _PKG, "COUPON123"),
+        adb.clear_primary_clip_cmd("E", _PKG),
     ]
 
 
-def test_env_get_clipboard_returns_stripped_stdout() -> None:
-    # get-primary-clip returns the content on stdout; the device shell appends a trailing newline,
-    # so it is stripped to match the seeded text on the read-back path.
-    assert adb.Env("E", run=lambda a: "COUPON123\n").get_clipboard() == "COUPON123"
+def test_env_get_clipboard_decodes_the_broadcast_result() -> None:
+    reply = _ok_reply(base64.b64encode(b"COUPON123").decode())
+    assert adb.Env("E", run=lambda a: reply).get_clipboard(_PKG) == "COUPON123"
+
+
+def test_env_clipboard_raises_loudly_when_the_app_has_no_receiver() -> None:
+    # A run against an app that never called Bajutsu.startClipboard fails, not silently returns "".
+    env = adb.Env("E", run=lambda a: "Broadcast completed: result=0")
+    with pytest.raises(adb.DeviceError):
+        env.get_clipboard(_PKG)
 
 
 # --- android_device_control: supported subset delegates, the rest raise UnsupportedAction ---
@@ -107,7 +131,9 @@ def test_env_get_clipboard_returns_stripped_stdout() -> None:
 
 def test_android_control_set_location_delegates_with_longitude_first() -> None:
     calls: list[list[str]] = []
-    ctrl = platform_lifecycle.android_device_control("E", env_run=lambda a: calls.append(a) or "")
+    ctrl = platform_lifecycle.android_device_control(
+        "E", _PKG, env_run=lambda a: calls.append(a) or ""
+    )
     ctrl.set_location(35.6, 139.7)
     assert calls == [["adb", "-s", "E", "emu", "geo", "fix", "139.7", "35.6"]]
 
@@ -115,14 +141,18 @@ def test_android_control_set_location_delegates_with_longitude_first() -> None:
 def test_android_control_clipboard_round_trip() -> None:
     stored = {"clip": ""}
 
-    def fake_run(args: list[str]) -> str:
-        if "set-primary-clip" in args:
-            stored["clip"] = args[-1]
-        elif "clear-primary-clip" in args:
+    def fake_receiver(args: list[str]) -> str:
+        # Emulate BajutsuAndroid answering the ordered broadcast over the base64 protocol.
+        op = args[args.index("op") + 1]
+        if op == "set":
+            stored["clip"] = base64.b64decode(args[args.index("b64") + 1]).decode()
+            return _ok_reply()
+        if op == "clear":
             stored["clip"] = ""
-        return stored["clip"] + "\n"  # get-primary-clip returns the content with a trailing newline
+            return _ok_reply()
+        return _ok_reply(base64.b64encode(stored["clip"].encode()).decode())  # get
 
-    ctrl = platform_lifecycle.android_device_control("E", env_run=fake_run)
+    ctrl = platform_lifecycle.android_device_control("E", _PKG, env_run=fake_receiver)
     ctrl.set_clipboard("COUPON123")
     assert ctrl.get_clipboard() == "COUPON123"
     ctrl.clear_clipboard()
@@ -143,7 +173,7 @@ def test_android_control_clipboard_round_trip() -> None:
 def test_android_control_unsupported_operations_raise(call) -> None:  # type: ignore[no-untyped-def]
     # Operations the emulator can't honor raise UnsupportedAction — the runtime backstop behind the
     # per-operation preflight (BE-0212), never a silent no-op.
-    ctrl = platform_lifecycle.android_device_control("E", env_run=lambda a: "")
+    ctrl = platform_lifecycle.android_device_control("E", _PKG, env_run=lambda a: "")
     with pytest.raises(base.UnsupportedAction):
         call(ctrl)
 
@@ -210,18 +240,19 @@ def _device_android() -> Scenario:
     return scenarios[0]
 
 
-def test_device_android_overrides_the_location_on_the_stable_tab() -> None:
-    # The Android device-control lane scenario: setLocation on the Stable launch tab, re-asserting
-    # the settled screen — the deterministic Android twin of iOS device.yaml. Clipboard is left out
-    # (`cmd clipboard` is unimplemented on the google_apis API 34 image, so DC_CLIPBOARD cannot run
-    # on-device; tracked separately), but adb's setLocation over `emu geo fix` does.
+def test_device_android_overrides_location_and_round_trips_the_clipboard() -> None:
+    # The Android device-control lane scenario: setLocation + a clipboard seed/read-back on the Stable
+    # launch tab, re-asserting the settled screen — the deterministic Android twin of iOS device.yaml.
+    # The clipboard rejoined the lane once BajutsuAndroid's in-app receiver made it work on-device
+    # (BE-0233); the read-back is the strong assertion PR #934 wanted.
     scn = _device_android()
     assert any(s.set_location is not None for s in scn.steps), "expected a setLocation step"
-    assert not any(s.set_clipboard is not None for s in scn.steps), "clipboard is left off the lane"
+    assert any(s.set_clipboard is not None for s in scn.steps), "expected a setClipboard step"
     assert any(a.exists is not None for a in scn.expect), "expected a settled-screen re-assert"
+    assert any(a.clipboard is not None for a in scn.expect), "expected a clipboard read-back assert"
 
 
 def test_device_android_is_preflight_clean_on_adb() -> None:
-    # Every step falls inside the adb backend's advertised capabilities (setLocation), so the lane
-    # never trips a runtime UnsupportedAction (BE-0212 preflight).
+    # Every step falls inside the adb backend's advertised capabilities (setLocation + clipboard), so
+    # the lane never trips a runtime UnsupportedAction (BE-0212 preflight).
     assert capability_preflight.unsupported(_device_android(), AdbDriver.CAPABILITIES) == []
