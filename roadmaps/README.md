@@ -141,6 +141,7 @@ The first slices of the multi-platform direction that have shipped: a **platform
 | [BE-0221](BE-0221-android-scenario-portability-guarantee/BE-0221-android-scenario-portability-guarantee.md) | Guarantee shared showcase scenarios run unchanged on Android | Implemented |
 | [BE-0223](BE-0223-adb-tab-bar-navigation/BE-0223-adb-tab-bar-navigation.md) | Reach every Android tab by driving the tab bar over adb | Implemented |
 | [BE-0228](BE-0228-web-device-mode-emulation/BE-0228-web-device-mode-emulation.md) | Web device mode (desktop / mobile emulation) | Implemented |
+| [BE-0232](BE-0232-adb-multitouch-gestures/BE-0232-adb-multitouch-gestures.md) | Multi-touch gestures on the adb driver (pinch / rotate) | Implemented |
 <!-- /GENERATED:implemented-platform -->
 
 ### Backend expansion (iOS actuators)
@@ -636,7 +637,6 @@ A platform is just a backend behind the one driver interface ([DESIGN §1](../DE
 |---|---|---|
 | [BE-0008](BE-0008-flutter-support/BE-0008-flutter-support.md) | Flutter support | Proposal |
 | [BE-0227](BE-0227-web-swipe-scroll-fidelity/BE-0227-web-swipe-scroll-fidelity.md) | Web swipe scroll fidelity (mode-aware scroll dispatch) | Proposal |
-| [BE-0232](BE-0232-adb-multitouch-gestures/BE-0232-adb-multitouch-gestures.md) | Multi-touch gestures on the adb driver (pinch / rotate) | Proposal |
 | [BE-0233](BE-0233-adb-clipboard-fidelity/BE-0233-adb-clipboard-fidelity.md) | adb clipboard on-device fidelity | Proposal |
 <!-- /GENERATED:proposals-platform -->
 

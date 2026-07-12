@@ -35,6 +35,13 @@ enum class Tab { STABLE, SEARCH, LOG, NOTICES, PERMISSIONS }
  * would reset submitted rows, typed queries, and permission results on every switch.
  */
 class AppModel(env: Map<String, String>) {
+    // Two-finger gesture mode (BE-0232): a test-only affordance gated on the SHOWCASE_GESTURES launch
+    // env, mirroring the iOS AppModel. When set, RootScreen swaps the whole five-tab UI for the flat,
+    // scroll-free pinch/rotate screen, so the shared `gestures_multitouch` scenario can drive its
+    // targets without depending on scroll — two-finger gestures being the class adb drives only over a
+    // rooted `sendevent` sweep.
+    val gesturesMode: Boolean = env["SHOWCASE_GESTURES"] != null
+
     // Tab selection + per-tab navigation stacks (a deeplink pops these to root).
     var selectedTab by mutableStateOf(tab(env["SHOWCASE_TAB"]))
     val stablePath = mutableStateListOf<Int>() // pushed horse ids

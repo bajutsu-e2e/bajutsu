@@ -24,6 +24,12 @@ import androidx.compose.ui.graphics.vector.ImageVector
 
 @Composable
 fun RootScreen(model: AppModel) {
+    // BE-0232: the SHOWCASE_GESTURES launch env swaps the whole five-tab UI for the flat pinch/rotate
+    // screen (mirroring the iOS RootView). Otherwise the normal tab app (BE-0079) is untouched.
+    if (model.gesturesMode) {
+        GestureScreen()
+        return
+    }
     Scaffold(
         modifier = Modifier
             .fillMaxSize()

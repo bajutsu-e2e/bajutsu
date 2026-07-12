@@ -1,9 +1,10 @@
-# Multi-touch gestures (SPEC §5.3): pinch and rotate. These are XCUITest-only — idb is single-touch
-# and raises UnsupportedAction (BE-0019), so this scenario is NOT part of the idb smoke path; the
-# e2e `xcuitest (multi-touch)` job runs it with `--backend xcuitest`.
+# Multi-touch gestures (SPEC §5.3): pinch and rotate — two-finger actuation. idb is single-touch and
+# raises UnsupportedAction (BE-0019), so this scenario is NOT part of the idb smoke path. The e2e
+# `xcuitest (multi-touch)` job runs it with `--backend xcuitest`; adb drives it too now (BE-0232), over
+# a rooted-device two-slot `sendevent` sweep, so it also runs on the Android e2e lane (`--backend android`).
 #
-# The SHOWCASE_GESTURES launch env swaps the app for a flat, scroll-free pinch/rotate screen (see
-# GestureView / AppModel), mirroring the SHOWCASE_CONFORMANCE affordance. Both targets are therefore
+# The SHOWCASE_GESTURES launch env swaps the app for a flat, scroll-free pinch/rotate screen (see the
+# iOS GestureView and the Compose GestureScreen), mirroring the SHOWCASE_CONFORMANCE affordance. Both targets are therefore
 # always in the accessibility tree — no scroll-to-element — which matters because XCUITest's
 # swipe-to-scroll on a deep Form row is unreliable, and a two-finger target must be fully on-screen
 # for its touch points anyway. Each target flips its mirrored a11y value once the gesture is

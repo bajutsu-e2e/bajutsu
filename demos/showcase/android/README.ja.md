@@ -52,7 +52,11 @@ SPEC §2.1 を参照してください。
 
 `launchEnv`（SPEC §3）は、launcher Activity の **intent extras** として届きます（BE-0007 の起動
 シーケンスが `am start` で渡します）。起動時に一度だけ読み込む変数は `SHOWCASE_UITEST`、
-`SHOWCASE_TAB`、`SHOWCASE_API_URL`、`SHOWCASE_HTTP_BASE` です。ディープリンク（SPEC §4）は上記の
+`SHOWCASE_TAB`、`SHOWCASE_API_URL`、`SHOWCASE_HTTP_BASE`、`SHOWCASE_GESTURES` です。`SHOWCASE_GESTURES`
+（BE-0232）は、5 つのタブの UI 全体を、平坦でスクロールのないピンチ / 回転の画面（`log.pinch` /
+`log.rotate`）に差し替えます。iOS の `GestureView` に対応し、共有シナリオ `gestures_multitouch` が
+adb の二本指 `sendevent` ジェスチャを、スクロールに依存せずに動かせるようにするためです。
+ディープリンク（SPEC §4）は上記の
 プロダクトごとのスキームと共通のホスト文法（`…://stable` 〜 `…://permissions`）を使います。
 launcher Activity は `singleTask` なので、ディープリンクは起動中のアプリでタブを選択し、push
 された詳細画面を閉じます。
