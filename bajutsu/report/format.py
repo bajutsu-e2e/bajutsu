@@ -83,6 +83,7 @@ _ACTION_META = {
     "swipe": ("swipe", "act-move"),
     "pinch": ("pinch", "act-move"),
     "rotate": ("rotate", "act-move"),
+    "drag": ("drag", "act-move"),
     "wait": ("wait", "act-wait"),
     "assert": ("assert", "act-assert"),
     "relaunch": ("relaunch", "act-wait"),

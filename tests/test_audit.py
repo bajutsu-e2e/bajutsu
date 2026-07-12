@@ -477,6 +477,22 @@ def test_directional_swipe_on_an_id_is_stable() -> None:
     assert report.stable == 1
 
 
+def test_directional_drag_on_an_id_is_stable() -> None:
+    # `drag` is a selector-bearing action too (BE-0227); the audit walks its `on` id like swipe's.
+    report = _audit("- name: x\n  steps:\n    - drag: { on: { id: divider }, direction: left }\n")
+    assert report.grade == "Stable"
+    assert report.stable == 1
+
+
+def test_referenced_ids_includes_drag_targets() -> None:
+    # An id reached only through a `drag` step must still register in the coverage map, or it
+    # escapes the audit the way swipe/pinch/rotate targets don't (BE-0227).
+    scenarios = load_scenarios(
+        "- name: x\n  steps:\n    - drag: { on: { id: gest.divider }, direction: left }\n"
+    )
+    assert referenced_ids(scenarios[0]) == {"gest.divider"}
+
+
 def test_loose_wait_is_flagged() -> None:
     report = _audit(
         "- name: x\n  steps:\n"

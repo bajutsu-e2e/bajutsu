@@ -109,6 +109,8 @@ def _step_selectors(step: Step) -> Iterator[tuple[str, base.Selector]]:
         yield "pinch", step.pinch.sel.as_selector()
     if step.rotate is not None:
         yield "rotate", step.rotate.sel.as_selector()
+    if step.drag is not None:
+        yield "drag", step.drag.on.as_selector()
     if step.wait is not None:
         if step.wait.for_ is not None:
             yield "wait", step.wait.for_.as_selector()

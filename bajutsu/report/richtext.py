@@ -153,6 +153,14 @@ def _step_desc_parts(action: str, payload: Any) -> list[Part]:
             ("", " · "),
             ("num", f"{_gnum(payload['radians'])} rad"),
         ]
+    if action == "drag":
+        drag_parts: list[Part] = [
+            ("", f"{payload.get('direction', '')} on "),
+            *_sel_parts(payload["on"]),
+        ]
+        if payload.get("amount") is not None:
+            drag_parts += [("", " · "), ("num", _gnum(payload["amount"]))]
+        return drag_parts
     if action == "wait":
         return _wait_parts(payload)
     if action == "relaunch":

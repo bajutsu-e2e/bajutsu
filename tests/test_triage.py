@@ -18,11 +18,23 @@ from bajutsu.triage import (
     TriageContext,
     _nearest_artifact,
     _read_artifact,
+    _target_id,
     apply_fix,
     diff_fix,
 )
 
 runner = CliRunner()
+
+
+def test_target_id_extracts_a_drag_targets_id() -> None:
+    # `drag` is a selector-bearing action (BE-0227); a failing drag step must yield its `on` id so
+    # triage can suggest disambiguation / a renameId self-heal, exactly as swipe/pinch/rotate do.
+    from bajutsu.scenario import load_scenarios
+
+    step = load_scenarios(
+        "- name: x\n  steps:\n    - drag: { on: { id: gest.divider }, direction: left }\n"
+    )[0].steps[0]
+    assert _target_id(step) == "gest.divider"
 
 
 def _write_run(
