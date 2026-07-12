@@ -183,7 +183,8 @@ actions in one step is a validation error (`scenario/models/steps.py` `_one_acti
 | `longPress` | `longPress: { sel: <Selector>, duration: <sec> }` | long press |
 | `type` | `type: { text: "...", into?: <Selector>, submit?: <bool> }` | with `into`, focuses first |
 | `selectOption` | `selectOption: { sel: <Selector>, option: "..." }` | set a web `<select>` to the option with this value; web only (iOS / Android raise) |
-| `swipe` | `swipe: { on: <Selector>, direction: up\|down\|left\|right }` or `swipe: { from: [x,y], to: [x,y] }` | selector form and coordinate form cannot mix |
+| `swipe` | `swipe: { on: <Selector>, direction: up\|down\|left\|right }` or `swipe: { from: [x,y], to: [x,y] }` | selector form and coordinate form cannot mix; the directional form **scrolls** |
+| `drag` | `drag: { on: <Selector>, direction: up\|down\|left\|right, amount?: <frac> }` | a real pointer **drag** of the element (a handle / divider / slider), not a scroll |
 | `pinch` | `pinch: { sel: <Selector>, scale: <num> }` | two-finger magnify; `scale > 0` (`>1` zooms in, `<1` out) |
 | `rotate` | `rotate: { sel: <Selector>, radians: <num> }` | two-finger rotation; `>0` is clockwise |
 | `wait` | `wait: { for\|until: ..., timeout: <sec> }` | condition wait (below) |
@@ -255,6 +256,21 @@ actually scrolls: a real OS drag on iOS / Android, and — since a mouse drag do
 page — a wheel event (desktop) or a touch drag (a mobile [`deviceMode`](drivers.md#playwright-web))
 on web (BE-0227). The **coordinate** form is a literal pointer drag for its own sake (a canvas / map
 pan / drag handle), the same raw-drag last resort on every backend.
+
+### `drag`
+
+```yaml
+- drag: { on: { id: replay.divider }, direction: right }             # drag a grabbed handle
+- drag: { on: { id: volume.slider }, direction: up, amount: 0.3 }    # ... a fraction of the screen
+```
+
+`drag` is an element-anchored **pointer drag** — it grabs the element and moves it in a direction,
+for a resize divider, a slider thumb, a reorder handle: any control you drag rather than scroll. It
+shares `swipe`'s directional geometry (`amount` is a fraction of the screen, `0 < amount ≤ 1`;
+omitted, a small default), but where a directional `swipe` **scrolls**, `drag` performs a genuine
+pointer drag. The distinction only bites on web: there a directional `swipe` is a wheel scroll that
+would leave a grabbed handle unmoved, so use `drag` for it; on iOS / Android a real OS drag both
+scrolls and moves handles, so the two coincide.
 
 ### `doubleTap` / `pinch` / `rotate` (gestures)
 

@@ -124,7 +124,8 @@ Action    ::=
   | { longPress:   { sel: <Selector>, duration: number } }
   | { type:        { text: string, into?: <Selector>, submit?: boolean } }   # submit 既定 false
   | { selectOption:{ sel: <Selector>, option: string } }   # web の <select> をこの value を持つ option に設定（web 専用。iOS/Android は非対応）
-  | { swipe:       <Swipe> }
+  | { swipe:       <Swipe> }                          # 方向指定形式はスクロール。座標形式は素のドラッグ
+  | { drag:        <Drag> }                           # 掴んだ要素（ハンドル / 仕切り / スライダー）をポインタドラッグする。スクロールではない
   | { back:        {} }                               # 前の画面へ戻る（Android はシステムキー / iOS は OS 戻るボタン / web は履歴）
   | { pinch:       { sel: <Selector>, scale: number } }    # scale > 0  （>1 拡大, <1 縮小）
   | { rotate:      { sel: <Selector>, radians: number } }  # >0 時計回り
@@ -152,6 +153,7 @@ Swipe ::=
     { on: <Selector>, direction: ("up"|"down"|"left"|"right"), amount?: number }   # セレクタ形  ┐ XOR
   | { from: <Point>,  to: <Point> }                                                # 座標形      ┘
     # amount（セレクタ形のみ）: 画面に対する移動量の割合。0 < amount ≤ 1。省略時は小さめの既定割合（0.125）
+Drag ::= { on: <Selector>, direction: ("up"|"down"|"left"|"right"), amount?: number }   # 要素アンカーのポインタドラッグ（BE-0227）。amount は Swipe と同じ
 Point ::= [ number, number ]
 
 # ── Selector（1 条件以上・指定フィールドは AND）────────────────────────

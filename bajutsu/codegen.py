@@ -221,6 +221,10 @@ def _emit_step(step: Step) -> list[str]:
             (fx, fy), (tx, ty) = sw.from_, sw.to
             return [f"coord({fx}, {fy}).press(forDuration: 0.1, thenDragTo: coord({tx}, {ty}))"]
         return ["// TODO: coordinate swipe (from/to) is not generated"]
+    if step.drag is not None:
+        # XCUITest's `swipeX()` is a real drag, so an element-anchored `drag` (BE-0227) emits the
+        # same primitive a directional `swipe` does — on iOS a drag both scrolls and moves handles.
+        return [f"{_element(step.drag.on.as_selector())}.{_SWIFT_DIRECTION[step.drag.direction]}()"]
     if step.wait is not None:
         w = step.wait
         if w.for_ is not None:

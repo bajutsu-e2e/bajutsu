@@ -93,6 +93,18 @@ literal pointer drag *is* the intent — the same position the coordinate form h
 backends (cf. [BE-0025](../BE-0025-coordinate-swipe-generation/BE-0025-coordinate-swipe-generation.md)).
 Only the directional form `{ on, direction }` — the one whose meaning is "scroll" — changes.
 
+**New `drag` action for element-anchored pointer drags.** Redefining the directional `swipe` as a
+scroll displaced a real, shipped use: grabbing an element *by selector* and dragging it in a
+direction — a resize divider, a slider thumb — which on web relied on the old directional-swipe
+mouse drag (the serve-UI `panel-resize` dogfood does exactly this). The coordinate form can't serve
+it (it takes raw pixels, no selector resolution), so implementation added a first-class `drag: { on,
+direction, amount? }` action: it shares `swipe`'s directional endpoint math but routes to
+`driver.swipe` (a genuine pointer drag) rather than `driver.scroll`. On web that is a `page.mouse`
+drag that moves the grabbed element; on iOS / Android a real OS drag already both scrolls and moves
+handles, so `drag` and directional `swipe` coincide there. codegen emits it on every backend (a
+`page.mouse` drag on web; the `swipeX()` / `swipe(Direction, …)` a directional swipe emits on
+iOS / Android).
+
 **codegen parity.** `bajutsu/codegen_playwright.py` `_emit_swipe_direction` is updated to emit the
 matching wheel scroll (e.g. `page.mouse.wheel(...)`) for the directional form, so a generated
 Playwright test scrolls exactly as `run` does. This keeps the structural `scenario → test`
@@ -158,14 +170,18 @@ This stays within the prime directives:
       `frm - to`, so an `up` swipe scrolls the page down)
 - [x] codegen parity (`_emit_swipe_direction` emits `page.mouse.wheel(...)`; coordinate form keeps
       its TODO)
+- [x] New `drag` action (element-anchored pointer drag) so the use directional-swipe displaced —
+      grabbing a handle by selector and dragging it — stays expressible; schema + handler + codegen
+      on all three backends; the serve-UI `panel-resize` dogfood migrated `swipe` → `drag`
 - [x] Tests (Playwright desktop-wheel + direction-sign + touch-drag; delegation on idb/adb/xcuitest;
-      handler routing via `test_gestures.py`; codegen wheel assertion)
-- [x] Docs (`scenarios.md` / `drivers.md`, both languages)
+      handler routing via `test_gestures.py`; codegen wheel assertion; `drag` schema/handler/codegen)
+- [x] Docs (`scenarios.md` / `drivers.md` / `dsl-grammar.md`, both languages)
 
 **Log**
 
 - [#948](https://github.com/bajutsu-e2e/bajutsu/pull/948) — implement mode-aware scroll dispatch via a `Driver.scroll` seam; codegen wheel
-  parity; tests + bilingual docs.
+  parity; add a `drag` action for element-anchored pointer drags (the use directional-swipe
+  displaced); tests + bilingual docs.
 
 ## References
 

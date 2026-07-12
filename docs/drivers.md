@@ -267,7 +267,9 @@ fits the same toolchain as `make check`. Implementation: `drivers/playwright.py`
   literal `page.mouse` drag, the raw-drag last resort for a canvas / map pan / drag handle. `codegen`
   emits the desktop wheel scroll for the directional form, so a generated Playwright test scrolls in
   the physically correct direction instead of the old inert drag (a fixed default distance, as codegen
-  has no viewport to scale `amount` against).
+  has no viewport to scale `amount` against). The separate `drag` action (element-anchored pointer
+  drag — a resize divider, a slider) routes to the driver's `swipe`, so on web it is a real
+  `page.mouse` drag that *moves* the grabbed element, where a directional `swipe` would only scroll.
 - **Multi-touch** (BE-0054): `pinch` / `rotate` are synthesized as two-finger drags via the Chromium
   DevTools protocol (`Input.dispatchTouchEvent`) — `mouse` is single-pointer, so gestures go through
   CDP, the same path a real touch takes (so the page's touch listeners fire). The element center

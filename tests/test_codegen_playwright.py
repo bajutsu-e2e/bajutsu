@@ -84,6 +84,17 @@ def test_swipe_from_to_is_todo() -> None:
     assert "// TODO: coordinate swipe (from/to) is not generated" in code
 
 
+def test_drag_direction_is_a_mouse_drag() -> None:
+    # A `drag` (BE-0227) is a real pointer drag of the element — move/down/move/up — not a wheel;
+    # `right` drags the pointer right (positive dx), so a grabbed handle actually moves.
+    code = _gen("- name: x\n  steps:\n    - drag: { on: { id: divider }, direction: right }\n")
+    assert "const box = await page.getByTestId('divider').boundingBox();" in code
+    assert "await page.mouse.down();" in code
+    assert "await page.mouse.move(cx + 100, cy + 0, { steps: 10 });" in code
+    assert "await page.mouse.up();" in code
+    assert "page.mouse.wheel" not in code
+
+
 def test_selector_label_traits_and_role() -> None:
     code = _gen(
         "- name: x\n  steps:\n"

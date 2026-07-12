@@ -35,6 +35,14 @@ _WHEEL_DELTA = {
     "left": (_SWIPE_PX, 0),
     "right": (-_SWIPE_PX, 0),
 }
+# Element-center drag offset (px) a `drag` emits (BE-0227). Unlike the wheel above, this is the
+# travel direction itself — the pointer moves the way the drag points — so `right` drags right.
+_DRAG_DELTA = {
+    "up": (0, -_SWIPE_PX),
+    "down": (0, _SWIPE_PX),
+    "left": (-_SWIPE_PX, 0),
+    "right": (_SWIPE_PX, 0),
+}
 
 # Glob metacharacters a CSS attribute operator cannot express (single-char `?`, char classes,
 # and interior `*`); a glob carrying any of these falls back to `// TODO`.
@@ -300,6 +308,26 @@ def _emit_swipe_direction(loc: str, direction: str) -> list[str]:
     ]
 
 
+def _emit_drag_direction(loc: str, direction: str) -> list[str]:
+    # A `drag` is a real pointer drag of the element (BE-0227) — matching the web driver, which drags
+    # (move → down → move → up) for `drag` where it wheels for a directional `swipe`.
+    dx, dy = _DRAG_DELTA[direction]
+    # A block scope keeps `const box` re-declarable across multiple drags in one test.
+    return [
+        "{",
+        f"  const box = await {loc}.boundingBox();",
+        "  if (box) {",
+        "    const cx = box.x + box.width / 2;",
+        "    const cy = box.y + box.height / 2;",
+        "    await page.mouse.move(cx, cy);",
+        "    await page.mouse.down();",
+        f"    await page.mouse.move(cx + {dx}, cy + {dy}, {{ steps: 10 }});",
+        "    await page.mouse.up();",
+        "  }",
+        "}",
+    ]
+
+
 def _emit_step(step: Step) -> list[str]:
     if step.tap is not None:
         return _act(step.tap.as_selector(), "click()")
@@ -327,6 +355,12 @@ def _emit_step(step: Step) -> list[str]:
                 return [_unsupported_selector_todo(sel)]
             return _emit_swipe_direction(loc, sw.direction)
         return ["// TODO: coordinate swipe (from/to) is not generated"]
+    if step.drag is not None:
+        sel = step.drag.on.as_selector()
+        loc = _locator(sel)
+        if loc is None:
+            return [_unsupported_selector_todo(sel)]
+        return _emit_drag_direction(loc, step.drag.direction)
     if step.wait is not None:
         return _emit_wait(step.wait)
     if step.pinch is not None:

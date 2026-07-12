@@ -103,6 +103,21 @@ def _do_select_option(driver: base.Driver, step: Step, _r: object, _c: object, _
     driver.select_option(step.select_option.sel.as_selector(), step.select_option.option)
 
 
+def _directional_endpoints(
+    driver: base.Driver, sel: base.Selector, direction: str, amount: float | None
+) -> tuple[base.Point, base.Point]:
+    """Resolve `sel` and compute the `(from, to)` a directional gesture on it travels.
+
+    Shared by `swipe` (which scrolls the result) and `drag` (which pointer-drags it) — the endpoint
+    math is identical; only what the driver does with them differs.
+    """
+    elements = driver.query()
+    el = base.resolve_unique(elements, sel)
+    return _scroll_gesture(
+        _center(el["frame"]), direction, amount, screen_size_from_elements(elements)
+    )
+
+
 @_handler("swipe")
 def _do_swipe(driver: base.Driver, step: Step, _r: object, _c: object, _b: object) -> None:
     assert step.swipe is not None
@@ -112,13 +127,21 @@ def _do_swipe(driver: base.Driver, step: Step, _r: object, _c: object, _b: objec
         driver.swipe(sw.from_, sw.to)
     elif sw.on is not None and sw.direction is not None:
         # Directional form means "scroll": route to `driver.scroll`, so the web backend can realize
-        # it as a real scroll (wheel / touch) rather than a page-inert mouse drag (BE-0227).
-        elements = driver.query()
-        el = base.resolve_unique(elements, sw.on.as_selector())
-        frm, to = _scroll_gesture(
-            _center(el["frame"]), sw.direction, sw.amount, screen_size_from_elements(elements)
-        )
+        # it as a real scroll (wheel / touch) rather than a page-inert mouse drag (BE-0227). To drag
+        # a grabbed element (a resize handle) in a direction instead, use the `drag` action.
+        frm, to = _directional_endpoints(driver, sw.on.as_selector(), sw.direction, sw.amount)
         driver.scroll(frm, to)
+
+
+@_handler("drag")
+def _do_drag(driver: base.Driver, step: Step, _r: object, _c: object, _b: object) -> None:
+    assert step.drag is not None
+    d = step.drag
+    # A real pointer drag of the element in a direction (BE-0227): same endpoints as a directional
+    # swipe, but `driver.swipe` (an actual drag) — so on web the grabbed element moves, where a
+    # directional swipe would only wheel-scroll the page.
+    frm, to = _directional_endpoints(driver, d.on.as_selector(), d.direction, d.amount)
+    driver.swipe(frm, to)
 
 
 @_handler("pinch")
