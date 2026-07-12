@@ -51,13 +51,14 @@ SERIAL ?= booted
 # short-circuits to granted with no dialog — no LLM, no fixed sleep on the CI lane. Verified on a
 # local arm64 emulator.
 #
-# The device-control flow `device_android` joins the lane (BE-0208 unit 5): it overrides the GPS
-# location (`emu geo fix`) and round-trips the clipboard, then re-asserts the settled screen — the
-# deterministic Android twin of the idb `device.yaml`. It runs on the Stable launch tab, needing no
-# tab-bar navigation. Both setLocation and clipboard of the device-control family are exercised:
-# `cmd clipboard` is a no-op on-device, so the clipboard runs through the in-app receiver the showcase
-# embeds from BajutsuAndroid (BE-0233) — the read-back is the strong assertion PR #934 wanted.
-# Verified on a local arm64 emulator.
+# The device-control flow `device` joins the lane (BE-0208 unit 5): it overrides the GPS location
+# (`emu geo fix`) and round-trips the clipboard, then re-asserts the settled screen. This is the *same*
+# device.yaml the idb lane runs — `setLocation` and the clipboard are advertised by every device
+# backend (clipboard via simctl on iOS, the in-app BajutsuAndroid receiver on Android, BE-0233), so one
+# file is preflight-clean on iOS and Android alike (the iOS-only `push` half lives in push.yaml). It
+# runs on the Stable launch tab, needing no tab-bar navigation. `cmd clipboard` is a no-op on-device,
+# so the clipboard runs through the receiver the showcase embeds — the read-back is the strong
+# assertion PR #934 wanted. Verified on a local arm64 emulator.
 #
 # The multi-touch gesture flow `gestures_multitouch` joins the lane (BE-0232): the adb driver now
 # drives a pinch / rotate as a raw two-slot `sendevent` sweep on the rooted emulator (two contacts
@@ -68,7 +69,7 @@ SERIAL ?= booted
 #
 # Still held out: mocked network (a BE-0007 follow-up).
 E2E_SCENARIOS := smoke firstlook navigation search data_driven relaunch system components modals \
-	controls notices gestures gestures_multitouch permission_android device_android
+	controls notices gestures gestures_multitouch permission_android device
 
 # Raise the condition-wait ceiling for this lane only: the CI x86_64 software-rendered emulator
 # presents sheets/covers slower than the shared scenarios' 5s waits allow. A wait returns as soon as
@@ -130,19 +131,20 @@ e2e: compose-build views-build
 	done
 
 # On-device golden element-tree assertion (BE-0006, BE-0208 unit 4) for the Compose a11y twin over
-# adb. The Stable catalog's normalized tree is pinned in
-# demos/showcase/scenarios/golden/goldens/lists_android.json — a backend-specific baseline (the adb
-# tree differs from idb's lists.json and XCUITest's controls.json; each backend renders a distinct
-# accessibility tree). The comparison is field-level with a tolerant frame check (bajutsu/golden.py),
-# so the baseline recorded on the local arm64 emulator also passes on the CI x86_64 one: identity /
-# label / traits are stable across the ABI, only the density-scaled frame differs and it is only
-# sanity-checked. The scenario runs on the Stable tab (the launch tab), so it needs no tab-bar
-# navigation. The goldens dir resolves by default to `goldens/` beside the scenario, so no --goldens
-# flag is needed. Not part of `make check`: it needs a booted AVD, so android-e2e.yml drives it in
-# the same emulator session as `e2e`.
+# adb. This runs the *same* golden.yaml the idb lane runs; only the baseline dir differs. The adb tree
+# differs from idb's and XCUITest's (each backend renders a distinct accessibility tree), so the
+# Compose baseline — of the same name, lists.json — lives in its own dir,
+# demos/showcase/scenarios/golden/goldens_android/, selected with `--goldens` (the idb lane uses the
+# default goldens/ beside the scenario). The comparison is field-level with a tolerant frame check
+# (bajutsu/golden.py), so the baseline recorded on the local arm64 emulator also passes on the CI
+# x86_64 one: identity / label / traits are stable across the ABI, only the density-scaled frame
+# differs and it is only sanity-checked. The scenario runs on the Stable tab (the launch tab), so it
+# needs no tab-bar navigation. Not part of `make check`: it needs a booted AVD, so android-e2e.yml
+# drives it in the same emulator session as `e2e`.
 e2e-golden: compose-build
 	cd $(ROOT) && uv run bajutsu run \
-		--scenario demos/showcase/scenarios/golden/golden_android.yaml \
+		--scenario demos/showcase/scenarios/golden/golden.yaml \
+		--goldens demos/showcase/scenarios/golden/goldens_android \
 		--target showcase-compose --udid $(SERIAL) --backend android --config $(CONFIG)
 
 # On-device visual regression (VRT, BE-0208 unit 4 visual dimension) for the Compose a11y twin over

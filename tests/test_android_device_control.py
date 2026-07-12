@@ -223,36 +223,46 @@ def test_preflight_rejects_unsupported_steps_on_adb(step: dict[str, object]) -> 
     assert reasons[0].startswith("step 1: ")
 
 
-# --- the CI-lane scenario itself: device_android.yaml exercises the emulator subset (BE-0208 unit 5)
+# --- the CI-lane scenario itself: device.yaml exercises the emulator subset (BE-0208 unit 5) ---
+# device.yaml is the single cross-backend device-environment scenario — `setLocation` and the
+# clipboard are advertised by every device backend (clipboard via simctl on iOS, the BajutsuAndroid
+# in-app receiver on Android, BE-0233), so one file runs on iOS (idb / XCUITest) and Android (adb)
+# alike. The iOS-only `push` half lives in push.yaml, kept out of this shared file because adb does not
+# advertise `deviceControl.push` (asserted below), so the shared scenario stays preflight-clean on Android.
 
-_DEVICE_ANDROID = (
-    Path(__file__).resolve().parent.parent
-    / "demos"
-    / "showcase"
-    / "scenarios"
-    / "device_android.yaml"
-)
+_SCENARIOS_DIR = Path(__file__).resolve().parent.parent / "demos" / "showcase" / "scenarios"
+_DEVICE = _SCENARIOS_DIR / "device.yaml"
+_PUSH = _SCENARIOS_DIR / "push.yaml"
 
 
-def _device_android() -> Scenario:
-    scenarios = load_scenarios(_DEVICE_ANDROID.read_text(encoding="utf-8"))
-    assert len(scenarios) == 1  # a single device-control flow on the Stable launch tab
+def _single(path: Path) -> Scenario:
+    scenarios = load_scenarios(path.read_text(encoding="utf-8"))
+    assert len(scenarios) == 1  # a single flow per file
     return scenarios[0]
 
 
-def test_device_android_overrides_location_and_round_trips_the_clipboard() -> None:
-    # The Android device-control lane scenario: setLocation + a clipboard seed/read-back on the Stable
-    # launch tab, re-asserting the settled screen — the deterministic Android twin of iOS device.yaml.
-    # The clipboard rejoined the lane once BajutsuAndroid's in-app receiver made it work on-device
-    # (BE-0233); the read-back is the strong assertion PR #934 wanted.
-    scn = _device_android()
+def test_device_overrides_location_and_round_trips_the_clipboard() -> None:
+    # The shared device-control scenario: setLocation + a clipboard seed/read-back on the Stable launch
+    # tab, re-asserting the settled screen. The clipboard rejoined the lane once BajutsuAndroid's in-app
+    # receiver made it work on-device (BE-0233); simctl backs it on iOS, so the one file runs on both
+    # platforms. The read-back is the strong assertion PR #934 wanted.
+    scn = _single(_DEVICE)
     assert any(s.set_location is not None for s in scn.steps), "expected a setLocation step"
     assert any(s.set_clipboard is not None for s in scn.steps), "expected a setClipboard step"
+    assert not any(s.push is not None for s in scn.steps), "push lives in push.yaml"
     assert any(a.exists is not None for a in scn.expect), "expected a settled-screen re-assert"
     assert any(a.clipboard is not None for a in scn.expect), "expected a clipboard read-back assert"
 
 
-def test_device_android_is_preflight_clean_on_adb() -> None:
+def test_device_is_preflight_clean_on_adb() -> None:
     # Every step falls inside the adb backend's advertised capabilities (setLocation + clipboard), so
-    # the lane never trips a runtime UnsupportedAction (BE-0212 preflight).
-    assert capability_preflight.unsupported(_device_android(), AdbDriver.CAPABILITIES) == []
+    # the shared scenario runs on Android with no runtime UnsupportedAction (BE-0212 preflight).
+    assert capability_preflight.unsupported(_single(_DEVICE), AdbDriver.CAPABILITIES) == []
+
+
+def test_push_scenario_is_rejected_by_preflight_on_adb() -> None:
+    # push.yaml is iOS-only: adb does not advertise `deviceControl.push`, so preflight fails the
+    # scenario fast rather than letting the run reach a runtime UnsupportedAction. This is why the
+    # push flow is split out of the shared device.yaml (which stays runnable on Android).
+    reasons = capability_preflight.unsupported(_single(_PUSH), AdbDriver.CAPABILITIES)
+    assert any("push" in r for r in reasons), reasons

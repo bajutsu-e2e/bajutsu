@@ -1,14 +1,28 @@
-# Device-environment steps (simctl-backed): set the Simulator's GPS location, then deliver a
-# push notification to the app. Both drive the device, not the app UI, so the assertion is that
-# the app is still on its settled screen afterwards (the seeded Stable catalog).
+# Device-environment steps, shared across every backend: override the device's GPS location and
+# round-trip the clipboard, then re-assert the settled screen. The steps drive the device, not the app
+# UI, so the flow runs on the Stable catalog (the launch tab, no tab-bar navigation) and re-asserts the
+# app stays there. `setLocation` and the clipboard are the device-control operations every device
+# backend now honors — simctl on iOS (idb / XCUITest), `emu geo fix` plus the in-app BajutsuAndroid
+# receiver on Android (adb, BE-0211 / BE-0233) — so this one file is preflight-clean on all of them
+# (BE-0212) and runs unchanged on iOS and Android. Each id lists both its dotted SPEC form (iOS /
+# Compose) and its underscore form (Android Views), so the selector resolves whichever tree renders
+# (BE-0221). The clipboard read-back is the strong assertion the lane wanted from the start (PR #934).
+#
+# `push` is deliberately *not* here: the iOS Simulator delivers a push (simctl), but the Android
+# emulator has no faithful equivalent, so adb does not advertise `deviceControl.push` and preflight
+# (bajutsu/capability_preflight.py) rejects any scenario carrying a `push` step on the adb backend.
+# The push flow therefore lives in the iOS-only push.yaml, keeping this scenario runnable on both.
 #   bajutsu run --scenario device.yaml --target showcase-swiftui ...
-- name: set location then receive a push
+#   bajutsu run --scenario device.yaml --target showcase-compose --backend android ...
+- name: override the device location and round-trip the clipboard
+  tags: [system]
   preconditions:
     launchEnv: { SHOWCASE_UITEST: "1" }
   steps:
-    - wait: { for: { id: stable.row.1 }, timeout: 10 }
+    - wait: { for: { id: [stable.row.1, stable_row_1] }, timeout: 10 }
       capture: [video]
     - setLocation: { lat: 35.681, lon: 139.767 }
-    - push: { payload: { aps: { alert: "You have a new message" } } }
+    - setClipboard: { text: "COUPON123" }
   expect:
-    - exists: { id: stable.row.1 }
+    - exists: { id: [stable.row.1, stable_row_1] }
+    - clipboard: { equals: "COUPON123" }
