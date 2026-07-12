@@ -72,7 +72,7 @@ flowchart TB
 | `drivers/fake.py` | インメモリの `FakeDriver`（実機不要テスト用） | [drivers](drivers.md#fakedriver) |
 | `drivers/idb.py` | idb バックエンド（iOS Simulator。ヘッドレス、座標 tap） | [drivers](drivers.md#idb) |
 | `drivers/xcuitest.py` | XCUITest バックエンド（iOS。安定度ラダーで idb より上位。実機上に常駐する runner が semantic tap・ネイティブ条件待ち・multi-touch を提供し、idb はそのヘッドレスなフォールバック。BE-0019） | [drivers](drivers.md#バックエンド選択と-actuator) |
-| `drivers/adb.py` | adb バックエンド（Android。`uiautomator dump` による frame 中心の座標 tap。idb に相当する第 2 プラットフォーム） | [drivers](drivers.md) |
+| `drivers/adb.py` | adb バックエンド（Android。`uiautomator dump` による frame 中心の座標 tap。idb に相当する第 2 プラットフォーム） | [drivers](drivers.md#adb-android) |
 | `drivers/playwright.py` | Playwright web バックエンド（ブラウザ。第一段、決定的 run） | [drivers](drivers.md#playwright-web) |
 | `scenario/` | シナリオスキーマ（pydantic 厳格検証）+ YAML 読込 / 書出（パッケージ: `models` / `load` / `expand` / `select` / `serialize`） | [scenarios](scenarios.md) |
 | `assertions.py` | 機械アサーション評価（総関数。例外を投げない） | [selectors](selectors.md#アサーション評価) |
