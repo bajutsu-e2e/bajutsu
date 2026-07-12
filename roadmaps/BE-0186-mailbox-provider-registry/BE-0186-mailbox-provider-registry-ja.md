@@ -9,7 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0186") |
-| 実装 PR | _pending_ |
+| 実装 PR | [#953](https://github.com/bajutsu-e2e/bajutsu/pull/953) |
 | トピック | 競合調査（MagicPod / Autify）由来の候補 |
 <!-- /BE-METADATA -->
 
@@ -112,7 +112,7 @@ targets:
 ### ログ
 
 - レジストリと `http` リファレンスアダプタ、`mailbox.kind` 設定フィールド、ユニットテスト、両言語の
-  config ドキュメント — スコープ内のすべて。IMAP と名前つきメールボックスは後続へ委譲したままです。_(PR pending)_
+  config ドキュメント — スコープ内のすべて。IMAP と名前つきメールボックスは後続へ委譲したままです。[#953](https://github.com/bajutsu-e2e/bajutsu/pull/953)
 
 ## 参考
 
