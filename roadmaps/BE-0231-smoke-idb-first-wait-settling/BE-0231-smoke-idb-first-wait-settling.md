@@ -9,7 +9,7 @@
 | Author | [@hirosassa](https://github.com/hirosassa) |
 | Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0231") |
-| Implementing PR | _pending_ |
+| Implementing PR | [#952](https://github.com/bajutsu-e2e/bajutsu/pull/952) |
 | Topic | On-device validation (M1 close-out) |
 <!-- /BE-METADATA -->
 
@@ -120,7 +120,7 @@ acceptance. Each unit is independently shippable.
 
 Log (oldest first):
 
-- _pending_ — Units 2–3: point the `showcase-swiftui` target's `readyWhen` at the first Stable row
+- [#952](https://github.com/bajutsu-e2e/bajutsu/pull/952) — Units 2–3: point the `showcase-swiftui` target's `readyWhen` at the first Stable row
   (`stable.row.1`), the element the smoke scenario's opening `wait` needs, so `_await_ready` no longer
   returns on some other in-namespace node and lets the first step race a not-yet-rendered row on a
   cold-boot CI Simulator (Unit 2); and lock in that the scenario `for`-wait treats an empty first poll
