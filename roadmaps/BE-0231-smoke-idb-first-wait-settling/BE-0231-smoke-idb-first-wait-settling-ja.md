@@ -9,7 +9,7 @@
 | 提案者 | [@hirosassa](https://github.com/hirosassa) |
 | 状態 | **実装中** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0231") |
-| 実装 PR | _pending_ |
+| 実装 PR | [#952](https://github.com/bajutsu-e2e/bajutsu/pull/952) |
 | トピック | 実機検証（M1 クローズアウト） |
 <!-- /BE-METADATA -->
 
@@ -63,7 +63,7 @@
 
 ログ（古い順）:
 
-- _pending_ — ユニット 2〜3。`showcase-swiftui` ターゲットの `readyWhen` を、smoke シナリオ冒頭の
+- [#952](https://github.com/bajutsu-e2e/bajutsu/pull/952) — ユニット 2〜3。`showcase-swiftui` ターゲットの `readyWhen` を、smoke シナリオ冒頭の
   `wait` が必要とする要素、すなわち最初の Stable 行（`stable.row.1`）に向けます。これにより
   `_await_ready` が名前空間内の別のノードで早期に成立し、cold boot した CI Simulator 上で最初のステップが
   まだレンダリングされていない行とレースする状況をなくします（ユニット 2）。あわせて、シナリオの `for`
