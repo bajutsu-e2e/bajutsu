@@ -69,12 +69,6 @@ def _ensure_builtins() -> None:
     _ADAPTERS.setdefault("http", _build_http_reader)
 
 
-def known_kinds() -> tuple[str, ...]:
-    """The registered transport kinds — the open, validated set for the `mailbox.kind` config."""
-    _ensure_builtins()
-    return tuple(_ADAPTERS)
-
-
 def build_mailbox_reader(cfg: Mailbox | None, bindings: Mapping[str, str]) -> MailboxReader | None:
     """The `MailboxReader` for the configured transport, or None if unconfigured.
 

@@ -39,10 +39,6 @@ def test_unknown_kind_fails_closed() -> None:
         mb.build_mailbox_reader(Mailbox(kind="imap", url="https://inbox.test/api"), {})
 
 
-def test_http_is_a_known_kind() -> None:
-    assert "http" in mb.known_kinds()
-
-
 def test_registry_is_a_real_extension_point() -> None:
     """Register a fake transport, resolve it, then remove it (global registry)."""
 
@@ -57,6 +53,5 @@ def test_registry_is_a_real_extension_point() -> None:
     try:
         reader = mb.build_mailbox_reader(Mailbox(kind="fake", url="x"), {})
         assert isinstance(reader, _FakeReader)
-        assert "fake" in mb.known_kinds()
     finally:
         mb._ADAPTERS.pop("fake", None)
