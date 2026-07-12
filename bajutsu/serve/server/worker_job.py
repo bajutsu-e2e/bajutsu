@@ -73,6 +73,10 @@ def job_spec(job: Job) -> dict[str, Any]:
         # The worker's `_persist_run` stamps `runs.project_id` from this — the worker has no registry
         # to resolve an active project of its own.
         "project_id": job.project_id,
+        # The requesting org's AI provider env overlay (BE-0229), resolved on the control plane from
+        # that org's saved selection. The worker merges it onto the spawn env, so the run uses the
+        # org's provider/model/effort without the worker holding any provider settings of its own.
+        "env_overlay": dict(job.env_overlay),
     }
 
 
@@ -159,6 +163,9 @@ def execute_job_spec(
         # Carry the project the control plane resolved at enqueue, so `_persist_run` stamps
         # `runs.project_id` here where the run actually executes (BE-0225 unit 3).
         project_id=spec.get("project_id"),
+        # The org's AI provider overlay the control plane resolved at enqueue (BE-0229); `run_job`'s
+        # `_spawn_env` merges it onto the child env so the run uses the org's selection.
+        env_overlay=dict(spec.get("env_overlay") or {}),
     )
     # Bind the job's ids so every operational record on this worker correlates to it (BE-0055);
     # `run_id` is the run's own id, minted by `run_job`, so it binds only once the run has started.

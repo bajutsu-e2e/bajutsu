@@ -1,7 +1,11 @@
 """Tests for the bajutsu serve AI-provider endpoint (/api/provider), real ThreadingHTTPServer.
 
-The endpoint mirrors /api/apikey: it writes the provider selection into the serve process's
-environment (in memory, never to disk) so spawned record/crawl jobs inherit it via os.environ.
+Since BE-0229 the endpoint stores the selection *per organization* (`ServeState.provider_settings`
+keyed by org) and materializes it into a per-job env overlay at dispatch — never into the shared
+`os.environ` — so a hosted, multi-tenant serve resolves provider/model/effort per org instead of
+one operator's save changing everyone's AI runs. These tests assert the selection round-trips
+through GET and resolves into the org's overlay (`resolve_provider_env`), and crucially that the
+process env is never written (the tenant-isolation guarantee).
 """
 
 from __future__ import annotations
@@ -16,6 +20,8 @@ from _shared import _get_json, _post, _serve, project
 from bajutsu import ai_availability
 from bajutsu import anthropic_client as ac
 from bajutsu import serve as srv
+from bajutsu.serve.operations.config import resolve_provider_env
+from bajutsu.serve.orgs import DEFAULT_ORG
 
 _BEDROCK_MODEL = "global.anthropic.claude-opus-4-6-v1"
 
@@ -32,12 +38,13 @@ _PROVIDER_ENV_VARS = (
 
 @pytest.fixture(autouse=True)
 def _isolate_provider_env() -> Iterator[None]:
-    """Snapshot and fully restore the provider env vars around every test.
+    """Give every test a clean launch env and fully restore it afterwards.
 
-    The /api/provider endpoint writes os.environ directly, and monkeypatch.delenv only records a
-    variable if it exists at the time of the call — so vars that were absent at test start but
-    written by the endpoint during the test leak into later tests in the same worker. Snapshot/
-    restore is the reliable fix (same pattern as test_provider_persistence.py)."""
+    Since BE-0229 the endpoint no longer writes `os.environ`, but the env is still the fallback layer
+    that `provider_info` / the overlay read when an org has selected nothing — so a stray
+    `BAJUTSU_AI_*` from another test would perturb these assertions. Snapshot/restore keeps each test
+    starting from a clean env (and cleans up anything a helper sets), the same isolation the sibling
+    persistence tests rely on."""
     saved = {var: os.environ.get(var) for var in _PROVIDER_ENV_VARS}
     for var in _PROVIDER_ENV_VARS:
         os.environ.pop(var, None)
@@ -58,16 +65,29 @@ def _clean_provider_env(monkeypatch: pytest.MonkeyPatch) -> None:
     clean env" — the fixture already does that for every test."""
 
 
+def _no_process_env() -> None:
+    """The tenant-isolation invariant BE-0229 introduces: a save never mutates the shared process
+    env, so nothing leaks between orgs' jobs."""
+    for var in (
+        ac.PROVIDER_ENV,
+        ac.MODEL_ENV,
+        ac.BEDROCK_MODEL_ENV,
+        ac.EFFORT_ENV,
+        ac.LANGUAGE_ENV,
+    ):
+        assert var not in os.environ
+
+
 def test_http_provider_select_bedrock_and_back(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Round-trip the AI provider through the WebUI: default anthropic → bedrock (region + model
-    land in the process env) → back to anthropic. Nothing is written to disk."""
+    resolve into the org's per-job overlay) → back to anthropic. Nothing is written to the process
+    env or to disk."""
     scn_dir, cfg, runs = project(tmp_path)
     _clean_provider_env(monkeypatch)
-    server, port = _serve(
-        srv.ServeState(scenarios_dir=scn_dir, config=cfg, runs_dir=runs, cwd=tmp_path)
-    )
+    state = srv.ServeState(scenarios_dir=scn_dir, config=cfg, runs_dir=runs, cwd=tmp_path)
+    server, port = _serve(state)
     try:
         # No key set, so the record/crawl tabs would read disabled (BE-0101): the payload carries the
         # reachability the front end gates on, with an actionable hint.
@@ -89,9 +109,12 @@ def test_http_provider_select_bedrock_and_back(
             {"provider": "bedrock", "region": "us-east-1", "model": _BEDROCK_MODEL},
         )
         assert code == 200 and body["provider"] == "bedrock"
-        assert os.environ[ac.PROVIDER_ENV] == "bedrock"
-        assert os.environ["AWS_REGION"] == "us-east-1"
-        assert os.environ[ac.BEDROCK_MODEL_ENV] == _BEDROCK_MODEL
+        # The selection resolves into the org's per-job env overlay (BE-0229), never the process env.
+        overlay = resolve_provider_env(state, DEFAULT_ORG)
+        assert overlay[ac.PROVIDER_ENV] == "bedrock"
+        assert overlay["AWS_REGION"] == "us-east-1"
+        assert overlay[ac.BEDROCK_MODEL_ENV] == _BEDROCK_MODEL
+        _no_process_env()
         assert not (tmp_path / ".env").exists()  # nothing persisted to disk
         # Bedrock with a provider-prefixed model id is reachable (AWS creds authenticate it), so the
         # gate reports available and the front end re-enables the Claude tabs.
@@ -112,7 +135,7 @@ def test_http_provider_select_bedrock_and_back(
         # Switch back to the Anthropic API (the `api-key` provider).
         code, body = _post(port, "/api/provider", {"provider": "api-key"})
         assert code == 200 and body["provider"] == "api-key"
-        assert os.environ[ac.PROVIDER_ENV] == "api-key"
+        assert resolve_provider_env(state, DEFAULT_ORG)[ac.PROVIDER_ENV] == "api-key"
         assert _get_json(port, "/api/provider")["provider"] == "api-key"
     finally:
         server.shutdown()
@@ -123,37 +146,36 @@ def test_http_provider_bedrock_requires_model(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Bedrock needs a provider-prefixed model id; without one the request is rejected and no
-    provider env is set."""
+    provider selection is stored."""
     scn_dir, cfg, runs = project(tmp_path)
     _clean_provider_env(monkeypatch)
-    server, port = _serve(
-        srv.ServeState(scenarios_dir=scn_dir, config=cfg, runs_dir=runs, cwd=tmp_path)
-    )
+    state = srv.ServeState(scenarios_dir=scn_dir, config=cfg, runs_dir=runs, cwd=tmp_path)
+    server, port = _serve(state)
     try:
         code, body = _post(port, "/api/provider", {"provider": "bedrock", "region": "us-east-1"})
         assert code == 400 and "model" in body["error"]
-        assert ac.BEDROCK_MODEL_ENV not in os.environ
+        assert resolve_provider_env(state, DEFAULT_ORG) == {}  # nothing selected
     finally:
         server.shutdown()
         server.server_close()
 
 
 def test_http_provider_select_ant_and_back(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """The Anthropic CLI (`ant`, BE-0163) is a first-class SDK provider: selecting it sets
-    BAJUTSU_AI_PROVIDER=ant (no model/region), and reachability reflects the CLI's sign-in state —
-    reported here as missing since no `ant` binary is installed in CI. Switching back restores
-    anthropic. Nothing is written to disk."""
+    """The Anthropic CLI (`ant`, BE-0163) is a first-class SDK provider: selecting it stores
+    provider=ant (no model/region) in the org's selection, and reachability reflects the CLI's
+    sign-in state — reported here as missing since no `ant` binary is installed in CI. Switching back
+    restores anthropic. Nothing is written to the process env or to disk."""
     scn_dir, cfg, runs = project(tmp_path)
     _clean_provider_env(monkeypatch)
     # Deterministic: report the `ant` CLI absent regardless of the CI host (the probe is a subprocess).
     monkeypatch.setattr(ac.shutil, "which", lambda _exe: None)
-    server, port = _serve(
-        srv.ServeState(scenarios_dir=scn_dir, config=cfg, runs_dir=runs, cwd=tmp_path)
-    )
+    state = srv.ServeState(scenarios_dir=scn_dir, config=cfg, runs_dir=runs, cwd=tmp_path)
+    server, port = _serve(state)
     try:
         code, body = _post(port, "/api/provider", {"provider": "ant"})
         assert code == 200 and body["provider"] == "ant"
-        assert os.environ[ac.PROVIDER_ENV] == "ant"
+        assert resolve_provider_env(state, DEFAULT_ORG)[ac.PROVIDER_ENV] == "ant"
+        _no_process_env()
         assert not (tmp_path / ".env").exists()  # nothing persisted to disk
         assert _get_json(port, "/api/provider") == {
             "provider": "ant",
@@ -170,7 +192,7 @@ def test_http_provider_select_ant_and_back(tmp_path: Path, monkeypatch: pytest.M
         # Switch back to the Anthropic API (the `api-key` provider).
         code, body = _post(port, "/api/provider", {"provider": "api-key"})
         assert code == 200 and body["provider"] == "api-key"
-        assert os.environ[ac.PROVIDER_ENV] == "api-key"
+        assert resolve_provider_env(state, DEFAULT_ORG)[ac.PROVIDER_ENV] == "api-key"
         assert _get_json(port, "/api/provider")["provider"] == "api-key"
     finally:
         server.shutdown()
@@ -184,13 +206,12 @@ def test_http_provider_accepts_the_legacy_anthropic_alias(
     # it, so the endpoint canonicalizes it to `api-key` rather than rejecting it as unknown.
     scn_dir, cfg, runs = project(tmp_path)
     _clean_provider_env(monkeypatch)
-    server, port = _serve(
-        srv.ServeState(scenarios_dir=scn_dir, config=cfg, runs_dir=runs, cwd=tmp_path)
-    )
+    state = srv.ServeState(scenarios_dir=scn_dir, config=cfg, runs_dir=runs, cwd=tmp_path)
+    server, port = _serve(state)
     try:
         code, body = _post(port, "/api/provider", {"provider": "anthropic"})
         assert code == 200 and body["provider"] == "api-key"
-        assert os.environ[ac.PROVIDER_ENV] == "api-key"
+        assert resolve_provider_env(state, DEFAULT_ORG)[ac.PROVIDER_ENV] == "api-key"
     finally:
         server.shutdown()
         server.server_close()
@@ -204,9 +225,8 @@ def test_http_provider_remembers_settings_per_provider(
     claude-code's model/effort intact — read from the per-provider map GET /api/provider returns."""
     scn_dir, cfg, runs = project(tmp_path)
     _clean_provider_env(monkeypatch)
-    server, port = _serve(
-        srv.ServeState(scenarios_dir=scn_dir, config=cfg, runs_dir=runs, cwd=tmp_path)
-    )
+    state = srv.ServeState(scenarios_dir=scn_dir, config=cfg, runs_dir=runs, cwd=tmp_path)
+    server, port = _serve(state)
     try:
         code, _ = _post(
             port,
@@ -226,16 +246,17 @@ def test_http_provider_remembers_settings_per_provider(
             "region": "",
         }
         assert providers["api-key"] == {"model": "claude-sonnet-4-6", "effort": "", "region": ""}
-        # Switching back materializes claude-code's remembered slot into the env spawned jobs read.
+        # Switching back materializes claude-code's remembered slot into the org's job overlay.
         code, _ = _post(
             port,
             "/api/provider",
             {"provider": "claude-code", "aiModel": "claude-opus-4-6", "effort": "high"},
         )
         assert code == 200
-        assert os.environ[ac.PROVIDER_ENV] == "claude-code"
-        assert os.environ[ac.MODEL_ENV] == "claude-opus-4-6"
-        assert os.environ[ac.EFFORT_ENV] == "high"
+        overlay = resolve_provider_env(state, DEFAULT_ORG)
+        assert overlay[ac.PROVIDER_ENV] == "claude-code"
+        assert overlay[ac.MODEL_ENV] == "claude-opus-4-6"
+        assert overlay[ac.EFFORT_ENV] == "high"
     finally:
         server.shutdown()
         server.server_close()
@@ -247,9 +268,8 @@ def test_http_provider_write_scopes_to_the_selected_slot(
     """BE-0183: a Bedrock save writes only Bedrock's slot; the api-key slot set earlier is untouched."""
     scn_dir, cfg, runs = project(tmp_path)
     _clean_provider_env(monkeypatch)
-    server, port = _serve(
-        srv.ServeState(scenarios_dir=scn_dir, config=cfg, runs_dir=runs, cwd=tmp_path)
-    )
+    state = srv.ServeState(scenarios_dir=scn_dir, config=cfg, runs_dir=runs, cwd=tmp_path)
+    server, port = _serve(state)
     try:
         code, _ = _post(
             port, "/api/provider", {"provider": "api-key", "aiModel": "claude-sonnet-4-6"}
@@ -295,27 +315,26 @@ def test_http_provider_rejects_unknown(tmp_path: Path, monkeypatch: pytest.Monke
 def test_http_provider_output_language_round_trip(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """BE-0188: the output-language dropdown persists into the process env spawned jobs inherit —
-    `ja` sets it, `auto` clears it, and an unknown value is rejected without touching the env."""
+    """BE-0188: the output-language dropdown persists into the org's job overlay — `ja` sets it,
+    `auto` clears it, and an unknown value is rejected without changing the stored selection."""
     scn_dir, cfg, runs = project(tmp_path)
     _clean_provider_env(monkeypatch)
-    server, port = _serve(
-        srv.ServeState(scenarios_dir=scn_dir, config=cfg, runs_dir=runs, cwd=tmp_path)
-    )
+    state = srv.ServeState(scenarios_dir=scn_dir, config=cfg, runs_dir=runs, cwd=tmp_path)
+    server, port = _serve(state)
     try:
         code, body = _post(port, "/api/provider", {"provider": "api-key", "language": "ja"})
         assert code == 200 and body["language"] == "ja"
-        assert os.environ[ac.LANGUAGE_ENV] == "ja"
+        assert resolve_provider_env(state, DEFAULT_ORG)[ac.LANGUAGE_ENV] == "ja"
         assert _get_json(port, "/api/provider")["language"] == "ja"
-        # `auto` is the no-override default: it clears the env rather than storing a value.
+        # `auto` is the no-override default: it stores no language, so the overlay omits it.
         code, body = _post(port, "/api/provider", {"provider": "api-key", "language": "auto"})
         assert code == 200 and body["language"] == "auto"
-        assert ac.LANGUAGE_ENV not in os.environ
+        assert ac.LANGUAGE_ENV not in resolve_provider_env(state, DEFAULT_ORG)
         assert _get_json(port, "/api/provider")["language"] == ""
-        # An unknown language is a visible 400, and the env is left as it was (cleared above).
+        # An unknown language is a visible 400, and the stored language is left as it was (cleared).
         code, body = _post(port, "/api/provider", {"provider": "api-key", "language": "klingon"})
         assert code == 400 and "language" in body["error"]
-        assert ac.LANGUAGE_ENV not in os.environ
+        assert ac.LANGUAGE_ENV not in resolve_provider_env(state, DEFAULT_ORG)
     finally:
         server.shutdown()
         server.server_close()

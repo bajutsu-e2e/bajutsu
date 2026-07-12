@@ -22,6 +22,7 @@ from pathlib import Path
 from typing import Any
 
 from bajutsu import simctl as _simctl
+from bajutsu.anthropic_client import PROVIDER_MANAGED_ENV
 from bajutsu.handoff import REQUEST_LINE_PREFIX as _HANDOFF_REQUEST_PREFIX
 from bajutsu.serve.helpers import valid_run_id
 from bajutsu.serve.state import Job, ServeState
@@ -32,11 +33,23 @@ logger = logging.getLogger(__name__)
 _RUN_ID_RE = re.compile(r"runs/([0-9A-Za-z._-]+)/manifest\.json")
 
 
-def _spawn_env() -> dict[str, str]:
-    """The child env for a spawned run/record: the venv bin dir (where the ``idb`` client lives)
-    on PATH.  Inherits the serve process's environment, so an ``ANTHROPIC_API_KEY`` set from the
-    WebUI (which writes only into ``os.environ``) is carried through to the job."""
+def _spawn_env(job: Job) -> dict[str, str]:
+    """The child env for a spawned run/record: the venv bin dir (where the ``idb`` client lives) on
+    PATH, plus *job*'s per-org AI provider overlay (BE-0229).
+
+    Inherits the serve process's environment, so an ``ANTHROPIC_API_KEY`` set from the Web UI (which
+    the local secret store writes into ``os.environ``, BE-0136) is carried through to the job. On top
+    of that, the job's `env_overlay` carries the requesting org's provider/model/effort/language, so
+    the spawn uses *that* org's selection without the serve process ever mutating its shared
+    ``os.environ`` — the tenant-isolation guarantee. When the overlay names a provider it is
+    authoritative, so the Bajutsu-managed provider vars are cleared from the inherited env first and
+    then replaced, rather than letting a stale launch-env value leak through; an empty overlay (no
+    selection) leaves the inherited env untouched, preserving the zero-config path (BE-0101)."""
     e = dict(os.environ)
+    if job.env_overlay:
+        for var in PROVIDER_MANAGED_ENV:
+            e.pop(var, None)
+        e.update(job.env_overlay)
     bindir = str(Path(sys.executable).parent)
     e["PATH"] = bindir + os.pathsep + e.get("PATH", "")
     return e
@@ -165,7 +178,7 @@ def _build_app(state: ServeState, job: Job) -> bool:
         proc = state.popen(
             shlex.split(job.build),
             cwd=str(cwd),
-            env=_spawn_env(),
+            env=_spawn_env(job),
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             text=True,
@@ -383,7 +396,7 @@ def _run_job(state: ServeState, job: Job) -> None:
     proc = state.popen(
         job.cmd,
         cwd=str(job.cwd or state.cwd),
-        env=_spawn_env(),
+        env=_spawn_env(job),
         stdin=stdin,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,

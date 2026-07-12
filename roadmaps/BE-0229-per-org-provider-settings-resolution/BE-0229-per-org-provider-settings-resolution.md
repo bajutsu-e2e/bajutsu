@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0229](BE-0229-per-org-provider-settings-resolution.md) |
 | Author | [@hirosassa](https://github.com/hirosassa) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0229") |
+| Implementing PR | [#TBD](https://github.com/bajutsu-e2e/bajutsu/pulls) |
 | Topic | AI provider configuration |
 | Related | [BE-0184](../BE-0184-persist-serve-ai-provider-settings/BE-0184-persist-serve-ai-provider-settings.md), [BE-0183](../BE-0183-per-provider-serve-settings/BE-0183-per-provider-serve-settings.md), [BE-0015](../BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md) |
 <!-- /BE-METADATA -->
@@ -77,12 +78,20 @@ for it to feed; this item is that read path.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Introduce per-organization provider settings state, keyed like the per-org `StoreBundle`.
-- [ ] Resolve provider/model/effort per request/job from the org's settings, passing them as a
+- [x] Introduce per-organization provider settings state, keyed like the per-org `StoreBundle`.
+- [x] Resolve provider/model/effort per request/job from the org's settings, passing them as a
   per-job environment overlay instead of mutating the shared process env.
-- [ ] Add the per-organization, DB-backed `ProviderSettingsStore` shape (the box BE-0184 deferred).
-- [ ] Confirm local parity (single `default` org, file-backed store) and the zero-config path are
+- [x] Add the per-organization, DB-backed `ProviderSettingsStore` shape (the box BE-0184 deferred).
+- [x] Confirm local parity (single `default` org, file-backed store) and the zero-config path are
   unchanged.
+
+### Log
+
+- Implemented per-org provider resolution + the per-job env overlay + the DB-backed store, wired
+  through `ServeState.provider_settings` (keyed by org), `serve.operations.config` (`provider_env` /
+  `resolve_provider_env` / lazy `_org_settings`), `_spawn_env` (managed-var strip + overlay), the
+  `_register_and_dispatch` seam, the worker job spec, and migration `0011_provider_settings`. Local
+  serve and the zero-config path are unchanged. ([#TBD](https://github.com/bajutsu-e2e/bajutsu/pulls))
 
 ## References
 

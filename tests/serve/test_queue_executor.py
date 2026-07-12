@@ -62,6 +62,7 @@ def test_dispatch_enqueues_a_serializable_job_spec(tmp_path: Path) -> None:
         "actor": None,  # no OAuth identity for this locally-built job
         "evidence_prefix": "",  # no per-run evidence prefix requested (BE-0110)
         "project_id": None,  # no project hub wired for this locally-built job (BE-0225)
+        "env_overlay": {},  # no AI provider selected for this org, so no overlay (BE-0229)
     }
     json.dumps(spec)  # must carry no live objects (locks/Popen/bus) — JSON round-trips
 

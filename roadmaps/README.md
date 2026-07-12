@@ -359,6 +359,7 @@ The Tier-1 AI paths (`record` / `triage` / `--dismiss-alerts` / `crawl`) call Cl
 | [BE-0183](BE-0183-per-provider-serve-settings/BE-0183-per-provider-serve-settings.md) | Per-provider AI settings in the serve Web UI | Implemented |
 | [BE-0188](BE-0188-configurable-ai-output-language/BE-0188-configurable-ai-output-language.md) | Configurable AI output language for record and crawl | Implemented |
 | [BE-0215](BE-0215-claude-code-oauth-token-credential/BE-0215-claude-code-oauth-token-credential.md) | Explicit CLAUDE_CODE_OAUTH_TOKEN credential for the claude-code provider | Implemented |
+| [BE-0229](BE-0229-per-org-provider-settings-resolution/BE-0229-per-org-provider-settings-resolution.md) | Resolve serve AI provider settings per organization at runtime | Implemented |
 <!-- /GENERATED:implemented-ai-provider -->
 
 ### Hosting the web UI (cloud / self-hosted)
@@ -678,9 +679,7 @@ Lower the maintenance cost of regressions while keeping AI out of the judge role
 ### AI provider configuration
 
 <!-- GENERATED:proposals-ai-provider -->
-| ID | Item | Status |
-|---|---|---|
-| [BE-0229](BE-0229-per-org-provider-settings-resolution/BE-0229-per-org-provider-settings-resolution.md) | Resolve serve AI provider settings per organization at runtime | Proposal |
+
 <!-- /GENERATED:proposals-ai-provider -->
 
 ### AI usage and cost observability

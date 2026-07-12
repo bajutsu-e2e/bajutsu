@@ -1,9 +1,11 @@
-"""Tests for BE-0184: persisting the serve AI provider settings across restarts.
+"""Tests for persisting the serve AI provider settings across restarts (BE-0184, per-org BE-0229).
 
-Local serve writes the per-provider settings map plus the active provider choice to a small
-JSON file, so a restart restores what the operator last saved instead of resetting to the
-launch environment (the pre-BE-0184 behaviour, where the choice lived only in ``os.environ``).
-Real files and a real ``ThreadingHTTPServer`` — no mocks.
+A wired deployment writes the per-provider settings map plus the active provider choice to durable
+storage — a JSON file on local serve, a per-org row on a hosted database — so a restart restores
+what the operator last saved instead of resetting to the launch environment. Since BE-0229 the
+restored choice seeds a *per-org* in-memory selection (resolved into each job's env overlay), never
+the shared `os.environ` — so a hosted, multi-tenant serve restores each org its own choice. Real
+files and a real ``ThreadingHTTPServer`` — no mocks.
 """
 
 from __future__ import annotations
@@ -18,7 +20,11 @@ from _shared import _get_json, _post, _serve, project
 from bajutsu import anthropic_client as ac
 from bajutsu import serve as srv
 from bajutsu.ai import resolved_provider
-from bajutsu.serve.operations.config import restore_persisted_provider_settings
+from bajutsu.serve.operations.config import (
+    resolve_provider_env,
+    restore_persisted_provider_settings,
+)
+from bajutsu.serve.orgs import DEFAULT_ORG
 from bajutsu.serve.provider_store import (
     LocalProviderSettingsStore,
     PersistedProviderSettings,
@@ -41,12 +47,13 @@ _PROVIDER_ENV_VARS = (
 
 @pytest.fixture(autouse=True)
 def _isolate_provider_env() -> Iterator[None]:
-    """Give every test a clean provider env and fully restore it afterwards.
+    """Give every test a clean launch env and fully restore it afterwards.
 
-    The endpoint and the boot restore write `os.environ` directly (not through monkeypatch), and a
-    value that was absent at entry leaves no monkeypatch record to undo — so a plain snapshot/restore
-    here is what keeps a saved provider from leaking into unrelated tests (e.g. the anthropic-client
-    model-resolution tests, which read `BAJUTSU_AI_MODEL` without setting it)."""
+    Since BE-0229 neither the endpoint nor the boot restore writes `os.environ`, but the env is
+    still the fallback layer resolution reads when an org selected nothing — so a stray `BAJUTSU_AI_*`
+    from another test would perturb these assertions. A plain snapshot/restore keeps each test
+    starting from a clean env (the anthropic-client model-resolution tests, say, read
+    `BAJUTSU_AI_MODEL` without setting it)."""
     saved = {var: os.environ.get(var) for var in _PROVIDER_ENV_VARS}
     for var in _PROVIDER_ENV_VARS:
         os.environ.pop(var, None)
@@ -60,11 +67,16 @@ def _isolate_provider_env() -> Iterator[None]:
                 os.environ[var] = value
 
 
-def _forget_provider_env() -> None:
-    """Drop the provider env vars to simulate a restart within a test; the autouse fixture still
-    owns the final restore."""
-    for var in _PROVIDER_ENV_VARS:
-        os.environ.pop(var, None)
+def _default_overlay(state: srv.ServeState) -> dict[str, str]:
+    """The `default` org's resolved AI provider env overlay — what a spawned job would receive
+    (BE-0229). Empty when nothing is selected (the zero-config path falls back to the inherited env)."""
+    return resolve_provider_env(state, DEFAULT_ORG)
+
+
+def _default_slots(state: srv.ServeState) -> dict[str, ProviderSettings]:
+    """The `default` org's remembered per-provider slots (BE-0183), or an empty map when none."""
+    settings = state.org_provider_settings(DEFAULT_ORG)
+    return settings.slots if settings is not None else {}
 
 
 # --- the store itself (unit) ------------------------------------------------------------
@@ -121,7 +133,7 @@ def test_restore_skips_a_slot_for_an_unknown_provider(
     )
     with caplog.at_level("WARNING"):
         restore_persisted_provider_settings(state)
-    remembered = state.provider_settings_snapshot()
+    remembered = _default_slots(state)
     assert "api-key" in remembered  # the valid active slot restored
     assert "legacy-gone" not in remembered  # the unknown slot was skipped
     assert "legacy-gone" in caplog.text
@@ -142,8 +154,8 @@ def test_rejects_a_non_string_leaf_field(tmp_path: Path) -> None:
 
 
 def test_saved_provider_survives_a_restart(tmp_path: Path) -> None:
-    """Save bedrock through the Web UI, drop the launch env (a restart), then a fresh state
-    restores the choice from the file — the exact friction BE-0184 removes."""
+    """Save bedrock through the Web UI, then a fresh state restores the choice from the file — the
+    exact friction BE-0184 removes. The restored choice resolves into the org's job overlay."""
     scn_dir, cfg, runs = project(tmp_path)
     store_path = runs.parent / "provider-settings.json"
 
@@ -168,8 +180,6 @@ def test_saved_provider_survives_a_restart(tmp_path: Path) -> None:
 
     assert store_path.exists()  # unlike the pre-BE-0184 behaviour, the choice is on disk
 
-    _forget_provider_env()  # a restart: the env that carried the selection is gone
-
     state2 = srv.ServeState(
         scenarios_dir=scn_dir,
         config=cfg,
@@ -178,10 +188,11 @@ def test_saved_provider_survives_a_restart(tmp_path: Path) -> None:
         provider_settings_store=LocalProviderSettingsStore(store_path),
     )
     restore_persisted_provider_settings(state2)
-    # boot seeded the process env for the active provider, so spawned jobs inherit it too
-    assert os.environ[ac.PROVIDER_ENV] == "bedrock"
-    assert os.environ[ac.BEDROCK_MODEL_ENV] == _BEDROCK_MODEL
-    assert os.environ["AWS_REGION"] == "us-east-1"
+    # boot restored the selection, so a spawned job's overlay carries the active provider's settings
+    overlay = _default_overlay(state2)
+    assert overlay[ac.PROVIDER_ENV] == "bedrock"
+    assert overlay[ac.BEDROCK_MODEL_ENV] == _BEDROCK_MODEL
+    assert overlay["AWS_REGION"] == "us-east-1"
 
     server2, port2 = _serve(state2)
     try:
@@ -215,7 +226,6 @@ def test_restart_restores_the_per_provider_map(tmp_path: Path) -> None:
         server1.shutdown()
         server1.server_close()
 
-    _forget_provider_env()  # a restart, mid-test
     state2 = srv.ServeState(
         scenarios_dir=scn_dir,
         config=cfg,
@@ -224,14 +234,14 @@ def test_restart_restores_the_per_provider_map(tmp_path: Path) -> None:
         provider_settings_store=LocalProviderSettingsStore(store_path),
     )
     restore_persisted_provider_settings(state2)
-    remembered = state2.provider_settings_snapshot()
+    remembered = _default_slots(state2)
     assert remembered["claude-code"].model == "claude-code-x"
     assert remembered["api-key"].model == "claude-api-y"
 
 
 def test_zero_config_is_untouched_when_nothing_is_persisted(tmp_path: Path) -> None:
-    """With no persisted file, boot restore is a no-op: the env-derived defaults stand and the
-    AI-free zero-config path (BE-0101) reads exactly as before."""
+    """With no persisted file, boot restore is a no-op: no selection is made, so a job's overlay is
+    empty and the AI-free zero-config path (BE-0101) reads exactly as before."""
     scn_dir, cfg, runs = project(tmp_path)
     state = srv.ServeState(
         scenarios_dir=scn_dir,
@@ -241,7 +251,8 @@ def test_zero_config_is_untouched_when_nothing_is_persisted(tmp_path: Path) -> N
         provider_settings_store=LocalProviderSettingsStore(runs.parent / "absent.json"),
     )
     restore_persisted_provider_settings(state)
-    assert ac.PROVIDER_ENV not in os.environ
+    assert _default_overlay(state) == {}  # nothing selected → the job inherits its env unchanged
+    assert ac.PROVIDER_ENV not in os.environ  # the process env is never touched
     assert _provider_of(state) == "api-key"
 
 
@@ -271,7 +282,7 @@ def test_corrupt_file_falls_back_to_env_defaults_with_a_warning(
     )
     with caplog.at_level("WARNING"):
         restore_persisted_provider_settings(state)
-    assert ac.PROVIDER_ENV not in os.environ  # fell back, did not crash
+    assert _default_overlay(state) == {}  # fell back, did not crash or seed a choice
     assert "provider" in caplog.text.lower()
 
 
@@ -279,8 +290,8 @@ def test_inconsistent_active_provider_falls_back_to_env(
     tmp_path: Path, caplog: pytest.LogCaptureFixture
 ) -> None:
     """A structurally valid file that names an active provider with no saved slot (e.g. hand-
-    edited) is inconsistent: boot warns and falls back to the env defaults rather than seeding an
-    invalid empty slot (which would set a blank Bedrock model)."""
+    edited) is inconsistent: boot warns and falls back rather than seeding an invalid empty slot
+    (which would set a blank Bedrock model)."""
     scn_dir, cfg, runs = project(tmp_path)
     store_path = runs.parent / "provider-settings.json"
     store_path.write_text(
@@ -295,8 +306,7 @@ def test_inconsistent_active_provider_falls_back_to_env(
     )
     with caplog.at_level("WARNING"):
         restore_persisted_provider_settings(state)
-    assert ac.PROVIDER_ENV not in os.environ  # did not seed an inconsistent active provider
-    assert ac.BEDROCK_MODEL_ENV not in os.environ  # crucially, no blank Bedrock model
+    assert _default_overlay(state) == {}  # did not seed an inconsistent (blank-model) choice
     assert "provider" in caplog.text.lower()
 
 
@@ -304,9 +314,8 @@ def test_bedrock_with_empty_model_falls_back_to_env(
     tmp_path: Path, caplog: pytest.LogCaptureFixture
 ) -> None:
     """A hand-edited file with `provider: bedrock` but a blank model sails through the 'no slot'
-    check — `_apply_provider_env` would then set BEDROCK_MODEL_ENV to "" (invalid for Bedrock).
-    The guard now also covers this case: an empty Bedrock model is treated as incomplete and boot
-    warns + falls back rather than materializing an invalid env."""
+    check — materializing it would set an empty (invalid) Bedrock model. The guard covers this too:
+    an empty Bedrock model is treated as incomplete and boot warns + falls back."""
     scn_dir, cfg, runs = project(tmp_path)
     store_path = runs.parent / "provider-settings.json"
     store_path.write_text(
@@ -321,8 +330,7 @@ def test_bedrock_with_empty_model_falls_back_to_env(
     )
     with caplog.at_level("WARNING"):
         restore_persisted_provider_settings(state)
-    assert ac.PROVIDER_ENV not in os.environ
-    assert ac.BEDROCK_MODEL_ENV not in os.environ  # no blank model seeded
+    assert _default_overlay(state) == {}  # no blank-model bedrock choice seeded
     assert "provider" in caplog.text.lower()
 
 
@@ -348,7 +356,8 @@ def test_persist_failure_keeps_the_session_change_and_warns(
             code, body = _post(port, "/api/provider", {"provider": "ant"})
         assert code == 200 and body["provider"] == "ant"
         assert body["persisted"] is False  # the response tells the UI the choice was not saved
-        assert os.environ[ac.PROVIDER_ENV] == "ant"  # the session change took effect
+        # the session change took effect in memory (resolved into the org's job overlay)
+        assert _default_overlay(state)[ac.PROVIDER_ENV] == "ant"
         assert "persist" in caplog.text.lower()
     finally:
         server.shutdown()
@@ -356,9 +365,9 @@ def test_persist_failure_keeps_the_session_change_and_warns(
 
 
 def test_no_store_reports_persisted_null(tmp_path: Path) -> None:
-    """With no store wired (the hosted / session-only case), the response carries persisted: null —
-    distinct from persisted: true (durably saved) so the hosted operator's 'saved' and the local
-    operator's 'durably saved' don't conflate."""
+    """With no store wired (a server backend without a database), the response carries
+    persisted: null — distinct from persisted: true (durably saved) so the hosted operator's
+    'saved' and the local operator's 'durably saved' don't conflate."""
     scn_dir, cfg, runs = project(tmp_path)
     state = srv.ServeState(
         scenarios_dir=scn_dir, config=cfg, runs_dir=runs, cwd=tmp_path
@@ -411,9 +420,8 @@ def test_invalid_effort_in_slot_is_skipped_with_warning(
     )
     with caplog.at_level("WARNING"):
         restore_persisted_provider_settings(state)
-    # The active provider guard also failed (slot was invalid so active provider has no valid slot),
-    # so env falls back to defaults.
-    assert ac.PROVIDER_ENV not in os.environ
+    # The active provider guard also failed (its slot was invalid), so resolution falls back.
+    assert _default_overlay(state) == {}
     assert "invalid" in caplog.text.lower() or "provider" in caplog.text.lower()
 
 
@@ -439,8 +447,10 @@ def test_persist_lock_serializes_writes(tmp_path: Path) -> None:
         try:
             from bajutsu.serve.operations.config import _persist_provider_settings
 
-            state.set_provider_setting(prov, ProviderSettings(model=f"m-{prov}"))
-            _persist_provider_settings(state, prov)
+            state.set_org_provider_choice(
+                DEFAULT_ORG, provider=prov, slot=ProviderSettings(model=f"m-{prov}"), language=""
+            )
+            _persist_provider_settings(state, DEFAULT_ORG, prov)
             last_provider.append(prov)
         except Exception as e:
             errors.append(e)
@@ -462,9 +472,9 @@ def test_persist_lock_serializes_writes(tmp_path: Path) -> None:
 
 
 def test_config_ai_block_wins_over_a_restored_value(tmp_path: Path) -> None:
-    """The safety property the doc leans on: a restored choice only seeds the *env* layer, and a
-    config `ai:` block still wins over the env (config > env), so a stale persisted provider can
-    never override an explicit config."""
+    """The safety property the doc leans on: a restored choice only seeds the *env* layer of a
+    spawned job (via its overlay), and a config `ai:` block still wins over the env (config > env),
+    so a stale persisted provider can never override an explicit config."""
     scn_dir, cfg, runs = project(tmp_path)
     store_path = runs.parent / "provider-settings.json"
     LocalProviderSettingsStore(store_path).save(
@@ -481,7 +491,9 @@ def test_config_ai_block_wins_over_a_restored_value(tmp_path: Path) -> None:
         provider_settings_store=LocalProviderSettingsStore(store_path),
     )
     restore_persisted_provider_settings(state)
-    assert os.environ[ac.PROVIDER_ENV] == "bedrock"  # restore seeded the env layer
+    assert (
+        _default_overlay(state)[ac.PROVIDER_ENV] == "bedrock"
+    )  # restore seeds the job's env layer
     # A config ai: block overrides that restored env value (config > env), for both provider and model.
     cfg_ai = ac.AiConfig(provider="api-key", model="cfg-model")
     assert resolved_provider(cfg_ai) == "api-key"
@@ -492,8 +504,9 @@ def test_config_ai_block_wins_over_a_restored_value(tmp_path: Path) -> None:
 
 
 def test_local_build_state_wires_the_store(tmp_path: Path) -> None:
-    """Local serve construction owns the file (a sibling of runs_dir); restoring from it is the
-    boot path's job (after logging is live), which `restore_persisted_provider_settings` does."""
+    """Local serve construction owns the file (a sibling of runs_dir); loading from it is the boot
+    path's job (after logging is live), which `restore_persisted_provider_settings` triggers — so a
+    malformed file is logged loudly at startup, not on the first request."""
     scn_dir, cfg, runs = project(tmp_path)
     store_path = runs.parent / "provider-settings.json"
     LocalProviderSettingsStore(store_path).save(
@@ -513,7 +526,10 @@ def test_local_build_state_wires_the_store(tmp_path: Path) -> None:
         cwd=tmp_path,
     )
     assert isinstance(state.provider_settings_store, LocalProviderSettingsStore)
-    assert ac.PROVIDER_ENV not in os.environ  # construction does not seed the env; boot does
+    # Construction wires the store but does not eagerly load it — the in-memory entry is still absent
+    # (a pure read that does not lazy-load), so nothing has been resolved from disk yet.
+    assert state.org_provider_settings(DEFAULT_ORG) is None
     restore_persisted_provider_settings(state)
-    assert os.environ[ac.PROVIDER_ENV] == "bedrock"
-    assert os.environ[ac.BEDROCK_MODEL_ENV] == _BEDROCK_MODEL
+    overlay = _default_overlay(state)
+    assert overlay[ac.PROVIDER_ENV] == "bedrock"
+    assert overlay[ac.BEDROCK_MODEL_ENV] == _BEDROCK_MODEL
