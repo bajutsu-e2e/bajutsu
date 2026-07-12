@@ -51,6 +51,15 @@ AI_API_KEY_SECRET = "aiApiKey"  # noqa: S105 — a secret's logical name, not a 
 # `ServeState._env_var_for_secret`); the hosted backend encrypts it per org like every named secret.
 AI_CLAUDE_CODE_TOKEN_SECRET = "aiClaudeCodeOauthToken"  # noqa: S105 — a logical name, not a value
 
+# The logical name of the GitHub credential for a private-repo config source (BE-0224) — a third
+# named secret reusing the same write-once store. Local serve materializes it into the bajutsu-owned
+# `BAJUTSU_GIT_CONFIG_TOKEN` (via `ServeState._env_var_for_secret`), which the in-process
+# `bind_git_config` fetch then reads. The hosted backend encrypts it per org, so each tenant's stored
+# credential is its own; wiring the per-org value into the hosted control plane's in-process fetch is
+# a follow-up (the write-once store discloses no plaintext to a handler), so on hosted a private bind
+# resolves through the process-global App / env credential today.
+GIT_CONFIG_TOKEN_SECRET = "gitConfigToken"  # noqa: S105 — a logical name, not a value
+
 _UNSAFE_ENV_VARS = frozenset(
     {
         "PATH",
@@ -504,6 +513,35 @@ def set_claude_code_token(state: ServeState, value: str, actor: str | None) -> t
         return {"error": "the OAuth token must not contain whitespace"}, 400
     masked = state.for_org(state.org_of(actor)).secrets.set(
         AI_CLAUDE_CODE_TOKEN_SECRET, value, updated_by=actor
+    )
+    if masked is not None:
+        return {"ok": True, "set": True, "masked": masked}, 200
+    return {"ok": True, "set": False}, 200
+
+
+def git_credential_info(state: ServeState, actor: str | None) -> tuple[Any, int]:
+    """Whether a Git config-source credential is set, with a masked preview — never plaintext (BE-0224).
+
+    The write-once counterpart to `api_key_info` for the Git credential: same shape, same store, read
+    from the actor's org so a hosted deployment scopes it per org. No `reveal`, no `value` field."""
+    masked = state.for_org(state.org_of(actor)).secrets.describe(GIT_CONFIG_TOKEN_SECRET)
+    payload: dict[str, Any] = {"set": masked is not None}
+    if masked is not None:
+        payload["masked"] = masked
+    return payload, 200
+
+
+def set_git_credential(state: ServeState, value: str, actor: str | None) -> tuple[Any, int]:
+    """Set or replace the Git config-source credential (an empty *value* clears it), through the same
+    write-once secret store (BE-0224). The response redacts what was stored — never the plaintext.
+    Local serve holds it in ``BAJUTSU_GIT_CONFIG_TOKEN`` for the in-process private-repo fetch (and
+    spawned jobs) to read — not ``GITHUB_TOKEN``, so clearing it never pops an operator's own exported
+    token; a hosted deployment encrypts it per org. Mirrors `set_api_key`; overwriting rotates it."""
+    value = value.strip()
+    if value and any(c.isspace() for c in value):
+        return {"error": "the credential must not contain whitespace"}, 400
+    masked = state.for_org(state.org_of(actor)).secrets.set(
+        GIT_CONFIG_TOKEN_SECRET, value, updated_by=actor
     )
     if masked is not None:
         return {"ok": True, "set": True, "masked": masked}, 200

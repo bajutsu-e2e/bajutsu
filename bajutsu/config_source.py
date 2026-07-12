@@ -19,12 +19,21 @@ import shutil
 import subprocess
 import tarfile
 import tempfile
+import urllib.error
 import urllib.request
 from dataclasses import dataclass
+from email.message import Message
 from pathlib import Path
 from typing import Protocol
 
 DEFAULT_CONFIG = "bajutsu.config.yaml"
+
+# The env var serve materializes a UI-entered Git credential into (BE-0224). Deliberately *not*
+# `GITHUB_TOKEN`: an operator commonly exports that themselves, so aliasing it would let the UI's
+# "clear" pop their ambient token and let its "is set?" read report a token the UI never stored.
+# This bajutsu-owned var is checked first, so a UI credential wins over an ambient one, and clearing
+# it never touches the operator's `GITHUB_TOKEN` / `GH_TOKEN`.
+GIT_CONFIG_TOKEN_ENV = "BAJUTSU_GIT_CONFIG_TOKEN"  # noqa: S105 — an env var name, not a secret
 
 # owner/repo constrained to GitHub's real charset (BE-0124): an owner is alphanumeric + hyphen (a
 # username/org — no dot, so it can never be a `.`/`..` traversal token), a repo also allows `_`/`.`
@@ -166,9 +175,56 @@ class Transport(Protocol):
     def tarball_bytes(self, spec: GitConfigSpec, sha: str) -> bytes: ...
 
 
+class GitHubAccessError(ValueError):
+    """A private-repo credential could not be acquired, or a GitHub API call was rejected (BE-0224).
+
+    Covers both a rejected API call (auth / rate-limit / SSO / not-found) and a failure to *mint* a
+    credential (a broken GitHub App config, a missing key file, the `githubapp` extra absent). A
+    `ValueError` so callers already catching fetch failures (`serve.bind_git_config`, the `--config`
+    diagnostics) surface its message unchanged instead of a raw traceback.
+    """
+
+
+def github_http_error_message(status: int, headers: Message, spec: GitConfigSpec) -> str:
+    """Turn a GitHub `HTTPError` into an actionable message that names the *real* cause (BE-0224).
+
+    The rate-limit and SSO sub-types are checked before the catch-all so neither is misreported as
+    missing repository access — more `Contents: read` permission fixes neither. The 404/other-403
+    fall-through names the most-likely-missing grant.
+    """
+    where = f"{spec.owner}/{spec.repo}"
+    # A rate limit is a 429, or a 403 with the rate-limit signals (primary limit → `X-RateLimit-
+    # Remaining: 0`; secondary/abuse limit → a `Retry-After`). Check it before the 403 catch-all.
+    if status == 429 or (
+        status == 403
+        and (headers.get("X-RateLimit-Remaining") == "0" or headers.get("Retry-After"))
+    ):
+        return (
+            f"GitHub rate limit reached fetching {where}: wait and retry, or authenticate to raise "
+            f"the limit — more repository permission does not lift a rate limit."
+        )
+    if status == 403 and headers.get("X-GitHub-SSO"):
+        return (
+            f"the credential for {where} needs SAML single sign-on (SSO) authorization: authorize "
+            f"this token for the organization's SSO, then retry."
+        )
+    if status == 401:
+        return f"the GitHub token was rejected fetching {where} (401): it is invalid or expired."
+    # 404, or any other 403: on github.com a private repo the caller can't see returns 404, so this
+    # is deliberately "not found *or* access not granted" rather than blaming either one alone.
+    return (
+        f"cannot access {where} ({status}): repository not found, or access not granted — provide a "
+        f"credential with Contents: read for {where}."
+    )
+
+
 def github_token() -> str | None:
-    """A GitHub token for private repos: `GITHUB_TOKEN` / `GH_TOKEN`, else `gh auth token`, else None."""
-    for var in ("GITHUB_TOKEN", "GH_TOKEN"):
+    """A GitHub token for private repos, else `gh auth token`, else None.
+
+    Checks the bajutsu-owned `BAJUTSU_GIT_CONFIG_TOKEN` (a serve-entered credential) first, then
+    `GITHUB_TOKEN` / `GH_TOKEN`, so a UI credential wins over an ambient token (BE-0224).
+    """
+    for var in (GIT_CONFIG_TOKEN_ENV, "GITHUB_TOKEN", "GH_TOKEN"):
         if tok := os.environ.get(var):
             return tok
     try:
@@ -186,25 +242,84 @@ def github_token() -> str | None:
     return out.stdout.strip() or None  # a logged-out `gh` can exit 0 with blank stdout → no token
 
 
+def resolve_github_credential(spec: GitConfigSpec) -> str | None:
+    """The bearer token for `spec`, in documented precedence order (BE-0224).
+
+    A configured **GitHub App installation** first (a short-lived, per-installation, service-identity
+    token — the answer for an unattended host), then the `GITHUB_TOKEN` / `GH_TOKEN` / `gh auth token`
+    chain of `github_token()`, else anonymous. Resolved **per acquisition** (the transport is built
+    per `materialize`), so a rotated secret takes effect without a serve restart.
+    """
+    return _github_app_credential(spec) or github_token()
+
+
+def _github_app_credential(spec: GitConfigSpec) -> str | None:
+    """A GitHub App installation token when the App env is configured, else None (BE-0224).
+
+    Opt-in and lazy: only an `BAJUTSU_GITHUB_APP_ID` gates the App path — the key is read (and
+    `bajutsu.github_app`, plus `cryptography`, imported) *only* when the id is set, so a stale
+    `…_PRIVATE_KEY_FILE` left in the environment without an id never triggers App auth or a file read.
+    With an id but no key, this falls through to `github_token()` rather than half-attempting the App.
+    """
+    app_id = os.environ.get("BAJUTSU_GITHUB_APP_ID")
+    if not app_id:
+        return None
+    private_key = _github_app_private_key()
+    if not private_key:
+        return None
+    from bajutsu.github_app import installation_token
+
+    return installation_token(
+        app_id,
+        private_key,
+        spec,
+        installation_id=os.environ.get("BAJUTSU_GITHUB_APP_INSTALLATION_ID"),
+    )
+
+
+def _github_app_private_key() -> str | None:
+    """The App private key from `BAJUTSU_GITHUB_APP_PRIVATE_KEY`, else the file at `…_PRIVATE_KEY_FILE`.
+
+    Raises:
+        GitHubAccessError: the key file is configured but cannot be read — a legible message rather
+            than a raw `OSError`, since the App path was explicitly requested by setting the id.
+    """
+    if key := os.environ.get("BAJUTSU_GITHUB_APP_PRIVATE_KEY"):
+        return key
+    if path := os.environ.get("BAJUTSU_GITHUB_APP_PRIVATE_KEY_FILE"):
+        try:
+            return Path(path).read_text(encoding="utf-8")
+        except OSError as e:
+            raise GitHubAccessError(
+                f"cannot read the GitHub App private key at BAJUTSU_GITHUB_APP_PRIVATE_KEY_FILE={path!r}: {e}"
+            ) from e
+    return None
+
+
 class _GitHubTransport:
     """The real transport: GitHub's commits API (ref → SHA) and tarball endpoint, over urllib."""
 
     def __init__(self, token: str | None) -> None:
         self._headers = {"Authorization": f"Bearer {token}"} if token else {}
 
-    def _get(self, url: str, accept: str) -> bytes:
+    def _get(self, url: str, accept: str, spec: GitConfigSpec) -> bytes:
         req = urllib.request.Request(url, headers={**self._headers, "Accept": accept})  # noqa: S310 — https GitHub API URL
-        with urllib.request.urlopen(req, timeout=30) as resp:  # noqa: S310
-            return bytes(resp.read())
+        try:
+            with urllib.request.urlopen(req, timeout=30) as resp:  # noqa: S310
+                return bytes(resp.read())
+        except urllib.error.HTTPError as e:
+            # Map the status (and 403 sub-type) to a cause-naming message instead of letting a raw
+            # HTTPError — a bare "404" that really means "no access" — reach the operator (BE-0224).
+            raise GitHubAccessError(github_http_error_message(e.code, e.headers, spec)) from e
 
     def commit_sha(self, spec: GitConfigSpec, ref: str) -> str:
         # The `…+sha` media type makes the commits endpoint return the bare SHA as the body.
         url = f"https://api.github.com/repos/{spec.owner}/{spec.repo}/commits/{ref}"
-        return self._get(url, "application/vnd.github.sha").decode().strip()
+        return self._get(url, "application/vnd.github.sha", spec).decode().strip()
 
     def tarball_bytes(self, spec: GitConfigSpec, sha: str) -> bytes:
         url = f"https://api.github.com/repos/{spec.owner}/{spec.repo}/tarball/{sha}"
-        return self._get(url, "application/vnd.github+json")
+        return self._get(url, "application/vnd.github+json", spec)
 
 
 def source_provenance(spec: GitConfigSpec, mat: Materialized) -> dict[str, str]:
@@ -242,13 +357,20 @@ def materialize(
     With `offline` (the `--config-offline` switch) it never touches the network: the ref must already
     be a full SHA (a branch/tag can't be resolved offline) and that SHA must already be cached.
     """
-    if transport is None:
+    if transport is None and spec.host != "github.com":
         # The general `git+https://…` spec form is parsed (the door is open for other hosts) but only
         # GitHub is implemented today — fail clearly rather than silently hitting github.com.
-        if spec.host != "github.com":
-            raise ValueError(f"only github.com is supported today, got host {spec.host!r}")
-        transport = _GitHubTransport(github_token())
+        raise ValueError(f"only github.com is supported today, got host {spec.host!r}")
     cache_root = cache_root or _default_cache_root()
+
+    def _transport() -> Transport:
+        # Built — and the credential resolved — only when a network op is actually needed, so a
+        # pinned-SHA cache hit (and `--config-offline`) never resolves a credential, let alone mints
+        # a GitHub App token (BE-0224). Resolved at most once per `materialize`.
+        nonlocal transport
+        if transport is None:
+            transport = _GitHubTransport(resolve_github_credential(spec))
+        return transport
 
     pinned = is_full_sha(spec.ref)
     if offline and not pinned:
@@ -259,7 +381,7 @@ def materialize(
     # A pinned full SHA is already the immutable id — use it directly so a cache hit is fully offline
     # (the determinism anchor the design promises). A branch/tag is resolved to its SHA; no ref ⇒ the
     # default branch, which "HEAD" resolves to on every Git host.
-    sha = spec.ref if pinned else transport.commit_sha(spec, spec.ref or "HEAD")
+    sha = spec.ref if pinned else _transport().commit_sha(spec, spec.ref or "HEAD")
     assert sha is not None  # `pinned` implies spec.ref is set
     root = cache_root / spec.host / spec.owner / spec.repo / sha
     config_path = root / (spec.path or DEFAULT_CONFIG)
@@ -273,7 +395,7 @@ def materialize(
     if offline and not root.exists():
         raise ValueError(f"--config-offline: {spec.owner}/{spec.repo}@{sha} is not in the cache")
     if not root.exists():
-        _extract_into(transport.tarball_bytes(spec, sha), root)
+        _extract_into(_transport().tarball_bytes(spec, sha), root)
     return Materialized(config_path, root, sha)
 
 

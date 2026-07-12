@@ -7,7 +7,7 @@
 |---|---|
 | 提案 | [BE-0224](BE-0224-github-private-repo-config-auth-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **提案** |
+| 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0224") |
 | トピック | config の取得元 |
 | 関連 | [BE-0063](../BE-0063-git-config-source/BE-0063-git-config-source-ja.md), [BE-0016](../BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting-ja.md), [BE-0051](../BE-0051-serve-hardening-for-hosting/BE-0051-serve-hardening-for-hosting-ja.md), [BE-0108](../BE-0108-hosted-config-source-restriction/BE-0108-hosted-config-source-restriction-ja.md), [BE-0136](../BE-0136-serve-write-once-secrets/BE-0136-serve-write-once-secrets-ja.md), [BE-0184](../BE-0184-persist-serve-ai-provider-settings/BE-0184-persist-serve-ai-provider-settings-ja.md) |
@@ -196,11 +196,15 @@ github.com リポジトリ向けの認証情報を、どう選び、どう束ね
 > 作業分解（作業の単位ごとに 1 つ）に対応し、ログには変更内容と時期（古い順）を PR へのリンクと
 > ともに記録します。
 
-- [ ] #4 最小権限の文書（configuration と self-hosting、日英両方）を書き、`config_source.py` に `HTTPError` 401/403/404 の認証診断を加えます（単独で出せます）。
-- [ ] #1 GitHub App のインストールトークンプロバイダ（JWT ＋インストールトークンのエンドポイント）を、既存の PAT / `gh` の経路と並べて認証情報の継ぎ目の背後に置きます。
-- [ ] #2 認証情報の優先順位を文書化し、無人デーモンの供給経路を用意します。
-- [ ] #3 取得元ごと（owner/repo または org）に認証情報をスコープします。ホストされたデプロイでは BE-0108 / BE-0051 で境界づけます。
-- [ ] #5 serve の「From a Git repository」ダイアログに認証情報欄を設け、`SecretStore` の継ぎ目（BE-0136）に保存し、デプロイを意識し（BE-0108）、認証診断をインラインで表示します。
+- [x] #4 最小権限の文書（configuration と self-hosting、日英両方）を書き、`config_source.py` に `HTTPError` 401/403/404 の認証診断を加えました（`github_http_error_message` がレート制限 / SSO / 401 / 404 を、特定のサブタイプを先に判定して振り分けます。`GitHubAccessError` は `ValueError` なので、原因を CLI には exit-2 で、serve にはインラインで伝えます）。
+- [x] #1 GitHub App のインストールトークンプロバイダ（`bajutsu/github_app.py`。`githubapp` extra の `cryptography` による RS256 JWT ＋インストールトークンのエンドポイント）を、既存の PAT / `gh` の経路と並べて認証情報の継ぎ目の背後に遅延ロードで置きました。
+- [x] #2 認証情報の優先順位（App → `GITHUB_TOKEN`/`GH_TOKEN` → `gh auth token` → 匿名、取得のたびに解決）を文書化し、無人デーモンの供給経路（launchd / systemd の環境変数、App の鍵ファイル）を用意しました。
+- [x] #3 ホスト型の `DbSecretStore` により組織ごとに認証情報をスコープしました（各組織の保存した Git 認証情報はそれぞれ独立です）。BE-0108 / BE-0051 で境界づけます。取得元ごと（owner/repo）の束縛は今回は対象外とし、今後の後続にします。
+- [x] #5 serve の「From a Git repository」ダイアログに認証情報欄を設け、`SecretStore` の継ぎ目（BE-0136。新しい `gitConfigToken` シークレットをローカルでは `GITHUB_TOKEN` に、ホスト型では組織ごとに暗号化して保存）に保存し、デプロイを意識し（BE-0108）、認証診断をインラインで表示します。
+
+**ログ**
+
+- #1〜#5 を一つの変更で実装しました。`config_source.py` / `github_app.py` の認証情報の継ぎ目と App プロバイダと診断、serve の `/api/gitcredential` エンドポイントと UI 欄、そして日英のドキュメントです。取得元ごと（owner/repo）のスコープは見送り（#3 は組織ごととして実装）。PR: _（後でリンクします）_。
 
 ## 参考
 

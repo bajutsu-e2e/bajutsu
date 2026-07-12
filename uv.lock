@@ -216,6 +216,9 @@ docs = [
 gcs = [
     { name = "google-cloud-storage" },
 ]
+githubapp = [
+    { name = "cryptography" },
+]
 idb = [
     { name = "fb-idb" },
 ]
@@ -255,7 +258,7 @@ worker-web = [
 
 [package.dev-dependencies]
 dev = [
-    { name = "bajutsu", extra = ["ai", "bedrock", "cloud", "db", "mcp", "oauth", "schema", "server", "visual"] },
+    { name = "bajutsu", extra = ["ai", "bedrock", "cloud", "db", "githubapp", "mcp", "oauth", "schema", "server", "visual"] },
     { name = "httpx" },
     { name = "import-linter" },
     { name = "mypy" },
@@ -280,6 +283,7 @@ requires-dist = [
     { name = "boto3", marker = "extra == 's3'", specifier = ">=1.34" },
     { name = "boto3", marker = "extra == 'server'", specifier = ">=1.34" },
     { name = "cryptography", marker = "extra == 'db'", specifier = ">=42.0" },
+    { name = "cryptography", marker = "extra == 'githubapp'", specifier = ">=42.0" },
     { name = "fastapi", marker = "extra == 'server'", specifier = ">=0.110" },
     { name = "fastmcp", marker = "extra == 'mcp'", specifier = ">=2.0.0" },
     { name = "fb-idb", marker = "extra == 'idb'", specifier = ">=1.1.0" },
@@ -298,11 +302,11 @@ requires-dist = [
     { name = "typer", specifier = ">=0.12" },
     { name = "uvicorn", marker = "extra == 'server'", specifier = ">=0.27" },
 ]
-provides-extras = ["ai", "idb", "web", "visual", "mcp", "bedrock", "worker", "worker-web", "worker-idb", "server", "db", "oauth", "schema", "s3", "gcs", "cloud", "docs"]
+provides-extras = ["ai", "idb", "web", "visual", "mcp", "bedrock", "worker", "worker-web", "worker-idb", "server", "db", "oauth", "schema", "githubapp", "s3", "gcs", "cloud", "docs"]
 
 [package.metadata.requires-dev]
 dev = [
-    { name = "bajutsu", extras = ["ai", "bedrock", "server", "worker", "db", "oauth", "mcp", "visual", "schema", "cloud"] },
+    { name = "bajutsu", extras = ["ai", "bedrock", "server", "worker", "db", "oauth", "mcp", "visual", "schema", "cloud", "githubapp"] },
     { name = "httpx", specifier = ">=0.27" },
     { name = "import-linter", specifier = ">=2.0" },
     { name = "mypy", specifier = ">=1.10" },

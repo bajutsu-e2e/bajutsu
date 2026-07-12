@@ -166,6 +166,10 @@ def make_app(state: ServeState) -> FastAPI:
     async def claude_code_token(request: Request) -> JSONResponse:
         return _result(ops.claude_code_token_info(state, _actor(request)))
 
+    @app.get("/api/gitcredential")
+    async def git_credential(request: Request) -> JSONResponse:
+        return _result(ops.git_credential_info(state, _actor(request)))
+
     @app.get("/api/provider")
     async def get_provider(request: Request) -> JSONResponse:
         return _result(ops.provider_info(state, _actor(request)))
@@ -379,6 +383,12 @@ def make_app(state: ServeState) -> FastAPI:
     async def set_claude_code_token(body: dict[str, Any], request: Request) -> JSONResponse:
         return _result(
             ops.set_claude_code_token(state, str(body.get("value", "") or ""), _actor(request))
+        )
+
+    @app.post("/api/gitcredential")
+    async def set_git_credential(body: dict[str, Any], request: Request) -> JSONResponse:
+        return _result(
+            ops.set_git_credential(state, str(body.get("value", "") or ""), _actor(request))
         )
 
     @app.post("/api/provider")

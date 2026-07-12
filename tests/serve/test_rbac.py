@@ -26,6 +26,7 @@ def test_required_role_maps_endpoints() -> None:
     assert ops.required_role("POST", "/api/jobs/abc/cancel") == "editor"
     assert ops.required_role("POST", "/api/jobs/abc/respond-human") == "editor"  # BE-0179 handoff
     assert ops.required_role("POST", "/api/apikey") == "admin"
+    assert ops.required_role("POST", "/api/gitcredential") == "admin"  # BE-0224 secret-setting
     assert ops.required_role("POST", "/api/login") is None  # auth endpoints aren't role-gated
     # The one gated read: the config body is a wider disclosure than the path-only /api/config.
     assert ops.required_role("GET", "/api/config/content") == "admin"

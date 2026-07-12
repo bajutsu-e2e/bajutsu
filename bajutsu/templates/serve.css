@@ -423,6 +423,8 @@ header .cfgname{color:var(--mut);font-size:.82em;max-width:32vw;overflow:hidden;
 .gitsrcrow input{flex:1;background:var(--bg2);border:1px solid var(--line);color:var(--fg);padding:.35rem .55rem;font:inherit;border-radius:8px}
 .gitsrchint{color:var(--mut);font-size:.78em;margin-top:.35rem}
 .gitsrcerr{color:var(--ng);font-size:.8em;margin-top:.35rem;word-break:break-word}
+.gitcred{margin-top:.6rem}
+.gitcredstate{font-weight:400;color:var(--mut);font-size:.85em}
 /* View-config modal (BE-0063): a structured key/value tree (or the raw YAML), plus Git provenance. */
 .cfgviewbox{width:min(760px,94vw)}
 .cfgviewtoggle{margin-left:auto;display:flex;gap:.25rem;background:var(--bg2);border:1px solid var(--line);border-radius:8px;padding:2px}

@@ -24,7 +24,13 @@ from bajutsu.config import (
     load_config,
     resolve,
 )
-from bajutsu.config_source import is_full_sha, materialize, parse_config_spec, source_provenance
+from bajutsu.config_source import (
+    GitHubAccessError,
+    is_full_sha,
+    materialize,
+    parse_config_spec,
+    source_provenance,
+)
 from bajutsu.redaction import Redactor
 
 DEFAULT_CONFIG = "bajutsu.config.yaml"
@@ -181,8 +187,9 @@ def _load_effective_with_source(
     name an immutable commit SHA, since a branch (or even a tag) can move under it.
 
     Exits 2 (via ``typer.Exit``) for the user-friendly failures: a missing config file, an unknown
-    target name, and (with `require_pinned`) a Git source that isn't pinned to a commit SHA. Other
-    errors — YAML parse / schema validation from ``load_config`` — propagate as exceptions.
+    target name, a private-repo access/auth failure (``GitHubAccessError``, BE-0224), and (with
+    `require_pinned`) a Git source that isn't pinned to a commit SHA. Other errors — YAML parse /
+    schema validation from ``load_config`` — propagate as exceptions.
     """
     spec = parse_config_spec(config)
     source: dict[str, str] | None = None
@@ -196,7 +203,13 @@ def _load_effective_with_source(
                 f"{spec.ref or '(default branch)'!r} (a branch or tag can move; pin @<40-hex-sha>)"
             )
             raise typer.Exit(2)
-        mat = materialize(spec, offline=offline)
+        try:
+            mat = materialize(spec, offline=offline)
+        except GitHubAccessError as e:
+            # A private-repo access/auth failure gets the same friendly exit-2 as a missing config,
+            # with the cause-naming message (BE-0224) instead of a raw HTTPError traceback.
+            typer.echo(str(e))
+            raise typer.Exit(2) from None
         cfg_path, root = mat.config_path, mat.root
         source = source_provenance(spec, mat)
     # The same friendly exit-2 for a missing config, whether local or a wrong in-repo path for a

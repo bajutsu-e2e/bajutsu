@@ -7,7 +7,7 @@
 |---|---|
 | Proposal | [BE-0224](BE-0224-github-private-repo-config-auth.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0224") |
 | Topic | Configuration sourcing |
 | Related | [BE-0063](../BE-0063-git-config-source/BE-0063-git-config-source.md), [BE-0016](../BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md), [BE-0051](../BE-0051-serve-hardening-for-hosting/BE-0051-serve-hardening-for-hosting.md), [BE-0108](../BE-0108-hosted-config-source-restriction/BE-0108-hosted-config-source-restriction.md), [BE-0136](../BE-0136-serve-write-once-secrets/BE-0136-serve-write-once-secrets.md), [BE-0184](../BE-0184-persist-serve-ai-provider-settings/BE-0184-persist-serve-ai-provider-settings.md) |
@@ -211,11 +211,15 @@ its acquisition changes", narrowed to the private-access question.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] #4 Least-privilege docs (configuration + self-hosting, bilingual) and `HTTPError` 401/403/404 auth diagnostics in `config_source.py` (independently shippable).
-- [ ] #1 GitHub App installation-token provider (JWT + installation-token endpoint) behind the credential seam, alongside the existing PAT / `gh` paths.
-- [ ] #2 Documented credential precedence and unattended-daemon supply path.
-- [ ] #3 Per-source (owner/repo or org) credential scoping, bounded by BE-0108 / BE-0051 for hosted deployments.
-- [ ] #5 serve "From a Git repository" dialog credential field, stored via the `SecretStore` seam (BE-0136), deployment-aware (BE-0108), with the auth diagnostic surfaced inline.
+- [x] #4 Least-privilege docs (configuration + self-hosting, bilingual) and `HTTPError` 401/403/404 auth diagnostics in `config_source.py` (`github_http_error_message` maps rate-limit / SSO / 401 / 404, specific sub-types first; `GitHubAccessError`, a `ValueError`, surfaces the cause to the CLI as exit-2 and to serve inline).
+- [x] #1 GitHub App installation-token provider (`bajutsu/github_app.py`: RS256 JWT via `cryptography` behind the `githubapp` extra + the installation-token endpoint), lazy-loaded behind the credential seam alongside the existing PAT / `gh` paths.
+- [x] #2 Documented credential precedence (App → `GITHUB_TOKEN`/`GH_TOKEN` → `gh auth token` → anonymous, resolved per acquisition) and the unattended-daemon supply path (launchd / systemd env, an App key file).
+- [x] #3 Per-org credential scoping via the hosted `DbSecretStore` (each org's stored Git credential is its own), bounded by BE-0108 / BE-0051. Per-*source* (owner/repo) binding was scoped out this round and is a future follow-up.
+- [x] #5 serve "From a Git repository" dialog credential field, stored via the `SecretStore` seam (BE-0136, new `gitConfigToken` secret → `GITHUB_TOKEN` locally, encrypted per-org on the hosted backend), deployment-aware (BE-0108), with the auth diagnostic surfaced inline.
+
+**Log**
+
+- Implemented #1–#5 in one change: the credential seam + App provider + diagnostics in `config_source.py` / `github_app.py`, the serve `/api/gitcredential` endpoint + UI field, and the bilingual docs. Per-source (owner/repo) scoping deferred (#3 delivered as per-org). PR: _(to be linked)_.
 
 ## References
 

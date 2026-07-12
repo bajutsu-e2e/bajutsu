@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import io
 import tarfile
+import urllib.error
+from email.message import Message
 from pathlib import Path
 
 import pytest
@@ -15,9 +17,13 @@ import pytest
 from bajutsu.config import IosConfig
 from bajutsu.config_source import (
     GitConfigSpec,
+    GitHubAccessError,
     Materialized,
+    _GitHubTransport,
+    github_http_error_message,
     materialize,
     parse_config_spec,
+    resolve_github_credential,
     source_provenance,
 )
 
@@ -167,6 +173,25 @@ def test_materialize_pinned_sha_skips_the_commits_api(tmp_path) -> None:  # type
     assert transport.tarball_calls == 1 and transport.commit_calls == 0  # cache hit, fully offline
 
 
+def test_materialize_pinned_cache_hit_resolves_no_credential(tmp_path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    # The credential is resolved (and a GitHub App token possibly minted) only when a network op is
+    # needed — never on a pinned-SHA cache hit — so re-serving a cached config does no auth work and
+    # `--config-offline` stays truly offline (BE-0224). The real path is exercised (transport=None).
+    sha = "9f3c1ab2c3d4e5f60718293a4b5c6d7e8f901234"
+    root = tmp_path / "github.com" / "acme" / "repo" / sha
+    root.mkdir(parents=True)
+    (root / "bajutsu.config.yaml").write_text("defaults: {}\n", encoding="utf-8")
+
+    def fail(spec):  # type: ignore[no-untyped-def]
+        raise AssertionError("credential must not be resolved on a cache hit")
+
+    monkeypatch.setattr("bajutsu.config_source.resolve_github_credential", fail)
+    spec = parse_config_spec(f"github:acme/repo@{sha}")
+    assert spec is not None
+    mat = materialize(spec, cache_root=tmp_path)
+    assert mat.sha == sha and mat.config_path.read_text(encoding="utf-8") == "defaults: {}\n"
+
+
 def test_materialize_offline_uses_a_cached_pinned_sha_without_network(tmp_path) -> None:  # type: ignore[no-untyped-def]
     # --config-offline: a pinned SHA already in the cache runs with no transport calls at all.
     sha = "9f3c1ab2c3d4e5f60718293a4b5c6d7e8f901234"
@@ -244,6 +269,149 @@ def test_source_provenance_records_repo_and_resolved_sha() -> None:
     assert source_provenance(GitConfigSpec("github.com", "a", "b", None, None), mat)["ref"] == (
         "(default)"
     )
+
+
+# --- private-repo credential resolution + auth diagnostics (BE-0224) ---
+
+_SPEC = GitConfigSpec("github.com", "acme", "repo", None, None)
+
+
+def _headers(**kw: str) -> Message:
+    m = Message()
+    for key, value in kw.items():
+        m[key.replace("_", "-")] = value
+    return m
+
+
+@pytest.mark.parametrize(
+    ("status", "headers", "needle"),
+    [
+        (403, _headers(X_RateLimit_Remaining="0"), "rate limit"),
+        (403, _headers(Retry_After="60"), "rate limit"),
+        (429, _headers(Retry_After="60"), "rate limit"),  # secondary rate limit is a 429
+        (429, _headers(), "rate limit"),
+        (403, _headers(X_GitHub_SSO="required"), "single sign-on"),
+        (401, _headers(), "rejected"),
+        (404, _headers(), "not found, or access not granted"),
+        (403, _headers(), "not found, or access not granted"),  # a plain 403 falls through
+    ],
+)
+def test_github_http_error_message_names_the_real_cause(
+    status: int, headers: Message, needle: str
+) -> None:
+    msg = github_http_error_message(status, headers, _SPEC)
+    assert needle in msg
+    assert "acme/repo" in msg  # the message always names the repo the grant is needed for
+
+
+def test_rate_limit_403_is_not_reported_as_missing_access() -> None:
+    # A 403 that is really a rate limit must not steer the operator to grant more repo permission —
+    # checking the sub-type before the catch-all is the whole point (BE-0224 #4).
+    msg = github_http_error_message(403, _headers(X_RateLimit_Remaining="0"), _SPEC)
+    assert "Contents: read" not in msg
+
+
+def test_transport_get_wraps_httperror_as_access_error(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    # A raw HTTPError from urllib becomes a GitHubAccessError carrying the cause-naming message, so a
+    # private-repo 404 never reaches a caller as a bare traceback.
+    def raise_404(req, timeout):  # type: ignore[no-untyped-def]
+        raise urllib.error.HTTPError(req.full_url, 404, "Not Found", _headers(), None)
+
+    monkeypatch.setattr("urllib.request.urlopen", raise_404)
+    with pytest.raises(GitHubAccessError, match="access not granted"):
+        _GitHubTransport("tok").commit_sha(_SPEC, "main")
+
+
+def test_resolve_credential_prefers_env_token_when_no_app(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    monkeypatch.delenv("BAJUTSU_GITHUB_APP_ID", raising=False)
+    monkeypatch.delenv("BAJUTSU_GIT_CONFIG_TOKEN", raising=False)
+    monkeypatch.setenv("GITHUB_TOKEN", "tok-env")
+    assert resolve_github_credential(_SPEC) == "tok-env"
+
+
+def test_resolve_credential_ui_token_wins_over_ambient(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    # The bajutsu-owned var (a UI-entered credential) is checked before an operator's ambient token,
+    # so a serve-entered credential wins and clearing it never touches GITHUB_TOKEN (BE-0224).
+    monkeypatch.delenv("BAJUTSU_GITHUB_APP_ID", raising=False)
+    monkeypatch.setenv("BAJUTSU_GIT_CONFIG_TOKEN", "ui-token")
+    monkeypatch.setenv("GITHUB_TOKEN", "ambient")
+    assert resolve_github_credential(_SPEC) == "ui-token"
+
+
+def test_resolve_credential_ignores_stale_app_key_file_without_id(monkeypatch, tmp_path) -> None:  # type: ignore[no-untyped-def]
+    # A leftover key-file var without an App id must NOT trigger the App path (no file read, no
+    # cryptography import) — it falls through to the env token (BE-0224 review fix).
+    monkeypatch.delenv("BAJUTSU_GITHUB_APP_ID", raising=False)
+    monkeypatch.setenv("BAJUTSU_GITHUB_APP_PRIVATE_KEY_FILE", str(tmp_path / "does-not-exist.pem"))
+    monkeypatch.delenv("BAJUTSU_GIT_CONFIG_TOKEN", raising=False)
+    monkeypatch.setenv("GITHUB_TOKEN", "tok-env")
+    assert resolve_github_credential(_SPEC) == "tok-env"  # no FileNotFoundError, no App attempt
+
+
+def test_resolve_credential_app_missing_key_file_is_a_clean_error(monkeypatch, tmp_path) -> None:  # type: ignore[no-untyped-def]
+    # With the App id set but the key file unreadable, the error names the cause instead of leaking a
+    # raw OSError traceback.
+    monkeypatch.setenv("BAJUTSU_GITHUB_APP_ID", "123")
+    monkeypatch.delenv("BAJUTSU_GITHUB_APP_PRIVATE_KEY", raising=False)
+    monkeypatch.setenv("BAJUTSU_GITHUB_APP_PRIVATE_KEY_FILE", str(tmp_path / "missing.pem"))
+    with pytest.raises(GitHubAccessError, match="cannot read the GitHub App private key"):
+        resolve_github_credential(_SPEC)
+
+
+def test_resolve_credential_app_id_without_key_falls_through(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    # An App id with no key at all is not a half-attempt — it falls through to the env token.
+    monkeypatch.setenv("BAJUTSU_GITHUB_APP_ID", "123")
+    monkeypatch.delenv("BAJUTSU_GITHUB_APP_PRIVATE_KEY", raising=False)
+    monkeypatch.delenv("BAJUTSU_GITHUB_APP_PRIVATE_KEY_FILE", raising=False)
+    monkeypatch.delenv("BAJUTSU_GIT_CONFIG_TOKEN", raising=False)
+    monkeypatch.setenv("GITHUB_TOKEN", "tok-env")
+    assert resolve_github_credential(_SPEC) == "tok-env"
+
+
+def test_resolve_credential_prefers_a_configured_github_app(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    # An App credential wins over a PAT in the env (the documented precedence, BE-0224 #2); the App
+    # module is only reached when both an id and a key are present.
+    monkeypatch.setenv("BAJUTSU_GITHUB_APP_ID", "123")
+    monkeypatch.setenv("BAJUTSU_GITHUB_APP_PRIVATE_KEY", "----KEY----")
+    monkeypatch.setenv("GITHUB_TOKEN", "tok-env")
+    seen = {}
+
+    def fake_installation_token(app_id, key, spec, *, installation_id=None):  # type: ignore[no-untyped-def]
+        seen["app_id"], seen["key"] = app_id, key
+        return "ghs_apptoken"
+
+    monkeypatch.setattr("bajutsu.github_app.installation_token", fake_installation_token)
+    assert resolve_github_credential(_SPEC) == "ghs_apptoken"
+    assert seen == {"app_id": "123", "key": "----KEY----"}
+
+
+def test_resolve_credential_app_key_from_a_file(monkeypatch, tmp_path) -> None:  # type: ignore[no-untyped-def]
+    key_file = tmp_path / "app.pem"
+    key_file.write_text("----FILE-KEY----", encoding="utf-8")
+    monkeypatch.setenv("BAJUTSU_GITHUB_APP_ID", "123")
+    monkeypatch.delenv("BAJUTSU_GITHUB_APP_PRIVATE_KEY", raising=False)
+    monkeypatch.setenv("BAJUTSU_GITHUB_APP_PRIVATE_KEY_FILE", str(key_file))
+    monkeypatch.setattr(
+        "bajutsu.github_app.installation_token",
+        lambda app_id, key, spec, *, installation_id=None: f"tok:{key}",
+    )
+    assert resolve_github_credential(_SPEC) == "tok:----FILE-KEY----"
+
+
+def test_load_effective_git_access_error_exits_cleanly(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    # A private-repo access/auth failure gets the same friendly exit-2 as a missing config, with the
+    # cause message rather than a raw HTTPError traceback (BE-0224 #4).
+    import typer
+
+    from bajutsu.cli import _shared
+
+    def boom(spec, *, offline=False):  # type: ignore[no-untyped-def]
+        raise GitHubAccessError("cannot access acme/repo (404): ... provide Contents: read")
+
+    monkeypatch.setattr(_shared, "materialize", boom)
+    with pytest.raises(typer.Exit) as exc:
+        _shared._load_effective("github:acme/repo@main", "demo")
+    assert exc.value.exit_code == 2
 
 
 # --- _load_effective wiring: a Git-sourced config rebases its relative paths against the checkout ---

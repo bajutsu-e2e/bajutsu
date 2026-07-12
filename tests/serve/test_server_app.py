@@ -448,12 +448,19 @@ def test_post_validation_errors_delegate(tmp_path: Path) -> None:
 def test_more_delegations(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     # The provider/apikey POSTs write os.environ directly (inherited by spawned jobs); clear the
     # vars first so monkeypatch restores the originals at teardown and no state leaks to later tests.
-    for var in ("ANTHROPIC_API_KEY", PROVIDER_ENV, BEDROCK_MODEL_ENV, "AWS_REGION"):
+    for var in (
+        "ANTHROPIC_API_KEY",
+        "BAJUTSU_GIT_CONFIG_TOKEN",
+        PROVIDER_ENV,
+        BEDROCK_MODEL_ENV,
+        "AWS_REGION",
+    ):
         monkeypatch.delenv(var, raising=False)
     client = _client(_state(tmp_path))
     # GET delegations
     assert client.get("/api/fs").json()["cwd"] == str(tmp_path.resolve())
     assert client.get("/api/apikey").json()["set"] in (True, False)
+    assert client.get("/api/gitcredential").json()["set"] in (True, False)  # BE-0224, hosted parity
     assert "provider" in client.get("/api/provider").json()
     assert isinstance(client.get("/api/simulators").json(), list)
     # POST delegations (validation paths — no device needed)
@@ -463,6 +470,7 @@ def test_more_delegations(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> No
     assert client.post("/api/provider", json={"provider": "anthropic"}).json()["ok"] is True
     set_key = client.post("/api/apikey", json={"value": "k key"})  # whitespace rejected
     assert set_key.status_code == 400
+    assert client.post("/api/gitcredential", json={"value": "t t"}).status_code == 400  # whitespace
 
 
 def test_job_events_streams_log_then_done(tmp_path: Path) -> None:

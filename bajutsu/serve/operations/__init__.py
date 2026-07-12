@@ -42,9 +42,11 @@ from bajutsu.serve.operations.config import (
     claude_code_token_info,
     config_content,
     config_info,
+    git_credential_info,
     provider_info,
     set_api_key,
     set_claude_code_token,
+    set_git_credential,
     set_provider,
 )
 from bajutsu.serve.operations.coverage import coverage_view
@@ -163,6 +165,7 @@ __all__ = [
     "generate_codegen",
     "generate_upload_urls",
     "get_theme_contract",
+    "git_credential_info",
     "job_log_events",
     "job_sse",
     "job_view",
@@ -192,6 +195,7 @@ __all__ = [
     "scenario_schema",
     "set_api_key",
     "set_claude_code_token",
+    "set_git_credential",
     "set_provider",
     "simulators_payload",
     "start_capture",
