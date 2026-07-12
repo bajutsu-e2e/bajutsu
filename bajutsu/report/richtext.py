@@ -143,7 +143,13 @@ def _step_desc_parts(action: str, payload: Any) -> list[Part]:
         return out
     if action == "swipe":
         if payload.get("on"):
-            return [("", f"{payload.get('direction', '')} on "), *_sel_parts(payload["on"])]
+            swipe_parts: list[Part] = [
+                ("", f"{payload.get('direction', '')} on "),
+                *_sel_parts(payload["on"]),
+            ]
+            if payload.get("amount") is not None:
+                swipe_parts += [("", " · "), ("num", _gnum(payload["amount"]))]
+            return swipe_parts
         return [*_pt_parts(payload.get("from")), ("", " → "), *_pt_parts(payload.get("to"))]
     if action == "pinch":
         return [*_sel_parts(payload["sel"]), ("", " · ×"), ("num", _gnum(payload["scale"]))]

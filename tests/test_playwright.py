@@ -553,12 +553,28 @@ def test_long_press() -> None:
     assert [c[0] for c in page.mouse.calls] == ["move", "down", "up"]
 
 
-def test_swipe_is_a_literal_pointer_drag() -> None:
-    # The coordinate form keeps its raw drag (canvas / map pan / drag handle) — unchanged by BE-0227,
-    # which only redirects the directional "scroll" form (see test_scroll_* below).
+def test_swipe_is_a_literal_pointer_drag_on_a_desktop_context() -> None:
+    # On a desktop context the coordinate `swipe` form and the `drag` action are a raw mouse drag
+    # (canvas / map pan / resize handle) — distinct from the directional "scroll" form, which wheels.
     drv, page = _driver([])
     drv.swipe((0.0, 0.0), (10.0, 0.0))
     assert [c[0] for c in page.mouse.calls] == ["move", "down", "move", "up"]
+
+
+def test_swipe_touch_drags_under_a_touch_context() -> None:
+    # On a touch context (BE-0228) a pointer drag (coordinate swipe / the drag action) must be a real
+    # touch drag — the pinch/rotate CDP path — so a touch-bound handle (a slider thumb, a resize
+    # divider) responds; a synthesized mouse drag fires no touch listeners (BE-0227).
+    drv, page = _driver([])
+    drv._device_kwargs = {"has_touch": True}  # emulate a context created for touch input
+    drv.swipe((5.0, 40.0), (5.0, 10.0))
+    assert page.mouse.calls == []  # no mouse drag on a touch context
+    types = [p["type"] for _, p in page.cdp.calls]
+    assert types[0] == "touchStart" and types[-1] == "touchEnd"
+    start = _touch_points(page.cdp.calls[0][1])
+    last_move = _touch_points(page.cdp.calls[-2][1])  # final touchMove before touchEnd
+    assert len(start) == 1 and start[0] == (5.0, 40.0)  # one finger, beginning at frm
+    assert last_move[0] == (5.0, 10.0)  # travelling to `to` (the finger follows the drag)
 
 
 def test_scroll_wheels_on_a_desktop_context() -> None:

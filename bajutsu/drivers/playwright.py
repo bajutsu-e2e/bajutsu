@@ -537,12 +537,18 @@ class PlaywrightDriver:
 
     @_wedge_guard
     def swipe(self, frm: base.Point, to: base.Point) -> None:
-        # The coordinate form's literal pointer drag (canvas / map pan / drag handle). A mouse drag
-        # does not scroll a page, so the directional "scroll" form goes to `scroll`, not here.
-        self._page.mouse.move(frm[0], frm[1])
-        self._page.mouse.down()
-        self._page.mouse.move(to[0], to[1])
-        self._page.mouse.up()
+        # A literal pointer drag — the coordinate `swipe` form (canvas / map pan) and the `drag`
+        # action (a resize divider, a slider thumb). Keyed on input mode like `scroll` (BE-0227): a
+        # touch context uses a real touch drag (the pinch/rotate path) so a touch-bound handle
+        # responds — a synthesized mouse drag fires no touch listeners; a desktop context uses a raw
+        # mouse drag. (The directional "scroll" form does not come here — it goes to `scroll`.)
+        if self._has_touch():
+            self._touch_drag([frm], [to])
+        else:
+            self._page.mouse.move(frm[0], frm[1])
+            self._page.mouse.down()
+            self._page.mouse.move(to[0], to[1])
+            self._page.mouse.up()
 
     @_wedge_guard
     def scroll(self, frm: base.Point, to: base.Point) -> None:
@@ -558,7 +564,7 @@ class PlaywrightDriver:
             self._page.mouse.wheel(frm[0] - to[0], frm[1] - to[1])
 
     def _has_touch(self) -> bool:
-        """Whether the active context takes touch input, deciding scroll's primitive (BE-0227).
+        """Whether the active context takes touch input, deciding a gesture's primitive (BE-0227).
 
         Read from the memoized device descriptor (BE-0228), which is derived from the target's fixed
         `deviceMode` and re-applied identically at every context creation — so it never goes stale
