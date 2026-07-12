@@ -251,7 +251,7 @@ directive の枠内にとどまります。
   完了したので、項目は実装済みです。
 - 2026-07-12 — フォローアップ：`device_android` スライスで実機の `cmd clipboard` のギャップのために
   落としたクリップボードの側を、[BE-0233](../BE-0233-adb-clipboard-fidelity/BE-0233-adb-clipboard-fidelity-ja.md)
-  （PR #NNN）が復活させました。クリップボードをアプリ内レシーバ経由で駆動するので、`device_android` は
+  （PR #949）が復活させました。クリップボードをアプリ内レシーバ経由で駆動するので、`device_android` は
   プライマリクリップの書き込みと読み戻しを行うようになりました（PR #934 が求めていた強い assertion です）。
 
 ## 参考

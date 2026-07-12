@@ -246,7 +246,7 @@ within the prime directives.
   its own scope done, the item is Implemented.
 - 2026-07-12 — Follow-up: the clipboard half of the `device_android` slice, cut here for the on-device
   `cmd clipboard` gap, was restored by [BE-0233](../BE-0233-adb-clipboard-fidelity/BE-0233-adb-clipboard-fidelity.md)
-  (PR #NNN): it drives the clipboard through an in-app receiver, so `device_android` now seeds and
+  (PR #949): it drives the clipboard through an in-app receiver, so `device_android` now seeds and
   reads back the primary clip — the strong assertion PR #934 wanted.
 
 ## References

@@ -106,7 +106,7 @@ Log:
   does not change what the adb backend advertises; it is tracked separately by the
   adb-clipboard-fidelity proposal ([#935](https://github.com/bajutsu-e2e/bajutsu/pull/935)).
 - 2026-07-12 — Resolved by [BE-0233](../BE-0233-adb-clipboard-fidelity/BE-0233-adb-clipboard-fidelity.md)
-  (PR #NNN): the `cmd clipboard` builders are replaced by an ordered `am broadcast` to an in-app
+  (PR #949): the `cmd clipboard` builders are replaced by an ordered `am broadcast` to an in-app
   receiver (`BajutsuAndroid`), since a shell process cannot reach the clipboard on Android 10+. The
   `DeviceControl` interface and the `DC_CLIPBOARD` capability are unchanged, so this correction is
   transparent to scenarios.
