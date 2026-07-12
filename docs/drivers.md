@@ -247,9 +247,7 @@ fits the same toolchain as `make check`. Implementation: `drivers/playwright.py`
   and `reduced_motion` already hold. An unknown preset fails loudly with a `ValueError` at driver
   start. This is **desktop-browser emulation** — a mobile viewport and touch input in a desktop-class
   browser, exactly what Chrome DevTools' device toolbar does — **not** a real mobile browser on a
-  real device or a device cloud; for a real mobile OS the Android backend is the path. When a context
-  is created with `has_touch` true, `swipe` routes through the CDP touch path (its companion item)
-  rather than a wheel scroll.
+  real device or a device cloud; for a real mobile OS the Android backend is the path.
 - **Multi-touch** (BE-0054): `pinch` / `rotate` are synthesized as two-finger drags via the Chromium
   DevTools protocol (`Input.dispatchTouchEvent`) — `mouse` is single-pointer, so gestures go through
   CDP, the same path a real touch takes (so the page's touch listeners fire). The element center
