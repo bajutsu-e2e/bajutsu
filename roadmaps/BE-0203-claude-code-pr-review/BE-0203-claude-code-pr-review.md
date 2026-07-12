@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0203") |
-| Implementing PR | [#807](https://github.com/bajutsu-e2e/bajutsu/pull/807), [#915](https://github.com/bajutsu-e2e/bajutsu/pull/915) |
+| Implementing PR | [#807](https://github.com/bajutsu-e2e/bajutsu/pull/807), [#915](https://github.com/bajutsu-e2e/bajutsu/pull/915), [#916](https://github.com/bajutsu-e2e/bajutsu/pull/916) |
 | Topic | Development infrastructure (contributor workflow) |
 <!-- /BE-METADATA -->
 
@@ -256,6 +256,13 @@ Log:
   attacker-controlled prompts on public repos); the match is case-insensitive and strips a trailing
   `[bot]`, so it covers both actor spellings. Implementing PR:
   [#915](https://github.com/bajutsu-e2e/bajutsu/pull/915).
+- Broadened the review prompt's own lenses (item 5): added a security lens for semantic /
+  data-flow vulnerabilities the gate's pattern-level `ruff` checks can't follow, a strengthened
+  design-and-technical-debt lens, a discussion-awareness lens (read `gh pr view --comments` first;
+  never repeat a point another reviewer already raised), a requirement that every actionable
+  finding name a concrete change, and a Japanese-prose-quality convention tied to the
+  `japanese-tech-writing` skill. Implementing PR:
+  [#916](https://github.com/bajutsu-e2e/bajutsu/pull/916).
 
 ## References
 
