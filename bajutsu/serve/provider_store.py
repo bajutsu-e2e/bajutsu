@@ -82,11 +82,11 @@ class LocalProviderSettingsStore:
             raw = json.loads(self._path.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError) as e:
             raise ProviderSettingsError(f"cannot read {self._path}: {e}") from e
-        return _decode(raw, str(self._path))
+        return decode(raw, str(self._path))
 
     def save(self, data: PersistedProviderSettings) -> None:
         self._path.parent.mkdir(parents=True, exist_ok=True)
-        payload = {"provider": data.provider, "settings": _encode_settings(data.settings)}
+        payload = {"provider": data.provider, "settings": encode_settings(data.settings)}
         # Write-then-replace so a crash mid-write never leaves a half-written file that load()
         # would reject on the next boot. The temp name is unique per call (mkstemp) — serve is a
         # ThreadingHTTPServer, so a fixed `<path>.tmp` suffix would let two concurrent saves clobber
@@ -103,7 +103,7 @@ class LocalProviderSettingsStore:
             raise
 
 
-def _decode(raw: object, where: str) -> PersistedProviderSettings:
+def decode(raw: object, where: str) -> PersistedProviderSettings:
     """Validate a decoded ``{provider, settings}`` mapping into a `PersistedProviderSettings`.
 
     Shared by both stores — the local file store passes the file path as *where*, the DB store its
@@ -138,7 +138,7 @@ def _str_field(slot: dict[str, object], key: str, name: str, where: str) -> str:
     return value
 
 
-def _encode_settings(settings: dict[str, ProviderSettings]) -> dict[str, dict[str, str]]:
+def encode_settings(settings: dict[str, ProviderSettings]) -> dict[str, dict[str, str]]:
     """The JSON-friendly slot map both stores serialize (the shape a ``settings`` value takes)."""
     return {
         name: {"model": s.model, "effort": s.effort, "region": s.region}

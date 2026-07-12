@@ -16,8 +16,8 @@ from typing import TYPE_CHECKING
 
 from bajutsu.serve.provider_store import (
     PersistedProviderSettings,
-    _decode,
-    _encode_settings,
+    decode,
+    encode_settings,
 )
 
 if TYPE_CHECKING:
@@ -44,8 +44,8 @@ class DbProviderSettingsStore:
                 return None
             # Validate through the shared decoder rather than trusting the row: a hand-edited DB
             # can carry a non-string leaf, and the boot/load path expects the same failure the file
-            # store raises. `_decode` re-checks the JSON-column shape it wrote.
-            return _decode(
+            # store raises. `decode` re-checks the JSON-column shape it wrote.
+            return decode(
                 {"provider": row.provider, "settings": row.settings or {}},
                 f"provider_settings[{self._org_id}]",
             )
@@ -55,7 +55,7 @@ class DbProviderSettingsStore:
 
         from bajutsu.serve.server.models import ProviderSettingsRow
 
-        payload = _encode_settings(data.settings)
+        payload = encode_settings(data.settings)
         with Session(self._engine) as session:
             row = session.get(ProviderSettingsRow, self._org_id)
             if row is None:

@@ -598,10 +598,16 @@ def _persist_provider_settings(state: ServeState, org: str, provider: str) -> bo
     persisted active provider as whichever finished last. BE-0184's scope is surviving a restart, not
     making that race atomic; in the normal single-operator case the last save wins cleanly.
 
-    The selection has already taken effect in the in-memory map, so a failure to write (a read-only
-    serve dir, a full disk) must not fail the request that already succeeded — it is logged loudly
-    and the change stands for the session, just not across a restart. The language (BE-0188) is not
-    persisted (it lives only in memory), matching the pre-BE-0229 store shape.
+    The selection has already taken effect in the in-memory map, so a failure to write must not fail
+    the request that already succeeded — it is logged loudly and the change stands for the session,
+    just not across a restart. The `except` is deliberately broad: this seam now backs both the local
+    file store (whose writes fail with ``OSError`` — a read-only serve dir, a full disk) and the
+    hosted `DbProviderSettingsStore` (whose ``session.commit`` fails with a SQLAlchemy error, not an
+    ``OSError``), so narrowing it would let a transient DB failure escape and break this very
+    contract. The `try` wraps exactly one store write with no re-raise, so nothing else is masked;
+    catching ``Exception`` (not ``SQLAlchemyError``) also keeps this default-path module from
+    importing SQLAlchemy (BE-0112). The language (BE-0188) is not persisted (it lives only in
+    memory), matching the pre-BE-0229 store shape.
 
     Returns:
         ``True`` when durably saved; ``False`` when a wired store's write failed (the choice is
@@ -619,7 +625,7 @@ def _persist_provider_settings(state: ServeState, org: str, provider: str) -> bo
             snapshot = state.org_provider_settings(org)
             slots = snapshot.slots if snapshot is not None else {}
             store.save(PersistedProviderSettings(provider=provider, settings=slots))
-    except OSError:
+    except Exception:
         logging.getLogger(__name__).warning(
             "the AI provider selection is active for this session but could not be persisted; "
             "it will not survive a restart",

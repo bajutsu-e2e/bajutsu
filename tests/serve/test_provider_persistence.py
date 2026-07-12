@@ -364,6 +364,38 @@ def test_persist_failure_keeps_the_session_change_and_warns(
         server.server_close()
 
 
+def test_persist_failure_from_a_non_oserror_degrades_to_session_only(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    """The persist seam now backs the hosted DB store too, whose `session.commit` fails with a
+    SQLAlchemy error, not an `OSError` (BE-0229). Such a write failure must degrade to session-only
+    just like the file store's — logged loudly, `persisted: False`, the choice standing for the
+    session — rather than propagating out of `set_provider`, honoring the function's contract."""
+    from sqlalchemy.exc import SQLAlchemyError
+
+    from bajutsu.serve.operations.config import _persist_provider_settings
+    from bajutsu.serve.state import StoreBundle
+
+    class _RaisingStore:
+        def load(self) -> None:
+            return None
+
+        def save(self, data: object) -> None:
+            raise SQLAlchemyError("db down")  # what a real DbProviderSettingsStore.save would raise
+
+    scn_dir, cfg, runs = project(tmp_path)
+    state = srv.ServeState(scenarios_dir=scn_dir, config=cfg, runs_dir=runs, cwd=tmp_path)
+    state.org_stores = lambda org: StoreBundle(
+        state.artifacts, state.scenarios, state.baselines, state.secrets, _RaisingStore()
+    )
+    state.set_org_provider_choice(DEFAULT_ORG, provider="ant", slot=ProviderSettings(), language="")
+    with caplog.at_level("WARNING"):
+        result = _persist_provider_settings(state, DEFAULT_ORG, "ant")
+    assert result is False  # a non-OSError write failure is caught, not propagated
+    assert _default_overlay(state)[ac.PROVIDER_ENV] == "ant"  # the session change still stands
+    assert "persist" in caplog.text.lower()
+
+
 def test_no_store_reports_persisted_null(tmp_path: Path) -> None:
     """With no store wired (a server backend without a database), the response carries
     persisted: null — distinct from persisted: true (durably saved) so the hosted operator's
