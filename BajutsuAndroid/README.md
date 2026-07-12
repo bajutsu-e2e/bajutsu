@@ -68,9 +68,10 @@ then depend on it: `implementation(project(":bajutsu-android"))`.
 
 ## Safety
 
-The receiver is **exported** (it accepts a broadcast from the adb shell uid) and can read and write
-the clipboard — **test/debug builds only**. Gate the `startClipboard` call behind `BuildConfig.DEBUG`
-(or your own test flag) so it never runs in a release build.
+The receiver is **exported** with no permission, so *any* local app — adb, but also any other app
+installed on the device — can send the broadcast and read or write the clipboard. **Test/debug builds
+only.** Gate the `startClipboard` call behind `BuildConfig.DEBUG` (or your own test flag) so it never
+runs in a release build.
 
 ## Coverage
 

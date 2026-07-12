@@ -29,8 +29,9 @@ object Bajutsu {
      * Call once from `Application.onCreate`, in a **test/debug build only** — `if (BuildConfig.DEBUG)
      * Bajutsu.startClipboard(this)`. `Application.onCreate` runs before any Activity (the Android peer
      * of BajutsuKit's `App.init()`), so the receiver is ready whichever screen bajutsu drives first.
-     * The receiver is exported (it accepts a broadcast from the adb shell uid) and can set/read the
-     * clipboard, so it must never ship in a release build. Idempotent: a second call is a no-op.
+     * The receiver is exported with no permission, so *any* local app — adb, but also any other app
+     * installed on the device — can send the broadcast and set/read the clipboard; it must never ship
+     * in a release build. Idempotent: a second call is a no-op.
      */
     fun startClipboard(context: Context) {
         if (registered) return

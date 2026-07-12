@@ -70,9 +70,10 @@ project(":bajutsu-android").projectDir = file("../../../BajutsuAndroid")
 
 ## 安全性
 
-レシーバは**エクスポートされて**おり（adb の shell uid からの broadcast を受け取ります）、クリップボードを
-読み書きできます。そのため **test/debug ビルド専用**です。`startClipboard` の呼び出しを
-`BuildConfig.DEBUG`（または独自のテストフラグ）で囲い、リリースビルドで動かないようにしてください。
+レシーバは**エクスポートされて**おり、権限も設定していません。そのため adb だけでなく、デバイスに
+インストールされたほかのアプリも broadcast を送ってクリップボードを読み書きできます。したがって
+**test/debug ビルド専用**です。`startClipboard` の呼び出しを `BuildConfig.DEBUG`（または独自の
+テストフラグ）で囲い、リリースビルドで動かないようにしてください。
 
 ## 対応範囲
 
