@@ -636,6 +636,7 @@ A platform is just a backend behind the one driver interface ([DESIGN §1](../DE
 | [BE-0008](BE-0008-flutter-support/BE-0008-flutter-support.md) | Flutter support | Proposal |
 | [BE-0221](BE-0221-android-scenario-portability-guarantee/BE-0221-android-scenario-portability-guarantee.md) | Guarantee shared showcase scenarios run unchanged on Android | Proposal |
 | [BE-0227](BE-0227-web-swipe-scroll-fidelity/BE-0227-web-swipe-scroll-fidelity.md) | Web swipe scroll fidelity (mode-aware scroll dispatch) | Proposal |
+| [BE-0232](BE-0232-adb-multitouch-gestures/BE-0232-adb-multitouch-gestures.md) | Multi-touch gestures on the adb driver (pinch / rotate) | Proposal |
 <!-- /GENERATED:proposals-platform -->
 
 ### Authoring experience (record / GUI editor)
