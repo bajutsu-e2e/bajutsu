@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0231](BE-0231-smoke-idb-first-wait-settling.md) |
 | Author | [@hirosassa](https://github.com/hirosassa) |
-| Status | **Proposal** |
+| Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0231") |
+| Implementing PR | _pending_ |
 | Topic | On-device validation (M1 close-out) |
 <!-- /BE-METADATA -->
 
@@ -112,10 +113,20 @@ acceptance. Each unit is independently shippable.
 > (oldest first), linking the PRs.
 
 - [ ] Unit 1 — make the first-wait timeout diagnosable from artifacts (tree + readiness signal + provenance).
-- [ ] Unit 2 — tighten the readiness → first-wait handoff (`readyWhen` / content-aware readiness).
-- [ ] Unit 3 — make the first `wait` resilient to a mid-transition empty tree.
+- [x] Unit 2 — tighten the readiness → first-wait handoff (`readyWhen` / content-aware readiness).
+- [x] Unit 3 — make the first `wait` resilient to a mid-transition empty tree.
 - [ ] Unit 4 — right-size the first-wait budget for a cold CI Simulator (config, condition-based).
 - [ ] Unit 5 — prove the lane stays green on first attempt across consecutive CI runs.
+
+Log (oldest first):
+
+- _pending_ — Units 2–3: point the `showcase-swiftui` target's `readyWhen` at the first Stable row
+  (`stable.row.1`), the element the smoke scenario's opening `wait` needs, so `_await_ready` no longer
+  returns on some other in-namespace node and lets the first step race a not-yet-rendered row on a
+  cold-boot CI Simulator (Unit 2); and lock in that the scenario `for`-wait treats an empty first poll
+  as "not yet, keep polling" rather than consuming its budget (Unit 3). Config-first (prime directive
+  3), condition-based (prime directive 2), no LLM on the verdict path (prime directive 1). Unit 5 (CI
+  stays green on first attempt) is observed on the `smoke (idb)` lane after this lands.
 
 ## References
 

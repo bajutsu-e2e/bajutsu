@@ -36,6 +36,26 @@ def test_wait_timeout() -> None:
     assert "timeout" in result.steps[0].reason
 
 
+def test_wait_for_tolerates_transient_empty_first_poll() -> None:
+    # BE-0231 Unit 3: on a cold-boot launch the first poll can land mid-transition on an empty tree.
+    # The `for` wait must read that as "not yet" and keep polling within its budget, not as "gone" —
+    # an empty first poll must not fail the step or consume the budget before the element renders.
+    driver = FakeDriver([])  # first query() lands on an empty tree during the launch transition
+
+    def on_sleep(t: float) -> None:
+        if all(e["identifier"] != "stable.row.1" for e in driver.screen):
+            driver.screen = [el("stable.row.1", "Row 1")]
+
+    result = run_scenario(
+        driver,
+        _scenario(
+            {"name": "x", "steps": [{"wait": {"for": {"id": "stable.row.1"}, "timeout": 1.0}}]}
+        ),
+        clock=FakeClock(on_sleep),
+    )
+    assert result.ok and result.steps[0].ok
+
+
 def test_wait_until_gone() -> None:
     driver = FakeDriver([el("spinner", "")])
 
