@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0227](BE-0227-web-swipe-scroll-fidelity.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0227") |
+| Implementing PR | _pending_ |
 | Topic | Platform expansion (Android / Web / Flutter) |
 <!-- /BE-METADATA -->
 
@@ -149,11 +150,22 @@ This stays within the prime directives:
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Mode-aware dispatch in `PlaywrightDriver.swipe` (desktop wheel; touch drag)
-- [ ] Direction → wheel-delta mapping
-- [ ] codegen parity (`_emit_swipe_direction`)
-- [ ] Tests (real-scroll assertion + direction mapping + codegen)
-- [ ] Docs (`scenarios.md` / `drivers.md`, both languages)
+- [x] Mode-aware dispatch — a dedicated `Driver.scroll` seam: the directional swipe handler routes
+      to `driver.scroll` (coordinate form keeps `driver.swipe`), so the web backend realizes a scroll
+      as a desktop wheel / touch drag while the coordinate raw-drag is untouched. Other backends
+      delegate `scroll` → `swipe` (a real drag already scrolls).
+- [x] Direction → wheel-delta mapping (the wheel delta is the reverse of the gesture travel,
+      `frm - to`, so an `up` swipe scrolls the page down)
+- [x] codegen parity (`_emit_swipe_direction` emits `page.mouse.wheel(...)`; coordinate form keeps
+      its TODO)
+- [x] Tests (Playwright desktop-wheel + direction-sign + touch-drag; delegation on idb/adb/xcuitest;
+      handler routing via `test_gestures.py`; codegen wheel assertion)
+- [x] Docs (`scenarios.md` / `drivers.md`, both languages)
+
+**Log**
+
+- _pending_ — implement mode-aware scroll dispatch via a `Driver.scroll` seam; codegen wheel
+  parity; tests + bilingual docs (PR _pending_).
 
 ## References
 

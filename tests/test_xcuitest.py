@@ -123,6 +123,19 @@ def test_back_taps_the_os_back_button() -> None:
     assert sent == [("POST", "/tap", {"handle": "h-back"})]
 
 
+def test_scroll_delegates_to_a_real_swipe_drag() -> None:
+    # A directional scroll on iOS is a real XCUITest drag, so scroll delegates to swipe (BE-0227) —
+    # the same POST /swipe an XCUITest drag issues, since a drag already scrolls scroll views.
+    sent: list[tuple[str, str, dict[str, Any] | None]] = []
+
+    def transport(method: str, path: str, body: dict[str, Any] | None) -> _Reply:
+        sent.append((method, path, body))
+        return _Reply(status="ok")
+
+    _driver(transport).scroll((10.0, 20.0), (30.0, 40.0))
+    assert sent == [("POST", "/swipe", {"from": [10.0, 20.0], "to": [30.0, 40.0]})]
+
+
 def test_pinch_and_rotate_emit_gesture_requests_with_the_handle() -> None:
     sent: list[tuple[str, dict[str, Any] | None]] = []
 

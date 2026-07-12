@@ -344,6 +344,10 @@ class XcuitestDriver:
         if reply.status != _OK:
             raise XcuitestChannelError(f"swipe failed ({reply.status})")
 
+    def scroll(self, frm: base.Point, to: base.Point) -> None:
+        # A real XCUITest drag scrolls iOS scroll views, so a directional scroll is just a swipe.
+        self.swipe(frm, to)
+
     def select_option(self, sel: base.Selector, option: str) -> None:
         raise base.UnsupportedAction(
             "selectOption は <select> を持つ web バックエンド専用; iOS ネイティブに <select> はない"

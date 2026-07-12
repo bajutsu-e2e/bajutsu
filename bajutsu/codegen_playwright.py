@@ -25,13 +25,15 @@ from bajutsu.drivers import base
 from bajutsu.scenario import Assertion, Gone, RequestMatch, Scenario, Step
 from bajutsu.scenario.models.assertions import CountMatch, TextMatch, Wait, WaitRequest
 
-# Element-center drag distance (px) for a directional swipe — intrinsic to the gesture.
+# Wheel-scroll distance (px) a directional swipe emits — intrinsic to the gesture (BE-0227). The
+# delta is the physical scroll direction: an `up` swipe pushes the surface up, so the page scrolls
+# *down* (positive delta_y), mirroring `page.mouse.wheel` and how the driver realizes the same step.
 _SWIPE_PX = 100
-_SWIPE_DELTA = {
-    "up": (0, -_SWIPE_PX),
-    "down": (0, _SWIPE_PX),
-    "left": (-_SWIPE_PX, 0),
-    "right": (_SWIPE_PX, 0),
+_WHEEL_DELTA = {
+    "up": (0, _SWIPE_PX),
+    "down": (0, -_SWIPE_PX),
+    "left": (_SWIPE_PX, 0),
+    "right": (-_SWIPE_PX, 0),
 }
 
 # Glob metacharacters a CSS attribute operator cannot express (single-char `?`, char classes,
@@ -281,7 +283,9 @@ def _ms(seconds: float) -> int:
 
 
 def _emit_swipe_direction(loc: str, direction: str) -> list[str]:
-    dx, dy = _SWIPE_DELTA[direction]
+    # A directional swipe scrolls, so wheel over the element — matching the web driver (BE-0227). The
+    # old mouse drag left the page unscrolled.
+    dx, dy = _WHEEL_DELTA[direction]
     # A block scope keeps `const box` re-declarable across multiple swipes in one test.
     return [
         "{",
@@ -290,9 +294,7 @@ def _emit_swipe_direction(loc: str, direction: str) -> list[str]:
         "    const cx = box.x + box.width / 2;",
         "    const cy = box.y + box.height / 2;",
         "    await page.mouse.move(cx, cy);",
-        "    await page.mouse.down();",
-        f"    await page.mouse.move(cx + {dx}, cy + {dy}, {{ steps: 10 }});",
-        "    await page.mouse.up();",
+        f"    await page.mouse.wheel({dx}, {dy});",
         "  }",
         "}",
     ]

@@ -173,6 +173,9 @@ class _FakeMouse:
     def up(self) -> None:
         self.calls.append(("up",))
 
+    def wheel(self, delta_x: float, delta_y: float) -> None:
+        self.calls.append(("wheel", delta_x, delta_y))
+
 
 class _FakeKeyboard:
     def __init__(self) -> None:
@@ -550,10 +553,45 @@ def test_long_press() -> None:
     assert [c[0] for c in page.mouse.calls] == ["move", "down", "up"]
 
 
-def test_swipe() -> None:
+def test_swipe_is_a_literal_pointer_drag() -> None:
+    # The coordinate form keeps its raw drag (canvas / map pan / drag handle) — unchanged by BE-0227,
+    # which only redirects the directional "scroll" form (see test_scroll_* below).
     drv, page = _driver([])
     drv.swipe((0.0, 0.0), (10.0, 0.0))
     assert [c[0] for c in page.mouse.calls] == ["move", "down", "move", "up"]
+
+
+def test_scroll_wheels_on_a_desktop_context() -> None:
+    # A directional scroll on the default (desktop) context is a wheel over the gesture's start, since
+    # a mouse drag does not scroll a page (BE-0227). The wheel delta is the reverse of the travel: an
+    # up swipe (frm below to) scrolls the page down (positive delta_y).
+    drv, page = _driver([])
+    drv.scroll((5.0, 40.0), (5.0, 10.0))
+    assert page.mouse.calls == [("move", 5.0, 40.0), ("wheel", 0.0, 30.0)]
+
+
+def test_scroll_delta_signs_match_each_direction() -> None:
+    # frm - to is the wheel delta: down/right (frm before to) go negative, up/left positive.
+    drv, page = _driver([])
+    drv.scroll((10.0, 10.0), (10.0, 40.0))  # a down swipe
+    drv.scroll((10.0, 10.0), (40.0, 10.0))  # a right swipe
+    wheels = [c for c in page.mouse.calls if c[0] == "wheel"]
+    assert wheels == [("wheel", 0.0, -30.0), ("wheel", -30.0, 0.0)]
+
+
+def test_scroll_touch_drags_under_a_touch_context() -> None:
+    # A touch context (BE-0228) scrolls with a real single-finger touch drag — the pinch/rotate path
+    # (CDP touch events), not a wheel — so the page's touch/scroll listeners fire (BE-0227).
+    drv, page = _driver([])
+    drv._device_kwargs = {"has_touch": True}  # emulate a context created for touch input
+    drv.scroll((5.0, 40.0), (5.0, 10.0))
+    assert page.mouse.calls == []  # no wheel / mouse drag on a touch context
+    types = [p["type"] for _, p in page.cdp.calls]
+    assert types[0] == "touchStart" and types[-1] == "touchEnd"
+    start = _touch_points(page.cdp.calls[0][1])
+    last_move = _touch_points(page.cdp.calls[-2][1])  # final touchMove before touchEnd
+    assert len(start) == 1 and start[0] == (5.0, 40.0)  # one finger, beginning at frm
+    assert last_move[0] == (5.0, 10.0)  # travelling to `to` (the finger follows the drag)
 
 
 def test_type_text() -> None:

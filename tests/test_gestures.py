@@ -120,7 +120,7 @@ def _swipe_points(spec: str) -> tuple[base.Point, base.Point]:
     driver = FakeDriver(screen=[win, lst])
     result = run_scenario(driver, load_scenarios(f"- name: s\n  steps:\n    - {spec}\n")[0])
     assert result.ok, result.failure
-    frm, to = next(arg for kind, arg in driver.actions if kind == "swipe")
+    frm, to = next(arg for kind, arg in driver.actions if kind == "scroll")
     return frm, to
 
 
@@ -146,7 +146,7 @@ def _swipe_travel_on(screen_h: float, spec: str) -> float:
     driver = FakeDriver(screen=[win, lst])
     result = run_scenario(driver, load_scenarios(f"- name: s\n  steps:\n    - {spec}\n")[0])
     assert result.ok, result.failure
-    frm, to = next(arg for kind, arg in driver.actions if kind == "swipe")
+    frm, to = next(arg for kind, arg in driver.actions if kind == "scroll")
     return abs(frm[1] - to[1])
 
 

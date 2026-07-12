@@ -26,7 +26,8 @@ class Driver(Protocol):
     def tap(self, sel: Selector) -> None: ...
     def tap_point(self, p: Point) -> None: ...       # raw coordinate tap (system alerts, etc.)
     def long_press(self, sel: Selector, duration: float) -> None: ...
-    def swipe(self, frm: Point, to: Point) -> None: ...
+    def swipe(self, frm: Point, to: Point) -> None: ...    # a raw pointer drag (coordinate form)
+    def scroll(self, frm: Point, to: Point) -> None: ...   # a directional scroll (BE-0227)
     def type_text(self, text: str) -> None: ...
     def wait_for(self, sel: Selector) -> bool: ...   # single-shot: matches the current screen?
     def screenshot(self, path: str) -> None: ...
@@ -255,6 +256,18 @@ fits the same toolchain as `make check`. Implementation: `drivers/playwright.py`
   start. This is **desktop-browser emulation** — a mobile viewport and touch input in a desktop-class
   browser, exactly what Chrome DevTools' device toolbar does — **not** a real mobile browser on a
   real device or a device cloud; for a real mobile OS the Android backend is the path.
+- **Directional `swipe` scrolls** (BE-0227): the directional form `swipe: { on, direction }` means
+  "scroll", and a mouse drag does not scroll a web page, so the web backend dispatches the input
+  primitive that actually scrolls, keyed on the context's input mode (the `deviceMode` above). On a
+  **desktop** (pointer) context it emits a `page.mouse.wheel(...)` over the gesture's start — the
+  wheel is the reverse of the travel, so an `up` swipe scrolls the page **down**, exactly as a
+  trackpad or wheel would. On a **touch** context (a mobile `deviceMode`) it uses a real
+  single-finger touch drag over CDP (the same path `pinch` / `rotate` take), so the page's touch and
+  scroll listeners fire. The **coordinate** form `swipe: { from, to }` is unchanged — it stays a
+  literal `page.mouse` drag, the raw-drag last resort for a canvas / map pan / drag handle. `codegen`
+  emits the desktop wheel scroll for the directional form, so a generated Playwright test scrolls in
+  the physically correct direction instead of the old inert drag (a fixed default distance, as codegen
+  has no viewport to scale `amount` against).
 - **Multi-touch** (BE-0054): `pinch` / `rotate` are synthesized as two-finger drags via the Chromium
   DevTools protocol (`Input.dispatchTouchEvent`) — `mouse` is single-pointer, so gestures go through
   CDP, the same path a real touch takes (so the page's touch listeners fire). The element center

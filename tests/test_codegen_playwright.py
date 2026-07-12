@@ -68,12 +68,15 @@ def test_long_press_emits_click_delay() -> None:
     assert "await page.getByTestId('comp.longpress').click({ delay: 600 });" in code
 
 
-def test_swipe_direction_is_mouse_drag() -> None:
+def test_swipe_direction_is_wheel_scroll() -> None:
+    # A directional swipe means "scroll": the web emitter wheels over the element (BE-0227), the
+    # primitive that actually scrolls a page — not the old mouse drag, which left the page inert.
     code = _gen("- name: x\n  steps:\n    - swipe: { on: { id: list }, direction: up }\n")
     assert "const box = await page.getByTestId('list').boundingBox();" in code
-    assert "await page.mouse.down();" in code
-    assert "await page.mouse.move(cx + 0, cy + -100, { steps: 10 });" in code
-    assert "await page.mouse.up();" in code
+    assert "await page.mouse.move(cx, cy);" in code
+    # `up` pushes the surface up, so the page scrolls down: positive delta_y.
+    assert "await page.mouse.wheel(0, 100);" in code
+    assert "await page.mouse.down();" not in code
 
 
 def test_swipe_from_to_is_todo() -> None:

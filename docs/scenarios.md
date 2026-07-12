@@ -250,6 +250,12 @@ so those backends fail the step with a clear "unsupported action" reason rather 
 `{on,direction}` and `{from,to}` must be **exactly one or the other** (mixing or omitting a side
 is a validation error).
 
+The **directional** form means "scroll", and each backend realizes it with the primitive that
+actually scrolls: a real OS drag on iOS / Android, and — since a mouse drag does not scroll a web
+page — a wheel event (desktop) or a touch drag (a mobile [`deviceMode`](drivers.md#playwright-web))
+on web (BE-0227). The **coordinate** form is a literal pointer drag for its own sake (a canvas / map
+pan / drag handle), the same raw-drag last resort on every backend.
+
 ### `doubleTap` / `pinch` / `rotate` (gestures)
 
 ```yaml

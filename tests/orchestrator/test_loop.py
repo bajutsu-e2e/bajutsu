@@ -175,4 +175,5 @@ def test_type_and_swipe_actions() -> None:
         clock=FakeClock(),
     )
     assert result.ok
-    assert [a[0] for a in driver.actions] == ["tap", "type", "swipe", "swipe"]
+    # The directional form is a scroll (BE-0227), the coordinate form a raw drag.
+    assert [a[0] for a in driver.actions] == ["tap", "type", "scroll", "swipe"]

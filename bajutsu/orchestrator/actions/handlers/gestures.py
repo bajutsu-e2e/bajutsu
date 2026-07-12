@@ -108,14 +108,17 @@ def _do_swipe(driver: base.Driver, step: Step, _r: object, _c: object, _b: objec
     assert step.swipe is not None
     sw = step.swipe
     if sw.from_ is not None and sw.to is not None:
+        # Coordinate form: a literal pointer drag (canvas / map pan / drag handle), realized as-is.
         driver.swipe(sw.from_, sw.to)
     elif sw.on is not None and sw.direction is not None:
+        # Directional form means "scroll": route to `driver.scroll`, so the web backend can realize
+        # it as a real scroll (wheel / touch) rather than a page-inert mouse drag (BE-0227).
         elements = driver.query()
         el = base.resolve_unique(elements, sw.on.as_selector())
         frm, to = _scroll_gesture(
             _center(el["frame"]), sw.direction, sw.amount, screen_size_from_elements(elements)
         )
-        driver.swipe(frm, to)
+        driver.scroll(frm, to)
 
 
 @_handler("pinch")
