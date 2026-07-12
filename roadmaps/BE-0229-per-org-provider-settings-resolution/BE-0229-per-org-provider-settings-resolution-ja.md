@@ -9,7 +9,7 @@
 | 提案者 | [@hirosassa](https://github.com/hirosassa) |
 | 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0229") |
-| 実装 PR | [#TBD](https://github.com/bajutsu-e2e/bajutsu/pulls) |
+| 実装 PR | [#955](https://github.com/bajutsu-e2e/bajutsu/pull/955) |
 | トピック | AI provider configuration |
 | 関連 | [BE-0184](../BE-0184-persist-serve-ai-provider-settings/BE-0184-persist-serve-ai-provider-settings-ja.md), [BE-0183](../BE-0183-per-provider-serve-settings/BE-0183-per-provider-serve-settings-ja.md), [BE-0015](../BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting-ja.md) |
 <!-- /BE-METADATA -->
@@ -88,7 +88,7 @@ BE-0184 はプロバイダー設定の永続化を実装したうえで、組織
   `resolve_provider_env` ／遅延読み込みの `_org_settings`）、`_spawn_env`（管理対象の環境変数を消して
   からオーバーレイを適用）、`_register_and_dispatch` の接続点、ワーカーのジョブ仕様、マイグレーション
   `0011_provider_settings` を通して配線しています。ローカル serve とゼロコンフィグ経路は変わりません。
-  ([#TBD](https://github.com/bajutsu-e2e/bajutsu/pulls))
+  ([#955](https://github.com/bajutsu-e2e/bajutsu/pull/955))
 
 ## 参考
 

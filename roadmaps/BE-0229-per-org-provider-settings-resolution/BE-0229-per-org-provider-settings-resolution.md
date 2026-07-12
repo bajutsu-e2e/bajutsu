@@ -9,7 +9,7 @@
 | Author | [@hirosassa](https://github.com/hirosassa) |
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0229") |
-| Implementing PR | [#TBD](https://github.com/bajutsu-e2e/bajutsu/pulls) |
+| Implementing PR | [#955](https://github.com/bajutsu-e2e/bajutsu/pull/955) |
 | Topic | AI provider configuration |
 | Related | [BE-0184](../BE-0184-persist-serve-ai-provider-settings/BE-0184-persist-serve-ai-provider-settings.md), [BE-0183](../BE-0183-per-provider-serve-settings/BE-0183-per-provider-serve-settings.md), [BE-0015](../BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md) |
 <!-- /BE-METADATA -->
@@ -91,7 +91,7 @@ for it to feed; this item is that read path.
   through `ServeState.provider_settings` (keyed by org), `serve.operations.config` (`provider_env` /
   `resolve_provider_env` / lazy `_org_settings`), `_spawn_env` (managed-var strip + overlay), the
   `_register_and_dispatch` seam, the worker job spec, and migration `0011_provider_settings`. Local
-  serve and the zero-config path are unchanged. ([#TBD](https://github.com/bajutsu-e2e/bajutsu/pulls))
+  serve and the zero-config path are unchanged. ([#955](https://github.com/bajutsu-e2e/bajutsu/pull/955))
 
 ## References
 
