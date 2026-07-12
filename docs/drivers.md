@@ -220,8 +220,14 @@ abstraction resolves **id → frame center → coordinate tap**, exactly as on i
   `capture` policy drives them unchanged (see [evidence](evidence.md)).
 - **Network** is not observed natively (no `NETWORK` capability) — the same mocked story as iOS: the
   app-side collector URL is forwarded through the launch env as an intent extra, so `mocks` work with
-  no new code path. Device control backs the emulator subset `setLocation` (`emu geo fix`) and the
-  clipboard operations (`cmd clipboard`, BE-0211); the rest of the family stays unsupported.
+  no new code path. Device control backs the emulator subset `setLocation` (`emu geo fix`, BE-0211)
+  and the clipboard operations; the rest of the family stays unsupported. The clipboard runs through
+  an in-app receiver (`BajutsuAndroid`, BE-0233), not `cmd clipboard`: on-device that command is a
+  silent no-op, and since Android 10 only the foreground app / default IME may touch the clipboard —
+  so bajutsu sends an ordered `am broadcast` that a receiver inside the app handles from the app
+  process (base64 both ways, so the argv needs no quoting; a missing receiver fails loudly rather
+  than reading an empty clip). adb still advertises `clipboard` because, like idb's over simctl, the
+  backend can drive it given a cooperating app. See [`BajutsuAndroid`](../BajutsuAndroid/README.md).
 
 > The XML attribute names follow UI Automator's `uiautomator dump` schema. The Views `android:id`
 > `.`↔`_` case is resolved scenario-side: a selector lists both id forms and matches either (BE-0221),

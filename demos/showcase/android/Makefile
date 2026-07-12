@@ -52,11 +52,12 @@ SERIAL ?= booted
 # local arm64 emulator.
 #
 # The device-control flow `device_android` joins the lane (BE-0208 unit 5): it overrides the GPS
-# location (`emu geo fix`) and re-asserts the settled screen — the deterministic Android twin of the
-# idb `device.yaml`. It runs on the Stable launch tab, needing no tab-bar navigation. Only setLocation
-# of the device-control family is exercised: adb advertises `clipboard` too, but `cmd clipboard` is
-# unimplemented on the google_apis API 34 image ("No shell command implementation"), so a clipboard
-# read-back cannot run on-device (tracked separately). Verified on a local arm64 emulator.
+# location (`emu geo fix`) and round-trips the clipboard, then re-asserts the settled screen — the
+# deterministic Android twin of the idb `device.yaml`. It runs on the Stable launch tab, needing no
+# tab-bar navigation. Both setLocation and clipboard of the device-control family are exercised:
+# `cmd clipboard` is a no-op on-device, so the clipboard runs through the in-app receiver the showcase
+# embeds from BajutsuAndroid (BE-0233) — the read-back is the strong assertion PR #934 wanted.
+# Verified on a local arm64 emulator.
 #
 # The multi-touch gesture flow `gestures_multitouch` joins the lane (BE-0232): the adb driver now
 # drives a pinch / rotate as a raw two-slot `sendevent` sweep on the rooted emulator (two contacts
@@ -65,8 +66,7 @@ SERIAL ?= booted
 # a two-finger gesture cannot be approximated — so it requires root (the `e2e` target runs `adb root`)
 # and fails loudly otherwise. Verified on a local arm64 emulator.
 #
-# Still held out: the adb clipboard round-trip and mocked network stay out (adb-clipboard-fidelity
-# proposal PR #935 / BE-0007 follow-ups).
+# Still held out: mocked network (a BE-0007 follow-up).
 E2E_SCENARIOS := smoke firstlook navigation search data_driven relaunch system components modals \
 	controls notices gestures gestures_multitouch permission_android device_android
 

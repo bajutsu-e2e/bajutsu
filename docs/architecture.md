@@ -268,16 +268,17 @@ workers would collide).
   fast-gate unit tests over captured XML fixtures; on-device actuation parity with idb — system
   `back`, deeplink, a single-round-trip `doubleTap`, scroll-into-view resolution, and up-front
   runtime-permission grants (BE-0210); a device-control subset — `setLocation` and clipboard
-  read/write/clear, gated by per-operation capability tokens (BE-0211 / BE-0212), while `push` /
-  `clearKeychain` / status-bar overrides / `background` / `foreground` stay unsupported (no emulator
-  equivalent); `pinch`/`rotate` two-finger multi-touch gated on a rooted device (protocol-B
-  `sendevent`, no single-touch fallback; BE-0232); a UI Automator (Kotlin) codegen target (BE-0209);
-  an Android e2e CI lane (emulator under KVM, `android-e2e.yml`; BE-0208), and adb cannot yet drive
-  the native tab bar, so tab-scoped scenarios stay iOS-only until BE-0223 lands (BE-0007).
-  **Id matching** stays verbatim in the driver: where a native id syntax can't reproduce the SPEC
-  id (Android Views `android:id` maps `stable.refresh` → `stable_refresh`), the scenario's selector
-  lists **both id forms** and the shared resolver matches either as an OR — an explicit
-  scenario-side convention, not a driver-side `.`↔`_` rewrite (BE-0221)
+  read/write/clear, gated by per-operation capability tokens (BE-0211 / BE-0212), the clipboard
+  through an in-app receiver (`BajutsuAndroid`, BE-0233) since a shell process cannot reach the
+  clipboard on Android 10+, while `push` / `clearKeychain` / status-bar overrides / `background` /
+  `foreground` stay unsupported (no emulator equivalent); `pinch`/`rotate` two-finger multi-touch
+  gated on a rooted device (protocol-B `sendevent`, no single-touch fallback; BE-0232); a UI
+  Automator (Kotlin) codegen target (BE-0209); an Android e2e CI lane (emulator under KVM,
+  `android-e2e.yml`; BE-0208), and adb cannot yet drive the native tab bar, so tab-scoped scenarios
+  stay iOS-only until BE-0223 lands (BE-0007). **Id matching** stays verbatim in the driver: where a
+  native id syntax can't reproduce the SPEC id (Android Views `android:id` maps `stable.refresh` →
+  `stable_refresh`), the scenario's selector lists **both id forms** and the shared resolver matches
+  either as an OR — an explicit scenario-side convention, not a driver-side `.`↔`_` rewrite (BE-0221)
 - Scenario schema (strict validation) and YAML round-trip; `id` / `idMatches` accept a list of OR
   candidates for cross-platform id forms (BE-0221)
 - Evaluation of the assertion kinds (`exists` / `value` / `label` / `count` / `enabled` / `disabled` /
