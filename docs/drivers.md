@@ -236,6 +236,20 @@ fits the same toolchain as `make check`. Implementation: `drivers/playwright.py`
 - Lifecycle is owned by the driver: a fresh `BrowserContext` is the `erase` equivalent, `navigate()`
   (`page.goto(baseUrl)`) is the `launch`, and `close()` tears the browser down. There is no simctl
   device, so the run uses a dummy lease and no device control.
+- **Device mode** (BE-0228): a web target's `deviceMode` config selects how each `BrowserContext` is
+  created — `desktop` (the default, a plain desktop context, unchanged from before) or a Playwright
+  device preset name (e.g. `iPhone 13`). A preset is resolved against `playwright.devices` and its
+  descriptor (viewport / `device_scale_factor` / `is_mobile` / `has_touch` / `user_agent`) is merged
+  into `new_context(**kwargs)` alongside `reduced_motion="reduce"`, so the target is driven as that
+  mobile device. The descriptor is resolved **lazily** (config load never imports Playwright) and
+  memoized, so a `reset_context` (crawl clean start) and a `relaunch` (BE-0077) rebuild the identical
+  context — the mode is stable across the browser's whole lifecycle, the same invariant the engine
+  and `reduced_motion` already hold. An unknown preset fails loudly with a `ValueError` at driver
+  start. This is **desktop-browser emulation** — a mobile viewport and touch input in a desktop-class
+  browser, exactly what Chrome DevTools' device toolbar does — **not** a real mobile browser on a
+  real device or a device cloud; for a real mobile OS the Android backend is the path. When a context
+  is created with `has_touch` true, `swipe` routes through the CDP touch path (its companion item)
+  rather than a wheel scroll.
 - **Multi-touch** (BE-0054): `pinch` / `rotate` are synthesized as two-finger drags via the Chromium
   DevTools protocol (`Input.dispatchTouchEvent`) — `mouse` is single-pointer, so gestures go through
   CDP, the same path a real touch takes (so the page's touch listeners fire). The element center

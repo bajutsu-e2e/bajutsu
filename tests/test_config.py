@@ -294,6 +294,23 @@ def test_web_app_unknown_browser_rejected_at_load() -> None:
         load_config("targets: { web: { baseUrl: 'http://x/', browser: safari } }")
 
 
+def test_web_app_device_mode_defaults_to_desktop() -> None:
+    # No deviceMode = desktop: the web backend keeps today's plain desktop context, so an existing
+    # web config is unchanged (BE-0228).
+    cfg = load_config("targets: { web: { baseUrl: 'http://127.0.0.1:8787/' } }")
+    assert _web(resolve(cfg, "web")).device_mode == "desktop"
+
+
+def test_web_app_device_mode_config_resolves() -> None:
+    # A target drives a mobile face by naming a Playwright device preset; it resolves straight onto
+    # the web sub-config (a per-target knob, like browser). The preset name itself is resolved
+    # lazily in the driver, so config load never imports Playwright.
+    cfg = load_config(
+        "targets: { web: { baseUrl: 'http://127.0.0.1:8787/', deviceMode: 'iPhone 13' } }"
+    )
+    assert _web(resolve(cfg, "web")).device_mode == "iPhone 13"
+
+
 def test_web_app_launch_server_parsed() -> None:
     # `launchServer` declares how to bring up baseUrl's host for a run; readyUrl defaults to None
     # (run falls back to baseUrl), readyTimeout to 30s.

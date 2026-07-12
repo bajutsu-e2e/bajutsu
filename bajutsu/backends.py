@@ -182,6 +182,7 @@ def make_driver(
     base_url: str | None = None,
     headless: bool = True,
     browser: str = "chromium",
+    device_mode: str = "desktop",
     record_video_dir: Path | None = None,
     runner_port: int = 0,
 ) -> base.Driver:
@@ -209,7 +210,11 @@ def make_driver(
         if not base_url:
             raise ValueError("web backend requires base_url (set apps.<app>.baseUrl)")
         return PlaywrightDriver(
-            base_url, headless=headless, browser=browser, record_video_dir=record_video_dir
+            base_url,
+            headless=headless,
+            browser=browser,
+            device_mode=device_mode,
+            record_video_dir=record_video_dir,
         )
     if actuator in KNOWN_ACTUATORS:
         raise NotImplementedError(

@@ -7,8 +7,9 @@
 |---|---|
 | 提案 | [BE-0228](BE-0228-web-device-mode-emulation-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **提案** |
+| 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0228") |
+| 実装 PR | _pending_ |
 | トピック | Platform expansion (Android / Web / Flutter) |
 <!-- /BE-METADATA -->
 
@@ -128,12 +129,30 @@ web ターゲットの設定に**デバイスモード**を追加し、Playwrigh
 > 作業分解（作業の単位ごとに 1 つ）に対応し、ログには変更内容と時期（古い順）を PR へのリンクと
 > ともに記録します。
 
-- [ ] 設定の露出（デバイスモードの設定、デスクトップ既定、検証）
-- [ ] 記述子の解決（`playwright.devices` プリセット、または明示的なデスクトップ／モバイルと viewport）
-- [ ] コンテキストへの配線（`_new_context` とスターター、reset／relaunch をまたいで安定）
-- [ ] ケイパビリティとプリフライトの見直し
-- [ ] テスト（プリセットの解決、デスクトップ既定、コンテキストの kwargs、reset／relaunch の安定性）
-- [ ] ドキュメント（`configuration.md` / `drivers.md`、両言語）
+- [x] 設定の露出（デバイスモードの設定、デスクトップ既定、検証）
+- [x] 記述子の解決（`playwright.devices` プリセット、または明示的なデスクトップ／モバイルと viewport）
+- [x] コンテキストへの配線（`_new_context` とスターター、reset／relaunch をまたいで安定）
+- [x] ケイパビリティとプリフライトの見直し
+- [x] テスト（プリセットの解決、デスクトップ既定、コンテキストの kwargs、reset／relaunch の安定性）
+- [x] ドキュメント（`configuration.md` / `drivers.md`、両言語）
+
+**ログ**
+
+- _pending_ — ターゲット単位の `deviceMode` 文字列として実装しました。`"desktop"`（既定で、
+  エミュレーションなし）か、Playwright のデバイスプリセット名（例 `"iPhone 13"`）です。*詳細設計* と
+  *検討した代替案* で挙げた「明示的なデスクトップ／モバイルと viewport」の構造的な形は**スコープから
+  外しました**。文字列の形が、本項目の動機である名前付きプリセットのケースを満たし、独自の
+  ブレークポイントは設定の破壊なしに後から足せます（文字列は将来のオブジェクト形と前方互換です）。
+  `device_mode` は web ターゲットだけに置き（`TargetConfig` / `WebConfig`）、`headless` / `browser` と
+  並びます。トップレベルの `device`（iOS シミュレータ名）とは別物です。プリセットは
+  `PlaywrightDriver` の中で**遅延**して解決するため（`_device_context_kwargs` が `playwright.devices`
+  に対して解決）、config 読み込みが Playwright を import することはありません。不明なプリセットは
+  ドライバー起動時に `ValueError` で明示的に失敗し、解決した記述子は記憶するので `reset_context` /
+  `relaunch` は同一のコンテキストを組み直します。`make_driver` / `WebEnvironment.start` /
+  `doctor.probe_screen` に通しました。**ケイパビリティとプリフライトの見直し**：変更なし。モバイル
+  コンテキストのタッチ入力は既存の `multiTouch` ケイパビリティが既に表しており、デバイスモードは
+  シナリオ単位のケイパビリティではなくコンテキスト生成時の設定なので、決定的な run／CI 経路で新たに
+  ゲートするものはありません。
 
 ## 参考
 
