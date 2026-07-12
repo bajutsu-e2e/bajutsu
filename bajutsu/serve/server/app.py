@@ -167,8 +167,8 @@ def make_app(state: ServeState) -> FastAPI:
         return _result(ops.claude_code_token_info(state, _actor(request)))
 
     @app.get("/api/provider")
-    async def get_provider() -> JSONResponse:
-        return _result(ops.provider_info(state))
+    async def get_provider(request: Request) -> JSONResponse:
+        return _result(ops.provider_info(state, _actor(request)))
 
     @app.get("/api/themecontract")
     async def theme_contract() -> JSONResponse:
@@ -382,8 +382,8 @@ def make_app(state: ServeState) -> FastAPI:
         )
 
     @app.post("/api/provider")
-    async def set_provider(body: dict[str, Any]) -> JSONResponse:
-        return _result(ops.set_provider(state, body))
+    async def set_provider(body: dict[str, Any], request: Request) -> JSONResponse:
+        return _result(ops.set_provider(state, body, _actor(request)))
 
     @app.post("/api/theme")
     async def upload_theme(body: dict[str, Any], request: Request) -> JSONResponse:

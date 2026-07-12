@@ -283,6 +283,7 @@ def _build_server_state(
     from bajutsu.serve.server.oauth import GitHubOAuthClient
     from bajutsu.serve.server.object_store import artifact_prefix, object_store_from_env, org_prefix
     from bajutsu.serve.server.post_completion_logbus import PostCompletionLogBus
+    from bajutsu.serve.server.provider_store import DbProviderSettingsStore
     from bajutsu.serve.server.scenarios import ObjectScenarioStorage, StorageScenarioStore
     from bajutsu.serve.server.secrets import DbSecretStore, fernet_from_env
     from bajutsu.serve.server.sessions import _DEFAULT_TTL, SqlSessionStore
@@ -403,6 +404,13 @@ def _build_server_state(
             secrets: SecretStore = DbSecretStore(_db_engine, org, _secrets_fernet)
         else:
             secrets = state.secrets  # the process-env local store built in __post_init__
+        # The per-org AI provider selection (BE-0229): DB-backed when a database is wired, so a saved
+        # choice survives a restart per org; None without one, so the selection is session-only
+        # in-memory (still resolved per org, just not persisted) — the same no-database fallback the
+        # secret store takes above. Not sensitive, so it is stored in the clear.
+        provider_settings = (
+            DbProviderSettingsStore(_db_engine, org) if _db_engine is not None else None
+        )
         return StoreBundle(
             artifacts=ObjectStorageArtifactStore(store, prefix=artifact_prefix(base)),
             scenarios=StorageScenarioStore(
@@ -410,6 +418,7 @@ def _build_server_state(
             ),
             baselines=ObjectBaselineStore(store, prefix=base),
             secrets=secrets,
+            provider_settings=provider_settings,
         )
 
     state.org_stores = make_bundle

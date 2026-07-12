@@ -39,7 +39,7 @@ from bajutsu.serve.provider_store import (
     PersistedProviderSettings,
     ProviderSettingsError,
 )
-from bajutsu.serve.state import ProviderSettings, ServeState
+from bajutsu.serve.state import OrgProviderSettings, ProviderSettings, ServeState
 
 # The logical name of the Claude API key in the secret store (BE-0136). The store holds each named
 # credential under its own name; the second one below is the `claude-code` provider's OAuth token.
@@ -201,46 +201,174 @@ def claude_code_token_info(state: ServeState, actor: str | None) -> tuple[Any, i
     return payload, 200
 
 
-def _provider_settings_map(state: ServeState, mode: str) -> dict[str, dict[str, str]]:
-    """The per-provider settings the Settings UI pre-populates from (BE-0183): every provider that
-    has a remembered slot, plus the active provider seeded from the environment so a value set before
-    serve started (or via env alone) still shows. For the active provider the environment is
-    authoritative — set_provider materializes its slot there for spawned jobs — so it is read from
-    there rather than the stored slot. *mode* is the active provider resolved once by the caller, so
-    a concurrent `set_provider` can't flip it between the top-level `provider` and this map (serve is
-    threaded)."""
-    slots = state.provider_settings_snapshot()  # locked copy — serve is threaded (BE-0183)
-    slots[mode] = ProviderSettings(
+def _load_org_settings(state: ServeState, org: str) -> OrgProviderSettings:
+    """Load *org*'s persisted AI provider selection from its store, validated (BE-0229).
+
+    The value shape of the boot restore, generalized per org. With no store wired, no file/row saved
+    yet, or a malformed/inconsistent one, returns an empty selection — resolution then falls back to
+    the launch env / defaults, keeping the zero-config path (BE-0101) unchanged. A file that exists
+    but is malformed or names an unknown/invalid active provider is logged loudly and dropped rather
+    than materializing an invalid choice that only fails at the first AI call (determinism-first:
+    loud, not silent). The language (BE-0188) is not persisted, so a freshly loaded selection has
+    none until a save sets it."""
+    store = state.for_org(org).provider_settings
+    if store is None:
+        return OrgProviderSettings()
+    try:
+        data = store.load()
+    except ProviderSettingsError:
+        logging.getLogger(__name__).warning(
+            "ignoring the persisted AI provider settings: the file is malformed; "
+            "falling back to the environment defaults",
+            exc_info=True,
+        )
+        return OrgProviderSettings()
+    if data is None:
+        return OrgProviderSettings()
+    active = data.settings.get(data.provider)
+    if (
+        active is None
+        or data.provider not in known_providers()
+        or not _valid_slot(data.provider, active)
+    ):
+        # A well-formed save always records a registered active provider with valid values. A file
+        # that names an unregistered provider, an active provider with no slot, a bedrock slot with a
+        # blank model, or any slot with an invalid effort/model/region is hand-edited or corrupt.
+        # Seeding from it would materialize an invalid choice that only fails at the first AI call, so
+        # fall back to the env defaults here instead — loud, not silent.
+        logging.getLogger(__name__).warning(
+            "ignoring the persisted AI provider settings: the active provider %r is unknown, "
+            "missing, or has an invalid saved slot; falling back to the environment defaults",
+            data.provider,
+        )
+        return OrgProviderSettings()
+    known = known_providers()
+    slots: dict[str, ProviderSettings] = {}
+    for name, settings in data.settings.items():
+        if name not in known:
+            # A stale/hand-edited file can carry a slot for a provider that no longer exists; skip it
+            # rather than surfacing a bogus entry in the Settings UI. Loud, like the active guard.
+            logging.getLogger(__name__).warning(
+                "ignoring a persisted settings slot for the unknown provider %r", name
+            )
+            continue
+        if not _valid_slot(name, settings):
+            # A structurally valid (all-string) but semantically invalid slot — an unrecognised
+            # effort or a model/region with whitespace, the same rules set_provider enforces on
+            # write. Skip it rather than resolve from it — loud, not silent.
+            logging.getLogger(__name__).warning(
+                "ignoring a persisted settings slot for %r: invalid effort or model/region", name
+            )
+            continue
+        slots[name] = settings
+    return OrgProviderSettings(provider=data.provider, slots=slots)
+
+
+def _org_settings(state: ServeState, org: str) -> OrgProviderSettings:
+    """*org*'s in-memory AI provider selection, loaded from its store on first access (BE-0229).
+
+    The per-org read path every AI-resolving surface goes through. Once loaded (even to an empty
+    selection) the org's entry stays in memory, so a malformed store is logged once, not on every
+    request. Local serve's single `default` org makes this exactly one entry."""
+    existing = state.org_provider_settings(org)
+    if existing is not None:
+        return existing
+    loaded = _load_org_settings(state, org)
+    state.put_org_provider_settings(org, loaded)
+    return loaded
+
+
+def _active_slot(settings: OrgProviderSettings, mode: str) -> ProviderSettings:
+    """The slot the Settings UI shows (and reachability checks) for the active provider *mode*: the
+    org's saved slot, or — when the org set nothing for it — the launch-env value, so a value set
+    before serve started (or via env alone) still shows (BE-0183 / the zero-config path)."""
+    saved = settings.slots.get(mode)
+    if saved is not None:
+        return saved
+    return ProviderSettings(
         model=os.environ.get(BEDROCK_MODEL_ENV if mode == "bedrock" else MODEL_ENV, ""),
         effort=os.environ.get(EFFORT_ENV, ""),
         region=os.environ.get("AWS_REGION", "") if mode == "bedrock" else "",
     )
+
+
+def _provider_settings_map(
+    settings: OrgProviderSettings, mode: str, active_slot: ProviderSettings
+) -> dict[str, dict[str, str]]:
+    """The per-provider settings the Settings UI pre-populates from (BE-0183): every provider the org
+    has a remembered slot for, plus the active provider's resolved *active_slot*. *mode* and
+    *active_slot* are resolved once by the caller so a concurrent save can't flip them mid-read."""
+    slots = dict(settings.slots)
+    slots[mode] = active_slot
     return {
         name: {"model": s.model, "effort": s.effort, "region": s.region}
         for name, s in slots.items()
     }
 
 
-def provider_info(state: ServeState) -> tuple[Any, int]:
-    """The AI provider spawned jobs will use, with the Bedrock region/model.  Read from the serve
-    process's environment, so it reflects what a record/crawl job inherits — one of the registered
-    providers (`api-key` / `bedrock` / `ant` / `claude-code`). Resolved through the BE-0104 registry
-    so a non-SDK provider (`claude-code`, BE-0176) is reported as itself, not clamped to the SDK
-    family. `providers` carries every provider's own remembered model/effort/region (BE-0183) so the
-    Settings UI can swap fields on a dropdown change without a round trip."""
-    mode = resolved_provider()
+def provider_env(settings: OrgProviderSettings) -> dict[str, str]:
+    """The env-var overlay a spawned job needs to resolve *settings*' active provider (BE-0229).
+
+    The per-org counterpart to the old process-global `_apply_provider_env`: it returns a dict merged
+    onto the spawn's env by `_spawn_env`, never mutating `os.environ`, so one org's selection can't
+    leak into another org's jobs. Empty when no provider is selected — the zero-config path (BE-0101)
+    then falls back to the job's inherited env unchanged. Only values that are set are emitted; a
+    blank model/effort/language is simply absent (the spawn strips the managed vars first, so absence
+    resolves to the default rather than inheriting a stale launch value)."""
+    prov = settings.provider
+    if not prov:
+        return {}
+    env = {PROVIDER_ENV: prov}
+    slot = settings.slots.get(prov, ProviderSettings())
+    if slot.effort:
+        env[EFFORT_ENV] = slot.effort
+    if prov == "bedrock":
+        # Bedrock takes a provider-prefixed model id in its own slot; a region is optional.
+        env[BEDROCK_MODEL_ENV] = slot.model
+        if slot.region:
+            env["AWS_REGION"] = slot.region
+    elif slot.model:
+        # api-key / ant / claude-code take a bare Anthropic id via the general override (blank = default).
+        env[MODEL_ENV] = slot.model
+    if settings.language:
+        env[LANGUAGE_ENV] = settings.language
+    return env
+
+
+def resolve_provider_env(state: ServeState, org: str) -> dict[str, str]:
+    """The AI provider env overlay for a job started by *org* (BE-0229) — the seam `_register_and_
+    dispatch` attaches to every job so the spawn uses that org's saved selection. Loads the org's
+    settings (from its store on first access) and materializes them; empty when nothing is selected."""
+    return provider_env(_org_settings(state, org))
+
+
+def provider_info(state: ServeState, actor: str | None) -> tuple[Any, int]:
+    """The AI provider spawned jobs will use for the actor's org, with the Bedrock region/model.
+    Resolved from that org's saved selection (BE-0229) rather than the shared process env, so a
+    hosted deployment reports each org its own choice — one of the registered providers (`api-key` /
+    `bedrock` / `ant` / `claude-code`). Resolved through the BE-0104 registry so a non-SDK provider
+    (`claude-code`, BE-0176) is reported as itself. `providers` carries every provider's own
+    remembered model/effort/region (BE-0183) so the Settings UI can swap fields on a dropdown change
+    without a round trip."""
+    settings = _org_settings(state, state.org_of(actor))
+    # The active provider is the org's saved choice, else the launch-env / registry default.
+    mode = settings.provider or resolved_provider()
+    active_slot = _active_slot(settings, mode)
     # Claude reachability for the resolved provider (BE-0101), so the front end disables the Claude
-    # tabs (record/crawl) on data rather than only surfacing the failure on click. Honors the bound
-    # config's `ai.keyEnv` (BE-0097) so the SDK-path check reads the right env var.
-    gap = ai_availability.availability(ai=AiConfig(key_env=active_key_env(state)))
+    # tabs (record/crawl) on data rather than only surfacing the failure on click. The org's provider
+    # + its model drive the check (so a bedrock selection reads reachable once it has a model); the
+    # key check still reads `os.environ` via `ai.keyEnv` (BE-0097) — the pre-existing local-key path.
+    gap = ai_availability.availability(
+        ai=AiConfig(provider=mode, model=active_slot.model or None, key_env=active_key_env(state))
+    )
     return {
         "provider": mode,
-        "region": os.environ.get("AWS_REGION", ""),
-        "model": os.environ.get(BEDROCK_MODEL_ENV, ""),
-        "aiModel": os.environ.get(MODEL_ENV, ""),  # general model override (non-Bedrock providers)
-        "effort": os.environ.get(EFFORT_ENV, ""),
-        "language": os.environ.get(LANGUAGE_ENV, ""),  # AI output language (BE-0188)
-        "providers": _provider_settings_map(state, mode),
+        "region": active_slot.region if mode == "bedrock" else "",
+        "model": active_slot.model if mode == "bedrock" else "",
+        "aiModel": active_slot.model if mode != "bedrock" else "",  # non-Bedrock model override
+        "effort": active_slot.effort,
+        "language": settings.language,  # AI output language (BE-0188)
+        "providers": _provider_settings_map(settings, mode, active_slot),
         "claudeAvailable": gap is None,
         "claudeGap": gap,
         "claudeHint": ai_availability.message(gap) if gap is not None else "",
@@ -382,18 +510,18 @@ def set_claude_code_token(state: ServeState, value: str, actor: str | None) -> t
     return {"ok": True, "set": False}, 200
 
 
-def set_provider(state: ServeState, body: dict[str, Any]) -> tuple[Any, int]:
-    """Select the AI provider for spawned record/crawl jobs: the Anthropic API (`api-key`), Amazon
-    Bedrock, the Anthropic CLI (`ant`, a browser-based OAuth/SSO sign-in — BE-0163), or the Claude
-    Code CLI (`claude-code`, the local `claude` on a Pro/Max/Console seat — BE-0176). Written into
-    the serve process's environment (`BAJUTSU_AI_PROVIDER`) and inherited by jobs, mirroring the
-    API-key handler. On local serve the choice is also flushed to disk so it survives a restart
-    (BE-0184); a hosted deployment keeps the pre-BE-0184 session-only behavior until per-org runtime
-    resolution lands. The selection is remembered per provider in `state.provider_settings` (BE-0183)
-    so switching the Settings dropdown no longer discards the model/effort set for the provider left
-    behind; only the selected provider's slot is written — the others are untouched — and the active
-    slot is what gets materialized into the env. Validated against the BE-0104 registry, so every AI
-    path (authoring, the alert guard, triage) resolves through the same seam."""
+def set_provider(state: ServeState, body: dict[str, Any], actor: str | None) -> tuple[Any, int]:
+    """Select the AI provider for the actor's org's spawned record/crawl jobs: the Anthropic API
+    (`api-key`), Amazon Bedrock, the Anthropic CLI (`ant`, a browser-based OAuth/SSO sign-in —
+    BE-0163), or the Claude Code CLI (`claude-code`, the local `claude` on a Pro/Max/Console seat —
+    BE-0176). Stored per organization (BE-0229) and materialized into a per-job env overlay at
+    dispatch, rather than mutating the shared process env — so on a hosted multi-tenant serve one
+    org's save never changes another org's AI runs. On a wired deployment the choice is flushed to
+    the org's store so it survives a restart (BE-0184 / BE-0229). The selection is remembered per
+    provider (BE-0183) so switching the Settings dropdown no longer discards the model/effort set for
+    the provider left behind; only the selected provider's slot is written — the others are
+    untouched. Validated against the BE-0104 registry, so every AI path (authoring, the alert guard,
+    triage) resolves through the same seam."""
     prov = normalize_provider(str(body.get("provider", "") or ""))
     if prov not in known_providers():
         return {"error": f"unknown provider: {prov or '(empty)'}"}, 400
@@ -403,25 +531,25 @@ def set_provider(state: ServeState, body: dict[str, Any]) -> tuple[Any, int]:
     if effort and effort not in EFFORT_LEVELS:
         return {"error": f"unknown effort {effort!r}: use one of {', '.join(EFFORT_LEVELS)}"}, 400
     # AI output language (BE-0188): applies to record/crawl's generated prose, never the run/CI
-    # verdict. `auto` (and blank) is the no-override default, so it clears the env like a blank effort;
-    # an unknown value is rejected so a typo is a visible error, not a silent default. It is a global,
-    # non-per-provider setting, so it is written here rather than through the per-provider slot.
+    # verdict. `auto` (and blank) is the no-override default, so it stores no override; an unknown
+    # value is rejected so a typo is a visible error, not a silent default. It is a global,
+    # non-per-provider setting, so it is stored on the org's selection, not the per-provider slot.
     language = str(body.get("language", "") or "").strip().lower()
     if language and language not in LANGUAGES:
         return {"error": f"unknown language {language!r}: use one of {', '.join(LANGUAGES)}"}, 400
-    if language and language != DEFAULT_LANGUAGE:
-        os.environ[LANGUAGE_ENV] = language
-    else:
-        os.environ.pop(LANGUAGE_ENV, None)
+    lang_value = language if language and language != DEFAULT_LANGUAGE else ""
     if prov in ("api-key", "ant", "claude-code"):
         # These providers take a bare Anthropic model id via the general override (blank = default).
         ai_model = str(body.get("aiModel", "") or "").strip()
         if any(c.isspace() for c in ai_model):
             return {"error": "model must not contain whitespace"}, 400
         settings = ProviderSettings(model=ai_model, effort=effort)
-        _apply_provider_env(prov, settings)
-        state.set_provider_setting(prov, settings)
-        persisted = _persist_provider_settings(state, prov)
+        org = state.org_of(actor)
+        # Load the org's persisted slots first, so writing this one provider's slot doesn't drop the
+        # others (set_org_provider_choice merges into the loaded entry).
+        _org_settings(state, org)
+        state.set_org_provider_choice(org, provider=prov, slot=settings, language=lang_value)
+        persisted = _persist_provider_settings(state, org, prov)
         return {
             "ok": True,
             "provider": prov,
@@ -433,7 +561,7 @@ def set_provider(state: ServeState, body: dict[str, Any]) -> tuple[Any, int]:
             "persisted": persisted,
         }, 200
     # Bedrock needs a provider-prefixed model id (the bare Anthropic id is invalid there); region is
-    # optional and falls back to AWS_REGION already in the environment.
+    # optional and falls back to the AWS_REGION the job inherits.
     model = str(body.get("model", "") or "").strip()
     region = str(body.get("region", "") or "").strip()
     if not model:
@@ -441,9 +569,10 @@ def set_provider(state: ServeState, body: dict[str, Any]) -> tuple[Any, int]:
     if any(c.isspace() for c in model) or any(c.isspace() for c in region):
         return {"error": "region and model must not contain whitespace"}, 400
     settings = ProviderSettings(model=model, effort=effort, region=region)
-    _apply_provider_env("bedrock", settings)
-    state.set_provider_setting("bedrock", settings)
-    persisted = _persist_provider_settings(state, "bedrock")
+    org = state.org_of(actor)
+    _org_settings(state, org)
+    state.set_org_provider_choice(org, provider="bedrock", slot=settings, language=lang_value)
+    persisted = _persist_provider_settings(state, org, "bedrock")
     return {
         "ok": True,
         "provider": "bedrock",
@@ -455,71 +584,48 @@ def set_provider(state: ServeState, body: dict[str, Any]) -> tuple[Any, int]:
     }, 200
 
 
-def _apply_provider_env(prov: str, settings: ProviderSettings) -> None:
-    """Materialize one provider's slot into the process env that spawned jobs inherit.
+def _persist_provider_settings(state: ServeState, org: str, provider: str) -> bool | None:
+    """Write *provider* + *org*'s current in-memory slot map to that org's durable store (BE-0229).
 
-    The single env-writing path shared by `set_provider` (on save) and boot restore (BE-0184), so a
-    restored choice reproduces exactly what the last save wrote. Language (BE-0188) is a separate,
-    non-per-provider setting handled by the caller, not here.
-    """
-    if settings.effort:
-        os.environ[EFFORT_ENV] = settings.effort
-    else:
-        os.environ.pop(EFFORT_ENV, None)
-    if prov == "bedrock":
-        os.environ[PROVIDER_ENV] = "bedrock"
-        os.environ[BEDROCK_MODEL_ENV] = settings.model
-        os.environ.pop(MODEL_ENV, None)  # Bedrock uses its own model id; clear the general override
-        if settings.region:
-            os.environ["AWS_REGION"] = settings.region
-        return
-    # api-key / ant / claude-code take a bare Anthropic model id via the general override (blank =
-    # default, so a cleared model pops the override).
-    if settings.model:
-        os.environ[MODEL_ENV] = settings.model
-    else:
-        os.environ.pop(MODEL_ENV, None)
-    os.environ[PROVIDER_ENV] = prov
-
-
-def _persist_provider_settings(state: ServeState, provider: str) -> bool | None:
-    """Write *provider* + the current in-memory settings map to the durable store (BE-0184).
-
-    The ``settings`` map write is race-safe: the snapshot and the disk write happen inside
-    ``state._persist_lock``, so whichever thread wins the lock last re-reads
-    ``provider_settings_snapshot()`` at that point and writes the most up-to-date map — including
-    every mutation from threads that already released ``_provider_lock`` — rather than a slow write
+    The ``settings`` map write is race-safe: the re-snapshot and the disk write happen inside
+    ``state._persist_lock``, so whichever thread wins the lock last re-reads the org's settings
+    (`org_provider_settings`) at that point and writes the most up-to-date map — including every
+    mutation from threads that already released ``_provider_lock`` — rather than a slow write
     overwriting a newer one.
 
-    The ``provider`` (active) field is best-effort under concurrency, not race-free. It is the
-    selection *this* request applied, and ``_apply_provider_env`` writes ``os.environ[PROVIDER_ENV]``
-    unlocked before this runs — a process-global mutation that predates BE-0184 and is inherently
-    racy (two simultaneous saves for different providers already leave the live env in whichever
-    order they finish). So under concurrent conflicting saves the persisted active provider can
-    differ from the final live env; BE-0184's scope is surviving a restart, not making that
-    pre-existing env race atomic. In the normal single-operator case the two agree.
+    The ``provider`` (active) field is best-effort under concurrency, not race-free — it is the
+    selection *this* request applied, and two simultaneous saves for different providers leave the
+    persisted active provider as whichever finished last. BE-0184's scope is surviving a restart, not
+    making that race atomic; in the normal single-operator case the last save wins cleanly.
 
-    The selection has already taken effect in the process env and the in-memory map, so a failure to
-    write the file (a read-only serve dir, a full disk) must not fail the request that already
-    succeeded — it is logged loudly and the change stands for the session, just not across a restart.
+    The selection has already taken effect in the in-memory map, so a failure to write must not fail
+    the request that already succeeded — it is logged loudly and the change stands for the session,
+    just not across a restart. The `except` is deliberately broad: this seam now backs both the local
+    file store (whose writes fail with ``OSError`` — a read-only serve dir, a full disk) and the
+    hosted `DbProviderSettingsStore` (whose ``session.commit`` fails with a SQLAlchemy error, not an
+    ``OSError``), so narrowing it would let a transient DB failure escape and break this very
+    contract. The `try` wraps exactly one store write with no re-raise, so nothing else is masked;
+    catching ``Exception`` (not ``SQLAlchemyError``) also keeps this default-path module from
+    importing SQLAlchemy (BE-0112). The language (BE-0188) is not persisted (it lives only in
+    memory), matching the pre-BE-0229 store shape.
 
     Returns:
-        ``True`` when durably saved to disk; ``False`` when a wired store's write failed (the
-        operator's choice is active for the session but won't survive a restart); ``None`` when no
-        store is wired (a hosted deployment or the pre-BE-0184 session-only shape — persistence is
-        not applicable, so neither ``True`` nor ``False`` applies). The caller surfaces this as the
-        ``persisted`` field in the HTTP response so the Settings panel can signal accordingly.
+        ``True`` when durably saved; ``False`` when a wired store's write failed (the choice is
+        active for the session but won't survive a restart); ``None`` when no store is wired for the
+        org (a server backend without a database — session-only), so neither ``True`` nor ``False``
+        applies. The caller surfaces this as the ``persisted`` field so the Settings panel can signal.
     """
-    store = state.provider_settings_store
+    store = state.for_org(org).provider_settings
     if store is None:
         return None
     try:
         with state._persist_lock:
-            # Re-read the snapshot inside the lock so the thread that wins last always writes the
-            # most recent in-memory state, regardless of when each thread's mutation was applied.
-            snapshot = state.provider_settings_snapshot()
-            store.save(PersistedProviderSettings(provider=provider, settings=snapshot))
-    except OSError:
+            # Re-read inside the lock so the thread that wins last always writes the most recent
+            # in-memory state, regardless of when each thread's mutation was applied.
+            snapshot = state.org_provider_settings(org)
+            slots = snapshot.slots if snapshot is not None else {}
+            store.save(PersistedProviderSettings(provider=provider, settings=slots))
+    except Exception:
         logging.getLogger(__name__).warning(
             "the AI provider selection is active for this session but could not be persisted; "
             "it will not survive a restart",
@@ -530,68 +636,15 @@ def _persist_provider_settings(state: ServeState, provider: str) -> bool | None:
 
 
 def restore_persisted_provider_settings(state: ServeState) -> None:
-    """Load the persisted provider settings on serve boot and seed the process env (BE-0184).
+    """Force-load the `default` org's persisted provider selection on serve boot (BE-0229).
 
-    Restores the per-provider memory map (BE-0183) and materializes the active provider's slot into
-    the env vars spawned jobs inherit, so a restart restores what the operator last saved instead of
-    resetting to the launch environment. With no store wired, or no file saved yet, this is a silent
-    no-op — resolution falls back to today's env-derived defaults, keeping the AI-free zero-config
-    path (BE-0101) unchanged. A file that exists but is malformed or inconsistent (an empty/0-byte
-    file counts as malformed) is logged and skipped rather than crashing serve or silently resetting
-    the choice (determinism-first: loud, not silent).
-    """
-    store = state.provider_settings_store
-    if store is None:
-        return
-    try:
-        data = store.load()
-    except ProviderSettingsError:
-        logging.getLogger(__name__).warning(
-            "ignoring the persisted AI provider settings: the file is malformed; "
-            "falling back to the environment defaults",
-            exc_info=True,
-        )
-        return
-    if data is None:
-        return
-    active = data.settings.get(data.provider)
-    if (
-        active is None
-        or data.provider not in known_providers()
-        or not _valid_slot(data.provider, active)
-    ):
-        # A well-formed save always records a registered active provider with valid values. A file
-        # that names an unregistered provider, an active provider with no slot, a bedrock slot with a
-        # blank model, or any slot with an invalid effort/model/region is hand-edited or corrupt.
-        # Seeding the env from it would materialize an invalid choice that only fails at the first AI
-        # call, so fall back to the env defaults here instead — loud, not silent.
-        logging.getLogger(__name__).warning(
-            "ignoring the persisted AI provider settings: the active provider %r is unknown, "
-            "missing, or has an invalid saved slot; falling back to the environment defaults",
-            data.provider,
-        )
-        return
-    known = known_providers()
-    for name, settings in data.settings.items():
-        if name not in known:
-            # A stale/hand-edited file can carry a slot for a provider that no longer exists; skip it
-            # rather than populating the in-memory map with a bogus entry the Settings UI would then
-            # surface (via `_provider_settings_map`). Loud, like the active-provider guard above.
-            logging.getLogger(__name__).warning(
-                "ignoring a persisted settings slot for the unknown provider %r", name
-            )
-            continue
-        if not _valid_slot(name, settings):
-            # A hand-edited file may carry a structurally valid (all-string) but semantically invalid
-            # slot — an unrecognised effort level or a model/region with whitespace; the same rules
-            # set_provider enforces on write. Seeding the env from such a slot would silently
-            # override a later AI call's resolution, so skip it — loud, not silent.
-            logging.getLogger(__name__).warning(
-                "ignoring a persisted settings slot for %r: invalid effort or model/region", name
-            )
-            continue
-        state.set_provider_setting(name, settings)
-    _apply_provider_env(data.provider, active)
+    A boot-time trigger for the lazy per-org load (`_org_settings`), kept as its own seam so a
+    malformed store is logged loudly at startup, not on the first request. Local serve has only the
+    `default` org, so loading it here restores exactly what the operator last saved. With no store
+    wired or nothing saved, this is a silent no-op — resolution falls back to today's env-derived
+    defaults, keeping the AI-free zero-config path (BE-0101) unchanged. Per-org (hosted) selections
+    load lazily on each org's first request instead of at boot."""
+    _org_settings(state, DEFAULT_ORG)
 
 
 def launch_project_identity(

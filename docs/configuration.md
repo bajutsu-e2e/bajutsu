@@ -134,8 +134,12 @@ defaults:
   saved provider, model, and effort now persist to a serve-owned file and are restored on the next
   start ([BE-0184](../roadmaps/BE-0184-persist-serve-ai-provider-settings/BE-0184-persist-serve-ai-provider-settings.md)),
   so a restart no longer resets them to the launch environment; a config `ai:` block still wins over
-  a restored value. `record` prints the resolved choice up front (`🤖 AI: <provider> · model <model>
-  · effort <effort>`).
+  a restored value. On a **hosted, multi-tenant** `serve` the selection resolves and persists **per
+  organization** ([BE-0229](../roadmaps/BE-0229-per-org-provider-settings-resolution/BE-0229-per-org-provider-settings-resolution.md)),
+  so each org's `record` / triage / draft paths use that org's own saved choice; the selection reaches
+  a spawned job as a per-job environment overlay rather than the shared process environment, so one
+  org's save never changes another org's AI runs. `record` prints the resolved choice up front
+  (`🤖 AI: <provider> · model <model> · effort <effort>`).
 
 - **Output language is a separate, config-first knob**
   ([BE-0188](../roadmaps/BE-0188-configurable-ai-output-language/BE-0188-configurable-ai-output-language.md)).
