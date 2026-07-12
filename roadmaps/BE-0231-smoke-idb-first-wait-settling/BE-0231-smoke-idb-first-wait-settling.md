@@ -115,18 +115,24 @@ acceptance. Each unit is independently shippable.
 - [ ] Unit 1 — make the first-wait timeout diagnosable from artifacts (tree + readiness signal + provenance).
 - [x] Unit 2 — tighten the readiness → first-wait handoff (`readyWhen` / content-aware readiness).
 - [x] Unit 3 — make the first `wait` resilient to a mid-transition empty tree.
-- [ ] Unit 4 — right-size the first-wait budget for a cold CI Simulator (config, condition-based).
+- [x] Unit 4 — right-size the first-wait budget for a cold CI Simulator (config, condition-based).
 - [ ] Unit 5 — prove the lane stays green on first attempt across consecutive CI runs.
 
 Log (oldest first):
 
-- [#952](https://github.com/bajutsu-e2e/bajutsu/pull/952) — Units 2–3: point the `showcase-swiftui` target's `readyWhen` at the first Stable row
+- [#952](https://github.com/bajutsu-e2e/bajutsu/pull/952) — Units 2–4: point the `showcase-swiftui` target's `readyWhen` at the first Stable row
   (`stable.row.1`), the element the smoke scenario's opening `wait` needs, so `_await_ready` no longer
   returns on some other in-namespace node and lets the first step race a not-yet-rendered row on a
   cold-boot CI Simulator (Unit 2); and lock in that the scenario `for`-wait treats an empty first poll
-  as "not yet, keep polling" rather than consuming its budget (Unit 3). Config-first (prime directive
-  3), condition-based (prime directive 2), no LLM on the verdict path (prime directive 1). Unit 5 (CI
-  stays green on first attempt) is observed on the `smoke (idb)` lane after this lands.
+  as "not yet, keep polling" rather than consuming its budget (Unit 3). Unit 2 alone did not hold:
+  the flake reproduced on this PR's own `smoke (idb)` run with the identical
+  `wait timeout: for stable.row.1 (10.0s)`, so the render genuinely exceeds the ~20s the gate's 10s
+  plus the scenario's 10s allow. Unit 4 raises the wait floor on the `smoke (idb)` lane via
+  `BAJUTSU_MIN_WAIT_TIMEOUT=20` (the pre-existing knob the Android e2e lane already opts into),
+  giving the row ~30s from launch — condition-based, so a fast render returns at once and no fixed
+  sleep is introduced. Config-first (prime directive 3), condition-based (prime directive 2), no LLM
+  on the verdict path (prime directive 1). Unit 5 (CI stays green on first attempt) is observed on the
+  `smoke (idb)` lane after this lands.
 
 ## References
 
