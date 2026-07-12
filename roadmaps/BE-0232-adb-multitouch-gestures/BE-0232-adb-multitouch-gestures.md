@@ -9,7 +9,7 @@
 | Author | [@hirosassa](https://github.com/hirosassa) |
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0232") |
-| Implementing PR | _pending_ |
+| Implementing PR | [#947](https://github.com/bajutsu-e2e/bajutsu/pull/947) |
 | Topic | Platform expansion (Android / Web / Flutter) |
 | Related | [BE-0007](../BE-0007-android-backend/BE-0007-android-backend.md), [BE-0208](../BE-0208-android-emulator-e2e-ci/BE-0208-android-emulator-e2e-ci.md), [BE-0210](../BE-0210-android-actuation-fidelity/BE-0210-android-actuation-fidelity.md), [BE-0082](../BE-0082-capability-preflight-check/BE-0082-capability-preflight-check.md), [BE-0223](../BE-0223-adb-tab-bar-navigation/BE-0223-adb-tab-bar-navigation.md) |
 <!-- /BE-METADATA -->
@@ -149,7 +149,7 @@ path.
 
 **Log**
 
-- Implemented in _pending_: two-slot protocol-B `sendevent_gesture_cmd` + `pinch_contacts` /
+- Implemented in [#947](https://github.com/bajutsu-e2e/bajutsu/pull/947): two-slot protocol-B `sendevent_gesture_cmd` + `pinch_contacts` /
   `rotate_contacts` geometry in `bajutsu/adb.py`; `pinch` / `rotate` on the adb driver gated on a
   rooted device via `_two_finger_gesture` (no single-touch fallback); `MULTI_TOUCH` declared in the
   driver's static capability set; the Compose `SHOWCASE_GESTURES` gesture screen; `gestures_multitouch`
