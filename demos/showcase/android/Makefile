@@ -60,7 +60,7 @@ SERIAL ?= booted
 #
 # The multi-touch gesture flow `gestures_multitouch` joins the lane (BE-0232): the adb driver now
 # drives a pinch / rotate as a raw two-slot `sendevent` sweep on the rooted emulator (two contacts
-# moving together across interleaved frames), so the shared scenario iOS runs on XCUITest runs
+# moving together across interleaved frames), so the shared scenario that iOS runs on XCUITest runs
 # unchanged on Android. Unlike the single-touch `gestures` double-tap there is no `input` fallback —
 # a two-finger gesture cannot be approximated — so it requires root (the `e2e` target runs `adb root`)
 # and fails loudly otherwise. Verified on a local arm64 emulator.
