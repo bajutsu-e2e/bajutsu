@@ -98,8 +98,11 @@ class LaunchServer(_Model):
 
 
 class Mailbox(_Model):
-    """A generic HTTP mailbox the `email` step polls (`targets.<name>.mailbox`, BE-0046).
+    """A mailbox the `email` step polls (`targets.<name>.mailbox`, BE-0046 / BE-0186).
 
+    `kind` selects the transport adapter (`http`, later `imap`) from the mailbox registry, defaulting
+    to `http` so a pre-BE-0186 block is unchanged; an unknown `kind` fails closed when the runner
+    resolves the mailbox, not here (the deterministic config must not import the registry, BE-0112).
     `url` is the inbox endpoint (GET; commonly `${secrets.*}`), `headers` any auth. The optional
     response mapping absorbs a provider's JSON shape without per-provider code: `messages` is a
     dotted path to the message array (empty = the response is the array), and `fields` maps each
@@ -107,6 +110,7 @@ class Mailbox(_Model):
     defaulting to the field's own name.
     """
 
+    kind: str = "http"
     url: str
     headers: dict[str, str] = Field(default_factory=dict)
     messages: str = ""
