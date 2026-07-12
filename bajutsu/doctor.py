@@ -208,7 +208,7 @@ def probe_screen(
         from bajutsu.drivers.playwright import PlaywrightDriver, _playwright_error_types
 
         # Probe the same device mode the run will use (BE-0228): a mobile context can render a
-        # different element tree, so the id-coverage doctor reports assesses the real target.
+        # different element tree, so the id-coverage doctor assesses the real target.
         driver = PlaywrightDriver(
             base_url, headless=web.headless, browser=web.browser, device_mode=web.device_mode
         )
