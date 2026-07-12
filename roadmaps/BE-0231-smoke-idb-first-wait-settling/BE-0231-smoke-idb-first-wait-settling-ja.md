@@ -1,14 +1,14 @@
-[English](BE-XXXX-smoke-idb-first-wait-settling.md) · **日本語**
+[English](BE-0231-smoke-idb-first-wait-settling.md) · **日本語**
 
-# BE-XXXX — E2E の最初の待機を Simulator の settling flake に対して硬化する
+# BE-0231 — E2E の最初の待機を Simulator の settling flake に対して硬化する
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
 |---|---|
-| 提案 | [BE-XXXX](BE-XXXX-smoke-idb-first-wait-settling-ja.md) |
+| 提案 | [BE-0231](BE-0231-smoke-idb-first-wait-settling-ja.md) |
 | 提案者 | [@hirosassa](https://github.com/hirosassa) |
 | 状態 | **提案** |
-| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0231") |
 | トピック | 実機検証（M1 クローズアウト） |
 <!-- /BE-METADATA -->
 

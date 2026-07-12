@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-smoke-idb-first-wait-settling-ja.md)
+**English** · [日本語](BE-0231-smoke-idb-first-wait-settling-ja.md)
 
-# BE-XXXX — Harden the E2E first-wait against Simulator settling flake
+# BE-0231 — Harden the E2E first-wait against Simulator settling flake
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-smoke-idb-first-wait-settling.md) |
+| Proposal | [BE-0231](BE-0231-smoke-idb-first-wait-settling.md) |
 | Author | [@hirosassa](https://github.com/hirosassa) |
 | Status | **Proposal** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0231") |
 | Topic | On-device validation (M1 close-out) |
 <!-- /BE-METADATA -->
 

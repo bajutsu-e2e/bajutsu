@@ -621,7 +621,9 @@ Under consideration — not yet decided. Promote an item to *In progress* once w
 The deterministic core runs end-to-end on the FakeDriver, and the idb backend's subprocess execution (`describe-all` parsing, frame-center tap/text/swipe) and the simctl launch sequence are validated on a real device. What remains is only ongoing maintenance monitoring.
 
 <!-- GENERATED:proposals-on-device -->
-
+| ID | Item | Status |
+|---|---|---|
+| [BE-0231](BE-0231-smoke-idb-first-wait-settling/BE-0231-smoke-idb-first-wait-settling.md) | Harden the E2E first-wait against Simulator settling flake | Proposal |
 <!-- /GENERATED:proposals-on-device -->
 
 ### Platform expansion (Android / Web / Flutter)
