@@ -401,6 +401,16 @@ class TargetConfig(_Model):
             raise ValueError(f"invalid browser {v!r}: use one of {', '.join(WEB_ENGINES)}")
         return v
 
+    @field_validator("ready_when")
+    @classmethod
+    def _valid_ready_when(cls, v: base.Selector | None) -> base.Selector | None:
+        # A `readyWhen` id/idMatches candidate list is checked the same way a scenario-step selector
+        # is — empty/blank/non-canonical-first fails loudly at load, not silently (BE-0221).
+        if v is not None:
+            base.validate_id_candidates("id", v.get("id"))
+            base.validate_id_candidates("idMatches", v.get("idMatches"))
+        return v
+
     @model_validator(mode="after")
     def _need_target(self) -> TargetConfig:
         # A malformed target entry (no identifier at all) still fails fast. The platform-aware check

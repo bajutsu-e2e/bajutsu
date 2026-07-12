@@ -93,6 +93,19 @@ def test_selector_label_traits_and_role() -> None:
     assert "await page.getByRole('button', { name: 'Save', exact: true }).click();" in code
 
 
+def test_id_candidate_list_emits_primary_candidate() -> None:
+    # A generated test targets one platform (web here), so a cross-platform candidate list (BE-0221)
+    # emits its primary (first, dotted SPEC) candidate — the id the web build surfaces as data-testid.
+    code = _gen(
+        "- name: x\n  steps:\n"
+        "    - tap: { id: [stable.refresh, stable_refresh] }\n"
+        "    - tap: { idMatches: [list.row.*, list_row_*] }\n"
+    )
+    assert "await page.getByTestId('stable.refresh').click();" in code
+    assert "await page.locator('[data-testid^=\"list.row.\"]').click();" in code
+    assert "stable_refresh" not in code  # the underscore alternate is not emitted for web
+
+
 def test_id_matches_glob_maps_to_css_operators() -> None:
     suffix = _gen("- name: x\n  steps:\n    - tap: { idMatches: '*.submit' }\n")
     assert "await page.locator('[data-testid$=\".submit\"]').click();" in suffix

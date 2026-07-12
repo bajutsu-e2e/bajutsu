@@ -161,7 +161,12 @@ abstraction resolves **id → frame center → coordinate tap**, exactly as on i
   `testTag` surfaced via `testTagsAsResourceId` reproduces verbatim while a native `android:id`
   drops its prefix), `text` → `label` (`content-desc` fallback), `content-desc` → `value` (the app
   mirrors its state value there, SPEC §2.1), and the widget `class` (plus enabled / selected /
-  checked state) → `traits`.
+  checked state) → `traits`. The local name is matched **exactly** — the driver does no `.`↔`_`
+  rewriting, which would conflate distinct ids and erode determinism. Where a platform's native id
+  syntax can't reproduce the SPEC id verbatim (Android Views: `android:id` allows neither `.` nor
+  `-`, so `stable.refresh` surfaces as `stable_refresh`), the scenario carries **both** id forms in
+  one selector — `id: [stable.refresh, stable_refresh]` — and the match is an OR over the candidates
+  (BE-0221); see [scenarios](scenarios.md#selectors-addressing-an-element).
 - `tap(sel)`: `_resolve` confirms uniqueness (**retries not-found, fails ambiguity fast** — like
   idb, a mid-transition dump is a transient null-root that is retried, and a 2+ match fails
   immediately) → `adb shell input tap` at the frame center. `swipe` adds a finite duration so it is a
@@ -210,11 +215,13 @@ abstraction resolves **id → frame center → coordinate tap**, exactly as on i
   no new code path. Device control backs the emulator subset `setLocation` (`emu geo fix`) and the
   clipboard operations (`cmd clipboard`, BE-0211); the rest of the family stays unsupported.
 
-> The XML attribute names follow UI Automator's `uiautomator dump` schema. On-device tuning of the
-> selector mapping against the Android showcase (`demos/showcase/android`) — including whether the
-> Views `android:id` `.`↔`_` case gets a scenario variant — is tracked as e2e follow-up (BE-0007
-> Unit 7); the fast gate exercises the parser, the frame-center taps, the transient-empty retry, and
-> ambiguous-fails-fast over captured XML fixtures. adb is `brew install android-platform-tools`.
+> The XML attribute names follow UI Automator's `uiautomator dump` schema. The Views `android:id`
+> `.`↔`_` case is resolved scenario-side: a selector lists both id forms and matches either (BE-0221),
+> so the shared showcase scenarios run unchanged on both Android toolkits — checked on every push/PR
+> by [`android-e2e.yml`](../.github/workflows/android-e2e.yml), which drives `showcase-compose` and
+> `showcase-views` over the same set. The fast gate exercises the parser, the frame-center taps, the
+> transient-empty retry, and ambiguous-fails-fast over captured XML fixtures. adb is
+> `brew install android-platform-tools`.
 
 ## Playwright (web)
 

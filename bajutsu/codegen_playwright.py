@@ -213,8 +213,10 @@ def describe_name_for(stem: str) -> str:
 
 def _primary_locator(sel: base.Selector) -> str | None:
     """The base Playwright locator for a selector's primary field, before `index` narrowing."""
+    # A generated test targets one platform, so an `id` / `idMatches` list of cross-platform OR
+    # candidates (BE-0221) emits its primary (first) form — the id the web build actually surfaces.
     if "id" in sel:
-        return f"page.getByTestId({_ts(sel['id'])})"
+        return f"page.getByTestId({_ts(base.id_candidates(sel['id'])[0])})"
     traits = sel.get("traits")
     if "label" in sel:
         if traits:
@@ -223,7 +225,7 @@ def _primary_locator(sel: base.Selector) -> str | None:
     if traits:
         return f"page.getByRole({_ts(traits[0])})"
     if "idMatches" in sel:
-        css = _glob_to_css(sel["idMatches"])
+        css = _glob_to_css(base.id_candidates(sel["idMatches"])[0])
         return f"page.locator('{css}')" if css is not None else None
     if "labelMatches" in sel:
         # `labelMatches` is a regex (re.search); a JS RegExp preserves that, unlike a plain string.

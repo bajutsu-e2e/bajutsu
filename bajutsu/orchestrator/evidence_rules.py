@@ -118,7 +118,7 @@ def _collect_captures(
     `capture` and any matching capturePolicy rules."""
     fired: list[str] = [*_BASELINE_INSTANT, *(step.capture or [])]
     primary = _primary_selector(step)
-    primary_id = primary.id if primary is not None else None
+    primary_id = primary.first_id() if primary is not None else None
     for rule in scenario.capture_policy:
         if _rule_fires(rule, kind, primary_id, screen_changed, ok):
             fired.extend(rule.capture)

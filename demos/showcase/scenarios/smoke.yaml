@@ -1,13 +1,15 @@
 # Smoke: the app launches on the Stable tab, the fixed catalog is present, and the seeded
-# rows show. Runs identically against showcase-swiftui and showcase-uikit (same ids). The
-# catalog is fixed at five (no launch-env seed knob, BE-0079), so the count is a constant.
+# rows show. Runs identically across every target. The catalog is fixed at five
+# (no launch-env seed knob, BE-0079), so the count is a constant. Each id lists both its dotted
+# SPEC form (iOS / Compose) and its underscore form (Android Views, whose android:id can't hold
+# `.`/`-`), so this one scenario runs unchanged on every target (BE-0221).
 - name: stable catalog smoke
   preconditions:
     launchEnv: { SHOWCASE_UITEST: "1" }
   steps:
-    - wait: { for: { id: stable.row.1 }, timeout: 10 }
+    - wait: { for: { id: [stable.row.1, stable_row_1] }, timeout: 10 }
       capture: [video]
   expect:
-    - count: { sel: { idMatches: "stable.row.*" }, equals: 5 }
-    - exists: { id: stable.row.1 }
-    - exists: { id: stable.empty, negate: true }
+    - count: { sel: { idMatches: ["stable.row.*", "stable_row_*"] }, equals: 5 }
+    - exists: { id: [stable.row.1, stable_row_1] }
+    - exists: { id: [stable.empty, stable_empty], negate: true }

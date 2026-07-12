@@ -8,6 +8,18 @@ from bajutsu.orchestrator import RunResult
 from bajutsu.report import html_report
 
 
+def test_sel_parts_renders_id_candidate_list() -> None:
+    # A candidate-list id/idMatches (BE-0221) renders as `#a | b`, not a raw Python list repr.
+    from bajutsu.report.richtext import _sel_parts
+
+    id_parts = _sel_parts({"id": ["stable.refresh", "stable_refresh"]})
+    assert ("id", "#stable.refresh | stable_refresh") in id_parts
+    glob_parts = _sel_parts({"idMatches": ["stable.row.*", "stable_row_*"]})
+    assert ("id", "id~stable.row.* | stable_row_*") in glob_parts
+    # A plain string id is unchanged.
+    assert ("id", "#counter.value") in _sel_parts({"id": "counter.value"})
+
+
 def test_assert_parts_visual() -> None:
     from bajutsu.report.richtext import _assert_parts
 

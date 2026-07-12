@@ -1,9 +1,13 @@
 # On-device Android e2e (Linux + KVM) — the third backend's lane, the Android twin of the iOS
 # `e2e.yml` (macOS / idb) and `web-e2e.yml` (Linux / Playwright). It boots an AVD under KVM on a
 # Linux runner and drives the showcase's core id/tap/type/value scenarios over `--backend android`
-# (the adb driver, BE-0007), asserting the deterministic pass/fail. It runs no LLM — a deterministic
-# `run` over fixed scenarios — so it stays within the prime directives, and it is kept off the fast
-# `make check` gate exactly as the idb and web e2e lanes are.
+# (the adb driver, BE-0007), asserting the deterministic pass/fail. It runs against both Android UI
+# toolkits — Compose over the full `E2E_SCENARIOS` (dotted SPEC ids verbatim) and Views over the
+# Stable-tab `E2E_VIEWS_SCENARIOS` subset (`android:id` underscore ids; `components`/`modals` stay
+# Compose-only for now), the sets defined in the Android Makefile — since each scenario's selectors
+# list both id forms (BE-0221). It runs no LLM — a deterministic `run` over fixed scenarios — so it
+# stays within the prime directives, and it is kept off the fast `make check` gate exactly as the
+# idb and web e2e lanes are.
 #
 # The AVD is x86_64 API 34, not the arm64 image the local 2026-07-07 validation used: KVM
 # acceleration on the x86_64 GitHub Linux runner needs an x86_64 system image, and a foreign-arch
@@ -95,10 +99,10 @@ jobs:
   android-e2e:
     name: smoke + golden + visual (adb)
     runs-on: ubuntu-latest
-    # Booting an emulator, building the APK, and running the Stable-tab scenarios plus the golden
-    # element-tree and pixel-visual checks is ~9min end to end; 30 catches a real hang (a wedged AVD
-    # boot or adb) with comfortable headroom.
-    timeout-minutes: 30
+    # Booting an emulator, building both APKs, and running the Stable-tab scenarios against both the
+    # Compose and Views toolkits (BE-0221) plus the golden element-tree and pixel-visual checks is
+    # ~16min end to end; 35 catches a real hang (a wedged AVD boot or adb) with comfortable headroom.
+    timeout-minutes: 35
     # The adb backend is pure subprocess (no Python extra), so the base package suffices; skip the
     # dev group (mypy / pytest / ruff), which the Linux `check` gate owns.
     env:
@@ -134,11 +138,15 @@ jobs:
       - name: Install the base package (no dev)
         run: uv sync --no-dev
 
-      # Build the Compose a11y APK outside the emulator session so the AVD is only alive during the
-      # run itself; bajutsu's launch installs it from the config's appPath. The `make e2e` step below
-      # depends on `compose-build` too, but Gradle finds it up to date there, so this is not rebuilt.
-      - name: Build the Compose showcase APK
-        run: make -C demos/showcase/android compose-build
+      # Build both a11y APKs outside the emulator session so the AVD is only alive during the run
+      # itself; bajutsu's launch installs each from the config's appPath. The `make e2e` step below
+      # depends on both builds too, but Gradle finds them up to date there, so they are not rebuilt.
+      # Views joins Compose here (BE-0221): the Stable-tab scenario subset (see
+      # `E2E_VIEWS_SCENARIOS` in demos/showcase/android/Makefile) drives both toolkits, whose ids
+      # differ only in `.`/`-` vs `_` — each scenario's selectors list both forms. `components` /
+      # `modals` stay Compose-only for now.
+      - name: Build the Compose + Views showcase APKs
+        run: make -C demos/showcase/android compose-build views-build
 
       # Cache the AVD system image + snapshot so the boot is warm across runs (the canonical
       # android-emulator-runner recipe): create-and-snapshot on a miss, then reuse it on the run.

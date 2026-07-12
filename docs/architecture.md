@@ -262,8 +262,13 @@ workers would collide).
   `clearKeychain` / status-bar overrides / `background` / `foreground` stay unsupported (no emulator
   equivalent); a UI Automator (Kotlin) codegen target (BE-0209); an Android e2e CI lane (emulator
   under KVM) is in progress (BE-0208), and adb cannot yet drive the native tab bar, so tab-scoped
-  scenarios stay iOS-only until BE-0223 lands (BE-0007)
-- Scenario schema (strict validation) and YAML round-trip
+  scenarios stay iOS-only until BE-0223 lands (BE-0007). **Id matching** stays verbatim in the
+  driver: where a native id syntax can't reproduce the SPEC id (Android Views `android:id` maps
+  `stable.refresh` → `stable_refresh`), the scenario's selector lists **both id forms** and the
+  shared resolver matches either as an OR — an explicit scenario-side convention, not a driver-side
+  `.`↔`_` rewrite (BE-0221)
+- Scenario schema (strict validation) and YAML round-trip; `id` / `idMatches` accept a list of OR
+  candidates for cross-platform id forms (BE-0221)
 - Evaluation of the assertion kinds (`exists` / `value` / `label` / `count` / `enabled` / `disabled` /
   `selected` / `request` / `requestSequence` / `event` / `responseSchema` / `visual` / `clipboard` /
   `golden`)

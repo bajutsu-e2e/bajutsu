@@ -16,6 +16,7 @@ from bajutsu.assertions import AssertionResult
 from bajutsu.audit import (
     audit_scenario,
     longitudinal,
+    referenced_ids,
     render,
     render_longitudinal,
     render_repeat,
@@ -551,3 +552,14 @@ def test_cli_missing_file_exits_two(tmp_path: Path) -> None:
     result = runner.invoke(app, ["audit", str(tmp_path / "nope.yaml")])
     assert result.exit_code == 2
     assert "scenario not found" in result.output
+
+
+def test_referenced_ids_uses_only_the_primary_candidate() -> None:
+    # A cross-platform selector (BE-0221) lists several id spellings of one logical id. Coverage
+    # buckets by `namespace_of` (splits on `.`), so only the primary (SPEC, dotted) candidate is a
+    # referenced id — an underscore alternate would register as a spurious off-namespace id.
+    scenarios = load_scenarios(
+        "- name: x\n  steps:\n    - tap: { id: [stable.refresh, stable_refresh] }\n"
+        "  expect:\n    - count: { sel: { idMatches: [stable.row.*, stable_row_*] }, atLeast: 1 }\n"
+    )
+    assert referenced_ids(scenarios[0]) == {"stable.refresh", "stable.row.*"}

@@ -178,6 +178,64 @@ def test_find_all_id_index_invalidates_on_new_list() -> None:
     assert "a" not in idx2
 
 
+# --- id / idMatches candidate lists (BE-0221): match ANY candidate ---
+# A shared scenario carries every platform's form of an id (`[stable.refresh, stable_refresh]`) so
+# it runs unchanged where the native id syntax differs. Only one form is ever on screen per app.
+
+# Compose surfaces the dotted SPEC id verbatim; the native android:id (Views) form is not present.
+_COMPOSE: list[Element] = [el("stable.refresh", "更新", ["button"])]
+# The Views build maps the same id to underscores; the dotted form is not present.
+_VIEWS: list[Element] = [el("stable_refresh", "更新", ["button"])]
+
+
+def test_id_list_matches_either_platform_form() -> None:
+    # The identical selector resolves against whichever id the app actually renders.
+    sel = {"id": ["stable.refresh", "stable_refresh"]}
+    assert resolve_unique(_COMPOSE, sel)["label"] == "更新"
+    assert resolve_unique(_VIEWS, sel)["label"] == "更新"
+
+
+def test_id_list_not_found_when_no_candidate_present() -> None:
+    try:
+        resolve_unique([el("other")], {"id": ["stable.refresh", "stable_refresh"]})
+    except ElementNotFound:
+        return
+    raise AssertionError("どの候補も無ければ ElementNotFound")
+
+
+def test_id_list_ambiguous_when_two_forms_on_one_screen() -> None:
+    # Determinism is unchanged: if both candidate forms are present, the selector is ambiguous and
+    # fails fast rather than picking one — an OR never masks a 2+ match (prime directive 2).
+    both = [el("stable.refresh", "A", ["button"]), el("stable_refresh", "B", ["button"])]
+    try:
+        resolve_unique(both, {"id": ["stable.refresh", "stable_refresh"]})
+    except AmbiguousSelector:
+        return
+    raise AssertionError("両形が同一画面にあれば曖昧で即失敗するべき")
+
+
+def test_id_list_find_all_matches_in_elements_order() -> None:
+    screen = [el("a"), el("b"), el("c")]
+    found = find_all(screen, {"id": ["c", "a"]})
+    assert [e["identifier"] for e in found] == ["a", "c"]  # elements order, not candidate order
+
+
+def test_id_matches_list_matches_any_glob() -> None:
+    # `count` over a shared scenario: dotted glob for Compose, underscore glob for Views.
+    compose = [el("stable.row.1"), el("stable.row.2")]
+    views = [el("stable_row_1"), el("stable_row_2")]
+    sel = {"idMatches": ["stable.row.*", "stable_row_*"]}
+    assert len(find_all(compose, sel)) == 2
+    assert len(find_all(views, sel)) == 2
+
+
+def test_id_candidates_normalizes_scalar_and_list() -> None:
+    from bajutsu.drivers.base import id_candidates
+
+    assert id_candidates("x") == ["x"]
+    assert id_candidates(["x", "y"]) == ["x", "y"]
+
+
 if __name__ == "__main__":
     fns = [v for k, v in sorted(globals().items()) if k.startswith("test_") and callable(v)]
     for fn in fns:

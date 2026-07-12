@@ -45,8 +45,8 @@ Addresses an element. **All provided fields are AND-ed.**
 
 | Field | Meaning | Stability |
 |---|---|---|
-| `id` | exact `accessibilityIdentifier` | ★ first choice |
-| `idMatches` | glob over id (assumes multiple matches, e.g. `"list.row.*"`) | for set operations |
+| `id` | exact `accessibilityIdentifier`; a **list** is an OR of candidates (matches any), for one scenario carrying several platforms' id forms | ★ first choice |
+| `idMatches` | glob over id (assumes multiple matches, e.g. `"list.row.*"`); a **list** matches any glob | for set operations |
 | `label` | exact `accessibilityLabel` | auxiliary / disambiguation only |
 | `labelMatches` | substring / regex over label (`re.search`) | auxiliary |
 | `traits` | narrow by trait (subset test, e.g. `["button"]`) | auxiliary |
@@ -56,6 +56,13 @@ Addresses an element. **All provided fields are AND-ed.**
 
 > `id` / `idMatches` match via `fnmatch.fnmatchcase` (case-sensitive glob), `labelMatches` via
 > `re.search` (regex / substring), `traits` is "the given set ⊆ the element's trait set."
+
+> `id` / `idMatches` also accept a **list of candidates** — an OR: the element matches when its id
+> equals (or glob-matches) *any* candidate (BE-0221). This lets one shared scenario carry a
+> platform's differing id spelling, e.g. `id: [stable.refresh, stable_refresh]` for Android Views'
+> `android:id` (which can't hold `.`/`-`). Only one form is on screen per app, so resolution stays
+> deterministic — 2+ matching elements still fail fast. See
+> [scenarios](scenarios.md#cross-platform-ids-a-candidate-list-be-0221).
 
 ### Authoring vs. runtime representation
 

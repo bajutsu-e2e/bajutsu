@@ -8,8 +8,11 @@
 #   bajutsu run --target showcase-uikit   --config demos/showcase/showcase.config.yaml ...
 # The `-noax` apps carry no identifiers (idNamespaces: []) — the `record` / `doctor`
 # "missing accessibility" demo. `make -C demos/showcase <target>-build` builds each.
-# The four Android twins (below, BE-0007 preparation) share the same id contract, but only the
-# Compose targets reproduce the dotted ids verbatim; showcase-views uses underscore ids (SPEC §2.1).
+# The four Android twins (below, BE-0007 preparation) share the same id contract: Compose reproduces
+# the dotted SPEC ids verbatim, while showcase-views maps them to underscores (`android:id` allows
+# neither '.' nor '-', SPEC §2.1). The shared scenarios run on both unchanged because each selector
+# lists both id forms — `id: [stable.refresh, stable_refresh]` — matching whichever the tree renders
+# (BE-0221); the id convention stays explicit in the scenario, never a hidden driver transform.
 defaults:
   backend: [idb]
   device: "iPhone 17 Pro"
@@ -113,14 +116,17 @@ targets:
     scenarios: demos/showcase/scenarios
 
   # ---- Views, accessibility ON — native android:id, which allows neither '.' nor '-', so the
-  # ids are the SPEC ids with both mapped to '_' (stable.refresh → stable_refresh). Whether the
-  # adb driver normalizes '.' ↔ '_' on match or these targets get a scenario variant is a
-  # BE-0007 design decision (see demos/showcase/android/README.md).
+  # ids are the SPEC ids with both mapped to '_' (stable.refresh → stable_refresh). The shared
+  # scenarios run here unchanged because each selector lists both id forms (BE-0221):
+  # `id: [stable.refresh, stable_refresh]` matches whichever the tree renders — no driver-side id
+  # rewriting, no scenario fork. `readyWhen` names the Stable-tab launch element in both forms; the
+  # `idNamespaces` heuristic can't gate on it because `namespace_of` splits on `.`, absent here.
   showcase-views:
     package: com.bajutsu.showcase.android.views
     deeplinkScheme: showcaseviews
     launchEnv: { SHOWCASE_UITEST: "1" }
     idNamespaces: [stable, horse, search, log, notice, perm, sys, net]
+    readyWhen: { id: [stable.row.1, stable_row_1] }
     appPath: demos/showcase/android/views/build/outputs/apk/a11y/debug/views-a11y-debug.apk
     build: make -C demos/showcase/android views-build
     backend: [android]

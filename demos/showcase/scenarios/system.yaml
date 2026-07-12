@@ -3,18 +3,20 @@
 # observe. The round-trip is in-app (Copy then Paste) so it reads back silently — reading a
 # pasteboard seeded by another process trips iOS's paste-permission prompt. The System section
 # sits below Notifications + Location, so scroll to the bottom (two swipes, the second anchored
-# on Location which is still visible after the first) before tapping.
+# on Location which is still visible after the first) before tapping. Each id lists both its
+# dotted SPEC form and its underscore Android Views form, so one scenario runs on every target
+# (BE-0221).
 - name: copy then paste round-trips through the mirror
   preconditions:
     launchEnv: { SHOWCASE_UITEST: "1" }
   steps:
     - tap: { label: "Permissions", traits: [button] }
       capture: [video]
-    - wait: { for: { id: perm.requestNotif }, timeout: 10 }
-    - swipe: { on: { id: perm.requestNotif }, direction: up }
-    - swipe: { on: { id: perm.requestLocation }, direction: up }
-    - wait: { for: { id: sys.paste.value }, timeout: 5 }
-    - tap: { id: sys.copy }
-    - tap: { id: sys.paste }
+    - wait: { for: { id: [perm.requestNotif, perm_requestNotif] }, timeout: 10 }
+    - swipe: { on: { id: [perm.requestNotif, perm_requestNotif] }, direction: up }
+    - swipe: { on: { id: [perm.requestLocation, perm_requestLocation] }, direction: up }
+    - wait: { for: { id: [sys.paste.value, sys_paste_value] }, timeout: 5 }
+    - tap: { id: [sys.copy, sys_copy] }
+    - tap: { id: [sys.paste, sys_paste] }
   expect:
-    - value: { sel: { id: sys.paste.value }, equals: "bajutsu-clip" }
+    - value: { sel: { id: [sys.paste.value, sys_paste_value] }, equals: "bajutsu-clip" }

@@ -87,8 +87,10 @@ which a `uiautomator dump` does not expose). Two Android-only carve-outs from th
 
 Because Compose testTags reproduce the dotted ids verbatim, the shared [`scenarios/`](scenarios)
 set drives `showcase-compose` unchanged. The Views ids are underscore-mapped (an `android:id`
-name allows neither `.` nor `-`); whether the adb driver normalizes `.` ↔ `_` on match or the
-Views targets get a scenario variant is a BE-0007 design decision. Networking is plain
+name allows neither `.` nor `-`); the shared set drives `showcase-views` unchanged too because each
+selector lists **both** id forms — `id: [stable.refresh, stable_refresh]` matches whichever the tree
+renders, an OR resolved by the deterministic core, keeping the id convention explicit in the scenario
+rather than a driver-side `.` ↔ `_` rewrite (BE-0221). Networking is plain
 `HttpURLConnection` (no Android BajutsuKit yet — the `network` evidence/mock story is BE-0007's,
 §6 applies to iOS); everything else below holds for all four Android products.
 

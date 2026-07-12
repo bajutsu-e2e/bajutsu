@@ -252,6 +252,29 @@ def test_ready_when_defaults_to_none() -> None:
     assert resolve(load_config("targets: { x: { bundleId: com.x } }"), "x").ready_when is None
 
 
+def test_ready_when_candidate_list_parsed() -> None:
+    # A readyWhen with a canonical-first candidate list (BE-0221) is accepted, like a scenario step.
+    cfg = load_config(
+        "targets: { x: { bundleId: com.x, readyWhen: { id: [stable.row.1, stable_row_1] } } }"
+    )
+    assert resolve(cfg, "x").ready_when == {"id": ["stable.row.1", "stable_row_1"]}
+
+
+def test_ready_when_misordered_candidate_list_rejected() -> None:
+    # readyWhen is validated the same way a scenario selector is: an underscore-first list (the
+    # canonical dotted form not leading) fails loudly at load, not silently (BE-0221).
+    with pytest.raises(ValidationError, match="canonical"):
+        load_config(
+            "targets: { x: { bundleId: com.x, readyWhen: { id: [stable_row_1, stable.row.1] } } }"
+        )
+
+
+def test_ready_when_idmatches_misordered_candidate_list_rejected() -> None:
+    # idMatches in readyWhen is validated on its own branch, the same way as id (BE-0221).
+    with pytest.raises(ValidationError, match="canonical"):
+        load_config("targets: { x: { bundleId: com.x, readyWhen: { idMatches: [a_b, a.b] } } }")
+
+
 def test_web_app_baseurl_no_bundleid() -> None:
     # A web app identifies its target by baseUrl and needs no bundleId — it carries a WebConfig,
     # which has no bundle_id field at all (the point of the per-platform split, BE-0126).

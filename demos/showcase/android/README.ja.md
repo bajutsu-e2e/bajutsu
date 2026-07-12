@@ -37,9 +37,12 @@ identifier の無いツリーになります。アクセシビリティ対応を
 - **Views**：`View.aid("stable_refresh")` が本物の `android:id`（[`views/src/main/res/values/ids.xml`](views/src/main/res/values/ids.xml)
   に宣言）を割り当て、UI Automator がそれをネイティブに公開します。`android:id` の名前には `.` も
   `-` も使えないため、SPEC の id は機械的に対応づけます（どちらも `_` になり、`stable.refresh` →
-  `stable_refresh`、`search.results-empty` → `search_results_empty`）。BE-0007 のドライバーが照合時に
-  `.` と `_` を同一視するか、Views 用のシナリオ variant を用意するかは BE-0007 側の設計判断です。
-  このフィクスチャは、差異を取り繕わずプラットフォーム本来の規約を正直に公開します。
+  `stable_refresh`、`search.results-empty` → `search_results_empty`）。それでも共有の
+  [`../scenarios/`](../scenarios) はそのまま Views を駆動します。各セレクタが id を両方の形で列挙し
+  （`id: [stable.refresh, stable_refresh]`）、画面に現れたほうにマッチする OR として決定論的コアが
+  解決するからです（BE-0221）。id 規約はシナリオに**明示的に**書かれ、ドライバー側の暗黙の
+  `.` ↔ `_` 変換に依存しません。このフィクスチャは、差異を取り繕わずプラットフォーム本来の規約を
+  正直に公開します。
 
 状態の反映は両ツールキットで同じです。どちらも値を `content-desc` に反映します。これは
 `uiautomator dump` が公開するチャネルです（Compose の `stateDescription` はダンプに現れません）。
