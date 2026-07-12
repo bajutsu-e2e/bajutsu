@@ -28,7 +28,8 @@ targets:
     # BE-0231: gate readiness on the first Stable row — the element the smoke scenario's opening
     # `wait` needs — not on any in-namespace node. On a cold-boot CI Simulator some other namespace
     # element can render first, letting `_await_ready` return early and the first step race the row.
-    # Both id forms (BE-0221) so the same readyWhen holds if the tree ever renders the underscore id.
+    # Both id forms (BE-0221) to mirror the scenario's own selector and the `showcase-views`
+    # precedent; this iOS target's tree only ever renders the dotted form.
     readyWhen: { id: [stable.row.1, stable_row_1] }
     appPath: demos/showcase/ios/swiftui/build/dd/Build/Products/Debug-iphonesimulator/BajutsuShowcaseSwiftUI.app
     build: make -C demos/showcase swiftui-build
