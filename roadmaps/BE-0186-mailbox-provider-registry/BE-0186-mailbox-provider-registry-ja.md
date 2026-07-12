@@ -7,8 +7,9 @@
 |---|---|
 | 提案 | [BE-0186](BE-0186-mailbox-provider-registry-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **提案** |
+| 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0186") |
+| 実装 PR | _pending_ |
 | トピック | 競合調査（MagicPod / Autify）由来の候補 |
 <!-- /BE-METADATA -->
 
@@ -100,13 +101,18 @@ targets:
 > 作業分解（作業の単位ごとに 1 つ）に対応し、ログには変更内容と時期（古い順）を PR へのリンクと
 > ともに記録します。
 
-- [ ] レジストリと fail-closed な解決（name → adapter の対応表、未知の `kind` は例外）
-- [ ] `http` リファレンスアダプタ — 既存の `build_mailbox_reader` リーダーをレジストリの裏側へ置き直す
-- [ ] `http` を既定とし 1 バイトも変えない後方互換を保つ `mailbox.kind` 設定フィールド
-- [ ] レジストリ・fail-closed な解決・`http` の既定に対するユニットテスト
-- [ ] ドキュメント: `docs/scenarios.md` と `docs/ja/` に、メールボックスのトランスポートが設定可能であることを追記
+- [x] レジストリと fail-closed な解決（name → adapter の対応表、未知の `kind` は例外）
+- [x] `http` リファレンスアダプタ — 既存の `build_mailbox_reader` リーダーをレジストリの裏側へ置き直す
+- [x] `http` を既定とし 1 バイトも変えない後方互換を保つ `mailbox.kind` 設定フィールド
+- [x] レジストリ・fail-closed な解決・`http` の既定に対するユニットテスト
+- [x] ドキュメント: `docs/configuration.md` と `docs/ja/` に、メールボックスのトランスポートが設定可能であることを追記
 - [ ] （後続）同じ seam の裏側の IMAP アダプタ
 - [ ] （後続）名前つきメールボックスと `email.from` による選択
+
+### ログ
+
+- レジストリと `http` リファレンスアダプタ、`mailbox.kind` 設定フィールド、ユニットテスト、両言語の
+  config ドキュメント — スコープ内のすべて。IMAP と名前つきメールボックスは後続へ委譲したままです。_(PR pending)_
 
 ## 参考
 

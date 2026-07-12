@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0186](BE-0186-mailbox-provider-registry.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0186") |
+| Implementing PR | _pending_ |
 | Topic | Candidates from competitive research (MagicPod / Autify) |
 <!-- /BE-METADATA -->
 
@@ -161,13 +162,18 @@ targets:
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Registry + fail-closed resolution (name → adapter table, unknown `kind` raises)
-- [ ] `http` reference adapter — re-home the existing `build_mailbox_reader` reader behind the registry
-- [ ] `mailbox.kind` config field, defaulting to `http` with byte-for-byte back-compat
-- [ ] Unit tests over the registry, fail-closed resolution, and the `http` default
-- [ ] Docs: `docs/scenarios.md` + `docs/ja/` note that the mailbox transport is configurable
+- [x] Registry + fail-closed resolution (name → adapter table, unknown `kind` raises)
+- [x] `http` reference adapter — re-home the existing `build_mailbox_reader` reader behind the registry
+- [x] `mailbox.kind` config field, defaulting to `http` with byte-for-byte back-compat
+- [x] Unit tests over the registry, fail-closed resolution, and the `http` default
+- [x] Docs: `docs/configuration.md` + `docs/ja/` note that the mailbox transport is configurable
 - [ ] (Follow-up) IMAP adapter behind the same seam
 - [ ] (Follow-up) named mailboxes + `email.from` selection
+
+### Log
+
+- Registry + `http` reference adapter, `mailbox.kind` config field, unit tests, and bilingual config
+  docs — the full in-scope slice; IMAP and named mailboxes stay deferred. _(PR pending)_
 
 ## References
 

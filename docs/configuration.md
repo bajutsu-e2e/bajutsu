@@ -249,6 +249,7 @@ scenario):
 targets:
   myapp:
     mailbox:
+      kind: http                                          # transport adapter; defaults to http when omitted
       url: "${secrets.MAILBOX_URL}"                       # inbox endpoint (GET); ${secrets.*} resolved at run time
       headers: { Authorization: "Bearer ${secrets.MAILBOX_TOKEN}" }
       # Optional response mapping, to read any provider's JSON without per-provider code:
@@ -261,6 +262,15 @@ The defaults match the common shape (an array of messages with `to` / `subject` 
 reads the inbox over HTTP, keeps only messages newer than the step's start (keyed on `id`), waits
 for one that matches, and extracts the code — deterministic and LLM-free
 ([BE-0046](../roadmaps/BE-0046-otp-email-steps/BE-0046-otp-email-steps.md)).
+
+`kind` selects the transport adapter behind the mailbox — a mailbox is a backend behind one
+interface, keyed by transport (`http`, later `imap`) rather than by vendor, so adding a transport
+registers an adapter instead of branching the runner
+([BE-0186](../roadmaps/BE-0186-mailbox-provider-registry/BE-0186-mailbox-provider-registry.md)). It
+is optional and defaults to `http`, so an existing `mailbox:` block is unchanged; an unknown `kind`
+fails the run with a clean config error rather than falling back. Only `http` ships today — it keys
+on transport, not on the mail vendor, because vendors differ only in JSON field names, which
+`fields` already absorbs.
 
 ### Orgs (`orgs:`, the multi-tenant server backend)
 

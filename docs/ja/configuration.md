@@ -135,6 +135,7 @@ defaults:
 targets:
   myapp:
     mailbox:
+      kind: http                                          # トランスポートアダプタ。省略時は http
       url: "${secrets.MAILBOX_URL}"                       # 受信箱エンドポイント（GET）。${secrets.*} は実行時に解決
       headers: { Authorization: "Bearer ${secrets.MAILBOX_TOKEN}" }
       # 任意のレスポンスマッピング。プロバイダ固有コードなしで任意の JSON を読むため:
@@ -143,6 +144,8 @@ targets:
 ```
 
 既定値はよくある形（`to` / `subject` / `body` / `receivedAt` / `id` を持つメッセージの配列）に合わせるので、準拠 API では `messages` / `fields` のマッピングは不要です。`email` ステップは受信箱を HTTP で読み、ステップ開始より新しいメッセージ（`id` で判定）だけを残し、一致するものを待ってコードを取り出します。決定的で LLM 非依存です（[BE-0046](../../roadmaps/BE-0046-otp-email-steps/BE-0046-otp-email-steps-ja.md)）。
+
+`kind` は、メールボックスの背後にあるトランスポートアダプタを選びます。メールボックスは 1 つのインターフェースの背後にある backend であり、ベンダーではなくトランスポート（`http`、将来は `imap`）でキーを引くので、トランスポートを増やすことは runner を分岐させることではなくアダプタを登録することになります（[BE-0186](../../roadmaps/BE-0186-mailbox-provider-registry/BE-0186-mailbox-provider-registry-ja.md)）。`kind` は任意で、省略時は `http` になるので既存の `mailbox:` ブロックはそのまま動きます。未知の `kind` はフォールバックせず、きれいな config エラーで run を落とします。現在出荷しているのは `http` だけです。ベンダーではなくトランスポートでキーを引くのは、ベンダー間の違いが JSON のフィールド名だけで、それは `fields` が吸収するからです。
 
 ### org（`orgs:`、マルチテナントのサーバ backend）
 
