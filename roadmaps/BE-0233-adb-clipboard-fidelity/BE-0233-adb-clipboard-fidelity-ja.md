@@ -1,14 +1,14 @@
-[English](BE-XXXX-adb-clipboard-fidelity.md) · **日本語**
+[English](BE-0233-adb-clipboard-fidelity.md) · **日本語**
 
-# BE-XXXX — adb クリップボードの実機での忠実性
+# BE-0233 — adb クリップボードの実機での忠実性
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
 |---|---|
-| 提案 | [BE-XXXX](BE-XXXX-adb-clipboard-fidelity-ja.md) |
+| 提案 | [BE-0233](BE-0233-adb-clipboard-fidelity-ja.md) |
 | 提案者 | [@hirosassa](https://github.com/hirosassa) |
 | 状態 | **提案** |
-| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0233") |
 | トピック | Platform expansion (Android / Web / Flutter) |
 | 関連 | [BE-0211](../BE-0211-android-device-control/BE-0211-android-device-control-ja.md)、[BE-0208](../BE-0208-android-emulator-e2e-ci/BE-0208-android-emulator-e2e-ci-ja.md) |
 <!-- /BE-METADATA -->
