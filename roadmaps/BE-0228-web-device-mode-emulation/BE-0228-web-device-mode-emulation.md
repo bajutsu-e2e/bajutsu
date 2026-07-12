@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0228") |
-| Implementing PR | _pending_ |
+| Implementing PR | [#943](https://github.com/bajutsu-e2e/bajutsu/pull/943) |
 | Topic | Platform expansion (Android / Web / Flutter) |
 <!-- /BE-METADATA -->
 
@@ -141,7 +141,7 @@ This stays within the prime directives:
 
 **Log**
 
-- _pending_ — implemented as a target-level `deviceMode` string: `"desktop"` (default, no
+- [#943](https://github.com/bajutsu-e2e/bajutsu/pull/943) — implemented as a target-level `deviceMode` string: `"desktop"` (default, no
   emulation) or a Playwright device preset name (e.g. `"iPhone 13"`). The explicit
   desktop/mobile-plus-viewport structured variant floated in *Detailed design* / *Alternatives* was
   **descoped** — the string form covers the named-preset case that motivated the item, and a custom

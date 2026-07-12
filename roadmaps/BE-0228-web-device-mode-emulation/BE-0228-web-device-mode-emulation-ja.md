@@ -9,7 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0228") |
-| 実装 PR | _pending_ |
+| 実装 PR | [#943](https://github.com/bajutsu-e2e/bajutsu/pull/943) |
 | トピック | Platform expansion (Android / Web / Flutter) |
 <!-- /BE-METADATA -->
 
@@ -138,7 +138,7 @@ web ターゲットの設定に**デバイスモード**を追加し、Playwrigh
 
 **ログ**
 
-- _pending_ — ターゲット単位の `deviceMode` 文字列として実装しました。`"desktop"`（既定で、
+- [#943](https://github.com/bajutsu-e2e/bajutsu/pull/943) — ターゲット単位の `deviceMode` 文字列として実装しました。`"desktop"`（既定で、
   エミュレーションなし）か、Playwright のデバイスプリセット名（例 `"iPhone 13"`）です。*詳細設計* と
   *検討した代替案* で挙げた「明示的なデスクトップ／モバイルと viewport」の構造的な形は**スコープから
   外しました**。文字列の形が、本項目の動機である名前付きプリセットのケースを満たし、独自の
