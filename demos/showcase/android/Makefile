@@ -58,11 +58,17 @@ SERIAL ?= booted
 # unimplemented on the google_apis API 34 image ("No shell command implementation"), so a clipboard
 # read-back cannot run on-device (tracked separately). Verified on a local arm64 emulator.
 #
-# Still held out: `gestures_multitouch` (pinch / rotate) needs multi-touch (adb is single-touch).
-# The adb clipboard round-trip and mocked network stay out too (adb-clipboard-fidelity proposal
-# PR #935 / BE-0007 follow-ups).
+# The multi-touch gesture flow `gestures_multitouch` joins the lane (BE-0232): the adb driver now
+# drives a pinch / rotate as a raw two-slot `sendevent` sweep on the rooted emulator (two contacts
+# moving together across interleaved frames), so the shared scenario iOS runs on XCUITest runs
+# unchanged on Android. Unlike the single-touch `gestures` double-tap there is no `input` fallback —
+# a two-finger gesture cannot be approximated — so it requires root (the `e2e` target runs `adb root`)
+# and fails loudly otherwise. Verified on a local arm64 emulator.
+#
+# Still held out: the adb clipboard round-trip and mocked network stay out (adb-clipboard-fidelity
+# proposal PR #935 / BE-0007 follow-ups).
 E2E_SCENARIOS := smoke firstlook navigation search data_driven relaunch system components modals \
-	controls notices gestures permission_android device_android
+	controls notices gestures gestures_multitouch permission_android device_android
 
 # Raise the condition-wait ceiling for this lane only: the CI x86_64 software-rendered emulator
 # presents sheets/covers slower than the shared scenarios' 5s waits allow. A wait returns as soon as

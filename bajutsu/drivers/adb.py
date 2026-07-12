@@ -293,6 +293,15 @@ class AdbDriver:
         range (BE-0208); it is constant across a scroll, so the settled tree gives it even when the
         target itself was only reached by scrolling.
         """
+        (x, y, w, h), screen = self._resolve_frame_and_screen(sel)
+        return (x + w / 2, y + h / 2), screen
+
+    def _resolve_frame_and_screen(self, sel: base.Selector) -> tuple[base.Frame, base.Point]:
+        """The target's frame and the screen extent, both in tree (pixel) coordinates.
+
+        Shared by the center-based actuators (tap / double-tap) and the two-finger gestures (BE-0232),
+        which need the frame's size, not just its center.
+        """
         tree = self._settle()
         try:
             el = self._resolve(sel, timeout=self._RESOLVE_TIMEOUT_S, initial_tree=tree)
@@ -302,8 +311,7 @@ class AdbDriver:
             # AmbiguousSelector propagates unchanged. The settled tree seeds the first scroll so it
             # is oriented on stable frames rather than a fresh (possibly mid-transition) read.
             el = self._scroll_into_view(sel, tree)
-        x, y, w, h = el["frame"]
-        return (x + w / 2, y + h / 2), screen_size_from_elements(tree)
+        return el["frame"], screen_size_from_elements(tree)
 
     def _scroll_into_view(self, sel: base.Selector, tree: list[base.Element]) -> base.Element:
         """Scroll toward `sel` and re-query, bounded by `_SCROLL_RETRIES`, then fail deterministically.
@@ -388,14 +396,59 @@ class AdbDriver:
         self._run(adb.keyevent_cmd(self.serial, adb.KEYCODE_BACK))
 
     def pinch(self, sel: base.Selector, scale: float) -> None:
-        raise base.UnsupportedAction(
-            "pinch は multiTouch が必要; adb `input` は単一タッチ（複数指ジェスチャがない）"
-        )
+        # Two contacts spread from / close to the target centre by `scale`, driven as a raw two-slot
+        # `sendevent` sweep (BE-0232) — the machinery the double-tap established, one slot to two.
+        self._two_finger_gesture(sel, "pinch", lambda c, half: adb.pinch_contacts(c, half, scale))
 
     def rotate(self, sel: base.Selector, radians: float) -> None:
-        raise base.UnsupportedAction(
-            "rotate は multiTouch が必要; adb `input` は単一タッチ（複数指ジェスチャがない）"
+        # Two contacts sweep a diameter of the target through `radians` about its centre (BE-0232).
+        self._two_finger_gesture(
+            sel, "rotate", lambda c, half: adb.rotate_contacts(c, half, radians)
         )
+
+    def _two_finger_gesture(
+        self,
+        sel: base.Selector,
+        action: str,
+        contacts: Callable[
+            [base.Point, float], tuple[tuple[base.Point, base.Point], tuple[base.Point, base.Point]]
+        ],
+    ) -> None:
+        """Drive a two-finger gesture: resolve the target, then emit the raw two-slot sweep (BE-0232).
+
+        A rooted device with a discoverable touchscreen is required. Unlike the double-tap there is no
+        single-touch approximation of two fingers, so a missing precondition fails loudly with a clear
+        `UnsupportedAction` naming the root requirement — never a degraded gesture that silently passes.
+        """
+        if not self._rooted():
+            raise base.UnsupportedAction(
+                f"{action} は rooted device が必要; 二本指ジェスチャに単一タッチの代替は無い"
+                "（sendevent で /dev/input に書き込むため root が要る）"
+            )
+        dev = self._touch_device()
+        if dev is None:
+            raise base.UnsupportedAction(
+                f"{action} 不可（touchscreen node が getevent に見つからず、二本指の接点を撃てない）"
+            )
+        (x, y, w, h), screen = self._resolve_frame_and_screen(sel)
+        center = (x + w / 2, y + h / 2)
+        # Keep both fingers (and a ~2x pinch-out) inside the target rather than landing on a neighbour.
+        half = min(w, h) / 4
+        if half <= 0:
+            # A zero-size frame collapses both contacts onto the centre — a zero-travel sequence the
+            # platform reads as a tap, not a gesture, so the mirrored value never flips and the wait
+            # times out with a misleading cause. Fail loudly with the real one, as `_scroll_toward`
+            # does for a degenerate screen extent (BE-0232).
+            raise base.UnsupportedAction(
+                f"{action} 不可（対象の frame が退化しており二本指の接点を配置できない）: {sel!r}"
+            )
+        start, end = contacts(center, half)
+        raw_start = (
+            adb.scale_to_touch(start[0], screen, dev),
+            adb.scale_to_touch(start[1], screen, dev),
+        )
+        raw_end = (adb.scale_to_touch(end[0], screen, dev), adb.scale_to_touch(end[1], screen, dev))
+        self._run(adb.sendevent_gesture_cmd(self.serial, dev.path, raw_start, raw_end))
 
     def select_option(self, sel: base.Selector, option: str) -> None:
         raise base.UnsupportedAction(
@@ -444,11 +497,16 @@ class AdbDriver:
     # the operations the emulator can honor (BE-0211); the per-operation tokens (BE-0212) let it
     # declare exactly that subset, so preflight admits those steps and fails the rest fast. A class
     # constant so the preflight (BE-0082) reads it via `backends.capabilities_for` with no device.
+    # `multiTouch` is declared statically here — preflight reads the set with no device — so
+    # `gestures_multitouch` is admitted on adb; the rooted-device precondition for the two-finger
+    # `sendevent` sweep is enforced at actuation time (`_two_finger_gesture`), not in the set, so on a
+    # non-rooted device the gesture step fails fast with a clear `UnsupportedAction` (BE-0232).
     CAPABILITIES = frozenset(
         {
             base.Capability.QUERY,
             base.Capability.ELEMENTS,
             base.Capability.SCREENSHOT,
+            base.Capability.MULTI_TOUCH,
             base.Capability.DC_SET_LOCATION,
             base.Capability.DC_CLIPBOARD,
         }

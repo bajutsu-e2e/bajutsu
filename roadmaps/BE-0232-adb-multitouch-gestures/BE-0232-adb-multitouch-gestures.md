@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0232](BE-0232-adb-multitouch-gestures.md) |
 | Author | [@hirosassa](https://github.com/hirosassa) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0232") |
+| Implementing PR | _pending_ |
 | Topic | Platform expansion (Android / Web / Flutter) |
 | Related | [BE-0007](../BE-0007-android-backend/BE-0007-android-backend.md), [BE-0208](../BE-0208-android-emulator-e2e-ci/BE-0208-android-emulator-e2e-ci.md), [BE-0210](../BE-0210-android-actuation-fidelity/BE-0210-android-actuation-fidelity.md), [BE-0082](../BE-0082-capability-preflight-check/BE-0082-capability-preflight-check.md), [BE-0223](../BE-0223-adb-tab-bar-navigation/BE-0223-adb-tab-bar-navigation.md) |
 <!-- /BE-METADATA -->
@@ -138,12 +139,21 @@ path.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Two-contact protocol-B pinch / rotate sequences in `bajutsu/adb.py`.
-- [ ] Implement `pinch` / `rotate` in the adb driver, gated on a rooted device (no fallback).
-- [ ] Declare `multiTouch` in the adb driver's static capability set; document the root precondition.
-- [ ] Add the Compose `SHOWCASE_GESTURES` gesture screen (`log.pinch` / `log.rotate` mirrors).
-- [ ] Fold `gestures_multitouch` into the BE-0208 e2e lane; update `docs/ci.md` (+ja).
-- [ ] Unit-test the command builders and the driver root gate; optionally extend the conformance suite.
+- [x] Two-contact protocol-B pinch / rotate sequences in `bajutsu/adb.py`.
+- [x] Implement `pinch` / `rotate` in the adb driver, gated on a rooted device (no fallback).
+- [x] Declare `multiTouch` in the adb driver's static capability set; document the root precondition.
+- [x] Add the Compose `SHOWCASE_GESTURES` gesture screen (`log.pinch` / `log.rotate` mirrors).
+- [x] Fold `gestures_multitouch` into the BE-0208 e2e lane; update `docs/ci.md` (+ja).
+- [x] Unit-test the command builders and the driver root gate. (Conformance-suite extension deferred:
+      the shared `gestures_multitouch` scenario already exercises pinch / rotate on adb on-device.)
+
+**Log**
+
+- Implemented in _pending_: two-slot protocol-B `sendevent_gesture_cmd` + `pinch_contacts` /
+  `rotate_contacts` geometry in `bajutsu/adb.py`; `pinch` / `rotate` on the adb driver gated on a
+  rooted device via `_two_finger_gesture` (no single-touch fallback); `MULTI_TOUCH` declared in the
+  driver's static capability set; the Compose `SHOWCASE_GESTURES` gesture screen; `gestures_multitouch`
+  folded into the Android e2e lane; unit tests for the builders, geometry, and the root gate.
 
 ## References
 

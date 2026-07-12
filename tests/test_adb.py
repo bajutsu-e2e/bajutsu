@@ -7,6 +7,8 @@ over an injected `run`, no device needed (BE-0007 Unit 7, fast gate).
 
 from __future__ import annotations
 
+import math
+from collections.abc import Callable
 from pathlib import Path
 
 import pytest
@@ -209,6 +211,9 @@ def test_capabilities_lean_end() -> None:
     assert base.Capability.SEMANTIC_TAP not in caps  # coordinate actuation, like idb
     assert base.Capability.NETWORK not in caps  # no native monitor
     assert base.Capability.SCREENSHOT in caps
+    # multiTouch is advertised (BE-0232): the two-finger sendevent sweep, so preflight admits
+    # `gestures_multitouch`. The root precondition is enforced at actuation time, not in the set.
+    assert base.Capability.MULTI_TOUCH in caps
 
 
 def test_driver_interval_routes_video_and_devicelog_to_adb_starters(
@@ -337,12 +342,194 @@ def test_type_text_passes_value_over_stdin_not_argv(monkeypatch: pytest.MonkeyPa
     assert script == "input text '${secrets.password}%sval'"
 
 
-def test_pinch_and_rotate_unsupported() -> None:
-    driver = AdbDriver("U", run=lambda a: FIXTURE)
+def test_pinch_contacts_spread_level_about_center() -> None:
+    # Two fingers level on a line through the centre, `half` out to either side, moving to half*scale.
+    start, end = adb.pinch_contacts((100.0, 150.0), 25.0, 2.0)
+    assert start == ((75.0, 150.0), (125.0, 150.0))
+    assert end == ((50.0, 150.0), (150.0, 150.0))
+    # scale < 1 closes the two contacts inward toward the centre (zoom out).
+    _, close_end = adb.pinch_contacts((100.0, 150.0), 25.0, 0.4)
+    assert close_end == ((90.0, 150.0), (110.0, 150.0))
+
+
+def test_rotate_contacts_sweep_a_diameter_about_center() -> None:
+    # Both fingers start on a horizontal diameter and sweep through `radians` about the centre; a
+    # quarter turn (pi/2) takes (±half, 0) offsets to (0, ∓half) — clockwise in screen coords.
+    start, end = adb.rotate_contacts((100.0, 150.0), 20.0, math.pi / 2)
+    assert start == ((80.0, 150.0), (120.0, 150.0))
+    (e0x, e0y), (e1x, e1y) = end
+    assert (round(e0x), round(e0y)) == (100, 130)
+    assert (round(e1x), round(e1y)) == (100, 170)
+
+
+def test_sendevent_gesture_cmd_is_two_slot_protocol_b_sweep() -> None:
+    # Both contacts go down (slot 0 / slot 1, one BTN_TOUCH), sweep together across the move frames,
+    # then lift — one `adb shell` round-trip. steps=1 gives a single move frame landing on `end`.
+    cmd = adb.sendevent_gesture_cmd(
+        "U", "/dev/input/event1", ((10, 20), (30, 40)), ((0, 20), (40, 40)), steps=1
+    )
+    assert cmd[:4] == ["adb", "-s", "U", "shell"]
+    d = "/dev/input/event1"
+    expected = " ; ".join(
+        [
+            # down: slot 0 then slot 1, each a tracked contact with pressure, then one press.
+            f"sendevent {d} 3 47 0",
+            f"sendevent {d} 3 57 200",
+            f"sendevent {d} 3 53 10",
+            f"sendevent {d} 3 54 20",
+            f"sendevent {d} 3 58 50",
+            f"sendevent {d} 3 47 1",
+            f"sendevent {d} 3 57 201",
+            f"sendevent {d} 3 53 30",
+            f"sendevent {d} 3 54 40",
+            f"sendevent {d} 3 58 50",
+            f"sendevent {d} 1 330 1",
+            f"sendevent {d} 0 0 0",
+            # one move frame: both slots to their end points, one SYN.
+            f"sendevent {d} 3 47 0",
+            f"sendevent {d} 3 53 0",
+            f"sendevent {d} 3 54 20",
+            f"sendevent {d} 3 47 1",
+            f"sendevent {d} 3 53 40",
+            f"sendevent {d} 3 54 40",
+            f"sendevent {d} 0 0 0",
+            # up: lift both slots (tracking id -1 wraps to 2**32-1), release, SYN.
+            f"sendevent {d} 3 47 0",
+            f"sendevent {d} 3 57 4294967295",
+            f"sendevent {d} 3 47 1",
+            f"sendevent {d} 3 57 4294967295",
+            f"sendevent {d} 1 330 0",
+            f"sendevent {d} 0 0 0",
+        ]
+    )
+    assert cmd[4] == expected
+
+
+def test_sendevent_gesture_interpolates_each_move_frame_in_order() -> None:
+    # The default sweep is multi-frame (steps=8) so the platform sees motion and classifies the
+    # gesture; the single-frame builder test above cannot catch an interpolation off-by-one. Slot 0
+    # sweeps x 0→80, slot 1 holds at 100, over 4 evenly interpolated frames landing exactly on `end`.
+    cmd = adb.sendevent_gesture_cmd(
+        "U", "/dev/input/event1", ((0, 0), (100, 0)), ((80, 0), (100, 0)), steps=4
+    )
+    script = cmd[4]
+    # 1 down frame + 4 move frames + 1 up frame = 6 SYN_REPORTs.
+    assert script.count("sendevent /dev/input/event1 0 0 0") == 6
+    xs = [
+        ln.split()[-1]
+        for ln in script.split(" ; ")
+        if ln.startswith("sendevent /dev/input/event1 3 53")
+    ]
+    # Down (slot0=0, slot1=100), then per frame slot0 at 20/40/60/80 interleaved with slot1 at 100.
+    assert xs == ["0", "100", "20", "100", "40", "100", "60", "100", "80", "100"]
+
+
+def _root_touch_run(calls: list[list[str]]) -> Callable[[list[str]], str]:
+    """A runner for a rooted device with a discoverable touchscreen: dump/id/getevent answered,
+    every actuation shell recorded."""
+
+    def run(args: list[str]) -> str:
+        if "dump" in args:
+            return FIXTURE
+        if args[-2:] == ["id", "-u"]:
+            return "0\n"
+        if "getevent" in args:
+            return GETEVENT_LP
+        calls.append(args)
+        return ""
+
+    return run
+
+
+def test_pinch_drives_two_slot_sendevent_sweep_when_root() -> None:
+    # BE-0232: a pinch on stable_refresh (frame [0,100][200,200] → centre (100,150), half=25) spreads
+    # two contacts to scale*half about the centre, scaled into the 32767 raw range and swept as one
+    # two-slot `sendevent` round-trip. Both slots go down; the final frame lands on the spread ends.
+    calls: list[list[str]] = []
+    AdbDriver("U", run=_root_touch_run(calls)).pinch({"id": "stable_refresh"}, 2.0)
+    assert len(calls) == 1
+    script = calls[0][4]
+    assert calls[0][:4] == ["adb", "-s", "U", "shell"]
+    # Down: slot 0 at raw x for pixel 75, slot 1 at raw x for pixel 125 (y raw 2048 for pixel 150).
+    assert "sendevent /dev/input/event1 3 47 0 ; sendevent /dev/input/event1 3 57 200" in script
+    assert "sendevent /dev/input/event1 3 53 2275" in script  # slot 0 start, pixel x=75
+    assert "sendevent /dev/input/event1 3 53 3792" in script  # slot 1 start, pixel x=125
+    # End of the sweep: the two contacts spread to pixel x=50 and x=150 (scale 2.0 about centre 100).
+    assert script.rstrip().endswith("sendevent /dev/input/event1 0 0 0")
+    assert "sendevent /dev/input/event1 3 53 1517" in script  # slot 0 end, pixel x=50
+    assert "sendevent /dev/input/event1 3 53 4551" in script  # slot 1 end, pixel x=150
+
+
+def test_rotate_drives_two_slot_sendevent_sweep_when_root() -> None:
+    # BE-0232: the rotate arm has its own geometry closure, so drive it end-to-end (not just pinch).
+    # A quarter turn about centre (100,150) sweeps the two contacts from (75,150)/(125,150) to
+    # (100,125)/(100,175) — both ends collapse to the centre pixel x (raw 3034), split in y.
+    calls: list[list[str]] = []
+    AdbDriver("U", run=_root_touch_run(calls)).rotate({"id": "stable_refresh"}, math.pi / 2)
+    assert len(calls) == 1
+    script = calls[0][4]
+    assert "sendevent /dev/input/event1 3 53 2275" in script  # slot 0 start, pixel x=75
+    assert "sendevent /dev/input/event1 3 53 3792" in script  # slot 1 start, pixel x=125
+    # End of the sweep: both contacts on the centre's raw x, split above/below in raw y.
+    assert "sendevent /dev/input/event1 3 54 1707" in script  # slot 0 end, pixel y=125
+    assert "sendevent /dev/input/event1 3 54 2389" in script  # slot 1 end, pixel y=175
+    assert script.rstrip().endswith("sendevent /dev/input/event1 0 0 0")
+
+
+def test_two_finger_gesture_fails_on_degenerate_frame() -> None:
+    # A zero-size target frame collapses both contacts onto the centre (half=0) — a zero-travel
+    # sequence the platform reads as a tap, not a gesture. Fail loudly with the real cause rather
+    # than emitting a no-op that later times out on the mirrored value (BE-0232).
+    zero_frame = (
+        '<hierarchy><node class="android.view.View" bounds="[0,0][1080,2400]">'
+        '<node resource-id="gest.zero" class="android.view.View" bounds="[100,100][100,100]" />'
+        "</node></hierarchy>"
+    )
+
+    def run(args: list[str]) -> str:
+        if "dump" in args:
+            return zero_frame
+        if args[-2:] == ["id", "-u"]:
+            return "0\n"
+        if "getevent" in args:
+            return GETEVENT_LP
+        raise AssertionError(f"no actuation should run on a degenerate frame: {args}")
+
     with pytest.raises(base.UnsupportedAction):
+        AdbDriver("U", run=run).pinch({"id": "gest.zero"}, 2.0)
+
+
+def test_pinch_and_rotate_require_root_no_fallback() -> None:
+    # A two-finger gesture cannot be approximated single-touch, so a non-rooted device fails loudly
+    # (unlike the double-tap's `input tap` fallback) rather than emitting a degraded gesture (BE-0232).
+    def not_root(args: list[str]) -> str:
+        if "dump" in args:
+            return FIXTURE
+        if args[-2:] == ["id", "-u"]:
+            return "2000\n"  # a normal shell user, not root
+        raise AssertionError(f"no actuation should run on a non-rooted device: {args}")
+
+    driver = AdbDriver("U", run=not_root)
+    with pytest.raises(base.UnsupportedAction, match="root"):
         driver.pinch({"id": "stable_refresh"}, 2.0)
-    with pytest.raises(base.UnsupportedAction):
+    with pytest.raises(base.UnsupportedAction, match="root"):
         driver.rotate({"id": "stable_refresh"}, 1.0)
+
+
+def test_pinch_fails_when_no_touch_node_even_if_root() -> None:
+    # Rooted but no touchscreen node in `getevent` → nothing to drive the two contacts on, so fail
+    # loudly rather than silently no-op (there is no single-touch fallback for a gesture).
+    def no_node(args: list[str]) -> str:
+        if "dump" in args:
+            return FIXTURE
+        if args[-2:] == ["id", "-u"]:
+            return "0\n"
+        if "getevent" in args:
+            return 'add device 1: /dev/input/event0\n  name: "gpio-keys"\n    KEY (0001): 0072\n'
+        raise AssertionError(f"no actuation should run without a touch node: {args}")
+
+    with pytest.raises(base.UnsupportedAction):
+        AdbDriver("U", run=no_node).pinch({"id": "stable_refresh"}, 2.0)
 
 
 def test_select_option_unsupported() -> None:
