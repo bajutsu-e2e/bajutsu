@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0227") |
-| Implementing PR | _pending_ |
+| Implementing PR | [#948](https://github.com/bajutsu-e2e/bajutsu/pull/948) |
 | Topic | Platform expansion (Android / Web / Flutter) |
 <!-- /BE-METADATA -->
 
@@ -164,8 +164,8 @@ This stays within the prime directives:
 
 **Log**
 
-- _pending_ — implement mode-aware scroll dispatch via a `Driver.scroll` seam; codegen wheel
-  parity; tests + bilingual docs (PR _pending_).
+- [#948](https://github.com/bajutsu-e2e/bajutsu/pull/948) — implement mode-aware scroll dispatch via a `Driver.scroll` seam; codegen wheel
+  parity; tests + bilingual docs.
 
 ## References
 
