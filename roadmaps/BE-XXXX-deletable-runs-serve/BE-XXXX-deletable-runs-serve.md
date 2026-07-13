@@ -61,7 +61,8 @@ anywhere in the delete/restore/purge path, so it sits outside the Tier-2 run/CI 
 
 The work breaks into six independent-ish units; the trash/retention piece (3) depends on unit 1's
 seam existing, and the Web UI piece (5) depends on the API existing, but each backend's store
-implementation (1) and the CLI-free scope of this item can land as separate PRs.
+implementation (1), and the CLI companion (out of this item's scope), can each land as a separate
+PR.
 
 1. **A `delete_run` seam on `ArtifactStore` (`bajutsu/serve/artifacts.py`), soft by default.**
    The protocol gains `soft_delete_run(run_id) -> bool`, `restore_run(run_id) -> bool`, and
