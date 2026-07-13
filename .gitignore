@@ -66,3 +66,4 @@ docs/api/roadmap.md
 
 # serve upload temp dirs (BE-0073) — never commit extracted bundles
 uploads/
+demos/showcase/scenarios/baselines/
