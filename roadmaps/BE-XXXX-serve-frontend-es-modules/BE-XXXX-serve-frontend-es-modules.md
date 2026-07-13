@@ -18,7 +18,7 @@
 BE-0202 split the once-monolithic `bajutsu/templates/serve.js` into five section files —
 `serve.core.js`, `serve.panels.js`, `serve.crawl.js`, `serve.metrics.js`, `serve.author.js`,
 roughly 3,200 lines together — so each reads and diffs as its own file. `bajutsu/serve/handler.py`
-concatenates them in a fixed order (`_JS_ASSETS`, `handler.py:635-645`) and inlines the result into
+concatenates them in a fixed order (`_JS_ASSETS`, `handler.py:657-663`) and inlines the result into
 one `<script>` tag; the five files still share a single global JavaScript scope with no module
 system, the same as when they were one file. This item gives the section boundary a real language
 construct — ES modules — so a file's dependencies are declared in the file itself instead of
@@ -42,8 +42,10 @@ This is not duplicated logic: the shared primitives every section calls — `get
 `serve.core.js:54-99` (per BE-0202's own `startJob` unification). The debt is narrower than that:
 a flat global namespace and a load order that is load-bearing but invisible at the point of use.
 The project's own ESLint guardrail (BE-0129, `eslint.config.mjs`) documents the same gap from the
-tooling side — `no-undef` is deliberately off because ESLint "can't see the cross-file globals the
-section files share, so it would misfire anyway." That an accidental global collision or a
+tooling side. `no-undef` is deliberately off there for two reasons: the *primary* one is that
+enabling it would need the full set of browser + ES globals declared (the `globals` npm package),
+pulling a Node toolchain into this Python repo; the comment then adds, as a secondary point, that it
+"also can't see the cross-file globals the section files share, so it would misfire anyway." That an accidental global collision or a
 reordering mistake has no lint that catches it is exactly the fragility this item removes, and it
 gets worse, not better, as more panels are added to the UI.
 
@@ -76,7 +78,10 @@ gets worse, not better, as more panels are added to the UI.
    `import`, not a silent global lookup. Update `eslint.config.mjs`'s `languageOptions.sourceType`
    from `"script"` to `"module"` for the converted files so ESLint parses `import`/`export` syntax,
    and revisit whether `no-undef` can be turned back on per-file now that each file's inputs are
-   declared, rather than left off repo-wide.
+   declared, rather than left off repo-wide. Note this only removes the *secondary* obstacle (the
+   cross-file globals): re-enabling `no-undef` would still trip on bare browser globals (`window`,
+   `fetch`, `document`, …) unless the primary obstacle — declaring them via the `globals` package —
+   is also resolved, so making inputs explicit is necessary but not sufficient on its own.
 
 **Verification.** This is a structural refactor of code the deterministic `run`/CI gate never
 executes (prime directive 1 keeps AI and UI code off that path), so there is no automated pass/fail
