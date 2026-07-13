@@ -740,6 +740,7 @@ AI を使う経路（`record` ／ `crawl` ／ `triage --ai` ／ `run --apply`）
 | ID | 項目 | 状態 |
 |---|---|---|
 | [BE-0238](BE-0238-ios-device-cloud-execution/BE-0238-ios-device-cloud-execution-ja.md) | iOS device-cloud execution | 提案 |
+| [BE-0240](BE-0240-ios-capability-aware-actuator-selection/BE-0240-ios-capability-aware-actuator-selection-ja.md) | iOS の能力に応じた actuator 自動選択（idb/XCUITest の透過化） | 提案 |
 <!-- /GENERATED:proposals-backend -->
 
 ### doctor / オンボーディング

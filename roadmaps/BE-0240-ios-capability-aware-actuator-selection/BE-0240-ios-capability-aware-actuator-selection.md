@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-ios-capability-aware-actuator-selection-ja.md)
+**English** · [日本語](BE-0240-ios-capability-aware-actuator-selection-ja.md)
 
-# BE-XXXX — Capability-aware automatic actuator selection for iOS (idb/XCUITest transparency)
+# BE-0240 — Capability-aware automatic actuator selection for iOS (idb/XCUITest transparency)
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-ios-capability-aware-actuator-selection.md) |
+| Proposal | [BE-0240](BE-0240-ios-capability-aware-actuator-selection.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0240") |
 | Topic | Backend expansion (iOS actuators) |
 | Related | [BE-0019](../BE-0019-xcuitest-backend/BE-0019-xcuitest-backend.md), [BE-0020](../BE-0020-multi-backend-evidence-fallback/BE-0020-multi-backend-evidence-fallback.md), [BE-0082](../BE-0082-capability-preflight-check/BE-0082-capability-preflight-check.md), [BE-0107](../BE-0107-showcase-tab-navigation-no-launch-shortcut/BE-0107-showcase-tab-navigation-no-launch-shortcut.md), [BE-0223](../BE-0223-adb-tab-bar-navigation/BE-0223-adb-tab-bar-navigation.md) |
 <!-- /BE-METADATA -->

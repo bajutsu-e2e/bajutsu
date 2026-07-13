@@ -1,14 +1,14 @@
-[English](BE-XXXX-ios-capability-aware-actuator-selection.md) · **日本語**
+[English](BE-0240-ios-capability-aware-actuator-selection.md) · **日本語**
 
-# BE-XXXX — iOS の能力に応じた actuator 自動選択（idb/XCUITest の透過化）
+# BE-0240 — iOS の能力に応じた actuator 自動選択（idb/XCUITest の透過化）
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
 |---|---|
-| 提案 | [BE-XXXX](BE-XXXX-ios-capability-aware-actuator-selection-ja.md) |
+| 提案 | [BE-0240](BE-0240-ios-capability-aware-actuator-selection-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **提案** |
-| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0240") |
 | トピック | バックエンド拡張（iOS actuator） |
 | 関連 | [BE-0019](../BE-0019-xcuitest-backend/BE-0019-xcuitest-backend-ja.md)、[BE-0020](../BE-0020-multi-backend-evidence-fallback/BE-0020-multi-backend-evidence-fallback-ja.md)、[BE-0082](../BE-0082-capability-preflight-check/BE-0082-capability-preflight-check-ja.md)、[BE-0107](../BE-0107-showcase-tab-navigation-no-launch-shortcut/BE-0107-showcase-tab-navigation-no-launch-shortcut-ja.md)、[BE-0223](../BE-0223-adb-tab-bar-navigation/BE-0223-adb-tab-bar-navigation-ja.md) |
 <!-- /BE-METADATA -->

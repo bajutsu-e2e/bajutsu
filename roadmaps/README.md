@@ -747,6 +747,7 @@ Keeping the autonomous crawl fast and its code lean as it grows.
 | ID | Item | Status |
 |---|---|---|
 | [BE-0238](BE-0238-ios-device-cloud-execution/BE-0238-ios-device-cloud-execution.md) | iOS device-cloud execution | Proposal |
+| [BE-0240](BE-0240-ios-capability-aware-actuator-selection/BE-0240-ios-capability-aware-actuator-selection.md) | Capability-aware automatic actuator selection for iOS (idb/XCUITest transparency) | Proposal |
 <!-- /GENERATED:proposals-backend -->
 
 ### doctor / onboarding
