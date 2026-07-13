@@ -9,6 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0241") |
+| Implementing PR | [#979](https://github.com/bajutsu-e2e/bajutsu/pull/979) |
 | Topic | Authoring experience (record / GUI editor) |
 <!-- /BE-METADATA -->
 
@@ -109,7 +110,7 @@ new report viewer.
 
 ### Log
 
-- Implemented in [#TBD](https://github.com/bajutsu-e2e/bajutsu/pull/TBD): threaded run ids through the
+- Implemented in [#979](https://github.com/bajutsu-e2e/bajutsu/pull/979): threaded run ids through the
   hotspot aggregators via a shared `_HotspotTally`, added the `drill()` deep-link macro to
   `stats.html.j2` (day / backend rows filter `stats.by_run` in-template; hotspot rows use
   `Hotspot.run_ids`), and added the `?tab=history&runs=…&label=…` boot handler plus the history-list
