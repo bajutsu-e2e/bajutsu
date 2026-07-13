@@ -726,6 +726,7 @@ Where `bajutsu` reads its config and scenario tree from. Today that is a local p
 | ID | Item | Status |
 |---|---|---|
 | [BE-0242](BE-0242-config-relative-path-resolution/BE-0242-config-relative-path-resolution.md) | Resolve config-declared paths relative to the config file | Proposal |
+| [BE-0243](BE-0243-upload-bundle-durable-storage/BE-0243-upload-bundle-durable-storage.md) | Persist uploaded zip config bundles to object storage for hosted serve | Proposal |
 <!-- /GENERATED:proposals-config-sourcing -->
 
 ### codegen coverage

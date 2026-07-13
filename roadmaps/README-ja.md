@@ -719,6 +719,7 @@ AI を使う経路（`record` ／ `crawl` ／ `triage --ai` ／ `run --apply`）
 | ID | 項目 | 状態 |
 |---|---|---|
 | [BE-0242](BE-0242-config-relative-path-resolution/BE-0242-config-relative-path-resolution-ja.md) | config が宣言するパスを、その config ファイル基準で解決する | 提案 |
+| [BE-0243](BE-0243-upload-bundle-durable-storage/BE-0243-upload-bundle-durable-storage-ja.md) | アップロードした zip config バンドルをオブジェクトストレージへ永続化する（ホスト型 serve 向け） | 提案 |
 <!-- /GENERATED:proposals-config-sourcing -->
 
 ### codegen 網羅性
