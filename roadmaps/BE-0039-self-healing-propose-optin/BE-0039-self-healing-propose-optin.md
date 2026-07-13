@@ -44,4 +44,4 @@ The contrast with MagicPod/Autify is the whole point: they optimize for never sh
 
 ## References
 
-[Self-healing triage (M4)](../README.md#self-healing-triage-m4)
+[Self-healing triage](../README.md#self-healing-triage)

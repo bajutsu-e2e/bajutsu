@@ -54,7 +54,7 @@ Bajutsu は 3 つの独立した軸に沿って広がります。これらは合
 **同じ決定的コアが iOS、Android、Web を駆動する**ことです。各プラットフォームは、自分の actuator と環境、
 安定 id 規約だけを足します。完全な具体計画は **[multi-platform](multi-platform.md)** にあります。セレクタ可搬性の写像、
 プラットフォーム別バックエンド、そして展開順（既存の Linux ゲートの上で動くので Web を最初に）を扱っています。
-2 つ目の iOS actuator（XCUITest）は、1 つの OS 内での同じ変更にあたります（[roadmap → バックエンド拡張](../../roadmaps/README-ja.md#バックエンド拡張ios-actuator)）。
+2 つ目の iOS actuator（XCUITest）は、1 つの OS 内での同じ変更にあたります（[roadmap → プラットフォーム対応](../../roadmaps/README-ja.md#プラットフォーム対応)）。
 
 ### 2. Scale & Collaboration：ローカルツールから共有サービスへ
 

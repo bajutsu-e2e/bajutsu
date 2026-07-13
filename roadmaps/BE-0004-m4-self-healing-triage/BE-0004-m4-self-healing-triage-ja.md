@@ -35,4 +35,4 @@
 
 ## 参考
 
-[DESIGN §3.1 / §12](../../DESIGN.md)、[reporting.md](../../docs/ja/reporting.md)、`bajutsu/triage.py`、[自己修復トリアージ（M4）](../README-ja.md#自己修復トリアージm4)
+[DESIGN §3.1 / §12](../../DESIGN.md)、[reporting.md](../../docs/ja/reporting.md)、`bajutsu/triage.py`、[自己修復トリアージ](../README-ja.md#自己修復トリアージ)
