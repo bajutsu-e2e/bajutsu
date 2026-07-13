@@ -71,11 +71,18 @@ with that existing trust boundary.
    callers (the Git-source and uploaded-bundle paths) keep `confine=True` unchanged; a local config
    passes `confine=False`. Update the docstring, since "only a Git source calls this" (`config.py:587`)
    stops being true.
-2. **Rebase local configs at the call site.** In `_load_effective_with_source`
-   (`bajutsu/cli/_shared.py:196-235`), when `spec is None` (a local config), set
-   `root = cfg_path.resolve().parent` and call `eff.rebased(root, confine=False)`. `source` (Git
-   provenance) stays `None`; the returned `Effective` now carries absolute path fields rooted at the
-   config's directory, so every downstream consumer that reads them is cwd-independent for free.
+2. **Rebase local configs at the call site — without repurposing `checkout_root`.** In
+   `_load_effective_with_source` (`bajutsu/cli/_shared.py:196-235`), when `spec is None` (a local
+   config), rebase against a *local* anchor (`cfg_path.resolve().parent`) via
+   `eff.rebased(local_root, confine=False)`, but keep returning `None` for the function's third tuple
+   element (`checkout_root`) — don't reuse the `root` variable for both. `checkout_root` is not just a
+   rebase anchor; other call sites read it as a Git-vs-local signal: `run.py`'s on-demand
+   `build_if_missing` fires only `if checkout_root is not None`, and `record`/`crawl`'s
+   `_refuse_out_in_checkout` treats a non-`None` value as "this is a read-only Git checkout, refuse
+   writing output inside it." Returning the config's own directory there too would silently switch on
+   both Git-only behaviors for every local config. `source` (Git provenance) stays `None` either way;
+   the returned `Effective` carries absolute path fields rooted at the config's directory, so every
+   downstream consumer that reads *those fields* is cwd-independent for free.
 3. **Fields intentionally out of scope**, carried over from `rebased()`'s existing exclusions plus two
    new ones:
    - `build` (a shell command, e.g. `make -C demos/showcase`) — not a path field.
