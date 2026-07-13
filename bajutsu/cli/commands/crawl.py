@@ -310,7 +310,9 @@ def _execute(plan: _CrawlPlan, guide: crawl_engine.Guide, report: Report) -> cra
     def build_lane(u: str) -> tuple[base.Driver, crawl_engine.Reset]:
         # The crawl `reset` (revisit a known screen from a clean start) is the platform's, behind the
         # Environment seam (BE-0009): web opens a fresh context, iOS relaunches the app.
-        driver = launch_driver(u, plan.eff, plan.actuator, Preconditions(erase=plan.erase))
+        driver, _readiness = launch_driver(
+            u, plan.eff, plan.actuator, Preconditions(erase=plan.erase)
+        )
         return driver, environment_for(plan.actuator, u).crawl_reset(plan.eff)
 
     try:

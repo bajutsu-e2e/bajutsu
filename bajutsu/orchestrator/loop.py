@@ -7,6 +7,7 @@ device control are injected by the runner.
 
 from __future__ import annotations
 
+import logging
 import subprocess
 from collections.abc import Callable, Mapping
 
@@ -38,9 +39,11 @@ from bajutsu.orchestrator.types import (
     _no_network,
     scenario_slug,
 )
-from bajutsu.orchestrator.waits import _wait
+from bajutsu.orchestrator.waits import WaitTrace, _wait
 from bajutsu.scenario import Assertion, Email, ForEach, If, Scenario, Selector, Step
 from bajutsu.webview import DomSource, WebContextDriver
+
+_logger = logging.getLogger(__name__)
 
 # How often `email` re-polls the mailbox. Unlike the UI's 50 ms `_POLL`, each tick is a remote HTTP
 # request to a (often rate-limited / metered) provider, so it polls about once a second.
@@ -112,15 +115,17 @@ def _run_step_body(
     control: DeviceControl | None = None,
     mailbox: MailboxReader | None = None,
     golden_context: GoldenContext | None = None,
+    wait_trace: WaitTrace | None = None,
 ) -> tuple[bool, str, list[AssertionResult]]:
     """Execute one step's effect, returning (ok, reason, assertion_results).
 
     The caller is responsible for interpolation (``_interp_step``) before
-    calling this function."""
+    calling this function. ``wait_trace``, when given for a wait step, records the poll timeline so a
+    timeout is diagnosable from artifacts (BE-0231 Unit 1)."""
     try:
         if kind == "wait":
             assert step.wait is not None
-            ok, reason = _wait(driver, step.wait, clock, network)
+            ok, reason = _wait(driver, step.wait, clock, network, trace=wait_trace)
             return ok, reason, []
         if kind == "email":
             assert step.email is not None
@@ -415,6 +420,10 @@ def _run_steps(
 
             interp_step = _interp_step(step, bindings)
             before = active_driver.query() if wants_screen_changed else None
+            # A `for` wait records its poll timeline so a timeout is diagnosable from artifacts
+            # (BE-0231 Unit 1); the on_blocked retry gets a fresh trace so the diagnostic reflects the
+            # attempt that actually failed.
+            wait_trace = WaitTrace() if kind == "wait" and interp_step.wait is not None else None
             ok, reason, results = _run_step_body(
                 active_driver,
                 interp_step,
@@ -426,11 +435,13 @@ def _run_steps(
                 control,
                 mailbox,
                 golden_context,
+                wait_trace=wait_trace,
             )
             if not ok and on_blocked is not None:
                 event = on_blocked(active_driver)
                 if event is not None:
                     outcome.alerts.append(event)
+                    wait_trace = WaitTrace() if wait_trace is not None else None
                     ok, reason, results = _run_step_body(
                         active_driver,
                         interp_step,
@@ -442,12 +453,31 @@ def _run_steps(
                         control,
                         mailbox,
                         golden_context,
+                        wait_trace=wait_trace,
                     )
             outcome.ok, outcome.reason, outcome.assertion_results = ok, reason, results
             outcome.duration_s = clock.now() - start
 
             after = active_driver.query()
             screen_changed = before is not None and after != before
+
+            # An unconditional first-wait diagnostic on a `for`-wait timeout: capturePolicy may not
+            # request an element dump on failure, so without this the timeout leaves no evidence to
+            # decide which cause fired (BE-0231 Unit 1). Deterministic, no LLM (prime directive 1).
+            # `polls > 0` fires only after a `for`-wait ran (only that branch records the trace), so
+            # the trigger is a structural fact, not the wording of the timeout message.
+            if wait_trace is not None and not ok and wait_trace.polls > 0:
+                try:
+                    art = sink.wait_diagnostic(step_id, trace=wait_trace, elements=after)
+                except OSError as exc:
+                    # Best-effort evidence: a disk/permission failure writing the diagnostic must not
+                    # mask the real timeout with an I/O traceback — keep the timeout as the failure and
+                    # disclose the lost evidence loudly. A genuine bug (e.g. a redaction error) still
+                    # surfaces rather than being swallowed here.
+                    _logger.warning("dropping wait-timeout diagnostic: write failed: %s", exc)
+                else:
+                    if art is not None:
+                        outcome.artifacts.append(art)
 
             if outcome.ok and interp_step.extract:
                 ext_ok, ext_reason = _run_extract(after, interp_step.extract, bindings)

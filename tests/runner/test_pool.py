@@ -14,6 +14,7 @@ from bajutsu.drivers import base
 from bajutsu.drivers.fake import FakeDriver
 from bajutsu.network import NetworkExchange
 from bajutsu.runner import (
+    ReadinessResult,
     device_pool,
     device_relauncher,
 )
@@ -112,6 +113,37 @@ def test_device_pool_per_device_resources(monkeypatch: pytest.MonkeyPatch) -> No
     # shutdown() stops every device's collector.
     assert la is not None and lb is not None
     assert la.collector._server is None and lb.collector._server is None
+
+
+def test_device_pool_wires_readiness_and_provenance_into_the_sink(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The lease folds the launch readiness outcome and this scenario's BE-0049 provenance into the
+    sink, so a first-wait timeout diagnostic can state them (BE-0231 Unit 1)."""
+    monkeypatch.setattr(
+        "bajutsu.platform_lifecycle.make_driver",
+        lambda actuator, udid: FakeDriver([_el("home", "H"), _el("ok", "OK")]),  # 2 → count signal
+    )
+    lease, shutdown = device_pool(
+        ["UDID-A"],
+        ["idb"],
+        _eff(),
+        Path("runs"),
+        available=lambda b: True,
+        env_run=lambda args, extra_env=None: "",
+    )
+    lz = None
+    try:
+        lz = lease(_eff(), _scn("a"))
+        assert lz.sink.readiness is not None
+        assert lz.sink.readiness.signal == "count"
+        assert lz.sink.provenance is not None
+        assert lz.sink.provenance["scenarioHash"].startswith("sha256:")
+        assert "toolVersion" in lz.sink.provenance
+    finally:
+        if lz is not None:
+            lz.release()
+        shutdown()
 
 
 def test_device_pool_labels_leased_simulator(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -459,11 +491,11 @@ def test_device_pool_releases_resources_when_launch_fails(monkeypatch: pytest.Mo
 
     launches = {"n": 0}
 
-    def flaky_launch(*args: object, **kwargs: object) -> base.Driver:
+    def flaky_launch(*args: object, **kwargs: object) -> tuple[base.Driver, ReadinessResult]:
         launches["n"] += 1
         if launches["n"] == 1:
             raise simctl.DeviceError("boot failed")
-        return FakeDriver([_el("home", "H"), _el("ok", "OK")])
+        return FakeDriver([_el("home", "H"), _el("ok", "OK")]), ReadinessResult(True, "count", 0.0)
 
     monkeypatch.setattr("bajutsu.runner.pool.launch_driver", flaky_launch)
 

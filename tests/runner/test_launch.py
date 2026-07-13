@@ -380,3 +380,48 @@ def test_await_ready_selector_takes_precedence_over_namespaces(
     driver = _ScriptedDriver([chrome, chrome, [*chrome, target]])
     _await_ready(driver, ready_sel={"id": "onboarding.start"}, id_namespaces=["stable"])  # type: ignore[arg-type]
     assert driver.calls >= 3  # waited for the selector despite an in-namespace element present
+
+
+# --- BE-0231 Unit 1: readiness signal capture for the wait-timeout diagnostic ---
+
+
+def test_await_ready_reports_the_readywhen_signal(monkeypatch: pytest.MonkeyPatch) -> None:
+    # The diagnostic needs to know which signal declared the app ready. When readyWhen matches, the
+    # gate must report that — the strongest signal, and the one a first-wait on the same element then
+    # races if it later flaps.
+    _install_bounded_clock(monkeypatch)
+    driver = _ScriptedDriver([[_el("onboarding.start", "Start"), _el("chrome", "C")]])
+    result = _await_ready(driver, ready_sel={"id": "onboarding.start"})  # type: ignore[arg-type]
+    assert result.ready is True
+    assert result.signal == "readyWhen"
+    assert result.elapsed_s >= 0.0
+
+
+def test_await_ready_reports_the_namespace_signal(monkeypatch: pytest.MonkeyPatch) -> None:
+    # With declared idNamespaces and no readyWhen match key, an in-namespace element is what declares
+    # ready — the diagnostic distinguishes this weaker signal from a readyWhen match.
+    _install_bounded_clock(monkeypatch)
+    driver = _ScriptedDriver([[_el("stable.row.1", "Row 1")]])
+    result = _await_ready(driver, id_namespaces=["stable"])  # type: ignore[arg-type]
+    assert result.ready is True
+    assert result.signal == "namespace"
+
+
+def test_await_ready_reports_the_count_signal(monkeypatch: pytest.MonkeyPatch) -> None:
+    # No readyWhen, no namespaces: the 2+ count fallback declared ready. A first-wait timeout after a
+    # count-signal readiness is the classic "gate returned before the content" hypothesis.
+    _install_bounded_clock(monkeypatch)
+    driver = _ScriptedDriver([[_el("a", "A"), _el("b", "B")]])
+    result = _await_ready(driver)  # type: ignore[arg-type]
+    assert result.ready is True
+    assert result.signal == "count"
+
+
+def test_await_ready_reports_timeout_when_never_ready(monkeypatch: pytest.MonkeyPatch) -> None:
+    # The gate never saw a ready screen. The diagnostic must record that readiness itself timed out —
+    # a distinct hypothesis from "ready passed but the awaited element then didn't render".
+    _install_bounded_clock(monkeypatch)
+    driver = _ScriptedDriver([[]])  # always empty
+    result = _await_ready(driver, timeout=1.0)  # type: ignore[arg-type]
+    assert result.ready is False
+    assert result.signal == "timeout"

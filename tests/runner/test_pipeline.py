@@ -334,10 +334,11 @@ def test_run_and_report_omits_upload_exec_for_ungoverned_run(tmp_path: Path) -> 
 def test_git_revision_maps_failure_and_blank_to_none(monkeypatch) -> None:  # type: ignore[no-untyped-def]
     # The subprocess is an external dependency, so it's the one place a stub is warranted. A
     # non-zero exit, a thrown error, and a 0-exit-but-blank stdout (a shimmed `git`) all mean
-    # "unknown revision" — None, never an empty stamp.
+    # "unknown revision" — None, never an empty stamp. The helper lives with run_provenance
+    # (report.manifest) so the pool's wait-timeout diagnostic and the report share it (BE-0231).
     import subprocess as sp
 
-    from bajutsu.runner import pipeline
+    from bajutsu.report import manifest
 
     def fake(result: sp.CompletedProcess[str] | Exception):  # type: ignore[no-untyped-def]
         def run(*a: object, **k: object) -> sp.CompletedProcess[str]:
@@ -347,16 +348,16 @@ def test_git_revision_maps_failure_and_blank_to_none(monkeypatch) -> None:  # ty
 
         return run
 
-    monkeypatch.setattr(pipeline.subprocess, "run", fake(sp.CompletedProcess([], 128, "", "fatal")))
-    assert pipeline._git_revision() is None  # not a repo
-    monkeypatch.setattr(pipeline.subprocess, "run", fake(sp.CompletedProcess([], 0, "   \n", "")))
-    assert pipeline._git_revision() is None  # 0 exit but blank stdout → unknown, not ""
-    monkeypatch.setattr(pipeline.subprocess, "run", fake(FileNotFoundError("git")))
-    assert pipeline._git_revision() is None  # git absent
+    monkeypatch.setattr(manifest.subprocess, "run", fake(sp.CompletedProcess([], 128, "", "fatal")))
+    assert manifest.git_revision() is None  # not a repo
+    monkeypatch.setattr(manifest.subprocess, "run", fake(sp.CompletedProcess([], 0, "   \n", "")))
+    assert manifest.git_revision() is None  # 0 exit but blank stdout → unknown, not ""
+    monkeypatch.setattr(manifest.subprocess, "run", fake(FileNotFoundError("git")))
+    assert manifest.git_revision() is None  # git absent
     monkeypatch.setattr(
-        pipeline.subprocess, "run", fake(sp.CompletedProcess([], 0, "abc123\n", ""))
+        manifest.subprocess, "run", fake(sp.CompletedProcess([], 0, "abc123\n", ""))
     )
-    assert pipeline._git_revision() == "abc123"  # normal: trimmed sha
+    assert manifest.git_revision() == "abc123"  # normal: trimmed sha
 
 
 def test_run_and_report_forwards_baselines_dir(tmp_path: Path) -> None:

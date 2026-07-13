@@ -75,6 +75,86 @@ def test_capture_elements_and_screenshot(tmp_path: Path) -> None:
     assert ("screenshot", str(tmp_path / "step0" / "after.png")) in driver.actions
 
 
+def test_file_sink_wait_diagnostic_writes_provenance_stamped_artifact(tmp_path: Path) -> None:
+    # BE-0231 Unit 1: a first-wait timeout writes a self-contained diagnostic — the element tree at
+    # timeout, the readiness signal, the poll trace, and the provenance stamp — so a rerun-to-green
+    # never discards the evidence needed to decide which cause fired.
+    from bajutsu.orchestrator.waits import WaitTrace
+    from bajutsu.platform_lifecycle import ReadinessResult
+
+    driver = FakeDriver([_el("a", "A"), _el("b", "B")])
+    trace = WaitTrace(
+        target="{'id': 'stable.row.1'}",
+        timeout_s=30.0,
+        polls=120,
+        first_nonempty_s=0.3,
+        elements_at_timeout=2,
+    )
+    sink = FileSink(
+        tmp_path,
+        readiness=ReadinessResult(True, "readyWhen", 2.1),
+        provenance={
+            "scenarioHash": "sha256:abc",
+            "toolVersion": "9.9.9",
+            "gitRevision": "deadbeef",
+        },
+    )
+    art = sink.wait_diagnostic("00-x/step0", trace=trace, elements=driver.query())
+    assert art is not None
+    assert art.name == "00-x/step0/wait-timeout.json"
+    doc = json.loads((tmp_path / "00-x/step0/wait-timeout.json").read_text(encoding="utf-8"))
+    assert doc["target"] == "{'id': 'stable.row.1'}"
+    assert doc["timeoutSeconds"] == 30.0
+    assert doc["readiness"] == {"ready": True, "signal": "readyWhen", "elapsedSeconds": 2.1}
+    assert doc["trace"]["polls"] == 120
+    assert doc["trace"]["firstNonemptySeconds"] == 0.3
+    assert doc["trace"]["elementsAtTimeout"] == 2
+    assert doc["trace"]["awaitedEverQueryable"] is False
+    assert doc["provenance"]["scenarioHash"] == "sha256:abc"
+    assert doc["provenance"]["gitRevision"] == "deadbeef"
+    assert [e["identifier"] for e in doc["elements"]] == ["a", "b"]
+
+
+def test_file_sink_wait_diagnostic_survives_missing_readiness_and_provenance(
+    tmp_path: Path,
+) -> None:
+    # A backend/lane that never carried a readiness result (or a run outside git) still gets a
+    # diagnostic — the missing pieces are recorded as null, never a crash on the failure path.
+    from bajutsu.orchestrator.waits import WaitTrace
+
+    sink = FileSink(tmp_path)
+    art = sink.wait_diagnostic(
+        "00-x/step0", trace=WaitTrace(target="{'id': 'z'}", timeout_s=5.0), elements=[]
+    )
+    assert art is not None
+    doc = json.loads((tmp_path / "00-x/step0/wait-timeout.json").read_text(encoding="utf-8"))
+    assert doc["readiness"] is None
+    assert doc["provenance"] is None
+    assert doc["trace"]["firstNonemptySeconds"] is None
+
+
+def test_file_sink_wait_diagnostic_redacts_and_locks_down_the_dump(tmp_path: Path) -> None:
+    # The element tree at timeout can hold on-screen secrets: the diagnostic must scrub configured
+    # secret values and leave the file owner-only, like the other sensitive dumps (BE-0131).
+    from bajutsu.orchestrator.waits import WaitTrace
+
+    sink = FileSink(tmp_path, secrets=["hunter2"])
+    path = tmp_path / "00-x/step0/wait-timeout.json"
+    sink.wait_diagnostic(
+        "00-x/step0", trace=WaitTrace(target="{'id': 'z'}"), elements=[_el("f", "hunter2")]
+    )
+    text = path.read_text(encoding="utf-8")
+    assert "hunter2" not in text
+    assert stat.S_IMODE(path.stat().st_mode) == 0o600
+
+
+def test_null_sink_wait_diagnostic_is_a_noop() -> None:
+    from bajutsu.evidence import NullSink
+    from bajutsu.orchestrator.waits import WaitTrace
+
+    assert NullSink().wait_diagnostic("s", trace=WaitTrace(), elements=[]) is None
+
+
 class _WritingDriver(FakeDriver):
     """A driver whose `screenshot` actually writes bytes, unlike `FakeDriver` (which only records
     the call). Needed to observe the file mode `write_screenshot` leaves behind (BE-0131)."""

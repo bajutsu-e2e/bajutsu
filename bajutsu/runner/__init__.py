@@ -9,7 +9,7 @@ API is re-exported here, so `from bajutsu.runner import ...` is unchanged.
 
 from __future__ import annotations
 
-from bajutsu.runner.launch import _await_ready, launch_driver
+from bajutsu.runner.launch import ReadinessResult, _await_ready, launch_driver
 from bajutsu.runner.pipeline import run_all, run_and_report, run_matrix_and_report
 from bajutsu.runner.pool import device_control, device_pool, device_relauncher
 from bajutsu.runner.types import Lease, LeaseFn, OnBlockedFor, RelaunchFactory
@@ -18,6 +18,7 @@ __all__ = [
     "Lease",
     "LeaseFn",
     "OnBlockedFor",
+    "ReadinessResult",
     "RelaunchFactory",
     "_await_ready",
     "device_control",

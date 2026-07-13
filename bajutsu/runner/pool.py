@@ -29,9 +29,10 @@ from bajutsu.platform_lifecycle import (
     device_relauncher,
     environment_for,
 )
+from bajutsu.report import git_revision, run_provenance
 from bajutsu.runner.launch import launch_driver
 from bajutsu.runner.types import Lease, LeaseFn
-from bajutsu.scenario import Scenario
+from bajutsu.scenario import Scenario, dump_scenario_file, redact_totp_secrets
 from bajutsu.webview import WebViewBridge
 
 __all__ = ["device_control", "device_pool", "device_relauncher"]
@@ -117,6 +118,10 @@ def device_pool(
     # simulator it ran on in the report; best-effort, so a missing catalog just omits it. A
     # driver-observed platform (web) has no device catalog.
     catalog = pool_env.device_catalog()
+    # Resolve the git revision once (a subprocess) and reuse it across leases; the per-scenario
+    # BE-0049 provenance stamp below folds it in so a first-wait timeout diagnostic is self-contained
+    # (BE-0231 Unit 1). The full run manifest still recomputes the same stamp post-run.
+    git_rev = git_revision()
     free: queue.Queue[str] = queue.Queue()
     for udid in udids:
         free.put(udid)
@@ -176,7 +181,7 @@ def device_pool(
             webview_bridge, webview_port = _alloc_webview_bridge(lease_env)
             if webview_port is not None:
                 extra_env["BAJUTSU_WEBVIEW_PORT"] = str(webview_port)
-            driver = launch_driver(
+            driver, readiness = launch_driver(
                 udid, eff, actuator, scenario.preconditions, env_run, extra_env, record_video_dir
             )
             sink = FileSink(
@@ -190,6 +195,13 @@ def device_pool(
                 # errors; adb screenrecord / logcat); idb has no such method, so this is None there
                 # and the simctl path is used.
                 driver_interval=getattr(driver, "driver_interval", None),
+                # Carried so a first-wait timeout diagnostic can state whether the readiness gate had
+                # passed and on which signal, stamped with this scenario's BE-0049 provenance so the
+                # evidence survives a rerun-to-green (BE-0231 Unit 1).
+                readiness=readiness,
+                provenance=run_provenance(
+                    dump_scenario_file([redact_totp_secrets(scenario)]), git_revision=git_rev
+                ),
             )
             # A driver-observed platform hooks its collector to the live page now (and fulfils this
             # scenario's mocks); a fresh context per lease scopes its traffic, mirroring the device's

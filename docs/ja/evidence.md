@@ -119,6 +119,21 @@ class EvidenceSink(Protocol):
 
 区間証跡は、driver が `driver_interval` provider を供給していればそこから取得し（web の Playwright ネイティブなコンソール / 動画、Android の `adb` screenrecord / logcat）、供給していなければ `FileSink` は simctl の経路を使い、`udid` が無ければスキップします。CLI の `run` は `FileSink(runs/<runId>, udid=..., log_predicate=...)` を使用します（[cli](cli.md#run)）。
 
+## 初回 wait のタイムアウト診断（BE-0231）
+
+`wait for <要素>` がタイムアウトすると、`run_dir/<step_id>/wait-timeout.json` を **無条件で** 書き出します。`capturePolicy` とは独立しているため、どのルールも取得しないようなタイムアウトでも、なぜ発生したかを判断するのに必要な証跡が残ります。これは純粋な診断であり、判定の入力にはなりません（run の合否は、機械で検査できるアサーションだけから決まります）。
+
+このファイルは自己完結しているので、リトライで緑になっても証跡が失われません。
+
+| フィールド | 何を答えるか |
+|---|---|
+| `readiness` | 起動後の準備完了ゲートが通過したか、どのシグナル（`readyWhen` / `namespace` / `count`、あるいは通過せず `timeout`）で通過したかです。「ゲートがコンテンツより先に返った」のか「コンテンツは描画されたが待機対象の要素が現れなかった」のかを切り分けます。準備完了結果を持たないレーンでは `null` になります。 |
+| `trace` | ポーリングの時系列です。何回ポーリングしたか、ツリーが最初に空でなくなった時刻（`firstNonemptySeconds`、一度も空でなくならなければ `null`）、タイムアウト時点で要素がいくつあったかを記録し、「何も描画されなかった / 一時的に空」「描画されたが待機対象の要素が無い」「コールドブートで描画が遅い」を切り分けます。 |
+| `provenance` | run の [BE-0049](../../roadmaps/BE-0049-determinism-flakiness-audit/BE-0049-determinism-flakiness-audit-ja.md) のスタンプ（シナリオハッシュ、ツールバージョン、git リビジョン）です。run から独立して証跡を識別できるようにします。 |
+| `elements` | タイムアウトした瞬間の要素ツリー（マスキング済み）です。 |
+
+これは `Artifact(kind="waitDiagnostic", provider="runner")` として記録します。バックエンドの actuator ではなく、run ループが書き出します。
+
 ## アーティファクトの来歴（provider）
 
 すべての証跡は `Artifact(name, kind, provider)` として記録し、**どの provider から来たか**を manifest に残します。
@@ -127,13 +142,14 @@ class EvidenceSink(Protocol):
 @dataclass
 class Artifact:
     name: str       # ファイル名（例 "after.png"）
-    kind: str       # "screenshot" / "elements" / "video" / "deviceLog" / "network"
+    kind: str       # "screenshot" / "elements" / "video" / "deviceLog" / "network" / "waitDiagnostic"
     provider: str   # このアーティファクトを供給した provider（下表参照）
 ```
 
 | `provider` の値 | 意味 |
 |---|---|
 | `"driver"` | actuator が直接取得した証跡です（スクリーンショット、要素ツリー）。 |
+| `"runner"` | run ループが書き出した証跡です（初回 wait のタイムアウト診断、[BE-0231](../../roadmaps/BE-0231-smoke-idb-first-wait-settling/BE-0231-smoke-idb-first-wait-settling-ja.md)）。 |
 | `"simctl"` | `simctl` による区間証跡です（動画、デバイスログ、アプリトレース）。 |
 | `"adb"` | `adb` による区間証跡です（screenrecord の動画、logcat のデバイスログ）。 |
 | `"collector"` | idb のアプリ側ネットワークコレクタ（`BAJUTSU_COLLECTOR`）です。 |
