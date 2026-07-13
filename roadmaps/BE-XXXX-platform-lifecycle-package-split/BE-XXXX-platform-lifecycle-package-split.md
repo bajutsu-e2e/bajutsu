@@ -103,9 +103,12 @@ exclusive unit of work.
   udid).resolve_device(...)` instead of re-deriving the same `actuator == "adb"` / `else simctl`
   branch three times. The three call sites collapse to the same one-line call regardless of which
   platform is added next.
-- **Add `Environment.captures_video -> bool` (or fold into the existing
-  `records_video_up_front` predicate) so `capture_video` is asked of the seam, not spelled out as
-  `actuator == "idb"`.** This is the one behavior change in the item: `record.py:259` currently never
+- **Add a new `Environment.captures_video -> bool` predicate so `capture_video` is asked of the
+  seam, not spelled out as `actuator == "idb"`.** This must be a new predicate, not a reuse of the
+  existing `records_video_up_front`: that one answers the orthogonal "wired up front vs. on demand"
+  axis (every simctl-backed env returns `False`, so a platform that *can* record (idb/xcuitest) and
+  one that *can't* (fake) share the same value), and it already has a caller with that meaning
+  (`runner/pool.py:172`), so it has no slot for the "can this platform record at all" axis. This is the one behavior change in the item: `record.py:259` currently never
   captures video under `xcuitest`, even though `XcuitestEnvironment` shares `IosEnvironment`'s
   simctl-backed device and can record the same way `idb` does. Routing the check through the
   `Environment` fixes the bug as a direct consequence of closing the leak, rather than as a
@@ -162,7 +165,7 @@ the Tier-2 `run`/CI gate (prime directive 1 is unaffected).
 - [ ] Unify `_await_ready` / `_await_boot` onto `base.wait_until`'s deadline discipline
 - [ ] Add `Environment.resolve_device(actuator, udid)` and route `run.py` / `audit.py` / `doctor.py`
       through it
-- [ ] Add `Environment.captures_video` (or extend `records_video_up_front`) and route
+- [ ] Add a new `Environment.captures_video` predicate (not a reuse of `records_video_up_front`) and route
       `record.py`'s `capture_video` through it, fixing the XCUITest video-capture bug, with a
       regression test
 
