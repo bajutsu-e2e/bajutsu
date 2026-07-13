@@ -569,8 +569,7 @@ Running a scenario on a hosted device farm instead of a local Simulator, emulato
 ### Configuration sourcing
 
 <!-- GENERATED:proposals-config-sourcing -->
-| ID | Item | Status |
-|---|---|---|
+
 <!-- /GENERATED:proposals-config-sourcing -->
 
 ### Codebase quality & technical debt
