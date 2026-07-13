@@ -79,7 +79,7 @@ EDIT_STATUSES = frozenset({"modified", "renamed", "changed"})
 # area label. Keys must be real topic keys from ``TOPICS`` (validated below), so a rename there fails
 # loudly here instead of silently emitting a label no reconcile step recognizes. Every matching rule
 # contributes: a ``BajutsuKit/…/*.swift`` file matches both the ``BajutsuKit/`` prefix and the
-# ``.swift`` suffix rule (both ``on-device``, deduped to one label), and a PR touching several trees
+# ``.swift`` suffix rule (both ``platform``, deduped to one label), and a PR touching several trees
 # carries several ``topic:*`` labels. Trees the roadmap taxonomy has no topic for (docs, dependency
 # lockfiles) are intentionally unmapped — they simply take no topic label.
 PATH_TOPIC_PREFIX_RULES: tuple[tuple[str, str], ...] = (
