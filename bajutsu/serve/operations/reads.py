@@ -147,7 +147,9 @@ def stats_html(state: ServeState, *, actor: str | None = None) -> tuple[str, int
     else the artifact store); each run's full `manifest.json` is read from the artifact store either
     way, since the DB `summary` carries only the compact history-list shape.
     """
-    return _stats.render_html(_stats.aggregate_runs(_run_manifests(state, actor))), 200
+    # live=True: this is the serve /stats view, so the day/backend/hotspot cells render as drilldown
+    # deep links into the SPA's run history (BE-0241); the CLI --html export leaves them plain text.
+    return _stats.render_html(_stats.aggregate_runs(_run_manifests(state, actor)), live=True), 200
 
 
 def flakiness_html(state: ServeState, *, actor: str | None = None) -> tuple[str, int]:

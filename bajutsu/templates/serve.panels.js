@@ -375,7 +375,9 @@ function setHistoryFilter(ids,label){
   const clean=(ids||[]).map(s=>String(s).trim()).filter(Boolean);
   historyFilter=clean.length?{ids:new Set(clean),label:label||''}:null;
 }
-function clearHistoryFilter(){historyFilter=null;loadHistory();}
+// Drop the ?tab=history&runs=… deep link from the URL too, so a reload after "clear" doesn't let the
+// serve.author.js boot handler silently reinstate the filter the user just cleared.
+function clearHistoryFilter(){historyFilter=null;history.replaceState(null,'',location.pathname);loadHistory();}
 function renderHistFilter(shown){
   const box=$('#histfilter');if(!box)return;
   if(!historyFilter){box.hidden=true;return}

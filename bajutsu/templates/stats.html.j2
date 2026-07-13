@@ -10,11 +10,12 @@
     and the SPA's boot reads the query. One `runs=` param per id (not a comma-joined value): the SPA
     reads them with `URLSearchParams.getAll('runs')`, which decodes each independently, so a run id
     that itself contains a comma survives (ids can be arbitrary custom labels, not just timestamps).
-    When there are no ids to link to (a run with no runId), fall back to plain text so the cell never
-    becomes a dead link. -#}
-{%- macro drill(label, run_ids) -%}
+    Only linked when `live` (the serve /stats view) — the `stats --html` standalone export renders
+    plain text, since an absolute `/?tab=history…` link is dead opened from disk. Likewise falls back
+    to plain text when there are no ids to link to (a run with no runId). -#}
+{%- macro drill(label, run_ids, live) -%}
 {%- set ids = run_ids | select | list -%}
-{%- if ids -%}
+{%- if ids and live -%}
 <a class="drill" href="/?tab=history&amp;{% for id in ids %}runs={{ id | urlencode }}&amp;{% endfor %}label={{ label | urlencode }}">{{ caller() }}</a>
 {%- else -%}
 {{ caller() }}
@@ -93,7 +94,7 @@ a.drill:hover { color: #0071e3; text-decoration: underline; }
 <table><thead><tr><th>day</th><th>runs</th><th>passed</th><th>pass-rate</th></tr></thead><tbody>
 {%- for d in stats.by_day %}
 {%- set day_ids = stats.by_run | selectattr("day", "equalto", d.day) | map(attribute="run_id") | list %}
-<tr><td>{% call drill("day " ~ (d.day or "(no date)"), day_ids) %}{{ d.day or "(no date)" }}{% endcall %}</td><td class="num">{{ d.runs }}</td><td class="num">{{ d.passed_runs }}</td><td class="num">{{ (d.pass_rate * 100) | round(0) }}%</td></tr>
+<tr><td>{% call drill("day " ~ (d.day or "(no date)"), day_ids, live) %}{{ d.day or "(no date)" }}{% endcall %}</td><td class="num">{{ d.runs }}</td><td class="num">{{ d.passed_runs }}</td><td class="num">{{ (d.pass_rate * 100) | round(0) }}%</td></tr>
 {%- endfor %}
 </tbody></table>
 {%- else %}
@@ -107,7 +108,7 @@ a.drill:hover { color: #0071e3; text-decoration: underline; }
 <table><thead><tr><th>backend</th><th>runs</th></tr></thead><tbody>
 {%- for backend, n in stats.by_backend.items() %}
 {%- set backend_ids = stats.by_run | selectattr("backend", "equalto", backend) | map(attribute="run_id") | list %}
-<tr><td>{% call drill("backend " ~ (backend or "(unknown)"), backend_ids) %}<code>{{ backend or "(unknown)" }}</code>{% endcall %}</td><td class="num">{{ n }}</td></tr>
+<tr><td>{% call drill("backend " ~ (backend or "(unknown)"), backend_ids, live) %}<code>{{ backend or "(unknown)" }}</code>{% endcall %}</td><td class="num">{{ n }}</td></tr>
 {%- endfor %}
 </tbody></table>
 {%- else %}
@@ -146,7 +147,7 @@ a.drill:hover { color: #0071e3; text-decoration: underline; }
 <h3>Scenarios</h3>
 <table><thead><tr><th>scenario</th><th>failures</th><th>top reason</th></tr></thead><tbody>
 {%- for h in stats.failing_scenarios[:20] %}
-<tr><td>{% call drill(h.key, h.run_ids) %}{{ h.key }}{% endcall %}</td><td class="num">{{ h.failures }}</td><td>{{ h.reason }}</td></tr>
+<tr><td>{% call drill(h.key, h.run_ids, live) %}{{ h.key }}{% endcall %}</td><td class="num">{{ h.failures }}</td><td>{{ h.reason }}</td></tr>
 {%- endfor %}
 </tbody></table>
 {%- endif %}
@@ -154,7 +155,7 @@ a.drill:hover { color: #0071e3; text-decoration: underline; }
 <h3>Steps</h3>
 <table><thead><tr><th>step</th><th>failures</th><th>top reason</th></tr></thead><tbody>
 {%- for h in stats.failing_steps[:20] %}
-<tr><td>{% call drill(h.key, h.run_ids) %}{{ h.key }}{% endcall %}</td><td class="num">{{ h.failures }}</td><td>{{ h.reason }}</td></tr>
+<tr><td>{% call drill(h.key, h.run_ids, live) %}{{ h.key }}{% endcall %}</td><td class="num">{{ h.failures }}</td><td>{{ h.reason }}</td></tr>
 {%- endfor %}
 </tbody></table>
 {%- endif %}
@@ -162,7 +163,7 @@ a.drill:hover { color: #0071e3; text-decoration: underline; }
 <h3>Assertions</h3>
 <table><thead><tr><th>kind</th><th>failures</th><th>top reason</th></tr></thead><tbody>
 {%- for h in stats.failing_assertions[:20] %}
-<tr><td>{% call drill(h.key, h.run_ids) %}<code>{{ h.key }}</code>{% endcall %}</td><td class="num">{{ h.failures }}</td><td>{{ h.reason }}</td></tr>
+<tr><td>{% call drill(h.key, h.run_ids, live) %}<code>{{ h.key }}</code>{% endcall %}</td><td class="num">{{ h.failures }}</td><td>{{ h.reason }}</td></tr>
 {%- endfor %}
 </tbody></table>
 {%- endif %}

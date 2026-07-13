@@ -308,7 +308,8 @@ def test_hotspot_run_ids_empty_when_manifest_has_no_run_id() -> None:
 
 
 def test_render_html_emits_drilldown_deep_links() -> None:
-    # BE-0241: day / backend / hotspot cells link to the SPA's History tab, filtered to their runs.
+    # BE-0241: in the live serve view, day / backend / hotspot cells link to the SPA's History tab,
+    # filtered to their runs.
     html = _stats.render_html(
         _stats.aggregate_runs(
             [
@@ -319,7 +320,8 @@ def test_render_html_emits_drilldown_deep_links() -> None:
                     scenarios=[{"scenario": "checkout", "ok": False, "failure": "timeout"}],
                 )
             ]
-        )
+        ),
+        live=True,
     )
     # Hotspot, day, and backend rows all carry the deep link to the matching run.
     assert 'href="/?tab=history&amp;runs=20260101-000000&amp;label=checkout"' in html
@@ -346,7 +348,8 @@ def test_render_html_deep_link_repeats_runs_param_per_id() -> None:
                     scenarios=[{"scenario": "checkout", "ok": False, "failure": "timeout"}],
                 ),
             ]
-        )
+        ),
+        live=True,
     )
     # The checkout hotspot spans both runs → one runs= param each, no comma delimiter.
     assert (
@@ -354,6 +357,28 @@ def test_render_html_deep_link_repeats_runs_param_per_id() -> None:
         in html
     )
     assert "runs=20260101-000000,20260101-120000" not in html
+
+
+def test_render_html_standalone_export_has_no_drilldown_links() -> None:
+    # BE-0241: the default (CLI `stats --html`) export stays self-contained — an absolute
+    # `/?tab=history…` link is dead opened from disk, so the cells render as plain text, not anchors.
+    html = _stats.render_html(
+        _stats.aggregate_runs(
+            [
+                _manifest(
+                    "20260101-000000",
+                    ok=False,
+                    backend="idb",
+                    scenarios=[{"scenario": "checkout", "ok": False, "failure": "timeout"}],
+                )
+            ]
+        )
+    )
+    assert "tab=history" not in html
+    assert "runs=" not in html
+    assert 'class="drill"' not in html
+    # The underlying data still renders — just without the links.
+    assert "checkout" in html and "idb" in html
 
 
 def test_render_html_no_link_when_run_id_absent() -> None:

@@ -459,17 +459,25 @@ def _env() -> Environment:
     return Environment(loader=FileSystemLoader(str(_TEMPLATE_DIR)), autoescape=True)
 
 
-def render_html(s: Stats) -> str:
+def render_html(s: Stats, *, live: bool = False) -> str:
     """A self-contained HTML dashboard (inline CSS, minimal inline SVG, no JS, no external asset).
 
     The visual counterpart to `render`: the pass-rate trend, run volume, the slowest and flakiest
     scenarios, and the failure hotspots on one page that works opened straight from disk. Read-only
     and AI-free, mirroring the coverage report (BE-0050).
+
+    Args:
+        s: The aggregated whole-suite trend to render.
+        live: When True (the serve `/stats` view), the day / backend / hotspot cells render as
+            drilldown deep links into the serve SPA's run history (BE-0241). The default (False) —
+            used by the `bajutsu stats --html` standalone export — renders those cells as plain text,
+            since an absolute `/?tab=history…` link is dead when the page is opened straight from disk
+            with no serve session, keeping the export self-contained.
     """
     return (
         _env()
         .get_template("stats.html.j2")
-        .render(stats=s, slowest=_slowest(s.scenarios), flaky=_flaky(s.scenarios))
+        .render(stats=s, slowest=_slowest(s.scenarios), flaky=_flaky(s.scenarios), live=live)
     )
 
 
