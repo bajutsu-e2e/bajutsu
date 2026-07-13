@@ -192,6 +192,7 @@ The AI-driven `record` (Tier 1) is implemented ([recording.md](../docs/recording
 | [BE-0194](BE-0194-record-turn-payload-diet/BE-0194-record-turn-payload-diet.md) | Lean the record turn payload (compact the element tree, token-budget controls, per-category usage) | Implemented |
 | [BE-0225](BE-0225-config-project-hub/BE-0225-config-project-hub.md) | Config project hub in serve (register, list, switch, run) | Implemented |
 | [BE-0226](BE-0226-cross-project-metrics-dashboard/BE-0226-cross-project-metrics-dashboard.md) | Cross-project metrics comparison dashboard | Implemented |
+| [BE-0241](BE-0241-stats-run-drilldown/BE-0241-stats-run-drilldown.md) | Drill down from the Stats dashboard to the runs behind it | Implemented |
 <!-- /GENERATED:implemented-authoring -->
 
 ### Self-healing triage (M4)
@@ -654,7 +655,6 @@ A platform is just a backend behind the one driver interface ([DESIGN §1](../DE
 |---|---|---|
 | [BE-0182](BE-0182-record-human-value-prompt/BE-0182-record-human-value-prompt.md) | Human value entry during record (OTP / random / one-off values) | Proposal |
 | [BE-0185](BE-0185-record-human-takeover-step/BE-0185-record-human-takeover-step.md) | Human takeover step during record (CAPTCHA / biometrics / unresolvable gestures) | Proposal |
-| [BE-0241](BE-0241-stats-run-drilldown/BE-0241-stats-run-drilldown.md) | Drill down from the Stats dashboard to the runs behind it | Proposal |
 <!-- /GENERATED:proposals-authoring -->
 
 ### Self-healing triage (M4)

@@ -215,6 +215,9 @@
       </div>
       <div class="panel" id="panel-history" data-testid="replay.panel-history" hidden>
         <div class="hhead"><span>Past runs</span><button class="refresh" id="refresh" title="refresh">&#8635;</button></div>
+        <!-- Drilldown filter (BE-0241): shown only when the Stats dashboard deep-linked here with a
+             run set; "clear" drops back to the full history. -->
+        <div class="histfilter" id="histfilter" data-testid="replay.history-filter" hidden><span id="histfilter-label"></span> · <button type="button" class="linklike" id="histfilter-clear">clear</button></div>
         <ul class="history" id="history"></ul>
       </div>
     </div>

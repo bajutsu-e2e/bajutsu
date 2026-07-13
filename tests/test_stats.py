@@ -229,7 +229,9 @@ def test_failing_steps_keyed_by_scenario_and_action() -> None:
         ]
     )
     assert stats.failing_steps == [
-        _stats.Hotspot(key="login > type", failures=1, reason="not found")
+        _stats.Hotspot(
+            key="login > type", failures=1, reason="not found", run_ids=("20260101-000000",)
+        )
     ]
 
 
@@ -260,7 +262,80 @@ def test_failing_assertions_span_step_and_scenario_level() -> None:
             )
         ]
     )
-    assert stats.failing_assertions == [_stats.Hotspot(key="text", failures=2, reason="missing")]
+    assert stats.failing_assertions == [
+        _stats.Hotspot(key="text", failures=2, reason="missing", run_ids=("20260101-000000",))
+    ]
+
+
+def test_hotspot_run_ids_are_sorted_deduped_across_runs() -> None:
+    # BE-0241: a hotspot links back to every run it failed in — sorted, and one id per run even when
+    # a scenario fails more than once inside it (here two failing steps in the same run).
+    stats = _stats.aggregate_runs(
+        [
+            _manifest(
+                "20260102-000000",
+                scenarios=[{"scenario": "checkout", "ok": False, "failure": "timeout"}],
+            ),
+            _manifest(
+                "20260101-000000",
+                scenarios=[
+                    {
+                        "scenario": "checkout",
+                        "ok": False,
+                        "failure": "timeout",
+                        "steps": [
+                            {"index": 0, "action": "tap", "ok": False, "reason": "x"},
+                            {"index": 1, "action": "tap", "ok": False, "reason": "y"},
+                        ],
+                    }
+                ],
+            ),
+        ]
+    )
+    assert stats.failing_scenarios[0].run_ids == ("20260101-000000", "20260102-000000")
+    # The two failing `checkout > tap` steps live in one run, so its id appears once.
+    assert stats.failing_steps[0].key == "checkout > tap"
+    assert stats.failing_steps[0].run_ids == ("20260101-000000",)
+
+
+def test_hotspot_run_ids_empty_when_manifest_has_no_run_id() -> None:
+    # A manifest with no runId still counts toward the tally but links to nothing (no dead deep link).
+    stats = _stats.aggregate_runs(
+        [{"ok": False, "scenarios": [{"scenario": "s", "ok": False, "failure": "boom"}]}]
+    )
+    assert stats.failing_scenarios[0].failures == 1
+    assert stats.failing_scenarios[0].run_ids == ()
+
+
+def test_render_html_emits_drilldown_deep_links() -> None:
+    # BE-0241: day / backend / hotspot cells link to the SPA's History tab, filtered to their runs.
+    html = _stats.render_html(
+        _stats.aggregate_runs(
+            [
+                _manifest(
+                    "20260101-000000",
+                    ok=False,
+                    backend="idb",
+                    scenarios=[{"scenario": "checkout", "ok": False, "failure": "timeout"}],
+                )
+            ]
+        )
+    )
+    # Hotspot, day, and backend rows all carry the deep link to the matching run.
+    assert 'href="/?tab=history&amp;runs=20260101-000000&amp;label=checkout"' in html
+    assert "runs=20260101-000000&amp;label=day%202026-01-01" in html
+    assert "runs=20260101-000000&amp;label=backend%20idb" in html
+    # Still self-contained — the links are plain anchors, no script.
+    assert "<script" not in html
+
+
+def test_render_html_no_link_when_run_id_absent() -> None:
+    # A hotspot with no contributing run id renders as plain text, never a dead `runs=` link.
+    html = _stats.render_html(
+        _stats.aggregate_runs([{"ok": False, "scenarios": [{"scenario": "orphan", "ok": False}]}])
+    )
+    assert "orphan" in html
+    assert "runs=" not in html
 
 
 def test_render_text_summarizes_headline() -> None:

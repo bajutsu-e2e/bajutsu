@@ -368,15 +368,34 @@ async function loadUsage(){
   catch(e){setShadowContent(host,'<div style="color:#6e6e73;font-style:italic">usage unavailable</div>');return;}
   renderReportInShadow(host,html,{leftAlign:true});
 }
+// Drilldown filter (BE-0241): while set, loadHistory() renders only the runs a Stats-dashboard deep
+// link named, with a "filtered: <label> · clear" banner. null (the default) shows the full history.
+let historyFilter=null;
+function setHistoryFilter(ids,label){
+  const clean=(ids||[]).map(s=>String(s).trim()).filter(Boolean);
+  historyFilter=clean.length?{ids:new Set(clean),label:label||''}:null;
+}
+function clearHistoryFilter(){historyFilter=null;loadHistory();}
+function renderHistFilter(shown){
+  const box=$('#histfilter');if(!box)return;
+  if(!historyFilter){box.hidden=true;return}
+  // renderHistFilter owns the run count, so the label is just the drilldown's descriptor (may be blank).
+  const label=historyFilter.label?historyFilter.label+' ':'';
+  $('#histfilter-label').textContent=`filtered: ${label}(${shown} run${shown===1?'':'s'})`;
+  box.hidden=false;
+}
 async function loadHistory(){
   const runs=await getJSON('/api/runs',null);if(!runs)return;
   const tab=$('#histtab');if(tab)tab.textContent='History'+(runs.length?` (${runs.length})`:'');
+  const shown=historyFilter?runs.filter(r=>historyFilter.ids.has(r.id)):runs;
+  renderHistFilter(shown.length);
   const ul=$('#history');
-  if(!runs.length){ul.innerHTML='<li class="muted">no runs yet</li>';return}
-  ul.innerHTML=runs.map(r=>`<li data-id="${r.id}" data-ok="${r.ok?1:0}"${r.id===selectedRun?' class="sel"':''}><span class="dot ${r.ok?'ok':'ng'}"></span><span class="hid">${r.id}</span><span class="hsum">${r.passed}/${r.total}${r.scenarios.length?' · '+r.scenarios.join(', '):''}</span></li>`).join('');
+  if(!shown.length){ul.innerHTML=`<li class="muted">${historyFilter?'no matching runs':'no runs yet'}</li>`;return}
+  ul.innerHTML=shown.map(r=>`<li data-id="${r.id}" data-ok="${r.ok?1:0}"${r.id===selectedRun?' class="sel"':''}><span class="dot ${r.ok?'ok':'ng'}"></span><span class="hid">${r.id}</span><span class="hsum">${r.passed}/${r.total}${r.scenarios.length?' · '+r.scenarios.join(', '):''}</span></li>`).join('');
   ul.querySelectorAll('li[data-id]').forEach(li=>li.addEventListener('click',()=>{setReport(li.dataset.id,li.dataset.ok==='1');ul.querySelectorAll('li').forEach(x=>x.classList.remove('sel'));li.classList.add('sel')}));
 }
 $('#refresh').addEventListener('click',loadHistory);
+$('#histfilter-clear').addEventListener('click',clearHistoryFilter);
 $('#stats-refresh').addEventListener('click',loadStats);
 $('#flaky-refresh').addEventListener('click',loadFlaky);
 $('#usage-refresh').addEventListener('click',loadUsage);
