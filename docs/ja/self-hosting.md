@@ -279,7 +279,8 @@ docker compose up -d            # postgres + minio + migrate（alembic upgrade h
 持つホストで `0.0.0.0` にはしないでください。成果物バケットを露出させてしまいます。
 
 アーティファクト／シナリオ／ベースラインに加え、アップロードされた zip バンドル（BE-0243）のストアも、
-`BAJUTSU_SERVER_STORE` という1本の URI で選びます（BE-0204）。`s3://bucket/prefix`（S3 互換。この compose が同梱する MinIO）と `gs://bucket/prefix`
+`BAJUTSU_SERVER_STORE` という1本の URI で選びます（BE-0204）。`s3://bucket/prefix`（S3 互換。
+この compose が同梱する MinIO）と `gs://bucket/prefix`
 （Google Cloud Storage）のどちらかを指定できます。すでに Google Cloud 上で他のスタックを動かしているなら、
 `docker-compose.yml` から `minio` と `minio-init` サービスを外し、`BAJUTSU_SERVER_STORE` を GCS バケットに
 向けて、コントロールプレーンのイメージの [`deploy/self-host/Dockerfile`](../../deploy/self-host/Dockerfile)

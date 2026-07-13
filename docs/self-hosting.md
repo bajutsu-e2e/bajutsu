@@ -290,7 +290,8 @@ another host, set `BIND_ADDR` in `.env` to the node's **tailnet IP** — never `
 with a public interface, since that would expose the artifacts bucket.
 
 The artifact/scenario/baseline store — and, since BE-0243, uploaded zip bundles too — is named by
-one URI, `BAJUTSU_SERVER_STORE` (BE-0204) — `s3://bucket/prefix` (S3-compatible; MinIO, as shipped in this compose) or
+one URI, `BAJUTSU_SERVER_STORE` (BE-0204) — `s3://bucket/prefix` (S3-compatible; MinIO, as shipped
+in this compose) or
 `gs://bucket/prefix` for a Google Cloud Storage bucket instead. Already running the rest of your
 stack on Google Cloud? Drop the `minio` / `minio-init` services from `docker-compose.yml`, point
 `BAJUTSU_SERVER_STORE` at your GCS bucket, and add the `gcs` extra to the control plane image's

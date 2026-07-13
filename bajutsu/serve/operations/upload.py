@@ -10,7 +10,6 @@ unchanged — the bundle stays exactly as ephemeral as BE-0073 shipped it.
 from __future__ import annotations
 
 import re
-import shutil
 import tempfile
 from pathlib import Path
 from typing import Any
@@ -93,13 +92,15 @@ def _materialize_or_error(zip_path: Path, uploads_dir: Path, sha256: str) -> tup
 
 
 def _locate_config_or_heal(dest: Path) -> tuple[Any, int]:
-    """`find_bundle_config(dest)`, wrapped the same way: `(config_path, 200)`, or a 500 with *dest*
-    removed so a retry gets a genuine re-extraction instead of repeating this error forever — only
+    """`find_bundle_config(dest)`, wrapped the same way: `(config_path, 200)`, or a 500 — only
     reachable for a corrupted/tampered entry (`materialize_bundle` only ever returns a cache hit for
-    a directory `_validate_bundle_config` already approved)."""
+    a directory `_validate_bundle_config` already approved). *dest* is left alone even here:
+    `materialize_bundle` never deletes a directory once it exists, since another bind (this org, this
+    replica or another) may already depend on it, and this rare branch is no exception — an operator
+    inspects/clears the entry rather than a caller silently pulling it out from under a possible
+    concurrent user."""
     config_path = find_bundle_config(dest)
     if config_path is None:
-        shutil.rmtree(dest, ignore_errors=True)
         return {"error": "cached bundle is missing its config (try re-uploading)"}, 500
     return config_path, 200
 
