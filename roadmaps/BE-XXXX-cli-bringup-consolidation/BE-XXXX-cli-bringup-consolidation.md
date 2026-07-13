@@ -37,18 +37,22 @@ Four copies of the same bring-up logic, each hand-written per command:
   typer.Exit(2)` at `run.py:515`, `record.py:211-212`, `audit.py:152-156`, and `crawl.py:322`.
 - **Alert-guard construction** — `ClaudeAlertLocator(ai=eff.ai, redactor=redactor)` followed by
   `SystemAlertGuard(locator, instruction).dismiss` at `run.py:375` and `392`, `crawl.py:231-232`,
-  and `record.py:207-208`.
+  and `record.py:207-208`. Note these three are *not* byte-identical: `run.py`'s
+  `_alert_guard_factory` (`run.py:363-376`) first runs a `credential_gap(eff.ai)` check and, on a
+  missing credential, skips constructing the locator (falls back to `None` with a user-facing
+  warning), whereas `crawl.py`/`record.py` construct it unconditionally. So the shared helper is not
+  a pure behavior-preserving lift of all three — see Detailed design item 3 for how this is resolved.
 
 A behavior change to any one of these — a different exit code, an extra log line before the
 exit, a new exception to catch — has to be applied to every copy by hand, and a missed copy is a
 silent inconsistency between commands rather than a test failure, since each copy passes its own
 command's tests independently.
 
-Separately, `adb.DeviceError` subclasses `simctl.DeviceError` (`bajutsu/adb.py:32`), so the ~9
+Separately, `adb.DeviceError` subclasses `simctl.DeviceError` (`bajutsu/adb.py:32`), so the 10
 call sites that only want to catch *some* device error — not an iOS-specific one — still import
 `bajutsu.simctl` to name the exception: `crawl.py:1016`, `cli/commands/crawl.py:189,322,365`,
-`cli/commands/run.py:515`, `cli/commands/audit.py:154,179`, `cli/commands/record.py:242`,
-`doctor.py:136`, and `serve/operations/doctor.py:130`. That inverts the dependency the prime
+`cli/commands/run.py:516`, `cli/commands/audit.py:158,193`, `cli/commands/record.py:242`,
+`cli/commands/doctor.py:181`, and `serve/operations/doctor.py:130`. That inverts the dependency the prime
 directive expects: `bajutsu` is meant to be backend-agnostic (platform is a backend behind one
 interface), yet a purely generic `except DeviceError` handler currently can't be written without
 reaching into the iOS backend's module.
@@ -66,11 +70,22 @@ hierarchy inversion — with the first split into the four copied pieces:
    `start_launch_server` call and its `except RuntimeError → typer.Exit(2)` boundary into one
    helper returning `(stop_server, exec_decision)`, replacing the four copies. Call-site
    differences (e.g. `crawl`'s `atexit.register(stop_server)` vs. `run`'s `finally: stop_server()`)
-   stay at the call site — the helper only owns the bring-up-and-exit part all four share.
+   stay at the call site — the helper only owns the bring-up-and-exit part all four share. One
+   call-site difference needs an explicit decision: `audit.py`'s `except RuntimeError` block
+   (`audit.py:171-173`) also calls `shutdown()` to tear down the already-created device-pool lease
+   before `typer.Exit(2)`, which the other three don't. The helper takes an optional
+   `on_error: Callable[[], None] | None` cleanup hook (run before it exits) so `audit` passes
+   `shutdown` and keeps that teardown; the other three pass nothing and behave exactly as today.
 3. **`_build_alert_guard(eff, redactor, instruction)`** in `bajutsu/cli/_shared.py` — folds the
    `ClaudeAlertLocator` + `SystemAlertGuard(...).dismiss` construction into one helper returning
    the bound `dismiss` callable, replacing the three copies in `run.py`, `crawl.py`, and
-   `record.py`.
+   `record.py`. The helper absorbs `run.py`'s `credential_gap(eff.ai)` branch
+   (`run.py:363-376`): when the credential is missing it emits the same warning and returns a
+   no-op guard. This is *not* purely behavior-preserving for two of the three sites — `crawl.py`
+   and `record.py` construct the locator unconditionally today, so folding them in means they
+   gain `run`'s graceful no-op-on-missing-credential behavior instead of proceeding without it.
+   That alignment is deliberate (all three AI-authoring commands should degrade the same way), and
+   is called out here so it is a decided behavior change, not an accidental one.
 4. **udid resolution stays a thin per-call-site wrapper**, not a fourth shared helper: each call
    site's `_simctl.resolve_udid(...)` already differs in its non-udid arguments, so the only
    shared part is the `except DeviceError → typer.Exit(2)` boundary — which collapses into a
@@ -78,7 +93,7 @@ hierarchy inversion — with the first split into the four copied pieces:
 5. **`bajutsu/device_errors.py`** — a new module defining a platform-neutral `DeviceError`
    (message-carrying, matching the existing `simctl.DeviceError` shape). `simctl.DeviceError` and
    `adb.DeviceError` both become subclasses of it (each keeps its own class for platform-specific
-   detail; neither subclasses the other any more). The ~9 generic `except _simctl.DeviceError` /
+   detail; neither subclasses the other any more). The 10 generic `except _simctl.DeviceError` /
    `except simctl.DeviceError` call sites listed under Motivation switch to
    `except device_errors.DeviceError`, dropping their `bajutsu.simctl` import; only call sites that
    genuinely need an iOS-specific `simctl.DeviceError` (if any) keep importing it directly.
