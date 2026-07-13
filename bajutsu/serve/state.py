@@ -489,13 +489,23 @@ class ServeState:
 
         The Claude API key honors the bound config's ``ai.keyEnv`` (BE-0097); the `claude-code`
         provider's OAuth token maps to its fixed CLI variable (BE-0215) — the `claude` CLI names it,
-        so it is not config-overridable like the SDK key. Imported lazily to avoid a cycle with the
-        operations layer, which imports this module."""
+        so it is not config-overridable like the SDK key; the Git config-source credential maps to
+        the bajutsu-owned ``BAJUTSU_GIT_CONFIG_TOKEN`` (BE-0224), which the in-process private-repo
+        fetch reads — deliberately *not* ``GITHUB_TOKEN`` so clearing the UI credential never pops an
+        operator's own exported token. Imported lazily to avoid a cycle with the operations layer,
+        which imports this module."""
         from bajutsu.ai.claude_code import OAUTH_TOKEN_ENV
-        from bajutsu.serve.operations.config import AI_CLAUDE_CODE_TOKEN_SECRET, active_key_env
+        from bajutsu.config_source import GIT_CONFIG_TOKEN_ENV
+        from bajutsu.serve.operations.config import (
+            AI_CLAUDE_CODE_TOKEN_SECRET,
+            GIT_CONFIG_TOKEN_SECRET,
+            active_key_env,
+        )
 
         if name == AI_CLAUDE_CODE_TOKEN_SECRET:
             return OAUTH_TOKEN_ENV
+        if name == GIT_CONFIG_TOKEN_SECRET:
+            return GIT_CONFIG_TOKEN_ENV
         return active_key_env(self)
 
     def for_org(self, org: str) -> StoreBundle:

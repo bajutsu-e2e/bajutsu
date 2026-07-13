@@ -366,7 +366,7 @@ async function browseFs(dir){
   $('#fslist').querySelectorAll('li[data-dir]').forEach(li=>li.addEventListener('click',()=>browseFs(li.dataset.dir)));
   $('#fslist').querySelectorAll('li[data-file]').forEach(li=>li.addEventListener('click',()=>chooseConfig(li.dataset.file)));
 }
-function openFs(){$('#fsmodal').hidden=false;if(fsSourceEnabled)browseFs('')}
+function openFs(){$('#fsmodal').hidden=false;$('#gitcred').value='';loadGitCred();if(fsSourceEnabled)browseFs('')}
 function closeFs(){closeModal($('#fsmodal'))}
 $('#opencfg').addEventListener('click',openFs);
 $('#fsclose').addEventListener('click',closeFs);
@@ -436,6 +436,33 @@ $('#projectsw').addEventListener('change',e=>switchProject(e.target.value));
 $('#openprojects').addEventListener('click',openProjects);
 $('#projectsclose').addEventListener('click',closeProjects);
 $('#projectsmodal').addEventListener('click',e=>{if(e.target===$('#projectsmodal'))closeProjects()});
+
+// ---- Git config-source credential (BE-0224): the write-once token for a private repo, stored via
+// the SecretStore seam. Masked-only, like the API key — the plaintext is never read back.
+let gitCredState={set:false,masked:''};
+function renderGitCred(){
+  const st=$('#gitcredstate');if(!st)return;
+  st.innerHTML=gitCredState.set?'&mdash; stored: <code>'+esc(gitCredState.masked)+'</code>':'';
+}
+function applyGitCred(d){gitCredState={set:!!d.set,masked:d.masked||''};renderGitCred()}
+async function loadGitCred(){applyGitCred(await getJSON('/api/gitcredential',{set:false}))}
+// Store the entered credential, clearing the input on success and showing the error inline on
+// failure. Returns whether it stored — the callers (Save, and Load's save-first step) branch on it.
+async function storeGitCred(value,err){
+  let d;try{
+    const r=await fetch('/api/gitcredential',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({value})});
+    d=await r.json();
+  }catch(e){d={error:'request failed'}}
+  if(d.error){err.textContent=d.error;err.hidden=false;return false}
+  $('#gitcred').value='';applyGitCred(d);return true;
+}
+async function saveGitCred(){
+  const err=$('#gitsrcerr');err.hidden=true;
+  const value=$('#gitcred').value.trim();
+  if(!value){err.textContent='Enter a credential to store, or a public repo needs none.';err.hidden=false;return}
+  await storeGitCred(value,err);
+}
+$('#gitcredsave').addEventListener('click',saveGitCred);
 
 // ---- view the loaded config: a structured key/value tree (or the raw YAML) + its Git origin ----
 function closeCfgView(){closeModal($('#cfgviewmodal'))}
@@ -720,6 +747,9 @@ async function chooseGitConfig(){
   const git=$('#gitspec').value.trim();
   const err=$('#gitsrcerr');err.hidden=true;
   if(!git){err.textContent='Enter a github:owner/repo[@ref][:path] spec.';err.hidden=false;return}
+  // Store any freshly-entered credential first (BE-0224), so the in-process fetch below can read it.
+  const cred=$('#gitcred').value.trim();
+  if(cred && !await storeGitCred(cred,err))return;
   const r=await fetch('/api/config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({git})});
   const d=await r.json();
   if(d.error){err.textContent=d.error;err.hidden=false;return}

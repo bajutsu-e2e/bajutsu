@@ -125,6 +125,7 @@ _ADMIN_PATHS = frozenset(
         "/api/upload",
         "/api/apikey",
         "/api/claudecodetoken",
+        "/api/gitcredential",
         "/api/provider",
         "/api/ant/login",
     }

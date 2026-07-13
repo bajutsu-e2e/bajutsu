@@ -166,6 +166,71 @@ whose build you trust. Without the opt-in the run proceeds with the build suppre
 uploaded bundle's build is suppressed — no silent host-side command execution from a config that
 arrived over the network.
 
+## Private-repository access for the Git config source (BE-0224)
+
+When `serve` (or the CLI) reads its config from a **private** GitHub repository — a `github:` spec,
+[BE-0063](../roadmaps/BE-0063-git-config-source/BE-0063-git-config-source.md) — it needs a credential
+that grants read access. A public repository needs none. The credential is resolved **per fetch**, so
+rotating it takes effect without a restart, in this order:
+
+1. a configured **GitHub App installation** (recommended for an unattended host — see below);
+2. a credential entered via the web UI's "From a Git repository" dialog (held in `BAJUTSU_GIT_CONFIG_TOKEN` — see below);
+3. `GITHUB_TOKEN` / `GH_TOKEN` from the environment;
+4. `gh auth token`, for a developer with an interactive `gh` session on their own machine;
+5. otherwise anonymous (public repositories only).
+
+**Grant least privilege.** A classic personal access token (PAT) with the `repo` scope grants
+read/write to *every* private repository the person can see — far more than "read one test repo".
+Prefer a **fine-grained** PAT (or a GitHub App installation) scoped to only the target repositories
+with the single **Contents: read** permission.
+
+### Supplying a token to an unattended daemon
+
+A launchd / systemd `serve` has no interactive `gh` session, so inject the token at the daemon level.
+For the LaunchAgent in [step 1](#1-generate-the-launchagent), add it to the plist's
+`EnvironmentVariables`; on Linux/systemd use the unit's `Environment=` (or an `EnvironmentFile=` that
+is not world-readable). A PAT is tied to a *person*, though: it carries that person's access and stops
+working when they rotate it or leave. A service that reads private repos unattended should
+authenticate **as itself** — a GitHub App.
+
+### GitHub App (recommended for a service)
+
+A GitHub App installation token is short-lived, limited to the installation's repositories, and tied
+to the service rather than a person. Create an App with **Contents: read**, install it on the target
+repositories, then supply:
+
+```bash
+export BAJUTSU_GITHUB_APP_ID=123456
+export BAJUTSU_GITHUB_APP_PRIVATE_KEY_FILE=/etc/bajutsu/app.pem   # or BAJUTSU_GITHUB_APP_PRIVATE_KEY inline
+# optional: pin the installation; otherwise it is resolved from the repository being fetched
+export BAJUTSU_GITHUB_APP_INSTALLATION_ID=7654321
+```
+
+The App path signs a short-lived RS256 JSON Web Token (JWT) with the private key and exchanges it for
+an installation token. It uses `cryptography`, installed on demand with the `githubapp` extra
+(`uv sync --extra githubapp`); a deployment that authenticates with a PAT never loads it.
+
+Because the App credentials come from the process environment, a configured App applies to **every**
+request and **takes precedence** over any PAT — including one entered in the web UI, and, on a hosted
+multi-organization deployment, over every organization's own stored credential. Configure one or the
+other, not both, unless you intend the App identity to authenticate all fetches.
+
+### Entering a credential from the web UI
+
+The "Open config" dialog's **"From a Git repository"** source has a credential field. Enter a
+fine-grained PAT or App token and it is stored **write-once** through serve's secret store — the same
+store as the [Claude API key](#operator-secrets-the-claude-api-key): masked, never echoed back. On a
+**local** serve it is held for the lifetime of the process in a bajutsu-owned variable
+(`BAJUTSU_GIT_CONFIG_TOKEN`) that the fetch reads ahead of an ambient `GITHUB_TOKEN` — deliberately
+*not* `GITHUB_TOKEN` itself, so entering or clearing a UI credential never disturbs a token you
+exported at launch. On the **hosted** backend it is encrypted at rest and scoped **per organization**,
+so each tenant's stored credential is its own; wiring that per-organization value into the hosted
+control plane's in-process bind is a follow-up, so a hosted private bind resolves through the
+process-global App / env credential today. When a bind fails for
+lack of access, the dialog shows the diagnostic inline — the message names the real cause (a rate
+limit, an organization single sign-on (SSO) authorization gap, a rejected token, or "provide a
+credential with Contents: read for `<owner>/<repo>`") rather than a bare 404.
+
 ## Tier B — self-hosting the server backend
 
 Tier A is one process on one Mac. **Tier B** runs BE-0015's **server backend** — the FastAPI control

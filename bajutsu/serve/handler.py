@@ -205,6 +205,8 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
                     self._json(*ops.api_key_info(state, self._actor()))
                 case "/api/claudecodetoken":
                     self._json(*ops.claude_code_token_info(state, self._actor()))
+                case "/api/gitcredential":
+                    self._json(*ops.git_credential_info(state, self._actor()))
                 case "/api/provider":
                     self._json(*ops.provider_info(state, self._actor()))
                 case "/api/themecontract":
@@ -334,6 +336,12 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
                 case "/api/claudecodetoken":
                     self._json(
                         *ops.set_claude_code_token(
+                            state, str(body.get("value", "") or ""), self._actor()
+                        )
+                    )
+                case "/api/gitcredential":
+                    self._json(
+                        *ops.set_git_credential(
                             state, str(body.get("value", "") or ""), self._actor()
                         )
                     )

@@ -427,6 +427,7 @@ Where a project's config and scenarios come from. A Git repository + ref is a to
 | [BE-0119](BE-0119-scenario-schema-versioning/BE-0119-scenario-schema-versioning.md) | Version the scenario schema for cross-version reads | Implemented |
 | [BE-0177](BE-0177-run-behavior-target-config/BE-0177-run-behavior-target-config.md) | Per-target config defaults for run-behavior settings | Implemented |
 | [BE-0187](BE-0187-serve-config-view/BE-0187-serve-config-view.md) | View the loaded config in the serve Web UI (raw YAML, structured tree, Git provenance) | Implemented |
+| [BE-0224](BE-0224-github-private-repo-config-auth/BE-0224-github-private-repo-config-auth.md) | Granting private-repository access for the GitHub config source | Implemented |
 <!-- /GENERATED:implemented-config-sourcing -->
 
 ### Surfacing CLI features in the serve Web UI
@@ -716,9 +717,7 @@ Closing the edges the deterministic core does not touch — `serve`'s HTTP surfa
 Where `bajutsu` reads its config and scenario tree from. Today that is a local path; the items here propose naming a **Git repository at a ref** (`github:owner/repo@ref:path`) or uploading a bundle, so a hosted or self-hosted `serve`, or a CI runner, can pull a team's test repo directly.
 
 <!-- GENERATED:proposals-config-sourcing -->
-| ID | Item | Status |
-|---|---|---|
-| [BE-0224](BE-0224-github-private-repo-config-auth/BE-0224-github-private-repo-config-auth.md) | Granting private-repository access for the GitHub config source | Proposal |
+
 <!-- /GENERATED:proposals-config-sourcing -->
 
 ### codegen coverage

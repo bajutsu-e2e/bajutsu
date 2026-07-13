@@ -353,15 +353,33 @@ git+https://<host>/<owner>/<repo>.git[@<ref>][#<path>]          # general form (
   `make -C demos/showcase swiftui-build`, are rooted), then proceeds. A failed build exits cleanly.
   A local-path `run` is unchanged (it never builds; a missing binary still errors).
 - A **pinned commit SHA** (`@<sha>`) is reproducible and runs offline after the first fetch; a branch
-  (or tag) is resolved fresh each load. Private repos use a token from `GITHUB_TOKEN` / `GH_TOKEN`, else
-  `gh auth token`; the token is never logged.
+  (or tag) is resolved fresh each load.
+- **A private repository needs a credential**
+  ([BE-0224](../roadmaps/BE-0224-github-private-repo-config-auth/BE-0224-github-private-repo-config-auth.md)).
+  The token is resolved **per fetch** (so a rotated secret needs no restart), in this order: a
+  configured **GitHub App installation** (`BAJUTSU_GITHUB_APP_ID` plus a private key), then a
+  serve-entered credential (`BAJUTSU_GIT_CONFIG_TOKEN`), then `GITHUB_TOKEN` / `GH_TOKEN`, then
+  `gh auth token`, else anonymous. It is never logged. Grant **least privilege**: prefer a
+  **fine-grained** personal access token
+  (PAT) — or an App installation — scoped to just the target repositories with the **Contents: read**
+  permission, over a classic broad-`repo` PAT that grants read/write to *every* private repo. An
+  unattended, self-hosted `serve` should authenticate as a **GitHub App** (a short-lived,
+  per-installation token tied to the service, not a person) — see
+  [self-hosting → private-repository access](self-hosting.md#private-repository-access-for-the-git-config-source-be-0224).
+  When access is missing, the fetch fails with a message that names the *real* cause — a rate limit,
+  an organization single sign-on (SSO) authorization gap, a rejected token, or "provide a credential
+  with Contents: read for `<owner>/<repo>`" — rather than a bare 404.
 - `bajutsu run` takes two gate switches: **`--config-offline`** uses the cache and never touches the
   network (it needs a pinned `@<sha>`, since a branch can't be resolved offline), and
   **`--require-pinned-config`** fails unless the Git config pins a commit SHA — a branch or even a tag
   can move under a gate, so only a SHA is accepted.
 - The serve UI also binds a Git source — `serve --config github:…` at startup, or the "From a Git
   repository" field in the "Open config" dialog — materializing the checkout and serving from its
-  root ([cli → serve](cli.md#serve)).
+  root ([cli → serve](cli.md#serve)). For a **private** repository the dialog has a credential field
+  (BE-0224): enter a fine-grained PAT or App token and it is stored **write-once** through serve's
+  secret store — masked, never echoed back (held in the process environment on a local serve;
+  encrypted per organization on the hosted backend). A missing-access diagnostic is shown inline in
+  the dialog.
 - Remaining follow-ups: read-only Git input for `record` / `crawl` (an authored artifact goes to a
   local `--out`, never into the SHA-keyed cache).
 

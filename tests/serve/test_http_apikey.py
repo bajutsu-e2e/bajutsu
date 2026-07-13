@@ -101,6 +101,59 @@ def test_http_claude_code_token_rejects_whitespace(
         server.server_close()
 
 
+def test_http_git_credential_set_describe_and_clear(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """BE-0224: round-trip the Git config-source credential through the WebUI — the third named
+    write-once secret. Same contract as the API key: no endpoint returns the plaintext, only a masked
+    preview, and the value materializes into BAJUTSU_GIT_CONFIG_TOKEN (a bajutsu-owned var, not the
+    operator's GITHUB_TOKEN) so the in-process private-repo fetch (and a spawned job) reads it."""
+    scn_dir, cfg, runs = project(tmp_path)
+    monkeypatch.setenv("GITHUB_TOKEN", "operator-exported-token")  # must survive a UI clear
+    monkeypatch.delenv("BAJUTSU_GIT_CONFIG_TOKEN", raising=False)
+    server, port = _serve(
+        srv.ServeState(scenarios_dir=scn_dir, config=cfg, runs_dir=runs, cwd=tmp_path)
+    )
+    try:
+        # An operator's ambient GITHUB_TOKEN is NOT reported as a UI-set credential.
+        assert _get_json(port, "/api/gitcredential") == {"set": False}
+        code, body = _post(port, "/api/gitcredential", {"value": "github_pat_secret_12345"})
+        assert code == 200 and body["set"] is True
+        assert body["masked"] == "gith…2345" and "secret" not in body["masked"]
+        assert "value" not in body  # the mutating side never echoes the plaintext back
+        assert os.environ["BAJUTSU_GIT_CONFIG_TOKEN"] == "github_pat_secret_12345"
+        assert os.environ["GITHUB_TOKEN"] == "operator-exported-token"  # untouched by the UI write
+        assert not (tmp_path / ".env").exists()  # nothing is persisted to disk
+        assert _get_json(port, "/api/gitcredential") == {"set": True, "masked": "gith…2345"}
+        assert "value" not in _get_json(port, "/api/gitcredential?reveal=1")
+        code, body = _post(port, "/api/gitcredential", {"value": ""})
+        assert code == 200 and body["set"] is False
+        assert _get_json(port, "/api/gitcredential") == {"set": False}
+        assert "BAJUTSU_GIT_CONFIG_TOKEN" not in os.environ
+        assert os.environ["GITHUB_TOKEN"] == "operator-exported-token"  # clear didn't pop it
+    finally:
+        monkeypatch.delenv("BAJUTSU_GIT_CONFIG_TOKEN", raising=False)
+        server.shutdown()
+        server.server_close()
+
+
+def test_http_git_credential_rejects_whitespace(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    scn_dir, cfg, runs = project(tmp_path)
+    monkeypatch.delenv("BAJUTSU_GIT_CONFIG_TOKEN", raising=False)
+    server, port = _serve(
+        srv.ServeState(scenarios_dir=scn_dir, config=cfg, runs_dir=runs, cwd=tmp_path)
+    )
+    try:
+        code, body = _post(port, "/api/gitcredential", {"value": "tok with spaces"})
+        assert code == 400 and "whitespace" in body["error"]
+        assert _get_json(port, "/api/gitcredential") == {"set": False}
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
 def test_http_api_key_rejects_whitespace(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     scn_dir, cfg, runs = project(tmp_path)
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)

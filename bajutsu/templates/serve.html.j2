@@ -530,6 +530,16 @@
         <button class="cfgbtn" id="gitload" data-testid="config.git-load">Load</button>
       </div>
       <div class="gitsrchint">A branch, tag, or commit SHA (default: the repo's default branch). The whole subtree is fetched, so the config's scenarios and build come along.</div>
+      <!-- Credential for a private repo (BE-0224): optional; write-once via the SecretStore seam,
+           masked only, never echoed back. A public repo needs none. -->
+      <div class="gitcred">
+        <label class="gitsrclbl" for="gitcred">Credential for a private repository <span class="gitcredstate" id="gitcredstate" data-testid="config.git-cred-state"></span></label>
+        <div class="gitsrcrow">
+          <input type="password" id="gitcred" data-testid="config.git-cred" placeholder="fine-grained PAT or App token" autocomplete="off" spellcheck="false">
+          <button class="cfgbtn" id="gitcredsave" data-testid="config.git-cred-save">Save</button>
+        </div>
+        <div class="gitsrchint">Optional &mdash; only for a <b>private</b> repository. Prefer a <b>fine-grained</b> personal access token (or a GitHub App token) scoped to this repo with <b>Contents: read</b>, over a broad classic token. Stored write-once and masked; it is never shown again. Enter it here and click Load, or Save it on its own.</div>
+      </div>
       <div class="gitsrcerr" id="gitsrcerr" data-testid="config.git-error" hidden></div>
     </div>
     <!-- Upload a bundle (BE-0073): a self-contained .zip becomes the active config the tabs run from. -->
