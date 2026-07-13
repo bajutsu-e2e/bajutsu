@@ -825,6 +825,13 @@ def test_settle_polls_until_frames_stabilize() -> None:
     assert len(tree) == FIXTURE_ELEMENT_COUNT
 
 
+def test_settle_poll_interval_defaults_to_zero_for_the_slow_read() -> None:
+    # BE-0234 Unit 3: on adb the ~2.4s read itself paces the settle loop, so the inter-poll interval
+    # is 0. Pinned as the class default — the read-count test above overrides the constant, so only
+    # this guards against an accidental revert to a nonzero (idb-shaped) interval.
+    assert AdbDriver._SETTLE_POLL_S == 0.0
+
+
 def test_checked_serial_accepts_real_serials() -> None:
     # Concrete serials, the `booted` alias, and IP:port `adb connect` targets pass unchanged —
     # every command builder embeds the serial via `_adb`.
