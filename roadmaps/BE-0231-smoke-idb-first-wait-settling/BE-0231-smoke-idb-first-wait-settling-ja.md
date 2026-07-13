@@ -9,7 +9,7 @@
 | 提案者 | [@hirosassa](https://github.com/hirosassa) |
 | 状態 | **実装中** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0231") |
-| 実装 PR | [#952](https://github.com/bajutsu-e2e/bajutsu/pull/952) |
+| 実装 PR | [#952](https://github.com/bajutsu-e2e/bajutsu/pull/952), [#970](https://github.com/bajutsu-e2e/bajutsu/pull/970) |
 | トピック | 実機検証（M1 クローズアウト） |
 <!-- /BE-METADATA -->
 
@@ -77,7 +77,7 @@
   優先し（プライムディレクティブ 3）、条件ベースを保ち（プライムディレクティブ 2）、判定経路に LLM を
   置きません（プライムディレクティブ 1）。ユニット 5（レーンが 1 回目で緑を保つこと）は、本 PR が
   マージされた後に `smoke (idb)` レーンで観測します。
-- [#_PR_](https://github.com/bajutsu-e2e/bajutsu/pull/_PR_) — ユニット 1。`for` 待機がタイムアウトすると、run
+- [#970](https://github.com/bajutsu-e2e/bajutsu/pull/970) — ユニット 1。`for` 待機がタイムアウトすると、run
   ループが `run_dir/<step_id>/wait-timeout.json` を **無条件で**（`capturePolicy` とは独立に）書き出します。
   これにより、どの原因が発生したかを判断するのに必要な証跡が、リトライで緑になっても失われません。タイムアウト
   時点の要素ツリー、準備完了判定の結果（`_await_ready` がどの信号でアプリを準備完了と判定したか、`readyWhen`

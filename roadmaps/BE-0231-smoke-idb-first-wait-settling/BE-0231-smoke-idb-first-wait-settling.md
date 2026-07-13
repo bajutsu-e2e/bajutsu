@@ -9,7 +9,7 @@
 | Author | [@hirosassa](https://github.com/hirosassa) |
 | Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0231") |
-| Implementing PR | [#952](https://github.com/bajutsu-e2e/bajutsu/pull/952) |
+| Implementing PR | [#952](https://github.com/bajutsu-e2e/bajutsu/pull/952), [#970](https://github.com/bajutsu-e2e/bajutsu/pull/970) |
 | Topic | On-device validation (M1 close-out) |
 <!-- /BE-METADATA -->
 
@@ -133,7 +133,7 @@ Log (oldest first):
   sleep is introduced. Config-first (prime directive 3), condition-based (prime directive 2), no LLM
   on the verdict path (prime directive 1). Unit 5 (CI stays green on first attempt) is observed on the
   `smoke (idb)` lane after this lands.
-- [#_PR_](https://github.com/bajutsu-e2e/bajutsu/pull/_PR_) — Unit 1: on a `for`-wait timeout the run loop
+- [#970](https://github.com/bajutsu-e2e/bajutsu/pull/970) — Unit 1: on a `for`-wait timeout the run loop
   writes `run_dir/<step_id>/wait-timeout.json` **unconditionally** (independent of `capturePolicy`), so
   a rerun-to-green no longer discards the evidence needed to decide which cause fired. It carries the
   element tree at timeout, the readiness gate outcome (`_await_ready` now returns which signal declared
