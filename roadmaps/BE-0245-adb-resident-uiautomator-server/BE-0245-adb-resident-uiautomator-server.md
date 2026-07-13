@@ -152,7 +152,11 @@ Log:
   but scoping the resident dump to the active window so the two yield the same Elements is deferred
   to PR-C, alongside the `adb forward` client transport and the `fetch_hierarchy` wiring — where it
   can be regression-tested end to end. No box is ticked for the same reason: no read runs through
-  the resident path until that wiring lands. CI wiring for the build is deferred to a later slice.
+  the resident path until that wiring lands. Review also noted that the accepted socket's read
+  timeout (`soTimeout`, added while hardening the single-threaded accept loop) bounds only reads, so
+  a peer that stalls mid-response could still wedge the loop from the write side; a write-side bound
+  belongs with PR-C's transport hardening and its regression tests, not this scaffold. CI wiring for
+  the build is deferred to a later slice.
 
 ## References
 
