@@ -9,7 +9,7 @@
 | Author | [@hirosassa](https://github.com/hirosassa) |
 | Status | **Proposal** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0236") |
-| Topic | Platform expansion (Android / Web / Flutter) |
+| Topic | Device-cloud execution |
 <!-- /BE-METADATA -->
 
 ## Introduction

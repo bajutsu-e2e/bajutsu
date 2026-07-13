@@ -10,7 +10,7 @@
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0009") |
 | Implementing PR | [#346](https://github.com/bajutsu-e2e/bajutsu/pull/346), [#364](https://github.com/bajutsu-e2e/bajutsu/pull/364), [#369](https://github.com/bajutsu-e2e/bajutsu/pull/369) |
-| Topic | Platform expansion (Android / Web / Flutter) |
+| Topic | Driver & backend architecture |
 <!-- /BE-METADATA -->
 
 ## Introduction
@@ -114,7 +114,7 @@ The four mechanisms hold on every backend — only their *implementation* differ
 
 ### Phase 0 — abstract the seams
 
-This item is **Phase 0** of the platform-expansion rollout: the generalization that has to happen before any second platform can land.
+This item is **Phase 0** of the multi-platform rollout: the generalization that has to happen before any second platform can land.
 
 | Phase | Scope | Why this order |
 |---|---|---|

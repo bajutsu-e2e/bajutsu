@@ -135,20 +135,36 @@ BUCKETS: tuple[tuple[str, str], ...] = (
 )
 # Every topic, in the order it appears inside a bucket, with its marker key fragment and whether it
 # carries an Origin column. A topic with items in more than one bucket is rendered once per bucket.
+# Topics are feature-focused: they name what a group of items *does*, never a delivery phase (the
+# old M1-M4 milestones were dissolved into these) or a competitor (the MagicPod / Autify / Maestro
+# research buckets were redistributed here by feature). Platform work is one topic across every OS,
+# with the backend-agnostic core split out as its own architecture topic.
 TOPICS: tuple[tuple[str, str, bool], ...] = (
-    ("Milestones (M1–M4)", "milestones", False),
-    ("Platform expansion (landed slices)", "platform-landed", False),
-    ("Platform expansion (Android / Web / Flutter)", "platform", False),
+    ("Platform support", "platform", False),
+    ("Driver & backend architecture", "driver-architecture", False),
+    ("Device-cloud execution", "device-cloud", False),
+    ("Scenario authoring features", "scenario-authoring", False),
+    ("Verification & coverage", "verification", False),
     ("Authoring experience (record / GUI editor)", "authoring", False),
+    # Path-only topic: a real key so the `bajutsu/record*` PATH_TOPIC rules can label record changes
+    # distinctly from the serve authoring UI. It carries no roadmap items (record features live under
+    # the authoring-experience topic), so it renders no index section — it exists only to keep
+    # `record` a valid label key for the path rules.
     ("Record (action capture)", "record", False),
-    ("Surfacing CLI features in the serve Web UI", "serve-cli-features", False),
-    ("Self-healing triage (M4)", "self-healing", False),
-    ("Candidates from competitive research (MagicPod / Autify)", "competitive", True),
-    ("Candidates from competitive research (Maestro)", "competitive-maestro", True),
+    ("Autonomous crawl", "crawl", False),
+    ("codegen coverage", "codegen", False),
+    ("Self-healing triage", "self-healing", False),
+    ("doctor / onboarding", "doctor", False),
     ("Integration & automation (MCP)", "mcp", False),
     ("Integration with external services", "external-integration", False),
-    ("Backend expansion (iOS actuators)", "backend", False),
-    ("doctor / onboarding", "doctor", False),
+    ("AI provider configuration", "ai-provider", False),
+    ("AI usage and cost observability", "ai-usage", False),
+    ("Surfacing CLI features in the serve Web UI", "serve-cli-features", False),
+    ("Hosting the web UI (cloud / self-hosted)", "hosting", False),
+    ("Configuration sourcing", "config-sourcing", False),
+    ("Security hardening", "security", False),
+    ("Dogfood fixtures (demo apps)", "dogfood", True),
+    ("Dogfood fixtures (web UI)", "dogfood-web-ui", True),
     ("Development infrastructure (contributor workflow)", "developer-experience", False),
     # Path-only infra topic: a real topic key so PATH_TOPIC_* rules for `.github/`, `.githooks/`,
     # `scripts/`, `Makefile` can label CI/build changes without co-opting the contributor-workflow
@@ -157,16 +173,6 @@ TOPICS: tuple[tuple[str, str, bool], ...] = (
     # keep `dev-infra` a valid label key for the path rules.
     ("CI / build infrastructure", "dev-infra", False),
     ("Codebase quality & technical debt", "quality-debt", False),
-    ("Dogfood fixtures (demo apps)", "dogfood", True),
-    ("Dogfood fixtures (web UI)", "dogfood-web-ui", True),
-    ("AI provider configuration", "ai-provider", False),
-    ("AI usage and cost observability", "ai-usage", False),
-    ("Hosting the web UI (cloud / self-hosted)", "hosting", False),
-    ("Security hardening", "security", False),
-    ("Configuration sourcing", "config-sourcing", False),
-    ("codegen coverage", "codegen", False),
-    ("Crawl performance / scale-out", "crawl", False),
-    ("On-device validation (M1 close-out)", "on-device", False),
     ("Miscellaneous / on hold", "misc", False),
 )
 KNOWN_TOPICS = frozenset(topic for topic, _key, _origin in TOPICS)

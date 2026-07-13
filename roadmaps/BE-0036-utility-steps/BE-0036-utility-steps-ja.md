@@ -10,7 +10,7 @@
 | 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0036") |
 | 実装 PR | [#58](https://github.com/bajutsu-e2e/bajutsu/pull/58) |
-| トピック | 競合調査（MagicPod / Autify）由来の候補 |
+| トピック | シナリオ記述機能 |
 | 由来 | MagicPod |
 <!-- /BE-METADATA -->
 

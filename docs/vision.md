@@ -58,7 +58,7 @@ The goal is for **the same deterministic core to drive iOS, Android, and the Web
 adding only its own actuator + environment + stable-id convention. The full concrete plan
 (selector-portability mapping, per-platform backends, phasing — Web first, because it runs on the
 existing Linux gate) is in **[multi-platform](multi-platform.md)**. A second iOS actuator
-(XCUITest) is the same change within one OS ([roadmap → Backend expansion](../roadmaps/README.md#backend-expansion-ios-actuators)).
+(XCUITest) is the same change within one OS ([roadmap → Platform support](../roadmaps/README.md#platform-support)).
 
 ### 2. Scale & collaboration — from local tool to shared service
 

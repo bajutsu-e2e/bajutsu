@@ -10,7 +10,7 @@
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0181") |
 | Implementing PR | [#765](https://github.com/bajutsu-e2e/bajutsu/pull/765) |
-| Topic | Crawl performance / scale-out |
+| Topic | Autonomous crawl |
 <!-- /BE-METADATA -->
 
 ## Introduction

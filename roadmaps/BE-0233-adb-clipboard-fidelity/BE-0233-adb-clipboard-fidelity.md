@@ -10,7 +10,7 @@
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0233") |
 | Implementing PR | [#949](https://github.com/bajutsu-e2e/bajutsu/pull/949) |
-| Topic | Platform expansion (Android / Web / Flutter) |
+| Topic | Platform support |
 | Related | [BE-0211](../BE-0211-android-device-control/BE-0211-android-device-control.md), [BE-0208](../BE-0208-android-emulator-e2e-ci/BE-0208-android-emulator-e2e-ci.md) |
 <!-- /BE-METADATA -->
 

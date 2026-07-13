@@ -10,7 +10,7 @@
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0039") |
 | Implementing PR | predates the per-PR history (squashed into the initial import; no single PR) |
-| Topic | Candidates from competitive research (MagicPod / Autify) |
+| Topic | Self-healing triage |
 | Origin | Both |
 <!-- /BE-METADATA -->
 
@@ -44,4 +44,4 @@ The contrast with MagicPod/Autify is the whole point: they optimize for never sh
 
 ## References
 
-[Self-healing triage (M4)](../README.md#self-healing-triage-m4)
+[Self-healing triage](../README.md#self-healing-triage)

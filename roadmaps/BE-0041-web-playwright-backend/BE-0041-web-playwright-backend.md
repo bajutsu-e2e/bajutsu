@@ -10,7 +10,7 @@
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0041") |
 | Implementing PR | [#158](https://github.com/bajutsu-e2e/bajutsu/pull/158) |
-| Topic | Platform expansion (landed slices) |
+| Topic | Platform support |
 <!-- /BE-METADATA -->
 
 ## Introduction
@@ -39,7 +39,7 @@ no other platform shares at once:
    rich semantic end.
 
 Together these make Web the **recommended Phase 1** platform and the highest-priority item on the
-platform-expansion track: lowest friction, broadest reach, cheapest proof that the core is genuinely
+multi-platform track: lowest friction, broadest reach, cheapest proof that the core is genuinely
 platform-neutral.
 
 ## Detailed design

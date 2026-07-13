@@ -10,7 +10,7 @@
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0171") |
 | Implementing PR | [#701](https://github.com/bajutsu-e2e/bajutsu/pull/701) |
-| Topic | Candidates from competitive research (MagicPod / Autify) |
+| Topic | Verification & coverage |
 | Related | [BE-0029](../BE-0029-visual-regression-assertions/BE-0029-visual-regression-assertions.md) |
 <!-- /BE-METADATA -->
 

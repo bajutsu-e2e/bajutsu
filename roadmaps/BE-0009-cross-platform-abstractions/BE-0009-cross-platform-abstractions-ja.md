@@ -10,7 +10,7 @@
 | 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0009") |
 | 実装 PR | [#346](https://github.com/bajutsu-e2e/bajutsu/pull/346), [#364](https://github.com/bajutsu-e2e/bajutsu/pull/364), [#369](https://github.com/bajutsu-e2e/bajutsu/pull/369) |
-| トピック | プラットフォーム拡張（Android / Web / Flutter） |
+| トピック | ドライバとバックエンドのアーキテクチャ |
 <!-- /BE-METADATA -->
 
 ## はじめに
@@ -114,7 +114,7 @@ apps:
 
 ### 段階 0：継ぎ目を抽象化
 
-本項目はプラットフォーム拡張の展開における **段階 0** で、どの第 2 プラットフォームも着地する前に行わなければならない一般化です。
+本項目はマルチプラットフォーム対応の展開における **段階 0** で、どの第 2 プラットフォームも着地する前に行わなければならない一般化です。
 
 | 段階 | 範囲 | この順の理由 |
 |---|---|---|

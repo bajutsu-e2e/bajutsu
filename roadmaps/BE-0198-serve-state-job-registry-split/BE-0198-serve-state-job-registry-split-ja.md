@@ -10,7 +10,7 @@
 | 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0198") |
 | 実装 PR | [#812](https://github.com/bajutsu-e2e/bajutsu/pull/812) |
-| トピック | Codebase quality & technical debt |
+| トピック | コードベース品質・技術的負債 |
 <!-- /BE-METADATA -->
 
 ## はじめに

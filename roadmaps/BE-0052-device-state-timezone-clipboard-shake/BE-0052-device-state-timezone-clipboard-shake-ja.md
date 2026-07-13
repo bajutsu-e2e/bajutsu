@@ -10,7 +10,7 @@
 | 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0052") |
 | 実装 PR | [#206](https://github.com/bajutsu-e2e/bajutsu/pull/206), [#257](https://github.com/bajutsu-e2e/bajutsu/pull/257), [#378](https://github.com/bajutsu-e2e/bajutsu/pull/378) |
-| トピック | 競合調査（MagicPod / Autify）由来の候補 |
+| トピック | シナリオ記述機能 |
 | 関連 | [BE-0157](../BE-0157-shake-device-primitive/BE-0157-shake-device-primitive-ja.md)、[BE-0158](../BE-0158-timezone-device-primitive/BE-0158-timezone-device-primitive-ja.md) |
 | 由来 | MagicPod |
 <!-- /BE-METADATA -->

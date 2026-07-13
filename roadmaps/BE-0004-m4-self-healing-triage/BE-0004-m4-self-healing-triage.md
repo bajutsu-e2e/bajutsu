@@ -10,7 +10,7 @@
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0004") |
 | Implementing PR | predates the per-PR history (squashed into the initial import; no single PR) |
-| Topic | Milestones (M1–M4) |
+| Topic | Self-healing triage |
 <!-- /BE-METADATA -->
 
 ## Introduction
@@ -35,4 +35,4 @@ Competitors auto-correct during a run; Bajutsu deliberately rejects implicit in-
 
 ## References
 
-[DESIGN §3.1 / §12](../../DESIGN.md), [reporting.md](../../docs/reporting.md), `bajutsu/triage.py`, [Self-healing triage (M4)](../README.md#self-healing-triage-m4)
+[DESIGN §3.1 / §12](../../DESIGN.md), [reporting.md](../../docs/reporting.md), `bajutsu/triage.py`, [Self-healing triage](../README.md#self-healing-triage)

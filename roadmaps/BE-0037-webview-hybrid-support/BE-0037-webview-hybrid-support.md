@@ -10,7 +10,7 @@
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0037") |
 | Implementing PR | [#400](https://github.com/bajutsu-e2e/bajutsu/pull/400), [#401](https://github.com/bajutsu-e2e/bajutsu/pull/401) |
-| Topic | Candidates from competitive research (MagicPod / Autify) |
+| Topic | Platform support |
 | Origin | MagicPod |
 <!-- /BE-METADATA -->
 

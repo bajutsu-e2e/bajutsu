@@ -10,7 +10,7 @@
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0221") |
 | Implementing PR | [#889](https://github.com/bajutsu-e2e/bajutsu/pull/889) |
-| Topic | Platform expansion (Android / Web / Flutter) |
+| Topic | Platform support |
 | Related | [BE-0007](../BE-0007-android-backend/BE-0007-android-backend.md), [BE-0009](../BE-0009-cross-platform-abstractions/BE-0009-cross-platform-abstractions.md), [BE-0114](../BE-0114-driver-conformance-suite/BE-0114-driver-conformance-suite.md), [BE-0208](../BE-0208-android-emulator-e2e-ci/BE-0208-android-emulator-e2e-ci.md) |
 <!-- /BE-METADATA -->
 

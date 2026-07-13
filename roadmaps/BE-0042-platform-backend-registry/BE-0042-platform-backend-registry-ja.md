@@ -10,7 +10,7 @@
 | 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0042") |
 | 実装 PR | PR 単位の履歴より前（初期インポートの一部、単一 PR なし） |
-| トピック | プラットフォーム拡張（着手済みスライス） |
+| トピック | ドライバとバックエンドのアーキテクチャ |
 <!-- /BE-METADATA -->
 
 ## はじめに
@@ -38,7 +38,7 @@ PLATFORMS = {
 
 - **展開。** プラットフォームトークンはその actuator 列へ展開され、bare な actuator はそれ自身を表します。`--backend ios`（または `backend: [ios]`）は今日では `idb` に解決され、より豊富な iOS actuator が入れば、シナリオや config を変えずにそれを拾います。
 - **選択。** `select_actuator` は展開後のリストを辿り、**実装済みかつ利用可能** な最初の actuator を返します。利用可能性は「実装済み **かつ** 実行ファイルが `PATH` 上にある」ことです（`fake` は常に利用可能で実行ファイル不要）。今日は `IMPLEMENTED = {idb, fake}` です。
-- **未実装プラットフォームへの明確なエラー。** レジストリには認識されているがまだ driver のない `android` / `web` を要求すると、`"not implemented yet"`（未実装）エラーになり、プラットフォーム拡張のロードマップを指します。これは「利用可能な actuator がない」とは区別されます。`make_driver` 経由でそうした driver を構築しようとした場合も、汎用の失敗ではなく `NotImplementedError` になります。
+- **未実装プラットフォームへの明確なエラー。** レジストリには認識されているがまだ driver のない `android` / `web` を要求すると、`"not implemented yet"`（未実装）エラーになり、プラットフォーム対応のロードマップを指します。これは「利用可能な actuator がない」とは区別されます。`make_driver` 経由でそうした driver を構築しようとした場合も、汎用の失敗ではなく `NotImplementedError` になります。
 - **前方互換。** 本当に未知のトークンは失敗させずにスキップします。古いビルドでも、将来の backend を列挙した config を実行でき、理解できる backend へフォールスルーします。
 
 対応する config 形状は、`apps.<name>` への **`platform` ディスクリミネータ** とプラットフォーム別ターゲットフィールドです。決定的な解決順序（`defaults < app < scenario`）は変わりません:
