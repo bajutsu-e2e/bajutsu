@@ -58,7 +58,7 @@ independent units:
 - **Reuse `_run_step_body`'s query result as the loop's `after` snapshot for non-mutating steps.**
   Change `_run_step_body` (`bajutsu/orchestrator/loop.py:107`) to return the element list it
   queried for `assert_` (and, if it queries one, `wait`) alongside its existing `(ok, reason,
-  assertion_results)` tuple. In `exec_steps` (`loop.py:350`), when the step kind is one that cannot
+  assertion_results)` tuple. In `exec_steps` (`loop.py:356`), when the step kind is one that cannot
   mutate the screen, use that returned snapshot as `after` instead of issuing the unconditional
   `active_driver.query()` at line 461. Action steps (`tap`, `type`, `swipe`, …) still query fresh
   after they run, because the screen may genuinely have changed — this unit only removes the
@@ -120,7 +120,7 @@ independent units:
 
 - [BE-0172 — Decompose the run-path step loop and per-scenario runner](../BE-0172-run-loop-step-decomposition/BE-0172-run-loop-step-decomposition.md)
   (the run-path step loop this item optimizes, already decomposed into named helpers)
-- `bajutsu/orchestrator/loop.py:107` (`_run_step_body`), `:137–138` (the `assert_` query), `:350`
+- `bajutsu/orchestrator/loop.py:107` (`_run_step_body`), `:137–138` (the `assert_` query), `:356`
   (`exec_steps`), `:461` (the unconditional `after` re-query)
 - `bajutsu/orchestrator/waits.py:64` (documents idb `describe-all` at ~100–300ms per call)
 - `bajutsu/drivers/idb.py:248` (`_settle`), `:296` (`_resolve`), `:317` (`_center`)
