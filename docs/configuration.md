@@ -357,9 +357,10 @@ git+https://<host>/<owner>/<repo>.git[@<ref>][#<path>]          # general form (
 - **A private repository needs a credential**
   ([BE-0224](../roadmaps/BE-0224-github-private-repo-config-auth/BE-0224-github-private-repo-config-auth.md)).
   The token is resolved **per fetch** (so a rotated secret needs no restart), in this order: a
-  configured **GitHub App installation** (`BAJUTSU_GITHUB_APP_ID` plus a private key), then
-  `GITHUB_TOKEN` / `GH_TOKEN`, then `gh auth token`, else anonymous. It is never logged and joins
-  redaction's defaults. Grant **least privilege**: prefer a **fine-grained** personal access token
+  configured **GitHub App installation** (`BAJUTSU_GITHUB_APP_ID` plus a private key), then a
+  serve-entered credential (`BAJUTSU_GIT_CONFIG_TOKEN`), then `GITHUB_TOKEN` / `GH_TOKEN`, then
+  `gh auth token`, else anonymous. It is never logged. Grant **least privilege**: prefer a
+  **fine-grained** personal access token
   (PAT) — or an App installation — scoped to just the target repositories with the **Contents: read**
   permission, over a classic broad-`repo` PAT that grants read/write to *every* private repo. An
   unattended, self-hosted `serve` should authenticate as a **GitHub App** (a short-lived,

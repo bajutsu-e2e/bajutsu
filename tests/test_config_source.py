@@ -294,6 +294,8 @@ def _headers(**kw: str) -> Message:
         (401, _headers(), "rejected"),
         (404, _headers(), "not found, or access not granted"),
         (403, _headers(), "not found, or access not granted"),  # a plain 403 falls through
+        (500, _headers(), "unexpected 500"),  # a 5xx outage is NOT reported as missing access
+        (422, _headers(), "unexpected 422"),
     ],
 )
 def test_github_http_error_message_names_the_real_cause(

@@ -174,9 +174,10 @@ that grants read access. A public repository needs none. The credential is resol
 rotating it takes effect without a restart, in this order:
 
 1. a configured **GitHub App installation** (recommended for an unattended host — see below);
-2. `GITHUB_TOKEN` / `GH_TOKEN` from the environment;
-3. `gh auth token`, for a developer with an interactive `gh` session on their own machine;
-4. otherwise anonymous (public repositories only).
+2. a credential entered via the web UI's "From a Git repository" dialog (held in `BAJUTSU_GIT_CONFIG_TOKEN` — see below);
+3. `GITHUB_TOKEN` / `GH_TOKEN` from the environment;
+4. `gh auth token`, for a developer with an interactive `gh` session on their own machine;
+5. otherwise anonymous (public repositories only).
 
 **Grant least privilege.** A classic personal access token (PAT) with the `repo` scope grants
 read/write to *every* private repository the person can see — far more than "read one test repo".

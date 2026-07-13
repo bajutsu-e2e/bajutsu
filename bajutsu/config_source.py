@@ -210,12 +210,16 @@ def github_http_error_message(status: int, headers: Message, spec: GitConfigSpec
         )
     if status == 401:
         return f"the GitHub token was rejected fetching {where} (401): it is invalid or expired."
-    # 404, or any other 403: on github.com a private repo the caller can't see returns 404, so this
-    # is deliberately "not found *or* access not granted" rather than blaming either one alone.
-    return (
-        f"cannot access {where} ({status}): repository not found, or access not granted — provide a "
-        f"credential with Contents: read for {where}."
-    )
+    if status in (403, 404):
+        # A private repo the caller can't see returns 404 on github.com, so this is deliberately "not
+        # found *or* access not granted" rather than blaming either one alone.
+        return (
+            f"cannot access {where} ({status}): repository not found, or access not granted — provide "
+            f"a credential with Contents: read for {where}."
+        )
+    # Any other status (a 5xx outage, an unexpected 422) is not an access problem — don't misdirect
+    # the operator toward granting permission that was never missing.
+    return f"GitHub returned an unexpected {status} fetching {where}."
 
 
 def github_token() -> str | None:
