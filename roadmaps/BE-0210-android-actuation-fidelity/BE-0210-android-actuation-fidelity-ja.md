@@ -10,7 +10,7 @@
 | 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0210") |
 | 実装 PR | [#857](https://github.com/bajutsu-e2e/bajutsu/pull/857)、[#910](https://github.com/bajutsu-e2e/bajutsu/pull/910) |
-| トピック | プラットフォーム対応（iOS / Android / Web / Flutter） |
+| トピック | プラットフォーム対応 |
 | 関連 | [BE-0007](../BE-0007-android-backend/BE-0007-android-backend-ja.md) |
 <!-- /BE-METADATA -->
 

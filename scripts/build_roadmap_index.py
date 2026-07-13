@@ -140,7 +140,7 @@ BUCKETS: tuple[tuple[str, str], ...] = (
 # research buckets were redistributed here by feature). Platform work is one topic across every OS,
 # with the backend-agnostic core split out as its own architecture topic.
 TOPICS: tuple[tuple[str, str, bool], ...] = (
-    ("Platform support (iOS / Android / Web / Flutter)", "platform", False),
+    ("Platform support", "platform", False),
     ("Driver & backend architecture", "driver-architecture", False),
     ("Device-cloud execution", "device-cloud", False),
     ("Scenario authoring features", "scenario-authoring", False),

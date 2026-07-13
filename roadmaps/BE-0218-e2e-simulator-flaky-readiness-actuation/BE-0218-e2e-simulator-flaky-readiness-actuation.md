@@ -10,7 +10,7 @@
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0218") |
 | Implementing PR | [#850](https://github.com/bajutsu-e2e/bajutsu/pull/850) |
-| Topic | Platform support (iOS / Android / Web / Flutter) |
+| Topic | Platform support |
 | Related | [BE-0207](../BE-0207-xcuitest-channel-transient-retry/BE-0207-xcuitest-channel-transient-retry.md) |
 <!-- /BE-METADATA -->
 

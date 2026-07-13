@@ -10,7 +10,7 @@
 | 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0218") |
 | 実装 PR | [#850](https://github.com/bajutsu-e2e/bajutsu/pull/850) |
-| トピック | プラットフォーム対応（iOS / Android / Web / Flutter） |
+| トピック | プラットフォーム対応 |
 | 関連 | [BE-0207](../BE-0207-xcuitest-channel-transient-retry/BE-0207-xcuitest-channel-transient-retry-ja.md) |
 <!-- /BE-METADATA -->
 
