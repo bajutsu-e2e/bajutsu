@@ -10,6 +10,7 @@ the installed idb version changes the schema.
 from __future__ import annotations
 
 import json
+import logging
 import subprocess
 import time
 from collections.abc import Callable
@@ -22,6 +23,8 @@ from bajutsu.drivers import base
 RunFn = Callable[[list[str]], str]
 
 _StableKey = tuple[tuple[str, base.Frame], ...]
+
+_logger = logging.getLogger("bajutsu.idb")
 
 # A short dwell on every tap. A zero-duration `idb ui tap` presses and releases in
 # the same instant, which a UISwitch's gesture recognizer does not register — so a
@@ -52,6 +55,20 @@ def _real_run(args: list[str]) -> str:
 def describe_all_cmd(udid: str) -> list[str]:
     """The `idb` argv that dumps the accessibility tree as JSON."""
     return ["idb", "ui", "describe-all", "--udid", _validated_udid(udid), "--json"]
+
+
+def disconnect_cmd(udid: str) -> list[str]:
+    """The `idb` argv that drops this device's companion connection (BE-0231 Unit 6).
+
+    Per-udid so a concurrent crawl lane on another Simulator keeps its own companion, unlike a
+    global `idb kill`.
+    """
+    return ["idb", "disconnect", _validated_udid(udid)]
+
+
+def connect_cmd(udid: str) -> list[str]:
+    """The `idb` argv that (re)establishes this device's companion connection (BE-0231 Unit 6)."""
+    return ["idb", "connect", _validated_udid(udid)]
 
 
 def tap_cmd(udid: str, x: float, y: float) -> list[str]:
@@ -142,6 +159,10 @@ def _num(v: float) -> str:
 
 # --- describe-all parsing ---
 
+# The normalized trait `_norm_type` produces for idb's top-level app element ("AXApplication" ->
+# "application"); the accessibility-bridge-wedge check keys on it (BE-0231 Unit 6).
+_APPLICATION_TRAIT = "application"
+
 
 def _norm_type(t: str) -> str:
     t = t.removeprefix("AX")
@@ -216,6 +237,7 @@ class IdbDriver:
     _EMPTY_BACKOFF_MAX_S = 0.2  # cap on a single backoff (total added <= ~0.75s, bounded)
     _SETTLE_MAX_POLLS = 3  # extra reads after initial comparison when frames are moving
     _SETTLE_POLL_S = 0.05  # interval between settle reads; describe-all provides natural spacing
+    _AX_RESET_RETRIES = 3  # companion-connection resets on a persistent accessibility-bridge wedge
 
     def __init__(self, udid: str, run: RunFn = _real_run) -> None:
         # Validate once at the object boundary so every use of self.udid is covered — the argv
@@ -234,15 +256,42 @@ class IdbDriver:
         of times so a single-shot assertion or wait does not act on the transient
         snapshot. A screen that has only ever been sparse (max seen < _READY_MIN) is
         returned as-is, so a genuinely small screen is never masked.
+
+        A distinct failure survives that retry: idb's accessibility bridge can fail to attach to
+        the app window on a cold-boot first launch, returning only the zero-frame `application` root
+        even though the app has rendered (BE-0231 Unit 6). That is not a transient the same-companion
+        re-read clears, so on this signature the companion connection is reset (forcing a fresh
+        attach) and re-read, bounded — and if it persists, the degenerate tree is returned so the
+        wait still fails loudly with the Unit 1 diagnostic rather than being masked.
+        """
+        els = self._describe_settled()
+        for _ in range(self._AX_RESET_RETRIES):
+            if not self._is_ax_bridge_wedged(els):
+                break
+            self._reset_companion()
+            els = self._describe_settled()
+        self._max_seen = max(self._max_seen, len(els))
+        self._last_stable_key = self._stable_key(els)
+        return els
+
+    def _describe_settled(self) -> list[base.Element]:
+        """A describe-all that rides over idb's mid-transition empty tree (BE-0087).
+
+        Retries a degenerate result a bounded number of times, but only once a richer tree has been
+        seen on this device (see `_is_transient_empty`), so a genuinely sparse first screen is taken
+        at face value.
+
+        An accessibility-bridge wedge also satisfies `_is_transient_empty` once a richer tree has
+        been seen (both are `len < _READY_MIN`), but a same-companion re-read can never clear it — so
+        it is yielded immediately to the caller (`query()`, which resets the companion) rather than
+        burning the backoff loop on a read that cannot recover (BE-0231 Unit 6).
         """
         els = self._describe()
         for i in range(self._EMPTY_RETRIES):
-            if not self._is_transient_empty(els):
+            if not self._is_transient_empty(els) or self._is_ax_bridge_wedged(els):
                 break
             time.sleep(self._empty_backoff(i))
             els = self._describe()
-        self._max_seen = max(self._max_seen, len(els))
-        self._last_stable_key = self._stable_key(els)
         return els
 
     def _settle(self) -> list[base.Element]:
@@ -292,6 +341,37 @@ class IdbDriver:
         (so the first sparse screen seen is taken at face value).
         """
         return len(els) < self._READY_MIN and self._max_seen >= self._READY_MIN
+
+    @staticmethod
+    def _is_ax_bridge_wedged(els: list[base.Element]) -> bool:
+        """Whether describe-all shows only an application root with no geometry (BE-0231 Unit 6).
+
+        The signature of an accessibility bridge that has not attached to the app window: a lone
+        `application` element with a zero-area frame, seen while the app has actually rendered. It is
+        keyed on the degenerate frame — not merely on being sparse — so it is told apart from idb's
+        generic mid-transition empty (which `_is_transient_empty` owns) and from a genuinely sparse
+        screen, both of which carry real geometry; that lets it fire even on the first screen, where
+        no richer tree has been seen yet.
+        """
+        if len(els) != 1 or _APPLICATION_TRAIT not in els[0]["traits"]:
+            return False
+        _, _, width, height = els[0]["frame"]
+        return width <= 0 or height <= 0
+
+    def _reset_companion(self) -> None:
+        """Reset this device's idb companion connection to force a fresh accessibility attach.
+
+        Per-udid disconnect then connect (not a global `idb kill`), so a concurrent crawl lane on
+        another Simulator keeps its companion. Best-effort: a disconnect with no live connection, or
+        a connect race, raises CalledProcessError that must not abort the query — the re-read after
+        this decides whether recovery worked. A failure is logged (not masked), so a reset that keeps
+        failing — and would otherwise burn every retry silently — stays visible in the run's logs.
+        """
+        for cmd in (disconnect_cmd(self.udid), connect_cmd(self.udid)):
+            try:
+                self._run(cmd)
+            except subprocess.CalledProcessError as exc:
+                _logger.warning("idb companion reset step failed: %s (%s)", cmd, exc)
 
     def _resolve(
         self,

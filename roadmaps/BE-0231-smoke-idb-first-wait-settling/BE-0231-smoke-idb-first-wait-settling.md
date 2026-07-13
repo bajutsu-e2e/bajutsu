@@ -9,7 +9,7 @@
 | Author | [@hirosassa](https://github.com/hirosassa) |
 | Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0231") |
-| Implementing PR | [#952](https://github.com/bajutsu-e2e/bajutsu/pull/952), [#970](https://github.com/bajutsu-e2e/bajutsu/pull/970) |
+| Implementing PR | [#952](https://github.com/bajutsu-e2e/bajutsu/pull/952), [#970](https://github.com/bajutsu-e2e/bajutsu/pull/970), [#1013](https://github.com/bajutsu-e2e/bajutsu/pull/1013) |
 | Topic | Platform support |
 <!-- /BE-METADATA -->
 
@@ -90,7 +90,26 @@ acceptance. Each unit is independently shippable.
 
 5. **Prove it stays green.** The acceptance is machine-checkable: the `smoke (idb)` lane passes on
    its first attempt across a bounded number of consecutive CI runs with no manual rerun. This is a
-   deterministic check on the gate itself, not an LLM judgment.
+   deterministic check on the gate itself, not an LLM judgment. It is the final unit, observed after
+   the hardening below (unit 6) lands.
+
+6. **Recover a wedged idb accessibility bridge (the root cause unit 1 revealed).** Unit 1's
+   diagnostic settled which cause fires, and it is none of the three above. On a cold CI Simulator's
+   first app launch, `idb ui describe-all` intermittently returns only the top-level `application`
+   element with a zero-area frame — idb's accessibility bridge has not attached to the app's window —
+   *while the app has fully rendered* (the run's screenshot shows the awaited first row on screen).
+   The readiness gate and the first `wait` then poll a tree the content is missing from and both time
+   out, though the element is present. This is why units 2–4 could not hold: a content `readyWhen`
+   and a larger budget cannot see an element that `describe-all` omits. Close it in the idb driver:
+   when a query returns this signature — a lone `application` root with no geometry — reset that
+   device's companion connection (`idb disconnect` then `idb connect`, per-udid so a concurrent crawl
+   lane on another Simulator is untouched, not a global `idb kill`) to force a fresh accessibility
+   attach, then re-read, bounded. A genuinely sparse but rendered screen keeps real geometry, so it
+   is never reset; and if the tree is still wedged after the bounded resets, the query returns it
+   as-is so the wait fails loudly with the unit 1 diagnostic — the recovery never masks a real
+   failure. Condition-based on a structural tree shape, so no fixed `sleep` (prime directive 2); the
+   behavior lives in the driver keyed on the tree, so it stays app- and target-agnostic (prime
+   directive 3); no LLM on the path (prime directive 1).
 
 ## Alternatives considered
 
@@ -116,7 +135,8 @@ acceptance. Each unit is independently shippable.
 - [x] Unit 2 — tighten the readiness → first-wait handoff (`readyWhen` / content-aware readiness).
 - [x] Unit 3 — make the first `wait` resilient to a mid-transition empty tree.
 - [x] Unit 4 — right-size the first-wait budget for a cold CI Simulator (config, condition-based).
-- [ ] Unit 5 — prove the lane stays green on first attempt across consecutive CI runs.
+- [x] Unit 6 — recover a wedged idb accessibility bridge (per-udid companion reset on a lone zero-frame `application` tree).
+- [ ] Unit 5 — prove the lane stays green on first attempt across consecutive CI runs (observed after unit 6 lands).
 
 Log (oldest first):
 
@@ -142,6 +162,20 @@ Log (oldest first):
   run's BE-0049 provenance stamp. Pure diagnosis — no LLM on the verdict path (prime directive 1), no
   fixed sleep (prime directive 2). Status stays **In progress**: Unit 5 (the lane green on first attempt
   across consecutive CI runs) is a post-merge observation with no code to ship.
+- [#1013](https://github.com/bajutsu-e2e/bajutsu/pull/1013) — Unit 6: recover a wedged idb
+  accessibility bridge. Unit 1's diagnostic on the post-#952/#970 recurrence (PR #987's `smoke (idb)`
+  run) showed the first-wait timeout is not a readiness or budget gap at all: `describe-all` returned
+  only the zero-frame `application` root while the run's `after.png` showed the Stable list fully
+  rendered (`Horse 1`…`5`) — idb's accessibility bridge had not attached to the app window, so
+  `stable.row.1` was on screen but absent from the tree both gates polled. Units 2–4 therefore could
+  never hold. The idb driver now detects that signature — a lone `application` element with a
+  zero-area frame — and resets the device's companion connection (per-udid `idb disconnect` then
+  `idb connect`, not a global `idb kill`, so a concurrent crawl lane is untouched) to force a fresh
+  attach, re-reading a bounded number of times; a genuinely sparse but rendered screen keeps real
+  geometry and is never reset, and a persistent wedge returns the degenerate tree so the wait still
+  fails loudly with the unit 1 diagnostic (no masking). Condition-based (prime directive 2),
+  driver-scoped and app-agnostic (prime directive 3), no LLM on the path (prime directive 1). Status
+  stays **In progress**: unit 5 (the lane green on first attempt) is observed after this lands.
 
 ## References
 

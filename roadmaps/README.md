@@ -502,6 +502,7 @@ Accepted and actively being built — a PR is in flight or imminent.
 | ID | Item | Status |
 |---|---|---|
 | [BE-0231](BE-0231-smoke-idb-first-wait-settling/BE-0231-smoke-idb-first-wait-settling.md) | Harden the E2E first-wait against Simulator settling flake | In progress |
+| [BE-0245](BE-0245-adb-resident-uiautomator-server/BE-0245-adb-resident-uiautomator-server.md) | Resident UI Automator server for adb reads | In progress |
 <!-- /GENERATED:in-progress-platform -->
 
 ### AI provider configuration
@@ -538,7 +539,6 @@ Under consideration — not yet decided. Promote an item to *In progress* once w
 | ID | Item | Status |
 |---|---|---|
 | [BE-0008](BE-0008-flutter-support/BE-0008-flutter-support.md) | Flutter support | Proposal |
-| [BE-0245](BE-0245-adb-resident-uiautomator-server/BE-0245-adb-resident-uiautomator-server.md) | Resident UI Automator server for adb reads | Proposal |
 <!-- /GENERATED:proposals-platform -->
 
 ### Device-cloud execution
