@@ -577,7 +577,9 @@ Running a scenario on a hosted device farm instead of a local Simulator, emulato
 ### Codebase quality & technical debt
 
 <!-- GENERATED:proposals-quality-debt -->
-
+| ID | Item | Status |
+|---|---|---|
+| [BE-0246](BE-0246-claude-client-taxonomy/BE-0246-claude-client-taxonomy.md) | Clarify the module taxonomy for talking to Claude | Proposal |
 <!-- /GENERATED:proposals-quality-debt -->
 
 ## Deferred
