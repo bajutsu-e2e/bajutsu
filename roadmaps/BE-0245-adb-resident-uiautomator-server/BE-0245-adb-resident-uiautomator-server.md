@@ -135,6 +135,24 @@ Log:
   `_settle`, `_resolve`, actuation) are unchanged, and the default (no fetch) keeps today's
   dump-every-read behavior exactly — so no box is ticked yet. Unit 2's hierarchy-query channel (the
   `adb forward` transport and its HTTP handshake) is not written yet; it lands in a follow-up PR.
+- PR-B ([#NNN](https://github.com/bajutsu-e2e/bajutsu/pull/NNN)) — the resident server body and its
+  distribution decision (units 1–2, server side). Adds `BajutsuAndroidServer/`, a self-contained
+  Gradle project (committed wrapper, so a fresh clone builds with only the Android SDK) holding an
+  `androidTest` instrumentation: `am instrument -w` runs a blocking `@Test` that keeps one
+  `UiAutomation` session warm and answers `GET /source` over a raw loopback `ServerSocket` (no HTTP
+  library) with `UiDevice.dumpWindowHierarchy()`'s XML — the same `AccessibilityNodeInfoDumper` XML
+  format `parse_hierarchy` already parses. Distribution is build-on-demand through the committed
+  `gradlew` (mirroring how the XCUITest runner and the showcase Android build ship), keeping no
+  prebuilt APK in the repo. Verified by hand on an API-34 emulator: after adding the `INTERNET`
+  permission the host app needs to bind a socket, the server stays resident and `GET /source`
+  returns hierarchy XML `parse_hierarchy` parses cleanly. That check also surfaced the equivalence
+  work unit 2 still owes: `UiDevice.dumpWindowHierarchy()` traverses *all* windows, so it includes
+  the SystemUI status-bar tree (clock, wifi, battery, notification icons — 29 nodes) that the
+  platform `uiautomator dump` omits by scoping to the active window. The app content is identical,
+  but scoping the resident dump to the active window so the two yield the same Elements is deferred
+  to PR-C, alongside the `adb forward` client transport and the `fetch_hierarchy` wiring — where it
+  can be regression-tested end to end. No box is ticked for the same reason: no read runs through
+  the resident path until that wiring lands. CI wiring for the build is deferred to a later slice.
 
 ## References
 
