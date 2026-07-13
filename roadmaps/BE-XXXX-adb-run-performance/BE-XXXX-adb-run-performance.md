@@ -60,16 +60,22 @@ That per-read cost is then **amplified by how many reads a step performs**. In t
 - The action itself reads at least once inside the driver (`_settle()` → `_resolve()`), more while a
   transition is mid-flight.
 
-So a realistic per-step read count is:
+So a realistic per-step read count — **as a lower bound** — is:
 
-| Step | Reads | Wall-clock at ≈ 2.4 s/read |
+| Step | Reads (floor) | Wall-clock at ≈ 2.4 s/read |
 |---|---|---|
 | `tap` (no `screenChanged` policy) | settle 1 + after 1 = **2** | ≈ 4.8 s |
 | `tap` (with `screenChanged` policy) | before 1 + settle 1 + after 1 = **3** | ≈ 7.2 s |
 | `assert` | body 1 + after 1 = **2** | ≈ 4.8 s |
 
-A 10-step scenario spends on the order of **~48 s in dumps alone**. This is what makes Android
-authoring feel heavy, and it is entirely read-bound.
+The `settle 1` in that table is a *best case*. `_settle()` reads once and returns immediately when
+the identifier/frame key is unchanged from the previous read, but a `tap` commonly *does* change the
+screen — and on a changed key `_settle()` polls up to `_SETTLE_MAX_POLLS` (= 3) further reads waiting
+for the tree to stop moving. So a screen-changing `tap` can cost up to **4 reads (~9.6 s)** in
+`settle` alone; the table's counts are the floor, and a transition-heavy step costs more.
+
+A 10-step scenario therefore spends **on the order of ~48 s in dumps at the floor, more with
+transitions**. This is what makes Android authoring feel heavy, and it is entirely read-bound.
 
 This is a backend-internal performance gap, so it fits squarely inside prime directive 3
 (app-agnostic): the fix lives in the adb Driver and the shared runner, changes no scenario, and adds
@@ -101,9 +107,20 @@ with before/after per-step timings recorded on device.
    actually consumed — the scenario `wants_screen_changed`, the step has an `extract`, or a fired
    capture needs `elements`. For a plain `tap`/`assert` step with none of these, skip the read
    entirely, removing ~2.4 s per step. This is a pure removal of a redundant read, not a change to
-   any condition wait, so determinism is untouched. Apply the same "only when consumed" gate to the
-   `before` read. This is backend-independent and speeds up idb too (proportionally smaller, since
-   its read is already cheap).
+   any condition wait, so determinism is untouched.
+
+   The `before` read is different and gets a *stronger* treatment. A `screenChanged` capture rule is
+   not step-scoped (`_rule_fires` in
+   [`evidence_rules.py`](../../bajutsu/orchestrator/evidence_rules.py) keys only off the
+   `screen_changed` boolean, not the step's kind/id), so once a scenario `wants_screen_changed` every
+   step's `before` is genuinely needed — there is no per-step condition to gate it on. But nothing
+   actuates the device between one step's end-of-step `after`
+   ([`loop.py`](../../bajutsu/orchestrator/loop.py):449) and the next step's `before`
+   ([`loop.py`](../../bajutsu/orchestrator/loop.py):417): they observe *identical* device state. So
+   rather than gate `before`, **reuse the previous step's `after` as this step's `before`**, dropping
+   the `before` read to (near) zero across the whole scenario instead of only conditioning it per
+   step — the first step (no prior `after`) still reads once. Both changes are backend-independent
+   and speed up idb too (proportionally smaller, since its read is already cheap).
 
 3. **Tune `_settle` for a slow read (adb, low risk).** The settle constants in the adb driver
    (`_SETTLE_POLL_S = 0.05`, `_SETTLE_MAX_POLLS = 3`, [`adb.py`](../../bajutsu/drivers/adb.py)) were
@@ -168,7 +185,7 @@ with before/after per-step timings recorded on device.
 > (oldest first), linking the PRs.
 
 - [ ] Establish the on-device baseline and a per-step read counter (the yardstick for units 2–4).
-- [ ] Make the runner's end-of-step `after` (and `before`) read lazy/conditional — skip it when unused.
+- [ ] Make the end-of-step `after` read lazy/conditional, and reuse it as the next step's `before` (identical device state) instead of re-reading.
 - [ ] Re-tune `_settle` for a slow read and fold in stray one-off reads.
 - [ ] Replace per-dump startup with a resident UI Automator server, `uiautomator dump` kept as fallback.
 - [ ] Record before/after timings and guard the win (conformance / e2e, no flaky timing gate).
