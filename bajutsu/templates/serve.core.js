@@ -301,7 +301,11 @@ function playEnter(el,tok){
 // theme sets --motion-modal-leave:none (no animationend would fire) — the dogfood path is the former.
 function closeModal(el,cleanup){
   if(el.hidden){if(cleanup)cleanup();return;}
-  const finish=()=>{el.classList.remove('is-leaving');el.hidden=true;el._closeAbort=null;if(cleanup)cleanup();};
+  // Abort (not just null) the controller so its animationend listener is *removed*. Nulling alone
+  // left the listener attached after the close finished: it then fired again on the modal's next
+  // animationend — the enter animation of the *next* open — and re-hid the just-reopened modal, so
+  // every modal became un-openable a second time.
+  const finish=()=>{el.classList.remove('is-leaving');el.hidden=true;if(el._closeAbort){el._closeAbort.abort();el._closeAbort=null;}if(cleanup)cleanup();};
   if(prefersReducedMotion()||motionOff('--motion-modal-leave')){finish();return;}
   el.classList.remove('is-entering');  // cancel an in-flight enter so the leave starts clean
   el.classList.add('is-leaving');
@@ -312,7 +316,7 @@ function closeModal(el,cleanup){
   el.addEventListener('animationend',e=>{if(e.target===el)finish();},{signal:el._closeAbort.signal});
 }
 // Play the enter animation whenever a modal becomes visible (its `hidden` attribute is removed),
-// regardless of which open path unhid it — so the many openFs/openSettings/… sites need no change.
+// regardless of which open path unhid it — so openModal below stays a plain reveal.
 document.querySelectorAll('.modal').forEach(m=>new MutationObserver(muts=>{
   for(const mu of muts){
     if(mu.attributeName==='hidden'&&!m.hidden){
@@ -321,6 +325,17 @@ document.querySelectorAll('.modal').forEach(m=>new MutationObserver(muts=>{
     }
   }
 }).observe(m,{attributes:true,attributeFilter:['hidden']}));
+// Reveal a modal. Every open path goes through here so a reopen *during* the leave animation is
+// safe. The leave keeps `hidden` false until its animationend fires, so re-setting `hidden=false`
+// mutates nothing — the observer above never sees the reopen and cannot cancel the pending hide,
+// and the lingering `is-leaving` (its animation `both`-fills to opacity 0) leaves the modal open
+// but invisible until a reload. Clearing the close and `is-leaving` here fixes both: a genuine
+// hidden→visible transition still drives the enter animation via the observer.
+function openModal(el){
+  if(el._closeAbort){el._closeAbort.abort();el._closeAbort=null;}
+  el.classList.remove('is-leaving');
+  el.hidden=false;
+}
 
 // ---- top-level Record / Replay / Crawl views ----
 function showView(name){
@@ -366,7 +381,7 @@ async function browseFs(dir){
   $('#fslist').querySelectorAll('li[data-dir]').forEach(li=>li.addEventListener('click',()=>browseFs(li.dataset.dir)));
   $('#fslist').querySelectorAll('li[data-file]').forEach(li=>li.addEventListener('click',()=>chooseConfig(li.dataset.file)));
 }
-function openFs(){$('#fsmodal').hidden=false;$('#gitcred').value='';loadGitCred();if(fsSourceEnabled)browseFs('')}
+function openFs(){openModal($('#fsmodal'));$('#gitcred').value='';loadGitCred();if(fsSourceEnabled)browseFs('')}
 function closeFs(){closeModal($('#fsmodal'))}
 $('#opencfg').addEventListener('click',openFs);
 $('#fsclose').addEventListener('click',closeFs);
@@ -430,7 +445,7 @@ async function switchProject(name,opts){
   // dashboard so the comparison is the entry point and BE-0102's Stats view is the drill-down.
   if(opts&&opts.goStats){closeProjects();showView('stats')}
 }
-function openProjects(){loadProjects();$('#projectsmodal').hidden=false}
+function openProjects(){loadProjects();openModal($('#projectsmodal'))}
 function closeProjects(){closeModal($('#projectsmodal'))}
 $('#projectsw').addEventListener('change',e=>switchProject(e.target.value));
 $('#openprojects').addEventListener('click',openProjects);
@@ -504,7 +519,7 @@ async function openCfgView(){
   const d=await getJSON('/api/config/content',{error:'request failed'});
   const prov=$('#cfgprov'),tree=$('#cfgviewtree');
   tree.textContent='';
-  if(d.error){prov.hidden=true;$('#cfgviewpath').textContent='';$('#cfgviewbody').textContent=d.error;$('#cfgview-structured').disabled=true;cfgViewMode(true);$('#cfgviewmodal').hidden=false;return}
+  if(d.error){prov.hidden=true;$('#cfgviewpath').textContent='';$('#cfgviewbody').textContent=d.error;$('#cfgview-structured').disabled=true;cfgViewMode(true);openModal($('#cfgviewmodal'));return}
   const p=d.provenance;
   if(p){
     // A Git source: show which commit was materialized (ref → resolved sha), not the opaque cache path.
@@ -518,7 +533,7 @@ async function openCfgView(){
   if(hasTree)tree.appendChild(cfgNode(null,d.parsed,0));
   $('#cfgview-structured').disabled=!hasTree;
   cfgViewMode(!hasTree);
-  $('#cfgviewmodal').hidden=false;
+  openModal($('#cfgviewmodal'));
 }
 $('#viewcfg').addEventListener('click',openCfgView);
 $('#cfgviewclose').addEventListener('click',closeCfgView);
@@ -727,7 +742,7 @@ async function saveSettings(){
   if(provider==='ant')refreshAntLogin();
 }
 // ---- Settings modal: one panel for the provider + API-key controls ----
-function openSettings(){$('#settingsmodal').hidden=false;$('#apikey').value='';$('#cctoken').value='';setSettingsStatus('','');loadKey();loadCcTok();loadProv()}
+function openSettings(){openModal($('#settingsmodal'));$('#apikey').value='';$('#cctoken').value='';setSettingsStatus('','');loadKey();loadCcTok();loadProv()}
 function closeSettings(){closeModal($('#settingsmodal'))}
 $('#opensettings').addEventListener('click',openSettings);
 $('#settingsclose').addEventListener('click',closeSettings);
@@ -986,7 +1001,7 @@ function importThemeFile(){
 // ---- one-time wiring (page load) ----
 // The modal's static controls are wired exactly once; only the generated form inputs are rebuilt
 // (and re-listened) per open, so reopening the editor never stacks duplicate button listeners.
-$('#opentheme').addEventListener('click',()=>{initThemeEditor();$('#thememodal').hidden=false;});
+$('#opentheme').addEventListener('click',()=>{initThemeEditor();openModal($('#thememodal'));});
 $('#themeclose').addEventListener('click',()=>closeModal($('#thememodal')));
 $('#themesave-local').addEventListener('click',saveThemeLocal);
 $('#themeexport').addEventListener('click',exportTheme);
