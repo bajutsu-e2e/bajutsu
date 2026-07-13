@@ -182,7 +182,7 @@ breakdown is reporting-only and never touches pass/fail, consistent with the res
 
 ## The Claude authoring agent
 
-`record` / `crawl` construct one production `agent.Agent` implementation, `ClaudeAgent`
+`record` / `crawl` construct one production `agent_protocols.Agent` implementation, `ClaudeAgent`
 (`claude_agent.py`, built by `agent_factory.py`): it talks to the model through the vendor-neutral
 `AiBackend` seam (BE-0104), so the **provider** is a config detail, not a separate agent. The
 resolved `ai.provider` ([configuration](configuration.md#ai-provider-ai-be-0047)) picks:
