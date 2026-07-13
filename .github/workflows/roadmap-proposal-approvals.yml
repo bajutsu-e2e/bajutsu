@@ -32,7 +32,13 @@ permissions:
 
 concurrency:
   group: roadmap-proposal-approvals-${{ github.event.pull_request.number }}
-  cancel-in-progress: true
+  # Serialize per PR; never cancel a run in flight. This is a *required* status check, so a
+  # concurrency cancellation leaves a non-success ("cancelled") terminal state that blocks the merge
+  # — and the wide trigger set (review submit/dismiss/edit, label toggles) fires bursts that, under
+  # cancel-in-progress: true, kept killing the in-flight run. Matching the other roadmap-* governance
+  # gates (roadmap-drift-check / roadmap-id / roadmap-tracking-issues), we serialize instead so the
+  # latest run always completes to a real pass/fail.
+  cancel-in-progress: false
 
 jobs:
   require-two-approvals:
