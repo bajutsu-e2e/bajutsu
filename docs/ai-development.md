@@ -403,8 +403,8 @@ A bare "done" or a 👍 is not a reply under this rule; the grounds are what let
 the thread audit the resolution. Keep each reply short and factual — the point is evidence, not
 narration.
 
-**Every answered comment gets both a reply and a resolved conversation** — whether you fixed it or
-consciously declined it, leave the reply that records the grounds, then mark that conversation
+**Every answered comment gets both a reply and a resolved thread** — whether you fixed it or
+consciously declined it, leave the reply that records the grounds, then mark that thread
 resolved. The reply says *why*; resolving the thread says it is *settled*, so the set of open
 threads always reflects exactly what still needs attention rather than a pile of already-handled
 comments. The one exception is the undecided case below: a thread you have left open on purpose
