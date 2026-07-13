@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-adb-resident-uiautomator-server-ja.md)
+**English** · [日本語](BE-0245-adb-resident-uiautomator-server-ja.md)
 
-# BE-XXXX — Resident UI Automator server for adb reads
+# BE-0245 — Resident UI Automator server for adb reads
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-adb-resident-uiautomator-server.md) |
+| Proposal | [BE-0245](BE-0245-adb-resident-uiautomator-server.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0245") |
 | Topic | Platform support |
 | Related | [BE-0234](../BE-0234-adb-run-performance/BE-0234-adb-run-performance.md), [BE-0007](../BE-0007-android-backend/BE-0007-android-backend.md), [BE-0233](../BE-0233-adb-clipboard-fidelity/BE-0233-adb-clipboard-fidelity.md), [BE-0114](../BE-0114-driver-conformance-suite/BE-0114-driver-conformance-suite.md), [BE-0208](../BE-0208-android-emulator-e2e-ci/BE-0208-android-emulator-e2e-ci.md) |
 <!-- /BE-METADATA -->

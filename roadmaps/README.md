@@ -530,6 +530,7 @@ Under consideration — not yet decided. Promote an item to *In progress* once w
 | ID | Item | Status |
 |---|---|---|
 | [BE-0008](BE-0008-flutter-support/BE-0008-flutter-support.md) | Flutter support | Proposal |
+| [BE-0245](BE-0245-adb-resident-uiautomator-server/BE-0245-adb-resident-uiautomator-server.md) | Resident UI Automator server for adb reads | Proposal |
 <!-- /GENERATED:proposals-platform -->
 
 ### Device-cloud execution
