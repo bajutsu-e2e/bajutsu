@@ -74,10 +74,10 @@ independent units:
 
 - **Thread one settled snapshot through tap actuation instead of re-querying at each layer.** In
   the idb and adb drivers, `_center` (`idb.py:317`) calls `_settle()` and then `_resolve`
-  (`idb.py:296`), and `_resolve` re-queries internally on a cache miss. Change `_resolve` to accept
+  the idb and adb drivers, `_center` (`idb.py:397`) calls `_settle()` and then `_resolve`
+  (`idb.py:376`), and `_resolve` re-queries internally on a cache miss. Change `_resolve` to accept
   and prefer the tree `_settle()` already produced (it already has an `initial_tree` parameter for
-  the first attempt — `idb.py:296`) and change `_center` to pass the settled tree through to every
-  attempt within its own bounded retry rather than letting `_resolve` call `query()` again on the
+  the first attempt — `idb.py:376`) and change `_center` to pass the settled tree through to every
   first not-found. The outer `base.wait_until` deadline loop (`base.py:359`) is untouched: this unit
   only removes a query that a lower layer was performing again immediately after a sibling layer
   already had the same data in hand.
