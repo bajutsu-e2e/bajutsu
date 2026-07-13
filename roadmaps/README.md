@@ -574,6 +574,12 @@ Running a scenario on a hosted device farm instead of a local Simulator, emulato
 | [BE-0243](BE-0243-upload-bundle-durable-storage/BE-0243-upload-bundle-durable-storage.md) | Persist uploaded zip config bundles to object storage for hosted serve | Proposal |
 <!-- /GENERATED:proposals-config-sourcing -->
 
+### Codebase quality & technical debt
+
+<!-- GENERATED:proposals-quality-debt -->
+
+<!-- /GENERATED:proposals-quality-debt -->
+
 ## Deferred
 
 Parked proposals — considered, then shelved for now. Kept here (not deleted) so the decision and its rationale stay on record; un-defer by changing `Status` back to `Proposal`.
