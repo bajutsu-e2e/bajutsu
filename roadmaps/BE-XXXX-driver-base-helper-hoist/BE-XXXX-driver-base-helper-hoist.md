@@ -40,7 +40,7 @@ repeats in `bajutsu/drivers/idb.py:317-321` (`_center`), `bajutsu/drivers/playwr
 (`_center`), and `bajutsu/drivers/adb.py:289-297` (`_center` / `_center_with_screen`). The
 related gesture-anchor variant — the same center plus a finger half-distance of `min(w, h) / 4`
 for a two-finger gesture — repeats in `bajutsu/drivers/playwright.py:601-608`
-(`_gesture_anchor`) and `bajutsu/drivers/adb.py:438-440` (inline in the multi-touch gesture path,
+(`_gesture_anchor`) and `bajutsu/drivers/adb.py:438-441` (inline in the multi-touch gesture path,
 BE-0232). Both are small, easy to copy-paste-and-slightly-misstate pieces of geometry that every
 new backend (Android was the third, a fourth is plausible) currently has to reinvent instead of
 reusing; a wrong divisor or a swapped `x`/`y` in one copy would silently mistap or mis-anchor a
@@ -90,12 +90,12 @@ definition with no behavior change:
   inline gesture-anchor computation through these two helpers, keeping each driver's own
   element-resolution step (`_resolve`, `resolve_unique`, `_resolve_frame_and_screen`) unchanged
   and only replacing the arithmetic on the resolved frame.
-- **Consolidate the no-op network source.** Keep one definition — `bajutsu/runner/types.py`'s
-  `_no_net` is the more established name at the point the `NetworkSource` type itself is likely
-  defined, but the concrete choice of owning module is an implementation detail for whoever picks
-  this up, provided it doesn't introduce a new inter-package dependency between `runner` and
-  `orchestrator` that doesn't already exist. Have `bajutsu/orchestrator/loop.py` import the single
-  definition instead of `orchestrator/types.py`'s own copy, and delete the duplicate.
+- **Consolidate the no-op network source.** Keep `bajutsu/orchestrator/types.py`'s `_no_network`
+  as the single definition. `runner` already depends on `orchestrator` (`runner/types.py`,
+  `runner/pipeline.py`, `runner/pool.py`, and `runner/mailbox.py` all import from it), while
+  nothing in `orchestrator` imports from `runner` — keeping the definition on the `orchestrator`
+  side preserves that one-way dependency instead of reversing it. Have `bajutsu/runner/pipeline.py`
+  import the single definition instead of `runner/types.py`'s own copy, and delete the duplicate.
 - **Consolidate `DEFAULT_CONFIG`.** Keep `bajutsu/config_source.py:29`'s definition as the single
   source (it's the module that already resolves a config spec's path against it) and have
   `bajutsu/cli/_shared.py` re-export it (`from bajutsu.config_source import DEFAULT_CONFIG`)
@@ -161,7 +161,7 @@ constraints.
   [`bajutsu/drivers/adb.py:289-297`](../../bajutsu/drivers/adb.py) — the frame-center
   computations this item hoists.
 - [`bajutsu/drivers/playwright.py:601-608`](../../bajutsu/drivers/playwright.py),
-  [`bajutsu/drivers/adb.py:438-440`](../../bajutsu/drivers/adb.py) — the gesture-anchor variant
+  [`bajutsu/drivers/adb.py:438-441`](../../bajutsu/drivers/adb.py) — the gesture-anchor variant
   this item hoists.
 - [`bajutsu/runner/types.py:66`](../../bajutsu/runner/types.py),
   [`bajutsu/orchestrator/types.py:63`](../../bajutsu/orchestrator/types.py) — the duplicated
