@@ -208,12 +208,20 @@ class GCSObjectStore:
         return [str(b.name) for b in self._bucket.list_blobs(prefix=prefix)]
 
     def delete_key(self, key: str) -> None:
-        # Unlike S3's idempotent delete, `blob.delete()` raises on a missing object — guard with an
-        # existence check so the seam's "no-op if absent" contract holds, without importing the GCS
-        # SDK's exception type (the default gate path stays SDK-free, #117 import guard).
+        # Unlike S3's idempotent delete, `blob.delete()` raises on a missing object. Delete first and
+        # only re-raise if the object is *still* there afterward: that keeps the seam's "no-op if
+        # absent" contract under concurrency (the retention sweep runs unlocked on every history read,
+        # so two overlapping purges of the same key race here) — a plain exists()-then-delete() would
+        # let the loser raise. Re-checking state avoids importing the GCS SDK's exception type too
+        # (the default gate path stays SDK-free, #117 import guard).
         blob = self._bucket.blob(key)
-        if blob.exists():
+        try:
             blob.delete()
+        except (
+            Exception
+        ):  # narrowed by the exists() re-check: a real error leaves the object present
+            if blob.exists():
+                raise
 
     def delete_keys(self, keys: Iterable[str]) -> None:
         for key in keys:

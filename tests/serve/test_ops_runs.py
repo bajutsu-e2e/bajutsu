@@ -89,6 +89,18 @@ def test_bulk_delete_rejects_a_non_list_ids(tmp_path: Path) -> None:
     assert ops.bulk_delete_runs(state, {"ids": "r1"})[1] == 400
 
 
+def test_bulk_delete_purge_is_a_strict_boolean(tmp_path: Path) -> None:
+    # A stringy "false" must NOT trigger an irreversible purge — only a JSON `true` does. The run is
+    # soft-deleted (recoverable), not purged.
+    state = _local_state(tmp_path)
+    _run_dir(state, "r1")
+    payload, status = ops.bulk_delete_runs(state, {"ids": ["r1"], "purge": "false"})
+    assert status == 200 and payload["purged"] is False
+    assert (
+        state.artifacts.restore_run("r1") is True
+    )  # still in the trash — soft-deleted, not purged
+
+
 # --- hosted (repository) ---
 
 

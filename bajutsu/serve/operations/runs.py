@@ -109,7 +109,10 @@ def bulk_delete_runs(
     ids = body.get("ids")
     if not isinstance(ids, list) or not all(isinstance(i, str) for i in ids):
         return {"error": "ids must be a list of strings"}, 400
-    purge = bool(body.get("purge"))
+    # Strict JSON boolean, not a truthy coercion: a client sending the string "false" (e.g. copying
+    # the DELETE routes' query-string convention) must NOT trigger an irreversible purge — `bool(
+    # "false")` is True, so `is True` is the safe check for a destructive default-off flag.
+    purge = body.get("purge") is True
     if purge and _forbidden_purge(state, actor):
         return {"error": "forbidden"}, 403
     org = state.org_of(actor)

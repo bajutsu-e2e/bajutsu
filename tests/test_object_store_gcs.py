@@ -36,6 +36,10 @@ class _FakeBlob:
         self._store[f"__ct__{self.name}"] = content_type.encode()
 
     def delete(self) -> None:
+        # Real GCS raises on a missing blob (unlike S3's idempotent delete); model that so
+        # `delete_key`'s delete-first/re-check-exists path is actually exercised.
+        if self.name not in self._store:
+            raise RuntimeError("404 No such object")
         self._store.pop(self.name, None)
         self._store.pop(f"__ct__{self.name}", None)
 
