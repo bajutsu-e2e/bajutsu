@@ -699,6 +699,7 @@ AI を使う経路（`record` ／ `crawl` ／ `triage --ai` ／ `run --apply`）
 | [BE-0167](BE-0167-control-plane-scale-out/BE-0167-control-plane-scale-out-ja.md) | ロードバランサ配下での制御プレーンのスケールアウト | 提案 |
 | [BE-0168](BE-0168-self-host-high-availability/BE-0168-self-host-high-availability-ja.md) | セルフホストの高可用性と単一障害点の堅牢化 | 提案 |
 | [BE-0170](BE-0170-weighted-fair-org-dispatch/BE-0170-weighted-fair-org-dispatch-ja.md) | 組織間で公平な重み付きジョブ分配 | 提案 |
+| [BE-0239](BE-0239-deletable-runs-serve/BE-0239-deletable-runs-serve-ja.md) | serve の Web UI から run（レポート）を削除できるようにする | 提案 |
 <!-- /GENERATED:proposals-hosting -->
 
 ### セキュリティ強化

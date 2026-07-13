@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-deletable-runs-serve-ja.md)
+**English** · [日本語](BE-0239-deletable-runs-serve-ja.md)
 
-# BE-XXXX — Deletable runs and reports in the serve Web UI
+# BE-0239 — Deletable runs and reports in the serve Web UI
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-deletable-runs-serve.md) |
+| Proposal | [BE-0239](BE-0239-deletable-runs-serve.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0239") |
 | Topic | Hosting the web UI (cloud / self-hosted) |
 <!-- /BE-METADATA -->
 
