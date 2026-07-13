@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-dead-claude-client-wrapper-removal-ja.md)
+**English** · [日本語](BE-0249-dead-claude-client-wrapper-removal-ja.md)
 
-# BE-XXXX — Remove the dead Claude-client wrapper orphaned by the backend seam
+# BE-0249 — Remove the dead Claude-client wrapper orphaned by the backend seam
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-dead-claude-client-wrapper-removal.md) |
+| Proposal | [BE-0249](BE-0249-dead-claude-client-wrapper-removal.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0249") |
 | Topic | Codebase quality & technical debt |
 | Related | [BE-0104](../BE-0104-vendor-neutral-ai-backend/BE-0104-vendor-neutral-ai-backend.md), [BE-0140](../BE-0140-dedupe-claude-client-init/BE-0140-dedupe-claude-client-init.md), [BE-0246](../BE-0246-claude-client-taxonomy/BE-0246-claude-client-taxonomy.md) |
 <!-- /BE-METADATA -->

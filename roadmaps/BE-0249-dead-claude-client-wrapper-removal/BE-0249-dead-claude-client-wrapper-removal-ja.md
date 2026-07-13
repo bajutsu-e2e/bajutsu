@@ -1,14 +1,14 @@
-[English](BE-XXXX-dead-claude-client-wrapper-removal.md) · **日本語**
+[English](BE-0249-dead-claude-client-wrapper-removal.md) · **日本語**
 
-# BE-XXXX — バックエンドの seam に取り残された、使われていない Claude クライアントのラッパーを削除する
+# BE-0249 — バックエンドの seam に取り残された、使われていない Claude クライアントのラッパーを削除する
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
 |---|---|
-| 提案 | [BE-XXXX](BE-XXXX-dead-claude-client-wrapper-removal-ja.md) |
+| 提案 | [BE-0249](BE-0249-dead-claude-client-wrapper-removal-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **提案** |
-| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0249") |
 | トピック | コードベース品質・技術的負債 |
 | 関連 | [BE-0104](../BE-0104-vendor-neutral-ai-backend/BE-0104-vendor-neutral-ai-backend-ja.md), [BE-0140](../BE-0140-dedupe-claude-client-init/BE-0140-dedupe-claude-client-init-ja.md), [BE-0246](../BE-0246-claude-client-taxonomy/BE-0246-claude-client-taxonomy-ja.md) |
 <!-- /BE-METADATA -->
