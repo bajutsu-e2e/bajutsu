@@ -45,7 +45,7 @@ and giving it a boundary. Two such clusters remain:
 2. **Provider settings.** The fields `provider_settings`, `provider_settings_store`, and the two
    locks that guard them — `_provider_lock` (`state.py:451`) and `_persist_lock` (`state.py:456`) —
    plus the methods `org_provider_settings`, `put_org_provider_settings`, and
-   `set_org_provider_choice` (`state.py:540`–`578`) form the in-memory half of the per-org AI
+   `set_org_provider_choice` (`state.py:540`–`584`) form the in-memory half of the per-org AI
    provider selection (BE-0229). The persistence half, `_persist_provider_settings`
    (`bajutsu/serve/operations/config.py:631`), already lives outside `state.py` and reaches back in
    to take both locks and read/write `provider_settings` directly — today only possible because it
@@ -112,7 +112,7 @@ BE-0198 set:
   `state.py`'s responsibilities in a way this split changes.
 
 Out of scope, named so the boundary is explicit: the storage-seam group (`artifacts`, `scenarios`,
-`baselines`, `secrets`, `executor`, `repository`, `for_org` / `StoreBundle`), the run-I/O-location
+`baselines`, `secrets`, `executor`, `repository`, `org_stores` / `StoreBundle`), the run-I/O-location
 group (`runs_dir`, `scenarios_dir`, `baselines_dir`, `uploads_dir`, `cwd`, `base_cwd`, `root`), the
 upload-sandbox state (`upload`, `upload_exec`, `bind_upload` / `release_upload`), and the
 evidence/object-store config (`evidence`, `object_store`, `object_store_prefix`) all remain on
@@ -167,7 +167,7 @@ evidence/object-store config (`evidence`, `object_store`, `object_store_prefix`)
 - `bajutsu/serve/state.py:528`–`538` (`check_token` / `issue_session` / `valid_session`)
 - `bajutsu/serve/state.py:414`–`420` (`provider_settings`, `provider_settings_store`)
 - `bajutsu/serve/state.py:451`–`456` (`_provider_lock`, `_persist_lock`)
-- `bajutsu/serve/state.py:540`–`578` (`org_provider_settings` / `put_org_provider_settings` /
+- `bajutsu/serve/state.py:540`–`584` (`org_provider_settings` / `put_org_provider_settings` /
   `set_org_provider_choice`)
 - `bajutsu/serve/operations/config.py:631` (`_persist_provider_settings`, the one caller that reaches
   into both locks from outside `state.py` today)
