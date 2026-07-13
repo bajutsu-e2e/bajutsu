@@ -1,14 +1,14 @@
-[English](BE-XXXX-platform-lifecycle-package-split.md) · **日本語**
+[English](BE-0256-platform-lifecycle-package-split.md) · **日本語**
 
-# BE-XXXX — platform_lifecycle をパッケージへ分割し、デバイス解決を Environment という seam に通す
+# BE-0256 — platform_lifecycle をパッケージへ分割し、デバイス解決を Environment という seam に通す
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
 |---|---|
-| 提案 | [BE-XXXX](BE-XXXX-platform-lifecycle-package-split-ja.md) |
+| 提案 | [BE-0256](BE-0256-platform-lifecycle-package-split-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **提案** |
-| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0256") |
 | トピック | Codebase quality & technical debt |
 <!-- /BE-METADATA -->
 

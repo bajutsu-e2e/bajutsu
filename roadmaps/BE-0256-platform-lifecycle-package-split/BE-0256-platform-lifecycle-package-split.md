@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-platform-lifecycle-package-split-ja.md)
+**English** · [日本語](BE-0256-platform-lifecycle-package-split-ja.md)
 
-# BE-XXXX — Split platform_lifecycle into a package and route device resolution through the Environment seam
+# BE-0256 — Split platform_lifecycle into a package and route device resolution through the Environment seam
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-platform-lifecycle-package-split.md) |
+| Proposal | [BE-0256](BE-0256-platform-lifecycle-package-split.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0256") |
 | Topic | Codebase quality & technical debt |
 <!-- /BE-METADATA -->
 
