@@ -44,12 +44,13 @@ SERIAL ?= booted
 # rooted device (the `e2e` target roots the emulator below), which fires both taps inside the window;
 # on a non-rooted device it falls back to `input tap` unchanged. Verified on a local arm64 emulator.
 #
-# The runtime-permission flow `permission_android` joins the lane (BE-0208 unit 6, exercising
-# BE-0210's up-front grant). It is the deterministic Android twin of the idb `permission.yaml`: rather
-# than tapping the out-of-process prompt through the vision alert guard, showcase-compose grants
-# POST_NOTIFICATIONS up front (`grantPermissions` → `pm grant`), so the RequestPermission contract
-# short-circuits to granted with no dialog — no LLM, no fixed sleep on the CI lane. Verified on a
-# local arm64 emulator.
+# The runtime-permission flow `permission` joins the lane (BE-0208 unit 6, exercising BE-0210's
+# up-front grant). This is the *same* permission.yaml the idb lane runs: the grant mechanism is in
+# config, not the scenario, so one file serves both. showcase-compose grants POST_NOTIFICATIONS up
+# front (`grantPermissions` → `pm grant`), so the RequestPermission contract short-circuits to granted
+# with no dialog; the scenario's `dismissAlerts` guard therefore never fires here — no LLM, no fixed
+# sleep on the CI lane (on iOS, where notifications can't be pre-granted, that guard taps "Allow"
+# instead). Verified on a local arm64 emulator.
 #
 # The device-control flow `device` joins the lane (BE-0208 unit 5): it overrides the GPS location
 # (`emu geo fix`) and round-trips the clipboard, then re-asserts the settled screen. This is the *same*
@@ -69,7 +70,7 @@ SERIAL ?= booted
 #
 # Still held out: mocked network (a BE-0007 follow-up).
 E2E_SCENARIOS := smoke firstlook navigation search data_driven relaunch system components modals \
-	controls notices gestures gestures_multitouch permission_android device
+	controls notices gestures gestures_multitouch permission device
 
 # Raise the condition-wait ceiling for this lane only: the CI x86_64 software-rendered emulator
 # presents sheets/covers slower than the shared scenarios' 5s waits allow. A wait returns as soon as

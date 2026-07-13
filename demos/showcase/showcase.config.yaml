@@ -102,7 +102,8 @@ targets:
     deeplinkScheme: showcasecompose
     launchEnv: { SHOWCASE_UITEST: "1" }
     # Granted up front (`pm grant`) at lease time, so the notification prompt never blocks the run
-    # (BE-0210); permission_android.yaml relies on this to stay deterministic (no alert guard).
+    # (BE-0210); the shared permission.yaml relies on this on Android to stay deterministic — no dialog
+    # appears, so its `dismissAlerts` guard no-ops (on iOS, which can't pre-grant, that guard grants).
     grantPermissions: [android.permission.POST_NOTIFICATIONS]
     idNamespaces: [stable, horse, search, log, notice, perm, sys, net]
     appPath: demos/showcase/android/compose/build/outputs/apk/a11y/debug/compose-a11y-debug.apk
