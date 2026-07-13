@@ -152,7 +152,7 @@ about durability, or an active config that outruns one.
 ### 2. Replace `activate_project`'s upload-kind `409` with a content-addressed fetch-and-extract fallback
 
 This unit also relocates where the local materialization cache lives. `state.uploads_dir`
-(`bajutsu/serve/state.py:262`) defaults today to a `--runs`-relative sibling directory
+(`bajutsu/serve/state.py`) defaults today to a `--runs`-relative sibling directory
 (`runs_dir.parent / "uploads"` for the `local` backend; an accidental bare `Path("uploads")` for
 `server`, since `_build_server_state` never overrides it). This item changes that default to a
 sibling of BE-0063's Git checkout cache under the same `bajutsu` cache namespace —
@@ -177,6 +177,19 @@ applies — once per unique `sha256` per replica, not once per activation — th
 same way `bind_upload_config` does today. Only when no object store is configured, or the key is
 absent from it, does today's `409` stand.
 
+The exists-check alone is not enough to make this safe under concurrent access: two callers that
+both miss the same `sha256` at the same moment (two simultaneous `activate_project` calls, or one
+racing `bind_upload_config`'s own extraction once it is keyed by `sha256` too) would otherwise both
+extract straight into `state.uploads_dir / sha256`, each seeing the other's partially-written tree.
+`materialize()` avoids exactly this race for the Git source's cache by extracting into a sibling
+temp directory and renaming into place (`_extract_into` in `bajutsu/config_source.py`): the rename
+is atomic, so a losing caller either finds `root` already present before it starts, or has its own
+`rename` fail because the winner's already landed, and in that case discards its own copy rather
+than treating the failure as an error — safe because both extractions are byte-identical for the
+same content-addressed key. Both extraction sites this unit introduces (`bind_upload_config`'s own
+extraction and `activate_project`'s fallback) need that same temp-dir-then-rename pattern, not a
+direct extract into the keyed path, to get the same guarantee.
+
 Keying the local path by `sha256` is what makes `uploads_dir` an actual cache in front of the
 durable object store, the same relationship
 [BE-0063](../BE-0063-git-config-source/BE-0063-git-config-source.md)'s local, content-addressed Git
@@ -194,7 +207,7 @@ validated itself for the exact same content-addressed key — the same trust bou
 already relies on for a cached Git checkout.
 
 **Consequence for `release_upload`.** `ServeState.release_upload()`
-(`bajutsu/serve/state.py:523`) unconditionally `shutil.rmtree`s the bound upload's directory
+(`bajutsu/serve/state.py`) unconditionally `shutil.rmtree`s the bound upload's directory
 whenever any new config is bound — the right behavior for today's one-disposable-sandbox-per-bind
 design, but it would delete the `sha256`-keyed cache on every switch-away, defeating the reuse this
 unit introduces: switching to a different project and back would force a full re-fetch-and-extract
@@ -205,7 +218,7 @@ whatever retention policy governs the local cache (see *Retention*, below), the 
 binding or unbinding a config ever sweeps the Git source's `~/.cache/bajutsu/gitsrc/...` checkout
 cache.
 
-**Consequence for the startup sweep.** `serve()` (`bajutsu/serve/__init__.py:498`) currently
+**Consequence for the startup sweep.** `serve()` (`bajutsu/serve/__init__.py`) currently
 `shutil.rmtree`s the entire `uploads_dir` tree unconditionally on every launch, reasoning (per its
 own comment) that nothing is bound at startup, so any tempdir left over from a prior process is
 dead weight. That reasoning fit a directory of anonymous `tempfile.mkdtemp` names with no meaning
@@ -291,7 +304,7 @@ store.
 > (oldest first), linking the PRs.
 
 - [ ] 1 — Persist the raw uploaded zip to the object store, keyed by its sha256 under the project's org prefix, *before* `bind_upload_config` flips the active config, when `BAJUTSU_SERVER_STORE` is configured; on a write failure, remove the extracted local directory and fail the request without ever having bound it, rather than binding first and rolling back.
-- [ ] 2 — Move `state.uploads_dir`'s default from a `--runs`-relative directory to a sibling of BE-0063's Git checkout cache under `.../bajutsu/` (`<XDG_CACHE_HOME or ~/.cache>/bajutsu/uploads/`), reusing `_default_cache_root()`'s resolution rather than duplicating it. `activate_project` gains a fetch-and-extract-from-object-store fallback for `kind == "upload"`, tried before the existing `409`. Both this fallback and `bind_upload_config`'s own local extraction resolve to a `sha256`-keyed directory under that root and skip extraction (and re-validation) on a cache hit, mirroring `materialize()`'s `if not root.exists(): _extract_into(...)`. `release_upload` stops deleting that directory on every switch-away, and `serve()`'s startup sweep (`bajutsu/serve/__init__.py:498`) stops wiping it on every launch, so the cache actually persists across binds and restarts.
+- [ ] 2 — Move `state.uploads_dir`'s default from a `--runs`-relative directory to a sibling of BE-0063's Git checkout cache under `.../bajutsu/` (`<XDG_CACHE_HOME or ~/.cache>/bajutsu/uploads/`), reusing `_default_cache_root()`'s resolution rather than duplicating it. `activate_project` gains a fetch-and-extract-from-object-store fallback for `kind == "upload"`, tried before the existing `409`. Both this fallback and `bind_upload_config`'s own local extraction resolve to a `sha256`-keyed directory under that root and skip extraction (and re-validation) on a cache hit, mirroring `materialize()`'s `if not root.exists(): _extract_into(...)` — both extract into a sibling temp dir and rename into place first, mirroring `_extract_into`'s atomicity, so two concurrent misses on the same `sha256` never race directly into the keyed path. `release_upload` stops deleting that directory on every switch-away, and `serve()`'s startup sweep (`bajutsu/serve/__init__.py`) stops wiping it on every launch, so the cache actually persists across binds and restarts.
 - [ ] 3 — Confirm zero-config behavior (and the existing `409`) is unchanged with no `BAJUTSU_SERVER_STORE` configured.
 
 ## References
