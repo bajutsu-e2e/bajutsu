@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-driver-base-helper-hoist-ja.md)
+**English** · [日本語](BE-0251-driver-base-helper-hoist-ja.md)
 
-# BE-XXXX — Hoist duplicated driver helpers into drivers.base and unify small constants
+# BE-0251 — Hoist duplicated driver helpers into drivers.base and unify small constants
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-driver-base-helper-hoist.md) |
+| Proposal | [BE-0251](BE-0251-driver-base-helper-hoist.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0251") |
 | Topic | Codebase quality & technical debt |
 <!-- /BE-METADATA -->
 

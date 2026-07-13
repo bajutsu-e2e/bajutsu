@@ -584,6 +584,7 @@ Running a scenario on a hosted device farm instead of a local Simulator, emulato
 | [BE-0248](BE-0248-serve-state-decomposition-continued/BE-0248-serve-state-decomposition-continued.md) | Continue decomposing ServeState into auth and provider-settings managers | Proposal |
 | [BE-0249](BE-0249-dead-claude-client-wrapper-removal/BE-0249-dead-claude-client-wrapper-removal.md) | Remove the dead Claude-client wrapper orphaned by the backend seam | Proposal |
 | [BE-0250](BE-0250-assertions-package-eval-context/BE-0250-assertions-package-eval-context.md) | Split assertions into a package and thread evaluation contexts as one EvalContext | Proposal |
+| [BE-0251](BE-0251-driver-base-helper-hoist/BE-0251-driver-base-helper-hoist.md) | Hoist duplicated driver helpers into drivers.base and unify small constants | Proposal |
 <!-- /GENERATED:proposals-quality-debt -->
 
 ## Deferred

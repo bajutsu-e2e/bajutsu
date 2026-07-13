@@ -1,14 +1,14 @@
-[English](BE-XXXX-driver-base-helper-hoist.md) · **日本語**
+[English](BE-0251-driver-base-helper-hoist.md) · **日本語**
 
-# BE-XXXX — 重複した driver ヘルパーを drivers.base に集約し、細かな定数を統一する
+# BE-0251 — 重複した driver ヘルパーを drivers.base に集約し、細かな定数を統一する
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
 |---|---|
-| 提案 | [BE-XXXX](BE-XXXX-driver-base-helper-hoist-ja.md) |
+| 提案 | [BE-0251](BE-0251-driver-base-helper-hoist-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **提案** |
-| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0251") |
 | トピック | コードベース品質・技術的負債 |
 <!-- /BE-METADATA -->
 
