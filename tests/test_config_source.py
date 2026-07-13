@@ -443,6 +443,58 @@ def test_load_effective_rebases_paths_against_git_checkout(tmp_path, monkeypatch
     assert eff.platform_config.app_path == str(root / "build/Demo.app")
 
 
+def test_load_effective_local_config_rebases_against_the_config_dir(tmp_path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    # A local config's relative paths resolve against the config file's own directory, independent of
+    # the caller's cwd (BE-0242) — chdir elsewhere and the resolution must not move with it.
+    from bajutsu.cli import _shared
+
+    cfg_dir = tmp_path / "proj"
+    (cfg_dir / "scn").mkdir(parents=True)
+    (cfg_dir / "bajutsu.config.yaml").write_text(
+        "targets:\n  demo:\n    bundleId: com.example.demo\n"
+        "    scenarios: scn\n    appPath: build/Demo.app\n",
+        encoding="utf-8",
+    )
+    monkeypatch.chdir(tmp_path)  # deliberately not the config's directory
+    eff = _shared._load_effective(str(cfg_dir / "bajutsu.config.yaml"), "demo")
+    assert eff.scenarios == str(cfg_dir / "scn")  # anchored at the config dir, not cwd (tmp_path)
+    assert isinstance(eff.platform_config, IosConfig)
+    assert eff.platform_config.app_path == str(cfg_dir / "build/Demo.app")
+
+
+def test_load_effective_local_config_allows_a_path_outside_its_dir(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    # A local file is operator-trusted (BE-0121), so — unlike a fetched Git config — it may point at a
+    # sibling outside its own directory: the `..` resolves, it is not a confinement exit-2 (BE-0242).
+    from bajutsu.cli import _shared
+
+    proj = tmp_path / "proj"
+    proj.mkdir()
+    (proj / "bajutsu.config.yaml").write_text(
+        "targets:\n  demo:\n    bundleId: com.example.demo\n    scenarios: ../shared/scn\n",
+        encoding="utf-8",
+    )
+    eff = _shared._load_effective(str(proj / "bajutsu.config.yaml"), "demo")
+    assert Path(eff.scenarios or "").resolve() == (tmp_path / "shared" / "scn")
+
+
+def test_load_effective_local_config_returns_no_checkout_root(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    # The rebase anchor must not leak into the third tuple element: `checkout_root` stays None for a
+    # local config so it keeps reading as "local, not a read-only Git checkout" — otherwise `run`'s
+    # on-demand build_if_missing and record/crawl's _refuse_out_in_checkout would switch on (BE-0242).
+    from bajutsu.cli import _shared
+
+    proj = tmp_path / "proj"
+    (proj / "scn").mkdir(parents=True)
+    (proj / "bajutsu.config.yaml").write_text(
+        "targets:\n  demo:\n    bundleId: com.example.demo\n    scenarios: scn\n",
+        encoding="utf-8",
+    )
+    _eff, source, checkout_root = _shared._load_effective_with_source(
+        str(proj / "bajutsu.config.yaml"), "demo"
+    )
+    assert source is None and checkout_root is None  # local config: no Git provenance, no checkout
+
+
 def test_load_effective_git_wrong_path_exits_cleanly(tmp_path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
     # A materialized tree that doesn't hold the requested config path gets the same friendly exit-2
     # as a missing local config — not a raw FileNotFoundError.

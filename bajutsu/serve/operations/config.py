@@ -413,7 +413,9 @@ def _confined_config_path(root: Path, raw: str) -> Path | None:
 
 def bind_config(state: ServeState, raw: str) -> tuple[Any, int]:
     """Bind a config.yml chosen in the UI's file browser.  The path is confined to ``--root``; we
-    validate it loads, then re-point ``state.config`` so targets/scenarios come from it."""
+    validate it loads, then re-point ``state.config`` at it **and** ``state.cwd`` at its own directory
+    so the config's relative paths resolve from beside it, not serve's launch dir (BE-0242) — mirroring
+    the Git/upload binds."""
     if state.hosted:
         # Defense in depth (BE-0108): the file browser is removed from the hosted UI, but a
         # hand-crafted path-bind must be refused too, or hiding it would be merely cosmetic.
@@ -431,6 +433,10 @@ def bind_config(state: ServeState, raw: str) -> tuple[Any, int]:
         return {"error": f"invalid config: {e}"}, 400
     state.release_upload()  # a fresh config replaces any bound bundle and resets cwd to serve's launch dir
     state.config = target
+    # A local config's relative paths resolve from its own directory, not serve's launch dir, so the
+    # bound config behaves the same wherever serve was started (BE-0242) — mirroring the Git/upload
+    # binds below. Unconfined: an operator-trusted local file may point at a sibling (BE-0121).
+    state.cwd = target.resolve().parent
     state.config_provenance = None  # a local file has no Git commit provenance to show
     state.git_config_from_api = False  # a local file config is operator-trusted (BE-0121)
     return {"ok": True, "config": str(target), "targets": list_targets(target)}, 200

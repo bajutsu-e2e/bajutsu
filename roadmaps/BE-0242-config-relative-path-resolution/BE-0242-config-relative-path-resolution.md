@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0242](BE-0242-config-relative-path-resolution.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0242") |
+| Implementing PR | [#980](https://github.com/bajutsu-e2e/bajutsu/pull/980) |
 | Topic | Configuration sourcing |
 <!-- /BE-METADATA -->
 
@@ -150,14 +151,16 @@ with that existing trust boundary.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Add a `confine` switch to `Effective.rebased()`; update its docstring.
-- [ ] Rebase local configs through `eff.rebased(cfg_path.resolve().parent, confine=False)` in
+- [x] Add a `confine` switch to `Effective.rebased()`; update its docstring.
+- [x] Rebase local configs through `eff.rebased(cfg_path.resolve().parent, confine=False)` in
       `_load_effective_with_source`.
-- [ ] Anchor serve's local-config binds at the config's directory (startup `--config`, fs bind).
-- [ ] Rewrite the in-repo demo configs to config-directory-relative paths.
-- [ ] Rebase the on-device conformance test's `Effective` against the config directory.
-- [ ] Update `docs/configuration.md` and `docs/ja/configuration.md`.
-- [ ] Add cwd-independence + unconfined-local-path tests, plus a `rebased(confine=False)` unit test.
+- [x] Anchor serve's local-config binds at the config's directory (startup `--config`, fs bind).
+- [x] Rewrite the in-repo demo configs to config-directory-relative paths.
+- [x] Rebase the on-device conformance test's `Effective` against the config directory.
+- [x] Update `docs/configuration.md` and `docs/ja/configuration.md`.
+- [x] Add cwd-independence + unconfined-local-path tests, plus a `rebased(confine=False)` unit test.
+
+Delivered by [#980](https://github.com/bajutsu-e2e/bajutsu/pull/980).
 
 ## References
 

@@ -504,6 +504,22 @@ def test_rebased_refuses_a_path_field_escaping_the_checkout() -> None:
             eff.rebased(Path("/co"))
 
 
+def test_rebased_without_confinement_keeps_paths_outside_the_root() -> None:
+    """`confine=False` (an operator-trusted local config, BE-0242) joins a `..`/absolute path instead of refusing it."""
+    eff = resolve(
+        load_config(
+            "targets:\n  x:\n    bundleId: com.x\n    scenarios: ../sibling/scn\n"
+            "    appPath: /opt/App.app\n"
+        ),
+        "x",
+    )
+    rebased = eff.rebased(Path("/co/cfg"), confine=False)
+    assert Path(rebased.scenarios or "").resolve() == Path(
+        "/co/sibling/scn"
+    )  # sibling, not refused
+    assert _ios(rebased).app_path == "/opt/App.app"  # an absolute value is kept as-is
+
+
 # --- Platform discriminator (BE-0009 Slice 4) --- #
 
 

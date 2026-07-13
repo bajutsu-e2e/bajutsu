@@ -186,6 +186,11 @@ def serve(
             # Stamp the resolved commit so the UI's "view config" can show which commit this opaque
             # cache-path config was materialized from, not just the path (BE-0063).
             config_provenance = source_provenance(spec, mat)
+        else:
+            # A local config's relative paths resolve from its own directory, so the served config
+            # behaves the same wherever serve was started, matching the CLI and the Git bind (BE-0242).
+            assert config_path is not None  # set above from a truthy `config`
+            cwd = config_path.resolve().parent
 
     # The initial theme selection is a serve-only `ui.default_theme` key, read from the startup
     # config here (the core Config never models it — BE-0191). None follows the OS as before.
