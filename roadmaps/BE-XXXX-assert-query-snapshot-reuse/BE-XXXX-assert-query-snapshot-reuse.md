@@ -128,6 +128,6 @@ independent units:
 - `bajutsu/orchestrator/loop.py` — `_run_step_body` (line 141), the `assert_` query (172),
   `exec_steps`, and the lazy post-step `after` read (BE-0234 Unit 2)
 - `bajutsu/orchestrator/waits.py:64` (documents idb `describe-all` at ~100–300ms per call)
-- `bajutsu/drivers/idb.py:248` (`_settle`), `:296` (`_resolve`), `:317` (`_center`)
+- `bajutsu/drivers/idb.py:297` (`_settle`), `:376` (`_resolve`), `:397` (`_center`)
 - `bajutsu/drivers/adb.py:369` (`_scroll_into_view`)
 - `bajutsu/drivers/base.py:359` (`wait_until`)
