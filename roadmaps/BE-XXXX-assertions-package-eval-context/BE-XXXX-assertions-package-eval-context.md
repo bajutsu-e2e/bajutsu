@@ -71,7 +71,8 @@ landable:
 
 - **Split `bajutsu/assertions.py` into an `assertions/` package.**
   - `assertions/network.py` — `match_request`, `count_matching`, `request_label`,
-    `_assign_requests`. This is a shared matcher (the web mock router and `until: {request}` already
+    `_assign_requests`, `_request_assignment_result` (`assertions.py:522`, called alongside
+    `_assign_requests` in `evaluate_one` and building its result from `request_label`). This is a shared matcher (the web mock router and `until: {request}` already
     depend on `match_request`/`count_matching`), so it is arguably better co-located with
     `bajutsu/network.py`'s `NetworkExchange`; either placement is fine as long as the import cycle
     stays acyclic — call this out explicitly in the implementation PR.
@@ -84,7 +85,9 @@ landable:
   - `assertions/evaluate.py` — the thin dispatcher (`evaluate`, `evaluate_one`, `passed`) and the
     small UI-kind evaluators (`_eval_exists`, `_eval_text`, `_eval_count`, `_eval_state`,
     `_eval_request`, `_eval_event`, `_eval_request_sequence`, `_eval_clipboard`, `_eval_golden`) that
-    don't warrant their own module.
+    don't warrant their own module. `GoldenContext` (`assertions.py:105`) lives here too, next to
+    its only evaluator `_eval_golden` (which already imports the compare logic from
+    `bajutsu/golden.py`), rather than in its own module.
   - `bajutsu/assertions.py` (or `assertions/__init__.py`) re-exports the public surface so existing
     `from bajutsu import assertions` / `bajutsu.assertions.evaluate(...)` call sites are unaffected —
     this is a pure module reorganization, not a public-API change.
