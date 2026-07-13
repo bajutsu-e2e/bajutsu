@@ -249,6 +249,31 @@ def test_query_returns_after_bounded_resets_when_wedge_persists() -> None:
     assert describe == 1 + IdbDriver._AX_RESET_RETRIES  # initial read + one per reset
 
 
+def test_query_yields_a_recurring_wedge_without_burning_transient_empty_backoff() -> None:
+    # A wedge that recurs *after* a rich tree was already seen (so _max_seen >= _READY_MIN) also
+    # matches _is_transient_empty (len < _READY_MIN and a richer tree was seen). Without the wedge
+    # guard, _describe_settled would burn its full _EMPTY_RETRIES exponential-backoff loop on the
+    # wedge — a same-companion re-read can never clear it — before query() finally resets. It must
+    # instead hand the wedge straight back to query() so the companion reset (which *can* clear it)
+    # fires promptly, keeping the describe-all count well below the compounding worst case.
+    run, calls = _recording([FIXTURE, WEDGED, FIXTURE])
+    driver = IdbDriver("U", run=run)
+    driver._EMPTY_BACKOFF_S = 0  # no real sleeping in the test
+
+    assert len(driver.query()) == 3  # baseline: _max_seen becomes 3
+    calls.clear()
+    els = driver.query()  # hits the wedge, resets the companion, recovers the full tree
+    assert len(els) == 3
+
+    describe, disconnect, connect = _counts(calls)
+    assert (disconnect, connect) == (1, 1)  # the companion reset fired
+    # Wedge yielded promptly: initial wedged read + one post-reset read. No transient-empty backoff
+    # burned on it (the compounding worst case would be ~1 + _EMPTY_RETRIES describe-all calls
+    # *per* reset attempt before the reset ever fires).
+    assert describe == 2
+    assert describe < 1 + IdbDriver._EMPTY_RETRIES  # well below the compounding worst case
+
+
 def test_reset_companion_tolerates_a_dropped_connection() -> None:
     # disconnect/connect are best-effort: a disconnect with no live connection (or a connect race)
     # raises CalledProcessError that must not mask the wedge — the re-query decides recovery.

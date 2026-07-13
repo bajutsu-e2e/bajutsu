@@ -280,10 +280,15 @@ class IdbDriver:
         Retries a degenerate result a bounded number of times, but only once a richer tree has been
         seen on this device (see `_is_transient_empty`), so a genuinely sparse first screen is taken
         at face value.
+
+        An accessibility-bridge wedge also satisfies `_is_transient_empty` once a richer tree has
+        been seen (both are `len < _READY_MIN`), but a same-companion re-read can never clear it — so
+        it is yielded immediately to the caller (`query()`, which resets the companion) rather than
+        burning the backoff loop on a read that cannot recover (BE-0231 Unit 6).
         """
         els = self._describe()
         for i in range(self._EMPTY_RETRIES):
-            if not self._is_transient_empty(els):
+            if not self._is_transient_empty(els) or self._is_ax_bridge_wedged(els):
                 break
             time.sleep(self._empty_backoff(i))
             els = self._describe()
