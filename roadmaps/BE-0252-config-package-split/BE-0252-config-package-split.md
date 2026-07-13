@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-config-package-split-ja.md)
+**English** · [日本語](BE-0252-config-package-split-ja.md)
 
-# BE-XXXX — Split config into a package and group Effective into sub-records
+# BE-0252 — Split config into a package and group Effective into sub-records
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-config-package-split.md) |
+| Proposal | [BE-0252](BE-0252-config-package-split.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0252") |
 | Topic | Codebase quality & technical debt |
 <!-- /BE-METADATA -->
 

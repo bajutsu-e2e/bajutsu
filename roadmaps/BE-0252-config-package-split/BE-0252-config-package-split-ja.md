@@ -1,14 +1,14 @@
-[English](BE-XXXX-config-package-split.md) · **日本語**
+[English](BE-0252-config-package-split.md) · **日本語**
 
-# BE-XXXX — config をパッケージに分割し、Effective をサブレコードにまとめる
+# BE-0252 — config をパッケージに分割し、Effective をサブレコードにまとめる
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
 |---|---|
-| 提案 | [BE-XXXX](BE-XXXX-config-package-split-ja.md) |
+| 提案 | [BE-0252](BE-0252-config-package-split-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **提案** |
-| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0252") |
 | トピック | コードベース品質・技術的負債 |
 <!-- /BE-METADATA -->
 
