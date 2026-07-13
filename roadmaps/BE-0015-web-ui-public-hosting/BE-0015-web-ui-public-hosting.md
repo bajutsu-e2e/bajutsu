@@ -7,7 +7,7 @@
 |---|---|
 | Proposal | [BE-0015](BE-0015-web-ui-public-hosting.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **In progress** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0015") |
 | Implementing PR | [#105](https://github.com/bajutsu-e2e/bajutsu/pull/105), [#106](https://github.com/bajutsu-e2e/bajutsu/pull/106), [#108](https://github.com/bajutsu-e2e/bajutsu/pull/108), [#112](https://github.com/bajutsu-e2e/bajutsu/pull/112), [#117](https://github.com/bajutsu-e2e/bajutsu/pull/117), [#118](https://github.com/bajutsu-e2e/bajutsu/pull/118), [#119](https://github.com/bajutsu-e2e/bajutsu/pull/119), [#120](https://github.com/bajutsu-e2e/bajutsu/pull/120), [#121](https://github.com/bajutsu-e2e/bajutsu/pull/121), [#122](https://github.com/bajutsu-e2e/bajutsu/pull/122), [#127](https://github.com/bajutsu-e2e/bajutsu/pull/127), [#129](https://github.com/bajutsu-e2e/bajutsu/pull/129), [#130](https://github.com/bajutsu-e2e/bajutsu/pull/130), [#131](https://github.com/bajutsu-e2e/bajutsu/pull/131), [#132](https://github.com/bajutsu-e2e/bajutsu/pull/132), [#133](https://github.com/bajutsu-e2e/bajutsu/pull/133), [#134](https://github.com/bajutsu-e2e/bajutsu/pull/134), [#139](https://github.com/bajutsu-e2e/bajutsu/pull/139), [#143](https://github.com/bajutsu-e2e/bajutsu/pull/143), [#149](https://github.com/bajutsu-e2e/bajutsu/pull/149), [#150](https://github.com/bajutsu-e2e/bajutsu/pull/150), [#151](https://github.com/bajutsu-e2e/bajutsu/pull/151), [#152](https://github.com/bajutsu-e2e/bajutsu/pull/152), [#153](https://github.com/bajutsu-e2e/bajutsu/pull/153), [#156](https://github.com/bajutsu-e2e/bajutsu/pull/156), [#157](https://github.com/bajutsu-e2e/bajutsu/pull/157), [#159](https://github.com/bajutsu-e2e/bajutsu/pull/159) |
 | Topic | Hosting the web UI (cloud / self-hosted) |
@@ -16,10 +16,17 @@
 
 ## Introduction
 
-Forward-looking design — the **multi-tenant public service is not deployed yet**, but the
-groundwork has landed: beyond local/server parity, a **single-tenant server backend with auth,
-persistence, RBAC, audit, and quotas** now ships (see *Migration* and *Persistence and identity*
-below). This proposal
+This item is the **design and the enabling software** for a publicly hosted web UI, and that
+software has **fully landed**: beyond local/server parity, a server backend with auth, persistence,
+RBAC, audit, quotas, and **multi-tenancy** now ships (see *Migration*, *Persistence and identity*,
+and *§8 — multi-tenancy* below). What remains is the **operational deployment** onto real
+infrastructure — provisioning the control plane, the macOS worker pool, the database, and object
+storage, wiring production auth and secrets, and closing the live-environment security items. That
+deployment is a different kind of work (infrastructure and operations, gated on paid macOS-only
+capacity) and is tracked separately in its own item, *Deploy the hosted web UI service*, carved off
+this umbrella the same way [BE-0106](../BE-0106-post-completion-worker-model/BE-0106-post-completion-worker-model.md)
+and [BE-0108](../BE-0108-hosted-config-source-restriction/BE-0108-hosted-config-source-restriction.md)
+were. This proposal
 selects a concrete server, database, storage, and deployment stack for turning the local
 `bajutsu serve` (`bajutsu/serve/`) into a **shared, publicly hosted** service. The local UI today is a Tier-1
 convenience that binds `127.0.0.1`, has no auth, and shells out to `bajutsu run` on the same host
@@ -49,7 +56,7 @@ That forces a **split topology** the current single-process design does not have
    │  FastAPI · Postgres · S3 │  jobs  │  bajutsu run · idb · Simulator │
    │  enqueue + serve reports │ ─────▶ │  one ephemeral Simulator/run   │
    │  SSE live logs           │ ◀───── │  stream logs · upload artifacts│
-   └──────────────────────────┘  Redis └───────────────────────────────┘
+   └──────────────────────────┘  HTTP  └───────────────────────────────┘
         cheap, scales out              expensive, macOS-only, isolated
 ```
 
@@ -85,9 +92,11 @@ The evolution of today's `serve`. Endpoints (auth'd):
 
 - `GET /` → the project-scoped UI (scenario/app pickers come from the DB, **not** the filesystem).
 - `POST /api/run` → validate the request **against the caller's project** (no client-supplied
-  filesystem paths — see Security), write a `run` row, **enqueue an RQ job**, return its id.
+  filesystem paths — see Security), write a `run` row, **enqueue a job** (a `queued` row in the
+  Postgres `jobs` table), return its id.
 - `GET /api/runs/stream/<id>` → **SSE** stream of live log lines (replaces the 1 s polling loop in
-  the current UI), backed by Redis pub/sub that the worker publishes to.
+  the current UI), backed by the `LogBus` seam ([BE-0106](../BE-0106-post-completion-worker-model/BE-0106-post-completion-worker-model.md)
+  replaced the Redis pub/sub originally planned here).
 - `GET /runs/<id>/…` → serve report assets via **short-lived signed R2 URLs** (or proxy them),
   replacing today's local-filesystem `_serve_run_file`.
 
@@ -103,20 +112,21 @@ needs no database access. No Redis or RQ.
 #### macOS worker (stateless, isolated, ephemeral)
 A small Python agent (launchd service) on each Orka-provisioned Mac:
 
-1. Lease a job from Redis.
+1. Lease a job over HTTP (`POST /api/worker/lease`).
 2. **Fetch the scenario** for that project from the control plane / object store (never a path the
    client chose).
 3. Provision a **fresh, erased Simulator** (`bajutsu run --erase`) — public multi-tenant **must
    isolate**, which deliberately drops the local UI's fast `--no-erase` reuse loop.
-4. Stream stdout → Redis; on finish, **upload the `runs/<id>/` tree to R2** and `POST` the result
-   (exit code, run id, manifest summary) back to the control plane.
+4. Stream stdout to the control plane's `LogBus`; on finish, **upload the `runs/<id>/` tree to R2**
+   and `POST` the result (exit code, run id, manifest summary) back to the control plane.
 5. Tear the Simulator down.
 
 ### Deployment plan (phased)
 
 #### Phase 1 — MVP (minimum viable product), ship fast
-- **Control plane** containerized → **Fly.io** (or Render). Managed **Fly Postgres** + **Upstash
-  Redis**. Artifacts on **Cloudflare R2**. TLS via the platform / Caddy. **GitHub OAuth**.
+- **Control plane** containerized → **Fly.io** (or Render). Managed **Fly Postgres** (which also
+  backs the job queue and sessions). Artifacts on **Cloudflare R2**. TLS via the platform / Caddy.
+  **GitHub OAuth**.
 - **Workers**: a **single MacStadium Orka** node running the agent. Scenarios + app configs stored
   per project in Postgres/R2.
 - **Secrets** in Fly/Doppler; each org supplies its own `ANTHROPIC_API_KEY`.
@@ -124,13 +134,13 @@ A small Python agent (launchd service) on each Orka-provisioned Mac:
   end to end, securely, on shared infra.
 
 #### Phase 2 — scale
-- Control plane → **Kubernetes** (GKE/EKS), managed **Cloud SQL/RDS** + **ElastiCache/Upstash**.
-- **Orka autoscaling** Mac pool keyed off Redis queue depth; per-org **concurrency quotas**.
+- Control plane → **Kubernetes** (GKE/EKS), managed **Cloud SQL/RDS**.
+- **Orka autoscaling** Mac pool keyed off the Postgres `jobs` queue depth; per-org **concurrency quotas**.
 - Artifact **CDN** (content delivery network) in front of R2; multi-region control plane if needed.
 - Full observability (Sentry + Grafana dashboards + alerting on queue depth / worker health).
 
 #### Cost shape
-The Linux control plane, Postgres, Redis, and R2 are **cheap and elastic**. The **Macs dominate the
+The Linux control plane, Postgres, and R2 are **cheap and elastic**. The **Macs dominate the
 bill** and don't scale to zero cleanly (Orka nodes / EC2 Mac 24 h minimums). Design the pool around
 **queue depth with a small warm floor**, and push the deterministic *gate* to ephemeral CI
 ([ci](../../docs/ci.md)) so the hosted pool only carries **interactive authoring**, not regression volume.
@@ -172,10 +182,10 @@ also shipped the auth + input validation, and the pure helpers (`list_scenarios`
 
 1. Lift the (already-isolated) pure helpers and the embedded HTML into a FastAPI app as the v1
    frontend.
-2. Provide a **queue-based `RunExecutor`** that enqueues → RQ, plus a worker entrypoint that runs
-   the same `bajutsu run` argv `run_job` builds today.
-3. Provide a **Redis-backed `LogBus`** (pub/sub) and an **object-storage `ArtifactStore`** that
-   returns R2 signed-URL redirects in place of the local filesystem reads.
+2. Provide a **queue-based `RunExecutor`** that enqueues onto the Postgres `jobs` table, plus a
+   worker entrypoint that runs the same `bajutsu run` argv `run_job` builds today.
+3. Provide a **server `LogBus`** and an **object-storage `ArtifactStore`** that returns R2
+   signed-URL redirects in place of the local filesystem reads.
 4. Add **OAuth + Postgres** (orgs/projects/runs) and a **per-project `ScenarioStore`** that resolves
    by id from storage instead of the local filesystem — **shipped for the single-tenant backend**;
    the **7a/7b/7c** breakdown below details what landed and what is still ahead.
@@ -189,10 +199,10 @@ report) is unchanged throughout — only its *invocation* and *plumbing* move to
 Migration steps 1–3 had already landed (the five swap-in seams), and **step 4 — persistence and
 identity — has now shipped for the single-tenant server backend.** It was built under three
 invariants that still hold: local behavior is unchanged; every slice's tests run on the Linux gate
-(no Simulator, no live Postgres/Redis/object storage); and each follows the existing seam pattern (a
+(no Simulator, no live Postgres/object storage); and each follows the existing seam pattern (a
 Protocol with an injected implementation, lazy-imported behind an optional extra so the default
 `serve`/CLI path never loads it). "Single-tenant" here means one fixed default org holds every user;
-the multi-tenant, org-scoped pieces are deliberately deferred (see *Still ahead* below).
+the multi-tenant, org-scoped pieces landed later on top of this backend (see *§8 — multi-tenancy* below).
 
 #### 7a — the persistence layer (#144, #145)
 
@@ -222,7 +232,9 @@ object storage otherwise.)
 #### 7b — GitHub OAuth and durable sessions (#148, #149)
 
 Sessions moved off the in-memory `set[str]` behind a `SessionStore` seam: in-memory locally (a
-restart drops them), Redis with a TTL on the server (surviving restarts, spanning replicas).
+restart drops them), a durable TTL'd store on the server (surviving restarts, spanning replicas —
+originally Redis; [BE-0106](../BE-0106-post-completion-worker-model/BE-0106-post-completion-worker-model.md)
+later moved that server store to a Postgres `sessions` table).
 **GitHub OAuth via Authlib** was added as an extra browser sign-in — `/api/oauth/login` +
 `/api/oauth/callback`, a CSRF state cookie, and an HttpOnly cookie holding an opaque session id
 (checked against the server-side store) — gated by a **GitHub-username
@@ -307,10 +319,11 @@ counterpart:
   to GitHub orgs.
 - **System of record**: SQLite (no concurrency for multi-user) and MySQL — rejected in favor of
   PostgreSQL with JSONB and broad managed availability.
-- **Queue / cache / pub-sub**: RabbitMQ/NATS (broker only) and SQS (broker only, no pub/sub) —
-  rejected because Redis covers broker, cache, and pub/sub fan-out in one component.
-- **Task framework**: Celery (more features than needed at the start) and Dramatiq — rejected in
-  favor of starting with RQ; Celery can be adopted later when routing/retries/beat are needed.
+- **Queue / job dispatch**: the original selection was Redis 7 + RQ (with RabbitMQ/NATS and SQS as
+  broker-only alternatives, and Celery/Dramatiq as heavier task frameworks), but
+  [BE-0106](../BE-0106-post-completion-worker-model/BE-0106-post-completion-worker-model.md) replaced
+  it with a **Postgres `jobs` table leased over HTTP** — no separate broker, cache, or task-framework
+  process, and sessions moved to a Postgres table too.
 - **Artifact storage**: AWS S3 (egress costs), MinIO (self-host), and GCS — rejected in favor of
   Cloudflare R2's S3 compatibility with no egress fees.
 - **macOS workers**: AWS EC2 Mac (24h minimum allocation, pricey), Scaleway Apple silicon, and
@@ -331,7 +344,10 @@ counterpart:
 - [x] 8 — multi-tenancy: the org model, request resolution, enforcement, and per-org storage
   ([#156](https://github.com/bajutsu-e2e/bajutsu/pull/156), [#159](https://github.com/bajutsu-e2e/bajutsu/pull/159)).
 
-The single-tenant groundwork has landed (across #105–#159); the multi-tenant public service is not deployed yet.
+All of the enabling software — through multi-tenancy — has landed (across #105–#159), so this
+design-and-software item is **Implemented**. The remaining **operational deployment** of the public
+service (Phase 1 MVP and Phase 2 scale, plus live-environment security hardening) is tracked
+separately in the *Deploy the hosted web UI service* item.
 
 ## References
 
