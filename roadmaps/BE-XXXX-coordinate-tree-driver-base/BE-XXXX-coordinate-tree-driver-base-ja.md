@@ -28,15 +28,18 @@
 ツリーが本物の画面なのか、それともデバイスの遷移途中に生じた一時的なものなのかを判断するロジック
 に、90 行ほどのほぼ一字一句の重複を抱えています。
 
-- 6 つのチューニング定数 `_READY_MIN` / `_EMPTY_RETRIES` / `_EMPTY_BACKOFF_S` /
-  `_EMPTY_BACKOFF_MAX_S` / `_SETTLE_MAX_POLLS` / `_SETTLE_POLL_S` は、値もコメントも同一です
-  （`bajutsu/drivers/idb.py:213-218`、`bajutsu/drivers/adb.py:183-188`）。
-- 型エイリアス `_StableKey` も同一です（`bajutsu/drivers/idb.py:24`、`bajutsu/drivers/adb.py:45`）。
+- 6 つのチューニング定数のうち 5 つ（`_READY_MIN` / `_EMPTY_RETRIES` / `_EMPTY_BACKOFF_S` /
+  `_EMPTY_BACKOFF_MAX_S` / `_SETTLE_MAX_POLLS`）は値もコメントも同一です
+  （`bajutsu/drivers/idb.py:213-218`、`bajutsu/drivers/adb.py:202-215`）。`_SETTLE_POLL_S` は
+  その後乖離しており（idb は `0.05`、adb は `0.0`。BE-0234 で adb は約 2.4 秒の読み取り自体が
+  ループを律速するため poll を 0 に調整しました）、共有基底ではこの 1 つだけをバックエンドごとの
+  値として残します。
+- 型エイリアス `_StableKey` も同一です（`bajutsu/drivers/idb.py:24`、`bajutsu/drivers/adb.py:64`）。
 - `query()` のリトライループは、包んでいる describe 呼び出し以外は一字一句同一です
-  （`bajutsu/drivers/idb.py:229-246`、`bajutsu/drivers/adb.py:212-227`）。
+  （`bajutsu/drivers/idb.py:229-246`、`bajutsu/drivers/adb.py:248-263`）。
 - `_is_transient_empty`、`_empty_backoff`、`_settle`、`_stable_key`、`_resolve` はいずれも
   同一のロジックです。`AdbDriver._settle` のドキュメンテーション文字列自体が「idb's logic」と
-  書いており（`bajutsu/drivers/adb.py:239-258`）、この重複を自ら言い当てています。
+  書いており（`bajutsu/drivers/adb.py:292-311`）、この重複を自ら言い当てています。
 
 このロジックが共有されず重複したままだと、一時的な空ツリーの判定を直す作業、たとえば新しい
 フレーキーな挙動が判明してバックオフの上限を締め直す、`_READY_MIN` を調整するといった修正が、
@@ -52,12 +55,13 @@
 作業は挙動を変えない純粋な引き上げであり、独立した単位に分けられます。
 
 1. **`bajutsu/drivers/` に `CoordinateTreeDriver` を導入する。**（`base.py` と並ぶ独自の
-   モジュール、たとえば `coordinate_tree.py` に置きます。）現在同一である 6 つのチューニング
-   定数、`_StableKey` エイリアス、`query()`、`_settle`、`_stable_key`、`_is_transient_empty`、
+   モジュール、たとえば `coordinate_tree.py` に置きます。）現在共有している 5 つのチューニング
+   定数（`_SETTLE_POLL_S` はバックエンドごとの値として残します）、`_StableKey` エイリアス、
+   `query()`、`_settle`、`_stable_key`、`_is_transient_empty`、
    `_empty_backoff`、`_resolve` をすべてここに持たせます。これらは現状コンストラクタが管理する
    状態（`_max_seen`、`_last_stable_key`）を閉じ込めているため、その状態も基底クラス側が持ちます。
 2. **基底クラスに、抽象フックを一つだけ与える（`_describe()`）。** (1) の処理はすでにいずれも
-   `_describe()` を呼び出しています（`idb.py:285-286`、`adb.py:229-230`）。これを抽象メソッド
+   `_describe()` を呼び出しています（`idb.py:285-286`、`adb.py:265-266`）。これを抽象メソッド
    （または `NotImplementedError` を送出するスタブ）にすることが、共有ロジックとバックエンド
    固有の argv・パース処理とのあいだの唯一の境界になります。各サブクラスは自分自身の describe
    だけを実装します。idb なら `ui describe-all` と JSON パース（`parse_describe_all`）、adb なら
@@ -121,7 +125,7 @@
 
 - [`bajutsu/drivers/idb.py:209-321`](../../bajutsu/drivers/idb.py) — `IdbDriver` の読み取り
   経路。重複している片方のコピーです。
-- [`bajutsu/drivers/adb.py:180-331`](../../bajutsu/drivers/adb.py) — `AdbDriver` の読み取り
+- [`bajutsu/drivers/adb.py:194-335`](../../bajutsu/drivers/adb.py) — `AdbDriver` の読み取り
   経路。もう片方のコピーです。
 - [`bajutsu/drivers/base.py`](../../bajutsu/drivers/base.py) — `resolve_unique` / `find_all`。
   `_resolve` が呼び出す共有のセレクター解決の中核であり、本項目はここには手を入れません。

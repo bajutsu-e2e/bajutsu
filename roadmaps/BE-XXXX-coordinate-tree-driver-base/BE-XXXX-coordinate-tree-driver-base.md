@@ -28,15 +28,17 @@ The two backends carry roughly 90 lines of near-verbatim duplication in exactly 
 driver layer where determinism matters most — the logic that decides whether a freshly read tree
 is a real screen or a transient artifact of the device mid-transition:
 
-- The six tuning constants `_READY_MIN` / `_EMPTY_RETRIES` / `_EMPTY_BACKOFF_S` /
-  `_EMPTY_BACKOFF_MAX_S` / `_SETTLE_MAX_POLLS` / `_SETTLE_POLL_S`, same values and same comments
-  (`bajutsu/drivers/idb.py:213-218`, `bajutsu/drivers/adb.py:183-188`).
-- The `_StableKey` type alias (`bajutsu/drivers/idb.py:24`, `bajutsu/drivers/adb.py:45`).
+- Five of the six tuning constants — `_READY_MIN` / `_EMPTY_RETRIES` / `_EMPTY_BACKOFF_S` /
+  `_EMPTY_BACKOFF_MAX_S` / `_SETTLE_MAX_POLLS` — share values and comments
+  (`bajutsu/drivers/idb.py:213-218`, `bajutsu/drivers/adb.py:202-215`); `_SETTLE_POLL_S` has since
+  diverged (idb `0.05`, adb `0.0` — BE-0234 tuned adb's poll to 0 since its ~2.4s read itself paces
+  the loop), so the shared base keeps that one constant a per-backend value.
+- The `_StableKey` type alias (`bajutsu/drivers/idb.py:24`, `bajutsu/drivers/adb.py:64`).
 - The `query()` retry loop, byte-for-byte identical apart from the describe call it wraps
-  (`bajutsu/drivers/idb.py:229-246`, `bajutsu/drivers/adb.py:212-227`).
+  (`bajutsu/drivers/idb.py:229-246`, `bajutsu/drivers/adb.py:248-263`).
 - `_is_transient_empty`, `_empty_backoff`, `_settle`, `_stable_key`, and `_resolve` — all identical
   logic. `AdbDriver._settle`'s own docstring even says "idb's logic"
-  (`bajutsu/drivers/adb.py:239-258`), which is the duplication naming itself.
+  (`bajutsu/drivers/adb.py:292-311`), which is the duplication naming itself.
 
 Because this logic is duplicated rather than shared, a fix to the transient-empty heuristic — for
 example, tightening the backoff cap, or changing `_READY_MIN` after a new flake is diagnosed — has
@@ -51,13 +53,14 @@ turns "remember to fix it twice" into "fix it once, both backends inherit it."
 The work is a pure hoist — no behavior changes — split into independent units:
 
 1. **Introduce `CoordinateTreeDriver` in `bajutsu/drivers/`** (its own module, e.g.
-   `coordinate_tree.py`, alongside `base.py`) holding everything that is identical today: the six
-   tuning constants, the `_StableKey` alias, `query()`, `_settle`, `_stable_key`,
+   `coordinate_tree.py`, alongside `base.py`) holding everything that is identical today: the five
+   shared tuning constants (with `_SETTLE_POLL_S` left a per-backend value), the `_StableKey` alias,
+   `query()`, `_settle`, `_stable_key`,
    `_is_transient_empty`, `_empty_backoff`, and `_resolve`. These carry the constructor-managed
    state (`_max_seen`, `_last_stable_key`) they close over today, so the base class owns that state
    too.
 2. **Give the base class one abstract hook, `_describe()`.** Everything in (1) calls `_describe()`
-   already (`idb.py:285-286`, `adb.py:229-230`); making it an abstract method (or a
+   already (`idb.py:285-286`, `adb.py:265-266`); making it an abstract method (or a
    `NotImplementedError` stub) is the entire seam between shared logic and backend-specific
    argv/parse. Each subclass implements only its own describe: idb's `ui describe-all` + JSON parse
    (`parse_describe_all`), adb's `uiautomator dump` + XML parse (`parse_hierarchy`).
@@ -117,7 +120,7 @@ behavior-preserving.
 
 - [`bajutsu/drivers/idb.py:209-321`](../../bajutsu/drivers/idb.py) — `IdbDriver`'s read path, the
   first copy of the duplicated logic.
-- [`bajutsu/drivers/adb.py:180-331`](../../bajutsu/drivers/adb.py) — `AdbDriver`'s read path, the
+- [`bajutsu/drivers/adb.py:194-335`](../../bajutsu/drivers/adb.py) — `AdbDriver`'s read path, the
   second copy.
 - [`bajutsu/drivers/base.py`](../../bajutsu/drivers/base.py) — `resolve_unique` / `find_all`, the
   shared selector-resolution core that `_resolve` calls into and that this item leaves unchanged.
