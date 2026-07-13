@@ -497,10 +497,13 @@
       <span class="muted" style="font-size:.8em">Read-only map of which declared id namespaces the suite touches — advisory, never a gate.</span>
     </div>
     <div class="covctl">
-      <label>Target <select id="cov-target" data-testid="coverage.target"></select></label>
+      <!-- Target and its Compute button share a row; Runs sits on its own row below. -->
+      <div class="covrow">
+        <label>Target <select id="cov-target" data-testid="coverage.target"></select></label>
+        <button class="run" id="cov-go" data-testid="coverage.compute" data-idle="Compute">Compute</button>
+      </div>
       <label>Runs <select id="cov-runs" data-testid="coverage.runs" multiple size="4"></select>
         <span class="subhint">optional — select runs to fold in endpoints observed vs asserted</span></label>
-      <button class="run" id="cov-go" data-testid="coverage.compute" data-idle="Compute">Compute</button>
     </div>
     <div class="statshost" id="cov-host" data-testid="coverage.host"><div class="empty" data-testid="coverage.empty">Pick a target and compute the coverage map.</div></div>
   </div>

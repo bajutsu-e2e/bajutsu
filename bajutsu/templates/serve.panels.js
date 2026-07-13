@@ -242,11 +242,16 @@ function setShadowContent(host,inner){
   host.querySelectorAll(':scope>.empty').forEach(e=>e.remove());
   return sh;
 }
-function renderReportInShadow(host,html){
+function renderReportInShadow(host,html,opts){
   const doc=new DOMParser().parseFromString(html,'text/html');
   const css=((doc.querySelector('style')||{}).textContent||'').replace(/:root/g,':host')
     .replace(/(^|[\s,>}])body([\s{])/g,'$1:host$2');
-  setShadowContent(host,`<style>:host{display:block}\n${css}</style>${doc.body.innerHTML}`);
+  // The standalone report centers its body at max-width:880px via `margin:0 auto`; inside the
+  // full-width serve card the text dashboards (Stats/Flaky/Usage) read better pinned to the left.
+  // An outer stylesheet rule can't override a shadow-tree `:host` declaration, so append the
+  // left-align here — same tree scope, later in source order, so it wins on the report's margin.
+  const extra=opts&&opts.leftAlign?'\n:host{margin-left:0;margin-right:auto}':'';
+  setShadowContent(host,`<style>:host{display:block}\n${css}${extra}</style>${doc.body.innerHTML}`);
 }
 // ---- Triage (BE-0147): diagnose a failed run in the browser. The heuristic agent is the default
 // and fully deterministic; Claude is opt-in and only investigates — no LLM ever decides pass/fail.
@@ -341,7 +346,7 @@ async function loadStats(){
   // shadow root so a failed refresh replaces the stale dashboard instead of leaving it on screen.
   try{const r=await fetch('/stats');if(!r.ok)throw 0;html=await r.text();}
   catch(e){setShadowContent(host,'<div style="color:#6e6e73;font-style:italic">stats unavailable</div>');return;}
-  renderReportInShadow(host,html);
+  renderReportInShadow(host,html,{leftAlign:true});
 }
 // Flaky (BE-0220): fetch the self-contained flaky-scenario panel and render it into a shadow root,
 // the same isolation as loadStats. The ranking stays server-side (/flakiness over the run history);
@@ -351,7 +356,7 @@ async function loadFlaky(){
   let html;
   try{const r=await fetch('/flakiness');if(!r.ok)throw 0;html=await r.text();}
   catch(e){setShadowContent(host,'<div style="color:#6e6e73;font-style:italic">flaky scenarios unavailable</div>');return;}
-  renderReportInShadow(host,html);
+  renderReportInShadow(host,html,{leftAlign:true});
 }
 // Usage (BE-0195): fetch the self-contained AI usage/cost dashboard and render it into a shadow root,
 // the same isolation as loadStats. Aggregation stays server-side (/usage over the ledger); the view
@@ -361,7 +366,7 @@ async function loadUsage(){
   let html;
   try{const r=await fetch('/usage');if(!r.ok)throw 0;html=await r.text();}
   catch(e){setShadowContent(host,'<div style="color:#6e6e73;font-style:italic">usage unavailable</div>');return;}
-  renderReportInShadow(host,html);
+  renderReportInShadow(host,html,{leftAlign:true});
 }
 async function loadHistory(){
   const runs=await getJSON('/api/runs',null);if(!runs)return;
