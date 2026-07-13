@@ -654,6 +654,7 @@ A platform is just a backend behind the one driver interface ([DESIGN §1](../DE
 |---|---|---|
 | [BE-0182](BE-0182-record-human-value-prompt/BE-0182-record-human-value-prompt.md) | Human value entry during record (OTP / random / one-off values) | Proposal |
 | [BE-0185](BE-0185-record-human-takeover-step/BE-0185-record-human-takeover-step.md) | Human takeover step during record (CAPTCHA / biometrics / unresolvable gestures) | Proposal |
+| [BE-0241](BE-0241-stats-run-drilldown/BE-0241-stats-run-drilldown.md) | Drill down from the Stats dashboard to the runs behind it | Proposal |
 <!-- /GENERATED:proposals-authoring -->
 
 ### Self-healing triage (M4)

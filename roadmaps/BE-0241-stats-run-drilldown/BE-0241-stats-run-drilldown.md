@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-stats-run-drilldown-ja.md)
+**English** · [日本語](BE-0241-stats-run-drilldown-ja.md)
 
-# BE-XXXX — Drill down from the Stats dashboard to the runs behind it
+# BE-0241 — Drill down from the Stats dashboard to the runs behind it
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-stats-run-drilldown.md) |
+| Proposal | [BE-0241](BE-0241-stats-run-drilldown.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0241") |
 | Topic | Authoring experience (record / GUI editor) |
 <!-- /BE-METADATA -->
 
