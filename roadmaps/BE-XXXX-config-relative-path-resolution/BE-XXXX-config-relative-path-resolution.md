@@ -54,7 +54,7 @@ paths — all need rewriting to be config-directory-relative (see *Detailed desi
 
 Confinement, likewise, is not a property of "being a Git source" but of **trust**. The repo already draws
 this line: a fetched Git-API config and an uploaded bundle are untrusted and rebased *with* confinement
-(`bajutsu/serve/operations/config.py:481`, `bajutsu/serve/operations/upload.py`), while a local file
+(`bajutsu/serve/operations/config.py:471`, `bajutsu/serve/operations/upload.py`), while a local file
 config is marked operator-trusted and is not (`bajutsu/serve/operations/config.py:435`, "a local file config is operator-trusted
 (BE-0121)"). Applying confinement to a local config would reject the showcase's
 `xcuitest.testRunner: BajutsuKit/Runner/...` — a repo-root sibling of `demos/` that cannot be reached
