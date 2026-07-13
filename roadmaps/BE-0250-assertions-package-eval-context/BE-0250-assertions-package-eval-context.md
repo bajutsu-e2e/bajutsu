@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-assertions-package-eval-context-ja.md)
+**English** · [日本語](BE-0250-assertions-package-eval-context-ja.md)
 
-# BE-XXXX — Split assertions into a package and thread evaluation contexts as one EvalContext
+# BE-0250 — Split assertions into a package and thread evaluation contexts as one EvalContext
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-assertions-package-eval-context.md) |
+| Proposal | [BE-0250](BE-0250-assertions-package-eval-context.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0250") |
 | Topic | Codebase quality & technical debt |
 | Related | [BE-0172](../BE-0172-run-loop-step-decomposition/BE-0172-run-loop-step-decomposition.md) |
 <!-- /BE-METADATA -->
