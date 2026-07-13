@@ -85,15 +85,20 @@ a few lines above where it calls `_step_artifacts`, so threading `org` through c
 parameter, not a new lookup.
 
 The per-step existence probes (`elements_file.is_file()`, `screenshot_file.is_file()` at
-`reads.py:326-339`) need no new protocol method: `ArtifactStore.get(rel)`
-(`bajutsu/serve/artifacts.py:46-47`) already returns `None` for a missing path on both
-implementations, and `ObjectStorageArtifactStore.get` (`server/artifacts.py:56-61`) resolves that
-with a plain `store.exists(key)` HEAD-style check, not a body fetch — so
-`store.get(f"{run_id}/{step_id}/after.png") is not None` is exactly as cheap as the existing
-`is_file()` check was, on both backends. `elementsUrl`/`screenshotUrl` keep pointing at the
-`/runs/<run_id>/<step_id>/...` HTTP path (`handler.py`'s own `GET /runs/...` route already serves
-through `state.artifacts.get`), so only the existence probe that decides whether to emit that URL
-changes, not the URL shape itself.
+`reads.py:326-339`) need a lightweight existence method on the seam — `get()` is not it. On the
+local backend `LocalArtifactStore.get` (`bajutsu/serve/artifacts.py:125-130`) builds
+`Artifact(body=target.read_bytes())`, i.e. it reads the whole file, so
+`store.get(...) is not None` as an existence probe would pull each `after.png` body into memory
+just to decide whether to emit a URL — strictly more expensive than the `is_file()` it replaces.
+(The two `get` implementations even diverge here: `ObjectStorageArtifactStore.get`,
+`server/artifacts.py:56-61`, is a cheap `exists` + presigned redirect, so keying off `get()` would
+be free on one backend and a full read on the other — exactly the kind of hidden asymmetry the seam
+should not bake in.) The fix therefore adds an `exists(rel) -> bool` (HEAD-style) method to the
+`ArtifactStore` protocol, implemented as `Path.is_file` locally and an object `exists` remotely, and
+routes the probes through `state.for_org(org).artifacts.exists(...)`. `elementsUrl`/`screenshotUrl`
+keep pointing at the `/runs/<run_id>/<step_id>/...` HTTP path (`handler.py`'s own `GET /runs/...`
+route already serves through `state.artifacts.get`), so only the existence probe that decides
+whether to emit that URL changes, not the URL shape itself.
 
 ### 2. Route `resolve_scenario_pick` through the same seam
 
