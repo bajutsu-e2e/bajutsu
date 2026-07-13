@@ -31,7 +31,8 @@ included into an app's build.
   `AccessibilityNodeInfoDumper` format bajutsu's `parse_hierarchy` already parses.
 
 One difference remains to be reconciled: `dumpWindowHierarchy()` traverses every window, so its XML
-also carries the SystemUI status bar (clock, wifi, battery) that the platform `uiautomator dump`
+also carries the SystemUI status bar (clock, wifi, battery, notification icons — 29 nodes) that
+the platform `uiautomator dump`
 omits by scoping to the active window. The app content is identical; narrowing the resident dump to
 the active window so both paths yield the same Elements — the equivalence unit 2 of the roadmap item
 requires — lands with the transport wiring, where it can be regression-tested end to end.

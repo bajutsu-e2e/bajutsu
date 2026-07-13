@@ -32,9 +32,9 @@ UI Automator インストルメンテーションです。実行のあいだ `Ui
 - `GET /source` は `UiDevice.dumpWindowHierarchy()` の XML を返します。これは bajutsu の
   `parse_hierarchy` がすでに解析している `AccessibilityNodeInfoDumper` の形式です。
 
-一つ、これから揃える差があります。`dumpWindowHierarchy()` はすべてのウィンドウをたどるので、その XML
+揃えるべき差異が一つ残っています。`dumpWindowHierarchy()` はすべてのウィンドウをたどるので、その XML
 にはプラットフォームの `uiautomator dump` が対象ウィンドウに絞って除く SystemUI のステータスバー（時計・
-Wi-Fi・電池）も入ります。アプリの内容は同一です。両方の経路が同じ Element を返すように常駐側のダンプを
+Wi-Fi・電池・通知アイコン、29 ノード）も入ります。アプリの内容は同一です。両方の経路が同じ Element を返すように常駐側のダンプを
 対象ウィンドウへ絞る作業（ロードマップ項目の作業単位 2 が求める等価化）は、端から端まで回帰テストできる
 トランスポート配線のスライスで入れます。
 
