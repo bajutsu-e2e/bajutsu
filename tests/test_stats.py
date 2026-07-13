@@ -329,6 +329,33 @@ def test_render_html_emits_drilldown_deep_links() -> None:
     assert "<script" not in html
 
 
+def test_render_html_deep_link_repeats_runs_param_per_id() -> None:
+    # BE-0241: multiple ids are emitted as repeated `runs=<id>` params (not a comma-joined value),
+    # so the SPA's URLSearchParams.getAll('runs') recovers each id even if one contains a comma.
+    html = _stats.render_html(
+        _stats.aggregate_runs(
+            [
+                _manifest(
+                    "20260101-000000",
+                    ok=False,
+                    scenarios=[{"scenario": "checkout", "ok": False, "failure": "timeout"}],
+                ),
+                _manifest(
+                    "20260101-120000",
+                    ok=False,
+                    scenarios=[{"scenario": "checkout", "ok": False, "failure": "timeout"}],
+                ),
+            ]
+        )
+    )
+    # The checkout hotspot spans both runs → one runs= param each, no comma delimiter.
+    assert (
+        'href="/?tab=history&amp;runs=20260101-000000&amp;runs=20260101-120000&amp;label=checkout"'
+        in html
+    )
+    assert "runs=20260101-000000,20260101-120000" not in html
+
+
 def test_render_html_no_link_when_run_id_absent() -> None:
     # A hotspot with no contributing run id renders as plain text, never a dead `runs=` link.
     html = _stats.render_html(

@@ -7,12 +7,15 @@
 {%- endmacro -%}
 {#- Drilldown deep link (BE-0241): navigate to the serve SPA's History tab, filtered to `run_ids`,
     labelled for the "filtered: <label>" affordance. No JS on this page — the anchor carries the ids
-    and the SPA's boot reads the query. When there are no ids to link to (a run with no runId), fall
-    back to plain text so the cell never becomes a dead link. -#}
+    and the SPA's boot reads the query. One `runs=` param per id (not a comma-joined value): the SPA
+    reads them with `URLSearchParams.getAll('runs')`, which decodes each independently, so a run id
+    that itself contains a comma survives (ids can be arbitrary custom labels, not just timestamps).
+    When there are no ids to link to (a run with no runId), fall back to plain text so the cell never
+    becomes a dead link. -#}
 {%- macro drill(label, run_ids) -%}
 {%- set ids = run_ids | select | list -%}
 {%- if ids -%}
-<a class="drill" href="/?tab=history&amp;runs={{ ids | map('urlencode') | join(',') }}&amp;label={{ label | urlencode }}">{{ caller() }}</a>
+<a class="drill" href="/?tab=history&amp;{% for id in ids %}runs={{ id | urlencode }}&amp;{% endfor %}label={{ label | urlencode }}">{{ caller() }}</a>
 {%- else -%}
 {{ caller() }}
 {%- endif -%}

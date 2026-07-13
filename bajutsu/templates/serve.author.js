@@ -1068,7 +1068,9 @@ loadSims();
 const _deepLinked=(function(){
   const q=new URLSearchParams(location.search);
   if(q.get('tab')!=='history')return false;
-  setHistoryFilter((q.get('runs')||'').split(','),q.get('label')||'');
+  // getAll (not get().split(',')): each id is its own runs= param, so a run id containing a comma
+  // survives — URLSearchParams decodes each value independently (matches stats.html.j2's drill macro).
+  setHistoryFilter(q.getAll('runs'),q.get('label')||'');
   showView('replay');  // showView + showTab each refresh the history list, so skip the plain load below
   showTab('history');
   return true;

@@ -390,7 +390,7 @@ async function loadHistory(){
   const shown=historyFilter?runs.filter(r=>historyFilter.ids.has(r.id)):runs;
   renderHistFilter(shown.length);
   const ul=$('#history');
-  if(!shown.length){ul.innerHTML=`<li class="muted">${historyFilter?'no matching runs':'no runs yet'}</li>`;return}
+  if(!shown.length){ul.innerHTML=`<li class="muted">${historyFilter?'no matching runs':'no runs yet'}</li>`;return;}
   ul.innerHTML=shown.map(r=>`<li data-id="${r.id}" data-ok="${r.ok?1:0}"${r.id===selectedRun?' class="sel"':''}><span class="dot ${r.ok?'ok':'ng'}"></span><span class="hid">${r.id}</span><span class="hsum">${r.passed}/${r.total}${r.scenarios.length?' · '+r.scenarios.join(', '):''}</span></li>`).join('');
   ul.querySelectorAll('li[data-id]').forEach(li=>li.addEventListener('click',()=>{setReport(li.dataset.id,li.dataset.ok==='1');ul.querySelectorAll('li').forEach(x=>x.classList.remove('sel'));li.classList.add('sel')}));
 }
