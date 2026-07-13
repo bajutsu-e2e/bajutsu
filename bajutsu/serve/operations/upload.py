@@ -137,12 +137,14 @@ def bind_upload_config(
         return config_path, status
     if state.object_store is not None:
         key = _upload_store_key(state, org, sha256)
-        if not state.object_store.exists(key):
-            try:
+        try:
+            if not state.object_store.exists(key):
                 state.object_store.put_file(key, zip_path, content_type="application/zip")
-            except Exception as e:  # SDK-specific errors vary by backend (S3 vs GCS), same broad
-                # catch object_store.py's upload_tree already uses around a store write.
-                return {"error": f"could not persist the uploaded bundle: {e}"}, 400
+        except Exception as e:  # SDK-specific errors vary by backend (S3 vs GCS), same broad catch
+            # object_store.py's upload_tree already uses around a store write; exists() itself can
+            # raise too (e.g. S3ObjectStore.exists re-raises a non-"not found" ClientError), so it
+            # shares this try rather than crashing the request with an unhandled exception.
+            return {"error": f"could not persist the uploaded bundle: {e}"}, 400
     upload = Upload(
         dir=dest,
         config=config_path,
@@ -189,7 +191,12 @@ def activate_uploaded_project(
     uploads_dir = _org_uploads_dir(state, org)
     dest = uploads_dir / sha256
     if not dest.exists():
-        data = state.object_store.get_bytes(_upload_store_key(state, org, sha256))
+        try:
+            data = state.object_store.get_bytes(_upload_store_key(state, org, sha256))
+        except Exception as e:  # a transient store error (not "key absent") must not be folded
+            # into the None/409 fallback — that would misreport a real infra failure as "nothing
+            # to restore from".
+            return {"error": f"could not fetch the uploaded bundle: {e}"}, 400
         if data is None:
             return None
         fd, tmp_name = tempfile.mkstemp(suffix=".zip")

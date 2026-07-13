@@ -138,8 +138,8 @@ def patch_gcs_client(monkeypatch: pytest.MonkeyPatch) -> None:
 
 class FakeObjectStore:
     """An in-memory `ObjectStore` (BE-0204) for the uploaded-bundle durable-storage tests (BE-0243):
-    holds objects in a plain dict, and `put_file` raises whatever `fail_with` is set to (if any) —
-    used to exercise a store-write failure without a real S3/GCS client."""
+    holds objects in a plain dict, and every method raises whatever `fail_with` is set to (if any) —
+    used to exercise a store failure (read or write) without a real S3/GCS client."""
 
     def __init__(self, objects: dict[str, bytes] | None = None) -> None:
         self.objects: dict[str, bytes] = dict(objects or {})
@@ -147,9 +147,13 @@ class FakeObjectStore:
         self.fail_with: Exception | None = None
 
     def exists(self, key: str) -> bool:
+        if self.fail_with is not None:
+            raise self.fail_with
         return key in self.objects
 
     def get_bytes(self, key: str) -> bytes | None:
+        if self.fail_with is not None:
+            raise self.fail_with
         return self.objects.get(key)
 
     def put_bytes(self, key: str, data: bytes, *, content_type: str = "") -> None:

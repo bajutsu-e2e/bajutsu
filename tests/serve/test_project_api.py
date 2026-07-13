@@ -326,6 +326,19 @@ def test_activate_an_upload_project_is_still_409_when_the_key_is_absent(tmp_path
     assert status == 409
 
 
+def test_activate_an_upload_project_store_fetch_failure_is_a_400_not_a_409(tmp_path: Path) -> None:
+    # A transient store error (not "key absent") on the get_bytes fetch must be reported as a real
+    # error, not silently folded into the None/409 "nothing to restore from" fallback.
+    store = FakeObjectStore()
+    store.fail_with = ConnectionError("bucket unreachable")
+    state = _hub_state(tmp_path, object_store=store, uploads_dir=tmp_path / "uploads")
+    ops.register_project(
+        state, {"name": "bundle", "source": {"kind": "upload", "sha256": "a" * 64, "size": 1}}
+    )
+    payload, status = ops.activate_project(state, "bundle")
+    assert status == 400 and "could not fetch" in payload["error"]
+
+
 def test_activate_an_upload_project_cache_hit_never_touches_the_store(tmp_path: Path) -> None:
     # A replica that already extracted this sha256 (an earlier upload/activation) reuses it without
     # asking the object store at all — proven here by a store that raises if ever called.
