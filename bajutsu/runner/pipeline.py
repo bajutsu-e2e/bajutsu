@@ -107,7 +107,7 @@ class _ScenarioRunner:
     # capability set for the preflight below) is resolved from the scenario itself, rather than one
     # fixed `actuator` for the whole run. The pool's `lease()` resolves the *same* pure function, so
     # the actuator preflighted here is the one the lease builds. None keeps the fixed-`actuator` path
-    # (audit's repeat run, the cross-browser matrix, tests driving a lease directly).
+    # (the cross-browser matrix, tests driving a lease directly).
     resolve_actuator: Callable[[Scenario], str] | None = None
 
     def run_one(self, i: int, s: Scenario) -> RunResult:
