@@ -39,7 +39,14 @@ class ResidentServerTest {
         ServerSocket(PORT, BACKLOG, InetAddress.getLoopbackAddress()).use { server ->
             Log.i(TAG, "resident UI Automator server listening on 127.0.0.1:$PORT")
             while (true) {
-                server.accept().use { client -> handle(client, device) }
+                // Keep the loop — and so the warm session — alive across a bad connection: a
+                // broken pipe or abrupt disconnect on one request must not kill the resident
+                // @Test, or every read would pay `uiautomator dump`'s startup cost again.
+                try {
+                    server.accept().use { client -> handle(client, device) }
+                } catch (e: Exception) {
+                    Log.w(TAG, "dropped one connection", e)
+                }
             }
         }
     }
@@ -69,7 +76,8 @@ class ResidentServerTest {
 
     private fun respondSource(out: OutputStream, device: UiDevice) {
         // dumpWindowHierarchy traverses every window, so this XML also carries the SystemUI status
-        // bar (clock, wifi, battery) that the platform `uiautomator dump` omits by scoping to the
+        // bar (clock, wifi, battery, notification icons — 29 nodes) that the platform `uiautomator
+        // dump` omits by scoping to the
         // active window. `parse_hierarchy` parses the format unchanged; narrowing the tree to the
         // active window so the two paths yield the same Elements lands with the transport wiring
         // (PR-C), where it can be regression-tested end to end.
