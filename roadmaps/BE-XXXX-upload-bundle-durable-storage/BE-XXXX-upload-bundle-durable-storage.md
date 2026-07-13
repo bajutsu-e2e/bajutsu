@@ -122,6 +122,17 @@ addressing makes a repeat upload of an identical bundle a no-op write within an 
 already exists, so nothing changes except the local extraction, which still happens exactly as
 today for the request that produced it.
 
+The object-store write is synchronous and blocking: if it fails (a network error, an unreachable
+bucket, a permission denial) after the local extraction has already succeeded, `bind_upload_config`
+fails the whole `POST /api/upload` request rather than falling back to a local-only bind. This is
+deliberately unlike the post-run evidence upload's best-effort failure handling
+(`bajutsu/object_store.py`'s `upload_tree`, where a finished run's already-final verdict must not
+depend on an artifact upload succeeding): here nothing is final yet, and a best-effort write would
+let a caller register a BE-0225 project whose already-durable `{kind: "upload", sha256, ...}`
+record points at a key nothing ever wrote — silently reintroducing, for that one bundle, exactly
+the cross-replica gap this item exists to close. A clear upload failure is safer than a durable
+project record that lies about durability.
+
 ### 2. Replace `activate_project`'s upload-kind `409` with a fetch-and-extract fallback
 
 `activate_project` (`bajutsu/serve/operations/projects.py`) gains a second resolution path for
@@ -189,7 +200,7 @@ URI-addressed store this seam backs. No new retention or garbage-collection code
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] 1 — Persist the raw uploaded zip to the object store at upload time, keyed by its sha256 under the project's org prefix, when `BAJUTSU_SERVER_STORE` is configured.
+- [ ] 1 — Persist the raw uploaded zip to the object store at upload time, keyed by its sha256 under the project's org prefix, when `BAJUTSU_SERVER_STORE` is configured; fail the upload request if this write fails, rather than falling back to a local-only bind.
 - [ ] 2 — `activate_project` gains a fetch-and-extract-from-object-store fallback for `kind == "upload"`, tried before the existing `409`, re-running BE-0073's zip-slip/zip-bomb/path-confinement checks on every materialization.
 - [ ] 3 — Confirm zero-config behavior (and the existing `409`) is unchanged with no `BAJUTSU_SERVER_STORE` configured.
 
