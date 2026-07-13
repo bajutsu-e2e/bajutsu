@@ -52,8 +52,11 @@ and giving it a boundary. Two such clusters remain:
    imports `ServeState`'s internals; a named manager gives that cross-module caller a narrow surface
    to call instead of reaching around the dataclass.
 
-Together the two clusters own 3 of `ServeState`'s remaining locks (the fourth, the job registry's
-own lock, already moved with BE-0198) and roughly a dozen of its fields — the next-largest cohesive
+Together the two clusters own 2 of `ServeState`'s remaining locks (`_provider_lock` and
+`_persist_lock`); the job registry's own lock already moved with BE-0198, and the third remaining
+lock, `ant_login_lock` (`state.py:428`), guards the unrelated `ant login` subprocess and stays out
+of scope here (the `sessions` cluster keeps its own locking inside `InMemorySessionStore`,
+`sessions.py:37`, not on `ServeState`). The clusters also own roughly a dozen of its fields — the next-largest cohesive
 groups after the registry, and the same shape of opportunity BE-0198 named as a "plausible follow-up"
 in its own **Detailed design** but deliberately left out of scope to keep that PR reviewable. This
 item is that follow-up for two of the remaining groups; the storage-seam group (`artifacts`,
