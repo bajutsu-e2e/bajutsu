@@ -17,9 +17,11 @@ for config/baseline paths (`_confined_config_path`) to archive entries.
 from __future__ import annotations
 
 import hashlib
+import shutil
 import stat
 import tempfile
 import zipfile
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 
@@ -96,13 +98,14 @@ class BoundedZipReceiver:
 
 @dataclass
 class Upload:
-    """A bundle extracted and bound as the active config (BE-0073). ``dir`` is the extraction
-    sandbox (removed when another config is bound, from any source); ``config`` is the located
-    bundle config, whose parent is the bundle root every run/record/crawl off it uses as its working
-    directory. ``filename``/``sha256``/``size`` are the upload's provenance, recorded into each run's
-    manifest so "what did this run execute?" stays answerable (DESIGN §2)."""
+    """A bundle extracted and bound as the active config (BE-0073). ``dir`` is the sha256-keyed
+    extraction cache entry under `state.uploads_dir` (BE-0243) — independent of this one bind, so
+    unbinding leaves it in place for reuse; ``config`` is the located bundle config, whose parent is
+    the bundle root every run/record/crawl off it uses as its working directory.
+    ``filename``/``sha256``/``size`` are the upload's provenance, recorded into each run's manifest so
+    "what did this run execute?" stays answerable (DESIGN §2)."""
 
-    dir: Path  # the extraction sandbox to remove when another config is bound
+    dir: Path  # the sha256-keyed extraction cache entry (BE-0243); outlives this bind
     config: Path  # the bundle's bajutsu.config.yaml (its parent is the runs' cwd)
     filename: str
     sha256: str
@@ -204,6 +207,56 @@ def extract_bundle(zip_path: Path, dest: Path) -> None:
                         out.write(chunk)
             except (OSError, zipfile.BadZipFile) as e:
                 raise BundleError(f"could not extract {info.filename!r}: {e}") from e
+
+
+def materialize_bundle(
+    zip_path: Path,
+    uploads_dir: Path,
+    sha256: str,
+    *,
+    validate: Callable[[Path], None] | None = None,
+) -> Path:
+    """Resolve *sha256*'s content-addressed extraction under *uploads_dir*, extracting only on a
+    cache miss (BE-0243) — a hit reuses the existing tree with no re-extraction and no re-*validate*,
+    the same trust boundary `config_source.materialize` already gives a cached Git checkout for its
+    resolved SHA: this replica proved this exact content once, so it need not prove it again.
+
+    On a miss, extracts *zip_path* into a sibling temp dir (so a concurrent miss for the same
+    *sha256* never observes a partial tree), runs *validate* against it if given — its exception
+    propagates and the temp dir is discarded, leaving no partial cache entry — then renames into
+    place. The rename is atomic (mirrors `config_source._extract_into`): a losing concurrent call
+    either finds the directory already there, or has its own rename fail because the winner's landed
+    first, and discards its copy rather than treating that as an error (both extractions are
+    byte-identical for the same key).
+
+    The returned directory is never deleted by this function once it exists — the cache has no
+    concept of "this caller owns it and may remove it", since any number of binds, on this replica
+    or another, may already depend on it by the time a caller's own next step fails. A caller with a
+    later failure of its own (e.g. an object-store write) must fail without touching this directory.
+    """
+    uploads_dir.mkdir(parents=True, exist_ok=True)
+    dest = uploads_dir / sha256
+    if dest.exists():
+        return dest
+    tmp = Path(tempfile.mkdtemp(dir=uploads_dir, prefix=f".{sha256}.tmp-"))
+    try:
+        extract_bundle(zip_path, tmp)
+        if validate is not None:
+            validate(tmp)
+        try:
+            tmp.rename(dest)
+        except OSError:
+            # A concurrent call won the rename; its tree is valid (same sha256), so drop ours.
+            if not dest.exists():
+                raise
+            shutil.rmtree(tmp, ignore_errors=True)
+    except BaseException:
+        # Covers every failure above, including a genuine (non-lost-race) rename failure: the inner
+        # `raise` re-enters here, so `tmp` is cleaned up exactly once regardless of which step failed
+        # (mirrors `config_source._extract_into`'s own outer try/except).
+        shutil.rmtree(tmp, ignore_errors=True)
+        raise
+    return dest
 
 
 def find_bundle_config(root: Path) -> Path | None:

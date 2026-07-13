@@ -18,7 +18,7 @@ import zipfile
 from pathlib import Path
 from typing import Any
 
-from _shared import FakeProc, _get_json, _post, _serve, fake_popen
+from _shared import FakeObjectStore, FakeProc, _get_json, _post, _serve, fake_popen
 
 from bajutsu import serve as srv
 from bajutsu.serve import handler as handler_mod
@@ -67,9 +67,17 @@ def _post_bytes(
         return e.code, json.loads(e.read())
 
 
-def _state(tmp_path: Path, *, popen: Any = None, token: str | None = None) -> srv.ServeState:
+def _state(
+    tmp_path: Path,
+    *,
+    popen: Any = None,
+    token: str | None = None,
+    object_store: Any = None,
+    object_store_prefix: str = "",
+) -> srv.ServeState:
     """A config-less serve state — the whole point is a browser user with nothing on the host. Runs
-    land under tmp/runs; bundles extract under tmp/uploads."""
+    land under tmp/runs; bundles extract under tmp/uploads. *object_store* is None (BE-0073's
+    original ephemeral behavior) unless a test opts into the BE-0243 durable-persistence path."""
     runs = tmp_path / "runs"
     runs.mkdir(exist_ok=True)
     return srv.ServeState(
@@ -79,6 +87,8 @@ def _state(tmp_path: Path, *, popen: Any = None, token: str | None = None) -> sr
         uploads_dir=tmp_path / "uploads",
         popen=popen or fake_popen(["PASS  runs/up-1/manifest.json\n"]),
         token=token,
+        object_store=object_store,
+        object_store_prefix=object_store_prefix,
     )
 
 
@@ -221,24 +231,44 @@ def test_run_off_bundle_never_builds_from_uploaded_config(tmp_path: Path) -> Non
         server.server_close()
 
 
-def test_binding_another_bundle_replaces_the_sandbox(tmp_path: Path) -> None:
-    # Only one bundle is bound at a time: a second upload drops the first's extracted tree.
+def test_binding_another_bundle_keeps_both_cache_entries(tmp_path: Path) -> None:
+    # Only one bundle is *bound* at a time, but its sha256-keyed extraction cache dir is no longer
+    # removed on switch-away (BE-0243): both bundles' entries stay on disk, ready for reuse.
     server, port = _serve(_state(tmp_path))
     try:
-        first, _ = _post_bytes(port, "/api/upload?name=a.zip", _bundle_zip())
+        first, a = _post_bytes(port, "/api/upload?name=a.zip", _bundle_zip())
         assert first == 200
-        second, b = _post_bytes(port, "/api/upload?name=b.zip", _bundle_zip())
+        second, b = _post_bytes(
+            port, "/api/upload?name=b.zip", _bundle_zip(scenario=_SCENARIO + "\n")
+        )
         assert second == 200 and b["source"]["filename"] == "b.zip"
-        assert len(_extracted_dirs(tmp_path)) == 1  # the first sandbox was removed
+        assert a["source"]["sha256"] != b["source"]["sha256"]
+        assert len(_extracted_dirs(tmp_path)) == 2  # neither cache entry was removed
         assert _get_json(port, "/api/config")["config"] == b["config"]
     finally:
         server.shutdown()
         server.server_close()
 
 
-def test_binding_filesystem_config_releases_the_bundle(tmp_path: Path) -> None:
-    # Switching to another config source (the file browser) drops the bound bundle's sandbox and
-    # repoints the active config — proving the bundle is just one source among three.
+def test_repeat_upload_of_same_bundle_reuses_the_cache_dir(tmp_path: Path) -> None:
+    # Uploading identical content twice is content-addressed (BE-0243): the second upload cache-hits
+    # the first's extraction dir instead of creating a second one.
+    server, port = _serve(_state(tmp_path))
+    try:
+        first, a = _post_bytes(port, "/api/upload?name=a.zip", _bundle_zip())
+        second, b = _post_bytes(port, "/api/upload?name=b.zip", _bundle_zip())
+        assert (first, second) == (200, 200)
+        assert a["source"]["sha256"] == b["source"]["sha256"]
+        assert len(_extracted_dirs(tmp_path)) == 1
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+def test_binding_filesystem_config_keeps_the_bundle_cache(tmp_path: Path) -> None:
+    # Switching to another config source (the file browser) repoints the active config, but the
+    # bundle's extraction cache dir persists (BE-0243) — proving the bundle is just one source among
+    # three, and that unbinding is no longer what governs the cache's lifetime.
     local = tmp_path / "local.config.yaml"
     local.write_text(_CONFIG, encoding="utf-8")
     (tmp_path / "scenarios").mkdir(exist_ok=True)
@@ -248,8 +278,55 @@ def test_binding_filesystem_config_releases_the_bundle(tmp_path: Path) -> None:
         assert len(_extracted_dirs(tmp_path)) == 1
         status, resp = _post(port, "/api/config", {"path": str(local)})
         assert status == 200 and resp["config"] == str(local)
-        assert _extracted_dirs(tmp_path) == []  # the bundle's sandbox is gone
+        assert len(_extracted_dirs(tmp_path)) == 1  # the cache entry is still there
         assert _get_json(port, "/api/config")["config"] == str(local)
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+def test_upload_persists_the_raw_zip_when_a_store_is_configured(tmp_path: Path) -> None:
+    store = FakeObjectStore()
+    server, port = _serve(_state(tmp_path, object_store=store, object_store_prefix="tenant/"))
+    try:
+        blob = _bundle_zip()
+        status, resp = _post_bytes(port, "/api/upload?name=suite.zip", blob)
+        assert status == 200
+        key = f"tenant/uploads/{resp['source']['sha256']}.zip"
+        assert store.objects[key] == blob
+        assert store.put_calls == [key]
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+def test_repeat_upload_skips_the_store_write_when_the_key_already_exists(tmp_path: Path) -> None:
+    store = FakeObjectStore()
+    server, port = _serve(_state(tmp_path, object_store=store))
+    try:
+        _post_bytes(port, "/api/upload?name=a.zip", _bundle_zip())
+        assert len(store.put_calls) == 1
+        _post_bytes(port, "/api/upload?name=b.zip", _bundle_zip())
+        assert len(store.put_calls) == 1  # the key already existed — no second write
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+def test_upload_store_write_failure_binds_nothing_but_keeps_the_local_cache(
+    tmp_path: Path,
+) -> None:
+    # A store-write failure never binds — but the local extraction is left alone (BE-0243): it is
+    # valid, reusable content regardless of whether the store write succeeded, and by the time this
+    # failure is observed a concurrent bind of the same sha256 might already depend on it.
+    store = FakeObjectStore()
+    store.fail_with = ConnectionError("bucket unreachable")
+    server, port = _serve(_state(tmp_path, object_store=store))
+    try:
+        status, resp = _post_bytes(port, "/api/upload?name=suite.zip", _bundle_zip())
+        assert status == 400 and "could not persist" in resp["error"]
+        assert _get_json(port, "/api/config")["hasConfig"] is False
+        assert len(_extracted_dirs(tmp_path)) == 1  # the extraction itself is kept, only unbound
     finally:
         server.shutdown()
         server.server_close()

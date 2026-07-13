@@ -28,6 +28,7 @@ __all__ = [
     "object_store_from_env",
     "org_prefix",
     "scenario_prefix",
+    "upload_prefix",
 ]
 
 
@@ -49,6 +50,13 @@ def baseline_prefix(base: str = "") -> str:
     by the control plane's baseline store and the presigned GET URLs it signs for the worker to
     download baselines before a run, so both agree on keys (BE-0160)."""
     return f"{base}baselines/"
+
+
+def upload_prefix(base: str = "") -> str:
+    """The object-key prefix for durably-persisted uploaded zip bundles under *base*
+    (``<base>uploads/<sha256>.zip``, BE-0243). Shared by the upload bind and the
+    `activate_project` fetch-and-extract fallback, so both agree on keys."""
+    return f"{base}uploads/"
 
 
 # Keep in sync with serve.orgs.DEFAULT_ORG; duplicated to avoid importing it on this hot path.

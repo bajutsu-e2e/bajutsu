@@ -5,13 +5,24 @@ The DELETE-verb / role-gate wiring is exercised in the transport tests; here we 
 
 from __future__ import annotations
 
+import hashlib
+import io
+import zipfile
 from pathlib import Path
 
-from _shared import fake_popen, project, write_run
+from _shared import FakeObjectStore, fake_popen, project, write_run
 
 from bajutsu import serve as srv
 from bajutsu.serve import operations as ops
+from bajutsu.serve.operations.upload import activate_uploaded_project
 from bajutsu.serve.project_registry import LocalProjectRegistry
+
+
+def _bundle_zip() -> bytes:
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr("bajutsu.config.yaml", "targets: {}\n")
+    return buf.getvalue()
 
 
 def _hub_state(tmp_path: Path, *, hosted: bool = False, **kw: object) -> srv.ServeState:
@@ -277,6 +288,124 @@ def test_activate_an_upload_project_is_409(tmp_path: Path) -> None:
     # An uploaded bundle has no local checkout to re-materialize, so switching to it is refused with a
     # 409 rather than silently binding nothing — the operator re-uploads it instead.
     assert status == 409
+
+
+def test_activate_an_upload_project_fetches_from_the_object_store(tmp_path: Path) -> None:
+    # BE-0243: when the durable bytes are configured and present, activating an upload-kind project
+    # no longer 409s — it fetches, extracts, and binds them like any other source.
+    blob = _bundle_zip()
+    sha256 = hashlib.sha256(blob).hexdigest()
+    store = FakeObjectStore({f"uploads/{sha256}.zip": blob})
+    state = _hub_state(tmp_path, object_store=store, uploads_dir=tmp_path / "uploads")
+    ops.register_project(
+        state,
+        {
+            "name": "bundle",
+            "source": {
+                "kind": "upload",
+                "filename": "suite.zip",
+                "sha256": sha256,
+                "size": len(blob),
+            },
+        },
+    )
+    payload, status = ops.activate_project(state, "bundle")
+    assert status == 200 and payload["active"] is True
+    assert state.config is not None and state.config.name == "bajutsu.config.yaml"
+
+
+def test_activate_an_upload_project_is_still_409_when_the_key_is_absent(tmp_path: Path) -> None:
+    # A store is configured, but this bundle's bytes were never persisted there (or the key was
+    # evicted) — falls back to the original 409 rather than a different error.
+    store = FakeObjectStore()
+    state = _hub_state(tmp_path, object_store=store, uploads_dir=tmp_path / "uploads")
+    ops.register_project(
+        state, {"name": "bundle", "source": {"kind": "upload", "sha256": "a" * 64, "size": 1}}
+    )
+    _, status = ops.activate_project(state, "bundle")
+    assert status == 409
+
+
+def test_activate_an_upload_project_cache_hit_never_touches_the_store(tmp_path: Path) -> None:
+    # A replica that already extracted this sha256 (an earlier upload/activation) reuses it without
+    # asking the object store at all — proven here by a store that raises if ever called.
+    blob = _bundle_zip()
+    sha256 = hashlib.sha256(blob).hexdigest()
+    uploads_dir = tmp_path / "uploads"
+    (uploads_dir / sha256).mkdir(parents=True)
+    (uploads_dir / sha256 / "bajutsu.config.yaml").write_text("targets: {}\n", encoding="utf-8")
+
+    class _PoisonedStore(FakeObjectStore):
+        def get_bytes(self, key: str) -> bytes | None:
+            raise AssertionError(f"should not touch the object store for a local cache hit: {key}")
+
+    state = _hub_state(tmp_path, object_store=_PoisonedStore(), uploads_dir=uploads_dir)
+    ops.register_project(
+        state, {"name": "bundle", "source": {"kind": "upload", "sha256": sha256, "size": len(blob)}}
+    )
+    _, status = ops.activate_project(state, "bundle")
+    assert status == 200
+
+
+def test_activate_uploaded_project_does_not_cross_org_cache_boundaries(tmp_path: Path) -> None:
+    # Regression for the org-scoping fix (BE-0243): org B claiming org A's sha256 in its own project
+    # record must not cache-hit into org A's already-extracted local tree just because the two
+    # happen to share the same serve process's uploads_dir.
+    blob = _bundle_zip()
+    sha256 = hashlib.sha256(blob).hexdigest()
+    uploads_dir = tmp_path / "uploads"
+    org_a_dir = uploads_dir / "orgA" / sha256
+    org_a_dir.mkdir(parents=True)
+    (org_a_dir / "bajutsu.config.yaml").write_text("targets: {}\n", encoding="utf-8")
+
+    state = _hub_state(tmp_path, object_store=FakeObjectStore(), uploads_dir=uploads_dir)
+    source = {"kind": "upload", "filename": "x.zip", "sha256": sha256, "size": len(blob)}
+    # org B has no matching key in the (shared) store and no cache entry of its own — must be None
+    # (falls back to the 409), never a bind into org A's tree.
+    assert activate_uploaded_project(state, source, org="orgB") is None
+    # org A's own activation, by contrast, cache-hits its own entry.
+    result = activate_uploaded_project(state, source, org="orgA")
+    assert result is not None and result[1] == 200
+
+
+def test_activate_an_upload_project_with_a_corrupt_fetched_bundle_is_400(tmp_path: Path) -> None:
+    # The bytes exist at the store key (unlike the absent-key 409 case above) but are not a valid
+    # bundle — a real error, distinct from "nothing to restore from", so it must not fall back to
+    # the 409 a caller would otherwise read as "no durable copy exists at all".
+    sha256 = "b" * 64
+    store = FakeObjectStore({f"uploads/{sha256}.zip": b"not a valid zip"})
+    state = _hub_state(tmp_path, object_store=store, uploads_dir=tmp_path / "uploads")
+    ops.register_project(
+        state, {"name": "bundle", "source": {"kind": "upload", "sha256": sha256, "size": 1}}
+    )
+    payload, status = ops.activate_project(state, "bundle")
+    assert status == 400 and "invalid bundle" in payload["error"]
+
+
+def test_activate_uploaded_project_rejects_a_malformed_sha256(tmp_path: Path) -> None:
+    # A registered project's source is client-suppliable (BE-0225); a sha256 that isn't a well-formed
+    # hex digest must never reach a filesystem path or object-store key — treated as nothing to
+    # restore from (falls back to the 409), the same as a missing sha256.
+    store = FakeObjectStore({"uploads/../../../etc.zip": b"whatever"})
+    state = _hub_state(tmp_path, object_store=store, uploads_dir=tmp_path / "uploads")
+    source = {"kind": "upload", "sha256": "../../../etc", "size": 1}
+    assert activate_uploaded_project(state, source, org="default") is None
+
+
+def test_activate_uploaded_project_org_scoping_holds_at_the_object_store_too(
+    tmp_path: Path,
+) -> None:
+    # The cache-boundary regression above proves the *local* half of the org-scoping fix; this proves
+    # the *object-store* half: org A's bytes live at org A's own store key, and org B — with no local
+    # cache entry of its own — must not resolve them just because the sha256 matches.
+    blob = _bundle_zip()
+    sha256 = hashlib.sha256(blob).hexdigest()
+    store = FakeObjectStore({f"orgA/uploads/{sha256}.zip": blob})
+    state = _hub_state(tmp_path, object_store=store, uploads_dir=tmp_path / "uploads")
+    source = {"kind": "upload", "filename": "x.zip", "sha256": sha256, "size": len(blob)}
+    assert activate_uploaded_project(state, source, org="orgB") is None
+    result = activate_uploaded_project(state, source, org="orgA")
+    assert result is not None and result[1] == 200
 
 
 def test_activate_a_malformed_git_source_is_400(tmp_path: Path) -> None:

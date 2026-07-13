@@ -114,6 +114,7 @@ from bajutsu.serve.operations.theme_editor import get_theme_contract, upload_the
 from bajutsu.serve.operations.triage import start_triage
 from bajutsu.serve.operations.upload import (
     _safe_filename,
+    activate_uploaded_project,
     bind_upload_config,
 )
 from bajutsu.serve.operations.worker import (
@@ -146,6 +147,7 @@ __all__ = [
     "_valid_key_env_name",
     "_valid_step_id",
     "activate_project",
+    "activate_uploaded_project",
     "active_key_env",
     "ant_login",
     "ant_login_status",

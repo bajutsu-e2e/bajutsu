@@ -15,6 +15,7 @@ from typing import Any
 from bajutsu.config_source import config_from_source
 from bajutsu.serve.operations.config import bind_config, bind_git_config, config_sources
 from bajutsu.serve.operations.dispatch import start_run
+from bajutsu.serve.operations.upload import activate_uploaded_project
 from bajutsu.serve.state import ServeState
 
 # The registry stores a config-source `kind` (`git` / `upload` / `file`); the UI/allowlist names the
@@ -144,11 +145,13 @@ def activate_project(state: ServeState, name: str, *, actor: str | None = None) 
     """Make a project the live active binding — the switcher's action (BE-0225 unit 4).
 
     Rebinds `state.config` from the project's stored config source (git → the Git binder, file → the
-    local binder), then flips the active project, so every tab (run / record / crawl / the dashboard)
-    operates against the switched-to config with no `serve` restart — the live rebind unit 3's
-    `run_project` deferred to here. A `None` source has nothing to bind (400); an `upload` bundle has
-    no local checkout to re-materialize (409). The active project flips only after a successful bind,
-    so a failed rebind never leaves the hub pointing at a config it could not load.
+    local binder, upload → a content-addressed fetch-and-extract from the object store, BE-0243),
+    then flips the active project, so every tab (run / record / crawl / the dashboard) operates
+    against the switched-to config with no `serve` restart — the live rebind unit 3's `run_project`
+    deferred to here. A `None` source has nothing to bind (400); an `upload` bundle whose bytes
+    aren't durably resolvable (no object store configured, or its key is absent) still gets the
+    original 409. The active project flips only after a successful bind, so a failed rebind never
+    leaves the hub pointing at a config it could not load.
     """
     registry = state.project_registry
     if registry is None:
@@ -162,18 +165,27 @@ def activate_project(state: ServeState, name: str, *, actor: str | None = None) 
         return {"error": f"project {name!r} has no config source to bind"}, 400
     kind = source.get("kind") if isinstance(source, dict) else None
     if kind == "upload":
-        return {
-            "error": f"cannot switch to the uploaded-bundle project {name!r}; "
-            "re-upload its config to bind it"
-        }, 409
-    try:
-        spec = config_from_source(source)
-    except ValueError as e:
-        return {"error": str(e)}, 400
-    result, status = bind_git_config(state, spec) if kind == "git" else bind_config(state, spec)
+        # Note the polarity here is the opposite of _validate_source's below: there, None means "the
+        # source is fine, proceed"; here, None means "nothing to try — fall back to the 409 yourself"
+        # (activate_uploaded_project has no project `name` to phrase its own error with). A tuple is
+        # always a resolved outcome (success or a real error), never "proceed with no source".
+        fallback = activate_uploaded_project(state, source, org=org, actor=actor)
+        if fallback is None:
+            return {
+                "error": f"cannot switch to the uploaded-bundle project {name!r}; "
+                "re-upload its config to bind it"
+            }, 409
+        result, status = fallback
+    else:
+        try:
+            spec = config_from_source(source)
+        except ValueError as e:
+            return {"error": str(e)}, 400
+        result, status = bind_git_config(state, spec) if kind == "git" else bind_config(state, spec)
     if status != 200:
-        # The bind failed (a moved file, an unreachable repo). Leave the active project unchanged
-        # rather than flipping it to a config we could not load, and surface the binder's own error.
+        # The bind failed (a moved file, an unreachable repo, an unresolvable upload). Leave the
+        # active project unchanged rather than flipping it to a config we could not load, and
+        # surface the binder's own error.
         return result, status
     registry.set_active(org_id=org, name=name)
     return {"ok": True, "name": name, "active": True, "config": result.get("config")}, 200

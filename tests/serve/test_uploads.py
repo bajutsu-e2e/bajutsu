@@ -16,7 +16,12 @@ from pathlib import Path
 import pytest
 
 from bajutsu.serve import uploads
-from bajutsu.serve.uploads import BundleError, extract_bundle, find_bundle_config
+from bajutsu.serve.uploads import (
+    BundleError,
+    extract_bundle,
+    find_bundle_config,
+    materialize_bundle,
+)
 
 
 def _zip(entries: dict[str, bytes]) -> bytes:
@@ -162,3 +167,107 @@ def test_find_bundle_config_in_underscore_named_folder(tmp_path: Path) -> None:
 def test_find_bundle_config_absent(tmp_path: Path) -> None:
     (tmp_path / "readme.txt").write_text("hi", encoding="utf-8")
     assert find_bundle_config(tmp_path) is None
+
+
+# ---- materialize_bundle (BE-0243) -----------------------------------------------------------
+
+
+def _valid_blob() -> bytes:
+    return _zip({"bajutsu.config.yaml": b"targets: {}\n"})
+
+
+def test_materialize_bundle_extracts_on_a_miss(tmp_path: Path) -> None:
+    uploads_dir = tmp_path / "cache"
+    zip_path = _written(tmp_path, _valid_blob())
+    dest = materialize_bundle(zip_path, uploads_dir, "abc123")
+    assert dest == uploads_dir / "abc123"
+    assert (dest / "bajutsu.config.yaml").is_file()
+    # No leftover temp dir beside the resolved entry.
+    assert [p.name for p in uploads_dir.iterdir()] == ["abc123"]
+
+
+def test_materialize_bundle_reuses_an_existing_entry(tmp_path: Path) -> None:
+    uploads_dir = tmp_path / "cache"
+    zip_path = _written(tmp_path, _valid_blob())
+    materialize_bundle(zip_path, uploads_dir, "abc123")
+    zip_path.unlink()  # a cache hit must not need the zip again
+    dest = materialize_bundle(zip_path, uploads_dir, "abc123")
+    assert dest == uploads_dir / "abc123"
+    assert (dest / "bajutsu.config.yaml").is_file()
+
+
+def test_materialize_bundle_runs_validate_only_on_a_miss(tmp_path: Path) -> None:
+    uploads_dir = tmp_path / "cache"
+    zip_path = _written(tmp_path, _valid_blob())
+    calls: list[Path] = []
+    materialize_bundle(zip_path, uploads_dir, "abc123", validate=calls.append)
+    assert len(calls) == 1
+    materialize_bundle(zip_path, uploads_dir, "abc123", validate=calls.append)
+    assert len(calls) == 1  # the second call cache-hit and never re-validated
+
+
+def test_materialize_bundle_validate_failure_leaves_no_cache_entry(tmp_path: Path) -> None:
+    uploads_dir = tmp_path / "cache"
+    zip_path = _written(tmp_path, _valid_blob())
+
+    def _reject(_root: Path) -> None:
+        raise ValueError("no good")
+
+    with pytest.raises(ValueError, match="no good"):
+        materialize_bundle(zip_path, uploads_dir, "abc123", validate=_reject)
+    # Neither the keyed entry nor a leftover temp dir survives a validation failure.
+    assert not (uploads_dir / "abc123").exists()
+    assert list(uploads_dir.iterdir()) == []
+
+
+def test_materialize_bundle_extract_failure_leaves_no_cache_entry(tmp_path: Path) -> None:
+    uploads_dir = tmp_path / "cache"
+    zip_path = _written(tmp_path, b"not a zip at all")
+    with pytest.raises(BundleError):
+        materialize_bundle(zip_path, uploads_dir, "abc123")
+    assert list(uploads_dir.iterdir()) == []
+
+
+def test_materialize_bundle_losing_a_rename_race_reuses_the_winners_entry(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Simulates two concurrent misses for the same sha256: this call's own tmp.rename(dest) fails
+    # because a concurrent call already won and landed its (byte-identical) tree at dest first.
+    uploads_dir = tmp_path / "cache"
+    uploads_dir.mkdir()
+    winner_dest = uploads_dir / "abc123"
+    winner_dest.mkdir()
+    (winner_dest / "bajutsu.config.yaml").write_text("targets: {}\n", encoding="utf-8")
+    zip_path = _written(tmp_path, _valid_blob())
+
+    real_rename = Path.rename
+
+    def _rename(self: Path, target: object) -> Path:
+        if self.parent == uploads_dir and Path(str(target)) == winner_dest:
+            raise OSError("simulated: the winner already landed here")
+        return real_rename(self, target)
+
+    monkeypatch.setattr(Path, "rename", _rename)
+    dest = materialize_bundle(zip_path, uploads_dir, "abc123")
+    assert dest == winner_dest
+    # Only the winner's directory remains — this call's own tmp dir was discarded, not left behind.
+    assert [p.name for p in uploads_dir.iterdir()] == ["abc123"]
+
+
+def test_materialize_bundle_a_genuine_rename_failure_still_raises(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # A rename failure that is NOT a lost race (dest never appears) must not be swallowed as if it
+    # were one — a real filesystem error (permissions, disk full) must still surface.
+    uploads_dir = tmp_path / "cache"
+    uploads_dir.mkdir()
+    zip_path = _written(tmp_path, _valid_blob())
+
+    def _rename(self: Path, target: object) -> Path:
+        raise OSError("simulated: permission denied")
+
+    monkeypatch.setattr(Path, "rename", _rename)
+    with pytest.raises(OSError, match="permission denied"):
+        materialize_bundle(zip_path, uploads_dir, "abc123")
+    # Neither a winner's entry nor a leftover temp dir exists — the raise propagated cleanly.
+    assert list(uploads_dir.iterdir()) == []

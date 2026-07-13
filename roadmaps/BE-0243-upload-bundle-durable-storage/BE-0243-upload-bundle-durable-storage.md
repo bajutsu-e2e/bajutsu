@@ -7,7 +7,7 @@
 |---|---|
 | Proposal | [BE-0243](BE-0243-upload-bundle-durable-storage.md) |
 | Author | [@paihu](https://github.com/paihu) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0243") |
 | Topic | Configuration sourcing |
 | Related | [BE-0073](../BE-0073-serve-zip-bundle-upload/BE-0073-serve-zip-bundle-upload.md), [BE-0063](../BE-0063-git-config-source/BE-0063-git-config-source.md), [BE-0204](../BE-0204-server-storage-gcs-support/BE-0204-server-storage-gcs-support.md), [BE-0108](../BE-0108-hosted-config-source-restriction/BE-0108-hosted-config-source-restriction.md), [BE-0225](../BE-0225-config-project-hub/BE-0225-config-project-hub.md), [BE-0015](../BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md) |
@@ -309,9 +309,49 @@ store.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] 1 — Persist the raw uploaded zip to the object store, keyed by its sha256 under the project's org prefix, *before* `bind_upload_config` flips the active config, when `BAJUTSU_SERVER_STORE` is configured; on a write failure, remove the extracted local directory and fail the request without ever having bound it, rather than binding first and rolling back.
-- [ ] 2 — Move `state.uploads_dir`'s default from a `--runs`-relative directory to a sibling of BE-0063's Git checkout cache under `.../bajutsu/` (`<XDG_CACHE_HOME or ~/.cache>/bajutsu/uploads/`), factoring the `XDG_CACHE_HOME`/`Path.home()` prefix out of `_default_cache_root()` into a shared `_bajutsu_cache_root()` helper both the Git (`gitsrc`) and upload (`uploads`) cache roots build on, rather than reusing `_default_cache_root()` unmodified (which bakes in the `gitsrc` leaf) or duplicating its fallback rule. `activate_project` gains a fetch-and-extract-from-object-store fallback for `kind == "upload"`, tried before the existing `409`. Both this fallback and `bind_upload_config`'s own local extraction resolve to a `sha256`-keyed directory under that root and skip extraction (and re-validation) on a cache hit, mirroring `materialize()`'s `if not root.exists(): _extract_into(...)` — both extract into a sibling temp dir and rename into place first, mirroring `_extract_into`'s atomicity, so two concurrent misses on the same `sha256` never race directly into the keyed path. `release_upload` stops deleting that directory on every switch-away, and `serve()`'s startup sweep (`bajutsu/serve/__init__.py`) stops wiping it on every launch, so the cache actually persists across binds and restarts.
-- [ ] 3 — Confirm zero-config behavior (and the existing `409`) is unchanged with no `BAJUTSU_SERVER_STORE` configured.
+- [x] 1 — Persist the raw uploaded zip to the object store, keyed by its sha256 under the project's org prefix, *before* `bind_upload_config` flips the active config, when `BAJUTSU_SERVER_STORE` is configured; on a write failure, remove the extracted local directory and fail the request without ever having bound it, rather than binding first and rolling back.
+- [x] 2 — Move `state.uploads_dir`'s default from a `--runs`-relative directory to a sibling of BE-0063's Git checkout cache under `.../bajutsu/` (`<XDG_CACHE_HOME or ~/.cache>/bajutsu/uploads/`), factoring the `XDG_CACHE_HOME`/`Path.home()` prefix out of `_default_cache_root()` into a shared `_bajutsu_cache_root()` helper both the Git (`gitsrc`) and upload (`uploads`) cache roots build on, rather than reusing `_default_cache_root()` unmodified (which bakes in the `gitsrc` leaf) or duplicating its fallback rule. `activate_project` gains a fetch-and-extract-from-object-store fallback for `kind == "upload"`, tried before the existing `409`. Both this fallback and `bind_upload_config`'s own local extraction resolve to a `sha256`-keyed directory under that root and skip extraction (and re-validation) on a cache hit, mirroring `materialize()`'s `if not root.exists(): _extract_into(...)` — both extract into a sibling temp dir and rename into place first, mirroring `_extract_into`'s atomicity, so two concurrent misses on the same `sha256` never race directly into the keyed path. `release_upload` stops deleting that directory on every switch-away, and `serve()`'s startup sweep (`bajutsu/serve/__init__.py`) stops wiping it on every launch, so the cache actually persists across binds and restarts.
+- [x] 3 — Confirm zero-config behavior (and the existing `409`) is unchanged with no `BAJUTSU_SERVER_STORE` configured.
+
+### Log
+
+- 2026-07-13 — Units 1–3 implemented. One deviation from this document's literal *Detailed design*:
+  the local `state.uploads_dir` cache is keyed by `<org>/<sha256>`, not bare `sha256` as unit 2
+  describes. A bare `sha256` key is org-agnostic — `state.uploads_dir` is one shared path across
+  every org on the `server` backend, unlike the object-store key, which unit 1 already scopes under
+  `org_prefix`. Without the org segment, `activate_project`'s fetch-and-extract fallback would
+  cache-hit into *any* org's already-extracted tree for a `sha256` a caller merely claims in a
+  registered project's source record (never validated as something that org actually uploaded),
+  bypassing the object store's own org scoping — a BE-0015 multi-tenant isolation gap. The fix
+  reuses the same `org_prefix` helper for the local path (`state.uploads_dir / org_prefix("", org)
+  / sha256`), which is a no-op for the single-tenant `default` org (local serve is unaffected).
+
+  Two further deviations from the literal text, both found during review:
+  1. **Unit 1's write-failure rollback.** The Detailed design says a store-write failure "removes
+     the extracted local directory." It no longer does: the local cache entry is valid, reusable
+     content regardless of whether the object-store write succeeds, and once `materialize_bundle`
+     stopped returning a "did I create this" flag for exactly this reason (below), nothing in
+     `bind_upload_config` can tell whether a concurrent bind of the same `sha256` already depends on
+     the directory by the time the store write fails. Deleting it unconditionally risked pulling a
+     shared cache entry out from under a sibling in-flight bind — the same class of bug unit 2's own
+     "shared cache, not a disposable sandbox" design already exists to avoid. `materialize_bundle`
+     now simply never deletes the directory it resolves once it exists; a caller with a later
+     failure of its own fails without touching it. `bind_upload_config` still cleans up on its own
+     *validation* failure (an invalid bundle never gets a durable entry in the first place) — only
+     the store-write-failure cleanup was dropped.
+  2. **`activate_uploaded_project`'s `sha256` is untrusted input, not just an opaque cache key.** It
+     comes from a project's stored `source` record, which a client shapes via `register_project`
+     (BE-0225) — `_validate_source` only checks `kind`, never the shape of `sha256`. Neither the
+     Detailed design nor the original implementation validated it before turning it into
+     `uploads_dir / sha256` (a filesystem path) and an object-store key suffix. A `sha256` containing
+     `../` would let a registered project record walk `materialize_bundle` outside the uploads cache
+     entirely — e.g. onto BE-0063's sibling Git-checkout cache under the same `.../bajutsu/` root
+     (unit 2) — and bind whatever `bajutsu.config.yaml` it finds there, bypassing BE-0051/BE-0108
+     confinement with no error and no log. Fixed by requiring a full lowercase hex digest
+     (`^[0-9a-f]{64}$`) before `sha256` ever reaches a path or key, mirroring the Git source's own
+     `_FULL_SHA_RE` guard on a resolved commit SHA (`bajutsu/config_source.py`) — a malformed value
+     is now treated as "nothing to restore from" (the existing `409`), never as something to extract
+     from a filesystem path built from it.
 
 ## References
 
