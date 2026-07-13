@@ -371,7 +371,7 @@ class IdbDriver:
             try:
                 self._run(cmd)
             except subprocess.CalledProcessError as exc:
-                _logger.debug("idb companion reset step failed: %s (%s)", cmd, exc)
+                _logger.warning("idb companion reset step failed: %s (%s)", cmd, exc)
 
     def _resolve(
         self,
