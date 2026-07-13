@@ -13,7 +13,7 @@ Related: [concepts](concepts.md) · the per-feature pages (linked below)
 
 A scenario (authored by AI or by hand) is the shared artifact. `run` replays it deterministically with no AI in the gate. `codegen` and `triage` also consume the scenario.
 Tier 1 (AI — yellow) authors and investigates only; Tier 2 (deterministic — blue) decides pass/fail from machine assertions alone.
-The whole spine is platform-neutral; the only platform-specific seam is the **backend** the orchestrator drives (idb for iOS, playwright for web, … behind one `Driver` interface), so a new platform is a new backend, not a fork of the core.
+The whole spine is platform-neutral; the only platform-specific seam is the **backend** the orchestrator drives (idb / XCUITest for iOS, adb for Android, playwright for web, … behind one `Driver` interface), so a new platform is a new backend, not a fork of the core.
 
 ```mermaid
 flowchart TB
@@ -31,9 +31,13 @@ flowchart TB
         orch["Orchestrator<br/>observe → act → verify"]
         driver["Backend-agnostic Driver API<br/>tap · type · swipe · wait · query · screenshot"]
         idb["idb backend<br/>📱 iOS Simulator (simctl)"]
+        xcuitest["XCUITest backend<br/>📱 iOS (resident runner)"]
+        adb["adb backend<br/>🤖 Android"]
         pw["playwright backend<br/>🌐 web browser"]
         orch --> driver
         driver --> idb
+        driver --> xcuitest
+        driver --> adb
         driver --> pw
     end
 
@@ -323,7 +327,7 @@ workers would collide).
 - The **config project hub** (`project add`/`ls`/`use`/`rm` and `run --project`, BE-0225): a named registry binding a project name to a config source, shared between the CLI and the `serve` web UI (DB-backed when configured, on-disk JSON otherwise); `serve` carries a header **project switcher** + Projects list that rebinds the active config with no restart
 - The **cross-project metrics comparison dashboard** (BE-0226): a `serve` **Metrics** tab that ranks the registered projects side by side — pass-rate, flaky-rate, and p50/p95 run duration, plus a per-project trend sparkline — reusing BE-0102's per-config aggregation computed once per project (`GET /api/metrics/projects`); read-only and advisory, like BE-0102
 - AI **crawl** (`crawl.py`): autonomous breadth-first exploration of an app → a screen map (`screenmap.json`)
-- The `serve` local web UI (Tier 1): author (`record` / `crawl`), edit, and run scenarios; **open a `.zip` bundle** of config + scenarios + the built app binary as the active config the tabs run from (BE-0073); browse reports and evidence; a read-only aggregate **run-stats dashboard** across the run history (BE-0102); a pre-run **readiness panel** (`doctor`: environment runnability + the current screen's convention score) in the Record and Replay forms (BE-0148); a **pluggable theme system** — drop-in visual tokens + swappable transitions, a header picker, and an in-UI editor with live preview and local-draft/server-upload persistence (BE-0191); approve visual baselines; live job streaming — from a browser (not for CI)
+- The `serve` local web UI (Tier 1): author (`record` / `crawl`), edit, and run scenarios; **open a `.zip` bundle** of config + scenarios + the built app binary as the active config the tabs run from (BE-0073); browse reports and evidence; a read-only aggregate **run-stats dashboard** across the run history (BE-0102), with every axis — date, backend, scenario, and step/assertion hotspot — now a deep link into the matching runs in the history list (BE-0241); a pre-run **readiness panel** (`doctor`: environment runnability + the current screen's convention score) in the Record and Replay forms (BE-0148); a **pluggable theme system** — drop-in visual tokens + swappable transitions, a header picker, and an in-UI editor with live preview and local-draft/server-upload persistence (BE-0191); approve visual baselines; live job streaming — from a browser (not for CI)
 - **MCP server** (`bajutsu mcp`): `bajutsu_run` and `bajutsu_doctor` as MCP tools + run evidence as resources, for Claude Desktop / Code integration (optional dependency `fastmcp`)
 - **Scenario linter** (`bajutsu lint` / `bajutsu schema`): validate scenarios without running them; JSON Schema output for editor integration
 - Codegen: scenario → native test, three targets behind a shared scenario walk (BE-0083) — XCUITest
