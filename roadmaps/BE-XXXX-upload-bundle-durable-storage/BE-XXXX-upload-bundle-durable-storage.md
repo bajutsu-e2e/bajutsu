@@ -56,6 +56,16 @@ Two deployment facts push on BE-0073's "ephemeral by design" choice from differe
    without a schema change") but that `ScenarioStore` does not exist yet; this item is what makes
    that anticipated resolution possible.
 
+A related operational note, not something this item needs to fix: BE-0063's own cache-root
+resolution (`_default_cache_root()` in `bajutsu/config_source.py`) falls back to `Path.home()`,
+which raises at runtime in a container that runs under an externally supplied UID with no matching
+`/etc/passwd` entry and no `HOME` set. Setting `HOME` to any writable path avoids this entirely —
+the cache directory tree is created on demand (`mkdir(parents=True, exist_ok=True)`), so it need not
+already exist. A hosted deployment that enables the Git source should set `HOME` explicitly for this
+reason. This item's own local materialization directory (unit 2, below) is `state.uploads_dir` —
+already an explicit, `--runs`-relative path rather than one derived from `HOME` — so it does not
+inherit this precondition.
+
 The fix follows the shape the codebase already uses twice over, so it adds no new mechanism:
 
 - **Content addressing.** BE-0073 already computes the zip's sha256 for provenance
