@@ -30,7 +30,6 @@ on:
       # modules — the serve backend is covered by the 'bajutsu/serve/**' entry below.
       - 'bajutsu/_yaml.py'
       - 'bajutsu/adb.py'
-      - 'bajutsu/agent_factory.py'
       - 'bajutsu/agent_protocols.py'
       - 'bajutsu/artifact_perms.py'
       - 'bajutsu/assertions.py'

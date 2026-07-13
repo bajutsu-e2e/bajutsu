@@ -57,14 +57,22 @@ def test_run_path_top_level_modules_are_relevant() -> None:
         "bajutsu/artifact_perms.py",
         "bajutsu/mailbox.py",
         "bajutsu/intervals.py",
-        # record.py's unconditional agent_protocols import, plus cli/commands/record.py's
-        # agent_factory import (record is an E2E verb)
+        # record.py unconditionally imports the Agent/EnrichmentAgent protocols from
+        # agent_protocols (record is an E2E verb), mirroring the old agent.py entry. Its sibling
+        # agent_factory (the old agents.py) is deliberately excluded — see the parity test below.
         "bajutsu/agent_protocols.py",
-        "bajutsu/agent_factory.py",
         "bajutsu/crawl.py",
         "bajutsu/handoff.py",
     ):
         assert is_relevant([module]) is True, module
+
+
+def test_agent_factory_is_not_relevant_by_parity() -> None:
+    # agent_factory.py is the renamed agents.py, which was never on the allow-list: only agent.py
+    # (now agent_protocols.py) was. cli/commands/record.py does import make_agent from it, so an
+    # argument exists for listing it — but that is a trigger-surface change, not a rename, so the
+    # BE-0246 rename keeps exact parity and leaves closing that latent gap to a separate decision.
+    assert is_relevant(["bajutsu/agent_factory.py"]) is False
 
 
 def test_non_run_path_top_level_modules_are_not_relevant() -> None:
