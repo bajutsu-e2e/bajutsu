@@ -353,10 +353,10 @@ def make_driver(actuator, udid, *, base_url=None, runner_port=None) -> Driver:  
   own steps can use — `idb` by default, escalating to XCUITest only for a scenario whose constructs
   need a capability idb lacks (e.g. `pinch`/`rotate` → `multiTouch`). idb's capability set is a strict
   subset of XCUITest's, so no scenario needs idb *specifically* — idb is preferred only for cost.
-- Two orderings answer two questions. **Stability order** (`PLATFORMS`, most-capable-first) drives
-  `select_actuator` — the availability-only pick used where no scenario is in hand yet (`doctor`, the
-  pool's up-front setup, an explicit single-actuator pin). **Cost order** (`COST_ORDER`,
-  cheapest-first; [concepts](concepts.md#5-the-stability-ladder)) drives
+- Two orderings answer two questions. **Stability order** (`PLATFORMS`, most-capable-first;
+  [concepts](concepts.md#5-the-stability-ladder)) drives `select_actuator` — the availability-only
+  pick used where no scenario is in hand yet (`doctor`, the pool's up-front setup, an explicit
+  single-actuator pin). **Cost order** (`COST_ORDER`, cheapest-first) drives
   `select_actuator_for_scenario`, which reuses `capability_preflight.unsupported` (BE-0082) against
   each candidate's capability set and returns the first that is both available and sufficient. An
   explicit single-actuator request never escalates (a hard pin, like `--udid`). If none is available,

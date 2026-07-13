@@ -35,10 +35,11 @@ def git_revision() -> str | None:
 
 
 def _run_backend(results: list[RunResult]) -> str:
-    """The actuator that drove the run.
+    """The actuator(s) that drove the run, joined ordered-unique.
 
-    One actuator is fixed per run, so this is normally a single name; if scenarios somehow differ,
-    they are joined.
+    Usually a single name, but since BE-0240 resolves the actuator per scenario, a `backend: [ios]`
+    run legitimately mixes `idb` and `xcuitest` — those distinct per-scenario backends are joined
+    here (e.g. ``"idb, xcuitest"``).
     """
     names = dict.fromkeys(r.backend for r in results if r.backend)  # ordered-unique
     return ", ".join(names)
