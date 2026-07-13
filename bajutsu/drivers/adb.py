@@ -29,6 +29,7 @@ itself — so a bare `traits: [button]` matches any tappable row or container; p
 
 from __future__ import annotations
 
+import logging
 import re
 import subprocess
 import time
@@ -41,6 +42,24 @@ from bajutsu.drivers import base
 from bajutsu.elements import screen_size_from_elements
 
 RunFn = Callable[[list[str]], str]
+
+# A resident UI Automator server (BE-0245) returns the hierarchy over an already-open channel,
+# skipping the ~2.4 s per-invocation `uiautomator dump` startup. Its response is UI Automator's own
+# XML, unchanged, so `parse_hierarchy` consumes it identically — only the transport differs, which is
+# why a fetch is just "give me the current dump text": Callable[[], str].
+HierarchyFetch = Callable[[], str]
+
+logger = logging.getLogger("bajutsu.adb.resident")
+
+
+class AdbResidentError(RuntimeError):
+    """The resident hierarchy channel failed to answer a read.
+
+    An infrastructure failure, kept distinct from a test outcome (like `XcuitestChannelError`): the
+    driver catches it, logs loudly, and degrades to the `uiautomator dump` subprocess rather than
+    reading a failed channel as an empty screen.
+    """
+
 
 _StableKey = tuple[tuple[str, base.Frame], ...]
 
@@ -205,9 +224,18 @@ class AdbDriver:
     _SCROLL_FROM_FRAC = 0.7  # swipe start, as a fraction of screen height
     _SCROLL_TO_FRAC = 0.3  # swipe end (< start ⇒ upward ⇒ content scrolls up)
 
-    def __init__(self, serial: str, run: RunFn = adb._real_run) -> None:
+    def __init__(
+        self,
+        serial: str,
+        run: RunFn = adb._real_run,
+        *,
+        fetch_hierarchy: HierarchyFetch | None = None,
+    ) -> None:
         self.serial = adb._checked_serial(serial)
         self._run = run
+        # When set, reads go through the resident channel and fall back to `uiautomator dump` only on
+        # failure (BE-0245). Unset (the default) keeps today's dump-every-read behavior exactly.
+        self._fetch_hierarchy = fetch_hierarchy
         self._max_seen = 0  # richest tree seen on this device; gates the empty retry
         self._last_stable_key: _StableKey | None = None
         # Lazily resolved once for the sendevent double-tap path (BE-0208): whether adbd is root and
@@ -235,7 +263,24 @@ class AdbDriver:
         return els
 
     def _describe(self) -> list[base.Element]:
-        return parse_hierarchy(self._run(adb.dump_cmd(self.serial)))
+        return parse_hierarchy(self._read_source())
+
+    def _read_source(self) -> str:
+        """The raw hierarchy dump text: the resident channel when available, else `uiautomator dump`.
+
+        Both sources speak UI Automator's own XML, so the caller (`parse_hierarchy`) is unchanged
+        (BE-0245). A resident-channel failure degrades to the dump subprocess with a loud warning —
+        never silently, so a slower fallback read stays visible — leaving the backend no worse off
+        than the dump-every-read path it replaces.
+        """
+        if self._fetch_hierarchy is not None:
+            try:
+                return self._fetch_hierarchy()
+            except AdbResidentError as exc:
+                logger.warning(
+                    "resident hierarchy read failed (%s); falling back to `uiautomator dump`", exc
+                )
+        return self._run(adb.dump_cmd(self.serial))
 
     def _is_transient_empty(self, els: list[base.Element]) -> bool:
         return len(els) < self._READY_MIN and self._max_seen >= self._READY_MIN

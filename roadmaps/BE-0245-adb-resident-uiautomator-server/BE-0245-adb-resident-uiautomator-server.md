@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0245](BE-0245-adb-resident-uiautomator-server.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0245") |
+| Implementing PR | _pending_ |
 | Topic | Platform support |
 | Related | [BE-0234](../BE-0234-adb-run-performance/BE-0234-adb-run-performance.md), [BE-0007](../BE-0007-android-backend/BE-0007-android-backend.md), [BE-0233](../BE-0233-adb-clipboard-fidelity/BE-0233-adb-clipboard-fidelity.md), [BE-0114](../BE-0114-driver-conformance-suite/BE-0114-driver-conformance-suite.md), [BE-0208](../BE-0208-android-emulator-e2e-ci/BE-0208-android-emulator-e2e-ci.md) |
 <!-- /BE-METADATA -->
@@ -124,6 +125,16 @@ where the resident server cannot start is never left worse off than today.
 - [ ] Swap `AdbDriver._describe()` to the resident channel, keeping `uiautomator dump` as the fallback.
 - [ ] Tie the resident server's lifecycle to the device lease (started once, stopped on run end / failure).
 - [ ] Verify on device (read drops to ≈ 0.1–0.3 s) and guard the resident + fallback paths in the Android e2e lane.
+
+Log:
+
+- PR-A (_pending_) — Python-only, device-free scaffold for the resident-channel swap (unit 3). Adds an
+  injectable `fetch_hierarchy` seam to `AdbDriver`: `_describe()` reads via `_read_source()`, which uses
+  the resident fetch when configured and degrades to `uiautomator dump` with a loud warning on
+  `AdbResidentError`. `parse_hierarchy` and everything above `_describe()` (transient-empty retry,
+  `_settle`, `_resolve`, actuation) are unchanged, and the default (no fetch) keeps today's
+  dump-every-read behavior exactly — so no box is ticked yet. The `adb forward` builder and the real
+  HTTP transport factory are deferred to PR-C, where they stop being dead code.
 
 ## References
 

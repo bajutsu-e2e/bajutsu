@@ -7,6 +7,7 @@ over an injected `run`, no device needed (BE-0007 Unit 7, fast gate).
 
 from __future__ import annotations
 
+import logging
 import math
 from collections.abc import Callable
 from pathlib import Path
@@ -15,7 +16,7 @@ import pytest
 
 from bajutsu import adb, intervals
 from bajutsu.drivers import base
-from bajutsu.drivers.adb import AdbDriver, parse_hierarchy
+from bajutsu.drivers.adb import AdbDriver, AdbResidentError, parse_hierarchy
 
 # A realistic dump: a Views native id (package-prefixed) with visible text only, a Compose testTag
 # (verbatim, dotted) that mirrors its state value into content-desc à la the showcase (SPEC §2.1)
@@ -295,6 +296,77 @@ def test_query_returns_after_bounded_retries_when_empty_persists() -> None:
     calls[0] = 0
     assert driver.query() == []  # gives up and returns the empty tree
     assert calls[0] == 1 + AdbDriver._EMPTY_RETRIES  # initial + bounded retries
+
+
+def test_describe_uses_resident_fetch_when_configured() -> None:
+    # A configured fetch_hierarchy supplies the dump XML directly; the driver parses it exactly as it
+    # parses `uiautomator dump` output — same wire format, only the transport changes (BE-0245) — and
+    # never shells out to the dump subprocess.
+    def run(args: list[str]) -> str:
+        raise AssertionError(f"resident path must not shell out: {args}")
+
+    driver = AdbDriver("U", run=run, fetch_hierarchy=lambda: FIXTURE)
+    assert len(driver.query()) == FIXTURE_ELEMENT_COUNT
+
+
+def test_describe_falls_back_to_dump_on_resident_error() -> None:
+    # A resident-channel failure is not a test outcome: the read degrades to today's `uiautomator
+    # dump` path rather than failing, so a device where the resident server cannot answer is never
+    # left worse off than before.
+    calls: list[list[str]] = []
+
+    def run(args: list[str]) -> str:
+        calls.append(args)
+        return FIXTURE if "dump" in args else ""
+
+    def fetch() -> str:
+        raise AdbResidentError("channel down")
+
+    driver = AdbDriver("U", run=run, fetch_hierarchy=fetch)
+    assert len(driver.query()) == FIXTURE_ELEMENT_COUNT
+    assert any("dump" in c for c in calls)  # fell back to the dump subprocess
+
+
+def test_describe_uses_dump_when_no_fetch_configured() -> None:
+    # Regression net: with no resident fetch the driver behaves exactly as before — the read is the
+    # `uiautomator dump` subprocess, unchanged.
+    calls: list[list[str]] = []
+
+    def run(args: list[str]) -> str:
+        calls.append(args)
+        return FIXTURE if "dump" in args else ""
+
+    driver = AdbDriver("U", run=run)
+    assert len(driver.query()) == FIXTURE_ELEMENT_COUNT
+    assert any("dump" in c for c in calls)
+
+
+def test_query_transient_retry_rides_over_resident_fetch() -> None:
+    # The transient-empty retry sits above _describe, so it is transport-agnostic: a mid-transition
+    # null-root read over the resident channel is retried just as a dump one is.
+    seq = [FIXTURE, NULL_ROOT, FIXTURE]
+
+    def fetch() -> str:
+        return seq.pop(0) if len(seq) > 1 else seq[0]
+
+    driver = AdbDriver("U", run=lambda a: "", fetch_hierarchy=fetch)
+    driver._EMPTY_BACKOFF_S = 0  # no real sleeping in the test
+
+    assert len(driver.query()) == FIXTURE_ELEMENT_COUNT  # baseline: _max_seen becomes 4
+    els = driver.query()  # hits the null-root over the resident channel then recovers
+    assert len(els) == FIXTURE_ELEMENT_COUNT
+
+
+def test_resident_fallback_logs_warning(caplog: pytest.LogCaptureFixture) -> None:
+    # The fallback is loud (determinism first): a resident-channel failure is logged so a silently
+    # degraded, slower read is visible rather than hidden.
+    def fetch() -> str:
+        raise AdbResidentError("channel down")
+
+    driver = AdbDriver("U", run=lambda a: FIXTURE, fetch_hierarchy=fetch)
+    with caplog.at_level(logging.WARNING):
+        driver.query()
+    assert any("resident" in r.message.lower() for r in caplog.records)
 
 
 def test_wait_for_is_single_shot() -> None:
