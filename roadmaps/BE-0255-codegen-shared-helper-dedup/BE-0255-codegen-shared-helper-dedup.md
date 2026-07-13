@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-codegen-shared-helper-dedup-ja.md)
+**English** · [日本語](BE-0255-codegen-shared-helper-dedup-ja.md)
 
-# BE-XXXX — Deduplicate codegen identifier and regex helpers into codegen_common
+# BE-0255 — Deduplicate codegen identifier and regex helpers into codegen_common
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-codegen-shared-helper-dedup.md) |
+| Proposal | [BE-0255](BE-0255-codegen-shared-helper-dedup.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0255") |
 | Topic | Codebase quality & technical debt |
 <!-- /BE-METADATA -->
 

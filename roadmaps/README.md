@@ -587,6 +587,7 @@ Running a scenario on a hosted device farm instead of a local Simulator, emulato
 | [BE-0252](BE-0252-config-package-split/BE-0252-config-package-split.md) | Split config into a package and group Effective into sub-records | Proposal |
 | [BE-0253](BE-0253-serve-route-registry-unification/BE-0253-serve-route-registry-unification.md) | Unify the serve dual-backend route tables behind a declarative registry | Proposal |
 | [BE-0254](BE-0254-coordinate-tree-driver-base/BE-0254-coordinate-tree-driver-base.md) | Extract a shared CoordinateTreeDriver base for idb and adb | Proposal |
+| [BE-0255](BE-0255-codegen-shared-helper-dedup/BE-0255-codegen-shared-helper-dedup.md) | Deduplicate codegen identifier and regex helpers into codegen_common | Proposal |
 <!-- /GENERATED:proposals-quality-debt -->
 
 ## Deferred

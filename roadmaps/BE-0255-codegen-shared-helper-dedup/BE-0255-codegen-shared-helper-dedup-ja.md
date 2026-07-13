@@ -1,14 +1,14 @@
-[English](BE-XXXX-codegen-shared-helper-dedup.md) · **日本語**
+[English](BE-0255-codegen-shared-helper-dedup.md) · **日本語**
 
-# BE-XXXX — codegen の識別子と正規表現のヘルパーを codegen_common に集約する
+# BE-0255 — codegen の識別子と正規表現のヘルパーを codegen_common に集約する
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
 |---|---|
-| 提案 | [BE-XXXX](BE-XXXX-codegen-shared-helper-dedup-ja.md) |
+| 提案 | [BE-0255](BE-0255-codegen-shared-helper-dedup-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **提案** |
-| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0255") |
 | トピック | コードベース品質・技術的負債 |
 <!-- /BE-METADATA -->
 
