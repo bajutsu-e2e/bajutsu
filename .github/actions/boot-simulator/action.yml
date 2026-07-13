@@ -6,7 +6,8 @@ description: >-
   service) to boot the device, so the caller can run other work concurrently and wait for
   "booted" itself before actuating. Prefers an already-booted device, then a pre-installed
   available iPhone (guaranteed compatible with the runner's Xcode); falls back to creating one
-  with simctl's default runtime. Shared by the on-device jobs so the boot logic lives in one place.
+  with simctl's default runtime. Set `device-type` to pin one exact model (the pixel-VRT lane's
+  baseline is geometry-specific). Shared by the on-device jobs so the boot logic lives in one place.
 
 inputs:
   wait:
@@ -15,6 +16,17 @@ inputs:
       with later steps — the caller must then wait for "booted" itself before actuating.
     required: false
     default: "true"
+  device-type:
+    description: >-
+      Pin the Simulator to one exact device type by its simctl name (e.g. 'iPhone 17'). When set,
+      an already-booted device is reused only if it matches, and an available device of that type
+      is booted (created if none exists) — never "whichever iPhone is first". A pixel VRT baseline
+      is geometry-specific, so an unpinned model would drift the compare for reasons unrelated to
+      any UI change. Empty (default): any pre-installed iPhone, the geometry-agnostic choice the
+      element-tree lanes want. A pin absent from the runner's Xcode fails loudly (a clear signal to
+      update the pin or re-record the baseline) rather than silently drifting.
+    required: false
+    default: ""
 
 outputs:
   udid:
@@ -31,21 +43,40 @@ runs:
       # before parsing (the GitHub Actions ${{ }} injection pattern). See BE-0123.
       env:
         WAIT: ${{ inputs.wait }}
+        DEVICE_TYPE: ${{ inputs.device-type }}
       run: |
         set -euo pipefail
-        # Reuse a device that is already booted (zero boot cost) before booting a fresh one.
-        udid=$(xcrun simctl list devices booted -j | jq -r '[.devices | to_entries[] | .value[] | select(.name|startswith("iPhone")) | .udid] | first // empty')
+        # Reuse a device that is already booted (zero boot cost) before booting a fresh one. With a
+        # pinned device-type, reuse only a booted device of that exact model; unpinned, any iPhone.
+        if [ -n "$DEVICE_TYPE" ]; then
+          udid=$(xcrun simctl list devices booted -j | jq -r --arg d "$DEVICE_TYPE" '[.devices | to_entries[] | .value[] | select(.name==$d) | .udid] | first // empty')
+        else
+          udid=$(xcrun simctl list devices booted -j | jq -r '[.devices | to_entries[] | .value[] | select(.name|startswith("iPhone")) | .udid] | first // empty')
+        fi
         if [ -n "$udid" ]; then
           echo "Reusing already-booted simulator $udid"
           echo "udid=$udid" >> "$GITHUB_OUTPUT"
           exit 0
         fi
-        # Pairing the newest device type with the newest runtime ourselves can hit
-        # "Incompatible device"; a pre-installed available iPhone avoids that.
-        udid=$(xcrun simctl list devices available -j | jq -r '[.devices | to_entries[] | select(.key|test("iOS")) | .value[] | select(.name|startswith("iPhone")) | .udid] | first // empty')
-        if [ -z "$udid" ]; then
-          devtype=$(xcrun simctl list devicetypes -j | jq -r '[.devicetypes[] | select(.productFamily=="iPhone") | .identifier] | last')
-          udid=$(xcrun simctl create ci-iphone "$devtype")
+        if [ -n "$DEVICE_TYPE" ]; then
+          # Pinned model (pixel VRT): boot an available device of this exact type, else create one.
+          udid=$(xcrun simctl list devices available -j | jq -r --arg d "$DEVICE_TYPE" '[.devices | to_entries[] | select(.key|test("iOS")) | .value[] | select(.name==$d) | .udid] | first // empty')
+          if [ -z "$udid" ]; then
+            devtype=$(xcrun simctl list devicetypes -j | jq -r --arg d "$DEVICE_TYPE" '[.devicetypes[] | select(.name==$d) | .identifier] | first // empty')
+            if [ -z "$devtype" ]; then
+              echo "::error::Simulator device type '$DEVICE_TYPE' is not available on this runner — its Xcode ships a different set. Update the device-type pin in the calling workflow or re-record the baseline." >&2
+              exit 1
+            fi
+            udid=$(xcrun simctl create "$DEVICE_TYPE" "$devtype")
+          fi
+        else
+          # Pairing the newest device type with the newest runtime ourselves can hit
+          # "Incompatible device"; a pre-installed available iPhone avoids that.
+          udid=$(xcrun simctl list devices available -j | jq -r '[.devices | to_entries[] | select(.key|test("iOS")) | .value[] | select(.name|startswith("iPhone")) | .udid] | first // empty')
+          if [ -z "$udid" ]; then
+            devtype=$(xcrun simctl list devicetypes -j | jq -r '[.devicetypes[] | select(.productFamily=="iPhone") | .identifier] | last')
+            udid=$(xcrun simctl create ci-iphone "$devtype")
+          fi
         fi
         echo "Booting simulator $udid"
         # Fail loudly: the device was Shutdown (already-booted ones returned above), so a boot

@@ -1,0 +1,27 @@
+# Visual regression (VRT) assertion, iOS idb path — the committed pixel-snapshot twin of the golden
+# element-tree check (golden/golden.yaml on idb) and of visual_android.yaml, giving iOS the same
+# committed VRT coverage Android has. Scope is the launch (Stable) tab only: it is the tab the app
+# launches on, so idb reaches it with no tab-bar navigation (the multi-screen local VRT demo,
+# ../visual.yaml, uses XCUITest for the other tabs and keeps its baselines local/gitignored).
+#
+# Unlike the element-tree golden, a pixel baseline is host-specific — the Simulator's renderer varies
+# by Xcode / device / OS — so this baseline is committed under baselines_ios/ and is recorded for the
+# ios-e2e.yml lane's Simulator (see that dir's README). `SHOWCASE_UITEST=1` disables animations so
+# the screen settles deterministically; `exclude` masks the volatile chrome before the compare — the
+# top status bar (clock / battery) and the bottom floating tab bar, whose iOS 26 translucent
+# "Liquid Glass" material samples the content behind it and renders a few grey-levels off run-to-run.
+# `threshold` allows minor renderer variance. Regenerate with `make -C demos/showcase e2e-visual-approve`.
+- name: visual stable catalog (ios)
+  tags: [visual, lists]
+  preconditions:
+    launchEnv: { SHOWCASE_UITEST: "1" }
+  steps:
+    - wait: { for: { id: stable.row.1 }, timeout: 10 }
+      capture: [video]
+  expect:
+    - visual:
+        baseline: stable.png
+        threshold: 4.0
+        exclude:
+          - { x: 0, y: 0, w: 1206, h: 140 }
+          - { x: 0, y: 2300, w: 1206, h: 322 }

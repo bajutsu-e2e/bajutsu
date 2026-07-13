@@ -5,7 +5,8 @@
 	swiftui-gen swiftui-build swiftui-noax-build \
 	uikit-gen uikit-build uikit-noax-build runner-build \
 	run-swiftui run-uikit doctor record ui-test \
-	vrt vrt-approve vrt-swiftui vrt-swiftui-approve vrt-uikit vrt-uikit-approve clean
+	vrt vrt-approve vrt-swiftui vrt-swiftui-approve vrt-uikit vrt-uikit-approve \
+	e2e-visual e2e-visual-approve clean
 
 ROOT   := $(abspath $(dir $(lastword $(MAKEFILE_LIST)))/../..)
 HERE   := $(ROOT)/demos/showcase
@@ -113,6 +114,29 @@ vrt-uikit: uikit-build runner-build
 		--udid $(SIM) --backend ios --config $(CONFIG) --no-erase --baselines $(BASELINES_UIKIT)
 vrt-uikit-approve: vrt-uikit
 	cd $(ROOT) && uv run bajutsu approve --baselines $(BASELINES_UIKIT)
+
+# Committed iOS pixel VRT (parity with android/Makefile's e2e-visual + baselines_android). Unlike the
+# `vrt` demo above — every screen, XCUITest, local gitignored baselines — this is one screen (the
+# Stable catalog on the launch tab, so idb needs no tab navigation), compared to a committed baseline
+# under scenarios/visual/baselines_ios/. It runs on the path-gated, non-required ios-e2e.yml lane (the
+# iOS twin of android-e2e.yml's e2e-visual): a pixel baseline is host-specific (Simulator renderer
+# varies by Xcode / device / OS), so drift surfaces on that lane rather than blocking PRs on the
+# required gate. `e2e-visual-approve` re-records the baseline from the latest run (do this on the
+# lane's Simulator if it drifts). Needs the `visual` extra (Pillow); status bar + Liquid Glass tab bar
+# are masked in the scenario.
+BASELINES_IOS_VRT = $(HERE)/scenarios/visual/baselines_ios
+e2e-visual: swiftui-build
+	cd $(ROOT) && uv run --extra idb --extra visual bajutsu run \
+		--scenario demos/showcase/scenarios/visual/visual_ios.yaml \
+		--baselines $(BASELINES_IOS_VRT) \
+		--target showcase-swiftui --udid $(SIM) --backend idb --config $(CONFIG)
+# Run the VRT first so `approve` (which promotes the *latest* run under runs/) always sees this
+# scenario's run, never some other target's leftover. The `-` ignores its expected non-zero exit
+# when the baseline is missing/drifted — that failure is exactly what we are approving away, the same
+# shape as `vrt-swiftui-approve` above. A recursive `$(MAKE)` avoids duplicating the run recipe.
+e2e-visual-approve:
+	-$(MAKE) --no-print-directory e2e-visual
+	cd $(ROOT) && uv run --extra visual bajutsu approve --baselines $(BASELINES_IOS_VRT)
 
 clean:
 	rm -rf $(SWIFTUI)/build $(UIKIT)/build \
