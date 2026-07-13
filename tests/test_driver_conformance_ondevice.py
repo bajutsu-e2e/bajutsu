@@ -116,7 +116,12 @@ class _OnDeviceHarness:
 
 
 def _effective() -> Effective:
-    return resolve(load_config(_CONFIG_PATH.read_text()), _TARGET)
+    # A raw resolve() bypasses `_load_effective_with_source`, so the config's relative appPath /
+    # testRunner would stay config-relative and miss where they point from here. Rebase against the
+    # config's own directory (unconfined, like a local config, BE-XXXX) so launch_driver sees the
+    # same absolute paths the CLI would.
+    eff = resolve(load_config(_CONFIG_PATH.read_text()), _TARGET)
+    return eff.rebased(_CONFIG_PATH.resolve().parent, confine=False)
 
 
 def _spec_path(eff: Effective) -> Path:

@@ -78,7 +78,7 @@ An undefined target raises `KeyError` (the CLI exits with code 2).
 | `reserved_namespaces` | defaults | informational (doctor scores against the app's `idNamespaces` only) |
 | `mock_server` | app | ⚠️ schema only · not wired |
 | `setup` | app | default reusable prelude (a scenario whose steps run before each scenario's own) |
-| `scenarios` | app | this app's scenarios dir — `run --target` loads every `*.yaml` here; `record` writes new ones here. Relative to the run's cwd. `run --scenario` / `record --out` override it |
+| `scenarios` | app | this app's scenarios dir — `run --target` loads every `*.yaml` here; `record` writes new ones here. Relative to the config file's own directory (like `appPath` / `baselines` / `schemas` / `goldens`), so the config behaves the same wherever `bajutsu` runs from (BE-XXXX). `run --scenario` / `record --out` override it |
 | `capture` | defaults | the default evidence ([the note in evidence](evidence.md#three-ways-to-request-evidence)) |
 | `redact` | defaults ∪ app | merged (below) |
 | `secrets` | defaults ∪ app | env var names declaring `${secrets.X}`; values are masked in evidence ([evidence](evidence.md#masking-redact)) |
@@ -344,9 +344,12 @@ git+https://<host>/<owner>/<repo>.git[@<ref>][#<path>]          # general form (
   scheme is a **local path**, exactly as before.
 - Bajutsu resolves the ref to an immutable commit SHA, materializes that subtree into a
   content-addressed cache (`~/.cache/bajutsu/gitsrc/<host>/<owner>/<repo>/<sha>/`), and loads the
-  config from it. Because the config's `scenarios` / `baselines` / `schemas` / `appPath` are relative
-  paths, they resolve **against the checkout root**, not the caller's working directory — so the whole
-  tree comes along, not just the YAML.
+  config from it. The config's relative `scenarios` / `baselines` / `schemas` / `appPath` resolve
+  **against the checkout root** — the same "relative to where the config lives" rule a local config
+  follows against its own directory, except the anchor is the fetched tree's root — so the whole tree
+  comes along, not just the YAML. A fetched config is untrusted, so its paths are also **confined** to
+  the checkout: an absolute or `../`-escaping value is refused. A local file, being operator-trusted,
+  resolves against the config file's own directory and is *not* confined (it may point at a sibling).
 - A fresh checkout holds **no built binary**, and there is no local "first" in which to build one, so a
   Git-sourced `run` **builds the app on demand**: when `appPath` is set but missing, it runs the
   config's `build` command from the **checkout root** (where `build`'s relative parts, e.g.

@@ -431,6 +431,10 @@ def bind_config(state: ServeState, raw: str) -> tuple[Any, int]:
         return {"error": f"invalid config: {e}"}, 400
     state.release_upload()  # a fresh config replaces any bound bundle and resets cwd to serve's launch dir
     state.config = target
+    # A local config's relative paths resolve from its own directory, not serve's launch dir, so the
+    # bound config behaves the same wherever serve was started (BE-XXXX) — mirroring the Git/upload
+    # binds below. Unconfined: an operator-trusted local file may point at a sibling (BE-0121).
+    state.cwd = target.resolve().parent
     state.config_provenance = None  # a local file has no Git commit provenance to show
     state.git_config_from_api = False  # a local file config is operator-trusted (BE-0121)
     return {"ok": True, "config": str(target), "targets": list_targets(target)}, 200

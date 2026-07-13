@@ -629,7 +629,8 @@ def _scenarios_dir_for(state: ServeState, target: str | None) -> Path | None:
 
     A configured dir is **relative to the config's base** — `state.cwd` — so a Git-sourced config
     (whose `cwd` is the checkout root) lists scenarios from the fetched tree, not serve's launch
-    directory. For a local config `state.cwd` is serve's launch dir, so this is unchanged (BE-0063)."""
+    directory. A local config's `cwd` is its own directory too, so its scenarios resolve from beside
+    the config file rather than from where serve was started (BE-0063, BE-XXXX)."""
     if state.scenarios_dir is not None:
         return state.scenarios_dir
     if state.config is None or not target:

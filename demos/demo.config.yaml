@@ -18,9 +18,10 @@ targets:
     # `${secrets.PASSWORD}` in the features tour resolves from the environment; its literal
     # value is masked in every run artifact.
     secrets: [PASSWORD]
-    # Built by `make -C demos/showcase swiftui-build`; path is relative to the repo root.
-    appPath: demos/showcase/ios/swiftui/build/dd/Build/Products/Debug-iphonesimulator/BajutsuShowcaseSwiftUI.app
+    # Built by `make -C demos/showcase swiftui-build`; path is relative to this config's directory
+    # (demos/), not the run's cwd (BE-XXXX).
+    appPath: showcase/ios/swiftui/build/dd/Build/Products/Debug-iphonesimulator/BajutsuShowcaseSwiftUI.app
     build: make -C demos/showcase swiftui-build
     # The canonical showcase scenarios; the menu's own tour/features scenarios live under the
     # non-globbed scenarios/menu/ subdir and are passed explicitly via --scenario.
-    scenarios: demos/showcase/scenarios
+    scenarios: showcase/scenarios

@@ -223,11 +223,12 @@ def _load_effective_with_source(
     except KeyError as e:
         typer.echo(str(e))
         raise typer.Exit(2) from None
-    # A Git-sourced config's relative paths are relative to the checked-out tree, not the caller's
-    # cwd — rebase them against the checkout root (local configs keep cwd-relative paths). A field
-    # that escapes the checkout (absolute / `..`) is a clean exit-2, not a traceback.
+    # A config's relative paths resolve against the file that declares them, not the caller's cwd, so
+    # the same config behaves the same wherever `bajutsu` runs from (BE-XXXX). A Git source rebases
+    # against its checkout root, confined (a fetched config is untrusted); a local file rebases against
+    # its own directory, unconfined (an operator-trusted local file may point at a sibling, BE-0121).
     if root is None:
-        return eff, source, None
+        return eff.rebased(cfg_path.resolve().parent, confine=False), source, None
     try:
         return eff.rebased(root), source, root
     except ValueError as e:
