@@ -1,0 +1,22 @@
+{
+  "projects": {
+    "default": [
+      {
+        "id": "3ef36588513c4c5e90cddd81d175f5eb",
+        "org_id": "default",
+        "name": "showcase.config",
+        "source": {
+          "kind": "file",
+          "locator": {
+            "path": "demos/showcase/showcase.config.yaml"
+          }
+        },
+        "created_at": "2026-07-13T00:54:14.433607+00:00"
+      }
+    ]
+  },
+  "active": {
+    "default": "showcase.config"
+  },
+  "run_ids": {}
+}

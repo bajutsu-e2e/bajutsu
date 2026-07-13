@@ -124,8 +124,11 @@ def test_start_screenrecord_records_device_side_then_pulls_on_stop(tmp_path: Pat
     assert interval.stop() == target
     assert proc.stopped_with == signal.SIGINT  # SIGINT finalizes the mp4
     assert proc.stopped_timeout == intervals._VIDEO_FINALIZE_TIMEOUT  # same generous flush window
-    # The recording is pulled off the device, then the device copy is removed — in that order.
+    # The device-side screenrecord's exit is awaited (so the moov atom is written), then the mp4 is
+    # pulled, then the device copy is removed — in that order. The fake `run` reports no pid, so the
+    # wait clears on its first poll.
     assert run_calls == [
+        adb.screenrecord_pids_cmd("SER"),
         adb.pull_cmd("SER", adb.VIDEO_DEVICE_PATH, str(target)),
         adb.rm_cmd("SER", adb.VIDEO_DEVICE_PATH),
     ]
@@ -151,6 +154,41 @@ def test_start_screenrecord_cleanup_failure_does_not_fail_stop(tmp_path: Path) -
     interval = intervals.start_screenrecord("SER", target, spawn=spawn, run=run)
     assert interval.stop() == target  # a failed cleanup is suppressed
     assert ran == ["pull", "rm"]  # the pull succeeded first; only the later cleanup failed
+
+
+def test_screenrecord_pids_cmd_tolerates_no_match() -> None:
+    from bajutsu import adb
+
+    # `|| true` keeps a no-match pgrep at exit 0 so the RunFn (check=True) doesn't raise; the poll
+    # reads the device-side process's presence from stdout, not the exit code.
+    cmd = adb.screenrecord_pids_cmd("SER")
+    assert cmd == ["adb", "-s", "SER", "shell", "pgrep -x screenrecord || true"]
+
+
+def test_start_screenrecord_waits_for_device_side_exit_before_pull(
+    tmp_path: Path, monkeypatch
+) -> None:
+    # The device-side screenrecord finalizes the moov atom after the local adb client returns; the
+    # transform must poll until it exits before pulling, else the pull races into a truncated mp4.
+    monkeypatch.setattr(intervals.time, "sleep", lambda _s: None)  # no real waiting in the test
+    proc = FakeProc()
+    order: list[str] = []
+    pid_replies = iter(["1234", "1234", ""])  # still recording, still recording, then gone
+
+    def spawn(argv: list[str], stdout_path: Path | None) -> FakeProc:
+        return proc
+
+    def run(argv: list[str]) -> str:
+        if "pgrep" in " ".join(argv):
+            order.append("poll")
+            return next(pid_replies)
+        order.append("pull" if "pull" in argv else "rm" if "rm" in argv else "other")
+        return ""
+
+    interval = intervals.start_screenrecord("SER", tmp_path / "scenario.mp4", spawn=spawn, run=run)
+    assert interval.stop() == tmp_path / "scenario.mp4"
+    # Polled until the pid list came back empty, and only then pulled (never before).
+    assert order == ["poll", "poll", "poll", "pull", "rm"]
 
 
 def test_start_screenrecord_pull_failure_surfaces(tmp_path: Path) -> None:

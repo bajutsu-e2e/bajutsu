@@ -19,6 +19,7 @@ import json
 import re
 import signal
 import subprocess
+import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -188,21 +189,48 @@ def start_device_log(
 # --- adb (Android) interval providers: the twins of the simctl starters above ---
 
 
+def _await_screenrecord_stopped(
+    serial: str, run: adb.RunFn, timeout: float = _VIDEO_FINALIZE_TIMEOUT, poll: float = 0.2
+) -> None:
+    """Wait until the device-side `screenrecord` has exited, before its mp4 is pulled.
+
+    On the stop signal the local `adb shell` client returns as soon as the connection closes, but the
+    device-side `screenrecord` is still writing the mp4's `moov` atom. Pulling then races that write
+    and yields a truncated, moov-less (unplayable) file — the Android recording instability. Poll to a
+    bounded deadline (a condition wait on the process's exit, not a fixed sleep); if the probe can't
+    run or never clears, proceed anyway so it can never hang the run — the pull stays best-effort.
+    """
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        try:
+            if not run(adb.screenrecord_pids_cmd(serial)).strip():
+                return
+        except (subprocess.CalledProcessError, OSError):
+            return  # can't probe the device — don't block the pull on it
+        time.sleep(poll)
+
+
 def start_screenrecord(
     serial: str, path: Path, spawn: Spawn = _spawn, run: adb.RunFn = adb._real_run
 ) -> Interval:
     """Record the Android screen; stop() (SIGINT) finalizes the mp4, then pulls it off the device.
 
     `screenrecord` writes device-side (it cannot stream to a host file), so recording is a running
-    process plus a post-stop transform: pull the finalized mp4 to `path`, then remove it device-side.
-    SIGINT (not a kill) lets `screenrecord` flush a complete mp4, the same reason simctl recordVideo
-    finalizes on SIGINT — and, like it, the stop waits `_VIDEO_FINALIZE_TIMEOUT` for that flush before
-    any hard kill, so a slow device-side write is not cut off into a truncated (moov-less) mp4.
+    process plus a post-stop transform: wait for the device-side finalize, pull the mp4 to `path`,
+    then remove it device-side. SIGINT (not a kill) lets `screenrecord` flush a complete mp4, the same
+    reason simctl recordVideo finalizes on SIGINT. Two waits guard the finalize: `stop()` gives the
+    *local* `adb shell` client `_VIDEO_FINALIZE_TIMEOUT` before any hard kill, then the transform waits
+    for the *device-side* `screenrecord` to exit (`_await_screenrecord_stopped`) — the local client
+    returns before the device finishes writing the moov atom, so pulling without that wait races the
+    finalize into a truncated, unplayable file.
     """
     device_path = adb.VIDEO_DEVICE_PATH
     proc = spawn(adb.screenrecord_cmd(serial, device_path), None)
 
     def transform(target: Path) -> Path:
+        # The local `adb shell` has returned, but the device-side screenrecord is still finalizing;
+        # wait for it to exit so the pull gets a complete mp4 rather than a moov-less truncation.
+        _await_screenrecord_stopped(serial, run)
         # Let a failed pull surface (like the iOS video provider): swallowing it would record a video
         # artifact path with no file behind it, turning a real problem into a silent one.
         run(adb.pull_cmd(serial, device_path, str(target)))
