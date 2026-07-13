@@ -93,6 +93,11 @@ class RunRecord:
     scenario_hash: str | None = None
     tool_version: str | None = None
     git_revision: str | None = None
+    # Soft-delete marker (BE-0239): when set, the run is trashed — hidden from `list_runs` unless
+    # `include_deleted`. None for a live run. `record_run` never writes these (a status update must
+    # not resurrect or re-trash a run); only `soft_delete_run`/`restore_run` touch them.
+    deleted_at: datetime | None = None
+    deleted_by: str | None = None
 
 
 @runtime_checkable
@@ -106,11 +111,38 @@ class Repository(Protocol):
         """The run with *run_id*, or None if there is none."""
 
     def list_runs(
-        self, *, org_id: str, project_id: str | None = None, limit: int | None = 50
+        self,
+        *,
+        org_id: str,
+        project_id: str | None = None,
+        limit: int | None = 50,
+        include_deleted: bool = False,
     ) -> list[RunRecord]:
         """An org's runs, newest first, capped at *limit*; ``None`` means unbounded (the per-project
         `ProjectRegistry.run_ids` partition, which promises *all* of a project's runs). Only
-        *project_id*'s when given (BE-0225)."""
+        *project_id*'s when given (BE-0225). Soft-deleted runs are excluded unless *include_deleted*
+        (BE-0239)."""
+
+    def soft_delete_run(
+        self, run_id: str, *, org_id: str, deleted_by: str | None, at: datetime
+    ) -> bool:
+        """Mark the org's run *run_id* trashed at *at* by *deleted_by* (BE-0239). True when a live
+        run was trashed, False when there was none or it was already trashed (org-scoped, so another
+        org's run is untouched — a not-found)."""
+
+    def restore_run(self, run_id: str, *, org_id: str) -> bool:
+        """Clear the org's run *run_id*'s soft-delete marker (BE-0239). True when a trashed run was
+        restored, False otherwise."""
+
+    def purge_run(self, run_id: str, *, org_id: str) -> bool:
+        """Delete the org's run *run_id* row outright (BE-0239). True when a row was removed. The
+        audit-log entry keyed on the run id survives, so "who purged run X, when" stays answerable
+        without this row."""
+
+    def list_deleted_runs(self, *, org_id: str, before: datetime) -> list[RunRecord]:
+        """The org's soft-deleted runs trashed at or before *before* — the retention sweep's DB-side
+        eligibility scan (BE-0239). Reaches a run trashed only in the DB (soft-deleted before any
+        evidence upload, so it never got a store tombstone) that the store-side scan misses."""
 
     def create_project(self, project: ProjectRecord) -> None:
         """Register *project*, or update it in place when its id already exists (BE-0225).
@@ -242,6 +274,8 @@ def _to_record(row: Run) -> RunRecord:
         scenario_hash=row.scenario_hash,
         tool_version=row.tool_version,
         git_revision=row.git_revision,
+        deleted_at=row.deleted_at,
+        deleted_by=row.deleted_by,
     )
 
 
@@ -295,7 +329,12 @@ class SqlRepository:
             return _to_record(row) if row is not None else None
 
     def list_runs(
-        self, *, org_id: str, project_id: str | None = None, limit: int | None = 50
+        self,
+        *,
+        org_id: str,
+        project_id: str | None = None,
+        limit: int | None = 50,
+        include_deleted: bool = False,
     ) -> list[RunRecord]:
         from sqlalchemy import select
         from sqlalchemy.orm import Session
@@ -305,7 +344,66 @@ class SqlRepository:
         stmt = select(Run).where(Run.org_id == org_id)
         if project_id is not None:
             stmt = stmt.where(Run.project_id == project_id)
+        if not include_deleted:
+            stmt = stmt.where(
+                Run.deleted_at.is_(None)
+            )  # trashed runs drop out of history (BE-0239)
         stmt = stmt.order_by(Run.created_at.desc()).limit(limit)
+        with Session(self._engine) as session:
+            return [_to_record(row) for row in session.scalars(stmt)]
+
+    def soft_delete_run(
+        self, run_id: str, *, org_id: str, deleted_by: str | None, at: datetime
+    ) -> bool:
+        from sqlalchemy.orm import Session
+
+        from bajutsu.serve.server.models import Run
+
+        # Org-scoped and "was live": a cross-org id or an already-trashed run is a clean not-found
+        # (False). The in-place update mirrors `upsert_user`, so no ambiguous `rowcount` is needed.
+        with Session(self._engine) as session:
+            run = session.get(Run, run_id)
+            if run is None or run.org_id != org_id or run.deleted_at is not None:
+                return False
+            run.deleted_at, run.deleted_by = at, deleted_by
+            session.commit()
+            return True
+
+    def restore_run(self, run_id: str, *, org_id: str) -> bool:
+        from sqlalchemy.orm import Session
+
+        from bajutsu.serve.server.models import Run
+
+        with Session(self._engine) as session:
+            run = session.get(Run, run_id)
+            if run is None or run.org_id != org_id or run.deleted_at is None:
+                return False
+            run.deleted_at, run.deleted_by = None, None
+            session.commit()
+            return True
+
+    def purge_run(self, run_id: str, *, org_id: str) -> bool:
+        from sqlalchemy.orm import Session
+
+        from bajutsu.serve.server.models import Run
+
+        with Session(self._engine) as session:
+            run = session.get(Run, run_id)
+            if run is None or run.org_id != org_id:
+                return False
+            session.delete(run)
+            session.commit()
+            return True
+
+    def list_deleted_runs(self, *, org_id: str, before: datetime) -> list[RunRecord]:
+        from sqlalchemy import select
+        from sqlalchemy.orm import Session
+
+        from bajutsu.serve.server.models import Run
+
+        stmt = select(Run).where(
+            Run.org_id == org_id, Run.deleted_at.is_not(None), Run.deleted_at <= before
+        )
         with Session(self._engine) as session:
             return [_to_record(row) for row in session.scalars(stmt)]
 

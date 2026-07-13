@@ -31,6 +31,7 @@ from bajutsu.serve.helpers import (
 )
 from bajutsu.serve.operations._common import _resolve_org_or_forbid
 from bajutsu.serve.operations.config import FS_DISABLED_ERROR
+from bajutsu.serve.operations.runs import sweep_expired_trash
 from bajutsu.serve.orgs import targets_for_org
 from bajutsu.serve.state import ServeState
 
@@ -108,6 +109,10 @@ def simulators_payload(state: ServeState) -> tuple[Any, int]:
 
 
 def runs_payload(state: ServeState, *, actor: str | None = None) -> tuple[Any, int]:
+    # Opportunistically purge trash past the retention window before listing (BE-0239) — the lazy
+    # sweep, on the history read rather than a background daemon (SqlSessionStore's expiry-on-read
+    # precedent). A no-op when retention is disabled; scoped to the actor's org.
+    sweep_expired_trash(state, actor=actor)
     # With a system of record (server backend), the history is the actor's org's recorded runs —
     # durable and org-scoped (BE-0015 7c-4). The stored summary mirrors the artifact entry, so the
     # UI shape is identical. Without one (local / stdlib serve), list straight from the artifact
@@ -130,6 +135,7 @@ def crawl_runs_payload(state: ServeState, *, actor: str | None = None) -> tuple[
     scan, today's behavior), while a server backend reads the org's object store, so the history is
     tenant-scoped by construction — no run id from another org is reachable.
     """
+    sweep_expired_trash(state, actor=actor)  # lazy retention purge before listing (BE-0239)
     return state.for_org(state.org_of(actor)).artifacts.list_crawl_runs(), 200
 
 

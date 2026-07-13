@@ -11,13 +11,26 @@ touching the filesystem at all.
 from __future__ import annotations
 
 import mimetypes
+import shutil
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Protocol
 
 from bajutsu.report.archive import archive_run_dir
 from bajutsu.report.load import rerender_html
 from bajutsu.serve.helpers import list_crawl_runs, list_runs, valid_run_id
+
+# Where a soft-deleted run's tree is parked, relative to ``runs_dir`` (BE-0239). A single hidden
+# segment under ``runs_dir`` keeps trashed runs inside the same path-containment guarantee as live
+# ones, and out of `list_runs`/`list_crawl_runs` (which scan only ``runs_dir``'s direct children).
+_TRASH = ".trash"
+# A deletion-time marker written inside a trashed run's dir at soft-delete time — the retention
+# clock's start, read back by `list_trashed_runs` (BE-0239). Mirrors `ObjectStorageArtifactStore`'s
+# ``.deleted`` tombstone. It replaces the directory's mtime, which a rename into ``.trash/`` does NOT
+# update (mtime reflects the last *content* change — when the run wrote its files, not when it was
+# trashed), so a long-finished run would otherwise read as instantly past the retention window.
+_DELETED_MARKER = ".deleted"
 
 
 @dataclass
@@ -57,12 +70,31 @@ class ArtifactStore(Protocol):
         """A zip of the whole run *run_id* (rooted under `<run_id>/`), or None if it's missing
         or *run_id* escapes the run tree — the download/export half of the report (BE-0060)."""
 
+    def soft_delete_run(self, run_id: str) -> bool:
+        """Move *run_id* to the trash so it drops out of the history lists but stays restorable
+        within the retention window (BE-0239). True when a live run was trashed, False when there
+        was none (a bad/absent id). Not destructive — `purge_run` is the irreversible step."""
+
+    def restore_run(self, run_id: str) -> bool:
+        """Undo `soft_delete_run` for *run_id*, returning it to the history lists (BE-0239). True
+        when a trashed run was restored, False when none was trashed (or a live run already holds
+        the id)."""
+
+    def purge_run(self, run_id: str) -> bool:
+        """Permanently remove *run_id*'s bytes — trashed or live (the ``?purge=true`` immediate
+        path) — the one irreversible step (BE-0239). True when anything was removed."""
+
+    def list_trashed_runs(self) -> list[dict[str, Any]]:
+        """Soft-deleted runs as ``{"id", "deletedAt"}`` (``deletedAt`` an ISO-8601 UTC string, or
+        None if unknown), for the retention sweep (BE-0239). Newest-deleted first."""
+
 
 class LocalArtifactStore:
     """Reads run artifacts from the filesystem, confined to ``runs_dir`` — the default for serve."""
 
     def __init__(self, runs_dir: Path) -> None:
         self._runs_dir = runs_dir
+        self._trash_dir = runs_dir / _TRASH
 
     def _confined(self, rel: str) -> Path | None:
         """Resolve *rel* under ``runs_dir`` to an existing file, or None if it escapes / is absent."""
@@ -78,7 +110,13 @@ class LocalArtifactStore:
         """Resolve *rel* under ``runs_dir``, or None if it escapes the tree (containment in one place)."""
         base = self._runs_dir.resolve()
         target = (self._runs_dir / rel).resolve()
-        return target if base in target.parents else None
+        if base not in target.parents:
+            return None
+        # A trashed run stays restorable but must not be reachable through `/runs/<rel>`: keep the
+        # ``.trash/`` subtree out of every read path (get / archive / render), so soft-delete really
+        # removes the run from view, not just from the listings (BE-0239).
+        trash = self._trash_dir.resolve()
+        return None if target == trash or trash in target.parents else target
 
     def open_bytes(self, rel: str) -> bytes | None:
         target = self._confined(rel)
@@ -121,3 +159,70 @@ class LocalArtifactStore:
         if target is None:  # missing or escapes runs_dir
             return None
         return Artifact(content_type="application/zip", body=archive_run_dir(target))
+
+    def soft_delete_run(self, run_id: str) -> bool:
+        if not valid_run_id(run_id):  # a single safe segment; ``.trash`` itself never qualifies
+            return False
+        live = self._confined_dir(run_id)
+        if live is None:  # no such live run (already trashed, or a bad id)
+            return False
+        self._trash_dir.mkdir(parents=True, exist_ok=True)
+        trashed = self._trash_dir / run_id
+        if trashed.exists():
+            # A prior trashed copy under this id (restored, re-run, re-deleted): the newest delete
+            # wins, so drop the stale copy rather than letting `move` nest it inside the old dir.
+            shutil.rmtree(trashed, ignore_errors=True)
+        shutil.move(str(live), str(trashed))
+        # Stamp the real deletion time so the retention sweep doesn't key off the dir's mtime, which
+        # a rename doesn't touch (see `_DELETED_MARKER`).
+        (trashed / _DELETED_MARKER).write_text(datetime.now(UTC).isoformat(), encoding="utf-8")
+        return True
+
+    def restore_run(self, run_id: str) -> bool:
+        if not valid_run_id(run_id):
+            return False
+        trashed = self._trash_dir / run_id
+        if not trashed.is_dir():
+            return False
+        live = self._runs_dir / run_id
+        if live.exists():  # a live run already holds the id — don't clobber it
+            return False
+        shutil.move(str(trashed), str(live))
+        # The deletion marker travelled back inside the tree; drop it so a restored run is pristine
+        # (and never serves a stray ``.deleted`` file).
+        (live / _DELETED_MARKER).unlink(missing_ok=True)
+        return True
+
+    def purge_run(self, run_id: str) -> bool:
+        if not valid_run_id(run_id):
+            return False
+        # Remove whichever copies exist: the ``?purge=true`` path purges a live run outright, while
+        # the retention sweep purges an already-trashed one — either way the bytes are gone.
+        removed = False
+        for path in (self._trash_dir / run_id, self._runs_dir / run_id):
+            if path.is_dir():
+                shutil.rmtree(path, ignore_errors=True)
+                removed = True
+        return removed
+
+    def list_trashed_runs(self) -> list[dict[str, Any]]:
+        if not self._trash_dir.is_dir():
+            return []
+        out: list[dict[str, Any]] = []
+        for d in self._trash_dir.iterdir():
+            if not (d.is_dir() and valid_run_id(d.name)):
+                continue
+            out.append({"id": d.name, "deletedAt": self._deleted_at(d)})
+        out.sort(key=lambda r: r["deletedAt"], reverse=True)
+        return out
+
+    def _deleted_at(self, trashed: Path) -> str:
+        """The run's soft-delete time (ISO-8601 UTC): the `_DELETED_MARKER` written at delete time,
+        or the dir mtime as a fallback for a run trashed by a serve that predates the marker."""
+        try:
+            stamp = (trashed / _DELETED_MARKER).read_text(encoding="utf-8").strip()
+            if stamp:
+                return stamp
+        except OSError:
+            pass  # marker missing/unreadable (older serve, or a manual trash) — use the mtime below
+        return datetime.fromtimestamp(trashed.stat().st_mtime, tz=UTC).isoformat()

@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0239](BE-0239-deletable-runs-serve.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0239") |
+| Implementing PR | [#985](https://github.com/bajutsu-e2e/bajutsu/pull/985) _(backend; Web UI to follow)_ |
 | Topic | Hosting the web UI (cloud / self-hosted) |
 <!-- /BE-METADATA -->
 
@@ -167,14 +168,27 @@ PR.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] `ArtifactStore.soft_delete_run` / `restore_run` / `purge_run` on `LocalArtifactStore` (trash
+- [x] `ArtifactStore.soft_delete_run` / `restore_run` / `purge_run` on `LocalArtifactStore` (trash
       directory) and `ObjectStorageArtifactStore` (tombstone object)
-- [ ] Soft-delete column + filtering on the hosted `Repository.list_runs` / `list_crawl_runs`
-- [ ] Retention window config + lazy purge sweep
-- [ ] `DELETE`/`restore`/bulk-delete API routes, CSRF + RBAC (editor soft-delete/restore, admin
+- [x] Soft-delete column + filtering on the hosted `Repository.list_runs` (crawl runs are
+      artifact-store-driven on both backends, so no separate DB list to filter)
+- [x] Retention window config + lazy purge sweep
+- [x] `DELETE`/`restore`/bulk-delete API routes, CSRF + RBAC (editor soft-delete/restore, admin
       purge) + org scoping
 - [ ] Web UI: per-row delete, bulk-select, confirm dialogs, Trash view with restore/purge-forever
-- [ ] Audit-log entries + `oplog` events for soft-delete/restore/purge
+      *(follow-up PR)*
+- [x] Audit-log entries + `oplog` events for soft-delete/restore/purge
+
+**Log**
+
+- Backend landed (units 1–4, 6): the `ArtifactStore` soft-delete/restore/purge seam on both
+  backends (filesystem `.trash/` + object-store `.deleted` tombstone), the `ObjectStore`
+  `delete_key`/`delete_keys` write it needed, the hosted `runs.deleted_at`/`deleted_by` column
+  (migration 0012) + list filtering, the `BAJUTSU_RUN_RETENTION_DAYS` window + lazy purge sweep on
+  history reads, the `DELETE`/`restore`/bulk-delete routes on both transports (CSRF + editor RBAC,
+  with the admin purge gate in the operation), and audit + `oplog` (`run.soft_deleted` /
+  `run.restored` / `run.purged`). The item stays `In progress`; the Web UI (unit 5) is the
+  follow-up PR that flips it to `Implemented`.
 
 ## References
 

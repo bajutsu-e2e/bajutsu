@@ -87,6 +87,15 @@ class _FakeS3:
             "NextContinuationToken": str(nxt) if truncated else None,
         }
 
+    def delete_object(self, Bucket: str, Key: str) -> dict[str, object]:  # noqa: N803
+        self._objects.pop(Key, None)  # idempotent: deleting an absent key is a no-op
+        return {}
+
+    def delete_objects(self, Bucket: str, Delete: dict[str, object]) -> dict[str, object]:  # noqa: N803
+        for obj in Delete["Objects"]:  # type: ignore[index]
+            self._objects.pop(obj["Key"], None)
+        return {}
+
 
 def test_exists_and_get_bytes() -> None:
     store = S3ObjectStore(_FakeS3({"r1/report.html": b"<html>"}), "bucket")
@@ -130,6 +139,24 @@ def test_list_keys_paginates() -> None:
     store = S3ObjectStore(_FakeS3(objects, page=2), "b")  # 2 per page -> 3 pages
     keys = store.list_keys("runs/")
     assert sorted(keys) == sorted(objects)
+
+
+def test_delete_key_removes_the_object_and_is_idempotent() -> None:
+    fake = _FakeS3({"r1/report.html": b"<html>"})
+    store = S3ObjectStore(fake, "b")
+    store.delete_key("r1/report.html")
+    assert store.exists("r1/report.html") is False
+    store.delete_key("r1/report.html")  # already gone — no-op, no raise (BE-0239)
+
+
+def test_delete_keys_removes_a_whole_run_across_batches() -> None:
+    objects = {f"runs/r1/f{i:03d}.png": b"x" for i in range(1500)}  # > one 1000-key batch
+    objects["runs/r2/keep.png"] = b"y"
+    fake = _FakeS3(objects)
+    store = S3ObjectStore(fake, "b")
+    store.delete_keys(store.list_keys("runs/r1/"))
+    assert store.list_keys("runs/r1/") == []
+    assert store.list_keys("runs/r2/") == ["runs/r2/keep.png"]  # a sibling run is untouched
 
 
 @pytest.mark.parametrize("code", ["404", "NotFound", "NoSuchKey"])

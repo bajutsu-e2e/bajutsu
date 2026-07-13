@@ -96,6 +96,12 @@ from bajutsu.serve.operations.reads import (
     stats_html,
     usage_html,
 )
+from bajutsu.serve.operations.runs import (
+    bulk_delete_runs,
+    delete_run,
+    restore_run,
+    sweep_expired_trash,
+)
 from bajutsu.serve.operations.sse import (
     _job_event_pairs,
     _job_sse_frames,
@@ -150,12 +156,14 @@ __all__ = [
     "bind_git_config",
     "bind_upload_config",
     "browse_fs",
+    "bulk_delete_runs",
     "cancel_job",
     "claude_code_token_info",
     "config_content",
     "config_info",
     "coverage_view",
     "crawl_runs_payload",
+    "delete_run",
     "deregister_project",
     "doctor_check",
     "finish_capture",
@@ -186,6 +194,7 @@ __all__ = [
     "required_role",
     "resolve_scenario_pick",
     "respond_human",
+    "restore_run",
     "role_allows",
     "role_for",
     "run_file",
@@ -205,6 +214,7 @@ __all__ = [
     "start_run",
     "start_triage",
     "stats_html",
+    "sweep_expired_trash",
     "upload_theme",
     "usage_html",
     "worker_artifact_urls",

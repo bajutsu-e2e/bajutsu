@@ -7,8 +7,9 @@
 |---|---|
 | 提案 | [BE-0239](BE-0239-deletable-runs-serve-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **提案** |
+| 状態 | **実装中** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0239") |
+| 実装 PR | [#985](https://github.com/bajutsu-e2e/bajutsu/pull/985) _（バックエンド。Web UI は後続）_ |
 | トピック | Hosting the web UI (cloud / self-hosted) |
 <!-- /BE-METADATA -->
 
@@ -177,14 +178,27 @@ Tier-2 の run/CI ゲートの外側に完全に位置します（prime directiv
 > 作業分解（作業の単位ごとに 1 つ）に対応し、ログには変更内容と時期（古い順）を PR へのリンクと
 > ともに記録します。
 
-- [ ] `LocalArtifactStore`（トラッシュディレクトリ）と `ObjectStorageArtifactStore`
+- [x] `LocalArtifactStore`（トラッシュディレクトリ）と `ObjectStorageArtifactStore`
       （墓標オブジェクト）への `ArtifactStore.soft_delete_run`・`restore_run`・`purge_run`
-- [ ] ホスト型 `Repository.list_runs`・`list_crawl_runs` へのソフトデリート列と絞り込み
-- [ ] 保持期間の設定と遅延掃除処理
-- [ ] `DELETE`・復元・一括削除の API ルート、CSRF と RBAC（ソフトデリート／復元は editor、
+- [x] ホスト型 `Repository.list_runs` へのソフトデリート列と絞り込み（crawl run は両バックエンド
+      とも artifact store 由来のため、絞り込む DB 一覧は別途ありません）
+- [x] 保持期間の設定と遅延掃除処理
+- [x] `DELETE`・復元・一括削除の API ルート、CSRF と RBAC（ソフトデリート／復元は editor、
       完全削除は admin）、org スコープ
 - [ ] Web UI：行ごとの削除、複数選択、確認ダイアログ、復元／完全削除できるゴミ箱ビュー
-- [ ] ソフトデリート・復元・完全削除の監査ログエントリと `oplog` イベント
+      *（後続 PR）*
+- [x] ソフトデリート・復元・完全削除の監査ログエントリと `oplog` イベント
+
+**ログ**
+
+- バックエンド（ユニット 1〜4・6）を実装しました。両バックエンドの `ArtifactStore` の
+  ソフトデリート／復元／完全削除の仕組み（ファイルシステムの `.trash/` とオブジェクトストレージの
+  `.deleted` 墓標）、それが必要とする `ObjectStore` の `delete_key`・`delete_keys`、ホスト型の
+  `runs.deleted_at`・`deleted_by` 列（マイグレーション 0012）と一覧の絞り込み、
+  `BAJUTSU_RUN_RETENTION_DAYS` の保持期間と履歴読み取り時の遅延掃除処理、両トランスポートの
+  `DELETE`・復元・一括削除ルート（CSRF と editor の RBAC。完全削除の admin 判定は operation 内）、
+  監査ログと `oplog`（`run.soft_deleted`・`run.restored`・`run.purged`）です。項目は
+  **実装中** のままで、Web UI（ユニット 5）を後続 PR で実装し、その時点で **実装済み** に反転させます。
 
 ## 参考
 

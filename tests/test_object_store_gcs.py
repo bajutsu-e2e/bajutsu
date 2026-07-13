@@ -35,6 +35,14 @@ class _FakeBlob:
         self._store[self.name] = Path(filename).read_bytes()
         self._store[f"__ct__{self.name}"] = content_type.encode()
 
+    def delete(self) -> None:
+        # Real GCS raises on a missing blob (unlike S3's idempotent delete); model that so
+        # `delete_key`'s delete-first/re-check-exists path is actually exercised.
+        if self.name not in self._store:
+            raise RuntimeError("404 No such object")
+        self._store.pop(self.name, None)
+        self._store.pop(f"__ct__{self.name}", None)
+
     def generate_signed_url(
         self, *, version: str, expiration: timedelta, method: str, content_type: str = ""
     ) -> str:
@@ -97,3 +105,17 @@ def test_list_keys_filters_by_prefix() -> None:
         "runs/01/manifest.json",
         "runs/02/manifest.json",
     ]
+
+
+def test_delete_key_removes_a_blob_and_is_idempotent() -> None:
+    store = GCSObjectStore(_FakeBucket({"r1/report.html": b"<html>"}))
+    store.delete_key("r1/report.html")
+    assert store.exists("r1/report.html") is False
+    store.delete_key("r1/report.html")  # already gone — no-op, no raise (BE-0239)
+
+
+def test_delete_keys_removes_a_whole_run() -> None:
+    store = GCSObjectStore(_FakeBucket({"r1/a.png": b"x", "r1/b.png": b"y", "r2/keep.png": b"z"}))
+    store.delete_keys(store.list_keys("r1/"))
+    assert store.list_keys("r1/") == []
+    assert store.list_keys("r2/") == ["r2/keep.png"]  # a sibling run is untouched

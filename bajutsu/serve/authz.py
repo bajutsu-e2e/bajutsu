@@ -173,6 +173,18 @@ def required_role(method: str, path: str) -> str | None:
         if method in ("POST", "DELETE"):
             return "admin"
         return None
+    # Run lifecycle (BE-0239): soft-delete (DELETE /api/runs/{id} or /api/crawl/runs/{id}), restore
+    # (POST .../restore), and bulk-delete (POST /api/runs/bulk-delete) are editor actions, like
+    # triggering a run. Permanent purge (``?purge=true``) is admin, but the query string isn't in the
+    # `path` seen here, so that gate lives in the operation (`delete_run`/`bulk_delete_runs`). Handled
+    # ahead of the POST-only guard because the soft-delete is a DELETE; the worker upload-urls POST
+    # keeps its own no-role handling (falls through to None).
+    if path.startswith(("/api/runs/", "/api/crawl/runs/")):
+        if method == "DELETE":
+            return "editor"
+        if method == "POST" and (path == "/api/runs/bulk-delete" or path.endswith("/restore")):
+            return "editor"
+        return None
     if method != "POST":
         return None
     if path in _ADMIN_PATHS:

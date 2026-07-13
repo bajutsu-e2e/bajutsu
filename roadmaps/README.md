@@ -588,6 +588,7 @@ Consolidating the demo and dogfood apps onto the showcase suite: bringing it to 
 | ID | Item | Status |
 |---|---|---|
 | [BE-0015](BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md) | Public hosting of the web UI | In progress |
+| [BE-0239](BE-0239-deletable-runs-serve/BE-0239-deletable-runs-serve.md) | Deletable runs and reports in the serve Web UI | In progress |
 <!-- /GENERATED:in-progress-hosting -->
 
 ### Surfacing CLI features in the serve Web UI
@@ -709,7 +710,6 @@ Turn the local `bajutsu serve` launcher into a shared service. The runner drives
 | [BE-0167](BE-0167-control-plane-scale-out/BE-0167-control-plane-scale-out.md) | Control-plane scale-out behind a load balancer | Proposal |
 | [BE-0168](BE-0168-self-host-high-availability/BE-0168-self-host-high-availability.md) | Self-hosted high availability and single-point-of-failure hardening | Proposal |
 | [BE-0170](BE-0170-weighted-fair-org-dispatch/BE-0170-weighted-fair-org-dispatch.md) | Weighted-fair cross-org job dispatch | Proposal |
-| [BE-0239](BE-0239-deletable-runs-serve/BE-0239-deletable-runs-serve.md) | Deletable runs and reports in the serve Web UI | Proposal |
 <!-- /GENERATED:proposals-hosting -->
 
 ### Security hardening

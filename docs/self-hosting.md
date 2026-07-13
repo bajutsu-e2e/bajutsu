@@ -519,6 +519,20 @@ and both sit under the global `--max-concurrent-runs`; an over-cap request is re
 rather than queued. (Fair *scheduling* across orgs — holding the rejected work in a per-org queue and
 dispatching it round-robin — is still future work; today the cap rejects.)
 
+**Deleting runs, and how long the trash is kept.** A run (and its report) can be deleted through the
+API (BE-0239): `DELETE /api/runs/{id}` soft-deletes it — the run drops out of the history list but is
+moved to a trash and stays restorable via `POST /api/runs/{id}/restore`; `DELETE /api/runs/{id}?purge=true`
+skips the trash and removes the bytes immediately. Soft-delete and restore are **editor** actions; the
+immediate purge is **admin**. `POST /api/runs/bulk-delete` (body `{"ids": [...], "purge": <bool>}`) does
+many at once. A soft-deleted run is purged for good once it has been in the trash longer than the
+retention window, checked opportunistically on the next history read (there is no background job).
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `BAJUTSU_RUN_RETENTION_DAYS` | `30` | Days a soft-deleted run stays in the trash before it is permanently purged. `0` (or less) disables the automatic purge — the trash is then kept until an explicit `?purge=true`. |
+
+(The Web UI surface for this — a per-row delete affordance and a Trash view — is still to come; the API above is live today.)
+
 ## Operational logging
 
 The hosted serve emits its own diagnostic trace — **structured JSON, written to stdout, with

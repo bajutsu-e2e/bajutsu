@@ -19,6 +19,7 @@ from __future__ import annotations
 import dataclasses
 import mimetypes
 import os
+from collections.abc import Iterable
 from datetime import timedelta
 from pathlib import Path
 from typing import Any, Literal, Protocol
@@ -59,6 +60,15 @@ class ObjectStore(Protocol):
 
     def list_keys(self, prefix: str) -> list[str]:
         """Every object key under *prefix*."""
+
+    def delete_key(self, key: str) -> None:
+        """Delete the object at *key*, a no-op if it is already absent (idempotent) — the write
+        counterpart the run-purge path (BE-0239) needs, so a soft-deleted run's evidence can be
+        permanently removed from storage."""
+
+    def delete_keys(self, keys: Iterable[str]) -> None:
+        """Delete every object in *keys* (each idempotent, per `delete_key`) — a whole run's key set
+        at once when a run is purged."""
 
 
 def _is_not_found(error: Any) -> bool:
@@ -135,6 +145,23 @@ class S3ObjectStore:
                 return keys
             token = resp.get("NextContinuationToken")
 
+    def delete_key(self, key: str) -> None:
+        # S3 delete_object is idempotent — deleting an absent key returns success, so no existence
+        # probe is needed to satisfy the seam's "no-op if absent" contract.
+        self._client.delete_object(Bucket=self._bucket, Key=key)
+
+    def delete_keys(self, keys: Iterable[str]) -> None:
+        # One batch delete per 1000 keys (the S3 DeleteObjects limit); an empty batch is skipped so a
+        # run with no keys makes no call. Each key is idempotent, like `delete_key`.
+        batch: list[dict[str, str]] = []
+        for key in keys:
+            batch.append({"Key": key})
+            if len(batch) == 1000:
+                self._client.delete_objects(Bucket=self._bucket, Delete={"Objects": batch})
+                batch = []
+        if batch:
+            self._client.delete_objects(Bucket=self._bucket, Delete={"Objects": batch})
+
 
 class GCSObjectStore:
     """`ObjectStore` over one Google Cloud Storage bucket via an injected `storage.Bucket`.
@@ -179,6 +206,26 @@ class GCSObjectStore:
 
     def list_keys(self, prefix: str) -> list[str]:
         return [str(b.name) for b in self._bucket.list_blobs(prefix=prefix)]
+
+    def delete_key(self, key: str) -> None:
+        # Unlike S3's idempotent delete, `blob.delete()` raises on a missing object. Delete first and
+        # only re-raise if the object is *still* there afterward: that keeps the seam's "no-op if
+        # absent" contract under concurrency (the retention sweep runs unlocked on every history read,
+        # so two overlapping purges of the same key race here) — a plain exists()-then-delete() would
+        # let the loser raise. Re-checking state avoids importing the GCS SDK's exception type too
+        # (the default gate path stays SDK-free, #117 import guard).
+        blob = self._bucket.blob(key)
+        try:
+            blob.delete()
+        except (
+            Exception
+        ):  # narrowed by the exists() re-check: a real error leaves the object present
+            if blob.exists():
+                raise
+
+    def delete_keys(self, keys: Iterable[str]) -> None:
+        for key in keys:
+            self.delete_key(key)
 
 
 @dataclasses.dataclass(frozen=True)

@@ -438,6 +438,10 @@ class ServeState:
     # server backend sets both where it wires its per-org object stores.
     object_store: ObjectStore | None = None
     object_store_prefix: str = ""
+    # Days a soft-deleted run stays in the trash before the lazy sweep purges it (BE-0239). The
+    # retention window that makes soft-delete non-instantly-destructive. <= 0 disables the automatic
+    # purge (trash is kept until a manual purge). serve() sets it from BAJUTSU_RUN_RETENTION_DAYS.
+    run_retention_days: int = 30
     # The job registry (BE-0198): owns the in-flight jobs, the id sequence, and the concurrency-cap
     # enforcement. Built in __post_init__ once `logbus` is resolved; `ServeState` forwards the
     # registration/counting surface to it and exposes `jobs` as a read-through of its dict.
