@@ -146,6 +146,14 @@ implementation (1) and the CLI-free scope of this item can land as separate PRs.
   sweep in unit 3 acts only on runs a human already soft-deleted, it does not auto-select runs to
   delete on its own; a fully automatic age/count-based prune of *never-deleted* runs is a
   plausible follow-up but is left out of this item's scope to keep it to what was asked for).
+- **On permanent purge, delete the hosted DB run row vs. convert it to a tombstone row.** Deleting
+  the row outright is simplest and reclaims the row, but it also erases the run from the audit
+  trail's referential reach — a later "who deleted run X, when" query has no row to join against.
+  Keeping a minimal tombstone row (id + `deleted_at`/`deleted_by`, evidence bytes gone) preserves
+  that history at the cost of a never-shrinking row count. The proposal leans toward the tombstone
+  row for hosted deployments (where audit history is the point of having a DB at all) and outright
+  deletion where no audit consumer exists, but this is a knob to settle at implementation time, not
+  a fixed decision here — hence unit 2 flags it rather than mandating one.
 - **A CLI companion (`bajutsu run rm <id>`) in the same item.** The user's ask was specifically
   "from the Web UI"; a CLI-side deletion command would reuse the same `ArtifactStore.purge_run`
   seam this item introduces, so it is a natural, low-cost follow-up once the seam exists, but is
