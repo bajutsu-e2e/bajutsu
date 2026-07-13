@@ -125,13 +125,13 @@ takes it from there per scenario.
 
 ### Moving selection from once-per-invocation to once-per-scenario
 
-Today `device_pool()` (`bajutsu/runner/pool.py:105`) calls `select_actuator` exactly once, and the
+Today `device_pool()` (`bajutsu/runner/pool.py:106`) calls `select_actuator` exactly once, and the
 result is closed over by every `lease()` call for the rest of the pool's life — every scenario in
 one CLI invocation, parallel or not, runs on the same fixed actuator
 (`_ScenarioRunner.actuator` in `pipeline.py` is one frozen field reused across the thread pool).
 Making the choice capability-aware means making it **per scenario** — but the existing seam for
 this is closer than it looks: `lease(eff, scenario)` already takes the scenario as a parameter
-(`pool.py:142`), and it is inside `lease()` that `launch_driver(udid, eff, actuator, ...)` is
+(`pool.py:147`), and it is inside `lease()` that `launch_driver(udid, eff, actuator, ...)` is
 called using the actuator closed over from the outer scope. Moving the resolver call from
 `device_pool()`'s setup into `lease()` — resolving the actuator from `scenario` right where the
 scenario is already available — keeps the single-actuator-per-scenario-execution invariant exactly
@@ -149,7 +149,7 @@ evidence hookup) already exists for exactly this reason.
 
 ### Disclosure needs no schema change
 
-`bajutsu/report/manifest.py:14-21` already anticipates this: `_run_backend()` joins the distinct
+`bajutsu/report/manifest.py:37-44` already anticipates this: `_run_backend()` joins the distinct
 `RunResult.backend` values across a run's scenarios *precisely because* each `RunResult` already
 carries its own `backend` field — "one actuator is fixed per run, so this is normally a single
 name; if scenarios somehow differ, they are joined." That seam has sat unused because every
