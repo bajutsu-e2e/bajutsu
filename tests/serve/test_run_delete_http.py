@@ -93,7 +93,8 @@ def test_fastapi_delete_restore_and_bulk(tmp_path: Path) -> None:
         _run(state, f"20260101-00000{i}")
     client = TestClient(make_app(state))
 
-    assert client.delete("/api/runs/20260101-000001").json() == {"ok": True, "purged": False}
+    deleted = client.delete("/api/runs/20260101-000001")
+    assert deleted.json() == {"ok": True, "purged": False}
     assert client.post("/api/runs/20260101-000001/restore").status_code == 200
 
     bulk = client.post("/api/runs/bulk-delete", json={"ids": ["20260101-000002", "ghost"]})
