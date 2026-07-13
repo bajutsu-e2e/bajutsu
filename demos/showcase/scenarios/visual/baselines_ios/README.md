@@ -10,8 +10,10 @@ the `e2e-visual` target in `demos/showcase/Makefile`, which the path-gated, non-
 `ios-e2e.yml` workflow (the iOS twin of `android-e2e.yml`'s `e2e-visual`) runs on idb.
 
 A pixel baseline is host-specific: the Simulator's renderer varies by Xcode / device / OS. `stable.png`
-here was recorded on the `iPhone 17 · iOS 26.5` Simulator. If the `ios-e2e.yml` runner's Simulator
-differs and the check drifts:
+here was recorded on the `iPhone 17 · iOS 26.5` Simulator, and `ios-e2e.yml` pins that model
+(`device-type: iPhone 17` on the `boot-simulator` action, the iOS twin of the Android lane's
+`profile: pixel_6`) so the device geometry stays fixed across runs. If the runtime still drifts
+(a different Xcode / OS renderer):
 
 1. `ios-e2e.yml` runs `make -C demos/showcase e2e-visual` and, on a mismatch, uploads the captured
    screenshot in the `ios-e2e-visual-run` artifact (`runs/`).

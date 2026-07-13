@@ -97,6 +97,12 @@ jobs:
         uses: ./.github/actions/boot-simulator
         with:
           wait: "false"
+          # Pin the exact model the committed baseline was recorded on (see baselines_ios/README.md),
+          # the iOS twin of android-e2e.yml's `profile: pixel_6`. Unpinned, boot-simulator takes
+          # whichever iPhone the runner's Xcode ships first — a resolution change would drift this
+          # pixel VRT for reasons unrelated to any UI change. A model missing from the runner fails
+          # loudly rather than silently drifting.
+          device-type: iPhone 17
 
       # The DerivedData cache must not cross Xcode upgrades (a different Xcode's compiled modules cause
       # stale-artifact build failures), so key it on the active Xcode build version.
