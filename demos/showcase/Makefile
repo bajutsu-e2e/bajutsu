@@ -130,7 +130,12 @@ e2e-visual: swiftui-build
 		--scenario demos/showcase/scenarios/visual/visual_ios.yaml \
 		--baselines $(BASELINES_IOS_VRT) \
 		--target showcase-swiftui --udid $(SIM) --backend idb --config $(CONFIG)
+# Run the VRT first so `approve` (which promotes the *latest* run under runs/) always sees this
+# scenario's run, never some other target's leftover. The `-` ignores its expected non-zero exit
+# when the baseline is missing/drifted — that failure is exactly what we are approving away, the same
+# shape as `vrt-swiftui-approve` above. A recursive `$(MAKE)` avoids duplicating the run recipe.
 e2e-visual-approve:
+	-$(MAKE) --no-print-directory e2e-visual
 	cd $(ROOT) && uv run --extra visual bajutsu approve --baselines $(BASELINES_IOS_VRT)
 
 clean:
