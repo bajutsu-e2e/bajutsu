@@ -102,7 +102,7 @@ def restore_run(state: ServeState, run_id: str, *, actor: str | None = None) -> 
 def bulk_delete_runs(
     state: ServeState, body: dict[str, Any], *, actor: str | None = None
 ) -> tuple[Any, int]:
-    """Soft-delete (or purge, admin-only) many runs at once — the "一括削除" case (BE-0239).
+    """Soft-delete (or purge, admin-only) many runs at once — the bulk-delete case (BE-0239).
 
     Body: ``{"ids": [...], "purge": bool}``. Each id is applied independently; the response lists
     which ids were `deleted` and which were `notFound`, so one bad id doesn't fail the batch."""
@@ -159,9 +159,10 @@ def sweep_expired_trash(
         store.purge_run(run_id)
         if repo is not None:
             repo.purge_run(run_id, org_id=org)
-        # A retention purge has no human actor; audit/oplog still record which run and why, so the
-        # irreversible removal is greppable (BE-0055) — the same as a user-initiated purge.
-        _record_audit(state, None, org, "run.purge", run_id, {"reason": "retention"})
+        # A retention purge has no human actor, so `_record_audit` (which requires a known actor)
+        # would no-op — only `oplog` records it. That still keeps the irreversible removal greppable
+        # (BE-0055), just not in the audit_log table like a user-initiated purge (audit parity for
+        # automated purges would need a synthetic system user — actor_id is an FK to users.id).
         oplog.log_event(_logger, "run.purged", "run purged by retention", run_id=run_id, org=org)
     return len(expired)
 
