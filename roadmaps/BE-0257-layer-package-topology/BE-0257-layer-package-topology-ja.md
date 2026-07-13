@@ -1,14 +1,14 @@
-[English](BE-XXXX-layer-package-topology.md) · **日本語**
+[English](BE-0257-layer-package-topology.md) · **日本語**
 
-# BE-XXXX — 強制されているアーキテクチャレイヤをディレクトリとしてパッケージ化する
+# BE-0257 — 強制されているアーキテクチャレイヤをディレクトリとしてパッケージ化する
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
 |---|---|
-| 提案 | [BE-XXXX](BE-XXXX-layer-package-topology-ja.md) |
+| 提案 | [BE-0257](BE-0257-layer-package-topology-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **提案** |
-| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0257") |
 | トピック | コードベース品質・技術的負債 |
 | 関連 | [BE-0112](../BE-0112-layer-boundary-enforcement/BE-0112-layer-boundary-enforcement-ja.md)、[BE-0135](../BE-0135-module-naming-debt/BE-0135-module-naming-debt-ja.md)、[BE-0092](../BE-0092-crawl-coordinator-extraction/BE-0092-crawl-coordinator-extraction-ja.md) |
 <!-- /BE-METADATA -->
