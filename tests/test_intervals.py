@@ -191,6 +191,30 @@ def test_start_screenrecord_waits_for_device_side_exit_before_pull(
     assert order == ["poll", "poll", "poll", "pull", "rm"]
 
 
+def test_await_screenrecord_stopped_warns_on_probe_error(caplog) -> None:
+    # A probe that errors must not hang the pull, but the fallback can't be silent — it may pull a
+    # still-finalizing (truncated) mp4, the failure the wait exists to prevent.
+    def run(argv: list[str]) -> str:
+        raise OSError("adb gone")
+
+    with caplog.at_level("WARNING"):
+        intervals._await_screenrecord_stopped("SER", run)
+    assert any("could not probe" in r.message for r in caplog.records)
+
+
+def test_await_screenrecord_stopped_warns_on_timeout(monkeypatch, caplog) -> None:
+    # If screenrecord never exits, the wait gives up at the deadline and pulls anyway — with a warning
+    # so a truncated recording is diagnosable rather than silent.
+    monkeypatch.setattr(intervals.time, "sleep", lambda _s: None)
+
+    def run(argv: list[str]) -> str:
+        return "1234"  # device-side screenrecord always reports as still running
+
+    with caplog.at_level("WARNING"):
+        intervals._await_screenrecord_stopped("SER", run, timeout=0.01, poll=0.001)
+    assert any("still running" in r.message for r in caplog.records)
+
+
 def test_start_screenrecord_pull_failure_surfaces(tmp_path: Path) -> None:
     # The pull is deliberately NOT suppressed: swallowing it would leave a video artifact path with
     # no file behind it. A failed pull must propagate out of stop() (the FileSink then drops it).

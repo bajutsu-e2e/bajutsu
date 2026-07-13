@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import contextlib
 import json
+import logging
 import re
 import signal
 import subprocess
@@ -27,6 +28,8 @@ from pathlib import Path
 from typing import Protocol
 
 from bajutsu import adb, simctl
+
+_logger = logging.getLogger(__name__)
 
 PROVIDER = "simctl"
 ADB_PROVIDER = "adb"
@@ -197,17 +200,29 @@ def _await_screenrecord_stopped(
     On the stop signal the local `adb shell` client returns as soon as the connection closes, but the
     device-side `screenrecord` is still writing the mp4's `moov` atom. Pulling then races that write
     and yields a truncated, moov-less (unplayable) file — the Android recording instability. Poll to a
-    bounded deadline (a condition wait on the process's exit, not a fixed sleep); if the probe can't
-    run or never clears, proceed anyway so it can never hang the run — the pull stays best-effort.
+    bounded deadline (a condition wait on the process's exit, not a fixed sleep). If the probe can't
+    run or never clears, proceed anyway so it can never hang the run — the pull stays best-effort —
+    but log a warning: the pull may then copy a still-finalizing (truncated, moov-less) mp4, the very
+    failure this wait exists to prevent, so it must not be silent.
     """
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         try:
             if not run(adb.screenrecord_pids_cmd(serial)).strip():
                 return
-        except (subprocess.CalledProcessError, OSError):
-            return  # can't probe the device — don't block the pull on it
+        except (subprocess.CalledProcessError, OSError) as exc:
+            _logger.warning(
+                "could not probe device-side screenrecord (%s); pulling anyway — the video may be "
+                "truncated (no moov atom)",
+                exc,
+            )
+            return
         time.sleep(poll)
+    _logger.warning(
+        "device-side screenrecord still running after %ss; pulling anyway — the video may be "
+        "truncated (no moov atom)",
+        timeout,
+    )
 
 
 def start_screenrecord(
