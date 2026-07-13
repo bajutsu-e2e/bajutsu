@@ -40,8 +40,8 @@ holds the resolved element list at the moment `assertions.evaluate` runs, and no
 screen between that call and the loop's own post-step `query()`.
 
 The same shape compounds underneath a single `tap`. On the idb driver
-(`bajutsu/drivers/idb.py:317`), `_center` calls `_settle()` (one `query()`, more if the tree's
-identifier-frame projection hasn't stabilized) and then `_resolve` (`idb.py:296`), which runs its
+(`bajutsu/drivers/idb.py:397`), `_center` calls `_settle()` (one `query()`, more if the tree's
+identifier-frame projection hasn't stabilized) and then `_resolve` (`idb.py:376`), which runs its
 own bounded, polling re-query loop up to a 3-second deadline if the selector isn't found on the
 first try. `tap` is frequently invoked underneath `base.wait_until` (`base.py:359`), which is
 itself a deadline/poll loop — so a single flaky tap can have two independent deadline managers
