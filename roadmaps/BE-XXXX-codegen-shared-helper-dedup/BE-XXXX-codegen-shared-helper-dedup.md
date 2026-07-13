@@ -38,7 +38,10 @@ Concretely, the following are copy-pasted across the per-target codegen modules 
   `bajutsu/codegen_uiautomator.py:75-82` (uiautomator/Kotlin). Both sanitize a scenario name into
   a `test_`-prefixed method identifier with the same regex and the same digit-prefix guard.
 - **`_class_name` is near-identical** between `bajutsu/codegen.py:60-64` and
-  `bajutsu/codegen_uiautomator.py:85-92` — the only delta is the digit-prefix guard at
+  `bajutsu/codegen_uiautomator.py:85-92` — there are two deltas, not one. First, the class-name
+  suffix differs: `codegen.py:64` returns `f"{cleaned}UITests"` (plural) while
+  `codegen_uiautomator.py:92` returns `f"{cleaned}UITest"` (singular), so the shared helper must
+  keep the suffix a per-target parameter. Second, the digit-prefix guard at
   `codegen_uiautomator.py:89-91` (`"A Kotlin class name cannot start with a digit"`). XCUITest's
   version has no such guard, even though a Swift `class` name has the identical restriction —
   today a scenario name that starts with a digit produces an invalid Swift class name that only
@@ -76,11 +79,14 @@ duplication and one explicit non-goal:
    `codegen_uiautomator.py`; the Playwright target is JS/TS's `test(...)` call and does not need a
    Swift/Kotlin-style bare identifier, so it opts in only if that changes. Both current callers
    import the shared function and drop their local copy.
-2. **Move `_class_name` into `codegen_common.py`, applying the digit-prefix guard uniformly.**
-   The guard currently only in `codegen_uiautomator.py` (`cleaned[0].isdigit()` → prefix `_`)
-   applies with equal force to XCUITest's Swift `class` name, which has the identical restriction
-   and is silently unguarded today. Moving the helper is also the moment to close that gap, rather
-   than moving a copy of the bug alongside the fix.
+2. **Move `_class_name` into `codegen_common.py`, taking the suffix as a parameter and applying
+   the digit-prefix guard uniformly.** The two targets differ in the class-name suffix
+   (`"UITests"` for XCUITest vs. `"UITest"` for uiautomator), so the shared helper keeps that a
+   per-target argument. Separately, the digit-prefix guard currently only in
+   `codegen_uiautomator.py` (`cleaned[0].isdigit()` → prefix `_`) applies with equal force to
+   XCUITest's Swift `class` name, which has the identical restriction and is silently unguarded
+   today. Moving the helper is also the moment to close that gap, rather than moving a copy of the
+   bug alongside the fix.
 3. **Move `_ms` into `codegen_common.py`.** Identical in `codegen_playwright.py` and
    `codegen_uiautomator.py`; XCUITest's `codegen.py` does not currently need a milliseconds
    conversion, so it gains access to the shared helper without being forced to use it.

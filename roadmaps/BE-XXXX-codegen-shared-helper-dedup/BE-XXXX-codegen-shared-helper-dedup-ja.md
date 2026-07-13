@@ -38,8 +38,11 @@ codegen 各ターゲットの共通の走査を切り出しました。`codegen_
   （uiautomator/Kotlin）でバイト単位まで同一です。** どちらもシナリオ名を、同じ正規表現と同じ数字
   始まりガードで `test_` 始まりのメソッド識別子に整形します。
 - **`_class_name` は `bajutsu/codegen.py:60-64` と `bajutsu/codegen_uiautomator.py:85-92` でほぼ
-  同一です。** 唯一の違いは `codegen_uiautomator.py:89-91` の数字始まりガード（コメントには
-  「Kotlin のクラス名は数字で始められない」とあります）にあります。XCUITest 側にはこのガードが
+  同一です。** 違いは 1 つではなく 2 つあります。まずクラス名の接尾辞が異なり、`codegen.py:64` は
+  `f"{cleaned}UITests"`（複数形）を、`codegen_uiautomator.py:92` は `f"{cleaned}UITest"`（単数形）
+  を返すため、共通ヘルパーは接尾辞をターゲットごとの引数として残す必要があります。次に
+  `codegen_uiautomator.py:89-91` の数字始まりガード（コメントには
+  「Kotlin のクラス名は数字で始められない」とあります）です。XCUITest 側にはこのガードが
   ありませんが、Swift の `class` 名にも同じ制約があります。つまり現状では、数字で始まるシナリオ名
   を渡すと、uiautomator ターゲットだけがガードしている問題を XCUITest 側は無防備に踏み抜いて不正
   な Swift クラス名を生成します。これは、コピーされたヘルパーが招く典型的な食い違いです。一方の
@@ -76,10 +79,13 @@ codegen 各ターゲットの共通の走査を切り出しました。`codegen_
    バイト単位まで同一なので、両方の呼び出し元は共通関数を import し、自前のコピーを削除します。
    Playwright ターゲットは JS/TS の `test(...)` 呼び出しであり、Swift/Kotlin 風の裸の識別子を必要
    としないため、今後必要になった時点で乗るという扱いにとどめます。
-2. **`_class_name` を `codegen_common.py` に移動し、数字始まりガードをすべてのターゲットに統一
-   して適用します。** 現状は `codegen_uiautomator.py` にしかないこのガード（`cleaned[0].isdigit()`
-   を見て `_` を先頭に付ける処理）は、同じ制約を持つ XCUITest の Swift `class` 名にも等しく必要
-   です。ヘルパーを移動するこの機会に、バグを一緒に移すのではなく、この不整合そのものを閉じます。
+2. **`_class_name` を `codegen_common.py` に移動し、接尾辞を引数として受け取りつつ、数字始まり
+   ガードをすべてのターゲットに統一して適用します。** 2 つのターゲットはクラス名の接尾辞が異なる
+   （XCUITest は `"UITests"`、uiautomator は `"UITest"`）ため、共通ヘルパーはこれをターゲットごとの
+   引数として保ちます。加えて、現状は `codegen_uiautomator.py` にしかない数字始まりガード
+   （`cleaned[0].isdigit()` を見て `_` を先頭に付ける処理）は、同じ制約を持つ XCUITest の Swift
+   `class` 名にも等しく必要です。ヘルパーを移動するこの機会に、バグを一緒に移すのではなく、この
+   不整合そのものを閉じます。
 3. **`_ms` を `codegen_common.py` に移動します。** `codegen_playwright.py` と
    `codegen_uiautomator.py` で同一なので、両者を共通関数の import に切り替えます。XCUITest 側の
    `codegen.py` は現状ミリ秒変換を必要としませんが、共通ヘルパーへのアクセス自体は得られ、使うか
