@@ -7,7 +7,7 @@
 |---|---|
 | Proposal | [BE-0015](BE-0015-web-ui-public-hosting.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **In progress** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0015") |
 | Implementing PR | [#105](https://github.com/bajutsu-e2e/bajutsu/pull/105), [#106](https://github.com/bajutsu-e2e/bajutsu/pull/106), [#108](https://github.com/bajutsu-e2e/bajutsu/pull/108), [#112](https://github.com/bajutsu-e2e/bajutsu/pull/112), [#117](https://github.com/bajutsu-e2e/bajutsu/pull/117), [#118](https://github.com/bajutsu-e2e/bajutsu/pull/118), [#119](https://github.com/bajutsu-e2e/bajutsu/pull/119), [#120](https://github.com/bajutsu-e2e/bajutsu/pull/120), [#121](https://github.com/bajutsu-e2e/bajutsu/pull/121), [#122](https://github.com/bajutsu-e2e/bajutsu/pull/122), [#127](https://github.com/bajutsu-e2e/bajutsu/pull/127), [#129](https://github.com/bajutsu-e2e/bajutsu/pull/129), [#130](https://github.com/bajutsu-e2e/bajutsu/pull/130), [#131](https://github.com/bajutsu-e2e/bajutsu/pull/131), [#132](https://github.com/bajutsu-e2e/bajutsu/pull/132), [#133](https://github.com/bajutsu-e2e/bajutsu/pull/133), [#134](https://github.com/bajutsu-e2e/bajutsu/pull/134), [#139](https://github.com/bajutsu-e2e/bajutsu/pull/139), [#143](https://github.com/bajutsu-e2e/bajutsu/pull/143), [#149](https://github.com/bajutsu-e2e/bajutsu/pull/149), [#150](https://github.com/bajutsu-e2e/bajutsu/pull/150), [#151](https://github.com/bajutsu-e2e/bajutsu/pull/151), [#152](https://github.com/bajutsu-e2e/bajutsu/pull/152), [#153](https://github.com/bajutsu-e2e/bajutsu/pull/153), [#156](https://github.com/bajutsu-e2e/bajutsu/pull/156), [#157](https://github.com/bajutsu-e2e/bajutsu/pull/157), [#159](https://github.com/bajutsu-e2e/bajutsu/pull/159) |
 | Topic | Hosting the web UI (cloud / self-hosted) |
@@ -16,10 +16,17 @@
 
 ## Introduction
 
-Forward-looking design — the **multi-tenant public service is not deployed yet**, but the
-groundwork has landed: beyond local/server parity, a **single-tenant server backend with auth,
-persistence, RBAC, audit, and quotas** now ships (see *Migration* and *Persistence and identity*
-below). This proposal
+This item is the **design and the enabling software** for a publicly hosted web UI, and that
+software has **fully landed**: beyond local/server parity, a server backend with auth, persistence,
+RBAC, audit, quotas, and **multi-tenancy** now ships (see *Migration*, *Persistence and identity*,
+and *§8 — multi-tenancy* below). What remains is the **operational deployment** onto real
+infrastructure — provisioning the control plane, the macOS worker pool, the database, and object
+storage, wiring production auth and secrets, and closing the live-environment security items. That
+deployment is a different kind of work (infrastructure and operations, gated on paid macOS-only
+capacity) and is tracked separately in its own item, *Deploy the hosted web UI service*, carved off
+this umbrella the same way [BE-0106](../BE-0106-post-completion-worker-model/BE-0106-post-completion-worker-model.md)
+and [BE-0108](../BE-0108-hosted-config-source-restriction/BE-0108-hosted-config-source-restriction.md)
+were. This proposal
 selects a concrete server, database, storage, and deployment stack for turning the local
 `bajutsu serve` (`bajutsu/serve/`) into a **shared, publicly hosted** service. The local UI today is a Tier-1
 convenience that binds `127.0.0.1`, has no auth, and shells out to `bajutsu run` on the same host
@@ -192,7 +199,7 @@ invariants that still hold: local behavior is unchanged; every slice's tests run
 (no Simulator, no live Postgres/Redis/object storage); and each follows the existing seam pattern (a
 Protocol with an injected implementation, lazy-imported behind an optional extra so the default
 `serve`/CLI path never loads it). "Single-tenant" here means one fixed default org holds every user;
-the multi-tenant, org-scoped pieces are deliberately deferred (see *Still ahead* below).
+the multi-tenant, org-scoped pieces landed later on top of this backend (see *§8 — multi-tenancy* below).
 
 #### 7a — the persistence layer (#144, #145)
 
@@ -331,7 +338,10 @@ counterpart:
 - [x] 8 — multi-tenancy: the org model, request resolution, enforcement, and per-org storage
   ([#156](https://github.com/bajutsu-e2e/bajutsu/pull/156), [#159](https://github.com/bajutsu-e2e/bajutsu/pull/159)).
 
-The single-tenant groundwork has landed (across #105–#159); the multi-tenant public service is not deployed yet.
+All of the enabling software — through multi-tenancy — has landed (across #105–#159), so this
+design-and-software item is **Implemented**. The remaining **operational deployment** of the public
+service (Phase 1 MVP and Phase 2 scale, plus live-environment security hardening) is tracked
+separately in the *Deploy the hosted web UI service* item.
 
 ## References
 
