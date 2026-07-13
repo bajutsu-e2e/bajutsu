@@ -39,7 +39,7 @@ today is that `_JS_ASSETS` happens to list them in an order where definitions pr
 
 This is not duplicated logic: the shared primitives every section calls — `getJSON`/`postJSON`/
 `streamJob`/`startJob`/`cancelJob`/`setStatus`/`esc` — are already centralized once in
-`serve.core.js:54-99` (per BE-0202's own `startJob` unification). The debt is narrower than that:
+`serve.core.js:48-96` (per BE-0202's own `startJob` unification). The debt is narrower than that:
 a flat global namespace and a load order that is load-bearing but invisible at the point of use.
 The project's own ESLint guardrail (BE-0129, `eslint.config.mjs`) documents the same gap from the
 tooling side. `no-undef` is deliberately off there for two reasons: the *primary* one is that
