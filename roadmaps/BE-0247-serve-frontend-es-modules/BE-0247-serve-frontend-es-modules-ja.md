@@ -1,14 +1,14 @@
-[English](BE-XXXX-serve-frontend-es-modules.md) · **日本語**
+[English](BE-0247-serve-frontend-es-modules.md) · **日本語**
 
-# BE-XXXX — serve フロントエンドを ES モジュールへ移行する
+# BE-0247 — serve フロントエンドを ES モジュールへ移行する
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
 |---|---|
-| 提案 | [BE-XXXX](BE-XXXX-serve-frontend-es-modules-ja.md) |
+| 提案 | [BE-0247](BE-0247-serve-frontend-es-modules-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **提案** |
-| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0247") |
 | トピック | コードベース品質・技術的負債 |
 | 関連 | [BE-0202](../BE-0202-serve-js-modularization/BE-0202-serve-js-modularization-ja.md) |
 <!-- /BE-METADATA -->

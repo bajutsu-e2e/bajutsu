@@ -580,6 +580,7 @@ Running a scenario on a hosted device farm instead of a local Simulator, emulato
 | ID | Item | Status |
 |---|---|---|
 | [BE-0246](BE-0246-claude-client-taxonomy/BE-0246-claude-client-taxonomy.md) | Clarify the module taxonomy for talking to Claude | Proposal |
+| [BE-0247](BE-0247-serve-frontend-es-modules/BE-0247-serve-frontend-es-modules.md) | Move the serve frontend to ES modules | Proposal |
 <!-- /GENERATED:proposals-quality-debt -->
 
 ## Deferred

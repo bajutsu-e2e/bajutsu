@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-serve-frontend-es-modules-ja.md)
+**English** · [日本語](BE-0247-serve-frontend-es-modules-ja.md)
 
-# BE-XXXX — Move the serve frontend to ES modules
+# BE-0247 — Move the serve frontend to ES modules
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-serve-frontend-es-modules.md) |
+| Proposal | [BE-0247](BE-0247-serve-frontend-es-modules.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0247") |
 | Topic | Codebase quality & technical debt |
 | Related | [BE-0202](../BE-0202-serve-js-modularization/BE-0202-serve-js-modularization.md) |
 <!-- /BE-METADATA -->
