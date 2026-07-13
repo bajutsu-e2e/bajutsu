@@ -141,25 +141,27 @@ FakeDriver(screen=[...], react=react)
 実装: `bajutsu/backends.py`。
 
 ```python
-PLATFORMS = {                              # プラットフォームトークンは actuator 列へ展開
-    "ios":     ("xcuitest", "idb"),        #   XCUITest 優先・idb フォールバック（BE-0019）
+PLATFORMS = {                              # プラットフォームトークンは actuator 列へ展開（安定度順）
+    "ios":     ("xcuitest", "idb"),        #   最も高機能なものから（BE-0019）
     "android": ("adb",),                   #   計画中
     "web":     ("playwright",),            #   実装済み（BE-0041）
     "fake":    ("fake",),                  #   メモリ上のテスト/デモ用ドライバ
 }
+COST_ORDER = {"ios": ("idb", "xcuitest")}  # 安いものから（BE-0240）。idb はツールチェーンも runner も不要
 IMPLEMENTED = {"idb", "fake", "playwright", "xcuitest"}  # 今日ドライバがある actuator
 
 def default_available(actuator) -> bool:   # 実装済みかつ裏のツールがあるか（playwright はパッケージ import、fake は常に可）
 def resolve_actuators(backends) -> list:   # 各トークン（プラットフォーム/actuator）を actuator 列へ展開
-def select_actuator(backends, available) -> str:  # 順に見て最初の「実装済み かつ 利用可能」
+def select_actuator(backends, available) -> str:  # 安定度順で最初の「実装済み かつ 利用可能」
+def select_actuator_for_scenario(backends, scenario, available, caps) -> str:  # 利用可能かつ十分な、最も安い actuator（BE-0240）
 def make_driver(actuator, udid, *, base_url=None, runner_port=None) -> Driver:  # "xcuitest"→XcuitestDriver, "idb"→IdbDriver, "playwright"→PlaywrightDriver, "fake"→FakeDriver
 ```
 
-- **バックエンドトークン**は、**プラットフォーム**（`ios` / `android` / `web` / `fake`）か、具体的な **actuator**（例: `idb`）のどちらかです。`ios` は `xcuitest` を `idb` より先に並べます（BE-0019）。`--backend ios`（または `backend: [ios]`）は XCUITest が利用可能なら優先し、利用できない環境（XCUITest ホストのないヘッドレス CI など）では `idb` にフォールバックします。シナリオも config も変わりません。
-- `backend` は **安定度順のリスト**です（先頭ほど安定。[concepts](concepts.md#5-安定度順ラダーstability-ladder)）。各トークンは順に actuator 列へ展開され、**actuator = 最初の「実装済み かつ 利用可能」**なものです。利用可能なものが無ければ `RuntimeError`（CLI は終了コード 2）。
+- **バックエンドトークン**は、**プラットフォーム**（`ios` / `android` / `web` / `fake`）か、具体的な **actuator**（例: `idb`）のどちらかです。actuator を複数持つプラットフォームは**シナリオごと**に解決します（BE-0240）。`--backend ios`（または `backend: [ios]`）は、各シナリオを、そのステップが使える最も安い actuator で走らせます。既定は `idb` で、シナリオの構文が idb に無い能力を要求するとき（例: `pinch` / `rotate` は `multiTouch`）だけ XCUITest へ昇格します。idb の能力集合は XCUITest の真部分集合なので、idb を特に必要とするシナリオはありません。idb が優先されるのはコストのためだけです。
+- 二つの順序が二つの問いに答えます。**安定度順**（`PLATFORMS`、最も高機能なものから。[concepts](concepts.md#5-安定度順ラダーstability-ladder)）は `select_actuator` を駆動します。これは、まだシナリオが手元に無い場面（`doctor`、プールの起動時セットアップ、明示的な単一 actuator の固定）で使う、可用性だけの選択です。**コスト順**（`COST_ORDER`、最も安いものから）は `select_actuator_for_scenario` を駆動します。これは `capability_preflight.unsupported`（BE-0082）を各候補の能力集合に対して再利用し、利用可能かつ十分な最初の候補を返します。明示的な単一 actuator の要求は決して昇格しません（`--udid` と同じ、固定の指定です）。利用可能なものが無ければ `RuntimeError`（CLI は終了コード 2）。
 - `web` は `playwright` に解決され、**実装済み**です（[multi-platform](multi-platform.md)）。`android`（→ `adb`）は**宣言済みだが未実装**で、要求すると汎用の失敗ではなく明確な「未実装」エラーになります。本当に未知のトークンはスキップされます（前方互換: 古いビルドでも、将来のバックエンドを列挙した config を実行できます）。
 - 可用性判定 `available` は注入可能です（テストで差し替え可）。既定は `shutil.which`（`fake` は実行ファイル不要で常に利用可能）。
-- actuator は run 開始時に 1 つ確定し、run 中は固定です（2 ドライバが同一デバイスを操作しません）。
+- actuator は**シナリオごと**に 1 つ確定し、そのシナリオの実行のあいだ固定です（BE-0240）。2 ドライバが同一デバイスを同時に操作することはありません。これは従来の「run ごとに固定」という単位をシナリオ単位へ狭めたもので、単一 actuator の規則を緩めるものではありません。どの瞬間もリースしたデバイスを操作する actuator はちょうど 1 つで、シナリオ実行の途中でドライバが切り替わることはありません。
 
 操作は単一の actuator にとどまります。リスト内の非 actuator バックエンドは、**read-only な証跡フォールバック**として機能します（DESIGN §9、[BE-0020](../../roadmaps/BE-0020-multi-backend-evidence-fallback/BE-0020-multi-backend-evidence-fallback-ja.md)）。actuator が欠く能力（例: `Capability.NETWORK`）を `capabilities()` で表明する同一プラットフォームのバックエンドが、その種別の provider として解決されます。フォールバックには狭い `EvidenceProvider` Protocol 経由でのみアクセスし、tap/type/swipe は型レベルで不可能です。gap を埋めるバックエンドが無い場合は、理由を記録して skip します（`SkippedCapture`）。なだらかな劣化であり、run の失敗にはなりません。来歴の詳細は[証跡 — provider](evidence.md#アーティファクトの来歴provider)を参照してください。
 

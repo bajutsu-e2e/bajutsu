@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0240](BE-0240-ios-capability-aware-actuator-selection.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0240") |
+| Implementing PR | [#981](https://github.com/bajutsu-e2e/bajutsu/pull/981) |
 | Topic | Backend expansion (iOS actuators) |
 | Related | [BE-0019](../BE-0019-xcuitest-backend/BE-0019-xcuitest-backend.md), [BE-0020](../BE-0020-multi-backend-evidence-fallback/BE-0020-multi-backend-evidence-fallback.md), [BE-0082](../BE-0082-capability-preflight-check/BE-0082-capability-preflight-check.md), [BE-0107](../BE-0107-showcase-tab-navigation-no-launch-shortcut/BE-0107-showcase-tab-navigation-no-launch-shortcut.md), [BE-0223](../BE-0223-adb-tab-bar-navigation/BE-0223-adb-tab-bar-navigation.md) |
 <!-- /BE-METADATA -->
@@ -218,20 +219,31 @@ gap described in *Motivation* is closed.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Cost-ordered resolver (`select_actuator_for_scenario` or equivalent) in `bajutsu/backends.py`,
-      reusing `capability_preflight.unsupported` against each candidate's capability set; a fast-gate
-      unit-tested pure function.
-- [ ] Per-scenario resolution wired into `runner/pool.py`'s `lease()` (moved from `device_pool()`'s
+- [x] Cost-ordered resolver `select_actuator_for_scenario` in `bajutsu/backends.py` (with an explicit
+      `COST_ORDER` table), reusing `capability_preflight.unsupported` against each candidate's
+      capability set; a fast-gate unit-tested pure function.
+- [x] Per-scenario resolution wired into `runner/pool.py`'s `lease()` (moved from `device_pool()`'s
       one-time setup), narrowing the single-actuator invariant to "per scenario execution" without
-      ever relaxing it.
-- [ ] Whatever pool-level state depends on the actuator (`environment_for`, evidence-provider
-      resolution, resident-runner lifecycle) resolved per lease instead of once per pool.
-- [ ] `doctor --target` disclosure of the per-scenario actuator resolution (informational, no new
+      ever relaxing it. The pipeline preflight (`runner/pipeline.py`) resolves the same pure function
+      per scenario, so a scenario no available actuator can run still fails fast before any device.
+- [x] Whatever pool-level state depends on the actuator resolved per lease instead of once per pool:
+      `environment_for` and evidence-provider resolution move inside `lease()`, and `launch_driver`
+      gains an `environment` param so the instance that *starts* a lease is the one that *tears it
+      down* — fixing a latent XCUITest resident-runner lifecycle bug (two separate env instances)
+      that per-scenario XCUITest selection would otherwise hit.
+- [x] `doctor --target` disclosure of the per-scenario actuator resolution (informational, no new
       gate).
-- [ ] `demos/showcase/showcase.config.yaml` migration: drop the `-noax` targets' `backend: [idb]`
-      pins, fold `ios/scenarios-xcuitest/` back into `scenarios/`.
-- [ ] On-device validation: the migrated showcase run records differing per-scenario `backend`
-      values in one manifest, through the full `run` path.
+- [x] `demos/showcase/showcase.config.yaml` migration — **a11y-ON targets only.** `showcase-swiftui`
+      / `showcase-uikit` move to `backend: [ios]`; the shared `gestures_multitouch.yaml` (multiTouch)
+      is the dogfooded per-scenario escalation. The `-noax` targets are deliberately **not** migrated
+      and `ios/scenarios-xcuitest/` is **not** folded back: their XCUITest need is app-level (no
+      accessibility ids; idb's `describe-all` collapses the tab bar), which the capability model does
+      not represent — a `[ios]` ladder would mis-route their (capability-clean) tab-crossing scenarios
+      to idb. That gap is BE-0223-style actuator strengthening, which this proposal's *Alternatives*
+      already assigns there; recorded in the config comments.
+- [ ] On-device validation (follow-up, needs a Simulator + a built XCUITest runner, outside the fast
+      gate): confirm the migrated `make -C demos/showcase run-swiftui` records `idb` for ordinary
+      scenarios and `xcuitest` for `gestures_multitouch` in one manifest, through the full `run` path.
 
 ## References
 

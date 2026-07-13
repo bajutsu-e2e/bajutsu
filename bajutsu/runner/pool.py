@@ -12,7 +12,12 @@ from collections.abc import Callable
 from pathlib import Path
 
 from bajutsu import simctl
-from bajutsu.backends import default_available, resolve_evidence_providers, select_actuator
+from bajutsu.backends import (
+    default_available,
+    resolve_evidence_providers,
+    select_actuator,
+    select_actuator_for_scenario,
+)
 from bajutsu.backends import make_driver as _make_driver
 from bajutsu.config import Effective
 from bajutsu.drivers import base
@@ -103,17 +108,14 @@ def device_pool(
         A `(lease, shutdown)` pair: `lease` leases a device for one scenario; `shutdown` stops every
         device's collector.
     """
-    actuator = select_actuator(backends, available)
-    # The platform's whole lease shape (catalog, network strategy, relaunch, control, teardown) comes
-    # from its Environment, so nothing below branches on the actuator name. Pool-level facts read off
-    # a representative environment; the device-scoped parts use one built per leased udid.
-    pool_env: RunEnvironment = environment_for(actuator, udids[0] if udids else "", env_run)
-    # A same-platform, read-only provider for an evidence kind the actuator can't supply (BE-0020).
-    # Today `network` is covered by web (native) and idb (its app-side `BAJUTSU_COLLECTOR`), so this
-    # resolves to nothing in production; it activates when a platform gains a second, network-native
-    # actuator (e.g. iOS + XCUITest, BE-0019), at which point its collector supplies the fallback.
-    providers, _skipped = evidence_providers(backends, actuator, available)
-    network_provider = providers.get("network") if network else None
+    # Actuator selection is now per scenario (BE-0240): `lease()` resolves the cheapest actuator each
+    # scenario can run on. Pool-level facts (device catalog, network-observation strategy, the
+    # pre-started collectors) are *platform*-level — identical for every actuator on the platform (idb
+    # and XCUITest share the simctl Simulator lifecycle) — so a representative `pool_actuator`
+    # (availability-only, no scenario) reads them off one environment; nothing below branches on the
+    # actuator name.
+    pool_actuator = select_actuator(backends, available)
+    pool_env: RunEnvironment = environment_for(pool_actuator, udids[0] if udids else "", env_run)
     # Resolve the device model / OS once up front (static per device) so each result can name the
     # simulator it ran on in the report; best-effort, so a missing catalog just omits it. A
     # driver-observed platform (web) has no device catalog.
@@ -146,7 +148,18 @@ def device_pool(
 
     def lease(eff: Effective, scenario: Scenario) -> Lease:
         udid = free.get()
+        # Resolve the actuator for *this* scenario — the cheapest one its own steps can run on
+        # (BE-0240). The single-actuator-per-device rule (DESIGN §3.3/§5) is unchanged; its unit
+        # narrows from "one CLI invocation" to "one scenario execution" — still exactly one actuator
+        # on the leased device at any instant, never a mid-scenario swap.
+        actuator = select_actuator_for_scenario(backends, scenario, available)
         lease_env: RunEnvironment = environment_for(actuator, udid, env_run)
+        # A same-platform, read-only provider for an evidence kind this actuator can't supply
+        # (BE-0020), resolved per scenario now that the actuator is. Today `network` is covered by web
+        # (native) and both iOS actuators (the app-side `BAJUTSU_COLLECTOR`), so this resolves to
+        # nothing in production; it activates when a platform gains a network-native actuator.
+        providers, _skipped = evidence_providers(backends, actuator, available)
+        network_provider = providers.get("network") if network else None
         # The collector to stop on release (the web page hook, or a BE-0020 fallback) — not the
         # pre-started HTTP receivers, which are reused and stopped in shutdown(). Released on a setup
         # failure too, so one launch failure neither leaks a socket nor starves later leases.
@@ -182,7 +195,16 @@ def device_pool(
             if webview_port is not None:
                 extra_env["BAJUTSU_WEBVIEW_PORT"] = str(webview_port)
             driver, readiness = launch_driver(
-                udid, eff, actuator, scenario.preconditions, env_run, extra_env, record_video_dir
+                udid,
+                eff,
+                actuator,
+                scenario.preconditions,
+                env_run,
+                extra_env,
+                record_video_dir,
+                # Start on the same environment we tear down: a stateful backend (XCUITest's resident
+                # runner) must be terminated by the instance that spawned it (BE-0240).
+                environment=lease_env,
             )
             sink = FileSink(
                 run_dir,

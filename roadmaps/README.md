@@ -154,6 +154,7 @@ The first slices of the multi-platform direction that have shipped: a **platform
 | [BE-0019](BE-0019-xcuitest-backend/BE-0019-xcuitest-backend.md) | XCUITest backend | Implemented |
 | [BE-0020](BE-0020-multi-backend-evidence-fallback/BE-0020-multi-backend-evidence-fallback.md) | Multi-backend evidence fallback | Implemented |
 | [BE-0105](BE-0105-xcuitest-single-snapshot-query/BE-0105-xcuitest-single-snapshot-query.md) | Single-snapshot element query for XCUITest | Implemented |
+| [BE-0240](BE-0240-ios-capability-aware-actuator-selection/BE-0240-ios-capability-aware-actuator-selection.md) | Capability-aware automatic actuator selection for iOS (idb/XCUITest transparency) | Implemented |
 <!-- /GENERATED:implemented-backend -->
 
 ### doctor / onboarding
@@ -751,7 +752,6 @@ Keeping the autonomous crawl fast and its code lean as it grows.
 | ID | Item | Status |
 |---|---|---|
 | [BE-0238](BE-0238-ios-device-cloud-execution/BE-0238-ios-device-cloud-execution.md) | iOS device-cloud execution | Proposal |
-| [BE-0240](BE-0240-ios-capability-aware-actuator-selection/BE-0240-ios-capability-aware-actuator-selection.md) | Capability-aware automatic actuator selection for iOS (idb/XCUITest transparency) | Proposal |
 <!-- /GENERATED:proposals-backend -->
 
 ### doctor / onboarding

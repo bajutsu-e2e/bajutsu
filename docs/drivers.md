@@ -331,27 +331,36 @@ FakeDriver(screen=[...], react=react)
 Implementation: `bajutsu/backends.py`.
 
 ```python
-PLATFORMS = {                              # a platform token expands to its actuators
-    "ios":     ("xcuitest", "idb"),        #   XCUITest preferred, idb fallback (BE-0019)
+PLATFORMS = {                              # a platform token expands to its actuators (stability order)
+    "ios":     ("xcuitest", "idb"),        #   most capable first (BE-0019)
     "android": ("adb",),                   #   planned
     "web":     ("playwright",),            #   implemented (BE-0041)
     "fake":    ("fake",),                  #   the in-memory test/demo driver
 }
+COST_ORDER = {"ios": ("idb", "xcuitest")}  # cheapest first (BE-0240); idb has no toolchain/runner cost
 IMPLEMENTED = {"idb", "fake", "playwright", "xcuitest"}  # actuators with a driver today
 
 def default_available(actuator) -> bool:   # implemented + backing tool present (playwright: package import; fake: always)
 def resolve_actuators(backends) -> list:   # expand each token (platform or actuator) to actuators
-def select_actuator(backends, available) -> str:  # first implemented + available, in order
+def select_actuator(backends, available) -> str:  # first implemented + available, in stability order
+def select_actuator_for_scenario(backends, scenario, available, caps) -> str:  # cheapest available + sufficient (BE-0240)
 def make_driver(actuator, udid, *, base_url=None, runner_port=None) -> Driver:  # "xcuitest"→XcuitestDriver, "idb"→IdbDriver, "playwright"→PlaywrightDriver, "fake"→FakeDriver
 ```
 
 - A **backend token** is either a **platform** (`ios` / `android` / `web` / `fake`) or a concrete
-  **actuator** (e.g. `idb`). `ios` lists `xcuitest` ahead of `idb` (BE-0019): `--backend ios` (or
-  `backend: [ios]`) prefers XCUITest when available and falls back to `idb` when it is not (e.g.
-  headless CI without the XCUITest host) — the scenario and config never change.
-- `backend` is an **ordered list** (most-stable-first; [concepts](concepts.md#5-the-stability-ladder)).
-  Each token is expanded to its actuators, in order; the **actuator = the first implemented and
-  available** one. If none is available, `RuntimeError` (the CLI exits with code 2).
+  **actuator** (e.g. `idb`). A platform with more than one actuator is resolved **per scenario**
+  (BE-0240): `--backend ios` (or `backend: [ios]`) runs each scenario on the *cheapest* actuator its
+  own steps can use — `idb` by default, escalating to XCUITest only for a scenario whose constructs
+  need a capability idb lacks (e.g. `pinch`/`rotate` → `multiTouch`). idb's capability set is a strict
+  subset of XCUITest's, so no scenario needs idb *specifically* — idb is preferred only for cost.
+- Two orderings answer two questions. **Stability order** (`PLATFORMS`, most-capable-first;
+  [concepts](concepts.md#5-the-stability-ladder)) drives `select_actuator` — the availability-only
+  pick used where no scenario is in hand yet (`doctor`, the pool's up-front setup, an explicit
+  single-actuator pin). **Cost order** (`COST_ORDER`, cheapest-first) drives
+  `select_actuator_for_scenario`, which reuses `capability_preflight.unsupported` (BE-0082) against
+  each candidate's capability set and returns the first that is both available and sufficient. An
+  explicit single-actuator request never escalates (a hard pin, like `--udid`). If none is available,
+  `RuntimeError` (the CLI exits with code 2).
 - `web` resolves to `playwright`, which **is implemented** ([multi-platform](multi-platform.md));
   `android` (→ `adb`) is **declared but not implemented yet**, so requesting it raises a clear "not
   implemented yet" rather than a generic failure. Truly unknown tokens are skipped (forward-compat:
@@ -359,8 +368,10 @@ def make_driver(actuator, udid, *, base_url=None, runner_port=None) -> Driver:  
 - The availability check `available` is injectable (swappable in tests). The default is `shutil.which`
   for PATH-backed actuators; `playwright` is gated on whether its Python package is importable, and
   `fake` is always available.
-- The actuator is fixed once at the start of a run and held for the whole run (so two drivers never
-  operate one device).
+- The actuator is fixed **per scenario** and held for that scenario's whole execution (BE-0240), so
+  two drivers never operate one device at once. This narrows the earlier "fixed per invocation" unit
+  without relaxing the single-actuator rule: at every instant exactly one actuator acts on the leased
+  device, and there is never a mid-scenario driver swap.
 
 Actuation stays with the single actuator. Non-actuator backends in the list can serve as **read-only
 evidence fallbacks** (DESIGN §9, [BE-0020](../roadmaps/BE-0020-multi-backend-evidence-fallback/BE-0020-multi-backend-evidence-fallback.md)):
