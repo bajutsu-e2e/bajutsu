@@ -467,8 +467,9 @@ def make_app(state: ServeState) -> FastAPI:
     async def upload_urls(run_id: str, body: dict[str, Any]) -> JSONResponse:
         return _result(ops.generate_upload_urls(state, run_id, body))
 
-    # Run lifecycle (BE-0239): delete / restore / bulk-delete a run and its report. `bulk-delete`
-    # is declared before the `{run_id}` DELETE so the static segment wins the match; crawl and
+    # Run lifecycle (BE-0239): delete / restore / bulk-delete a run and its report. The static
+    # `bulk-delete` path is declared before any `{run_id}` route so it wins the match should a
+    # single-segment `POST /api/runs/{run_id}` ever be added (there is none today). Crawl and
     # scenario runs share the `runs/<id>/` tree, so one operation serves both DELETE routes.
     @app.post("/api/runs/bulk-delete")
     async def bulk_delete_runs(body: dict[str, Any], request: Request) -> JSONResponse:
