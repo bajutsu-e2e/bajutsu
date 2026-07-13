@@ -586,6 +586,7 @@ Running a scenario on a hosted device farm instead of a local Simulator, emulato
 | [BE-0250](BE-0250-assertions-package-eval-context/BE-0250-assertions-package-eval-context.md) | Split assertions into a package and thread evaluation contexts as one EvalContext | Proposal |
 | [BE-0251](BE-0251-driver-base-helper-hoist/BE-0251-driver-base-helper-hoist.md) | Hoist duplicated driver helpers into drivers.base and unify small constants | Proposal |
 | [BE-0252](BE-0252-config-package-split/BE-0252-config-package-split.md) | Split config into a package and group Effective into sub-records | Proposal |
+| [BE-0253](BE-0253-serve-route-registry-unification/BE-0253-serve-route-registry-unification.md) | Unify the serve dual-backend route tables behind a declarative registry | Proposal |
 <!-- /GENERATED:proposals-quality-debt -->
 
 ## Deferred

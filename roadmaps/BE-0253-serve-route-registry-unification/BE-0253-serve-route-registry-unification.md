@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-serve-route-registry-unification-ja.md)
+**English** · [日本語](BE-0253-serve-route-registry-unification-ja.md)
 
-# BE-XXXX — Unify the serve dual-backend route tables behind a declarative registry
+# BE-0253 — Unify the serve dual-backend route tables behind a declarative registry
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-serve-route-registry-unification.md) |
+| Proposal | [BE-0253](BE-0253-serve-route-registry-unification.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0253") |
 | Topic | Codebase quality & technical debt |
 <!-- /BE-METADATA -->
 

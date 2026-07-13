@@ -1,14 +1,14 @@
-[English](BE-XXXX-serve-route-registry-unification.md) · **日本語**
+[English](BE-0253-serve-route-registry-unification.md) · **日本語**
 
-# BE-XXXX — serve の二重バックエンドのルートテーブルを宣言的レジストリに統一する
+# BE-0253 — serve の二重バックエンドのルートテーブルを宣言的レジストリに統一する
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
 |---|---|
-| 提案 | [BE-XXXX](BE-XXXX-serve-route-registry-unification-ja.md) |
+| 提案 | [BE-0253](BE-0253-serve-route-registry-unification-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **提案** |
-| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0253") |
 | トピック | コードベース品質・技術的負債 |
 <!-- /BE-METADATA -->
 
