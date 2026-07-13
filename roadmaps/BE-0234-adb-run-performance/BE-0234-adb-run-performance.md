@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-adb-run-performance-ja.md)
+**English** · [日本語](BE-0234-adb-run-performance-ja.md)
 
-# BE-XXXX — Speed up adb scenario runs (uiautomator dump bottleneck)
+# BE-0234 — Speed up adb scenario runs (uiautomator dump bottleneck)
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-adb-run-performance.md) |
+| Proposal | [BE-0234](BE-0234-adb-run-performance.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0234") |
 | Topic | Platform expansion (Android / Web / Flutter) |
 | Related | [BE-0007](../BE-0007-android-backend/BE-0007-android-backend.md), [BE-0210](../BE-0210-android-actuation-fidelity/BE-0210-android-actuation-fidelity.md), [BE-0223](../BE-0223-adb-tab-bar-navigation/BE-0223-adb-tab-bar-navigation.md), [BE-0233](../BE-0233-adb-clipboard-fidelity/BE-0233-adb-clipboard-fidelity.md) |
 <!-- /BE-METADATA -->
