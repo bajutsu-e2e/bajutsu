@@ -26,7 +26,7 @@ lands once instead of drifting.
 ## Motivation
 
 `wait_for` is identical in all four real drivers — `bajutsu/drivers/idb.py:385`,
-`bajutsu/drivers/adb.py:473`, `bajutsu/drivers/xcuitest.py:367`, and
+`bajutsu/drivers/adb.py:526`, `bajutsu/drivers/xcuitest.py:367`, and
 `bajutsu/drivers/playwright.py:683` — each body is exactly
 `return len(base.find_all(self.query(), sel)) >= 1`. This method is the single-shot condition
 check underneath the shared `base.wait_until` deadline poll (BE-0118), so its correctness is
@@ -37,10 +37,10 @@ app-agnostic, backend-agnostic driver design (prime directive 3) is meant to rul
 
 The frame-center computation `(x + w / 2, y + h / 2)` from an element's `(x, y, w, h)` frame
 repeats in `bajutsu/drivers/idb.py:317-321` (`_center`), `bajutsu/drivers/playwright.py:516-518`
-(`_center`), and `bajutsu/drivers/adb.py:289-297` (`_center` / `_center_with_screen`). The
+(`_center`), and `bajutsu/drivers/adb.py:338-350` (`_center` / `_center_with_screen`). The
 related gesture-anchor variant — the same center plus a finger half-distance of `min(w, h) / 4`
 for a two-finger gesture — repeats in `bajutsu/drivers/playwright.py:601-608`
-(`_gesture_anchor`) and `bajutsu/drivers/adb.py:438-441` (inline in the multi-touch gesture path,
+(`_gesture_anchor`) and `bajutsu/drivers/adb.py:492-494` (inline in the multi-touch gesture path,
 BE-0232). Both are small, easy to copy-paste-and-slightly-misstate pieces of geometry that every
 new backend (Android was the third, a fourth is plausible) currently has to reinvent instead of
 reusing; a wrong divisor or a swapped `x`/`y` in one copy would silently mistap or mis-anchor a
@@ -152,16 +152,16 @@ constraints.
 - [`bajutsu/drivers/base.py`](../../bajutsu/drivers/base.py) — the shared selector-resolution
   core (`find_all`, `resolve_unique`, `wait_until`) this item extends with the hoisted helpers.
 - [`bajutsu/drivers/idb.py:385`](../../bajutsu/drivers/idb.py),
-  [`bajutsu/drivers/adb.py:473`](../../bajutsu/drivers/adb.py),
+  [`bajutsu/drivers/adb.py:526`](../../bajutsu/drivers/adb.py),
   [`bajutsu/drivers/xcuitest.py:367`](../../bajutsu/drivers/xcuitest.py),
   [`bajutsu/drivers/playwright.py:683`](../../bajutsu/drivers/playwright.py) — the four identical
   `wait_for` bodies this item hoists.
 - [`bajutsu/drivers/idb.py:317-321`](../../bajutsu/drivers/idb.py),
   [`bajutsu/drivers/playwright.py:516-518`](../../bajutsu/drivers/playwright.py),
-  [`bajutsu/drivers/adb.py:289-297`](../../bajutsu/drivers/adb.py) — the frame-center
+  [`bajutsu/drivers/adb.py:338-350`](../../bajutsu/drivers/adb.py) — the frame-center
   computations this item hoists.
 - [`bajutsu/drivers/playwright.py:601-608`](../../bajutsu/drivers/playwright.py),
-  [`bajutsu/drivers/adb.py:438-441`](../../bajutsu/drivers/adb.py) — the gesture-anchor variant
+  [`bajutsu/drivers/adb.py:492-494`](../../bajutsu/drivers/adb.py) — the gesture-anchor variant
   this item hoists.
 - [`bajutsu/runner/types.py:66`](../../bajutsu/runner/types.py),
   [`bajutsu/orchestrator/types.py:63`](../../bajutsu/orchestrator/types.py) — the duplicated
