@@ -168,7 +168,8 @@ CLI の `--dismiss-alerts` / `--no-dismiss-alerts` フラグは**全シナリオ
 | `longPress` | `longPress: { sel: <Selector>, duration: <sec> }` | 長押し |
 | `type` | `type: { text: "...", into?: <Selector>, submit?: <bool> }` | `into` 指定時は先にフォーカスする |
 | `selectOption` | `selectOption: { sel: <Selector>, option: "..." }` | web の `<select>` をこの value を持つ option に合わせる。web 専用（iOS / Android は失敗する） |
-| `swipe` | `swipe: { on: <Selector>, direction: up\|down\|left\|right }` または `swipe: { from: [x,y], to: [x,y] }` | セレクタ形と座標形は混在できない |
+| `swipe` | `swipe: { on: <Selector>, direction: up\|down\|left\|right }` または `swipe: { from: [x,y], to: [x,y] }` | セレクタ形と座標形は混在できない。方向指定形式は**スクロール**する |
+| `drag` | `drag: { on: <Selector>, direction: up\|down\|left\|right, amount?: <frac> }` | 要素そのものを**ドラッグ**する（ハンドル／仕切り／スライダー）。スクロールではない |
 | `pinch` | `pinch: { sel: <Selector>, scale: <num> }` | 2 本指の拡縮。`scale > 0`（`>1` で拡大, `<1` で縮小） |
 | `rotate` | `rotate: { sel: <Selector>, radians: <num> }` | 2 本指の回転。`>0` で時計回り |
 | `wait` | `wait: { for\|until: ..., timeout: <sec> }` | 条件待機（下記） |
@@ -226,6 +227,17 @@ CLI の `--dismiss-alerts` / `--no-dismiss-alerts` フラグは**全シナリオ
 ```
 
 `{on,direction}` と `{from,to}` は、**どちらか一方だけ**でなければなりません（混在や片側の欠落は検証エラーになります）。
+
+**方向指定**形式の意味は「スクロール」であり、各バックエンドは実際にスクロールを起こすプリミティブで実現します。iOS や Android では OS の本物のドラッグで、web ではマウスドラッグがページをスクロールしないため wheel イベント（デスクトップ）かタッチドラッグ（モバイルの [`deviceMode`](drivers.md#playwrightweb)）で実現します（BE-0227）。**座標**形式は、それ自体を目的とする素のポインタドラッグ（canvas やマップのパン、ドラッグハンドル）であり、どのバックエンドでも素のドラッグの最終手段です。
+
+### `drag`
+
+```yaml
+- drag: { on: { id: replay.divider }, direction: right }             # 掴んだハンドルをドラッグする
+- drag: { on: { id: volume.slider }, direction: up, amount: 0.3 }    # 画面に対する割合で
+```
+
+`drag` は要素アンカーの**ポインタドラッグ**です。要素そのものを掴んで方向へ動かすもので、リサイズ用の仕切り、スライダーのつまみ、並べ替えハンドルなど、スクロールではなくドラッグする操作に使います。方向指定 `swipe` と同じジオメトリを共有し（`amount` は画面に対する割合で `0 < amount ≤ 1`、省略時は小さな既定値）、方向指定 `swipe` が**スクロール**するのに対して `drag` は本物のポインタドラッグを行います。差が出るのは web だけです。web では方向指定 `swipe` が wheel スクロールになり、掴んだハンドルを動かせないため、その場合は `drag` を使います。iOS / Android では OS の本物のドラッグがスクロールもハンドル移動も兼ねるので、両者は一致します。
 
 ### `doubleTap` / `pinch` / `rotate`（ジェスチャ）
 

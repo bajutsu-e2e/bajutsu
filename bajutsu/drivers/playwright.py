@@ -60,6 +60,9 @@ class _Mouse(Protocol):
     def up(self) -> None:
         pass
 
+    def wheel(self, delta_x: float, delta_y: float) -> None:
+        pass
+
 
 class _Keyboard(Protocol):
     def type(self, text: str) -> None:
@@ -534,10 +537,40 @@ class PlaywrightDriver:
 
     @_wedge_guard
     def swipe(self, frm: base.Point, to: base.Point) -> None:
-        self._page.mouse.move(frm[0], frm[1])
-        self._page.mouse.down()
-        self._page.mouse.move(to[0], to[1])
-        self._page.mouse.up()
+        # A literal pointer drag — the coordinate `swipe` form (canvas / map pan) and the `drag`
+        # action (a resize divider, a slider thumb). Keyed on input mode like `scroll` (BE-0227): a
+        # touch context uses a real touch drag (the pinch/rotate path) so a touch-bound handle
+        # responds — a synthesized mouse drag fires no touch listeners; a desktop context uses a raw
+        # mouse drag. (The directional "scroll" form does not come here — it goes to `scroll`.)
+        if self._has_touch():
+            self._touch_drag([frm], [to])
+        else:
+            self._page.mouse.move(frm[0], frm[1])
+            self._page.mouse.down()
+            self._page.mouse.move(to[0], to[1])
+            self._page.mouse.up()
+
+    @_wedge_guard
+    def scroll(self, frm: base.Point, to: base.Point) -> None:
+        # A directional scroll (see base.Driver.scroll). A mouse drag leaves the page inert, so
+        # dispatch the primitive that actually scrolls, keyed on the context's input mode (BE-0228): a
+        # touch context uses a real single-finger touch drag (the pinch/rotate path, so touch/scroll
+        # listeners fire); a desktop context wheels at the gesture's start, the delta being the
+        # reverse of the travel (frm - to) so the page scrolls the way the gesture points.
+        if self._has_touch():
+            self._touch_drag([frm], [to])
+        else:
+            self._page.mouse.move(frm[0], frm[1])
+            self._page.mouse.wheel(frm[0] - to[0], frm[1] - to[1])
+
+    def _has_touch(self) -> bool:
+        """Whether the active context takes touch input, deciding a gesture's primitive (BE-0227).
+
+        Read from the memoized device descriptor (BE-0228), which is derived from the target's fixed
+        `deviceMode` and re-applied identically at every context creation — so it never goes stale
+        across a `reset_context` or `relaunch`, unlike a value read back from a live context.
+        """
+        return bool(self._resolved_device_kwargs().get("has_touch", False))
 
     @_wedge_guard
     def back(self) -> None:
@@ -571,11 +604,12 @@ class PlaywrightDriver:
         return x + w / 2, y + h / 2, min(w, h) / 4
 
     def _touch_drag(self, start: list[base.Point], end: list[base.Point], steps: int = 5) -> None:
-        """Synthesize a two-finger drag from `start` to `end` via CDP touch events (Chromium).
+        """Synthesize a touch drag from `start` to `end` via CDP touch events (Chromium).
 
-        Playwright's `mouse` is single-pointer, so multi-touch goes through the DevTools protocol's
-        `Input.dispatchTouchEvent` — the same path a real gesture takes, so the page's touch / gesture
-        listeners fire, unlike a synthetic DOM event.
+        One point per finger: two for `pinch` / `rotate`, one for a `scroll` on a touch context
+        (BE-0227). Playwright's `mouse` is single-pointer, so touch goes through the DevTools
+        protocol's `Input.dispatchTouchEvent` — the same path a real gesture takes, so the page's
+        touch / gesture listeners fire, unlike a synthetic DOM event.
         """
         self._dispatch_touch("touchStart", start)
         for k in range(1, steps + 1):

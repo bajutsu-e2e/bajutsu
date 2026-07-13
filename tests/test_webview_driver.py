@@ -79,6 +79,8 @@ def test_unsupported_actions_raise() -> None:
     with pytest.raises(base.UnsupportedAction):
         driver.swipe((0, 0), (100, 100))
     with pytest.raises(base.UnsupportedAction):
+        driver.scroll((0, 0), (100, 100))
+    with pytest.raises(base.UnsupportedAction):
         driver.pinch({"id": "x"}, 2.0)
     with pytest.raises(base.UnsupportedAction):
         driver.rotate({"id": "x"}, 1.0)

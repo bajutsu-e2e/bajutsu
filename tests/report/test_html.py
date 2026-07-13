@@ -172,6 +172,32 @@ def test_merged_steps_show_rich_definition() -> None:
     assert "class='skip'" in out  # planned-but-not-run steps are marked
 
 
+def test_drag_step_renders_action_badge_and_direction() -> None:
+    # `drag` (BE-0227) is wired into the report's action registries like swipe/pinch/rotate, so its
+    # row shows the `drag` action badge and a tokenized "direction on <id> · amount" detail rather
+    # than a blank cell (which an unregistered action would produce).
+    definition = {
+        "name": "s1",
+        "steps": [{"drag": {"on": {"id": "gest.divider"}, "direction": "left", "amount": 0.5}}],
+    }
+    out = html_report("run9", [_passing()], definitions=[definition])
+    assert ">drag</span>" in out  # the action badge from _ACTION_META
+    assert 'left on <span class="tk id">#gest.divider</span>' in out
+    assert '<span class="tk num">0.5</span>' in out
+
+
+def test_directional_swipe_renders_amount_for_parity_with_drag() -> None:
+    # A directional swipe's `amount` (the same screen-fraction field as drag's) now renders too, so a
+    # non-default swipe distance is distinguishable in the report rather than silently identical.
+    definition = {
+        "name": "s1",
+        "steps": [{"swipe": {"on": {"id": "feed"}, "direction": "up", "amount": 0.5}}],
+    }
+    out = html_report("run9", [_passing()], definitions=[definition])
+    assert 'up on <span class="tk id">#feed</span>' in out
+    assert '<span class="tk num">0.5</span>' in out
+
+
 def test_steps_show_from_provenance_grouped() -> None:
     # Each planned step renders the natural-language phrase it was recorded from (BE-0044);
     # a run of identical consecutive `from:` is labeled once (emergent grouping). Only

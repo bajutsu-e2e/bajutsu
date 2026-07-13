@@ -362,6 +362,10 @@ class IdbDriver:
     def swipe(self, frm: base.Point, to: base.Point) -> None:
         self._run(swipe_cmd(self.udid, frm[0], frm[1], to[0], to[1]))
 
+    def scroll(self, frm: base.Point, to: base.Point) -> None:
+        # A real idb drag scrolls the OS's scroll views, so a directional scroll is just a swipe.
+        self.swipe(frm, to)
+
     def select_option(self, sel: base.Selector, option: str) -> None:
         raise base.UnsupportedAction(
             "selectOption は <select> を持つ web バックエンド専用; iOS ネイティブに <select> はない"

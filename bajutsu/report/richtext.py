@@ -128,6 +128,18 @@ def _assert_parts(a: dict[str, Any]) -> tuple[str, list[Part], list[Part]]:
     return "?", [], []
 
 
+def _directional_parts(payload: dict[str, Any]) -> list[Part]:
+    """Detail for a directional gesture — `<direction> on <sel> · <amount>`.
+
+    Shared by `swipe`'s `{on,direction}` form and `drag`, which carry the same payload shape, so a
+    field added to that shape renders identically for both instead of drifting between two branches.
+    """
+    parts: list[Part] = [("", f"{payload.get('direction', '')} on "), *_sel_parts(payload["on"])]
+    if payload.get("amount") is not None:
+        parts += [("", " · "), ("num", _gnum(payload["amount"]))]
+    return parts
+
+
 def _step_desc_parts(action: str, payload: Any) -> list[Part]:
     """The tokenized detail for a single (non-assert) step action."""
     if action in ("tap", "doubleTap"):
@@ -143,7 +155,7 @@ def _step_desc_parts(action: str, payload: Any) -> list[Part]:
         return out
     if action == "swipe":
         if payload.get("on"):
-            return [("", f"{payload.get('direction', '')} on "), *_sel_parts(payload["on"])]
+            return _directional_parts(payload)
         return [*_pt_parts(payload.get("from")), ("", " → "), *_pt_parts(payload.get("to"))]
     if action == "pinch":
         return [*_sel_parts(payload["sel"]), ("", " · ×"), ("num", _gnum(payload["scale"]))]
@@ -153,6 +165,8 @@ def _step_desc_parts(action: str, payload: Any) -> list[Part]:
             ("", " · "),
             ("num", f"{_gnum(payload['radians'])} rad"),
         ]
+    if action == "drag":
+        return _directional_parts(payload)
     if action == "wait":
         return _wait_parts(payload)
     if action == "relaunch":

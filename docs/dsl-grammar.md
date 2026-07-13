@@ -126,7 +126,8 @@ Action    ::=
   | { longPress:   { sel: <Selector>, duration: number } }
   | { type:        { text: string, into?: <Selector>, submit?: boolean } }   # submit default false
   | { selectOption:{ sel: <Selector>, option: string } }   # set a web <select> to the option with this value (web only; iOS/Android raise)
-  | { swipe:       <Swipe> }
+  | { swipe:       <Swipe> }                          # directional form scrolls; coordinate form is a raw drag
+  | { drag:        <Drag> }                           # pointer-drag a grabbed element (handle / divider / slider), not a scroll
   | { back:        {} }                               # navigate back (Android system key / iOS OS back button / web history)
   | { pinch:       { sel: <Selector>, scale: number } }    # scale > 0  (>1 in, <1 out)
   | { rotate:      { sel: <Selector>, radians: number } }  # >0 clockwise
@@ -154,6 +155,7 @@ Swipe ::=
     { on: <Selector>, direction: ("up"|"down"|"left"|"right"), amount?: number }   # selector form  ┐ XOR
   | { from: <Point>,  to: <Point> }                                                # coordinate form ┘
     # amount (selector form only): travel as a fraction of the screen, 0 < amount ≤ 1; omitted = a small default fraction (0.125)
+Drag ::= { on: <Selector>, direction: ("up"|"down"|"left"|"right"), amount?: number }   # element-anchored pointer drag (BE-0227), amount as in Swipe
 Point ::= [ number, number ]
 
 # ── Selector (≥1 field; provided fields are AND-ed) ────────────────────

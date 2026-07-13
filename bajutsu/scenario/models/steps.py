@@ -23,6 +23,7 @@ from bajutsu.scenario.models.actions import (
     ClearClipboard,
     ClearKeychain,
     ClearStatusBar,
+    Drag,
     Email,
     Foreground,
     HttpRequest,
@@ -106,6 +107,7 @@ class Step(_Model):
     type: TypeText | None = None
     select_option: SelectOption | None = Field(default=None, alias="selectOption")
     swipe: Swipe | None = None
+    drag: Drag | None = None
     back: Back | None = None
     pinch: Pinch | None = None
     rotate: Rotate | None = None

@@ -143,6 +143,9 @@ class WebContextDriver:
     def swipe(self, frm: Point, to: Point) -> None:
         raise UnsupportedAction("swipe is not supported in web context (first slice)")
 
+    def scroll(self, frm: Point, to: Point) -> None:
+        raise UnsupportedAction("scroll is not supported in web context (first slice)")
+
     def back(self) -> None:
         raise UnsupportedAction("back is not supported in web context (first slice)")
 

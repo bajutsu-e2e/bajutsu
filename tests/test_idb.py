@@ -10,6 +10,7 @@ from bajutsu.drivers.idb import (
     IdbDriver,
     _validated_udid,
     parse_describe_all,
+    swipe_cmd,
     tap_cmd,
 )
 
@@ -60,6 +61,21 @@ def test_tap_resolves_frame_center() -> None:
     assert calls == [tap_cmd("U", 50, 20)]
     # A short dwell is always included so the tap actuates a UISwitch (see idb.py).
     assert calls[0] == ["idb", "ui", "tap", "--udid", "U", "50", "20", "--duration", "0.1"]
+
+
+def test_scroll_delegates_to_a_real_swipe_drag() -> None:
+    # A directional scroll on iOS is a real `idb ui swipe` drag, so scroll delegates to swipe
+    # (BE-0227) — an OS-level drag already scrolls scroll views.
+    calls: list[list[str]] = []
+
+    def run(args: list[str]) -> str:
+        if "describe-all" in args:
+            return FIXTURE
+        calls.append(args)
+        return ""
+
+    IdbDriver("U", run=run).scroll((10, 20), (30, 40))
+    assert calls == [swipe_cmd("U", 10, 20, 30, 40)]
 
 
 def test_capabilities_has_no_semantic_tap() -> None:

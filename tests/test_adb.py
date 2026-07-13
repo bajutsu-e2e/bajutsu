@@ -324,6 +324,21 @@ def test_swipe_command_shape() -> None:
     assert calls[0] == ["adb", "-s", "U", "shell", "input", "swipe", "10", "20", "30", "40", "300"]
 
 
+def test_scroll_delegates_to_a_real_drag() -> None:
+    # A directional scroll on Android is a real `input swipe` drag, so scroll delegates to swipe
+    # (BE-0227) — the same command shape, since a drag already scrolls Android scroll views.
+    calls: list[list[str]] = []
+
+    def run(args: list[str]) -> str:
+        if "dump" in args:
+            return FIXTURE
+        calls.append(args)
+        return ""
+
+    AdbDriver("U", run=run).scroll((10, 20), (30, 40))
+    assert calls[0] == ["adb", "-s", "U", "shell", "input", "swipe", "10", "20", "30", "40", "300"]
+
+
 def test_type_text_passes_value_over_stdin_not_argv(monkeypatch: pytest.MonkeyPatch) -> None:
     # BE-0155 parity with idb: a typed value (which may be a secret / OTP) goes to `adb shell` on
     # stdin, never in the adb argv where `ps` could read it.

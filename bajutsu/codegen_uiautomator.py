@@ -192,6 +192,13 @@ def _emit_step(step: Step) -> list[str]:
                 f"swipe(Direction.{_DIRECTION[sw.direction]}, {_SWIPE_PERCENT})",
             )
         return ["// TODO: coordinate swipe (from/to) is not generated"]
+    if step.drag is not None:
+        # UiObject2.swipe is a real drag, so an element-anchored `drag` (BE-0227) emits the same
+        # primitive a directional `swipe` does — on Android a drag both scrolls and moves handles.
+        return _act(
+            step.drag.on.as_selector(),
+            f"swipe(Direction.{_DIRECTION[step.drag.direction]}, {_SWIPE_PERCENT})",
+        )
     if step.pinch is not None:
         # UiObject2 pinchOpen / pinchClose take the gesture extent as a fraction; scale >= 1 zooms in.
         call = "pinchOpen(0.5f)" if step.pinch.scale >= 1 else "pinchClose(0.5f)"

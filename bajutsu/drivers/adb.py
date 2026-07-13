@@ -390,6 +390,11 @@ class AdbDriver:
     def swipe(self, frm: base.Point, to: base.Point) -> None:
         self._run(adb.swipe_cmd(self.serial, frm[0], frm[1], to[0], to[1]))
 
+    def scroll(self, frm: base.Point, to: base.Point) -> None:
+        # An adb `input swipe` with a finite duration is a real drag, which scrolls, so a directional
+        # scroll is just a swipe.
+        self.swipe(frm, to)
+
     def back(self) -> None:
         # The true system back: a KEYCODE_BACK key event. Android has no on-screen "back" element to
         # tap (unlike iOS's OS back button), so this is a key event, not a coordinate — BE-0210.

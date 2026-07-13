@@ -120,7 +120,7 @@ def _swipe_points(spec: str) -> tuple[base.Point, base.Point]:
     driver = FakeDriver(screen=[win, lst])
     result = run_scenario(driver, load_scenarios(f"- name: s\n  steps:\n    - {spec}\n")[0])
     assert result.ok, result.failure
-    frm, to = next(arg for kind, arg in driver.actions if kind == "swipe")
+    frm, to = next(arg for kind, arg in driver.actions if kind == "scroll")
     return frm, to
 
 
@@ -146,7 +146,7 @@ def _swipe_travel_on(screen_h: float, spec: str) -> float:
     driver = FakeDriver(screen=[win, lst])
     result = run_scenario(driver, load_scenarios(f"- name: s\n  steps:\n    - {spec}\n")[0])
     assert result.ok, result.failure
-    frm, to = next(arg for kind, arg in driver.actions if kind == "swipe")
+    frm, to = next(arg for kind, arg in driver.actions if kind == "scroll")
     return abs(frm[1] - to[1])
 
 
@@ -182,6 +182,42 @@ def test_swipe_amount_only_with_direction_form() -> None:
         load_scenarios(
             "- name: s\n  steps:\n    - swipe: { from: [0, 0], to: [0, 10], amount: 0.5 }\n"
         )
+
+
+# --- drag: an element-anchored pointer drag, distinct from swipe's scroll (BE-0227) ---
+
+
+def test_drag_is_a_real_pointer_drag_not_a_scroll() -> None:
+    # `drag` shares swipe's directional endpoint math but drives `driver.swipe` (a real drag), so the
+    # fake driver records "swipe", not "scroll" — the seam that lets web move a grabbed handle.
+    win: base.Element = {"identifier": None, "label": None, "traits": ["application"], "value": None,
+                         "frame": (0.0, 0.0, 400.0, 800.0)}  # fmt: skip
+    handle: base.Element = {"identifier": "divider", "label": None, "traits": [], "value": None,
+                            "frame": (100.0, 300.0, 10.0, 200.0)}  # fmt: skip
+    driver = FakeDriver(screen=[win, handle])
+    result = run_scenario(
+        driver,
+        load_scenarios(
+            "- name: s\n  steps:\n    - drag: { on: { id: divider }, direction: right }\n"
+        )[0],
+    )
+    assert result.ok, result.failure
+    [(kind, (frm, to))] = driver.actions
+    assert kind == "swipe"  # a pointer drag, not a scroll
+    assert to[0] > frm[0] and to[1] == frm[1]  # travels right, level
+
+
+def test_drag_amount_must_be_a_screen_fraction() -> None:
+    with pytest.raises(ValueError, match=r"within 0"):
+        load_scenarios(
+            "- name: s\n  steps:\n    - drag: { on: { id: a }, direction: up, amount: 2 }\n"
+        )
+
+
+def test_drag_requires_on_and_direction() -> None:
+    # drag is element-anchored only — no {from,to} form (that stays swipe's coordinate escape hatch).
+    with pytest.raises(ValueError, match=r"Field required|Extra inputs"):
+        load_scenarios("- name: s\n  steps:\n    - drag: { from: [0, 0], to: [0, 10] }\n")
 
 
 # --- Capability gating: a single-touch actuator declines pinch / rotate ---

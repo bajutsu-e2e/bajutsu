@@ -98,6 +98,13 @@ def test_swipe_direction_and_from_to_todo() -> None:
     assert "// TODO: coordinate swipe (from/to) is not generated" in code
 
 
+def test_drag_maps_to_swipe_gesture() -> None:
+    # `drag` (BE-0227) is an element-anchored pointer drag; UiObject2.swipe is a real drag, so it
+    # emits the same primitive a directional swipe does.
+    code = _gen("- name: x\n  steps:\n    - drag: { on: { id: divider }, direction: right }\n")
+    assert 'device.findObject(byId("divider")).swipe(Direction.RIGHT, 0.75f)' in code
+
+
 def test_long_press_pinch_and_unsupported_gestures() -> None:
     code = _gen(
         "- name: x\n  steps:\n"

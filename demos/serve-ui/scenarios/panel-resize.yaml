@@ -26,9 +26,11 @@ scenarios:
           - label: { sel: { id: replay.size.controls }, equals: "25" }
           - label: { sel: { id: replay.size.log }, equals: "25" }
           - label: { sel: { id: replay.size.report }, equals: "50" }
-      # Drag the controls↔log divider 100px right: controls should grow and log shrink, their
-      # combined share unchanged.
-      - swipe: { on: { id: replay.divider.controls-log }, direction: right }
+      # Drag the controls↔log divider right: controls should grow and log shrink, their combined
+      # share unchanged. This is a real pointer drag of the divider (a grabbed handle), not a scroll,
+      # so it uses `drag` — on web a directional `swipe` is a wheel scroll that would not move it
+      # (BE-0227).
+      - drag: { on: { id: replay.divider.controls-log }, direction: right }
     expect:
       # The invariant the bug violated: the non-adjacent report panel is untouched at 50%.
       - label: { sel: { id: replay.size.report }, equals: "50" }

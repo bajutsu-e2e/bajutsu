@@ -25,9 +25,19 @@ from bajutsu.drivers import base
 from bajutsu.scenario import Assertion, Gone, RequestMatch, Scenario, Step
 from bajutsu.scenario.models.assertions import CountMatch, TextMatch, Wait, WaitRequest
 
-# Element-center drag distance (px) for a directional swipe — intrinsic to the gesture.
+# Wheel-scroll distance (px) a directional swipe emits — intrinsic to the gesture (BE-0227). The
+# delta is the physical scroll direction: an `up` swipe pushes the surface up, so the page scrolls
+# *down* (positive delta_y), mirroring `page.mouse.wheel` and how the driver realizes the same step.
 _SWIPE_PX = 100
-_SWIPE_DELTA = {
+_WHEEL_DELTA = {
+    "up": (0, _SWIPE_PX),
+    "down": (0, -_SWIPE_PX),
+    "left": (_SWIPE_PX, 0),
+    "right": (-_SWIPE_PX, 0),
+}
+# Element-center drag offset (px) a `drag` emits (BE-0227). Unlike the wheel above, this is the
+# travel direction itself — the pointer moves the way the drag points — so `right` drags right.
+_DRAG_DELTA = {
     "up": (0, -_SWIPE_PX),
     "down": (0, _SWIPE_PX),
     "left": (-_SWIPE_PX, 0),
@@ -281,8 +291,28 @@ def _ms(seconds: float) -> int:
 
 
 def _emit_swipe_direction(loc: str, direction: str) -> list[str]:
-    dx, dy = _SWIPE_DELTA[direction]
+    # A directional swipe scrolls, so wheel over the element — matching the web driver (BE-0227). The
+    # old mouse drag left the page unscrolled.
+    dx, dy = _WHEEL_DELTA[direction]
     # A block scope keeps `const box` re-declarable across multiple swipes in one test.
+    return [
+        "{",
+        f"  const box = await {loc}.boundingBox();",
+        "  if (box) {",
+        "    const cx = box.x + box.width / 2;",
+        "    const cy = box.y + box.height / 2;",
+        "    await page.mouse.move(cx, cy);",
+        f"    await page.mouse.wheel({dx}, {dy});",
+        "  }",
+        "}",
+    ]
+
+
+def _emit_drag_direction(loc: str, direction: str) -> list[str]:
+    # A `drag` is a real pointer drag of the element (BE-0227) — matching the web driver, which drags
+    # (move → down → move → up) for `drag` where it wheels for a directional `swipe`.
+    dx, dy = _DRAG_DELTA[direction]
+    # A block scope keeps `const box` re-declarable across multiple drags in one test.
     return [
         "{",
         f"  const box = await {loc}.boundingBox();",
@@ -325,6 +355,12 @@ def _emit_step(step: Step) -> list[str]:
                 return [_unsupported_selector_todo(sel)]
             return _emit_swipe_direction(loc, sw.direction)
         return ["// TODO: coordinate swipe (from/to) is not generated"]
+    if step.drag is not None:
+        sel = step.drag.on.as_selector()
+        loc = _locator(sel)
+        if loc is None:
+            return [_unsupported_selector_todo(sel)]
+        return _emit_drag_direction(loc, step.drag.direction)
     if step.wait is not None:
         return _emit_wait(step.wait)
     if step.pinch is not None:
