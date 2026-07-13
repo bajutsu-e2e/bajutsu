@@ -100,6 +100,21 @@ def test_records_a_completed_request_as_an_exchange() -> None:
     assert ex.mocked is False
 
 
+def test_late_requestfinished_after_target_closed_is_dropped() -> None:
+    # A `requestfinished` can fire while the page navigates or after the context/browser closes;
+    # `response()` then raises (TargetClosedError). The handler must swallow it and record nothing,
+    # rather than let it surface as an unhandled error on Playwright's event loop.
+    page = _FakePage()
+    collector = WebNetworkCollector(page)
+
+    class _ClosedRequest(_FakeRequest):
+        def response(self) -> _FakeResponse | None:
+            raise RuntimeError("Request.response: Target page, context or browser has been closed")
+
+    page.finish(_ClosedRequest("GET", "https://api.test/late"))
+    assert collector.snapshot() == []
+
+
 def test_snapshot_timed_and_clear() -> None:
     page = _FakePage()
     collector = WebNetworkCollector(page)
