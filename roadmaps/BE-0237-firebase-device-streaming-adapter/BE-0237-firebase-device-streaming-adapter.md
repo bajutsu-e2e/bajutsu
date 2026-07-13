@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-firebase-device-streaming-adapter-ja.md)
+**English** · [日本語](BE-0237-firebase-device-streaming-adapter-ja.md)
 
-# BE-XXXX — Firebase Test Lab / Device Streaming adapter
+# BE-0237 — Firebase Test Lab / Device Streaming adapter
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-firebase-device-streaming-adapter.md) |
+| Proposal | [BE-0237](BE-0237-firebase-device-streaming-adapter.md) |
 | Author | [@hirosassa](https://github.com/hirosassa) |
 | Status | **Proposal** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0237") |
 | Topic | Platform expansion (Android / Web / Flutter) |
 <!-- /BE-METADATA -->
 

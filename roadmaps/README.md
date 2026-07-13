@@ -642,6 +642,9 @@ A platform is just a backend behind the one driver interface ([DESIGN §1](../DE
 |---|---|---|
 | [BE-0008](BE-0008-flutter-support/BE-0008-flutter-support.md) | Flutter support | Proposal |
 | [BE-0234](BE-0234-adb-run-performance/BE-0234-adb-run-performance.md) | Speed up adb scenario runs (uiautomator dump bottleneck) | Proposal |
+| [BE-0235](BE-0235-aws-device-farm-submitter/BE-0235-aws-device-farm-submitter.md) | AWS Device Farm batch submitter | Proposal |
+| [BE-0236](BE-0236-device-cloud-provider-abstraction/BE-0236-device-cloud-provider-abstraction.md) | Device-cloud provider abstraction | Proposal |
+| [BE-0237](BE-0237-firebase-device-streaming-adapter/BE-0237-firebase-device-streaming-adapter.md) | Firebase Test Lab / Device Streaming adapter | Proposal |
 <!-- /GENERATED:proposals-platform -->
 
 ### Authoring experience (record / GUI editor)
@@ -740,7 +743,9 @@ Keeping the autonomous crawl fast and its code lean as it grows.
 ### Backend expansion (iOS actuators)
 
 <!-- GENERATED:proposals-backend -->
-
+| ID | Item | Status |
+|---|---|---|
+| [BE-0238](BE-0238-ios-device-cloud-execution/BE-0238-ios-device-cloud-execution.md) | iOS device-cloud execution | Proposal |
 <!-- /GENERATED:proposals-backend -->
 
 ### doctor / onboarding

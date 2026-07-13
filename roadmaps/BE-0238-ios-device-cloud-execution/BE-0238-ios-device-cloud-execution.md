@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-ios-device-cloud-execution-ja.md)
+**English** · [日本語](BE-0238-ios-device-cloud-execution-ja.md)
 
-# BE-XXXX — iOS device-cloud execution
+# BE-0238 — iOS device-cloud execution
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-ios-device-cloud-execution.md) |
+| Proposal | [BE-0238](BE-0238-ios-device-cloud-execution.md) |
 | Author | [@hirosassa](https://github.com/hirosassa) |
 | Status | **Proposal** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0238") |
 | Topic | Backend expansion (iOS actuators) |
 <!-- /BE-METADATA -->
 

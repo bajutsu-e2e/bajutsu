@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-aws-device-farm-submitter-ja.md)
+**English** · [日本語](BE-0235-aws-device-farm-submitter-ja.md)
 
-# BE-XXXX — AWS Device Farm batch submitter
+# BE-0235 — AWS Device Farm batch submitter
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-aws-device-farm-submitter.md) |
+| Proposal | [BE-0235](BE-0235-aws-device-farm-submitter.md) |
 | Author | [@hirosassa](https://github.com/hirosassa) |
 | Status | **Proposal** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0235") |
 | Topic | Platform expansion (Android / Web / Flutter) |
 <!-- /BE-METADATA -->
 

@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-device-cloud-provider-abstraction-ja.md)
+**English** · [日本語](BE-0236-device-cloud-provider-abstraction-ja.md)
 
-# BE-XXXX — Device-cloud provider abstraction
+# BE-0236 — Device-cloud provider abstraction
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-device-cloud-provider-abstraction.md) |
+| Proposal | [BE-0236](BE-0236-device-cloud-provider-abstraction.md) |
 | Author | [@hirosassa](https://github.com/hirosassa) |
 | Status | **Proposal** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0236") |
 | Topic | Platform expansion (Android / Web / Flutter) |
 <!-- /BE-METADATA -->
 
