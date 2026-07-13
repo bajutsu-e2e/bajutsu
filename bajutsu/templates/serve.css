@@ -6,7 +6,10 @@
 :root{--mono:ui-monospace,SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace}
 *{box-sizing:border-box}body{margin:0;font:14px/1.5 system-ui,sans-serif;background:var(--bg2);color:var(--fg);display:flex;flex-direction:column;height:100vh;overflow:hidden}
 header{flex:0 0 auto;z-index:10;display:flex;align-items:center;gap:1rem;padding:.55rem 1rem;background:var(--bg);border-bottom:1px solid var(--line)}
-header .brandcol{display:flex;flex-direction:column;gap:.4rem}
+/* Grow to fill the header so the toptabs row it stacks under the brand spans the full width — that
+   lets the theme picker + Edit (which live in that row, right-aligned by margin) line up with the
+   View/Settings buttons instead of floating at the header's vertical centre. */
+header .brandcol{display:flex;flex-direction:column;gap:.4rem;flex:1;min-width:0}
 header .brand{font-weight:700}
 .toptabs{display:flex;align-items:center;gap:.3rem}
 .toptab{background:var(--bg2);border:1px solid var(--line);color:var(--mut);padding:.25rem .9rem;font:inherit;font-weight:600;font-size:.9em;border-radius:8px;cursor:pointer}
@@ -22,7 +25,11 @@ header .brand{font-weight:700}
 /* theme picker (BE-0191) — a native <select> of every registered theme, flanked by a small icon.
    Pushed to the header's trailing edge; a native control stays keyboard/screen-reader accessible
    and, unlike a custom popup, never overlaps the tiler/viewswitch controls at any width. */
-.themepick{display:inline-flex;align-items:center;gap:.4rem;margin-left:auto;cursor:pointer}
+/* `margin-left:auto` right-aligns it in the toptabs row; `margin-block:auto` vertically centres it.
+   When the row is taller than one line (the "Open config" button can wrap to two), the parent's
+   align-items:center leaves the native <select> a few px low — a form-control cross-size quirk — so
+   auto block margins do the centring instead, keeping it level with the View/Settings buttons. */
+.themepick{display:inline-flex;align-items:center;gap:.4rem;margin-left:auto;margin-block:auto;cursor:pointer}
 .themepick .ico{width:15px;height:15px;color:var(--mut);transition:color .15s;flex:none}
 .themepick #theme{max-width:9rem;color:var(--fg);background:var(--bg2);border:1px solid var(--line);border-radius:6px;padding:.2rem 1.4rem .2rem .5rem;font:inherit;cursor:pointer;appearance:none;
   /* Themed chevron drawn as a background so the control tints with the palette, no extra markup. */

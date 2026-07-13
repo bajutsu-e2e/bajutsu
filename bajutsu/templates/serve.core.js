@@ -1003,6 +1003,8 @@ function importThemeFile(){
 // (and re-listened) per open, so reopening the editor never stacks duplicate button listeners.
 $('#opentheme').addEventListener('click',()=>{initThemeEditor();openModal($('#thememodal'));});
 $('#themeclose').addEventListener('click',()=>closeModal($('#thememodal')));
+// Dismiss on a backdrop click, like every other modal (this one was missing it).
+$('#thememodal').addEventListener('click',e=>{if(e.target===$('#thememodal'))closeModal($('#thememodal'))});
 $('#themesave-local').addEventListener('click',saveThemeLocal);
 $('#themeexport').addEventListener('click',exportTheme);
 $('#themeimport-input').addEventListener('change',importThemeFile);
