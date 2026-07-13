@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0239") |
-| Implementing PR | _(backend: this PR; Web UI to follow)_ |
+| Implementing PR | [#985](https://github.com/bajutsu-e2e/bajutsu/pull/985) _(backend; Web UI to follow)_ |
 | Topic | Hosting the web UI (cloud / self-hosted) |
 <!-- /BE-METADATA -->
 
