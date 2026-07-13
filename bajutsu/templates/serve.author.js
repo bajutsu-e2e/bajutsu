@@ -1062,5 +1062,18 @@ loadConfig();
 loadProjects();
 refreshAiAvailability();
 loadSims();
-loadHistory();
+// Stats drilldown (BE-0241): a deep link lands here as /?tab=history&runs=…&label=…. Read it before
+// the first history render, switch to the History tab, and filter to the linked run set. A normal
+// load (no tab=history) is untouched — the default view and full, unfiltered history stand.
+const _deepLinked=(function(){
+  const q=new URLSearchParams(location.search);
+  if(q.get('tab')!=='history')return false;
+  // getAll (not get().split(',')): each id is its own runs= param, so a run id containing a comma
+  // survives — URLSearchParams decodes each value independently (matches stats.html.j2's drill macro).
+  setHistoryFilter(q.getAll('runs'),q.get('label')||'');
+  showView('replay');  // showView + showTab each refresh the history list, so skip the plain load below
+  showTab('history');
+  return true;
+})();
+if(!_deepLinked)loadHistory();
 setInterval(loadHistory,4000);

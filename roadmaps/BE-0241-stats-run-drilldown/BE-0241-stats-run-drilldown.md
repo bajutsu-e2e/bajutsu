@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0241](BE-0241-stats-run-drilldown.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0241") |
+| Implementing PR | [#979](https://github.com/bajutsu-e2e/bajutsu/pull/979) |
 | Topic | Authoring experience (record / GUI editor) |
 <!-- /BE-METADATA -->
 
@@ -100,12 +101,20 @@ new report viewer.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Add `Hotspot.run_ids` and thread run ids through `_failing_scenarios` / `_failing_steps` /
+- [x] Add `Hotspot.run_ids` and thread run ids through `_failing_scenarios` / `_failing_steps` /
       `_failing_assertions` in `bajutsu/stats.py`.
-- [ ] Render the day / backend / hotspot rows in `stats.html.j2` as server-side
+- [x] Render the day / backend / hotspot rows in `stats.html.j2` as server-side
       `<a href="/?tab=history&runs=…">` deep links (no new inline script on the Stats page).
-- [ ] Add the `?tab=history&runs=…` deep-link handling and the history-list filter (with a clear
+- [x] Add the `?tab=history&runs=…` deep-link handling and the history-list filter (with a clear
       affordance) to `serve.js` / `serve.panels.js`.
+
+### Log
+
+- Implemented in [#979](https://github.com/bajutsu-e2e/bajutsu/pull/979): threaded run ids through the
+  hotspot aggregators via a shared `_HotspotTally`, added the `drill()` deep-link macro to
+  `stats.html.j2` (day / backend rows filter `stats.by_run` in-template; hotspot rows use
+  `Hotspot.run_ids`), and added the `?tab=history&runs=…&label=…` boot handler plus the history-list
+  filter + clear affordance to `serve.panels.js` / `serve.author.js`.
 
 ## References
 

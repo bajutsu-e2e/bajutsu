@@ -82,6 +82,7 @@ class Hotspot:
     key: str  # the scenario name / "scenario > action" / assertion kind that failed
     failures: int
     reason: str  # the most frequent failure reason among those failures ("" when none was recorded)
+    run_ids: tuple[str, ...]  # sorted, deduped ids of the runs this failure occurred in (BE-0241)
 
 
 @dataclass(frozen=True)
@@ -305,20 +306,22 @@ def _scenario_durations(runs: list[Mapping[str, object]]) -> dict[tuple[str, str
 
 def _failing_scenarios(runs: list[Mapping[str, object]]) -> list[Hotspot]:
     """Rank the scenarios that fail most, surfacing each one's most frequent failure reason."""
-    reasons: dict[str, Counter[str]] = {}
+    tally = _HotspotTally()
     for m in runs:
+        run_id = _as_str(m.get("runId"))
         for s in _as_list(m.get("scenarios")):
             if isinstance(s, Mapping) and not s.get("ok"):
                 name = s.get("scenario")
                 if isinstance(name, str) and name:
-                    reasons.setdefault(name, Counter())[_as_str(s.get("failure"))] += 1
-    return _hotspots(reasons)
+                    tally.add(name, _as_str(s.get("failure")), run_id)
+    return tally.hotspots()
 
 
 def _failing_steps(runs: list[Mapping[str, object]]) -> list[Hotspot]:
     """Rank the step actions that fail most (keyed `scenario > action`), with the recurring reason."""
-    reasons: dict[str, Counter[str]] = {}
+    tally = _HotspotTally()
     for m in runs:
+        run_id = _as_str(m.get("runId"))
         for s in _as_list(m.get("scenarios")):
             if not isinstance(s, Mapping):
                 continue
@@ -326,16 +329,15 @@ def _failing_steps(runs: list[Mapping[str, object]]) -> list[Hotspot]:
             for step in _as_list(s.get("steps")):
                 if isinstance(step, Mapping) and not step.get("ok"):
                     action = _str_or(step.get("action"), "?")
-                    reasons.setdefault(f"{name} > {action}", Counter())[
-                        _as_str(step.get("reason"))
-                    ] += 1
-    return _hotspots(reasons)
+                    tally.add(f"{name} > {action}", _as_str(step.get("reason")), run_id)
+    return tally.hotspots()
 
 
 def _failing_assertions(runs: list[Mapping[str, object]]) -> list[Hotspot]:
     """Rank the assertion kinds that fail most, over both step-level and scenario-level checks."""
-    reasons: dict[str, Counter[str]] = {}
+    tally = _HotspotTally()
     for m in runs:
+        run_id = _as_str(m.get("runId"))
         for s in _as_list(m.get("scenarios")):
             if not isinstance(s, Mapping):
                 continue
@@ -345,19 +347,41 @@ def _failing_assertions(runs: list[Mapping[str, object]]) -> list[Hotspot]:
                     checks += _as_list(step.get("assertion_results"))
             for a in checks:
                 if isinstance(a, Mapping) and not a.get("ok"):
-                    kind = _str_or(a.get("kind"), "?")
-                    reasons.setdefault(kind, Counter())[_as_str(a.get("reason"))] += 1
-    return _hotspots(reasons)
+                    tally.add(_str_or(a.get("kind"), "?"), _as_str(a.get("reason")), run_id)
+    return tally.hotspots()
 
 
-def _hotspots(reasons: dict[str, Counter[str]]) -> list[Hotspot]:
-    """Turn key→reason-tallies into ranked hotspots: most failures first, then key for stability."""
-    hotspots = [
-        Hotspot(key=key, failures=sum(tally.values()), reason=_top_reason(tally))
-        for key, tally in reasons.items()
-    ]
-    hotspots.sort(key=lambda h: (-h.failures, h.key))
-    return hotspots
+class _HotspotTally:
+    """Accumulate per-key failure reasons and contributing run ids in one pass (BE-0102/BE-0241).
+
+    The shared reduce the three aggregators share: each occurrence adds its reason to the key's
+    tally and records the run it came from, so a hotspot can both name its top reason and link back
+    to the runs behind it. Ranking is most failures first, then key for a stable order; the run ids
+    are sorted and deduped so the deep link the stats page emits is deterministic.
+    """
+
+    def __init__(self) -> None:
+        self._reasons: dict[str, Counter[str]] = {}
+        self._run_ids: dict[str, set[str]] = {}
+
+    def add(self, key: str, reason: str, run_id: str) -> None:
+        self._reasons.setdefault(key, Counter())[reason] += 1
+        ids = self._run_ids.setdefault(key, set())
+        if run_id:  # a manifest with no runId still counts toward the tally, but links to nothing
+            ids.add(run_id)
+
+    def hotspots(self) -> list[Hotspot]:
+        hotspots = [
+            Hotspot(
+                key=key,
+                failures=sum(tally.values()),
+                reason=_top_reason(tally),
+                run_ids=tuple(sorted(self._run_ids[key])),
+            )
+            for key, tally in self._reasons.items()
+        ]
+        hotspots.sort(key=lambda h: (-h.failures, h.key))
+        return hotspots
 
 
 def _top_reason(tally: Counter[str]) -> str:
@@ -435,17 +459,25 @@ def _env() -> Environment:
     return Environment(loader=FileSystemLoader(str(_TEMPLATE_DIR)), autoescape=True)
 
 
-def render_html(s: Stats) -> str:
+def render_html(s: Stats, *, live: bool = False) -> str:
     """A self-contained HTML dashboard (inline CSS, minimal inline SVG, no JS, no external asset).
 
     The visual counterpart to `render`: the pass-rate trend, run volume, the slowest and flakiest
     scenarios, and the failure hotspots on one page that works opened straight from disk. Read-only
     and AI-free, mirroring the coverage report (BE-0050).
+
+    Args:
+        s: The aggregated whole-suite trend to render.
+        live: When True (the serve `/stats` view), the day / backend / hotspot cells render as
+            drilldown deep links into the serve SPA's run history (BE-0241). The default (False) —
+            used by the `bajutsu stats --html` standalone export — renders those cells as plain text,
+            since an absolute `/?tab=history…` link is dead when the page is opened straight from disk
+            with no serve session, keeping the export self-contained.
     """
     return (
         _env()
         .get_template("stats.html.j2")
-        .render(stats=s, slowest=_slowest(s.scenarios), flaky=_flaky(s.scenarios))
+        .render(stats=s, slowest=_slowest(s.scenarios), flaky=_flaky(s.scenarios), live=live)
     )
 
 

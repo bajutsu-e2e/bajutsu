@@ -5,6 +5,22 @@
 {%- macro bar(fraction) -%}
 <div class="bar"><div class="fill" style="width: {{ (fraction * 100) | round(1) }}%"></div></div>
 {%- endmacro -%}
+{#- Drilldown deep link (BE-0241): navigate to the serve SPA's History tab, filtered to `run_ids`,
+    labelled for the "filtered: <label>" affordance. No JS on this page — the anchor carries the ids
+    and the SPA's boot reads the query. One `runs=` param per id (not a comma-joined value): the SPA
+    reads them with `URLSearchParams.getAll('runs')`, which decodes each independently, so a run id
+    that itself contains a comma survives (ids can be arbitrary custom labels, not just timestamps).
+    Only linked when `live` (the serve /stats view) — the `stats --html` standalone export renders
+    plain text, since an absolute `/?tab=history…` link is dead opened from disk. Likewise falls back
+    to plain text when there are no ids to link to (a run with no runId). -#}
+{%- macro drill(label, run_ids, live) -%}
+{%- set ids = run_ids | select | list -%}
+{%- if ids and live -%}
+<a class="drill" href="/?tab=history&amp;{% for id in ids %}runs={{ id | urlencode }}&amp;{% endfor %}label={{ label | urlencode }}">{{ caller() }}</a>
+{%- else -%}
+{{ caller() }}
+{%- endif -%}
+{%- endmacro -%}
 <html lang="en">
 <head>
 <meta charset="utf-8">
@@ -26,6 +42,8 @@ th, td { text-align: left; padding: .4rem .6rem; border-bottom: 1px solid #ecece
 th { color: #6e6e73; font-weight: 600; font-size: .85rem; }
 td.num { text-align: right; font-variant-numeric: tabular-nums; }
 code { background: #f2f2f7; border-radius: 4px; padding: .1rem .35rem; font-size: .85em; }
+a.drill { color: inherit; text-decoration: none; }
+a.drill:hover { color: #0071e3; text-decoration: underline; }
 .empty { color: #6e6e73; font-style: italic; }
 .tag { display: inline-block; border-radius: 4px; padding: .1rem .4rem; font-size: .85em; }
 .flaky { background: #fde8e8; color: #b00020; }
@@ -40,6 +58,7 @@ code { background: #f2f2f7; border-radius: 4px; padding: .1rem .35rem; font-size
   code { background: #2c2c2e; }
   th, td { border-color: #2c2c2e; }
   .flaky { background: #3a1f1f; color: #ff6961; }
+  a.drill:hover { color: #6db3ff; }
   .trend .axis { stroke: #48484a; }
 }
 </style>
@@ -74,7 +93,8 @@ code { background: #f2f2f7; border-radius: 4px; padding: .1rem .35rem; font-size
 {%- if stats.by_day %}
 <table><thead><tr><th>day</th><th>runs</th><th>passed</th><th>pass-rate</th></tr></thead><tbody>
 {%- for d in stats.by_day %}
-<tr><td>{{ d.day or "(no date)" }}</td><td class="num">{{ d.runs }}</td><td class="num">{{ d.passed_runs }}</td><td class="num">{{ (d.pass_rate * 100) | round(0) }}%</td></tr>
+{%- set day_ids = stats.by_run | selectattr("day", "equalto", d.day) | map(attribute="run_id") | list %}
+<tr><td>{% call drill("day " ~ (d.day or "(no date)"), day_ids, live) %}{{ d.day or "(no date)" }}{% endcall %}</td><td class="num">{{ d.runs }}</td><td class="num">{{ d.passed_runs }}</td><td class="num">{{ (d.pass_rate * 100) | round(0) }}%</td></tr>
 {%- endfor %}
 </tbody></table>
 {%- else %}
@@ -87,7 +107,8 @@ code { background: #f2f2f7; border-radius: 4px; padding: .1rem .35rem; font-size
 {%- if stats.by_backend %}
 <table><thead><tr><th>backend</th><th>runs</th></tr></thead><tbody>
 {%- for backend, n in stats.by_backend.items() %}
-<tr><td><code>{{ backend or "(unknown)" }}</code></td><td class="num">{{ n }}</td></tr>
+{%- set backend_ids = stats.by_run | selectattr("backend", "equalto", backend) | map(attribute="run_id") | list %}
+<tr><td>{% call drill("backend " ~ (backend or "(unknown)"), backend_ids, live) %}<code>{{ backend or "(unknown)" }}</code>{% endcall %}</td><td class="num">{{ n }}</td></tr>
 {%- endfor %}
 </tbody></table>
 {%- else %}
@@ -126,7 +147,7 @@ code { background: #f2f2f7; border-radius: 4px; padding: .1rem .35rem; font-size
 <h3>Scenarios</h3>
 <table><thead><tr><th>scenario</th><th>failures</th><th>top reason</th></tr></thead><tbody>
 {%- for h in stats.failing_scenarios[:20] %}
-<tr><td>{{ h.key }}</td><td class="num">{{ h.failures }}</td><td>{{ h.reason }}</td></tr>
+<tr><td>{% call drill(h.key, h.run_ids, live) %}{{ h.key }}{% endcall %}</td><td class="num">{{ h.failures }}</td><td>{{ h.reason }}</td></tr>
 {%- endfor %}
 </tbody></table>
 {%- endif %}
@@ -134,7 +155,7 @@ code { background: #f2f2f7; border-radius: 4px; padding: .1rem .35rem; font-size
 <h3>Steps</h3>
 <table><thead><tr><th>step</th><th>failures</th><th>top reason</th></tr></thead><tbody>
 {%- for h in stats.failing_steps[:20] %}
-<tr><td>{{ h.key }}</td><td class="num">{{ h.failures }}</td><td>{{ h.reason }}</td></tr>
+<tr><td>{% call drill(h.key, h.run_ids, live) %}{{ h.key }}{% endcall %}</td><td class="num">{{ h.failures }}</td><td>{{ h.reason }}</td></tr>
 {%- endfor %}
 </tbody></table>
 {%- endif %}
@@ -142,7 +163,7 @@ code { background: #f2f2f7; border-radius: 4px; padding: .1rem .35rem; font-size
 <h3>Assertions</h3>
 <table><thead><tr><th>kind</th><th>failures</th><th>top reason</th></tr></thead><tbody>
 {%- for h in stats.failing_assertions[:20] %}
-<tr><td><code>{{ h.key }}</code></td><td class="num">{{ h.failures }}</td><td>{{ h.reason }}</td></tr>
+<tr><td>{% call drill(h.key, h.run_ids, live) %}<code>{{ h.key }}</code>{% endcall %}</td><td class="num">{{ h.failures }}</td><td>{{ h.reason }}</td></tr>
 {%- endfor %}
 </tbody></table>
 {%- endif %}
