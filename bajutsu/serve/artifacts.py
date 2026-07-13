@@ -224,5 +224,5 @@ class LocalArtifactStore:
             if stamp:
                 return stamp
         except OSError:
-            pass
+            pass  # marker missing/unreadable (older serve, or a manual trash) — use the mtime below
         return datetime.fromtimestamp(trashed.stat().st_mtime, tz=UTC).isoformat()
