@@ -90,8 +90,9 @@ PR.
    after a configurable retention period (default e.g. 30 days; a `serve` config knob alongside the
    other hosting settings). There is no periodic-job runner in `serve` today, and this item does
    not introduce a new daemon: purge runs as a **lazy sweep** — checked opportunistically on the
-   next `list_runs`/`login` call, matching the precedent of `sessions.py`'s TTL-based Redis
-   eviction (`_DEFAULT_TTL`) — rather than a fixed-interval background thread.
+   next `list_runs`/`login` call, matching the precedent of `SqlSessionStore`'s expiry-on-read
+   check in `bajutsu/serve/server/sessions.py` (its `valid`/`identity` compare `expires_at` against
+   now; "Expiry is enforced on read") — rather than a fixed-interval background thread.
 4. **API surface**, alongside the existing `DELETE /api/projects/{name}`
    (`bajutsu/serve/server/app.py:418`) and its stdlib-handler counterpart (`handler.py:426`
    `do_DELETE`):

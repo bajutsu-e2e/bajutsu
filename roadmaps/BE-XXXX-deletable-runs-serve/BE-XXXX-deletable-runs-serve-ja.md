@@ -93,8 +93,10 @@ Tier-2 の run/CI ゲートの外側に完全に位置します（prime directiv
    保持期間（既定値の例として30日）を過ぎると完全削除の対象になります。`serve` には現状、
    定期実行するジョブランナーが存在せず、この項目でも新しいデーモンは導入しません。完全削除は
    次回の `list_runs`・ログイン呼び出しの際に日和見的にチェックする**遅延掃除**として実装します。
-   これは `sessions.py` の TTL ベースの Redis 失効（`_DEFAULT_TTL`）と同じ考え方であり、
-   固定間隔のバックグラウンドスレッドではありません。
+   これは `bajutsu/serve/server/sessions.py` の `SqlSessionStore` が読み取り時に有効期限を
+   チェックする方式（`valid`・`identity` が `expires_at` を現在時刻と比較する。docstring に
+   「Expiry is enforced on read」とあります）と同じ考え方であり、固定間隔のバックグラウンド
+   スレッドではありません。
 4. **API 面。** 既存の `DELETE /api/projects/{name}`（`bajutsu/serve/server/app.py:418`）と
    その stdlib ハンドラ側（`handler.py:426` の `do_DELETE`）に並ぶ形で追加します。
    - `DELETE /api/runs/{run_id}` と `DELETE /api/crawl/runs/{run_id}`：ソフトデリートです。
