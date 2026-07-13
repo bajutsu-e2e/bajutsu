@@ -1,6 +1,6 @@
 [English](BE-XXXX-serve-step-artifact-seam.md) · **日本語**
 
-# BE-XXXX — serve のステップアーティファクトの読み取りを ArtifactStore seam 経由にする
+# BE-XXXX — serve のステップアーティファクトの読み取りを ArtifactStore seam 経由に統一
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
