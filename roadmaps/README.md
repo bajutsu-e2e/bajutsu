@@ -530,7 +530,6 @@ Under consideration — not yet decided. Promote an item to *In progress* once w
 | ID | Item | Status |
 |---|---|---|
 | [BE-0008](BE-0008-flutter-support/BE-0008-flutter-support.md) | Flutter support | Proposal |
-| [BE-0234](BE-0234-adb-run-performance/BE-0234-adb-run-performance.md) | Speed up adb scenario runs (uiautomator dump bottleneck) | Proposal |
 <!-- /GENERATED:proposals-platform -->
 
 ### Device-cloud execution
