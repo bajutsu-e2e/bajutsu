@@ -118,11 +118,12 @@ vrt-uikit-approve: vrt-uikit
 # Committed iOS pixel VRT (parity with android/Makefile's e2e-visual + baselines_android). Unlike the
 # `vrt` demo above — every screen, XCUITest, local gitignored baselines — this is one screen (the
 # Stable catalog on the launch tab, so idb needs no tab navigation), compared to a committed baseline
-# under scenarios/visual/baselines_ios/. It runs on the weekly idb-monitor (non-blocking), the same
-# home as the idb element-tree golden: a pixel baseline is host-specific (Simulator renderer varies by
-# Xcode / device / OS), so drift surfaces on the monitor rather than blocking PRs. `e2e-visual-approve`
-# re-records the baseline from the latest run (do this on the monitor's Simulator if it drifts). Needs
-# the `visual` extra (Pillow); status bar + Liquid Glass tab bar are masked in the scenario.
+# under scenarios/visual/baselines_ios/. It runs on the path-gated, non-required ios-e2e.yml lane (the
+# iOS twin of android-e2e.yml's e2e-visual): a pixel baseline is host-specific (Simulator renderer
+# varies by Xcode / device / OS), so drift surfaces on that lane rather than blocking PRs on the
+# required gate. `e2e-visual-approve` re-records the baseline from the latest run (do this on the
+# lane's Simulator if it drifts). Needs the `visual` extra (Pillow); status bar + Liquid Glass tab bar
+# are masked in the scenario.
 BASELINES_IOS_VRT = $(HERE)/scenarios/visual/baselines_ios
 e2e-visual: swiftui-build
 	cd $(ROOT) && uv run --extra idb --extra visual bajutsu run \

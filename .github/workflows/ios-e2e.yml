@@ -1,0 +1,151 @@
+# On-device iOS visual-regression lane (macOS / idb) — the iOS twin of android-e2e.yml's `e2e-visual`.
+# It boots a Simulator, builds the SwiftUI showcase, and runs the committed pixel VRT
+# (`make -C demos/showcase e2e-visual`) over the idb backend, comparing the Stable catalog against the
+# committed baselines_ios/ baseline. Deterministic (a pixel compare, no LLM), so it stays within the
+# prime directives, and — like e2e.yml / android-e2e.yml — it is kept off the fast `make check` gate.
+#
+# Why its own path-gated, non-required lane (not the required `e2e.yml`, and no longer the weekly
+# idb-monitor): a pixel baseline is host-specific — the Simulator renderer varies by Xcode / device /
+# OS — so a drift should surface as a signal on a dedicated lane, not block PRs on the required check.
+# On a drift the captured screenshot is uploaded to re-record the baseline from (see
+# demos/showcase/scenarios/visual/baselines_ios/README.md), the same bootstrap the Android baseline used.
+#
+# Positive-list path filter (mirrors android-e2e.yml): only the paths the iOS VRT exercises — the idb
+# driver and the run / visual / evidence path, the SwiftUI showcase and the shared scenarios, the
+# config and the showcase Makefile, deps, the boot-simulator action, and this workflow. A new
+# VRT-relevant path defaults to NOT triggering — add it here.
+name: iOS E2E (Simulator)
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: &ios-paths
+      - 'bajutsu/drivers/idb.py'
+      - 'bajutsu/runner/**'
+      - 'bajutsu/scenario/**'
+      - 'bajutsu/orchestrator/**'
+      - 'bajutsu/assertions.py'
+      - 'bajutsu/backends.py'
+      - 'bajutsu/capability_preflight.py'
+      - 'bajutsu/config.py'
+      - 'bajutsu/config_source.py'
+      - 'bajutsu/evidence.py'
+      - 'bajutsu/elements.py'
+      - 'bajutsu/intervals.py'
+      - 'bajutsu/platform_lifecycle.py'
+      - 'bajutsu/simctl.py'
+      - 'bajutsu/visual.py'
+      - 'bajutsu/cli/commands/run.py'
+      - 'demos/showcase/ios/**'
+      - 'demos/showcase/scenarios/**'
+      - 'demos/showcase/showcase.config.yaml'
+      - 'demos/showcase/Makefile'
+      - 'BajutsuKit/**'
+      - 'pyproject.toml'
+      - 'uv.lock'
+      - '.github/actions/boot-simulator/**'
+      - '.github/workflows/ios-e2e.yml'
+  pull_request:
+    paths: *ios-paths
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ios-e2e-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ios-visual:
+    name: visual (idb)
+    runs-on: macos-latest
+    # A cold Xcode build (~2.5min) + a fresh Simulator boot (~80s) + the VRT run is well under this;
+    # 25 catches a hung Simulator/idb on the metered macOS runner with comfortable headroom.
+    timeout-minutes: 25
+    # Raise the wait floor so a cold-boot Simulator has budget to render the first Stable row before
+    # the scenario's own 10s first-wait — the same knob e2e.yml's smoke job and the Android lane use.
+    # A condition wait returns the instant the row appears, so this is a ceiling, not a fixed sleep.
+    env:
+      BAJUTSU_MIN_WAIT_TIMEOUT: "20"
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+
+      - name: Select Xcode
+        uses: maxim-lobanov/setup-xcode@ed7a3b1fda3918c0306d1b724322adc0b8cc0a90  # v1.7.0
+        with:
+          xcode-version: latest-stable
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39  # v8.2.0
+        with:
+          enable-cache: true
+
+      # xcodegen generates the showcase Xcode project for `swiftui-build`; rely on the runner image's
+      # pre-installed Homebrew state and skip auto-update / cleanup (each costs minutes per run).
+      - name: Install xcodegen
+        env:
+          HOMEBREW_NO_AUTO_UPDATE: "1"
+          HOMEBREW_NO_INSTALL_CLEANUP: "1"
+        run: brew install xcodegen
+
+      # Start the boot first so it runs concurrently with the app build below (a fresh boot is ~80s
+      # and does not depend on the build). `wait: 'false'` returns once boot is initiated; the wait
+      # step blocks on "booted" right before the run.
+      - name: Boot a Simulator
+        id: sim
+        uses: ./.github/actions/boot-simulator
+        with:
+          wait: "false"
+
+      # The DerivedData cache must not cross Xcode upgrades (a different Xcode's compiled modules cause
+      # stale-artifact build failures), so key it on the active Xcode build version.
+      - name: Resolve Xcode version (for the cache key)
+        id: xcode
+        run: echo "ver=$(xcodebuild -version | tr '\n ' '--')" >> "$GITHUB_OUTPUT"
+
+      # Cache the showcase app's DerivedData so `swiftui-build` is incremental across runs (matches
+      # e2e.yml's smoke job). A miss just rebuilds cold, so the cache only ever speeds the build.
+      - name: Cache DerivedData (app)
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+        with:
+          path: demos/showcase/ios/swiftui/build/dd
+          key: xcode-dd-app-${{ runner.os }}-${{ runner.arch }}-${{ steps.xcode.outputs.ver }}-${{ hashFiles('BajutsuKit/**/*.swift', 'demos/showcase/ios/swiftui/**/*.swift', 'demos/showcase/ios/swiftui/**/project.yml') }}
+          restore-keys: |
+            xcode-dd-app-${{ runner.os }}-${{ runner.arch }}-${{ steps.xcode.outputs.ver }}-
+
+      # Fetch the idb backend's deps concurrently with the app build (both independent of it): the
+      # idb_companion brew formula and the idb + visual Python extras. The `make e2e-visual` step then
+      # finds the build up to date and the extras synced. A build failure exits first under `set -e`;
+      # the trap stops the background fetches so they don't trail on a metered runner.
+      - name: Build the showcase app (fetch idb + visual deps concurrently)
+        env:
+          HOMEBREW_NO_AUTO_UPDATE: "1"
+          HOMEBREW_NO_INSTALL_CLEANUP: "1"
+        run: |
+          brew list facebook/fb/idb-companion >/dev/null 2>&1 || brew install facebook/fb/idb-companion &
+          brew_pid=$!
+          uv sync --extra idb --extra visual --no-dev &
+          sync_pid=$!
+          trap 'kill "$brew_pid" "$sync_pid" 2>/dev/null || true' EXIT
+          make -C demos/showcase swiftui-build
+          wait "$brew_pid"
+          wait "$sync_pid"
+          trap - EXIT
+
+      - name: Wait for the Simulator
+        run: xcrun simctl bootstatus "${{ steps.sim.outputs.udid }}" -b
+
+      # Run the committed pixel VRT over idb. `make e2e-visual` (demos/showcase/Makefile) installs the
+      # freshly-built app, drives the Stable catalog on the launch tab (no XCUITest tab navigation),
+      # and pixel-compares it against baselines_ios/stable.png with the status bar + tab bar masked.
+      - name: Run the visual regression (VRT, pixel snapshot)
+        run: make -C demos/showcase e2e-visual SIM=${{ steps.sim.outputs.udid }}
+
+      - name: Upload run artifacts
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
+        with:
+          name: ios-e2e-visual-run
+          path: runs/
+          if-no-files-found: ignore
