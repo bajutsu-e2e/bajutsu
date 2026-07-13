@@ -103,10 +103,11 @@ durably; this item only makes the bytes behind that `sha256` resolvable.
 ### 1. Persist the raw zip at upload time, content-addressed and org-scoped
 
 `bind_upload_config`'s handling of `POST /api/upload` (`bajutsu/serve/operations/upload.py`) keeps
-its current behavior unchanged — stream to a temp file, validate, extract into a fresh directory
-under `state.uploads_dir`, bind it as the active config — and, **when a `BAJUTSU_SERVER_STORE` is
-configured**, additionally writes the raw (still-compressed) zip bytes to that store under a key
-derived from the sha256 it already computes. The key nests under the same per-org prefix every
+its current validation and extraction unchanged — stream to a temp file, validate, extract into a
+fresh directory under `state.uploads_dir` — and, **when a `BAJUTSU_SERVER_STORE` is configured**,
+inserts one new step *before* `state.bind_upload(upload)` flips `serve`'s active config: it writes
+the raw (still-compressed) zip bytes to that store under a key derived from the sha256 it already
+computes. The key nests under the same per-org prefix every
 other object this seam stores already uses: `artifact_prefix`, `scenario_prefix`, and
 `baseline_prefix` are each composed as `xxx_prefix(org_prefix(base, org))`
 (`bajutsu/serve/server/object_store.py`, wired in `_build_server_state`), so an analogous
@@ -122,16 +123,22 @@ addressing makes a repeat upload of an identical bundle a no-op write within an 
 already exists, so nothing changes except the local extraction, which still happens exactly as
 today for the request that produced it.
 
-The object-store write is synchronous and blocking: if it fails (a network error, an unreachable
-bucket, a permission denial) after the local extraction has already succeeded, `bind_upload_config`
-fails the whole `POST /api/upload` request rather than falling back to a local-only bind. This is
-deliberately unlike the post-run evidence upload's best-effort failure handling
-(`bajutsu/object_store.py`'s `upload_tree`, where a finished run's already-final verdict must not
-depend on an artifact upload succeeding): here nothing is final yet, and a best-effort write would
-let a caller register a BE-0225 project whose already-durable `{kind: "upload", sha256, ...}`
-record points at a key nothing ever wrote — silently reintroducing, for that one bundle, exactly
-the cross-replica gap this item exists to close. A clear upload failure is safer than a durable
-project record that lies about durability.
+The object-store write is synchronous and blocking, and — this is the reason it goes *before* the
+bind, not after — `bind_upload_config` never calls `state.bind_upload(upload)` until it succeeds.
+If the write fails (a network error, an unreachable bucket, a permission denial), the function
+removes the freshly-extracted local directory exactly as its existing validation-failure paths
+already do and returns an error, having touched no shared state: `serve`'s active config is still
+whatever it was before the request, so there is nothing to roll back. Sequencing the write before
+the bind, rather than binding first and rolling back on a later failure, is what keeps this
+failure path simple — a client either gets a bound config backed by durably-persisted bytes, or an
+error and no state change at all, never the two disjoint from each other. This is deliberately
+unlike the post-run evidence upload's best-effort failure handling (`bajutsu/object_store.py`'s
+`upload_tree`, where a finished run's already-final verdict must not depend on an artifact upload
+succeeding): here nothing is final yet, and a best-effort write would let a caller register a
+BE-0225 project whose already-durable `{kind: "upload", sha256, ...}` record points at a key
+nothing ever wrote — silently reintroducing, for that one bundle, exactly the cross-replica gap
+this item exists to close. A clear upload failure is safer than a durable project record that lies
+about durability, or an active config that outruns one.
 
 ### 2. Replace `activate_project`'s upload-kind `409` with a fetch-and-extract fallback
 
@@ -200,7 +207,7 @@ URI-addressed store this seam backs. No new retention or garbage-collection code
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] 1 — Persist the raw uploaded zip to the object store at upload time, keyed by its sha256 under the project's org prefix, when `BAJUTSU_SERVER_STORE` is configured; fail the upload request if this write fails, rather than falling back to a local-only bind.
+- [ ] 1 — Persist the raw uploaded zip to the object store, keyed by its sha256 under the project's org prefix, *before* `bind_upload_config` flips the active config, when `BAJUTSU_SERVER_STORE` is configured; on a write failure, remove the extracted local directory and fail the request without ever having bound it, rather than binding first and rolling back.
 - [ ] 2 — `activate_project` gains a fetch-and-extract-from-object-store fallback for `kind == "upload"`, tried before the existing `409`, re-running BE-0073's zip-slip/zip-bomb/path-confinement checks on every materialization.
 - [ ] 3 — Confirm zero-config behavior (and the existing `409`) is unchanged with no `BAJUTSU_SERVER_STORE` configured.
 
