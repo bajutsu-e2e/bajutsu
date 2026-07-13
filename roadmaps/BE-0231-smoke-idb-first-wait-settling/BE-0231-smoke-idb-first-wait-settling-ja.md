@@ -9,7 +9,7 @@
 | 提案者 | [@hirosassa](https://github.com/hirosassa) |
 | 状態 | **実装中** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0231") |
-| 実装 PR | [#952](https://github.com/bajutsu-e2e/bajutsu/pull/952), [#970](https://github.com/bajutsu-e2e/bajutsu/pull/970) |
+| 実装 PR | [#952](https://github.com/bajutsu-e2e/bajutsu/pull/952), [#970](https://github.com/bajutsu-e2e/bajutsu/pull/970), [#1013](https://github.com/bajutsu-e2e/bajutsu/pull/1013) |
 | トピック | プラットフォーム対応 |
 <!-- /BE-METADATA -->
 
@@ -89,7 +89,7 @@
   含みます。純粋な診断であり、判定経路に LLM を置かず（プライムディレクティブ 1）、固定の `sleep` も導入しません
   （プライムディレクティブ 2）。ステータスは **In progress** のままです。ユニット 5（連続する CI 実行を通じて
   レーンが 1 回目で緑を保つこと）は、出荷するコードのないマージ後の観測だからです。
-- [#_pending_](https://github.com/bajutsu-e2e/bajutsu/pull/_pending_) — ユニット 6。アクセシビリティ
+- [#1013](https://github.com/bajutsu-e2e/bajutsu/pull/1013) — ユニット 6。アクセシビリティ
   ブリッジがアタッチに失敗した状態からの回復です。#952 と #970 のあとに再発した事例（PR #987 の
   `smoke (idb)` 実行）へのユニット 1 の診断が、最初の待機のタイムアウトは準備完了判定でも予算でもない隙間だと
   示しました。`describe-all` は面積ゼロの `application` ルートだけを返していた一方で、その実行の `after.png` には

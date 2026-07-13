@@ -9,7 +9,7 @@
 | Author | [@hirosassa](https://github.com/hirosassa) |
 | Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0231") |
-| Implementing PR | [#952](https://github.com/bajutsu-e2e/bajutsu/pull/952), [#970](https://github.com/bajutsu-e2e/bajutsu/pull/970) |
+| Implementing PR | [#952](https://github.com/bajutsu-e2e/bajutsu/pull/952), [#970](https://github.com/bajutsu-e2e/bajutsu/pull/970), [#1013](https://github.com/bajutsu-e2e/bajutsu/pull/1013) |
 | Topic | Platform support |
 <!-- /BE-METADATA -->
 
@@ -162,7 +162,7 @@ Log (oldest first):
   run's BE-0049 provenance stamp. Pure diagnosis — no LLM on the verdict path (prime directive 1), no
   fixed sleep (prime directive 2). Status stays **In progress**: Unit 5 (the lane green on first attempt
   across consecutive CI runs) is a post-merge observation with no code to ship.
-- [#_pending_](https://github.com/bajutsu-e2e/bajutsu/pull/_pending_) — Unit 6: recover a wedged idb
+- [#1013](https://github.com/bajutsu-e2e/bajutsu/pull/1013) — Unit 6: recover a wedged idb
   accessibility bridge. Unit 1's diagnostic on the post-#952/#970 recurrence (PR #987's `smoke (idb)`
   run) showed the first-wait timeout is not a readiness or budget gap at all: `describe-all` returned
   only the zero-frame `application` root while the run's `after.png` showed the Stable list fully
