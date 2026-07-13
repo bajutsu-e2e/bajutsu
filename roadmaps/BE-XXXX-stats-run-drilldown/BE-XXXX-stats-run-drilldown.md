@@ -55,12 +55,14 @@ new report viewer.
    tally, the same shape `_hotspots()` already reduces. `by_day` and `by_backend` need no change:
    `Stats.by_run` already carries `run_id`, `day`, and `backend` per point, so a date/backend click
    is answered by a plain client-side filter over data the page already has.
-2. **Serialize the ids into the rendered page** (`bajutsu/templates/stats.html.j2`). The relevant
-   cells — each `by_day` row, each `by_backend` row, each `failing_scenarios` /
-   `failing_steps` / `failing_assertions` row — gain a `data-run-ids="id1,id2,…"` attribute (day/
-   backend rows derive theirs by filtering `stats.by_run` in the template; hotspot rows use the new
-   `Hotspot.run_ids` directly). This keeps `/stats` a single self-contained render with no follow-up
-   API call, consistent with BE-0102's "one aggregation pass, one page" shape.
+2. **Render the cells as deep links, server-side** (`bajutsu/templates/stats.html.j2`). `stats.html.j2`
+   is a pure server-rendered Jinja page today — it has no `<script>` tag — and this item keeps it that
+   way: the relevant cells (each `by_day` row, each `by_backend` row, each `failing_scenarios` /
+   `failing_steps` / `failing_assertions` row) become plain `<a href="/?tab=history&runs=id1,id2,…">`
+   links whose query string the template builds directly (day/backend rows derive the ids by filtering
+   `stats.by_run` in the template; hotspot rows use the new `Hotspot.run_ids`). No inline script is
+   introduced on the Stats page and no follow-up API call is made — the client-side behavior all lives
+   on the SPA side (step 3), consistent with BE-0102's "one aggregation pass, one page" shape.
 3. **Land on the existing history list, filtered.** `/stats` and the main `serve` SPA are separate
    routes today, so a click navigates to the SPA with the target ids in the URL (e.g.
    `/?tab=history&runs=id1,id2,…`). On load, `serve.js`/`serve.panels.js` reads that query, switches
@@ -100,14 +102,14 @@ new report viewer.
 
 - [ ] Add `Hotspot.run_ids` and thread run ids through `_failing_scenarios` / `_failing_steps` /
       `_failing_assertions` in `bajutsu/stats.py`.
-- [ ] Serialize `data-run-ids` onto the day / backend / hotspot rows in `stats.html.j2`.
+- [ ] Render the day / backend / hotspot rows in `stats.html.j2` as server-side
+      `<a href="/?tab=history&runs=…">` deep links (no new inline script on the Stats page).
 - [ ] Add the `?tab=history&runs=…` deep-link handling and the history-list filter (with a clear
       affordance) to `serve.js` / `serve.panels.js`.
-- [ ] Wire the Stats page's clickable cells to that deep link.
 
 ## References
 
 - [BE-0102 — Aggregate run-stats dashboard](../BE-0102-run-stats-dashboard/BE-0102-run-stats-dashboard.md) — the dashboard this item makes interactive.
 - [BE-0068 — Regenerable reports](../BE-0068-regenerable-reports/BE-0068-regenerable-reports.md) — the per-run report viewer every drilldown lands on.
 - [BE-0049 — Determinism/flakiness audit](../BE-0049-determinism-flakiness-audit/BE-0049-determinism-flakiness-audit.md) — the `(scenarioHash, name)` identity `stats.py` already reuses.
-- [BE-0239 — Deletable runs and reports in the serve Web UI](../BE-0239-deletable-runs-serve/BE-0239-deletable-runs-serve.md) — an adjacent, in-flight change to the same run-history list this item filters.
+- [BE-0239 — Deletable runs and reports in the serve Web UI](../BE-0239-deletable-runs-serve/BE-0239-deletable-runs-serve.md) — an adjacent proposal (still `Status: Proposal`, not yet in progress) touching the same run-history list this item filters.
