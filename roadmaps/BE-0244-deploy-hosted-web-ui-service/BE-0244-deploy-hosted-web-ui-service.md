@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-deploy-hosted-web-ui-service-ja.md)
+**English** · [日本語](BE-0244-deploy-hosted-web-ui-service-ja.md)
 
-# BE-XXXX — Deploy the hosted web UI service
+# BE-0244 — Deploy the hosted web UI service
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-deploy-hosted-web-ui-service.md) |
+| Proposal | [BE-0244](BE-0244-deploy-hosted-web-ui-service.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0244") |
 | Topic | Hosting the web UI (cloud / self-hosted) |
 | Related | [BE-0015](../BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md), [BE-0016](../BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md) |
 <!-- /BE-METADATA -->

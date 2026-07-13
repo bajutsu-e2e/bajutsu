@@ -562,6 +562,7 @@ Running a scenario on a hosted device farm instead of a local Simulator, emulato
 | [BE-0167](BE-0167-control-plane-scale-out/BE-0167-control-plane-scale-out.md) | Control-plane scale-out behind a load balancer | Proposal |
 | [BE-0168](BE-0168-self-host-high-availability/BE-0168-self-host-high-availability.md) | Self-hosted high availability and single-point-of-failure hardening | Proposal |
 | [BE-0170](BE-0170-weighted-fair-org-dispatch/BE-0170-weighted-fair-org-dispatch.md) | Weighted-fair cross-org job dispatch | Proposal |
+| [BE-0244](BE-0244-deploy-hosted-web-ui-service/BE-0244-deploy-hosted-web-ui-service.md) | Deploy the hosted web UI service | Proposal |
 <!-- /GENERATED:proposals-hosting -->
 
 ### Configuration sourcing
