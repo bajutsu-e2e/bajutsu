@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The host app is intentionally empty: instrumentation needs a target package, but the resident
+     server drives whatever app is under test, so this app ships no activity of its own. INTERNET is
+     required so the instrumentation can open the loopback socket it serves reads over — Android
+     denies socket creation (EPERM) to a process without it. -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <uses-permission android:name="android.permission.INTERNET" />
+</manifest>
