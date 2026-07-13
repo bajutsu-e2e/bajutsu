@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import subprocess
+
 import pytest
 
 from bajutsu import simctl
@@ -9,6 +11,8 @@ from bajutsu.drivers import base
 from bajutsu.drivers.idb import (
     IdbDriver,
     _validated_udid,
+    connect_cmd,
+    disconnect_cmd,
     parse_describe_all,
     swipe_cmd,
     tap_cmd,
@@ -152,6 +156,131 @@ def test_empty_backoff_grows_exponentially_then_caps() -> None:
     seq = [driver._empty_backoff(i) for i in range(IdbDriver._EMPTY_RETRIES)]
     assert seq == [0.05, 0.1, 0.2, 0.2, 0.2]  # base 0.05, doubling, capped at 0.2
     assert sum(seq) <= 1.0  # no further than the previous fixed-0.2 * 5 bound
+
+
+# --- BE-0231 Unit 6: recover a wedged idb accessibility bridge ---
+#
+# On a cold Simulator's first app launch, idb's accessibility bridge sometimes fails to attach to
+# the app window: describe-all returns only the top-level `application` element with a zero-area
+# frame, even though the app has fully rendered (its screenshot shows the content). The signature is
+# a lone application-root element with no geometry — distinct from idb's generic mid-transition
+# empty (no type, caught by the transient-empty retry), so it can be told apart even on the first
+# screen, where a genuinely sparse screen still carries real geometry.
+
+# The wedge: only the application root, and it has no measured bounds.
+WEDGED = '[{"type":"Application","frame":{"x":0,"y":0,"width":0,"height":0}}]'
+
+# A genuinely sparse but rendered screen: one element, but with real geometry — not a wedge.
+SPARSE_REAL = (
+    '[{"AXUniqueId":"only","type":"StaticText","frame":{"x":0,"y":0,"width":100,"height":20}}]'
+)
+
+
+def _recording(describe: list[str]) -> tuple[object, list[list[str]]]:
+    """A run() that returns describe-all responses in order (holding the last once exhausted) and
+    records every argv it is handed, so a test can count describe-all / disconnect / connect."""
+    seq = list(describe)
+    calls: list[list[str]] = []
+
+    def run(args: list[str]) -> str:
+        calls.append(args)
+        if "describe-all" in args:
+            return seq.pop(0) if len(seq) > 1 else seq[0]
+        return ""
+
+    return run, calls
+
+
+def _counts(calls: list[list[str]]) -> tuple[int, int, int]:
+    """(describe-all, disconnect, connect) invocation counts from a recorded call list."""
+    describe = sum("describe-all" in a for a in calls)
+    disconnect = calls.count(disconnect_cmd("U"))
+    connect = calls.count(connect_cmd("U"))
+    return describe, disconnect, connect
+
+
+def test_is_ax_bridge_wedged_keys_on_a_lone_zero_frame_application() -> None:
+    # The exact wedge signature: one application-root element with no geometry.
+    assert IdbDriver._is_ax_bridge_wedged(parse_describe_all(WEDGED)) is True
+    # A rendered application root (real frame) is not a wedge.
+    real_app = '[{"type":"Application","frame":{"x":0,"y":0,"width":393,"height":852}}]'
+    assert IdbDriver._is_ax_bridge_wedged(parse_describe_all(real_app)) is False
+    # idb's generic mid-transition empty (no type → no application trait) is not a wedge:
+    # the transient-empty retry owns that case, not the companion reset.
+    assert IdbDriver._is_ax_bridge_wedged(parse_describe_all(EMPTY)) is False
+    # A populated screen is never a wedge.
+    assert IdbDriver._is_ax_bridge_wedged(parse_describe_all(FIXTURE)) is False
+
+
+def test_query_resets_companion_on_ax_bridge_wedge() -> None:
+    # First screen (no richer tree seen): the bridge is wedged, so query() resets the companion
+    # connection and re-reads, recovering the real tree the app had already rendered.
+    run, calls = _recording([WEDGED, FIXTURE])
+    driver = IdbDriver("U", run=run)
+
+    els = driver.query()
+    assert len(els) == 3  # recovered the full tree after the reset
+    describe, disconnect, connect = _counts(calls)
+    assert (disconnect, connect) == (1, 1)  # per-udid reset, not a global `idb kill`
+    assert describe == 2  # initial wedged read + one post-reset read
+
+
+def test_query_does_not_reset_a_genuinely_sparse_screen() -> None:
+    # A rendered screen with one real-framed element is genuinely sparse, not a wedge:
+    # no companion reset, returned at face value.
+    run, calls = _recording([SPARSE_REAL])
+    driver = IdbDriver("U", run=run)
+
+    assert len(driver.query()) == 1
+    describe, disconnect, connect = _counts(calls)
+    assert (disconnect, connect) == (0, 0)
+    assert describe == 1  # returned immediately, no reset, no re-read
+
+
+def test_query_returns_after_bounded_resets_when_wedge_persists() -> None:
+    # A companion that never recovers must not hang query(): it resets a bounded number of times,
+    # then returns the degenerate tree so the wait fails loudly with the Unit 1 diagnostic.
+    run, calls = _recording([WEDGED])
+    driver = IdbDriver("U", run=run)
+
+    assert len(driver.query()) == 1  # gave up and returned the wedged tree
+    describe, disconnect, connect = _counts(calls)
+    assert (disconnect, connect) == (IdbDriver._AX_RESET_RETRIES, IdbDriver._AX_RESET_RETRIES)
+    assert describe == 1 + IdbDriver._AX_RESET_RETRIES  # initial read + one per reset
+
+
+def test_query_yields_a_recurring_wedge_without_burning_transient_empty_backoff() -> None:
+    # A wedge that recurs *after* a rich tree was already seen (so _max_seen >= _READY_MIN) also
+    # matches _is_transient_empty (len < _READY_MIN and a richer tree was seen). Without the wedge
+    # guard, _describe_settled would burn its full _EMPTY_RETRIES exponential-backoff loop on the
+    # wedge — a same-companion re-read can never clear it — before query() finally resets. It must
+    # instead hand the wedge straight back to query() so the companion reset (which *can* clear it)
+    # fires promptly, keeping the describe-all count well below the compounding worst case.
+    run, calls = _recording([FIXTURE, WEDGED, FIXTURE])
+    driver = IdbDriver("U", run=run)
+    driver._EMPTY_BACKOFF_S = 0  # no real sleeping in the test
+
+    assert len(driver.query()) == 3  # baseline: _max_seen becomes 3
+    calls.clear()
+    els = driver.query()  # hits the wedge, resets the companion, recovers the full tree
+    assert len(els) == 3
+
+    describe, disconnect, connect = _counts(calls)
+    assert (disconnect, connect) == (1, 1)  # the companion reset fired
+    # Wedge yielded promptly: initial wedged read + one post-reset read. No transient-empty backoff
+    # burned on it (the compounding worst case would be ~1 + _EMPTY_RETRIES describe-all calls
+    # *per* reset attempt before the reset ever fires).
+    assert describe == 2
+    assert describe < 1 + IdbDriver._EMPTY_RETRIES  # well below the compounding worst case
+
+
+def test_reset_companion_tolerates_a_dropped_connection() -> None:
+    # disconnect/connect are best-effort: a disconnect with no live connection (or a connect race)
+    # raises CalledProcessError that must not mask the wedge — the re-query decides recovery.
+    def run(args: list[str]) -> str:
+        raise subprocess.CalledProcessError(1, args)
+
+    IdbDriver("U", run=run)._reset_companion()  # must not raise
 
 
 def test_wait_for_is_single_shot() -> None:

@@ -191,6 +191,10 @@ Postgres も Mac も要らない機械チェック可能なユニットテスト
 - 2026-07-02 — スライス 1+2 出荷：`SqlSessionStore`、`DbQueueExecutor`、`PostCompletionLogBus`、
   worker HTTP エンドポイント、`bajutsu worker` HTTP ループ（#445）。
 - 2026-07-02 — スライス 3 出荷：Redis をデプロイ、依存、ドキュメント、ロードマップから削除。
+- 2026-07-13 — 訂正：スライス 3 のロードマップ書き換えは BE-0016 のみを対象とし、BE-0015 は
+  漏れていました（Deployment plan・Migration・セッション・Alternatives が Redis/RQ の記述のまま
+  でした）。BE-0015 の Redis/RQ 節は後日、BE-0015 のステータス変更 PR（#986）で本モデルに整合
+  させました。
 
 ## 参考
 

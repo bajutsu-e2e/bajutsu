@@ -343,6 +343,7 @@ Standing up `bajutsu serve` beyond loopback. The hardening that makes the existi
 <!-- GENERATED:implemented-hosting -->
 | ID | Item | Status |
 |---|---|---|
+| [BE-0015](BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md) | Public hosting of the web UI | Implemented |
 | [BE-0016](BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md) | Self-hosting of the web UI | Implemented |
 | [BE-0051](BE-0051-serve-hardening-for-hosting/BE-0051-serve-hardening-for-hosting.md) | Serve hardening for hosting (auth, input validation) | Implemented |
 | [BE-0055](BE-0055-operational-logging/BE-0055-operational-logging.md) | Operational logging for the hosted serve | Implemented |
@@ -502,6 +503,7 @@ Accepted and actively being built — a PR is in flight or imminent.
 | ID | Item | Status |
 |---|---|---|
 | [BE-0231](BE-0231-smoke-idb-first-wait-settling/BE-0231-smoke-idb-first-wait-settling.md) | Harden the E2E first-wait against Simulator settling flake | In progress |
+| [BE-0245](BE-0245-adb-resident-uiautomator-server/BE-0245-adb-resident-uiautomator-server.md) | Resident UI Automator server for adb reads | In progress |
 <!-- /GENERATED:in-progress-platform -->
 
 ### AI provider configuration
@@ -515,7 +517,6 @@ Accepted and actively being built — a PR is in flight or imminent.
 <!-- GENERATED:in-progress-hosting -->
 | ID | Item | Status |
 |---|---|---|
-| [BE-0015](BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md) | Public hosting of the web UI | In progress |
 | [BE-0239](BE-0239-deletable-runs-serve/BE-0239-deletable-runs-serve.md) | Deletable runs and reports in the serve Web UI | In progress |
 <!-- /GENERATED:in-progress-hosting -->
 
@@ -561,6 +562,7 @@ Running a scenario on a hosted device farm instead of a local Simulator, emulato
 | [BE-0167](BE-0167-control-plane-scale-out/BE-0167-control-plane-scale-out.md) | Control-plane scale-out behind a load balancer | Proposal |
 | [BE-0168](BE-0168-self-host-high-availability/BE-0168-self-host-high-availability.md) | Self-hosted high availability and single-point-of-failure hardening | Proposal |
 | [BE-0170](BE-0170-weighted-fair-org-dispatch/BE-0170-weighted-fair-org-dispatch.md) | Weighted-fair cross-org job dispatch | Proposal |
+| [BE-0244](BE-0244-deploy-hosted-web-ui-service/BE-0244-deploy-hosted-web-ui-service.md) | Deploy the hosted web UI service | Proposal |
 <!-- /GENERATED:proposals-hosting -->
 
 ### Configuration sourcing
@@ -570,6 +572,20 @@ Running a scenario on a hosted device farm instead of a local Simulator, emulato
 |---|---|---|
 | [BE-0243](BE-0243-upload-bundle-durable-storage/BE-0243-upload-bundle-durable-storage.md) | Persist uploaded zip config bundles to object storage for hosted serve | Proposal |
 <!-- /GENERATED:proposals-config-sourcing -->
+
+### Codebase quality & technical debt
+
+<!-- GENERATED:proposals-quality-debt -->
+| ID | Item | Status |
+|---|---|---|
+| [BE-0246](BE-0246-claude-client-taxonomy/BE-0246-claude-client-taxonomy.md) | Clarify the module taxonomy for talking to Claude | Proposal |
+| [BE-0247](BE-0247-serve-frontend-es-modules/BE-0247-serve-frontend-es-modules.md) | Move the serve frontend to ES modules | Proposal |
+| [BE-0248](BE-0248-serve-state-decomposition-continued/BE-0248-serve-state-decomposition-continued.md) | Continue decomposing ServeState into auth and provider-settings managers | Proposal |
+| [BE-0249](BE-0249-dead-claude-client-wrapper-removal/BE-0249-dead-claude-client-wrapper-removal.md) | Remove the dead Claude-client wrapper orphaned by the backend seam | Proposal |
+| [BE-0250](BE-0250-assertions-package-eval-context/BE-0250-assertions-package-eval-context.md) | Split assertions into a package and thread evaluation contexts as one EvalContext | Proposal |
+| [BE-0251](BE-0251-driver-base-helper-hoist/BE-0251-driver-base-helper-hoist.md) | Hoist duplicated driver helpers into drivers.base and unify small constants | Proposal |
+| [BE-0252](BE-0252-config-package-split/BE-0252-config-package-split.md) | Split config into a package and group Effective into sub-records | Proposal |
+<!-- /GENERATED:proposals-quality-debt -->
 
 ## Deferred
 
