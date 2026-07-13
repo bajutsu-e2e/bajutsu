@@ -65,9 +65,9 @@ gh pr checks <PR>
      file/line or commit), or, when you decline, the specific reason it does not apply. A bare
      "done" or 👍 is not a reply.
   5. **Resolve the conversation** — whether you fixed the comment or consciously declined it. Every
-     answered comment gets both a reply and a resolved thread, so the open threads always reflect
-     exactly what still needs attention. The only threads left open are the undecided ones you
-     escalate (see below); never resolve a comment whose question is still unanswered.
+     answered comment gets both a reply and a resolved conversation, so the open conversations always
+     reflect exactly what still needs attention. The only conversations left open are the undecided
+     ones you escalate (see below); never resolve a comment whose question is still unanswered.
 
 ### 4. Push and report
 
