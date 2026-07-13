@@ -10,7 +10,7 @@
 | 状態 | **提案** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
 | トピック | コードベース品質・技術的負債 |
-| 関連 | [BE-0104](../BE-0104-vendor-neutral-ai-backend/BE-0104-vendor-neutral-ai-backend-ja.md), [BE-0140](../BE-0140-dedupe-claude-client-init/BE-0140-dedupe-claude-client-init-ja.md) |
+| 関連 | [BE-0104](../BE-0104-vendor-neutral-ai-backend/BE-0104-vendor-neutral-ai-backend-ja.md), [BE-0140](../BE-0140-dedupe-claude-client-init/BE-0140-dedupe-claude-client-init-ja.md), [BE-0246](../BE-0246-claude-client-taxonomy/BE-0246-claude-client-taxonomy-ja.md) |
 <!-- /BE-METADATA -->
 
 ## はじめに
@@ -30,9 +30,10 @@
 中立な `AiBackend` の seam（`bajutsu/ai/registry.create_backend`）を導入し、これらのクラスは
 すべてそちらへ移行しました。いまでは各クラスが自前の `_ensure_backend` メソッドを持ち、
 `create_backend(ai=self._ai)` を呼んで結果を `self._backend` にキャッシュしています。たとえば
-`bajutsu/claude_agent.py:632`、`bajutsu/claude_triage.py:253`、
+`bajutsu/claude_agent.py:632`、`bajutsu/claude_triage.py:253` と `:473`、
 `bajutsu/claude_enrich_agent.py:190`、`bajutsu/alerts.py:178`、`bajutsu/crawl_guide.py:360`、
-`bajutsu/crawl_tabs.py:192` がそれにあたります。`create_backend` の背後で Anthropic
+`bajutsu/crawl_tabs.py:192` がそれにあたります（実装は全部で 7 つで、`claude_triage.py` は
+`ClaudeTriageAgent` と `ClaudeCrossRunTriageAgent` の 2 つを定義しています）。`create_backend` の背後で Anthropic
 プロバイダを担う `bajutsu/ai/anthropic.py` の `AnthropicBackend` も、`make_client` を直接
 呼ぶ private な `_ensure_client` メソッド（`bajutsu/ai/anthropic.py:64`）で自前のクライアントを
 構築しており、こちらも `anthropic_client.py` のモジュールレベル `ensure_client` は呼んで
@@ -67,7 +68,7 @@
 4. **削除前にリポジトリ全体を grep して、呼び出し元が残っていないことを確認する。** 上記
    3 つの削除のあとで `rg -n "ensure_client|CachesClient"` を実行すると、この提案自体の記述を
    除いて一致がないはずです（`bajutsu/ai/anthropic.py` の無関係な `_ensure_client` メソッドと、
-   6 つのクラスの `_ensure_backend` メソッドは別名であり、どちらも変更しません）。
+   `Claude*` の各クラスの `_ensure_backend` メソッドは別名であり、どちらも変更しません）。
 
 `ensure_client` や `CachesClient` を import しているファイルは他にないため、
 `bajutsu/claude_agent.py`、`bajutsu/claude_triage.py`、`bajutsu/claude_enrich_agent.py`、
@@ -89,7 +90,7 @@
 - **`ensure_client` を、`Claude*` クラス向けの新しい共有基底クラスに作り替える**
   （仮に `ClaudeBackedAgent` 基底クラスと呼べるもので、ここでは名前だけを挙げます。本提案は
   それに番号を振ったり、スコープを定めたりするものではありません）。本項目では却下します。
-  それは、基底クラスが何を持つか、6 つのクラスのコンストラクタの違い（`max_tokens` の有無
+  それは、基底クラスが何を持つか、`Claude*` の各クラスのコンストラクタの違い（`max_tokens` の有無
   など）をどう吸収するかという、独立した設計の検討に値する仕事です。ここに含めてしまうと、
   即日で済むはずの削除が、それをブロックする設計論議に化けてしまいます。
 

@@ -10,7 +10,7 @@
 | Status | **Proposal** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
 | Topic | Codebase quality & technical debt |
-| Related | [BE-0104](../BE-0104-vendor-neutral-ai-backend/BE-0104-vendor-neutral-ai-backend.md), [BE-0140](../BE-0140-dedupe-claude-client-init/BE-0140-dedupe-claude-client-init.md) |
+| Related | [BE-0104](../BE-0104-vendor-neutral-ai-backend/BE-0104-vendor-neutral-ai-backend.md), [BE-0140](../BE-0140-dedupe-claude-client-init/BE-0140-dedupe-claude-client-init.md), [BE-0246](../BE-0246-claude-client-taxonomy/BE-0246-claude-client-taxonomy.md) |
 <!-- /BE-METADATA -->
 
 ## Introduction
@@ -29,8 +29,10 @@ an SDK client on `agent._client`. BE-0104 then introduced the vendor-neutral `Ai
 (`bajutsu/ai/registry.create_backend`), and every one of those classes moved onto it: each now
 carries its own `_ensure_backend` method that calls `create_backend(ai=self._ai)` and caches
 the result on `self._backend` — for example `bajutsu/claude_agent.py:632`,
-`bajutsu/claude_triage.py:253`, `bajutsu/claude_enrich_agent.py:190`, `bajutsu/alerts.py:178`,
-`bajutsu/crawl_guide.py:360`, and `bajutsu/crawl_tabs.py:192`. `bajutsu/ai/anthropic.py`'s
+`bajutsu/claude_triage.py:253` and `:473`, `bajutsu/claude_enrich_agent.py:190`,
+`bajutsu/alerts.py:178`, `bajutsu/crawl_guide.py:360`, and `bajutsu/crawl_tabs.py:192`
+(seven implementers in all — `claude_triage.py` defines two, `ClaudeTriageAgent` and
+`ClaudeCrossRunTriageAgent`). `bajutsu/ai/anthropic.py`'s
 `AnthropicBackend` — the adapter that now sits behind `create_backend` for the Anthropic
 provider — builds its own client with a private `_ensure_client` method
 (`bajutsu/ai/anthropic.py:64`) that calls `make_client` directly; it does not call the
@@ -65,7 +67,7 @@ files below still depends on the wrapper:
 4. **Grep the repo to confirm no remaining caller before removal** —
    `rg -n "ensure_client|CachesClient"` should, after the three deletions above, return no
    matches outside this proposal itself (`bajutsu/ai/anthropic.py`'s unrelated
-   `_ensure_client` method and the six classes' `_ensure_backend` methods are different names
+   `_ensure_client` method and the `Claude*` classes' `_ensure_backend` methods are different names
    and are left untouched).
 
 No other file imports `ensure_client` or `CachesClient`, so this needs no follow-on changes to
@@ -85,7 +87,7 @@ No other file imports `ensure_client` or `CachesClient`, so this needs no follow
 - **Repurpose `ensure_client` into a new shared base class for the `Claude*` classes** (a
   hypothetical `ClaudeBackedAgent` base, referred to here by name only — this proposal does
   not number or scope that item). Rejected for this item: that would be a genuine new design
-  exercise (what the base owns, which of the six classes' constructor differences it
+  exercise (what the base owns, which of the `Claude*` classes' constructor differences it
   accommodates) and deserves its own proposal: bundling it here would turn a same-day deletion
   into a design discussion that blocks it.
 
