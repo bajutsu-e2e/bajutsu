@@ -63,7 +63,9 @@ section framed it.
 The scope is BE-0015's **Deployment plan (phased)** and the live-environment portion of its
 **Security hardening** section, taken as the work breakdown here. The stack selections
 (FastAPI, Caddy, GitHub OAuth, PostgreSQL, the Postgres-table job queue, Cloudflare R2, MacStadium
-Orka, Terraform + GitHub Actions) are **already decided in BE-0015** and are not reopened here;
+Orka, Terraform + GitHub Actions) are **already decided in BE-0015's *Selected stack* table**
+(BE-0015's own *Deployment plan (phased)* and *Alternatives considered* sections still describe the
+pre-BE-0106 Redis/RQ queue and should be reconciled to match) and are not reopened here;
 this item is about provisioning and wiring them, not reselecting them.
 
 ### Phase 1 — MVP (ship a working shared service)
