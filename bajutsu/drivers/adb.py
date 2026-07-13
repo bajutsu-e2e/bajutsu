@@ -184,8 +184,16 @@ class AdbDriver:
     _EMPTY_RETRIES = 5  # extra dump attempts on a degenerate tree
     _EMPTY_BACKOFF_S = 0.05  # base delay; doubles each attempt up to the cap
     _EMPTY_BACKOFF_MAX_S = 0.2  # cap on a single backoff (total added <= ~0.75s, bounded)
+    # Settle tuning for a *slow* read (BE-0234 Unit 3). idb inherits `_SETTLE_POLL_S = 0.05` because
+    # its read is cheap and the poll interval provides the spacing between comparisons; on adb a read
+    # is ~2.4s, so that read alone paces the loop and the interval is pure dead time — hence 0.0. A
+    # stable screen still settles in a single read (the first `query()` matches the cached key), so
+    # only a genuinely-animating screen pays for extra reads. `_SETTLE_MAX_POLLS` is deliberately kept
+    # at 3: it bounds those extra reads without weakening the "wait until the tree stops moving"
+    # condition (lowering it would let a mid-animation frame pass as settled — a determinism cost we
+    # will not trade for speed; the real per-read fix is the resident server, deferred to a follow-up).
     _SETTLE_MAX_POLLS = 3  # extra reads after initial comparison when frames are moving
-    _SETTLE_POLL_S = 0.05  # interval between settle reads
+    _SETTLE_POLL_S = 0.0  # the ~2.4s read itself paces the loop; an added interval is dead time
     # Scroll-into-view (BE-0210): an action target that resolves to nothing in the current viewport
     # is scrolled toward and re-queried a bounded number of times before failing — a condition wait,
     # not a fixed sleep. Direction is always upward (content up, revealing rows below) — the
