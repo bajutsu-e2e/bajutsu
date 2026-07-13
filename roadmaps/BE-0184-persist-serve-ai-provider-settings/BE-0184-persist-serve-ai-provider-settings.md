@@ -7,11 +7,11 @@
 |---|---|
 | Proposal | [BE-0184](BE-0184-persist-serve-ai-provider-settings.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **In progress** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0184") |
-| Implementing PR | [#874](https://github.com/bajutsu-e2e/bajutsu/pull/874) |
+| Implementing PR | [#874](https://github.com/bajutsu-e2e/bajutsu/pull/874), [#955](https://github.com/bajutsu-e2e/bajutsu/pull/955) |
 | Topic | AI provider configuration |
-| Related | [BE-0136](../BE-0136-serve-write-once-secrets/BE-0136-serve-write-once-secrets.md), [BE-0175](../BE-0175-serve-web-ui-ant-sso-login/BE-0175-serve-web-ui-ant-sso-login.md), [BE-0015](../BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md) |
+| Related | [BE-0136](../BE-0136-serve-write-once-secrets/BE-0136-serve-write-once-secrets.md), [BE-0175](../BE-0175-serve-web-ui-ant-sso-login/BE-0175-serve-web-ui-ant-sso-login.md), [BE-0015](../BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md), [BE-0229](../BE-0229-per-org-provider-settings-resolution/BE-0229-per-org-provider-settings-resolution.md) |
 <!-- /BE-METADATA -->
 
 ## Introduction
@@ -76,12 +76,10 @@ that structure's values come from at boot and where they go on save, not about i
 
 - [x] Add a durable per-provider settings store — the local, file-backed shape
   (`LocalProviderSettingsStore`, a JSON file alongside serve's run directory).
-- [ ] Add the per-organization, DB-backed store shape for a hosted deployment. **Deferred:** in
-  today's serve, provider/model/effort resolve process-globally (`os.environ` + a single
-  `ServeState.provider_settings` map), not per organization, so a per-org store would persist
-  values nothing reads per org. This needs per-org runtime resolution first, tracked as the
-  follow-up item *"Resolve serve AI provider settings per organization at runtime"* rather than
-  done here.
+- [x] Add the per-organization, DB-backed store shape for a hosted deployment. Shipped by
+  [BE-0229](../BE-0229-per-org-provider-settings-resolution/BE-0229-per-org-provider-settings-resolution.md),
+  which added the per-org runtime resolution this box was waiting on and then wired the
+  DB-backed `ProviderSettingsStore` this box named.
 - [x] Load persisted settings on serve boot, falling back to today's env-derived defaults.
 - [x] Confirm the AI-free zero-config path is unaffected when nothing is persisted.
 
@@ -91,8 +89,14 @@ that structure's values come from at boot and where they go on save, not about i
   file-backed `LocalProviderSettingsStore` (`bajutsu/serve/provider_store.py`), wired into local
   serve construction so a saved provider/model/effort is flushed on save and restored on boot;
   a malformed file logs a visible warning and falls back to the env defaults rather than crashing.
-  The hosted per-org DB-backed shape is deferred (see the unchecked box above).
+  The hosted per-org DB-backed shape was deferred at the time (see the next log entry for when
+  it shipped).
   ([#874](https://github.com/bajutsu-e2e/bajutsu/pull/874))
+- 2026-07-12 — The deferred per-org DB-backed store shipped in
+  [BE-0229](../BE-0229-per-org-provider-settings-resolution/BE-0229-per-org-provider-settings-resolution.md)
+  ([#955](https://github.com/bajutsu-e2e/bajutsu/pull/955)): per-org runtime resolution plus the
+  DB-backed `ProviderSettingsStore` this item's deferred box named. All boxes are now done, so
+  Status flips to **Implemented**.
 
 ## References
 
@@ -100,5 +104,7 @@ that structure's values come from at boot and where they go on save, not about i
 - [BE-0175 — Sign in to the `ant` provider from the serve Web UI](../BE-0175-serve-web-ui-ant-sso-login/BE-0175-serve-web-ui-ant-sso-login.md)
 - [BE-0015 — Public hosting of the web UI](../BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md)
 - [BE-0101 — Legible Claude-using / Claude-free split with a zero-config non-AI path](../BE-0101-ai-free-zero-config/BE-0101-ai-free-zero-config.md)
+- [BE-0229 — Resolve serve AI provider settings per organization at runtime](../BE-0229-per-org-provider-settings-resolution/BE-0229-per-org-provider-settings-resolution.md)
+  — shipped the per-org DB-backed store this item deferred.
 - A companion item, "Per-provider AI settings in the serve Web UI" (not yet numbered),
   proposes the per-provider data structure this item persists.
