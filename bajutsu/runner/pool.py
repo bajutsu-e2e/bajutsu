@@ -197,7 +197,9 @@ def device_pool(
                 driver_interval=getattr(driver, "driver_interval", None),
                 # Carried so a first-wait timeout diagnostic can state whether the readiness gate had
                 # passed and on which signal, stamped with this scenario's BE-0049 provenance so the
-                # evidence survives a rerun-to-green (BE-0231 Unit 1).
+                # evidence survives a rerun-to-green (BE-0231 Unit 1). The `scenarioHash` here
+                # fingerprints this one scenario, narrower than the run manifest's run-wide hash — the
+                # two match for a single-scenario run but differ for a suite (see docs/evidence.md).
                 readiness=readiness,
                 provenance=run_provenance(
                     dump_scenario_file([redact_totp_secrets(scenario)]), git_revision=git_rev

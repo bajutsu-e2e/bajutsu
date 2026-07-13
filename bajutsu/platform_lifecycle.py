@@ -81,7 +81,7 @@ import time
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Protocol, cast, runtime_checkable
+from typing import Literal, Protocol, cast, runtime_checkable
 
 from bajutsu import adb, simctl
 from bajutsu.backends import make_driver
@@ -114,7 +114,7 @@ class ReadinessResult:
     """
 
     ready: bool
-    signal: str  # "readyWhen" | "namespace" | "count" | "timeout"
+    signal: Literal["readyWhen", "namespace", "count", "timeout"]
     elapsed_s: float
 
 
@@ -879,7 +879,9 @@ def _await_ready(
     # selector would return on a single element, weaker than "in-namespace" or "2+".
     match_sel = ready_sel if ready_sel and any(k in ready_sel for k in _READY_MATCH_KEYS) else None
     declared = set(id_namespaces or ())
-    signal = "readyWhen" if match_sel is not None else "namespace" if declared else "count"
+    signal: Literal["readyWhen", "namespace", "count"] = (
+        "readyWhen" if match_sel is not None else "namespace" if declared else "count"
+    )
     while time.monotonic() < deadline:
         try:
             elements = driver.query()
