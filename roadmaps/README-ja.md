@@ -716,7 +716,9 @@ AI を使う経路（`record` ／ `crawl` ／ `triage --ai` ／ `run --apply`）
 `bajutsu` が config とシナリオ一式をどこから読むか。現在はローカルパスだが、ここで扱う項目は **ある ref を指す Git リポジトリ**（`github:owner/repo@ref:path`）の指定や zip でのアップロードを可能にし、ホスト型やセルフホストの `serve`、あるいは CI のランナーが、チームのテストリポジトリを直接取得できるようにする。
 
 <!-- GENERATED:proposals-config-sourcing -->
-
+| ID | 項目 | 状態 |
+|---|---|---|
+| [BE-0242](BE-0242-config-relative-path-resolution/BE-0242-config-relative-path-resolution-ja.md) | config が宣言するパスを、その config ファイル基準で解決する | 提案 |
 <!-- /GENERATED:proposals-config-sourcing -->
 
 ### codegen 網羅性

@@ -1,14 +1,14 @@
-[English](BE-XXXX-config-relative-path-resolution.md) · **日本語**
+[English](BE-0242-config-relative-path-resolution.md) · **日本語**
 
-# BE-XXXX — config が宣言するパスを、その config ファイル基準で解決する
+# BE-0242 — config が宣言するパスを、その config ファイル基準で解決する
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
 |---|---|
-| 提案 | [BE-XXXX](BE-XXXX-config-relative-path-resolution-ja.md) |
+| 提案 | [BE-0242](BE-0242-config-relative-path-resolution-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **提案** |
-| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0242") |
 | トピック | config の取得元 |
 <!-- /BE-METADATA -->
 

@@ -723,7 +723,9 @@ Closing the edges the deterministic core does not touch — `serve`'s HTTP surfa
 Where `bajutsu` reads its config and scenario tree from. Today that is a local path; the items here propose naming a **Git repository at a ref** (`github:owner/repo@ref:path`) or uploading a bundle, so a hosted or self-hosted `serve`, or a CI runner, can pull a team's test repo directly.
 
 <!-- GENERATED:proposals-config-sourcing -->
-
+| ID | Item | Status |
+|---|---|---|
+| [BE-0242](BE-0242-config-relative-path-resolution/BE-0242-config-relative-path-resolution.md) | Resolve config-declared paths relative to the config file | Proposal |
 <!-- /GENERATED:proposals-config-sourcing -->
 
 ### codegen coverage

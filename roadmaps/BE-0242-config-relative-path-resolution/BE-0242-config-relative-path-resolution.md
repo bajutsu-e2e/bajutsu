@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-config-relative-path-resolution-ja.md)
+**English** · [日本語](BE-0242-config-relative-path-resolution-ja.md)
 
-# BE-XXXX — Resolve config-declared paths relative to the config file
+# BE-0242 — Resolve config-declared paths relative to the config file
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-config-relative-path-resolution.md) |
+| Proposal | [BE-0242](BE-0242-config-relative-path-resolution.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0242") |
 | Topic | Configuration sourcing |
 <!-- /BE-METADATA -->
 
