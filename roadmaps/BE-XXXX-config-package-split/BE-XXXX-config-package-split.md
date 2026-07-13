@@ -54,8 +54,9 @@ preserving and extending to the other field clusters, rather than the stringly
 `cfg["targets"][name]["..."]` access this design deliberately avoids.
 
 Two `config ↔ backends` import cycles are also load-bearing today: `_check_platform` (line
-177) and `_platform_for_backend` (line 752) both import `bajutsu.backends` inside the
-function body, with a comment explaining the cycle. Moving the resolution logic — the only
+177) and `_platform_for_backend` (line 752) both defer their `from bajutsu.backends import …`
+to the function body to break the cycle (the deferral is currently implicit — neither carries
+an explanatory comment). Moving the resolution logic — the only
 half of the module that needs `bajutsu.backends` — into its own module breaks the cycle at
 the package boundary instead of inside each function.
 

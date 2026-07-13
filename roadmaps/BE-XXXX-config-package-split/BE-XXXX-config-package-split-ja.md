@@ -54,8 +54,9 @@ mock サーバー（`redact`、`secrets`、`mailbox`、`mock_server`）にまた
 パターンです。他のフィールド群にも同じ考え方を広げるべきだと考えます。
 
 `config` と `backends` の間には、現時点で成立している循環 import も 2 箇所あります。
-`_check_platform`（170 行目）と `_platform_for_backend`（752 行目）は、いずれも関数の内側で
-`bajutsu.backends` を import しており、その理由を説明するコメントが付いています。`config.py`
+`_check_platform`（177 行目）と `_platform_for_backend`（752 行目）は、いずれも `from
+bajutsu.backends import …` を関数本体に遅延させて循環を回避しています（この遅延は現状では
+暗黙で、説明コメントは付いていません）。`config.py`
 のうち `bajutsu.backends` を必要とするのは解決ロジックの側だけなので、これを独立したモジュール
 に移すことで、各関数の内側ではなくパッケージの境界で循環を解消できます。
 
