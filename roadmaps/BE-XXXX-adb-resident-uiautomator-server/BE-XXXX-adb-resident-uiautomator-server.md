@@ -18,7 +18,7 @@
 Reading the screen on the Android adb backend is an order of magnitude slower than on iOS, and the
 whole gap is a per-invocation startup cost: every `AdbDriver.query()` shells out to
 `adb exec-out uiautomator dump`, which spins up a fresh instrumentation, connects a `UiAutomation`
-session, waits for idle, dumps, and tears the session down — about 2.4s each time, against 0.1-0.3s
+session, waits for idle, dumps, and tears the session down — ≈ 2.4 s each time, against ≈ 0.1–0.3 s
 for the same read on idb. This item removes that startup cost by keeping a **resident UI Automator
 instrumentation** alive for the duration of a run and querying the hierarchy over a local
 socket / HTTP, the approach Appium's UiAutomator2 driver takes. It is the fourth (and final,
@@ -32,15 +32,15 @@ condition-driven, ambiguous selectors still fail fast, and no LLM enters the `ru
 [BE-0234](../BE-0234-adb-run-performance/BE-0234-adb-run-performance.md) pinned the Android run's
 slowness to the screen read and shipped the two low-risk reductions (making the runner's end-of-step
 read lazy and reusing the previous step's tree as the next step's `before`) plus the adb `_settle`
-retune. Those cut how *often* the runner reads, but they cannot lower the floor: the ~2.4s
+retune. Those cut how *often* the runner reads, but they cannot lower the floor: the ≈ 2.4 s
 *per-invocation* cost of `uiautomator dump` itself. BE-0234's own measurements show this cost is
 independent of tree size, compression, and output sink — it is the instrumentation startup, not the
 XML transfer or traversal — so no amount of reading-less crosses it. A read-bound backend where each
-necessary read still costs ~2.4s keeps Android authoring heavy even after BE-0234's reductions.
+necessary read still costs ≈ 2.4 s keeps Android authoring heavy even after BE-0234's reductions.
 
 A resident session pays that startup **once** for the whole run, then answers each subsequent read
-over an already-open channel. That is exactly what closes the 10-20x gap with iOS: the expected
-result is a read that drops from ~2.4s to ~0.1-0.3s. The cost is real (a packaged instrumentation
+over an already-open channel. That is exactly what closes the 10–20× gap with iOS: the expected
+result is a read that drops from ≈ 2.4 s to ≈ 0.1–0.3 s. The cost is real (a packaged instrumentation
 and its lifecycle), which is why it is its own item rather than a knob — but the payoff is the one
 change that makes the Android read as cheap as the iOS one.
 
@@ -88,7 +88,7 @@ where the resident server cannot start is never left worse off than today.
 
 5. **Verify on device and guard against regression.** Record the before/after per-step read
    wall-clock on a real emulator (the BE-0234 read-count yardstick is already in place), confirm the
-   read drops to ~0.1-0.3s, and extend the Android e2e lane
+   read drops to ≈ 0.1–0.3 s, and extend the Android e2e lane
    ([BE-0208](../BE-0208-android-emulator-e2e-ci/BE-0208-android-emulator-e2e-ci.md)) so the resident
    path and the dump fallback are both exercised. A hard CI *timing* gate stays out of scope
    (wall-clock is environment-dependent and would be flaky), consistent with BE-0234.
@@ -96,11 +96,11 @@ where the resident server cannot start is never left worse off than today.
 ## Alternatives considered
 
 - **Keep per-invocation `uiautomator dump` and only read less (BE-0234's units 1-3).** Already
-  shipped, and worthwhile, but it cannot cross the ~2.4s-per-read floor — that floor is precisely
+  shipped, and worthwhile, but it cannot cross the ≈ 2.4 s per-read floor — that floor is precisely
   what this item removes. The two are complementary: fewer reads *and* a cheap read.
 
 - **`uiautomator dump --compressed` / dump to a device file then `cat`.** Both measured by BE-0234 at
-  ~2.0-2.5s — no improvement, because the cost is the instrumentation startup, not the XML size or
+  ≈ 2.0–2.5 s — no improvement, because the cost is the instrumentation startup, not the XML size or
   the output sink. Rejected there; they do not address the bottleneck here either.
 
 - **Adopt Appium's UiAutomator2 server wholesale as a dependency.** Tempting, but it brings a large
@@ -123,7 +123,7 @@ where the resident server cannot start is never left worse off than today.
 - [ ] Define the hierarchy-query channel (local socket / HTTP) whose response `parse_hierarchy` consumes unchanged.
 - [ ] Swap `AdbDriver._describe()` to the resident channel, keeping `uiautomator dump` as the fallback.
 - [ ] Tie the resident server's lifecycle to the device lease (started once, stopped on run end / failure).
-- [ ] Verify on device (read drops to ~0.1-0.3s) and guard the resident + fallback paths in the Android e2e lane.
+- [ ] Verify on device (read drops to ≈ 0.1–0.3 s) and guard the resident + fallback paths in the Android e2e lane.
 
 ## References
 
