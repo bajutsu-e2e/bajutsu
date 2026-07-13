@@ -190,6 +190,9 @@ Log:
 - 2026-07-02 — slices 1+2 shipped: `SqlSessionStore`, `DbQueueExecutor`, `PostCompletionLogBus`,
   worker HTTP endpoints, `bajutsu worker` HTTP loop (#445).
 - 2026-07-02 — slice 3 shipped: Redis removed from deploy, deps, docs, roadmap.
+- 2026-07-13 — correction: slice 3's roadmap rewrite covered BE-0016 but missed BE-0015, whose
+  Deployment plan / Migration / sessions / Alternatives still described the Redis/RQ plan. BE-0015's
+  Redis/RQ sections were reconciled to this model later, in the BE-0015 status PR (#986).
 
 ## References
 

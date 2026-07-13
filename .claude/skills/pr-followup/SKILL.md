@@ -61,8 +61,14 @@ gh pr checks <PR>
   1. Read the comment and understand the request.
   2. Make the code change if it's a targeted fix.
   3. Run `make check` to verify.
-  4. Reply to the comment explaining what was changed.
-  5. Resolve the conversation if the fix addresses it.
+  4. Reply to the comment stating the outcome and its grounds — the change you made (cite the
+     file/line or commit), or, when you decline, the specific reason it does not apply. A bare
+     "done" or 👍 is not a reply.
+  5. **Resolve the conversation** — whether you fixed the comment or consciously declined it. Every
+     answered comment gets both a reply and a resolved conversation, so the open conversations
+     always reflect exactly what still needs attention. The only conversations left open are the
+     undecided ones you escalate (see below); never resolve a comment whose question is still
+     unanswered.
 
 ### 4. Push and report
 
@@ -77,6 +83,8 @@ fix. Instead:
 - Summarize the request
 - Explain why it needs the user's judgment
 - Suggest starting an Opus session for the redesign
+- Leave the review conversation unresolved until the user decides — this is the one exception to
+  the resolve-every-answered-comment rule in step 3.
 
 ## What this skill does NOT do
 

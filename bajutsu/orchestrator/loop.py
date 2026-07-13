@@ -54,6 +54,40 @@ def _fail_reason(results: list[AssertionResult]) -> str:
     return "; ".join(r.reason for r in results if not r.ok)
 
 
+class _ScreenRead:
+    """A step's post-step screen read, taken at most once and cached (BE-0234 Unit 2).
+
+    On the adb backend a screen read (`uiautomator dump`) is the dominant per-step cost — ~2.4s
+    against ~0.1-0.3s for the same read on idb — so the end-of-step read is deferred until a
+    consumer actually needs it: a `screenChanged` capture, an `extract`, or a `wait`-timeout
+    diagnostic. A plain `tap`/`assert` step with none of these under a `NullSink` never reads.
+    When it is read, the tree also seeds the next step's `before` — nothing actuates between a
+    step's `after` and the next step's `before`, so they observe identical device state.
+    """
+
+    def __init__(self, driver: base.Driver) -> None:
+        self._driver = driver
+        self._tree: list[base.Element] | None = None
+        self._read = False
+
+    def get(self) -> list[base.Element]:
+        """The post-step tree, reading it once on first use and caching the result."""
+        if not self._read:
+            self._tree = self._driver.query()
+            self._read = True
+        assert self._tree is not None  # set on the read above; narrows the Optional for mypy
+        return self._tree
+
+    @property
+    def cached(self) -> list[base.Element] | None:
+        """The tree if it was read this step, else None — so a capture can read lazily on its own."""
+        return self._tree if self._read else None
+
+    @property
+    def was_read(self) -> bool:
+        return self._read
+
+
 def _clipboard_for(block: list[Assertion], control: DeviceControl | None) -> str | None:
     """The device pasteboard, read once when `block` has a `clipboard` assertion; None otherwise.
 
@@ -352,8 +386,15 @@ def _run_steps(
     ``expect`` can reference them."""
     assert bindings is not None
     counter = _StepCounter()
+    # `prev_after` carries a step's post-step tree to the next step's `before` (BE-0234 Unit 2):
+    # nothing actuates between the two, so they observe the same device state and the `before` read
+    # is skipped. It holds only a tree we actually read; a step that took no read leaves it None so
+    # the next `before` reads fresh, and a `web` block resets it (the tree is a different driver's).
+    prev_after: list[base.Element] | None = None
+    total_reads = 0  # runner-issued screen reads, the BE-0234 read-count yardstick (Unit 1)
 
     def exec_steps(steps: list[Step], active_driver: base.Driver) -> str | None:
+        nonlocal prev_after, total_reads
         for step in steps:
             kind = _action_of(step)
             idx = counter.take()
@@ -406,7 +447,11 @@ def _run_steps(
                             # passed explicitly, so control returns to `active_driver` for the
                             # steps after this block with no shared mutable state (BE-0172).
                             web_driver = WebContextDriver(bridge=webview_bridge, webview_id=host_id)
+                            # The inner steps run on a different driver, so its trees must not seed a
+                            # native step's `before`: reset around the block on both sides (BE-0234).
+                            prev_after = None
                             failure = exec_steps(step.web.steps, web_driver)
+                            prev_after = None
                             ok = failure is None
                             reason = failure or ""
                 except base.SelectorError as e:
@@ -419,7 +464,17 @@ def _run_steps(
                 continue
 
             interp_step = _interp_step(step, bindings)
-            before = active_driver.query() if wants_screen_changed else None
+            # `before` is needed only for a `screenChanged` policy. Reuse the previous step's
+            # post-step tree when we have one (same device state — nothing actuated in between), so
+            # the read drops to (near) zero across the scenario; only the first step, or a step after
+            # one that took no read, reads a fresh `before` (BE-0234 Unit 2).
+            if not wants_screen_changed:
+                before = None
+            elif prev_after is not None:
+                before = prev_after
+            else:
+                before = active_driver.query()
+                total_reads += 1
             # A `for` wait records its poll timeline so a timeout is diagnosable from artifacts
             # (BE-0231 Unit 1); the on_blocked retry gets a fresh trace so the diagnostic reflects the
             # attempt that actually failed.
@@ -458,8 +513,10 @@ def _run_steps(
             outcome.ok, outcome.reason, outcome.assertion_results = ok, reason, results
             outcome.duration_s = clock.now() - start
 
-            after = active_driver.query()
-            screen_changed = before is not None and after != before
+            # The post-step read is lazy (BE-0234 Unit 2): `.get()` reads (once) only where a
+            # consumer needs the tree, so a step with no consumer under a NullSink never reads.
+            screen = _ScreenRead(active_driver)
+            screen_changed = before is not None and screen.get() != before
 
             # An unconditional first-wait diagnostic on a `for`-wait timeout: capturePolicy may not
             # request an element dump on failure, so without this the timeout leaves no evidence to
@@ -468,7 +525,7 @@ def _run_steps(
             # the trigger is a structural fact, not the wording of the timeout message.
             if wait_trace is not None and not ok and wait_trace.polls > 0:
                 try:
-                    art = sink.wait_diagnostic(step_id, trace=wait_trace, elements=after)
+                    art = sink.wait_diagnostic(step_id, trace=wait_trace, elements=screen.get())
                 except OSError as exc:
                     # Best-effort evidence: a disk/permission failure writing the diagnostic must not
                     # mask the real timeout with an I/O traceback — keep the timeout as the failure and
@@ -480,19 +537,31 @@ def _run_steps(
                         outcome.artifacts.append(art)
 
             if outcome.ok and interp_step.extract:
-                ext_ok, ext_reason = _run_extract(after, interp_step.extract, bindings)
+                ext_ok, ext_reason = _run_extract(screen.get(), interp_step.extract, bindings)
                 if not ext_ok:
                     outcome.ok, outcome.reason = False, ext_reason
 
             fired = _collect_captures(scenario, step, kind, outcome.ok, screen_changed)
             # Interval kinds are recorded scenario-wide (run_scenario), so only the
-            # instant kinds are captured per step here.
+            # instant kinds are captured per step here. Pass the tree only if we already read it;
+            # otherwise `elements=None` lets the sink's `elements` writer read on its own (a NullSink
+            # reads nothing), so a FileSink run stays at one read and a NullSink run at zero. A `web`
+            # block captures against the native `driver`, so it must read the active (web) tree here
+            # rather than let the native writer fall back to a mismatched tree (BE-0234 Unit 2).
             instant = [t for t in fired if _kind_of(t) not in intervals.INTERVAL_KINDS]
-            outcome.artifacts.extend(sink.capture(driver, step_id, instant, elements=after))
+            els = screen.get() if active_driver is not driver else screen.cached
+            outcome.artifacts.extend(sink.capture(driver, step_id, instant, elements=els))
+            if screen.was_read:
+                total_reads += 1
+            # Seed the next step's `before` only with a tree we actually read; if we skipped the
+            # read, the next `before` reads fresh (BE-0234 Unit 2).
+            prev_after = screen.cached
 
             outcomes.append(outcome)
             if not outcome.ok:
                 return f"step {idx} ({kind}): {outcome.reason}"
         return None
 
-    return exec_steps(scenario.steps, driver)
+    result = exec_steps(scenario.steps, driver)
+    _logger.debug("%s: %d runner-issued screen reads (BE-0234)", sid, total_reads)
+    return result

@@ -1,0 +1,164 @@
+"""BE-0234 read-count yardstick: the run loop takes the minimum screen reads per step.
+
+On the adb backend a screen read (`uiautomator dump`) costs ~2.4s, so a redundant `query()` is the
+dominant per-step waste. These tests pin the Unit 2 reductions — the lazy end-of-step read and the
+`before`-reuse — as behavior, so a future change that reintroduces a redundant read is caught on the
+fast gate. They count runner-issued reads via a FakeDriver that tallies `query()` (the loop is its
+only caller); the adb driver's internal `_settle` reads (Unit 3) are counted separately in
+`tests/test_adb.py`.
+"""
+
+from __future__ import annotations
+
+from collections.abc import Sequence
+
+from _orch import FakeClock, _scenario
+from conftest import el
+
+from bajutsu.drivers import base
+from bajutsu.drivers.fake import FakeDriver, React
+from bajutsu.evidence import Artifact
+from bajutsu.intervals import Interval
+from bajutsu.network import NetworkExchange
+from bajutsu.orchestrator import run_scenario
+from bajutsu.orchestrator.waits import WaitTrace
+
+
+class _CountingDriver(FakeDriver):
+    """A FakeDriver that tallies every `query()`; in the run loop the loop is the only caller."""
+
+    def __init__(
+        self,
+        screen: Sequence[base.Element] | None = None,
+        react: React | None = None,
+        exchanges: Sequence[NetworkExchange] | None = None,
+    ) -> None:
+        super().__init__(screen, react, exchanges)
+        self.queries = 0
+
+    def query(self) -> list[base.Element]:
+        self.queries += 1
+        return super().query()
+
+
+class _KindsSink:
+    """Records the capture kinds requested per step (a NullSink that reads nothing, so it never
+    forces the loop to materialize a tree — the counter stays a pure measure of loop-issued reads)."""
+
+    def __init__(self) -> None:
+        self.kinds_by_step: dict[str, list[str]] = {}
+
+    def capture(
+        self,
+        driver: base.Driver,
+        step_id: str,
+        kinds: list[str],
+        *,
+        elements: list[base.Element] | None = None,
+    ) -> list[Artifact]:
+        self.kinds_by_step[step_id] = kinds
+        return []
+
+    def wait_diagnostic(
+        self, step_id: str, *, trace: WaitTrace, elements: list[base.Element]
+    ) -> Artifact | None:
+        return None
+
+    def start_scenario_intervals(self, scenario_id: str, kinds: list[str]) -> list[Interval]:
+        return []
+
+    def finish_scenario_intervals(
+        self, scenario_id: str, started: list[Interval]
+    ) -> list[Artifact]:
+        return []
+
+
+def test_plain_tap_issues_no_runner_read() -> None:
+    # No screenChanged policy, no extract, a sink that reads nothing: no consumer needs the post-step
+    # tree, so the loop reads the screen zero times — the ~2.4s adb read Unit 2 removes per step.
+    driver = _CountingDriver([el("go", "Go", ["button"])])
+    result = run_scenario(
+        driver,
+        _scenario({"name": "x", "steps": [{"tap": {"id": "go"}}]}),
+        clock=FakeClock(),
+        sink=_KindsSink(),
+    )
+    assert result.ok
+    assert driver.queries == 0
+
+
+def test_screen_changed_reuses_previous_after_as_before() -> None:
+    # With a screenChanged policy every step needs a `before`, but the previous step's `after` is the
+    # same device state, so it is reused: one initial `before` plus one post-step read per step —
+    # 1 + 2 = 3 for two steps, not the 4 a re-read `before` would cost.
+    driver = _CountingDriver([el("a", "A", ["button"]), el("b", "B", ["button"])])
+    result = run_scenario(
+        driver,
+        _scenario(
+            {
+                "name": "x",
+                "steps": [{"tap": {"id": "a"}}, {"tap": {"id": "b"}}],
+                "capturePolicy": [
+                    {"on": {"event": "screenChanged"}, "capture": ["screenshot.before"]}
+                ],
+            }
+        ),
+        clock=FakeClock(),
+        sink=_KindsSink(),
+    )
+    assert result.ok
+    assert driver.queries == 3
+
+
+def test_extract_forces_a_single_post_step_read() -> None:
+    # No screenChanged policy, so no `before`; the extract is the only consumer, so exactly one read.
+    driver = _CountingDriver([el("field", "Name", value="Ada")])
+    result = run_scenario(
+        driver,
+        _scenario(
+            {
+                "name": "x",
+                "steps": [
+                    {
+                        "tap": {"id": "field"},
+                        "extract": {"who": {"sel": {"id": "field"}, "prop": "value"}},
+                    }
+                ],
+            }
+        ),
+        clock=FakeClock(),
+        sink=_KindsSink(),
+    )
+    assert result.ok
+    assert driver.queries == 1
+
+
+def test_before_reuse_detects_screen_change_per_step() -> None:
+    # Correctness of the reuse: step 1 changes the screen, step 2 does not. screenChanged must fire
+    # for step 1 only — which holds only if step 2's reused `before` is step 1's `after` (the changed
+    # screen), not a stale earlier tree that would make step 2 look changed too.
+    changed = [el("next", "Next"), el("b", "B", ["button"])]
+
+    def react(d: FakeDriver, kind: str, arg: object) -> None:
+        if kind == "tap" and arg == {"id": "a"}:
+            d.screen = changed  # step 1 navigates; step 2's tap leaves the screen as-is
+
+    driver = _CountingDriver([el("a", "A", ["button"]), el("b", "B", ["button"])], react=react)
+    sink = _KindsSink()
+    result = run_scenario(
+        driver,
+        _scenario(
+            {
+                "name": "x",
+                "steps": [{"tap": {"id": "a"}}, {"tap": {"id": "b"}}],
+                "capturePolicy": [
+                    {"on": {"event": "screenChanged"}, "capture": ["screenshot.before"]}
+                ],
+            }
+        ),
+        clock=FakeClock(),
+        sink=sink,
+    )
+    assert result.ok
+    assert "screenshot.before" in sink.kinds_by_step["x/step0"]
+    assert "screenshot.before" not in sink.kinds_by_step["x/step1"]

@@ -123,6 +123,7 @@ One backend per platform behind the single driver interface ([DESIGN §1](../DES
 | [BE-0228](BE-0228-web-device-mode-emulation/BE-0228-web-device-mode-emulation.md) | Web device mode (desktop / mobile emulation) | Implemented |
 | [BE-0232](BE-0232-adb-multitouch-gestures/BE-0232-adb-multitouch-gestures.md) | Multi-touch gestures on the adb driver (pinch / rotate) | Implemented |
 | [BE-0233](BE-0233-adb-clipboard-fidelity/BE-0233-adb-clipboard-fidelity.md) | adb clipboard on-device fidelity | Implemented |
+| [BE-0234](BE-0234-adb-run-performance/BE-0234-adb-run-performance.md) | Speed up adb scenario runs (uiautomator dump bottleneck) | Implemented |
 | [BE-0240](BE-0240-ios-capability-aware-actuator-selection/BE-0240-ios-capability-aware-actuator-selection.md) | Capability-aware automatic actuator selection for iOS (idb/XCUITest transparency) | Implemented |
 <!-- /GENERATED:implemented-platform -->
 
@@ -341,6 +342,7 @@ Standing up `bajutsu serve` beyond loopback. The hardening that makes the existi
 <!-- GENERATED:implemented-hosting -->
 | ID | Item | Status |
 |---|---|---|
+| [BE-0015](BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md) | Public hosting of the web UI | Implemented |
 | [BE-0016](BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md) | Self-hosting of the web UI | Implemented |
 | [BE-0051](BE-0051-serve-hardening-for-hosting/BE-0051-serve-hardening-for-hosting.md) | Serve hardening for hosting (auth, input validation) | Implemented |
 | [BE-0055](BE-0055-operational-logging/BE-0055-operational-logging.md) | Operational logging for the hosted serve | Implemented |
@@ -515,7 +517,6 @@ Accepted and actively being built — a PR is in flight or imminent.
 <!-- GENERATED:in-progress-hosting -->
 | ID | Item | Status |
 |---|---|---|
-| [BE-0015](BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md) | Public hosting of the web UI | In progress |
 | [BE-0239](BE-0239-deletable-runs-serve/BE-0239-deletable-runs-serve.md) | Deletable runs and reports in the serve Web UI | In progress |
 <!-- /GENERATED:in-progress-hosting -->
 
@@ -529,7 +530,7 @@ Under consideration — not yet decided. Promote an item to *In progress* once w
 | ID | Item | Status |
 |---|---|---|
 | [BE-0008](BE-0008-flutter-support/BE-0008-flutter-support.md) | Flutter support | Proposal |
-| [BE-0234](BE-0234-adb-run-performance/BE-0234-adb-run-performance.md) | Speed up adb scenario runs (uiautomator dump bottleneck) | Proposal |
+| [BE-0245](BE-0245-adb-resident-uiautomator-server/BE-0245-adb-resident-uiautomator-server.md) | Resident UI Automator server for adb reads | Proposal |
 <!-- /GENERATED:proposals-platform -->
 
 ### Device-cloud execution
@@ -562,6 +563,7 @@ Running a scenario on a hosted device farm instead of a local Simulator, emulato
 | [BE-0167](BE-0167-control-plane-scale-out/BE-0167-control-plane-scale-out.md) | Control-plane scale-out behind a load balancer | Proposal |
 | [BE-0168](BE-0168-self-host-high-availability/BE-0168-self-host-high-availability.md) | Self-hosted high availability and single-point-of-failure hardening | Proposal |
 | [BE-0170](BE-0170-weighted-fair-org-dispatch/BE-0170-weighted-fair-org-dispatch.md) | Weighted-fair cross-org job dispatch | Proposal |
+| [BE-0244](BE-0244-deploy-hosted-web-ui-service/BE-0244-deploy-hosted-web-ui-service.md) | Deploy the hosted web UI service | Proposal |
 <!-- /GENERATED:proposals-hosting -->
 
 ### Configuration sourcing
@@ -575,7 +577,9 @@ Running a scenario on a hosted device farm instead of a local Simulator, emulato
 ### Codebase quality & technical debt
 
 <!-- GENERATED:proposals-quality-debt -->
-
+| ID | Item | Status |
+|---|---|---|
+| [BE-0246](BE-0246-claude-client-taxonomy/BE-0246-claude-client-taxonomy.md) | Clarify the module taxonomy for talking to Claude | Proposal |
 <!-- /GENERATED:proposals-quality-debt -->
 
 ## Deferred
