@@ -28,6 +28,7 @@ pip-audit-requirements.txt
 
 # Bajutsu run artifacts (evidence / reports)
 runs/
+projects.json
 
 # serve's ephemeral upload sandboxes (BE-0073): extracted bundles, cleared on serve start
 uploads/
@@ -65,3 +66,4 @@ docs/api/roadmap.md
 
 # serve upload temp dirs (BE-0073) — never commit extracted bundles
 uploads/
+demos/showcase/scenarios/baselines/

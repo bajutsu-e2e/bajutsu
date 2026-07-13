@@ -383,7 +383,9 @@ class PlaywrightDriver:
         driver = self
 
         class _VideoCapture:
-            def stop(self, sig: int) -> None:
+            def stop(self, sig: int, timeout: float) -> None:
+                # timeout is unused: Playwright finalizes the context's video synchronously here,
+                # with no child process to wait on; the signature matches the intervals.Proc protocol.
                 driver._finalize_video(path)
 
         return intervals.Interval(
@@ -428,7 +430,9 @@ class PlaywrightDriver:
             on("pageerror", on_pageerror)
 
         class _ConsoleCapture:
-            def stop(self, sig: int) -> None:
+            def stop(self, sig: int, timeout: float) -> None:
+                # timeout is unused: detaching listeners is instant (no child process to wait on),
+                # but the signature matches the intervals.Proc protocol.
                 remove = getattr(page, "remove_listener", None)
                 if remove is not None:
                     # Suppress per call so a failure detaching one listener still detaches the other.

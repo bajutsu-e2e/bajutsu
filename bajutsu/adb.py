@@ -131,6 +131,17 @@ def rm_cmd(serial: str, device_path: str) -> list[str]:
     return _adb(serial, "shell", "rm", "-f", device_path)
 
 
+def screenrecord_pids_cmd(serial: str) -> list[str]:
+    """Device-side `screenrecord` pids on stdout, empty once it has exited.
+
+    Used to tell when the recording is finalized: on the stop signal `screenrecord` keeps writing
+    the mp4's `moov` atom device-side after the local `adb shell` client returns, so a pull must
+    wait for the process to exit. `|| true` makes a no-match `pgrep` (exit 1) still return 0, so the
+    poll reads presence from stdout, not the exit code (the `RunFn` raises on a non-zero exit).
+    """
+    return _adb(serial, "shell", "pgrep -x screenrecord || true")
+
+
 KEYCODE_BACK = 4  # `input keyevent` code for the system back button (Android's true system back).
 
 

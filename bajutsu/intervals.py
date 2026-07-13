@@ -16,9 +16,11 @@ from __future__ import annotations
 
 import contextlib
 import json
+import logging
 import re
 import signal
 import subprocess
+import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -26,6 +28,8 @@ from pathlib import Path
 from typing import Protocol
 
 from bajutsu import adb, simctl
+
+_logger = logging.getLogger(__name__)
 
 PROVIDER = "simctl"
 ADB_PROVIDER = "adb"
@@ -83,10 +87,21 @@ def app_trace_cmd(udid: str, subsystem: str) -> list[str]:
     ]
 
 
+# How long `stop()` waits for the signalled process to exit before a hard `kill()`. A log stream ends
+# the instant it sees the stop signal, so a short grace is plenty. A screen recording is different: on
+# the stop signal `recordVideo` / `screenrecord` still has to flush and mux the whole clip to disk
+# ("Writing to disk"), which scales with the recording's length and the host's load. Killing it
+# mid-write truncates the mp4 so it has no `moov` atom (unplayable) and — worse on iOS — leaves the
+# simulator's host-recording session held, so every later capture fails with "Host recording is
+# already in progress". So video gets a generous finalize window; the kill stays only as a last resort.
+_STOP_TIMEOUT = 10.0
+_VIDEO_FINALIZE_TIMEOUT = 120.0
+
+
 class Proc(Protocol):
     """A running child process that can be signalled and waited on."""
 
-    def stop(self, sig: int) -> None: ...
+    def stop(self, sig: int, timeout: float) -> None: ...
 
 
 # spawn(argv, stdout_path) -> a running process (stdout written to the file if given)
@@ -107,10 +122,10 @@ class _SubprocessProc:
                 self._file.close()
             raise
 
-    def stop(self, sig: int) -> None:
+    def stop(self, sig: int, timeout: float) -> None:
         self._proc.send_signal(sig)
         try:
-            self._proc.wait(timeout=10)
+            self._proc.wait(timeout=timeout)
         except subprocess.TimeoutExpired:
             self._proc.kill()
             self._proc.wait()
@@ -125,7 +140,7 @@ def _spawn(argv: list[str], stdout_path: Path | None) -> Proc:
 class _NullProc:
     """A no-op process (the default so constructing an Interval has no side effects)."""
 
-    def stop(self, sig: int) -> None:
+    def stop(self, sig: int, timeout: float) -> None:
         return None
 
 
@@ -142,17 +157,28 @@ class Interval:
     provider: str = PROVIDER
     _proc: Proc = field(repr=False, default_factory=_NullProc)
     _stop_signal: int = signal.SIGTERM
+    _stop_timeout: float = _STOP_TIMEOUT
     _transform: Callable[[Path], Path] | None = field(default=None, repr=False)
 
     def stop(self) -> Path:
-        self._proc.stop(self._stop_signal)
+        self._proc.stop(self._stop_signal, self._stop_timeout)
         return self._transform(self.path) if self._transform is not None else self.path
 
 
 def start_video(udid: str, path: Path, spawn: Spawn = _spawn) -> Interval:
-    """Begin recording the screen to `path`; stop() (SIGINT) finalizes the mp4."""
+    """Begin recording the screen to `path`; stop() (SIGINT) finalizes the mp4.
+
+    The stop gives `recordVideo` the generous `_VIDEO_FINALIZE_TIMEOUT` to write and mux the clip: a
+    premature kill would truncate the mp4 (no `moov` atom) and wedge the simulator's recording session.
+    """
     proc = spawn(record_video_cmd(udid, str(path)), None)
-    return Interval(kind="video", path=path, _proc=proc, _stop_signal=signal.SIGINT)
+    return Interval(
+        kind="video",
+        path=path,
+        _proc=proc,
+        _stop_signal=signal.SIGINT,
+        _stop_timeout=_VIDEO_FINALIZE_TIMEOUT,
+    )
 
 
 def start_device_log(
@@ -166,20 +192,60 @@ def start_device_log(
 # --- adb (Android) interval providers: the twins of the simctl starters above ---
 
 
+def _await_screenrecord_stopped(
+    serial: str, run: adb.RunFn, timeout: float = _VIDEO_FINALIZE_TIMEOUT, poll: float = 0.2
+) -> None:
+    """Wait until the device-side `screenrecord` has exited, before its mp4 is pulled.
+
+    On the stop signal the local `adb shell` client returns as soon as the connection closes, but the
+    device-side `screenrecord` is still writing the mp4's `moov` atom. Pulling then races that write
+    and yields a truncated, moov-less (unplayable) file — the Android recording instability. Poll to a
+    bounded deadline (a condition wait on the process's exit, not a fixed sleep). If the probe can't
+    run or never clears, proceed anyway so it can never hang the run — the pull stays best-effort —
+    but log a warning: the pull may then copy a still-finalizing (truncated, moov-less) mp4, the very
+    failure this wait exists to prevent, so it must not be silent.
+    """
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        try:
+            if not run(adb.screenrecord_pids_cmd(serial)).strip():
+                return
+        except (subprocess.CalledProcessError, OSError) as exc:
+            _logger.warning(
+                "could not probe device-side screenrecord (%s); pulling anyway — the video may be "
+                "truncated (no moov atom)",
+                exc,
+            )
+            return
+        time.sleep(poll)
+    _logger.warning(
+        "device-side screenrecord still running after %ss; pulling anyway — the video may be "
+        "truncated (no moov atom)",
+        timeout,
+    )
+
+
 def start_screenrecord(
     serial: str, path: Path, spawn: Spawn = _spawn, run: adb.RunFn = adb._real_run
 ) -> Interval:
     """Record the Android screen; stop() (SIGINT) finalizes the mp4, then pulls it off the device.
 
     `screenrecord` writes device-side (it cannot stream to a host file), so recording is a running
-    process plus a post-stop transform: pull the finalized mp4 to `path`, then remove it device-side.
-    SIGINT (not a kill) lets `screenrecord` flush a complete mp4, the same reason simctl recordVideo
-    finalizes on SIGINT.
+    process plus a post-stop transform: wait for the device-side finalize, pull the mp4 to `path`,
+    then remove it device-side. SIGINT (not a kill) lets `screenrecord` flush a complete mp4, the same
+    reason simctl recordVideo finalizes on SIGINT. Two waits guard the finalize: `stop()` gives the
+    *local* `adb shell` client `_VIDEO_FINALIZE_TIMEOUT` before any hard kill, then the transform waits
+    for the *device-side* `screenrecord` to exit (`_await_screenrecord_stopped`) — the local client
+    returns before the device finishes writing the moov atom, so pulling without that wait races the
+    finalize into a truncated, unplayable file.
     """
     device_path = adb.VIDEO_DEVICE_PATH
     proc = spawn(adb.screenrecord_cmd(serial, device_path), None)
 
     def transform(target: Path) -> Path:
+        # The local `adb shell` has returned, but the device-side screenrecord is still finalizing;
+        # wait for it to exit so the pull gets a complete mp4 rather than a moov-less truncation.
+        _await_screenrecord_stopped(serial, run)
         # Let a failed pull surface (like the iOS video provider): swallowing it would record a video
         # artifact path with no file behind it, turning a real problem into a silent one.
         run(adb.pull_cmd(serial, device_path, str(target)))
@@ -194,6 +260,7 @@ def start_screenrecord(
         provider=ADB_PROVIDER,
         _proc=proc,
         _stop_signal=signal.SIGINT,
+        _stop_timeout=_VIDEO_FINALIZE_TIMEOUT,
         _transform=transform,
     )
 
