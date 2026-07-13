@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
 from _runner import _eff, _el, _failing_lease, _fake_driver, _lease
 
 from bajutsu.config import Effective
@@ -115,6 +116,14 @@ def test_resolve_actuator_escalates_to_a_capable_actuator() -> None:
     results = run_all(_eff(), scenarios, lease, resolve_actuator=lambda s: "xcuitest")
     assert leased == ["z"]  # the lease was reached: no capability fail-fast
     assert "unsupported on backend" not in (results[0].failure or "")
+
+
+def test_run_all_rejects_both_actuator_and_resolve_actuator() -> None:
+    # BE-0240: the fixed actuator and the per-scenario resolver answer the same question; passing
+    # both is a caller bug, failed loudly rather than silently letting the resolver win.
+    scenarios = [Scenario.model_validate({"name": "a", "steps": [{"tap": {"id": "ok"}}]})]
+    with pytest.raises(ValueError, match="not both"):
+        run_all(_eff(), scenarios, _lease, actuator="idb", resolve_actuator=lambda s: "idb")
 
 
 def test_resolve_actuator_no_available_actuator_fails_cleanly() -> None:

@@ -37,6 +37,7 @@ from bajutsu.cli._shared import (
 from bajutsu.config import WEB_ENGINES, Effective, IosConfig, web_engine
 from bajutsu.orchestrator import AlertEvent, BlockedHandler, RunResult
 from bajutsu.report.archive import archive_run_dir
+from bajutsu.report.manifest import _run_backend
 from bajutsu.run_id import new_run_id
 from bajutsu.runner import device_pool, run_all, run_and_report, run_matrix_and_report
 from bajutsu.runner.build import BuildError, build_if_missing
@@ -686,8 +687,10 @@ def _finish(
 
         # Actuator selection is per scenario (BE-0240), so report the distinct actuators that
         # actually ran — joined when a run mixed idb and XCUITest — not the single pool pick; fall
-        # back to `plan.actuator` when every scenario failed before an actuator drove it.
-        ran = ", ".join(dict.fromkeys(r.backend for r in results if r.backend))
+        # back to `plan.actuator` when every scenario failed before an actuator drove it. Reuses the
+        # manifest's join so the dedup/order/empty-filter semantics live in one place (report/html.py
+        # already imports it across the boundary the same way).
+        ran = _run_backend(results)
         notify.emit(
             results,
             run_id=plan.run_id,

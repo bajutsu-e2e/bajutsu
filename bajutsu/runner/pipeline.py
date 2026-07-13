@@ -285,13 +285,18 @@ def run_all(
         resolve_actuator: Per-scenario actuator resolver (BE-0240); when given, each scenario's
             actuator — and thus the capability set it is preflighted against — is resolved from the
             scenario's own steps (cheapest sufficient), instead of the one fixed `actuator`. Mutually
-            exclusive with `actuator` in practice: the CLI's single-engine path passes this, the
-            matrix / audit paths pass `actuator`.
+            exclusive with `actuator` (passing both raises): the CLI's single-engine path and `audit`
+            pass this, the cross-browser matrix passes `actuator`.
         golden_context: Goldens directory for `golden` assertions (BE-0006). None disables them.
 
     Returns:
         One result per scenario, in the same order as `scenarios`.
     """
+    # `actuator` (one fixed actuator) and `resolve_actuator` (per-scenario, BE-0240) are two ways to
+    # answer the same question; passing both is a caller bug. Fail loudly rather than silently letting
+    # the resolver win and discarding the fixed actuator/caps (prime directive 2).
+    if actuator is not None and resolve_actuator is not None:
+        raise ValueError("pass either actuator or resolve_actuator to run_all, not both")
     redactor = Redactor(eff.redact, values=secret_values)
     # One mailbox reader for the whole run (it's per-target, not per-device): the `email` step polls
     # it, with ${secrets.*} in the url/headers resolved from the same secret bindings (BE-0046).
