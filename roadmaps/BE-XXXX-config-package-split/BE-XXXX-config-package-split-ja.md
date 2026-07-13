@@ -53,12 +53,14 @@ mock サーバー（`redact`、`secrets`、`mailbox`、`mock_server`）にまた
 `cfg["targets"][name]["..."]` のような文字列キーによるアクセスとは対照的な、保つ価値のある
 パターンです。他のフィールド群にも同じ考え方を広げるべきだと考えます。
 
-`config` と `backends` の間には、現時点で成立している循環 import も 2 箇所あります。
+`bajutsu.backends` の import を関数本体へ遅延させている関数も 2 つあります。
 `_check_platform`（177 行目）と `_platform_for_backend`（752 行目）は、いずれも `from
-bajutsu.backends import …` を関数本体に遅延させて循環を回避しています（この遅延は現状では
-暗黙で、説明コメントは付いていません）。`config.py`
+bajutsu.backends import …` を関数本体で行っており、その理由を記すコメントはありません。
+`bajutsu/backends.py` はどこからも `bajutsu.config` を import していないため、これは循環
+（`config ↔ backends`）を解消しているのではなく、一方向の遅延 import です。`config.py`
 のうち `bajutsu.backends` を必要とするのは解決ロジックの側だけなので、これを独立したモジュール
-に移すことで、各関数の内側ではなくパッケージの境界で循環を解消できます。
+に移すと、`bajutsu.backends` に依存する唯一のサブモジュールとなり、これらは通常のトップレベル
+import になります。
 
 ## 詳細設計
 
@@ -96,8 +98,9 @@ bajutsu.backends import …` を関数本体に遅延させて循環を回避し
    `resolve`、`parse_config_dict`、`load_config`（現在の 709〜883 行目）に加えて、
    `_platform_for_backend` と `_effective_platform` が行っている `bajutsu.backends` の
    import を、遅延させずトップレベルの import に変えます。`bajutsu.backends` を import
-   するのはこのモジュールだけになるため、循環はパッケージの境界で消えます。現在 177 行目と
-   752 行目にある遅延 import は、通常のトップレベル import になります。
+   するのはこのモジュールだけになるため、現在 177 行目と 752 行目にある遅延 import は、
+   モジュール内に散らばった関数内 import ではなく、この 1 つのサブモジュールに集約された通常の
+   トップレベル import になります。
 
 4. **`bajutsu/config/accessors.py`**：ナローイング用アクセサとソフトなゲッター群です。
    `require_ios`、`require_web`、`require_android`、`web_base_url`、`web_engine`、
@@ -119,13 +122,13 @@ bajutsu.backends import …` を関数本体に遅延させて循環を回避し
 - **`Effective` のフィールドだけをサブレコードにまとめ、`config.py` は 1 ファイルのまま
   残す。** これは読みやすさの改善の一部（巨大オブジェクトのフィールド数が減る点）は得られますが、
   より大きな見通しの改善は得られません。スキーマ検証、解決済みの型、マージのロジック、パスの
-  再基準化は依然として 800 行超の 1 ファイルに同居したままで、`config` と `backends` の循環
-  import による遅延 import もそのまま残ります。4 つの責務がすでに明確に MECE で切り分け
+  再基準化は依然として 800 行超の 1 ファイルに同居したままで、遅延させている `bajutsu.backends`
+  の import も関数本体に散らばったまま残ります。4 つの責務がすでに明確に MECE で切り分け
   られることを踏まえると、これは部分的な対処にとどまると判断し、見送りました。
 - **責務ではなくファイルサイズだけを基準に分割する（たとえばおおよそ均等な 2 分割）。**
-  これは循環 import を解消しません。どちらの循環の発生箇所も、`bajutsu.backends` を必要と
-  する解決ロジック側の半分に落ち着く必要があり、また各モジュールに単一の名付けられる役割を
-  与えることもできないため、見送りました。
+  これは `bajutsu.backends` への依存を 1 か所に集約できません。どちらの遅延 import の発生箇所も、
+  `bajutsu.backends` を必要とする解決ロジック側の半分に落ち着く必要があり、また各モジュールに
+  単一の名付けられる役割を与えることもできないため、見送りました。
 - **`config.py` を現状のまま維持する。** 新しいスキーマのフィールドと新しい解決ロジックが
   同じファイルに積み重なり続け、モジュールは両方の軸で成長し続けます。2 箇所の lazy import
   による回避策も、無期限に残ることになります。

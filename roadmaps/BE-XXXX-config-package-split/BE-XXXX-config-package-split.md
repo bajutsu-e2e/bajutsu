@@ -53,12 +53,13 @@ already a discriminated `PlatformConfig` union (line 509) that forces `isinstanc
 preserving and extending to the other field clusters, rather than the stringly
 `cfg["targets"][name]["..."]` access this design deliberately avoids.
 
-Two `config ↔ backends` import cycles are also load-bearing today: `_check_platform` (line
-177) and `_platform_for_backend` (line 752) both defer their `from bajutsu.backends import …`
-to the function body to break the cycle (the deferral is currently implicit — neither carries
-an explanatory comment). Moving the resolution logic — the only
-half of the module that needs `bajutsu.backends` — into its own module breaks the cycle at
-the package boundary instead of inside each function.
+Two functions also defer their `bajutsu.backends` import to the function body today:
+`_check_platform` (line 177) and `_platform_for_backend` (line 752) each do `from
+bajutsu.backends import …` inside the body, with no comment recording why. `bajutsu/backends.py`
+does not import `bajutsu.config` anywhere, so this is a one-way deferred import, not a `config ↔
+backends` cycle being broken. Moving the resolution logic — the only half of the module that needs
+`bajutsu.backends` — into its own module turns these into ordinary top-level imports, since it
+becomes the only submodule that depends on `bajutsu.backends`.
 
 ## Detailed design
 
@@ -94,8 +95,8 @@ every symbol in today's `config.py` falls into exactly one):
    `resolve`, `parse_config_dict`, `load_config` (today's lines 709–883), plus
    `_platform_for_backend`'s and `_effective_platform`'s top-level (no longer deferred)
    import of `bajutsu.backends`. This is the only submodule that imports `bajutsu.backends`,
-   so the cycle disappears at the package boundary — the deferred imports at today's lines
-   177 and 752 become ordinary top-level imports.
+   so the deferred imports at today's lines 177 and 752 become ordinary top-level imports,
+   confined to this one submodule instead of scattered as in-function imports across the module.
 
 4. **`bajutsu/config/accessors.py`** — the narrowing accessors and soft getters:
    `require_ios`, `require_web`, `require_android`, `web_base_url`, `web_engine`,
@@ -116,13 +117,13 @@ every symbol in today's `config.py` falls into exactly one):
 - **Group `Effective`'s fields into sub-records but keep one `config.py` file.** This
   captures part of the readability win (the god-object field count shrinks) without the
   larger navigation benefit: schema validation, resolved types, merge logic, and path
-  rebasing still share one 800+-line file, and the `config ↔ backends` cycle's deferred
-  imports stay in place. Rejected as a partial fix given the four responsibilities are
+  rebasing still share one 800+-line file, and the deferred `bajutsu.backends` imports stay
+  scattered in function bodies. Rejected as a partial fix given the four responsibilities are
   already cleanly MECE-separable.
 - **Split by file size alone (e.g. two roughly-equal halves) instead of by responsibility.**
-  Rejected — an arbitrary split wouldn't break the import cycle (both cycle sites would need
-  to land in whichever half needs `bajutsu.backends`, which only resolution logic does) and
-  wouldn't give each module a single, nameable job.
+  Rejected — an arbitrary split wouldn't confine the `bajutsu.backends` dependency (both
+  deferred-import sites would need to land in whichever half needs `bajutsu.backends`, which only
+  resolution logic does) and wouldn't give each module a single, nameable job.
 - **Leave `config.py` as is.** The module keeps growing on both axes (new schema fields and
   new resolution logic land in the same file), and the two lazy-import workarounds stay
   load-bearing indefinitely.
@@ -136,8 +137,8 @@ every symbol in today's `config.py` falls into exactly one):
 - [ ] `bajutsu/config/schema.py` created with the pydantic input models (pure move)
 - [ ] `bajutsu/config/effective.py` created with the resolved dataclasses; `Effective`'s
       fields grouped into `EvidenceDirs` / `RunDefaults` / `DoctorThresholds` sub-records
-- [ ] `bajutsu/config/resolve.py` created with the merge/derivation logic; the two
-      `config ↔ backends` deferred imports become top-level imports in this module only
+- [ ] `bajutsu/config/resolve.py` created with the merge/derivation logic; the two deferred
+      `bajutsu.backends` imports become top-level imports in this module only
 - [ ] `bajutsu/config/accessors.py` created with `require_*` and the soft accessors
 - [ ] `bajutsu/config/__init__.py` re-exports the full public API; no call site outside the
       package changes
