@@ -190,7 +190,7 @@ class _FakeObjectStore:
     def delete_key(self, key: str) -> None:
         self._o.pop(key, None)
 
-    def delete_keys(self, keys) -> None:  # noqa: ANN001 — test double
+    def delete_keys(self, keys) -> None:
         for k in list(keys):
             self._o.pop(k, None)
 
