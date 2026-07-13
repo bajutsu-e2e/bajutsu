@@ -66,7 +66,7 @@ function hideReportPanel(){if(recReportHide)recReportHide();else{const p=$('#rec
 // Human handoff (BE-0179): the record paused for a human. Shown as a modal so it can't be missed
 // below the fold; the human resumes by POSTing a response — a supplied value, "I operated the
 // device", or a cancel — back to the job.
-function showHandoffPanel(){$('#rec-handoffmodal').hidden=false;}
+function showHandoffPanel(){openModal($('#rec-handoffmodal'));}
 function hideHandoffPanel(){closeModal($('#rec-handoffmodal'));}
 function onHandoffRequest(req){
   $('#rec-handoff-reason').textContent=req.reason||'the agent needs a human to continue';

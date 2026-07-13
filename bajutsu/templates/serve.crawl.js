@@ -547,7 +547,7 @@ function openShot(fp){
     const tip=go?`${desc} → ${e.dst.slice(0,7)}`:`${desc} · not yet explored`;
     return `<div class="hot${go?' go':' pend'}" style="${st}"${go?` data-dst="${esc(e.dst)}"`:''} title="${esc(tip)}"></div>`;
   }).join('');
-  $('#shotmodal').hidden=false;
+  openModal($('#shotmodal'));
 }
 // Show / hide the tap-location highlight over the screenshot. The rect is [x,y,w,h] as fractions
 // of the screen, so it positions directly as percentages over the tightly-wrapped image.
