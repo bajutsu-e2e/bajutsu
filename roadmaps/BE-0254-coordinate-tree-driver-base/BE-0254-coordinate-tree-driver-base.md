@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-coordinate-tree-driver-base-ja.md)
+**English** · [日本語](BE-0254-coordinate-tree-driver-base-ja.md)
 
-# BE-XXXX — Extract a shared CoordinateTreeDriver base for idb and adb
+# BE-0254 — Extract a shared CoordinateTreeDriver base for idb and adb
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-coordinate-tree-driver-base.md) |
+| Proposal | [BE-0254](BE-0254-coordinate-tree-driver-base.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0254") |
 | Topic | Codebase quality & technical debt |
 <!-- /BE-METADATA -->
 
