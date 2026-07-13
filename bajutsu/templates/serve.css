@@ -580,6 +580,22 @@ header .cfgname{color:var(--mut);font-size:.82em;max-width:32vw;overflow:hidden;
 .covctl{display:flex;gap:1em;align-items:flex-end;flex-wrap:wrap;margin:.8em 0}
 .covctl label{display:flex;flex-direction:column;gap:.25em;font-size:.85em}
 .covctl .subhint{font-size:.75em;color:var(--mut)}
+
+/* ===== Full-width single-card views ==============================================================
+   The <main> grid above is sized for Record/Replay's five children (left · gutter · panel · gutter
+   · report). The views here have fewer children, so under that 5-track grid their content lands in
+   the fixed 340px tracks and the trailing 1fr stays empty — the panel reads as "crushed" on the
+   left with dead space beside it. Each gets a grid that fills the available width instead.
+   The read-only dashboards (Stats / Flaky / Usage / Coverage / Metrics) are a single card: one
+   full-width column. */
+#view-stats,#view-flaky,#view-usage,#view-coverage,#view-metrics{grid-template-columns:1fr}
+/* That card fills its cell and scrolls its (shadow-DOM report) body, not the page. */
+.statscard{display:flex;flex-direction:column;min-height:0;overflow:hidden}
+.statshost{flex:1;min-height:0;overflow:auto;margin-top:.6rem}
+/* Author is two panes (form + screen) split by one gutter — the screen pane takes all the width to
+   the right of the gutter. The gutter drives --rec-left (its data-var), which now sizes the left
+   column the grid actually uses, so dragging it resizes the split. */
+#view-author{grid-template-columns:var(--rec-left,340px) var(--gw) 1fr}
 /* Replay codegen action row: emit selector + Generate button below the run output. */
 .codegen-bar{display:flex;align-items:center;gap:.4em;margin-top:.5em}
 .codegen-bar .savebtn{background:var(--acc);color:var(--on-acc);border:0;border-radius:6px;font-weight:700;padding:.35rem .8rem;font-size:.85em;cursor:pointer}
