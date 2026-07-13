@@ -10,6 +10,8 @@ from __future__ import annotations
 
 from typing import Any
 
+import pytest
+
 from bajutsu.assertions import evaluate_one
 from bajutsu.scenario.models.assertions import Assertion, RequestMatch
 from bajutsu.scenario.models.mocks import Mock, MockResponse
@@ -98,6 +100,43 @@ def test_records_a_completed_request_as_an_exchange() -> None:
     assert ex.path == "/items"  # query stripped, for matching
     assert ex.status == 200
     assert ex.mocked is False
+
+
+class _FakePwError(Exception):
+    """Stands in for a `playwright.sync_api.Error` (the web extra isn't installed in the gate)."""
+
+
+def test_late_requestfinished_after_target_closed_is_dropped(
+    monkeypatch: Any,
+) -> None:
+    # A `requestfinished` can fire while the page navigates or after the context/browser closes;
+    # `response()` then raises a Playwright error (TargetClosedError). The handler must swallow it
+    # and record nothing, rather than let it surface as an unhandled error on Playwright's event loop.
+    monkeypatch.setattr("bajutsu.drivers.playwright._PW_ERRORS", (_FakePwError,))
+    page = _FakePage()
+    collector = WebNetworkCollector(page)
+
+    class _ClosedRequest(_FakeRequest):
+        def response(self) -> _FakeResponse | None:
+            raise _FakePwError("Request.response: Target page, context or browser has been closed")
+
+    page.finish(_ClosedRequest("GET", "https://api.test/late"))
+    assert collector.snapshot() == []
+
+
+def test_non_playwright_error_in_on_finished_propagates(monkeypatch: Any) -> None:
+    # Only Playwright's own error family is treated as a benign teardown; a genuine bug must fail
+    # loudly (prime directive 2) rather than be silently dropped from the collector.
+    monkeypatch.setattr("bajutsu.drivers.playwright._PW_ERRORS", (_FakePwError,))
+    page = _FakePage()
+    WebNetworkCollector(page)
+
+    class _BuggyRequest(_FakeRequest):
+        def response(self) -> _FakeResponse | None:
+            raise ValueError("a real driver bug, not a closed target")
+
+    with pytest.raises(ValueError, match="real driver bug"):
+        page.finish(_BuggyRequest("GET", "https://api.test/boom"))
 
 
 def test_snapshot_timed_and_clear() -> None:

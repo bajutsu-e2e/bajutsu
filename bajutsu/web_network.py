@@ -76,7 +76,23 @@ class WebNetworkCollector:
     # --- Playwright event handlers ---
 
     def _on_finished(self, request: Any) -> None:
-        response = request.response()
+        try:
+            response = request.response()
+        except Exception as exc:
+            # A `requestfinished` can still fire while the page is navigating or after the
+            # context/browser has closed; `response()` then raises a Playwright error (e.g.
+            # TargetClosedError). The target is gone, so there is no exchange to observe — drop the
+            # late event rather than let it surface as an unhandled error on Playwright's event loop.
+            # Narrow to Playwright's own error family (the same recognition `_wedge_guard` uses) so a
+            # genuine bug still fails loudly (prime directive 2) instead of vanishing from the collector.
+            from bajutsu.drivers.playwright import _playwright_error_types
+
+            if not isinstance(exc, _playwright_error_types()):
+                raise
+            _logger.debug(
+                "request.response() unavailable (target closing?): %s", exc, exc_info=True
+            )
+            return
         exchange = NetworkExchange(
             **_request_fields(request),
             status=response.status if response is not None else None,
