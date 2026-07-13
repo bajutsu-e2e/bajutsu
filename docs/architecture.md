@@ -164,9 +164,9 @@ declared:
 2. **Contract** — the stable surfaces a consumer depends on: the scenario schema (`scenario/`) and
    the `Driver` Protocol (`drivers/base.py`).
 3. **Periphery** — the consumers of the contract, each removable behind an optional extra:
-   `serve/`, `mcp/`, the codegen emitters, the AI / agent paths (`agent_protocols.py`, `anthropic_client.py`,
-   `record.py`, `enrich.py`, `triage.py`, `crawl_guide.py`, …), and the `github.py` / `notify.py` /
-   `alerts.py` helpers.
+   `serve/`, `mcp/`, the codegen emitters, the AI / agent paths (`agent_protocols.py`, `ai_config.py`,
+   `anthropic_client.py`, `record.py`, `enrich.py`, `triage.py`, `crawl_guide.py`, …), and the
+   `github.py` / `notify.py` / `alerts.py` helpers.
 
 Three contracts are enforced:
 

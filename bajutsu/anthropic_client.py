@@ -1,26 +1,23 @@
 """Construct the Anthropic SDK client for the configured AI provider (Tier-1 paths only).
 
 `record`, `triage`, alert-dismissal, and `crawl` reach Claude through this one factory, so the
-provider is swappable without touching the call sites. The choice comes from the resolved `ai`
-config block (`defaults.ai` / `targets.<name>.ai`, BE-0047) first, falling back to the environment
-so existing setups keep working unchanged (and so `bajutsu serve` can hand settings to spawned jobs
-through the env):
+provider is swappable without touching the call sites. Whatever is genuinely Anthropic-SDK-specific
+lives here — the client construction and the `ant` CLI token IO — while the provider-agnostic config
+resolution every backend shares (model / effort / language, and the provider-name resolution
+itself) lives in `bajutsu.ai_config`, and the cross-provider registry / credential dispatch in
+`bajutsu.ai` (BE-0246). The provider (`ai.provider` / ``BAJUTSU_AI_PROVIDER``, resolved by
+`ai_config.resolve_provider`) selects the Anthropic-SDK variant:
 
-- ``provider`` (`ai.provider` / ``BAJUTSU_AI_PROVIDER``) = ``api-key`` (default), ``bedrock``,
-  or ``ant`` — all Anthropic-SDK variants, so the name states the *authentication* method.
-  - ``api-key`` → ``anthropic.Anthropic()``, authenticated by the key in ``ai.keyEnv`` (default
-    ``ANTHROPIC_API_KEY``); ``ai.baseUrl`` points the SDK at a self-hosted gateway / enterprise
-    proxy, so a screenshot or element tree only ever reaches the user-configured endpoint.
-  - ``bedrock``  → ``anthropic.AnthropicBedrock()``, authenticated by the standard AWS credential
-    chain (env vars / shared profile / instance or task role) and ``AWS_REGION``.
-  - ``ant`` → ``anthropic.Anthropic(auth_token=…)``, where the bearer token comes from the official
-    Anthropic CLI (``ant auth login`` — a browser-based OAuth/SSO flow against the Claude Console),
-    so a Claude Pro/Max/Console seat bills the usage instead of an ``ANTHROPIC_API_KEY`` (BE-0163).
-    The token is read from the ``ant`` binary at call time; ``ANTHROPIC_PROFILE`` selects a named
-    profile (honored by ``ant`` itself), and ``ai.baseUrl`` points the SDK at a gateway as above.
-- ``ai.model`` / ``BAJUTSU_BEDROCK_MODEL`` overrides the model id; the Bedrock path needs a
-  provider-prefixed id (e.g. ``global.anthropic.claude-opus-4-6-v1``) — the bare Anthropic id is
-  not a valid Bedrock model id. The ``ant`` path uses the bare Anthropic id, like ``api-key``.
+- ``api-key`` (default) → ``anthropic.Anthropic()``, authenticated by the key in ``ai.keyEnv``
+  (default ``ANTHROPIC_API_KEY``); ``ai.baseUrl`` points the SDK at a self-hosted gateway /
+  enterprise proxy, so a screenshot or element tree only ever reaches the user-configured endpoint.
+- ``bedrock`` → ``anthropic.AnthropicBedrock()``, authenticated by the standard AWS credential
+  chain (env vars / shared profile / instance or task role) and ``AWS_REGION``.
+- ``ant`` → ``anthropic.Anthropic(auth_token=…)``, where the bearer token comes from the official
+  Anthropic CLI (``ant auth login`` — a browser-based OAuth/SSO flow against the Claude Console),
+  so a Claude Pro/Max/Console seat bills the usage instead of an ``ANTHROPIC_API_KEY`` (BE-0163).
+  The token is read from the ``ant`` binary at call time; ``ANTHROPIC_PROFILE`` selects a named
+  profile (honored by ``ant`` itself), and ``ai.baseUrl`` points the SDK at a gateway as above.
 
 Keys never live in config: ``ai.keyEnv`` names the env var, the value is read here at call time
 (BE-0047). Nothing here runs in the deterministic ``run`` / CI gate (DESIGN §2 / §3.1). The SDK
@@ -36,54 +33,9 @@ import shutil
 import subprocess
 from typing import Any, Protocol
 
-# AiConfig lives in `config` (the resolved `ai` block belongs with the rest of the config, and the
-# deterministic core must read it without importing this AI stack, BE-0112). Re-exported here so the
-# AI paths keep importing it alongside the client factory from one module.
-from bajutsu.config import AiConfig as AiConfig
+from bajutsu.ai_config import AiConfig, resolve_provider
 
-PROVIDER_ENV = "BAJUTSU_AI_PROVIDER"
-MODEL_ENV = "BAJUTSU_AI_MODEL"  # provider-agnostic model override (config `ai.model` wins over it)
-EFFORT_ENV = "BAJUTSU_AI_EFFORT"  # reasoning-effort override (config `ai.effort` wins over it)
-# AI output language override, BE-0188 (config `ai.language` wins over it).
-LANGUAGE_ENV = "BAJUTSU_AI_LANGUAGE"
-BEDROCK_MODEL_ENV = "BAJUTSU_BEDROCK_MODEL"
 ANTHROPIC_KEY_ENV = "ANTHROPIC_API_KEY"
-# The env vars serve manages when it materializes an AI provider selection into a spawned job's
-# environment (BE-0229). A per-job overlay that names a provider clears these from the inherited
-# env before applying its own values, so one org's selection can't leak into another org's jobs
-# through a stale process-env var. AWS_REGION is deliberately excluded: it is a general AWS setting
-# a deployment may set independently of the provider selection, so the overlay only ever adds it
-# (for bedrock, when a region is chosen), never clears it.
-PROVIDER_MANAGED_ENV = frozenset(
-    {PROVIDER_ENV, MODEL_ENV, EFFORT_ENV, LANGUAGE_ENV, BEDROCK_MODEL_ENV}
-)
-# The reasoning-effort levels the `claude` CLI accepts (`--effort`); other levels are ignored.
-EFFORT_LEVELS = ("low", "medium", "high", "xhigh", "max")
-# The AI output languages `ai.language` / `--language` accept (BE-0188). `auto` keeps today's
-# behavior (record follows the goal, crawl stays English); the human-readable name each maps to in
-# the prompt instruction lives in `_LANGUAGE_NAMES` below.
-LANGUAGES = ("auto", "ja", "en")
-DEFAULT_LANGUAGE = "auto"
-# Provider names state the authentication method — all three are Anthropic-SDK variants.
-PROVIDERS = ("api-key", "bedrock", "ant")
-DEFAULT_PROVIDER = "api-key"
-
-# Backward-compatible provider aliases. BE-0047 / BE-0053 shipped the direct-API provider as
-# ``anthropic``; it was renamed to ``api-key`` (the name now states the *auth method*, since Bedrock
-# and ``ant`` are Anthropic too), so an existing config or ``$BAJUTSU_AI_PROVIDER=anthropic`` keeps
-# resolving instead of failing closed on an "unknown provider".
-_PROVIDER_ALIASES = {"anthropic": "api-key"}
-
-
-def normalize_provider(raw: str) -> str:
-    """Canonicalize a provider name — trim, lowercase, and resolve a backward-compatible alias.
-
-    Shared by this adapter's `provider()` and the cross-provider registry (BE-0104), so both accept
-    the same spellings and the legacy ``anthropic`` name maps to ``api-key`` in one place.
-    """
-    value = raw.strip().lower()
-    return _PROVIDER_ALIASES.get(value, value)
-
 
 # The Anthropic CLI (BE-0163): the external binary whose OAuth/SSO credential backs the `ant`
 # provider, invoked via subprocess like the `claude` CLI probe once was. Not vendored or installed.
@@ -137,17 +89,21 @@ def _ant_access_token(ai: AiConfig | None = None) -> str:
     return token
 
 
-def provider(ai: AiConfig | None = None) -> str:
-    """Which Anthropic-family client to build — ``api-key`` (default), ``bedrock``, or ``ant``.
+def ant_credential_gap() -> str | None:
+    """Whether the `ant` provider can authenticate, or which gap token if not (BE-0163).
 
-    Resolves *within* this adapter: `ai.provider` wins, else ``BAJUTSU_AI_PROVIDER`` (BE-0047
-    config-first, env fallback), and anything outside the family normalizes to ``api-key``. This
-    is not the cross-provider authority — that is `bajutsu.ai` (BE-0104), whose registry dispatches a
-    provider name to its adapter; a non-Anthropic provider is routed there and never reaches here.
+    The `ant` half of the Anthropic adapter's credential check (`bajutsu.ai.anthropic`), kept here
+    beside the token IO it probes: the CLI binary is absent (`ANT_CLI_MISSING`), or present but with
+    no readable credential (`ANT_CLI_UNAUTHENTICATED` — also returned when the probe fails to exec or
+    times out, treated as "no credential"). ``None`` when it is signed in.
     """
-    raw = (ai and ai.provider) or os.environ.get(PROVIDER_ENV) or DEFAULT_PROVIDER
-    value = normalize_provider(raw)
-    return value if value in PROVIDERS else DEFAULT_PROVIDER
+    if shutil.which(ANT_BINARY) is None:
+        return ANT_CLI_MISSING
+    try:
+        code, token, _ = _ant_token_result()
+    except (OSError, subprocess.TimeoutExpired):  # exec failure or a wedged CLI = no credential
+        return ANT_CLI_UNAUTHENTICATED
+    return None if code == 0 and token else ANT_CLI_UNAUTHENTICATED
 
 
 def key_env(ai: AiConfig | None) -> str:
@@ -179,7 +135,7 @@ def make_client(client: Any = None, ai: AiConfig | None = None) -> Any:
     """
     if client is not None:
         return client
-    prov = provider(ai)
+    prov = resolve_provider(ai)
     if prov == "bedrock":
         try:
             from anthropic import AnthropicBedrock
@@ -231,104 +187,3 @@ def ensure_client(agent: CachesClient) -> Any:
     if agent._client is None:
         agent._client = make_client(ai=agent._ai)
     return agent._client
-
-
-def resolve_model(default: str, ai: AiConfig | None = None) -> str:
-    """The model id to use for *default*, accounting for the resolved config and provider.
-
-    A configured ``ai.model`` wins on any provider. Otherwise Bedrock needs a provider-prefixed
-    id, so ``BAJUTSU_BEDROCK_MODEL`` replaces the bare Anthropic-form *default* when the Bedrock
-    provider is active; the Anthropic and ``ant`` paths use *default* — the bare Anthropic id (their
-    model catalog matches the SDK's) (BE-0047 config-first, env fallback).
-    """
-    if ai and ai.model:
-        return ai.model
-    env_model = (os.environ.get(MODEL_ENV) or "").strip()
-    if env_model:
-        return env_model
-    if provider(ai) == "bedrock":
-        return (os.environ.get(BEDROCK_MODEL_ENV) or "").strip() or default
-    return default
-
-
-def resolve_effort(ai: AiConfig | None = None) -> str | None:
-    """The reasoning-effort level for this call, or ``None`` when unset / unrecognized.
-
-    Config ``ai.effort`` wins, else ``BAJUTSU_AI_EFFORT`` (config-first, env fallback — like the
-    provider and model). Only the levels the `claude` CLI accepts (`EFFORT_LEVELS`) pass through; any
-    other value resolves to ``None`` so a typo silently falls back to the model's default rather than
-    failing a run. Providers that have no effort knob (the Anthropic SDK) ignore the result.
-    """
-    raw = (ai.effort if ai else None) or os.environ.get(EFFORT_ENV) or ""
-    value = raw.strip().lower()
-    return value if value in EFFORT_LEVELS else None
-
-
-# The human-readable name each language enum maps to in the prompt instruction. `auto` has no name
-# because it appends nothing (today's emergent behavior); the trailing native form disambiguates for
-# the model (e.g. that "ja" means 日本語, not romaji).
-_LANGUAGE_NAMES = {"ja": "Japanese (日本語)", "en": "English"}
-
-
-def resolve_language(ai: AiConfig | None = None) -> str:
-    """The AI output language for this call — one of ``LANGUAGES`` (BE-0188).
-
-    An explicit ``ja`` / ``en`` in ``ai.language`` wins (config-first, like the provider, model, and
-    effort). Otherwise — an ``auto``, absent, or unrecognized config value — the language falls back
-    to ``BAJUTSU_AI_LANGUAGE``, else ``auto``. Unlike ``effort``, ``auto`` is both a real value *and*
-    the default, so it must **not** shadow the env var: a bound config carrying the default ``auto``
-    would otherwise silently disable the language the ``serve`` dropdown sets through the env. A typo
-    keeps today's behavior rather than failing an AI path. This governs only the language the model
-    writes its own generated prose in; it never enters the deterministic run/CI verdict.
-    """
-    configured = ((ai.language if ai else None) or "").strip().lower()
-    if configured in _LANGUAGE_NAMES:  # an explicit ja/en in config wins over the env
-        return configured
-    env = os.environ.get(LANGUAGE_ENV, "").strip().lower()
-    return env if env in _LANGUAGE_NAMES else DEFAULT_LANGUAGE
-
-
-def language_instruction(ai: AiConfig | None = None) -> str:
-    """A system-prompt suffix constraining the model's free-text language, or ``""`` for ``auto``.
-
-    Folded onto an AI path's static system prompt (`record` authoring/enrichment, `crawl`
-    guide/tabs) so the model's generated prose — reasoning, intent, and any provenance — comes out in
-    the chosen language. ``auto`` (the default) appends nothing, so the prompt is byte-identical to
-    today and stays prompt-cacheable. Applies only to authoring/investigation prose, never the
-    deterministic verdict.
-    """
-    name = _LANGUAGE_NAMES.get(resolve_language(ai))
-    if name is None:  # auto → append nothing
-        return ""
-    return (
-        f"\n\nWrite all of your free-text output — your reasoning, intent, and any "
-        f"provenance or descriptions — in {name}."
-    )
-
-
-def credential_gap(ai: AiConfig | None = None) -> str | None:
-    """What the SDK AI path is missing to authenticate with the resolved provider, or ``None`` when it can.
-
-    The Anthropic provider needs the key named by ``ai.keyEnv`` (default ``ANTHROPIC_API_KEY``);
-    Bedrock authenticates with the standard AWS credential chain (env / shared profile / instance or
-    task role — resolved by the SDK, not checked here) and needs a provider-prefixed model id
-    instead (``ai.model`` or ``BAJUTSU_BEDROCK_MODEL``), since the bare Anthropic id is not a valid
-    Bedrock model id. The ``ant`` provider (BE-0163) needs its CLI installed and signed in — probed
-    here by running the token command. Returns ``"anthropic-key"`` / ``"bedrock-model"`` /
-    ``"ant-cli-missing"`` / ``"ant-cli-unauthenticated"`` so callers can phrase a provider-appropriate
-    message (used by ``record`` / ``triage`` / ``--dismiss-alerts`` to fail closed, and by ``crawl`` /
-    ``run`` to gate or warn, before reaching Claude).
-    """
-    prov = provider(ai)
-    if prov == "bedrock":
-        has_model = (ai and ai.model) or os.environ.get(BEDROCK_MODEL_ENV)
-        return None if has_model else "bedrock-model"
-    if prov == "ant":
-        if shutil.which(ANT_BINARY) is None:
-            return ANT_CLI_MISSING
-        try:
-            code, token, _ = _ant_token_result()
-        except (OSError, subprocess.TimeoutExpired):  # exec failure or a wedged CLI = no credential
-            return ANT_CLI_UNAUTHENTICATED
-        return None if code == 0 and token else ANT_CLI_UNAUTHENTICATED
-    return None if os.environ.get(key_env(ai)) else "anthropic-key"

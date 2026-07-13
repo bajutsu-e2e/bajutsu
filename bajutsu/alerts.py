@@ -31,7 +31,7 @@ from bajutsu.ai import (
     create_backend,
     resolved_provider,
 )
-from bajutsu.anthropic_client import AiConfig, resolve_model
+from bajutsu.ai_config import AiConfig, resolve_model
 from bajutsu.drivers import base
 from bajutsu.elements import screen_size_from_elements
 from bajutsu.orchestrator import AlertEvent

@@ -170,7 +170,7 @@ def test_request_uses_forced_tool_choice() -> None:
 
 
 def test_effort_is_threaded_into_the_request() -> None:
-    from bajutsu.anthropic_client import AiConfig
+    from bajutsu.ai_config import AiConfig
 
     backend = FakeBackend(FakeBlock("tap", {"id": "a"}))
     ClaudeAgent(backend=backend, ai=AiConfig(effort="high")).next_action(_obs())
@@ -180,7 +180,7 @@ def test_effort_is_threaded_into_the_request() -> None:
 def test_output_language_is_folded_into_the_system_prompt() -> None:
     # BE-0188: `ai.language` appends a language instruction to the system prompt; `auto` (default)
     # appends nothing, so the prompt stays byte-identical (and prompt-cacheable).
-    from bajutsu.anthropic_client import AiConfig
+    from bajutsu.ai_config import AiConfig
 
     default = FakeBackend(FakeBlock("tap", {"id": "a"}))
     ClaudeAgent(backend=default).next_action(_obs())

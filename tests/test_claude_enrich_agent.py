@@ -64,7 +64,7 @@ def test_propose_assertions_returns_enrichment_proposal() -> None:
 
 def test_output_language_is_folded_into_the_enrichment_prompt() -> None:
     # BE-0188: enrichment's generated prose (the assertion `intent` / `note`) follows `ai.language`.
-    from bajutsu.anthropic_client import AiConfig
+    from bajutsu.ai_config import AiConfig
 
     block = FakeBlock(
         "propose_assertions",

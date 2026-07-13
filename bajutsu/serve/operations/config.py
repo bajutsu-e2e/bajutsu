@@ -13,11 +13,8 @@ from typing import Any
 import yaml
 
 from bajutsu import _yaml, ai_availability
-from bajutsu.ai import known_providers, resolved_provider
-from bajutsu.anthropic_client import (
-    ANT_BINARY,
-    ANT_CLI_MISSING,
-    ANTHROPIC_KEY_ENV,
+from bajutsu.ai import credential_gap, known_providers, resolved_provider
+from bajutsu.ai_config import (
     BEDROCK_MODEL_ENV,
     DEFAULT_LANGUAGE,
     EFFORT_ENV,
@@ -29,6 +26,7 @@ from bajutsu.anthropic_client import (
     AiConfig,
     normalize_provider,
 )
+from bajutsu.anthropic_client import ANT_BINARY, ANT_CLI_MISSING, ANTHROPIC_KEY_ENV
 from bajutsu.config import load_config, resolve
 from bajutsu.config_source import materialize, parse_config_spec, source_provenance
 from bajutsu.serve.helpers import (
@@ -367,8 +365,8 @@ def provider_info(state: ServeState, actor: str | None) -> tuple[Any, int]:
     # tabs (record/crawl) on data rather than only surfacing the failure on click. The org's provider
     # + its model drive the check (so a bedrock selection reads reachable once it has a model); the
     # key check still reads `os.environ` via `ai.keyEnv` (BE-0097) — the pre-existing local-key path.
-    gap = ai_availability.availability(
-        ai=AiConfig(provider=mode, model=active_slot.model or None, key_env=active_key_env(state))
+    gap = credential_gap(
+        AiConfig(provider=mode, model=active_slot.model or None, key_env=active_key_env(state))
     )
     return {
         "provider": mode,

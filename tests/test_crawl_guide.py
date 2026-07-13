@@ -11,7 +11,7 @@ from conftest import FakeBackend, FakeBlock, ShotDriver, el
 
 from bajutsu import crawl, crawl_tabs
 from bajutsu.ai.base import TextPart
-from bajutsu.anthropic_client import AiConfig
+from bajutsu.ai_config import AiConfig
 from bajutsu.crawl_guide import (
     ClaudeActionProposer,
     Proposal,

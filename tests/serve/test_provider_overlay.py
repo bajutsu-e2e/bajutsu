@@ -15,7 +15,7 @@ from pathlib import Path
 import pytest
 from sqlalchemy import create_engine
 
-from bajutsu import anthropic_client as ac
+from bajutsu import ai_config as aic
 from bajutsu import serve as srv
 from bajutsu.serve import operations as ops
 from bajutsu.serve.jobs import _spawn_env
@@ -42,9 +42,9 @@ def test_provider_env_api_key_emits_model_and_effort() -> None:
         provider="api-key", slots={"api-key": ProviderSettings(model="claude-x", effort="high")}
     )
     assert provider_env(settings) == {
-        ac.PROVIDER_ENV: "api-key",
-        ac.MODEL_ENV: "claude-x",
-        ac.EFFORT_ENV: "high",
+        aic.PROVIDER_ENV: "api-key",
+        aic.MODEL_ENV: "claude-x",
+        aic.EFFORT_ENV: "high",
     }
 
 
@@ -52,7 +52,7 @@ def test_provider_env_omits_a_blank_model() -> None:
     """A blank model emits no MODEL_ENV; the spawn strips the managed vars first, so absence resolves
     to the provider's default rather than a stale launch value."""
     settings = OrgProviderSettings(provider="api-key", slots={"api-key": ProviderSettings()})
-    assert provider_env(settings) == {ac.PROVIDER_ENV: "api-key"}
+    assert provider_env(settings) == {aic.PROVIDER_ENV: "api-key"}
 
 
 def test_provider_env_bedrock_emits_model_and_region() -> None:
@@ -61,8 +61,8 @@ def test_provider_env_bedrock_emits_model_and_region() -> None:
         slots={"bedrock": ProviderSettings(model=_BEDROCK_MODEL, region="us-east-1")},
     )
     assert provider_env(settings) == {
-        ac.PROVIDER_ENV: "bedrock",
-        ac.BEDROCK_MODEL_ENV: _BEDROCK_MODEL,
+        aic.PROVIDER_ENV: "bedrock",
+        aic.BEDROCK_MODEL_ENV: _BEDROCK_MODEL,
         "AWS_REGION": "us-east-1",
     }
 
@@ -72,8 +72,8 @@ def test_provider_env_bedrock_without_region_omits_aws_region() -> None:
         provider="bedrock", slots={"bedrock": ProviderSettings(model=_BEDROCK_MODEL)}
     )
     assert provider_env(settings) == {
-        ac.PROVIDER_ENV: "bedrock",
-        ac.BEDROCK_MODEL_ENV: _BEDROCK_MODEL,
+        aic.PROVIDER_ENV: "bedrock",
+        aic.BEDROCK_MODEL_ENV: _BEDROCK_MODEL,
     }
 
 
@@ -81,7 +81,7 @@ def test_provider_env_carries_the_output_language() -> None:
     settings = OrgProviderSettings(
         provider="api-key", slots={"api-key": ProviderSettings()}, language="ja"
     )
-    assert provider_env(settings) == {ac.PROVIDER_ENV: "api-key", ac.LANGUAGE_ENV: "ja"}
+    assert provider_env(settings) == {aic.PROVIDER_ENV: "api-key", aic.LANGUAGE_ENV: "ja"}
 
 
 # --- _spawn_env: the overlay is authoritative ------------------------------------------
@@ -92,29 +92,29 @@ def test_spawn_env_applies_the_overlay_and_strips_stale_managed_vars(
 ) -> None:
     """When the overlay names a provider, the Bajutsu-managed vars are cleared from the inherited env
     first, so a stale launch-env value never leaks through into the job."""
-    monkeypatch.setenv(ac.PROVIDER_ENV, "stale-launch-provider")
-    monkeypatch.setenv(ac.MODEL_ENV, "stale-launch-model")
-    job = Job(env_overlay={ac.PROVIDER_ENV: "bedrock", ac.BEDROCK_MODEL_ENV: _BEDROCK_MODEL})
+    monkeypatch.setenv(aic.PROVIDER_ENV, "stale-launch-provider")
+    monkeypatch.setenv(aic.MODEL_ENV, "stale-launch-model")
+    job = Job(env_overlay={aic.PROVIDER_ENV: "bedrock", aic.BEDROCK_MODEL_ENV: _BEDROCK_MODEL})
     e = _spawn_env(job)
-    assert e[ac.PROVIDER_ENV] == "bedrock"
-    assert e[ac.BEDROCK_MODEL_ENV] == _BEDROCK_MODEL
-    assert ac.MODEL_ENV not in e  # the stale general-model override was stripped, not inherited
+    assert e[aic.PROVIDER_ENV] == "bedrock"
+    assert e[aic.BEDROCK_MODEL_ENV] == _BEDROCK_MODEL
+    assert aic.MODEL_ENV not in e  # the stale general-model override was stripped, not inherited
 
 
 def test_spawn_env_empty_overlay_leaves_the_inherited_env_untouched(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """No overlay (nothing selected) → the inherited env passes through unchanged (zero-config)."""
-    monkeypatch.setenv(ac.PROVIDER_ENV, "launch-provider")
+    monkeypatch.setenv(aic.PROVIDER_ENV, "launch-provider")
     e = _spawn_env(Job())
-    assert e[ac.PROVIDER_ENV] == "launch-provider"
+    assert e[aic.PROVIDER_ENV] == "launch-provider"
 
 
 def test_spawn_env_never_strips_aws_region(monkeypatch: pytest.MonkeyPatch) -> None:
     """AWS_REGION is a general AWS setting, not provider-managed: the overlay only ever adds it, so a
     launch-env region survives an overlay that names a provider without one."""
     monkeypatch.setenv("AWS_REGION", "eu-west-1")
-    e = _spawn_env(Job(env_overlay={ac.PROVIDER_ENV: "api-key"}))
+    e = _spawn_env(Job(env_overlay={aic.PROVIDER_ENV: "api-key"}))
     assert e["AWS_REGION"] == "eu-west-1"
 
 
@@ -145,11 +145,11 @@ def test_two_orgs_resolve_independent_provider_selections(
     """The whole point of BE-0229: one org's save never changes another org's AI runs, and it never
     touches the shared process env."""
     for var in (
-        ac.PROVIDER_ENV,
-        ac.MODEL_ENV,
-        ac.BEDROCK_MODEL_ENV,
-        ac.EFFORT_ENV,
-        ac.LANGUAGE_ENV,
+        aic.PROVIDER_ENV,
+        aic.MODEL_ENV,
+        aic.BEDROCK_MODEL_ENV,
+        aic.EFFORT_ENV,
+        aic.LANGUAGE_ENV,
     ):
         monkeypatch.delenv(var, raising=False)
     engine = create_engine("sqlite://")
@@ -162,14 +162,14 @@ def test_two_orgs_resolve_independent_provider_selections(
 
     acme = resolve_provider_env(state, "acme")
     globex = resolve_provider_env(state, "globex")
-    assert acme[ac.PROVIDER_ENV] == "bedrock" and acme[ac.BEDROCK_MODEL_ENV] == _BEDROCK_MODEL
-    assert globex[ac.PROVIDER_ENV] == "api-key" and globex[ac.MODEL_ENV] == "claude-y"
-    assert ac.PROVIDER_ENV not in os.environ  # neither save touched the shared process env
+    assert acme[aic.PROVIDER_ENV] == "bedrock" and acme[aic.BEDROCK_MODEL_ENV] == _BEDROCK_MODEL
+    assert globex[aic.PROVIDER_ENV] == "api-key" and globex[aic.MODEL_ENV] == "claude-y"
+    assert aic.PROVIDER_ENV not in os.environ  # neither save touched the shared process env
 
     # A restart-fresh state loads each org's own choice back from its own row (per-org persistence).
     state2 = _multi_org_state(tmp_path, engine)
-    assert resolve_provider_env(state2, "acme")[ac.BEDROCK_MODEL_ENV] == _BEDROCK_MODEL
-    assert resolve_provider_env(state2, "globex")[ac.MODEL_ENV] == "claude-y"
+    assert resolve_provider_env(state2, "acme")[aic.BEDROCK_MODEL_ENV] == _BEDROCK_MODEL
+    assert resolve_provider_env(state2, "globex")[aic.MODEL_ENV] == "claude-y"
 
 
 # --- the overlay travels to a remote worker --------------------------------------------
@@ -178,5 +178,5 @@ def test_two_orgs_resolve_independent_provider_selections(
 def test_job_spec_carries_the_env_overlay() -> None:
     """The resolved overlay is JSON-serialized into the worker job spec (BE-0229), so a remote worker
     runs with the org's selection without holding any provider settings of its own."""
-    spec = job_spec(Job(id="7", cmd=["run"], env_overlay={ac.PROVIDER_ENV: "bedrock"}))
-    assert spec["env_overlay"] == {ac.PROVIDER_ENV: "bedrock"}
+    spec = job_spec(Job(id="7", cmd=["run"], env_overlay={aic.PROVIDER_ENV: "bedrock"}))
+    assert spec["env_overlay"] == {aic.PROVIDER_ENV: "bedrock"}

@@ -29,7 +29,7 @@ from bajutsu.ai import (
     create_backend,
     resolved_provider,
 )
-from bajutsu.anthropic_client import AiConfig, resolve_model
+from bajutsu.ai_config import AiConfig, resolve_model
 from bajutsu.redaction import Redactor
 from bajutsu.triage import (
     FIX_KINDS,

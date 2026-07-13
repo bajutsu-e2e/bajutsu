@@ -8,7 +8,7 @@ not a separate agent kind. `make_agent` just builds it.
 from __future__ import annotations
 
 from bajutsu.agent_factory import make_agent, make_enrichment_agent
-from bajutsu.anthropic_client import AiConfig
+from bajutsu.ai_config import AiConfig
 
 
 def test_make_agent_builds_the_sdk_authoring_agent() -> None:

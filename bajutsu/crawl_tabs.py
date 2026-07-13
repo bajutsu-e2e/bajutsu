@@ -33,8 +33,8 @@ from bajutsu.ai import (
     create_backend,
     resolved_provider,
 )
+from bajutsu.ai_config import AiConfig, language_instruction, resolve_model
 from bajutsu.alerts import _fraction, _png_size
-from bajutsu.anthropic_client import AiConfig, language_instruction, resolve_model
 from bajutsu.drivers import base
 
 TAB_LOCATOR_MODEL = "claude-opus-4-8"

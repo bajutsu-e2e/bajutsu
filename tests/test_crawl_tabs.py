@@ -13,7 +13,7 @@ from conftest import FakeBackend, FakeBlock, el
 
 from bajutsu import crawl_tabs
 from bajutsu.ai.base import AnyTool, ImagePart, TextPart
-from bajutsu.anthropic_client import AiConfig
+from bajutsu.ai_config import AiConfig
 
 
 def _png(width: int, height: int) -> bytes:

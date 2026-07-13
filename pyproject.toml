@@ -255,6 +255,7 @@ forbidden_modules = [
     "bajutsu.claude_agent",
     "bajutsu.claude_enrich_agent",
     "bajutsu.claude_triage",
+    "bajutsu.ai_config",
     "bajutsu.anthropic_client",
     "bajutsu.ai_availability",
     "bajutsu.enrich",

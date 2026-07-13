@@ -22,7 +22,7 @@ from pathlib import Path
 from typing import Any
 
 from bajutsu import simctl as _simctl
-from bajutsu.anthropic_client import PROVIDER_MANAGED_ENV
+from bajutsu.ai_config import PROVIDER_MANAGED_ENV
 from bajutsu.handoff import REQUEST_LINE_PREFIX as _HANDOFF_REQUEST_PREFIX
 from bajutsu.serve.helpers import valid_run_id
 from bajutsu.serve.state import Job, ServeState
