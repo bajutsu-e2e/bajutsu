@@ -162,4 +162,4 @@ Child patterns riding on this substrate: `record-human-value-prompt` (values) an
 [BE-0014 — Demarcation from the existing AI record](../BE-0014-record-demarcation/BE-0014-record-demarcation.md),
 [BE-0098 — Unified authoring surface in serve](../BE-0098-unified-authoring-surface/BE-0098-unified-authoring-surface.md),
 [BE-0120 — Tokenize secrets in recorded scenario YAML](../BE-0120-recorded-scenario-secret-tokenization/BE-0120-recorded-scenario-secret-tokenization.md).
-[`bajutsu/record.py`](../../bajutsu/record.py), [`bajutsu/agent.py`](../../bajutsu/agent.py).
+[`bajutsu/record.py`](../../bajutsu/record.py), [`bajutsu/agent_protocols.py`](../../bajutsu/agent_protocols.py).

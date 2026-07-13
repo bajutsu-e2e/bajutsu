@@ -14,7 +14,7 @@ from __future__ import annotations
 from typing import Any
 
 from bajutsu import usage
-from bajutsu.agent import EnrichmentProposal, StepContext
+from bajutsu.agent_protocols import EnrichmentProposal, StepContext
 from bajutsu.ai import (
     AiBackend,
     ContentPart,

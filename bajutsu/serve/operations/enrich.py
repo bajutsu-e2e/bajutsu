@@ -56,7 +56,7 @@ def start_enrich(
         return {"error": f"scenario '{name}' not found in file"}, 404
 
     if agent_factory is None:
-        from bajutsu.agents import make_enrichment_agent
+        from bajutsu.agent_factory import make_enrichment_agent
         from bajutsu.ai import credential_gap
 
         eff = resolve(config, target)

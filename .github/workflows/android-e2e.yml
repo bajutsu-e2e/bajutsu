@@ -41,7 +41,8 @@ on:
       # sync with web-e2e.yml and scripts/e2e_changes.py). Excludes serve/analytics/crawl modules.
       - 'bajutsu/_yaml.py'
       - 'bajutsu/adb.py'
-      - 'bajutsu/agent.py'
+      - 'bajutsu/agent_factory.py'
+      - 'bajutsu/agent_protocols.py'
       - 'bajutsu/artifact_perms.py'
       - 'bajutsu/assertions.py'
       - 'bajutsu/backends.py'

@@ -6,7 +6,7 @@ import struct
 
 from conftest import FakeBackend, FakeBlock, ShotDriver
 
-from bajutsu.agent import Proposal
+from bajutsu.agent_protocols import Proposal
 from bajutsu.ai.base import AnyTool, ImagePart, TextPart
 from bajutsu.alerts import AlertDecision, ClaudeAlertLocator, SystemAlertGuard
 from bajutsu.drivers import base

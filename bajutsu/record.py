@@ -14,7 +14,7 @@ from collections.abc import Callable
 from pathlib import Path
 
 from bajutsu import usage as _usage
-from bajutsu.agent import Agent, Observation, Proposal
+from bajutsu.agent_protocols import Agent, Observation, Proposal
 from bajutsu.crawl import screen_identity
 from bajutsu.drivers import base
 from bajutsu.elements import shows_app_ui

@@ -6,7 +6,7 @@
 > then writes out a **deterministic scenario**. AI is involved only here (at record time). The
 > resulting YAML is AI-independent and is owned by the user from that point forward.
 >
-> Implementation: `bajutsu/record.py` (the loop) · `bajutsu/agent.py` + `bajutsu/agents.py`
+> Implementation: `bajutsu/record.py` (the loop) · `bajutsu/agent_protocols.py` + `bajutsu/agent_factory.py`
 > (the abstraction + construction) · `bajutsu/claude_agent.py` (the SDK authoring agent) ·
 > `bajutsu/alerts.py` (system-alert handling). The breadth-first explorer `bajutsu/crawl.py` shares
 > the same agent.
@@ -17,7 +17,7 @@ Related: [the two tiers in concepts](concepts.md#2-two-tiers-tier-1--tier-2) · 
 
 ## The Agent abstraction
 
-A thin Protocol that separates the loop from the model (`agent.py`). Tests use a scripted fake;
+A thin Protocol that separates the loop from the model (`agent_protocols.py`). Tests use a scripted fake;
 production uses the SDK-backed `ClaudeAgent` (below).
 
 ```python
@@ -183,7 +183,7 @@ breakdown is reporting-only and never touches pass/fail, consistent with the res
 ## The Claude authoring agent
 
 `record` / `crawl` construct one production `agent.Agent` implementation, `ClaudeAgent`
-(`claude_agent.py`, built by `agents.py`): it talks to the model through the vendor-neutral
+(`claude_agent.py`, built by `agent_factory.py`): it talks to the model through the vendor-neutral
 `AiBackend` seam (BE-0104), so the **provider** is a config detail, not a separate agent. The
 resolved `ai.provider` ([configuration](configuration.md#ai-provider-ai-be-0047)) picks:
 

@@ -520,6 +520,14 @@ Accepted and actively being built — a PR is in flight or imminent.
 | [BE-0239](BE-0239-deletable-runs-serve/BE-0239-deletable-runs-serve.md) | Deletable runs and reports in the serve Web UI | In progress |
 <!-- /GENERATED:in-progress-hosting -->
 
+### Codebase quality & technical debt
+
+<!-- GENERATED:in-progress-quality-debt -->
+| ID | Item | Status |
+|---|---|---|
+| [BE-0246](BE-0246-claude-client-taxonomy/BE-0246-claude-client-taxonomy.md) | Clarify the module taxonomy for talking to Claude | In progress |
+<!-- /GENERATED:in-progress-quality-debt -->
+
 ## Proposals
 
 Under consideration — not yet decided. Promote an item to *In progress* once work starts, or to *Implemented* when it ships.
@@ -577,9 +585,7 @@ Running a scenario on a hosted device farm instead of a local Simulator, emulato
 ### Codebase quality & technical debt
 
 <!-- GENERATED:proposals-quality-debt -->
-| ID | Item | Status |
-|---|---|---|
-| [BE-0246](BE-0246-claude-client-taxonomy/BE-0246-claude-client-taxonomy.md) | Clarify the module taxonomy for talking to Claude | Proposal |
+
 <!-- /GENERATED:proposals-quality-debt -->
 
 ## Deferred

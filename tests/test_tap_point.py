@@ -98,6 +98,6 @@ def test_codegen_marks_tap_point_unsupported() -> None:
 
 
 def _obs() -> object:
-    from bajutsu.agent import Observation
+    from bajutsu.agent_protocols import Observation
 
     return Observation(goal="switch tabs", screen=[], history=[])

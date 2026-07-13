@@ -10,7 +10,7 @@ import typer
 
 from bajutsu import simctl as _simctl
 from bajutsu import usage as _usage
-from bajutsu.agents import make_agent
+from bajutsu.agent_factory import make_agent
 from bajutsu.ai import announce_ai
 from bajutsu.backends import ensure_web_runtime, select_actuator
 from bajutsu.claude_agent import MODEL as _RECORD_MODEL

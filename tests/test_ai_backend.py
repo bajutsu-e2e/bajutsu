@@ -14,7 +14,7 @@ from typing import Any
 import pytest
 from conftest import FakeBlock
 
-from bajutsu.agent import Observation
+from bajutsu.agent_protocols import Observation
 from bajutsu.ai import base, create_backend, credential_gap, known_providers
 from bajutsu.ai.base import (
     AnyTool,

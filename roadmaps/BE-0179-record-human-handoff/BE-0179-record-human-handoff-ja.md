@@ -157,4 +157,4 @@ record 経路には、設計を左右する三つの性質があります。
 [BE-0014 — 既存 AI record との棲み分け](../BE-0014-record-demarcation/BE-0014-record-demarcation-ja.md)、
 [BE-0098 — serve の統合オーサリングサーフェス](../BE-0098-unified-authoring-surface/BE-0098-unified-authoring-surface-ja.md)、
 [BE-0120 — 記録された scenario の YAML でシークレットをトークン化する](../BE-0120-recorded-scenario-secret-tokenization/BE-0120-recorded-scenario-secret-tokenization-ja.md)。
-[`bajutsu/record.py`](../../bajutsu/record.py)、[`bajutsu/agent.py`](../../bajutsu/agent.py)。
+[`bajutsu/record.py`](../../bajutsu/record.py)、[`bajutsu/agent_protocols.py`](../../bajutsu/agent_protocols.py)。

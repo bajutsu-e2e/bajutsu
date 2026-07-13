@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from conftest import FakeBackend, FakeBlock
 
-from bajutsu.agent import StepContext
+from bajutsu.agent_protocols import StepContext
 from bajutsu.ai.base import ImagePart, NamedTool, TextPart
 from bajutsu.claude_enrich_agent import ClaudeEnrichmentAgent, _render_enrichment
 from bajutsu.drivers import base
