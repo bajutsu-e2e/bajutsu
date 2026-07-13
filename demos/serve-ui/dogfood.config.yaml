@@ -17,6 +17,6 @@ targets:
     launchServer:
       cmd: "uv run bajutsu serve --config demos/web/demo.config.yaml --root demos/serve-ui --runs demos/serve-ui/fixtures/crawl-runs --port 8799"
       readyTimeout: 60
-    scenarios: demos/serve-ui/scenarios
+    scenarios: scenarios
     # The data-testid namespaces the WebUI exposes (the web equivalent of accessibility ids).
     idNamespaces: [nav, view, record, replay, crawl, author, stats, coverage, settings, config, upload]

@@ -577,18 +577,20 @@ class Effective:
             return "web"
         return "android"
 
-    def rebased(self, root: Path) -> Effective:
-        """A copy with the relative path fields resolved against `root` (a Git checkout, BE-0063).
+    def rebased(self, root: Path, *, confine: bool = True) -> Effective:
+        """A copy with the relative path fields resolved against `root`.
 
         The common path fields — `scenarios` / `baselines` / `schemas` / `goldens` — and the iOS or
         Android sub-config's `app_path` are rebased; a future path field is rebased by adding it here. `build`
         (a shell command) and `setup` (resolved relative to the scenario, not the cwd) are
-        intentionally absent. Local configs keep their cwd-relative paths; only a Git source calls
-        this, so the caller's working directory no longer has anything to do with the fetched tree.
+        intentionally absent. Called for a Git checkout (BE-0063), for an uploaded bundle, and — with
+        `confine=False`, `root` the config file's own directory — for a local config (BE-0242), so the
+        caller's working directory no longer decides where a config's paths point.
 
-        Each field is **confined** to the checkout: an absolute or `../` value that would escape `root`
-        is rejected (a fetched config can't reach outside its own tree — mirroring the serve-hardening
-        path confinement, BE-0051). Raises ValueError on such a field.
+        `confine` gates the escape check: when true (an untrusted source — a fetched Git config or an
+        uploaded bundle), an absolute or `../` value that would leave `root` raises ValueError, mirroring
+        the serve-hardening path confinement (BE-0051). A local file is operator-trusted (BE-0121), so it
+        passes `confine=False` and may point at a sibling outside its own directory.
         """
         root_resolved = root.resolve()
 
@@ -596,7 +598,7 @@ class Effective:
             if not value:
                 return value
             candidate = root / value
-            if not candidate.resolve().is_relative_to(root_resolved):
+            if confine and not candidate.resolve().is_relative_to(root_resolved):
                 raise ValueError(f"config field {field!r} escapes the checkout root: {value!r}")
             return str(candidate)
 

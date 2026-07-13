@@ -996,6 +996,25 @@ def test_serve_config_from_git_binds_checkout(tmp_path: Path, monkeypatch) -> No
     assert captured["cwd"] == checkout  # served from the checkout root
 
 
+def test_serve_local_config_binds_the_config_directory(tmp_path: Path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    # A local `--config` in a subdirectory anchors serve's cwd at the config's own directory, not the
+    # launch dir, so its relative paths resolve the same wherever serve was started (BE-0242) — the
+    # local-config counterpart of the Git bind above. The config lives under a subdir so the config
+    # dir differs from any plausible launch dir.
+    import bajutsu.serve as srv
+
+    cfg_dir = tmp_path / "proj"
+    cfg_dir.mkdir()
+    cfg = cfg_dir / "bajutsu.config.yaml"
+    cfg.write_text("targets: { demo: { bundleId: com.example.demo } }\n", encoding="utf-8")
+    captured: dict[str, object] = {}
+    monkeypatch.setattr(srv, "serve", lambda **kw: captured.update(kw))  # don't start a server
+    r = runner.invoke(app, ["serve", "--config", str(cfg)])
+    assert r.exit_code == 0
+    assert captured["config"] == cfg
+    assert captured["cwd"] == cfg_dir  # anchored at the config's directory, not the launch dir
+
+
 def test_serve_rejects_invalid_upload_exec() -> None:
     # An unknown --upload-exec mode fails loud at the boundary (BE-0090), never silently defaults.
     r = runner.invoke(app, ["serve", "--upload-exec", "bogus", "--config", "bajutsu.config.yaml"])

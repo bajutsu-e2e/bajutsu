@@ -93,6 +93,40 @@ def test_http_open_config_binds_and_lists_apps(tmp_path: Path) -> None:
         server.server_close()
 
 
+def test_http_open_local_config_from_subdir_binds_config_dir(tmp_path: Path) -> None:
+    # Binding a local config that lives in a *subdirectory* of the browse root repoints state.cwd to
+    # that subdirectory, so the config's relative paths resolve from beside it, not from serve's launch
+    # dir (BE-0242) — the local counterpart of the Git bind below. The config sits under a subdir (not
+    # directly at the root) so the config dir genuinely differs from the launch dir.
+    proj = tmp_path / "proj"
+    (proj / "scn").mkdir(parents=True)
+    (proj / "scn" / "smoke.yaml").write_text(
+        "- name: s\n  steps:\n    - tap: { id: x }\n", encoding="utf-8"
+    )
+    cfg = proj / "bajutsu.config.yaml"
+    cfg.write_text(
+        "defaults: { backend: [idb] }\n"
+        "targets:\n  demo: { bundleId: com.example.demo, scenarios: scn }\n",  # relative to the config
+        encoding="utf-8",
+    )
+    runs = tmp_path / "runs"
+    runs.mkdir()
+    state = srv.ServeState(
+        runs_dir=runs, root=tmp_path, cwd=tmp_path
+    )  # launch dir = root, not proj
+    server, port = _serve(state)
+    try:
+        status, resp = _post(port, "/api/config", {"path": str(cfg)})
+        assert status == 200 and resp["ok"] is True and resp["targets"] == ["demo"]
+        assert state.config == cfg
+        assert state.cwd == proj  # cwd repointed to the config's own directory, not the launch dir
+        # The relative `scenarios: scn` resolves against proj/, so the listing finds smoke.yaml.
+        assert _get_json(port, "/api/scenarios?target=demo")[0]["names"] == ["s"]
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
 def test_http_open_config_from_git_binds_checkout(tmp_path: Path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
     # The "from Git" picker: a github: spec materializes a checkout, binds its config, and repoints
     # state.cwd to the checkout root so build/scenarios resolve there (BE-0063).

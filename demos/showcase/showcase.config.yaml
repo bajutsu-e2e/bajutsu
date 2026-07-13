@@ -31,14 +31,14 @@ targets:
     # Both id forms (BE-0221) to mirror the scenario's own selector and the `showcase-views`
     # precedent; this iOS target's tree only ever renders the dotted form.
     readyWhen: { id: [stable.row.1, stable_row_1] }
-    appPath: demos/showcase/ios/swiftui/build/dd/Build/Products/Debug-iphonesimulator/BajutsuShowcaseSwiftUI.app
+    appPath: ios/swiftui/build/dd/Build/Products/Debug-iphonesimulator/BajutsuShowcaseSwiftUI.app
     build: make -C demos/showcase swiftui-build
-    scenarios: demos/showcase/scenarios
+    scenarios: scenarios
     # XCUITest backend (BE-0019): the same generic runner also drives this a11y app, so the driver
     # conformance suite (BE-0114) can run its contract against XCUITest on identifier-bearing
     # elements — `bajutsu run --target showcase-swiftui --backend xcuitest ...`, idb staying default.
     xcuitest:
-      testRunner: BajutsuKit/Runner/build/dd/Build/Products/BajutsuRunner.xctestrun
+      testRunner: ../../BajutsuKit/Runner/build/dd/Build/Products/BajutsuRunner.xctestrun
       build: make -C demos/showcase runner-build
 
   # ---- SwiftUI, accessibility OFF (the `record` / `doctor`-Blocked target) -------
@@ -47,14 +47,14 @@ targets:
     deeplinkScheme: showcaseswiftuinoax
     launchEnv: { SHOWCASE_UITEST: "1" }
     idNamespaces: []   # honest: this build exposes no identifiers
-    appPath: demos/showcase/ios/swiftui/build/dd/Build/Products/Debug-iphonesimulator/BajutsuShowcaseSwiftUINoAx.app
+    appPath: ios/swiftui/build/dd/Build/Products/Debug-iphonesimulator/BajutsuShowcaseSwiftUINoAx.app
     build: make -C demos/showcase swiftui-noax-build
     backend: [idb]   # idb + vision (BE-0176): crawl drives this -noax app with no XCUITest runner
-    scenarios: demos/showcase/ios/scenarios-xcuitest
+    scenarios: ios/scenarios-xcuitest
     # XCUITest backend (BE-0019) stays wired for explicit `--backend xcuitest`: the generic runner
     # reaches elements idb's tree can't (e.g. a TabView's tabs) by label, where idb needs vision.
     xcuitest:
-      testRunner: BajutsuKit/Runner/build/dd/Build/Products/BajutsuRunner.xctestrun
+      testRunner: ../../BajutsuKit/Runner/build/dd/Build/Products/BajutsuRunner.xctestrun
       build: make -C demos/showcase runner-build
 
   # ---- UIKit, accessibility ON (same identifier contract as showcase-swiftui) ----
@@ -63,13 +63,13 @@ targets:
     deeplinkScheme: showcaseuikit
     launchEnv: { SHOWCASE_UITEST: "1" }
     idNamespaces: [stable, horse, search, log, notice, perm, sys, net]
-    appPath: demos/showcase/ios/uikit/build/dd/Build/Products/Debug-iphonesimulator/BajutsuShowcaseUIKit.app
+    appPath: ios/uikit/build/dd/Build/Products/Debug-iphonesimulator/BajutsuShowcaseUIKit.app
     build: make -C demos/showcase uikit-build
-    scenarios: demos/showcase/scenarios
+    scenarios: scenarios
     # XCUITest backend (BE-0019): the a11y UIKit scenarios now cross tabs by tapping the native tab
     # bar (BE-0107), which idb can't do, so `--backend ios` needs the generic runner wired here too.
     xcuitest:
-      testRunner: BajutsuKit/Runner/build/dd/Build/Products/BajutsuRunner.xctestrun
+      testRunner: ../../BajutsuKit/Runner/build/dd/Build/Products/BajutsuRunner.xctestrun
       build: make -C demos/showcase runner-build
 
   # ---- UIKit, accessibility OFF -------------------------------------------------
@@ -78,14 +78,14 @@ targets:
     deeplinkScheme: showcaseuikitnoax
     launchEnv: { SHOWCASE_UITEST: "1" }
     idNamespaces: []
-    appPath: demos/showcase/ios/uikit/build/dd/Build/Products/Debug-iphonesimulator/BajutsuShowcaseUIKitNoAx.app
+    appPath: ios/uikit/build/dd/Build/Products/Debug-iphonesimulator/BajutsuShowcaseUIKitNoAx.app
     build: make -C demos/showcase uikit-noax-build
     backend: [idb]   # idb + vision (BE-0176): crawl drives this -noax app with no XCUITest runner
-    scenarios: demos/showcase/ios/scenarios-xcuitest
+    scenarios: ios/scenarios-xcuitest
     # XCUITest backend (BE-0019) stays wired for explicit `--backend xcuitest`: the generic runner
     # drives the -noax UITabBar tabs by label, which idb's describe-all collapses into an opaque group.
     xcuitest:
-      testRunner: BajutsuKit/Runner/build/dd/Build/Products/BajutsuRunner.xctestrun
+      testRunner: ../../BajutsuKit/Runner/build/dd/Build/Products/BajutsuRunner.xctestrun
       build: make -C demos/showcase runner-build
 
   # ==== Android (BE-0007 preparation) =============================================
@@ -106,10 +106,10 @@ targets:
     # appears, so its `dismissAlerts` guard no-ops (on iOS, which can't pre-grant, that guard grants).
     grantPermissions: [android.permission.POST_NOTIFICATIONS]
     idNamespaces: [stable, horse, search, log, notice, perm, sys, net]
-    appPath: demos/showcase/android/compose/build/outputs/apk/a11y/debug/compose-a11y-debug.apk
+    appPath: android/compose/build/outputs/apk/a11y/debug/compose-a11y-debug.apk
     build: make -C demos/showcase/android compose-build
     backend: [android]
-    scenarios: demos/showcase/scenarios
+    scenarios: scenarios
 
   # ---- Compose, accessibility OFF ------------------------------------------------
   showcase-compose-noax:
@@ -117,10 +117,10 @@ targets:
     deeplinkScheme: showcasecomposenoax
     launchEnv: { SHOWCASE_UITEST: "1" }
     idNamespaces: []   # honest: this build exposes no identifiers
-    appPath: demos/showcase/android/compose/build/outputs/apk/noax/debug/compose-noax-debug.apk
+    appPath: android/compose/build/outputs/apk/noax/debug/compose-noax-debug.apk
     build: make -C demos/showcase/android compose-noax-build
     backend: [android]
-    scenarios: demos/showcase/scenarios
+    scenarios: scenarios
 
   # ---- Views, accessibility ON — native android:id, which allows neither '.' nor '-', so the
   # ids are the SPEC ids with both mapped to '_' (stable.refresh → stable_refresh). The shared
@@ -134,10 +134,10 @@ targets:
     launchEnv: { SHOWCASE_UITEST: "1" }
     idNamespaces: [stable, horse, search, log, notice, perm, sys, net]
     readyWhen: { id: [stable.row.1, stable_row_1] }
-    appPath: demos/showcase/android/views/build/outputs/apk/a11y/debug/views-a11y-debug.apk
+    appPath: android/views/build/outputs/apk/a11y/debug/views-a11y-debug.apk
     build: make -C demos/showcase/android views-build
     backend: [android]
-    scenarios: demos/showcase/scenarios
+    scenarios: scenarios
 
   # ---- Views, accessibility OFF ---------------------------------------------------
   showcase-views-noax:
@@ -145,7 +145,7 @@ targets:
     deeplinkScheme: showcaseviewsnoax
     launchEnv: { SHOWCASE_UITEST: "1" }
     idNamespaces: []
-    appPath: demos/showcase/android/views/build/outputs/apk/noax/debug/views-noax-debug.apk
+    appPath: android/views/build/outputs/apk/noax/debug/views-noax-debug.apk
     build: make -C demos/showcase/android views-noax-build
     backend: [android]
-    scenarios: demos/showcase/scenarios
+    scenarios: scenarios

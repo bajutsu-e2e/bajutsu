@@ -14,4 +14,4 @@ targets:
   docs:
     baseUrl: "https://bajutsu-e2e.github.io/bajutsu/"
     backend: [web]
-    scenarios: demos/docs-site/scenarios
+    scenarios: scenarios

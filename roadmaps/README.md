@@ -428,6 +428,7 @@ Where a project's config and scenarios come from. A Git repository + ref is a to
 | [BE-0177](BE-0177-run-behavior-target-config/BE-0177-run-behavior-target-config.md) | Per-target config defaults for run-behavior settings | Implemented |
 | [BE-0187](BE-0187-serve-config-view/BE-0187-serve-config-view.md) | View the loaded config in the serve Web UI (raw YAML, structured tree, Git provenance) | Implemented |
 | [BE-0224](BE-0224-github-private-repo-config-auth/BE-0224-github-private-repo-config-auth.md) | Granting private-repository access for the GitHub config source | Implemented |
+| [BE-0242](BE-0242-config-relative-path-resolution/BE-0242-config-relative-path-resolution.md) | Resolve config-declared paths relative to the config file | Implemented |
 <!-- /GENERATED:implemented-config-sourcing -->
 
 ### Surfacing CLI features in the serve Web UI
@@ -725,7 +726,6 @@ Where `bajutsu` reads its config and scenario tree from. Today that is a local p
 <!-- GENERATED:proposals-config-sourcing -->
 | ID | Item | Status |
 |---|---|---|
-| [BE-0242](BE-0242-config-relative-path-resolution/BE-0242-config-relative-path-resolution.md) | Resolve config-declared paths relative to the config file | Proposal |
 | [BE-0243](BE-0243-upload-bundle-durable-storage/BE-0243-upload-bundle-durable-storage.md) | Persist uploaded zip config bundles to object storage for hosted serve | Proposal |
 <!-- /GENERATED:proposals-config-sourcing -->
 
