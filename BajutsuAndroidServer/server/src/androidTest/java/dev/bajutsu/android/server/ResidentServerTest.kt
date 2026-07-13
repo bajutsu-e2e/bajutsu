@@ -52,6 +52,9 @@ class ResidentServerTest {
     }
 
     private fun handle(client: Socket, device: UiDevice) {
+        // A stalled client (slow or incomplete request) must not block the single-threaded accept
+        // loop: without a read timeout, readLine() would wait forever and wedge the whole server.
+        client.soTimeout = SO_TIMEOUT_MS
         val reader = client.getInputStream().bufferedReader(StandardCharsets.UTF_8)
         val path = readRequestPath(reader) ?: return
         val out = client.getOutputStream()
@@ -102,5 +105,6 @@ class ResidentServerTest {
         const val TAG = "BajutsuResidentServer"
         const val PORT = 6790
         const val BACKLOG = 16
+        const val SO_TIMEOUT_MS = 5_000
     }
 }
