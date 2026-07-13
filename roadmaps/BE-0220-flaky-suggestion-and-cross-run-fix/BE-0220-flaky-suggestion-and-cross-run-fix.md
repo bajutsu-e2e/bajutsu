@@ -10,7 +10,7 @@
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0220") |
 | Implementing PR | [#904](https://github.com/bajutsu-e2e/bajutsu/pull/904), [#907](https://github.com/bajutsu-e2e/bajutsu/pull/907), [#919](https://github.com/bajutsu-e2e/bajutsu/pull/919), [#922](https://github.com/bajutsu-e2e/bajutsu/pull/922) |
-| Topic | Self-healing triage (M4) |
+| Topic | Self-healing triage |
 <!-- /BE-METADATA -->
 
 ## Introduction

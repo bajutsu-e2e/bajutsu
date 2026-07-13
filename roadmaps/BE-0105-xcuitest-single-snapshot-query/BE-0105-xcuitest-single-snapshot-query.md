@@ -10,7 +10,7 @@
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0105") |
 | Implementing PR | [#670](https://github.com/bajutsu-e2e/bajutsu/pull/670) |
-| Topic | Backend expansion (iOS actuators) |
+| Topic | Platform support (iOS / Android / Web / Flutter) |
 | Related | [BE-0019](../BE-0019-xcuitest-backend/BE-0019-xcuitest-backend.md) |
 <!-- /BE-METADATA -->
 

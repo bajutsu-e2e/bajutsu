@@ -10,7 +10,7 @@
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0082") |
 | Implementing PR | [#229](https://github.com/bajutsu-e2e/bajutsu/pull/229) |
-| Topic | Platform expansion (Android / Web / Flutter) |
+| Topic | Driver & backend architecture |
 <!-- /BE-METADATA -->
 
 ## Introduction

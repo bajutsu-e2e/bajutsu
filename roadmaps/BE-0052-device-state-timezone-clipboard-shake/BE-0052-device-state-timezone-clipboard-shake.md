@@ -10,7 +10,7 @@
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0052") |
 | Implementing PR | [#206](https://github.com/bajutsu-e2e/bajutsu/pull/206), [#257](https://github.com/bajutsu-e2e/bajutsu/pull/257), [#378](https://github.com/bajutsu-e2e/bajutsu/pull/378) |
-| Topic | Candidates from competitive research (MagicPod / Autify) |
+| Topic | Scenario authoring features |
 | Related | [BE-0157](../BE-0157-shake-device-primitive/BE-0157-shake-device-primitive.md), [BE-0158](../BE-0158-timezone-device-primitive/BE-0158-timezone-device-primitive.md) |
 | Origin | MagicPod |
 <!-- /BE-METADATA -->

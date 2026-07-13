@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal (deferred)** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0157") |
-| Topic | Candidates from competitive research (MagicPod / Autify) |
+| Topic | Scenario authoring features |
 | Related | [BE-0052](../BE-0052-device-state-timezone-clipboard-shake/BE-0052-device-state-timezone-clipboard-shake.md) |
 | Origin | MagicPod |
 <!-- /BE-METADATA -->

@@ -12,7 +12,7 @@
 > and the implementation plan live in the roadmap** — each item is linked below. Read this for the
 > direction; follow the roadmap items for the specifics.
 
-Related: [drivers](drivers.md) · [selectors](selectors.md) · [concepts](concepts.md) · [vision](vision.md) · [roadmap → Platform expansion](../roadmaps/README.md#platform-expansion-android--web--flutter)
+Related: [drivers](drivers.md) · [selectors](selectors.md) · [concepts](concepts.md) · [vision](vision.md) · [roadmap → Platform support](../roadmaps/README.md#platform-support-ios--android--web--flutter)
 
 ---
 
@@ -91,6 +91,6 @@ determinism-first, app-agnostic, and **AI is never the judge** — no new platfo
 the Tier-2 `run` / CI gate.
 
 > **How this relates to the roadmap.** This page is the overview; the prioritized, concrete plans are
-> the [Platform expansion](../roadmaps/README.md#platform-expansion-android--web--flutter) items above.
+> the [Platform support](../roadmaps/README.md#platform-support-ios--android--web--flutter) items above.
 > When a platform ships, it also moves to the
 > [architecture status table](architecture.md#implementation-status).

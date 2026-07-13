@@ -10,7 +10,7 @@
 | 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0233") |
 | 実装 PR | [#949](https://github.com/bajutsu-e2e/bajutsu/pull/949) |
-| トピック | Platform expansion (Android / Web / Flutter) |
+| トピック | プラットフォーム対応（iOS / Android / Web / Flutter） |
 | 関連 | [BE-0211](../BE-0211-android-device-control/BE-0211-android-device-control-ja.md)、[BE-0208](../BE-0208-android-emulator-e2e-ci/BE-0208-android-emulator-e2e-ci-ja.md) |
 <!-- /BE-METADATA -->
 

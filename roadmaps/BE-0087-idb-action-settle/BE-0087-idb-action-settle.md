@@ -10,7 +10,7 @@
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0087") |
 | Implementing PR | [#295](https://github.com/bajutsu-e2e/bajutsu/pull/295), [#296](https://github.com/bajutsu-e2e/bajutsu/pull/296), [#416](https://github.com/bajutsu-e2e/bajutsu/pull/416) |
-| Topic | On-device validation (M1 close-out) |
+| Topic | Platform support (iOS / Android / Web / Flutter) |
 <!-- /BE-METADATA -->
 
 ## Introduction

@@ -10,7 +10,7 @@
 | 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0039") |
 | 実装 PR | PR 単位の履歴より前（初期インポートにスカッシュ済み、単一 PR なし） |
-| トピック | 競合調査（MagicPod / Autify）由来の候補 |
+| トピック | 自己修復トリアージ |
 | 由来 | 両社 |
 <!-- /BE-METADATA -->
 

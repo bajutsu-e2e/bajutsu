@@ -10,7 +10,7 @@
 | 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0209") |
 | 実装 PR | [#854](https://github.com/bajutsu-e2e/bajutsu/pull/854) |
-| トピック | codegen coverage |
+| トピック | codegen 網羅性 |
 | 関連 | [BE-0007](../BE-0007-android-backend/BE-0007-android-backend-ja.md), [BE-0083](../BE-0083-codegen-emitter-unification/BE-0083-codegen-emitter-unification-ja.md) |
 <!-- /BE-METADATA -->
 

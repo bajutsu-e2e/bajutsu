@@ -9,7 +9,7 @@
 | 提案者 | [@hirosassa](https://github.com/hirosassa) |
 | 状態 | **提案** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0236") |
-| トピック | Platform expansion (Android / Web / Flutter) |
+| トピック | デバイスクラウド実行 |
 <!-- /BE-METADATA -->
 
 ## はじめに

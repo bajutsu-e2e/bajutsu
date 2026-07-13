@@ -10,7 +10,7 @@
 | 状態 | **実装中** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0239") |
 | 実装 PR | [#985](https://github.com/bajutsu-e2e/bajutsu/pull/985) _（バックエンド。Web UI は後続）_ |
-| トピック | Hosting the web UI (cloud / self-hosted) |
+| トピック | Web UI のホスティング（クラウド / セルフホスト） |
 <!-- /BE-METADATA -->
 
 ## はじめに

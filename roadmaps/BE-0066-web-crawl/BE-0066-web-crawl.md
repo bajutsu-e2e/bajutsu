@@ -10,7 +10,7 @@
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0066") |
 | Implementing PR | [#185](https://github.com/bajutsu-e2e/bajutsu/pull/185) |
-| Topic | Platform expansion (landed slices) |
+| Topic | Autonomous crawl |
 <!-- /BE-METADATA -->
 
 ## Introduction

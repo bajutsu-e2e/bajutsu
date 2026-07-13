@@ -10,7 +10,7 @@
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0042") |
 | Implementing PR | predates the per-PR history (part of the initial import; no single PR) |
-| Topic | Platform expansion (landed slices) |
+| Topic | Driver & backend architecture |
 <!-- /BE-METADATA -->
 
 ## Introduction
@@ -38,7 +38,7 @@ PLATFORMS = {
 
 - **Expansion.** A platform token expands to its actuators; a bare actuator stands for itself. `--backend ios` (or `backend: [ios]`) resolves to `idb` today, and will pick up a richer iOS actuator when one lands — without the scenario or config changing.
 - **Selection.** `select_actuator` walks the expanded list and returns the **first implemented and available** actuator. Availability is "implemented **and** its executable is on `PATH`" (`fake` is always available and needs no executable). Today `IMPLEMENTED = {idb, fake}`.
-- **Clear errors for planned platforms.** Requesting `android` / `web` — recognized in the registry but with no driver yet — raises a `"not implemented yet"` error that points at the platform-expansion roadmap, distinct from "no available actuator among …". Constructing such a driver via `make_driver` likewise raises `NotImplementedError` rather than a generic failure.
+- **Clear errors for planned platforms.** Requesting `android` / `web` — recognized in the registry but with no driver yet — raises a `"not implemented yet"` error that points at the Platform support roadmap, distinct from "no available actuator among …". Constructing such a driver via `make_driver` likewise raises `NotImplementedError` rather than a generic failure.
 - **Forward-compatible.** Genuinely unknown tokens are skipped rather than failing, so an older build can run a config that lists a future backend (it falls through to a backend it does understand).
 
 The matching configuration shape is a **`platform` discriminator** on `apps.<name>` plus per-platform target fields, with the deterministic resolution order (`defaults < app < scenario`) unchanged:

@@ -10,7 +10,7 @@
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0211") |
 | Implementing PR | [#858](https://github.com/bajutsu-e2e/bajutsu/pull/858) |
-| Topic | Platform expansion (Android / Web / Flutter) |
+| Topic | Platform support (iOS / Android / Web / Flutter) |
 | Related | [BE-0212](../BE-0212-granular-device-control-capabilities/BE-0212-granular-device-control-capabilities.md), [BE-0007](../BE-0007-android-backend/BE-0007-android-backend.md), [BE-0128](../BE-0128-device-step-capability-preflight/BE-0128-device-step-capability-preflight.md) |
 <!-- /BE-METADATA -->
 

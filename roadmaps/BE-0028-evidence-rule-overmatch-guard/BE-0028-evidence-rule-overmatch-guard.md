@@ -10,7 +10,7 @@
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0028") |
 | Implementing PR | [#90](https://github.com/bajutsu-e2e/bajutsu/pull/90) · [#91](https://github.com/bajutsu-e2e/bajutsu/pull/91) |
-| Topic | Miscellaneous / on hold |
+| Topic | Verification & coverage |
 <!-- /BE-METADATA -->
 
 ## Introduction
