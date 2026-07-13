@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0234](BE-0234-adb-run-performance.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0234") |
+| Implementing PR | [#987](https://github.com/bajutsu-e2e/bajutsu/pull/987) |
 | Topic | Platform support |
 | Related | [BE-0007](../BE-0007-android-backend/BE-0007-android-backend.md), [BE-0210](../BE-0210-android-actuation-fidelity/BE-0210-android-actuation-fidelity.md), [BE-0223](../BE-0223-adb-tab-bar-navigation/BE-0223-adb-tab-bar-navigation.md), [BE-0233](../BE-0233-adb-clipboard-fidelity/BE-0233-adb-clipboard-fidelity.md) |
 <!-- /BE-METADATA -->
@@ -83,6 +84,13 @@ no per-app special-casing. It must preserve the determinism contract — reads t
 condition stay condition waits (never a fixed `sleep`), and ambiguous matches keep failing fast.
 
 ## Detailed design
+
+**Scope as shipped:** units 1–3 and 5 (the read-count reductions, the adb `_settle` tuning, the
+measurement, and the regression guard) shipped in the implementing PR below. **Unit 4 (the resident
+UI Automator server) was carved out to a follow-up item** — it needs a device to verify and a
+packaged instrumentation, so it does not fit this item's fast-gate change; the split is the path the
+*Alternatives considered* section below pre-authorized ("narrowed to units 1–3"). The description of
+unit 4 is kept here for continuity; the follow-up item is where it will be built.
 
 The work is phased so the cheap, self-contained wins land first and de-risk the measurement, and the
 architectural change lands last behind a fallback. It touches the adb Driver
@@ -184,11 +192,23 @@ with before/after per-step timings recorded on device.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Establish the on-device baseline and a per-step read counter (the yardstick for units 2–4).
-- [ ] Make the end-of-step `after` read lazy/conditional, and reuse it as the next step's `before` (identical device state) instead of re-reading.
-- [ ] Re-tune `_settle` for a slow read and fold in stray one-off reads.
-- [ ] Replace per-dump startup with a resident UI Automator server, `uiautomator dump` kept as fallback.
-- [ ] Record before/after timings and guard the win (conformance / e2e, no flaky timing gate).
+- [x] Add a per-step read counter — the run loop logs the runner-issued screen reads per step and a
+  scenario total (the yardstick for the reductions below); the on-device wall-clock baseline is
+  recorded when the change is exercised on a device.
+- [x] Make the end-of-step `after` read lazy (taken only when a consumer needs the tree — a
+  `screenChanged` capture, an `extract`, or a wait-timeout diagnostic) and reuse the previous step's
+  `after` as the next step's `before` (identical device state) instead of re-reading.
+- [x] Re-tune `_settle` for a slow read: on adb the ~2.4s read paces the settle loop, so the inter-poll
+  interval is 0 (the poll count is kept at 3 to preserve the settle condition). The other stray
+  one-off reads (`screen_size_from_elements(driver.query())` in the shared gesture / alert / crawl
+  handlers) each read a tree that is *not* already in hand at the call site, so folding them needs a
+  driver-level last-read cache — deferred with the resident-server work below.
+- [ ] **Carved out to a follow-up item** — replace per-dump startup with a resident UI Automator
+  server, `uiautomator dump` kept as fallback. Needs a device to verify and a packaged
+  instrumentation, so it does not fit this item's fast-gate change.
+- [x] Guard the win with a read-count assertion on the fast gate (`tests/orchestrator/test_read_count.py`
+  for the runner reductions, `tests/test_adb.py` for the adb `_settle` reads); a wall-clock timing
+  gate stays out of scope (environment-dependent, would be flaky).
 
 ## References
 

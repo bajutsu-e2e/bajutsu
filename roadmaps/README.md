@@ -123,6 +123,7 @@ One backend per platform behind the single driver interface ([DESIGN §1](../DES
 | [BE-0228](BE-0228-web-device-mode-emulation/BE-0228-web-device-mode-emulation.md) | Web device mode (desktop / mobile emulation) | Implemented |
 | [BE-0232](BE-0232-adb-multitouch-gestures/BE-0232-adb-multitouch-gestures.md) | Multi-touch gestures on the adb driver (pinch / rotate) | Implemented |
 | [BE-0233](BE-0233-adb-clipboard-fidelity/BE-0233-adb-clipboard-fidelity.md) | adb clipboard on-device fidelity | Implemented |
+| [BE-0234](BE-0234-adb-run-performance/BE-0234-adb-run-performance.md) | Speed up adb scenario runs (uiautomator dump bottleneck) | Implemented |
 | [BE-0240](BE-0240-ios-capability-aware-actuator-selection/BE-0240-ios-capability-aware-actuator-selection.md) | Capability-aware automatic actuator selection for iOS (idb/XCUITest transparency) | Implemented |
 <!-- /GENERATED:implemented-platform -->
 
@@ -529,7 +530,6 @@ Under consideration — not yet decided. Promote an item to *In progress* once w
 | ID | Item | Status |
 |---|---|---|
 | [BE-0008](BE-0008-flutter-support/BE-0008-flutter-support.md) | Flutter support | Proposal |
-| [BE-0234](BE-0234-adb-run-performance/BE-0234-adb-run-performance.md) | Speed up adb scenario runs (uiautomator dump bottleneck) | Proposal |
 <!-- /GENERATED:proposals-platform -->
 
 ### Device-cloud execution
