@@ -73,7 +73,6 @@ independent units:
   step it continues to read the fresh post-action query, unchanged from today.
 
 - **Thread one settled snapshot through tap actuation instead of re-querying at each layer.** In
-  the idb and adb drivers, `_center` (`idb.py:317`) calls `_settle()` and then `_resolve`
   the idb and adb drivers, `_center` (`idb.py:397`) calls `_settle()` and then `_resolve`
   (`idb.py:376`), and `_resolve` re-queries internally on a cache miss. Change `_resolve` to accept
   and prefer the tree `_settle()` already produced (it already has an `initial_tree` parameter for
