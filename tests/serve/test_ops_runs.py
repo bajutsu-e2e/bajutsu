@@ -144,15 +144,28 @@ def test_sweep_is_a_no_op_when_retention_is_disabled(tmp_path: Path) -> None:
 
 
 def test_runs_payload_sweeps_before_listing(tmp_path: Path) -> None:
-    # The lazy trigger (BE-0239): a history read purges expired trash first. Backdate the trashed
-    # run's directory mtime (the deletion clock's start) past the window so the next read purges it.
-    import os
-
+    # The lazy trigger (BE-0239): a history read purges expired trash first. Backdate the deletion
+    # marker (the retention clock's start) past the window so the next read purges it.
     state = _local_state(tmp_path)
     state.run_retention_days = 30
     _run_dir(state, "r1")
     ops.delete_run(state, "r1")
-    old = (datetime.now(UTC) - timedelta(days=40)).timestamp()
-    os.utime(state.runs_dir / ".trash" / "r1", (old, old))
+    old = (datetime.now(UTC) - timedelta(days=40)).isoformat()
+    (state.runs_dir / ".trash" / "r1" / ".deleted").write_text(old, encoding="utf-8")
     assert ops.runs_payload(state)[0] == []  # listed empty, and the sweep purged the expired trash
     assert state.artifacts.list_trashed_runs() == []
+
+
+def test_sweep_purges_a_db_only_trashed_run(tmp_path: Path) -> None:
+    # Hosted edge (BE-0239): a run soft-deleted before any evidence upload has a DB `deleted_at` but
+    # no store tombstone, so the store scan misses it — the sweep reconciles against the DB so it is
+    # still auto-purged. Here the run has a DB row but no artifact dir.
+    state, repo = _hosted_state(tmp_path)
+    repo.record_run(RunRecord(id="r1", org_id="default", status="done", ok=True))
+    repo.soft_delete_run(
+        "r1", org_id="default", deleted_by="editor", at=datetime.now(UTC) - timedelta(days=40)
+    )
+    state.run_retention_days = 30
+    assert state.artifacts.list_trashed_runs() == []  # nothing in the store's trash
+    assert ops.sweep_expired_trash(state, actor="editor", now=datetime.now(UTC)) == 1
+    assert repo.get_run("r1") is None  # the DB-only-trashed run was purged

@@ -97,3 +97,19 @@ def test_purge_is_org_scoped() -> None:
     _run(repo, "r1", org="acme")
     assert repo.purge_run("r1", org_id="globex") is False  # another org can't purge it
     assert repo.get_run("r1") is not None
+
+
+def test_list_deleted_runs_filters_by_org_and_cutoff() -> None:
+    from datetime import timedelta
+
+    repo = _repo()
+    now = datetime.now(UTC)
+    for rid in ("old", "recent", "live"):
+        _run(repo, rid)
+    repo.soft_delete_run("old", org_id="acme", deleted_by="a", at=now - timedelta(days=40))
+    repo.soft_delete_run("recent", org_id="acme", deleted_by="a", at=now - timedelta(days=1))
+    _run(repo, "otherorg", org="globex")
+    repo.soft_delete_run("otherorg", org_id="globex", deleted_by="b", at=now - timedelta(days=40))
+    cutoff = now - timedelta(days=30)
+    # Only acme's run trashed before the cutoff: not the recent one, not the live one, not globex's.
+    assert [r.id for r in repo.list_deleted_runs(org_id="acme", before=cutoff)] == ["old"]

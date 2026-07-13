@@ -9,6 +9,7 @@ really gone from view, not merely delisted.
 from __future__ import annotations
 
 import json
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from bajutsu.serve.artifacts import LocalArtifactStore
@@ -124,3 +125,22 @@ def test_list_trashed_runs_reports_ids_and_deletion_time(tmp_path: Path) -> None
 
 def test_list_trashed_runs_is_empty_without_a_trash_dir(tmp_path: Path) -> None:
     assert LocalArtifactStore(tmp_path).list_trashed_runs() == []
+
+
+def test_deleted_at_reflects_delete_time_not_the_runs_file_mtime(tmp_path: Path) -> None:
+    # Regression (BE-0239): `deletedAt` must be *when the run was soft-deleted*, not when its files
+    # were last written. A rename into .trash/ doesn't touch the dir's mtime, so a run whose bytes
+    # are old but was trashed just now must still report a recent deletedAt (else the retention sweep
+    # would purge it immediately). Backdate the run's files far into the past, then soft-delete now.
+    import os
+
+    store = LocalArtifactStore(tmp_path)
+    _run(tmp_path, "r1")
+    long_ago = (datetime.now(UTC) - timedelta(days=365)).timestamp()
+    for p in (tmp_path / "r1").rglob("*"):
+        os.utime(p, (long_ago, long_ago))
+    os.utime(tmp_path / "r1", (long_ago, long_ago))
+
+    store.soft_delete_run("r1")
+    deleted_at = datetime.fromisoformat(store.list_trashed_runs()[0]["deletedAt"])
+    assert deleted_at > datetime.now(UTC) - timedelta(minutes=5)  # ~now, not a year ago

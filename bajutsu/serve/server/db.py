@@ -139,6 +139,11 @@ class Repository(Protocol):
         audit-log entry keyed on the run id survives, so "who purged run X, when" stays answerable
         without this row."""
 
+    def list_deleted_runs(self, *, org_id: str, before: datetime) -> list[RunRecord]:
+        """The org's soft-deleted runs trashed at or before *before* — the retention sweep's DB-side
+        eligibility scan (BE-0239). Reaches a run trashed only in the DB (soft-deleted before any
+        evidence upload, so it never got a store tombstone) that the store-side scan misses."""
+
     def create_project(self, project: ProjectRecord) -> None:
         """Register *project*, or update it in place when its id already exists (BE-0225).
 
@@ -389,6 +394,18 @@ class SqlRepository:
             session.delete(run)
             session.commit()
             return True
+
+    def list_deleted_runs(self, *, org_id: str, before: datetime) -> list[RunRecord]:
+        from sqlalchemy import select
+        from sqlalchemy.orm import Session
+
+        from bajutsu.serve.server.models import Run
+
+        stmt = select(Run).where(
+            Run.org_id == org_id, Run.deleted_at.is_not(None), Run.deleted_at <= before
+        )
+        with Session(self._engine) as session:
+            return [_to_record(row) for row in session.scalars(stmt)]
 
     def create_project(self, project: ProjectRecord) -> None:
         from sqlalchemy.orm import Session

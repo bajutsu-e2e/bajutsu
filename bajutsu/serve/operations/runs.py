@@ -140,12 +140,19 @@ def sweep_expired_trash(
     org = state.org_of(actor)
     store = state.for_org(org).artifacts
     repo = state.repository
-    purged = 0
+    # Eligible run ids from both trash records, deduped (dict preserves insertion order): the store's
+    # trash-dir/tombstone, plus — on the hosted backend — the DB's `deleted_at`. A run trashed only in
+    # the DB (soft-deleted before any evidence upload, so no store tombstone) is invisible to the
+    # store scan but still needs auto-purging, and vice versa for a local run with no DB.
+    expired: dict[str, None] = {}
     for entry in store.list_trashed_runs():
         deleted_at = _parse_iso(entry.get("deletedAt"))
-        if deleted_at is None or deleted_at > cutoff:
-            continue  # unknown deletion time or still within the window — keep it
-        run_id = str(entry["id"])
+        if deleted_at is not None and deleted_at <= cutoff:  # skip unknown time / still in-window
+            expired[str(entry["id"])] = None
+    if repo is not None:
+        for rec in repo.list_deleted_runs(org_id=org, before=cutoff):
+            expired[rec.id] = None
+    for run_id in expired:
         store.purge_run(run_id)
         if repo is not None:
             repo.purge_run(run_id, org_id=org)
@@ -153,8 +160,7 @@ def sweep_expired_trash(
         # irreversible removal is greppable (BE-0055) — the same as a user-initiated purge.
         _record_audit(state, None, org, "run.purge", run_id, {"reason": "retention"})
         oplog.log_event(_logger, "run.purged", "run purged by retention", run_id=run_id, org=org)
-        purged += 1
-    return purged
+    return len(expired)
 
 
 def _parse_iso(value: Any) -> datetime | None:

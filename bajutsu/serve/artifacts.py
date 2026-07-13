@@ -25,6 +25,12 @@ from bajutsu.serve.helpers import list_crawl_runs, list_runs, valid_run_id
 # segment under ``runs_dir`` keeps trashed runs inside the same path-containment guarantee as live
 # ones, and out of `list_runs`/`list_crawl_runs` (which scan only ``runs_dir``'s direct children).
 _TRASH = ".trash"
+# A deletion-time marker written inside a trashed run's dir at soft-delete time — the retention
+# clock's start, read back by `list_trashed_runs` (BE-0239). Mirrors `ObjectStorageArtifactStore`'s
+# ``.deleted`` tombstone. It replaces the directory's mtime, which a rename into ``.trash/`` does NOT
+# update (mtime reflects the last *content* change — when the run wrote its files, not when it was
+# trashed), so a long-finished run would otherwise read as instantly past the retention window.
+_DELETED_MARKER = ".deleted"
 
 
 @dataclass
@@ -167,6 +173,9 @@ class LocalArtifactStore:
             # wins, so drop the stale copy rather than letting `move` nest it inside the old dir.
             shutil.rmtree(trashed, ignore_errors=True)
         shutil.move(str(live), str(trashed))
+        # Stamp the real deletion time so the retention sweep doesn't key off the dir's mtime, which
+        # a rename doesn't touch (see `_DELETED_MARKER`).
+        (trashed / _DELETED_MARKER).write_text(datetime.now(UTC).isoformat(), encoding="utf-8")
         return True
 
     def restore_run(self, run_id: str) -> bool:
@@ -179,6 +188,9 @@ class LocalArtifactStore:
         if live.exists():  # a live run already holds the id — don't clobber it
             return False
         shutil.move(str(trashed), str(live))
+        # The deletion marker travelled back inside the tree; drop it so a restored run is pristine
+        # (and never serves a stray ``.deleted`` file).
+        (live / _DELETED_MARKER).unlink(missing_ok=True)
         return True
 
     def purge_run(self, run_id: str) -> bool:
@@ -200,8 +212,17 @@ class LocalArtifactStore:
         for d in self._trash_dir.iterdir():
             if not (d.is_dir() and valid_run_id(d.name)):
                 continue
-            # The directory's mtime is when soft-delete moved it here — the retention clock's start.
-            deleted_at = datetime.fromtimestamp(d.stat().st_mtime, tz=UTC).isoformat()
-            out.append({"id": d.name, "deletedAt": deleted_at})
+            out.append({"id": d.name, "deletedAt": self._deleted_at(d)})
         out.sort(key=lambda r: r["deletedAt"], reverse=True)
         return out
+
+    def _deleted_at(self, trashed: Path) -> str:
+        """The run's soft-delete time (ISO-8601 UTC): the `_DELETED_MARKER` written at delete time,
+        or the dir mtime as a fallback for a run trashed by a serve that predates the marker."""
+        try:
+            stamp = (trashed / _DELETED_MARKER).read_text(encoding="utf-8").strip()
+            if stamp:
+                return stamp
+        except OSError:
+            pass
+        return datetime.fromtimestamp(trashed.stat().st_mtime, tz=UTC).isoformat()
