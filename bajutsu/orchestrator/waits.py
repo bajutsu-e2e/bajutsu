@@ -4,6 +4,7 @@ sleep — this is what keeps the run deterministic without `sleep`."""
 from __future__ import annotations
 
 import os
+from dataclasses import dataclass
 
 from bajutsu import assertions
 from bajutsu.drivers import base
@@ -12,6 +13,25 @@ from bajutsu.scenario import Gone, Wait, WaitRequest
 
 _POLL = 0.05
 _SETTLE_POLLS = 2  # consecutive unchanged polls that count as "settled"
+
+
+@dataclass
+class WaitTrace:
+    """Poll-by-poll record of a `for` wait, filled in place so a timeout is diagnosable (BE-0231).
+
+    On a first-wait timeout these fields separate the candidate causes: a tree that never became
+    non-empty (`first_nonempty_s is None`) points at "nothing rendered / transient-empty"; a
+    non-empty tree with `elements_at_timeout` content but a still-unmet target points at "the awaited
+    element didn't render / readyWhen mismatch"; a large `first_nonempty_s` points at a slow
+    cold-boot render. Pure diagnosis — it never enters a verdict (prime directive 1).
+    """
+
+    target: str = ""
+    timeout_s: float = 0.0
+    polls: int = 0
+    first_nonempty_s: float | None = None
+    elements_at_timeout: int = 0
+
 
 # A lane may raise the floor under a wait's ceiling: a condition wait returns the instant it is
 # satisfied, so a larger ceiling never slows a fast backend — it only gives a slow environment
@@ -50,19 +70,39 @@ def _adaptive_sleep(clock: Clock, before: float) -> None:
 
 
 def _wait(
-    driver: base.Driver, w: Wait, clock: Clock, network: NetworkSource = _no_network
+    driver: base.Driver,
+    w: Wait,
+    clock: Clock,
+    network: NetworkSource = _no_network,
+    *,
+    trace: WaitTrace | None = None,
 ) -> tuple[bool, str]:
     """Condition wait. Polls query() (or the observed network) until satisfied instead
-    of a fixed sleep."""
+    of a fixed sleep.
+
+    When `trace` is given (a `for` wait only), each poll is recorded into it so a timeout can be
+    diagnosed from artifacts (BE-0231 Unit 1); it never changes the wait's outcome.
+    """
     timeout = _effective_timeout(w)
-    deadline = clock.now() + timeout
+    start = clock.now()
+    deadline = start + timeout
     if w.for_ is not None:
         target = w.for_.as_selector()
+        if trace is not None:
+            trace.target = str(target)
+            trace.timeout_s = timeout
         while True:
             t0 = clock.now()
-            if _exists(driver.query(), target):
+            elements = driver.query()
+            if trace is not None:
+                trace.polls += 1
+                if elements and trace.first_nonempty_s is None:
+                    trace.first_nonempty_s = t0 - start
+            if _exists(elements, target):
                 return True, ""
             if clock.now() >= deadline:
+                if trace is not None:
+                    trace.elements_at_timeout = len(elements)
                 return False, f"wait timeout: for {target} ({timeout}s)"
             _adaptive_sleep(clock, t0)
     if isinstance(w.until, Gone):

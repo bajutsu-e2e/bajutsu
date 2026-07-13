@@ -79,6 +79,7 @@ import subprocess
 import tempfile
 import time
 from collections.abc import Callable, Mapping
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol, cast, runtime_checkable
 
@@ -100,6 +101,21 @@ RelaunchFactory = Callable[[Effective, Scenario, base.Driver], RelaunchFn]
 # positional-only fields (`index`, `within`) match every element via find_all, so they fall back to
 # the element-count heuristic rather than declaring the app ready on the first element.
 _READY_MATCH_KEYS = ("id", "idMatches", "label", "labelMatches", "traits", "value")
+
+
+@dataclass(frozen=True)
+class ReadinessResult:
+    """The outcome of the post-launch readiness gate, for the wait-timeout diagnostic (BE-0231).
+
+    When the first scenario `wait` times out, this says whether the gate had declared the app ready
+    and on which signal — the evidence that separates "the gate returned before the content the
+    scenario needs" from "the content rendered, then the awaited element didn't". Pure diagnosis: it
+    never enters a verdict (prime directive 1).
+    """
+
+    ready: bool
+    signal: str  # "readyWhen" | "namespace" | "count" | "timeout"
+    elapsed_s: float
 
 
 @runtime_checkable
@@ -830,7 +846,7 @@ def _await_ready(
     *,
     ready_sel: base.Selector | None = None,
     id_namespaces: list[str] | None = None,
-) -> None:
+) -> ReadinessResult:
     """Poll until the launched app has rendered its first screen.
 
     Readiness is decided by the strongest signal available, in order:
@@ -848,14 +864,22 @@ def _await_ready(
     Uses exponential backoff: the first poll is short (the app is often ready quickly) and subsequent
     intervals double up to `poll_max`, reducing wasted subprocess calls when the app takes longer to
     start.
+
+    Returns:
+        Whether the app became ready, which signal decided it (`readyWhen` / `namespace` / `count`,
+        or `timeout` when the deadline passed first), and the elapsed time — recorded on a first-wait
+        timeout so the failure is diagnosable from artifacts (BE-0231). Callers that only need the
+        side effect (the relaunch paths) may ignore the return.
     """
-    deadline = time.monotonic() + timeout
+    start = time.monotonic()
+    deadline = start + timeout
     poll = min(poll_init, poll_max)
     # Use the selector only when it has a per-element condition; otherwise (None, empty, or
     # positional-only like `index`) fall back to the namespace/count heuristics — an all-matching
     # selector would return on a single element, weaker than "in-namespace" or "2+".
     match_sel = ready_sel if ready_sel and any(k in ready_sel for k in _READY_MATCH_KEYS) else None
     declared = set(id_namespaces or ())
+    signal = "readyWhen" if match_sel is not None else "namespace" if declared else "count"
     while time.monotonic() < deadline:
         try:
             elements = driver.query()
@@ -869,7 +893,7 @@ def _await_ready(
             else:
                 ready = len(elements) >= 2
             if ready:
-                return
+                return ReadinessResult(True, signal, time.monotonic() - start)
         except (OSError, subprocess.CalledProcessError, ValueError):
             # The app is still coming up: a query before the UI exists can fail (no device
             # yet / empty tree / CLI hiccup). These are expected transient startup errors —
@@ -880,6 +904,7 @@ def _await_ready(
             break
         time.sleep(min(poll, remaining))
         poll = min(poll * 2, poll_max)
+    return ReadinessResult(False, "timeout", time.monotonic() - start)
 
 
 def _web_relauncher(

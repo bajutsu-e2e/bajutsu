@@ -296,7 +296,7 @@ def test_record_writes_the_authored_scenario(
     authored = load_scenarios("- name: authored\n  steps:\n    - tap: { id: home.title }\n")[0]
     monkeypatch.setattr("bajutsu.simctl.resolve_udid", lambda u: "FAKE-UDID")
     monkeypatch.setattr(rec, "make_agent", lambda *a, **k: object())
-    monkeypatch.setattr(rec, "launch_driver", lambda *a, **k: object())
+    monkeypatch.setattr(rec, "launch_driver", lambda *a, **k: (object(), None))
     monkeypatch.setattr(rec, "start_launch_server", lambda *a, **k: (lambda: None, None))
     monkeypatch.setattr(rec, "record_loop", lambda *a, **k: authored)
 
@@ -346,7 +346,7 @@ def test_record_needs_human_handoff_exits_3(
     monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test")
     monkeypatch.setattr("bajutsu.simctl.resolve_udid", lambda u: "FAKE-UDID")
     monkeypatch.setattr(rec, "make_agent", lambda *a, **k: object())
-    monkeypatch.setattr(rec, "launch_driver", lambda *a, **k: object())
+    monkeypatch.setattr(rec, "launch_driver", lambda *a, **k: (object(), None))
     monkeypatch.setattr(rec, "start_launch_server", lambda *a, **k: (lambda: None, None))
 
     def _needs_human(*_a: object, **_k: object) -> object:
@@ -1208,7 +1208,7 @@ def test_crawl_web_builds_one_browser_lane_per_worker(
 
     def fake_launch(*_a: object, **_k: object) -> object:
         launched["n"] += 1
-        return object()  # the engine is mocked, so no driver method is ever called
+        return object(), None  # the engine is mocked, so no driver method is ever called
 
     monkeypatch.setattr("bajutsu.cli.commands.crawl.launch_driver", fake_launch)
 

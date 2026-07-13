@@ -3,12 +3,35 @@
 from __future__ import annotations
 
 import hashlib
+import subprocess
 from dataclasses import asdict
 from xml.etree import ElementTree as ET
 
 from bajutsu import __version__
 from bajutsu.idb_version import IdbVersions
 from bajutsu.orchestrator import RunResult, scenario_slug
+
+
+def git_revision() -> str | None:
+    """The current git commit, or None when the run isn't inside a git checkout.
+
+    Best-effort run provenance (BE-0049): any failure — not a repo, git absent — yields None so the
+    stamp simply omits the revision rather than aborting the run.
+    """
+    try:
+        out = subprocess.run(
+            ["git", "rev-parse", "HEAD"],  # noqa: S607 — git resolved on PATH; any failure → None below
+            capture_output=True,
+            text=True,
+            timeout=5,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if out.returncode != 0:
+        return None
+    # A shimmed/aliased `git` could exit 0 with blank stdout; treat that as "unknown", not an empty stamp.
+    return out.stdout.strip() or None
 
 
 def _run_backend(results: list[RunResult]) -> str:

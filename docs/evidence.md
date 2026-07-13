@@ -147,6 +147,25 @@ Playwright-native console / video, Android's `adb` screenrecord / logcat); other
 takes the simctl path, which it skips when `udid` is absent. The CLI's `run` uses
 `FileSink(runs/<runId>, udid=..., log_predicate=...)` ([cli](cli.md#run)).
 
+## First-wait timeout diagnostic (BE-0231)
+
+A `wait for <element>` that times out writes `run_dir/<step_id>/wait-timeout.json`
+**unconditionally** — independent of `capturePolicy`, so a timeout that no policy rule would have
+captured still leaves the evidence needed to decide *why* it fired. It is pure diagnosis, never a
+verdict input (the run's pass/fail still comes only from machine-checkable assertions).
+
+The file is self-contained so a rerun-to-green does not discard it:
+
+| Field | What it answers |
+|---|---|
+| `readiness` | Whether the post-launch readiness gate had passed and on which signal (`readyWhen` / `namespace` / `count`, or `timeout`) — separates "the gate returned before the content" from "the content rendered but the awaited element didn't". `null` on a lane that carried no readiness result. |
+| `trace` | The poll timeline: how many polls, when the tree first became non-empty (`firstNonemptySeconds`, `null` if it never did), and how many elements were present at the timeout — separating "nothing rendered / transient-empty" from "rendered, awaited element absent" from "slow cold-boot render". |
+| `provenance` | The run's [BE-0049](../roadmaps/BE-0049-determinism-flakiness-audit/BE-0049-determinism-flakiness-audit.md) stamp (scenario hash, tool version, git revision), so the evidence stays identifiable independently of the run. |
+| `elements` | The (redacted) element tree at the moment of timeout. |
+
+It is recorded as an `Artifact(kind="waitDiagnostic", provider="runner")` — written by the run loop,
+not a backend actuator.
+
 ## Artifact provenance (provider)
 
 Every piece of evidence is recorded as an `Artifact(name, kind, provider)`, leaving in the manifest
@@ -156,13 +175,14 @@ Every piece of evidence is recorded as an `Artifact(name, kind, provider)`, leav
 @dataclass
 class Artifact:
     name: str       # filename (e.g. "after.png")
-    kind: str       # "screenshot" / "elements" / "video" / "deviceLog" / "network"
+    kind: str       # "screenshot" / "elements" / "video" / "deviceLog" / "network" / "waitDiagnostic"
     provider: str   # who supplied this artifact (see table below)
 ```
 
 | `provider` value | Meaning |
 |---|---|
 | `"driver"` | The actuator captured it directly (screenshots, element trees). |
+| `"runner"` | The run loop wrote it (the first-wait timeout diagnostic, [BE-0231](../roadmaps/BE-0231-smoke-idb-first-wait-settling/BE-0231-smoke-idb-first-wait-settling.md)). |
 | `"simctl"` | Interval evidence from `simctl` (video, device log, app trace). |
 | `"adb"` | Interval evidence from `adb` (screenrecord video, logcat device log). |
 | `"collector"` | The idb app-side network collector (`BAJUTSU_COLLECTOR`). |

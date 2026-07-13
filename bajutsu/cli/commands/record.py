@@ -238,7 +238,7 @@ def record(
         f"⚙️  preparing the simulator — installing and launching {target_name} (this can take a moment) …"
     )
     try:
-        driver = launch_driver(udid, eff, actuator, Preconditions(erase=erase))
+        driver, _readiness = launch_driver(udid, eff, actuator, Preconditions(erase=erase))
     except _simctl.DeviceError as e:
         typer.echo(str(e))
         raise typer.Exit(2) from None

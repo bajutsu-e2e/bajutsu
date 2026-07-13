@@ -15,10 +15,11 @@ from bajutsu.report.html import (
     write_report,
 )
 from bajutsu.report.load import load_run, rebake, rerender_html, results_from_manifest
-from bajutsu.report.manifest import junit_xml, manifest_dict, run_provenance
+from bajutsu.report.manifest import git_revision, junit_xml, manifest_dict, run_provenance
 
 __all__ = [
     "ctrf_json",
+    "git_revision",
     "html_report",
     "junit_xml",
     "load_run",

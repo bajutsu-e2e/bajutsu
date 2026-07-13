@@ -140,12 +140,14 @@ _CONFORMANCE_ENV = {"SHOWCASE_UITEST": "1", "SHOWCASE_CONFORMANCE": ""}
 
 @pytest.fixture(scope="module")
 def _idb_driver(_eff: Effective) -> base.Driver:
-    return launch_driver(UDID, _eff, "idb", extra_env=_CONFORMANCE_ENV)
+    driver, _readiness = launch_driver(UDID, _eff, "idb", extra_env=_CONFORMANCE_ENV)
+    return driver
 
 
 @pytest.fixture(scope="module")
 def _xcuitest_driver(_eff: Effective) -> base.Driver:
-    return launch_driver(UDID, _eff, "xcuitest", extra_env=_CONFORMANCE_ENV)
+    driver, _readiness = launch_driver(UDID, _eff, "xcuitest", extra_env=_CONFORMANCE_ENV)
+    return driver
 
 
 class TestIdbDriverConformance(DriverConformanceContract):

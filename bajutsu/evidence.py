@@ -12,16 +12,22 @@ from __future__ import annotations
 import json
 import logging
 import subprocess
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Protocol
+from typing import TYPE_CHECKING, Protocol
 
 from bajutsu import intervals
 from bajutsu.artifact_perms import restrict_file
 from bajutsu.drivers import base
 from bajutsu.redaction import Redactor
 from bajutsu.scenario import Redact
+
+if TYPE_CHECKING:
+    # Imported for typing only — importing at runtime would cycle (orchestrator imports this module).
+    # The writer reads these by attribute, so it needs no runtime import.
+    from bajutsu.orchestrator.waits import WaitTrace
+    from bajutsu.platform_lifecycle import ReadinessResult
 
 _logger = logging.getLogger(__name__)
 
@@ -88,6 +94,54 @@ def write_screenshot(
     return path
 
 
+def write_wait_diagnostic(
+    step_dir: Path,
+    *,
+    trace: WaitTrace,
+    elements: list[base.Element],
+    readiness: ReadinessResult | None,
+    provenance: Mapping[str, object] | None,
+    redactor: Redactor | None = None,
+    mkdir: bool = True,
+) -> Path:
+    """Write a `for`-wait timeout diagnostic (redacted tree + readiness + trace + provenance).
+
+    Everything needed to decide *why* a first `wait` timed out, in one self-contained file so a
+    rerun-to-green does not discard the evidence (BE-0231 Unit 1). `awaitedEverQueryable` is always
+    false: a `for` wait returns the instant the element matches, so a timeout means it was never
+    queryable across the recorded polls. Pure diagnosis — never a verdict input (prime directive 1).
+    """
+    if mkdir:
+        step_dir.mkdir(parents=True, exist_ok=True)
+    path = step_dir / "wait-timeout.json"
+    els = redactor.redact_elements(elements) if redactor is not None else elements
+    doc = {
+        "target": trace.target,
+        "timeoutSeconds": trace.timeout_s,
+        "readiness": (
+            None
+            if readiness is None
+            else {
+                "ready": readiness.ready,
+                "signal": readiness.signal,
+                "elapsedSeconds": readiness.elapsed_s,
+            }
+        ),
+        "trace": {
+            "polls": trace.polls,
+            "firstNonemptySeconds": trace.first_nonempty_s,
+            "elementsAtTimeout": trace.elements_at_timeout,
+            "awaitedEverQueryable": False,
+        },
+        "provenance": dict(provenance) if provenance is not None else None,
+        "elements": els,
+    }
+    path.write_text(json.dumps(doc, ensure_ascii=False, indent=2), encoding="utf-8")
+    # Holds on-screen text (redacted best-effort) — owner-only, umask-independent (BE-0131).
+    restrict_file(path)
+    return path
+
+
 def capture(
     driver: base.Driver,
     step_dir: Path,
@@ -141,6 +195,13 @@ class EvidenceSink(Protocol):
         *,
         elements: list[base.Element] | None = None,
     ) -> list[Artifact]: ...
+    def wait_diagnostic(
+        self,
+        step_id: str,
+        *,
+        trace: WaitTrace,
+        elements: list[base.Element],
+    ) -> Artifact | None: ...
     def start_scenario_intervals(
         self, scenario_id: str, kinds: list[str]
     ) -> list[intervals.Interval]: ...
@@ -161,6 +222,15 @@ class NullSink:
         elements: list[base.Element] | None = None,
     ) -> list[Artifact]:
         return []
+
+    def wait_diagnostic(
+        self,
+        step_id: str,
+        *,
+        trace: WaitTrace,
+        elements: list[base.Element],
+    ) -> Artifact | None:
+        return None
 
     def start_scenario_intervals(
         self, scenario_id: str, kinds: list[str]
@@ -193,6 +263,8 @@ class FileSink:
         redact: Redact | None = None,
         secrets: list[str] | None = None,
         driver_interval: Callable[[str, Path], intervals.Interval | None] | None = None,
+        readiness: ReadinessResult | None = None,
+        provenance: Mapping[str, object] | None = None,
     ) -> None:
         self.run_dir = run_dir
         self.udid = udid
@@ -202,6 +274,10 @@ class FileSink:
         # When set (a web or Android lane), interval evidence comes from this driver-supplied provider
         # instead of the simctl starters below — the device pool injects the driver's `driver_interval`.
         self.driver_interval = driver_interval
+        # The launch readiness outcome and the run's BE-0049 provenance, folded into a first-wait
+        # timeout diagnostic so the failure is decidable from artifacts alone (BE-0231 Unit 1).
+        self.readiness = readiness
+        self.provenance = provenance
 
     def capture(
         self,
@@ -215,6 +291,24 @@ class FileSink:
         # (e.g. "00-slug/step0/after.png") and the HTML report can reference it.
         arts = capture(driver, self.run_dir / step_id, kinds, self.redactor, elements=elements)
         return [Artifact(f"{step_id}/{a.name}", a.kind, a.provider) for a in arts]
+
+    def wait_diagnostic(
+        self,
+        step_id: str,
+        *,
+        trace: WaitTrace,
+        elements: list[base.Element],
+    ) -> Artifact | None:
+        """Write the first-wait timeout diagnostic under <step_id>/ and record it as an artifact."""
+        path = write_wait_diagnostic(
+            self.run_dir / step_id,
+            trace=trace,
+            elements=elements,
+            readiness=self.readiness,
+            provenance=self.provenance,
+            redactor=self.redactor,
+        )
+        return Artifact(f"{step_id}/{path.name}", "waitDiagnostic", "runner")
 
     def start_scenario_intervals(
         self, scenario_id: str, kinds: list[str]

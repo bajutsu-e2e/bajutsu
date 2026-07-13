@@ -112,7 +112,7 @@ acceptance. Each unit is independently shippable.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Unit 1 — make the first-wait timeout diagnosable from artifacts (tree + readiness signal + provenance).
+- [x] Unit 1 — make the first-wait timeout diagnosable from artifacts (tree + readiness signal + provenance).
 - [x] Unit 2 — tighten the readiness → first-wait handoff (`readyWhen` / content-aware readiness).
 - [x] Unit 3 — make the first `wait` resilient to a mid-transition empty tree.
 - [x] Unit 4 — right-size the first-wait budget for a cold CI Simulator (config, condition-based).
@@ -133,6 +133,15 @@ Log (oldest first):
   sleep is introduced. Config-first (prime directive 3), condition-based (prime directive 2), no LLM
   on the verdict path (prime directive 1). Unit 5 (CI stays green on first attempt) is observed on the
   `smoke (idb)` lane after this lands.
+- [#_PR_](https://github.com/bajutsu-e2e/bajutsu/pull/_PR_) — Unit 1: on a `for`-wait timeout the run loop
+  writes `run_dir/<step_id>/wait-timeout.json` **unconditionally** (independent of `capturePolicy`), so
+  a rerun-to-green no longer discards the evidence needed to decide which cause fired. It carries the
+  element tree at timeout, the readiness gate outcome (`_await_ready` now returns which signal declared
+  the app ready — `readyWhen` / `namespace` / `count` / `timeout`, threaded to the sink through the
+  pool), the poll trace (polls, when the tree first became non-empty, element count at timeout), and the
+  run's BE-0049 provenance stamp. Pure diagnosis — no LLM on the verdict path (prime directive 1), no
+  fixed sleep (prime directive 2). Status stays **In progress**: Unit 5 (the lane green on first attempt
+  across consecutive CI runs) is a post-merge observation with no code to ship.
 
 ## References
 

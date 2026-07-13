@@ -11,10 +11,15 @@ from bajutsu.drivers import base
 
 # Readiness polling lives with the platform lifecycle now (BE-0009 Phase 0); re-exported here so
 # `from bajutsu.runner import _await_ready` and the crawl path keep their import unchanged.
-from bajutsu.platform_lifecycle import RunEnvironment, _await_ready, environment_for
+from bajutsu.platform_lifecycle import (
+    ReadinessResult,
+    RunEnvironment,
+    _await_ready,
+    environment_for,
+)
 from bajutsu.scenario import Preconditions
 
-__all__ = ["_await_ready", "launch_driver"]
+__all__ = ["ReadinessResult", "_await_ready", "launch_driver"]
 
 
 def launch_driver(
@@ -25,7 +30,7 @@ def launch_driver(
     env_run: simctl.RunFn = simctl._real_run,
     extra_env: Mapping[str, str] | None = None,
     record_video_dir: Path | None = None,
-) -> base.Driver:
+) -> tuple[base.Driver, ReadinessResult]:
     """Bring a device up, launch the app under config + scenario env, and return a ready driver.
 
     The iOS backend runs the simctl lifecycle (erase → boot → install → launch). simctl `erase`
@@ -47,7 +52,9 @@ def launch_driver(
             whole scenario (the `video` capture kind collects it). None records no video.
 
     Returns:
-        A driver bound to the launched app, already polled until its UI has rendered.
+        The driver bound to the launched app (already polled until its UI has rendered), paired with
+        the readiness gate's outcome (which signal declared it ready, or that readiness timed out) —
+        carried so a first-wait timeout can be diagnosed from artifacts (BE-0231).
 
     Raises:
         simctl.DeviceError: A simctl step failed, or a web target declares no `baseUrl`.
@@ -57,5 +64,5 @@ def launch_driver(
     # `Environment` seam, so this path no longer branches on the actuator name (BE-0009 Phase 0).
     environment: RunEnvironment = environment_for(actuator, udid, env_run)
     driver = environment.start(eff, pre, extra_env=extra_env, record_video_dir=record_video_dir)
-    _await_ready(driver, ready_sel=eff.ready_when)
-    return driver
+    readiness = _await_ready(driver, ready_sel=eff.ready_when)
+    return driver, readiness

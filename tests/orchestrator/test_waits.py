@@ -206,6 +206,145 @@ def _slow_render_driver(clock: _LogicalClock, reveal_at: float) -> base.Driver:
     return SlowRenderDriver()  # type: ignore[return-value]
 
 
+def test_run_scenario_writes_wait_diagnostic_on_first_wait_timeout(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    """BE-0231 Unit 1 end to end: a first `wait` that times out writes wait-timeout.json into the run
+    dir via the sink — unconditionally, regardless of capturePolicy — carrying the readiness signal
+    and provenance the pool folded in, so the failure is decidable from artifacts."""
+    import json
+
+    from bajutsu.evidence import FileSink
+    from bajutsu.platform_lifecycle import ReadinessResult
+
+    driver = FakeDriver([el("a", "A"), el("b", "B")])  # content present, but never the awaited row
+    sink = FileSink(
+        tmp_path,
+        readiness=ReadinessResult(True, "count", 1.5),
+        provenance={"scenarioHash": "sha256:x", "toolVersion": "9.9.9"},
+    )
+    result = run_scenario(
+        driver,
+        _scenario({"name": "x", "steps": [{"wait": {"for": {"id": "never"}, "timeout": 0.2}}]}),
+        clock=FakeClock(),
+        sink=sink,
+    )
+    assert not result.ok
+    diag = next(a for a in result.steps[0].artifacts if a.kind == "waitDiagnostic")
+    doc = json.loads((tmp_path / diag.name).read_text(encoding="utf-8"))
+    assert doc["readiness"]["signal"] == "count"
+    assert doc["provenance"]["scenarioHash"] == "sha256:x"
+    assert doc["trace"]["elementsAtTimeout"] == 2
+    assert [e["identifier"] for e in doc["elements"]] == ["a", "b"]
+
+
+def test_no_wait_diagnostic_when_wait_succeeds_or_is_not_a_for_wait(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    """The diagnostic fires only on a `for`-wait timeout: a satisfied wait and a timed-out `until`
+    wait (which the trace does not record) both leave no waitDiagnostic artifact."""
+    from bajutsu.evidence import FileSink
+
+    # A `for` wait that is immediately satisfied → no diagnostic.
+    ok_sink = FileSink(tmp_path / "ok")
+    ok_result = run_scenario(
+        FakeDriver([el("ready", "R")]),
+        _scenario({"name": "x", "steps": [{"wait": {"for": {"id": "ready"}, "timeout": 1.0}}]}),
+        clock=FakeClock(),
+        sink=ok_sink,
+    )
+    assert ok_result.ok
+    assert not any(a.kind == "waitDiagnostic" for a in ok_result.steps[0].artifacts)
+
+    # A `wait until: gone` that times out → the `for` trace never ran, so no diagnostic.
+    gone_sink = FileSink(tmp_path / "gone")
+    gone_result = run_scenario(
+        FakeDriver([el("stays", "S")]),
+        _scenario(
+            {"name": "x", "steps": [{"wait": {"until": {"gone": {"id": "stays"}}, "timeout": 0.2}}]}
+        ),
+        clock=FakeClock(),
+        sink=gone_sink,
+    )
+    assert not gone_result.ok
+    assert not any(a.kind == "waitDiagnostic" for a in gone_result.steps[0].artifacts)
+
+
+def test_wait_diagnostic_written_once_after_on_blocked_retry(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    """When a first wait times out, on_blocked clears the block, and the retry times out too, exactly
+    one diagnostic is written — from the retry's own (fresh) trace, not the first attempt's."""
+    from bajutsu.evidence import FileSink
+    from bajutsu.orchestrator.types import AlertEvent
+
+    calls = {"n": 0}
+
+    def on_blocked(_driver: object) -> AlertEvent:
+        calls["n"] += 1
+        return AlertEvent(label="Not Now")
+
+    sink = FileSink(tmp_path)
+    result = run_scenario(
+        FakeDriver([el("a", "A")]),  # the awaited "never" is absent both times
+        _scenario({"name": "x", "steps": [{"wait": {"for": {"id": "never"}, "timeout": 0.2}}]}),
+        clock=FakeClock(),
+        sink=sink,
+        on_blocked=on_blocked,
+    )
+    assert not result.ok
+    assert calls["n"] == 1  # on_blocked fired once, then the wait was retried
+    diagnostics = [a for a in result.steps[0].artifacts if a.kind == "waitDiagnostic"]
+    assert len(diagnostics) == 1
+    assert result.steps[0].alerts == [AlertEvent(label="Not Now")]
+
+
+def test_wait_records_trace_on_timeout_for_diagnosis() -> None:
+    """BE-0231 Unit 1: a `for` wait that times out fills the supplied WaitTrace so the failure is
+    diagnosable — how many polls, when the tree first became non-empty, and how many elements were
+    present at the timeout — separating "nothing rendered" from "content rendered, awaited element
+    absent"."""
+    from bajutsu.orchestrator.waits import WaitTrace, _wait
+    from bajutsu.scenario import Wait
+
+    # The tree is empty until t=1s, then shows 2 elements — but never the awaited "target".
+    def driver_for(clock: _LogicalClock) -> base.Driver:
+        class D:
+            name = "d"
+
+            def query(self) -> list[base.Element]:
+                return [el("a", "A"), el("b", "B")] if clock.now() >= 1.0 else []
+
+        return D()  # type: ignore[return-value]
+
+    clock = _LogicalClock()
+    trace = WaitTrace()
+    w = Wait.model_validate({"for": {"id": "target"}, "timeout": 2.0})
+    ok, reason = _wait(driver_for(clock), w, clock, trace=trace)
+    assert not ok
+    assert "timeout" in reason
+    assert trace.target and trace.target in reason  # the awaited selector, as the reason renders it
+    assert trace.timeout_s == 2.0
+    assert trace.polls >= 2
+    assert trace.first_nonempty_s is not None and trace.first_nonempty_s >= 1.0
+    assert trace.elements_at_timeout == 2  # content was present, just not the awaited element
+
+
+def test_wait_trace_stays_empty_when_tree_never_renders() -> None:
+    """A tree that never becomes non-empty leaves first_nonempty_s None — the "nothing rendered"
+    hypothesis, distinct from "rendered but the awaited element was absent"."""
+    from bajutsu.orchestrator.waits import WaitTrace, _wait
+    from bajutsu.scenario import Wait
+
+    class Empty:
+        name = "empty"
+
+        def query(self) -> list[base.Element]:
+            return []
+
+    clock = _LogicalClock()
+    trace = WaitTrace()
+    w = Wait.model_validate({"for": {"id": "target"}, "timeout": 1.0})
+    ok, _reason = _wait(Empty(), w, clock, trace=trace)  # type: ignore[arg-type]
+    assert not ok
+    assert trace.first_nonempty_s is None
+    assert trace.elements_at_timeout == 0
+
+
 def test_wait_floor_env_extends_the_ceiling(monkeypatch) -> None:  # type: ignore[no-untyped-def]
     """BAJUTSU_MIN_WAIT_TIMEOUT raises a wait's ceiling so a slow renderer has time to present,
     without editing the shared scenario (its `timeout: 5` is the same across every backend)."""

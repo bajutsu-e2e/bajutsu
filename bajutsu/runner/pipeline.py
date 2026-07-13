@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 import logging
-import subprocess
 import time
 from collections.abc import Callable, Mapping
 from concurrent.futures import ThreadPoolExecutor
@@ -35,7 +34,7 @@ from bajutsu.orchestrator import (
     scenario_slug,
 )
 from bajutsu.redaction import Redactor
-from bajutsu.report import run_provenance, scenario_render_inputs, write_report
+from bajutsu.report import git_revision, run_provenance, scenario_render_inputs, write_report
 from bajutsu.runner.mailbox import build_mailbox_reader
 from bajutsu.runner.types import LeaseFn, OnBlockedFor, _no_net
 from bajutsu.scenario import Scenario, dump_scenario_file, redact_totp_secrets
@@ -494,7 +493,7 @@ def _assemble_report(
     # Stamp the run's identity (scenario fingerprint + tool/git version) so accumulated runs can be
     # grouped to tell true flakiness from an edited scenario (BE-0049); pure metadata, never a verdict.
     provenance = run_provenance(
-        scenario_yaml, git_revision=_git_revision(), config_source=config_source
+        scenario_yaml, git_revision=git_revision(), config_source=config_source
     )
     # Record what the upload-execution policy did with this run's launchServer command (BE-0090) —
     # denied / reused / sandboxed, and (when sandboxed) the image — so "what did this run execute,
@@ -517,28 +516,6 @@ def _assemble_report(
     # definitions already hold tokens, not values, so this only catches result text.
     _scrub_secret_values(run_dir, secret_values)
     return manifest
-
-
-def _git_revision() -> str | None:
-    """The current git commit, or None when the run isn't inside a git checkout.
-
-    Best-effort run provenance (BE-0049): any failure — not a repo, git absent — yields None so the
-    stamp simply omits the revision rather than aborting the run.
-    """
-    try:
-        out = subprocess.run(
-            ["git", "rev-parse", "HEAD"],  # noqa: S607 — git resolved on PATH; any failure → None below
-            capture_output=True,
-            text=True,
-            timeout=5,
-            check=False,
-        )
-    except (OSError, subprocess.SubprocessError):
-        return None
-    if out.returncode != 0:
-        return None
-    # A shimmed/aliased `git` could exit 0 with blank stdout; treat that as "unknown", not an empty stamp.
-    return out.stdout.strip() or None
 
 
 def _scrub_secret_values(run_dir: Path, secret_values: list[str] | None) -> None:
