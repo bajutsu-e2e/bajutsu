@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Callable
 from pathlib import Path
 
 import pytest
@@ -319,6 +320,85 @@ class _FakeWeb(FakeDriver):
         self.collector_mocks = mocks
         self.collector = _StubCollector()
         return self.collector
+
+
+class _RecordingEnv:
+    """A fake RunEnvironment that records the actuator it was built for and whether it was started
+    and torn down — enough of the lease seam to prove per-scenario selection and per-lease teardown.
+    """
+
+    def __init__(self, actuator: str, udid: str) -> None:
+        self.actuator = actuator
+        self.udid = udid
+        self.started = False
+        self.torn = False
+
+    def start(self, eff: Effective, pre: object, **_: object) -> base.Driver:
+        self.started = True
+        return FakeDriver([_el("home", "H"), _el("ok", "OK")])  # 2 elems -> ready on count
+
+    def device_catalog(self) -> dict[str, dict[str, str]]:
+        return {}
+
+    def observes_network_via_driver(self) -> bool:
+        return False
+
+    def records_video_up_front(self) -> bool:
+        return False
+
+    def relauncher(
+        self, eff: Effective, scenario: Scenario, driver: base.Driver, **_: object
+    ) -> Callable[[object], None]:
+        return lambda opts: None
+
+    def controller(self, eff: Effective) -> None:
+        return None
+
+    def teardown(self, driver: base.Driver, eff: Effective) -> None:
+        self.torn = True
+
+
+def test_device_pool_resolves_actuator_per_scenario_and_tears_down_its_own_env(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """BE-0240: each scenario leases the cheapest actuator its own steps can run on (idb for a plain
+    tap, xcuitest for a pinch), and the environment that *starts* a lease is the one that tears it
+    down — so a stateful backend's resident runner is terminated by the instance that spawned it."""
+    created: list[_RecordingEnv] = []
+
+    def fake_env_for(actuator: str, udid: str, env_run: object = None) -> _RecordingEnv:
+        env = _RecordingEnv(actuator, udid)
+        created.append(env)
+        return env
+
+    monkeypatch.setattr("bajutsu.runner.pool.environment_for", fake_env_for)
+
+    pinch = Scenario.model_validate(
+        {"name": "p", "steps": [{"pinch": {"sel": {"id": "m"}, "scale": 2.0}}]}
+    )
+    lease, shutdown = device_pool(
+        ["UDID-A"],
+        ["ios"],
+        _eff(),
+        Path("runs"),
+        network=False,
+        available=lambda b: True,
+        env_run=lambda *a, **k: "",
+    )
+    try:
+        tap_lease = lease(_eff(), _scn("tap"))
+        idb_env = created[-1]  # the lease env, not the pool env
+        assert idb_env.actuator == "idb" and idb_env.started  # cheapest sufficient for a plain tap
+        tap_lease.release()
+        assert idb_env.torn  # the SAME instance that started tears down (BE-0240)
+
+        pinch_lease = lease(_eff(), pinch)
+        xc_env = created[-1]
+        assert xc_env.actuator == "xcuitest" and xc_env.started  # escalated: pinch needs multiTouch
+        pinch_lease.release()
+        assert xc_env.torn
+    finally:
+        shutdown()
 
 
 def _eff_web() -> Effective:

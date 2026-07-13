@@ -23,7 +23,7 @@ from bajutsu.ai import credential_gap
 from bajutsu.anthropic_client import key_env as ac_key_env
 from bajutsu.artifact_perms import make_run_dir
 from bajutsu.assertions import GoldenContext
-from bajutsu.backends import ensure_web_runtime, select_actuator
+from bajutsu.backends import ensure_web_runtime, select_actuator, select_actuator_for_scenario
 from bajutsu.cli._projects import config_from_source, open_registry
 from bajutsu.cli._shared import (
     DEFAULT_CONFIG,
@@ -554,7 +554,10 @@ def _dispatch_single(
             progress=progress_fn,
             baselines_dir=plan.baselines_dir,
             schemas_dir=plan.schemas_dir,
-            actuator=plan.actuator,
+            # Per-scenario actuator selection (BE-0240): the pipeline preflights, and the pool leases,
+            # the cheapest actuator each scenario can run on — a single `[idb]`/`[web]` pin still
+            # collapses to that one actuator, `[ios]` escalates only the scenarios that need it.
+            resolve_actuator=lambda s: select_actuator_for_scenario(plan.backends, s),
             config_source=plan.config_source,
             exec_provenance=exec_decision,
             golden_context=plan.golden_context,
@@ -681,11 +684,15 @@ def _finish(
     if plan.eff.notify:
         from bajutsu import notify
 
+        # Actuator selection is per scenario (BE-0240), so report the distinct actuators that
+        # actually ran — joined when a run mixed idb and XCUITest — not the single pool pick; fall
+        # back to `plan.actuator` when every scenario failed before an actuator drove it.
+        ran = ", ".join(dict.fromkeys(r.backend for r in results if r.backend))
         notify.emit(
             results,
             run_id=plan.run_id,
             source_name=plan.source_name,
-            backend=plan.actuator,
+            backend=ran or plan.actuator,
             endpoints=plan.eff.notify,
             bindings=plan.secret_bindings,
             runs_dir=plan.runs_dir,

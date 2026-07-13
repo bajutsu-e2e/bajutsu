@@ -34,9 +34,13 @@ targets:
     appPath: ios/swiftui/build/dd/Build/Products/Debug-iphonesimulator/BajutsuShowcaseSwiftUI.app
     build: make -C demos/showcase swiftui-build
     scenarios: scenarios
+    # Capability-aware per-scenario selection (BE-0240): the ladder runs each scenario on the cheapest
+    # actuator its own steps can use — idb by default, escalating to XCUITest only where a construct
+    # needs it (here, gestures_multitouch.yaml's pinch/rotate), in one invocation with no --backend.
+    backend: [ios]
     # XCUITest backend (BE-0019): the same generic runner also drives this a11y app, so the driver
     # conformance suite (BE-0114) can run its contract against XCUITest on identifier-bearing
-    # elements — `bajutsu run --target showcase-swiftui --backend xcuitest ...`, idb staying default.
+    # elements — `bajutsu run --target showcase-swiftui --backend xcuitest ...`.
     xcuitest:
       testRunner: ../../BajutsuKit/Runner/build/dd/Build/Products/BajutsuRunner.xctestrun
       build: make -C demos/showcase runner-build
@@ -51,6 +55,10 @@ targets:
     build: make -C demos/showcase swiftui-noax-build
     backend: [idb]   # idb + vision (BE-0176): crawl drives this -noax app with no XCUITest runner
     scenarios: ios/scenarios-xcuitest
+    # NOT migrated to the BE-0240 ladder: this app's need for XCUITest is app-level (no accessibility
+    # identifiers; idb's describe-all collapses the tab bar), not a scenario *capability* the
+    # preflight can detect — these tab-crossing scenarios use no gated construct, so a [ios] ladder
+    # would mis-resolve them to idb. Closing that gap is BE-0223-style actuator strengthening.
     # XCUITest backend (BE-0019) stays wired for explicit `--backend xcuitest`: the generic runner
     # reaches elements idb's tree can't (e.g. a TabView's tabs) by label, where idb needs vision.
     xcuitest:
@@ -66,8 +74,10 @@ targets:
     appPath: ios/uikit/build/dd/Build/Products/Debug-iphonesimulator/BajutsuShowcaseUIKit.app
     build: make -C demos/showcase uikit-build
     scenarios: scenarios
-    # XCUITest backend (BE-0019): the a11y UIKit scenarios now cross tabs by tapping the native tab
-    # bar (BE-0107), which idb can't do, so `--backend ios` needs the generic runner wired here too.
+    # Capability-aware per-scenario selection (BE-0240), as for showcase-swiftui: idb by default,
+    # escalating to XCUITest only for the scenarios whose steps need it. The a11y UIKit scenarios
+    # cross tabs by tapping the native tab bar (BE-0107); the generic XCUITest runner stays wired.
+    backend: [ios]
     xcuitest:
       testRunner: ../../BajutsuKit/Runner/build/dd/Build/Products/BajutsuRunner.xctestrun
       build: make -C demos/showcase runner-build
@@ -82,6 +92,9 @@ targets:
     build: make -C demos/showcase uikit-noax-build
     backend: [idb]   # idb + vision (BE-0176): crawl drives this -noax app with no XCUITest runner
     scenarios: ios/scenarios-xcuitest
+    # NOT migrated to the BE-0240 ladder (see showcase-swiftui-noax): the XCUITest need here is
+    # app-level (no accessibility ids, collapsed tab bar), not a scenario capability the preflight
+    # can see — BE-0223-style actuator strengthening, not capability-aware selection, is the fix.
     # XCUITest backend (BE-0019) stays wired for explicit `--backend xcuitest`: the generic runner
     # drives the -noax UITabBar tabs by label, which idb's describe-all collapses into an opaque group.
     xcuitest:
