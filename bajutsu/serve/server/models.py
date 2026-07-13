@@ -88,6 +88,14 @@ class Run(Base):
     scenario_hash: Mapped[str | None] = mapped_column(default=None)
     tool_version: Mapped[str | None] = mapped_column(default=None)
     git_revision: Mapped[str | None] = mapped_column(default=None)
+    # Soft-delete (BE-0239): a run with `deleted_at` set is trashed — hidden from `list_runs` but
+    # restorable within the retention window; `deleted_by` records the user id who did it, for the
+    # audit reach. Null for a live run. `deleted_by` is a plain column, not an FK to users.id like
+    # `created_by`: it is added after the initial migration, and the SQLite gate cannot ALTER-ADD an
+    # FK column (migration 0008 set the same precedent for later columns). The referential reach that
+    # matters lives in audit_log, whose `target` records the run id and `actor_id` the user.
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), default=None)
+    deleted_by: Mapped[str | None] = mapped_column(default=None)
 
 
 class JobRecord(Base):

@@ -420,13 +420,19 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
                 case _ if path.startswith("/api/runs/") and path.endswith("/upload-urls"):
                     run_id = path[len("/api/runs/") : -len("/upload-urls")]
                     self._json(*ops.generate_upload_urls(state, run_id, body))
+                case "/api/runs/bulk-delete":
+                    self._json(*ops.bulk_delete_runs(state, body, actor=self._actor()))
+                case _ if path.startswith("/api/runs/") and path.endswith("/restore"):
+                    run_id = unquote(path[len("/api/runs/") : -len("/restore")])
+                    self._json(*ops.restore_run(state, run_id, actor=self._actor()))
                 case _:
                     self._json({"error": "not found"}, 404)
 
         def do_DELETE(self) -> None:
-            # The only DELETE surface is deregistering a project (BE-0225). It mutates server state,
-            # so it runs behind the same auth gate as every route and the same unconditional
-            # cross-origin block as do_POST (BE-0121) — a DELETE is as CSRF-sensitive as a POST.
+            # DELETE surfaces: deregister a project (BE-0225) and delete a run/crawl-run (BE-0239).
+            # Each mutates server state, so it runs behind the same auth gate as every route and the
+            # same unconditional cross-origin block as do_POST (BE-0121) — a DELETE is as
+            # CSRF-sensitive as a POST.
             oplog.bind_request(oplog.new_request_id())
             if not self._gate():
                 return
@@ -437,6 +443,18 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
                 self._json({"error": "cross-origin request blocked"}, 403)
                 return
             path = urlparse(self.path).path
+            # `?purge=true` skips the trash window and purges immediately (admin-only, gated in the
+            # operation since the query isn't visible to the path-based RBAC). Crawl and scenario runs
+            # share the `runs/<id>/` tree, so one operation serves both DELETE surfaces (BE-0239).
+            purge = self._qs("purge") == "true"
+            if path.startswith("/api/crawl/runs/"):
+                run_id = unquote(path[len("/api/crawl/runs/") :])
+                self._json(*ops.delete_run(state, run_id, purge=purge, actor=self._actor()))
+                return
+            if path.startswith("/api/runs/"):
+                run_id = unquote(path[len("/api/runs/") :])
+                self._json(*ops.delete_run(state, run_id, purge=purge, actor=self._actor()))
+                return
             if path.startswith("/api/projects/"):
                 name = unquote(path[len("/api/projects/") :])
                 self._json(*ops.deregister_project(state, name, actor=self._actor()))

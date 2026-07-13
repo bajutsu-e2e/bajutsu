@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import json
 import mimetypes
+from datetime import UTC, datetime
 from pathlib import PurePosixPath
 from typing import Any
 
@@ -23,6 +24,12 @@ from bajutsu.report.archive import zip_tree
 from bajutsu.serve.artifacts import Artifact
 from bajutsu.serve.helpers import crawl_run_summary, valid_run_id
 from bajutsu.serve.server.object_store import ObjectStore
+
+# A soft-deleted run is marked by a tombstone object at ``<run_id>/.deleted`` whose body is the
+# deletion time (ISO-8601). Object storage has no filesystem `.trash/` to move a tree into, so the
+# tombstone is the store-side "this run is trashed" signal `list_runs`/`list_crawl_runs` skip on and
+# the retention sweep reads a timestamp from (BE-0239) — the mirror of `LocalArtifactStore`'s trash.
+_TOMBSTONE = ".deleted"
 
 
 class ObjectStorageArtifactStore:
@@ -84,7 +91,10 @@ class ObjectStorageArtifactStore:
     def list_runs(self) -> list[dict[str, Any]]:
         rels = [k[len(self._prefix) :] for k in self._store.list_keys(self._prefix)]
         present = set(rels)
-        run_ids = sorted({r.split("/")[0] for r in rels if "/" in r}, reverse=True)  # newest first
+        deleted = self._tombstoned(rels)  # soft-deleted runs drop out of the history (BE-0239)
+        run_ids = sorted(
+            {r.split("/")[0] for r in rels if "/" in r} - deleted, reverse=True
+        )  # newest first
         out: list[dict[str, Any]] = []
         for run_id in run_ids:
             raw = self._store.get_bytes(f"{self._prefix}{run_id}/manifest.json")
@@ -118,10 +128,11 @@ class ObjectStorageArtifactStore:
         # streamed a screen map, and index each run's direct crashes/*.yaml and flows/*.yaml names —
         # a nested key or a non-yaml is excluded, matching the local scan's glob (no dead links).
         crawl_ids: set[str] = set()
+        deleted = self._tombstoned(rels)  # soft-deleted crawl runs drop out too (BE-0239)
         files: dict[tuple[str, str], list[str]] = {}
         for rel in rels:
             run_id, _, rest = rel.partition("/")
-            if not valid_run_id(run_id):
+            if not valid_run_id(run_id) or run_id in deleted:
                 continue  # a corrupt/hostile key (`../screenmap.json`, empty segment) never lists
             if rest == "screenmap.json":
                 crawl_ids.add(run_id)
@@ -148,4 +159,64 @@ class ObjectStorageArtifactStore:
                     sorted(files.get((run_id, "flows"), [])),
                 )
             )
+        return out
+
+    def _tombstoned(self, rels: list[str]) -> set[str]:
+        """The run ids soft-deleted (a ``<id>/.deleted`` tombstone present) among *rels* (BE-0239)."""
+        return {
+            run_id
+            for rel in rels
+            if (run_id := rel.split("/")[0])
+            and valid_run_id(run_id)
+            and rel == f"{run_id}/{_TOMBSTONE}"
+        }
+
+    def _tombstone_key(self, run_id: str) -> str | None:
+        """The tombstone object key for *run_id*, or None if *run_id* isn't a single safe segment."""
+        return None if not valid_run_id(run_id) else self._key(f"{run_id}/{_TOMBSTONE}")
+
+    def soft_delete_run(self, run_id: str) -> bool:
+        key = self._tombstone_key(run_id)
+        if key is None or self._store.exists(key):  # bad id, or already trashed
+            return False
+        # A run exists iff it has at least one object under its prefix; refuse to tombstone a run id
+        # with no bytes (a typo), matching `LocalArtifactStore` refusing an absent directory.
+        prefix = self._key(f"{run_id}/")
+        if prefix is None or not self._store.list_keys(prefix):
+            return False
+        self._store.put_bytes(
+            key, datetime.now(UTC).isoformat().encode(), content_type="text/plain"
+        )
+        return True
+
+    def restore_run(self, run_id: str) -> bool:
+        key = self._tombstone_key(run_id)
+        if key is None or not self._store.exists(key):
+            return False
+        self._store.delete_key(key)
+        return True
+
+    def purge_run(self, run_id: str) -> bool:
+        if not valid_run_id(run_id):
+            return False
+        prefix = self._key(f"{run_id}/")
+        if prefix is None:
+            return False
+        keys = self._store.list_keys(prefix)  # every object under the run — evidence + tombstone
+        if not keys:
+            return False
+        self._store.delete_keys(keys)
+        return True
+
+    def list_trashed_runs(self) -> list[dict[str, Any]]:
+        out: list[dict[str, Any]] = []
+        for key in self._store.list_keys(self._prefix):
+            rel = key[len(self._prefix) :]
+            run_id = rel.split("/")[0]
+            if not valid_run_id(run_id) or rel != f"{run_id}/{_TOMBSTONE}":
+                continue
+            raw = self._store.get_bytes(key)
+            deleted_at = raw.decode(errors="replace") if raw else None
+            out.append({"id": run_id, "deletedAt": deleted_at})
+        out.sort(key=lambda r: r["deletedAt"] or "", reverse=True)
         return out

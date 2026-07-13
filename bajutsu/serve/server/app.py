@@ -467,6 +467,27 @@ def make_app(state: ServeState) -> FastAPI:
     async def upload_urls(run_id: str, body: dict[str, Any]) -> JSONResponse:
         return _result(ops.generate_upload_urls(state, run_id, body))
 
+    # Run lifecycle (BE-0239): delete / restore / bulk-delete a run and its report. `bulk-delete`
+    # is declared before the `{run_id}` DELETE so the static segment wins the match; crawl and
+    # scenario runs share the `runs/<id>/` tree, so one operation serves both DELETE routes.
+    @app.post("/api/runs/bulk-delete")
+    async def bulk_delete_runs(body: dict[str, Any], request: Request) -> JSONResponse:
+        return _result(ops.bulk_delete_runs(state, body, actor=_actor(request)))
+
+    @app.post("/api/runs/{run_id}/restore")
+    async def restore_run(run_id: str, request: Request) -> JSONResponse:
+        return _result(ops.restore_run(state, run_id, actor=_actor(request)))
+
+    @app.delete("/api/runs/{run_id}")
+    async def delete_run(run_id: str, request: Request, purge: bool = False) -> JSONResponse:
+        # `?purge=true` skips the trash window (admin-only, gated in the operation — the query isn't
+        # in the path the RBAC middleware sees).
+        return _result(ops.delete_run(state, run_id, purge=purge, actor=_actor(request)))
+
+    @app.delete("/api/crawl/runs/{run_id}")
+    async def delete_crawl_run(run_id: str, request: Request, purge: bool = False) -> JSONResponse:
+        return _result(ops.delete_run(state, run_id, purge=purge, actor=_actor(request)))
+
     @app.post("/api/worker/lease")
     async def worker_lease(body: dict[str, Any]) -> JSONResponse:
         return _result(ops.worker_lease(state, body.get("worker_id", ""), body.get("capabilities")))
