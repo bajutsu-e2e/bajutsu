@@ -91,11 +91,18 @@ exclusive unit of work.
 - **Unify `_await_ready` / `_await_boot` onto `base.wait_until`'s deadline discipline.** The module
   currently hand-rolls a second deadline-and-poll loop (`_await_ready` for the device/web families,
   `_await_boot` for Android) distinct from the one `base.wait_until` already implements and the
-  runner's step-level waits rely on. Folding the polling logic into one shared primitive (either by
-  having `readiness.py` call `base.wait_until` directly or by extracting the shared backoff loop the
-  two currently duplicate) removes a second deadline implementation to keep in sync with
-  determinism-first (prime directive 2) as a side effect of the split, without touching what either
-  caller waits *for*.
+  runner's step-level waits rely on. These are not the same contract, so this is not a call-through:
+  `base.wait_until` (`base.py:359`) requires a concrete `sel: Selector`, polls `driver.wait_for(sel)`
+  at a fixed interval, and returns a bare `bool`, whereas `_await_ready` polls `driver.query()`,
+  falls back through `ready_sel` → `id_namespaces` → a bare-count heuristic when no selector is
+  given, backs off exponentially (`poll_init` → `poll_max`), and returns a `ReadinessResult` (signal
+  + elapsed) that BE-0231's timeout diagnostics depend on. So the plan is to extract the shared
+  monotonic-deadline/exponential-backoff *loop skeleton* into one primitive that both
+  `base.wait_until` and `_await_ready` build on — each keeping its own poll body and return type —
+  rather than routing `_await_ready` through `base.wait_until` (which would drop the fallback tiers
+  and `ReadinessResult`). That removes a second hand-rolled deadline implementation as a side effect
+  of the split, honoring determinism-first (prime directive 2), without changing what either caller
+  waits *for*.
 - **Add `Environment.resolve_device(actuator, udid) -> str` to the Protocol.** Each environment
   already knows how its own platform resolves a device handle (`simctl.resolve_udid` for the iOS
   family, `adb.resolve_serial` for Android, a passthrough for web); expose it as a Protocol method
