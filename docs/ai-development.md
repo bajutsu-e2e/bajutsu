@@ -403,6 +403,13 @@ A bare "done" or a 👍 is not a reply under this rule; the grounds are what let
 the thread audit the resolution. Keep each reply short and factual — the point is evidence, not
 narration.
 
+**Every answered comment gets both a reply and a resolved conversation** — whether you fixed it or
+consciously declined it, leave the reply that records the grounds, then mark that conversation
+resolved. The reply says *why*; resolving the thread says it is *settled*, so the set of open
+threads always reflects exactly what still needs attention rather than a pile of already-handled
+comments. The one exception is the undecided case below: a thread you have left open on purpose
+stays open — never resolve a comment whose question is still unanswered.
+
 When you are unsure how a comment should be handled — the fix is ambiguous, or it touches
 something architecturally significant — ask rather than guess (an AI agent checks with the human
 driving it; a human contributor checks with the reviewer or a maintainer), and leave that thread
