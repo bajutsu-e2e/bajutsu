@@ -580,10 +580,13 @@ header .cfgname{color:var(--mut);font-size:.82em;max-width:32vw;overflow:hidden;
    Compute button share the top row (.covrow); the Runs picker sits on its own row below. */
 .covctl{display:flex;flex-direction:column;gap:1em;margin:.8em 0}
 .covctl .covrow{display:flex;gap:1em;align-items:flex-end;flex-wrap:wrap}
-.covctl label{display:flex;flex-direction:column;gap:.25em;font-size:.85em}
+/* margin:0 drops the global label margin — otherwise flex-end aligns the label's margin box, not the
+   select, so the select's bottom sits above the button's (see .covrow .run below). */
+.covctl label{display:flex;flex-direction:column;gap:.25em;font-size:.85em;margin:0}
 /* Compute sits beside Target, sized to its label — not the full-width bar the stacked .run default
-   would give. */
-.covctl .covrow .run{width:auto;padding:.45rem 1.2rem}
+   would give. The transparent 1px border matches the select's border so both stand the same height
+   and their bottoms line up under align-items:flex-end. */
+.covctl .covrow .run{width:auto;padding:.45rem 1.2rem;border:1px solid transparent}
 .covctl .subhint{font-size:.75em;color:var(--mut)}
 
 /* ===== Full-width single-card views ==============================================================
