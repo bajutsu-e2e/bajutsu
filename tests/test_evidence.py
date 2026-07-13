@@ -174,7 +174,7 @@ def test_filesink_dispatches_adb_driver_intervals_end_to_end(
     from bajutsu.drivers.adb import AdbDriver
 
     class _FakeProc:
-        def stop(self, sig: int) -> None:
+        def stop(self, sig: int, timeout: float) -> None:
             return None
 
     monkeypatch.setattr(intervals, "_SubprocessProc", lambda argv, stdout_path: _FakeProc())

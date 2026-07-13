@@ -15,9 +15,11 @@ from bajutsu import intervals, simctl
 class FakeProc:
     def __init__(self) -> None:
         self.stopped_with: int | None = None
+        self.stopped_timeout: float | None = None
 
-    def stop(self, sig: int) -> None:
+    def stop(self, sig: int, timeout: float) -> None:
         self.stopped_with = sig
+        self.stopped_timeout = timeout
 
 
 def test_record_video_cmd() -> None:
@@ -68,6 +70,9 @@ def test_start_video_lifecycle() -> None:
     assert stdout_path is None  # recordVideo writes its own file
     assert interval.stop() == Path("/tmp/v.mp4")
     assert proc.stopped_with == signal.SIGINT  # SIGINT finalizes the mp4
+    # Video gets the generous finalize window, not the short log-stream grace: a premature kill would
+    # truncate the mp4 (no moov atom) and wedge the simulator's recording session.
+    assert proc.stopped_timeout == intervals._VIDEO_FINALIZE_TIMEOUT
 
 
 def test_start_device_log_lifecycle() -> None:
@@ -85,6 +90,9 @@ def test_start_device_log_lifecycle() -> None:
     assert stdout_path == Path("/tmp/d.log")  # the stream is written to the file
     assert interval.stop() == Path("/tmp/d.log")
     assert proc.stopped_with == signal.SIGTERM
+    assert (
+        proc.stopped_timeout == intervals._STOP_TIMEOUT
+    )  # a log stream ends at once — short grace
 
 
 # --- adb (Android) interval providers ---
@@ -115,6 +123,7 @@ def test_start_screenrecord_records_device_side_then_pulls_on_stop(tmp_path: Pat
 
     assert interval.stop() == target
     assert proc.stopped_with == signal.SIGINT  # SIGINT finalizes the mp4
+    assert proc.stopped_timeout == intervals._VIDEO_FINALIZE_TIMEOUT  # same generous flush window
     # The recording is pulled off the device, then the device copy is removed — in that order.
     assert run_calls == [
         adb.pull_cmd("SER", adb.VIDEO_DEVICE_PATH, str(target)),
@@ -238,6 +247,28 @@ def test_subprocess_proc_closes_file_on_popen_failure(tmp_path: Path, monkeypatc
         intervals._SubprocessProc(["fake"], out)
     assert len(opened_files) == 1
     assert opened_files[0].closed, "file handle leaked — not closed after Popen failure"
+
+
+def test_subprocess_proc_kills_after_timeout_when_signal_ignored() -> None:
+    # A process that ignores the stop signal is hard-killed once the finalize window elapses, so
+    # stop() returns promptly instead of hanging. The window is generous for real video finalize; a
+    # tiny one here keeps the test fast while proving the timeout is honored and the kill is the backstop.
+    import sys
+    import time
+
+    proc = intervals._SubprocessProc(
+        [
+            sys.executable,
+            "-c",
+            "import signal, time; signal.signal(signal.SIGINT, signal.SIG_IGN); time.sleep(30)",
+        ],
+        None,
+    )
+    start = time.monotonic()
+    proc.stop(signal.SIGINT, timeout=0.5)
+    assert time.monotonic() - start < 10, (
+        "stop() should kill after the timeout, not wait out sleep(30)"
+    )
 
 
 def test_app_trace_cmd() -> None:

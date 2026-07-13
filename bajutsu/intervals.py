@@ -83,10 +83,21 @@ def app_trace_cmd(udid: str, subsystem: str) -> list[str]:
     ]
 
 
+# How long `stop()` waits for the signalled process to exit before a hard `kill()`. A log stream ends
+# the instant it sees the stop signal, so a short grace is plenty. A screen recording is different: on
+# the stop signal `recordVideo` / `screenrecord` still has to flush and mux the whole clip to disk
+# ("Writing to disk"), which scales with the recording's length and the host's load. Killing it
+# mid-write truncates the mp4 so it has no `moov` atom (unplayable) and — worse on iOS — leaves the
+# simulator's host-recording session held, so every later capture fails with "Host recording is
+# already in progress". So video gets a generous finalize window; the kill stays only as a last resort.
+_STOP_TIMEOUT = 10.0
+_VIDEO_FINALIZE_TIMEOUT = 120.0
+
+
 class Proc(Protocol):
     """A running child process that can be signalled and waited on."""
 
-    def stop(self, sig: int) -> None: ...
+    def stop(self, sig: int, timeout: float) -> None: ...
 
 
 # spawn(argv, stdout_path) -> a running process (stdout written to the file if given)
@@ -107,10 +118,10 @@ class _SubprocessProc:
                 self._file.close()
             raise
 
-    def stop(self, sig: int) -> None:
+    def stop(self, sig: int, timeout: float) -> None:
         self._proc.send_signal(sig)
         try:
-            self._proc.wait(timeout=10)
+            self._proc.wait(timeout=timeout)
         except subprocess.TimeoutExpired:
             self._proc.kill()
             self._proc.wait()
@@ -125,7 +136,7 @@ def _spawn(argv: list[str], stdout_path: Path | None) -> Proc:
 class _NullProc:
     """A no-op process (the default so constructing an Interval has no side effects)."""
 
-    def stop(self, sig: int) -> None:
+    def stop(self, sig: int, timeout: float) -> None:
         return None
 
 
@@ -142,17 +153,28 @@ class Interval:
     provider: str = PROVIDER
     _proc: Proc = field(repr=False, default_factory=_NullProc)
     _stop_signal: int = signal.SIGTERM
+    _stop_timeout: float = _STOP_TIMEOUT
     _transform: Callable[[Path], Path] | None = field(default=None, repr=False)
 
     def stop(self) -> Path:
-        self._proc.stop(self._stop_signal)
+        self._proc.stop(self._stop_signal, self._stop_timeout)
         return self._transform(self.path) if self._transform is not None else self.path
 
 
 def start_video(udid: str, path: Path, spawn: Spawn = _spawn) -> Interval:
-    """Begin recording the screen to `path`; stop() (SIGINT) finalizes the mp4."""
+    """Begin recording the screen to `path`; stop() (SIGINT) finalizes the mp4.
+
+    The stop gives `recordVideo` the generous `_VIDEO_FINALIZE_TIMEOUT` to write and mux the clip: a
+    premature kill would truncate the mp4 (no `moov` atom) and wedge the simulator's recording session.
+    """
     proc = spawn(record_video_cmd(udid, str(path)), None)
-    return Interval(kind="video", path=path, _proc=proc, _stop_signal=signal.SIGINT)
+    return Interval(
+        kind="video",
+        path=path,
+        _proc=proc,
+        _stop_signal=signal.SIGINT,
+        _stop_timeout=_VIDEO_FINALIZE_TIMEOUT,
+    )
 
 
 def start_device_log(
@@ -174,7 +196,8 @@ def start_screenrecord(
     `screenrecord` writes device-side (it cannot stream to a host file), so recording is a running
     process plus a post-stop transform: pull the finalized mp4 to `path`, then remove it device-side.
     SIGINT (not a kill) lets `screenrecord` flush a complete mp4, the same reason simctl recordVideo
-    finalizes on SIGINT.
+    finalizes on SIGINT — and, like it, the stop waits `_VIDEO_FINALIZE_TIMEOUT` for that flush before
+    any hard kill, so a slow device-side write is not cut off into a truncated (moov-less) mp4.
     """
     device_path = adb.VIDEO_DEVICE_PATH
     proc = spawn(adb.screenrecord_cmd(serial, device_path), None)
@@ -194,6 +217,7 @@ def start_screenrecord(
         provider=ADB_PROVIDER,
         _proc=proc,
         _stop_signal=signal.SIGINT,
+        _stop_timeout=_VIDEO_FINALIZE_TIMEOUT,
         _transform=transform,
     )
 
