@@ -104,3 +104,21 @@ jobs:
           config: demos/showcase/showcase.config.yaml
           udid: ${{ steps.sim.outputs.udid }}
           artifact-name: idb-monitor-golden-run
+
+      # Visual regression (VRT, pixel snapshot): the committed twin of the element-tree golden above,
+      # giving iOS the same committed VRT coverage Android has (android-e2e's e2e-visual). Compares the
+      # Stable catalog against the committed baselines_ios/ baseline, masking the status bar + the
+      # "Liquid Glass" tab bar. Runs on this weekly monitor rather than per-PR because a pixel baseline
+      # is host-specific (the Simulator renderer drifts with Xcode / device / OS); a drift surfaces here
+      # instead of blocking PRs. idb_companion is already brewed above, and `make e2e-visual` pulls the
+      # `visual` extra (Pillow). On a drift, re-record from the uploaded screenshot
+      # (see demos/showcase/scenarios/visual/baselines_ios/README.md).
+      - name: Run visual regression (VRT, pixel snapshot)
+        run: make -C demos/showcase e2e-visual SIM=${{ steps.sim.outputs.udid }}
+      - name: Upload VRT run artifacts
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
+        with:
+          name: idb-monitor-visual-run
+          path: runs/
+          if-no-files-found: ignore
