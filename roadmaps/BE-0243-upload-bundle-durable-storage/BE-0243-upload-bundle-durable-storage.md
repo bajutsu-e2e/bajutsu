@@ -9,6 +9,7 @@
 | Author | [@paihu](https://github.com/paihu) |
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0243") |
+| Implementing PR | [#984](https://github.com/bajutsu-e2e/bajutsu/pull/984) |
 | Topic | Configuration sourcing |
 | Related | [BE-0073](../BE-0073-serve-zip-bundle-upload/BE-0073-serve-zip-bundle-upload.md), [BE-0063](../BE-0063-git-config-source/BE-0063-git-config-source.md), [BE-0204](../BE-0204-server-storage-gcs-support/BE-0204-server-storage-gcs-support.md), [BE-0108](../BE-0108-hosted-config-source-restriction/BE-0108-hosted-config-source-restriction.md), [BE-0225](../BE-0225-config-project-hub/BE-0225-config-project-hub.md), [BE-0015](../BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md) |
 <!-- /BE-METADATA -->

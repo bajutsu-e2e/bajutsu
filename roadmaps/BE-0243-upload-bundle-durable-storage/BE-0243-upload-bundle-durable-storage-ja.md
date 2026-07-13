@@ -9,6 +9,7 @@
 | 提案者 | [@paihu](https://github.com/paihu) |
 | 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0243") |
+| 実装 PR | [#984](https://github.com/bajutsu-e2e/bajutsu/pull/984) |
 | トピック | config の取得元 |
 | 関連 | [BE-0073](../BE-0073-serve-zip-bundle-upload/BE-0073-serve-zip-bundle-upload-ja.md)、[BE-0063](../BE-0063-git-config-source/BE-0063-git-config-source-ja.md)、[BE-0204](../BE-0204-server-storage-gcs-support/BE-0204-server-storage-gcs-support-ja.md)、[BE-0108](../BE-0108-hosted-config-source-restriction/BE-0108-hosted-config-source-restriction-ja.md)、[BE-0225](../BE-0225-config-project-hub/BE-0225-config-project-hub-ja.md)、[BE-0015](../BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting-ja.md) |
 <!-- /BE-METADATA -->
