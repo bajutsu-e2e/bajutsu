@@ -133,8 +133,8 @@ Log:
   the resident fetch when configured and degrades to `uiautomator dump` with a loud warning on
   `AdbResidentError`. `parse_hierarchy` and everything above `_describe()` (transient-empty retry,
   `_settle`, `_resolve`, actuation) are unchanged, and the default (no fetch) keeps today's
-  dump-every-read behavior exactly — so no box is ticked yet. The `adb forward` builder and the real
-  HTTP transport factory are deferred to PR-C, where they stop being dead code.
+  dump-every-read behavior exactly — so no box is ticked yet. Unit 2's hierarchy-query channel (the
+  `adb forward` transport and its HTTP handshake) is not written yet; it lands in a follow-up PR.
 
 ## References
 
