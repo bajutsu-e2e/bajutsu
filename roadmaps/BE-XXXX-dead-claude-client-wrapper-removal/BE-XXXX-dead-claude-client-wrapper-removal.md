@@ -10,6 +10,7 @@
 | Status | **Proposal** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
 | Topic | Codebase quality & technical debt |
+| Related | [BE-0104](../BE-0104-vendor-neutral-ai-backend/BE-0104-vendor-neutral-ai-backend.md), [BE-0140](../BE-0140-dedupe-claude-client-init/BE-0140-dedupe-claude-client-init.md) |
 <!-- /BE-METADATA -->
 
 ## Introduction
