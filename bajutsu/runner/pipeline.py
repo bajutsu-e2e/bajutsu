@@ -103,6 +103,12 @@ class _ScenarioRunner:
     schemas_dir: Path | None = None
     actuator: str | None = None
     golden_context: GoldenContext | None = None
+    # Per-scenario actuator resolver (BE-0240): when set, each scenario's actuator (and thus its
+    # capability set for the preflight below) is resolved from the scenario itself, rather than one
+    # fixed `actuator` for the whole run. The pool's `lease()` resolves the *same* pure function, so
+    # the actuator preflighted here is the one the lease builds. None keeps the fixed-`actuator` path
+    # (the cross-browser matrix, tests driving a lease directly).
+    resolve_actuator: Callable[[Scenario], str] | None = None
 
     def run_one(self, i: int, s: Scenario) -> RunResult:
         """Run one scenario on a freshly leased device and return its result.
@@ -114,18 +120,36 @@ class _ScenarioRunner:
         sid = f"{i:02d}-{scenario_slug(s.name)}"
         if self.progress is not None:
             self.progress(f"▶ scenario {i + 1}/{self.total}: {s.name}")
-        if self.caps is not None and (reasons := capability_preflight.unsupported(s, self.caps)):
+        # Resolve this scenario's actuator and capability set. With a per-scenario resolver (BE-0240)
+        # the cheapest actuator the scenario can run on is chosen here; with none, the run's fixed
+        # `actuator`/`caps` are used (today's path). Either way the preflight fails a scenario the
+        # actuator can't run *before* any device is leased (BE-0082 fail-fast).
+        actuator = self.actuator
+        caps = self.caps
+        if self.resolve_actuator is not None:
+            try:
+                actuator = self.resolve_actuator(s)
+            except RuntimeError as exc:
+                # No iOS actuator is even available (e.g. no xcodebuild and idb absent): a clean
+                # per-scenario failure, not a crash that aborts the whole run.
+                if self.progress is not None:
+                    self.progress(f"✘ scenario {i + 1}/{self.total}: {s.name} ({exc})")
+                return RunResult(
+                    scenario=s.name, ok=False, steps=[], backend="", sid=sid, failure=str(exc)
+                )
+            caps = capabilities_for(actuator)
+        if caps is not None and (reasons := capability_preflight.unsupported(s, caps)):
             if self.progress is not None:
                 self.progress(
-                    f"✘ scenario {i + 1}/{self.total}: {s.name} (unsupported on {self.actuator})"
+                    f"✘ scenario {i + 1}/{self.total}: {s.name} (unsupported on {actuator})"
                 )
             return RunResult(
                 scenario=s.name,
                 ok=False,
                 steps=[],
-                backend=self.actuator or "",
+                backend=actuator or "",
                 sid=sid,
-                failure=f"unsupported on backend '{self.actuator}': {'; '.join(reasons)}",
+                failure=f"unsupported on backend '{actuator}': {'; '.join(reasons)}",
             )
         lz = self.lease(self.eff, s)
         handler = self.on_blocked_for(s) if self.on_blocked_for is not None else self.on_blocked
@@ -223,6 +247,7 @@ def run_all(
     baselines_dir: Path | None = None,
     schemas_dir: Path | None = None,
     actuator: str | None = None,
+    resolve_actuator: Callable[[Scenario], str] | None = None,
     golden_context: GoldenContext | None = None,
 ) -> list[RunResult]:
     """Run every scenario, each on a freshly leased device, and return one result per scenario.
@@ -253,15 +278,25 @@ def run_all(
         baselines_dir: Baseline images for `visual` assertions. None disables visual comparison.
         schemas_dir: Directory the `responseSchema` assertions' schema files resolve against. None
             disables them.
-        actuator: The selected actuator (e.g. `idb` / `playwright`); when given, each scenario is
-            preflighted against its static capability set and failed up front if it needs a
-            capability the actuator lacks (BE-0082). None skips the preflight (a lease driven
-            directly in tests).
+        actuator: The single selected actuator (e.g. `idb` / `playwright`); when given, each scenario
+            is preflighted against its static capability set and failed up front if it needs a
+            capability the actuator lacks (BE-0082). None skips the fixed preflight (a lease driven
+            directly in tests, or when `resolve_actuator` chooses per scenario instead).
+        resolve_actuator: Per-scenario actuator resolver (BE-0240); when given, each scenario's
+            actuator — and thus the capability set it is preflighted against — is resolved from the
+            scenario's own steps (cheapest sufficient), instead of the one fixed `actuator`. Mutually
+            exclusive with `actuator` (passing both raises): the CLI's single-engine path and `audit`
+            pass this, the cross-browser matrix passes `actuator`.
         golden_context: Goldens directory for `golden` assertions (BE-0006). None disables them.
 
     Returns:
         One result per scenario, in the same order as `scenarios`.
     """
+    # `actuator` (one fixed actuator) and `resolve_actuator` (per-scenario, BE-0240) are two ways to
+    # answer the same question; passing both is a caller bug. Fail loudly rather than silently letting
+    # the resolver win and discarding the fixed actuator/caps (prime directive 2).
+    if actuator is not None and resolve_actuator is not None:
+        raise ValueError("pass either actuator or resolve_actuator to run_all, not both")
     redactor = Redactor(eff.redact, values=secret_values)
     # One mailbox reader for the whole run (it's per-target, not per-device): the `email` step polls
     # it, with ${secrets.*} in the url/headers resolved from the same secret bindings (BE-0046).
@@ -288,6 +323,7 @@ def run_all(
         baselines_dir=baselines_dir,
         schemas_dir=schemas_dir,
         actuator=actuator,
+        resolve_actuator=resolve_actuator,
         golden_context=golden_context,
     )
     if workers > 1:
@@ -316,6 +352,7 @@ def run_and_report(
     baselines_dir: Path | None = None,
     schemas_dir: Path | None = None,
     actuator: str | None = None,
+    resolve_actuator: Callable[[Scenario], str] | None = None,
     config_source: dict[str, str] | None = None,
     exec_provenance: dict[str, str | None] | None = None,
     golden_context: GoldenContext | None = None,
@@ -353,6 +390,7 @@ def run_and_report(
         baselines_dir=baselines_dir,
         schemas_dir=schemas_dir,
         actuator=actuator,
+        resolve_actuator=resolve_actuator,
         golden_context=golden_context,
     )
     manifest = _assemble_report(

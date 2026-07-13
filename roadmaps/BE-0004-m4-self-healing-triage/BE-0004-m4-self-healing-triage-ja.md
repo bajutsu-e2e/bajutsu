@@ -10,7 +10,7 @@
 | 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0004") |
 | 実装 PR | PR 単位の履歴より前（初期インポートにスカッシュ済みで、単一 PR なし） |
-| トピック | マイルストーン（M1–M4） |
+| トピック | 自己修復トリアージ |
 <!-- /BE-METADATA -->
 
 ## はじめに
@@ -35,4 +35,4 @@
 
 ## 参考
 
-[DESIGN §3.1 / §12](../../DESIGN.md)、[reporting.md](../../docs/ja/reporting.md)、`bajutsu/triage.py`、[自己修復トリアージ（M4）](../README-ja.md#自己修復トリアージm4)
+[DESIGN §3.1 / §12](../../DESIGN.md)、[reporting.md](../../docs/ja/reporting.md)、`bajutsu/triage.py`、[自己修復トリアージ](../README-ja.md#自己修復トリアージ)

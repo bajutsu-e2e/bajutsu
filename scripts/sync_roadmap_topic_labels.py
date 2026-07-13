@@ -79,19 +79,19 @@ EDIT_STATUSES = frozenset({"modified", "renamed", "changed"})
 # area label. Keys must be real topic keys from ``TOPICS`` (validated below), so a rename there fails
 # loudly here instead of silently emitting a label no reconcile step recognizes. Every matching rule
 # contributes: a ``BajutsuKit/…/*.swift`` file matches both the ``BajutsuKit/`` prefix and the
-# ``.swift`` suffix rule (both ``on-device``, deduped to one label), and a PR touching several trees
+# ``.swift`` suffix rule (both ``platform``, deduped to one label), and a PR touching several trees
 # carries several ``topic:*`` labels. Trees the roadmap taxonomy has no topic for (docs, dependency
 # lockfiles) are intentionally unmapped — they simply take no topic label.
 PATH_TOPIC_PREFIX_RULES: tuple[tuple[str, str], ...] = (
     ("bajutsu/mcp/", "mcp"),
     ("bajutsu/serve/", "serve-cli-features"),
-    ("bajutsu/drivers/", "backend"),
+    ("bajutsu/drivers/", "platform"),
     ("bajutsu/ai/", "ai-provider"),
     # No trailing slash: `record` is a pair of top-level modules (`bajutsu/record.py`,
     # `bajutsu/record_capture.py`), not a tree — one prefix rule covers both, and the CLI entry
     # point `bajutsu/cli/commands/record.py` takes the exact rule below.
     ("bajutsu/record", "record"),
-    ("BajutsuKit/", "on-device"),
+    ("BajutsuKit/", "platform"),
     ("assets/", "serve-cli-features"),
     ("overrides/", "serve-cli-features"),
     ("deploy/", "hosting"),
@@ -105,9 +105,9 @@ PATH_TOPIC_EXACT_RULES: tuple[tuple[str, str], ...] = (
     ("Makefile", "dev-infra"),
     ("bajutsu/cli/commands/record.py", "record"),
 )
-# File-suffix rules, same contribution model — Swift sources are the on-device test-support surface
-# wherever they live.
-PATH_TOPIC_SUFFIX_RULES: tuple[tuple[str, str], ...] = ((".swift", "on-device"),)
+# File-suffix rules, same contribution model — Swift sources are the iOS platform test-support
+# surface wherever they live.
+PATH_TOPIC_SUFFIX_RULES: tuple[tuple[str, str], ...] = ((".swift", "platform"),)
 
 # Fail fast at import if a path rule names a topic key that ``TOPICS`` no longer defines: the label
 # it would emit could never be reconciled against a roadmap item's, so catch the drift here. A plain

@@ -11,7 +11,7 @@
 > どの順で作るかです。**プラットフォーム別の具体的な設計と実装計画はロードマップ**にあり、各項目を下に
 > リンクしています。方向性は本ページで、具体はロードマップ項目で把握してください。
 
-関連: [drivers](drivers.md) · [selectors](selectors.md) · [concepts](concepts.md) · [vision](vision.md) · [roadmap → プラットフォーム拡張](../../roadmaps/README-ja.md#プラットフォーム拡張android--web--flutter)
+関連: [drivers](drivers.md) · [selectors](selectors.md) · [concepts](concepts.md) · [vision](vision.md) · [roadmap → プラットフォーム対応](../../roadmaps/README-ja.md#プラットフォーム対応)
 
 ---
 
@@ -81,5 +81,5 @@ Web でも同一に効きます。決定性ファースト、app 非依存、そ
 プラットフォームも Tier-2 の `run` / CI ゲートに LLM を入れてはなりません。
 
 > **ロードマップとの関係。** 本ページは概要で、優先度付きの具体的な計画は上記の
-> [プラットフォーム拡張](../../roadmaps/README-ja.md#プラットフォーム拡張android--web--flutter)の各項目です。
+> [プラットフォーム対応](../../roadmaps/README-ja.md#プラットフォーム対応)の各項目です。
 > プラットフォームが出荷されると、[architecture の実装状況表](architecture.md#実装状況)にも移ります。

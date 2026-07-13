@@ -247,13 +247,17 @@ workers would collide).
 
 - Selector resolution and ambiguity detection (the determinism core)
 - Platform-aware backend registry: `--backend` / `backend:` accept `ios` / `android` / `web` /
-  `fake` tokens, each expanding to its actuator in stability order (`backends.py`) — `ios` expands to
-  `xcuitest` then `idb`
-- The **XCUITest backend** (`drivers/xcuitest.py`): the default iOS actuator, ahead of idb in the
-  stability-order ladder — a resident on-device runner (`BajutsuKit`) driven over a loopback HTTP
-  channel, adding semantic (identifier) tap, a native condition-wait, and the `pinch`/`rotate`
-  multi-touch gestures idb cannot perform (`UnsupportedAction`); idb stays the coordinate-tap,
-  headless fallback for hosts where XCUITest cannot run (BE-0019)
+  `fake` tokens, each expanding to its actuators (`backends.py`) — `ios` expands to `xcuitest` and
+  `idb`. A multi-actuator platform is resolved **per scenario** in cost order (BE-0240): each
+  scenario runs on the cheapest actuator its own steps can use, escalating only where a construct
+  needs a capability the cheap one lacks
+- The **XCUITest backend** (`drivers/xcuitest.py`): the richer iOS actuator — a resident on-device
+  runner (`BajutsuKit`) driven over a loopback HTTP channel, adding semantic (identifier) tap, a
+  native condition-wait, and the `pinch`/`rotate` multi-touch gestures idb cannot perform
+  (`UnsupportedAction`). idb is the cheap per-scenario default (no Xcode toolchain, no resident
+  runner); a scenario escalates to XCUITest only when its steps need a capability idb lacks (BE-0240),
+  and XCUITest is also the sole actuator on hosts where an explicit `--backend xcuitest` is pinned
+  (BE-0019)
 - The **Playwright web backend** (`drivers/playwright.py`): a deterministic `run` against a browser
   on the Linux gate (`demos/web`), raised to the rich end of the capability model (BE-0054) — native
   `network` observation + stubbing (`page.route()`), `video` and `deviceLog`-equivalent console /

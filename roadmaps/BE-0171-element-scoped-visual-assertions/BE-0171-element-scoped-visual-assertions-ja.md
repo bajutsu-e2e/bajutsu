@@ -10,7 +10,7 @@
 | 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0171") |
 | 実装 PR | [#701](https://github.com/bajutsu-e2e/bajutsu/pull/701) |
-| トピック | Candidates from competitive research (MagicPod / Autify) |
+| トピック | 検証とカバレッジ |
 | 関連 | [BE-0029](../BE-0029-visual-regression-assertions/BE-0029-visual-regression-assertions-ja.md) |
 <!-- /BE-METADATA -->
 

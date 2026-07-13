@@ -26,7 +26,11 @@ import typer
 
 from bajutsu import audit as _audit
 from bajutsu import simctl as _simctl
-from bajutsu.backends import ensure_web_runtime, select_actuator
+from bajutsu.backends import (
+    ensure_web_runtime,
+    select_actuator,
+    select_actuator_for_scenario,
+)
 from bajutsu.cli._shared import (
     DEFAULT_CONFIG,
     _backends,
@@ -173,7 +177,17 @@ def _repeat_audit(
         # conditions — the point of the diff). run_dir=None: the audit compares outcomes, not
         # artifacts, so it doesn't write a per-run report tree.
         reports = [
-            _audit.repeat_diff(run_all(eff, [s] * repeat, lease, workers=1, actuator=actuator))
+            _audit.repeat_diff(
+                run_all(
+                    eff,
+                    [s] * repeat,
+                    lease,
+                    workers=1,
+                    # Mirror `run`: resolve the actuator per scenario (BE-0240), so the preflight and
+                    # the pool's lease agree on the cheapest actuator each repeat runs against.
+                    resolve_actuator=lambda scn: select_actuator_for_scenario(backends, scn),
+                )
+            )
             for s in scenarios
         ]
     except _simctl.DeviceError as e:

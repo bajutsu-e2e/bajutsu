@@ -5,6 +5,7 @@ from __future__ import annotations
 import pytest
 
 from bajutsu.backends import (
+    _cost_ordered,
     default_available,
     ensure_web_runtime,
     evidence_backends,
@@ -12,8 +13,10 @@ from bajutsu.backends import (
     resolve_actuators,
     resolve_evidence_providers,
     select_actuator,
+    select_actuator_for_scenario,
 )
 from bajutsu.drivers import base
+from bajutsu.scenario import Scenario
 
 # A two-actuator iOS platform (idb + a hypothetical second iOS actuator), so the same-platform
 # fallback can be exercised before XCUITest (BE-0019) actually lands. Injected, not the module global.
@@ -406,3 +409,48 @@ def test_capabilities_for_xcuitest_reads_the_driver_constant_without_a_device() 
     assert caps == XcuitestDriver.CAPABILITIES
     assert base.Capability.SEMANTIC_TAP in caps and base.Capability.MULTI_TOUCH in caps
     assert base.Capability.NETWORK not in caps  # network rides on the app-side collector (BE-0020)
+
+
+# --- BE-0240: capability-aware, cost-ordered per-scenario actuator selection -------------------
+
+_TAP = Scenario.model_validate({"name": "tap", "steps": [{"tap": {"id": "ok"}}]})
+_PINCH = Scenario.model_validate(
+    {"name": "pinch", "steps": [{"pinch": {"sel": {"id": "m"}, "scale": 2.0}}]}
+)
+
+
+def test_cost_ordered_reverses_ios_stability_order() -> None:
+    # `[ios]` resolves in stability order (xcuitest, idb); cost order is the reverse (idb cheapest).
+    assert _cost_ordered(list(resolve_actuators(["ios"]))) == ["idb", "xcuitest"]
+    # An unranked platform (no COST_ORDER entry) keeps its resolved order.
+    assert _cost_ordered(["playwright"]) == ["playwright"]
+
+
+def test_select_for_scenario_prefers_the_cheapest_sufficient_actuator() -> None:
+    # A plain tap needs nothing idb lacks, so the cheapest (idb) is chosen even though XCUITest is
+    # available and more capable — cost wins when both suffice.
+    assert select_actuator_for_scenario(["ios"], _TAP, available=lambda a: True) == "idb"
+
+
+def test_select_for_scenario_escalates_only_when_the_cheap_actuator_cannot_run_it() -> None:
+    # A pinch needs multiTouch, which idb lacks — so selection escalates to the richer XCUITest.
+    assert select_actuator_for_scenario(["ios"], _PINCH, available=lambda a: True) == "xcuitest"
+
+
+def test_select_for_scenario_returns_richest_available_when_none_suffices() -> None:
+    # A pinch with only idb available: no candidate is sufficient, so the richest *available* one is
+    # returned (idb here) — the caller's preflight then fails it with idb's gaps, not a crash.
+    only_idb = select_actuator_for_scenario(["ios"], _PINCH, available=lambda a: a == "idb")
+    assert only_idb == "idb"
+
+
+def test_select_for_scenario_pin_never_escalates() -> None:
+    # An explicit single-actuator request is a hard pin: even a pinch stays on idb (no capability
+    # escalation), consistent with `select_actuator`. The preflight, not selection, rejects it.
+    assert select_actuator_for_scenario(["idb"], _PINCH, available=lambda a: True) == "idb"
+
+
+def test_select_for_scenario_raises_when_nothing_available() -> None:
+    # No candidate available at all reuses `select_actuator`'s precise error (raised, not swallowed).
+    with pytest.raises(RuntimeError, match="no available actuator"):
+        select_actuator_for_scenario(["ios"], _TAP, available=lambda a: False)

@@ -158,6 +158,24 @@ def _max_concurrent_from_env(raw: str | None, *, var: str) -> int:
     return n
 
 
+_DEFAULT_RUN_RETENTION_DAYS = 30
+
+
+def _run_retention_from_env(raw: str | None) -> int:
+    """Parse ``BAJUTSU_RUN_RETENTION_DAYS`` — days a soft-deleted run stays in the trash before the
+    lazy sweep purges it (BE-0239). Unset/empty falls back to the 30-day default; a value <= 0
+    disables the automatic purge (trash kept until a manual purge); a non-integer is rejected with a
+    message naming the variable, like the other operator-facing knobs."""
+    if not raw:
+        return _DEFAULT_RUN_RETENTION_DAYS
+    try:
+        return int(raw)
+    except ValueError:
+        raise ValueError(
+            f"BAJUTSU_RUN_RETENTION_DAYS must be a whole number of days, got {raw!r}"
+        ) from None
+
+
 class MissingServerExtra(ImportError):
     """A server-backend optional extra (Redis/RQ, object storage, the database) is not installed.
 
@@ -237,6 +255,7 @@ def _build_state(
         upload_exec=upload_exec,
         evidence=evidence,
         allow_remote_build=allow_remote_build,
+        run_retention_days=_run_retention_from_env(os.environ.get("BAJUTSU_RUN_RETENTION_DAYS")),
         cwd=cwd or Path.cwd(),
         config_provenance=config_provenance,
         themes_dir=themes_dir,
@@ -348,6 +367,7 @@ def _build_server_state(
         object_store=store,
         object_store_prefix=prefix,
         allow_remote_build=allow_remote_build,
+        run_retention_days=_run_retention_from_env(os.environ.get("BAJUTSU_RUN_RETENTION_DAYS")),
         hosted=True,  # the server backend is a hosted deployment: drop the file browser (BE-0108)
         executor=DbQueueExecutor(repo) if repo is not None else LocalExecutor(),
         logbus=(

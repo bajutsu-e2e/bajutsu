@@ -10,7 +10,7 @@
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0186") |
 | Implementing PR | [#953](https://github.com/bajutsu-e2e/bajutsu/pull/953) |
-| Topic | Candidates from competitive research (MagicPod / Autify) |
+| Topic | Scenario authoring features |
 <!-- /BE-METADATA -->
 
 ## Introduction

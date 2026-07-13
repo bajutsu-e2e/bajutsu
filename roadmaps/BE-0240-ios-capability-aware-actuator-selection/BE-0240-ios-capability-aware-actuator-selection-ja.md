@@ -7,9 +7,10 @@
 |---|---|
 | 提案 | [BE-0240](BE-0240-ios-capability-aware-actuator-selection-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **提案** |
+| 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0240") |
-| トピック | バックエンド拡張（iOS actuator） |
+| 実装 PR | [#981](https://github.com/bajutsu-e2e/bajutsu/pull/981) |
+| トピック | プラットフォーム対応 |
 | 関連 | [BE-0019](../BE-0019-xcuitest-backend/BE-0019-xcuitest-backend-ja.md)、[BE-0020](../BE-0020-multi-backend-evidence-fallback/BE-0020-multi-backend-evidence-fallback-ja.md)、[BE-0082](../BE-0082-capability-preflight-check/BE-0082-capability-preflight-check-ja.md)、[BE-0107](../BE-0107-showcase-tab-navigation-no-launch-shortcut/BE-0107-showcase-tab-navigation-no-launch-shortcut-ja.md)、[BE-0223](../BE-0223-adb-tab-bar-navigation/BE-0223-adb-tab-bar-navigation-ja.md) |
 <!-- /BE-METADATA -->
 
@@ -95,12 +96,12 @@ actuator を 1 つに明示指定したリクエストは、既存のルール(`
 > 作業分解(作業の単位ごとに 1 つ)に対応し、ログには変更内容と時期(古い順)を PR へのリンクと
 > ともに記録します。
 
-- [ ] `bajutsu/backends.py` に、コスト順の解決器(`select_actuator_for_scenario` など)を足す。各候補の能力集合に対して `capability_preflight.unsupported` を再利用し、速いゲートで単体テストする純粋関数にする。
-- [ ] シナリオごとの解決を `runner/pool.py` の `lease()` に配線する(`device_pool()` の一度きりのセットアップから移す)。単一 actuator という不変条件を「シナリオの実行ごと」へ狭め、決して緩めない。
-- [ ] actuator に依存する pool レベルの状態(`environment_for`、証跡 provider の解決、常駐ランナーのライフサイクル)を、pool につき一度ではなく lease ごとに解決するようにする。
-- [ ] `doctor --target` に、シナリオごとの actuator 解決の開示を足す(情報提供であり、新しいゲートではない)。
-- [ ] `demos/showcase/showcase.config.yaml` の移行。`-noax` ターゲットの `backend: [idb]` 固定を外し、`ios/scenarios-xcuitest/` を `scenarios/` へ畳み戻す。
-- [ ] オンデバイス検証。移行後の showcase の実行が、1 つの manifest の中でシナリオごとに異なる `backend` 値を記録することを、`run` の経路全体を通して確かめる。
+- [x] `bajutsu/backends.py` に、コスト順の解決器 `select_actuator_for_scenario` を足しました(明示的な `COST_ORDER` テーブルつき)。各候補の能力集合に対して `capability_preflight.unsupported` を再利用する、速いゲートで単体テスト済みの純粋関数です。
+- [x] シナリオごとの解決を `runner/pool.py` の `lease()` に配線しました(`device_pool()` の一度きりのセットアップから移動)。単一 actuator という不変条件を「シナリオの実行ごと」へ狭め、決して緩めていません。パイプラインの preflight(`runner/pipeline.py`)も同じ純粋関数をシナリオごとに解決するので、どの利用可能な actuator でも走らせられないシナリオは、デバイスに触れる前に速く失敗します。
+- [x] actuator に依存する pool レベルの状態を、pool につき一度ではなく lease ごとに解決するようにしました。`environment_for` と証跡 provider の解決を `lease()` の内側へ移し、`launch_driver` に `environment` 引数を足して、lease を**起動した**インスタンスがそれを**片付ける**インスタンスと同一になるようにしました。これは、シナリオごとの XCUITest 選択が常用パスになると顕在化する、XCUITest の常駐ランナーのライフサイクルの潜在バグ(env インスタンスが 2 つに分かれていた)を直すものです。
+- [x] `doctor --target` に、シナリオごとの actuator 解決の開示を足しました(情報提供であり、新しいゲートではありません)。
+- [x] `demos/showcase/showcase.config.yaml` の移行は **アクセシビリティ ON のターゲットのみ**。`showcase-swiftui` / `showcase-uikit` を `backend: [ios]` にし、共有の `gestures_multitouch.yaml`(multiTouch)がシナリオごとの昇格を実地に示す例になります。`-noax` ターゲットは意図的に**移行せず**、`ios/scenarios-xcuitest/` も畳み戻していません。これらが XCUITest を必要とする理由はアプリ側の性質(アクセシビリティ id が無い、idb の `describe-all` がタブバーを潰す)であって、能力モデルが表現できるものではありません。`[ios]` のラダーは、これらの(能力の面では clean な)タブ越えシナリオを idb へ誤ルーティングしてしまいます。この隙間は BE-0223 型の actuator 強化の領分で、本提案の *検討した代替案* もそこへ割り当てています。理由は config のコメントに記録しました。
+- [ ] オンデバイス検証(後続作業。Simulator とビルド済みの XCUITest runner が要るため、速いゲートの外)。移行後の `make -C demos/showcase run-swiftui` が、1 つの manifest の中で通常のシナリオには `idb` を、`gestures_multitouch` には `xcuitest` を記録することを、`run` の経路全体を通して確かめます。
 
 ## 参考
 

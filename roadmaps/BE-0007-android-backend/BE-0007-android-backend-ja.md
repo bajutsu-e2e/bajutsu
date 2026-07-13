@@ -10,7 +10,7 @@
 | 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0007") |
 | 実装 PR | [#658](https://github.com/bajutsu-e2e/bajutsu/pull/658), [#821](https://github.com/bajutsu-e2e/bajutsu/pull/821), [#870](https://github.com/bajutsu-e2e/bajutsu/pull/870) |
-| トピック | プラットフォーム拡張（Android / Web / Flutter） |
+| トピック | プラットフォーム対応 |
 | 関連 | [BE-0208](../BE-0208-android-emulator-e2e-ci/BE-0208-android-emulator-e2e-ci-ja.md), [BE-0209](../BE-0209-android-codegen-emitter/BE-0209-android-codegen-emitter-ja.md), [BE-0210](../BE-0210-android-actuation-fidelity/BE-0210-android-actuation-fidelity-ja.md), [BE-0211](../BE-0211-android-device-control/BE-0211-android-device-control-ja.md), [BE-0212](../BE-0212-granular-device-control-capabilities/BE-0212-granular-device-control-capabilities-ja.md) |
 <!-- /BE-METADATA -->
 

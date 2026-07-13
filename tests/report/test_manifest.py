@@ -35,6 +35,17 @@ def test_manifest_records_backend() -> None:
     assert m["scenarios"][0]["backend"] == "fake"
 
 
+def test_manifest_joins_distinct_backends_across_scenarios() -> None:
+    # BE-0240: per-scenario actuator selection makes scenarios in one run differ; the top-level
+    # backend joins the distinct actuators (ordered-unique) that actually drove them.
+    results = [
+        RunResult(scenario="a", ok=True, steps=[], backend="idb"),
+        RunResult(scenario="b", ok=True, steps=[], backend="xcuitest"),
+        RunResult(scenario="c", ok=True, steps=[], backend="idb"),
+    ]
+    assert manifest_dict("run1", results)["backend"] == "idb, xcuitest"
+
+
 def test_manifest_records_idb_versions_as_provenance() -> None:
     # The idb versions a run was driven against are recorded so any artifact set states exactly
     # which idb produced it — provenance, never affecting ok/pass-fail (BE-0005).

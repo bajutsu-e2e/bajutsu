@@ -92,52 +92,31 @@ as natural polite Japanese, not a literal rendering of the English.
 
 Shipped — landed on `main`. This is the project's **implementation record**.
 
-### Milestones (M1–M4)
+### Platform support (iOS / Android / Web / Flutter)
 
-Coarse delivery milestones (M1–M4). All four are shipped; the finer-grained features they decomposed into live in the topic sections below.
-
-<!-- GENERATED:implemented-milestones -->
-| ID | Item | Status |
-|---|---|---|
-| [BE-0001](BE-0001-m1-deterministic-runner/BE-0001-m1-deterministic-runner.md) | Deterministic runner (M1) | Implemented |
-| [BE-0002](BE-0002-m2-ai-loop-and-evidence/BE-0002-m2-ai-loop-and-evidence.md) | AI authoring loop & evidence (M2) | Implemented |
-| [BE-0003](BE-0003-m3-codegen-traces-network-ci/BE-0003-m3-codegen-traces-network-ci.md) | codegen, traces, network & CI (M3) | Implemented |
-| [BE-0004](BE-0004-m4-self-healing-triage/BE-0004-m4-self-healing-triage.md) | Self-healing triage (M4) | Implemented |
-<!-- /GENERATED:implemented-milestones -->
-
-### Platform expansion (landed slices)
-
-The first slices of the multi-platform direction that have shipped: a **platform-aware backend registry** so `--backend` / `backend:` accept a platform token (`ios` / `android` / `web` / `fake`) as well as a bare actuator, plus the config `apps`→`targets` rename and web crawl. The slices still being built are under [In progress](#platform-expansion-landed-slices-1); the rest of each platform's triple is under [Proposals](#platform-expansion-android--web--flutter).
-
-<!-- GENERATED:implemented-platform-landed -->
-| ID | Item | Status |
-|---|---|---|
-| [BE-0041](BE-0041-web-playwright-backend/BE-0041-web-playwright-backend.md) | Web (Playwright) backend | Implemented |
-| [BE-0042](BE-0042-platform-backend-registry/BE-0042-platform-backend-registry.md) | Platform-aware backend registry & selection | Implemented |
-| [BE-0054](BE-0054-web-backend-completion/BE-0054-web-backend-completion.md) | Web backend completion (rich capabilities & parallel runs) | Implemented |
-| [BE-0057](BE-0057-rename-apps-to-targets/BE-0057-rename-apps-to-targets.md) | Rename the config `apps` key to `targets` | Implemented |
-| [BE-0066](BE-0066-web-crawl/BE-0066-web-crawl.md) | Web crawl (Playwright backend) | Implemented |
-<!-- /GENERATED:implemented-platform-landed -->
-
-### Platform expansion (Android / Web / Flutter)
+One backend per platform behind the single driver interface ([DESIGN §1](../DESIGN.md)) — the iOS Simulator (idb / XCUITest actuators), Android (adb), the web (Playwright), and Flutter — plus the on-device validation that keeps each backend's actuation faithful. Going multi-platform means adding backends, not changing the deterministic core. Overview: [multi-platform.md](../docs/multi-platform.md).
 
 <!-- GENERATED:implemented-platform -->
 | ID | Item | Status |
 |---|---|---|
+| [BE-0005](BE-0005-idb-companion-version-monitoring/BE-0005-idb-companion-version-monitoring.md) | idb_companion version monitoring | Implemented |
+| [BE-0006](BE-0006-idb-element-tree-normalization/BE-0006-idb-element-tree-normalization.md) | idb element-tree normalization accuracy | Implemented |
 | [BE-0007](BE-0007-android-backend/BE-0007-android-backend.md) | Android backend | Implemented |
-| [BE-0009](BE-0009-cross-platform-abstractions/BE-0009-cross-platform-abstractions.md) | Cross-platform abstractions | Implemented |
 | [BE-0010](BE-0010-update-scope-statement/BE-0010-update-scope-statement.md) | Update the scope statement | Implemented |
+| [BE-0019](BE-0019-xcuitest-backend/BE-0019-xcuitest-backend.md) | XCUITest backend | Implemented |
+| [BE-0020](BE-0020-multi-backend-evidence-fallback/BE-0020-multi-backend-evidence-fallback.md) | Multi-backend evidence fallback | Implemented |
+| [BE-0037](BE-0037-webview-hybrid-support/BE-0037-webview-hybrid-support.md) | WebView / hybrid support | Implemented |
+| [BE-0041](BE-0041-web-playwright-backend/BE-0041-web-playwright-backend.md) | Web (Playwright) backend | Implemented |
+| [BE-0054](BE-0054-web-backend-completion/BE-0054-web-backend-completion.md) | Web backend completion (rich capabilities & parallel runs) | Implemented |
 | [BE-0076](BE-0076-web-cross-browser-engines/BE-0076-web-cross-browser-engines.md) | Selectable browser engines & cross-browser compatibility matrix (web backend) | Implemented |
-| [BE-0082](BE-0082-capability-preflight-check/BE-0082-capability-preflight-check.md) | Preflight capability check before a run | Implemented |
-| [BE-0114](BE-0114-driver-conformance-suite/BE-0114-driver-conformance-suite.md) | Driver conformance suite for backend-agnostic behavior | Implemented |
-| [BE-0118](BE-0118-wait-for-contract-unification/BE-0118-wait-for-contract-unification.md) | Unify the wait_for polling contract across drivers | Implemented |
-| [BE-0126](BE-0126-per-platform-effective-config/BE-0126-per-platform-effective-config.md) | Split Effective into per-platform configs | Implemented |
-| [BE-0128](BE-0128-device-step-capability-preflight/BE-0128-device-step-capability-preflight.md) | Preflight-gate device-control steps by capability | Implemented |
-| [BE-0141](BE-0141-backend-lifecycle-protocol/BE-0141-backend-lifecycle-protocol.md) | Bring backend lifecycle into the type system | Implemented |
+| [BE-0087](BE-0087-idb-action-settle/BE-0087-idb-action-settle.md) | idb action timing robustness (settle before actuation) | Implemented |
+| [BE-0088](BE-0088-overlap-simulator-boot/BE-0088-overlap-simulator-boot.md) | Overlap the Simulator boot with the build | Implemented |
+| [BE-0105](BE-0105-xcuitest-single-snapshot-query/BE-0105-xcuitest-single-snapshot-query.md) | Single-snapshot element query for XCUITest | Implemented |
+| [BE-0207](BE-0207-xcuitest-channel-transient-retry/BE-0207-xcuitest-channel-transient-retry.md) | Make the XCUITest runner channel robust to transient timeouts | Implemented |
 | [BE-0208](BE-0208-android-emulator-e2e-ci/BE-0208-android-emulator-e2e-ci.md) | Android on-device e2e in CI (emulator via KVM) | Implemented |
 | [BE-0210](BE-0210-android-actuation-fidelity/BE-0210-android-actuation-fidelity.md) | Android on-device actuation fidelity | Implemented |
 | [BE-0211](BE-0211-android-device-control/BE-0211-android-device-control.md) | Android device control (setLocation, clipboard) | Implemented |
-| [BE-0212](BE-0212-granular-device-control-capabilities/BE-0212-granular-device-control-capabilities.md) | Split the coarse deviceControl capability into per-operation tokens | Implemented |
+| [BE-0218](BE-0218-e2e-simulator-flaky-readiness-actuation/BE-0218-e2e-simulator-flaky-readiness-actuation.md) | Stabilize the E2E Simulator gate: namespace-aware readiness and a bounded actuation timeout | Implemented |
 | [BE-0221](BE-0221-android-scenario-portability-guarantee/BE-0221-android-scenario-portability-guarantee.md) | Guarantee shared showcase scenarios run unchanged on Android | Implemented |
 | [BE-0223](BE-0223-adb-tab-bar-navigation/BE-0223-adb-tab-bar-navigation.md) | Reach every Android tab by driving the tab bar over adb | Implemented |
 | [BE-0227](BE-0227-web-swipe-scroll-fidelity/BE-0227-web-swipe-scroll-fidelity.md) | Web swipe scroll fidelity (mode-aware scroll dispatch) | Implemented |
@@ -145,26 +124,63 @@ The first slices of the multi-platform direction that have shipped: a **platform
 | [BE-0232](BE-0232-adb-multitouch-gestures/BE-0232-adb-multitouch-gestures.md) | Multi-touch gestures on the adb driver (pinch / rotate) | Implemented |
 | [BE-0233](BE-0233-adb-clipboard-fidelity/BE-0233-adb-clipboard-fidelity.md) | adb clipboard on-device fidelity | Implemented |
 | [BE-0234](BE-0234-adb-run-performance/BE-0234-adb-run-performance.md) | Speed up adb scenario runs (uiautomator dump bottleneck) | Implemented |
+| [BE-0240](BE-0240-ios-capability-aware-actuator-selection/BE-0240-ios-capability-aware-actuator-selection.md) | Capability-aware automatic actuator selection for iOS (idb/XCUITest transparency) | Implemented |
 <!-- /GENERATED:implemented-platform -->
 
-### Backend expansion (iOS actuators)
+### Driver & backend architecture
 
-<!-- GENERATED:implemented-backend -->
+The backend-agnostic core every platform plugs into: the driver interface and its conformance suite, the capability model and preflight, the `wait_for` polling contract, backend lifecycle, and per-target / per-platform config resolution.
+
+<!-- GENERATED:implemented-driver-architecture -->
 | ID | Item | Status |
 |---|---|---|
-| [BE-0019](BE-0019-xcuitest-backend/BE-0019-xcuitest-backend.md) | XCUITest backend | Implemented |
-| [BE-0020](BE-0020-multi-backend-evidence-fallback/BE-0020-multi-backend-evidence-fallback.md) | Multi-backend evidence fallback | Implemented |
-| [BE-0105](BE-0105-xcuitest-single-snapshot-query/BE-0105-xcuitest-single-snapshot-query.md) | Single-snapshot element query for XCUITest | Implemented |
-<!-- /GENERATED:implemented-backend -->
+| [BE-0009](BE-0009-cross-platform-abstractions/BE-0009-cross-platform-abstractions.md) | Cross-platform abstractions | Implemented |
+| [BE-0042](BE-0042-platform-backend-registry/BE-0042-platform-backend-registry.md) | Platform-aware backend registry & selection | Implemented |
+| [BE-0057](BE-0057-rename-apps-to-targets/BE-0057-rename-apps-to-targets.md) | Rename the config `apps` key to `targets` | Implemented |
+| [BE-0082](BE-0082-capability-preflight-check/BE-0082-capability-preflight-check.md) | Preflight capability check before a run | Implemented |
+| [BE-0114](BE-0114-driver-conformance-suite/BE-0114-driver-conformance-suite.md) | Driver conformance suite for backend-agnostic behavior | Implemented |
+| [BE-0118](BE-0118-wait-for-contract-unification/BE-0118-wait-for-contract-unification.md) | Unify the wait_for polling contract across drivers | Implemented |
+| [BE-0126](BE-0126-per-platform-effective-config/BE-0126-per-platform-effective-config.md) | Split Effective into per-platform configs | Implemented |
+| [BE-0128](BE-0128-device-step-capability-preflight/BE-0128-device-step-capability-preflight.md) | Preflight-gate device-control steps by capability | Implemented |
+| [BE-0141](BE-0141-backend-lifecycle-protocol/BE-0141-backend-lifecycle-protocol.md) | Bring backend lifecycle into the type system | Implemented |
+| [BE-0212](BE-0212-granular-device-control-capabilities/BE-0212-granular-device-control-capabilities.md) | Split the coarse deviceControl capability into per-operation tokens | Implemented |
+<!-- /GENERATED:implemented-driver-architecture -->
 
-### doctor / onboarding
+### Scenario authoring features
 
-<!-- GENERATED:implemented-doctor -->
+What a scenario can express: variables and light control flow, data-driven runs, tags and selective runs, secret variables, reusable parameterized steps, HTTP / OTP / email side-channel steps, and device / OS-state control steps (background, status bar, timezone, clipboard, shake, location).
+
+<!-- GENERATED:implemented-scenario-authoring -->
 | ID | Item | Status |
 |---|---|---|
-| [BE-0024](BE-0024-doctor-onboarding/BE-0024-doctor-onboarding.md) | doctor / onboarding | Implemented |
-| [BE-0164](BE-0164-config-aware-environment-installer/BE-0164-config-aware-environment-installer.md) | Config-aware environment installer | Implemented |
-<!-- /GENERATED:implemented-doctor -->
+| [BE-0030](BE-0030-parameterized-shared-steps/BE-0030-parameterized-shared-steps.md) | Parameterized shared steps | Implemented |
+| [BE-0031](BE-0031-data-driven-scenarios/BE-0031-data-driven-scenarios.md) | Data-driven scenarios | Implemented |
+| [BE-0032](BE-0032-secret-variables/BE-0032-secret-variables.md) | Secret variables | Implemented |
+| [BE-0033](BE-0033-scenario-variables-control-flow/BE-0033-scenario-variables-control-flow.md) | Scenario variables + light control flow | Implemented |
+| [BE-0034](BE-0034-tags-selective-runs/BE-0034-tags-selective-runs.md) | Tags / labels + selective runs | Implemented |
+| [BE-0035](BE-0035-device-control-primitives/BE-0035-device-control-primitives.md) | Device-control steps (background, status-bar override) | Implemented |
+| [BE-0036](BE-0036-utility-steps/BE-0036-utility-steps.md) | HTTP utility step | Implemented |
+| [BE-0046](BE-0046-otp-email-steps/BE-0046-otp-email-steps.md) | OTP & email side-channel steps | Implemented |
+| [BE-0052](BE-0052-device-state-timezone-clipboard-shake/BE-0052-device-state-timezone-clipboard-shake.md) | Device-state primitives: timezone, clipboard, shake | Implemented |
+| [BE-0186](BE-0186-mailbox-provider-registry/BE-0186-mailbox-provider-registry.md) | Mailbox provider registry for the email step | Implemented |
+<!-- /GENERATED:implemented-scenario-authoring -->
+
+### Verification & coverage
+
+How a run decides pass or fail — deterministically, and often below the UI: behavioral / protocol assertions, visual-regression assertions and their compare engines, the determinism / flakiness audit, and the E2E coverage map. The deterministic runner these build on landed first.
+
+<!-- GENERATED:implemented-verification -->
+| ID | Item | Status |
+|---|---|---|
+| [BE-0001](BE-0001-m1-deterministic-runner/BE-0001-m1-deterministic-runner.md) | Deterministic runner (M1) | Implemented |
+| [BE-0028](BE-0028-evidence-rule-overmatch-guard/BE-0028-evidence-rule-overmatch-guard.md) | Guard against over-matching evidence rules | Implemented |
+| [BE-0029](BE-0029-visual-regression-assertions/BE-0029-visual-regression-assertions.md) | Visual-regression assertions | Implemented |
+| [BE-0048](BE-0048-behavioral-protocol-assertions/BE-0048-behavioral-protocol-assertions.md) | Behavioral / protocol assertions | Implemented |
+| [BE-0049](BE-0049-determinism-flakiness-audit/BE-0049-determinism-flakiness-audit.md) | Determinism / flakiness audit | Implemented |
+| [BE-0050](BE-0050-e2e-coverage-map/BE-0050-e2e-coverage-map.md) | E2E coverage map | Implemented |
+| [BE-0165](BE-0165-visual-compare-engines/BE-0165-visual-compare-engines.md) | Selectable perceptual compare engines for visual regression | Implemented |
+| [BE-0171](BE-0171-element-scoped-visual-assertions/BE-0171-element-scoped-visual-assertions.md) | Element-scoped visual assertions and selector-based masking | Implemented |
+<!-- /GENERATED:implemented-verification -->
 
 ### Authoring experience (record / GUI editor)
 
@@ -173,6 +189,7 @@ The AI-driven `record` (Tier 1) is implemented ([recording.md](../docs/recording
 <!-- GENERATED:implemented-authoring -->
 | ID | Item | Status |
 |---|---|---|
+| [BE-0002](BE-0002-m2-ai-loop-and-evidence/BE-0002-m2-ai-loop-and-evidence.md) | AI authoring loop & evidence (M2) | Implemented |
 | [BE-0011](BE-0011-local-web-ui-serve/BE-0011-local-web-ui-serve.md) | Local web UI (`bajutsu serve`) | Implemented |
 | [BE-0012](BE-0012-action-capture-record/BE-0012-action-capture-record.md) | Action-capture record | Implemented |
 | [BE-0013](BE-0013-scenario-gui-editor/BE-0013-scenario-gui-editor.md) | Scenario GUI editor | Implemented |
@@ -196,57 +213,59 @@ The AI-driven `record` (Tier 1) is implemented ([recording.md](../docs/recording
 | [BE-0241](BE-0241-stats-run-drilldown/BE-0241-stats-run-drilldown.md) | Drill down from the Stats dashboard to the runs behind it | Implemented |
 <!-- /GENERATED:implemented-authoring -->
 
-### Self-healing triage (M4)
+### Autonomous crawl
+
+Autonomous exploration that maps an app's screens on its own, kept fast and resumable: parallel crawl across simulators and browsers, web crawl, and full-frontier continuation.
+
+<!-- GENERATED:implemented-crawl -->
+| ID | Item | Status |
+|---|---|---|
+| [BE-0038](BE-0038-autonomous-crawl-exploration/BE-0038-autonomous-crawl-exploration.md) | Autonomous crawl exploration (App Explorer style) | Implemented |
+| [BE-0064](BE-0064-parallel-crawl/BE-0064-parallel-crawl.md) | Parallel crawl across multiple simulators | Implemented |
+| [BE-0066](BE-0066-web-crawl/BE-0066-web-crawl.md) | Web crawl (Playwright backend) | Implemented |
+| [BE-0077](BE-0077-parallel-web-crawl/BE-0077-parallel-web-crawl.md) | Parallel web crawl across multiple browsers | Implemented |
+| [BE-0181](BE-0181-crawl-continuation/BE-0181-crawl-continuation.md) | Resumable crawl continuation (Web UI + full-frontier resume) | Implemented |
+<!-- /GENERATED:implemented-crawl -->
+
+### codegen coverage
+
+Turning a passing scenario into a native test in a destination framework's idiom — XCUITest, Playwright, and Android (Espresso / UI Automator).
+
+<!-- GENERATED:implemented-codegen -->
+| ID | Item | Status |
+|---|---|---|
+| [BE-0003](BE-0003-m3-codegen-traces-network-ci/BE-0003-m3-codegen-traces-network-ci.md) | codegen, traces, network & CI (M3) | Implemented |
+| [BE-0025](BE-0025-coordinate-swipe-generation/BE-0025-coordinate-swipe-generation.md) | Coordinate swipe generation | Implemented |
+| [BE-0026](BE-0026-shrink-unsupported-syntax/BE-0026-shrink-unsupported-syntax.md) | Shrink unsupported syntax | Implemented |
+| [BE-0062](BE-0062-playwright-codegen/BE-0062-playwright-codegen.md) | Playwright codegen target | Implemented |
+| [BE-0083](BE-0083-codegen-emitter-unification/BE-0083-codegen-emitter-unification.md) | Unify the codegen emitters behind a shared scenario walk | Implemented |
+| [BE-0085](BE-0085-shrink-web-codegen-syntax/BE-0085-shrink-web-codegen-syntax.md) | Shrink unsupported web (Playwright) codegen syntax | Implemented |
+| [BE-0209](BE-0209-android-codegen-emitter/BE-0209-android-codegen-emitter.md) | Android codegen emitter (Espresso / UI Automator) | Implemented |
+<!-- /GENERATED:implemented-codegen -->
+
+### Self-healing triage
 
 Lower the maintenance cost of regressions while keeping AI out of the judge role and limited to an investigator.
 
 <!-- GENERATED:implemented-self-healing -->
 | ID | Item | Status |
 |---|---|---|
+| [BE-0004](BE-0004-m4-self-healing-triage/BE-0004-m4-self-healing-triage.md) | Self-healing triage (M4) | Implemented |
 | [BE-0021](BE-0021-ai-triage/BE-0021-ai-triage.md) | AI triage (root-cause summary, fix suggestions) | Implemented |
 | [BE-0022](BE-0022-update-structured-fixes/BE-0022-update-structured-fixes.md) | `update` (minimal-diff proposals = applying structured fixes) | Implemented |
 | [BE-0023](BE-0023-self-healing-guards/BE-0023-self-healing-guards.md) | Guards against "making tests laxer" | Implemented |
+| [BE-0039](BE-0039-self-healing-propose-optin/BE-0039-self-healing-propose-optin.md) | Self-healing limited to "propose + opt-in apply" | Implemented |
 | [BE-0220](BE-0220-flaky-suggestion-and-cross-run-fix/BE-0220-flaky-suggestion-and-cross-run-fix.md) | Flaky-test suggestion and cross-run fix proposals from DB run history | Implemented |
 <!-- /GENERATED:implemented-self-healing -->
 
-### Candidates from competitive research (MagicPod / Autify)
+### doctor / onboarding
 
-MagicPod and Autify are built around **AI self-healing + no-code + cloud device farm + visual testing**. Both tools' flagship feature is "AI auto-corrects locators / tap positions during a run", which conflicts directly with Bajutsu's core principle ([DESIGN §2](../DESIGN.md): **keep AI out of the CI gate / determinism first**). Features were evaluated by separating what can be adopted deterministically from what can be adopted only outside the gate.
-
-<!-- GENERATED:implemented-competitive -->
-| ID | Item | Status | Origin |
-|---|---|---|---|
-| [BE-0029](BE-0029-visual-regression-assertions/BE-0029-visual-regression-assertions.md) | Visual-regression assertions | Implemented | Both |
-| [BE-0030](BE-0030-parameterized-shared-steps/BE-0030-parameterized-shared-steps.md) | Parameterized shared steps | Implemented | MagicPod |
-| [BE-0031](BE-0031-data-driven-scenarios/BE-0031-data-driven-scenarios.md) | Data-driven scenarios | Implemented | MagicPod |
-| [BE-0032](BE-0032-secret-variables/BE-0032-secret-variables.md) | Secret variables | Implemented | MagicPod |
-| [BE-0033](BE-0033-scenario-variables-control-flow/BE-0033-scenario-variables-control-flow.md) | Scenario variables + light control flow | Implemented | MagicPod |
-| [BE-0034](BE-0034-tags-selective-runs/BE-0034-tags-selective-runs.md) | Tags / labels + selective runs | Implemented | MagicPod |
-| [BE-0035](BE-0035-device-control-primitives/BE-0035-device-control-primitives.md) | Device-control steps (background, status-bar override) | Implemented | MagicPod |
-| [BE-0036](BE-0036-utility-steps/BE-0036-utility-steps.md) | HTTP utility step | Implemented | MagicPod |
-| [BE-0037](BE-0037-webview-hybrid-support/BE-0037-webview-hybrid-support.md) | WebView / hybrid support | Implemented | MagicPod |
-| [BE-0038](BE-0038-autonomous-crawl-exploration/BE-0038-autonomous-crawl-exploration.md) | Autonomous crawl exploration (App Explorer style) | Implemented | Autify VAX |
-| [BE-0039](BE-0039-self-healing-propose-optin/BE-0039-self-healing-propose-optin.md) | Self-healing limited to "propose + opt-in apply" | Implemented | Both |
-| [BE-0046](BE-0046-otp-email-steps/BE-0046-otp-email-steps.md) | OTP & email side-channel steps | Implemented | MagicPod |
-| [BE-0052](BE-0052-device-state-timezone-clipboard-shake/BE-0052-device-state-timezone-clipboard-shake.md) | Device-state primitives: timezone, clipboard, shake | Implemented | MagicPod |
-| [BE-0165](BE-0165-visual-compare-engines/BE-0165-visual-compare-engines.md) | Selectable perceptual compare engines for visual regression | Implemented |  |
-| [BE-0171](BE-0171-element-scoped-visual-assertions/BE-0171-element-scoped-visual-assertions.md) | Element-scoped visual assertions and selector-based masking | Implemented |  |
-| [BE-0186](BE-0186-mailbox-provider-registry/BE-0186-mailbox-provider-registry.md) | Mailbox provider registry for the email step | Implemented |  |
-<!-- /GENERATED:implemented-competitive -->
-
-### Candidates from competitive research (Maestro)
-
-Sharpening Bajutsu's determinism-as-contract stance against Maestro's flakiness-tolerance into concrete, machine-checkable features.
-
-<!-- GENERATED:implemented-competitive-maestro -->
-| ID | Item | Status | Origin |
-|---|---|---|---|
-| [BE-0047](BE-0047-ai-data-sovereignty/BE-0047-ai-data-sovereignty.md) | AI data sovereignty (provider-agnostic, redacted AI path) | Implemented | Maestro |
-| [BE-0048](BE-0048-behavioral-protocol-assertions/BE-0048-behavioral-protocol-assertions.md) | Behavioral / protocol assertions | Implemented | Maestro |
-| [BE-0049](BE-0049-determinism-flakiness-audit/BE-0049-determinism-flakiness-audit.md) | Determinism / flakiness audit | Implemented | Maestro |
-| [BE-0050](BE-0050-e2e-coverage-map/BE-0050-e2e-coverage-map.md) | E2E coverage map | Implemented | Maestro |
-| [BE-0097](BE-0097-crawl-ai-data-sovereignty/BE-0097-crawl-ai-data-sovereignty.md) | AI data sovereignty for the crawl guide and serve-spawned AI paths | Implemented |  |
-<!-- /GENERATED:implemented-competitive-maestro -->
+<!-- GENERATED:implemented-doctor -->
+| ID | Item | Status |
+|---|---|---|
+| [BE-0024](BE-0024-doctor-onboarding/BE-0024-doctor-onboarding.md) | doctor / onboarding | Implemented |
+| [BE-0164](BE-0164-config-aware-environment-installer/BE-0164-config-aware-environment-installer.md) | Config-aware environment installer | Implemented |
+<!-- /GENERATED:implemented-doctor -->
 
 ### Integration & automation (MCP)
 
@@ -256,6 +275,155 @@ Sharpening Bajutsu's determinism-as-contract stance against Maestro's flakiness-
 | [BE-0017](BE-0017-mcp-server/BE-0017-mcp-server.md) | MCP server | Implemented |
 | [BE-0018](BE-0018-evidence-as-mcp-resources/BE-0018-evidence-as-mcp-resources.md) | Return evidence as MCP resources | Implemented |
 <!-- /GENERATED:implemented-mcp -->
+
+### Integration with external services
+
+Sending a run's result out to a service the team already lives in — post-verdict, deterministic transports that carry the verdict the runner computed, never an LLM's.
+
+<!-- GENERATED:implemented-external-integration -->
+| ID | Item | Status |
+|---|---|---|
+| [BE-0099](BE-0099-webhook-run-notifications/BE-0099-webhook-run-notifications.md) | Webhook notifications for run results | Implemented |
+| [BE-0161](BE-0161-ctrf-report-export/BE-0161-ctrf-report-export.md) | Export run results in Common Test Report Format (CTRF) | Implemented |
+<!-- /GENERATED:implemented-external-integration -->
+
+### AI provider configuration
+
+The Tier-1 AI paths (`record` / `triage` / `--dismiss-alerts` / `crawl`) call Claude through a pluggable provider. This topic covers selecting and configuring that provider — e.g. Amazon Bedrock (authenticated with AWS credentials) as an alternative to the direct Anthropic API — and the provider-agnostic, redacted AI data path. The deterministic `run` / CI gate calls no model and is unaffected.
+
+<!-- GENERATED:implemented-ai-provider -->
+| ID | Item | Status |
+|---|---|---|
+| [BE-0047](BE-0047-ai-data-sovereignty/BE-0047-ai-data-sovereignty.md) | AI data sovereignty (provider-agnostic, redacted AI path) | Implemented |
+| [BE-0053](BE-0053-bedrock-ai-provider/BE-0053-bedrock-ai-provider.md) | Amazon Bedrock as a pluggable AI provider | Implemented |
+| [BE-0097](BE-0097-crawl-ai-data-sovereignty/BE-0097-crawl-ai-data-sovereignty.md) | AI data sovereignty for the crawl guide and serve-spawned AI paths | Implemented |
+| [BE-0101](BE-0101-ai-free-zero-config/BE-0101-ai-free-zero-config.md) | Legible Claude-using / Claude-free split with a zero-config non-AI path | Implemented |
+| [BE-0104](BE-0104-vendor-neutral-ai-backend/BE-0104-vendor-neutral-ai-backend.md) | Vendor-neutral AI backend interface | Implemented |
+| [BE-0111](BE-0111-ai-sdk-optional-dependency/BE-0111-ai-sdk-optional-dependency.md) | Make the AI SDK an optional extra so the deterministic gate installs AI-free | Implemented |
+| [BE-0163](BE-0163-ant-cli-oauth-provider/BE-0163-ant-cli-oauth-provider.md) | Replace the Claude Code CLI authoring backend with an `ant`-CLI OAuth AI provider | Implemented |
+| [BE-0175](BE-0175-serve-web-ui-ant-sso-login/BE-0175-serve-web-ui-ant-sso-login.md) | Sign in to the `ant` provider from the serve Web UI | Implemented |
+| [BE-0176](BE-0176-claude-code-ai-backend/BE-0176-claude-code-ai-backend.md) | Revive Claude Code as an AiBackend adapter with file-based vision | Implemented |
+| [BE-0183](BE-0183-per-provider-serve-settings/BE-0183-per-provider-serve-settings.md) | Per-provider AI settings in the serve Web UI | Implemented |
+| [BE-0188](BE-0188-configurable-ai-output-language/BE-0188-configurable-ai-output-language.md) | Configurable AI output language for record and crawl | Implemented |
+| [BE-0215](BE-0215-claude-code-oauth-token-credential/BE-0215-claude-code-oauth-token-credential.md) | Explicit CLAUDE_CODE_OAUTH_TOKEN credential for the claude-code provider | Implemented |
+| [BE-0229](BE-0229-per-org-provider-settings-resolution/BE-0229-per-org-provider-settings-resolution.md) | Resolve serve AI provider settings per organization at runtime | Implemented |
+<!-- /GENERATED:implemented-ai-provider -->
+
+### AI usage and cost observability
+
+Making Bajutsu's AI token and dollar spend visible: an attributed, persistent ledger of every AI call, and (separately) the serve Web UI dashboard that reads it.
+
+<!-- GENERATED:implemented-ai-usage -->
+| ID | Item | Status |
+|---|---|---|
+| [BE-0195](BE-0195-ai-usage-cost-dashboard/BE-0195-ai-usage-cost-dashboard.md) | Visualize AI token usage and cost in the serve Web UI | Implemented |
+| [BE-0196](BE-0196-ai-usage-cost-ledger/BE-0196-ai-usage-cost-ledger.md) | Record AI token usage and cost as an attributed, persistent ledger | Implemented |
+<!-- /GENERATED:implemented-ai-usage -->
+
+### Surfacing CLI features in the serve Web UI
+
+Bringing the CLI's own tools into the serve Web UI, where authoring happens. The scenario editor's inline lint / schema validation landed first.
+
+<!-- GENERATED:implemented-serve-cli-features -->
+| ID | Item | Status |
+|---|---|---|
+| [BE-0137](BE-0137-serve-codegen/BE-0137-serve-codegen.md) | Generate native test code from the serve Web UI | Implemented |
+| [BE-0138](BE-0138-serve-lint/BE-0138-serve-lint.md) | Inline scenario validation in the serve editor | Implemented |
+| [BE-0145](BE-0145-serve-audit/BE-0145-serve-audit.md) | Determinism audit in the serve Web UI | Implemented |
+| [BE-0146](BE-0146-serve-coverage/BE-0146-serve-coverage.md) | E2E coverage map in the serve Web UI | Implemented |
+| [BE-0147](BE-0147-serve-triage/BE-0147-serve-triage.md) | Triage failed runs in the serve Web UI | Implemented |
+| [BE-0148](BE-0148-serve-doctor/BE-0148-serve-doctor.md) | Doctor readiness panel in the serve Web UI | Implemented |
+<!-- /GENERATED:implemented-serve-cli-features -->
+
+### Hosting the web UI (cloud / self-hosted)
+
+Standing up `bajutsu serve` beyond loopback. The hardening that makes the existing stdlib server safe to expose (auth, input validation) has shipped; the full hosted topologies remain proposals below.
+
+<!-- GENERATED:implemented-hosting -->
+| ID | Item | Status |
+|---|---|---|
+| [BE-0016](BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md) | Self-hosting of the web UI | Implemented |
+| [BE-0051](BE-0051-serve-hardening-for-hosting/BE-0051-serve-hardening-for-hosting.md) | Serve hardening for hosting (auth, input validation) | Implemented |
+| [BE-0055](BE-0055-operational-logging/BE-0055-operational-logging.md) | Operational logging for the hosted serve | Implemented |
+| [BE-0090](BE-0090-uploaded-config-command-execution/BE-0090-uploaded-config-command-execution.md) | Govern and sandbox command execution from uploaded bundle configs | Implemented |
+| [BE-0106](BE-0106-post-completion-worker-model/BE-0106-post-completion-worker-model.md) | Post-completion worker model (eliminate Redis dependency) | Implemented |
+| [BE-0108](BE-0108-hosted-config-source-restriction/BE-0108-hosted-config-source-restriction.md) | Restrict config sources to upload and Git when hosted | Implemented |
+| [BE-0110](BE-0110-evidence-store-uri/BE-0110-evidence-store-uri.md) | Evidence upload to object storage via URI | Implemented |
+| [BE-0127](BE-0127-split-serve-operations-module/BE-0127-split-serve-operations-module.md) | Split the serve operations god-module | Implemented |
+| [BE-0129](BE-0129-serve-scope-boundary/BE-0129-serve-scope-boundary.md) | Bound serve scope and keep host concerns out of shared config | Implemented |
+| [BE-0160](BE-0160-worker-credential-free-uploads/BE-0160-worker-credential-free-uploads.md) | Credential-free worker uploads via presigned URLs | Implemented |
+| [BE-0166](BE-0166-capability-routed-queues/BE-0166-capability-routed-queues.md) | Capability-routed job queues | Implemented |
+| [BE-0169](BE-0169-serve-metrics-observability/BE-0169-serve-metrics-observability.md) | Serve metrics and observability endpoint | Implemented |
+| [BE-0173](BE-0173-slim-web-worker-image/BE-0173-slim-web-worker-image.md) | Slim Linux web-worker container image | Implemented |
+| [BE-0190](BE-0190-org-scoped-crawl-history/BE-0190-org-scoped-crawl-history.md) | Org-scoped crawl history on the server backend | Implemented |
+| [BE-0204](BE-0204-server-storage-gcs-support/BE-0204-server-storage-gcs-support.md) | GCS support for server-side object storage | Implemented |
+<!-- /GENERATED:implemented-hosting -->
+
+### Configuration sourcing
+
+Where a project's config and scenarios come from. A Git repository + ref is a today-runnable source for CI and a self-hosted `serve`, materialized at an immutable commit.
+
+<!-- GENERATED:implemented-config-sourcing -->
+| ID | Item | Status |
+|---|---|---|
+| [BE-0063](BE-0063-git-config-source/BE-0063-git-config-source.md) | Load config (and its scenario tree) from a Git repository + ref | Implemented |
+| [BE-0073](BE-0073-serve-zip-bundle-upload/BE-0073-serve-zip-bundle-upload.md) | Upload a config + scenarios + app-binary bundle as a zip and run it from the web UI | Implemented |
+| [BE-0119](BE-0119-scenario-schema-versioning/BE-0119-scenario-schema-versioning.md) | Version the scenario schema for cross-version reads | Implemented |
+| [BE-0177](BE-0177-run-behavior-target-config/BE-0177-run-behavior-target-config.md) | Per-target config defaults for run-behavior settings | Implemented |
+| [BE-0187](BE-0187-serve-config-view/BE-0187-serve-config-view.md) | View the loaded config in the serve Web UI (raw YAML, structured tree, Git provenance) | Implemented |
+| [BE-0224](BE-0224-github-private-repo-config-auth/BE-0224-github-private-repo-config-auth.md) | Granting private-repository access for the GitHub config source | Implemented |
+| [BE-0242](BE-0242-config-relative-path-resolution/BE-0242-config-relative-path-resolution.md) | Resolve config-declared paths relative to the config file | Implemented |
+<!-- /GENERATED:implemented-config-sourcing -->
+
+### Security hardening
+
+Closing the edges the deterministic core does not touch — `serve`'s HTTP surface, how secrets flow through capture / record / artifacts, driver argument hygiene, and the CI supply chain. These items keep the tool safe to run on a shared machine and safe to hand a scenario from an untrusted source, without weakening the prime directives.
+
+<!-- GENERATED:implemented-security -->
+| ID | Item | Status |
+|---|---|---|
+| [BE-0115](BE-0115-inprocess-collector-auth/BE-0115-inprocess-collector-auth.md) | Authenticate the in-process iOS network collector | Implemented |
+| [BE-0116](BE-0116-udid-argument-validation/BE-0116-udid-argument-validation.md) | Tighten UDID validation against argument injection | Implemented |
+| [BE-0120](BE-0120-recorded-scenario-secret-tokenization/BE-0120-recorded-scenario-secret-tokenization.md) | Tokenize secrets in recorded scenario YAML | Implemented |
+| [BE-0121](BE-0121-serve-csrf-host-allowlist/BE-0121-serve-csrf-host-allowlist.md) | Unconditional CSRF and Host-allowlist defenses for serve | Implemented |
+| [BE-0123](BE-0123-composite-action-input-indirection/BE-0123-composite-action-input-indirection.md) | Route composite-action inputs through env indirection | Implemented |
+| [BE-0124](BE-0124-config-source-owner-repo-validation/BE-0124-config-source-owner-repo-validation.md) | Tighten config-source owner and repo validation | Implemented |
+| [BE-0125](BE-0125-authoring-agent-tool-restriction/BE-0125-authoring-agent-tool-restriction.md) | Restrict the claude-code authoring agent tools | Implemented |
+| [BE-0130](BE-0130-default-network-secret-redaction/BE-0130-default-network-secret-redaction.md) | Redact sensitive network headers and cookies by default | Implemented |
+| [BE-0131](BE-0131-run-artifact-permissions/BE-0131-run-artifact-permissions.md) | Restrict run-artifact file permissions | Implemented |
+| [BE-0133](BE-0133-pin-actionlint-installer/BE-0133-pin-actionlint-installer.md) | Pin the actionlint installer by SHA | Implemented |
+| [BE-0136](BE-0136-serve-write-once-secrets/BE-0136-serve-write-once-secrets.md) | Write-once secrets store for serve | Implemented |
+| [BE-0144](BE-0144-automerge-stale-approval-race/BE-0144-automerge-stale-approval-race.md) | Close the auto-merge stale-approval race | Implemented |
+| [BE-0151](BE-0151-screenshot-secret-capture-warning/BE-0151-screenshot-secret-capture-warning.md) | Warn when screenshots and video may capture on-screen secrets | Implemented |
+| [BE-0152](BE-0152-totp-seed-artifact-leak/BE-0152-totp-seed-artifact-leak.md) | Keep literal TOTP seeds out of run artifacts | Implemented |
+| [BE-0153](BE-0153-encode-aware-secret-redaction/BE-0153-encode-aware-secret-redaction.md) | Encode-aware secret redaction | Implemented |
+| [BE-0155](BE-0155-idb-input-text-via-stdin/BE-0155-idb-input-text-via-stdin.md) | Pass idb input text via stdin to keep secrets out of argv | Implemented |
+| [BE-0174](BE-0174-scenario-ref-path-containment/BE-0174-scenario-ref-path-containment.md) | Contain scenario component and data refs within the suite root | Implemented |
+<!-- /GENERATED:implemented-security -->
+
+### Dogfood fixtures (demo apps)
+
+Purpose-built test subjects that exercise the commands end-to-end. The showcase suite is the iOS dogfood target — the same app in UIKit and SwiftUI, each in an accessibility-on / accessibility-off variant — so `run`, `record`, `doctor`, and `crawl` all have one rich, representative subject. The screen-by-screen contract lives in [`demos/showcase/SPEC.md`](../demos/showcase/SPEC.md).
+
+<!-- GENERATED:implemented-dogfood -->
+| ID | Item | Status | Origin |
+|---|---|---|---|
+| [BE-0045](BE-0045-dogfood-showcase-apps/BE-0045-dogfood-showcase-apps.md) | Dogfood showcase apps (UIKit × SwiftUI, accessibility-paired) | Implemented | Dogfooding |
+| [BE-0079](BE-0079-consolidate-demos-on-showcase/BE-0079-consolidate-demos-on-showcase.md) | Consolidate the demo & dogfood apps onto the showcase suite | Implemented | Dogfooding |
+| [BE-0107](BE-0107-showcase-tab-navigation-no-launch-shortcut/BE-0107-showcase-tab-navigation-no-launch-shortcut.md) | Reach every showcase tab by navigation, not a launch-env shortcut | Implemented | Dogfooding |
+<!-- /GENERATED:implemented-dogfood -->
+
+### Dogfood fixtures (web UI)
+
+Bajutsu's own `serve` Web UI is a web app, so the Web (Playwright) backend drives it — a deterministic, Tier-2 regression net for the UI, the web-side counterpart to the iOS showcase fixtures.
+
+<!-- GENERATED:implemented-dogfood-web-ui -->
+| ID | Item | Status | Origin |
+|---|---|---|---|
+| [BE-0058](BE-0058-dogfood-web-ui/BE-0058-dogfood-web-ui.md) | Dogfood the serve Web UI (web-backend regression net) | Implemented | Dogfooding |
+| [BE-0059](BE-0059-launch-target-server/BE-0059-launch-target-server.md) | Bring up the target server for a run (`launchServer`) | Implemented | Dogfooding |
+| [BE-0189](BE-0189-serve-ui-dogfood-ci-gate/BE-0189-serve-ui-dogfood-ci-gate.md) | Gate the serve Web UI dogfood in CI | Implemented | Dogfooding |
+<!-- /GENERATED:implemented-dogfood-web-ui -->
 
 ### Development infrastructure (contributor workflow)
 
@@ -323,256 +491,17 @@ Behavior-preserving cleanup inside `bajutsu/` itself — deduplication, decompos
 | [BE-0206](BE-0206-serve-state-module-split/BE-0206-serve-state-module-split.md) | Split serve job state from job execution | Implemented |
 <!-- /GENERATED:implemented-quality-debt -->
 
-### Dogfood fixtures (demo apps)
-
-Purpose-built test subjects that exercise the commands end-to-end. The showcase suite is the next-generation dogfood target — the same app written in UIKit and SwiftUI, each in an accessibility-on / accessibility-off variant (four products, two codebases), so `run` (id-based), `record` (no-id fallback), `doctor` (Ready vs Blocked), and `crawl` all have one rich, representative subject. The screen-by-screen contract lives in [`demos/showcase/SPEC.md`](../demos/showcase/SPEC.md).
-
-<!-- GENERATED:implemented-dogfood -->
-| ID | Item | Status | Origin |
-|---|---|---|---|
-| [BE-0045](BE-0045-dogfood-showcase-apps/BE-0045-dogfood-showcase-apps.md) | Dogfood showcase apps (UIKit × SwiftUI, accessibility-paired) | Implemented | Dogfooding |
-| [BE-0079](BE-0079-consolidate-demos-on-showcase/BE-0079-consolidate-demos-on-showcase.md) | Consolidate the demo & dogfood apps onto the showcase suite | Implemented | Dogfooding |
-| [BE-0107](BE-0107-showcase-tab-navigation-no-launch-shortcut/BE-0107-showcase-tab-navigation-no-launch-shortcut.md) | Reach every showcase tab by navigation, not a launch-env shortcut | Implemented | Dogfooding |
-<!-- /GENERATED:implemented-dogfood -->
-
-### Dogfood fixtures (web UI)
-
-Bajutsu's own `serve` Web UI is a web app, so the Web (Playwright) backend drives it — a deterministic, Tier-2 regression net for the UI, the web-side counterpart to the iOS [BE-0045](BE-0045-dogfood-showcase-apps/BE-0045-dogfood-showcase-apps.md) showcase fixtures.
-
-<!-- GENERATED:implemented-dogfood-web-ui -->
-| ID | Item | Status | Origin |
-|---|---|---|---|
-| [BE-0058](BE-0058-dogfood-web-ui/BE-0058-dogfood-web-ui.md) | Dogfood the serve Web UI (web-backend regression net) | Implemented | Dogfooding |
-| [BE-0059](BE-0059-launch-target-server/BE-0059-launch-target-server.md) | Bring up the target server for a run (`launchServer`) | Implemented | Dogfooding |
-| [BE-0189](BE-0189-serve-ui-dogfood-ci-gate/BE-0189-serve-ui-dogfood-ci-gate.md) | Gate the serve Web UI dogfood in CI | Implemented | Dogfooding |
-<!-- /GENERATED:implemented-dogfood-web-ui -->
-
-### AI provider configuration
-
-The Tier-1 AI paths (`record` / `triage` / `--dismiss-alerts` / `crawl`) call Claude through a pluggable provider. This topic covers selecting and configuring that provider — e.g. Amazon Bedrock (authenticated with AWS credentials) as an alternative to the direct Anthropic API. The deterministic `run` / CI gate calls no model and is unaffected.
-
-<!-- GENERATED:implemented-ai-provider -->
-| ID | Item | Status |
-|---|---|---|
-| [BE-0053](BE-0053-bedrock-ai-provider/BE-0053-bedrock-ai-provider.md) | Amazon Bedrock as a pluggable AI provider | Implemented |
-| [BE-0101](BE-0101-ai-free-zero-config/BE-0101-ai-free-zero-config.md) | Legible Claude-using / Claude-free split with a zero-config non-AI path | Implemented |
-| [BE-0104](BE-0104-vendor-neutral-ai-backend/BE-0104-vendor-neutral-ai-backend.md) | Vendor-neutral AI backend interface | Implemented |
-| [BE-0111](BE-0111-ai-sdk-optional-dependency/BE-0111-ai-sdk-optional-dependency.md) | Make the AI SDK an optional extra so the deterministic gate installs AI-free | Implemented |
-| [BE-0163](BE-0163-ant-cli-oauth-provider/BE-0163-ant-cli-oauth-provider.md) | Replace the Claude Code CLI authoring backend with an `ant`-CLI OAuth AI provider | Implemented |
-| [BE-0175](BE-0175-serve-web-ui-ant-sso-login/BE-0175-serve-web-ui-ant-sso-login.md) | Sign in to the `ant` provider from the serve Web UI | Implemented |
-| [BE-0176](BE-0176-claude-code-ai-backend/BE-0176-claude-code-ai-backend.md) | Revive Claude Code as an AiBackend adapter with file-based vision | Implemented |
-| [BE-0183](BE-0183-per-provider-serve-settings/BE-0183-per-provider-serve-settings.md) | Per-provider AI settings in the serve Web UI | Implemented |
-| [BE-0188](BE-0188-configurable-ai-output-language/BE-0188-configurable-ai-output-language.md) | Configurable AI output language for record and crawl | Implemented |
-| [BE-0215](BE-0215-claude-code-oauth-token-credential/BE-0215-claude-code-oauth-token-credential.md) | Explicit CLAUDE_CODE_OAUTH_TOKEN credential for the claude-code provider | Implemented |
-| [BE-0229](BE-0229-per-org-provider-settings-resolution/BE-0229-per-org-provider-settings-resolution.md) | Resolve serve AI provider settings per organization at runtime | Implemented |
-<!-- /GENERATED:implemented-ai-provider -->
-
-### Hosting the web UI (cloud / self-hosted)
-
-Standing up `bajutsu serve` beyond loopback. The hardening that makes the existing stdlib server safe to expose (auth, input validation) has shipped; the full hosted topologies remain proposals below.
-
-<!-- GENERATED:implemented-hosting -->
-| ID | Item | Status |
-|---|---|---|
-| [BE-0016](BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md) | Self-hosting of the web UI | Implemented |
-| [BE-0051](BE-0051-serve-hardening-for-hosting/BE-0051-serve-hardening-for-hosting.md) | Serve hardening for hosting (auth, input validation) | Implemented |
-| [BE-0055](BE-0055-operational-logging/BE-0055-operational-logging.md) | Operational logging for the hosted serve | Implemented |
-| [BE-0090](BE-0090-uploaded-config-command-execution/BE-0090-uploaded-config-command-execution.md) | Govern and sandbox command execution from uploaded bundle configs | Implemented |
-| [BE-0106](BE-0106-post-completion-worker-model/BE-0106-post-completion-worker-model.md) | Post-completion worker model (eliminate Redis dependency) | Implemented |
-| [BE-0108](BE-0108-hosted-config-source-restriction/BE-0108-hosted-config-source-restriction.md) | Restrict config sources to upload and Git when hosted | Implemented |
-| [BE-0110](BE-0110-evidence-store-uri/BE-0110-evidence-store-uri.md) | Evidence upload to object storage via URI | Implemented |
-| [BE-0127](BE-0127-split-serve-operations-module/BE-0127-split-serve-operations-module.md) | Split the serve operations god-module | Implemented |
-| [BE-0129](BE-0129-serve-scope-boundary/BE-0129-serve-scope-boundary.md) | Bound serve scope and keep host concerns out of shared config | Implemented |
-| [BE-0160](BE-0160-worker-credential-free-uploads/BE-0160-worker-credential-free-uploads.md) | Credential-free worker uploads via presigned URLs | Implemented |
-| [BE-0166](BE-0166-capability-routed-queues/BE-0166-capability-routed-queues.md) | Capability-routed job queues | Implemented |
-| [BE-0169](BE-0169-serve-metrics-observability/BE-0169-serve-metrics-observability.md) | Serve metrics and observability endpoint | Implemented |
-| [BE-0173](BE-0173-slim-web-worker-image/BE-0173-slim-web-worker-image.md) | Slim Linux web-worker container image | Implemented |
-| [BE-0190](BE-0190-org-scoped-crawl-history/BE-0190-org-scoped-crawl-history.md) | Org-scoped crawl history on the server backend | Implemented |
-| [BE-0204](BE-0204-server-storage-gcs-support/BE-0204-server-storage-gcs-support.md) | GCS support for server-side object storage | Implemented |
-<!-- /GENERATED:implemented-hosting -->
-
-### Security hardening
-
-Closing the edges the deterministic core does not touch — `serve`'s HTTP surface, how secrets flow through capture / record / artifacts, driver argument hygiene, and the CI supply chain. These items keep the tool safe to run on a shared machine and safe to hand a scenario from an untrusted source, without weakening the prime directives.
-
-<!-- GENERATED:implemented-security -->
-| ID | Item | Status |
-|---|---|---|
-| [BE-0115](BE-0115-inprocess-collector-auth/BE-0115-inprocess-collector-auth.md) | Authenticate the in-process iOS network collector | Implemented |
-| [BE-0116](BE-0116-udid-argument-validation/BE-0116-udid-argument-validation.md) | Tighten UDID validation against argument injection | Implemented |
-| [BE-0120](BE-0120-recorded-scenario-secret-tokenization/BE-0120-recorded-scenario-secret-tokenization.md) | Tokenize secrets in recorded scenario YAML | Implemented |
-| [BE-0121](BE-0121-serve-csrf-host-allowlist/BE-0121-serve-csrf-host-allowlist.md) | Unconditional CSRF and Host-allowlist defenses for serve | Implemented |
-| [BE-0123](BE-0123-composite-action-input-indirection/BE-0123-composite-action-input-indirection.md) | Route composite-action inputs through env indirection | Implemented |
-| [BE-0124](BE-0124-config-source-owner-repo-validation/BE-0124-config-source-owner-repo-validation.md) | Tighten config-source owner and repo validation | Implemented |
-| [BE-0125](BE-0125-authoring-agent-tool-restriction/BE-0125-authoring-agent-tool-restriction.md) | Restrict the claude-code authoring agent tools | Implemented |
-| [BE-0130](BE-0130-default-network-secret-redaction/BE-0130-default-network-secret-redaction.md) | Redact sensitive network headers and cookies by default | Implemented |
-| [BE-0131](BE-0131-run-artifact-permissions/BE-0131-run-artifact-permissions.md) | Restrict run-artifact file permissions | Implemented |
-| [BE-0133](BE-0133-pin-actionlint-installer/BE-0133-pin-actionlint-installer.md) | Pin the actionlint installer by SHA | Implemented |
-| [BE-0136](BE-0136-serve-write-once-secrets/BE-0136-serve-write-once-secrets.md) | Write-once secrets store for serve | Implemented |
-| [BE-0144](BE-0144-automerge-stale-approval-race/BE-0144-automerge-stale-approval-race.md) | Close the auto-merge stale-approval race | Implemented |
-| [BE-0151](BE-0151-screenshot-secret-capture-warning/BE-0151-screenshot-secret-capture-warning.md) | Warn when screenshots and video may capture on-screen secrets | Implemented |
-| [BE-0152](BE-0152-totp-seed-artifact-leak/BE-0152-totp-seed-artifact-leak.md) | Keep literal TOTP seeds out of run artifacts | Implemented |
-| [BE-0153](BE-0153-encode-aware-secret-redaction/BE-0153-encode-aware-secret-redaction.md) | Encode-aware secret redaction | Implemented |
-| [BE-0155](BE-0155-idb-input-text-via-stdin/BE-0155-idb-input-text-via-stdin.md) | Pass idb input text via stdin to keep secrets out of argv | Implemented |
-| [BE-0174](BE-0174-scenario-ref-path-containment/BE-0174-scenario-ref-path-containment.md) | Contain scenario component and data refs within the suite root | Implemented |
-<!-- /GENERATED:implemented-security -->
-
-### Configuration sourcing
-
-Where a project's config and scenarios come from. A Git repository + ref is a today-runnable source for CI and a self-hosted `serve`, materialized at an immutable commit.
-
-<!-- GENERATED:implemented-config-sourcing -->
-| ID | Item | Status |
-|---|---|---|
-| [BE-0063](BE-0063-git-config-source/BE-0063-git-config-source.md) | Load config (and its scenario tree) from a Git repository + ref | Implemented |
-| [BE-0073](BE-0073-serve-zip-bundle-upload/BE-0073-serve-zip-bundle-upload.md) | Upload a config + scenarios + app-binary bundle as a zip and run it from the web UI | Implemented |
-| [BE-0119](BE-0119-scenario-schema-versioning/BE-0119-scenario-schema-versioning.md) | Version the scenario schema for cross-version reads | Implemented |
-| [BE-0177](BE-0177-run-behavior-target-config/BE-0177-run-behavior-target-config.md) | Per-target config defaults for run-behavior settings | Implemented |
-| [BE-0187](BE-0187-serve-config-view/BE-0187-serve-config-view.md) | View the loaded config in the serve Web UI (raw YAML, structured tree, Git provenance) | Implemented |
-| [BE-0224](BE-0224-github-private-repo-config-auth/BE-0224-github-private-repo-config-auth.md) | Granting private-repository access for the GitHub config source | Implemented |
-| [BE-0242](BE-0242-config-relative-path-resolution/BE-0242-config-relative-path-resolution.md) | Resolve config-declared paths relative to the config file | Implemented |
-<!-- /GENERATED:implemented-config-sourcing -->
-
-### Surfacing CLI features in the serve Web UI
-
-Bringing the CLI's own tools into the serve Web UI, where authoring happens. The scenario editor's inline lint / schema validation landed first.
-
-<!-- GENERATED:implemented-serve-cli-features -->
-| ID | Item | Status |
-|---|---|---|
-| [BE-0137](BE-0137-serve-codegen/BE-0137-serve-codegen.md) | Generate native test code from the serve Web UI | Implemented |
-| [BE-0138](BE-0138-serve-lint/BE-0138-serve-lint.md) | Inline scenario validation in the serve editor | Implemented |
-| [BE-0145](BE-0145-serve-audit/BE-0145-serve-audit.md) | Determinism audit in the serve Web UI | Implemented |
-| [BE-0146](BE-0146-serve-coverage/BE-0146-serve-coverage.md) | E2E coverage map in the serve Web UI | Implemented |
-| [BE-0147](BE-0147-serve-triage/BE-0147-serve-triage.md) | Triage failed runs in the serve Web UI | Implemented |
-| [BE-0148](BE-0148-serve-doctor/BE-0148-serve-doctor.md) | Doctor readiness panel in the serve Web UI | Implemented |
-<!-- /GENERATED:implemented-serve-cli-features -->
-
-### AI usage and cost observability
-
-Making Bajutsu's AI token and dollar spend visible: an attributed, persistent ledger of every AI call, and (separately) the serve Web UI dashboard that reads it.
-
-<!-- GENERATED:implemented-ai-usage -->
-| ID | Item | Status |
-|---|---|---|
-| [BE-0195](BE-0195-ai-usage-cost-dashboard/BE-0195-ai-usage-cost-dashboard.md) | Visualize AI token usage and cost in the serve Web UI | Implemented |
-| [BE-0196](BE-0196-ai-usage-cost-ledger/BE-0196-ai-usage-cost-ledger.md) | Record AI token usage and cost as an attributed, persistent ledger | Implemented |
-<!-- /GENERATED:implemented-ai-usage -->
-
-### codegen coverage
-
-Turning a passing scenario into a native test in a destination framework's idiom. The web (Playwright) target has landed alongside the original XCUITest one.
-
-<!-- GENERATED:implemented-codegen -->
-| ID | Item | Status |
-|---|---|---|
-| [BE-0025](BE-0025-coordinate-swipe-generation/BE-0025-coordinate-swipe-generation.md) | Coordinate swipe generation | Implemented |
-| [BE-0026](BE-0026-shrink-unsupported-syntax/BE-0026-shrink-unsupported-syntax.md) | Shrink unsupported syntax | Implemented |
-| [BE-0062](BE-0062-playwright-codegen/BE-0062-playwright-codegen.md) | Playwright codegen target | Implemented |
-| [BE-0083](BE-0083-codegen-emitter-unification/BE-0083-codegen-emitter-unification.md) | Unify the codegen emitters behind a shared scenario walk | Implemented |
-| [BE-0085](BE-0085-shrink-web-codegen-syntax/BE-0085-shrink-web-codegen-syntax.md) | Shrink unsupported web (Playwright) codegen syntax | Implemented |
-| [BE-0209](BE-0209-android-codegen-emitter/BE-0209-android-codegen-emitter.md) | Android codegen emitter (Espresso / UI Automator) | Implemented |
-<!-- /GENERATED:implemented-codegen -->
-
-### Crawl performance / scale-out
-
-Running the autonomous crawl across more than one device so a full screen map is built in a fraction of the wall-clock time.
-
-<!-- GENERATED:implemented-crawl -->
-| ID | Item | Status |
-|---|---|---|
-| [BE-0064](BE-0064-parallel-crawl/BE-0064-parallel-crawl.md) | Parallel crawl across multiple simulators | Implemented |
-| [BE-0077](BE-0077-parallel-web-crawl/BE-0077-parallel-web-crawl.md) | Parallel web crawl across multiple browsers | Implemented |
-| [BE-0181](BE-0181-crawl-continuation/BE-0181-crawl-continuation.md) | Resumable crawl continuation (Web UI + full-frontier resume) | Implemented |
-<!-- /GENERATED:implemented-crawl -->
-
-### On-device validation (M1 close-out)
-
-<!-- GENERATED:implemented-on-device -->
-| ID | Item | Status |
-|---|---|---|
-| [BE-0005](BE-0005-idb-companion-version-monitoring/BE-0005-idb-companion-version-monitoring.md) | idb_companion version monitoring | Implemented |
-| [BE-0006](BE-0006-idb-element-tree-normalization/BE-0006-idb-element-tree-normalization.md) | idb element-tree normalization accuracy | Implemented |
-| [BE-0087](BE-0087-idb-action-settle/BE-0087-idb-action-settle.md) | idb action timing robustness (settle before actuation) | Implemented |
-| [BE-0088](BE-0088-overlap-simulator-boot/BE-0088-overlap-simulator-boot.md) | Overlap the Simulator boot with the build | Implemented |
-| [BE-0207](BE-0207-xcuitest-channel-transient-retry/BE-0207-xcuitest-channel-transient-retry.md) | Make the XCUITest runner channel robust to transient timeouts | Implemented |
-| [BE-0218](BE-0218-e2e-simulator-flaky-readiness-actuation/BE-0218-e2e-simulator-flaky-readiness-actuation.md) | Stabilize the E2E Simulator gate: namespace-aware readiness and a bounded actuation timeout | Implemented |
-<!-- /GENERATED:implemented-on-device -->
-
-### Integration with external services
-
-<!-- GENERATED:implemented-external-integration -->
-| ID | Item | Status |
-|---|---|---|
-| [BE-0099](BE-0099-webhook-run-notifications/BE-0099-webhook-run-notifications.md) | Webhook notifications for run results | Implemented |
-| [BE-0161](BE-0161-ctrf-report-export/BE-0161-ctrf-report-export.md) | Export run results in Common Test Report Format (CTRF) | Implemented |
-<!-- /GENERATED:implemented-external-integration -->
-
-### Miscellaneous / on hold
-
-<!-- GENERATED:implemented-misc -->
-| ID | Item | Status |
-|---|---|---|
-| [BE-0028](BE-0028-evidence-rule-overmatch-guard/BE-0028-evidence-rule-overmatch-guard.md) | Guard against over-matching evidence rules | Implemented |
-<!-- /GENERATED:implemented-misc -->
-
 ## In progress
 
 Accepted and actively being built — a PR is in flight or imminent.
 
-### Self-healing triage (M4)
-
-<!-- GENERATED:in-progress-self-healing -->
-
-<!-- /GENERATED:in-progress-self-healing -->
-
-### Platform expansion (landed slices)
-
-The Web (Playwright) backend and its completion (rich capabilities, parallel runs) — the rich end of the capability model, on the existing Linux gate.
-
-<!-- GENERATED:in-progress-platform-landed -->
-
-<!-- /GENERATED:in-progress-platform-landed -->
-
-### Platform expansion (Android / Web / Flutter)
+### Platform support (iOS / Android / Web / Flutter)
 
 <!-- GENERATED:in-progress-platform -->
-
+| ID | Item | Status |
+|---|---|---|
+| [BE-0231](BE-0231-smoke-idb-first-wait-settling/BE-0231-smoke-idb-first-wait-settling.md) | Harden the E2E first-wait against Simulator settling flake | In progress |
 <!-- /GENERATED:in-progress-platform -->
-
-### Candidates from competitive research (MagicPod / Autify)
-
-<!-- GENERATED:in-progress-competitive -->
-
-<!-- /GENERATED:in-progress-competitive -->
-
-### Candidates from competitive research (Maestro)
-
-<!-- GENERATED:in-progress-competitive-maestro -->
-
-<!-- /GENERATED:in-progress-competitive-maestro -->
-
-### Backend expansion (iOS actuators)
-
-<!-- GENERATED:in-progress-backend -->
-
-<!-- /GENERATED:in-progress-backend -->
-
-### Development infrastructure (contributor workflow)
-
-Reduce friction for the many parallel sessions working this repo — treat merge conflicts as a design smell and reshape the file flow so independent changes touch disjoint files.
-
-<!-- GENERATED:in-progress-developer-experience -->
-
-<!-- /GENERATED:in-progress-developer-experience -->
-
-### Dogfood fixtures (demo apps)
-
-Consolidating the demo and dogfood apps onto the showcase suite: bringing it to parity with the legacy `sample` / `demo` / `sample2` fixtures (codegen → XCUITest, visual regression, gesture targets, the evidence tour), re-pointing the demos and on-device CI at it, and retiring the three legacy apps — so the showcase becomes the single iOS fixture.
-
-<!-- GENERATED:in-progress-dogfood -->
-
-<!-- /GENERATED:in-progress-dogfood -->
 
 ### AI provider configuration
 
@@ -588,66 +517,34 @@ Consolidating the demo and dogfood apps onto the showcase suite: bringing it to 
 | ID | Item | Status |
 |---|---|---|
 | [BE-0015](BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md) | Public hosting of the web UI | In progress |
+| [BE-0239](BE-0239-deletable-runs-serve/BE-0239-deletable-runs-serve.md) | Deletable runs and reports in the serve Web UI | In progress |
 <!-- /GENERATED:in-progress-hosting -->
-
-### Surfacing CLI features in the serve Web UI
-
-Bringing the CLI's own tools into the serve Web UI, where authoring happens. The scenario editor's inline lint / schema validation landed first.
-
-<!-- GENERATED:in-progress-serve-cli-features -->
-
-<!-- /GENERATED:in-progress-serve-cli-features -->
-
-### codegen coverage
-
-<!-- GENERATED:in-progress-codegen -->
-
-<!-- /GENERATED:in-progress-codegen -->
-
-### On-device validation (M1 close-out)
-
-<!-- GENERATED:in-progress-on-device -->
-| ID | Item | Status |
-|---|---|---|
-| [BE-0231](BE-0231-smoke-idb-first-wait-settling/BE-0231-smoke-idb-first-wait-settling.md) | Harden the E2E first-wait against Simulator settling flake | In progress |
-<!-- /GENERATED:in-progress-on-device -->
-
-### Authoring experience (record / GUI editor)
-
-<!-- GENERATED:in-progress-authoring -->
-
-<!-- /GENERATED:in-progress-authoring -->
-
-### Codebase quality & technical debt
-
-<!-- GENERATED:in-progress-quality-debt -->
-
-<!-- /GENERATED:in-progress-quality-debt -->
 
 ## Proposals
 
 Under consideration — not yet decided. Promote an item to *In progress* once work starts, or to *Implemented* when it ships.
 
-### On-device validation (M1 close-out)
-
-The deterministic core runs end-to-end on the FakeDriver, and the idb backend's subprocess execution (`describe-all` parsing, frame-center tap/text/swipe) and the simctl launch sequence are validated on a real device. What remains is only ongoing maintenance monitoring.
-
-<!-- GENERATED:proposals-on-device -->
-
-<!-- /GENERATED:proposals-on-device -->
-
-### Platform expansion (Android / Web / Flutter)
-
-A platform is just a backend behind the one driver interface ([DESIGN §1](../DESIGN.md)), so going multi-platform means adding backends, not changing the deterministic core. This section covers that expansion by leveraging the driver / backend abstractions. The big-picture overview is in [multi-platform.md](../docs/multi-platform.md); the concrete per-platform design lives in the items below: [BE-0009](BE-0009-cross-platform-abstractions/BE-0009-cross-platform-abstractions.md) holds the shared abstractions, then Web (recommended first), Android, and Flutter.
+### Platform support (iOS / Android / Web / Flutter)
 
 <!-- GENERATED:proposals-platform -->
 | ID | Item | Status |
 |---|---|---|
 | [BE-0008](BE-0008-flutter-support/BE-0008-flutter-support.md) | Flutter support | Proposal |
+| [BE-0234](BE-0234-adb-run-performance/BE-0234-adb-run-performance.md) | Speed up adb scenario runs (uiautomator dump bottleneck) | Proposal |
+<!-- /GENERATED:proposals-platform -->
+
+### Device-cloud execution
+
+Running a scenario on a hosted device farm instead of a local Simulator, emulator, or browser, behind a common provider abstraction — an opt-in execution target beyond the deterministic core's local-first default.
+
+<!-- GENERATED:proposals-device-cloud -->
+| ID | Item | Status |
+|---|---|---|
 | [BE-0235](BE-0235-aws-device-farm-submitter/BE-0235-aws-device-farm-submitter.md) | AWS Device Farm batch submitter | Proposal |
 | [BE-0236](BE-0236-device-cloud-provider-abstraction/BE-0236-device-cloud-provider-abstraction.md) | Device-cloud provider abstraction | Proposal |
 | [BE-0237](BE-0237-firebase-device-streaming-adapter/BE-0237-firebase-device-streaming-adapter.md) | Firebase Test Lab / Device Streaming adapter | Proposal |
-<!-- /GENERATED:proposals-platform -->
+| [BE-0238](BE-0238-ios-device-cloud-execution/BE-0238-ios-device-cloud-execution.md) | iOS device-cloud execution | Proposal |
+<!-- /GENERATED:proposals-device-cloud -->
 
 ### Authoring experience (record / GUI editor)
 
@@ -658,49 +555,7 @@ A platform is just a backend behind the one driver interface ([DESIGN §1](../DE
 | [BE-0185](BE-0185-record-human-takeover-step/BE-0185-record-human-takeover-step.md) | Human takeover step during record (CAPTCHA / biometrics / unresolvable gestures) | Proposal |
 <!-- /GENERATED:proposals-authoring -->
 
-### Self-healing triage (M4)
-
-Lower the maintenance cost of regressions while keeping AI out of the judge role and limited to an investigator.
-
-<!-- GENERATED:proposals-self-healing -->
-
-<!-- /GENERATED:proposals-self-healing -->
-
-### Surfacing CLI features in the serve Web UI
-
-<!-- GENERATED:proposals-serve-cli-features -->
-
-<!-- /GENERATED:proposals-serve-cli-features -->
-
-### Dogfood fixtures (demo apps)
-
-<!-- GENERATED:proposals-dogfood -->
-
-<!-- /GENERATED:proposals-dogfood -->
-
-### Dogfood fixtures (web UI)
-
-<!-- GENERATED:proposals-dogfood-web-ui -->
-
-<!-- /GENERATED:proposals-dogfood-web-ui -->
-
-### AI provider configuration
-
-<!-- GENERATED:proposals-ai-provider -->
-
-<!-- /GENERATED:proposals-ai-provider -->
-
-### AI usage and cost observability
-
-Measuring what the AI paths (`record` / `crawl` / `triage --ai` / `run --apply`) actually cost — tokens and money — broken down by provider, model, command, and scenario. Bajutsu already has `bajutsu/usage.py`, but it tracks a single in-memory token total that is lost on process exit; these items turn that into an attributed, persistent record and surface it in the serve Web UI, so a team can see where its AI spend goes and make deterministic provider/model choices from real data. Observability only — nothing here puts an LLM on the `run` / CI verdict path.
-
-<!-- GENERATED:proposals-ai-usage -->
-
-<!-- /GENERATED:proposals-ai-usage -->
-
 ### Hosting the web UI (cloud / self-hosted)
-
-Turn the local `bajutsu serve` launcher into a shared service. The runner drives an iOS Simulator and so needs a Mac, which forces a control-plane (Linux) ⇄ macOS-worker split. [BE-0015](BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md) selects a managed, multi-tenant public stack; [BE-0016](BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md) covers running it on your own Mac(s).
 
 <!-- GENERATED:proposals-hosting -->
 | ID | Item | Status |
@@ -708,20 +563,9 @@ Turn the local `bajutsu serve` launcher into a shared service. The runner drives
 | [BE-0167](BE-0167-control-plane-scale-out/BE-0167-control-plane-scale-out.md) | Control-plane scale-out behind a load balancer | Proposal |
 | [BE-0168](BE-0168-self-host-high-availability/BE-0168-self-host-high-availability.md) | Self-hosted high availability and single-point-of-failure hardening | Proposal |
 | [BE-0170](BE-0170-weighted-fair-org-dispatch/BE-0170-weighted-fair-org-dispatch.md) | Weighted-fair cross-org job dispatch | Proposal |
-| [BE-0239](BE-0239-deletable-runs-serve/BE-0239-deletable-runs-serve.md) | Deletable runs and reports in the serve Web UI | Proposal |
 <!-- /GENERATED:proposals-hosting -->
 
-### Security hardening
-
-Closing the edges the deterministic core does not touch — `serve`'s HTTP surface, how secrets flow through capture / record / artifacts, driver argument hygiene, and the CI supply chain. These items keep the tool safe to run on a shared machine and safe to hand a scenario from an untrusted source, without weakening the prime directives.
-
-<!-- GENERATED:proposals-security -->
-
-<!-- /GENERATED:proposals-security -->
-
 ### Configuration sourcing
-
-Where `bajutsu` reads its config and scenario tree from. Today that is a local path; the items here propose naming a **Git repository at a ref** (`github:owner/repo@ref:path`) or uploading a bundle, so a hosted or self-hosted `serve`, or a CI runner, can pull a team's test repo directly.
 
 <!-- GENERATED:proposals-config-sourcing -->
 | ID | Item | Status |
@@ -729,86 +573,26 @@ Where `bajutsu` reads its config and scenario tree from. Today that is a local p
 | [BE-0243](BE-0243-upload-bundle-durable-storage/BE-0243-upload-bundle-durable-storage.md) | Persist uploaded zip config bundles to object storage for hosted serve | Proposal |
 <!-- /GENERATED:proposals-config-sourcing -->
 
-### codegen coverage
-
-Turning a passing scenario into a native test in a destination framework's idiom. These items shrink the range of constructs an emitter drops to a `// TODO`.
-
-<!-- GENERATED:proposals-codegen -->
-
-<!-- /GENERATED:proposals-codegen -->
-
-### Crawl performance / scale-out
-
-Keeping the autonomous crawl fast and its code lean as it grows.
-
-<!-- GENERATED:proposals-crawl -->
-
-<!-- /GENERATED:proposals-crawl -->
-
-### Backend expansion (iOS actuators)
-
-<!-- GENERATED:proposals-backend -->
-| ID | Item | Status |
-|---|---|---|
-| [BE-0238](BE-0238-ios-device-cloud-execution/BE-0238-ios-device-cloud-execution.md) | iOS device-cloud execution | Proposal |
-| [BE-0240](BE-0240-ios-capability-aware-actuator-selection/BE-0240-ios-capability-aware-actuator-selection.md) | Capability-aware automatic actuator selection for iOS (idb/XCUITest transparency) | Proposal |
-<!-- /GENERATED:proposals-backend -->
-
-### doctor / onboarding
-
-<!-- GENERATED:proposals-doctor -->
-
-<!-- /GENERATED:proposals-doctor -->
-
-### Development infrastructure (contributor workflow)
-
-<!-- GENERATED:proposals-developer-experience -->
-
-<!-- /GENERATED:proposals-developer-experience -->
-
-### Codebase quality & technical debt
-
-Behavior-preserving cleanup inside `bajutsu/` itself — deduplication, decomposition of oversized functions/modules, and naming clarity — as distinct from *Development infrastructure (contributor workflow)* above, which covers the tooling contributors use to work on this repo (CI, hooks, roadmap automation).
-
-<!-- GENERATED:proposals-quality-debt -->
-
-<!-- /GENERATED:proposals-quality-debt -->
-
-### Integration with external services
-
-Sending a run's result out to a service the team already lives in. These are post-verdict, deterministic transports — they carry the verdict the runner already computed, never an LLM's, and a delivery failure never moves the run's result.
-
-<!-- GENERATED:proposals-external-integration -->
-
-<!-- /GENERATED:proposals-external-integration -->
-
-### Candidates from competitive research (MagicPod / Autify)
-
-<!-- GENERATED:proposals-competitive -->
-
-<!-- /GENERATED:proposals-competitive -->
-
-### Candidates from competitive research (Maestro)
-
-Maestro (mobile.dev) is an open-source, cross-platform UI E2E tool whose direction leans into breadth, a hosted device cloud, and AI features that are *optional / advisory by default*. These items sharpen Bajutsu's opposite stance — determinism as a contract, verification below the UI, and AI strictly under the user's control.
-
-<!-- GENERATED:proposals-competitive-maestro -->
-
-<!-- /GENERATED:proposals-competitive-maestro -->
-
 ## Deferred
 
 Parked proposals — considered, then shelved for now. Kept here (not deleted) so the decision and its rationale stay on record; un-defer by changing `Status` back to `Proposal`.
 
-### Candidates from competitive research (MagicPod / Autify)
+### Scenario authoring features
 
-<!-- GENERATED:deferred-competitive -->
-| ID | Item | Status | Origin |
-|---|---|---|---|
-| [BE-0040](BE-0040-ai-assertions/BE-0040-ai-assertions.md) | AI assertions | Deferred | MagicPod |
-| [BE-0157](BE-0157-shake-device-primitive/BE-0157-shake-device-primitive.md) | Shake device primitive | Deferred | MagicPod |
-| [BE-0158](BE-0158-timezone-device-primitive/BE-0158-timezone-device-primitive.md) | Timezone device primitive | Deferred | MagicPod |
-<!-- /GENERATED:deferred-competitive -->
+<!-- GENERATED:deferred-scenario-authoring -->
+| ID | Item | Status |
+|---|---|---|
+| [BE-0157](BE-0157-shake-device-primitive/BE-0157-shake-device-primitive.md) | Shake device primitive | Deferred |
+| [BE-0158](BE-0158-timezone-device-primitive/BE-0158-timezone-device-primitive.md) | Timezone device primitive | Deferred |
+<!-- /GENERATED:deferred-scenario-authoring -->
+
+### Verification & coverage
+
+<!-- GENERATED:deferred-verification -->
+| ID | Item | Status |
+|---|---|---|
+| [BE-0040](BE-0040-ai-assertions/BE-0040-ai-assertions.md) | AI assertions | Deferred |
+<!-- /GENERATED:deferred-verification -->
 
 ### Hosting the web UI (cloud / self-hosted)
 
@@ -837,7 +621,7 @@ Parked proposals — considered, then shelved for now. Kept here (not deleted) s
 ## Not adopting (already covered / out of scope)
 
 - **Change history / version management** — already covered, since scenarios are YAML under git.
-- **Cloud device farm / real-device / cloud execution** — out of scope: Bajutsu targets local, CI-friendly backends (Simulator, headless browser, emulator), not real hardware or device clouds ([DESIGN §1](../DESIGN.md)). Multi-platform is tracked as proposals (the *Platform expansion* items).
+- **Cloud device farm / real-device execution as the *default*** — the deterministic core stays local-first and CI-friendly (Simulator, headless browser, emulator), not real hardware or device clouds ([DESIGN §1](../DESIGN.md)). Hosted device-cloud execution is not the default, but it is no longer flatly out of scope: it is tracked as opt-in proposals under *Device-cloud execution*. Multi-platform likewise lives under the *Platform support* items.
 - **Per-step screenshots / UI tree on error / device logs** — already covered by the evidence subsystem (capturePolicy + the `result:error` safety net).
 - **NL→test generation (Autopilot equivalent)** — overlaps with the existing `record` + the *Authoring experience* items.
 - **Scheduling / Slack / TestRail integration** — the domain of the CI / notification layer. Low priority (separately, if needed).

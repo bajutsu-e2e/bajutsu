@@ -41,6 +41,9 @@ EVENTS: frozenset[str] = frozenset(
     {
         "run.dispatched",
         "run.recorded",
+        "run.soft_deleted",
+        "run.restored",
+        "run.purged",
         "oauth.login",
         "quota.rejected",
         "worker.job.started",

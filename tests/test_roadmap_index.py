@@ -28,7 +28,7 @@ EN_FILE = """\
 
 * Proposal: [BE-0029](BE-0029-visual-regression-assertions.md)
 * Status: **Implemented**
-* Topic: Candidates from competitive research (MagicPod / Autify)
+* Topic: Verification & coverage
 * Origin: Both
 
 ## Introduction
@@ -41,7 +41,7 @@ JA_FILE = """\
 
 * 提案: [BE-0029](BE-0029-visual-regression-assertions-ja.md)
 * 状態: **実装済み**
-* トピック: 競合調査（MagicPod / Autify）由来の候補
+* トピック: 検証とカバレッジ
 * 由来: 両社
 
 ## はじめに
@@ -58,7 +58,7 @@ FENCED_EN_FILE = """\
 |---|---|
 | Proposal | [BE-0029](BE-0029-visual-regression-assertions.md) |
 | Status | **Implemented** |
-| Topic | Candidates from competitive research (MagicPod / Autify) |
+| Topic | Verification & coverage |
 | Origin | Both |
 <!-- /BE-METADATA -->
 
@@ -77,7 +77,7 @@ def test_parse_metadata_reads_fenced_table() -> None:
     assert title == "Visual-regression assertions"
     # The fenced data rows are read; the header row and the body table are not.
     assert fields["Status"] == "Implemented"
-    assert fields["Topic"] == "Candidates from competitive research (MagicPod / Autify)"
+    assert fields["Topic"] == "Verification & coverage"
     assert fields["Origin"] == "Both"
     assert "Field" not in fields
 
@@ -86,7 +86,7 @@ def test_parse_metadata_reads_title_and_fields() -> None:
     title, fields = bri.parse_metadata(EN_FILE)
     assert title == "Visual-regression assertions"
     assert fields["Status"] == "Implemented"
-    assert fields["Topic"] == "Candidates from competitive research (MagicPod / Autify)"
+    assert fields["Topic"] == "Verification & coverage"
     assert fields["Origin"] == "Both"
 
 

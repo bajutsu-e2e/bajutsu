@@ -10,7 +10,7 @@
 | 状態 | **実装中** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0231") |
 | 実装 PR | [#952](https://github.com/bajutsu-e2e/bajutsu/pull/952), [#970](https://github.com/bajutsu-e2e/bajutsu/pull/970) |
-| トピック | 実機検証（M1 クローズアウト） |
+| トピック | プラットフォーム対応 |
 <!-- /BE-METADATA -->
 
 ## はじめに

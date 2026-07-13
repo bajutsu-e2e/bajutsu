@@ -10,7 +10,7 @@
 | 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0101") |
 | 実装 PR | [#432](https://github.com/bajutsu-e2e/bajutsu/pull/432) |
-| トピック | AI provider configuration |
+| トピック | AI プロバイダ設定 |
 | 関連 | [BE-0047](../BE-0047-ai-data-sovereignty/BE-0047-ai-data-sovereignty-ja.md), [BE-0053](../BE-0053-bedrock-ai-provider/BE-0053-bedrock-ai-provider-ja.md), [BE-0024](../BE-0024-doctor-onboarding/BE-0024-doctor-onboarding-ja.md) |
 <!-- /BE-METADATA -->
 

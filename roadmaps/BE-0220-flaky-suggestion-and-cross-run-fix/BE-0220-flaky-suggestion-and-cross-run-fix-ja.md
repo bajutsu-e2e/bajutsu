@@ -10,7 +10,7 @@
 | 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0220") |
 | 実装 PR | [#904](https://github.com/bajutsu-e2e/bajutsu/pull/904), [#907](https://github.com/bajutsu-e2e/bajutsu/pull/907), [#919](https://github.com/bajutsu-e2e/bajutsu/pull/919), [#922](https://github.com/bajutsu-e2e/bajutsu/pull/922) |
-| トピック | 自己修復トリアージ（M4） |
+| トピック | 自己修復トリアージ |
 <!-- /BE-METADATA -->
 
 ## はじめに

@@ -10,7 +10,7 @@
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0088") |
 | Implementing PR | [#303](https://github.com/bajutsu-e2e/bajutsu/pull/303) |
-| Topic | On-device validation (M1 close-out) |
+| Topic | Platform support |
 <!-- /BE-METADATA -->
 
 ## Introduction

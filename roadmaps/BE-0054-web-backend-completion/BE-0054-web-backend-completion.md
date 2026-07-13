@@ -10,7 +10,7 @@
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0054") |
 | Implementing PR | [#187](https://github.com/bajutsu-e2e/bajutsu/pull/187) (native network slice), [#297](https://github.com/bajutsu-e2e/bajutsu/pull/297) (parallel lanes), [#298](https://github.com/bajutsu-e2e/bajutsu/pull/298) (console / page-error evidence), [#299](https://github.com/bajutsu-e2e/bajutsu/pull/299) (video evidence), [#300](https://github.com/bajutsu-e2e/bajutsu/pull/300) (emulated multiTouch) |
-| Topic | Platform expansion (landed slices) |
+| Topic | Platform support |
 <!-- /BE-METADATA -->
 
 ## Introduction

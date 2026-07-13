@@ -9,7 +9,12 @@ import typer
 from bajutsu import adb as _adb
 from bajutsu import ai_availability, capability_preflight, preflight
 from bajutsu import simctl as _simctl
-from bajutsu.backends import capabilities_for, select_actuator
+from bajutsu.backends import (
+    capabilities_for,
+    resolve_actuators,
+    select_actuator,
+    select_actuator_for_scenario,
+)
 from bajutsu.cli._shared import DEFAULT_CONFIG, _backends, _load_effective
 from bajutsu.config import (
     Effective,
@@ -49,6 +54,37 @@ def check_scenarios(scenario_path: Path, actuator: str) -> list[str]:
     return reasons
 
 
+def actuator_resolution_summary(eff: Effective, backends: list[str]) -> list[str]:
+    """How the target's scenarios resolve across a multi-actuator iOS ladder (BE-0240).
+
+    Informational only — a pure `capability_preflight` pass with no device — so a user can see, up
+    front, that `backend: [ios]` will run most scenarios on the cheap actuator and escalate only the
+    few whose steps need the richer one. Empty (nothing to disclose) unless the requested backends
+    resolve to more than one actuator and the target has a scenarios directory to survey.
+
+    Note:
+        Same best-effort caveat as ``check_scenarios``: the raw scenario tree is read without
+        ``use`` / ``data`` expansion, so a capability introduced only through a component is not
+        counted here.
+    """
+    if len({*resolve_actuators(backends)}) <= 1 or not eff.scenarios:
+        return []
+    scenarios_dir = Path(eff.scenarios)
+    if not scenarios_dir.is_dir():
+        return []
+    tally: dict[str, list[str]] = {}
+    for path in sorted(scenarios_dir.glob("*.yaml")):
+        for sc in load_scenario_file(path.read_text(encoding="utf-8")).scenarios:
+            actuator = select_actuator_for_scenario(backends, sc)
+            tally.setdefault(actuator, []).append(sc.name)
+    if not tally:
+        return []
+    lines = ["actuator resolution (per scenario, BE-0240):"]
+    for actuator, names in tally.items():
+        lines.append(f"  {actuator}: {len(names)} scenario(s)")
+    return lines
+
+
 def doctor(
     target_name: str = typer.Option(..., "--target"),
     udid: str = typer.Option("booted"),
@@ -58,8 +94,9 @@ def doctor(
 ) -> None:
     """Check the environment is runnable, then score the app's current screen."""
     eff = _load_effective(config, target_name)
+    backends = _backends(backend, eff.backend)
     try:
-        actuator = select_actuator(_backends(backend, eff.backend))
+        actuator = select_actuator(backends)
     except RuntimeError as e:
         typer.echo(str(e))
         raise typer.Exit(2) from None
@@ -95,6 +132,14 @@ def doctor(
             for reason in cap_reasons:
                 typer.echo(f"  ✘ {reason}")
             typer.echo("")
+
+    # Per-scenario actuator resolution disclosure (BE-0240): when the ladder has more than one iOS
+    # actuator, show how the target's scenarios split across them — informational, no device, no gate.
+    summary = actuator_resolution_summary(eff, backends)
+    if summary:
+        for line in summary:
+            typer.echo(line)
+        typer.echo("")
 
     # Runnability gate: the CLIs (+ a booted Simulator) the actuator needs. Fail fast here
     # with a fixable checklist instead of crashing later on a missing tool / no device. The

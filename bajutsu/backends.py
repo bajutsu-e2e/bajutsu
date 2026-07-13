@@ -18,10 +18,14 @@ from __future__ import annotations
 import shutil
 from collections.abc import Callable
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from bajutsu.drivers import base
 from bajutsu.drivers.fake import FakeDriver
 from bajutsu.drivers.idb import IdbDriver
+
+if TYPE_CHECKING:
+    from bajutsu.scenario import Scenario
 
 # Platform token -> its actuators, most-stable-first. `--backend` / config `backend` accept
 # either a platform token (these keys) or a bare actuator name (the values below).
@@ -30,6 +34,17 @@ PLATFORMS: dict[str, tuple[str, ...]] = {
     "android": ("adb",),
     "web": ("playwright",),
     "fake": ("fake",),
+}
+
+# Platform token -> its actuators, cheapest-first (BE-0240). The *cost* order — which actuator is
+# cheapest to run (fewest dependencies, no resident runner) — answers a different question than
+# `PLATFORMS`' *stability* order (which is most capable), so it is its own explicit table rather
+# than a `reversed(PLATFORMS[...])`: a future platform with 3+ actuators need not have the two be
+# exact reverses. Only platforms whose cost order differs from their stability order need an entry;
+# `select_actuator_for_scenario` falls back to the resolved order for any platform absent here.
+# For iOS, idb (no Xcode toolchain, no per-lease runner) is cheapest; XCUITest is the escalation.
+COST_ORDER: dict[str, tuple[str, ...]] = {
+    "ios": ("idb", "xcuitest"),
 }
 
 # Every actuator the registry knows about (implemented or planned), de-duplicated in order.
@@ -173,6 +188,61 @@ def capabilities_for(actuator: str) -> frozenset[str]:
             f"backend {actuator!r} is planned but not implemented yet (see docs/multi-platform.md)"
         )
     raise ValueError(f"unknown backend: {actuator!r}")
+
+
+def _cost_ordered(actuators: list[str]) -> list[str]:
+    """Reorder *actuators* cheapest-first per each one's platform `COST_ORDER` (BE-0240).
+
+    Stable: an actuator whose platform has no `COST_ORDER` entry (or that entry omits it) keeps its
+    original relative position, so a single-platform ladder is reordered while anything unranked is
+    left as resolved.
+    """
+    unranked = len(actuators)  # sorts any actuator with no cost rank after the ranked ones
+
+    def key(item: tuple[int, str]) -> tuple[int, int]:
+        i, a = item
+        platform = platform_of(a)
+        order = COST_ORDER.get(platform, ()) if platform is not None else ()
+        return (order.index(a) if a in order else unranked, i)
+
+    return [a for _, a in sorted(enumerate(actuators), key=key)]
+
+
+def select_actuator_for_scenario(
+    backends: list[str],
+    scenario: Scenario,
+    available: Callable[[str], bool] = default_available,
+    caps: Callable[[str], frozenset[str]] = capabilities_for,
+) -> str:
+    """The cheapest available actuator that can run *scenario* (BE-0240).
+
+    Reuses `capability_preflight.unsupported` — the pure `(scenario, capability set)` function
+    BE-0082 already computes — against each candidate's capability set, in cost order (cheapest
+    first), and returns the first candidate that is both available and sufficient; it escalates to a
+    richer actuator only when the cheaper one can't run the scenario.
+
+    An explicit single-actuator request (or a single-actuator platform) is a hard pin with no
+    capability escalation, exactly like `select_actuator` and consistent with `--backend <one>`
+    behaving like `--udid` (DESIGN §3.3): this scenario-aware selection only activates when the
+    requested backends resolve to more than one candidate (`backend: [ios]` / `[idb, xcuitest]`).
+
+    When candidates are available but none is sufficient, the **richest** available one is returned
+    so the caller's preflight fails it with the fewest-gap (most informative) reasons; when none is
+    available at all, `select_actuator`'s precise "planned vs absent" error is raised.
+    """
+    candidates = list(dict.fromkeys(resolve_actuators(backends)))
+    if len(candidates) <= 1:
+        return select_actuator(backends, available)
+    # Lazy import: keeps this module's import free of the scenario/preflight graph (used only here).
+    from bajutsu import capability_preflight
+
+    avail = [a for a in _cost_ordered(candidates) if a in KNOWN_ACTUATORS and available(a)]
+    if not avail:
+        return select_actuator(backends, available)  # reuse its planned/absent diagnostics (raises)
+    for actuator in avail:
+        if not capability_preflight.unsupported(scenario, caps(actuator)):
+            return actuator
+    return avail[-1]  # richest available (cost order, cheapest first); preflight names its gaps
 
 
 def make_driver(

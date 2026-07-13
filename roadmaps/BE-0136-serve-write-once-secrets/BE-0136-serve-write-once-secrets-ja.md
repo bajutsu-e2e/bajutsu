@@ -10,7 +10,7 @@
 | 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0136") |
 | 実装 PR | [#661](https://github.com/bajutsu-e2e/bajutsu/pull/661) |
-| トピック | Security hardening |
+| トピック | セキュリティ強化 |
 | 関連 | [BE-0015](../BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting-ja.md)、[BE-0016](../BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting-ja.md)、[BE-0032](../BE-0032-secret-variables/BE-0032-secret-variables-ja.md) |
 <!-- /BE-METADATA -->
 

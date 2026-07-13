@@ -23,7 +23,7 @@ from bajutsu.ai import credential_gap
 from bajutsu.anthropic_client import key_env as ac_key_env
 from bajutsu.artifact_perms import make_run_dir
 from bajutsu.assertions import GoldenContext
-from bajutsu.backends import ensure_web_runtime, select_actuator
+from bajutsu.backends import ensure_web_runtime, select_actuator, select_actuator_for_scenario
 from bajutsu.cli._projects import config_from_source, open_registry
 from bajutsu.cli._shared import (
     DEFAULT_CONFIG,
@@ -37,6 +37,7 @@ from bajutsu.cli._shared import (
 from bajutsu.config import WEB_ENGINES, Effective, IosConfig, web_engine
 from bajutsu.orchestrator import AlertEvent, BlockedHandler, RunResult
 from bajutsu.report.archive import archive_run_dir
+from bajutsu.report.manifest import _run_backend
 from bajutsu.run_id import new_run_id
 from bajutsu.runner import device_pool, run_all, run_and_report, run_matrix_and_report
 from bajutsu.runner.build import BuildError, build_if_missing
@@ -554,7 +555,10 @@ def _dispatch_single(
             progress=progress_fn,
             baselines_dir=plan.baselines_dir,
             schemas_dir=plan.schemas_dir,
-            actuator=plan.actuator,
+            # Per-scenario actuator selection (BE-0240): the pipeline preflights, and the pool leases,
+            # the cheapest actuator each scenario can run on — a single `[idb]`/`[web]` pin still
+            # collapses to that one actuator, `[ios]` escalates only the scenarios that need it.
+            resolve_actuator=lambda s: select_actuator_for_scenario(plan.backends, s),
             config_source=plan.config_source,
             exec_provenance=exec_decision,
             golden_context=plan.golden_context,
@@ -681,11 +685,17 @@ def _finish(
     if plan.eff.notify:
         from bajutsu import notify
 
+        # Actuator selection is per scenario (BE-0240), so report the distinct actuators that
+        # actually ran — joined when a run mixed idb and XCUITest — not the single pool pick; fall
+        # back to `plan.actuator` when every scenario failed before an actuator drove it. Reuses the
+        # manifest's join so the dedup/order/empty-filter semantics live in one place (report/html.py
+        # already imports it across the boundary the same way).
+        ran = _run_backend(results)
         notify.emit(
             results,
             run_id=plan.run_id,
             source_name=plan.source_name,
-            backend=plan.actuator,
+            backend=ran or plan.actuator,
             endpoints=plan.eff.notify,
             bindings=plan.secret_bindings,
             runs_dir=plan.runs_dir,
