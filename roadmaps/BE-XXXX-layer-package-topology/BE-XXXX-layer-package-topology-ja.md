@@ -40,17 +40,17 @@
   ごとの emitter を持つ一つの生成器であり、合計1,495行、すでに共通の `codegen_` という接頭辞で
   名付けられています。
 - **crawl**：`crawl.py`（1,256行）に加えて `crawl_flows.py`、`crawl_guide.py`、`crawl_report.py`、
-  `crawl_repro.py`、`crawl_tabs.py` です。周辺の中で最大の module であり、すでに `crawl_` という
+  `crawl_repro.py`、`crawl_tabs.py` です。周辺の中で最大のモジュールであり、すでに `crawl_` という
   接頭辞で flow、guide、report、repro、tab の関心事に分かれています。
 - **AI やエージェントの周辺**：`agent.py`、`agents.py`、`claude_agent.py`、`claude_enrich_agent.py`、
   `claude_triage.py`、`anthropic_client.py`、`ai_availability.py`、`enrich.py`、`alerts.py` の
-  9個の module です。BE-0112 の契約上はいずれも周辺レイヤの AI やエージェント関連ですが、現状は
+  9個のモジュールです。BE-0112 の契約上はいずれも周辺レイヤの AI やエージェント関連ですが、現状は
   共通の接頭辞を持たないままフラットな名前空間に散らばっています。
 
 レイヤをまたいだ名前の衝突が3組あります。どちらが解決されるかは、どちらの import パスが解決される
 かを知っていて初めてわかる状態です。`bajutsu/mailbox.py` と `bajutsu/runner/mailbox.py`、
 `bajutsu/object_store.py` と `bajutsu/serve/server/object_store.py`、`bajutsu/handoff.py` と
-`bajutsu/cli/handoff.py` です。トップレベルの module をパッケージ化すれば、それぞれの組が自己文書化
+`bajutsu/cli/handoff.py` です。トップレベルのモジュールをパッケージ化すれば、それぞれの組が自己文書化
 された別々のパスに解決されます。
 
 実在する import の循環も1つあります。`bajutsu/config_source.py` は `GitHubAccessError` を定義し
@@ -66,8 +66,8 @@
 `make lint-imports`（BE-0112 のゲート）で独立に検証できます。どの段階も、他の段階が先に着地する
 ことに依存しません。どの段階でも、`__init__.py` による re-export を通じて公開の import パスを保ち
 ます。これは `bajutsu/report/__init__.py` ですでに確立されているパターン（BE-0043）に倣うもので、
-呼び出し側は `bajutsu.codegen.foo` などを変更なしに import し続けられ、変わるのは内部の module
-配置だけです。すべての段階は挙動を変えません。変わるのは module の位置と import 文だけで、実行時の
+呼び出し側は `bajutsu.codegen.foo` などを変更なしに import し続けられ、変わるのは内部のモジュール
+配置だけです。すべての段階は挙動を変えません。変わるのはモジュールの位置と import 文だけで、実行時の
 ロジックには手を入れません。
 
 1. **`bajutsu/codegen/` パッケージ**：`codegen/__init__.py`（現在の公開 API を re-export）に加えて
@@ -82,7 +82,7 @@
    独立した関心事だからです。なお crawl の調整役はすでに
    [BE-0092](../BE-0092-crawl-coordinator-extraction/BE-0092-crawl-coordinator-extraction-ja.md)
    によってクラスへ切り出し済みなので、この段階の対象には含みません。ここでの作業は、残りの
-   module のファイル配置を変えるだけです。
+   モジュールのファイル配置を変えるだけです。
 3. **`bajutsu/github/` パッケージ**：`github/__init__.py`、`github/actions.py`（旧 `github.py`、
    `bajutsu run` の Actions annotation 連携）、`github/app.py`（旧 `github_app.py`、GitHub App
    のインストールトークン取得の経路）です。`GitHubAccessError` を `github/__init__.py`（または
@@ -94,11 +94,11 @@
    （旧 `claude_agent.py`）、`agents/claude_enrich.py`（旧 `claude_enrich_agent.py`）、
    `agents/claude_triage.py`（旧 `claude_triage.py`）、`agents/anthropic_client.py`
    （旧 `anthropic_client.py`）、`agents/availability.py`（旧 `ai_availability.py`）、
-   `agents/enrich.py`（旧 `enrich.py`）、`agents/alerts.py`（旧 `alerts.py`）です。9個の module
+   `agents/enrich.py`（旧 `enrich.py`）、`agents/alerts.py`（旧 `alerts.py`）です。9個のモジュール
    からなる最大のクラスタであり、BE-0112 の forbidden-module 一覧が今日いちばん長い箇所でも
    あります。
 5. **`bajutsu/evidence/` と `bajutsu/analysis/` のパッケージ**：残る evidence 関連のフラットな
-   module を役割ごとに2つのパッケージへ分けます。`evidence/` には、現在の `bajutsu/evidence.py`
+   モジュールを役割ごとに2つのパッケージへ分けます。`evidence/` には、現在の `bajutsu/evidence.py`
    を `evidence/core.py` へ移して `evidence/__init__.py` から re-export したものに加えて、
    `evidence/intervals.py`、`evidence/network.py`、`evidence/visual.py`、`evidence/golden.py`、
    `evidence/redaction.py` を置きます（evidence の取得と redaction であり、いずれも BE-0112 の
@@ -110,10 +110,10 @@
 6. **`bajutsu/analytics/` パッケージ**：`analytics/__init__.py` に加えて `analytics/usage.py`
    （旧 `usage.py`）、`analytics/ledger.py`（旧 `usage_ledger.py`）、`analytics/stats.py`
    （旧 `usage_stats.py`）です。トークンとコストの集計パイプラインであり、すでに共通の `usage_`
-   という接頭辞を持つ、まとまりのよい3つの module です。
+   という接頭辞を持つ、まとまりのよい3つのモジュールです。
 
-各段階が module 一覧の項目を1つ減らすたびに、対応する `pyproject.toml`（`pyproject.toml:216-316`）
-の `[[tool.importlinter.contracts]]` は、かつてのトップレベル module を個別に列挙する代わりに、
+各段階がモジュール一覧の項目を1つ減らすたびに、対応する `pyproject.toml`（`pyproject.toml:216-316`）
+の `[[tool.importlinter.contracts]]` は、かつてのトップレベルモジュールを個別に列挙する代わりに、
 1つのパッケージ名（たとえば `bajutsu.agents`）だけを名指しできるようになります。パッケージ化が段階
 的に進むにつれて、手作業の一覧も段階的に縮んでいきます。
 
@@ -122,7 +122,7 @@
 - **フラットな配置のまま、import-linter の契約だけに頼る。** 却下します。契約が冗長なのは
   （3つのブロックにまたがって40近いモジュールを手作業で列挙している状態です）、まさに配置に
   パッケージの境界がなく名指しできないからです。パッケージ化はその契約を直接的に短くします。今後の
-  すべてのコントリビュータに、どのフラットな module がどのレイヤに属するかという対応表を頭の中に
+  すべてのコントリビュータに、どのフラットなモジュールがどのレイヤに属するかという対応表を頭の中に
   持たせ続けるよりも合理的です。
 - **6つのクラスタすべてを1つの PR でまとめて再編する。** 却下します。6つのクラスタは互いに独立
   しており、それぞれが十分な規模を持ちます（crawl のクラスタだけでも2,200行を超えます）。1つに
@@ -140,7 +140,7 @@
   `serialize`）。
 - [ ] `bajutsu/github/` パッケージ（`__init__` / `actions` / `app`）。`config_source` と
   `github_app` の循環を解消します。
-- [ ] `bajutsu/agents/` の周辺パッケージ（9個の module）。
+- [ ] `bajutsu/agents/` の周辺パッケージ（9個のモジュール）。
 - [ ] `bajutsu/evidence/` と `bajutsu/analysis/` のパッケージ。
 - [ ] `bajutsu/analytics/` パッケージ（`usage` / `ledger` / `stats`）。
 
@@ -168,9 +168,9 @@
 - [BE-0112](../BE-0112-layer-boundary-enforcement/BE-0112-layer-boundary-enforcement-ja.md) —
   本提案がディレクトリツリー上に可視化するレイヤモデルと import-linter のゲートです。
 - [BE-0135](../BE-0135-module-naming-debt/BE-0135-module-naming-debt-ja.md) — トップレベル
-  module の命名を整理した先行項目であり、本提案はそれをパッケージの水準で引き継ぎます。
+  モジュールの命名を整理した先行項目であり、本提案はそれをパッケージの水準で引き継ぎます。
 - [BE-0092](../BE-0092-crawl-coordinator-extraction/BE-0092-crawl-coordinator-extraction-ja.md) —
   crawl の調整役はすでにクラスへ切り出し済みです。本提案の crawl パッケージ化の段階は、この切り出し
   ではなく、残りのファイル配置だけを対象にします。
-- AI やエージェントに関連する module の命名や分類を整理する姉妹提案が別途検討されていますが、ここでは
+- AI やエージェントに関連するモジュールの命名や分類を整理する姉妹提案が別途検討されていますが、ここでは
   番号を挙げずに言及するにとどめます。
