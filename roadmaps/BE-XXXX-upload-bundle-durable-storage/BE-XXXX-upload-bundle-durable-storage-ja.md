@@ -171,10 +171,17 @@ config より、明確なアップロード失敗の方が安全です。
 `_build_server_state` が一度も上書きしないため、たまたま素の `Path("uploads")` のままになってい
 ます。本項目は、このデフォルトを、BE-0063 の Git checkout キャッシュと同じ `bajutsu` キャッシュ
 名前空間の下できょうだいになる場所（`<XDG_CACHE_HOME または ~/.cache>/bajutsu/uploads/`）へ変更
-します。`_default_cache_root()`（`bajutsu/config_source.py`）がすでに持つ `XDG_CACHE_HOME`・
-`Path.home()` の解決ロジックをそのまま再利用し、複製はしません。こうすることで、
-`.../bajutsu/gitsrc/...` と `.../bajutsu/uploads/...` は、食い違いうる 2 つの独立したフォールバ
-ックルールではなく、1 つの共通ルールを共有します。`state.uploads_dir` という名前とその役割
+します。`_default_cache_root()`（`bajutsu/config_source.py`）は、この解決ロジックを単独で再利用
+できる形では公開していません。実際には `Path(...) / "bajutsu" / "gitsrc"` をそのまま返してお
+り、`gitsrc` という末尾が関数自体に焼き込まれています。そのためこれをそのまま呼び出してアップ
+ロード用に使うと、`.../bajutsu/gitsrc/uploads/` に解決されてしまい、Git キャッシュのきょうだいで
+はなくその配下になってしまいます。正しい修正は、共通の `XDG_CACHE_HOME`・`Path.home()` という前
+半部分を、`_bajutsu_cache_root() -> Path`（`.../bajutsu/` を返す）のような専用のヘルパーへ切り出
+すことです。`_default_cache_root()` は `_bajutsu_cache_root() / "gitsrc"` になり、新しいアップ
+ロードキャッシュのデフォルトは `_bajutsu_cache_root() / "uploads"` になります。1 つの共通フォー
+ルバックルールの上に、2 つのきょうだいが乗る形です。`_default_cache_root()` をそのまま再利用する
+（パスを誤る）のでも、ロジックを丸ごと複製する（2 つのルールが食い違いうる）のでもありません。
+`state.uploads_dir` という名前とその役割
 （`--root` とは別の、serve が所有するディレクトリという BE-0051 の封じ込め境界）はそのままです。
 変わるのはデフォルトの置き場所だけであり、その境界がどの書き込み可能パスの上に乗っているかには
 依存しません。
@@ -334,8 +341,11 @@ BE-0073 と BE-0225 が今日出荷している通りに一時的なままであ
       ロールバックする経路は作らない。
 - [ ] 2 — `state.uploads_dir` のデフォルトを、`--runs` 基準のディレクトリから、BE-0063 の Git
       checkout キャッシュと `.../bajutsu/` の下できょうだいになる場所（`<XDG_CACHE_HOME または
-      ~/.cache>/bajutsu/uploads/`）へ移す。`_default_cache_root()` の解決ロジックを複製せずに再利
-      用する。`activate_project` に、`kind == "upload"` のときの既存の `409` より先に試す、オブジ
+      ~/.cache>/bajutsu/uploads/`）へ移す。`_default_cache_root()` から `XDG_CACHE_HOME`・
+      `Path.home()` の前半部分を共通の `_bajutsu_cache_root()` ヘルパーへ切り出し、Git（`gitsrc`）
+      とアップロード（`uploads`）両方のキャッシュルートがそれを基にする形にする。`gitsrc` が焼き
+      込まれた `_default_cache_root()` をそのまま再利用するのでも、ロジックを複製するのでもな
+      い。`activate_project` に、`kind == "upload"` のときの既存の `409` より先に試す、オブジ
       ェクトストレージからの取得・展開フォールバックを追加する。このフォールバックと
       `bind_upload_config` 自身のローカル展開は、いずれもそのルート配下の sha256 鍵付きディレク
       トリを指し、キャッシュヒット時は展開（と再検証）を省略する。これは `materialize()` の

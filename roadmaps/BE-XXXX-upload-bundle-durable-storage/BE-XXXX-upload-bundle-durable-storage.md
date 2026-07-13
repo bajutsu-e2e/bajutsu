@@ -156,10 +156,16 @@ This unit also relocates where the local materialization cache lives. `state.upl
 (`runs_dir.parent / "uploads"` for the `local` backend; an accidental bare `Path("uploads")` for
 `server`, since `_build_server_state` never overrides it). This item changes that default to a
 sibling of BE-0063's Git checkout cache under the same `bajutsu` cache namespace —
-`<XDG_CACHE_HOME or ~/.cache>/bajutsu/uploads/` — reusing `_default_cache_root()`'s own
-`XDG_CACHE_HOME`/`Path.home()` resolution (`bajutsu/config_source.py`) rather than duplicating it,
-so `.../bajutsu/gitsrc/...` and `.../bajutsu/uploads/...` share one fallback rule instead of two
-independent ones that could drift. `state.uploads_dir` keeps its name and its role — a serve-owned
+`<XDG_CACHE_HOME or ~/.cache>/bajutsu/uploads/`. `_default_cache_root()`
+(`bajutsu/config_source.py`) does not expose that resolution as a reusable piece today: it returns
+`Path(...) / "bajutsu" / "gitsrc"` directly, with the `gitsrc` leaf baked into the function itself,
+so calling it unmodified for uploads would resolve to `.../bajutsu/gitsrc/uploads/` — nested under
+the Git cache, not a sibling of it. The fix factors the shared `XDG_CACHE_HOME`/`Path.home()`
+prefix out into its own helper (a `_bajutsu_cache_root() -> Path` returning `.../bajutsu/`), with
+`_default_cache_root()` becoming `_bajutsu_cache_root() / "gitsrc"` and the new upload-cache
+default `_bajutsu_cache_root() / "uploads"` — one shared fallback rule with two siblings built on
+it, instead of `_default_cache_root()` reused unmodified (wrong path) or duplicated wholesale (two
+rules that could drift). `state.uploads_dir` keeps its name and its role — a serve-owned
 directory distinct from `--root`, BE-0051's confinement boundary — only its default location moves;
 nothing about that boundary depends on which writable path it happens to be.
 
@@ -304,7 +310,7 @@ store.
 > (oldest first), linking the PRs.
 
 - [ ] 1 — Persist the raw uploaded zip to the object store, keyed by its sha256 under the project's org prefix, *before* `bind_upload_config` flips the active config, when `BAJUTSU_SERVER_STORE` is configured; on a write failure, remove the extracted local directory and fail the request without ever having bound it, rather than binding first and rolling back.
-- [ ] 2 — Move `state.uploads_dir`'s default from a `--runs`-relative directory to a sibling of BE-0063's Git checkout cache under `.../bajutsu/` (`<XDG_CACHE_HOME or ~/.cache>/bajutsu/uploads/`), reusing `_default_cache_root()`'s resolution rather than duplicating it. `activate_project` gains a fetch-and-extract-from-object-store fallback for `kind == "upload"`, tried before the existing `409`. Both this fallback and `bind_upload_config`'s own local extraction resolve to a `sha256`-keyed directory under that root and skip extraction (and re-validation) on a cache hit, mirroring `materialize()`'s `if not root.exists(): _extract_into(...)` — both extract into a sibling temp dir and rename into place first, mirroring `_extract_into`'s atomicity, so two concurrent misses on the same `sha256` never race directly into the keyed path. `release_upload` stops deleting that directory on every switch-away, and `serve()`'s startup sweep (`bajutsu/serve/__init__.py`) stops wiping it on every launch, so the cache actually persists across binds and restarts.
+- [ ] 2 — Move `state.uploads_dir`'s default from a `--runs`-relative directory to a sibling of BE-0063's Git checkout cache under `.../bajutsu/` (`<XDG_CACHE_HOME or ~/.cache>/bajutsu/uploads/`), factoring the `XDG_CACHE_HOME`/`Path.home()` prefix out of `_default_cache_root()` into a shared `_bajutsu_cache_root()` helper both the Git (`gitsrc`) and upload (`uploads`) cache roots build on, rather than reusing `_default_cache_root()` unmodified (which bakes in the `gitsrc` leaf) or duplicating its fallback rule. `activate_project` gains a fetch-and-extract-from-object-store fallback for `kind == "upload"`, tried before the existing `409`. Both this fallback and `bind_upload_config`'s own local extraction resolve to a `sha256`-keyed directory under that root and skip extraction (and re-validation) on a cache hit, mirroring `materialize()`'s `if not root.exists(): _extract_into(...)` — both extract into a sibling temp dir and rename into place first, mirroring `_extract_into`'s atomicity, so two concurrent misses on the same `sha256` never race directly into the keyed path. `release_upload` stops deleting that directory on every switch-away, and `serve()`'s startup sweep (`bajutsu/serve/__init__.py`) stops wiping it on every launch, so the cache actually persists across binds and restarts.
 - [ ] 3 — Confirm zero-config behavior (and the existing `409`) is unchanged with no `BAJUTSU_SERVER_STORE` configured.
 
 ## References
