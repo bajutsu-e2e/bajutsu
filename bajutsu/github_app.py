@@ -60,10 +60,18 @@ def installation_token(
 
 def _json_field(body: bytes, field: str) -> object:
     """Read *field* from a GitHub JSON response, mapping a malformed body or a missing field to a
-    legible `GitHubAccessError` rather than a raw `JSONDecodeError` / `KeyError` (BE-0224)."""
+    legible `GitHubAccessError` rather than a raw `JSONDecodeError` / `KeyError` (BE-0224).
+
+    The two failures are separated so a non-JSON body (an HTML error page from a proxy) is named as
+    such, not misreported as a missing field.
+    """
     try:
-        return json.loads(body)[field]
-    except (json.JSONDecodeError, KeyError, TypeError) as e:
+        parsed = json.loads(body)
+    except json.JSONDecodeError as e:
+        raise GitHubAccessError(f"unexpected GitHub App API response (not JSON): {e}") from e
+    try:
+        return parsed[field]
+    except (KeyError, TypeError) as e:
         raise GitHubAccessError(
             f"unexpected GitHub App API response (no {field!r} field): {e}"
         ) from e

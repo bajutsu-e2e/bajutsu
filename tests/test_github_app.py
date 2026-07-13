@@ -104,9 +104,9 @@ def test_installation_token_maps_a_malformed_body() -> None:
     # A 2xx body that isn't the expected JSON shape surfaces a legible GitHubAccessError rather than
     # a raw KeyError / JSONDecodeError (BE-0224 review fix).
     def bad_json(url: str, jwt: str, method: str) -> bytes:
-        return b"not json at all"
+        return b"<html>proxy error</html>"
 
-    with pytest.raises(GitHubAccessError, match="unexpected GitHub App API response"):
+    with pytest.raises(GitHubAccessError, match="not JSON"):
         installation_token("12345", _rsa_pem(), _SPEC, installation_id="42", fetch=bad_json)
 
     def missing_token(url: str, jwt: str, method: str) -> bytes:
