@@ -122,6 +122,8 @@ behavior-preserving.
 - [`bajutsu/drivers/base.py`](../../bajutsu/drivers/base.py) — `resolve_unique` / `find_all`, the
   shared selector-resolution core that `_resolve` calls into and that this item leaves unchanged.
 - [BE-0118 — Unify the `wait_for` polling contract across
-  drivers](../BE-0118-wait-for-contract-unification/BE-0118-wait-for-contract-unification.md) — the
-  prior cross-backend unification this item's `_resolve`/settle hoist builds on.
+  drivers](../BE-0118-wait-for-contract-unification/BE-0118-wait-for-contract-unification.md) — a
+  narrower precedent that unified only `Driver.wait_for` into a single-shot contract; this item is
+  broader (hoisting the shared `query`/settle/`_resolve` machinery), and complements rather than
+  depends on it.
 - Originates from a 2026-07 codebase-analysis pass (technical debt).

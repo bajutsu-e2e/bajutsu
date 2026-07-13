@@ -127,5 +127,6 @@
   `_resolve` が呼び出す共有のセレクター解決の中核であり、本項目はここには手を入れません。
 - [BE-0118 — Unify the wait_for polling contract across
   drivers](../BE-0118-wait-for-contract-unification/BE-0118-wait-for-contract-unification.md)
-  — 本項目の `_resolve` と安定待ちの引き上げが土台とする、バックエンド横断の先行する統一です。
+  — `Driver.wait_for` のみを single-shot 契約へ統一した、範囲の狭い先行事例です。本項目はより広く、共有の
+  `query`／安定待ち／`_resolve` の仕組みを引き上げるもので、これに依存するのではなく補完する関係にあります。
 - 2026 年 7 月のコードベース分析（技術的負債の棚卸し）に由来します。
