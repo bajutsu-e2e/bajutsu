@@ -316,7 +316,7 @@ function closeModal(el,cleanup){
   el.addEventListener('animationend',e=>{if(e.target===el)finish();},{signal:el._closeAbort.signal});
 }
 // Play the enter animation whenever a modal becomes visible (its `hidden` attribute is removed),
-// regardless of which open path unhid it — so openModal below stays a plain reveal.
+// regardless of which open path unhid it (openModal handles the mid-leave reopen the observer misses).
 document.querySelectorAll('.modal').forEach(m=>new MutationObserver(muts=>{
   for(const mu of muts){
     if(mu.attributeName==='hidden'&&!m.hidden){
@@ -329,12 +329,15 @@ document.querySelectorAll('.modal').forEach(m=>new MutationObserver(muts=>{
 // safe. The leave keeps `hidden` false until its animationend fires, so re-setting `hidden=false`
 // mutates nothing — the observer above never sees the reopen and cannot cancel the pending hide,
 // and the lingering `is-leaving` (its animation `both`-fills to opacity 0) leaves the modal open
-// but invisible until a reload. Clearing the close and `is-leaving` here fixes both: a genuine
-// hidden→visible transition still drives the enter animation via the observer.
+// but invisible until a reload. Clearing the close and `is-leaving` here fixes that. A genuine
+// hidden→visible open animates via the observer; a mid-leave reopen fires no `hidden` mutation, so
+// replay the enter animation here too rather than snapping straight to visible.
 function openModal(el){
+  const wasLeaving=el.classList.contains('is-leaving');
   if(el._closeAbort){el._closeAbort.abort();el._closeAbort=null;}
   el.classList.remove('is-leaving');
   el.hidden=false;
+  if(wasLeaving)playEnter(el,'--motion-modal-enter');
 }
 
 // ---- top-level Record / Replay / Crawl views ----
@@ -519,7 +522,7 @@ async function openCfgView(){
   const d=await getJSON('/api/config/content',{error:'request failed'});
   const prov=$('#cfgprov'),tree=$('#cfgviewtree');
   tree.textContent='';
-  if(d.error){prov.hidden=true;$('#cfgviewpath').textContent='';$('#cfgviewbody').textContent=d.error;$('#cfgview-structured').disabled=true;cfgViewMode(true);openModal($('#cfgviewmodal'));return}
+  if(d.error){prov.hidden=true;$('#cfgviewpath').textContent='';$('#cfgviewbody').textContent=d.error;$('#cfgview-structured').disabled=true;cfgViewMode(true);openModal($('#cfgviewmodal'));return;}
   const p=d.provenance;
   if(p){
     // A Git source: show which commit was materialized (ref → resolved sha), not the opaque cache path.
