@@ -10,20 +10,23 @@
 | Status | **Proposal** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
 | Topic | Codebase quality & technical debt |
-| Related | [BE-0172](../BE-0172-run-loop-step-decomposition/BE-0172-run-loop-step-decomposition.md) |
+| Related | [BE-0172](../BE-0172-run-loop-step-decomposition/BE-0172-run-loop-step-decomposition.md), [BE-0234](../BE-0234-adb-run-performance/BE-0234-adb-run-performance.md) |
 <!-- /BE-METADATA -->
 
 ## Introduction
 
-The step loop (`bajutsu/orchestrator/loop.py`) fetches the accessibility tree with
-`driver.query()` more times than a single non-mutating step needs. An `assert` step already
-queries once inside `_run_step_body` to evaluate its conditions (137–138); the loop then
-unconditionally queries again at line 461 (`after = active_driver.query()`) to compute
-`screen_changed`, feed the wait-timeout diagnostic, run any attached `extract`, and drive
-`sink.capture`. For an `assert` step — which by definition does not act on the screen — those are
-two full tree fetches for identical state. This item proposes threading the already-settled
-snapshot through instead of re-fetching it, and doing the analogous thing one layer down, where a
-single `tap` stacks its own redundant fetches underneath the step loop's.
+The step loop (`bajutsu/orchestrator/loop.py`) can fetch the accessibility tree with
+`driver.query()` more times than a single non-mutating step needs. BE-0234 (Implemented, #987)
+already closed most of this gap: the loop's post-step read is now lazy — taken only when a
+`screenChanged` capture, an attached `extract`, or a wait-timeout diagnostic actually needs the
+tree — and it reuses the previous step's `after` as the next step's `before` (the `BE-0234 Unit 2`
+comment in `loop.py`). So a plain `assert` with none of those attached no longer double-queries at
+all. The residual gap this item targets is narrower: when a non-mutating step (an `assert`, or an
+`extract` attached to one) *does* trigger that post-step read, `_run_step_body` has already resolved
+and queried the tree to evaluate the step, and nothing mutated the screen in between — yet the
+post-step read still fetches it again. This item threads that already-settled snapshot through
+instead of re-fetching it, and does the analogous thing one layer down, where a single `tap` stacks
+its own redundant fetches underneath the step loop's.
 
 ## Motivation
 
@@ -31,9 +34,10 @@ single `tap` stacks its own redundant fetches underneath the step loop's.
 `describe-all` (the query the idb driver's `query()` shells out to) costs roughly 100–300ms per
 call, because it is a subprocess round-trip through the Simulator, not an in-process lookup. A
 scenario that leans on `assert` steps to check state — the normal shape for a test that reads
-before it acts — pays that cost twice per assertion for no additional information: `_run_step_body`
-already holds the resolved element list at the moment `assertions.evaluate` runs, and nothing
-mutates the screen between that call and the loop's own query at 461.
+before it acts — pays that cost twice for no additional information whenever the post-step read
+still fires (a `screenChanged` capture or an `extract` on the assert): `_run_step_body` already
+holds the resolved element list at the moment `assertions.evaluate` runs, and nothing mutates the
+screen between that call and the loop's own post-step `query()`.
 
 The same shape compounds underneath a single `tap`. On the idb driver
 (`bajutsu/drivers/idb.py:317`), `_center` calls `_settle()` (one `query()`, more if the tree's
@@ -42,7 +46,7 @@ own bounded, polling re-query loop up to a 3-second deadline if the selector isn
 first try. `tap` is frequently invoked underneath `base.wait_until` (`base.py:359`), which is
 itself a deadline/poll loop — so a single flaky tap can have two independent deadline managers
 each re-querying on their own schedule, stacked on top of each other. On the adb driver,
-`_scroll_into_view` (`bajutsu/drivers/adb.py:316`) adds one more `_settle()` per scroll attempt
+`_scroll_into_view` (`bajutsu/drivers/adb.py:369`) adds one more `_settle()` per scroll attempt
 (`adb.py:320`, `326`), so a tap that needs to scroll into view can fire on the order of a dozen
 full-tree subprocess calls for what is conceptually one action. None of this changes what a
 scenario asserts — it is pure, avoidable latency on every `assert`-heavy run and every tap that
@@ -56,11 +60,12 @@ semantics, wait/poll conditions, or driver interfaces is proposed. The work is M
 independent units:
 
 - **Reuse `_run_step_body`'s query result as the loop's `after` snapshot for non-mutating steps.**
-  Change `_run_step_body` (`bajutsu/orchestrator/loop.py:107`) to return the element list it
-  queried for `assert_` (and, if it queries one, `wait`) alongside its existing `(ok, reason,
-  assertion_results)` tuple. In `exec_steps` (`loop.py:356`), when the step kind is one that cannot
-  mutate the screen, use that returned snapshot as `after` instead of issuing the unconditional
-  `active_driver.query()` at line 461. Action steps (`tap`, `type`, `swipe`, …) still query fresh
+  Change `_run_step_body` (`bajutsu/orchestrator/loop.py`, `_run_step_body` at line 141, the
+  `assert_` query at 172) to return the element list it queried for `assert_` (and, if it queries
+  one, `wait`) alongside its existing `(ok, reason, assertion_results)` tuple. In `exec_steps`, when
+  the step kind is one that cannot mutate the screen, use that returned snapshot as `after` instead
+  of letting the (post-BE-0234, now-lazy) post-step read call `query()` again. Action steps (`tap`,
+  `type`, `swipe`, …) still query fresh
   after they run, because the screen may genuinely have changed — this unit only removes the
   redundant *second* query for steps where "before" and "after" are provably the same query. The
   `extract` modifier (`bajutsu/scenario/models/steps.py:134`) rides along for free: when it
@@ -120,9 +125,9 @@ independent units:
 
 - [BE-0172 — Decompose the run-path step loop and per-scenario runner](../BE-0172-run-loop-step-decomposition/BE-0172-run-loop-step-decomposition.md)
   (the run-path step loop this item optimizes, already decomposed into named helpers)
-- `bajutsu/orchestrator/loop.py:107` (`_run_step_body`), `:137–138` (the `assert_` query), `:356`
-  (`exec_steps`), `:461` (the unconditional `after` re-query)
+- `bajutsu/orchestrator/loop.py` — `_run_step_body` (line 141), the `assert_` query (172),
+  `exec_steps`, and the lazy post-step `after` read (BE-0234 Unit 2)
 - `bajutsu/orchestrator/waits.py:64` (documents idb `describe-all` at ~100–300ms per call)
 - `bajutsu/drivers/idb.py:248` (`_settle`), `:296` (`_resolve`), `:317` (`_center`)
-- `bajutsu/drivers/adb.py:316` (`_scroll_into_view`)
+- `bajutsu/drivers/adb.py:369` (`_scroll_into_view`)
 - `bajutsu/drivers/base.py:359` (`wait_until`)
