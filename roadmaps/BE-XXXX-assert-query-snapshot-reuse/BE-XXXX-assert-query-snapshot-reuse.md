@@ -47,7 +47,7 @@ first try. `tap` is frequently invoked underneath `base.wait_until` (`base.py:35
 itself a deadline/poll loop — so a single flaky tap can have two independent deadline managers
 each re-querying on their own schedule, stacked on top of each other. On the adb driver,
 `_scroll_into_view` (`bajutsu/drivers/adb.py:369`) adds one more `_settle()` per scroll attempt
-(`adb.py:320`, `326`), so a tap that needs to scroll into view can fire on the order of a dozen
+(`adb.py:379`), so a tap that needs to scroll into view can fire on the order of a dozen
 full-tree subprocess calls for what is conceptually one action. None of this changes what a
 scenario asserts — it is pure, avoidable latency on every `assert`-heavy run and every tap that
 isn't already on screen.
