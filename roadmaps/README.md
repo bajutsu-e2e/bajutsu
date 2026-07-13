@@ -620,7 +620,7 @@ Parked proposals — considered, then shelved for now. Kept here (not deleted) s
 ## Not adopting (already covered / out of scope)
 
 - **Change history / version management** — already covered, since scenarios are YAML under git.
-- **Cloud device farm / real-device / cloud execution** — out of scope: Bajutsu targets local, CI-friendly backends (Simulator, headless browser, emulator), not real hardware or device clouds ([DESIGN §1](../DESIGN.md)). Multi-platform is tracked as proposals (the *Platform support* items).
+- **Cloud device farm / real-device execution as the *default*** — the deterministic core stays local-first and CI-friendly (Simulator, headless browser, emulator), not real hardware or device clouds ([DESIGN §1](../DESIGN.md)). Hosted device-cloud execution is not the default, but it is no longer flatly out of scope: it is tracked as opt-in proposals under *Device-cloud execution*. Multi-platform likewise lives under the *Platform support* items.
 - **Per-step screenshots / UI tree on error / device logs** — already covered by the evidence subsystem (capturePolicy + the `result:error` safety net).
 - **NL→test generation (Autopilot equivalent)** — overlaps with the existing `record` + the *Authoring experience* items.
 - **Scheduling / Slack / TestRail integration** — the domain of the CI / notification layer. Low priority (separately, if needed).
