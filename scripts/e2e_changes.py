@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Decide whether a PR warrants the metered on-device E2E jobs (e2e.yml's `changes` job).
+"""Decide whether a PR warrants the metered on-device E2E jobs (ios-e2e.yml's `changes` job).
 
-The macOS jobs (smoke, xcuitest) bill at 10x, so e2e.yml only fires them when the PR touches what
-they actually exercise — the app, the SDK, the run path, the build/deps, or the E2E
+The macOS jobs (smoke, xcuitest, visual, …) bill at 10x, so ios-e2e.yml only fires them when the PR
+touches what they actually exercise — the app, the SDK, the run path, the build/deps, or the E2E
 workflow/action itself. This module is the single source of truth for that decision, split into two
 testable pieces:
 
@@ -71,7 +71,10 @@ _RELEVANT = re.compile(
     r"|pyproject\.toml$"
     r"|uv\.lock$"
     r"|Makefile$"
-    r"|\.github/workflows/e2e\.yml$"
+    # The showcase's own Makefile (`e2e-visual` and friends) — the top-level `Makefile$` above is
+    # anchored to the repo root and doesn't reach this one, but the `visual` job depends on it.
+    r"|demos/showcase/Makefile$"
+    r"|\.github/workflows/ios-e2e\.yml$"
     r"|\.github/actions/bajutsu-e2e/"
     r"|\.github/actions/boot-simulator/"
     r")"

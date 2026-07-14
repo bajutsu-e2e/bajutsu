@@ -130,10 +130,13 @@ _SITE = "https://bajutsu-e2e.github.io/bajutsu/"
         ("[ja](ja/concepts.md#foo)", "concepts.md", f"[ja]({_SITE}ja/concepts.html#foo)"),
         # A non-markdown asset under ja/ keeps its own path (no page-URL .html treatment).
         ("[fig](ja/assets/logo.png)", "concepts.md", f"[fig]({_SITE}ja/assets/logo.png)"),
-        # A link into the default (root) tree validates normally and is left relative.
-        ("[en](../scenarios.md)", "ja/concepts.md", "[en](../scenarios.md)"),
-        # A same-language in-docs link is untouched.
-        ("[v](../vision.md)", "ja/concepts.md", "[v](../vision.md)"),
+        # A link from a ja/ page into the default (root) tree also crosses the language boundary:
+        # mkdocs-static-i18n strips the ja/ prefix internally, so a bare ``../`` climb would
+        # collapse back onto the same page rather than reaching the default-language copy.
+        ("[en](../scenarios.md)", "ja/concepts.md", f"[en]({_SITE}scenarios.html)"),
+        ("[en](../vision.md)", "ja/README.md", f"[en]({_SITE}vision.html)"),
+        # A same-language (ja → ja) in-docs link is left relative even with site_url configured.
+        ("[c](concepts.md)", "ja/README.md", "[c](concepts.md)"),
     ],
 )
 def test_cross_language_links(repo_root: Path, text: str, src_path: str, expected: str) -> None:

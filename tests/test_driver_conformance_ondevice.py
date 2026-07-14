@@ -5,7 +5,7 @@ CI), this drives the real iOS Simulator backends: idb via idb_companion, XCUITes
 BajutsuRunner. The point of the suite is to catch drift on a backend's *own* query / act code,
 which only surfaces against the real actuator — so it needs a booted Simulator with the showcase
 a11y app installed (and, for XCUITest, the built runner). It runs in the on-device E2E path
-(`e2e.yml`), never in `make check`: an `ondevice` pytest marker (deselected by the gate's default
+(`ios-e2e.yml`), never in `make check`: an `ondevice` pytest marker (deselected by the gate's default
 `-m 'not web and not ondevice'`) keeps it out even when the idb extra is installed, and a
 module-level skip drops it whenever `BAJUTSU_CONFORMANCE_UDID` is unset — the fast gate's state.
 
@@ -19,7 +19,7 @@ handful of `app.launch()` cycles. A file write touches neither, so both backends
 the whole suite.
 
 Run serially (`-n0`): the suite reseeds one shared Simulator via one spec file, so parallel xdist
-workers would clobber each other's screen. The `e2e.yml` job passes `-n0`.
+workers would clobber each other's screen. The `ios-e2e.yml` job passes `-n0`.
 """
 
 from __future__ import annotations

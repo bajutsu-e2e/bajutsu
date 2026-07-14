@@ -51,20 +51,22 @@ def test_http_index_inlines_assets(tmp_path: Path) -> None:
         server.server_close()
 
 
-def test_http_index_author_selector_yaml_quotes_ids(tmp_path: Path) -> None:
-    """The Author-tab YAML builders emit selector id/label as JSON-stringified (double-quoted)
-    scalars, so a selector containing a YAML-significant character (a ':' or '#') still produces
-    valid YAML on Apply. Structural fact only: the raw `'{ id: '+sel.id+' }'` interpolation is gone
-    and the quoted form ships."""
+def test_http_index_author_edits_round_trip_through_backend(tmp_path: Path) -> None:
+    """The Author tab no longer builds scenario YAML in the browser (BE-0261): Apply / Accept POST to
+    the round-trip endpoints and the serializer owns quoting. Structural fact only: the old
+    client-side YAML builders are gone and the fetch calls to the new endpoints ship."""
     scn_dir, cfg, runs = project(tmp_path)
     server, port = _serve(
         srv.ServeState(scenarios_dir=scn_dir, config=cfg, runs_dir=runs, cwd=tmp_path)
     )
     try:
         text = _get(port, "/")[1].decode("utf-8")
-        assert "'{ id: '+sel.id+' }'" not in text  # the unquoted interpolation must be gone
-        assert "'{ id: '+JSON.stringify(sel.id)+' }'" in text
-        assert "'{ label: '+JSON.stringify(sel.label)+' }'" in text
+        # The hand-rolled YAML builders must be gone — quoting now lives in the backend serializer.
+        assert "auSelectorYaml" not in text
+        assert "enrichAssertionYaml" not in text
+        # Apply / Accept round-trip through the new AI-free endpoints.
+        assert "/api/scenario/apply-selector" in text
+        assert "/api/scenario/enrich-apply" in text
     finally:
         server.shutdown()
         server.server_close()

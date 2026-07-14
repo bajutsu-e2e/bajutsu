@@ -75,6 +75,15 @@ def test_escaping_rels_are_treated_as_missing() -> None:
     for rel in ("", "/etc/passwd", "../secret.txt", "../../secret.txt"):
         assert store.get(rel) is None, rel
         assert store.open_bytes(rel) is None, rel
+        assert store.exists(rel) is False, rel
+
+
+def test_exists_matches_object_presence_without_a_presigned_url() -> None:
+    store = ObjectStorageArtifactStore(
+        FakeObjectStore({"runs/r1/elements.json": b"[]"}), prefix="runs/"
+    )
+    assert store.exists("r1/elements.json") is True
+    assert store.exists("r1/missing.json") is False
 
 
 def test_list_runs_skips_non_object_manifest() -> None:

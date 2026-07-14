@@ -82,6 +82,7 @@ The `bajutsu/` package (Python 3.13+, pydantic v2 / typer / anthropic / pyyaml /
 | Module | Role | Page |
 |---|---|---|
 | `drivers/base.py` | Driver Protocol + shared types (`Element`/`Selector`/`Point`) + **selector resolution** (the determinism core) | [selectors](selectors.md) / [drivers](drivers.md) |
+| `drivers/coordinate_tree.py` | `CoordinateTreeDriver` — the shared transient-empty retry / stable-key settle / `_resolve` / `wait_for` base class the two coordinate backends (idb, adb) inherit (BE-0254) | [drivers](drivers.md#idb) |
 | `drivers/fake.py` | In-memory `FakeDriver` (for tests without a device) | [drivers](drivers.md#fakedriver) |
 | `drivers/idb.py` | idb backend (iOS Simulator; headless, coordinate tap) | [drivers](drivers.md#idb) |
 | `drivers/xcuitest.py` | XCUITest backend (iOS; ahead of idb in the stability-order ladder — semantic tap, native condition-wait, and multi-touch via a resident on-device runner, idb the headless fallback; BE-0019) | [drivers](drivers.md#backend-selection-and-the-actuator) |
@@ -284,7 +285,7 @@ The contract (`tests/driver_conformance.py`) is the "done" definition a new back
 To add a backend to the suite, implement a `ConformanceHarness` (given a screen, return a driver
 showing it) and subclass `DriverConformanceContract`; pytest then runs the inherited contract
 against it. `FakeDriver` runs on the fast Linux gate (`make check`); Playwright runs in the web CI
-job and idb / XCUITest under the on-device E2E path (`e2e.yml`) — the same contract, no second spec.
+job and idb / XCUITest under the on-device E2E path (`ios-e2e.yml`) — the same contract, no second spec.
 Each harness realizes a screen its own way: `FakeDriver` takes the elements directly, Playwright
 renders them as HTML, and the on-device harness launches the showcase app into conformance mode
 once (`SHOWCASE_CONFORMANCE`) and then reseeds each screen by writing a spec file the app polls
@@ -394,9 +395,9 @@ workers would collide).
 - The idb backend's subprocess execution — `describe-all` parsing, frame-center tap / text /
   swipe, and the simctl launch sequencing — confirmed against the installed `idb` /
   `idb_companion` by running the showcase scenarios, evidence capture, and the triage self-heal
-  loop on-device (`make -C demos/showcase run-swiftui`; the `e2e.yml` CI workflow also exercises the idb smoke path).
+  loop on-device (`make -C demos/showcase run-swiftui`; the `ios-e2e.yml` CI workflow also exercises the idb smoke path).
 - The XCUITest backend's resident runner — element resolution by snapshot handle, semantic tap, and
-  the `pinch`/`rotate` multi-touch gestures idb cannot run — confirmed on-device via the `e2e.yml`
+  the `pinch`/`rotate` multi-touch gestures idb cannot run — confirmed on-device via the `ios-e2e.yml`
   `xcuitest (multi-touch)` job (`demos/showcase/scenarios/gestures_multitouch.yaml`, `--backend xcuitest`).
 
 ### Validated in a browser (Linux, no Mac)

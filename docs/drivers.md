@@ -124,7 +124,7 @@ Headless, coordinate-based. For CI (continuous integration). With no semantic ta
   as a pan by SwiftUI).
 
 > The describe-all JSON key names follow fb-idb's output and are **validated on-device** against
-> fb-idb (iPhone 17 Pro, recent iOS) via `make -C demos/showcase run-swiftui` + the `e2e.yml` CI workflow; re-check them only
+> fb-idb (iPhone 17 Pro, recent iOS) via `make -C demos/showcase run-swiftui` + the `ios-e2e.yml` CI workflow; re-check them only
 > if the installed idb version changes the schema (the note atop `idb.py`). The idb client is
 > `uv sync --extra idb`; `idb_companion` is `brew install facebook/fb/idb-companion`.
 

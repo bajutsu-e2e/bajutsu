@@ -206,7 +206,10 @@ def run_set_manifests(store: ArtifactStore, run_ids: Iterable[Any]) -> list[dict
     same aggregation can be run once per project over a project-scoped run set (BE-0226) rather than
     only over the active config's org run history. An id that is not a single safe segment is
     rejected before it becomes a path (serve's containment model, BE-0015), and an unreadable or
-    malformed manifest is skipped — the aggregator never fails on one bad run.
+    malformed manifest is skipped — the aggregator never fails on one bad run. Each manifest already
+    carries its own `runId` (`bajutsu.report.manifest.manifest_dict`), so a caller that needs to
+    rebuild a run-relative path (e.g. `coverage_view`'s seam-routed evidence readers, BE-0258) reads
+    it back from there rather than needing the id threaded through separately.
     """
     manifests: list[dict[str, Any]] = []
     for run_id in run_ids:
@@ -215,12 +218,12 @@ def run_set_manifests(store: ArtifactStore, run_ids: Iterable[Any]) -> list[dict
         if not isinstance(run_id, str) or not valid_run_id(run_id):
             continue
         try:
-            # `open_bytes` can raise (a run deleted between listing and read; a remote store's I/O
-            # error), so an OSError is a skip too — the same "unreadable ones are skipped" promise as
-            # malformed JSON, never a failed dashboard.
             raw = store.open_bytes(f"{run_id}/manifest.json")
             data = json.loads(raw) if raw is not None else None
         except (OSError, json.JSONDecodeError, ValueError):
+            # `open_bytes` can raise (a run deleted between listing and read; a remote store's I/O
+            # error), so an OSError is a skip too — the same "unreadable ones are skipped" promise as
+            # malformed JSON, never a failed dashboard.
             continue
         if isinstance(data, dict):
             manifests.append(data)
@@ -283,7 +286,7 @@ def read_scenario(
         return {"yaml": text}, 200
     if not valid_run_id(run_id):
         return {"yaml": text, "steps": []}, 200
-    return {"yaml": text, "steps": _step_artifacts(state, text, run_id, scenario_name)}, 200
+    return {"yaml": text, "steps": _step_artifacts(state, text, run_id, scenario_name, org)}, 200
 
 
 def _step_artifacts(
@@ -291,6 +294,7 @@ def _step_artifacts(
     yaml_text: str,
     run_id: str,
     scenario_name: str | None,
+    org: str,
 ) -> list[dict[str, Any]]:
     """Build per-step artifact handles for the editor (BE-0013)."""
     try:
@@ -298,12 +302,15 @@ def _step_artifacts(
     except (ValueError, Exception):
         return []
 
-    manifest_path = state.runs_dir / run_id / "manifest.json"
-    if not manifest_path.is_file():
-        return []
+    artifacts = state.for_org(org).artifacts
     try:
-        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, OSError):
+        raw_manifest = artifacts.open_bytes(f"{run_id}/manifest.json")
+        manifest = json.loads(raw_manifest) if raw_manifest is not None else None
+    except (OSError, json.JSONDecodeError):
+        # A race (the run trashed/purged between listing and read) or a transient store error reads
+        # the same as a missing/malformed manifest — an empty step list, never a failed request.
+        return []
+    if manifest is None:
         return []
 
     matched = (
@@ -322,9 +329,6 @@ def _step_artifacts(
     result: list[dict[str, Any]] = []
     for idx, step in enumerate(matched.steps):
         step_id = f"{sid}/{step.name or f'step{idx}'}"
-        step_dir = state.runs_dir / run_id / step_id
-        elements_file = step_dir / "elements.json"
-        screenshot_file = step_dir / "after.png"
         action, fields = _step_action_fields(step)
         result.append(
             {
@@ -332,14 +336,24 @@ def _step_artifacts(
                 "action": action,
                 "fields": fields,
                 "elementsUrl": f"/runs/{run_id}/{step_id}/elements.json"
-                if elements_file.is_file()
+                if _safe_exists(artifacts, f"{run_id}/{step_id}/elements.json")
                 else None,
                 "screenshotUrl": f"/runs/{run_id}/{step_id}/after.png"
-                if screenshot_file.is_file()
+                if _safe_exists(artifacts, f"{run_id}/{step_id}/after.png")
                 else None,
             }
         )
     return result
+
+
+def _safe_exists(store: ArtifactStore, rel: str) -> bool:
+    """`store.exists(rel)`, treating a store I/O error as absent rather than failing the request —
+    a transient hiccup on one step's existence probe degrades to "no link" for that step, not a
+    500 for the whole editor view."""
+    try:
+        return store.exists(rel)
+    except OSError:
+        return False
 
 
 def _step_action_fields(step: Step) -> tuple[str, Any]:
@@ -494,12 +508,15 @@ def resolve_scenario_pick(
         return {"error": f"unknown target: {target}"}, 400
     namespaces: list[str] = list(target_cfg.id_namespaces)
 
-    elements_path = state.runs_dir / run_id / step_id / "elements.json"
-    if not elements_path.is_file():
+    try:
+        raw_elements = state.for_org(_org).artifacts.open_bytes(f"{run_id}/{step_id}/elements.json")
+    except OSError:
+        return {"error": "elements.json is corrupt or unreadable"}, 400
+    if raw_elements is None:
         return {"error": "elements.json not found for this step"}, 404
 
     try:
-        raw = json.loads(elements_path.read_text(encoding="utf-8"))
+        raw = json.loads(raw_elements)
         if not isinstance(raw, list):
             return {"error": "elements.json is not a valid element list"}, 400
         elements: list[driver_base.Element] = [
