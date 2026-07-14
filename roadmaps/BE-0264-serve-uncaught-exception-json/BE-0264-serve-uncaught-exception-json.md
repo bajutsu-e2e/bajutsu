@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0264") |
-| Implementing PR | _pending_ |
+| Implementing PR | [#1089](https://github.com/bajutsu-e2e/bajutsu/pull/1089) |
 | Topic | Codebase quality & technical debt |
 <!-- /BE-METADATA -->
 
@@ -88,7 +88,7 @@ verdict, determinism, or app-specific configuration.
 
 Log:
 
-- _pending_ — `bajutsu/serve/handler.py`: `do_POST` / `do_GET` now dispatch through
+- [#1089](https://github.com/bajutsu-e2e/bajutsu/pull/1089) — `bajutsu/serve/handler.py`: `do_POST` / `do_GET` now dispatch through
   `_dispatch_post` / `_dispatch_get` wrapped in a top-level `try/except` that turns any uncaught
   operation exception into a JSON 500 via `_respond_uncaught` (full traceback logged with the
   `oplog` request id; client gets the exception message only). Streaming/binary GET routes (SSE,
