@@ -318,27 +318,59 @@ def test_android_environment_falls_back_to_dump_when_resident_unavailable(
     assert not resident.stopped  # it never started, so nothing to stop
 
 
-def test_android_environment_skips_resident_by_default() -> None:
-    # Until the e2e lane builds and installs the server (a later slice), the resident channel is
-    # opt-in: with no factory and the env flag unset, start does not attempt it and reads via dump.
+def test_android_environment_skips_resident_when_the_server_is_not_built(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Default-on is gated on the server being built (BE-0245 PR-D): with no factory, the env
+    # override unset, and the APKs absent, start reads via `uiautomator dump` — a fresh clone that
+    # never ran `make -C BajutsuAndroidUIAutomatorServer build` is never worse off than before.
+    import bajutsu.adb_resident as adb_resident
+
+    monkeypatch.delenv("BAJUTSU_ADB_RESIDENT", raising=False)
+    monkeypatch.setattr(adb_resident, "server_apks_built", lambda *a: False)
     env = AndroidEnvironment("adb", "S", adb_run=_resolve_activity_run([]))
     env.start(_eff(), Preconditions())
     assert env._resident is None  # nothing started
 
 
-def test_make_resident_builds_a_real_server_when_the_env_flag_is_set(
+def test_make_resident_defaults_on_when_the_server_apks_are_built(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    # With no injected factory but BAJUTSU_ADB_RESIDENT truthy, _make_resident lazily imports and
-    # constructs a real ResidentServer. Construction only stores params — it never touches the device
-    # or starts instrumentation — so this stays hermetic without a factory or a device. (monkeypatch
-    # auto-restores the env var, so this leaves no os.environ leak for later tests.)
-    from bajutsu.adb_resident import ResidentServer
+    # The default (env unset) now routes reads through the resident channel automatically once the
+    # server is built — no opt-in flag needed. Construction only stores params (no device contact).
+    import bajutsu.adb_resident as adb_resident
+
+    monkeypatch.delenv("BAJUTSU_ADB_RESIDENT", raising=False)
+    monkeypatch.setattr(adb_resident, "server_apks_built", lambda *a: True)
+    env = AndroidEnvironment("adb", "emulator-5554", adb_run=_resolve_activity_run([]))
+    assert isinstance(env._make_resident(), adb_resident.ResidentServer)
+
+
+def test_make_resident_env_off_opts_out_even_when_built(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # An explicit BAJUTSU_ADB_RESIDENT=0 forces the dump path even on a built tree — the escape hatch
+    # for pinning the fallback path (the Android e2e lane uses it to guard the dump path, PR-D).
+    import bajutsu.adb_resident as adb_resident
+
+    monkeypatch.setenv("BAJUTSU_ADB_RESIDENT", "0")
+    monkeypatch.setattr(adb_resident, "server_apks_built", lambda *a: True)
+    env = AndroidEnvironment("adb", "S", adb_run=_resolve_activity_run([]))
+    assert env._make_resident() is None
+
+
+def test_make_resident_env_on_forces_a_server_even_when_not_built(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # An explicit truthy override forces the resident channel even before a build; start() then
+    # degrades loudly to dump if the APKs are missing (tested in test_adb_resident). Construction
+    # only stores params, so this stays hermetic. (monkeypatch auto-restores the env var.)
+    import bajutsu.adb_resident as adb_resident
 
     monkeypatch.setenv("BAJUTSU_ADB_RESIDENT", "1")
+    monkeypatch.setattr(adb_resident, "server_apks_built", lambda *a: False)
     env = AndroidEnvironment("adb", "emulator-5554", adb_run=_resolve_activity_run([]))
-    server = env._make_resident()
-    assert isinstance(server, ResidentServer)  # a real server, not the None opt-out
+    assert isinstance(env._make_resident(), adb_resident.ResidentServer)
 
 
 def test_android_environment_grants_permissions_even_on_overwrite() -> None:

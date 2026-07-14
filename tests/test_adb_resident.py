@@ -348,3 +348,14 @@ def test_stop_escalates_to_kill_when_terminate_does_not_reap(tmp_path: Path) -> 
     srv.stop()
     assert proc.terminated
     assert proc.killed
+
+
+def test_server_apks_built_needs_both_apks(tmp_path: Path) -> None:
+    # The default-on gate (BE-0245 PR-D) reads via the resident channel only when the server is
+    # built, so `server_apks_built` must be true only when BOTH `make -C BajutsuAndroidUIAutomatorServer build`
+    # outputs are present — a half-built tree (one APK) still needs the dump path.
+    server_apk, test_apk = _apks(tmp_path)
+    assert adb_resident.server_apks_built(server_apk, test_apk)
+    assert not adb_resident.server_apks_built(server_apk, tmp_path / "missing.apk")
+    assert not adb_resident.server_apks_built(tmp_path / "missing.apk", test_apk)
+    assert not adb_resident.server_apks_built(tmp_path / "a.apk", tmp_path / "b.apk")

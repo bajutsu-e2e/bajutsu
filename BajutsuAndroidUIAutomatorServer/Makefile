@@ -3,8 +3,8 @@
 #
 # Not part of `make check`: the Python gate builds no Kotlin, and this needs the Android SDK. Like
 # the showcase Android build, it goes through the committed `./gradlew`, so a fresh clone needs no
-# system-installed gradle. CI wiring (an e2e lane that installs and exercises the server on an
-# emulator) is a later BE-0245 slice; today these targets only build.
+# system-installed gradle. The Android e2e lane (.github/workflows/android-e2e.yml) builds these
+# before booting the emulator, so the resident read channel is on by default there (BE-0245).
 .PHONY: build server-apk test-apk wrapper clean
 
 HERE := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))

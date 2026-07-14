@@ -4,7 +4,8 @@
 #
 # `run` / `doctor` land with the BE-0007 adb backend; until then these targets only build.
 .PHONY: build-all wrapper \
-	compose-build compose-noax-build views-build views-noax-build e2e e2e-golden e2e-visual clean
+	compose-build compose-noax-build views-build views-noax-build e2e e2e-golden e2e-fallback \
+	e2e-visual clean
 
 HERE := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
 GRADLEW := $(HERE)/gradlew
@@ -144,6 +145,18 @@ e2e: compose-build views-build
 # drives it in the same emulator session as `e2e`.
 e2e-golden: compose-build
 	cd $(ROOT) && uv run bajutsu run \
+		--scenario demos/showcase/scenarios/golden/golden.yaml \
+		--goldens demos/showcase/scenarios/golden/goldens_android \
+		--target showcase-compose --udid $(SERIAL) --backend android --config $(CONFIG)
+
+# Guard the `uiautomator dump` fallback (BE-0245 unit 5). With the resident server built, reads are
+# on the resident channel by default (bajutsu/platform_lifecycle.py), so the `e2e`/`e2e-golden` steps
+# above exercise that path; this target pins BAJUTSU_ADB_RESIDENT=0 to run the *same* golden through
+# the dump path instead, so the fallback stays exercised on every run and the two paths are proven to
+# yield the same element tree. Not part of `make check`: it needs a booted AVD, so android-e2e.yml
+# drives it in the same emulator session as `e2e-golden`.
+e2e-fallback: compose-build
+	cd $(ROOT) && BAJUTSU_ADB_RESIDENT=0 uv run bajutsu run \
 		--scenario demos/showcase/scenarios/golden/golden.yaml \
 		--goldens demos/showcase/scenarios/golden/goldens_android \
 		--target showcase-compose --udid $(SERIAL) --backend android --config $(CONFIG)

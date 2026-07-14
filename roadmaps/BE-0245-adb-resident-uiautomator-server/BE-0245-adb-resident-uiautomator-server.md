@@ -7,9 +7,9 @@
 |---|---|
 | Proposal | [BE-0245](BE-0245-adb-resident-uiautomator-server.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **In progress** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0245") |
-| Implementing PR | [#1011](https://github.com/bajutsu-e2e/bajutsu/pull/1011), [#1017](https://github.com/bajutsu-e2e/bajutsu/pull/1017), [#1032](https://github.com/bajutsu-e2e/bajutsu/pull/1032) |
+| Implementing PR | [#1011](https://github.com/bajutsu-e2e/bajutsu/pull/1011), [#1017](https://github.com/bajutsu-e2e/bajutsu/pull/1017), [#1032](https://github.com/bajutsu-e2e/bajutsu/pull/1032), [#1042](https://github.com/bajutsu-e2e/bajutsu/pull/1042) |
 | Topic | Platform support |
 | Related | [BE-0234](../BE-0234-adb-run-performance/BE-0234-adb-run-performance.md), [BE-0007](../BE-0007-android-backend/BE-0007-android-backend.md), [BE-0233](../BE-0233-adb-clipboard-fidelity/BE-0233-adb-clipboard-fidelity.md), [BE-0114](../BE-0114-driver-conformance-suite/BE-0114-driver-conformance-suite.md), [BE-0208](../BE-0208-android-emulator-e2e-ci/BE-0208-android-emulator-e2e-ci.md) |
 <!-- /BE-METADATA -->
@@ -124,7 +124,7 @@ where the resident server cannot start is never left worse off than today.
 - [x] Define the hierarchy-query channel (local socket / HTTP) whose response `parse_hierarchy` consumes unchanged.
 - [x] Swap `AdbDriver._describe()` to the resident channel, keeping `uiautomator dump` as the fallback.
 - [x] Tie the resident server's lifecycle to the device lease (started once, stopped on run end / failure).
-- [ ] Verify on device (read drops to ≈ 0.1–0.3 s) and guard the resident + fallback paths in the Android e2e lane.
+- [x] Verify on device (read drops to ≈ 0.1–0.3 s) and guard the resident + fallback paths in the Android e2e lane.
 
 Log:
 
@@ -177,6 +177,33 @@ Log:
   bound stays a minor hardening for the on-device slice. Everything here is device-free and gate-tested;
   the on-device wall-clock verification (≈ 0.1–0.3 s) and the e2e-lane guard for both paths (unit 5)
   land in PR-D, which also flips the channel on by default — so that box stays unticked.
+- PR-D ([#1042](https://github.com/bajutsu-e2e/bajutsu/pull/1042)) — unit 5, flips the
+  channel on by default and guards both paths in CI. `_make_resident` now reads over the resident
+  channel whenever the server APKs are built (`server_apks_built`, `make -C BajutsuAndroidUIAutomatorServer
+  build`) and falls back to `uiautomator dump` otherwise, turning `BAJUTSU_ADB_RESIDENT` from an
+  opt-in flag into an override (`0` pins the dump path even on a built tree, `1` forces the resident
+  path and degrades loudly if it is not built). The Android e2e lane (`android-e2e.yml`) builds the
+  server before booting the emulator, so `e2e`/`e2e-golden`/`e2e-visual` run over the resident
+  channel, and a new `e2e-fallback` target re-runs the golden with the channel forced off — the same
+  golden proving the two paths yield the same element tree, so the resident path and the
+  `uiautomator dump` fallback are both exercised on every run. Per-step wall-clock is not asserted (a
+  hard CI *timing* gate stays out of scope, consistent with BE-0234); the golden equivalence over the
+  resident channel on the emulator is the on-device correctness check. `drivers.md` and
+  `architecture.md` (both languages) now describe the resident-first read. The lane's first green
+  run surfaced three resident-vs-dump equivalence gaps the fast read exposed, all fixed here so the
+  two paths yield the same tree: the resident server now calls `UiDevice.waitForIdle()` before
+  dumping (the double-tap's async accessibility value had not propagated when the fast read
+  snapshotted, which `uiautomator dump` never saw because it waits for idle); `AdbDriver._settle`
+  is now bounded by a wall-clock deadline rather than a fixed read count (BE-0234's 3-poll cap
+  assumed the ~2.4 s read paced the loop — the ~0.1 s resident read collapsed the settle window and
+  let a still-moving tree pass as settled, so a tap after a scroll fired on a stale coordinate); and
+  the trailing `expect` is now a condition wait (`bajutsu/orchestrator/loop.py`) rather than a single
+  end-of-scenario read — a value an action mirrors into the tree can land a beat after the action
+  (Compose recomposes the `content-desc` asynchronously), and the slow dump read had incidentally
+  waited it out, so the fast read caught the pre-update value. Its budget is the lane's existing
+  wait floor (`BAJUTSU_MIN_WAIT_TIMEOUT`), so it is a single read (today's behavior) off the Android
+  lane and re-reads only the UI tree, ending the moment nothing a tree re-read could fix is still
+  failing. This completes the item.
 
 ## References
 

@@ -357,7 +357,11 @@ workers would collide).
   multi-touch and device-control slices — is confirmed against a booted x86_64 API 34 AVD under KVM
   (`android-e2e.yml`; BE-0208), driving both the Compose and Views showcase builds over the same
   shared scenarios idb runs, plus a golden element-tree check and a pixel visual-regression baseline
-  for the Compose catalog.
+  for the Compose catalog. The lane also builds the resident UI Automator server
+  ([BE-0245](../roadmaps/BE-0245-adb-resident-uiautomator-server/BE-0245-adb-resident-uiautomator-server.md)),
+  so those reads run over the resident channel (`GET /source` over `adb forward`, replacing the
+  ≈ 2.4 s per-read `uiautomator dump` startup) by default there, with a dump-fallback golden run
+  guarding the `uiautomator dump` path.
 
 ### Not yet wired (schema/flags exist but have no runtime effect)
 

@@ -39,7 +39,7 @@ from bajutsu.orchestrator.types import (
     _no_network,
     scenario_slug,
 )
-from bajutsu.orchestrator.waits import WaitTrace, _wait
+from bajutsu.orchestrator.waits import WaitTrace, _adaptive_sleep, _timeout_floor, _wait
 from bajutsu.scenario import Assertion, Email, ForEach, If, Scenario, Selector, Step
 from bajutsu.webview import DomSource, WebContextDriver
 
@@ -52,6 +52,59 @@ _EMAIL_POLL = 1.0
 
 def _fail_reason(results: list[AssertionResult]) -> str:
     return "; ".join(r.reason for r in results if not r.ok)
+
+
+# Assertion kinds whose result a tree re-read cannot change: the clipboard and screenshot are read
+# once, and the network kinds have their own `wait until: request`. Waiting on one of these would
+# only idle to the deadline, so the poll stops as soon as every *still-failing* assertion is one of
+# them. Any other (tree-derived) kind — value / label / exists / count / state / golden, and any
+# future UI kind — keeps the wait, which is the read-race this poll exists to close.
+_READ_ONCE_KINDS = frozenset(
+    {"clipboard", "visual", "request", "responseSchema", "requestSequence", "event"}
+)
+
+
+def _evaluate_expect(
+    driver: base.Driver,
+    expect: list[Assertion],
+    network: NetworkSource,
+    clock: Clock,
+    *,
+    visual_context: VisualContext | None,
+    schema_context: SchemaContext | None,
+    clipboard: str | None,
+    golden_context: GoldenContext | None,
+) -> list[AssertionResult]:
+    """Evaluate `expect` as a condition wait: re-read the tree until it passes or the deadline.
+
+    Polling `query()` until `passed()` — bounded by a wall-clock deadline, never a fixed sleep — is
+    what keeps a fast read (the resident channel, ~0.1s) no more flaky than a slow one (`uiautomator
+    dump`, ~2.4s, which incidentally waited out an action's async-mirrored value: a value an action
+    mirrors into the tree can land a beat after the action returns, as Compose recomposes the
+    `content-desc` asynchronously). The wait budget is the lane's wait floor
+    (`BAJUTSU_MIN_WAIT_TIMEOUT`), the same knob every other condition wait honors — so it is zero
+    (a single read, today's behavior) on lanes that don't set it, and the Android e2e lane's 15s
+    where the race lives. Only the UI tree goes stale, so only it is re-read; the caller takes the
+    screenshot and reads the clipboard once, and the poll ends the moment nothing a tree re-read
+    could fix is still failing (`_READ_ONCE_KINDS`).
+    """
+    deadline = clock.now() + _timeout_floor()
+    while True:
+        t0 = clock.now()
+        results = assertions.evaluate(
+            driver.query(),
+            expect,
+            network(),
+            visual_context=visual_context,
+            schema_context=schema_context,
+            clipboard=clipboard,
+            golden_context=golden_context,
+        )
+        if assertions.passed(results) or clock.now() >= deadline:
+            return results
+        if all(r.ok or r.kind in _READ_ONCE_KINDS for r in results):
+            return results  # only read-once assertions are left failing; a tree re-read can't help
+        _adaptive_sleep(clock, t0)
 
 
 class _ScreenRead:
@@ -251,10 +304,11 @@ def run_scenario(
             clip = _clipboard_for(expect, control)
             if visual_context is not None:
                 driver.screenshot(str(visual_context.screenshot_path))
-            expect_results = assertions.evaluate(
-                driver.query(),
+            expect_results = _evaluate_expect(
+                driver,
                 expect,
-                network(),
+                network,
+                clock,
                 visual_context=visual_context,
                 schema_context=schema_context,
                 clipboard=clip,
@@ -269,10 +323,11 @@ def run_scenario(
                     # Re-read the clipboard too: clearing the block may have let the app update the
                     # pasteboard, so the retry must compare against the fresh value, not the stale one.
                     clip = _clipboard_for(expect, control)
-                    expect_results = assertions.evaluate(
-                        driver.query(),
+                    expect_results = _evaluate_expect(
+                        driver,
                         expect,
-                        network(),
+                        network,
+                        clock,
                         visual_context=visual_context,
                         schema_context=schema_context,
                         clipboard=clip,
