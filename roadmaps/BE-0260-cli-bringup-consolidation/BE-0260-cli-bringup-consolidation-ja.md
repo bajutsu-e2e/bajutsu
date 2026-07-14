@@ -9,7 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0260") |
-| 実装 PR | _pending_ |
+| 実装 PR | [#1033](https://github.com/bajutsu-e2e/bajutsu/pull/1033) |
 | トピック | コードベース品質・技術的負債 |
 <!-- /BE-METADATA -->
 
@@ -147,7 +147,7 @@ run、crawl、record、audit の各コマンドは、実行の前に同じ 4 種
 
 ### ログ
 
-- 2026-07-14: 4 ユニットすべてを実装（[PR #_pending_]）。振る舞い不変のリファクタで、`_build_alert_guard`
+- 2026-07-14: 4 ユニットすべてを実装（[PR #1033](https://github.com/bajutsu-e2e/bajutsu/pull/1033)）。振る舞い不変のリファクタで、`_build_alert_guard`
   による `crawl`/`record` の credential 欠如時 no-op 化のみ意図的な挙動統一（両コマンドは
   `_require_ai_credential` で先に fail-closed するため実フローでは影響なし）。`adb.DeviceError` は
   `simctl.DeviceError` の兄弟となり、汎用ハンドラ 10 箇所が `bajutsu.simctl` の import を不要とした。

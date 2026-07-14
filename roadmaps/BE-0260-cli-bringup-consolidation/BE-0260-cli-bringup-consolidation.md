@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0260") |
-| Implementing PR | _pending_ |
+| Implementing PR | [#1033](https://github.com/bajutsu-e2e/bajutsu/pull/1033) |
 | Topic | Codebase quality & technical debt |
 <!-- /BE-METADATA -->
 
@@ -138,7 +138,7 @@ already exist unchanged (module for module) in every command file.
 
 ### Log
 
-- 2026-07-14: implemented all four units ([PR #_pending_]). Behavior-preserving refactor except the
+- 2026-07-14: implemented all four units ([PR #1033](https://github.com/bajutsu-e2e/bajutsu/pull/1033)). Behavior-preserving refactor except the
   one deliberate alignment — `_build_alert_guard` gives `crawl`/`record` `run`'s graceful
   no-op-on-missing-credential (moot in practice: both fail closed via `_require_ai_credential` first).
   `adb.DeviceError` became a sibling of `simctl.DeviceError`, letting the 10 generic handlers drop
