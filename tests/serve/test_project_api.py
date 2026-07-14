@@ -421,6 +421,177 @@ def test_activate_uploaded_project_org_scoping_holds_at_the_object_store_too(
     assert result is not None and result[1] == 200
 
 
+def _scenarios_zip() -> bytes:
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr("scenarios/smoke.yaml", "- name: a\n  steps: []\n")
+    return buf.getvalue()
+
+
+def _composed_config() -> bytes:
+    return (
+        b"defaults: { backend: [idb] }\n"
+        b"targets:\n  demo: { bundleId: com.example.demo, scenarios: ./scenarios }\n"
+    )
+
+
+def test_activate_a_composed_upload_project_fetches_and_composes_from_the_object_store(
+    tmp_path: Path,
+) -> None:
+    # BE-0268: a project bound to a triple of artifact shas (not one bundle sha) composes them into
+    # a tree the same way `activate_uploaded_project`'s legacy path materializes one.
+    config_blob = _composed_config()
+    scenarios_blob = _scenarios_zip()
+    config_sha = hashlib.sha256(config_blob).hexdigest()
+    scenarios_sha = hashlib.sha256(scenarios_blob).hexdigest()
+    store = FakeObjectStore(
+        {
+            f"uploads/config/{config_sha}": config_blob,
+            f"uploads/scenarios/{scenarios_sha}": scenarios_blob,
+        }
+    )
+    state = _hub_state(tmp_path, object_store=store, uploads_dir=tmp_path / "uploads")
+    ops.register_project(
+        state,
+        {
+            "name": "composed",
+            "source": {
+                "kind": "upload",
+                "filename": "suite",
+                "artifacts": {"config": config_sha, "scenarios": scenarios_sha},
+                "size": len(config_blob),
+            },
+        },
+    )
+    payload, status = ops.activate_project(state, "composed")
+    assert status == 200 and payload["active"] is True
+    assert state.config is not None and state.config.name == "bajutsu.config.yaml"
+
+
+def test_activate_a_composed_upload_project_is_409_when_no_object_store_configured(
+    tmp_path: Path,
+) -> None:
+    # No object store at all — nothing to restore from, same fallback as the legacy single-sha path.
+    state = _hub_state(tmp_path, uploads_dir=tmp_path / "uploads")
+    ops.register_project(
+        state,
+        {
+            "name": "composed",
+            "source": {"kind": "upload", "artifacts": {"config": "a" * 64}, "size": 1},
+        },
+    )
+    _, status = ops.activate_project(state, "composed")
+    assert status == 409
+
+
+def test_activate_a_composed_upload_project_is_409_when_config_sha_is_malformed(
+    tmp_path: Path,
+) -> None:
+    store = FakeObjectStore()
+    state = _hub_state(tmp_path, object_store=store, uploads_dir=tmp_path / "uploads")
+    ops.register_project(
+        state,
+        {
+            "name": "composed",
+            "source": {"kind": "upload", "artifacts": {"config": "not-hex"}, "size": 1},
+        },
+    )
+    _, status = ops.activate_project(state, "composed")
+    assert status == 409
+
+
+def test_activate_a_composed_upload_project_is_404_when_config_bytes_are_absent(
+    tmp_path: Path,
+) -> None:
+    # A well-formed config sha that isn't actually stored anywhere is a real "not found", distinct
+    # from the "nothing to restore from at all" 409 fallback above.
+    store = FakeObjectStore()  # nothing stored
+    state = _hub_state(tmp_path, object_store=store, uploads_dir=tmp_path / "uploads")
+    ops.register_project(
+        state,
+        {
+            "name": "composed",
+            "source": {"kind": "upload", "artifacts": {"config": "a" * 64}, "size": 1},
+        },
+    )
+    payload, status = ops.activate_project(state, "composed")
+    assert status == 404 and "not available" in payload["error"]
+
+
+def test_activate_a_composed_upload_project_rejects_an_invalid_leg_sha(tmp_path: Path) -> None:
+    store = FakeObjectStore()
+    state = _hub_state(tmp_path, object_store=store, uploads_dir=tmp_path / "uploads")
+    source = {
+        "kind": "upload",
+        "artifacts": {"config": "a" * 64, "scenarios": "../../../etc"},
+        "size": 1,
+    }
+    result = activate_uploaded_project(state, source, org="default")
+    assert result is not None
+    payload, status = result
+    assert status == 400 and "invalid scenarios" in payload["error"]
+
+
+def test_activate_a_composed_upload_project_is_400_when_coherence_fails(tmp_path: Path) -> None:
+    # The config needs a scenarios artifact but the triple doesn't supply one — a real error, not a
+    # silent partial bind.
+    config_blob = _composed_config()
+    config_sha = hashlib.sha256(config_blob).hexdigest()
+    store = FakeObjectStore({f"uploads/config/{config_sha}": config_blob})
+    state = _hub_state(tmp_path, object_store=store, uploads_dir=tmp_path / "uploads")
+    ops.register_project(
+        state,
+        {
+            "name": "composed",
+            "source": {"kind": "upload", "artifacts": {"config": config_sha}, "size": 1},
+        },
+    )
+    payload, status = ops.activate_project(state, "composed")
+    assert status == 400 and "invalid composition" in payload["error"]
+
+
+def test_activate_a_composed_upload_project_cache_hit_never_touches_the_store(
+    tmp_path: Path,
+) -> None:
+    # A replica that already composed this exact triple reuses it without asking the object store
+    # at all — proven here by a store that raises if ever called.
+    config_blob = _composed_config()
+    scenarios_blob = _scenarios_zip()
+    config_sha = hashlib.sha256(config_blob).hexdigest()
+    scenarios_sha = hashlib.sha256(scenarios_blob).hexdigest()
+
+    class _PoisonedStore(FakeObjectStore):
+        def get_bytes(self, key: str) -> bytes | None:
+            raise AssertionError(f"should not touch the object store for a cache hit: {key}")
+
+    uploads_dir = tmp_path / "uploads"
+    store = FakeObjectStore(
+        {
+            f"uploads/config/{config_sha}": config_blob,
+            f"uploads/scenarios/{scenarios_sha}": scenarios_blob,
+        }
+    )
+    state = _hub_state(tmp_path, object_store=store, uploads_dir=uploads_dir)
+    ops.register_project(
+        state,
+        {
+            "name": "composed",
+            "source": {
+                "kind": "upload",
+                "artifacts": {"config": config_sha, "scenarios": scenarios_sha},
+                "size": 1,
+            },
+        },
+    )
+    # First activation composes and caches; swap in a poisoned store, then activate a second time —
+    # the cache-hit path must never call it.
+    _, status = ops.activate_project(state, "composed")
+    assert status == 200
+    state.object_store = _PoisonedStore()
+    _, status2 = ops.activate_project(state, "composed")
+    assert status2 == 200
+
+
 def test_activate_a_malformed_git_source_is_400(tmp_path: Path) -> None:
     state = _hub_state(tmp_path)
     # A git locator missing its host cannot rebuild a spec; refuse cleanly rather than 500.
