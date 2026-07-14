@@ -96,7 +96,7 @@ The `bajutsu/` package (Python 3.13+, pydantic v2 / typer / anthropic / pyyaml /
 | `provision.py` | Config-aware environment installer (BE-0164): resolve a config's backends + AI provider, install only their extras/tools idempotently (`make install`) | — |
 | `runner/` | config + scenarios → report; device pool + launch sequence (package: `pipeline` / `pool` / `launch`) | [run-loop](run-loop.md#runner-the-run-pipeline) |
 | `doctor.py` | Convention score (id coverage, etc.) | [configuration](configuration.md#doctor-the-convention-score) |
-| `agent.py` · `agents.py` | Authoring Agent abstraction (`Observation`/`Proposal`/`Agent`) + construction of the one SDK-backed agent | [recording](recording.md) |
+| `agent_protocols.py` · `agent_factory.py` | Authoring Agent abstraction (`Observation`/`Proposal`/`Agent`) + construction of the one SDK-backed agent | [recording](recording.md) |
 | `ai/` | Vendor-neutral AI backend seam (BE-0104): `AiBackend` protocol + normalized request/response types (`base`), provider registry (`registry`), Anthropic reference adapter over `anthropic_client` (`anthropic`) — the Anthropic API, Amazon Bedrock, and the Anthropic CLI `ant` (BE-0163) | [configuration](configuration.md#ai-provider-ai-be-0047) |
 | `claude_agent.py` | The SDK authoring agent (forced tool use · prompt cache); provider-agnostic — Anthropic API / Bedrock / `ant` | [recording](recording.md#the-claude-authoring-agent) |
 | `record.py` | The record loop (observe → propose → execute → emit) | [recording](recording.md#the-record-loop) |
@@ -126,7 +126,7 @@ Lower layers are more stable; upper layers depend on lower ones. The core is `dr
         ┌─────────────┬───┴───────┬───────────────┬───────────┐
      runner/    record.py / crawl.py  codegen.py   trace.py     triage.py / claude_triage.py
         │          (Tier 1 / AI)   (structural)   (timeline)   (self-heal · advisory)
-   orchestrator/   agent.py / agents.py / claude_agent.py / alerts.py   serve/ · github.py (web UI · CI)
+   orchestrator/   agent_protocols.py / agent_factory.py / claude_agent.py / alerts.py   serve/ · github.py (web UI · CI)
         │                 │
    ┌────┼────────┬────────┘
 assertions.py  evidence.py ── intervals.py · network.py · visual.py · redaction.py
@@ -164,7 +164,7 @@ declared:
 2. **Contract** — the stable surfaces a consumer depends on: the scenario schema (`scenario/`) and
    the `Driver` Protocol (`drivers/base.py`).
 3. **Periphery** — the consumers of the contract, each removable behind an optional extra:
-   `serve/`, `mcp/`, the codegen emitters, the AI / agent paths (`agent.py`, `anthropic_client.py`,
+   `serve/`, `mcp/`, the codegen emitters, the AI / agent paths (`agent_protocols.py`, `anthropic_client.py`,
    `record.py`, `enrich.py`, `triage.py`, `crawl_guide.py`, …), and the `github.py` / `notify.py` /
    `alerts.py` helpers.
 

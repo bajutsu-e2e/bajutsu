@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from bajutsu.agent import EnrichmentProposal, StepContext
+from bajutsu.agent_protocols import EnrichmentProposal, StepContext
 from bajutsu.drivers import base
 from bajutsu.drivers.fake import FakeDriver
 from bajutsu.enrich import enrich

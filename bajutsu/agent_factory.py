@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from bajutsu.agent import Agent, EnrichmentAgent
+from bajutsu.agent_protocols import Agent, EnrichmentAgent
 
 if TYPE_CHECKING:
     from bajutsu.anthropic_client import AiConfig

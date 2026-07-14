@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from conftest import FakeBackend, FakeBlock, FakeUsage
 
-from bajutsu.agent import Observation
+from bajutsu.agent_protocols import Observation
 from bajutsu.ai.base import (
     AnyTool,
     ImagePart,

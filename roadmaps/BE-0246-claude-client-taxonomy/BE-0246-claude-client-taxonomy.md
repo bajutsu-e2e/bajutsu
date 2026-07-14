@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0246](BE-0246-claude-client-taxonomy.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0246") |
+| Implementing PR | [#1012](https://github.com/bajutsu-e2e/bajutsu/pull/1012) |
 | Topic | Codebase quality & technical debt |
 <!-- /BE-METADATA -->
 
@@ -199,14 +200,23 @@ code lives and what it's called.
       wrapper) onto one resolver in `bajutsu/ai/`
 - [ ] Introduce a shared `ClaudeBackedAgent` base for the seven `Claude*` classes'
       `_ensure_backend` / usage-record boilerplate
-- [ ] Rename `agent.py` / `agents.py` (or merge the factory into `agent.py`) to remove the
-      singular/plural readability trap
+- [x] Rename `agent.py` / `agents.py` (or merge the factory into `agent.py`) to remove the
+      singular/plural readability trap — `agent.py` → `agent_protocols.py` (protocols/DTOs),
+      `agents.py` → `agent_factory.py` (construction factory)
 - [ ] Create `bajutsu/ai/prompts.py` centralizing the prime-directive boundary line and other
       shared prompt fragments, plus one shared `render_elements` helper for the five
       element-tree-to-text call sites
 - [ ] Promote the cross-module `record.py` / `alerts.py` private helpers
       (`_screenshot_bytes`, `_describe_step`, `_settle_step`, `_clear_blocking`, `_execute`,
       `_png_size`, `_fraction`) to a public module
+
+**Log**
+
+- [#1012](https://github.com/bajutsu-e2e/bajutsu/pull/1012) — Unit 4: renamed `bajutsu/agent.py` → `bajutsu/agent_protocols.py` (the `Agent` /
+  `EnrichmentAgent` protocols and `Observation` / `Proposal` DTOs) and `bajutsu/agents.py` →
+  `bajutsu/agent_factory.py` (the `make_agent` / `make_enrichment_agent` construction factory),
+  updating every import site, the docstring-lint and E2E-relevance allowlists, and the
+  architecture/recording docs. Behavior-preserving; the existing suite is the regression net.
 
 ## References
 

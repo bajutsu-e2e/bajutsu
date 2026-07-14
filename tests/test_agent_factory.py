@@ -1,4 +1,4 @@
-"""Tests for authoring-agent construction (bajutsu.agents).
+"""Tests for authoring-agent construction (bajutsu.agent_factory).
 
 There is one authoring agent — the SDK-based `ClaudeAgent` — whose provider (Anthropic API /
 Bedrock / the Anthropic CLI `ant`) is a property of the resolved `ai` config (BE-0104 / BE-0163),
@@ -7,7 +7,7 @@ not a separate agent kind. `make_agent` just builds it.
 
 from __future__ import annotations
 
-from bajutsu.agents import make_agent, make_enrichment_agent
+from bajutsu.agent_factory import make_agent, make_enrichment_agent
 from bajutsu.anthropic_client import AiConfig
 
 

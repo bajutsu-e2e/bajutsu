@@ -29,7 +29,7 @@ import argparse
 import re
 from pathlib import Path
 
-from bajutsu.agent import Observation, Proposal
+from bajutsu.agent_protocols import Observation, Proposal
 from bajutsu.drivers import base
 from bajutsu.drivers.fake import FakeDriver
 from bajutsu.orchestrator import RunResult, run_scenario

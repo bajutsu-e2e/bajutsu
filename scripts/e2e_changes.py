@@ -47,7 +47,7 @@ _RELEVANT = re.compile(
     # serve-only PR. A new top-level module defaults to NOT triggering; add it here when it becomes
     # on-device-relevant.
     r"|bajutsu/(?:"
-    r"_yaml|adb|agent|artifact_perms|assertions|backends|capabilities|capability_preflight"
+    r"_yaml|adb|agent_protocols|artifact_perms|assertions|backends|capabilities|capability_preflight"
     r"|codegen|codegen_common|codegen_emit|codegen_playwright|codegen_uiautomator"
     r"|config|config_source|crawl|device_id|dom|dotenv|elements|evidence|golden"
     r"|handoff|idb_version|interp|intervals|mailbox|network|platform_lifecycle|record"

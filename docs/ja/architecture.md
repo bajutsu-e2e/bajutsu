@@ -95,7 +95,7 @@ flowchart TB
 | `provision.py` | config 対応の環境インストーラ（BE-0164）。config の backend と AI プロバイダを解決し、必要な extra とツールだけを冪等に導入する（`make install`） | — |
 | `runner/` | config + シナリオ → レポート。デバイスプール + launch 手順（パッケージ: `pipeline` / `pool` / `launch`） | [run-loop](run-loop.md#runner実行パイプライン) |
 | `doctor.py` | 規約充足度スコア（id カバレッジ等） | [configuration](configuration.md#doctor規約充足度スコア) |
-| `agent.py` · `agents.py` | オーサリング Agent 抽象（`Observation`/`Proposal`/`Agent`）+ 唯一の SDK エージェントの構築 | [recording](recording.md) |
+| `agent_protocols.py` · `agent_factory.py` | オーサリング Agent 抽象（`Observation`/`Proposal`/`Agent`）+ 唯一の SDK エージェントの構築 | [recording](recording.md) |
 | `ai/` | ベンダー中立な AI バックエンドのシーム（BE-0104）。`AiBackend` プロトコルと正規化した request/response 型（`base`）、プロバイダレジストリ（`registry`）、`anthropic_client` の上に立つ Anthropic 参照アダプタ（`anthropic`）。Anthropic API、Amazon Bedrock、Anthropic CLI `ant`（BE-0163）を賄います | [configuration](configuration.md#ai-プロバイダai-be-0047) |
 | `claude_agent.py` | SDK オーサリングエージェント（ツール強制呼び出し、prompt cache）。プロバイダ非依存で anthropic / bedrock / `ant` を賄います | [recording](recording.md#claude-オーサリングエージェント) |
 | `record.py` | record ループ（observe → 提案 → 実行 → 書き出し） | [recording](recording.md#record-ループ) |
@@ -124,7 +124,7 @@ flowchart TB
         ┌─────────────┬───┴───────┬───────────────┬───────────┐
      runner/    record.py / crawl.py  codegen.py   trace.py     triage.py / claude_triage.py
         │       （Tier 1 / AI） （構造マッピング）（タイムライン）（自己修復・助言）
-   orchestrator/   agent.py / agents.py / claude_agent.py / alerts.py   serve/ · github.py（Web UI・CI）
+   orchestrator/   agent_protocols.py / agent_factory.py / claude_agent.py / alerts.py   serve/ · github.py（Web UI・CI）
         │                 │
    ┌────┼────────┬────────┘
 assertions.py  evidence.py ── intervals.py · network.py · visual.py · redaction.py
@@ -149,7 +149,7 @@ assertions.py  evidence.py ── intervals.py · network.py · visual.py · red
 
 1. **決定性コア**：モデルにも periphery のスタックにも触れずに判定と証跡を導く経路です。`orchestrator/`、`runner/`、`drivers/base.py`、`assertions.py`、`evidence.py`、`report/`、`config.py`、`scenario/`、`preflight.py` / `capability_preflight.py` / `capabilities.py`、`doctor.py`、`lint.py` が含まれます。プライムディレクティブを担います。
 2. **契約（contract）**：利用者が依存する安定した界面です。シナリオスキーマ（`scenario/`）と `Driver` Protocol（`drivers/base.py`）です。
-3. **periphery**：契約の利用側で、いずれもオプションの extra の背後に切り離せます。`serve/`、`mcp/`、codegen のエミッタ、AI / エージェント経路（`agent.py`、`anthropic_client.py`、`record.py`、`enrich.py`、`triage.py`、`crawl_guide.py` など）、`github.py` / `notify.py` / `alerts.py` のヘルパです。
+3. **periphery**：契約の利用側で、いずれもオプションの extra の背後に切り離せます。`serve/`、`mcp/`、codegen のエミッタ、AI / エージェント経路（`agent_protocols.py`、`anthropic_client.py`、`record.py`、`enrich.py`、`triage.py`、`crawl_guide.py` など）、`github.py` / `notify.py` / `alerts.py` のヘルパです。
 
 強制する契約は 3 つです。
 

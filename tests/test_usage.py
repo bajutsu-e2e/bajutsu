@@ -5,7 +5,7 @@ from __future__ import annotations
 from conftest import FAKE_USAGE_PER_CALL, FakeBackend, FakeBlock, FakeUsage
 
 from bajutsu import usage
-from bajutsu.agent import Observation
+from bajutsu.agent_protocols import Observation
 from bajutsu.claude_agent import ClaudeAgent
 from bajutsu.drivers import base
 from bajutsu.usage import TokenUsage

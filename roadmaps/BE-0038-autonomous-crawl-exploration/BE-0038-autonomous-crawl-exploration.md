@@ -82,7 +82,7 @@ None of these classifications is an LLM judgment: a crash is a process fact, "st
 
 ### The optional AI layer (`--guide ai`, strictly Tier 1)
 
-The crawl is useful with no AI at all. When enabled, the agent — an extension of the existing [`Agent` protocol](../../bajutsu/agent.py) — only *guides exploration*, never evaluates results:
+The crawl is useful with no AI at all. When enabled, the agent — an extension of the existing [`Agent` protocol](../../bajutsu/agent_protocols.py) — only *guides exploration*, never evaluates results:
 
 - **Prioritize the frontier:** rank candidate actions by likely interest (e.g. "Checkout" over "About") instead of plain breadth-first, to spend a limited budget well.
 - **Supply realistic inputs** for text fields (a valid-looking email, a search term).

@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
-from bajutsu.agent import EnrichmentAgent, EnrichmentProposal, StepContext
+from bajutsu.agent_protocols import EnrichmentAgent, EnrichmentProposal, StepContext
 from bajutsu.drivers import base
 from bajutsu.orchestrator import BlockedHandler, Clock, RealClock
 from bajutsu.record import _clear_blocking, _execute, _screenshot_bytes

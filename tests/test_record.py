@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 from conftest import ShotDriver
 
-from bajutsu.agent import Observation, Proposal
+from bajutsu.agent_protocols import Observation, Proposal
 from bajutsu.drivers import base
 from bajutsu.drivers.fake import FakeDriver
 from bajutsu.elements import shows_app_ui

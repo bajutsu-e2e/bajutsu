@@ -14,7 +14,7 @@ from __future__ import annotations
 from typing import Any
 
 from bajutsu import usage
-from bajutsu.agent import Observation, Proposal
+from bajutsu.agent_protocols import Observation, Proposal
 from bajutsu.ai import (
     AiBackend,
     AnyTool,
