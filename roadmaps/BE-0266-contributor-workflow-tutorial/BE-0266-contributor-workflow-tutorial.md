@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-contributor-workflow-tutorial-ja.md)
+**English** · [日本語](BE-0266-contributor-workflow-tutorial-ja.md)
 
-# BE-XXXX — Contributor workflow tutorial: a hands-on guide to ideation / implement-be / propose-and-build
+# BE-0266 — Contributor workflow tutorial: a hands-on guide to ideation / implement-be / propose-and-build
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-contributor-workflow-tutorial.md) |
+| Proposal | [BE-0266](BE-0266-contributor-workflow-tutorial.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0266") |
 | Topic | Development infrastructure (contributor workflow) |
 <!-- /BE-METADATA -->
 
@@ -62,7 +62,7 @@ them through it live.
    "here is what each feature does"). It does not re-explain the BE-ID lifecycle, model tiers, or
    PR template — those stay owned by `docs/ai-development.md` and `docs/roadmap-workflow.md`,
    linked rather than duplicated — it walks a single concrete idea through:
-   - Starting `/ideation`, grounding in the existing roadmap, and reaching a drafted `BE-XXXX`
+   - Starting `/ideation`, grounding in the existing roadmap, and reaching a drafted `BE-0266`
      proposal.
    - Opening the proposal PR and watching CI (`roadmap-id`) allocate the real `BE-NNNN`.
    - Starting `/implement-be BE-NNNN` against the merged proposal, through plan-confirmation,

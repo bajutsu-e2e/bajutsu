@@ -595,7 +595,9 @@ Running a scenario on a hosted device farm instead of a local Simulator, emulato
 ### Development infrastructure (contributor workflow)
 
 <!-- GENERATED:proposals-developer-experience -->
-
+| ID | Item | Status |
+|---|---|---|
+| [BE-0266](BE-0266-contributor-workflow-tutorial/BE-0266-contributor-workflow-tutorial.md) | Contributor workflow tutorial: a hands-on guide to ideation / implement-be / propose-and-build | Proposal |
 <!-- /GENERATED:proposals-developer-experience -->
 
 ### Codebase quality & technical debt
