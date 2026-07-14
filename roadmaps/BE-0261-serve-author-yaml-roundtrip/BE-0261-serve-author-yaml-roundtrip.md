@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0261](BE-0261-serve-author-yaml-roundtrip.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0261") |
+| Implementing PR | [#1079](https://github.com/bajutsu-e2e/bajutsu/pull/1079) |
 | Topic | Codebase quality & technical debt |
 <!-- /BE-METADATA -->
 
@@ -85,11 +86,28 @@ rewrite unrelated lines. No prime directive is affected — this is authoring-si
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Unit 1 — decide + document the round-trip boundary (full-file vs scoped block).
-- [ ] Unit 2 — Apply (Edit) through the parsed model + serializer.
-- [ ] Unit 3 — Accept (Enrich) through the parsed model + serializer.
-- [ ] Unit 4 — preserve live lint/audit review before Save.
-- [ ] Unit 5 — round-trip tests over the formats the string matchers mishandle.
+- [x] Unit 1 — decide + document the round-trip boundary (full-file vs scoped block).
+- [x] Unit 2 — Apply (Edit) through the parsed model + serializer.
+- [x] Unit 3 — Accept (Enrich) through the parsed model + serializer.
+- [x] Unit 4 — preserve live lint/audit review before Save.
+- [x] Unit 5 — round-trip tests over the formats the string matchers mishandle.
+
+**Boundary chosen (Unit 1): scoped-block splice, PyYAML-only.** The editor loads the raw file text
+(comments intact), so a full-file re-serialize would drop every comment and reflow unrelated
+scenarios on each Apply. Instead the backend parses with PyYAML, locates the changed step / expect
+span via `yaml.compose` source marks, re-serializes only that block, and splices it into the raw
+text — comments outside the block survive. A comment-preserving round-trip via `ruamel` was rejected
+to avoid a second YAML engine with different `on/off`-bool semantics than `bajutsu/_yaml.py`.
+
+Log (oldest first):
+
+- Implemented in [#1079](https://github.com/bajutsu-e2e/bajutsu/pull/1079): new
+  `bajutsu/scenario/edit.py` (`apply_selector` / `apply_enrichment`) and a `dump_block` serializer
+  helper; two AI-free serve endpoints (`/api/scenario/apply-selector`, `/api/scenario/enrich-apply`)
+  in `bajutsu/serve/operations/author_edit.py`; the Author editor's `#au-apply` handler and
+  `enrichApply` now POST to them, deleting `auSelectorYaml` / `enrichAssertionYaml` / `_extractName`
+  and all line-scanning. Round-trip tests cover flow-style steps, comments between steps, a `:`/`#`
+  selector value, and a two-scenario file.
 
 ## References
 

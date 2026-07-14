@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from typing import Any, cast
+
+from pydantic import BaseModel
 
 from bajutsu import _yaml, interp
 from bajutsu.scenario.models import Mock, Scenario
@@ -81,6 +84,26 @@ def dump_scenario_file(scenarios: list[Scenario], description: str | None = None
     if description:
         return _yaml.safe_dump({"description": description, "scenarios": body})
     return _yaml.safe_dump(body)
+
+
+def dump_block(items: Sequence[BaseModel]) -> str:
+    """Serialize models as a `- …` YAML sequence block — one pruned, alias-keyed item each.
+
+    Alias keying matches `scenario_dict`, but a scoped block also drops default-valued fields
+    (`exclude_defaults`), so a single spliced step / assertion stays as terse as the author wrote it
+    rather than sprouting `submit: false` and other model defaults. Used by the Author editor's
+    scoped round-trip edits (BE-0261) to re-serialize just the changed step / expect block.
+    """
+    return _yaml.safe_dump(
+        [
+            _prune(
+                item.model_dump(
+                    mode="json", by_alias=True, exclude_none=True, exclude_defaults=True
+                )
+            )
+            for item in items
+        ]
+    )
 
 
 def dump_mocks(mocks: list[Mock]) -> str:
