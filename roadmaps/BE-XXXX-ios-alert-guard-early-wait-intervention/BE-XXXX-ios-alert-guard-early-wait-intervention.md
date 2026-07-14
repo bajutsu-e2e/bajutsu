@@ -47,19 +47,23 @@ that cadence.
 
 ## Detailed design
 
-1. **A cheap, deterministic pre-check, not a faster AI check.** `alerts.py`'s own module
-   docstring already names the observable signature of a blocking SpringBoard-level prompt: idb's
-   accessibility query is scoped to the foreground app, so a system alert collapses the queried
-   element tree to a single window node with no children. Every screen-polling wait branch —
-   `for`/`gone`/`screenChanged` and `settled` (whose `_wait_settled` docstring already names a
-   screen "covered by a system alert" as one it never treats as settled,
-   `bajutsu/orchestrator/waits.py:142`) — already calls `driver.query()` on each poll tick and
-   holds the result, so add a small, app-agnostic helper (e.g. `_looks_blocked(elements) -> bool`)
-   that inspects that already-fetched tree for this collapse signature, at zero extra query cost.
-   The `request` (network `WaitRequest`) branch is deliberately out of scope: it polls observed
-   network traffic, not the screen, so the collapsed-tree signal does not apply to it. This is the
-   deterministic trigger; it never itself decides pass/fail, only whether it's worth asking the
-   guard to look.
+1. **A cheap, deterministic pre-check, reusing the existing detector.** A blocking
+   SpringBoard-level prompt has an observable signature: idb's accessibility query is scoped to
+   the foreground app, so a system alert collapses the queried element tree to a bare window with
+   no actionable content. The repo already computes exactly this — `shows_app_ui(elements) -> bool`
+   (`bajutsu/elements.py`) — and it is deliberately more careful than "a single window node": its
+   docstring counts a screen as app UI when any non-`application` element carries an `identifier`
+   *or* a `label`, so label/coordinate-driven apps without accessibility identifiers (the showcase
+   `-noax` variants) are not mistaken for a blocked screen — "the bug that made the guard fire
+   every turn". Every screen-polling wait branch — `for`/`gone`/`screenChanged` and `settled`
+   (whose `_wait_settled` docstring already names a screen "covered by a system alert" as one it
+   never treats as settled, `bajutsu/orchestrator/waits.py:142`) — already calls `driver.query()`
+   on each poll tick and holds the result, so the pre-check is just `not shows_app_ui(elements)` on
+   that already-fetched tree, at zero extra query cost. Reusing the existing detector rather than
+   adding a fresh one keeps the two detection paths from drifting apart. The `request` (network
+   `WaitRequest`) branch is deliberately out of scope: it polls observed network traffic, not the
+   screen, so the signal does not apply to it. This is the deterministic trigger; it never itself
+   decides pass/fail, only whether it's worth asking the guard to look.
 2. **Debounce before acting.** A single collapsed poll can be a transient render frame, not a
    real alert, so require the signature to hold for a short run of consecutive polls before
    treating it as "likely blocked" — mirroring the existing `_SETTLE_POLLS` pattern used by
@@ -72,7 +76,11 @@ that cadence.
    heuristic fires, `_wait()` calls it directly, in place, instead of
    waiting for `deadline`. On a successful dismiss, polling for the *original* condition resumes
    against the *same* `deadline` — the guard's early intervention changes only when recovery is
-   attempted, not the timeout budget that still governs when the step is allowed to fail.
+   attempted, not the timeout budget that still governs when the step is allowed to fail. This is
+   the same shape `record.py`'s `_clear_blocking` already uses on the record path (poll → `not
+   shows_app_ui` → invoke the guard → retry), and the crawl path reuses via `crawl.py`'s
+   `clear_blocking`; the work here is to bring that established loop to the deterministic
+   `run`/`wait` path rather than to invent a new one.
 4. **Cap the intervention rate.** Because `ClaudeAlertLocator.locate` is a real AI-vision call, cap
    how often it can fire within one wait (a minimum cooldown between attempts, and/or a small max-
    attempts-per-wait ceiling) so a persistent false-positive collapse — or a dismiss that doesn't
@@ -107,9 +115,9 @@ that cadence.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Unit 1 — deterministic collapsed-tree heuristic (`_looks_blocked`), reused from the
-      already-fetched poll result across every screen-polling branch (`for`/`gone`/`screenChanged`
-      /`settled`); the network `request` branch is out of scope.
+- [ ] Unit 1 — deterministic pre-check reusing the existing `shows_app_ui` (`bajutsu/elements.py`)
+      on the already-fetched poll result across every screen-polling branch (`for`/`gone`
+      /`screenChanged`/`settled`); the network `request` branch is out of scope.
 - [ ] Unit 2 — debounce the heuristic over a short run of consecutive polls before acting.
 - [ ] Unit 3 — thread a guard callback into `_wait()` (and `_wait_settled`) so a debounced hit
       triggers the guard in place and polling resumes against the original `deadline`.
@@ -121,6 +129,11 @@ that cadence.
   the module docstring describing the collapsed-tree failure signature.
 - [`bajutsu/orchestrator/waits.py`](../../bajutsu/orchestrator/waits.py) — `_wait`, `_POLL`,
   `_adaptive_sleep`, `_wait_settled` (the `_SETTLE_POLLS` debounce precedent).
+- [`bajutsu/elements.py`](../../bajutsu/elements.py) — `shows_app_ui`, the existing collapsed-tree
+  detector this proposal reuses (prior art; more careful than a bare "single window node").
+- [`bajutsu/record.py`](../../bajutsu/record.py) — `_clear_blocking`, the record-path
+  poll → `not shows_app_ui` → invoke-guard → retry loop whose shape Unit 3 brings to the
+  `run`/`wait` path; the crawl path reuses it via [`bajutsu/crawl.py`](../../bajutsu/crawl.py).
 - [`bajutsu/orchestrator/loop.py:550`](../../bajutsu/orchestrator/loop.py) — the current
   end-of-step-only `on_blocked` wiring this proposal moves earlier for `wait` steps.
 - [BE-0231](../BE-0231-smoke-idb-first-wait-settling/BE-0231-smoke-idb-first-wait-settling.md) —
