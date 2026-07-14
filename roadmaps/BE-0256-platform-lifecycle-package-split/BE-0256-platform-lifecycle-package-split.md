@@ -171,7 +171,7 @@ the Tier-2 `run`/CI gate (prime directive 1 is unaffected).
       `readiness.py`, `device_control.py`, `environments/{ios,android,web,xcuitest,fake}.py`,
       `__init__.py` re-exports) with no behavior change
 - [x] Unify `_await_ready` / `_await_boot` onto `base.wait_until`'s deadline discipline
-- [x] Add `Environment.resolve_device(actuator, udid)` and route `run.py` / `audit.py` / `doctor.py`
+- [x] Add `Environment.resolve_device(udid)` and route `run.py` / `audit.py` / `doctor.py`
       through it
 - [x] Add a new `Environment.captures_video` predicate (not a reuse of `records_video_up_front`) and route
       `record.py`'s `capture_video` through it, fixing the XCUITest video-capture bug, with a
