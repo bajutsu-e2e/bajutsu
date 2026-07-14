@@ -1,7 +1,7 @@
 # BajutsuKit (Swift) gate — the test-support package the host app links. Pure-Foundation
 # logic (request matching / mock parsing) is unit-tested here with `swift test` on a plain
 # macOS runner (no Simulator), mirroring how the Python core's gate needs no device. The
-# on-device behaviour (URLProtocol interception in a running app) stays in e2e.yml.
+# on-device behaviour (URLProtocol interception in a running app) stays in ios-e2e.yml.
 name: Swift (BajutsuKit)
 
 on:
