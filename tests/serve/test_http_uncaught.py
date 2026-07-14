@@ -8,10 +8,13 @@ and stay outside the boundary (a fallback ``_json`` would double-write their res
 from __future__ import annotations
 
 import http.client
+import io
 import json
 import urllib.error
 import urllib.request
+import zipfile
 from pathlib import Path
+from typing import Any
 
 import pytest
 from _shared import _get, _post, _serve, project
@@ -24,6 +27,26 @@ def _boom(*_args: object, **_kwargs: object) -> object:
     raise RuntimeError("kaboom in the operation")
 
 
+def _post_bytes(port: int, path: str, data: bytes) -> tuple[int, Any]:
+    req = urllib.request.Request(
+        f"http://127.0.0.1:{port}{path}",
+        data=data,
+        headers={"Content-Type": "application/zip"},
+    )
+    try:
+        with urllib.request.urlopen(req) as r:
+            return r.status, json.loads(r.read())
+    except urllib.error.HTTPError as e:
+        return e.code, json.loads(e.read())
+
+
+def _zip_bytes() -> bytes:
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as zf:
+        zf.writestr("bajutsu.config.yaml", "targets: {}\n")
+    return buf.getvalue()
+
+
 def test_post_operation_raise_becomes_json_500(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -34,6 +57,45 @@ def test_post_operation_raise_becomes_json_500(
     monkeypatch.setattr(ops, "lint_scenario", _boom)
     try:
         code, body = _post(port, "/api/lint", {"text": "irrelevant"})
+        assert code == 500
+        assert "kaboom in the operation" in body["error"]
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+def test_upload_operation_raise_becomes_json_500(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # The raw-body upload route dispatches before the JSON path, so it needs its own boundary
+    # (BE-0264 follow-up on #1089): a raise from `bind_upload_config` — as opposed to the streaming
+    # I/O errors `_stream_bounded_body` already turns into JSON — must still be a JSON 500.
+    scn_dir, cfg, runs = project(tmp_path)
+    server, port = _serve(
+        srv.ServeState(scenarios_dir=scn_dir, config=cfg, runs_dir=runs, cwd=tmp_path)
+    )
+    monkeypatch.setattr(ops, "bind_upload_config", _boom)
+    try:
+        code, body = _post_bytes(port, "/api/upload?name=suite.zip", _zip_bytes())
+        assert code == 500
+        assert "kaboom in the operation" in body["error"]
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+def test_artifact_upload_operation_raise_becomes_json_500(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Same boundary for the three independently-uploaded artifact routes (BE-0268): a raise from
+    # `bind_artifact` must be a JSON 500, not the pre-BE-0264 empty-body connection drop.
+    scn_dir, cfg, runs = project(tmp_path)
+    server, port = _serve(
+        srv.ServeState(scenarios_dir=scn_dir, config=cfg, runs_dir=runs, cwd=tmp_path)
+    )
+    monkeypatch.setattr(ops, "bind_artifact", _boom)
+    try:
+        code, body = _post_bytes(port, "/api/artifacts/config", _zip_bytes())
         assert code == 500
         assert "kaboom in the operation" in body["error"]
     finally:

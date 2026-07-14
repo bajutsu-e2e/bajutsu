@@ -96,6 +96,11 @@ Log:
   boundary so a fallback `_json` can't double-write a response already on the wire.
   `_respond_uncaught`'s own write is guarded so a client disconnect can't re-propagate the
   empty-body drop. Tests: `tests/serve/test_http_uncaught.py`.
+- [#1089](https://github.com/bajutsu-e2e/bajutsu/pull/1089) (review follow-up) — extended the boundary
+  to the raw-body upload/artifact routes (`_handle_upload` / `_handle_artifact_upload`), which
+  dispatch before do_POST's `try/except`: a raise from `ops.bind_upload_config` / `ops.bind_artifact`
+  now goes through `_respond_uncaught` too, so those routes no longer hit the empty-body drop this
+  item exists to eliminate.
 
 ## References
 

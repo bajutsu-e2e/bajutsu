@@ -609,6 +609,10 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
             receiver = self._stream_bounded_body()
             if receiver is None:
                 return
+            # This raw-body route dispatches before do_POST's JSON-500 boundary (it reads the body
+            # itself), so it needs its own: a raise from `bind_upload_config` — not the streaming
+            # errors `_stream_bounded_body` already turns into JSON — would otherwise hit the
+            # empty-body drop BE-0264 exists to eliminate (#1089).
             try:
                 self._json(
                     *ops.bind_upload_config(
@@ -619,6 +623,8 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
                         actor=self._actor(),
                     )
                 )
+            except Exception as exc:
+                self._respond_uncaught(exc)
             finally:
                 receiver.cleanup()
 
@@ -630,6 +636,9 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
             receiver = self._stream_bounded_body()
             if receiver is None:
                 return
+            # Same as `_handle_upload`: this raw-body route sits before do_POST's boundary, so a
+            # raise from `bind_artifact` gets its own JSON-500 conversion rather than dropping the
+            # connection empty-bodied (BE-0264 follow-up on #1089).
             try:
                 self._json(
                     *ops.bind_artifact(
@@ -640,6 +649,8 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
                         actor=self._actor(),
                     )
                 )
+            except Exception as exc:
+                self._respond_uncaught(exc)
             finally:
                 receiver.cleanup()
 
