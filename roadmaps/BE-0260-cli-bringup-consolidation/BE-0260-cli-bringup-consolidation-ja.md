@@ -1,14 +1,14 @@
-[English](BE-XXXX-cli-bringup-consolidation.md) · **日本語**
+[English](BE-0260-cli-bringup-consolidation.md) · **日本語**
 
-# BE-XXXX — 重複した CLI コマンドの起動処理を統合し、中立な DeviceError を追加する
+# BE-0260 — 重複した CLI コマンドの起動処理を統合し、中立な DeviceError を追加する
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
 |---|---|
-| 提案 | [BE-XXXX](BE-XXXX-cli-bringup-consolidation-ja.md) |
+| 提案 | [BE-0260](BE-0260-cli-bringup-consolidation-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **提案** |
-| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0260") |
 | トピック | コードベース品質・技術的負債 |
 <!-- /BE-METADATA -->
 
