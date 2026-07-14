@@ -10,11 +10,13 @@ import json
 import os
 from dataclasses import replace
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import typer
 
 from bajutsu import ai_config, anthropic_client
 from bajutsu.ai import credential_gap
+from bajutsu.backends import ensure_web_runtime, select_actuator
 from bajutsu.config import (
     WEB_ENGINES,
     AiConfig,
@@ -23,6 +25,7 @@ from bajutsu.config import (
     ios_bundle_id,
     load_config,
     resolve,
+    web_engine,
 )
 from bajutsu.config_source import (
     GitHubAccessError,
@@ -32,6 +35,14 @@ from bajutsu.config_source import (
     source_provenance,
 )
 from bajutsu.redaction import Redactor
+from bajutsu.runner.launch_server import start_launch_server
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
+
+    from bajutsu.alerts import ClaudeAlertLocator
+    from bajutsu.drivers import base
+    from bajutsu.orchestrator import AlertEvent
 
 DEFAULT_CONFIG = "bajutsu.config.yaml"
 
@@ -322,3 +333,105 @@ def _log_subsystem_default(eff: Effective) -> str:
     The device-log predicate scopes to the app's bundle id; a web target has no such subsystem.
     """
     return ios_bundle_id(eff)
+
+
+def _select_actuator_or_exit(
+    backend: str, eff: Effective, engines: list[str]
+) -> tuple[str, list[str]]:
+    """Resolve the actuator for the requested backends, provisioning any web runtime, or exit 2 (BE-0260).
+
+    The backend bring-up all four commands (`run` / `crawl` / `record` / `audit`) share: parse the
+    backend list, auto-install the web runtime for each engine a web run needs (idempotent), then
+    select the actuator — so a bad/unavailable backend exits cleanly (2) rather than crashing later
+    on a missing device CLI. `run` passes its `--browsers` matrix and keeps the web-only-axis check
+    at its call site; the other three pass no engines and provision the single resolved engine.
+
+    Returns:
+        The resolved actuator and the ordered backend list.
+    """
+    backends = _backends(backend, eff.backend)
+    try:
+        # A matrix provisions every listed engine (each install idempotent); with no engines the
+        # single resolved default (with one, it already equals that).
+        for engine in engines or [web_engine(eff)]:
+            ensure_web_runtime(backends, engine)
+        actuator = select_actuator(backends)
+    except RuntimeError as e:
+        typer.echo(str(e))
+        raise typer.Exit(2) from None
+    return actuator, backends
+
+
+def _start_launch_server_or_exit(
+    eff: Effective,
+    *,
+    upload_exec: str | None = None,
+    on_error: Callable[[], None] | None = None,
+) -> tuple[Callable[[], None], dict[str, str | None] | None]:
+    """Bring up the target's launch server (the web baseUrl host) if declared, or exit 2 (BE-0260).
+
+    The launch-server bring-up all four commands share: start the server (reused if already
+    serving, waiting on its readiness probe) and surface a startup failure as a clean exit 2. The
+    call-site teardown difference stays at the call site (`run`'s `finally`, `crawl` / `record`'s
+    `atexit`); `on_error` runs before the exit for the one caller (`audit`) that must first tear
+    down an already-created device-pool lease.
+
+    Returns:
+        The server teardown callable and the exec-provenance decision (from `start_launch_server`).
+    """
+    try:
+        return start_launch_server(eff, upload_exec=upload_exec)
+    except RuntimeError as e:
+        typer.echo(str(e))
+        if on_error is not None:
+            on_error()
+        raise typer.Exit(2) from None
+
+
+def _build_alert_locator(eff: Effective, redactor: Redactor) -> ClaudeAlertLocator | None:
+    """The shared alert-guard locator, or None (with a note) when the AI credential is missing (BE-0260).
+
+    The vision locator reaches Claude through the configured provider (BE-0053 / BE-0047), so a
+    missing/insufficient credential prints an actionable note and returns None — the guard no-ops
+    rather than constructing a client that would fall back to a hosted default, keeping the
+    deterministic gate Claude-free. Shared by `run` (one locator across its per-scenario guards) and
+    by `_build_alert_guard` (the single-guard `crawl` / `record` path).
+    """
+    from bajutsu.alerts import ClaudeAlertLocator
+
+    # The credential is provider-specific: the key named by ai.keyEnv (default ANTHROPIC_API_KEY) for
+    # Anthropic, a provider-prefixed model for Bedrock (AWS credentials authenticate there). When it's
+    # absent we don't construct the locator at all — the guard no-ops rather than falling back.
+    gap = credential_gap(eff.ai)
+    if gap == "anthropic-key":
+        typer.echo(
+            f"note: dismiss-alerts is on but ${anthropic_client.key_env(eff.ai)} is unset — "
+            "the alert guard will no-op"
+        )
+    elif gap == "bedrock-model":
+        typer.echo(
+            "note: dismiss-alerts is on but no Bedrock model id is set "
+            "(ai.model / BAJUTSU_BEDROCK_MODEL) — the alert guard will no-op"
+        )
+    if gap is not None:
+        return None
+    return ClaudeAlertLocator(ai=eff.ai, redactor=redactor)
+
+
+def _build_alert_guard(
+    eff: Effective, redactor: Redactor, instruction: str
+) -> Callable[[base.Driver], AlertEvent | None] | None:
+    """The bound alert-dismiss guard for a single-instruction command (`crawl` / `record`), or None (BE-0260).
+
+    Builds the shared locator (`_build_alert_locator`) and binds it to one `SystemAlertGuard` with
+    `instruction` (an empty instruction falls back to the guard's built-in dismissive default).
+    Returns None when the credential is missing, so the caller's guard simply no-ops. `run` does not
+    use this: it shares one locator across per-scenario guards and wraps each in usage attribution,
+    so it calls `_build_alert_locator` directly.
+    """
+    from bajutsu.alerts import SystemAlertGuard
+
+    locator = _build_alert_locator(eff, redactor)
+    if locator is None:
+        return None
+    return SystemAlertGuard(locator, instruction or None).dismiss

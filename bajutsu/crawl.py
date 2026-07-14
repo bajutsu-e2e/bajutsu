@@ -32,7 +32,7 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
-from bajutsu import simctl
+from bajutsu import device_errors
 from bajutsu.drivers import base
 from bajutsu.elements import screen_size_from_elements, shows_app_ui
 
@@ -1013,7 +1013,7 @@ def crawl(
                 coord.cancel_action()  # the selector no longer resolves — drop it, reset, move on
                 current_fp = None
                 continue
-            except simctl.DeviceError:
+            except device_errors.DeviceError:
                 if not isolate:
                     raise  # a lone worker surfaces the device failure, as the serial engine did
                 current_fp = None

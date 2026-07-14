@@ -15,33 +15,32 @@ if TYPE_CHECKING:
 import typer
 
 from bajutsu import adb as _adb
-from bajutsu import github
+from bajutsu import device_errors, github
 from bajutsu import simctl as _simctl
 from bajutsu import usage as _usage
 from bajutsu import usage_ledger as _usage_ledger
-from bajutsu.ai import credential_gap
-from bajutsu.anthropic_client import key_env as ac_key_env
 from bajutsu.artifact_perms import make_run_dir
 from bajutsu.assertions import GoldenContext
-from bajutsu.backends import ensure_web_runtime, select_actuator, select_actuator_for_scenario
+from bajutsu.backends import select_actuator_for_scenario
 from bajutsu.cli._projects import config_from_source, open_registry
 from bajutsu.cli._shared import (
     DEFAULT_CONFIG,
     _ai_redactor,
-    _backends,
+    _build_alert_locator,
     _load_effective_with_source,
     _log_subsystem_default,
     _resolve_browser,
+    _select_actuator_or_exit,
+    _start_launch_server_or_exit,
     _with_headed,
 )
-from bajutsu.config import WEB_ENGINES, Effective, IosConfig, web_engine
+from bajutsu.config import WEB_ENGINES, Effective, IosConfig
 from bajutsu.orchestrator import AlertEvent, BlockedHandler, RunResult
 from bajutsu.report.archive import archive_run_dir
 from bajutsu.report.manifest import _run_backend
 from bajutsu.run_id import new_run_id
 from bajutsu.runner import device_pool, run_all, run_and_report, run_matrix_and_report
 from bajutsu.runner.build import BuildError, build_if_missing
-from bajutsu.runner.launch_server import start_launch_server
 from bajutsu.scenario import (
     DismissAlerts,
     Scenario,
@@ -300,17 +299,7 @@ def _select_actuator(backend: str, eff: Effective, engines: list[str]) -> tuple[
     `--browsers` matrix on a non-web actuator is a user error caught up front. Returns the resolved
     actuator and the ordered backend list.
     """
-    backends = _backends(backend, eff.backend)
-    try:
-        # Auto-install Playwright and the requested engine(s) if a web run needs them — the matrix
-        # provisions every listed engine (each install is idempotent), else just the resolved engine
-        # (with one engine, it already equals that; with none, it's the resolved default).
-        for engine in engines or [web_engine(eff)]:
-            ensure_web_runtime(backends, engine)
-        actuator = select_actuator(backends)
-    except RuntimeError as e:
-        typer.echo(str(e))
-        raise typer.Exit(2) from None
+    actuator, backends = _select_actuator_or_exit(backend, eff, engines)
     # --browsers is a web-only axis: a multi-engine matrix on a non-web actuator is a user error,
     # caught up front rather than after building an iOS pool that ignores the engine list.
     if len(engines) > 1 and actuator != "playwright":
@@ -355,25 +344,13 @@ def _alert_guard_factory(
 
     if not any(_enabled(s) for s in scenarios):
         return None
-    from bajutsu.alerts import ClaudeAlertLocator, SystemAlertGuard
+    from bajutsu.alerts import SystemAlertGuard
 
-    # The credential is provider-specific: the key named by ai.keyEnv (default ANTHROPIC_API_KEY) for
-    # Anthropic, a provider-prefixed model for Bedrock (AWS credentials authenticate there). When it's
-    # absent we don't construct the locator at all — the guard no-ops rather than falling back.
-    guard_gap = credential_gap(eff.ai)
-    if guard_gap == "anthropic-key":
-        typer.echo(
-            f"note: dismiss-alerts is on but ${ac_key_env(eff.ai)} is unset — "
-            "the alert guard will no-op"
-        )
-    elif guard_gap == "bedrock-model":
-        typer.echo(
-            "note: dismiss-alerts is on but no Bedrock model id is set "
-            "(ai.model / BAJUTSU_BEDROCK_MODEL) — the alert guard will no-op"
-        )
-    # Mask the (possibly user-supplied) alert instruction before it reaches the model (BE-0047).
+    # One shared locator across the per-scenario guards (one client), None when the credential is
+    # missing (the shared helper prints the note and no-ops, so the guard never falls back). Mask the
+    # (possibly user-supplied) alert instruction before it reaches the model (BE-0047).
     redactor = _ai_redactor(eff)
-    locator = ClaudeAlertLocator(ai=eff.ai, redactor=redactor) if guard_gap is None else None
+    locator = _build_alert_locator(eff, redactor)
     default_instruction = alert_instruction or None
 
     # The button label resolves scenario > `--alert-instruction` > target config > built-in dismissive
@@ -502,18 +479,14 @@ def _dispatch(plan: _RunPlan) -> tuple[list[RunResult], Path]:
     # Bring up the app's target server (the web baseUrl host) if it declares `launchServer`, waiting
     # on its readiness probe; reused if already serving. The pool leases lazily (the web driver
     # navigates at lease time), so the server only needs to be up before the run, not before the pool.
-    try:
-        stop_server, exec_decision = start_launch_server(
-            plan.eff, upload_exec=plan.upload_exec or None
-        )
-    except RuntimeError as e:
-        typer.echo(str(e))
-        raise typer.Exit(2) from None
+    stop_server, exec_decision = _start_launch_server_or_exit(
+        plan.eff, upload_exec=plan.upload_exec or None
+    )
     try:
         if len(plan.engines) > 1:
             return _dispatch_matrix(plan, progress_fn, exec_decision)
         return _dispatch_single(plan, progress_fn, exec_decision)
-    except _simctl.DeviceError as e:
+    except device_errors.DeviceError as e:
         typer.echo(str(e))
         raise typer.Exit(2) from None
     finally:

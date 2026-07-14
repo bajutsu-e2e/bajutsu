@@ -6,7 +6,7 @@ import functools
 from collections.abc import Callable
 from typing import Any
 
-from bajutsu import adb, doctor, simctl
+from bajutsu import adb, device_errors, doctor, simctl
 from bajutsu.backends import IMPLEMENTED, resolve_actuators
 from bajutsu.config import (
     Effective,
@@ -127,7 +127,7 @@ def doctor_check(
         query = screen_query or functools.partial(_current_screen, state)
         try:
             elements = query(actuator, udid, eff)
-        except simctl.DeviceError as e:
+        except device_errors.DeviceError as e:
             all_checks = [*all_checks, preflight.Check("screen readable", False, str(e))]
             ok = False
         else:

@@ -25,22 +25,18 @@ from pathlib import Path
 import typer
 
 from bajutsu import audit as _audit
+from bajutsu import device_errors
 from bajutsu import simctl as _simctl
-from bajutsu.backends import (
-    ensure_web_runtime,
-    select_actuator,
-    select_actuator_for_scenario,
-)
+from bajutsu.backends import select_actuator_for_scenario
 from bajutsu.cli._shared import (
     DEFAULT_CONFIG,
-    _backends,
     _load_effective,
+    _select_actuator_or_exit,
+    _start_launch_server_or_exit,
     read_manifests,
 )
-from bajutsu.config import web_engine
 from bajutsu.run_id import new_run_id
 from bajutsu.runner import device_pool, run_all
-from bajutsu.runner.launch_server import start_launch_server
 from bajutsu.scenario import Scenario, load_expanded_scenarios
 
 
@@ -144,18 +140,12 @@ def _repeat_audit(
         typer.echo("--repeat needs --target (the app to run the scenario against)")
         raise typer.Exit(2)
     eff = _load_effective(config, target_name)  # exits 2 on missing config / unknown target
-    backends = _backends(backend, eff.backend)
     # Mirror `run`/`doctor`: validate the backend before touching device CLIs, so an unknown /
     # unavailable actuator exits cleanly instead of crashing later.
-    try:
-        ensure_web_runtime(backends, web_engine(eff))
-        actuator = select_actuator(backends)
-    except RuntimeError as e:
-        typer.echo(str(e))
-        raise typer.Exit(2) from None
+    actuator, backends = _select_actuator_or_exit(backend, eff, [])
     try:
         udids = ["web"] if actuator == "playwright" else [_simctl.resolve_udid(udid)]
-    except _simctl.DeviceError as e:
+    except device_errors.DeviceError as e:
         typer.echo(str(e))
         raise typer.Exit(2) from None
 
@@ -164,14 +154,10 @@ def _repeat_audit(
     # Bring up the target's `launchServer` (the web baseUrl host) if declared, like `run` does, so a
     # web target with a server-backed baseUrl can be audited; reused if already serving, torn down
     # in the finally below.
-    try:
-        # Audit is a CLI-only longitudinal tool; serve never spawns it for an uploaded bundle, so it
-        # stays ungoverned (upload_exec=None — today's bare-host path).
-        stop_server, _exec_decision = start_launch_server(eff)
-    except RuntimeError as e:
-        typer.echo(str(e))
-        shutdown()
-        raise typer.Exit(2) from None
+    # Audit is a CLI-only longitudinal tool; serve never spawns it for an uploaded bundle, so it
+    # stays ungoverned (upload_exec=None — today's bare-host path). `on_error=shutdown` tears down
+    # the already-created device-pool lease before exiting if the server fails to come up.
+    stop_server, _exec_decision = _start_launch_server_or_exit(eff, on_error=shutdown)
     try:
         # One scenario at a time, K times each (workers=1 keeps the K runs under identical
         # conditions — the point of the diff). run_dir=None: the audit compares outcomes, not
@@ -190,7 +176,7 @@ def _repeat_audit(
             )
             for s in scenarios
         ]
-    except _simctl.DeviceError as e:
+    except device_errors.DeviceError as e:
         # Parity with `run`/`record`: a device failure (lease/launch) exits 2 cleanly, not a traceback.
         typer.echo(str(e))
         raise typer.Exit(2) from None

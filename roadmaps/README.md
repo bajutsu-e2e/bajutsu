@@ -491,6 +491,7 @@ Behavior-preserving cleanup inside `bajutsu/` itself — deduplication, decompos
 | [BE-0202](BE-0202-serve-js-modularization/BE-0202-serve-js-modularization.md) | Split serve.js into section files without a build step | Implemented |
 | [BE-0205](BE-0205-crawl-command-decomposition/BE-0205-crawl-command-decomposition.md) | Decompose the crawl CLI command like run | Implemented |
 | [BE-0206](BE-0206-serve-state-module-split/BE-0206-serve-state-module-split.md) | Split serve job state from job execution | Implemented |
+| [BE-0260](BE-0260-cli-bringup-consolidation/BE-0260-cli-bringup-consolidation.md) | Consolidate the duplicated CLI command bring-up and add a neutral DeviceError | Implemented |
 <!-- /GENERATED:implemented-quality-debt -->
 
 ## In progress
@@ -599,7 +600,6 @@ Running a scenario on a hosted device farm instead of a local Simulator, emulato
 | [BE-0257](BE-0257-layer-package-topology/BE-0257-layer-package-topology.md) | Package the enforced architecture layers as directories | Proposal |
 | [BE-0258](BE-0258-serve-step-artifact-seam/BE-0258-serve-step-artifact-seam.md) | Route serve step-artifact reads through the ArtifactStore seam | Proposal |
 | [BE-0259](BE-0259-assert-query-snapshot-reuse/BE-0259-assert-query-snapshot-reuse.md) | Reuse the settled query snapshot across assert and extract steps | Proposal |
-| [BE-0260](BE-0260-cli-bringup-consolidation/BE-0260-cli-bringup-consolidation.md) | Consolidate the duplicated CLI command bring-up and add a neutral DeviceError | Proposal |
 <!-- /GENERATED:proposals-quality-debt -->
 
 ## Deferred
