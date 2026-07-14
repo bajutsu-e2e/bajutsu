@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0252](BE-0252-config-package-split.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0252") |
+| Implementing PR | _pending_ |
 | Topic | Codebase quality & technical debt |
 <!-- /BE-METADATA -->
 
@@ -134,19 +135,30 @@ every symbol in today's `config.py` falls into exactly one):
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] `bajutsu/config/schema.py` created with the pydantic input models (pure move)
-- [ ] `bajutsu/config/effective.py` created with the resolved dataclasses; `Effective`'s
+- [x] `bajutsu/config/schema.py` created with the pydantic input models (pure move)
+- [x] `bajutsu/config/effective.py` created with the resolved dataclasses; `Effective`'s
       fields grouped into `EvidenceDirs` / `RunDefaults` / `DoctorThresholds` sub-records
-- [ ] `bajutsu/config/resolve.py` created with the merge/derivation logic; the two deferred
+- [x] `bajutsu/config/resolve.py` created with the merge/derivation logic; the two deferred
       `bajutsu.backends` imports become top-level imports in this module only
-- [ ] `bajutsu/config/accessors.py` created with `require_*` and the soft accessors
-- [ ] `bajutsu/config/__init__.py` re-exports the full public API; no call site outside the
+- [x] `bajutsu/config/accessors.py` created with `require_*` and the soft accessors
+- [x] `bajutsu/config/__init__.py` re-exports the full public API; no call site outside the
       package changes
-- [ ] `docs/architecture.md` (en/ja) updated where it names `config.py`
+- [x] `docs/architecture.md` (en/ja) updated where it names `config.py`
+
+**Log**
+
+- _pending_ PR — split `config.py` into the four-submodule package and grouped `Effective` into
+  `EvidenceDirs` / `RunDefaults` / `DoctorThresholds`. The import surface is unchanged (the
+  `__init__` re-export façade), but the field grouping did update every field-access site — the
+  sub-records are read as `eff.evidence_dirs.scenarios` / `eff.run_defaults.erase` /
+  `eff.doctor_thresholds.ok_coverage` across the runner, CLI, serve, and MCP call sites plus their
+  tests. `DoctorThresholds` drops the now-redundant `doctor_` prefix (`ok_coverage` /
+  `fail_coverage`). Behavior and the config schema are unchanged; the deterministic suite is the
+  regression net.
 
 ## References
 
-- [`bajutsu/config.py`](../../bajutsu/config.py) — the module this item splits
+- [`bajutsu/config/`](../../bajutsu/config) — the package this item splits `config.py` into
 - [`bajutsu/report/__init__.py`](../../bajutsu/report/__init__.py) — the re-export façade
   precedent this split follows
 - [BE-0206](../BE-0206-serve-state-module-split/BE-0206-serve-state-module-split.md) — a prior

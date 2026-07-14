@@ -222,7 +222,7 @@ def target_scenarios_dir(config_path: Path, target: str) -> Path | None:
         eff = resolve(_load_config_cached(config_path), target)
     except (OSError, ValueError, KeyError):
         return None
-    return Path(eff.scenarios) if eff.scenarios else None
+    return Path(eff.evidence_dirs.scenarios) if eff.evidence_dirs.scenarios else None
 
 
 def list_fs(root: Path, sub: str | None) -> dict[str, Any]:

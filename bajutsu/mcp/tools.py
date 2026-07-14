@@ -73,8 +73,8 @@ def register_tools(mcp: FastMCP, config_path: Path) -> None:
         s = score(
             elements,
             eff.id_namespaces,
-            ok_coverage=eff.doctor_ok_coverage,
-            fail_coverage=eff.doctor_fail_coverage,
+            ok_coverage=eff.doctor_thresholds.ok_coverage,
+            fail_coverage=eff.doctor_thresholds.fail_coverage,
         )
         return render(s)
 

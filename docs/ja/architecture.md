@@ -96,7 +96,7 @@ flowchart TB
 | `network.py` | ネットワーク collector + プロトコル内の決定的モック | [evidence](evidence.md) |
 | `redaction.py` | 証跡の redaction（ラベル / ヘッダ / フィールド + シークレット値） | [evidence](evidence.md) |
 | `interp.py` | `${ns.key}` 補間プリミティブ（`params.` / `row.` / `secrets.` / `vars.`） | [scenarios](scenarios.md) |
-| `config.py` | チーム既定 × アプリ別の解決（`Effective`） | [configuration](configuration.md) |
+| `config/` | チーム既定 × アプリ別の解決（`Effective`）（パッケージ: `schema` / `effective` / `resolve` / `accessors`） | [configuration](configuration.md) |
 | `backends.py` | バックエンド可用性判定、actuator 選択（プラットフォーム対応レジストリ: `ios` / `android` / `web` / `fake`）、Driver 生成 | [drivers](drivers.md#バックエンド選択と-actuator) |
 | `simctl.py` | `simctl` ラッパ（erase/boot/launch/openurl/io） | [drivers](drivers.md#環境管理simctl) |
 | `preflight.py` | バックエンド別の実行可能ゲート（iOS: 必須 CLI + 起動済みシミュレータ / web: Playwright とその Chromium ブラウザ） | [configuration](configuration.md) |

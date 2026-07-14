@@ -66,12 +66,12 @@ def _place_binaries_and_check_coherence(
     placed: set[Path] = set()
     for name in cfg.targets:
         eff = resolve(cfg, name).rebased(root)
-        if eff.scenarios is not None:
+        if eff.evidence_dirs.scenarios is not None:
             if scenarios_path is None:
                 raise CompositionError(f"target {name!r} needs a scenarios artifact")
-            if not Path(eff.scenarios).is_dir():
+            if not Path(eff.evidence_dirs.scenarios).is_dir():
                 raise CompositionError(
-                    f"target {name!r}'s scenarios path {eff.scenarios!r} was not found after "
+                    f"target {name!r}'s scenarios path {eff.evidence_dirs.scenarios!r} was not found after "
                     "extraction — check the scenarios zip has no wrapping folder"
                 )
         if isinstance(eff.platform_config, WebConfig) or eff.platform_config.app_path is None:

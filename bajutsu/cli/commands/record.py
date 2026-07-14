@@ -82,7 +82,7 @@ def _record_out_path(
         base = (
             Path()
             if checkout_root is not None
-            else (Path(eff.scenarios) if eff.scenarios else None)
+            else (Path(eff.evidence_dirs.scenarios) if eff.evidence_dirs.scenarios else None)
         )
         if base is None:
             typer.echo(

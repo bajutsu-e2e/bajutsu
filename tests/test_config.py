@@ -230,7 +230,7 @@ def test_minimal_defaults() -> None:
     assert eff.device == "iPhone 15"
     assert eff.capture == ["screenshot.after", "elements", "actionLog"]
     assert _ios(eff).app_path is None  # absent unless configured
-    assert eff.scenarios is None  # absent unless configured
+    assert eff.evidence_dirs.scenarios is None  # absent unless configured
 
 
 def test_app_path_parsed() -> None:
@@ -240,7 +240,7 @@ def test_app_path_parsed() -> None:
 
 def test_scenarios_parsed() -> None:
     cfg = load_config("targets: { x: { bundleId: com.x, scenarios: scn/dir } }")
-    assert resolve(cfg, "x").scenarios == "scn/dir"
+    assert resolve(cfg, "x").evidence_dirs.scenarios == "scn/dir"
 
 
 def test_ready_when_selector_parsed() -> None:
@@ -286,7 +286,7 @@ def test_web_app_baseurl_no_bundleid() -> None:
     assert _web(eff).base_url == "http://127.0.0.1:8787/index.html"
     assert not hasattr(eff.platform_config, "bundle_id")
     assert eff.backend == ["web"]
-    assert eff.scenarios == "demos/web/scenarios"
+    assert eff.evidence_dirs.scenarios == "demos/web/scenarios"
     assert _web(eff).headless is True  # the web backend runs headless unless opted out
 
 
@@ -377,12 +377,12 @@ def test_ios_app_carries_no_base_url() -> None:
 
 def test_baselines_parsed() -> None:
     cfg = load_config("targets: { x: { bundleId: com.x, baselines: baselines/x } }")
-    assert resolve(cfg, "x").baselines == "baselines/x"
+    assert resolve(cfg, "x").evidence_dirs.baselines == "baselines/x"
 
 
 def test_baselines_defaults_to_none() -> None:
     cfg = load_config("targets: { x: { bundleId: com.x } }")
-    assert resolve(cfg, "x").baselines is None
+    assert resolve(cfg, "x").evidence_dirs.baselines is None
 
 
 def test_baselines_resolution_order() -> None:
@@ -394,30 +394,32 @@ def test_baselines_resolution_order() -> None:
     scenario_file = Path("/scenarios/app/smoke.yaml")
 
     # flag wins over everything
-    assert _resolve_dir("flag/bl", eff_with.baselines, scenario_file, "baselines") == Path(
-        "flag/bl"
-    )
-    assert _resolve_dir("flag/bl", eff_without.baselines, scenario_file, "baselines") == Path(
-        "flag/bl"
-    )
+    assert _resolve_dir(
+        "flag/bl", eff_with.evidence_dirs.baselines, scenario_file, "baselines"
+    ) == Path("flag/bl")
+    assert _resolve_dir(
+        "flag/bl", eff_without.evidence_dirs.baselines, scenario_file, "baselines"
+    ) == Path("flag/bl")
 
     # config used when no flag
-    assert _resolve_dir("", eff_with.baselines, scenario_file, "baselines") == Path("cfg/bl")
+    assert _resolve_dir("", eff_with.evidence_dirs.baselines, scenario_file, "baselines") == Path(
+        "cfg/bl"
+    )
 
     # scenario-local default when neither flag nor config
-    assert _resolve_dir("", eff_without.baselines, scenario_file, "baselines") == Path(
-        "/scenarios/app/baselines"
-    )
+    assert _resolve_dir(
+        "", eff_without.evidence_dirs.baselines, scenario_file, "baselines"
+    ) == Path("/scenarios/app/baselines")
 
 
 def test_schemas_parsed() -> None:
     cfg = load_config("targets: { x: { bundleId: com.x, schemas: schemas/x } }")
-    assert resolve(cfg, "x").schemas == "schemas/x"
+    assert resolve(cfg, "x").evidence_dirs.schemas == "schemas/x"
 
 
 def test_schemas_defaults_to_none() -> None:
     cfg = load_config("targets: { x: { bundleId: com.x } }")
-    assert resolve(cfg, "x").schemas is None
+    assert resolve(cfg, "x").evidence_dirs.schemas is None
 
 
 def test_schemas_resolution_order() -> None:
@@ -428,21 +430,25 @@ def test_schemas_resolution_order() -> None:
     eff_without = resolve(load_config("targets: { x: { bundleId: com.x } }"), "x")
     scenario_file = Path("/scenarios/app/smoke.yaml")
 
-    assert _resolve_dir("flag/sc", eff_with.schemas, scenario_file, "schemas") == Path("flag/sc")
-    assert _resolve_dir("", eff_with.schemas, scenario_file, "schemas") == Path("cfg/sc")
-    assert _resolve_dir("", eff_without.schemas, scenario_file, "schemas") == Path(
+    assert _resolve_dir(
+        "flag/sc", eff_with.evidence_dirs.schemas, scenario_file, "schemas"
+    ) == Path("flag/sc")
+    assert _resolve_dir("", eff_with.evidence_dirs.schemas, scenario_file, "schemas") == Path(
+        "cfg/sc"
+    )
+    assert _resolve_dir("", eff_without.evidence_dirs.schemas, scenario_file, "schemas") == Path(
         "/scenarios/app/schemas"
     )
 
 
 def test_goldens_parsed() -> None:
     cfg = load_config("targets: { x: { bundleId: com.x, goldens: goldens/x } }")
-    assert resolve(cfg, "x").goldens == "goldens/x"
+    assert resolve(cfg, "x").evidence_dirs.goldens == "goldens/x"
 
 
 def test_goldens_defaults_to_none() -> None:
     cfg = load_config("targets: { x: { bundleId: com.x } }")
-    assert resolve(cfg, "x").goldens is None
+    assert resolve(cfg, "x").evidence_dirs.goldens is None
 
 
 def test_goldens_resolution_order() -> None:
@@ -454,14 +460,20 @@ def test_goldens_resolution_order() -> None:
     scenario_file = Path("/scenarios/app/smoke.yaml")
 
     # flag wins over everything
-    assert _resolve_dir("flag/gl", eff_with.goldens, scenario_file, "goldens") == Path("flag/gl")
-    assert _resolve_dir("flag/gl", eff_without.goldens, scenario_file, "goldens") == Path("flag/gl")
+    assert _resolve_dir(
+        "flag/gl", eff_with.evidence_dirs.goldens, scenario_file, "goldens"
+    ) == Path("flag/gl")
+    assert _resolve_dir(
+        "flag/gl", eff_without.evidence_dirs.goldens, scenario_file, "goldens"
+    ) == Path("flag/gl")
 
     # config used when no flag
-    assert _resolve_dir("", eff_with.goldens, scenario_file, "goldens") == Path("cfg/gl")
+    assert _resolve_dir("", eff_with.evidence_dirs.goldens, scenario_file, "goldens") == Path(
+        "cfg/gl"
+    )
 
     # scenario-local default when neither flag nor config
-    assert _resolve_dir("", eff_without.goldens, scenario_file, "goldens") == Path(
+    assert _resolve_dir("", eff_without.evidence_dirs.goldens, scenario_file, "goldens") == Path(
         "/scenarios/app/goldens"
     )
 
@@ -475,9 +487,9 @@ def test_rebased_resolves_relative_paths_under_the_checkout_root() -> None:
         "x",
     )
     rebased = eff.rebased(Path("/co"))
-    assert rebased.scenarios == "/co/e2e/scn"
+    assert rebased.evidence_dirs.scenarios == "/co/e2e/scn"
     assert _ios(rebased).app_path == "/co/build/A.app"
-    assert rebased.goldens == "/co/golden/data"
+    assert rebased.evidence_dirs.goldens == "/co/golden/data"
 
 
 def test_rebased_resolves_xcuitest_test_runner() -> None:
@@ -514,7 +526,7 @@ def test_rebased_without_confinement_keeps_paths_outside_the_root() -> None:
         "x",
     )
     rebased = eff.rebased(Path("/co/cfg"), confine=False)
-    assert Path(rebased.scenarios or "").resolve() == Path(
+    assert Path(rebased.evidence_dirs.scenarios or "").resolve() == Path(
         "/co/sibling/scn"
     )  # sibling, not refused
     assert _ios(rebased).app_path == "/opt/App.app"  # an absolute value is kept as-is
@@ -716,15 +728,15 @@ def test_doctor_thresholds_resolve_from_defaults() -> None:
         "targets:\n  s:\n    bundleId: com.x\n"
     )
     eff = resolve(cfg, "s")
-    assert eff.doctor_ok_coverage == 0.85
-    assert eff.doctor_fail_coverage == 0.6
+    assert eff.doctor_thresholds.ok_coverage == 0.85
+    assert eff.doctor_thresholds.fail_coverage == 0.6
 
 
 def test_doctor_thresholds_default_to_hardcoded_values() -> None:
     cfg = load_config("targets:\n  s:\n    bundleId: com.x\n")
     eff = resolve(cfg, "s")
-    assert eff.doctor_ok_coverage == 0.9
-    assert eff.doctor_fail_coverage == 0.7
+    assert eff.doctor_thresholds.ok_coverage == 0.9
+    assert eff.doctor_thresholds.fail_coverage == 0.7
 
 
 def test_doctor_ok_below_fail_is_rejected() -> None:
@@ -925,16 +937,16 @@ def test_run_behavior_defaults_when_unset() -> None:
     # An unset target resolves to the built-in defaults: guard on (dismiss_alerts None → on with the
     # default instruction), erase off, network on.
     eff = resolve(load_config("targets:\n  s:\n    bundleId: com.x\n"), "s")
-    assert eff.dismiss_alerts is None
-    assert eff.erase is False
-    assert eff.network is True
+    assert eff.run_defaults.dismiss_alerts is None
+    assert eff.run_defaults.erase is False
+    assert eff.run_defaults.network is True
 
 
 def test_target_erase_and_network_resolve() -> None:
     cfg = load_config("targets:\n  s:\n    bundleId: com.x\n    erase: true\n    network: false\n")
     eff = resolve(cfg, "s")
-    assert eff.erase is True
-    assert eff.network is False
+    assert eff.run_defaults.erase is True
+    assert eff.run_defaults.network is False
 
 
 def test_target_dismiss_alerts_bool_shorthand() -> None:
@@ -942,9 +954,9 @@ def test_target_dismiss_alerts_bool_shorthand() -> None:
     eff = resolve(
         load_config("targets:\n  s:\n    bundleId: com.x\n    dismissAlerts: false\n"), "s"
     )
-    assert eff.dismiss_alerts is not None
-    assert eff.dismiss_alerts.enabled is False
-    assert eff.dismiss_alerts.instruction is None
+    assert eff.run_defaults.dismiss_alerts is not None
+    assert eff.run_defaults.dismiss_alerts.enabled is False
+    assert eff.run_defaults.dismiss_alerts.instruction is None
 
 
 def test_target_dismiss_alerts_object_form() -> None:
@@ -952,6 +964,6 @@ def test_target_dismiss_alerts_object_form() -> None:
         "targets:\n  s:\n    bundleId: com.x\n    dismissAlerts: { instruction: Allow }\n"
     )
     eff = resolve(cfg, "s")
-    assert eff.dismiss_alerts is not None
-    assert eff.dismiss_alerts.enabled is True  # object form keeps the guard on
-    assert eff.dismiss_alerts.instruction == "Allow"
+    assert eff.run_defaults.dismiss_alerts is not None
+    assert eff.run_defaults.dismiss_alerts.enabled is True  # object form keeps the guard on
+    assert eff.run_defaults.dismiss_alerts.instruction == "Allow"

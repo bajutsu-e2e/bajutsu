@@ -68,9 +68,9 @@ def actuator_resolution_summary(eff: Effective, backends: list[str]) -> list[str
         ``use`` / ``data`` expansion, so a capability introduced only through a component is not
         counted here.
     """
-    if len({*resolve_actuators(backends)}) <= 1 or not eff.scenarios:
+    if len({*resolve_actuators(backends)}) <= 1 or not eff.evidence_dirs.scenarios:
         return []
-    scenarios_dir = Path(eff.scenarios)
+    scenarios_dir = Path(eff.evidence_dirs.scenarios)
     if not scenarios_dir.is_dir():
         return []
     tally: dict[str, list[str]] = {}
@@ -185,8 +185,8 @@ def doctor(
     result = score(
         elements,
         eff.id_namespaces,
-        ok_coverage=eff.doctor_ok_coverage,
-        fail_coverage=eff.doctor_fail_coverage,
+        ok_coverage=eff.doctor_thresholds.ok_coverage,
+        fail_coverage=eff.doctor_thresholds.fail_coverage,
     )
     typer.echo(render(result))
     raise typer.Exit(0 if result.grade != "Blocked" else 1)
