@@ -31,7 +31,7 @@ from __future__ import annotations
 import os
 import shutil
 import subprocess
-from typing import Any, Protocol
+from typing import Any
 
 from bajutsu.ai_config import AiConfig, resolve_provider
 
@@ -167,23 +167,3 @@ def make_client(client: Any = None, ai: AiConfig | None = None) -> Any:
     if ai and ai.base_url:
         kwargs["base_url"] = ai.base_url
     return Anthropic(**kwargs)
-
-
-class CachesClient(Protocol):
-    """The shape ensure_client memoizes onto — the two attrs every Claude* AI class already holds."""
-
-    _client: Any
-    _ai: AiConfig | None
-
-
-def ensure_client(agent: CachesClient) -> Any:
-    """Return the agent's SDK client, building and caching it on ``_client`` on first use.
-
-    The lazy-build-then-cache wrapper the AI authoring/investigation classes share (BE-0140).
-    ``make_client`` already short-circuits an injected client; the one thing this adds is
-    memoizing the built client on the instance, so a class doesn't reopen the SDK client (and
-    reread the key env var) on every call.
-    """
-    if agent._client is None:
-        agent._client = make_client(ai=agent._ai)
-    return agent._client
