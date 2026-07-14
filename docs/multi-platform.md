@@ -1,12 +1,14 @@
 **English** · [日本語](ja/multi-platform.md)
 
-# Extending to Android (multi-platform) — overview
+# Multi-platform — overview
 
-> Forward-looking overview. Bajutsu is **multi-platform via a backend-agnostic driver**: the **iOS
-> Simulator** (idb) and a **Web (Playwright) backend** have both landed ([DESIGN §1](../DESIGN.md),
-> [README](../README.md)) — the web backend runs a deterministic `run` against a browser on the Linux
-> gate (see [drivers](drivers.md#playwright-web) and `demos/web`) — while **Android** (emulator) and
-> **Flutter** remain planned. This page is the **big-picture overview**
+> Bajutsu is **multi-platform via a backend-agnostic driver**: the **iOS**
+> (idb / XCUITest), **web** (Playwright), and **Android** (adb) backends have all landed
+> ([DESIGN §1](../DESIGN.md), [README](../README.md)) — the web backend runs a deterministic `run`
+> against a browser on the Linux gate (see [drivers](drivers.md#playwright-web) and `demos/web`), and
+> the Android backend is validated on an emulator under the same kind of gate (see
+> [drivers](drivers.md#adb-android) and [architecture → implementation status](architecture.md#implementation-status)) —
+> while **Flutter** remains planned. This page is the **big-picture overview**
 > of how the existing abstractions extend to a new platform: what stays
 > unchanged, what each platform adds, and the order to build it in. The **concrete, per-platform design
 > and the implementation plan live in the roadmap** — each item is linked below. Read this for the
@@ -60,25 +62,29 @@ ever on screen for a given app, so it stays deterministic. This is what lets the
 scenarios run unchanged on both Android UI toolkits (BE-0221); see
 [scenarios](scenarios.md#cross-platform-ids-a-candidate-list-be-0221).
 
-## Direction & phasing (what's planned)
+## Direction & phasing
 
-The deterministic core does not change; each platform only adds its triple. The first slice has
-already landed, and the rest is sequenced to pay the generalization cost where it is cheapest:
+The deterministic core did not change as each platform was added; every new platform only added its
+own triple (actuator + environment + id convention). Web and Android have both landed; Flutter is
+the remaining phase:
 
 | Step | Scope | Status / roadmap item |
 |---|---|---|
 | **Landed** | Platform-aware backend registry (`--backend` / `backend:` accept `ios`/`android`/`web`/`fake`) | Implemented — [BE-0042](../roadmaps/BE-0042-platform-backend-registry/BE-0042-platform-backend-registry.md) |
 | **Shared abstractions** | Extract an `Environment` Protocol; audit for leaked iOS-isms; the selector / config / determinism design | Implemented — [BE-0009](../roadmaps/BE-0009-cross-platform-abstractions/BE-0009-cross-platform-abstractions.md) |
-| **Phase 1 — Web** | Playwright; **runs on the existing Linux gate, no Mac / emulator**; exercises the rich end of the capability model. Recommended first | Implemented (deterministic `run` + `demos/web`) — [BE-0041](../roadmaps/BE-0041-web-playwright-backend/BE-0041-web-playwright-backend.md); rich-end capabilities (network / video / multi-touch / parallel) tracked in [BE-0054](../roadmaps/BE-0054-web-backend-completion/BE-0054-web-backend-completion.md) |
-| **Phase 2 — Android** | adb + UI Automator; the coordinate-driven twin of idb | In progress — [BE-0007](../roadmaps/BE-0007-android-backend/BE-0007-android-backend.md) |
+| **Phase 1 — Web** | Playwright; runs on the existing Linux gate, no Mac / emulator; exercises the rich end of the capability model | Implemented (deterministic `run` + `demos/web`) — [BE-0041](../roadmaps/BE-0041-web-playwright-backend/BE-0041-web-playwright-backend.md); rich-end capabilities (network / video / multi-touch / parallel) — [BE-0054](../roadmaps/BE-0054-web-backend-completion/BE-0054-web-backend-completion.md) |
+| **Phase 2 — Android** | adb + UI Automator; the coordinate-driven twin of idb | Implemented — [BE-0007](../roadmaps/BE-0007-android-backend/BE-0007-android-backend.md); emulator e2e CI — [BE-0208](../roadmaps/BE-0208-android-emulator-e2e-ci/BE-0208-android-emulator-e2e-ci.md); UI Automator codegen — [BE-0209](../roadmaps/BE-0209-android-codegen-emitter/BE-0209-android-codegen-emitter.md); cross-platform id portability — [BE-0221](../roadmaps/BE-0221-android-scenario-portability-guarantee/BE-0221-android-scenario-portability-guarantee.md) |
 | **Phase 3 — Flutter / hybrids** | Cross-rendered UIs need a semantics bridge, not a new OS actuator | Planned — [BE-0008](../roadmaps/BE-0008-flutter-support/BE-0008-flutter-support.md) |
 | **Cross-cutting** | Multi-platform is a strategic scope change (DESIGN / README / docs) | Implemented — [BE-0010](../roadmaps/BE-0010-update-scope-statement/BE-0010-update-scope-statement.md) |
 
-**Why Web before Android**, even though Android is the closer architectural twin of idb: Web is the
-only platform that needs no macOS and no device emulator, so it fits inside the current
-[`make check`](../CLAUDE.md) / [CI](ci.md) gate from day one — proving the core is platform-neutral at
-the lowest possible cost. Android then confirms the lean / coordinate path on an already-generalized
-core.
+**Why Web before Android**, even though Android is the closer architectural twin of idb: Web needed
+no macOS and no device emulator, so it fit inside the [`make check`](../CLAUDE.md) / [CI](ci.md) gate
+from day one — proving the core is platform-neutral at the lowest possible cost. Android then
+confirmed the same lean / coordinate path on an already-generalized core, on its own emulator-backed
+gate ([BE-0208](../roadmaps/BE-0208-android-emulator-e2e-ci/BE-0208-android-emulator-e2e-ci.md)).
+The remaining Android-specific gaps (native tab-bar driving, some device-control actions) are
+tracked per item in [architecture → implementation status](architecture.md#implementation-status),
+not at the platform level.
 
 ## What stays fixed across every platform
 

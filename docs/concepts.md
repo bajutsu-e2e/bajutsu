@@ -67,7 +67,7 @@ Bajutsu's "deterministic" behavior is enforced by the structure of the code.
 ## 4. Stable selectors (prefer accessibilityIdentifier)
 
 Always write selectors by a **non-localized, unique, data-derived id**. On iOS that is
-`accessibilityIdentifier`; on the web it is `data-testid` (Android `resource-id` is planned). The
+`accessibilityIdentifier`; on the web it is `data-testid`; on Android it is `resource-id`. The
 selector YAML is the same across backends — only the attribute the backend reads to satisfy it
 differs. The reason is to eliminate flakiness from layout changes, translation, and coordinate drift.
 `label` is for VoiceOver / AI semantic understanding; because its wording changes with
@@ -107,9 +107,10 @@ change **the app-side preparation (adding identifiers, etc.) and one `targets.<n
 ([onboarding in configuration](configuration.md#onboarding-a-new-target)).
 
 The same move makes Bajutsu **platform-agnostic**: a platform is a **backend** behind the `Driver`
-interface (the actuator, §5). A new target — web (`playwright`) today, Android (`adb`) next — is a
-new backend; the scenario format, selector resolution, assertions, the orchestrator, evidence, and
-the reporter stay byte-for-byte the same. Per-platform differences live only in the backend and config.
+interface (the actuator, §5). Web (`playwright`) and Android (`adb`) are new targets built this way
+— each a new backend; the scenario format, selector resolution, assertions, the orchestrator,
+evidence, and the reporter stay byte-for-byte the same. Per-platform differences live only in the
+backend and config.
 
 ## 7. Evidence is rules (fire repeatedly)
 

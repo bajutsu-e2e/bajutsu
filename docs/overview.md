@@ -5,7 +5,7 @@
 > Implementation-grounded reference for the natural-language-driven E2E (end-to-end) testing tool.
 > Its deterministic core is platform-neutral; the one platform-specific seam is the **backend**
 > behind a single `Driver` interface, so a new platform is a new backend — the iOS Simulator (idb)
-> today, a web (Playwright) backend landed, Android planned.
+> today, a web (Playwright) backend and an Android (adb) backend landed, Flutter planned.
 > [`README.md`](../README.md) is the introduction and [`DESIGN.md`](../DESIGN.md)
 > covers the design rationale; this set of pages explains **what the code actually
 > does today**, feature by feature. Planned work is in [the roadmap](../roadmaps/README.md).
@@ -67,7 +67,7 @@ Which module owns each box, and how they depend on each other, is in [architectu
 | 16 | [ci](ci.md) | Running in CI — the repo's own workflows + the reusable `bajutsu-e2e` action |
 | 17 | [self-hosting](self-hosting.md) | Run `serve` as a token-authenticated LaunchAgent on a single Mac behind Tailscale (BE-0016 Tier A) |
 | 18 | [vision](vision.md) | **Forward-looking** — the three axes of growth (reach / scale / authoring) and the constraints all of them respect |
-| 19 | [multi-platform](multi-platform.md) | **Forward-looking** — big-picture overview of extending to Android (emulator) and Web (browser) behind the existing driver abstraction; the concrete per-platform plans live in the [roadmap](../roadmaps/README.md#platform-support) |
+| 19 | [multi-platform](multi-platform.md) | How the Android (emulator) and Web (browser) backends were added behind the existing driver abstraction, and what the same move looks like for the next platform (Flutter); the concrete per-platform plans live in the [roadmap](../roadmaps/README.md#platform-support) |
 | 20 | [ai-development](ai-development.md) | Working agreement for AI agents + humans in parallel (the gate, branches, pre-push hook, worktrees) — the long form of [`CLAUDE.md`](../CLAUDE.md) |
 | 21 | [roadmap-workflow](roadmap-workflow.md) | The **ideation → implementation cycle**: the `ideation` skill authors a BE proposal, the `implement-be` skill ships it (placeholder IDs, the Proposal → Implemented lifecycle) |
 
