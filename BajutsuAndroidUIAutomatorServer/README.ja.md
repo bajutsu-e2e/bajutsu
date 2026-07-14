@@ -1,6 +1,6 @@
 [English](README.md) · **日本語**
 
-# BajutsuAndroidServer — 常駐 UI Automator サーバ
+# BajutsuAndroidUIAutomatorServer — 常駐 UI Automator サーバ
 
 bajutsu が対象デバイスにインストールし、画面の読み取りをローカルソケット越しに答える、自己完結した
 UI Automator インストルメンテーションです。実行のあいだ `UiAutomation` セッションを一つだけ生かし
@@ -47,7 +47,7 @@ e2e レーンがサーバをビルドして導入するまでは、環境変数 
 ## ビルド
 
 ```bash
-make -C BajutsuAndroidServer build   # ホスト APK と インストルメンテーション（androidTest）APK
+make -C BajutsuAndroidUIAutomatorServer build   # ホスト APK と インストルメンテーション（androidTest）APK
 ```
 
 これは `make check`（Python のゲート）には含まれません。ゲートは Kotlin をビルドしないからです。ビルド

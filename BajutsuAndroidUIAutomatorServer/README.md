@@ -1,6 +1,6 @@
 **English** · [日本語](README.ja.md)
 
-# BajutsuAndroidServer — resident UI Automator server
+# BajutsuAndroidUIAutomatorServer — resident UI Automator server
 
 A self-contained UI Automator instrumentation that bajutsu installs on the target device to answer
 screen reads over a local socket, keeping one `UiAutomation` session alive for the whole run. It
@@ -45,7 +45,7 @@ the server; unset, the adb backend reads via `uiautomator dump` exactly as befor
 ## Build
 
 ```bash
-make -C BajutsuAndroidServer build   # host APK + instrumentation (androidTest) APK
+make -C BajutsuAndroidUIAutomatorServer build   # host APK + instrumentation (androidTest) APK
 ```
 
 This is not part of `make check` (the Python gate builds no Kotlin). It goes through the committed

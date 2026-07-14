@@ -1,5 +1,5 @@
 # Build targets for the resident UI Automator server (BE-0245). Invoke from anywhere with
-# `make -C BajutsuAndroidServer <target>`.
+# `make -C BajutsuAndroidUIAutomatorServer <target>`.
 #
 # Not part of `make check`: the Python gate builds no Kotlin, and this needs the Android SDK. Like
 # the showcase Android build, it goes through the committed `./gradlew`, so a fresh clone needs no

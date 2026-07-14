@@ -1,7 +1,7 @@
 """Resident UI Automator server channel (BE-0245): reach the on-device server over adb forward + HTTP.
 
-The resident server (BajutsuAndroidServer, PR-B) keeps one `UiAutomation` session warm and answers
-`GET /source` with `UiDevice.dumpWindowHierarchy` XML, skipping the ≈ 2.4 s per-invocation
+The resident server (BajutsuAndroidUIAutomatorServer, PR-B) keeps one `UiAutomation` session warm and
+answers `GET /source` with `UiDevice.dumpWindowHierarchy` XML, skipping the ≈ 2.4 s per-invocation
 `uiautomator dump` startup. This module is the Python end of that channel: it starts the server for a
 device lease, forwards a host port to it, fetches the hierarchy, and narrows the whole-screen dump to
 the active window so `parse_hierarchy` produces the same Elements the dump path does. Everything above
@@ -99,11 +99,14 @@ class _Process(Protocol):
 Spawn = Callable[[list[str]], _Process]
 Fetch = Callable[[int], str]
 
-# APK build outputs of `make -C BajutsuAndroidServer build` (gitignored; the paths gradle writes).
+# APK build outputs of `make -C BajutsuAndroidUIAutomatorServer build` (gitignored; the paths gradle
+# writes).
 _REPO_ROOT = Path(__file__).resolve().parents[1]
-_SERVER_APK = _REPO_ROOT / "BajutsuAndroidServer/server/build/outputs/apk/debug/server-debug.apk"
+_SERVER_APK = (
+    _REPO_ROOT / "BajutsuAndroidUIAutomatorServer/server/build/outputs/apk/debug/server-debug.apk"
+)
 _TEST_APK = (
-    _REPO_ROOT / "BajutsuAndroidServer/server/build/outputs/apk/androidTest/debug"
+    _REPO_ROOT / "BajutsuAndroidUIAutomatorServer/server/build/outputs/apk/androidTest/debug"
     "/server-debug-androidTest.apk"
 )
 
@@ -150,7 +153,7 @@ class ResidentServer:
         if not self._server_apk.exists() or not self._test_apk.exists():
             raise AdbResidentError(
                 f"resident server APKs not built ({self._server_apk}); run "
-                "`make -C BajutsuAndroidServer build`"
+                "`make -C BajutsuAndroidUIAutomatorServer build`"
             )
         try:
             self._run(adb.install_cmd(self._serial, str(self._server_apk)))

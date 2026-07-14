@@ -19,6 +19,6 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "BajutsuAndroidServer"
+rootProject.name = "BajutsuAndroidUIAutomatorServer"
 
 include(":server")
