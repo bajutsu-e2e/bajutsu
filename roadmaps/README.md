@@ -556,6 +556,12 @@ Running a scenario on a hosted device farm instead of a local Simulator, emulato
 | [BE-0238](BE-0238-ios-device-cloud-execution/BE-0238-ios-device-cloud-execution.md) | iOS device-cloud execution | Proposal |
 <!-- /GENERATED:proposals-device-cloud -->
 
+### Scenario authoring features
+
+<!-- GENERATED:proposals-scenario-authoring -->
+
+<!-- /GENERATED:proposals-scenario-authoring -->
+
 ### Authoring experience (record / GUI editor)
 
 <!-- GENERATED:proposals-authoring -->
