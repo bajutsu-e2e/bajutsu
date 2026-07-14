@@ -101,7 +101,7 @@ flowchart TB
 | `record.py` | record ループ（observe → 提案 → 実行 → 書き出し） | [recording](recording.md#record-ループ) |
 | `crawl.py` | 自律的な幅優先クロール → スクリーンマップ（`crawl_guide` / `crawl_tabs` ヘルパ） | [recording](recording.md) |
 | `alerts.py` | システムアラートの検出と dismiss（視覚ロケータ） | [recording](recording.md#システムアラートの自動対処) |
-| `codegen.py` | シナリオ → ネイティブテスト生成: XCUITest（Swift）、Playwright（TypeScript）、UI Automator（Kotlin） | [codegen](codegen.md) |
+| `codegen/` | シナリオ → ネイティブテスト生成: XCUITest（Swift）、Playwright（TypeScript）、UI Automator（Kotlin） | [codegen](codegen.md) |
 | `visual.py` | ビジュアルリグレッションの画像比較（`visual` アサーション） | [evidence](evidence.md) |
 | `trace.py` | 保存済み run のテキストタイムライン（`trace` コマンド） | [cli](cli.md) |
 | `triage.py` | M4 自己修復: ルールベース `HeuristicTriageAgent` + 構造化 fix（`renameId`/`addIndex`/`raiseTimeout`）、`--apply`/`--write`/`--rerun` | [cli](cli.md) |
@@ -122,7 +122,7 @@ flowchart TB
 ```
                        cli/             ← ユーザ接点（Typer）: run / project / doctor / audit / coverage / stats / flakiness / export / trace / report / triage / record / crawl / codegen / approve / serve / mcp / worker / lint / schema
         ┌─────────────┬───┴───────┬───────────────┬───────────┐
-     runner/    record.py / crawl.py  codegen.py   trace.py     triage.py / claude_triage.py
+     runner/    record.py / crawl.py  codegen/     trace.py     triage.py / claude_triage.py
         │       （Tier 1 / AI） （構造マッピング）（タイムライン）（自己修復・助言）
    orchestrator/   agent_protocols.py / agent_factory.py / claude_agent.py / alerts.py   serve/ · github.py（Web UI・CI）
         │                 │

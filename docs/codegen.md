@@ -8,8 +8,8 @@
 > iOS backend, **Playwright (TypeScript)** for the web backend, and **UI Automator (Kotlin)** for
 > the Android backend. The mapping is **purely structural** (AI-independent).
 >
-> Implementation: `bajutsu/codegen.py` (XCUITest), `bajutsu/codegen_playwright.py` (Playwright),
-> `bajutsu/codegen_uiautomator.py` (UI Automator).
+> Implementation: `bajutsu/codegen/xcuitest.py` (XCUITest), `bajutsu/codegen/playwright.py`
+> (Playwright), `bajutsu/codegen/uiautomator.py` (UI Automator).
 
 Related: [scenarios](scenarios.md) · [cli](cli.md#codegen) · [drivers](drivers.md) · [the showcase UI-test target](showcase.md)
 

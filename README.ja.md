@@ -308,7 +308,7 @@ bajutsu/
 ├── record.py             # record ループ: 探索 -> シナリオ出力
 ├── crawl.py              # 自律的な幅優先クロール -> スクリーンマップ
 ├── alerts.py             # システムアラートガード（視覚ロケータ）
-├── codegen.py            # シナリオ -> XCUITest (Swift)
+├── codegen/              # シナリオ -> ネイティブテスト (XCUITest / Playwright / UI Automator)
 ├── trace.py              # 完了した run をテキストのタイムラインで確認
 ├── triage.py             # 自己修復トリアージ: 失敗 run を診断し修正案を提示
 ├── lint.py               # シナリオ linter + JSON Schema 生成

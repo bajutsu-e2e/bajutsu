@@ -9,7 +9,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from bajutsu.codegen_emit import EMIT_TARGETS, CodegenError, generate_test
+from bajutsu.codegen import EMIT_TARGETS, CodegenError, generate_test
 from bajutsu.config import load_config, resolve
 from bajutsu.scenario import load_scenarios
 from bajutsu.serve.operations._common import _resolve_org_or_forbid

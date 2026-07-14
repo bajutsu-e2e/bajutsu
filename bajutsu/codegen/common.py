@@ -1,6 +1,6 @@
 """Shared scenario walk for the codegen emitters (BE-0083).
 
-XCUITest (`codegen.py`) and Playwright (`codegen_playwright.py`) transpile a scenario the same way
+XCUITest (`xcuitest.py`) and Playwright (`playwright.py`) transpile a scenario the same way
 — merge the launch environment, open the test, emit a launch line, emit each step, then the
 `expect` block, and close — differing only in the per-line target syntax. That walk lives here
 once; each target supplies the variable parts through the `CodeGenerator` protocol, so adding a

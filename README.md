@@ -315,7 +315,7 @@ bajutsu/
 ├── record.py             # record loop: explore -> emit a scenario
 ├── crawl.py              # autonomous breadth-first crawl -> screen map
 ├── alerts.py             # system-alert guard (vision locator)
-├── codegen.py            # scenario -> XCUITest (Swift)
+├── codegen/              # scenario -> native tests (XCUITest / Playwright / UI Automator)
 ├── trace.py              # inspect a finished run as a text timeline
 ├── triage.py             # self-healing triage: diagnose a failed run, propose a fix
 ├── lint.py               # scenario linter + JSON Schema generation

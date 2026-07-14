@@ -7,10 +7,10 @@ generator + filename each format uses. Both transports — the `codegen` CLI com
 
 from __future__ import annotations
 
-from bajutsu.codegen import class_name_for, to_xcuitest
-from bajutsu.codegen_playwright import describe_name_for, to_playwright
-from bajutsu.codegen_uiautomator import class_name_for as uiautomator_class_name_for
-from bajutsu.codegen_uiautomator import to_uiautomator
+from bajutsu.codegen.playwright import describe_name_for, to_playwright
+from bajutsu.codegen.uiautomator import class_name_for as uiautomator_class_name_for
+from bajutsu.codegen.uiautomator import to_uiautomator
+from bajutsu.codegen.xcuitest import class_name_for, to_xcuitest
 from bajutsu.config import Effective, android_package, web_base_url
 from bajutsu.scenario import Scenario
 

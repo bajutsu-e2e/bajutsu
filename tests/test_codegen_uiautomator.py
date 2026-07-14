@@ -8,8 +8,8 @@ import pytest
 from typer.testing import CliRunner
 
 from bajutsu.cli import app
-from bajutsu.codegen_emit import EMIT_TARGETS, CodegenError, generate_test
-from bajutsu.codegen_uiautomator import class_name_for, to_uiautomator
+from bajutsu.codegen import EMIT_TARGETS, CodegenError, generate_test
+from bajutsu.codegen.uiautomator import class_name_for, to_uiautomator
 from bajutsu.config import load_config, resolve
 from bajutsu.scenario import load_scenarios
 
