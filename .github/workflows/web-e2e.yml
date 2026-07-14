@@ -1,11 +1,11 @@
 # Real-browser CI for the web (Playwright) backend, on a headless Chromium — two jobs: the demo
 # smoke (BE-0041) drives the demo web app end to end, and the driver conformance suite (BE-0114)
-# runs the backend-agnostic contract against the real driver. Unlike the iOS E2E (e2e.yml) both run
-# on Linux — no Mac, no Simulator — but installing Chromium + running a browser is heavy enough to
-# gate. Neither is a required check, so a path filter is enough: they simply don't run on a PR that
-# can't affect the web path, and an unrelated PR isn't blocked.
+# runs the backend-agnostic contract against the real driver. Unlike the iOS E2E (ios-e2e.yml) both
+# run on Linux — no Mac, no Simulator — but installing Chromium + running a browser is heavy enough
+# to gate. Neither is a required check, so a path filter is enough: they simply don't run on a PR
+# that can't affect the web path, and an unrelated PR isn't blocked.
 #
-# Positive-list filter (mirrors android-e2e.yml and e2e.yml's scripts/e2e_changes.py): only paths
+# Positive-list filter (mirrors android-e2e.yml and ios-e2e.yml's scripts/e2e_changes.py): only paths
 # the web jobs actually exercise. Subdirectories are listed explicitly (runner, scenario, drivers,
 # orchestrator for the smoke; serve, templates, serve-ui for the serve-UI dogfood, which drives the
 # served SPA); top-level `bajutsu/*.py` modules are allow-listed by name (the run/assert/codegen

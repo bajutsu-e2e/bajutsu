@@ -19,10 +19,9 @@ from typing import Any
 from bajutsu import simctl
 from bajutsu.device_id import is_valid_device_id
 from bajutsu.drivers import base
+from bajutsu.drivers.coordinate_tree import CoordinateTreeDriver
 
 RunFn = Callable[[list[str]], str]
-
-_StableKey = tuple[tuple[str, base.Frame], ...]
 
 _logger = logging.getLogger("bajutsu.idb")
 
@@ -222,19 +221,17 @@ def parse_describe_all(text: str) -> list[base.Element]:
     return [_to_element(it) for it in items if isinstance(it, dict)]
 
 
-class IdbDriver:
-    """Driver implementation for the iOS Simulator via idb."""
+class IdbDriver(CoordinateTreeDriver):
+    """Driver implementation for the iOS Simulator via idb.
+
+    The transient-empty retry, exponential backoff, stable-key projection, and not-found resolve loop
+    live in `CoordinateTreeDriver` (shared with `AdbDriver`); this class supplies idb's own describe
+    (`ui describe-all` + JSON), its fixed-count `_settle`, the accessibility-bridge-wedge recovery,
+    and its actuators.
+    """
 
     name = "idb"
 
-    # During a SwiftUI screen transition idb intermittently returns a near-empty
-    # accessibility tree (observed: a single element with no identifier) even though
-    # the screen has visually rendered. These bound a short retry so query() rides
-    # over that transient without masking a genuinely sparse screen for long.
-    _READY_MIN = 2  # a tree this size or larger is treated as settled
-    _EMPTY_RETRIES = 5  # extra describe-all attempts on a degenerate tree
-    _EMPTY_BACKOFF_S = 0.05  # base delay; doubles each attempt up to the cap
-    _EMPTY_BACKOFF_MAX_S = 0.2  # cap on a single backoff (total added <= ~0.75s, bounded)
     _SETTLE_MAX_POLLS = 3  # extra reads after initial comparison when frames are moving
     _SETTLE_POLL_S = 0.05  # interval between settle reads; describe-all provides natural spacing
     _AX_RESET_RETRIES = 3  # companion-connection resets on a persistent accessibility-bridge wedge
@@ -243,10 +240,9 @@ class IdbDriver:
         # Validate once at the object boundary so every use of self.udid is covered — the argv
         # builders and the gRPC companion path (_type_text_via_companion) alike, plus any future
         # use site — without each having to remember to wrap it.
+        super().__init__()
         self.udid = _validated_udid(udid)
         self._run = run
-        self._max_seen = 0  # richest tree seen on this device; gates the empty retry
-        self._last_stable_key: _StableKey | None = None
 
     def query(self) -> list[base.Element]:
         """describe-all, parsed and normalized into Elements.
@@ -255,7 +251,9 @@ class IdbDriver:
         has been seen on this device, a degenerate result is retried a bounded number
         of times so a single-shot assertion or wait does not act on the transient
         snapshot. A screen that has only ever been sparse (max seen < _READY_MIN) is
-        returned as-is, so a genuinely small screen is never masked.
+        returned as-is, so a genuinely small screen is never masked. That retry (and the
+        stable-key bookkeeping this method closes with) is the shared `_read_settled_tree` /
+        `_record_tree`; idb overrides `query` only to layer the wedge recovery below.
 
         A distinct failure survives that retry: idb's accessibility bridge can fail to attach to
         the app window on a cold-boot first launch, returning only the zero-frame `application` root
@@ -264,35 +262,20 @@ class IdbDriver:
         attach) and re-read, bounded — and if it persists, the degenerate tree is returned so the
         wait still fails loudly with the Unit 1 diagnostic rather than being masked.
         """
-        els = self._describe_settled()
+        els = self._read_settled_tree()
         for _ in range(self._AX_RESET_RETRIES):
             if not self._is_ax_bridge_wedged(els):
                 break
             self._reset_companion()
-            els = self._describe_settled()
-        self._max_seen = max(self._max_seen, len(els))
-        self._last_stable_key = self._stable_key(els)
-        return els
+            els = self._read_settled_tree()
+        return self._record_tree(els)
 
-    def _describe_settled(self) -> list[base.Element]:
-        """A describe-all that rides over idb's mid-transition empty tree (BE-0087).
-
-        Retries a degenerate result a bounded number of times, but only once a richer tree has been
-        seen on this device (see `_is_transient_empty`), so a genuinely sparse first screen is taken
-        at face value.
-
-        An accessibility-bridge wedge also satisfies `_is_transient_empty` once a richer tree has
-        been seen (both are `len < _READY_MIN`), but a same-companion re-read can never clear it — so
-        it is yielded immediately to the caller (`query()`, which resets the companion) rather than
-        burning the backoff loop on a read that cannot recover (BE-0231 Unit 6).
-        """
-        els = self._describe()
-        for i in range(self._EMPTY_RETRIES):
-            if not self._is_transient_empty(els) or self._is_ax_bridge_wedged(els):
-                break
-            time.sleep(self._empty_backoff(i))
-            els = self._describe()
-        return els
+    def _is_unrecoverable_empty(self, els: list[base.Element]) -> bool:
+        # A wedge satisfies `_is_transient_empty` once a richer tree has been seen (both are
+        # `len < _READY_MIN`), but a same-companion re-read can never clear it — so
+        # `_read_settled_tree` stops early and yields it to `query`, which resets the companion,
+        # rather than burning the backoff loop on a read that cannot recover (BE-0231 Unit 6).
+        return self._is_ax_bridge_wedged(els)
 
     def _settle(self) -> list[base.Element]:
         """Wait until the tree's identifier-frame projection is unchanged, or give up.
@@ -316,31 +299,8 @@ class IdbDriver:
             key = new_key
         return tree
 
-    @staticmethod
-    def _stable_key(els: list[base.Element]) -> _StableKey:
-        """Identifier-frame projection for settle: ignores volatile value/traits/label."""
-        return tuple(sorted((e["identifier"] or "", e["frame"]) for e in els))
-
-    def _empty_backoff(self, attempt: int) -> float:
-        """Exponential backoff for the transient-empty retry: base * 2**attempt, capped.
-
-        Recovers fast when the empty clears on the first retry and spaces out later, while
-        the cap keeps the total added wait within the previous fixed bound.
-        """
-        # 2.0** (not 2**) keeps the result a float: mypy types int**int as Any (it is float
-        # for a negative exponent), which would leak through min() as an Any return.
-        return min(self._EMPTY_BACKOFF_S * 2.0**attempt, self._EMPTY_BACKOFF_MAX_S)
-
     def _describe(self) -> list[base.Element]:
         return parse_describe_all(self._run(describe_all_cmd(self.udid)))
-
-    def _is_transient_empty(self, els: list[base.Element]) -> bool:
-        """Whether a result looks like idb's mid-transition empty tree rather than a real screen.
-
-        Fewer than _READY_MIN elements, but only once a richer tree has been observed
-        (so the first sparse screen seen is taken at face value).
-        """
-        return len(els) < self._READY_MIN and self._max_seen >= self._READY_MIN
 
     @staticmethod
     def _is_ax_bridge_wedged(els: list[base.Element]) -> bool:
@@ -372,27 +332,6 @@ class IdbDriver:
                 self._run(cmd)
             except subprocess.CalledProcessError as exc:
                 _logger.warning("idb companion reset step failed: %s (%s)", cmd, exc)
-
-    def _resolve(
-        self,
-        sel: base.Selector,
-        timeout: float = 3.0,
-        poll: float = 0.2,
-        *,
-        initial_tree: list[base.Element] | None = None,
-    ) -> base.Element:
-        # Real-device trees can be transiently empty during transitions; retry
-        # not-found while keeping ambiguity fail-fast.
-        deadline = time.monotonic() + timeout
-        tree = initial_tree if initial_tree is not None else self.query()
-        while True:
-            try:
-                return base.resolve_unique(tree, sel)
-            except base.ElementNotFound:
-                if time.monotonic() >= deadline:
-                    raise
-                time.sleep(poll)
-                tree = self.query()
 
     def _center(self, sel: base.Selector) -> base.Point:
         tree = self._settle()
@@ -461,14 +400,6 @@ class IdbDriver:
         self._type_text(self.udid, text)
 
     _type_text = staticmethod(_type_text_via_companion)
-
-    def wait_for(self, sel: base.Selector) -> bool:
-        """Single-shot: whether `sel` matches the current screen (BE-0118).
-
-        The deadline poll lives in the shared `base.wait_until`, so the timeout is honoured
-        identically on every backend.
-        """
-        return len(base.find_all(self.query(), sel)) >= 1
 
     def screenshot(self, path: str) -> None:
         self._run(screenshot_cmd(self.udid, path))

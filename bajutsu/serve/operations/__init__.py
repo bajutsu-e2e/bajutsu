@@ -24,6 +24,7 @@ from bajutsu.serve.operations._common import (
     _resolve_org_or_forbid,
 )
 from bajutsu.serve.operations.audit import audit_scenario
+from bajutsu.serve.operations.author_edit import apply_enrichment_edit, apply_selector_edit
 from bajutsu.serve.operations.capture import (
     finish_capture,
     mark_capture,
@@ -154,6 +155,8 @@ __all__ = [
     "ant_login",
     "ant_login_status",
     "api_key_info",
+    "apply_enrichment_edit",
+    "apply_selector_edit",
     "approve_baseline",
     "artifact_exists",
     "audit_scenario",

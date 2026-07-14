@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0266](BE-0266-contributor-workflow-tutorial.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0266") |
+| Implementing PR | [#1072](https://github.com/bajutsu-e2e/bajutsu/pull/1072) |
 | Topic | Development infrastructure (contributor workflow) |
 <!-- /BE-METADATA -->
 
@@ -111,13 +112,19 @@ them through it live.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] 1. Write `docs/contributor-workflow-tutorial.md`: the ideation → merged proposal →
+- [x] 1. Write `docs/contributor-workflow-tutorial.md`: the ideation → merged proposal →
       implement-be → merged PR walkthrough
-- [ ] 2. Add the worked good-vs-bad proposal example, referencing real merged BE items
-- [ ] 3. Expand `propose-and-build` coverage to be proportional to `ideation` / `implement-be`
-- [ ] 4. Cross-link from `CONTRIBUTING.md`, `docs/roadmap-workflow.md`, `docs/ai-development.md`,
+- [x] 2. Add the worked good-vs-bad proposal example, referencing real merged BE items
+- [x] 3. Expand `propose-and-build` coverage to be proportional to `ideation` / `implement-be`
+- [x] 4. Cross-link from `CONTRIBUTING.md`, `docs/roadmap-workflow.md`, `docs/ai-development.md`,
       `docs/README.md` / `docs/overview.md`, and `mkdocs.yml` nav
-- [ ] 5. Bilingual pass (`docs/ja/` mirror), per the `japanese-tech-writing` skill
+- [x] 5. Bilingual pass (`docs/ja/` mirror), per the `japanese-tech-writing` skill
+
+**Log**
+
+- (this PR) Added `docs/contributor-workflow-tutorial.md` (+ `docs/ja/` mirror) and cross-linked it
+  from `CONTRIBUTING.md`/`.ja`, `docs/roadmap-workflow.md`, `docs/ai-development.md`,
+  `docs/README.md`, `docs/overview.md` (both languages), and `mkdocs.yml` nav.
 
 ## References
 

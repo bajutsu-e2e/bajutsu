@@ -96,6 +96,8 @@ plugins:
             Home: ホーム
             Roadmap status: ロードマップの状況
             Getting started: はじめに
+            Getting started (iOS): はじめに（iOS）
+            Getting started (web track): はじめに（web トラック）
             Overview: 概要
             Showcase app: ショーケースアプリ
             Concepts: コンセプト
@@ -121,6 +123,7 @@ plugins:
             Configuration: 設定
             Self-hosting: セルフホスティング
             AI development: AI 開発
+            Contributor workflow tutorial: コントリビューターワークフローチュートリアル
             API reference: API リファレンス
             Scenario schema: シナリオスキーマ
             Driver & selectors: ドライバとセレクタ
@@ -158,8 +161,9 @@ nav:
   - Roadmap status: api/roadmap.md
   - Getting started:
       - Overview: overview.md
-      - Getting started: getting-started.md
-      - Getting started (web track): getting-started-web.md
+      - Getting started: getting-started/index.md
+      - Getting started (iOS): getting-started/ios.md
+      - Getting started (web track): getting-started/web.md
       - Showcase app: showcase.md
   - Concepts:
       - Concepts: concepts.md
@@ -189,6 +193,7 @@ nav:
       - Self-hosting: self-hosting.md
       - AI development: ai-development.md
       - Roadmap workflow: roadmap-workflow.md
+      - Contributor workflow tutorial: contributor-workflow-tutorial.md
   - API reference:
       - Overview: api/index.md
       - Configuration: api/config.md

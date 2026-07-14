@@ -468,6 +468,7 @@ Reduce friction for the many parallel sessions working this repo — treat merge
 | [BE-0219](BE-0219-roadmap-dashboard-search/BE-0219-roadmap-dashboard-search.md) | Text search on the roadmap status dashboard | Implemented |
 | [BE-0222](BE-0222-daily-doc-freshness-pr/BE-0222-daily-doc-freshness-pr.md) | Scheduled daily workflows that refresh the roadmap and docs separately, each opening its own review PR | Implemented |
 | [BE-0230](BE-0230-hands-free-implement-review-loop/BE-0230-hands-free-implement-review-loop.md) | Hands-free implement-review loop: auto-PR and pr-followup polling in implement-be | Implemented |
+| [BE-0266](BE-0266-contributor-workflow-tutorial/BE-0266-contributor-workflow-tutorial.md) | Contributor workflow tutorial: a hands-on guide to ideation / implement-be / propose-and-build | Implemented |
 <!-- /GENERATED:implemented-developer-experience -->
 
 ### Codebase quality & technical debt
@@ -495,7 +496,11 @@ Behavior-preserving cleanup inside `bajutsu/` itself — deduplication, decompos
 | [BE-0205](BE-0205-crawl-command-decomposition/BE-0205-crawl-command-decomposition.md) | Decompose the crawl CLI command like run | Implemented |
 | [BE-0206](BE-0206-serve-state-module-split/BE-0206-serve-state-module-split.md) | Split serve job state from job execution | Implemented |
 | [BE-0246](BE-0246-claude-client-taxonomy/BE-0246-claude-client-taxonomy.md) | Clarify the module taxonomy for talking to Claude | Implemented |
+| [BE-0254](BE-0254-coordinate-tree-driver-base/BE-0254-coordinate-tree-driver-base.md) | Extract a shared CoordinateTreeDriver base for idb and adb | Implemented |
+| [BE-0255](BE-0255-codegen-shared-helper-dedup/BE-0255-codegen-shared-helper-dedup.md) | Deduplicate codegen identifier and regex helpers into codegen_common | Implemented |
+| [BE-0258](BE-0258-serve-step-artifact-seam/BE-0258-serve-step-artifact-seam.md) | Route serve step-artifact reads through the ArtifactStore seam | Implemented |
 | [BE-0260](BE-0260-cli-bringup-consolidation/BE-0260-cli-bringup-consolidation.md) | Consolidate the duplicated CLI command bring-up and add a neutral DeviceError | Implemented |
+| [BE-0261](BE-0261-serve-author-yaml-roundtrip/BE-0261-serve-author-yaml-roundtrip.md) | Round-trip Author YAML edits through the serializer | Implemented |
 <!-- /GENERATED:implemented-quality-debt -->
 
 ## In progress
@@ -597,9 +602,7 @@ Running a scenario on a hosted device farm instead of a local Simulator, emulato
 ### Development infrastructure (contributor workflow)
 
 <!-- GENERATED:proposals-developer-experience -->
-| ID | Item | Status |
-|---|---|---|
-| [BE-0266](BE-0266-contributor-workflow-tutorial/BE-0266-contributor-workflow-tutorial.md) | Contributor workflow tutorial: a hands-on guide to ideation / implement-be / propose-and-build | Proposal |
+
 <!-- /GENERATED:proposals-developer-experience -->
 
 ### Codebase quality & technical debt
@@ -614,12 +617,8 @@ Running a scenario on a hosted device farm instead of a local Simulator, emulato
 | [BE-0251](BE-0251-driver-base-helper-hoist/BE-0251-driver-base-helper-hoist.md) | Hoist duplicated driver helpers into drivers.base and unify small constants | Proposal |
 | [BE-0252](BE-0252-config-package-split/BE-0252-config-package-split.md) | Split config into a package and group Effective into sub-records | Proposal |
 | [BE-0253](BE-0253-serve-route-registry-unification/BE-0253-serve-route-registry-unification.md) | Unify the serve dual-backend route tables behind a declarative registry | Proposal |
-| [BE-0254](BE-0254-coordinate-tree-driver-base/BE-0254-coordinate-tree-driver-base.md) | Extract a shared CoordinateTreeDriver base for idb and adb | Proposal |
-| [BE-0255](BE-0255-codegen-shared-helper-dedup/BE-0255-codegen-shared-helper-dedup.md) | Deduplicate codegen identifier and regex helpers into codegen_common | Proposal |
 | [BE-0256](BE-0256-platform-lifecycle-package-split/BE-0256-platform-lifecycle-package-split.md) | Split platform_lifecycle into a package and route device resolution through the Environment seam | Proposal |
-| [BE-0258](BE-0258-serve-step-artifact-seam/BE-0258-serve-step-artifact-seam.md) | Route serve step-artifact reads through the ArtifactStore seam | Proposal |
 | [BE-0259](BE-0259-assert-query-snapshot-reuse/BE-0259-assert-query-snapshot-reuse.md) | Reuse the settled query snapshot across assert and extract steps | Proposal |
-| [BE-0261](BE-0261-serve-author-yaml-roundtrip/BE-0261-serve-author-yaml-roundtrip.md) | Round-trip Author YAML edits through the serializer | Proposal |
 | [BE-0264](BE-0264-serve-uncaught-exception-json/BE-0264-serve-uncaught-exception-json.md) | Return JSON errors for uncaught serve handler exceptions | Proposal |
 <!-- /GENERATED:proposals-quality-debt -->
 

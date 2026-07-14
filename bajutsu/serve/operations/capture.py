@@ -59,6 +59,10 @@ def start_capture(
     screen_size = screen_size_from_elements(elements)
     namespaces: list[str] = list(target_cfg.id_namespaces)
 
+    # Deliberately outside the `ArtifactStore` seam (BE-0258): a capture session is a live,
+    # in-process object whose driver and HTTP handler share the same process for its lifetime,
+    # not a stored run, so `state.runs_dir` (always local to whichever host holds the live
+    # driver) stays correct here even when `state.artifacts` is an object-storage-backed store.
     shot_dir = state.runs_dir / "_capture"
     shot_dir.mkdir(parents=True, exist_ok=True)
     shot_path = shot_dir / "screen.png"

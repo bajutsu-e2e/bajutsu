@@ -6,6 +6,10 @@
 > colliding or regressing each other. The short version lives in [`CLAUDE.md`](../CLAUDE.md);
 > this page is the full operational guide.
 
+> **New to contributing? Start with the [contributor workflow tutorial](contributor-workflow-tutorial.md)** —
+> a hands-on walkthrough of your first proposal and first implementation. This page is the detailed
+> reference it links to for the rules (the gate, branches, BE-ID lifecycle, model tiers, PR template).
+
 The whole design rests on one property: **the deterministic gate is cheap, runs anywhere, and
 mirrors CI exactly.** This is what lets work fan out safely — every branch is independently
 verifiable, so "green locally" reliably predicts "green in CI", and the test suite is a
@@ -142,13 +146,13 @@ checks list — the YAML behind them is a click away, so each name has to stand 
 in one shape: a short plain-language phrase for what the check does, plus a parenthetical for the
 tool or scope when that adds information — `E2E (Simulator)`, `Swift (BajutsuKit)`,
 `Web E2E (Playwright)`, `Dependency audit (pip-audit)`. Never leave a bare single word (`docs`,
-`build`, `deploy`) that only makes sense once you open the run. `e2e.yml` and `swift.yml` are the
+`build`, `deploy`) that only makes sense once you open the run. `ios-e2e.yml` and `swift.yml` are the
 canonical examples (BE-0122). A `name:` that itself contains a colon-space needs quoting so YAML
 doesn't read it as a nested mapping — `name: "Roadmap: allocate BE IDs"`.
 
 One constraint bounds any rename. A required status check's context is the **job's** `name:`
 verbatim — not the workflow's — and `main`'s branch-protection ruleset pins a few of these by exact
-string: `check` (`ci.yml`), `E2E` (`e2e.yml`), and `require two approvals for BE proposals`
+string: `check` (`ci.yml`), `E2E` (`ios-e2e.yml`), and `require two approvals for BE proposals`
 (`roadmap-proposal-approvals.yml`). Renaming one of those job names without editing the ruleset's
 `required_status_checks` in the same instant strands every open PR on a check that no longer
 reports, silently blocking merges. Ruleset edits are out-of-repo admin state a normal PR can't

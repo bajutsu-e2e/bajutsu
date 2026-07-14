@@ -4,7 +4,7 @@
 
 This page is the **normative grammar** of the scenario DSL (domain-specific language): every production, type, default, and validation constraint, derived directly from the pydantic models in `bajutsu/scenario/` (the `models/` subpackage; `extra="forbid"`, so unknown keys are rejected). Where [scenarios](scenarios.md) is the authoring guide (how to write a scenario, with examples), this page is the language spec (what parses and what is rejected). It also covers the templating and macro layer — components, data-driven rows, and `setup` preludes — that surrounds the core grammar.
 
-Related: [scenarios](scenarios.md) (authoring guide) · [selectors](selectors.md) (how selectors/assertions evaluate) · [evidence](evidence.md) · [getting-started](getting-started.md)
+Related: [scenarios](scenarios.md) (authoring guide) · [selectors](selectors.md) (how selectors/assertions evaluate) · [evidence](evidence.md) · [getting-started](getting-started/index.md)
 
 ---
 

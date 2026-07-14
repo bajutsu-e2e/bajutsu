@@ -8,9 +8,9 @@
 > でっち上げたものではありません。各レシピの下のリンクから、ここでは省いた部分も含む全文を見られ
 > ます。
 
-関連: [scenarios](scenarios.md)・[selectors](selectors.md)・[network](network.md)・[Getting started](getting-started.md)
+関連: [scenarios](scenarios.md) · [selectors](selectors.md) · [network](network.md) · [Getting started](getting-started/index.md)
 
-showcase アプリをビルドするか web デモを配信すれば（[Getting started](getting-started.md) 参照）、
+showcase アプリをビルドするか web デモを配信すれば（[Getting started](getting-started/index.md) 参照）、
 以下のどれでも自分で実行できます。
 
 ```bash
@@ -229,7 +229,7 @@ scenarios:
 ```
 
 実行するには `uv run bajutsu run --scenario demos/web/scenarios/counter.yaml --target web --backend
-web --config demos/web/demo.config.yaml`（[web トラック](getting-started-web.md) 参照）。全文は
+web --config demos/web/demo.config.yaml`（[web トラック](getting-started/web.md) 参照）。全文は
 [`demos/web/scenarios/counter.yaml`](../../demos/web/scenarios/counter.yaml) にあります。
 
 ---

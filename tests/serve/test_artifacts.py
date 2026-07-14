@@ -46,6 +46,15 @@ def test_open_bytes_reads_confined_file(tmp_path: Path) -> None:
     assert store.open_bytes("20260610-1/sid0/visual-actual.png") == b"SHOT"
 
 
+def test_exists_matches_open_bytes_without_reading_the_body(tmp_path: Path) -> None:
+    runs = _runs(tmp_path)
+    store = srv.LocalArtifactStore(runs)
+    assert store.exists("20260610-1/report.html") is True
+    assert store.exists("20260610-1/missing.png") is False
+    assert store.exists("20260610-1") is False  # a directory, not a file
+    assert store.exists("../secret.txt") is False  # escapes runs_dir
+
+
 def test_escaping_or_missing_paths_are_none(tmp_path: Path) -> None:
     runs = _runs(tmp_path)
     secret = tmp_path / "secret.txt"

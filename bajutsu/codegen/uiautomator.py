@@ -23,7 +23,14 @@ from __future__ import annotations
 import re
 
 from bajutsu.assertions import request_label
-from bajutsu.codegen.common import render_test_file
+from bajutsu.codegen.common import (
+    class_name,
+    ident,
+    is_plain_substring,
+    ms,
+    network_unsupported,
+    render_test_file,
+)
 from bajutsu.drivers import base
 from bajutsu.scenario import Assertion, Gone, Scenario, Step, WaitRequest
 from bajutsu.scenario.models.assertions import CountMatch, TextMatch, Wait
@@ -31,7 +38,7 @@ from bajutsu.scenario.models.assertions import CountMatch, TextMatch, Wait
 # The adb backend has no network-interception surface (drivers/adb.py CAPABILITIES), so a network
 # `request` assertion / `until: { request }` wait has no faithful translation — a labeled TODO
 # naming the endpoint, like the device-control steps, not a bare "unsupported".
-_NO_NETWORK = "the adb backend has no network interception; assert via a mock/proxy; not generated"
+_NO_NETWORK = network_unsupported("the adb backend")
 
 # Directional swipe on an element: UiObject2.swipe(Direction, percent). The percent is the drag
 # extent as a fraction of the element — intrinsic to the gesture, like the XCUITest swipe helpers.
@@ -47,12 +54,6 @@ _GLOB_CLASS_CHARS = set("[]")
 # id carries that prefix in the tree while a Compose testTag surfaced via testTagsAsResourceId does
 # not, so the emitted selector makes the prefix optional to match either — the reverse of the strip.
 _ID_PREFIX = "(.*:id/)?"
-
-# Regex metacharacters. `labelMatches` is a Python `re.search` pattern; `By.text(Pattern)` matches
-# the *whole* string (Matcher.matches()), not a substring, so only a metacharacter-free pattern is a
-# plain substring we can map faithfully to `By.textContains`. A real regex has no faithful selector
-# form (the same limit `xcuitest.py` hits for NSPredicate MATCHES), so it stays unsupported (→ TODO).
-_RE_METACHARS = set(r".^$*+?{}[]\|()")
 
 
 def _s(text: str) -> str:
@@ -70,26 +71,6 @@ def _s(text: str) -> str:
         .replace("\t", "\\t")
     )
     return f'"{escaped}"'
-
-
-def _ident(name: str) -> str:
-    """Turn a scenario name into a Kotlin test-method identifier."""
-    cleaned = re.sub(r"[^0-9a-zA-Z]+", "_", name).strip("_")
-    if not cleaned:
-        cleaned = "scenario"
-    if cleaned[0].isdigit():
-        cleaned = "_" + cleaned
-    return f"test_{cleaned}"
-
-
-def _class_name(name: str) -> str:
-    cleaned = re.sub(r"[^0-9a-zA-Z]+", " ", name).title().replace(" ", "")
-    if not cleaned:
-        cleaned = "Generated"
-    if cleaned[0].isdigit():
-        # A Kotlin class name cannot start with a digit; prefix `_` as `_ident` does for methods.
-        cleaned = "_" + cleaned
-    return f"{cleaned}UITest"
 
 
 def _glob_to_regex(glob: str) -> str | None:
@@ -137,7 +118,7 @@ def _by(sel: base.Selector) -> str | None:
         # metacharacter-free pattern (a plain substring) maps faithfully — via `By.textContains`. A
         # real regex has no faithful single-selector form, so it stays unsupported (→ TODO).
         pattern = sel["labelMatches"]
-        if set(pattern) & _RE_METACHARS:
+        if not is_plain_substring(pattern):
             return None
         return f"By.textContains({_s(pattern)})"
     return None
@@ -158,10 +139,6 @@ def _act(sel: base.Selector, call: str) -> list[str]:
     if by is None:
         return [_unsupported_selector_todo(sel)]
     return [f"device.findObject({by}).{call}"]
-
-
-def _ms(seconds: float) -> int:
-    return int(seconds * 1000)
 
 
 def _emit_step(step: Step) -> list[str]:
@@ -232,7 +209,7 @@ def _device_control_todo(step: Step) -> str:
 
 def _emit_wait(w: Wait) -> list[str]:
     """The lines for a `wait` step: an existence / gone poll to the step's timeout, or a comment."""
-    timeout = _ms(w.timeout)
+    timeout = ms(w.timeout)
     if w.for_ is not None:
         by = _by(w.for_.as_selector())
         if by is None:
@@ -378,7 +355,7 @@ class _UiAutomatorGen:
         ]
 
     def scenario_open(self, name: str) -> str:
-        return f"  @Test\n  fun {_ident(name)}() {{"
+        return f"  @Test\n  fun {ident(name)}() {{"
 
     def setup_lines(self, scenario: Scenario) -> list[str]:
         # The mutable extras map the launch-env lines fill and `launch(extras)` consumes; always
@@ -415,5 +392,5 @@ def to_uiautomator(
 
 
 def class_name_for(stem: str) -> str:
-    """Derive the Kotlin test-class name from a file stem (public wrapper of `_class_name`)."""
-    return _class_name(stem)
+    """Derive the Kotlin test-class name from a file stem (`…UITest`)."""
+    return class_name(stem, "UITest")

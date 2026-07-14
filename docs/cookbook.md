@@ -7,10 +7,10 @@
 > Every recipe below is trimmed from a real file the repo's own CI runs — follow the link under
 > each one to see it in full context, including the parts trimmed here for focus.
 
-Related: [scenarios](scenarios.md) · [selectors](selectors.md) · [network](network.md) · [Getting started](getting-started.md)
+Related: [scenarios](scenarios.md) · [selectors](selectors.md) · [network](network.md) · [Getting started](getting-started/index.md)
 
 Run any of these yourself once you've built the showcase app or served the web demo (see
-[Getting started](getting-started.md)):
+[Getting started](getting-started/index.md)):
 
 ```bash
 uv run bajutsu run --scenario <path-to-file> --target showcase-swiftui --backend idb --udid booted --no-erase
@@ -220,7 +220,7 @@ scenarios:
 ```
 
 Run it with `uv run bajutsu run --scenario demos/web/scenarios/counter.yaml --target web --backend
-web --config demos/web/demo.config.yaml` (see the [web track](getting-started-web.md)). Full file:
+web --config demos/web/demo.config.yaml` (see the [web track](getting-started/web.md)). Full file:
 [`demos/web/scenarios/counter.yaml`](../demos/web/scenarios/counter.yaml).
 
 ---

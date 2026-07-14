@@ -277,3 +277,6 @@ def test_wait_until_request_emits_labeled_todo() -> None:
 def test_class_name_for() -> None:
     assert class_name_for("smoke") == "SmokeUITests"
     assert class_name_for("my-flow_v2") == "MyFlowV2UITests"
+    # A Swift `class` name cannot start with a digit, so a digit-leading stem is prefixed `_`
+    # (BE-0255 applied the guard uniformly; XCUITest was silently unguarded before).
+    assert class_name_for("2fa_flow") == "_2FaFlowUITests"

@@ -9,7 +9,11 @@ this page orients you and links there rather than repeating the rules, so the tw
 apart.
 
 New to the project? Read [`README.md`](README.md) for what Bajutsu is, and the
-[getting-started tutorial](docs/getting-started.md) for a hands-on walkthrough.
+[getting-started tutorial](docs/getting-started/index.md) for a hands-on walkthrough of *running*
+Bajutsu. When you are ready to make your first change, the
+[contributor workflow tutorial](docs/contributor-workflow-tutorial.md) walks one idea from
+`/ideation` to a merged proposal and on through `/implement-be` to a merged PR — start there before
+the reference pages below.
 
 ## Set up your environment
 
