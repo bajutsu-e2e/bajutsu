@@ -19,7 +19,7 @@ _SERVE_CSS = (_TEMPLATES / "serve.css").read_text(encoding="utf-8")
 _THEMES_CSS = (_TEMPLATES / "serve.themes.css").read_text(encoding="utf-8")
 # The tiler/graph set some geometry tokens live via inline `style="--x:…"` (BE-0072); those are
 # defined at runtime by the JS, not in a stylesheet, so treat them as defined too.
-_JS = "\n".join(p.read_text(encoding="utf-8") for p in sorted(_TEMPLATES.glob("serve.*.js")))
+_JS = "\n".join(p.read_text(encoding="utf-8") for p in sorted(_TEMPLATES.glob("serve.*.mjs")))
 
 # A `var(--x)` reference with no comma has no inline fallback, so the token must be defined
 # somewhere; `var(--x, <fallback>)` supplies its own default (the tiler's geometry tokens set

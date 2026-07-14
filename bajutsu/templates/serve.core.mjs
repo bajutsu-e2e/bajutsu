@@ -1,11 +1,18 @@
-// serve.core.js — shared helpers, global state, config, and Settings for the serve Web UI.
+// serve.core.mjs — shared helpers, cross-panel state, config, and Settings for the serve Web UI.
 //
-// One of the serve.*.js section files (BE-0202): handler.py concatenates them in a fixed order
-// (core → panels → crawl → author) into a single inlined <script>, so they share one global scope
-// with no build step and no modules — exactly as when this was one file. Order matters: this file
-// loads first and defines the helpers (`$`, setBusy, streamJob, startJob, …) and state the panel
-// files use, so keep cross-file references pointing backward.
-//
+// One of the serve.*.mjs section files, now native ES modules (BE-0247, converting BE-0202's split):
+// each file `export`s its public surface and `import`s what it needs, so a file's dependencies are
+// declared in the file itself rather than implied by a load order handler.py used to maintain. This
+// file holds the shared primitives (`$`, setBusy, streamJob, startJob, …) the panels import, plus the
+// cross-panel mutable state (`state`). The forward references below (the section functions showView /
+// loadSims / loadShared reach into) are real imports; core and the sections form an import cycle,
+// which is safe because every cross-module binding is used at call time, never at module-evaluation
+// time. serve.author.mjs is the entry module the page loads.
+import {loadHistory, loadStats, loadFlaky, loadUsage, coverageInit, showInfo, replayAudit, onSimChange} from './serve.panels.mjs';
+import {loadMetrics} from './serve.metrics.mjs';
+import {onCrawlSimChange} from './serve.crawl.mjs';
+import {authorInit, authorRefresh, syncPlatform, replayCodegen} from './serve.author.mjs';
+
 // ---- login: a request 401s when the server requires auth. If GitHub OAuth is configured, send the
 // browser through it; otherwise prompt for the shared token, POST /api/login (which sets an HttpOnly
 // session cookie), then reload. No-op on an open server (BE-0051 token; BE-0015 7b-2 OAuth). ----
@@ -32,13 +39,22 @@ async function _bjLogin(){
 }
 
 const $=s=>document.querySelector(s);
-let poll=null,recPoll=null,selectedRun=null,recPath=null,scnFiles=[],targets=[],sims=[];
-let recJobId=null,runJobId=null,triageJobId=null;
-let recRunPoll=null,recRunJobId=null;  // running the just-authored scenario from the Record tab
-let recReportShow=null,recReportHide=null;  // set by the tiler: add/remove the Run-result pane
+// Cross-panel mutable state. A plain `export let` gives importers a read-only live binding, so state
+// that another module *reassigns* (panels drives the record/replay jobs; author's tiler sets the
+// Run-result show/hide hooks) can't live in one — it lives on this object instead, whose properties
+// any importer mutates. State only this module ever writes (scnFiles, aiAvailable) stays an
+// `export let` below, read cross-module through the live binding.
+export const state={
+  poll:null,recPoll:null,selectedRun:null,recPath:null,
+  recJobId:null,runJobId:null,triageJobId:null,
+  recRunPoll:null,recRunJobId:null,  // running the just-authored scenario from the Record tab
+  recReportShow:null,recReportHide:null,  // set by the tiler: add/remove the Run-result pane
+};
+export let scnFiles=[];
+let targets=[],sims=[];
 // Whether Claude is reachable (from /api/provider). Gates the opt-in AI toggle on triage the same
 // way it gates record/crawl; heuristic triage never needs it. Kept in sync by refreshAiAvailability.
-let aiAvailable=false;
+export let aiAvailable=false;
 // Toggle a run/stop button pair between idle and running (amber + spinner via the .running class).
 function setBusy(btn,stop,on,busyLabel){
   btn.classList.toggle('running',on);btn.disabled=on;btn.textContent=on?busyLabel:btn.dataset.idle;
@@ -1015,3 +1031,12 @@ $('#themeimport').addEventListener('click',()=>$('#themeimport-input').click());
 // The "Upload to Server" button ships hidden; reveal + wire it only when the instance was started
 // with --themes (there's a directory to write into), signaled by the server-set writable flag.
 if(window.__bajutsuThemesWritable){$('#themesave-upload').hidden=false;$('#themesave-upload').addEventListener('click',uploadTheme);}
+
+// Public surface the other section modules import. `state`, `scnFiles`, `aiAvailable` are already
+// exported at their declarations above; everything here is a plain shared helper or orchestrator.
+export {
+  $, setBusy, cancelJob, streamJob, appendLine, esc, setStatus, getJSON, postJSON, startJob,
+  renderGradeBadge, wireDoctor, NARROW_MQ, prefersReducedMotion, motionOff, initTheme,
+  openModal, closeModal, showView, loadConfig, setCfgName, closeFs, loadProjects, switchProject,
+  loadShared, loadScenarios, loadSims, refreshAiAvailability,
+};

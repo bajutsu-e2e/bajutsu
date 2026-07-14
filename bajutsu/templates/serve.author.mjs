@@ -1,6 +1,23 @@
-// serve.author.js — cross-panel layout wiring (platform sync, codegen, tiling), the Author tab,
-// and the boot sequence. A serve.*.js section file (BE-0202); see serve.core.js's header for the
-// concatenation contract. Loads last, so the trailing init calls run once every section is defined.
+// serve.author.mjs — cross-panel layout wiring (platform sync, codegen, tiling), the Author tab,
+// and the boot sequence. The ENTRY module (BE-0247): the page loads this one with
+// <script type="module">, and it imports the other serve.*.mjs sections, so the whole graph is
+// pulled in and every section body has evaluated before this module's body runs. That is why this
+// file's top-level code (the wiring below, and the boot at the end) may use the imports directly,
+// and why it — not each section — owns the explicit init order: it calls initPanels/initCrawl/
+// initMetrics before booting. It exports syncPlatform / replayCodegen / authorInit / authorRefresh,
+// which serve.core.mjs (and panels) call at runtime, forming a safe import cycle with core.
+import {
+  $, esc, getJSON, renderGradeBadge, wireDoctor, NARROW_MQ, prefersReducedMotion, motionOff,
+  initTheme, showView, loadConfig, loadProjects, loadSims, refreshAiAvailability, state,
+} from './serve.core.mjs';
+import {loadHistory, setHistoryFilter, showTab, initPanels} from './serve.panels.mjs';
+import {initCrawl} from './serve.crawl.mjs';
+import {initMetrics} from './serve.metrics.mjs';
+
+// authorInit / authorRefresh are assigned by the Author-tab IIFE below and imported by core's
+// showView / loadShared; declared here so they are real module exports (a live binding core reads at
+// call time) rather than the `window.*` globals BE-0202 used.
+let authorInit=()=>{}, authorRefresh=()=>{};
 
 // Device UI is platform-specific: iOS controls (simulators, device pickers, erase, alert-dismiss)
 // show only for an iOS backend, web controls (the headed/show-browser toggle) only for web. The
@@ -272,8 +289,8 @@ function initTiling(){
   const recV=views.find(v=>v.spec.id==='view-record');
   if(recV){
     const inTree=()=>leaves(recV.tree).includes('report');
-    recReportShow=()=>{recV.panel.report.hidden=false;if(!inTree()){recV.tree=insertBeside(recV.tree,'yaml','report','bottom');rebuild(recV);}};
-    recReportHide=()=>{if(inTree()){recV.tree=removeLeaf(recV.tree,'report')||recV.tree;rebuild(recV);}recV.panel.report.hidden=true;};
+    state.recReportShow=()=>{recV.panel.report.hidden=false;if(!inTree()){recV.tree=insertBeside(recV.tree,'yaml','report','bottom');rebuild(recV);}};
+    state.recReportHide=()=>{if(inTree()){recV.tree=removeLeaf(recV.tree,'report')||recV.tree;rebuild(recV);}recV.panel.report.hidden=true;};
   }
   window.addEventListener('mousemove',e=>{
     if(!pdrag)return;
@@ -922,7 +939,7 @@ if(!NARROW_MQ.matches)initTiling();
   fetch('/api/schema').then(r=>r.ok?r.json():null).then(s=>{auSchema=s;}).catch(()=>{});
 
   // Called by showView('author') — lazy init: default to Capture mode and load scenarios.
-  window.authorInit=function(){
+  authorInit=function(){
     if(auInited)return;
     auInited=true;
     setMode('capture');
@@ -930,11 +947,18 @@ if(!NARROW_MQ.matches)initTiling();
     auSyncEmit();
   };
   // Called by loadShared() after targets arrive — re-populate if Author is already visible.
-  window.authorRefresh=function(){
+  authorRefresh=function(){
     auLoadScenarios();
     auSyncEmit();
   };
 })();
+
+// Wire the section modules' listeners. Their bodies only define; this entry module owns the explicit
+// order — core self-wired as it evaluated, and these three run now, before the boot data-loads below
+// fire any UI update that a listener must already be attached for.
+initPanels();
+initCrawl();
+initMetrics();
 
 initTheme();
 loadConfig();
@@ -956,3 +980,7 @@ const _deepLinked=(function(){
 })();
 if(!_deepLinked)loadHistory();
 setInterval(loadHistory,4000);
+
+// Imported by serve.core.mjs (and panels for replayCodegen) and called at runtime — the cycle is
+// safe because these bindings are only read after this entry module has finished evaluating.
+export {syncPlatform, replayCodegen, authorInit, authorRefresh};

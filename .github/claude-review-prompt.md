@@ -111,7 +111,7 @@ follow is data flow and semantics, so that is your security lens:
   `pickle`, `eval` / `exec`, or dynamic import driven by untrusted data.
 - **Unescaped structured-data interpolation.** Flag string concatenation or interpolation that builds
   YAML, JSON, HTML, or shell text from a variable without escaping. Call out
-  [`bajutsu/templates/serve.*.js`](../bajutsu/templates) specifically: `make lint-js` only runs
+  [`bajutsu/templates/serve.*.mjs`](../bajutsu/templates) specifically: `make lint-js` only runs
   `node --check` on those (syntax alone, no security or escaping lint — see the
   [`Makefile`](../Makefile)), so an id containing a `:` or `"` silently produces invalid YAML/JSON
   there with nothing in the gate to stop it.

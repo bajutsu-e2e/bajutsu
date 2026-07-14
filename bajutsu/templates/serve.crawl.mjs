@@ -1,31 +1,14 @@
-// serve.crawl.js — the Crawl panel, its history, and the crawl-graph render / zoom-pan / lightbox.
-// A serve.*.js section file (BE-0202); see serve.core.js's header for the concatenation contract.
-// The largest section — the ~400-line graph lives here, kept together with its panel.
+// serve.crawl.mjs — the Crawl panel, its history, and the crawl-graph render / zoom-pan / lightbox.
+// A serve.*.mjs section module (BE-0247); imports its shared helpers from serve.core.mjs. The
+// largest section — the ~400-line graph lives here, kept together with its panel. Its body only
+// defines; every top-level listener (the form, the graph interaction, the lightbox) is wired by
+// initCrawl(), which the entry module (serve.author.mjs) calls after all sections evaluate.
+import {$, esc, getJSON, setStatus, setBusy, streamJob, cancelJob, appendLine, startJob, openModal, closeModal, loadSims} from './serve.core.mjs';
 
 // ---- Crawl: explore the app and watch the screen map grow live ----
 let crawlPoll=null,crawlJobId=null,crawlRunId=null;
 function crawlPickedUdids(){return [...$('#crawl-sims').querySelectorAll('.crawl-simck:checked')].map(c=>c.value)}
 function onCrawlSimChange(){const n=crawlPickedUdids().length;if(n>0)$('#crawl-workers').value=n}
-$('#crawl-simrefresh').addEventListener('click',loadSims);
-$('#crawl-go').addEventListener('click',async()=>{
-  // Crawl's own pane clearing (the shared start skeleton lives in startJob).
-  $('#crawl-out').textContent='';$('#crawl-counts').textContent='';
-  $('#crawl-graph').innerHTML='<div class="empty">Launching the app and reaching the first screen…</div>';
-  crawlPoll=await startJob({
-    prev:crawlPoll,btn:$('#crawl-go'),stop:$('#crawl-stop'),busyLabel:'Crawling…',status:$('#crawl-status'),
-    url:'/api/crawl',body:{
-      target:$('#crawl-target').value,udid:crawlPickedUdids().join(',')||'booted',
-      workers:parseInt($('#crawl-workers').value,10)||1,
-      maxScreens:parseInt($('#crawl-maxscreens').value,10)||50,maxSteps:parseInt($('#crawl-maxsteps').value,10)||200,
-      erase:$('#crawl-erase').checked,
-      dismissAlerts:$('#crawl-nodismiss').checked?false:undefined,headed:$('#crawl-headed').checked||undefined},
-    onStart:d=>{crawlJobId=d.jobId;crawlRunId=d.runId;},
-    onLog:line=>{
-      appendLine($('#crawl-out'),line);
-      if(crawlRunId)loadGraph(crawlRunId);  // redraw the streamed screenmap.json as it grows
-    },onDone:crawlDone});
-});
-$('#crawl-stop').addEventListener('click',()=>cancelJob(crawlJobId,$('#crawl-stop')));
 
 // ---- Crawl history (BE-0180): reopen a past crawl's screen map read-only ----
 // A crawl writes no manifest.json (it has no pass/fail), so its runs never appear in the Replay tab's
@@ -130,8 +113,6 @@ function showCrawlTab(name){
   $('#panel-crawl').hidden=name!=='crawlform';$('#crawl-panel-history').hidden=name!=='crawlhistory';
   if(name==='crawlform')exitCrawlHistory();else loadCrawlHistory();
 }
-document.querySelectorAll('#view-crawl .tab').forEach(t=>t.addEventListener('click',()=>showCrawlTab(t.dataset.tab)));
-$('#crawl-refresh').addEventListener('click',loadCrawlHistory);
 
 async function crawlDone(j){
   crawlPoll=null;crawlJobId=null;setBusy($('#crawl-go'),$('#crawl-stop'),false);
@@ -377,7 +358,9 @@ function zoomBy(factor,cx,cy){
   gview.x=cx-r.left-px*gview.k;gview.y=cy-r.top-py*gview.k;applyView();
 }
 function resetView(){gview.x=0;gview.y=0;gview.k=1;applyView()}
-(function(){
+// Graph pointer interaction (wheel-zoom, drag-pan, node drag, touch pan/pinch, hover highlight).
+// Wired as one closure over its own drag state; called by initCrawl once the graph panel exists.
+function initGraphInteraction(){
   const box=$('#crawl-graph');let drag=null,nodeDrag=null,moved=false;
   const NDW=NODE_W,NDH2=NODE_H/2;
   function liveEdges(wrap,uid,nx,ny){
@@ -454,7 +437,7 @@ function resetView(){gview.x=0;gview.y=0;gview.k=1;applyView()}
     const wrap=$('.graphwrap');if(!wrap)return;
     wrap.classList.remove('hl');wrap.querySelectorAll('.edge.hot').forEach(p=>p.classList.remove('hot'));
     wrap.querySelectorAll('.gnode.faded').forEach(g=>g.classList.remove('faded'))});
-})();
+}
 // Whether unit `other` is directly connected to `uid` by some edge (either direction).
 function isAdjacent(wrap,uid,other){
   if(!other)return false;
@@ -462,16 +445,6 @@ function isAdjacent(wrap,uid,other){
     if((p.dataset.a===uid&&p.dataset.b===other)||(p.dataset.b===uid&&p.dataset.a===other))return true;
   return false;
 }
-$('#crawl-zoomin').addEventListener('click',()=>{const r=$('#crawl-graph').getBoundingClientRect();zoomBy(1.2,r.left+r.width/2,r.top+r.height/2)});
-$('#crawl-zoomout').addEventListener('click',()=>{const r=$('#crawl-graph').getBoundingClientRect();zoomBy(1/1.2,r.left+r.width/2,r.top+r.height/2)});
-$('#crawl-zoomreset').addEventListener('click',resetView);
-$('#crawl-realign').addEventListener('click',()=>{nodeOverrides.clear();redrawGraph()});
-// A screen row in the plan tree opens that screen's lightbox, same as a graph node.
-$('#crawl-plan').addEventListener('click',e=>{
-  // A struck-through pruned op: resume exploring that branch (re-crawl from its screen).
-  const pr=e.target.closest('.plrow.op.pruned');
-  if(pr&&pr.dataset.src&&pr.dataset.key){resumePruned(pr.dataset.src,pr.dataset.key);return}
-  const r=e.target.closest('.plrow.scr');if(r&&r.dataset.fp)openShot(r.dataset.fp)});
 // Tap a pruned branch to resume exploring it: re-launch the crawl against the SAME run, seeded to
 // replay to that screen and perform the pruned op, appending whatever it finds to the live map.
 async function resumePruned(src,key){
@@ -497,8 +470,6 @@ async function resumePruned(src,key){
     if(crawlRunId)loadGraph(crawlRunId);
   },crawlDone);
 }
-// Toggle pruning of duplicate global ops in the plan tree, re-rendering it in place.
-(function(){const t=$('#crawl-prune');if(t)t.addEventListener('change',()=>{prunePlan=t.checked;if(crawlGraphData)renderPlan(crawlGraphData)})})();
 
 // ---- lightbox: enlarge a screen's shot and step through the transitions (before / after) ----
 let shotFp=null;  // the screen currently shown, so prev/next can walk the graph from it
@@ -566,18 +537,59 @@ function shotStep(dir){
   if(e)openShot(dir==='fwd'?e.dst:e.src);
 }
 function closeShot(){closeModal($('#shotmodal'),()=>{$('#shotimg').removeAttribute('src');$('#shothots').innerHTML='';shotFp=null;hideHi()})}
-$('#shotmodal').addEventListener('click',e=>{if(e.target===$('#shotmodal')||e.target===$('#shotclose'))closeShot()});
-$('#shotnext').addEventListener('click',e=>{const b=e.target.closest('.nextrow');if(b&&b.dataset.fp)openShot(b.dataset.fp)});
-// Click an actionable spot on the shot that has a known destination to step there.
-$('#shothots').addEventListener('click',e=>{const h=e.target.closest('.hot.go');if(h&&h.dataset.dst)openShot(h.dataset.dst)});
-// Hovering a transition / planned row with a known tap location highlights it on the screenshot.
-$('#shotnext').addEventListener('mouseover',e=>{const r=e.target.closest('[data-rect]');if(r)showHi(r.dataset.rect)});
-$('#shotnext').addEventListener('mouseout',e=>{if(e.target.closest('[data-rect]'))hideHi()});
-$('#shotprev').addEventListener('click',()=>shotStep('prev'));
-$('#shotfwd').addEventListener('click',()=>shotStep('fwd'));
-// Arrow keys walk the transitions; Esc closes — only while the lightbox is open.
-document.addEventListener('keydown',e=>{
-  if($('#shotmodal').hidden)return;
-  if(e.key==='ArrowRight')shotStep('fwd');else if(e.key==='ArrowLeft')shotStep('prev');else if(e.key==='Escape')closeShot();
-});
 
+// Wire every static listener for the panel, the graph interaction, and the lightbox. Called once by
+// the entry module's boot after all sections evaluate (so the shared helpers are defined).
+function initCrawl(){
+  $('#crawl-simrefresh').addEventListener('click',loadSims);
+  $('#crawl-go').addEventListener('click',async()=>{
+    // Crawl's own pane clearing (the shared start skeleton lives in startJob).
+    $('#crawl-out').textContent='';$('#crawl-counts').textContent='';
+    $('#crawl-graph').innerHTML='<div class="empty">Launching the app and reaching the first screen…</div>';
+    crawlPoll=await startJob({
+      prev:crawlPoll,btn:$('#crawl-go'),stop:$('#crawl-stop'),busyLabel:'Crawling…',status:$('#crawl-status'),
+      url:'/api/crawl',body:{
+        target:$('#crawl-target').value,udid:crawlPickedUdids().join(',')||'booted',
+        workers:parseInt($('#crawl-workers').value,10)||1,
+        maxScreens:parseInt($('#crawl-maxscreens').value,10)||50,maxSteps:parseInt($('#crawl-maxsteps').value,10)||200,
+        erase:$('#crawl-erase').checked,
+        dismissAlerts:$('#crawl-nodismiss').checked?false:undefined,headed:$('#crawl-headed').checked||undefined},
+      onStart:d=>{crawlJobId=d.jobId;crawlRunId=d.runId;},
+      onLog:line=>{
+        appendLine($('#crawl-out'),line);
+        if(crawlRunId)loadGraph(crawlRunId);  // redraw the streamed screenmap.json as it grows
+      },onDone:crawlDone});
+  });
+  $('#crawl-stop').addEventListener('click',()=>cancelJob(crawlJobId,$('#crawl-stop')));
+  document.querySelectorAll('#view-crawl .tab').forEach(t=>t.addEventListener('click',()=>showCrawlTab(t.dataset.tab)));
+  $('#crawl-refresh').addEventListener('click',loadCrawlHistory);
+  initGraphInteraction();
+  $('#crawl-zoomin').addEventListener('click',()=>{const r=$('#crawl-graph').getBoundingClientRect();zoomBy(1.2,r.left+r.width/2,r.top+r.height/2)});
+  $('#crawl-zoomout').addEventListener('click',()=>{const r=$('#crawl-graph').getBoundingClientRect();zoomBy(1/1.2,r.left+r.width/2,r.top+r.height/2)});
+  $('#crawl-zoomreset').addEventListener('click',resetView);
+  $('#crawl-realign').addEventListener('click',()=>{nodeOverrides.clear();redrawGraph()});
+  // A screen row in the plan tree opens that screen's lightbox, same as a graph node.
+  $('#crawl-plan').addEventListener('click',e=>{
+    // A struck-through pruned op: resume exploring that branch (re-crawl from its screen).
+    const pr=e.target.closest('.plrow.op.pruned');
+    if(pr&&pr.dataset.src&&pr.dataset.key){resumePruned(pr.dataset.src,pr.dataset.key);return}
+    const r=e.target.closest('.plrow.scr');if(r&&r.dataset.fp)openShot(r.dataset.fp)});
+  // Toggle pruning of duplicate global ops in the plan tree, re-rendering it in place.
+  const t=$('#crawl-prune');if(t)t.addEventListener('change',()=>{prunePlan=t.checked;if(crawlGraphData)renderPlan(crawlGraphData)});
+  $('#shotmodal').addEventListener('click',e=>{if(e.target===$('#shotmodal')||e.target===$('#shotclose'))closeShot()});
+  $('#shotnext').addEventListener('click',e=>{const b=e.target.closest('.nextrow');if(b&&b.dataset.fp)openShot(b.dataset.fp)});
+  // Click an actionable spot on the shot that has a known destination to step there.
+  $('#shothots').addEventListener('click',e=>{const h=e.target.closest('.hot.go');if(h&&h.dataset.dst)openShot(h.dataset.dst)});
+  // Hovering a transition / planned row with a known tap location highlights it on the screenshot.
+  $('#shotnext').addEventListener('mouseover',e=>{const r=e.target.closest('[data-rect]');if(r)showHi(r.dataset.rect)});
+  $('#shotnext').addEventListener('mouseout',e=>{if(e.target.closest('[data-rect]'))hideHi()});
+  $('#shotprev').addEventListener('click',()=>shotStep('prev'));
+  $('#shotfwd').addEventListener('click',()=>shotStep('fwd'));
+  // Arrow keys walk the transitions; Esc closes — only while the lightbox is open.
+  document.addEventListener('keydown',e=>{
+    if($('#shotmodal').hidden)return;
+    if(e.key==='ArrowRight')shotStep('fwd');else if(e.key==='ArrowLeft')shotStep('prev');else if(e.key==='Escape')closeShot();
+  });
+}
+
+export {onCrawlSimChange, initCrawl};

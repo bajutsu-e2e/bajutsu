@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0247](BE-0247-serve-frontend-es-modules.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0247") |
+| Implementing PR | [#PENDING](https://github.com/bajutsu-e2e/bajutsu/pulls) |
 | Topic | Codebase quality & technical debt |
 | Related | [BE-0202](../BE-0202-serve-js-modularization/BE-0202-serve-js-modularization.md) |
 <!-- /BE-METADATA -->
@@ -114,12 +115,27 @@ this item touches only how the frontend code is organized and loaded.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Native ES modules — each section file `export`s its public surface and `import`s its
+- [x] Native ES modules — each section file `export`s its public surface and `import`s its
       dependencies; `handler.py` serves each file at its own path instead of concatenating them.
-- [ ] Fallback namespace step landed first, if the delivery change is staged (optional, superseded
-      by the item above once native modules ship).
-- [ ] Load order enforced by the `import` graph; `eslint.config.mjs` updated to `sourceType:
+- [ ] Fallback namespace step (optional) — not taken: the change landed as native modules directly,
+      so this staging step is superseded by the item above.
+- [x] Load order enforced by the `import` graph; `eslint.config.mjs` updated to `sourceType:
       "module"` for the converted files.
+
+Log:
+
+- PR [#PENDING](https://github.com/bajutsu-e2e/bajutsu/pulls) — converted the five `serve.*.js`
+  section files to native ES modules (`serve.*.mjs`): each `import`s its dependencies and `export`s
+  its public surface; cross-panel mutable state moved onto a shared `state` object (a live `export
+  let` is read-only for importers); each section's top-level side effects moved into `init*()`
+  functions the entry module (`serve.author.mjs`) calls in order, so the import graph — not a
+  hand-maintained tuple — decides load order, with cycles safe because no binding is used at
+  module-evaluation time. `handler.py` serves each module at its own route (`/serve.*.mjs`,
+  `text/javascript`, open-GET like the index) and the page loads the entry via `<script
+  type="module">` with `modulepreload` hints; `_JS_ASSETS` (concatenation) became `_JS_MODULES`.
+  `eslint.config.mjs` → `sourceType: "module"`, `make lint-js` → per-file `node --check` on the
+  `.mjs` set (the concatenation check retired). `no-undef` stays off — declaring the bare browser
+  globals (the primary obstacle) is still deferred.
 
 ## References
 
