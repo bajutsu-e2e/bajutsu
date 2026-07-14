@@ -559,7 +559,9 @@ Running a scenario on a hosted device farm instead of a local Simulator, emulato
 ### Scenario authoring features
 
 <!-- GENERATED:proposals-scenario-authoring -->
-
+| ID | Item | Status |
+|---|---|---|
+| [BE-0265](BE-0265-text-editing-steps/BE-0265-text-editing-steps.md) | Text-editing steps: select, clear, delete, copy | Proposal |
 <!-- /GENERATED:proposals-scenario-authoring -->
 
 ### Authoring experience (record / GUI editor)

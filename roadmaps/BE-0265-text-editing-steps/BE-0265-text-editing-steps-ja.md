@@ -1,14 +1,14 @@
-[English](BE-XXXX-text-editing-steps.md) · **日本語**
+[English](BE-0265-text-editing-steps.md) · **日本語**
 
-# BE-XXXX — テキスト編集ステップ: select・clear・delete・copy
+# BE-0265 — テキスト編集ステップ: select・clear・delete・copy
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
 |---|---|
-| 提案 | [BE-XXXX](BE-XXXX-text-editing-steps-ja.md) |
+| 提案 | [BE-0265](BE-0265-text-editing-steps-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **提案** |
-| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0265") |
 | トピック | シナリオ記述機能 |
 <!-- /BE-METADATA -->
 
