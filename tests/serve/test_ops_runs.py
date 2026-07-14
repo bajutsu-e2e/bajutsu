@@ -211,7 +211,7 @@ def test_sweep_end_to_end_on_the_object_store_backend(tmp_path: Path) -> None:
         scenarios=state.scenarios,
         baselines=state.baselines,
         secrets=state.secrets,
-        provider_settings=state.provider_settings_store,
+        provider_settings=state.providers.store,
     )
     state.org_stores = lambda _org: bundle
     state.run_retention_days = 30

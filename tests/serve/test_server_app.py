@@ -30,7 +30,9 @@ def _client(state: srv.ServeState) -> TestClient:
 
 def _state(tmp_path: Path, *, token: str | None = None) -> srv.ServeState:
     _scn_dir, cfg, runs = project(tmp_path)
-    return srv.ServeState(config=cfg, runs_dir=runs, root=tmp_path, cwd=tmp_path, token=token)
+    return srv.ServeState(
+        config=cfg, runs_dir=runs, root=tmp_path, cwd=tmp_path, auth=srv.SessionManager(token=token)
+    )
 
 
 def test_serves_the_spa_at_root(tmp_path: Path) -> None:
@@ -168,7 +170,12 @@ def test_artifact_upload_routes_bind_like_stdlib(tmp_path: Path) -> None:
 
 
 def test_upload_route_requires_auth_when_token_set(tmp_path: Path) -> None:
-    state = srv.ServeState(runs_dir=tmp_path / "runs", cwd=tmp_path, root=tmp_path, token="s3cret")
+    state = srv.ServeState(
+        runs_dir=tmp_path / "runs",
+        cwd=tmp_path,
+        root=tmp_path,
+        auth=srv.SessionManager(token="s3cret"),
+    )
     (tmp_path / "runs").mkdir()
     resp = _client(state).post("/api/upload?name=x.zip", content=b"x")
     assert resp.status_code == 401  # behind BE-0051 token auth like every other mutating endpoint
@@ -297,8 +304,7 @@ def _oauth_state(
         runs_dir=runs,
         root=tmp_path,
         cwd=tmp_path,
-        oauth=_FakeOAuth(login),
-        oauth_allowed_users=allowed,
+        auth=srv.SessionManager(oauth=_FakeOAuth(login), oauth_allowed_users=allowed),
     )
 
 
@@ -357,8 +363,9 @@ def test_run_audits_the_logged_in_user(tmp_path: Path) -> None:
         runs_dir=runs,
         root=tmp_path,
         cwd=tmp_path,
-        oauth=_FakeOAuth("alice"),
-        oauth_allowed_users=frozenset({"alice"}),
+        auth=srv.SessionManager(
+            oauth=_FakeOAuth("alice"), oauth_allowed_users=frozenset({"alice"})
+        ),
         repository=SqlRepository(engine),
         popen=fake_popen([]),
     )
@@ -397,11 +404,13 @@ def _rbac_state(
         runs_dir=runs,
         root=tmp_path,
         cwd=tmp_path,
-        token="t",  # a token makes the gate enforce auth, so the OAuth session's role applies
-        oauth=_FakeOAuth(login),
-        oauth_allowed_users=frozenset({login}),
-        oauth_admins=admins,
-        oauth_viewers=viewers,
+        auth=srv.SessionManager(
+            token="t",  # a token makes the gate enforce auth, so the OAuth session's role applies
+            oauth=_FakeOAuth(login),
+            oauth_allowed_users=frozenset({login}),
+            oauth_admins=admins,
+            oauth_viewers=viewers,
+        ),
         repository=SqlRepository(engine),
         popen=fake_popen([]),
     )

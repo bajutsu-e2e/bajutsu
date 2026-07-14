@@ -122,15 +122,15 @@ class _FakeOAuthClient:
 def test_oauth_login_assigns_the_org_from_config(tmp_path: Path) -> None:
     # A login resolves to its config org and is persisted there, so later requests scope to it.
     state = _state(tmp_path)
-    state.oauth = _FakeOAuthClient("bob")
-    state.oauth_allowed_users = frozenset({"bob"})
+    state.auth.oauth = _FakeOAuthClient("bob")
+    state.auth.oauth_allowed_users = frozenset({"bob"})
     _payload, status, sid = ops.oauth_callback(state, code="ok", state_param="s", state_cookie="s")
     assert status == 200 and sid is not None
     assert state.repository is not None
     assert state.repository.user_org("bob") == "globex"
     # And a brand-new allowlisted login with no org membership lands in the default org.
-    state.oauth = _FakeOAuthClient("carol")
-    state.oauth_allowed_users = frozenset({"carol"})
+    state.auth.oauth = _FakeOAuthClient("carol")
+    state.auth.oauth_allowed_users = frozenset({"carol"})
     ops.oauth_callback(state, code="ok", state_param="s", state_cookie="s")
     assert state.repository.user_org("carol") == "default"
 
@@ -150,8 +150,10 @@ def test_oauth_login_assigns_the_org_from_github_org_membership(tmp_path: Path) 
         runs_dir=tmp_path / "runs",
         config=cfg,
         repository=repo,
-        oauth=_FakeOAuthClient("dave", orgs=["acme-gh"]),
-        oauth_allowed_users=frozenset({"dave"}),
+        auth=srv.SessionManager(
+            oauth=_FakeOAuthClient("dave", orgs=["acme-gh"]),
+            oauth_allowed_users=frozenset({"dave"}),
+        ),
     )
     _payload, status, sid = ops.oauth_callback(state, code="ok", state_param="s", state_cookie="s")
     assert status == 200 and sid is not None

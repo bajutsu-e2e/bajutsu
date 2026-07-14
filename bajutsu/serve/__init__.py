@@ -76,7 +76,14 @@ from bajutsu.serve.scenarios import (
 )
 from bajutsu.serve.secrets import SecretStore
 from bajutsu.serve.sessions import InMemorySessionStore
-from bajutsu.serve.state import Job, Popen, ServeState, StoreBundle
+from bajutsu.serve.state import (
+    Job,
+    Popen,
+    ProviderSettingsManager,
+    ServeState,
+    SessionManager,
+    StoreBundle,
+)
 
 __all__ = [
     "SERVE_BACKENDS",
@@ -257,7 +264,7 @@ def _build_state(
         # already provisions one writable cache root for Git needn't provision a second for uploads.
         uploads_dir=_bajutsu_cache_root() / "uploads",
         max_concurrent=max_concurrent,
-        token=token,
+        auth=SessionManager(token=token),
         upload_exec=upload_exec,
         evidence=evidence,
         allow_remote_build=allow_remote_build,
@@ -269,8 +276,8 @@ def _build_state(
         # Persist the Settings panel's provider/model/effort to a serve-owned file (a sibling of
         # runs_dir), so a saved choice survives a restart (BE-0184). Construction only wires the
         # store; `serve()` restores from it on boot, once logging is live.
-        provider_settings_store=LocalProviderSettingsStore(
-            runs_dir.parent / "provider-settings.json"
+        providers=ProviderSettingsManager(
+            store=LocalProviderSettingsStore(runs_dir.parent / "provider-settings.json")
         ),
         # The project hub's registry (BE-0225): local serve persists it to a JSON file beside
         # runs_dir, the local stand-in for the DB's projects/runs tables. serve() auto-registers the
@@ -364,7 +371,6 @@ def _build_server_state(
             os.environ.get("BAJUTSU_MAX_CONCURRENT_PER_ORG"),
             var="BAJUTSU_MAX_CONCURRENT_PER_ORG",
         ),
-        token=token,
         upload_exec=upload_exec,
         evidence=evidence,
         # Uploaded bundles (BE-0073) extract under the shared Bajutsu cache root, a sibling of the
@@ -390,14 +396,6 @@ def _build_server_state(
             if repo is not None
             else InMemoryLogBus()
         ),
-        sessions=(
-            SqlSessionStore(
-                _db_engine,
-                ttl=_session_ttl_from_env(os.environ.get("BAJUTSU_SESSION_TTL"), _DEFAULT_TTL),
-            )
-            if _db_engine is not None
-            else InMemorySessionStore()
-        ),
         repository=repo,
         # The project hub's registry (BE-0225): DB-backed when a database is wired, else the same
         # local JSON store the local backend uses — matching how the executor/logbus above fall back
@@ -407,10 +405,24 @@ def _build_server_state(
             if repo is not None
             else LocalProjectRegistry(runs_dir.parent / "projects.json")
         ),
-        oauth=oauth,
-        oauth_allowed_users=allowed_users,
-        oauth_admins=oauth_admins,
-        oauth_viewers=oauth_viewers,
+        # The authentication cluster (BE-0248): the shared token, the login-session store (a
+        # DB-backed one when a database is wired so sessions survive restarts, else in-memory), and
+        # the GitHub OAuth client + its allow/role lists.
+        auth=SessionManager(
+            token=token,
+            sessions=(
+                SqlSessionStore(
+                    _db_engine,
+                    ttl=_session_ttl_from_env(os.environ.get("BAJUTSU_SESSION_TTL"), _DEFAULT_TTL),
+                )
+                if _db_engine is not None
+                else InMemorySessionStore()
+            ),
+            oauth=oauth,
+            oauth_allowed_users=allowed_users,
+            oauth_admins=oauth_admins,
+            oauth_viewers=oauth_viewers,
+        ),
     )
 
     # Build the object-storage seams per org (BE-0015 multi-tenancy): each org's artifacts/
@@ -474,7 +486,7 @@ def _configure_oplog(state: ServeState) -> None:
     from bajutsu.serve import oplog
 
     static = (
-        state.token,
+        state.auth.token,
         os.environ.get("ANTHROPIC_API_KEY"),
         os.environ.get("BAJUTSU_SERVE_TOKEN"),
         os.environ.get("BAJUTSU_OAUTH_GITHUB_CLIENT_SECRET"),

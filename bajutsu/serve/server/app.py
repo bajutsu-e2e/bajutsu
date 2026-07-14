@@ -57,16 +57,16 @@ def make_app(state: ServeState) -> FastAPI:
 
     def _authorized(request: Request) -> bool:
         auth = request.headers.get("authorization", "")
-        if auth.startswith("Bearer ") and state.check_token(auth[len("Bearer ") :]):
+        if auth.startswith("Bearer ") and state.auth.check_token(auth[len("Bearer ") :]):
             return True
         sid = request.cookies.get(_SESSION_COOKIE)
-        return sid is not None and state.valid_session(sid)
+        return sid is not None and state.auth.valid_session(sid)
 
     def _actor(request: Request) -> str | None:
         # The GitHub login bound to this request's session, for audit attribution (BE-0015 7c);
         # None for a token/Bearer request or no session. Mirrors the stdlib handler's `_actor`.
         sid = request.cookies.get(_SESSION_COOKIE)
-        return state.sessions.identity(sid) if sid else None
+        return state.auth.sessions.identity(sid) if sid else None
 
     @app.middleware("http")
     async def gate(request: Request, call_next: Any) -> Response:
@@ -92,7 +92,7 @@ def make_app(state: ServeState) -> FastAPI:
                 return _hardened(
                     JSONResponse({"error": "cross-origin request blocked"}, status_code=403)
                 )
-        if state.token is not None:
+        if state.auth.token is not None:
             path, method = request.url.path, request.method
             open_path = (method == "GET" and path in _OPEN_GET) or (
                 method == "POST" and path == _LOGIN_PATH
