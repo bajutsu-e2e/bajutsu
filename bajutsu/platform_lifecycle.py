@@ -96,9 +96,11 @@ from bajutsu.scenario import Preconditions, Relaunch, Scenario
 
 logger = logging.getLogger("bajutsu.platform_lifecycle")
 
-# Gates the resident UI Automator read channel (BE-0245). Opt-in until the Android e2e lane builds and
-# installs the server (a later slice); when unset the adb backend reads via `uiautomator dump` exactly
-# as before. Set to 1/true/yes to route reads through the resident server (with dump fallback).
+# Overrides the resident UI Automator read channel (BE-0245). By default the channel is on whenever
+# the server APKs are built (`make -C BajutsuAndroidServer build`) and off otherwise, so a fresh clone
+# reads via `uiautomator dump` exactly as before. Set to 0/false/no to force the dump path even on a
+# built tree; set to 1/true/yes to force the resident path (start() degrades loudly to dump if it is
+# not built). Either way a channel failure falls back to `uiautomator dump`.
 _RESIDENT_ENV = "BAJUTSU_ADB_RESIDENT"
 
 
@@ -498,10 +500,15 @@ class AndroidEnvironment:
     def _make_resident(self) -> ResidentServerLike | None:
         if self._resident_factory is not None:
             return self._resident_factory()
-        if os.environ.get(_RESIDENT_ENV, "").strip().lower() not in {"1", "true", "yes"}:
-            return None  # opt-in until the e2e lane builds/installs the server (a later slice)
-        from bajutsu.adb_resident import ResidentServer
+        from bajutsu.adb_resident import ResidentServer, server_apks_built
 
+        override = os.environ.get(_RESIDENT_ENV, "").strip().lower()
+        if override in {"0", "false", "no"}:
+            return None  # explicit opt-out: read via `uiautomator dump`
+        # Default-on by APK presence: route reads through the resident server whenever it is built.
+        # A truthy override forces it on even before a build (start() then degrades loudly to dump).
+        if override not in {"1", "true", "yes"} and not server_apks_built():
+            return None
         return ResidentServer(self._serial, run=self._run)
 
     def device_catalog(self) -> dict[str, dict[str, str]]:

@@ -157,8 +157,15 @@ abstraction resolves **id → frame center → coordinate tap**, exactly as on i
 `drivers/adb.py` + `bajutsu/adb.py` (roadmap
 [BE-0007](../roadmaps/BE-0007-android-backend/BE-0007-android-backend.md)).
 
-- `query()`: `adb -s <serial> exec-out uiautomator dump /dev/tty` streams the window's UI Automator
-  XML; a pure parser (`parse_hierarchy`) maps each `<node>` to an `Element`. The selector mapping is
+- `query()`: reads the window's UI Automator XML and maps each `<node>` to an `Element` with a pure
+  parser (`parse_hierarchy`). The read runs over the **resident UI Automator server** when it is
+  built (`make -C BajutsuAndroidServer build`) — one warm `UiAutomation` session answering
+  `GET /source` over `adb forward`, so each read costs ≈ 0.1–0.3 s instead of the ≈ 2.4 s a fresh
+  `adb -s <serial> exec-out uiautomator dump /dev/tty` pays per invocation (roadmap
+  [BE-0245](../roadmaps/BE-0245-adb-resident-uiautomator-server/BE-0245-adb-resident-uiautomator-server.md));
+  the resident whole-screen dump is narrowed to the active window so it yields the same Elements.
+  Without the built server — or on any channel failure — it falls back to `uiautomator dump`, and
+  `BAJUTSU_ADB_RESIDENT` (`0`/`1`) pins either path. The selector mapping is
   `resource-id` → `identifier` (the `<package>:id/` prefix stripped to the local name, so a Compose
   `testTag` surfaced via `testTagsAsResourceId` reproduces verbatim while a native `android:id`
   drops its prefix), `text` → `label` (`content-desc` fallback), `content-desc` → `value` (the app

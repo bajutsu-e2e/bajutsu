@@ -125,6 +125,7 @@ One backend per platform behind the single driver interface ([DESIGN §1](../DES
 | [BE-0233](BE-0233-adb-clipboard-fidelity/BE-0233-adb-clipboard-fidelity.md) | adb clipboard on-device fidelity | Implemented |
 | [BE-0234](BE-0234-adb-run-performance/BE-0234-adb-run-performance.md) | Speed up adb scenario runs (uiautomator dump bottleneck) | Implemented |
 | [BE-0240](BE-0240-ios-capability-aware-actuator-selection/BE-0240-ios-capability-aware-actuator-selection.md) | Capability-aware automatic actuator selection for iOS (idb/XCUITest transparency) | Implemented |
+| [BE-0245](BE-0245-adb-resident-uiautomator-server/BE-0245-adb-resident-uiautomator-server.md) | Resident UI Automator server for adb reads | Implemented |
 <!-- /GENERATED:implemented-platform -->
 
 ### Driver & backend architecture
@@ -505,7 +506,6 @@ Accepted and actively being built — a PR is in flight or imminent.
 | ID | Item | Status |
 |---|---|---|
 | [BE-0231](BE-0231-smoke-idb-first-wait-settling/BE-0231-smoke-idb-first-wait-settling.md) | Harden the E2E first-wait against Simulator settling flake | In progress |
-| [BE-0245](BE-0245-adb-resident-uiautomator-server/BE-0245-adb-resident-uiautomator-server.md) | Resident UI Automator server for adb reads | In progress |
 <!-- /GENERATED:in-progress-platform -->
 
 ### AI provider configuration

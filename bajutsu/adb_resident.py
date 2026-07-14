@@ -43,10 +43,11 @@ def narrow_to_active_window(xml: str) -> str:
     itself) passes through unchanged, and unparseable input is returned as-is so the driver's existing
     empty-tree handling still applies.
 
-    Scope: this drops only SystemUI decor (the one window difference PR-C targets). Other non-app
-    windows a system dialog might add — a permission dialog (`android`), the IME — are left for PR-D's
-    on-device verification to catalogue against the dump path; broadening the filter is a design
-    decision deferred to that slice rather than guessed at here.
+    Scope: this drops only SystemUI decor. The Android e2e lane (BE-0208) exercises the resident path
+    across the showcase scenarios — including ones that raise the IME (`search`) or a permission
+    dialog (`permission`) — so a non-app window that leaks past this filter surfaces there as a
+    deterministic golden/scenario mismatch, and broadening the set is driven by that signal rather
+    than guessed at here.
     """
     root = slice_hierarchy_root(xml)
     if root is None:
@@ -109,6 +110,16 @@ _TEST_APK = (
     _REPO_ROOT / "BajutsuAndroidUIAutomatorServer/server/build/outputs/apk/androidTest/debug"
     "/server-debug-androidTest.apk"
 )
+
+
+def server_apks_built(server_apk: Path = _SERVER_APK, test_apk: Path = _TEST_APK) -> bool:
+    """True when both resident-server APKs exist, so the resident read channel can start.
+
+    The default-on gate reads this to pick the resident channel over `uiautomator dump` only when
+    `make -C BajutsuAndroidServer build` has produced both outputs; a fresh clone that never built
+    them (the build outputs are gitignored) falls back to the dump path untouched.
+    """
+    return server_apk.exists() and test_apk.exists()
 
 
 def _default_spawn(argv: list[str]) -> _Process:
