@@ -9,6 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0261") |
+| Implementing PR | [#1079](https://github.com/bajutsu-e2e/bajutsu/pull/1079) |
 | Topic | Codebase quality & technical debt |
 <!-- /BE-METADATA -->
 
@@ -100,10 +101,10 @@ to avoid a second YAML engine with different `on/off`-bool semantics than `bajut
 
 Log (oldest first):
 
-- Implemented: new `bajutsu/scenario/edit.py` (`apply_selector` / `apply_enrichment`) and a
-  `dump_block` serializer helper; two AI-free serve endpoints
-  (`/api/scenario/apply-selector`, `/api/scenario/enrich-apply`) in
-  `bajutsu/serve/operations/author_edit.py`; the Author editor's `#au-apply` handler and
+- Implemented in [#1079](https://github.com/bajutsu-e2e/bajutsu/pull/1079): new
+  `bajutsu/scenario/edit.py` (`apply_selector` / `apply_enrichment`) and a `dump_block` serializer
+  helper; two AI-free serve endpoints (`/api/scenario/apply-selector`, `/api/scenario/enrich-apply`)
+  in `bajutsu/serve/operations/author_edit.py`; the Author editor's `#au-apply` handler and
   `enrichApply` now POST to them, deleting `auSelectorYaml` / `enrichAssertionYaml` / `_extractName`
   and all line-scanning. Round-trip tests cover flow-style steps, comments between steps, a `:`/`#`
   selector value, and a two-scenario file.

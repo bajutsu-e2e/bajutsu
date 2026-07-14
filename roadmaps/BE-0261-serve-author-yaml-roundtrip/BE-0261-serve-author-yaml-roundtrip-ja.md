@@ -9,6 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0261") |
+| 実装 PR | [#1079](https://github.com/bajutsu-e2e/bajutsu/pull/1079) |
 | トピック | Codebase quality & technical debt |
 <!-- /BE-METADATA -->
 
@@ -89,8 +90,9 @@ expect のブロックの範囲を `yaml.compose` のソースマークで特定
 
 ログ（古い順）：
 
-- 実装：新しい `bajutsu/scenario/edit.py`（`apply_selector` / `apply_enrichment`）と、`dump_block`
-  serializer ヘルパー。AI を使わない serve エンドポイント二つ（`/api/scenario/apply-selector`・
+- [#1079](https://github.com/bajutsu-e2e/bajutsu/pull/1079) で実装：新しい
+  `bajutsu/scenario/edit.py`（`apply_selector` / `apply_enrichment`）と、`dump_block` serializer
+  ヘルパー。AI を使わない serve エンドポイント二つ（`/api/scenario/apply-selector`・
   `/api/scenario/enrich-apply`）を `bajutsu/serve/operations/author_edit.py` に追加。Author エディタの
   `#au-apply` ハンドラと `enrichApply` はこれらへ POST するようになり、`auSelectorYaml` /
   `enrichAssertionYaml` / `_extractName` と行走査をすべて削除しました。往復テストは、flow スタイルの
