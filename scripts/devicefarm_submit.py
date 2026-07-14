@@ -232,13 +232,27 @@ class DeviceFarmClient(Protocol):
 
     Each method mirrors the boto3 call of the same name; the responses are the nested dicts boto3
     returns (``{"upload": {...}}``, ``{"run": {...}}``, ``{"artifacts": [...]}``).
+
+    The stubs are docstring-only (no trailing ``...``) on purpose: a bare ``...`` here is a
+    newly-added expression statement CodeQL flags as "no effect", and unlike the same stub idiom on
+    ``main`` (e.g. ``network.py``'s ``Collector``) a new-file line can't inherit that alert's
+    dismissal — so the docstring is the whole body, which documents each call and stays CodeQL-clean.
     """
 
-    def create_upload(self, *, projectArn: str, name: str, type: str) -> dict[str, Any]: ...  # noqa: N803
-    def get_upload(self, *, arn: str) -> dict[str, Any]: ...  # INITIALIZED -> SUCCEEDED / FAILED
-    def schedule_run(self, **kwargs: Any) -> dict[str, Any]: ...  # {"run": {...}}
-    def get_run(self, *, arn: str) -> dict[str, Any]: ...  # {"run": {...}}, current status
-    def list_artifacts(self, *, arn: str, type: str) -> dict[str, Any]: ...  # {"artifacts": [...]}
+    def create_upload(self, *, projectArn: str, name: str, type: str) -> dict[str, Any]:  # noqa: N803 - boto3 kwargs
+        """Register a new upload; boto3 returns ``{"upload": {...}}`` with the presigned PUT URL."""
+
+    def get_upload(self, *, arn: str) -> dict[str, Any]:
+        """Fetch an upload's status (``INITIALIZED`` → ``SUCCEEDED`` / ``FAILED``)."""
+
+    def schedule_run(self, **kwargs: Any) -> dict[str, Any]:
+        """Schedule a run from the uploaded app/test/spec; boto3 returns ``{"run": {...}}``."""
+
+    def get_run(self, *, arn: str) -> dict[str, Any]:
+        """Fetch a run's current status; boto3 returns ``{"run": {...}}``."""
+
+    def list_artifacts(self, *, arn: str, type: str) -> dict[str, Any]:
+        """List a run's artifacts of the given type; boto3 returns ``{"artifacts": [...]}``."""
 
 
 class Transfer(Protocol):
