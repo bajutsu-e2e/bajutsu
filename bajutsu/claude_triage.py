@@ -154,7 +154,13 @@ def _render(context: TriageContext, redactor: Redactor | None = None) -> str:
     elements = (
         redactor.redact_elements(context.elements) if redactor is not None else context.elements
     )
-    lines += render_elements(elements, compact=False) or ["(no element tree captured)"]
+    # Key the fallback off `elements` itself, not the filtered result: a captured tree that renders
+    # to nothing (app-root-only, a blank/loading screen) is a different root cause than a failed
+    # capture, and a triage assistant must not conflate the two.
+    if elements:
+        lines += render_elements(elements, compact=False)
+    else:
+        lines.append("(no element tree captured)")
 
     if context.scenario_yaml:
         lines += ["", "Scenario definition (YAML):", scrub(context.scenario_yaml).rstrip()]
@@ -374,9 +380,11 @@ def _render_evidence(
     elements = redactor.redact_elements(ev.elements) if redactor is not None else ev.elements
     caption = "  Elements nearest the failure:" if not ev.ok else "  Elements at the run's end:"
     lines.append(caption)
-    lines += [f"    {line}" for line in render_elements(elements, compact=False)] or [
-        "    (no element tree captured)"
-    ]
+    # Same distinction as `_render`: a captured-but-empty-after-filter tree is not a failed capture.
+    if elements:
+        lines += [f"    {line}" for line in render_elements(elements, compact=False)]
+    else:
+        lines.append("    (no element tree captured)")
     if screenshot_attached:
         lines.append("  A screenshot of this run's screen is attached above.")
     return lines

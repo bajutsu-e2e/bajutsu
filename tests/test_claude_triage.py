@@ -148,6 +148,21 @@ def test_render_handles_empty_elements_and_expectations() -> None:
     assert "  - value equals='2': id='counter'" in text
 
 
+def test_render_app_root_only_tree_is_not_a_failed_capture() -> None:
+    # A captured tree that filters to nothing (only the app root, e.g. a blank/loading screen) is a
+    # different root cause than a failed capture; the "no capture" signal must fire only on []
+    # (BE-0246): keying it off the filtered result would conflate the two for the triage assistant.
+    app_root: base.Element = {
+        "identifier": "",
+        "label": "",
+        "traits": ["application"],
+        "value": None,
+        "frame": (0.0, 0.0, 100.0, 100.0),
+    }
+    text = _render(_ctx(elements=[app_root]))
+    assert "(no element tree captured)" not in text
+
+
 def test_screenshot_sent_as_image_part() -> None:
     backend = FakeBackend(_diagnose())
     png = b"\x89PNG\r\n\x1a\n fake-bytes"
