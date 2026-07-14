@@ -40,10 +40,10 @@ idb, XCUITest, and Playwright are each proven to. This item closes that gap.
   matches ids in two forms (dotted and underscore, BE-0221). Those are adb-specific paths the iOS
   and web conformance jobs cannot cover; the contract's ambiguous- and zero-match cases are where
   they most need pinning.
-- **Parity was explicitly deferred, not dismissed.** The platform-E2E-parity item (the
-  `e2e-workflow-structural-parity` proposal) split the Android lane into per-concern jobs and noted
-  the missing `conformance (adb)` job as a real coverage hole, out of scope there because it is
-  test-authoring work, not workflow restructuring. This item is that follow-up.
+- **Parity was explicitly deferred, not dismissed.** The in-flight platform-E2E-parity item (the
+  `e2e-workflow-structural-parity` proposal) proposes splitting the Android lane into per-concern
+  jobs and notes the missing `conformance (adb)` job as a real coverage hole, out of scope there
+  because it is test-authoring work, not workflow restructuring. This item is that follow-up.
 
 ## Detailed design
 
@@ -72,7 +72,7 @@ opt-in the showcase already uses — no per-app branching in the tool. The work 
 4. **A `conformance (adb)` job in `android-e2e.yml`** (Linux+KVM), wiring the harness to a booted
    AVD: build the conformance-capable APK(s), boot, run the suite serially against the one emulator.
    It is non-required, like the rest of the Android lane, and joins the per-concern job set the
-   parity item established (`smoke` / `golden` / `visual` / now `conformance`).
+   parity item proposes (`smoke` / `golden` / `visual` / now `conformance`).
 5. **Honest `capabilities()` for the capability-matching tests.** The contract asserts
    `capabilities()` is a promise: a `MULTI_TOUCH` / `SELECT_OPTION` backend must actually perform the
    action, and one lacking the capability must raise `UnsupportedAction` rather than silently no-op.
@@ -115,7 +115,8 @@ opt-in the showcase already uses — no per-app branching in the tool. The work 
   — the dotted/underscore id forms the conformance screen must cover.
 - [BE-0245](../BE-0245-adb-resident-uiautomator-server/BE-0245-adb-resident-uiautomator-server.md)
   — the resident vs `uiautomator dump` read channels the adb driver resolves selectors over.
-- The `e2e-workflow-structural-parity` proposal (BE id allocated on its own merge) — split the
-  Android lane into per-concern jobs and flagged this `conformance (adb)` gap as out-of-scope there.
+- The `e2e-workflow-structural-parity` proposal (BE id allocated on its own merge) — proposes
+  splitting the Android lane into per-concern jobs and flags this `conformance (adb)` gap as
+  out-of-scope there.
 - `tests/driver_conformance.py`, `tests/test_driver_conformance_ondevice.py`,
   `tests/test_driver_conformance_web.py`, [`android-e2e.yml`](../../.github/workflows/android-e2e.yml).
