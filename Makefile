@@ -1,6 +1,6 @@
 .PHONY: setup hooks install deps deps-check serve worktree preflight test lint lint-docstrings lint-imports format format-check typecheck \
         lock-check lint-sh lint-actions lint-js lint-roadmap lint-pr check new-roadmap-item roadmap-index \
-        roadmap-status roadmap-dashboard docs docs-serve
+        roadmap-status roadmap-dashboard docs docs-serve docs-diagrams
 
 # One-command bootstrap for a fresh clone (cross-platform; the dev gate needs no
 # Simulator). Installs the Python toolchain and wires the tracked git hooks.
@@ -218,6 +218,14 @@ docs: roadmap-dashboard
 	uv run --extra docs mkdocs build --strict
 docs-serve: roadmap-dashboard
 	uv run --extra docs mkdocs serve
+
+# Re-render every ```mermaid diagram in docs/ to its checked-in SVG (scripts/render_diagrams.py).
+# Manual and opt-in — NOT part of `docs` or `check` — because it shells out to Node
+# (`npx @mermaid-js/mermaid-cli`), a dependency this Python/uv-native repo otherwise has none of,
+# and needs a one-time `npx puppeteer browsers install chrome-headless-shell`. Run it after editing
+# a mermaid fence; the rendered SVGs are committed, so a plain `make docs` never needs Node.
+docs-diagrams:
+	uv run python scripts/render_diagrams.py
 
 # Showcase build / on-device targets live with the fixture (demos/showcase/, the single iOS app):
 #   make -C demos/showcase swiftui-build|uikit-build|run-swiftui|doctor|record|ui-test|vrt

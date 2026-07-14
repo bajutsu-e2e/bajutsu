@@ -15,6 +15,12 @@
 Tier 1（AI、図では黄）はオーサリングと調査のみを担い、Tier 2（決定的、図では青）は機械アサーションのみで合否を決めます。
 この決定的な中核全体はプラットフォーム非依存で、プラットフォーム固有の継ぎ目は orchestrator が駆動する backend（iOS は idb / XCUITest、Android は adb、web は playwright、… いずれも 1 つの `Driver` インターフェースの背後）だけです。新しいプラットフォームは新しい backend であって、コアの fork ではありません。
 
+![データフロー図。自然言語のゴールまたは人手編集がシナリオ YAML を生成し、Tier 2 の Orchestrator が backend 非依存の Driver API を通じて idb・XCUITest・adb・Playwright のいずれかに対して決定的に実行します。合否は Reporter に渡り、失敗時は triage がシナリオへの修正案を提案します。](assets/diagrams/architecture-data-flow-ja.svg)
+
+<details>
+<summary>Mermaid ソース</summary>
+
+<!-- mermaid-svg: assets/diagrams/architecture-data-flow-ja.svg -->
 ```mermaid
 flowchart TB
     goal(["🗣️ 自然言語ゴール"])
@@ -61,6 +67,8 @@ flowchart TB
     class tier1 ai
     class tier2 det
 ```
+
+</details>
 
 下の[依存レイヤ図](#依存関係レイヤ)は、同じシステムをデータフローではなくモジュール層として見たものです。
 
@@ -119,25 +127,73 @@ flowchart TB
 
 下層ほど安定で、上層が下層に依存します。中核は `drivers/base.py`（セレクタ解決）で、すべての実行系がここに依存します。
 
+![依存レイヤ図。cli/ がユーザ接点であり、その下に runner/、record.py/crawl/、codegen/、trace.py、triage.py が直接ぶら下がります（codegen/ と trace.py には、これ以上の依存関係が描かれていません）。runner/ は orchestrator/ に、record.py/crawl/ は AI エージェント関連のヘルパーに、triage.py は serve・CI 関連のヘルパーに、それぞれ依存します。orchestrator/ とエージェント関連のヘルパーは assertions.py と evidence.py に依存し、orchestrator/ はさらに config.py、backends.py、simctl.py にも依存します。assertions.py は scenario/ に、evidence.py は report/ に依存し、scenario/、report/、config.py、backends.py、simctl.py はいずれも決定性の核である drivers/base.py に収束します。そこから drivers/fake、iOS 系ドライバ、Playwright ドライバへ分岐します。](assets/diagrams/architecture-dependency-layers-ja.svg)
+
+<details>
+<summary>Mermaid ソース</summary>
+
+<!-- mermaid-svg: assets/diagrams/architecture-dependency-layers-ja.svg -->
+```mermaid
+flowchart TB
+    cli["cli/<br/>ユーザ接点（Typer）: run · project · doctor · audit · coverage · stats ·<br/>flakiness · export · trace · report · triage · record · crawl · codegen ·<br/>approve · serve · mcp · worker · lint · schema"]
+
+    runner["runner/"]
+    record["record.py / crawl/<br/>（Tier 1 / AI）"]
+    codegen["codegen/<br/>（構造マッピング）"]
+    trace["trace.py<br/>（タイムライン）"]
+    triage["triage.py / claude_triage.py<br/>（自己修復・助言）"]
+
+    orch["orchestrator/"]
+    agentStuff["agent_protocols.py / agent_factory.py /<br/>claude_agent.py / alerts.py"]
+    serveGh["serve/ · github.py<br/>（Web UI・CI）"]
+
+    assertions["assertions.py"]
+    evidence["evidence.py<br/>+ intervals.py · network.py · visual.py · redaction.py"]
+
+    scenario["scenario/<br/>（interp.py）"]
+    report["report/"]
+    config["config.py · preflight.py"]
+    backends["backends.py"]
+    simctl["simctl.py"]
+
+    base["drivers/base.py<br/>決定性の核（Element / Selector / resolve_unique）"]
+
+    fake["drivers/fake"]
+    ios["drivers/idb・xcuitest・adb"]
+    pw["drivers/playwright"]
+
+    cli --> runner
+    cli --> record
+    cli --> codegen
+    cli --> trace
+    cli --> triage
+
+    runner --> orch
+    record --> agentStuff
+    triage --> serveGh
+
+    orch --> assertions
+    orch --> evidence
+    agentStuff --> assertions
+
+    assertions --> scenario
+    evidence --> report
+    orch --> config
+    orch --> backends
+    orch --> simctl
+
+    scenario --> base
+    report --> base
+    config --> base
+    backends --> base
+    simctl --> base
+
+    base --> fake
+    base --> ios
+    base --> pw
 ```
-                       cli/             ← ユーザ接点（Typer）: run / project / doctor / audit / coverage / stats / flakiness / export / trace / report / triage / record / crawl / codegen / approve / serve / mcp / worker / lint / schema
-        ┌─────────────┬───┴───────┬───────────────┬───────────┐
-     runner/    record.py / crawl/    codegen/     trace.py     triage.py / claude_triage.py
-        │       （Tier 1 / AI） （構造マッピング）（タイムライン）（自己修復・助言）
-   orchestrator/   agent_protocols.py / agent_factory.py / claude_agent.py / alerts.py   serve/ · github.py（Web UI・CI）
-        │                 │
-   ┌────┼────────┬────────┘
-assertions.py  evidence.py ── intervals.py · network.py · visual.py · redaction.py
-        │         │
-   scenario/    report/      config.py · preflight.py   backends.py   simctl.py
-        │ （interp.py）            │              │            │
-        └──────────────┬─────────────┴──────────────┴────────────┘
-                       ▼
-                drivers/base.py  ←── 決定性の核（Element / Selector / resolve_unique）
-                       ▲
-        ┌──────────────┼───────────────────────────┐
-   drivers/fake   drivers/idb・xcuitest・adb   drivers/playwright
-```
+
+</details>
 
 - `orchestrator/` は `base.Driver` にのみ依存し、**どの具象ドライバとも結合しません**。そのため `FakeDriver` で実機なしにテストでき、本番では同じループが idb（iOS）や playwright（web）を駆動します。
 - `runner/` はアプリを起動して準備済みドライバを返す factory を提供し、ループを実機から分離します。

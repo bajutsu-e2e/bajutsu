@@ -17,23 +17,28 @@ Bajutsu のロードマップは、ざっと眺めて通り過ぎるバックロ
 
 ## 循環の全体像
 
+![循環図。大まかなアイデアが /ideation に入り、両言語で BE-XXXX 提案を起草します。CI が正式な BE-NNNN の id を採番して Status を Proposal にします。この提案が仕様となり、/implement-be がそれをもとに計画・実装・テストします。レビューとゲートを経て、同じ項目の Status を Implemented に変えるだけで、パスは動かしません。](assets/diagrams/roadmap-workflow-cycle-ja.svg)
+
+<details>
+<summary>Mermaid ソース</summary>
+
+<!-- mermaid-svg: assets/diagrams/roadmap-workflow-cycle-ja.svg -->
+```mermaid
+flowchart TB
+    idea(["大まかなアイデア"])
+    ideation["/ideation<br/>起草と思考<br/>判定はしない"]
+    proposal[["roadmaps/BE-NNNN-&lt;slug&gt;/<br/>Status: Proposal"]]
+    implement["/implement-be<br/>実装<br/>ゲートが判定"]
+    implemented[["roadmaps/BE-NNNN-&lt;slug&gt;/<br/>Status: Implemented"]]
+
+    idea --> ideation
+    ideation -->|"BE-XXXX 提案を起草<br/>（両言語）"| proposal
+    proposal -.->|"CI が正式 ID を採番<br/>(scripts/allocate_…)"| ideation
+    proposal -->|"提案が仕様になる"| implement
+    implement -->|"計画 → 実装 → テスト<br/>レビュー → ゲート；<br/>Status だけを変え、パスは動かさない"| implemented
 ```
-        大まかなアイデア
-            │
-            ▼
-   ┌─────────────────┐   BE-XXXX 提案を起草        ┌──────────────────────┐
-   │  /ideation      │ ───────（両言語）─────────▶ │  roadmaps/           │
-   │  起草と思考      │                            │  BE-NNNN-<slug>/     │
-   │  判定はしない    │ ◀──CI が正式 ID を採番──── │  Status: Proposal    │
-   └─────────────────┘   (scripts/allocate_…)      └──────────┬───────────┘
-                                                              │ 提案が仕様になる
-                                                              ▼
-   ┌─────────────────┐   計画 → 実装 → テスト       ┌──────────────────────┐
-   │  /implement-be  │ ───────レビュー → ゲート────▶ │  roadmaps/           │
-   │  実装           │      Status だけを変え      │  BE-NNNN-<slug>/     │
-   │  ゲートが判定    │      パスは動かさない       │  Status: Implemented │
-   └─────────────────┘                            └──────────────────────┘
-```
+
+</details>
 
 2 つのスキルは同じ 3 つの **絶対指針**（[`CLAUDE.md`](../../CLAUDE.md)）を共有します。AI は起草と調査を担い
 判定はしないこと、決定性を最優先すること、アプリ非依存であること、の 3 つです。両者は無関係な 2 つの道具では

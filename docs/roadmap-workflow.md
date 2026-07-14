@@ -16,23 +16,28 @@ the same whether a human or an agent walks it.
 
 ## The cycle
 
+![Cycle diagram: a rough idea goes into /ideation, which drafts a BE-XXXX proposal in both languages; CI allocates the real BE-NNNN id and sets Status: Proposal; the proposal is the spec that /implement-be plans, implements, and tests against; review and the gate flip the same item's Status to Implemented without ever moving its path.](assets/diagrams/roadmap-workflow-cycle.svg)
+
+<details>
+<summary>Mermaid source</summary>
+
+<!-- mermaid-svg: assets/diagrams/roadmap-workflow-cycle.svg -->
+```mermaid
+flowchart TB
+    idea(["rough idea"])
+    ideation["/ideation<br/>author + think<br/>never judge"]
+    proposal[["roadmaps/BE-NNNN-&lt;slug&gt;/<br/>Status: Proposal"]]
+    implement["/implement-be<br/>implement<br/>gate is judge"]
+    implemented[["roadmaps/BE-NNNN-&lt;slug&gt;/<br/>Status: Implemented"]]
+
+    idea --> ideation
+    ideation -->|"drafts BE-XXXX proposal<br/>(both languages)"| proposal
+    proposal -.->|"CI allocates the real ID<br/>(scripts/allocate_…)"| ideation
+    proposal -->|"the proposal is the spec"| implement
+    implement -->|"plan → implement → test<br/>review → gate;<br/>flips Status only, the path never moves"| implemented
 ```
-        rough idea
-            │
-            ▼
-   ┌─────────────────┐   drafts BE-XXXX proposal    ┌──────────────────────┐
-   │  /ideation      │ ───────(both languages)─────▶ │  roadmaps/            │
-   │  author + think │                               │  BE-NNNN-<slug>/     │
-   │  never judge    │ ◀──CI allocates the real ID── │  Status: Proposal    │
-   └─────────────────┘    (scripts/allocate_…)       └──────────┬───────────┘
-                                                                │ the proposal is the spec
-                                                                ▼
-   ┌─────────────────┐   plan → implement → test    ┌──────────────────────┐
-   │  /implement-be  │ ───────review → gate────────▶ │  roadmaps/           │
-   │  implement      │      flips Status only,       │  BE-NNNN-<slug>/     │
-   │  gate is judge  │      the path never moves     │  Status: Implemented │
-   └─────────────────┘                               └──────────────────────┘
-```
+
+</details>
 
 The two skills share the same three **prime directives** ([`CLAUDE.md`](../CLAUDE.md)) — AI authors
 and investigates but never judges, determinism first, app-agnostic — because they are two ends of
