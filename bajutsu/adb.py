@@ -455,8 +455,8 @@ def install_cmd(serial: str, apk_path: str) -> list[str]:
 
 # --- resident UI Automator server (BE-0245) ---
 
-# The resident server's fixed loopback port on the device (matches BajutsuAndroidServer's
-# ResidentServerTest); bajutsu reaches it over `adb forward`.
+# The resident server's fixed loopback port on the device (matches
+# BajutsuAndroidUIAutomatorServer's ResidentServerTest); bajutsu reaches it over `adb forward`.
 RESIDENT_DEVICE_PORT = 6790
 
 # The androidTest instrumentation that runs the resident server: the `.test` package (androidx adds

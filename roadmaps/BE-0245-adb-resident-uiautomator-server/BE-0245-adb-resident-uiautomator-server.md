@@ -136,7 +136,7 @@ Log:
   dump-every-read behavior exactly — so no box is ticked yet. Unit 2's hierarchy-query channel (the
   `adb forward` transport and its HTTP handshake) is not written yet; it lands in a follow-up PR.
 - PR-B ([#1017](https://github.com/bajutsu-e2e/bajutsu/pull/1017)) — the resident server body and its
-  distribution decision (units 1–2, server side). Adds `BajutsuAndroidServer/`, a self-contained
+  distribution decision (units 1–2, server side). Adds `BajutsuAndroidUIAutomatorServer/`, a self-contained
   Gradle project (committed wrapper, so a fresh clone builds with only the Android SDK) holding an
   `androidTest` instrumentation: `am instrument -w` runs a blocking `@Test` that keeps one
   `UiAutomation` session warm and answers `GET /source` over a raw loopback `ServerSocket` (no HTTP
