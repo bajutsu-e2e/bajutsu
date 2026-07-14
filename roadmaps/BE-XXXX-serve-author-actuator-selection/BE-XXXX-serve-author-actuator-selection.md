@@ -18,7 +18,7 @@ The serve Author tab's Capture ([BE-0012](../BE-0012-action-capture-record/BE-00
 and Enrich ([BE-0014](../BE-0014-record-demarcation/BE-0014-record-demarcation.md)) modes each boot a
 live driver from the selected target's `backend`. They do so through a helper — `_default_driver_factory`
 in `bajutsu/serve/operations/_common.py` — that resolves the backend with `backends.select_actuator`.
-That function walks the platform *alias* order (`ALIAS["ios"] = ("xcuitest", "idb")`, BE-0019): it
+That function walks the platform *alias* order (`PLATFORMS["ios"] = ("xcuitest", "idb")`, BE-0019): it
 returns XCUITest first for any `backend: [ios]` target.
 
 [BE-0240](../BE-0240-ios-capability-aware-actuator-selection/BE-0240-ios-capability-aware-actuator-selection.md)
@@ -80,8 +80,8 @@ corrective for multi-candidate ones (`[ios]`).
   COST_ORDER changes. Reusing the shared cost ordering keeps one source of truth.
 - **Leave capture/enrich pinned to alias order and only fix the error message.** Turns a crash into a
   readable failure but still leaves Capture non-functional on `[ios]` targets — treats the symptom, not the
-  cause. (Surfacing the readable error is nonetheless worthwhile on its own — see the sibling proposal on
-  serve uncaught-exception handling.)
+  cause. (Surfacing the readable error is nonetheless worthwhile on its own, and is worth a separate serve
+  uncaught-exception-handling proposal.)
 
 ## Progress
 

@@ -18,7 +18,7 @@ serve の Author タブにある Capture モード（[BE-0012](../BE-0012-action
 Enrich モード（[BE-0014](../BE-0014-record-demarcation/BE-0014-record-demarcation-ja.md)）は、選択した target の
 `backend` から実機ドライバを起動します。その起動は `bajutsu/serve/operations/_common.py` の
 `_default_driver_factory` を経由し、backend の解決に `backends.select_actuator` を使います。この関数は
-プラットフォームの*エイリアス*順（`ALIAS["ios"] = ("xcuitest", "idb")`、BE-0019）をたどるため、
+プラットフォームの*エイリアス*順（`PLATFORMS["ios"] = ("xcuitest", "idb")`、BE-0019）をたどるため、
 `backend: [ios]` の target では常に XCUITest を先に返します。
 
 [BE-0240](../BE-0240-ios-capability-aware-actuator-selection/BE-0240-ios-capability-aware-actuator-selection-ja.md)
@@ -75,7 +75,7 @@ XCUITest の runner を起動しないためです。Enrich は同一の backend
   共通のコスト順を再利用すれば真実の源が 1 つに保たれます。
 - **capture・enrich をエイリアス順に固定したままエラーメッセージだけ直す。** クラッシュを読みやすい失敗に変えますが、
   `[ios]` target で Capture が動かないことは変わりません。原因ではなく症状への対処です（とはいえ読みやすいエラーを
-  出すこと自体には価値があり、serve の未捕捉例外を扱う姉妹提案で別途扱います）。
+  出すこと自体には価値があり、serve の未捕捉例外処理は別提案として切り出す価値があります）。
 
 ## 進捗
 
