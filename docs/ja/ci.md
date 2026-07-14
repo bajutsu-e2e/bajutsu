@@ -36,7 +36,7 @@ bajutsu は CI 向けの出力を生成します。`junit.xml`、自己完結の
    + `xcrun simctl install`）。
 2. [`bajutsu-e2e`](../../.github/actions/bajutsu-e2e/action.yml) composite action で **bajutsu を実行**します。
    このアクションは `idb_companion` の導入、依存の同期、任意の `doctor` プリフライト（非ブロッキング）、シナリオの実行、そして
-   成果物（report、スクショ、動画、`network.json`）のアップロードを行います。
+   成果物（report、スクリーンショット、動画、`network.json`）のアップロードを行います。
 
 ```yaml
 jobs:

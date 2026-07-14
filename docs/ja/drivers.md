@@ -44,7 +44,7 @@ class Driver(Protocol):
 |---|---|:--:|:--:|:--:|:--:|
 | `query` | 要素ツリー取得 | ✅ | ✅ | ✅ | ✅ |
 | `elements` | 要素ダンプ証跡 | ✅ | ✅ | ✅ | ✅ |
-| `screenshot` | スクショ | ✅ | ✅ | ✅ | ✅ |
+| `screenshot` | スクリーンショット | ✅ | ✅ | ✅ | ✅ |
 | `semanticTap` | id/label で直接タップ（座標不要） | — | — | ✅ | ✅ |
 | `conditionWait` | ネイティブ条件待機 | — | — | ✅ | ✅ |
 | `network` | ネイティブネットワーク監視 | — | — | ✅ | — |
