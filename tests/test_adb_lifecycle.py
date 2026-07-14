@@ -326,6 +326,21 @@ def test_android_environment_skips_resident_by_default() -> None:
     assert env._resident is None  # nothing started
 
 
+def test_make_resident_builds_a_real_server_when_the_env_flag_is_set(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # With no injected factory but BAJUTSU_ADB_RESIDENT truthy, _make_resident lazily imports and
+    # constructs a real ResidentServer. Construction only stores params — it never touches the device
+    # or starts instrumentation — so this stays hermetic without a factory or a device. (monkeypatch
+    # auto-restores the env var, so this leaves no os.environ leak for later tests.)
+    from bajutsu.adb_resident import ResidentServer
+
+    monkeypatch.setenv("BAJUTSU_ADB_RESIDENT", "1")
+    env = AndroidEnvironment("adb", "emulator-5554", adb_run=_resolve_activity_run([]))
+    server = env._make_resident()
+    assert isinstance(server, ResidentServer)  # a real server, not the None opt-out
+
+
 def test_android_environment_grants_permissions_even_on_overwrite() -> None:
     # An `overwrite` reinstall skips `pm clear` (keeps app data), but configured permissions must
     # still be granted — a kept-data app can still need a permission the run relies on.
