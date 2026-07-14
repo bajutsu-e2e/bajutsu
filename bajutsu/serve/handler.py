@@ -98,6 +98,33 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
             self.end_headers()
             self.wfile.write(body)
 
+        def _respond_uncaught(self, exc: Exception) -> None:
+            """Turn an uncaught dispatch exception into a JSON 500 (BE-0264).
+
+            Without this, an operation that *raises* (rather than returning an error tuple)
+            propagates to ``socketserver``, which drops the connection with no body — leaving the
+            browser at ``Unexpected end of JSON input``. The full traceback is always logged (with
+            the request id bound via ``oplog``) so the operator keeps the diagnostic; the client
+            gets the exception's *message* — deliberately (design Unit 3): the readable operation
+            error is the whole point (e.g. "xcuitest backend requires a runner_port"), so we echo
+            it rather than a generic string, at the cost of a message that may name an internal
+            path. The traceback itself is never sent.
+
+            Writing the 500 can itself fail if the client already went away (a `wfile` write on a
+            dead socket): the wrapped dispatch under the boundary hits the operation *before* any
+            bytes are written, so a normal raise reaches here pre-response — but a disconnect
+            mid-write would. In that case we've already logged the real error, so we only close the
+            connection rather than let the write error re-propagate to ``socketserver`` (which is
+            exactly the empty-body drop this boundary exists to prevent).
+            """
+            logging.getLogger(__name__).exception(
+                "unhandled error dispatching %s %s", self.command, self.path
+            )
+            try:
+                self._json({"error": str(exc) or exc.__class__.__name__}, 500)
+            except Exception:
+                self.close_connection = True
+
         def _sse_job(self, job_id: str) -> None:
             """Stream a job's log over SSE via the shared event stream: a `log` event per line
             (backlog + live from the LogBus), then a terminal `done` event carrying the job's final
@@ -193,6 +220,38 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
             if not self._gate():
                 return
             path = urlparse(self.path).path
+            # Streaming / binary routes (SSE, run file / zip / screenshot) send their own headers
+            # then stream or range a body and handle client disconnects themselves, so they sit
+            # outside the JSON-500 boundary (BE-0264): once their headers are on the wire a fallback
+            # `_json` would double-write the response. Everything else dispatches under the boundary.
+            if self._serve_streaming_get(path):
+                return
+            try:
+                self._dispatch_get(path)
+            except Exception as exc:
+                self._respond_uncaught(exc)
+
+        def _serve_streaming_get(self, path: str) -> bool:
+            """Dispatch the streaming/binary GET routes kept outside do_GET's JSON-500 boundary
+            (BE-0264); returns True when it handled the request.
+
+            Order mirrors the old match: the `/api/jobs/<id>/events` SSE stream before the
+            non-streaming `/api/jobs/<id>` view (which stays under the boundary), and the
+            `.../archive.zip` route before the generic run-file serve.
+            """
+            if path.startswith("/api/jobs/") and path.endswith("/events"):
+                self._sse_job(path[len("/api/jobs/") : -len("/events")])
+            elif path.startswith("/runs/") and path.endswith("/archive.zip"):
+                self._serve_run_archive(unquote(path[len("/runs/") : -len("/archive.zip")]))
+            elif path == "/api/capture/screenshot":
+                self._serve_capture_screenshot()
+            elif path.startswith("/runs/"):
+                self._serve_run_file(unquote(path[len("/runs/") :]))
+            else:
+                return False
+            return True
+
+        def _dispatch_get(self, path: str) -> None:
             match path:
                 case "/" | "/index.html":
                     body = _index_html(state.themes_dir, state.default_theme).encode("utf-8")
@@ -276,16 +335,8 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
                     self._oauth_login()
                 case "/api/oauth/callback":
                     self._oauth_callback()
-                case _ if path.startswith("/api/jobs/") and path.endswith("/events"):
-                    self._sse_job(path[len("/api/jobs/") : -len("/events")])
                 case _ if path.startswith("/api/jobs/"):
                     self._json(*ops.job_view(state, path[len("/api/jobs/") :]))
-                case _ if path.startswith("/runs/") and path.endswith("/archive.zip"):
-                    self._serve_run_archive(unquote(path[len("/runs/") : -len("/archive.zip")]))
-                case "/api/capture/screenshot":
-                    self._serve_capture_screenshot()
-                case _ if path.startswith("/runs/"):
-                    self._serve_run_file(unquote(path[len("/runs/") :]))
                 case _:
                     self._json({"error": "not found"}, 404)
 
@@ -341,6 +392,14 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
                 # number) here rather than 500 on a `.get(...)`.
                 self._json({"error": "expected a JSON object"}, 400)
                 return
+            try:
+                self._dispatch_post(path, body)
+            except Exception as exc:
+                self._respond_uncaught(exc)
+
+        def _dispatch_post(self, path: str, body: dict[str, Any]) -> None:
+            # Every case returns via `_json`; an operation that raises instead is caught by the
+            # boundary in do_POST and turned into a JSON 500 (BE-0264).
             match path:
                 case "/api/login":
                     self._post_login(body)

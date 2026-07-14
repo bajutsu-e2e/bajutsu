@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0264](BE-0264-serve-uncaught-exception-json.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0264") |
+| Implementing PR | _pending_ |
 | Topic | Codebase quality & technical debt |
 <!-- /BE-METADATA -->
 
@@ -80,10 +81,21 @@ verdict, determinism, or app-specific configuration.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Unit 1 — top-level `try/except` around the POST dispatch → JSON 500.
-- [ ] Unit 2 — same boundary for GET, excluding streaming/binary routes.
-- [ ] Unit 3 — server-side traceback preserved; deliberate client message.
-- [ ] Unit 4 — handler tests for POST and GET raise-paths, streaming untouched.
+- [x] Unit 1 — top-level `try/except` around the POST dispatch → JSON 500.
+- [x] Unit 2 — same boundary for GET, excluding streaming/binary routes.
+- [x] Unit 3 — server-side traceback preserved; deliberate client message.
+- [x] Unit 4 — handler tests for POST and GET raise-paths, streaming untouched.
+
+Log:
+
+- _pending_ — `bajutsu/serve/handler.py`: `do_POST` / `do_GET` now dispatch through
+  `_dispatch_post` / `_dispatch_get` wrapped in a top-level `try/except` that turns any uncaught
+  operation exception into a JSON 500 via `_respond_uncaught` (full traceback logged with the
+  `oplog` request id; client gets the exception message only). Streaming/binary GET routes (SSE,
+  run file / zip / screenshot) are split into `_serve_streaming_get` and dispatched outside the
+  boundary so a fallback `_json` can't double-write a response already on the wire.
+  `_respond_uncaught`'s own write is guarded so a client disconnect can't re-propagate the
+  empty-body drop. Tests: `tests/serve/test_http_uncaught.py`.
 
 ## References
 
