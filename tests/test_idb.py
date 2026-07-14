@@ -252,7 +252,7 @@ def test_query_returns_after_bounded_resets_when_wedge_persists() -> None:
 def test_query_yields_a_recurring_wedge_without_burning_transient_empty_backoff() -> None:
     # A wedge that recurs *after* a rich tree was already seen (so _max_seen >= _READY_MIN) also
     # matches _is_transient_empty (len < _READY_MIN and a richer tree was seen). Without the wedge
-    # guard, _describe_settled would burn its full _EMPTY_RETRIES exponential-backoff loop on the
+    # guard, _read_settled_tree would burn its full _EMPTY_RETRIES exponential-backoff loop on the
     # wedge — a same-companion re-read can never clear it — before query() finally resets. It must
     # instead hand the wedge straight back to query() so the companion reset (which *can* clear it)
     # fires promptly, keeping the describe-all count well below the compounding worst case.
