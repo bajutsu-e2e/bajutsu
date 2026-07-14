@@ -26,6 +26,7 @@ from starlette.requests import ClientDisconnect
 from bajutsu.serve import operations as ops
 from bajutsu.serve import oplog
 from bajutsu.serve.handler import _OAUTH_STATE_COOKIE, _SESSION_COOKIE, _index_html
+from bajutsu.serve.helpers import parse_byte_range
 from bajutsu.serve.state import ServeState
 from bajutsu.serve.uploads import MAX_UPLOAD_BYTES, BoundedZipReceiver, UploadTooLarge
 
@@ -134,7 +135,25 @@ def make_app(state: ServeState) -> FastAPI:
             return _result(({"error": "not found"}, 404))
         if art.redirect is not None:  # a server store hands back a signed URL
             return RedirectResponse(art.redirect, status_code=302)
-        return Response(art.body or b"", media_type=art.content_type)
+        data = art.body or b""
+        # Honor a `Range` request: a report's `<video>` needs 206/`Content-Range` replies to seek
+        # into a scrub target the browser hasn't buffered yet.
+        try:
+            byte_range = parse_byte_range(request.headers.get("range"), len(data))
+        except ValueError:
+            return Response(status_code=416, headers={"Content-Range": f"bytes */{len(data)}"})
+        if byte_range is None:
+            return Response(data, media_type=art.content_type, headers={"Accept-Ranges": "bytes"})
+        start, end = byte_range
+        return Response(
+            data[start : end + 1],
+            status_code=206,
+            media_type=art.content_type,
+            headers={
+                "Accept-Ranges": "bytes",
+                "Content-Range": f"bytes {start}-{end}/{len(data)}",
+            },
+        )
 
     # --- GET (reads) ---
 

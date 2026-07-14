@@ -107,6 +107,37 @@ def test_mask_secret(value: str, masked: str) -> None:
     assert srv.mask_secret(value) == masked
 
 
+@pytest.mark.parametrize(
+    ("range_header", "total", "expected"),
+    [
+        (None, 100, None),  # no header: caller serves the whole body as a normal 200
+        ("bytes=0-49", 100, (0, 49)),
+        ("bytes=50-", 100, (50, 99)),  # open-ended: to the end
+        ("bytes=-10", 100, (90, 99)),  # suffix range: last 10 bytes
+        ("bytes=0-999", 100, (0, 99)),  # end past total: clamped, not an error
+        ("bytes=0-49,60-99", 100, None),  # multi-range: unsupported, fall back to the whole body
+        ("bytes=abc-def", 100, None),  # garbage: fall back to the whole body
+    ],
+)
+def test_parse_byte_range(
+    range_header: str | None, total: int, expected: tuple[int, int] | None
+) -> None:
+    assert srv.parse_byte_range(range_header, total) == expected
+
+
+@pytest.mark.parametrize(
+    "range_header",
+    [
+        "bytes=200-300",  # start past total
+        "bytes=-0",  # zero-length suffix
+        "bytes=-",  # empty range (no start, no end)
+    ],
+)
+def test_parse_byte_range_rejects_unsatisfiable_ranges(range_header: str) -> None:
+    with pytest.raises(ValueError, match="range"):
+        srv.parse_byte_range(range_header, 100)
+
+
 def test_list_scenarios_includes_descriptions(tmp_path: Path) -> None:
     d = tmp_path / "scn"
     d.mkdir()

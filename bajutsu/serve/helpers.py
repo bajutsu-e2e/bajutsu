@@ -40,6 +40,41 @@ def mask_secret(value: str) -> str:
     return f"{value[:4]}…{value[-4:]}"
 
 
+_RANGE_RE = re.compile(r"bytes=(\d*)-(\d*)")
+
+
+def parse_byte_range(range_header: str | None, total: int) -> tuple[int, int] | None:
+    """Parse a single ``Range: bytes=start-end`` request header against a body of *total* bytes.
+
+    Returns the inclusive ``(start, end)`` byte offsets to serve, or None when *range_header* is
+    absent, a multi-range list, or otherwise not a plain single range — the caller then serves the
+    whole body as a normal 200. Raises ValueError when the header parses as a byte-range but isn't
+    satisfiable (e.g. a start past *total*), so the caller can reply 416 instead of serving garbage.
+
+    Without this, an HTML5 `<video>` can't seek: a report's video is served over HTTP by `bajutsu
+    serve`, and every browser needs 206/`Content-Range` responses to fetch into a scrub target that
+    isn't buffered yet — a 200-only server makes it silently restart from 0 instead."""
+    if not range_header:
+        return None
+    match = _RANGE_RE.fullmatch(range_header.strip())
+    if match is None:
+        return None  # multi-range or unrecognized syntax: ignore, serve the whole body
+    start_s, end_s = match.groups()
+    if not start_s and not end_s:
+        raise ValueError("empty range")
+    if not start_s:  # suffix range: last N bytes
+        suffix_length = int(end_s)
+        if suffix_length == 0:
+            raise ValueError("zero-length suffix range")
+        start, end = max(0, total - suffix_length), total - 1
+    else:
+        start = int(start_s)
+        end = int(end_s) if end_s else total - 1
+    if start > end or start >= total:
+        raise ValueError("range not satisfiable")
+    return start, min(end, total - 1)
+
+
 # --- query helpers ---
 
 

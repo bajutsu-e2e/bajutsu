@@ -26,6 +26,42 @@ def test_serve_run_file_serves_body_from_store(tmp_path: Path) -> None:
         server.server_close()
 
 
+def test_serve_run_file_honors_a_range_request(tmp_path: Path) -> None:
+    # A report's <video> needs 206/Content-Range to seek into an unbuffered part of the file —
+    # a 200-only server makes every browser silently restart playback from 0 instead.
+    scn_dir, cfg, runs = project(tmp_path)
+    write_run(runs, "r1", ok=True, scenarios=[("smoke", True)])
+    server, port = _serve(srv.ServeState(scenarios_dir=scn_dir, config=cfg, runs_dir=runs))
+    try:
+        req = urllib.request.Request(
+            f"http://127.0.0.1:{port}/runs/r1/report.html", headers={"Range": "bytes=1-4"}
+        )
+        with urllib.request.urlopen(req) as r:
+            assert r.status == 206
+            assert r.headers.get("Accept-Ranges") == "bytes"
+            assert r.headers.get("Content-Range") == "bytes 1-4/13"  # b"<html></html>" is 13 bytes
+            assert r.read() == b"html"
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+def test_serve_run_file_rejects_an_unsatisfiable_range(tmp_path: Path) -> None:
+    scn_dir, cfg, runs = project(tmp_path)
+    write_run(runs, "r1", ok=True, scenarios=[("smoke", True)])
+    server, port = _serve(srv.ServeState(scenarios_dir=scn_dir, config=cfg, runs_dir=runs))
+    try:
+        req = urllib.request.Request(
+            f"http://127.0.0.1:{port}/runs/r1/report.html", headers={"Range": "bytes=999-1000"}
+        )
+        with pytest.raises(urllib.error.HTTPError) as ei:
+            urllib.request.urlopen(req)
+        assert ei.value.code == 416
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
 def test_archive_endpoint_streams_a_zip_attachment(tmp_path: Path) -> None:
     import io
     import zipfile
