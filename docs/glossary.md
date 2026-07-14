@@ -112,7 +112,7 @@ is why BE-0057 renamed the config concept from `app` to `target`.
 
 | Term | What it is |
 |---|---|
-| **target** | One config entry under `targets.<name>` describing an app to test: its per-platform identifier (iOS `bundleId`, web `baseUrl`, Android `package`), plus `backend`, `device`, `appPath`, and so on. A *config unit*. Defined by `TargetConfig` in `bajutsu/config.py`. |
+| **target** | One config entry under `targets.<name>` describing an app to test: its per-platform identifier (iOS `bundleId`, web `baseUrl`, Android `package`), plus `backend`, `device`, `appPath`, and so on. A *config unit*. Defined by `TargetConfig` in `bajutsu/config/schema.py`. |
 | **app** | The application under test itself — the software the target points at and that gets installed on a device. |
 | **device** | The concrete runtime instance the target is driven on — a Simulator / emulator / browser context, named by `device` (e.g. `iPhone 15`) and addressed at runtime by `udid`. |
 

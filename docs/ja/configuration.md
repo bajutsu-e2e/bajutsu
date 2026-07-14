@@ -4,7 +4,7 @@
 
 ツール本体はアプリ非依存です。アプリ固有の差分はすべて config に置くので、同じバイナリと同じドライバで複数のターゲットを実行できます。ターゲットを追加するときは `targets.<name>` を 1 つ加えるだけです。
 
-実装: `bajutsu/config.py`（解決） · `bajutsu/doctor.py`（規約充足度スコア）。config はリポジトリのルートには同梱されていません。`--config`（既定のファイル名は `bajutsu.config.yaml`）で渡します。デモにはすぐ動くものが同梱されています（例: [`demos/showcase/showcase.config.yaml`](../../demos/showcase/showcase.config.yaml)（iOS）、[`demos/web/demo.config.yaml`](../../demos/web/demo.config.yaml)（web））。
+実装: `bajutsu/config/resolve.py`（解決） · `bajutsu/doctor.py`（規約充足度スコア）。config はリポジトリのルートには同梱されていません。`--config`（既定のファイル名は `bajutsu.config.yaml`）で渡します。デモにはすぐ動くものが同梱されています（例: [`demos/showcase/showcase.config.yaml`](../../demos/showcase/showcase.config.yaml)（iOS）、[`demos/web/demo.config.yaml`](../../demos/web/demo.config.yaml)（web））。
 
 関連: [concepts のアプリ非依存](concepts.md#6-アプリ非依存差分は-config-に寄せる) · [drivers](drivers.md) · [scenarios](scenarios.md)
 
@@ -62,7 +62,7 @@ targets:
 | `browser` | app | web backend のみ: 駆動する Playwright の描画エンジン。`chromium`（既定）、`firefox`、`webkit` から選びます。いずれも Linux 上でヘッドレス実行できます。`bajutsu run/record --browser <engine>` が実行ごとに上書きし（フラグ > config > 既定）、`bajutsu run --browsers <list>` はクロスブラウザマトリクスを実行します（後述）。エンジンのブラウザバイナリが無ければ実行時に取得します。未知の値は config 読み込み時に拒否されます。iOS は無視します（[BE-0076](../../roadmaps/BE-0076-web-cross-browser-engines/BE-0076-web-cross-browser-engines-ja.md)） |
 | `device_mode` | app | web backend のみ: ブラウザコンテキストを生成するときのデバイスモード。`deviceMode: desktop`（既定で、今日から変わりません）か、Playwright のデバイスプリセット名（例 `iPhone 13`）です。プリセットは viewport / `device_scale_factor` / `is_mobile` / `has_touch` / `user_agent` をエミュレートし、web ターゲットをそのモバイル端末として駆動します。これはデスクトップ級ブラウザでのエミュレーション（Chrome DevTools のデバイスツールバー）であり、実機ではありません（[drivers → Playwright](drivers.md#playwrightweb)）。ドライバーの中で `playwright.devices` に対して**遅延**して解決するため、config 読み込みが Playwright を import することはありません。不明なプリセットは config 読み込み時ではなくドライバー起動時に明示的なエラーで失敗します。トップレベルの `device`（iOS シミュレータ名で、web ターゲットは無視します）とは別物です。iOS / Android はこれを無視します（[BE-0228](../../roadmaps/BE-0228-web-device-mode-emulation/BE-0228-web-device-mode-emulation-ja.md)） |
 | `launch_server` | app | 任意の `launchServer: {cmd, readyUrl, readyTimeout, cwd, env}`。run のために `baseUrl` のホストを起動し、終わったら停止します。`readyUrl`（既定は `baseUrl`）をプローブし、すでに応答すれば再利用、しなければ `cmd` を起動して準備が整うまで待ちます（固定 sleep ではなく条件待ち）。iOS の `build` の web 版です（[BE-0059](../../roadmaps/BE-0059-launch-target-server/BE-0059-launch-target-server-ja.md)）。`serve` 上の**アップロードされた**バンドルでは、ホストが `cmd` を直接実行することはなく、`serve --upload-exec` が統制します（[セルフホスティング](self-hosting.md#アップロードされた-config-のコマンド実行be-0090)を参照）。`sandbox` での実行には、追加フィールドとして `dockerImage`（Docker イメージ参照。例 `node:20-slim`）か `dockerfile`（バンドル相対のパスで、`docker build` でビルドします）のどちらか一方、加えて `port`（コンテナ内の待ち受けポート。ループバックのホストポートへ publish します）が必要です（[BE-0090](../../roadmaps/BE-0090-uploaded-config-command-execution/BE-0090-uploaded-config-command-execution-ja.md)） |
-| `dismiss_alerts` / `erase` / `network` | app | 本来シナリオ単位や CLI フラグで指定する run のテスト動作設定に、アプリ単位の既定値を与えます（[BE-0177](../../roadmaps/BE-0177-run-behavior-target-config/BE-0177-run-behavior-target-config-ja.md)）。`dismissAlerts` はシナリオと同じ形（`false`、または `{ enabled, instruction }`）を取りアラートガードの既定値になり、`erase` は `preconditions.erase` の、`network` はアプリのネットワーク収集の既定値になります。いずれも **フラグ ＞ シナリオ ＞ これ ＞ ビルトイン既定**（ガードは on、erase は off、network は on）の順で解決し、`--headed`/`headless` と同じ重ね方です。`bajutsu run --dismiss-alerts/--no-dismiss-alerts`・`--erase/--no-erase`・`--network/--no-network`（および `--alert-instruction`）が実行ごとに上書きします |
+| `run_defaults.dismiss_alerts` / `.erase` / `.network` | app | 本来シナリオ単位や CLI フラグで指定する run のテスト動作設定に、アプリ単位の既定値を与えます（[BE-0177](../../roadmaps/BE-0177-run-behavior-target-config/BE-0177-run-behavior-target-config-ja.md)）。`dismissAlerts` はシナリオと同じ形（`false`、または `{ enabled, instruction }`）を取りアラートガードの既定値になり、`erase` は `preconditions.erase` の、`network` はアプリのネットワーク収集の既定値になります。いずれも **フラグ ＞ シナリオ ＞ これ ＞ ビルトイン既定**（ガードは on、erase は off、network は on）の順で解決し、`--headed`/`headless` と同じ重ね方です。`bajutsu run --dismiss-alerts/--no-dismiss-alerts`・`--erase/--no-erase`・`--network/--no-network`（および `--alert-instruction`）が実行ごとに上書きします |
 | `deeplink_scheme` | app | preconditions の deeplink で使う scheme |
 | `backend` | app ?? defaults | プラットフォーム(`ios`/`android`/`web`/`fake`)か actuator(`idb`)の安定度順リスト（単一文字列はリスト化）（[drivers](drivers.md#バックエンド選択と-actuator)） |
 | `device` / `locale` | app ?? defaults | `locale` は launch 時に適用される（`simctl` の launch 引数） |
@@ -72,7 +72,7 @@ targets:
 | `reserved_namespaces` | defaults | 情報用（doctor は app の `idNamespaces` のみで採点） |
 | `mock_server` | app | ⚠️ スキーマのみ · 未配線 |
 | `setup` | app | 既定の再利用前段（その steps を各シナリオの本編前に実行） |
-| `scenarios` | app | このターゲットのシナリオディレクトリ。`run --target` は配下の `*.yaml` を全件読み、`record` は新規をここへ書く。config ファイル自身のディレクトリ基準の相対パス（`appPath` / `baselines` / `schemas` / `goldens` も同様）で、`bajutsu` をどこから実行しても config は同じ挙動になる（BE-0242）。`run --scenario` / `record --out` で上書き |
+| `evidence_dirs.scenarios` | app | このターゲットのシナリオディレクトリ。`run --target` は配下の `*.yaml` を全件読み、`record` は新規をここへ書く。config ファイル自身のディレクトリ基準の相対パス（`appPath` や兄弟の `evidence_dirs.baselines` / `.schemas` / `.goldens` も同様）で、`bajutsu` をどこから実行しても config は同じ挙動になる（BE-0242）。`run --scenario` / `record --out` で上書き |
 | `capture` | defaults | 既定証跡（[evidence の注記](evidence.md#証跡の指示方法3-つ)） |
 | `redact` | defaults ∪ app | マージ（下記） |
 | `secrets` | defaults ∪ app | `${secrets.X}` を宣言する環境変数名。実値は証跡でマスク（[evidence](evidence.md#マスキングredact)） |
