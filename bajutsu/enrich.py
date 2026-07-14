@@ -12,8 +12,9 @@ from collections.abc import Callable
 from bajutsu.agent_protocols import EnrichmentAgent, EnrichmentProposal, StepContext
 from bajutsu.drivers import base
 from bajutsu.orchestrator import BlockedHandler, Clock, RealClock
-from bajutsu.record import _clear_blocking, _execute, _screenshot_bytes
+from bajutsu.record import clear_blocking, execute
 from bajutsu.scenario import Scenario
+from bajutsu.screenshots import screenshot_bytes
 
 Reporter = Callable[[str], None]
 
@@ -49,11 +50,11 @@ def enrich(
 
     for i, step in enumerate(scenario.steps, 1):
         if alert_guard is not None:
-            _clear_blocking(driver, alert_guard, clock, report=report)
+            clear_blocking(driver, alert_guard, clock, report=report)
 
         say(f"[{i}/{len(scenario.steps)}] replaying step …")
         try:
-            _execute(driver, step, clock, on_wait_failure=_raise_on_wait_failure)
+            execute(driver, step, clock, on_wait_failure=_raise_on_wait_failure)
         except (
             base.SelectorError,
             base.UnsupportedAction,
@@ -65,7 +66,7 @@ def enrich(
             break
 
         elements = driver.query()
-        screenshot = _screenshot_bytes(driver) if with_screenshot else None
+        screenshot = screenshot_bytes(driver) if with_screenshot else None
         contexts.append(StepContext(step=step, screen=elements, screenshot=screenshot))
 
     if not contexts:

@@ -52,7 +52,7 @@ from bajutsu.crawl.guide import MODEL as _CRAWL_GUIDE_MODEL
 from bajutsu.crawl.guide import Report, make_guide
 from bajutsu.drivers import base
 from bajutsu.platform_lifecycle import CrawlEnvironment, environment_for
-from bajutsu.record import _clear_blocking
+from bajutsu.record import clear_blocking as clear_blocking_overlay
 from bajutsu.redaction import Redactor
 from bajutsu.run_id import new_run_id
 from bajutsu.runner import launch_driver
@@ -236,7 +236,7 @@ def _wire_health(
             clock = RealClock()
 
             def clear_blocking(d: base.Driver) -> list[str]:
-                return _clear_blocking(d, guard, clock, report=report)
+                return clear_blocking_overlay(d, guard, clock, report=report)
 
     return is_alive, clear_blocking, recover
 

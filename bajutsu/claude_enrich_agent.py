@@ -28,7 +28,7 @@ from bajutsu.ai.prompts import render_elements
 from bajutsu.ai_config import AiConfig, language_instruction
 from bajutsu.claude_agent import _TARGET_PROPS, _to_assertion
 from bajutsu.claude_backed_agent import ClaudeBackedAgent
-from bajutsu.record import _describe_step, _settle_step
+from bajutsu.record import describe_step, settle_step
 from bajutsu.redaction import Redactor
 from bajutsu.scenario import Scenario
 
@@ -135,7 +135,7 @@ def _render_enrichment(
     lines.append("")
 
     for i, ctx in enumerate(step_contexts, 1):
-        lines.append(f"--- Step {i}/{len(step_contexts)}: {_describe_step(ctx.step)} ---")
+        lines.append(f"--- Step {i}/{len(step_contexts)}: {describe_step(ctx.step)} ---")
         lines.append("Screen after this step:")
         lines.extend(_render_elements(ctx.screen, redactor))
         lines.append("")
@@ -203,6 +203,6 @@ class ClaudeEnrichmentAgent(ClaudeBackedAgent):
 
         args = block.input
         expect = [_to_assertion(a) for a in args.get("assertions", [])]
-        settle = _settle_step(expect)
+        settle = settle_step(expect)
         note = args.get("reason", "")
         return EnrichmentProposal(expect=expect, settle=settle, note=note)

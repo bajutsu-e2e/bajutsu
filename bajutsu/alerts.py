@@ -34,8 +34,8 @@ from bajutsu.claude_backed_agent import ClaudeBackedAgent
 from bajutsu.drivers import base
 from bajutsu.elements import screen_size_from_elements
 from bajutsu.orchestrator import AlertEvent
-from bajutsu.record import _screenshot_bytes
 from bajutsu.redaction import Redactor
+from bajutsu.screenshots import fraction, png_size, screenshot_bytes
 
 LOCATOR_MODEL = "claude-opus-4-8"
 
@@ -71,7 +71,7 @@ class SystemAlertGuard:
         Returns the AlertEvent it dismissed (the button it tapped), or None when nothing
         on screen needed clearing.
         """
-        png = _screenshot_bytes(driver)
+        png = screenshot_bytes(driver)
         if png is None:
             return None
         try:
@@ -131,19 +131,6 @@ LOCATOR_TOOL: list[ToolDef] = [
 ]
 
 
-def _png_size(png: bytes) -> tuple[int, int]:
-    """(width, height) in pixels from the PNG IHDR header, or (0, 0) if not parseable."""
-    if len(png) >= 24 and png[:8] == b"\x89PNG\r\n\x1a\n":
-        return int.from_bytes(png[16:20], "big"), int.from_bytes(png[20:24], "big")
-    return (0, 0)
-
-
-def _fraction(value: float, size: int) -> float:
-    """Map a coordinate to [0,1]: a pixel value (>1) over a known size, else as-is."""
-    frac = value / size if size > 0 and value > 1.0 else value
-    return min(1.0, max(0.0, frac))
-
-
 def _decision_of(response: MessageResponse, width: int, height: int) -> AlertDecision:
     tool_use = response.first_tool_use()
     if tool_use is None or not tool_use.input.get("present"):
@@ -152,8 +139,8 @@ def _decision_of(response: MessageResponse, width: int, height: int) -> AlertDec
     raw_x, raw_y = args.get("x"), args.get("y")
     return AlertDecision(
         present=True,
-        x=0.5 if raw_x is None else _fraction(float(raw_x), width),
-        y=0.5 if raw_y is None else _fraction(float(raw_y), height),
+        x=0.5 if raw_x is None else fraction(float(raw_x), width),
+        y=0.5 if raw_y is None else fraction(float(raw_y), height),
         label=str(args.get("label", "")),
     )
 
@@ -174,7 +161,7 @@ class ClaudeAlertLocator(ClaudeBackedAgent):
         )
 
     def locate(self, screenshot_png: bytes, instruction: str | None) -> AlertDecision:
-        width, height = _png_size(screenshot_png)
+        width, height = png_size(screenshot_png)
         text = (
             "Clear the blocking system prompt if one is present. "
             f"The screenshot is {width}x{height} pixels (width x height); give the "

@@ -105,7 +105,7 @@ and never an AI guess. This substrate owns the mechanism and the boundary; the h
 
 ### Automatic settle-step insertion
 
-`_settle_step`: the agent sees a "settled screen" between turns, but deterministic replay is fast
+`settle_step`: the agent sees a "settled screen" between turns, but deterministic replay is fast
 and may verify before an async transition (e.g. a sheet) has rendered. So it records a **`wait` for
 the first "must-be-present" element in expect**, just before the assertions. This makes the recorded
 scenario self-sufficient without adding implicit timing to `run`.

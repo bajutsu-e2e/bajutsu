@@ -32,9 +32,9 @@ from bajutsu.ai import (
 )
 from bajutsu.ai.prompts import NEVER_JUDGE_BOUNDARY
 from bajutsu.ai_config import AiConfig, language_instruction
-from bajutsu.alerts import _fraction, _png_size
 from bajutsu.claude_backed_agent import ClaudeBackedAgent
 from bajutsu.drivers import base
+from bajutsu.screenshots import fraction, png_size
 
 TAB_LOCATOR_MODEL = "claude-opus-4-8"
 
@@ -165,8 +165,8 @@ def _targets_of(response: MessageResponse, width: int, height: int) -> list[TabT
             continue
         out.append(
             TabTarget(
-                x=_fraction(float(item["x"]), width),
-                y=_fraction(float(item["y"]), height),
+                x=fraction(float(item["x"]), width),
+                y=fraction(float(item["y"]), height),
                 label=str(item.get("label", "")),
             )
         )
@@ -187,7 +187,7 @@ class ClaudeTabLocator(ClaudeBackedAgent):
         self._lang = language_instruction(ai)  # output-language suffix, empty for `auto` (BE-0188)
 
     def locate(self, screenshot_png: bytes) -> list[TabTarget]:
-        width, height = _png_size(screenshot_png)
+        width, height = png_size(screenshot_png)
         text = (
             f"Find the tab bar. The screenshot is {width}x{height} pixels (width x height); give "
             "each tab center as pixel coordinates within that range."
