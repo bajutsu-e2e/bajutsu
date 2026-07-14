@@ -540,6 +540,7 @@ Accepted and actively being built — a PR is in flight or imminent.
 | ID | Item | Status |
 |---|---|---|
 | [BE-0250](BE-0250-assertions-package-eval-context/BE-0250-assertions-package-eval-context.md) | Split assertions into a package and thread evaluation contexts as one EvalContext | In progress |
+| [BE-0253](BE-0253-serve-route-registry-unification/BE-0253-serve-route-registry-unification.md) | Unify the serve dual-backend route tables behind a declarative registry | In progress |
 | [BE-0257](BE-0257-layer-package-topology/BE-0257-layer-package-topology.md) | Package the enforced architecture layers as directories | In progress |
 <!-- /GENERATED:in-progress-quality-debt -->
 
@@ -619,7 +620,6 @@ Running a scenario on a hosted device farm instead of a local Simulator, emulato
 |---|---|---|
 | [BE-0247](BE-0247-serve-frontend-es-modules/BE-0247-serve-frontend-es-modules.md) | Move the serve frontend to ES modules | Proposal |
 | [BE-0252](BE-0252-config-package-split/BE-0252-config-package-split.md) | Split config into a package and group Effective into sub-records | Proposal |
-| [BE-0253](BE-0253-serve-route-registry-unification/BE-0253-serve-route-registry-unification.md) | Unify the serve dual-backend route tables behind a declarative registry | Proposal |
 | [BE-0256](BE-0256-platform-lifecycle-package-split/BE-0256-platform-lifecycle-package-split.md) | Split platform_lifecycle into a package and route device resolution through the Environment seam | Proposal |
 <!-- /GENERATED:proposals-quality-debt -->
 
