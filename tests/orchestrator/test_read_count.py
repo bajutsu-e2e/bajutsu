@@ -263,3 +263,62 @@ def test_action_step_reads_a_fresh_after_never_a_reused_snapshot() -> None:
         sink=_KindsSink(),
     )
     assert result.ok, result.failure
+
+
+def test_wait_gone_reuses_its_settled_tree() -> None:
+    # The reuse is not `for`-only: `wait until: gone` also hands back its last-polled tree, so the
+    # extract on the same step reads THAT tree — one read, not two. Guards the non-`for` wait variants
+    # against a regression that returns no snapshot and reintroduces a redundant query (BE-0259).
+    driver = _CountingDriver(
+        [el("field", "Name", value="Ada")]
+    )  # the awaited "ghost" is already gone
+    result = run_scenario(
+        driver,
+        _scenario(
+            {
+                "name": "x",
+                "steps": [
+                    {
+                        "wait": {"until": {"gone": {"id": "ghost"}}, "timeout": 1.0},
+                        "extract": {"who": {"sel": {"id": "field"}, "prop": "value"}},
+                    }
+                ],
+            }
+        ),
+        clock=FakeClock(),
+        sink=_KindsSink(),
+    )
+    assert result.ok, result.failure
+    assert driver.queries == 1
+
+
+def test_wait_until_request_reads_a_fresh_after() -> None:
+    # `wait until: request` polls the observed network, not the tree, so it hands back no snapshot
+    # (None) — the one non-mutating wait whose screen may still be rendering as the awaited response
+    # lands. The extract on the same step must therefore issue a FRESH read: exactly one query, not
+    # the zero a wrongly-reused snapshot would cost (BE-0259).
+    driver = _CountingDriver([el("field", "Name", value="Ada")])
+    result = run_scenario(
+        driver,
+        _scenario(
+            {
+                "name": "x",
+                "steps": [
+                    {
+                        "wait": {
+                            "until": {
+                                "request": {"method": "GET", "path": "/items", "status": 200}
+                            },
+                            "timeout": 1.0,
+                        },
+                        "extract": {"who": {"sel": {"id": "field"}, "prop": "value"}},
+                    }
+                ],
+            }
+        ),
+        clock=FakeClock(),
+        sink=_KindsSink(),
+        network=lambda: [NetworkExchange(method="GET", path="/items", status=200)],
+    )
+    assert result.ok, result.failure
+    assert driver.queries == 1
