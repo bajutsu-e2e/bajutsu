@@ -9,7 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0259") |
-| 実装 PR | [#NNN](https://github.com/bajutsu-e2e/bajutsu/pull/NNN) |
+| 実装 PR | [#1083](https://github.com/bajutsu-e2e/bajutsu/pull/1083) |
 | トピック | コードベース品質・技術的負債 |
 | 関連 | [BE-0172](../BE-0172-run-loop-step-decomposition/BE-0172-run-loop-step-decomposition-ja.md)、[BE-0234](../BE-0234-adb-run-performance/BE-0234-adb-run-performance-ja.md) |
 <!-- /BE-METADATA -->
