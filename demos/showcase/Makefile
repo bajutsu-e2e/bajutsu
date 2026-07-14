@@ -4,7 +4,7 @@
 .PHONY: build-all \
 	swiftui-gen swiftui-build swiftui-noax-build \
 	uikit-gen uikit-build uikit-noax-build runner-build \
-	run-swiftui run-uikit doctor record ui-test \
+	run-swiftui run-uikit run-swiftui-tabs run-uikit-tabs doctor record ui-test \
 	vrt vrt-approve vrt-swiftui vrt-swiftui-approve vrt-uikit vrt-uikit-approve \
 	e2e-visual e2e-visual-approve clean
 
@@ -51,17 +51,28 @@ runner-build:
 		-destination 'generic/platform=iOS Simulator' -derivedDataPath build/dd
 	cp $(RUNNER_PRODUCTS)/BajutsuRunner_*.xctestrun $(RUNNER_PRODUCTS)/BajutsuRunner.xctestrun
 
-# Run the shared id-based scenarios against the a11y apps on a booted Simulator. The suite now
-# crosses tabs by tapping the native tab bar (BE-0107 retired the SHOWCASE_TAB launch shortcut),
-# which only the XCUITest backend can do — idb collapses the tab bar into one opaque group — so
-# these run on `--backend ios` (XCUITest preferred, idb fallback) and need the runner built.
-# Prereqs: a booted simulator, `make runner-build`.
+# Run the shared id-based scenarios against the a11y apps on a booted Simulator. `--backend ios`
+# resolves each scenario through the BE-0240 capability ladder (idb first, cost order — NOT
+# "XCUITest preferred" despite the platform's stability order used elsewhere), escalating to
+# XCUITest only for a construct the preflight can detect (e.g. `pinch`/`rotate`). Tapping the
+# native tab bar by id is not such a construct — idb's `describe-all` collapses the whole tab bar
+# into one opaque group no matter what the preflight sees in the step — so `scenarios/tabs.yaml`
+# is tagged `xcuitest` and excluded here; `run-swiftui-tabs`/`run-uikit-tabs` below run it on its
+# own, forced onto XCUITest. Prereqs: a booted simulator, `make runner-build`.
 SIM ?= $(shell xcrun simctl list devices booted | grep -oE '[0-9A-F-]{36}' | head -1)
 
 run-swiftui: swiftui-build runner-build
-	cd $(ROOT) && uv run bajutsu run --target showcase-swiftui --udid $(SIM) --backend ios --config $(CONFIG)
+	cd $(ROOT) && uv run bajutsu run --target showcase-swiftui --udid $(SIM) --backend ios --exclude xcuitest --config $(CONFIG)
 run-uikit: uikit-build runner-build
-	cd $(ROOT) && uv run bajutsu run --target showcase-uikit --udid $(SIM) --backend ios --config $(CONFIG)
+	cd $(ROOT) && uv run bajutsu run --target showcase-uikit --udid $(SIM) --backend ios --exclude xcuitest --config $(CONFIG)
+
+# scenarios/tabs.yaml on its own, forced onto XCUITest (see the comment above run-swiftui/run-uikit).
+run-swiftui-tabs: swiftui-build runner-build
+	cd $(ROOT) && uv run bajutsu run --scenario demos/showcase/scenarios/tabs.yaml --target showcase-swiftui \
+		--udid $(SIM) --backend xcuitest --config $(CONFIG)
+run-uikit-tabs: uikit-build runner-build
+	cd $(ROOT) && uv run bajutsu run --scenario demos/showcase/scenarios/tabs.yaml --target showcase-uikit \
+		--udid $(SIM) --backend xcuitest --config $(CONFIG)
 
 # The accessibility A/B: doctor grades the a11y app Ready and the no-a11y app Blocked.
 doctor: swiftui-build swiftui-noax-build

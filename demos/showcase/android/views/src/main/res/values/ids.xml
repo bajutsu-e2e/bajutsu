@@ -6,6 +6,13 @@
      Automator surfaces them as `resource-id`. Data-derived rows are pre-declared over the fixture's
      fixed ranges (horses 1–5, notices 1–20; log rows over a bounded 1–10). -->
 <resources>
+    <!-- tab bar — the tab items themselves, one per idNamespace, no dot to map ('.'/'-') -->
+    <item name="stable" type="id" />
+    <item name="search" type="id" />
+    <item name="log" type="id" />
+    <item name="notice" type="id" />
+    <item name="perm" type="id" />
+
     <!-- stable -->
     <item name="stable_refresh" type="id" />
     <item name="stable_status" type="id" />
