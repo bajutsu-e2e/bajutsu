@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import shlex
 import time
 import zipfile
 from collections.abc import Callable, Sequence
@@ -94,9 +95,13 @@ def render_test_spec(
     """
     if not scenarios:
         raise ValueError("cannot render a test spec with no scenario to run")
+    # `target`, `config`, and each scenario path trace back to workflow_dispatch text inputs, so
+    # quote every splice: an unescaped space or shell metacharacter would otherwise break argument
+    # parsing or inject a command onto the Device Farm host running under the OIDC-minted AWS role.
     run_cmds = [
         "bajutsu run"
-        f" --scenario {s} --target {target} --config {config} --backend adb --udid booted"
+        f" --scenario {shlex.quote(s)} --target {shlex.quote(target)}"
+        f" --config {shlex.quote(config)} --backend adb --udid booted"
         for s in scenarios
     ]
     spec: dict[str, Any] = {
@@ -201,15 +206,19 @@ class DeviceFarmClient(Protocol):
     """
 
     def create_upload(self, *, projectArn: str, name: str, type: str) -> dict[str, Any]:  # noqa: N803 - boto3 kwargs
-        ...
+        """Register a new upload; boto3 returns ``{"upload": {...}}`` with the presigned PUT URL."""
 
-    def get_upload(self, *, arn: str) -> dict[str, Any]: ...
+    def get_upload(self, *, arn: str) -> dict[str, Any]:
+        """Fetch an upload's current status (``INITIALIZED`` → ``SUCCEEDED`` / ``FAILED``)."""
 
-    def schedule_run(self, **kwargs: Any) -> dict[str, Any]: ...
+    def schedule_run(self, **kwargs: Any) -> dict[str, Any]:
+        """Schedule a run from the uploaded app/test/spec; boto3 returns ``{"run": {...}}``."""
 
-    def get_run(self, *, arn: str) -> dict[str, Any]: ...
+    def get_run(self, *, arn: str) -> dict[str, Any]:
+        """Fetch a run's current status; boto3 returns ``{"run": {...}}``."""
 
-    def list_artifacts(self, *, arn: str, type: str) -> dict[str, Any]: ...
+    def list_artifacts(self, *, arn: str, type: str) -> dict[str, Any]:
+        """List a run's artifacts of the given type; boto3 returns ``{"artifacts": [...]}``."""
 
 
 class Transfer(Protocol):
@@ -449,13 +458,14 @@ class _HttpTransfer:
         import urllib.request
 
         request = urllib.request.Request(url, data=path.read_bytes(), method="PUT")  # noqa: S310
-        urllib.request.urlopen(request).close()  # noqa: S310 - Device Farm presigned https URL
+        # An explicit timeout keeps a stalled S3 connection from hanging past the poll loops' cap.
+        urllib.request.urlopen(request, timeout=300).close()  # noqa: S310 - Device Farm presigned https URL
 
     def download(self, url: str, dest: Path) -> None:
         import io
         import urllib.request
 
-        with urllib.request.urlopen(url) as response:  # noqa: S310 - Device Farm presigned https URL
+        with urllib.request.urlopen(url, timeout=300) as response:  # noqa: S310 - Device Farm presigned https URL
             payload = response.read()
         with zipfile.ZipFile(io.BytesIO(payload)) as zf:
             zf.extractall(dest)
