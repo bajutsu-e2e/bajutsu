@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0250](BE-0250-assertions-package-eval-context.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0250") |
+| Implementing PR | [#1093](https://github.com/bajutsu-e2e/bajutsu/pull/1093) |
 | Topic | Codebase quality & technical debt |
 | Related | [BE-0172](../BE-0172-run-loop-step-decomposition/BE-0172-run-loop-step-decomposition.md) |
 <!-- /BE-METADATA -->
@@ -142,10 +143,17 @@ before and after) rather than changing any assertion's observable behavior.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Split `bajutsu/assertions.py` into an `assertions/` package (`network.py`, `visual.py`, `schema.py`, `evaluate.py`), re-exporting the existing public surface.
+- [x] Split `bajutsu/assertions.py` into an `assertions/` package (`network.py`, `visual.py`, `schema.py`, `evaluate.py`), re-exporting the existing public surface.
 - [ ] Bundle `visual_context`/`schema_context`/`golden_context`/`clipboard` into one `EvalContext`, threaded end-to-end through `evaluate` → `evaluate_one` → `run_scenario` → `_run_step_body` → `pipeline.py`.
 - [ ] Replace the 14-way `if` chain in `evaluate_one` with a `{field_name: eval_fn}` registry, mirroring `bajutsu/orchestrator/actions/_registry.py`'s `_HANDLERS`.
 - [ ] Derive `_ASSERTION_KINDS` from `Assertion.model_fields` instead of hand-maintaining the tuple.
+
+### Log
+
+- Unit 1 (package split) — `bajutsu/assertions.py` split into `bajutsu/assertions/` (`_common`, `network`,
+  `visual`, `schema`, `evaluate`), the public surface re-exported from `__init__`. Behavior-preserving;
+  the existing assertion/network suites plus a re-export/acyclicity guard are the parity net.
+  PR [#1093](https://github.com/bajutsu-e2e/bajutsu/pull/1093).
 
 ## References
 

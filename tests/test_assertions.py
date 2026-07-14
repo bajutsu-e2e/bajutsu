@@ -25,6 +25,35 @@ SCREEN: list[base.Element] = [
 ]
 
 
+def test_public_surface_reexported_from_package_root() -> None:
+    """The package split (BE-0250) keeps every public name importable from `bajutsu.assertions`."""
+    import bajutsu.assertions as pkg
+
+    for name in (
+        "AssertionResult",
+        "GoldenContext",
+        "SchemaContext",
+        "VisualContext",
+        "VisualEvidence",
+        "count_matching",
+        "evaluate",
+        "evaluate_one",
+        "match_request",
+        "passed",
+        "request_label",
+    ):
+        assert hasattr(pkg, name), name
+        assert name in pkg.__all__, name
+
+
+def test_submodules_import_without_a_cycle() -> None:
+    """Each seam module loads on its own — the leaf `_common` keeps the split acyclic (BE-0250)."""
+    import importlib
+
+    for mod in ("_common", "network", "visual", "schema", "evaluate"):
+        assert importlib.import_module(f"bajutsu.assertions.{mod}") is not None
+
+
 def _a(data: dict[str, object]) -> Assertion:
     return Assertion.model_validate(data)
 
@@ -124,7 +153,7 @@ def test_evaluate_and_passed() -> None:
 
 def test_compile_cache_reuses_compiled_pattern() -> None:
     """_compile caches compiled regex patterns in assertions module."""
-    from bajutsu.assertions import _compile
+    from bajutsu.assertions._common import _compile
 
     _compile.cache_clear()
     _compile("foo.*bar")
@@ -754,7 +783,7 @@ def test_prepare_visual_comparison_whole_screen_is_a_passthrough(tmp_path: Path)
     """No element / no selector mask: preprocessing leaves the whole screenshot as the actual."""
     from PIL import Image
 
-    from bajutsu.assertions import _prepare_visual_comparison
+    from bajutsu.assertions.visual import _prepare_visual_comparison
 
     shot = tmp_path / "shot.png"
     Image.new("RGBA", (100, 100), (255, 0, 0, 255)).save(shot)
@@ -763,7 +792,7 @@ def test_prepare_visual_comparison_whole_screen_is_a_passthrough(tmp_path: Path)
     prepared = _prepare_visual_comparison(_vc(tmp_path, shot), a, _framed_screen(), "home.png")
 
     # A whole-screen comparison: no crop, no scale, the actual is the untouched screenshot.
-    from bajutsu.assertions import _Prepared
+    from bajutsu.assertions.visual import _Prepared
 
     assert isinstance(prepared, _Prepared)
     assert prepared.crop is None
@@ -776,7 +805,7 @@ def test_prepare_visual_comparison_crops_to_the_element(tmp_path: Path) -> None:
     """An element-scoped comparison writes the crop and reports it as the actual (40x30 card)."""
     from PIL import Image
 
-    from bajutsu.assertions import _prepare_visual_comparison, _Prepared
+    from bajutsu.assertions.visual import _prepare_visual_comparison, _Prepared
 
     actual = Image.new("RGBA", (100, 100), (255, 0, 0, 255))
     _paint(actual, (10, 10, 40, 30), (0, 255, 0, 255))
@@ -800,7 +829,8 @@ def test_prepare_visual_comparison_element_not_found_returns_result(tmp_path: Pa
     """An unresolvable element scope short-circuits to a failing AssertionResult, not a crop."""
     from PIL import Image
 
-    from bajutsu.assertions import AssertionResult, _prepare_visual_comparison
+    from bajutsu.assertions import AssertionResult
+    from bajutsu.assertions.visual import _prepare_visual_comparison
 
     shot = tmp_path / "shot.png"
     Image.new("RGBA", (100, 100), (255, 0, 0, 255)).save(shot)
@@ -818,7 +848,9 @@ def test_resolve_masks_selector_and_rectangle(tmp_path: Path) -> None:
     """Selector masks resolve to pixel rectangles (with provenance); plain rectangles pass through."""
     from PIL import Image
 
-    from bajutsu.assertions import AssertionResult, ExcludeRegion, _resolve_masks
+    from bajutsu.assertions import AssertionResult
+    from bajutsu.assertions.visual import _resolve_masks
+    from bajutsu.scenario import ExcludeRegion
 
     shot = tmp_path / "shot.png"
     Image.new("RGBA", (100, 100), (0, 255, 0, 255)).save(shot)
@@ -848,7 +880,8 @@ def test_resolve_masks_selector_and_rectangle(tmp_path: Path) -> None:
 
 def test_resolve_masks_ambiguous_selector_returns_result(tmp_path: Path) -> None:
     """An ambiguous mask selector fails the assertion rather than masking the first match."""
-    from bajutsu.assertions import AssertionResult, _resolve_masks
+    from bajutsu.assertions import AssertionResult
+    from bajutsu.assertions.visual import _resolve_masks
 
     a = _a(
         {"visual": {"baseline": "home.png", "exclude": [{"selector": {"traits": ["staticText"]}}]}}
@@ -865,7 +898,8 @@ def test_resolve_masks_ambiguous_selector_returns_result(tmp_path: Path) -> None
 
 def test_resolve_masks_translates_into_crop_local_coordinates(tmp_path: Path) -> None:
     """When element-scoped, masks are shifted into the crop's local coordinate space."""
-    from bajutsu.assertions import ExcludeRegion, _resolve_masks
+    from bajutsu.assertions.visual import _resolve_masks
+    from bajutsu.scenario import ExcludeRegion
 
     a = _a({"visual": {"baseline": "card.png", "exclude": [{"selector": {"id": "badge"}}]}}).visual
     assert a is not None
@@ -881,7 +915,7 @@ def test_resolve_baselines_copies_the_baseline_and_prepares_the_diff_path(tmp_pa
     """Baseline I/O: the baseline is copied into the run dir and the diff path is prepared."""
     from PIL import Image
 
-    from bajutsu.assertions import _resolve_baselines
+    from bajutsu.assertions.visual import _resolve_baselines
 
     baselines = tmp_path / "baselines"
     baselines.mkdir()
