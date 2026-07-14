@@ -28,6 +28,7 @@ from bajutsu.serve import oplog
 from bajutsu.serve.handler import _OAUTH_STATE_COOKIE, _SESSION_COOKIE, _index_html
 from bajutsu.serve.helpers import range_reply
 from bajutsu.serve.state import ServeState
+from bajutsu.serve.upload_artifacts import ArtifactKind
 from bajutsu.serve.uploads import MAX_UPLOAD_BYTES, BoundedZipReceiver, UploadTooLarge
 
 # How long an idle SSE stream waits before sending a `:keepalive` comment (and rechecking for a
@@ -335,20 +336,23 @@ def make_app(state: ServeState) -> FastAPI:
             )
         return _result(ops.bind_config(state, str(body.get("path", "") or "")))
 
-    @app.post("/api/upload")
-    async def upload(request: Request) -> JSONResponse:
-        """Stream a raw-body zip upload to a temp file (bounded), then bind it as the active config
-        (BE-0073) — the FastAPI mirror of the stdlib handler's `_handle_upload`, sharing its bound +
-        hash logic via `BoundedZipReceiver` so the two backends can't drift again. Raw body (`?name=`
-        for the filename), not multipart: the SPA controls the request, and streaming avoids
-        buffering the whole (up to 1 GiB) body in memory. CSRF/Origin is already enforced
-        unconditionally by the `gate` middleware above, so this only needs the size cap and the bind."""
+    async def _stream_bounded_body(
+        request: Request,
+    ) -> BoundedZipReceiver | tuple[Any, int]:
+        """Stream a raw POST body into a bounded, sha256-hashing temp file (`BoundedZipReceiver`,
+        shared by `/api/upload` (BE-0073) and the `/api/artifacts/*` routes (BE-0268)) — the size cap
+        is enforced both up front (Content-Length) and while reading, so a lying length can't overrun
+        it. CSRF/Origin is already enforced unconditionally by the `gate` middleware above, so this
+        only needs the size cap and the streamed read. Returns the receiver on success, or an
+        `(error, status)` pair the caller passes straight to `_result` on any failure — a missing/
+        oversized Content-Length, a short read, or a mid-stream cap/disconnect/OS error — cleaning the
+        receiver up itself in that case; a caller only gets a receiver back on success, and owns its
+        `cleanup()` from there."""
         length = int(request.headers.get("content-length") or 0)
         if length <= 0:
-            return _result(({"error": "empty upload"}, 400))
+            return {"error": "empty upload"}, 400
         if length > MAX_UPLOAD_BYTES:
-            return _result(({"error": f"upload too large (max {MAX_UPLOAD_BYTES} bytes)"}, 413))
-        filename = request.query_params.get("name") or "bundle.zip"
+            return {"error": f"upload too large (max {MAX_UPLOAD_BYTES} bytes)"}, 413
         receiver = BoundedZipReceiver()
         try:
             async for chunk in request.stream():
@@ -357,29 +361,90 @@ def make_app(state: ServeState) -> FastAPI:
                 # other requests on this worker.
                 await run_in_threadpool(receiver.write, chunk)
             if receiver.received < length:
-                return _result(({"error": "upload incomplete (body ended early)"}, 400))
+                receiver.cleanup()
+                return {"error": "upload incomplete (body ended early)"}, 400
+            return receiver
+        except UploadTooLarge:
+            result = {"error": f"upload too large (max {MAX_UPLOAD_BYTES} bytes)"}, 413
+        except ClientDisconnect:
+            # Starlette raises this from `request.stream()` on an early client disconnect — the ASGI
+            # analogue of the stdlib handler's short read, so it gets the same graceful 400.
+            result = {"error": "upload interrupted"}, 400
+        except OSError:
+            # Mirrors the stdlib handler's `_handle_upload`, which returns the same 400 on a
+            # write failure (e.g. disk full) instead of letting it surface as a 500.
+            result = {"error": "upload interrupted"}, 400
+        receiver.cleanup()
+        return result
+
+    @app.post("/api/upload")
+    async def upload(request: Request) -> JSONResponse:
+        """Stream a raw-body zip upload to a temp file (bounded), then bind it as the active config
+        (BE-0073) — the FastAPI mirror of the stdlib handler's `_handle_upload`, sharing its bound +
+        hash logic via `BoundedZipReceiver` so the two backends can't drift again. Raw body (`?name=`
+        for the filename), not multipart: the SPA controls the request, and streaming avoids
+        buffering the whole (up to 1 GiB) body in memory."""
+        received = await _stream_bounded_body(request)
+        if not isinstance(received, BoundedZipReceiver):
+            return _result(received)
+        filename = request.query_params.get("name") or "bundle.zip"
+        try:
             return _result(
                 await run_in_threadpool(
                     ops.bind_upload_config,
                     state,
-                    receiver.path,
+                    received.path,
                     filename,
-                    sha256=receiver.digest(),
+                    sha256=received.digest(),
                     actor=_actor(request),
                 )
             )
-        except UploadTooLarge:
-            return _result(({"error": f"upload too large (max {MAX_UPLOAD_BYTES} bytes)"}, 413))
-        except ClientDisconnect:
-            # Starlette raises this from `request.stream()` on an early client disconnect — the ASGI
-            # analogue of the stdlib handler's short read, so it gets the same graceful 400.
-            return _result(({"error": "upload interrupted"}, 400))
-        except OSError:
-            # Mirrors the stdlib handler's `_handle_upload`, which returns the same 400 on a
-            # write failure (e.g. disk full) instead of letting it surface as a 500.
-            return _result(({"error": "upload interrupted"}, 400))
         finally:
-            receiver.cleanup()
+            received.cleanup()
+
+    async def _artifact_upload(kind: ArtifactKind, request: Request) -> JSONResponse:
+        """Stream one independently-uploaded artifact (BE-0268: `config` / `scenarios` / `binary`)
+        to a temp file (bounded), then store it (`ops.bind_artifact`) — the FastAPI mirror of the
+        stdlib handler's `_handle_artifact_upload`."""
+        received = await _stream_bounded_body(request)
+        if not isinstance(received, BoundedZipReceiver):
+            return _result(received)
+        try:
+            return _result(
+                await run_in_threadpool(
+                    ops.bind_artifact,
+                    state,
+                    kind,
+                    received.path,
+                    sha256=received.digest(),
+                    actor=_actor(request),
+                )
+            )
+        finally:
+            received.cleanup()
+
+    @app.post("/api/artifacts/config")
+    async def upload_config_artifact(request: Request) -> JSONResponse:
+        return await _artifact_upload("config", request)
+
+    @app.post("/api/artifacts/scenarios")
+    async def upload_scenarios_artifact(request: Request) -> JSONResponse:
+        return await _artifact_upload("scenarios", request)
+
+    @app.post("/api/artifacts/binary")
+    async def upload_binary_artifact(request: Request) -> JSONResponse:
+        return await _artifact_upload("binary", request)
+
+    @app.get("/api/artifacts/exists")
+    async def artifact_exists(request: Request) -> JSONResponse:
+        return _result(
+            ops.artifact_exists(
+                state,
+                request.query_params.get("kind"),
+                request.query_params.get("sha256"),
+                actor=_actor(request),
+            )
+        )
 
     @app.post("/api/apikey")
     async def set_api_key(body: dict[str, Any], request: Request) -> JSONResponse:

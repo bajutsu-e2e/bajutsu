@@ -377,6 +377,7 @@ Where a project's config and scenarios come from. A Git repository + ref is a to
 | [BE-0224](BE-0224-github-private-repo-config-auth/BE-0224-github-private-repo-config-auth.md) | Granting private-repository access for the GitHub config source | Implemented |
 | [BE-0242](BE-0242-config-relative-path-resolution/BE-0242-config-relative-path-resolution.md) | Resolve config-declared paths relative to the config file | Implemented |
 | [BE-0243](BE-0243-upload-bundle-durable-storage/BE-0243-upload-bundle-durable-storage.md) | Persist uploaded zip config bundles to object storage for hosted serve | Implemented |
+| [BE-0268](BE-0268-composable-upload-artifacts/BE-0268-composable-upload-artifacts.md) | Upload config, scenarios, and app binary as independent content-addressed artifacts composed per run | Implemented |
 <!-- /GENERATED:implemented-config-sourcing -->
 
 ### Security hardening
@@ -590,9 +591,7 @@ Running a scenario on a hosted device farm instead of a local Simulator, emulato
 ### Configuration sourcing
 
 <!-- GENERATED:proposals-config-sourcing -->
-| ID | Item | Status |
-|---|---|---|
-| [BE-0268](BE-0268-composable-upload-artifacts/BE-0268-composable-upload-artifacts.md) | Upload config, scenarios, and app binary as independent content-addressed artifacts composed per run | Proposal |
+
 <!-- /GENERATED:proposals-config-sourcing -->
 
 ### Development infrastructure (contributor workflow)

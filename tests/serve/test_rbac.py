@@ -48,6 +48,13 @@ def test_required_role_maps_endpoints() -> None:
     assert ops.required_role("POST", "/api/runs/20260101-000000/restore") == "editor"
     assert ops.required_role("POST", "/api/runs/bulk-delete") == "editor"
     assert ops.required_role("POST", "/api/runs/20260101-000000/upload-urls") is None
+    # Per-artifact uploads (BE-0268) are admin, like /api/upload; the exists check is a GET so it
+    # needs its own early case (a GET path in `_ADMIN_PATHS` alone would never gate — the generic
+    # membership check only runs past the `method != "POST"` guard).
+    assert ops.required_role("POST", "/api/artifacts/config") == "admin"
+    assert ops.required_role("POST", "/api/artifacts/scenarios") == "admin"
+    assert ops.required_role("POST", "/api/artifacts/binary") == "admin"
+    assert ops.required_role("GET", "/api/artifacts/exists") == "admin"
 
 
 def test_role_allows_ranks_viewer_editor_admin() -> None:

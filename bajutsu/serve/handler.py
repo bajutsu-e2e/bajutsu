@@ -24,10 +24,20 @@ from bajutsu.serve import oplog
 from bajutsu.serve._paths import TEMPLATES_DIR as _TEMPLATE_DIR
 from bajutsu.serve.helpers import range_reply, valid_run_id
 from bajutsu.serve.state import ServeState
+from bajutsu.serve.upload_artifacts import ArtifactKind
 from bajutsu.serve.uploads import MAX_UPLOAD_BYTES, BoundedZipReceiver, UploadTooLarge
 
 # Stream an uploaded bundle to disk in 1 MiB chunks so a large app binary never loads into memory.
 _UPLOAD_CHUNK = 1024 * 1024
+
+# The three independently-uploadable artifact routes (BE-0268), each a raw-body POST mirroring
+# `/api/upload`'s own streaming shape — mapping path to kind lets `do_POST` dispatch with one lookup
+# instead of a per-kind `if`.
+_ARTIFACT_UPLOAD_PATHS: dict[str, ArtifactKind] = {
+    "/api/artifacts/config": "config",
+    "/api/artifacts/scenarios": "scenarios",
+    "/api/artifacts/binary": "binary",
+}
 
 # Host-header values that always name this machine (BE-0121 DNS-rebinding defense).
 _LOOPBACK_HOSTS = frozenset({"localhost", "127.0.0.1", "::1"})
@@ -226,6 +236,15 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
                     self._json(*ops.project_metrics_view(state, actor=self._actor()))
                 case "/api/crawl/runs":
                     self._json(*ops.crawl_runs_payload(state, actor=self._actor()))
+                case "/api/artifacts/exists":
+                    # A fixed path with `kind`/`sha256` query params (BE-0268) — not a templated
+                    # path segment — so it fits the exact-match `_ADMIN_PATHS` model like every
+                    # other admin route, with no new dispatch shape.
+                    self._json(
+                        *ops.artifact_exists(
+                            state, self._qs("kind"), self._qs("sha256"), actor=self._actor()
+                        )
+                    )
                 case "/metrics":
                     # Prometheus text format, not JSON. It sits behind `_gate` like every other
                     # route (BE-0051) — not on the open-GET list — so a scraper authenticates with
@@ -295,9 +314,13 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
                 return
             path = urlparse(self.path).path
             # A bundle upload (BE-0073) carries a raw zip body, not JSON, and can be large — handle
-            # it before the JSON read so it streams to disk instead of loading into memory.
+            # it before the JSON read so it streams to disk instead of loading into memory. Same for
+            # a single independently-uploaded artifact (BE-0268).
             if path == "/api/upload":
                 self._handle_upload()
+                return
+            if path in _ARTIFACT_UPLOAD_PATHS:
+                self._handle_artifact_upload(_ARTIFACT_UPLOAD_PATHS[path])
                 return
             length = int(self.headers.get("Content-Length") or 0)
             # Block cross-origin state-changing requests unconditionally (BE-0121) — not only when a
@@ -461,28 +484,29 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
                 return
             self._json({"error": "not found"}, 404)
 
-        def _handle_upload(self) -> None:
-            """Stream a raw-body zip upload to a temp file (bounded), then bind it as the active config
-            (BE-0073). Raw body (`Content-Type: application/zip`, filename via `?name=`), not
-            multipart: the SPA controls the request, and a streamed body needs no parser — the first
-            POST here that doesn't read a JSON body. The size cap is enforced both up front
-            (Content-Length) and while reading, so a lying length can't overrun it."""
+        def _stream_bounded_body(self) -> BoundedZipReceiver | None:
+            """Stream a raw POST body into a bounded, sha256-hashing temp file (`BoundedZipReceiver`,
+            shared by `_handle_upload` (BE-0073) and `_handle_artifact_upload` (BE-0268)) — the size
+            cap is enforced both up front (Content-Length) and while reading, so a lying length can't
+            overrun it. Writes the JSON error response itself and returns None on any failure —
+            cross-origin block, a missing/oversized Content-Length, a short read, or a mid-stream
+            cap/OS error — cleaning the receiver up before returning; a caller only gets a receiver
+            back on success, and owns its `cleanup()` from there."""
             # These early returns don't read the (possibly huge) body, so the connection still holds
             # the unread upload bytes. Close it rather than draining gigabytes or leaving them to
             # corrupt the next request on a keep-alive connection.
             if not self._csrf_ok():  # unconditional cross-origin block (BE-0121)
                 self.close_connection = True
                 self._json({"error": "cross-origin request blocked"}, 403)
-                return
+                return None
             length = int(self.headers.get("Content-Length") or 0)
             if length <= 0:
                 self._json({"error": "empty upload"}, 400)
-                return
+                return None
             if length > MAX_UPLOAD_BYTES:
                 self.close_connection = True
                 self._json({"error": f"upload too large (max {MAX_UPLOAD_BYTES} bytes)"}, 413)
-                return
-            filename = self._qs("name") or "bundle.zip"
+                return None
             receiver = BoundedZipReceiver()
             try:
                 remaining = length
@@ -498,16 +522,9 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
                     # since its framing is now unreliable.
                     self.close_connection = True
                     self._json({"error": "upload incomplete (body ended early)"}, 400)
-                    return
-                self._json(
-                    *ops.bind_upload_config(
-                        state,
-                        receiver.path,
-                        filename,
-                        sha256=receiver.digest(),
-                        actor=self._actor(),
-                    )
-                )
+                    receiver.cleanup()
+                    return None
+                return receiver
             except UploadTooLarge:
                 # Belt-and-suspenders: length <= MAX_UPLOAD_BYTES is checked above, so this loop
                 # never actually exceeds the cap — kept only so the shared receiver's contract holds
@@ -517,6 +534,49 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
             except OSError:
                 self.close_connection = True
                 self._json({"error": "upload interrupted"}, 400)
+            receiver.cleanup()
+            return None
+
+        def _handle_upload(self) -> None:
+            """Stream a raw-body zip upload to a temp file (bounded), then bind it as the active config
+            (BE-0073). Raw body (`Content-Type: application/zip`, filename via `?name=`), not
+            multipart: the SPA controls the request, and a streamed body needs no parser — the first
+            POST here that doesn't read a JSON body."""
+            filename = self._qs("name") or "bundle.zip"
+            receiver = self._stream_bounded_body()
+            if receiver is None:
+                return
+            try:
+                self._json(
+                    *ops.bind_upload_config(
+                        state,
+                        receiver.path,
+                        filename,
+                        sha256=receiver.digest(),
+                        actor=self._actor(),
+                    )
+                )
+            finally:
+                receiver.cleanup()
+
+        def _handle_artifact_upload(self, kind: ArtifactKind) -> None:
+            """Stream one independently-uploaded artifact (BE-0268: `config` / `scenarios` /
+            `binary`) to a temp file (bounded), then store it (`ops.bind_artifact`). Raw body, no
+            `?name=` — an artifact's provenance name lives on the *composition*'s project record,
+            not the artifact itself."""
+            receiver = self._stream_bounded_body()
+            if receiver is None:
+                return
+            try:
+                self._json(
+                    *ops.bind_artifact(
+                        state,
+                        kind,
+                        receiver.path,
+                        sha256=receiver.digest(),
+                        actor=self._actor(),
+                    )
+                )
             finally:
                 receiver.cleanup()
 

@@ -140,6 +140,33 @@ def test_upload_route_binds_bundle_like_stdlib(tmp_path: Path) -> None:
     assert _client(state).get("/api/config").json()["hasConfig"] is True
 
 
+def test_artifact_upload_routes_bind_like_stdlib(tmp_path: Path) -> None:
+    # The FastAPI shell's per-artifact routes (BE-0268) reach the same shared `ops.bind_artifact`
+    # as the stdlib handler; the storage/caching logic itself is covered once via the stdlib suite
+    # (test_http_upload_artifacts.py) — this only proves the ASGI routes exist and delegate to it.
+    import hashlib
+
+    state = srv.ServeState(
+        runs_dir=tmp_path / "runs", cwd=tmp_path, root=tmp_path, uploads_dir=tmp_path / "uploads"
+    )
+    (tmp_path / "runs").mkdir()
+    client = _client(state)
+    blob = b"targets: {}\n"
+    resp = client.post(
+        "/api/artifacts/config", content=blob, headers={"content-type": "application/octet-stream"}
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body == {
+        "ok": True,
+        "kind": "config",
+        "sha256": hashlib.sha256(blob).hexdigest(),
+        "size": len(blob),
+    }
+    exists = client.get(f"/api/artifacts/exists?kind=config&sha256={body['sha256']}").json()
+    assert exists == {"exists": True}
+
+
 def test_upload_route_requires_auth_when_token_set(tmp_path: Path) -> None:
     state = srv.ServeState(runs_dir=tmp_path / "runs", cwd=tmp_path, root=tmp_path, token="s3cret")
     (tmp_path / "runs").mkdir()
