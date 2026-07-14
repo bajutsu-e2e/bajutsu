@@ -10,6 +10,7 @@ unchanged — the bundle stays exactly as ephemeral as BE-0073 shipped it.
 from __future__ import annotations
 
 import hashlib
+import os.path
 import re
 import tempfile
 from pathlib import Path
@@ -225,14 +226,18 @@ def artifact_exists(
         except Exception:  # a transient store error reads as "not confirmed present", not a crash
             exists = False
     else:
-        artifacts_root = _artifacts_dir(state)
-        candidate = local_artifact_dir(artifacts_root, org, kind) / sha256
-        # Belt-and-suspenders on top of the allowlist/regex checks above: confine the resolved path
-        # to the artifacts cache root before ever touching the filesystem (same invariant
-        # `config_source.py`'s Git cache resolution enforces on a spec-derived path).
-        if not candidate.resolve().is_relative_to(artifacts_root.resolve()):
+        # Belt-and-suspenders on top of the allowlist/regex checks above: confine the path to the
+        # artifacts cache root using pure string normalization (`os.path.normpath` + `startswith`,
+        # CodeQL's own recommended py/path-injection fix) *before* any filesystem call — unlike
+        # `Path.resolve()`, `normpath` never touches the filesystem, so the check itself can't be
+        # flagged as a further sink.
+        artifacts_root = str(_artifacts_dir(state))
+        candidate = os.path.normpath(
+            os.path.join(str(local_artifact_dir(_artifacts_dir(state), org, kind)), sha256)
+        )
+        if candidate != artifacts_root and not candidate.startswith(artifacts_root + os.sep):
             return {"error": "artifact path resolves outside the cache"}, 400
-        exists = candidate.exists()
+        exists = Path(candidate).exists()
     return {"exists": exists}, 200
 
 
