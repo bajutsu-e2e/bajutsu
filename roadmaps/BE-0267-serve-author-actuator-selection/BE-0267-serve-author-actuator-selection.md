@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-serve-author-actuator-selection-ja.md)
+**English** · [日本語](BE-0267-serve-author-actuator-selection-ja.md)
 
-# BE-XXXX — Reuse cost-ordered actuator selection in serve capture and enrich
+# BE-0267 — Reuse cost-ordered actuator selection in serve capture and enrich
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-serve-author-actuator-selection.md) |
+| Proposal | [BE-0267](BE-0267-serve-author-actuator-selection.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0267") |
 | Topic | Authoring experience (record / GUI editor) |
 <!-- /BE-METADATA -->
 
