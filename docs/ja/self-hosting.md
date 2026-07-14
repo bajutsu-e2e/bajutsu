@@ -272,7 +272,7 @@ serve ホストの `--root` を辿る**ファイルブラウザ**です。サー
 | 状態 | ローカル（`hosted: false`。Tier A、または素の `make serve`） | ホスト型（`hosted: true`。Tier B のサーバ backend） |
 |---|---|---|
 | **config** | ファイルブラウザ + Git + アップロード。自分のファイルシステムで、パスの閉じ込めなし | Git とアップロードのみ。ファイルブラウザは無効、403（BE-0108） |
-| **シナリオと run の成果物** | `scenarios/`、`runs/` をディスク上に保持。ソフトデリートは `runs/.trash/` へ移動 | オブジェクトストレージ（S3/GCS）+ Postgres。ソフトデリートは `deleted_at` を設定 |
+| **シナリオと run の成果物** | `scenarios/`、`runs/` をディスク上に保持。ソフトデリートは `runs/.trash/` へ移動 | オブジェクトストレージ（S3/GCS）+ Postgres。ソフトデリートは `deleted_at` を設定（BE-0239） |
 | **アプリバイナリ** | `appPath` をディスク上に保持。存在しないときだけ build | worker がチェックアウトまたはバンドルから build。リモート build はゲート付き（BE-0121） |
 
 - **config。** どちらの側も最大3つのソースからバインドしますが、`hosted` が true になった瞬間にファイル
