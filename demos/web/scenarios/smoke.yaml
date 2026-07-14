@@ -1,5 +1,6 @@
 # End-to-end smoke for the web backend: onboarding -> login -> home -> counter.
-# Byte-for-byte the same step/expect schema as the iOS smoke — only the backend differs.
+# Same step/expect grammar as every other backend's smoke scenario — only the specific
+# scenario and the backend differ.
 description: >-
   Web smoke — onboard, log in, reach home, and increment the counter. The fastest
   check that the Playwright backend drives the demo web app end to end.

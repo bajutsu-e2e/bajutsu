@@ -9,7 +9,7 @@ this page orients you and links there rather than repeating the rules, so the tw
 apart.
 
 New to the project? Read [`README.md`](README.md) for what Bajutsu is, and the
-[getting-started tutorial](docs/getting-started.md) for a hands-on walkthrough.
+[getting-started tutorial](docs/getting-started/index.md) for a hands-on walkthrough.
 
 ## Set up your environment
 

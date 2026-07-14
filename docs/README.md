@@ -7,7 +7,7 @@ with search, navigation, and an English/日本語 switch — lives at
 **<https://bajutsu-e2e.github.io/bajutsu/>**.
 
 Reading the source here on GitHub? Start with [overview.md](overview.md), the per-feature reference
-in suggested reading order, or jump straight to the [Getting started tutorial](getting-started.md).
+in suggested reading order, or jump straight to the [Getting started tutorial](getting-started/index.md).
 The [glossary](glossary.md) defines the domain vocabulary term by term. The generated Python API
 reference is under [`api/`](api/index.md).
 

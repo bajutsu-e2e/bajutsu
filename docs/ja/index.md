@@ -27,7 +27,7 @@ bajutsu record --target <name> --goal "..." [--out f.yaml]  # ティア1: AI が
 bajutsu run    --target <name> [--scenario f.yaml]          # ティア2: 決定的な合否
 ```
 
-[Getting started のチュートリアル](getting-started.md)が、導入からユニットテスト、シナリオ、実機実行、レポートまでを順にたどります。Mac のないマシンでは、[web トラック](getting-started-web.md)が同じループをブラウザ（Playwright backend）に対してたどります。Xcode も Simulator も要りません。
+[Getting started のチュートリアル](getting-started/index.md)が、導入からユニットテスト、シナリオ、実機実行、レポートまでを順にたどります。Mac のないマシンでは、[web トラック](getting-started/web.md)が同じループをブラウザ（Playwright backend）に対してたどります。Xcode も Simulator も要りません。
 
 ## 機能のハイライト
 
@@ -51,6 +51,6 @@ bajutsu run    --target <name> [--scenario f.yaml]          # ティア2: 決定
 ## さらに詳しく
 
 - [ドキュメント概要](overview.md)：推奨読書順に並べた、機能ごとのリファレンス。
-- [Getting started](getting-started.md) · [Concepts](concepts.md) · [用語集](glossary.md) · [API リファレンス](../api/index.md)
+- [Getting started](getting-started/index.md) · [Concepts](concepts.md) · [用語集](glossary.md) · [API リファレンス](../api/index.md)
 - [ロードマップ](../../roadmaps/README.md) · [設計の根拠（DESIGN.md）](../../DESIGN.md) ·
   [GitHub](https://github.com/bajutsu-e2e/bajutsu)

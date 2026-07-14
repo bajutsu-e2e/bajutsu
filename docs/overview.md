@@ -26,10 +26,10 @@ view of the same system — is in [architecture](architecture.md).
 
 ## Pages (suggested reading order)
 
-> **New here? Start with the [Getting started tutorial](getting-started.md)** — a hands-on
+> **New here? Start with the [Getting started tutorial](getting-started/index.md)** — a hands-on
 > walkthrough (install → unit tests → scenario → device run → report). Then come
 > back to the reference pages below. **On a machine without a Mac** (Linux, Windows, a container),
-> follow the [web track](getting-started-web.md) instead: the same loop against a browser with the
+> follow the [web track](getting-started/web.md) instead: the same loop against a browser with the
 > Playwright backend, no Xcode or Simulator required.
 
 | # | Page | What it covers |

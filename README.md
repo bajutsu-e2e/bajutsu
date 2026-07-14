@@ -141,8 +141,8 @@ Flutter backend (planned). See
 
 ## Setup
 
-> **New here?** The [Getting started tutorial](docs/getting-started.md) walks the whole loop on an
-> iOS Simulator. **No Mac?** The [web track](docs/getting-started-web.md) does the same loop against
+> **New here?** The [Getting started tutorial](docs/getting-started/index.md) walks the whole loop on an
+> iOS Simulator. **No Mac?** The [web track](docs/getting-started/web.md) does the same loop against
 > a browser (Playwright backend) on any OS — no Xcode or Simulator.
 
 ```bash
@@ -229,7 +229,7 @@ Runnable demos, all through one entry point — `make -C demos <target>` ([`demo
   a booted app, then the modify-and-self-heal (`triage`) loop.
 - **[web](demos/web/README.md)** — `make -C demos/web e2e`. The **Playwright backend** running
   scenarios against a static web app — no Mac or Simulator, runs on Linux. For a step-by-step
-  walkthrough of this demo, see the [web getting-started track](docs/getting-started-web.md).
+  walkthrough of this demo, see the [web getting-started track](docs/getting-started/web.md).
 
 ## Development
 
