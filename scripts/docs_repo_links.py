@@ -14,11 +14,13 @@ Instead this hook leaves the source untouched and rewrites at build time. Two ca
    page's path and testing the result on disk — never by counting ``../`` segments, because depth
    alone is ambiguous: ``../vision.md`` from ``docs/ja/concepts.md`` stays inside ``docs/`` while
    ``../roadmaps/…`` from the same page escapes it.
-2. **Cross-language links** — the per-page ``[日本語](ja/foo.md)`` header link points into the
-   ``docs/ja/`` subtree, which mkdocs-static-i18n consumes as the *translation* of ``foo.md`` rather
-   than serving as a standalone page, so ``--strict`` cannot resolve it. These are rewritten to the
-   published URL of the other-language page (an absolute ``site_url``-based link, which ``--strict``
-   does not validate). The source keeps its relative link, so the header still works on GitHub.
+2. **Cross-language links** — the per-page ``[日本語](ja/foo.md)`` / ``[English](../foo.md)`` header
+   links cross into the other language's virtual tree, which mkdocs-static-i18n's folder mode builds
+   rooted at ``docs/<lang>/`` with the language prefix stripped internally — so neither direction
+   resolves the way its relative path suggests, and a naive ``../`` from inside ``docs/ja/`` even
+   collapses back onto the same page. Both directions are rewritten to the published URL of the
+   other-language page (an absolute ``site_url``-based link, which ``--strict`` does not validate).
+   The source keeps its relative link, so the header still works on GitHub.
 
 The rewriting core (:func:`rewrite_links`) is a pure function unit-tested in the fast ``make test``
 suite; :func:`on_page_markdown` is the thin MkDocs adapter. No LLM, no network — the only I/O is the
@@ -81,14 +83,18 @@ def _lang_of(docs_rel: str) -> str | None:
 
 
 def _cross_language_url(docs_rel: str, src_path: str, ctx: LinkContext) -> str | None:
-    """The published URL for a link into a *different* (non-default) language subtree, else ``None``.
+    """The published URL for a link crossing a language boundary, else ``None``.
 
-    Only links *into* a ``docs/ja/``-style subtree from a page outside it need this: a link into the
-    default (root) tree validates normally. Returns ``None`` when there is no ``site_url`` to anchor
-    an absolute link on.
+    mkdocs-static-i18n's folder mode builds each language as its own virtual tree rooted at
+    ``docs/<lang>/``, stripping the language prefix internally — so a physically-relative link that
+    climbs out of a ``docs/ja/`` page (e.g. its own ``[English](../foo.md)`` header link) does not
+    resolve the way its ``../`` suggests: the climb lands back on the page itself instead of the
+    default-language copy. Both directions — default → lang and lang → default — therefore need the
+    absolute-URL treatment here; only a same-language link is left for MkDocs to resolve normally.
+    Returns ``None`` when there is no ``site_url`` to anchor an absolute link on.
     """
     target_lang = _lang_of(docs_rel)
-    if target_lang is None or target_lang == _lang_of(src_path) or not ctx.site_url:
+    if target_lang == _lang_of(src_path) or not ctx.site_url:
         return None
     # A page becomes page.html / page/ at publish; any other asset (an image, a YAML) is served at
     # its own path, so only a markdown target gets the page-URL treatment.
