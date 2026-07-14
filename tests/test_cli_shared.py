@@ -46,3 +46,12 @@ def test_build_alert_guard_binds_dismiss_when_credential_present(
     eff = _eff()
     guard = _build_alert_guard(eff, _ai_redactor(eff), "")
     assert callable(guard)
+
+
+def test_default_config_is_the_single_config_source_constant() -> None:
+    # `_shared` re-exports the constant rather than owning a second copy, so a rename of the
+    # default config filename lands once in `config_source` (BE-0251).
+    from bajutsu import config_source
+    from bajutsu.cli import _shared
+
+    assert _shared.DEFAULT_CONFIG is config_source.DEFAULT_CONFIG

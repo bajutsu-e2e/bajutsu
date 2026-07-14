@@ -33,10 +33,11 @@ from bajutsu.orchestrator import (
     run_scenario,
     scenario_slug,
 )
+from bajutsu.orchestrator.types import _no_network
 from bajutsu.redaction import Redactor
 from bajutsu.report import git_revision, run_provenance, scenario_render_inputs, write_report
 from bajutsu.runner.mailbox import build_mailbox_reader
-from bajutsu.runner.types import LeaseFn, OnBlockedFor, _no_net
+from bajutsu.runner.types import LeaseFn, OnBlockedFor
 from bajutsu.scenario import Scenario, dump_scenario_file, redact_totp_secrets
 
 _logger = logging.getLogger(__name__)
@@ -195,7 +196,7 @@ class _ScenarioRunner:
                 sink=lz.sink,
                 on_blocked=handler,
                 scenario_id=sid,
-                network=(lz.collector.snapshot if lz.collector is not None else _no_net),
+                network=(lz.collector.snapshot if lz.collector is not None else _no_network),
                 relaunch=lz.relaunch,
                 bindings=self.bindings,
                 control=lz.control,
