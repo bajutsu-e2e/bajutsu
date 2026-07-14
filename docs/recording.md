@@ -8,7 +8,7 @@
 >
 > Implementation: `bajutsu/record.py` (the loop) · `bajutsu/agent_protocols.py` + `bajutsu/agent_factory.py`
 > (the abstraction + construction) · `bajutsu/claude_agent.py` (the SDK authoring agent) ·
-> `bajutsu/alerts.py` (system-alert handling). The breadth-first explorer `bajutsu/crawl.py` shares
+> `bajutsu/alerts.py` (system-alert handling). The breadth-first explorer `bajutsu/crawl/` shares
 > the same agent.
 
 Related: [the two tiers in concepts](concepts.md#2-two-tiers-tier-1--tier-2) · [scenarios](scenarios.md) · [run-loop](run-loop.md)

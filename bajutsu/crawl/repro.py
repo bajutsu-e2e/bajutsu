@@ -6,7 +6,7 @@ LLM, never a verdict. The emitted scenario is something `run` can replay to repr
 a discovered crash becomes a regression test rather than a one-off observation.
 
 `scenario_from_actions` is the shared crawl-path → scenario converter: crash repros build on it
-here, and candidate flows (`crawl_flows.py`) reuse the same faithful conversion.
+here, and candidate flows (`flows.py`) reuse the same faithful conversion.
 
 A path that taps a normalized coordinate (`tap_point`) has no selector to address, so it cannot be
 faithfully replayed; such a path emits no scenario rather than a lossy one (the prime directive:
@@ -18,7 +18,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 from pathlib import Path
 
-from bajutsu.crawl import Action, Crash, ScreenMap
+from bajutsu.crawl.core import Action, Crash, ScreenMap
 from bajutsu.scenario.models import Scenario, Selector, Step, TypeText
 from bajutsu.scenario.serialize import dump_scenario_file
 

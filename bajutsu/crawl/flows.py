@@ -4,7 +4,7 @@ Each screen the crawl discovers carries the replayable action path that reached 
 This turns those paths into draft `Scenario` files — one per discovered flow — that a user can review
 and promote into a real Tier-2 test. Like crash repros, it is a pure, deterministic, model-free
 function of the `ScreenMap`: no device, no LLM, never a verdict. The conversion is the shared
-`crawl_repro.scenario_from_actions`, so a flow reproduces exactly what the crawl walked.
+`repro.scenario_from_actions`, so a flow reproduces exactly what the crawl walked.
 
 The output is a *proposal* for human review (DESIGN §6.5), never silently written into committed
 scenarios. A path that can't be faithfully replayed (it taps a normalized coordinate) or is empty
@@ -15,8 +15,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from bajutsu.crawl import ScreenMap
-from bajutsu.crawl_repro import scenario_from_actions
+from bajutsu.crawl.core import ScreenMap
+from bajutsu.crawl.repro import scenario_from_actions
 from bajutsu.scenario.serialize import dump_scenario_file
 
 

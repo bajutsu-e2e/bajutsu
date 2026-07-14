@@ -1,12 +1,12 @@
 """`bajutsu crawl` — explore the app breadth-first and build a screen map (BE-0038).
 
 Drives the same `launch_driver` / actuator path as `run` and `record`, hands the live driver to
-the crawl engine ([`crawl.py`](../../crawl.py)), and streams the growing screen map to
+the crawl engine ([`crawl/core.py`](../../crawl/core.py)), and streams the growing screen map to
 `runs/<id>/screenmap.json` so the web UI can render it live. On completion it also writes a
-self-contained `runs/<id>/screenmap.html` (`crawl_report.py`) — the offline counterpart to the
+self-contained `runs/<id>/screenmap.html` (`crawl/report.py`) — the offline counterpart to the
 live graph, openable straight from the run dir — plus one `runs/<id>/crashes/crash-NNN.yaml` repro
-scenario per faithfully replayable crash (`crawl_repro.py`) and one `runs/<id>/flows/flow-NNN.yaml`
-candidate scenario per faithfully reachable screen (`crawl_flows.py`), both directly runnable by
+scenario per faithfully replayable crash (`crawl/repro.py`) and one `runs/<id>/flows/flow-NNN.yaml`
+candidate scenario per faithfully reachable screen (`crawl/flows.py`), both directly runnable by
 `run`. The engine is deterministic (screen identity, transitions, crashes); the AI guide only
 proposes *what to try*, and the alert guard dismisses unexpected OS prompts. Discovery only — never a
 pass/fail gate.
@@ -29,7 +29,7 @@ from pathlib import Path
 import typer
 
 from bajutsu import crawl as crawl_engine
-from bajutsu import crawl_flows, crawl_report, crawl_repro, device_errors
+from bajutsu import device_errors
 from bajutsu.ai import announce_ai
 from bajutsu.cli._shared import (
     DEFAULT_CONFIG,
@@ -45,8 +45,11 @@ from bajutsu.cli._shared import (
     _with_headed,
 )
 from bajutsu.config import Effective, web_base_url
-from bajutsu.crawl_guide import MODEL as _CRAWL_GUIDE_MODEL
-from bajutsu.crawl_guide import Report, make_guide
+from bajutsu.crawl import flows as crawl_flows
+from bajutsu.crawl import report as crawl_report
+from bajutsu.crawl import repro as crawl_repro
+from bajutsu.crawl.guide import MODEL as _CRAWL_GUIDE_MODEL
+from bajutsu.crawl.guide import Report, make_guide
 from bajutsu.drivers import base
 from bajutsu.platform_lifecycle import CrawlEnvironment, environment_for
 from bajutsu.record import _clear_blocking

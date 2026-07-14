@@ -1,4 +1,4 @@
-"""Tests for deterministic crash-repro scenario emission from a crawl (bajutsu/crawl_repro.py, BE-0038).
+"""Tests for deterministic crash-repro scenario emission from a crawl (bajutsu/crawl/repro.py, BE-0038).
 
 A crash records the exact action path that collapsed the app UI. Turning that path back into a
 runnable `Scenario` is a pure, deterministic, model-free function of the `ScreenMap`: no device, no
@@ -10,7 +10,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from bajutsu.crawl import Action, Crash, ScreenMap, screenmap_dict, screenmap_from_dict
-from bajutsu.crawl_repro import crash_scenario, write_repros
+from bajutsu.crawl.repro import crash_scenario, write_repros
 from bajutsu.scenario.load import load_scenarios
 
 

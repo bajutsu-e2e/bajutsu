@@ -1,4 +1,4 @@
-"""Tests for candidate flow scenario emission from a crawl (bajutsu/crawl_flows.py, BE-0038).
+"""Tests for candidate flow scenario emission from a crawl (bajutsu/crawl/flows.py, BE-0038).
 
 Each discovered screen carries the replayable path that reached it; turning those paths into draft
 scenarios is a pure, deterministic, model-free function of the `ScreenMap` — no device, no LLM,
@@ -10,7 +10,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from bajutsu.crawl import Action, ScreenMap, screenmap_dict, screenmap_from_dict
-from bajutsu.crawl_flows import write_flows
+from bajutsu.crawl.flows import write_flows
 from bajutsu.scenario.load import load_scenarios
 
 

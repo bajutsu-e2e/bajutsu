@@ -9,7 +9,7 @@ for the tab bar items, and returns each as a normalized [0,1] coordinate the cra
 replayable coordinate tap (`Action(kind="tap_point")`).
 
 Like the alert guard it only decides *where to tap* — the guide layer's "what to try". Screen
-identity, transitions and crashes stay deterministic in [`crawl.py`](crawl.py), and the tap is
+identity, transitions and crashes stay deterministic in [`core.py`](core.py), and the tap is
 replayed by its stored coordinate (never re-located), so the crawl is never a verdict
 (prime directive #1). The locator is injectable: production uses Claude vision; tests inject a
 deterministic fake, mirroring how the alert guard and the action proposer are tested.

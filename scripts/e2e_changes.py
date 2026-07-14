@@ -48,10 +48,15 @@ _RELEVANT = re.compile(
     # on-device-relevant.
     r"|bajutsu/(?:"
     r"_yaml|adb|agent_protocols|artifact_perms|assertions|backends|capabilities|capability_preflight"
-    r"|config|config_source|crawl|device_id|dom|dotenv|elements|evidence|golden"
+    r"|config|config_source|device_id|dom|dotenv|elements|evidence|golden"
     r"|handoff|idb_version|interp|intervals|mailbox|network|platform_lifecycle|record"
     r"|redaction|run_id|simctl|totp|visual|web_network|webview"
     r")\.py$"
+    # The crawl engine core and its package re-export (record imports `screen_identity` through
+    # `bajutsu.crawl`, i.e. `__init__`, which re-exports `core`); the `guide`/`report`/`repro`/
+    # `flows`/`tabs` siblings are periphery the on-device run never imports, so the package as a
+    # whole is *not* swept — only `crawl/core.py` and its `__init__`.
+    r"|bajutsu/crawl/(?:core|__init__)\.py$"
     r"|bajutsu/cli/__init__\.py$"
     r"|bajutsu/cli/_shared\.py$"
     r"|bajutsu/cli/commands/__init__\.py$"

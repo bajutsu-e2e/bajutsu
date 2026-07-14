@@ -137,8 +137,8 @@
 > ともに記録します。
 
 - [x] `bajutsu/codegen/` パッケージ（`__init__` / `common` / `emit` / `playwright` / `uiautomator`）。
-- [ ] `bajutsu/crawl/` パッケージ（`__init__` / `flows` / `guide` / `report` / `repro` / `tabs` /
-  `serialize`）。
+- [x] `bajutsu/crawl/` パッケージ（`__init__` / `core` / `flows` / `guide` / `report` / `repro` /
+  `tabs` / `serialize`）。
 - [ ] `bajutsu/github/` パッケージ（`__init__` / `actions` / `app`）。`config_source` と
   `github_app` の循環を解消します。
 - [ ] `bajutsu/agents/` の周辺パッケージ（9個のモジュール）。
@@ -152,6 +152,13 @@
   `uiautomator` と re-export の `__init__`）へ移動しました。あわせて import-linter の codegen 3 件を
   `bajutsu.codegen` 1 件へ集約し、`Makefile` と `e2e_changes.py`、e2e ワークフローのパスフィルタ、
   そして日英のドキュメントをパッケージへ向け直しました。
+- 2026-07-14（[#NNN](https://github.com/bajutsu-e2e/bajutsu/pull/NNN)）: ステージ 2。フラットな
+  `crawl*.py` を `bajutsu/crawl/` パッケージ（`core` エンジンと `flows` / `guide` / `report` /
+  `repro` / `tabs`、re-export の `__init__`）へ移動し、`Action` / `ScreenMap` のシリアライズ関連の
+  まとまりを `crawl/serialize.py` として切り出しました。あわせて import-linter の
+  `bajutsu.crawl_guide` を `bajutsu.crawl.guide` へ、`Makefile` と `e2e_changes.py`、e2e ワークフローの
+  パスフィルタを `crawl/core.py`（オンデバイス実行が import するエンジン。周辺のモジュールは対象外の
+  まま）へ向け直し、日英のドキュメントも更新しました。
 
 ## 参考
 

@@ -132,7 +132,7 @@ packaging lands, stage by stage.
 > (oldest first), linking the PRs.
 
 - [x] `bajutsu/codegen/` package (`__init__`/`common`/`emit`/`playwright`/`uiautomator`).
-- [ ] `bajutsu/crawl/` package (`__init__`/`flows`/`guide`/`report`/`repro`/`tabs`/`serialize`).
+- [x] `bajutsu/crawl/` package (`__init__`/`core`/`flows`/`guide`/`report`/`repro`/`tabs`/`serialize`).
 - [ ] `bajutsu/github/` package (`__init__`/`actions`/`app`), resolving the `config_source` ↔
   `github_app` cycle.
 - [ ] `bajutsu/agents/` periphery package (nine modules).
@@ -146,6 +146,13 @@ packaging lands, stage by stage.
   `uiautomator` + a re-export `__init__`), collapsed the three codegen import-linter entries to a
   single `bajutsu.codegen`, and retargeted the `Makefile`/`e2e_changes.py`/e2e-workflow path filters
   and the bilingual docs at the package.
+- 2026-07-14 ([#NNN](https://github.com/bajutsu-e2e/bajutsu/pull/NNN)): stage 2 — moved the flat
+  `crawl*.py` modules into a `bajutsu/crawl/` package (`core` engine + `flows`/`guide`/`report`/
+  `repro`/`tabs` + a re-export `__init__`), and extracted the `Action`/`ScreenMap` (de)serialization
+  group into `crawl/serialize.py`. Retargeted the `bajutsu.crawl_guide` import-linter entry to
+  `bajutsu.crawl.guide`, the `Makefile`/`e2e_changes.py`/e2e-workflow path filters at
+  `crawl/core.py` (the engine the on-device run imports — the periphery siblings stay excluded), and
+  the bilingual docs at the package.
 
 ## References
 
