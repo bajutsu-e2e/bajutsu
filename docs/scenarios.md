@@ -8,7 +8,7 @@ Implementation: `bajutsu/scenario/` (pydantic models under `models/`, `extra="fo
 
 The **normative grammar** — every production, type, default, and validation rule — is in [dsl-grammar](dsl-grammar.md). This page is the authoring guide: how to write a scenario, by example.
 
-Related: [dsl-grammar](dsl-grammar.md) (formal grammar) · [selectors](selectors.md) (how selectors and assertions evaluate) · [evidence](evidence.md) · [run-loop](run-loop.md) (execution)
+Related: [cookbook](cookbook.md) (worked examples) · [dsl-grammar](dsl-grammar.md) (formal grammar) · [selectors](selectors.md) (how selectors and assertions evaluate) · [evidence](evidence.md) · [run-loop](run-loop.md) (execution)
 
 ---
 
