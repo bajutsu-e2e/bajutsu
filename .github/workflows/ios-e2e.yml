@@ -2,27 +2,31 @@
 # (adb) and web-e2e.yml (Playwright) in scope, but unlike them this lane carries the platform's
 # REQUIRED status check: the `E2E` job below always reports (even when the macOS jobs are
 # path-gated skipped), so it — not this file's name — is what `main`'s branch-protection ruleset
-# pins. Six jobs, against the showcase suite (BE-0079, the single iOS fixture):
+# pins. Seven jobs, against the showcase suite (BE-0079, the single iOS fixture):
 #   - smoke (idb): build the showcase, boot a Simulator, run a scenario through the idb backend
-#     (driver + simctl + idb + real actuation).
+#     (driver + simctl + idb + real actuation) — the functional heart.
+#   - golden (idb): the BE-0006 element-tree golden over idb, the iOS twin of android-e2e.yml's
+#     `golden (adb)`. Like `visual`, deliberately NOT part of the `E2E` gate's `needs:` — the tree
+#     golden is deterministic, but `idb_companion` upstream drift could redden it independently of
+#     any Bajutsu change, so a drift surfaces here as a per-PR signal without blocking a merge.
 #   - xcuitest (codegen): generate a native XCUITest from a scenario and run it with
 #     xcodebuild — no bajutsu / idb / AI at test time (the codegen output path).
 #   - xcuitest (multi-touch): a pinch/rotate scenario through the full `bajutsu run` path on the
 #     XCUITest backend (BE-0019) — two-finger gestures idb cannot actuate.
 #   - conformance (idb + xcuitest): the driver conformance suite (BE-0114) on-device against both
 #     iOS backends.
-#   - visual (idb): the iOS twin of android-e2e.yml's `e2e-visual` — a pixel VRT of the Stable
+#   - visual (idb): the iOS twin of android-e2e.yml's `visual` — a pixel VRT of the Stable
 #     catalog against the committed `baselines_ios/` baseline. Deliberately NOT part of the `E2E`
 #     gate's `needs:` (see that job below) — a pixel baseline is host-specific (the Simulator
 #     renderer varies by Xcode / device / OS), so a drift surfaces here as a signal, never
-#     blocking a merge, the same rationale android-e2e.yml's `e2e-visual` and web-e2e.yml's jobs
+#     blocking a merge, the same rationale android-e2e.yml's `visual` and web-e2e.yml's jobs
 #     follow for their own non-required lanes.
-# The SwiftUI a11y product is the smoke / codegen / visual subject; the UIKit twin shares the
-# identifier contract, so one toolkit suffices for the gate.
-# The BE-0006 element-tree goldens now live on the showcase
-# (demos/showcase/scenarios/golden/, ported in BE-0079's retirement, split by backend in BE-0107);
-# the weekly idb-monitor runs the idb golden against the latest idb_companion, so per-PR golden
-# coverage stays off this fast gate.
+# The SwiftUI a11y product is the smoke / golden / codegen / visual subject; the UIKit twin shares
+# the identifier contract, so one toolkit suffices for the gate.
+# The BE-0006 element-tree goldens live on the showcase
+# (demos/showcase/scenarios/golden/, ported in BE-0079's retirement, split by backend in BE-0107).
+# The idb golden now runs both per PR (the `golden` job here) and weekly (idb-monitor, against the
+# latest idb_companion — a forward-looking check the per-PR job does not replace).
 # Runs on every relevant PR and on demand (the Actions tab / `gh workflow run ios-e2e.yml`).
 name: iOS E2E (Simulator)
 
@@ -176,6 +180,107 @@ jobs:
           config: demos/showcase/showcase.config.yaml
           udid: ${{ steps.sim.outputs.udid }}
           artifact-name: smoke-run
+
+  # The BE-0006 element-tree golden over idb: pins the normalized accessibility tree for the Stable
+  # catalog's list rows, reached on the launch tab so idb needs no tab navigation. Runs the same
+  # golden.yaml the weekly idb-monitor runs, now also per PR — the iOS twin of android-e2e.yml's
+  # `golden (adb)` job. Deliberately NOT in the `e2e` gate's `needs:` (like `visual`): the tree
+  # golden is deterministic and host-independent, but `idb_companion` is an upstream dependency whose
+  # drift could redden it independently of any Bajutsu change, so a golden drift surfaces here as a
+  # per-PR signal without blocking merges. The weekly idb-monitor golden stays — its purpose is
+  # forward-looking (running against the latest idb_companion), which this per-PR job does not
+  # replace. The Log-tab control golden lives in golden_xcuitest.yaml (BE-0107); idb cannot tap to
+  # the Log tab, so only the launch-tab golden.yaml runs on idb here.
+  golden:
+    name: golden (idb)
+    needs: changes
+    if: needs.changes.outputs.relevant == 'true'
+    runs-on: macos-latest
+    # A cold Xcode build (~2.5min) + a fresh Simulator boot (~80s) + the golden run is well under
+    # this; 25 catches a hung Simulator/idb on the metered macOS runner with comfortable headroom.
+    timeout-minutes: 25
+    # Raise the wait floor so a cold-boot Simulator has budget to render the first Stable row before
+    # the scenario's own 10s first-wait — the same knob the `smoke` job above and the Android lane use.
+    # A condition wait returns the instant the row appears, so this is a ceiling, not a fixed sleep.
+    env:
+      BAJUTSU_MIN_WAIT_TIMEOUT: "20"
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+
+      - name: Select Xcode
+        uses: maxim-lobanov/setup-xcode@ed7a3b1fda3918c0306d1b724322adc0b8cc0a90  # v1.7.0
+        with:
+          xcode-version: latest-stable
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39  # v8.2.0
+        with:
+          enable-cache: true
+
+      - name: Install xcodegen
+        env:
+          HOMEBREW_NO_AUTO_UPDATE: "1"
+          HOMEBREW_NO_INSTALL_CLEANUP: "1"
+        run: brew install xcodegen
+
+      # Start the boot first so it runs concurrently with the app build below (a fresh boot is ~80s
+      # and does not depend on the build). `wait: 'false'` returns once boot is initiated; the wait
+      # step blocks on "booted" right before installing the app.
+      - name: Boot a Simulator
+        id: sim
+        uses: ./.github/actions/boot-simulator
+        with:
+          wait: "false"
+
+      # The DerivedData cache must not cross Xcode upgrades: a different Xcode's compiled modules
+      # cause stale-artifact build failures. Capture the active Xcode build version for the cache key.
+      - name: Resolve Xcode version (for the cache key)
+        id: xcode
+        run: echo "ver=$(xcodebuild -version | tr '\n ' '--')" >> "$GITHUB_OUTPUT"
+
+      # Cache the showcase app's DerivedData so `swiftui-build` is incremental across runs, sharing
+      # the `-app-` scheme cache the smoke / visual jobs use. A miss just rebuilds cold.
+      - name: Cache DerivedData (app)
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+        with:
+          path: demos/showcase/ios/swiftui/build/dd
+          key: xcode-dd-app-${{ runner.os }}-${{ runner.arch }}-${{ steps.xcode.outputs.ver }}-${{ hashFiles('BajutsuKit/**/*.swift', 'demos/showcase/ios/swiftui/**/*.swift', 'demos/showcase/ios/swiftui/**/project.yml') }}
+          restore-keys: |
+            xcode-dd-app-${{ runner.os }}-${{ runner.arch }}-${{ steps.xcode.outputs.ver }}-
+
+      # Fetch the idb backend's deps concurrently with the app build (both independent of it). A
+      # build failure exits first under `set -e`; the trap stops the background fetches.
+      - name: Build the showcase app (fetch idb deps concurrently)
+        env:
+          HOMEBREW_NO_AUTO_UPDATE: "1"
+          HOMEBREW_NO_INSTALL_CLEANUP: "1"
+        run: |
+          brew list facebook/fb/idb-companion >/dev/null 2>&1 || brew install facebook/fb/idb-companion &
+          brew_pid=$!
+          uv sync --extra idb --no-dev &
+          sync_pid=$!
+          trap 'kill "$brew_pid" "$sync_pid" 2>/dev/null || true' EXIT
+          make -C demos/showcase swiftui-build
+          wait "$brew_pid"
+          wait "$sync_pid"
+          trap - EXIT
+
+      - name: Wait for the Simulator
+        run: xcrun simctl bootstatus "${{ steps.sim.outputs.udid }}" -b
+
+      - name: Install the app
+        run: xcrun simctl install "${{ steps.sim.outputs.udid }}" "demos/showcase/ios/swiftui/build/dd/Build/Products/Debug-iphonesimulator/BajutsuShowcaseSwiftUI.app"
+
+      # Runs golden.yaml over idb; the scenario compares against its default goldens/ baseline (the
+      # idb tree), a field-level tolerant compare (bajutsu/golden.py) that is ABI-stable.
+      - name: Run golden scenarios (BE-0006)
+        uses: ./.github/actions/bajutsu-e2e
+        with:
+          scenarios: demos/showcase/scenarios/golden/golden.yaml
+          target: showcase-swiftui
+          config: demos/showcase/showcase.config.yaml
+          udid: ${{ steps.sim.outputs.udid }}
+          artifact-name: ios-golden-run
 
   # The codegen output path: a scenario -> native XCUITest, compiled and run by xcodebuild
   # with no bajutsu / idb / AI at test time. This is the claim M3 makes about codegen, so CI
@@ -578,9 +683,10 @@ jobs:
 
   # Single required status check for E2E. Always runs so it reports even when the macOS
   # jobs are skipped (docs-only PRs) — a skipped dependency is a pass; only a real
-  # failure or cancellation fails the gate. `visual` is deliberately excluded from `needs:`
-  # (see that job's comment) so a host-specific pixel drift never blocks a merge. Make `E2E`
-  # the required check, not the path-gated macOS jobs.
+  # failure or cancellation fails the gate. `golden` and `visual` are deliberately excluded
+  # from `needs:` (see each job's comment) so a host-specific pixel drift or an idb_companion
+  # upstream drift never blocks a merge. Make `E2E` the required check, not the path-gated
+  # macOS jobs.
   e2e:
     name: E2E
     needs: [changes, smoke, xcuitest, xcuitest-gestures, conformance]
