@@ -39,8 +39,8 @@ bajutsu record --target <name> --goal "..." [--out f.yaml]  # Tier 1: AI explore
 bajutsu run    --target <name> [--scenario f.yaml]          # Tier 2: deterministic pass/fail
 ```
 
-The [Getting started tutorial](getting-started.md) walks through install → unit tests → scenario →
-device run → report. On a machine without a Mac, the [web track](getting-started-web.md) does the
+The [Getting started tutorial](getting-started/index.md) walks through install → unit tests → scenario →
+device run → report. On a machine without a Mac, the [web track](getting-started/web.md) does the
 same loop against a browser (Playwright backend) — no Xcode or Simulator.
 
 ## Feature highlights
@@ -66,6 +66,6 @@ same loop against a browser (Playwright backend) — no Xcode or Simulator.
 ## Learn more
 
 - [Documentation overview](overview.md) — the per-feature reference, in suggested reading order.
-- [Getting started](getting-started.md) · [Concepts](concepts.md) · [Glossary](glossary.md) · [API reference](api/index.md)
+- [Getting started](getting-started/index.md) · [Concepts](concepts.md) · [Glossary](glossary.md) · [API reference](api/index.md)
 - [Roadmap](../roadmaps/README.md) · [Design rationale (DESIGN.md)](../DESIGN.md) ·
   [GitHub](https://github.com/bajutsu-e2e/bajutsu)

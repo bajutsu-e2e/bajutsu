@@ -96,6 +96,8 @@ plugins:
             Home: ホーム
             Roadmap status: ロードマップの状況
             Getting started: はじめに
+            Getting started (iOS): はじめに（iOS）
+            Getting started (web track): はじめに（web トラック）
             Overview: 概要
             Showcase app: ショーケースアプリ
             Concepts: コンセプト
@@ -158,8 +160,9 @@ nav:
   - Roadmap status: api/roadmap.md
   - Getting started:
       - Overview: overview.md
-      - Getting started: getting-started.md
-      - Getting started (web track): getting-started-web.md
+      - Getting started: getting-started/index.md
+      - Getting started (iOS): getting-started/ios.md
+      - Getting started (web track): getting-started/web.md
       - Showcase app: showcase.md
   - Concepts:
       - Concepts: concepts.md

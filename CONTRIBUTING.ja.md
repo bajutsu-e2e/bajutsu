@@ -8,7 +8,7 @@ AI エージェントの双方が従う詳しい作業協定は [`CLAUDE.md`](CL
 案内する役割に徹し、二つの記述が食い違わないようにしています。
 
 はじめての方は、Bajutsu が何かを知るために [`README.ja.md`](README.ja.md) を、実際に手を動かす
-入門として [getting-started チュートリアル](docs/ja/getting-started.md) をご覧ください。
+入門として [getting-started チュートリアル](docs/ja/getting-started/index.md) をご覧ください。
 
 ## 開発環境のセットアップ
 

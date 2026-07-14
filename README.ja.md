@@ -135,8 +135,8 @@ Android エミュレータで検証済み（Linux・Mac 不要）:
 
 ## セットアップ
 
-> **はじめての方へ。** [Getting started チュートリアル](docs/ja/getting-started.md)は一連のループを
-> iOS Simulator で辿ります。**Mac がない場合は**、[web トラック](docs/ja/getting-started-web.md)が同じ
+> **はじめての方へ。** [Getting started チュートリアル](docs/ja/getting-started/index.md)は一連のループを
+> iOS Simulator で辿ります。**Mac がない場合は**、[web トラック](docs/ja/getting-started/web.md)が同じ
 > ループをブラウザ（Playwright backend）に対してどの OS でも辿ります。Xcode も Simulator も要りません。
 
 ```bash
@@ -220,7 +220,7 @@ targets:
   よる著作と、改変 → 自己修復（`triage`）ループです。
 - **[web](demos/web/README.md)**（`make -C demos/web e2e`）。**Playwright backend** で静的な web アプリ
   に対しシナリオを実行します。Mac も Simulator も不要で、Linux で動きます。このデモを手順を追って辿る
-  なら、[web getting-started トラック](docs/ja/getting-started-web.md)を参照してください。
+  なら、[web getting-started トラック](docs/ja/getting-started/web.md)を参照してください。
 
 ## 開発
 
