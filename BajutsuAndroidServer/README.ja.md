@@ -32,14 +32,17 @@ UI Automator インストルメンテーションです。実行のあいだ `Ui
 - `GET /source` は `UiDevice.dumpWindowHierarchy()` の XML を返します。これは bajutsu の
   `parse_hierarchy` がすでに解析している `AccessibilityNodeInfoDumper` の形式です。
 
-揃えるべき差異が一つ残っています。`dumpWindowHierarchy()` はすべてのウィンドウをたどるので、その XML
-にはプラットフォームの `uiautomator dump` が対象ウィンドウに絞って除く SystemUI のステータスバー（時計・
-Wi-Fi・電池・通知アイコン、29 ノード）も入ります。アプリの内容は同一です。両方の経路が同じ Element を返すように常駐側のダンプを
-対象ウィンドウへ絞る作業（ロードマップ項目の作業単位 2 が求める等価化）は、端から端まで回帰テストできる
-トランスポート配線のスライスで入れます。
+ウィンドウの差異が一つあり、Python 側で揃えます。`dumpWindowHierarchy()` はすべてのウィンドウをたどる
+ので、その XML にはプラットフォームの `uiautomator dump` が対象ウィンドウに絞って除く SystemUI の
+ステータスバー（時計、Wi-Fi、電池、通知アイコン、29 ノード）も入ります。アプリの内容は同一です。
+`bajutsu.adb_resident.narrow_to_active_window` が SystemUI の装飾ウィンドウを取り除き、両方の経路が
+同じ Element を返すようにします（ロードマップ項目の作業単位 2 が求める等価化です）。
 
 このソケットに届く Python 側（`adb forward`、`fetch_hierarchy` の配線、デバイスのリース（貸し出し）
-に結んだライフサイクル）は、BE-0245 の後続スライスで実装します。
+に結んだライフサイクル）は、[`bajutsu/adb_resident.py`](../bajutsu/adb_resident.py) にあり、
+`bajutsu/platform_lifecycle.py` で Android のリースに配線しています（BE-0245 PR-C）。Android の
+e2e レーンがサーバをビルドして導入するまでは、環境変数 `BAJUTSU_ADB_RESIDENT` によるオプトインです。
+設定しなければ、adb バックエンドはこれまでどおり `uiautomator dump` で読み取ります。
 
 ## ビルド
 

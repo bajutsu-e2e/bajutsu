@@ -71,6 +71,7 @@ third idiom.
 from __future__ import annotations
 
 import json
+import logging
 import os
 import plistlib
 import shlex
@@ -92,6 +93,23 @@ from bajutsu.drivers import base
 from bajutsu.network import Collector
 from bajutsu.orchestrator import DeviceControl, RelaunchFn
 from bajutsu.scenario import Preconditions, Relaunch, Scenario
+
+logger = logging.getLogger("bajutsu.platform_lifecycle")
+
+# Gates the resident UI Automator read channel (BE-0245). Opt-in until the Android e2e lane builds and
+# installs the server (a later slice); when unset the adb backend reads via `uiautomator dump` exactly
+# as before. Set to 1/true/yes to route reads through the resident server (with dump fallback).
+_RESIDENT_ENV = "BAJUTSU_ADB_RESIDENT"
+
+
+@runtime_checkable
+class ResidentServerLike(Protocol):
+    """The lease-lifecycle slice of `bajutsu.adb_resident.ResidentServer` the environment drives."""
+
+    def start(self) -> Callable[[], str]: ...
+
+    def stop(self) -> None: ...
+
 
 # Given a scenario + its launched driver, yields that scenario's `relaunch` function (defined here
 # rather than imported from runner.types to keep the environment seam free of a runner import cycle).
@@ -399,10 +417,20 @@ class AndroidEnvironment:
     the family stays unsupported.
     """
 
-    def __init__(self, actuator: str, serial: str, adb_run: adb.RunFn = adb._real_run) -> None:
+    def __init__(
+        self,
+        actuator: str,
+        serial: str,
+        adb_run: adb.RunFn = adb._real_run,
+        *,
+        resident_factory: Callable[[], ResidentServerLike] | None = None,
+    ) -> None:
         self._actuator = actuator
         self._serial = serial
         self._run = adb_run
+        # Override the resident-server construction in tests; None uses the real, env-gated default.
+        self._resident_factory = resident_factory
+        self._resident: ResidentServerLike | None = None
 
     def start(
         self,
@@ -446,7 +474,35 @@ class AndroidEnvironment:
             raise adb.DeviceError(
                 f"could not run adb ({exc}); is Android platform-tools installed and on PATH?"
             ) from exc
-        return make_driver(self._actuator, self._serial)
+        # The resident read channel drives whatever app is now on screen (BE-0245); a startup failure
+        # degrades to `uiautomator dump` rather than failing the lease.
+        return make_driver(self._actuator, self._serial, fetch_hierarchy=self._begin_resident())
+
+    def _begin_resident(self) -> Callable[[], str] | None:
+        """Start the resident server for this lease, or None to read via `uiautomator dump`."""
+        server = self._make_resident()
+        if server is None:
+            return None
+        from bajutsu.drivers.adb import AdbResidentError
+
+        try:
+            fetch = server.start()
+        except AdbResidentError as exc:
+            logger.warning(
+                "resident UI Automator server unavailable (%s); reading via `uiautomator dump`", exc
+            )
+            return None
+        self._resident = server
+        return fetch
+
+    def _make_resident(self) -> ResidentServerLike | None:
+        if self._resident_factory is not None:
+            return self._resident_factory()
+        if os.environ.get(_RESIDENT_ENV, "").strip().lower() not in {"1", "true", "yes"}:
+            return None  # opt-in until the e2e lane builds/installs the server (a later slice)
+        from bajutsu.adb_resident import ResidentServer
+
+        return ResidentServer(self._serial, run=self._run)
 
     def device_catalog(self) -> dict[str, dict[str, str]]:
         return adb.device_catalog(self._run)
@@ -493,6 +549,11 @@ class AndroidEnvironment:
         return android_device_control(self._serial, require_android(eff).package, self._run)
 
     def teardown(self, driver: base.Driver, eff: Effective) -> None:
+        # Stop the resident server first (BE-0245) so no instrumentation is left running on the device,
+        # then force-stop the app — this runs in the run's finally, so it fires on failure/interrupt too.
+        if self._resident is not None:
+            self._resident.stop()
+            self._resident = None
         adb.Env(self._serial, run=self._run).force_stop(require_android(eff).package)
 
     def has_devices(self) -> bool:

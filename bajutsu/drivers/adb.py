@@ -168,24 +168,35 @@ def _to_element(node: ET.Element) -> base.Element:
     }
 
 
-def parse_hierarchy(text: str) -> list[base.Element]:
-    """Parse `uiautomator dump` output into Elements (empty on a null-root/garbled dump).
+def slice_hierarchy_root(text: str) -> ET.Element | None:
+    """Slice the `<hierarchy>` XML out of a UI Automator dump and parse its root, or `None`.
 
-    `exec-out uiautomator dump /dev/tty` prints the `<hierarchy>` XML, sometimes wrapped in a status
-    line ("UI hierarchy dumped to: …") or replaced by "null root node returned by
-    UiTestAutomationBridge" mid-transition. The XML is sliced out by its tags so the surrounding
-    chatter is ignored; a missing/unparseable tree yields `[]`, which the transient-empty retry
-    rides over.
+    UI Automator output — over the adb subprocess or the resident channel — can be wrapped in a
+    status line ("UI hierarchy dumped to: …") or replaced by "null root node returned by
+    UiTestAutomationBridge" mid-transition. The XML is located by its `<hierarchy>` tags so the
+    surrounding chatter is ignored; a missing or unparseable tree yields `None`, letting each caller
+    apply its own degrade (`parse_hierarchy` an empty list, the resident path the original text).
     """
     start = text.find("<hierarchy")
     end = text.rfind("</hierarchy>")
     if start == -1 or end == -1:
-        return []
+        return None
     try:
-        # The dump is UI Automator's own output over our adb subprocess — a DTD/entity-free tree of
+        # The dump is UI Automator's own output over our channel — a DTD/entity-free tree of
         # attribute-only <node>s — not attacker-supplied XML, so the stdlib parser is safe here.
-        root = ET.fromstring(text[start : end + len("</hierarchy>")])  # noqa: S314
+        return ET.fromstring(text[start : end + len("</hierarchy>")])  # noqa: S314
     except ET.ParseError:
+        return None
+
+
+def parse_hierarchy(text: str) -> list[base.Element]:
+    """Parse `uiautomator dump` output into Elements (empty on a null-root/garbled dump).
+
+    `exec-out uiautomator dump /dev/tty` prints the `<hierarchy>` XML; a missing/unparseable tree
+    yields `[]`, which the transient-empty retry rides over.
+    """
+    root = slice_hierarchy_root(text)
+    if root is None:
         return []
     # Every `<node>` is an element; the `<hierarchy>` root itself is not a UI node.
     return [_to_element(n) for n in root.iter("node")]
@@ -271,15 +282,20 @@ class AdbDriver:
         Both sources speak UI Automator's own XML, so the caller (`parse_hierarchy`) is unchanged
         (BE-0245). A resident-channel failure degrades to the dump subprocess with a loud warning —
         never silently, so a slower fallback read stays visible — leaving the backend no worse off
-        than the dump-every-read path it replaces.
+        than the dump-every-read path it replaces. The failure latches: the channel is disabled after
+        the first fault so the rest of the lease reads via dump without re-logging or re-paying the
+        connect timeout on every read.
         """
         if self._fetch_hierarchy is not None:
             try:
                 return self._fetch_hierarchy()
             except AdbResidentError as exc:
                 logger.warning(
-                    "resident hierarchy read failed (%s); falling back to `uiautomator dump`", exc
+                    "resident hierarchy read failed (%s); falling back to `uiautomator dump` "
+                    "for the rest of this lease",
+                    exc,
                 )
+                self._fetch_hierarchy = None
         return self._run(adb.dump_cmd(self.serial))
 
     def _is_transient_empty(self, els: list[base.Element]) -> bool:

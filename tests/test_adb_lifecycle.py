@@ -250,6 +250,97 @@ def test_android_environment_start_grants_nothing_when_unconfigured() -> None:
     assert not any("pm grant" in " ".join(c) for c in calls)
 
 
+class _FakeResident:
+    """A resident server stand-in: start() hands back a fetch; stop() records the teardown."""
+
+    def __init__(self, *, fetch: object = None, error: Exception | None = None) -> None:
+        self._fetch = fetch
+        self._error = error
+        self.stopped = False
+
+    def start(self):  # type: ignore[no-untyped-def]
+        if self._error is not None:
+            raise self._error
+        return self._fetch
+
+    def stop(self) -> None:
+        self.stopped = True
+
+
+def test_android_environment_wires_the_resident_channel_when_enabled() -> None:
+    # With the resident server available, the returned driver reads over its fetch (BE-0245) instead
+    # of `uiautomator dump`, and teardown stops the server so no instrumentation is left running.
+    xml = (
+        "<?xml version='1.0' ?><hierarchy rotation=\"0\">"
+        '<node index="0" class="android.widget.Button" resource-id="stable.submit" '
+        'text="送信" bounds="[0,0][10,10]" /></hierarchy>'
+    )
+    resident = _FakeResident(fetch=lambda: xml)
+
+    def run(args: list[str]) -> str:
+        raise AssertionError(f"resident read must not shell out: {args}")
+
+    env = AndroidEnvironment(
+        "adb",
+        "S",
+        adb_run=_resolve_activity_run([]),
+        resident_factory=lambda: resident,
+    )
+    driver = env.start(_eff(), Preconditions())
+    driver._run = run  # type: ignore[attr-defined]  # prove the read never reaches the dump subprocess
+    assert len(driver.query()) == 1  # read came from the resident fetch
+
+    env.teardown(driver, _eff())
+    assert resident.stopped
+
+
+def test_android_environment_falls_back_to_dump_when_resident_unavailable(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    # A resident startup failure is not fatal: start still returns a working adb driver (reading via
+    # `uiautomator dump`), logs the degradation loudly, and leaves nothing to tear down.
+    from bajutsu.drivers.adb import AdbResidentError
+
+    resident = _FakeResident(error=AdbResidentError("not built"))
+    env = AndroidEnvironment(
+        "adb",
+        "S",
+        adb_run=_resolve_activity_run([]),
+        resident_factory=lambda: resident,
+    )
+    import logging
+
+    with caplog.at_level(logging.WARNING):
+        driver = env.start(_eff(), Preconditions())
+    assert driver.name == "adb"
+    assert any("resident" in r.message.lower() for r in caplog.records)
+    env.teardown(driver, _eff())
+    assert not resident.stopped  # it never started, so nothing to stop
+
+
+def test_android_environment_skips_resident_by_default() -> None:
+    # Until the e2e lane builds and installs the server (a later slice), the resident channel is
+    # opt-in: with no factory and the env flag unset, start does not attempt it and reads via dump.
+    env = AndroidEnvironment("adb", "S", adb_run=_resolve_activity_run([]))
+    env.start(_eff(), Preconditions())
+    assert env._resident is None  # nothing started
+
+
+def test_make_resident_builds_a_real_server_when_the_env_flag_is_set(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # With no injected factory but BAJUTSU_ADB_RESIDENT truthy, _make_resident lazily imports and
+    # constructs a real ResidentServer. Construction only stores params — it never touches the device
+    # or starts instrumentation — so this stays hermetic without a factory or a device. (monkeypatch
+    # auto-restores the env var, so this leaves no os.environ leak for later tests.)
+    from bajutsu.adb_resident import ResidentServer
+
+    monkeypatch.setenv("BAJUTSU_ADB_RESIDENT", "1")
+    env = AndroidEnvironment("adb", "emulator-5554", adb_run=_resolve_activity_run([]))
+    server = env._make_resident()
+    assert isinstance(server, ResidentServer)  # a real server, not the None opt-out
+
+
 def test_android_environment_grants_permissions_even_on_overwrite() -> None:
     # An `overwrite` reinstall skips `pm clear` (keeps app data), but configured permissions must
     # still be granted — a kept-data app can still need a permission the run relies on.

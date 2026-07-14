@@ -255,14 +255,19 @@ def make_driver(
     device_mode: str = "desktop",
     record_video_dir: Path | None = None,
     runner_port: int = 0,
+    fetch_hierarchy: Callable[[], str] | None = None,
 ) -> base.Driver:
-    """Construct the driver for an actuator, wiring up its backend-specific arguments."""
+    """Construct the driver for an actuator, wiring up its backend-specific arguments.
+
+    The adb backend reads through `fetch_hierarchy` (the resident-server channel, BE-0245) when one is
+    supplied, else via `uiautomator dump`; every other actuator ignores it.
+    """
     if actuator == "idb":
         return IdbDriver(udid)
     if actuator == "adb":
         from bajutsu.drivers.adb import AdbDriver
 
-        return AdbDriver(udid)
+        return AdbDriver(udid, fetch_hierarchy=fetch_hierarchy)
     if actuator == "fake":
         return FakeDriver([])
     if actuator == "xcuitest":

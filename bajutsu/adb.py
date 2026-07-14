@@ -453,6 +453,55 @@ def install_cmd(serial: str, apk_path: str) -> list[str]:
     return _adb(serial, "install", "-r", "-t", apk_path)
 
 
+# --- resident UI Automator server (BE-0245) ---
+
+# The resident server's fixed loopback port on the device (matches BajutsuAndroidServer's
+# ResidentServerTest); bajutsu reaches it over `adb forward`.
+RESIDENT_DEVICE_PORT = 6790
+
+# The androidTest instrumentation that runs the resident server: the `.test` package (androidx adds
+# the suffix to the server's applicationId) driven by AndroidJUnitRunner, scoped to the one blocking
+# `serve()` method so `am instrument` starts nothing else.
+RESIDENT_INSTRUMENTATION = "dev.bajutsu.android.server.test/androidx.test.runner.AndroidJUnitRunner"
+RESIDENT_TEST_METHOD = "dev.bajutsu.android.server.ResidentServerTest#serve"
+# The server's own package (its applicationId); force-stopped at lease end to kill any device-side
+# instrumentation the local adb client's exit did not.
+RESIDENT_SERVER_PACKAGE = "dev.bajutsu.android.server"
+
+
+def forward_cmd(serial: str, device_port: int = RESIDENT_DEVICE_PORT) -> list[str]:
+    """Forward a free host port to the device's resident-server port; adb prints the host port on stdout.
+
+    `tcp:0` asks adb to pick an unused host port, so parallel lanes on distinct serials never contend
+    for one fixed port; the caller parses the chosen port from stdout.
+    """
+    return _adb(serial, "forward", "tcp:0", f"tcp:{device_port}")
+
+
+def forward_remove_cmd(serial: str, host_port: int) -> list[str]:
+    """Tear down the `adb forward` for `host_port`, paired with `forward_cmd` at lease end."""
+    return _adb(serial, "forward", "--remove", f"tcp:{host_port}")
+
+
+def instrument_cmd(serial: str) -> list[str]:
+    """Start the resident server by running its blocking `serve()` @Test under `am instrument -w`.
+
+    `-w` keeps the instrumentation attached — `serve()` never returns, holding the `UiAutomation`
+    session warm — and `-e class …#serve` scopes the run to that one method.
+    """
+    return _adb(
+        serial,
+        "shell",
+        "am",
+        "instrument",
+        "-w",
+        "-e",
+        "class",
+        RESIDENT_TEST_METHOD,
+        RESIDENT_INSTRUMENTATION,
+    )
+
+
 def resolve_activity_cmd(serial: str, package: str) -> list[str]:
     """Ask the package manager for the launcher component, so a launch needs no configured activity.
 
