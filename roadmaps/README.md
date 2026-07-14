@@ -543,6 +543,12 @@ Under consideration — not yet decided. Promote an item to *In progress* once w
 | [BE-0008](BE-0008-flutter-support/BE-0008-flutter-support.md) | Flutter support | Proposal |
 <!-- /GENERATED:proposals-platform -->
 
+### Scenario authoring features
+
+<!-- GENERATED:proposals-scenario-authoring -->
+
+<!-- /GENERATED:proposals-scenario-authoring -->
+
 ### Device-cloud execution
 
 Running a scenario on a hosted device farm instead of a local Simulator, emulator, or browser, behind a common provider abstraction — an opt-in execution target beyond the deterministic core's local-first default.
