@@ -130,5 +130,5 @@ evidence reproduces without AI on the second run onward ([evidence](evidence.md)
 | Clean environment | `runner/launch.py` `launch_driver` · `simctl.py` `Env.erase` |
 | Machine assertions | `assertions.py` |
 | Stability order / actuator | `backends.py` `select_actuator` · each `drivers/*.py` `capabilities()` |
-| App-agnostic | `config.py` `resolve` → `Effective` |
+| App-agnostic | `config/resolve.py` `resolve` → `Effective` |
 | Evidence rules | `orchestrator/loop.py` `_collect_captures` · `evidence.py` |
