@@ -10,7 +10,7 @@
 > アプリ内 SDK（software development kit、ソフトウェア開発キット）の
 > [`BajutsuKit`](../../BajutsuKit/README.md)。
 
-関連: [scenarios](scenarios.md) ・ [evidence](evidence.md)
+関連: [scenarios](scenarios.md) · [evidence](evidence.md)
 
 ---
 
@@ -69,7 +69,7 @@ expect:
 
 シナリオの `mocks` はネットワークを決定的にします。外向きのリクエストがルールに一致すると、BajutsuKit は
 **ネットワークへ送る代わりに**あらかじめ用意したレスポンスを返します。これにより、テストはライブのサーバに
-依存せず（オフラインでも動作します）。スタブは URL プロトコルの内側で返され（TLS の後段、プロキシも CA も
+依存しません（オフラインでも動作します）。スタブは URL プロトコルの内側で返され（TLS の後段、プロキシも CA も
 使いません）、なお観測の対象になります（`network.json` に `mocked` の印つきで現れ、`request` アサーションは
 他の通信と同様にこれを照合します）。
 

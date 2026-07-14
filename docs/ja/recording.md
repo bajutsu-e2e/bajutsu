@@ -9,7 +9,7 @@
 > `bajutsu/claude_agent.py`（SDK オーサリングエージェント）、`bajutsu/alerts.py`（システムアラート対処）。
 > 幅優先の探索 `bajutsu/crawl/` も同じエージェントを使います。
 
-関連: [concepts の 2 層](concepts.md#2-2-層構成tier-1--tier-2) ・ [scenarios](scenarios.md) ・ [run-loop](run-loop.md)
+関連: [concepts の 2 層](concepts.md#2-2-層構成tier-1--tier-2) · [scenarios](scenarios.md) · [run-loop](run-loop.md)
 
 ---
 

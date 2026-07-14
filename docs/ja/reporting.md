@@ -7,7 +7,7 @@
 >
 > 実装: `bajutsu/report/`（パッケージ。段階で分割: `format` → `manifest` / `richtext` → `rows` / `panels` → `html`）。
 
-関連: [run-loop の実行結果](run-loop.md#実行結果データ構造) ・ [evidence](evidence.md)
+関連: [run-loop の実行結果](run-loop.md#実行結果データ構造) · [evidence](evidence.md)
 
 ---
 
@@ -87,7 +87,7 @@ step 1 tap: FAIL 一致なし: {...}</failure>
 
 ## ctrf.json
 
-[Common Test Report Format（CTRF）](https://ctrf.io/)への出力です（[BE-0161](../../roadmaps/BE-0161-ctrf-report-export/BE-0161-ctrf-report-export-ja.md)）。CTRF はオープン標準の JSON テストレポートで、`ctrf-io` の GitHub Actions（PR コメントやジョブサマリーの出力ツール）、ツールをまたぐダッシュボード、flaky なテストの分析といった、育ちつつある消費側のエコシステムが、ツールごとのアダプターなしに読めます。JUnit XML が run を名前・所要時間・失敗内容の塊まで削ぎ落とすのに対し、CTRF は Bajutsu の構造化された詳細（ステップごとの結果、エンジンとデバイス、第一級のアタッチメントとしてのアーティファクト）を運びます。これらは JUnit には収まる場所がありません。この出力は **`manifest.json` の純粋な射影**であり、同じデータを `junit.xml` の隣に別の形で並べるだけなので、新しい記帳は生じません。判定より後に書くので判定を動かすこともありません（LLM は関与せず、合否にも影響しません）。
+[Common Test Report Format（CTRF）](https://ctrf.io/)への出力です（[BE-0161](../../roadmaps/BE-0161-ctrf-report-export/BE-0161-ctrf-report-export-ja.md)）。CTRF はオープン標準の JSON テストレポートで、`ctrf-io` の GitHub Actions（PR コメントやジョブサマリーの出力ツール）、ツールをまたぐダッシュボード、flaky なテストの分析といった、育ちつつある消費側のエコシステムが、ツールごとのアダプターなしに読めます。JUnit XML が run を名前、所要時間、失敗内容の塊まで削ぎ落とすのに対し、CTRF は Bajutsu の構造化された詳細（ステップごとの結果、エンジンとデバイス、第一級のアタッチメントとしてのアーティファクト）を運びます。これらは JUnit には収まる場所がありません。この出力は **`manifest.json` の純粋な射影**であり、同じデータを `junit.xml` の隣に別の形で並べるだけなので、新しい記帳は生じません。判定より後に書くので判定を動かすこともありません（LLM は関与せず、合否にも影響しません）。
 
 文書は `{ reportFormat: "CTRF", specVersion, generatedBy, timestamp, results }` で、`results` が `tool` / `summary` / `tests`（＋任意の `environment` / `extra`）を持ちます。
 

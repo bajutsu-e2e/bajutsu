@@ -7,7 +7,7 @@
 > はずです。他のページが各機能の役割を説明するリファレンスであるのに対し、このページは手順を順に
 > 実行していくチュートリアルです。
 
-関連: [cli](cli.md) ・ [scenarios](scenarios.md) ・ [showcase](showcase.md) ・ [run-loop](run-loop.md) ・ [reporting](reporting.md)
+関連: [cli](cli.md) · [scenarios](scenarios.md) · [showcase](showcase.md) · [run-loop](run-loop.md) · [reporting](reporting.md)
 
 > **Mac がない場合は。** このページは iOS Simulator で完結します（ステップ 4〜6 は macOS + Xcode が
 > 必要です）。[web トラック](getting-started-web.md)は、同じインストール → シナリオ → 実行 → レポートの

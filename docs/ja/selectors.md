@@ -6,7 +6,7 @@
 >
 > 実装: `bajutsu/drivers/base.py`。
 
-関連: [concepts の決定性原則](concepts.md#3-決定性ファースト4-つの具体策) ・ [scenarios の DSL](scenarios.md#アサーション-dsl) ・ [drivers](drivers.md)
+関連: [concepts の決定性原則](concepts.md#3-決定性ファースト4-つの具体策) · [scenarios の DSL](scenarios.md#アサーション-dsl) · [drivers](drivers.md)
 
 ---
 

@@ -120,7 +120,7 @@ AND で結合されるフィールドの集合（`id`、`idMatches`、`label`、
 |---|---|
 | **target（ターゲット）** | `targets.<name>` の下にある、テスト対象のアプリを記述する config エントリ一つです。プラットフォームごとの識別子（iOS の `bundleId`、web の `baseUrl`、Android の `package`）に加え、`backend`・`device`・`appPath` などを持ちます。config の単位です。定義は `bajutsu/config.py` の `TargetConfig` です。 |
 | **app（アプリ）** | テスト対象のアプリケーションそのものです。target が指し示し、device にインストールされるソフトウェアです。 |
-| **device（デバイス）** | target を駆動する具体的な実行時インスタンスです。Simulator・emulator・ブラウザコンテキストで、`device`（たとえば `iPhone 15`）で名付け、実行時には `udid` で指します。 |
+| **device（デバイス）** | target を駆動する具体的な実行時インスタンスです。Simulator、emulator、ブラウザコンテキストで、`device`（たとえば `iPhone 15`）で名付け、実行時には `udid` で指します。 |
 
 つまり、config の **target** が、ソフトウェアである **app** を指し、それを実行時インスタンスである
 **device** の上で駆動します。
@@ -129,7 +129,7 @@ AND で結合されるフィールドの集合（`id`、`idMatches`、`label`、
 
 **evidence（証跡）**：run の最中に取得する成果物で、どのプロバイダが生成したかのタグが付きます。二つの
 形があります。**instant（瞬間）** はスクリーンショットや要素階層で、ステップごとに取得します。
-**interval（区間）** は動画・デバイスログ・アプリトレースで、シナリオをまたいで取得します。
+**interval（区間）** は動画、デバイスログ、アプリトレースで、シナリオをまたいで取得します。
 [evidence](evidence.md) を参照してください。定義は `bajutsu/evidence.py` にあります。
 
 **capturePolicy・CaptureRule・「ルール」**：同じ概念の三つの呼び名を、ここで整理します。
@@ -168,4 +168,4 @@ AND で結合されるフィールドの集合（`id`、`idMatches`、`label`、
 | `triage` | 1 | AI が失敗した run を診断し、修正を提案します（助言的）。 |
 | `codegen` | — | シナリオをネイティブの XCUITest / Playwright へ構造的にマッピングします。 |
 | `doctor` | — | Bajutsu が前提とする規約に、target がどれだけ従っているかを採点します。 |
-| `serve` | 1 | ローカルの Web UI（記録・再実行・crawl・統計）を起動します。Tier 1 で、CI 用ではありません。 |
+| `serve` | 1 | ローカルの Web UI（記録、再実行、crawl、統計）を起動します。Tier 1 で、CI 用ではありません。 |

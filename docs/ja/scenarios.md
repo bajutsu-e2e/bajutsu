@@ -8,7 +8,7 @@
 
 すべての生成規則、型、既定値、検証規則を定めた **規範的な文法**は [dsl-grammar](dsl-grammar.md) にあります。このページはオーサリングガイドであり、例を使ってシナリオの書き方を示します。
 
-関連: [dsl-grammar](dsl-grammar.md)（形式文法）・[selectors](selectors.md)（セレクタとアサーションの評価方法）・[evidence](evidence.md)（証跡）・[run-loop](run-loop.md)（実行）
+関連: [dsl-grammar](dsl-grammar.md)（形式文法） · [selectors](selectors.md)（セレクタとアサーションの評価方法） · [evidence](evidence.md)（証跡） · [run-loop](run-loop.md)（実行）
 
 ---
 
@@ -46,7 +46,7 @@ scenarios:
     steps: [...]
 ```
 
-実行中の `bajutsu` が理解できるより新しい `schema` をシナリオが宣言している場合、読み込みは「未知のフィールド」という分かりにくいエラーではなく、明快なアップグレード手順のメッセージで失敗します。これは、シナリオツリーをバージョンをまたいで読み込むとき（たとえば、固定した Git の ref から config を取得したとき）に生じる状況です。現在のバージョンは `bajutsu/scenario/models/scenario.py` の `SCHEMA_VERSION` です。版上げは読み込みを壊す変更のときだけ行います。以前必須だったフィールドの意味を取り除く変更や、古い `bajutsu` が単に拒否するのではなく誤解してしまう変更が該当し、純粋に追加的なオプションフィールドは版上げを必要としません。
+実行中の `bajutsu` が理解できるものより新しい `schema` をシナリオが宣言している場合、読み込みは「未知のフィールド」という分かりにくいエラーではなく、明快なアップグレード手順のメッセージで失敗します。これは、バージョンをまたいでシナリオツリーを読み込むとき（たとえば、固定した Git の ref から config を取得したとき）に生じる状況です。現在のバージョンは `bajutsu/scenario/models/scenario.py` の `SCHEMA_VERSION` です。版上げは読み込みを壊す変更のときだけ行います。以前必須だったフィールドの意味を取り除く変更や、古い `bajutsu` が単に拒否するのではなく誤解してしまう変更が該当し、純粋に追加的なオプションフィールドは版上げを必要としません。
 
 ## トップレベル構造（`Scenario`）
 
@@ -148,7 +148,7 @@ CLI の `--dismiss-alerts` / `--no-dismiss-alerts` フラグは**全シナリオ
 
 ### プラットフォームをまたぐ id：候補のリスト（BE-0221）
 
-シナリオがプラットフォーム間で共有できるのは、セレクタが `id` による範囲までであり、その `id` をアプリ側のどの属性が満たすかはドライバ内に閉じています。ただし SPEC の id を**そのまま**再現できないプラットフォームがあります。Android の `android:id`（Views toolkit）は `.` も `-` も許さないので、`stable.refresh` は `stable_refresh`、`search.results-empty` は `search_results_empty` として現れます。**1 つ**のシナリオをどこでもそのまま走らせるため、`id` / `idMatches` に**候補のリスト**を与えると、照合はその OR になります。
+シナリオがプラットフォーム間で共有できるのは、セレクタが `id` を使う範囲までであり、その `id` をアプリ側のどの属性が満たすかはドライバ内に閉じています。ただし SPEC の id を**そのまま**再現できないプラットフォームがあります。Android の `android:id`（Views toolkit）は `.` も `-` も許さないので、`stable.refresh` は `stable_refresh`、`search.results-empty` は `search_results_empty` として現れます。**1 つ**のシナリオをどこでもそのまま走らせるため、`id` / `idMatches` に**候補のリスト**を与えると、照合はその OR になります。
 
 ```yaml
 - wait: { for: { id: [stable.refresh, stable_refresh] }, timeout: 10 }
