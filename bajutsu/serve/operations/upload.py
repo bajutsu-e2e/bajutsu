@@ -226,18 +226,13 @@ def artifact_exists(
         except Exception:  # a transient store error reads as "not confirmed present", not a crash
             exists = False
     else:
-        # Belt-and-suspenders on top of the allowlist/regex checks above: confine the path to the
-        # artifacts cache root using pure string normalization (`os.path.normpath` + `startswith`,
-        # CodeQL's own recommended py/path-injection fix) *before* any filesystem call — unlike
-        # `Path.resolve()`, `normpath` never touches the filesystem, so the check itself can't be
-        # flagged as a further sink.
-        artifacts_root = str(_artifacts_dir(state))
-        candidate = os.path.normpath(
-            os.path.join(str(local_artifact_dir(_artifacts_dir(state), org, kind)), sha256)
-        )
-        if candidate != artifacts_root and not candidate.startswith(artifacts_root + os.sep):
+        # Belt-and-suspenders on top of allowlist/regex checks: canonicalize and ensure the final
+        # candidate stays under the artifacts cache root before any filesystem read.
+        artifacts_root = _artifacts_dir(state).resolve()
+        candidate = (local_artifact_dir(_artifacts_dir(state), org, kind) / sha256).resolve()
+        if candidate != artifacts_root and artifacts_root not in candidate.parents:
             return {"error": "artifact path resolves outside the cache"}, 400
-        exists = Path(candidate).exists()
+        exists = candidate.exists()
     return {"exists": exists}, 200
 
 
