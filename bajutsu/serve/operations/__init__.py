@@ -116,6 +116,8 @@ from bajutsu.serve.operations.triage import start_triage
 from bajutsu.serve.operations.upload import (
     _safe_filename,
     activate_uploaded_project,
+    artifact_exists,
+    bind_artifact,
     bind_upload_config,
 )
 from bajutsu.serve.operations.worker import (
@@ -156,7 +158,9 @@ __all__ = [
     "apply_enrichment_edit",
     "apply_selector_edit",
     "approve_baseline",
+    "artifact_exists",
     "audit_scenario",
+    "bind_artifact",
     "bind_config",
     "bind_git_config",
     "bind_upload_config",

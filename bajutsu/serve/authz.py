@@ -19,19 +19,19 @@ from bajutsu.serve.state import _DEFAULT_ORG, ServeState
 def login(state: ServeState, token: str) -> tuple[Any, int, str | None]:
     """Validate the shared token and, on success, mint a session id for the shell to set as a
     cookie. Returns ``(payload, status, session_id | None)``."""
-    if not state.check_token(token):
+    if not state.auth.check_token(token):
         return {"error": "invalid token"}, 401, None
-    return {"ok": True}, 200, state.issue_session()
+    return {"ok": True}, 200, state.auth.issue_session()
 
 
 def oauth_login(state: ServeState) -> tuple[Any, int, str | None]:
     """Begin GitHub OAuth (BE-0015 7b-2). Returns the authorize URL to redirect to plus a fresh CSRF
     *state* value the transport sets as a short-lived cookie and compares on callback. 404 when OAuth
     is not configured. Returns ``(payload, status, state | None)``."""
-    if state.oauth is None:
+    if state.auth.oauth is None:
         return {"error": "oauth not configured"}, 404, None
     csrf = secrets.token_urlsafe(24)
-    return {"redirect": state.oauth.authorize_url(csrf)}, 200, csrf
+    return {"redirect": state.auth.oauth.authorize_url(csrf)}, 200, csrf
 
 
 def oauth_callback(
@@ -41,12 +41,12 @@ def oauth_callback(
     cookie), exchange the code for a GitHub identity (login + org memberships), check the login
     against the allowlist, persist the user under their resolved org, and on success mint a session
     bound to that login. Returns ``(payload, status, session_id | None)``."""
-    if state.oauth is None:
+    if state.auth.oauth is None:
         return {"error": "oauth not configured"}, 404, None
     if not (state_param and state_cookie and secrets.compare_digest(state_param, state_cookie)):
         return {"error": "invalid oauth state"}, 403, None
     try:
-        identity = state.oauth.fetch_identity(code)
+        identity = state.auth.oauth.fetch_identity(code)
     except Exception:
         # The exchange talks to GitHub (network / token parsing); a failure is an upstream error,
         # not a 500 — surface it as a clean 502 rather than a traceback.
@@ -54,7 +54,7 @@ def oauth_callback(
     if identity is None or not identity.login:
         return {"error": "oauth exchange failed"}, 403, None
     login = identity.login
-    if login not in state.oauth_allowed_users:
+    if login not in state.auth.oauth_allowed_users:
         return {"error": "user not allowed"}, 403, None
     if state.repository is not None:
         # Persist the identity into the system of record, so audit entries and RBAC can reference
@@ -70,9 +70,9 @@ def oauth_callback(
             email=f"{login}@users.noreply.github.com",
             # Recompute the role from the env policy on every login, so changing the policy takes
             # effect on next login without a data migration (BE-0015 7c-2).
-            role=role_for(login, admins=state.oauth_admins, viewers=state.oauth_viewers),
+            role=role_for(login, admins=state.auth.oauth_admins, viewers=state.auth.oauth_viewers),
         )
-    return {"ok": True, "user": login}, 200, state.issue_session(identity=login)
+    return {"ok": True, "user": login}, 200, state.auth.issue_session(identity=login)
 
 
 def _org_for_login(state: ServeState, login: str, github_orgs: list[str]) -> str:
@@ -123,6 +123,15 @@ _ADMIN_PATHS = frozenset(
     {
         "/api/config",
         "/api/upload",
+        # The three independently-uploadable artifacts (BE-0268) repoint what a future composed
+        # run serves, same as `/api/upload`. `/api/artifacts/exists` (a GET) is deliberately NOT
+        # listed here — this set is only ever consulted below the `method != "POST"` guard, so a
+        # GET path here would be silently ungated dead code (exactly the mistake `/api/config/content`
+        # already works around with its own early-returning case); `/api/artifacts/exists` gets the
+        # same explicit early case instead.
+        "/api/artifacts/config",
+        "/api/artifacts/scenarios",
+        "/api/artifacts/binary",
         "/api/apikey",
         "/api/claudecodetoken",
         "/api/gitcredential",
@@ -157,11 +166,19 @@ def role_for(login: str, *, admins: frozenset[str], viewers: frozenset[str]) -> 
 def required_role(method: str, path: str) -> str | None:
     """The minimum role a request needs, or None for reads (GET) and the open auth endpoints.
     Cancelling a job or answering its handoff are editor actions (they mutate a running job). The
-    one gated read is ``GET /api/config/content`` (admin), a wider disclosure than the path."""
+    gated reads are ``GET /api/config/content`` and ``GET /api/artifacts/exists`` (both admin), a
+    wider disclosure than their paths."""
     # Config content is the one gated GET: it returns the active config's full body, a wider
     # disclosure than the path-only `/api/config`, and a local/uploaded config may embed literal
     # secrets. Gate it like binding the config (admin) so a viewer/editor can't read it.
     if method == "GET" and path == "/api/config/content":
+        return "admin"
+    # The per-artifact exists check (BE-0268) confirms whether a given sha256 is already stored —
+    # the same admin tier as the upload routes it complements, so a viewer can't probe artifact
+    # existence. Needs its own early case, like `/api/config/content` above: it's a GET, and the
+    # generic `_ADMIN_PATHS` membership check below is only ever reached past the
+    # `method != "POST"` guard, so a GET path added there would silently never gate.
+    if method == "GET" and path == "/api/artifacts/exists":
         return "admin"
     # Project hub (BE-0225): registering / deregistering a project, or activating one (unit 4's
     # switcher rebinds the live config), all repoint a config binding, so each is an admin action like

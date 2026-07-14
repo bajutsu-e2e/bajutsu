@@ -107,7 +107,11 @@ def test_metrics_never_leak_secrets(tmp_path: Path) -> None:
         },
     )
     repo.lease_job("w1")
-    state = srv.ServeState(runs_dir=tmp_path / "runs", repository=repo, token="operator-token-XYZ")
+    state = srv.ServeState(
+        runs_dir=tmp_path / "runs",
+        repository=repo,
+        auth=srv.SessionManager(token="operator-token-XYZ"),
+    )
 
     text, _ = ops.render_metrics(state)
 
@@ -152,7 +156,7 @@ def _request(port: int, path: str, headers: dict[str, str] | None = None) -> tup
 
 def test_metrics_requires_auth_when_token_set(tmp_path: Path) -> None:
     _, cfg, runs = project(tmp_path)
-    state = srv.ServeState(runs_dir=runs, config=cfg, token="s3cret")
+    state = srv.ServeState(runs_dir=runs, config=cfg, auth=srv.SessionManager(token="s3cret"))
     server, port = _serve(state)
     try:
         unauth, _ = _request(port, "/metrics")

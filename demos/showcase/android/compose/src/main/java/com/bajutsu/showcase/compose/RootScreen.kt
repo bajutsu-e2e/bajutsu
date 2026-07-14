@@ -36,11 +36,11 @@ fun RootScreen(model: AppModel) {
             .enableTestTagsAsResourceId(),
         bottomBar = {
             NavigationBar {
-                tab(model, Tab.STABLE, "Stable", Icons.Filled.Home)
-                tab(model, Tab.SEARCH, "Search", Icons.Filled.Search)
-                tab(model, Tab.LOG, "Log", Icons.Filled.Create)
-                tab(model, Tab.NOTICES, "Notices", Icons.Filled.Notifications)
-                tab(model, Tab.PERMISSIONS, "Permissions", Icons.Filled.Lock)
+                tab(model, Tab.STABLE, "stable", "Stable", Icons.Filled.Home)
+                tab(model, Tab.SEARCH, "search", "Search", Icons.Filled.Search)
+                tab(model, Tab.LOG, "log", "Log", Icons.Filled.Create)
+                tab(model, Tab.NOTICES, "notice", "Notices", Icons.Filled.Notifications)
+                tab(model, Tab.PERMISSIONS, "perm", "Permissions", Icons.Filled.Lock)
             }
         },
     ) { padding ->
@@ -57,8 +57,9 @@ fun RootScreen(model: AppModel) {
 }
 
 @Composable
-private fun RowScope.tab(model: AppModel, tab: Tab, label: String, icon: ImageVector) {
+private fun RowScope.tab(model: AppModel, tab: Tab, id: String, label: String, icon: ImageVector) {
     NavigationBarItem(
+        modifier = Modifier.aid(id),
         selected = model.selectedTab == tab,
         onClick = { model.selectedTab = tab },
         icon = { Icon(icon, contentDescription = label) },

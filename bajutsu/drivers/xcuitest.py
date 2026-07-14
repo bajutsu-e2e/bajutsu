@@ -367,10 +367,10 @@ class XcuitestDriver:
     def wait_for(self, sel: base.Selector) -> bool:
         """Single-shot: whether `sel` matches the current screen (BE-0118).
 
-        The deadline poll lives in the shared `base.wait_until`, so the timeout is honoured
-        identically on every backend.
+        Delegates to the shared `base.default_wait_for` so the four backends share one body; the
+        deadline poll lives in `base.wait_until`, so the timeout is honoured identically (BE-0251).
         """
-        return len(base.find_all(self.query(), sel)) >= 1
+        return base.default_wait_for(self, sel)
 
     def screenshot(self, path: str) -> None:
         reply = self._transport("GET", "/screenshot", None)

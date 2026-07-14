@@ -31,7 +31,7 @@ from bajutsu.serve.provider_store import (
     PersistedProviderSettings,
     ProviderSettingsError,
 )
-from bajutsu.serve.state import ProviderSettings
+from bajutsu.serve.state import ProviderSettings, ProviderSettingsManager
 
 _BEDROCK_MODEL = "global.anthropic.claude-opus-4-6-v1"
 
@@ -76,7 +76,7 @@ def _default_overlay(state: srv.ServeState) -> dict[str, str]:
 
 def _default_slots(state: srv.ServeState) -> dict[str, ProviderSettings]:
     """The `default` org's remembered per-provider slots (BE-0183), or an empty map when none."""
-    settings = state.org_provider_settings(DEFAULT_ORG)
+    settings = state.providers.org_provider_settings(DEFAULT_ORG)
     return settings.slots if settings is not None else {}
 
 
@@ -130,7 +130,7 @@ def test_restore_skips_a_slot_for_an_unknown_provider(
         config=cfg,
         runs_dir=runs,
         cwd=tmp_path,
-        provider_settings_store=LocalProviderSettingsStore(store_path),
+        providers=ProviderSettingsManager(store=LocalProviderSettingsStore(store_path)),
     )
     with caplog.at_level("WARNING"):
         restore_persisted_provider_settings(state)
@@ -165,7 +165,7 @@ def test_saved_provider_survives_a_restart(tmp_path: Path) -> None:
         config=cfg,
         runs_dir=runs,
         cwd=tmp_path,
-        provider_settings_store=LocalProviderSettingsStore(store_path),
+        providers=ProviderSettingsManager(store=LocalProviderSettingsStore(store_path)),
     )
     server1, port1 = _serve(state1)
     try:
@@ -186,7 +186,7 @@ def test_saved_provider_survives_a_restart(tmp_path: Path) -> None:
         config=cfg,
         runs_dir=runs,
         cwd=tmp_path,
-        provider_settings_store=LocalProviderSettingsStore(store_path),
+        providers=ProviderSettingsManager(store=LocalProviderSettingsStore(store_path)),
     )
     restore_persisted_provider_settings(state2)
     # boot restored the selection, so a spawned job's overlay carries the active provider's settings
@@ -217,7 +217,7 @@ def test_restart_restores_the_per_provider_map(tmp_path: Path) -> None:
         config=cfg,
         runs_dir=runs,
         cwd=tmp_path,
-        provider_settings_store=LocalProviderSettingsStore(store_path),
+        providers=ProviderSettingsManager(store=LocalProviderSettingsStore(store_path)),
     )
     server1, port1 = _serve(state1)
     try:
@@ -232,7 +232,7 @@ def test_restart_restores_the_per_provider_map(tmp_path: Path) -> None:
         config=cfg,
         runs_dir=runs,
         cwd=tmp_path,
-        provider_settings_store=LocalProviderSettingsStore(store_path),
+        providers=ProviderSettingsManager(store=LocalProviderSettingsStore(store_path)),
     )
     restore_persisted_provider_settings(state2)
     remembered = _default_slots(state2)
@@ -249,7 +249,9 @@ def test_zero_config_is_untouched_when_nothing_is_persisted(tmp_path: Path) -> N
         config=cfg,
         runs_dir=runs,
         cwd=tmp_path,
-        provider_settings_store=LocalProviderSettingsStore(runs.parent / "absent.json"),
+        providers=ProviderSettingsManager(
+            store=LocalProviderSettingsStore(runs.parent / "absent.json")
+        ),
     )
     restore_persisted_provider_settings(state)
     assert _default_overlay(state) == {}  # nothing selected → the job inherits its env unchanged
@@ -279,7 +281,7 @@ def test_corrupt_file_falls_back_to_env_defaults_with_a_warning(
         config=cfg,
         runs_dir=runs,
         cwd=tmp_path,
-        provider_settings_store=LocalProviderSettingsStore(store_path),
+        providers=ProviderSettingsManager(store=LocalProviderSettingsStore(store_path)),
     )
     with caplog.at_level("WARNING"):
         restore_persisted_provider_settings(state)
@@ -303,7 +305,7 @@ def test_inconsistent_active_provider_falls_back_to_env(
         config=cfg,
         runs_dir=runs,
         cwd=tmp_path,
-        provider_settings_store=LocalProviderSettingsStore(store_path),
+        providers=ProviderSettingsManager(store=LocalProviderSettingsStore(store_path)),
     )
     with caplog.at_level("WARNING"):
         restore_persisted_provider_settings(state)
@@ -327,7 +329,7 @@ def test_bedrock_with_empty_model_falls_back_to_env(
         config=cfg,
         runs_dir=runs,
         cwd=tmp_path,
-        provider_settings_store=LocalProviderSettingsStore(store_path),
+        providers=ProviderSettingsManager(store=LocalProviderSettingsStore(store_path)),
     )
     with caplog.at_level("WARNING"):
         restore_persisted_provider_settings(state)
@@ -349,7 +351,9 @@ def test_persist_failure_keeps_the_session_change_and_warns(
         config=cfg,
         runs_dir=runs,
         cwd=tmp_path,
-        provider_settings_store=LocalProviderSettingsStore(blocker / "provider-settings.json"),
+        providers=ProviderSettingsManager(
+            store=LocalProviderSettingsStore(blocker / "provider-settings.json")
+        ),
     )
     server, port = _serve(state)
     try:
@@ -389,7 +393,9 @@ def test_persist_failure_from_a_non_oserror_degrades_to_session_only(
     state.org_stores = lambda org: StoreBundle(
         state.artifacts, state.scenarios, state.baselines, state.secrets, _RaisingStore()
     )
-    state.set_org_provider_choice(DEFAULT_ORG, provider="ant", slot=ProviderSettings(), language="")
+    state.providers.set_org_provider_choice(
+        DEFAULT_ORG, provider="ant", slot=ProviderSettings(), language=""
+    )
     with caplog.at_level("WARNING"):
         result = _persist_provider_settings(state, DEFAULT_ORG, "ant")
     assert result is False  # a non-OSError write failure is caught, not propagated
@@ -422,7 +428,9 @@ def test_successful_save_reports_persisted_true(tmp_path: Path) -> None:
         config=cfg,
         runs_dir=runs,
         cwd=tmp_path,
-        provider_settings_store=LocalProviderSettingsStore(runs.parent / "provider-settings.json"),
+        providers=ProviderSettingsManager(
+            store=LocalProviderSettingsStore(runs.parent / "provider-settings.json")
+        ),
     )
     server, port = _serve(state)
     try:
@@ -449,7 +457,7 @@ def test_invalid_effort_in_slot_is_skipped_with_warning(
         config=cfg,
         runs_dir=runs,
         cwd=tmp_path,
-        provider_settings_store=LocalProviderSettingsStore(store_path),
+        providers=ProviderSettingsManager(store=LocalProviderSettingsStore(store_path)),
     )
     with caplog.at_level("WARNING"):
         restore_persisted_provider_settings(state)
@@ -470,7 +478,7 @@ def test_persist_lock_serializes_writes(tmp_path: Path) -> None:
         config=cfg,
         runs_dir=runs,
         cwd=tmp_path,
-        provider_settings_store=LocalProviderSettingsStore(store_path),
+        providers=ProviderSettingsManager(store=LocalProviderSettingsStore(store_path)),
     )
 
     errors: list[Exception] = []
@@ -480,7 +488,7 @@ def test_persist_lock_serializes_writes(tmp_path: Path) -> None:
         try:
             from bajutsu.serve.operations.config import _persist_provider_settings
 
-            state.set_org_provider_choice(
+            state.providers.set_org_provider_choice(
                 DEFAULT_ORG, provider=prov, slot=ProviderSettings(model=f"m-{prov}"), language=""
             )
             _persist_provider_settings(state, DEFAULT_ORG, prov)
@@ -521,7 +529,7 @@ def test_config_ai_block_wins_over_a_restored_value(tmp_path: Path) -> None:
         config=cfg,
         runs_dir=runs,
         cwd=tmp_path,
-        provider_settings_store=LocalProviderSettingsStore(store_path),
+        providers=ProviderSettingsManager(store=LocalProviderSettingsStore(store_path)),
     )
     restore_persisted_provider_settings(state)
     assert (
@@ -558,10 +566,10 @@ def test_local_build_state_wires_the_store(tmp_path: Path) -> None:
         token=None,
         cwd=tmp_path,
     )
-    assert isinstance(state.provider_settings_store, LocalProviderSettingsStore)
+    assert isinstance(state.providers.store, LocalProviderSettingsStore)
     # Construction wires the store but does not eagerly load it — the in-memory entry is still absent
     # (a pure read that does not lazy-load), so nothing has been resolved from disk yet.
-    assert state.org_provider_settings(DEFAULT_ORG) is None
+    assert state.providers.org_provider_settings(DEFAULT_ORG) is None
     restore_persisted_provider_settings(state)
     overlay = _default_overlay(state)
     assert overlay[aic.PROVIDER_ENV] == "bedrock"

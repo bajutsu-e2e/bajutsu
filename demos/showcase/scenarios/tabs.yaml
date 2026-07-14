@@ -1,0 +1,44 @@
+# Tabs (a11y): exercises the tab bar itself. Each tab item carries its own idNamespace as its
+# identifier — UITabBarItem.accessibilityIdentifier / SwiftUI tabItem Label on iOS
+# (MainTabBarController.swift / RootView.swift), android:id / testTag on Android
+# (MainActivity.kt / RootScreen.kt) — so this switches tabs by `id` instead of the
+# `label`+`traits:[button]` selector the -noax twin (ios/scenarios-xcuitest/tabs.yaml) uses. The
+# ids themselves (`stable`, `search`, `log`, `notice`, `perm`) have no '.'/'-', so they need no
+# dual id-form (BE-0221): the one literal id matches Compose/Views unchanged.
+#
+# iOS needs `--backend xcuitest` explicitly: idb's `describe-all` collapses the native tab bar
+# into one opaque group regardless of accessibility identifiers (SPEC.md §3, BE-0107), so the
+# `[ios]` capability ladder (BE-0240) cannot auto-escalate a plain `tap: { id, traits }` the way it
+# does for a detected construct like `pinch`/`rotate` — there is nothing in the step for the
+# preflight to key on. `tags: [xcuitest]` marks that here so `run-swiftui`/`run-uikit`'s bulk
+# `[ios]`-ladder invocation (demos/showcase/Makefile) can `--exclude` it instead of failing on
+# idb; `run-swiftui-tabs`/`run-uikit-tabs` run it on its own with `--backend xcuitest`. Android's
+# `backend: [android]` is a single-actuator pin (no ladder ambiguity), so it needs no such carve-out.
+- name: switch tabs by id
+  tags: [xcuitest]
+  preconditions:
+    launchEnv: { SHOWCASE_UITEST: "1" }
+  steps:
+    - tap: { id: search, traits: [button] }
+      capture: [video]
+    - wait: { for: { id: search.field }, timeout: 10 }
+    - tap: { id: log, traits: [button] }
+    - wait: { for: { id: log.note }, timeout: 10 }
+  expect:
+    - exists: { id: log, traits: [selected] }
+    - exists: { id: search, traits: [button] }
+    - exists: { id: stable, traits: [button] }
+
+- name: return to the Stable tab by id
+  tags: [xcuitest]
+  preconditions:
+    launchEnv: { SHOWCASE_UITEST: "1" }
+  steps:
+    - tap: { id: notice, traits: [button] }
+      capture: [video]
+    - wait: { for: { id: notice.row.1 }, timeout: 10 }
+    - tap: { id: stable, traits: [button] }
+    - wait: { for: { id: stable.row.1 }, timeout: 10 }
+  expect:
+    - exists: { id: stable, traits: [selected] }
+    - exists: { id: notice.row.1, negate: true }
