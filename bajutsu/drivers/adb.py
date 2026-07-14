@@ -271,15 +271,20 @@ class AdbDriver:
         Both sources speak UI Automator's own XML, so the caller (`parse_hierarchy`) is unchanged
         (BE-0245). A resident-channel failure degrades to the dump subprocess with a loud warning —
         never silently, so a slower fallback read stays visible — leaving the backend no worse off
-        than the dump-every-read path it replaces.
+        than the dump-every-read path it replaces. The failure latches: the channel is disabled after
+        the first fault so the rest of the lease reads via dump without re-logging or re-paying the
+        connect timeout on every read.
         """
         if self._fetch_hierarchy is not None:
             try:
                 return self._fetch_hierarchy()
             except AdbResidentError as exc:
                 logger.warning(
-                    "resident hierarchy read failed (%s); falling back to `uiautomator dump`", exc
+                    "resident hierarchy read failed (%s); falling back to `uiautomator dump` "
+                    "for the rest of this lease",
+                    exc,
                 )
+                self._fetch_hierarchy = None
         return self._run(adb.dump_cmd(self.serial))
 
     def _is_transient_empty(self, els: list[base.Element]) -> bool:

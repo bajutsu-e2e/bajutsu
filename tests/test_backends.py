@@ -266,6 +266,19 @@ def test_make_driver_fake() -> None:
     assert base.Capability.QUERY in fake.capabilities()
 
 
+def test_make_driver_threads_fetch_hierarchy_to_the_adb_driver() -> None:
+    # The resident channel is wired in by passing a HierarchyFetch through make_driver (BE-0245);
+    # the adb driver then reads over it instead of shelling out to `uiautomator dump`.
+    xml = (
+        "<?xml version='1.0' ?><hierarchy rotation=\"0\">"
+        '<node index="0" class="android.widget.Button" resource-id="stable.submit" '
+        'text="送信" bounds="[0,0][10,10]" /></hierarchy>'
+    )
+    driver = make_driver("adb", "U", fetch_hierarchy=lambda: xml)
+    assert driver.name == "adb"
+    assert len(driver.query()) == 1  # read came from the fetch, not a dump subprocess
+
+
 def test_make_driver_playwright_requires_base_url() -> None:
     # The web driver needs a target URL; make_driver rejects a missing one before touching a
     # browser (so this stays browser-free).

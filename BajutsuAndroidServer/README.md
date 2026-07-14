@@ -30,15 +30,17 @@ included into an app's build.
 - `GET /source` returns `UiDevice.dumpWindowHierarchy()`'s XML, the same
   `AccessibilityNodeInfoDumper` format bajutsu's `parse_hierarchy` already parses.
 
-One difference remains to be reconciled: `dumpWindowHierarchy()` traverses every window, so its XML
-also carries the SystemUI status bar (clock, wifi, battery, notification icons — 29 nodes) that
-the platform `uiautomator dump`
-omits by scoping to the active window. The app content is identical; narrowing the resident dump to
-the active window so both paths yield the same Elements — the equivalence unit 2 of the roadmap item
-requires — lands with the transport wiring, where it can be regression-tested end to end.
+One window difference is reconciled on the Python side: `dumpWindowHierarchy()` traverses every
+window, so its XML also carries the SystemUI status bar (clock, wifi, battery, notification icons —
+29 nodes) that the platform `uiautomator dump` omits by scoping to the active window. The app content
+is identical; `bajutsu.adb_resident.narrow_to_active_window` drops the SystemUI decor windows so both
+paths yield the same Elements (the equivalence unit 2 of the roadmap item requires).
 
-The Python side that reaches this socket (`adb forward`, the `fetch_hierarchy` wiring, lifecycle
-tied to the device lease) lands in later BE-0245 slices.
+The Python side that reaches this socket — `adb forward`, the `fetch_hierarchy` wiring, and the
+lifecycle tied to the device lease — lives in [`bajutsu/adb_resident.py`](../bajutsu/adb_resident.py)
+and is wired into the Android lease in `bajutsu/platform_lifecycle.py` (BE-0245 PR-C). It is opt-in
+behind the `BAJUTSU_ADB_RESIDENT` environment variable until the Android e2e lane builds and installs
+the server; unset, the adb backend reads via `uiautomator dump` exactly as before.
 
 ## Build
 

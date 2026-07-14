@@ -120,10 +120,10 @@ where the resident server cannot start is never left worse off than today.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Package and launch the resident UI Automator instrumentation (app-independent component; decide distribution).
-- [ ] Define the hierarchy-query channel (local socket / HTTP) whose response `parse_hierarchy` consumes unchanged.
-- [ ] Swap `AdbDriver._describe()` to the resident channel, keeping `uiautomator dump` as the fallback.
-- [ ] Tie the resident server's lifecycle to the device lease (started once, stopped on run end / failure).
+- [x] Package and launch the resident UI Automator instrumentation (app-independent component; decide distribution).
+- [x] Define the hierarchy-query channel (local socket / HTTP) whose response `parse_hierarchy` consumes unchanged.
+- [x] Swap `AdbDriver._describe()` to the resident channel, keeping `uiautomator dump` as the fallback.
+- [x] Tie the resident server's lifecycle to the device lease (started once, stopped on run end / failure).
 - [ ] Verify on device (read drops to ≈ 0.1–0.3 s) and guard the resident + fallback paths in the Android e2e lane.
 
 Log:
@@ -157,6 +157,26 @@ Log:
   a peer that stalls mid-response could still wedge the loop from the write side; a write-side bound
   belongs with PR-C's transport hardening and its regression tests, not this scaffold. CI wiring for
   the build is deferred to a later slice.
+- PR-C ([#PENDING](https://github.com/bajutsu-e2e/bajutsu/pull/PENDING)) — the Python transport wiring
+  (units 1 launch, 2, 3, 4). Adds `adb forward` / `am instrument` / install command builders to
+  `bajutsu/adb.py`; a new `bajutsu/adb_resident.py` holding `fetch_source` (a stdlib `http.client`
+  `GET /source` that raises `AdbResidentError` on any channel fault, decode error included, so the
+  driver always degrades cleanly), `narrow_to_active_window` (drops the SystemUI decor windows so the
+  resident `dumpWindowHierarchy` XML parses to the same Elements as `uiautomator dump` — the unit-2
+  equivalence, gate-tested against a hand-built two-window tree), and a `ResidentServer` lifecycle
+  (install both APKs, spawn the blocking instrumentation, `adb forward tcp:0`, a bounded connect-retry
+  readiness wait — a condition wait, no fixed sleep — and a `stop` that reaps the client, force-stops
+  the device-side package, and removes the forward). `make_driver` threads a `fetch_hierarchy` through
+  to `AdbDriver`, and `AndroidEnvironment` starts the server per lease and stops it on teardown
+  (fires on failure/interrupt too). The read fault latches: after the first `AdbResidentError` the
+  channel is disabled for the rest of the lease, so a mid-run channel death does not re-log or re-pay
+  the connect timeout on every read. The channel is **opt-in behind `BAJUTSU_ADB_RESIDENT`** until the
+  e2e lane builds and installs the server; unset, the adb backend reads via `uiautomator dump`
+  unchanged. The client's socket timeout bounds a server that stalls mid-response (an `AdbResidentError`
+  → dump fallback), so PR-B's write-side-wedge note is covered from bajutsu's side; a server-side write
+  bound stays a minor hardening for the on-device slice. Everything here is device-free and gate-tested;
+  the on-device wall-clock verification (≈ 0.1–0.3 s) and the e2e-lane guard for both paths (unit 5)
+  land in PR-D, which also flips the channel on by default — so that box stays unticked.
 
 ## References
 

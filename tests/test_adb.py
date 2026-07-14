@@ -369,6 +369,22 @@ def test_resident_fallback_logs_warning(caplog: pytest.LogCaptureFixture) -> Non
     assert any("resident" in r.message.lower() for r in caplog.records)
 
 
+def test_resident_failure_latches_to_dump_for_the_rest_of_the_lease() -> None:
+    # A mid-lease channel death must not re-pay the failed-connect cost (and re-log) on every read:
+    # after the first AdbResidentError the driver disables the channel and reads via dump silently.
+    fetch_calls = 0
+
+    def fetch() -> str:
+        nonlocal fetch_calls
+        fetch_calls += 1
+        raise AdbResidentError("channel down")
+
+    driver = AdbDriver("U", run=lambda a: FIXTURE, fetch_hierarchy=fetch)
+    driver.query()  # first read: tries the channel, fails, latches off
+    driver.query()  # second read: goes straight to dump, no further fetch attempt
+    assert fetch_calls == 1
+
+
 def test_wait_for_is_single_shot() -> None:
     present = AdbDriver("U", run=lambda a: FIXTURE)
     assert present.wait_for({"id": "stable.submit"}) is True
@@ -918,3 +934,42 @@ def test_checked_serial_rejects_injection() -> None:
     for bad in ["-s", "--help", "a b", "a;b", "", "x" * 129]:
         with pytest.raises(adb.DeviceError, match="invalid device serial"):
             adb._adb(bad, "devices")
+
+
+# --- resident UI Automator server command builders (BE-0245) ---
+
+
+def test_forward_cmd_asks_adb_for_a_free_host_port() -> None:
+    # `tcp:0` lets adb pick an unused host port (printed on stdout), so parallel lanes on distinct
+    # serials never contend for one fixed port; the device port is the server's fixed loopback port.
+    assert adb.forward_cmd("U") == ["adb", "-s", "U", "forward", "tcp:0", "tcp:6790"]
+    assert adb.forward_cmd("U", device_port=7000)[-1] == "tcp:7000"
+
+
+def test_forward_remove_cmd_tears_down_the_host_port() -> None:
+    assert adb.forward_remove_cmd("U", 41000) == [
+        "adb",
+        "-s",
+        "U",
+        "forward",
+        "--remove",
+        "tcp:41000",
+    ]
+
+
+def test_instrument_cmd_starts_the_blocking_serve_test() -> None:
+    # `-w` keeps the instrumentation attached (serve() never returns — it holds the warm session);
+    # `-e class …#serve` scopes the run to the one method so no other test executes.
+    assert adb.instrument_cmd("U") == [
+        "adb",
+        "-s",
+        "U",
+        "shell",
+        "am",
+        "instrument",
+        "-w",
+        "-e",
+        "class",
+        "dev.bajutsu.android.server.ResidentServerTest#serve",
+        "dev.bajutsu.android.server.test/androidx.test.runner.AndroidJUnitRunner",
+    ]
