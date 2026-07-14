@@ -108,7 +108,7 @@ class ResidentServerTest {
             if (current.contentEquals(previous)) return current
             previous = current
         }
-        return previous
+        return previous.also { Log.d(TAG, "hierarchy did not settle after $STABLE_DUMPS dumps") }
     }
 
     private fun dumpHierarchy(device: UiDevice): ByteArray =
