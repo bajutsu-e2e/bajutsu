@@ -26,7 +26,7 @@ of only after the whole wait has already been wasted.
 
 ## Motivation
 
-`bajutsu/orchestrator/loop.py:495` wires the alert guard (`on_blocked`) so it is invoked only
+`bajutsu/orchestrator/loop.py:550` wires the alert guard (`on_blocked`) so it is invoked only
 `if not ok` — i.e. only after `_run_step_body` has already returned failure. For a `wait` step,
 `_wait()` (`bajutsu/orchestrator/waits.py:72`) reaches that failure only at its `deadline`, built
 from the step's full `timeout`. Concretely: a scenario with `wait: {for: ..., timeout: 20}` that
@@ -50,11 +50,16 @@ that cadence.
 1. **A cheap, deterministic pre-check, not a faster AI check.** `alerts.py`'s own module
    docstring already names the observable signature of a blocking SpringBoard-level prompt: idb's
    accessibility query is scoped to the foreground app, so a system alert collapses the queried
-   element tree to a single window node with no children. `_wait()`'s `for`/`gone`/`screenChanged`
-   branches already call `driver.query()` on every poll tick and hold the result — add a small,
-   app-agnostic helper (e.g. `_looks_blocked(elements) -> bool`) that inspects that already-fetched
-   tree for this collapse signature, at zero extra query cost. This is the deterministic trigger;
-   it never itself decides pass/fail, only whether it's worth asking the guard to look.
+   element tree to a single window node with no children. Every screen-polling wait branch —
+   `for`/`gone`/`screenChanged` and `settled` (whose `_wait_settled` docstring already names a
+   screen "covered by a system alert" as one it never treats as settled,
+   `bajutsu/orchestrator/waits.py:142`) — already calls `driver.query()` on each poll tick and
+   holds the result, so add a small, app-agnostic helper (e.g. `_looks_blocked(elements) -> bool`)
+   that inspects that already-fetched tree for this collapse signature, at zero extra query cost.
+   The `request` (network `WaitRequest`) branch is deliberately out of scope: it polls observed
+   network traffic, not the screen, so the collapsed-tree signal does not apply to it. This is the
+   deterministic trigger; it never itself decides pass/fail, only whether it's worth asking the
+   guard to look.
 2. **Debounce before acting.** A single collapsed poll can be a transient render frame, not a
    real alert, so require the signature to hold for a short run of consecutive polls before
    treating it as "likely blocked" — mirroring the existing `_SETTLE_POLLS` pattern used by
@@ -62,8 +67,9 @@ that cadence.
    small, fixed number of poll intervals (well under a second at `_POLL = 0.05`), not the fraction
    of a second doubling into an open-ended new sleep.
 3. **Invoke the guard mid-wait, then resume the same wait.** Thread an optional guard callback
-   into `_wait()` (today the guard callback exists only at the `loop.py:495` step-retry level) so
-   that once the debounced heuristic fires, `_wait()` calls it directly, in place, instead of
+   into `_wait()` (and its `_wait_settled` helper, so the `settled` branch is covered too) — today
+   the guard callback exists only at the `loop.py:550` step-retry level — so that once the debounced
+   heuristic fires, `_wait()` calls it directly, in place, instead of
    waiting for `deadline`. On a successful dismiss, polling for the *original* condition resumes
    against the *same* `deadline` — the guard's early intervention changes only when recovery is
    attempted, not the timeout budget that still governs when the step is allowed to fail.
@@ -72,7 +78,7 @@ that cadence.
    attempts-per-wait ceiling) so a persistent false-positive collapse — or a dismiss that doesn't
    actually clear the prompt — cannot turn the poll loop into a hot AI-call loop. Once the cap is
    hit, `_wait()` falls back to today's behavior: keep polling to `deadline` and let the existing
-   `loop.py:495` end-of-step guard call take one more shot.
+   `loop.py:550` end-of-step guard call take one more shot.
 5. **Scope to `wait` steps behind an existing opt-in.** The guard already only runs when alert
    dismissal is enabled (`--dismiss-alerts` / the guard factory in
    `bajutsu/cli/commands/run.py:324`); this change only moves *when*, within an already-enabled
@@ -102,10 +108,11 @@ that cadence.
 > (oldest first), linking the PRs.
 
 - [ ] Unit 1 — deterministic collapsed-tree heuristic (`_looks_blocked`), reused from the
-      already-fetched poll result.
+      already-fetched poll result across every screen-polling branch (`for`/`gone`/`screenChanged`
+      /`settled`); the network `request` branch is out of scope.
 - [ ] Unit 2 — debounce the heuristic over a short run of consecutive polls before acting.
-- [ ] Unit 3 — thread a guard callback into `_wait()` so a debounced hit triggers the guard
-      in place and polling resumes against the original `deadline`.
+- [ ] Unit 3 — thread a guard callback into `_wait()` (and `_wait_settled`) so a debounced hit
+      triggers the guard in place and polling resumes against the original `deadline`.
 - [ ] Unit 4 — cooldown / max-attempts cap on guard invocations within one wait.
 
 ## References
@@ -114,7 +121,7 @@ that cadence.
   the module docstring describing the collapsed-tree failure signature.
 - [`bajutsu/orchestrator/waits.py`](../../bajutsu/orchestrator/waits.py) — `_wait`, `_POLL`,
   `_adaptive_sleep`, `_wait_settled` (the `_SETTLE_POLLS` debounce precedent).
-- [`bajutsu/orchestrator/loop.py:495`](../../bajutsu/orchestrator/loop.py) — the current
+- [`bajutsu/orchestrator/loop.py:550`](../../bajutsu/orchestrator/loop.py) — the current
   end-of-step-only `on_blocked` wiring this proposal moves earlier for `wait` steps.
 - [BE-0231](../BE-0231-smoke-idb-first-wait-settling/BE-0231-smoke-idb-first-wait-settling.md) —
   the `BAJUTSU_MIN_WAIT_TIMEOUT` floor that makes the current worst case at least ~20s on the
