@@ -190,14 +190,20 @@ Log:
   hard CI *timing* gate stays out of scope, consistent with BE-0234); the golden equivalence over the
   resident channel on the emulator is the on-device correctness check. `drivers.md` and
   `architecture.md` (both languages) now describe the resident-first read. The lane's first green
-  run surfaced two resident-vs-dump equivalence gaps the fast read exposed, both fixed here so the
+  run surfaced three resident-vs-dump equivalence gaps the fast read exposed, all fixed here so the
   two paths yield the same tree: the resident server now calls `UiDevice.waitForIdle()` before
   dumping (the double-tap's async accessibility value had not propagated when the fast read
-  snapshotted, which `uiautomator dump` never saw because it waits for idle); and `AdbDriver._settle`
+  snapshotted, which `uiautomator dump` never saw because it waits for idle); `AdbDriver._settle`
   is now bounded by a wall-clock deadline rather than a fixed read count (BE-0234's 3-poll cap
   assumed the ~2.4 s read paced the loop — the ~0.1 s resident read collapsed the settle window and
-  let a still-moving tree pass as settled, so a tap after a scroll fired on a stale coordinate). This
-  completes the item.
+  let a still-moving tree pass as settled, so a tap after a scroll fired on a stale coordinate); and
+  the trailing `expect` is now a condition wait (`bajutsu/orchestrator/loop.py`) rather than a single
+  end-of-scenario read — a value an action mirrors into the tree can land a beat after the action
+  (Compose recomposes the `content-desc` asynchronously), and the slow dump read had incidentally
+  waited it out, so the fast read caught the pre-update value. Its budget is the lane's existing
+  wait floor (`BAJUTSU_MIN_WAIT_TIMEOUT`), so it is a single read (today's behavior) off the Android
+  lane and re-reads only the UI tree, ending the moment nothing a tree re-read could fix is still
+  failing. This completes the item.
 
 ## References
 
