@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0235](BE-0235-aws-device-farm-submitter.md) |
 | Author | [@hirosassa](https://github.com/hirosassa) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0235") |
+| Implementing PR | _pending_ |
 | Topic | Device-cloud execution |
 <!-- /BE-METADATA -->
 
@@ -102,11 +103,25 @@ Device Farm change does not silently break it.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Serial-resolution PoC (reserved device visible to `resolve_serial` on the DF host)
-- [ ] Package builder (Bajutsu payload + config + scenarios)
-- [ ] Test-spec template (install/pre_test/test/post_test; artifacts → `$DEVICEFARM_LOG_DIR`)
-- [ ] Submit/collect tooling (upload / poll / download / report; decoupled, `bajutsu[aws]`)
-- [ ] Docs (AWS how-to: batch model, raw-adb caveat, 150-min cap, APK-only)
+- [x] Serial-resolution PoC — the mechanism (`pre_test: adb devices` + `--udid booted`) and a
+  documented manual procedure ship; the empirical run needs a real AWS account, so it is a human
+  procedure deliberately kept off the deterministic gate (docs/devicefarm.md)
+- [x] Package builder (`build_package`: Bajutsu payload + config + scenarios → zip)
+- [x] Test-spec template (`render_test_spec`: install/pre_test/test/post_test; artifacts → `$DEVICEFARM_LOG_DIR`)
+- [x] Submit/collect tooling (`submit_and_collect`: upload / poll / download / manifest verdict; decoupled, `bajutsu[aws]`)
+- [x] Docs (AWS how-to: batch model, raw-adb caveat, 150-min cap, APK-only)
+
+### Progress log
+
+- `scripts/devicefarm_submit.py` — the CI-side submitter: `render_test_spec`, `build_package`,
+  `verdict_from_manifest` (from Bajutsu's own `manifest.json`, never Device Farm's classification),
+  and `submit_and_collect` behind the `DeviceFarmClient` / `Transfer` seams (boto3 lazy-imported).
+  Unit-tested against in-memory fakes (`tests/test_devicefarm_submit.py`).
+- `demos/showcase/devicefarm/testspec.yml` — a checked-in reference spec.
+- `.github/workflows/devicefarm.yml` — manual, opt-in (`workflow_dispatch`), OIDC-gated, dormant
+  until an operator wires up an account.
+- `docs/devicefarm.md` (+ `docs/ja/`) and the `ci.md` table row.
+- `aws = ["boto3>=1.34"]` extra in `pyproject.toml`.
 
 ## References
 

@@ -190,6 +190,7 @@ nav:
       - What uses Claude: ai-boundary.md
       - Configuration: configuration.md
       - CI: ci.md
+      - AWS Device Farm: devicefarm.md
       - Self-hosting: self-hosting.md
       - AI development: ai-development.md
       - Roadmap workflow: roadmap-workflow.md

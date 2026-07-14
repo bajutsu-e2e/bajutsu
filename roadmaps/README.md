@@ -540,7 +540,6 @@ Running a scenario on a hosted device farm instead of a local Simulator, emulato
 <!-- GENERATED:proposals-device-cloud -->
 | ID | Item | Status |
 |---|---|---|
-| [BE-0235](BE-0235-aws-device-farm-submitter/BE-0235-aws-device-farm-submitter.md) | AWS Device Farm batch submitter | Proposal |
 | [BE-0236](BE-0236-device-cloud-provider-abstraction/BE-0236-device-cloud-provider-abstraction.md) | Device-cloud provider abstraction | Proposal |
 | [BE-0237](BE-0237-firebase-device-streaming-adapter/BE-0237-firebase-device-streaming-adapter.md) | Firebase Test Lab / Device Streaming adapter | Proposal |
 | [BE-0238](BE-0238-ios-device-cloud-execution/BE-0238-ios-device-cloud-execution.md) | iOS device-cloud execution | Proposal |

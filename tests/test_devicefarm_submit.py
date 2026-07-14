@@ -1,0 +1,275 @@
+"""Tests for the AWS Device Farm batch submitter (BE-0235, `scripts/devicefarm_submit.py`).
+
+The submitter is CI-side glue, decoupled from the deterministic core: it packages Bajutsu +
+scenarios, renders a Device Farm custom-environment test spec that runs `bajutsu run --backend adb`,
+uploads/polls/downloads via the AWS SDK, and derives pass/fail from **Bajutsu's own manifest** — not
+from Device Farm's run classification. These tests cover every piece that does not touch AWS: spec
+rendering, package assembly, manifest → verdict, and the upload/poll/collect state machine driven by
+a hand-written fake client (no real network, no mock library — the AWS SDK is the only external
+seam, and it is replaced by an in-memory fake).
+"""
+
+from __future__ import annotations
+
+import json
+import zipfile
+from pathlib import Path
+from typing import Any
+
+import pytest
+import yaml
+
+from scripts.devicefarm_submit import (
+    DeviceFarmError,
+    Verdict,
+    build_package,
+    render_test_spec,
+    submit_and_collect,
+    verdict_from_manifest,
+)
+
+# ---------------------------------------------------------------------------
+# render_test_spec
+# ---------------------------------------------------------------------------
+
+
+def test_test_spec_is_valid_yaml_with_the_four_phases() -> None:
+    spec = render_test_spec(
+        ["demos/showcase/scenarios/smoke.yaml"],
+        target="showcase-compose",
+        config="demos/showcase/showcase.config.yaml",
+    )
+    doc = yaml.safe_load(spec)
+    assert doc["version"] == 0.1
+    assert set(doc["phases"]) == {"install", "pre_test", "test", "post_test"}
+
+
+def test_test_spec_runs_bajutsu_over_adb_for_each_scenario() -> None:
+    spec = render_test_spec(
+        ["a.yaml", "b.yaml"],
+        target="showcase-compose",
+        config="showcase.config.yaml",
+    )
+    test_cmds = yaml.safe_load(spec)["phases"]["test"]["commands"]
+    runs = [c for c in test_cmds if "bajutsu run" in c]
+    assert len(runs) == 2
+    assert all("--backend adb" in c for c in runs)
+    assert all("--target showcase-compose" in c for c in runs)
+    assert any("a.yaml" in c for c in runs)
+    assert any("b.yaml" in c for c in runs)
+
+
+def test_test_spec_copies_runs_into_the_device_farm_log_dir() -> None:
+    # Artifact retrieval hinges on runs/ landing under $DEVICEFARM_LOG_DIR in post_test.
+    spec = render_test_spec(["s.yaml"], target="t", config="c.yaml")
+    doc = yaml.safe_load(spec)
+    post = " ".join(doc["phases"]["post_test"]["commands"])
+    assert "runs" in post
+    assert "DEVICEFARM_LOG_DIR" in post
+    assert "DEVICEFARM_LOG_DIR" in " ".join(doc["artifacts"])
+
+
+def test_test_spec_selects_the_requested_python_version() -> None:
+    spec = render_test_spec(["s.yaml"], target="t", config="c.yaml", python_version="3.13")
+    install = " ".join(yaml.safe_load(spec)["phases"]["install"]["commands"])
+    assert "3.13" in install
+
+
+def test_test_spec_rejects_an_empty_scenario_list() -> None:
+    # A spec with no scenario would run nothing and silently "pass" — fail loud instead.
+    with pytest.raises(ValueError, match="scenario"):
+        render_test_spec([], target="t", config="c.yaml")
+
+
+# ---------------------------------------------------------------------------
+# build_package
+# ---------------------------------------------------------------------------
+
+
+def test_package_bundles_files_and_directories_under_their_arcnames(tmp_path: Path) -> None:
+    (tmp_path / "showcase.config.yaml").write_text("targets: {}")
+    scenarios = tmp_path / "scenarios"
+    scenarios.mkdir()
+    (scenarios / "smoke.yaml").write_text("scenarios: []")
+    (scenarios / "nested").mkdir()
+    (scenarios / "nested" / "deep.yaml").write_text("scenarios: []")
+    out = tmp_path / "package.zip"
+
+    build_package(
+        [
+            (tmp_path / "showcase.config.yaml", "showcase.config.yaml"),
+            (scenarios, "scenarios"),
+        ],
+        out,
+    )
+
+    with zipfile.ZipFile(out) as zf:
+        names = set(zf.namelist())
+    assert "showcase.config.yaml" in names
+    assert "scenarios/smoke.yaml" in names
+    assert "scenarios/nested/deep.yaml" in names
+
+
+def test_package_raises_when_a_source_is_missing(tmp_path: Path) -> None:
+    with pytest.raises(DeviceFarmError, match="not found"):
+        build_package([(tmp_path / "ghost.whl", "ghost.whl")], tmp_path / "p.zip")
+
+
+# ---------------------------------------------------------------------------
+# verdict_from_manifest
+# ---------------------------------------------------------------------------
+
+
+def _write_manifest(run_dir: Path, scenarios: list[tuple[str, bool]]) -> None:
+    run_dir.mkdir(parents=True, exist_ok=True)
+    (run_dir / "manifest.json").write_text(
+        json.dumps(
+            {
+                "schemaVersion": 4,
+                "ok": all(ok for _, ok in scenarios),
+                "scenarios": [{"scenario": name, "ok": ok} for name, ok in scenarios],
+            }
+        )
+    )
+
+
+def test_verdict_is_pass_when_every_scenario_passed(tmp_path: Path) -> None:
+    _write_manifest(tmp_path / "runs" / "20260714-100000", [("smoke", True), ("search", True)])
+    v = verdict_from_manifest(tmp_path / "runs")
+    assert v == Verdict(ok=True, passed=2, total=2, failures=[])
+
+
+def test_verdict_is_fail_and_names_the_failing_scenario(tmp_path: Path) -> None:
+    _write_manifest(tmp_path / "runs" / "20260714-100000", [("smoke", True), ("search", False)])
+    v = verdict_from_manifest(tmp_path / "runs")
+    assert not v.ok
+    assert v.passed == 1
+    assert v.total == 2
+    assert v.failures == ["search"]
+
+
+def test_verdict_aggregates_across_multiple_run_manifests(tmp_path: Path) -> None:
+    _write_manifest(tmp_path / "runs" / "20260714-100000", [("smoke", True)])
+    _write_manifest(tmp_path / "runs" / "20260714-100100", [("search", False)])
+    v = verdict_from_manifest(tmp_path / "runs")
+    assert not v.ok
+    assert v.total == 2
+    assert v.failures == ["search"]
+
+
+def test_verdict_fails_loud_when_no_manifest_was_produced(tmp_path: Path) -> None:
+    # No manifest means the run never produced a verdict — that is a failure, not a silent pass.
+    (tmp_path / "runs").mkdir()
+    v = verdict_from_manifest(tmp_path / "runs")
+    assert not v.ok
+    assert v.total == 0
+
+
+# ---------------------------------------------------------------------------
+# submit_and_collect (fake AWS SDK seam)
+# ---------------------------------------------------------------------------
+
+
+class _FakeClient:
+    """An in-memory stand-in for the boto3 `devicefarm` client.
+
+    Records the calls the submitter makes and returns canned responses. Uploads report SUCCEEDED and
+    the run reports COMPLETED so the happy path drives straight through; individual tests override
+    `run_status`/`upload_status` to exercise the failure branches.
+    """
+
+    def __init__(self, *, upload_status: str = "SUCCEEDED", run_status: str = "COMPLETED") -> None:
+        self.upload_status = upload_status
+        self.run_status = run_status
+        self.scheduled: dict[str, Any] | None = None
+        self._n = 0
+
+    def create_upload(self, *, projectArn: str, name: str, type: str) -> dict[str, Any]:  # noqa: N803 - boto3 kwargs
+        self._n += 1
+        return {"upload": {"arn": f"arn:upload/{self._n}/{name}", "url": f"https://s3/{name}"}}
+
+    def get_upload(self, *, arn: str) -> dict[str, Any]:
+        return {"upload": {"arn": arn, "status": self.upload_status}}
+
+    def schedule_run(self, **kwargs: Any) -> dict[str, Any]:
+        self.scheduled = kwargs
+        return {"run": {"arn": "arn:run/1"}}
+
+    def get_run(self, *, arn: str) -> dict[str, Any]:
+        return {"run": {"arn": arn, "status": self.run_status, "result": "PASSED"}}
+
+    def list_artifacts(self, *, arn: str, type: str) -> dict[str, Any]:
+        return {
+            "artifacts": [
+                {"name": "runs", "type": "CUSTOMER_ARTIFACT", "url": "https://s3/runs.zip"}
+            ]
+        }
+
+
+class _FakeTransfer:
+    """Records uploads; on download, materializes a runs/ tree with the given verdict at `dest`."""
+
+    def __init__(self, *, downloaded_ok: bool = True) -> None:
+        self.uploaded: list[str] = []
+        self.downloaded_ok = downloaded_ok
+
+    def upload(self, url: str, path: Path) -> None:
+        self.uploaded.append(url)
+
+    def download(self, url: str, dest: Path) -> None:
+        run = dest / "runs" / "20260714-120000"
+        _write_manifest(run, [("smoke", self.downloaded_ok)])
+
+
+def _submit(client: _FakeClient, transfer: _FakeTransfer, tmp_path: Path) -> Verdict:
+    package = tmp_path / "package.zip"
+    package.write_bytes(b"zip")
+    spec = tmp_path / "testspec.yml"
+    spec.write_text("version: 0.1")
+    apk = tmp_path / "app.apk"
+    apk.write_bytes(b"apk")
+    return submit_and_collect(
+        client,
+        transfer,
+        project_arn="arn:project/1",
+        device_pool_arn="arn:pool/1",
+        app_apk=apk,
+        package_zip=package,
+        spec_yaml=spec,
+        dest=tmp_path / "out",
+        sleep=lambda _: None,
+    )
+
+
+def test_submit_and_collect_uploads_schedules_and_returns_the_manifest_verdict(
+    tmp_path: Path,
+) -> None:
+    client = _FakeClient()
+    transfer = _FakeTransfer(downloaded_ok=True)
+
+    verdict = _submit(client, transfer, tmp_path)
+
+    # App APK, test package, and test spec are each uploaded (three presigned PUTs).
+    assert len(transfer.uploaded) == 3
+    assert client.scheduled is not None
+    assert verdict.ok
+    assert verdict.passed == 1
+
+
+def test_submit_and_collect_reports_bajutsus_verdict_not_device_farms(tmp_path: Path) -> None:
+    # Device Farm's own run.result is PASSED, but Bajutsu's manifest says the scenario failed.
+    # The submitter must surface Bajutsu's verdict.
+    client = _FakeClient(run_status="COMPLETED")
+    transfer = _FakeTransfer(downloaded_ok=False)
+
+    verdict = _submit(client, transfer, tmp_path)
+
+    assert not verdict.ok
+    assert verdict.failures == ["smoke"]
+
+
+def test_submit_and_collect_fails_loud_on_a_failed_upload(tmp_path: Path) -> None:
+    client = _FakeClient(upload_status="FAILED")
+    transfer = _FakeTransfer()
+    with pytest.raises(DeviceFarmError, match="upload"):
+        _submit(client, transfer, tmp_path)

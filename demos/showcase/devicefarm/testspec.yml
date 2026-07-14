@@ -1,0 +1,41 @@
+# AWS Device Farm custom-environment test spec — reference example (BE-0235).
+#
+# This is the spec `scripts/devicefarm_submit.py` renders (via `render_test_spec`) for two showcase
+# Compose scenarios; it is checked in as a readable reference and PoC starting point. Regenerate it
+# for your own scenarios with:
+#
+#   uv run python scripts/devicefarm_submit.py \
+#     --scenario scenarios/firstlook.yaml --scenario scenarios/controls.yaml \
+#     --target showcase-compose --config showcase.config.yaml \
+#     --package .=bajutsu --app-apk app-debug.apk --package-only
+#
+# Device Farm runs these phases on a host that already has `adb` connected to the reserved device
+# (serial `booted`). Bajutsu runs here exactly as it does locally — the verdict comes from its own
+# manifest, not from Device Farm's PASSED/FAILED classification. Batch-topology caveats (150-minute
+# hard cap, APK-only, raw-adb as a host-toolchain by-product) are documented in docs/devicefarm.md.
+version: 0.1
+phases:
+  install:
+    commands:
+    - devicefarm-cli use python 3.13
+    - python -m pip install --upgrade pip
+    # The uploaded test package unpacks into $DEVICEFARM_TEST_PACKAGE_PATH; install Bajutsu from it.
+    # The adb backend is pure subprocess, so the base install (no extras) suffices.
+    - python -m pip install "$DEVICEFARM_TEST_PACKAGE_PATH"
+  pre_test:
+    commands:
+    # Prove the reserved device is visible before running (the serial-resolution PoC).
+    - adb devices
+  test:
+    commands:
+    # One `bajutsu run` per scenario, so a failing scenario still leaves a manifest for the others.
+    - bajutsu run --scenario scenarios/firstlook.yaml --target showcase-compose --config
+      showcase.config.yaml --backend adb --udid booted
+    - bajutsu run --scenario scenarios/controls.yaml --target showcase-compose --config
+      showcase.config.yaml --backend adb --udid booted
+  post_test:
+    commands:
+    # Copy the whole runs/ tree into $DEVICEFARM_LOG_DIR so list_artifacts can return it.
+    - cp -r runs "$DEVICEFARM_LOG_DIR"/ || true
+artifacts:
+- $DEVICEFARM_LOG_DIR
