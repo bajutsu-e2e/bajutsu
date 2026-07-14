@@ -21,21 +21,25 @@ struct MainTabView: View {
     @EnvironmentObject var model: AppModel
 
     var body: some View {
+        // Ids are each tab's own idNamespace (SPEC §9), set on the tabItem Label — idb still
+        // collapses the tab bar into one opaque group (BE-0107), but the XCUITest backend reads
+        // it as the UITabBarItem's accessibilityIdentifier, so a11y builds can address tabs by
+        // `id` there instead of falling back to `label`.
         TabView(selection: $model.selectedTab) {
             StableView()
-                .tabItem { Label("Stable", systemImage: "house") }
+                .tabItem { Label("Stable", systemImage: "house").accessibilityID("stable") }
                 .tag(AppModel.Tab.stable)
             SearchView()
-                .tabItem { Label("Search", systemImage: "magnifyingglass") }
+                .tabItem { Label("Search", systemImage: "magnifyingglass").accessibilityID("search") }
                 .tag(AppModel.Tab.search)
             LogView()
-                .tabItem { Label("Log", systemImage: "square.and.pencil") }
+                .tabItem { Label("Log", systemImage: "square.and.pencil").accessibilityID("log") }
                 .tag(AppModel.Tab.log)
             NoticesView()
-                .tabItem { Label("Notices", systemImage: "bell") }
+                .tabItem { Label("Notices", systemImage: "bell").accessibilityID("notice") }
                 .tag(AppModel.Tab.notices)
             PermissionsView()
-                .tabItem { Label("Permissions", systemImage: "lock.shield") }
+                .tabItem { Label("Permissions", systemImage: "lock.shield").accessibilityID("perm") }
                 .tag(AppModel.Tab.permissions)
         }
     }
