@@ -23,7 +23,7 @@ from pathlib import Path
 from typing import Protocol
 
 from bajutsu import adb
-from bajutsu.drivers.adb import AdbResidentError, HierarchyFetch
+from bajutsu.drivers.adb import AdbResidentError, HierarchyFetch, slice_hierarchy_root
 
 logger = logging.getLogger("bajutsu.adb.resident")
 
@@ -48,14 +48,8 @@ def narrow_to_active_window(xml: str) -> str:
     on-device verification to catalogue against the dump path; broadening the filter is a design
     decision deferred to that slice rather than guessed at here.
     """
-    start = xml.find("<hierarchy")
-    end = xml.rfind("</hierarchy>")
-    if start == -1 or end == -1:
-        return xml
-    try:
-        # UI Automator's own output over our channel — an attribute-only tree, not attacker XML.
-        root = ET.fromstring(xml[start : end + len("</hierarchy>")])  # noqa: S314
-    except ET.ParseError:
+    root = slice_hierarchy_root(xml)
+    if root is None:
         return xml
     decor = [window for window in root if window.get("package") in _SYSTEM_DECOR_PACKAGES]
     if not decor:
