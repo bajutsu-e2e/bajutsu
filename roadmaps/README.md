@@ -500,6 +500,7 @@ Behavior-preserving cleanup inside `bajutsu/` itself — deduplication, decompos
 | [BE-0256](BE-0256-platform-lifecycle-package-split/BE-0256-platform-lifecycle-package-split.md) | Split platform_lifecycle into a package and route device resolution through the Environment seam | Implemented |
 | [BE-0258](BE-0258-serve-step-artifact-seam/BE-0258-serve-step-artifact-seam.md) | Route serve step-artifact reads through the ArtifactStore seam | Implemented |
 | [BE-0260](BE-0260-cli-bringup-consolidation/BE-0260-cli-bringup-consolidation.md) | Consolidate the duplicated CLI command bring-up and add a neutral DeviceError | Implemented |
+| [BE-0261](BE-0261-serve-author-yaml-roundtrip/BE-0261-serve-author-yaml-roundtrip.md) | Round-trip Author YAML edits through the serializer | Implemented |
 <!-- /GENERATED:implemented-quality-debt -->
 
 ## In progress
@@ -619,7 +620,6 @@ Running a scenario on a hosted device farm instead of a local Simulator, emulato
 | [BE-0252](BE-0252-config-package-split/BE-0252-config-package-split.md) | Split config into a package and group Effective into sub-records | Proposal |
 | [BE-0253](BE-0253-serve-route-registry-unification/BE-0253-serve-route-registry-unification.md) | Unify the serve dual-backend route tables behind a declarative registry | Proposal |
 | [BE-0259](BE-0259-assert-query-snapshot-reuse/BE-0259-assert-query-snapshot-reuse.md) | Reuse the settled query snapshot across assert and extract steps | Proposal |
-| [BE-0261](BE-0261-serve-author-yaml-roundtrip/BE-0261-serve-author-yaml-roundtrip.md) | Round-trip Author YAML edits through the serializer | Proposal |
 | [BE-0264](BE-0264-serve-uncaught-exception-json/BE-0264-serve-uncaught-exception-json.md) | Return JSON errors for uncaught serve handler exceptions | Proposal |
 <!-- /GENERATED:proposals-quality-debt -->
 
