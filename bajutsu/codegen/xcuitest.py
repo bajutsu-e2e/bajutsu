@@ -20,10 +20,14 @@ time — XCUITest is their on-device home.)
 
 from __future__ import annotations
 
-import re
-
 from bajutsu.assertions import request_label
-from bajutsu.codegen.common import render_test_file
+from bajutsu.codegen.common import (
+    class_name,
+    ident,
+    is_plain_substring,
+    network_unsupported,
+    render_test_file,
+)
 from bajutsu.drivers import base
 from bajutsu.scenario import Assertion, Gone, Scenario, Step, WaitRequest
 
@@ -31,7 +35,7 @@ from bajutsu.scenario import Assertion, Gone, Scenario, Step, WaitRequest
 # assertion / `until: { request }` wait has no faithful translation — it stays a TODO, but a labeled
 # one naming the endpoint and the reason (like the device-control steps), not a bare "unsupported".
 # `request_label` (the same matcher description the runner / coverage use) names the endpoint.
-_NO_NETWORK = "XCUITest has no network interception; assert via a mock/proxy; not generated"
+_NO_NETWORK = network_unsupported("XCUITest")
 
 _SWIFT_DIRECTION = {
     "up": "swipeUp",
@@ -47,30 +51,9 @@ def _s(text: str) -> str:
     return f'"{escaped}"'
 
 
-def _ident(name: str) -> str:
-    """Turn a scenario name into a Swift test-method identifier."""
-    cleaned = re.sub(r"[^0-9a-zA-Z]+", "_", name).strip("_")
-    if not cleaned:
-        cleaned = "scenario"
-    if cleaned[0].isdigit():
-        cleaned = "_" + cleaned
-    return f"test_{cleaned}"
-
-
-def _class_name(name: str) -> str:
-    cleaned = re.sub(r"[^0-9a-zA-Z]+", " ", name).title().replace(" ", "")
-    if not cleaned:
-        cleaned = "Generated"
-    return f"{cleaned}UITests"
-
-
 _UNSUPPORTED = 'el("UNSUPPORTED_SELECTOR")'
 # Traits that map to an XCUIElement.ElementType (queryable as `elementType == <case>.rawValue`).
 _TRAIT_ELEMENT_TYPE = {base.Trait.BUTTON: "button", base.Trait.LINK: "link"}
-# Regex metacharacters. `labelMatches` is a Python `re.search` pattern; only a metacharacter-free
-# one is a plain substring we can map faithfully to NSPredicate `CONTAINS`. A real regex has no
-# faithful NSPredicate form (ICU `MATCHES` is a full, differently-anchored match), so it stays a TODO.
-_RE_METACHARS = set(r".^$*+?{}[]\|()")
 
 
 def _predicate(sel: base.Selector) -> tuple[str, list[str]] | None:
@@ -94,7 +77,7 @@ def _predicate(sel: base.Selector) -> tuple[str, list[str]] | None:
         args.append(_s(sel["label"]))
     if "labelMatches" in sel:
         pattern = sel["labelMatches"]
-        if set(pattern) & _RE_METACHARS:  # a real regex — no faithful NSPredicate form
+        if not is_plain_substring(pattern):  # a real regex — no faithful NSPredicate form
             return None
         clauses.append("label CONTAINS %@")  # metacharacter-free: a plain substring (re.search)
         args.append(_s(pattern))
@@ -364,7 +347,7 @@ class _XcuitestGen:
 
     # `app` is the instance property; XCTest makes a fresh test-case instance per method.
     def scenario_open(self, name: str) -> str:
-        return f"  func {_ident(name)}() {{"
+        return f"  func {ident(name)}() {{"
 
     def setup_lines(self, scenario: Scenario) -> list[str]:
         # XCUITest has no network-interception surface, so there is no pre-launch observer to install.
@@ -397,5 +380,5 @@ def to_xcuitest(
 
 
 def class_name_for(stem: str) -> str:
-    """Derive the XCTestCase class name from a file stem (public wrapper of `_class_name`)."""
-    return _class_name(stem)
+    """Derive the XCTestCase class name from a file stem (`…UITests`)."""
+    return class_name(stem, "UITests")

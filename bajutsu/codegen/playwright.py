@@ -20,7 +20,7 @@ from __future__ import annotations
 import re
 
 from bajutsu.assertions import request_label
-from bajutsu.codegen.common import render_test_file
+from bajutsu.codegen.common import ms, render_test_file
 from bajutsu.drivers import base
 from bajutsu.scenario import Assertion, Gone, RequestMatch, Scenario, Step
 from bajutsu.scenario.models.assertions import CountMatch, TextMatch, Wait, WaitRequest
@@ -286,10 +286,6 @@ def _act(sel: base.Selector, call: str) -> list[str]:
     return [f"await {loc}.{call};"]
 
 
-def _ms(seconds: float) -> int:
-    return int(seconds * 1000)
-
-
 def _emit_swipe_direction(loc: str, direction: str) -> list[str]:
     # A directional swipe scrolls, so wheel over the element — matching the web driver (BE-0227). The
     # old mouse drag left the page unscrolled.
@@ -340,7 +336,7 @@ def _emit_step(step: Step) -> list[str]:
     if step.long_press is not None:
         return _act(
             step.long_press.sel.as_selector(),
-            f"click({{ delay: {_ms(step.long_press.duration)} }})",
+            f"click({{ delay: {ms(step.long_press.duration)} }})",
         )
     if step.type is not None:
         if step.type.into is not None:
@@ -375,7 +371,7 @@ def _emit_step(step: Step) -> list[str]:
 
 
 def _emit_wait(w: Wait) -> list[str]:
-    timeout = _ms(w.timeout)
+    timeout = ms(w.timeout)
     if w.for_ is not None:
         sel = w.for_.as_selector()
         loc = _locator(sel)
