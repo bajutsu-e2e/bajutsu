@@ -85,6 +85,7 @@ from bajutsu.scenario.models import (
 )
 from bajutsu.scenario.select import select_scenarios
 from bajutsu.scenario.serialize import (
+    dump_block,
     dump_mocks,
     dump_scenario_file,
     dump_scenarios,
@@ -156,6 +157,7 @@ __all__ = [
     "Web",
     "apply_setups",
     "contained_ref",
+    "dump_block",
     "dump_mocks",
     "dump_scenario_file",
     "dump_scenarios",

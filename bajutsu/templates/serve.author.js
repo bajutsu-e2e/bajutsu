@@ -454,15 +454,6 @@ if(!NARROW_MQ.matches)initTiling();
     $('#au-run').innerHTML=opts||'<option value="">—</option>';
   }
 
-  function auSelectorYaml(sel){
-    // JSON.stringify the id/label so a selector containing YAML-significant characters (a ':' or '#')
-    // still emits a valid double-quoted scalar — a JSON string is a valid YAML double-quoted string.
-    if(sel.id)return '{ id: '+JSON.stringify(sel.id)+' }';
-    if(sel.label&&sel.index!=null)return '{ label: '+JSON.stringify(sel.label)+', index: '+sel.index+' }';
-    if(sel.label)return '{ label: '+JSON.stringify(sel.label)+' }';
-    return JSON.stringify(sel);
-  }
-
   function auStepLabel(s){
     const a=s.action||'?';
     const f=s.fields||{};
@@ -575,52 +566,29 @@ if(!NARROW_MQ.matches)initTiling();
     else{$('#au-status').textContent='Clicking the screenshot does nothing in Enrich mode — switch to Capture or Edit to pick elements.';$('#au-status').className='status';}
   });
 
-  // Apply: write resolved selector into YAML at the current step.
-  $('#au-apply').addEventListener('click',()=>{
+  // Apply: write the resolved selector into the current step. The backend parses the YAML, sets the
+  // selector on the located step through the scenario model, and returns the round-tripped file
+  // (BE-0261) — the serializer owns quoting and the browser no longer scans lines by prefix.
+  $('#au-apply').addEventListener('click',async()=>{
     if(!auResolvedSel||auIdx<0)return;
     const s=auSteps[auIdx];
-    const action=s.action||'tap';
-    const newSel=auSelectorYaml(auResolvedSel);
-    const yaml=$('#au-yaml').value;
-    const oldFields=s.fields||{};
-    let oldPattern='';
-    if(action==='tap'||action==='doubleTap'||action==='longPress'){
-      oldPattern=action+':';
-    }else if(action==='type'){
-      oldPattern='type:';
-    }else{
-      oldPattern=action+':';
-    }
-    // Find the step's line in the YAML and replace the selector.
-    const lines=yaml.split('\n');
-    let stepCount=0;
-    for(let i=0;i<lines.length;i++){
-      const trimmed=lines[i].trimStart();
-      if(trimmed.startsWith('- '+oldPattern)||trimmed.startsWith('- '+action+':')){
-        if(stepCount===auIdx){
-          const indent=lines[i].match(/^(\s*)/)[1];
-          if(action==='type'){
-            lines[i]=indent+'- type: { into: '+newSel+', text: '+(oldFields.text||'""')+' }';
-          }else{
-            lines[i]=indent+'- '+action+': '+newSel;
-          }
-          break;
-        }
-        stepCount++;
-      }
-    }
-    $('#au-yaml').value=lines.join('\n');
-    auRenderGutter();auLintSoon();
-    // Update the in-memory step fields.
-    if(action==='type'){
-      s.fields={into:auResolvedSel,text:oldFields.text||''};
-    }else{
-      s.fields=auResolvedSel;
-    }
-    auRenderStepList();
-    document.querySelectorAll('#au-steplist li').forEach((li,j)=>li.classList.toggle('active',j===auIdx));
-    $('#au-status').textContent='Applied '+auSelectorYaml(auResolvedSel)+' to step '+(auIdx+1);
-    $('#au-status').className='status ok';
+    const combo=$('#au-scenario').value;
+    const scnName=combo?(combo.split('|')[1]||''):'';
+    try{
+      const r=await fetch('/api/scenario/apply-selector',{method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({yaml:$('#au-yaml').value,scenario:scnName,stepIndex:auIdx,selector:auResolvedSel})});
+      const d=await r.json();
+      if(d.error){$('#au-status').textContent=d.error;$('#au-status').className='status ng';return;}
+      $('#au-yaml').value=d.yaml;
+      auRenderGutter();auLintSoon();
+      // Reflect the new selector in the in-memory step + list label.
+      if((s.action||'')==='type'){s.fields={into:auResolvedSel,text:(s.fields&&s.fields.text)||''};}
+      else{s.fields=auResolvedSel;}
+      auRenderStepList();
+      document.querySelectorAll('#au-steplist li').forEach((li,j)=>li.classList.toggle('active',j===auIdx));
+      const desc=auResolvedSel.id?('#'+auResolvedSel.id):(auResolvedSel.label||'?');
+      $('#au-status').textContent='Applied '+desc+' to step '+(auIdx+1);$('#au-status').className='status ok';
+    }catch(e){$('#au-status').textContent=String(e);$('#au-status').className='status ng';}
   });
 
   // ---- Inline validation + schema assistance (BE-0138) ----
@@ -863,115 +831,26 @@ if(!NARROW_MQ.matches)initTiling();
     $('#au-enrich-panel').hidden=false;
   }
 
-  function enrichAssertionYaml(a,indent){
-    const pfx=indent+'- ';
-    if(a.exists){
-      const sel=a.exists.sel||{};
-      const id=sel.id?'{ id: '+JSON.stringify(sel.id)+' }':JSON.stringify(sel);
-      if(a.exists.negate)return pfx+'exists: { '+Object.entries(sel).map(([k,v])=>k+': '+JSON.stringify(v)).join(', ')+', negate: true }';
-      return pfx+'exists: '+id;
-    }
-    if(a.value){
-      const sel=a.value.sel||{};
-      return pfx+'value: { sel: '+JSON.stringify(sel)+', equals: '+JSON.stringify(a.value.equals)+' }';
-    }
-    if(a.label){
-      const sel=a.label.sel||{};
-      return pfx+'label: { sel: '+JSON.stringify(sel)+', contains: '+JSON.stringify(a.label.contains)+' }';
-    }
-    return pfx+JSON.stringify(a);
-  }
-
-  function _extractName(trimmed){
-    const m=trimmed.match(/^-\s*name:\s*(.+)/);
-    if(!m)return null;
-    let v=m[1].trim();
-    if((v.startsWith('"')&&v.endsWith('"'))||(v.startsWith("'")&&v.endsWith("'")))v=v.slice(1,-1);
-    return v;
-  }
-
-  function enrichApply(){
+  // Accept: insert the proposed assertions and settle wait. The backend appends the settle wait to
+  // the scenario's steps and replaces its expect block through the model + serializer, splicing at a
+  // parser-identified span so comments and unrelated scenarios survive (BE-0261) — no line-hunting.
+  async function enrichApply(){
     if(!enrichResult)return;
-    let yaml=$('#au-yaml').value;
     const combo=$('#au-scenario').value;
     if(!combo)return;
     const scnName=combo.split('|')[1]||'';
-
-    const lines=yaml.split('\n');
-    let inScenario=false;
-    let stepsLine=-1;
-    let stepsEnd=-1;
-    let expectStart=-1;
-    let expectEnd=-1;
-    let scenarioIndent='';
-    let itemIndent='';
-
-    for(let i=0;i<lines.length;i++){
-      const trimmed=lines[i].trimStart();
-      if(trimmed.startsWith('- name:')&&_extractName(trimmed)===scnName){
-        inScenario=true;
-        scenarioIndent=lines[i].match(/^(\s*)/)[1]+'  ';
-        continue;
-      }
-      if(inScenario&&trimmed.startsWith('- name:')){break;}
-      if(inScenario){
-        if(trimmed.startsWith('steps:')){
-          stepsLine=i;
-          for(let j=i+1;j<lines.length;j++){
-            const st=lines[j].trimStart();
-            if(st.startsWith('- ')&&!st.startsWith('- name:')){
-              stepsEnd=j;
-              if(!itemIndent)itemIndent=lines[j].match(/^(\s*)/)[1];
-            }
-            else if(st&&!st.startsWith('- ')&&!st.startsWith('#')){break;}
-          }
-          if(stepsEnd<0)stepsEnd=stepsLine;
-        }
-        if(trimmed.startsWith('expect:')){
-          expectStart=i;
-          for(let j=i+1;j<lines.length;j++){
-            const st=lines[j].trimStart();
-            if(st.startsWith('- '))expectEnd=j;
-            else if(st&&!st.startsWith('- ')&&!st.startsWith('#')){break;}
-          }
-        }
-      }
-    }
-
-    if(!itemIndent)itemIndent=scenarioIndent+'  ';
-
-    const newLines=[];
-    if(enrichResult.settle){
-      const w=enrichResult.settle.wait||{};
-      const sel=w['for']||{};
-      const id=sel.id?'{ id: '+JSON.stringify(sel.id)+' }':JSON.stringify(sel);
-      newLines.push(itemIndent+'- wait: { for: '+id+', timeout: '+(w.timeout||5)+' }');
-    }
-
-    const expectLines=(enrichResult.expect||[]).map(a=>enrichAssertionYaml(a,itemIndent));
-
-    if(newLines.length>0&&stepsEnd>=0){
-      lines.splice(stepsEnd+1,0,...newLines);
-      if(expectStart>=0)expectStart+=newLines.length;
-      if(expectEnd>=0)expectEnd+=newLines.length;
-    }
-
-    if(expectLines.length>0){
-      if(expectStart>=0){
-        const removeCount=expectEnd>=expectStart?expectEnd-expectStart:0;
-        lines.splice(expectStart+1,removeCount,...expectLines);
-      }else{
-        const insertAt=stepsEnd>=0?stepsEnd+1+newLines.length:lines.length;
-        lines.splice(insertAt,0,scenarioIndent+'expect:',...expectLines);
-      }
-    }
-
-    $('#au-yaml').value=lines.join('\n');
-    auRenderGutter();auLintSoon();
-    $('#au-save').disabled=false;
-    $('#au-enrich-panel').hidden=true;
-    enrichResult=null;
-    $('#au-status').textContent='Assertions applied — review and Save';$('#au-status').className='status ok';
+    try{
+      const r=await fetch('/api/scenario/enrich-apply',{method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({yaml:$('#au-yaml').value,scenario:scnName,expect:enrichResult.expect||[],settle:enrichResult.settle||null})});
+      const d=await r.json();
+      if(d.error){$('#au-status').textContent=d.error;$('#au-status').className='status ng';return;}
+      $('#au-yaml').value=d.yaml;
+      auRenderGutter();auLintSoon();
+      $('#au-save').disabled=false;
+      $('#au-enrich-panel').hidden=true;
+      enrichResult=null;
+      $('#au-status').textContent='Assertions applied — review and Save';$('#au-status').className='status ok';
+    }catch(e){$('#au-status').textContent=String(e);$('#au-status').className='status ng';}
   }
 
   $('#au-enrich').addEventListener('click',async()=>{
