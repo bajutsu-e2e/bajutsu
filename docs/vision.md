@@ -37,19 +37,26 @@ across every direction below:
 Bajutsu expands along three independent axes. They compose (none blocks the others), and each
 maps to concrete pages.
 
+![Three-axes diagram: the deterministic Bajutsu core expands independently along Reach (more platforms/surfaces — Web, Android, Flutter/hybrid), Scale & collaboration (hosted/self-hosted service, MCP), and Authoring & maintenance (GUI editor, capture, visual regression, self-healing triage).](assets/diagrams/vision-three-axes.svg)
+
+<details>
+<summary>Mermaid source</summary>
+
+<!-- mermaid-svg: assets/diagrams/vision-three-axes.svg -->
+```mermaid
+flowchart LR
+    core(["Bajutsu core<br/>deterministic · app-agnostic"])
+
+    reach["REACH<br/>more platforms / surfaces<br/>Web · Android · Flutter / hybrid<br/>→ multi-platform.md"]
+    scale["SCALE &amp; COLLABORATION<br/>hosted / self-hosted service · MCP<br/>→ roadmap: Hosting (BE-0015 / BE-0016)"]
+    authoring["AUTHORING &amp; MAINTENANCE<br/>GUI editor · capture ·<br/>visual-regression · self-healing triage<br/>→ roadmap §3, §6, §10"]
+
+    core --> reach
+    core --> scale
+    core --> authoring
 ```
-                 ▲ REACH (more platforms / surfaces)
-                 │   Web · Android · Flutter / hybrid
-                 │   → multi-platform.md
-                 │
-   AUTHORING ────┼───────────────▶ SCALE & COLLABORATION
-   & MAINTENANCE │                 hosted / self-hosted service · MCP
-   GUI editor ·  │                 → roadmap: Hosting (BE-0015 / BE-0016)
-   capture ·     │
-   visual-regression ·
-   self-healing triage
-   → roadmap §3, §6, §10
-```
+
+</details>
 
 ### 1. Reach — more platforms and surfaces
 

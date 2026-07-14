@@ -228,20 +228,27 @@ Tier A は 1 台の Mac で動く 1 プロセスです。**Tier B** は BE-0015 
 default org）で動き、config で org を宣言すれば**複数 org**に対応します（後述の「複数 org」を参照）。すぐ動かせる
 一式は [`deploy/self-host/`](../../deploy/self-host/)（compose、Dockerfile、`.env.example`）にあります。
 
+![Tier B トポロジー図。チームの端末は Tailscale または Caddy 経由の HTTPS で Linux コントロールプレーンノード（bajutsu serve --asgi --backend=server、Postgres、MinIO）に到達する。コントロールプレーンは HTTP で job をベアメタルの Mac idb ワーカー群へ、同じ Tailscale tailnet 経由でコンテナ化された Linux web（Playwright/Chromium）ワーカーへ振り分け、どちらも結果をコントロールプレーンへ返す。](assets/diagrams/self-hosting-tier-b-topology-ja.svg)
+
+<details>
+<summary>Mermaid ソース</summary>
+
+<!-- mermaid-svg: assets/diagrams/self-hosting-tier-b-topology-ja.svg -->
+```mermaid
+flowchart TB
+    laptops(["チームの端末"])
+    control["Linux ノード — docker compose<br/>bajutsu serve --asgi --backend=server<br/>postgres・minio<br/>[+ Linux web ワーカーのコンテナ]"]
+    macWorker["Mac ワーカー × N（ベアメタル）<br/>bajutsu worker（idb）<br/>bajutsu run・Simulator"]
+    webWorker["Linux web ワーカー（web）<br/>bajutsu worker・Chromium"]
+
+    laptops -->|"HTTPS（Tailscale tailnet、<br/>またはホスト名で Caddy）"| control
+    control -->|"job（HTTP）"| macWorker
+    macWorker -->|result| control
+    control -->|"job（Tailscale tailnet）"| webWorker
+    webWorker -->|result| control
 ```
-        チームの端末
-           │  HTTPS（Tailscale tailnet、またはホスト名で Caddy）
-           ▼
-   ┌───────────────────────────────────────┐  job   ┌──────────────────────────┐
-   │  Linux ノード — docker compose        │ ─────▶ │  Mac ワーカー × N（ベアメタル）│
-   │  bajutsu serve --asgi --backend=server│  HTTP  │  bajutsu worker（idb）   │
-   │  postgres・minio                      │ ◀───── │  bajutsu run・Simulator  │
-   │  [+ Linux web ワーカーのコンテナ]     │ result └──────────────────────────┘
-   └───────────────────────────────────────┘        ┌──────────────────────────┐
-                       └───── Tailscale tailnet ────▶│  Linux web ワーカー（web）│
-                                                     │  bajutsu worker・Chromium │
-                                                     └──────────────────────────┘
-```
+
+</details>
 
 Linux のコントロールプレーンは安価で、**Mac ワーカー**が Simulator の run を担う希少な部分です。フリートは
 **backend ごとに異なる構成**になります。Mac の idb ワーカーは iOS Simulator のために Aqua の GUI セッションが

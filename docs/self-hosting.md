@@ -240,20 +240,27 @@ user in one default org) and supports **multiple orgs** once you declare them in
 *[Multiple orgs](#multiple-orgs)* below. The ready-to-run stack is in
 [`deploy/self-host/`](../deploy/self-host/) (compose + Dockerfile + `.env.example`).
 
+![Tier B topology diagram: team laptops reach the Linux control-plane node (bajutsu serve --asgi --backend=server, Postgres, MinIO) over HTTPS via Tailscale or Caddy; the control plane dispatches jobs over HTTP to a pool of bare-metal Mac idb workers and, over the same Tailscale tailnet, to containerized Linux web (Playwright/Chromium) workers, both returning results to the control plane.](assets/diagrams/self-hosting-tier-b-topology.svg)
+
+<details>
+<summary>Mermaid source</summary>
+
+<!-- mermaid-svg: assets/diagrams/self-hosting-tier-b-topology.svg -->
+```mermaid
+flowchart TB
+    laptops(["team laptops"])
+    control["Linux node — docker compose<br/>bajutsu serve --asgi --backend=server<br/>postgres · minio<br/>[+ Linux web worker container(s)]"]
+    macWorker["Mac worker × N (bare)<br/>bajutsu worker (idb)<br/>bajutsu run · Simulator"]
+    webWorker["Linux web worker (web)<br/>bajutsu worker · Chromium"]
+
+    laptops -->|"HTTPS (Tailscale tailnet,<br/>or Caddy at a hostname)"| control
+    control -->|"jobs (HTTP)"| macWorker
+    macWorker -->|result| control
+    control -->|"jobs (Tailscale tailnet)"| webWorker
+    webWorker -->|result| control
 ```
-        team laptops
-           │  HTTPS (Tailscale tailnet, or Caddy at a hostname)
-           ▼
-   ┌───────────────────────────────────────┐  jobs  ┌──────────────────────────┐
-   │  Linux node — docker compose          │ ─────▶ │  Mac worker × N (bare)   │
-   │  bajutsu serve --asgi --backend=server│  HTTP  │  bajutsu worker (idb)    │
-   │  postgres · minio                     │ ◀───── │  bajutsu run · Simulator │
-   │  [+ Linux web worker container(s)]    │ result └──────────────────────────┘
-   └───────────────────────────────────────┘        ┌──────────────────────────┐
-                       └───── Tailscale tailnet ────▶│  Linux web worker (web)  │
-                                                     │  bajutsu worker · Chromium│
-                                                     └──────────────────────────┘
-```
+
+</details>
 
 The Linux control plane is cheap; the **Mac workers** carry the Simulator runs and are the scarce
 part. The fleet is **heterogeneous by backend**: a Mac idb worker runs **bare metal** because it needs

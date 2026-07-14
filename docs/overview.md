@@ -19,25 +19,10 @@ judge (see [concepts](concepts.md)).
 
 ## The big picture (data flow)
 
-```
-Natural-language goal ──(record / Tier 1, AI)──▶ Scenario YAML ◀──(hand-edited)
-                                                       │
-                                                       ▼
-                                  run (Tier 2, no AI; deterministic)
-                                                       │
-              ┌───────────────────────────────────────┼───────────────────────────────┐
-              ▼                                        ▼                                ▼
-        Orchestrator                            Driver abstraction              Evidence Sink
-   observe → act → verify   ──tap/type/swipe/wait/query──▶  idb (iOS) / playwright (web) / fake
-              │                          (simctl boots/launches)                        │
-              ▼                                                                         ▼
-        Reporter ──────────────▶ runs/<runId>/{manifest.json, junit.xml, report.html}
-                                                       │
-                                                       ▼
-                                  codegen ──▶ equivalent XCUITest (Swift)
-```
+![Data-flow diagram: a natural-language goal or hand edit produces a Scenario YAML; Tier 2's Orchestrator runs it deterministically through the backend-agnostic Driver API against idb, XCUITest, adb, or Playwright; the verdict feeds the Reporter and, on failure, triage, which may suggest scenario edits.](assets/diagrams/architecture-data-flow.svg)
 
-Which module owns each box, and how they depend on each other, is in [architecture](architecture.md).
+Which module owns each box, and how they depend on each other — including the dependency-layer
+view of the same system — is in [architecture](architecture.md).
 
 ## Pages (suggested reading order)
 

@@ -63,72 +63,13 @@ under [`docs/ja/`](docs/ja/README.md).
 
 ## Architecture
 
-```mermaid
-flowchart TB
-    goal(["🗣️ Natural-language goal"])
-    hand(["✍️ Hand-edited"])
-    scenario[["📄 Scenario (YAML)"]]
-
-    subgraph tier1["Tier 1 · AI — author and failure investigator"]
-        record["record / crawl<br/>explore + author"]
-        agent["Claude agent<br/>+ system-alert guard"]
-        record <--> agent
-    end
-
-    subgraph tier2["Tier 2 · Deterministic run — no AI in the CI gate"]
-        orch["Orchestrator<br/>observe → act → verify"]
-        driver["Backend-agnostic Driver API<br/>tap · type · swipe · wait · query · screenshot"]
-        idb["idb backend<br/>📱 iOS Simulator (simctl)"]
-        pw["playwright backend<br/>🌐 web browser"]
-        orch --> driver
-        driver --> idb
-        driver --> pw
-    end
-
-    verdict{"Pass / Fail<br/>machine assertions only"}
-    report["📊 Reporter<br/>manifest.json · JUnit · HTML"]
-    codegen["codegen<br/>→ XCUITest (Swift)"]
-    triage["triage<br/>root cause + fixes · advisory"]
-
-    goal --> record
-    record ==> scenario
-    hand ==> scenario
-    scenario ==> orch
-    scenario -.-> codegen
-    orch --> verdict
-    orch --> report
-    verdict -->|fail| triage
-    triage -.->|suggest edits| scenario
-
-    classDef ai fill:#fde68a,stroke:#d97706,color:#1f2937;
-    classDef det fill:#bfdbfe,stroke:#2563eb,color:#1f2937;
-    class tier1 ai
-    class tier2 det
-```
-
-The same flow as text:
-
-```
-Natural-language goal ──(record / crawl, Tier 1 · AI)──▶ Scenario (YAML) ◀──(hand-edited)
-                                                       │
-                                                       ▼
-   Orchestrator  ── observe → act → verify (run, Tier 2; deterministic, no AI)
-        │ backend-agnostic driver API (tap/type/swipe/wait/query/screenshot)
-        ▼
-   ┌─ idb backend ───────▶ 📱 iOS Simulator (simctl boots / installs / launches)
-   ├─ playwright backend ─▶ 🌐 web browser
-   └─ fake driver ────────▶ in-memory (tests, zero-setup demos)
-        │
-        ▼
- Evidence / Trace  →  Reporter (manifest.json + JUnit + HTML)
-                                                       │
-                                                       ▼
-                                  codegen ──▶ equivalent XCUITest (Swift)
-```
+![Data-flow diagram: a natural-language goal or hand edit produces a Scenario YAML; Tier 2's Orchestrator runs it deterministically through the backend-agnostic Driver API against idb, XCUITest, adb, or Playwright; the verdict feeds the Reporter and, on failure, triage, which may suggest scenario edits.](docs/assets/diagrams/architecture-data-flow.svg)
 
 Entry points share the scenario format: `record` and `crawl` (AI authoring / exploration),
-`run` (deterministic replay), and `codegen` (emit a native XCUITest). See
-[`docs/`](docs/README.md) for the per-feature breakdown.
+`run` (deterministic replay), and `codegen` (emit a native test). The full breakdown — module
+list, dependency layers, and the editable mermaid source — is in
+[docs/architecture.md](docs/architecture.md); see [`docs/`](docs/README.md) for the per-feature
+breakdown.
 
 ## Status
 

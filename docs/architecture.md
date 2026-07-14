@@ -15,6 +15,12 @@ A scenario (authored by AI or by hand) is the shared artifact. `run` replays it 
 Tier 1 (AI — yellow) authors and investigates only; Tier 2 (deterministic — blue) decides pass/fail from machine assertions alone.
 The whole spine is platform-neutral; the only platform-specific seam is the **backend** the orchestrator drives (idb / XCUITest for iOS, adb for Android, playwright for web, … behind one `Driver` interface), so a new platform is a new backend, not a fork of the core.
 
+![Data-flow diagram: a natural-language goal or hand edit produces a Scenario YAML; Tier 2's Orchestrator runs it deterministically through the backend-agnostic Driver API against idb, XCUITest, adb, or Playwright; the verdict feeds the Reporter and, on failure, triage, which may suggest scenario edits.](assets/diagrams/architecture-data-flow.svg)
+
+<details>
+<summary>Mermaid source</summary>
+
+<!-- mermaid-svg: assets/diagrams/architecture-data-flow.svg -->
 ```mermaid
 flowchart TB
     goal(["🗣️ Natural-language goal"])
@@ -61,6 +67,8 @@ flowchart TB
     class tier1 ai
     class tier2 det
 ```
+
+</details>
 
 The [dependency-layer view](#dependencies-layers) below is the same system seen as module layers
 rather than data flow.
@@ -121,25 +129,73 @@ The `bajutsu/` package (Python 3.13+, pydantic v2 / typer / anthropic / pyyaml /
 Lower layers are more stable; upper layers depend on lower ones. The core is `drivers/base.py`
 (selector resolution), which every execution path depends on.
 
+![Dependency-layer diagram: cli/ is the user entry point; below it, runner/, record.py/crawl/, codegen/, trace.py, and triage.py each depend on orchestrator/ and the AI/serve/CI helpers; those depend on assertions.py and evidence.py; those depend on scenario/, report/, config.py, backends.py, and simctl.py; everything converges on drivers/base.py, the determinism core, from which drivers/fake, the iOS drivers, the Android driver, and the Playwright driver all derive.](assets/diagrams/architecture-dependency-layers.svg)
+
+<details>
+<summary>Mermaid source</summary>
+
+<!-- mermaid-svg: assets/diagrams/architecture-dependency-layers.svg -->
+```mermaid
+flowchart TB
+    cli["cli/<br/>user entry (Typer): run · project · doctor · audit · coverage · stats ·<br/>flakiness · export · trace · report · triage · record · crawl · codegen ·<br/>approve · serve · mcp · worker · lint · schema"]
+
+    runner["runner/"]
+    record["record.py / crawl/<br/>(Tier 1 / AI)"]
+    codegen["codegen/<br/>(structural)"]
+    trace["trace.py<br/>(timeline)"]
+    triage["triage.py / claude_triage.py<br/>(self-heal · advisory)"]
+
+    orch["orchestrator/"]
+    agentStuff["agent_protocols.py / agent_factory.py /<br/>claude_agent.py / alerts.py"]
+    serveGh["serve/ · github.py<br/>(web UI · CI)"]
+
+    assertions["assertions.py"]
+    evidence["evidence.py<br/>+ intervals.py · network.py · visual.py · redaction.py"]
+
+    scenario["scenario/<br/>(interp.py)"]
+    report["report/"]
+    config["config.py · preflight.py"]
+    backends["backends.py"]
+    simctl["simctl.py"]
+
+    base["drivers/base.py<br/>the determinism core (Element / Selector / resolve_unique)"]
+
+    fake["drivers/fake"]
+    ios["drivers/idb · xcuitest · adb"]
+    pw["drivers/playwright"]
+
+    cli --> runner
+    cli --> record
+    cli --> codegen
+    cli --> trace
+    cli --> triage
+
+    runner --> orch
+    record --> agentStuff
+    triage --> serveGh
+
+    orch --> assertions
+    orch --> evidence
+    agentStuff --> assertions
+
+    assertions --> scenario
+    evidence --> report
+    orch --> config
+    orch --> backends
+    orch --> simctl
+
+    scenario --> base
+    report --> base
+    config --> base
+    backends --> base
+    simctl --> base
+
+    base --> fake
+    base --> ios
+    base --> pw
 ```
-                       cli/             ← user entry (Typer): run / project / doctor / audit / coverage / stats / flakiness / export / trace / report / triage / record / crawl / codegen / approve / serve / mcp / worker / lint / schema
-        ┌─────────────┬───┴───────┬───────────────┬───────────┐
-     runner/    record.py / crawl/    codegen/     trace.py     triage.py / claude_triage.py
-        │          (Tier 1 / AI)   (structural)   (timeline)   (self-heal · advisory)
-   orchestrator/   agent_protocols.py / agent_factory.py / claude_agent.py / alerts.py   serve/ · github.py (web UI · CI)
-        │                 │
-   ┌────┼────────┬────────┘
-assertions.py  evidence.py ── intervals.py · network.py · visual.py · redaction.py
-        │         │
-   scenario/    report/      config.py · preflight.py   backends.py   simctl.py
-        │ (interp.py)             │              │            │
-        └──────────────┬─────────────┴──────────────┴────────────┘
-                       ▼
-                drivers/base.py  ←── the determinism core (Element / Selector / resolve_unique)
-                       ▲
-        ┌──────────────┼───────────────────────────┐
-   drivers/fake   drivers/idb · xcuitest · adb   drivers/playwright
-```
+
+</details>
 
 - `orchestrator/` depends only on `base.Driver` and **is not coupled to any concrete driver**.
   That is why it can be tested with `FakeDriver` without a device, while in production the same
