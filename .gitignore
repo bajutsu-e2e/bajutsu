@@ -30,6 +30,9 @@ pip-audit-requirements.txt
 runs/
 projects.json
 
+# serve's persisted provider settings (LocalProviderSettingsStore) — runtime state, never committed
+provider-settings.json
+
 # serve's ephemeral upload sandboxes (BE-0073): extracted bundles, cleared on serve start
 uploads/
 
