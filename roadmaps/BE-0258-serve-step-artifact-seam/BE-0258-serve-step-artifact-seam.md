@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-serve-step-artifact-seam-ja.md)
+**English** · [日本語](BE-0258-serve-step-artifact-seam-ja.md)
 
-# BE-XXXX — Route serve step-artifact reads through the ArtifactStore seam
+# BE-0258 — Route serve step-artifact reads through the ArtifactStore seam
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-serve-step-artifact-seam.md) |
+| Proposal | [BE-0258](BE-0258-serve-step-artifact-seam.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0258") |
 | Topic | Codebase quality & technical debt |
 <!-- /BE-METADATA -->
 

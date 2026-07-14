@@ -1,14 +1,14 @@
-[English](BE-XXXX-serve-step-artifact-seam.md) · **日本語**
+[English](BE-0258-serve-step-artifact-seam.md) · **日本語**
 
-# BE-XXXX — serve のステップアーティファクトの読み取りを ArtifactStore seam 経由に統一
+# BE-0258 — serve のステップアーティファクトの読み取りを ArtifactStore seam 経由に統一
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
 |---|---|
-| 提案 | [BE-XXXX](BE-XXXX-serve-step-artifact-seam-ja.md) |
+| 提案 | [BE-0258](BE-0258-serve-step-artifact-seam-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **提案** |
-| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0258") |
 | トピック | コードベース品質・技術的負債 |
 <!-- /BE-METADATA -->
 
