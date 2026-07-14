@@ -145,6 +145,11 @@ scheme は変種ごと（§2）、host 文法は共通です。deeplink は**タ
 
 タブの並び（左から）：**Stable・Search・Log・Notices・Permissions**。
 
+各タブ項目には、それ自体の名前空間のルート（`stable`、`search`、`log`、`notice`、`perm`）が識別子
+として付いています。ドット（`.`）やハイフン（`-`）を含まないため、iOS、Compose、Views のいずれでも
+同じ一つの `id` で選択できます（`scenarios/tabs.yaml`）。`-noax` 変種は、ほかの識別子と同様にこれも
+持ちません。
+
 ### 5.1 タブ：Stable（`stable` / `horse` 名前空間）
 
 `NavigationStack`（SwiftUI）/ `UINavigationController`（UIKit）。非同期ロード付きのカタログ一覧。
