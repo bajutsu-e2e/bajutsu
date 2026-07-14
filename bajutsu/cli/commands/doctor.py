@@ -7,7 +7,7 @@ from pathlib import Path
 import typer
 
 from bajutsu import adb as _adb
-from bajutsu import ai_availability, capability_preflight, preflight
+from bajutsu import ai_availability, capability_preflight, device_errors, preflight
 from bajutsu import simctl as _simctl
 from bajutsu.ai import credential_gap
 from bajutsu.backends import (
@@ -179,7 +179,7 @@ def doctor(
     # does not crash.
     try:
         elements = _current_screen(actuator, udid, eff)
-    except _simctl.DeviceError as e:
+    except device_errors.DeviceError as e:
         typer.echo(f"could not read the screen to score: {e}")
         raise typer.Exit(1) from None
     result = score(

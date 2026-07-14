@@ -8,31 +8,32 @@ from pathlib import Path
 
 import typer
 
+from bajutsu import device_errors
 from bajutsu import simctl as _simctl
 from bajutsu import usage as _usage
 from bajutsu.agent_factory import make_agent
 from bajutsu.ai import announce_ai
-from bajutsu.backends import ensure_web_runtime, select_actuator
 from bajutsu.claude_agent import MODEL as _RECORD_MODEL
 from bajutsu.cli._shared import (
     DEFAULT_CONFIG,
     _ai_redactor,
-    _backends,
+    _build_alert_guard,
     _install_usage_ledger,
     _load_effective_with_source,
     _refuse_out_in_checkout,
     _require_ai_credential,
     _resolve_browser,
     _resolve_language,
+    _select_actuator_or_exit,
+    _start_launch_server_or_exit,
     _warn_onscreen_secrets,
     _with_headed,
 )
 from bajutsu.cli.handoff import make_handoff
-from bajutsu.config import WEB_ENGINES, Effective, web_engine
+from bajutsu.config import WEB_ENGINES, Effective
 from bajutsu.handoff import HumanHandoffUnavailable
 from bajutsu.record import record as record_loop
 from bajutsu.runner import launch_driver
-from bajutsu.runner.launch_server import start_launch_server
 from bajutsu.scenario import Preconditions, dump_scenarios
 
 
@@ -192,20 +193,10 @@ def record(
     # process; the screenshot is sent as-is — images cannot be pixel-masked (BE-0047).
     redactor = _ai_redactor(eff)
     authoring_agent = make_agent(ai=eff.ai, redactor=redactor)
-    backends = _backends(backend, eff.backend)
-    try:
-        # Auto-install Playwright (and the selected engine's browser) if a web record needs it.
-        ensure_web_runtime(backends, web_engine(eff))
-        actuator = select_actuator(backends)
-    except RuntimeError as e:
-        typer.echo(str(e))
-        raise typer.Exit(2) from None
+    actuator, _ = _select_actuator_or_exit(backend, eff, [])
     alert_guard = None
     if dismiss_alerts:
-        from bajutsu.alerts import ClaudeAlertLocator, SystemAlertGuard
-
-        locator = ClaudeAlertLocator(ai=eff.ai, redactor=redactor)
-        alert_guard = SystemAlertGuard(locator, alert_instruction or None).dismiss
+        alert_guard = _build_alert_guard(eff, redactor, alert_instruction)
     # Web has no simctl udid (launch_driver ignores it for playwright); resolving "booted" would
     # shell out to simctl and crash off-macOS, so skip it for the web backend.
     if actuator != "playwright":
@@ -213,11 +204,7 @@ def record(
 
     # Bring up the app's target server (the web baseUrl host) if it declares launchServer — reused
     # if already serving, started otherwise. Stopped when this command exits (atexit).
-    try:
-        stop_server, _exec_decision = start_launch_server(eff, upload_exec=upload_exec or None)
-    except RuntimeError as e:
-        typer.echo(str(e))
-        raise typer.Exit(2) from None
+    stop_server, _exec_decision = _start_launch_server_or_exit(eff, upload_exec=upload_exec or None)
     atexit.register(stop_server)
 
     # Narrate the otherwise-silent device work (reinstall + boot + launch) so the watcher
@@ -239,7 +226,7 @@ def record(
     )
     try:
         driver, _readiness = launch_driver(udid, eff, actuator, Preconditions(erase=erase))
-    except _simctl.DeviceError as e:
+    except device_errors.DeviceError as e:
         typer.echo(str(e))
         raise typer.Exit(2) from None
     say(f"✅ app is up — authoring toward the goal: {goal!r}")

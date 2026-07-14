@@ -278,11 +278,15 @@ def test_wire_health_web_passes_through_and_wraps_recover() -> None:
     assert any("wedged" in m for m in msgs)  # after reporting the wedge
 
 
-def test_wire_health_ios_builds_alert_guard_clear_blocking() -> None:
+def test_wire_health_ios_builds_alert_guard_clear_blocking(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     # The iOS shape: the platform declines the dialog clearer (returns None) and, with
     # --dismiss-alerts on, `_wire_health` builds the alert guard to supply `clear_blocking`.
-    # Constructing the guard needs no real credential (the guide/guard provider is checked
-    # elsewhere), so this exercises the branch without a Simulator or network.
+    # The shared `_build_alert_guard` (BE-0260) gates the guard on the AI credential — the real
+    # crawl flow has already required it via `_require_ai_credential`, so set it here to exercise
+    # the wiring branch without a Simulator or network.
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test")
     is_alive, clear_blocking, recover = _wire_health(
         _HealthEnv(),  # type: ignore[arg-type]  # all seams None, like iOS
         _eff(),  # type: ignore[arg-type]
@@ -293,3 +297,22 @@ def test_wire_health_ios_builds_alert_guard_clear_blocking() -> None:
     )
     assert is_alive is None and recover is None  # engine default / no platform recovery
     assert clear_blocking is not None  # the alert guard now supplies it
+
+
+def test_wire_health_no_credential_leaves_clear_blocking_unwired(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # BE-0260 alignment: with --dismiss-alerts on but no AI credential, the shared guard no-ops, so
+    # `_wire_health` leaves `clear_blocking` unwired rather than constructing a hosted-fallback
+    # client. (The real crawl flow never reaches here credential-less — `_require_ai_credential`
+    # fails closed first — but the seam degrades gracefully.)
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    _is_alive, clear_blocking, _recover = _wire_health(
+        _HealthEnv(),  # type: ignore[arg-type]  # all seams None, like iOS
+        _eff(),  # type: ignore[arg-type]
+        _redactor(),  # type: ignore[arg-type]
+        dismiss_alerts=True,
+        alert_instruction="",
+        report=lambda _m: None,
+    )
+    assert clear_blocking is None

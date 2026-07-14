@@ -297,7 +297,9 @@ def test_record_writes_the_authored_scenario(
     monkeypatch.setattr("bajutsu.simctl.resolve_udid", lambda u: "FAKE-UDID")
     monkeypatch.setattr(rec, "make_agent", lambda *a, **k: object())
     monkeypatch.setattr(rec, "launch_driver", lambda *a, **k: (object(), None))
-    monkeypatch.setattr(rec, "start_launch_server", lambda *a, **k: (lambda: None, None))
+    monkeypatch.setattr(
+        "bajutsu.cli._shared.start_launch_server", lambda *a, **k: (lambda: None, None)
+    )
     monkeypatch.setattr(rec, "record_loop", lambda *a, **k: authored)
 
     cfg = tmp_path / "bajutsu.config.yaml"
@@ -347,7 +349,9 @@ def test_record_needs_human_handoff_exits_3(
     monkeypatch.setattr("bajutsu.simctl.resolve_udid", lambda u: "FAKE-UDID")
     monkeypatch.setattr(rec, "make_agent", lambda *a, **k: object())
     monkeypatch.setattr(rec, "launch_driver", lambda *a, **k: (object(), None))
-    monkeypatch.setattr(rec, "start_launch_server", lambda *a, **k: (lambda: None, None))
+    monkeypatch.setattr(
+        "bajutsu.cli._shared.start_launch_server", lambda *a, **k: (lambda: None, None)
+    )
 
     def _needs_human(*_a: object, **_k: object) -> object:
         raise HumanHandoffUnavailable("solve the CAPTCHA")
@@ -397,7 +401,9 @@ def test_record_device_error_exits_2(tmp_path: Path, monkeypatch: pytest.MonkeyP
     monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test")  # clear the credential gate
     monkeypatch.setattr("bajutsu.simctl.resolve_udid", lambda u: "FAKE-UDID")
     monkeypatch.setattr(rec, "make_agent", lambda *a, **k: object())
-    monkeypatch.setattr(rec, "start_launch_server", lambda *a, **k: (lambda: None, None))
+    monkeypatch.setattr(
+        "bajutsu.cli._shared.start_launch_server", lambda *a, **k: (lambda: None, None)
+    )
     monkeypatch.setattr(rec, "launch_driver", no_device)
     r = runner.invoke(
         app,
@@ -1217,10 +1223,10 @@ def test_crawl_web_builds_one_browser_lane_per_worker(
 
     _no_dotenv(monkeypatch)
     monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test")  # clear the credential gate (guide is lazy)
-    monkeypatch.setattr("bajutsu.cli.commands.crawl.ensure_web_runtime", lambda *a, **k: None)
-    monkeypatch.setattr("bajutsu.cli.commands.crawl.select_actuator", lambda *a, **k: "playwright")
+    monkeypatch.setattr("bajutsu.cli._shared.ensure_web_runtime", lambda *a, **k: None)
+    monkeypatch.setattr("bajutsu.cli._shared.select_actuator", lambda *a, **k: "playwright")
     monkeypatch.setattr(
-        "bajutsu.cli.commands.crawl.start_launch_server", lambda *a, **k: ((lambda: None), None)
+        "bajutsu.cli._shared.start_launch_server", lambda *a, **k: ((lambda: None), None)
     )
 
     launched = {"n": 0}

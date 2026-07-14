@@ -22,20 +22,21 @@ import subprocess
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 
-from bajutsu import simctl
+from bajutsu import device_errors
 from bajutsu.device_id import is_valid_device_id
 
 # argv -> stdout. adb needs no parent-process env (unlike simctl's SIMCTL_CHILD_*).
 RunFn = Callable[[list[str]], str]
 
 
-class DeviceError(simctl.DeviceError):
+class DeviceError(device_errors.DeviceError):
     """An adb operation failed in a way the user can act on (e.g. no emulator, app not installed).
 
     Carries a clean, actionable message — the CLI surfaces it and exits 2, the same boundary as the
-    iOS device errors. It subclasses `simctl.DeviceError` so the CLI entrypoints that already catch
-    that type (`run` / `crawl` / `audit` / `record`) surface an Android device failure the same way,
-    as a clean exit-2 rather than an unhandled traceback.
+    iOS device errors. The Android-specific subclass of the platform-neutral
+    `device_errors.DeviceError` (BE-0260): the generic CLI entrypoints (`run` / `crawl` / `audit` /
+    `record`) catch that base, so an Android device failure surfaces the same way — a clean exit-2
+    rather than an unhandled traceback — without their handlers importing the iOS `simctl` module.
     """
 
 

@@ -13,18 +13,20 @@ import subprocess
 import tempfile
 from collections.abc import Callable, Mapping, Sequence
 
+from bajutsu import device_errors
 from bajutsu.device_id import is_valid_device_id
 
 # (argv, extra_env) -> stdout
 RunFn = Callable[[list[str], Mapping[str, str] | None], str]
 
 
-class DeviceError(RuntimeError):
+class DeviceError(device_errors.DeviceError):
     """A simctl operation failed in a way the user can act on (e.g. launching an
     app that isn't installed, or an invalid device).
 
-    Carries a clean, actionable message — the CLI surfaces it and exits 2, the
-    same boundary as other device errors, instead of dumping a Python traceback.
+    The iOS-specific subclass of the platform-neutral `device_errors.DeviceError` (BE-0260): a
+    generic handler catches the base, iOS-only code catches this. Carries a clean, actionable
+    message — the CLI surfaces it and exits 2, instead of dumping a Python traceback.
     """
 
 

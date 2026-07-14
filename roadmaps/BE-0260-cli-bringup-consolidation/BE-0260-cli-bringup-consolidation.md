@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0260](BE-0260-cli-bringup-consolidation.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0260") |
+| Implementing PR | [#1033](https://github.com/bajutsu-e2e/bajutsu/pull/1033) |
 | Topic | Codebase quality & technical debt |
 <!-- /BE-METADATA -->
 
@@ -128,11 +129,20 @@ already exist unchanged (module for module) in every command file.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] `_select_actuator_or_exit` in `cli/_shared.py`; `run`, `crawl`, `record`, `audit` migrated
-- [ ] `_start_launch_server_or_exit` in `cli/_shared.py`; `run`, `crawl`, `record`, `audit` migrated
-- [ ] `_build_alert_guard` in `cli/_shared.py`; `run`, `crawl`, `record` migrated
-- [ ] `bajutsu/device_errors.py` with a neutral `DeviceError`; `simctl.DeviceError` and
+- [x] `_select_actuator_or_exit` in `cli/_shared.py`; `run`, `crawl`, `record`, `audit` migrated
+- [x] `_start_launch_server_or_exit` in `cli/_shared.py`; `run`, `crawl`, `record`, `audit` migrated
+- [x] `_build_alert_guard` in `cli/_shared.py`; `run`, `crawl`, `record` migrated (`run` uses the
+      inner `_build_alert_locator` to keep its shared single locator)
+- [x] `bajutsu/device_errors.py` with a neutral `DeviceError`; `simctl.DeviceError` and
       `adb.DeviceError` rebased onto it; generic call sites switched off `bajutsu.simctl`
+
+### Log
+
+- 2026-07-14: implemented all four units ([PR #1033](https://github.com/bajutsu-e2e/bajutsu/pull/1033)). Behavior-preserving refactor except the
+  one deliberate alignment — `_build_alert_guard` gives `crawl`/`record` `run`'s graceful
+  no-op-on-missing-credential (moot in practice: both fail closed via `_require_ai_credential` first).
+  `adb.DeviceError` became a sibling of `simctl.DeviceError`, letting the 10 generic handlers drop
+  their `bajutsu.simctl` import.
 
 ## References
 

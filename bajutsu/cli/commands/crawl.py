@@ -29,22 +29,22 @@ from pathlib import Path
 import typer
 
 from bajutsu import crawl as crawl_engine
-from bajutsu import crawl_flows, crawl_report, crawl_repro
-from bajutsu import simctl as _simctl
+from bajutsu import crawl_flows, crawl_report, crawl_repro, device_errors
 from bajutsu.ai import announce_ai
-from bajutsu.backends import ensure_web_runtime, select_actuator
 from bajutsu.cli._shared import (
     DEFAULT_CONFIG,
     _ai_redactor,
-    _backends,
+    _build_alert_guard,
     _install_usage_ledger,
     _load_effective_with_source,
     _refuse_out_in_checkout,
     _require_ai_credential,
     _resolve_language,
+    _select_actuator_or_exit,
+    _start_launch_server_or_exit,
     _with_headed,
 )
-from bajutsu.config import Effective, web_base_url, web_engine
+from bajutsu.config import Effective, web_base_url
 from bajutsu.crawl_guide import MODEL as _CRAWL_GUIDE_MODEL
 from bajutsu.crawl_guide import Report, make_guide
 from bajutsu.drivers import base
@@ -53,7 +53,6 @@ from bajutsu.record import _clear_blocking
 from bajutsu.redaction import Redactor
 from bajutsu.run_id import new_run_id
 from bajutsu.runner import launch_driver
-from bajutsu.runner.launch_server import start_launch_server
 from bajutsu.scenario import Preconditions
 
 
@@ -186,7 +185,7 @@ def _make_callbacks(
     def on_node(d: base.Driver, node: crawl_engine.Node) -> None:
         try:
             d.screenshot(str(screens_dir / f"{node.fingerprint}.png"))
-        except (OSError, subprocess.CalledProcessError, _simctl.DeviceError) as exc:
+        except (OSError, subprocess.CalledProcessError, device_errors.DeviceError) as exc:
             report(f"⚠️  screenshot failed for {node.fingerprint[:7]}: {exc}")
 
     return on_event, on_node
@@ -225,15 +224,16 @@ def _wire_health(
 
     if clear_blocking is None and dismiss_alerts:
         # The alert guard dismisses unexpected OS prompts the crawl would otherwise read as a crash.
-        from bajutsu.alerts import ClaudeAlertLocator, SystemAlertGuard
-        from bajutsu.orchestrator import RealClock
+        # `_require_ai_credential` has already failed closed, so the guard's credential is
+        # known-present and the shared helper returns a real guard (never the no-op None branch).
+        guard = _build_alert_guard(eff, redactor, alert_instruction)
+        if guard is not None:
+            from bajutsu.orchestrator import RealClock
 
-        locator = ClaudeAlertLocator(ai=eff.ai, redactor=redactor)
-        guard = SystemAlertGuard(locator, alert_instruction or None).dismiss
-        clock = RealClock()
+            clock = RealClock()
 
-        def clear_blocking(d: base.Driver) -> list[str]:
-            return _clear_blocking(d, guard, clock, report=report)
+            def clear_blocking(d: base.Driver) -> list[str]:
+                return _clear_blocking(d, guard, clock, report=report)
 
     return is_alive, clear_blocking, recover
 
@@ -283,13 +283,9 @@ def _execute(plan: _CrawlPlan, guide: crawl_engine.Guide, report: Report) -> cra
     # Bring up the app's target server (the web baseUrl host) if it declares launchServer — reused
     # if already serving, started otherwise (waiting on its readiness probe). Stopped when this
     # command exits (atexit), since the crawl is a single linear flow with no run-style teardown.
-    try:
-        stop_server, _exec_decision = start_launch_server(
-            plan.eff, upload_exec=plan.upload_exec or None
-        )
-    except RuntimeError as e:
-        typer.echo(str(e))
-        raise typer.Exit(2) from None
+    stop_server, _exec_decision = _start_launch_server_or_exit(
+        plan.eff, upload_exec=plan.upload_exec or None
+    )
     atexit.register(stop_server)
 
     workers = len(plan.udids)  # one lane per resolved udid (the pool is already capped)
@@ -319,7 +315,7 @@ def _execute(plan: _CrawlPlan, guide: crawl_engine.Guide, report: Report) -> cra
         # The primary lane is built here (on the main thread): it drives bootstrap and the in-place
         # walk, so its driver lives on this thread. A launch failure surfaces cleanly as exit 2.
         primary = build_lane(plan.udids[0])
-    except _simctl.DeviceError as e:
+    except device_errors.DeviceError as e:
         typer.echo(str(e))
         raise typer.Exit(2) from None
 
@@ -362,7 +358,7 @@ def _execute(plan: _CrawlPlan, guide: crawl_engine.Guide, report: Report) -> cra
             recover=recover,  # web: relaunch a wedged browser so its lane keeps crawling (BE-0077)
             extra_workers=extra_factories,  # built on their own threads (BE-0064 sims / BE-0077 browsers)
         )
-    except _simctl.DeviceError as e:
+    except device_errors.DeviceError as e:
         typer.echo(str(e))
         raise typer.Exit(2) from None
     _write_screenmap(plan.screenmap_path, screen_map)
@@ -497,14 +493,7 @@ def crawl(
     def say(msg: str) -> None:
         typer.echo(msg, err=True)
 
-    backends = _backends(backend, eff.backend)
-    try:
-        # Auto-install Playwright (and the selected engine's browser) if a web crawl needs it.
-        ensure_web_runtime(backends, web_engine(eff))
-        actuator = select_actuator(backends)
-    except RuntimeError as e:
-        typer.echo(str(e))
-        raise typer.Exit(2) from None
+    actuator, _ = _select_actuator_or_exit(backend, eff, [])
     # Fail closed (BE-0097 / BE-0047): the guide and the alert guard both reach the model via the
     # resolved SDK provider (Anthropic / Bedrock / ant), so a missing credential is an actionable
     # error, not a quiet fallback. Placed after backend selection so a config/backend error surfaces
