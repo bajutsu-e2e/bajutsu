@@ -51,7 +51,9 @@ def _request(
 def _state(tmp_path: Path, token: str | None) -> srv.ServeState:
     runs = tmp_path / "runs"
     runs.mkdir()
-    return srv.ServeState(runs_dir=runs, root=tmp_path, cwd=tmp_path, token=token)
+    return srv.ServeState(
+        runs_dir=runs, root=tmp_path, cwd=tmp_path, auth=srv.SessionManager(token=token)
+    )
 
 
 def test_open_when_no_token(tmp_path: Path) -> None:
@@ -247,8 +249,8 @@ def test_oauth_login_redirects_and_sets_state_cookie(tmp_path: Path) -> None:
     # The stdlib handler mirrors the FastAPI app: GET /api/oauth/login 302s to GitHub and stashes
     # the CSRF state in a cookie. Use a raw connection so the 302 isn't auto-followed to github.test.
     state = _state(tmp_path, None)
-    state.oauth = _FakeOAuth()
-    state.oauth_allowed_users = frozenset({"alice"})
+    state.auth.oauth = _FakeOAuth()
+    state.auth.oauth_allowed_users = frozenset({"alice"})
     server, port = _serve(state)
     try:
         conn = http.client.HTTPConnection("127.0.0.1", port)

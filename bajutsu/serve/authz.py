@@ -19,19 +19,19 @@ from bajutsu.serve.state import _DEFAULT_ORG, ServeState
 def login(state: ServeState, token: str) -> tuple[Any, int, str | None]:
     """Validate the shared token and, on success, mint a session id for the shell to set as a
     cookie. Returns ``(payload, status, session_id | None)``."""
-    if not state.check_token(token):
+    if not state.auth.check_token(token):
         return {"error": "invalid token"}, 401, None
-    return {"ok": True}, 200, state.issue_session()
+    return {"ok": True}, 200, state.auth.issue_session()
 
 
 def oauth_login(state: ServeState) -> tuple[Any, int, str | None]:
     """Begin GitHub OAuth (BE-0015 7b-2). Returns the authorize URL to redirect to plus a fresh CSRF
     *state* value the transport sets as a short-lived cookie and compares on callback. 404 when OAuth
     is not configured. Returns ``(payload, status, state | None)``."""
-    if state.oauth is None:
+    if state.auth.oauth is None:
         return {"error": "oauth not configured"}, 404, None
     csrf = secrets.token_urlsafe(24)
-    return {"redirect": state.oauth.authorize_url(csrf)}, 200, csrf
+    return {"redirect": state.auth.oauth.authorize_url(csrf)}, 200, csrf
 
 
 def oauth_callback(
@@ -41,12 +41,12 @@ def oauth_callback(
     cookie), exchange the code for a GitHub identity (login + org memberships), check the login
     against the allowlist, persist the user under their resolved org, and on success mint a session
     bound to that login. Returns ``(payload, status, session_id | None)``."""
-    if state.oauth is None:
+    if state.auth.oauth is None:
         return {"error": "oauth not configured"}, 404, None
     if not (state_param and state_cookie and secrets.compare_digest(state_param, state_cookie)):
         return {"error": "invalid oauth state"}, 403, None
     try:
-        identity = state.oauth.fetch_identity(code)
+        identity = state.auth.oauth.fetch_identity(code)
     except Exception:
         # The exchange talks to GitHub (network / token parsing); a failure is an upstream error,
         # not a 500 — surface it as a clean 502 rather than a traceback.
@@ -54,7 +54,7 @@ def oauth_callback(
     if identity is None or not identity.login:
         return {"error": "oauth exchange failed"}, 403, None
     login = identity.login
-    if login not in state.oauth_allowed_users:
+    if login not in state.auth.oauth_allowed_users:
         return {"error": "user not allowed"}, 403, None
     if state.repository is not None:
         # Persist the identity into the system of record, so audit entries and RBAC can reference
@@ -70,9 +70,9 @@ def oauth_callback(
             email=f"{login}@users.noreply.github.com",
             # Recompute the role from the env policy on every login, so changing the policy takes
             # effect on next login without a data migration (BE-0015 7c-2).
-            role=role_for(login, admins=state.oauth_admins, viewers=state.oauth_viewers),
+            role=role_for(login, admins=state.auth.oauth_admins, viewers=state.auth.oauth_viewers),
         )
-    return {"ok": True, "user": login}, 200, state.issue_session(identity=login)
+    return {"ok": True, "user": login}, 200, state.auth.issue_session(identity=login)
 
 
 def _org_for_login(state: ServeState, login: str, github_orgs: list[str]) -> str:

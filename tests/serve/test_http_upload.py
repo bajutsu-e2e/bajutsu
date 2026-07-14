@@ -86,7 +86,7 @@ def _state(
         root=tmp_path,
         uploads_dir=tmp_path / "uploads",
         popen=popen or fake_popen(["PASS  runs/up-1/manifest.json\n"]),
-        token=token,
+        auth=srv.SessionManager(token=token),
         object_store=object_store,
         object_store_prefix=object_store_prefix,
     )

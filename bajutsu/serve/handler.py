@@ -150,10 +150,10 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
             """A request is authorized by a valid `Authorization: Bearer <token>` header (API
             clients) or a valid session cookie (the browser, after POST /api/login)."""
             auth = self.headers.get("Authorization", "")
-            if auth.startswith("Bearer ") and state.check_token(auth[len("Bearer ") :]):
+            if auth.startswith("Bearer ") and state.auth.check_token(auth[len("Bearer ") :]):
                 return True
             morsel = SimpleCookie(self.headers.get("Cookie", "")).get(_SESSION_COOKIE)
-            return morsel is not None and state.valid_session(morsel.value)
+            return morsel is not None and state.auth.valid_session(morsel.value)
 
         def _gate(self) -> bool:
             """Authentication gate (BE-0051). With no token configured the server is open
@@ -170,7 +170,7 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
                 self.close_connection = True
                 self._json({"error": "host not allowed"}, 403)
                 return False
-            if state.token is None:
+            if state.auth.token is None:
                 return True
             path = urlparse(self.path).path
             if self.command == "GET" and path in (
@@ -213,7 +213,7 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
             """The GitHub login bound to this request's session, if any — used to attribute audit
             entries (BE-0015 7c). None for a token/Bearer request or no session."""
             morsel = SimpleCookie(self.headers.get("Cookie", "")).get(_SESSION_COOKIE)
-            return state.sessions.identity(morsel.value) if morsel is not None else None
+            return state.auth.sessions.identity(morsel.value) if morsel is not None else None
 
         def do_GET(self) -> None:
             oplog.bind_request(oplog.new_request_id())

@@ -186,7 +186,7 @@ def test_build_state_local_uses_in_memory_sessions(tmp_path: Path) -> None:
     # Local sessions stay in-memory (a restart drops them), so its behavior is unchanged.
     from bajutsu.serve.sessions import InMemorySessionStore
 
-    assert isinstance(_state(tmp_path).sessions, InMemorySessionStore)
+    assert isinstance(_state(tmp_path).auth.sessions, InMemorySessionStore)
 
 
 def test_build_state_server_uses_sql_sessions_when_db_is_configured(
@@ -212,7 +212,7 @@ def test_build_state_server_uses_sql_sessions_when_db_is_configured(
         token=None,
         backend="server",
     )
-    assert isinstance(state.sessions, SqlSessionStore)
+    assert isinstance(state.auth.sessions, SqlSessionStore)
 
 
 def test_build_state_server_falls_back_to_in_memory_sessions_without_db(
@@ -235,14 +235,14 @@ def test_build_state_server_falls_back_to_in_memory_sessions_without_db(
         token=None,
         backend="server",
     )
-    assert isinstance(state.sessions, InMemorySessionStore)
+    assert isinstance(state.auth.sessions, InMemorySessionStore)
 
 
 def test_build_state_local_has_no_oauth(tmp_path: Path) -> None:
     # OAuth is server-only; local never has it (token auth only), so behavior is unchanged.
     state = _state(tmp_path)
-    assert state.oauth is None
-    assert state.oauth_allowed_users == frozenset()
+    assert state.auth.oauth is None
+    assert state.auth.oauth_allowed_users == frozenset()
 
 
 def test_build_state_server_wires_oauth_when_configured(
@@ -270,8 +270,8 @@ def test_build_state_server_wires_oauth_when_configured(
         token=None,
         backend="server",
     )
-    assert isinstance(state.oauth, GitHubOAuthClient)
-    assert state.oauth_allowed_users == frozenset({"alice", "bob"})
+    assert isinstance(state.auth.oauth, GitHubOAuthClient)
+    assert state.auth.oauth_allowed_users == frozenset({"alice", "bob"})
 
 
 def test_build_state_server_parses_the_rbac_role_policy(
@@ -293,8 +293,8 @@ def test_build_state_server_parses_the_rbac_role_policy(
         token=None,
         backend="server",
     )
-    assert state.oauth_admins == frozenset({"root", "ops"})
-    assert state.oauth_viewers == frozenset({"guest"})
+    assert state.auth.oauth_admins == frozenset({"root", "ops"})
+    assert state.auth.oauth_viewers == frozenset({"guest"})
 
 
 def test_build_state_server_parses_the_per_user_quota(
@@ -357,7 +357,7 @@ def test_build_state_server_has_no_oauth_without_the_env(
         token=None,
         backend="server",
     )
-    assert state.oauth is None
+    assert state.auth.oauth is None
 
 
 def test_build_state_server_requires_a_server_store(

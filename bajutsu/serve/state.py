@@ -160,7 +160,7 @@ class ProviderSettings:
     Scopes the fields to the provider they belong to, so switching the Settings dropdown no longer
     overwrites what was set for the provider left behind. `region` applies to `bedrock` only; the
     SDK/CLI providers leave it empty. Held in memory and materialized into env vars; on local serve
-    it is also persisted through `provider_settings_store` so a saved choice survives a restart
+    it is also persisted through `ProviderSettingsManager.store` so a saved choice survives a restart
     (BE-0184).
     """
 
@@ -283,6 +283,130 @@ class JobRegistry:
 
 
 @dataclass
+class SessionManager:
+    """The authentication cluster carved out of `ServeState` (BE-0248): the shared token, the login
+    sessions, and the GitHub OAuth configuration, plus the "is this request authenticated, and as
+    whom" methods that read them. Grouping them behind one boundary answers that question in one
+    place, exactly as `JobRegistry` (BE-0198) did for job registration.
+
+    `token` is the optional shared token (None = open, the loopback-only legacy behavior); a login
+    exchanges it for an opaque session id held by `sessions` — the token itself never lives in the
+    browser. `sessions` is a swappable `SessionStore` seam (in-memory by default; a server backend
+    swaps in a Redis/SQL store, BE-0015 7b). `oauth` is the GitHub OAuth client (None = OAuth not
+    configured); `oauth_allowed_users` is the login allowlist, and `oauth_admins` / `oauth_viewers`
+    the RBAC role policy read by `authz.py` (BE-0015 7b-2/7c-2). The OAuth fields are fixed at server
+    construction and never change after, so they travel with the token/session state they gate.
+    """
+
+    token: str | None = None
+    sessions: SessionStore = field(default_factory=InMemorySessionStore)
+    oauth: OAuthClient | None = None
+    oauth_allowed_users: frozenset[str] = frozenset()
+    oauth_admins: frozenset[str] = frozenset()
+    oauth_viewers: frozenset[str] = frozenset()
+
+    def check_token(self, candidate: str) -> bool:
+        """Constant-time compare of a presented token against the configured one."""
+        return self.token is not None and secrets.compare_digest(candidate, self.token)
+
+    def issue_session(self, identity: str | None = None) -> str:
+        """Mint and remember a new opaque session id (returned to set as a cookie at login),
+        optionally bound to *identity* (the GitHub login from an OAuth login)."""
+        return self.sessions.issue(identity)
+
+    def valid_session(self, sid: str) -> bool:
+        """Whether *sid* is a known, live session id."""
+        return self.sessions.valid(sid)
+
+
+@dataclass
+class ProviderSettingsManager:
+    """The per-org AI-provider-settings cluster carved out of `ServeState` (BE-0248): the in-memory
+    selection map, its durable store, the two locks that guard them, and the read/write methods —
+    the in-memory half of the per-org provider selection (BE-0229). Giving it a boundary makes the
+    copy-on-read/copy-on-write discipline a property of this type rather than a convention spread
+    across three method bodies, the way `JobRegistry` (BE-0198) made atomic id assignment a property
+    of its boundary.
+
+    `settings` maps an org to its `OrgProviderSettings`; `store` is the `default` org's durable
+    backing on local serve (None on a hosted deployment, whose per-org stores come from `org_stores`,
+    and on a server backend without a database — the selection is then session-only). `_provider_lock`
+    guards the in-memory map against concurrent Settings-panel reads/writes (serve is a
+    ThreadingHTTPServer); `_persist_lock` serializes the re-snapshot + disk write in `persist`, kept
+    separate so I/O never runs inside the in-memory lock.
+    """
+
+    settings: dict[str, OrgProviderSettings] = field(default_factory=dict)
+    store: ProviderSettingsStore | None = None
+    _provider_lock: threading.Lock = field(default_factory=threading.Lock)
+    _persist_lock: threading.Lock = field(default_factory=threading.Lock)
+
+    def org_provider_settings(self, org: str) -> OrgProviderSettings | None:
+        """A copy of *org*'s AI provider selection, or None when the org has no in-memory entry yet
+        (BE-0229). Taken under the lock — serve is a ThreadingHTTPServer, so a bare read could race a
+        concurrent `set_org_provider_choice` write. Returns a copy (the slots dict too) so the caller
+        can never mutate the live entry. None means "not loaded"; the operations layer lazily loads
+        it from the org's store on first access."""
+        with self._provider_lock:
+            current = self.settings.get(org)
+            if current is None:
+                return None
+            return OrgProviderSettings(
+                provider=current.provider,
+                slots=dict(current.slots),
+                language=current.language,
+            )
+
+    def put_org_provider_settings(self, org: str, settings: OrgProviderSettings) -> None:
+        """Seed *org*'s in-memory entry from a freshly loaded snapshot (BE-0229), under the lock.
+        Stores an independent copy so a later store reload can't alias a live entry."""
+        with self._provider_lock:
+            self.settings[org] = OrgProviderSettings(
+                provider=settings.provider,
+                slots=dict(settings.slots),
+                language=settings.language,
+            )
+
+    def set_org_provider_choice(
+        self, org: str, *, provider: str, slot: ProviderSettings, language: str
+    ) -> None:
+        """Apply one save to *org*'s selection under the lock (BE-0229): set the active *provider*,
+        store its *slot* (BE-0183), and set the org-wide output *language* (BE-0188). The slot is
+        written into the existing entry in place, so a provider left behind keeps its remembered slot
+        — and a concurrent save for a *different* provider adds its own slot rather than clobbering
+        this one (mirroring the pre-BE-0229 per-key map write). The active provider and language are
+        last-writer-wins, as they were process-globally. Assumes the org's persisted slots are
+        already loaded (the caller loads them first) so this never drops them."""
+        with self._provider_lock:
+            current = self.settings.get(org)
+            if current is None:
+                current = OrgProviderSettings()
+                self.settings[org] = current
+            current.slots[provider] = slot
+            current.provider = provider
+            current.language = language
+
+    def persist(self, org: str, provider: str, store: ProviderSettingsStore) -> None:
+        """Write *provider* + *org*'s current in-memory slot map to *store* (BE-0229), serialized by
+        `_persist_lock` so whichever thread wins the lock last re-reads the org's settings inside it
+        and writes the most up-to-date map. Keeping the lock inside this method is what lets the one
+        out-of-package caller (`operations/config.py`'s `_persist_provider_settings`) drive the write
+        without reaching into the manager's locks directly. Store resolution, failure handling, and
+        the persisted/not-persisted signaling stay with that caller — this owns only the race-safe
+        re-snapshot and the write."""
+        # Imported lazily: `provider_store` imports `ProviderSettings` from this module, so a
+        # top-level import here would be a cycle (the same reason `_env_var_for_secret` imports late).
+        from bajutsu.serve.provider_store import PersistedProviderSettings
+
+        with self._persist_lock:
+            # Re-read inside the lock so the thread that wins last always writes the most recent
+            # in-memory state, regardless of when each thread's mutation was applied.
+            snapshot = self.org_provider_settings(org)
+            slots = snapshot.slots if snapshot is not None else {}
+            store.save(PersistedProviderSettings(provider=provider, settings=slots))
+
+
+@dataclass
 class ServeState:
     runs_dir: Path
     config: Path | None = None  # None until a config is opened from the UI
@@ -381,43 +505,21 @@ class ServeState:
     # backend sets it from BAJUTSU_MAX_CONCURRENT_PER_ORG. Every job carries an org, so this needs no
     # exemption — an operator opts in only when running multiple orgs.
     max_concurrent_per_org: int = 0
-    # Optional shared token (BE-0051). None = open (loopback-only legacy behavior); when set, every
-    # request must authenticate. Login exchanges it for an opaque session id held by the `sessions`
-    # seam below — the shared token itself never lives in the browser.
-    token: str | None = None
-    # Login sessions (BE-0051). Default in-memory (a restart drops them); a server backend swaps in
-    # a Redis-backed store so sessions survive restarts and span control-plane processes (BE-0015
-    # 7b). The shared token itself never lives in the browser — only an opaque session id does.
-    sessions: SessionStore = field(default_factory=InMemorySessionStore)
-    # GitHub OAuth login (BE-0015 7b-2). None = OAuth not configured (shared-token auth only); a
-    # server backend with the OAuth env set injects a client. `oauth_allowed_users` is the GitHub
-    # login allowlist — only these may log in. Both string-annotated/lazy so the default path is
-    # OAuth-free. Identity from a successful login is bound to the session.
-    oauth: OAuthClient | None = None
-    oauth_allowed_users: frozenset[str] = frozenset()
-    # RBAC role policy (BE-0015 7c-2): logins to grant admin / viewer; everyone else allowed is an
-    # editor. Recomputed into each user's stored role on login.
-    oauth_admins: frozenset[str] = frozenset()
-    oauth_viewers: frozenset[str] = frozenset()
+    # Authentication cluster (BE-0248): the shared token, the login sessions, and the GitHub OAuth
+    # configuration + the "authenticated as whom" methods, carved into `SessionManager` (BE-0051 /
+    # BE-0015 7b). `ServeState` holds one and the transport/authz layers read through `state.auth`.
+    auth: SessionManager = field(default_factory=SessionManager)
     # Per-org store factory (BE-0015 multi-tenancy). None on local serve (one tenant); a server
     # backend sets a closure that builds object stores prefixed for the given org. `for_org` falls
     # back to the default stores when unset, so local behavior is unchanged.
     org_stores: Callable[[str], StoreBundle] | None = None
     capture: CaptureSession | None = None
-    # AI provider selection the Settings panel reads/writes, keyed by org (BE-0229) — the per-org
-    # replacement for the single process-global selection. Each org's `OrgProviderSettings` holds its
-    # active provider, its per-provider model/effort/region slots (BE-0183), and its output language
-    # (BE-0188), so a hosted multi-tenant serve resolves these per organization instead of sharing one
-    # choice. Loaded lazily from the org's store on first access; a request/job resolves its env
-    # overlay from the requesting org's entry rather than a shared `os.environ`. Local serve has the
-    # single `default` org, so this is one entry — exactly today's shape.
-    provider_settings: dict[str, OrgProviderSettings] = field(default_factory=dict)
-    # Durable backing for the `default` org's `provider_settings` on local serve (BE-0184): a
-    # file-backed store so a saved choice survives a restart. `for_org(default)` exposes it as the
-    # bundle's `provider_settings` seam, so the operations layer reads/writes it uniformly with the
-    # hosted per-org store. None on a hosted deployment (its per-org stores come from `org_stores`)
-    # and on a server backend without a database (the selection is then session-only in-memory).
-    provider_settings_store: ProviderSettingsStore | None = None
+    # Per-org AI provider settings (BE-0229), carved into `ProviderSettingsManager` (BE-0248): the
+    # in-memory selection map, its durable local store, and the copy-on-read/copy-on-write methods
+    # the Settings panel reads/writes. `ServeState` holds one and the operations layer reaches it as
+    # `state.providers`; `for_org(default)` exposes its `store` as the bundle's `provider_settings`
+    # seam so the operations layer reads/writes it uniformly with the hosted per-org store.
+    providers: ProviderSettingsManager = field(default_factory=ProviderSettingsManager)
     # The in-flight `ant auth login` subprocess (BE-0175), or None when no sign-in is running. Held
     # between the POST that starts it and the GET that polls it, so a second click doesn't spawn a
     # duplicate. Local serve only — a hosted deployment refuses the operation, so this stays None
@@ -446,14 +548,6 @@ class ServeState:
     # enforcement. Built in __post_init__ once `logbus` is resolved; `ServeState` forwards the
     # registration/counting surface to it and exposes `jobs` as a read-through of its dict.
     job_registry: JobRegistry = field(init=False)
-    # Guards the `provider_settings` dict against concurrent Settings-panel reads/writes (serve is a
-    # ThreadingHTTPServer). Named for what it protects — the job registry carries its own lock.
-    _provider_lock: threading.Lock = field(default_factory=threading.Lock)
-    # Serializes the re-snapshot + disk write in `_persist_provider_settings` (BE-0184). Kept
-    # separate from `_provider_lock` so I/O never runs inside the in-memory lock. A thread that wins
-    # this lock last re-reads the org's settings (`org_provider_settings`) inside it and therefore
-    # always writes the most up-to-date state — see `_persist_provider_settings` for the full reasoning.
-    _persist_lock: threading.Lock = field(default_factory=threading.Lock)
 
     def __post_init__(self) -> None:
         # serve's own launch directory, captured before any config bind repoints `cwd` at a Git
@@ -522,65 +616,8 @@ class ServeState:
             self.scenarios,
             self.baselines,
             self.secrets,
-            self.provider_settings_store,
+            self.providers.store,
         )
-
-    def check_token(self, candidate: str) -> bool:
-        """Constant-time compare of a presented token against the configured one."""
-        return self.token is not None and secrets.compare_digest(candidate, self.token)
-
-    def issue_session(self, identity: str | None = None) -> str:
-        """Mint and remember a new opaque session id (returned to set as a cookie at login),
-        optionally bound to *identity* (the GitHub login from an OAuth login)."""
-        return self.sessions.issue(identity)
-
-    def valid_session(self, sid: str) -> bool:
-        return self.sessions.valid(sid)
-
-    def org_provider_settings(self, org: str) -> OrgProviderSettings | None:
-        """A copy of *org*'s AI provider selection, or None when the org has no in-memory entry yet
-        (BE-0229). Taken under the lock — serve is a ThreadingHTTPServer, so a bare read could race a
-        concurrent `set_org_provider_choice` write. Returns a copy (the slots dict too) so the caller
-        can never mutate the live entry. None means "not loaded"; the operations layer lazily loads
-        it from the org's store on first access."""
-        with self._provider_lock:
-            current = self.provider_settings.get(org)
-            if current is None:
-                return None
-            return OrgProviderSettings(
-                provider=current.provider,
-                slots=dict(current.slots),
-                language=current.language,
-            )
-
-    def put_org_provider_settings(self, org: str, settings: OrgProviderSettings) -> None:
-        """Seed *org*'s in-memory entry from a freshly loaded snapshot (BE-0229), under the lock.
-        Stores an independent copy so a later store reload can't alias a live entry."""
-        with self._provider_lock:
-            self.provider_settings[org] = OrgProviderSettings(
-                provider=settings.provider,
-                slots=dict(settings.slots),
-                language=settings.language,
-            )
-
-    def set_org_provider_choice(
-        self, org: str, *, provider: str, slot: ProviderSettings, language: str
-    ) -> None:
-        """Apply one save to *org*'s selection under the lock (BE-0229): set the active *provider*,
-        store its *slot* (BE-0183), and set the org-wide output *language* (BE-0188). The slot is
-        written into the existing entry in place, so a provider left behind keeps its remembered slot
-        — and a concurrent save for a *different* provider adds its own slot rather than clobbering
-        this one (mirroring the pre-BE-0229 per-key map write). The active provider and language are
-        last-writer-wins, as they were process-globally. Assumes the org's persisted slots are
-        already loaded (the caller loads them first) so this never drops them."""
-        with self._provider_lock:
-            current = self.provider_settings.get(org)
-            if current is None:
-                current = OrgProviderSettings()
-                self.provider_settings[org] = current
-            current.slots[provider] = slot
-            current.provider = provider
-            current.language = language
 
     def active_jobs(self) -> int:
         """How many spawned jobs are still running (not yet finished). Delegates to the registry."""

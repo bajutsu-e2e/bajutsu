@@ -1,11 +1,12 @@
 """Tests for the bajutsu serve AI-provider endpoint (/api/provider), real ThreadingHTTPServer.
 
-Since BE-0229 the endpoint stores the selection *per organization* (`ServeState.provider_settings`
-keyed by org) and materializes it into a per-job env overlay at dispatch — never into the shared
-`os.environ` — so a hosted, multi-tenant serve resolves provider/model/effort per org instead of
+Since BE-0229 the endpoint stores the selection *per organization*
+(`ProviderSettingsManager.settings` keyed by org, held as `ServeState.providers`) and
+materializes it into a per-job env overlay at dispatch — never into the shared `os.environ`
+— so a hosted, multi-tenant serve resolves provider/model/effort per org instead of
 one operator's save changing everyone's AI runs. These tests assert the selection round-trips
-through GET and resolves into the org's overlay (`resolve_provider_env`), and crucially that the
-process env is never written (the tenant-isolation guarantee).
+through GET and resolves into the org's overlay (`resolve_provider_env`), and crucially that
+the process env is never written (the tenant-isolation guarantee).
 """
 
 from __future__ import annotations
