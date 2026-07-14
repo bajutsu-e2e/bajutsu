@@ -47,7 +47,7 @@ _RELEVANT = re.compile(
     # serve-only PR. A new top-level module defaults to NOT triggering; add it here when it becomes
     # on-device-relevant.
     r"|bajutsu/(?:"
-    r"_yaml|adb|agent_protocols|artifact_perms|assertions|backends|capabilities|capability_preflight"
+    r"_yaml|adb|agent_protocols|artifact_perms|backends|capabilities|capability_preflight"
     r"|config|config_source|device_id|dom|dotenv|elements|evidence|golden"
     r"|handoff|idb_version|interp|intervals|mailbox|network|platform_lifecycle|record"
     r"|redaction|run_id|screenshots|simctl|totp|visual|web_network|webview"
@@ -57,6 +57,10 @@ _RELEVANT = re.compile(
     # imports both `core` and `serialize`); the `guide`/`report`/`repro`/`flows`/`tabs` siblings are
     # periphery the on-device run never imports, so the package as a whole is *not* swept.
     r"|bajutsu/crawl/(?:core|serialize|__init__)\.py$"
+    # assertions is a package (BE-0250) whose every module is on the on-device run path (the
+    # dispatcher, UI/network/visual/schema evaluators), so the whole package is swept — unlike
+    # crawl, none of its siblings are periphery the run never imports.
+    r"|bajutsu/assertions/"
     r"|bajutsu/cli/__init__\.py$"
     r"|bajutsu/cli/_shared\.py$"
     r"|bajutsu/cli/commands/__init__\.py$"
