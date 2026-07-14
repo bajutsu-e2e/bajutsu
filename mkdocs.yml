@@ -63,8 +63,10 @@ markdown_extensions:
   - pymdownx.highlight
   # The `mermaid` custom fence lets mkdocs-material render ```mermaid blocks client-side (the
   # theme bundles the JS), matching how GitHub already renders the same fences natively — so a
-  # diagram's mermaid source (kept in the page for editability, usually collapsed behind a
-  # <details> alongside a pre-rendered SVG) looks the same in both places.
+  # The `mermaid` custom fence lets mkdocs-material render ```mermaid blocks client-side (the
+  # theme bundles the JS), matching how GitHub already renders the same fences natively — so a
+  # diagram's mermaid source (kept in the page for editability) looks the same in both places. A
+  # follow-up will pair each diagram with a checked-in SVG render behind a collapsed <details>.
   - pymdownx.superfences:
       custom_fences:
         - name: mermaid
