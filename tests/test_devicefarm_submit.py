@@ -22,6 +22,7 @@ import yaml
 from scripts.devicefarm_submit import (
     DeviceFarmError,
     Verdict,
+    _safe_extract,
     build_package,
     render_test_spec,
     submit_and_collect,
@@ -175,6 +176,36 @@ def test_verdict_fails_loud_when_a_manifest_is_unreadable(tmp_path: Path) -> Non
     assert not v.ok
     assert v.total >= 1
     assert any("manifest.json" in f for f in v.failures)
+
+
+# ---------------------------------------------------------------------------
+# _safe_extract (zip-slip guard on downloaded artifacts)
+# ---------------------------------------------------------------------------
+
+
+def test_safe_extract_extracts_a_benign_artifact(tmp_path: Path) -> None:
+    # A well-formed artifact zip extracts normally under `dest`.
+    zip_path = tmp_path / "artifact.zip"
+    with zipfile.ZipFile(zip_path, "w") as zf:
+        zf.writestr("runs/20260714/manifest.json", '{"scenarios": []}')
+    dest = tmp_path / "out"
+    dest.mkdir()
+    with zipfile.ZipFile(zip_path) as zf:
+        _safe_extract(zf, dest)
+    assert (dest / "runs" / "20260714" / "manifest.json").read_text() == '{"scenarios": []}'
+
+
+def test_safe_extract_rejects_a_traversal_member(tmp_path: Path) -> None:
+    # A crafted `../escape` member must be rejected loud (DeviceFarmError) and never written outside
+    # `dest` — a zip-slip attempt from a compromised artifact source must not escape the run dir.
+    zip_path = tmp_path / "malicious.zip"
+    with zipfile.ZipFile(zip_path, "w") as zf:
+        zf.writestr("../escape.txt", "pwned")
+    dest = tmp_path / "out"
+    dest.mkdir()
+    with zipfile.ZipFile(zip_path) as zf, pytest.raises(DeviceFarmError, match="unsafe path"):
+        _safe_extract(zf, dest)
+    assert not (tmp_path / "escape.txt").exists()
 
 
 # ---------------------------------------------------------------------------

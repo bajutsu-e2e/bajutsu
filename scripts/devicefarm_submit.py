@@ -156,7 +156,9 @@ def build_package(entries: Sequence[tuple[Path, str]], out_zip: Path) -> Path:
                 raise DeviceFarmError(f"package source not found: {source}")
             if source.is_dir():
                 for path in sorted(source.rglob("*")):
-                    if path.is_file():
+                    # Skip symlinks so a link pointing outside the source tree can't pull in
+                    # unintended files (mirrors `archive_run_dir`'s guard, BE-0060).
+                    if path.is_file() and not path.is_symlink():
                         zf.write(path, f"{arcname}/{path.relative_to(source).as_posix()}")
             else:
                 zf.write(source, arcname)
@@ -444,6 +446,25 @@ def main(argv: Sequence[str] | None = None) -> int:
     return 0 if verdict.ok else 1
 
 
+def _safe_extract(zip_file: zipfile.ZipFile, dest: Path) -> None:
+    """Extract every member of *zip_file* into *dest*, confining each to *dest* (zip-slip guard).
+
+    The artifact zip comes from Device Farm's presigned URL; a member with a ``../`` or absolute
+    name would otherwise let ``extractall`` write outside *dest*. Each member is resolved and
+    checked to land strictly under *dest* before extracting (mirrors `serve.uploads.extract_bundle`).
+
+    Raises:
+        DeviceFarmError: If any member resolves outside *dest* — fail loud rather than write astray.
+    """
+    dest_root = dest.resolve()
+    for member in zip_file.infolist():
+        target = (dest / member.filename).resolve()
+        if target != dest_root and dest_root not in target.parents:
+            raise DeviceFarmError(f"unsafe path in Device Farm artifact: {member.filename!r}")
+    # Every member was validated to land under `dest` in the loop above, so extractall is safe here.
+    zip_file.extractall(dest)
+
+
 class _HttpTransfer:
     """The real presigned-URL transfer over urllib — used by `main`, replaced by a fake in tests."""
 
@@ -461,7 +482,7 @@ class _HttpTransfer:
         with urllib.request.urlopen(url, timeout=300) as response:  # noqa: S310 - Device Farm presigned https URL
             payload = response.read()
         with zipfile.ZipFile(io.BytesIO(payload)) as zf:
-            zf.extractall(dest)
+            _safe_extract(zf, dest)
 
 
 if __name__ == "__main__":
