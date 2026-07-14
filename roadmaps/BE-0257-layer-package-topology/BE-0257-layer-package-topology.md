@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0257") |
-| Implementing PR | [#1045](https://github.com/bajutsu-e2e/bajutsu/pull/1045) |
+| Implementing PR | [#1045](https://github.com/bajutsu-e2e/bajutsu/pull/1045), [#1052](https://github.com/bajutsu-e2e/bajutsu/pull/1052) |
 | Topic | Codebase quality & technical debt |
 | Related | [BE-0112](../BE-0112-layer-boundary-enforcement/BE-0112-layer-boundary-enforcement.md), [BE-0135](../BE-0135-module-naming-debt/BE-0135-module-naming-debt.md), [BE-0092](../BE-0092-crawl-coordinator-extraction/BE-0092-crawl-coordinator-extraction.md) |
 <!-- /BE-METADATA -->
@@ -146,7 +146,7 @@ packaging lands, stage by stage.
   `uiautomator` + a re-export `__init__`), collapsed the three codegen import-linter entries to a
   single `bajutsu.codegen`, and retargeted the `Makefile`/`e2e_changes.py`/e2e-workflow path filters
   and the bilingual docs at the package.
-- 2026-07-14 ([#NNN](https://github.com/bajutsu-e2e/bajutsu/pull/NNN)): stage 2 — moved the flat
+- 2026-07-14 ([#1052](https://github.com/bajutsu-e2e/bajutsu/pull/1052)): stage 2 — moved the flat
   `crawl*.py` modules into a `bajutsu/crawl/` package (`core` engine + `flows`/`guide`/`report`/
   `repro`/`tabs` + a re-export `__init__`), and extracted the `Action`/`ScreenMap` (de)serialization
   group into `crawl/serialize.py`. Retargeted the `bajutsu.crawl_guide` import-linter entry to
