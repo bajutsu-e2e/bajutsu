@@ -172,9 +172,11 @@ def test_wait_skips_sleep_when_query_exceeds_poll_interval() -> None:
             return []
 
     w = Wait.model_validate({"for": {"id": "target"}, "timeout": 5.0})
-    ok, reason = _wait(SlowQueryDriver(), w, clock)  # type: ignore[arg-type]
+    ok, reason, tree = _wait(SlowQueryDriver(), w, clock)  # type: ignore[arg-type]
     assert ok
     assert reason == ""
+    # the settled tree (the poll where the target appeared) is handed back for reuse (BE-0259)
+    assert tree == [el("target", "T")]
     # query cost > _POLL -> no extra sleep needed
     assert all(s < 0.01 for s in sleeps), f"expected near-zero sleeps, got {sleeps}"
 
@@ -314,9 +316,11 @@ def test_wait_records_trace_on_timeout_for_diagnosis() -> None:
     clock = _LogicalClock()
     trace = WaitTrace()
     w = Wait.model_validate({"for": {"id": "target"}, "timeout": 2.0})
-    ok, reason = _wait(driver_for(clock), w, clock, trace=trace)
+    ok, reason, tree = _wait(driver_for(clock), w, clock, trace=trace)
     assert not ok
     assert "timeout" in reason
+    # even on timeout the last-seen tree is handed back (the diagnostic reuses it — BE-0259)
+    assert tree == [el("a", "A"), el("b", "B")]
     assert trace.target and trace.target in reason  # the awaited selector, as the reason renders it
     assert trace.timeout_s == 2.0
     assert trace.polls >= 2
@@ -339,8 +343,9 @@ def test_wait_trace_stays_empty_when_tree_never_renders() -> None:
     clock = _LogicalClock()
     trace = WaitTrace()
     w = Wait.model_validate({"for": {"id": "target"}, "timeout": 1.0})
-    ok, _reason = _wait(Empty(), w, clock, trace=trace)  # type: ignore[arg-type]
+    ok, _reason, tree = _wait(Empty(), w, clock, trace=trace)  # type: ignore[arg-type]
     assert not ok
+    assert tree == []  # the (empty) tree is still handed back, never None, for a `for` wait
     assert trace.first_nonempty_s is None
     assert trace.elements_at_timeout == 0
 
@@ -357,14 +362,14 @@ def test_wait_floor_env_extends_the_ceiling(monkeypatch) -> None:  # type: ignor
 
     # Without the floor, the 5s ceiling times out before the slow renderer draws the element.
     clock = _LogicalClock()
-    ok, reason = _wait(_slow_render_driver(clock, reveal_at), w, clock)
+    ok, reason, _ = _wait(_slow_render_driver(clock, reveal_at), w, clock)
     assert not ok
     assert "timeout" in reason
 
     # The Android lane opts in to a larger floor, so the same 5s scenario tolerates the slow draw.
     monkeypatch.setenv("BAJUTSU_MIN_WAIT_TIMEOUT", "15")
     clock2 = _LogicalClock()
-    ok2, reason2 = _wait(_slow_render_driver(clock2, reveal_at), w, clock2)
+    ok2, reason2, _ = _wait(_slow_render_driver(clock2, reveal_at), w, clock2)
     assert ok2
     assert reason2 == ""
 
@@ -378,7 +383,7 @@ def test_wait_floor_never_shrinks_a_larger_scenario_timeout(monkeypatch) -> None
     # Element presents at t=8s: below the 3s floor but within the scenario's own 10s ceiling.
     w = Wait.model_validate({"for": {"id": "target"}, "timeout": 10.0})
     clock = _LogicalClock()
-    ok, reason = _wait(_slow_render_driver(clock, 8.0), w, clock)
+    ok, reason, _ = _wait(_slow_render_driver(clock, 8.0), w, clock)
     assert ok
     assert reason == ""
 
@@ -429,7 +434,7 @@ def test_wait_still_sleeps_when_query_is_fast() -> None:
             return []
 
     w = Wait.model_validate({"for": {"id": "target"}, "timeout": 5.0})
-    ok, _reason = _wait(FastQueryDriver(), w, clock)  # type: ignore[arg-type]
+    ok, _reason, _tree = _wait(FastQueryDriver(), w, clock)  # type: ignore[arg-type]
     assert ok
     # query is instant -> sleep stays at _POLL
     assert all(abs(s - _POLL) < 0.001 for s in sleeps), f"expected {_POLL}s sleeps, got {sleeps}"

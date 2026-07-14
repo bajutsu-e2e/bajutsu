@@ -1,11 +1,11 @@
-"""BE-0234 read-count yardstick: the run loop takes the minimum screen reads per step.
+"""BE-0234 / BE-0259 read-count yardstick: the run loop takes the minimum screen reads per step.
 
 On the adb backend a screen read (`uiautomator dump`) costs ~2.4s, so a redundant `query()` is the
-dominant per-step waste. These tests pin the Unit 2 reductions — the lazy end-of-step read and the
-`before`-reuse — as behavior, so a future change that reintroduces a redundant read is caught on the
-fast gate. They count runner-issued reads via a FakeDriver that tallies `query()` (the loop is its
-only caller); the adb driver's internal `_settle` reads (Unit 3) are counted separately in
-`tests/test_adb.py`.
+dominant per-step waste. These tests pin the reductions — BE-0234's lazy end-of-step read and
+`before`-reuse, and BE-0259's reuse of the tree a non-mutating step already settled on — as
+behavior, so a future change that reintroduces a redundant read is caught on the fast gate. They
+count runner-issued reads via a FakeDriver that tallies `query()` (the loop is its only caller); the
+adb driver's internal `_settle` reads are counted separately in `tests/test_adb.py`.
 """
 
 from __future__ import annotations
@@ -162,3 +162,104 @@ def test_before_reuse_detects_screen_change_per_step() -> None:
     assert result.ok
     assert "screenshot.before" in sink.kinds_by_step["x/step0"]
     assert "screenshot.before" not in sink.kinds_by_step["x/step1"]
+
+
+def test_assert_with_extract_reuses_the_evaluated_tree() -> None:
+    # An `assert` queries the tree to evaluate itself; the `extract` on the same step reads that
+    # SAME settled tree rather than re-querying — one read end to end, down from two before BE-0259.
+    driver = _CountingDriver([el("field", "Name", value="Ada")])
+    result = run_scenario(
+        driver,
+        _scenario(
+            {
+                "name": "x",
+                "steps": [
+                    {
+                        "assert": [{"exists": {"id": "field"}}],
+                        "extract": {"who": {"sel": {"id": "field"}, "prop": "value"}},
+                    }
+                ],
+            }
+        ),
+        clock=FakeClock(),
+        sink=_KindsSink(),
+    )
+    assert result.ok, result.failure
+    assert driver.queries == 1
+
+
+def test_assert_under_screen_changed_reuses_the_evaluated_tree() -> None:
+    # With a screenChanged policy the step needs an `after` to diff against `before`; the assert's
+    # own query supplies it, so the step costs one `before` read plus the assert's read — 2, not the
+    # 3 a separate post-step read would add (BE-0259).
+    driver = _CountingDriver([el("go", "Go", ["button"])])
+    result = run_scenario(
+        driver,
+        _scenario(
+            {
+                "name": "x",
+                "steps": [{"assert": [{"exists": {"id": "go"}}]}],
+                "capturePolicy": [
+                    {"on": {"event": "screenChanged"}, "capture": ["screenshot.before"]}
+                ],
+            }
+        ),
+        clock=FakeClock(),
+        sink=_KindsSink(),
+    )
+    assert result.ok
+    assert driver.queries == 2
+
+
+def test_wait_reuses_its_settled_tree() -> None:
+    # A `wait for` settles on a tree; the extract on the same step reads THAT tree, not a fresh one
+    # — the wait is non-mutating, so its last query is the step's `after` (BE-0259).
+    driver = _CountingDriver([el("field", "Name", value="Ada")])
+    result = run_scenario(
+        driver,
+        _scenario(
+            {
+                "name": "x",
+                "steps": [
+                    {
+                        "wait": {"for": {"id": "field"}, "timeout": 1.0},
+                        "extract": {"who": {"sel": {"id": "field"}, "prop": "value"}},
+                    }
+                ],
+            }
+        ),
+        clock=FakeClock(),
+        sink=_KindsSink(),
+    )
+    assert result.ok, result.failure
+    assert driver.queries == 1
+
+
+def test_action_step_reads_a_fresh_after_never_a_reused_snapshot() -> None:
+    # An action can change the screen, so its post-step read must be FRESH: a tap navigates to a new
+    # value, and the extract on that same step must read the NEW screen. If the action's `after` were
+    # (wrongly) reused from a pre-action snapshot, ${vars.who} would bind the stale value and the
+    # follow-up assert would fail. Confirms BE-0259 seeds only non-mutating steps.
+    def react(d: FakeDriver, kind: str, arg: object) -> None:
+        if kind == "tap":
+            d.screen = [el("field", "Name", value="Grace")]
+
+    driver = _CountingDriver([el("field", "Name", value="Ada")], react=react)
+    result = run_scenario(
+        driver,
+        _scenario(
+            {
+                "name": "x",
+                "steps": [
+                    {
+                        "tap": {"id": "field"},
+                        "extract": {"who": {"sel": {"id": "field"}, "prop": "value"}},
+                    },
+                    {"assert": [{"value": {"sel": {"id": "field"}, "equals": "${vars.who}"}}]},
+                ],
+            }
+        ),
+        clock=FakeClock(),
+        sink=_KindsSink(),
+    )
+    assert result.ok, result.failure

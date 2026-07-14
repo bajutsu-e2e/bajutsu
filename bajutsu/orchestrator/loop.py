@@ -116,29 +116,40 @@ class _ScreenRead:
     diagnostic. A plain `tap`/`assert` step with none of these under a `NullSink` never reads.
     When it is read, the tree also seeds the next step's `before` — nothing actuates between a
     step's `after` and the next step's `before`, so they observe identical device state.
+
+    A non-mutating step (`assert`, `wait`) already queried the tree to evaluate itself, and nothing
+    actuates between that query and this read, so the caller can `seed` it with that snapshot: a
+    consumer then reuses it instead of issuing a second identical query (BE-0259). A seeded read is
+    not a runner-issued read — `queried` stays False — so the BE-0234 read-count yardstick keeps
+    counting only the queries this class actually performs.
     """
 
-    def __init__(self, driver: base.Driver) -> None:
+    def __init__(self, driver: base.Driver, seed: list[base.Element] | None = None) -> None:
         self._driver = driver
-        self._tree: list[base.Element] | None = None
-        self._read = False
+        self._tree = seed
+        self._available = seed is not None
+        self._queried = False
 
     def get(self) -> list[base.Element]:
-        """The post-step tree, reading it once on first use and caching the result."""
-        if not self._read:
+        """The post-step tree: the seed if one was given, else read once and cached."""
+        if not self._available:
             self._tree = self._driver.query()
-            self._read = True
-        assert self._tree is not None  # set on the read above; narrows the Optional for mypy
+            self._available = True
+            self._queried = True
+        assert (
+            self._tree is not None
+        )  # set on seed or the read above; narrows the Optional for mypy
         return self._tree
 
     @property
     def cached(self) -> list[base.Element] | None:
-        """The tree if it was read this step, else None — so a capture can read lazily on its own."""
-        return self._tree if self._read else None
+        """The tree if seeded or already read, else None — so a capture can read lazily on its own."""
+        return self._tree if self._available else None
 
     @property
-    def was_read(self) -> bool:
-        return self._read
+    def queried(self) -> bool:
+        """Whether `get()` issued a `query()` — False for a seeded (reused) tree."""
+        return self._queried
 
 
 def _clipboard_for(block: list[Assertion], control: DeviceControl | None) -> str | None:
@@ -203,8 +214,14 @@ def _run_step_body(
     mailbox: MailboxReader | None = None,
     golden_context: GoldenContext | None = None,
     wait_trace: WaitTrace | None = None,
-) -> tuple[bool, str, list[AssertionResult]]:
-    """Execute one step's effect, returning (ok, reason, assertion_results).
+) -> tuple[bool, str, list[AssertionResult], list[base.Element] | None]:
+    """Execute one step's effect, returning (ok, reason, assertion_results, snapshot).
+
+    ``snapshot`` is the settled tree a non-mutating step (`assert`, `wait`) already queried to
+    evaluate itself; the caller reuses it as the step's `after` instead of re-querying (BE-0259). It
+    is ``None`` for steps that mutate the screen (`tap`, `type`, …) or read no tree (`email`,
+    `wait until: request`), so the post-step read falls back to a fresh query for exactly the steps
+    where "before" and "after" may differ.
 
     The caller is responsible for interpolation (``_interp_step``) before
     calling this function. ``wait_trace``, when given for a wait step, records the poll timeline so a
@@ -212,28 +229,29 @@ def _run_step_body(
     try:
         if kind == "wait":
             assert step.wait is not None
-            ok, reason = _wait(driver, step.wait, clock, network, trace=wait_trace)
-            return ok, reason, []
+            ok, reason, tree = _wait(driver, step.wait, clock, network, trace=wait_trace)
+            return ok, reason, [], tree
         if kind == "email":
             assert step.email is not None
             ok, reason = _do_email(step.email, clock, mailbox, bindings)
-            return ok, reason, []
+            return ok, reason, [], None
         if kind == "assert_":
             assert step.assert_ is not None
             clip = _clipboard_for(step.assert_, control)
+            tree = driver.query()
             results = assertions.evaluate(
-                driver.query(),
+                tree,
                 step.assert_,
                 network(),
                 clipboard=clip,
                 golden_context=golden_context,
             )
             ok = assertions.passed(results)
-            return ok, "" if ok else _fail_reason(results), results
+            return ok, "" if ok else _fail_reason(results), results, tree
         _do_action(driver, step, relaunch, control, bindings)
-        return True, "", []
+        return True, "", [], None
     except (base.SelectorError, base.UnsupportedAction, NotImplementedError) as e:
-        return False, str(e), []
+        return False, str(e), [], None
 
 
 def run_scenario(
@@ -534,7 +552,7 @@ def _run_steps(
             # (BE-0231 Unit 1); the on_blocked retry gets a fresh trace so the diagnostic reflects the
             # attempt that actually failed.
             wait_trace = WaitTrace() if kind == "wait" and interp_step.wait is not None else None
-            ok, reason, results = _run_step_body(
+            ok, reason, results, snapshot = _run_step_body(
                 active_driver,
                 interp_step,
                 kind,
@@ -552,7 +570,7 @@ def _run_steps(
                 if event is not None:
                     outcome.alerts.append(event)
                     wait_trace = WaitTrace() if wait_trace is not None else None
-                    ok, reason, results = _run_step_body(
+                    ok, reason, results, snapshot = _run_step_body(
                         active_driver,
                         interp_step,
                         kind,
@@ -569,8 +587,11 @@ def _run_steps(
             outcome.duration_s = clock.now() - start
 
             # The post-step read is lazy (BE-0234 Unit 2): `.get()` reads (once) only where a
-            # consumer needs the tree, so a step with no consumer under a NullSink never reads.
-            screen = _ScreenRead(active_driver)
+            # consumer needs the tree, so a step with no consumer under a NullSink never reads. A
+            # non-mutating step (`assert`/`wait`) hands back the tree it already settled on, so the
+            # read reuses that snapshot rather than issuing a second identical query (BE-0259);
+            # `snapshot` is None for mutating/tree-less steps, restoring the fresh post-step read.
+            screen = _ScreenRead(active_driver, seed=snapshot)
             screen_changed = before is not None and screen.get() != before
 
             # An unconditional first-wait diagnostic on a `for`-wait timeout: capturePolicy may not
@@ -606,7 +627,7 @@ def _run_steps(
             instant = [t for t in fired if _kind_of(t) not in intervals.INTERVAL_KINDS]
             els = screen.get() if active_driver is not driver else screen.cached
             outcome.artifacts.extend(sink.capture(driver, step_id, instant, elements=els))
-            if screen.was_read:
+            if screen.queried:
                 total_reads += 1
             # Seed the next step's `before` only with a tree we actually read; if we skipped the
             # read, the next `before` reads fresh (BE-0234 Unit 2).

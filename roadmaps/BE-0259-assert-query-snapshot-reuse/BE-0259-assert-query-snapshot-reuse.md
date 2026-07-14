@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0259](BE-0259-assert-query-snapshot-reuse.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0259") |
+| Implementing PR | [#NNN](https://github.com/bajutsu-e2e/bajutsu/pull/NNN) |
 | Topic | Codebase quality & technical debt |
 | Related | [BE-0172](../BE-0172-run-loop-step-decomposition/BE-0172-run-loop-step-decomposition.md), [BE-0234](../BE-0234-adb-run-performance/BE-0234-adb-run-performance.md) |
 <!-- /BE-METADATA -->
@@ -113,12 +114,33 @@ independent units:
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Reuse `_run_step_body`'s query result as the loop's `after` snapshot for non-mutating steps
-      (`assert_`, and `extract` when attached to one).
-- [ ] Thread one settled snapshot through `_center`/`_resolve` in the idb and adb drivers instead of
-      re-querying at each layer.
-- [ ] Add a regression test asserting the query-count reduction on an `assert` step (and confirming
+- [x] Reuse `_run_step_body`'s query result as the loop's `after` snapshot for non-mutating steps
+      (`assert_` and `wait`, and `extract` when attached to one).
+- [x] Thread one settled snapshot through `_center`/`_resolve` in the idb and adb drivers instead of
+      re-querying at each layer. *(Already satisfied by existing code — see the log below.)*
+- [x] Add a regression test asserting the query-count reduction on an `assert` step (and confirming
       action steps are unaffected).
+
+### Log
+
+- **Unit 1 — done.** `_run_step_body` now returns the settled tree it queried for a non-mutating
+  step (`assert_`, and `wait` via `_wait`/`_wait_settled` returning their last-polled tree); the step
+  loop seeds `_ScreenRead` with it, so the `screenChanged`/`extract`/wait-diagnostic/capture
+  consumers reuse that snapshot instead of issuing a second identical `query()`. Mutating and
+  tree-less steps (`tap`/`type`/…, `email`, `wait until: request`) return `None`, so their post-step
+  read stays a fresh query — behavior-preserving. (`bajutsu/orchestrator/loop.py`,
+  `bajutsu/orchestrator/waits.py`.)
+- **Unit 2 — already satisfied, no change needed.** The redundant tap-time query this unit targeted
+  no longer exists: `_center` (idb) and `_resolve_frame_and_screen` (adb) already thread the tree
+  `_settle()` produced into `_resolve(..., initial_tree=tree)`, so a tap resolves on the settled tree
+  with no second query on the happy path. idb has done this since BE-0087 (`settle before actuation`);
+  adb's equivalent landed with BE-0210. The remaining per-scroll `_settle()` in
+  `adb._scroll_into_view` is a genuine re-read after the screen has moved, not a redundant one, so it
+  is correctly left in place.
+- **Unit 3 — done.** `tests/orchestrator/test_read_count.py` gains BE-0259 cases: an `assert`+extract
+  step issues exactly one `query()` (down from two), an `assert` under a `screenChanged` policy costs
+  two (down from three), a `wait for`+extract step reuses its settled tree, and an action step still
+  reads a fresh `after` (a correctness check that mutating steps are never seeded).
 
 ## References
 
