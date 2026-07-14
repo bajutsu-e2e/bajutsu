@@ -84,6 +84,21 @@ def test_index_is_open_so_the_login_ui_can_load(tmp_path: Path) -> None:
         server.server_close()
 
 
+def test_frontend_modules_are_open_so_the_login_ui_can_load(tmp_path: Path) -> None:
+    """The serve frontend is ES modules (BE-0247), loaded before login just like the index — so
+    every /serve.*.mjs route is auth-exempt (they carry only public UI code). With a token set, a
+    module route still 200s while a normal API route 401s, proving the _MODULE_PATHS gate exemption
+    is what's doing it (not the no-token open default)."""
+    server, port = _serve(_state(tmp_path, "s3cret"))
+    try:
+        assert _request(port, "/api/runs")[0] == 401  # a gated route: auth required
+        for name in srv.handler._JS_MODULES:
+            assert _request(port, f"/{name}")[0] == 200, name  # exempt: loads before auth
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
 def test_bearer_header_authorizes(tmp_path: Path) -> None:
     server, port = _serve(_state(tmp_path, "s3cret"))
     try:

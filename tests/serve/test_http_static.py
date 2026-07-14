@@ -122,9 +122,10 @@ def test_http_serves_each_js_module(tmp_path: Path) -> None:
         server.server_close()
 
 
-def test_http_js_module_route_is_gated_open_and_traversal_safe(tmp_path: Path) -> None:
-    """The module routes are open GETs (the login UI's JS must load before auth, like the index),
-    but only the exact bundled module names are served — an unknown or traversing name 404s."""
+def test_http_js_module_route_is_traversal_safe(tmp_path: Path) -> None:
+    """Only the exact bundled module names are served: a real module 200s, but an unknown name or a
+    near-miss (wrong extension) 404s rather than reading anything off disk. (The open-before-auth
+    exemption is covered separately, with a token set, in test_http_auth.py.)"""
     scn_dir, cfg, runs = project(tmp_path)
     server, port = _serve(
         srv.ServeState(scenarios_dir=scn_dir, config=cfg, runs_dir=runs, cwd=tmp_path)

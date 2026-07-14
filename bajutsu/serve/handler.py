@@ -127,8 +127,9 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
 
         def _serve_module(self, name: str) -> None:
             """Serve one serve.*.mjs frontend module (BE-0247); `name` is a caller-validated
-            _MODULE_PATHS member. The `text/javascript` type is required: a browser refuses to
-            execute a module script served under any other MIME type."""
+            _JS_MODULES member (the `_MODULE_PATHS` entry with its leading `/` stripped). The
+            `text/javascript` type is required: a browser refuses to execute a module script served
+            under any other MIME type."""
             self._text(_asset(name), 200, "text/javascript; charset=utf-8")
 
         def _sse_job(self, job_id: str) -> None:
@@ -164,8 +165,9 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
         def _gate(self) -> bool:
             """Authentication gate (BE-0051). With no token configured the server is open
             (loopback-only legacy behavior). Otherwise every request must be authorized, except
-            the index page (so the login UI can load) and the login endpoint itself. Sends 401
-            and returns False when a required credential is missing."""
+            the index page and the frontend ES-module routes (so the login UI and its JS can load,
+            BE-0247) and the login endpoint itself. Sends 401 and returns False when a required
+            credential is missing."""
             if not self._host_ok():
                 # DNS-rebinding defense (BE-0121): a Host that names no bound interface is refused
                 # ahead of everything else, so a rebound hostname reaches no endpoint at all
