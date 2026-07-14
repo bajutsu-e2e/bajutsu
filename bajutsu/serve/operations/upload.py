@@ -10,7 +10,6 @@ unchanged — the bundle stays exactly as ephemeral as BE-0073 shipped it.
 from __future__ import annotations
 
 import hashlib
-import os.path
 import re
 import tempfile
 from pathlib import Path
@@ -230,7 +229,7 @@ def artifact_exists(
         # candidate stays under the artifacts cache root before any filesystem read.
         artifacts_root = _artifacts_dir(state).resolve()
         candidate = (local_artifact_dir(_artifacts_dir(state), org, kind) / sha256).resolve()
-        if candidate != artifacts_root and artifacts_root not in candidate.parents:
+        if not candidate.is_relative_to(artifacts_root):
             return {"error": "artifact path resolves outside the cache"}, 400
         exists = candidate.exists()
     return {"exists": exists}, 200
