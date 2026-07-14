@@ -7,7 +7,7 @@
 |---|---|
 | Proposal | [BE-XXXX](BE-XXXX-e2e-workflow-structural-parity.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
 | Topic | Platform support |
 <!-- /BE-METADATA -->
@@ -129,10 +129,18 @@ separately; the three units below are what remains.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Split `android-e2e.yml`'s single job into `smoke` / `golden` (with the `fallback` step) /
+- [x] Split `android-e2e.yml`'s single job into `smoke` / `golden` (with the `fallback` step) /
       `visual` jobs.
-- [ ] Add a per-PR `golden (idb)` job to `ios-e2e.yml`, excluded from the `E2E` gate's `needs:`.
-- [ ] Document the per-platform E2E job-set convention in `docs/ai-development.md` (+ ja mirror).
+- [x] Add a per-PR `golden (idb)` job to `ios-e2e.yml`, excluded from the `E2E` gate's `needs:`.
+- [x] Document the per-platform E2E job-set convention in `docs/ai-development.md` (+ ja mirror).
+
+Log:
+
+- Proposal + implementation authored together and landed in one PR (BE-creation, so the human
+  opens it; `roadmap-id` allocates the real BE id on merge, and the `Implementing PR` row is filled
+  then). Splits the Android lane into `smoke`/`golden`/`visual` jobs, adds a per-PR iOS
+  `golden (idb)` job excluded from the required `E2E` gate, and documents the per-platform E2E job
+  set in `docs/ai-development.md` and its `docs/ja/` mirror.
 
 ## References
 
