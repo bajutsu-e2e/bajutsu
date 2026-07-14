@@ -262,6 +262,57 @@ serve ホストの `--root` を辿る**ファイルブラウザ**です。サー
 ます。ローカル backend（Tier A、セルフホストの単一 Mac）では3つのソースすべてを残します。そこではファイル
 システムがオペレータ自身のものだからです。
 
+### config、シナリオ、アプリバイナリ全体で見る、ローカルとホスト型の違い
+
+ここまでの説明は「どうデプロイするか」を軸にしています。ここでは視点を変え、`serve` が管理する状態の種類
+ごとに何が変わるかをまとめます。こうしておくと、Tier ごとの説明がどこに位置づくかがわかりやすくなります。
+以下の「ローカル」は、Tier A と、ノート PC 上で素の `make serve` を動かす場合の両方を指します。どちらも
+`hosted: false` で動作し、`hosted: true` になるのは Tier B のサーバ backend だけです。
+
+```mermaid
+flowchart TB
+    subgraph L["ローカル（hosted: false。Tier A、または素の make serve）"]
+        direction TB
+        L1["config<br/>ファイルブラウザ + Git + アップロード<br/>自分のファイルシステム、パスの閉じ込めなし"]
+        L2["シナリオと run の成果物<br/>scenarios/、runs/ をディスク上に保持<br/>ソフトデリートは runs/.trash/ へ移動"]
+        L3["アプリバイナリ<br/>appPath をディスク上に保持<br/>存在しないときだけ build"]
+    end
+    subgraph H["ホスト型（hosted: true。Tier B のサーバ backend）"]
+        direction TB
+        H1["config<br/>Git とアップロードのみ<br/>ファイルブラウザは無効、403（BE-0108）"]
+        H2["シナリオと run の成果物<br/>オブジェクトストレージ（S3/GCS）+ Postgres<br/>ソフトデリートは deleted_at を設定"]
+        H3["アプリバイナリ<br/>worker がチェックアウトまたはバンドルから build<br/>リモート build はゲート付き（BE-0121）"]
+    end
+
+    classDef local fill:#e0e7ff,stroke:#4f46e5,color:#1f2937;
+    classDef hosted fill:#d1fae5,stroke:#059669,color:#1f2937;
+    class L1,L2,L3 local
+    class H1,H2,H3 hosted
+```
+
+- **config。** どちらの側も最大3つのソースからバインドしますが、`hosted` が true になった瞬間にファイル
+  ブラウザだけが消えます（前述のとおりです）。パスの閉じ込めを決めるのは Tier ではなく**ソース**です。ローカル
+  ファイルの config は自分自身のディレクトリを基準に解決し、閉じ込めはありません（兄弟ディレクトリを指すことも
+  できます）。一方、Git またはアップロード由来の config は信頼できない入力として扱われ、`scenarios` /
+  `baselines` / `appPath` は、どちらの Tier でバインドしたかに関わらずチェックアウトまたはバンドルのルートに
+  閉じ込められます（[configuration](configuration.md)の「Git リポジトリからの config」の節を参照してください）。
+  ホスト型ではローカルファイルのソースをそもそも提供しないため、ホスト型の config は結果としてすべて閉じ込め
+  られます。これはファイルブラウザを外したことの副作用であり、別立てのルールではありません。
+- **シナリオと run の成果物。** ローカルでは、シナリオストアと run の履歴がふつうのディレクトリツリー
+  （`scenarios/`、`runs/`）を読み書きします。ソフトデリートした run は `runs/.trash/` へ移動します。ホスト型
+  では、両方ともコントロールプレーンのオブジェクトストレージ（`BAJUTSU_SERVER_STORE`。S3 互換または GCS）と、
+  run ごとの Postgres の行に置かれます。そのためソフトデリートは、ディスク上でバイトを移動させる代わりに
+  `deleted_at` を設定するだけです（後述の「run の削除と、ゴミ箱の保持期間」を参照してください）。
+- **アプリバイナリ。** どちらの側にも、汎用のバイナリアップロード用エンドポイントはありません。バインドした
+  config から `appPath` を解決し、それが存在しなければ config の `build:` コマンドを実行する点は共通です。
+  ホスト型では、Mac の worker が、コントロールプレーンがその job 用に解決したのと同じチェックアウトまたは
+  バンドルの素材から build します。共有ファイルシステムではなく、署名した presigned URL 経由でバイトを
+  やり取りします（前述の BE-0160）。リモート build のゲートは Tier とは独立しています。**UI の「from Git」
+  ピッカー**で後からバインドした config は、その UI がノート PC 上の Tier A にあるか Tier B のコントロール
+  プレーンにあるかに関わらず、`build:` が既定で抑止されます。起動時に与えた config だけがオペレータ信頼として
+  扱われます（前述の「リモート config のコマンド実行」を参照してください）。web（Playwright）backend には
+  どちらの側にもバイナリという概念自体がなく、ブラウザエンジンがオンデマンドでインストールされるだけです。
+
 ### 1. コントロールプレーンを起動する
 
 ```bash

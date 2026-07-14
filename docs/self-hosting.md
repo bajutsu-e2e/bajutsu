@@ -273,6 +273,57 @@ shared worker, so browsing the operator's `--root` could bind nothing they own; 
 avoids handing every logged-in user a directory listing of that tree. The local backend (Tier A, a
 self-hosted single Mac) keeps all three: there the filesystem is the operator's own.
 
+### Local vs. hosted, across config, scenario, and the app binary
+
+The walkthrough above is organized by *how you deploy*; this box collects *what changes for each kind
+of state `serve` manages*, so the tier-by-tier detail is easier to place. "Local" below covers both
+Tier A and a bare `make serve` on a laptop — both run with `hosted: false`; only Tier B's server
+backend sets `hosted: true`.
+
+```mermaid
+flowchart TB
+    subgraph L["Local — hosted: false (Tier A, or a bare make serve)"]
+        direction TB
+        L1["Config<br/>file browser + Git + upload<br/>own filesystem, paths unconfined"]
+        L2["Scenario and run artifacts<br/>scenarios/ and runs/ on disk<br/>soft-delete moves to runs/.trash/"]
+        L3["App binary<br/>appPath on disk<br/>build only when missing"]
+    end
+    subgraph H["Hosted — hosted: true (Tier B server backend)"]
+        direction TB
+        H1["Config<br/>Git + upload only<br/>file browser disabled, 403 (BE-0108)"]
+        H2["Scenario and run artifacts<br/>object store (S3/GCS) + Postgres<br/>soft-delete sets deleted_at (BE-0239)"]
+        H3["App binary<br/>worker builds from checkout/bundle<br/>remote build gated (BE-0121)"]
+    end
+
+    classDef local fill:#e0e7ff,stroke:#4f46e5,color:#1f2937;
+    classDef hosted fill:#d1fae5,stroke:#059669,color:#1f2937;
+    class L1,L2,L3 local
+    class H1,H2,H3 hosted
+```
+
+- **Config.** Both sides bind from up to three sources, but the file browser disappears the moment
+  `hosted` is true (just above). Path confinement follows the *source*, not the tier: a local-file
+  config resolves against its own directory and is unconfined (it may point at a sibling), while a Git-
+  or upload-sourced config is untrusted and its `scenarios` / `baselines` / `appPath` are confined to
+  the checkout or bundle root regardless of which tier bound it
+  ([configuration.md → Config from a Git repository](configuration.md#config-from-a-git-repository-be-0063)).
+  Hosted mode never offers the local-file source, so every hosted config ends up confined — a side
+  effect of dropping the file browser, not a separate rule.
+- **Scenario and run artifacts.** Locally, the scenario store and the run history read and write a
+  plain directory tree (`scenarios/`, `runs/`); a soft-deleted run moves to `runs/.trash/`. Hosted, both
+  live in the control plane's object store (`BAJUTSU_SERVER_STORE`, S3-compatible or GCS) plus a
+  Postgres row per run, so a soft-delete sets `deleted_at` instead of moving bytes on disk (see
+  *Deleting runs, and how long the trash is kept*, below).
+- **App binary.** Neither side has a generic binary-upload endpoint: both resolve `appPath` from the
+  bound config and, if it's missing, run the config's `build:` command. Hosted, a Mac worker builds
+  from the same checkout or bundle materials the control plane resolved for the job, exchanging bytes
+  over presigned URLs rather than a shared filesystem (BE-0160, above). The remote-build gate is
+  orthogonal to the tier: any config bound later through the UI's "from Git" picker has its `build:`
+  suppressed by default, whether the UI sits on a laptop's Tier A or Tier B's control plane — only a
+  config supplied at startup is operator-trusted (see *Remote-config command execution*, above). The
+  web (Playwright) backend has no binary concept on either side; the browser engine installs on demand
+  instead.
+
 ### 1. Bring up the control plane
 
 ```bash
