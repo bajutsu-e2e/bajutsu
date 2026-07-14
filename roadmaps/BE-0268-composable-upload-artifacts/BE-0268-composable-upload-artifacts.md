@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0268") |
-| Implementing PR | [#1076](https://github.com/bajutsu-e2e/bajutsu/pull/1076) |
+| Implementing PR | [#1076](https://github.com/bajutsu-e2e/bajutsu/pull/1076), [#1097](https://github.com/bajutsu-e2e/bajutsu/pull/1097) |
 | Topic | Configuration sourcing |
 | Related | [BE-0073](../BE-0073-serve-zip-bundle-upload/BE-0073-serve-zip-bundle-upload.md), [BE-0243](../BE-0243-upload-bundle-durable-storage/BE-0243-upload-bundle-durable-storage.md), [BE-0225](../BE-0225-config-project-hub/BE-0225-config-project-hub.md) |
 <!-- /BE-METADATA -->
