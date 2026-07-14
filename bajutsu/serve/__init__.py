@@ -28,6 +28,7 @@ from typing import Any
 
 from bajutsu.config_source import _bajutsu_cache_root
 from bajutsu.object_store import EvidenceTarget
+from bajutsu.serve import gate
 from bajutsu.serve.artifacts import Artifact, ArtifactStore, LocalArtifactStore
 from bajutsu.serve.commands import (
     _int,
@@ -37,7 +38,7 @@ from bajutsu.serve.commands import (
     triage_command,
 )
 from bajutsu.serve.executor import LocalExecutor, RunExecutor
-from bajutsu.serve.handler import _allowed_hosts, make_server
+from bajutsu.serve.handler import make_server
 from bajutsu.serve.helpers import (
     _scenario_path,
     list_crawl_runs,
@@ -515,7 +516,7 @@ def make_asgi_server(state: ServeState, host: str = "127.0.0.1", port: int = 876
 
     # Derive the Host allowlist from the bound interface, exactly as make_server does for the stdlib
     # transport, so the ASGI gate enforces the same DNS-rebinding defense (BE-0121).
-    state.allowed_hosts = _allowed_hosts(host)
+    state.allowed_hosts = gate.allowed_hosts(host)
     return uvicorn.Server(
         uvicorn.Config(make_app(state), host=host, port=port, log_level="warning")
     )
@@ -572,7 +573,7 @@ def serve(
     # restore, sharing its boot placement; a no-op when no config is bound or no registry is wired.
     register_launch_project(state)
     hint = str(config) if config else "open a config.yml in the UI"
-    if not _allowed_hosts(host):
+    if not gate.allowed_hosts(host):
         # A wildcard bind can't enumerate its reachable hostnames, so the Host allowlist is off
         # (BE-0121). Say so, rather than silently downgrading the DNS-rebinding defense — CSRF stays
         # the cross-origin guard, and a non-loopback bind already requires a token.

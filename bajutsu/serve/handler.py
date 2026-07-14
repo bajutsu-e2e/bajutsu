@@ -19,8 +19,8 @@ from urllib.parse import parse_qs, unquote, urlparse
 
 from jinja2 import Environment, FileSystemLoader
 
+from bajutsu.serve import gate, oplog
 from bajutsu.serve import operations as ops
-from bajutsu.serve import oplog
 from bajutsu.serve._paths import TEMPLATES_DIR as _TEMPLATE_DIR
 from bajutsu.serve.helpers import range_reply, valid_run_id
 from bajutsu.serve.state import ServeState
@@ -39,26 +39,6 @@ _ARTIFACT_UPLOAD_PATHS: dict[str, ArtifactKind] = {
     "/api/artifacts/binary": "binary",
 }
 
-# Host-header values that always name this machine (BE-0121 DNS-rebinding defense).
-_LOOPBACK_HOSTS = frozenset({"localhost", "127.0.0.1", "::1"})
-
-
-def _allowed_hosts(host: str) -> frozenset[str]:
-    """The `Host`-header hostnames a server bound to *host* accepts (BE-0121).
-
-    A loopback bind accepts every loopback name; a specific host adds that name (still reachable via
-    loopback locally). A wildcard bind (``0.0.0.0`` / ``::`` / empty) can't enumerate its reachable
-    names — the operator chose broad exposure, often behind a proxy with its own hostname — so it
-    returns an empty set, which disables Host enforcement (CSRF stays the cross-origin guard).
-    """
-    if host in ("", "0.0.0.0", "::"):  # noqa: S104 — matching a wildcard bind, not binding one
-        return frozenset()
-    normalized = host.lower()
-    if normalized in _LOOPBACK_HOSTS:
-        return _LOOPBACK_HOSTS
-    return _LOOPBACK_HOSTS | {normalized}
-
-
 # Session cookie set at login when a serve token is configured (BE-0051).
 _SESSION_COOKIE = "bajutsu_session"
 _OAUTH_STATE_COOKIE = (
@@ -69,13 +49,10 @@ _OAUTH_STATE_COOKIE = (
 def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
     class Handler(BaseHTTPRequestHandler):
         def end_headers(self) -> None:
-            # Standard hardening headers on every response (BE-0051): block MIME sniffing and
-            # cross-origin framing (clickjacking), and don't leak the URL via Referer. SAMEORIGIN
-            # (not DENY) so the Replay view can frame its own run report (/runs/<id>/report.html);
-            # cross-origin framing stays blocked.
-            self.send_header("X-Content-Type-Options", "nosniff")
-            self.send_header("X-Frame-Options", "SAMEORIGIN")
-            self.send_header("Referrer-Policy", "no-referrer")
+            # The shared hardening headers on every response (BE-0051); defined once in `gate` so
+            # both backends emit the identical set (BE-0253).
+            for name, value in gate.HARDENING_HEADERS.items():
+                self.send_header(name, value)
             super().end_headers()
 
         def _json(self, payload: Any, code: int = 200, cookie: str | None = None) -> None:
@@ -146,14 +123,16 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
             except (BrokenPipeError, ConnectionResetError):
                 pass  # the client navigated away; stop streaming
 
-        def _authorized(self) -> bool:
-            """A request is authorized by a valid `Authorization: Bearer <token>` header (API
-            clients) or a valid session cookie (the browser, after POST /api/login)."""
-            auth = self.headers.get("Authorization", "")
-            if auth.startswith("Bearer ") and state.auth.check_token(auth[len("Bearer ") :]):
-                return True
+        def _session_value(self) -> str | None:
+            """This request's `bajutsu_session` cookie value, if any — the stdlib-side read behind
+            the shared `gate.is_authorized` / `gate.actor_for` policy (BE-0253)."""
             morsel = SimpleCookie(self.headers.get("Cookie", "")).get(_SESSION_COOKIE)
-            return morsel is not None and state.auth.valid_session(morsel.value)
+            return morsel.value if morsel is not None else None
+
+        def _authorized(self) -> bool:
+            return gate.is_authorized(
+                state.auth, self.headers.get("Authorization", ""), self._session_value()
+            )
 
         def _gate(self) -> bool:
             """Authentication gate (BE-0051). With no token configured the server is open
@@ -173,14 +152,7 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
             if state.auth.token is None:
                 return True
             path = urlparse(self.path).path
-            if self.command == "GET" and path in (
-                "/",
-                "/index.html",
-                "/api/oauth/login",
-                "/api/oauth/callback",
-            ):
-                return True
-            if self.command == "POST" and path == "/api/login":
+            if gate.is_open(self.command, path):
                 return True
             if self._authorized():
                 # Authenticated. For an OAuth session (an identity) with a database wired, enforce
@@ -210,10 +182,7 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
             return next(iter(parse_qs(urlparse(self.path).query).get(key) or []), None)
 
         def _actor(self) -> str | None:
-            """The GitHub login bound to this request's session, if any — used to attribute audit
-            entries (BE-0015 7c). None for a token/Bearer request or no session."""
-            morsel = SimpleCookie(self.headers.get("Cookie", "")).get(_SESSION_COOKIE)
-            return state.auth.sessions.identity(morsel.value) if morsel is not None else None
+            return gate.actor_for(state.auth, self._session_value())
 
         def do_GET(self) -> None:
             oplog.bind_request(oplog.new_request_id())
@@ -341,23 +310,10 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
                     self._json({"error": "not found"}, 404)
 
         def _csrf_ok(self) -> bool:
-            """CSRF defense (BE-0051), defense-in-depth atop the SameSite session cookie: if an
-            `Origin` header is present it must match the `Host`. Non-browser clients (no Origin,
-            no ambient cookie) are allowed; a cross-origin browser request is blocked."""
-            origin = self.headers.get("Origin")
-            if not origin:
-                return True
-            return urlparse(origin).netloc == (self.headers.get("Host") or "")
+            return gate.csrf_ok(self.headers.get("Origin"), self.headers.get("Host") or "")
 
         def _host_ok(self) -> bool:
-            """DNS-rebinding defense (BE-0121): the request's `Host` must name an interface serve is
-            bound to. An empty allowlist (a wildcard bind, whose reachable names can't be enumerated)
-            accepts any Host; a loopback/named bind enforces its own names, so a page that rebinds a
-            hostname to 127.0.0.1 can't reach the loopback server through a same-origin request."""
-            if not state.allowed_hosts:
-                return True
-            host = urlparse(f"//{self.headers.get('Host', '')}").hostname
-            return host in state.allowed_hosts
+            return gate.host_allowed(state.allowed_hosts, self.headers.get("Host", ""))
 
         def do_POST(self) -> None:
             oplog.bind_request(oplog.new_request_id())
@@ -774,7 +730,7 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
 def make_server(state: ServeState, host: str = "127.0.0.1", port: int = 0) -> ThreadingHTTPServer:
     # Derive the Host allowlist from the interface we actually bind, so `_gate` can reject a
     # rebound hostname (BE-0121). A wildcard bind yields an empty allowlist (enforcement off).
-    state.allowed_hosts = _allowed_hosts(host)
+    state.allowed_hosts = gate.allowed_hosts(host)
     return ThreadingHTTPServer((host, port), _make_handler(state))
 
 
