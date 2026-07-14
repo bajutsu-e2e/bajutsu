@@ -7,7 +7,7 @@
 |---|---|
 | Proposal | [BE-0258](BE-0258-serve-step-artifact-seam.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0258") |
 | Topic | Codebase quality & technical debt |
 <!-- /BE-METADATA -->
@@ -178,15 +178,15 @@ check.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] 1 — Route `_step_artifacts` (`reads.py`) through `state.for_org(org).artifacts`, replacing its
+- [x] 1 — Route `_step_artifacts` (`reads.py`) through `state.for_org(org).artifacts`, replacing its
       direct `runs_dir` manifest read and per-step existence probes with `open_bytes`/`get`.
-- [ ] 2 — Route `resolve_scenario_pick` (`reads.py`) through `state.for_org(_org).artifacts` for its
+- [x] 2 — Route `resolve_scenario_pick` (`reads.py`) through `state.for_org(_org).artifacts` for its
       `elements.json` read.
-- [ ] 3 — Give `coverage_view` (`operations/coverage.py`) a seam-routed path to the evidence files
+- [x] 3 — Give `coverage_view` (`operations/coverage.py`) a seam-routed path to the evidence files
       `read_exchanges`/`read_observed_ids` (`bajutsu/coverage.py`) currently glob directly, deriving
       step ids from an already-seam-routed manifest read instead of adding a glob primitive to
       `ArtifactStore`.
-- [ ] 4 — Document, at `operations/capture.py:62`, why the live capture session's scratch
+- [x] 4 — Document, at `operations/capture.py:62`, why the live capture session's scratch
       screenshot deliberately stays outside the `ArtifactStore` seam.
 
 ## References

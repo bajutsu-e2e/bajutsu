@@ -185,6 +185,9 @@ class _RaisingArtifactStore:
     def open_bytes(self, rel: str) -> bytes | None:
         raise OSError("gone")
 
+    def exists(self, rel: str) -> bool:
+        raise OSError("gone")
+
     def get(self, rel: str) -> Artifact | None:
         return None
 

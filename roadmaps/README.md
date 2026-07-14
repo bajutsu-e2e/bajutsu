@@ -496,6 +496,7 @@ Behavior-preserving cleanup inside `bajutsu/` itself — deduplication, decompos
 | [BE-0206](BE-0206-serve-state-module-split/BE-0206-serve-state-module-split.md) | Split serve job state from job execution | Implemented |
 | [BE-0246](BE-0246-claude-client-taxonomy/BE-0246-claude-client-taxonomy.md) | Clarify the module taxonomy for talking to Claude | Implemented |
 | [BE-0255](BE-0255-codegen-shared-helper-dedup/BE-0255-codegen-shared-helper-dedup.md) | Deduplicate codegen identifier and regex helpers into codegen_common | Implemented |
+| [BE-0258](BE-0258-serve-step-artifact-seam/BE-0258-serve-step-artifact-seam.md) | Route serve step-artifact reads through the ArtifactStore seam | Implemented |
 | [BE-0260](BE-0260-cli-bringup-consolidation/BE-0260-cli-bringup-consolidation.md) | Consolidate the duplicated CLI command bring-up and add a neutral DeviceError | Implemented |
 <!-- /GENERATED:implemented-quality-debt -->
 
@@ -617,7 +618,6 @@ Running a scenario on a hosted device farm instead of a local Simulator, emulato
 | [BE-0253](BE-0253-serve-route-registry-unification/BE-0253-serve-route-registry-unification.md) | Unify the serve dual-backend route tables behind a declarative registry | Proposal |
 | [BE-0254](BE-0254-coordinate-tree-driver-base/BE-0254-coordinate-tree-driver-base.md) | Extract a shared CoordinateTreeDriver base for idb and adb | Proposal |
 | [BE-0256](BE-0256-platform-lifecycle-package-split/BE-0256-platform-lifecycle-package-split.md) | Split platform_lifecycle into a package and route device resolution through the Environment seam | Proposal |
-| [BE-0258](BE-0258-serve-step-artifact-seam/BE-0258-serve-step-artifact-seam.md) | Route serve step-artifact reads through the ArtifactStore seam | Proposal |
 | [BE-0259](BE-0259-assert-query-snapshot-reuse/BE-0259-assert-query-snapshot-reuse.md) | Reuse the settled query snapshot across assert and extract steps | Proposal |
 | [BE-0261](BE-0261-serve-author-yaml-roundtrip/BE-0261-serve-author-yaml-roundtrip.md) | Round-trip Author YAML edits through the serializer | Proposal |
 | [BE-0264](BE-0264-serve-uncaught-exception-json/BE-0264-serve-uncaught-exception-json.md) | Return JSON errors for uncaught serve handler exceptions | Proposal |

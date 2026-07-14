@@ -8,9 +8,10 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from _shared import project
+from _shared import FakeObjectStore, project
 
 from bajutsu.serve import operations as ops
+from bajutsu.serve.server.artifacts import ObjectStorageArtifactStore
 from bajutsu.serve.state import ServeState
 
 
@@ -171,6 +172,29 @@ def test_resolve_pick_no_actionable_element(tmp_path: Path) -> None:
     )
     assert status == 200
     assert payload.get("refused") is not None
+
+
+def test_resolve_pick_reads_elements_from_object_storage(tmp_path: Path) -> None:
+    """A hosted backend (`ObjectStorageArtifactStore`) resolves a pick the same as local `serve`
+    (BE-0258): before this fix, `resolve_scenario_pick` read `state.runs_dir` directly and always
+    404'd here, even though the elements were present in object storage."""
+    state, _runs = _state(tmp_path)
+    key = "run1/00-s/step0/elements.json"
+    state.artifacts = ObjectStorageArtifactStore(  # type: ignore[assignment]
+        FakeObjectStore({key: json.dumps(_elements()).encode()}), prefix=""
+    )
+
+    payload, status = ops.resolve_scenario_pick(
+        state,
+        {
+            "target": "demo",
+            "runId": "run1",
+            "stepId": "00-s/step0",
+            "point": [0.5, 0.41],
+        },
+    )
+    assert status == 200
+    assert payload["selector"]["id"] == "auth.submit"
 
 
 def test_resolve_pick_missing_elements_file(tmp_path: Path) -> None:
@@ -347,6 +371,52 @@ def test_read_scenario_with_run_missing_artifacts(tmp_path: Path) -> None:
     for s in steps:
         assert s["screenshotUrl"] is None
         assert s["elementsUrl"] is None
+
+
+def test_read_scenario_with_run_reads_from_object_storage(tmp_path: Path) -> None:
+    """A hosted backend (`ObjectStorageArtifactStore`) populates the per-step artifact list the
+    same as local `serve` (BE-0258): before this fix, `_step_artifacts` read `state.runs_dir`
+    directly and always returned an empty list here, even though the manifest and per-step
+    artifacts were present in object storage."""
+    state, _runs = _state(tmp_path)
+    scn_dir = tmp_path / "scenarios"
+    (scn_dir / "login.yaml").write_text(SCENARIO_YAML, encoding="utf-8")
+    manifest = {
+        "runId": "run1",
+        "ok": True,
+        "scenarios": [
+            {
+                "scenario": "login",
+                "ok": True,
+                "sid": "00-login",
+                "steps": [
+                    {"index": i, "action": "tap", "ok": True, "artifacts": []} for i in range(3)
+                ],
+            }
+        ],
+    }
+    objects = {"run1/manifest.json": json.dumps(manifest).encode()}
+    for i in range(3):
+        step_id = f"00-login/step{i}"
+        objects[f"run1/{step_id}/elements.json"] = json.dumps(_elements()).encode()
+        objects[f"run1/{step_id}/after.png"] = b"PNG"
+    state.artifacts = ObjectStorageArtifactStore(  # type: ignore[assignment]
+        FakeObjectStore(objects), prefix=""
+    )
+
+    payload, status = ops.read_scenario(
+        state,
+        "demo",
+        str(scn_dir / "login.yaml"),
+        run_id="run1",
+        scenario_name="login",
+    )
+    assert status == 200
+    steps = payload["steps"]
+    assert len(steps) == 3
+    assert steps[0]["stepId"] == "00-login/step0"
+    assert steps[0]["screenshotUrl"] == "/runs/run1/00-login/step0/after.png"
+    assert steps[0]["elementsUrl"] == "/runs/run1/00-login/step0/elements.json"
 
 
 def test_read_scenario_without_run_returns_yaml_only(tmp_path: Path) -> None:
