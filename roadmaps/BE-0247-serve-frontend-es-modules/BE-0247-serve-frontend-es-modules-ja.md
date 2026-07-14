@@ -9,7 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0247") |
-| 実装 PR | [#PENDING](https://github.com/bajutsu-e2e/bajutsu/pulls) |
+| 実装 PR | [#1084](https://github.com/bajutsu-e2e/bajutsu/pull/1084) |
 | トピック | コードベース品質・技術的負債 |
 | 関連 | [BE-0202](../BE-0202-serve-js-modularization/BE-0202-serve-js-modularization-ja.md) |
 <!-- /BE-METADATA -->
@@ -137,7 +137,7 @@ lint が存在しないという事実こそ、本項目が取り除こうとし
 
 ログ：
 
-- PR [#PENDING](https://github.com/bajutsu-e2e/bajutsu/pulls)：5 つの `serve.*.js` セクション別
+- PR [#1084](https://github.com/bajutsu-e2e/bajutsu/pull/1084)：5 つの `serve.*.js` セクション別
   ファイルをネイティブの ES モジュール（`serve.*.mjs`）へ移行しました。各ファイルは依存を `import`
   し、公開面を `export` します。ファイル横断で書き換える可変状態は、共有の `state` オブジェクトへ
   移しました（`export let` のライブバインディングは importer から読み取り専用になるためです）。各

@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0247") |
-| Implementing PR | [#PENDING](https://github.com/bajutsu-e2e/bajutsu/pulls) |
+| Implementing PR | [#1084](https://github.com/bajutsu-e2e/bajutsu/pull/1084) |
 | Topic | Codebase quality & technical debt |
 | Related | [BE-0202](../BE-0202-serve-js-modularization/BE-0202-serve-js-modularization.md) |
 <!-- /BE-METADATA -->
@@ -124,7 +124,7 @@ this item touches only how the frontend code is organized and loaded.
 
 Log:
 
-- PR [#PENDING](https://github.com/bajutsu-e2e/bajutsu/pulls) — converted the five `serve.*.js`
+- PR [#1084](https://github.com/bajutsu-e2e/bajutsu/pull/1084) — converted the five `serve.*.js`
   section files to native ES modules (`serve.*.mjs`): each `import`s its dependencies and `export`s
   its public surface; cross-panel mutable state moved onto a shared `state` object (a live `export
   let` is read-only for importers); each section's top-level side effects moved into `init*()`
