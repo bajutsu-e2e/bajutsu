@@ -28,11 +28,19 @@ final class MainTabBarController: UITabBarController {
             nav.navigationBar.prefersLargeTitles = true
         }
         // Tab tags match AppModel.Tab.rawValue so selectedIndex routing stays in sync.
+        // Ids are each tab's own idNamespace (SPEC §9) — idb still collapses the tab bar into one
+        // opaque group (BE-0107), but the XCUITest backend reads UIBarItem's accessibilityIdentifier,
+        // so a11y builds can address tabs by `id` there instead of falling back to `label`.
         stableNav.tabBarItem = UITabBarItem(title: "Stable", image: UIImage(systemName: "tray.full"), tag: 0)
+            .accessibilityID("stable")
         searchNav.tabBarItem = UITabBarItem(title: "Search", image: UIImage(systemName: "magnifyingglass"), tag: 1)
+            .accessibilityID("search")
         logNav.tabBarItem = UITabBarItem(title: "Log", image: UIImage(systemName: "square.and.pencil"), tag: 2)
+            .accessibilityID("log")
         noticesNav.tabBarItem = UITabBarItem(title: "Notices", image: UIImage(systemName: "bell"), tag: 3)
+            .accessibilityID("notice")
         permissionsNav.tabBarItem = UITabBarItem(title: "Permissions", image: UIImage(systemName: "lock.shield"), tag: 4)
+            .accessibilityID("perm")
 
         viewControllers = [stableNav, searchNav, logNav, noticesNav, permissionsNav]
     }
