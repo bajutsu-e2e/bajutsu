@@ -10,7 +10,7 @@ from pathlib import Path
 
 from bajutsu.serve import operations as ops
 from bajutsu.serve.server.oauth import Identity
-from bajutsu.serve.state import ServeState
+from bajutsu.serve.state import ServeState, SessionManager
 
 
 class FakeOAuthClient:
@@ -33,7 +33,10 @@ class FakeOAuthClient:
 def _state(
     tmp_path: Path, *, oauth: object = None, allowed: frozenset[str] = frozenset()
 ) -> ServeState:
-    return ServeState(runs_dir=tmp_path / "runs", oauth=oauth, oauth_allowed_users=allowed)
+    return ServeState(
+        runs_dir=tmp_path / "runs",
+        auth=SessionManager(oauth=oauth, oauth_allowed_users=allowed),
+    )
 
 
 def test_oauth_login_not_configured(tmp_path: Path) -> None:
@@ -60,8 +63,8 @@ def test_oauth_callback_allows_an_allowlisted_user_and_binds_identity(tmp_path: 
     _payload, status, sid = ops.oauth_callback(state, code="ok", state_param="s", state_cookie="s")
     assert status == 200
     assert sid is not None
-    assert state.valid_session(sid)
-    assert state.sessions.identity(sid) == "alice"  # the session is bound to the GitHub login
+    assert state.auth.valid_session(sid)
+    assert state.auth.sessions.identity(sid) == "alice"  # the session is bound to the GitHub login
 
 
 def test_oauth_callback_rejects_a_user_not_on_the_allowlist(tmp_path: Path) -> None:

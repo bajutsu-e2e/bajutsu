@@ -7,8 +7,9 @@
 |---|---|
 | 提案 | [BE-0248](BE-0248-serve-state-decomposition-continued-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **提案** |
+| 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0248") |
+| 実装 PR | _pending_ |
 | トピック | コードベース品質・技術的負債 |
 <!-- /BE-METADATA -->
 
@@ -145,21 +146,20 @@ evidence、object store の設定（`evidence`、`object_store`、`object_store_
 > 作業分解（作業の単位ごとに 1 つ）に対応し、ログには変更内容と時期（古い順）を PR へのリンクと
 > ともに記録します。
 
-- [ ] `token`、`sessions`、`oauth`、`oauth_allowed_users`、`oauth_admins`、`oauth_viewers` と
-      `check_token`、`issue_session`、`valid_session` メソッドを所有する認証、セッションの型
-      （`AuthConfig`/`SessionManager` など）を切り出す
-- [ ] `provider_settings`、`provider_settings_store`、`_provider_lock`、`_persist_lock` と
+- [x] `token`、`sessions`、`oauth`、`oauth_allowed_users`、`oauth_admins`、`oauth_viewers` と
+      `check_token`、`issue_session`、`valid_session` メソッドを所有する `SessionManager` を切り出す
+- [x] `settings`（組織ごとの辞書）、`store`、`_provider_lock`、`_persist_lock` と
       `org_provider_settings`、`put_org_provider_settings`、`set_org_provider_choice` メソッドを
       所有する `ProviderSettingsManager` を、読み取り時コピー、書き込み時コピーの規律を寸分たがわ
       ず保ったまま切り出す
-- [ ] `operations/config.py` の `_persist_provider_settings` を、`ServeState` のロックへ直接手を伸
-      ばす代わりにマネージャの公開された面を呼ぶよう移行する
-- [ ] `ServeState` を、既存の `job_registry` と並んで新しい2つのマネージャを保持するコーディネー
-      ターとして残し、呼び出し元を一貫してそれら経由に揃える
-- [ ] 切り出した各型について、単体で構築した状態での単体テストを追加する（完全な `ServeState` は
+- [x] `operations/config.py` の `_persist_provider_settings` を、`ServeState` のロックへ直接手を伸
+      ばす代わりにマネージャの公開メソッド `persist` を呼ぶよう移行する
+- [x] `ServeState` を、既存の `job_registry` と並んで新しい2つのマネージャ（`auth`／`providers`）を
+      保持するコーディネーターとして残し、呼び出し元を一貫してそれら経由に揃える
+- [x] 切り出した各型について、単体で構築した状態での単体テストを追加する（完全な `ServeState` は
       組み立てない）
-- [ ] `serve` のモジュール一覧が変わる場合は `docs/architecture.md`、`docs/ja/architecture.md` を
-      更新する
+- [x] `docs/architecture.md`、`docs/ja/architecture.md` は変更不要であることを確認する。`serve` の
+      モジュール一覧は `serve/` を大づかみに述べるだけで、`state.py` 内部の責務には触れていない
 
 ## 参考
 
