@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0254](BE-0254-coordinate-tree-driver-base.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0254") |
+| Implementing PR | [#TBD](https://github.com/bajutsu-e2e/bajutsu/pull/TBD) |
 | Topic | Codebase quality & technical debt |
 <!-- /BE-METADATA -->
 
@@ -109,12 +110,30 @@ behavior-preserving.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Introduce `CoordinateTreeDriver` holding the shared constants, `query()`, `_settle`,
-      `_stable_key`, `_is_transient_empty`, `_empty_backoff`, and `_resolve`.
-- [ ] Give the base class one abstract `_describe()` hook.
-- [ ] Reparent `IdbDriver` and `AdbDriver` onto the base class, deleting the now-shared members.
-- [ ] Confirm `XcuitestDriver` and `PlaywrightDriver` stay untouched (out of scope).
-- [ ] Add tests asserting the shared transient-empty/settle behavior is identical on both backends.
+- [x] Introduce `CoordinateTreeDriver` holding the shared constants, `query()`,
+      `_stable_key`, `_is_transient_empty`, `_empty_backoff`, `_resolve`, and `wait_for`. `_settle`
+      turned out to have already diverged by the time this landed — idb bounds it by a fixed poll
+      count, adb by a wall-clock deadline (BE-0245, which shipped after this proposal was written) —
+      a genuine strategy difference, not shared tuning, so it stays per-backend rather than being
+      forced into the base (see "Detailed design divergence" below).
+- [x] Give the base class one abstract `_describe()` hook.
+- [x] Reparent `IdbDriver` and `AdbDriver` onto the base class, deleting the now-shared members.
+- [x] Confirm `XcuitestDriver` and `PlaywrightDriver` stay untouched (out of scope).
+- [x] Add tests asserting the shared transient-empty/settle behavior is identical on both backends
+      (`tests/test_coordinate_tree.py`, parametrized across both real subclasses).
+
+### Detailed design divergence (found during implementation)
+
+The proposal's Motivation section, written 2026-07, described `_settle` as byte-for-byte identical
+between the two drivers. By the time this item was implemented, adb's `_settle` had already been
+changed to a wall-clock deadline (`_SETTLE_DEADLINE_S`) while idb kept a fixed poll count
+(`_SETTLE_MAX_POLLS`) — a real behavioral difference, not just diverged tuning constants. Hoisting
+`_settle` as originally proposed would have forced one backend onto the other's strategy, violating
+the "pure hoist, no behavior changes" mandate, so `_settle` was left per-backend; everything else in
+the Detailed design (the four remaining shared constants, `_StableKey`, `query()`,
+`_stable_key`, `_is_transient_empty`, `_empty_backoff`, `_resolve`) hoisted as planned, plus
+`wait_for`, which turned out to be byte-identical too and was hoisted in the same pass. Every
+pre-existing test for either backend's read path passes unmodified against the new base class.
 
 ## References
 

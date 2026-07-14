@@ -7,8 +7,9 @@
 |---|---|
 | 提案 | [BE-0254](BE-0254-coordinate-tree-driver-base-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **提案** |
+| 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0254") |
+| 実装 PR | [#TBD](https://github.com/bajutsu-e2e/bajutsu/pull/TBD) |
 | トピック | コードベース品質・技術的負債 |
 <!-- /BE-METADATA -->
 
@@ -113,13 +114,32 @@
 > 作業分解（作業の単位ごとに 1 つ）に対応し、ログには変更内容と時期（古い順）を PR へのリンクと
 > ともに記録します。
 
-- [ ] 共有の定数、`query()`、`_settle`、`_stable_key`、`_is_transient_empty`、`_empty_backoff`、
-      `_resolve` を持つ `CoordinateTreeDriver` を導入する。
-- [ ] 基底クラスに抽象フック `_describe()` を一つだけ与える。
-- [ ] `IdbDriver` と `AdbDriver` を基底クラスへ付け替え、共有部分を削除する。
-- [ ] `XcuitestDriver` と `PlaywrightDriver` には手を入れないことを確認する（対象外）。
-- [ ] 両方のバックエンドで共有の一時的空ツリー・安定待ちの挙動が同一であることを確認する
-      テストを追加する。
+- [x] 共有の定数、`query()`、`_stable_key`、`_is_transient_empty`、`_empty_backoff`、`_resolve`、
+      `wait_for` を持つ `CoordinateTreeDriver` を導入する。`_settle` は実装時点ですでに乖離して
+      いました。idb は固定回数のポーリングで打ち切り、adb は壁時計の締め切り（BE-0245。この提案が
+      書かれた後にリリースされたもの）で打ち切るという、チューニング値ではなく戦略そのものの違い
+      だったため、基底クラスへ無理に統合せずバックエンドごとに残しています（後述の「詳細設計から
+      の乖離」を参照）。
+- [x] 基底クラスに抽象フック `_describe()` を一つだけ与える。
+- [x] `IdbDriver` と `AdbDriver` を基底クラスへ付け替え、共有部分を削除する。
+- [x] `XcuitestDriver` と `PlaywrightDriver` には手を入れないことを確認する（対象外）。
+- [x] 両方のバックエンドで共有の一時的空ツリー・安定待ちの挙動が同一であることを確認するテストを
+      追加する（`tests/test_coordinate_tree.py`。両方の実サブクラスをまたいでパラメータ化して
+      います）。
+
+### 詳細設計からの乖離（実装時に判明）
+
+本提案の「動機」節は 2026 年 7 月に書かれた時点で、`_settle` を二つのドライバのあいだで一字一句
+同一だと説明していました。しかし本項目を実装する時点までに、adb の `_settle` はすでに壁時計の
+締め切り（`_SETTLE_DEADLINE_S`）へと変更されており、idb は固定回数のポーリング
+（`_SETTLE_MAX_POLLS`）のままでした。これはチューニング定数が乖離しただけではなく、挙動そのもの
+が異なる状態です。提案どおりに `_settle` を引き上げると、一方のバックエンドをもう一方の戦略へ
+強制的に合わせることになり、「挙動を変えない純粋な引き上げ」という前提に反します。そのため
+`_settle` はバックエンドごとに残しました。詳細設計に挙がっていたそれ以外の要素（残り 4 つの
+共有定数、`_StableKey`、`query()`、`_stable_key`、`_is_transient_empty`、`_empty_backoff`、
+`_resolve`）は計画どおりに引き上げ、さらに `wait_for` も一字一句同一だったため同じ作業のなかで
+引き上げました。どちらのバックエンドの読み取り経路についても、既存のテストは変更なしに新しい
+基底クラスに対して通っています。
 
 ## 参考
 

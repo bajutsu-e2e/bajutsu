@@ -82,6 +82,7 @@ The `bajutsu/` package (Python 3.13+, pydantic v2 / typer / anthropic / pyyaml /
 | Module | Role | Page |
 |---|---|---|
 | `drivers/base.py` | Driver Protocol + shared types (`Element`/`Selector`/`Point`) + **selector resolution** (the determinism core) | [selectors](selectors.md) / [drivers](drivers.md) |
+| `drivers/coordinate_tree.py` | `CoordinateTreeDriver` — the shared transient-empty retry / stable-key settle / `_resolve` / `wait_for` base class the two coordinate backends (idb, adb) inherit (BE-0254) | [drivers](drivers.md#idb) |
 | `drivers/fake.py` | In-memory `FakeDriver` (for tests without a device) | [drivers](drivers.md#fakedriver) |
 | `drivers/idb.py` | idb backend (iOS Simulator; headless, coordinate tap) | [drivers](drivers.md#idb) |
 | `drivers/xcuitest.py` | XCUITest backend (iOS; ahead of idb in the stability-order ladder — semantic tap, native condition-wait, and multi-touch via a resident on-device runner, idb the headless fallback; BE-0019) | [drivers](drivers.md#backend-selection-and-the-actuator) |

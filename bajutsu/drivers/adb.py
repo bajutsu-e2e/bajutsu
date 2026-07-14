@@ -39,6 +39,7 @@ from xml.etree import ElementTree as ET
 
 from bajutsu import adb, intervals
 from bajutsu.drivers import base
+from bajutsu.drivers.coordinate_tree import CoordinateTreeDriver
 from bajutsu.elements import screen_size_from_elements
 
 RunFn = Callable[[list[str]], str]
@@ -60,8 +61,6 @@ class AdbResidentError(RuntimeError):
     reading a failed channel as an empty screen.
     """
 
-
-_StableKey = tuple[tuple[str, base.Frame], ...]
 
 # uiautomator's bounds attribute, e.g. "[0,100][200,220]".
 _BOUNDS = re.compile(r"\[(-?\d+),(-?\d+)\]\[(-?\d+),(-?\d+)\]")
@@ -202,18 +201,17 @@ def parse_hierarchy(text: str) -> list[base.Element]:
     return [_to_element(n) for n in root.iter("node")]
 
 
-class AdbDriver:
-    """Driver implementation for the Android emulator via adb + UI Automator."""
+class AdbDriver(CoordinateTreeDriver):
+    """Driver implementation for the Android emulator via adb + UI Automator.
+
+    The transient-empty retry, exponential backoff, stable-key projection, and not-found resolve loop
+    live in `CoordinateTreeDriver` (shared with `IdbDriver`); this class supplies adb's own describe
+    (`uiautomator dump` / resident channel + XML), its wall-clock `_settle`, the scroll-into-view and
+    `sendevent` paths, and its actuators.
+    """
 
     name = "adb"
 
-    # `uiautomator dump` intermittently returns a null-root/empty tree mid-transition even though the
-    # screen has rendered. These bound a short retry so query() rides over that transient without
-    # masking a genuinely sparse screen for long — the exact analogue of idb's near-empty tree.
-    _READY_MIN = 2  # a tree this size or larger is treated as settled
-    _EMPTY_RETRIES = 5  # extra dump attempts on a degenerate tree
-    _EMPTY_BACKOFF_S = 0.05  # base delay; doubles each attempt up to the cap
-    _EMPTY_BACKOFF_MAX_S = 0.2  # cap on a single backoff (total added <= ~0.75s, bounded)
     # Settle is bounded by wall-clock, not a fixed read count (BE-0245). BE-0234 Unit 3 set a 3-poll
     # cap with `_SETTLE_POLL_S = 0` on the premise that the ~2.4s dump read itself paced the loop, so
     # three reads spanned ~7s — long enough for a fling to stop. The resident channel's ~0.1s read
@@ -248,36 +246,18 @@ class AdbDriver:
         *,
         fetch_hierarchy: HierarchyFetch | None = None,
     ) -> None:
+        super().__init__()
         self.serial = adb._checked_serial(serial)
         self._run = run
         # When set, reads go through the resident channel and fall back to `uiautomator dump` only on
         # failure (BE-0245). Unset (the default) keeps today's dump-every-read behavior exactly.
         self._fetch_hierarchy = fetch_hierarchy
-        self._max_seen = 0  # richest tree seen on this device; gates the empty retry
-        self._last_stable_key: _StableKey | None = None
         # Lazily resolved once for the sendevent double-tap path (BE-0208): whether adbd is root and
         # which node is the touchscreen. `_touch_probed` distinguishes "not yet looked" from "looked,
         # found nothing" so a device with no touchscreen is not re-probed on every double-tap.
         self._is_root: bool | None = None
         self._touch_dev: adb.TouchDevice | None = None
         self._touch_probed = False
-
-    def query(self) -> list[base.Element]:
-        """Dump the UI Automator hierarchy, parsed and normalized into Elements.
-
-        A null-root/empty dump mid-transition is retried a bounded number of times once a richer tree
-        has been seen, so a single-shot assertion or wait does not act on the transient snapshot; a
-        screen that has only ever been sparse is returned as-is (never masked).
-        """
-        els = self._describe()
-        for i in range(self._EMPTY_RETRIES):
-            if not self._is_transient_empty(els):
-                break
-            time.sleep(self._empty_backoff(i))
-            els = self._describe()
-        self._max_seen = max(self._max_seen, len(els))
-        self._last_stable_key = self._stable_key(els)
-        return els
 
     def _describe(self) -> list[base.Element]:
         return parse_hierarchy(self._read_source())
@@ -304,13 +284,6 @@ class AdbDriver:
                 self._fetch_hierarchy = None
         return self._run(adb.dump_cmd(self.serial))
 
-    def _is_transient_empty(self, els: list[base.Element]) -> bool:
-        return len(els) < self._READY_MIN and self._max_seen >= self._READY_MIN
-
-    def _empty_backoff(self, attempt: int) -> float:
-        # 2.0** keeps the result a float (int**int types as Any under mypy, leaking through min()).
-        return min(self._EMPTY_BACKOFF_S * 2.0**attempt, self._EMPTY_BACKOFF_MAX_S)
-
     def _settle(self) -> list[base.Element]:
         """Wait until the tree's identifier-frame projection stops changing, or give up.
 
@@ -335,31 +308,6 @@ class AdbDriver:
                 return tree
             key = new_key
         return tree
-
-    @staticmethod
-    def _stable_key(els: list[base.Element]) -> _StableKey:
-        """Identifier-frame projection for settle: ignores volatile value/traits/label."""
-        return tuple(sorted((e["identifier"] or "", e["frame"]) for e in els))
-
-    def _resolve(
-        self,
-        sel: base.Selector,
-        timeout: float = 3.0,
-        poll: float = 0.2,
-        *,
-        initial_tree: list[base.Element] | None = None,
-    ) -> base.Element:
-        # Retry not-found across a transient-empty tree while keeping ambiguity fail-fast.
-        deadline = time.monotonic() + timeout
-        tree = initial_tree if initial_tree is not None else self.query()
-        while True:
-            try:
-                return base.resolve_unique(tree, sel)
-            except base.ElementNotFound:
-                if time.monotonic() >= deadline:
-                    raise
-                time.sleep(poll)
-                tree = self.query()
 
     def _center(self, sel: base.Selector) -> base.Point:
         point, _ = self._center_with_screen(sel)
@@ -548,14 +496,6 @@ class AdbDriver:
     @staticmethod
     def _run_text(cmd: list[str], script: str) -> None:
         subprocess.run(cmd, input=script, capture_output=True, text=True, check=True)
-
-    def wait_for(self, sel: base.Selector) -> bool:
-        """Single-shot: whether `sel` matches the current screen (BE-0118).
-
-        The deadline poll lives in the shared `base.wait_until`, so the timeout is honoured
-        identically on every backend.
-        """
-        return len(base.find_all(self.query(), sel)) >= 1
 
     def screenshot(self, path: str) -> None:
         adb.Env(self.serial, run=self._run).screenshot(path)

@@ -81,6 +81,7 @@ flowchart TB
 | モジュール | 役割 | ページ |
 |---|---|---|
 | `drivers/base.py` | Driver Protocol + 共通型（`Element`/`Selector`/`Point`）+ **セレクタ解決**（決定性の核） | [selectors](selectors.md) / [drivers](drivers.md) |
+| `drivers/coordinate_tree.py` | `CoordinateTreeDriver`。座標系の 2 バックエンド（idb、adb）が継承する、一時的空ツリーへのリトライ・安定キーによる settle・`_resolve`・`wait_for` の共有基底クラス（BE-0254） | [drivers](drivers.md#idb) |
 | `drivers/fake.py` | インメモリの `FakeDriver`（実機不要テスト用） | [drivers](drivers.md#fakedriver) |
 | `drivers/idb.py` | idb バックエンド（iOS Simulator。ヘッドレス、座標 tap） | [drivers](drivers.md#idb) |
 | `drivers/xcuitest.py` | XCUITest バックエンド（iOS。安定度ラダーで idb より上位。実機上に常駐する runner が semantic tap、ネイティブ条件待ち、multi-touch を提供し、idb はそのヘッドレスなフォールバック。BE-0019） | [drivers](drivers.md#バックエンド選択と-actuator) |
