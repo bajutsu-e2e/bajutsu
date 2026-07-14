@@ -76,12 +76,17 @@ def _wait(
     network: NetworkSource = _no_network,
     *,
     trace: WaitTrace | None = None,
-) -> tuple[bool, str]:
+) -> tuple[bool, str, list[base.Element] | None]:
     """Condition wait. Polls query() (or the observed network) until satisfied instead
     of a fixed sleep.
 
     When `trace` is given (a `for` wait only), each poll is recorded into it so a timeout can be
     diagnosed from artifacts (BE-0231 Unit 1); it never changes the wait's outcome.
+
+    Returns `(ok, reason, tree)` where `tree` is the last screen the wait queried — the settled
+    device state, since nothing actuates in a wait. The caller reuses it as the step's `after`
+    snapshot instead of re-querying (BE-0259). It is `None` for the `request` variant, which polls
+    the observed network rather than the tree, so there is no screen read to hand back.
     """
     timeout = _effective_timeout(w)
     start = clock.now()
@@ -99,20 +104,21 @@ def _wait(
                 if elements and trace.first_nonempty_s is None:
                     trace.first_nonempty_s = t0 - start
             if _exists(elements, target):
-                return True, ""
+                return True, "", elements
             if clock.now() >= deadline:
                 if trace is not None:
                     trace.elements_at_timeout = len(elements)
-                return False, f"wait timeout: for {target} ({timeout}s)"
+                return False, f"wait timeout: for {target} ({timeout}s)", elements
             _adaptive_sleep(clock, t0)
     if isinstance(w.until, Gone):
         target = w.until.gone.as_selector()
         while True:
             t0 = clock.now()
-            if not _exists(driver.query(), target):
-                return True, ""
+            elements = driver.query()
+            if not _exists(elements, target):
+                return True, "", elements
             if clock.now() >= deadline:
-                return False, f"wait timeout: gone {target} ({timeout}s)"
+                return False, f"wait timeout: gone {target} ({timeout}s)", elements
             _adaptive_sleep(clock, t0)
     if isinstance(w.until, WaitRequest):
         req = w.until.request
@@ -120,10 +126,10 @@ def _wait(
         while True:
             t0 = clock.now()
             if assertions.count_matching(network(), req) >= need:
-                return True, ""
+                return True, "", None
             if clock.now() >= deadline:
                 label = assertions.request_label(req)
-                return False, f"wait timeout: request {label} ({timeout}s)"
+                return False, f"wait timeout: request {label} ({timeout}s)", None
             _adaptive_sleep(clock, t0)
     if w.until == "settled":
         return _wait_settled(driver, deadline, clock)
@@ -133,25 +139,28 @@ def _wait(
         t0 = clock.now()
         current = driver.query()
         if current != before:
-            return True, ""
+            return True, "", current
         if clock.now() >= deadline:
-            return False, f"wait timeout: screenChanged ({timeout}s)"
+            return False, f"wait timeout: screenChanged ({timeout}s)", current
         _adaptive_sleep(clock, t0)
 
 
-def _wait_settled(driver: base.Driver, deadline: float, clock: Clock) -> tuple[bool, str]:
+def _wait_settled(
+    driver: base.Driver, deadline: float, clock: Clock
+) -> tuple[bool, str, list[base.Element]]:
     """Wait until a non-empty screen stops changing (transition/animation finished).
 
     A blank/collapsed tree (e.g. a screen mid-render, or one covered by a system
     alert) is never treated as settled. Best-effort: timing out just proceeds with the
     current screen — a settle is a stabilization hint, not a correctness assertion, so
-    it never fails the step.
+    it never fails the step. Returns the last queried tree so the caller can reuse it as the
+    step's `after` snapshot (BE-0259).
     """
     previous = driver.query()
     stable = 0
     while stable < _SETTLE_POLLS:
         if clock.now() >= deadline:
-            return True, ""
+            return True, "", previous
         t0 = clock.now()
         current = driver.query()
         if current == previous and any(el["identifier"] for el in current):
@@ -159,4 +168,4 @@ def _wait_settled(driver: base.Driver, deadline: float, clock: Clock) -> tuple[b
         else:
             stable, previous = 0, current
         _adaptive_sleep(clock, t0)
-    return True, ""
+    return True, "", previous
