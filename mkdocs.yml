@@ -97,6 +97,7 @@ plugins:
             Run loop: 実行ループ
             Authoring scenarios: シナリオの作成
             Scenarios: シナリオ
+            Cookbook: クックブック
             Selectors: セレクタ
             DSL grammar: DSL 文法
             Recording: 記録
@@ -161,6 +162,7 @@ nav:
       - Run loop: run-loop.md
   - Authoring scenarios:
       - Scenarios: scenarios.md
+      - Cookbook: cookbook.md
       - Selectors: selectors.md
       - DSL grammar: dsl-grammar.md
       - Recording: recording.md

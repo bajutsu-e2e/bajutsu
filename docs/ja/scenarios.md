@@ -8,7 +8,7 @@
 
 すべての生成規則、型、既定値、検証規則を定めた **規範的な文法**は [dsl-grammar](dsl-grammar.md) にあります。このページはオーサリングガイドであり、例を使ってシナリオの書き方を示します。
 
-関連: [dsl-grammar](dsl-grammar.md)（形式文法） · [selectors](selectors.md)（セレクタとアサーションの評価方法） · [evidence](evidence.md)（証跡） · [run-loop](run-loop.md)（実行）
+関連: [cookbook](cookbook.md)（実例集） · [dsl-grammar](dsl-grammar.md)（形式文法） · [selectors](selectors.md)（セレクタとアサーションの評価方法） · [evidence](evidence.md)（証跡） · [run-loop](run-loop.md)（実行）
 
 ---
 
