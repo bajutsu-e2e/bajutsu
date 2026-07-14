@@ -165,6 +165,18 @@ def test_verdict_fails_loud_when_no_manifest_was_produced(tmp_path: Path) -> Non
     assert v.total == 0
 
 
+def test_verdict_fails_loud_when_a_manifest_is_unreadable(tmp_path: Path) -> None:
+    # A corrupted/truncated manifest must count as a failure, not vanish from the tally — otherwise
+    # a broken run would silently drop from total/passed and flip the verdict to a false pass.
+    run_dir = tmp_path / "runs" / "20260714-100000"
+    run_dir.mkdir(parents=True)
+    (run_dir / "manifest.json").write_text('{"scenarios": [')  # truncated, invalid JSON
+    v = verdict_from_manifest(tmp_path / "runs")
+    assert not v.ok
+    assert v.total >= 1
+    assert any("manifest.json" in f for f in v.failures)
+
+
 # ---------------------------------------------------------------------------
 # submit_and_collect (fake AWS SDK seam)
 # ---------------------------------------------------------------------------
