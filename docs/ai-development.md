@@ -6,6 +6,10 @@
 > colliding or regressing each other. The short version lives in [`CLAUDE.md`](../CLAUDE.md);
 > this page is the full operational guide.
 
+> **New to contributing? Start with the [contributor workflow tutorial](contributor-workflow-tutorial.md)** —
+> a hands-on walkthrough of your first proposal and first implementation. This page is the detailed
+> reference it links to for the rules (the gate, branches, BE-ID lifecycle, model tiers, PR template).
+
 The whole design rests on one property: **the deterministic gate is cheap, runs anywhere, and
 mirrors CI exactly.** This is what lets work fan out safely — every branch is independently
 verifiable, so "green locally" reliably predicts "green in CI", and the test suite is a

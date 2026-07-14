@@ -8,6 +8,10 @@
 > they form the loop every non-trivial change to Bajutsu runs through. This page explains that loop;
 > the BE-ID mechanics it relies on are specified in [ai-development](ai-development.md#roadmap-items-be-ids-strict).
 
+> **New to contributing? Start with the [contributor workflow tutorial](contributor-workflow-tutorial.md)** —
+> a hands-on, step-by-step walkthrough that runs one idea through this whole loop (and shows when to
+> collapse it with `propose-and-build`). This page is the conceptual overview behind it.
+
 Bajutsu's roadmap is not a backlog you skim past — it is the **shared hub** for planning, the same
 way a scenario YAML is the shared hub for a test. A feature is first written down as a BE
 (*Bajutsu Evolution*) item under [`roadmaps/`](../roadmaps/README.md), discussed and refined as a
