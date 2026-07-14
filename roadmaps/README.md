@@ -592,6 +592,12 @@ Running a scenario on a hosted device farm instead of a local Simulator, emulato
 
 <!-- /GENERATED:proposals-config-sourcing -->
 
+### Development infrastructure (contributor workflow)
+
+<!-- GENERATED:proposals-developer-experience -->
+
+<!-- /GENERATED:proposals-developer-experience -->
+
 ### Codebase quality & technical debt
 
 <!-- GENERATED:proposals-quality-debt -->
