@@ -492,6 +492,7 @@ Behavior-preserving cleanup inside `bajutsu/` itself — deduplication, decompos
 | [BE-0202](BE-0202-serve-js-modularization/BE-0202-serve-js-modularization.md) | Split serve.js into section files without a build step | Implemented |
 | [BE-0205](BE-0205-crawl-command-decomposition/BE-0205-crawl-command-decomposition.md) | Decompose the crawl CLI command like run | Implemented |
 | [BE-0206](BE-0206-serve-state-module-split/BE-0206-serve-state-module-split.md) | Split serve job state from job execution | Implemented |
+| [BE-0246](BE-0246-claude-client-taxonomy/BE-0246-claude-client-taxonomy.md) | Clarify the module taxonomy for talking to Claude | Implemented |
 | [BE-0260](BE-0260-cli-bringup-consolidation/BE-0260-cli-bringup-consolidation.md) | Consolidate the duplicated CLI command bring-up and add a neutral DeviceError | Implemented |
 <!-- /GENERATED:implemented-quality-debt -->
 
@@ -527,7 +528,6 @@ Accepted and actively being built — a PR is in flight or imminent.
 <!-- GENERATED:in-progress-quality-debt -->
 | ID | Item | Status |
 |---|---|---|
-| [BE-0246](BE-0246-claude-client-taxonomy/BE-0246-claude-client-taxonomy.md) | Clarify the module taxonomy for talking to Claude | In progress |
 | [BE-0257](BE-0257-layer-package-topology/BE-0257-layer-package-topology.md) | Package the enforced architecture layers as directories | In progress |
 <!-- /GENERATED:in-progress-quality-debt -->
 
