@@ -9,7 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0249") |
-| 実装 PR | _pending_ |
+| 実装 PR | [#1091](https://github.com/bajutsu-e2e/bajutsu/pull/1091) |
 | トピック | コードベース品質・技術的負債 |
 | 関連 | [BE-0104](../BE-0104-vendor-neutral-ai-backend/BE-0104-vendor-neutral-ai-backend-ja.md), [BE-0140](../BE-0140-dedupe-claude-client-init/BE-0140-dedupe-claude-client-init-ja.md), [BE-0246](../BE-0246-claude-client-taxonomy/BE-0246-claude-client-taxonomy-ja.md) |
 <!-- /BE-METADATA -->
@@ -108,9 +108,10 @@
 
 _ログ:_
 
-- _pending_ — `ensure_client` / `CachesClient` とその該当テストを削除し、使われなくなった
-  `Protocol` の import も外す。あわせて `bajutsu/claude_backed_agent.py` の docstring が名指し
-  していた（もう存在しない）ラッパーへの参照を、実態に合わせて書き換える。
+- [#1091](https://github.com/bajutsu-e2e/bajutsu/pull/1091) — `ensure_client` / `CachesClient`
+  とその該当テストを削除し、使われなくなった `Protocol` の import も外す。あわせて
+  `bajutsu/claude_backed_agent.py` の docstring が名指ししていた（もう存在しない）ラッパーへの
+  参照を、実態に合わせて書き換える。
 
 ## 参考
 

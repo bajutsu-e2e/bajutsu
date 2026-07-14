@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0249") |
-| Implementing PR | _pending_ |
+| Implementing PR | [#1091](https://github.com/bajutsu-e2e/bajutsu/pull/1091) |
 | Topic | Codebase quality & technical debt |
 | Related | [BE-0104](../BE-0104-vendor-neutral-ai-backend/BE-0104-vendor-neutral-ai-backend.md), [BE-0140](../BE-0140-dedupe-claude-client-init/BE-0140-dedupe-claude-client-init.md), [BE-0246](../BE-0246-claude-client-taxonomy/BE-0246-claude-client-taxonomy.md) |
 <!-- /BE-METADATA -->
@@ -105,9 +105,9 @@ No other file imports `ensure_client` or `CachesClient`, so this needs no follow
 
 _Log:_
 
-- _pending_ — delete `ensure_client` / `CachesClient` and their covering test; drop the now-unused
-  `Protocol` import; refresh the stale reference in `bajutsu/claude_backed_agent.py`'s docstring
-  (the wrapper it named is now gone).
+- [#1091](https://github.com/bajutsu-e2e/bajutsu/pull/1091) — delete `ensure_client` /
+  `CachesClient` and their covering test; drop the now-unused `Protocol` import; refresh the stale
+  reference in `bajutsu/claude_backed_agent.py`'s docstring (the wrapper it named is now gone).
 
 ## References
 
