@@ -189,7 +189,15 @@ Log:
   `uiautomator dump` fallback are both exercised on every run. Per-step wall-clock is not asserted (a
   hard CI *timing* gate stays out of scope, consistent with BE-0234); the golden equivalence over the
   resident channel on the emulator is the on-device correctness check. `drivers.md` and
-  `architecture.md` (both languages) now describe the resident-first read. This completes the item.
+  `architecture.md` (both languages) now describe the resident-first read. The lane's first green
+  run surfaced two resident-vs-dump equivalence gaps the fast read exposed, both fixed here so the
+  two paths yield the same tree: the resident server now calls `UiDevice.waitForIdle()` before
+  dumping (the double-tap's async accessibility value had not propagated when the fast read
+  snapshotted, which `uiautomator dump` never saw because it waits for idle); and `AdbDriver._settle`
+  is now bounded by a wall-clock deadline rather than a fixed read count (BE-0234's 3-poll cap
+  assumed the ~2.4 s read paced the loop — the ~0.1 s resident read collapsed the settle window and
+  let a still-moving tree pass as settled, so a tap after a scroll fired on a stale coordinate). This
+  completes the item.
 
 ## References
 

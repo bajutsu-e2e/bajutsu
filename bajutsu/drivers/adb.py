@@ -214,16 +214,18 @@ class AdbDriver:
     _EMPTY_RETRIES = 5  # extra dump attempts on a degenerate tree
     _EMPTY_BACKOFF_S = 0.05  # base delay; doubles each attempt up to the cap
     _EMPTY_BACKOFF_MAX_S = 0.2  # cap on a single backoff (total added <= ~0.75s, bounded)
-    # Settle tuning for a *slow* read (BE-0234 Unit 3). idb inherits `_SETTLE_POLL_S = 0.05` because
-    # its read is cheap and the poll interval provides the spacing between comparisons; on adb a read
-    # is ~2.4s, so that read alone paces the loop and the interval is pure dead time — hence 0.0. A
-    # stable screen still settles in a single read (the first `query()` matches the cached key), so
-    # only a genuinely-animating screen pays for extra reads. `_SETTLE_MAX_POLLS` is deliberately kept
-    # at 3: it bounds those extra reads without weakening the "wait until the tree stops moving"
-    # condition (lowering it would let a mid-animation frame pass as settled — a determinism cost we
-    # will not trade for speed; the real per-read fix is the resident server, deferred to a follow-up).
-    _SETTLE_MAX_POLLS = 3  # extra reads after initial comparison when frames are moving
-    _SETTLE_POLL_S = 0.0  # the ~2.4s read itself paces the loop; an added interval is dead time
+    # Settle is bounded by wall-clock, not a fixed read count (BE-0245). BE-0234 Unit 3 set a 3-poll
+    # cap with `_SETTLE_POLL_S = 0` on the premise that the ~2.4s dump read itself paced the loop, so
+    # three reads spanned ~7s — long enough for a fling to stop. The resident channel's ~0.1s read
+    # (BE-0245) breaks that premise: three fast reads span a fraction of a second and a still-moving
+    # tree passes as settled, so a tap fires on a stale coordinate. Bounding by elapsed time instead
+    # keeps the settle window spanning a real animation whatever the read costs: the loop polls until
+    # two consecutive reads share a frame projection, or `_SETTLE_DEADLINE_S` elapses. A stable screen
+    # still settles in a single read (the first `query()` matches the cached key); only a genuinely-
+    # animating screen polls, and `_SETTLE_POLL_S` is a small non-zero cadence so a fast read does not
+    # busy-spin (on the dump path the read dwarfs it).
+    _SETTLE_DEADLINE_S = 2.0  # ceiling on waiting for the tree to stop moving (spans a fling)
+    _SETTLE_POLL_S = 0.1  # inter-read cadence on a fast channel; negligible against the dump read
     # Scroll-into-view (BE-0210): an action target that resolves to nothing in the current viewport
     # is scrolled toward and re-queried a bounded number of times before failing — a condition wait,
     # not a fixed sleep. Direction is always upward (content up, revealing rows below) — the
@@ -306,18 +308,22 @@ class AdbDriver:
         return min(self._EMPTY_BACKOFF_S * 2.0**attempt, self._EMPTY_BACKOFF_MAX_S)
 
     def _settle(self) -> list[base.Element]:
-        """Wait until the tree's identifier-frame projection is unchanged, or give up (idb's logic).
+        """Wait until the tree's identifier-frame projection stops changing, or give up.
 
         Compares (identifier, frame) only — ignoring volatile value/traits/label — so data changes on
         a static screen do not trigger extra polls. The first call (no cached key) returns
-        immediately; only a cache miss starts the bounded poll.
+        immediately; only a cache miss starts the poll. The poll is bounded by a wall-clock deadline,
+        not a fixed read count, so it spans a real animation whatever the read costs — the resident
+        channel's fast read (BE-0245) would otherwise collapse the window and let a still-moving tree
+        pass as settled.
         """
         prev_key = self._last_stable_key
         tree = self.query()
         key = self._last_stable_key
         if prev_key is None or key == prev_key:
             return tree
-        for _ in range(self._SETTLE_MAX_POLLS):
+        deadline = time.monotonic() + self._SETTLE_DEADLINE_S
+        while time.monotonic() < deadline:
             time.sleep(self._SETTLE_POLL_S)
             tree = self.query()
             new_key = self._last_stable_key

@@ -14,6 +14,7 @@ from pathlib import Path
 
 import pytest
 
+import bajutsu.drivers.adb as adb_driver_mod
 from bajutsu import adb, intervals
 from bajutsu.drivers import base
 from bajutsu.drivers.adb import AdbDriver, AdbResidentError, parse_hierarchy
@@ -903,6 +904,24 @@ def test_scroll_on_empty_tree_fails_loudly_without_bogus_swipes() -> None:
 ANIMATING = FIXTURE.replace("[0,100][200,200]", "[0,110][200,210]")
 
 
+def _moved(y: int) -> str:
+    """FIXTURE with stable_refresh shifted to y — a distinct frame for an animation step."""
+    return FIXTURE.replace("[0,100][200,200]", f"[0,{y}][200,{y + 100}]")
+
+
+class _Clock:
+    """A fake monotonic clock: `sleep` advances it, so wall-clock-bounded loops run instantly."""
+
+    def __init__(self) -> None:
+        self.t = 0.0
+
+    def monotonic(self) -> float:
+        return self.t
+
+    def sleep(self, seconds: float) -> None:
+        self.t += seconds
+
+
 def test_settle_polls_until_frames_stabilize() -> None:
     # cache FIXTURE → _settle sees ANIMATING (frames moved) → polls → stable.
     run, _ = _scripted([FIXTURE, ANIMATING, ANIMATING])
@@ -913,11 +932,59 @@ def test_settle_polls_until_frames_stabilize() -> None:
     assert len(tree) == FIXTURE_ELEMENT_COUNT
 
 
-def test_settle_poll_interval_defaults_to_zero_for_the_slow_read() -> None:
-    # BE-0234 Unit 3: on adb the ~2.4s read itself paces the settle loop, so the inter-poll interval
-    # is 0. Pinned as the class default — the read-count test above overrides the constant, so only
-    # this guards against an accidental revert to a nonzero (idb-shaped) interval.
-    assert AdbDriver._SETTLE_POLL_S == 0.0
+def test_settle_keeps_polling_past_the_old_count_until_frames_stop(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # BE-0245: the settle window is bounded by wall-clock, not a fixed read count, so a fast read (the
+    # resident channel, ~0.1s) still spans a real fling. A frame that moves for MORE reads than the
+    # old 3-poll cap, then rests, must settle on the RESTING frame — the old count-bound would have
+    # returned a still-moving frame (the 4th read) and tapped a stale coordinate.
+    clock = _Clock()
+    monkeypatch.setattr(adb_driver_mod, "time", clock)
+    # cache baseline, then move for 5 reads (past the old cap of 3) before two equal resting reads.
+    run, _ = _scripted([FIXTURE, _moved(110), _moved(130), _moved(150), _moved(165), _moved(170), _moved(170)])  # fmt: skip
+    driver = AdbDriver("U", run=run)  # type: ignore[arg-type]
+    driver._SETTLE_POLL_S = 0.1
+    driver._SETTLE_DEADLINE_S = 2.0
+    driver.query()  # cache FIXTURE (resting y=100 baseline)
+    tree = driver._settle()
+    # Settled on the resting frame (y=170), not any moving frame — proves it polled past the old cap.
+    assert _by_id(tree, "stable_refresh")["frame"] == (0.0, 170.0, 200.0, 100.0)
+    assert clock.t < driver._SETTLE_DEADLINE_S  # returned on stability, before the deadline
+
+
+def test_settle_gives_up_at_the_wall_clock_deadline_when_never_stable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # A screen that never stops moving must not spin forever: the poll is bounded by a wall-clock
+    # deadline (independent of read cost), after which _settle returns the latest tree.
+    clock = _Clock()
+    monkeypatch.setattr(adb_driver_mod, "time", clock)
+    reads = [0]
+
+    def run(args: list[str]) -> str:
+        if "dump" in args:
+            reads[0] += 1
+            return _moved(100 + reads[0] * 5)  # every read is a new frame — never settles
+        return ""
+
+    driver = AdbDriver("U", run=run)  # type: ignore[arg-type]
+    driver._SETTLE_POLL_S = 0.1
+    driver._SETTLE_DEADLINE_S = 0.5
+    driver.query()  # cache the first frame
+    before = reads[0]
+    driver._settle()
+    # Bounded by the deadline: ~0.5s / 0.1s poll ⇒ a handful of extra reads, then it stops.
+    assert clock.t >= driver._SETTLE_DEADLINE_S
+    assert 3 < (reads[0] - before) <= 8  # more than the old 3-poll cap, but bounded by wall-clock
+
+
+def test_settle_defaults_bound_by_wall_clock_not_read_count() -> None:
+    # BE-0245: the class pins a wall-clock deadline and a small non-zero poll interval. The interval
+    # is no longer 0 (BE-0234's "the slow read paces the loop") because the resident channel's fast
+    # read no longer does — the deadline is what bounds the settle window now.
+    assert AdbDriver._SETTLE_DEADLINE_S > 0
+    assert AdbDriver._SETTLE_POLL_S > 0
 
 
 def test_checked_serial_accepts_real_serials() -> None:
