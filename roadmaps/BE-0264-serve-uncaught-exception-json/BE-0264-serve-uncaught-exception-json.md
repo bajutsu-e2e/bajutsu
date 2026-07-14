@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-serve-uncaught-exception-json-ja.md)
+**English** · [日本語](BE-0264-serve-uncaught-exception-json-ja.md)
 
-# BE-XXXX — Return JSON errors for uncaught serve handler exceptions
+# BE-0264 — Return JSON errors for uncaught serve handler exceptions
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-serve-uncaught-exception-json.md) |
+| Proposal | [BE-0264](BE-0264-serve-uncaught-exception-json.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0264") |
 | Topic | Codebase quality & technical debt |
 <!-- /BE-METADATA -->
 
