@@ -78,6 +78,14 @@ class ResidentServerTest {
     }
 
     private fun respondSource(out: OutputStream, device: UiDevice) {
+        // Wait for the accessibility event queue to drain before dumping, exactly as the platform
+        // `uiautomator dump` shell command does (its DumpCommand calls waitForIdle first). Without
+        // this, a warm session reads the tree faster than an async node change (e.g. a gesture
+        // mirroring its result into an a11y value) is delivered, so the resident channel would
+        // snapshot a stale value the slower `uiautomator dump` fallback never sees — the two paths
+        // must yield the same Elements (BE-0245). This is a bounded condition wait on the event
+        // queue, not a fixed sleep.
+        device.waitForIdle()
         // dumpWindowHierarchy traverses every window, so this XML also carries the SystemUI status
         // bar (clock, wifi, battery, notification icons — 29 nodes) that the platform `uiautomator
         // dump` omits by scoping to the
