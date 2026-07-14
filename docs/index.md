@@ -26,10 +26,10 @@ the same scenario runs on a different target by swapping it.
 ## Status — pre-alpha
 
 The deterministic core, the AI authoring loop (`record` / `crawl`), the evidence subsystem,
-XCUITest codegen, and self-healing triage are all implemented and unit-tested with no Simulator
-needed. The iOS **idb backend** is validated end-to-end on a real Simulator, and the **web
-(Playwright) backend** has landed a first slice: a deterministic `run` against a browser on the
-Linux gate.
+codegen, and self-healing triage are all implemented and unit-tested with no Simulator
+needed. The iOS **idb/XCUITest backends** are validated end-to-end on a real Simulator, the
+**Android (adb) backend** is validated on an emulator, and the **web (Playwright) backend** runs
+a deterministic `run` against a browser on the Linux gate.
 
 ## Quickstart
 
@@ -50,16 +50,18 @@ same loop against a browser (Playwright backend) — no Xcode or Simulator.
   ambiguity.
 - **Evidence subsystem** — screenshots, hierarchy, and network captured on a policy you control.
 - **Self-healing triage** — AI investigates a failure and proposes a fix, off the CI path.
-- **Codegen** — turn a scenario into an equivalent native XCUITest.
+- **Codegen** — turn a scenario into an equivalent native test: XCUITest (iOS), Playwright (web),
+  or UI Automator (Android).
 - **MCP & web UI** — drive Bajutsu from an MCP client or the local `serve` UI.
 
 ## Backends & platforms
 
 | Platform | Backend | Status |
 |---|---|---|
-| iOS Simulator | idb | Validated end-to-end on-device |
-| Web | Playwright | First deterministic slice landed |
-| Android | (planned) | Next |
+| iOS Simulator | idb / XCUITest | Validated end-to-end on-device |
+| Web | Playwright | Validated end-to-end on the Linux gate |
+| Android | adb | Validated end-to-end on an emulator |
+| Flutter | (planned) | Next |
 
 ## Learn more
 

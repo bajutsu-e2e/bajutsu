@@ -104,10 +104,10 @@ AND で結合されるフィールドの集合（`id`、`idMatches`、`label`、
 | `fake` | `fake` | 常に利用可能（インメモリ。テスト用） |
 
 > **`adb` は予定ではなく実装済みです。** Android の actuator（`adb`）は組み込み済みで、現在の
-> `IMPLEMENTED` に含まれます。一部のページ（`docs/multi-platform.md`、`CLAUDE.md`）は Android をいまだ
-> 「予定」と書いていますが、それはドキュメントの遅れであり、上のコード準拠の対応表が正です。iOS では
-> `xcuitest` と `idb` の両方が実装済みです。リストは安定度順なので、`xcodebuild` が使えるときは
-> `xcuitest` が選ばれ、`idb` がフォールバックになります（BE-0019）。
+> `IMPLEMENTED` に含まれ、エミュレータ上で end-to-end に検証されています（[architecture →
+> 実装状況](architecture.md#実装状況)）。iOS では `xcuitest` と `idb` の両方が実装済みです。
+> リストは安定度順なので、`xcodebuild` が使えるときは `xcuitest` が選ばれ、`idb` がフォール
+> バックになります（BE-0019）。
 
 インターフェースと actuator ごとの capability の違いは [drivers](drivers.md) を参照してください。
 

@@ -8,22 +8,23 @@
 
 > backend 非依存のドライバを土台とする自然言語駆動 E2E（端から端まで）テスト。シナリオ形式と決定的
 > ランナーは 1 つで、**プラットフォームはその 1 つのインターフェースの背後の backend に過ぎません**。
-> backend を差し替えれば同じシナリオが別のターゲットで動きます。今は iOS Simulator（idb）、web
-> （Playwright）backend は実装済み、Android は次です。
+> backend を差し替えれば同じシナリオが別のターゲットで動きます。iOS Simulator（idb / XCUITest）、
+> web（Playwright）backend、Android（adb）backend はいずれも実装済みで、次は Flutter です。
 > **ステータス: pre-alpha。** 決定的コア、AI オーサリングループ（`record` / `crawl`）、証跡
-> サブシステム、XCUITest codegen、自己修復トリアージはいずれも実装・ユニットテスト済みです
-> （Simulator 不要）。iOS の **idb backend** は **実機 Simulator で
+> サブシステム、codegen、自己修復トリアージはいずれも実装・ユニットテスト済みです
+> （Simulator 不要）。iOS の **idb / XCUITest backend** は **実機 Simulator で
 > end-to-end に検証済み**で、シナリオ実行・証跡取得・triage の自己修復ループはいずれも実機で
-> 動きます。**web（Playwright）backend** も第一段を実装済みで、ブラウザに対する決定的な `run` を
-> Linux のゲート上で動かせます（[`demos/web`](demos/web/README.md)）。
+> 動きます。**web（Playwright）backend** はブラウザに対する決定的な `run` を
+> Linux のゲート上で動かし（[`demos/web`](demos/web/README.md)）、**Android（adb）backend** は
+> エミュレータ上で end-to-end に検証済みです（[`android-e2e.yml`](.github/workflows/android-e2e.yml)）。
 
 Bajutsu は自然言語で書かれた（または記録された）テストシナリオを受け取り、アプリを操作（tap / type /
 swipe / wait）して、**機械チェック可能なアサーション**で結果を検証します。1 つの継ぎ目を除いてすべてが
 プラットフォーム非依存です。シナリオ形式、セレクタ解決、決定的ランナー、証跡サブシステム、レポーターは
 どれもプラットフォームを名指ししません。その 1 つの継ぎ目が、UI を操作する **backend** です。ランナーを
-別の backend に向ければ、同じシナリオが別のターゲットで動きます。対象は今のところ iOS Simulator（idb）と
-ブラウザ（Playwright）で、次は Android です。プラットフォームを選ぶとは backend を選ぶことであり、別の
-ツールへ乗り換えることではありません。
+別の backend に向ければ、同じシナリオが別のターゲットで動きます。対象は iOS Simulator（idb）、
+ブラウザ（Playwright）、Android（adb）で、次は Flutter です。プラットフォームを選ぶとは backend を
+選ぶことであり、別のツールへ乗り換えることではありません。
 
 > **名前について。** *Bajutsu*（馬術）は馬を扱う技術を指す日本語です。この名前は、ツールが扱う
 > テスト不安定要因（フレーキーなタイミング、非同期遷移、想定外のシステムアラート）に由来します。
@@ -131,8 +132,8 @@ flowchart TB
 実装済み・テスト済み（Simulator 不要で実行できます）:
 
 - ドライバ抽象と **セレクタ解決**（決定性の核）
-- **プラットフォーム対応の backend レジストリ**。`--backend` / `backend:` は `ios` / `web` / `fake`
-  を受け取り（Android `adb` は予定）、それぞれが安定度順に actuator へ展開されます
+- **プラットフォーム対応の backend レジストリ**。`--backend` / `backend:` は `ios` / `android` /
+  `web` / `fake` を受け取り、それぞれが安定度順に actuator へ展開されます
 - **シナリオスキーマ**: ステップ、待機、アサーション、再利用可能なコンポーネント（`use`）、
   制御フロー（`if` / `forEach`）、変数（`extract` → `${vars.*}`）、パラメータ化（`data` / `dataFile`）、
   ネットワーク `mocks`、`network` フィルタ、`capturePolicy` 証跡ルール、`redact`。厳格検証・
@@ -145,11 +146,13 @@ flowchart TB
 - **レポート**（`manifest.json` + JUnit XML + 自己完結のインタラクティブ HTML）
 - **config 解決**（チーム既定 × アプリ別。iOS は `bundleId`、web は `baseUrl`）と **backend 選択**
   （安定度順）
-- **simctl コマンド層**、**idb 出力パーサ**、**Playwright web ドライバ**（第一段）、**doctor**
-  規約スコアと環境 preflight
+- **simctl コマンド層**、**idb 出力パーサ**、**Playwright web ドライバ**、**adb ドライバ**
+  （`uiautomator dump` パース）、**doctor** 規約スコアと環境 preflight
 - **AI オーサリング**: `record`（ゴール志向）と `crawl`（幅優先のスクリーンマップ）。Agent 抽象は
   2 つの backend（Anthropic API + Claude Code）を持ち、システムアラートガードを伴います
-- **XCUITest codegen**（構造マッピング・テスト時 AI 不要）
+- **codegen**: シナリオからネイティブテストへの変換で、XCUITest（Swift、iOS）、Playwright
+  （TypeScript、web）、UI Automator（Kotlin、Android）の 3 ターゲットに対応します（構造マッピング、
+  テスト時は AI 不要）
 - **自己修復トリアージ**（原因 + 最小修正案。助言のみ、AI は任意）
 - 配線済み CLI: `run` / `doctor` / `record` / `crawl` / `codegen` / `trace` /
   `triage` / `approve` / `serve` / `mcp` / `worker` / `lint` / `schema`
@@ -169,11 +172,17 @@ flowchart TB
 ブラウザで検証済み（Linux・Mac 不要）:
 
 - Playwright backend は [`demos/web`](demos/web/README.md) のシナリオを決定的に実行し、CI と同じ
-  ゲートの中で動きます。コアがプラットフォーム非依存であることの裏付けです。リッチ寄りの web 機能
-  （ネットワーク取得 / 動画 / マルチタッチ / 並列）は今後の予定です（[ロードマップ](roadmaps/README-ja.md)）。
+  ゲートの中で動きます。リッチ寄りの web 機能（ネットワーク取得、動画、マルチタッチ、並列実行）も
+  含めて、コアがプラットフォーム非依存であることの裏付けです。
 
-未配線: 外部 `mockServer` コマンド（シナリオ内 `mocks` で代替済み）、Android（`adb`）と Flutter の
-backend（予定）。完全な「実装済み vs 未配線」表は [`docs/ja/architecture.md`](docs/ja/architecture.md)
+Android エミュレータで検証済み（Linux・Mac 不要）:
+
+- adb backend の `uiautomator dump` パース、フレーム中心の tap、起動シーケンスは idb と同等の
+  actuation を実現しており、KVM 上で起動した API 34 のエミュレータに対して
+  [`android-e2e.yml`](.github/workflows/android-e2e.yml) が idb と同じ共有シナリオを走らせて確認済み。
+
+未配線: 外部 `mockServer` コマンド（シナリオ内 `mocks` で代替済み）、Flutter backend（予定）。
+完全な「実装済み vs 未配線」表は [`docs/ja/architecture.md`](docs/ja/architecture.md)
 にあります。
 
 ## 要件
@@ -323,10 +332,10 @@ bajutsu/
 ## ロードマップ
 
 マイルストーン M1–M4 は完了しています。決定的ランナー、AI `record` ループ + `capturePolicy` 証跡
-ルール、XCUITest codegen + CI、自己修復トリアージのいずれも実機 Simulator で検証済みです（実装済み
+ルール、codegen + CI、自己修復トリアージのいずれも実機 Simulator で検証済みです（実装済み
 の範囲は上の[ステータス](#ステータス)を参照してください）。プラットフォームは 1 つのドライバインター
-フェースの背後にある backend にすぎないため、同じコアが対象をまたいで動きます。**web（Playwright）
-backend** は第一段を実装済みで、**Android（`adb`）** と **Flutter** を予定しています
+フェースの背後にある backend にすぎないため、同じコアが対象をまたいで動きます。**web（Playwright）**
+backend と **Android（`adb`）** backend はいずれも実装済みで、**Flutter** を予定しています
 （[`docs/ja/multi-platform.md`](docs/ja/multi-platform.md)）。
 
 今後の優先順位付きバックログ（次に作りたいもの）は [`roadmaps/`](roadmaps/README-ja.md) にあります。

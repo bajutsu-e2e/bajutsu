@@ -58,7 +58,7 @@ Bajutsu の「決定的」という性質は、コードの構造として強制
 ## 4. 安定セレクタ（accessibilityIdentifier 優先）
 
 セレクタは常に **ローカライズされず、一意で、データに由来する id** で書きます。iOS では
-`accessibilityIdentifier`、web では `data-testid` がそれにあたります（Android の `resource-id` は予定）。
+`accessibilityIdentifier`、web では `data-testid`、Android では `resource-id` がそれにあたります。
 セレクタの YAML は backend をまたいで同じで、変わるのは backend がそれを満たすために読む属性だけです。
 レイアウト変更や翻訳、座標のズレに起因するフレーキーを除去するためです。`label` は VoiceOver や AI が
 意味を理解するためのもので、ローカライズで文言が変わるため、セレクタには使いません（補助や曖昧解消のためにだけ使います）。
@@ -91,7 +91,7 @@ actuation（どう叩くか）の話ではありません。idb（iOS の actuat
 **アプリ側の準備（識別子の付与など）と `targets.<name>` の config エントリ 1 つ**だけで、ほかは何も変えません。各アプリの
 決定性は、同じ実装規約によって保証されます（[configuration](configuration.md#新しいターゲットのオンボーディング)）。
 
-同じやり方が Bajutsu を **プラットフォーム非依存**にします。プラットフォームとは `Driver` インターフェースの背後の backend（§5 の actuator）です。新しいターゲット（現在の web（`playwright`）、次の Android（`adb`））は新しい backend であって、シナリオ形式、セレクタ解決、アサーション、orchestrator、証跡、レポーターはバイト単位で同じです。プラットフォーム固有の差分は backend と config にだけ置きます。
+同じやり方が Bajutsu を **プラットフォーム非依存**にします。プラットフォームとは `Driver` インターフェースの背後の backend（§5 の actuator）です。web（`playwright`）と Android（`adb`）はこの作り方で加わった新しいターゲットで、いずれも新しい backend であって、シナリオ形式、セレクタ解決、アサーション、orchestrator、証跡、レポーターはバイト単位で同じです。プラットフォーム固有の差分は backend と config にだけ置きます。
 
 ## 7. 証跡はルール（繰り返し発火）
 

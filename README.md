@@ -9,22 +9,24 @@
 > Natural-language-driven E2E (end-to-end) testing built on a **backend-agnostic driver**: one
 > scenario format and one deterministic runner, where **a platform is just a backend** behind that
 > one interface. Swap the backend and the same scenarios run on a different target — the iOS
-> Simulator (idb) today, a web (Playwright) backend landed, Android next.
+> Simulator (idb/XCUITest), a web (Playwright) backend, and an Android (adb) backend are all
+> landed, with Flutter next.
 > **Status: pre-alpha.** The deterministic core, the AI authoring loop (`record` / `crawl`),
-> the evidence subsystem, XCUITest codegen, and self-healing triage are all implemented and
-> unit-tested (no Simulator needed). The iOS **idb backend** is **validated
+> the evidence subsystem, codegen, and self-healing triage are all implemented and
+> unit-tested (no Simulator needed). The iOS **idb/XCUITest backends** are **validated
 > end-to-end on a real Simulator** — scenarios, evidence capture, and the triage self-heal loop
-> all run on-device — and the **web (Playwright) backend** has landed a first slice: a
-> deterministic `run` against a browser, on the Linux gate ([`demos/web`](demos/web/README.md)).
+> all run on-device — the **web (Playwright) backend** runs a deterministic `run` against a
+> browser on the Linux gate ([`demos/web`](demos/web/README.md)), and the **Android (adb)
+> backend** is validated end-to-end on an emulator ([`android-e2e.yml`](.github/workflows/android-e2e.yml)).
 
 Bajutsu takes test scenarios written in (or recorded from) natural language, drives your app —
 taps / typing / swipes / waits — and verifies the result with **machine-checkable assertions**.
 Everything but one seam is platform-neutral: the scenario format, selector resolution, the
 deterministic runner, the evidence subsystem, and the reporter never name a platform. That one seam
 is the **backend** — the driver that actuates the UI. Point the runner at a different backend and
-the same scenario runs on a different target: the **iOS Simulator** (idb) today, a **browser**
-(Playwright) now too, with **Android** next. Choosing a platform is choosing a backend, not adopting
-a different tool.
+the same scenario runs on a different target: the **iOS Simulator** (idb), a **browser**
+(Playwright), or **Android** (adb), with **Flutter** next. Choosing a platform is choosing a
+backend, not adopting a different tool.
 
 > **The name.** *Bajutsu* (馬術) is Japanese for *horsemanship / equestrianism*. The name
 > refers to the sources of test instability the tool tames — flaky timing, async transitions,
@@ -135,8 +137,8 @@ Entry points share the scenario format: `record` and `crawl` (AI authoring / exp
 Implemented and covered by tests (run without a Simulator):
 
 - Driver abstraction and **selector resolution** (the determinism core)
-- **Platform-aware backend registry** — `--backend` / `backend:` accept `ios` / `web` / `fake`
-  (Android `adb` planned), each expanding to its actuator in stability order
+- **Platform-aware backend registry** — `--backend` / `backend:` accept `ios` / `android` / `web` /
+  `fake`, each expanding to its actuator in stability order
 - **Scenario schema**: steps, waits, assertions, reusable components (`use`), control flow
   (`if` / `forEach`), variables (`extract` → `${vars.*}`), parametrization (`data` / `dataFile`),
   network `mocks`, a `network` filter, `capturePolicy` evidence rules, and `redact` — with
@@ -150,11 +152,12 @@ Implemented and covered by tests (run without a Simulator):
 - **Reporting** (`manifest.json` + JUnit XML + self-contained interactive HTML)
 - **Config resolution** (team defaults × per-target; iOS `bundleId` or web `baseUrl`) and
   **backend selection** (stability order)
-- **simctl command layer**, **idb output parsers**, the **Playwright web driver** (first slice),
-  and the **doctor** convention score + environment preflight
+- **simctl command layer**, **idb output parsers**, the **Playwright web driver**, the **adb driver**
+  (`uiautomator dump` parsing), and the **doctor** convention score + environment preflight
 - **AI authoring**: `record` (goal-directed) and `crawl` (breadth-first screen map) — the Agent
   abstraction with two backends (Anthropic API + Claude Code) + system-alert guard
-- **XCUITest codegen** (structural mapping; no AI at test time)
+- **Codegen**: scenario → native test, three targets — XCUITest (Swift, iOS), Playwright
+  (TypeScript, web), UI Automator (Kotlin, Android); structural mapping, no AI at test time
 - **Self-healing triage** (root cause + minimal-fix suggestions; advisory, AI optional)
 - The wired CLI: `run` / `doctor` / `record` / `crawl` / `codegen` / `trace` /
   `triage` / `approve` / `serve` / `mcp` / `worker` / `lint` / `schema`
@@ -174,11 +177,18 @@ Validated on a real Simulator (iPhone 17 Pro, recent iOS):
 Validated in a browser (Linux, no Mac):
 
 - The Playwright backend runs the [`demos/web`](demos/web/README.md) scenarios deterministically
-  inside the same gate as CI — proving the core is platform-neutral. Rich-end web capabilities
-  (network capture / video / multi-touch / parallel) are still planned ([roadmap](roadmaps/README.md)).
+  inside the same gate as CI — proving the core is platform-neutral, including the rich-end web
+  capabilities (network capture / video / multi-touch / parallel).
+
+Validated on an Android emulator (Linux, no Mac):
+
+- The adb backend's `uiautomator dump` parsing, frame-center tap, and launch sequencing —
+  actuation-fidelity parity with idb — are confirmed against a booted emulator (API 34, under KVM)
+  in [`android-e2e.yml`](.github/workflows/android-e2e.yml), driving the same shared scenarios idb
+  runs.
 
 Not yet wired: the external `mockServer` command (superseded by in-scenario `mocks`); the
-Android (`adb`) and Flutter backends (planned). See
+Flutter backend (planned). See
 [`docs/architecture.md`](docs/architecture.md) for the full implemented-vs-unwired table.
 
 ## Requirements
@@ -330,10 +340,10 @@ bajutsu/
 ## Roadmap
 
 Milestones M1–M4 are complete — the deterministic runner, the AI `record` loop + `capturePolicy`
-evidence rules, XCUITest codegen + CI, and self-healing triage — all validated on a real
+evidence rules, codegen + CI, and self-healing triage — all validated on a real
 Simulator (see [Status](#status) above for the implemented surface). Because a platform is just a
-backend behind the one driver interface, the same core spans targets: the **web (Playwright)
-backend** has landed its first slice, with **Android (`adb`)** and **Flutter** planned
+backend behind the one driver interface, the same core spans targets: the **web (Playwright)** and
+**Android (`adb`)** backends have both landed, with **Flutter** planned
 (see [`docs/multi-platform.md`](docs/multi-platform.md)).
 
 The forward-looking, prioritized backlog (what we want to build next) lives in
