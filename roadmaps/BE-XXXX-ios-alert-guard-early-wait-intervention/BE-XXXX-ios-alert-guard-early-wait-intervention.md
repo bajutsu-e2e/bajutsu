@@ -42,7 +42,7 @@ The fix must not defeat prime directive 1 (AI never judges pass/fail) or prime d
 existing deterministic condition check in `_wait()`, and any AI-vision call the guard makes has
 to stay rare and bounded — it cannot become a call fired on every 0.05s poll tick
 (`_POLL` in `bajutsu/orchestrator/waits.py:14`), since `ClaudeAlertLocator.locate`
-(`bajutsu/alerts.py:176`) does a real network round trip and is far too slow and costly to run at
+(`bajutsu/alerts.py:163`) does a real network round trip and is far too slow and costly to run at
 that cadence.
 
 ## Detailed design
@@ -77,10 +77,10 @@ that cadence.
    waiting for `deadline`. On a successful dismiss, polling for the *original* condition resumes
    against the *same* `deadline` — the guard's early intervention changes only when recovery is
    attempted, not the timeout budget that still governs when the step is allowed to fail. This is
-   the same shape `record.py`'s `_clear_blocking` already uses on the record path (poll → `not
-   shows_app_ui` → invoke the guard → retry), and the crawl path reuses via `crawl.py`'s
-   `clear_blocking`; the work here is to bring that established loop to the deterministic
-   `run`/`wait` path rather than to invent a new one.
+   the same shape `record.py`'s `clear_blocking` already uses on the record path (poll → `not
+   shows_app_ui` → invoke the guard → retry), and the crawl path reuses it via
+   `bajutsu/cli/commands/crawl.py`'s wiring; the work here is to bring that established loop to the
+   deterministic `run`/`wait` path rather than to invent a new one.
 4. **Cap the intervention rate.** Because `ClaudeAlertLocator.locate` is a real AI-vision call, cap
    how often it can fire within one wait (a minimum cooldown between attempts, and/or a small max-
    attempts-per-wait ceiling) so a persistent false-positive collapse — or a dismiss that doesn't
@@ -131,9 +131,10 @@ that cadence.
   `_adaptive_sleep`, `_wait_settled` (the `_SETTLE_POLLS` debounce precedent).
 - [`bajutsu/elements.py`](../../bajutsu/elements.py) — `shows_app_ui`, the existing collapsed-tree
   detector this proposal reuses (prior art; more careful than a bare "single window node").
-- [`bajutsu/record.py`](../../bajutsu/record.py) — `_clear_blocking`, the record-path
+- [`bajutsu/record.py`](../../bajutsu/record.py) — `clear_blocking`, the record-path
   poll → `not shows_app_ui` → invoke-guard → retry loop whose shape Unit 3 brings to the
-  `run`/`wait` path; the crawl path reuses it via [`bajutsu/crawl.py`](../../bajutsu/crawl.py).
+  `run`/`wait` path; the crawl path reuses it via
+  [`bajutsu/cli/commands/crawl.py`](../../bajutsu/cli/commands/crawl.py).
 - [`bajutsu/orchestrator/loop.py:550`](../../bajutsu/orchestrator/loop.py) — the current
   end-of-step-only `on_blocked` wiring this proposal moves earlier for `wait` steps.
 - [BE-0231](../BE-0231-smoke-idb-first-wait-settling/BE-0231-smoke-idb-first-wait-settling.md) —

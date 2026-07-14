@@ -41,7 +41,7 @@
 固定の `sleep` を使わない）を損なうわけにはいきません。最終的なステップの合否は、`_wait()` に既にある
 決定的な条件チェックから決まる必要があり、ガードが行う AI vision の呼び出しは、頻度をまれかつ有界に
 保つ必要があります。`_POLL`（`bajutsu/orchestrator/waits.py:14`）が定める 0.05 秒ごとのポーリング
-ティックで毎回呼ぶような形にはできません。`ClaudeAlertLocator.locate`（`bajutsu/alerts.py:176`）は
+ティックで毎回呼ぶような形にはできません。`ClaudeAlertLocator.locate`（`bajutsu/alerts.py:163`）は
 実際にネットワーク越しの往復を行うため、その間隔で動かすには遅すぎ、コストも見合いません。
 
 ## 詳細設計
@@ -76,10 +76,10 @@
    検知が確定した時点で `_wait()` が `deadline` を待たずに直接ガードを呼びます。dismiss に成功したら、
    元の条件に対するポーリングを **同じ** `deadline` に対して再開します。ガードが早く動くようになるのは
    介入のタイミングだけであり、ステップが失敗を許される `timeout` の予算そのものは変わりません。これは
-   `record.py` の `_clear_blocking` が record 経路ですでに使っている形（ポーリングして `not shows_app_ui`
-   で判定し、ガードを呼んで同じ予算でリトライする）と同じであり、crawl 経路も `crawl.py` の
-   `clear_blocking` を通じて再利用しています。ここでの作業は、その確立したループを新たに作り直すのではなく、
-   決定的な `run` / `wait` 経路へ持ち込むことです。
+   `record.py` の `clear_blocking` が record 経路ですでに使っている形（ポーリングして `not shows_app_ui`
+   で判定し、ガードを呼んで同じ予算でリトライする）と同じであり、crawl 経路も
+   `bajutsu/cli/commands/crawl.py` の配線を通じて再利用しています。ここでの作業は、その確立したループを
+   新たに作り直すのではなく、決定的な `run` / `wait` 経路へ持ち込むことです。
 4. **ガード呼び出しの頻度に上限を設けます。** `ClaudeAlertLocator.locate` は実際の AI vision 呼び出しな
    ので、1 回の待機の中でそれを呼べる回数に上限を設けます（呼び出しの間隔を最低これだけ空ける、かつ／
    または待機あたりの最大呼び出し回数を決める）。崩れた形が本物のアラートではなく持続的な誤検知だった
@@ -130,8 +130,9 @@
 - [`bajutsu/elements.py`](../../bajutsu/elements.py) — このアイテムが再利用する既存の崩れたツリー検知器
   `shows_app_ui`（前例。素朴な「単一のウィンドウノード」判定より精緻）。
 - [`bajutsu/record.py`](../../bajutsu/record.py) — record 経路の
-  ポーリング → `not shows_app_ui` → ガード起動 → リトライのループ `_clear_blocking`。ユニット 3 はこの形を
-  `run` / `wait` 経路へ持ち込みます。crawl 経路は [`bajutsu/crawl.py`](../../bajutsu/crawl.py) を通じて再利用します。
+  ポーリング → `not shows_app_ui` → ガード起動 → リトライのループ `clear_blocking`。ユニット 3 はこの形を
+  `run` / `wait` 経路へ持ち込みます。crawl 経路は
+  [`bajutsu/cli/commands/crawl.py`](../../bajutsu/cli/commands/crawl.py) を通じて再利用します。
 - [`bajutsu/orchestrator/loop.py:550`](../../bajutsu/orchestrator/loop.py) — 現在ステップ末尾
   にしかない `on_blocked` の呼び出しを、`wait` ステップについてはこのアイテムで前倒しします。
 - [BE-0231](../BE-0231-smoke-idb-first-wait-settling/BE-0231-smoke-idb-first-wait-settling-ja.md)
