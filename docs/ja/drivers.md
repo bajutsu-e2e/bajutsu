@@ -75,7 +75,7 @@ class Driver(Protocol):
 - `screenshot`: idb 自身のフレームキャプチャが不安定なため **`simctl io screenshot` を使います**。
 - `swipe`: `--duration 0.2` を付けて実ドラッグ化します（瞬間スワイプは SwiftUI に pan として認識されません）。
 
-> describe-all の JSON キー名は fb-idb の出力に従い、`make -C demos/showcase run-swiftui` ＋ `e2e.yml` CI ワークフローで**実機検証済みです**（iPhone 17 Pro、最近の iOS）。インストール済み idb がスキーマを変えたときだけ再確認すれば十分です（`idb.py` 冒頭の注記参照）。idb クライアントは `uv sync --extra idb`、`idb_companion` は `brew install facebook/fb/idb-companion` でインストールします。
+> describe-all の JSON キー名は fb-idb の出力に従い、`make -C demos/showcase run-swiftui` ＋ `ios-e2e.yml` CI ワークフローで**実機検証済みです**（iPhone 17 Pro、最近の iOS）。インストール済み idb がスキーマを変えたときだけ再確認すれば十分です（`idb.py` 冒頭の注記参照）。idb クライアントは `uv sync --extra idb`、`idb_companion` は `brew install facebook/fb/idb-companion` でインストールします。
 
 ### idb のバージョン追跡（BE-0005）
 

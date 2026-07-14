@@ -1,7 +1,7 @@
 # Repo CI: lint + typecheck + test on Linux. The logic layer needs no Simulator, so this
 # is fast and cheap; it runs on every PR (the `check` job is the required gate). The heavier,
 # narrowly-relevant jobs live in their own path-filtered workflows so they run only when warranted:
-# on-device E2E (macOS) in e2e.yml, the real-browser web E2E in web-e2e.yml, and the dependency
+# on-device E2E (macOS) in ios-e2e.yml, the real-browser web E2E in web-e2e.yml, and the dependency
 # advisory audit in dependency-audit.yml.
 name: CI
 
