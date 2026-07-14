@@ -207,25 +207,11 @@ class DeviceFarmClient(Protocol):
     returns (``{"upload": {...}}``, ``{"run": {...}}``, ``{"artifacts": [...]}``).
     """
 
-    def create_upload(self, *, projectArn: str, name: str, type: str) -> dict[str, Any]:  # noqa: N803 - boto3 kwargs
-        """Register a new upload; boto3 returns ``{"upload": {...}}`` with the presigned PUT URL."""
-        ...
-
-    def get_upload(self, *, arn: str) -> dict[str, Any]:
-        """Fetch an upload's current status (``INITIALIZED`` → ``SUCCEEDED`` / ``FAILED``)."""
-        ...
-
-    def schedule_run(self, **kwargs: Any) -> dict[str, Any]:
-        """Schedule a run from the uploaded app/test/spec; boto3 returns ``{"run": {...}}``."""
-        ...
-
-    def get_run(self, *, arn: str) -> dict[str, Any]:
-        """Fetch a run's current status; boto3 returns ``{"run": {...}}``."""
-        ...
-
-    def list_artifacts(self, *, arn: str, type: str) -> dict[str, Any]:
-        """List a run's artifacts of the given type; boto3 returns ``{"artifacts": [...]}``."""
-        ...
+    def create_upload(self, *, projectArn: str, name: str, type: str) -> dict[str, Any]: ...  # noqa: N803 - boto3 kwargs, returns {"upload": {url, ...}}
+    def get_upload(self, *, arn: str) -> dict[str, Any]: ...  # {"upload": {status, url}}
+    def schedule_run(self, **kwargs: Any) -> dict[str, Any]: ...  # {"run": {arn, ...}}
+    def get_run(self, *, arn: str) -> dict[str, Any]: ...  # {"run": {status, result}}
+    def list_artifacts(self, *, arn: str, type: str) -> dict[str, Any]: ...  # {"artifacts": [...]}
 
 
 class Transfer(Protocol):
