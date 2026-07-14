@@ -19,6 +19,15 @@ import {initMetrics} from './serve.metrics.mjs';
 // call time) rather than the `window.*` globals BE-0202 used.
 let authorInit=()=>{}, authorRefresh=()=>{};
 
+// Wire the section modules' listeners first — their bodies only define; this entry module owns the
+// explicit order. This must run before initTiling() below: the tiler rebuilds each view and detaches
+// the Record view's optional Run-result pane (which holds #rec-runclose etc.), so initPanels has to
+// bind those controls while they are still in the DOM — the order the old concatenated load had
+// (panels loaded before author's tiling) and which BE-0247 must preserve.
+initPanels();
+initCrawl();
+initMetrics();
+
 // Device UI is platform-specific: iOS controls (simulators, device pickers, erase, alert-dismiss)
 // show only for an iOS backend, web controls (the headed/show-browser toggle) only for web. The
 // backend is fixed per app by config (no UI override), so each panel follows the selected app's
@@ -952,13 +961,6 @@ if(!NARROW_MQ.matches)initTiling();
     auSyncEmit();
   };
 })();
-
-// Wire the section modules' listeners. Their bodies only define; this entry module owns the explicit
-// order — core self-wired as it evaluated, and these three run now, before the boot data-loads below
-// fire any UI update that a listener must already be attached for.
-initPanels();
-initCrawl();
-initMetrics();
 
 initTheme();
 loadConfig();
