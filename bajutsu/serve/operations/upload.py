@@ -225,10 +225,13 @@ def artifact_exists(
         except Exception:  # a transient store error reads as "not confirmed present", not a crash
             exists = False
     else:
-        # Belt-and-suspenders on top of allowlist/regex checks: canonicalize and ensure the final
-        # candidate stays under the artifacts cache root before any filesystem read.
+        # Belt-and-suspenders on top of the allowlist/regex checks above: build the candidate off
+        # the resolved (trusted) cache root and confine it there with an is_relative_to barrier
+        # before any filesystem read. Only the root is resolved — resolving the tainted candidate
+        # would itself be a path-expression sink upstream of the barrier; kind/sha256 are already
+        # validated to contain no separator or `..`, so the unresolved join can't escape.
         artifacts_root = _artifacts_dir(state).resolve()
-        candidate = (local_artifact_dir(_artifacts_dir(state), org, kind) / sha256).resolve()
+        candidate = local_artifact_dir(artifacts_root, org, kind) / sha256
         if not candidate.is_relative_to(artifacts_root):
             return {"error": "artifact path resolves outside the cache"}, 400
         exists = candidate.exists()
