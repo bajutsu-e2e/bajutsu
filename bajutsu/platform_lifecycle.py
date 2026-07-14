@@ -507,8 +507,16 @@ class AndroidEnvironment:
             return None  # explicit opt-out: read via `uiautomator dump`
         # Default-on by APK presence: route reads through the resident server whenever it is built.
         # A truthy override forces it on even before a build (start() then degrades loudly to dump).
-        if override not in {"1", "true", "yes"} and not server_apks_built():
+        forced_on = override in {"1", "true", "yes"}
+        if not forced_on and not server_apks_built():
             return None
+        # The choice now flips on whatever is built on disk, not an explicit flag, so log which
+        # channel it landed on (and why) — otherwise a stale local build silently switching a run
+        # onto the resident channel is invisible without inspecting build-output paths.
+        logger.debug(
+            "resident UI Automator channel selected (%s)",
+            f"{_RESIDENT_ENV} override" if forced_on else "server APKs built",
+        )
         return ResidentServer(self._serial, run=self._run)
 
     def device_catalog(self) -> dict[str, dict[str, str]]:

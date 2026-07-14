@@ -339,12 +339,11 @@ def test_make_resident_defaults_on_when_the_server_apks_are_built(
     # The default (env unset) now routes reads through the resident channel automatically once the
     # server is built — no opt-in flag needed. Construction only stores params (no device contact).
     import bajutsu.adb_resident as adb_resident
-    from bajutsu.adb_resident import ResidentServer
 
     monkeypatch.delenv("BAJUTSU_ADB_RESIDENT", raising=False)
     monkeypatch.setattr(adb_resident, "server_apks_built", lambda *a: True)
     env = AndroidEnvironment("adb", "emulator-5554", adb_run=_resolve_activity_run([]))
-    assert isinstance(env._make_resident(), ResidentServer)
+    assert isinstance(env._make_resident(), adb_resident.ResidentServer)
 
 
 def test_make_resident_env_off_opts_out_even_when_built(
@@ -367,12 +366,11 @@ def test_make_resident_env_on_forces_a_server_even_when_not_built(
     # degrades loudly to dump if the APKs are missing (tested in test_adb_resident). Construction
     # only stores params, so this stays hermetic. (monkeypatch auto-restores the env var.)
     import bajutsu.adb_resident as adb_resident
-    from bajutsu.adb_resident import ResidentServer
 
     monkeypatch.setenv("BAJUTSU_ADB_RESIDENT", "1")
     monkeypatch.setattr(adb_resident, "server_apks_built", lambda *a: False)
     env = AndroidEnvironment("adb", "emulator-5554", adb_run=_resolve_activity_run([]))
-    assert isinstance(env._make_resident(), ResidentServer)
+    assert isinstance(env._make_resident(), adb_resident.ResidentServer)
 
 
 def test_android_environment_grants_permissions_even_on_overwrite() -> None:

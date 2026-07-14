@@ -86,6 +86,7 @@ on:
       - 'demos/showcase/showcase.config.yaml'
       - 'BajutsuAndroid/**'  # the app-side clipboard SDK the showcase APKs build in (BE-0233)
       - 'BajutsuAndroidServer/**'  # the resident UI Automator server this lane builds + exercises (BE-0245)
+      - 'bajutsu/adb_resident.py'  # the Python side of the resident channel this lane now exercises (BE-0245)
       - 'pyproject.toml'
       - 'uv.lock'
       - '.github/workflows/android-e2e.yml'
