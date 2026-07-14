@@ -230,7 +230,7 @@ code lives and what it's called.
   into the `bajutsu/ai/anthropic` adapter, and dropped the redundant `ai_availability.availability`
   passthrough so `bajutsu.ai.credential_gap` is the single entry point. Behavior-preserving; the
   existing suites are the regression net.
-- _PR pending_ — Unit 3: added `bajutsu/claude_backed_agent.py` with the `ClaudeBackedAgent` base
+- [#1034](https://github.com/bajutsu-e2e/bajutsu/pull/1034) — Unit 3: added `bajutsu/claude_backed_agent.py` with the `ClaudeBackedAgent` base
   (the `_backend` / `_ai` / `_redactor` / `_model` attributes, the byte-identical `_ensure_backend`,
   and a `_record_usage(response, category)` helper) and had the seven `Claude*` classes
   (`ClaudeAgent`, `ClaudeTriageAgent`, `ClaudeCrossRunTriageAgent`, `ClaudeEnrichmentAgent`,
