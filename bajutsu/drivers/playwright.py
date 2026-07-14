@@ -514,8 +514,7 @@ class PlaywrightDriver:
         return parse_dom(records if isinstance(records, list) else [])
 
     def _center(self, sel: base.Selector) -> base.Point:
-        x, y, w, h = base.resolve_unique(self.query(), sel)["frame"]
-        return (x + w / 2, y + h / 2)
+        return base.frame_center(base.resolve_unique(self.query(), sel)["frame"])
 
     @_wedge_guard
     def tap(self, sel: base.Selector) -> None:
@@ -599,13 +598,8 @@ class PlaywrightDriver:
         self._touch_drag(start, end)
 
     def _gesture_anchor(self, sel: base.Selector) -> tuple[float, float, float]:
-        """The element's center and a finger half-distance for a two-finger gesture.
-
-        The half-distance is a quarter of the smaller side, so the two fingers (and a pinch-out up
-        to ~2x) stay within the element's bounds rather than landing on a neighbour.
-        """
-        x, y, w, h = base.resolve_unique(self.query(), sel)["frame"]
-        return x + w / 2, y + h / 2, min(w, h) / 4
+        """The element's center and a finger half-distance for a two-finger gesture (BE-0251)."""
+        return base.gesture_anchor(base.resolve_unique(self.query(), sel)["frame"])
 
     def _touch_drag(self, start: list[base.Point], end: list[base.Point], steps: int = 5) -> None:
         """Synthesize a touch drag from `start` to `end` via CDP touch events (Chromium).
@@ -681,9 +675,10 @@ class PlaywrightDriver:
 
     @_wedge_guard
     def wait_for(self, sel: base.Selector) -> bool:
-        # Single-shot by contract (BE-0118): the deadline poll lives in base.wait_until,
-        # so the timeout is honoured on Web exactly as on idb (this method ignored it before).
-        return len(base.find_all(self.query(), sel)) >= 1
+        # Single-shot by contract (BE-0118): delegates to the shared base.default_wait_for so the
+        # four backends share one body; the deadline poll lives in base.wait_until, so the timeout
+        # is honoured on Web exactly as on idb (BE-0251).
+        return base.default_wait_for(self, sel)
 
     @_wedge_guard
     def screenshot(self, path: str) -> None:

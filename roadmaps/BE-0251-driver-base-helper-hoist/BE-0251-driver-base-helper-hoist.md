@@ -7,15 +7,16 @@
 |---|---|
 | Proposal | [BE-0251](BE-0251-driver-base-helper-hoist.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0251") |
+| Implementing PR | [#1069](https://github.com/bajutsu-e2e/bajutsu/pull/1069) |
 | Topic | Codebase quality & technical debt |
 <!-- /BE-METADATA -->
 
 ## Introduction
 
 Four small pieces of logic are duplicated, byte-for-byte or near enough, across the codebase:
-the single-shot `wait_for` body in all four real drivers, a frame-center computation repeated in
+the single-shot `wait_for` body across the real drivers, a frame-center computation repeated in
 three drivers plus its gesture-anchor variant in two of them, a no-op network source defined
 once for the runner and once for the orchestrator, and the `bajutsu.config.yaml` default-path
 constant defined once in `config_source.py` and once in `cli/_shared.py`. This item hoists each
@@ -25,14 +26,13 @@ lands once instead of drifting.
 
 ## Motivation
 
-`wait_for` is identical in all four real drivers — `bajutsu/drivers/idb.py:385`,
-`bajutsu/drivers/adb.py:526`, `bajutsu/drivers/xcuitest.py:367`, and
-`bajutsu/drivers/playwright.py:683` — each body is exactly
-`return len(base.find_all(self.query(), sel)) >= 1`. This method is the single-shot condition
-check underneath the shared `base.wait_until` deadline poll (BE-0118), so its correctness is
-determinism-sensitive: a `Driver` conformance test (BE-0114) already asserts all four behave
-identically, but nothing stops a future edit from touching three of the four copies and leaving
-the fourth to silently diverge, which is exactly the kind of per-backend behavior drift the
+`wait_for` is identical across the real drivers — `coordinate_tree.py` (the BE-0254 shared base
+idb and adb inherit), `bajutsu/drivers/xcuitest.py`, and `bajutsu/drivers/playwright.py` — each
+body is exactly `return len(base.find_all(self.query(), sel)) >= 1`. This method is the
+single-shot condition check underneath the shared `base.wait_until` deadline poll (BE-0118), so
+its correctness is determinism-sensitive: a `Driver` conformance test (BE-0114) already asserts
+every backend behaves identically, but nothing stops a future edit from touching some copies and
+leaving another to silently diverge, which is exactly the kind of per-backend behavior drift the
 app-agnostic, backend-agnostic driver design (prime directive 3) is meant to rule out.
 
 The frame-center computation `(x + w / 2, y + h / 2)` from an element's `(x, y, w, h)` frame
@@ -62,7 +62,7 @@ CLI's own default-path fallback. Two independently maintained copies of a filena
 is otherwise a magic string mean a rename of the default config filename (or a change to how it's
 resolved) has two places to remember, with no test currently pinning them together.
 
-None of these are behavior bugs today — the four `wait_for` bodies, the three frame-center
+None of these are behavior bugs today — the shared `wait_for` bodies, the three frame-center
 copies, the two no-op network sources, and the two `DEFAULT_CONFIG` constants all currently agree
 — but each is a small island of duplicated truth in code that is either determinism-sensitive
 (`wait_for`, the gesture geometry) or trivially collapsible (the no-op network source, the
@@ -76,11 +76,14 @@ definition with no behavior change:
 
 - **Hoist `wait_for` into `drivers.base`.** Add a `base.default_wait_for(driver: Driver, sel:
   Selector) -> bool` helper whose body is the current single-shot check
-  (`len(base.find_all(driver.query(), sel)) >= 1`), and have `idb.py`, `adb.py`, `xcuitest.py`,
-  and `playwright.py` each delegate their `wait_for` to it (`return base.default_wait_for(self,
-  sel)`). Each driver keeps its own `wait_for` method — required by the `Driver` protocol — so a
-  future backend that can wait natively (rather than through the shared single-shot-plus-poll
-  contract) still overrides it; only the default body moves, not the protocol shape.
+  (`len(base.find_all(driver.query(), sel)) >= 1`), and have each backend delegate its `wait_for`
+  to it (`return base.default_wait_for(self, sel)`). Since BE-0254 landed the shared
+  `CoordinateTreeDriver` base, idb and adb inherit one `wait_for` there rather than each carrying
+  its own, so the delegating sites are `coordinate_tree.py` (covering both coordinate backends),
+  `xcuitest.py`, and `playwright.py`. Each keeps a `wait_for` method — required by the `Driver`
+  protocol — so a future backend that can wait natively (rather than through the shared
+  single-shot-plus-poll contract) still overrides it; only the default body moves, not the
+  protocol shape.
 - **Hoist frame-center and gesture-anchor math into `drivers.base`.** Add
   `base.frame_center(frame: Frame) -> Point` (the `(x + w / 2, y + h / 2)` computation) and
   `base.gesture_anchor(frame: Frame) -> tuple[float, float, float]` (the center plus
@@ -139,22 +142,32 @@ constraints.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Add `base.default_wait_for` and have `idb.py`, `adb.py`, `xcuitest.py`, and `playwright.py`
-      delegate their `wait_for` to it.
-- [ ] Add `base.frame_center` and `base.gesture_anchor` and route the five call sites
-      (`idb.py`, `adb.py`, `playwright.py`) through them.
-- [ ] Consolidate `_no_net` / `_no_network` into one definition imported by both
+- [x] Add `base.default_wait_for` and have every backend delegate its `wait_for` to it —
+      `coordinate_tree.py` (the BE-0254 shared base idb and adb inherit), `xcuitest.py`, and
+      `playwright.py`.
+- [x] Add `base.frame_center` and `base.gesture_anchor` and route the call sites through them —
+      `idb.py`, `adb.py`, `playwright.py`, and also `orchestrator/actions/handlers/gestures.py`,
+      which held a fifth copy of the frame-center math the proposal's inventory missed.
+- [x] Consolidate `_no_net` / `_no_network` into one definition imported by both
       `runner/pipeline.py` and `orchestrator/loop.py`.
-- [ ] Have `cli/_shared.py` re-export `config_source.DEFAULT_CONFIG` instead of redefining it.
+- [x] Have `cli/_shared.py` re-export `config_source.DEFAULT_CONFIG` instead of redefining it.
+
+Log:
+
+- [#1069](https://github.com/bajutsu-e2e/bajutsu/pull/1069) — all four units landed in one
+  behavior-preserving PR: `base.default_wait_for` / `base.frame_center` / `base.gesture_anchor`
+  added and the backends plus `gestures.py` routed through them (rebased onto BE-0254's
+  `CoordinateTreeDriver`, so idb and adb delegate `wait_for` via that shared base rather than
+  each carrying its own); `_no_network` and `DEFAULT_CONFIG` consolidated to single owners.
 
 ## References
 
 - [`bajutsu/drivers/base.py`](../../bajutsu/drivers/base.py) — the shared selector-resolution
   core (`find_all`, `resolve_unique`, `wait_until`) this item extends with the hoisted helpers.
-- [`bajutsu/drivers/idb.py:385`](../../bajutsu/drivers/idb.py),
-  [`bajutsu/drivers/adb.py:526`](../../bajutsu/drivers/adb.py),
-  [`bajutsu/drivers/xcuitest.py:367`](../../bajutsu/drivers/xcuitest.py),
-  [`bajutsu/drivers/playwright.py:683`](../../bajutsu/drivers/playwright.py) — the four identical
+- [`bajutsu/drivers/coordinate_tree.py`](../../bajutsu/drivers/coordinate_tree.py) (the BE-0254
+  shared base idb and adb inherit),
+  [`bajutsu/drivers/xcuitest.py`](../../bajutsu/drivers/xcuitest.py),
+  [`bajutsu/drivers/playwright.py`](../../bajutsu/drivers/playwright.py) — the identical
   `wait_for` bodies this item hoists.
 - [`bajutsu/drivers/idb.py:317-321`](../../bajutsu/drivers/idb.py),
   [`bajutsu/drivers/playwright.py:516-518`](../../bajutsu/drivers/playwright.py),

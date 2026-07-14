@@ -28,6 +28,9 @@ from bajutsu.config import (
     web_engine,
 )
 from bajutsu.config_source import (
+    DEFAULT_CONFIG as DEFAULT_CONFIG,  # re-exported: the single owner is config_source (BE-0251)
+)
+from bajutsu.config_source import (
     GitHubAccessError,
     is_full_sha,
     materialize,
@@ -43,8 +46,6 @@ if TYPE_CHECKING:
     from bajutsu.alerts import ClaudeAlertLocator
     from bajutsu.drivers import base
     from bajutsu.orchestrator import AlertEvent
-
-DEFAULT_CONFIG = "bajutsu.config.yaml"
 
 
 def _secret_values(eff: Effective) -> list[str]:

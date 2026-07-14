@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0248](BE-0248-serve-state-decomposition-continued.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0248") |
+| Implementing PR | [#1092](https://github.com/bajutsu-e2e/bajutsu/pull/1092) |
 | Topic | Codebase quality & technical debt |
 <!-- /BE-METADATA -->
 
@@ -145,19 +146,20 @@ evidence/object-store config (`evidence`, `object_store`, `object_store_prefix`)
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Extract an auth/session type (e.g. `AuthConfig` / `SessionManager`) owning `token`,
-      `sessions`, `oauth`, `oauth_allowed_users`, `oauth_admins`, `oauth_viewers`, and the
-      `check_token` / `issue_session` / `valid_session` methods
-- [ ] Extract a `ProviderSettingsManager` owning `provider_settings`, `provider_settings_store`,
+- [x] Extract a `SessionManager` owning `token`, `sessions`, `oauth`, `oauth_allowed_users`,
+      `oauth_admins`, `oauth_viewers`, and the `check_token` / `issue_session` / `valid_session`
+      methods
+- [x] Extract a `ProviderSettingsManager` owning `settings` (the per-org dict), `store`,
       `_provider_lock`, `_persist_lock`, and the `org_provider_settings` /
       `put_org_provider_settings` / `set_org_provider_choice` methods, preserving the
       copy-on-read/copy-on-write discipline exactly
-- [ ] Migrate `operations/config.py`'s `_persist_provider_settings` to call the manager's public
-      surface instead of reaching into `ServeState`'s locks directly
-- [ ] Leave `ServeState` as a coordinator holding both new managers (alongside the existing
-      `job_registry`) and route call sites through them consistently
-- [ ] Add focused unit tests for each extracted type constructed standalone (no full `ServeState`)
-- [ ] Update `docs/architecture.md` / `docs/ja/architecture.md` if the serve module list changes
+- [x] Migrate `operations/config.py`'s `_persist_provider_settings` to call the manager's public
+      `persist` method instead of reaching into `ServeState`'s locks directly
+- [x] Leave `ServeState` as a coordinator holding both new managers (`auth` / `providers`,
+      alongside the existing `job_registry`) and route call sites through them consistently
+- [x] Add focused unit tests for each extracted type constructed standalone (no full `ServeState`)
+- [x] Confirm `docs/architecture.md` / `docs/ja/architecture.md` need no change — the serve module
+      list describes `serve/` at a high level and never names `state.py`'s internal responsibilities
 
 ## References
 

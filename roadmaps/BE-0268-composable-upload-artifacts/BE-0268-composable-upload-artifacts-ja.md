@@ -7,8 +7,9 @@
 |---|---|
 | 提案 | [BE-0268](BE-0268-composable-upload-artifacts-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **提案** |
+| 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0268") |
+| 実装 PR | [#1076](https://github.com/bajutsu-e2e/bajutsu/pull/1076) |
 | トピック | config の取得元 |
 | 関連 | [BE-0073](../BE-0073-serve-zip-bundle-upload/BE-0073-serve-zip-bundle-upload-ja.md), [BE-0243](../BE-0243-upload-bundle-durable-storage/BE-0243-upload-bundle-durable-storage-ja.md), [BE-0225](../BE-0225-config-project-hub/BE-0225-config-project-hub-ja.md) |
 <!-- /BE-METADATA -->
@@ -109,11 +110,28 @@ BE-0073 と [BE-0063](../BE-0063-git-config-source/BE-0063-git-config-source-ja.
 > 作業分解（作業の単位ごとに 1 つ）に対応し、ログには変更内容と時期（古い順）を PR へのリンクと
 > ともに記録します。
 
-- [ ] 1 — 成果物ごとのモデル：BE-0243 のオブジェクトストア上の 3 つの content-addressed な種別（`config` / `scenarios` / `binary`）、種別ごとの prefix、`exists` ベースの重複排除チェック。
-- [ ] 2 — 合成：config をレイアウトの権威として三つ組を confined なツリーへ組み立てる `materialize_composition`。BE-0073 の zip-slip/zip-bomb の上限と `_validate_bundle_config` を再利用し、整合性チェック（`appPath`/`scenarios` が供給された成果物で埋まること）を加える。`manifest.json` の三つ組 sha の来歴。
-- [ ] 3 — アップロード API：sha を返す `POST /api/artifacts/{config,scenarios,binary}`、exists/HEAD による省略、合体 `POST /api/upload` を 3 分解の糖衣として読み替え。
-- [ ] 4 — プロジェクトの束ね方：BE-0225 の `upload` ソースレコードを単一 sha から三つ組へ広げ、従来の単一 sha レコードも解決可能に保つ。一脚ごとの更新。
-- [ ] 5 — UI：前回再利用とクライアント側の重複排除省略つきの 3 ドロップゾーン、組み合わせマトリクス用の合成ピッカー。
+- [x] 1 — 成果物ごとのモデル：BE-0243 のオブジェクトストア上の 3 つの content-addressed な種別（`config` / `scenarios` / `binary`）、種別ごとの prefix、`exists` ベースの重複排除チェック。
+- [x] 2 — 合成：config をレイアウトの権威として三つ組を confined なツリーへ組み立てる `materialize_composition`。BE-0073 の zip-slip/zip-bomb の上限と `validate_bundle_config` を再利用し、整合性チェック（`appPath`/`scenarios` が供給された成果物で埋まること）を加える。`manifest.json` の三つ組 sha の来歴。
+- [x] 3（一部）— アップロード API：sha を返す `POST /api/artifacts/{config,scenarios,binary}` と、重複排除のための `GET /api/artifacts/exists` を実装しました。合体 `POST /api/upload` を 3 分解の糖衣として読み替える部分は今回のPRに**含みません**。すでにリリース済みでテストも充実したコードへの純粋な内部表現の変更であり、新しい利用者向けの機能を追加しないため、後続のPRへ切り出しています。
+- [x] 4 — プロジェクトの束ね方：BE-0225 の `upload` ソースレコードを単一 sha から三つ組（`{"artifacts": {"config", "scenarios", "binary"}}`。従来の単一 `sha256` 形式とは判別可能）へ広げ、従来のレコードもそのまま解決できるようにしました。一脚ごとの取得・キャッシュに対応しています。
+- [ ] 5 — UI：前回再利用とクライアント側の重複排除省略つきの 3 ドロップゾーン、組み合わせマトリクス用の合成ピッカー。上のバックエンド中核とは切り離し、別途レビュー可能なPRへ先送りします。
+
+### ログ
+
+- 2026-07-14 — 単位 1、2、4、および単位 3 の追加部分（バックエンドの中核）を実装しました。単位 5 の
+  UI と単位 3 の残り部分は、上のチェックリストのとおり後続PRへ先送りしています。本文書の *詳細設計*
+  から外れた点が 2 つあります。1 点目は、`scenarios` 成果物を config の `scenarios` フィールドごとに
+  個別展開するのではなく、合成のルート直下へそのまま展開する点です。これは、従来の合体バンドルが
+  すでに `scenarios`／`baselines`／`setup` のツリーを config と並べて運んでいるやり方と一致し、
+  `extract_bundle` をそのまま再利用できるぶん単純です。2 点目は、合成でバインドした場合の
+  `manifest.json` の来歴が、単一の `sha256` ではなく `compositionId` と、供給された成果物ごとの
+  `<種別>Sha` を報告する点です。合成 ID を単一の `sha256` として上書きすると、1 つの成果物のバイト列
+  に対して検証可能なハッシュであるかのように誤解を招くため、そうしませんでした。レビューで見つかった
+  2 点も直しています。`scenarios` 成果物のzipに `bajutsu.config.yaml` という名前のエントリが紛れて
+  いた場合、展開の順序次第では信頼済みの config を上書きしかねなかったため、config の書き込みを
+  scenarios の展開より後に行うよう順序を入れ替えました。また `GET /api/artifacts/exists` の管理者
+  権限ゲートが、GET リクエストには効かない実装になっていたため、`GET /api/config/content` と同じ
+  早期リターンの形で正しくゲートされるようにしました。
 
 ## 参考
 

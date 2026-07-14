@@ -17,11 +17,6 @@ _SWIPE_FRACTION = 0.125  # default travel as a fraction of the screen when `amou
 _SWIPE_MARGIN = 4.0  # keep both gesture endpoints this far inside the screen edges
 
 
-def _center(frame: base.Frame) -> base.Point:
-    x, y, w, h = frame
-    return (x + w / 2, y + h / 2)
-
-
 def _scroll_gesture(
     center: base.Point, direction: str, amount: float | None, screen: base.Point
 ) -> tuple[base.Point, base.Point]:
@@ -114,7 +109,7 @@ def _directional_endpoints(
     elements = driver.query()
     el = base.resolve_unique(elements, sel)
     return _scroll_gesture(
-        _center(el["frame"]), direction, amount, screen_size_from_elements(elements)
+        base.frame_center(el["frame"]), direction, amount, screen_size_from_elements(elements)
     )
 
 

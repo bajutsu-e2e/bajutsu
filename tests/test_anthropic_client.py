@@ -130,33 +130,3 @@ def test_ant_credential_gap_authenticated_ok(monkeypatch: pytest.MonkeyPatch) ->
     monkeypatch.setattr(ac.shutil, "which", lambda _exe: "/usr/local/bin/ant")
     monkeypatch.setattr(ac, "_ant_token_result", lambda: (0, "oauth-tok-test", ""))
     assert ac.ant_credential_gap() is None
-
-
-# ensure_client is the lazy-build-then-cache wrapper the AI classes share (BE-0140): it adds the one
-# thing make_client doesn't — memoizing the built client on the instance's _client attr. (A separate
-# proposal, BE-0249, removes this now-dead wrapper; until then it stays covered.)
-
-
-class _CacheHolder:
-    """A minimal stand-in for the Claude* classes: just the two attrs ensure_client touches."""
-
-    def __init__(self, client: object | None = None, ai: aic.AiConfig | None = None) -> None:
-        self._client = client
-        self._ai = ai
-
-
-def test_ensure_client_returns_injected_client_without_building() -> None:
-    sentinel = object()
-    holder = _CacheHolder(client=sentinel)
-    assert ac.ensure_client(holder) is sentinel
-    assert holder._client is sentinel  # injection is left untouched, not rebuilt
-
-
-def test_ensure_client_builds_once_and_reuses(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.delenv(aic.PROVIDER_ENV, raising=False)
-    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test")
-    holder = _CacheHolder()
-    first = ac.ensure_client(holder)
-    second = ac.ensure_client(holder)
-    assert first is second  # built once, then the cached client is reused
-    assert holder._client is first  # memoized on the instance

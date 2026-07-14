@@ -147,6 +147,10 @@ screen. State is mirrored to `accessibilityValue` (in `-a11y`) so assertions rea
 
 Tabs, left to right: **Stable · Search · Log · Notices · Permissions**.
 
+Each tab item is itself identified by its own namespace root — `stable`, `search`, `log`,
+`notice`, `perm` — with no `.`/`-`, so the one literal `id` selects it on iOS, Compose, and Views
+alike (`scenarios/tabs.yaml`); the `-noax` variants carry none, as elsewhere.
+
 ### 5.1 Tab: Stable — `stable`, `horse` namespaces
 
 A `NavigationStack` (SwiftUI) / `UINavigationController` (UIKit). Catalog list with async load.

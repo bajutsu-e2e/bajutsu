@@ -24,10 +24,20 @@ from bajutsu.serve import oplog
 from bajutsu.serve._paths import TEMPLATES_DIR as _TEMPLATE_DIR
 from bajutsu.serve.helpers import range_reply, valid_run_id
 from bajutsu.serve.state import ServeState
+from bajutsu.serve.upload_artifacts import ArtifactKind
 from bajutsu.serve.uploads import MAX_UPLOAD_BYTES, BoundedZipReceiver, UploadTooLarge
 
 # Stream an uploaded bundle to disk in 1 MiB chunks so a large app binary never loads into memory.
 _UPLOAD_CHUNK = 1024 * 1024
+
+# The three independently-uploadable artifact routes (BE-0268), each a raw-body POST mirroring
+# `/api/upload`'s own streaming shape — mapping path to kind lets `do_POST` dispatch with one lookup
+# instead of a per-kind `if`.
+_ARTIFACT_UPLOAD_PATHS: dict[str, ArtifactKind] = {
+    "/api/artifacts/config": "config",
+    "/api/artifacts/scenarios": "scenarios",
+    "/api/artifacts/binary": "binary",
+}
 
 # Host-header values that always name this machine (BE-0121 DNS-rebinding defense).
 _LOOPBACK_HOSTS = frozenset({"localhost", "127.0.0.1", "::1"})
@@ -88,6 +98,33 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
             self.end_headers()
             self.wfile.write(body)
 
+        def _respond_uncaught(self, exc: Exception) -> None:
+            """Turn an uncaught dispatch exception into a JSON 500 (BE-0264).
+
+            Without this, an operation that *raises* (rather than returning an error tuple)
+            propagates to ``socketserver``, which drops the connection with no body — leaving the
+            browser at ``Unexpected end of JSON input``. The full traceback is always logged (with
+            the request id bound via ``oplog``) so the operator keeps the diagnostic; the client
+            gets the exception's *message* — deliberately (design Unit 3): the readable operation
+            error is the whole point (e.g. "xcuitest backend requires a runner_port"), so we echo
+            it rather than a generic string, at the cost of a message that may name an internal
+            path. The traceback itself is never sent.
+
+            Writing the 500 can itself fail if the client already went away (a `wfile` write on a
+            dead socket): the wrapped dispatch under the boundary hits the operation *before* any
+            bytes are written, so a normal raise reaches here pre-response — but a disconnect
+            mid-write would. In that case we've already logged the real error, so we only close the
+            connection rather than let the write error re-propagate to ``socketserver`` (which is
+            exactly the empty-body drop this boundary exists to prevent).
+            """
+            logging.getLogger(__name__).exception(
+                "unhandled error dispatching %s %s", self.command, self.path
+            )
+            try:
+                self._json({"error": str(exc) or exc.__class__.__name__}, 500)
+            except Exception:
+                self.close_connection = True
+
         def _sse_job(self, job_id: str) -> None:
             """Stream a job's log over SSE via the shared event stream: a `log` event per line
             (backlog + live from the LogBus), then a terminal `done` event carrying the job's final
@@ -113,10 +150,10 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
             """A request is authorized by a valid `Authorization: Bearer <token>` header (API
             clients) or a valid session cookie (the browser, after POST /api/login)."""
             auth = self.headers.get("Authorization", "")
-            if auth.startswith("Bearer ") and state.check_token(auth[len("Bearer ") :]):
+            if auth.startswith("Bearer ") and state.auth.check_token(auth[len("Bearer ") :]):
                 return True
             morsel = SimpleCookie(self.headers.get("Cookie", "")).get(_SESSION_COOKIE)
-            return morsel is not None and state.valid_session(morsel.value)
+            return morsel is not None and state.auth.valid_session(morsel.value)
 
         def _gate(self) -> bool:
             """Authentication gate (BE-0051). With no token configured the server is open
@@ -133,7 +170,7 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
                 self.close_connection = True
                 self._json({"error": "host not allowed"}, 403)
                 return False
-            if state.token is None:
+            if state.auth.token is None:
                 return True
             path = urlparse(self.path).path
             if self.command == "GET" and path in (
@@ -176,13 +213,45 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
             """The GitHub login bound to this request's session, if any — used to attribute audit
             entries (BE-0015 7c). None for a token/Bearer request or no session."""
             morsel = SimpleCookie(self.headers.get("Cookie", "")).get(_SESSION_COOKIE)
-            return state.sessions.identity(morsel.value) if morsel is not None else None
+            return state.auth.sessions.identity(morsel.value) if morsel is not None else None
 
         def do_GET(self) -> None:
             oplog.bind_request(oplog.new_request_id())
             if not self._gate():
                 return
             path = urlparse(self.path).path
+            # Streaming / binary routes (SSE, run file / zip / screenshot) send their own headers
+            # then stream or range a body and handle client disconnects themselves, so they sit
+            # outside the JSON-500 boundary (BE-0264): once their headers are on the wire a fallback
+            # `_json` would double-write the response. Everything else dispatches under the boundary.
+            if self._serve_streaming_get(path):
+                return
+            try:
+                self._dispatch_get(path)
+            except Exception as exc:
+                self._respond_uncaught(exc)
+
+        def _serve_streaming_get(self, path: str) -> bool:
+            """Dispatch the streaming/binary GET routes kept outside do_GET's JSON-500 boundary
+            (BE-0264); returns True when it handled the request.
+
+            Order mirrors the old match: the `/api/jobs/<id>/events` SSE stream before the
+            non-streaming `/api/jobs/<id>` view (which stays under the boundary), and the
+            `.../archive.zip` route before the generic run-file serve.
+            """
+            if path.startswith("/api/jobs/") and path.endswith("/events"):
+                self._sse_job(path[len("/api/jobs/") : -len("/events")])
+            elif path.startswith("/runs/") and path.endswith("/archive.zip"):
+                self._serve_run_archive(unquote(path[len("/runs/") : -len("/archive.zip")]))
+            elif path == "/api/capture/screenshot":
+                self._serve_capture_screenshot()
+            elif path.startswith("/runs/"):
+                self._serve_run_file(unquote(path[len("/runs/") :]))
+            else:
+                return False
+            return True
+
+        def _dispatch_get(self, path: str) -> None:
             match path:
                 case "/" | "/index.html":
                     body = _index_html(state.themes_dir, state.default_theme).encode("utf-8")
@@ -226,6 +295,15 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
                     self._json(*ops.project_metrics_view(state, actor=self._actor()))
                 case "/api/crawl/runs":
                     self._json(*ops.crawl_runs_payload(state, actor=self._actor()))
+                case "/api/artifacts/exists":
+                    # A fixed path with `kind`/`sha256` query params (BE-0268) — not a templated
+                    # path segment — so it fits the exact-match `_ADMIN_PATHS` model like every
+                    # other admin route, with no new dispatch shape.
+                    self._json(
+                        *ops.artifact_exists(
+                            state, self._qs("kind"), self._qs("sha256"), actor=self._actor()
+                        )
+                    )
                 case "/metrics":
                     # Prometheus text format, not JSON. It sits behind `_gate` like every other
                     # route (BE-0051) — not on the open-GET list — so a scraper authenticates with
@@ -257,16 +335,8 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
                     self._oauth_login()
                 case "/api/oauth/callback":
                     self._oauth_callback()
-                case _ if path.startswith("/api/jobs/") and path.endswith("/events"):
-                    self._sse_job(path[len("/api/jobs/") : -len("/events")])
                 case _ if path.startswith("/api/jobs/"):
                     self._json(*ops.job_view(state, path[len("/api/jobs/") :]))
-                case _ if path.startswith("/runs/") and path.endswith("/archive.zip"):
-                    self._serve_run_archive(unquote(path[len("/runs/") : -len("/archive.zip")]))
-                case "/api/capture/screenshot":
-                    self._serve_capture_screenshot()
-                case _ if path.startswith("/runs/"):
-                    self._serve_run_file(unquote(path[len("/runs/") :]))
                 case _:
                     self._json({"error": "not found"}, 404)
 
@@ -295,9 +365,13 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
                 return
             path = urlparse(self.path).path
             # A bundle upload (BE-0073) carries a raw zip body, not JSON, and can be large — handle
-            # it before the JSON read so it streams to disk instead of loading into memory.
+            # it before the JSON read so it streams to disk instead of loading into memory. Same for
+            # a single independently-uploaded artifact (BE-0268).
             if path == "/api/upload":
                 self._handle_upload()
+                return
+            if path in _ARTIFACT_UPLOAD_PATHS:
+                self._handle_artifact_upload(_ARTIFACT_UPLOAD_PATHS[path])
                 return
             length = int(self.headers.get("Content-Length") or 0)
             # Block cross-origin state-changing requests unconditionally (BE-0121) — not only when a
@@ -318,6 +392,14 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
                 # number) here rather than 500 on a `.get(...)`.
                 self._json({"error": "expected a JSON object"}, 400)
                 return
+            try:
+                self._dispatch_post(path, body)
+            except Exception as exc:
+                self._respond_uncaught(exc)
+
+        def _dispatch_post(self, path: str, body: dict[str, Any]) -> None:
+            # Every case returns via `_json`; an operation that raises instead is caught by the
+            # boundary in do_POST and turned into a JSON 500 (BE-0264).
             match path:
                 case "/api/login":
                     self._post_login(body)
@@ -465,28 +547,29 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
                 return
             self._json({"error": "not found"}, 404)
 
-        def _handle_upload(self) -> None:
-            """Stream a raw-body zip upload to a temp file (bounded), then bind it as the active config
-            (BE-0073). Raw body (`Content-Type: application/zip`, filename via `?name=`), not
-            multipart: the SPA controls the request, and a streamed body needs no parser — the first
-            POST here that doesn't read a JSON body. The size cap is enforced both up front
-            (Content-Length) and while reading, so a lying length can't overrun it."""
+        def _stream_bounded_body(self) -> BoundedZipReceiver | None:
+            """Stream a raw POST body into a bounded, sha256-hashing temp file (`BoundedZipReceiver`,
+            shared by `_handle_upload` (BE-0073) and `_handle_artifact_upload` (BE-0268)) — the size
+            cap is enforced both up front (Content-Length) and while reading, so a lying length can't
+            overrun it. Writes the JSON error response itself and returns None on any failure —
+            cross-origin block, a missing/oversized Content-Length, a short read, or a mid-stream
+            cap/OS error — cleaning the receiver up before returning; a caller only gets a receiver
+            back on success, and owns its `cleanup()` from there."""
             # These early returns don't read the (possibly huge) body, so the connection still holds
             # the unread upload bytes. Close it rather than draining gigabytes or leaving them to
             # corrupt the next request on a keep-alive connection.
             if not self._csrf_ok():  # unconditional cross-origin block (BE-0121)
                 self.close_connection = True
                 self._json({"error": "cross-origin request blocked"}, 403)
-                return
+                return None
             length = int(self.headers.get("Content-Length") or 0)
             if length <= 0:
                 self._json({"error": "empty upload"}, 400)
-                return
+                return None
             if length > MAX_UPLOAD_BYTES:
                 self.close_connection = True
                 self._json({"error": f"upload too large (max {MAX_UPLOAD_BYTES} bytes)"}, 413)
-                return
-            filename = self._qs("name") or "bundle.zip"
+                return None
             receiver = BoundedZipReceiver()
             try:
                 remaining = length
@@ -502,16 +585,9 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
                     # since its framing is now unreliable.
                     self.close_connection = True
                     self._json({"error": "upload incomplete (body ended early)"}, 400)
-                    return
-                self._json(
-                    *ops.bind_upload_config(
-                        state,
-                        receiver.path,
-                        filename,
-                        sha256=receiver.digest(),
-                        actor=self._actor(),
-                    )
-                )
+                    receiver.cleanup()
+                    return None
+                return receiver
             except UploadTooLarge:
                 # Belt-and-suspenders: length <= MAX_UPLOAD_BYTES is checked above, so this loop
                 # never actually exceeds the cap — kept only so the shared receiver's contract holds
@@ -521,6 +597,60 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
             except OSError:
                 self.close_connection = True
                 self._json({"error": "upload interrupted"}, 400)
+            receiver.cleanup()
+            return None
+
+        def _handle_upload(self) -> None:
+            """Stream a raw-body zip upload to a temp file (bounded), then bind it as the active config
+            (BE-0073). Raw body (`Content-Type: application/zip`, filename via `?name=`), not
+            multipart: the SPA controls the request, and a streamed body needs no parser — the first
+            POST here that doesn't read a JSON body."""
+            filename = self._qs("name") or "bundle.zip"
+            receiver = self._stream_bounded_body()
+            if receiver is None:
+                return
+            # This raw-body route dispatches before do_POST's JSON-500 boundary (it reads the body
+            # itself), so it needs its own: a raise from `bind_upload_config` — not the streaming
+            # errors `_stream_bounded_body` already turns into JSON — would otherwise hit the
+            # empty-body drop BE-0264 exists to eliminate (#1089).
+            try:
+                self._json(
+                    *ops.bind_upload_config(
+                        state,
+                        receiver.path,
+                        filename,
+                        sha256=receiver.digest(),
+                        actor=self._actor(),
+                    )
+                )
+            except Exception as exc:
+                self._respond_uncaught(exc)
+            finally:
+                receiver.cleanup()
+
+        def _handle_artifact_upload(self, kind: ArtifactKind) -> None:
+            """Stream one independently-uploaded artifact (BE-0268: `config` / `scenarios` /
+            `binary`) to a temp file (bounded), then store it (`ops.bind_artifact`). Raw body, no
+            `?name=` — an artifact's provenance name lives on the *composition*'s project record,
+            not the artifact itself."""
+            receiver = self._stream_bounded_body()
+            if receiver is None:
+                return
+            # Same as `_handle_upload`: this raw-body route sits before do_POST's boundary, so a
+            # raise from `bind_artifact` gets its own JSON-500 conversion rather than dropping the
+            # connection empty-bodied (BE-0264 follow-up on #1089).
+            try:
+                self._json(
+                    *ops.bind_artifact(
+                        state,
+                        kind,
+                        receiver.path,
+                        sha256=receiver.digest(),
+                        actor=self._actor(),
+                    )
+                )
+            except Exception as exc:
+                self._respond_uncaught(exc)
             finally:
                 receiver.cleanup()
 

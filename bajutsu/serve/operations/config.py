@@ -33,10 +33,7 @@ from bajutsu.serve.helpers import (
     list_targets,
 )
 from bajutsu.serve.orgs import DEFAULT_ORG
-from bajutsu.serve.provider_store import (
-    PersistedProviderSettings,
-    ProviderSettingsError,
-)
+from bajutsu.serve.provider_store import ProviderSettingsError
 from bajutsu.serve.state import OrgProviderSettings, ProviderSettings, ServeState
 
 # The logical name of the Claude API key in the secret store (BE-0136). The store holds each named
@@ -123,7 +120,7 @@ def config_info(state: ServeState) -> tuple[Any, int]:
         # and needless exposure (BE-0108).
         "root": str(state.root.resolve()) if "fs" in sources else None,
         # Whether GitHub OAuth login is available, so the login UI can offer a button (BE-0015 7b-2).
-        "oauthEnabled": state.oauth is not None,
+        "oauthEnabled": state.auth.oauth is not None,
         # The config sources this deployment offers, so the UI renders only the usable ones (BE-0108).
         "configSources": sources,
     }, 200
@@ -277,11 +274,11 @@ def _org_settings(state: ServeState, org: str) -> OrgProviderSettings:
     The per-org read path every AI-resolving surface goes through. Once loaded (even to an empty
     selection) the org's entry stays in memory, so a malformed store is logged once, not on every
     request. Local serve's single `default` org makes this exactly one entry."""
-    existing = state.org_provider_settings(org)
+    existing = state.providers.org_provider_settings(org)
     if existing is not None:
         return existing
     loaded = _load_org_settings(state, org)
-    state.put_org_provider_settings(org, loaded)
+    state.providers.put_org_provider_settings(org, loaded)
     return loaded
 
 
@@ -590,7 +587,9 @@ def set_provider(state: ServeState, body: dict[str, Any], actor: str | None) -> 
         # Load the org's persisted slots first, so writing this one provider's slot doesn't drop the
         # others (set_org_provider_choice merges into the loaded entry).
         _org_settings(state, org)
-        state.set_org_provider_choice(org, provider=prov, slot=settings, language=lang_value)
+        state.providers.set_org_provider_choice(
+            org, provider=prov, slot=settings, language=lang_value
+        )
         persisted = _persist_provider_settings(state, org, prov)
         return {
             "ok": True,
@@ -613,7 +612,9 @@ def set_provider(state: ServeState, body: dict[str, Any], actor: str | None) -> 
     settings = ProviderSettings(model=model, effort=effort, region=region)
     org = state.org_of(actor)
     _org_settings(state, org)
-    state.set_org_provider_choice(org, provider="bedrock", slot=settings, language=lang_value)
+    state.providers.set_org_provider_choice(
+        org, provider="bedrock", slot=settings, language=lang_value
+    )
     persisted = _persist_provider_settings(state, org, "bedrock")
     return {
         "ok": True,
@@ -629,11 +630,11 @@ def set_provider(state: ServeState, body: dict[str, Any], actor: str | None) -> 
 def _persist_provider_settings(state: ServeState, org: str, provider: str) -> bool | None:
     """Write *provider* + *org*'s current in-memory slot map to that org's durable store (BE-0229).
 
-    The ``settings`` map write is race-safe: the re-snapshot and the disk write happen inside
-    ``state._persist_lock``, so whichever thread wins the lock last re-reads the org's settings
-    (`org_provider_settings`) at that point and writes the most up-to-date map — including every
-    mutation from threads that already released ``_provider_lock`` — rather than a slow write
-    overwriting a newer one.
+    The ``settings`` map write is race-safe: `ProviderSettingsManager.persist` re-snapshots and
+    writes inside its ``_persist_lock`` (BE-0248), so whichever thread wins the lock last re-reads the
+    org's settings at that point and writes the most up-to-date map — including every mutation from
+    threads that already released the in-memory lock — rather than a slow write overwriting a newer
+    one.
 
     The ``provider`` (active) field is best-effort under concurrency, not race-free — it is the
     selection *this* request applied, and two simultaneous saves for different providers leave the
@@ -661,12 +662,9 @@ def _persist_provider_settings(state: ServeState, org: str, provider: str) -> bo
     if store is None:
         return None
     try:
-        with state._persist_lock:
-            # Re-read inside the lock so the thread that wins last always writes the most recent
-            # in-memory state, regardless of when each thread's mutation was applied.
-            snapshot = state.org_provider_settings(org)
-            slots = snapshot.slots if snapshot is not None else {}
-            store.save(PersistedProviderSettings(provider=provider, settings=slots))
+        # The manager owns the re-snapshot-under-`_persist_lock` discipline (BE-0248); this caller
+        # keeps only the store resolution, failure handling, and persisted/not-persisted signaling.
+        state.providers.persist(org, provider, store)
     except Exception:
         logging.getLogger(__name__).warning(
             "the AI provider selection is active for this session but could not be persisted; "

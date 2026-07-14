@@ -640,3 +640,14 @@ def test_run_all_threads_collector_provider_and_discloses_skips(tmp_path: Path) 
     net = [a for a in r.artifacts if a.kind == "network"]
     assert net and net[0].provider == "fake (fallback)"
     assert (tmp_path / net[0].name).exists()
+
+
+def test_pipeline_uses_the_single_orchestrator_no_op_network_source() -> None:
+    # The runner shares the orchestrator's one no-op NetworkSource rather than owning a copy, so
+    # the default "no network was collected" value lives in one place (BE-0251).
+    from bajutsu.orchestrator.types import _no_network
+    from bajutsu.runner import pipeline, types
+
+    assert pipeline._no_network is _no_network
+    assert _no_network() == []
+    assert not hasattr(types, "_no_net")

@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0268](BE-0268-composable-upload-artifacts.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0268") |
+| Implementing PR | [#1076](https://github.com/bajutsu-e2e/bajutsu/pull/1076) |
 | Topic | Configuration sourcing |
 | Related | [BE-0073](../BE-0073-serve-zip-bundle-upload/BE-0073-serve-zip-bundle-upload.md), [BE-0243](../BE-0243-upload-bundle-durable-storage/BE-0243-upload-bundle-durable-storage.md), [BE-0225](../BE-0225-config-project-hub/BE-0225-config-project-hub.md) |
 <!-- /BE-METADATA -->
@@ -244,11 +245,30 @@ in place of `binary`) is a later slice.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] 1 — Per-artifact model: three content-addressed kinds (`config` / `scenarios` / `binary`) over BE-0243's object store, with per-kind prefixes and an `exists`-based dedup check.
-- [ ] 2 — Composition: `materialize_composition` assembling a triple into a confined tree with the config as layout authority, reusing BE-0073's zip-slip/zip-bomb bounds and `_validate_bundle_config`, plus the coherence check (`appPath`/`scenarios` filled by supplied artifacts); triple-sha provenance in `manifest.json`.
-- [ ] 3 — Upload API: `POST /api/artifacts/{config,scenarios,binary}` returning the sha, an exists/HEAD skip, and the combined `POST /api/upload` reinterpreted as decompose-to-three sugar.
-- [ ] 4 — Project binding: widen BE-0225's `upload` source record from one sha to the triple, with legacy single-sha records still resolving; per-leg update.
-- [ ] 5 — UI: three drop zones with reuse-last + client-side dedup skip, and a composition picker for the combination matrix.
+- [x] 1 — Per-artifact model: three content-addressed kinds (`config` / `scenarios` / `binary`) over BE-0243's object store, with per-kind prefixes and an `exists`-based dedup check.
+- [x] 2 — Composition: `materialize_composition` assembling a triple into a confined tree with the config as layout authority, reusing BE-0073's zip-slip/zip-bomb bounds and `validate_bundle_config`, plus the coherence check (`appPath`/`scenarios` filled by supplied artifacts); triple-sha provenance in `manifest.json`.
+- [x] 3 (partial) — Upload API: `POST /api/artifacts/{config,scenarios,binary}` returning the sha, plus a `GET /api/artifacts/exists` dedup check, shipped. The combined `POST /api/upload` reinterpreted as decompose-to-three sugar is **not** in this PR — it is a pure internal-representation change to already-shipped, well-tested code with no new user-facing capability, deferred to a follow-up so this slice stays small and low-risk.
+- [x] 4 — Project binding: widen BE-0225's `upload` source record from one sha to the triple (`{"artifacts": {"config", "scenarios", "binary"}}`, discriminated from the legacy single-`sha256` shape), with legacy single-sha records still resolving unchanged; per-leg fetch-or-cache.
+- [ ] 5 — UI: three drop zones with reuse-last + client-side dedup skip, and a composition picker for the combination matrix. Deferred to a follow-up PR — a separate, reviewable slice from the backend core above.
+
+### Log
+
+- 2026-07-14 — Units 1, 2, 4, and the additive half of 3 implemented (backend core; unit 5's UI and
+  the rest of unit 3 are deferred follow-ups, see the checklist above). Notable deviations from this
+  document's literal *Detailed design*: the `scenarios` artifact is unzipped directly at the
+  composition root (matching how a legacy combined bundle already carries its `scenarios`/
+  `baselines`/`setup` tree alongside the config), not extracted per-field from the config's
+  `scenarios` path — simpler, and it reuses `extract_bundle` unmodified. A composed bind's
+  `manifest.json` provenance reports `compositionId` + one `<kind>Sha` entry per supplied artifact
+  instead of a single top-level `sha256` — overloading that field with a synthetic composite value
+  would misleadingly imply a hash verifiable against one artifact's bytes, which it isn't. Two
+  review-found issues were fixed before merge: the `scenarios` artifact is now extracted *before*
+  the config is written (not after), since `extract_bundle` only guards zip-slip/zip-bombs, not a
+  top-level entry that happens to be named `bajutsu.config.yaml` — writing the trusted config bytes
+  last means such an entry is always overwritten by the real config, never the reverse; and
+  `GET /api/artifacts/exists`'s admin gate was dead code (a GET never reaches the generic
+  `_ADMIN_PATHS` check, which only runs past the `POST`-only guard) — it now gets its own explicit
+  early case in `required_role`, like `GET /api/config/content` already does.
 
 ## References
 

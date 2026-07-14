@@ -1021,6 +1021,32 @@ def test_serve_local_config_binds_the_config_directory(tmp_path: Path, monkeypat
     assert captured["cwd"] == cfg_dir  # anchored at the config's directory, not the launch dir
 
 
+def test_serve_local_relative_config_is_resolved_to_absolute(tmp_path: Path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    # A relative `--config` must reach srv.serve as an absolute path: a run job passes it as `--config`
+    # to a subprocess launched with cwd=<config's dir>, so a path left relative to serve's launch dir
+    # would no longer resolve once cwd moves. Launch from a directory *other* than the config's so a
+    # relative path only resolves after `.resolve()` runs — this is what the absolute-path fixture in
+    # test_serve_local_config_binds_the_config_directory can't catch (its input is already absolute).
+    import bajutsu.serve as srv
+
+    cfg_dir = tmp_path / "proj"
+    cfg_dir.mkdir()
+    cfg = cfg_dir / "bajutsu.config.yaml"
+    cfg.write_text("targets: { demo: { bundleId: com.example.demo } }\n", encoding="utf-8")
+    launch_dir = tmp_path / "elsewhere"
+    launch_dir.mkdir()
+    monkeypatch.chdir(launch_dir)
+    captured: dict[str, object] = {}
+    monkeypatch.setattr(srv, "serve", lambda **kw: captured.update(kw))  # don't start a server
+    # Path relative to launch_dir, pointing back up into the config's subdir.
+    r = runner.invoke(app, ["serve", "--config", "../proj/bajutsu.config.yaml"])
+    assert r.exit_code == 0
+    config = captured["config"]
+    assert isinstance(config, Path) and config.is_absolute()  # survives the cwd rebind
+    assert config == cfg
+    assert captured["cwd"] == cfg_dir  # still anchored at the config's directory
+
+
 def test_serve_rejects_invalid_upload_exec() -> None:
     # An unknown --upload-exec mode fails loud at the boundary (BE-0090), never silently defaults.
     r = runner.invoke(app, ["serve", "--upload-exec", "bogus", "--config", "bajutsu.config.yaml"])

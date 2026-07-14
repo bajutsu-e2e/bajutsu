@@ -336,8 +336,7 @@ class IdbDriver(CoordinateTreeDriver):
     def _center(self, sel: base.Selector) -> base.Point:
         tree = self._settle()
         el = self._resolve(sel, initial_tree=tree)
-        x, y, w, h = el["frame"]
-        return (x + w / 2, y + h / 2)
+        return base.frame_center(el["frame"])
 
     def tap(self, sel: base.Selector) -> None:
         x, y = self._center(sel)
