@@ -9,7 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0252") |
-| 実装 PR | _pending_ |
+| 実装 PR | [#1096](https://github.com/bajutsu-e2e/bajutsu/pull/1096) |
 | トピック | コードベース品質・技術的負債 |
 <!-- /BE-METADATA -->
 
@@ -153,7 +153,7 @@ import になります。
 
 **ログ**
 
-- _pending_ PR — `config.py` を 4 つのサブモジュールからなるパッケージに分割し、`Effective` を
+- [#1096](https://github.com/bajutsu-e2e/bajutsu/pull/1096) — `config.py` を 4 つのサブモジュールからなるパッケージに分割し、`Effective` を
   `EvidenceDirs`、`RunDefaults`、`DoctorThresholds` にグループ化しました。import の表面は
   `__init__` の再エクスポートによるファサードで変わりませんが、フィールドのグループ化に伴い、
   サブレコードは `eff.evidence_dirs.scenarios`、`eff.run_defaults.erase`、

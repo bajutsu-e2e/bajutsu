@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0252") |
-| Implementing PR | _pending_ |
+| Implementing PR | [#1096](https://github.com/bajutsu-e2e/bajutsu/pull/1096) |
 | Topic | Codebase quality & technical debt |
 <!-- /BE-METADATA -->
 
@@ -147,7 +147,7 @@ every symbol in today's `config.py` falls into exactly one):
 
 **Log**
 
-- _pending_ PR — split `config.py` into the four-submodule package and grouped `Effective` into
+- [#1096](https://github.com/bajutsu-e2e/bajutsu/pull/1096) — split `config.py` into the four-submodule package and grouped `Effective` into
   `EvidenceDirs` / `RunDefaults` / `DoctorThresholds`. The import surface is unchanged (the
   `__init__` re-export façade), but the field grouping did update every field-access site — the
   sub-records are read as `eff.evidence_dirs.scenarios` / `eff.run_defaults.erase` /
