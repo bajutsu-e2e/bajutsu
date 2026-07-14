@@ -120,7 +120,37 @@ def test_fetch_source_raises_on_non_200() -> None:
         server.shutdown()
 
 
+class _TruncatedHandler(http.server.BaseHTTPRequestHandler):
+    def do_GET(self) -> None:
+        # Promise more bytes than we write, then close: reading the response raises
+        # http.client.IncompleteRead — the mid-write device server the fetch must degrade on.
+        self.send_response(200)
+        self.send_header("Content-Type", "application/xml; charset=utf-8")
+        self.send_header("Content-Length", "1000")
+        self.end_headers()
+        self.wfile.write(b"<hierarchy>")  # far fewer than the advertised 1000 bytes
+
+    def log_message(self, *args: object) -> None:
+        pass
+
+
+def test_fetch_source_raises_on_a_truncated_response() -> None:
+    # A mid-write server whose body is shorter than its Content-Length surfaces as
+    # http.client.IncompleteRead; fetch_source must normalize it to AdbResidentError (not let it
+    # escape past the driver's AdbResidentError-only catch) so the driver falls back to the dump.
+    server = http.server.HTTPServer(("127.0.0.1", 0), _TruncatedHandler)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    try:
+        with pytest.raises(AdbResidentError):
+            adb_resident.fetch_source(server.server_port)
+    finally:
+        server.shutdown()
+
+
 class _FakeProc:
+    # A normally-terminating process: terminate() (then the wait that reaps it) brings it down, so
+    # poll() reports an exit code afterwards and stop()'s kill-escalation branch is NOT taken. A stuck
+    # process is modelled by _StuckProc, which pins poll() at None.
     def __init__(self) -> None:
         self.terminated = False
         self.killed = False
@@ -129,16 +159,18 @@ class _FakeProc:
 
     def terminate(self) -> None:
         self.terminated = True
+        self._exit = -15  # SIGTERM: the process is down now, so poll() stops returning None
 
     def kill(self) -> None:
         self.killed = True
+        self._exit = -9  # SIGKILL
 
     def poll(self) -> int | None:
         return self._exit
 
     def wait(self, timeout: float | None = None) -> int:
         self.waited = True
-        return 0
+        return self._exit if self._exit is not None else 0
 
 
 def _apks(tmp_path: Path) -> tuple[Path, Path]:
@@ -196,6 +228,9 @@ def test_stop_removes_the_forward_and_kills_the_instrumentation(tmp_path: Path) 
     srv.start()
     srv.stop()
     assert proc.terminated
+    # terminate() sufficed (poll() reports the process down after the reap wait), so stop() does NOT
+    # escalate to kill() — the stuck→kill path is exercised separately below.
+    assert not proc.killed
     assert adb.forward_remove_cmd("U", 41000) in teardown
     # The device-side instrumentation is force-stopped too, so no resident @Test outlives the lease.
     assert adb.force_stop_cmd("U", adb.RESIDENT_SERVER_PACKAGE) in teardown

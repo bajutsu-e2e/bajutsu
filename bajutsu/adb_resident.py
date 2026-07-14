@@ -80,9 +80,11 @@ def fetch_source(host_port: int, *, timeout: float = 5.0) -> str:
         if resp.status != 200:
             raise AdbResidentError(f"resident server returned HTTP {resp.status}")
         # A truncated/garbled body (a mid-write device server) must degrade to the dump fallback, not
-        # escape as a bare UnicodeDecodeError past the driver's AdbResidentError-only catch.
+        # escape past the driver's AdbResidentError-only catch — whether it surfaces as a
+        # UnicodeDecodeError (garbled bytes) or an http.client.HTTPException (IncompleteRead from a
+        # short body, BadStatusLine/UnknownProtocol from a malformed status line).
         return body.decode("utf-8")
-    except (OSError, UnicodeDecodeError) as exc:
+    except (OSError, UnicodeDecodeError, http.client.HTTPException) as exc:
         raise AdbResidentError(f"resident channel unreachable on port {host_port}: {exc}") from exc
     finally:
         conn.close()
