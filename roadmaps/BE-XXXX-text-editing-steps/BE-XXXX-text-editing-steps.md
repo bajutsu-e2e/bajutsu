@@ -67,7 +67,13 @@ the step's own effect runs):
 - **`copy`** — triggers the platform's "Copy" action on whatever is currently selected (no
   target selector of its own; it acts on the active selection `select` produced). Its result is
   verified purely through the existing clipboard read-back, not through any new state this step
-  introduces.
+  introduces. **When nothing is selected** (no prior `select`, or a step cleared the selection),
+  `copy` fails the step deterministically rather than silently copying nothing or leaving the
+  clipboard's prior contents in place: a "copy" with no selection is a scenario-authoring mistake,
+  and per prime directive 2 it must surface as a failure, not a silent no-op that a later clipboard
+  assertion might misread as success. The check is on Bajutsu's side (was a selection established
+  since the last selection-clearing action?), not delegated to whatever each backend's native copy
+  happens to do with an empty selection — so the failure is identical across backends.
 - **`clear`** — clears the named field's entire content. `Element.value` (already returned by
   `query()`) gives the current string; the actuation removes exactly that many characters
   (backspace-equivalent) rather than guessing a fixed count, so it is agnostic to whatever content
