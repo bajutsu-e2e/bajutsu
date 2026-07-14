@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-assert-query-snapshot-reuse-ja.md)
+**English** · [日本語](BE-0259-assert-query-snapshot-reuse-ja.md)
 
-# BE-XXXX — Reuse the settled query snapshot across assert and extract steps
+# BE-0259 — Reuse the settled query snapshot across assert and extract steps
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-assert-query-snapshot-reuse.md) |
+| Proposal | [BE-0259](BE-0259-assert-query-snapshot-reuse.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0259") |
 | Topic | Codebase quality & technical debt |
 | Related | [BE-0172](../BE-0172-run-loop-step-decomposition/BE-0172-run-loop-step-decomposition.md), [BE-0234](../BE-0234-adb-run-performance/BE-0234-adb-run-performance.md) |
 <!-- /BE-METADATA -->

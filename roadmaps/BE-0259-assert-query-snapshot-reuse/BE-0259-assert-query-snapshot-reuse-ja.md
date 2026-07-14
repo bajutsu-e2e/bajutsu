@@ -1,14 +1,14 @@
-[English](BE-XXXX-assert-query-snapshot-reuse.md) · **日本語**
+[English](BE-0259-assert-query-snapshot-reuse.md) · **日本語**
 
-# BE-XXXX — assert と extract のステップで、確定した query のスナップショットを使い回す
+# BE-0259 — assert と extract のステップで、確定した query のスナップショットを使い回す
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
 |---|---|
-| 提案 | [BE-XXXX](BE-XXXX-assert-query-snapshot-reuse-ja.md) |
+| 提案 | [BE-0259](BE-0259-assert-query-snapshot-reuse-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **提案** |
-| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0259") |
 | トピック | コードベース品質・技術的負債 |
 | 関連 | [BE-0172](../BE-0172-run-loop-step-decomposition/BE-0172-run-loop-step-decomposition-ja.md)、[BE-0234](../BE-0234-adb-run-performance/BE-0234-adb-run-performance-ja.md) |
 <!-- /BE-METADATA -->
