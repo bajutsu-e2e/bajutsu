@@ -114,7 +114,7 @@ BE-0073 と [BE-0063](../BE-0063-git-config-source/BE-0063-git-config-source-ja.
 - [x] 2 — 合成：config をレイアウトの権威として三つ組を confined なツリーへ組み立てる `materialize_composition`。BE-0073 の zip-slip/zip-bomb の上限と `validate_bundle_config` を再利用し、整合性チェック（`appPath`/`scenarios` が供給された成果物で埋まること）を加える。`manifest.json` の三つ組 sha の来歴。
 - [x] 3（一部）— アップロード API：sha を返す `POST /api/artifacts/{config,scenarios,binary}` と、重複排除のための `GET /api/artifacts/exists` を実装しました。合体 `POST /api/upload` を 3 分解の糖衣として読み替える部分は今回のPRに**含みません**。すでにリリース済みでテストも充実したコードへの純粋な内部表現の変更であり、新しい利用者向けの機能を追加しないため、後続のPRへ切り出しています。
 - [x] 4 — プロジェクトの束ね方：BE-0225 の `upload` ソースレコードを単一 sha から三つ組（`{"artifacts": {"config", "scenarios", "binary"}}`。従来の単一 `sha256` 形式とは判別可能）へ広げ、従来のレコードもそのまま解決できるようにしました。一脚ごとの取得・キャッシュに対応しています。
-- [ ] 5 — UI：前回再利用とクライアント側の重複排除省略つきの 3 ドロップゾーン、組み合わせマトリクス用の合成ピッカー。上のバックエンド中核とは切り離し、別途レビュー可能なPRへ先送りします。
+- [x] 5 — UI：再利用・省略の表示とクライアント側の content-addressed 重複排除省略つきの 3 ドロップゾーン（config / scenarios / binary。ブラウザでハッシュ→`GET /api/artifacts/exists`→未在庫のときだけアップロード）と、格納済みの三つ組をアクティブな config へ組み立てる新しい `POST /api/compose`（`bind_composition`）に支えられた **Compose & load** 合成ピッカー。組み合わせマトリクスを数クリックで、変わっていない部品の再アップロードなしに実現します。
 
 ### ログ
 
@@ -132,6 +132,19 @@ BE-0073 と [BE-0063](../BE-0063-git-config-source/BE-0063-git-config-source-ja.
   scenarios の展開より後に行うよう順序を入れ替えました。また `GET /api/artifacts/exists` の管理者
   権限ゲートが、GET リクエストには効かない実装になっていたため、`GET /api/config/content` と同じ
   早期リターンの形で正しくゲートされるようにしました。
+- 2026-07-15 — 単位 5（UI）と、合成ピッカーが必要とする `POST /api/compose`（`bind_composition`）
+  エンドポイントを実装しました。合成 UI は「Open config」に 4 つめのソースを足します。3 つの
+  content-addressed なドロップゾーン（ブラウザでの sha256 と `GET /api/artifacts/exists` による
+  重複排除省略つき）と **Compose & load** ピッカーです。`bind_composition` は格納済みの三つ組を解決し
+  （ローカルキャッシュがあればそれを、なければオブジェクトストアから取得）、リリース済みの
+  `materialize_composition` を再利用してアクティブな config としてバインドします。その取得・合成・
+  バインドの中核は `_activate_composed_project` から切り出し（`_compose_and_bind` と
+  `_collect_optional_shas`）、再アクティベート経路とピッカー経路で一つの実装を共有します。
+  `_fetch_artifact` は、オブジェクトストアがなくローカルキャッシュにもない場合に `assert` ではなく
+  素直な `404` を返すようにしたので、素の `make serve` でもピッカーが動きます。単位 3 の残り、合体
+  `POST /api/upload` を 3 分解の糖衣として読み替える部分は別の follow-up のままです。サーバ側での
+  再 zip 化は非決定的で、その糖衣が可能にするはずの重複排除を掘り崩すうえ、リリース済みの主要な
+  アップロード経路に触れるためです。
 
 ## 参考
 

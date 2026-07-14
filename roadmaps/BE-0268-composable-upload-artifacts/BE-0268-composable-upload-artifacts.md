@@ -249,7 +249,7 @@ in place of `binary`) is a later slice.
 - [x] 2 — Composition: `materialize_composition` assembling a triple into a confined tree with the config as layout authority, reusing BE-0073's zip-slip/zip-bomb bounds and `validate_bundle_config`, plus the coherence check (`appPath`/`scenarios` filled by supplied artifacts); triple-sha provenance in `manifest.json`.
 - [x] 3 (partial) — Upload API: `POST /api/artifacts/{config,scenarios,binary}` returning the sha, plus a `GET /api/artifacts/exists` dedup check, shipped. The combined `POST /api/upload` reinterpreted as decompose-to-three sugar is **not** in this PR — it is a pure internal-representation change to already-shipped, well-tested code with no new user-facing capability, deferred to a follow-up so this slice stays small and low-risk.
 - [x] 4 — Project binding: widen BE-0225's `upload` source record from one sha to the triple (`{"artifacts": {"config", "scenarios", "binary"}}`, discriminated from the legacy single-`sha256` shape), with legacy single-sha records still resolving unchanged; per-leg fetch-or-cache.
-- [ ] 5 — UI: three drop zones with reuse-last + client-side dedup skip, and a composition picker for the combination matrix. Deferred to a follow-up PR — a separate, reviewable slice from the backend core above.
+- [x] 5 — UI: three drop zones (config / scenarios / binary) with a reuse/skip indicator and client-side content-addressed dedup skip (hash in-browser → `GET /api/artifacts/exists` → upload only on a miss), and a **Compose & load** composition picker backed by a new `POST /api/compose` (`bind_composition`) that assembles a stored triple into the active config — the combination matrix as a few clicks, no re-upload of unchanged parts.
 
 ### Log
 
@@ -269,6 +269,18 @@ in place of `binary`) is a later slice.
   `GET /api/artifacts/exists`'s admin gate was dead code (a GET never reaches the generic
   `_ADMIN_PATHS` check, which only runs past the `POST`-only guard) — it now gets its own explicit
   early case in `required_role`, like `GET /api/config/content` already does.
+- 2026-07-15 — Unit 5 (UI) implemented, plus the `POST /api/compose` (`bind_composition`) endpoint
+  the composition picker needs. The compose UI adds a fourth "Open config" source — three
+  content-addressed drop zones with an in-browser sha256 + `GET /api/artifacts/exists` dedup skip and
+  a **Compose & load** picker — and `bind_composition` resolves a stored triple (local cache hit, or
+  object-store fetch on a miss) and binds it as the active config, reusing the shipped
+  `materialize_composition`. Its fetch/compose/bind core is factored out of `_activate_composed_project`
+  (`_compose_and_bind` + `_collect_optional_shas`) so the reactivation and picker paths share one
+  implementation; `_fetch_artifact` now returns a clean `404` (not an `assert`) on a local-cache miss
+  with no object store, so the picker works on a plain `make serve`. The remaining half of unit 3 —
+  reinterpreting the combined `POST /api/upload` as decompose-to-three sugar — stays a separate
+  follow-up (its server-side re-zip is nondeterministic, undercutting the dedup it would exist to
+  enable, and it touches the primary shipped upload path).
 
 ## References
 

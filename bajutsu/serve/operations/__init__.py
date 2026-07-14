@@ -118,6 +118,7 @@ from bajutsu.serve.operations.upload import (
     activate_uploaded_project,
     artifact_exists,
     bind_artifact,
+    bind_composition,
     bind_upload_config,
 )
 from bajutsu.serve.operations.worker import (
@@ -161,6 +162,7 @@ __all__ = [
     "artifact_exists",
     "audit_scenario",
     "bind_artifact",
+    "bind_composition",
     "bind_config",
     "bind_git_config",
     "bind_upload_config",

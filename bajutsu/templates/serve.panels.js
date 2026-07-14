@@ -456,13 +456,85 @@ async function chooseUploadConfig(file){
   meta.textContent='Bound '+(s.filename||file.name)+' · '+fmtSize(s.size||file.size)+' · sha256 '+(s.sha256||'').slice(0,12)+'…';
   setCfgName(d.config,true);closeFs();await loadShared();
 }
-$('#up-pick').addEventListener('click',()=>$('#up-file').click());
-$('#up-file').addEventListener('change',e=>{const f=e.target.files[0];e.target.value='';if(f)chooseUploadConfig(f);});  // clear value so re-picking the same .zip still fires change
-(function(){
-  const drop=$('#up-drop');if(!drop)return;
-  const stop=e=>{e.preventDefault();e.stopPropagation();};
-  ['dragenter','dragover'].forEach(ev=>drop.addEventListener(ev,e=>{stop(e);drop.classList.add('dragover');}));
-  ['dragleave','drop'].forEach(ev=>drop.addEventListener(ev,e=>{stop(e);drop.classList.remove('dragover');}));
-  drop.addEventListener('drop',e=>{const f=e.dataTransfer.files[0];if(f)chooseUploadConfig(f);});
-})();
+// Wire a file zone: a "pick" button opening the hidden file input, that input's change, and
+// drag/drop onto the zone — all funnelling the chosen File to `onFile`. Shared by the bundle upload
+// (one zone) and the compose picker (one zone per artifact kind), so the drag-highlight contract and
+// the re-pick fix live once. Any of the three elements may be absent (a hosted deployment hides some).
+function wireFileZone(pickBtn,fileInput,dropEl,onFile){
+  if(pickBtn&&fileInput){
+    pickBtn.addEventListener('click',()=>fileInput.click());
+    fileInput.addEventListener('change',e=>{const f=e.target.files[0];e.target.value='';if(f)onFile(f);});  // clear value so re-picking the same file still fires change
+  }
+  if(dropEl){
+    const stop=e=>{e.preventDefault();e.stopPropagation();};
+    ['dragenter','dragover'].forEach(ev=>dropEl.addEventListener(ev,e=>{stop(e);dropEl.classList.add('dragover');}));
+    ['dragleave','drop'].forEach(ev=>dropEl.addEventListener(ev,e=>{stop(e);dropEl.classList.remove('dragover');}));
+    dropEl.addEventListener('drop',e=>{const f=e.dataTransfer.files[0];if(f)onFile(f);});
+  }
+}
+wireFileZone($('#up-pick'),$('#up-file'),$('#up-drop'),chooseUploadConfig);
+
+// ---- Compose the active config from independently-uploaded artifacts (BE-0268) ----
+// Each of config/scenarios/binary is content-addressed: hash it in the browser, ask whether the
+// server already holds those bytes (`/api/artifacts/exists`), and POST only on a miss — so an
+// unchanged binary never travels the wire. A composition is a triple of shas assembled at run time
+// (`/api/compose`), so a new binary×scenario combination is a fresh triple over stored parts, not a
+// fresh upload (the combination matrix). Selections persist while the modal is open, so swapping one
+// part and composing again reuses the others as-is.
+const COMPOSE_KINDS=['config','scenarios','binary'];
+const composeState={config:null,scenarios:null,binary:null};  // per kind: {sha, filename, reused}
+async function sha256Hex(file){
+  const buf=await crypto.subtle.digest('SHA-256',await file.arrayBuffer());
+  return Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,'0')).join('');
+}
+function renderComposeZone(kind){
+  const el=$('#cmp-'+kind+'-state');if(!el)return;const s=composeState[kind];
+  if(!s){el.textContent='';el.classList.remove('reused');return;}
+  // textContent (not innerHTML): the file name comes from a file input, so never reinterpret it as HTML.
+  el.textContent=s.filename+' · '+s.sha.slice(0,12)+'… '+(s.reused?'(already stored — skipped)':'(uploaded)');
+  el.classList.toggle('reused',s.reused);
+}
+async function chooseArtifact(kind,file){
+  if(!file)return;
+  const err=$('#cmp-error'),state=$('#cmp-'+kind+'-state');err.hidden=true;
+  composeState[kind]=null;renderComposeZone(kind);
+  // Content-addressing is computed in the browser, which needs WebCrypto — only available in a
+  // secure context (HTTPS or localhost). Say so plainly rather than surfacing a generic read error
+  // when serve is reached over plain HTTP on a non-localhost host.
+  if(!(window.crypto&&crypto.subtle)){state.textContent='';err.textContent='composing from artifacts needs a secure context (open serve over HTTPS or on localhost)';err.hidden=false;return;}
+  state.textContent='Hashing '+file.name+'…';
+  let sha;
+  try{sha=await sha256Hex(file);}
+  catch(e){state.textContent='';err.textContent='could not read '+file.name;err.hidden=false;return;}
+  // Skip the upload when the server already has these exact bytes (content-addressed dedup).
+  let reused=false;
+  try{const d=await getJSON('/api/artifacts/exists?kind='+kind+'&sha256='+sha,null);reused=!!(d&&d.exists);}
+  catch(e){reused=false;}
+  if(!reused){
+    state.textContent='Uploading '+file.name+' ('+fmtSize(file.size)+')…';
+    let d;
+    try{
+      const r=await fetch('/api/artifacts/'+kind,{method:'POST',headers:{'Content-Type':'application/octet-stream'},body:file});
+      d=await r.json();
+      if(!r.ok||d.error){state.textContent='';err.textContent=(d&&d.error)||'upload failed';err.hidden=false;return;}
+    }catch(e){state.textContent='';err.textContent='upload failed';err.hidden=false;return;}
+  }
+  composeState[kind]={sha:sha,filename:file.name,reused:reused};
+  renderComposeZone(kind);
+}
+async function composeAndLoad(){
+  const err=$('#cmp-error'),meta=$('#cmp-meta');err.hidden=true;
+  if(!composeState.config){err.textContent='a config artifact is required';err.hidden=false;return;}
+  const body={config:composeState.config.sha,filename:composeState.config.filename};
+  if(composeState.scenarios)body.scenarios=composeState.scenarios.sha;
+  if(composeState.binary)body.binary=composeState.binary.sha;
+  meta.hidden=false;meta.textContent='Composing…';
+  const d=await postJSON('/api/compose',body,{error:'compose failed'});
+  if(!d||d.error){meta.hidden=true;err.textContent=(d&&d.error)||'compose failed';err.hidden=false;return;}
+  meta.textContent='Composed and bound '+((d.targets||[]).length)+' target(s)';
+  setCfgName(d.config,true);closeFs();await loadShared();
+}
+COMPOSE_KINDS.forEach(kind=>wireFileZone(
+  $('#cmp-'+kind+'-pick'),$('#cmp-'+kind+'-file'),$('#cmp-'+kind+'-drop'),f=>chooseArtifact(kind,f)));
+(function(){const b=$('#cmp-run');if(b)b.addEventListener('click',composeAndLoad);})();
 

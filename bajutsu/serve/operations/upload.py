@@ -254,13 +254,15 @@ def _fetch_artifact(
     """Resolve *kind*'s *sha256* artifact to a local path for composition: a cache hit reuses it
     as-is, a miss fetches it from the object store. The composed-triple sibling of
     `activate_uploaded_project`'s own fetch-or-cache shape, generalized to a single artifact file
-    instead of a whole bundle tree. Only called once the caller has confirmed an object store is
-    configured."""
+    instead of a whole bundle tree. With no object store configured a local-cache miss means the
+    artifact was never uploaded on this replica — a clean 404, not a crash — so the compose-picker
+    path (`bind_composition`) works from the just-uploaded local cache on a plain `make serve`."""
     dest = local_artifact_dir(_artifacts_dir(state), org, kind) / sha256
     if dest.exists():
         return dest, 200
     store = state.object_store
-    assert store is not None  # the caller checks this before calling
+    if store is None:
+        return {"error": f"{kind} artifact {sha256!r} is not available"}, 404
     try:
         data = store.get_bytes(artifact_store_key(state.object_store_prefix, org, kind, sha256))
     except Exception as e:  # a transient store error must not read as "artifact absent"
@@ -279,6 +281,85 @@ def _fetch_artifact(
     finally:
         tmp.unlink(missing_ok=True)
     return dest, 200
+
+
+def _collect_optional_shas(
+    artifacts: dict[str, Any], shas: dict[str, str]
+) -> tuple[Any, int] | None:
+    """Validate the optional `scenarios`/`binary` legs and add each present one to *shas* (which
+    already holds the required `config` leg). Every leg is untrusted (a client-shaped project record
+    or compose request), so a present sha must be a full lowercase hex digest (`_SHA256_RE`) before
+    it is ever turned into a path or object-store key — the same guard the `config` leg gets in each
+    caller. Returns an `(error, 400)` tuple on an invalid present leg, else `None`. An absent or
+    empty leg is simply skipped (a config may need neither)."""
+    for kind in _COMPOSED_KINDS:
+        sha = artifacts.get(kind)
+        if sha is None or sha == "":
+            continue
+        if not isinstance(sha, str) or not _SHA256_RE.fullmatch(sha):
+            return {"error": f"invalid {kind} artifact sha"}, 400
+        shas[kind] = sha
+    return None
+
+
+def _compose_and_bind(
+    state: ServeState,
+    shas: dict[str, str],
+    *,
+    filename: Any,
+    size: int,
+    org: str,
+    actor: str | None,
+) -> tuple[Upload, int] | tuple[dict[str, Any], int]:
+    """Resolve a validated triple's legs, materialize the composition, and bind it as the active
+    config — the shared core of `_activate_composed_project` (reactivating a stored record) and
+    `bind_composition` (the compose picker). Returns `(upload, 200)` on success — the bound `Upload`,
+    so a caller can read back its display-safe `filename` for an audit line / response without
+    re-sanitizing — or an `(error, status)` pair. *filename* is the raw, untrusted provenance name
+    (a client-shaped record or request); this is the single place it is run through `_safe_filename`.
+    A composed bind records its provenance as `compositionId` + one `<kind>Sha` per supplied artifact
+    (`Upload.artifact_shas`), never a single top-level `sha256`."""
+    composition_id = _composition_id(shas)
+    compositions_dir = _compositions_dir(state) / org_prefix("", org)
+    paths: dict[str, Path] = {}
+    if not (compositions_dir / composition_id).exists():
+        # Only resolve each leg (local cache hit or object-store fetch) when this exact triple
+        # hasn't been composed on this replica before — `materialize_composition` itself no-ops on
+        # a cache hit without ever reading these paths, so a replica that's already composed this
+        # triple (the common case on reactivation) skips every per-artifact fetch entirely.
+        for kind in ARTIFACT_KINDS:
+            sha = shas.get(kind)
+            if sha is None:
+                continue
+            fetched, status = _fetch_artifact(state, org, kind, sha)
+            if status != 200:
+                assert isinstance(fetched, dict)  # a non-200 is always the error payload
+                return fetched, status
+            assert isinstance(fetched, Path)  # `status == 200` only ever pairs with a resolved path
+            paths[kind] = fetched
+
+    try:
+        dest = materialize_composition(
+            paths.get("config", Path()),
+            paths.get("scenarios"),
+            paths.get("binary"),
+            compositions_dir=compositions_dir,
+            composition_id=composition_id,
+        )
+    except (OSError, ValueError, yaml.YAMLError) as e:
+        return {"error": f"invalid composition: {e}"}, 400
+    upload = Upload(
+        dir=dest,
+        config=dest / "bajutsu.config.yaml",
+        filename=_safe_filename(filename if isinstance(filename, str) else ""),
+        sha256=composition_id,
+        size=size,
+        org=org,
+        actor=actor,
+        artifact_shas=shas,
+    )
+    state.bind_upload(upload)
+    return upload, 200
 
 
 def _activate_composed_project(
@@ -306,57 +387,62 @@ def _activate_composed_project(
     ):
         return None
     shas: dict[str, str] = {"config": config_sha}
-    for kind in _COMPOSED_KINDS:
-        sha = artifacts.get(kind)
-        if sha is None:
-            continue
-        if not isinstance(sha, str) or not _SHA256_RE.fullmatch(sha):
-            return {"error": f"invalid {kind} artifact sha"}, 400
-        shas[kind] = sha
-
-    composition_id = _composition_id(shas)
-    compositions_dir = _compositions_dir(state) / org_prefix("", org)
-    paths: dict[str, Path] = {}
-    if not (compositions_dir / composition_id).exists():
-        # Only resolve each leg (local cache hit or object-store fetch) when this exact triple
-        # hasn't been composed on this replica before — `materialize_composition` itself no-ops on
-        # a cache hit without ever reading these paths, so a replica that's already composed this
-        # triple (the common case on reactivation) skips every per-artifact fetch entirely.
-        for kind in ARTIFACT_KINDS:
-            sha = shas.get(kind)
-            if sha is None:
-                continue
-            fetched, status = _fetch_artifact(state, org, kind, sha)
-            if status != 200:
-                return fetched, status
-            assert isinstance(fetched, Path)  # `status == 200` only ever pairs with a resolved path
-            paths[kind] = fetched
-
-    try:
-        dest = materialize_composition(
-            paths.get("config", Path()),
-            paths.get("scenarios"),
-            paths.get("binary"),
-            compositions_dir=compositions_dir,
-            composition_id=composition_id,
-        )
-    except (OSError, ValueError, yaml.YAMLError) as e:
-        return {"error": f"invalid composition: {e}"}, 400
-    config_path = dest / "bajutsu.config.yaml"
-    filename = source.get("filename")
-    size = source.get("size")
-    upload = Upload(
-        dir=dest,
-        config=config_path,
-        filename=_safe_filename(filename if isinstance(filename, str) else ""),
-        sha256=composition_id,
-        size=size if isinstance(size, int) else 0,
+    err = _collect_optional_shas(artifacts, shas)
+    if err is not None:
+        return err
+    raw_size = source.get("size")
+    result, status = _compose_and_bind(
+        state,
+        shas,
+        filename=source.get("filename"),
+        size=raw_size if isinstance(raw_size, int) else 0,
         org=org,
         actor=actor,
-        artifact_shas=shas,
     )
-    state.bind_upload(upload)
-    return {"ok": True, "config": str(config_path)}, 200
+    if status != 200:
+        return result, status
+    assert isinstance(result, Upload)  # `status == 200` only ever pairs with a bound Upload
+    return {"ok": True, "config": str(result.config)}, 200
+
+
+def bind_composition(
+    state: ServeState, artifacts: dict[str, Any], *, actor: str | None = None
+) -> tuple[Any, int]:
+    """Compose a `(config, scenarios, binary)` artifact triple and bind it as the active config
+    (BE-0268) — the compose-picker sibling of `bind_upload_config`, driven by `POST /api/compose`.
+
+    The picker assembles a triple from artifacts already uploaded through `POST /api/artifacts/*`
+    (pick config vX, scenarios vY, binary vZ) and runs it, so a new combination is a fresh *triple*
+    over stored artifacts, never a fresh upload — the combination matrix. *artifacts* is the request
+    body: a `config` sha256 (required, the triple's only always-required leg) plus optional
+    `scenarios`/`binary` shas and a display `filename`, each untrusted and validated before use. On
+    success the composition materializes into a serve-owned tree and binds exactly like an uploaded
+    bundle, so the Replay / Record / Crawl tabs run from it; returns `{config, targets, source}` like
+    `bind_upload_config`. A missing leg the config actually needs is rejected by
+    `materialize_composition`'s coherence check (400), never run against a half-built tree."""
+    if not isinstance(artifacts, dict):
+        return {"error": "artifacts must be an object"}, 400
+    config_sha = artifacts.get("config")
+    if not isinstance(config_sha, str) or not _SHA256_RE.fullmatch(config_sha):
+        return {"error": "a config artifact sha256 is required"}, 400
+    shas: dict[str, str] = {"config": config_sha}
+    err = _collect_optional_shas(artifacts, shas)
+    if err is not None:
+        return err
+    org = state.org_of(actor)
+    result, status = _compose_and_bind(
+        state, shas, filename=artifacts.get("filename"), size=0, org=org, actor=actor
+    )
+    if status != 200:
+        return result, status
+    assert isinstance(result, Upload)  # `status == 200` only ever pairs with a bound Upload
+    _record_audit(state, actor, org, "compose", result.filename, {"artifacts": shas})
+    return {
+        "ok": True,
+        "config": str(result.config),
+        "targets": list_targets(result.config),
+        "source": {"kind": "upload", "artifacts": shas, "filename": result.filename},
+    }, 200
 
 
 def activate_uploaded_project(
