@@ -269,26 +269,11 @@ serve ホストの `--root` を辿る**ファイルブラウザ**です。サー
 以下の「ローカル」は、Tier A と、ノート PC 上で素の `make serve` を動かす場合の両方を指します。どちらも
 `hosted: false` で動作し、`hosted: true` になるのは Tier B のサーバ backend だけです。
 
-```mermaid
-flowchart TB
-    subgraph L["ローカル（hosted: false。Tier A、または素の make serve）"]
-        direction TB
-        L1["config<br/>ファイルブラウザ + Git + アップロード<br/>自分のファイルシステム、パスの閉じ込めなし"]
-        L2["シナリオと run の成果物<br/>scenarios/、runs/ をディスク上に保持<br/>ソフトデリートは runs/.trash/ へ移動"]
-        L3["アプリバイナリ<br/>appPath をディスク上に保持<br/>存在しないときだけ build"]
-    end
-    subgraph H["ホスト型（hosted: true。Tier B のサーバ backend）"]
-        direction TB
-        H1["config<br/>Git とアップロードのみ<br/>ファイルブラウザは無効、403（BE-0108）"]
-        H2["シナリオと run の成果物<br/>オブジェクトストレージ（S3/GCS）+ Postgres<br/>ソフトデリートは deleted_at を設定"]
-        H3["アプリバイナリ<br/>worker がチェックアウトまたはバンドルから build<br/>リモート build はゲート付き（BE-0121）"]
-    end
-
-    classDef local fill:#e0e7ff,stroke:#4f46e5,color:#1f2937;
-    classDef hosted fill:#d1fae5,stroke:#059669,color:#1f2937;
-    class L1,L2,L3 local
-    class H1,H2,H3 hosted
-```
+| 状態 | ローカル（`hosted: false`。Tier A、または素の `make serve`） | ホスト型（`hosted: true`。Tier B のサーバ backend） |
+|---|---|---|
+| **config** | ファイルブラウザ + Git + アップロード。自分のファイルシステムで、パスの閉じ込めなし | Git とアップロードのみ。ファイルブラウザは無効、403（BE-0108） |
+| **シナリオと run の成果物** | `scenarios/`、`runs/` をディスク上に保持。ソフトデリートは `runs/.trash/` へ移動 | オブジェクトストレージ（S3/GCS）+ Postgres。ソフトデリートは `deleted_at` を設定 |
+| **アプリバイナリ** | `appPath` をディスク上に保持。存在しないときだけ build | worker がチェックアウトまたはバンドルから build。リモート build はゲート付き（BE-0121） |
 
 - **config。** どちらの側も最大3つのソースからバインドしますが、`hosted` が true になった瞬間にファイル
   ブラウザだけが消えます（前述のとおりです）。パスの閉じ込めを決めるのは Tier ではなく**ソース**です。ローカル

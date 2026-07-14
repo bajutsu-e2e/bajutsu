@@ -280,26 +280,11 @@ of state `serve` manages*, so the tier-by-tier detail is easier to place. "Local
 Tier A and a bare `make serve` on a laptop — both run with `hosted: false`; only Tier B's server
 backend sets `hosted: true`.
 
-```mermaid
-flowchart TB
-    subgraph L["Local — hosted: false (Tier A, or a bare make serve)"]
-        direction TB
-        L1["Config<br/>file browser + Git + upload<br/>own filesystem, paths unconfined"]
-        L2["Scenario and run artifacts<br/>scenarios/ and runs/ on disk<br/>soft-delete moves to runs/.trash/"]
-        L3["App binary<br/>appPath on disk<br/>build only when missing"]
-    end
-    subgraph H["Hosted — hosted: true (Tier B server backend)"]
-        direction TB
-        H1["Config<br/>Git + upload only<br/>file browser disabled, 403 (BE-0108)"]
-        H2["Scenario and run artifacts<br/>object store (S3/GCS) + Postgres<br/>soft-delete sets deleted_at (BE-0239)"]
-        H3["App binary<br/>worker builds from checkout/bundle<br/>remote build gated (BE-0121)"]
-    end
-
-    classDef local fill:#e0e7ff,stroke:#4f46e5,color:#1f2937;
-    classDef hosted fill:#d1fae5,stroke:#059669,color:#1f2937;
-    class L1,L2,L3 local
-    class H1,H2,H3 hosted
-```
+| State | Local (`hosted: false` — Tier A, or a bare `make serve`) | Hosted (`hosted: true` — Tier B server backend) |
+|---|---|---|
+| **Config** | File browser + Git + upload; own filesystem, paths unconfined | Git + upload only; file browser disabled, 403 (BE-0108) |
+| **Scenario and run artifacts** | `scenarios/` and `runs/` on disk; soft-delete moves to `runs/.trash/` | Object store (S3/GCS) + Postgres; soft-delete sets `deleted_at` (BE-0239) |
+| **App binary** | `appPath` on disk; build only when missing | Worker builds from checkout/bundle; remote build gated (BE-0121) |
 
 - **Config.** Both sides bind from up to three sources, but the file browser disappears the moment
   `hosted` is true (just above). Path confinement follows the *source*, not the tier: a local-file
