@@ -285,7 +285,7 @@ evidence rules, codegen + CI, and self-healing triage — all validated on a rea
 Simulator (see [Status](#status) above for the implemented surface). Because a platform is just a
 backend behind the one driver interface, the same core spans targets: the **web (Playwright)** and
 **Android (`adb`)** backends have both landed, with **Flutter** planned
-(see [`docs/multi-platform.md`](docs/multi-platform.md)).
+(see [`docs/vision.md`](docs/vision.md#1-reach--more-platforms-and-surfaces)).
 
 The forward-looking, prioritized backlog (what we want to build next) lives in
 [`roadmaps/`](roadmaps/README.md).

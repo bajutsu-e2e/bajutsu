@@ -368,10 +368,9 @@ def make_driver(actuator, udid, *, base_url=None, runner_port=None) -> Driver:  
   each candidate's capability set and returns the first that is both available and sufficient. An
   explicit single-actuator request never escalates (a hard pin, like `--udid`). If none is available,
   `RuntimeError` (the CLI exits with code 2).
-- `web` resolves to `playwright`, which **is implemented** ([multi-platform](multi-platform.md));
-  `android` (→ `adb`) is **declared but not implemented yet**, so requesting it raises a clear "not
-  implemented yet" rather than a generic failure. Truly unknown tokens are skipped (forward-compat:
-  an older build can run a config that lists a future backend).
+- `web` resolves to `playwright` and `android` resolves to `adb`, both **implemented**
+  ([vision → reach](vision.md#1-reach--more-platforms-and-surfaces)). Truly unknown tokens are
+  skipped (forward-compat: an older build can run a config that lists a future backend).
 - The availability check `available` is injectable (swappable in tests). The default is `shutil.which`
   for PATH-backed actuators; `playwright` is gated on whether its Python package is importable, and
   `fake` is always available.
