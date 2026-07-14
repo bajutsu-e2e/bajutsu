@@ -26,10 +26,10 @@ from bajutsu.ai import (
     MessageResponse,
     TextPart,
     ToolDef,
-    create_backend,
     resolved_provider,
 )
-from bajutsu.ai_config import AiConfig, resolve_model
+from bajutsu.ai_config import AiConfig
+from bajutsu.claude_backed_agent import ClaudeBackedAgent
 from bajutsu.redaction import Redactor
 from bajutsu.triage import (
     FIX_KINDS,
@@ -232,7 +232,7 @@ def _forced_diagnose(
     return response
 
 
-class ClaudeTriageAgent:
+class ClaudeTriageAgent(ClaudeBackedAgent):
     """TriageAgent implementation that asks Claude for the diagnosis via forced tool use."""
 
     def __init__(
@@ -244,16 +244,10 @@ class ClaudeTriageAgent:
         ai: AiConfig | None = None,
         redactor: Redactor | None = None,
     ) -> None:
-        self._backend = backend
-        self._ai = ai
-        self._redactor = redactor
-        self._model = resolve_model(MODEL, ai) if model is None else model
+        super().__init__(
+            backend=backend, ai=ai, default_model=MODEL, model=model, redactor=redactor
+        )
         self._max_tokens = max_tokens
-
-    def _ensure_backend(self) -> AiBackend:
-        if self._backend is None:
-            self._backend = create_backend(ai=self._ai)
-        return self._backend
 
     def triage(self, context: TriageContext) -> Triage:
         # Force the one diagnose call; no thinking with forced choice.
@@ -447,7 +441,7 @@ def _cross_run_user_content(
     return content
 
 
-class ClaudeCrossRunTriageAgent:
+class ClaudeCrossRunTriageAgent(ClaudeBackedAgent):
     """CrossRunTriageAgent implementation that asks Claude to diagnose intermittency via forced tool use.
 
     The Half-2 counterpart to `ClaudeTriageAgent`: same forced-`diagnose` boundary and the same
@@ -464,16 +458,10 @@ class ClaudeCrossRunTriageAgent:
         ai: AiConfig | None = None,
         redactor: Redactor | None = None,
     ) -> None:
-        self._backend = backend
-        self._ai = ai
-        self._redactor = redactor
-        self._model = resolve_model(MODEL, ai) if model is None else model
+        super().__init__(
+            backend=backend, ai=ai, default_model=MODEL, model=model, redactor=redactor
+        )
         self._max_tokens = max_tokens
-
-    def _ensure_backend(self) -> AiBackend:
-        if self._backend is None:
-            self._backend = create_backend(ai=self._ai)
-        return self._backend
 
     def triage_flaky(self, context: CrossRunTriageContext) -> Triage:
         response = _forced_diagnose(

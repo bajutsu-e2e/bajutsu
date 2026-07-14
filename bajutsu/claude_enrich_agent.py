@@ -13,7 +13,6 @@ from __future__ import annotations
 
 from typing import Any
 
-from bajutsu import usage
 from bajutsu.agent_protocols import EnrichmentProposal, StepContext
 from bajutsu.ai import (
     AiBackend,
@@ -24,11 +23,10 @@ from bajutsu.ai import (
     NamedTool,
     TextPart,
     ToolDef,
-    create_backend,
-    resolved_provider,
 )
-from bajutsu.ai_config import AiConfig, language_instruction, resolve_model
+from bajutsu.ai_config import AiConfig, language_instruction
 from bajutsu.claude_agent import _TARGET_PROPS, _to_assertion
+from bajutsu.claude_backed_agent import ClaudeBackedAgent
 from bajutsu.record import _describe_step, _settle_step
 from bajutsu.redaction import Redactor
 from bajutsu.scenario import Scenario
@@ -168,7 +166,7 @@ def _user_content(
     return content
 
 
-class ClaudeEnrichmentAgent:
+class ClaudeEnrichmentAgent(ClaudeBackedAgent):
     """EnrichmentAgent implementation backed by Claude (Anthropic SDK)."""
 
     def __init__(
@@ -180,17 +178,11 @@ class ClaudeEnrichmentAgent:
         ai: AiConfig | None = None,
         redactor: Redactor | None = None,
     ) -> None:
-        self._backend = backend
-        self._ai = ai
-        self._redactor = redactor
-        self._model = resolve_model(MODEL, ai) if model is None else model
+        super().__init__(
+            backend=backend, ai=ai, default_model=MODEL, model=model, redactor=redactor
+        )
         self._lang = language_instruction(ai)  # output-language suffix, empty for `auto` (BE-0188)
         self._max_tokens = max_tokens
-
-    def _ensure_backend(self) -> AiBackend:
-        if self._backend is None:
-            self._backend = create_backend(ai=self._ai)
-        return self._backend
 
     def propose_assertions(
         self,
@@ -212,7 +204,7 @@ class ClaudeEnrichmentAgent:
                 max_tokens=self._max_tokens,
             )
         )
-        usage.record(response.usage, provider=resolved_provider(self._ai), model=self._model)
+        self._record_usage(response)
 
         block = response.first_tool_use()
         if block is None:

@@ -253,6 +253,7 @@ forbidden_modules = [
     "bajutsu.agent_protocols",
     "bajutsu.agent_factory",
     "bajutsu.claude_agent",
+    "bajutsu.claude_backed_agent",
     "bajutsu.claude_enrich_agent",
     "bajutsu.claude_triage",
     "bajutsu.ai_config",
