@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0250](BE-0250-assertions-package-eval-context.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0250") |
+| Implementing PR | [#1093](https://github.com/bajutsu-e2e/bajutsu/pull/1093) |
 | Topic | Codebase quality & technical debt |
 | Related | [BE-0172](../BE-0172-run-loop-step-decomposition/BE-0172-run-loop-step-decomposition.md) |
 <!-- /BE-METADATA -->
@@ -151,7 +152,8 @@ before and after) rather than changing any assertion's observable behavior.
 
 - Unit 1 (package split) — `bajutsu/assertions.py` split into `bajutsu/assertions/` (`_common`, `network`,
   `visual`, `schema`, `evaluate`), the public surface re-exported from `__init__`. Behavior-preserving;
-  the existing assertion/network suites plus a re-export/acyclicity guard are the parity net. PR _pending_.
+  the existing assertion/network suites plus a re-export/acyclicity guard are the parity net.
+  PR [#1093](https://github.com/bajutsu-e2e/bajutsu/pull/1093).
 
 ## References
 
