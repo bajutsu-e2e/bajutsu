@@ -79,7 +79,7 @@ final class ComponentsUITests: XCTestCase {
 | `traits: [notEnabled]` / `[selected]` | `enabled == NO` / `selected == YES` |
 | `index: n` | `.element(boundBy: n)`（負の `n` は末尾から数え `.element(boundBy: query.count - k)`。それ以外は `.firstMatch`） |
 
-設定された全フィールドを **AND** で結合します。*忠実な*構造写像が無いフィールドがあると、セレクタは
+設定された全フィールドを **AND** で結合します。*忠実な*構造マッピングが無いフィールドがあると、セレクタは
 `el("UNSUPPORTED_SELECTOR")` のまま残ります（誤った推測ではなく、正直なギャップ）。
 
 - **正規表現メタ文字を含む `labelMatches`**：これは Python の `re.search` パターンです。メタ文字を含ま
@@ -122,7 +122,7 @@ final class ComponentsUITests: XCTestCase {
 アサーション、未知の trait、および Playwright 出力先での座標スワイプ）は、失敗させずに
 `// TODO` 行を出力します。デバイス制御ステップはレビュー担当が実行する `simctl` コマンド名を明記します。
 出力は常にレビューでき、生成結果を壊しません。生成ファイルの先頭にも「手で編集せず再生成せよ」と明記します。
-これは両方の出力先に共通です。
+これはどの出力先にも共通です。
 
 ## Playwright（web）の出力
 
@@ -295,7 +295,7 @@ class ComponentsUITest {
 | `traits` / `within` / `index` / 複合 | `// TODO` |
 
 `labelMatches` は Python の `re.search`（部分一致）のパターンですが、UI Automator の `By.text(Pattern)`
-は**全文一致**を要求します。そのため、メタ文字を含まないパターン（単純な部分文字列）だけが忠実に写像でき
+は**全文一致**を要求します。そのため、メタ文字を含まないパターン（単純な部分文字列）だけが忠実にマッピングでき
 （`By.textContains` 経由）、実正規表現には忠実な単一セレクタの形がありません（XCUITest エミッタが NSPredicate
 の `MATCHES` で突き当たるのと同じ限界）。この場合は `// TODO` にとどめます。
 

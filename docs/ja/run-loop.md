@@ -5,9 +5,9 @@
 > Tier 2 の決定的ランナーです。各ステップを **act → (wait) → verify** で処理し、合否は機械アサーション
 > のみで決めます。AI は関与しません。最初の失敗で停止します。
 >
-> 実装: `bajutsu/orchestrator.py`（ループ本体）・`bajutsu/runner.py`（実機起動 + レポート連結）。
+> 実装: `bajutsu/orchestrator.py`（ループ本体）、`bajutsu/runner.py`（実機起動 + レポート連結）。
 
-関連: [scenarios](scenarios.md) ・ [selectors](selectors.md) ・ [evidence](evidence.md) ・ [reporting](reporting.md)
+関連: [scenarios](scenarios.md) · [selectors](selectors.md) · [evidence](evidence.md) · [reporting](reporting.md)
 
 ---
 

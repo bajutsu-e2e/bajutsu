@@ -4,7 +4,7 @@
 
 このページはシナリオ DSL（ドメイン固有言語）の **規範的な文法**です。すべての生成規則、型、既定値、検証制約を、`bajutsu/scenario/`（`models/` サブパッケージ。`extra="forbid"` で未知キーは拒否）の pydantic モデルから直接導いています。[scenarios](scenarios.md) がオーサリングガイド（例つきでシナリオの書き方を説明）であるのに対し、このページは言語仕様（何がパースされ、何が拒否されるか）です。コア文法を取り巻くテンプレートとマクロ層、すなわちコンポーネント、データ駆動の行、`setup` プレリュードも扱います。
 
-関連: [scenarios](scenarios.md)（オーサリングガイド）・ [selectors](selectors.md)（セレクタ/アサーションの評価）・ [evidence](evidence.md)・ [getting-started](getting-started.md)
+関連: [scenarios](scenarios.md)（オーサリングガイド） · [selectors](selectors.md)（セレクタ/アサーションの評価） · [evidence](evidence.md) · [getting-started](getting-started.md)
 
 ---
 

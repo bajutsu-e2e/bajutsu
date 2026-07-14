@@ -265,7 +265,7 @@ targets:
 - **[features](demos/showcase/README.ja.md)**（`make -C demos features`）。シナリオ著作の機能（タグ、
   パラメータ化した共有ステップ、シークレット）を実機 Simulator で示します。
 - **[webui](demos/showcase/WEBUI.ja.md)**（`make -C demos webui`）。**Web UI** で Simulator を操作し、
-  あらゆる証跡（スクリーンショット・動画・ログ・通信（観測 + モック）・ビジュアルリグレッション・
+  あらゆる証跡（スクリーンショット、動画、ログ、通信（観測 + モック）、ビジュアルリグレッション、
   システムアラート突破）をブラウザで集めます。iOS 開発者向けの目玉デモです。
 - **[record](demos/showcase/README.ja.md)**（`make -C demos record`）。起動中アプリに対する本物の Claude に
   よる著作と、改変 → 自己修復（`triage`）ループです。

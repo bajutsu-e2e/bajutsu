@@ -6,16 +6,16 @@
 > この CLI（コマンドラインインターフェース）のすべてのコマンドは `--target <name>` で 1 アプリを選び、
 > `--config`（既定 `bajutsu.config.yaml`）で設定を指します。アプリ固有の差分は config 側にあります（[configuration](configuration.md)）。
 
-関連: [run-loop](run-loop.md) ・ [recording](recording.md) ・ [codegen](codegen.md) ・ [configuration](configuration.md)
+関連: [run-loop](run-loop.md) · [recording](recording.md) · [codegen](codegen.md) · [configuration](configuration.md)
 
 ---
 
 ## 共通
 
-- 全コマンドの前に `.env` を読み込む（`_bootstrap`、下記）。
+- 全コマンドの前に `.env` を読み込みます（`_bootstrap`、下記）。
 - config が無い / アプリ未定義 / actuator 無し → メッセージを出して **終了コード 2**。
-- `--backend` はカンマ区切り（例 `idb`）。空なら config の `backend` を使う。先頭から
-  順に可用性を確認し、**最初に使えるものが actuator** になる（[drivers](drivers.md#バックエンド選択と-actuator)）。
+- `--backend` はカンマ区切り（例 `idb`）。空なら config の `backend` を使います。先頭から
+  順に可用性を確認し、**最初に使えるものが actuator** になります（[drivers](drivers.md#バックエンド選択と-actuator)）。
 
 ## `run`
 
@@ -227,7 +227,7 @@ run 内の最初の**失敗**シナリオを診断し、最小の修正案を提
 （AI 境界）。失敗コンテキスト（落ちたステップと理由、失敗 expectation、失敗時の要素ツリー、シナリオ）
 を組み立て `TriageAgent` に渡します。既定はルールベース（`HeuristicTriageAgent`、API キー不要）で、失敗を
 分類（selector / timing / assertion）し、対象 id が画面に無く似た id があれば「もしかして…?」を提案
-します（id リネームの自己修復）。`--ai` は同じコンテキストに失敗**スクショ**を加えて推論する Claude 版に差し替えます
+します（id リネームの自己修復）。`--ai` は同じコンテキストに失敗**スクリーンショット**を加えて推論する Claude 版に差し替えます
 （`ANTHROPIC_API_KEY` が必要）。
 
 エージェントは適用可能な**構造化 fix**（`renameId` / `addIndex` 曖昧一致の一意化 / `raiseTimeout`）も
@@ -613,7 +613,7 @@ bajutsu serve [--port 8765] [--config bajutsu.config.yaml] [--root .] [--runs ru
   現状は `127.0.0.1` バインドかつ認証なしなので、信頼できないネットワークにはまだ晒さないでください。
 - **`--max-concurrent-runs`（既定 4）** は同時実行できる run/record ジョブ数の上限です。1 呼び出し元が
   希少なデバイスを独占しないようにします（BE-0051）。上限超過の dispatch は **429** を返します。`0` で無制限。
-- **`--evidence-store <uri>`（または `$BAJUTSU_EVIDENCE_STORE`）— 各 run の証跡をアップロードします（[BE-0110](../../roadmaps/BE-0110-evidence-store-uri/BE-0110-evidence-store-uri-ja.md)）。** `s3://bucket/prefix` または `gs://bucket/prefix` を指定すると、完了した run のツリーがそこへアップロードされます。キーは `<prefix><evidence_prefix><runId>/…` の形になるので、パスによってクラウドのライフサイクルポリシーが切り替わります。スタンドアロンの `run --evidence-store`（Runner 自身の認証情報で直接アップロードする）と違い、**`serve` は認証情報を保持し、Worker には渡しません**。コントロールプレーンがファイルごとに presigned PUT URL を発行し、Worker はクラウド SDK も認証情報も持たずに平文 HTTP でアップロードします。呼び出し元は `POST /api/run` のボディに `evidence_prefix`（安全な相対セグメントとして検証されます）を渡して run ごとのパスを選びます。サーバが自分のバケットとベースプレフィックスを前置するので、run ID が必ずキーに含まれ、run 同士が衝突しません。アップロードは判定の後に走るため、失敗しても警告のみです。**サーバ側**に `s3` または `gcs` extra が必要です（Worker には不要）。トポロジは [self-hosting](self-hosting.md) を参照してください。
+- **`--evidence-store <uri>`（または `$BAJUTSU_EVIDENCE_STORE`）。各 run の証跡をアップロードします（[BE-0110](../../roadmaps/BE-0110-evidence-store-uri/BE-0110-evidence-store-uri-ja.md)）。** `s3://bucket/prefix` または `gs://bucket/prefix` を指定すると、完了した run のツリーがそこへアップロードされます。キーは `<prefix><evidence_prefix><runId>/…` の形になるので、パスによってクラウドのライフサイクルポリシーが切り替わります。スタンドアロンの `run --evidence-store`（Runner 自身の認証情報で直接アップロードする）と違い、**`serve` は認証情報を保持し、Worker には渡しません**。コントロールプレーンがファイルごとに presigned PUT URL を発行し、Worker はクラウド SDK も認証情報も持たずに平文 HTTP でアップロードします。呼び出し元は `POST /api/run` のボディに `evidence_prefix`（安全な相対セグメントとして検証されます）を渡して run ごとのパスを選びます。サーバが自分のバケットとベースプレフィックスを前置するので、run ID が必ずキーに含まれ、run 同士が衝突しません。アップロードは判定の後に走るため、失敗しても警告のみです。**サーバ側**に `s3` または `gcs` extra が必要です（Worker には不要）。トポロジは [self-hosting](self-hosting.md) を参照してください。
 - **ホスティング向けフラグ（応用）。** `--emit-launchagent` は `serve` を単一 Mac 上でトークン認証付きの LaunchAgent として動かす launchd plist を出力します。`--backend server`（と `--asgi`）はホスティング用の FastAPI コントロールプレーンに切り替えます。どちらも [self-hosting](self-hosting.md) で扱います。
 
 ## `mcp`
