@@ -599,6 +599,7 @@ Running a scenario on a hosted device farm instead of a local Simulator, emulato
 | [BE-0256](BE-0256-platform-lifecycle-package-split/BE-0256-platform-lifecycle-package-split.md) | Split platform_lifecycle into a package and route device resolution through the Environment seam | Proposal |
 | [BE-0258](BE-0258-serve-step-artifact-seam/BE-0258-serve-step-artifact-seam.md) | Route serve step-artifact reads through the ArtifactStore seam | Proposal |
 | [BE-0259](BE-0259-assert-query-snapshot-reuse/BE-0259-assert-query-snapshot-reuse.md) | Reuse the settled query snapshot across assert and extract steps | Proposal |
+| [BE-0261](BE-0261-serve-author-yaml-roundtrip/BE-0261-serve-author-yaml-roundtrip.md) | Round-trip Author YAML edits through the serializer | Proposal |
 <!-- /GENERATED:proposals-quality-debt -->
 
 ## Deferred

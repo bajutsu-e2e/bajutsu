@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-serve-author-yaml-roundtrip-ja.md)
+**English** · [日本語](BE-0261-serve-author-yaml-roundtrip-ja.md)
 
-# BE-XXXX — Round-trip Author YAML edits through the serializer
+# BE-0261 — Round-trip Author YAML edits through the serializer
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-serve-author-yaml-roundtrip.md) |
+| Proposal | [BE-0261](BE-0261-serve-author-yaml-roundtrip.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0261") |
 | Topic | Codebase quality & technical debt |
 <!-- /BE-METADATA -->
 
