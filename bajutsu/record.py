@@ -225,7 +225,7 @@ def execute(
     kind = _action_of(step)
     if kind == "wait":
         assert step.wait is not None
-        ok, reason = _wait(driver, step.wait, clock)
+        ok, reason, _ = _wait(driver, step.wait, clock)
         if not ok and on_wait_failure is not None:
             on_wait_failure(reason)
     elif kind == "assert_":
