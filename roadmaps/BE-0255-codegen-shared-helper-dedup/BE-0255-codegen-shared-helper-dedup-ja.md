@@ -9,7 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0255") |
-| 実装 PR | [#NNN](https://github.com/bajutsu-e2e/bajutsu/pull/NNN) |
+| 実装 PR | [#1071](https://github.com/bajutsu-e2e/bajutsu/pull/1071) |
 | トピック | コードベース品質・技術的負債 |
 <!-- /BE-METADATA -->
 
@@ -153,7 +153,7 @@ codegen 各ターゲットの共通の走査を切り出しました。`codegen_
 
 **ログ**
 
-- [#NNN](https://github.com/bajutsu-e2e/bajutsu/pull/NNN) で実装しました。`ident`、`class_name`、
+- [#1071](https://github.com/bajutsu-e2e/bajutsu/pull/1071) で実装しました。`ident`、`class_name`、
   `ms`、`is_plain_substring`（と `_RE_METACHARS`）、`network_unsupported` を `codegen/common.py` に
   移し、3 つの per-target emitter がそれらを import するようにしました。XCUITest の数字始まりガード
   の欠落（項目 2）も閉じました。

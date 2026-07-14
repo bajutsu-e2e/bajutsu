@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0255") |
-| Implementing PR | [#NNN](https://github.com/bajutsu-e2e/bajutsu/pull/NNN) |
+| Implementing PR | [#1071](https://github.com/bajutsu-e2e/bajutsu/pull/1071) |
 | Topic | Codebase quality & technical debt |
 <!-- /BE-METADATA -->
 
@@ -153,7 +153,7 @@ of its second concrete need.
 
 **Log**
 
-- Implemented in [#NNN](https://github.com/bajutsu-e2e/bajutsu/pull/NNN): moved `ident`,
+- Implemented in [#1071](https://github.com/bajutsu-e2e/bajutsu/pull/1071): moved `ident`,
   `class_name`, `ms`, `is_plain_substring` (+ `_RE_METACHARS`), and `network_unsupported` into
   `codegen/common.py`; the three per-target emitters now import them. The XCUITest digit-prefix
   guard gap is closed (item 2).
