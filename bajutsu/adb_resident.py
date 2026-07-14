@@ -44,10 +44,11 @@ def narrow_to_active_window(xml: str) -> str:
     empty-tree handling still applies.
 
     Scope: this drops only SystemUI decor. The Android e2e lane (BE-0208) exercises the resident path
-    across the showcase scenarios — including ones that raise the IME (`search`) or a permission
-    dialog (`permission`) — so a non-app window that leaks past this filter surfaces there as a
-    deterministic golden/scenario mismatch, and broadening the set is driven by that signal rather
-    than guessed at here.
+    across the showcase scenarios, including one that raises the IME (`search`); the `permission`
+    scenario does not exercise this — Android pre-grants the permission
+    (`demos/showcase/scenarios/permission.yaml`), so no dialog ever appears there. A permission-dialog
+    window leaking past this filter is therefore not yet caught by CI; broadening the filter for that
+    case is still a design decision deferred rather than guessed at here.
     """
     root = slice_hierarchy_root(xml)
     if root is None:
