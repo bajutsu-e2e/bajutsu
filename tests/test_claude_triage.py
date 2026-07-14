@@ -128,7 +128,7 @@ def test_render_carries_the_failure_context() -> None:
     assert "Scenario: s" in text
     assert "Failed step: [0] tap — 一致なし: home.titel" in text
     assert "Target id of the failed step: home.titel" in text
-    assert "id=home.title" in text  # the real screen
+    assert "id='home.title'" in text  # the real screen (unified repr quoting, BE-0246)
     assert "Scenario definition (YAML):" in text
     assert "Evidence captured: deviceLog" in text
     assert text.rstrip().endswith("Call the `diagnose` tool exactly once.")

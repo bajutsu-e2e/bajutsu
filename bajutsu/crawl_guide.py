@@ -29,6 +29,7 @@ from bajutsu.ai import (
     TextPart,
     ToolDef,
 )
+from bajutsu.ai.prompts import NEVER_JUDGE_BOUNDARY, render_elements
 from bajutsu.ai_config import AiConfig, language_instruction
 from bajutsu.claude_backed_agent import ClaudeBackedAgent
 from bajutsu.drivers import base
@@ -165,7 +166,7 @@ def make_guide(
 
 # --- Claude-backed proposer ---------------------------------------------------------------
 
-_SYSTEM = """You drive a breadth-first crawl of an iOS app to discover as many distinct screens \
+_SYSTEM = f"""You drive a breadth-first crawl of an iOS app to discover as many distinct screens \
 as possible. You are given the current screen (a screenshot and its element list) and the \
 operations a DETERMINISTIC inspector already found here. Reason about what is possible and \
 propose the operations most likely to reveal a NEW screen or to unblock a disabled control whose \
@@ -182,7 +183,7 @@ common rules, a plausible name/number) — this is how you enable a control the 
 - Address each element by `id` when it has one (most stable), else by `label` (+ `index`).
 - If an OS prompt was just dismissed to reach this screen (noted below), take it into account — \
 the app asked for something (a permission, to save a password); pick what makes sense next.
-- You only choose what to TRY. You never decide pass/fail and never judge results."""
+- You only choose what to TRY. {NEVER_JUDGE_BOUNDARY}"""
 
 _PROPOSE_TOOL: ToolDef = ToolDef(
     name="propose_actions",
@@ -240,22 +241,7 @@ _PROPOSE_TOOL: ToolDef = ToolDef(
 
 def _render_elements(elements: list[base.Element]) -> str:
     """A compact text view of the screen for the model (alongside the screenshot)."""
-    lines: list[str] = []
-    for el in elements:
-        traits = el.get("traits") or []
-        if not (el.get("identifier") or el.get("label") or traits):
-            continue
-        parts = []
-        if el.get("identifier"):
-            parts.append(f"id={el['identifier']!r}")
-        if el.get("label"):
-            parts.append(f"label={el['label']!r}")
-        if traits:
-            parts.append(f"traits={','.join(traits)}")
-        if el.get("value"):
-            parts.append(f"value={el['value']!r}")
-        lines.append("- " + " ".join(parts))
-    return "\n".join(lines) or "(no addressable elements)"
+    return "\n".join(render_elements(elements, compact=True)) or "(no addressable elements)"
 
 
 def _text_block(
