@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0257](BE-0257-layer-package-topology.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0257") |
+| Implementing PR | [#1045](https://github.com/bajutsu-e2e/bajutsu/pull/1045) |
 | Topic | Codebase quality & technical debt |
 | Related | [BE-0112](../BE-0112-layer-boundary-enforcement/BE-0112-layer-boundary-enforcement.md), [BE-0135](../BE-0135-module-naming-debt/BE-0135-module-naming-debt.md), [BE-0092](../BE-0092-crawl-coordinator-extraction/BE-0092-crawl-coordinator-extraction.md) |
 <!-- /BE-METADATA -->
@@ -130,13 +131,21 @@ packaging lands, stage by stage.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] `bajutsu/codegen/` package (`__init__`/`common`/`emit`/`playwright`/`uiautomator`).
+- [x] `bajutsu/codegen/` package (`__init__`/`common`/`emit`/`playwright`/`uiautomator`).
 - [ ] `bajutsu/crawl/` package (`__init__`/`flows`/`guide`/`report`/`repro`/`tabs`/`serialize`).
 - [ ] `bajutsu/github/` package (`__init__`/`actions`/`app`), resolving the `config_source` ↔
   `github_app` cycle.
 - [ ] `bajutsu/agents/` periphery package (nine modules).
 - [ ] `bajutsu/evidence/` and `bajutsu/analysis/` packages.
 - [ ] `bajutsu/analytics/` package (`usage`/`ledger`/`stats`).
+
+**Log**
+
+- 2026-07-14 ([#1045](https://github.com/bajutsu-e2e/bajutsu/pull/1045)): stage 1 — moved the flat
+  `codegen*.py` modules into a `bajutsu/codegen/` package (`xcuitest`/`common`/`emit`/`playwright`/
+  `uiautomator` + a re-export `__init__`), collapsed the three codegen import-linter entries to a
+  single `bajutsu.codegen`, and retargeted the `Makefile`/`e2e_changes.py`/e2e-workflow path filters
+  and the bilingual docs at the package.
 
 ## References
 

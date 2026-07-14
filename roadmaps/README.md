@@ -528,6 +528,7 @@ Accepted and actively being built — a PR is in flight or imminent.
 | ID | Item | Status |
 |---|---|---|
 | [BE-0246](BE-0246-claude-client-taxonomy/BE-0246-claude-client-taxonomy.md) | Clarify the module taxonomy for talking to Claude | In progress |
+| [BE-0257](BE-0257-layer-package-topology/BE-0257-layer-package-topology.md) | Package the enforced architecture layers as directories | In progress |
 <!-- /GENERATED:in-progress-quality-debt -->
 
 ## Proposals
@@ -562,6 +563,8 @@ Running a scenario on a hosted device farm instead of a local Simulator, emulato
 |---|---|---|
 | [BE-0182](BE-0182-record-human-value-prompt/BE-0182-record-human-value-prompt.md) | Human value entry during record (OTP / random / one-off values) | Proposal |
 | [BE-0185](BE-0185-record-human-takeover-step/BE-0185-record-human-takeover-step.md) | Human takeover step during record (CAPTCHA / biometrics / unresolvable gestures) | Proposal |
+| [BE-0262](BE-0262-serve-author-live-step-picker/BE-0262-serve-author-live-step-picker.md) | Live step-picking and target-scoped runs in the Author editor | Proposal |
+| [BE-0263](BE-0263-serve-author-tiling-layout/BE-0263-serve-author-tiling-layout.md) | Bring the Author view into the tiling layout | Proposal |
 <!-- /GENERATED:proposals-authoring -->
 
 ### Hosting the web UI (cloud / self-hosted)
@@ -596,9 +599,9 @@ Running a scenario on a hosted device farm instead of a local Simulator, emulato
 | [BE-0254](BE-0254-coordinate-tree-driver-base/BE-0254-coordinate-tree-driver-base.md) | Extract a shared CoordinateTreeDriver base for idb and adb | Proposal |
 | [BE-0255](BE-0255-codegen-shared-helper-dedup/BE-0255-codegen-shared-helper-dedup.md) | Deduplicate codegen identifier and regex helpers into codegen_common | Proposal |
 | [BE-0256](BE-0256-platform-lifecycle-package-split/BE-0256-platform-lifecycle-package-split.md) | Split platform_lifecycle into a package and route device resolution through the Environment seam | Proposal |
-| [BE-0257](BE-0257-layer-package-topology/BE-0257-layer-package-topology.md) | Package the enforced architecture layers as directories | Proposal |
 | [BE-0258](BE-0258-serve-step-artifact-seam/BE-0258-serve-step-artifact-seam.md) | Route serve step-artifact reads through the ArtifactStore seam | Proposal |
 | [BE-0259](BE-0259-assert-query-snapshot-reuse/BE-0259-assert-query-snapshot-reuse.md) | Reuse the settled query snapshot across assert and extract steps | Proposal |
+| [BE-0261](BE-0261-serve-author-yaml-roundtrip/BE-0261-serve-author-yaml-roundtrip.md) | Round-trip Author YAML edits through the serializer | Proposal |
 <!-- /GENERATED:proposals-quality-debt -->
 
 ## Deferred

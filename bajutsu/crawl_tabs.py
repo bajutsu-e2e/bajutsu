@@ -30,6 +30,7 @@ from bajutsu.ai import (
     TextPart,
     ToolDef,
 )
+from bajutsu.ai.prompts import NEVER_JUDGE_BOUNDARY
 from bajutsu.ai_config import AiConfig, language_instruction
 from bajutsu.alerts import _fraction, _png_size
 from bajutsu.claude_backed_agent import ClaudeBackedAgent
@@ -113,7 +114,7 @@ def needs_vision_tabs(elements: list[base.Element]) -> bool:
 
 # --- Claude vision locator (the production brain) ---
 
-_SYSTEM = """You locate the tab bar of an iOS app for an automated crawl. You are given a \
+_SYSTEM = f"""You locate the tab bar of an iOS app for an automated crawl. You are given a \
 screenshot of the screen. A "tab bar" is the row of top-level sections — usually along the \
 bottom edge — that switches the whole view (e.g. Home / Search / Profile). It is NOT a navigation \
 bar, a toolbar, or in-content buttons.
@@ -126,7 +127,7 @@ request: x runs from 0 at the left edge to width at the right, y from 0 at the t
 the bottom. These phone screenshots are tall, so judge the vertical position carefully against the \
 stated height — a bottom tab bar sits near the bottom. Include the tab's visible text in `label` \
 when it has one.
-- You only report where the tabs are. You never decide pass/fail."""
+- You only report where the tabs are. {NEVER_JUDGE_BOUNDARY}"""
 
 _FIND_TABS_TOOL: list[ToolDef] = [
     ToolDef(

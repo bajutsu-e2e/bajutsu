@@ -8,8 +8,8 @@
 > **Playwright（TypeScript）**、Android backend 向けの **UI Automator（Kotlin）** です。マッピングは
 > 純粋に構造的（AI 非依存）です。
 >
-> 実装: `bajutsu/codegen.py`（XCUITest）、`bajutsu/codegen_playwright.py`（Playwright）、
-> `bajutsu/codegen_uiautomator.py`（UI Automator）。
+> 実装: `bajutsu/codegen/xcuitest.py`（XCUITest）、`bajutsu/codegen/playwright.py`（Playwright）、
+> `bajutsu/codegen/uiautomator.py`（UI Automator）。
 
 関連: [scenarios](scenarios.md) · [cli](cli.md#codegen) · [drivers](drivers.md) · [showcase の UI テストターゲット](showcase.md)
 

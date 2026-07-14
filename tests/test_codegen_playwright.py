@@ -7,7 +7,7 @@ from pathlib import Path
 from typer.testing import CliRunner
 
 from bajutsu.cli import app
-from bajutsu.codegen_playwright import describe_name_for, to_playwright
+from bajutsu.codegen.playwright import describe_name_for, to_playwright
 from bajutsu.scenario import load_scenarios
 
 BASE = "http://localhost:3000"

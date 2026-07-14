@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0246") |
-| Implementing PR | [#1012](https://github.com/bajutsu-e2e/bajutsu/pull/1012), [#1030](https://github.com/bajutsu-e2e/bajutsu/pull/1030) |
+| Implementing PR | [#1012](https://github.com/bajutsu-e2e/bajutsu/pull/1012), [#1030](https://github.com/bajutsu-e2e/bajutsu/pull/1030), [#1041](https://github.com/bajutsu-e2e/bajutsu/pull/1041) |
 | Topic | Codebase quality & technical debt |
 <!-- /BE-METADATA -->
 
@@ -207,9 +207,13 @@ code lives and what it's called.
 - [x] Rename `agent.py` / `agents.py` (or merge the factory into `agent.py`) to remove the
       singular/plural readability trap — `agent.py` → `agent_protocols.py` (protocols/DTOs),
       `agents.py` → `agent_factory.py` (construction factory)
-- [ ] Create `bajutsu/ai/prompts.py` centralizing the prime-directive boundary line and other
+- [x] Create `bajutsu/ai/prompts.py` centralizing the prime-directive boundary line and other
       shared prompt fragments, plus one shared `render_elements` helper for the five
-      element-tree-to-text call sites
+      element-tree-to-text call sites — new `bajutsu/ai/prompts.py` holds `NEVER_JUDGE_BOUNDARY`
+      (composed into the four triage/crawl system prompts) and `render_elements(elements, *,
+      compact)` (used by all five call sites). The `ADDRESSING_RULES` fragment named in the design
+      turned out to appear only once (`crawl_guide`), so it was left in place rather than invented as
+      a shared constant
 - [ ] Promote the cross-module `record.py` / `alerts.py` private helpers
       (`_screenshot_bytes`, `_describe_step`, `_settle_step`, `_clear_blocking`, `_execute`,
       `_png_size`, `_fraction`) to a public module
@@ -239,6 +243,16 @@ code lives and what it's called.
   boilerplate. Also updated the docstring-lint path list and the import-linter core-independence
   contract for the new module. Behavior-preserving; the existing per-class suites are the regression
   net.
+- [#1041](https://github.com/bajutsu-e2e/bajutsu/pull/1041) — Unit 5: added
+  `bajutsu/ai/prompts.py` holding `NEVER_JUDGE_BOUNDARY` (the prime-directive-1 boundary sentence,
+  composed into the two `claude_triage` system prompts, `crawl_guide`, and `crawl_tabs` instead of
+  hand-copied) and `render_elements(elements, *, compact)` (the single element-tree-to-text renderer
+  used by `claude_agent`, `claude_enrich_agent`, `claude_triage` ×2, and `crawl_guide`), with field
+  order, `repr` quoting, and traits formatting unified across the call sites; `claude_agent` keeps its
+  BE-0194 large-screen cap around it. The `ADDRESSING_RULES` fragment the design imagined proved to
+  appear only once, so it was left in place. Behavior-preserving on the AI paths; nothing reaches the
+  `run` / CI verdict. The existing per-module suites plus a new `tests/ai/test_prompts.py` are the
+  regression net.
 
 ## References
 

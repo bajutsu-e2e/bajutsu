@@ -248,8 +248,6 @@ forbidden_modules = [
     "bajutsu.serve",
     "bajutsu.mcp",
     "bajutsu.codegen",
-    "bajutsu.codegen_common",
-    "bajutsu.codegen_playwright",
     "bajutsu.agent_protocols",
     "bajutsu.agent_factory",
     "bajutsu.claude_agent",

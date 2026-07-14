@@ -23,7 +23,7 @@ from __future__ import annotations
 import re
 
 from bajutsu.assertions import request_label
-from bajutsu.codegen_common import render_test_file
+from bajutsu.codegen.common import render_test_file
 from bajutsu.drivers import base
 from bajutsu.scenario import Assertion, Gone, Scenario, Step, WaitRequest
 from bajutsu.scenario.models.assertions import CountMatch, TextMatch, Wait
@@ -51,7 +51,7 @@ _ID_PREFIX = "(.*:id/)?"
 # Regex metacharacters. `labelMatches` is a Python `re.search` pattern; `By.text(Pattern)` matches
 # the *whole* string (Matcher.matches()), not a substring, so only a metacharacter-free pattern is a
 # plain substring we can map faithfully to `By.textContains`. A real regex has no faithful selector
-# form (the same limit `codegen.py` hits for NSPredicate MATCHES), so it stays unsupported (→ TODO).
+# form (the same limit `xcuitest.py` hits for NSPredicate MATCHES), so it stays unsupported (→ TODO).
 _RE_METACHARS = set(r".^$*+?{}[]\|()")
 
 
