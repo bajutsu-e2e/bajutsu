@@ -62,6 +62,22 @@ def test_get_reads_delegate_to_operations(tmp_path: Path) -> None:
     assert client.get("/api/nope").status_code == 404
 
 
+def test_run_file_honors_a_range_request(tmp_path: Path) -> None:
+    # /runs/<rel> has its own Range handling (not delegated to `ops`, unlike the routes above), so
+    # it's covered here too, not just in the stdlib-handler suite (BE-0015 PR3).
+    state = _state(tmp_path)
+    write_run(tmp_path / "runs", "r1", ok=True, scenarios=[("smoke", True)])
+    client = _client(state)
+    resp = client.get("/runs/r1/report.html", headers={"Range": "bytes=1-4"})
+    assert resp.status_code == 206
+    assert resp.headers["Accept-Ranges"] == "bytes"
+    assert resp.headers["Content-Range"] == "bytes 1-4/13"  # b"<html></html>" is 13 bytes
+    assert resp.content == b"html"
+
+    unsatisfiable = client.get("/runs/r1/report.html", headers={"Range": "bytes=999-1000"})
+    assert unsatisfiable.status_code == 416
+
+
 def test_lint_and_schema_routes_delegate_to_operations(tmp_path: Path) -> None:
     # The editor's inline validation (BE-0138) reaches the same ops as the stdlib handler.
     client = _client(_state(tmp_path))

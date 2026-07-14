@@ -26,6 +26,7 @@ from starlette.requests import ClientDisconnect
 from bajutsu.serve import operations as ops
 from bajutsu.serve import oplog
 from bajutsu.serve.handler import _OAUTH_STATE_COOKIE, _SESSION_COOKIE, _index_html
+from bajutsu.serve.helpers import range_reply
 from bajutsu.serve.state import ServeState
 from bajutsu.serve.uploads import MAX_UPLOAD_BYTES, BoundedZipReceiver, UploadTooLarge
 
@@ -134,7 +135,12 @@ def make_app(state: ServeState) -> FastAPI:
             return _result(({"error": "not found"}, 404))
         if art.redirect is not None:  # a server store hands back a signed URL
             return RedirectResponse(art.redirect, status_code=302)
-        return Response(art.body or b"", media_type=art.content_type)
+        # Honor a `Range` request: a report's `<video>` needs 206/`Content-Range` replies to seek
+        # into a scrub target the browser hasn't buffered yet.
+        status, chunk, headers = range_reply(art.body or b"", request.headers.get("range"))
+        if status == 416:
+            return Response(status_code=416, headers=headers)
+        return Response(chunk, status_code=status, media_type=art.content_type, headers=headers)
 
     # --- GET (reads) ---
 

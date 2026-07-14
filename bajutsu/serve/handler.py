@@ -22,7 +22,7 @@ from jinja2 import Environment, FileSystemLoader
 from bajutsu.serve import operations as ops
 from bajutsu.serve import oplog
 from bajutsu.serve._paths import TEMPLATES_DIR as _TEMPLATE_DIR
-from bajutsu.serve.helpers import valid_run_id
+from bajutsu.serve.helpers import range_reply, valid_run_id
 from bajutsu.serve.state import ServeState
 from bajutsu.serve.uploads import MAX_UPLOAD_BYTES, BoundedZipReceiver, UploadTooLarge
 
@@ -578,7 +578,9 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
         def _serve_artifact(self, art: Any, *, filename: str | None = None) -> None:
             """Emit an `Artifact` (404 if None): a 302 to its signed URL (server store) or its
             inline bytes (local). For the inline case, `filename` (when given) forces a download via
-            Content-Disposition; a redirect relies on the signed URL's own disposition."""
+            Content-Disposition; a redirect relies on the signed URL's own disposition. Honors a
+            `Range` request (a report's `<video>` needs this to seek) with a 206/`Content-Range`
+            reply, or 416 when the range isn't satisfiable."""
             if art is None:
                 self._json({"error": "not found"}, 404)
                 return
@@ -588,13 +590,17 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
                 self.end_headers()
                 return
             data = art.body or b""
-            self.send_response(200)
-            self.send_header("Content-Type", art.content_type)
-            if filename is not None:
-                self.send_header("Content-Disposition", f'attachment; filename="{filename}"')
-            self.send_header("Content-Length", str(len(data)))
+            status, chunk, headers = range_reply(data, self.headers.get("Range"))
+            self.send_response(status)
+            if status != 416:
+                self.send_header("Content-Type", art.content_type)
+                if filename is not None:
+                    self.send_header("Content-Disposition", f'attachment; filename="{filename}"')
+            for name, value in headers.items():
+                self.send_header(name, value)
+            self.send_header("Content-Length", str(len(chunk)))
             self.end_headers()
-            self.wfile.write(data)
+            self.wfile.write(chunk)
 
         def _serve_run_file(self, rel: str) -> None:
             # report.html is rendered on view from the stored model (BE-0068); other files served as-is.

@@ -107,6 +107,56 @@ def test_mask_secret(value: str, masked: str) -> None:
     assert srv.mask_secret(value) == masked
 
 
+@pytest.mark.parametrize(
+    ("range_header", "total", "expected"),
+    [
+        (None, 100, None),  # no header: caller serves the whole body as a normal 200
+        ("bytes=0-49", 100, (0, 49)),
+        ("bytes=50-", 100, (50, 99)),  # open-ended: to the end
+        ("bytes=-10", 100, (90, 99)),  # suffix range: last 10 bytes
+        ("bytes=0-999", 100, (0, 99)),  # end past total: clamped, not an error
+        ("bytes=0-49,60-99", 100, None),  # multi-range: unsupported, fall back to the whole body
+        ("bytes=abc-def", 100, None),  # garbage: fall back to the whole body
+        ("bytes=۳-۷", 100, None),  # non-ASCII digits: not the HTTP grammar, ignored
+    ],
+)
+def test_parse_byte_range(
+    range_header: str | None, total: int, expected: tuple[int, int] | None
+) -> None:
+    assert srv.parse_byte_range(range_header, total) == expected
+
+
+@pytest.mark.parametrize(
+    "range_header",
+    [
+        "bytes=200-300",  # start past total
+        "bytes=-0",  # zero-length suffix
+        "bytes=-",  # empty range (no start, no end)
+    ],
+)
+def test_parse_byte_range_rejects_unsatisfiable_ranges(range_header: str) -> None:
+    with pytest.raises(ValueError, match="range"):
+        srv.parse_byte_range(range_header, 100)
+
+
+def test_range_reply_no_header_serves_the_whole_body() -> None:
+    status, body, headers = srv.range_reply(b"0123456789", None)
+    assert (status, body) == (200, b"0123456789")
+    assert headers == {"Accept-Ranges": "bytes"}
+
+
+def test_range_reply_satisfiable_range_serves_a_206_slice() -> None:
+    status, body, headers = srv.range_reply(b"0123456789", "bytes=2-4")
+    assert (status, body) == (206, b"234")
+    assert headers == {"Accept-Ranges": "bytes", "Content-Range": "bytes 2-4/10"}
+
+
+def test_range_reply_unsatisfiable_range_serves_a_416_with_no_body() -> None:
+    status, body, headers = srv.range_reply(b"0123456789", "bytes=99-100")
+    assert (status, body) == (416, b"")
+    assert headers == {"Content-Range": "bytes */10"}
+
+
 def test_list_scenarios_includes_descriptions(tmp_path: Path) -> None:
     d = tmp_path / "scn"
     d.mkdir()
