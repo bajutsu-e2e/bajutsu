@@ -224,7 +224,11 @@ class AdbDriver:
     # still settles in a single read (the first `query()` matches the cached key); only a genuinely-
     # animating screen polls, and `_SETTLE_POLL_S` is a small non-zero cadence so a fast read does not
     # busy-spin (on the dump path the read dwarfs it).
-    _SETTLE_DEADLINE_S = 2.0  # ceiling on waiting for the tree to stop moving (spans a fling)
+    # Set comfortably above the ~2.4s `uiautomator dump` read so the slow (fallback/dump) path still
+    # gets several attempts inside the window — the deadline is checked before each read, so a value
+    # near the read latency would grant only one extra poll and shrink the settle window below the
+    # old 3-read/~7s span. A fast resident read (~0.1s) simply returns early on stability.
+    _SETTLE_DEADLINE_S = 8.0  # ceiling on waiting for the tree to stop moving (spans a fling)
     _SETTLE_POLL_S = 0.1  # inter-read cadence on a fast channel; negligible against the dump read
     # Scroll-into-view (BE-0210): an action target that resolves to nothing in the current viewport
     # is scrolled toward and re-queried a bounded number of times before failing — a condition wait,
