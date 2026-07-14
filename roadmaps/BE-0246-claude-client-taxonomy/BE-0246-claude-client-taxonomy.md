@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0246") |
-| Implementing PR | [#1012](https://github.com/bajutsu-e2e/bajutsu/pull/1012), [#1030](https://github.com/bajutsu-e2e/bajutsu/pull/1030), [#_pending_](https://github.com/bajutsu-e2e/bajutsu/pull/_pending_) |
+| Implementing PR | [#1012](https://github.com/bajutsu-e2e/bajutsu/pull/1012), [#1030](https://github.com/bajutsu-e2e/bajutsu/pull/1030), [#1041](https://github.com/bajutsu-e2e/bajutsu/pull/1041) |
 | Topic | Codebase quality & technical debt |
 <!-- /BE-METADATA -->
 
@@ -243,7 +243,7 @@ code lives and what it's called.
   boilerplate. Also updated the docstring-lint path list and the import-linter core-independence
   contract for the new module. Behavior-preserving; the existing per-class suites are the regression
   net.
-- [#_pending_](https://github.com/bajutsu-e2e/bajutsu/pull/_pending_) — Unit 5: added
+- [#1041](https://github.com/bajutsu-e2e/bajutsu/pull/1041) — Unit 5: added
   `bajutsu/ai/prompts.py` holding `NEVER_JUDGE_BOUNDARY` (the prime-directive-1 boundary sentence,
   composed into the two `claude_triage` system prompts, `crawl_guide`, and `crawl_tabs` instead of
   hand-copied) and `render_elements(elements, *, compact)` (the single element-tree-to-text renderer
