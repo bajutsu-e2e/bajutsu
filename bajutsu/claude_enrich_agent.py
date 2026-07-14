@@ -24,6 +24,7 @@ from bajutsu.ai import (
     TextPart,
     ToolDef,
 )
+from bajutsu.ai.prompts import render_elements
 from bajutsu.ai_config import AiConfig, language_instruction
 from bajutsu.claude_agent import _TARGET_PROPS, _to_assertion
 from bajutsu.claude_backed_agent import ClaudeBackedAgent
@@ -115,19 +116,9 @@ ENRICH_TOOL: ToolDef = ToolDef(
 
 def _render_elements(screen: list[Any], redactor: Redactor | None = None) -> list[str]:
     elements = redactor.redact_elements(screen) if redactor is not None else screen
-    lines: list[str] = []
-    for element in elements:
-        identifier, label, value, traits = (
-            element["identifier"],
-            element["label"],
-            element["value"],
-            element["traits"],
-        )
-        if "application" in traits:
-            continue
-        if not (identifier or label or value or traits):
-            continue
-        lines.append(f"  - id={identifier!r} label={label!r} value={value!r} traits={traits}")
+    # Verbose view (every field, empties included) so the enrichment model sees the full shape of
+    # each element; indented one level to sit under its per-step "Screen after this step:" header.
+    lines = [f"  {line}" for line in render_elements(elements, compact=False)]
     return lines or ["  - (no addressable elements)"]
 
 

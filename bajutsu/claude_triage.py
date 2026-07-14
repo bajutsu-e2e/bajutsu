@@ -28,6 +28,7 @@ from bajutsu.ai import (
     ToolDef,
     resolved_provider,
 )
+from bajutsu.ai.prompts import NEVER_JUDGE_BOUNDARY, render_elements
 from bajutsu.ai_config import AiConfig
 from bajutsu.claude_backed_agent import ClaudeBackedAgent
 from bajutsu.redaction import Redactor
@@ -45,11 +46,11 @@ MODEL = "claude-opus-4-8"
 
 _CATEGORIES = ("selector", "timing", "assertion", "unknown")
 
-SYSTEM_PROMPT = """You are an iOS end-to-end test triage assistant. A deterministic test \
+SYSTEM_PROMPT = f"""You are an iOS end-to-end test triage assistant. A deterministic test \
 scenario ran against an app on the iOS Simulator and a step or expectation failed. Explain \
 the ROOT CAUSE of the failure and propose the minimal fix a human should apply.
 
-You are advisory only — you never decide pass/fail, you diagnose and suggest. Reason strictly \
+You are advisory only — you diagnose and suggest. {NEVER_JUDGE_BOUNDARY} Reason strictly \
 from the evidence given: the failure message, the failed step, the accessibility element tree \
 captured nearest the failure, a screenshot of that screen when one is attached, and the \
 scenario definition. Use the screenshot for visual state the element tree omits (what screen \
@@ -74,7 +75,7 @@ what it becomes:
   - renameId: a misspelled/renamed selector id whose correct id is visible on screen. \
 find = the id the scenario uses now, replace = the correct id.
   - addIndex: an ambiguous selector that matched several elements. find = the exact selector \
-fragment of the failing step (e.g. `{ id: row.cell }`), replace = the same fragment with \
+fragment of the failing step (e.g. `{{ id: row.cell }}`), replace = the same fragment with \
 `index:` (or `within:`) added to pick one.
   - raiseTimeout: a wait that timed out though the element was reachable. find = the exact \
 `timeout: N` fragment of the failing wait, replace = it with a larger number.
@@ -153,12 +154,15 @@ def _render(context: TriageContext, redactor: Redactor | None = None) -> str:
     elements = (
         redactor.redact_elements(context.elements) if redactor is not None else context.elements
     )
+    # Key the fallback off `elements` itself, not the filtered result: a captured tree that renders
+    # to nothing (app-root-only, a blank/loading screen) is a different root cause than a failed
+    # capture, and a triage assistant must not conflate the two. When the tree is present but every
+    # element is filtered out, say so explicitly rather than leave the section blank.
     if elements:
-        for e in elements:
-            lines.append(
-                f"- id={e.get('identifier') or ''} label={e.get('label')!r} "
-                f"traits={e.get('traits')} value={e.get('value')!r}"
-            )
+        body = render_elements(elements, compact=False)
+        lines += body or [
+            "(no addressable elements; only the app root or empty elements were captured)"
+        ]
     else:
         lines.append("(no element tree captured)")
 
@@ -275,12 +279,12 @@ _CROSS_RUN_CATEGORIES = (
     "unknown",  # the cross-run evidence does not support any of the above
 )
 
-CROSS_RUN_SYSTEM_PROMPT = """You are an iOS end-to-end test flakiness investigator. One \
+CROSS_RUN_SYSTEM_PROMPT = f"""You are an iOS end-to-end test flakiness investigator. One \
 deterministic test scenario ran many times against an app on the iOS Simulator at a FIXED content \
 fingerprint (its definition never changed), yet its verdict flips: some runs pass, some fail. \
 Explain WHY it is intermittent and propose the minimal fix that makes it deterministic again.
 
-You are advisory only — you never decide pass/fail, you diagnose and suggest. Reason strictly from \
+You are advisory only — you diagnose and suggest. {NEVER_JUDGE_BOUNDARY} Reason strictly from \
 the evidence given: for the failing runs and the passing runs, the failure message, the failed \
 step, and the accessibility element tree captured nearest the failure (failing) or the run's end \
 (passing), plus the scenario definition. The signal is the DELTA — what differs between a run that \
@@ -380,12 +384,11 @@ def _render_evidence(
     elements = redactor.redact_elements(ev.elements) if redactor is not None else ev.elements
     caption = "  Elements nearest the failure:" if not ev.ok else "  Elements at the run's end:"
     lines.append(caption)
+    # Same distinction as `_render`: a captured-but-empty-after-filter tree is not a failed capture,
+    # and a present-but-all-filtered tree still gets an explicit line rather than a blank section.
     if elements:
-        lines += [
-            f"    - id={e.get('identifier') or ''} label={e.get('label')!r} "
-            f"traits={e.get('traits')} value={e.get('value')!r}"
-            for e in elements
-        ]
+        body = render_elements(elements, compact=False)
+        lines += [f"    {line}" for line in body] or ["    (no addressable elements)"]
     else:
         lines.append("    (no element tree captured)")
     if screenshot_attached:

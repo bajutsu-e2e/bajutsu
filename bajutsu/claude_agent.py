@@ -28,6 +28,7 @@ from bajutsu.ai import (
     ToolDef,
     ToolUseBlock,
 )
+from bajutsu.ai.prompts import render_elements
 from bajutsu.ai_config import (
     AiConfig,
     language_instruction,
@@ -392,34 +393,14 @@ def _render(observation: Observation, redactor: Redactor | None = None) -> str:
     screen = (
         redactor.redact_elements(observation.screen) if redactor is not None else observation.screen
     )
-    shown = 0
-    omitted = 0  # purely-decorative elements skipped (BE-0194 §2) — reported only past the cap
-    for element in screen:
-        identifier, label, value, traits = (
-            element["identifier"],
-            element["label"],
-            element["value"],
-            element["traits"],
-        )
-        if "application" in traits:
-            continue  # the app root is not an actionable target
-        if not (identifier or label or value or traits):
-            omitted += 1  # nothing to address it by
-            continue
-        # Compact the line (BE-0194 §1): emit only the fields that carry information — every
-        # addressing field (id / label / non-empty value / non-empty traits) is kept, an empty one
-        # is dropped. Lossless for addressing; the element stays fully addressable.
-        fields = []
-        if identifier:
-            fields.append(f"id={identifier!r}")
-        if label:
-            fields.append(f"label={label!r}")
-        if value:
-            fields.append(f"value={value!r}")
-        if traits:
-            fields.append(f"traits={traits}")
-        lines.append("- " + " ".join(fields))
-        shown += 1
+    # Compact the lines (BE-0194 §1): render_elements emits only the addressing fields that carry
+    # information, skipping the app root and any element with nothing to address it by.
+    body = render_elements(screen, compact=True)
+    shown = len(body)
+    # The non-app remainder that render_elements dropped for carrying no addressing field (BE-0194
+    # §2) — reported as a count only past the cap, so an addressable element is never silently lost.
+    omitted = sum(1 for e in screen if "application" not in (e.get("traits") or [])) - shown
+    lines += body
     if not shown:
         lines.append("- (no addressable elements; the screen may still be loading)")
     elif omitted and len(screen) > _LARGE_SCREEN_ELEMENTS:
