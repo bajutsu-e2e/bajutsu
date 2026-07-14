@@ -1,14 +1,14 @@
-[English](BE-XXXX-ios-alert-guard-early-wait-intervention.md) · **日本語**
+[English](BE-0269-ios-alert-guard-early-wait-intervention.md) · **日本語**
 
-# BE-XXXX — wait ステップ中のシステムアラートガードの介入を早める
+# BE-0269 — wait ステップ中のシステムアラートガードの介入を早める
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
 |---|---|
-| 提案 | [BE-XXXX](BE-XXXX-ios-alert-guard-early-wait-intervention-ja.md) |
+| 提案 | [BE-0269](BE-0269-ios-alert-guard-early-wait-intervention-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **提案** |
-| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0269") |
 | トピック | プラットフォーム対応 |
 <!-- /BE-METADATA -->
 

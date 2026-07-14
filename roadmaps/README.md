@@ -548,6 +548,7 @@ Under consideration — not yet decided. Promote an item to *In progress* once w
 | ID | Item | Status |
 |---|---|---|
 | [BE-0008](BE-0008-flutter-support/BE-0008-flutter-support.md) | Flutter support | Proposal |
+| [BE-0269](BE-0269-ios-alert-guard-early-wait-intervention/BE-0269-ios-alert-guard-early-wait-intervention.md) | Speed up the system-alert guard's intervention during wait steps | Proposal |
 <!-- /GENERATED:proposals-platform -->
 
 ### Device-cloud execution
