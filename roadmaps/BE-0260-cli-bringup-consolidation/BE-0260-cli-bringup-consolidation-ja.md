@@ -147,10 +147,11 @@ run、crawl、record、audit の各コマンドは、実行の前に同じ 4 種
 
 ### ログ
 
-- 2026-07-14: 4 ユニットすべてを実装（[PR #1033](https://github.com/bajutsu-e2e/bajutsu/pull/1033)）。振る舞い不変のリファクタで、`_build_alert_guard`
-  による `crawl`/`record` の credential 欠如時 no-op 化のみ意図的な挙動統一（両コマンドは
-  `_require_ai_credential` で先に fail-closed するため実フローでは影響なし）。`adb.DeviceError` は
-  `simctl.DeviceError` の兄弟となり、汎用ハンドラ 10 箇所が `bajutsu.simctl` の import を不要とした。
+- 2026-07-14: 4 ユニットすべてを実装しました（[PR #1033](https://github.com/bajutsu-e2e/bajutsu/pull/1033)）。振る舞いを変えないリファクタですが、
+  意図的な挙動統一が 1 つだけあります。`_build_alert_guard` により、`crawl`/`record` も
+  credential 欠如時には `run` と同じく穏当な no-op へフォールバックするようになりました（両コマンドは
+  `_require_ai_credential` で先に fail-closed するため、実フローでは影響しません）。また `adb.DeviceError` は
+  `simctl.DeviceError` の兄弟となり、汎用ハンドラ 10 箇所が `bajutsu.simctl` の import を落とせるようになりました。
 
 ## 参考
 
