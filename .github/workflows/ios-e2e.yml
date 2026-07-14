@@ -47,6 +47,7 @@ on:
       - 'bajutsu/dotenv.py'
       - 'bajutsu/crawl/core.py'
       - 'bajutsu/crawl/__init__.py'
+      - 'bajutsu/crawl/serialize.py'
       - 'bajutsu/interp.py'
       - 'bajutsu/mailbox.py'
       - 'bajutsu/totp.py'

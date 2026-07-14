@@ -157,8 +157,9 @@
   `repro` / `tabs`、re-export の `__init__`）へ移動し、`Action` / `ScreenMap` のシリアライズ関連の
   まとまりを `crawl/serialize.py` として切り出しました。あわせて import-linter の
   `bajutsu.crawl_guide` を `bajutsu.crawl.guide` へ、`Makefile` と `e2e_changes.py`、e2e ワークフローの
-  パスフィルタを `crawl/core.py`（オンデバイス実行が import するエンジン。周辺のモジュールは対象外の
-  まま）へ向け直し、日英のドキュメントも更新しました。
+  パスフィルタを `crawl/core.py` と `crawl/serialize.py`、`crawl/__init__.py`（オンデバイス実行が
+  import するエンジンと re-export。周辺のモジュールは対象外のまま）へ向け直し、日英のドキュメントも
+  更新しました。
 
 ## 参考
 

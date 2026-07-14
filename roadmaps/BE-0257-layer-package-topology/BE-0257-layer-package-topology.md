@@ -151,8 +151,9 @@ packaging lands, stage by stage.
   `repro`/`tabs` + a re-export `__init__`), and extracted the `Action`/`ScreenMap` (de)serialization
   group into `crawl/serialize.py`. Retargeted the `bajutsu.crawl_guide` import-linter entry to
   `bajutsu.crawl.guide`, the `Makefile`/`e2e_changes.py`/e2e-workflow path filters at
-  `crawl/core.py` (the engine the on-device run imports — the periphery siblings stay excluded), and
-  the bilingual docs at the package.
+  `crawl/core.py` + `crawl/serialize.py` + `crawl/__init__.py` (the engine and the re-export the
+  on-device run imports — the periphery siblings stay excluded), and the bilingual docs at the
+  package.
 
 ## References
 

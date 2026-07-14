@@ -52,11 +52,11 @@ _RELEVANT = re.compile(
     r"|handoff|idb_version|interp|intervals|mailbox|network|platform_lifecycle|record"
     r"|redaction|run_id|simctl|totp|visual|web_network|webview"
     r")\.py$"
-    # The crawl engine core and its package re-export (record imports `screen_identity` through
-    # `bajutsu.crawl`, i.e. `__init__`, which re-exports `core`); the `guide`/`report`/`repro`/
-    # `flows`/`tabs` siblings are periphery the on-device run never imports, so the package as a
-    # whole is *not* swept — only `crawl/core.py` and its `__init__`.
-    r"|bajutsu/crawl/(?:core|__init__)\.py$"
+    # The crawl engine core, its (de)serialization sibling, and the package re-export (record
+    # imports `screen_identity` through `bajutsu.crawl`, i.e. `__init__`, which unconditionally
+    # imports both `core` and `serialize`); the `guide`/`report`/`repro`/`flows`/`tabs` siblings are
+    # periphery the on-device run never imports, so the package as a whole is *not* swept.
+    r"|bajutsu/crawl/(?:core|serialize|__init__)\.py$"
     r"|bajutsu/cli/__init__\.py$"
     r"|bajutsu/cli/_shared\.py$"
     r"|bajutsu/cli/commands/__init__\.py$"

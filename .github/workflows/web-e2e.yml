@@ -41,6 +41,7 @@ on:
       - 'bajutsu/config_source.py'
       - 'bajutsu/crawl/core.py'
       - 'bajutsu/crawl/__init__.py'
+      - 'bajutsu/crawl/serialize.py'
       - 'bajutsu/device_id.py'
       - 'bajutsu/dom.py'
       - 'bajutsu/dotenv.py'
