@@ -42,6 +42,11 @@ def narrow_to_active_window(xml: str) -> str:
     `parse_hierarchy` produces identical Elements. A tree with no system window (the active-window dump
     itself) passes through unchanged, and unparseable input is returned as-is so the driver's existing
     empty-tree handling still applies.
+
+    Scope: this drops only SystemUI decor (the one window difference PR-C targets). Other non-app
+    windows a system dialog might add — a permission dialog (`android`), the IME — are left for PR-D's
+    on-device verification to catalogue against the dump path; broadening the filter is a design
+    decision deferred to that slice rather than guessed at here.
     """
     start = xml.find("<hierarchy")
     end = xml.rfind("</hierarchy>")
@@ -87,6 +92,8 @@ class _Process(Protocol):
     """The slice of `subprocess.Popen` the lifecycle needs — small enough for tests to fake."""
 
     def terminate(self) -> None: ...
+
+    def kill(self) -> None: ...
 
     def poll(self) -> int | None: ...
 
@@ -154,7 +161,11 @@ class ResidentServer:
             self._run(adb.install_cmd(self._serial, str(self._test_apk)))
             self._proc = self._spawn(adb.instrument_cmd(self._serial))
             self._host_port = _parse_forward_port(self._run(adb.forward_cmd(self._serial)))
-        except (subprocess.CalledProcessError, OSError) as exc:
+        except (subprocess.CalledProcessError, OSError, AdbResidentError) as exc:
+            # AdbResidentError included so an unparseable forward port (raised by _parse_forward_port
+            # on the line above) still tears down the already-spawned instrumentation and forward
+            # rather than leaking them — start() is the only place that can clean up, since the caller
+            # never sees the ResidentServer when start() raises.
             self.stop()
             raise AdbResidentError(f"could not start the resident server: {exc}") from exc
         self._await_ready()
@@ -169,9 +180,16 @@ class ResidentServer:
             with contextlib.suppress(OSError):
                 self._proc.terminate()
             # Reap the terminated adb client so a long-lived `serve` process does not accumulate a
-            # zombie per lease (terminate() alone leaves the child unwaited on POSIX).
+            # zombie per lease (terminate() alone leaves the child unwaited on POSIX). If terminate()
+            # does not bring it down in time, escalate to kill() so a stuck process is still reaped —
+            # otherwise the guarantee this wait exists for would silently not hold.
             with contextlib.suppress(OSError, subprocess.TimeoutExpired):
                 self._proc.wait(timeout=5)
+            if self._proc.poll() is None:
+                with contextlib.suppress(OSError):
+                    self._proc.kill()
+                with contextlib.suppress(OSError, subprocess.TimeoutExpired):
+                    self._proc.wait(timeout=5)
             self._proc = None
             # Killing the local adb client does not reliably stop the device-side instrumentation, so
             # force-stop its package too — otherwise a resident @Test could outlive the lease.

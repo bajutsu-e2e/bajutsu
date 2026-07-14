@@ -123,11 +123,15 @@ def test_fetch_source_raises_on_non_200() -> None:
 class _FakeProc:
     def __init__(self) -> None:
         self.terminated = False
+        self.killed = False
         self.waited = False
         self._exit: int | None = None
 
     def terminate(self) -> None:
         self.terminated = True
+
+    def kill(self) -> None:
+        self.killed = True
 
     def poll(self) -> int | None:
         return self._exit
@@ -230,3 +234,82 @@ def test_start_raises_when_the_instrumentation_exits_before_serving(tmp_path: Pa
     )
     with pytest.raises(AdbResidentError, match="exited"):
         srv.start()
+
+
+def test_start_tears_down_when_the_forward_port_cannot_be_parsed(tmp_path: Path) -> None:
+    # `adb forward` printing something that isn't a port is a start failure — but the instrumentation
+    # is already spawned and the forward already established, so start() must tear both down rather
+    # than leak them (its except tuple must catch the parse error, not let it escape).
+    teardown: list[list[str]] = []
+
+    def run(args: list[str]) -> str:
+        if "--remove" in args or "force-stop" in args:
+            teardown.append(args)
+        # A garbage stdout for the forward call so _parse_forward_port raises.
+        return "not-a-port\n" if "forward" in args and "--remove" not in args else ""
+
+    proc = _FakeProc()
+    server_apk, test_apk = _apks(tmp_path)
+    srv = adb_resident.ResidentServer(
+        "U",
+        run=run,
+        spawn=lambda argv: proc,
+        fetch=lambda port: _MULTI_WINDOW,
+        server_apk=server_apk,
+        test_apk=test_apk,
+    )
+    with pytest.raises(AdbResidentError, match="could not start"):
+        srv.start()
+    # The spawned instrumentation was torn down; the forward was never parsed so nothing to remove.
+    assert proc.terminated
+    assert adb.force_stop_cmd("U", adb.RESIDENT_SERVER_PACKAGE) in teardown
+
+
+def test_start_fails_when_the_server_never_answers(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # The other terminal _await_ready branch: the process stays alive but the socket never answers, so
+    # the deadline elapses. Shrink the timeout/poll so the branch runs without a real 20s wait.
+    monkeypatch.setattr(adb_resident.ResidentServer, "_READY_TIMEOUT_S", 0.01)
+    monkeypatch.setattr(adb_resident.ResidentServer, "_READY_POLL_S", 0.0)
+    proc = _FakeProc()  # poll() stays None: the process is up but not serving
+    server_apk, test_apk = _apks(tmp_path)
+
+    def fetch(port: int) -> str:
+        raise AdbResidentError("not up yet")
+
+    srv = adb_resident.ResidentServer(
+        "U",
+        run=lambda args: "41000\n" if "forward" in args else "",
+        spawn=lambda argv: proc,
+        fetch=fetch,
+        server_apk=server_apk,
+        test_apk=test_apk,
+    )
+    with pytest.raises(AdbResidentError, match="did not answer within"):
+        srv.start()
+    # The deadline branch tears the forward down on its way out.
+    assert srv._host_port is None
+
+
+def test_stop_escalates_to_kill_when_terminate_does_not_reap(tmp_path: Path) -> None:
+    # If terminate() leaves the process alive (poll() still None after the wait), stop() must escalate
+    # to kill() so a stuck adb client is actually reaped, not silently dropped.
+    class _StuckProc(_FakeProc):
+        def poll(self) -> int | None:
+            return None  # never comes down on terminate()
+
+    proc = _StuckProc()
+    server_apk, test_apk = _apks(tmp_path)
+    srv = adb_resident.ResidentServer(
+        "U",
+        run=lambda args: "41000\n" if "forward" in args and "--remove" not in args else "",
+        spawn=lambda argv: proc,
+        fetch=lambda port: _MULTI_WINDOW,
+        server_apk=server_apk,
+        test_apk=test_apk,
+    )
+    srv.start()
+    srv.stop()
+    assert proc.terminated
+    assert proc.killed
