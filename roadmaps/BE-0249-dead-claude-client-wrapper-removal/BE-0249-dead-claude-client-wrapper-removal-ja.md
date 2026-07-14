@@ -109,9 +109,9 @@
 _ログ:_
 
 - [#1091](https://github.com/bajutsu-e2e/bajutsu/pull/1091) — `ensure_client` / `CachesClient`
-  とその該当テストを削除し、使われなくなった `Protocol` の import も外す。あわせて
+  とその該当テストを削除し、使われなくなった `Protocol` の import も外しました。あわせて
   `bajutsu/claude_backed_agent.py` の docstring が名指ししていた（もう存在しない）ラッパーへの
-  参照を、実態に合わせて書き換える。
+  参照を、実態に合わせて書き換えました。
 
 ## 参考
 
