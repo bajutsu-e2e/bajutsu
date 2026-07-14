@@ -99,9 +99,9 @@ wired in code today (all five actuators are in `IMPLEMENTED`):
 
 > **`adb` is implemented, not planned.** The Android actuator (`adb`) is wired and in the
 > `IMPLEMENTED` set today, validated end-to-end on an emulator ([architecture → implementation
-> status](architecture.md#implementation-status)). On iOS both `xcuitest` and `idb` are
-> implemented; the list is most-stable-first, so `xcuitest` is selected when `xcodebuild` is
-> available and `idb` is the fallback (BE-0019).
+> status](architecture.md#implementation-status), [vision → reach](vision.md#1-reach--more-platforms-and-surfaces)).
+> On iOS both `xcuitest` and `idb` are implemented; the list is most-stable-first, so `xcuitest`
+> is selected when `xcodebuild` is available and `idb` is the fallback (BE-0019).
 
 See [drivers](drivers.md) for the interface and per-actuator capability differences.
 

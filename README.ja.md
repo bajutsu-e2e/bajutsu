@@ -276,7 +276,7 @@ bajutsu/
 の範囲は上の[ステータス](#ステータス)を参照してください）。プラットフォームは 1 つのドライバインター
 フェースの背後にある backend にすぎないため、同じコアが対象をまたいで動きます。**web（Playwright）**
 backend と **Android（`adb`）** backend はいずれも実装済みで、**Flutter** を予定しています
-（[`docs/ja/multi-platform.md`](docs/ja/multi-platform.md)）。
+（[`docs/ja/vision.md`](docs/ja/vision.md#1-reachより多くのプラットフォームと面)）。
 
 今後の優先順位付きバックログ（次に作りたいもの）は [`roadmaps/`](roadmaps/README-ja.md) にあります。
 

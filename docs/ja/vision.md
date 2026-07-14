@@ -2,12 +2,13 @@
 
 # 将来構想
 
-> 将来を見据えたページです。Bajutsu が向かう全体的な方向と、すべての方向が守るべき唯一の制約を扱います。個別の
-> ロードマップ項目を横断する戦略的な概観であり、粒度の細かい優先順位付きバックログは
-> [roadmap](../../roadmaps/README-ja.md) に、今日の設計の根拠は [`DESIGN.md`](../../DESIGN.md) にあります。
-> ここを読めば各ピースがどう組み合わさるかを掴めます。各計画の詳細はリンク先を参照してください。
+> Bajutsu が向かう全体的な方向と、すべての方向が守るべき唯一の制約を扱うページです。個別の
+> ロードマップ項目を横断する戦略的な概観であり、各軸がすでにどこまで進んでいるか（計画中のことだけでなく）も
+> 扱います。粒度の細かい優先順位付きバックログは [roadmap](../../roadmaps/README-ja.md) に、今日の設計の根拠は
+> [`DESIGN.md`](../../DESIGN.md) にあります。ここを読めば各ピースがどう組み合わさるかを掴めます。各計画の詳細は
+> リンク先を参照してください。
 
-関連: [concepts](concepts.md) · [roadmap](../../roadmaps/README-ja.md) · [multi-platform](multi-platform.md) · [roadmap → ホスティング](../../roadmaps/README-ja.md#web-ui-のホスティングクラウド--セルフホスト)
+関連: [concepts](concepts.md) · [drivers](drivers.md) · [selectors](selectors.md) · [roadmap](../../roadmaps/README-ja.md) · [roadmap → ホスティング](../../roadmaps/README-ja.md#web-ui-のホスティングクラウド--セルフホスト)
 
 ---
 
@@ -44,7 +45,7 @@ Bajutsu は 3 つの独立した軸に沿って広がります。これらは合
 flowchart LR
     core(["Bajutsu コア<br/>決定的 · app 非依存"])
 
-    reach["REACH<br/>より多くのプラットフォーム / 面<br/>Web · Android · Flutter / ハイブリッド<br/>→ multi-platform.md"]
+    reach["REACH<br/>より多くのプラットフォーム / 面<br/>Web · Android · Flutter / ハイブリッド<br/>→ 下記 §1"]
     scale["SCALE &amp; COLLABORATION<br/>ホスト / セルフホストのサービス · MCP<br/>→ roadmap: ホスティング（BE-0015 / BE-0016）"]
     authoring["AUTHORING &amp; MAINTENANCE<br/>GUI エディタ · 操作キャプチャ ·<br/>ビジュアル回帰 · 自己修復 triage<br/>→ roadmap §3, §6, §10"]
 
@@ -57,37 +58,91 @@ flowchart LR
 
 ### 1. Reach：より多くのプラットフォームと面
 
-`Driver`、環境、id 規約の継ぎ目は、設定で調整できるだけでなく **丸ごと差し替え**られるよう作ってあります。目標は、
-**同じ決定的コアが iOS、Android、Web を駆動する**ことです。各プラットフォームは、自分の actuator と環境、
-安定 id 規約だけを足します。完全な具体計画は **[multi-platform](multi-platform.md)** にあります。セレクタ可搬性の写像、
-プラットフォーム別バックエンド、そして展開順（既存の Linux ゲートの上で動くので Web を最初に）を扱っています。
-2 つ目の iOS actuator（XCUITest）は、1 つの OS 内での同じ変更にあたります（[roadmap → プラットフォーム対応](../../roadmaps/README-ja.md#プラットフォーム対応)）。
+`Driver`、環境、id 規約の継ぎ目は、設定で調整できるだけでなく **丸ごと差し替え**られるよう作ってあり、
+その結果 **同じ決定的コアが今日すでに iOS、Android、Web を駆動しています**。各プラットフォームは、
+自分の actuator と環境、安定 id 規約だけを足しています。**iOS**（idb / XCUITest）、**web**
+（Playwright）、**Android**（adb）backend はいずれも実装済みで end-to-end に検証されています
+（[architecture → 実装状況](architecture.md#実装状況) 参照）。残るは **Flutter** です。
+
+**抽象はすでにプラットフォーム形状をしています。** プラットフォーム固有なのは 3 つの継ぎ目だけです。
+UI を駆動する **actuator**（`drivers/idb.py`、`drivers/adb.py` など）、boot / erase / launch を
+担う **environment manager**（iOS の `simctl.py`、Android の対応物）、そして **安定 id の規約**
+（iOS の `accessibilityIdentifier`、Android の `resource-id`、web の `data-testid` —
+[concepts §4](concepts.md#4-安定セレクタaccessibilityidentifier-優先)）です。それ以外
+（シナリオ DSL、セレクタ解決、機械アサーション、orchestrator、証跡、レポータ）は一切プラットフォームを
+名指ししません。1 つ追加するとは新しい三点セットを足すことであり、コアを分岐させることではありません。
+これは、設計がすでに 2 つ目の iOS actuator（XCUITest）で行った動きと同じです。
+
+**核心はセレクタの可搬性です。** シナリオがプラットフォーム間で可搬なのは、そのセレクタが `id` による
+場合に限ります。各プラットフォームの `accessibilityIdentifier` に相当するものは、同じ `Selector`
+フィールドへ写像します。
+
+| `Selector` フィールド | iOS | Android | Web |
+|---|---|---|---|
+| `id`（主） | `accessibilityIdentifier` | `resource-id`（Compose: `testTag`） | `data-testid` |
+| `label`（補助） | `accessibilityLabel` | `content-desc` / `text` | アクセシブル名 / `aria-label` |
+| `traits`（role フィルタ） | UI traits | widget クラス | ARIA `role` |
+
+YAML のセレクタ `{ id: settings.reindex }` はすでにプラットフォーム中立です。異なるのは
+*backend がそれを満たすためにアプリ側のどの属性を読むか* だけで、それは Driver の内部に閉じ、
+シナリオには出てきません。一点だけ事情があります。プラットフォーム本来の id 構文が SPEC の id を
+**そのまま**再現できないことがあります。Android の `android:id`（Views）は `.` も `-` も許さないので、
+`stable.refresh` は `stable_refresh` として現れます。ドライバ側で暗黙に書き換えるのではなく、
+シナリオが **id 候補のリスト**（`id: [stable.refresh, stable_refresh]`。OR として照合）で差異を
+**明示的に**保ちます。これにより showcase の共有シナリオが両 Android UI toolkit でそのまま走ります
+（BE-0221。[scenarios](scenarios.md#プラットフォームをまたぐ-id候補のリストbe-0221) 参照）。
+
+| 段階 | 範囲 | 状態 |
+|---|---|---|
+| 共有抽象 | プラットフォーム対応の backend レジストリ + `Environment` Protocol | 実装済み（[BE-0042](../../roadmaps/BE-0042-platform-backend-registry/BE-0042-platform-backend-registry-ja.md)、[BE-0009](../../roadmaps/BE-0009-cross-platform-abstractions/BE-0009-cross-platform-abstractions-ja.md)） |
+| Web | Playwright。既存の Linux ゲートで動き、Mac もエミュレータも不要 | 実装済み（[BE-0041](../../roadmaps/BE-0041-web-playwright-backend/BE-0041-web-playwright-backend-ja.md)、[BE-0054](../../roadmaps/BE-0054-web-backend-completion/BE-0054-web-backend-completion-ja.md)） |
+| Android | adb + UI Automator。座標駆動の idb の双子 | 実装済み（[BE-0007](../../roadmaps/BE-0007-android-backend/BE-0007-android-backend-ja.md)、[BE-0208](../../roadmaps/BE-0208-android-emulator-e2e-ci/BE-0208-android-emulator-e2e-ci-ja.md)、[BE-0209](../../roadmaps/BE-0209-android-codegen-emitter/BE-0209-android-codegen-emitter-ja.md)） |
+| Flutter / ハイブリッド | 自前描画 UI は新しい OS actuator ではなく semantics ブリッジが必要 | 計画（[BE-0008](../../roadmaps/BE-0008-flutter-support/BE-0008-flutter-support-ja.md)） |
+
+Android のほうが idb の近い双子であるにもかかわらず、Web が先に着地しました。Web は macOS も
+デバイスエミュレータも不要な唯一のプラットフォームで、初日から [`make check`](../../CLAUDE.md) /
+[CI](ci.md) ゲートの内側に収まったからです。コアがプラットフォーム中立であることを最小コストで
+証明できました。その後 Android が、一般化済みのコアの上で同じ lean / 座標パスを、自前の
+エミュレータ付きゲートで裏づけました。プラットフォーム別の詳細は [drivers](drivers.md)、
+[roadmap → プラットフォーム対応](../../roadmaps/README-ja.md#プラットフォーム対応) を参照してください。
 
 ### 2. Scale & Collaboration：ローカルツールから共有サービスへ
 
-`bajutsu serve` は、今日のところローカルで動く単一ユーザのランチャです。目標は **共有サービス**にすることです。安価な Linux
-コントロールプレーン（認証、履歴、キュー、レポートビューア）を、高価なデバイスワーカープールから
-切り離し、チームがブラウザから実行とレビューを行えるようにします。
+`bajutsu serve` はローカルで動く単一ユーザのランチャとして始まりましたが、今では **共有サービス**
+としても動きます。安価な Linux コントロールプレーン（認証、履歴、キュー、レポートビューア）を、
+高価なデバイスワーカープールから切り離し、チームがブラウザから実行とレビューを行えるようにします。
 
-- **[BE-0015（公開 / クラウドホスティング）](../../roadmaps/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting-ja.md)**：公開とマルチテナントを扱います。control-plane ⇄ macOS ワーカープールの
-  分離、`subprocess.Popen` からジョブキューへのリファクタ、そして公開時に必須となるセキュリティ堅牢化です。
-- **[BE-0016（セルフホスティング）](../../roadmaps/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting-ja.md)**：自前の Mac を扱います。今日すぐ使える単一 Mac 構成と、完全にセルフホストする
-  マルチテナント構成です。
-- **MCP（Model Context Protocol）統合**（[roadmap → 統合と自動化](../../roadmaps/README-ja.md#統合と自動化mcp-化)）：`run`/`doctor`/`record`/`codegen` を MCP ツールとして、
-  証跡を MCP リソースとして公開し、エージェントが直接 Bajutsu を駆動できるようにします。これは Tier-1 の境界の内側に収まります。
-  エージェントは著者と調査役であり、ゲートは決定的なままです。
+- **[BE-0015（公開 / クラウドホスティング）](../../roadmaps/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting-ja.md)**
+  と **[BE-0016（セルフホスティング）](../../roadmaps/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting-ja.md)**
+  はどちらも実装済みです。control-plane ⇄ Mac ワーカープールの分離、ジョブキュー、複数 org 対応、
+  そして公開時に必須となるセキュリティ堅牢化です。自前のハードウェアで今すぐ動かす方法は
+  [self-hosting](self-hosting.md) を参照してください。
+- **MCP（Model Context Protocol）サーバ**（[BE-0017](../../roadmaps/BE-0017-mcp-server/BE-0017-mcp-server-ja.md)）
+  は実装済みです。`run`/`doctor` を MCP ツールとして、run の証跡を MCP リソースとして公開し、
+  エージェントが直接 Bajutsu を駆動できます。これは Tier-1 の境界の内側に収まります。エージェントは
+  著者と調査役であり、ゲートは決定的なままです。
 
 ### 3. Authoring & Maintenance：テストを所有するコストを下げる
 
-シナリオは人間が所有するただの YAML です。この軸は、ゲートを一切緩めずに、書くコストと保つコストを下げます。
+シナリオは人間が所有するただの YAML です。この軸は、ゲートを一切緩めずに、書くコストと保つコストを
+下げます。
 
-- **GUI（graphical user interface）エディタと非 AI 操作キャプチャ**（[roadmap → オーサリング体験](../../roadmaps/README-ja.md#オーサリング体験record--gui-エディタ)）：シナリオを画面上で編集し、
-  スクリーンショット上でセレクタを選び、実際の tap や type を LLM なしでシナリオに取り込みます。`bajutsu serve` はその第一歩です。
-- **ビジュアル回帰アサーション**（[roadmap: BE-0029](../../roadmaps/BE-0029-visual-regression-assertions/BE-0029-visual-regression-assertions-ja.md)）：新しい決定的アサーション種別（ベースライン差分）です。AI が
-  判定するのではなく機械でチェックするので、原則に適合します。
-- **自己修復 triage**（[roadmap: BE-0021](../../roadmaps/BE-0021-ai-triage/BE-0021-ai-triage-ja.md)）：既に出荷済みです。AI が
-  失敗証跡を読んで **最小差分**を提案し、人間がレビューして `--write` で適用します。コミット済みテストを自動で緩めないという
-  ガードレールが、これを directive の内側に保ちます。
+- **GUI（graphical user interface）エディタと非 AI 操作キャプチャ**
+  （[BE-0012](../../roadmaps/BE-0012-action-capture-record/BE-0012-action-capture-record-ja.md)、
+  [BE-0013](../../roadmaps/BE-0013-scenario-gui-editor/BE-0013-scenario-gui-editor-ja.md)）は
+  `bajutsu serve` に実装済みです。シナリオを画面上で編集し、スクリーンショット上でセレクタを選び、
+  実際の tap や type を LLM なしでシナリオに取り込めます。
+- **ビジュアル回帰アサーション**（[BE-0029](../../roadmaps/BE-0029-visual-regression-assertions/BE-0029-visual-regression-assertions-ja.md)）
+  は実装済みです。新しい決定的アサーション種別（ベースライン差分。`approve` が新しいベースラインを
+  昇格します）で、AI が判定するのではなく機械でチェックするので、directive に適合します。
+- **自己修復 triage**（[BE-0021](../../roadmaps/BE-0021-ai-triage/BE-0021-ai-triage-ja.md)）は
+  実装済みです。AI が失敗証跡を読んで **最小差分**を提案し、人間がレビューして `--write` で適用します。
+  コミット済みテストを自動で緩めないというガードレールが、これを directive の内側に保ちます。
+
+この軸は今も広がり続けています（例えば
+[roadmap → オーサリング体験](../../roadmaps/README-ja.md#オーサリング体験record--gui-エディタ)
+にある継続中の作業）が、基盤となる能力（画面上での編集、AI なしのキャプチャ、失敗の自己修復）は
+3 つの側面いずれでもすでに整っています。
 
 ---
 
@@ -111,21 +166,13 @@ flowchart LR
 
 ---
 
-## 直近の推奨順序（コミットではなく推奨）
+## 各軸の現在地
 
-構想に順序を付けるなら、最もレバレッジの高い次の一手は次のとおりです。いずれも、後段の一手のリスクを低コストで下げます。
-
-1. **Playwright による Web**（[multi-platform](multi-platform.md) 段階 1）。コアが
-   プラットフォーム中立であることを、**既存の Linux ゲートの内側**（[ci](ci.md)）で、Mac もエミュレータも使わずに
-   示せます。同時に、能力モデルの豊かな側（ネイティブの network、video、意味的操作）を行使します。
-2. **MCP サーバ**（[roadmap → 統合と自動化](../../roadmaps/README-ja.md#統合と自動化mcp-化)）。表面積が小さく、Tier-1 のオーサリングループへの
-   レバレッジが大きく、しかもゲートに触れません。
-3. **ビジュアル回帰アサーション**（[roadmap: BE-0029](../../roadmaps/BE-0029-visual-regression-assertions/BE-0029-visual-regression-assertions-ja.md)）。競合が
-   AI でゲートしている決定的な能力であり、directive を緊張させるどころか、むしろ強める差別化要素です。
-
-ホスティング軸（[BE-0015](../../roadmaps/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting-ja.md) / [BE-0016](../../roadmaps/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting-ja.md)）は、より大きく、
-切り離して進められる投資です。需要が個人のものではなく協働のものになったときに進めます。
-
-> **[roadmap](../../roadmaps/README-ja.md) との関係：** 本ページは根拠と全体的な方向を扱い、ロードマップは
-> 優先順位付きの生きたバックログ（次の具体的な項目）を扱います。ここの項目が着手可能になるとロードマップに優先度と
-> 状態付きで現れ、出荷されると [architecture 実装状況](architecture.md#実装状況) へ移ります。3 者は同期させます。
+このページがかつて推奨していた直近の順序（Playwright による Web、MCP サーバ、ビジュアル回帰
+アサーション）は、いずれもすでに出荷済みです。scale 軸の公開・セルフホストの両トポロジーも、
+authoring 軸の GUI エディタと非 AI キャプチャも同様です。Reach 軸で残っているのは Flutter
+（[BE-0008](../../roadmaps/BE-0008-flutter-support/BE-0008-flutter-support-ja.md)）で、他の 2 軸は
+1 つの大きな残作業を中心にではなく、少しずつ広がり続けています。実際に次に何をやるかは
+[roadmap](../../roadmaps/README-ja.md) が優先順位付きの生きたバックログとして持っています。
+本ページが扱うのは根拠と方向性であり、順序付けではありません。ロードマップの項目が出荷されると
+[architecture 実装状況](architecture.md#実装状況) へ移ります。3 者は同期させます。

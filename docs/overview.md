@@ -51,10 +51,9 @@ view of the same system — is in [architecture](architecture.md).
 | 15 | [showcase](showcase.md) | The showcase suite — the single iOS fixture (exercises every primitive) |
 | 16 | [ci](ci.md) | Running in CI — the repo's own workflows + the reusable `bajutsu-e2e` action |
 | 17 | [self-hosting](self-hosting.md) | Run `serve` as a token-authenticated LaunchAgent on a single Mac behind Tailscale (BE-0016 Tier A) |
-| 18 | [vision](vision.md) | **Forward-looking** — the three axes of growth (reach / scale / authoring) and the constraints all of them respect |
-| 19 | [multi-platform](multi-platform.md) | How the Android (emulator) and Web (browser) backends were added behind the existing driver abstraction, and what the same move looks like for the next platform (Flutter); the concrete per-platform plans live in the [roadmap](../roadmaps/README.md#platform-support) |
-| 20 | [ai-development](ai-development.md) | Working agreement for AI agents + humans in parallel (the gate, branches, pre-push hook, worktrees) — the long form of [`CLAUDE.md`](../CLAUDE.md) |
-| 21 | [roadmap-workflow](roadmap-workflow.md) | The **ideation → implementation cycle**: the `ideation` skill authors a BE proposal, the `implement-be` skill ships it (placeholder IDs, the Proposal → Implemented lifecycle) |
+| 18 | [vision](vision.md) | The three axes of growth (reach / scale / authoring) — how far each has already gotten, and the constraints all of them respect; reach's platform-portability design (selectors, id conventions, phasing) lives in its own section |
+| 19 | [ai-development](ai-development.md) | Working agreement for AI agents + humans in parallel (the gate, branches, pre-push hook, worktrees) — the long form of [`CLAUDE.md`](../CLAUDE.md) |
+| 20 | [roadmap-workflow](roadmap-workflow.md) | The **ideation → implementation cycle**: the `ideation` skill authors a BE proposal, the `implement-be` skill ships it (placeholder IDs, the Proposal → Implemented lifecycle) |
 
 ## Quick start
 

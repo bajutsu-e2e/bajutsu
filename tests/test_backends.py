@@ -226,7 +226,7 @@ def test_select_android_unavailable_is_not_a_planned_error() -> None:
 def test_select_planned_backend_reports_not_implemented(monkeypatch: pytest.MonkeyPatch) -> None:
     # The "recognized but not implemented yet" path still guards a future planned actuator: with adb
     # dropped from IMPLEMENTED it is recognized (in PLATFORMS) yet has no driver, so the message
-    # points at the multi-platform design rather than a generic "no available actuator".
+    # points at the platform-reach design in vision.md rather than a generic "no available actuator".
     monkeypatch.setattr("bajutsu.backends.IMPLEMENTED", frozenset({"idb", "fake"}))
     with pytest.raises(RuntimeError, match="not implemented yet"):
         select_actuator(["android"])
@@ -343,7 +343,7 @@ def test_make_driver_adb() -> None:
 
 def test_make_driver_planned_backend(monkeypatch: pytest.MonkeyPatch) -> None:
     # A recognized-but-unimplemented actuator raises NotImplementedError (distinct from an
-    # outright-unknown token), so the message can point at the multi-platform design. Every real
+    # outright-unknown token), so the message can point at vision.md's reach design. Every real
     # actuator now has a driver, so a synthetic "future" token in KNOWN_ACTUATORS stands in.
     monkeypatch.setattr("bajutsu.backends.KNOWN_ACTUATORS", ("idb", "future"))
     with pytest.raises(NotImplementedError, match="not implemented yet"):

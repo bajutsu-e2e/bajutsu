@@ -112,7 +112,6 @@ plugins:
             Codegen: コード生成
             Drivers & platforms: ドライバとプラットフォーム
             Drivers: ドライバ
-            Multi-platform: マルチプラットフォーム
             Network: ネットワーク
             Evidence & reporting: evidence とレポート
             Evidence: evidence
@@ -177,7 +176,6 @@ nav:
       - Codegen: codegen.md
   - Drivers & platforms:
       - Drivers: drivers.md
-      - Multi-platform: multi-platform.md
       - Network: network.md
   - Evidence & reporting:
       - Evidence: evidence.md

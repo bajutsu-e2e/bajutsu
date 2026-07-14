@@ -4,13 +4,14 @@ A backend token names either a **platform** (`ios` / `android` / `web` / `fake`)
 concrete **actuator** (e.g. `idb`). A platform expands to its actuators in stability order;
 the chosen actuator is the first one that is implemented and available in this environment.
 
-So `--backend ios` (or `backend: [ios]` in config) resolves to `idb` today, and will pick up
-a richer iOS actuator (XCUITest) when one lands — without the scenario or config changing.
-`android` / `web` are declared so they can be requested now and slot in when built; until then
-requesting them fails with a clear "not implemented yet" pointing at the design. Unknown tokens
-are skipped (forward-compat: an older build can run a config that lists a future backend).
+So `--backend ios` (or `backend: [ios]` in config) resolves to `xcuitest` when available,
+falling back to `idb` — without the scenario or config changing. A platform not yet backed by
+any actuator (declared in `KNOWN_ACTUATORS` but not `IMPLEMENTED`, e.g. a future Flutter
+bridge) can still be requested; it fails with a clear "not implemented yet" instead of a
+generic error. Unknown tokens are skipped (forward-compat: an older build can run a config
+that lists a future backend).
 
-See `docs/multi-platform.md` for the per-platform actuator/environment/id design.
+See `docs/vision.md` for the per-platform actuator/environment/id design.
 """
 
 from __future__ import annotations
@@ -113,7 +114,7 @@ def select_actuator(
     if planned:
         raise RuntimeError(
             f"backend(s) {planned} are recognized but not implemented yet "
-            f"(see docs/multi-platform.md); requested {backends}"
+            f"(see docs/vision.md); requested {backends}"
         )
     raise RuntimeError(f"no available actuator among {actuators} (requested {backends})")
 
@@ -185,7 +186,7 @@ def capabilities_for(actuator: str) -> frozenset[str]:
         return AdbDriver.CAPABILITIES
     if actuator in KNOWN_ACTUATORS:
         raise NotImplementedError(
-            f"backend {actuator!r} is planned but not implemented yet (see docs/multi-platform.md)"
+            f"backend {actuator!r} is planned but not implemented yet (see docs/vision.md)"
         )
     raise ValueError(f"unknown backend: {actuator!r}")
 
@@ -293,7 +294,7 @@ def make_driver(
         )
     if actuator in KNOWN_ACTUATORS:
         raise NotImplementedError(
-            f"backend {actuator!r} is planned but not implemented yet (see docs/multi-platform.md)"
+            f"backend {actuator!r} is planned but not implemented yet (see docs/vision.md)"
         )
     raise ValueError(f"unknown backend: {actuator!r}")
 

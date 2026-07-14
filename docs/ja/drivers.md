@@ -159,7 +159,8 @@ def make_driver(actuator, udid, *, base_url=None, runner_port=None) -> Driver:  
 
 - **バックエンドトークン**は、**プラットフォーム**（`ios` / `android` / `web` / `fake`）か、具体的な **actuator**（例: `idb`）のどちらかです。actuator を複数持つプラットフォームは**シナリオごと**に解決します（BE-0240）。`--backend ios`（または `backend: [ios]`）は、各シナリオを、そのステップが使える最も安い actuator で走らせます。既定は `idb` で、シナリオの構文が idb に無い能力を要求するとき（例: `pinch` / `rotate` は `multiTouch`）だけ XCUITest へ昇格します。idb の能力集合は XCUITest の真部分集合なので、idb を特に必要とするシナリオはありません。idb が優先されるのはコストのためだけです。
 - 二つの順序が二つの問いに答えます。**安定度順**（`PLATFORMS`、最も高機能なものから。[concepts](concepts.md#5-安定度順ラダーstability-ladder)）は `select_actuator` を駆動します。これは、まだシナリオが手元に無い場面（`doctor`、プールの起動時セットアップ、明示的な単一 actuator の固定）で使う、可用性だけの選択です。**コスト順**（`COST_ORDER`、最も安いものから）は `select_actuator_for_scenario` を駆動します。これは `capability_preflight.unsupported`（BE-0082）を各候補の能力集合に対して再利用し、利用可能かつ十分な最初の候補を返します。明示的な単一 actuator の要求は決して昇格しません（`--udid` と同じ、固定の指定です）。利用可能なものが無ければ `RuntimeError`（CLI は終了コード 2）。
-- `web` は `playwright` に解決され、**実装済み**です（[multi-platform](multi-platform.md)）。`android`（→ `adb`）は**宣言済みだが未実装**で、要求すると汎用の失敗ではなく明確な「未実装」エラーになります。本当に未知のトークンはスキップされます（前方互換: 古いビルドでも、将来のバックエンドを列挙した config を実行できます）。
+- `web` は `playwright` に、`android` は `adb` に解決され、どちらも**実装済み**です
+  （[vision → reach](vision.md#1-reachより多くのプラットフォームと面)）。本当に未知のトークンはスキップされます（前方互換: 古いビルドでも、将来のバックエンドを列挙した config を実行できます）。
 - 可用性判定 `available` は注入可能です（テストで差し替え可）。既定は `shutil.which`（`fake` は実行ファイル不要で常に利用可能）。
 - actuator は**シナリオごと**に 1 つ確定し、そのシナリオの実行のあいだ固定です（BE-0240）。2 ドライバが同一デバイスを同時に操作することはありません。これは従来の「run ごとに固定」という単位をシナリオ単位へ狭めたもので、単一 actuator の規則を緩めるものではありません。どの瞬間もリースしたデバイスを操作する actuator はちょうど 1 つで、シナリオ実行の途中でドライバが切り替わることはありません。
 
