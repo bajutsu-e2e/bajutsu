@@ -13,7 +13,7 @@ from __future__ import annotations
 from bajutsu.platform_lifecycle.device_control import android_device_control, device_control
 from bajutsu.platform_lifecycle.environments.android import AndroidEnvironment
 from bajutsu.platform_lifecycle.environments.fake import FakeEnvironment
-from bajutsu.platform_lifecycle.environments.ios import IosEnvironment, _DeviceEnvironment
+from bajutsu.platform_lifecycle.environments.ios import IosEnvironment
 from bajutsu.platform_lifecycle.environments.web import WebEnvironment
 from bajutsu.platform_lifecycle.environments.xcuitest import XcuitestEnvironment
 from bajutsu.platform_lifecycle.factories import environment_for
@@ -23,8 +23,12 @@ from bajutsu.platform_lifecycle.protocols import (
     ReadinessResult,
     RunEnvironment,
 )
-from bajutsu.platform_lifecycle.readiness import _await_boot, _await_ready
-from bajutsu.platform_lifecycle.relaunchers import _web_relauncher, device_relauncher
+
+# Only `_await_ready` still needs the flat re-export path: `runner/launch.py` reaches it via
+# `from bajutsu.platform_lifecycle import _await_ready`. The other private names (`_DeviceEnvironment`,
+# `_await_boot`, `_web_relauncher`) are reached only through their submodules, so they stay there.
+from bajutsu.platform_lifecycle.readiness import _await_ready
+from bajutsu.platform_lifecycle.relaunchers import device_relauncher
 
 __all__ = [
     "AndroidEnvironment",
@@ -36,10 +40,7 @@ __all__ = [
     "RunEnvironment",
     "WebEnvironment",
     "XcuitestEnvironment",
-    "_DeviceEnvironment",
-    "_await_boot",
     "_await_ready",
-    "_web_relauncher",
     "android_device_control",
     "device_control",
     "device_relauncher",
