@@ -14,6 +14,7 @@ import fnmatch
 import functools
 import re
 import time
+from collections.abc import Iterator
 from typing import TYPE_CHECKING, Protocol, TypedDict, cast, runtime_checkable
 
 if TYPE_CHECKING:
@@ -197,7 +198,7 @@ class BackendLifecycle(Protocol):
     for its on-device runner to answer, and idb needs none of them (its boot / erase / install
     sequence lives outside the driver in `simctl`). The four hooks are therefore split disjointly
     across backends — no single driver implements all four — so this is a *typing umbrella* for the
-    call sites, not a conformance target: `platform_lifecycle.py` reaches each hook through
+    call sites, not a conformance target: the `platform_lifecycle` environments reach each hook through
     `cast(BackendLifecycle, driver)` under the platform invariant that already scopes the driver,
     which turns "the hook exists" into a mypy-checked fact (a renamed or dropped hook fails
     `make check` instead of at runtime) without forcing idb to stub no-op methods. `@runtime_checkable`
@@ -356,13 +357,42 @@ def find_all(elements: list[Element], sel: Selector) -> list[Element]:
     return found
 
 
+def deadline_ticks(
+    timeout: float, poll_init: float, poll_max: float | None = None
+) -> Iterator[None]:
+    """Yield once per poll to a monotonic deadline, sleeping with capped backoff between ticks.
+
+    The one deadline/backoff skeleton the condition waits share (BE-0118, BE-0256): `wait_until`
+    here and the platform-lifecycle readiness waits (`_await_ready` / `_await_boot`) each run their
+    own check body on every yield and decide what to return, while this owns only the monotonic
+    deadline, the exponential backoff (`poll_init` doubling up to `poll_max`), and the
+    never-sleep-past-the-deadline sleep — a condition wait with no fixed up-front sleep, so a
+    `timeout` means the same real seconds regardless of the caller. A fixed interval is
+    `poll_max is None` (or equal to `poll_init`); the first yield fires before any sleep.
+
+    Args:
+        timeout: Seconds from the first tick before the deadline passes.
+        poll_init: The first inter-tick sleep, doubling each tick.
+        poll_max: The backoff ceiling; a fixed `poll_init` interval when omitted.
+    """
+    ceiling = poll_init if poll_max is None else poll_max
+    deadline = time.monotonic() + timeout
+    poll = min(poll_init, ceiling)
+    while True:
+        yield
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            return
+        time.sleep(min(poll, remaining))  # never sleep past the deadline
+        poll = min(poll * 2, ceiling)
+
+
 def wait_until(driver: Driver, sel: Selector, timeout: float, poll: float = 0.2) -> bool:
     """Poll `driver.wait_for(sel)` against a monotonic deadline until it matches.
 
-    The one deadline loop every backend shares (BE-0118). Each `wait_for` is a single-shot
-    check; this turns it into a timeout-honouring wait uniformly — a condition wait with no
-    fixed sleep, mirroring the orchestrator's discipline — so a `timeout` means the same real
-    seconds regardless of which backend drives.
+    A condition wait with no fixed sleep, mirroring the orchestrator's discipline — it turns the
+    backend's single-shot `wait_for` into a timeout-honouring wait over `deadline_ticks`, so a
+    `timeout` means the same real seconds regardless of which backend drives.
 
     Args:
         driver: The backend whose single-shot `wait_for` is polled.
@@ -379,14 +409,7 @@ def wait_until(driver: Driver, sel: Selector, timeout: float, poll: float = 0.2)
     """
     if poll < 0:
         raise ValueError(f"poll must be non-negative, got {poll}")
-    deadline = time.monotonic() + timeout
-    while True:
-        if driver.wait_for(sel):
-            return True
-        now = time.monotonic()
-        if now >= deadline:
-            return False
-        time.sleep(min(poll, deadline - now))  # never sleep past the deadline
+    return any(driver.wait_for(sel) for _ in deadline_ticks(timeout, poll))
 
 
 def resolve_unique(elements: list[Element], sel: Selector) -> Element:

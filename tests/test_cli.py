@@ -294,7 +294,7 @@ def test_record_writes_the_authored_scenario(
 
     monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test")
     authored = load_scenarios("- name: authored\n  steps:\n    - tap: { id: home.title }\n")[0]
-    monkeypatch.setattr("bajutsu.simctl.resolve_udid", lambda u: "FAKE-UDID")
+    monkeypatch.setattr("bajutsu.simctl.resolve_udid", lambda u, run=None: "FAKE-UDID")
     monkeypatch.setattr(rec, "make_agent", lambda *a, **k: object())
     monkeypatch.setattr(rec, "launch_driver", lambda *a, **k: (object(), None))
     monkeypatch.setattr(
@@ -346,7 +346,7 @@ def test_record_needs_human_handoff_exits_3(
     from bajutsu.handoff import HumanHandoffUnavailable
 
     monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test")
-    monkeypatch.setattr("bajutsu.simctl.resolve_udid", lambda u: "FAKE-UDID")
+    monkeypatch.setattr("bajutsu.simctl.resolve_udid", lambda u, run=None: "FAKE-UDID")
     monkeypatch.setattr(rec, "make_agent", lambda *a, **k: object())
     monkeypatch.setattr(rec, "launch_driver", lambda *a, **k: (object(), None))
     monkeypatch.setattr(
@@ -399,7 +399,7 @@ def test_record_device_error_exits_2(tmp_path: Path, monkeypatch: pytest.MonkeyP
         raise _simctl.DeviceError("no booted simulator")
 
     monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test")  # clear the credential gate
-    monkeypatch.setattr("bajutsu.simctl.resolve_udid", lambda u: "FAKE-UDID")
+    monkeypatch.setattr("bajutsu.simctl.resolve_udid", lambda u, run=None: "FAKE-UDID")
     monkeypatch.setattr(rec, "make_agent", lambda *a, **k: object())
     monkeypatch.setattr(
         "bajutsu.cli._shared.start_launch_server", lambda *a, **k: (lambda: None, None)
@@ -436,7 +436,7 @@ def _stub_execution(
     test off `simctl` (udid resolution) and off the GitHub-Actions summary side effect, so it passes
     identically on the Linux gate and locally.
     """
-    monkeypatch.setattr("bajutsu.simctl.resolve_udid", lambda u: "FAKE-UDID")
+    monkeypatch.setattr("bajutsu.simctl.resolve_udid", lambda u, run=None: "FAKE-UDID")
     monkeypatch.delenv(
         "GITHUB_ACTIONS", raising=False
     )  # keep github.emit a no-op (no summary write)
@@ -831,7 +831,7 @@ def test_current_screen_fake_backend_queries_the_driver(monkeypatch: pytest.Monk
     # backend needs no device, so resolving the udid is the only thing to stub away.
     from bajutsu.cli.commands.doctor import _current_screen
 
-    monkeypatch.setattr("bajutsu.simctl.resolve_udid", lambda u: "FAKE-UDID")
+    monkeypatch.setattr("bajutsu.simctl.resolve_udid", lambda u, run=None: "FAKE-UDID")
     eff = resolve(load_config("targets: { demo: { bundleId: com.x } }"), "demo")
     assert _current_screen("fake", "booted", eff) == []  # the fake's screen starts empty
 
@@ -896,7 +896,7 @@ def test_doctor_fake_backend_scores_the_current_screen(
 ) -> None:
     # The full doctor path on the fake backend: environment gates pass with no tools, then it scores
     # the (empty) fake screen — Blocked, exit 1 — device-free.
-    monkeypatch.setattr("bajutsu.simctl.resolve_udid", lambda u: "FAKE-UDID")
+    monkeypatch.setattr("bajutsu.simctl.resolve_udid", lambda u, run=None: "FAKE-UDID")
     cfg, _ = _write(tmp_path)
     cfg.write_text(
         "defaults: { backend: [fake] }\n"

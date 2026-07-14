@@ -48,8 +48,9 @@ def validated_udid(udid: str) -> str:
     """Return `udid` if it is safe to place on an `xcrun simctl` / `idb` argv, else raise.
 
     The shared entry point for the simctl family of argv builders — this module's own builders,
-    plus the simctl argv assembled in `intervals.py` (evidence capture) and `platform_lifecycle.py`
-    (the xcodebuild destination). Public (unlike adb's per-module `_checked_serial`) precisely
+    plus the simctl argv assembled in `intervals.py` (evidence capture) and
+    `platform_lifecycle.environments.xcuitest` (the xcodebuild destination). Public (unlike adb's
+    per-module `_checked_serial`) precisely
     because that argv-building is spread across modules; idb keeps its own copy as a separate
     backend. The check is the shared `device_id` policy — chiefly that an id never leads with `-`,
     which simctl would read as an option (argv option injection from an untrusted `--udid` / config).

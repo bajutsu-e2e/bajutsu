@@ -116,7 +116,7 @@ def test_run_alert_guard_degrades_to_a_no_op_without_a_credential(
     sentinel `Exit` from the (stubbed) execution seam proves the run reached execution *after* doing
     all its setup Claude-free.
     """
-    monkeypatch.setattr("bajutsu.simctl.resolve_udid", lambda _udid: "FAKE-UDID")
+    monkeypatch.setattr("bajutsu.simctl.resolve_udid", lambda _udid, run=None: "FAKE-UDID")
     monkeypatch.setattr(
         "bajutsu.cli.commands.run.device_pool", lambda *a, **k: (object(), lambda: None)
     )

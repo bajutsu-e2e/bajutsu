@@ -774,7 +774,7 @@ class Env:
     # clipboard. setLocation is a pure emulator-console op (BE-0211); clipboard goes through the app's
     # in-app receiver (BE-0233), so its methods take the target package to address the broadcast. The
     # rest of the DeviceControl family has no faithful emulator equivalent and is not wired (see
-    # `platform_lifecycle.android_device_control`).
+    # `platform_lifecycle.device_control.android_device_control`).
 
     def set_location(self, lat: float, lon: float) -> None:
         self._run(geo_fix_cmd(self.serial, lat, lon))
