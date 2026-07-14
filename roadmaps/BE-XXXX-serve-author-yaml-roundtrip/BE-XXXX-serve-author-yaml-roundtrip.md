@@ -16,8 +16,9 @@
 
 When the Author editor applies a change to the scenario — writing a picked selector into a step
 (Edit's Apply) or inserting proposed assertions and a settle wait (Enrich's Accept) — it edits the
-YAML by hand, in JavaScript, as text. `auApply` and `enrichApply` in `bajutsu/templates/serve.author.js`
-split the textarea on newlines, scan for a step's line with `trimStart()`/`startsWith('- tap:')`-style
+YAML by hand, in JavaScript, as text. The Edit-mode Apply click handler (`#au-apply`) and `enrichApply` in
+`bajutsu/templates/serve.author.js` split the textarea on newlines, scan for a step's line with
+`trimStart()`/`startsWith('- tap:')`-style
 prefix matching, compute indentation with a regex, and splice replacement lines back in. There is no
 parser in the loop: the frontend re-derives YAML structure from string shape.
 
@@ -55,7 +56,7 @@ rewrite unrelated lines. No prime directive is affected — this is authoring-si
    (simplest, reuses `dump_scenario_file`, but reflows formatting/comments); (b) a scoped serializer that
    emits only the changed step/expect block for the frontend to splice at a parser-identified span
    (preserves surrounding text, more work). The item picks one and records why.
-2. **Apply (Edit) through the model.** Replace `auApply`'s line-splice with: locate the step in the parsed
+2. **Apply (Edit) through the model.** Replace the Apply click handler's line-splice with: locate the step in the parsed
    model, set its selector, serialize. The selector-to-YAML helper (`auSelectorYaml`) and its manual
    quoting become unnecessary once the serializer owns quoting of `:`/`#`-bearing values.
 3. **Accept (Enrich) through the model.** Replace `enrichApply`'s expect/settle line insertion with a
@@ -95,4 +96,4 @@ rewrite unrelated lines. No prime directive is affected — this is authoring-si
 - [BE-0013 — Scenario GUI editor](../BE-0013-scenario-gui-editor/BE-0013-scenario-gui-editor.md) (Apply)
 - [BE-0014 — Demarcation from the existing AI record](../BE-0014-record-demarcation/BE-0014-record-demarcation.md) (Enrich)
 - [BE-0098 — Unified authoring surface in serve](../BE-0098-unified-authoring-surface/BE-0098-unified-authoring-surface.md)
-- `bajutsu/templates/serve.author.js` (`auApply`, `enrichApply`, `auSelectorYaml`, `enrichAssertionYaml`), `bajutsu/scenario/serialize.py` (`dump_scenario_file`)
+- `bajutsu/templates/serve.author.js` (the `#au-apply` Apply click handler, `enrichApply`, `auSelectorYaml`, `enrichAssertionYaml`), `bajutsu/scenario/serialize.py` (`dump_scenario_file`)
