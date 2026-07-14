@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0245") |
-| Implementing PR | [#1011](https://github.com/bajutsu-e2e/bajutsu/pull/1011), [#1017](https://github.com/bajutsu-e2e/bajutsu/pull/1017), [#1032](https://github.com/bajutsu-e2e/bajutsu/pull/1032), [#_pending_](https://github.com/bajutsu-e2e/bajutsu/pull/_pending_) |
+| Implementing PR | [#1011](https://github.com/bajutsu-e2e/bajutsu/pull/1011), [#1017](https://github.com/bajutsu-e2e/bajutsu/pull/1017), [#1032](https://github.com/bajutsu-e2e/bajutsu/pull/1032), [#1042](https://github.com/bajutsu-e2e/bajutsu/pull/1042) |
 | Topic | Platform support |
 | Related | [BE-0234](../BE-0234-adb-run-performance/BE-0234-adb-run-performance.md), [BE-0007](../BE-0007-android-backend/BE-0007-android-backend.md), [BE-0233](../BE-0233-adb-clipboard-fidelity/BE-0233-adb-clipboard-fidelity.md), [BE-0114](../BE-0114-driver-conformance-suite/BE-0114-driver-conformance-suite.md), [BE-0208](../BE-0208-android-emulator-e2e-ci/BE-0208-android-emulator-e2e-ci.md) |
 <!-- /BE-METADATA -->
@@ -177,7 +177,7 @@ Log:
   bound stays a minor hardening for the on-device slice. Everything here is device-free and gate-tested;
   the on-device wall-clock verification (≈ 0.1–0.3 s) and the e2e-lane guard for both paths (unit 5)
   land in PR-D, which also flips the channel on by default — so that box stays unticked.
-- PR-D ([#_pending_](https://github.com/bajutsu-e2e/bajutsu/pull/_pending_)) — unit 5, flips the
+- PR-D ([#1042](https://github.com/bajutsu-e2e/bajutsu/pull/1042)) — unit 5, flips the
   channel on by default and guards both paths in CI. `_make_resident` now reads over the resident
   channel whenever the server APKs are built (`server_apks_built`, `make -C BajutsuAndroidServer
   build`) and falls back to `uiautomator dump` otherwise, turning `BAJUTSU_ADB_RESIDENT` from an
