@@ -159,7 +159,7 @@ abstraction resolves **id → frame center → coordinate tap**, exactly as on i
 
 - `query()`: reads the window's UI Automator XML and maps each `<node>` to an `Element` with a pure
   parser (`parse_hierarchy`). The read runs over the **resident UI Automator server** when it is
-  built (`make -C BajutsuAndroidServer build`) — one warm `UiAutomation` session answering
+  built (`make -C BajutsuAndroidUIAutomatorServer build`) — one warm `UiAutomation` session answering
   `GET /source` over `adb forward`, so each read costs ≈ 0.1–0.3 s instead of the ≈ 2.4 s a fresh
   `adb -s <serial> exec-out uiautomator dump /dev/tty` pays per invocation (roadmap
   [BE-0245](../roadmaps/BE-0245-adb-resident-uiautomator-server/BE-0245-adb-resident-uiautomator-server.md));

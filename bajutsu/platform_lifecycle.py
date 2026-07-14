@@ -97,7 +97,7 @@ from bajutsu.scenario import Preconditions, Relaunch, Scenario
 logger = logging.getLogger("bajutsu.platform_lifecycle")
 
 # Overrides the resident UI Automator read channel (BE-0245). By default the channel is on whenever
-# the server APKs are built (`make -C BajutsuAndroidServer build`) and off otherwise, so a fresh clone
+# the server APKs are built (`make -C BajutsuAndroidUIAutomatorServer build`) and off otherwise, so a fresh clone
 # reads via `uiautomator dump` exactly as before. Set to 0/false/no to force the dump path even on a
 # built tree; set to 1/true/yes to force the resident path (start() degrades loudly to dump if it is
 # not built). Either way a channel failure falls back to `uiautomator dump`.

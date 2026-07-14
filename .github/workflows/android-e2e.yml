@@ -9,7 +9,7 @@
 # stays within the prime directives, and it is kept off the fast `make check` gate exactly as the
 # idb and web e2e lanes are.
 #
-# It also builds the resident UI Automator server (BajutsuAndroidServer, BE-0245) before booting the
+# It also builds the resident UI Automator server (BajutsuAndroidUIAutomatorServer, BE-0245) before booting the
 # emulator, so the adb backend's screen reads run over the resident channel by default here; a final
 # `e2e-fallback` step re-runs the golden with that channel forced off, so both the resident path and
 # the `uiautomator dump` fallback are exercised, and the golden proves they yield the same tree.
@@ -85,7 +85,7 @@ on:
       - 'demos/showcase/scenarios/**'
       - 'demos/showcase/showcase.config.yaml'
       - 'BajutsuAndroid/**'  # the app-side clipboard SDK the showcase APKs build in (BE-0233)
-      - 'BajutsuAndroidServer/**'  # the resident UI Automator server this lane builds + exercises (BE-0245)
+      - 'BajutsuAndroidUIAutomatorServer/**'  # the resident UI Automator server this lane builds + exercises (BE-0245)
       - 'bajutsu/adb_resident.py'  # the Python side of the resident channel this lane now exercises (BE-0245)
       - 'pyproject.toml'
       - 'uv.lock'
@@ -160,7 +160,7 @@ jobs:
       # the resident path; the `e2e-fallback` target then re-runs the golden with the channel forced
       # off (BAJUTSU_ADB_RESIDENT=0) to keep the `uiautomator dump` fallback exercised too.
       - name: Build the resident UI Automator server APKs
-        run: make -C BajutsuAndroidServer build
+        run: make -C BajutsuAndroidUIAutomatorServer build
 
       # Cache the AVD system image + snapshot so the boot is warm across runs (the canonical
       # android-emulator-runner recipe): create-and-snapshot on a miss, then reuse it on the run.

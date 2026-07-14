@@ -323,7 +323,7 @@ def test_android_environment_skips_resident_when_the_server_is_not_built(
 ) -> None:
     # Default-on is gated on the server being built (BE-0245 PR-D): with no factory, the env
     # override unset, and the APKs absent, start reads via `uiautomator dump` — a fresh clone that
-    # never ran `make -C BajutsuAndroidServer build` is never worse off than before.
+    # never ran `make -C BajutsuAndroidUIAutomatorServer build` is never worse off than before.
     import bajutsu.adb_resident as adb_resident
 
     monkeypatch.delenv("BAJUTSU_ADB_RESIDENT", raising=False)

@@ -179,7 +179,7 @@ Log:
   land in PR-D, which also flips the channel on by default — so that box stays unticked.
 - PR-D ([#1042](https://github.com/bajutsu-e2e/bajutsu/pull/1042)) — unit 5, flips the
   channel on by default and guards both paths in CI. `_make_resident` now reads over the resident
-  channel whenever the server APKs are built (`server_apks_built`, `make -C BajutsuAndroidServer
+  channel whenever the server APKs are built (`server_apks_built`, `make -C BajutsuAndroidUIAutomatorServer
   build`) and falls back to `uiautomator dump` otherwise, turning `BAJUTSU_ADB_RESIDENT` from an
   opt-in flag into an override (`0` pins the dump path even on a built tree, `1` forces the resident
   path and degrades loudly if it is not built). The Android e2e lane (`android-e2e.yml`) builds the

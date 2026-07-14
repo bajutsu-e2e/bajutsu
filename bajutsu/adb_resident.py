@@ -117,7 +117,7 @@ def server_apks_built(server_apk: Path = _SERVER_APK, test_apk: Path = _TEST_APK
     """True when both resident-server APKs exist, so the resident read channel can start.
 
     The default-on gate reads this to pick the resident channel over `uiautomator dump` only when
-    `make -C BajutsuAndroidServer build` has produced both outputs; a fresh clone that never built
+    `make -C BajutsuAndroidUIAutomatorServer build` has produced both outputs; a fresh clone that never built
     them (the build outputs are gitignored) falls back to the dump path untouched.
     """
     return server_apk.exists() and test_apk.exists()
