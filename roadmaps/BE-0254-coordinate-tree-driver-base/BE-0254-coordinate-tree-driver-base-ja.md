@@ -9,7 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0254") |
-| 実装 PR | [#TBD](https://github.com/bajutsu-e2e/bajutsu/pull/TBD) |
+| 実装 PR | [#1074](https://github.com/bajutsu-e2e/bajutsu/pull/1074) |
 | トピック | コードベース品質・技術的負債 |
 <!-- /BE-METADATA -->
 
