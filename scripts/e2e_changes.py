@@ -39,7 +39,7 @@ from collections.abc import Iterable
 # replaced. Kept as one alternation so the positive-list reads as a single source of truth.
 _RELEVANT = re.compile(
     r"^(?:"
-    r"bajutsu/(?:runner|scenario|drivers|orchestrator)/"
+    r"bajutsu/(?:runner|scenario|drivers|orchestrator|codegen)/"
     # Top-level modules are allow-listed by name: only the ones the on-device run / codegen / record
     # path actually imports. A bare `bajutsu/*.py` also swept in the serve/analytics/crawl modules
     # that live at the top level but never run here (stats, audit, coverage, usage*, crawl*, alerts,
@@ -48,7 +48,6 @@ _RELEVANT = re.compile(
     # on-device-relevant.
     r"|bajutsu/(?:"
     r"_yaml|adb|agent_protocols|artifact_perms|assertions|backends|capabilities|capability_preflight"
-    r"|codegen|codegen_common|codegen_emit|codegen_playwright|codegen_uiautomator"
     r"|config|config_source|crawl|device_id|dom|dotenv|elements|evidence|golden"
     r"|handoff|idb_version|interp|intervals|mailbox|network|platform_lifecycle|record"
     r"|redaction|run_id|simctl|totp|visual|web_network|webview"

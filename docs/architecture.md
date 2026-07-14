@@ -102,7 +102,7 @@ The `bajutsu/` package (Python 3.13+, pydantic v2 / typer / anthropic / pyyaml /
 | `record.py` | The record loop (observe → propose → execute → emit) | [recording](recording.md#the-record-loop) |
 | `crawl.py` | Autonomous breadth-first crawl → screen map (`crawl_guide` / `crawl_tabs` helpers) | [recording](recording.md) |
 | `alerts.py` | System-alert detection / dismissal (vision locator) | [recording](recording.md#dismissing-system-alerts-automatically) |
-| `codegen.py` | Scenario → native test generation: XCUITest (Swift), Playwright (TypeScript), UI Automator (Kotlin) | [codegen](codegen.md) |
+| `codegen/` | Scenario → native test generation: XCUITest (Swift), Playwright (TypeScript), UI Automator (Kotlin) | [codegen](codegen.md) |
 | `visual.py` | Visual-regression image comparison (the `visual` assertion) | [evidence](evidence.md) |
 | `trace.py` | Text timeline over a saved run (the `trace` command) | [cli](cli.md) |
 | `triage.py` | M4 self-heal: rule-based `HeuristicTriageAgent` + structured fixes (`renameId`/`addIndex`/`raiseTimeout`), `--apply`/`--write`/`--rerun` | [cli](cli.md) |
@@ -124,7 +124,7 @@ Lower layers are more stable; upper layers depend on lower ones. The core is `dr
 ```
                        cli/             ← user entry (Typer): run / project / doctor / audit / coverage / stats / flakiness / export / trace / report / triage / record / crawl / codegen / approve / serve / mcp / worker / lint / schema
         ┌─────────────┬───┴───────┬───────────────┬───────────┐
-     runner/    record.py / crawl.py  codegen.py   trace.py     triage.py / claude_triage.py
+     runner/    record.py / crawl.py  codegen/     trace.py     triage.py / claude_triage.py
         │          (Tier 1 / AI)   (structural)   (timeline)   (self-heal · advisory)
    orchestrator/   agent_protocols.py / agent_factory.py / claude_agent.py / alerts.py   serve/ · github.py (web UI · CI)
         │                 │

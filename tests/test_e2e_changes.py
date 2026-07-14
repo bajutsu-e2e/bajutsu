@@ -47,7 +47,7 @@ def test_run_path_top_level_modules_are_relevant() -> None:
         "bajutsu/elements.py",
         "bajutsu/visual.py",
         "bajutsu/golden.py",
-        "bajutsu/codegen_emit.py",
+        "bajutsu/codegen/emit.py",
         "bajutsu/record.py",
         "bajutsu/adb.py",
         "bajutsu/simctl.py",

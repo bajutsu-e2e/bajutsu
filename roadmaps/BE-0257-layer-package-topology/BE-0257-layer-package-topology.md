@@ -7,7 +7,7 @@
 |---|---|
 | Proposal | [BE-0257](BE-0257-layer-package-topology.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0257") |
 | Topic | Codebase quality & technical debt |
 | Related | [BE-0112](../BE-0112-layer-boundary-enforcement/BE-0112-layer-boundary-enforcement.md), [BE-0135](../BE-0135-module-naming-debt/BE-0135-module-naming-debt.md), [BE-0092](../BE-0092-crawl-coordinator-extraction/BE-0092-crawl-coordinator-extraction.md) |
@@ -130,7 +130,7 @@ packaging lands, stage by stage.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] `bajutsu/codegen/` package (`__init__`/`common`/`emit`/`playwright`/`uiautomator`).
+- [x] `bajutsu/codegen/` package (`__init__`/`common`/`emit`/`playwright`/`uiautomator`).
 - [ ] `bajutsu/crawl/` package (`__init__`/`flows`/`guide`/`report`/`repro`/`tabs`/`serialize`).
 - [ ] `bajutsu/github/` package (`__init__`/`actions`/`app`), resolving the `config_source` ↔
   `github_app` cycle.

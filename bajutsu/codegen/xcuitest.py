@@ -23,7 +23,7 @@ from __future__ import annotations
 import re
 
 from bajutsu.assertions import request_label
-from bajutsu.codegen_common import render_test_file
+from bajutsu.codegen.common import render_test_file
 from bajutsu.drivers import base
 from bajutsu.scenario import Assertion, Gone, Scenario, Step, WaitRequest
 
