@@ -52,3 +52,41 @@ def test_wait_until_rejects_a_negative_poll() -> None:
     # time.sleep raise its opaque ValueError deep in the loop.
     with pytest.raises(ValueError, match="poll must be non-negative"):
         base.wait_until(LateDriver(appear_after=0), {"id": "x"}, timeout=1, poll=-1)
+
+
+def _element(identifier: str, frame: base.Frame = (0.0, 0.0, 10.0, 10.0)) -> base.Element:
+    return {"identifier": identifier, "label": None, "traits": [], "value": None, "frame": frame}
+
+
+class ScreenDriver:
+    """A stub driver whose `query()` returns a fixed element list.
+
+    Backs `default_wait_for`, the single-shot check every real backend delegates to (BE-0251).
+    """
+
+    name = "screen"
+
+    def __init__(self, elements: list[base.Element]) -> None:
+        self._elements = elements
+
+    def query(self) -> list[base.Element]:
+        return self._elements
+
+
+def test_default_wait_for_true_when_the_selector_matches_the_current_screen() -> None:
+    driver = ScreenDriver([_element("home")])
+    assert base.default_wait_for(driver, {"id": "home"}) is True
+
+
+def test_default_wait_for_false_when_the_selector_is_absent() -> None:
+    driver = ScreenDriver([_element("home")])
+    assert base.default_wait_for(driver, {"id": "missing"}) is False
+
+
+def test_frame_center_is_the_frame_midpoint() -> None:
+    assert base.frame_center((10.0, 20.0, 8.0, 40.0)) == (14.0, 40.0)
+
+
+def test_gesture_anchor_is_the_center_and_a_quarter_of_the_smaller_side() -> None:
+    # half = min(w, h) / 4 = min(8, 40) / 4 = 2.0; center = (0 + 8/2, 0 + 40/2).
+    assert base.gesture_anchor((0.0, 0.0, 8.0, 40.0)) == (4.0, 20.0, 2.0)

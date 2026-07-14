@@ -320,8 +320,8 @@ class AdbDriver(CoordinateTreeDriver):
         range (BE-0208); it is constant across a scroll, so the settled tree gives it even when the
         target itself was only reached by scrolling.
         """
-        (x, y, w, h), screen = self._resolve_frame_and_screen(sel)
-        return (x + w / 2, y + h / 2), screen
+        frame, screen = self._resolve_frame_and_screen(sel)
+        return base.frame_center(frame), screen
 
     def _resolve_frame_and_screen(self, sel: base.Selector) -> tuple[base.Frame, base.Point]:
         """The target's frame and the screen extent, both in tree (pixel) coordinates.
@@ -462,10 +462,9 @@ class AdbDriver(CoordinateTreeDriver):
             raise base.UnsupportedAction(
                 f"{action} 不可（touchscreen node が getevent に見つからず、二本指の接点を撃てない）"
             )
-        (x, y, w, h), screen = self._resolve_frame_and_screen(sel)
-        center = (x + w / 2, y + h / 2)
-        # Keep both fingers (and a ~2x pinch-out) inside the target rather than landing on a neighbour.
-        half = min(w, h) / 4
+        frame, screen = self._resolve_frame_and_screen(sel)
+        # gesture_anchor keeps both fingers (and a ~2x pinch-out) inside the target (BE-0251).
+        cx, cy, half = base.gesture_anchor(frame)
         if half <= 0:
             # A zero-size frame collapses both contacts onto the centre — a zero-travel sequence the
             # platform reads as a tap, not a gesture, so the mirrored value never flips and the wait
@@ -474,7 +473,7 @@ class AdbDriver(CoordinateTreeDriver):
             raise base.UnsupportedAction(
                 f"{action} 不可（対象の frame が退化しており二本指の接点を配置できない）: {sel!r}"
             )
-        start, end = contacts(center, half)
+        start, end = contacts((cx, cy), half)
         raw_start = (
             adb.scale_to_touch(start[0], screen, dev),
             adb.scale_to_touch(start[1], screen, dev),
