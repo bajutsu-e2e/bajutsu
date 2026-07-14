@@ -9,6 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装中** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0257") |
+| 実装 PR | [#1045](https://github.com/bajutsu-e2e/bajutsu/pull/1045) |
 | トピック | コードベース品質・技術的負債 |
 | 関連 | [BE-0112](../BE-0112-layer-boundary-enforcement/BE-0112-layer-boundary-enforcement-ja.md)、[BE-0135](../BE-0135-module-naming-debt/BE-0135-module-naming-debt-ja.md)、[BE-0092](../BE-0092-crawl-coordinator-extraction/BE-0092-crawl-coordinator-extraction-ja.md) |
 <!-- /BE-METADATA -->
@@ -143,6 +144,14 @@
 - [ ] `bajutsu/agents/` の周辺パッケージ（9個のモジュール）。
 - [ ] `bajutsu/evidence/` と `bajutsu/analysis/` のパッケージ。
 - [ ] `bajutsu/analytics/` パッケージ（`usage` / `ledger` / `stats`）。
+
+**ログ**
+
+- 2026-07-14（[#1045](https://github.com/bajutsu-e2e/bajutsu/pull/1045)）: ステージ 1。フラットな
+  `codegen*.py` を `bajutsu/codegen/` パッケージ（`xcuitest` / `common` / `emit` / `playwright` /
+  `uiautomator` と re-export の `__init__`）へ移動しました。あわせて import-linter の codegen 3 件を
+  `bajutsu.codegen` 1 件へ集約し、`Makefile` と `e2e_changes.py`、e2e ワークフローのパスフィルタ、
+  そして日英のドキュメントをパッケージへ向け直しました。
 
 ## 参考
 
