@@ -28,10 +28,9 @@ from bajutsu.ai import (
     MessageResponse,
     TextPart,
     ToolDef,
-    create_backend,
-    resolved_provider,
 )
-from bajutsu.ai_config import AiConfig, resolve_model
+from bajutsu.ai_config import AiConfig
+from bajutsu.claude_backed_agent import ClaudeBackedAgent
 from bajutsu.drivers import base
 from bajutsu.elements import screen_size_from_elements
 from bajutsu.orchestrator import AlertEvent
@@ -159,7 +158,7 @@ def _decision_of(response: MessageResponse, width: int, height: int) -> AlertDec
     )
 
 
-class ClaudeAlertLocator:
+class ClaudeAlertLocator(ClaudeBackedAgent):
     """AlertLocator backed by Claude vision, through the vendor-neutral backend (BE-0104)."""
 
     def __init__(
@@ -170,15 +169,9 @@ class ClaudeAlertLocator:
         ai: AiConfig | None = None,
         redactor: Redactor | None = None,
     ) -> None:
-        self._backend = backend
-        self._ai = ai
-        self._redactor = redactor
-        self._model = resolve_model(LOCATOR_MODEL, ai) if model is None else model
-
-    def _ensure_backend(self) -> AiBackend:
-        if self._backend is None:
-            self._backend = create_backend(ai=self._ai)
-        return self._backend
+        super().__init__(
+            backend=backend, ai=ai, default_model=LOCATOR_MODEL, model=model, redactor=redactor
+        )
 
     def locate(self, screenshot_png: bytes, instruction: str | None) -> AlertDecision:
         width, height = _png_size(screenshot_png)
@@ -208,10 +201,5 @@ class ClaudeAlertLocator:
                 max_tokens=512,
             )
         )
-        usage.record(
-            response.usage,
-            usage.CATEGORY_ALERT,
-            provider=resolved_provider(self._ai),
-            model=self._model,
-        )
+        self._record_usage(response, usage.CATEGORY_ALERT)
         return _decision_of(response, width, height)

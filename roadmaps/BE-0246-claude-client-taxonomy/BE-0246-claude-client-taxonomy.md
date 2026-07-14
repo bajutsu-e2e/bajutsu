@@ -200,8 +200,10 @@ code lives and what it's called.
 - [x] Collapse the two `credential_gap` / provider-resolver pairs
       (`anthropic_client.py` + `ai/registry.py`, plus the `ai_availability.availability`
       wrapper) onto one resolver in `bajutsu/ai/`
-- [ ] Introduce a shared `ClaudeBackedAgent` base for the seven `Claude*` classes'
-      `_ensure_backend` / usage-record boilerplate
+- [x] Introduce a shared `ClaudeBackedAgent` base for the seven `Claude*` classes'
+      `_ensure_backend` / usage-record boilerplate — new `bajutsu/claude_backed_agent.py` holds the
+      `_backend` / `_ai` / `_redactor` / `_model` attributes, the byte-identical `_ensure_backend`,
+      and a `_record_usage(response, category)` helper; the seven classes inherit it
 - [x] Rename `agent.py` / `agents.py` (or merge the factory into `agent.py`) to remove the
       singular/plural readability trap — `agent.py` → `agent_protocols.py` (protocols/DTOs),
       `agents.py` → `agent_factory.py` (construction factory)
@@ -228,6 +230,15 @@ code lives and what it's called.
   into the `bajutsu/ai/anthropic` adapter, and dropped the redundant `ai_availability.availability`
   passthrough so `bajutsu.ai.credential_gap` is the single entry point. Behavior-preserving; the
   existing suites are the regression net.
+- [#1034](https://github.com/bajutsu-e2e/bajutsu/pull/1034) — Unit 3: added `bajutsu/claude_backed_agent.py` with the `ClaudeBackedAgent` base
+  (the `_backend` / `_ai` / `_redactor` / `_model` attributes, the byte-identical `_ensure_backend`,
+  and a `_record_usage(response, category)` helper) and had the seven `Claude*` classes
+  (`ClaudeAgent`, `ClaudeTriageAgent`, `ClaudeCrossRunTriageAgent`, `ClaudeEnrichmentAgent`,
+  `ClaudeActionProposer`, `ClaudeTabLocator`, `ClaudeAlertLocator`) inherit it instead of each
+  reimplementing the same plumbing, dropping the repeated `_ensure_backend` and `usage.record`
+  boilerplate. Also updated the docstring-lint path list and the import-linter core-independence
+  contract for the new module. Behavior-preserving; the existing per-class suites are the regression
+  net.
 
 ## References
 

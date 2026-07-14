@@ -20,7 +20,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Protocol
 
-from bajutsu import usage
 from bajutsu.ai import (
     AiBackend,
     AnyTool,
@@ -30,11 +29,10 @@ from bajutsu.ai import (
     MessageResponse,
     TextPart,
     ToolDef,
-    create_backend,
-    resolved_provider,
 )
-from bajutsu.ai_config import AiConfig, language_instruction, resolve_model
+from bajutsu.ai_config import AiConfig, language_instruction
 from bajutsu.alerts import _fraction, _png_size
+from bajutsu.claude_backed_agent import ClaudeBackedAgent
 from bajutsu.drivers import base
 
 TAB_LOCATOR_MODEL = "claude-opus-4-8"
@@ -174,7 +172,7 @@ def _targets_of(response: MessageResponse, width: int, height: int) -> list[TabT
     return out
 
 
-class ClaudeTabLocator:
+class ClaudeTabLocator(ClaudeBackedAgent):
     """TabLocator backed by Claude vision, through the vendor-neutral backend (BE-0104)."""
 
     def __init__(
@@ -184,15 +182,8 @@ class ClaudeTabLocator:
         *,
         ai: AiConfig | None = None,
     ) -> None:
-        self._backend = backend
-        self._ai = ai
-        self._model = resolve_model(TAB_LOCATOR_MODEL, ai) if model is None else model
+        super().__init__(backend=backend, ai=ai, default_model=TAB_LOCATOR_MODEL, model=model)
         self._lang = language_instruction(ai)  # output-language suffix, empty for `auto` (BE-0188)
-
-    def _ensure_backend(self) -> AiBackend:
-        if self._backend is None:
-            self._backend = create_backend(ai=self._ai)
-        return self._backend
 
     def locate(self, screenshot_png: bytes) -> list[TabTarget]:
         width, height = _png_size(screenshot_png)
@@ -216,5 +207,5 @@ class ClaudeTabLocator:
             )
         )
         # reporting only (BE-0104) — never on the pass/fail path
-        usage.record(response.usage, provider=resolved_provider(self._ai), model=self._model)
+        self._record_usage(response)
         return _targets_of(response, width, height)

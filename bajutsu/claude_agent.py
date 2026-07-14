@@ -27,15 +27,13 @@ from bajutsu.ai import (
     TextPart,
     ToolDef,
     ToolUseBlock,
-    create_backend,
-    resolved_provider,
 )
 from bajutsu.ai_config import (
     AiConfig,
     language_instruction,
     resolve_effort,
-    resolve_model,
 )
+from bajutsu.claude_backed_agent import ClaudeBackedAgent
 from bajutsu.redaction import Redactor
 from bajutsu.scenario import Assertion, Step
 
@@ -607,7 +605,7 @@ def _to_proposal(response: MessageResponse) -> Proposal:
     return _combine(subs)
 
 
-class ClaudeAgent:
+class ClaudeAgent(ClaudeBackedAgent):
     """Agent implementation that asks Claude for the next action via tool use."""
 
     def __init__(
@@ -619,20 +617,14 @@ class ClaudeAgent:
         ai: AiConfig | None = None,
         redactor: Redactor | None = None,
     ) -> None:
-        self._backend = backend
-        self._ai = ai
-        self._redactor = redactor
-        self._model = resolve_model(MODEL, ai) if model is None else model
+        super().__init__(
+            backend=backend, ai=ai, default_model=MODEL, model=model, redactor=redactor
+        )
         self._effort = resolve_effort(ai)  # passed to backends that support it (claude-code)
         # Output-language suffix (BE-0188), empty for `auto`. Folded onto the static system prompts
         # below so the reasoning/plan prose comes out in the chosen language.
         self._lang = language_instruction(ai)
         self._max_tokens = max_tokens
-
-    def _ensure_backend(self) -> AiBackend:
-        if self._backend is None:
-            self._backend = create_backend(ai=self._ai)
-        return self._backend
 
     def next_action(self, observation: Observation) -> Proposal:
         # Force one tool call; no thinking with forced choice.
@@ -647,12 +639,7 @@ class ClaudeAgent:
                 effort=self._effort,
             )
         )
-        usage.record(
-            response.usage,
-            usage.CATEGORY_ACTION,
-            provider=resolved_provider(self._ai),
-            model=self._model,
-        )
+        self._record_usage(response, usage.CATEGORY_ACTION)
         return _to_proposal(response)
 
     def plan(self, goal: str) -> list[str]:
@@ -670,12 +657,7 @@ class ClaudeAgent:
                 timeout_s=PLAN_TIMEOUT_S,
             )
         )
-        usage.record(
-            response.usage,
-            usage.CATEGORY_PLAN,
-            provider=resolved_provider(self._ai),
-            model=self._model,
-        )
+        self._record_usage(response, usage.CATEGORY_PLAN)
         block = response.first_tool_use()
         if block is None:
             return []

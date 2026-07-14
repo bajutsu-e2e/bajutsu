@@ -28,10 +28,9 @@ from bajutsu.ai import (
     NamedTool,
     TextPart,
     ToolDef,
-    create_backend,
-    resolved_provider,
 )
-from bajutsu.ai_config import AiConfig, language_instruction, resolve_model
+from bajutsu.ai_config import AiConfig, language_instruction
+from bajutsu.claude_backed_agent import ClaudeBackedAgent
 from bajutsu.drivers import base
 from bajutsu.record import _screenshot_bytes
 from bajutsu.redaction import Redactor
@@ -333,7 +332,7 @@ def _proposal_from(payload: dict[str, Any], cap: int) -> Proposal:
     return Proposal(actions=_actions_from(payload, cap), thought=str(payload.get("thought") or ""))
 
 
-class ClaudeActionProposer:
+class ClaudeActionProposer(ClaudeBackedAgent):
     """Asks Claude for the screen's candidate operations via a forced tool call.
 
     Talks to the model through the vendor-neutral backend (BE-0104).
@@ -349,18 +348,12 @@ class ClaudeActionProposer:
         ai: AiConfig | None = None,
         redactor: Redactor | None = None,
     ) -> None:
-        self._backend = backend
-        self._ai = ai
-        self._redactor = redactor
-        self._model = resolve_model(MODEL, ai) if model is None else model
+        super().__init__(
+            backend=backend, ai=ai, default_model=MODEL, model=model, redactor=redactor
+        )
         self._lang = language_instruction(ai)  # output-language suffix, empty for `auto` (BE-0188)
         self._max_tokens = max_tokens
         self._max_actions = max_actions
-
-    def _ensure_backend(self) -> AiBackend:
-        if self._backend is None:
-            self._backend = create_backend(ai=self._ai)
-        return self._backend
 
     def propose(
         self,
@@ -383,7 +376,7 @@ class ClaudeActionProposer:
             )
         )
         # reporting only (BE-0104) — never on the pass/fail path
-        usage.record(response.usage, provider=resolved_provider(self._ai), model=self._model)
+        self._record_usage(response)
         block = response.first_tool_use()
         if block is None:
             return Proposal()
