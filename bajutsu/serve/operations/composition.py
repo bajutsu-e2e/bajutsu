@@ -103,9 +103,10 @@ def materialize_composition(
 
     Raises `CompositionError` (a config field names an artifact not supplied), `BundleError` (an
     invalid zip, zip-slip, or a resource bound crossed while extracting `scenarios`/`binary`), or a
-    `load_config`/`rebased` failure (`OSError` / `ValueError` / `yaml.YAMLError`) — all `ValueError`
-    subclasses, so one `except ValueError` at the call site covers any of them. A failure leaves no
-    partial cache entry.
+    `load_config`/`rebased` failure (`OSError` / `ValueError` / `yaml.YAMLError`). `OSError` and
+    `yaml.YAMLError` are not `ValueError` subclasses, so the call site catches the three explicitly
+    (`except (OSError, ValueError, yaml.YAMLError)`) rather than a bare `except ValueError`. A
+    failure leaves no partial cache entry.
     """
     compositions_dir.mkdir(parents=True, exist_ok=True)
     dest = compositions_dir / composition_id
@@ -123,6 +124,11 @@ def materialize_composition(
             extract_bundle(scenarios_path, tmp)
         (tmp / "bajutsu.config.yaml").write_bytes(config_path.read_bytes())
         _place_binaries_and_check_coherence(tmp, scenarios_path, binary_path)
+        # Defense-in-depth: `_place_binaries_and_check_coherence` already rebased every target
+        # against `tmp`, so this mostly re-checks the same paths. It stays as the single reused
+        # BE-0073/BE-0051 confinement gate every materialize path funnels through — cheap over one
+        # freshly written tree, and keeps this path from silently drifting if that helper's checks
+        # ever narrow.
         validate_bundle_config(tmp)
         try:
             tmp.rename(dest)
