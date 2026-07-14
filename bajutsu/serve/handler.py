@@ -22,7 +22,7 @@ from jinja2 import Environment, FileSystemLoader
 from bajutsu.serve import operations as ops
 from bajutsu.serve import oplog
 from bajutsu.serve._paths import TEMPLATES_DIR as _TEMPLATE_DIR
-from bajutsu.serve.helpers import parse_byte_range, valid_run_id
+from bajutsu.serve.helpers import range_reply, valid_run_id
 from bajutsu.serve.state import ServeState
 from bajutsu.serve.uploads import MAX_UPLOAD_BYTES, BoundedZipReceiver, UploadTooLarge
 
@@ -590,22 +590,14 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
                 self.end_headers()
                 return
             data = art.body or b""
-            try:
-                byte_range = parse_byte_range(self.headers.get("Range"), len(data))
-            except ValueError:
-                self.send_response(416)
-                self.send_header("Content-Range", f"bytes */{len(data)}")
-                self.end_headers()
-                return
-            chunk = data[byte_range[0] : byte_range[1] + 1] if byte_range is not None else data
-            self.send_response(206 if byte_range is not None else 200)
-            self.send_header("Content-Type", art.content_type)
-            self.send_header("Accept-Ranges", "bytes")
-            if byte_range is not None:
-                start, end = byte_range
-                self.send_header("Content-Range", f"bytes {start}-{end}/{len(data)}")
-            if filename is not None:
-                self.send_header("Content-Disposition", f'attachment; filename="{filename}"')
+            status, chunk, headers = range_reply(data, self.headers.get("Range"))
+            self.send_response(status)
+            if status != 416:
+                self.send_header("Content-Type", art.content_type)
+                if filename is not None:
+                    self.send_header("Content-Disposition", f'attachment; filename="{filename}"')
+            for name, value in headers.items():
+                self.send_header(name, value)
             self.send_header("Content-Length", str(len(chunk)))
             self.end_headers()
             self.wfile.write(chunk)

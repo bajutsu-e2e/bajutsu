@@ -40,7 +40,7 @@ def mask_secret(value: str) -> str:
     return f"{value[:4]}…{value[-4:]}"
 
 
-_RANGE_RE = re.compile(r"bytes=(\d*)-(\d*)")
+_RANGE_RE = re.compile(r"bytes=([0-9]*)-([0-9]*)")
 
 
 def parse_byte_range(range_header: str | None, total: int) -> tuple[int, int] | None:
@@ -73,6 +73,21 @@ def parse_byte_range(range_header: str | None, total: int) -> tuple[int, int] | 
     if start > end or start >= total:
         raise ValueError("range not satisfiable")
     return start, min(end, total - 1)
+
+
+def range_reply(data: bytes, range_header: str | None) -> tuple[int, bytes, dict[str, str]]:
+    """The status/body/headers for serving *data* against an incoming ``Range`` header — the one
+    206/416/200 reply shape both serve backends (the stdlib handler and the FastAPI app) emit for a
+    report's `<video>` Range request, so a future header change can't drift between the two."""
+    try:
+        byte_range = parse_byte_range(range_header, len(data))
+    except ValueError:
+        return 416, b"", {"Content-Range": f"bytes */{len(data)}"}
+    if byte_range is None:
+        return 200, data, {"Accept-Ranges": "bytes"}
+    start, end = byte_range
+    headers = {"Accept-Ranges": "bytes", "Content-Range": f"bytes {start}-{end}/{len(data)}"}
+    return 206, data[start : end + 1], headers
 
 
 # --- query helpers ---
