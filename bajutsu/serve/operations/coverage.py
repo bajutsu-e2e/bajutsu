@@ -10,13 +10,105 @@ deterministic, AI-free: every figure is a count over declared namespaces and `ne
 from __future__ import annotations
 
 import dataclasses
+import json
+from collections.abc import Iterator
 from typing import Any
 
 from bajutsu import coverage as _coverage
 from bajutsu.config import load_config, resolve
+from bajutsu.network import NetworkExchange
 from bajutsu.scenario import load_scenarios_dir
+from bajutsu.serve.artifacts import ArtifactStore
 from bajutsu.serve.helpers import valid_run_id
+from bajutsu.serve.operations.reads import run_set_manifests
 from bajutsu.serve.state import ServeState, _scenarios_dir_for
+
+
+def _artifact_paths(manifests: list[dict[str, Any]], kind: str) -> Iterator[str]:
+    """Every run-relative artifact path of *kind* referenced by *manifests* (BE-0258).
+
+    Each parsed ``manifest.json`` carries its own ``runId`` (`bajutsu.report.manifest.manifest_dict`)
+    alongside its per-scenario ``artifacts`` (scenario-level, e.g. ``network``) and per-step
+    ``steps[].artifacts`` (e.g. ``elements``) entries, whose ``name`` is relative to the *run* —
+    the writers (`bajutsu.runner.pipeline`, `bajutsu.evidence`) stamp it with the scenario's ``sid``
+    (and, for a step artifact, the step id) at write time. Prefixing with the manifest's own
+    ``runId`` gives the same path `bajutsu.coverage._evidence_files` globs for, with no store-side
+    glob/list primitive needed.
+    """
+
+    def matching(run_id: str, items: Any) -> Iterator[str]:
+        for artifact in items or []:
+            if isinstance(artifact, dict) and artifact.get("kind") == kind:
+                name = artifact.get("name")
+                if isinstance(name, str) and name:
+                    yield f"{run_id}/{name}"
+
+    for manifest in manifests:
+        run_id = manifest.get("runId")
+        if not isinstance(run_id, str) or not valid_run_id(run_id):
+            continue
+        for scenario in manifest.get("scenarios") or []:
+            if not isinstance(scenario, dict):
+                continue
+            yield from matching(run_id, scenario.get("artifacts"))
+            for step in scenario.get("steps") or []:
+                if isinstance(step, dict):
+                    yield from matching(run_id, step.get("artifacts"))
+
+
+def _read_json_lists(
+    store: ArtifactStore, manifests: list[dict[str, Any]], kind: str
+) -> Iterator[list[Any]]:
+    """Each artifact of *kind* in *manifests*, read through *store* and parsed as a JSON list.
+
+    Shared by `read_exchanges_via_store`/`read_observed_ids_via_store`: an artifact that can't be
+    fetched, or doesn't parse to a JSON list, is skipped — the same "skip what can't be read"
+    discipline `bajutsu.coverage.read_exchanges`/`read_observed_ids` apply to a local `runs_dir`.
+    """
+    for rel in _artifact_paths(manifests, kind):
+        try:
+            raw = store.open_bytes(rel)
+        except OSError:
+            continue  # a race (trashed/purged mid-read) or a transient store error — skip, not fatal
+        if raw is None:
+            continue
+        try:
+            data = json.loads(raw)
+        except ValueError:
+            continue
+        if isinstance(data, list):
+            yield data
+
+
+def read_exchanges_via_store(
+    store: ArtifactStore, manifests: list[dict[str, Any]]
+) -> list[NetworkExchange]:
+    """`bajutsu.coverage.read_exchanges`'s seam-routed counterpart: every network exchange across
+    *manifests* (e.g. from `run_set_manifests`), reading each scenario's ``network.json`` through
+    *store* instead of globbing a local ``runs_dir`` (BE-0258)."""
+    exchanges: list[NetworkExchange] = []
+    for data in _read_json_lists(store, manifests, "network"):
+        try:
+            # Build the batch before extending: a `NetworkExchange` mid-list that fails validation
+            # must drop the *whole* file's batch, not just the entries seen before it — matching
+            # `bajutsu.coverage.read_exchanges`'s "a bad entry never leaves a half-read batch".
+            batch = [NetworkExchange.model_validate(e) for e in data if isinstance(e, dict)]
+        except ValueError:
+            continue
+        exchanges.extend(batch)
+    return exchanges
+
+
+def read_observed_ids_via_store(store: ArtifactStore, manifests: list[dict[str, Any]]) -> list[str]:
+    """`bajutsu.coverage.read_observed_ids`'s seam-routed counterpart: every stable id across
+    *manifests* (e.g. from `run_set_manifests`), reading each step's ``elements.json`` through
+    *store* instead of globbing a local ``runs_dir`` (BE-0258)."""
+    return [
+        e["identifier"]
+        for data in _read_json_lists(store, manifests, "elements")
+        for e in data
+        if isinstance(e, dict) and isinstance(e.get("identifier"), str) and e["identifier"]
+    ]
 
 
 def coverage_view(
@@ -64,11 +156,13 @@ def coverage_view(
     endpoints = None
     observed = None
     if runs:
+        artifacts = state.for_org(state.org_of(actor)).artifacts
+        manifests = run_set_manifests(artifacts, runs)
         endpoints = _coverage.endpoint_coverage(
-            scenarios, _coverage.read_exchanges(state.runs_dir, run_ids=runs)
+            scenarios, read_exchanges_via_store(artifacts, manifests)
         )
         observed = _coverage.observed_id_coverage(
-            _coverage.read_observed_ids(state.runs_dir, run_ids=runs), eff.id_namespaces
+            read_observed_ids_via_store(artifacts, manifests), eff.id_namespaces
         )
 
     payload: dict[str, Any] = {"target": target, "static": dataclasses.asdict(static)}

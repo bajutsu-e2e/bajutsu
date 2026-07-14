@@ -64,6 +64,10 @@ class ObjectStorageArtifactStore:
         key = self._key(rel)
         return self._store.get_bytes(key) if key is not None else None
 
+    def exists(self, rel: str) -> bool:
+        key = self._key(rel)
+        return key is not None and self._store.exists(key)
+
     def render_report(self, run_id: str) -> Artifact | None:
         # Render-on-view (BE-0068) is a filesystem path for now: it loads the run dir's model with
         # the local renderer. The object store keeps the run in storage, not on disk, so serve the

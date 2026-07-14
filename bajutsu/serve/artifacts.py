@@ -49,6 +49,13 @@ class ArtifactStore(Protocol):
     def open_bytes(self, rel: str) -> bytes | None:
         """Raw bytes for run-relative path *rel* (e.g. a visual baseline), or None."""
 
+    def exists(self, rel: str) -> bool:
+        """Whether run-relative path *rel* is present (and doesn't escape the run tree).
+
+        A HEAD-style probe for callers that only need to decide whether to link to an artifact
+        (e.g. an editor's per-step ``elementsUrl``/``screenshotUrl``), not read its bytes — cheap
+        on both backends, unlike keying off `get`/`open_bytes` returning non-None."""
+
     def list_runs(self) -> list[dict[str, Any]]:
         """Past runs, newest first, each summarized for the history list."""
 
@@ -121,6 +128,9 @@ class LocalArtifactStore:
     def open_bytes(self, rel: str) -> bytes | None:
         target = self._confined(rel)
         return target.read_bytes() if target is not None else None
+
+    def exists(self, rel: str) -> bool:
+        return self._confined(rel) is not None
 
     def get(self, rel: str) -> Artifact | None:
         target = self._confined(rel)
