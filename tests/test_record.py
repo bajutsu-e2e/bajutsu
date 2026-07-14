@@ -2,9 +2,6 @@
 
 from __future__ import annotations
 
-import logging
-from pathlib import Path
-
 import pytest
 from conftest import ShotDriver
 
@@ -14,13 +11,12 @@ from bajutsu.drivers.fake import FakeDriver
 from bajutsu.elements import shows_app_ui
 from bajutsu.handoff import HandoffRequest, HandoffResponse, HumanHandoffUnavailable
 from bajutsu.record import (
-    _execute,
     _format_elapsed,
     _is_looping,
-    _screenshot_bytes,
     _should_attach,
     _summarize_screen,
     _tokenize_secrets,
+    execute,
     record,
 )
 from bajutsu.scenario import Assertion, Step, dump_scenarios, load_scenarios
@@ -562,7 +558,7 @@ def test_execute_ignores_a_wait_failure_by_default() -> None:
     driver = FakeDriver([_el("a", "A")])  # target never appears
     step = Step.model_validate({"wait": {"for": {"id": "missing"}, "timeout": 0.1}})
 
-    _execute(driver, step, _AdvancingClock())  # must not raise
+    execute(driver, step, _AdvancingClock())  # must not raise
 
 
 def test_execute_invokes_the_wait_failure_hook_with_the_reason() -> None:
@@ -571,7 +567,7 @@ def test_execute_invokes_the_wait_failure_hook_with_the_reason() -> None:
     step = Step.model_validate({"wait": {"for": {"id": "missing"}, "timeout": 0.1}})
 
     seen: list[str] = []
-    _execute(driver, step, _AdvancingClock(), on_wait_failure=seen.append)
+    execute(driver, step, _AdvancingClock(), on_wait_failure=seen.append)
 
     assert seen and "timeout" in seen[0].lower()
 
@@ -586,7 +582,7 @@ def test_execute_does_not_call_the_hook_when_the_wait_succeeds() -> None:
     def hook(_reason: str) -> None:
         called["n"] += 1
 
-    _execute(driver, step, _AdvancingClock(), on_wait_failure=hook)
+    execute(driver, step, _AdvancingClock(), on_wait_failure=hook)
 
     assert called["n"] == 0
 
@@ -792,45 +788,6 @@ def test_tokenize_secrets_does_not_corrupt_an_already_inserted_token() -> None:
     tokenized, substituted = _tokenize_secrets(step, tokens)
     assert tokenized.type is not None and tokenized.type.text == "${secrets.X}"
     assert substituted == ["${secrets.X}"]
-
-
-# --- _screenshot_bytes (the unified best-effort capture helper, BE-0132) ---
-
-
-class _RaisingShotDriver(FakeDriver):
-    """A FakeDriver whose screenshot fails — the stale-simulator / full-disk case."""
-
-    attempted_path: str | None = None
-
-    def screenshot(self, path: str) -> None:
-        self.attempted_path = path  # record it so the test can assert the temp file was cleaned up
-        raise RuntimeError("simulator gone")
-
-
-def test_screenshot_bytes_returns_captured_png() -> None:
-    assert _screenshot_bytes(ShotDriver([_el("go", "Go")])) == b"\x89PNG\r\n\x1a\n fake"
-
-
-def test_screenshot_bytes_none_when_nothing_captured(caplog: pytest.LogCaptureFixture) -> None:
-    # The base FakeDriver writes no bytes: a genuine empty capture, not a failure — so it
-    # returns None without logging a warning (the empty case must stay distinct from failure).
-    with caplog.at_level(logging.WARNING, logger="bajutsu.record"):
-        assert _screenshot_bytes(FakeDriver([_el("go", "Go")])) is None
-    assert not caplog.records
-
-
-def test_screenshot_bytes_surfaces_failure_instead_of_swallowing(
-    caplog: pytest.LogCaptureFixture,
-) -> None:
-    # A real capture failure must not be indistinguishable from an empty capture: it returns
-    # None (best-effort, callers continue) but leaves a warning in the log so it is visible.
-    driver = _RaisingShotDriver([_el("go", "Go")])
-    with caplog.at_level(logging.WARNING, logger="bajutsu.record"):
-        assert _screenshot_bytes(driver) is None
-    assert any(r.levelno == logging.WARNING for r in caplog.records)
-    assert "simulator gone" in caplog.text
-    # The temp file is cleaned up even on failure, so repeated failures don't leak PNGs.
-    assert driver.attempted_path is not None and not Path(driver.attempted_path).exists()
 
 
 # --- multi-action batch turns (BE-0178) ---

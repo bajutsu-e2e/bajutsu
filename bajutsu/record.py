@@ -8,10 +8,8 @@ scenario that `run` later replays with no AI.
 from __future__ import annotations
 
 import logging
-import tempfile
 import time
 from collections.abc import Callable
-from pathlib import Path
 
 from bajutsu import usage as _usage
 from bajutsu.agent_protocols import Agent, Observation, Proposal
@@ -21,17 +19,12 @@ from bajutsu.elements import shows_app_ui
 from bajutsu.handoff import Handoff, HandoffRequest, HumanHandoffUnavailable
 from bajutsu.orchestrator import BlockedHandler, Clock, RealClock, _action_of, _do_action, _wait
 from bajutsu.scenario import Assertion, Scenario, Selector, Step
+from bajutsu.screenshots import screenshot_bytes
 
 _logger = logging.getLogger(__name__)
 
 # A live-progress sink: each turn's decision is handed to it as a one-line string.
 Reporter = Callable[[str], None]
-
-# The long-edge cap for the authoring screenshot (BE-0193). Anthropic bills an image by its pixel
-# dimensions and derives no benefit above ~1568px on the long edge, so a full-resolution Simulator
-# capture pays for pixels the model discards. A global constant, not a `targets.<name>` knob: the
-# right resolution is a property of the model's image handling, not of the app under test.
-MAX_IMAGE_LONG_EDGE = 1568
 
 
 def _format_elapsed(seconds: float) -> str:
@@ -72,7 +65,7 @@ def _summarize_screen(elements: list[base.Element]) -> str:
     return f"{len(elements)} element(s) on screen{listed}"
 
 
-def _describe_step(step: Step) -> str:
+def describe_step(step: Step) -> str:
     """A one-line summary of a proposed step, for live record output."""
     if step.tap is not None:
         return f"tap {_describe_selector(step.tap)}"
@@ -148,53 +141,6 @@ def _tokenize_secrets(step: Step, secret_tokens: list[tuple[str, str]]) -> tuple
     ), substituted
 
 
-def _downscaled(data: bytes) -> bytes:
-    """Right-size the captured PNG to `MAX_IMAGE_LONG_EDGE` before it reaches the model (BE-0193).
-
-    Applied here, on the shared authoring capture path, so every backend (iOS and web) hands the
-    model the same bounded image and the vendor-neutral adapter stays a pure translator (BE-0104).
-    Pillow lives in the `visual` extra, which `record` does not require; without it the full-
-    resolution bytes pass through unchanged (the screenshot is best-effort either way) and the
-    provider's own server-side downscale still bounds the cost. The downscale is an optimization,
-    not a correctness requirement: a capture Pillow cannot decode is sent as-is rather than dropped.
-    """
-    try:
-        from bajutsu.visual import downscale_png
-
-        return downscale_png(data, MAX_IMAGE_LONG_EDGE)
-    except ImportError:
-        _logger.debug("Pillow not installed; sending the screenshot at full resolution")
-        return data
-    except Exception as exc:
-        _logger.debug("screenshot downscale skipped (%s); sending at full resolution", exc)
-        return data
-
-
-def _screenshot_bytes(driver: base.Driver) -> bytes | None:
-    """Capture a PNG of the current screen as bytes (best-effort).
-
-    Returns None on both a genuinely empty capture and a failure — callers treat the
-    screenshot as optional and continue either way — but logs a warning when the capture
-    *fails* (a stale simulator, a permissions error, a full disk), so a real failure stays
-    distinguishable from "there was nothing to capture" instead of vanishing into None.
-    """
-    path: str | None = None
-    try:
-        with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
-            path = tmp.name
-        driver.screenshot(path)
-        data = Path(path).read_bytes() or None
-        return _downscaled(data) if data is not None else None
-    except Exception as exc:
-        _logger.warning("screenshot capture failed: %s", exc, exc_info=True)
-        return None
-    finally:
-        # Clean up on both paths: on a capture failure the temp file is already created
-        # (delete=False), so without this a repeated failure leaks PNGs into the temp dir.
-        if path is not None:
-            Path(path).unlink(missing_ok=True)
-
-
 def _should_attach(current: str, previous: str | None) -> bool:
     """Whether this turn's observation should carry a screenshot (BE-0192, vision-on-demand).
 
@@ -248,7 +194,7 @@ def _settle_target(assertion: Assertion) -> base.Selector | None:
     return None  # notExists / count: no single element to wait for
 
 
-def _settle_step(expect: list[Assertion], timeout: float = 5.0) -> Step | None:
+def settle_step(expect: list[Assertion], timeout: float = 5.0) -> Step | None:
     """A wait for the first asserted element, recorded before the assertions.
 
     The agent observes a settled screen between turns, but deterministic replay runs
@@ -263,7 +209,7 @@ def _settle_step(expect: list[Assertion], timeout: float = 5.0) -> Step | None:
     return None
 
 
-def _execute(
+def execute(
     driver: base.Driver,
     step: Step,
     clock: Clock,
@@ -288,7 +234,7 @@ def _execute(
         _do_action(driver, step)
 
 
-def _clear_blocking(
+def clear_blocking(
     driver: base.Driver,
     guard: BlockedHandler,
     clock: Clock,
@@ -338,7 +284,7 @@ def _execute_with_recovery(
 ) -> bool:
     """Execute a step; if it fails because a prompt is covering the app, clear it and retry."""
     try:
-        _execute(driver, step, clock)
+        execute(driver, step, clock)
         return True
     except base.SelectorError:
         if guard is None:
@@ -346,9 +292,9 @@ def _execute_with_recovery(
         (report or (lambda _m: None))(
             "⚠️  a step could not act — a system prompt may be covering the app; recovering …"
         )
-        _clear_blocking(driver, guard, clock, report=report)
+        clear_blocking(driver, guard, clock, report=report)
         try:
-            _execute(driver, step, clock)
+            execute(driver, step, clock)
             return True
         except base.SelectorError:
             return False
@@ -440,7 +386,7 @@ def record(
             upcoming = min(plan_cursor, len(plan) - 1)
             say(f"[{n}] ⏭️  next — plan {upcoming + 1}/{len(plan)}: {plan[upcoming]}")
         if alert_guard is not None:
-            _clear_blocking(driver, alert_guard, clock, report=report)
+            clear_blocking(driver, alert_guard, clock, report=report)
         elements = driver.query()
         if alert_guard is not None and not shows_app_ui(elements):
             # A prompt slipped in after the last clear: don't ask the agent to act on a
@@ -455,7 +401,7 @@ def record(
         current_screen = screen_identity(elements)
         attach = with_screenshot and _should_attach(current_screen, prev_screen)
         prev_screen = current_screen
-        screenshot = _screenshot_bytes(driver) if attach else None
+        screenshot = screenshot_bytes(driver) if attach else None
         proposal = _ask_agent(
             agent,
             Observation(
@@ -478,7 +424,7 @@ def record(
             say(
                 f"[{n}] \U0001f441️  the agent asked to see the screen; re-observing with a screenshot"
             )
-            screenshot = _screenshot_bytes(driver)
+            screenshot = screenshot_bytes(driver)
             proposal = _ask_agent(
                 agent,
                 Observation(
@@ -514,7 +460,7 @@ def record(
                 HandoffRequest(
                     reason=reason,
                     screen=_summarize_screen(elements),
-                    target=_describe_step(proposal.step) if proposal.step is not None else "",
+                    target=describe_step(proposal.step) if proposal.step is not None else "",
                     screenshot=screenshot,
                 )
             )
@@ -555,7 +501,7 @@ def record(
             # scenario nor the live stream ever carries the literal (BE-0120) — but execute the
             # agent's unmodified step, since the app needs the real value to reach its screen.
             recorded_step, tokenized = _tokenize_secrets(proposed, secret_tokens or [])
-            say(f"{lead}{_describe_step(recorded_step)}")
+            say(f"{lead}{describe_step(recorded_step)}")
             if tokenized:
                 say(f"[{m}] \U0001f512 tokenized secret in typed text → {', '.join(tokenized)}")
             if not _execute_with_recovery(driver, proposed, clock, alert_guard, report=report):
@@ -570,7 +516,7 @@ def record(
                     rebatch = True
                 break
             steps.append(recorded_step)
-            if _is_looping([_describe_step(s) for s in steps]):
+            if _is_looping([describe_step(s) for s in steps]):
                 say(
                     f"[{m}] ⟳ the agent is repeating actions without progress; stopping "
                     "(refine the goal, or the app may need accessibility ids for this control)"
@@ -605,7 +551,7 @@ def record(
             )
             say(f"{fin}✓ finish · {len(proposal.expect)} assertion(s)")
             expect = proposal.expect
-            settle = _settle_step(expect)
+            settle = settle_step(expect)
             if settle is not None:
                 steps.append(settle)  # let an async screen render before replay verifies
             break

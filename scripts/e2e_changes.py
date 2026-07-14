@@ -50,7 +50,7 @@ _RELEVANT = re.compile(
     r"_yaml|adb|agent_protocols|artifact_perms|assertions|backends|capabilities|capability_preflight"
     r"|config|config_source|device_id|dom|dotenv|elements|evidence|golden"
     r"|handoff|idb_version|interp|intervals|mailbox|network|platform_lifecycle|record"
-    r"|redaction|run_id|simctl|totp|visual|web_network|webview"
+    r"|redaction|run_id|screenshots|simctl|totp|visual|web_network|webview"
     r")\.py$"
     # The crawl engine core, its (de)serialization sibling, and the package re-export (record
     # imports `screen_identity` through `bajutsu.crawl`, i.e. `__init__`, which unconditionally

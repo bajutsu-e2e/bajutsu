@@ -15,7 +15,7 @@ from pathlib import Path
 import pytest
 from PIL import Image
 
-from bajutsu.record import MAX_IMAGE_LONG_EDGE, _screenshot_bytes
+from bajutsu.screenshots import MAX_IMAGE_LONG_EDGE, screenshot_bytes
 from bajutsu.visual import downscale_png
 
 
@@ -99,7 +99,7 @@ def test_non_positive_cap_is_rejected() -> None:
 class _ScreenshotDriver:
     """A minimal driver stand-in that writes an oversized PNG when asked to screenshot.
 
-    ``_screenshot_bytes`` only calls ``driver.screenshot(path)``, so the authoring capture path
+    ``screenshot_bytes`` only calls ``driver.screenshot(path)``, so the authoring capture path
     can be exercised end to end without a Simulator.
     """
 
@@ -112,7 +112,7 @@ class _ScreenshotDriver:
 
 def test_authoring_capture_respects_the_cap() -> None:
     driver = _ScreenshotDriver(_png(3000, 2000))
-    out = _screenshot_bytes(driver)  # type: ignore[arg-type]
+    out = screenshot_bytes(driver)  # type: ignore[arg-type]
     assert out is not None
     w, h = _size(out)
     assert max(w, h) == MAX_IMAGE_LONG_EDGE

@@ -94,7 +94,7 @@ def _resolve_alert(inp: dict[str, object]) -> FakeBackend:
 
 
 def _png(width: int, height: int) -> bytes:
-    """A minimal PNG whose IHDR advertises the given pixel size (enough for _png_size)."""
+    """A minimal PNG whose IHDR advertises the given pixel size (enough for png_size)."""
     ihdr = struct.pack(">II", width, height) + b"\x08\x06\x00\x00\x00"
     return b"\x89PNG\r\n\x1a\n" + struct.pack(">I", 13) + b"IHDR" + ihdr
 

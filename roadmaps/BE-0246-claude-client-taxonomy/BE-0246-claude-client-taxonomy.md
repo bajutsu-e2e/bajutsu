@@ -7,9 +7,9 @@
 |---|---|
 | Proposal | [BE-0246](BE-0246-claude-client-taxonomy.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **In progress** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0246") |
-| Implementing PR | [#1012](https://github.com/bajutsu-e2e/bajutsu/pull/1012), [#1030](https://github.com/bajutsu-e2e/bajutsu/pull/1030), [#1041](https://github.com/bajutsu-e2e/bajutsu/pull/1041) |
+| Implementing PR | [#1012](https://github.com/bajutsu-e2e/bajutsu/pull/1012), [#1030](https://github.com/bajutsu-e2e/bajutsu/pull/1030), [#1041](https://github.com/bajutsu-e2e/bajutsu/pull/1041), [#1056](https://github.com/bajutsu-e2e/bajutsu/pull/1056) |
 | Topic | Codebase quality & technical debt |
 <!-- /BE-METADATA -->
 
@@ -214,9 +214,12 @@ code lives and what it's called.
       compact)` (used by all five call sites). The `ADDRESSING_RULES` fragment named in the design
       turned out to appear only once (`crawl_guide`), so it was left in place rather than invented as
       a shared constant
-- [ ] Promote the cross-module `record.py` / `alerts.py` private helpers
+- [x] Promote the cross-module `record.py` / `alerts.py` private helpers
       (`_screenshot_bytes`, `_describe_step`, `_settle_step`, `_clear_blocking`, `_execute`,
-      `_png_size`, `_fraction`) to a public module
+      `_png_size`, `_fraction`) to a public module — the three image helpers moved to a new
+      `bajutsu/screenshots.py` (`screenshot_bytes`, `png_size`, `fraction`); the four
+      recording-flow helpers kept in `record.py` with the underscore dropped
+      (`describe_step`, `settle_step`, `execute`, `clear_blocking`)
 
 **Log**
 
@@ -252,6 +255,21 @@ code lives and what it's called.
   BE-0194 large-screen cap around it. The `ADDRESSING_RULES` fragment the design imagined proved to
   appear only once, so it was left in place. Behavior-preserving on the AI paths; nothing reaches the
   `run` / CI verdict. The existing per-module suites plus a new `tests/ai/test_prompts.py` are the
+  regression net.
+- [#1056](https://github.com/bajutsu-e2e/bajutsu/pull/1056) — Unit 6 (final; flips the item to
+  Implemented): promoted the cross-module private helpers whose names misrepresented the public
+  surface. Moved the three image helpers into a new `bajutsu/screenshots.py` — `screenshot_bytes`
+  (was `record._screenshot_bytes`, carried over with its `MAX_IMAGE_LONG_EDGE` / `_downscaled`
+  cluster to avoid a circular import), `png_size` and `fraction` (were `alerts._png_size` /
+  `._fraction`) — and dropped the underscore from the four recording-flow helpers kept in
+  `record.py` (`describe_step`, `settle_step`, `execute`, `clear_blocking`). Updated every
+  cross-module import (`alerts`, `enrich`, `claude_enrich_agent`, `crawl_guide`, `crawl_tabs`,
+  `cli/commands/crawl`), aliasing the record helper to `clear_blocking_overlay` in `crawl.py`
+  where a local seam already owns the name `clear_blocking`. Helpers with no cross-module caller
+  (e.g. `record._downscaled`) stayed private. Also updated the docstring-lint path list, the
+  E2E-relevance allowlist, the periphery-independence import-linter contract, and the recording
+  docs in both languages. Behavior-preserving on the AI paths; nothing reaches the `run` / CI
+  verdict. The existing per-module suites plus a new `tests/test_screenshots.py` are the
   regression net.
 
 ## References

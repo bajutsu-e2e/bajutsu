@@ -35,8 +35,8 @@ from bajutsu.claude_backed_agent import ClaudeBackedAgent
 from bajutsu.crawl import core as crawl
 from bajutsu.crawl import tabs as crawl_tabs
 from bajutsu.drivers import base
-from bajutsu.record import _screenshot_bytes
 from bajutsu.redaction import Redactor
+from bajutsu.screenshots import screenshot_bytes
 
 MODEL = "claude-opus-4-8"
 
@@ -94,7 +94,7 @@ def ai_guide(
     ) -> list[crawl.Action]:
         if report is not None:
             report("📸 capturing the current screen…")
-        shot = _screenshot_bytes(driver)
+        shot = screenshot_bytes(driver)
         candidates = crawl.candidate_actions(elements)  # deterministic inspection, fed to the AI
         tabs = _locate_tabs(tab_locator, elements, shot, report)
         if report is not None and context.dismissed:
