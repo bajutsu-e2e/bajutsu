@@ -225,7 +225,14 @@ def artifact_exists(
         except Exception:  # a transient store error reads as "not confirmed present", not a crash
             exists = False
     else:
-        exists = (local_artifact_dir(_artifacts_dir(state), org, kind) / sha256).exists()
+        artifacts_root = _artifacts_dir(state)
+        candidate = local_artifact_dir(artifacts_root, org, kind) / sha256
+        # Belt-and-suspenders on top of the allowlist/regex checks above: confine the resolved path
+        # to the artifacts cache root before ever touching the filesystem (same invariant
+        # `config_source.py`'s Git cache resolution enforces on a spec-derived path).
+        if not candidate.resolve().is_relative_to(artifacts_root.resolve()):
+            return {"error": "artifact path resolves outside the cache"}, 400
+        exists = candidate.exists()
     return {"exists": exists}, 200
 
 
