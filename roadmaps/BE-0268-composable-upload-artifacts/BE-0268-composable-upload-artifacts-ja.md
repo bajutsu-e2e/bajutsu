@@ -1,14 +1,14 @@
-[English](BE-XXXX-composable-upload-artifacts.md) · **日本語**
+[English](BE-0268-composable-upload-artifacts.md) · **日本語**
 
-# BE-XXXX — config・シナリオ・アプリバイナリを独立した content-addressed な成果物として個別にアップロードし run ごとに合成する
+# BE-0268 — config・シナリオ・アプリバイナリを独立した content-addressed な成果物として個別にアップロードし run ごとに合成する
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
 |---|---|
-| 提案 | [BE-XXXX](BE-XXXX-composable-upload-artifacts-ja.md) |
+| 提案 | [BE-0268](BE-0268-composable-upload-artifacts-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **提案** |
-| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0268") |
 | トピック | config の取得元 |
 | 関連 | [BE-0073](../BE-0073-serve-zip-bundle-upload/BE-0073-serve-zip-bundle-upload-ja.md), [BE-0243](../BE-0243-upload-bundle-durable-storage/BE-0243-upload-bundle-durable-storage-ja.md), [BE-0225](../BE-0225-config-project-hub/BE-0225-config-project-hub-ja.md) |
 <!-- /BE-METADATA -->

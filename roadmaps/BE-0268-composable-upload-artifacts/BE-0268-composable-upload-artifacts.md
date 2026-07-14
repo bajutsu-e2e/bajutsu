@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-composable-upload-artifacts-ja.md)
+**English** · [日本語](BE-0268-composable-upload-artifacts-ja.md)
 
-# BE-XXXX — Upload config, scenarios, and app binary as independent content-addressed artifacts composed per run
+# BE-0268 — Upload config, scenarios, and app binary as independent content-addressed artifacts composed per run
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-composable-upload-artifacts.md) |
+| Proposal | [BE-0268](BE-0268-composable-upload-artifacts.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0268") |
 | Topic | Configuration sourcing |
 | Related | [BE-0073](../BE-0073-serve-zip-bundle-upload/BE-0073-serve-zip-bundle-upload.md), [BE-0243](../BE-0243-upload-bundle-durable-storage/BE-0243-upload-bundle-durable-storage.md), [BE-0225](../BE-0225-config-project-hub/BE-0225-config-project-hub.md) |
 <!-- /BE-METADATA -->

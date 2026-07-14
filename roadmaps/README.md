@@ -590,7 +590,9 @@ Running a scenario on a hosted device farm instead of a local Simulator, emulato
 ### Configuration sourcing
 
 <!-- GENERATED:proposals-config-sourcing -->
-
+| ID | Item | Status |
+|---|---|---|
+| [BE-0268](BE-0268-composable-upload-artifacts/BE-0268-composable-upload-artifacts.md) | Upload config, scenarios, and app binary as independent content-addressed artifacts composed per run | Proposal |
 <!-- /GENERATED:proposals-config-sourcing -->
 
 ### Development infrastructure (contributor workflow)
