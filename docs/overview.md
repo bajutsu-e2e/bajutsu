@@ -54,6 +54,7 @@ view of the same system — is in [architecture](architecture.md).
 | 18 | [vision](vision.md) | The three axes of growth (reach / scale / authoring) — how far each has already gotten, and the constraints all of them respect; reach's platform-portability design (selectors, id conventions, phasing) lives in its own section |
 | 19 | [ai-development](ai-development.md) | Working agreement for AI agents + humans in parallel (the gate, branches, pre-push hook, worktrees) — the long form of [`CLAUDE.md`](../CLAUDE.md) |
 | 20 | [roadmap-workflow](roadmap-workflow.md) | The **ideation → implementation cycle**: the `ideation` skill authors a BE proposal, the `implement-be` skill ships it (placeholder IDs, the Proposal → Implemented lifecycle) |
+| 21 | [contributor-workflow-tutorial](contributor-workflow-tutorial.md) | **Hands-on** walkthrough of that cycle: one idea from `/ideation` to a merged proposal, then `/implement-be` to a merged PR, with a worked good-vs-bad proposal example and when to use `propose-and-build` |
 
 ## Quick start
 

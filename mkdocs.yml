@@ -123,6 +123,7 @@ plugins:
             Configuration: 設定
             Self-hosting: セルフホスティング
             AI development: AI 開発
+            Contributor workflow tutorial: コントリビューターワークフローチュートリアル
             API reference: API リファレンス
             Scenario schema: シナリオスキーマ
             Driver & selectors: ドライバとセレクタ
@@ -192,6 +193,7 @@ nav:
       - Self-hosting: self-hosting.md
       - AI development: ai-development.md
       - Roadmap workflow: roadmap-workflow.md
+      - Contributor workflow tutorial: contributor-workflow-tutorial.md
   - API reference:
       - Overview: api/index.md
       - Configuration: api/config.md

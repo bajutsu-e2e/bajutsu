@@ -7,8 +7,11 @@ AI エージェントの双方が従う詳しい作業協定は [`CLAUDE.md`](CL
 [`docs/ai-development.md`](docs/ai-development.md) にあります。このページは内容を再掲せずそちらへ
 案内する役割に徹し、二つの記述が食い違わないようにしています。
 
-はじめての方は、Bajutsu が何かを知るために [`README.ja.md`](README.ja.md) を、実際に手を動かす
-入門として [getting-started チュートリアル](docs/ja/getting-started/index.md) をご覧ください。
+はじめての方は、Bajutsu が何かを知るために [`README.ja.md`](README.ja.md) を、Bajutsu を *動かす*
+入門として [getting-started チュートリアル](docs/ja/getting-started/index.md) をご覧ください。最初の変更に
+取りかかる準備ができたら、[コントリビューターワークフローチュートリアル](docs/ja/contributor-workflow-tutorial.md)
+が、一つのアイデアを `/ideation` からマージ済みの提案へ、さらに `/implement-be` からマージ済みの PR へと
+辿ります。下のリファレンスに進む前に、そこから始めてください。
 
 ## 開発環境のセットアップ
 

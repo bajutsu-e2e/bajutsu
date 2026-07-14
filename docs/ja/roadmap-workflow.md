@@ -9,6 +9,10 @@
 > その循環を説明します。前提となる BE ID の仕組みは
 > [ai-development](ai-development.md#ロードマップ項目-be-id厳守) が規定します。
 
+> **貢献が初めての方は、[コントリビューターワークフローチュートリアル](contributor-workflow-tutorial.md)から
+> 始めてください。** 一つのアイデアをこの循環全体に通す、手を動かしながらの段階的な walkthrough です
+> （`propose-and-build` で畳むときも示します）。このページは、その背後にある考え方の概観です。
+
 Bajutsu のロードマップは、ざっと眺めて通り過ぎるバックログではありません。テストにとってシナリオ YAML が
 共有ハブであるのと同じように、ロードマップは計画の **共有ハブ** です。機能はまず BE（*Bajutsu Evolution*）
 項目として [`roadmaps/`](../../roadmaps/README-ja.md) の下に書き留められ、提案として議論され洗練されてから、
