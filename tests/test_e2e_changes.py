@@ -1,6 +1,6 @@
-"""Tests for scripts/e2e_changes.py — the E2E relevance filter (e2e.yml's `changes` job).
+"""Tests for scripts/e2e_changes.py — the E2E relevance filter (ios-e2e.yml's `changes` job).
 
-The on-device macOS jobs bill at 10x, so e2e.yml only fires them when a PR touches what they
+The on-device macOS jobs bill at 10x, so ios-e2e.yml only fires them when a PR touches what they
 exercise. These tests pin the two pieces: the pure positive-list (`is_relevant`) and — the
 regression this script exists for — that `changed_files` uses a merge-base (three-dot) diff, so a
 PR whose base branch has moved on isn't charged for files it never touched.
@@ -123,8 +123,14 @@ def test_conformance_suite_is_relevant_but_other_tests_are_not() -> None:
 
 
 def test_only_e2e_workflow_is_relevant() -> None:
-    assert is_relevant([".github/workflows/e2e.yml"]) is True
+    assert is_relevant([".github/workflows/ios-e2e.yml"]) is True
     assert is_relevant([".github/workflows/ci.yml"]) is False
+
+
+def test_showcase_makefile_is_relevant_but_root_makefile_path_form_matters() -> None:
+    # The showcase's own Makefile drives the `visual` job's `e2e-visual` target; the root
+    # `Makefile$` alternative doesn't reach into subdirectories, so it needs its own entry.
+    assert is_relevant(["demos/showcase/Makefile"]) is True
 
 
 def test_any_relevant_path_amid_irrelevant_ones_triggers() -> None:
