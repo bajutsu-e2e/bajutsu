@@ -5,8 +5,8 @@ action proposer, and the tab/alert locators) each held the same backend/config p
 `_backend` / `_ai` / `_redactor` / `_model` attributes, a byte-identical lazy `_ensure_backend`, and
 a `usage.record` call with the same provider/model arguments. This base holds that plumbing once so
 each subclass keeps only what it genuinely adds (a language suffix, an effort, a token cap). It is
-the shared home the pre-BE-0104 `anthropic_client.ensure_client` was meant to be before the neutral
-`AiBackend` seam (BE-0104) changed the shape it wrapped.
+the shared home an earlier module-level client-caching wrapper (BE-0140) was meant to be before the
+neutral `AiBackend` seam (BE-0104) changed the shape it wrapped and BE-0249 removed the wrapper.
 """
 
 from __future__ import annotations

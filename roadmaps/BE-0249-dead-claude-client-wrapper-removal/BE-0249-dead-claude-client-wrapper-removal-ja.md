@@ -7,8 +7,9 @@
 |---|---|
 | 提案 | [BE-0249](BE-0249-dead-claude-client-wrapper-removal-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **提案** |
+| 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0249") |
+| 実装 PR | _pending_ |
 | トピック | コードベース品質・技術的負債 |
 | 関連 | [BE-0104](../BE-0104-vendor-neutral-ai-backend/BE-0104-vendor-neutral-ai-backend-ja.md), [BE-0140](../BE-0140-dedupe-claude-client-init/BE-0140-dedupe-claude-client-init-ja.md), [BE-0246](../BE-0246-claude-client-taxonomy/BE-0246-claude-client-taxonomy-ja.md) |
 <!-- /BE-METADATA -->
@@ -100,10 +101,16 @@
 > 作業分解（作業の単位ごとに 1 つ）に対応し、ログには変更内容と時期（古い順）を PR へのリンクと
 > ともに記録します。
 
-- [ ] `bajutsu/anthropic_client.py` から `ensure_client` を削除する
-- [ ] `bajutsu/anthropic_client.py` から `CachesClient` プロトコルを削除する
-- [ ] `tests/test_anthropic_client.py` の該当テストを削除する
-- [ ] マージ前にリポジトリ全体を grep して、呼び出し元が残っていないことを確認する
+- [x] `bajutsu/anthropic_client.py` から `ensure_client` を削除する
+- [x] `bajutsu/anthropic_client.py` から `CachesClient` プロトコルを削除する
+- [x] `tests/test_anthropic_client.py` の該当テストを削除する
+- [x] マージ前にリポジトリ全体を grep して、呼び出し元が残っていないことを確認する
+
+_ログ:_
+
+- _pending_ — `ensure_client` / `CachesClient` とその該当テストを削除し、使われなくなった
+  `Protocol` の import も外す。あわせて `bajutsu/claude_backed_agent.py` の docstring が名指し
+  していた（もう存在しない）ラッパーへの参照を、実態に合わせて書き換える。
 
 ## 参考
 
