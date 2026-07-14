@@ -225,16 +225,16 @@ def artifact_exists(
         except Exception:  # a transient store error reads as "not confirmed present", not a crash
             exists = False
     else:
-        # Belt-and-suspenders on top of the allowlist/regex checks above: build the candidate off
-        # the resolved (trusted) cache root and confine it there with an is_relative_to barrier
-        # before any filesystem read. Only the root is resolved — resolving the tainted candidate
-        # would itself be a path-expression sink upstream of the barrier; kind/sha256 are already
-        # validated to contain no separator or `..`, so the unresolved join can't escape.
-        artifacts_root = _artifacts_dir(state).resolve()
-        candidate = local_artifact_dir(artifacts_root, org, kind) / sha256
-        if not candidate.is_relative_to(artifacts_root):
-            return {"error": "artifact path resolves outside the cache"}, 400
-        exists = candidate.exists()
+        # No object store: consult the local content-addressed cache. Rather than join the
+        # untrusted *sha256* onto a path and stat it (a filesystem read driven by client input),
+        # list the kind's cache directory — whose path derives only from the allowlisted *kind* —
+        # and test *sha256* as a plain string against the entry names. The sha never reaches a
+        # path expression, and a name with a separator simply matches nothing.
+        cache_dir = local_artifact_dir(_artifacts_dir(state), org, kind)
+        try:
+            exists = sha256 in {entry.name for entry in cache_dir.iterdir()}
+        except OSError:  # cache dir not created yet ⇒ nothing stored for this kind/org
+            exists = False
     return {"exists": exists}, 200
 
 
