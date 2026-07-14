@@ -17,7 +17,7 @@ Bajutsu のロードマップは、ざっと眺めて通り過ぎるバックロ
 
 ## 循環の全体像
 
-![循環図。大まかなアイデアが /ideation に入り、両言語で BE-XXXX 提案を起草する。CI が正式な BE-NNNN の id を採番して Status を Proposal にする。この提案が仕様となり、/implement-be がそれをもとに計画・実装・テストする。レビューとゲートを経て、同じ項目の Status を Implemented に変えるだけで、パスは動かさない。](assets/diagrams/roadmap-workflow-cycle-ja.svg)
+![循環図。大まかなアイデアが /ideation に入り、両言語で BE-XXXX 提案を起草します。CI が正式な BE-NNNN の id を採番して Status を Proposal にします。この提案が仕様となり、/implement-be がそれをもとに計画・実装・テストします。レビューとゲートを経て、同じ項目の Status を Implemented に変えるだけで、パスは動かしません。](assets/diagrams/roadmap-workflow-cycle-ja.svg)
 
 <details>
 <summary>Mermaid ソース</summary>

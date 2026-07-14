@@ -15,7 +15,7 @@
 Tier 1（AI、図では黄）はオーサリングと調査のみを担い、Tier 2（決定的、図では青）は機械アサーションのみで合否を決めます。
 この決定的な中核全体はプラットフォーム非依存で、プラットフォーム固有の継ぎ目は orchestrator が駆動する backend（iOS は idb / XCUITest、Android は adb、web は playwright、… いずれも 1 つの `Driver` インターフェースの背後）だけです。新しいプラットフォームは新しい backend であって、コアの fork ではありません。
 
-![データフロー図。自然言語のゴールまたは人手編集がシナリオ YAML を生成し、Tier 2 の Orchestrator が backend 非依存の Driver API を通じて idb・XCUITest・adb・Playwright のいずれかに対して決定的に実行する。合否は Reporter に渡り、失敗時は triage がシナリオへの修正案を提案する。](assets/diagrams/architecture-data-flow-ja.svg)
+![データフロー図。自然言語のゴールまたは人手編集がシナリオ YAML を生成し、Tier 2 の Orchestrator が backend 非依存の Driver API を通じて idb・XCUITest・adb・Playwright のいずれかに対して決定的に実行します。合否は Reporter に渡り、失敗時は triage がシナリオへの修正案を提案します。](assets/diagrams/architecture-data-flow-ja.svg)
 
 <details>
 <summary>Mermaid ソース</summary>
@@ -127,7 +127,7 @@ flowchart TB
 
 下層ほど安定で、上層が下層に依存します。中核は `drivers/base.py`（セレクタ解決）で、すべての実行系がここに依存します。
 
-![依存レイヤ図。cli/ がユーザ接点であり、その下で runner/、record.py/crawl/、codegen/、trace.py、triage.py がそれぞれ orchestrator/ や AI・serve・CI 関連のヘルパーに依存し、それらが assertions.py と evidence.py に、さらに scenario/、report/、config.py、backends.py、simctl.py に依存し、最終的にすべてが決定性の核である drivers/base.py に収束し、そこから drivers/fake、iOS 系ドライバ、Android ドライバ、Playwright ドライバへ分岐する。](assets/diagrams/architecture-dependency-layers-ja.svg)
+![依存レイヤ図。cli/ がユーザ接点であり、その下に runner/、record.py/crawl/、codegen/、trace.py、triage.py が直接ぶら下がります（codegen/ と trace.py には、これ以上の依存関係が描かれていません）。runner/ は orchestrator/ に、record.py/crawl/ は AI エージェント関連のヘルパーに、triage.py は serve・CI 関連のヘルパーに、それぞれ依存します。orchestrator/ とエージェント関連のヘルパーは assertions.py と evidence.py に依存し、orchestrator/ はさらに config.py、backends.py、simctl.py にも依存します。assertions.py は scenario/ に、evidence.py は report/ に依存し、scenario/、report/、config.py、backends.py、simctl.py はいずれも決定性の核である drivers/base.py に収束します。そこから drivers/fake、iOS 系ドライバ、Playwright ドライバへ分岐します。](assets/diagrams/architecture-dependency-layers-ja.svg)
 
 <details>
 <summary>Mermaid ソース</summary>

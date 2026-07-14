@@ -228,7 +228,7 @@ Tier A は 1 台の Mac で動く 1 プロセスです。**Tier B** は BE-0015 
 default org）で動き、config で org を宣言すれば**複数 org**に対応します（後述の「複数 org」を参照）。すぐ動かせる
 一式は [`deploy/self-host/`](../../deploy/self-host/)（compose、Dockerfile、`.env.example`）にあります。
 
-![Tier B トポロジー図。チームの端末は Tailscale または Caddy 経由の HTTPS で Linux コントロールプレーンノード（bajutsu serve --asgi --backend=server、Postgres、MinIO）に到達する。コントロールプレーンは HTTP で job をベアメタルの Mac idb ワーカー群へ、同じ Tailscale tailnet 経由でコンテナ化された Linux web（Playwright/Chromium）ワーカーへ振り分け、どちらも結果をコントロールプレーンへ返す。](assets/diagrams/self-hosting-tier-b-topology-ja.svg)
+![Tier B トポロジー図。チームの端末は Tailscale または Caddy 経由の HTTPS で Linux コントロールプレーンノード（bajutsu serve --asgi --backend=server、Postgres、MinIO）に到達します。コントロールプレーンは HTTP で job をベアメタルの Mac idb ワーカー群へ、同じ Tailscale tailnet 経由でコンテナ化された Linux web（Playwright/Chromium）ワーカーへ振り分け、どちらも結果をコントロールプレーンへ返します。](assets/diagrams/self-hosting-tier-b-topology-ja.svg)
 
 <details>
 <summary>Mermaid ソース</summary>

@@ -129,7 +129,7 @@ The `bajutsu/` package (Python 3.13+, pydantic v2 / typer / anthropic / pyyaml /
 Lower layers are more stable; upper layers depend on lower ones. The core is `drivers/base.py`
 (selector resolution), which every execution path depends on.
 
-![Dependency-layer diagram: cli/ is the user entry point; below it, runner/, record.py/crawl/, codegen/, trace.py, and triage.py each depend on orchestrator/ and the AI/serve/CI helpers; those depend on assertions.py and evidence.py; those depend on scenario/, report/, config.py, backends.py, and simctl.py; everything converges on drivers/base.py, the determinism core, from which drivers/fake, the iOS drivers, the Android driver, and the Playwright driver all derive.](assets/diagrams/architecture-dependency-layers.svg)
+![Dependency-layer diagram: cli/ is the user entry point, from which runner/, record.py/crawl/, codegen/, trace.py, and triage.py descend directly (codegen/ and trace.py have no further dependencies drawn). runner/ depends on orchestrator/; record.py/crawl/ depends on the AI agent helpers; triage.py depends on the serve/CI helpers. orchestrator/ and the agent helpers depend on assertions.py and evidence.py, and orchestrator/ additionally depends on config.py, backends.py, and simctl.py. assertions.py depends on scenario/ and evidence.py depends on report/; scenario/, report/, config.py, backends.py, and simctl.py all converge on drivers/base.py, the determinism core, from which drivers/fake, the iOS drivers, and the Playwright driver all derive.](assets/diagrams/architecture-dependency-layers.svg)
 
 <details>
 <summary>Mermaid source</summary>

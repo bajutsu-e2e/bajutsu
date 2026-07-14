@@ -34,7 +34,7 @@
 Bajutsu は 3 つの独立した軸に沿って広がります。これらは合成可能で（どれも他をブロックしません）、
 それぞれが具体的なページに対応します。
 
-![三軸図。決定的な Bajutsu コアが、Reach（より多くのプラットフォーム / 面 — Web、Android、Flutter / ハイブリッド）、Scale &amp; collaboration（ホスト / セルフホストのサービス、MCP）、Authoring &amp; maintenance（GUI エディタ、操作キャプチャ、ビジュアル回帰、自己修復 triage）の 3 方向へ独立に広がる。](assets/diagrams/vision-three-axes-ja.svg)
+![三軸図。決定的な Bajutsu コアが、Reach（より多くのプラットフォーム / 面 — Web、Android、Flutter / ハイブリッド）、Scale &amp; collaboration（ホスト / セルフホストのサービス、MCP）、Authoring &amp; maintenance（GUI エディタ、操作キャプチャ、ビジュアル回帰、自己修復 triage）の 3 方向へ独立に広がります。](assets/diagrams/vision-three-axes-ja.svg)
 
 <details>
 <summary>Mermaid ソース</summary>
