@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0255](BE-0255-codegen-shared-helper-dedup.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0255") |
+| Implementing PR | [#NNN](https://github.com/bajutsu-e2e/bajutsu/pull/NNN) |
 | Topic | Codebase quality & technical debt |
 <!-- /BE-METADATA -->
 
@@ -131,18 +132,31 @@ of its second concrete need.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Move `_ident` into `codegen_common.py`; update `codegen.py` and `codegen_uiautomator.py` to
-      import it.
-- [ ] Move `_class_name` into `codegen_common.py`, applying the digit-prefix guard uniformly to
-      all targets.
-- [ ] Move `_ms` into `codegen_common.py`; update `codegen_playwright.py` and
-      `codegen_uiautomator.py` to import it.
-- [ ] Add a shared `is_plain_substring(pattern)`/`_RE_METACHARS` helper to `codegen_common.py` and
-      switch `codegen.py` / `codegen_uiautomator.py` to it.
-- [ ] Evaluate a shared `NetworkUnsupported`-style helper for the `_NO_NETWORK` TODO block; land it
-      only if the parameterized version reads at least as clearly as the two current constants.
-- [ ] Confirm the per-target `_emit_step` dispatch shape is explicitly out of scope (documented
-      here, not silently dropped).
+- [x] Move `_ident` into `codegen/common.py` as `ident`; update `codegen/xcuitest.py` and
+      `codegen/uiautomator.py` to import it.
+- [x] Move `_class_name` into `codegen/common.py` as `class_name(name, suffix)`, applying the
+      digit-prefix guard uniformly to all targets (closing the silent XCUITest gap).
+- [x] Move `_ms` into `codegen/common.py` as `ms`; update `codegen/playwright.py` and
+      `codegen/uiautomator.py` to import it.
+- [x] Add a shared `is_plain_substring(pattern)`/`_RE_METACHARS` helper to `codegen/common.py` and
+      switch `codegen/xcuitest.py` / `codegen/uiautomator.py` to it.
+- [x] Evaluate a shared `network_unsupported(subject)` helper for the `_NO_NETWORK` TODO block —
+      landed: the parameterized version reads at least as clearly and folds the duplicated tail
+      prose (and its "why" comment) into one place.
+- [x] Confirm the per-target `_emit_step` dispatch shape is explicitly out of scope (documented in
+      *Alternatives considered*, not silently dropped).
+
+> **Note (path drift):** since this proposal was written, the flat `bajutsu/codegen*.py` modules
+> became the `bajutsu/codegen/` package (BE-0257), so the moves above target `codegen/common.py`,
+> `codegen/xcuitest.py`, `codegen/uiautomator.py`, and `codegen/playwright.py` — the same helpers,
+> the same seam.
+
+**Log**
+
+- Implemented in [#NNN](https://github.com/bajutsu-e2e/bajutsu/pull/NNN): moved `ident`,
+  `class_name`, `ms`, `is_plain_substring` (+ `_RE_METACHARS`), and `network_unsupported` into
+  `codegen/common.py`; the three per-target emitters now import them. The XCUITest digit-prefix
+  guard gap is closed (item 2).
 
 ## References
 

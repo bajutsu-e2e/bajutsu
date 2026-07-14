@@ -13,6 +13,7 @@ This is a pure, deterministic transform: no AI, no device. The per-line builders
 
 from __future__ import annotations
 
+import re
 from typing import Protocol
 
 from bajutsu.scenario import Assertion, Scenario, Step
@@ -22,6 +23,73 @@ from bajutsu.scenario import Assertion, Scenario, Step
 # comment in C-style, so the `// expect` divider is shared.
 _BODY_INDENT = "    "
 _EXPECT_COMMENT = "// expect"
+
+# Regex metacharacters. A `labelMatches` value is a Python `re.search` pattern; only a
+# metacharacter-free one is a plain substring a black-box target can map faithfully (NSPredicate
+# `CONTAINS` on XCUITest, `By.textContains` on UI Automator). A real regex has no faithful form on
+# either — NSPredicate `MATCHES` and `By.text(Pattern)` are full, differently-anchored matches — so
+# it stays a `// TODO`. Shared here so a third target inherits the same substring/regex split.
+_RE_METACHARS = set(r".^$*+?{}[]\|()")
+
+
+def ident(name: str) -> str:
+    """Turn a scenario name into a test-method identifier (`test_`-prefixed, digit-safe).
+
+    Swift and Kotlin both forbid a bare identifier starting with a digit and allow only
+    `[0-9a-zA-Z_]`, so the sanitization is language-agnostic; a JS/TS target emitting a `test(...)`
+    call with a string label does not need it.
+    """
+    cleaned = re.sub(r"[^0-9a-zA-Z]+", "_", name).strip("_")
+    if not cleaned:
+        cleaned = "scenario"
+    if cleaned[0].isdigit():
+        cleaned = "_" + cleaned
+    return f"test_{cleaned}"
+
+
+def class_name(name: str, suffix: str) -> str:
+    """Turn a file stem into a PascalCase test-class name with `suffix` appended.
+
+    Args:
+        name: The file stem to derive the class name from.
+        suffix: The per-target class-name suffix (`"UITests"` for XCUITest, `"UITest"` for UI
+            Automator).
+
+    The digit-prefix guard applies to every target: a Swift or Kotlin `class` name has the same
+    no-leading-digit restriction as a method identifier, so a digit-leading stem is prefixed `_`.
+    """
+    cleaned = re.sub(r"[^0-9a-zA-Z]+", " ", name).title().replace(" ", "")
+    if not cleaned:
+        cleaned = "Generated"
+    if cleaned[0].isdigit():
+        cleaned = "_" + cleaned
+    return f"{cleaned}{suffix}"
+
+
+def ms(seconds: float) -> int:
+    """Convert a `float` seconds duration into an `int` milliseconds count for a generated call."""
+    return int(seconds * 1000)
+
+
+def is_plain_substring(pattern: str) -> bool:
+    """Whether a `labelMatches` pattern is a metacharacter-free plain substring (not a real regex).
+
+    True means the pattern can map faithfully to a native substring-contains call; False means it is
+    a real regex with no faithful native form (the caller emits a `// TODO`).
+    """
+    return not (set(pattern) & _RE_METACHARS)
+
+
+def network_unsupported(subject: str) -> str:
+    """The `// TODO` reason for a network assertion on a target with no interception surface.
+
+    Args:
+        subject: The backend named in the message (`"XCUITest"`, `"the adb backend"`).
+
+    Both black-box mobile targets emit the same shaped `// TODO` for a `request` assertion or
+    `until: { request }` wait; only the named backend differs.
+    """
+    return f"{subject} has no network interception; assert via a mock/proxy; not generated"
 
 
 class CodeGenerator(Protocol):

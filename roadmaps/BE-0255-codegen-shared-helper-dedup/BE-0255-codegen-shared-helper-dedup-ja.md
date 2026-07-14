@@ -7,8 +7,9 @@
 |---|---|
 | 提案 | [BE-0255](BE-0255-codegen-shared-helper-dedup-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **提案** |
+| 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0255") |
+| 実装 PR | [#NNN](https://github.com/bajutsu-e2e/bajutsu/pull/NNN) |
 | トピック | コードベース品質・技術的負債 |
 <!-- /BE-METADATA -->
 
@@ -131,18 +132,31 @@ codegen 各ターゲットの共通の走査を切り出しました。`codegen_
 > 作業分解（作業の単位ごとに 1 つ）に対応し、ログには変更内容と時期（古い順）を PR へのリンクと
 > ともに記録します。
 
-- [ ] `_ident` を `codegen_common.py` に移動し、`codegen.py` と `codegen_uiautomator.py` を import
-      に切り替える。
-- [ ] `_class_name` を `codegen_common.py` に移動し、数字始まりガードをすべてのターゲットに統一
-      して適用する。
-- [ ] `_ms` を `codegen_common.py` に移動し、`codegen_playwright.py` と
-      `codegen_uiautomator.py` を import に切り替える。
-- [ ] 共有の `is_plain_substring(pattern)`/`_RE_METACHARS` ヘルパーを `codegen_common.py` に追加し、
-      `codegen.py`/`codegen_uiautomator.py` をそちらに切り替える。
-- [ ] `_NO_NETWORK` TODO ブロック向けの共有 `NetworkUnsupported` 風ヘルパーを検討する。パラメータ
-      化した版が現行の 2 つの定数と同程度以上に読みやすい場合のみ採用する。
-- [ ] per-target の `_emit_step` ディスパッチの形を対象外とすることを（黙って落とすのではなく）
-      ここに明記して確認する。
+- [x] `_ident` を `codegen/common.py` に `ident` として移動し、`codegen/xcuitest.py` と
+      `codegen/uiautomator.py` を import に切り替える。
+- [x] `_class_name` を `codegen/common.py` に `class_name(name, suffix)` として移動し、数字始まり
+      ガードをすべてのターゲットに統一して適用する（XCUITest 側の無防備な不整合を閉じる）。
+- [x] `_ms` を `codegen/common.py` に `ms` として移動し、`codegen/playwright.py` と
+      `codegen/uiautomator.py` を import に切り替える。
+- [x] 共有の `is_plain_substring(pattern)`/`_RE_METACHARS` ヘルパーを `codegen/common.py` に追加し、
+      `codegen/xcuitest.py`/`codegen/uiautomator.py` をそちらに切り替える。
+- [x] `_NO_NETWORK` TODO ブロック向けの共有 `network_unsupported(subject)` ヘルパーを検討し、採用
+      した。パラメータ化した版は現行の 2 つの定数と同程度以上に読みやすく、重複していた末尾の文面
+      とその理由コメントを 1 箇所にまとめられる。
+- [x] per-target の `_emit_step` ディスパッチの形を対象外とすることを（黙って落とすのではなく）
+      「検討した代替案」に明記して確認する。
+
+> **補足（パスの変化）**：本提案を書いた時点から、フラットな `bajutsu/codegen*.py` の各モジュールは
+> `bajutsu/codegen/` パッケージになりました（BE-0257）。そのため上記の移動先は `codegen/common.py`、
+> `codegen/xcuitest.py`、`codegen/uiautomator.py`、`codegen/playwright.py` です。ヘルパーも継ぎ目も
+> 変わりません。
+
+**ログ**
+
+- [#NNN](https://github.com/bajutsu-e2e/bajutsu/pull/NNN) で実装しました。`ident`、`class_name`、
+  `ms`、`is_plain_substring`（と `_RE_METACHARS`）、`network_unsupported` を `codegen/common.py` に
+  移し、3 つの per-target emitter がそれらを import するようにしました。XCUITest の数字始まりガード
+  の欠落（項目 2）も閉じました。
 
 ## 参考
 
