@@ -563,6 +563,7 @@ Running a scenario on a hosted device farm instead of a local Simulator, emulato
 |---|---|---|
 | [BE-0182](BE-0182-record-human-value-prompt/BE-0182-record-human-value-prompt.md) | Human value entry during record (OTP / random / one-off values) | Proposal |
 | [BE-0185](BE-0185-record-human-takeover-step/BE-0185-record-human-takeover-step.md) | Human takeover step during record (CAPTCHA / biometrics / unresolvable gestures) | Proposal |
+| [BE-0262](BE-0262-serve-author-live-step-picker/BE-0262-serve-author-live-step-picker.md) | Live step-picking and target-scoped runs in the Author editor | Proposal |
 <!-- /GENERATED:proposals-authoring -->
 
 ### Hosting the web UI (cloud / self-hosted)

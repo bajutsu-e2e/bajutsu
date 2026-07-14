@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-serve-author-live-step-picker-ja.md)
+**English** · [日本語](BE-0262-serve-author-live-step-picker-ja.md)
 
-# BE-XXXX — Live step-picking and target-scoped runs in the Author editor
+# BE-0262 — Live step-picking and target-scoped runs in the Author editor
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-serve-author-live-step-picker.md) |
+| Proposal | [BE-0262](BE-0262-serve-author-live-step-picker.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0262") |
 | Topic | Authoring experience (record / GUI editor) |
 <!-- /BE-METADATA -->
 
