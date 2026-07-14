@@ -49,6 +49,26 @@ _UPLOAD_APP = "ANDROID_APP"
 _UPLOAD_TEST_PACKAGE = "APPIUM_PYTHON_TEST_PACKAGE"
 _UPLOAD_TEST_SPEC = "APPIUM_PYTHON_TEST_SPEC"
 
+# Noise directories to keep out of the upload. `--package .=bajutsu` walks the whole checked-out
+# repo root, which already holds `.git/` and the `uv`-created `.venv/` plus build/test caches and
+# scratch output; zipping them would bloat (and could break) every upload. Matched on any path
+# component during the walk.
+_PACKAGE_EXCLUDES = frozenset(
+    {
+        ".git",
+        ".venv",
+        "__pycache__",
+        ".pytest_cache",
+        ".mypy_cache",
+        ".ruff_cache",
+        ".coverage",
+        "node_modules",
+        "runs",
+        "tmp",
+        ".DS_Store",
+    }
+)
+
 
 class DeviceFarmError(RuntimeError):
     """A Device Farm submission failed loudly — a missing payload, a failed upload, or a run that
@@ -143,7 +163,8 @@ def build_package(entries: Sequence[tuple[Path, str]], out_zip: Path) -> Path:
     """Bundle the Bajutsu payload into `out_zip` for upload, one `(source, arcname)` pair per entry.
 
     A directory source is added recursively under its arcname; a file source is added at its
-    arcname. Returns `out_zip`.
+    arcname. Paths under a `_PACKAGE_EXCLUDES` component (VCS/build/cache/scratch noise such as
+    `.git` and `.venv`) and symlinks are skipped. Returns `out_zip`.
 
     Raises:
         DeviceFarmError: If any source path does not exist — an incomplete package would fail
@@ -156,10 +177,14 @@ def build_package(entries: Sequence[tuple[Path, str]], out_zip: Path) -> Path:
                 raise DeviceFarmError(f"package source not found: {source}")
             if source.is_dir():
                 for path in sorted(source.rglob("*")):
-                    # Skip symlinks so a link pointing outside the source tree can't pull in
-                    # unintended files (mirrors `archive_run_dir`'s guard, BE-0060).
+                    rel = path.relative_to(source)
+                    # Skip noise dirs (`.git`, `.venv`, caches, scratch) so `--package .=bajutsu`
+                    # doesn't zip the whole repo root, and skip symlinks so a link pointing outside
+                    # the source tree can't pull in unintended files (mirrors `archive_run_dir`).
+                    if any(part in _PACKAGE_EXCLUDES for part in rel.parts):
+                        continue
                     if path.is_file() and not path.is_symlink():
-                        zf.write(path, f"{arcname}/{path.relative_to(source).as_posix()}")
+                        zf.write(path, f"{arcname}/{rel.as_posix()}")
             else:
                 zf.write(source, arcname)
     return out_zip

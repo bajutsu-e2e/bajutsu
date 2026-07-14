@@ -116,6 +116,45 @@ def test_package_raises_when_a_source_is_missing(tmp_path: Path) -> None:
         build_package([(tmp_path / "ghost.whl", "ghost.whl")], tmp_path / "p.zip")
 
 
+def test_package_skips_symlinks_under_a_packaged_directory(tmp_path: Path) -> None:
+    src = tmp_path / "src"
+    src.mkdir()
+    (src / "real.yaml").write_text("scenarios: []")
+    # A symlink pointing at the real file must not be zipped (a link could point outside the tree).
+    (src / "link.yaml").symlink_to(src / "real.yaml")
+    out = tmp_path / "package.zip"
+
+    build_package([(src, "src")], out)
+
+    with zipfile.ZipFile(out) as zf:
+        names = set(zf.namelist())
+    assert "src/real.yaml" in names
+    assert "src/link.yaml" not in names
+
+
+def test_package_excludes_vcs_and_build_noise_dirs(tmp_path: Path) -> None:
+    src = tmp_path / "src"
+    src.mkdir()
+    (src / "keep.yaml").write_text("scenarios: []")
+    # Noise dirs (VCS metadata, build caches, scratch output) must never reach the upload.
+    (src / ".git").mkdir()
+    (src / ".git" / "config").write_text("[core]")
+    (src / "__pycache__").mkdir()
+    (src / "__pycache__" / "x.pyc").write_bytes(b"\x00")
+    (src / "runs").mkdir()
+    (src / "runs" / "leftover.log").write_text("noise")
+    out = tmp_path / "package.zip"
+
+    build_package([(src, "src")], out)
+
+    with zipfile.ZipFile(out) as zf:
+        names = set(zf.namelist())
+    assert "src/keep.yaml" in names
+    assert "src/.git/config" not in names
+    assert "src/__pycache__/x.pyc" not in names
+    assert "src/runs/leftover.log" not in names
+
+
 # ---------------------------------------------------------------------------
 # verdict_from_manifest
 # ---------------------------------------------------------------------------
