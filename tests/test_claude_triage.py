@@ -161,6 +161,8 @@ def test_render_app_root_only_tree_is_not_a_failed_capture() -> None:
     }
     text = _render(_ctx(elements=[app_root]))
     assert "(no element tree captured)" not in text
+    # ...and a present-but-all-filtered tree gets an explicit line, not a blank section.
+    assert "(no addressable elements; only the app root or empty elements were captured)" in text
 
 
 def test_screenshot_sent_as_image_part() -> None:
@@ -340,6 +342,27 @@ def test_cross_run_render_contrasts_passing_and_failing() -> None:
     assert "一致なし: home.titel" in text  # the failure detail
     assert "Scenario definition (YAML):" in text
     assert text.rstrip().endswith("Call the `diagnose` tool exactly once.")
+
+
+def test_cross_run_app_root_only_tree_is_distinct_from_failed_capture() -> None:
+    # Same distinction as the single-run `_render`: for each contrasted run, a captured tree that
+    # filters to nothing (only the app root) must not read as a failed capture, and it gets an
+    # explicit "no addressable elements" line rather than leaving the evidence section blank.
+    app_root: base.Element = {
+        "identifier": "",
+        "label": "",
+        "traits": ["application"],
+        "value": None,
+        "frame": (0.0, 0.0, 100.0, 100.0),
+    }
+    text = _render_cross_run(
+        _cross_ctx(
+            passing=[_ev(True, run_id="p1", elements=[app_root])],
+            failing=[_ev(False, run_id="f1", elements=[app_root])],
+        )
+    )
+    assert "(no element tree captured)" not in text
+    assert text.count("(no addressable elements)") == 2
 
 
 def test_cross_run_screenshot_note_matches_what_is_attached() -> None:
