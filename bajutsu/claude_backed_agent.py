@@ -21,6 +21,8 @@ class ClaudeBackedAgent:
     """Backend/usage plumbing shared by the vendor-neutral Claude-backed classes (BE-0104).
 
     Args:
+        backend: Injected backend to reuse, or `None` to lazily create one via `create_backend`.
+        ai: Provider/model config used to resolve `create_backend` and `default_model`.
         default_model: The class's model constant, resolved against `ai` unless `model` pins one.
         model: An explicit model id that overrides `default_model` resolution when given.
         redactor: Present for the six classes that mask secrets before the model; the tab locator
