@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-serve-author-tiling-layout-ja.md)
+**English** · [日本語](BE-0263-serve-author-tiling-layout-ja.md)
 
-# BE-XXXX — Bring the Author view into the tiling layout
+# BE-0263 — Bring the Author view into the tiling layout
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-serve-author-tiling-layout.md) |
+| Proposal | [BE-0263](BE-0263-serve-author-tiling-layout.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0263") |
 | Topic | Authoring experience (record / GUI editor) |
 <!-- /BE-METADATA -->
 
