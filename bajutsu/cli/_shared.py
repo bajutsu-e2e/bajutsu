@@ -13,7 +13,7 @@ from pathlib import Path
 
 import typer
 
-from bajutsu import anthropic_client
+from bajutsu import ai_config, anthropic_client
 from bajutsu.ai import credential_gap
 from bajutsu.config import (
     WEB_ENGINES,
@@ -297,12 +297,12 @@ def _resolve_language(eff: Effective, language: str) -> Effective:
     normalized = language.strip().lower()
     if not normalized:
         return eff
-    if normalized not in anthropic_client.LANGUAGES:
-        known = ", ".join(anthropic_client.LANGUAGES)
+    if normalized not in ai_config.LANGUAGES:
+        known = ", ".join(ai_config.LANGUAGES)
         typer.echo(f"unknown --language {language!r}: use one of {known}")
         raise typer.Exit(2)
-    if normalized == anthropic_client.DEFAULT_LANGUAGE:
-        os.environ.pop(anthropic_client.LANGUAGE_ENV, None)
+    if normalized == ai_config.DEFAULT_LANGUAGE:
+        os.environ.pop(ai_config.LANGUAGE_ENV, None)
     return replace(eff, ai=replace(eff.ai or AiConfig(), language=normalized))
 
 

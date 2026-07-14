@@ -14,18 +14,11 @@ with these two.
 
 from __future__ import annotations
 
-import os
 from collections.abc import Callable
 from dataclasses import dataclass
 
 from bajutsu.ai.base import AiBackend
-from bajutsu.anthropic_client import (
-    DEFAULT_PROVIDER,
-    PROVIDER_ENV,
-    AiConfig,
-    normalize_provider,
-    resolve_model,
-)
+from bajutsu.ai_config import DEFAULT_PROVIDER, AiConfig, resolve_model, resolve_provider
 
 BackendFactory = Callable[[AiConfig | None], AiBackend]
 CredentialGap = Callable[[AiConfig | None], str | None]
@@ -74,9 +67,8 @@ def _ensure_builtins() -> None:
     if all(name in _ADAPTERS for name in ("api-key", "bedrock", "ant", "claude-code")):
         return
     from bajutsu.ai import anthropic, claude_code
-    from bajutsu.anthropic_client import credential_gap
 
-    adapter = Adapter(factory=anthropic.factory, credential_gap=credential_gap)
+    adapter = Adapter(factory=anthropic.factory, credential_gap=anthropic.credential_gap)
     # The direct Anthropic API (`api-key`), Amazon Bedrock, and the Anthropic CLI (`ant`, BE-0163)
     # share one adapter: Bedrock is an Anthropic-SDK hosting variant (BE-0053) and `ant` an
     # authentication variant — `AnthropicBackend` is provider-agnostic once it holds a constructed
@@ -114,8 +106,7 @@ def _provider_name(ai: AiConfig | None) -> str:
     Raises:
         ValueError: the resolved name has no registered adapter.
     """
-    raw = (ai and ai.provider) or os.environ.get(PROVIDER_ENV) or DEFAULT_PROVIDER
-    value = normalize_provider(raw)
+    value = resolve_provider(ai)
     _ensure_builtins()
     if value not in _ADAPTERS:
         allowed = ", ".join(repr(p) for p in _ADAPTERS)

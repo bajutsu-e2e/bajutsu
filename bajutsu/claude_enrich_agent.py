@@ -27,7 +27,7 @@ from bajutsu.ai import (
     create_backend,
     resolved_provider,
 )
-from bajutsu.anthropic_client import AiConfig, language_instruction, resolve_model
+from bajutsu.ai_config import AiConfig, language_instruction, resolve_model
 from bajutsu.claude_agent import _TARGET_PROPS, _to_assertion
 from bajutsu.record import _describe_step, _settle_step
 from bajutsu.redaction import Redactor

@@ -5,13 +5,14 @@ The first adapter behind `bajutsu.ai.base.AiBackend`. It wraps the existing
 one adapter (Bedrock is an Anthropic-SDK variant — BE-0053). It translates a neutral
 `MessageRequest` into an Anthropic Messages API call and the Anthropic reply back into neutral
 content blocks; behavior is unchanged from the pre-BE-0104 call sites (the model id is resolved by
-the caller with `resolve_model`, and `credential_gap` semantics from BE-0047 / BE-0053 are
-preserved by `bajutsu.ai.registry`).
+the caller with `resolve_model`). This adapter also owns the Anthropic-family `credential_gap`
+(BE-0047 / BE-0053 / BE-0163), which `bajutsu.ai.registry.credential_gap` dispatches to (BE-0246).
 """
 
 from __future__ import annotations
 
 import base64
+import os
 from typing import Any
 
 from bajutsu.ai.base import (
@@ -24,7 +25,8 @@ from bajutsu.ai.base import (
     TextBlock,
     ToolUseBlock,
 )
-from bajutsu.anthropic_client import AiConfig, make_client
+from bajutsu.ai_config import BEDROCK_MODEL_ENV, AiConfig, resolve_provider
+from bajutsu.anthropic_client import ant_credential_gap, key_env, make_client
 
 
 def _part(part: ContentPart) -> dict[str, Any]:
@@ -98,3 +100,26 @@ class AnthropicBackend:
 def factory(ai: AiConfig | None = None) -> AnthropicBackend:
     """Build the Anthropic backend — the registry's adapter factory for `anthropic` / `bedrock`."""
     return AnthropicBackend(ai=ai)
+
+
+def credential_gap(ai: AiConfig | None = None) -> str | None:
+    """What the Anthropic-family provider is missing to authenticate, or ``None`` when it can.
+
+    The Anthropic adapter's half of the BE-0047 credential check, dispatched to per provider by
+    `bajutsu.ai.registry.credential_gap` (the single public entry point; `claude-code` has its own).
+    The ``api-key`` provider needs the key named by ``ai.keyEnv`` (default ``ANTHROPIC_API_KEY``);
+    Bedrock authenticates with the standard AWS credential chain (env / shared profile / instance or
+    task role — resolved by the SDK, not checked here) and needs a provider-prefixed model id
+    instead (``ai.model`` or ``BAJUTSU_BEDROCK_MODEL``), since the bare Anthropic id is not a valid
+    Bedrock model id. The ``ant`` provider (BE-0163) needs its CLI installed and signed in — probed
+    by `anthropic_client.ant_credential_gap`. Returns ``"anthropic-key"`` / ``"bedrock-model"`` /
+    ``"ant-cli-missing"`` / ``"ant-cli-unauthenticated"`` so callers can phrase a
+    provider-appropriate message.
+    """
+    prov = resolve_provider(ai)
+    if prov == "bedrock":
+        has_model = (ai and ai.model) or os.environ.get(BEDROCK_MODEL_ENV)
+        return None if has_model else "bedrock-model"
+    if prov == "ant":
+        return ant_credential_gap()
+    return None if os.environ.get(key_env(ai)) else "anthropic-key"

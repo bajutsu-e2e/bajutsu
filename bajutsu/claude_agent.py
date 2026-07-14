@@ -30,7 +30,7 @@ from bajutsu.ai import (
     create_backend,
     resolved_provider,
 )
-from bajutsu.anthropic_client import (
+from bajutsu.ai_config import (
     AiConfig,
     language_instruction,
     resolve_effort,

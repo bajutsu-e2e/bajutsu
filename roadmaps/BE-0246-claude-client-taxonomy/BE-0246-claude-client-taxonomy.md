@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0246") |
-| Implementing PR | [#1012](https://github.com/bajutsu-e2e/bajutsu/pull/1012) |
+| Implementing PR | [#1012](https://github.com/bajutsu-e2e/bajutsu/pull/1012), [#1030](https://github.com/bajutsu-e2e/bajutsu/pull/1030) |
 | Topic | Codebase quality & technical debt |
 <!-- /BE-METADATA -->
 
@@ -193,9 +193,11 @@ code lives and what it's called.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Rename `anthropic_client.py` to a name that reflects its provider-agnostic config
-      resolution, leaving genuinely Anthropic-SDK-specific code behind under a vendor name
-- [ ] Collapse the two `credential_gap` / provider-resolver pairs
+- [x] Rename `anthropic_client.py` to a name that reflects its provider-agnostic config
+      resolution, leaving genuinely Anthropic-SDK-specific code behind under a vendor name —
+      config resolution moved to a new top-level `ai_config.py`; `anthropic_client.py` keeps only
+      the Anthropic SDK client factory and `ant` CLI token IO
+- [x] Collapse the two `credential_gap` / provider-resolver pairs
       (`anthropic_client.py` + `ai/registry.py`, plus the `ai_availability.availability`
       wrapper) onto one resolver in `bajutsu/ai/`
 - [ ] Introduce a shared `ClaudeBackedAgent` base for the seven `Claude*` classes'
@@ -217,6 +219,15 @@ code lives and what it's called.
   `bajutsu/agent_factory.py` (the `make_agent` / `make_enrichment_agent` construction factory),
   updating every import site, the docstring-lint and E2E-relevance allowlists, and the
   architecture/recording docs. Behavior-preserving; the existing suite is the regression net.
+- [#1030](https://github.com/bajutsu-e2e/bajutsu/pull/1030) — Units 1 + 2 (rebased onto `main` after #1012 merged): extracted the provider-agnostic config resolution
+  from `anthropic_client.py` into a new top-level `ai_config.py` (`resolve_model` / `resolve_effort` /
+  `resolve_language` / `language_instruction` / `resolve_provider`, the shared env constants, and the
+  `AiConfig` re-export), leaving `anthropic_client.py` holding only the Anthropic SDK client factory
+  (`make_client`) and the `ant` CLI token IO. Folded the duplicated provider resolution onto the one
+  `ai_config.resolve_provider` (reused by `ai/registry`), moved the Anthropic-family `credential_gap`
+  into the `bajutsu/ai/anthropic` adapter, and dropped the redundant `ai_availability.availability`
+  passthrough so `bajutsu.ai.credential_gap` is the single entry point. Behavior-preserving; the
+  existing suites are the regression net.
 
 ## References
 

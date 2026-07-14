@@ -17,6 +17,7 @@ from pathlib import Path
 import pytest
 from _shared import _get_json, _post, _serve, project
 
+from bajutsu import ai_config as aic
 from bajutsu import anthropic_client as ac
 from bajutsu import serve as srv
 from bajutsu.ai import resolved_provider
@@ -35,12 +36,12 @@ from bajutsu.serve.state import ProviderSettings
 _BEDROCK_MODEL = "global.anthropic.claude-opus-4-6-v1"
 
 _PROVIDER_ENV_VARS = (
-    ac.PROVIDER_ENV,
-    ac.BEDROCK_MODEL_ENV,
-    ac.MODEL_ENV,
-    ac.EFFORT_ENV,
+    aic.PROVIDER_ENV,
+    aic.BEDROCK_MODEL_ENV,
+    aic.MODEL_ENV,
+    aic.EFFORT_ENV,
     ac.ANTHROPIC_KEY_ENV,
-    ac.LANGUAGE_ENV,
+    aic.LANGUAGE_ENV,
     "AWS_REGION",
 )
 
@@ -190,8 +191,8 @@ def test_saved_provider_survives_a_restart(tmp_path: Path) -> None:
     restore_persisted_provider_settings(state2)
     # boot restored the selection, so a spawned job's overlay carries the active provider's settings
     overlay = _default_overlay(state2)
-    assert overlay[ac.PROVIDER_ENV] == "bedrock"
-    assert overlay[ac.BEDROCK_MODEL_ENV] == _BEDROCK_MODEL
+    assert overlay[aic.PROVIDER_ENV] == "bedrock"
+    assert overlay[aic.BEDROCK_MODEL_ENV] == _BEDROCK_MODEL
     assert overlay["AWS_REGION"] == "us-east-1"
 
     server2, port2 = _serve(state2)
@@ -252,7 +253,7 @@ def test_zero_config_is_untouched_when_nothing_is_persisted(tmp_path: Path) -> N
     )
     restore_persisted_provider_settings(state)
     assert _default_overlay(state) == {}  # nothing selected → the job inherits its env unchanged
-    assert ac.PROVIDER_ENV not in os.environ  # the process env is never touched
+    assert aic.PROVIDER_ENV not in os.environ  # the process env is never touched
     assert _provider_of(state) == "api-key"
 
 
@@ -357,7 +358,7 @@ def test_persist_failure_keeps_the_session_change_and_warns(
         assert code == 200 and body["provider"] == "ant"
         assert body["persisted"] is False  # the response tells the UI the choice was not saved
         # the session change took effect in memory (resolved into the org's job overlay)
-        assert _default_overlay(state)[ac.PROVIDER_ENV] == "ant"
+        assert _default_overlay(state)[aic.PROVIDER_ENV] == "ant"
         assert "persist" in caplog.text.lower()
     finally:
         server.shutdown()
@@ -392,7 +393,7 @@ def test_persist_failure_from_a_non_oserror_degrades_to_session_only(
     with caplog.at_level("WARNING"):
         result = _persist_provider_settings(state, DEFAULT_ORG, "ant")
     assert result is False  # a non-OSError write failure is caught, not propagated
-    assert _default_overlay(state)[ac.PROVIDER_ENV] == "ant"  # the session change still stands
+    assert _default_overlay(state)[aic.PROVIDER_ENV] == "ant"  # the session change still stands
     assert "persist" in caplog.text.lower()
 
 
@@ -524,12 +525,12 @@ def test_config_ai_block_wins_over_a_restored_value(tmp_path: Path) -> None:
     )
     restore_persisted_provider_settings(state)
     assert (
-        _default_overlay(state)[ac.PROVIDER_ENV] == "bedrock"
+        _default_overlay(state)[aic.PROVIDER_ENV] == "bedrock"
     )  # restore seeds the job's env layer
     # A config ai: block overrides that restored env value (config > env), for both provider and model.
-    cfg_ai = ac.AiConfig(provider="api-key", model="cfg-model")
+    cfg_ai = aic.AiConfig(provider="api-key", model="cfg-model")
     assert resolved_provider(cfg_ai) == "api-key"
-    assert ac.resolve_model("fallback", cfg_ai) == "cfg-model"
+    assert aic.resolve_model("fallback", cfg_ai) == "cfg-model"
 
 
 # --- local construction wires the store; the boot path restores it ----------------------
@@ -563,5 +564,5 @@ def test_local_build_state_wires_the_store(tmp_path: Path) -> None:
     assert state.org_provider_settings(DEFAULT_ORG) is None
     restore_persisted_provider_settings(state)
     overlay = _default_overlay(state)
-    assert overlay[ac.PROVIDER_ENV] == "bedrock"
-    assert overlay[ac.BEDROCK_MODEL_ENV] == _BEDROCK_MODEL
+    assert overlay[aic.PROVIDER_ENV] == "bedrock"
+    assert overlay[aic.BEDROCK_MODEL_ENV] == _BEDROCK_MODEL

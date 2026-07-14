@@ -18,7 +18,7 @@ from _shared import SCENARIO, fake_popen, project, write_run
 from fastapi.testclient import TestClient
 
 from bajutsu import serve as srv
-from bajutsu.anthropic_client import BEDROCK_MODEL_ENV, PROVIDER_ENV
+from bajutsu.ai_config import BEDROCK_MODEL_ENV, PROVIDER_ENV
 from bajutsu.serve import operations as ops
 from bajutsu.serve.server.app import make_app
 from bajutsu.serve.server.oauth import Identity

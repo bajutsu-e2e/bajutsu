@@ -14,7 +14,7 @@ from typing import TYPE_CHECKING
 from bajutsu.agent_protocols import Agent, EnrichmentAgent
 
 if TYPE_CHECKING:
-    from bajutsu.anthropic_client import AiConfig
+    from bajutsu.ai_config import AiConfig
     from bajutsu.redaction import Redactor
 
 

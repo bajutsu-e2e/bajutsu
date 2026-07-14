@@ -14,7 +14,7 @@ from __future__ import annotations
 from collections.abc import Callable
 
 from bajutsu.ai.registry import announcement
-from bajutsu.anthropic_client import AiConfig
+from bajutsu.ai_config import AiConfig
 
 
 def announce_ai(

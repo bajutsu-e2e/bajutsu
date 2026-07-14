@@ -18,6 +18,7 @@ import pytest
 from _shared import _get_json, _post, _serve, project
 
 from bajutsu import ai_availability
+from bajutsu import ai_config as aic
 from bajutsu import anthropic_client as ac
 from bajutsu import serve as srv
 from bajutsu.serve.operations.config import resolve_provider_env
@@ -26,12 +27,12 @@ from bajutsu.serve.orgs import DEFAULT_ORG
 _BEDROCK_MODEL = "global.anthropic.claude-opus-4-6-v1"
 
 _PROVIDER_ENV_VARS = (
-    ac.PROVIDER_ENV,
-    ac.BEDROCK_MODEL_ENV,
-    ac.MODEL_ENV,
-    ac.EFFORT_ENV,
+    aic.PROVIDER_ENV,
+    aic.BEDROCK_MODEL_ENV,
+    aic.MODEL_ENV,
+    aic.EFFORT_ENV,
     ac.ANTHROPIC_KEY_ENV,
-    ac.LANGUAGE_ENV,
+    aic.LANGUAGE_ENV,
     "AWS_REGION",
 )
 
@@ -69,11 +70,11 @@ def _no_process_env() -> None:
     """The tenant-isolation invariant BE-0229 introduces: a save never mutates the shared process
     env, so nothing leaks between orgs' jobs."""
     for var in (
-        ac.PROVIDER_ENV,
-        ac.MODEL_ENV,
-        ac.BEDROCK_MODEL_ENV,
-        ac.EFFORT_ENV,
-        ac.LANGUAGE_ENV,
+        aic.PROVIDER_ENV,
+        aic.MODEL_ENV,
+        aic.BEDROCK_MODEL_ENV,
+        aic.EFFORT_ENV,
+        aic.LANGUAGE_ENV,
     ):
         assert var not in os.environ
 
@@ -111,9 +112,9 @@ def test_http_provider_select_bedrock_and_back(
         assert code == 200 and body["provider"] == "bedrock"
         # The selection resolves into the org's per-job env overlay (BE-0229), never the process env.
         overlay = resolve_provider_env(state, DEFAULT_ORG)
-        assert overlay[ac.PROVIDER_ENV] == "bedrock"
+        assert overlay[aic.PROVIDER_ENV] == "bedrock"
         assert overlay["AWS_REGION"] == "us-east-1"
-        assert overlay[ac.BEDROCK_MODEL_ENV] == _BEDROCK_MODEL
+        assert overlay[aic.BEDROCK_MODEL_ENV] == _BEDROCK_MODEL
         _no_process_env()
         assert not (tmp_path / ".env").exists()  # nothing persisted to disk
         # Bedrock with a provider-prefixed model id is reachable (AWS creds authenticate it), so the
@@ -135,7 +136,7 @@ def test_http_provider_select_bedrock_and_back(
         # Switch back to the Anthropic API (the `api-key` provider).
         code, body = _post(port, "/api/provider", {"provider": "api-key"})
         assert code == 200 and body["provider"] == "api-key"
-        assert resolve_provider_env(state, DEFAULT_ORG)[ac.PROVIDER_ENV] == "api-key"
+        assert resolve_provider_env(state, DEFAULT_ORG)[aic.PROVIDER_ENV] == "api-key"
         assert _get_json(port, "/api/provider")["provider"] == "api-key"
     finally:
         server.shutdown()
@@ -174,7 +175,7 @@ def test_http_provider_select_ant_and_back(tmp_path: Path, monkeypatch: pytest.M
     try:
         code, body = _post(port, "/api/provider", {"provider": "ant"})
         assert code == 200 and body["provider"] == "ant"
-        assert resolve_provider_env(state, DEFAULT_ORG)[ac.PROVIDER_ENV] == "ant"
+        assert resolve_provider_env(state, DEFAULT_ORG)[aic.PROVIDER_ENV] == "ant"
         _no_process_env()
         assert not (tmp_path / ".env").exists()  # nothing persisted to disk
         assert _get_json(port, "/api/provider") == {
@@ -192,7 +193,7 @@ def test_http_provider_select_ant_and_back(tmp_path: Path, monkeypatch: pytest.M
         # Switch back to the Anthropic API (the `api-key` provider).
         code, body = _post(port, "/api/provider", {"provider": "api-key"})
         assert code == 200 and body["provider"] == "api-key"
-        assert resolve_provider_env(state, DEFAULT_ORG)[ac.PROVIDER_ENV] == "api-key"
+        assert resolve_provider_env(state, DEFAULT_ORG)[aic.PROVIDER_ENV] == "api-key"
         assert _get_json(port, "/api/provider")["provider"] == "api-key"
     finally:
         server.shutdown()
@@ -211,7 +212,7 @@ def test_http_provider_accepts_the_legacy_anthropic_alias(
     try:
         code, body = _post(port, "/api/provider", {"provider": "anthropic"})
         assert code == 200 and body["provider"] == "api-key"
-        assert resolve_provider_env(state, DEFAULT_ORG)[ac.PROVIDER_ENV] == "api-key"
+        assert resolve_provider_env(state, DEFAULT_ORG)[aic.PROVIDER_ENV] == "api-key"
     finally:
         server.shutdown()
         server.server_close()
@@ -254,9 +255,9 @@ def test_http_provider_remembers_settings_per_provider(
         )
         assert code == 200
         overlay = resolve_provider_env(state, DEFAULT_ORG)
-        assert overlay[ac.PROVIDER_ENV] == "claude-code"
-        assert overlay[ac.MODEL_ENV] == "claude-opus-4-6"
-        assert overlay[ac.EFFORT_ENV] == "high"
+        assert overlay[aic.PROVIDER_ENV] == "claude-code"
+        assert overlay[aic.MODEL_ENV] == "claude-opus-4-6"
+        assert overlay[aic.EFFORT_ENV] == "high"
     finally:
         server.shutdown()
         server.server_close()
@@ -324,17 +325,17 @@ def test_http_provider_output_language_round_trip(
     try:
         code, body = _post(port, "/api/provider", {"provider": "api-key", "language": "ja"})
         assert code == 200 and body["language"] == "ja"
-        assert resolve_provider_env(state, DEFAULT_ORG)[ac.LANGUAGE_ENV] == "ja"
+        assert resolve_provider_env(state, DEFAULT_ORG)[aic.LANGUAGE_ENV] == "ja"
         assert _get_json(port, "/api/provider")["language"] == "ja"
         # `auto` is the no-override default: it stores no language, so the overlay omits it.
         code, body = _post(port, "/api/provider", {"provider": "api-key", "language": "auto"})
         assert code == 200 and body["language"] == "auto"
-        assert ac.LANGUAGE_ENV not in resolve_provider_env(state, DEFAULT_ORG)
+        assert aic.LANGUAGE_ENV not in resolve_provider_env(state, DEFAULT_ORG)
         assert _get_json(port, "/api/provider")["language"] == ""
         # An unknown language is a visible 400, and the stored language is left as it was (cleared).
         code, body = _post(port, "/api/provider", {"provider": "api-key", "language": "klingon"})
         assert code == 400 and "language" in body["error"]
-        assert ac.LANGUAGE_ENV not in resolve_provider_env(state, DEFAULT_ORG)
+        assert aic.LANGUAGE_ENV not in resolve_provider_env(state, DEFAULT_ORG)
     finally:
         server.shutdown()
         server.server_close()

@@ -27,7 +27,7 @@ from bajutsu.ai.base import (
     ToolUseBlock,
 )
 from bajutsu.ai.registry import Adapter, register
-from bajutsu.anthropic_client import AiConfig
+from bajutsu.ai_config import AiConfig
 from bajutsu.claude_agent import ClaudeAgent
 from bajutsu.config import AiSettings
 from bajutsu.drivers import base as drivers_base
@@ -171,6 +171,28 @@ def test_credential_gap_dispatches_to_the_resolved_provider(monkeypatch: Any) ->
 
     monkeypatch.setattr(claude_code.shutil, "which", lambda _exe: None)
     assert credential_gap(AiConfig(provider="claude-code")) == claude_code.CLI_MISSING
+
+
+def test_credential_gap_anthropic_reachable_states(monkeypatch: Any) -> None:
+    # The Anthropic adapter's own gap (bajutsu/ai/anthropic.py), reached through the dispatch: with a
+    # key it is reachable; a custom `ai.keyEnv` is honored; Bedrock reads reachable once it has a
+    # provider-prefixed model id (from config), with no ANTHROPIC_API_KEY (BE-0053 — AWS auth).
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.delenv("BAJUTSU_BEDROCK_MODEL", raising=False)
+    monkeypatch.delenv("MY_GATEWAY_KEY", raising=False)
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test")
+    assert credential_gap(AiConfig(provider="api-key")) is None
+    # A custom keyEnv: the named var, not ANTHROPIC_API_KEY, decides the gap.
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    ai_gw = AiConfig(provider="api-key", key_env="MY_GATEWAY_KEY")
+    assert credential_gap(ai_gw) == "anthropic-key"
+    monkeypatch.setenv("MY_GATEWAY_KEY", "sk-gw-test")
+    assert credential_gap(ai_gw) is None
+    # Bedrock with a config model id and no Anthropic key is reachable.
+    assert (
+        credential_gap(AiConfig(provider="bedrock", model="global.anthropic.claude-opus-4-6-v1"))
+        is None
+    )
 
 
 # --- the registry is a real extension point (in-process fake adapter) ---

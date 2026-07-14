@@ -9,6 +9,7 @@ import typer
 from bajutsu import adb as _adb
 from bajutsu import ai_availability, capability_preflight, preflight
 from bajutsu import simctl as _simctl
+from bajutsu.ai import credential_gap
 from bajutsu.backends import (
     capabilities_for,
     resolve_actuators,
@@ -194,11 +195,11 @@ def doctor(
 def _claude_readiness(eff: Effective) -> str:
     """The optional Claude-readiness section (BE-0101) — deterministic, LLM-free, never blocking.
 
-    Reads only `ai_availability` against the resolved provider. A gap is shown as a neutral "not
-    configured (optional)" line, never the ✗ an environment failure uses, so a user with no AI setup
-    is never told the deterministic path is broken.
+    Reads only the provider's credential gap against the resolved provider. A gap is shown as a
+    neutral "not configured (optional)" line, never the ✗ an environment failure uses, so a user with
+    no AI setup is never told the deterministic path is broken.
     """
-    gap = ai_availability.availability(ai=eff.ai)
+    gap = credential_gap(eff.ai)
     if gap is None:
         detail = "reachable"
     else:

@@ -31,7 +31,7 @@ from bajutsu.ai import (
     create_backend,
     resolved_provider,
 )
-from bajutsu.anthropic_client import AiConfig, language_instruction, resolve_model
+from bajutsu.ai_config import AiConfig, language_instruction, resolve_model
 from bajutsu.drivers import base
 from bajutsu.record import _screenshot_bytes
 from bajutsu.redaction import Redactor
