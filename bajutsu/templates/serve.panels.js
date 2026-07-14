@@ -483,6 +483,13 @@ wireFileZone($('#up-pick'),$('#up-file'),$('#up-drop'),chooseUploadConfig);
 // part and composing again reuses the others as-is.
 const COMPOSE_KINDS=['config','scenarios','binary'];
 const composeState={config:null,scenarios:null,binary:null};  // per kind: {sha, filename, reused}
+const composeBusy=new Set();  // kinds mid-hash/mid-upload; #cmp-run stays disabled while any is in flight
+function setComposeBusy(kind,busy){
+  // Disable Compose & load while ANY zone is still working, so a leg that's nulled-out for the
+  // duration of chooseArtifact can't be silently dropped from the /api/compose body by an early click.
+  if(busy)composeBusy.add(kind);else composeBusy.delete(kind);
+  const b=$('#cmp-run');if(b)b.disabled=composeBusy.size>0;
+}
 async function sha256Hex(file){
   const buf=await crypto.subtle.digest('SHA-256',await file.arrayBuffer());
   return Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,'0')).join('');
@@ -498,29 +505,32 @@ async function chooseArtifact(kind,file){
   if(!file)return;
   const err=$('#cmp-error'),state=$('#cmp-'+kind+'-state');err.hidden=true;
   composeState[kind]=null;renderComposeZone(kind);
-  // Content-addressing is computed in the browser, which needs WebCrypto — only available in a
-  // secure context (HTTPS or localhost). Say so plainly rather than surfacing a generic read error
-  // when serve is reached over plain HTTP on a non-localhost host.
-  if(!(window.crypto&&crypto.subtle)){state.textContent='';err.textContent='composing from artifacts needs a secure context (open serve over HTTPS or on localhost)';err.hidden=false;return;}
-  state.textContent='Hashing '+file.name+'…';
-  let sha;
-  try{sha=await sha256Hex(file);}
-  catch(e){state.textContent='';err.textContent='could not read '+file.name;err.hidden=false;return;}
-  // Skip the upload when the server already has these exact bytes (content-addressed dedup).
-  let reused=false;
-  try{const d=await getJSON('/api/artifacts/exists?kind='+kind+'&sha256='+sha,null);reused=!!(d&&d.exists);}
-  catch(e){reused=false;}
-  if(!reused){
-    state.textContent='Uploading '+file.name+' ('+fmtSize(file.size)+')…';
-    let d;
-    try{
-      const r=await fetch('/api/artifacts/'+kind,{method:'POST',headers:{'Content-Type':'application/octet-stream'},body:file});
-      d=await r.json();
-      if(!r.ok||d.error){state.textContent='';err.textContent=(d&&d.error)||'upload failed';err.hidden=false;return;}
-    }catch(e){state.textContent='';err.textContent='upload failed';err.hidden=false;return;}
-  }
-  composeState[kind]={sha:sha,filename:file.name,reused:reused};
-  renderComposeZone(kind);
+  setComposeBusy(kind,true);  // cleared in finally, so every exit path re-enables the button
+  try{
+    // Content-addressing is computed in the browser, which needs WebCrypto — only available in a
+    // secure context (HTTPS or localhost). Say so plainly rather than surfacing a generic read error
+    // when serve is reached over plain HTTP on a non-localhost host.
+    if(!(window.crypto&&crypto.subtle)){state.textContent='';err.textContent='composing from artifacts needs a secure context (open serve over HTTPS or on localhost)';err.hidden=false;return;}
+    state.textContent='Hashing '+file.name+'…';
+    let sha;
+    try{sha=await sha256Hex(file);}
+    catch(e){state.textContent='';err.textContent='could not read '+file.name;err.hidden=false;return;}
+    // Skip the upload when the server already has these exact bytes (content-addressed dedup).
+    let reused=false;
+    try{const d=await getJSON('/api/artifacts/exists?kind='+kind+'&sha256='+sha,null);reused=!!(d&&d.exists);}
+    catch(e){reused=false;}
+    if(!reused){
+      state.textContent='Uploading '+file.name+' ('+fmtSize(file.size)+')…';
+      let d;
+      try{
+        const r=await fetch('/api/artifacts/'+kind,{method:'POST',headers:{'Content-Type':'application/octet-stream'},body:file});
+        d=await r.json();
+        if(!r.ok||d.error){state.textContent='';err.textContent=(d&&d.error)||'upload failed';err.hidden=false;return;}
+      }catch(e){state.textContent='';err.textContent='upload failed';err.hidden=false;return;}
+    }
+    composeState[kind]={sha:sha,filename:file.name,reused:reused};
+    renderComposeZone(kind);
+  }finally{setComposeBusy(kind,false);}
 }
 async function composeAndLoad(){
   const err=$('#cmp-error'),meta=$('#cmp-meta');err.hidden=true;
