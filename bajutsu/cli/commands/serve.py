@@ -189,8 +189,12 @@ def serve(
         else:
             # A local config's relative paths resolve from its own directory, so the served config
             # behaves the same wherever serve was started, matching the CLI and the Git bind (BE-0242).
+            # Resolve config_path itself too — a run job passes it as `--config` to a subprocess
+            # launched with cwd=cwd (the config's directory); left relative to the original launch
+            # cwd, that argument would no longer resolve once cwd moves.
             assert config_path is not None  # set above from a truthy `config`
-            cwd = config_path.resolve().parent
+            config_path = config_path.resolve()
+            cwd = config_path.parent
 
     # The initial theme selection is a serve-only `ui.default_theme` key, read from the startup
     # config here (the core Config never models it — BE-0191). None follows the OS as before.

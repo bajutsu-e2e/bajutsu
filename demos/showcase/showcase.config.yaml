@@ -7,7 +7,8 @@
 #   bajutsu run --target showcase-swiftui --config demos/showcase/showcase.config.yaml ...
 #   bajutsu run --target showcase-uikit   --config demos/showcase/showcase.config.yaml ...
 # The `-noax` apps carry no identifiers (idNamespaces: []) — the `record` / `doctor`
-# "missing accessibility" demo. `make -C demos/showcase <target>-build` builds each.
+# "missing accessibility" demo. `make -C demos/showcase <target>-build` builds each (from the
+# repo root; a config-bound `bajutsu` invocation runs each `build:` from this file's own directory).
 # The four Android twins (below, BE-0007 preparation) share the same id contract: Compose reproduces
 # the dotted SPEC ids verbatim, while showcase-views maps them to underscores (`android:id` allows
 # neither '.' nor '-', SPEC §2.1). The shared scenarios run on both unchanged because each selector
@@ -32,7 +33,7 @@ targets:
     # precedent; this iOS target's tree only ever renders the dotted form.
     readyWhen: { id: [stable.row.1, stable_row_1] }
     appPath: ios/swiftui/build/dd/Build/Products/Debug-iphonesimulator/BajutsuShowcaseSwiftUI.app
-    build: make -C demos/showcase swiftui-build
+    build: make swiftui-build
     scenarios: scenarios
     # Capability-aware per-scenario selection (BE-0240): the ladder runs each scenario on the cheapest
     # actuator its own steps can use — idb by default, escalating to XCUITest only where a construct
@@ -43,7 +44,7 @@ targets:
     # elements — `bajutsu run --target showcase-swiftui --backend xcuitest ...`.
     xcuitest:
       testRunner: ../../BajutsuKit/Runner/build/dd/Build/Products/BajutsuRunner.xctestrun
-      build: make -C demos/showcase runner-build
+      build: make runner-build
 
   # ---- SwiftUI, accessibility OFF (the `record` / `doctor`-Blocked target) -------
   showcase-swiftui-noax:
@@ -52,7 +53,7 @@ targets:
     launchEnv: { SHOWCASE_UITEST: "1" }
     idNamespaces: []   # honest: this build exposes no identifiers
     appPath: ios/swiftui/build/dd/Build/Products/Debug-iphonesimulator/BajutsuShowcaseSwiftUINoAx.app
-    build: make -C demos/showcase swiftui-noax-build
+    build: make swiftui-noax-build
     backend: [idb]   # idb + vision (BE-0176): crawl drives this -noax app with no XCUITest runner
     scenarios: ios/scenarios-xcuitest
     # NOT migrated to the BE-0240 ladder: this app's need for XCUITest is app-level (no accessibility
@@ -63,7 +64,7 @@ targets:
     # reaches elements idb's tree can't (e.g. a TabView's tabs) by label, where idb needs vision.
     xcuitest:
       testRunner: ../../BajutsuKit/Runner/build/dd/Build/Products/BajutsuRunner.xctestrun
-      build: make -C demos/showcase runner-build
+      build: make runner-build
 
   # ---- UIKit, accessibility ON (same identifier contract as showcase-swiftui) ----
   showcase-uikit:
@@ -72,7 +73,7 @@ targets:
     launchEnv: { SHOWCASE_UITEST: "1" }
     idNamespaces: [stable, horse, search, log, notice, perm, sys, net]
     appPath: ios/uikit/build/dd/Build/Products/Debug-iphonesimulator/BajutsuShowcaseUIKit.app
-    build: make -C demos/showcase uikit-build
+    build: make uikit-build
     scenarios: scenarios
     # Capability-aware per-scenario selection (BE-0240), as for showcase-swiftui: idb by default,
     # escalating to XCUITest only for the scenarios whose steps need it. The a11y UIKit scenarios
@@ -80,7 +81,7 @@ targets:
     backend: [ios]
     xcuitest:
       testRunner: ../../BajutsuKit/Runner/build/dd/Build/Products/BajutsuRunner.xctestrun
-      build: make -C demos/showcase runner-build
+      build: make runner-build
 
   # ---- UIKit, accessibility OFF -------------------------------------------------
   showcase-uikit-noax:
@@ -89,7 +90,7 @@ targets:
     launchEnv: { SHOWCASE_UITEST: "1" }
     idNamespaces: []
     appPath: ios/uikit/build/dd/Build/Products/Debug-iphonesimulator/BajutsuShowcaseUIKitNoAx.app
-    build: make -C demos/showcase uikit-noax-build
+    build: make uikit-noax-build
     backend: [idb]   # idb + vision (BE-0176): crawl drives this -noax app with no XCUITest runner
     scenarios: ios/scenarios-xcuitest
     # NOT migrated to the BE-0240 ladder (see showcase-swiftui-noax): the XCUITest need here is
@@ -99,7 +100,7 @@ targets:
     # drives the -noax UITabBar tabs by label, which idb's describe-all collapses into an opaque group.
     xcuitest:
       testRunner: ../../BajutsuKit/Runner/build/dd/Build/Products/BajutsuRunner.xctestrun
-      build: make -C demos/showcase runner-build
+      build: make runner-build
 
   # ==== Android (BE-0007 preparation) =============================================
   # The Android twins of the four iOS products (demos/showcase/android). `backend: [android]`
@@ -120,7 +121,7 @@ targets:
     grantPermissions: [android.permission.POST_NOTIFICATIONS]
     idNamespaces: [stable, horse, search, log, notice, perm, sys, net]
     appPath: android/compose/build/outputs/apk/a11y/debug/compose-a11y-debug.apk
-    build: make -C demos/showcase/android compose-build
+    build: make -C android compose-build
     backend: [android]
     scenarios: scenarios
 
@@ -131,7 +132,7 @@ targets:
     launchEnv: { SHOWCASE_UITEST: "1" }
     idNamespaces: []   # honest: this build exposes no identifiers
     appPath: android/compose/build/outputs/apk/noax/debug/compose-noax-debug.apk
-    build: make -C demos/showcase/android compose-noax-build
+    build: make -C android compose-noax-build
     backend: [android]
     scenarios: scenarios
 
@@ -148,7 +149,7 @@ targets:
     idNamespaces: [stable, horse, search, log, notice, perm, sys, net]
     readyWhen: { id: [stable.row.1, stable_row_1] }
     appPath: android/views/build/outputs/apk/a11y/debug/views-a11y-debug.apk
-    build: make -C demos/showcase/android views-build
+    build: make -C android views-build
     backend: [android]
     scenarios: scenarios
 
@@ -159,6 +160,6 @@ targets:
     launchEnv: { SHOWCASE_UITEST: "1" }
     idNamespaces: []
     appPath: android/views/build/outputs/apk/noax/debug/views-noax-debug.apk
-    build: make -C demos/showcase/android views-noax-build
+    build: make -C android views-noax-build
     backend: [android]
     scenarios: scenarios
