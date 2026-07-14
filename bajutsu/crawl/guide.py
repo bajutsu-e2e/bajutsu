@@ -4,7 +4,7 @@ The guide proposes which replayable actions to try from a screen — taps and *r
 inputs that may open a new screen or enable a disabled control whose precondition isn't obvious
 (a valid email, a password that meets the rules). It only influences **what to explore**: screen
 identity, transition/crash detection and the screen map stay deterministic in
-[`crawl.py`](crawl.py), so the crawl is never a verdict (prime directive #1).
+[`core.py`](core.py), so the crawl is never a verdict (prime directive #1).
 
 The model call sits behind an ``ActionProposer`` protocol, so the guide is exercised in the gate
 with a scripted fake — no LLM, mirroring how `record` tests the authoring agent. The proposer's
@@ -18,7 +18,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any, Protocol
 
-from bajutsu import crawl, crawl_tabs, usage
+from bajutsu import usage
 from bajutsu.ai import (
     AiBackend,
     ContentPart,
@@ -32,6 +32,8 @@ from bajutsu.ai import (
 from bajutsu.ai.prompts import NEVER_JUDGE_BOUNDARY, render_elements
 from bajutsu.ai_config import AiConfig, language_instruction
 from bajutsu.claude_backed_agent import ClaudeBackedAgent
+from bajutsu.crawl import core as crawl
+from bajutsu.crawl import tabs as crawl_tabs
 from bajutsu.drivers import base
 from bajutsu.record import _screenshot_bytes
 from bajutsu.redaction import Redactor

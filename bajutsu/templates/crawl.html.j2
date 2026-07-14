@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-{#- Self-contained crawl screen map (BE-0038). crawl_report.py builds the layout; all markup lives
+{#- Self-contained crawl screen map (BE-0038). crawl/report.py builds the layout; all markup lives
     here. CSS is inlined (no external asset, no JS) so the page works opened from the run dir, where
     `screens/<fingerprint>.png` resolves next to it. -#}
 {%- macro plural(n, word) -%}{{ n }} {{ word }}{% if n != 1 %}s{% endif %}{%- endmacro -%}

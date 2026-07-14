@@ -306,7 +306,7 @@ bajutsu/
 ├── agent.py · agents.py  # オーサリング Agent 抽象 + 構築（Tier 1）
 ├── claude_agent.py       # SDK オーサリングエージェント（Anthropic API / Bedrock / ant）
 ├── record.py             # record ループ: 探索 -> シナリオ出力
-├── crawl.py              # 自律的な幅優先クロール -> スクリーンマップ
+├── crawl/                # 自律的な幅優先クロール -> スクリーンマップ（core + guide/tabs/report/repro/flows）
 ├── alerts.py             # システムアラートガード（視覚ロケータ）
 ├── codegen/              # シナリオ -> ネイティブテスト (XCUITest / Playwright / UI Automator)
 ├── trace.py              # 完了した run をテキストのタイムラインで確認

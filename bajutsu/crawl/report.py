@@ -16,7 +16,7 @@ from pathlib import Path
 
 from jinja2 import Environment, FileSystemLoader
 
-from bajutsu.crawl import ScreenMap
+from bajutsu.crawl.core import ScreenMap
 
 # Box + grid geometry. The *layout algorithm* is ported from the web UI's layered graph
 # (templates/serve.js); these constants are retuned for the static card (a smaller thumbnail, no
@@ -140,7 +140,9 @@ def _edges(screen_map: ScreenMap, pos: dict[str, tuple[int, int]]) -> list[EdgeL
     return lines
 
 
-_TEMPLATE_DIR = Path(__file__).resolve().parent / "templates"
+# The shared Jinja templates live at the package root (`bajutsu/templates/`), one level up now
+# that this module is inside the `crawl/` package (BE-0257).
+_TEMPLATE_DIR = Path(__file__).resolve().parent.parent / "templates"
 
 
 @functools.lru_cache(maxsize=1)

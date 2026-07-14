@@ -100,7 +100,7 @@ The `bajutsu/` package (Python 3.13+, pydantic v2 / typer / anthropic / pyyaml /
 | `ai/` | Vendor-neutral AI backend seam (BE-0104): `AiBackend` protocol + normalized request/response types (`base`), provider registry (`registry`), Anthropic reference adapter over `anthropic_client` (`anthropic`) — the Anthropic API, Amazon Bedrock, and the Anthropic CLI `ant` (BE-0163) | [configuration](configuration.md#ai-provider-ai-be-0047) |
 | `claude_agent.py` | The SDK authoring agent (forced tool use · prompt cache); provider-agnostic — Anthropic API / Bedrock / `ant` | [recording](recording.md#the-claude-authoring-agent) |
 | `record.py` | The record loop (observe → propose → execute → emit) | [recording](recording.md#the-record-loop) |
-| `crawl.py` | Autonomous breadth-first crawl → screen map (`crawl_guide` / `crawl_tabs` helpers) | [recording](recording.md) |
+| `crawl/` | Autonomous breadth-first crawl → screen map: `core` engine + `serialize`, with `guide` / `tabs` / `report` / `repro` / `flows` | [recording](recording.md) |
 | `alerts.py` | System-alert detection / dismissal (vision locator) | [recording](recording.md#dismissing-system-alerts-automatically) |
 | `codegen/` | Scenario → native test generation: XCUITest (Swift), Playwright (TypeScript), UI Automator (Kotlin) | [codegen](codegen.md) |
 | `visual.py` | Visual-regression image comparison (the `visual` assertion) | [evidence](evidence.md) |
@@ -124,7 +124,7 @@ Lower layers are more stable; upper layers depend on lower ones. The core is `dr
 ```
                        cli/             ← user entry (Typer): run / project / doctor / audit / coverage / stats / flakiness / export / trace / report / triage / record / crawl / codegen / approve / serve / mcp / worker / lint / schema
         ┌─────────────┬───┴───────┬───────────────┬───────────┐
-     runner/    record.py / crawl.py  codegen/     trace.py     triage.py / claude_triage.py
+     runner/    record.py / crawl/    codegen/     trace.py     triage.py / claude_triage.py
         │          (Tier 1 / AI)   (structural)   (timeline)   (self-heal · advisory)
    orchestrator/   agent_protocols.py / agent_factory.py / claude_agent.py / alerts.py   serve/ · github.py (web UI · CI)
         │                 │
@@ -165,7 +165,7 @@ declared:
    the `Driver` Protocol (`drivers/base.py`).
 3. **Periphery** — the consumers of the contract, each removable behind an optional extra:
    `serve/`, `mcp/`, the codegen emitters, the AI / agent paths (`agent_protocols.py`, `ai_config.py`,
-   `anthropic_client.py`, `record.py`, `enrich.py`, `triage.py`, `crawl_guide.py`, …), and the
+   `anthropic_client.py`, `record.py`, `enrich.py`, `triage.py`, `crawl/guide.py`, …), and the
    `github.py` / `notify.py` / `alerts.py` helpers.
 
 Three contracts are enforced:
@@ -326,7 +326,7 @@ workers would collide).
 - Read-only advisory analysis commands (no device, no AI, never gate CI — only a missing/unreadable input exits non-zero): a determinism/flakiness **audit** with static, repeat-and-diff, and longitudinal modes (`audit`, BE-0049); a scenario id-namespace **coverage** map (`coverage`, BE-0050); the aggregate run-stats dashboard as CLI/HTML output (`stats`, BE-0102); cross-run **flakiness** ranking, from a runs directory or the `serve` database (`flakiness`, BE-0220); a finished run's **export** as a portable `.zip` (`export`, BE-0060); and **report** re-rendering (`report.html`/`junit.xml`/`ctrf.json`) from stored run data with no re-run (`report`, BE-0068)
 - The **config project hub** (`project add`/`ls`/`use`/`rm` and `run --project`, BE-0225): a named registry binding a project name to a config source, shared between the CLI and the `serve` web UI (DB-backed when configured, on-disk JSON otherwise); `serve` carries a header **project switcher** + Projects list that rebinds the active config with no restart
 - The **cross-project metrics comparison dashboard** (BE-0226): a `serve` **Metrics** tab that ranks the registered projects side by side — pass-rate, flaky-rate, and p50/p95 run duration, plus a per-project trend sparkline — reusing BE-0102's per-config aggregation computed once per project (`GET /api/metrics/projects`); read-only and advisory, like BE-0102
-- AI **crawl** (`crawl.py`): autonomous breadth-first exploration of an app → a screen map (`screenmap.json`)
+- AI **crawl** (`crawl/`): autonomous breadth-first exploration of an app → a screen map (`screenmap.json`)
 - The `serve` local web UI (Tier 1): author (`record` / `crawl`), edit, and run scenarios; **open a `.zip` bundle** of config + scenarios + the built app binary as the active config the tabs run from (BE-0073); browse reports and evidence; a read-only aggregate **run-stats dashboard** across the run history (BE-0102), with every axis — date, backend, scenario, and step/assertion hotspot — now a deep link into the matching runs in the history list (BE-0241); a pre-run **readiness panel** (`doctor`: environment runnability + the current screen's convention score) in the Record and Replay forms (BE-0148); a **pluggable theme system** — drop-in visual tokens + swappable transitions, a header picker, and an in-UI editor with live preview and local-draft/server-upload persistence (BE-0191); approve visual baselines; live job streaming — from a browser (not for CI)
 - **MCP server** (`bajutsu mcp`): `bajutsu_run` and `bajutsu_doctor` as MCP tools + run evidence as resources, for Claude Desktop / Code integration (optional dependency `fastmcp`)
 - **Scenario linter** (`bajutsu lint` / `bajutsu schema`): validate scenarios without running them; JSON Schema output for editor integration

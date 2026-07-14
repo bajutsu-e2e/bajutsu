@@ -9,10 +9,11 @@ from __future__ import annotations
 
 from conftest import FakeBackend, FakeBlock, ShotDriver, el
 
-from bajutsu import crawl, crawl_tabs
+from bajutsu import crawl
 from bajutsu.ai.base import TextPart
 from bajutsu.ai_config import AiConfig
-from bajutsu.crawl_guide import (
+from bajutsu.crawl import tabs as crawl_tabs
+from bajutsu.crawl.guide import (
     ClaudeActionProposer,
     Proposal,
     _actions_from,

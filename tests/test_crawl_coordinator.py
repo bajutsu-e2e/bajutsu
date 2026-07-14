@@ -1,4 +1,4 @@
-"""Direct unit tests for the crawl coordinator (bajutsu/crawl._Coordinator, BE-0092).
+"""Direct unit tests for the crawl coordinator (bajutsu/crawl/core.py `_Coordinator`, BE-0092).
 
 Extracting the crawl's shared concurrent state into one class exposes the scheduler so it can be
 tested in isolation, without driving a (fake) device through the whole `crawl()` walk. These pin the
@@ -8,7 +8,7 @@ front-insert give-back, and global-control pruning on publish.
 
 from __future__ import annotations
 
-from bajutsu.crawl import Action, Fingerprint, Node, ScreenMap, _Coordinator
+from bajutsu.crawl.core import Action, Fingerprint, Node, ScreenMap, _Coordinator
 
 
 def _coord(

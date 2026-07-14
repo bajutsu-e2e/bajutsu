@@ -1,4 +1,4 @@
-"""Tests for the vision tab locator (bajutsu/crawl_tabs.py, BE-0038).
+"""Tests for the vision tab locator (bajutsu/crawl/tabs.py, BE-0038).
 
 No LLM: the Claude call is behind the vendor-neutral backend (BE-0104), exercised here with a fake
 backend — the same way the alert locator is tested. We check the tree-exposes-tabs gate and that
@@ -11,9 +11,9 @@ import struct
 
 from conftest import FakeBackend, FakeBlock, el
 
-from bajutsu import crawl_tabs
 from bajutsu.ai.base import AnyTool, ImagePart, TextPart
 from bajutsu.ai_config import AiConfig
+from bajutsu.crawl import tabs as crawl_tabs
 
 
 def _png(width: int, height: int) -> bytes:

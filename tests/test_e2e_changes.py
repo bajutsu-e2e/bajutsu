@@ -61,7 +61,12 @@ def test_run_path_top_level_modules_are_relevant() -> None:
         # agent_protocols (record is an E2E verb), mirroring the old agent.py entry. Its sibling
         # agent_factory (the old agents.py) is deliberately excluded — see the parity test below.
         "bajutsu/agent_protocols.py",
-        "bajutsu/crawl.py",
+        "bajutsu/crawl/core.py",
+        # record imports `screen_identity` through the package re-export, so `__init__` is on the
+        # on-device import path — and `__init__` unconditionally imports `serialize` too, putting it
+        # on that path as well (the periphery siblings are not — see the parity test below).
+        "bajutsu/crawl/__init__.py",
+        "bajutsu/crawl/serialize.py",
         "bajutsu/handoff.py",
     ):
         assert is_relevant([module]) is True, module
@@ -86,6 +91,14 @@ def test_non_run_path_top_level_modules_are_not_relevant() -> None:
         "bajutsu/usage_stats.py",
         "bajutsu/alerts.py",
         "bajutsu/github.py",
+        # The crawl engine core/serialize/__init__ trigger (above), but the periphery siblings in the
+        # same package do not — the on-device run never imports them, so `crawl/**` must not be swept
+        # wholesale. All four are pinned so the regex boundary is fully covered, not just sampled.
+        "bajutsu/crawl/guide.py",
+        "bajutsu/crawl/report.py",
+        "bajutsu/crawl/repro.py",
+        "bajutsu/crawl/flows.py",
+        "bajutsu/crawl/tabs.py",
     ):
         assert is_relevant([module]) is False, module
 

@@ -9,7 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装中** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0257") |
-| 実装 PR | [#1045](https://github.com/bajutsu-e2e/bajutsu/pull/1045) |
+| 実装 PR | [#1045](https://github.com/bajutsu-e2e/bajutsu/pull/1045)、[#1052](https://github.com/bajutsu-e2e/bajutsu/pull/1052) |
 | トピック | コードベース品質・技術的負債 |
 | 関連 | [BE-0112](../BE-0112-layer-boundary-enforcement/BE-0112-layer-boundary-enforcement-ja.md)、[BE-0135](../BE-0135-module-naming-debt/BE-0135-module-naming-debt-ja.md)、[BE-0092](../BE-0092-crawl-coordinator-extraction/BE-0092-crawl-coordinator-extraction-ja.md) |
 <!-- /BE-METADATA -->
@@ -137,8 +137,8 @@
 > ともに記録します。
 
 - [x] `bajutsu/codegen/` パッケージ（`__init__` / `common` / `emit` / `playwright` / `uiautomator`）。
-- [ ] `bajutsu/crawl/` パッケージ（`__init__` / `flows` / `guide` / `report` / `repro` / `tabs` /
-  `serialize`）。
+- [x] `bajutsu/crawl/` パッケージ（`__init__` / `core` / `flows` / `guide` / `report` / `repro` /
+  `tabs` / `serialize`）。
 - [ ] `bajutsu/github/` パッケージ（`__init__` / `actions` / `app`）。`config_source` と
   `github_app` の循環を解消します。
 - [ ] `bajutsu/agents/` の周辺パッケージ（9個のモジュール）。
@@ -152,6 +152,14 @@
   `uiautomator` と re-export の `__init__`）へ移動しました。あわせて import-linter の codegen 3 件を
   `bajutsu.codegen` 1 件へ集約し、`Makefile` と `e2e_changes.py`、e2e ワークフローのパスフィルタ、
   そして日英のドキュメントをパッケージへ向け直しました。
+- 2026-07-14（[#1052](https://github.com/bajutsu-e2e/bajutsu/pull/1052)）: ステージ 2。フラットな
+  `crawl*.py` を `bajutsu/crawl/` パッケージ（`core` エンジンと `flows` / `guide` / `report` /
+  `repro` / `tabs`、re-export の `__init__`）へ移動し、`Action` / `ScreenMap` のシリアライズ関連の
+  まとまりを `crawl/serialize.py` として切り出しました。あわせて import-linter の
+  `bajutsu.crawl_guide` を `bajutsu.crawl.guide` へ、`Makefile` と `e2e_changes.py`、e2e ワークフローの
+  パスフィルタを `crawl/core.py` と `crawl/serialize.py`、`crawl/__init__.py`（オンデバイス実行が
+  import するエンジンと re-export。周辺のモジュールは対象外のまま）へ向け直し、日英のドキュメントも
+  更新しました。
 
 ## 参考
 

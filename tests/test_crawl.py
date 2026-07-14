@@ -1,4 +1,4 @@
-"""Tests for the autonomous crawl engine core (bajutsu/crawl.py, BE-0038).
+"""Tests for the autonomous crawl engine core (bajutsu/crawl/core.py, BE-0038).
 
 The engine explores an app breadth-first over the Driver abstraction, building a screen map.
 It is exercised here entirely on the FakeDriver's multi-screen `react` model — no Simulator and
@@ -13,7 +13,8 @@ from collections.abc import Callable
 
 from conftest import el
 
-from bajutsu import crawl
+from bajutsu.crawl import core as crawl
+from bajutsu.crawl import serialize
 from bajutsu.drivers.fake import FakeDriver
 
 # --- state fingerprint ---------------------------------------------------------------------
@@ -165,8 +166,8 @@ def test_prune_global_explores_a_shared_control_once_and_records_the_rest() -> N
     assert not pruned_off.pruned
     assert any(e.action == "tap tab.home" and e.src != fp_home for e in pruned_off.edges)
     # Serialized maps carry the pruned list (empty when pruning is off).
-    assert crawl.screenmap_dict(pruned_on)["pruned"]
-    assert crawl.screenmap_dict(pruned_off)["pruned"] == []
+    assert serialize.screenmap_dict(pruned_on)["pruned"]
+    assert serialize.screenmap_dict(pruned_off)["pruned"] == []
 
 
 def test_resume_a_pruned_branch_explores_it_and_appends_to_the_map() -> None:
@@ -259,7 +260,7 @@ def test_continue_through_a_dict_round_trip_matches_a_full_crawl() -> None:
 
     full = crawl.crawl(FakeDriver(screen=list(home), react=react), reset, max_steps=100)
     partial = crawl.crawl(FakeDriver(screen=list(home), react=react), reset, max_steps=1)
-    reloaded = crawl.screenmap_from_dict(crawl.screenmap_dict(partial))
+    reloaded = serialize.screenmap_from_dict(serialize.screenmap_dict(partial))
     continued = crawl.crawl(
         FakeDriver(screen=list(home), react=react), reset, base_map=reloaded, max_steps=100
     )
@@ -425,7 +426,7 @@ def test_screenmap_round_trips_through_dict_for_resume() -> None:
         d.screen = list(home)
 
     original = crawl.crawl(FakeDriver(screen=list(home), react=react), reset, prune_global=True)
-    back = crawl.screenmap_from_dict(crawl.screenmap_dict(original))
+    back = serialize.screenmap_from_dict(serialize.screenmap_dict(original))
     assert set(back.nodes) == set(original.nodes)
     assert len(back.edges) == len(original.edges)
     assert [(p.src, p.key, p.path) for p in back.pruned] == [
@@ -441,7 +442,7 @@ def test_action_dict_round_trips_every_kind() -> None:
         crawl.Action("fill", fields=(("a", "1"), ("b", "2"))),
         crawl.Action("tap_point", label="Home", point=(0.5, 0.9)),
     ]:
-        assert crawl.action_from_dict(crawl.action_to_dict(a)) == a
+        assert serialize.action_from_dict(serialize.action_to_dict(a)) == a
 
 
 def test_crawl_discovers_every_reachable_screen() -> None:
@@ -753,7 +754,7 @@ def test_screenmap_dict_round_trips_nodes_edges_crashes() -> None:
     def reset(d: FakeDriver) -> None:
         d.screen = list(home)
 
-    data = crawl.screenmap_dict(crawl.crawl(driver, reset))
+    data = serialize.screenmap_dict(crawl.crawl(driver, reset))
     assert set(data) == {
         "nodes",
         "edges",
@@ -1015,7 +1016,7 @@ def test_node_targets_normalize_tap_rectangles() -> None:
     x, y, w, h = t["tap point (0.50, 0.90)"]
     assert x < 0.5 < x + w and y < 0.9 < y + h
     # Serialized as a plain {description: [x, y, w, h]} object.
-    data = crawl.screenmap_dict(crawl.ScreenMap(nodes={node.fingerprint: node}))
+    data = serialize.screenmap_dict(crawl.ScreenMap(nodes={node.fingerprint: node}))
     assert data["nodes"][0]["targets"]["tap b"] == [40 / 200, 300 / 400, 120 / 200, 50 / 400]
 
 

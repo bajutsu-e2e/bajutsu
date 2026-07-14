@@ -313,7 +313,7 @@ bajutsu/
 ├── agent_protocols.py · agent_factory.py  # authoring Agent abstraction + construction (Tier 1)
 ├── claude_agent.py       # the SDK authoring agent (Anthropic API / Bedrock / ant)
 ├── record.py             # record loop: explore -> emit a scenario
-├── crawl.py              # autonomous breadth-first crawl -> screen map
+├── crawl/                # autonomous breadth-first crawl -> screen map (core + guide/tabs/report/repro/flows)
 ├── alerts.py             # system-alert guard (vision locator)
 ├── codegen/              # scenario -> native tests (XCUITest / Playwright / UI Automator)
 ├── trace.py              # inspect a finished run as a text timeline

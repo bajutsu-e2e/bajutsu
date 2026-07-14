@@ -261,7 +261,7 @@ forbidden_modules = [
     "bajutsu.triage",
     "bajutsu.record",
     "bajutsu.record_capture",
-    "bajutsu.crawl_guide",
+    "bajutsu.crawl.guide",
     "bajutsu.github",
     "bajutsu.notify",
     "bajutsu.alerts",

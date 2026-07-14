@@ -1,4 +1,4 @@
-"""Tests for the self-contained crawl screen-map HTML report (bajutsu/crawl_report.py, BE-0038).
+"""Tests for the self-contained crawl screen-map HTML report (bajutsu/crawl/report.py, BE-0038).
 
 The report is a pure, deterministic function of a `ScreenMap` (the crawl's already-captured model):
 it lays the screens out in BFS depth columns, draws the transitions as a static inline SVG, and
@@ -8,7 +8,7 @@ links each screen to its screenshot — no device, no model, no external asset, 
 from __future__ import annotations
 
 from bajutsu.crawl import Alert, Crash, Edge, Node, ScreenMap
-from bajutsu.crawl_report import layout, render_html, write_html
+from bajutsu.crawl.report import layout, render_html, write_html
 
 
 def _node(fp: str, ids: tuple[str, ...] = (), actions: tuple[str, ...] = ()) -> Node:
