@@ -341,8 +341,20 @@ def source_provenance(spec: GitConfigSpec, mat: Materialized) -> dict[str, str]:
     }
 
 
+def _bajutsu_cache_root() -> Path:
+    """The shared cache root every Bajutsu-managed local cache nests under (BE-0243).
+
+    Resolves under ``XDG_CACHE_HOME``, falling back to ``~/.cache``. A hosted deployment that
+    writes here already needs `HOME`/`XDG_CACHE_HOME` set (the same precondition the Git source's
+    cache root has always had); consolidating every local cache — Git checkouts and
+    uploaded-bundle extracts alike — under one root keeps a hosted deployment's writable-path
+    allowlist to one entry instead of two.
+    """
+    return Path(os.environ.get("XDG_CACHE_HOME", Path.home() / ".cache")) / "bajutsu"
+
+
 def _default_cache_root() -> Path:
-    return Path(os.environ.get("XDG_CACHE_HOME", Path.home() / ".cache")) / "bajutsu" / "gitsrc"
+    return _bajutsu_cache_root() / "gitsrc"
 
 
 def materialize(

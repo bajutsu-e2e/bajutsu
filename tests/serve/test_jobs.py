@@ -510,7 +510,9 @@ def test_bind_upload_points_config_and_cwd_at_the_bundle(tmp_path: Path) -> None
 
 
 def test_bind_upload_replaces_the_previous_bundle(tmp_path: Path) -> None:
-    # Only one bundle is bound at a time: binding a second drops the first's extracted tree.
+    # Only one bundle is *bound* at a time, but binding a second no longer removes the first's
+    # extraction dir (BE-0243): it is now a durable, sha256-keyed cache entry, independent of any
+    # single bind, the same way binding a different Git source never sweeps the Git checkout cache.
     uploads = tmp_path / "uploads"
     uploads.mkdir()
     state = srv.ServeState(runs_dir=tmp_path / "runs", cwd=tmp_path, uploads_dir=uploads)
@@ -518,18 +520,19 @@ def test_bind_upload_replaces_the_previous_bundle(tmp_path: Path) -> None:
     state.bind_upload(first)
     second = _bundle(uploads, "second")
     state.bind_upload(second)
-    assert state.upload is second and not first.dir.exists()  # the first sandbox is removed
+    assert state.upload is second and first.dir.exists()
     assert second.dir.exists()
 
 
-def test_release_upload_removes_sandbox_and_resets_cwd(tmp_path: Path) -> None:
-    # Switching away from a bundle (any other config source) drops its sandbox and restores cwd to
-    # serve's launch dir, so the file-browser/Git sources don't inherit a stale bundle cwd.
+def test_release_upload_keeps_the_cache_and_resets_cwd(tmp_path: Path) -> None:
+    # Switching away from a bundle (any other config source) drops the *binding* and restores cwd to
+    # serve's launch dir, so the file-browser/Git sources don't inherit a stale bundle cwd — but the
+    # extraction cache dir itself persists (BE-0243), ready for reuse.
     uploads = tmp_path / "uploads"
     uploads.mkdir()
     state = srv.ServeState(runs_dir=tmp_path / "runs", cwd=tmp_path, uploads_dir=uploads)
     up = _bundle(uploads, "u1")
     state.bind_upload(up)
     state.release_upload()
-    assert state.upload is None and not up.dir.exists()
+    assert state.upload is None and up.dir.exists()
     assert state.cwd == state.base_cwd == tmp_path

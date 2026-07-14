@@ -22,11 +22,11 @@ Split into submodules:
 from __future__ import annotations
 
 import os
-import shutil
 from functools import partial
 from pathlib import Path
 from typing import Any
 
+from bajutsu.config_source import _bajutsu_cache_root
 from bajutsu.object_store import EvidenceTarget
 from bajutsu.serve.artifacts import Artifact, ArtifactStore, LocalArtifactStore
 from bajutsu.serve.commands import (
@@ -247,9 +247,11 @@ def _build_state(
         scenarios_dir=scenarios_dir,
         root=root or Path.cwd(),
         baselines_dir=resolved_baselines,
-        # Uploaded bundles (BE-0073) extract into a sibling of runs_dir — serve-owned, never the
-        # browse `--root`, so an uploaded tree can't overwrite the operator's files.
-        uploads_dir=runs_dir.parent / "uploads",
+        # Uploaded bundles (BE-0073) extract under the shared Bajutsu cache root — serve-owned,
+        # never the browse `--root`, so an uploaded tree can't overwrite the operator's files. A
+        # sibling of the Git source's own checkout cache (BE-0243), so a hosted deployment that
+        # already provisions one writable cache root for Git needn't provision a second for uploads.
+        uploads_dir=_bajutsu_cache_root() / "uploads",
         max_concurrent=max_concurrent,
         token=token,
         upload_exec=upload_exec,
@@ -361,6 +363,10 @@ def _build_server_state(
         token=token,
         upload_exec=upload_exec,
         evidence=evidence,
+        # Uploaded bundles (BE-0073) extract under the shared Bajutsu cache root, a sibling of the
+        # Git source's own checkout cache — the server backend previously left this at ServeState's
+        # bare `Path("uploads")` default (BE-0243), never overriding it here.
+        uploads_dir=_bajutsu_cache_root() / "uploads",
         # The hosted object store the control plane signs worker upload/download URLs against, and
         # its tenant base prefix (BE-0160). The worker never receives these credentials — only signed
         # URLs — so it needs no cloud SDK of its own.
@@ -537,10 +543,9 @@ def serve(
         themes_dir=themes_dir,
         default_theme=default_theme,
     )
-    # Clear upload sandboxes orphaned by a prior serve process — the dir is serve-owned and
-    # ephemeral, and nothing is bound at startup, so this just stops them accumulating across
-    # restarts (BE-0073; a bound bundle is removed when another config is bound while running).
-    shutil.rmtree(state.uploads_dir, ignore_errors=True)
+    # No startup sweep of uploads_dir: every entry is now a content-addressed cache keyed by its
+    # sha256 (BE-0243), as valid a cache hit moments after a restart as one extracted just before
+    # it — the same reason nothing sweeps the Git source's own checkout cache at startup either.
     _configure_oplog(state)
     # Restore the operator's last-saved provider/model/effort before the first request, so a restart
     # reflects it rather than resetting to the launch environment (BE-0184). After `_configure_oplog`

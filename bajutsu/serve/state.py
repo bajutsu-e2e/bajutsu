@@ -12,7 +12,6 @@ from __future__ import annotations
 
 import os
 import secrets
-import shutil
 import subprocess
 import threading
 from collections import Counter
@@ -292,9 +291,10 @@ class ServeState:
     # where `visual` baselines live (and where Approve promotes to); serve() defaults it to
     # <scenarios_dir>/baselines.
     baselines_dir: Path = field(default_factory=lambda: Path("baselines"))
-    # Sandbox for uploaded bundles (BE-0073): each upload extracts into its own dir here, a sibling
-    # of runs_dir, never the browse `--root`, so an uploaded tree can't overwrite the operator's
-    # files. serve() defaults it to a sibling of runs_dir.
+    # Root for uploaded-bundle extraction (BE-0073), never the browse `--root`, so an uploaded tree
+    # can't overwrite the operator's files. Each org's entries live under their own sub-path, keyed
+    # by content sha256 (BE-0243) — a durable, reusable cache in front of the object store, not a
+    # disposable per-bind sandbox. serve() defaults it onto the shared `~/.cache/bajutsu/` root.
     uploads_dir: Path = field(default_factory=lambda: Path("uploads"))
     # Drop-in theme directory (BE-0191 unit 2): scanned once at startup, its `*.css` folded into the
     # inlined theme stylesheet. None (the default / no `--themes`) means only the built-in themes.
@@ -606,8 +606,8 @@ class ServeState:
         )
 
     def bind_upload(self, upload: Upload) -> None:
-        """Make *upload* the active config (BE-0073): release any previously bound bundle's sandbox,
-        then point `config`/`cwd` at this one so runs/record/crawl resolve from the extracted tree."""
+        """Make *upload* the active binding (BE-0073): release any previously bound bundle, then
+        point `config`/`cwd` at this one so runs/record/crawl resolve from the extracted tree."""
         self.release_upload()
         self.upload = upload
         self.config = upload.config
@@ -618,12 +618,14 @@ class ServeState:
         )
 
     def release_upload(self) -> None:
-        """Drop the currently bound bundle's sandbox, if any, and reset `cwd` to serve's launch
-        directory. Called whenever a new config is bound (from any source), so only one bundle is
-        ever materialized and the file-browser/Git sources don't inherit a stale bundle cwd."""
-        if self.upload is not None:
-            shutil.rmtree(self.upload.dir, ignore_errors=True)
-            self.upload = None
+        """Drop the currently bound bundle's binding, if any, and reset `cwd` to serve's launch
+        directory. Called whenever a new config is bound (from any source), so the file-browser/Git
+        sources don't inherit a stale bundle cwd. Unlike before BE-0243, this no longer removes
+        `upload.dir`: it is now a sha256-keyed entry in `uploads_dir`'s shared extraction cache (a
+        cache other binds, and other replicas via the object store, may still resolve to), not a
+        disposable per-bind sandbox — its lifetime is independent of any single bind, the same way
+        unbinding a Git-sourced config never sweeps that source's own checkout cache."""
+        self.upload = None
         self.cwd = self.base_cwd
 
 
