@@ -281,6 +281,15 @@ in place of `binary`) is a later slice.
   reinterpreting the combined `POST /api/upload` as decompose-to-three sugar — stays a separate
   follow-up (its server-side re-zip is nondeterministic, undercutting the dedup it would exist to
   enable, and it touches the primary shipped upload path).
+- 2026-07-15 — Widened what the compose drop zones accept, per feedback. The `scenarios` artifact now
+  takes a single `.yaml` file in addition to a `.zip`: `materialize_composition` tells the two apart
+  by content (`zipfile.is_zipfile`) and writes a single file into the config's `scenarios` directory,
+  its extension normalized to `.yaml` (the runner's listing globs `*.yaml`); the dropped name flows
+  through `bind_composition` → `_compose_and_bind` as `scenariosName`, which also salts the
+  composition cache key so the same bytes under two names compose to two distinct, correctly-named
+  trees. The `binary` drop zone's accept list now includes `.app` and Android `.apk` (the byte-level
+  handling already covered both — a zipped `.app` extracts, a raw `.ipa`/`.apk` is written as is,
+  chosen by the config's `appPath` suffix — so this is the UI accept + hints catching up).
 
 ## References
 

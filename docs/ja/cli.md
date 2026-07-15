@@ -590,7 +590,10 @@ bajutsu serve [--port 8765] [--config bajutsu.config.yaml] [--root .] [--runs ru
   たびに変わる小さな scenario ツリー、めったに変わらない config です。そのため scenario を 1 行直すだけでも
   zip 全体を送り直すことになり、変わっていないバイナリの分まで再び支払います。「Open config」ダイアログの
   4 つめのソース **Compose from artifacts** は、バンドルを 3 つの**独立してアップロードできる content-addressed**
-  な部品、**Config**、**Scenarios**（scenario ツリーの `.zip`）、**Binary**（`.app.zip` / `.ipa`）に分割します。
+  な部品、**Config**、**Scenarios**（scenario ツリーの `.zip`、または単一の `.yaml`。内容で判別し、単一
+  ファイルは config の `scenarios` ディレクトリへ拡張子を `.yaml` に正規化して配置します）、**Binary**（zip 化
+  した `.app`、`.ipa`、または Android の `.apk`。config の `appPath` の拡張子で展開するか raw で書き出すかを
+  決めます）に分割します。
   各部品はバイト列の sha256 で保存します（`POST /api/artifacts/{config,scenarios,binary}`）。部品を内容で
   アドレス指定するので、変わっていない部品はまるごと省けます。ブラウザはファイルをハッシュし、アップロード前に
   `GET /api/artifacts/exists` で在庫を問い合わせるため、同じバイナリが 2 度も回線を通ることはありません。

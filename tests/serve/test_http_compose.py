@@ -118,6 +118,26 @@ def test_compose_needs_only_the_legs_the_config_references(tmp_path: Path) -> No
         server.server_close()
 
 
+def test_compose_accepts_a_single_yaml_scenarios_artifact(tmp_path: Path) -> None:
+    # The scenarios drop zone takes a single .yaml, not only a .zip: the server writes it into the
+    # config's scenarios dir (named from scenariosName, normalized to .yaml) and binds the triple.
+    server, port = _serve(_state(tmp_path))
+    try:
+        config_sha = _post_bytes(port, "/api/artifacts/config", _SCENARIOS_ONLY_CONFIG)["sha256"]
+        yaml_blob = b"- name: smoke\n  steps: []\n"
+        scenarios_sha = _post_bytes(port, "/api/artifacts/scenarios", yaml_blob)["sha256"]
+        status, resp = _post(
+            port,
+            "/api/compose",
+            {"config": config_sha, "scenarios": scenarios_sha, "scenariosName": "smoke.yml"},
+        )
+        assert status == 200 and resp["targets"] == ["demo"]
+        assert (Path(resp["config"]).parent / "scenarios" / "smoke.yaml").is_file()
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
 def test_compose_swapping_one_leg_is_a_new_triple_not_a_new_upload(tmp_path: Path) -> None:
     # The combination matrix: two scenario sets against one config compose into two distinct trees,
     # each a fresh triple over already-stored artifacts — no re-upload of the shared config.
