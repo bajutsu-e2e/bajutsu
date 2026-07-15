@@ -9,7 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0270") |
-| 実装 PR | [#PENDING](https://github.com/bajutsu-e2e/bajutsu/pull/PENDING) |
+| 実装 PR | [#1119](https://github.com/bajutsu-e2e/bajutsu/pull/1119) |
 | トピック | Driver & backend architecture |
 <!-- /BE-METADATA -->
 
@@ -77,7 +77,7 @@ UnsupportedAction を出さずに作用し、`select_option` は `UnsupportedAct
 
 ### ログ
 
-- [#PENDING](https://github.com/bajutsu-e2e/bajutsu/pull/PENDING) で実装：Compose の
+- [#1119](https://github.com/bajutsu-e2e/bajutsu/pull/1119) で実装：Compose の
   `ConformanceScreen` と `AppModel.conformanceIds`/`applyConformance`、`MainActivity`/`RootScreen`
   の配線、共有契約を走らせる `tests/test_driver_conformance_ondevice_android.py`（`am start` による
   再シードチャネル）、`android-e2e.yml` の `conformance (adb)` ジョブと `e2e-conformance` の

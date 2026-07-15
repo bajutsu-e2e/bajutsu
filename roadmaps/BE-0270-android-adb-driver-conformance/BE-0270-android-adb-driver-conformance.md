@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0270") |
-| Implementing PR | [#PENDING](https://github.com/bajutsu-e2e/bajutsu/pull/PENDING) |
+| Implementing PR | [#1119](https://github.com/bajutsu-e2e/bajutsu/pull/1119) |
 | Topic | Driver & backend architecture |
 <!-- /BE-METADATA -->
 
@@ -133,7 +133,7 @@ hold the `MULTI_TOUCH` precondition.
 
 ### Log
 
-- Implemented in [#PENDING](https://github.com/bajutsu-e2e/bajutsu/pull/PENDING): Compose
+- Implemented in [#1119](https://github.com/bajutsu-e2e/bajutsu/pull/1119): Compose
   `ConformanceScreen` + `AppModel.conformanceIds`/`applyConformance` + `MainActivity`/`RootScreen`
   wiring; `tests/test_driver_conformance_ondevice_android.py` over the shared contract with the
   `am start` reseed channel; the `conformance (adb)` job in `android-e2e.yml` and the
