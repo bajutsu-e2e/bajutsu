@@ -95,8 +95,9 @@ def _do_action(
     """Run a one-shot action (tap / longPress / type / swipe / relaunch / device control / http)
     by dispatching to its registered handler. `wait` and `assert` live in the run loop.
 
-    `selection` tracks a live text selection across steps for `copy` (BE-0265); a caller that runs
-    steps standalone (e.g. `record`) passes none and each call starts with no selection.
+    `selection` tracks a live text selection across steps for `copy` (BE-0265). Every current
+    caller (the run loop, `record`, `enrich`) now threads one shared instance across a run/replay;
+    a caller that omits it gets a fresh, inactive `SelectionState` scoped to that one call.
     """
     selection = selection if selection is not None else SelectionState()
     kind = _action_of(step)
