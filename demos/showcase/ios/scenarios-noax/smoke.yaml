@@ -3,10 +3,14 @@
 # name ("Horse N", the `Text(horse.name)` StableView renders). Run over XCUITest (`--backend ios`):
 # idb collapses the tab bar and can't reach a -noax element by label.
 #
-# The a11y twin asserts the fixed catalog is exactly five rows via `count: { idMatches: stable.row.* }`.
-# There is no visible mirror of the catalog *size* (only the rows themselves), and an id-less count by
-# label is unreliable — XCUITest can surface a row's cell and its inner static text as two elements —
-# so this twin proves the catalog rendered by the presence of its bookend rows instead.
+# The a11y twin asserts three things: the catalog is exactly five rows (`count: { idMatches:
+# stable.row.* }`), `stable.row.1` exists, and the empty state is absent. There is no visible mirror
+# of the catalog *size* (only the rows themselves), and an id-less count by label is unreliable —
+# XCUITest can surface a row's cell and its inner static text as two elements — so this twin proves
+# the catalog rendered by the presence of its bookend rows instead of an exact count. The empty-state
+# check does carry over: `labelMatches: "No horses"` matches the placeholder on both toolkits
+# ("No horses" on SwiftUI, "No horses in the stable" on UIKit), the counterpart to search.yaml's twin
+# asserting "No matches" is absent.
 - name: stable catalog smoke
   preconditions:
     launchEnv: { SHOWCASE_UITEST: "1" }
@@ -17,3 +21,4 @@
     - exists: { label: "Horse 1" }
     - exists: { label: "Horse 3" }
     - exists: { label: "Horse 5" }
+    - exists: { labelMatches: "No horses", negate: true }
