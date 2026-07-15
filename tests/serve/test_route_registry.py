@@ -34,6 +34,8 @@ _EXPECTED: frozenset[tuple[str, str]] = frozenset(
         # --- GET: uniform JSON reads ---
         ("GET", "/api/scenarios"),
         ("GET", "/api/targets"),
+        ("GET", "/api/version"),
+        ("GET", "/api/version/checkout"),
         ("GET", "/api/config"),
         ("GET", "/api/config/content"),
         ("GET", "/api/fs"),

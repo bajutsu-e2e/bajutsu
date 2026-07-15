@@ -378,6 +378,10 @@ textarea.yaml{flex:1;min-height:0;font-family:ui-monospace,SFMono-Regular,Menlo,
 .cfgbtn{background:var(--bg2);border:1px solid var(--line);color:var(--acc);padding:.3rem .8rem;font:inherit;font-weight:600;border-radius:8px;cursor:pointer}
 .cfgbtn:hover{color:var(--fg)}
 header .cfgname{color:var(--mut);font-size:.82em;max-width:32vw;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* Running-tool identity badge (BE-0272): a quiet, monospace stamp so several worktrees' serve
+   instances are told apart at a glance. `.dirty` flags an edited checkout in the accent colour. */
+header .appversion{color:var(--mut);font-size:.78em;font-family:var(--mono,ui-monospace,monospace);white-space:nowrap}
+header .appversion .dirty{color:var(--acc);font-weight:700}
 /* Full-viewport overlay: the scrim covers the toolbar too (the static header's z-index is inert, so
    this fixed z-index:50 layer paints over it), so a modal blocks the whole UI — its buttons can't be
    clicked to stack a second modal, and a click anywhere off the dialog (including over the toolbar)

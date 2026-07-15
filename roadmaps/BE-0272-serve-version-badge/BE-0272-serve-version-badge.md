@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0272](BE-0272-serve-version-badge.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0272") |
+| Implementing PR | [#1117](https://github.com/bajutsu-e2e/bajutsu/pull/1117) |
 | Topic | Surfacing CLI features in the serve Web UI |
 <!-- /BE-METADATA -->
 
@@ -87,13 +88,23 @@ are easy to conflate since they'll sit in the same header.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Backend: expose version (plus commit/branch/dirty when running from a Git checkout)
-      via a status endpoint.
-- [ ] Access control: decide and implement whether commit/branch/dirty are open or
-      `admin`-gated (version stays open).
-- [ ] Frontend: render the badge in the serve header next to the provenance badge.
-- [ ] Docs: record the badge in `docs/architecture.md`'s implementation status (and its
-      Japanese mirror) once shipped.
+- [x] Backend: expose version (plus commit/branch/dirty when running from a Git checkout)
+      via a status endpoint. Split into two GETs (`bajutsu/serve/operations/version.py`):
+      `GET /api/version` (open) and `GET /api/version/checkout` (Git plumbing, read per request).
+      Git is anchored at bajutsu's own package dir, not the process CWD, so a bound `github:`
+      config's checkout can't be mistaken for the tool's own build.
+- [x] Access control: version stays open; commit/branch/dirty are `admin`-gated via an early
+      GET case in `bajutsu/serve/authz.py` (a branch name can encode an in-progress topic).
+- [x] Frontend: `#appversion` badge in the serve header (`serve.html.j2`), populated by
+      `loadVersion()` in `serve.core.mjs` — version always, `· <sha> (branch)` + a dirty marker
+      when the admin-gated checkout read succeeds.
+- [x] Docs: recorded in `docs/architecture.md`'s implementation status and its Japanese mirror.
+
+### Log
+
+- (this PR) Implemented the two endpoints + authz gate + header badge, with operations-level
+  and HTTP tests (`tests/serve/test_version_ops.py`, `tests/serve/test_http_version.py`) and RBAC
+  coverage (`tests/serve/test_rbac.py`). Flipped Status → Implemented.
 
 ## References
 

@@ -157,6 +157,10 @@ ROUTES: tuple[Route, ...] = (
     Route(
         "GET", "/api/targets", lambda state, ctx: ops.list_targets_payload(state, actor=ctx.actor())
     ),
+    # Running-tool identity (BE-0272): version is open; the Git checkout detail is admin-gated
+    # (see `authz.required_role`) because a branch name can encode an in-progress topic.
+    Route("GET", "/api/version", lambda state, ctx: ops.server_version()),
+    Route("GET", "/api/version/checkout", lambda state, ctx: ops.server_checkout()),
     Route("GET", "/api/config", lambda state, ctx: ops.config_info(state)),
     Route("GET", "/api/config/content", lambda state, ctx: ops.config_content(state)),
     Route("GET", "/api/fs", lambda state, ctx: ops.browse_fs(state, ctx.query("dir"))),

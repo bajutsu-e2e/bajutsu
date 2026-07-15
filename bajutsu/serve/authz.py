@@ -169,8 +169,8 @@ def role_for(login: str, *, admins: frozenset[str], viewers: frozenset[str]) -> 
 def required_role(method: str, path: str) -> str | None:
     """The minimum role a request needs, or None for reads (GET) and the open auth endpoints.
     Cancelling a job or answering its handoff are editor actions (they mutate a running job). The
-    gated reads are ``GET /api/config/content`` and ``GET /api/artifacts/exists`` (both admin), a
-    wider disclosure than their paths."""
+    gated reads are ``GET /api/config/content``, ``GET /api/artifacts/exists`` and
+    ``GET /api/version/checkout`` (all admin), a wider disclosure than their paths."""
     # Config content is the one gated GET: it returns the active config's full body, a wider
     # disclosure than the path-only `/api/config`, and a local/uploaded config may embed literal
     # secrets. Gate it like binding the config (admin) so a viewer/editor can't read it.
@@ -182,6 +182,12 @@ def required_role(method: str, path: str) -> str | None:
     # generic `_ADMIN_PATHS` membership check below is only ever reached past the
     # `method != "POST"` guard, so a GET path added there would silently never gate.
     if method == "GET" and path == "/api/artifacts/exists":
+        return "admin"
+    # The server's own Git checkout (BE-0272): commit / branch / dirty. The branch name routinely
+    # encodes an in-progress BE slug (`claude/<topic>`), so on a shared deployment it leaks what's
+    # being worked on — gate it like the other wider-disclosure reads. The version string alone
+    # (`/api/version`) stays open. Same early-case reason as the two GETs above.
+    if method == "GET" and path == "/api/version/checkout":
         return "admin"
     # Project hub (BE-0225): registering / deregistering a project, or activating one (unit 4's
     # switcher rebinds the live config), all repoint a config binding, so each is an admin action like

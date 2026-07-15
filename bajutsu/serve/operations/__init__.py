@@ -121,6 +121,7 @@ from bajutsu.serve.operations.upload import (
     bind_composition,
     bind_upload_config,
 )
+from bajutsu.serve.operations.version import server_checkout, server_version
 from bajutsu.serve.operations.worker import (
     worker_heartbeat,
     worker_lease,
@@ -213,6 +214,8 @@ __all__ = [
     "runs_payload",
     "save_scenario",
     "scenario_schema",
+    "server_checkout",
+    "server_version",
     "set_api_key",
     "set_claude_code_token",
     "set_git_credential",

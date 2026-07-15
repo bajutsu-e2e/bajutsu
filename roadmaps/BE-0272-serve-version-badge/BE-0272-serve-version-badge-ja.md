@@ -7,8 +7,9 @@
 |---|---|
 | 提案 | [BE-0272](BE-0272-serve-version-badge-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **提案** |
+| 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0272") |
+| 実装 PR | [#1117](https://github.com/bajutsu-e2e/bajutsu/pull/1117) |
 | トピック | serve Web UI への CLI 機能の取り込み |
 <!-- /BE-METADATA -->
 
@@ -91,13 +92,24 @@ serve なのか分かりません。
 > 作業分解（作業の単位ごとに 1 つ）に対応し、ログには変更内容と時期（古い順）を PR へのリンクと
 > ともに記録します。
 
-- [ ] バックエンド：Git チェックアウト時のコミット・ブランチ・dirty 判定を含め、
-      バージョン情報を status エンドポイントで公開する。
-- [ ] アクセス制御：コミット・ブランチ・dirty 判定を開くか `admin` に制限するかを
-      決めて実装する（バージョンは開いたまま）。
-- [ ] フロントエンド：config 由来バッジの隣にバッジを描画する。
-- [ ] ドキュメント：出荷後、`docs/architecture.md` の実装状況（および日本語版）に
-      記載する。
+- [x] バックエンド：バージョンとコミット・ブランチ・dirty 判定を公開する。GET を 2 本に
+      分けました（`bajutsu/serve/operations/version.py`）。`GET /api/version`（公開）と
+      `GET /api/version/checkout`（`git` の plumbing、リクエストごとに読み取り）です。
+      Git はプロセスの作業ディレクトリではなく bajutsu 自身のパッケージディレクトリを起点に
+      読むため、bind した `github:` config のチェックアウトをツール自身のビルドと取り違えません。
+- [x] アクセス制御：バージョンは公開のまま、コミット・ブランチ・dirty 判定は
+      `bajutsu/serve/authz.py` の GET 早期分岐で `admin` に制限しました（ブランチ名は
+      作業中のトピックを含みうるため）。
+- [x] フロントエンド：ヘッダーの `#appversion` バッジ（`serve.html.j2`）を、`serve.core.mjs`
+      の `loadVersion()` が描画します。バージョンは常に表示し、admin 限定のチェックアウト
+      読み取りが成功したときだけ `· <sha> (branch)` と dirty マーカーを添えます。
+- [x] ドキュメント：`docs/architecture.md` の実装状況と日本語版に記載しました。
+
+### ログ
+
+- （本 PR）2 本のエンドポイントと authz の制限、ヘッダーバッジを実装し、オペレーション層と
+  HTTP のテスト（`tests/serve/test_version_ops.py`、`tests/serve/test_http_version.py`）、
+  RBAC のテスト（`tests/serve/test_rbac.py`）を追加しました。状態を実装済みに変更しました。
 
 ## 参考
 
