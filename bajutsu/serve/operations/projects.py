@@ -96,8 +96,12 @@ def register_project(
     if "/" in name:
         return {"error": "name must not contain '/'"}, 400
     source = body.get("source")
-    if source is None and body.get("sourceSpec"):
-        source = source_from_config(str(body["sourceSpec"]))
+    if source is None:
+        # Trim first so a whitespace-only spec (a direct API call bypassing the Web UI's own trim) is
+        # the same no-op as an omitted field, not a `file` source whose path is just spaces.
+        spec = str(body.get("sourceSpec") or "").strip()
+        if spec:
+            source = source_from_config(spec)
     invalid = _validate_source(state, source)
     if invalid is not None:
         return invalid

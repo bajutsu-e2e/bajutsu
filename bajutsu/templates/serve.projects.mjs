@@ -55,7 +55,11 @@ function renderProjectsView() {
 // server's post-delete state rather than guessing.
 async function removeProject(name) {
   const err = $('#projects-error');
-  if (!window.confirm(`Remove project "${name}"? Its run history is kept; only the config binding is removed.`)) return;
+  // Removing the active project clears the hub's active pointer (deregister does not reactivate
+  // another), so warn when that is what is about to happen.
+  const active = projectsCache.find(p => p.name === name)?.active;
+  const warn = active ? ' It is the active project — no project will be active afterward.' : '';
+  if (!window.confirm(`Remove project "${name}"?${warn} Its run history is kept; only the config binding is removed.`)) return;
   err.hidden = true;
   let d;
   try {
