@@ -422,7 +422,6 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--app-apk", type=Path, required=True, help="the Android APK to install")
     parser.add_argument(
         "--package",
-        type=Path,
         required=True,
         help="entry as source=arcname (repeat)",
         action="append",

@@ -24,6 +24,7 @@ from scripts.devicefarm_submit import (
     Verdict,
     _safe_extract,
     build_package,
+    main,
     render_test_spec,
     submit_and_collect,
     verdict_from_manifest,
@@ -355,3 +356,46 @@ def test_submit_and_collect_fails_loud_on_a_failed_upload(tmp_path: Path) -> Non
     transfer = _FakeTransfer()
     with pytest.raises(DeviceFarmError, match="upload"):
         _submit(client, transfer, tmp_path)
+
+
+# ---------------------------------------------------------------------------
+# main (argv parsing — --package-only build path)
+# ---------------------------------------------------------------------------
+
+
+def test_main_package_only_builds_from_source_arcname_entries(tmp_path: Path) -> None:
+    # `--package-only` walks the whole argv path: parse `--package SRC=ARCNAME`, split on `=`, and
+    # build the zip — no AWS credentials needed. Regression guard for the `--package` type: an entry
+    # must arrive as a str so `raw.partition("=")` works (parsing it as a Path would crash here).
+    config = tmp_path / "showcase.config.yaml"
+    config.write_text("targets: {}")
+    scenarios = tmp_path / "scenarios"
+    scenarios.mkdir()
+    (scenarios / "smoke.yaml").write_text("scenarios: []")
+    out = tmp_path / "package.zip"
+
+    exit_code = main(
+        [
+            "--scenario",
+            "scenarios/smoke.yaml",
+            "--target",
+            "showcase-compose",
+            "--config",
+            "showcase.config.yaml",
+            "--app-apk",
+            str(tmp_path / "app.apk"),
+            "--package",
+            f"{config}=showcase.config.yaml",
+            "--package",
+            f"{scenarios}=scenarios",
+            "--out",
+            str(out),
+            "--package-only",
+        ]
+    )
+
+    assert exit_code == 0
+    with zipfile.ZipFile(out) as zf:
+        names = set(zf.namelist())
+    assert "showcase.config.yaml" in names
+    assert "scenarios/smoke.yaml" in names
