@@ -169,6 +169,46 @@ def test_artifact_upload_routes_bind_like_stdlib(tmp_path: Path) -> None:
     assert exists == {"exists": True}
 
 
+def test_compose_route_binds_like_stdlib(tmp_path: Path) -> None:
+    # The FastAPI shell's `/api/compose` route (BE-0268) reaches the same shared `ops.bind_composition`
+    # as the stdlib handler; the compose logic itself is covered once via the stdlib suite
+    # (test_http_compose.py) — this only proves the ASGI route exists and delegates to it.
+    import hashlib
+    import io
+    import zipfile
+
+    def _zip(entries: dict[str, bytes]) -> bytes:
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+            for name, content in entries.items():
+                zf.writestr(name, content)
+        return buf.getvalue()
+
+    state = srv.ServeState(
+        runs_dir=tmp_path / "runs", cwd=tmp_path, root=tmp_path, uploads_dir=tmp_path / "uploads"
+    )
+    (tmp_path / "runs").mkdir()
+    client = _client(state)
+    config = b"defaults: { backend: [idb] }\ntargets:\n  demo: { bundleId: com.example.demo, scenarios: ./scenarios }\n"
+    scenarios = _zip({"scenarios/smoke.yaml": b"- name: a\n  steps: []\n"})
+    config_sha = client.post(
+        "/api/artifacts/config",
+        content=config,
+        headers={"content-type": "application/octet-stream"},
+    ).json()["sha256"]
+    scenarios_sha = client.post(
+        "/api/artifacts/scenarios",
+        content=scenarios,
+        headers={"content-type": "application/octet-stream"},
+    ).json()["sha256"]
+    resp = client.post("/api/compose", json={"config": config_sha, "scenarios": scenarios_sha})
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["ok"] is True and body["targets"] == ["demo"]
+    assert body["source"]["artifacts"] == {"config": config_sha, "scenarios": scenarios_sha}
+    assert hashlib.sha256(config).hexdigest() == config_sha  # sha the client computes matches
+
+
 def test_upload_route_requires_auth_when_token_set(tmp_path: Path) -> None:
     state = srv.ServeState(
         runs_dir=tmp_path / "runs",

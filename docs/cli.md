@@ -739,6 +739,29 @@ bajutsu serve [--port 8765] [--config bajutsu.config.yaml] [--root .] [--runs ru
   compression-ratio caps); every target's path fields are confined to the bundle at bind; and binding
   a config is an admin-role action behind the same token auth as every other request — bringing an
   arbitrary binary is only exposed on an authenticated, single-Mac `serve`.
+- **Compose from artifacts ([BE-0268](../roadmaps/BE-0268-composable-upload-artifacts/BE-0268-composable-upload-artifacts.md)).**
+  A combined bundle couples three pieces of very different change cadence — a large binary that
+  changes every build, a small scenario tree that changes every edit, and a config that almost never
+  changes — so re-shipping the whole zip for a one-line scenario fix pays for the unchanged binary
+  again. The "Open config" dialog's fourth source, **Compose from artifacts**, splits the bundle
+  into three **independently uploadable, content-addressed** parts — **Config**, **Scenarios** (a
+  `.zip` of the scenario tree), and **Binary** (a `.app.zip` / `.ipa`) — each stored by the sha256 of
+  its bytes (`POST /api/artifacts/{config,scenarios,binary}`). Because a part is addressed by its
+  content, an **unchanged** part is skipped entirely: the browser hashes the file and asks
+  `GET /api/artifacts/exists` before uploading, so the same binary never travels the wire twice.
+  **Compose & load** (`POST /api/compose`) then assembles a chosen `(config, scenarios, binary)`
+  **triple** into exactly the same confined tree a combined bundle produces — the **config is the
+  sole layout authority**, naming via its own relative `scenarios` / `appPath` where each part lands —
+  and binds it as the active config, so the **Replay / Record / Crawl** tabs run from it just as with
+  a bundle. A triple whose config needs a part you did not supply is **rejected** before any run
+  (never a half-built tree). Swapping one leg and composing again runs a new **combination** (binary A
+  vs. B against the same scenarios, or several scenario sets against one binary) with **no re-upload**
+  of the shared parts. Each run's `manifest.json` records the triple's provenance as a `compositionId`
+  plus one `<kind>Sha` per part, so "what did this run execute?" is answerable to the exact bytes of
+  each piece. Every artifact upload and the compose step are admin-role actions behind the same token
+  auth, with the same zip-slip / zip-bomb hardening as the combined bundle. (The three-drop-zone UI
+  and this compose endpoint are BE-0268's UI slice; the split-vs-combined internal unification of the
+  combined `POST /api/upload` is a separate follow-up.)
 - The **AI provider for authoring** (Record and Crawl) is one global choice in **Settings → AI
   provider**: **Anthropic API** (`ANTHROPIC_API_KEY`), **Amazon Bedrock** (AWS credentials +
   `BAJUTSU_BEDROCK_MODEL`), or the **Anthropic CLI** (`ant`, a browser-based OAuth/SSO sign-in on your

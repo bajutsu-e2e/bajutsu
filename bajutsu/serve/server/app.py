@@ -433,6 +433,16 @@ def make_app(state: ServeState) -> FastAPI:
             )
         )
 
+    @app.post("/api/compose")
+    async def compose(body: dict[str, Any], request: Request) -> JSONResponse:
+        """Assemble a `(config, scenarios, binary)` triple from artifacts already uploaded via
+        `/api/artifacts/*` and bind it as the active config (BE-0268) — the FastAPI mirror of the
+        stdlib handler's `/api/compose` case. A small JSON body of shas, not a raw upload; the
+        fetch-and-compose does blocking disk I/O, so run it off the event loop."""
+        return _result(
+            await run_in_threadpool(ops.bind_composition, state, body, actor=_actor(request))
+        )
+
     @app.post("/api/apikey")
     async def set_api_key(body: dict[str, Any], request: Request) -> JSONResponse:
         return _result(ops.set_api_key(state, str(body.get("value", "") or ""), _actor(request)))

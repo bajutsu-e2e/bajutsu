@@ -132,6 +132,9 @@ _ADMIN_PATHS = frozenset(
         "/api/artifacts/config",
         "/api/artifacts/scenarios",
         "/api/artifacts/binary",
+        # Composing a stored triple into the active config (BE-0268) repoints what the whole server
+        # serves, exactly like binding an uploaded bundle — the same admin tier as `/api/upload`.
+        "/api/compose",
         "/api/apikey",
         "/api/claudecodetoken",
         "/api/gitcredential",

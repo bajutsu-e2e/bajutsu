@@ -234,6 +234,15 @@ textarea.goal{min-height:5.5rem;resize:vertical;line-height:1.4}
 .drop .dropmsg{color:var(--mut);font-size:.85em}
 .upmeta{margin:.5rem 0 .2rem;font-size:.85em;color:var(--fg);word-break:break-all}
 .upmeta code{color:var(--mut)}
+/* Compose-from-artifacts (BE-0268): three side-by-side content-addressed drop zones. */
+.composezones{display:grid;grid-template-columns:repeat(3,1fr);gap:.5rem;margin-bottom:.5rem}
+.composezone{padding:.6rem}
+.composelbl{font-weight:600;font-size:.82em;margin-bottom:.4rem}
+.composereq{color:var(--acc);font-weight:400;font-size:.85em}
+.composeopt{color:var(--mut);font-weight:400;font-size:.85em}
+.composestate{margin-top:.4rem;font-size:.75em;color:var(--fg);word-break:break-all}
+.composestate.reused{color:var(--mut)}
+@media(max-width:560px){.composezones{grid-template-columns:1fr}}
 .sims{max-height:24vh;overflow:auto;border:1px solid var(--line);border-radius:6px;padding:.25rem}
 .sims label{display:flex;align-items:center;gap:.45rem;margin:0;padding:.22rem .35rem;color:var(--fg);cursor:pointer;font-size:.9em;border-radius:4px}
 .sims label:hover{background:var(--bg2)}

@@ -585,6 +585,26 @@ bajutsu serve [--port 8765] [--config bajutsu.config.yaml] [--root .] [--runs ru
   展開後の総サイズ、エントリごとの圧縮率の上限）に対して堅牢で、各ターゲットのパス項目はバインド時にバンドル内へ
   封じ込められ、config のバインドは他のリクエストと同じトークン認証の裏にある admin ロールの操作です。任意の
   バイナリを持ち込むことは、認証済みの単一 Mac の `serve` でのみ公開されます。
+- **アーティファクトからの合成（[BE-0268](../../roadmaps/BE-0268-composable-upload-artifacts/BE-0268-composable-upload-artifacts-ja.md)）。**
+  結合バンドルは、変更頻度がまるで違う 3 つの部品を一つに束ねます。ビルドごとに変わる巨大なバイナリ、編集の
+  たびに変わる小さな scenario ツリー、めったに変わらない config です。そのため scenario を 1 行直すだけでも
+  zip 全体を送り直すことになり、変わっていないバイナリの分まで再び支払います。「Open config」ダイアログの
+  4 つめのソース **Compose from artifacts** は、バンドルを 3 つの**独立してアップロードできる content-addressed**
+  な部品、**Config**、**Scenarios**（scenario ツリーの `.zip`）、**Binary**（`.app.zip` / `.ipa`）に分割します。
+  各部品はバイト列の sha256 で保存します（`POST /api/artifacts/{config,scenarios,binary}`）。部品を内容で
+  アドレス指定するので、変わっていない部品はまるごと省けます。ブラウザはファイルをハッシュし、アップロード前に
+  `GET /api/artifacts/exists` で在庫を問い合わせるため、同じバイナリが 2 度も回線を通ることはありません。
+  **Compose & load**（`POST /api/compose`）は、選んだ `(config, scenarios, binary)` の**三つ組**を、結合バンドルが
+  生むのと同じ封じ込めたツリーに組み立てます。**レイアウトの唯一の権威は config** で、自身の相対パス `scenarios` /
+  `appPath` によって各部品の置き場所を指定します。組み立てたツリーはアクティブな config としてバインドするので、
+  バンドルのときと同じく **Replay / Record / Crawl** タブがそこから動きます。config が必要とする部品を渡していない
+  三つ組は、run に入る前に**拒否**します（中途半端なツリーで走ることはありません）。1 本の脚だけ差し替えて合成し
+  直せば、共有する部品を**再アップロードせず**に新しい**組み合わせ**（同じ scenario に対するバイナリ A と B、あるいは
+  一つのバイナリに対する複数の scenario セット）を走らせられます。各 run の `manifest.json` には、三つ組の来歴を
+  `compositionId` と部品ごとの `<kind>Sha` として記録するので、「この run は何を実行したか」を各部品の正確なバイト
+  まで辿れます。アーティファクトのアップロードと合成はいずれも、他と同じトークン認証の裏にある admin ロールの操作で、
+  結合バンドルと同じ zip-slip / zip-bomb 対策が効いています（3 つのドロップゾーンの UI とこの合成エンドポイントが
+  BE-0268 の UI スライスで、結合 `POST /api/upload` を分割版と同じ内部表現へ統一する部分は別の follow-up です）。
 - オーサリング（Record と Crawl）の **AI プロバイダ**は **Settings → AI プロバイダ** の一箇所で選びます。
   **Anthropic API**（`ANTHROPIC_API_KEY`）、**Amazon Bedrock**（AWS 認証情報 + `BAJUTSU_BEDROCK_MODEL`）、
   **Anthropic CLI**（`ant`。Pro / Max / Console のシートに対するブラウザ経由の OAuth（SSO）サインイン。
