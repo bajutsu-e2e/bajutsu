@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0272") |
-| Implementing PR | [#1117](https://github.com/bajutsu-e2e/bajutsu/pull/1117) |
+| Implementing PR | [#1117](https://github.com/bajutsu-e2e/bajutsu/pull/1117), [#1124](https://github.com/bajutsu-e2e/bajutsu/pull/1124) |
 | Topic | Surfacing CLI features in the serve Web UI |
 <!-- /BE-METADATA -->
 
@@ -17,9 +17,10 @@
 
 Add a small, always-visible indicator to the serve Web UI header showing which commit —
 or, absent a Git checkout, which released version — of bajutsu itself is running. It sits
-next to the existing config-provenance badge ([BE-0187](../BE-0187-serve-config-view/BE-0187-serve-config-view.md)),
-but answers a different question: not "where did the loaded config come from" but "which
-build of the tool is serving this page."
+quietly beside the `bajutsu` wordmark, distinct from the config-provenance badge
+([BE-0187](../BE-0187-serve-config-view/BE-0187-serve-config-view.md)): it answers a
+different question — not "where did the loaded config come from" but "which build of the
+tool is serving this page."
 
 ## Motivation
 
@@ -57,7 +58,7 @@ are easy to conflate since they'll sit in the same header.
   set the precedent by gating its wider-disclosure `/api/config/content` read to the
   `admin` role. The version string alone is not sensitive; a reasonable default is to keep
   version open and gate commit/branch/dirty (or at least the branch name) to `admin`.
-- **Frontend.** A small badge in the header template, next to the config-provenance badge
+- **Frontend.** A small badge in the header template, beside the `bajutsu` wordmark
   — e.g. `v0.0.0 · a1b2c3d (branch-name)` — with a distinct marker when dirty. Rendered by
   the appropriate `serve.*.js` module from the [BE-0202](../BE-0202-serve-js-modularization/BE-0202-serve-js-modularization.md)
   split.
@@ -97,7 +98,8 @@ are easy to conflate since they'll sit in the same header.
       GET case in `bajutsu/serve/authz.py` (a branch name can encode an in-progress topic).
 - [x] Frontend: `#appversion` badge in the serve header (`serve.html.j2`), populated by
       `loadVersion()` in `serve.core.mjs` — version always, `· <sha> (branch)` + a dirty marker
-      when the admin-gated checkout read succeeds.
+      when the admin-gated checkout read succeeds. Placed beside the `bajutsu` wordmark (a
+      `.brandrow` next to the title), not among the nav tabs.
 - [x] Docs: recorded in `docs/architecture.md`'s implementation status and its Japanese mirror.
 
 ### Log
@@ -105,11 +107,14 @@ are easy to conflate since they'll sit in the same header.
 - (this PR) Implemented the two endpoints + authz gate + header badge, with operations-level
   and HTTP tests (`tests/serve/test_version_ops.py`, `tests/serve/test_http_version.py`) and RBAC
   coverage (`tests/serve/test_rbac.py`). Flipped Status → Implemented.
+- [#1124](https://github.com/bajutsu-e2e/bajutsu/pull/1124) — moved the badge from the tail of the
+  nav-tab row to a `.brandrow` beside the `bajutsu` wordmark; markup/endpoints/`loadVersion()`
+  unchanged. Updated this item's prose to match.
 
 ## References
 
 - [BE-0187](../BE-0187-serve-config-view/BE-0187-serve-config-view.md) — the config
-  provenance display this badge sits beside.
+  provenance display this badge is kept distinct from (it sits beside the title instead).
 - [BE-0202](../BE-0202-serve-js-modularization/BE-0202-serve-js-modularization.md) — the
   serve.js module structure this extends.
 - `CLAUDE.md`, "Isolate concurrent sessions with worktrees" — the multi-checkout scenario
