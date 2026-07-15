@@ -188,3 +188,39 @@ def test_http_run_rejects_invalid_udid(tmp_path: Path) -> None:
     finally:
         server.shutdown()
         server.server_close()
+
+
+def test_run_cmd_always_points_runs_dir_at_the_store(tmp_path: Path) -> None:
+    # The run must write where the store reads. serve passes `--runs-dir <store dir>` on every local
+    # run (not only on a Git/upload bind): a subdir config runs the subprocess with cwd = the config's
+    # dir (BE-0242), so the CLI's cwd-relative default would strand the report where the store can't
+    # find it. Assert the store's own runs_dir reaches the command.
+    scn_dir, cfg, runs = project(tmp_path)
+    captured: list[list[str]] = []
+
+    def popen(cmd: list[str], **_kw: Any) -> FakeProc:
+        captured.append(cmd)
+        return FakeProc(["PASS  runs/p/manifest.json\n"])
+
+    state = srv.ServeState(
+        scenarios_dir=scn_dir, config=cfg, runs_dir=runs, cwd=tmp_path, popen=popen
+    )
+    server, port = _serve(state)
+    try:
+        body = json.dumps({"scenario": "smoke.yaml", "target": "demo"}).encode()
+        req = urllib.request.Request(
+            f"http://127.0.0.1:{port}/api/run",
+            data=body,
+            headers={"Content-Type": "application/json"},
+        )
+        urllib.request.urlopen(req).read()
+        for _ in range(100):  # the job spawns on a background thread
+            if captured:
+                break
+            time.sleep(0.02)
+        cmd = captured[0]
+        assert "--runs-dir" in cmd
+        assert cmd[cmd.index("--runs-dir") + 1] == str(state.runs_dir)
+    finally:
+        server.shutdown()
+        server.server_close()

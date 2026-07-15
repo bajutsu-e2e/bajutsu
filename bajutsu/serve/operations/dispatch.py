@@ -140,16 +140,13 @@ def start_run(
     config_arg = "bajutsu.config.yaml" if on_worker else str(cfg)
     if on_worker:
         materials[config_arg] = cfg.read_text(encoding="utf-8")
-    # A config bound from a different cwd — a Git checkout (BE-0063) or an uploaded bundle (BE-0073) —
-    # runs from that tree, so a run would otherwise write its output under the transient checkout/
-    # bundle. Point --runs-dir at serve's own store (an absolute path under base_cwd) so the run lands
-    # in history and survives the bundle being replaced. Local path only — a server-backend run
-    # materializes into a worker workspace instead (on_worker).
-    runs_dir = (
-        str((state.base_cwd / state.runs_dir).resolve())
-        if not on_worker and state.cwd != state.base_cwd
-        else ""
-    )
+    # Always point --runs-dir at serve's own store (`state.runs_dir`, absolutized at launch in
+    # ServeState), so the run writes exactly where the store, `jobs`, and `triage` read — never the
+    # run's cwd-relative default. That default diverges from the store whenever the run's cwd isn't
+    # the launch dir: a Git checkout / uploaded bundle (BE-0063/BE-0073), or a subdir config that
+    # repoints `cwd` to the config's dir (BE-0242) and would otherwise strand the report as
+    # not-found. Local path only — a server-backend run materializes into a worker workspace instead.
+    runs_dir = "" if on_worker else str(state.runs_dir)
     # On the worker, baselines are downloaded into a workspace-relative dir before the run (the
     # control plane's baselines live in object storage); locally the real dir is used directly.
     cmd = run_command(

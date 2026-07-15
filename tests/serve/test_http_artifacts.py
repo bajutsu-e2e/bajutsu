@@ -135,3 +135,35 @@ def test_serve_run_file_emits_redirect_when_store_returns_one(tmp_path: Path) ->
     finally:
         server.shutdown()
         server.server_close()
+
+
+def test_relative_runs_dir_is_anchored_at_launch_cwd(tmp_path: Path, monkeypatch: Any) -> None:
+    # A subdir config repoints `cwd` to the config's dir (BE-0242), but a relative `runs_dir` (the
+    # `--runs` default) must stay anchored at serve's launch cwd — the store, `jobs`, and `triage`
+    # all read there. Otherwise a just-finished run's report.html reads back as not-found. Construct
+    # from a launch cwd distinct from the config's `cwd`, then serve a run written under launch/runs.
+    launch = tmp_path / "launch"
+    launch.mkdir()
+    cfgdir = tmp_path / "cfgdir"
+    scn_dir = cfgdir / "scenarios"
+    scn_dir.mkdir(parents=True)
+    cfg = cfgdir / "bajutsu.config.yaml"
+    cfg.write_text(
+        f"defaults: {{ backend: [idb] }}\ntargets:\n  demo: {{ bundleId: com.example.demo, scenarios: {scn_dir} }}\n",
+        encoding="utf-8",
+    )
+    write_run(launch / "runs", "r1", ok=True, scenarios=[("smoke", True)])
+    monkeypatch.chdir(launch)  # ServeState resolves relative dirs against the launch cwd
+    state = srv.ServeState(scenarios_dir=scn_dir, config=cfg, runs_dir=Path("runs"), cwd=cfgdir)
+    assert state.runs_dir == launch / "runs"  # anchored at launch, not the config's `cwd`
+    assert (
+        state.baselines_dir == launch / "baselines"
+    )  # a relative baselines_dir anchors the same way
+    server, port = _serve(state)
+    try:
+        with urllib.request.urlopen(f"http://127.0.0.1:{port}/runs/r1/report.html") as r:
+            assert r.status == 200
+            assert r.read() == b"<html></html>"
+    finally:
+        server.shutdown()
+        server.server_close()
