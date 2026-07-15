@@ -628,6 +628,12 @@ Running a scenario on a hosted device farm instead of a local Simulator, emulato
 
 <!-- /GENERATED:proposals-config-sourcing -->
 
+### Security hardening
+
+<!-- GENERATED:proposals-security -->
+
+<!-- /GENERATED:proposals-security -->
+
 ### Development infrastructure (contributor workflow)
 
 <!-- GENERATED:proposals-developer-experience -->
