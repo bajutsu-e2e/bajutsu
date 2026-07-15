@@ -17,9 +17,10 @@
 
 serve の Web UI のヘッダーに、実行中の bajutsu 自身がどのコミットで動いているか、
 Git チェックアウトがない場合はどのバージョンで動いているかを示す、常時表示の小さな
-バッジを追加します。既存の config 由来バッジ（[BE-0187](../BE-0187-serve-config-view/BE-0187-serve-config-view-ja.md)）
-の隣に置きますが、答える問いは異なります。「読み込んだ config がどこから来たか」で
-はなく、「このページを配信しているツール自体がどのビルドか」です。
+バッジを追加します。`bajutsu` というタイトルの横にそっと置き、config 由来バッジ
+（[BE-0187](../BE-0187-serve-config-view/BE-0187-serve-config-view-ja.md)）とは区別します。
+答える問いも異なり、「読み込んだ config がどこから来たか」ではなく、「このページを配信して
+いるツール自体がどのビルドか」です。
 
 ## 動機
 
@@ -61,7 +62,7 @@ serve なのか分かりません。
   作りました。バージョン文字列だけは機微ではないため、バージョンは開いたまま、
   コミット・ブランチ・dirty 判定（少なくともブランチ名）は `admin` に制限するのが
   妥当な既定です。
-- **フロントエンド**：ヘッダーのテンプレート内、config 由来バッジの隣に小さな
+- **フロントエンド**：ヘッダーのテンプレート内、`bajutsu` というタイトルの横に小さな
   バッジを配置します（例：`v0.0.0 · a1b2c3d (branch-name)`）。dirty のときは専用の
   マーカーを添えます。描画は、[BE-0202](../BE-0202-serve-js-modularization/BE-0202-serve-js-modularization-ja.md)
   で分割された `serve.*.js` モジュールのうち、該当するものが担います。
@@ -102,7 +103,8 @@ serve なのか分かりません。
       作業中のトピックを含みうるため）。
 - [x] フロントエンド：ヘッダーの `#appversion` バッジ（`serve.html.j2`）を、`serve.core.mjs`
       の `loadVersion()` が描画します。バージョンは常に表示し、admin 限定のチェックアウト
-      読み取りが成功したときだけ `· <sha> (branch)` と dirty マーカーを添えます。
+      読み取りが成功したときだけ `· <sha> (branch)` と dirty マーカーを添えます。ナビタブの
+      並びではなく、`bajutsu` というタイトルの横（`.brandrow`）に配置します。
 - [x] ドキュメント：`docs/architecture.md` の実装状況と日本語版に記載しました。
 
 ### ログ
@@ -110,11 +112,14 @@ serve なのか分かりません。
 - （本 PR）2 本のエンドポイントと authz の制限、ヘッダーバッジを実装し、オペレーション層と
   HTTP のテスト（`tests/serve/test_version_ops.py`、`tests/serve/test_http_version.py`）、
   RBAC のテスト（`tests/serve/test_rbac.py`）を追加しました。状態を実装済みに変更しました。
+- [#1124](https://github.com/bajutsu-e2e/bajutsu/pull/1124) — バッジをナビタブの末尾から
+  `bajutsu` というタイトルの横（`.brandrow`）へ移しました。マークアップとエンドポイント、
+  `loadVersion()` は変更していません。この項目の記述も実態に合わせました。
 
 ## 参考
 
-- [BE-0187](../BE-0187-serve-config-view/BE-0187-serve-config-view-ja.md) — このバッジ
-  が隣に並ぶ、config 由来の表示。
+- [BE-0187](../BE-0187-serve-config-view/BE-0187-serve-config-view-ja.md) — このバッジと
+  区別している、config 由来の表示（バッジはタイトルの横に置きます）。
 - [BE-0202](../BE-0202-serve-js-modularization/BE-0202-serve-js-modularization-ja.md) —
   このバッジが拡張する serve.js のモジュール構造。
 - `CLAUDE.md`「Isolate concurrent sessions with worktrees」— 複数チェックアウトが
