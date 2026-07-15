@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-scenario-permission-state-ja.md)
+**English** · [日本語](BE-0276-scenario-permission-state-ja.md)
 
-# BE-XXXX — Declarative per-scenario permission state (simctl privacy / pm grant)
+# BE-0276 — Declarative per-scenario permission state (simctl privacy / pm grant)
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-scenario-permission-state.md) |
+| Proposal | [BE-0276](BE-0276-scenario-permission-state.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0276") |
 | Topic | Scenario authoring features |
 | Related | [BE-0052](../BE-0052-device-state-timezone-clipboard-shake/BE-0052-device-state-timezone-clipboard-shake.md), [BE-0212](../BE-0212-granular-device-control-capabilities/BE-0212-granular-device-control-capabilities.md), [BE-0210](../BE-0210-android-actuation-fidelity/BE-0210-android-actuation-fidelity.md) |
 | Origin | Maestro |

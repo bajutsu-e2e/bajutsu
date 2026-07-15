@@ -1,14 +1,14 @@
-[English](BE-XXXX-scenario-permission-state.md) · **日本語**
+[English](BE-0276-scenario-permission-state.md) · **日本語**
 
-# BE-XXXX — シナリオ単位で宣言する権限状態（simctl privacy / pm grant）
+# BE-0276 — シナリオ単位で宣言する権限状態（simctl privacy / pm grant）
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
 |---|---|
-| 提案 | [BE-XXXX](BE-XXXX-scenario-permission-state-ja.md) |
+| 提案 | [BE-0276](BE-0276-scenario-permission-state-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **提案** |
-| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0276") |
 | トピック | シナリオ記述機能 |
 | 関連 | [BE-0052](../BE-0052-device-state-timezone-clipboard-shake/BE-0052-device-state-timezone-clipboard-shake-ja.md)、[BE-0212](../BE-0212-granular-device-control-capabilities/BE-0212-granular-device-control-capabilities-ja.md)、[BE-0210](../BE-0210-android-actuation-fidelity/BE-0210-android-actuation-fidelity-ja.md) |
 | 由来 | Maestro |
