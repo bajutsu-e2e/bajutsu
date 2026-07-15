@@ -177,3 +177,35 @@ def test_type_and_swipe_actions() -> None:
     assert result.ok
     # The directional form is a scroll (BE-0227), the coordinate form a raw drag.
     assert [a[0] for a in driver.actions] == ["tap", "type", "scroll", "swipe"]
+
+
+def test_step_level_assert_drops_visual_context() -> None:
+    """A step-level `assert` never runs the `visual` / `responseSchema` kinds: no per-step
+    screenshot is taken, so those inputs are dropped there even when the run carries a visual
+    context (they run only at scenario `expect`). Locks the intentional asymmetry (BE-0250 Unit 2).
+    """
+    from pathlib import Path
+
+    from bajutsu.assertions import EvalContext, VisualContext
+
+    # A context whose screenshot/baseline paths do not exist: were it forwarded, `_eval_visual`
+    # would fail with "baseline not found"; dropped, it fails with "no visual context" instead.
+    vc = VisualContext(
+        screenshot_path=Path("/nonexistent/shot.png"),
+        baselines_dir=Path("/nonexistent/baselines"),
+        diff_dir=Path("/nonexistent/diff"),
+        run_dir=Path("/nonexistent"),
+    )
+    result = run_scenario(
+        FakeDriver([el("home.title", "ホーム")]),
+        _scenario(
+            {
+                "name": "step visual",
+                "steps": [{"assert": [{"visual": {"baseline": "home.png"}}]}],
+            }
+        ),
+        clock=FakeClock(),
+        ctx=EvalContext(visual=vc),
+    )
+    assert not result.ok
+    assert result.failure is not None and "no visual context" in result.failure

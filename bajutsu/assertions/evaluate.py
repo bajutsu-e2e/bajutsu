@@ -59,6 +59,26 @@ class GoldenContext:
     screen: base.Frame | None = None
 
 
+@dataclass(frozen=True)
+class EvalContext:
+    """The per-run inputs the context-bearing assertion kinds need, bundled as one value (BE-0250).
+
+    Each field feeds exactly one kind: `visual` the screenshot/baseline paths, `schema` the
+    JSON-Schema directory, `golden` the goldens directory, and `clipboard` the device pasteboard
+    text already read for the block. Bundling replaces the four loose keyword-only parameters that
+    were threaded in lockstep through `evaluate` -> `evaluate_one` -> `run_scenario` ->
+    `_run_step_body` -> the runner, so a new context-bearing kind adds a field here instead of a
+    parameter at every layer. `clipboard` stays a resolved value, not a reader: the read is gated
+    and performed once per block by the runner's `_clipboard_for`, so bundling never turns it into a
+    per-step read.
+    """
+
+    visual: VisualContext | None = None
+    schema: SchemaContext | None = None
+    golden: GoldenContext | None = None
+    clipboard: str | None = None
+
+
 def _eval_exists(elements: list[base.Element], a: Exists) -> AssertionResult:
     found = len(base.find_all(elements, a.sel.as_selector())) >= 1
     ok = found != a.negate
@@ -335,10 +355,7 @@ def evaluate_one(
     a: Assertion,
     exchanges: list[NetworkExchange] | None = None,
     *,
-    visual_context: VisualContext | None = None,
-    schema_context: SchemaContext | None = None,
-    clipboard: str | None = None,
-    golden_context: GoldenContext | None = None,
+    ctx: EvalContext | None = None,
 ) -> AssertionResult:
     """Evaluate one assertion against the screen and the observed network.
 
@@ -351,14 +368,8 @@ def evaluate_one(
         a: The assertion to evaluate.
         exchanges: The network exchanges observed so far; the `request` / `event` /
             `requestSequence` kinds check these (None is treated as empty).
-        visual_context: Paths the `visual` kind needs (screenshot, baselines, diff dir, run dir);
-            required only for a `visual` assertion.
-        schema_context: The directory a `responseSchema` path resolves against; required only for a
-            `responseSchema` assertion.
-        clipboard: The device pasteboard text the `clipboard` kind checks; None when unread (no
-            device-control channel), which fails the assertion cleanly.
-        golden_context: The goldens directory a `golden` assertion resolves against (BE-0006);
-            required only for a `golden` assertion.
+        ctx: The per-kind inputs (`visual` / `schema` / `golden` / `clipboard`); a kind whose input
+            is absent fails cleanly rather than raising. None is an empty context (BE-0250).
 
     Returns:
         The single assertion's result.
@@ -366,6 +377,8 @@ def evaluate_one(
     Raises:
         AssertionError: The assertion has no kind set — scenario validation should have caught this.
     """
+    if ctx is None:
+        ctx = EvalContext()
     if a.exists is not None:
         return _eval_exists(elements, a.exists)
     if a.value is not None:
@@ -387,13 +400,13 @@ def evaluate_one(
     if a.request_sequence is not None:
         return _eval_request_sequence(exchanges or [], a.request_sequence)
     if a.response_schema is not None:
-        return _eval_response_schema(exchanges or [], a.response_schema, schema_context)
+        return _eval_response_schema(exchanges or [], a.response_schema, ctx.schema)
     if a.visual is not None:
-        return _eval_visual(visual_context, a.visual, elements)
+        return _eval_visual(ctx.visual, a.visual, elements)
     if a.clipboard is not None:
-        return _eval_clipboard(clipboard, a.clipboard)
+        return _eval_clipboard(ctx.clipboard, a.clipboard)
     if a.golden is not None:
-        return _eval_golden(elements, a.golden, golden_context)
+        return _eval_golden(elements, a.golden, ctx.golden)
     raise AssertionError("empty assertion (should be caught by scenario validation)")
 
 
@@ -402,10 +415,7 @@ def evaluate(
     assertions: list[Assertion],
     exchanges: list[NetworkExchange] | None = None,
     *,
-    visual_context: VisualContext | None = None,
-    schema_context: SchemaContext | None = None,
-    clipboard: str | None = None,
-    golden_context: GoldenContext | None = None,
+    ctx: EvalContext | None = None,
 ) -> list[AssertionResult]:
     """Evaluate every assertion in an expect/assert block (the caller AND-s them via `passed`).
 
@@ -417,10 +427,8 @@ def evaluate(
         elements: One `query()` snapshot for the UI kinds.
         assertions: The block's assertions, evaluated in order.
         exchanges: The network exchanges observed so far (None is treated as empty).
-        visual_context: Forwarded to any `visual` assertion (see `evaluate_one`).
-        schema_context: Forwarded to any `responseSchema` assertion (see `evaluate_one`).
-        clipboard: Forwarded to any `clipboard` assertion (see `evaluate_one`).
-        golden_context: Forwarded to any `golden` assertion (see `evaluate_one`).
+        ctx: The per-kind inputs forwarded to each `evaluate_one` (see there); None is an empty
+            context (BE-0250).
 
     Returns:
         One result per assertion, positionally aligned with `assertions`.
@@ -436,17 +444,7 @@ def evaluate(
         for (i, req), ex_idx in zip(bare, order, strict=True):
             assigned[i] = _request_assignment_result(req, ex_idx, exs)
     return [
-        assigned[i]
-        if i in assigned
-        else evaluate_one(
-            elements,
-            a,
-            exs,
-            visual_context=visual_context,
-            schema_context=schema_context,
-            clipboard=clipboard,
-            golden_context=golden_context,
-        )
+        assigned[i] if i in assigned else evaluate_one(elements, a, exs, ctx=ctx)
         for i, a in enumerate(assertions)
     ]
 

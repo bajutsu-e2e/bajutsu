@@ -15,6 +15,7 @@ from bajutsu import capability_preflight, idb_version
 from bajutsu.artifact_perms import make_run_dir, restrict_file
 from bajutsu.assertions import (
     AssertionResult,
+    EvalContext,
     GoldenContext,
     SchemaContext,
     VisualContext,
@@ -201,10 +202,8 @@ class _ScenarioRunner:
                 bindings=self.bindings,
                 control=lz.control,
                 progress=self.progress,
-                visual_context=vc,
-                schema_context=sc,
+                ctx=EvalContext(visual=vc, schema=sc, golden=gc_with_screen),
                 mailbox=self.mailbox,
-                golden_context=gc_with_screen,
                 webview_bridge=lz.webview_bridge,
             )
             result.sid = sid  # the evidence-dir slug, so the matrix links to the real dir (BE-0076)
