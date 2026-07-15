@@ -153,9 +153,12 @@ def test_relative_runs_dir_is_anchored_at_launch_cwd(tmp_path: Path, monkeypatch
         encoding="utf-8",
     )
     write_run(launch / "runs", "r1", ok=True, scenarios=[("smoke", True)])
-    monkeypatch.chdir(launch)  # ServeState resolves a relative runs_dir against the launch cwd
+    monkeypatch.chdir(launch)  # ServeState resolves relative dirs against the launch cwd
     state = srv.ServeState(scenarios_dir=scn_dir, config=cfg, runs_dir=Path("runs"), cwd=cfgdir)
     assert state.runs_dir == launch / "runs"  # anchored at launch, not the config's `cwd`
+    assert (
+        state.baselines_dir == launch / "baselines"
+    )  # a relative baselines_dir anchors the same way
     server, port = _serve(state)
     try:
         with urllib.request.urlopen(f"http://127.0.0.1:{port}/runs/r1/report.html") as r:
