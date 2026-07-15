@@ -181,8 +181,9 @@ Log (oldest first):
   branches, with zero first-wait timeouts and no manual reruns. The pre-#1013 recurrence signature
   (`wait timeout: for stable.row.1`, a lone zero-frame `application` tree) did not reappear. The
   machine-checkable acceptance in *Detailed design* unit 5 holds, so the item moves to
-  **Implemented**. Runs to `main` build only the `visual (idb)` lane, so this evidence accrues from
-  the pull-request runs that touch the smoke lane's inputs, not from `main` pushes.
+  **Implemented**. `ios-e2e.yml` has no `push` trigger at all, so neither `smoke (idb)` nor
+  `visual (idb)` ever runs on a push to `main` — this evidence accrues entirely from the
+  pull-request and merge-queue runs that touch the smoke lane's inputs.
 
 ## References
 
