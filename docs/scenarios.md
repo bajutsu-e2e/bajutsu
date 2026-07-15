@@ -167,10 +167,10 @@ Each backend maps a service to its own native mechanism:
 
 **iOS has no TCC service for `notifications`** (iOS notification authorization is not part of
 TCC), so a scenario naming `notifications` on an iOS target fails **preflight** — before any device
-work — pointing at `dismissAlerts` as the path for that one prompt. Android's `POST_NOTIFICATIONS`
-*is* a runtime permission (API 33+), so Android supports the whole vocabulary. Every other
-unsupported combination (a service unsupported on the chosen backend) fails preflight the same way,
-named individually.
+work, naming the unsupported capability; `dismissAlerts` remains the reactive path for that one
+prompt. Android's `POST_NOTIFICATIONS` *is* a runtime permission (API 33+), so Android supports the
+whole vocabulary. Every other unsupported combination (a service unsupported on the chosen backend)
+fails preflight the same way, named individually.
 
 `permissions` has no app-level XCUITest / Espresso equivalent, so `codegen` emits a labeled
 `// TODO` per service rather than generating code for it — bajutsu applies the field itself, before

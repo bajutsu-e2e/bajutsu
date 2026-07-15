@@ -9,6 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0276") |
+| Implementing PR | [#1129](https://github.com/bajutsu-e2e/bajutsu/pull/1129) |
 | Topic | Scenario authoring features |
 | Related | [BE-0052](../BE-0052-device-state-timezone-clipboard-shake/BE-0052-device-state-timezone-clipboard-shake.md), [BE-0212](../BE-0212-granular-device-control-capabilities/BE-0212-granular-device-control-capabilities.md), [BE-0210](../BE-0210-android-actuation-fidelity/BE-0210-android-actuation-fidelity.md) |
 | Origin | Maestro |
@@ -172,6 +173,15 @@ cannot deliver.
 - [x] codegen labeled TODO for the field.
 - [x] Docs (scenarios.md + ja, DSL grammar) and a showcase fixture.
 - [x] Tests — schema, subset-advertising preflight, command builders, fail-clean on unknown service.
+
+Log:
+
+- [#1129](https://github.com/bajutsu-e2e/bajutsu/pull/1129) — Implemented the `permissions`
+  scenario field end to end: schema + vocabulary validation, per-service capability tokens
+  (`deviceControl.permissions.<service>`) and preflight gating, `simctl privacy` / `pm grant`|`pm
+  revoke` command builders (atomic — validated before any device mutation), apply-before-launch
+  wiring across all five platform environments (with a runtime `UnsupportedAction` backstop on
+  `fake`/`web`), codegen TODOs, bilingual docs, a showcase fixture, and tests.
 
 ## References
 

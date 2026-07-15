@@ -111,8 +111,9 @@ class RunEnvironment(Protocol):
     means a `simctl` device sequence or a fresh browser context — it gets back a driver bound to the
     launched app (not yet polled for readiness; the runner does that). `permissions` (BE-0276) is
     applied before the app process starts, so a known permission's runtime prompt never appears; a
-    platform without a mechanism for it (web, fake) ignores the field — preflight already rejected a
-    scenario naming an unsupported service before `start` is ever called. The remaining methods describe
+    platform without a mechanism for it (web, fake) raises `UnsupportedAction` if asked to apply
+    one — preflight already rejects a scenario naming an unsupported service before `start` is ever
+    called, so this is only the runtime backstop for a caller that bypasses it. The remaining methods describe
     the differences the pool used to branch on the actuator name for: how the device handle resolves,
     how network is observed, whether video can be captured, whether video must be wired before launch,
     and the per-scenario relaunch / device control / teardown. This is the narrower surface the `run`

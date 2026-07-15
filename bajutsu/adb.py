@@ -775,8 +775,19 @@ class Env:
         surface only as a later, misleading step failure. Any stdout (silent on success) is
         surfaced loudly instead. Shared by `grant_permissions` (the config-level list, BE-0210) and
         `apply_permissions` (the per-scenario field, BE-0276) — same command shape, same contract.
+
+        Raises:
+            DeviceError: `action` is neither `grant` nor `revoke` (should not happen — every caller
+                passes a literal or an already-validated `Scenario.permissions` value — but this
+                fails loudly rather than silently falling through to one command or the other), or
+                `pm grant`/`pm revoke` reported a problem.
         """
-        cmd_for = pm_grant_cmd if action == "grant" else pm_revoke_cmd
+        if action == "grant":
+            cmd_for = pm_grant_cmd
+        elif action == "revoke":
+            cmd_for = pm_revoke_cmd
+        else:
+            raise DeviceError(f"unknown pm action: {action!r} (expected grant|revoke)")
         out = self._run(cmd_for(self.serial, package, permission)).strip()
         if out:
             raise DeviceError(f"pm {action} failed for {permission} on {package}: {out}")

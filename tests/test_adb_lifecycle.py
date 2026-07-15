@@ -131,6 +131,17 @@ def test_env_apply_permissions_surfaces_a_stdout_error() -> None:
         adb.Env("S", run=run).apply_permissions("com.x", {"camera": "grant"})
 
 
+def test_env_apply_permissions_fails_loudly_on_an_unknown_action() -> None:
+    # `Scenario.permissions` already validates grant|revoke, so this can't happen through a
+    # scenario — but `_pm_run` must not silently treat anything-but-grant as a revoke.
+    calls: list[list[str]] = []
+    with pytest.raises(adb.DeviceError, match="unknown pm action"):
+        adb.Env("S", run=lambda a: calls.append(a) or "").apply_permissions(
+            "com.x", {"camera": "bogus"}
+        )
+    assert calls == []
+
+
 def test_env_apply_permissions_validates_before_touching_the_device() -> None:
     # An unmapped service anywhere in the mapping fails before any pm call runs — never partway
     # through, leaving some services already mutated (BE-0276). Preflight rejects an unknown

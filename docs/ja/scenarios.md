@@ -141,7 +141,7 @@ CLI の `--dismiss-alerts` / `--no-dismiss-alerts` フラグは**全シナリオ
 - **iOS** は `simctl privacy <udid> <grant|revoke> <tcc-service> <bundle>` を実行します。SpringBoard の権限プロンプトが参照するのと同じ TCC（Transparency, Consent, and Control）データベースです。
 - **Android** は `pm grant` / `pm revoke` を実行し、config レベルの `grantPermissions` リスト（[drivers](drivers.md)）を支える仕組みを再利用します。シナリオの `permissions` は、この config レベルの既定の上に重なり、config が許可した権限を取り消すこともできます。
 
-**iOS には `notifications` に対応する TCC サービスがありません**（iOS の通知許可は TCC の管轄外です）。そのため、iOS をターゲットにしたシナリオが `notifications` を指定すると、デバイスを一切操作する前の **preflight** で失敗し、そのプロンプトへの対処法として `dismissAlerts` を指し示します。Android の `POST_NOTIFICATIONS` は実行時権限です（API 33 以降）。そのため Android は語彙のすべてに対応します。選んだバックエンドが対応しないサービスの組み合わせも、同じように preflight が個別に名指しして失敗させます。
+**iOS には `notifications` に対応する TCC サービスがありません**（iOS の通知許可は TCC の管轄外です）。そのため、iOS をターゲットにしたシナリオが `notifications` を指定すると、デバイスを一切操作する前の **preflight** が対応していない権限として個別に名指しして失敗します。そのプロンプト自体への対処は、引き続き `dismissAlerts` が担います。Android の `POST_NOTIFICATIONS` は実行時権限です（API 33 以降）。そのため Android は語彙のすべてに対応します。選んだバックエンドが対応しないサービスの組み合わせも、同じように preflight が個別に名指しして失敗させます。
 
 `permissions` に対応する XCUITest / Espresso 側のコードはないため、`codegen` はコードを生成する代わりに、サービスごとにラベル付きの `// TODO` を出力します。フィールド自体は、生成したテストの起動処理より前に bajutsu 自身が適用します。
 
