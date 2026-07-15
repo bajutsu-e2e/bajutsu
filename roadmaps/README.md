@@ -146,6 +146,7 @@ The backend-agnostic core every platform plugs into: the driver interface and it
 | [BE-0128](BE-0128-device-step-capability-preflight/BE-0128-device-step-capability-preflight.md) | Preflight-gate device-control steps by capability | Implemented |
 | [BE-0141](BE-0141-backend-lifecycle-protocol/BE-0141-backend-lifecycle-protocol.md) | Bring backend lifecycle into the type system | Implemented |
 | [BE-0212](BE-0212-granular-device-control-capabilities/BE-0212-granular-device-control-capabilities.md) | Split the coarse deviceControl capability into per-operation tokens | Implemented |
+| [BE-0270](BE-0270-android-adb-driver-conformance/BE-0270-android-adb-driver-conformance.md) | Driver conformance for the adb backend on-device | Implemented |
 <!-- /GENERATED:implemented-driver-architecture -->
 
 ### Scenario authoring features
@@ -566,9 +567,7 @@ Under consideration — not yet decided. Promote an item to *In progress* once w
 ### Driver & backend architecture
 
 <!-- GENERATED:proposals-driver-architecture -->
-| ID | Item | Status |
-|---|---|---|
-| [BE-0270](BE-0270-android-adb-driver-conformance/BE-0270-android-adb-driver-conformance.md) | Driver conformance for the adb backend on-device | Proposal |
+
 <!-- /GENERATED:proposals-driver-architecture -->
 
 ### Device-cloud execution

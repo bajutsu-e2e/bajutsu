@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0270](BE-0270-android-adb-driver-conformance.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0270") |
+| Implementing PR | [#1119](https://github.com/bajutsu-e2e/bajutsu/pull/1119) |
 | Topic | Driver & backend architecture |
 <!-- /BE-METADATA -->
 
@@ -100,11 +101,43 @@ opt-in the showcase already uses — no per-app branching in the tool. The work 
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Add an Android conformance mode to the showcase app (Compose; Views per unit 1's decision).
-- [ ] Add the adb reseed channel (spec push/intent + condition-backed `with_screen`).
-- [ ] Add the adb conformance harness + `ondevice`-marked pytest module over the shared contract.
-- [ ] Add the `conformance (adb)` job to `android-e2e.yml`.
-- [ ] Confirm the adb driver's `capabilities()` matches behavior for the capability tests.
+- [x] Add an Android conformance mode to the showcase app (Compose; Views per unit 1's decision).
+- [x] Add the adb reseed channel (spec push/intent + condition-backed `with_screen`).
+- [x] Add the adb conformance harness + `ondevice`-marked pytest module over the shared contract.
+- [x] Add the `conformance (adb)` job to `android-e2e.yml`.
+- [x] Confirm the adb driver's `capabilities()` matches behavior for the capability tests.
+
+**Unit 1 decision — Compose only, Views out (recorded per *Alternatives considered*).** The contract
+seeds plain identifiers (`dup` / `ok` / `a` / `b` / `Log` / `g` / `sel` / `s`), none carrying the
+`.`/`_` the two toolkits' id forms (BE-0221) differ over, so a Views screen would resolve the
+identical ids through the identical `_strip_pkg` path — no added conformance coverage. And a
+spec-driven arbitrary-id screen is only naturally expressible in Compose: its `testTag` accepts any
+runtime string (surfaced as a `resource-id` via `testTagsAsResourceId`), while a Views `resource-id`
+must be a compile-time `R` entry. Compose is the one toolkit that can render the contract's screens
+at all.
+
+**Unit 2 decision — intent over file push.** The reseed re-launches the `singleTask` activity with a
+new `SHOWCASE_CONFORMANCE` intent extra, delivered via `onNewIntent` (the proven deep-link path),
+rather than pushing a spec file (iOS's channel): `adb push` cannot reach the app's sandbox, and the
+intent reuses the `launchEnv`→intent-extras convention (BE-0007) with no new app-side polling. The
+empty (zero-match) screen is encoded with a leading-`,` sentinel so the value is never the empty
+string, which adb's `am start --es KEY ""` would drop (the trailing-empty-arg quirk the clipboard
+channel also documents).
+
+**Unit 5 finding — no `capabilities()` correction needed.** The adb driver's declared set
+(`QUERY` / `ELEMENTS` / `MULTI_TOUCH`, `SELECT_OPTION` absent) already matches behavior for the
+capability tests on the rooted `google_apis` emulator: `pinch`/`rotate` actuate over the rooted
+`sendevent` sweep (BE-0232) without raising, and `select_option` raises `UnsupportedAction`. The
+`conformance (adb)` job runs `adb root` (as the smoke lane's `gestures_multitouch` already does) to
+hold the `MULTI_TOUCH` precondition.
+
+### Log
+
+- Implemented in [#1119](https://github.com/bajutsu-e2e/bajutsu/pull/1119): Compose
+  `ConformanceScreen` + `AppModel.conformanceIds`/`applyConformance` + `MainActivity`/`RootScreen`
+  wiring; `tests/test_driver_conformance_ondevice_android.py` over the shared contract with the
+  `am start` reseed channel; the `conformance (adb)` job in `android-e2e.yml` and the
+  `e2e-conformance` Makefile target.
 
 ## References
 

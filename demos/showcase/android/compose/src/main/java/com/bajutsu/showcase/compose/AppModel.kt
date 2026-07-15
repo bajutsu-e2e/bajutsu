@@ -42,6 +42,15 @@ class AppModel(env: Map<String, String>) {
     // rooted `sendevent` sweep.
     val gesturesMode: Boolean = env["SHOWCASE_GESTURES"] != null
 
+    // Driver-conformance mode (BE-0114 / BE-0270): a test-only affordance gated on the
+    // SHOWCASE_CONFORMANCE launch env, mirroring the iOS AppModel. null (env absent) = the normal
+    // observe-only app (BE-0079, untouched); non-null = render exactly these identifiers (duplicates
+    // / the empty set included) via ConformanceScreen. Observable so a reseed — a re-launch carrying a
+    // new SHOWCASE_CONFORMANCE extra, delivered to the singleTask activity through onNewIntent — re-
+    // renders the screen without relaunching the process (see MainActivity.applyConformance).
+    var conformanceIds by mutableStateOf(parseConformance(env["SHOWCASE_CONFORMANCE"]))
+        private set
+
     // Tab selection + per-tab navigation stacks (a deeplink pops these to root).
     var selectedTab by mutableStateOf(tab(env["SHOWCASE_TAB"]))
     val stablePath = mutableStateListOf<Int>() // pushed horse ids
@@ -83,6 +92,14 @@ class AppModel(env: Map<String, String>) {
     var locationStatus by mutableStateOf("notDetermined")
     var pasted by mutableStateOf("")
 
+    /**
+     * Reseed the conformance screen from a new SHOWCASE_CONFORMANCE extra (BE-0270), a no-op when the
+     * extra is absent so a non-conformance intent (e.g. a deeplink) never clears the current screen.
+     */
+    fun applyConformance(spec: String?) {
+        if (spec != null) conformanceIds = parseConformance(spec)
+    }
+
     fun horses(matching: String): List<Horse> =
         if (matching.isEmpty()) horses else horses.filter { it.name.contains(matching, ignoreCase = true) }
 
@@ -112,6 +129,21 @@ class AppModel(env: Map<String, String>) {
     }
 
     companion object {
+        /**
+         * Parse the SHOWCASE_CONFORMANCE id spec (BE-0270). Wire format: the identifiers comma-joined
+         * with a leading `,` sentinel, so the value is never the empty string — adb's
+         * `am start --es KEY ""` drops an empty trailing arg (the quirk the clipboard channel also
+         * documents), which would make the zero-match (empty) screen indistinguishable from "not in
+         * conformance mode". null (key absent) leaves conformance mode off; `,a,b` renders [a, b]; a
+         * bare `,` is the empty set. A leading `,` is stripped if present, so a hand-passed `a,b`
+         * (no sentinel) still parses.
+         */
+        fun parseConformance(spec: String?): List<String>? {
+            if (spec == null) return null
+            val body = spec.removePrefix(",")
+            return if (body.isEmpty()) emptyList() else body.split(",")
+        }
+
         /** Map a `SHOWCASE_TAB` value (and deeplink host) to a tab. */
         fun tab(name: String?): Tab = when (name) {
             "search" -> Tab.SEARCH
