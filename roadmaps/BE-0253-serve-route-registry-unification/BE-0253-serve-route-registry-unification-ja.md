@@ -9,7 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装中** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0253") |
-| 実装 PR | [#1098](https://github.com/bajutsu-e2e/bajutsu/pull/1098) |
+| 実装 PR | [#1098](https://github.com/bajutsu-e2e/bajutsu/pull/1098), [#1108](https://github.com/bajutsu-e2e/bajutsu/pull/1108) |
 | トピック | コードベース品質・技術的負債 |
 <!-- /BE-METADATA -->
 
@@ -128,9 +128,9 @@ drift を、grep できる明示的な宣言に変えます。作業は MECE な
 > 作業分解（作業の単位ごとに 1 つ）に対応し、ログには変更内容と時期（古い順）を PR へのリンクと
 > ともに記録します。
 
-- [ ] 宣言的なルートレジストリを定義する（メソッド、パスパターン、`ops.*` 呼び出し可能オブジェ
-      クト、`needs_actor` / `off_loop` / `local_only` フラグ）
-- [ ] 標準ライブラリのハンドラの `do_GET` / `do_POST` / `do_DELETE` を、レジストリからディス
+- [x] 宣言的なルートレジストリを定義する（メソッド、パスパターン、`ops.*` 呼び出し可能オブジェ
+      クト、`off_loop` / `local_only` / `content_type` フラグ）
+- [x] 標準ライブラリのハンドラの `do_GET` / `do_POST` / `do_DELETE` を、レジストリからディス
       パッチするように書き換える
 - [ ] `make_app` で、`app.py` の FastAPI ルートをレジストリから生成する
 - [ ] 現在 `app.py` に欠けているすべてのエンドポイント（`/flakiness`、`/api/ant/login`、
@@ -147,6 +147,20 @@ drift を、grep できる明示的な宣言に変えます。作業は MECE な
   （`HARDENING_HEADERS`、`allowed_hosts` / `host_allowed`、`csrf_ok`、`is_open`、`is_authorized`、
   `actor_for`）を両バックエンドが呼び出す形にし、トランスポート固有の機構は各バックエンドに残しました。
   挙動は変えていません。Part 1〜4（宣言的なルートレジストリ）は後続のスライスで実装します。
+- 2026-07-15 — Part 1〜2（レジストリの定義と標準ライブラリ側のディスパッチ）を
+  [#1108](https://github.com/bajutsu-e2e/bajutsu/pull/1108) で実装しました。フレームワークに
+  依存しない新しいモジュール `bajutsu/serve/routes.py` に、1 つの `ROUTES` テーブル（凍結
+  データクラス `Route`、バックエンド中立の `RequestCtx` プロトコル、`{name}` / `{name:path}` の
+  テンプレートマッチャ）を置き、各ルートの `ops.*` 呼び出しをルートごとのアダプタ
+  `handle(state, ctx)` にまとめました。`handler.py` の `do_GET` / `do_POST` / `do_DELETE` は、この
+  テーブルからディスパッチします。挙動は変えていません。Part 1 の草案からの逸脱として、`needs_actor`
+  フラグは実装しませんでした。ルートがアクターを解決するかどうかはアダプタのクロージャ内ですでに
+  表現されており、独立したフラグを設けると同じ事実の情報源が二重になる（この項目が取り除こうと
+  している食い違いそのもの）ためです。`off_loop` と `local_only` は残し（クロージャでは表現できない
+  ため）、`content_type` はテキスト応答を選びます。`off_loop` のルート（SSE、ファイル配信、生の
+  アップロード、OAuth、ログイン、インデックス）はここで宣言しつつ、各バックエンドの個別処理のまま
+  にしています。Part 3（`app.py` をレジストリから生成する）と Part 4（`local_only` による FastAPI
+  側で欠けているエンドポイントの判定）は次のスライスで実装します。
 
 ## 参考
 
