@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0250") |
-| Implementing PR | [#1093](https://github.com/bajutsu-e2e/bajutsu/pull/1093) |
+| Implementing PR | [#1093](https://github.com/bajutsu-e2e/bajutsu/pull/1093), [#1100](https://github.com/bajutsu-e2e/bajutsu/pull/1100) |
 | Topic | Codebase quality & technical debt |
 | Related | [BE-0172](../BE-0172-run-loop-step-decomposition/BE-0172-run-loop-step-decomposition.md) |
 <!-- /BE-METADATA -->
@@ -161,7 +161,7 @@ before and after) rather than changing any assertion's observable behavior.
   never re-reads it. Step-level asserts keep receiving only golden + clipboard (no per-step screenshot exists for
   `visual` / `responseSchema`), preserved by dropping those two fields at that call site. Behavior-preserving; the
   existing assertion/network/loop suites plus new frozen-context / field-routing / step-drop guards are the parity net.
-  PR [#PENDING](https://github.com/bajutsu-e2e/bajutsu/pull/PENDING).
+  PR [#1100](https://github.com/bajutsu-e2e/bajutsu/pull/1100).
 
 ## References
 
