@@ -105,9 +105,9 @@ def test_evaluator_registry_covers_every_kind_exactly() -> None:
     """The dispatch registry has one evaluator per assertion kind — no missing kind, no stray
     entry — so `evaluate_one`'s lookup can never fall through for a valid assertion (BE-0250)."""
     from bajutsu.assertions.evaluate import _EVALUATORS
-    from bajutsu.scenario.models._base import _ASSERTION_KINDS
+    from bajutsu.scenario import ASSERTION_KINDS
 
-    assert set(_EVALUATORS) == set(_ASSERTION_KINDS)
+    assert set(_EVALUATORS) == set(ASSERTION_KINDS)
 
 
 # --- EvalContext bundling (BE-0250 Unit 2) ---

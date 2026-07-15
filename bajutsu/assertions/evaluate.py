@@ -33,6 +33,7 @@ from bajutsu.assertions.visual import VisualContext, _eval_visual
 from bajutsu.drivers import base
 from bajutsu.network import NetworkExchange
 from bajutsu.scenario import (
+    ASSERTION_KINDS,
     Assertion,
     ClipboardMatch,
     CountMatch,
@@ -44,7 +45,6 @@ from bajutsu.scenario import (
     Selector,
     TextMatch,
 )
-from bajutsu.scenario.models._base import _ASSERTION_KINDS
 
 
 @dataclass(frozen=True)
@@ -516,7 +516,7 @@ def evaluate_one(
     if ctx is None:
         ctx = EvalContext()
     exs = exchanges or []
-    for kind in _ASSERTION_KINDS:
+    for kind in ASSERTION_KINDS:
         if getattr(a, kind) is not None:
             return _EVALUATORS[kind](a, elements, exs, ctx)
     raise AssertionError("empty assertion (should be caught by scenario validation)")

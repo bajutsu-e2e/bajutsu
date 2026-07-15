@@ -19,6 +19,7 @@ The full public API is re-exported here, so ``from bajutsu.scenario.models impor
 
 from __future__ import annotations
 
+from bajutsu.scenario.models._base import _ASSERTION_KINDS as ASSERTION_KINDS
 from bajutsu.scenario.models._base import Point
 from bajutsu.scenario.models.actions import (
     Background,
@@ -84,6 +85,7 @@ from bajutsu.scenario.models.steps import _STEP_ACTIONS as STEP_ACTIONS
 from bajutsu.scenario.models.steps import Extract, ForEach, If, Step, Use, Web
 
 __all__ = [
+    "ASSERTION_KINDS",
     "STEP_ACTIONS",
     "Assertion",
     "Background",
