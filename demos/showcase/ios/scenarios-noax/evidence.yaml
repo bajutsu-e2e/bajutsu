@@ -1,0 +1,16 @@
+# -noax twin of scenarios/evidence.yaml. Capture the heavier evidence types (screen video, device
+# log, app trace) around a short Log interaction, so one `run` produces a report exercising each. The
+# assertions are ordinary UI checks — the point is the captured evidence, which is collected the same
+# way regardless of accessibility. The note field is addressed by its visible placeholder "Note", and
+# the Intense toggle read from its "Easy"→(gone) mirror. Run over XCUITest (`--backend ios`).
+- name: capture video, device log, and app trace around a log interaction
+  preconditions:
+    launchEnv: { SHOWCASE_UITEST: "1" }
+  steps:
+    - tap: { label: "Log", traits: [button] }
+      capture: [video, deviceLog, appTrace]
+    - wait: { for: { label: "Note" }, timeout: 10 }
+    - type: { text: "morning ride", into: { label: "Note" } }
+    - tap: { labelMatches: "Intense", traits: [button] }
+  expect:
+    - exists: { label: "Easy", negate: true }

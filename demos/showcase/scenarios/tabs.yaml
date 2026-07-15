@@ -2,7 +2,7 @@
 # identifier — UITabBarItem.accessibilityIdentifier / SwiftUI tabItem Label on iOS
 # (MainTabBarController.swift / RootView.swift), android:id / testTag on Android
 # (MainActivity.kt / RootScreen.kt) — so this switches tabs by `id` instead of the
-# `label`+`traits:[button]` selector the -noax twin (ios/scenarios-xcuitest/tabs.yaml) uses. The
+# `label`+`traits:[button]` selector the -noax twin (ios/scenarios-noax/tabs.yaml) uses. The
 # ids themselves (`stable`, `search`, `log`, `notice`, `perm`) have no '.'/'-', so they need no
 # dual id-form (BE-0221): the one literal id matches Compose/Views unchanged.
 #

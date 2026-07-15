@@ -4,7 +4,8 @@
 .PHONY: build-all \
 	swiftui-gen swiftui-build swiftui-noax-build \
 	uikit-gen uikit-build uikit-noax-build runner-build \
-	run-swiftui run-uikit run-swiftui-tabs run-uikit-tabs doctor record ui-test \
+	run-swiftui run-uikit run-swiftui-tabs run-uikit-tabs \
+	run-swiftui-noax run-uikit-noax doctor record ui-test \
 	vrt vrt-approve vrt-swiftui vrt-swiftui-approve vrt-uikit vrt-uikit-approve \
 	e2e-visual e2e-visual-approve clean
 
@@ -73,6 +74,18 @@ run-swiftui-tabs: swiftui-build runner-build
 run-uikit-tabs: uikit-build runner-build
 	cd $(ROOT) && uv run bajutsu run --scenario demos/showcase/scenarios/tabs.yaml --target showcase-uikit \
 		--udid $(SIM) --backend xcuitest --config $(CONFIG)
+
+# The -noax twin of run-swiftui/run-uikit: the same flows from ios/scenarios-noax (config-bound), by
+# visible label + on-screen mirror text, forced onto XCUITest — idb collapses the tab bar and cannot
+# reach a -noax element by label, and this app-level need is not a per-scenario capability the [ios]
+# ladder can detect, so we pin `--backend xcuitest` rather than let it resolve. The UIKit run drops the
+# `swiftui`-tagged scenarios (the SHOWCASE_GESTURES pinch/rotate screen and the SwiftUI-recorded
+# `generated.yaml` have no UIKit counterpart). NOT part of `make check` — needs a booted Simulator; the
+# permission scenario is non-deterministic on iOS (its alert grant is an AI path, like the a11y twin).
+run-swiftui-noax: swiftui-noax-build runner-build
+	cd $(ROOT) && uv run bajutsu run --target showcase-swiftui-noax --udid $(SIM) --backend xcuitest --config $(CONFIG)
+run-uikit-noax: uikit-noax-build runner-build
+	cd $(ROOT) && uv run bajutsu run --target showcase-uikit-noax --udid $(SIM) --backend xcuitest --exclude swiftui --config $(CONFIG)
 
 # The accessibility A/B: doctor grades the a11y app Ready and the no-a11y app Blocked.
 doctor: swiftui-build swiftui-noax-build

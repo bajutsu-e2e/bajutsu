@@ -1,0 +1,23 @@
+# -noax twin of scenarios/gestures.yaml. The Log tab's dedicated long-press and double-tap targets
+# ("Long-press me" / "Double-tap me") each mirror their result to visible text — "idle"→"pressed" and
+# "Double-taps: N" — which this twin asserts in place of the dropped a11y values. Both gestures are
+# driveable by XCUITest by the target's visible label. The targets sit below the fold, so scroll them
+# into view first, anchored on controls that stay visible. Run over XCUITest (`--backend ios`).
+- name: long-press and double-tap targets mirror their result
+  preconditions:
+    launchEnv: { SHOWCASE_UITEST: "1" }
+  steps:
+    - tap: { label: "Log", traits: [button] }
+      capture: [video]
+    - wait: { for: { label: "Submit", traits: [button] }, timeout: 10 }
+    - swipe: { on: { label: "Submit", traits: [button] }, direction: up }
+    - swipe: { on: { label: "Dialog: none" }, direction: up }
+    - wait: { for: { label: "Long-press me" }, timeout: 5 }
+    - assert:
+        - exists: { label: "idle" }
+        - exists: { label: "Double-taps: 0" }
+    - longPress: { sel: { label: "Long-press me" }, duration: 0.7 }
+    - doubleTap: { label: "Double-tap me" }
+  expect:
+    - exists: { label: "pressed" }
+    - exists: { label: "Double-taps: 1" }

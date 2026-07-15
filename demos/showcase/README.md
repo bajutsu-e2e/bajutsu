@@ -82,12 +82,38 @@ bajutsu run --target showcase-swiftui --scenario demos/showcase/scenarios/modals
 | [`SPEC.md`](SPEC.md) | the screen-by-screen contract (the spec) |
 | [`WEBUI.md`](WEBUI.md) | the Web UI tour — drive a Simulator from the browser, collect every evidence type |
 | [`ios/swiftui/`](ios/swiftui), [`ios/uikit/`](ios/uikit) | the two iOS codebases (xcodegen `project.yml`, two targets each) |
-| [`ios/scenarios-xcuitest/`](ios/scenarios-xcuitest) | XCUITest scenarios (`--backend ios`) driving the `-noax` targets, which idb's a11y tree can't reach |
+| [`ios/scenarios-noax/`](ios/scenarios-noax) | the `-noax` twin of `scenarios/` — the same flows by visible label + on-screen mirror text, run over XCUITest (`--backend ios`), which idb's a11y tree can't reach |
 | [`android/`](android/) | the four Android twins (Compose × Views, BE-0007 preparation) |
 | [`showcase.config.yaml`](showcase.config.yaml) | the eight iOS + Android `targets.<name>` entries |
 | [`scenarios/`](scenarios) | shared id-based `run` scenarios (drive every a11y app, iOS and Android alike) |
 | [`record/goals.txt`](record/goals.txt) | natural-language goals for the `record` A/B demo |
 | [`crawl/`](crawl/expected-screen-map.md) | the screen map `crawl` ([BE-0038](../../roadmaps/BE-0038-autonomous-crawl-exploration/BE-0038-autonomous-crawl-exploration.md), in progress) should produce — validation test data |
+
+### Two aligned scenario suites: `scenarios/` (a11y) ↔ `ios/scenarios-noax/` (no-a11y)
+
+The `-noax` apps expose no accessibility identifiers *and* no mirrored a11y values, so the id-based
+shared suite cannot drive them. `ios/scenarios-noax/` is the label/visible-text twin: one file per
+`scenarios/` flow, same behaviour, but every step addresses elements by their **visible label** and
+every assertion reads the on-screen **mirror `Text`** the app also renders (e.g. `Text("Segment:
+\(segment)")`, `Text(favorite ? "Favorited" : "Not favorited")`) instead of the dropped a11y value.
+It runs over XCUITest (`make -C demos/showcase run-swiftui-noax` / `run-uikit-noax`) because idb
+collapses the tab bar and cannot reach a `-noax` element by label. The same suite drives both `-noax`
+toolkits: the visible mirror strings are identical (`AppModel` + the `*Controller`/`*View` labels).
+
+Not every `scenarios/` file has a twin, by design:
+
+- **`components.yaml`** — its purpose is `codegen` → a native XCUITest keyed by *id*, which a `-noax`
+  build has none of; its flows (filter sheet, gallery, search) are already covered by `modals.yaml`
+  and `search.yaml` twins.
+- **`visual.yaml` / `golden/`** — pixel/tree baselines are id- and image-specific, a separate concern.
+
+Two twins are **SwiftUI-only** (`tags: [swiftui]`, excluded by `run-uikit-noax`): `gestures_multitouch`
+(the `SHOWCASE_GESTURES` pinch/rotate screen exists in SwiftUI + Compose, not UIKit — the same gap the
+a11y twin has) and `generated.yaml` (a `record` output captured on `showcase-swiftui-noax`).
+`permission.yaml` is kept for 1:1 correspondence but, exactly like its a11y twin, is **non-deterministic
+on iOS** (the SpringBoard grant is cleared by the AI alert guard) — not a deterministic gate. These
+`-noax` runs are on-device only (not part of `make check`), and label/visible-text selectors are more
+brittle than ids, so scroll counts may need on-device tuning per toolkit.
 
 ## Deeplinks
 

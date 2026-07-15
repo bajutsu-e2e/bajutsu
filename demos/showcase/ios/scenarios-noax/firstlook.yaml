@@ -1,0 +1,20 @@
+# -noax twin of scenarios/firstlook.yaml. Browse the Stable catalog, open a horse, toggle Favorite,
+# and watch the mirrored state flip — here read from the visible `Text(favorite ? "Favorited" :
+# "Not favorited")` instead of the a11y value the -noax tree drops. The Favorite control is tapped by
+# `labelMatches: Favorite` + `traits: [button]`: the button's title differs across toolkits (SwiftUI's
+# SF-symbol Label "Favorite" vs UIKit's " Favorite"/" Favorited"), and the trait filter keeps the tap
+# off the static "Favorited" mirror text. Run over XCUITest (`--backend ios`).
+- name: open a horse and favorite it
+  preconditions:
+    launchEnv: { SHOWCASE_UITEST: "1" }
+  steps:
+    - wait: { for: { label: "Horse 1" }, timeout: 10 }
+      capture: [video]
+    - tap: { label: "Horse 1" }
+    - wait: { for: { labelMatches: "Favorite", traits: [button] }, timeout: 5 }
+    - assert:
+        - exists: { label: "Not favorited" }
+    - tap: { labelMatches: "Favorite", traits: [button] }
+  expect:
+    - exists: { label: "Favorited" }
+    - exists: { label: "Not favorited", negate: true }

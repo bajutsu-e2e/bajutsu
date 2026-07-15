@@ -1,0 +1,15 @@
+# -noax twin of scenarios/tabs.yaml. Switch tabs and confirm the selection — the tabs idb's
+# `describe-all` collapses into one opaque "Tab Bar" group, which the XCUITest backend (BE-0019)
+# reaches by the tab's visible label. Run with the iOS backend so xcuitest is selected: `--backend
+# ios`. Works on both -noax showcase apps, which carry no accessibility identifiers, so the tabs are
+# addressed by their visible label (where the a11y twin uses the per-tab `id`).
+- name: switch tabs by label over xcuitest
+  preconditions:
+    launchEnv: { SHOWCASE_UITEST: "1" }
+  steps:
+    - tap: { label: "Search", traits: [button] }
+      capture: [video]
+    - tap: { label: "Log", traits: [button] }
+  expect:
+    - exists: { label: "Log", traits: [button, selected] }
+    - exists: { label: "Search", traits: [button] }

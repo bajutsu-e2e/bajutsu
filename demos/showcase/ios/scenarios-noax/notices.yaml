@@ -1,0 +1,55 @@
+# -noax twin of scenarios/notices.yaml. A long vertical list (20 rows) whose bottom rows start
+# off-screen; with lazy row rendering, an off-screen row is absent from the tree until scrolled into
+# view — so reaching it genuinely requires a scroll. Rows are addressed by their visible title
+# ("Notice N", exact so "Notice 2" never matches "Notice 20"), and the detail by its visible body
+# ("Details for stable notice number N."). Run over XCUITest (`--backend ios`).
+- name: the list has off-screen rows
+  preconditions:
+    launchEnv: { SHOWCASE_UITEST: "1" }
+  steps:
+    - tap: { label: "Notices", traits: [button] }
+      capture: [video]
+    - wait: { for: { label: "Notice 1" }, timeout: 10 }
+  expect:
+    - exists: { label: "Notice 1" }     # top rows are on-screen
+    - exists: { label: "Notice 2" }
+    - exists: { label: "Notice 20", negate: true }   # the last row starts below the fold
+
+- name: tap a visible notice to open its detail, then pop back
+  preconditions:
+    launchEnv: { SHOWCASE_UITEST: "1" }
+  steps:
+    - tap: { label: "Notices", traits: [button] }
+      capture: [video]
+    - wait: { for: { label: "Notice 2" }, timeout: 10 }
+    - tap: { label: "Notice 2" }
+    - wait: { for: { label: "Details for stable notice number 2." }, timeout: 5 }
+    - back: {}
+    - wait: { for: { label: "Notice 1" }, timeout: 5 }
+  expect:
+    - exists: { label: "Notice 1" }
+    - exists: { label: "Details for stable notice number 2.", negate: true }
+
+# The headline: scroll an off-screen target into view, then tap it. Each swipe scrolls a fraction of
+# the screen and is anchored on a row that stays visible as the list scrolls down; the condition wait
+# stops once the target appears. The anchors step through the list with one swipe of margin so the
+# target is still reached where a software-rendered CI Simulator's fling settles shorter.
+- name: scroll to an off-screen notice and open it
+  preconditions:
+    launchEnv: { SHOWCASE_UITEST: "1" }
+  steps:
+    - tap: { label: "Notices", traits: [button] }
+      capture: [video]
+    - wait: { for: { label: "Notice 1" }, timeout: 10 }
+    - assert:
+        - exists: { label: "Notice 20", negate: true }   # off-screen before scrolling
+    - swipe: { on: { label: "Notice 4" }, direction: up }
+    - swipe: { on: { label: "Notice 8" }, direction: up }
+    - swipe: { on: { label: "Notice 12" }, direction: up }
+    - swipe: { on: { label: "Notice 16" }, direction: up }
+    - swipe: { on: { label: "Notice 18" }, direction: up }
+    - wait: { for: { label: "Notice 20" }, timeout: 5 }   # now scrolled into view
+    - tap: { label: "Notice 20" }
+    - wait: { for: { label: "Details for stable notice number 20." }, timeout: 5 }
+  expect:
+    - exists: { label: "Details for stable notice number 20." }

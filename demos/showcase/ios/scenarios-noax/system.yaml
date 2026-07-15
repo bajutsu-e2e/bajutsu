@@ -1,0 +1,19 @@
+# -noax twin of scenarios/system.yaml. The Permissions tab's System section copies a known string and
+# reads it back, so a scenario can assert pasteboard state. The round-trip is in-app (Copy then Paste),
+# reading back silently. The section sits below Notifications + Location, so scroll to the bottom
+# (anchored on the two request buttons) before tapping. The read-back is asserted on the visible
+# "Pasted: bajutsu-clip" mirror. Run over XCUITest (`--backend ios`).
+- name: copy then paste round-trips through the mirror
+  preconditions:
+    launchEnv: { SHOWCASE_UITEST: "1" }
+  steps:
+    - tap: { label: "Permissions", traits: [button] }
+      capture: [video]
+    - wait: { for: { label: "Request Notifications", traits: [button] }, timeout: 10 }
+    - swipe: { on: { label: "Request Notifications", traits: [button] }, direction: up }
+    - swipe: { on: { label: "Request Location", traits: [button] }, direction: up }
+    - wait: { for: { labelMatches: "Pasted:" }, timeout: 5 }
+    - tap: { label: "Copy", traits: [button] }
+    - tap: { label: "Paste", traits: [button] }
+  expect:
+    - exists: { label: "Pasted: bajutsu-clip" }

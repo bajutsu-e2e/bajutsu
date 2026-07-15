@@ -1,0 +1,22 @@
+# -noax twin of scenarios/gestures_multitouch.yaml. Pinch and rotate — two-finger actuation, which
+# only XCUITest performs (idb is single-touch), so this twin is a natural fit for the -noax XCUITest
+# path. The targets ("Pinch me" / "Rotate me") and their result mirrors ("pinched"/"rotated") are
+# plain visible text, addressed by label.
+#
+# Applies to showcase-swiftui-noax only: the SHOWCASE_GESTURES pinch/rotate screen exists in the
+# SwiftUI app (and Compose), not UIKit — the same toolkit gap the a11y twin has.
+- name: pinch and rotate targets mirror their result
+  tags: [swiftui]   # SHOWCASE_GESTURES screen exists in SwiftUI (+ Compose), not UIKit
+  preconditions:
+    launchEnv: { SHOWCASE_UITEST: "1", SHOWCASE_GESTURES: "1" }
+  steps:
+    - wait: { for: { label: "Pinch me" }, timeout: 10 }
+      capture: [video]
+    - wait: { for: { label: "Rotate me" }, timeout: 10 }
+    - assert:
+        - exists: { label: "idle" }
+    - pinch: { sel: { label: "Pinch me" }, scale: 2.0 }
+    - rotate: { sel: { label: "Rotate me" }, radians: 1.0 }
+  expect:
+    - exists: { label: "pinched" }
+    - exists: { label: "rotated" }

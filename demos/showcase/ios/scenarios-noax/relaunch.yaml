@@ -1,0 +1,22 @@
+# -noax twin of scenarios/relaunch.yaml. In-app state is in-memory, so relaunching the process resets
+# it: flip the Intense toggle on, relaunch, and confirm it is back to its default. The toggle state is
+# read from the visible "Easy" (off) / "Intense" (on) mirror; the assertion keys on "Easy" (only the
+# mirror ever says it) to stay clear of the toggle button's own "Intense" label. The app has no
+# launch-time tab shortcut, so a relaunch lands on the Stable tab; the scenario taps Log again.
+- name: relaunch resets in-app state
+  preconditions:
+    launchEnv: { SHOWCASE_UITEST: "1" }
+  steps:
+    - tap: { label: "Log", traits: [button] }
+      capture: [video]
+    - wait: { for: { labelMatches: "Intense", traits: [button] }, timeout: 10 }
+    - assert:
+        - exists: { label: "Easy" }
+    - tap: { labelMatches: "Intense", traits: [button] }
+    - assert:
+        - exists: { label: "Easy", negate: true }
+    - relaunch: {}
+    - tap: { label: "Log", traits: [button] }
+    - wait: { for: { labelMatches: "Intense", traits: [button] }, timeout: 10 }
+  expect:
+    - exists: { label: "Easy" }

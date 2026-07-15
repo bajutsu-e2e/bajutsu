@@ -1,5 +1,6 @@
 - name: Log タブを開き、画面下部に存在するControlsというセクションの中にあるUIの「Two」を選択して。その後、選択が Two になっていることを確認してください。
   from: Log タブを開き、画面下部に存在するControlsというセクションの中にあるUIの「Two」を選択して。その後、選択が Two になっていることを確認してください。
+  tags: [swiftui]   # a `record` output captured on showcase-swiftui-noax (anchors on SwiftUI section headers)
   capturePolicy:
     - on: { action: tap }
       capture: [screenshot.after, video]

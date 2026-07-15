@@ -1,0 +1,22 @@
+# -noax twin of scenarios/network_mock.yaml. BajutsuKit answers the Log submit's POST from a canned
+# stub instead of hitting the network, so the test is offline and stable — network capture and mocking
+# live in the app-side BajutsuKit collector, which the -noax build links too, so they work with no
+# accessibility. On success the app shows the transient "Saved" toast (watched appear then gone) and
+# the status mirror reads "Status: done". Run over XCUITest (`--backend ios`).
+- name: log submit answered by a mock, toast appears and clears
+  preconditions:
+    launchEnv: { SHOWCASE_UITEST: "1" }
+  mocks:
+    - match: { method: POST, pathMatches: "/post$" }
+      respond: { status: 201, body: "{\"ok\":true}" }
+  steps:
+    - tap: { label: "Log", traits: [button] }
+      capture: [video]
+    - wait: { for: { label: "Submit", traits: [button] }, timeout: 10 }
+    - tap: { label: "Submit", traits: [button] }
+    - wait: { until: { request: { method: POST, path: /post, status: 201 } }, timeout: 6 }
+    - wait: { for: { label: "Saved" }, timeout: 4 }
+    - wait: { until: { gone: { label: "Saved" } }, timeout: 5 }
+  expect:
+    - request: { method: POST, path: /post, status: 201 }
+    - exists: { label: "Status: done" }
