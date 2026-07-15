@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0250") |
-| Implementing PR | [#1093](https://github.com/bajutsu-e2e/bajutsu/pull/1093), [#1100](https://github.com/bajutsu-e2e/bajutsu/pull/1100), [#1106](https://github.com/bajutsu-e2e/bajutsu/pull/1106), [#PRNUM](https://github.com/bajutsu-e2e/bajutsu/pull/PRNUM) |
+| Implementing PR | [#1093](https://github.com/bajutsu-e2e/bajutsu/pull/1093), [#1100](https://github.com/bajutsu-e2e/bajutsu/pull/1100), [#1106](https://github.com/bajutsu-e2e/bajutsu/pull/1106), [#1113](https://github.com/bajutsu-e2e/bajutsu/pull/1113) |
 | Topic | Codebase quality & technical debt |
 | Related | [BE-0172](../BE-0172-run-loop-step-decomposition/BE-0172-run-loop-step-decomposition.md) |
 <!-- /BE-METADATA -->
@@ -176,7 +176,7 @@ before and after) rather than changing any assertion's observable behavior.
   `ASSERTION_KINDS` — mirroring `_STEP_ACTIONS`'s derivation from the `Step` model. A new assertion kind
   is now a single field edit plus a registry entry, not also a parallel tuple edit. Behavior-preserving
   (the derived tuple equals the old hand tuple, field-declaration order preserved); a new
-  derivation-parity guard is the net. PR [#PRNUM](https://github.com/bajutsu-e2e/bajutsu/pull/PRNUM).
+  derivation-parity guard is the net. PR [#1113](https://github.com/bajutsu-e2e/bajutsu/pull/1113).
 
 ## References
 
