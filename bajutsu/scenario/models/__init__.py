@@ -19,7 +19,6 @@ The full public API is re-exported here, so ``from bajutsu.scenario.models impor
 
 from __future__ import annotations
 
-from bajutsu.scenario.models._base import _ASSERTION_KINDS as ASSERTION_KINDS
 from bajutsu.scenario.models._base import Point
 from bajutsu.scenario.models.actions import (
     Background,
@@ -47,6 +46,7 @@ from bajutsu.scenario.models.actions import (
     TypeText,
     VarTarget,
 )
+from bajutsu.scenario.models.assertions import _ASSERTION_KINDS as ASSERTION_KINDS
 from bajutsu.scenario.models.assertions import (
     Assertion,
     ClipboardMatch,
