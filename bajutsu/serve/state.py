@@ -554,6 +554,14 @@ class ServeState:
         # checkout / uploaded bundle. A run off such a bind writes its tree into `base_cwd/runs_dir`
         # (serve's store), not under the transient checkout/bundle (BE-0063/BE-0073).
         self.base_cwd = self.cwd
+        # Anchor a relative runs_dir at serve's launch cwd (Path.cwd(), which serve never changes),
+        # so the store, the run subprocess's `--runs-dir` (dispatch), and the manifest reads in
+        # `jobs`/`triage` all resolve to one directory. Without this a subdir config repoints `cwd`
+        # to the config's dir (BE-0242): the run then writes under `cwd/runs` while the store reads
+        # `<launch>/runs`, so a just-finished replay's `report.html` reads back as not-found. An
+        # already-absolute runs_dir (server/worker, tests) is left untouched.
+        if not self.runs_dir.is_absolute():
+            self.runs_dir = Path.cwd() / self.runs_dir
         # `artifacts`/`scenarios` are init=False so existing ServeState(...) calls don't change;
         # default them to the local stores here (a server backend overwrites them afterwards).
         self.artifacts = LocalArtifactStore(self.runs_dir)
