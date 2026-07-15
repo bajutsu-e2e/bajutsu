@@ -1,34 +1,42 @@
 # On-device Android e2e (Linux + KVM) — the third backend's lane, the Android twin of the iOS
-# `e2e.yml` (macOS / idb) and `web-e2e.yml` (Linux / Playwright). It boots an AVD under KVM on a
-# Linux runner and drives the showcase's core id/tap/type/value scenarios over `--backend android`
-# (the adb driver, BE-0007), asserting the deterministic pass/fail. It runs against both Android UI
-# toolkits — Compose over the full `E2E_SCENARIOS` (dotted SPEC ids verbatim) and Views over the
-# Stable-tab `E2E_VIEWS_SCENARIOS` subset (`android:id` underscore ids; `components`/`modals` stay
-# Compose-only for now), the sets defined in the Android Makefile — since each scenario's selectors
-# list both id forms (BE-0221). It runs no LLM — a deterministic `run` over fixed scenarios — so it
-# stays within the prime directives, and it is kept off the fast `make check` gate exactly as the
-# idb and web e2e lanes are.
-#
-# It also builds the resident UI Automator server (BajutsuAndroidUIAutomatorServer, BE-0245) before booting the
-# emulator, so the adb backend's screen reads run over the resident channel by default here; a final
-# `e2e-fallback` step re-runs the golden with that channel forced off, so both the resident path and
-# the `uiautomator dump` fallback are exercised, and the golden proves they yield the same tree.
+# `ios-e2e.yml` (macOS / idb) and `web-e2e.yml` (Linux / Playwright). It boots an AVD under KVM on a
+# Linux runner and drives the showcase over `--backend android` (the adb driver, BE-0007), asserting
+# deterministic pass/fail. Like the iOS and web lanes, the work is split into per-concern jobs so a
+# red check names the capability that broke from the checks list alone, not one bundled pass/fail:
+#   - smoke (adb): the functional heart — run the core scenarios through `bajutsu run`, against both
+#     Android UI toolkits (Compose over the full `E2E_SCENARIOS`, Views over the Stable-tab
+#     `E2E_VIEWS_SCENARIOS` subset; `components`/`modals` stay Compose-only for now), the sets
+#     defined in the Android Makefile. Each scenario's selectors list both id forms (BE-0221).
+#   - golden (adb): the BE-0006 element-tree golden over the resident channel, then re-run with the
+#     resident channel forced off (`e2e-fallback`, BAJUTSU_ADB_RESIDENT=0) so both the resident path
+#     (BE-0245) and the `uiautomator dump` fallback are exercised and proven to yield the same tree.
+#     `fallback` is a step in this job, not a fourth job — it is the same golden on the other read
+#     channel, so a separate job would rebuild the APK and reboot the AVD to assert the same tree.
+#   - visual (adb): the pixel VRT against the CI-recorded baseline. A pixel baseline is host-specific,
+#     so — like ios-e2e.yml's `visual` and web-e2e.yml's lanes — it is a non-gating signal.
+# It runs no LLM — a deterministic `run` over fixed scenarios — so it stays within the prime
+# directives, and it is kept off the fast `make check` gate exactly as the idb and web e2e lanes are.
+# Android is not in the branch-protection ruleset (unlike iOS's `E2E`), so these three jobs are
+# independent with no aggregator, the same shape web-e2e.yml has. Each job boots its own AVD; unlike
+# iOS's metered macOS runners (10x billing), Android runs on standard-priced Linux under KVM, so the
+# per-job boot is an acceptable cost for the attribution win. Per-job setup is duplicated the same
+# way ios-e2e.yml duplicates its own — no composite action, no new CI machinery.
 #
 # The AVD is x86_64 API 34, not the arm64 image the local 2026-07-07 validation used: KVM
 # acceleration on the x86_64 GitHub Linux runner needs an x86_64 system image, and a foreign-arch
 # (arm64) image would fall back to slow software emulation and time the job out. The API level (34)
 # matches the local validation; only the ABI tracks the CI host.
 #
-# Positive-list path filter (mirrors web-e2e.yml and e2e.yml's scripts/e2e_changes.py): only the
+# Positive-list path filter (mirrors web-e2e.yml and ios-e2e.yml's scripts/e2e_changes.py): only the
 # paths this lane exercises — the adb driver, the run pipeline and scenario loader, the CLI entry
 # points `bajutsu run` wires through, the Android showcase and the shared scenarios, the app-side
 # clipboard SDK the showcase builds in (BajutsuAndroid), the config, and this workflow. Top-level
 # `bajutsu/*.py` modules are allow-listed by name (the adb command layer,
 # the backend registry, the platform lifecycle, the run/assert/codegen path) rather than swept by a
 # `bajutsu/*.py` wildcard, which also caught serve/analytics/crawl modules (stats, audit, usage*,
-# crawl*, …) the emulator job never runs — burning ~9min of KVM on, e.g., a serve-only PR;
+# crawl*, …) the emulator jobs never run — burning KVM on, e.g., a serve-only PR;
 # `bajutsu/drivers/adb.py` is listed on its own because the top-level list does not reach into
-# subdirectories. Neither a required check nor gated by the `changes` job, so a plain `paths:`
+# subdirectories. Neither a required check nor gated by a `changes` job, so a plain `paths:`
 # filter is enough: an unrelated PR simply doesn't run it. A new adb-relevant path defaults to NOT
 # triggering — add it here.
 name: Android E2E (emulator)
@@ -103,14 +111,17 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  android-e2e:
-    name: smoke + golden + visual + fallback (adb)
+  # The functional heart: run the core scenarios through `bajutsu run` over the adb backend, against
+  # both Android UI toolkits (Compose full set + Views Stable-tab subset, BE-0221). This is the "does
+  # bajutsu drive Android?" check — the Android twin of ios-e2e.yml's `smoke (idb)` and web-e2e.yml's
+  # `smoke (playwright)`. Builds both a11y APKs and the resident UI Automator server (BE-0245) so the
+  # reads go over the resident channel by default (bajutsu/platform_lifecycle.py).
+  smoke:
+    name: smoke (adb)
     runs-on: ubuntu-latest
-    # Booting an emulator, building the showcase + resident-server APKs, and running the Stable-tab
-    # scenarios against both the Compose and Views toolkits (BE-0221) plus the golden element-tree,
-    # pixel-visual, and dump-fallback golden (BE-0245) checks is ~18min end to end; 35 catches a real
-    # hang (a wedged AVD boot or adb) with comfortable headroom.
-    timeout-minutes: 35
+    # A cold AVD boot + APK builds + the Compose full set and Views subset is ~18min; 30 catches a
+    # real hang (a wedged AVD boot or adb) with comfortable headroom.
+    timeout-minutes: 30
     # The adb backend is pure subprocess (no Python extra), so the base package suffices; skip the
     # dev group (mypy / pytest / ruff), which the Linux `check` gate owns.
     env:
@@ -147,20 +158,14 @@ jobs:
         run: uv sync --no-dev
 
       # Build both a11y APKs outside the emulator session so the AVD is only alive during the run
-      # itself; bajutsu's launch installs each from the config's appPath. The `make e2e` step below
-      # depends on both builds too, but Gradle finds them up to date there, so they are not rebuilt.
-      # Views joins Compose here (BE-0221): the Stable-tab scenario subset (see
-      # `E2E_VIEWS_SCENARIOS` in demos/showcase/android/Makefile) drives both toolkits, whose ids
-      # differ only in `.`/`-` vs `_` — each scenario's selectors list both forms. `components` /
-      # `modals` stay Compose-only for now.
+      # itself; bajutsu's launch installs each from the config's appPath. Views joins Compose
+      # (BE-0221): the Stable-tab subset drives both toolkits, whose ids differ only in `.`/`-` vs
+      # `_` — each scenario's selectors list both forms.
       - name: Build the Compose + Views showcase APKs
         run: make -C demos/showcase/android compose-build views-build
 
-      # Build the resident UI Automator server APKs (BE-0245) outside the emulator session, the same
-      # way the showcase APKs are built above. Their presence flips the adb backend's reads onto the
-      # resident channel by default (bajutsu/platform_lifecycle.py), so the run step below exercises
-      # the resident path; the `e2e-fallback` target then re-runs the golden with the channel forced
-      # off (BAJUTSU_ADB_RESIDENT=0) to keep the `uiautomator dump` fallback exercised too.
+      # Build the resident UI Automator server APKs (BE-0245) so the adb backend's reads run over the
+      # resident channel by default (bajutsu/platform_lifecycle.py).
       - name: Build the resident UI Automator server APKs
         run: make -C BajutsuAndroidUIAutomatorServer build
 
@@ -192,16 +197,9 @@ jobs:
           disable-animations: false
           script: echo "Generated AVD snapshot for caching."
 
-      # Boot the AVD under KVM and run the passing scenarios over the adb backend. The action owns
-      # boot + readiness; `make -C demos/showcase/android e2e` drives the core scenarios, `e2e-golden`
-      # the BE-0006 element-tree golden, and `e2e-visual` the pixel VRT check (both BE-0208 unit 4),
-      # all in this one emulator session (default serial `booted` resolves to the one running
-      # emulator). The golden's baseline was recorded on a local arm64 emulator; it passes here on
-      # x86_64 because the comparison is field-level with a tolerant frame check (identity/label/traits
-      # are ABI-stable). The visual baseline, being pixel-exact, is host-specific — it is instead
-      # recorded here on this x86_64 lane and committed (see
-      # demos/showcase/scenarios/visual/baselines_android/README.md); this step compares against it.
-      - name: Run the core scenarios, golden, visual, and dump fallback (adb)
+      # Boot the AVD under KVM and run the core scenarios over the adb backend (the action owns
+      # boot + readiness; the default serial `booted` resolves to the one running emulator).
+      - name: Run the core scenarios (adb)
         uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d  # v2.38.0
         with:
           api-level: 34
@@ -211,15 +209,191 @@ jobs:
           force-avd-creation: false
           emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front none
           disable-animations: true
-          # `e2e`/`e2e-golden`/`e2e-visual` read over the resident channel (the server APKs are built
-          # above, so it is on by default, BE-0245); `e2e-fallback` re-runs the golden with the channel
-          # forced off, so both the resident path and the `uiautomator dump` fallback are exercised.
-          script: make -C demos/showcase/android e2e && make -C demos/showcase/android e2e-golden && make -C demos/showcase/android e2e-visual && make -C demos/showcase/android e2e-fallback
+          script: make -C demos/showcase/android e2e
 
       - name: Upload run artifacts
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
         with:
-          name: android-e2e-run
+          name: android-e2e-smoke-run
+          path: runs/
+          if-no-files-found: ignore
+
+  # The BE-0006 element-tree golden: pins the normalized adb accessibility tree for the Stable
+  # catalog. Runs the golden over the resident channel (server APKs built below, so it is on by
+  # default, BE-0245), then re-runs it with BAJUTSU_ADB_RESIDENT=0 (`e2e-fallback`) so the
+  # `uiautomator dump` fallback is exercised too and the golden proves both channels yield the same
+  # tree. The Android twin of the idb golden ios-e2e.yml now runs per PR.
+  golden:
+    name: golden (adb)
+    runs-on: ubuntu-latest
+    # The golden reruns the Stable-tab scenario twice (resident + dump) against a booted AVD; ~15min
+    # end to end, so 25 catches a real hang with headroom.
+    timeout-minutes: 25
+    env:
+      UV_NO_DEV: "1"
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39  # v8.2.0
+        with:
+          enable-cache: true
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@0f481fcb613427c0f801b606911222b5b6f3083a  # v5.5.0
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@3f131e8634966bd73d06cc69884922b02e6faf92  # v6.2.0
+
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Install the base package (no dev)
+        run: uv sync --no-dev
+
+      # The golden asserts the Compose a11y tree; the resident server flips reads onto the resident
+      # channel by default so the `e2e-golden` step exercises it, and `e2e-fallback` forces it off.
+      - name: Build the Compose showcase APK
+        run: make -C demos/showcase/android compose-build
+
+      - name: Build the resident UI Automator server APKs
+        run: make -C BajutsuAndroidUIAutomatorServer build
+
+      - name: Cache AVD
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+        id: avd-cache
+        with:
+          path: |
+            ~/.android/avd/*
+            ~/.android/adb*
+          key: avd-api34-x86_64-pixel6
+
+      - name: Create AVD and generate snapshot for caching
+        if: steps.avd-cache.outputs.cache-hit != 'true'
+        uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d  # v2.38.0
+        with:
+          api-level: 34
+          arch: x86_64
+          target: google_apis
+          profile: pixel_6
+          force-avd-creation: false
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front none
+          disable-animations: false
+          script: echo "Generated AVD snapshot for caching."
+
+      # `e2e-golden` reads over the resident channel (server APKs built above); `e2e-fallback`
+      # re-runs the same golden with the channel forced off, so both paths are exercised and the
+      # golden proves they yield the same tree.
+      - name: Run the element-tree golden over both read channels (adb)
+        uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d  # v2.38.0
+        with:
+          api-level: 34
+          arch: x86_64
+          target: google_apis
+          profile: pixel_6
+          force-avd-creation: false
+          emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front none
+          disable-animations: true
+          script: make -C demos/showcase/android e2e-golden && make -C demos/showcase/android e2e-fallback
+
+      - name: Upload run artifacts
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
+        with:
+          name: android-e2e-golden-run
+          path: runs/
+          if-no-files-found: ignore
+
+  # The pixel VRT (BE-0208 unit 4 visual dimension): pixel-compare the Stable catalog against the
+  # CI-recorded baseline (demos/showcase/scenarios/visual/baselines_android/). A pixel baseline is
+  # host-specific — the CI x86_64 software renderer (swiftshader) and a local arm64 emulator diverge
+  # per pixel — so the baseline is recorded on this lane and committed (see that dir's README); this
+  # job compares against it. Like ios-e2e.yml's `visual`, this is a signal, not a gate.
+  visual:
+    name: visual (adb)
+    runs-on: ubuntu-latest
+    # A cold AVD boot + the Compose build + one pixel VRT run is ~12min; 25 catches a real hang.
+    timeout-minutes: 25
+    env:
+      UV_NO_DEV: "1"
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39  # v8.2.0
+        with:
+          enable-cache: true
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@0f481fcb613427c0f801b606911222b5b6f3083a  # v5.5.0
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@3f131e8634966bd73d06cc69884922b02e6faf92  # v6.2.0
+
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      # The pixel compare needs Pillow (the `visual` extra); the adb backend itself has none. Sync it
+      # here (still no dev group) so `make e2e-visual` finds it.
+      - name: Install the base package + visual extra (no dev)
+        run: uv sync --no-dev --extra visual
+
+      # The VRT drives the Stable launch tab and screenshots it — an element-tree read channel is not
+      # asserted, so the resident server is not built here (reads fall back to `uiautomator dump`).
+      - name: Build the Compose showcase APK
+        run: make -C demos/showcase/android compose-build
+
+      - name: Cache AVD
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+        id: avd-cache
+        with:
+          path: |
+            ~/.android/avd/*
+            ~/.android/adb*
+          key: avd-api34-x86_64-pixel6
+
+      - name: Create AVD and generate snapshot for caching
+        if: steps.avd-cache.outputs.cache-hit != 'true'
+        uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d  # v2.38.0
+        with:
+          api-level: 34
+          arch: x86_64
+          target: google_apis
+          profile: pixel_6
+          force-avd-creation: false
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front none
+          disable-animations: false
+          script: echo "Generated AVD snapshot for caching."
+
+      - name: Run the visual regression (VRT, pixel snapshot) (adb)
+        uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d  # v2.38.0
+        with:
+          api-level: 34
+          arch: x86_64
+          target: google_apis
+          profile: pixel_6
+          force-avd-creation: false
+          emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front none
+          disable-animations: true
+          script: make -C demos/showcase/android e2e-visual
+
+      - name: Upload run artifacts
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
+        with:
+          name: android-e2e-visual-run
           path: runs/
           if-no-files-found: ignore

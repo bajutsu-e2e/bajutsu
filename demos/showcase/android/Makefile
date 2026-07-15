@@ -142,7 +142,7 @@ e2e: compose-build views-build
 # x86_64 one: identity / label / traits are stable across the ABI, only the density-scaled frame
 # differs and it is only sanity-checked. The scenario runs on the Stable tab (the launch tab), so it
 # needs no tab-bar navigation. Not part of `make check`: it needs a booted AVD, so android-e2e.yml
-# drives it in the same emulator session as `e2e`.
+# drives it in its own `golden (adb)` job, which runs this target then `e2e-fallback` in one AVD boot.
 e2e-golden: compose-build
 	cd $(ROOT) && uv run bajutsu run \
 		--scenario demos/showcase/scenarios/golden/golden.yaml \
@@ -150,11 +150,11 @@ e2e-golden: compose-build
 		--target showcase-compose --udid $(SERIAL) --backend android --config $(CONFIG)
 
 # Guard the `uiautomator dump` fallback (BE-0245 unit 5). With the resident server built, reads are
-# on the resident channel by default (bajutsu/platform_lifecycle.py), so the `e2e`/`e2e-golden` steps
-# above exercise that path; this target pins BAJUTSU_ADB_RESIDENT=0 to run the *same* golden through
-# the dump path instead, so the fallback stays exercised on every run and the two paths are proven to
-# yield the same element tree. Not part of `make check`: it needs a booted AVD, so android-e2e.yml
-# drives it in the same emulator session as `e2e-golden`.
+# on the resident channel by default (bajutsu/platform_lifecycle.py), so `e2e` (the smoke job) and
+# `e2e-golden` exercise that path; this target pins BAJUTSU_ADB_RESIDENT=0 to run the *same* golden
+# through the dump path instead, so the fallback stays exercised on every run and the two paths are
+# proven to yield the same element tree. Not part of `make check`: it needs a booted AVD, so
+# android-e2e.yml drives it right after `e2e-golden` in the same `golden (adb)` job's AVD session.
 e2e-fallback: compose-build
 	cd $(ROOT) && BAJUTSU_ADB_RESIDENT=0 uv run bajutsu run \
 		--scenario demos/showcase/scenarios/golden/golden.yaml \
@@ -168,7 +168,7 @@ e2e-fallback: compose-build
 # emulator diverge per pixel — so the baseline is RECORDED ON CI and committed (see that dir's
 # README); this target reads it via --baselines. Runs on the Stable (launch) tab, so it needs no
 # tab-bar navigation. Not part of `make check`: it needs a booted AVD, so android-e2e.yml drives it
-# in the same emulator session as `e2e` / `e2e-golden`. The pixel compare needs Pillow, so this
+# in its own `visual (adb)` job (a separate AVD boot). The pixel compare needs Pillow, so this
 # pulls in the `visual` extra (the element-tree golden does not) — the adb backend itself has none.
 e2e-visual: compose-build
 	cd $(ROOT) && uv run --extra visual bajutsu run \
