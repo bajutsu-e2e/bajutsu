@@ -11,7 +11,7 @@
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0052") |
 | 実装 PR | [#206](https://github.com/bajutsu-e2e/bajutsu/pull/206), [#257](https://github.com/bajutsu-e2e/bajutsu/pull/257), [#378](https://github.com/bajutsu-e2e/bajutsu/pull/378) |
 | トピック | シナリオ記述機能 |
-| 関連 | [BE-0157](../BE-0157-shake-device-primitive/BE-0157-shake-device-primitive-ja.md)、[BE-0158](../BE-0158-timezone-device-primitive/BE-0158-timezone-device-primitive-ja.md) |
+| 関連 | [BE-0157](../BE-0157-shake-device-primitive/BE-0157-shake-device-primitive-ja.md)、[BE-0158](../BE-0158-timezone-device-primitive/BE-0158-timezone-device-primitive-ja.md)、[BE-0276](../BE-0276-scenario-permission-state/BE-0276-scenario-permission-state-ja.md) |
 | 由来 | MagicPod |
 <!-- /BE-METADATA -->
 

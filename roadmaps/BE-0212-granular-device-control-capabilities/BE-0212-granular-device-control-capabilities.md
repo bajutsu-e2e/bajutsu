@@ -11,7 +11,7 @@
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0212") |
 | Implementing PR | [#856](https://github.com/bajutsu-e2e/bajutsu/pull/856) |
 | Topic | Driver & backend architecture |
-| Related | [BE-0128](../BE-0128-device-step-capability-preflight/BE-0128-device-step-capability-preflight.md), [BE-0082](../BE-0082-capability-preflight-check/BE-0082-capability-preflight-check.md), [BE-0007](../BE-0007-android-backend/BE-0007-android-backend.md) |
+| Related | [BE-0128](../BE-0128-device-step-capability-preflight/BE-0128-device-step-capability-preflight.md), [BE-0082](../BE-0082-capability-preflight-check/BE-0082-capability-preflight-check.md), [BE-0007](../BE-0007-android-backend/BE-0007-android-backend.md), [BE-0276](../BE-0276-scenario-permission-state/BE-0276-scenario-permission-state.md) |
 <!-- /BE-METADATA -->
 
 ## Introduction
