@@ -81,12 +81,39 @@ bajutsu run --target showcase-swiftui --scenario demos/showcase/scenarios/modals
 | [`SPEC.md`](SPEC.md) | 画面ごとの契約（仕様書） |
 | [`WEBUI.ja.md`](WEBUI.ja.md) | Web UI ツアー。ブラウザから Simulator を操作し、あらゆる証跡を収集する |
 | [`ios/swiftui/`](ios/swiftui)、[`ios/uikit/`](ios/uikit) | 2 つの iOS コードベース（xcodegen `project.yml`、各 2 ターゲット） |
-| [`ios/scenarios-xcuitest/`](ios/scenarios-xcuitest) | XCUITest シナリオ（`--backend ios`）。idb の a11y ツリーでは届かない `-noax` ターゲットを駆動 |
+| [`ios/scenarios-noax/`](ios/scenarios-noax) | `scenarios/` の `-noax` 版。同じ操作を可視ラベルと画面上のミラーテキストで表現し、XCUITest（`--backend ios`）で実行。idb の a11y ツリーでは届かない `-noax` ターゲットを駆動 |
 | [`android/`](android/) | Android 版の 4 プロダクト（Compose × Views、BE-0007 の準備） |
 | [`showcase.config.yaml`](showcase.config.yaml) | iOS と Android を合わせた 8 つの `targets.<name>` エントリ |
 | [`scenarios/`](scenarios) | 共有の id ベース `run` シナリオ（iOS と Android の両方の a11y アプリを駆動） |
 | [`record/goals.txt`](record/goals.txt) | `record` A/B デモ用の自然言語ゴール |
 | [`crawl/`](crawl/expected-screen-map.ja.md) | `crawl`（[BE-0038](../../roadmaps/BE-0038-autonomous-crawl-exploration/BE-0038-autonomous-crawl-exploration-ja.md)、実装中）が生成すべき画面マップ。検証用テストデータ |
+
+### 対応づいた 2 つのシナリオスイート: `scenarios/`（a11y）↔ `ios/scenarios-noax/`（no-a11y）
+
+`-noax` アプリは accessibility identifier を持たず、ミラーした a11y value も持たないので、id ベースの
+共有スイートでは駆動できません。`ios/scenarios-noax/` はそのラベル・可視テキスト版の対応物です。
+`scenarios/` の各操作に 1 対 1 で対応し、動作は同じですが、各ステップは要素を**可視ラベル**で指定し、
+各アサーションはアプリが同時に描画する画面上の**ミラー `Text`**（たとえば `Text("Segment: \(segment)")`、
+`Text(favorite ? "Favorited" : "Not favorited")`）を読みます。落ちてしまう a11y value の代わりです。
+idb はタブバーを 1 つの不透明なグループに畳んでしまい `-noax` の要素にラベルで到達できないため、この
+スイートは XCUITest で実行します（`make -C demos/showcase run-swiftui-noax` / `run-uikit-noax`）。可視の
+ミラー文字列は `AppModel` と各 `*Controller`/`*View` のラベルで一致するので、1 つのスイートが `-noax` の
+両方の toolkit を駆動します。
+
+`scenarios/` のすべてのファイルに対応物があるわけではありません。これは意図した設計です。
+
+- **`components.yaml`**：目的は `codegen` による *id* を鍵にした native XCUITest の生成で、`-noax`
+  ビルドには id がありません。その操作（filter sheet、gallery、search）は `modals.yaml` と `search.yaml`
+  の対応物ですでに覆われています。
+- **`visual.yaml` / `golden/`**：ピクセルやツリーの baseline は id と画像に固有で、別の関心事です。
+
+2 つの対応物は **SwiftUI 専用**です（`tags: [swiftui]`、`run-uikit-noax` が除外します）。`gestures_multitouch`
+（`SHOWCASE_GESTURES` の pinch/rotate 画面は SwiftUI と Compose にはありますが UIKit にはありません。a11y の
+対応物と同じ差です）と、`generated.yaml`（`showcase-swiftui-noax` で採取した `record` の出力）です。
+`permission.yaml` は 1 対 1 の対応のために残していますが、a11y の対応物とまったく同様に、iOS では
+**非決定的**です（SpringBoard の許可を AI の alert guard が処理します）。決定的なゲートではありません。
+これらの `-noax` 実行はオンデバイス専用で（`make check` には含みません）、ラベル・可視テキストのセレクタは
+id より脆いので、スクロール回数は toolkit ごとにオンデバイスで調整が要ることがあります。
 
 ## Deeplink
 

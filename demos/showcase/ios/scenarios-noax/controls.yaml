@@ -1,0 +1,25 @@
+# -noax twin of scenarios/controls.yaml. The Log tab's button-backed segmented control mirrors its
+# selection to the visible `Text("Segment: \(segment)")`, so a scenario picks a segment and asserts
+# the on-screen text (the a11y twin reads the dropped `log.segment.value` instead). The segment
+# buttons carry their capitalized choice as label ("One"/"Two"/"Three") on both -noax toolkits; the
+# `traits: [button]` filter keeps the tap off the "Segment: …" mirror. The section sits near the
+# bottom, so walk down with swipes anchored on controls that stay visible. Run over XCUITest.
+- name: segmented control mirrors the selected choice
+  preconditions:
+    launchEnv: { SHOWCASE_UITEST: "1" }
+  steps:
+    - tap: { label: "Log", traits: [button] }
+      capture: [video]
+    - wait: { for: { label: "Note" }, timeout: 10 }
+    - swipe: { on: { label: "Note" }, direction: up }
+    - swipe: { on: { label: "Open Filter", traits: [button] }, direction: up }
+    - swipe: { on: { label: "Long-press me" }, direction: up }
+    - wait: { for: { label: "One", traits: [button] }, timeout: 5 }
+    - assert:
+        - exists: { label: "Segment: one" }
+    - tap: { label: "Two", traits: [button] }
+    - assert:
+        - exists: { label: "Segment: two" }
+    - tap: { label: "Three", traits: [button] }
+  expect:
+    - exists: { label: "Segment: three" }

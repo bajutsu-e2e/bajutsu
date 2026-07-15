@@ -1,0 +1,72 @@
+# -noax twin of scenarios/modals.yaml. The Log tab exercises all four presentation styles — a
+# detented sheet, a full-screen cover, an action sheet, and the form's stepper/toggle. Each modal is
+# identified by its visible title ("Filter"/"Gallery"/"Delete entry") and its buttons by their titles;
+# the action-sheet result and the toggle read from their visible mirrors ("Dialog: …", "Intense"/
+# "Easy"). Run over XCUITest (`--backend ios`).
+- name: open and dismiss the detented sheet
+  preconditions:
+    launchEnv: { SHOWCASE_UITEST: "1" }
+  steps:
+    - tap: { label: "Log", traits: [button] }
+      capture: [video]
+    - wait: { for: { label: "Open Filter", traits: [button] }, timeout: 10 }
+    - tap: { label: "Open Filter", traits: [button] }
+    - wait: { for: { label: "Filter" }, timeout: 5 }
+    - assert:
+        - exists: { label: "Apply", traits: [button] }
+    - tap: { label: "Close", traits: [button] }
+    - wait: { until: { gone: { label: "Filter" } }, timeout: 5 }
+  expect:
+    - exists: { label: "Open Filter", traits: [button] }
+    - exists: { label: "Filter", negate: true }
+
+- name: open and dismiss the full-screen cover
+  preconditions:
+    launchEnv: { SHOWCASE_UITEST: "1" }
+  steps:
+    - tap: { label: "Log", traits: [button] }
+      capture: [video]
+    - wait: { for: { label: "Open Gallery", traits: [button] }, timeout: 10 }
+    - tap: { label: "Open Gallery", traits: [button] }
+    - wait: { for: { label: "Gallery" }, timeout: 5 }
+    - tap: { label: "Close", traits: [button] }
+    - wait: { until: { gone: { label: "Gallery" } }, timeout: 5 }
+  expect:
+    - exists: { label: "Gallery", negate: true }
+
+- name: action sheet records its choice
+  preconditions:
+    launchEnv: { SHOWCASE_UITEST: "1" }
+  steps:
+    - tap: { label: "Log", traits: [button] }
+      capture: [video]
+    - wait: { for: { label: "Submit", traits: [button] }, timeout: 10 }
+    # The Modals section's lower controls start behind the floating tab bar, so scroll them clear
+    # before tapping — two swipes anchored on controls that stay visible.
+    - swipe: { on: { label: "Submit", traits: [button] }, direction: up }
+    - swipe: { on: { label: "Open Filter", traits: [button] }, direction: up }
+    - wait: { for: { label: "Open Delete", traits: [button] }, timeout: 5 }
+    - assert:
+        - exists: { label: "Dialog: none" }
+    - tap: { label: "Open Delete", traits: [button] }
+    - wait: { for: { label: "Delete", traits: [button] }, timeout: 5 }
+    - tap: { label: "Delete", traits: [button] }
+    - wait: { until: { gone: { label: "Delete", traits: [button] } }, timeout: 5 }
+  expect:
+    - exists: { label: "Dialog: delete" }
+
+# Form controls: the stepper and toggle mirror their state to visible text. The toggle's mirror reads
+# "Easy" (off) / "Intense" (on); the SwiftUI toggle *button* also carries the label "Intense", so the
+# assertion keys on the unambiguous "Easy" (only the mirror ever says "Easy") flipping away.
+- name: stepper and toggle mirror state
+  preconditions:
+    launchEnv: { SHOWCASE_UITEST: "1" }
+  steps:
+    - tap: { label: "Log", traits: [button] }
+      capture: [video]
+    - wait: { for: { labelMatches: "Intense", traits: [button] }, timeout: 10 }
+    - assert:
+        - exists: { label: "Easy" }
+    - tap: { labelMatches: "Intense", traits: [button] }
+  expect:
+    - exists: { label: "Easy", negate: true }

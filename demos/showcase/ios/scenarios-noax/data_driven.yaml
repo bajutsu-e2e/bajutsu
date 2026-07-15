@@ -1,0 +1,20 @@
+# -noax twin of scenarios/data_driven.yaml. One scenario, three rows, each in its own clean
+# environment. `${row.*}` tokens are substituted per row — in the typed query and in the asserted
+# visible row name — so each row proves the filter found exactly the horse it searched for. The count
+# is read from the visible "Matches: 1" mirror. Run over XCUITest (`--backend ios`).
+- name: search finds the seeded horse
+  data:
+    - { q: "Horse 1", n: "1" }
+    - { q: "Horse 3", n: "3" }
+    - { q: "Horse 5", n: "5" }
+  preconditions:
+    launchEnv: { SHOWCASE_UITEST: "1" }
+  steps:
+    - tap: { label: "Search", traits: [button] }
+      capture: [video]
+    - wait: { for: { label: "Search horses" }, timeout: 10 }
+    - type: { into: { label: "Search horses" }, text: "${row.q}" }
+    - wait: { for: { label: "Horse ${row.n}" }, timeout: 5 }
+  expect:
+    - exists: { label: "Matches: 1" }
+    - exists: { label: "Horse ${row.n}" }

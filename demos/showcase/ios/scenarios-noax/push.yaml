@@ -1,0 +1,14 @@
+# -noax twin of scenarios/push.yaml. iOS-only device step (simctl-backed): deliver a push, then
+# re-assert the settled screen (the push does not change the foreground UI, so the Stable catalog is
+# still shown — confirmed by the visible "Horse 1" row). `push` has no faithful Android-emulator
+# equivalent, so it stays iOS-only. Run over XCUITest (`--backend ios`).
+- name: receive a push notification
+  tags: [system]
+  preconditions:
+    launchEnv: { SHOWCASE_UITEST: "1" }
+  steps:
+    - wait: { for: { label: "Horse 1" }, timeout: 10 }
+      capture: [video]
+    - push: { payload: { aps: { alert: "You have a new message" } } }
+  expect:
+    - exists: { label: "Horse 1" }

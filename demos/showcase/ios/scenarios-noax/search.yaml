@@ -1,0 +1,31 @@
+# -noax twin of scenarios/search.yaml. Type into the search field (addressed by its visible
+# placeholder "Search horses") to filter the catalog. The match count has a visible mirror —
+# `Text("Matches: \(count)")` — so the count assertion carries over exactly as `exists: { label:
+# "Matches: 1" }`, and the no-match empty state is the visible "No matches" (identical across both
+# -noax toolkits). Run over XCUITest (`--backend ios`).
+- name: filter narrows the catalog
+  preconditions:
+    launchEnv: { SHOWCASE_UITEST: "1" }
+  steps:
+    - tap: { label: "Search", traits: [button] }
+      capture: [video]
+    - wait: { for: { label: "Search horses" }, timeout: 10 }
+    - type: { text: "Horse 3", into: { label: "Search horses" } }
+    - wait: { for: { label: "Horse 3" }, timeout: 5 }
+  expect:
+    - exists: { label: "Matches: 1" }
+    - exists: { label: "Horse 3" }
+    - exists: { label: "Horse 1", negate: true }
+
+- name: no match shows the empty state
+  preconditions:
+    launchEnv: { SHOWCASE_UITEST: "1" }
+  steps:
+    - tap: { label: "Search", traits: [button] }
+      capture: [video]
+    - wait: { for: { label: "Search horses" }, timeout: 10 }
+    - type: { text: "zzz", into: { label: "Search horses" } }
+    - wait: { for: { label: "No matches" }, timeout: 5 }
+  expect:
+    - exists: { label: "No matches" }
+    - exists: { label: "Matches: 0" }

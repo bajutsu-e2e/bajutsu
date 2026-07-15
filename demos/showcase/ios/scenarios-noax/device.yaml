@@ -1,0 +1,17 @@
+# -noax twin of scenarios/device.yaml. Device-environment steps: override the device's GPS location
+# and round-trip the clipboard, then re-assert the settled screen. The steps drive the device, not the
+# app UI, so the flow runs on the Stable catalog and re-asserts the app stays there (by the visible
+# "Horse 1" row). `setLocation` and the clipboard are device-control operations independent of app
+# accessibility; `push` lives in push.yaml (no faithful Android equivalent). Run over XCUITest.
+- name: override the device location and round-trip the clipboard
+  tags: [system]
+  preconditions:
+    launchEnv: { SHOWCASE_UITEST: "1" }
+  steps:
+    - wait: { for: { label: "Horse 1" }, timeout: 10 }
+      capture: [video]
+    - setLocation: { lat: 35.681, lon: 139.767 }
+    - setClipboard: { text: "COUPON123" }
+  expect:
+    - exists: { label: "Horse 1" }
+    - clipboard: { equals: "COUPON123" }

@@ -1,0 +1,23 @@
+# -noax twin of scenarios/navigation.yaml. Tap a catalog row to push Horse Detail, toggle the
+# favorite, then pop back via the cross-backend `back` step (the OS back button, which XCUITest taps
+# by its built-in handle regardless of app accessibility). The detail screen is identified by its
+# visible "ID: 3" mirror (unique; the horse name "Horse 3" also renders as the row and the nav title).
+- name: push horse detail and pop back
+  preconditions:
+    launchEnv: { SHOWCASE_UITEST: "1" }
+  steps:
+    - wait: { for: { label: "Horse 3" }, timeout: 10 }
+      capture: [video]
+    - tap: { label: "Horse 3" }
+    - wait: { for: { label: "ID: 3" }, timeout: 5 }
+    - assert:
+        - exists: { label: "ID: 3" }
+        - exists: { label: "Not favorited" }
+    - tap: { labelMatches: "Favorite", traits: [button] }
+    - assert:
+        - exists: { label: "Favorited" }
+    - back: {}
+    - wait: { for: { label: "Horse 3" }, timeout: 5 }
+  expect:
+    - exists: { label: "Horse 3" }
+    - exists: { label: "ID: 3", negate: true }
