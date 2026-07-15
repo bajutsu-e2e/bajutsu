@@ -533,16 +533,21 @@ async function chooseArtifact(kind,file){
   }finally{setComposeBusy(kind,false);}
 }
 async function composeAndLoad(){
-  const err=$('#cmp-error'),meta=$('#cmp-meta');err.hidden=true;
+  const err=$('#cmp-error'),meta=$('#cmp-meta'),btn=$('#cmp-run');err.hidden=true;
   if(!composeState.config){err.textContent='a config artifact is required';err.hidden=false;return;}
   const body={config:composeState.config.sha,filename:composeState.config.filename};
   if(composeState.scenarios)body.scenarios=composeState.scenarios.sha;
   if(composeState.binary)body.binary=composeState.binary.sha;
+  // Guard against a double-click firing two concurrent /api/compose calls; the finally restores
+  // disabled from composeBusy so a zone that began uploading during the POST keeps the button off.
+  if(btn)btn.disabled=true;
   meta.hidden=false;meta.textContent='Composing…';
-  const d=await postJSON('/api/compose',body,{error:'compose failed'});
-  if(!d||d.error){meta.hidden=true;err.textContent=(d&&d.error)||'compose failed';err.hidden=false;return;}
-  meta.textContent='Composed and bound '+((d.targets||[]).length)+' target(s)';
-  setCfgName(d.config,true);closeFs();await loadShared();
+  try{
+    const d=await postJSON('/api/compose',body,{error:'compose failed'});
+    if(!d||d.error){meta.hidden=true;err.textContent=(d&&d.error)||'compose failed';err.hidden=false;return;}
+    meta.textContent='Composed and bound '+((d.targets||[]).length)+' target(s)';
+    setCfgName(d.config,true);closeFs();await loadShared();
+  }finally{if(btn)btn.disabled=composeBusy.size>0;}
 }
 COMPOSE_KINDS.forEach(kind=>wireFileZone(
   $('#cmp-'+kind+'-pick'),$('#cmp-'+kind+'-file'),$('#cmp-'+kind+'-drop'),f=>chooseArtifact(kind,f)));
