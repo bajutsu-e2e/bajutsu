@@ -112,6 +112,45 @@ def test_record_produces_scenario() -> None:
     assert reloaded[0].steps[1].wait is not None
 
 
+def test_record_preserves_selection_across_recording_turns() -> None:
+    """A `select` in one turn then `copy` in a later turn share one SelectionState (BE-0265).
+
+    The live AI-recording batch loop threads a single SelectionState across turns, the same
+    contract the run loop holds: a `copy` acts on the selection a `select` established an earlier
+    turn ago. If that shared state were dropped at this call site, each step would restart with an
+    inactive selection and `copy` would raise `UnsupportedAction` out of the loop — this test is the
+    fast-suite guard the enrich replay path already has (test_enrich_preserves_selection_across_steps).
+    """
+    field: base.Element = {
+        "identifier": "form.note",
+        "label": None,
+        "traits": [],
+        "value": "hello",
+        "frame": (0.0, 0.0, 100.0, 40.0),
+    }
+    driver = FakeDriver([field])
+    # Two separate observations: `select` on the first turn, `copy` on the next — so `copy` only
+    # succeeds if the selection persists across turns, not within one batch.
+    agent = FakeAgent(
+        [
+            Proposal(steps=[Step.model_validate({"select": {"into": {"id": "form.note"}}})]),
+            Proposal(steps=[Step.model_validate({"copy": {}})]),
+            Proposal(done=True),
+        ]
+    )
+
+    scenario = record(
+        driver, "select the note then copy it", agent, name="copy-note", with_screenshot=False
+    )
+
+    # Both steps executed and were recorded (copy did not raise), and the driver actually actuated
+    # tap → select_all (from `select`) then copy_selection (from `copy`).
+    assert len(scenario.steps) == 2
+    assert scenario.steps[0].select is not None
+    assert scenario.steps[1].copy_ is not None
+    assert [a[0] for a in driver.actions] == ["tap", "select_all", "copy_selection"]
+
+
 def test_record_capture_video_tags_the_first_step_for_a_scenario_wide_recording() -> None:
     from bajutsu.orchestrator.evidence_rules import requested_intervals
 
