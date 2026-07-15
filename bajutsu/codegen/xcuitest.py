@@ -189,6 +189,29 @@ def _emit_step(step: Step) -> list[str]:
         else:
             lines.append(f"app.typeText({_s(step.type.text)})")
         return lines
+    if step.clear is not None:
+        # No XCUIElement "clear" primitive: focus, select-all, then delete the whole selection —
+        # the faithful peer of the runner's focus-then-backspace clear (BE-0265).
+        target = _element(step.clear.into.as_selector())
+        return [
+            f"{target}.tap()",
+            f'{target}.typeKey("a", modifierFlags: .command)',
+            f"{target}.typeText(XCUIKeyboardKey.delete.rawValue)",
+        ]
+    if step.delete is not None:
+        # Focus, then type the delete key `count` times — one native backspace per key (BE-0265).
+        target = _element(step.delete.into.as_selector())
+        return [
+            f"{target}.tap()",
+            f"{target}.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, "
+            f"count: {step.delete.count}))",
+        ]
+    if step.select is not None:
+        # Focus, then Cmd+A selects the whole field (BE-0265).
+        target = _element(step.select.into.as_selector())
+        return [f"{target}.tap()", f'{target}.typeKey("a", modifierFlags: .command)']
+    if step.copy_ is not None:
+        return ['app.typeKey("c", modifierFlags: .command)']
     if step.back is not None:
         # iOS has no hardware back; the generated XCUITest taps the OS navigation back button, the
         # same element the idb/XCUITest drivers tap at runtime. Reuse the shared constant so codegen

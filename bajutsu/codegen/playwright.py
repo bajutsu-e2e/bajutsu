@@ -342,6 +342,24 @@ def _emit_step(step: Step) -> list[str]:
         if step.type.into is not None:
             return _act(step.type.into.as_selector(), f"fill({_ts(step.type.text)})")
         return [f"await page.keyboard.type({_ts(step.type.text)});"]
+    if step.clear is not None:
+        # Playwright's Locator.clear() focuses and empties the field — the faithful peer of the
+        # driver's focus-then-backspace clear (BE-0265).
+        return _act(step.clear.into.as_selector(), "clear()")
+    if step.delete is not None:
+        sel = step.delete.into.as_selector()
+        loc = _locator(sel)
+        if loc is None:
+            return [_unsupported_selector_todo(sel)]
+        # Focus, then backspace `count` times from the end — no repeat-count on a single press.
+        return [f"await {loc}.focus();"] + [
+            "await page.keyboard.press('Backspace');" for _ in range(step.delete.count)
+        ]
+    if step.select is not None:
+        # Locator.selectText() selects the whole content — the web peer of select-all (BE-0265).
+        return _act(step.select.into.as_selector(), "selectText()")
+    if step.copy_ is not None:
+        return ["await page.keyboard.press('Control+c');"]
     if step.swipe is not None:
         sw = step.swipe
         if sw.on is not None and sw.direction is not None:

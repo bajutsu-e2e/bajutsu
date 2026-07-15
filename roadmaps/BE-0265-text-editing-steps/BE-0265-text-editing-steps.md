@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0265](BE-0265-text-editing-steps.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0265") |
+| Implementing PR | _pending_ |
 | Topic | Scenario authoring features |
 <!-- /BE-METADATA -->
 
@@ -134,10 +135,20 @@ Prime directives preserved:
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] `clear` step (all backends) + `value` assertion coverage
-- [ ] `delete` step (all backends) + `value` assertion coverage
-- [ ] `select` step, `mode: all` (all backends)
-- [ ] `copy` step + clipboard read-back coverage (all backends)
+- [x] `clear` step (all backends) + `value` assertion coverage
+- [x] `delete` step (all backends) + `value` assertion coverage
+- [x] `select` step, `mode: all` (all backends)
+- [x] `copy` step + clipboard read-back coverage (all backends)
+
+**Log**
+
+- _pending_ — All four steps land in one PR: scenario models (`select` / `clear` / `delete` /
+  `copy`), the `delete_text` / `select_all` / `copy_selection` `Driver` primitives across every
+  backend (fake / adb / playwright / xcuitest / idb / webview), the `copy`-requires-`select`
+  selection-state seam centralized in `_do_action`, codegen for all three emitters, and bilingual
+  docs. idb `select` / `copy` and the web-context driver raise `UnsupportedAction` (codegen routes
+  to XCUITest), mirroring the multi-touch precedent. Verified by the deterministic gate; on-device
+  actuation is build-time triage per *Detailed design*.
 
 ## References
 

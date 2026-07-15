@@ -339,6 +339,42 @@ final class RouterTests: XCTestCase {
         XCTAssertEqual(response.statusCode, 400)
     }
 
+    // MARK: - /deleteText, /selectAll, /copy (BE-0265)
+
+    func testDeleteTextSendsCountToProvider() throws {
+        let provider = FakeElementProvider()
+        let router = makeRouter(provider)
+
+        let body = try JSONSerialization.data(withJSONObject: ["count": 3])
+        let response = router.handle(HTTPRequest(method: "POST", path: "/deleteText", body: body))
+        XCTAssertEqual(parseJSON(response)?["status"] as? String, "ok")
+        XCTAssertEqual(provider.deleteTextCalls, [3])
+    }
+
+    func testDeleteTextNonPositiveCountReturns400() throws {
+        let body = try JSONSerialization.data(withJSONObject: ["count": 0])
+        let response = makeRouter().handle(HTTPRequest(method: "POST", path: "/deleteText", body: body))
+        XCTAssertEqual(response.statusCode, 400)
+    }
+
+    func testSelectAllInvokesProvider() {
+        let provider = FakeElementProvider()
+        let router = makeRouter(provider)
+
+        let response = router.handle(HTTPRequest(method: "POST", path: "/selectAll", body: nil))
+        XCTAssertEqual(parseJSON(response)?["status"] as? String, "ok")
+        XCTAssertEqual(provider.selectAllCalls, 1)
+    }
+
+    func testCopyInvokesProvider() {
+        let provider = FakeElementProvider()
+        let router = makeRouter(provider)
+
+        let response = router.handle(HTTPRequest(method: "POST", path: "/copy", body: nil))
+        XCTAssertEqual(parseJSON(response)?["status"] as? String, "ok")
+        XCTAssertEqual(provider.copyCalls, 1)
+    }
+
     // MARK: - unknown route
 
     func testUnknownRouteReturns404() {

@@ -47,6 +47,23 @@ def test_tap_type_and_wait() -> None:
     assert "await expect(page.getByTestId('home.title')).toBeVisible({ timeout: 5000 });" in code
 
 
+def test_text_editing_steps_emit_web_peers() -> None:
+    # BE-0265: clear -> Locator.clear(), select -> selectText(), delete -> focus + N backspaces,
+    # copy -> Control+c on the keyboard.
+    code = _gen(
+        "- name: x\n  steps:\n"
+        "    - clear: { into: { id: form.note } }\n"
+        "    - delete: { into: { id: form.note }, count: 2 }\n"
+        "    - select: { into: { id: form.note } }\n"
+        "    - copy: {}\n"
+    )
+    assert "await page.getByTestId('form.note').clear();" in code
+    assert "await page.getByTestId('form.note').focus();" in code
+    assert code.count("await page.keyboard.press('Backspace');") == 2
+    assert "await page.getByTestId('form.note').selectText();" in code
+    assert "await page.keyboard.press('Control+c');" in code
+
+
 def test_wait_until_gone() -> None:
     code = _gen(
         "- name: x\n  steps:\n    - wait: { until: { gone: { id: spinner } }, timeout: 3 }\n"

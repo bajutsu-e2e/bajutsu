@@ -496,6 +496,19 @@ class AdbDriver(CoordinateTreeDriver):
     def _run_text(cmd: list[str], script: str) -> None:
         subprocess.run(cmd, input=script, capture_output=True, text=True, check=True)
 
+    def delete_text(self, count: int) -> None:
+        # `count` backspaces (KEYCODE_DEL) in one `input keyevent` call. The orchestrator focuses the
+        # field first, so the deletes land in it (BE-0265).
+        self._run(adb.keyevents_cmd(self.serial, [adb.KEYCODE_DEL] * count))
+
+    def select_all(self) -> None:
+        # Ctrl+A selects the focused field's whole content (BE-0265).
+        self._run(adb.keycombination_cmd(self.serial, [adb.KEYCODE_CTRL_LEFT, adb.KEYCODE_A]))
+
+    def copy_selection(self) -> None:
+        # Ctrl+C copies the active selection to the clipboard, read back by the `clipboard` assertion.
+        self._run(adb.keycombination_cmd(self.serial, [adb.KEYCODE_CTRL_LEFT, adb.KEYCODE_C]))
+
     def screenshot(self, path: str) -> None:
         adb.Env(self.serial, run=self._run).screenshot(path)
 

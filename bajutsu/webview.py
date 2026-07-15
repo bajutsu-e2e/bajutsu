@@ -158,6 +158,15 @@ class WebContextDriver:
     def type_text(self, text: str) -> None:
         self._bridge.type_text(self._webview_id, text)
 
+    def delete_text(self, count: int) -> None:
+        raise UnsupportedAction("delete/clear is not supported in web context (first slice)")
+
+    def select_all(self) -> None:
+        raise UnsupportedAction("select is not supported in web context (first slice)")
+
+    def copy_selection(self) -> None:
+        raise UnsupportedAction("copy is not supported in web context (first slice)")
+
     def select_option(self, sel: Selector, option: str) -> None:
         raise UnsupportedAction("selectOption is not supported in web context (first slice)")
 

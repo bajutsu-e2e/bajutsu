@@ -95,6 +95,50 @@ class SelectOption(_Model):
     option: str
 
 
+class SelectText(_Model):
+    """`select` action — select a field's content before a consuming action (copy / type-over).
+
+    `mode: all` (the only mode for now) selects the whole current content via the platform's
+    select-all. Kept an action, not queryable state: no backend exposes a selection range through
+    its element surface, so its outcome is only ever verified through what follows it — a `copy`
+    (clipboard read-back) or a `type` that replaces the selection (`value` assertion) — never
+    asserted directly (BE-0265).
+    """
+
+    into: Selector
+    mode: Literal["all"] = "all"
+
+
+class Clear(_Model):
+    """`clear` action — clear the field's entire current content (backspace-equivalent; BE-0265).
+
+    Realized as one backspace per character of the field's reported `value`, so it stays agnostic to
+    what the field held. That count comes from the accessibility `value`, which equals the character
+    count for a plain text field; a field whose `value` is masked or reformatted (a secure/password
+    field, a currency mask) can report a length that differs from what is deletable, so `clear` may
+    under- or over-delete there. Backend actuation fidelity for such fields is build-time triage
+    (per *Detailed design*); verify the outcome with a `value` assertion when it matters.
+    """
+
+    into: Selector
+
+
+class Delete(_Model):
+    """`delete` action — remove `count` characters from the end of the field (backspace; BE-0265)."""
+
+    into: Selector
+    count: int = Field(gt=0)
+
+
+class Copy(_Model):
+    """`copy` action — copy the active selection to the clipboard (BE-0265).
+
+    Acts on whatever a prior `select` left selected; it takes no target of its own. With no active
+    selection it fails the step rather than silently copying nothing, and its result is verified
+    through the existing `clipboard` read-back (BE-0052), never through any state this step holds.
+    """
+
+
 class Swipe(_Model):
     """`swipe` action — by `direction` on an element (`on`), or between two points (`from`/`to`).
 

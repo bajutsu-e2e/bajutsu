@@ -47,6 +47,25 @@ def test_tap_type_and_wait() -> None:
     assert 'el("home.title").waitForExistence(timeout: 5.0)' in code
 
 
+def test_text_editing_steps_emit_xcuitest_peers() -> None:
+    # BE-0265: clear -> select-all + delete, delete -> repeated delete key, select -> Cmd+A,
+    # copy -> Cmd+C on the app.
+    code = _gen(
+        "- name: x\n  steps:\n"
+        "    - clear: { into: { id: form.note } }\n"
+        "    - delete: { into: { id: form.note }, count: 2 }\n"
+        "    - select: { into: { id: form.note } }\n"
+        "    - copy: {}\n"
+    )
+    assert 'el("form.note").typeKey("a", modifierFlags: .command)' in code
+    assert 'el("form.note").typeText(XCUIKeyboardKey.delete.rawValue)' in code
+    assert (
+        'el("form.note").typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: 2))'
+        in code
+    )
+    assert 'app.typeKey("c", modifierFlags: .command)' in code
+
+
 def test_long_press_and_swipe() -> None:
     code = _gen(
         "- name: x\n  steps:\n"

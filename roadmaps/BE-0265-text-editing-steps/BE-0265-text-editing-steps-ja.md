@@ -7,8 +7,9 @@
 |---|---|
 | 提案 | [BE-0265](BE-0265-text-editing-steps-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **提案** |
+| 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0265") |
+| 実装 PR | _pending_ |
 | トピック | シナリオ記述機能 |
 <!-- /BE-METADATA -->
 
@@ -128,10 +129,20 @@
 > 作業分解（作業の単位ごとに 1 つ）に対応し、ログには変更内容と時期（古い順）を PR へのリンクと
 > ともに記録します。
 
-- [ ] `clear` ステップ（全バックエンド）+ `value` アサーションでの検証
-- [ ] `delete` ステップ（全バックエンド）+ `value` アサーションでの検証
-- [ ] `select` ステップ、`mode: all`（全バックエンド）
-- [ ] `copy` ステップ + クリップボード読み戻しでの検証（全バックエンド）
+- [x] `clear` ステップ（全バックエンド）+ `value` アサーションでの検証
+- [x] `delete` ステップ（全バックエンド）+ `value` アサーションでの検証
+- [x] `select` ステップ、`mode: all`（全バックエンド）
+- [x] `copy` ステップ + クリップボード読み戻しでの検証（全バックエンド）
+
+**ログ**
+
+- _pending_ — 4 ステップを 1 つの PR で実装します。シナリオモデル（`select` / `clear` /
+  `delete` / `copy`）、全バックエンド（fake / adb / playwright / xcuitest / idb / webview）の
+  `delete_text` / `select_all` / `copy_selection` ドライバプリミティブ、`copy` が `select` を
+  前提とする選択状態のシーム（`_do_action` に集約）、3 つの codegen エミッター、両言語のドキュメント
+  を含みます。idb の `select` / `copy` と web コンテキストドライバは `UnsupportedAction` を送出し
+  （codegen は XCUITest に誘導）、マルチタッチの前例に倣います。決定的なゲートで検証し、実機での
+  操作実現は *詳細設計* のとおりビルド時のトリアージとします。
 
 ## 参考
 

@@ -10,13 +10,19 @@ from __future__ import annotations
 from collections.abc import Callable
 
 from bajutsu.drivers import base
-from bajutsu.orchestrator.types import DeviceControl, RelaunchFn
+from bajutsu.orchestrator.types import DeviceControl, RelaunchFn, SelectionState
 from bajutsu.scenario import STEP_ACTIONS, Step
 
 # The actions the run loop can see, derived from the scenario model (STEP_ACTIONS) minus the
 # compile-time-only `use` macro, which is expanded away before the run. Deriving it means a new
 # action shows up here automatically — it is declared once, on the Step model.
 _RUNTIME_ACTIONS = tuple(a for a in STEP_ACTIONS if a != "use")
+
+# The two action kinds the BE-0265 selection contract turns on, named so the dispatch below reads as
+# intent rather than magic strings. `_SELECT` establishes a selection, `_COPY` requires and preserves
+# it; both are Step field names (`copy_` carries the trailing underscore, matching `_action_of`).
+_SELECT = "select"
+_COPY = "copy_"
 
 
 def _action_of(step: Step) -> str:
@@ -84,10 +90,28 @@ def _do_action(
     relaunch: RelaunchFn | None = None,
     control: DeviceControl | None = None,
     bindings: dict[str, str] | None = None,
+    selection: SelectionState | None = None,
 ) -> None:
     """Run a one-shot action (tap / longPress / type / swipe / relaunch / device control / http)
-    by dispatching to its registered handler. `wait` and `assert` live in the run loop."""
-    handler = _HANDLERS.get(_action_of(step))
+    by dispatching to its registered handler. `wait` and `assert` live in the run loop.
+
+    `selection` tracks a live text selection across steps for `copy` (BE-0265); a caller that runs
+    steps standalone (e.g. `record`) passes none and each call starts with no selection.
+    """
+    selection = selection if selection is not None else SelectionState()
+    kind = _action_of(step)
+    handler = _HANDLERS.get(kind)
     if handler is None:
         raise AssertionError("unhandled action")
+    # The whole selection contract lives here, in one place, so it stays uniform across backends and
+    # the handlers stay stateless (BE-0265): `copy` needs a selection `select` established, keeps it
+    # (a selection can be copied more than once), and every other action invalidates it.
+    if kind == _COPY and not selection.active:
+        raise base.UnsupportedAction(
+            "copy requires an active selection — add a `select` step before it (BE-0265)"
+        )
     handler(driver, step, relaunch, control, bindings)
+    if kind == _SELECT:
+        selection.establish()
+    elif kind != _COPY:
+        selection.invalidate()

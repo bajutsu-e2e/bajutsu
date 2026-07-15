@@ -55,6 +55,15 @@ public protocol ElementProviding: AnyObject {
     /// Type text into the focused element.
     func typeText(_ text: String) -> TapResult
 
+    /// Delete `count` characters from the end of the focused field (backspace; BE-0265).
+    func deleteText(count: Int) -> TapResult
+
+    /// Select the whole content of the focused field (BE-0265).
+    func selectAll() -> TapResult
+
+    /// Copy the active selection to the clipboard (BE-0265).
+    func copySelection() -> TapResult
+
     /// Capture a screenshot as PNG data.
     func screenshot() -> Data?
 }

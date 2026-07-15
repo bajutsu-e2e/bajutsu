@@ -123,6 +123,10 @@ Action    ::=
   | { doubleTap:   <Selector> }
   | { longPress:   { sel: <Selector>, duration: number } }
   | { type:        { text: string, into?: <Selector>, submit?: boolean } }   # submit 既定 false
+  | { clear:       { into: <Selector> } }                  # フィールドをフォーカスして現在の内容をすべて削除
+  | { delete:      { into: <Selector>, count: integer } }  # フィールドをフォーカスして末尾から count 文字削除（count > 0）
+  | { select:      { into: <Selector>, mode?: "all" } }    # フィールドをフォーカスして内容を選択（mode 既定 "all"。idb / web コンテキストは非対応で codegen 経由の XCUITest に誘導）
+  | { copy:        {} }                                    # 選択中の内容をクリップボードにコピー（事前に select が必要。idb / web コンテキストは非対応）
   | { selectOption:{ sel: <Selector>, option: string } }   # web の <select> をこの value を持つ option に設定（web 専用。iOS/Android は非対応）
   | { swipe:       <Swipe> }                          # 方向指定形式はスクロール。座標形式は素のドラッグ
   | { drag:        <Drag> }                           # 掴んだ要素（ハンドル / 仕切り / スライダー）をポインタドラッグする。スクロールではない

@@ -98,6 +98,41 @@ def _do_select_option(driver: base.Driver, step: Step, _r: object, _c: object, _
     driver.select_option(step.select_option.sel.as_selector(), step.select_option.option)
 
 
+@_handler("clear")
+def _do_clear(driver: base.Driver, step: Step, _r: object, _c: object, _b: object) -> None:
+    assert step.clear is not None
+    sel = step.clear.into.as_selector()
+    # Read the field's current length, then focus it and backspace exactly that many characters, so
+    # the clear is agnostic to whatever it held (BE-0265). Nothing to delete on an empty field.
+    current = base.resolve_unique(driver.query(), sel)["value"] or ""
+    driver.tap(sel)
+    if current:
+        driver.delete_text(len(current))
+
+
+@_handler("delete")
+def _do_delete(driver: base.Driver, step: Step, _r: object, _c: object, _b: object) -> None:
+    assert step.delete is not None
+    driver.tap(step.delete.into.as_selector())
+    driver.delete_text(step.delete.count)
+
+
+@_handler("select")
+def _do_select(driver: base.Driver, step: Step, _r: object, _c: object, _b: object) -> None:
+    assert step.select is not None
+    # `mode` is always "all" for now (BE-0265): focus the field, then platform select-all.
+    driver.tap(step.select.into.as_selector())
+    driver.select_all()
+
+
+@_handler("copy_")
+def _do_copy(driver: base.Driver, step: Step, _r: object, _c: object, _b: object) -> None:
+    # The "is a selection live?" precondition is enforced in `_do_action` (uniform across backends);
+    # here we just actuate the platform copy of whatever `select` left selected.
+    assert step.copy_ is not None
+    driver.copy_selection()
+
+
 def _directional_endpoints(
     driver: base.Driver, sel: base.Selector, direction: str, amount: float | None
 ) -> tuple[base.Point, base.Point]:

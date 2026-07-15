@@ -101,6 +101,15 @@ class FakeDriver:
     def type_text(self, text: str) -> None:
         self._record("type", text)
 
+    def delete_text(self, count: int) -> None:
+        self._record("delete_text", count)
+
+    def select_all(self) -> None:
+        self._record("select_all", None)
+
+    def copy_selection(self) -> None:
+        self._record("copy_selection", None)
+
     def select_option(self, sel: base.Selector, option: str) -> None:
         # Like a real driver, require a unique match; state changes are scripted via `react`.
         base.resolve_unique(self.screen, sel)

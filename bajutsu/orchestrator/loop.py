@@ -36,6 +36,7 @@ from bajutsu.orchestrator.types import (
     RealClock,
     RelaunchFn,
     RunResult,
+    SelectionState,
     StepOutcome,
     _no_network,
     scenario_slug,
@@ -204,6 +205,7 @@ def _run_step_body(
     mailbox: MailboxReader | None = None,
     ctx: EvalContext | None = None,
     wait_trace: WaitTrace | None = None,
+    selection: SelectionState | None = None,
 ) -> tuple[bool, str, list[AssertionResult], list[base.Element] | None]:
     """Execute one step's effect, returning (ok, reason, assertion_results, snapshot).
 
@@ -236,7 +238,7 @@ def _run_step_body(
             results = assertions.evaluate(tree, step.assert_, network(), ctx=step_ctx)
             ok = assertions.passed(results)
             return ok, "" if ok else _fail_reason(results), results, tree
-        _do_action(driver, step, relaunch, control, bindings)
+        _do_action(driver, step, relaunch, control, bindings, selection)
         return True, "", [], None
     except (base.SelectorError, base.UnsupportedAction, NotImplementedError) as e:
         return False, str(e), [], None
@@ -432,6 +434,9 @@ def _run_steps(
     ``expect`` can reference them."""
     assert bindings is not None
     counter = _StepCounter()
+    # One selection tracker per run, shared across the recursive step loop (like `_StepCounter`), so
+    # a `copy` sees the selection a prior `select` left — and any action in between clears it (BE-0265).
+    selection = SelectionState()
     # `prev_after` carries a step's post-step tree to the next step's `before` (BE-0234 Unit 2):
     # nothing actuates between the two, so they observe the same device state and the `before` read
     # is skipped. It holds only a tree we actually read; a step that took no read leaves it None so
@@ -537,6 +542,7 @@ def _run_steps(
                 mailbox,
                 ctx,
                 wait_trace=wait_trace,
+                selection=selection,
             )
             if not ok and on_blocked is not None:
                 event = on_blocked(active_driver)
@@ -555,6 +561,7 @@ def _run_steps(
                         mailbox,
                         ctx,
                         wait_trace=wait_trace,
+                        selection=selection,
                     )
             outcome.ok, outcome.reason, outcome.assertion_results = ok, reason, results
             outcome.duration_s = clock.now() - start

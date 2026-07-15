@@ -182,3 +182,44 @@ def test_web_rejects_extract_modifier() -> None:
                 "extract": {"v": {"sel": {"id": "z"}}},
             }
         )
+
+
+def test_clear_step_parses() -> None:
+    step = Step.model_validate({"clear": {"into": {"id": "form.note"}}})
+    assert step.clear is not None
+    assert step.clear.into is not None and step.clear.into.id == "form.note"
+
+
+def test_delete_step_parses() -> None:
+    step = Step.model_validate({"delete": {"into": {"id": "form.note"}, "count": 3}})
+    assert step.delete is not None
+    assert step.delete.count == 3
+    assert step.delete.into.id == "form.note"
+
+
+def test_delete_rejects_non_positive_count() -> None:
+    with pytest.raises(ValidationError):
+        Step.model_validate({"delete": {"into": {"id": "f"}, "count": 0}})
+
+
+def test_select_step_parses_mode_all_default() -> None:
+    step = Step.model_validate({"select": {"into": {"id": "form.note"}}})
+    assert step.select is not None
+    assert step.select.mode == "all"
+    assert step.select.into.id == "form.note"
+
+
+def test_select_rejects_unknown_mode() -> None:
+    with pytest.raises(ValidationError):
+        Step.model_validate({"select": {"into": {"id": "f"}, "mode": "word"}})
+
+
+def test_copy_step_parses() -> None:
+    # A no-argument action expressed like the other no-arg steps (`copy: {}`).
+    step = Step.model_validate({"copy": {}})
+    assert step.copy_ is not None
+
+
+def test_text_editing_steps_are_one_action() -> None:
+    with pytest.raises(ValidationError):
+        Step.model_validate({"copy": {}, "clear": {"into": {"id": "a"}}})

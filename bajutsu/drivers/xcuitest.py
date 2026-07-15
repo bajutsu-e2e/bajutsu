@@ -364,6 +364,22 @@ class XcuitestDriver:
         if reply.status != _OK:
             raise XcuitestChannelError(f"type failed ({reply.status})")
 
+    def delete_text(self, count: int) -> None:
+        # A run of backspaces on the focused field (BE-0265); XCUIElement types the delete key natively.
+        reply = self._transport("POST", "/deleteText", {"count": count})
+        if reply.status != _OK:
+            raise XcuitestChannelError(f"deleteText failed ({reply.status})")
+
+    def select_all(self) -> None:
+        reply = self._transport("POST", "/selectAll", {})
+        if reply.status != _OK:
+            raise XcuitestChannelError(f"selectAll failed ({reply.status})")
+
+    def copy_selection(self) -> None:
+        reply = self._transport("POST", "/copy", {})
+        if reply.status != _OK:
+            raise XcuitestChannelError(f"copy failed ({reply.status})")
+
     def wait_for(self, sel: base.Selector) -> bool:
         """Single-shot: whether `sel` matches the current screen (BE-0118).
 

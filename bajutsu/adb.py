@@ -144,6 +144,10 @@ def screenrecord_pids_cmd(serial: str) -> list[str]:
 
 
 KEYCODE_BACK = 4  # `input keyevent` code for the system back button (Android's true system back).
+KEYCODE_DEL = 67  # backspace — deletes the character before the cursor (BE-0265 delete / clear).
+KEYCODE_CTRL_LEFT = 113  # left Control, the modifier for the select-all / copy key combinations.
+KEYCODE_A = 29  # the `A` key — with Ctrl held, "select all" in a focused text field (BE-0265).
+KEYCODE_C = 31  # the `C` key — with Ctrl held, "copy" the active selection (BE-0265).
 
 
 def tap_cmd(serial: str, x: float, y: float) -> list[str]:
@@ -407,6 +411,27 @@ def keyevent_cmd(serial: str, keycode: int) -> list[str]:
     back button idb resolves and taps — so it is actuated as a key event rather than a coordinate.
     """
     return _adb(serial, "shell", "input", "keyevent", str(keycode))
+
+
+def keyevents_cmd(serial: str, keycodes: list[int]) -> list[str]:
+    """Inject a run of key events in one `input keyevent` call (BE-0265).
+
+    `input keyevent` takes several keycodes at once, so a repeated backspace (delete / clear) is a
+    single device round-trip rather than one per character.
+    """
+    return _adb(serial, "shell", "input", "keyevent", *(str(k) for k in keycodes))
+
+
+def keycombination_cmd(serial: str, keycodes: list[int]) -> list[str]:
+    """Inject a chord (modifier + key) via `input keycombination` (BE-0265).
+
+    Backs the select-all (Ctrl+A) and copy (Ctrl+C) actions on a focused text field. `input
+    keycombination` presses the keys together, which the text field reads as the editor shortcut —
+    a single deterministic key chord rather than the locale-dependent long-press context menu.
+    Needs Android 12 (API 31)+; the concrete select/copy mechanism is finalized per backend at build
+    time (BE-0265, following BE-0052's per-primitive triage).
+    """
+    return _adb(serial, "shell", "input", "keycombination", *(str(k) for k in keycodes))
 
 
 def swipe_cmd(serial: str, x1: float, y1: float, x2: float, y2: float, ms: int = 300) -> list[str]:

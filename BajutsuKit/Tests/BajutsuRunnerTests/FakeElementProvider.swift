@@ -11,6 +11,9 @@ final class FakeElementProvider: ElementProviding {
     var gestureCalls: [(backingElement: AnyObject, kind: String, scale: Double, radians: Double)] = []
     var swipeCalls: [(fromX: Double, fromY: Double, toX: Double, toY: Double)] = []
     var typeCalls: [String] = []
+    var deleteTextCalls: [Int] = []
+    var selectAllCalls = 0
+    var copyCalls = 0
 
     func queryElements() -> [ElementSnapshot] { elementsToReturn }
 
@@ -36,6 +39,21 @@ final class FakeElementProvider: ElementProviding {
 
     func typeText(_ text: String) -> TapResult {
         typeCalls.append(text)
+        return tapResult
+    }
+
+    func deleteText(count: Int) -> TapResult {
+        deleteTextCalls.append(count)
+        return tapResult
+    }
+
+    func selectAll() -> TapResult {
+        selectAllCalls += 1
+        return tapResult
+    }
+
+    func copySelection() -> TapResult {
+        copyCalls += 1
         return tapResult
     }
 
