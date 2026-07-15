@@ -111,9 +111,9 @@ the launch sequence ([run-loop](run-loop.md#runner-the-run-pipeline)).
 
 ## dismissAlerts (the system-alert guard)
 
-idb cannot see or tap **SpringBoard-level prompts** (iOS "Save Password?", a permission request, "Allow Paste"). These prompts cover the app and collapse its element tree, silently blocking a step. The **alert guard** is a vision-based fallback (`alerts.py`): when a step is blocked, it takes a screenshot, asks Claude where to tap, clears the prompt, and retries the step once ([details](recording.md#dismissing-system-alerts-automatically)).
+idb cannot see or tap **SpringBoard-level prompts** (iOS "Save Password?", a permission request, "Allow Paste"). These prompts cover the app and collapse its element tree, silently blocking a step. The **alert guard** is a vision-based fallback (`alerts.py`): when a step is blocked, it takes a screenshot, asks Claude where to tap, clears the prompt, and retries the step once ([details](recording.md#dismissing-system-alerts-automatically)). For a `wait` step (`for`/`settled`/`screenChanged`), the guard also watches the already-polled screen and fires **mid-wait** the moment the tree looks collapsed (debounced, cooldown-limited, capped at 2 attempts per wait) — recovering before the wait's own timeout elapses, rather than waiting for the step to fail first (BE-0269).
 
-It is **on by default** and fires **only when a step (or `expect`) is blocked**, so a passing scenario never calls the model. It requires `ANTHROPIC_API_KEY`; without one it no-ops and the run continues unaffected. Use `dismissAlerts` to change the behavior per scenario:
+It is **on by default** and fires **only when a step (or `expect`) is blocked, or — for a guarded `wait` — the polled screen looks blocked**, so a passing scenario never calls the model. It requires `ANTHROPIC_API_KEY`; without one it no-ops and the run continues unaffected. Use `dismissAlerts` to change the behavior per scenario:
 
 | Form | Meaning |
 |---|---|
@@ -182,6 +182,10 @@ actions in one step is a validation error (`scenario/models/steps.py` `_one_acti
 | `doubleTap` | `doubleTap: <Selector>` | two quick taps on the resolved element |
 | `longPress` | `longPress: { sel: <Selector>, duration: <sec> }` | long press |
 | `type` | `type: { text: "...", into?: <Selector>, submit?: <bool> }` | with `into`, focuses first |
+| `clear` | `clear: { into: <Selector> }` | focus the field and remove its entire current content; web context raises |
+| `delete` | `delete: { into: <Selector>, count: <int> }` | focus the field and delete `count` characters from the end (`count > 0`); web context raises |
+| `select` | `select: { into: <Selector>, mode?: "all" }` | focus the field and select its content (`mode` default `all`); idb / web context raise — codegen routes to XCUITest |
+| `copy` | `copy: {}` | copy the active selection to the clipboard; requires a prior `select`; idb / web context raise |
 | `selectOption` | `selectOption: { sel: <Selector>, option: "..." }` | set a web `<select>` to the option with this value; web only (iOS / Android raise) |
 | `swipe` | `swipe: { on: <Selector>, direction: up\|down\|left\|right }` or `swipe: { from: [x,y], to: [x,y] }` | selector form and coordinate form cannot mix; the directional form **scrolls** |
 | `drag` | `drag: { on: <Selector>, direction: up\|down\|left\|right, amount?: <frac> }` | a real pointer **drag** of the element (a handle / divider / slider), not a scroll |
@@ -224,7 +228,7 @@ Modifiers:
 - type: { text: "hello", submit: true }                 # submit appends a newline / confirm (uses current focus)
 ```
 
-> Internally, when `into` is given, the target is `tap`ped before `type_text` (`orchestrator.py`
+> Internally, when `into` is given, the target is `tap`ped before `type_text` (`orchestrator/actions/`
 > `_do_action`).
 
 ### `selectOption`

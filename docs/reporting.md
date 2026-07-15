@@ -26,7 +26,7 @@ runs/<runId>/
     └── device.log    # deviceLog (interval)
 ```
 
-The CLI assigns `runId` as `YYYYMMDD-HHMMSS` (`cli.py`). `stepId` is `step.name` or `step<i>`.
+The CLI assigns `runId` as `YYYYMMDD-HHMMSS` (`cli/commands/run.py`). `stepId` is `step.name` or `step<i>`.
 
 ## manifest.json
 

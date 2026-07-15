@@ -5,7 +5,9 @@
 > Tier 2 の決定的ランナーです。各ステップを **act → (wait) → verify** で処理し、合否は機械アサーション
 > のみで決めます。AI は関与しません。最初の失敗で停止します。
 >
-> 実装: `bajutsu/orchestrator.py`（ループ本体）、`bajutsu/runner.py`（実機起動 + レポート連結）。
+> 実装: `bajutsu/orchestrator/`（ループ本体。package: `loop` / `waits` / `substitution` /
+> `evidence_rules` / `actions`）、`bajutsu/runner/`（実機起動 + レポート連結。package: `pipeline` /
+> `pool` / `launch`）。
 
 関連: [scenarios](scenarios.md) · [selectors](selectors.md) · [evidence](evidence.md) · [reporting](reporting.md)
 
@@ -20,11 +22,11 @@ def run_scenario(driver, scenario, clock=None, sink=None, on_blocked=None) -> Ru
 - `driver`: `base.Driver`（実ドライバ or `FakeDriver`）。ループはこれにしか依存しません。
 - `clock`: 時刻 / sleep の注入（テストで待機を決定化）。既定 `RealClock`（`time.monotonic` / `time.sleep`）。
 - `sink`: 証跡の出力先（既定 `NullSink` = 何も書かない）（[evidence](evidence.md)）。
-- `on_blocked`: ステップ失敗時に「ブロッカー（システムアラート等）を片付けたら True」を返すハンドラです。True を返した場合、**そのステップを 1 回だけ再試行します**（[recording の alert guard](recording.md#システムアラートの自動対処)）。
+- `on_blocked`: ステップ失敗時に「ブロッカー（システムアラート等）を片付けたら True」を返すハンドラです。True を返した場合、**そのステップを 1 回だけ再試行します**（[recording の alert guard](recording.md#システムアラートの自動対処)）。`wait` ステップ（`for`/`settled`/`screenChanged`）では同じハンドラが **wait の途中でも**待ち構えており（BE-0269）、すでにポーリング済みの画面のツリーが潰れて見えた時点で発火します（デバウンスとクールダウンを挟み、1 回の wait につき最大 2 回まで）。末尾の再試行とは独立に、wait 自体のタイムアウトを待たず回復できます。
 
 ### 1 ステップの流れ
 
-各ステップ `i` について（`orchestrator.py` 内）:
+各ステップ `i` について（`orchestrator/loop.py` 内）:
 
 1. `kind = _action_of(step)`：どのアクションか判定します。
 2. `step_id = step.name or f"step{i}"`：証跡の出力単位です。
@@ -98,11 +100,11 @@ class RunResult:
     failure: str | None          # 例: "step 3 (tap): 一致なし: {...}"
 ```
 
-`expect` は全ステップ成功後にのみ評価されます。`on_blocked` があれば expect も 1 回だけ再評価します。これらはそのまま `report.py` の `manifest.json` / JUnit / HTML になります（[reporting](reporting.md)）。
+`expect` は全ステップ成功後にのみ評価されます。`on_blocked` があれば expect も 1 回だけ再評価します。これらはそのまま `report/` の `manifest.json` / JUnit / HTML になります（[reporting](reporting.md)）。
 
 ## runner（実行パイプライン）
 
-実装: `bajutsu/runner.py`。orchestrator を実機と接続し、レポートまで連結します。
+実装: `bajutsu/runner/`。orchestrator を実機と接続し、レポートまで連結します。
 
 ### `launch_driver`（アプリを起動して準備済みドライバを返す）
 

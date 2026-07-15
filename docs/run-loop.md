@@ -5,8 +5,9 @@
 > The Tier 2 deterministic runner. Each step is **act → (wait) → verify**, and pass/fail comes
 > only from machine assertions. No AI is involved. It stops at the first failure.
 >
-> Implementation: `bajutsu/orchestrator.py` (the loop body) · `bajutsu/runner.py` (real-device
-> launch + report wiring).
+> Implementation: `bajutsu/orchestrator/` (the loop body, package: `loop` / `waits` / `substitution` /
+> `evidence_rules` / `actions`) · `bajutsu/runner/` (real-device launch + report wiring, package:
+> `pipeline` / `pool` / `launch`).
 
 Related: [scenarios](scenarios.md) · [selectors](selectors.md) · [evidence](evidence.md) · [reporting](reporting.md)
 
@@ -24,11 +25,15 @@ def run_scenario(driver, scenario, clock=None, sink=None, on_blocked=None) -> Ru
 - `sink`: the evidence output target (default `NullSink` = writes nothing) ([evidence](evidence.md)).
 - `on_blocked`: a handler that, on step failure, "cleans up a blocker (a system alert, etc.) and
   returns True." If it does, **the step is retried exactly once**
-  ([the alert guard](recording.md#dismissing-system-alerts-automatically)).
+  ([the alert guard](recording.md#dismissing-system-alerts-automatically)). For a `wait` step
+  (`for`/`settled`/`screenChanged`), the same handler is also armed **mid-wait** (BE-0269): it fires
+  against the already-polled screen as soon as the tree looks collapsed — debounced, cooldown-limited,
+  capped at 2 attempts per wait — so a blocked wait can recover before its own timeout elapses,
+  independent of the end-of-step retry.
 
 ### The flow of one step
 
-For each step `i` (in `orchestrator.py`):
+For each step `i` (in `orchestrator/loop.py`):
 
 1. `kind = _action_of(step)` — determine which action it is.
 2. `step_id = step.name or f"step{i}"` — the evidence output unit.
@@ -114,12 +119,12 @@ class RunResult:
 ```
 
 `expect` is evaluated only after all steps pass. If `on_blocked` is present, expect is also
-re-evaluated once. These become `report.py`'s `manifest.json` / JUnit / HTML directly
+re-evaluated once. These become `report/`'s `manifest.json` / JUnit / HTML directly
 ([reporting](reporting.md)).
 
 ## runner (the run pipeline)
 
-Implementation: `bajutsu/runner.py`. Connects the orchestrator to a real device and wires through
+Implementation: `bajutsu/runner/`. Connects the orchestrator to a real device and wires through
 to the report.
 
 ### `launch_driver` (launch the app and return a ready driver)

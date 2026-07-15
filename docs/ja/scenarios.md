@@ -100,9 +100,9 @@ scenarios:
 
 ## dismissAlerts（システムアラートガード）
 
-idb は **SpringBoard レベルのプロンプト**（iOS の "Save Password?"、権限リクエスト、"Allow Paste" など）を見ることも tap することもできません。これらのプロンプトはアプリを覆って要素ツリーを潰し、ステップを静かにブロックします。**アラートガード**は視覚ベースのフォールバック（`alerts.py`）です。ステップがブロックされるとスクリーンショットを撮り、Claude にどこを tap するか尋ね、プロンプトを片付けてからそのステップを 1 回再試行します（[詳細](recording.md#システムアラートの自動対処)）。
+idb は **SpringBoard レベルのプロンプト**（iOS の "Save Password?"、権限リクエスト、"Allow Paste" など）を見ることも tap することもできません。これらのプロンプトはアプリを覆って要素ツリーを潰し、ステップを静かにブロックします。**アラートガード**は視覚ベースのフォールバック（`alerts.py`）です。ステップがブロックされるとスクリーンショットを撮り、Claude にどこを tap するか尋ね、プロンプトを片付けてからそのステップを 1 回再試行します（[詳細](recording.md#システムアラートの自動対処)）。`wait` ステップ（`for`/`settled`/`screenChanged`）では、ガードはすでにポーリング済みの画面も監視し、ツリーが潰れて見えた時点で **wait の途中でも**発火します（デバウンスとクールダウンを挟み、1 回の wait につき最大 2 回まで）。wait 自体のタイムアウトを待たず、ステップが失敗する前に回復できます（BE-0269）。
 
-これは **既定で ON** で、**ステップ（または `expect`）がブロックされたときだけ**発火します。そのため、成功するシナリオはモデルを呼びません。`ANTHROPIC_API_KEY` が必要ですが、無くても no-op になるだけで run には影響しません。シナリオごとに動作を変えるには `dismissAlerts` を使います。
+これは **既定で ON** で、**ステップ（または `expect`）がブロックされたとき、あるいはガード対象の `wait` でポーリング中の画面がブロックされて見えたとき**に発火します。そのため、成功するシナリオはモデルを呼びません。`ANTHROPIC_API_KEY` が必要ですが、無くても no-op になるだけで run には影響しません。シナリオごとに動作を変えるには `dismissAlerts` を使います。
 
 | 形 | 意味 |
 |---|---|
@@ -167,6 +167,10 @@ CLI の `--dismiss-alerts` / `--no-dismiss-alerts` フラグは**全シナリオ
 | `doubleTap` | `doubleTap: <Selector>` | 解決した要素を 2 回素早くタップする |
 | `longPress` | `longPress: { sel: <Selector>, duration: <sec> }` | 長押し |
 | `type` | `type: { text: "...", into?: <Selector>, submit?: <bool> }` | `into` 指定時は先にフォーカスする |
+| `clear` | `clear: { into: <Selector> }` | フィールドをフォーカスして現在の内容をすべて削除する。web コンテキストは非対応 |
+| `delete` | `delete: { into: <Selector>, count: <int> }` | フィールドをフォーカスして末尾から `count` 文字削除する（`count > 0`）。web コンテキストは非対応 |
+| `select` | `select: { into: <Selector>, mode?: "all" }` | フィールドをフォーカスして内容を選択する（`mode` 既定 `all`）。idb / web コンテキストは非対応で、codegen 経由の XCUITest に誘導する |
+| `copy` | `copy: {}` | 選択中の内容をクリップボードへコピーする。事前の `select` が必要。idb / web コンテキストは非対応 |
 | `selectOption` | `selectOption: { sel: <Selector>, option: "..." }` | web の `<select>` をこの value を持つ option に合わせる。web 専用（iOS / Android は失敗する） |
 | `swipe` | `swipe: { on: <Selector>, direction: up\|down\|left\|right }` または `swipe: { from: [x,y], to: [x,y] }` | セレクタ形と座標形は混在できない。方向指定形式は**スクロール**する |
 | `drag` | `drag: { on: <Selector>, direction: up\|down\|left\|right, amount?: <frac> }` | 要素そのものを**ドラッグ**する（ハンドル／仕切り／スライダー）。スクロールではない |
@@ -209,7 +213,7 @@ CLI の `--dismiss-alerts` / `--no-dismiss-alerts` フラグは**全シナリオ
 - type: { text: "hello", submit: true }                 # submit appends a newline / confirm (uses current focus)
 ```
 
-> 実装上は、`into` を指定すると内部で対象を `tap` してから `type_text` します（`orchestrator.py` の `_do_action`）。
+> 実装上は、`into` を指定すると内部で対象を `tap` してから `type_text` します（`orchestrator/actions/` の `_do_action`）。
 
 ### `selectOption`
 

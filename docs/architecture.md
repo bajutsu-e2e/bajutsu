@@ -365,6 +365,12 @@ device (the shared device is reseeded via one channel, so parallel workers would
 - DSL control flow & data capture: conditional `if` and `forEach` loops (deterministic; the
   condition is a machine assertion), and `extract` (capture an element's value / label / identifier
   into `${vars.*}`)
+- DSL text-editing steps (BE-0265): `clear` / `delete` / `select` / `copy` close the gap left by
+  `type` on every backend (adb, Playwright, XCUITest, fake); idb and the web context raise
+  `UnsupportedAction` for `select`/`copy` (codegen routes those to XCUITest instead), and the web
+  context raises for `clear`/`delete` too. A cross-step `SelectionState` enforces the
+  copy-requires-a-prior-select precondition, verified only through the existing `clipboard`
+  read-back since no backend exposes selection as queryable state
 - DSL device & system actions (iOS): `background`, `clearKeychain`, `clearClipboard`,
   `overrideStatusBar` / `clearStatusBar` (deterministic status bar), and the `http` action for
   test-data setup / webhooks
