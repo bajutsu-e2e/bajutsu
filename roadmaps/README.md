@@ -126,6 +126,7 @@ One backend per platform behind the single driver interface ([DESIGN §1](../DES
 | [BE-0234](BE-0234-adb-run-performance/BE-0234-adb-run-performance.md) | Speed up adb scenario runs (uiautomator dump bottleneck) | Implemented |
 | [BE-0240](BE-0240-ios-capability-aware-actuator-selection/BE-0240-ios-capability-aware-actuator-selection.md) | Capability-aware automatic actuator selection for iOS (idb/XCUITest transparency) | Implemented |
 | [BE-0245](BE-0245-adb-resident-uiautomator-server/BE-0245-adb-resident-uiautomator-server.md) | Resident UI Automator server for adb reads | Implemented |
+| [BE-0269](BE-0269-ios-alert-guard-early-wait-intervention/BE-0269-ios-alert-guard-early-wait-intervention.md) | Speed up the system-alert guard's intervention during wait steps | Implemented |
 | [BE-0271](BE-0271-e2e-workflow-structural-parity/BE-0271-e2e-workflow-structural-parity.md) | Structural parity across platform E2E workflows | Implemented |
 <!-- /GENERATED:implemented-platform -->
 
@@ -559,7 +560,6 @@ Under consideration — not yet decided. Promote an item to *In progress* once w
 | ID | Item | Status |
 |---|---|---|
 | [BE-0008](BE-0008-flutter-support/BE-0008-flutter-support.md) | Flutter support | Proposal |
-| [BE-0269](BE-0269-ios-alert-guard-early-wait-intervention/BE-0269-ios-alert-guard-early-wait-intervention.md) | Speed up the system-alert guard's intervention during wait steps | Proposal |
 <!-- /GENERATED:proposals-platform -->
 
 ### Driver & backend architecture

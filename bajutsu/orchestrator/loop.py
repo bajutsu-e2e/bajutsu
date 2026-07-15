@@ -206,6 +206,8 @@ def _run_step_body(
     ctx: EvalContext | None = None,
     wait_trace: WaitTrace | None = None,
     selection: SelectionState | None = None,
+    on_blocked: BlockedHandler | None = None,
+    alerts: list[AlertEvent] | None = None,
 ) -> tuple[bool, str, list[AssertionResult], list[base.Element] | None]:
     """Execute one step's effect, returning (ok, reason, assertion_results, snapshot).
 
@@ -221,7 +223,15 @@ def _run_step_body(
     try:
         if kind == "wait":
             assert step.wait is not None
-            ok, reason, tree = _wait(driver, step.wait, clock, network, trace=wait_trace)
+            ok, reason, tree = _wait(
+                driver,
+                step.wait,
+                clock,
+                network,
+                trace=wait_trace,
+                on_blocked=on_blocked,
+                alerts=alerts,
+            )
             return ok, reason, [], tree
         if kind == "email":
             assert step.email is not None
@@ -543,12 +553,17 @@ def _run_steps(
                 ctx,
                 wait_trace=wait_trace,
                 selection=selection,
+                on_blocked=on_blocked,
+                alerts=outcome.alerts,
             )
             if not ok and on_blocked is not None:
                 event = on_blocked(active_driver)
                 if event is not None:
                     outcome.alerts.append(event)
                     wait_trace = WaitTrace() if wait_trace is not None else None
+                    # The retry is the end-of-step "one more shot": it does not re-arm the mid-wait
+                    # guard (no on_blocked passed), so a step's AI-vision calls stay bounded at
+                    # _GUARD_MAX_ATTEMPTS (mid-wait) + 1 (this end-of-step dismiss).
                     ok, reason, results, snapshot = _run_step_body(
                         active_driver,
                         interp_step,
