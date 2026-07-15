@@ -155,19 +155,26 @@ the file is what keeps them out of this view. In a hosted deployment the endpoin
 ### Switching between projects
 
 When you maintain several configs — several apps, or several targets of one app — `serve` is a
-**hub** over them, not a single-config launcher. A **project** is a named binding to a config source,
-and the header carries a **switcher** (a picker beside the config viewer) plus a **Projects** button.
-Both stay hidden until at least one project is registered, so a single-config `serve` looks exactly as
-before.
+**hub** over them, not a single-config launcher. A **project** is a named binding to a config source.
+The header carries a **switcher** (a picker beside the config viewer) that stays hidden until more
+than one project is registered, and a top-level **Projects** tab that is the hub's home. Unlike the
+switcher, the Projects tab shows whenever there is a project to manage — single-config included — so
+you can grow into a hub from the UI itself.
 
-Register projects with the [`bajutsu project` CLI](cli.md#project) (`project add` / `rm`); the store
-is shared, so a project added there appears in the switcher and vice versa. Picking a project in the
-switcher — or clicking **Run** on a row in the Projects list — **activates** it: the server rebinds
-the active config to that project's source with no restart, and every tab (Replay, Record, Crawl, the
-Stats dashboard) then operates against it. Each row in the Projects list shows the project name, its
-config source, and its latest run verdict. A project whose source is an uploaded bundle cannot be
-switched to (there is no checkout to re-materialize); re-upload its config to bind it. Switching
-rebinds the config, so in a hosted deployment it is an admin action like binding a config.
+On the Projects page each row shows the project name, its config source, and its latest run verdict.
+**Switch** on a row **activates** that project: the server rebinds the active config to its source
+with no restart, and every tab (Replay, Record, Crawl, the Stats dashboard) then operates against it
+(the header switcher does the same quick switch). A project whose source is an uploaded bundle cannot
+be switched to (there is no checkout to re-materialize); re-upload its config to bind it.
+
+**Add a project** from the page with a name and a single config-source string — a Git spec
+(`github:owner/repo[@ref][:path]`) or a local path — the same source
+[`bajutsu project add --config`](cli.md#project) takes; an optional credential covers a private
+repository. Re-adding an existing name rebinds its source. **Remove** deregisters a project after a
+confirmation; its run history is kept, only the binding is dropped. The `bajutsu project` CLI edits
+the same shared store, so a project added either way appears in both. Registering, removing, and
+switching all rebind a config binding, so in a hosted deployment they are admin actions like binding
+a config — the server enforces that, and a refused action shows inline on the page.
 
 ### Comparing projects
 

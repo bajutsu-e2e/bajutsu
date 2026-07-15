@@ -340,6 +340,7 @@ Bringing the CLI's own tools into the serve Web UI, where authoring happens. The
 | [BE-0147](BE-0147-serve-triage/BE-0147-serve-triage.md) | Triage failed runs in the serve Web UI | Implemented |
 | [BE-0148](BE-0148-serve-doctor/BE-0148-serve-doctor.md) | Doctor readiness panel in the serve Web UI | Implemented |
 | [BE-0272](BE-0272-serve-version-badge/BE-0272-serve-version-badge.md) | Show bajutsu's running commit/version in the serve Web UI header | Implemented |
+| [BE-0275](BE-0275-serve-projects-management-page/BE-0275-serve-projects-management-page.md) | A projects management page in serve (a top-level view, not a modal) | Implemented |
 <!-- /GENERATED:implemented-serve-cli-features -->
 
 ### Hosting the web UI (cloud / self-hosted)
@@ -607,9 +608,7 @@ Running a scenario on a hosted device farm instead of a local Simulator, emulato
 ### Surfacing CLI features in the serve Web UI
 
 <!-- GENERATED:proposals-serve-cli-features -->
-| ID | Item | Status |
-|---|---|---|
-| [BE-0275](BE-0275-serve-projects-management-page/BE-0275-serve-projects-management-page.md) | A projects management page in serve (a top-level view, not a modal) | Proposal |
+
 <!-- /GENERATED:proposals-serve-cli-features -->
 
 ### Hosting the web UI (cloud / self-hosted)

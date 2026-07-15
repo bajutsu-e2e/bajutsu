@@ -10,6 +10,7 @@
 // time. serve.author.mjs is the entry module the page loads.
 import {loadHistory, loadStats, loadFlaky, loadUsage, coverageInit, showInfo, replayAudit, onSimChange} from './serve.panels.mjs';
 import {loadMetrics} from './serve.metrics.mjs';
+import {renderProjectsView} from './serve.projects.mjs';
 import {onCrawlSimChange} from './serve.crawl.mjs';
 import {authorInit, authorRefresh, syncPlatform, replayCodegen} from './serve.author.mjs';
 
@@ -359,7 +360,7 @@ function openModal(el){
 // ---- top-level Record / Replay / Crawl views ----
 function showView(name){
   document.querySelectorAll('.toptab').forEach(t=>t.classList.toggle('active',t.dataset.view===name));
-  $('#view-record').hidden=name!=='record';$('#view-replay').hidden=name!=='replay';$('#view-crawl').hidden=name!=='crawl';$('#view-author').hidden=name!=='author';$('#view-stats').hidden=name!=='stats';$('#view-flaky').hidden=name!=='flaky';$('#view-usage').hidden=name!=='usage';$('#view-coverage').hidden=name!=='coverage';$('#view-metrics').hidden=name!=='metrics';
+  $('#view-record').hidden=name!=='record';$('#view-replay').hidden=name!=='replay';$('#view-crawl').hidden=name!=='crawl';$('#view-author').hidden=name!=='author';$('#view-stats').hidden=name!=='stats';$('#view-flaky').hidden=name!=='flaky';$('#view-usage').hidden=name!=='usage';$('#view-coverage').hidden=name!=='coverage';$('#view-metrics').hidden=name!=='metrics';$('#view-projects').hidden=name!=='projects';
   // The incoming view animates in (enter-only: the outgoing one is hidden instantly, so two sibling
   // views never overlap in the flex column). The picked theme decides the motion via --motion-view-*.
   const shown=$('#view-'+name);if(shown)playEnter(shown,'--motion-view-enter');
@@ -370,13 +371,14 @@ function showView(name){
   if(name==='usage')loadUsage();
   if(name==='coverage')coverageInit();
   if(name==='metrics')loadMetrics();
+  if(name==='projects')loadProjects();  // re-fetch so the page reflects any CLI-side add/remove
 }
 document.querySelectorAll('.toptab').forEach(t=>t.addEventListener('click',()=>showView(t.dataset.view)));
 
 // ---- config: bound at startup or opened from the UI's file browser ----
 // Whether the file-browser source is offered — a hosted deployment omits `fs` from configSources
 // (BE-0108), so we hide that block and never call browseFs. Git + Upload are always offered.
-let fsSourceEnabled=true;
+export let fsSourceEnabled=true;
 async function loadConfig(){
   const c=await getJSON('/api/config',{hasConfig:false});
   fsSourceEnabled=!c.configSources||c.configSources.includes('fs');
@@ -424,50 +426,32 @@ $('#opencfg').addEventListener('click',openFs);
 $('#fsclose').addEventListener('click',closeFs);
 $('#fsmodal').addEventListener('click',e=>{if(e.target===$('#fsmodal'))closeFs()});
 
-// ---- project hub (BE-0225 unit 4): the header switcher + the projects list ----
+// ---- project hub (BE-0225 unit 4; page BE-0275): the header switcher + the Projects page ----
 // `serve` is a hub over several named config bindings. Activating one rebinds state.config on the
 // server; we then reload the config label and the shared target/scenario lists so every tab runs
 // against the switched-to config with no restart. Every `serve` implicitly registers its loaded
-// config as one project, so the switcher + Projects button stay hidden until a real hub exists (more
-// than one project to choose between) — a single-config serve is unchanged. Projects are added/removed
-// with the `bajutsu project` CLI (unit 5), not here — this surface switches and inspects them.
-let projectsCache=[];
+// config as one project. The switcher + the cross-project Metrics tab stay hidden until a real hub
+// exists (more than one project to choose between) — a single-config serve is unchanged there. The
+// Projects *page* (BE-0275) is the exception: it is the hub's home and its Add form is how a
+// single-config serve grows into a hub (the hosted topology has no CLI), so its tab shows for any
+// project count. The page (list + add + remove) lives in serve.projects.mjs; this section owns the
+// shared fetch/switch the page and the switcher both drive.
+export let projectsCache=[];
 async function loadProjects(){
   const list=await getJSON('/api/projects',[]);
   projectsCache=Array.isArray(list)?list:[];
   const hub=projectsCache.length>1;
-  $('#projectsw').hidden=!hub;$('#openprojects').hidden=!hub;
+  $('#projectsw').hidden=!hub;
   // The cross-project comparison (BE-0226) only means anything with a real hub, so its tab tracks the
   // switcher's visibility — a single-config serve has nothing to compare and never shows it.
   const mtab=document.querySelector('.toptab[data-view="metrics"]');if(mtab)mtab.hidden=!hub;
-  renderSwitcher();renderProjectsList();
+  // The Projects tab (BE-0275) shows whenever there is a project to manage — single-config included,
+  // so the hub can be grown from the UI — and hides only with no registry/project at all.
+  const ptab=document.querySelector('.toptab[data-view="projects"]');if(ptab)ptab.hidden=!projectsCache.length;
+  renderSwitcher();renderProjectsView();
 }
 function renderSwitcher(){
   $('#projectsw').innerHTML=projectsCache.map(p=>`<option value="${esc(p.name)}"${p.active?' selected':''}>${esc(p.name)}</option>`).join('');
-}
-// A one-line, human-readable summary of a project's config source for the list.
-function projectSourceLabel(source){
-  if(!source||typeof source!=='object')return 'unbound';
-  const loc=source.locator||{};
-  if(source.kind==='git')return 'git: '+[loc.owner,loc.repo].filter(Boolean).join('/')+(loc.ref?('@'+loc.ref):'');
-  if(source.kind==='file')return 'file: '+(loc.path||'');
-  if(source.kind==='upload')return 'uploaded bundle';
-  return source.kind||'unbound';
-}
-function projectVerdict(run){
-  if(!run)return '<span class="prjv none">no runs</span>';
-  return `<span class="prjv ${run.ok?'ok':'ng'}">${run.ok?'PASS':'FAIL'} ${run.passed}/${run.total}</span>`;
-}
-function renderProjectsList(){
-  const ul=$('#projectslist');if(!ul)return;
-  if(!projectsCache.length){ul.innerHTML='<li class="muted">no projects yet — add one with <code>bajutsu project add</code></li>';return}
-  ul.innerHTML=projectsCache.map(p=>`<li class="prjrow" data-testid="projects.row" data-name="${esc(p.name)}"${p.active?' data-active="1"':''}>
-    <span class="prjname" data-testid="projects.name">${esc(p.name)}</span>
-    <span class="prjsrc">${esc(projectSourceLabel(p.source))}</span>
-    ${projectVerdict(p.lastRun)}
-    ${p.active?'<span class="prjactive" data-testid="projects.active">active</span>':'<button class="cfgbtn" data-act="run" data-testid="projects.run">Run</button>'}
-  </li>`).join('');
-  ul.querySelectorAll('button[data-act="run"]').forEach(b=>b.addEventListener('click',()=>switchProject(b.closest('.prjrow').dataset.name,{goReplay:true})));
 }
 // Activate a project (rebind the live config), then re-sync the config label + shared lists + the
 // switcher. A refused switch (e.g. an uploaded bundle with no checkout, a moved file) surfaces the
@@ -477,17 +461,12 @@ async function switchProject(name,opts){
   if(d.error){alert(d.error);await loadProjects();return}
   await loadConfig();
   await loadProjects();
-  if(opts&&opts.goReplay){closeProjects();showView('replay')}
+  if(opts&&opts.goReplay)showView('replay');
   // Deep-link from the comparison view (BE-0226): land on the switched-to project's single-config
   // dashboard so the comparison is the entry point and BE-0102's Stats view is the drill-down.
-  if(opts&&opts.goStats){closeProjects();showView('stats')}
+  if(opts&&opts.goStats)showView('stats');
 }
-function openProjects(){loadProjects();openModal($('#projectsmodal'))}
-function closeProjects(){closeModal($('#projectsmodal'))}
 $('#projectsw').addEventListener('change',e=>switchProject(e.target.value));
-$('#openprojects').addEventListener('click',openProjects);
-$('#projectsclose').addEventListener('click',closeProjects);
-$('#projectsmodal').addEventListener('click',e=>{if(e.target===$('#projectsmodal'))closeProjects()});
 
 // ---- Git config-source credential (BE-0224): the write-once token for a private repo, stored via
 // the SecretStore seam. Masked-only, like the API key — the plaintext is never read back.
@@ -1056,5 +1035,5 @@ export {
   $, setBusy, cancelJob, streamJob, appendLine, esc, setStatus, getJSON, postJSON, startJob,
   renderGradeBadge, wireDoctor, NARROW_MQ, prefersReducedMotion, motionOff, initTheme,
   openModal, closeModal, showView, loadConfig, loadVersion, setCfgName, closeFs, loadProjects,
-  switchProject, loadShared, loadScenarios, loadSims, refreshAiAvailability,
+  switchProject, loadShared, loadScenarios, loadSims, refreshAiAvailability, storeGitCred,
 };

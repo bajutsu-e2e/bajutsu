@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0275](BE-0275-serve-projects-management-page.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0275") |
+| Implementing PR | [#1123](https://github.com/bajutsu-e2e/bajutsu/pull/1123) |
 | Topic | Surfacing CLI features in the serve Web UI |
 | Related | [BE-0225](../BE-0225-config-project-hub/BE-0225-config-project-hub.md), [BE-0226](../BE-0226-cross-project-metrics-dashboard/BE-0226-cross-project-metrics-dashboard.md), [BE-0015](../BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md), [BE-0108](../BE-0108-hosted-config-source-restriction/BE-0108-hosted-config-source-restriction.md), [BE-0063](../BE-0063-git-config-source/BE-0063-git-config-source.md), [BE-0073](../BE-0073-serve-zip-bundle-upload/BE-0073-serve-zip-bundle-upload.md) |
 <!-- /BE-METADATA -->
@@ -55,11 +56,11 @@ The consequences of that misplacement are concrete:
   a place you navigate to, linkable and persistent, not something that evaporates on a click.
 
 Everything the page needs already exists: the endpoints (BE-0225 unit 3 — `GET`/`POST`/`DELETE
-/api/projects`, `POST /api/projects/<name>/activate`, `POST /api/projects/<name>/run`), the
-config-source input widgets the launcher uses (Git repo + optional credential, `.zip` upload —
-[BE-0063](../BE-0063-git-config-source/BE-0063-git-config-source.md) /
-[BE-0073](../BE-0073-serve-zip-bundle-upload/BE-0073-serve-zip-bundle-upload.md)), the allowlist
-screening ([BE-0108](../BE-0108-hosted-config-source-restriction/BE-0108-hosted-config-source-restriction.md)),
+/api/projects`, `POST /api/projects/<name>/activate`, `POST /api/projects/<name>/run`), the config
+source the CLI's `bajutsu project add --config` takes (a Git spec, with an optional private-repo
+credential — [BE-0063](../BE-0063-git-config-source/BE-0063-git-config-source.md) — or a local path),
+the allowlist screening
+([BE-0108](../BE-0108-hosted-config-source-restriction/BE-0108-hosted-config-source-restriction.md)),
 and the RBAC gate. This item re-homes them onto a page and adds the two lifecycle controls the hub
 was missing.
 
@@ -85,21 +86,35 @@ page. Selecting/activating a project rebinds the live config through the existin
 `POST /api/projects/<name>/activate`, exactly as the modal did, so every other view then operates
 against the switched-to project with no restart.
 
-Like the Metrics view (BE-0226) and the header switcher, the Projects tab is revealed only when a hub
-is worth showing, so a single-config `serve` is visually unchanged — with the one deliberate exception
-in unit 4 (letting a single-config `serve` grow *into* a hub).
+Unlike the Metrics view (BE-0226) and the header switcher — both revealed only for a real hub (more
+than one project) — the Projects tab shows for **any** project count, single-config `serve` included.
+That is the deliberate reveal decision unit 4 records: the Add form is how a single-config `serve`
+grows *into* a hub, so the page must be reachable before the second project exists (the hosted
+topology has no CLI to create it).
 
 ### 2. Add a project (on the page)
 
-The page hosts an **Add project** form: a name field and a config-source picker that reuses the
-launcher's existing widgets rather than inventing new ones — the Git-repo field (spec + optional
-credential, [BE-0063](../BE-0063-git-config-source/BE-0063-git-config-source.md)) and the `.zip`
-upload ([BE-0073](../BE-0073-serve-zip-bundle-upload/BE-0073-serve-zip-bundle-upload.md)); a local
-filesystem path is offered only when the server permits it (unit 4). Submitting `POST`s to
-`/api/projects` and refreshes the list. Because `POST /api/projects` is idempotent by `(org, name)`
-(BE-0225 unit 1/3), re-submitting an existing name **rebinds** its source rather than erroring; the
-form surfaces that as an explicit "rebind", and a server-side rejection (name clash under a different
-id, allowlist refusal, bad Git spec) shows inline, reusing the launcher's error affordances.
+The page hosts an **Add project** form that mirrors the CLI twin this topic surfaces: `bajutsu
+project add --config <local path | Git spec>` takes a single config-source string, so the form does
+too — a name field plus one **config-source** input (a Git spec `github:owner/repo[@ref][:path]`, or
+a local path when the server permits the `fs` source, unit 4), with an optional private-repo
+credential ([BE-0063](../BE-0063-git-config-source/BE-0063-git-config-source.md)) stored write-once
+through the launcher's existing credential flow. Submitting sends `{name, sourceSpec}` to `POST
+/api/projects`, which normalizes the string to the stored `{kind, locator}` record through the one
+canonical `source_from_config` parser — the browser never re-implements Git-spec parsing, and the
+same `_validate_source` allowlist screening runs whether the source arrives as a string or a record.
+The endpoint, its route, and the registry schema are unchanged; `sourceSpec` is an additive request
+field, mirroring how `/api/config` already accepts a `git` spec string. Because `POST /api/projects`
+is idempotent by `(org, name)` (BE-0225 unit 1/3), re-submitting an existing name **rebinds** its
+source rather than erroring; the form surfaces that as an explicit "rebind", and a server-side
+rejection (allowlist refusal, malformed record) shows inline.
+
+The `.zip` upload the earlier framing named is **not** an Add source: `bajutsu project add` has no
+upload option (it takes a `--config` string), and `POST /api/projects/<name>/activate` cannot
+round-trip an uploaded bundle without a content-addressed object store (it returns 409 otherwise,
+per BE-0243/BE-0268), so an upload-backed project would register but be unswitchable in the common
+local topology. Uploading a bundle remains the *config launcher's* way to bind the active config;
+registering an upload as a first-class project is left to a follow-up if a real need appears.
 
 ### 3. Remove a project (on the page)
 
@@ -113,22 +128,30 @@ page reflects the post-delete `GET /api/projects` state rather than guessing.
 
 The page and its controls obey the rules the rest of the hub UI already follows:
 
-- **Reveal.** The Projects tab tracks the same "a hub exists" signal the switcher and Metrics tab use.
-  The one open question, resolved in implementation: whether the tab (or at least its **Add** form) is
-  reachable for a single-config `serve` so a user can grow *into* a hub from the UI, rather than being
-  forced to the CLI to create the second project that first reveals the hub. Recorded here as the one
-  deliberate UI decision.
-- **RBAC.** `POST`/`DELETE /api/projects` are **admin**-gated on the server (BE-0225 unit 3, like
-  `/api/config`). The page mirrors that: the Add form and the Remove controls are hidden or disabled
-  for a non-admin session, which sees a read-only projects page (list, switch, run) and never a
-  control that would 403. This reuses the role signal the UI already consumes for other admin-only
-  surfaces.
-- **Hosted allowlist.** The source picker hides the filesystem option when the server disallows it
-  ([BE-0108](../BE-0108-hosted-config-source-restriction/BE-0108-hosted-config-source-restriction.md)),
-  matching the server-side screening so a hosted user is never offered a source the API will refuse.
+- **Reveal (decided).** The switcher and the Metrics tab track "a hub exists" (more than one project)
+  and stay hidden for a single-config `serve`. The Projects tab does **not**: it shows whenever there
+  is a project to manage (single-config included), hidden only when no registry is wired. This is the
+  deliberate decision the proposal flagged — the Add form is the only UI-native way to create the
+  second project that first reveals the switcher, and the hosted topology has no CLI, so the page must
+  be reachable before the hub exists.
+- **RBAC (server enforces; client shows + inline 403).** `POST`/`DELETE /api/projects` are
+  **admin**-gated on the server (`authz.required_role`, BE-0225 unit 3, like `/api/config`), and that
+  gate is the real enforcement. The page follows the grain the rest of the hub UI already uses: it
+  does **not** hide the Add/Remove controls by role, because the serve UI has no client-side role
+  signal today — every admin-only surface (config bind, upload, compose, Settings) is shown to all and
+  the server 403s. A refused write surfaces inline, exactly as those do. Rendering a genuinely
+  read-only projects page for a non-admin session needs a client role signal the UI does not yet
+  expose; that is **deferred to a separate BE item** (a role signal that would also gate the other
+  admin surfaces uniformly), rather than invented ad hoc here.
+- **Hosted allowlist.** The Add form drops the "local path" affordance from its hint when the server
+  disallows the `fs` source
+  ([BE-0108](../BE-0108-hosted-config-source-restriction/BE-0108-hosted-config-source-restriction.md));
+  a hand-crafted local path is refused server-side regardless (`_validate_source`), so the screening
+  is real, not merely cosmetic.
 
-No new endpoints, no schema change, no CLI change — this is a UI relocation (modal → page) plus the two
-lifecycle controls and the small client state they need.
+No new endpoints and no registry schema change — this is a UI relocation (modal → page) plus the two
+lifecycle controls, their small client state, and one additive `sourceSpec` request field on the
+existing register endpoint (normalized through the CLI's own `source_from_config`).
 
 ## Alternatives considered
 
@@ -139,10 +162,20 @@ lifecycle controls and the small client state they need.
   them. This was an earlier framing of this very proposal; the page supersedes it.
 - **Leave add/remove CLI-only (status quo).** Rejected: it is the gap this item exists to fix, and it
   makes the hosted hub — where no shell exists — ungrowable through its own UI.
-- **A dedicated add-project source picker distinct from the launcher's.** Rejected: the launcher
-  already has a reviewed, allowlist-aware source UI (Git + credential + `.zip` upload). Reusing it keeps
-  one source-input concept and one screening path, avoiding a second widget to keep in step with
-  [BE-0108](../BE-0108-hosted-config-source-restriction/BE-0108-hosted-config-source-restriction.md).
+- **A full launcher-style source picker in the Add form (Git + credential + `.zip` upload + fs
+  browse).** Rejected as over-reach: the CLI twin this topic surfaces, `bajutsu project add`, takes a
+  single `--config` string (a Git spec or a local path) and has no upload option, and an upload-backed
+  project cannot be switched to without an object store (409). The form mirrors the CLI — one
+  config-source string, normalized server-side by the same `source_from_config` — which keeps one
+  parser and one allowlist path
+  ([BE-0108](../BE-0108-hosted-config-source-restriction/BE-0108-hosted-config-source-restriction.md))
+  without a second widget to keep in step. Uploading stays the config launcher's way to bind the
+  active config.
+- **Gate the Add/Remove controls client-side by role now.** Rejected for this item: the serve UI has
+  no client role signal, and every existing admin-only surface is shown-and-server-403s. Inventing a
+  role signal just for this page would either duplicate a concept that should be shared or leave the
+  other admin surfaces inconsistent. The server RBAC gate already enforces; a client role signal (and
+  the read-only rendering it enables across all admin surfaces) is deferred to its own BE item.
 - **Fold the projects page into the Metrics view (BE-0226).** Rejected: they are distinct concerns —
   Metrics *ranks* projects (read-only, advisory), the projects page *manages* their lifecycle
   (register/switch/run/remove). They are `Related` siblings over the same project list, not one view.
@@ -153,17 +186,22 @@ lifecycle controls and the small client state they need.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] 1 — The Projects top-level view: a `data-view="projects"` tab that lists projects (name, source, active, latest verdict) and switches/runs them; retire the BE-0225 modal into it, keep the header switcher.
-- [ ] 2 — Add a project on the page: a form reusing the launcher's config-source widgets; `POST /api/projects`, rebind-aware, inline errors.
-- [ ] 3 — Remove a project on the page: per-row control, confirm + `DELETE /api/projects/<name>`, history retained.
-- [ ] 4 — Reveal rules (hub-gate + the single-config "grow into a hub" decision), RBAC, and allowlist mirroring so non-admins and hosted sessions see only permitted controls.
+- [x] 1 — The Projects top-level view: a `data-view="projects"` tab (new `serve.projects.mjs` module) that lists projects (name, source, active, latest verdict) and switches them; the BE-0225 modal is retired into it, the header switcher stays.
+- [x] 2 — Add a project on the page: a name + single config-source string mirroring `bajutsu project add`; `POST /api/projects {name, sourceSpec}` normalized server-side via `source_from_config`, rebind-aware, inline errors. (`.zip` upload dropped — see Detailed design.)
+- [x] 3 — Remove a project on the page: per-row control, confirm + `DELETE /api/projects/<name>`, history retained.
+- [x] 4 — Reveal (Projects tab shown for any project count; switcher/Metrics stay hub-only), RBAC (server-enforced; controls shown + inline 403; client role gating deferred to a follow-up BE), and allowlist mirroring for the `fs` source.
+
+**Log**
+- [#1123](https://github.com/bajutsu-e2e/bajutsu/pull/1123) — the top-level Projects view, the add/remove lifecycle controls, the additive `sourceSpec` register field, and the modal retirement; docs (`web-ui` / `architecture` / `cli`, both languages) updated in step.
 
 ## References
 
-`bajutsu/templates/serve.html.j2` (the top-level nav + the Projects modal this replaces + the
-launcher's config-source widgets), `bajutsu/templates/serve.core.mjs` (`showView` / `loadProjects` /
-`switchProject` / the project-hub section), `bajutsu/templates/serve.metrics.mjs` (the sibling
-top-level hub view), `bajutsu/serve/operations/projects.py` (the endpoints this consumes),
+`bajutsu/templates/serve.html.j2` (the top-level nav + the Projects view + the retired modal),
+`bajutsu/templates/serve.projects.mjs` (the new Projects-page module: list / add / remove),
+`bajutsu/templates/serve.core.mjs` (`showView` / `loadProjects` / `switchProject` / the shared
+project-hub section), `bajutsu/templates/serve.metrics.mjs` (the sibling top-level hub view),
+`bajutsu/serve/operations/projects.py` (the endpoints this consumes; the `sourceSpec` normalization),
+`bajutsu/cli/commands/project.py` (the CLI twin the Add form mirrors),
 [cli](../../docs/cli.md#serve), [architecture](../../docs/architecture.md);
 [BE-0225](../BE-0225-config-project-hub/BE-0225-config-project-hub.md) (the hub this re-homes),
 [BE-0226](../BE-0226-cross-project-metrics-dashboard/BE-0226-cross-project-metrics-dashboard.md) (the

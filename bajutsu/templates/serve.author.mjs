@@ -13,6 +13,7 @@ import {
 import {loadHistory, setHistoryFilter, showTab, initPanels} from './serve.panels.mjs';
 import {initCrawl} from './serve.crawl.mjs';
 import {initMetrics} from './serve.metrics.mjs';
+import {initProjectsView} from './serve.projects.mjs';
 
 // authorInit / authorRefresh are assigned by the Author-tab IIFE below and imported by core's
 // showView / loadShared; declared here so they are real module exports (a live binding core reads at
@@ -27,6 +28,7 @@ let authorInit=()=>{}, authorRefresh=()=>{};
 initPanels();
 initCrawl();
 initMetrics();
+initProjectsView();
 
 // Device UI is platform-specific: iOS controls (simulators, device pickers, erase, alert-dismiss)
 // show only for an iOS backend, web controls (the headed/show-browser toggle) only for web. The
