@@ -44,8 +44,9 @@ def start_capture(
     backend, udid, err = _device_args(body)
     if err:
         return err
-    # An explicit request is a hard pin; otherwise hand the full backend list to the cost-ordered
-    # selector so `[ios]` resolves to idb rather than the alias head (BE-0267).
+    # An explicit body `backend` is passed through as-is: a single actuator stays a hard pin, while
+    # a platform token like `ios` is still cost-ordered by the selector (idb over the alias head
+    # XCUITest); otherwise the target's full backend list is used, cost-ordered the same way (BE-0267).
     backends_list = [backend] if backend else list(target_cfg.backend or config.defaults.backend)
     if not udid:
         udid = "booted"

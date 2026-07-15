@@ -209,6 +209,25 @@ def _cost_ordered(actuators: list[str]) -> list[str]:
     return [a for _, a in sorted(enumerate(actuators), key=key)]
 
 
+def _cost_ordered_available(
+    backends: list[str], available: Callable[[str], bool]
+) -> list[str] | None:
+    """The cost-ordered available candidates for *backends*, or None to defer to `select_actuator`.
+
+    The shared prefix of both cost-first selectors (BE-0240 / BE-0267): resolve the requested
+    backends to a deduped candidate list, cost-order it (cheapest first), and keep the ones that are
+    both known and available. Returns `None` — meaning "delegate to `select_actuator(backends,
+    available)`" — for the two cases both callers treat identically: a single resolved candidate (a
+    hard pin, no reordering) and no available candidate at all (reuse `select_actuator`'s precise
+    planned-vs-absent diagnostic, which raises). A non-empty list is otherwise never returned empty.
+    """
+    candidates = list(dict.fromkeys(resolve_actuators(backends)))
+    if len(candidates) <= 1:
+        return None
+    avail = [a for a in _cost_ordered(candidates) if a in KNOWN_ACTUATORS and available(a)]
+    return avail or None
+
+
 def select_actuator_cost_first(
     backends: list[str],
     available: Callable[[str], bool] = default_available,
@@ -224,12 +243,9 @@ def select_actuator_cost_first(
     planned/absent diagnostics and any explicit-actuator error (e.g. XCUITest's runner requirement),
     consistent with `select_actuator_for_scenario`'s single-actuator rule.
     """
-    candidates = list(dict.fromkeys(resolve_actuators(backends)))
-    if len(candidates) <= 1:
-        return select_actuator(backends, available)
-    avail = [a for a in _cost_ordered(candidates) if a in KNOWN_ACTUATORS and available(a)]
-    if not avail:
-        return select_actuator(backends, available)  # reuse planned/absent diagnostics (raises)
+    avail = _cost_ordered_available(backends, available)
+    if avail is None:
+        return select_actuator(backends, available)  # hard pin / none available (may raise)
     return avail[0]
 
 
@@ -255,15 +271,12 @@ def select_actuator_for_scenario(
     so the caller's preflight fails it with the fewest-gap (most informative) reasons; when none is
     available at all, `select_actuator`'s precise "planned vs absent" error is raised.
     """
-    candidates = list(dict.fromkeys(resolve_actuators(backends)))
-    if len(candidates) <= 1:
-        return select_actuator(backends, available)
+    avail = _cost_ordered_available(backends, available)
+    if avail is None:
+        return select_actuator(backends, available)  # hard pin / none available (may raise)
     # Lazy import: keeps this module's import free of the scenario/preflight graph (used only here).
     from bajutsu import capability_preflight
 
-    avail = [a for a in _cost_ordered(candidates) if a in KNOWN_ACTUATORS and available(a)]
-    if not avail:
-        return select_actuator(backends, available)  # reuse its planned/absent diagnostics (raises)
     for actuator in avail:
         if not capability_preflight.unsupported(scenario, caps(actuator)):
             return actuator
