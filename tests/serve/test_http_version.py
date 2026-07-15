@@ -11,7 +11,7 @@ from pathlib import Path
 import pytest
 from _shared import _get_json, _serve
 
-import bajutsu
+from bajutsu import __version__
 from bajutsu import serve as srv
 from bajutsu.serve.operations import version as version_ops
 
@@ -19,7 +19,7 @@ from bajutsu.serve.operations import version as version_ops
 def test_http_version_reports_the_running_version(tmp_path: Path) -> None:
     server, port = _serve(srv.ServeState(runs_dir=tmp_path, cwd=tmp_path))
     try:
-        assert _get_json(port, "/api/version") == {"version": bajutsu.__version__}
+        assert _get_json(port, "/api/version") == {"version": __version__}
     finally:
         server.shutdown()
         server.server_close()
