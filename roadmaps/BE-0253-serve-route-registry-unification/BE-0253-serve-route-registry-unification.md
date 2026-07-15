@@ -114,9 +114,9 @@ declaration. Five MECE parts:
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Define the declarative route registry (method, path pattern, `ops.*` callable,
-      `needs_actor`/`off_loop`/`local_only` flags)
-- [ ] Rewrite the stdlib handler's `do_GET`/`do_POST`/`do_DELETE` to dispatch from the registry
+- [x] Define the declarative route registry (method, path pattern, `ops.*` callable,
+      `off_loop`/`local_only`/`content_type` flags)
+- [x] Rewrite the stdlib handler's `do_GET`/`do_POST`/`do_DELETE` to dispatch from the registry
 - [ ] Generate `app.py`'s FastAPI routes from the registry in `make_app`
 - [ ] Triage every endpoint missing from `app.py` today (`/flakiness`, `/api/ant/login`,
       `/api/enrich`, `/api/codegen`, `/api/capture/*`, `/api/jobs/{id}/respond-human`,
@@ -130,6 +130,17 @@ declaration. Five MECE parts:
   new framework-agnostic `bajutsu/serve/gate.py` (`HARDENING_HEADERS`, `allowed_hosts`/`host_allowed`,
   `csrf_ok`, `is_open`, `is_authorized`, `actor_for`) that both backends call; transport mechanics stay
   per-backend. Behavior-preserving. Parts 1–4 (the declarative route registry) follow in later slices.
+- 2026-07-15 — Parts 1–2 (define the registry + stdlib dispatch) landed in [#PENDING](https://github.com/bajutsu-e2e/bajutsu/pull/PENDING):
+  new framework-agnostic `bajutsu/serve/routes.py` — one `ROUTES` table (`Route` frozen dataclass, a
+  backend-neutral `RequestCtx` Protocol, a `{name}`/`{name:path}` template matcher) that captures each
+  route's `ops.*` call in a per-route `handle(state, ctx)` adapter. `handler.py`'s `do_GET`/`do_POST`/
+  `do_DELETE` now dispatch from it. Behavior-preserving. Deviation from Part 1's sketch: the `needs_actor`
+  flag is *not* materialized — whether a route resolves the actor is already expressed inside its adapter
+  closure, so a separate boolean would be a second source of the same truth (the drift class this item
+  removes); `off_loop`/`local_only` stay (the closure can't express them) and `content_type` selects a
+  text response. `off_loop` routes (SSE, file serve, raw uploads, OAuth, login, index) are *declared* here
+  but kept bespoke per backend. Part 3 (generate `app.py` from the registry) and Part 4 (triage the
+  FastAPI-missing endpoints via `local_only`) follow in the next slice.
 
 ## References
 

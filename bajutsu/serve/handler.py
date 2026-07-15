@@ -11,6 +11,7 @@ from __future__ import annotations
 import functools
 import json
 import logging
+from collections.abc import Callable
 from http.cookies import SimpleCookie
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -23,6 +24,7 @@ from bajutsu.serve import gate, oplog
 from bajutsu.serve import operations as ops
 from bajutsu.serve._paths import TEMPLATES_DIR as _TEMPLATE_DIR
 from bajutsu.serve.helpers import range_reply, valid_run_id
+from bajutsu.serve.routes import ROUTES, match_route
 from bajutsu.serve.state import ServeState
 from bajutsu.serve.upload_artifacts import ArtifactKind
 from bajutsu.serve.uploads import MAX_UPLOAD_BYTES, BoundedZipReceiver, UploadTooLarge
@@ -44,6 +46,36 @@ _SESSION_COOKIE = "bajutsu_session"
 _OAUTH_STATE_COOKIE = (
     "bajutsu_oauth_state"  # short-lived CSRF state for the OAuth round-trip (7b-2)
 )
+
+
+class _StdlibCtx:
+    """Adapt one stdlib request to the backend-neutral `RequestCtx` the route registry expects
+    (BE-0253): path parameters from the matcher, the query and session actor via the handler's
+    own `_qs`/`_actor`, and the already-parsed JSON body ({} for a GET)."""
+
+    def __init__(
+        self,
+        params: dict[str, str],
+        body: dict[str, Any],
+        qs: Callable[[str], str | None],
+        actor: Callable[[], str | None],
+    ) -> None:
+        self._params = params
+        self._body = body
+        self._qs = qs
+        self._actor = actor
+
+    def path_param(self, name: str) -> str:
+        return self._params[name]
+
+    def query(self, key: str) -> str | None:
+        return self._qs(key)
+
+    def body(self) -> dict[str, Any]:
+        return self._body
+
+    def actor(self) -> str | None:
+        return self._actor()
 
 
 def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
@@ -233,97 +265,52 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
                 return False
             return True
 
+        def _dispatch_registry(self, method: str, path: str, body: dict[str, Any]) -> None:
+            """Dispatch a uniform (JSON or text) route from the shared registry (BE-0253).
+
+            `off_loop` routes write their own responses and are handled bespoke by the caller
+            before this runs, so an unmatched path — or a match that carries no handle — is the
+            same not-found the old per-backend `match` fell through to.
+            """
+            matched = match_route(ROUTES, method, path)
+            if matched is None:
+                self._json({"error": "not found"}, 404)
+                return
+            route, params = matched
+            if route.handle is None:
+                self._json({"error": "not found"}, 404)
+                return
+            ctx = _StdlibCtx(params, body, self._qs, self._actor)
+            payload, code = route.handle(state, ctx)
+            if route.content_type is not None:
+                self._text(payload, code, route.content_type)
+            else:
+                self._json(payload, code)
+
         def _dispatch_get(self, path: str) -> None:
-            match path:
-                case "/" | "/index.html":
-                    body = _index_html(state.themes_dir, state.default_theme).encode("utf-8")
-                    self.send_response(200)
-                    self.send_header("Content-Type", "text/html; charset=utf-8")
-                    self.send_header("Content-Length", str(len(body)))
-                    self.end_headers()
-                    self.wfile.write(body)
-                case _ if path in _MODULE_PATHS:
-                    # The ES-module frontend (BE-0247): each serve.*.mjs served at its own path.
-                    self._serve_module(path[1:])
-                case "/api/scenarios":
-                    self._json(*ops.list_scenarios(state, self._qs("target"), actor=self._actor()))
-                case "/api/targets":
-                    self._json(*ops.list_targets_payload(state, actor=self._actor()))
-                case "/api/config":
-                    self._json(*ops.config_info(state))
-                case "/api/config/content":
-                    self._json(*ops.config_content(state))
-                case "/api/fs":
-                    self._json(*ops.browse_fs(state, self._qs("dir")))
-                case "/api/apikey":
-                    self._json(*ops.api_key_info(state, self._actor()))
-                case "/api/claudecodetoken":
-                    self._json(*ops.claude_code_token_info(state, self._actor()))
-                case "/api/gitcredential":
-                    self._json(*ops.git_credential_info(state, self._actor()))
-                case "/api/provider":
-                    self._json(*ops.provider_info(state, self._actor()))
-                case "/api/themecontract":
-                    self._json(*ops.get_theme_contract(state))
-                case "/api/ant/login":
-                    self._json(*ops.ant_login_status(state))
-                case "/api/simulators":
-                    self._json(*ops.simulators_payload(state))
-                case "/api/runs":
-                    self._json(*ops.runs_payload(state, actor=self._actor()))
-                case "/api/projects":
-                    self._json(*ops.list_projects_view(state, actor=self._actor()))
-                case _ if path.startswith("/api/projects/") and path.endswith("/runs"):
-                    name = unquote(path[len("/api/projects/") : -len("/runs")])
-                    self._json(*ops.project_runs(state, name, actor=self._actor()))
-                case "/api/metrics/projects":
-                    self._json(*ops.project_metrics_view(state, actor=self._actor()))
-                case "/api/crawl/runs":
-                    self._json(*ops.crawl_runs_payload(state, actor=self._actor()))
-                case "/api/artifacts/exists":
-                    # A fixed path with `kind`/`sha256` query params (BE-0268) — not a templated
-                    # path segment — so it fits the exact-match `_ADMIN_PATHS` model like every
-                    # other admin route, with no new dispatch shape.
-                    self._json(
-                        *ops.artifact_exists(
-                            state, self._qs("kind"), self._qs("sha256"), actor=self._actor()
-                        )
-                    )
-                case "/metrics":
-                    # Prometheus text format, not JSON. It sits behind `_gate` like every other
-                    # route (BE-0051) — not on the open-GET list — so a scraper authenticates with
-                    # the operator token when one is configured.
-                    self._text(*ops.render_metrics(state), ops.PROMETHEUS_CONTENT_TYPE)
-                case "/stats":
-                    html, code = ops.stats_html(state, actor=self._actor())
-                    self._text(html, code, "text/html; charset=utf-8")
-                case "/flakiness":
-                    html, code = ops.flakiness_html(state, actor=self._actor())
-                    self._text(html, code, "text/html; charset=utf-8")
-                case "/usage":
-                    html, code = ops.usage_html(state, actor=self._actor())
-                    self._text(html, code, "text/html; charset=utf-8")
-                case "/api/scenario":
-                    self._json(
-                        *ops.read_scenario(
-                            state,
-                            self._qs("target"),
-                            self._qs("path"),
-                            actor=self._actor(),
-                            run_id=self._qs("runId"),
-                            scenario_name=self._qs("scenario"),
-                        )
-                    )
-                case "/api/schema":
-                    self._json(*ops.scenario_schema())
-                case "/api/oauth/login":
-                    self._oauth_login()
-                case "/api/oauth/callback":
-                    self._oauth_callback()
-                case _ if path.startswith("/api/jobs/"):
-                    self._json(*ops.job_view(state, path[len("/api/jobs/") :]))
-                case _:
-                    self._json({"error": "not found"}, 404)
+            # These GET routes write their own responses (off_loop), so they stay bespoke here:
+            # the index render, the ES-module frontend (BE-0247, a static-asset family whose two
+            # backends use different path conventions — folded into the registry in a later slice),
+            # and the OAuth round-trip. The streaming/binary GETs are already handled by
+            # `_serve_streaming_get` before this. Every other GET dispatches from the registry.
+            if path in ("/", "/index.html"):
+                body = _index_html(state.themes_dir, state.default_theme).encode("utf-8")
+                self.send_response(200)
+                self.send_header("Content-Type", "text/html; charset=utf-8")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+                return
+            if path in _MODULE_PATHS:
+                self._serve_module(path[1:])
+                return
+            if path == "/api/oauth/login":
+                self._oauth_login()
+                return
+            if path == "/api/oauth/callback":
+                self._oauth_callback()
+                return
+            self._dispatch_registry("GET", path, {})
 
         def _csrf_ok(self) -> bool:
             return gate.csrf_ok(self.headers.get("Origin"), self.headers.get("Host") or "")
@@ -370,126 +357,14 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
                 self._respond_uncaught(exc)
 
         def _dispatch_post(self, path: str, body: dict[str, Any]) -> None:
-            # Every case returns via `_json`; an operation that raises instead is caught by the
-            # boundary in do_POST and turned into a JSON 500 (BE-0264).
-            match path:
-                case "/api/login":
-                    self._post_login(body)
-                case "/api/config":
-                    # A `git` key selects the from-Git picker (BE-0063); `path` the local file
-                    # browser. Key presence (not truthiness) routes, so an empty `git` still reaches
-                    # the Git binder and gets its "spec is required" 400, not the local one.
-                    if "git" in body:
-                        self._json(*ops.bind_git_config(state, str(body.get("git") or "")))
-                    else:
-                        self._json(*ops.bind_config(state, str(body.get("path", "") or "")))
-                case "/api/apikey":
-                    self._json(
-                        *ops.set_api_key(state, str(body.get("value", "") or ""), self._actor())
-                    )
-                case "/api/claudecodetoken":
-                    self._json(
-                        *ops.set_claude_code_token(
-                            state, str(body.get("value", "") or ""), self._actor()
-                        )
-                    )
-                case "/api/gitcredential":
-                    self._json(
-                        *ops.set_git_credential(
-                            state, str(body.get("value", "") or ""), self._actor()
-                        )
-                    )
-                case "/api/provider":
-                    self._json(*ops.set_provider(state, body, self._actor()))
-                case "/api/theme":
-                    self._json(*ops.upload_theme(state, body, self._actor()))
-                case "/api/compose":
-                    # Assemble a `(config, scenarios, binary)` triple from artifacts already
-                    # uploaded via `/api/artifacts/*` and bind it as the active config (BE-0268).
-                    # A small JSON body of shas, not a raw upload — the bytes already landed.
-                    self._json(*ops.bind_composition(state, body, actor=self._actor()))
-                case "/api/ant/login":
-                    self._json(*ops.ant_login(state))
-                case "/api/run":
-                    self._json(*ops.start_run(state, body, actor=self._actor()))
-                case "/api/projects":
-                    self._json(*ops.register_project(state, body, actor=self._actor()))
-                case _ if path.startswith("/api/projects/") and path.endswith("/run"):
-                    name = unquote(path[len("/api/projects/") : -len("/run")])
-                    self._json(*ops.run_project(state, name, body, actor=self._actor()))
-                case _ if path.startswith("/api/projects/") and path.endswith("/activate"):
-                    name = unquote(path[len("/api/projects/") : -len("/activate")])
-                    self._json(*ops.activate_project(state, name, actor=self._actor()))
-                case "/api/record":
-                    self._json(*ops.start_record(state, body, actor=self._actor()))
-                case "/api/crawl":
-                    self._json(*ops.start_crawl(state, body, actor=self._actor()))
-                case "/api/triage":
-                    self._json(*ops.start_triage(state, body, actor=self._actor()))
-                case "/api/scenario":
-                    self._json(*ops.save_scenario(state, body, actor=self._actor()))
-                case "/api/lint":
-                    self._json(*ops.lint_scenario(body))
-                case "/api/scenario/apply-selector":
-                    self._json(*ops.apply_selector_edit(body))
-                case "/api/scenario/enrich-apply":
-                    self._json(*ops.apply_enrichment_edit(body))
-                case "/api/audit":
-                    self._json(*ops.audit_scenario(state, body, actor=self._actor()))
-                case "/api/codegen":
-                    self._json(*ops.generate_codegen(state, body, actor=self._actor()))
-                case "/api/approve":
-                    self._json(*ops.approve_baseline(state, body, actor=self._actor()))
-                case "/api/scenario/resolve":
-                    self._json(*ops.resolve_scenario_pick(state, body, actor=self._actor()))
-                case "/api/enrich":
-                    self._json(*ops.start_enrich(state, body, actor=self._actor()))
-                case "/api/doctor":
-                    self._json(*ops.doctor_check(state, body, actor=self._actor()))
-                case "/api/coverage":
-                    self._json(*ops.coverage_view(state, body, actor=self._actor()))
-                case "/api/capture/start":
-                    self._json(*ops.start_capture(state, body, actor=self._actor()))
-                case "/api/capture/mark":
-                    self._json(*ops.mark_capture(state, body, actor=self._actor()))
-                case "/api/capture/finish":
-                    self._json(*ops.finish_capture(state, body, actor=self._actor()))
-                case "/api/worker/lease":
-                    self._json(
-                        *ops.worker_lease(
-                            state, body.get("worker_id", ""), body.get("capabilities")
-                        )
-                    )
-                case "/api/worker/heartbeat":
-                    self._json(
-                        *ops.worker_heartbeat(
-                            state, body.get("worker_id", ""), body.get("job_id", "")
-                        )
-                    )
-                case "/api/worker/result":
-                    self._json(*ops.worker_result(state, body))
-                case "/api/worker/artifact-urls":
-                    self._json(*ops.worker_artifact_urls(state, body))
-                case "/api/worker/scenario-url":
-                    self._json(*ops.worker_scenario_url(state, body))
-                case _ if path.startswith("/api/jobs/") and path.endswith("/cancel"):
-                    self._json(*ops.cancel_job(state, path[len("/api/jobs/") : -len("/cancel")]))
-                case _ if path.startswith("/api/jobs/") and path.endswith("/respond-human"):
-                    self._json(
-                        *ops.respond_human(
-                            state, path[len("/api/jobs/") : -len("/respond-human")], body
-                        )
-                    )
-                case _ if path.startswith("/api/runs/") and path.endswith("/upload-urls"):
-                    run_id = path[len("/api/runs/") : -len("/upload-urls")]
-                    self._json(*ops.generate_upload_urls(state, run_id, body))
-                case "/api/runs/bulk-delete":
-                    self._json(*ops.bulk_delete_runs(state, body, actor=self._actor()))
-                case _ if path.startswith("/api/runs/") and path.endswith("/restore"):
-                    run_id = unquote(path[len("/api/runs/") : -len("/restore")])
-                    self._json(*ops.restore_run(state, run_id, actor=self._actor()))
-                case _:
-                    self._json({"error": "not found"}, 404)
+            # Login writes a Set-Cookie (off_loop) and needs the parsed body, so it stays bespoke;
+            # the raw-body uploads are handled in do_POST before the JSON read. Everything else
+            # dispatches from the shared registry — an op that raises is still caught by do_POST's
+            # boundary and turned into a JSON 500 (BE-0264).
+            if path == "/api/login":
+                self._post_login(body)
+                return
+            self._dispatch_registry("POST", path, body)
 
         def do_DELETE(self) -> None:
             # DELETE surfaces: deregister a project (BE-0225) and delete a run/crawl-run (BE-0239).
@@ -505,24 +380,11 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
                     self.rfile.read(length)  # drain so keep-alive isn't left with unread bytes
                 self._json({"error": "cross-origin request blocked"}, 403)
                 return
-            path = urlparse(self.path).path
-            # `?purge=true` skips the trash window and purges immediately (admin-only, gated in the
-            # operation since the query isn't visible to the path-based RBAC). Crawl and scenario runs
-            # share the `runs/<id>/` tree, so one operation serves both DELETE surfaces (BE-0239).
-            purge = self._qs("purge") == "true"
-            if path.startswith("/api/crawl/runs/"):
-                run_id = unquote(path[len("/api/crawl/runs/") :])
-                self._json(*ops.delete_run(state, run_id, purge=purge, actor=self._actor()))
-                return
-            if path.startswith("/api/runs/"):
-                run_id = unquote(path[len("/api/runs/") :])
-                self._json(*ops.delete_run(state, run_id, purge=purge, actor=self._actor()))
-                return
-            if path.startswith("/api/projects/"):
-                name = unquote(path[len("/api/projects/") :])
-                self._json(*ops.deregister_project(state, name, actor=self._actor()))
-                return
-            self._json({"error": "not found"}, 404)
+            # The DELETE routes (`?purge=true` skips the trash window, admin-only and gated in the
+            # operation since the query isn't visible to the path-based RBAC; crawl and scenario runs
+            # share the `runs/<id>/` tree, so one operation serves both, BE-0239) dispatch from the
+            # shared registry like GET/POST.
+            self._dispatch_registry("DELETE", urlparse(self.path).path, {})
 
         def _stream_bounded_body(self) -> BoundedZipReceiver | None:
             """Stream a raw POST body into a bounded, sha256-hashing temp file (`BoundedZipReceiver`,

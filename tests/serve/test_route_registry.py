@@ -1,0 +1,242 @@
+"""The declarative serve route registry and its path matcher (BE-0253 Part 1).
+
+These lock the registry's shape and the matcher's precedence so the stdlib handler's
+registry-driven dispatch (Part 2) — and, later, the FastAPI generator (Part 3) — stay in
+lockstep with the hand-enumerated route table below. The parity set is the guard that the
+Part 2 refactor drops or adds nothing.
+"""
+
+from __future__ import annotations
+
+from bajutsu.serve.routes import ROUTES, Route, match_route
+
+# The full route surface both backends serve today, hand-enumerated from handler.py so an
+# accidental drop/add during the registry migration fails loudly. Kept as (method, path) pairs
+# using the canonical FastAPI-style template spelling stored in the registry.
+_EXPECTED: frozenset[tuple[str, str]] = frozenset(
+    {
+        # --- GET: streaming / binary (off_loop) ---
+        ("GET", "/api/jobs/{job_id}/events"),
+        ("GET", "/runs/{run_id}/archive.zip"),
+        ("GET", "/api/capture/screenshot"),
+        ("GET", "/runs/{rel:path}"),
+        # --- GET: index (off_loop) ---
+        ("GET", "/"),
+        ("GET", "/index.html"),
+        # --- GET: uniform JSON reads ---
+        ("GET", "/api/scenarios"),
+        ("GET", "/api/targets"),
+        ("GET", "/api/config"),
+        ("GET", "/api/config/content"),
+        ("GET", "/api/fs"),
+        ("GET", "/api/apikey"),
+        ("GET", "/api/claudecodetoken"),
+        ("GET", "/api/gitcredential"),
+        ("GET", "/api/provider"),
+        ("GET", "/api/themecontract"),
+        ("GET", "/api/ant/login"),
+        ("GET", "/api/simulators"),
+        ("GET", "/api/runs"),
+        ("GET", "/api/projects"),
+        ("GET", "/api/projects/{name}/runs"),
+        ("GET", "/api/metrics/projects"),
+        ("GET", "/api/crawl/runs"),
+        ("GET", "/api/artifacts/exists"),
+        ("GET", "/api/scenario"),
+        ("GET", "/api/schema"),
+        ("GET", "/api/jobs/{job_id}"),
+        # --- GET: text responses (content_type) ---
+        ("GET", "/metrics"),
+        ("GET", "/stats"),
+        ("GET", "/flakiness"),
+        ("GET", "/usage"),
+        # --- GET: oauth round-trip (off_loop) ---
+        ("GET", "/api/oauth/login"),
+        ("GET", "/api/oauth/callback"),
+        # --- POST: raw-body uploads (off_loop) ---
+        ("POST", "/api/upload"),
+        ("POST", "/api/artifacts/config"),
+        ("POST", "/api/artifacts/scenarios"),
+        ("POST", "/api/artifacts/binary"),
+        # --- POST: login (off_loop, sets cookie) ---
+        ("POST", "/api/login"),
+        # --- POST: uniform JSON actions ---
+        ("POST", "/api/config"),
+        ("POST", "/api/apikey"),
+        ("POST", "/api/claudecodetoken"),
+        ("POST", "/api/gitcredential"),
+        ("POST", "/api/provider"),
+        ("POST", "/api/theme"),
+        ("POST", "/api/compose"),
+        ("POST", "/api/ant/login"),
+        ("POST", "/api/run"),
+        ("POST", "/api/projects"),
+        ("POST", "/api/projects/{name}/run"),
+        ("POST", "/api/projects/{name}/activate"),
+        ("POST", "/api/record"),
+        ("POST", "/api/crawl"),
+        ("POST", "/api/triage"),
+        ("POST", "/api/scenario"),
+        ("POST", "/api/lint"),
+        ("POST", "/api/scenario/apply-selector"),
+        ("POST", "/api/scenario/enrich-apply"),
+        ("POST", "/api/audit"),
+        ("POST", "/api/codegen"),
+        ("POST", "/api/approve"),
+        ("POST", "/api/scenario/resolve"),
+        ("POST", "/api/enrich"),
+        ("POST", "/api/doctor"),
+        ("POST", "/api/coverage"),
+        ("POST", "/api/capture/start"),
+        ("POST", "/api/capture/mark"),
+        ("POST", "/api/capture/finish"),
+        ("POST", "/api/worker/lease"),
+        ("POST", "/api/worker/heartbeat"),
+        ("POST", "/api/worker/result"),
+        ("POST", "/api/worker/artifact-urls"),
+        ("POST", "/api/worker/scenario-url"),
+        ("POST", "/api/jobs/{job_id}/cancel"),
+        ("POST", "/api/jobs/{job_id}/respond-human"),
+        ("POST", "/api/runs/{run_id}/upload-urls"),
+        ("POST", "/api/runs/bulk-delete"),
+        ("POST", "/api/runs/{run_id}/restore"),
+        # --- DELETE ---
+        ("DELETE", "/api/crawl/runs/{run_id}"),
+        ("DELETE", "/api/runs/{run_id}"),
+        ("DELETE", "/api/projects/{name}"),
+    }
+)
+
+
+def test_registry_covers_exactly_the_expected_surface() -> None:
+    got = {(r.method, r.path) for r in ROUTES}
+    assert got == _EXPECTED
+
+
+def test_no_duplicate_method_path() -> None:
+    pairs = [(r.method, r.path) for r in ROUTES]
+    assert len(pairs) == len(set(pairs))
+
+
+def test_methods_are_known() -> None:
+    assert all(r.method in {"GET", "POST", "DELETE"} for r in ROUTES)
+
+
+def test_off_loop_routes_have_no_handle_and_others_do() -> None:
+    for r in ROUTES:
+        if r.off_loop:
+            assert r.handle is None, f"{r.method} {r.path} is off_loop but carries a handle"
+        else:
+            assert r.handle is not None, f"{r.method} {r.path} is uniform but has no handle"
+
+
+def test_content_type_only_on_the_four_text_routes() -> None:
+    typed = {(r.method, r.path) for r in ROUTES if r.content_type is not None}
+    assert typed == {
+        ("GET", "/metrics"),
+        ("GET", "/stats"),
+        ("GET", "/flakiness"),
+        ("GET", "/usage"),
+    }
+    # Text routes are driven (uniform tuple), not off_loop.
+    for r in ROUTES:
+        if r.content_type is not None:
+            assert not r.off_loop and r.handle is not None
+
+
+def test_local_only_all_false_in_part_b() -> None:
+    # PR-C does the triage; PR-B declares every route as served by both backends.
+    assert all(not r.local_only for r in ROUTES)
+
+
+def test_paths_are_balanced_templates() -> None:
+    # Cheap forward-looking guard: every path must be a valid FastAPI template so PR-C can hand
+    # route.path straight to app.<method>.
+    for r in ROUTES:
+        assert r.path.count("{") == r.path.count("}")
+        assert r.path.startswith("/")
+
+
+# --- matcher ---
+
+
+def test_match_exact() -> None:
+    result = match_route(ROUTES, "GET", "/api/config")
+    assert result is not None
+    route, params = result
+    assert route.path == "/api/config"
+    assert params == {}
+
+
+def test_match_trailing_segment() -> None:
+    result = match_route(ROUTES, "GET", "/api/jobs/abc123")
+    assert result is not None
+    route, params = result
+    assert route.path == "/api/jobs/{job_id}"
+    assert params == {"job_id": "abc123"}
+
+
+def test_match_infix_with_suffix() -> None:
+    result = match_route(ROUTES, "POST", "/api/projects/my-proj/run")
+    assert result is not None
+    route, params = result
+    assert route.path == "/api/projects/{name}/run"
+    assert params == {"name": "my-proj"}
+
+
+def test_match_delete_trailing() -> None:
+    result = match_route(ROUTES, "DELETE", "/api/projects/foo")
+    assert result is not None
+    route, _ = result
+    assert route.path == "/api/projects/{name}"
+
+
+def test_match_respects_method() -> None:
+    # /api/config exists as both GET and POST; the method selects which.
+    get = match_route(ROUTES, "GET", "/api/config")
+    post = match_route(ROUTES, "POST", "/api/config")
+    assert get is not None and post is not None
+    assert get[0].method == "GET"
+    assert post[0].method == "POST"
+
+
+def test_match_static_wins_over_template() -> None:
+    # bulk-delete is a static POST path that must not be captured as a {run_id}.
+    result = match_route(ROUTES, "POST", "/api/runs/bulk-delete")
+    assert result is not None
+    route, params = result
+    assert route.path == "/api/runs/bulk-delete"
+    assert params == {}
+
+
+def test_no_match_returns_none() -> None:
+    assert match_route(ROUTES, "GET", "/api/does-not-exist") is None
+    # A bare-segment template must not match a path carrying an extra suffix.
+    assert match_route(ROUTES, "GET", "/api/jobs/abc/extra/depth") is None
+
+
+def test_match_path_template_is_greedy_remainder() -> None:
+    result = match_route(ROUTES, "GET", "/runs/2026/07/report.html")
+    assert result is not None
+    route, params = result
+    assert route.path == "/runs/{rel:path}"
+    assert params == {"rel": "2026/07/report.html"}
+
+
+def test_archive_zip_wins_over_generic_run_file() -> None:
+    # The .../archive.zip route is listed before the greedy /runs/{rel:path}, so it matches first.
+    result = match_route(ROUTES, "GET", "/runs/some-run/archive.zip")
+    assert result is not None
+    route, params = result
+    assert route.path == "/runs/{run_id}/archive.zip"
+    assert params == {"run_id": "some-run"}
+
+
+def test_route_is_frozen() -> None:
+    route = ROUTES[0]
+    assert isinstance(route, Route)
+    try:
+        route.method = "PATCH"  # type: ignore[misc]
+    except AttributeError:
+        return
+    raise AssertionError("Route should be frozen")
