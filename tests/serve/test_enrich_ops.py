@@ -57,6 +57,26 @@ def _factories(driver: FakeDriver, agent: FakeEnrichmentAgent) -> dict[str, obje
     }
 
 
+def _ios_state(tmp_path: Path) -> ServeState:
+    """A ServeState whose `ios` target declares `backend: [ios]` (multi-actuator, BE-0267)."""
+    scn_dir = tmp_path / "scenarios"
+    scn_dir.mkdir()
+    (scn_dir / "smoke.yaml").write_text(
+        "- name: alpha\n  steps:\n    - tap: { id: home.title }\n", encoding="utf-8"
+    )
+    cfg = tmp_path / "bajutsu.config.yaml"
+    cfg.write_text(
+        "defaults: { backend: [idb] }\n"
+        "targets:\n"
+        f"  ios: {{ bundleId: com.example.ios, backend: [ios], scenarios: {scn_dir} }}\n"
+        f"  idb_only: {{ bundleId: com.example.idb, backend: [idb], scenarios: {scn_dir} }}\n",
+        encoding="utf-8",
+    )
+    runs = tmp_path / "runs"
+    runs.mkdir()
+    return ServeState(runs_dir=runs, config=cfg, scenarios_dir=scn_dir, cwd=tmp_path)
+
+
 # ---------------------------------------------------------------------------
 # Happy path
 # ---------------------------------------------------------------------------
@@ -80,6 +100,55 @@ def test_start_enrich_returns_proposed_assertions(tmp_path: Path) -> None:
     assert payload["expect"][0]["exists"]["sel"]["id"] == "home.title"
     assert payload["note"] == "title visible"
     assert agent.called
+
+
+# ---------------------------------------------------------------------------
+# Actuator selection (BE-0267) — mirrors tests/serve/test_capture_ops.py
+# ---------------------------------------------------------------------------
+
+
+def test_start_enrich_ios_target_resolves_to_idb(tmp_path: Path) -> None:
+    # A `[ios]` target must select the cheapest bring-able actuator (idb), not the alias head
+    # XCUITest — serve never starts an XCUITest runner (BE-0267). enrich resolves the backends list
+    # it hands the factory the same way capture does; this mirrors the capture-side coverage.
+    from bajutsu import backends
+
+    seen: list[str] = []
+
+    def factory(_target: str, backends_list: list[str], _udid: str) -> FakeDriver:
+        seen.append(backends.select_actuator_cost_first(backends_list, available=lambda a: True))
+        return FakeDriver(_screen())
+
+    state = _ios_state(tmp_path)
+    agent = FakeEnrichmentAgent(EnrichmentProposal())
+    _payload, status = ops.start_enrich(
+        state,
+        {"target": "ios", "scenario": "smoke.yaml"},
+        driver_factory=factory,
+        agent_factory=lambda: agent,
+    )
+    assert status == 200
+    assert seen == ["idb"]
+
+
+def test_start_enrich_single_actuator_target_unchanged(tmp_path: Path) -> None:
+    # A single-actuator target is a hard pin: enrich hands the factory exactly its backend list.
+    seen: list[list[str]] = []
+
+    def factory(_target: str, backends_list: list[str], _udid: str) -> FakeDriver:
+        seen.append(backends_list)
+        return FakeDriver(_screen())
+
+    state = _ios_state(tmp_path)
+    agent = FakeEnrichmentAgent(EnrichmentProposal())
+    _payload, status = ops.start_enrich(
+        state,
+        {"target": "idb_only", "scenario": "smoke.yaml"},
+        driver_factory=factory,
+        agent_factory=lambda: agent,
+    )
+    assert status == 200
+    assert seen == [["idb"]]
 
 
 # ---------------------------------------------------------------------------
