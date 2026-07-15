@@ -135,8 +135,8 @@ def doctor_check(
                 doctor.score(
                     elements,
                     eff.id_namespaces,
-                    ok_coverage=eff.doctor_ok_coverage,
-                    fail_coverage=eff.doctor_fail_coverage,
+                    ok_coverage=eff.doctor_thresholds.ok_coverage,
+                    fail_coverage=eff.doctor_thresholds.fail_coverage,
                 )
             )
 

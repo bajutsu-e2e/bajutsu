@@ -123,19 +123,19 @@ def _scenario_files(eff: Effective, scenario: str, target_name: str) -> tuple[li
             typer.echo(f"scenario not found: {scenario}")
             raise typer.Exit(2)
         return [path], True
-    if eff.scenarios is None:
+    if eff.evidence_dirs.scenarios is None:
         typer.echo(
             f"target '{target_name}' has no scenarios dir "
             f"(set targets.{target_name}.scenarios, or pass --scenario)"
         )
         raise typer.Exit(2)
-    scenarios_dir = Path(eff.scenarios)
+    scenarios_dir = Path(eff.evidence_dirs.scenarios)
     if not scenarios_dir.is_dir():
-        typer.echo(f"scenarios dir not found: {eff.scenarios}")
+        typer.echo(f"scenarios dir not found: {eff.evidence_dirs.scenarios}")
         raise typer.Exit(2)
     files = sorted(scenarios_dir.glob("*.yaml"))
     if not files:
-        typer.echo(f"no scenarios found in {eff.scenarios}")
+        typer.echo(f"no scenarios found in {eff.evidence_dirs.scenarios}")
         raise typer.Exit(2)
     return files, False
 
@@ -251,7 +251,7 @@ def _load_scenarios(
     files, single = _scenario_files(eff, scenario, target_name)
     # The containment root for refs: the configured scenarios dir for a suite run, or the single
     # file's own directory for a `--scenario` override (BE-0174).
-    root = files[0].parent if single else Path(eff.scenarios or files[0].parent)
+    root = files[0].parent if single else Path(eff.evidence_dirs.scenarios or files[0].parent)
     scenarios: list[Scenario] = []
     description: str | None = None
     for path in files:
@@ -260,7 +260,7 @@ def _load_scenarios(
         if single:
             description = file_desc
     # The report's source label: the single file's name, or the dir name for a config-driven run.
-    source_name = files[0].name if single else Path(eff.scenarios or "").name
+    source_name = files[0].name if single else Path(eff.evidence_dirs.scenarios or "").name
     return scenarios, description, source_name, files
 
 
@@ -337,8 +337,8 @@ def _alert_guard_factory(
     def _enabled(s: Scenario) -> bool:
         if s.dismiss_alerts is not None:
             return s.dismiss_alerts.enabled
-        if eff.dismiss_alerts is not None:
-            return eff.dismiss_alerts.enabled
+        if eff.run_defaults.dismiss_alerts is not None:
+            return eff.run_defaults.dismiss_alerts.enabled
         return True
 
     if not any(_enabled(s) for s in scenarios):
@@ -355,7 +355,9 @@ def _alert_guard_factory(
     # The button label resolves scenario > `--alert-instruction` > target config > built-in dismissive
     # (BE-0177): a scenario's own wins, then the run-wide flag default, then the app default, then None
     # (the guard's built-in). `--alert-instruction` stays a *default* the scenario overrides, as before.
-    target_instruction = eff.dismiss_alerts.instruction if eff.dismiss_alerts else None
+    target_instruction = (
+        eff.run_defaults.dismiss_alerts.instruction if eff.run_defaults.dismiss_alerts else None
+    )
 
     def _guard_for(s: Scenario) -> BlockedHandler | None:
         if locator is None:
@@ -407,9 +409,9 @@ def _resolve_evidence_dirs(
     Each follows --flag > config > dir-beside-the-scenario. The golden context is built only when the
     goldens dir exists, so `golden` assertions can resolve their `path` within it.
     """
-    baselines_dir = _resolve_dir(baselines, eff.baselines, scenario_file, "baselines")
-    schemas_dir = _resolve_dir(schemas, eff.schemas, scenario_file, "schemas")
-    goldens_dir = _resolve_dir(goldens, eff.goldens, scenario_file, "goldens")
+    baselines_dir = _resolve_dir(baselines, eff.evidence_dirs.baselines, scenario_file, "baselines")
+    schemas_dir = _resolve_dir(schemas, eff.evidence_dirs.schemas, scenario_file, "schemas")
+    goldens_dir = _resolve_dir(goldens, eff.evidence_dirs.goldens, scenario_file, "goldens")
     gc = GoldenContext(goldens_dir=goldens_dir) if goldens_dir.is_dir() else None
     return baselines_dir, schemas_dir, gc
 
@@ -875,7 +877,7 @@ def run(
     )
     secret_bindings, secret_values = _resolve_secrets(eff)
     scenarios, description, source_name, files = _load_scenarios(eff, scenario, target_name)
-    scenarios = _filter_scenarios(scenarios, tag, exclude, erase, eff.erase)
+    scenarios = _filter_scenarios(scenarios, tag, exclude, erase, eff.run_defaults.erase)
     actuator, backends = _select_actuator(backend, eff, engines)
     # Web has no simctl udid: `--workers N` is N near-free BrowserContext lanes (BE-0054); for idb,
     # `--udid` is a concrete comma list capped to the pool size. (The "booted" default is unused on
@@ -888,7 +890,7 @@ def run(
     on_blocked_for = _alert_guard_factory(scenarios, eff, alert_instruction)
     # Network collection resolves `--network/--no-network` over the target's `network` config, then on
     # (BE-0177); the resolved bool baked into mocks and the plan drives collection and `request` waits.
-    network = _resolve_network(network, eff.network)
+    network = _resolve_network(network, eff.run_defaults.network)
     _apply_mocks(scenarios, network)
     baselines_dir, schemas_dir, gc = _resolve_evidence_dirs(
         baselines, schemas, goldens, eff, files[0]

@@ -438,7 +438,7 @@ def test_load_effective_rebases_paths_against_git_checkout(tmp_path, monkeypatch
 
     eff = _shared._load_effective("github:acme/mobile-tests@main:e2e/bajutsu.config.yaml", "demo")
     # relative config entries are now absolute under the checkout root, not the caller's cwd
-    assert eff.scenarios == str(root / "e2e/scenarios")
+    assert eff.evidence_dirs.scenarios == str(root / "e2e/scenarios")
     assert isinstance(eff.platform_config, IosConfig)
     assert eff.platform_config.app_path == str(root / "build/Demo.app")
 
@@ -457,7 +457,9 @@ def test_load_effective_local_config_rebases_against_the_config_dir(tmp_path, mo
     )
     monkeypatch.chdir(tmp_path)  # deliberately not the config's directory
     eff = _shared._load_effective(str(cfg_dir / "bajutsu.config.yaml"), "demo")
-    assert eff.scenarios == str(cfg_dir / "scn")  # anchored at the config dir, not cwd (tmp_path)
+    assert eff.evidence_dirs.scenarios == str(
+        cfg_dir / "scn"
+    )  # anchored at the config dir, not cwd (tmp_path)
     assert isinstance(eff.platform_config, IosConfig)
     assert eff.platform_config.app_path == str(cfg_dir / "build/Demo.app")
 
@@ -474,7 +476,7 @@ def test_load_effective_local_config_allows_a_path_outside_its_dir(tmp_path) -> 
         encoding="utf-8",
     )
     eff = _shared._load_effective(str(proj / "bajutsu.config.yaml"), "demo")
-    assert Path(eff.scenarios or "").resolve() == (tmp_path / "shared" / "scn")
+    assert Path(eff.evidence_dirs.scenarios or "").resolve() == (tmp_path / "shared" / "scn")
 
 
 def test_load_effective_local_config_returns_no_checkout_root(tmp_path) -> None:  # type: ignore[no-untyped-def]

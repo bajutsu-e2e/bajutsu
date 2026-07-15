@@ -118,7 +118,7 @@ AND で結合されるフィールドの集合（`id`、`idMatches`、`label`、
 
 | 語 | 意味 |
 |---|---|
-| **target（ターゲット）** | `targets.<name>` の下にある、テスト対象のアプリを記述する config エントリ一つです。プラットフォームごとの識別子（iOS の `bundleId`、web の `baseUrl`、Android の `package`）に加え、`backend`・`device`・`appPath` などを持ちます。config の単位です。定義は `bajutsu/config.py` の `TargetConfig` です。 |
+| **target（ターゲット）** | `targets.<name>` の下にある、テスト対象のアプリを記述する config エントリ一つです。プラットフォームごとの識別子（iOS の `bundleId`、web の `baseUrl`、Android の `package`）に加え、`backend`・`device`・`appPath` などを持ちます。config の単位です。定義は `bajutsu/config/schema.py` の `TargetConfig` です。 |
 | **app（アプリ）** | テスト対象のアプリケーションそのものです。target が指し示し、device にインストールされるソフトウェアです。 |
 | **device（デバイス）** | target を駆動する具体的な実行時インスタンスです。Simulator、emulator、ブラウザコンテキストで、`device`（たとえば `iPhone 15`）で名付け、実行時には `udid` で指します。 |
 

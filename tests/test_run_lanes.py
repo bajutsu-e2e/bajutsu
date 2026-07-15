@@ -72,37 +72,46 @@ def _eff(**target: str) -> Effective:
 
 def test_baselines_dir_flag_wins() -> None:
     got = _resolve_dir(
-        "cli/dir", _eff(baselines="cfg/dir").baselines, Path("e2e/s.yaml"), "baselines"
+        "cli/dir",
+        _eff(baselines="cfg/dir").evidence_dirs.baselines,
+        Path("e2e/s.yaml"),
+        "baselines",
     )
     assert got == Path("cli/dir")
 
 
 def test_baselines_dir_config_when_no_flag() -> None:
-    got = _resolve_dir("", _eff(baselines="cfg/dir").baselines, Path("e2e/s.yaml"), "baselines")
+    got = _resolve_dir(
+        "", _eff(baselines="cfg/dir").evidence_dirs.baselines, Path("e2e/s.yaml"), "baselines"
+    )
     assert got == Path("cfg/dir")
 
 
 def test_baselines_dir_defaults_beside_the_scenario() -> None:
-    got = _resolve_dir("", _eff().baselines, Path("e2e/s.yaml"), "baselines")
+    got = _resolve_dir("", _eff().evidence_dirs.baselines, Path("e2e/s.yaml"), "baselines")
     assert got == Path("e2e/baselines")
 
 
 def test_schemas_dir_flag_config_default() -> None:
     scn = Path("e2e/s.yaml")
-    assert _resolve_dir("cli/dir", _eff(schemas="cfg/dir").schemas, scn, "schemas") == Path(
-        "cli/dir"
+    assert _resolve_dir(
+        "cli/dir", _eff(schemas="cfg/dir").evidence_dirs.schemas, scn, "schemas"
+    ) == Path("cli/dir")
+    assert _resolve_dir("", _eff(schemas="cfg/dir").evidence_dirs.schemas, scn, "schemas") == Path(
+        "cfg/dir"
     )
-    assert _resolve_dir("", _eff(schemas="cfg/dir").schemas, scn, "schemas") == Path("cfg/dir")
-    assert _resolve_dir("", _eff().schemas, scn, "schemas") == Path("e2e/schemas")
+    assert _resolve_dir("", _eff().evidence_dirs.schemas, scn, "schemas") == Path("e2e/schemas")
 
 
 def test_goldens_dir_flag_config_default() -> None:
     scn = Path("e2e/s.yaml")
-    assert _resolve_dir("cli/dir", _eff(goldens="cfg/dir").goldens, scn, "goldens") == Path(
-        "cli/dir"
+    assert _resolve_dir(
+        "cli/dir", _eff(goldens="cfg/dir").evidence_dirs.goldens, scn, "goldens"
+    ) == Path("cli/dir")
+    assert _resolve_dir("", _eff(goldens="cfg/dir").evidence_dirs.goldens, scn, "goldens") == Path(
+        "cfg/dir"
     )
-    assert _resolve_dir("", _eff(goldens="cfg/dir").goldens, scn, "goldens") == Path("cfg/dir")
-    assert _resolve_dir("", _eff().goldens, scn, "goldens") == Path("e2e/goldens")
+    assert _resolve_dir("", _eff().evidence_dirs.goldens, scn, "goldens") == Path("e2e/goldens")
 
 
 # --- _expand_file: loads one file and resolves its setup/component/data refs relative to its dir

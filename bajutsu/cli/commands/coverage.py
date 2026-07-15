@@ -100,14 +100,14 @@ def coverage(
     missing config / scenarios dir or an unreadable scenario exits 2.
     """
     eff = _load_effective(config, target_name)
-    if eff.scenarios is None:
+    if eff.evidence_dirs.scenarios is None:
         typer.echo(
             f"target '{target_name}' has no scenarios dir (set targets.{target_name}.scenarios)"
         )
         raise typer.Exit(2)
-    scenarios_dir = Path(eff.scenarios)
+    scenarios_dir = Path(eff.evidence_dirs.scenarios)
     if not scenarios_dir.is_dir():
-        typer.echo(f"scenarios dir not found: {eff.scenarios}")
+        typer.echo(f"scenarios dir not found: {eff.evidence_dirs.scenarios}")
         raise typer.Exit(2)
     try:
         scenarios = load_scenarios_dir(scenarios_dir)

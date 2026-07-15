@@ -97,7 +97,7 @@ The `bajutsu/` package (Python 3.13+, pydantic v2 / typer / anthropic / pyyaml /
 | `network.py` | Network collector + in-protocol deterministic mocks | [evidence](evidence.md) |
 | `redaction.py` | Redaction of evidence (labels / headers / fields + secret values) | [evidence](evidence.md) |
 | `interp.py` | `${ns.key}` interpolation primitive (`params.` / `row.` / `secrets.` / `vars.`) | [scenarios](scenarios.md) |
-| `config.py` | Team defaults × per-target resolution (`Effective`) | [configuration](configuration.md) |
+| `config/` | Team defaults × per-target resolution (`Effective`) (package: `schema` / `effective` / `resolve` / `accessors`) | [configuration](configuration.md) |
 | `backends.py` | Backend availability check · actuator selection (platform-aware registry: `ios` / `android` / `web` / `fake`) · driver construction | [drivers](drivers.md#backend-selection-and-the-actuator) |
 | `simctl.py` | `simctl` wrapper (erase/boot/launch/openurl/io) | [drivers](drivers.md#environment-management-simctl) |
 | `preflight.py` | Runnability gate, per backend (iOS: required CLIs + a booted Simulator; web: Playwright + its Chromium browser) | [configuration](configuration.md) |
@@ -155,7 +155,7 @@ flowchart TB
 
     scenario["scenario/<br/>(interp.py)"]
     report["report/"]
-    config["config.py · preflight.py"]
+    config["config/ · preflight.py"]
     backends["backends.py"]
     simctl["simctl.py"]
 
@@ -216,7 +216,7 @@ declared:
 
 1. **Deterministic core** — the path that derives a verdict and evidence with no model and no
    periphery stack: `orchestrator/`, `runner/`, `drivers/base.py`, `assertions.py`, `evidence.py`,
-   `report/`, `config.py`, `scenario/`, `preflight.py` / `capability_preflight.py` /
+   `report/`, `config/`, `scenario/`, `preflight.py` / `capability_preflight.py` /
    `capabilities.py`, `doctor.py`, `lint.py`. It carries the prime directives.
 2. **Contract** — the stable surfaces a consumer depends on: the scenario schema (`scenario/`) and
    the `Driver` Protocol (`drivers/base.py`).
@@ -232,20 +232,20 @@ Three contracts are enforced:
   cannot silently grow a dependency on them. A pure element-tree helper a core module needs (e.g.
   `screen_size_from_elements`, `shows_app_ui`) lives in the core (`bajutsu/elements.py`), not in a
   periphery module such as `record.py`; likewise the resolved `ai` block (`AiConfig`) lives in
-  `config.py`, so the core reads it without importing the AI client.
+  `config/`, so the core reads it without importing the AI client.
 - **The core must stay host-agnostic (BE-0129).** Multi-tenant hosting concerns — organizations,
   roles, tenancy — and the `db` (SQLAlchemy/Alembic/psycopg/cryptography) and `oauth` (Authlib)
   extras belong to `bajutsu/serve/` alone. The org model (`OrgConfig`, `org_for_*`,
-  `targets_for_org`, `load_serve_config`) lives in `bajutsu/serve/orgs.py`, not `config.py`; `Config`
+  `targets_for_org`, `load_serve_config`) lives in `bajutsu/serve/orgs.py`, not `config/`; `Config`
   carries no `orgs` field, and the core loader drops a top-level `orgs:` before validation so a run
   in the hosted topology (which reads an org-bearing config) keeps working while the core never
   models orgs. The same mechanism also drops a top-level `ui:` key (BE-0191) — the serve UI's
   presentation settings (`ui.default_theme`) are a serve concern and are parsed in
-  `bajutsu/serve/themes.py`, not modeled in `Config`. A forbidden import-linter contract keeps `config.py`, `drivers/`, `runner/`, and
+  `bajutsu/serve/themes.py`, not modeled in `Config`. A forbidden import-linter contract keeps `config/`, `drivers/`, `runner/`, and
   `scenario/` off those extras (`include_external_packages` lets it see the external import), on top
   of the periphery contract that already keeps them off `bajutsu.serve`.
 - **The scenario schema and `Driver` Protocol stay a portable inner contract** — independent of the
-  runtime core (`orchestrator/`, `runner/`, `config.py`, …) as well as the periphery. This keeps the
+  runtime core (`orchestrator/`, `runner/`, `config/`, …) as well as the periphery. This keeps the
   contract a stable layer a consumer can depend on without pulling the runtime, underpinning
   cross-version schema reads (BE-0119) and any future split of the periphery from the core.
 
@@ -424,7 +424,7 @@ workers would collide).
 
 | Feature | Status | Location |
 |---|---|---|
-| `mockServer` (external mock command) | config schema only; the `cmd`/`port` external server is **not implemented** — superseded by scenario `mocks` (declarative in-protocol stubs, implemented) | `config.py` `MockServer` |
+| `mockServer` (external mock command) | config schema only; the `cmd`/`port` external server is **not implemented** — superseded by scenario `mocks` (declarative in-protocol stubs, implemented) | `config/schema.py` `MockServer` |
 | `appTrace` interval evidence on the **web** backend | `appTrace` is `os_log`/simctl-based (iOS only); the Playwright backend implements the `video` and `deviceLog`-equivalent (console / page-error) interval kinds instead (BE-0054), but has no `appTrace` analogue | `intervals.py` · `drivers/playwright.py` |
 
 These are also flagged inline on the relevant feature pages.
