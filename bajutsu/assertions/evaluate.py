@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import re
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -32,6 +33,7 @@ from bajutsu.assertions.visual import VisualContext, _eval_visual
 from bajutsu.drivers import base
 from bajutsu.network import NetworkExchange
 from bajutsu.scenario import (
+    ASSERTION_KINDS,
     Assertion,
     ClipboardMatch,
     CountMatch,
@@ -350,6 +352,139 @@ def _eval_golden(
     return AssertionResult(False, "golden", detail, "; ".join(parts))
 
 
+# Assertion evaluators keyed by kind (the `Assertion` field name), each a thin adapter over the
+# per-kind `_eval_*` above that pulls the one set field off the assertion and the inputs its kind
+# needs. Dispatch is a lookup on the set field, replacing the 14-way `if a.X is not None` chain
+# (BE-0250) — the same self-registering pattern `orchestrator/actions/_registry.py` uses for step
+# actions. The uniform signature is why each adapter asserts its own field is set (the caller only
+# reaches it when it is): it lets one dict hold every kind under strict typing, as `_HANDLERS` does.
+_Evaluator = Callable[
+    [Assertion, list[base.Element], list[NetworkExchange], EvalContext],
+    AssertionResult,
+]
+_EVALUATORS: dict[str, _Evaluator] = {}
+
+
+def _evaluator(kind: str) -> Callable[[_Evaluator], _Evaluator]:
+    def register(fn: _Evaluator) -> _Evaluator:
+        _EVALUATORS[kind] = fn
+        return fn
+
+    return register
+
+
+@_evaluator("exists")
+def _do_exists(
+    a: Assertion, elements: list[base.Element], _e: list[NetworkExchange], _c: EvalContext
+) -> AssertionResult:
+    assert a.exists is not None
+    return _eval_exists(elements, a.exists)
+
+
+@_evaluator("value")
+def _do_value(
+    a: Assertion, elements: list[base.Element], _e: list[NetworkExchange], _c: EvalContext
+) -> AssertionResult:
+    assert a.value is not None
+    return _eval_text(elements, "value", a.value)
+
+
+@_evaluator("label")
+def _do_label(
+    a: Assertion, elements: list[base.Element], _e: list[NetworkExchange], _c: EvalContext
+) -> AssertionResult:
+    assert a.label is not None
+    return _eval_text(elements, "label", a.label)
+
+
+@_evaluator("count")
+def _do_count(
+    a: Assertion, elements: list[base.Element], _e: list[NetworkExchange], _c: EvalContext
+) -> AssertionResult:
+    assert a.count is not None
+    return _eval_count(elements, a.count)
+
+
+@_evaluator("enabled")
+def _do_enabled(
+    a: Assertion, elements: list[base.Element], _e: list[NetworkExchange], _c: EvalContext
+) -> AssertionResult:
+    assert a.enabled is not None
+    return _eval_state(elements, "enabled", a.enabled)
+
+
+@_evaluator("disabled")
+def _do_disabled(
+    a: Assertion, elements: list[base.Element], _e: list[NetworkExchange], _c: EvalContext
+) -> AssertionResult:
+    assert a.disabled is not None
+    return _eval_state(elements, "disabled", a.disabled)
+
+
+@_evaluator("selected")
+def _do_selected(
+    a: Assertion, elements: list[base.Element], _e: list[NetworkExchange], _c: EvalContext
+) -> AssertionResult:
+    assert a.selected is not None
+    return _eval_state(elements, "selected", a.selected)
+
+
+@_evaluator("request")
+def _do_request(
+    a: Assertion, _el: list[base.Element], exchanges: list[NetworkExchange], _c: EvalContext
+) -> AssertionResult:
+    assert a.request is not None
+    return _eval_request(exchanges, a.request)
+
+
+@_evaluator("event")
+def _do_event(
+    a: Assertion, _el: list[base.Element], exchanges: list[NetworkExchange], _c: EvalContext
+) -> AssertionResult:
+    assert a.event is not None
+    return _eval_event(exchanges, a.event)
+
+
+@_evaluator("request_sequence")
+def _do_request_sequence(
+    a: Assertion, _el: list[base.Element], exchanges: list[NetworkExchange], _c: EvalContext
+) -> AssertionResult:
+    assert a.request_sequence is not None
+    return _eval_request_sequence(exchanges, a.request_sequence)
+
+
+@_evaluator("response_schema")
+def _do_response_schema(
+    a: Assertion, _el: list[base.Element], exchanges: list[NetworkExchange], ctx: EvalContext
+) -> AssertionResult:
+    assert a.response_schema is not None
+    return _eval_response_schema(exchanges, a.response_schema, ctx.schema)
+
+
+@_evaluator("visual")
+def _do_visual(
+    a: Assertion, elements: list[base.Element], _e: list[NetworkExchange], ctx: EvalContext
+) -> AssertionResult:
+    assert a.visual is not None
+    return _eval_visual(ctx.visual, a.visual, elements)
+
+
+@_evaluator("clipboard")
+def _do_clipboard(
+    a: Assertion, _el: list[base.Element], _e: list[NetworkExchange], ctx: EvalContext
+) -> AssertionResult:
+    assert a.clipboard is not None
+    return _eval_clipboard(ctx.clipboard, a.clipboard)
+
+
+@_evaluator("golden")
+def _do_golden(
+    a: Assertion, elements: list[base.Element], _e: list[NetworkExchange], ctx: EvalContext
+) -> AssertionResult:
+    assert a.golden is not None
+    return _eval_golden(elements, a.golden, ctx.golden)
+
+
 def evaluate_one(
     elements: list[base.Element],
     a: Assertion,
@@ -359,8 +494,9 @@ def evaluate_one(
 ) -> AssertionResult:
     """Evaluate one assertion against the screen and the observed network.
 
-    The assertion's kind is guaranteed unique by scenario validation, so exactly one branch fires.
-    Evaluation is total — a *failed* check returns a not-ok result rather than raising.
+    The assertion's kind is guaranteed unique by scenario validation, so exactly one kind is set;
+    dispatch is a `_EVALUATORS` lookup on that set field. Evaluation is total — a *failed* check
+    returns a not-ok result rather than raising.
 
     Args:
         elements: One `query()` snapshot; the UI kinds (`exists` / `value` / `label` / `count` /
@@ -379,34 +515,10 @@ def evaluate_one(
     """
     if ctx is None:
         ctx = EvalContext()
-    if a.exists is not None:
-        return _eval_exists(elements, a.exists)
-    if a.value is not None:
-        return _eval_text(elements, "value", a.value)
-    if a.label is not None:
-        return _eval_text(elements, "label", a.label)
-    if a.count is not None:
-        return _eval_count(elements, a.count)
-    if a.enabled is not None:
-        return _eval_state(elements, "enabled", a.enabled)
-    if a.disabled is not None:
-        return _eval_state(elements, "disabled", a.disabled)
-    if a.selected is not None:
-        return _eval_state(elements, "selected", a.selected)
-    if a.request is not None:
-        return _eval_request(exchanges or [], a.request)
-    if a.event is not None:
-        return _eval_event(exchanges or [], a.event)
-    if a.request_sequence is not None:
-        return _eval_request_sequence(exchanges or [], a.request_sequence)
-    if a.response_schema is not None:
-        return _eval_response_schema(exchanges or [], a.response_schema, ctx.schema)
-    if a.visual is not None:
-        return _eval_visual(ctx.visual, a.visual, elements)
-    if a.clipboard is not None:
-        return _eval_clipboard(ctx.clipboard, a.clipboard)
-    if a.golden is not None:
-        return _eval_golden(elements, a.golden, ctx.golden)
+    exs = exchanges or []
+    for kind in ASSERTION_KINDS:
+        if getattr(a, kind) is not None:
+            return _EVALUATORS[kind](a, elements, exs, ctx)
     raise AssertionError("empty assertion (should be caught by scenario validation)")
 
 

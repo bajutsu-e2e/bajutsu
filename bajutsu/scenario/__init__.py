@@ -21,6 +21,7 @@ from bajutsu.scenario.load_expanded import (
     load_scenarios_dir,
 )
 from bajutsu.scenario.models import (
+    ASSERTION_KINDS,
     STEP_ACTIONS,
     Assertion,
     Background,
@@ -94,6 +95,7 @@ from bajutsu.scenario.serialize import (
 )
 
 __all__ = [
+    "ASSERTION_KINDS",
     "STEP_ACTIONS",
     "Assertion",
     "Background",

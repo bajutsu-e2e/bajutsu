@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0250") |
-| Implementing PR | [#1093](https://github.com/bajutsu-e2e/bajutsu/pull/1093), [#1100](https://github.com/bajutsu-e2e/bajutsu/pull/1100) |
+| Implementing PR | [#1093](https://github.com/bajutsu-e2e/bajutsu/pull/1093), [#1100](https://github.com/bajutsu-e2e/bajutsu/pull/1100), [#1106](https://github.com/bajutsu-e2e/bajutsu/pull/1106) |
 | Topic | Codebase quality & technical debt |
 | Related | [BE-0172](../BE-0172-run-loop-step-decomposition/BE-0172-run-loop-step-decomposition.md) |
 <!-- /BE-METADATA -->
@@ -145,7 +145,7 @@ before and after) rather than changing any assertion's observable behavior.
 
 - [x] Split `bajutsu/assertions.py` into an `assertions/` package (`network.py`, `visual.py`, `schema.py`, `evaluate.py`), re-exporting the existing public surface.
 - [x] Bundle `visual_context`/`schema_context`/`golden_context`/`clipboard` into one `EvalContext`, threaded end-to-end through `evaluate` → `evaluate_one` → `run_scenario` → `_run_step_body` → `pipeline.py`.
-- [ ] Replace the 14-way `if` chain in `evaluate_one` with a `{field_name: eval_fn}` registry, mirroring `bajutsu/orchestrator/actions/_registry.py`'s `_HANDLERS`.
+- [x] Replace the 14-way `if` chain in `evaluate_one` with a `{field_name: eval_fn}` registry, mirroring `bajutsu/orchestrator/actions/_registry.py`'s `_HANDLERS`.
 - [ ] Derive `_ASSERTION_KINDS` from `Assertion.model_fields` instead of hand-maintaining the tuple.
 
 ### Log
@@ -162,6 +162,14 @@ before and after) rather than changing any assertion's observable behavior.
   `visual` / `responseSchema`), preserved by dropping those two fields at that call site. Behavior-preserving; the
   existing assertion/network/loop suites plus new frozen-context / field-routing / step-drop guards are the parity net.
   PR [#1100](https://github.com/bajutsu-e2e/bajutsu/pull/1100).
+- Unit 3 (dispatch registry) — the 14-way `if a.X is not None` chain in `evaluate_one` is replaced by a
+  `_EVALUATORS: dict[str, _Evaluator]` registry (in `assertions/evaluate.py`), self-registered per kind via
+  `@_evaluator(kind)` and dispatched by scanning `_ASSERTION_KINDS` for the one set field — mirroring
+  `orchestrator/actions/_registry.py`'s `_HANDLERS`/`_handler`/`_action_of`. Each entry is a thin adapter that
+  narrows its own field (`assert a.X is not None`) and delegates to the unchanged per-kind `_eval_*`, so one dict
+  holds every kind under strict typing. Behavior-preserving (exactly one kind is set per scenario validation, so
+  scan order is immaterial); the existing assertion suite plus a new registry-covers-every-kind guard are the parity
+  net. PR [#1106](https://github.com/bajutsu-e2e/bajutsu/pull/1106).
 
 ## References
 
