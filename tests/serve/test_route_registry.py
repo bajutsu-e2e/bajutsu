@@ -8,6 +8,14 @@ Part 2 refactor drops or adds nothing.
 
 from __future__ import annotations
 
+import re
+import urllib.error
+import urllib.request
+from pathlib import Path
+
+from _shared import _serve, project, write_run
+
+from bajutsu import serve as srv
 from bajutsu.serve.routes import ROUTES, Route, match_route
 
 # The full route surface both backends serve today, hand-enumerated from handler.py so an
@@ -240,3 +248,55 @@ def test_route_is_frozen() -> None:
     except AttributeError:
         return
     raise AssertionError("Route should be frozen")
+
+
+# --- handler coverage: every off_loop route must be intercepted bespoke ---
+
+# Body that _dispatch_registry returns when route.handle is None (off_loop with no bespoke handler).
+_REGISTRY_NOT_FOUND = b'{"error": "not found"}'
+
+
+def _concrete_path(path: str) -> str:
+    """Replace template slots with concrete values; use a real run id for /runs/* routes
+    so the bespoke handlers return actual content instead of their own artifact-not-found 404."""
+    path = re.sub(r"\{run_id\}", "r1", path)
+    path = re.sub(r"\{rel:path\}", "r1/report.html", path)
+    path = re.sub(r"\{[^}]+\}", "no-such-id", path)
+    return path
+
+
+def _raw_request(method: str, url: str) -> tuple[int, bytes]:
+    req = urllib.request.Request(url, data=b"" if method != "GET" else None, method=method)
+    try:
+        with urllib.request.urlopen(req) as r:
+            return r.status, r.read()
+    except urllib.error.HTTPError as e:
+        return e.code, e.read()
+
+
+def test_off_loop_routes_are_intercepted_before_registry(tmp_path: Path) -> None:
+    """Guard that every off_loop route in ROUTES has a matching bespoke handler in handler.py.
+
+    off_loop routes carry handle=None; _dispatch_registry returns {"error": "not found"} for
+    them. This test exercises each off_loop path over real HTTP and asserts the response is NOT
+    that generic 404, confirming the bespoke handler ran. A future off_loop route added to ROUTES
+    without a matching bespoke entry in handler.py would produce the registry 404 and fail here.
+    """
+    scn_dir, cfg, runs = project(tmp_path)
+    # Real run dir so /runs/{run_id}/archive.zip and /runs/{rel:path} return content (not 404).
+    write_run(runs, "r1", ok=True, scenarios=[("smoke", True)])
+    state = srv.ServeState(scenarios_dir=scn_dir, config=cfg, runs_dir=runs, cwd=tmp_path)
+    server, port = _serve(state)
+    try:
+        for route in ROUTES:
+            if not route.off_loop:
+                continue
+            concrete = _concrete_path(route.path)
+            _, body = _raw_request(route.method, f"http://127.0.0.1:{port}{concrete}")
+            assert body.strip() != _REGISTRY_NOT_FOUND, (
+                f"{route.method} {route.path} (→ {concrete}) returned the registry's generic 404 "
+                f"— add a bespoke handler for this off_loop route before _dispatch_registry"
+            )
+    finally:
+        server.shutdown()
+        server.server_close()
