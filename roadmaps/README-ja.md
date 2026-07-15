@@ -119,6 +119,7 @@
 | [BE-0234](BE-0234-adb-run-performance/BE-0234-adb-run-performance-ja.md) | adb のシナリオ実行を高速化する（uiautomator dump のボトルネック） | 実装済み |
 | [BE-0240](BE-0240-ios-capability-aware-actuator-selection/BE-0240-ios-capability-aware-actuator-selection-ja.md) | iOS の能力に応じた actuator 自動選択（idb/XCUITest の透過化） | 実装済み |
 | [BE-0245](BE-0245-adb-resident-uiautomator-server/BE-0245-adb-resident-uiautomator-server-ja.md) | adb の読み取り向け常駐 UI Automator サーバ | 実装済み |
+| [BE-0271](BE-0271-e2e-workflow-structural-parity/BE-0271-e2e-workflow-structural-parity-ja.md) | Structural parity across platform E2E workflows | 実装済み |
 <!-- /GENERATED:implemented-platform -->
 
 ### ドライバとバックエンドのアーキテクチャ

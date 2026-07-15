@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-e2e-workflow-structural-parity-ja.md)
+**English** · [日本語](BE-0271-e2e-workflow-structural-parity-ja.md)
 
-# BE-XXXX — Structural parity across platform E2E workflows
+# BE-0271 — Structural parity across platform E2E workflows
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-e2e-workflow-structural-parity.md) |
+| Proposal | [BE-0271](BE-0271-e2e-workflow-structural-parity.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0271") |
 | Topic | Platform support |
 <!-- /BE-METADATA -->
 
