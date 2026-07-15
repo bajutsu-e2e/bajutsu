@@ -125,6 +125,18 @@ def test_env_apply_permissions_validates_before_touching_the_device() -> None:
     assert calls == []
 
 
+def test_env_apply_permissions_validates_action_before_touching_the_device() -> None:
+    # An unrecognized action anywhere in the mapping must also fail before any simctl privacy call
+    # runs — not just an unsupported service — so an earlier, otherwise-valid entry is never
+    # mutated ahead of a later entry's bad action (BE-0276).
+    calls: list[list[str]] = []
+    with pytest.raises(simctl.DeviceError, match="unknown simctl privacy action"):
+        simctl.Env("U", run=lambda a, _e=None: calls.append(a) or "").apply_permissions(
+            "com.demo", {"camera": "grant", "microphone": "bogus"}
+        )
+    assert calls == []
+
+
 # --- step dispatch through an injected DeviceControl ---
 
 

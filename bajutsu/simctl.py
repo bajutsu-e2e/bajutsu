@@ -351,17 +351,23 @@ class Env:
         """Grant or revoke each `service: grant|revoke` entry in `permissions` up front, so a
         runtime prompt never blocks the run (`simctl privacy`, BE-0276).
 
-        Every service is validated before any `simctl privacy` call runs, so an unsupported entry
-        fails before the device is touched at all — never partway through, leaving some services
-        already mutated (preflight normally rejects this per-service before any device work; this
-        validation is the runtime backstop for a caller that bypasses preflight).
+        Every entry's service and action are validated before any `simctl privacy` call runs, so
+        an unsupported service or an unrecognized action fails before the device is touched at all
+        — never partway through, leaving some services already mutated (preflight/schema normally
+        reject this before any device work; this validation is the runtime backstop for a caller
+        that bypasses both).
 
         Raises:
-            DeviceError: a service has no TCC equivalent (`notifications`).
+            DeviceError: a service has no TCC equivalent (`notifications`), or an action is neither
+                `grant` nor `revoke`.
         """
-        for service in permissions:
+        for service, action in permissions.items():
             if service == _NO_TCC_SERVICE:
                 raise DeviceError(f"permissions.{service} has no simctl privacy equivalent on iOS")
+            if action not in ("grant", "revoke"):
+                raise DeviceError(
+                    f"unknown simctl privacy action: {action!r} (expected grant|revoke)"
+                )
         for service, action in permissions.items():
             self._run(privacy_cmd(self.udid, action, service, bundle_id), None)
 

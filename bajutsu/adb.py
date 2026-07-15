@@ -806,18 +806,22 @@ class Env:
         one `pm grant`/`pm revoke` per mapped `android.permission.*` — the per-scenario twin of
         `grant_permissions`'s config-level list.
 
-        Every service is validated against the vocabulary before any `pm` call runs, so an unmapped
-        entry fails before the device is touched at all — never partway through, leaving some
-        services already mutated (should not happen in practice — the adb backend advertises the
-        whole vocabulary, so preflight would have already rejected it — but this validation is the
-        runtime backstop for a caller that bypasses preflight).
+        Every entry's service and action are validated before any `pm` call runs, so an unmapped
+        service or an unrecognized action fails before the device is touched at all — never
+        partway through, leaving some services already mutated (should not happen in practice —
+        the adb backend advertises the whole vocabulary and `Scenario.permissions` validates the
+        action, so preflight/schema would have already rejected it — but this validation is the
+        runtime backstop for a caller that bypasses both).
 
         Raises:
-            DeviceError: a service has no mapping, or see `_pm_run`.
+            DeviceError: a service has no mapping, an action is neither `grant` nor `revoke`, or
+                see `_pm_run`.
         """
-        for service in permissions:
+        for service, action in permissions.items():
             if service not in SERVICE_TO_ANDROID_PERMISSIONS:
                 raise DeviceError(f"permissions.{service} has no android.permission.* mapping")
+            if action not in ("grant", "revoke"):
+                raise DeviceError(f"unknown pm action: {action!r} (expected grant|revoke)")
         for service, action in permissions.items():
             for permission in SERVICE_TO_ANDROID_PERMISSIONS[service]:
                 self._pm_run(action, package, permission)

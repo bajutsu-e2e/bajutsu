@@ -154,6 +154,18 @@ def test_env_apply_permissions_validates_before_touching_the_device() -> None:
     assert calls == []
 
 
+def test_env_apply_permissions_validates_action_before_touching_the_device() -> None:
+    # An unrecognized action anywhere in the mapping must also fail before any pm call runs — not
+    # just an unmapped service — so an earlier, otherwise-valid entry is never mutated ahead of a
+    # later entry's bad action (BE-0276).
+    calls: list[list[str]] = []
+    with pytest.raises(adb.DeviceError, match="unknown pm action"):
+        adb.Env("S", run=lambda a: calls.append(a) or "").apply_permissions(
+            "com.x", {"camera": "grant", "microphone": "bogus"}
+        )
+    assert calls == []
+
+
 def test_launch_cmd_forwards_extras_as_intent_extras() -> None:
     cmd = adb.launch_cmd("S", "com.x/.Main", {"SHOWCASE_UITEST": "1"})
     assert cmd == [
