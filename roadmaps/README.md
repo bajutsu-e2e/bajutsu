@@ -600,6 +600,12 @@ Running a scenario on a hosted device farm instead of a local Simulator, emulato
 | [BE-0267](BE-0267-serve-author-actuator-selection/BE-0267-serve-author-actuator-selection.md) | Reuse cost-ordered actuator selection in serve capture and enrich | Proposal |
 <!-- /GENERATED:proposals-authoring -->
 
+### Surfacing CLI features in the serve Web UI
+
+<!-- GENERATED:proposals-serve-cli-features -->
+
+<!-- /GENERATED:proposals-serve-cli-features -->
+
 ### Hosting the web UI (cloud / self-hosted)
 
 <!-- GENERATED:proposals-hosting -->
