@@ -219,7 +219,9 @@ def _run_step_body(
 
     The caller is responsible for interpolation (``_interp_step``) before
     calling this function. ``wait_trace``, when given for a wait step, records the poll timeline so a
-    timeout is diagnosable from artifacts (BE-0231 Unit 1)."""
+    timeout is diagnosable from artifacts (BE-0231 Unit 1). ``on_blocked``/``alerts``, when given for
+    a wait step, are passed through to ``_wait``'s mid-wait alert guard (BE-0269); other step kinds
+    ignore them."""
     try:
         if kind == "wait":
             assert step.wait is not None

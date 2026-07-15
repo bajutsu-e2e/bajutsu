@@ -229,6 +229,8 @@ def _wait(
         return _wait_settled(driver, deadline, clock, gate)
     # until == "screenChanged"
     before = driver.query()
+    if gate is not None:
+        gate.observe(before)
     while True:
         t0 = clock.now()
         current = driver.query()
@@ -257,6 +259,8 @@ def _wait_settled(
     tree so the caller can reuse it as the step's `after` snapshot (BE-0259).
     """
     previous = driver.query()
+    if gate is not None:
+        gate.observe(previous)
     stable = 0
     while stable < _SETTLE_POLLS:
         if clock.now() >= deadline:
