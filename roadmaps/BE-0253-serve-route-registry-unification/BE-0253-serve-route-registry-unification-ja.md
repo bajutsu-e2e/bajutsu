@@ -9,7 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装中** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0253") |
-| 実装 PR | [#1098](https://github.com/bajutsu-e2e/bajutsu/pull/1098) |
+| 実装 PR | [#1098](https://github.com/bajutsu-e2e/bajutsu/pull/1098), [#1108](https://github.com/bajutsu-e2e/bajutsu/pull/1108) |
 | トピック | コードベース品質・技術的負債 |
 <!-- /BE-METADATA -->
 
@@ -148,7 +148,7 @@ drift を、grep できる明示的な宣言に変えます。作業は MECE な
   `actor_for`）を両バックエンドが呼び出す形にし、トランスポート固有の機構は各バックエンドに残しました。
   挙動は変えていません。Part 1〜4（宣言的なルートレジストリ）は後続のスライスで実装します。
 - 2026-07-15 — Part 1〜2（レジストリの定義と標準ライブラリ側のディスパッチ）を
-  [#PENDING](https://github.com/bajutsu-e2e/bajutsu/pull/PENDING) で実装しました。フレームワークに
+  [#1108](https://github.com/bajutsu-e2e/bajutsu/pull/1108) で実装しました。フレームワークに
   依存しない新しいモジュール `bajutsu/serve/routes.py` に、1 つの `ROUTES` テーブル（凍結
   データクラス `Route`、バックエンド中立の `RequestCtx` プロトコル、`{name}` / `{name:path}` の
   テンプレートマッチャ）を置き、各ルートの `ops.*` 呼び出しをルートごとのアダプタ

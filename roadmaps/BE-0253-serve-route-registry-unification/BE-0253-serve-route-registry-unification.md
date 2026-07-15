@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0253") |
-| Implementing PR | [#1098](https://github.com/bajutsu-e2e/bajutsu/pull/1098) |
+| Implementing PR | [#1098](https://github.com/bajutsu-e2e/bajutsu/pull/1098), [#1108](https://github.com/bajutsu-e2e/bajutsu/pull/1108) |
 | Topic | Codebase quality & technical debt |
 <!-- /BE-METADATA -->
 
@@ -130,7 +130,7 @@ declaration. Five MECE parts:
   new framework-agnostic `bajutsu/serve/gate.py` (`HARDENING_HEADERS`, `allowed_hosts`/`host_allowed`,
   `csrf_ok`, `is_open`, `is_authorized`, `actor_for`) that both backends call; transport mechanics stay
   per-backend. Behavior-preserving. Parts 1–4 (the declarative route registry) follow in later slices.
-- 2026-07-15 — Parts 1–2 (define the registry + stdlib dispatch) landed in [#PENDING](https://github.com/bajutsu-e2e/bajutsu/pull/PENDING):
+- 2026-07-15 — Parts 1–2 (define the registry + stdlib dispatch) landed in [#1108](https://github.com/bajutsu-e2e/bajutsu/pull/1108):
   new framework-agnostic `bajutsu/serve/routes.py` — one `ROUTES` table (`Route` frozen dataclass, a
   backend-neutral `RequestCtx` Protocol, a `{name}`/`{name:path}` template matcher) that captures each
   route's `ops.*` call in a per-route `handle(state, ctx)` adapter. `handler.py`'s `do_GET`/`do_POST`/
