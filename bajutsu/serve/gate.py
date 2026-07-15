@@ -42,6 +42,13 @@ _OPEN_GET_PATHS = ("/", "/index.html", "/api/oauth/login", "/api/oauth/callback"
 _LOGIN_PATH = "/api/login"
 
 
+def _is_frontend_module(path: str) -> bool:
+    """Whether *path* is a serve.*.mjs frontend module route (BE-0247). Matched by shape, not an
+    exact name list, so `gate` stays independent of the handler that owns that list — this only
+    grants the auth exemption; the serving side still validates the exact name (traversal safety)."""
+    return path.startswith("/serve.") and path.endswith(".mjs")
+
+
 def allowed_hosts(host: str) -> frozenset[str]:
     """The `Host`-header hostnames a server bound to *host* accepts (BE-0121).
 
@@ -82,8 +89,9 @@ def csrf_ok(origin: str | None, host_header: str) -> bool:
 
 def is_open(method: str, path: str) -> bool:
     """Whether this request may skip authentication even when a token is configured — the login UI,
-    the OAuth round-trip, and the login endpoint itself."""
-    return (method == "GET" and path in _OPEN_GET_PATHS) or (
+    the OAuth round-trip, the login endpoint itself, and the frontend ES-module routes (BE-0247), so
+    the login UI's JS loads before auth exactly as the old inlined index script did."""
+    return (method == "GET" and (path in _OPEN_GET_PATHS or _is_frontend_module(path))) or (
         method == "POST" and path == _LOGIN_PATH
     )
 

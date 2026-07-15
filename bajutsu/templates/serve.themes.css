@@ -45,7 +45,7 @@
    this registry is only the swappable look.)
 
    The header control is a theme picker (a <select> of every registered theme; see initTheme in
-   serve.core.js), which BE-0191 unit 3 introduced in place of the original binary dark/light
+   serve.core.mjs), which BE-0191 unit 3 introduced in place of the original binary dark/light
    toggle. */
 :root,[data-theme="midnight"]{
   --bg:#0f172a; --bg2:#0b1220; --card:#1e293b; --canvas:#ffffff; --line:#334155;

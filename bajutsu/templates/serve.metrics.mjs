@@ -1,3 +1,9 @@
+// serve.metrics.mjs — the hub's cross-project comparison view. A serve.*.mjs section module
+// (BE-0247); imports its shared helpers from serve.core.mjs. Its body only defines — the one
+// top-level listener is wired by initMetrics(), which the entry module (serve.author.mjs) calls
+// after every section has evaluated.
+import {$, esc, getJSON, switchProject} from './serve.core.mjs';
+
 // ---- Cross-project comparison (BE-0226 unit 3): the hub's projects ranked side by side ----
 // Client-rendered from the unit-2 /api/metrics/projects model (JSON, not a server-rendered report
 // like /stats) because the surface is interactive: sortable columns and a row click that deep-links
@@ -81,4 +87,9 @@ function renderMetrics(){
   host.querySelectorAll('tr.mrow').forEach(tr=>tr.addEventListener('click',()=>switchProject(tr.dataset.name,{goStats:true})));
 }
 
-$('#metrics-refresh').addEventListener('click',loadMetrics);
+// Wire the one static listener. Called once by the entry module's boot after every section evaluates.
+function initMetrics(){
+  $('#metrics-refresh').addEventListener('click',loadMetrics);
+}
+
+export {loadMetrics, initMetrics};

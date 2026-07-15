@@ -1,6 +1,7 @@
-{#- The serve WebUI shell. Markup lives here; CSS/JS are inlined (passed in as
-    `themes_css` / `css` / `js`). `js` is the serve.*.js section files concatenated by handler.py
-    (BE-0202). Keep this in sync with serve.css / the serve.*.js files. -#}
+{#- The serve WebUI shell. Markup lives here; CSS/themes are inlined (passed in as `themes_css` /
+    `css`). The JS is the serve.*.mjs ES modules (BE-0247), served at their own routes and loaded via
+    the entry module (`js_entry`); `js_modules` lists them for the modulepreload hints below. Keep
+    this in sync with serve.css / the serve.*.mjs files. -#}
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>bajutsu</title>
@@ -9,7 +10,11 @@
 {#- Resolve the theme before first paint so there is no dark→light flash on load: an explicit
     choice wins, else the configured ui.default_theme, else the OS scheme. -#}
 <script>(function(){try{var t=localStorage.getItem('bajutsu-theme');if(!t)t=window.__bajutsuDefaultTheme||(matchMedia('(prefers-color-scheme: light)').matches?'daylight':'midnight');document.documentElement.setAttribute('data-theme',t)}catch(e){}})();</script>
-<style>{{ themes_css|safe }}{{ css|safe }}</style></head>
+<style>{{ themes_css|safe }}{{ css|safe }}</style>
+{#- Fetch every ES module in parallel rather than discovering them serially as imports resolve
+    (BE-0247). A negligible nicety on localhost, but it keeps the request waterfall flat. -#}
+{% for m in js_modules %}<link rel="modulepreload" href="/{{ m }}">
+{% endfor %}</head>
 <body>
 <header>
   <div class="brandcol">
@@ -37,7 +42,7 @@
       {#- Theme picker (BE-0191 unit 3): replaces the old two-state toggle with a native <select> listing
           every registered theme (built-in + drop-in), grouped by dark/light kind. Options are rendered
           from the same manifest exposed as window.__bajutsuThemes; the option value is the theme id, so a
-          scenario selects a specific theme deterministically. serve.core.js seeds the selection from the
+          scenario selects a specific theme deterministically. serve.core.mjs seeds the selection from the
           applied theme and persists a change. A native select stays keyboard/screen-reader accessible and
           never overlaps the tiler/viewswitch controls at any width. Lives in the toptabs row (pushed
           right by its own margin) so it and Edit line up with the View/Settings buttons. -#}
@@ -720,7 +725,7 @@
   <div class="fsbox">
     <div class="fshead"><span class="ttl">Theme Editor</span><button class="fsclose" id="themeclose" data-testid="theme.close">&#10005;</button></div>
     <div id="themecontent" data-testid="theme.content">
-      <!-- Form populated by serve.core.js initThemeEditor(): a kind selector, a native color input
+      <!-- Form populated by serve.core.mjs initThemeEditor(): a kind selector, a native color input
            per color token, and a text input per motion token (durations, easing, keyframe names). -->
     </div>
     <div class="keyactions">
@@ -746,5 +751,5 @@
     </div>
   </div>
 </div>
-<script>{{ js|safe }}</script>
+<script type="module" src="/{{ js_entry }}"></script>
 </body></html>

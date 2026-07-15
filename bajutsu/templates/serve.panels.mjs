@@ -1,42 +1,25 @@
-// serve.panels.js — the Record / Replay / Triage / bundle-upload panels of the serve Web UI.
-// A serve.*.js section file (BE-0202); see serve.core.js's header for the concatenation contract.
-// Loads after serve.core.js, so the shared helpers/state it uses are already defined.
+// serve.panels.mjs — the Record / Replay / Triage / bundle-upload panels of the serve Web UI.
+// A serve.*.mjs section module (BE-0247); imports its shared helpers and cross-panel state from
+// serve.core.mjs. Its body only defines; every top-level listener is wired by initPanels(), which
+// the entry module (serve.author.mjs) calls after all sections evaluate. Cross-panel mutable state
+// (the record/replay job ids, the selected run, the Run-result show/hide hooks) lives on the shared
+// `state` object rather than module-level lets, since more than one module writes it.
+import {
+  $, esc, getJSON, postJSON, setStatus, setBusy, streamJob, cancelJob, appendLine, startJob,
+  openModal, closeModal, renderGradeBadge, setCfgName, closeFs, loadShared, loadScenarios, loadSims,
+  state, scnFiles, aiAvailable,
+} from './serve.core.mjs';
+import {replayCodegen} from './serve.author.mjs';
 
 // ---- Record: author a scenario from a goal ----
-$('#rec-simrefresh').addEventListener('click',loadSims);
-$('#rec-go').addEventListener('click',async()=>{
-  const goal=$('#rec-goal').value.trim();
-  if(!goal){setStatus($('#rec-status'),'enter a goal first','ng');return}
-  // Record's own pane clearing (the shared start skeleton lives in startJob). Clear any prior
-  // in-place run so its report/status don't linger over a fresh authoring. The report / status live
-  // in the Run-result pane, which the tiler detaches while hidden, so guard the lookups — they're
-  // null until a run has shown the pane.
-  $('#rec-out').textContent='';
-  $('#rec-yaml').value='';$('#rec-save').disabled=true;$('#rec-yamlinfo').textContent='';recPath=null;
-  if(recRunPoll)recRunPoll.close();
-  $('#rec-run').disabled=true;
-  const rep0=$('#rec-report');if(rep0)rep0.innerHTML='';
-  const rs0=$('#rec-runstatus');if(rs0)setStatus(rs0,'','');
-  hideReportPanel();hideHandoffPanel();
-  recPoll=await startJob({
-    prev:recPoll,btn:$('#rec-go'),stop:$('#rec-stop'),busyLabel:'Authoring…',status:$('#rec-status'),
-    url:'/api/record',body:{
-      goal,target:$('#rec-target').value,
-      udid:$('#rec-device').value||'booted',name:$('#rec-name').value.trim()||undefined,
-      erase:$('#rec-erase').checked,dismissAlerts:$('#rec-nodismiss').checked?false:undefined,
-      headed:$('#rec-headed').checked||undefined},
-    onStart:d=>{recPath=d.path;recJobId=d.jobId;},
-    onLog:line=>appendLine($('#rec-out'),line),onDone:recDone,onHuman:onHandoffRequest});
-});
-$('#rec-stop').addEventListener('click',()=>cancelJob(recJobId,$('#rec-stop')));
 async function recDone(j){
-  recPoll=null;recJobId=null;setBusy($('#rec-go'),$('#rec-stop'),false);hideHandoffPanel();
+  state.recPoll=null;state.recJobId=null;setBusy($('#rec-go'),$('#rec-stop'),false);hideHandoffPanel();
   if(j.cancelled){setStatus($('#rec-status'),'cancelled','ng');return}
   setStatus($('#rec-status'),j.ok?'authored ✓':'failed', j.ok?'ok':'ng');
-  if(j.ok&&(j.outPath||recPath)){await loadGenerated(j.outPath||recPath);loadScenarios();}
+  if(j.ok&&(j.outPath||state.recPath)){await loadGenerated(j.outPath||state.recPath);loadScenarios();}
 }
 async function loadGenerated(path){
-  recPath=path;
+  state.recPath=path;
   try{
     const d=await (await fetch('/api/scenario?target='+encodeURIComponent($('#rec-target').value)+'&path='+encodeURIComponent(path))).json();
     if(d.yaml!=null){$('#rec-yaml').value=d.yaml;$('#rec-save').disabled=false;$('#rec-run').disabled=false;
@@ -46,7 +29,7 @@ async function loadGenerated(path){
 // The scenarios-dir ref to save+run the current YAML to: the recorded path when we have one, else a
 // name from the "Save as" field (default generated.yaml) — so hand-pasted/edited YAML is runnable too.
 function recRunRef(){
-  if(recPath)return recPath;
+  if(state.recPath)return state.recPath;
   let name=$('#rec-name').value.trim()||'generated.yaml';
   if(!/\.ya?ml$/i.test(name))name+='.yaml';
   return name;
@@ -54,15 +37,14 @@ function recRunRef(){
 // Enable Save / Run whenever the Generated-scenario box holds YAML to save or run (idle only — a
 // record or run in progress owns the buttons' disabled state).
 function syncRecActions(){
-  if(recPoll||recRunPoll)return;
+  if(state.recPoll||state.recRunPoll)return;
   const has=!!$('#rec-yaml').value.trim();
   $('#rec-save').disabled=!has;$('#rec-run').disabled=!has;
 }
-$('#rec-yaml').addEventListener('input',syncRecActions);
 // Show / hide the Run-result pane — the tiler hooks when present (desktop), else the plain `hidden`
 // attribute (phone tier, where the pane stacks under the Output tab).
-function showReportPanel(){if(recReportShow)recReportShow();else $('#rec-reportpanel').hidden=false;}
-function hideReportPanel(){if(recReportHide)recReportHide();else{const p=$('#rec-reportpanel');if(p)p.hidden=true;}}
+function showReportPanel(){if(state.recReportShow)state.recReportShow();else $('#rec-reportpanel').hidden=false;}
+function hideReportPanel(){if(state.recReportHide)state.recReportHide();else{const p=$('#rec-reportpanel');if(p)p.hidden=true;}}
 // Human handoff (BE-0179): the record paused for a human. Shown as a modal so it can't be missed
 // below the fold; the human resumes by POSTing a response — a supplied value, "I operated the
 // device", or a cancel — back to the job.
@@ -82,72 +64,25 @@ function onHandoffRequest(req){
 // can't fall through to an acted-style resume (empty `values` coerces to acted server-side).
 function syncHandoffSend(){$('#rec-handoff-send').disabled=!$('#rec-handoff-value').value.trim();}
 async function sendHandoff(body){
-  if(!recJobId)return;
+  if(!state.recJobId)return;
   // Only hide the pane once we know the response actually reached the paused record — a resume that
   // didn't land (the job already ended / its stdin is gone) must not look like it succeeded.
   try{
-    const r=await fetch('/api/jobs/'+recJobId+'/respond-human',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    const r=await fetch('/api/jobs/'+state.recJobId+'/respond-human',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
     const d=await r.json().catch(()=>({}));
     if(!r.ok){appendLine($('#rec-out'),'handoff response failed ('+r.status+'): '+(d.error||r.statusText));return;}
     if(!d.resumed){appendLine($('#rec-out'),'handoff response did not resume the record (it may have already ended)');return;}
     hideHandoffPanel();
   }catch(e){appendLine($('#rec-out'),'handoff response failed: '+e);}
 }
-$('#rec-handoff-value').addEventListener('input',syncHandoffSend);
-$('#rec-handoff-value').addEventListener('keydown',e=>{if(e.key==='Enter'&&!$('#rec-handoff-send').disabled)$('#rec-handoff-send').click();});
-$('#rec-handoff-send').addEventListener('click',()=>{const v=$('#rec-handoff-value').value.trim();if(!v)return;sendHandoff({values:[v]});});
-$('#rec-handoff-acted').addEventListener('click',()=>sendHandoff({acted:true}));
-$('#rec-handoff-cancel').addEventListener('click',()=>sendHandoff({cancelled:true}));
-// Run the current scenario in place, without switching to Replay. Persist the YAML first (creating
-// the file for hand-pasted YAML; a parse error means it isn't runnable, so it's surfaced and Run
-// stops), then start a normal run: the live log streams to the Progress console (like Generate) and
-// only the final report lands in the dismissable Run-result pane.
-$('#rec-run').addEventListener('click',async()=>{
-  const yaml=$('#rec-yaml').value;
-  if(!yaml.trim())return;
-  if(recRunPoll)recRunPoll.close();
-  const target=$('#rec-target').value;
-  // Re-evaluate the scenario on every Run: clear a prior syntax error first, so a since-fixed
-  // scenario shows no stale error and only a still-broken one re-surfaces below.
-  setStatus($('#rec-status'),'','');
-  const sd=await postJSON('/api/scenario',{target,path:recRunRef(),yaml},{error:'request failed'});
-  if(sd.error){setStatus($('#rec-status'),sd.error,'ng');return}
-  recPath=sd.path;$('#rec-yamlinfo').textContent=recPath.split('/').pop();loadScenarios();
-  setBusy($('#rec-run'),$('#rec-runstop'),true,'Running…');
-  $('#rec-out').textContent='';  // the live run log shares the Progress console, like Generate
-  showReportPanel();  // attaches the pane, so the report / status lookups below resolve
-  const rep=$('#rec-report');if(rep)rep.innerHTML='';
-  const rs=$('#rec-runstatus');if(rs)setStatus(rs,'','run');
-  const r=await fetch('/api/run',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
-    scenario:recPath,target,udid:$('#rec-device').value||'booted',
-    erase:$('#rec-erase').checked||undefined,dismissAlerts:$('#rec-nodismiss').checked?false:undefined})});
-  const {jobId,error}=await r.json();
-  if(error){setStatus($('#rec-runstatus'),error,'ng');setBusy($('#rec-run'),$('#rec-runstop'),false);return;}
-  recRunJobId=jobId;
-  recRunPoll=streamJob(jobId,line=>appendLine($('#rec-out'),line),recRunDone);
-});
-$('#rec-runstop').addEventListener('click',()=>cancelJob(recRunJobId,$('#rec-runstop')));
-// Dismiss the Run-result pane with its X. A run in progress keeps going (Stop lives on the Generated
-// scenario panel) and the pane reappears on the next Run.
-$('#rec-runclose').addEventListener('click',hideReportPanel);
 function recRunDone(j){
-  recRunPoll=null;recRunJobId=null;setBusy($('#rec-run'),$('#rec-runstop'),false);
+  state.recRunPoll=null;state.recRunJobId=null;setBusy($('#rec-run'),$('#rec-runstop'),false);
   showReportPanel();  // re-show the pane (the user may have closed it mid-run) so the result lands
   const rs=$('#rec-runstatus');
   if(j.cancelled){if(rs)setStatus(rs,'cancelled','ng');return}
   if(rs)setStatus(rs,j.ok?'PASS':'FAIL', j.ok?'ok':'ng');
   if(j.runId)setReport(j.runId,j.ok,'#rec-report');
 }
-$('#rec-save').addEventListener('click',async()=>{
-  if(!$('#rec-yaml').value.trim())return;
-  $('#rec-save').disabled=true;$('#rec-save').textContent='Saving…';
-  const r=await fetch('/api/scenario',{method:'POST',headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({target:$('#rec-target').value,path:recRunRef(),yaml:$('#rec-yaml').value})});
-  const d=await r.json();
-  $('#rec-save').textContent='Save';$('#rec-save').disabled=false;
-  if(d.error){setStatus($('#rec-status'),d.error,'ng')}
-  else{recPath=d.path;$('#rec-yamlinfo').textContent=recPath.split('/').pop();setStatus($('#rec-status'),'saved ✓','ok');loadScenarios()}
-});
 
 // ---- Replay: scenario info, run, history ----
 function showInfo(){
@@ -175,24 +110,10 @@ async function replayAudit(){
     if(seq===replayAuditSeq&&d.ok&&Array.isArray(d.reports))renderGradeBadge(badge,d.reports);
   }catch(e){/* advisory: leave the badge hidden */}
 }
-$('#scn').addEventListener('change',()=>{showInfo();replayAudit();replayCodegen.reset();});
 function pickedUdids(){return [...$('#sims').querySelectorAll('.simck:checked')].map(c=>c.value)}
 function onSimChange(){const n=pickedUdids().length;if(n>0)$('#workers').value=n}
-$('#simrefresh').addEventListener('click',loadSims);
-$('#go').addEventListener('click',async()=>{
-  $('#out').textContent='';  // Replay's own pane clearing (the shared start skeleton lives in startJob)
-  poll=await startJob({
-    prev:poll,btn:$('#go'),stop:$('#stop'),busyLabel:'Running…',status:$('#status'),
-    url:'/api/run',body:{
-      scenario:$('#scn').value,target:$('#target').value,udid:pickedUdids().join(',')||'booted',
-      workers:parseInt($('#workers').value,10)||1,headed:$('#headed').checked||undefined,
-      erase:$('#erasedev').checked||undefined,dismissAlerts:$('#nodismiss').checked?false:undefined},
-    onStart:d=>{runJobId=d.jobId;},
-    onLog:line=>appendLine($('#out'),line),onDone:runDone});
-});
-$('#stop').addEventListener('click',()=>cancelJob(runJobId,$('#stop')));
 function runDone(j){
-  poll=null;runJobId=null;setBusy($('#go'),$('#stop'),false);
+  state.poll=null;state.runJobId=null;setBusy($('#go'),$('#stop'),false);
   if(j.cancelled){setStatus($('#status'),'cancelled','ng');loadHistory();return}
   setStatus($('#status'),j.ok?'PASS':'FAIL', j.ok?'ok':'ng');
   if(j.runId)setReport(j.runId,j.ok);
@@ -202,7 +123,7 @@ function runDone(j){
 // isolated, plus an "open full report ↗" link to view it as its own page. report.js is root-aware
 // (window.__bajutsuReportRoot), so its queries + delegated listeners run against the shadow root.
 async function setReport(id,ok,repSel){
-  selectedRun=id;
+  state.selectedRun=id;
   const rep=$(repSel||'#report');
   // Offer "Triage" only on a failed run — the "why did this fail?" the Replay/History view asks
   // right where the red report is (BE-0147). A passed run has nothing to diagnose.
@@ -266,7 +187,7 @@ function openTriage(id){
     +`<pre class="triagelog" id="triage-log" data-testid="replay.triage-log" hidden></pre>`
     +`<div class="triageresult" id="triage-result" data-testid="replay.triage-result"></div>`;
   $('#triage-go').addEventListener('click',()=>runTriage(id));
-  $('#triage-stop').addEventListener('click',()=>cancelJob(triageJobId,$('#triage-stop')));
+  $('#triage-stop').addEventListener('click',()=>cancelJob(state.triageJobId,$('#triage-stop')));
 }
 async function runTriage(id){
   const go=$('#triage-go'),stop=$('#triage-stop'),log=$('#triage-log'),res=$('#triage-result');
@@ -279,11 +200,11 @@ async function runTriage(id){
     body:JSON.stringify({runId:id,target,scenario,ai})})}catch(e){r=null}
   const d=r&&r.ok?await r.json():{error:r?('HTTP '+r.status):'request failed'};
   if(!r||!r.ok||d.error){setBusy(go,stop,false);res.innerHTML=`<div class="triageerr">${esc(d.error||'triage failed')}</div>`;return}
-  triageJobId=d.jobId;
+  state.triageJobId=d.jobId;
   streamJob(d.jobId,line=>{const l=$('#triage-log');if(l)appendLine(l,line)},j=>triageDone(id,target,scenario,j));
 }
 function triageDone(id,target,scenario,j){
-  triageJobId=null;
+  state.triageJobId=null;
   const res=$('#triage-result');if(!res)return;  // the panel was torn down (user navigated away)
   setBusy($('#triage-go'),$('#triage-stop'),false);
   if(j.cancelled){res.innerHTML='<div class="triageerr">cancelled</div>';return}
@@ -376,7 +297,7 @@ function setHistoryFilter(ids,label){
   historyFilter=clean.length?{ids:new Set(clean),label:label||''}:null;
 }
 // Drop the ?tab=history&runs=… deep link from the URL too, so a reload after "clear" doesn't let the
-// serve.author.js boot handler silently reinstate the filter the user just cleared.
+// serve.author.mjs boot handler silently reinstate the filter the user just cleared.
 function clearHistoryFilter(){historyFilter=null;history.replaceState(null,'',location.pathname);loadHistory();}
 function renderHistFilter(shown){
   const box=$('#histfilter');if(!box)return;
@@ -393,14 +314,9 @@ async function loadHistory(){
   renderHistFilter(shown.length);
   const ul=$('#history');
   if(!shown.length){ul.innerHTML=`<li class="muted">${historyFilter?'no matching runs':'no runs yet'}</li>`;return;}
-  ul.innerHTML=shown.map(r=>`<li data-id="${r.id}" data-ok="${r.ok?1:0}"${r.id===selectedRun?' class="sel"':''}><span class="dot ${r.ok?'ok':'ng'}"></span><span class="hid">${r.id}</span><span class="hsum">${r.passed}/${r.total}${r.scenarios.length?' · '+r.scenarios.join(', '):''}</span></li>`).join('');
+  ul.innerHTML=shown.map(r=>`<li data-id="${r.id}" data-ok="${r.ok?1:0}"${r.id===state.selectedRun?' class="sel"':''}><span class="dot ${r.ok?'ok':'ng'}"></span><span class="hid">${r.id}</span><span class="hsum">${r.passed}/${r.total}${r.scenarios.length?' · '+r.scenarios.join(', '):''}</span></li>`).join('');
   ul.querySelectorAll('li[data-id]').forEach(li=>li.addEventListener('click',()=>{setReport(li.dataset.id,li.dataset.ok==='1');ul.querySelectorAll('li').forEach(x=>x.classList.remove('sel'));li.classList.add('sel')}));
 }
-$('#refresh').addEventListener('click',loadHistory);
-$('#histfilter-clear').addEventListener('click',clearHistoryFilter);
-$('#stats-refresh').addEventListener('click',loadStats);
-$('#flaky-refresh').addEventListener('click',loadFlaky);
-$('#usage-refresh').addEventListener('click',loadUsage);
 
 // Coverage (BE-0146): POST the target (+ optional run set) to /api/coverage and render the returned
 // self-contained report into a shadow root — the same isolation as loadStats. The aggregation stays
@@ -425,13 +341,11 @@ async function loadCoverage(){
   catch(e){fail(e.message||'coverage unavailable');return}
   renderReportInShadow(host,resp.html);
 }
-$('#cov-go').addEventListener('click',loadCoverage);
 function showTab(name){
   document.querySelectorAll('#view-replay .tab').forEach(t=>t.classList.toggle('active',t.dataset.tab===name));
   $('#panel-run').hidden=name!=='run';$('#panel-history').hidden=name!=='history';
   if(name==='history')loadHistory();
 }
-document.querySelectorAll('#view-replay .tab').forEach(t=>t.addEventListener('click',()=>showTab(t.dataset.tab)));
 
 // ---- Upload a bundle as the active config (BE-0073) ----
 // A self-contained .zip (config + scenarios + the built app binary its appPath names) is POSTed as a
@@ -456,6 +370,7 @@ async function chooseUploadConfig(file){
   meta.textContent='Bound '+(s.filename||file.name)+' · '+fmtSize(s.size||file.size)+' · sha256 '+(s.sha256||'').slice(0,12)+'…';
   setCfgName(d.config,true);closeFs();await loadShared();
 }
+
 // Wire a file zone: a "pick" button opening the hidden file input, that input's change, and
 // drag/drop onto the zone — all funnelling the chosen File to `onFile`. Shared by the bundle upload
 // (one zone) and the compose picker (one zone per artifact kind), so the drag-highlight contract and
@@ -472,7 +387,6 @@ function wireFileZone(pickBtn,fileInput,dropEl,onFile){
     dropEl.addEventListener('drop',e=>{const f=e.dataTransfer.files[0];if(f)onFile(f);});
   }
 }
-wireFileZone($('#up-pick'),$('#up-file'),$('#up-drop'),chooseUploadConfig);
 
 // ---- Compose the active config from independently-uploaded artifacts (BE-0268) ----
 // Each of config/scenarios/binary is content-addressed: hash it in the browser, ask whether the
@@ -549,7 +463,115 @@ async function composeAndLoad(){
     setCfgName(d.config,true);closeFs();await loadShared();
   }finally{if(btn)btn.disabled=composeBusy.size>0;}
 }
-COMPOSE_KINDS.forEach(kind=>wireFileZone(
-  $('#cmp-'+kind+'-pick'),$('#cmp-'+kind+'-file'),$('#cmp-'+kind+'-drop'),f=>chooseArtifact(kind,f)));
-(function(){const b=$('#cmp-run');if(b)b.addEventListener('click',composeAndLoad);})();
 
+// Wire every static listener. Called once by the entry module's boot after all sections evaluate.
+function initPanels(){
+  // Record.
+  $('#rec-simrefresh').addEventListener('click',loadSims);
+  $('#rec-go').addEventListener('click',async()=>{
+    const goal=$('#rec-goal').value.trim();
+    if(!goal){setStatus($('#rec-status'),'enter a goal first','ng');return}
+    // Record's own pane clearing (the shared start skeleton lives in startJob). Clear any prior
+    // in-place run so its report/status don't linger over a fresh authoring. The report / status live
+    // in the Run-result pane, which the tiler detaches while hidden, so guard the lookups — they're
+    // null until a run has shown the pane.
+    $('#rec-out').textContent='';
+    $('#rec-yaml').value='';$('#rec-save').disabled=true;$('#rec-yamlinfo').textContent='';state.recPath=null;
+    if(state.recRunPoll)state.recRunPoll.close();
+    $('#rec-run').disabled=true;
+    const rep0=$('#rec-report');if(rep0)rep0.innerHTML='';
+    const rs0=$('#rec-runstatus');if(rs0)setStatus(rs0,'','');
+    hideReportPanel();hideHandoffPanel();
+    state.recPoll=await startJob({
+      prev:state.recPoll,btn:$('#rec-go'),stop:$('#rec-stop'),busyLabel:'Authoring…',status:$('#rec-status'),
+      url:'/api/record',body:{
+        goal,target:$('#rec-target').value,
+        udid:$('#rec-device').value||'booted',name:$('#rec-name').value.trim()||undefined,
+        erase:$('#rec-erase').checked,dismissAlerts:$('#rec-nodismiss').checked?false:undefined,
+        headed:$('#rec-headed').checked||undefined},
+      onStart:d=>{state.recPath=d.path;state.recJobId=d.jobId;},
+      onLog:line=>appendLine($('#rec-out'),line),onDone:recDone,onHuman:onHandoffRequest});
+  });
+  $('#rec-stop').addEventListener('click',()=>cancelJob(state.recJobId,$('#rec-stop')));
+  $('#rec-yaml').addEventListener('input',syncRecActions);
+  $('#rec-handoff-value').addEventListener('input',syncHandoffSend);
+  $('#rec-handoff-value').addEventListener('keydown',e=>{if(e.key==='Enter'&&!$('#rec-handoff-send').disabled)$('#rec-handoff-send').click();});
+  $('#rec-handoff-send').addEventListener('click',()=>{const v=$('#rec-handoff-value').value.trim();if(!v)return;sendHandoff({values:[v]});});
+  $('#rec-handoff-acted').addEventListener('click',()=>sendHandoff({acted:true}));
+  $('#rec-handoff-cancel').addEventListener('click',()=>sendHandoff({cancelled:true}));
+  // Run the current scenario in place, without switching to Replay. Persist the YAML first (creating
+  // the file for hand-pasted YAML; a parse error means it isn't runnable, so it's surfaced and Run
+  // stops), then start a normal run: the live log streams to the Progress console (like Generate) and
+  // only the final report lands in the dismissable Run-result pane.
+  $('#rec-run').addEventListener('click',async()=>{
+    const yaml=$('#rec-yaml').value;
+    if(!yaml.trim())return;
+    if(state.recRunPoll)state.recRunPoll.close();
+    const target=$('#rec-target').value;
+    // Re-evaluate the scenario on every Run: clear a prior syntax error first, so a since-fixed
+    // scenario shows no stale error and only a still-broken one re-surfaces below.
+    setStatus($('#rec-status'),'','');
+    const sd=await postJSON('/api/scenario',{target,path:recRunRef(),yaml},{error:'request failed'});
+    if(sd.error){setStatus($('#rec-status'),sd.error,'ng');return}
+    state.recPath=sd.path;$('#rec-yamlinfo').textContent=state.recPath.split('/').pop();loadScenarios();
+    setBusy($('#rec-run'),$('#rec-runstop'),true,'Running…');
+    $('#rec-out').textContent='';  // the live run log shares the Progress console, like Generate
+    showReportPanel();  // attaches the pane, so the report / status lookups below resolve
+    const rep=$('#rec-report');if(rep)rep.innerHTML='';
+    const rs=$('#rec-runstatus');if(rs)setStatus(rs,'','run');
+    const r=await fetch('/api/run',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
+      scenario:state.recPath,target,udid:$('#rec-device').value||'booted',
+      erase:$('#rec-erase').checked||undefined,dismissAlerts:$('#rec-nodismiss').checked?false:undefined})});
+    const {jobId,error}=await r.json();
+    if(error){setStatus($('#rec-runstatus'),error,'ng');setBusy($('#rec-run'),$('#rec-runstop'),false);return;}
+    state.recRunJobId=jobId;
+    state.recRunPoll=streamJob(jobId,line=>appendLine($('#rec-out'),line),recRunDone);
+  });
+  $('#rec-runstop').addEventListener('click',()=>cancelJob(state.recRunJobId,$('#rec-runstop')));
+  // Dismiss the Run-result pane with its X. A run in progress keeps going (Stop lives on the Generated
+  // scenario panel) and the pane reappears on the next Run.
+  $('#rec-runclose').addEventListener('click',hideReportPanel);
+  $('#rec-save').addEventListener('click',async()=>{
+    if(!$('#rec-yaml').value.trim())return;
+    $('#rec-save').disabled=true;$('#rec-save').textContent='Saving…';
+    const r=await fetch('/api/scenario',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({target:$('#rec-target').value,path:recRunRef(),yaml:$('#rec-yaml').value})});
+    const d=await r.json();
+    $('#rec-save').textContent='Save';$('#rec-save').disabled=false;
+    if(d.error){setStatus($('#rec-status'),d.error,'ng')}
+    else{state.recPath=d.path;$('#rec-yamlinfo').textContent=state.recPath.split('/').pop();setStatus($('#rec-status'),'saved ✓','ok');loadScenarios()}
+  });
+  // Replay.
+  $('#scn').addEventListener('change',()=>{showInfo();replayAudit();replayCodegen.reset();});
+  $('#simrefresh').addEventListener('click',loadSims);
+  $('#go').addEventListener('click',async()=>{
+    $('#out').textContent='';  // Replay's own pane clearing (the shared start skeleton lives in startJob)
+    state.poll=await startJob({
+      prev:state.poll,btn:$('#go'),stop:$('#stop'),busyLabel:'Running…',status:$('#status'),
+      url:'/api/run',body:{
+        scenario:$('#scn').value,target:$('#target').value,udid:pickedUdids().join(',')||'booted',
+        workers:parseInt($('#workers').value,10)||1,headed:$('#headed').checked||undefined,
+        erase:$('#erasedev').checked||undefined,dismissAlerts:$('#nodismiss').checked?false:undefined},
+      onStart:d=>{state.runJobId=d.jobId;},
+      onLog:line=>appendLine($('#out'),line),onDone:runDone});
+  });
+  $('#stop').addEventListener('click',()=>cancelJob(state.runJobId,$('#stop')));
+  $('#refresh').addEventListener('click',loadHistory);
+  $('#histfilter-clear').addEventListener('click',clearHistoryFilter);
+  $('#stats-refresh').addEventListener('click',loadStats);
+  $('#flaky-refresh').addEventListener('click',loadFlaky);
+  $('#usage-refresh').addEventListener('click',loadUsage);
+  $('#cov-go').addEventListener('click',loadCoverage);
+  document.querySelectorAll('#view-replay .tab').forEach(t=>t.addEventListener('click',()=>showTab(t.dataset.tab)));
+  // Upload & compose file zones (BE-0073 bundle upload, BE-0268 compose-from-artifacts). Both go
+  // through wireFileZone; every element may be absent in a hosted deployment, so each binding self-guards.
+  wireFileZone($('#up-pick'),$('#up-file'),$('#up-drop'),chooseUploadConfig);
+  COMPOSE_KINDS.forEach(kind=>wireFileZone(
+    $('#cmp-'+kind+'-pick'),$('#cmp-'+kind+'-file'),$('#cmp-'+kind+'-drop'),f=>chooseArtifact(kind,f)));
+  const cmpRun=$('#cmp-run');if(cmpRun)cmpRun.addEventListener('click',composeAndLoad);
+}
+
+export {
+  loadHistory, loadStats, loadFlaky, loadUsage, coverageInit, showInfo, replayAudit, onSimChange,
+  setHistoryFilter, showTab, initPanels,
+};

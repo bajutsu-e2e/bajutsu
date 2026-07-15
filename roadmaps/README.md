@@ -497,6 +497,7 @@ Behavior-preserving cleanup inside `bajutsu/` itself — deduplication, decompos
 | [BE-0205](BE-0205-crawl-command-decomposition/BE-0205-crawl-command-decomposition.md) | Decompose the crawl CLI command like run | Implemented |
 | [BE-0206](BE-0206-serve-state-module-split/BE-0206-serve-state-module-split.md) | Split serve job state from job execution | Implemented |
 | [BE-0246](BE-0246-claude-client-taxonomy/BE-0246-claude-client-taxonomy.md) | Clarify the module taxonomy for talking to Claude | Implemented |
+| [BE-0247](BE-0247-serve-frontend-es-modules/BE-0247-serve-frontend-es-modules.md) | Move the serve frontend to ES modules | Implemented |
 | [BE-0248](BE-0248-serve-state-decomposition-continued/BE-0248-serve-state-decomposition-continued.md) | Continue decomposing ServeState into auth and provider-settings managers | Implemented |
 | [BE-0249](BE-0249-dead-claude-client-wrapper-removal/BE-0249-dead-claude-client-wrapper-removal.md) | Remove the dead Claude-client wrapper orphaned by the backend seam | Implemented |
 | [BE-0251](BE-0251-driver-base-helper-hoist/BE-0251-driver-base-helper-hoist.md) | Hoist duplicated driver helpers into drivers.base and unify small constants | Implemented |
@@ -636,7 +637,6 @@ Running a scenario on a hosted device farm instead of a local Simulator, emulato
 <!-- GENERATED:proposals-quality-debt -->
 | ID | Item | Status |
 |---|---|---|
-| [BE-0247](BE-0247-serve-frontend-es-modules/BE-0247-serve-frontend-es-modules.md) | Move the serve frontend to ES modules | Proposal |
 | [BE-0252](BE-0252-config-package-split/BE-0252-config-package-split.md) | Split config into a package and group Effective into sub-records | Proposal |
 <!-- /GENERATED:proposals-quality-debt -->
 

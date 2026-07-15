@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import re
+import urllib.error
 from pathlib import Path
 
 from _shared import (
@@ -31,8 +32,9 @@ def test_http_lists_and_index(tmp_path: Path) -> None:
         server.server_close()
 
 
-def test_http_index_inlines_assets(tmp_path: Path) -> None:
-    """The index serves one self-contained doc with the CSS/JS/themes inlined."""
+def test_http_index_inlines_css_and_loads_js_as_modules(tmp_path: Path) -> None:
+    """The index inlines the CSS/themes, but loads the JS as ES modules (BE-0247): it references the
+    entry module via `<script type="module">` and preloads the rest, rather than inlining the code."""
     scn_dir, cfg, runs = project(tmp_path)
     server, port = _serve(
         srv.ServeState(scenarios_dir=scn_dir, config=cfg, runs_dir=runs, cwd=tmp_path)
@@ -41,26 +43,32 @@ def test_http_index_inlines_assets(tmp_path: Path) -> None:
         status, body, ctype = _get(port, "/")
         text = body.decode("utf-8")
         assert status == 200 and ctype.startswith("text/html")
-        assert '[data-theme="daylight"]' in text  # from serve.themes.css
-        assert "--bg2" in text  # from serve.css (theme-aware inset color)
-        assert "function showView" in text  # from serve.core.js
-        assert "function applyTheme" in text  # the dark / light toggle logic
-        assert "browseFs" in text  # config-browser JS survives the split
+        assert '[data-theme="daylight"]' in text  # from serve.themes.css (still inlined)
+        assert "--bg2" in text  # from serve.css (theme-aware inset color, still inlined)
+        # The frontend loads as a module, not inlined: the entry <script type="module"> and a
+        # modulepreload for every section module are present.
+        assert '<script type="module" src="/serve.author.mjs">' in text
+        for name in srv.handler._JS_MODULES:
+            assert f'<link rel="modulepreload" href="/{name}">' in text
+        # The JS is no longer inlined into the page — its code lives at the module routes now.
+        assert "function showView" not in text
+        assert "browseFs" not in text
     finally:
         server.shutdown()
         server.server_close()
 
 
-def test_http_index_author_edits_round_trip_through_backend(tmp_path: Path) -> None:
+def test_http_author_edits_round_trip_through_backend(tmp_path: Path) -> None:
     """The Author tab no longer builds scenario YAML in the browser (BE-0261): Apply / Accept POST to
     the round-trip endpoints and the serializer owns quoting. Structural fact only: the old
-    client-side YAML builders are gone and the fetch calls to the new endpoints ship."""
+    client-side YAML builders are gone and the fetch calls to the new endpoints ship. This code lives
+    in the serve.author.mjs module now (BE-0247), so assert against that route rather than the index."""
     scn_dir, cfg, runs = project(tmp_path)
     server, port = _serve(
         srv.ServeState(scenarios_dir=scn_dir, config=cfg, runs_dir=runs, cwd=tmp_path)
     )
     try:
-        text = _get(port, "/")[1].decode("utf-8")
+        text = _get(port, "/serve.author.mjs")[1].decode("utf-8")
         # The hand-rolled YAML builders must be gone — quoting now lives in the backend serializer.
         assert "auSelectorYaml" not in text
         assert "enrichAssertionYaml" not in text
@@ -72,44 +80,78 @@ def test_http_index_author_edits_round_trip_through_backend(tmp_path: Path) -> N
         server.server_close()
 
 
-def test_http_index_concatenates_all_js_sections(tmp_path: Path) -> None:
-    """BE-0202: serve.js is split into serve.*.js section files that handler.py concatenates, in a
-    fixed order, into the one inlined <script>. Assert a marker unique to each section survives, so a
-    dropped file (or a broken _JS_ASSETS order) fails here, and that the three start handlers route
-    through the shared startJob skeleton rather than the old copy-pasted bodies."""
+def test_http_serves_each_js_module(tmp_path: Path) -> None:
+    """BE-0247: each serve.*.mjs section is served as its own ES module at /serve.<name>.mjs (with a
+    JavaScript MIME so the browser will execute it), not inlined. Assert every module route returns
+    its unique marker as a real module (has an `export`), and that the three start handlers still
+    route through the shared startJob skeleton in the modules that own them."""
     scn_dir, cfg, runs = project(tmp_path)
     server, port = _serve(
         srv.ServeState(scenarios_dir=scn_dir, config=cfg, runs_dir=runs, cwd=tmp_path)
     )
     try:
-        text = _get(port, "/")[1].decode("utf-8")
-        # One marker per section file — all four must be present in the concatenated script.
-        assert "function startJob" in text  # serve.core.js (shared helpers)
-        assert "function loadGenerated" in text  # serve.panels.js (Record/Replay/Triage)
-        assert "function openShot" in text  # serve.crawl.js (crawl graph / lightbox)
-        assert "function initTiling" in text  # serve.author.js (layout + Author + boot)
-        # The three start buttons now share startJob; each passes its own url + busy label.
-        # Tolerate incidental whitespace / quote style so a reformat doesn't break the routing check.
-        for url in ("/api/run", "/api/record", "/api/crawl"):
-            assert re.search(rf"url:\s*['\"]{re.escape(url)}['\"]", text)
-        # startJob fails loudly on a network drop / non-JSON body / missing jobId — it must reset the
-        # button rather than leave it stuck spinning (it fronts all three start buttons). Quote-tolerant
-        # so a reformat of the section files doesn't break the check.
+        # One unique marker per module; each is served with a JavaScript MIME and is a real module.
+        markers = {
+            "serve.core.mjs": "function startJob",  # shared helpers
+            "serve.panels.mjs": "function loadGenerated",  # Record/Replay/Triage
+            "serve.crawl.mjs": "function openShot",  # crawl graph / lightbox
+            "serve.metrics.mjs": "function renderMetrics",  # cross-project comparison
+            "serve.author.mjs": "function initTiling",  # layout + Author + boot
+        }
+        assert set(markers) == set(srv.handler._JS_MODULES)  # every served module is covered here
+        modules = {}
+        for name, marker in markers.items():
+            status, body, ctype = _get(port, f"/{name}")
+            text = body.decode("utf-8")
+            modules[name] = text
+            assert status == 200, name
+            assert "javascript" in ctype, (name, ctype)  # module scripts need a JS MIME to execute
+            assert marker in text, name
+            assert "export" in text, name  # it is an ES module, not a bare script
+        # The three start buttons share startJob; each passes its own url + busy label. Record/Replay
+        # live in panels, Crawl in crawl. Tolerate incidental whitespace / quote style.
+        for url in ("/api/run", "/api/record"):
+            assert re.search(rf"url:\s*['\"]{re.escape(url)}['\"]", modules["serve.panels.mjs"])
+        assert re.search(r"url:\s*['\"]/api/crawl['\"]", modules["serve.crawl.mjs"])
+        # startJob fails loudly on a network drop / non-JSON body / missing jobId (it fronts all three
+        # start buttons) — the messages live in core. Quote-tolerant so a reformat doesn't break it.
         for msg in ("request failed", "no job started"):
-            assert re.search(rf"['\"]{re.escape(msg)}['\"]", text)
+            assert re.search(rf"['\"]{re.escape(msg)}['\"]", modules["serve.core.mjs"])
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+def test_http_js_module_route_is_traversal_safe(tmp_path: Path) -> None:
+    """Only the exact bundled module names are served: a real module 200s, but an unknown name or a
+    near-miss (wrong extension) 404s rather than reading anything off disk. (The open-before-auth
+    exemption is covered separately, with a token set, in test_http_auth.py.)"""
+    scn_dir, cfg, runs = project(tmp_path)
+    server, port = _serve(
+        srv.ServeState(scenarios_dir=scn_dir, config=cfg, runs_dir=runs, cwd=tmp_path)
+    )
+    try:
+        assert _get(port, "/serve.core.mjs")[0] == 200
+        for bad in ("/serve.nope.mjs", "/serve.core.js", "/serve.core.mjson"):
+            try:
+                status = _get(port, bad)[0]
+            except urllib.error.HTTPError as e:  # urlopen raises on 4xx
+                status = e.code
+            assert status == 404, bad
     finally:
         server.shutdown()
         server.server_close()
 
 
 def test_http_index_carries_responsive_layout(tmp_path: Path) -> None:
-    """The served doc carries the small-screen reflow (BE-0072), all inlined — no asset pipeline.
+    """The small-screen reflow (BE-0072): the CSS/markup ships inlined in the index, the JS guards
+    ship in the modules (BE-0247).
 
     Structural facts only (the rules / markup / handlers are present), never a "looks good" check:
       * a phone-tier `@media (max-width: …)` breakpoint exists (serve.css has none on desktop),
       * the per-view segmented switcher markup + its active-pane CSS ship,
-      * the narrow-tier guard that skips the persisted desktop tile/split layouts exists (serve.*.js),
-      * the crawl graph gained touch pan/pinch handlers (touchstart/touchmove).
+      * the narrow-tier guard that skips the persisted desktop tile/split layouts exists (author mod),
+      * the crawl graph gained touch pan/pinch handlers (touchstart/touchmove, in the crawl module).
     """
     scn_dir, cfg, runs = project(tmp_path)
     server, port = _serve(
@@ -125,14 +167,14 @@ def test_http_index_carries_responsive_layout(tmp_path: Path) -> None:
         assert text.count('class="viewswitch"') == 4
         for label in ("Form", "Log", "Report", "Progress", "Output", "Graph", "Plan", "Console"):
             assert f">{label}</button>" in text
-        assert ".viewswitch" in text  # the switcher's own styling ships
-        # The narrow guard in the serve UI JS: don't apply the persisted desktop layouts on a phone.
-        assert "NARROW_MQ" in text
-        # Crawl-graph touch: pan + pinch reuse the existing zoom/pan math.
-        assert "touchstart" in text and "touchmove" in text
-        # A cancelled touch (gesture takeover, context switch) must reset the pan/pinch state, so it
-        # can't leave the graph stuck — touchcancel runs the same cleanup as touchend.
-        assert "touchcancel" in text
+        assert ".viewswitch" in text  # the switcher's own styling ships (inline CSS)
+        # The narrow guard lives in the author module now — don't apply desktop layouts on a phone.
+        assert "NARROW_MQ" in _get(port, "/serve.author.mjs")[1].decode("utf-8")
+        # Crawl-graph touch handlers live in the crawl module: pan + pinch reuse the zoom/pan math,
+        # and touchcancel runs the same cleanup as touchend so a cancelled gesture can't leave the
+        # graph stuck.
+        crawl_js = _get(port, "/serve.crawl.mjs")[1].decode("utf-8")
+        assert "touchstart" in crawl_js and "touchmove" in crawl_js and "touchcancel" in crawl_js
     finally:
         server.shutdown()
         server.server_close()
@@ -140,8 +182,8 @@ def test_http_index_carries_responsive_layout(tmp_path: Path) -> None:
 
 def test_http_index_carries_crawl_history_markup(tmp_path: Path) -> None:
     """The Crawl tab ships the history affordance (BE-0180): the Form/History sub-tabs, the list
-    container, the read-only "past crawl" badge, the crash/flow links strip, and the JS wired to
-    /api/crawl/runs. Structural facts only — never a "looks good" check."""
+    container, the read-only "past crawl" badge, and the crash/flow links strip ship as markup in the
+    index; the JS wired to /api/crawl/runs ships in the crawl module. Structural facts only."""
     scn_dir, cfg, runs = project(tmp_path)
     server, port = _serve(
         srv.ServeState(scenarios_dir=scn_dir, config=cfg, runs_dir=runs, cwd=tmp_path)
@@ -152,17 +194,39 @@ def test_http_index_carries_crawl_history_markup(tmp_path: Path) -> None:
         assert 'id="crawl-history"' in text  # the list container
         assert 'id="crawl-pastbadge"' in text  # read-only framing badge
         assert 'id="crawl-artifacts"' in text  # crash/flow links strip
-        # The JS fetches the crawl-specific listing and reuses the existing graph render path.
-        assert "/api/crawl/runs" in text and "viewCrawlRun" in text
+        # The crawl module fetches the crawl-specific listing and reuses the existing graph render path.
+        crawl_js = _get(port, "/serve.crawl.mjs")[1].decode("utf-8")
+        assert "/api/crawl/runs" in crawl_js and "viewCrawlRun" in crawl_js
     finally:
         server.shutdown()
         server.server_close()
 
 
+def test_hosted_backend_serves_frontend_modules(tmp_path: Path) -> None:
+    """Lockstep (BE-0015): the hosted FastAPI backend serves the same /serve.*.mjs routes as the
+    stdlib handler, because it serves the same module-loading index (BE-0247) — otherwise the hosted
+    UI would reference modules it can't deliver. Unknown/traversing names 404, as on the stdlib side."""
+    from fastapi.testclient import TestClient
+
+    from bajutsu.serve.server.app import make_app
+
+    scn_dir, cfg, runs = project(tmp_path)
+    client = TestClient(
+        make_app(srv.ServeState(scenarios_dir=scn_dir, config=cfg, runs_dir=runs, cwd=tmp_path))
+    )
+    for name in srv.handler._JS_MODULES:
+        r = client.get(f"/{name}")
+        assert r.status_code == 200, name
+        assert "javascript" in r.headers["content-type"], name
+    assert client.get("/serve.nope.mjs").status_code == 404
+    # The hosted index is the same module-loading shell as the stdlib backend's.
+    assert '<script type="module" src="/serve.author.mjs">' in client.get("/").text
+
+
 def test_serve_assets_present() -> None:
-    """Guard against a template file going missing from the package — including every serve.*.js
-    section file (BE-0202), which handler.py concatenates into the inlined <script>."""
-    for name in ("serve.html.j2", "serve.css", "serve.themes.css", *srv.handler._JS_ASSETS):
+    """Guard against a template file going missing from the package — including every serve.*.mjs
+    ES module (BE-0247), which handler.py serves at its own route."""
+    for name in ("serve.html.j2", "serve.css", "serve.themes.css", *srv.handler._JS_MODULES):
         assert srv.handler._asset(name).strip()  # non-empty
 
 

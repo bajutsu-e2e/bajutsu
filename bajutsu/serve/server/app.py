@@ -24,7 +24,13 @@ from starlette.requests import ClientDisconnect
 
 from bajutsu.serve import gate, oplog
 from bajutsu.serve import operations as ops
-from bajutsu.serve.handler import _OAUTH_STATE_COOKIE, _SESSION_COOKIE, _index_html
+from bajutsu.serve.handler import (
+    _JS_MODULES,
+    _OAUTH_STATE_COOKIE,
+    _SESSION_COOKIE,
+    _asset,
+    _index_html,
+)
 from bajutsu.serve.helpers import range_reply
 from bajutsu.serve.state import ServeState
 from bajutsu.serve.upload_artifacts import ArtifactKind
@@ -113,6 +119,18 @@ def make_app(state: ServeState) -> FastAPI:
     async def index() -> HTMLResponse:
         # Lockstep with the stdlib handler: forward the drop-in themes dir + default (BE-0191).
         return HTMLResponse(_index_html(state.themes_dir, state.default_theme))
+
+    @app.get("/serve.{name}.mjs")
+    async def frontend_module(name: str) -> Response:
+        # The ES-module frontend (BE-0247): the index loads these via <script type="module">, so the
+        # hosted backend serves them alongside the stdlib handler (lockstep). Resolve the request to
+        # the matching bundled module *constant* (not a string built from `name`), so an unknown or
+        # traversing name 404s and no user-derived value ever reaches the file read (path-injection).
+        # The `text/javascript` type is required for a browser to execute a module script.
+        asset = next((m for m in _JS_MODULES if m == f"serve.{name}.mjs"), None)
+        if asset is None:
+            return _result(({"error": "not found"}, 404))
+        return Response(_asset(asset), media_type="text/javascript; charset=utf-8")
 
     @app.get("/runs/{rel:path}")
     async def run_file(rel: str, request: Request) -> Response:

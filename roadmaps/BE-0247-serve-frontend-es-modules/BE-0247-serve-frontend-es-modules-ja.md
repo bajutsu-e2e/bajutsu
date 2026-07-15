@@ -7,8 +7,9 @@
 |---|---|
 | 提案 | [BE-0247](BE-0247-serve-frontend-es-modules-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **提案** |
+| 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0247") |
+| 実装 PR | [#1084](https://github.com/bajutsu-e2e/bajutsu/pull/1084) |
 | トピック | コードベース品質・技術的負債 |
 | 関連 | [BE-0202](../BE-0202-serve-js-modularization/BE-0202-serve-js-modularization-ja.md) |
 <!-- /BE-METADATA -->
@@ -127,12 +128,28 @@ lint が存在しないという事実こそ、本項目が取り除こうとし
 > 作業分解（作業の単位ごとに 1 つ）に対応し、ログには変更内容と時期（古い順）を PR へのリンクと
 > ともに記録します。
 
-- [ ] ネイティブの ES モジュール — 各セクション別ファイルが公開面を `export` し、依存を
-      `import` する。`handler.py` が各ファイルを連結せず、それぞれのパスで配信する。
-- [ ] 配信方法の変更を段階的に進める場合の、名前空間による最小構成の着地（任意。上記の項目が
-      完了すれば不要になります）。
-- [ ] 読み込み順を `import` グラフで強制する。`eslint.config.mjs` を変換後のファイル向けに
-      `sourceType: "module"` へ更新する。
+- [x] ネイティブの ES モジュール。各セクション別ファイルが公開面を `export` し、依存を
+      `import` します。`handler.py` は各ファイルを連結せず、それぞれのパスで配信します。
+- [ ] 配信方法の変更を段階的に進める場合の、名前空間による最小構成の着地（任意）。今回は直接
+      ネイティブモジュールとして着地したため、上記の項目に置き換わり、この段階は不要になりました。
+- [x] 読み込み順を `import` グラフで強制します。`eslint.config.mjs` を変換後のファイル向けに
+      `sourceType: "module"` へ更新しました。
+
+ログ：
+
+- PR [#1084](https://github.com/bajutsu-e2e/bajutsu/pull/1084)：5 つの `serve.*.js` セクション別
+  ファイルをネイティブの ES モジュール（`serve.*.mjs`）へ移行しました。各ファイルは依存を `import`
+  し、公開面を `export` します。ファイル横断で書き換える可変状態は、共有の `state` オブジェクトへ
+  移しました（`export let` のライブバインディングは importer から読み取り専用になるためです）。各
+  セクションのトップレベルの副作用は `init*()` 関数へ切り出し、エントリモジュール
+  （`serve.author.mjs`）が順に呼び出します。これにより読み込み順は、手作業で保守するタプルではなく
+  `import` グラフが決めます。どのバインディングもモジュールの評価時には使わないため、循環する
+  `import` も安全です。`handler.py` は各モジュールを専用のルート（`/serve.*.mjs`、`text/javascript`、
+  index と同じく認証前に配信）で返し、ページはエントリを `<script type="module">` で読み込みます
+  （`modulepreload` のヒント付き）。`_JS_ASSETS`（連結）は `_JS_MODULES` になりました。
+  `eslint.config.mjs` は `sourceType: "module"` に、`make lint-js` は `.mjs` 一式への 1 ファイル
+  ずつの `node --check` に変えました（連結チェックは廃止です）。`no-undef` は無効のままです。素の
+  ブラウザグローバルを宣言するという主たる障害の解消は、引き続き先送りとします。
 
 ## 参考
 

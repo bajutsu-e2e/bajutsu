@@ -2,9 +2,9 @@
 
 BE-0098 collapses the former Capture (BE-0012) and Editor (BE-0013) tabs, and the
 Enrich button+panel (BE-0014), into one "Author" tab with a Capture / Edit / Enrich
-mode switcher over a single open scenario. The HTML/CSS/JS is inlined, so these are
-structural tests: assert the unified markup, the removal of the old tabs, and that the
-JS still wires the (unchanged) endpoints.
+mode switcher over a single open scenario. The markup ships inlined in the index; the JS
+ships as the serve.author.mjs ES module (BE-0247). These are structural tests: assert the
+unified markup (from the index) and that the module JS still wires the (unchanged) endpoints.
 """
 
 from __future__ import annotations
@@ -16,16 +16,24 @@ from _shared import _get, _serve, project
 from bajutsu import serve as srv
 
 
-def _index_text(tmp_path: Path) -> str:
+def _fetch(tmp_path: Path, route: str) -> str:
     scn_dir, cfg, runs = project(tmp_path)
     server, port = _serve(
         srv.ServeState(scenarios_dir=scn_dir, config=cfg, runs_dir=runs, cwd=tmp_path)
     )
     try:
-        return _get(port, "/")[1].decode("utf-8")
+        return _get(port, route)[1].decode("utf-8")
     finally:
         server.shutdown()
         server.server_close()
+
+
+def _index_text(tmp_path: Path) -> str:
+    return _fetch(tmp_path, "/")
+
+
+def _author_js(tmp_path: Path) -> str:
+    return _fetch(tmp_path, "/serve.author.mjs")
 
 
 # ---------------------------------------------------------------------------
@@ -168,24 +176,24 @@ def test_author_codegen_controls(tmp_path: Path) -> None:
 
 
 def test_author_js_wires_capture_endpoints(tmp_path: Path) -> None:
-    text = _index_text(tmp_path)
+    text = _author_js(tmp_path)
     for ep in ("/api/capture/start", "/api/capture/mark", "/api/capture/finish"):
         assert ep in text, ep
 
 
 def test_author_js_wires_editor_endpoints(tmp_path: Path) -> None:
-    text = _index_text(tmp_path)
+    text = _author_js(tmp_path)
     assert "/api/scenario/resolve" in text
     assert "runId=" in text
     assert "scenario=" in text
 
 
 def test_author_js_wires_save_and_enrich(tmp_path: Path) -> None:
-    text = _index_text(tmp_path)
+    text = _author_js(tmp_path)
     assert "/api/scenario" in text
     assert "/api/enrich" in text
 
 
 def test_author_js_wires_codegen(tmp_path: Path) -> None:
-    text = _index_text(tmp_path)
+    text = _author_js(tmp_path)
     assert "/api/codegen" in text

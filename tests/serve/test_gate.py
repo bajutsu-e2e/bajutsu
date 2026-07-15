@@ -53,16 +53,23 @@ def test_csrf_ok_matches_origin_netloc_against_host() -> None:
     assert gate.csrf_ok("http://evil.example", "localhost:8765") is False
 
 
-def test_is_open_covers_the_login_ui_and_login_endpoints_only() -> None:
+def test_is_open_covers_the_login_ui_login_endpoint_and_frontend_modules() -> None:
     assert gate.is_open("GET", "/") is True
     assert gate.is_open("GET", "/index.html") is True
     assert gate.is_open("GET", "/api/oauth/login") is True
     assert gate.is_open("GET", "/api/oauth/callback") is True
     assert gate.is_open("POST", "/api/login") is True
-    # Everything else is gated.
+    # The frontend ES modules load before login (BE-0247), so their GET routes are open too. Matched
+    # by shape, so an as-yet-unknown module name is still exempt (it 404s at the serving layer).
+    assert gate.is_open("GET", "/serve.core.mjs") is True
+    assert gate.is_open("GET", "/serve.author.mjs") is True
+    assert gate.is_open("GET", "/serve.future.mjs") is True
+    # Everything else is gated — including a non-GET on a module path or a non-module static asset.
     assert gate.is_open("GET", "/api/runs") is False
     assert gate.is_open("POST", "/") is False
     assert gate.is_open("GET", "/api/login") is False
+    assert gate.is_open("POST", "/serve.core.mjs") is False
+    assert gate.is_open("GET", "/serve.css") is False
 
 
 def test_is_authorized_by_bearer_token() -> None:

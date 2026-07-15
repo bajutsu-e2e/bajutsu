@@ -102,6 +102,18 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
             except Exception:
                 self.close_connection = True
 
+        def _serve_module(self, name: str) -> None:
+            """Serve one serve.*.mjs frontend module (BE-0247). The caller already validated `name`
+            is a _MODULE_PATHS member (its leading `/` stripped); resolve it to the matching
+            _JS_MODULES *constant* so no user-derived value reaches the file read (path-injection),
+            then serve it. `text/javascript` is required: a browser refuses to execute a module
+            script served under any other MIME type."""
+            asset = next((m for m in _JS_MODULES if m == name), None)
+            if asset is None:  # unreachable via the gated route; defensive against a future caller
+                self._json({"error": "not found"}, 404)
+                return
+            self._text(_asset(asset), 200, "text/javascript; charset=utf-8")
+
         def _sse_job(self, job_id: str) -> None:
             """Stream a job's log over SSE via the shared event stream: a `log` event per line
             (backlog + live from the LogBus), then a terminal `done` event carrying the job's final
@@ -137,8 +149,9 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
         def _gate(self) -> bool:
             """Authentication gate (BE-0051). With no token configured the server is open
             (loopback-only legacy behavior). Otherwise every request must be authorized, except
-            the index page (so the login UI can load) and the login endpoint itself. Sends 401
-            and returns False when a required credential is missing."""
+            the index page and the frontend ES-module routes (so the login UI and its JS can load,
+            BE-0247) and the login endpoint itself. Sends 401 and returns False when a required
+            credential is missing."""
             if not self._host_ok():
                 # DNS-rebinding defense (BE-0121): a Host that names no bound interface is refused
                 # ahead of everything else, so a rebound hostname reaches no endpoint at all
@@ -229,6 +242,9 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
                     self.send_header("Content-Length", str(len(body)))
                     self.end_headers()
                     self.wfile.write(body)
+                case _ if path in _MODULE_PATHS:
+                    # The ES-module frontend (BE-0247): each serve.*.mjs served at its own path.
+                    self._serve_module(path[1:])
                 case "/api/scenarios":
                     self._json(*ops.list_scenarios(state, self._qs("target"), actor=self._actor()))
                 case "/api/targets":
@@ -739,9 +755,9 @@ def make_server(state: ServeState, host: str = "127.0.0.1", port: int = 0) -> Th
     return ThreadingHTTPServer((host, port), _make_handler(state))
 
 
-# The SPA shell + its CSS/JS/themes live in bajutsu/templates/serve.* — split out of this
-# module so they read/edit as real files. We inline them into one self-contained response,
-# mirroring report.py (no separate /static routes; this is a localhost dev tool).
+# The SPA shell + its CSS/themes live in bajutsu/templates/serve.* — split out of this module so
+# they read/edit as real files. The CSS/themes are still inlined into the one HTML response; the JS
+# is served as ES modules from their own routes (BE-0247, see _JS_MODULES) rather than inlined.
 # _TEMPLATE_DIR is imported from bajutsu.serve._paths (shared constant, avoids independent
 # hand-counted .parent chains across modules at different package depths).
 
@@ -751,20 +767,30 @@ def _env() -> Environment:
     return Environment(loader=FileSystemLoader(str(_TEMPLATE_DIR)), autoescape=True)
 
 
-# The UI JS is split into section files (BE-0202); they concatenate in this fixed order into one
-# inlined <script>, sharing a single global scope with no build step — the same pattern the two CSS
-# assets already use (themes_css + css into one <style>). Order is load-bearing: core defines the
-# shared helpers the later sections call, and author.js ends with the boot sequence.
-_JS_ASSETS = (
-    "serve.core.js",
-    "serve.panels.js",
-    "serve.crawl.js",
-    "serve.metrics.js",
-    "serve.author.js",
+# The UI JS is split into section files (BE-0202), now native ES modules (BE-0247): each file
+# `import`s what it needs and `export`s its public surface, so a file's dependencies are declared in
+# the file itself. The page loads the entry module (serve.author.mjs) with <script type="module">;
+# the browser then fetches the rest as its import graph resolves — so, unlike the old inlined
+# <script>, each module is served at its own URL below. Order here is no longer load-bearing (the
+# import graph decides evaluation order); this is just the set of module files the server exposes.
+_JS_MODULES = (
+    "serve.core.mjs",
+    "serve.panels.mjs",
+    "serve.crawl.mjs",
+    "serve.metrics.mjs",
+    "serve.author.mjs",
 )
+_JS_ENTRY = "serve.author.mjs"  # the module <script type="module"> loads; pulls in the rest
+# Request paths the modules are served at, e.g. "/serve.core.mjs". A frozenset both bounds what
+# _serve_module will read (no path traversal — only these exact names) and lets _gate treat them as
+# open GETs, so the login UI's JS loads before auth exactly as the inlined <script> did.
+_MODULE_PATHS = frozenset(f"/{name}" for name in _JS_MODULES)
 
 
-@functools.lru_cache(maxsize=8)
+# Cache every bundled asset the server reads: the JS modules plus serve.css / serve.themes.css /
+# serve.html.j2. Size the cache off the module count so adding a module never silently starts
+# evicting (the +3 covers the two CSS files and the HTML template).
+@functools.lru_cache(maxsize=len(_JS_MODULES) + 3)
 def _asset(name: str) -> str:
     return (_TEMPLATE_DIR / name).read_text(encoding="utf-8")
 
@@ -803,6 +829,8 @@ def _index_html(themes_dir: Path | None = None, default_theme: str | None = None
             # Only when --themes is configured is there a directory to upload a theme into; the
             # client uses this to reveal the "Upload to Server" button (BE-0191 unit 6).
             themes_writable_json=_script_json(themes_dir is not None),
-            js="\n".join(_asset(name) for name in _JS_ASSETS),
+            # The frontend loads as ES modules from their own routes (BE-0247), no longer inlined.
+            js_entry=_JS_ENTRY,
+            js_modules=_JS_MODULES,
         )
     )
