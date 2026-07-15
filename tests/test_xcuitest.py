@@ -154,6 +154,38 @@ def test_pinch_and_rotate_emit_gesture_requests_with_the_handle() -> None:
     ]
 
 
+def test_text_editing_requests_carry_the_action_payload() -> None:
+    # delete/select/copy each POST to their own endpoint; the runner types the native key or key
+    # chord on the focused field (BE-0265). Focus is a prior tap the orchestrator issues.
+    sent: list[tuple[str, str, dict[str, Any] | None]] = []
+
+    def transport(method: str, path: str, body: dict[str, Any] | None) -> _Reply:
+        sent.append((method, path, body))
+        return _Reply(status="ok")
+
+    d = _driver(transport)
+    d.delete_text(3)
+    d.select_all()
+    d.copy_selection()
+    assert sent == [
+        ("POST", "/deleteText", {"count": 3}),
+        ("POST", "/selectAll", {}),
+        ("POST", "/copy", {}),
+    ]
+
+
+def test_text_editing_raises_on_a_non_ok_reply() -> None:
+    # A failed actuation is loud on every text-editing endpoint, never a silent no-op (determinism
+    # first) — the three share one guard shape, so pin all three.
+    d = _driver(lambda m, p, b: _Reply(status="error"))
+    with pytest.raises(XcuitestChannelError):
+        d.delete_text(1)
+    with pytest.raises(XcuitestChannelError):
+        d.select_all()
+    with pytest.raises(XcuitestChannelError):
+        d.copy_selection()
+
+
 def test_select_option_unsupported() -> None:
     # <select> is a web control with no iOS-native counterpart, so the backend refuses (BE-0191).
     d = _driver(lambda m, p, b: _Reply(status="ok"))

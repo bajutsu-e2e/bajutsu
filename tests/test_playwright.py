@@ -180,9 +180,13 @@ class _FakeMouse:
 class _FakeKeyboard:
     def __init__(self) -> None:
         self.typed: list[str] = []
+        self.pressed: list[str] = []
 
     def type(self, text: str) -> None:
         self.typed.append(text)
+
+    def press(self, key: str) -> None:
+        self.pressed.append(key)
 
 
 class _FakeCDP:
@@ -614,6 +618,25 @@ def test_type_text() -> None:
     drv, page = _driver([])
     drv.type_text("hello")
     assert page.keyboard.typed == ["hello"]
+
+
+def test_delete_text_presses_backspace_count_times() -> None:
+    # `count` Backspace presses on the focused field — Playwright has no repeat-count (BE-0265).
+    drv, page = _driver([])
+    drv.delete_text(3)
+    assert page.keyboard.pressed == ["Backspace", "Backspace", "Backspace"]
+
+
+def test_select_all_presses_control_a() -> None:
+    drv, page = _driver([])
+    drv.select_all()
+    assert page.keyboard.pressed == ["Control+a"]
+
+
+def test_copy_selection_presses_control_c() -> None:
+    drv, page = _driver([])
+    drv.copy_selection()
+    assert page.keyboard.pressed == ["Control+c"]
 
 
 def test_wait_for_is_single_shot() -> None:

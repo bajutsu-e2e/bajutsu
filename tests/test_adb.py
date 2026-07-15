@@ -446,6 +446,42 @@ def test_type_text_passes_value_over_stdin_not_argv(monkeypatch: pytest.MonkeyPa
     assert script == "input text '${secrets.password}%sval'"
 
 
+def test_delete_text_sends_count_backspaces_in_one_keyevent() -> None:
+    # `count` KEYCODE_DEL (67) in a single `input keyevent` call, not one round-trip per char (BE-0265).
+    calls: list[list[str]] = []
+
+    def run(args: list[str]) -> str:
+        calls.append(args)
+        return ""
+
+    AdbDriver("U", run=run).delete_text(3)
+    assert calls == [["adb", "-s", "U", "shell", "input", "keyevent", "67", "67", "67"]]
+
+
+def test_select_all_is_ctrl_a_keycombination() -> None:
+    # Ctrl(113)+A(29) chord — the editor "select all" shortcut on a focused field (BE-0265).
+    calls: list[list[str]] = []
+
+    def run(args: list[str]) -> str:
+        calls.append(args)
+        return ""
+
+    AdbDriver("U", run=run).select_all()
+    assert calls == [["adb", "-s", "U", "shell", "input", "keycombination", "113", "29"]]
+
+
+def test_copy_selection_is_ctrl_c_keycombination() -> None:
+    # Ctrl(113)+C(31) chord — copies the active selection to the clipboard (BE-0265).
+    calls: list[list[str]] = []
+
+    def run(args: list[str]) -> str:
+        calls.append(args)
+        return ""
+
+    AdbDriver("U", run=run).copy_selection()
+    assert calls == [["adb", "-s", "U", "shell", "input", "keycombination", "113", "31"]]
+
+
 def test_pinch_contacts_spread_level_about_center() -> None:
     # Two fingers level on a line through the centre, `half` out to either side, moving to half*scale.
     start, end = adb.pinch_contacts((100.0, 150.0), 25.0, 2.0)

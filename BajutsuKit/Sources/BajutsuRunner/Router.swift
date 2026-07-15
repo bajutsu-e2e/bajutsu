@@ -22,6 +22,12 @@ final class Router {
             return handleSwipe(request)
         case ("POST", "/type"):
             return handleType(request)
+        case ("POST", "/deleteText"):
+            return handleDeleteText(request)
+        case ("POST", "/selectAll"):
+            return tapResultResponse(onMain(self.provider.selectAll))
+        case ("POST", "/copy"):
+            return tapResultResponse(onMain(self.provider.copySelection))
         case ("GET", "/screenshot"):
             return handleScreenshot()
         default:
@@ -146,6 +152,17 @@ final class Router {
         }
         let result = onMain { self.provider.typeText(text) }
         return tapResultResponse(result)
+    }
+
+    private func handleDeleteText(_ request: HTTPRequest) -> HTTPResponse {
+        guard let body = request.body,
+              let json = try? JSONSerialization.jsonObject(with: body) as? [String: Any] else {
+            return .error(400, "missing or invalid JSON body")
+        }
+        guard let count = (json["count"] as? NSNumber)?.intValue, count > 0 else {
+            return .error(400, "missing or non-positive count")
+        }
+        return tapResultResponse(onMain { self.provider.deleteText(count: count) })
     }
 
     private func handleScreenshot() -> HTTPResponse {

@@ -12,6 +12,7 @@ from collections.abc import Callable
 from bajutsu.agent_protocols import EnrichmentAgent, EnrichmentProposal, StepContext
 from bajutsu.drivers import base
 from bajutsu.orchestrator import BlockedHandler, Clock, RealClock
+from bajutsu.orchestrator.types import SelectionState
 from bajutsu.record import clear_blocking, execute
 from bajutsu.scenario import Scenario
 from bajutsu.screenshots import screenshot_bytes
@@ -48,13 +49,20 @@ def enrich(
 
     say(f"enrichment: replaying {len(scenario.steps)} step(s) …")
 
+    # One selection shared across the replay, the same contract the run loop threads (BE-0265): a
+    # `select` step establishes the selection a later `copy` copies, so an authored select→copy
+    # sequence replays here without `copy` restarting from an inactive selection.
+    selection = SelectionState()
+
     for i, step in enumerate(scenario.steps, 1):
         if alert_guard is not None:
             clear_blocking(driver, alert_guard, clock, report=report)
 
         say(f"[{i}/{len(scenario.steps)}] replaying step …")
         try:
-            execute(driver, step, clock, on_wait_failure=_raise_on_wait_failure)
+            execute(
+                driver, step, clock, on_wait_failure=_raise_on_wait_failure, selection=selection
+            )
         except (
             base.SelectorError,
             base.UnsupportedAction,

@@ -72,6 +72,27 @@ final class XcuitestElementProvider: ElementProviding {
         return .ok
     }
 
+    func deleteText(count: Int) -> TapResult {
+        // Type the delete key `count` times on the focused field; XCUITest maps `.delete` to a real
+        // backspace, so this is agnostic to what the field held (BE-0265). The orchestrator focuses
+        // the field first, so the deletes land in it.
+        app.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: count))
+        return .ok
+    }
+
+    func selectAll() -> TapResult {
+        // Cmd+A selects the focused field's whole content — the hardware-keyboard shortcut the
+        // Simulator honors (BE-0265).
+        app.typeKey("a", modifierFlags: .command)
+        return .ok
+    }
+
+    func copySelection() -> TapResult {
+        // Cmd+C copies the active selection to the clipboard, read back by the `clipboard` assertion.
+        app.typeKey("c", modifierFlags: .command)
+        return .ok
+    }
+
     func screenshot() -> Data? {
         app.screenshot().pngRepresentation
     }

@@ -71,6 +71,23 @@ def test_type_into_sets_text_and_bare_type_is_todo() -> None:
     assert "// TODO: type without a target" in code
 
 
+def test_text_editing_steps_emit_uiautomator_peers() -> None:
+    # BE-0265: clear -> UiObject2.clear(), delete -> focus + N KEYCODE_DEL, select -> Ctrl+A,
+    # copy -> Ctrl+C. The KeyEvent import backs the key codes.
+    code = _gen(
+        "- name: x\n  steps:\n"
+        "    - clear: { into: { id: form.note } }\n"
+        "    - delete: { into: { id: form.note }, count: 2 }\n"
+        "    - select: { into: { id: form.note } }\n"
+        "    - copy: {}\n"
+    )
+    assert "import android.view.KeyEvent" in code
+    assert 'device.findObject(byId("form.note")).clear()' in code
+    assert "repeat(2) { device.pressKeyCode(KeyEvent.KEYCODE_DEL) }" in code
+    assert "device.pressKeyCode(KeyEvent.KEYCODE_A, KeyEvent.META_CTRL_ON)" in code
+    assert "device.pressKeyCode(KeyEvent.KEYCODE_C, KeyEvent.META_CTRL_ON)" in code
+
+
 def test_back_presses_the_system_key() -> None:
     # BE-0210: UI Automator has a native system back (peer of the adb driver's keyevent 4).
     code = _gen("- name: x\n  steps:\n    - back: {}\n")

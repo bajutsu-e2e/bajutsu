@@ -88,6 +88,12 @@ def test_unsupported_actions_raise() -> None:
         driver.select_option({"id": "x"}, "midnight")
     with pytest.raises(base.UnsupportedAction):
         driver.back()  # BE-0210: back is unsupported in the web context (first slice)
+    with pytest.raises(base.UnsupportedAction):
+        driver.delete_text(1)  # BE-0265: text-editing steps unsupported in the web context yet
+    with pytest.raises(base.UnsupportedAction):
+        driver.select_all()
+    with pytest.raises(base.UnsupportedAction):
+        driver.copy_selection()
 
 
 def test_capabilities_include_webview() -> None:

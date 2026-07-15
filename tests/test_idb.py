@@ -441,6 +441,30 @@ def test_type_text_fails_fast_when_companion_missing(monkeypatch) -> None:  # ty
         IdbDriver("U").type_text("hi")
 
 
+def test_delete_text_sends_backspaces_over_companion_not_argv(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    # Backspaces travel the same gRPC companion path type_text uses (BE-0265), so nothing lands
+    # on the idb argv — mirrors the type_text seam.
+    deleted: list[tuple[str, int]] = []
+    monkeypatch.setattr(
+        IdbDriver, "_delete_text", staticmethod(lambda udid, count: deleted.append((udid, count)))
+    )
+    ran: list[list[str]] = []
+    IdbDriver("U", run=lambda a: ran.append(a) or "").delete_text(3)
+
+    assert deleted == [("U", 3)]
+    assert ran == []  # no subprocess/argv was built
+
+
+def test_select_and_copy_are_unsupported_and_route_to_xcuitest() -> None:
+    # idb is coordinate-only, so select-all / copy have no actuation; they fail loudly and point at
+    # codegen→XCUITest, mirroring how multi-touch gestures are refused (BE-0265).
+    driver = IdbDriver("U", run=lambda a: "[]")
+    with pytest.raises(base.UnsupportedAction, match="XCUITest"):
+        driver.select_all()
+    with pytest.raises(base.UnsupportedAction, match="XCUITest"):
+        driver.copy_selection()
+
+
 def test_settle_gives_up_after_max_polls() -> None:
     # Frames change on every read; _settle gives up after the bound.
     counter = [0]

@@ -68,6 +68,9 @@ class _Keyboard(Protocol):
     def type(self, text: str) -> None:
         pass
 
+    def press(self, key: str) -> None:
+        pass
+
 
 class _Page(Protocol):
     mouse: _Mouse
@@ -641,6 +644,23 @@ class PlaywrightDriver:
         # The orchestrator taps `into` before this (see _do_type), focusing the field — same
         # contract idb relies on, so typing always lands in the just-focused element.
         self._page.keyboard.type(text)
+
+    @_wedge_guard
+    def delete_text(self, count: int) -> None:
+        # `count` backspaces on the focused field (BE-0265). `press` per key, since Playwright has no
+        # repeat-count on a single press.
+        for _ in range(count):
+            self._page.keyboard.press("Backspace")
+
+    @_wedge_guard
+    def select_all(self) -> None:
+        # Ctrl+A selects the focused field's whole content (BE-0265).
+        self._page.keyboard.press("Control+a")
+
+    @_wedge_guard
+    def copy_selection(self) -> None:
+        # Ctrl+C copies the active selection to the clipboard (BE-0265).
+        self._page.keyboard.press("Control+c")
 
     @_wedge_guard
     def select_option(self, sel: base.Selector, option: str) -> None:

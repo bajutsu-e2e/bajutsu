@@ -20,9 +20,12 @@ from bajutsu.scenario.models._base import (
 from bajutsu.scenario.models.actions import (
     Back,
     Background,
+    Clear,
     ClearClipboard,
     ClearKeychain,
     ClearStatusBar,
+    Copy,
+    Delete,
     Drag,
     Email,
     Foreground,
@@ -34,6 +37,7 @@ from bajutsu.scenario.models.actions import (
     Relaunch,
     Rotate,
     SelectOption,
+    SelectText,
     SetClipboard,
     SetLocation,
     Swipe,
@@ -105,6 +109,12 @@ class Step(_Model):
     double_tap: Selector | None = Field(default=None, alias="doubleTap")
     long_press: LongPress | None = Field(default=None, alias="longPress")
     type: TypeText | None = None
+    select: SelectText | None = None
+    clear: Clear | None = None
+    delete: Delete | None = None
+    # `copy_` (alias `copy`) mirrors `assert_` / `if_` / `from_`: the YAML key is `copy`, but the
+    # Python field is suffixed so it doesn't shadow pydantic `BaseModel.copy`.
+    copy_: Copy | None = Field(default=None, alias="copy")
     select_option: SelectOption | None = Field(default=None, alias="selectOption")
     swipe: Swipe | None = None
     drag: Drag | None = None

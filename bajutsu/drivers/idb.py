@@ -104,14 +104,15 @@ def swipe_cmd(udid: str, x1: float, y1: float, x2: float, y2: float) -> list[str
     ]
 
 
-def _type_text_via_companion(udid: str, text: str) -> None:
-    """Type `text` into the focused field over the fb-idb gRPC client (BE-0155).
+def _send_text_via_companion(udid: str, text: str) -> None:
+    """Send `text` to the focused field over the fb-idb gRPC client (BE-0155).
 
     fb-idb's `idb ui text` takes the text as a required positional argument, so a secret
     or OTP typed through the CLI sits on the `idb` process's argv, where a co-tenant on the
     host could read it via `ps`/`/proc`. The CLI subcommand is only a thin wrapper around
     `client.text()`, so we call that directly instead: the value travels to `idb_companion`
-    over gRPC and never lands on any command line.
+    over gRPC and never lands on any command line. Backs both `type` (raw text) and `delete`
+    (backspace control characters).
 
     Runs its own event loop via `asyncio.run`: the idb driver is synchronous and is only
     ever called from threads with no running loop (the runner and the crawl workers).
@@ -143,6 +144,23 @@ def _type_text_via_companion(udid: str, text: str) -> None:
             await client.text(text=text)
 
     asyncio.run(_send())
+
+
+def _type_text_via_companion(udid: str, text: str) -> None:
+    """Type `text` into the focused field over the fb-idb gRPC companion path (BE-0155)."""
+    _send_text_via_companion(udid, text)
+
+
+def _delete_text_via_companion(udid: str, count: int) -> None:
+    """Backspace `count` times on the focused field over the fb-idb gRPC companion path (BE-0265).
+
+    Sends the backspace control character through the same `client.text()` path `type` uses. Whether
+    the field honors that control character as a hardware backspace is the per-backend build-time
+    triage the proposal calls out; a companion HID key-event call is the fallback if it does not.
+    `select` / `copy` are not offered on idb — it is coordinate-only, so those raise
+    UnsupportedAction and route to XCUITest, mirroring multi-touch.
+    """
+    _send_text_via_companion(udid, "\b" * count)
 
 
 def screenshot_cmd(udid: str, path: str) -> list[str]:
@@ -399,6 +417,23 @@ class IdbDriver(CoordinateTreeDriver):
         self._type_text(self.udid, text)
 
     _type_text = staticmethod(_type_text_via_companion)
+
+    def delete_text(self, count: int) -> None:
+        # Via _delete_text (patchable, like _type_text) so tests intercept without a companion.
+        self._delete_text(self.udid, count)
+
+    _delete_text = staticmethod(_delete_text_via_companion)
+
+    def select_all(self) -> None:
+        raise base.UnsupportedAction(
+            "select は idb では未対応（座標専用バックエンドで select-all の手段がない）; "
+            "codegen→XCUITest を使うこと"
+        )
+
+    def copy_selection(self) -> None:
+        raise base.UnsupportedAction(
+            "copy は idb では未対応（select ができないため）; codegen→XCUITest を使うこと"
+        )
 
     def screenshot(self, path: str) -> None:
         self._run(screenshot_cmd(self.udid, path))

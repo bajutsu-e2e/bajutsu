@@ -18,6 +18,7 @@ from bajutsu.drivers import base
 from bajutsu.elements import shows_app_ui
 from bajutsu.handoff import Handoff, HandoffRequest, HumanHandoffUnavailable
 from bajutsu.orchestrator import BlockedHandler, Clock, RealClock, _action_of, _do_action, _wait
+from bajutsu.orchestrator.types import SelectionState
 from bajutsu.scenario import Assertion, Scenario, Selector, Step
 from bajutsu.screenshots import screenshot_bytes
 
@@ -214,6 +215,7 @@ def execute(
     step: Step,
     clock: Clock,
     on_wait_failure: Callable[[str], None] | None = None,
+    selection: SelectionState | None = None,
 ) -> None:
     """Replay one authored step: run a wait/action, treat an assertion as a no-op.
 
@@ -221,6 +223,10 @@ def execute(
     `wait` is handled: `record` records forward regardless (default `on_wait_failure=None`, so
     `_wait`'s failure result is dropped), while `enrich` passes a hook that raises `_ReplayFailed`
     so a step it cannot settle stops the replay.
+
+    `selection` carries the live text selection across steps for `copy` (BE-0265), the same state
+    the run loop threads: a caller replaying a sequence passes one shared instance so a `select`
+    step establishes the selection a later `copy` copies.
     """
     kind = _action_of(step)
     if kind == "wait":
@@ -231,7 +237,7 @@ def execute(
     elif kind == "assert_":
         return  # assertions are checks, not actions to perform while recording
     else:
-        _do_action(driver, step)
+        _do_action(driver, step, selection=selection)
 
 
 def clear_blocking(
@@ -281,10 +287,11 @@ def _execute_with_recovery(
     clock: Clock,
     guard: BlockedHandler | None,
     report: Reporter | None = None,
+    selection: SelectionState | None = None,
 ) -> bool:
     """Execute a step; if it fails because a prompt is covering the app, clear it and retry."""
     try:
-        execute(driver, step, clock)
+        execute(driver, step, clock, selection=selection)
         return True
     except base.SelectorError:
         if guard is None:
@@ -294,7 +301,7 @@ def _execute_with_recovery(
         )
         clear_blocking(driver, guard, clock, report=report)
         try:
-            execute(driver, step, clock)
+            execute(driver, step, clock, selection=selection)
             return True
         except base.SelectorError:
             return False
@@ -370,6 +377,9 @@ def record(
     started = time.monotonic()  # wall-clock: how long the author actually waited (model + device)
     steps: list[Step] = []
     expect: list[Assertion] = []
+    # One selection carried across the whole recording, the same contract the run loop threads
+    # (BE-0265): a `select` step the agent proposes establishes the selection a later `copy` copies.
+    selection = SelectionState()
     plan = _plan_goal(agent, goal, say)
     plan_cursor = 0  # plan steps reached so far — drives the pre-observe "next" hint below
     prev_screen: str | None = (
@@ -504,7 +514,9 @@ def record(
             say(f"{lead}{describe_step(recorded_step)}")
             if tokenized:
                 say(f"[{m}] \U0001f512 tokenized secret in typed text → {', '.join(tokenized)}")
-            if not _execute_with_recovery(driver, proposed, clock, alert_guard, report=report):
+            if not _execute_with_recovery(
+                driver, proposed, clock, alert_guard, report=report, selection=selection
+            ):
                 # The step did not resolve, even after clearing prompts. If nothing in this turn
                 # executed (the length-1 unresolvable case, unchanged from before), stop; otherwise
                 # the plan went stale mid-batch — abort the rest and re-observe next turn.

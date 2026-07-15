@@ -165,6 +165,7 @@ What a scenario can express: variables and light control flow, data-driven runs,
 | [BE-0046](BE-0046-otp-email-steps/BE-0046-otp-email-steps.md) | OTP & email side-channel steps | Implemented |
 | [BE-0052](BE-0052-device-state-timezone-clipboard-shake/BE-0052-device-state-timezone-clipboard-shake.md) | Device-state primitives: timezone, clipboard, shake | Implemented |
 | [BE-0186](BE-0186-mailbox-provider-registry/BE-0186-mailbox-provider-registry.md) | Mailbox provider registry for the email step | Implemented |
+| [BE-0265](BE-0265-text-editing-steps/BE-0265-text-editing-steps.md) | Text-editing steps: select, clear, delete, copy | Implemented |
 <!-- /GENERATED:implemented-scenario-authoring -->
 
 ### Verification & coverage
@@ -585,9 +586,7 @@ Running a scenario on a hosted device farm instead of a local Simulator, emulato
 ### Scenario authoring features
 
 <!-- GENERATED:proposals-scenario-authoring -->
-| ID | Item | Status |
-|---|---|---|
-| [BE-0265](BE-0265-text-editing-steps/BE-0265-text-editing-steps.md) | Text-editing steps: select, clear, delete, copy | Proposal |
+
 <!-- /GENERATED:proposals-scenario-authoring -->
 
 ### Authoring experience (record / GUI editor)
