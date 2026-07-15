@@ -504,6 +504,7 @@ Behavior-preserving cleanup inside `bajutsu/` itself — deduplication, decompos
 | [BE-0250](BE-0250-assertions-package-eval-context/BE-0250-assertions-package-eval-context.md) | Split assertions into a package and thread evaluation contexts as one EvalContext | Implemented |
 | [BE-0251](BE-0251-driver-base-helper-hoist/BE-0251-driver-base-helper-hoist.md) | Hoist duplicated driver helpers into drivers.base and unify small constants | Implemented |
 | [BE-0252](BE-0252-config-package-split/BE-0252-config-package-split.md) | Split config into a package and group Effective into sub-records | Implemented |
+| [BE-0253](BE-0253-serve-route-registry-unification/BE-0253-serve-route-registry-unification.md) | Unify the serve dual-backend route tables behind a declarative registry | Implemented |
 | [BE-0254](BE-0254-coordinate-tree-driver-base/BE-0254-coordinate-tree-driver-base.md) | Extract a shared CoordinateTreeDriver base for idb and adb | Implemented |
 | [BE-0255](BE-0255-codegen-shared-helper-dedup/BE-0255-codegen-shared-helper-dedup.md) | Deduplicate codegen identifier and regex helpers into codegen_common | Implemented |
 | [BE-0256](BE-0256-platform-lifecycle-package-split/BE-0256-platform-lifecycle-package-split.md) | Split platform_lifecycle into a package and route device resolution through the Environment seam | Implemented |
@@ -545,7 +546,6 @@ Accepted and actively being built — a PR is in flight or imminent.
 <!-- GENERATED:in-progress-quality-debt -->
 | ID | Item | Status |
 |---|---|---|
-| [BE-0253](BE-0253-serve-route-registry-unification/BE-0253-serve-route-registry-unification.md) | Unify the serve dual-backend route tables behind a declarative registry | In progress |
 | [BE-0257](BE-0257-layer-package-topology/BE-0257-layer-package-topology.md) | Package the enforced architecture layers as directories | In progress |
 <!-- /GENERATED:in-progress-quality-debt -->
 

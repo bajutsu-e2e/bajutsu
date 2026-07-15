@@ -16,8 +16,9 @@ transport mechanics stay per-backend while the route table is shared.
 `off_loop` routes (SSE, file/range serving, raw-body uploads, the OAuth round-trip, login, and the
 index render) write their own responses and differ structurally per backend, so the registry only
 *declares* them (`handle=None`) — each backend keeps its bespoke handling. `local_only` marks a
-route the FastAPI generator deliberately skips (populated by a later slice; every route here is
-served by both backends today). `content_type`, when set, selects a text response over JSON.
+route the FastAPI generator deliberately skips — Part 4's triage marks `/api/ant/login` and
+`/api/capture/*`; every other route is served by both backends. `content_type`, when set, selects a
+text response over JSON.
 
 Framework-agnostic by construction — like `gate.py`, it must import without FastAPI so the default
 stdlib serve path stays lean (`tests/serve/test_import_guard.py`).
@@ -28,7 +29,6 @@ from __future__ import annotations
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from typing import Any, Protocol
-from urllib.parse import unquote
 
 from bajutsu.serve import operations as ops
 from bajutsu.serve.state import ServeState
@@ -41,13 +41,17 @@ _HTML = "text/html; charset=utf-8"
 class RequestCtx(Protocol):
     """Backend-neutral view of one request, read by a route's `handle` adapter.
 
-    The stdlib `Handler` and (in a later slice) a FastAPI shim both satisfy this, so one adapter
-    closure serves both backends. Values are returned raw (not URL-decoded); a closure calls
-    `unquote` where the hand-written case did, preserving today's behavior exactly.
+    The stdlib `Handler` and a FastAPI shim both satisfy this, so one adapter closure serves both
+    backends.
     """
 
     def path_param(self, name: str) -> str:
-        """The value bound to a `{name}` segment of the matched path template."""
+        """The URL-decoded value bound to a `{name}` segment of the matched path template.
+
+        Both backends return the decoded segment: the stdlib ctx `unquote`s the raw match, the
+        FastAPI ctx passes Starlette's already-decoded param. A closure therefore never decodes,
+        so the two backends can't drift on how a percent-encoded segment reaches its `ops` call.
+        """
         ...
 
     def query(self, key: str) -> str | None:
@@ -79,7 +83,8 @@ class Route:
             `off_loop` route each backend handles bespoke.
         off_loop: The route writes its own response (streaming, file serve, raw upload, redirect)
             rather than the uniform JSON/text path; declared here but dispatched per backend.
-        local_only: The FastAPI generator skips this route (a later slice's triage populates it).
+        local_only: The FastAPI generator deliberately skips this route (Part 4's triage:
+            `/api/ant/login`, `/api/capture/*`).
         content_type: When set, the response is text of this type instead of JSON.
     """
 
@@ -138,7 +143,7 @@ ROUTES: tuple[Route, ...] = (
     # --- GET: streaming / binary (off_loop) ---
     Route("GET", "/api/jobs/{job_id}/events", off_loop=True),
     Route("GET", "/runs/{run_id}/archive.zip", off_loop=True),
-    Route("GET", "/api/capture/screenshot", off_loop=True),
+    Route("GET", "/api/capture/screenshot", off_loop=True, local_only=True),
     Route("GET", "/runs/{rel:path}", off_loop=True),
     # --- GET: index (off_loop) ---
     Route("GET", "/", off_loop=True),
@@ -166,7 +171,12 @@ ROUTES: tuple[Route, ...] = (
     ),
     Route("GET", "/api/provider", lambda state, ctx: ops.provider_info(state, ctx.actor())),
     Route("GET", "/api/themecontract", lambda state, ctx: ops.get_theme_contract(state)),
-    Route("GET", "/api/ant/login", lambda state, ctx: ops.ant_login_status(state)),
+    Route(
+        "GET",
+        "/api/ant/login",
+        lambda state, ctx: ops.ant_login_status(state),
+        local_only=True,
+    ),
     Route("GET", "/api/simulators", lambda state, ctx: ops.simulators_payload(state)),
     Route("GET", "/api/runs", lambda state, ctx: ops.runs_payload(state, actor=ctx.actor())),
     Route(
@@ -175,9 +185,7 @@ ROUTES: tuple[Route, ...] = (
     Route(
         "GET",
         "/api/projects/{name}/runs",
-        lambda state, ctx: ops.project_runs(
-            state, unquote(ctx.path_param("name")), actor=ctx.actor()
-        ),
+        lambda state, ctx: ops.project_runs(state, ctx.path_param("name"), actor=ctx.actor()),
     ),
     Route(
         "GET",
@@ -293,7 +301,7 @@ ROUTES: tuple[Route, ...] = (
         "/api/compose",
         lambda state, ctx: ops.bind_composition(state, ctx.body(), actor=ctx.actor()),
     ),
-    Route("POST", "/api/ant/login", lambda state, ctx: ops.ant_login(state)),
+    Route("POST", "/api/ant/login", lambda state, ctx: ops.ant_login(state), local_only=True),
     Route(
         "POST", "/api/run", lambda state, ctx: ops.start_run(state, ctx.body(), actor=ctx.actor())
     ),
@@ -306,15 +314,13 @@ ROUTES: tuple[Route, ...] = (
         "POST",
         "/api/projects/{name}/run",
         lambda state, ctx: ops.run_project(
-            state, unquote(ctx.path_param("name")), ctx.body(), actor=ctx.actor()
+            state, ctx.path_param("name"), ctx.body(), actor=ctx.actor()
         ),
     ),
     Route(
         "POST",
         "/api/projects/{name}/activate",
-        lambda state, ctx: ops.activate_project(
-            state, unquote(ctx.path_param("name")), actor=ctx.actor()
-        ),
+        lambda state, ctx: ops.activate_project(state, ctx.path_param("name"), actor=ctx.actor()),
     ),
     Route(
         "POST",
@@ -386,16 +392,19 @@ ROUTES: tuple[Route, ...] = (
         "POST",
         "/api/capture/start",
         lambda state, ctx: ops.start_capture(state, ctx.body(), actor=ctx.actor()),
+        local_only=True,
     ),
     Route(
         "POST",
         "/api/capture/mark",
         lambda state, ctx: ops.mark_capture(state, ctx.body(), actor=ctx.actor()),
+        local_only=True,
     ),
     Route(
         "POST",
         "/api/capture/finish",
         lambda state, ctx: ops.finish_capture(state, ctx.body(), actor=ctx.actor()),
+        local_only=True,
     ),
     Route(
         "POST",
@@ -448,9 +457,7 @@ ROUTES: tuple[Route, ...] = (
     Route(
         "POST",
         "/api/runs/{run_id}/restore",
-        lambda state, ctx: ops.restore_run(
-            state, unquote(ctx.path_param("run_id")), actor=ctx.actor()
-        ),
+        lambda state, ctx: ops.restore_run(state, ctx.path_param("run_id"), actor=ctx.actor()),
     ),
     # --- DELETE ---
     Route(
@@ -458,7 +465,7 @@ ROUTES: tuple[Route, ...] = (
         "/api/crawl/runs/{run_id}",
         lambda state, ctx: ops.delete_run(
             state,
-            unquote(ctx.path_param("run_id")),
+            ctx.path_param("run_id"),
             purge=ctx.query("purge") == "true",
             actor=ctx.actor(),
         ),
@@ -468,7 +475,7 @@ ROUTES: tuple[Route, ...] = (
         "/api/runs/{run_id}",
         lambda state, ctx: ops.delete_run(
             state,
-            unquote(ctx.path_param("run_id")),
+            ctx.path_param("run_id"),
             purge=ctx.query("purge") == "true",
             actor=ctx.actor(),
         ),
@@ -476,8 +483,6 @@ ROUTES: tuple[Route, ...] = (
     Route(
         "DELETE",
         "/api/projects/{name}",
-        lambda state, ctx: ops.deregister_project(
-            state, unquote(ctx.path_param("name")), actor=ctx.actor()
-        ),
+        lambda state, ctx: ops.deregister_project(state, ctx.path_param("name"), actor=ctx.actor()),
     ),
 )

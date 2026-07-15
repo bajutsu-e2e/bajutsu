@@ -7,14 +7,24 @@ imported only when the server backend is selected (the import guard in
 ``tests/serve/test_import_guard.py`` keeps it off the default path); FastAPI lives in the
 ``server`` optional-dependency group.
 
+The uniform (JSON/text) routes are generated from the shared `bajutsu.serve.routes` registry
+(BE-0253 Part 3): `make_app` iterates `ROUTES` and registers each entry that carries a `handle` and
+is not `local_only`, so this backend's route table is derived from the same source of truth the
+stdlib handler dispatches from — the two can't drift. `off_loop` routes (the SPA index, the
+ES-module frontend, run file / range / archive serving, SSE, the OAuth round-trip, login, and the
+raw-body uploads) write their own responses and stay bespoke below. `local_only` routes
+(`/api/ant/login`, `/api/capture/*`) are deliberately skipped: they need a single-process model
+(an in-process `Driver`, a machine-global credential) a horizontally-scaled deployment can't offer.
+
 The transport-specific parts mirror the stdlib handler one-to-one: the auth gate (BE-0051), the
 unconditional CSRF Origin check and Host allowlist (BE-0121), the session cookie, and the hardening
-response headers. Live-log SSE streaming arrives with a later slice; the rest of the API surface is here.
+response headers.
 """
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator
+import json
+from collections.abc import AsyncIterator, Callable
 from typing import Any
 
 from fastapi import FastAPI, Request, Response
@@ -31,7 +41,8 @@ from bajutsu.serve.handler import (
     _asset,
     _index_html,
 )
-from bajutsu.serve.helpers import range_reply
+from bajutsu.serve.helpers import range_reply, valid_run_id
+from bajutsu.serve.routes import ROUTES, Handle, Route
 from bajutsu.serve.state import ServeState
 from bajutsu.serve.upload_artifacts import ArtifactKind
 from bajutsu.serve.uploads import MAX_UPLOAD_BYTES, BoundedZipReceiver, UploadTooLarge
@@ -54,6 +65,53 @@ _OAUTH_CALLBACK = "/api/oauth/callback"
 def _result(payload_status: tuple[Any, int]) -> JSONResponse:
     payload, status = payload_status
     return JSONResponse(payload, status_code=status)
+
+
+class _FastapiCtx:
+    """Adapt one FastAPI request to the backend-neutral `RequestCtx` the route registry expects
+    (BE-0253) — the hosted-backend twin of the stdlib handler's `_StdlibCtx`. Starlette has already
+    URL-decoded the path params and query, so `path_param`/`query` return them straight through,
+    honoring the shared `path_param` "returns the decoded segment" contract without a second
+    `unquote`."""
+
+    def __init__(
+        self,
+        request: Request,
+        body: dict[str, Any],
+        actor: Callable[[], str | None],
+    ) -> None:
+        self._request = request
+        self._body = body
+        self._actor = actor
+
+    def path_param(self, name: str) -> str:
+        return str(self._request.path_params[name])
+
+    def query(self, key: str) -> str | None:
+        return self._request.query_params.get(key)
+
+    def body(self) -> dict[str, Any]:
+        return self._body
+
+    def actor(self) -> str | None:
+        return self._actor()
+
+
+def _serve_artifact(art: Any, request: Request, *, filename: str | None = None) -> Response:
+    """Emit an `Artifact` (404 if None): a 302 to its signed URL (server store) or its inline bytes
+    (local), honoring a `Range` request (a report's `<video>` needs 206/`Content-Range` to seek).
+    `filename`, when given, forces a download via Content-Disposition (the archive route); a redirect
+    relies on the signed URL's own disposition. Mirrors the stdlib handler's `_serve_artifact`."""
+    if art is None:
+        return _result(({"error": "not found"}, 404))
+    if art.redirect is not None:  # a server store hands back a signed URL
+        return RedirectResponse(art.redirect, status_code=302)
+    status, chunk, headers = range_reply(art.body or b"", request.headers.get("range"))
+    if status == 416:
+        return Response(status_code=416, headers=headers)
+    if filename is not None:
+        headers = {**headers, "Content-Disposition": f'attachment; filename="{filename}"'}
+    return Response(chunk, status_code=status, media_type=art.content_type, headers=headers)
 
 
 def make_app(state: ServeState) -> FastAPI:
@@ -112,7 +170,7 @@ def make_app(state: ServeState) -> FastAPI:
         response.headers.update(gate.HARDENING_HEADERS)
         return response
 
-    # --- SPA + static run artifacts ---
+    # --- SPA + static run artifacts (off_loop, bespoke) ---
 
     @app.get("/", response_class=HTMLResponse)
     @app.get("/index.html", response_class=HTMLResponse)
@@ -126,137 +184,34 @@ def make_app(state: ServeState) -> FastAPI:
         # hosted backend serves them alongside the stdlib handler (lockstep). Resolve the request to
         # the matching bundled module *constant* (not a string built from `name`), so an unknown or
         # traversing name 404s and no user-derived value ever reaches the file read (path-injection).
-        # The `text/javascript` type is required for a browser to execute a module script.
+        # The `text/javascript` type is required for a browser to execute a module script. Not in the
+        # route registry: its intra-segment `{name}` template (serve.{name}.mjs) is a shape the shared
+        # matcher does not model, so both backends serve it bespoke.
         asset = next((m for m in _JS_MODULES if m == f"serve.{name}.mjs"), None)
         if asset is None:
             return _result(({"error": "not found"}, 404))
         return Response(_asset(asset), media_type="text/javascript; charset=utf-8")
 
+    @app.get("/runs/{run_id}/archive.zip")
+    async def run_archive(run_id: str, request: Request) -> Response:
+        # A one-file download of the whole run (BE-0060), through the same org-scoped store as the
+        # per-file route, so containment / multi-tenancy hold identically. Reject a non-segment id
+        # up front so no `/` reaches the filename header (HTTP-splitting) — mirrors the stdlib
+        # handler's `_serve_run_archive`. Declared before `/runs/{rel:path}` so the greedy run-file
+        # route doesn't swallow it.
+        if not valid_run_id(run_id):
+            return _result(({"error": "not found"}, 404))
+        store = state.for_org(state.org_of(_actor(request))).artifacts
+        return _serve_artifact(store.archive(run_id), request, filename=f"{run_id}.zip")
+
     @app.get("/runs/{rel:path}")
     async def run_file(rel: str, request: Request) -> Response:
         # The actor's org-scoped artifact store: a run in another org's prefix reads as not-found
         # (BE-0015 multi-tenancy). report.html renders on view from the stored model (BE-0068).
-        art = ops.run_file(state.for_org(state.org_of(_actor(request))).artifacts, rel)
-        if art is None:
-            return _result(({"error": "not found"}, 404))
-        if art.redirect is not None:  # a server store hands back a signed URL
-            return RedirectResponse(art.redirect, status_code=302)
-        # Honor a `Range` request: a report's `<video>` needs 206/`Content-Range` replies to seek
-        # into a scrub target the browser hasn't buffered yet.
-        status, chunk, headers = range_reply(art.body or b"", request.headers.get("range"))
-        if status == 416:
-            return Response(status_code=416, headers=headers)
-        return Response(chunk, status_code=status, media_type=art.content_type, headers=headers)
+        store = state.for_org(state.org_of(_actor(request))).artifacts
+        return _serve_artifact(ops.run_file(store, rel), request)
 
-    # --- GET (reads) ---
-
-    @app.get("/api/scenarios")
-    async def scenarios(request: Request, target: str | None = None) -> JSONResponse:
-        return _result(ops.list_scenarios(state, target, actor=_actor(request)))
-
-    @app.get("/api/targets")
-    async def targets(request: Request) -> JSONResponse:
-        return _result(ops.list_targets_payload(state, actor=_actor(request)))
-
-    @app.get("/api/config")
-    async def config() -> JSONResponse:
-        return _result(ops.config_info(state))
-
-    @app.get("/api/config/content")
-    async def config_content() -> JSONResponse:
-        return _result(ops.config_content(state))
-
-    @app.get("/api/fs")
-    async def fs(dir: str | None = None) -> JSONResponse:
-        return _result(ops.browse_fs(state, dir))
-
-    @app.get("/api/apikey")
-    async def api_key(request: Request) -> JSONResponse:
-        return _result(ops.api_key_info(state, _actor(request)))
-
-    @app.get("/api/claudecodetoken")
-    async def claude_code_token(request: Request) -> JSONResponse:
-        return _result(ops.claude_code_token_info(state, _actor(request)))
-
-    @app.get("/api/gitcredential")
-    async def git_credential(request: Request) -> JSONResponse:
-        return _result(ops.git_credential_info(state, _actor(request)))
-
-    @app.get("/api/provider")
-    async def get_provider(request: Request) -> JSONResponse:
-        return _result(ops.provider_info(state, _actor(request)))
-
-    @app.get("/api/themecontract")
-    async def theme_contract() -> JSONResponse:
-        return _result(ops.get_theme_contract(state))
-
-    @app.get("/api/simulators")
-    async def simulators() -> JSONResponse:
-        return _result(ops.simulators_payload(state))
-
-    @app.get("/api/runs")
-    async def runs(request: Request) -> JSONResponse:
-        return _result(ops.runs_payload(state, actor=_actor(request)))
-
-    @app.get("/api/crawl/runs")
-    async def crawl_runs(request: Request) -> JSONResponse:
-        return _result(ops.crawl_runs_payload(state, actor=_actor(request)))
-
-    @app.get("/api/projects")
-    async def list_projects(request: Request) -> JSONResponse:
-        return _result(ops.list_projects_view(state, actor=_actor(request)))
-
-    @app.get("/api/projects/{name}/runs")
-    async def project_runs(name: str, request: Request) -> JSONResponse:
-        return _result(ops.project_runs(state, name, actor=_actor(request)))
-
-    @app.get("/api/metrics/projects")
-    async def project_metrics(request: Request) -> JSONResponse:
-        return _result(ops.project_metrics_view(state, actor=_actor(request)))
-
-    @app.get("/stats", response_class=HTMLResponse)
-    async def stats(request: Request) -> HTMLResponse:
-        html, code = ops.stats_html(state, actor=_actor(request))
-        return HTMLResponse(html, status_code=code)
-
-    @app.get("/usage", response_class=HTMLResponse)
-    async def usage(request: Request) -> HTMLResponse:
-        html, code = ops.usage_html(state, actor=_actor(request))
-        return HTMLResponse(html, status_code=code)
-
-    @app.get("/metrics")
-    async def metrics() -> Response:
-        # Prometheus text format; behind the same auth gate as every route (BE-0051), so a scraper
-        # authenticates with the operator token when one is configured.
-        text, code = ops.render_metrics(state)
-        return Response(text, status_code=code, media_type=ops.PROMETHEUS_CONTENT_TYPE)
-
-    @app.get("/api/scenario")
-    async def read_scenario(
-        request: Request,
-        target: str | None = None,
-        path: str | None = None,
-        runId: str | None = None,  # noqa: N803
-        scenario: str | None = None,
-    ) -> JSONResponse:
-        return _result(
-            ops.read_scenario(
-                state,
-                target,
-                path,
-                actor=_actor(request),
-                run_id=runId,
-                scenario_name=scenario,
-            )
-        )
-
-    @app.get("/api/schema")
-    async def scenario_schema() -> JSONResponse:
-        return _result(ops.scenario_schema())
-
-    @app.get("/api/jobs/{job_id}")
-    async def job(job_id: str) -> JSONResponse:
-        return _result(ops.job_view(state, job_id))
+    # --- SSE (off_loop) ---
 
     @app.get("/api/jobs/{job_id}/events")
     async def job_events(job_id: str, request: Request) -> Response:
@@ -287,7 +242,7 @@ def make_app(state: ServeState) -> FastAPI:
             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
         )
 
-    # --- POST (actions) ---
+    # --- login + OAuth round-trip (off_loop, set cookies) ---
 
     @app.post(_LOGIN_PATH)
     async def login(body: dict[str, Any]) -> JSONResponse:
@@ -330,16 +285,7 @@ def make_app(state: ServeState) -> FastAPI:
         resp.delete_cookie(_OAUTH_STATE_COOKIE, path="/")
         return resp
 
-    @app.post("/api/config")
-    async def bind_config(body: dict[str, Any]) -> JSONResponse:
-        # A `git` key selects the from-Git picker (BE-0063); `path` the local file browser. Key
-        # presence (not truthiness) routes, so an empty `git` still reaches the Git binder's 400. The
-        # Git path does blocking network I/O (materialize), so run it off the event loop.
-        if "git" in body:
-            return _result(
-                await run_in_threadpool(ops.bind_git_config, state, str(body.get("git") or ""))
-            )
-        return _result(ops.bind_config(state, str(body.get("path", "") or "")))
+    # --- raw-body uploads (off_loop) ---
 
     async def _stream_bounded_body(
         request: Request,
@@ -440,161 +386,43 @@ def make_app(state: ServeState) -> FastAPI:
     async def upload_binary_artifact(request: Request) -> JSONResponse:
         return await _artifact_upload("binary", request)
 
-    @app.get("/api/artifacts/exists")
-    async def artifact_exists(request: Request) -> JSONResponse:
-        return _result(
-            ops.artifact_exists(
-                state,
-                request.query_params.get("kind"),
-                request.query_params.get("sha256"),
-                actor=_actor(request),
-            )
-        )
+    # --- uniform (JSON / text) routes, generated from the shared registry (BE-0253 Part 3) ---
 
-    @app.post("/api/compose")
-    async def compose(body: dict[str, Any], request: Request) -> JSONResponse:
-        """Assemble a `(config, scenarios, binary)` triple from artifacts already uploaded via
-        `/api/artifacts/*` and bind it as the active config (BE-0268) — the FastAPI mirror of the
-        stdlib handler's `/api/compose` case. A small JSON body of shas, not a raw upload; the
-        fetch-and-compose does blocking disk I/O, so run it off the event loop."""
-        return _result(
-            await run_in_threadpool(ops.bind_composition, state, body, actor=_actor(request))
-        )
+    def _register(route: Route) -> None:
+        """Register one uniform route as a FastAPI endpoint that dispatches through the registry's
+        shared `handle` adapter — the FastAPI half of the single source of truth both backends
+        consume, so the route table can no longer drift between them."""
+        handle: Handle | None = route.handle
+        if handle is None:  # only uniform routes reach here; narrows the type for the closure
+            return
 
-    @app.post("/api/apikey")
-    async def set_api_key(body: dict[str, Any], request: Request) -> JSONResponse:
-        return _result(ops.set_api_key(state, str(body.get("value", "") or ""), _actor(request)))
+        async def endpoint(request: Request) -> Response:
+            body: dict[str, Any] = {}
+            if route.method == "POST":
+                # Parse the body the same way the stdlib handler does (empty -> {}, malformed -> 400,
+                # non-object -> 400) rather than via a typed `dict` param, so a bodyless POST (cancel,
+                # activate, restore) isn't forced to 422 and the two backends reject malformed input
+                # identically.
+                try:
+                    parsed = json.loads(await request.body() or b"{}")
+                except json.JSONDecodeError:
+                    return _result(({"error": "bad json"}, 400))
+                if not isinstance(parsed, dict):
+                    return _result(({"error": "expected a JSON object"}, 400))
+                body = parsed
+            ctx = _FastapiCtx(request, body, lambda: _actor(request))
+            # The `ops` call blocks (disk / network / subprocess), so run it off the event loop —
+            # uniformly, so a route like the from-Git config bind or compose stays non-blocking
+            # exactly as its hand-written predecessor did.
+            payload, code = await run_in_threadpool(handle, state, ctx)
+            if route.content_type is not None:
+                return Response(payload, status_code=code, media_type=route.content_type)
+            return _result((payload, code))
 
-    @app.post("/api/claudecodetoken")
-    async def set_claude_code_token(body: dict[str, Any], request: Request) -> JSONResponse:
-        return _result(
-            ops.set_claude_code_token(state, str(body.get("value", "") or ""), _actor(request))
-        )
+        app.add_api_route(route.path, endpoint, methods=[route.method])
 
-    @app.post("/api/gitcredential")
-    async def set_git_credential(body: dict[str, Any], request: Request) -> JSONResponse:
-        return _result(
-            ops.set_git_credential(state, str(body.get("value", "") or ""), _actor(request))
-        )
-
-    @app.post("/api/provider")
-    async def set_provider(body: dict[str, Any], request: Request) -> JSONResponse:
-        return _result(ops.set_provider(state, body, _actor(request)))
-
-    @app.post("/api/theme")
-    async def upload_theme(body: dict[str, Any], request: Request) -> JSONResponse:
-        return _result(ops.upload_theme(state, body, _actor(request)))
-
-    @app.post("/api/run")
-    async def run(body: dict[str, Any], request: Request) -> JSONResponse:
-        return _result(ops.start_run(state, body, actor=_actor(request)))
-
-    @app.post("/api/projects")
-    async def register_project(body: dict[str, Any], request: Request) -> JSONResponse:
-        return _result(ops.register_project(state, body, actor=_actor(request)))
-
-    @app.post("/api/projects/{name}/run")
-    async def run_project(name: str, body: dict[str, Any], request: Request) -> JSONResponse:
-        return _result(ops.run_project(state, name, body, actor=_actor(request)))
-
-    @app.post("/api/projects/{name}/activate")
-    async def activate_project(name: str, request: Request) -> JSONResponse:
-        return _result(ops.activate_project(state, name, actor=_actor(request)))
-
-    @app.delete("/api/projects/{name}")
-    async def deregister_project(name: str, request: Request) -> JSONResponse:
-        return _result(ops.deregister_project(state, name, actor=_actor(request)))
-
-    @app.post("/api/record")
-    async def record(body: dict[str, Any], request: Request) -> JSONResponse:
-        return _result(ops.start_record(state, body, actor=_actor(request)))
-
-    @app.post("/api/crawl")
-    async def crawl(body: dict[str, Any], request: Request) -> JSONResponse:
-        return _result(ops.start_crawl(state, body, actor=_actor(request)))
-
-    @app.post("/api/triage")
-    async def triage(body: dict[str, Any], request: Request) -> JSONResponse:
-        return _result(ops.start_triage(state, body, actor=_actor(request)))
-
-    @app.post("/api/scenario")
-    async def save_scenario(body: dict[str, Any], request: Request) -> JSONResponse:
-        return _result(ops.save_scenario(state, body, actor=_actor(request)))
-
-    @app.post("/api/scenario/resolve")
-    async def resolve_scenario_pick(body: dict[str, Any], request: Request) -> JSONResponse:
-        return _result(ops.resolve_scenario_pick(state, body, actor=_actor(request)))
-
-    @app.post("/api/lint")
-    async def lint_scenario(body: dict[str, Any]) -> JSONResponse:
-        return _result(ops.lint_scenario(body))
-
-    @app.post("/api/audit")
-    async def audit_scenario(body: dict[str, Any], request: Request) -> JSONResponse:
-        return _result(ops.audit_scenario(state, body, actor=_actor(request)))
-
-    @app.post("/api/approve")
-    async def approve(body: dict[str, Any], request: Request) -> JSONResponse:
-        return _result(ops.approve_baseline(state, body, actor=_actor(request)))
-
-    @app.post("/api/doctor")
-    async def doctor(body: dict[str, Any], request: Request) -> JSONResponse:
-        return _result(ops.doctor_check(state, body, actor=_actor(request)))
-
-    @app.post("/api/coverage")
-    async def coverage(body: dict[str, Any], request: Request) -> JSONResponse:
-        return _result(ops.coverage_view(state, body, actor=_actor(request)))
-
-    @app.post("/api/jobs/{job_id}/cancel")
-    async def cancel(job_id: str) -> JSONResponse:
-        return _result(ops.cancel_job(state, job_id))
-
-    @app.post("/api/runs/{run_id}/upload-urls")
-    async def upload_urls(run_id: str, body: dict[str, Any]) -> JSONResponse:
-        return _result(ops.generate_upload_urls(state, run_id, body))
-
-    # Run lifecycle (BE-0239): delete / restore / bulk-delete a run and its report. The static
-    # `bulk-delete` path is declared before any `{run_id}` route so it wins the match should a
-    # single-segment `POST /api/runs/{run_id}` ever be added (there is none today). Crawl and
-    # scenario runs share the `runs/<id>/` tree, so one operation serves both DELETE routes.
-    @app.post("/api/runs/bulk-delete")
-    async def bulk_delete_runs(body: dict[str, Any], request: Request) -> JSONResponse:
-        return _result(ops.bulk_delete_runs(state, body, actor=_actor(request)))
-
-    @app.post("/api/runs/{run_id}/restore")
-    async def restore_run(run_id: str, request: Request) -> JSONResponse:
-        return _result(ops.restore_run(state, run_id, actor=_actor(request)))
-
-    @app.delete("/api/runs/{run_id}")
-    async def delete_run(run_id: str, request: Request, purge: bool = False) -> JSONResponse:
-        # `?purge=true` skips the trash window (admin-only, gated in the operation — the query isn't
-        # in the path the RBAC middleware sees).
-        return _result(ops.delete_run(state, run_id, purge=purge, actor=_actor(request)))
-
-    @app.delete("/api/crawl/runs/{run_id}")
-    async def delete_crawl_run(run_id: str, request: Request, purge: bool = False) -> JSONResponse:
-        return _result(ops.delete_run(state, run_id, purge=purge, actor=_actor(request)))
-
-    @app.post("/api/worker/lease")
-    async def worker_lease(body: dict[str, Any]) -> JSONResponse:
-        return _result(ops.worker_lease(state, body.get("worker_id", ""), body.get("capabilities")))
-
-    @app.post("/api/worker/heartbeat")
-    async def worker_heartbeat(body: dict[str, Any]) -> JSONResponse:
-        return _result(
-            ops.worker_heartbeat(state, body.get("worker_id", ""), body.get("job_id", ""))
-        )
-
-    @app.post("/api/worker/result")
-    async def worker_result(body: dict[str, Any]) -> JSONResponse:
-        return _result(ops.worker_result(state, body))
-
-    @app.post("/api/worker/artifact-urls")
-    async def worker_artifact_urls(body: dict[str, Any]) -> JSONResponse:
-        return _result(ops.worker_artifact_urls(state, body))
-
-    @app.post("/api/worker/scenario-url")
-    async def worker_scenario_url(body: dict[str, Any]) -> JSONResponse:
-        return _result(ops.worker_scenario_url(state, body))
+    for route in ROUTES:
+        if route.handle is not None and not route.local_only:
+            _register(route)
 
     return app

@@ -7,9 +7,9 @@
 |---|---|
 | 提案 | [BE-0253](BE-0253-serve-route-registry-unification-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **実装中** |
+| 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0253") |
-| 実装 PR | [#1098](https://github.com/bajutsu-e2e/bajutsu/pull/1098), [#1108](https://github.com/bajutsu-e2e/bajutsu/pull/1108) |
+| 実装 PR | [#1098](https://github.com/bajutsu-e2e/bajutsu/pull/1098), [#1108](https://github.com/bajutsu-e2e/bajutsu/pull/1108), [#1115](https://github.com/bajutsu-e2e/bajutsu/pull/1115) |
 | トピック | コードベース品質・技術的負債 |
 <!-- /BE-METADATA -->
 
@@ -132,8 +132,8 @@ drift を、grep できる明示的な宣言に変えます。作業は MECE な
       クト、`off_loop` / `local_only` / `content_type` フラグ）
 - [x] 標準ライブラリのハンドラの `do_GET` / `do_POST` / `do_DELETE` を、レジストリからディス
       パッチするように書き換える
-- [ ] `make_app` で、`app.py` の FastAPI ルートをレジストリから生成する
-- [ ] 現在 `app.py` に欠けているすべてのエンドポイント（`/flakiness`、`/api/ant/login`、
+- [x] `make_app` で、`app.py` の FastAPI ルートをレジストリから生成する
+- [x] 現在 `app.py` に欠けているすべてのエンドポイント（`/flakiness`、`/api/ant/login`、
       `/api/enrich`、`/api/codegen`、`/api/capture/*`、`/api/jobs/{id}/respond-human`、
       `/runs/{id}/archive.zip`）を判定する。設計上本当にローカル限定のものには `local_only=True`
       の印を付け、それ以外は補う
@@ -161,6 +161,25 @@ drift を、grep できる明示的な宣言に変えます。作業は MECE な
   アップロード、OAuth、ログイン、インデックス）はここで宣言しつつ、各バックエンドの個別処理のまま
   にしています。Part 3（`app.py` をレジストリから生成する）と Part 4（`local_only` による FastAPI
   側で欠けているエンドポイントの判定）は次のスライスで実装します。
+- 2026-07-15 — Part 3〜4（`app.py` のレジストリからの生成と判定）を
+  [#1115](https://github.com/bajutsu-e2e/bajutsu/pull/1115) で実装し、この項目を完了しました。
+  `make_app` は `ROUTES` を走査し、`handle` を持ち `local_only` でない各エントリを登録するようになり、
+  手書きの `@app.<method>` デコレータ約 40 個を置き換えました。`off_loop` のルート（インデックス、
+  ES モジュールのフロントエンド、run ファイルの配信とレンジ配信とアーカイブ配信、Server-Sent Events
+  （SSE）、OAuth、ログイン、生のアップロード）は各バックエンドの個別処理のまま残しています。バックエンドに
+  中立な `_FastapiCtx` は標準ライブラリ側の `_StdlibCtx` と対になります。Part 4 の判定では、`/api/ant/login`
+  （マシン全体で共有される資格情報を書き込むため、ホスティング時はすでに 403 を返します）と
+  `/api/capture/*`（start・mark・finish をまたいでプロセス内の `Driver` を保持します）に `local_only=True`
+  の印を付けて生成の対象から外し、それ以外で `app.py` に欠けていたエンドポイント、すなわち `/flakiness`、
+  `/api/enrich`、`/api/codegen`、`/api/jobs/{id}/respond-human`、これまで一度も移植されていなかった
+  `/api/scenario/apply-selector` と `/api/scenario/enrich-apply`、そして個別処理で補った
+  `/runs/{id}/archive.zip` を配信するようにして、静かな食い違いを塞ぎました。パスパラメータの `unquote` は
+  レジストリのクロージャから各 ctx へ移し（`path_param` は両バックエンドともデコード済みのセグメントを
+  返します）、percent エンコードされたセグメントが `ops` の呼び出しに届くまでの扱いで 2 つのバックエンドが
+  食い違わないようにしました。挙動は変えていませんが、ホスティング側のバックエンドは不正なリクエスト本体を
+  FastAPI の 422 ではなく標準ライブラリ側と同じ 400 で拒否するようになり（テストで固定されていなかった
+  エラー経路を意図的に揃えました）、`?purge` は Part 2 ですでに出荷済みの標準ライブラリの `== "true"` の
+  契約に従います（Web UI は `?purge` を送りません）。
 
 ## 参考
 
