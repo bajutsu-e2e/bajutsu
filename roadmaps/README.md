@@ -636,8 +636,7 @@ Running a scenario on a hosted device farm instead of a local Simulator, emulato
 ### Codebase quality & technical debt
 
 <!-- GENERATED:proposals-quality-debt -->
-| ID | Item | Status |
-|---|---|---|
+
 <!-- /GENERATED:proposals-quality-debt -->
 
 ## Deferred
