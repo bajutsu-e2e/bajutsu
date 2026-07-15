@@ -138,6 +138,26 @@ def test_compose_accepts_a_single_yaml_scenarios_artifact(tmp_path: Path) -> Non
         server.server_close()
 
 
+def test_compose_ignores_scenarios_name_for_a_zip_artifact(tmp_path: Path) -> None:
+    # A zip's name is irrelevant to the composed tree (materialize_composition content-sniffs it), so
+    # supplying scenariosName for a zip must NOT fragment the compose cache: the same triple with and
+    # without the name composes to the same tree. Enforced server-side, not just by the UI's gate.
+    server, port = _serve(_state(tmp_path))
+    try:
+        config_sha = _post_bytes(port, "/api/artifacts/config", _SCENARIOS_ONLY_CONFIG)["sha256"]
+        scenarios_sha = _post_bytes(port, "/api/artifacts/scenarios", _scenarios_zip())["sha256"]
+        _, without = _post(port, "/api/compose", {"config": config_sha, "scenarios": scenarios_sha})
+        _, with_name = _post(
+            port,
+            "/api/compose",
+            {"config": config_sha, "scenarios": scenarios_sha, "scenariosName": "irrelevant.yml"},
+        )
+        assert without["config"] == with_name["config"]  # one composition, name ignored for a zip
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
 def test_compose_swapping_one_leg_is_a_new_triple_not_a_new_upload(tmp_path: Path) -> None:
     # The combination matrix: two scenario sets against one config compose into two distinct trees,
     # each a fresh triple over already-stored artifacts — no re-upload of the shared config.

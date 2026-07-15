@@ -12,6 +12,7 @@ from __future__ import annotations
 import hashlib
 import re
 import tempfile
+import zipfile
 from pathlib import Path
 from typing import Any
 
@@ -327,22 +328,41 @@ def _compose_and_bind(
     re-sanitizing — or an `(error, status)` pair. *filename* is the raw, untrusted provenance name
     (a client-shaped record or request); this is the single place it is run through `_safe_filename`.
     *scenarios_filename* names a single-file `scenarios` artifact so it lands under a meaningful
-    `*.yaml` name and salts the cache key (the reactivation path carries none). A composed bind
-    records its provenance as `compositionId` + one `<kind>Sha` per supplied artifact
+    `*.yaml` name and salts the cache key — but **only when that artifact is actually a single YAML**,
+    not a zip: `materialize_composition` ignores the name for a zip (it content-sniffs with
+    `zipfile.is_zipfile`), so salting a zip would fragment the cache into byte-identical trees. This
+    invariant is enforced here, at the API boundary, not just in the UI's `.zip`-suffix gate — any
+    `/api/compose` client gets it. The reactivation path carries no name, so it never salts. A
+    composed bind records its provenance as `compositionId` + one `<kind>Sha` per supplied artifact
     (`Upload.artifact_shas`), never a single top-level `sha256`."""
-    composition_id = _composition_id(
-        shas, extra=scenarios_filename if ("scenarios" in shas and scenarios_filename) else ""
-    )
-    compositions_dir = _compositions_dir(state) / org_prefix("", org)
     paths: dict[str, Path] = {}
+    salt = ""
+    scenarios_sha = shas.get("scenarios")
+    if scenarios_filename and scenarios_sha is not None:
+        # The cache key must reflect whether this scenarios artifact is a single YAML (name salts the
+        # key) or a zip (name ignored ⇒ no salt), and that verdict is by *content*, so the scenarios
+        # leg is resolved up front — before the composition-cache lookup, which the salt feeds. It's
+        # one small artifact, and the resolved path is reused below (config/binary still skip their
+        # fetch on a cache hit). Only reached when a name was supplied — the reactivation path (no
+        # name) keeps its "resolve nothing on a cache hit" shortcut untouched.
+        fetched, status = _fetch_artifact(state, org, "scenarios", scenarios_sha)
+        if status != 200:
+            assert isinstance(fetched, dict)  # a non-200 is always the error payload
+            return fetched, status
+        assert isinstance(fetched, Path)  # `status == 200` only ever pairs with a resolved path
+        paths["scenarios"] = fetched
+        if not zipfile.is_zipfile(fetched):
+            salt = scenarios_filename
+    composition_id = _composition_id(shas, extra=salt)
+    compositions_dir = _compositions_dir(state) / org_prefix("", org)
     if not (compositions_dir / composition_id).exists():
-        # Only resolve each leg (local cache hit or object-store fetch) when this exact triple
-        # hasn't been composed on this replica before — `materialize_composition` itself no-ops on
-        # a cache hit without ever reading these paths, so a replica that's already composed this
-        # triple (the common case on reactivation) skips every per-artifact fetch entirely.
+        # Only resolve each remaining leg (local cache hit or object-store fetch) when this exact
+        # triple hasn't been composed on this replica before — `materialize_composition` itself
+        # no-ops on a cache hit without ever reading these paths, so a replica that's already
+        # composed this triple (the common case on reactivation) skips every per-artifact fetch.
         for kind in ARTIFACT_KINDS:
             sha = shas.get(kind)
-            if sha is None:
+            if sha is None or kind in paths:  # `scenarios` may already be resolved above
                 continue
             fetched, status = _fetch_artifact(state, org, kind, sha)
             if status != 200:
