@@ -40,11 +40,22 @@ are easy to conflate since they'll sit in the same header.
   the process's working directory is inside a Git checkout — a short commit SHA, the
   branch name, and a dirty flag (uncommitted changes present). These are read with Git
   plumbing commands (`git rev-parse --short HEAD`, `git rev-parse --abbrev-ref HEAD`,
-  `git status --porcelain`), the same low-cost, no-LLM pattern the existing
-  config-provenance lookup already uses, and are read fresh on every request so a session
-  left running while its checkout is edited stays accurate.
+  `git status --porcelain`) — a deterministic, no-LLM subprocess read, but a new mechanism
+  for serve: the existing config-provenance stamp (`source_provenance` in
+  `bajutsu/config_source.py`) instead resolves its commit via the GitHub API at bind time,
+  and only for a remote `github:`-sourced config (a local file config has no Git provenance
+  at all). These are read fresh on every request so a session left running while its
+  checkout is edited stays accurate.
 - When no `.git` is present (e.g. after `pip install bajutsu`), the response simply omits
   commit/branch/dirty, and the frontend shows only the version string.
+- **Access control.** Decide during implementation whether this read is open to every
+  visitor or role-gated. The branch name is the sensitive field: this repo's own
+  convention (`CLAUDE.md`, "One topic per branch") names branches `claude/<topic>` or
+  `<user>/<topic>`, which routinely encodes an in-progress BE slug, so exposing it on a
+  hosted or shared deployment could leak what's being worked on. [BE-0187](../BE-0187-serve-config-view/BE-0187-serve-config-view.md)
+  set the precedent by gating its wider-disclosure `/api/config/content` read to the
+  `admin` role. The version string alone is not sensitive; a reasonable default is to keep
+  version open and gate commit/branch/dirty (or at least the branch name) to `admin`.
 - **Frontend.** A small badge in the header template, next to the config-provenance badge
   — e.g. `v0.0.0 · a1b2c3d (branch-name)` — with a distinct marker when dirty. Rendered by
   the appropriate `serve.*.js` module from the [BE-0202](../BE-0202-serve-js-modularization/BE-0202-serve-js-modularization.md)
@@ -78,6 +89,8 @@ are easy to conflate since they'll sit in the same header.
 
 - [ ] Backend: expose version (plus commit/branch/dirty when running from a Git checkout)
       via a status endpoint.
+- [ ] Access control: decide and implement whether commit/branch/dirty are open or
+      `admin`-gated (version stays open).
 - [ ] Frontend: render the badge in the serve header next to the provenance badge.
 - [ ] Docs: record the badge in `docs/architecture.md`'s implementation status (and its
       Japanese mirror) once shipped.
