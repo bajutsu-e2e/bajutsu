@@ -7,7 +7,7 @@
 |---|---|
 | Proposal | [BE-0231](BE-0231-smoke-idb-first-wait-settling.md) |
 | Author | [@hirosassa](https://github.com/hirosassa) |
-| Status | **In progress** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0231") |
 | Implementing PR | [#952](https://github.com/bajutsu-e2e/bajutsu/pull/952), [#970](https://github.com/bajutsu-e2e/bajutsu/pull/970), [#1013](https://github.com/bajutsu-e2e/bajutsu/pull/1013) |
 | Topic | Platform support |
@@ -136,7 +136,7 @@ acceptance. Each unit is independently shippable.
 - [x] Unit 3 — make the first `wait` resilient to a mid-transition empty tree.
 - [x] Unit 4 — right-size the first-wait budget for a cold CI Simulator (config, condition-based).
 - [x] Unit 6 — recover a wedged idb accessibility bridge (per-udid companion reset on a lone zero-frame `application` tree).
-- [ ] Unit 5 — prove the lane stays green on first attempt across consecutive CI runs (observed after unit 6 lands).
+- [x] Unit 5 — prove the lane stays green on first attempt across consecutive CI runs (observed after unit 6 lands).
 
 Log (oldest first):
 
@@ -176,6 +176,13 @@ Log (oldest first):
   fails loudly with the unit 1 diagnostic (no masking). Condition-based (prime directive 2),
   driver-scoped and app-agnostic (prime directive 3), no LLM on the path (prime directive 1). Status
   stays **In progress**: unit 5 (the lane green on first attempt) is observed after this lands.
+- Unit 5 (observation, no code to ship) — with #1013 merged, the `smoke (idb)` lane passed on its
+  first attempt across 20+ consecutive CI runs over the following day, spanning many unrelated
+  branches, with zero first-wait timeouts and no manual reruns. The pre-#1013 recurrence signature
+  (`wait timeout: for stable.row.1`, a lone zero-frame `application` tree) did not reappear. The
+  machine-checkable acceptance in *Detailed design* unit 5 holds, so the item moves to
+  **Implemented**. Runs to `main` build only the `visual (idb)` lane, so this evidence accrues from
+  the pull-request runs that touch the smoke lane's inputs, not from `main` pushes.
 
 ## References
 
