@@ -9,7 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0269") |
-| 実装 PR | _pending_ |
+| 実装 PR | [#1122](https://github.com/bajutsu-e2e/bajutsu/pull/1122) |
 | トピック | プラットフォーム対応 |
 <!-- /BE-METADATA -->
 
@@ -130,7 +130,7 @@
 
 **ログ**
 
-- _pending_ — 4 つのユニットを `bajutsu/orchestrator/waits.py`（`_AlertGuardGate` と、`on_blocked` /
+- [#1122](https://github.com/bajutsu-e2e/bajutsu/pull/1122) — 4 つのユニットを `bajutsu/orchestrator/waits.py`（`_AlertGuardGate` と、`on_blocked` /
   `alerts` を `_wait` / `_wait_settled` へ通す配線）と `bajutsu/orchestrator/loop.py`（配線。ステップ
   末尾のリトライは意図的にミッドウェイトのガードを再武装しないため、1 ステップの AI vision 呼び出しは
   `_GUARD_MAX_ATTEMPTS` + 1 に収まります）で実装しました。`tests/orchestrator/test_waits.py` で検証しています。

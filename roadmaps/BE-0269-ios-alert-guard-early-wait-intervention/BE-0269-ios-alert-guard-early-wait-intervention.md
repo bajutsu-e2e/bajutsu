@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0269") |
-| Implementing PR | _pending_ |
+| Implementing PR | [#1122](https://github.com/bajutsu-e2e/bajutsu/pull/1122) |
 | Topic | Platform support |
 <!-- /BE-METADATA -->
 
@@ -131,7 +131,7 @@ that cadence.
 
 **Log**
 
-- _pending_ — implemented all four units in `bajutsu/orchestrator/waits.py` (the `_AlertGuardGate`
+- [#1122](https://github.com/bajutsu-e2e/bajutsu/pull/1122) — implemented all four units in `bajutsu/orchestrator/waits.py` (the `_AlertGuardGate`
   gate + threading `on_blocked`/`alerts` through `_wait`/`_wait_settled`) and
   `bajutsu/orchestrator/loop.py` (wiring; the end-of-step retry deliberately does not re-arm the
   mid-wait guard, bounding a step's AI-vision calls at `_GUARD_MAX_ATTEMPTS` + 1). Covered by
