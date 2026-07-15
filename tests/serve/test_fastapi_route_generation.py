@@ -128,3 +128,24 @@ def test_fastapi_ctx_returns_the_starlette_decoded_param_without_re_decoding() -
     request = Request({"type": "http", "path_params": {"name": "a%20b"}, "query_string": b""})
     ctx = _FastapiCtx(request, {}, lambda: None)
     assert ctx.path_param("name") == "a%20b"
+
+
+def test_generated_post_route_rejects_malformed_body_with_400_not_422(tmp_path: Path) -> None:
+    # `_register`'s manual body parse (BE-0253 PR-C) exists so a generated route rejects a malformed
+    # body exactly like the stdlib handler — a typed `dict` body param would instead let FastAPI's
+    # own validation 422 it, silently diverging from the stdlib side. Nothing pinned this down before.
+    client = TestClient(make_app(_state(tmp_path)))
+    bad_json = client.post("/api/lint", content=b"not json")
+    assert bad_json.status_code == 400
+    assert bad_json.json() == {"error": "bad json"}
+    non_object = client.post("/api/lint", json=[1, 2, 3])
+    assert non_object.status_code == 400
+    assert non_object.json() == {"error": "expected a JSON object"}
+
+
+def test_generated_bodyless_post_is_not_forced_through_422(tmp_path: Path) -> None:
+    # cancel/activate/restore send no body; a typed `dict` param would 422 them before ever reaching
+    # the op. Here the bodyless POST reaches cancel_job's own 404, not FastAPI's validation 422.
+    resp = TestClient(make_app(_state(tmp_path))).post("/api/jobs/nosuchjob/cancel")
+    assert resp.status_code == 404
+    assert resp.json() == {"error": "no such job"}
