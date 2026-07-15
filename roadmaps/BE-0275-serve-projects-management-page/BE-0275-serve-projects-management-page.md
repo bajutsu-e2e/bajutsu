@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-serve-projects-management-page-ja.md)
+**English** · [日本語](BE-0275-serve-projects-management-page-ja.md)
 
-# BE-XXXX — A projects management page in serve (a top-level view, not a modal)
+# BE-0275 — A projects management page in serve (a top-level view, not a modal)
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-serve-projects-management-page.md) |
+| Proposal | [BE-0275](BE-0275-serve-projects-management-page.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0275") |
 | Topic | Surfacing CLI features in the serve Web UI |
 | Related | [BE-0225](../BE-0225-config-project-hub/BE-0225-config-project-hub.md), [BE-0226](../BE-0226-cross-project-metrics-dashboard/BE-0226-cross-project-metrics-dashboard.md), [BE-0015](../BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md), [BE-0108](../BE-0108-hosted-config-source-restriction/BE-0108-hosted-config-source-restriction.md), [BE-0063](../BE-0063-git-config-source/BE-0063-git-config-source.md), [BE-0073](../BE-0073-serve-zip-bundle-upload/BE-0073-serve-zip-bundle-upload.md) |
 <!-- /BE-METADATA -->
