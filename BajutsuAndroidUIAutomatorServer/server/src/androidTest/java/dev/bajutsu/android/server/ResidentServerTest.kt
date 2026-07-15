@@ -78,24 +78,41 @@ class ResidentServerTest {
     }
 
     private fun respondSource(out: OutputStream, device: UiDevice) {
-        // Wait for the accessibility event queue to drain before dumping, exactly as the platform
-        // `uiautomator dump` shell command does (its DumpCommand calls waitForIdle first). Without
-        // this, a warm session reads the tree faster than an async node change (e.g. a gesture
-        // mirroring its result into an a11y value) is delivered, so the resident channel would
-        // snapshot a stale value the slower `uiautomator dump` fallback never sees — the two paths
-        // must yield the same Elements (BE-0245). This is a bounded condition wait on the event
-        // queue, not a fixed sleep.
-        device.waitForIdle()
         // dumpWindowHierarchy traverses every window, so this XML also carries the SystemUI status
         // bar (clock, wifi, battery, notification icons — 29 nodes) that the platform `uiautomator
-        // dump` omits by scoping to the
-        // active window. `parse_hierarchy` parses the format unchanged; narrowing the tree to the
-        // active window so the two paths yield the same Elements lands with the transport wiring
-        // (PR-C), where it can be regression-tested end to end.
-        val body = ByteArrayOutputStream()
-        device.dumpWindowHierarchy(body)
-        respond(out, "200 OK", "application/xml; charset=utf-8", body.toByteArray())
+        // dump` omits by scoping to the active window. `parse_hierarchy` parses the format unchanged.
+        respond(out, "200 OK", "application/xml; charset=utf-8", stableHierarchy(device))
     }
+
+    /**
+     * Dump the window hierarchy once it has settled: re-dump across [UiDevice.waitForIdle] until two
+     * consecutive dumps are byte-identical, or [STABLE_DUMPS] is reached.
+     *
+     * `waitForIdle` alone (BE-0245's original fix) drains the accessibility event queue, matching what
+     * the platform `uiautomator dump` shell command does — but a warm resident session reads the tree
+     * faster than the dump command's per-invocation startup, so it can still snapshot a stale value
+     * when a gesture's result (e.g. an a11y `value` flipping idle→pressed) is posted just *after* the
+     * queue looked idle. `uiautomator dump`'s startup latency masked that window; the resident channel
+     * exposes it, producing flaky post-gesture reads (BE-0245 follow-up). Requiring two matching dumps
+     * makes "the tree stopped changing" the read barrier, closing that window so the resident and dump
+     * paths yield the same Elements. Bounded and condition-driven (settle, not a fixed sleep — Bajutsu
+     * determinism); an element that never settles (an animation) costs at most [STABLE_DUMPS] dumps and
+     * returns the last read, still far cheaper than `uiautomator dump`'s ≈ 2.4 s startup.
+     */
+    private fun stableHierarchy(device: UiDevice): ByteArray {
+        device.waitForIdle()
+        var previous = dumpHierarchy(device)
+        repeat(STABLE_DUMPS - 1) {
+            device.waitForIdle()
+            val current = dumpHierarchy(device)
+            if (current.contentEquals(previous)) return current
+            previous = current
+        }
+        return previous.also { Log.d(TAG, "hierarchy did not settle after $STABLE_DUMPS dumps") }
+    }
+
+    private fun dumpHierarchy(device: UiDevice): ByteArray =
+        ByteArrayOutputStream().also { device.dumpWindowHierarchy(it) }.toByteArray()
 
     private fun respond(out: OutputStream, status: String, contentType: String, body: ByteArray) {
         val header = buildString {
@@ -114,5 +131,10 @@ class ResidentServerTest {
         const val PORT = 6790
         const val BACKLOG = 16
         const val SO_TIMEOUT_MS = 5_000
+
+        // Max dumps per read while waiting for two consecutive hierarchies to match (see
+        // stableHierarchy). A settled screen matches on the 2nd dump; the extra headroom absorbs a
+        // gesture result that lands mid-read without letting an animated node spin forever.
+        const val STABLE_DUMPS = 4
     }
 }
