@@ -121,6 +121,7 @@ One backend per platform behind the single driver interface ([DESIGN §1](../DES
 | [BE-0223](BE-0223-adb-tab-bar-navigation/BE-0223-adb-tab-bar-navigation.md) | Reach every Android tab by driving the tab bar over adb | Implemented |
 | [BE-0227](BE-0227-web-swipe-scroll-fidelity/BE-0227-web-swipe-scroll-fidelity.md) | Web swipe scroll fidelity (mode-aware scroll dispatch) | Implemented |
 | [BE-0228](BE-0228-web-device-mode-emulation/BE-0228-web-device-mode-emulation.md) | Web device mode (desktop / mobile emulation) | Implemented |
+| [BE-0231](BE-0231-smoke-idb-first-wait-settling/BE-0231-smoke-idb-first-wait-settling.md) | Harden the E2E first-wait against Simulator settling flake | Implemented |
 | [BE-0232](BE-0232-adb-multitouch-gestures/BE-0232-adb-multitouch-gestures.md) | Multi-touch gestures on the adb driver (pinch / rotate) | Implemented |
 | [BE-0233](BE-0233-adb-clipboard-fidelity/BE-0233-adb-clipboard-fidelity.md) | adb clipboard on-device fidelity | Implemented |
 | [BE-0234](BE-0234-adb-run-performance/BE-0234-adb-run-performance.md) | Speed up adb scenario runs (uiautomator dump bottleneck) | Implemented |
@@ -526,9 +527,7 @@ Accepted and actively being built — a PR is in flight or imminent.
 ### Platform support (iOS / Android / Web / Flutter)
 
 <!-- GENERATED:in-progress-platform -->
-| ID | Item | Status |
-|---|---|---|
-| [BE-0231](BE-0231-smoke-idb-first-wait-settling/BE-0231-smoke-idb-first-wait-settling.md) | Harden the E2E first-wait against Simulator settling flake | In progress |
+
 <!-- /GENERATED:in-progress-platform -->
 
 ### AI provider configuration
