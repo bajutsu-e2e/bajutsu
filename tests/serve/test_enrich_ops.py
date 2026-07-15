@@ -173,6 +173,30 @@ def test_start_enrich_explicit_body_backend_wins(tmp_path: Path) -> None:
     assert seen == [["idb"]]
 
 
+def test_start_enrich_explicit_alias_backend_is_cost_ordered(tmp_path: Path) -> None:
+    # An explicit alias like `backend: "ios"` still goes through cost ordering, not a hard pin:
+    # the override branch hands the factory `["ios"]`, which cost-orders to idb — proving the
+    # override preserves ordering, not just a passthrough (BE-0267).
+    from bajutsu import backends
+
+    seen: list[str] = []
+
+    def factory(_target: str, backends_list: list[str], _udid: str) -> FakeDriver:
+        seen.append(backends.select_actuator_cost_first(backends_list, available=lambda a: True))
+        return FakeDriver(_screen())
+
+    state = _ios_state(tmp_path)
+    agent = FakeEnrichmentAgent(EnrichmentProposal())
+    _payload, status = ops.start_enrich(
+        state,
+        {"target": "idb_only", "scenario": "smoke.yaml", "backend": "ios"},
+        driver_factory=factory,
+        agent_factory=lambda: agent,
+    )
+    assert status == 200
+    assert seen == ["idb"]
+
+
 # ---------------------------------------------------------------------------
 # Validation errors
 # ---------------------------------------------------------------------------
