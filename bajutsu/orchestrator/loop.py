@@ -10,9 +10,10 @@ from __future__ import annotations
 import logging
 import subprocess
 from collections.abc import Callable, Mapping
+from dataclasses import replace
 
 from bajutsu import assertions, interp, intervals
-from bajutsu.assertions import AssertionResult, GoldenContext, SchemaContext, VisualContext
+from bajutsu.assertions import AssertionResult, EvalContext
 from bajutsu.drivers import base
 from bajutsu.evidence import Artifact, EvidenceSink, NullSink
 from bajutsu.mailbox import extract_value, select
@@ -70,10 +71,7 @@ def _evaluate_expect(
     network: NetworkSource,
     clock: Clock,
     *,
-    visual_context: VisualContext | None,
-    schema_context: SchemaContext | None,
-    clipboard: str | None,
-    golden_context: GoldenContext | None,
+    ctx: EvalContext,
 ) -> list[AssertionResult]:
     """Evaluate `expect` as a condition wait: re-read the tree until it passes or the deadline.
 
@@ -91,15 +89,7 @@ def _evaluate_expect(
     deadline = clock.now() + _timeout_floor()
     while True:
         t0 = clock.now()
-        results = assertions.evaluate(
-            driver.query(),
-            expect,
-            network(),
-            visual_context=visual_context,
-            schema_context=schema_context,
-            clipboard=clipboard,
-            golden_context=golden_context,
-        )
+        results = assertions.evaluate(driver.query(), expect, network(), ctx=ctx)
         if assertions.passed(results) or clock.now() >= deadline:
             return results
         if all(r.ok or r.kind in _READ_ONCE_KINDS for r in results):
@@ -212,7 +202,7 @@ def _run_step_body(
     bindings: dict[str, str] | None = None,
     control: DeviceControl | None = None,
     mailbox: MailboxReader | None = None,
-    golden_context: GoldenContext | None = None,
+    ctx: EvalContext | None = None,
     wait_trace: WaitTrace | None = None,
 ) -> tuple[bool, str, list[AssertionResult], list[base.Element] | None]:
     """Execute one step's effect, returning (ok, reason, assertion_results, snapshot).
@@ -239,13 +229,11 @@ def _run_step_body(
             assert step.assert_ is not None
             clip = _clipboard_for(step.assert_, control)
             tree = driver.query()
-            results = assertions.evaluate(
-                tree,
-                step.assert_,
-                network(),
-                clipboard=clip,
-                golden_context=golden_context,
-            )
+            # A step-level assert sees only golden + clipboard: no per-step screenshot is taken, so
+            # `visual` / `responseSchema` have no fresh input here (they run at scenario `expect`).
+            # Drop them from the bundled context to preserve that behavior (BE-0250 Unit 2).
+            step_ctx = replace(ctx or EvalContext(), visual=None, schema=None, clipboard=clip)
+            results = assertions.evaluate(tree, step.assert_, network(), ctx=step_ctx)
             ok = assertions.passed(results)
             return ok, "" if ok else _fail_reason(results), results, tree
         _do_action(driver, step, relaunch, control, bindings)
@@ -266,10 +254,8 @@ def run_scenario(
     bindings: Mapping[str, str] | None = None,
     control: DeviceControl | None = None,
     progress: ProgressFn | None = None,
-    visual_context: VisualContext | None = None,
-    schema_context: SchemaContext | None = None,
+    ctx: EvalContext | None = None,
     mailbox: MailboxReader | None = None,
-    golden_context: GoldenContext | None = None,
     webview_bridge: DomSource | None = None,
 ) -> RunResult:
     """Run one scenario deterministically, firing capturePolicy rules into `sink`.
@@ -284,6 +270,7 @@ def run_scenario(
     """
     clock = clock or RealClock()
     sink = sink or NullSink()
+    ctx = ctx or EvalContext()
     sid = scenario_id or scenario_slug(scenario.name)
     recordings = sink.start_scenario_intervals(sid, requested_intervals(scenario))
     wants_screen_changed = any(r.on.event == "screenChanged" for r in scenario.capture_policy)
@@ -314,42 +301,28 @@ def run_scenario(
             control,
             progress,
             mailbox,
-            golden_context,
+            ctx,
             webview_bridge,
         )
         if failure is None and scenario.expect:
             expect = _interp_asserts(scenario.expect, live_bindings)
             clip = _clipboard_for(expect, control)
-            if visual_context is not None:
-                driver.screenshot(str(visual_context.screenshot_path))
+            if ctx.visual is not None:
+                driver.screenshot(str(ctx.visual.screenshot_path))
             expect_results = _evaluate_expect(
-                driver,
-                expect,
-                network,
-                clock,
-                visual_context=visual_context,
-                schema_context=schema_context,
-                clipboard=clip,
-                golden_context=golden_context,
+                driver, expect, network, clock, ctx=replace(ctx, clipboard=clip)
             )
             if not assertions.passed(expect_results) and on_blocked is not None:
                 event = on_blocked(driver)
                 if event is not None:
                     expect_alerts.append(event)
-                    if visual_context is not None:
-                        driver.screenshot(str(visual_context.screenshot_path))
+                    if ctx.visual is not None:
+                        driver.screenshot(str(ctx.visual.screenshot_path))
                     # Re-read the clipboard too: clearing the block may have let the app update the
                     # pasteboard, so the retry must compare against the fresh value, not the stale one.
                     clip = _clipboard_for(expect, control)
                     expect_results = _evaluate_expect(
-                        driver,
-                        expect,
-                        network,
-                        clock,
-                        visual_context=visual_context,
-                        schema_context=schema_context,
-                        clipboard=clip,
-                        golden_context=golden_context,
+                        driver, expect, network, clock, ctx=replace(ctx, clipboard=clip)
                     )  # retry once
             if not assertions.passed(expect_results):
                 failure = "expect: " + _fail_reason(expect_results)
@@ -449,7 +422,7 @@ def _run_steps(
     control: DeviceControl | None = None,
     progress: ProgressFn | None = None,
     mailbox: MailboxReader | None = None,
-    golden_context: GoldenContext | None = None,
+    ctx: EvalContext | None = None,
     webview_bridge: DomSource | None = None,
 ) -> str | None:
     """Run the step loop, appending outcomes; return the failure string or None.
@@ -562,7 +535,7 @@ def _run_steps(
                 bindings,
                 control,
                 mailbox,
-                golden_context,
+                ctx,
                 wait_trace=wait_trace,
             )
             if not ok and on_blocked is not None:
@@ -580,7 +553,7 @@ def _run_steps(
                         bindings,
                         control,
                         mailbox,
-                        golden_context,
+                        ctx,
                         wait_trace=wait_trace,
                     )
             outcome.ok, outcome.reason, outcome.assertion_results = ok, reason, results

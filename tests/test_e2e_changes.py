@@ -43,7 +43,14 @@ def test_run_path_top_level_modules_are_relevant() -> None:
     # serve/analytics/crawl modules that never run here.
     for module in (
         "bajutsu/interp.py",
-        "bajutsu/assertions.py",
+        # assertions is a package (BE-0250); the whole package is on the run path, so every
+        # module under it triggers — not just a single-file `assertions.py`.
+        "bajutsu/assertions/__init__.py",
+        "bajutsu/assertions/evaluate.py",
+        "bajutsu/assertions/visual.py",
+        "bajutsu/assertions/network.py",
+        "bajutsu/assertions/schema.py",
+        "bajutsu/assertions/_common.py",
         "bajutsu/elements.py",
         "bajutsu/visual.py",
         "bajutsu/golden.py",

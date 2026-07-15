@@ -202,6 +202,27 @@ def test_http_index_carries_crawl_history_markup(tmp_path: Path) -> None:
         server.server_close()
 
 
+def test_hosted_backend_serves_frontend_modules(tmp_path: Path) -> None:
+    """Lockstep (BE-0015): the hosted FastAPI backend serves the same /serve.*.mjs routes as the
+    stdlib handler, because it serves the same module-loading index (BE-0247) — otherwise the hosted
+    UI would reference modules it can't deliver. Unknown/traversing names 404, as on the stdlib side."""
+    from fastapi.testclient import TestClient
+
+    from bajutsu.serve.server.app import make_app
+
+    scn_dir, cfg, runs = project(tmp_path)
+    client = TestClient(
+        make_app(srv.ServeState(scenarios_dir=scn_dir, config=cfg, runs_dir=runs, cwd=tmp_path))
+    )
+    for name in srv.handler._JS_MODULES:
+        r = client.get(f"/{name}")
+        assert r.status_code == 200, name
+        assert "javascript" in r.headers["content-type"], name
+    assert client.get("/serve.nope.mjs").status_code == 404
+    # The hosted index is the same module-loading shell as the stdlib backend's.
+    assert '<script type="module" src="/serve.author.mjs">' in client.get("/").text
+
+
 def test_serve_assets_present() -> None:
     """Guard against a template file going missing from the package — including every serve.*.mjs
     ES module (BE-0247), which handler.py serves at its own route."""

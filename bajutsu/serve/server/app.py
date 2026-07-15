@@ -16,16 +16,21 @@ from __future__ import annotations
 
 from collections.abc import AsyncIterator
 from typing import Any
-from urllib.parse import urlparse
 
 from fastapi import FastAPI, Request, Response
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, StreamingResponse
 from starlette.requests import ClientDisconnect
 
+from bajutsu.serve import gate, oplog
 from bajutsu.serve import operations as ops
-from bajutsu.serve import oplog
-from bajutsu.serve.handler import _OAUTH_STATE_COOKIE, _SESSION_COOKIE, _index_html
+from bajutsu.serve.handler import (
+    _MODULE_PATHS,
+    _OAUTH_STATE_COOKIE,
+    _SESSION_COOKIE,
+    _asset,
+    _index_html,
+)
 from bajutsu.serve.helpers import range_reply
 from bajutsu.serve.state import ServeState
 from bajutsu.serve.upload_artifacts import ArtifactKind
@@ -39,9 +44,8 @@ _SSE_KEEPALIVE = 15.0
 # cross the threadpool/coroutine boundary cleanly).
 _STREAM_DONE: Any = object()
 
-# Endpoints reachable without a credential when a token is configured (mirrors the stdlib gate):
-# the index page so the login UI can load, and the login endpoint itself.
-_OPEN_GET = ("/", "/index.html", "/api/oauth/login", "/api/oauth/callback")
+# Route-path constants reused as FastAPI decorators below. The open-endpoint list itself lives in
+# `gate.is_open`, shared with the stdlib backend (BE-0253).
 _LOGIN_PATH = "/api/login"
 _OAUTH_LOGIN = "/api/oauth/login"
 _OAUTH_CALLBACK = "/api/oauth/callback"
@@ -56,20 +60,17 @@ def make_app(state: ServeState) -> FastAPI:
     app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
 
     def _authorized(request: Request) -> bool:
-        auth = request.headers.get("authorization", "")
-        if auth.startswith("Bearer ") and state.auth.check_token(auth[len("Bearer ") :]):
-            return True
-        sid = request.cookies.get(_SESSION_COOKIE)
-        return sid is not None and state.auth.valid_session(sid)
+        return gate.is_authorized(
+            state.auth,
+            request.headers.get("authorization", ""),
+            request.cookies.get(_SESSION_COOKIE),
+        )
 
     def _actor(request: Request) -> str | None:
-        # The GitHub login bound to this request's session, for audit attribution (BE-0015 7c);
-        # None for a token/Bearer request or no session. Mirrors the stdlib handler's `_actor`.
-        sid = request.cookies.get(_SESSION_COOKIE)
-        return state.auth.sessions.identity(sid) if sid else None
+        return gate.actor_for(state.auth, request.cookies.get(_SESSION_COOKIE))
 
     @app.middleware("http")
-    async def gate(request: Request, call_next: Any) -> Response:
+    async def _security_gate(request: Request, call_next: Any) -> Response:
         """Host allowlist + auth + CSRF + hardening headers, mirroring the stdlib handler's
         `_gate`/`_host_ok`/`_csrf_ok`/`end_headers` exactly so the two backends enforce the same
         policy (BE-0051/BE-0121)."""
@@ -77,27 +78,22 @@ def make_app(state: ServeState) -> FastAPI:
         # DNS-rebinding defense (BE-0121): a Host that names no bound interface is refused ahead of
         # everything else, regardless of the token/CSRF posture. An empty allowlist (a wildcard bind,
         # set by make_asgi_server) accepts any Host, so this is off unless we bound a named interface.
-        if state.allowed_hosts:
-            host = urlparse(f"//{request.headers.get('host', '')}").hostname
-            if host not in state.allowed_hosts:
-                return _hardened(JSONResponse({"error": "host not allowed"}, status_code=403))
+        if not gate.host_allowed(state.allowed_hosts, request.headers.get("host", "")):
+            return _hardened(JSONResponse({"error": "host not allowed"}, status_code=403))
         # Block cross-origin state-changing requests unconditionally (BE-0121) — not only when a token
         # is configured. A no-token server would otherwise leave every POST as an unguarded CSRF
         # surface (the CSRF-to-arbitrary-config hole this closes). DELETE (deregister a project,
         # BE-0225) is equally state-changing, so it is guarded too. No Origin (a non-browser client)
         # passes, matching the stdlib `_csrf_ok`.
-        if request.method in ("POST", "DELETE"):
-            origin = request.headers.get("origin")
-            if origin and urlparse(origin).netloc != (request.headers.get("host") or ""):
-                return _hardened(
-                    JSONResponse({"error": "cross-origin request blocked"}, status_code=403)
-                )
+        if request.method in ("POST", "DELETE") and not gate.csrf_ok(
+            request.headers.get("origin"), request.headers.get("host") or ""
+        ):
+            return _hardened(
+                JSONResponse({"error": "cross-origin request blocked"}, status_code=403)
+            )
         if state.auth.token is not None:
             path, method = request.url.path, request.method
-            open_path = (method == "GET" and path in _OPEN_GET) or (
-                method == "POST" and path == _LOGIN_PATH
-            )
-            if not open_path and not _authorized(request):
+            if not gate.is_open(method, path) and not _authorized(request):
                 return _hardened(JSONResponse({"error": "unauthorized"}, status_code=401))
             # Enforce the user's role on mutating endpoints for an OAuth session (an identity) when a
             # database is wired (BE-0015 7c-2); token/Bearer has no identity and stays full-access.
@@ -111,12 +107,9 @@ def make_app(state: ServeState) -> FastAPI:
         return _hardened(await call_next(request))
 
     def _hardened(response: Response) -> Response:
-        # Standard hardening headers on every response (BE-0051): block MIME sniffing and
-        # cross-origin framing (clickjacking), and don't leak the URL via Referer. SAMEORIGIN (not
-        # DENY) so the Replay view can frame its own run report (/runs/<id>/report.html).
-        response.headers["X-Content-Type-Options"] = "nosniff"
-        response.headers["X-Frame-Options"] = "SAMEORIGIN"
-        response.headers["Referrer-Policy"] = "no-referrer"
+        # The shared hardening headers on every response (BE-0051); defined once in `gate` so both
+        # backends emit the identical set (BE-0253).
+        response.headers.update(gate.HARDENING_HEADERS)
         return response
 
     # --- SPA + static run artifacts ---
@@ -126,6 +119,17 @@ def make_app(state: ServeState) -> FastAPI:
     async def index() -> HTMLResponse:
         # Lockstep with the stdlib handler: forward the drop-in themes dir + default (BE-0191).
         return HTMLResponse(_index_html(state.themes_dir, state.default_theme))
+
+    @app.get("/serve.{name}.mjs")
+    async def frontend_module(name: str) -> Response:
+        # The ES-module frontend (BE-0247): the index loads these via <script type="module">, so the
+        # hosted backend serves them alongside the stdlib handler (lockstep). Only the exact bundled
+        # names are served — an unknown/traversing name 404s rather than reading off disk — and the
+        # `text/javascript` type is required for a browser to execute a module script.
+        asset = f"serve.{name}.mjs"
+        if f"/{asset}" not in _MODULE_PATHS:
+            return _result(({"error": "not found"}, 404))
+        return Response(_asset(asset), media_type="text/javascript; charset=utf-8")
 
     @app.get("/runs/{rel:path}")
     async def run_file(rel: str, request: Request) -> Response:

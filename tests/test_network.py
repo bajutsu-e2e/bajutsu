@@ -7,7 +7,7 @@ import json
 import urllib.error
 import urllib.request
 
-from bajutsu.assertions import evaluate, evaluate_one
+from bajutsu.assertions import EvalContext, evaluate, evaluate_one
 from bajutsu.drivers.fake import FakeDriver
 from bajutsu.network import NetworkCollector, NetworkExchange
 from bajutsu.orchestrator import run_scenario
@@ -271,7 +271,10 @@ def test_response_schema_passes_for_conforming_body(tmp_path) -> None:  # type: 
     )
     exs = [_ex("GET", "/api/items", response_body='{"id":1}')]
     r = evaluate_one(
-        [], _rs("items.json", path="/api/items"), exs, schema_context=SchemaContext(schemas_dir=d)
+        [],
+        _rs("items.json", path="/api/items"),
+        exs,
+        ctx=EvalContext(schema=SchemaContext(schemas_dir=d)),
     )
     assert r.ok, r.reason
 
@@ -286,7 +289,10 @@ def test_response_schema_fails_for_nonconforming_body(tmp_path) -> None:  # type
     )
     exs = [_ex("GET", "/api/items", response_body='{"id":"not-an-int"}')]
     r = evaluate_one(
-        [], _rs("items.json", path="/api/items"), exs, schema_context=SchemaContext(schemas_dir=d)
+        [],
+        _rs("items.json", path="/api/items"),
+        exs,
+        ctx=EvalContext(schema=SchemaContext(schemas_dir=d)),
     )
     assert not r.ok and r.reason
 
@@ -299,7 +305,7 @@ def test_response_schema_no_matching_exchange(tmp_path) -> None:  # type: ignore
         [],
         _rs("x.json", path="/api/items"),
         [_ex("GET", "/other")],
-        schema_context=SchemaContext(schemas_dir=d),
+        ctx=EvalContext(schema=SchemaContext(schemas_dir=d)),
     )
     assert not r.ok and "exchange" in r.reason
 
@@ -313,7 +319,7 @@ def test_response_schema_missing_schema_file(tmp_path) -> None:  # type: ignore[
         [],
         _rs("missing.json", path="/api/items"),
         exs,
-        schema_context=SchemaContext(schemas_dir=tmp_path / "schemas"),
+        ctx=EvalContext(schema=SchemaContext(schemas_dir=tmp_path / "schemas")),
     )
     assert not r.ok and "schema" in r.reason.lower()
 
@@ -324,7 +330,10 @@ def test_response_schema_non_json_body(tmp_path) -> None:  # type: ignore[no-unt
     d = _schemas_dir(tmp_path, "x.json", {"type": "object"})
     exs = [_ex("GET", "/api/items", response_body="not json")]
     r = evaluate_one(
-        [], _rs("x.json", path="/api/items"), exs, schema_context=SchemaContext(schemas_dir=d)
+        [],
+        _rs("x.json", path="/api/items"),
+        exs,
+        ctx=EvalContext(schema=SchemaContext(schemas_dir=d)),
     )
     assert not r.ok and r.reason
 
@@ -336,7 +345,10 @@ def test_response_schema_malformed_schema_fails_cleanly(tmp_path) -> None:  # ty
     d = _schemas_dir(tmp_path, "bad.json", {"$ref": "#/definitions/missing"})
     exs = [_ex("GET", "/api/items", response_body="{}")]
     r = evaluate_one(
-        [], _rs("bad.json", path="/api/items"), exs, schema_context=SchemaContext(schemas_dir=d)
+        [],
+        _rs("bad.json", path="/api/items"),
+        exs,
+        ctx=EvalContext(schema=SchemaContext(schemas_dir=d)),
     )
     assert not r.ok and r.reason
 
@@ -358,7 +370,7 @@ def test_response_schema_rejects_path_traversal(tmp_path) -> None:  # type: igno
         [],
         _rs("../secret.json", path="/api/items"),
         exs,
-        schema_context=SchemaContext(schemas_dir=d),
+        ctx=EvalContext(schema=SchemaContext(schemas_dir=d)),
     )
     assert not r.ok and "escapes" in r.reason
 
