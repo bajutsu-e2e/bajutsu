@@ -119,7 +119,24 @@ def test_assertion_kinds_derived_from_model() -> None:
     hand-maintained tuple (BE-0250 Unit 4)."""
     from bajutsu.scenario import ASSERTION_KINDS
 
-    assert tuple(f for f in Assertion.model_fields if f != "from_") == ASSERTION_KINDS
+    # Pin against the concrete kinds (declaration order): checks the derivation against an
+    # independent list, not against a recomputation of its own formula.
+    assert ASSERTION_KINDS == (
+        "exists",
+        "value",
+        "label",
+        "count",
+        "enabled",
+        "disabled",
+        "selected",
+        "request",
+        "event",
+        "request_sequence",
+        "response_schema",
+        "visual",
+        "clipboard",
+        "golden",
+    )
     assert "from_" not in ASSERTION_KINDS
 
 

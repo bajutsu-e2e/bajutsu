@@ -1,7 +1,8 @@
 """Shared base for the scenario models.
 
-The strict pydantic base, small validators, and the token grammars (capture kinds, step actions,
-assertion kinds). Everything here is dependency-free so every model module can import it without
+The strict pydantic base, small validators, the capture-kind token grammar, and the control-flow
+action subset. (Step-action and assertion-kind names are each derived from their own model, not
+listed here.) Everything here is dependency-free so every model module can import it without
 cycles.
 """
 
