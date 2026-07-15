@@ -599,6 +599,7 @@ Running a scenario on a hosted device farm instead of a local Simulator, emulato
 | [BE-0262](BE-0262-serve-author-live-step-picker/BE-0262-serve-author-live-step-picker.md) | Live step-picking and target-scoped runs in the Author editor | Proposal |
 | [BE-0263](BE-0263-serve-author-tiling-layout/BE-0263-serve-author-tiling-layout.md) | Bring the Author view into the tiling layout | Proposal |
 | [BE-0267](BE-0267-serve-author-actuator-selection/BE-0267-serve-author-actuator-selection.md) | Reuse cost-ordered actuator selection in serve capture and enrich | Proposal |
+| [BE-0273](BE-0273-serve-replay-scenario-viewer/BE-0273-serve-replay-scenario-viewer.md) | View a scenario's contents from the Replay tab (raw YAML + structured steps) | Proposal |
 <!-- /GENERATED:proposals-authoring -->
 
 ### Surfacing CLI features in the serve Web UI

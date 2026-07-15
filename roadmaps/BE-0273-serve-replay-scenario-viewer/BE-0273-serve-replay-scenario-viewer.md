@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-serve-replay-scenario-viewer-ja.md)
+**English** · [日本語](BE-0273-serve-replay-scenario-viewer-ja.md)
 
-# BE-XXXX — View a scenario's contents from the Replay tab (raw YAML + structured steps)
+# BE-0273 — View a scenario's contents from the Replay tab (raw YAML + structured steps)
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-serve-replay-scenario-viewer.md) |
+| Proposal | [BE-0273](BE-0273-serve-replay-scenario-viewer.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0273") |
 | Topic | Authoring experience (record / GUI editor) |
 | Related | [BE-0187](../BE-0187-serve-config-view/BE-0187-serve-config-view.md) |
 <!-- /BE-METADATA -->
