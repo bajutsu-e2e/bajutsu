@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from bajutsu.config_source import config_from_source
+from bajutsu.config_source import config_from_source, source_from_config
 from bajutsu.serve.operations.config import bind_config, bind_git_config, config_sources
 from bajutsu.serve.operations.dispatch import start_run
 from bajutsu.serve.operations.upload import activate_uploaded_project
@@ -80,6 +80,12 @@ def register_project(
     has no active project the first concurrent registration to call `set_active` wins (the check-then-
     set is not atomic today — a future `add_and_activate_if_unset` seam method would harden this for
     parallel CI registrations, but the current single-bootstrap usage makes it low priority).
+
+    Accepts the config source two ways: an already-built ``source`` record (the API / registry
+    round-trip shape), or a ``sourceSpec`` string — a Git spec or a local path, exactly what
+    ``bajutsu project add --config`` takes. The Web UI's Add form sends the string form, normalized
+    here through the one canonical parser (`source_from_config`) so the browser never re-implements
+    Git-spec parsing and both entry points feed the same allowlist screening below.
     """
     registry = state.project_registry
     if registry is None:
@@ -90,6 +96,8 @@ def register_project(
     if "/" in name:
         return {"error": "name must not contain '/'"}, 400
     source = body.get("source")
+    if source is None and body.get("sourceSpec"):
+        source = source_from_config(str(body["sourceSpec"]))
     invalid = _validate_source(state, source)
     if invalid is not None:
         return invalid

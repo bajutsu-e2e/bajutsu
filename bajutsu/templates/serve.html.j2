@@ -29,6 +29,10 @@
       <button class="toptab" data-view="usage" data-testid="nav.usage">Usage</button>
       <button class="toptab" data-view="coverage" data-testid="nav.coverage">Coverage</button>
       <button class="toptab" data-view="metrics" data-testid="nav.metrics" hidden>Metrics</button>
+      {#- Projects page (BE-0275): the hub's home. Unlike the switcher + Metrics tab (a real hub only),
+          it shows for any project count so a single-config `serve` can grow into a hub from its Add
+          form; serve.core.mjs (loadProjects) reveals it whenever there is a project to manage. -#}
+      <button class="toptab" data-view="projects" data-testid="nav.projects-view" hidden>Projects</button>
       {#- Running-tool identity (BE-0272): which build of bajutsu is serving this page — distinct
           from the config-provenance badge, which is about where the *config* came from. Version is
           always shown; commit / branch / dirty are filled in by serve.core.mjs only when serve runs
@@ -39,10 +43,10 @@
       <button class="cfgbtn" id="viewcfg" data-testid="nav.view-config" hidden>View</button>
       {#- Project hub switcher (BE-0225 unit 4): next to the config viewer. A native <select> lists the
           org's registered projects; changing it activates one, rebinding the live config so every tab
-          runs against it. Both this and the "Projects" list button stay hidden until a hub exists (more
-          than one project to switch between), so a single-config `serve` looks exactly as before. -#}
+          runs against it. It stays hidden until a hub exists (more than one project to switch between),
+          so a single-config `serve` looks exactly as before. Adding / removing / inspecting projects
+          moved to the top-level Projects page (BE-0275); this quick-switch control stays. -#}
       <select class="projectsw" id="projectsw" data-testid="nav.projects" aria-label="active project" hidden></select>
-      <button class="cfgbtn" id="openprojects" data-testid="nav.open-projects" hidden>Projects</button>
       <button class="cfgbtn" id="opensettings" data-testid="nav.settings">Settings</button>
       {#- Theme picker (BE-0191 unit 3): replaces the old two-state toggle with a native <select> listing
           every registered theme (built-in + drop-in), grouped by dark/light kind. Options are rendered
@@ -535,6 +539,39 @@
   </div>
 </main>
 
+<!-- ===== Projects (BE-0275): the hub's home — list, add, remove, and switch config bindings =====
+     Promoted out of the BE-0225 modal into a top-level view: a project is the concept above a config,
+     not an action on one. The header switcher stays for a quick switch; this page owns the lifecycle.
+     Its JS ships as the serve.projects.mjs ES module; serve.core.mjs (loadProjects) fills the list. -->
+<main id="view-projects" data-testid="view.projects" hidden>
+  <div class="card statscard">
+    <div class="yamlhead">
+      <span class="ttl">Projects</span>
+      <span class="muted" style="font-size:.8em">Each project is a named binding to a config source. Switch rebinds the active config so every tab runs against it; removing one keeps its run history.</span>
+      <button class="refresh" id="projects-refresh" data-testid="projects.refresh" title="refresh">&#8635;</button>
+    </div>
+    <!-- Add a project (BE-0275 unit 2): a name + one config-source string — a Git spec, or a local
+         path when the server allows the fs source (BE-0108) — the same source `bajutsu project add
+         --config` takes. Re-adding an existing name rebinds it. -->
+    <div class="gitsrc prj-add">
+      <label class="gitsrclbl" for="projects-add-name">Add a project</label>
+      <div class="gitsrcrow">
+        <input type="text" id="projects-add-name" data-testid="projects.add-name" placeholder="project name">
+        <input type="text" id="projects-add-source" data-testid="projects.add-source" placeholder="github:owner/repo[@ref][:path] or a local path">
+        <button class="cfgbtn" id="projects-add-submit" data-testid="projects.add-submit">Add</button>
+      </div>
+      <!-- Optional credential for a private repo (BE-0224): stored write-once, shared, masked, never
+           echoed back — the same store the config launcher's Git picker uses. Needed only to switch
+           to a private-repo project later, not to register it. -->
+      <input type="password" id="projects-add-cred" data-testid="projects.add-cred" placeholder="private-repo credential (optional)" autocomplete="off" spellcheck="false">
+      <div class="gitsrchint">A Git spec fetches the repo subtree when you switch to the project; a local path is offered only when the server permits it. Re-adding an existing name rebinds its source. The credential is optional — only for a <b>private</b> repository, stored write-once and shown only masked.</div>
+      <span class="status" id="projects-add-status" data-testid="projects.add-status"></span>
+      <div class="gitsrcerr" id="projects-error" data-testid="projects.error" hidden></div>
+    </div>
+    <div class="statshost" id="projects-host" data-testid="projects.host"><div class="empty" data-testid="projects.empty">Loading projects…</div></div>
+  </div>
+</main>
+
 <!-- ===== Open config: a local file browser (confined to --root) + a "from Git" source ===== -->
 <div class="modal" id="fsmodal" data-testid="config.modal" hidden>
   <div class="fsbox">
@@ -630,15 +667,6 @@
     <div class="cfgtree" id="cfgviewtree" data-testid="config.view-tree"></div>
     <pre class="cfgview" id="cfgviewbody" data-testid="config.view-content" hidden></pre>
     <div class="gitsrchint">The config is shown verbatim. <code>${secrets.*}</code> placeholders are not resolved (they resolve from the server's environment at run time), but a secret written <b>literally</b> into the file would be shown as-is &mdash; keep secrets in <code>${secrets.*}</code> refs, not in the file.</div>
-  </div>
-</div>
-
-<!-- ===== Projects: the hub's registered config bindings (BE-0225 unit 4) ===== -->
-<div class="modal" id="projectsmodal" data-testid="projects.modal" hidden>
-  <div class="fsbox">
-    <div class="fshead"><span class="ttl">Projects</span><button class="fsclose" id="projectsclose" data-testid="projects.close">&#10005;</button></div>
-    <div class="gitsrchint">Each project is a named binding to a config source. <b>Run</b> switches to a project &mdash; rebinding the active config so every tab (Replay / Record / Crawl / Stats) runs against it &mdash; then opens Replay. Add or remove projects with <code>bajutsu project add</code> / <code>rm</code>.</div>
-    <ul class="fslist prjlist" id="projectslist" data-testid="projects.list"></ul>
   </div>
 </div>
 

@@ -96,6 +96,7 @@ def test_http_serves_each_js_module(tmp_path: Path) -> None:
             "serve.panels.mjs": "function loadGenerated",  # Record/Replay/Triage
             "serve.crawl.mjs": "function openShot",  # crawl graph / lightbox
             "serve.metrics.mjs": "function renderMetrics",  # cross-project comparison
+            "serve.projects.mjs": "function renderProjectsView",  # the Projects page (BE-0275)
             "serve.author.mjs": "function initTiling",  # layout + Author + boot
         }
         assert set(markers) == set(srv.handler._JS_MODULES)  # every served module is covered here

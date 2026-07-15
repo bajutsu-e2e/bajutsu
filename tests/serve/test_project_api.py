@@ -13,6 +13,7 @@ from pathlib import Path
 from _shared import FakeObjectStore, fake_popen, project, write_run
 
 from bajutsu import serve as srv
+from bajutsu.config_source import source_from_config
 from bajutsu.serve import operations as ops
 from bajutsu.serve.operations.upload import activate_uploaded_project
 from bajutsu.serve.project_registry import LocalProjectRegistry
@@ -104,6 +105,38 @@ def test_register_rejects_an_unknown_source_kind(tmp_path: Path) -> None:
     state = _hub_state(tmp_path)
     _, status = ops.register_project(state, {"name": "a", "source": {"kind": "smtp"}})
     assert status == 400
+
+
+def test_register_accepts_a_source_spec_string(tmp_path: Path) -> None:
+    # The Web UI Add form (BE-0275) sends a single `sourceSpec` string — a Git spec or a local path,
+    # exactly what `bajutsu project add --config` takes — instead of a pre-built record. The server
+    # normalizes it through the one canonical parser, so a Git spec lands as a `git` source and a
+    # bare path as a `file` source; the browser never re-implements the spec grammar.
+    state = _hub_state(tmp_path)
+
+    spec = "github:acme/shop@v1:cfg/bajutsu.config.yaml"
+    payload, status = ops.register_project(state, {"name": "shop", "sourceSpec": spec})
+    assert status == 200
+    assert payload["source"] == source_from_config(spec)
+    assert payload["source"]["kind"] == "git"
+
+    payload, status = ops.register_project(
+        state, {"name": "local", "sourceSpec": "/srv/app/bajutsu.config.yaml"}
+    )
+    assert status == 200
+    assert payload["source"] == {
+        "kind": "file",
+        "locator": {"path": "/srv/app/bajutsu.config.yaml"},
+    }
+
+
+def test_source_spec_is_screened_by_the_allowlist_when_hosted(tmp_path: Path) -> None:
+    # A local-path `sourceSpec` normalizes to a `file` source, which a hosted server refuses
+    # (BE-0108) — the same screening a hand-built `file` record hits, so both entry points share one
+    # allowlist path rather than the string form slipping past it.
+    state = _hub_state(tmp_path, hosted=True)
+    _, status = ops.register_project(state, {"name": "local", "sourceSpec": "/etc/x.yaml"})
+    assert status == 403
 
 
 def test_deregister_retains_the_runs_and_drops_the_label(tmp_path: Path) -> None:
