@@ -209,3 +209,34 @@ def test_step_level_assert_drops_visual_context() -> None:
     )
     assert not result.ok
     assert result.failure is not None and "no visual context" in result.failure
+
+
+def test_step_level_assert_drops_schema_context() -> None:
+    """Sibling guard to the visual drop: a step-level `responseSchema` assert is context-less too,
+    so a run carrying a schema context does not forward it to step asserts (BE-0250 Unit 2). Were it
+    forwarded, the empty timeline would fail with "no matching exchange"; dropped, it fails earlier
+    with "no schema context" — so this pins the `schema=None` half of the drop, not just `visual`.
+    """
+    from pathlib import Path
+
+    from bajutsu.assertions import EvalContext, SchemaContext
+
+    result = run_scenario(
+        FakeDriver([el("home.title", "ホーム")]),
+        _scenario(
+            {
+                "name": "step schema",
+                "steps": [
+                    {
+                        "assert": [
+                            {"responseSchema": {"schema": "x.json", "request": {"path": "/api"}}}
+                        ]
+                    }
+                ],
+            }
+        ),
+        clock=FakeClock(),
+        ctx=EvalContext(schema=SchemaContext(schemas_dir=Path("/nonexistent/schemas"))),
+    )
+    assert not result.ok
+    assert result.failure is not None and "no schema context" in result.failure
