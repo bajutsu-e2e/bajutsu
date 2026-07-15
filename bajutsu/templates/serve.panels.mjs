@@ -450,8 +450,9 @@ async function composeAndLoad(){
   const err=$('#cmp-error'),meta=$('#cmp-meta'),btn=$('#cmp-run');err.hidden=true;
   if(!composeState.config){err.textContent='a config artifact is required';err.hidden=false;return;}
   const body={config:composeState.config.sha,filename:composeState.config.filename};
-  // scenariosName lets the server name a single-.yaml scenarios artifact (ignored for a .zip).
-  if(composeState.scenarios){body.scenarios=composeState.scenarios.sha;body.scenariosName=composeState.scenarios.filename;}
+  // scenariosName names a single-.yaml scenarios artifact server-side; omit it for a .zip so the
+  // same zip under two filenames stays one cache entry (the compose key is salted only by this name).
+  if(composeState.scenarios){body.scenarios=composeState.scenarios.sha;if(!/\.zip$/i.test(composeState.scenarios.filename))body.scenariosName=composeState.scenarios.filename;}
   if(composeState.binary)body.binary=composeState.binary.sha;
   // Guard against a double-click firing two concurrent /api/compose calls; the finally restores
   // disabled from composeBusy so a zone that began uploading during the POST keeps the button off.

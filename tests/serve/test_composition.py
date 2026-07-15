@@ -104,6 +104,23 @@ def test_single_yaml_scenarios_falls_back_to_a_default_name(tmp_path: Path) -> N
     assert (dest / "scenarios" / "scenario.yaml").is_file()
 
 
+def test_single_yaml_scenarios_name_cannot_escape_the_scenarios_dir(tmp_path: Path) -> None:
+    # A hostile scenariosName is reduced to a safe leaf `*.yaml` — no separator/traversal survives,
+    # so the file always lands inside the config's scenarios dir, never outside the composed tree.
+    config = _write(tmp_path, "config.yaml", _SCENARIOS_CONFIG.encode())
+    scenarios = _write(tmp_path, "s.yaml", b"- name: a\n  steps: []\n")
+    dest = materialize_composition(
+        config,
+        scenarios,
+        None,
+        compositions_dir=tmp_path / "compositions",
+        composition_id="ttrav",
+        scenarios_filename="../../etc/evil.yml",
+    )
+    assert [p.name for p in (dest / "scenarios").glob("*.yaml")] == ["evil.yaml"]
+    assert not (tmp_path / "etc").exists()  # the `../../` never took effect
+
+
 def test_composes_full_triple_with_app_bundle_binary(tmp_path: Path) -> None:
     config = _write(tmp_path, "config.yaml", _FULL_CONFIG.encode())
     scenarios = _write(tmp_path, "scenarios.zip", _scenarios_zip())

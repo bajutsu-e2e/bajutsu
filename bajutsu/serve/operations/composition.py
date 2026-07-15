@@ -22,6 +22,7 @@ didn't supply is rejected before the tree is ever handed to a run, never silentl
 
 from __future__ import annotations
 
+import re
 import shutil
 import tempfile
 import zipfile
@@ -29,6 +30,13 @@ from pathlib import Path
 
 from bajutsu.config import WebConfig, load_config, resolve
 from bajutsu.serve.uploads import extract_bundle, validate_bundle_config
+
+# Everything a single-file `scenarios` artifact's basename may NOT contain. The dropped filename is
+# untrusted client input, so its stem is filtered down to this allowlist before it is ever joined
+# onto a path — a positive character allowlist (not a blocklist), so no path separator, `..`, NUL, or
+# other traversal byte can survive into the write path (defense against CodeQL's "uncontrolled data
+# in a path expression", and correct regardless).
+_UNSAFE_NAME_CHARS = re.compile(r"[^A-Za-z0-9._-]+")
 
 # Suffixes whose `binary` artifact is a zip of a directory bundle to extract in place, rather than
 # a single file to write as-is. An explicit allowlist (not "anything else is raw") so a typo'd or
@@ -57,12 +65,14 @@ def _place_binary(binary_path: Path, app_path: Path) -> None:
 
 def _safe_scenario_name(name: str | None) -> str:
     """A confined `*.yaml` basename for a single-file `scenarios` artifact dropped into a target's
-    scenarios directory. Strips any directory and non-printable characters and normalizes the
-    extension to `.yaml` — the runner's scenario listing globs `*.yaml`, not `*.yml`, so a dropped
-    `login.yml` must land as `login.yaml` to be discoverable — falling back to `scenario.yaml` when
-    nothing usable remains."""
-    stem = Path("".join(c for c in Path(name or "").name if c.isprintable())).stem.strip()
-    return f"{(stem or 'scenario')[:100]}.yaml"
+    scenarios directory. The dropped *name* is untrusted, so its stem is reduced to an allowlist of
+    `[A-Za-z0-9._-]` (`_UNSAFE_NAME_CHARS`) — stripping every path separator and traversal byte, so
+    the result can only ever be a leaf name inside the directory — then the extension is normalized
+    to `.yaml` (the runner's scenario listing globs `*.yaml`, not `*.yml`, so a dropped `login.yml`
+    must land as `login.yaml` to be discoverable), falling back to `scenario.yaml` when nothing
+    usable remains."""
+    stem = _UNSAFE_NAME_CHARS.sub("", Path(name or "").stem)[:100].strip("._-")
+    return f"{stem or 'scenario'}.yaml"
 
 
 def _place_scenarios_and_binaries_and_check_coherence(
