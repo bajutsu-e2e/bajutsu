@@ -72,5 +72,9 @@ def server_checkout() -> tuple[Any, int]:
     branch = _git("rev-parse", "--abbrev-ref", "HEAD")
     if branch == "HEAD":  # detached HEAD — "HEAD" is not a branch name, so report none
         branch = None
-    dirty = bool(_git("status", "--porcelain"))
+    # A failed status read → None (unknown), not False: `dirty`'s job is to flag attention-worthy
+    # state, so reporting "clean" when the read itself failed (e.g. a stale index.lock from a
+    # concurrent git op) is the wrong default — match commit/branch, which stay None on a failure.
+    status = _git("status", "--porcelain")
+    dirty = bool(status) if status is not None else None
     return {"commit": commit, "branch": branch, "dirty": dirty}, 200

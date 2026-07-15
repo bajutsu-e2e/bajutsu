@@ -76,6 +76,20 @@ def test_server_checkout_reports_no_branch_on_a_detached_head(
     assert payload["branch"] is None  # "HEAD" is not reported as a branch
 
 
+def test_server_checkout_reports_dirty_none_when_status_read_fails(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # rev-parse succeeds but `status --porcelain` fails on its own (e.g. a stale index.lock):
+    # dirty must be None (unknown), not False — reporting "clean" would hide the failed read.
+    def fake_git(*args: str) -> str | None:
+        return None if args[0] == "status" else "abc1234" if args[1] == "--short" else "work"
+
+    monkeypatch.setattr(version_ops, "_git", fake_git)
+    payload, status = version_ops.server_checkout()
+    assert status == 200
+    assert payload == {"commit": "abc1234", "branch": "work", "dirty": None}
+
+
 def test_server_checkout_outside_a_checkout_is_all_null(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
