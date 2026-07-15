@@ -26,10 +26,11 @@ variables (or hand-editing `.env`) before starting `serve`.
 
 ## Motivation
 
-`bajutsu/config.py:259`'s `Defaults.secrets` (overridable per target, merged in `resolve` at
-`bajutsu/config.py:845`) is a list of environment-variable names. `bajutsu/cli.py` resolves each
-declared name from `os.environ` into a `secrets.X` binding at the start of a run; the scenario file
-only ever holds the token, never the value (BE-0032's Motivation). That design keeps the value out
+`bajutsu/config/schema.py:234`'s `Defaults.secrets` (overridable per target, merged in `resolve` at
+`bajutsu/config/resolve.py:165`) is a list of environment-variable names. `_resolve_secrets`
+(`bajutsu/cli/commands/run.py:231`) resolves each declared name from `os.environ` into a `secrets.X`
+binding at the start of a run; the scenario file only ever holds the token, never the value
+(BE-0032's Motivation). That design keeps the value out
 of version control and evidence, but it says nothing about *how the value gets into the environment
 in the first place* — and for `serve`, the answer today is "not through the tool at all":
 
@@ -59,7 +60,7 @@ No `run`/CI path is touched — this is entirely inside `serve`'s Tier‑1 opera
 surface, same as BE-0136 and BE-0187.
 
 **1. Resolve the declared names from the bound config.** Reuse `resolve()`
-(`bajutsu/config.py`) against the active config to get each target's effective `secrets:` list, and
+(`bajutsu/config/resolve.py:141`) against the active config to get each target's effective `secrets:` list, and
 union them (a scenario can run against any target) into the set of names the panel should offer. No
 config bound, or a config with an empty `secrets:`, yields an empty list — the panel then shows
 nothing to configure, same as the settings panel today for a provider that isn't selected.
@@ -196,7 +197,8 @@ config-source token.
 
 ## References
 
-`bajutsu/config.py:259` (`Defaults.secrets`) and `:845` (merge in `resolve`),
+`bajutsu/config/schema.py:234` (`Defaults.secrets`) and `bajutsu/config/resolve.py:165` (merge in
+`resolve`), `bajutsu/cli/commands/run.py:231` (`_resolve_secrets`),
 `bajutsu/serve/state.py:585` (`_env_var_for_secret`), `bajutsu/serve/operations/config.py:41-56`
 (the three existing named secrets) and `:183` (`api_key_info`), `bajutsu/serve/authz.py:122`
 (`_ADMIN_PATHS`) and `:169` (`required_role`), `bajutsu/serve/secrets.py` (the local `SecretStore`

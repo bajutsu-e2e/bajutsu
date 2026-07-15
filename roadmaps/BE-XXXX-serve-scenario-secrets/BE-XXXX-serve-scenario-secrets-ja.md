@@ -26,10 +26,11 @@
 
 ## 動機
 
-`bajutsu/config.py:259` の `Defaults.secrets`（ターゲットごとに上書き可能で、`bajutsu/config.py:845`
-の `resolve` でマージされます）は環境変数名のリストです。run の開始時、`bajutsu/cli.py` は宣言された
-各名前をプロセスの環境変数から解決し、`secrets.X` という束縛を作ります。シナリオファイルが持つのは常に
-トークンだけで、値そのものは持ちません（BE-0032 の動機）。この設計は値をバージョン管理や証跡の外に
+`bajutsu/config/schema.py:234` の `Defaults.secrets`（ターゲットごとに上書き可能で、
+`bajutsu/config/resolve.py:165` の `resolve` でマージされます）は環境変数名のリストです。run の開始時、
+`_resolve_secrets`（`bajutsu/cli/commands/run.py:231`）は宣言された各名前をプロセスの環境変数から解決し、
+`secrets.X` という束縛を作ります。シナリオファイルが持つのは常にトークンだけで、値そのものは持ちません
+（BE-0032 の動機）。この設計は値をバージョン管理や証跡の外に
 保ちますが、その値をそもそもどうやって環境変数に入れるかについては何も定めていません。そして `serve`
 に関する今の答えは「ツールを経由しない」です。
 
@@ -58,8 +59,8 @@
 `run` / CI の経路には一切触れません。BE-0136 や BE-0187 と同じく、`serve` の Tier‑1 の運用設定機能の
 内側だけで完結します。
 
-**1. バインド中の config から宣言済みの名前を解決する。** `bajutsu/config.py` の `resolve()` を
-アクティブな config に対して呼び、各ターゲットの実効的な `secrets:` リストを取得し、和集合を取って
+**1. バインド中の config から宣言済みの名前を解決する。** `bajutsu/config/resolve.py:141` の
+`resolve()` をアクティブな config に対して呼び、各ターゲットの実効的な `secrets:` リストを取得し、和集合を取って
 パネルに出す名前の集合とします（シナリオはどのターゲットに対しても走らせられるため）。config が
 バインドされていない場合や `secrets:` が空の場合は空のリストになり、パネルには設定すべきものが
 何も表示されません。プロバイダが未選択のときの設定パネルと同じ振る舞いです。
@@ -198,7 +199,8 @@ follow-up として扱います。
 
 ## 参考
 
-`bajutsu/config.py:259`（`Defaults.secrets`）と `:845`（`resolve` でのマージ）、
+`bajutsu/config/schema.py:234`（`Defaults.secrets`）と `bajutsu/config/resolve.py:165`（`resolve` での
+マージ）、`bajutsu/cli/commands/run.py:231`（`_resolve_secrets`）、
 `bajutsu/serve/state.py:585`（`_env_var_for_secret`）、`bajutsu/serve/operations/config.py:41-56`
 （既存の3つの名前付きシークレット）と `:183`（`api_key_info`）、`bajutsu/serve/authz.py:122`
 （`_ADMIN_PATHS`）と `:169`（`required_role`）、`bajutsu/serve/secrets.py`（ローカルの `SecretStore`
