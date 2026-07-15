@@ -10,6 +10,8 @@ header{flex:0 0 auto;z-index:10;display:flex;align-items:center;gap:1rem;padding
    lets the theme picker + Edit (which live in that row, right-aligned by margin) line up with the
    View/Settings buttons instead of floating at the header's vertical centre. */
 header .brandcol{display:flex;flex-direction:column;gap:.4rem;flex:1;min-width:0}
+/* Title and the build badge share a baseline-aligned row so the version sits quietly beside "bajutsu". */
+header .brandrow{display:flex;align-items:baseline;gap:.5rem;min-width:0}
 header .brand{font-weight:700}
 .toptabs{display:flex;align-items:center;gap:.3rem}
 .toptab{background:var(--bg2);border:1px solid var(--line);color:var(--mut);padding:.25rem .9rem;font:inherit;font-weight:600;font-size:.9em;border-radius:8px;cursor:pointer}

@@ -18,7 +18,15 @@
 <body>
 <header>
   <div class="brandcol">
-    <span class="brand">bajutsu</span>
+    <div class="brandrow">
+      <span class="brand">bajutsu</span>
+      {#- Running-tool identity (BE-0272): which build of bajutsu is serving this page — distinct
+          from the config-provenance badge, which is about where the *config* came from. Sits quietly
+          beside the title. Version is always shown; commit / branch / dirty are filled in by
+          serve.core.mjs only when serve runs from a Git checkout and the caller may see them
+          (admin-gated on a shared deployment). -#}
+      <span class="appversion" id="appversion" data-testid="nav.app-version" hidden></span>
+    </div>
     <div class="toptabs">
       <button class="toptab active" data-view="record" data-testid="nav.record">Record</button>
       <button class="toptab" data-view="replay" data-testid="nav.replay">Replay</button>
@@ -33,11 +41,6 @@
           it shows for any project count so a single-config `serve` can grow into a hub from its Add
           form; serve.core.mjs (loadProjects) reveals it whenever there is a project to manage. -#}
       <button class="toptab" data-view="projects" data-testid="nav.projects-view" hidden>Projects</button>
-      {#- Running-tool identity (BE-0272): which build of bajutsu is serving this page — distinct
-          from the config-provenance badge, which is about where the *config* came from. Version is
-          always shown; commit / branch / dirty are filled in by serve.core.mjs only when serve runs
-          from a Git checkout and the caller may see them (admin-gated on a shared deployment). -#}
-      <span class="appversion" id="appversion" data-testid="nav.app-version" hidden></span>
       <span class="cfgname" id="cfgname" data-testid="nav.config-name"></span>
       <button class="cfgbtn" id="opencfg" data-testid="nav.open-config">Open config</button>
       <button class="cfgbtn" id="viewcfg" data-testid="nav.view-config" hidden>View</button>
