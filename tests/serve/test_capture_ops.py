@@ -146,6 +146,24 @@ def test_start_capture_single_actuator_target_unchanged(tmp_path: Path) -> None:
     assert seen == [["idb"]]
 
 
+def test_start_capture_explicit_body_backend_wins(tmp_path: Path) -> None:
+    # An explicit `backend` in the request body is passed through as a single-element list,
+    # overriding the target's own `[ios]` config — the `[backend] if backend else ...` TRUE
+    # branch (BE-0267) that target-driven tests never reach.
+    seen: list[list[str]] = []
+
+    def factory(_target: str, backends_list: list[str], _udid: str) -> FakeDriver:
+        seen.append(backends_list)
+        return FakeDriver(_screen())
+
+    state = _ios_state(tmp_path)
+    _payload, status = ops.start_capture(
+        state, {"target": "ios", "backend": "idb"}, driver_factory=factory
+    )
+    assert status == 200
+    assert seen == [["idb"]]
+
+
 # ---------------------------------------------------------------------------
 # mark_capture — tap
 # ---------------------------------------------------------------------------
