@@ -55,7 +55,7 @@ backend — the mirror of what BE-0187 did for config.
 ## Detailed design
 
 A read-only viewer wired into the Replay tab. No `run` / CI path is touched (prime directive 1); this
-is a Tier‑1 convenience surface, and it is app-agnostic (prime directive 3) — it reads whatever
+is a Tier-1 convenience surface, and it is app-agnostic (prime directive 3) — it reads whatever
 scenario the active config exposes, with no per-app branching.
 
 - **Reuse the existing read endpoint.** The viewer fetches the selected scenario's body from the
