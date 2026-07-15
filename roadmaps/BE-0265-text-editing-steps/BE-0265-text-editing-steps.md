@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0265") |
-| Implementing PR | _pending_ |
+| Implementing PR | [#1114](https://github.com/bajutsu-e2e/bajutsu/pull/1114) |
 | Topic | Scenario authoring features |
 <!-- /BE-METADATA -->
 
@@ -142,7 +142,7 @@ Prime directives preserved:
 
 **Log**
 
-- _pending_ — All four steps land in one PR: scenario models (`select` / `clear` / `delete` /
+- [#1114](https://github.com/bajutsu-e2e/bajutsu/pull/1114) — All four steps land in one PR: scenario models (`select` / `clear` / `delete` /
   `copy`), the `delete_text` / `select_all` / `copy_selection` `Driver` primitives across every
   backend (fake / adb / playwright / xcuitest / idb / webview), the `copy`-requires-`select`
   selection-state seam centralized in `_do_action`, codegen for all three emitters, and bilingual

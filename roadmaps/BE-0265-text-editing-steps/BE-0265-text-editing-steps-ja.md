@@ -9,7 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0265") |
-| 実装 PR | _pending_ |
+| 実装 PR | [#1114](https://github.com/bajutsu-e2e/bajutsu/pull/1114) |
 | トピック | シナリオ記述機能 |
 <!-- /BE-METADATA -->
 
@@ -136,7 +136,7 @@
 
 **ログ**
 
-- _pending_ — 4 ステップを 1 つの PR で実装します。シナリオモデル（`select` / `clear` /
+- [#1114](https://github.com/bajutsu-e2e/bajutsu/pull/1114) — 4 ステップを 1 つの PR で実装します。シナリオモデル（`select` / `clear` /
   `delete` / `copy`）、全バックエンド（fake / adb / playwright / xcuitest / idb / webview）の
   `delete_text` / `select_all` / `copy_selection` ドライバプリミティブ、`copy` が `select` を
   前提とする選択状態のシーム（`_do_action` に集約）、3 つの codegen エミッター、両言語のドキュメント
