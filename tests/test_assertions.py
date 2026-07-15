@@ -110,6 +110,36 @@ def test_evaluator_registry_covers_every_kind_exactly() -> None:
     assert set(_EVALUATORS) == set(ASSERTION_KINDS)
 
 
+# --- Assertion-kind derivation (BE-0250 Unit 4) ---
+
+
+def test_assertion_kinds_derived_from_model() -> None:
+    """`ASSERTION_KINDS` is derived from the `Assertion` model — every field except the
+    non-kind provenance `from_` — so a new kind is a single field edit, not also a parallel
+    hand-maintained tuple (BE-0250 Unit 4)."""
+    from bajutsu.scenario import ASSERTION_KINDS
+
+    # Pin against the concrete kinds (declaration order): checks the derivation against an
+    # independent list, not against a recomputation of its own formula.
+    assert ASSERTION_KINDS == (
+        "exists",
+        "value",
+        "label",
+        "count",
+        "enabled",
+        "disabled",
+        "selected",
+        "request",
+        "event",
+        "request_sequence",
+        "response_schema",
+        "visual",
+        "clipboard",
+        "golden",
+    )
+    assert "from_" not in ASSERTION_KINDS
+
+
 # --- EvalContext bundling (BE-0250 Unit 2) ---
 
 

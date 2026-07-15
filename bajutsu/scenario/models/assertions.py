@@ -10,7 +10,7 @@ from typing import Any, Literal, Self
 
 from pydantic import Field, model_validator
 
-from bajutsu.scenario.models._base import _ASSERTION_KINDS, _exactly_one, _Model
+from bajutsu.scenario.models._base import _exactly_one, _Model
 from bajutsu.scenario.models.selector import Selector
 
 
@@ -303,3 +303,9 @@ class Assertion(_Model):
     def _one_kind(self) -> Self:
         _exactly_one(self, _ASSERTION_KINDS, "§6.4")
         return self
+
+
+# The assertion-kind field names, derived from the model so a new kind is declared in exactly one
+# place — adding an `Assertion` field — instead of also appending to a parallel hand-maintained
+# tuple (a per-kind merge-conflict point). `from_` is provenance (BE-0044), not a kind.
+_ASSERTION_KINDS = tuple(f for f in Assertion.model_fields if f != "from_")

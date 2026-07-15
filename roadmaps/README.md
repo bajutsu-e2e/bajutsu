@@ -500,6 +500,7 @@ Behavior-preserving cleanup inside `bajutsu/` itself — deduplication, decompos
 | [BE-0247](BE-0247-serve-frontend-es-modules/BE-0247-serve-frontend-es-modules.md) | Move the serve frontend to ES modules | Implemented |
 | [BE-0248](BE-0248-serve-state-decomposition-continued/BE-0248-serve-state-decomposition-continued.md) | Continue decomposing ServeState into auth and provider-settings managers | Implemented |
 | [BE-0249](BE-0249-dead-claude-client-wrapper-removal/BE-0249-dead-claude-client-wrapper-removal.md) | Remove the dead Claude-client wrapper orphaned by the backend seam | Implemented |
+| [BE-0250](BE-0250-assertions-package-eval-context/BE-0250-assertions-package-eval-context.md) | Split assertions into a package and thread evaluation contexts as one EvalContext | Implemented |
 | [BE-0251](BE-0251-driver-base-helper-hoist/BE-0251-driver-base-helper-hoist.md) | Hoist duplicated driver helpers into drivers.base and unify small constants | Implemented |
 | [BE-0252](BE-0252-config-package-split/BE-0252-config-package-split.md) | Split config into a package and group Effective into sub-records | Implemented |
 | [BE-0254](BE-0254-coordinate-tree-driver-base/BE-0254-coordinate-tree-driver-base.md) | Extract a shared CoordinateTreeDriver base for idb and adb | Implemented |
@@ -543,7 +544,6 @@ Accepted and actively being built — a PR is in flight or imminent.
 <!-- GENERATED:in-progress-quality-debt -->
 | ID | Item | Status |
 |---|---|---|
-| [BE-0250](BE-0250-assertions-package-eval-context/BE-0250-assertions-package-eval-context.md) | Split assertions into a package and thread evaluation contexts as one EvalContext | In progress |
 | [BE-0253](BE-0253-serve-route-registry-unification/BE-0253-serve-route-registry-unification.md) | Unify the serve dual-backend route tables behind a declarative registry | In progress |
 | [BE-0257](BE-0257-layer-package-topology/BE-0257-layer-package-topology.md) | Package the enforced architecture layers as directories | In progress |
 <!-- /GENERATED:in-progress-quality-debt -->

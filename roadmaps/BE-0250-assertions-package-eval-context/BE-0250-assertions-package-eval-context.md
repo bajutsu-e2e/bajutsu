@@ -7,9 +7,9 @@
 |---|---|
 | Proposal | [BE-0250](BE-0250-assertions-package-eval-context.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **In progress** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0250") |
-| Implementing PR | [#1093](https://github.com/bajutsu-e2e/bajutsu/pull/1093), [#1100](https://github.com/bajutsu-e2e/bajutsu/pull/1100), [#1106](https://github.com/bajutsu-e2e/bajutsu/pull/1106) |
+| Implementing PR | [#1093](https://github.com/bajutsu-e2e/bajutsu/pull/1093), [#1100](https://github.com/bajutsu-e2e/bajutsu/pull/1100), [#1106](https://github.com/bajutsu-e2e/bajutsu/pull/1106), [#1113](https://github.com/bajutsu-e2e/bajutsu/pull/1113) |
 | Topic | Codebase quality & technical debt |
 | Related | [BE-0172](../BE-0172-run-loop-step-decomposition/BE-0172-run-loop-step-decomposition.md) |
 <!-- /BE-METADATA -->
@@ -146,7 +146,7 @@ before and after) rather than changing any assertion's observable behavior.
 - [x] Split `bajutsu/assertions.py` into an `assertions/` package (`network.py`, `visual.py`, `schema.py`, `evaluate.py`), re-exporting the existing public surface.
 - [x] Bundle `visual_context`/`schema_context`/`golden_context`/`clipboard` into one `EvalContext`, threaded end-to-end through `evaluate` → `evaluate_one` → `run_scenario` → `_run_step_body` → `pipeline.py`.
 - [x] Replace the 14-way `if` chain in `evaluate_one` with a `{field_name: eval_fn}` registry, mirroring `bajutsu/orchestrator/actions/_registry.py`'s `_HANDLERS`.
-- [ ] Derive `_ASSERTION_KINDS` from `Assertion.model_fields` instead of hand-maintaining the tuple.
+- [x] Derive `_ASSERTION_KINDS` from `Assertion.model_fields` instead of hand-maintaining the tuple.
 
 ### Log
 
@@ -170,6 +170,13 @@ before and after) rather than changing any assertion's observable behavior.
   holds every kind under strict typing. Behavior-preserving (exactly one kind is set per scenario validation, so
   scan order is immaterial); the existing assertion suite plus a new registry-covers-every-kind guard are the parity
   net. PR [#1106](https://github.com/bajutsu-e2e/bajutsu/pull/1106).
+- Unit 4 (derive the kind tuple) — the hand-maintained `_ASSERTION_KINDS` tuple in
+  `scenario/models/_base.py` is replaced by `tuple(f for f in Assertion.model_fields if f != "from_")`,
+  defined in `scenario/models/assertions.py` next to the `Assertion` model and re-exported as
+  `ASSERTION_KINDS` — mirroring `_STEP_ACTIONS`'s derivation from the `Step` model. A new assertion kind
+  is now a single field edit plus a registry entry, not also a parallel tuple edit. Behavior-preserving
+  (the derived tuple equals the old hand tuple, field-declaration order preserved); a new
+  derivation-parity guard is the net. PR [#1113](https://github.com/bajutsu-e2e/bajutsu/pull/1113).
 
 ## References
 

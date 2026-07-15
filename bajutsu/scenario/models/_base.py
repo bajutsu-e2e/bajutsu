@@ -1,7 +1,8 @@
 """Shared base for the scenario models.
 
-The strict pydantic base, small validators, and the token grammars (capture kinds, step actions,
-assertion kinds). Everything here is dependency-free so every model module can import it without
+The strict pydantic base, small validators, the capture-kind token grammar, and the control-flow
+action subset. (Step-action and assertion-kind names are each derived from their own model, not
+listed here.) Everything here is dependency-free so every model module can import it without
 cycles.
 """
 
@@ -23,26 +24,10 @@ _CAPTURE_KINDS = {
 }
 _CAPTURE_MODS = {"before", "after", "around", "onError"}
 
-# The list of step-action field names is derived from the Step model itself (see
-# models/steps.py), so adding an action edits exactly one place — the model — instead of also
+# The step-action (models/steps.py) and assertion-kind (models/assertions.py) field names are each
+# derived from their own model, so adding one edits exactly one place — the model — instead of also
 # appending here. Only the control-flow subset, which the Step validator needs, is named.
 _CONTROL_FLOW_ACTIONS = ("if_", "for_each", "web")
-_ASSERTION_KINDS = (
-    "exists",
-    "value",
-    "label",
-    "count",
-    "enabled",
-    "disabled",
-    "selected",
-    "request",
-    "event",
-    "request_sequence",
-    "response_schema",
-    "visual",
-    "clipboard",
-    "golden",
-)
 
 
 class _Model(BaseModel):
