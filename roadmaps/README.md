@@ -559,7 +559,9 @@ Under consideration — not yet decided. Promote an item to *In progress* once w
 ### Driver & backend architecture
 
 <!-- GENERATED:proposals-driver-architecture -->
-
+| ID | Item | Status |
+|---|---|---|
+| [BE-0270](BE-0270-android-adb-driver-conformance/BE-0270-android-adb-driver-conformance.md) | Driver conformance for the adb backend on-device | Proposal |
 <!-- /GENERATED:proposals-driver-architecture -->
 
 ### Device-cloud execution

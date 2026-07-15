@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-android-adb-driver-conformance-ja.md)
+**English** · [日本語](BE-0270-android-adb-driver-conformance-ja.md)
 
-# BE-XXXX — Driver conformance for the adb backend on-device
+# BE-0270 — Driver conformance for the adb backend on-device
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-android-adb-driver-conformance.md) |
+| Proposal | [BE-0270](BE-0270-android-adb-driver-conformance.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0270") |
 | Topic | Driver & backend architecture |
 <!-- /BE-METADATA -->
 
