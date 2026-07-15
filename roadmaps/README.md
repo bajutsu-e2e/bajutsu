@@ -606,8 +606,7 @@ Running a scenario on a hosted device farm instead of a local Simulator, emulato
 ### Surfacing CLI features in the serve Web UI
 
 <!-- GENERATED:proposals-serve-cli-features -->
-| ID | Item | Status |
-|---|---|---|
+
 <!-- /GENERATED:proposals-serve-cli-features -->
 
 ### Hosting the web UI (cloud / self-hosted)
