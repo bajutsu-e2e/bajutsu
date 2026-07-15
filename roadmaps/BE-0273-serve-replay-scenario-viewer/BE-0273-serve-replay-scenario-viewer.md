@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0273](BE-0273-serve-replay-scenario-viewer.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0273") |
+| Implementing PR | _pending_ |
 | Topic | Authoring experience (record / GUI editor) |
 | Related | [BE-0187](../BE-0187-serve-config-view/BE-0187-serve-config-view.md) |
 <!-- /BE-METADATA -->
@@ -143,15 +144,26 @@ scenario the active config exposes, with no per-app branching.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Add the "View scenario" affordance to the Replay Form (markup + wiring in `serve.html.j2` /
-      `serve.panels.js`), fetching from the existing `GET /api/scenario`.
-- [ ] Implement the viewer overlay/pane with a raw-YAML ↔ structured-steps toggle, following the
+- [x] Add the "View scenario" affordance to the Replay Form (markup + wiring in `serve.html.j2` /
+      `serve.panels.mjs`), fetching from the existing `GET /api/scenario`.
+- [x] Implement the viewer overlay/pane with a raw-YAML ↔ structured-steps toggle, following the
       BE-0187 / theme-editor modal conventions.
-- [ ] Ungate the structural part of `read_scenario`'s `steps` so it returns runner-derived steps
-      without a `run_id` (run-scoped `elementsUrl` / `screenshotUrl` stay `run_id`-only); render the
-      structured view from it.
-- [ ] Add `data-testid`s and a dogfood E2E scenario next to `demos/serve-ui/scenarios/replay-tools.yaml`.
-- [ ] Update `docs/architecture.md` and its `docs/ja/` mirror.
+- [x] Return the structural part of `read_scenario` without a `run_id` — via an opt-in `structure`
+      query flag the viewer sets, so the runner-derived per-scenario steps come back with no prior
+      run while the Author editor's no-run load keeps its plain `{yaml}`; the run-scoped `steps` (with
+      `elementsUrl` / `screenshotUrl`) stay `run_id`-only. Render the structured view from it.
+- [x] Add `data-testid`s and a dogfood E2E scenario (`demos/serve-ui/scenarios/replay-scenario-view.yaml`)
+      next to `demos/serve-ui/scenarios/replay-tools.yaml`.
+- [x] Update `docs/architecture.md` and its `docs/ja/` mirror.
+
+### Log
+
+- Implemented in PR _pending_: read-only scenario viewer in the Replay Form — a "View scenario"
+  control opens a modal mirroring the config viewer (BE-0187) with a raw-YAML ↔ structured-steps
+  toggle. `read_scenario` gained an opt-in `structure` flag that returns the runner's per-scenario
+  parse (`_scenario_structure`, reusing `_step_action_fields`) without a run, leaving every existing
+  no-run caller's response byte-for-byte unchanged. Covered by unit + HTTP tests and a Playwright
+  dogfood scenario.
 
 ## References
 

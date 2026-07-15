@@ -487,6 +487,13 @@ header .appversion .dirty{color:var(--acc);font-weight:700}
 .cfgval.num{color:var(--acc)}
 .cfgval.bool,.cfgval.nul{color:var(--mut);font-style:italic}
 .fsor{color:var(--mut);font-size:.78em;text-transform:uppercase;letter-spacing:.04em;margin:.5rem 0 .4rem}
+/* Scenario viewer (BE-0273): read-only per-scenario steps in the structured toggle. */
+.scnview-scn{padding:.35rem 0}
+.scnview-scn+.scnview-scn{margin-top:.45rem;padding-top:.55rem;border-top:1px solid var(--line)}
+.scnview-name{color:var(--acc);font-weight:700}
+.scnview-steplist{margin:.3rem 0 0;padding-left:1.4rem}
+.scnview-steplist li{margin:.1rem 0}
+.scnview-act{color:var(--acc);font-weight:600}
 /* Settings modal (AI provider + Claude API key) */
 .setsection{padding-top:.85rem;margin-top:.85rem;border-top:1px solid var(--line)}
 .setsection:first-of-type{padding-top:0;margin-top:0;border-top:0}

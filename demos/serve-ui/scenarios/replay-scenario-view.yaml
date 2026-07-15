@@ -1,0 +1,33 @@
+# Replay scenario viewer (BE-0273) — see what a run does before running it. A read-only view of the
+# selected scenario reachable from the Replay Form: raw YAML (byte-for-byte what runs) with a toggle
+# to the runner-parsed structured steps. Deterministic and AI-free: the content comes from the same
+# GET /api/scenario the Author tab and Record tab already use — no device, no model, no run needed.
+description: >-
+  Replay scenario viewer — open the selected scenario read-only, confirm the raw YAML is shown, and
+  toggle to the structured steps to see a known step the scenario taps.
+scenarios:
+  - name: the viewer shows the selected scenario's raw YAML and structured steps
+    description: >-
+      With counter.yaml auto-selected, View scenario opens the read-only viewer; the raw YAML holds
+      the scenario text and the structured view lists the first step (tap onboarding.start).
+    steps:
+      - tap: { id: nav.replay }
+      - wait: { for: { id: replay.scenario, labelMatches: "counter" }, timeout: 10 }
+      # The View-scenario control enables as soon as a scenario is picked — no prior run required.
+      - wait: { for: { id: replay.view-scenario }, timeout: 10 }
+      - tap: { id: replay.view-scenario }
+      - wait: { for: { id: replay.scenario-view-modal }, timeout: 10 }
+      - assert:
+          # The viewer opens on the structured view (the runner's own parse, one line per step); its
+          # first line is the step counter.yaml taps, proving the runner-parsed body is surfaced.
+          - label: { sel: { id: replay.scenario-view-structured }, contains: "onboarding.start" }
+      # Toggle to the raw YAML: the authoritative byte-for-byte source pane surfaces (structured hides).
+      - tap: { id: replay.scenario-view-toggle-raw }
+      - wait: { for: { id: replay.scenario-view-content }, timeout: 5 }
+      - assert:
+          - exists: { id: replay.scenario-view-content }
+          - exists: { id: replay.scenario-view-structured, negate: true }
+      - tap: { id: replay.scenario-view-close }
+      - wait: { until: { gone: { id: replay.scenario-view-modal } }, timeout: 5 }
+    expect:
+      - exists: { id: replay.scenario-view-modal, negate: true }

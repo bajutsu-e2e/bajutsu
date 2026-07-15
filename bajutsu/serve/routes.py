@@ -218,6 +218,7 @@ ROUTES: tuple[Route, ...] = (
             actor=ctx.actor(),
             run_id=ctx.query("runId"),
             scenario_name=ctx.query("scenario"),
+            structure=ctx.query("structure"),
         ),
     ),
     Route("GET", "/api/schema", lambda state, ctx: ops.scenario_schema()),

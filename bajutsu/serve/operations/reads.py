@@ -273,6 +273,7 @@ def read_scenario(
     actor: str | None = None,
     run_id: str | None = None,
     scenario_name: str | None = None,
+    structure: str | None = None,
 ) -> tuple[Any, int]:
     # A scenario in another org's target reads as not-found (non-leaky) — BE-0015 multi-tenancy.
     org = state.org_of(actor)
@@ -283,10 +284,38 @@ def read_scenario(
     if text is None:
         return {"error": "not found"}, 404
     if not run_id:
+        # The Replay viewer (BE-0273) opts in with `structure` to read what a scenario *is* without
+        # a run: the runner's own per-scenario parse, no run-scoped URLs. Every other no-run caller
+        # (the Author editor) keeps the plain {yaml} it always got, paying for no extra parse. The
+        # run-scoped `steps` below stays run_id-only.
+        if structure:
+            return {"yaml": text, "scenarios": _scenario_structure(text)}, 200
         return {"yaml": text}, 200
     if not valid_run_id(run_id):
         return {"yaml": text, "steps": []}, 200
     return {"yaml": text, "steps": _step_artifacts(state, text, run_id, scenario_name, org)}, 200
+
+
+def _scenario_structure(yaml_text: str) -> list[dict[str, Any]]:
+    """Every named scenario in the file with its ordered steps, from the runner's own parse.
+
+    This is the read-only Replay viewer's structured view (BE-0273): it reuses the runner's
+    `Step` model (`_step_action_fields`) rather than reparsing in the browser, so it can never
+    drift from how a run actually reads the scenario. Unparseable YAML yields an empty list —
+    the viewer falls back to the raw text, which stays authoritative.
+    """
+    try:
+        scenarios = load_scenario_file(yaml_text).scenarios
+    except Exception:
+        return []
+    result: list[dict[str, Any]] = []
+    for scenario in scenarios:
+        steps = []
+        for step in scenario.steps:
+            action, fields = _step_action_fields(step)
+            steps.append({"action": action, "fields": fields})
+        result.append({"name": scenario.name, "description": scenario.description, "steps": steps})
+    return result
 
 
 def _step_artifacts(
