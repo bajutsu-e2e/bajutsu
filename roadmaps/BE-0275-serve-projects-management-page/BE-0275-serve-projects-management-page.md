@@ -9,6 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0275") |
+| Implementing PR | [#1123](https://github.com/bajutsu-e2e/bajutsu/pull/1123) |
 | Topic | Surfacing CLI features in the serve Web UI |
 | Related | [BE-0225](../BE-0225-config-project-hub/BE-0225-config-project-hub.md), [BE-0226](../BE-0226-cross-project-metrics-dashboard/BE-0226-cross-project-metrics-dashboard.md), [BE-0015](../BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md), [BE-0108](../BE-0108-hosted-config-source-restriction/BE-0108-hosted-config-source-restriction.md), [BE-0063](../BE-0063-git-config-source/BE-0063-git-config-source.md), [BE-0073](../BE-0073-serve-zip-bundle-upload/BE-0073-serve-zip-bundle-upload.md) |
 <!-- /BE-METADATA -->
@@ -191,7 +192,7 @@ existing register endpoint (normalized through the CLI's own `source_from_config
 - [x] 4 — Reveal (Projects tab shown for any project count; switcher/Metrics stay hub-only), RBAC (server-enforced; controls shown + inline 403; client role gating deferred to a follow-up BE), and allowlist mirroring for the `fs` source.
 
 **Log**
-- Implementing PR — the top-level Projects view, the add/remove lifecycle controls, the additive `sourceSpec` register field, and the modal retirement; docs (`web-ui` / `architecture` / `cli`, both languages) updated in step.
+- [#1123](https://github.com/bajutsu-e2e/bajutsu/pull/1123) — the top-level Projects view, the add/remove lifecycle controls, the additive `sourceSpec` register field, and the modal retirement; docs (`web-ui` / `architecture` / `cli`, both languages) updated in step.
 
 ## References
 
