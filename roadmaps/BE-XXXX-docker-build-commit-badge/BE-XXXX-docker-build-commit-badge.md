@@ -86,10 +86,13 @@ happens to carry a usable `.git`.
   `docker build --build-arg GIT_COMMIT=$(git rev-parse HEAD) -f
   deploy/self-host/Dockerfile .` — mirroring the existing worker-image build
   command already documented there. Extend
-  [`docker-compose.yml`](../../deploy/self-host/docker-compose.yml)'s `build:`
-  stanza to pass the same argument (Compose resolves `args` from the
+  [`docker-compose.yml`](../../deploy/self-host/docker-compose.yml) defines
+  two services that build this Dockerfile (`migrate`, `bajutsu`); extend the
+  `bajutsu` service's `build:` stanza — the one that actually serves the badge
+  endpoint — to pass the same argument (Compose resolves `args` from the
   invoking shell's environment or a `.env` value), so `docker compose build`
-  picks it up without extra flags.
+  picks it up without extra flags. The `migrate` service runs Alembic and
+  never serves `server_checkout()`, so it needs no build arg.
   An external deployment pipeline that builds this Dockerfile on its own
   (rather than through this repo's compose stack) is outside this
   repository's scope to change, but the build-argument contract this item
