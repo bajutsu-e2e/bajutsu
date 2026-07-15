@@ -8,7 +8,7 @@
 // which serve.core.mjs (and panels) call at runtime, forming a safe import cycle with core.
 import {
   $, esc, getJSON, renderGradeBadge, wireDoctor, NARROW_MQ, prefersReducedMotion, motionOff,
-  initTheme, showView, loadConfig, loadProjects, loadSims, refreshAiAvailability, state,
+  initTheme, showView, loadConfig, loadVersion, loadProjects, loadSims, refreshAiAvailability, state,
 } from './serve.core.mjs';
 import {loadHistory, setHistoryFilter, showTab, initPanels} from './serve.panels.mjs';
 import {initCrawl} from './serve.crawl.mjs';
@@ -964,6 +964,7 @@ if(!NARROW_MQ.matches)initTiling();
 
 initTheme();
 loadConfig();
+loadVersion();
 loadProjects();
 refreshAiAvailability();
 loadSims();

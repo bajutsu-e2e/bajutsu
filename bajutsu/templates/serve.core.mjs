@@ -386,6 +386,23 @@ async function loadConfig(){
 }
 // Set the nav's config-name label and reveal the "View" button only when a config is actually bound.
 function setCfgName(text,hasConfig){$('#cfgname').textContent=text;$('#viewcfg').hidden=!hasConfig}
+// Running-tool identity badge (BE-0272): "which build of bajutsu am I looking at". Version is
+// always shown once the endpoint answers; commit/branch/dirty are appended only when serve runs
+// from a Git checkout AND the caller may see them — the checkout read is admin-gated, and getJSON
+// swallows a 403 (non-admin) or a network error into {}, so a hosted/non-admin/pip-install serve
+// simply shows the version alone. Read on boot; not polled — the running build doesn't change.
+async function loadVersion(){
+  const v=await getJSON('/api/version',{});
+  if(!v.version)return;  // endpoint unreachable — leave the badge hidden
+  let html='v'+esc(v.version);
+  const c=await getJSON('/api/version/checkout',{});
+  if(c.commit){
+    html+=' &middot; <code>'+esc(c.commit)+'</code>';
+    if(c.branch)html+=' ('+esc(c.branch)+')';
+    if(c.dirty)html+=' <span class="dirty" title="uncommitted changes in the checkout">*</span>';
+  }
+  const badge=$('#appversion');badge.innerHTML=html;badge.hidden=false;
+}
 // Browse the server's --root for a config.yml. Paths returned by /api/fs are absolute and the
 // server re-validates every one against --root, so clicking can never escape the browse ceiling.
 async function browseFs(dir){
@@ -1037,6 +1054,6 @@ if(window.__bajutsuThemesWritable){$('#themesave-upload').hidden=false;$('#theme
 export {
   $, setBusy, cancelJob, streamJob, appendLine, esc, setStatus, getJSON, postJSON, startJob,
   renderGradeBadge, wireDoctor, NARROW_MQ, prefersReducedMotion, motionOff, initTheme,
-  openModal, closeModal, showView, loadConfig, setCfgName, closeFs, loadProjects, switchProject,
-  loadShared, loadScenarios, loadSims, refreshAiAvailability,
+  openModal, closeModal, showView, loadConfig, loadVersion, setCfgName, closeFs, loadProjects,
+  switchProject, loadShared, loadScenarios, loadSims, refreshAiAvailability,
 };

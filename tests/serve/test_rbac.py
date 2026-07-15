@@ -55,6 +55,10 @@ def test_required_role_maps_endpoints() -> None:
     assert ops.required_role("POST", "/api/artifacts/scenarios") == "admin"
     assert ops.required_role("POST", "/api/artifacts/binary") == "admin"
     assert ops.required_role("GET", "/api/artifacts/exists") == "admin"
+    # Server identity (BE-0272): the version string is open, but the Git checkout (commit/branch/
+    # dirty) is admin — a branch name leaks the in-progress topic. Same GET early-case reason.
+    assert ops.required_role("GET", "/api/version") is None
+    assert ops.required_role("GET", "/api/version/checkout") == "admin"
 
 
 def test_role_allows_ranks_viewer_editor_admin() -> None:
@@ -82,3 +86,7 @@ def test_forbidden_for_role_reads_the_stored_role(tmp_path: Path) -> None:
     assert ops.forbidden_for_role(state, "e", "POST", "/api/run") is False  # editor can
     assert ops.forbidden_for_role(state, "e", "POST", "/api/apikey") is True  # editor isn't admin
     assert ops.forbidden_for_role(state, "v", "GET", "/api/runs") is False  # reads are open
+    # BE-0272: version stays open to a viewer, the checkout detail is admin-only.
+    assert ops.forbidden_for_role(state, "v", "GET", "/api/version") is False
+    assert ops.forbidden_for_role(state, "e", "GET", "/api/version/checkout") is True
+    assert ops.forbidden_for_role(state, "v", "GET", "/api/version/checkout") is True
