@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0267](BE-0267-serve-author-actuator-selection.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0267") |
+| Implementing PR | [#1121](https://github.com/bajutsu-e2e/bajutsu/pull/1121) |
 | Topic | Authoring experience (record / GUI editor) |
 <!-- /BE-METADATA -->
 
@@ -89,10 +90,16 @@ corrective for multi-candidate ones (`[ios]`).
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Unit 1 — cost-ordered pick in `_default_driver_factory`.
-- [ ] Unit 2 — capture/enrich hand the full backend list to the shared factory.
-- [ ] Unit 3 — explicit single-actuator pin preserved (XCUITest error intact).
-- [ ] Unit 4 — regression tests for `[ios]` → idb and single-actuator unchanged.
+- [x] Unit 1 — cost-ordered pick in `_default_driver_factory` (new `backends.select_actuator_cost_first`).
+- [x] Unit 2 — capture/enrich hand the full backend list to the shared factory.
+- [x] Unit 3 — explicit single-actuator pin preserved (XCUITest error intact).
+- [x] Unit 4 — regression tests for `[ios]` → idb and single-actuator unchanged.
+
+Log:
+
+- [#1121](https://github.com/bajutsu-e2e/bajutsu/pull/1121) — Reuse cost-ordered selection in serve
+  capture/enrich: add `select_actuator_cost_first`, route `_default_driver_factory` and capture/enrich
+  through it over the full backend list.
 
 ## References
 

@@ -97,6 +97,93 @@ def test_start_capture_requires_config(tmp_path: Path) -> None:
     assert "config" in payload["error"]
 
 
+def _ios_state(tmp_path: Path) -> ServeState:
+    """A ServeState whose `ios` target declares `backend: [ios]` (multi-actuator, BE-0267)."""
+    scn_dir = tmp_path / "scenarios"
+    scn_dir.mkdir()
+    cfg = tmp_path / "bajutsu.config.yaml"
+    cfg.write_text(
+        "defaults: { backend: [idb] }\n"
+        "targets:\n"
+        f"  ios: {{ bundleId: com.example.ios, backend: [ios], scenarios: {scn_dir} }}\n"
+        f"  idb_only: {{ bundleId: com.example.idb, backend: [idb], scenarios: {scn_dir} }}\n",
+        encoding="utf-8",
+    )
+    runs = tmp_path / "runs"
+    runs.mkdir()
+    return ServeState(runs_dir=runs, config=cfg, scenarios_dir=scn_dir, cwd=tmp_path)
+
+
+def test_start_capture_ios_target_resolves_to_idb(tmp_path: Path) -> None:
+    # A `[ios]` target must select the cheapest bring-able actuator (idb), not the alias head
+    # XCUITest — serve never starts an XCUITest runner (BE-0267). The recording factory resolves
+    # the backends list it receives the same way the default factory does.
+    from bajutsu import backends
+
+    seen: list[str] = []
+
+    def factory(_target: str, backends_list: list[str], _udid: str) -> FakeDriver:
+        seen.append(backends.select_actuator_cost_first(backends_list, available=lambda a: True))
+        return FakeDriver(_screen())
+
+    state = _ios_state(tmp_path)
+    _payload, status = ops.start_capture(state, {"target": "ios"}, driver_factory=factory)
+    assert status == 200
+    assert seen == ["idb"]
+
+
+def test_start_capture_single_actuator_target_unchanged(tmp_path: Path) -> None:
+    # A single-actuator target is a hard pin: capture hands the factory exactly its backend list.
+    seen: list[list[str]] = []
+
+    def factory(_target: str, backends_list: list[str], _udid: str) -> FakeDriver:
+        seen.append(backends_list)
+        return FakeDriver(_screen())
+
+    state = _ios_state(tmp_path)
+    _payload, status = ops.start_capture(state, {"target": "idb_only"}, driver_factory=factory)
+    assert status == 200
+    assert seen == [["idb"]]
+
+
+def test_start_capture_explicit_body_backend_wins(tmp_path: Path) -> None:
+    # An explicit `backend` in the request body is passed through as a single-element list,
+    # overriding the target's own `[ios]` config — the `[backend] if backend else ...` TRUE
+    # branch (BE-0267) that target-driven tests never reach.
+    seen: list[list[str]] = []
+
+    def factory(_target: str, backends_list: list[str], _udid: str) -> FakeDriver:
+        seen.append(backends_list)
+        return FakeDriver(_screen())
+
+    state = _ios_state(tmp_path)
+    _payload, status = ops.start_capture(
+        state, {"target": "ios", "backend": "idb"}, driver_factory=factory
+    )
+    assert status == 200
+    assert seen == [["idb"]]
+
+
+def test_start_capture_explicit_alias_backend_is_cost_ordered(tmp_path: Path) -> None:
+    # An explicit alias like `backend: "ios"` still goes through cost ordering, not a hard pin:
+    # the override branch hands the factory `["ios"]`, which cost-orders to idb — proving the
+    # override preserves ordering, not just a passthrough (BE-0267).
+    from bajutsu import backends
+
+    seen: list[str] = []
+
+    def factory(_target: str, backends_list: list[str], _udid: str) -> FakeDriver:
+        seen.append(backends.select_actuator_cost_first(backends_list, available=lambda a: True))
+        return FakeDriver(_screen())
+
+    state = _ios_state(tmp_path)
+    _payload, status = ops.start_capture(
+        state, {"target": "idb_only", "backend": "ios"}, driver_factory=factory
+    )
+    assert status == 200
+    assert seen == ["idb"]
+
+
 # ---------------------------------------------------------------------------
 # mark_capture — tap
 # ---------------------------------------------------------------------------

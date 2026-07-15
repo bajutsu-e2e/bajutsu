@@ -70,14 +70,15 @@ def start_enrich(
     backend, udid, err = _device_args(body)
     if err:
         return err
-    if not backend:
-        backends_list = target_cfg.backend or config.defaults.backend
-        backend = backends_list[0] if backends_list else "fake"
+    # An explicit body `backend` is passed through as-is: a single actuator stays a hard pin, while
+    # a platform token like `ios` is still cost-ordered by the selector (idb over the alias head
+    # XCUITest); otherwise the target's full backend list is used, cost-ordered the same way (BE-0267).
+    backends_list = [backend] if backend else list(target_cfg.backend or config.defaults.backend)
     if not udid:
         udid = "booted"
 
     factory = driver_factory or _default_driver_factory
-    driver = factory(target, backend, udid)
+    driver = factory(target, backends_list, udid)
 
     from bajutsu.enrich import enrich
 
