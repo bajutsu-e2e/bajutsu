@@ -26,7 +26,7 @@ runs/<runId>/
     └── device.log    # deviceLog（区間）
 ```
 
-`runId` は CLI が `YYYYMMDD-HHMMSS` で採番します（`cli.py`）。`stepId` は `step.name` または `step<i>` です。
+`runId` は CLI が `YYYYMMDD-HHMMSS` で採番します（`cli/commands/run.py`）。`stepId` は `step.name` または `step<i>` です。
 
 ## manifest.json
 

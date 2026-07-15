@@ -153,12 +153,13 @@ IMPLEMENTED = {"idb", "fake", "playwright", "xcuitest"}  # 今日ドライバが
 def default_available(actuator) -> bool:   # 実装済みかつ裏のツールがあるか（playwright はパッケージ import、fake は常に可）
 def resolve_actuators(backends) -> list:   # 各トークン（プラットフォーム/actuator）を actuator 列へ展開
 def select_actuator(backends, available) -> str:  # 安定度順で最初の「実装済み かつ 利用可能」
+def select_actuator_cost_first(backends, available) -> str:  # シナリオ無しで、最も安い利用可能な actuator（BE-0267）
 def select_actuator_for_scenario(backends, scenario, available, caps) -> str:  # 利用可能かつ十分な、最も安い actuator（BE-0240）
 def make_driver(actuator, udid, *, base_url=None, runner_port=None) -> Driver:  # "xcuitest"→XcuitestDriver, "idb"→IdbDriver, "playwright"→PlaywrightDriver, "fake"→FakeDriver
 ```
 
 - **バックエンドトークン**は、**プラットフォーム**（`ios` / `android` / `web` / `fake`）か、具体的な **actuator**（例: `idb`）のどちらかです。actuator を複数持つプラットフォームは**シナリオごと**に解決します（BE-0240）。`--backend ios`（または `backend: [ios]`）は、各シナリオを、そのステップが使える最も安い actuator で走らせます。既定は `idb` で、シナリオの構文が idb に無い能力を要求するとき（例: `pinch` / `rotate` は `multiTouch`）だけ XCUITest へ昇格します。idb の能力集合は XCUITest の真部分集合なので、idb を特に必要とするシナリオはありません。idb が優先されるのはコストのためだけです。
-- 二つの順序が二つの問いに答えます。**安定度順**（`PLATFORMS`、最も高機能なものから。[concepts](concepts.md#5-安定度順ラダーstability-ladder)）は `select_actuator` を駆動します。これは、まだシナリオが手元に無い場面（`doctor`、プールの起動時セットアップ、明示的な単一 actuator の固定）で使う、可用性だけの選択です。**コスト順**（`COST_ORDER`、最も安いものから）は `select_actuator_for_scenario` を駆動します。これは `capability_preflight.unsupported`（BE-0082）を各候補の能力集合に対して再利用し、利用可能かつ十分な最初の候補を返します。明示的な単一 actuator の要求は決して昇格しません（`--udid` と同じ、固定の指定です）。利用可能なものが無ければ `RuntimeError`（CLI は終了コード 2）。
+- 二つの順序が二つの問いに答えます。**安定度順**（`PLATFORMS`、最も高機能なものから。[concepts](concepts.md#5-安定度順ラダーstability-ladder)）は `select_actuator` を駆動します。これは、まだシナリオが手元に無くコストも問わない場面（`doctor`、プールの起動時セットアップ、明示的な単一 actuator の固定）で使う、可用性だけの選択です。**コスト順**（`COST_ORDER`、最も安いものから）は `select_actuator_for_scenario` と `select_actuator_cost_first` の両方を駆動し、両者は候補解決の前段（`_cost_ordered_available`）を共有します。`select_actuator_for_scenario` はさらに `capability_preflight.unsupported`（BE-0082）を各候補の能力集合に対して再利用し、利用可能かつそのシナリオのステップに十分な最初の候補を返します。`select_actuator_cost_first` は同じコスト優先の選択をシナリオ無しで行うもので、能力の昇格判定なしに「立ち上げられる中で最も安い actuator」だけが必要な場面（serve の Author タブの **Capture** と **Enrich**。BE-0267 — それ以前は安定度順の選択を使っており、serve は XCUITest の runner を起動しないため `[ios]` 設定のターゲットで失敗していました）で使います。どちらも、解決した候補が 1 つに収まる場合は `select_actuator` に委譲し（その診断メッセージを保ちます）、明示的な単一 actuator の要求は決して昇格しません（`--udid` と同じ、固定の指定です）。利用可能なものが無ければ `RuntimeError`（CLI は終了コード 2）。
 - `web` は `playwright` に、`android` は `adb` に解決され、どちらも**実装済み**です
   （[vision → reach](vision.md#1-reachより多くのプラットフォームと面)）。本当に未知のトークンはスキップされます（前方互換: 古いビルドでも、将来のバックエンドを列挙した config を実行できます）。
 - 可用性判定 `available` は注入可能です（テストで差し替え可）。既定は `shutil.which`（`fake` は実行ファイル不要で常に利用可能）。

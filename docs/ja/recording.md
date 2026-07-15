@@ -228,6 +228,9 @@ class SystemAlertGuard:
 - `run`: ガードはシナリオごとに**既定 ON** です。CLI は [`dismissAlerts`](scenarios.md#dismissalertsシステムアラートガード)
   が有効な各シナリオに `SystemAlertGuard(...).dismiss` を `on_blocked` として渡します。ステップ失敗時に
   プロンプトを片付け、**そのステップを 1 回だけ再試行**します（[run-loop](run-loop.md#run_scenario1-シナリオの実行)）。
+  `wait` ステップ（`for`/`settled`/`screenChanged`）では同じハンドラが **wait の途中でも**待ち構えており、
+  すでにポーリング済みの画面のツリーが潰れて見えた時点で発火します（デバウンスとクールダウンを挟み、1 回の
+  wait につき最大 2 回まで）。wait 自体のタイムアウトを待たず、末尾の再試行より前に回復できます（BE-0269）。
   シナリオ側で `dismissAlerts: false` で無効化、`{ instruction: "tap Allow" }` でボタンを指定できます。
   `--dismiss-alerts`/`--no-dismiss-alerts` は全シナリオを上書きし、`--alert-instruction "..."` は既定指示を設定します。
 - `record --dismiss-alerts`: opt-in です（オーサリング時はまだシナリオが無いため）。割り込むプロンプトを片付け、

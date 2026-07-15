@@ -262,7 +262,11 @@ class SystemAlertGuard:
 - `run`: the guard is **on by default** per scenario — the CLI passes a `SystemAlertGuard(...).dismiss`
   as `on_blocked` for each scenario whose [`dismissAlerts`](scenarios.md#dismissalerts-the-system-alert-guard)
   is enabled. On step failure it clears the prompt and **retries that step exactly once**
-  ([run-loop](run-loop.md#run_scenario-running-one-scenario)). A scenario sets `dismissAlerts: false`
+  ([run-loop](run-loop.md#run_scenario-running-one-scenario)). For a `wait` step (`for`/`settled`/
+  `screenChanged`), the same handler is also armed **mid-wait**: it fires against the already-polled
+  screen as soon as the tree looks collapsed, debounced and cooldown-limited and capped at 2 attempts
+  per wait, so a blocked wait can recover before its own timeout elapses instead of only at the
+  end-of-step retry (BE-0269). A scenario sets `dismissAlerts: false`
   to opt out or `{ instruction: "tap Allow" }` to name a button; `--dismiss-alerts`/`--no-dismiss-alerts`
   overrides every scenario and `--alert-instruction "..."` sets a default instruction.
 - `record --dismiss-alerts`: opt-in (authoring has no scenario yet). Clears prompts that interrupt

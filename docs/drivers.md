@@ -350,6 +350,7 @@ IMPLEMENTED = {"idb", "fake", "playwright", "xcuitest"}  # actuators with a driv
 def default_available(actuator) -> bool:   # implemented + backing tool present (playwright: package import; fake: always)
 def resolve_actuators(backends) -> list:   # expand each token (platform or actuator) to actuators
 def select_actuator(backends, available) -> str:  # first implemented + available, in stability order
+def select_actuator_cost_first(backends, available) -> str:  # cheapest available, no scenario in hand (BE-0267)
 def select_actuator_for_scenario(backends, scenario, available, caps) -> str:  # cheapest available + sufficient (BE-0240)
 def make_driver(actuator, udid, *, base_url=None, runner_port=None) -> Driver:  # "xcuitest"→XcuitestDriver, "idb"→IdbDriver, "playwright"→PlaywrightDriver, "fake"→FakeDriver
 ```
@@ -362,12 +363,19 @@ def make_driver(actuator, udid, *, base_url=None, runner_port=None) -> Driver:  
   subset of XCUITest's, so no scenario needs idb *specifically* — idb is preferred only for cost.
 - Two orderings answer two questions. **Stability order** (`PLATFORMS`, most-capable-first;
   [concepts](concepts.md#5-the-stability-ladder)) drives `select_actuator` — the availability-only
-  pick used where no scenario is in hand yet (`doctor`, the pool's up-front setup, an explicit
-  single-actuator pin). **Cost order** (`COST_ORDER`, cheapest-first) drives
-  `select_actuator_for_scenario`, which reuses `capability_preflight.unsupported` (BE-0082) against
-  each candidate's capability set and returns the first that is both available and sufficient. An
-  explicit single-actuator request never escalates (a hard pin, like `--udid`). If none is available,
-  `RuntimeError` (the CLI exits with code 2).
+  pick used where no scenario is in hand yet and cost doesn't matter (`doctor`, the pool's up-front
+  setup, an explicit single-actuator pin). **Cost order** (`COST_ORDER`, cheapest-first) drives both
+  `select_actuator_for_scenario` and `select_actuator_cost_first`, which share a candidate-resolution
+  prefix (`_cost_ordered_available`). `select_actuator_for_scenario` additionally reuses
+  `capability_preflight.unsupported` (BE-0082) against each candidate's capability set and returns the
+  first that is both available and sufficient for that scenario's steps. `select_actuator_cost_first`
+  is the same cost-first pick with no scenario to check against — used where a live session needs the
+  cheapest actuator it can bring up without capability escalation (serve's Author-tab **Capture** and
+  **Enrich**; BE-0267 — the earlier stability-order pick there raised on an `[ios]`-config target
+  since serve never starts an XCUITest runner). Both delegate to `select_actuator` (keeping its
+  diagnostics) whenever the resolved candidates collapse to one — an explicit single-actuator request
+  never escalates (a hard pin, like `--udid`). If none is available, `RuntimeError` (the CLI exits
+  with code 2).
 - `web` resolves to `playwright` and `android` resolves to `adb`, both **implemented**
   ([vision → reach](vision.md#1-reach--more-platforms-and-surfaces)). Truly unknown tokens are
   skipped (forward-compat: an older build can run a config that lists a future backend).
