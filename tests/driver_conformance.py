@@ -28,6 +28,8 @@ it is imported by the per-backend suites.
 
 from __future__ import annotations
 
+import time
+from collections import Counter
 from typing import Protocol, runtime_checkable
 
 import pytest
@@ -71,6 +73,68 @@ class ConformanceHarness(Protocol):
         seed (a browser document, an app's navigation bar), so the contract requires the
         seeded elements to be present, not that the screen equals them exactly.
         """
+
+
+class OnDeviceConformanceHarness:
+    """Shared base for the on-device harnesses: realize a seeded screen, then wait until it renders.
+
+    The two on-device backends realize a screen differently — the iOS harness writes a spec file the
+    app polls, the Android harness re-launches the activity with a new intent extra — but once seeded,
+    both wait the same way: poll `query()` until the readiness marker is present, every seeded id is
+    present at its full multiplicity, and every dropped id is gone. That condition-backed wait (no
+    fixed sleep) is correctness-sensitive — the multiplicity guard is what makes the ambiguous "two
+    `dup`s" case real, the gone-set what makes the empty (zero-match) screen real — so it lives here
+    once rather than being copied per backend, where it could silently drift and weaken the contract
+    on one actuator only. A backend supplies just `_realize(ids)`: how it pushes the spec to the app.
+
+    Carries no `Test` prefix, so pytest never collects it; the per-backend suites subclass it.
+    """
+
+    #: Present on every conformance screen, the empty (zero-match) one included, so readiness is a
+    #: positive check "conformance mode is active" rather than an inference from an absent tree (which
+    #: a transient near-empty tree during a relaunch could meet too early). Mirrors the app-side marker
+    #: (iOS `ConformanceView.readyID`, Compose `ConformanceScreen.CONFORMANCE_READY_ID`).
+    READY_ID = "conformance.ready"
+
+    def __init__(self, backend: str, driver: base.Driver) -> None:
+        self.backend = backend
+        self._driver = driver
+        self._prev: list[str] = []
+
+    def with_screen(self, elements: list[base.Element]) -> base.Driver:
+        ids = [el["identifier"] for el in elements if el["identifier"] is not None]
+        self._realize(ids)
+        # Ids the previous screen had that this one drops must be gone before we proceed — the marker
+        # is always present, so without this the empty (zero-match) screen would "be ready" while the
+        # last screen's ids still linger (the app updates ~asynchronously after `_realize`).
+        self._await_screen(ids, gone=set(self._prev) - set(ids))
+        self._prev = ids
+        return self._driver
+
+    def _realize(self, ids: list[str]) -> None:
+        """Push the seeded identifier set to the app so it re-renders (backend-specific)."""
+        raise NotImplementedError
+
+    def _await_screen(
+        self, ids: list[str], gone: set[str], timeout: float = 30.0, poll: float = 0.1
+    ) -> None:
+        # Condition-backed (no fixed sleep): the app re-renders asynchronously after `_realize`, so
+        # wait on the observed screen, not a guessed delay. Ready = the conformance-mode marker
+        # present, every seeded id present at its full multiplicity, and every dropped id gone.
+        # Multiplicity matters for the ambiguous case (two `dup`s): set membership could proceed with
+        # only one rendered, so the contract would see a unique match. None identifiers are ignored.
+        want = Counter(ids)
+        deadline = time.monotonic() + timeout
+        while True:
+            have = Counter(el["identifier"] for el in self._driver.query() if el["identifier"])
+            present = have[self.READY_ID] and all(have[i] >= n for i, n in want.items())
+            if present and not any(g in have for g in gone):
+                return
+            if time.monotonic() >= deadline:
+                raise AssertionError(
+                    f"conformance screen not ready: want {ids}, gone {sorted(gone)}, saw {sorted(have)}"
+                )
+            time.sleep(poll)
 
 
 class DriverConformanceContract:

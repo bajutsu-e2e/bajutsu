@@ -24,6 +24,13 @@ import androidx.compose.ui.graphics.vector.ImageVector
 
 @Composable
 fun RootScreen(model: AppModel) {
+    // BE-0270: the SHOWCASE_CONFORMANCE launch env swaps the whole five-tab UI for the driver-
+    // conformance screen (mirroring the iOS RootView). Reading the observable `conformanceIds` here is
+    // what re-renders the screen on a reseed. Otherwise the normal tab app (BE-0079) is untouched.
+    model.conformanceIds?.let { ids ->
+        ConformanceScreen(ids)
+        return
+    }
     // BE-0232: the SHOWCASE_GESTURES launch env swaps the whole five-tab UI for the flat pinch/rotate
     // screen (mirroring the iOS RootView). Otherwise the normal tab app (BE-0079) is untouched.
     if (model.gesturesMode) {

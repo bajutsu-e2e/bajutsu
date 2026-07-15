@@ -31,6 +31,9 @@ class MainActivity : ComponentActivity() {
         super.onNewIntent(intent)
         setIntent(intent)
         intent.data?.let { model.handleDeepLink(it) }
+        // BE-0270: a conformance reseed re-launches this singleTask activity with a new
+        // SHOWCASE_CONFORMANCE extra; deliver it to the model so ConformanceScreen re-renders.
+        model.applyConformance(intent.getStringExtra("SHOWCASE_CONFORMANCE"))
     }
 
     // launchEnv (SPEC §3) arrives as string intent extras; read once, defaults live in AppModel.
@@ -38,7 +41,7 @@ class MainActivity : ComponentActivity() {
         val extras = intent?.extras ?: return emptyMap()
         val keys = listOf(
             "SHOWCASE_UITEST", "SHOWCASE_TAB", "SHOWCASE_API_URL", "SHOWCASE_HTTP_BASE",
-            "SHOWCASE_GESTURES",
+            "SHOWCASE_GESTURES", "SHOWCASE_CONFORMANCE",
         )
         return keys.mapNotNull { key -> extras.getString(key)?.let { key to it } }.toMap()
     }

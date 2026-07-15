@@ -5,7 +5,7 @@
 # `run` / `doctor` land with the BE-0007 adb backend; until then these targets only build.
 .PHONY: build-all wrapper \
 	compose-build compose-noax-build views-build views-noax-build e2e e2e-golden e2e-fallback \
-	e2e-visual clean
+	e2e-visual e2e-conformance clean
 
 HERE := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
 GRADLEW := $(HERE)/gradlew
@@ -175,6 +175,21 @@ e2e-visual: compose-build
 		--scenario demos/showcase/scenarios/visual/visual_android.yaml \
 		--baselines demos/showcase/scenarios/visual/baselines_android \
 		--target showcase-compose --udid $(SERIAL) --backend android --config $(CONFIG)
+
+# On-device driver conformance (BE-0114 / BE-0270) for the adb backend: run the *same* backend-
+# agnostic contract (tests/driver_conformance.py) the idb / XCUITest / Playwright / FakeDriver suites
+# run, against the Compose a11y twin. Unlike the other e2e targets this drives pytest, not the run
+# CLI, so it needs the dev group (the CI job's `uv sync` keeps it); `launch_driver` installs the APK
+# (built here) and boots the app straight into ConformanceScreen. `adb root` matches the `e2e` target:
+# the MULTI_TOUCH capability test drives a pinch/rotate, which the driver actuates via a rooted
+# `sendevent` sweep (BE-0232) — the google_apis image allows it and `adb root` enables it. `-n0` runs
+# serially (the suite reseeds one shared emulator), and BAJUTSU_CONFORMANCE_SERIAL both routes the
+# backend and un-skips the module. Not part of `make check`: it needs a booted AVD, so
+# android-e2e.yml drives it in its own `conformance (adb)` job.
+e2e-conformance: compose-build
+	adb root && adb wait-for-device
+	cd $(ROOT) && BAJUTSU_CONFORMANCE_SERIAL=$(SERIAL) \
+		uv run pytest tests/test_driver_conformance_ondevice_android.py -m ondevice -n0 -v
 
 clean:
 	rm -rf $(HERE)/build $(HERE)/compose/build $(HERE)/views/build $(HERE)/.gradle

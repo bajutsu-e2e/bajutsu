@@ -285,17 +285,22 @@ The contract (`tests/driver_conformance.py`) is the "done" definition a new back
 To add a backend to the suite, implement a `ConformanceHarness` (given a screen, return a driver
 showing it) and subclass `DriverConformanceContract`; pytest then runs the inherited contract
 against it. `FakeDriver` runs on the fast Linux gate (`make check`); Playwright runs in the web CI
-job and idb / XCUITest under the on-device E2E path (`ios-e2e.yml`) — the same contract, no second spec.
-Each harness realizes a screen its own way: `FakeDriver` takes the elements directly, Playwright
-renders them as HTML, and the on-device harness launches the showcase app into conformance mode
-once (`SHOWCASE_CONFORMANCE`) and then reseeds each screen by writing a spec file the app polls
-(`conformance-spec.txt` in its Documents directory) — so the real idb / XCUITest query and act code
-is exercised, not the shared base alone. A file write is used rather than a per-screen relaunch or
-deeplink: `simctl openurl` raises iOS's "Open in app?" dialog, and relaunching per screen crashes
-the resident XCUITest runner after a handful of `app.launch()` cycles. The suite carries an
-`ondevice` pytest marker (deselected by the gate's default) so it never runs in `make check`, and
-runs serially on a single Simulator (the shared device is reseeded via one spec file, so parallel
-workers would collide).
+job, idb / XCUITest under the iOS on-device E2E path (`ios-e2e.yml`), and the **adb backend** on a
+booted Android emulator (`android-e2e.yml`'s `conformance (adb)` job, BE-0270) — the same contract,
+no second spec. Each harness realizes a screen its own way: `FakeDriver` takes the elements directly,
+Playwright renders them as HTML, and the on-device harnesses launch the showcase app into conformance
+mode once (`SHOWCASE_CONFORMANCE`) and then reseed each screen — so the real backend query and act
+code is exercised, not the shared base alone. The iOS harness reseeds by writing a spec file the app
+polls (`conformance-spec.txt` in its Documents directory): a file write rather than a per-screen
+relaunch or deeplink, because `simctl openurl` raises iOS's "Open in app?" dialog and relaunching
+per screen crashes the resident XCUITest runner after a handful of `app.launch()` cycles. The adb
+harness instead re-launches the app's `singleTask` activity with a new `SHOWCASE_CONFORMANCE` intent
+extra, delivered via `onNewIntent` — `adb push` cannot reach the app sandbox, and the intent reuses
+the `launchEnv`→intent-extras convention (BE-0007); it is scoped to the Compose toolkit, the one that
+can render a spec-driven arbitrary-id screen (`testTag` takes any runtime string, while a Views
+`resource-id` must be a compile-time `R` entry). The suite carries an `ondevice` pytest marker
+(deselected by the gate's default) so it never runs in `make check`, and runs serially on a single
+device (the shared device is reseeded via one channel, so parallel workers would collide).
 
 ---
 

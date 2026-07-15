@@ -7,8 +7,9 @@
 |---|---|
 | 提案 | [BE-0270](BE-0270-android-adb-driver-conformance-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **提案** |
+| 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0270") |
+| 実装 PR | [#PENDING](https://github.com/bajutsu-e2e/bajutsu/pull/PENDING) |
 | トピック | Driver & backend architecture |
 <!-- /BE-METADATA -->
 
@@ -46,11 +47,41 @@ driver conformance suite（[BE-0114](../BE-0114-driver-conformance-suite/BE-0114
 > 作業分解（作業の単位ごとに 1 つ）に対応し、ログには変更内容と時期（古い順）を PR へのリンクと
 > ともに記録します。
 
-- [ ] showcase アプリに Android conformance モードを追加する（Compose。Views は単位 1 の判断に従う）。
-- [ ] adb の再シードチャネルを追加する（spec の push/インテント + 条件待ちの `with_screen`）。
-- [ ] adb conformance ハーネスと、共有契約を走らせる `ondevice` マーカー付き pytest モジュールを追加する。
-- [ ] `android-e2e.yml` に `conformance (adb)` ジョブを追加する。
-- [ ] capability テストのため、adb ドライバの `capabilities()` が実挙動と一致することを確認する。
+- [x] showcase アプリに Android conformance モードを追加する（Compose。Views は単位 1 の判断に従う）。
+- [x] adb の再シードチャネルを追加する（spec の push/インテント + 条件待ちの `with_screen`）。
+- [x] adb conformance ハーネスと、共有契約を走らせる `ondevice` マーカー付き pytest モジュールを追加する。
+- [x] `android-e2e.yml` に `conformance (adb)` ジョブを追加する。
+- [x] capability テストのため、adb ドライバの `capabilities()` が実挙動と一致することを確認する。
+
+**単位 1 の判断：Compose のみ、Views は対象外（*検討した代替案* に沿って記録します）。** 契約が seed する
+のは素の識別子（`dup` / `ok` / `a` / `b` / `Log` / `g` / `sel` / `s`）で、2 つのツールキットの id
+形式（BE-0221）が違ってくる `.`/`_` をどれも含みません。したがって Views の画面でも同じ id を同じ
+`_strip_pkg` の経路で解決するだけで、conformance のカバレッジは増えません。そのうえ、spec 駆動で任意の
+id を描く画面を自然に表現できるのは Compose だけです。Compose の `testTag` は実行時の任意の文字列を
+受け取り、`testTagsAsResourceId` で `resource-id` として現れますが、Views の `resource-id` は
+コンパイル時の `R` エントリでなければなりません。契約の画面をそもそも描けるのは Compose の側です。
+
+**単位 2 の判断：ファイル push ではなくインテント。** 再シードは、新しい `SHOWCASE_CONFORMANCE` の
+intent extra を載せて `singleTask` の Activity を起動し直し、`onNewIntent`（deeplink で実証済みの
+経路）で届けます。iOS の spec ファイル push は使いません。`adb push` はアプリのサンドボックスに届かず、
+インテントなら `launchEnv`→intent extras の規約（BE-0007）にそのまま乗り、アプリ側の新しいポーリングも
+要りません。空（0 件）の画面は先頭に `,` のセンチネルを付けて表し、値が空文字列にならないようにします。
+adb の `am start --es KEY ""` は末尾の空引数を落とすからです（clipboard チャネルも記す既知の癖です）。
+
+**単位 5 の所見：`capabilities()` の修正は不要。** adb ドライバの宣言する集合（`QUERY` / `ELEMENTS` /
+`MULTI_TOUCH`、`SELECT_OPTION` は無し）は、root 化した `google_apis` エミュレータ上で capability
+テストの実挙動と既に一致します。`pinch`/`rotate` は root 化した `sendevent` の掃引（BE-0232）で
+UnsupportedAction を出さずに作用し、`select_option` は `UnsupportedAction` を送出します。
+`conformance (adb)` ジョブは（smoke レーンの `gestures_multitouch` と同じく）`adb root` を実行して
+`MULTI_TOUCH` の前提を満たします。
+
+### ログ
+
+- [#PENDING](https://github.com/bajutsu-e2e/bajutsu/pull/PENDING) で実装：Compose の
+  `ConformanceScreen` と `AppModel.conformanceIds`/`applyConformance`、`MainActivity`/`RootScreen`
+  の配線、共有契約を走らせる `tests/test_driver_conformance_ondevice_android.py`（`am start` による
+  再シードチャネル）、`android-e2e.yml` の `conformance (adb)` ジョブと `e2e-conformance` の
+  Makefile ターゲット。
 
 ## 参考
 
