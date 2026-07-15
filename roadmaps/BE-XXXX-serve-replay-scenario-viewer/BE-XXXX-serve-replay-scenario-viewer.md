@@ -58,11 +58,20 @@ A read-only viewer wired into the Replay tab. No `run` / CI path is touched (pri
 is a Tier-1 convenience surface, and it is app-agnostic (prime directive 3) — it reads whatever
 scenario the active config exposes, with no per-app branching.
 
-- **Reuse the existing read endpoint.** The viewer fetches the selected scenario's body from the
-  existing `GET /api/scenario?target=<t>&path=<p>` (returns `{"yaml": …}`). No new server route is
-  required for the raw-YAML view. The structured steps view is derived **client-side** by parsing
-  that YAML, so the server contract is unchanged — keeping the whole feature front-end-only where
-  possible.
+- **Reuse the existing read endpoint, and its existing runner-based step extraction.** The viewer
+  fetches the selected scenario's body from the existing `GET /api/scenario?target=<t>&path=<p>`
+  (returns `{"yaml": …}`), so the raw-YAML view needs no new server route. For the structured steps
+  view, reuse the extraction that endpoint **already has**: `read_scenario` returns a `steps` field
+  built by `_step_artifacts` / `_step_action_fields`, which calls `load_scenario_file(...).scenarios`
+  (the runner's own parse) and `Step.model_dump(...)` to yield `{action, fields}` per step
+  (`bajutsu/serve/operations/reads.py`, from [BE-0013](../BE-0013-scenario-gui-editor/BE-0013-scenario-gui-editor.md)).
+  Today that `steps` field is only returned when a `run_id` is supplied, because the *run-scoped*
+  additions it also computes (`elementsUrl` / `screenshotUrl`) need a completed run's manifest — the
+  structural extraction itself does not. The work is therefore to **ungate the structural part** of
+  `steps` so the endpoint can return the runner-derived step structure without a prior run (the
+  run-scoped URLs stay `run_id`-only). This keeps the structured view faithful to the runner's parse
+  — it *is* the runner's parse — instead of introducing a second parser (see *Alternatives
+  considered*).
 
 - **A "View scenario" affordance in the Replay Form.** Add a control next to the existing
   scenario `<select>` / info box / grade badge (`bajutsu/templates/serve.html.j2`,
@@ -74,10 +83,11 @@ scenario the active config exposes, with no per-app branching.
   pattern):
   - **Raw YAML** — the scenario file's text as returned by the endpoint, in a read-only,
     monospaced, scrollable block. This is the authoritative view (byte-for-byte what runs).
-  - **Structured steps** — a per-named-scenario, human-readable list: for each scenario its
-    `name` / `description`, then its ordered steps rendered compactly (action + selector/target +
-    key args, e.g. `tap { id: nav.replay }`, `assert exists { id: … }`). This is the "skim what it
-    does" view; the raw YAML remains one toggle away for the exact source.
+  - **Structured steps** — a per-named-scenario, human-readable list rendered from the endpoint's
+    runner-derived `steps` (above): for each scenario its `name` / `description`, then its ordered
+    steps rendered compactly (action + selector/target + key args, e.g. `tap { id: nav.replay }`,
+    `assert exists { id: … }`). This is the "skim what it does" view; the raw YAML remains one toggle
+    away for the exact source.
   - The viewer is strictly read-only: no edit, no save, no re-bind. Editing remains the Author tab's
     job; a future fast-follow could add a "open in Author" link, but this item deliberately stops at
     viewing (see *Alternatives considered*).
@@ -112,10 +122,15 @@ scenario the active config exposes, with no per-app branching.
   This item adopts the toggle so both are available; if scope must shrink, raw-YAML-first with the
   structured view as a follow-up is the natural split.
 
-- **A new server-side "render scenario" endpoint.** Unnecessary — the existing `GET /api/scenario`
-  already returns the YAML, and deriving the structured view client-side avoids adding a second
-  representation of scenario structure on the server (which would risk drifting from the runner's own
-  parse). Kept front-end-only by design.
+- **Deriving the structured view client-side (reparsing the YAML in JS).** Considered for keeping
+  the feature purely front-end, but rejected: it introduces a *second* parser of scenario structure
+  in the browser, which can drift from how the runner actually parses a scenario. The server already
+  avoids that — `read_scenario`'s `steps` is built from the runner's own `Step` model
+  (`_step_artifacts` / `Step.model_dump`, from BE-0013), so reusing it *is* the runner's parse. The
+  only reason it is `run_id`-gated today is the run-scoped `elementsUrl` / `screenshotUrl` it also
+  attaches; ungating the structural part (Detailed design) is a smaller and more faithful change than
+  a parallel JS parser. A new *separate* "render scenario" endpoint is likewise unnecessary — the
+  extraction already lives on `read_scenario`.
 
 - **Folding this into BE-0187.** BE-0187 is already Implemented and is specifically the *config*
   viewer; scenarios are a distinct subject with a distinct entry point (the Replay picker) and a
@@ -132,7 +147,9 @@ scenario the active config exposes, with no per-app branching.
       `serve.panels.js`), fetching from the existing `GET /api/scenario`.
 - [ ] Implement the viewer overlay/pane with a raw-YAML ↔ structured-steps toggle, following the
       BE-0187 / theme-editor modal conventions.
-- [ ] Derive the structured steps view client-side from the fetched YAML.
+- [ ] Ungate the structural part of `read_scenario`'s `steps` so it returns runner-derived steps
+      without a `run_id` (run-scoped `elementsUrl` / `screenshotUrl` stay `run_id`-only); render the
+      structured view from it.
 - [ ] Add `data-testid`s and a dogfood E2E scenario next to `demos/serve-ui/scenarios/replay-tools.yaml`.
 - [ ] Update `docs/architecture.md` and its `docs/ja/` mirror.
 
@@ -146,5 +163,8 @@ scenario the active config exposes, with no per-app branching.
   the "what does the scenario contain" complement to its "why did the run fail".
 - [BE-0202](../BE-0202-serve-js-modularization/BE-0202-serve-js-modularization.md) — the serve.js
   modularization that places the Replay tab's JS in `serve.panels.js`.
+- [BE-0013](../BE-0013-scenario-gui-editor/BE-0013-scenario-gui-editor.md) — the GUI editor that
+  introduced the runner-based per-step extraction (`_step_artifacts` / `Step.model_dump`) this reuses.
 - Existing endpoint: `GET /api/scenario?target=&path=` (`bajutsu/serve/handler.py`,
-  `ops.read_scenario` in `bajutsu/serve/operations/reads.py`).
+  `ops.read_scenario` in `bajutsu/serve/operations/reads.py`), whose `steps` field is built by
+  `_step_artifacts` / `_step_action_fields`.
