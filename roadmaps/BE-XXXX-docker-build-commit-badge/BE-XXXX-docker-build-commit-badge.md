@@ -85,7 +85,7 @@ happens to carry a usable `.git`.
   how to pass the commit at build time, e.g.
   `docker build --build-arg GIT_COMMIT=$(git rev-parse HEAD) -f
   deploy/self-host/Dockerfile .` — mirroring the existing worker-image build
-  command already documented there. Extend
+  command already documented there.
   [`docker-compose.yml`](../../deploy/self-host/docker-compose.yml) defines
   two services that build this Dockerfile (`migrate`, `bajutsu`); extend the
   `bajutsu` service's `build:` stanza — the one that actually serves the badge
