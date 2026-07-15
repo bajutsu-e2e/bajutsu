@@ -80,6 +80,7 @@ class AndroidEnvironment:
         *,
         extra_env: Mapping[str, str] | None = None,
         record_video_dir: Path | None = None,
+        permissions: Mapping[str, str] | None = None,
     ) -> base.Driver:
         android = require_android(eff)
         e = adb.Env(self._serial, run=self._run)
@@ -99,6 +100,11 @@ class AndroidEnvironment:
             # Grant runtime permissions after `pm clear` (which resets grants) but before launch, so
             # a permission prompt never blocks the scenario — deterministic, no timing (BE-0210).
             e.grant_permissions(android.package, android.grant_permissions)
+            # The per-scenario field (BE-0276), applied the same way: after clear, before launch.
+            # Layers on top of the config-level grant above — a scenario can revoke a config-granted
+            # permission to exercise the denied-path flow.
+            if permissions:
+                e.apply_permissions(android.package, permissions)
             launch_env: Mapping[str, str] = {
                 **eff.launch_env,
                 **pre.launch_env,

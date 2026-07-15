@@ -93,6 +93,7 @@ Scenario ::= {
   mocks?:          list(<Mock>),            # 既定 []
   redact?:         <Redact>,
   dismissAlerts?:  <DismissAlerts>,         # アラートガード; 未指定で ON
+  permissions?:    <Permissions>,           # 起動前の OS 権限状態; 既定 {}
 }
 
 Component ::= { params?: list(string), steps: list(<Step>) }
@@ -112,6 +113,11 @@ Preconditions ::= {
 DismissAlerts ::= boolean                                   # { enabled: <bool> } の短縮形
                | { enabled?: boolean,                       # 既定 true
                    instruction?: string }                   # 押すボタン（無指定なら dismiss）
+
+Permissions ::= map(PermissionService, PermissionAction)    # アプリの起動前に適用する
+PermissionService ::= "location" | "camera" | "microphone" | "contacts"
+                     | "photos" | "calendar" | "notifications"
+PermissionAction  ::= "grant" | "revoke"
 
 # ── Step = ちょうど 1 アクション + 任意の修飾子 ─────────────────────────
 Step      ::= <Action> & <StepMods>
@@ -284,6 +290,7 @@ MockResponse ::= { status?: integer, headers?: map(string,string), body?: string
 | `Scenario.tags` / `expect` / `capturePolicy` / `mocks` | `[]` |
 | `Scenario.preconditions` | `{}`（= `erase: false`, `reinstall: clean`） |
 | `Scenario.dismissAlerts` | 未指定（アラートガード ON; プロンプトを dismiss） |
+| `Scenario.permissions` | `{}`（起動前の権限状態を適用しない） |
 | `Preconditions.erase` | `false` |
 | `Preconditions.reinstall` | `clean` |
 | `Preconditions.launchArgs` | `[]` |

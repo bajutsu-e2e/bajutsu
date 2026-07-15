@@ -103,6 +103,46 @@ def test_grant_permissions_surfaces_a_stdout_error() -> None:
         adb.Env("S", run=run).grant_permissions("com.x", ["android.permission.BOGUS"])
 
 
+def test_pm_revoke_cmd() -> None:
+    assert adb.pm_revoke_cmd("S", "com.x", "android.permission.CAMERA") == [
+        "adb", "-s", "S", "shell", "pm", "revoke", "com.x", "android.permission.CAMERA",
+    ]  # fmt: skip
+
+
+def test_env_apply_permissions_grants_and_revokes_by_service(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    # location splits into two android.permission.* names (fine + coarse); each runs its own
+    # pm grant/revoke, in the mapped order (BE-0276).
+    calls: list[list[str]] = []
+    adb.Env("S", run=lambda a: calls.append(a) or "").apply_permissions(
+        "com.x", {"location": "grant", "camera": "revoke"}
+    )
+    assert calls == [
+        adb.pm_grant_cmd("S", "com.x", "android.permission.ACCESS_FINE_LOCATION"),
+        adb.pm_grant_cmd("S", "com.x", "android.permission.ACCESS_COARSE_LOCATION"),
+        adb.pm_revoke_cmd("S", "com.x", "android.permission.CAMERA"),
+    ]
+
+
+def test_env_apply_permissions_surfaces_a_stdout_error() -> None:
+    def run(_a: list[str]) -> str:
+        return "java.lang.SecurityException: not a changeable permission\n"
+
+    with pytest.raises(adb.DeviceError, match="pm grant failed"):
+        adb.Env("S", run=run).apply_permissions("com.x", {"camera": "grant"})
+
+
+def test_env_apply_permissions_validates_before_touching_the_device() -> None:
+    # An unmapped service anywhere in the mapping fails before any pm call runs — never partway
+    # through, leaving some services already mutated (BE-0276). Preflight rejects an unknown
+    # service before it ever reaches here; this exercises the runtime backstop directly.
+    calls: list[list[str]] = []
+    with pytest.raises(adb.DeviceError, match="bogus"):
+        adb.Env("S", run=lambda a: calls.append(a) or "").apply_permissions(
+            "com.x", {"camera": "grant", "bogus": "grant"}
+        )
+    assert calls == []
+
+
 def test_launch_cmd_forwards_extras_as_intent_extras() -> None:
     cmd = adb.launch_cmd("S", "com.x/.Main", {"SHOWCASE_UITEST": "1"})
     assert cmd == [
@@ -248,6 +288,33 @@ def test_android_environment_start_grants_nothing_when_unconfigured() -> None:
     env = AndroidEnvironment("adb", "S", adb_run=_resolve_activity_run(calls))
     env.start(_eff(), Preconditions())
     assert not any("pm grant" in " ".join(c) for c in calls)
+
+
+def test_android_environment_start_applies_scenario_permissions_after_clear() -> None:
+    # BE-0276: the per-scenario field layers on top of the config-level grant above, applied the
+    # same way — after `pm clear` (which resets grants), before `am start`.
+    calls: list[list[str]] = []
+    env = AndroidEnvironment("adb", "S", adb_run=_resolve_activity_run(calls))
+    env.start(
+        _eff(grant_permissions=["android.permission.POST_NOTIFICATIONS"]),
+        Preconditions(erase=True),
+        permissions={"camera": "grant", "location": "revoke"},
+    )
+    joined = [" ".join(c) for c in calls]
+    assert any("pm grant com.bajutsu.showcase.android.compose android.permission.CAMERA" in j for j in joined)  # fmt: skip
+    assert any("pm revoke com.bajutsu.showcase.android.compose "
+               "android.permission.ACCESS_FINE_LOCATION" in j for j in joined)  # fmt: skip
+    clear_at = next(i for i, j in enumerate(joined) if "pm clear" in j)
+    launch_at = next(i for i, j in enumerate(joined) if "am start" in j)
+    permission_indices = [i for i, j in enumerate(joined) if "pm grant" in j or "pm revoke" in j]
+    assert all(clear_at < i < launch_at for i in permission_indices)
+
+
+def test_android_environment_start_applies_no_permissions_when_unset() -> None:
+    calls: list[list[str]] = []
+    env = AndroidEnvironment("adb", "S", adb_run=_resolve_activity_run(calls))
+    env.start(_eff(), Preconditions())
+    assert not any("pm revoke" in " ".join(c) for c in calls)
 
 
 class _FakeResident:

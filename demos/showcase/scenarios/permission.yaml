@@ -30,3 +30,25 @@
     - wait: { for: { id: perm.notif.authorized }, timeout: 10 }
   expect:
     - value: { sel: { id: perm.notif.value }, equals: "authorized" }
+
+# Location, pre-granted declaratively (BE-0276): unlike notifications above, `location` has a TCC
+# service on iOS (`simctl privacy grant location <bundle>`) and a real android.permission.* on
+# Android (`pm grant`), so `permissions` handles it on both platforms — no SpringBoard/system
+# prompt ever appears, so no dismissAlerts, no AI, fully deterministic on both lanes.
+- name: location permission pre-granted
+  tags: [permission, system]
+  permissions:
+    location: grant
+  preconditions:
+    launchEnv: { SHOWCASE_UITEST: "1" }
+  steps:
+    - tap: { label: "Permissions", traits: [button] }
+      capture: [video]
+    - wait: { for: { id: perm.requestLocation }, timeout: 10 }
+    - assert:
+        - value: { sel: { id: perm.location.value }, equals: "notDetermined" }
+    - tap: { id: perm.requestLocation }
+    # Pre-granted, so the OS answers immediately with no dialog to tap.
+    - wait: { for: { id: perm.location.value, value: "authorizedWhenInUse" }, timeout: 5 }
+  expect:
+    - value: { sel: { id: perm.location.value }, equals: "authorizedWhenInUse" }

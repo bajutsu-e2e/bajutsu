@@ -539,15 +539,18 @@ class AdbDriver(CoordinateTreeDriver):
     # `gestures_multitouch` is admitted on adb; the rooted-device precondition for the two-finger
     # `sendevent` sweep is enforced at actuation time (`_two_finger_gesture`), not in the set, so on a
     # non-rooted device the gesture step fails fast with a clear `UnsupportedAction` (BE-0232).
-    CAPABILITIES = frozenset(
-        {
-            base.Capability.QUERY,
-            base.Capability.ELEMENTS,
-            base.Capability.SCREENSHOT,
-            base.Capability.MULTI_TOUCH,
-            base.Capability.DC_SET_LOCATION,
-            base.Capability.DC_CLIPBOARD,
-        }
+    CAPABILITIES = (
+        frozenset(
+            {
+                base.Capability.QUERY,
+                base.Capability.ELEMENTS,
+                base.Capability.SCREENSHOT,
+                base.Capability.MULTI_TOUCH,
+                base.Capability.DC_SET_LOCATION,
+                base.Capability.DC_CLIPBOARD,
+            }
+        )
+        | base.ANDROID_PERMISSION_CAPABILITIES
     )
 
     def capabilities(self) -> set[str]:

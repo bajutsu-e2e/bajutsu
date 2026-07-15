@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import json
 
+import pytest
+
 from bajutsu import simctl
 from bajutsu.drivers.fake import FakeDriver
 from bajutsu.orchestrator import run_scenario
@@ -75,6 +77,52 @@ def test_env_set_clipboard_seeds_pasteboard_with_text(monkeypatch) -> None:  # t
     simctl.Env("U").set_clipboard("COUPON123")
     assert captured["cmd"] == ["xcrun", "simctl", "pbcopy", "U"]
     assert captured["text"] == "COUPON123"
+
+
+# --- permissions (simctl privacy, BE-0276) ---
+
+
+def test_privacy_command_builder() -> None:
+    assert simctl.privacy_cmd("U", "grant", "camera", "com.demo") == [
+        "xcrun",
+        "simctl",
+        "privacy",
+        "U",
+        "grant",
+        "camera",
+        "com.demo",
+    ]
+
+
+def test_env_apply_permissions_runs_privacy_per_entry() -> None:
+    calls: list[list[str]] = []
+    simctl.Env("U", run=lambda a, _e=None: calls.append(a) or "").apply_permissions(
+        "com.demo", {"camera": "grant", "location": "revoke"}
+    )
+    assert calls == [
+        ["xcrun", "simctl", "privacy", "U", "grant", "camera", "com.demo"],
+        ["xcrun", "simctl", "privacy", "U", "revoke", "location", "com.demo"],
+    ]
+
+
+def test_env_apply_permissions_fails_clean_on_notifications() -> None:
+    # No TCC service backs iOS notification authorization; preflight rejects this per-service
+    # before any device work, but the Env method is the runtime backstop.
+    with pytest.raises(simctl.DeviceError, match="notifications"):
+        simctl.Env("U", run=lambda a, _e=None: "").apply_permissions(
+            "com.demo", {"notifications": "grant"}
+        )
+
+
+def test_env_apply_permissions_validates_before_touching_the_device() -> None:
+    # An unsupported service anywhere in the mapping fails before any simctl privacy call runs —
+    # never partway through, leaving some services already mutated (BE-0276).
+    calls: list[list[str]] = []
+    with pytest.raises(simctl.DeviceError, match="notifications"):
+        simctl.Env("U", run=lambda a, _e=None: calls.append(a) or "").apply_permissions(
+            "com.demo", {"camera": "grant", "notifications": "grant"}
+        )
+    assert calls == []
 
 
 # --- step dispatch through an injected DeviceControl ---

@@ -7,7 +7,7 @@
 |---|---|
 | Proposal | [BE-0276](BE-0276-scenario-permission-state.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0276") |
 | Topic | Scenario authoring features |
 | Related | [BE-0052](../BE-0052-device-state-timezone-clipboard-shake/BE-0052-device-state-timezone-clipboard-shake.md), [BE-0212](../BE-0212-granular-device-control-capabilities/BE-0212-granular-device-control-capabilities.md), [BE-0210](../BE-0210-android-actuation-fidelity/BE-0210-android-actuation-fidelity.md) |
@@ -164,14 +164,14 @@ cannot deliver.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Scenario schema + shared service vocabulary (`permissions` field; parse/validate).
-- [ ] Capability token `deviceControl.permissions` + per-service preflight mapping.
-- [ ] iOS backend — `simctl privacy` command builder, service→TCC map, advertise supported services.
-- [ ] Android backend — `pm grant|revoke` mapping reusing `grantPermissions`, advertise services.
-- [ ] Apply-before-launch wiring in the run-loop / lease path.
-- [ ] codegen labeled TODO for the field.
-- [ ] Docs (scenarios.md + ja, DSL grammar) and a showcase fixture.
-- [ ] Tests — schema, subset-advertising preflight, command builders, fail-clean on unknown service.
+- [x] Scenario schema + shared service vocabulary (`permissions` field; parse/validate).
+- [x] Capability token `deviceControl.permissions` + per-service preflight mapping.
+- [x] iOS backend — `simctl privacy` command builder, service→TCC map, advertise supported services.
+- [x] Android backend — `pm grant|revoke` mapping reusing `grantPermissions`, advertise services.
+- [x] Apply-before-launch wiring in the run-loop / lease path.
+- [x] codegen labeled TODO for the field.
+- [x] Docs (scenarios.md + ja, DSL grammar) and a showcase fixture.
+- [x] Tests — schema, subset-advertising preflight, command builders, fail-clean on unknown service.
 
 ## References
 

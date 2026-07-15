@@ -361,6 +361,16 @@ def test_response_schema_is_labeled_todo() -> None:
     assert "JSON Schema" in code
 
 
+def test_permissions_field_emits_a_labeled_todo_per_service() -> None:
+    # No browser equivalent of an OS permission model (BE-0276), so it stays a TODO here too.
+    code = _gen(
+        "- name: x\n  permissions: { camera: grant, location: revoke }\n  steps:\n"
+        "    - tap: { id: a }\n"
+    )
+    assert "// TODO: permissions.camera (grant)" in code
+    assert "// TODO: permissions.location (revoke)" in code
+
+
 def test_unsupported_selector_todo_names_field_and_reason() -> None:
     with_within = _gen("- name: x\n  steps:\n    - tap: { id: c, within: { id: parent } }\n")
     assert "// TODO: unsupported selector ('within':" in with_within

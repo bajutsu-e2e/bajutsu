@@ -86,6 +86,14 @@ def test_capabilities_has_no_semantic_tap() -> None:
     assert base.Capability.SEMANTIC_TAP not in IdbDriver("U", run=lambda a: "[]").capabilities()
 
 
+def test_capabilities_advertises_every_permission_but_notifications() -> None:
+    # simctl privacy has no TCC service for iOS notification authorization (BE-0276).
+    caps = IdbDriver("U", run=lambda a: "[]").capabilities()
+    assert base.permission_capability("camera") in caps
+    assert base.permission_capability("location") in caps
+    assert base.permission_capability("notifications") not in caps
+
+
 def test_select_option_unsupported() -> None:
     # <select> is a web control with no iOS-native counterpart, so the backend refuses (BE-0191).
     driver = IdbDriver("U", run=lambda a: "[]")

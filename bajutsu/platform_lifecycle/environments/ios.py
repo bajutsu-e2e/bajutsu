@@ -116,6 +116,7 @@ class IosEnvironment(_DeviceEnvironment):
         *,
         extra_env: Mapping[str, str] | None = None,
         record_video_dir: Path | None = None,
+        permissions: Mapping[str, str] | None = None,
     ) -> base.Driver:
         ios = require_ios(eff)
         e = simctl.Env(self._udid, run=self._run)
@@ -136,6 +137,10 @@ class IosEnvironment(_DeviceEnvironment):
                     e.uninstall(ios.bundle_id)
                 e.install(ios.app_path)
             e.terminate(ios.bundle_id)  # clean start so readiness reflects the new launch
+            # Set permission state after install (a fresh install/erase resets TCC grants) but
+            # before launch, so a permission prompt never blocks the scenario (BE-0276).
+            if permissions:
+                e.apply_permissions(ios.bundle_id, permissions)
             launch_env: Mapping[str, str] = {
                 **eff.launch_env,
                 **pre.launch_env,

@@ -40,7 +40,14 @@ class WebEnvironment:
         *,
         extra_env: Mapping[str, str] | None = None,
         record_video_dir: Path | None = None,
+        permissions: Mapping[str, str] | None = None,
     ) -> base.Driver:
+        # No OS permission model to pre-set (a browser has no TCC/pm equivalent). Preflight normally
+        # rejects a scenario naming one before this is ever reached, but preflight is skippable (a
+        # lease driven directly, `capabilities=None` in runner/pipeline.py) — so this is the runtime
+        # backstop, the same shape gestures.py's `_require_multi_touch` is for an unsupported gesture.
+        if permissions:
+            raise base.UnsupportedAction("permissions is not supported on the web backend")
         web = require_web(eff)
         if not web.base_url:
             raise simctl.DeviceError("web backend requires baseUrl (set targets.<name>.baseUrl)")

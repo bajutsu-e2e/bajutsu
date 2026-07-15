@@ -255,6 +255,7 @@ class XcuitestDriver:
             }
         )
         | base.DEVICE_CONTROL_ALL
+        | base.IOS_PERMISSION_CAPABILITIES
     )
 
     def __init__(

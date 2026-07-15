@@ -65,6 +65,34 @@ class Capability:
     DC_CLEAR_KEYCHAIN = "deviceControl.clearKeychain"
     DC_APP_LIFECYCLE = "deviceControl.appLifecycle"  # background / foreground
     DC_STATUS_BAR = "deviceControl.statusBar"  # overrideStatusBar / clearStatusBar
+    # `permissions` (BE-0276) is gated per-service, not by one token: iOS and Android honor
+    # different subsets of the shared vocabulary (iOS has no TCC service for `notifications`), so a
+    # single `deviceControl.permissions` token could not tell preflight which services are actually
+    # supported. See `permission_capability` / `PERMISSION_SERVICES` below.
+
+
+# The permission vocabulary a scenario's `permissions` field may name (BE-0276), shared with
+# `bajutsu.scenario.models.scenario.PermissionService` (kept as plain strings here, not imported,
+# since the scenario models already depend on this module — importing back would cycle).
+PERMISSION_SERVICES: tuple[str, ...] = (
+    "location",
+    "camera",
+    "microphone",
+    "contacts",
+    "photos",
+    "calendar",
+    "notifications",
+)
+
+
+def permission_capability(service: str) -> str:
+    """The per-service device-control token for a permission service (BE-0276).
+
+    One token per vocabulary entry rather than a single `deviceControl.permissions` token, so a
+    backend that honors only part of the vocabulary (iOS: everything but `notifications`) can
+    advertise exactly that subset and preflight names the unsupported service individually.
+    """
+    return f"deviceControl.permissions.{service}"
 
 
 # The whole `DeviceControl` family as a set of per-operation tokens (BE-0212). A backend that backs
@@ -80,6 +108,18 @@ DEVICE_CONTROL_ALL = frozenset(
         Capability.DC_STATUS_BAR,
     }
 )
+
+# The permission services iOS's `simctl privacy` backs — every vocabulary entry but `notifications`
+# (iOS notification authorization is not part of TCC — Transparency, Consent, and Control — the
+# database `simctl privacy` drives). Shared by idb and xcuitest, which both wire a real
+# simctl-backed `DeviceControl` via the iOS Simulator lifecycle (mirrors `DEVICE_CONTROL_ALL`).
+IOS_PERMISSION_CAPABILITIES = frozenset(
+    permission_capability(s) for s in PERMISSION_SERVICES if s != "notifications"
+)
+
+# The permission services Android's `pm grant`/`pm revoke` backs — the full vocabulary, including
+# `notifications` (`POST_NOTIFICATIONS` is a runtime permission since API 33).
+ANDROID_PERMISSION_CAPABILITIES = frozenset(permission_capability(s) for s in PERMISSION_SERVICES)
 
 
 class Element(TypedDict):

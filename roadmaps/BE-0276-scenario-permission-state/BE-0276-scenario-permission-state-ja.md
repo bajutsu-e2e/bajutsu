@@ -7,7 +7,7 @@
 |---|---|
 | 提案 | [BE-0276](BE-0276-scenario-permission-state-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **提案** |
+| 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0276") |
 | トピック | シナリオ記述機能 |
 | 関連 | [BE-0052](../BE-0052-device-state-timezone-clipboard-shake/BE-0052-device-state-timezone-clipboard-shake-ja.md)、[BE-0212](../BE-0212-granular-device-control-capabilities/BE-0212-granular-device-control-capabilities-ja.md)、[BE-0210](../BE-0210-android-actuation-fidelity/BE-0210-android-actuation-fidelity-ja.md) |
@@ -161,14 +161,14 @@ scenario:
 > 作業分解（作業の単位ごとに 1 つ）に対応し、ログには変更内容と時期（古い順）を PR へのリンクと
 > ともに記録します。
 
-- [ ] シナリオスキーマと共通の権限項目の語彙（`permissions` フィールド、parse / 検証）。
-- [ ] capability トークン `deviceControl.permissions` と権限項目単位の preflight マッピング。
-- [ ] iOS backend：`simctl privacy` コマンドビルダー、権限項目から TCC へのマップ、対応する権限項目の宣言。
-- [ ] Android backend：`grantPermissions` を再利用した `pm grant|revoke` マッピング、対応する権限項目の宣言。
-- [ ] run-loop / lease 経路での起動前適用の配線。
-- [ ] フィールド向けの codegen ラベル付き TODO。
-- [ ] ドキュメント（scenarios.md と日本語版、DSL 文法）と showcase フィクスチャ。
-- [ ] テスト：スキーマ、部分対応 backend の preflight、コマンドビルダー、未知の権限項目での明快な失敗。
+- [x] シナリオスキーマと共通の権限項目の語彙（`permissions` フィールド、parse / 検証）。
+- [x] capability トークン `deviceControl.permissions` と権限項目単位の preflight マッピング。
+- [x] iOS backend：`simctl privacy` コマンドビルダー、権限項目から TCC へのマップ、対応する権限項目の宣言。
+- [x] Android backend：`grantPermissions` を再利用した `pm grant|revoke` マッピング、対応する権限項目の宣言。
+- [x] run-loop / lease 経路での起動前適用の配線。
+- [x] フィールド向けの codegen ラベル付き TODO。
+- [x] ドキュメント（scenarios.md と日本語版、DSL 文法）と showcase フィクスチャ。
+- [x] テスト：スキーマ、部分対応 backend の preflight、コマンドビルダー、未知の権限項目での明快な失敗。
 
 ## 参考
 

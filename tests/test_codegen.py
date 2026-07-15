@@ -247,6 +247,17 @@ def test_device_control_steps_emit_labeled_todo() -> None:
     assert "// TODO: push" in code and "simctl push" in code
 
 
+def test_permissions_field_emits_a_labeled_todo_per_service() -> None:
+    # `permissions` (BE-0276) is a scenario-level field, not a step: bajutsu applies it before the
+    # generated test's launch, so it stays a labeled TODO naming each service individually.
+    code = _gen(
+        "- name: x\n  permissions: { camera: grant, location: revoke }\n  steps:\n"
+        "    - tap: { id: a }\n"
+    )
+    assert "// TODO: permissions.camera (grant)" in code
+    assert "// TODO: permissions.location (revoke)" in code
+
+
 def test_request_assertion_emits_labeled_todo() -> None:
     # XCUITest has no network interception, so a `request` assertion stays a TODO — but a labeled one
     # naming the endpoint and why, like the device-control steps, not a bare "unsupported" (BE-0026).

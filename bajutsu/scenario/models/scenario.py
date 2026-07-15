@@ -8,13 +8,19 @@ from __future__ import annotations
 
 from typing import Any, Literal, Self
 
-from pydantic import Field, model_validator
+from pydantic import Field, field_validator, model_validator
 
+from bajutsu.drivers.base import PERMISSION_SERVICES
 from bajutsu.scenario.models._base import _Model
 from bajutsu.scenario.models.assertions import Assertion
 from bajutsu.scenario.models.evidence import CaptureRule, Network, Redact
 from bajutsu.scenario.models.mocks import Mock
 from bajutsu.scenario.models.steps import Step
+
+# The grant/revoke actions a `permissions` entry may take (BE-0276); the service side of the
+# vocabulary (`PERMISSION_SERVICES`) lives in `drivers.base` since every backend's capability
+# advertisement already depends on it — reused here rather than duplicated.
+_PERMISSION_ACTIONS = ("grant", "revoke")
 
 # The scenario file's schema version, mirroring the report manifest's SCHEMA_VERSION (BE-0119).
 # Bump only for a load-breaking change: removing a required field's meaning, or a change an older
@@ -77,6 +83,13 @@ class Scenario(_Model):
     # from. Authoring metadata only — `run` never reads it. Kept None (pruned) when unset.
     from_: str | None = Field(default=None, alias="from")
     tags: list[str] = Field(default_factory=list)
+    # Per-scenario OS permission state (BE-0276), applied before the app process starts: grant or
+    # revoke a permission up front so the runtime prompt never appears (iOS `simctl privacy`,
+    # Android `pm grant`/`pm revoke`). Deterministic and AI-free, unlike the vision dismissAlerts
+    # guard below, which reacts to a prompt only after it appears. Kept as a plain `dict[str, str]`
+    # (validated below against the vocabulary) rather than a `Literal`-keyed dict, so it stays
+    # assignable to the `Mapping[str, str]` the platform-lifecycle `start()` seam expects.
+    permissions: dict[str, str] = Field(default_factory=dict)
     data: list[dict[str, str]] | None = None
     data_file: str | None = Field(default=None, alias="dataFile")
     preconditions: Preconditions = Field(default_factory=Preconditions)
@@ -89,6 +102,16 @@ class Scenario(_Model):
     # The alert guard runs on by default; unset means "on, dismiss the prompt" (see
     # DismissAlerts). Kept None when unset so a dumped scenario stays clean.
     dismiss_alerts: DismissAlerts | None = Field(default=None, alias="dismissAlerts")
+
+    @field_validator("permissions")
+    @classmethod
+    def _validate_permissions(cls, v: dict[str, str]) -> dict[str, str]:
+        for service, action in v.items():
+            if service not in PERMISSION_SERVICES:
+                raise ValueError(f"unknown permission service: {service!r}")
+            if action not in _PERMISSION_ACTIONS:
+                raise ValueError(f"unknown permission action: {action!r} (expected grant|revoke)")
+        return v
 
     @model_validator(mode="after")
     def _one_data_source(self) -> Self:

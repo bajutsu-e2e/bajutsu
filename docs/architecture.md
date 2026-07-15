@@ -341,7 +341,10 @@ device (the shared device is reseeded via one channel, so parallel workers would
   read/write/clear, gated by per-operation capability tokens (BE-0211 / BE-0212), the clipboard
   through an in-app receiver (`BajutsuAndroid`, BE-0233) since a shell process cannot reach the
   clipboard on Android 10+, while `push` / `clearKeychain` / status-bar overrides / `background` /
-  `foreground` stay unsupported (no emulator equivalent); `pinch`/`rotate` two-finger multi-touch
+  `foreground` stay unsupported (no emulator equivalent); the per-scenario `permissions` field
+  (`pm grant`/`pm revoke`, BE-0276) backs the whole permission vocabulary, including `notifications`
+  (`POST_NOTIFICATIONS`, API 33+) — unlike iOS's `simctl privacy`, which has no TCC service for it;
+  `pinch`/`rotate` two-finger multi-touch
   gated on a rooted device (protocol-B `sendevent`, no single-touch fallback; BE-0232); a UI
   Automator (Kotlin) codegen target (BE-0209); an Android e2e CI lane (emulator under KVM,
   `android-e2e.yml`; BE-0208), and adb cannot yet drive the native tab bar, so tab-scoped scenarios
@@ -361,7 +364,8 @@ device (the shared device is reseeded via one channel, so parallel workers would
 - DSL authoring reuse: reusable parameterized components (`use` / `${params.*}`), data-driven
   scenarios (`data` / `dataFile` with `${row.*}`), secret variables (`${secrets.X}` with value
   masking), scenario tags + `--tag` / `--exclude` selection, the `setLocation` / `push` device
-  steps, the `doubleTap` action, and file-level + scenario-level `description`
+  steps, the pre-launch `permissions` field (`simctl privacy` / `pm grant`|`pm revoke`, BE-0276),
+  the `doubleTap` action, and file-level + scenario-level `description`
 - DSL control flow & data capture: conditional `if` and `forEach` loops (deterministic; the
   condition is a machine assertion), and `extract` (capture an element's value / label / identifier
   into `${vars.*}`)

@@ -9,6 +9,7 @@ import pytest
 from _runner import _eff, _el, _ios_eff
 
 from bajutsu import simctl
+from bajutsu.config import require_ios
 from bajutsu.drivers import base
 from bajutsu.drivers.fake import FakeDriver
 from bajutsu.runner import (
@@ -58,6 +59,45 @@ def test_launch_driver_injects_extra_env(monkeypatch: pytest.MonkeyPatch) -> Non
 
     _, launch_env = next(c for c in calls if "launch" in c[0])
     assert launch_env.get("SIMCTL_CHILD_BAJUTSU_COLLECTOR") == "http://127.0.0.1:7"
+
+
+def test_launch_driver_applies_permissions_before_launch(monkeypatch: pytest.MonkeyPatch) -> None:
+    """BE-0276: `permissions` runs after terminate (a fresh install/erase resets TCC grants) but
+    before the app's own launch, so a permission prompt never blocks the run."""
+    calls: list[list[str]] = []
+
+    def fake_run(args: list[str], extra_env: object = None) -> str:
+        calls.append(args)
+        return ""
+
+    ready = FakeDriver([_el("home.title", "H"), _el("ok", "OK")])
+    monkeypatch.setattr("bajutsu.backends.make_driver", lambda actuator, udid: ready)
+
+    launch_driver(
+        "UDID-1",
+        _eff(),
+        "idb",
+        Preconditions(erase=False),
+        env_run=fake_run,
+        permissions={"camera": "grant", "location": "revoke"},
+    )
+
+    verbs = [c[2] for c in calls if c[:2] == ["xcrun", "simctl"]]
+    assert verbs.index("privacy") < verbs.index("launch")
+    bundle_id = require_ios(_eff()).bundle_id
+    assert ["xcrun", "simctl", "privacy", "UDID-1", "grant", "camera", bundle_id] in calls
+
+
+def test_launch_driver_applies_no_permissions_when_unset(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[list[str]] = []
+    monkeypatch.setattr(
+        "bajutsu.backends.make_driver",
+        lambda actuator, udid: FakeDriver([_el("home.title", "H"), _el("ok", "OK")]),
+    )
+    launch_driver(
+        "UDID-1", _eff(), "idb", Preconditions(erase=False), env_run=_recording_run(calls)
+    )
+    assert not any(c[:3] == ["xcrun", "simctl", "privacy"] for c in calls)
 
 
 def _recording_run(calls: list[list[str]]):

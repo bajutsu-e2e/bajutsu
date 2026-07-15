@@ -29,6 +29,7 @@ from bajutsu.codegen.common import (
     is_plain_substring,
     ms,
     network_unsupported,
+    permissions_setup_lines,
     render_test_file,
 )
 from bajutsu.drivers import base
@@ -384,7 +385,7 @@ class _UiAutomatorGen:
     def setup_lines(self, scenario: Scenario) -> list[str]:
         # The mutable extras map the launch-env lines fill and `launch(extras)` consumes; always
         # emitted so a relaunch step can re-launch with the same env even when there is none.
-        return ["val extras = mutableMapOf<String, String>()"]
+        return ["val extras = mutableMapOf<String, String>()", *permissions_setup_lines(scenario)]
 
     def launch_env_line(self, key: str, value: str) -> str:
         return f"extras[{_s(key)}] = {_s(value)}"

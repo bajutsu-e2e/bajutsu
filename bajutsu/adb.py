@@ -473,6 +473,31 @@ def pm_grant_cmd(serial: str, package: str, permission: str) -> list[str]:
     return _adb(serial, "shell", "pm", "grant", package, permission)
 
 
+def pm_revoke_cmd(serial: str, package: str, permission: str) -> list[str]:
+    """Revoke a runtime permission (`pm revoke`), the twin of `pm_grant_cmd` (BE-0276)."""
+    return _adb(serial, "shell", "pm", "revoke", package, permission)
+
+
+# The permission-vocabulary service (BE-0276, shared with iOS's TCC map in simctl.py) -> the
+# android.permission.* names it grants/revokes. A service maps to more than one permission when
+# Android splits it (fine + coarse location; read + write contacts/calendar); `pm grant`/`pm
+# revoke` runs once per mapped permission. Covers the whole vocabulary — the adb backend advertises
+# every service, unlike iOS's `notifications` gap — so `Env.apply_permissions` never misses a key
+# for a service preflight already admitted.
+SERVICE_TO_ANDROID_PERMISSIONS: dict[str, tuple[str, ...]] = {
+    "location": (
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.ACCESS_COARSE_LOCATION",
+    ),
+    "camera": ("android.permission.CAMERA",),
+    "microphone": ("android.permission.RECORD_AUDIO",),
+    "contacts": ("android.permission.READ_CONTACTS", "android.permission.WRITE_CONTACTS"),
+    "photos": ("android.permission.READ_MEDIA_IMAGES", "android.permission.READ_MEDIA_VIDEO"),
+    "calendar": ("android.permission.READ_CALENDAR", "android.permission.WRITE_CALENDAR"),
+    "notifications": ("android.permission.POST_NOTIFICATIONS",),
+}
+
+
 def install_cmd(serial: str, apk_path: str) -> list[str]:
     # -r reinstall keeping data, -t allow test/debug APKs (the showcase builds are debug).
     return _adb(serial, "install", "-r", "-t", apk_path)
@@ -742,19 +767,49 @@ class Env:
         with contextlib.suppress(subprocess.CalledProcessError):
             self._run(force_stop_cmd(self.serial, package))
 
+    def _pm_run(self, action: str, package: str, permission: str) -> None:
+        """Run one `pm grant`/`pm revoke` and surface any stdout as a `DeviceError`.
+
+        `pm grant`/`pm revoke` exit 0 even for an unknown permission or an app that predates
+        runtime permissions, printing the error to stdout — so a silent mistake would otherwise
+        surface only as a later, misleading step failure. Any stdout (silent on success) is
+        surfaced loudly instead. Shared by `grant_permissions` (the config-level list, BE-0210) and
+        `apply_permissions` (the per-scenario field, BE-0276) — same command shape, same contract.
+        """
+        cmd_for = pm_grant_cmd if action == "grant" else pm_revoke_cmd
+        out = self._run(cmd_for(self.serial, package, permission)).strip()
+        if out:
+            raise DeviceError(f"pm {action} failed for {permission} on {package}: {out}")
+
     def grant_permissions(self, package: str, permissions: list[str]) -> None:
         """Grant each configured runtime permission up front (BE-0210), one `pm grant` per entry.
 
         Raises:
-            DeviceError: `pm grant` reported a problem. It exits 0 even for an unknown permission or
-                an app that predates runtime permissions, printing the error to stdout — so a silent
-                config mistake would otherwise surface only as a later, misleading step failure. Any
-                stdout (`pm grant` is silent on success) is surfaced loudly instead.
+            DeviceError: see `_pm_run`.
         """
         for permission in permissions:
-            out = self._run(pm_grant_cmd(self.serial, package, permission)).strip()
-            if out:
-                raise DeviceError(f"pm grant failed for {permission} on {package}: {out}")
+            self._pm_run("grant", package, permission)
+
+    def apply_permissions(self, package: str, permissions: Mapping[str, str]) -> None:
+        """Grant or revoke each `service: grant|revoke` entry in `permissions` up front (BE-0276),
+        one `pm grant`/`pm revoke` per mapped `android.permission.*` — the per-scenario twin of
+        `grant_permissions`'s config-level list.
+
+        Every service is validated against the vocabulary before any `pm` call runs, so an unmapped
+        entry fails before the device is touched at all — never partway through, leaving some
+        services already mutated (should not happen in practice — the adb backend advertises the
+        whole vocabulary, so preflight would have already rejected it — but this validation is the
+        runtime backstop for a caller that bypasses preflight).
+
+        Raises:
+            DeviceError: a service has no mapping, or see `_pm_run`.
+        """
+        for service in permissions:
+            if service not in SERVICE_TO_ANDROID_PERMISSIONS:
+                raise DeviceError(f"permissions.{service} has no android.permission.* mapping")
+        for service, action in permissions.items():
+            for permission in SERVICE_TO_ANDROID_PERMISSIONS[service]:
+                self._pm_run(action, package, permission)
 
     def resolve_activity(self, package: str) -> str:
         """The launcher component (`<package>/<activity>`) for `package`, via the package manager.

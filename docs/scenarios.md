@@ -74,6 +74,7 @@ misinterpret rather than merely reject; a purely additive optional field needs n
 | `mocks` | list | `[]` | Deterministic network stubs — a matching outgoing request gets a canned response instead of hitting the network ([network mocks](#network-mocks-deterministic-stubs)) |
 | `redact` | object | none | Masking applied before evidence is written ([evidence](evidence.md#masking-redact)) |
 | `dismissAlerts` | bool / object | none (on) | The vision **alert guard** — clears OS prompts idb can't see. On by default; `false` disables it, `{ instruction: "tap Allow" }` keeps it on but taps a named button. CLI `--dismiss-alerts`/`--no-dismiss-alerts` overrides ([below](#dismissalerts-the-system-alert-guard)) |
+| `permissions` | dict | `{}` | Declarative OS permission state — `{ <service>: grant \| revoke }` — applied **before the app launches** ([below](#permissions-pre-launch-permission-state)) |
 
 ```yaml
 - name: filter narrows the catalog
@@ -134,6 +135,46 @@ The CLI `--dismiss-alerts` / `--no-dismiss-alerts` flag **overrides every scenar
 per-scenario default applies); `--alert-instruction` sets a default button instruction that a
 scenario's own `instruction` overrides. (real file:
 [`demos/showcase/scenarios/permission.yaml`](../demos/showcase/scenarios/permission.yaml))
+
+## permissions (pre-launch permission state)
+
+`dismissAlerts` reacts to a permission prompt only *after* it appears, and only by tapping it —
+useful when the prompt is unexpected, but it cannot **revoke** a permission or guarantee the app
+starts from a known state. When the permission is known ahead of time, `permissions` sets it
+**before the app process starts**, so the prompt never appears at all: a deterministic,
+machine-checkable device mutation with no model call
+([BE-0276](../roadmaps/BE-0276-scenario-permission-state/BE-0276-scenario-permission-state.md)).
+
+```yaml
+- name: profile — camera already granted
+  permissions:
+    camera: grant
+    location: grant
+    contacts: revoke
+  steps:
+    - tap: { id: profile.avatar.upload }   # no camera-permission prompt — already granted
+```
+
+Each entry is `<service>: grant | revoke`, where `<service>` is one of a small backend-agnostic
+vocabulary: `location`, `camera`, `microphone`, `contacts`, `photos`, `calendar`, `notifications`.
+Each backend maps a service to its own native mechanism:
+
+- **iOS** drives `simctl privacy <udid> <grant|revoke> <tcc-service> <bundle>` — the same TCC
+  (Transparency, Consent, and Control) database SpringBoard's permission prompts read.
+- **Android** drives `pm grant` / `pm revoke`, reusing the plumbing behind the config-level
+  `grantPermissions` list ([drivers](drivers.md)); a scenario's `permissions` layers on top of that
+  config-level default and can revoke what it grants.
+
+**iOS has no TCC service for `notifications`** (iOS notification authorization is not part of
+TCC), so a scenario naming `notifications` on an iOS target fails **preflight** — before any device
+work — pointing at `dismissAlerts` as the path for that one prompt. Android's `POST_NOTIFICATIONS`
+*is* a runtime permission (API 33+), so Android supports the whole vocabulary. Every other
+unsupported combination (a service unsupported on the chosen backend) fails preflight the same way,
+named individually.
+
+`permissions` has no app-level XCUITest / Espresso equivalent, so `codegen` emits a labeled
+`// TODO` per service rather than generating code for it — bajutsu applies the field itself, before
+the generated test's own launch step.
 
 ## Selectors (addressing an element)
 
