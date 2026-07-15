@@ -7,8 +7,9 @@
 |---|---|
 | 提案 | [BE-0253](BE-0253-serve-route-registry-unification-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **提案** |
+| 状態 | **実装中** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0253") |
+| 実装 PR | [#1098](https://github.com/bajutsu-e2e/bajutsu/pull/1098) |
 | トピック | コードベース品質・技術的負債 |
 <!-- /BE-METADATA -->
 
@@ -136,8 +137,16 @@ drift を、grep できる明示的な宣言に変えます。作業は MECE な
       `/api/enrich`、`/api/codegen`、`/api/capture/*`、`/api/jobs/{id}/respond-human`、
       `/runs/{id}/archive.zip`）を判定する。設計上本当にローカル限定のものには `local_only=True`
       の印を付け、それ以外は補う
-- [ ] 重複した認証、CSRF、Host、ヘッダの実施を、両バックエンドが使う共有の 1 つの gate ヘルパー
+- [x] 重複した認証、CSRF、Host、ヘッダの実施を、両バックエンドが使う共有の 1 つの gate ヘルパー
       にまとめる
+
+### ログ
+
+- 2026-07-15 — Part 5（共有の gate ヘルパー）を [#1098](https://github.com/bajutsu-e2e/bajutsu/pull/1098)
+  で実装しました。フレームワークに依存しない新しいモジュール `bajutsu/serve/gate.py`
+  （`HARDENING_HEADERS`、`allowed_hosts` / `host_allowed`、`csrf_ok`、`is_open`、`is_authorized`、
+  `actor_for`）を両バックエンドが呼び出す形にし、トランスポート固有の機構は各バックエンドに残しました。
+  挙動は変えていません。Part 1〜4（宣言的なルートレジストリ）は後続のスライスで実装します。
 
 ## 参考
 
