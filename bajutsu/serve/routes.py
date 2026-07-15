@@ -119,8 +119,8 @@ def match_route(
 ) -> tuple[Route, dict[str, str]] | None:
     """The first route matching *method* and *path*, with its bound path parameters, or None.
 
-    List order is precedence: a static path listed before a template that could also match it wins
-    (e.g. `/api/runs/bulk-delete` before `/api/runs/{run_id}/...`)."""
+    List order is precedence: a route listed before another that could also match a given path
+    wins (e.g. `/runs/{run_id}/archive.zip` before the greedy `/runs/{rel:path}`)."""
     for route in routes:
         if route.method != method:
             continue
@@ -130,10 +130,10 @@ def match_route(
     return None
 
 
-# The route table. Order is load-bearing where a static path must be tried before a template that
-# could swallow it, and where the greedy `/runs/{rel:path}` must come after the more specific
-# `/runs/{run_id}/archive.zip`. `off_loop` entries carry no handle — each backend dispatches them
-# bespoke (see the module docstring).
+# The route table. Order is load-bearing for the greedy `/runs/{rel:path}`, which must come after
+# the more specific `/runs/{run_id}/archive.zip` it would otherwise swallow; the exact-segment-count
+# matcher keeps every other pair order-independent. `off_loop` entries carry no handle — each
+# backend dispatches them bespoke (see the module docstring).
 ROUTES: tuple[Route, ...] = (
     # --- GET: streaming / binary (off_loop) ---
     Route("GET", "/api/jobs/{job_id}/events", off_loop=True),
@@ -437,7 +437,9 @@ ROUTES: tuple[Route, ...] = (
         "/api/runs/{run_id}/upload-urls",
         lambda state, ctx: ops.generate_upload_urls(state, ctx.path_param("run_id"), ctx.body()),
     ),
-    # Static path listed before the `{run_id}` templates so it can't be captured as an id.
+    # Static path; today's exact-segment-count matcher can't confuse it with the `{run_id}`
+    # templates below (4 segments vs. 5), but it's kept first for readability and in case a
+    # same-length template is ever added here.
     Route(
         "POST",
         "/api/runs/bulk-delete",
