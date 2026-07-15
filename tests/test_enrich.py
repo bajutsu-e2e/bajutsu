@@ -172,6 +172,34 @@ def test_enrich_partial_replay_calls_agent_with_successful_steps() -> None:
     assert result.expect == proposed
 
 
+def test_enrich_preserves_selection_across_steps() -> None:
+    """A `select` then `copy` replayed through enrich shares one SelectionState (BE-0265).
+
+    The selection contract lives across steps in the run loop; enrich's replay loop must thread the
+    same state so `copy` sees the selection `select` established one step earlier — otherwise each
+    step would restart with an inactive selection and `copy` would always raise.
+    """
+    field: base.Element = {
+        "identifier": "form.note",
+        "label": None,
+        "traits": [],
+        "value": "hello",
+        "frame": (0.0, 0.0, 100.0, 40.0),
+    }
+    driver = FakeDriver([field])
+    steps = [
+        Step.model_validate({"select": {"into": {"id": "form.note"}}}),
+        Step.model_validate({"copy": {}}),
+    ]
+    scenario = _scenario(steps)
+    agent = FakeEnrichmentAgent(EnrichmentProposal(expect=[]))
+
+    enrich(driver, scenario, agent, with_screenshot=False)
+
+    # Both steps replayed: select_all then copy_selection actually actuated (copy did not raise).
+    assert [a[0] for a in driver.actions] == ["tap", "select_all", "copy_selection"]
+
+
 # ---------------------------------------------------------------------------
 # Reporter
 # ---------------------------------------------------------------------------

@@ -125,8 +125,8 @@ Action    ::=
   | { doubleTap:   <Selector> }
   | { longPress:   { sel: <Selector>, duration: number } }
   | { type:        { text: string, into?: <Selector>, submit?: boolean } }   # submit default false
-  | { clear:       { into: <Selector> } }                  # focus the field and remove its entire current content
-  | { delete:      { into: <Selector>, count: integer } }  # focus the field and delete count characters from the end (count > 0)
+  | { clear:       { into: <Selector> } }                  # focus the field and remove its entire current content (web-context raises)
+  | { delete:      { into: <Selector>, count: integer } }  # focus the field and delete count characters from the end (count > 0; web-context raises)
   | { select:      { into: <Selector>, mode?: "all" } }    # focus the field and select its content (mode default "all"; idb/web-context raise → codegen to XCUITest)
   | { copy:        {} }                                    # copy the active selection to the clipboard (requires a prior select; idb/web-context raise)
   | { selectOption:{ sel: <Selector>, option: string } }   # set a web <select> to the option with this value (web only; iOS/Android raise)
