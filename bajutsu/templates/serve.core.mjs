@@ -388,9 +388,10 @@ async function loadConfig(){
 function setCfgName(text,hasConfig){$('#cfgname').textContent=text;$('#viewcfg').hidden=!hasConfig}
 // Running-tool identity badge (BE-0272): "which build of bajutsu am I looking at". Version is
 // always shown once the endpoint answers; commit/branch/dirty are appended only when serve runs
-// from a Git checkout AND the caller may see them — the checkout read is admin-gated, and getJSON
-// swallows a 403 (non-admin) or a network error into {}, so a hosted/non-admin/pip-install serve
-// simply shows the version alone. Read on boot; not polled — the running build doesn't change.
+// from a Git checkout AND the caller may see them — the checkout read is admin-gated; a 403 still
+// resolves as JSON (`{error: "forbidden"}`, which lacks `.commit`), so only a network/parse failure
+// actually falls back to {}. Either way a hosted/non-admin/pip-install serve shows the version alone.
+// Read on boot; not polled — the running build doesn't change.
 async function loadVersion(){
   const v=await getJSON('/api/version',{});
   if(!v.version)return;  // endpoint unreachable — leave the badge hidden
