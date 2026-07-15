@@ -12,6 +12,7 @@ from __future__ import annotations
 import hashlib
 import re
 import tempfile
+import zipfile
 from pathlib import Path
 from typing import Any
 
@@ -238,14 +239,22 @@ def artifact_exists(
     return {"exists": exists}, 200
 
 
-def _composition_id(shas: dict[str, str]) -> str:
+def _composition_id(shas: dict[str, str], extra: str = "") -> str:
     """A deterministic cache key for a `(config, scenarios, binary)` triple, so composing the same
     combination twice is a cache hit (`materialize_composition`). Built from a fixed kind order
     (not `shas`' iteration order, which is whatever the untrusted source dict happened to use) so
     the same triple always yields the same id; an omitted leg joins as an empty segment, which can't
-    collide with a present leg (every real sha256 is exactly 64 hex characters, never empty)."""
+    collide with a present leg (every real sha256 is exactly 64 hex characters, never empty).
+
+    *extra* salts the key with a single-file `scenarios` artifact's display name: the same bytes
+    dropped under two names must compose to two distinct trees (each carrying that name), so the name
+    is part of the identity, not just the content shas. It is empty for a zip `scenarios` artifact
+    (whose names live inside the zip) and for the reactivation path, which carries no name — leaving
+    the key unchanged from the shas-only form."""
     parts = [shas.get(kind, "") for kind in ("config", "scenarios", "binary")]
-    return hashlib.sha256(":".join(parts).encode("ascii")).hexdigest()
+    if extra:
+        parts.append(extra)
+    return hashlib.sha256(":".join(parts).encode("utf-8")).hexdigest()
 
 
 def _fetch_artifact(
@@ -310,6 +319,7 @@ def _compose_and_bind(
     size: int,
     org: str,
     actor: str | None,
+    scenarios_filename: str | None = None,
 ) -> tuple[Upload, int] | tuple[dict[str, Any], int]:
     """Resolve a validated triple's legs, materialize the composition, and bind it as the active
     config — the shared core of `_activate_composed_project` (reactivating a stored record) and
@@ -317,19 +327,42 @@ def _compose_and_bind(
     so a caller can read back its display-safe `filename` for an audit line / response without
     re-sanitizing — or an `(error, status)` pair. *filename* is the raw, untrusted provenance name
     (a client-shaped record or request); this is the single place it is run through `_safe_filename`.
-    A composed bind records its provenance as `compositionId` + one `<kind>Sha` per supplied artifact
+    *scenarios_filename* names a single-file `scenarios` artifact so it lands under a meaningful
+    `*.yaml` name and salts the cache key — but **only when that artifact is actually a single YAML**,
+    not a zip: `materialize_composition` ignores the name for a zip (it content-sniffs with
+    `zipfile.is_zipfile`), so salting a zip would fragment the cache into byte-identical trees. This
+    invariant is enforced here, at the API boundary, not just in the UI's `.zip`-suffix gate — any
+    `/api/compose` client gets it. The reactivation path carries no name, so it never salts. A
+    composed bind records its provenance as `compositionId` + one `<kind>Sha` per supplied artifact
     (`Upload.artifact_shas`), never a single top-level `sha256`."""
-    composition_id = _composition_id(shas)
-    compositions_dir = _compositions_dir(state) / org_prefix("", org)
     paths: dict[str, Path] = {}
+    salt = ""
+    scenarios_sha = shas.get("scenarios")
+    if scenarios_filename and scenarios_sha is not None:
+        # The cache key must reflect whether this scenarios artifact is a single YAML (name salts the
+        # key) or a zip (name ignored ⇒ no salt), and that verdict is by *content*, so the scenarios
+        # leg is resolved up front — before the composition-cache lookup, which the salt feeds. It's
+        # one small artifact, and the resolved path is reused below (config/binary still skip their
+        # fetch on a cache hit). Only reached when a name was supplied — the reactivation path (no
+        # name) keeps its "resolve nothing on a cache hit" shortcut untouched.
+        fetched, status = _fetch_artifact(state, org, "scenarios", scenarios_sha)
+        if status != 200:
+            assert isinstance(fetched, dict)  # a non-200 is always the error payload
+            return fetched, status
+        assert isinstance(fetched, Path)  # `status == 200` only ever pairs with a resolved path
+        paths["scenarios"] = fetched
+        if not zipfile.is_zipfile(fetched):
+            salt = scenarios_filename
+    composition_id = _composition_id(shas, extra=salt)
+    compositions_dir = _compositions_dir(state) / org_prefix("", org)
     if not (compositions_dir / composition_id).exists():
-        # Only resolve each leg (local cache hit or object-store fetch) when this exact triple
-        # hasn't been composed on this replica before — `materialize_composition` itself no-ops on
-        # a cache hit without ever reading these paths, so a replica that's already composed this
-        # triple (the common case on reactivation) skips every per-artifact fetch entirely.
+        # Only resolve each remaining leg (local cache hit or object-store fetch) when this exact
+        # triple hasn't been composed on this replica before — `materialize_composition` itself
+        # no-ops on a cache hit without ever reading these paths, so a replica that's already
+        # composed this triple (the common case on reactivation) skips every per-artifact fetch.
         for kind in ARTIFACT_KINDS:
             sha = shas.get(kind)
-            if sha is None:
+            if sha is None or kind in paths:  # `scenarios` may already be resolved above
                 continue
             fetched, status = _fetch_artifact(state, org, kind, sha)
             if status != 200:
@@ -345,6 +378,7 @@ def _compose_and_bind(
             paths.get("binary"),
             compositions_dir=compositions_dir,
             composition_id=composition_id,
+            scenarios_filename=scenarios_filename,
         )
     except (OSError, ValueError, yaml.YAMLError) as e:
         return {"error": f"invalid composition: {e}"}, 400
@@ -415,11 +449,13 @@ def bind_composition(
     (pick config vX, scenarios vY, binary vZ) and runs it, so a new combination is a fresh *triple*
     over stored artifacts, never a fresh upload — the combination matrix. *artifacts* is the request
     body: a `config` sha256 (required, the triple's only always-required leg) plus optional
-    `scenarios`/`binary` shas and a display `filename`, each untrusted and validated before use. On
-    success the composition materializes into a serve-owned tree and binds exactly like an uploaded
-    bundle, so the Replay / Record / Crawl tabs run from it; returns `{config, targets, source}` like
-    `bind_upload_config`. A missing leg the config actually needs is rejected by
-    `materialize_composition`'s coherence check (400), never run against a half-built tree."""
+    `scenarios`/`binary` shas, a display `filename`, and a `scenariosName` (the dropped scenarios
+    file's name, used only when that artifact is a single YAML file so it lands under a meaningful
+    `*.yaml` name), each untrusted and validated before use. On success the composition materializes
+    into a serve-owned tree and binds exactly like an uploaded bundle, so the Replay / Record / Crawl
+    tabs run from it; returns `{config, targets, source}` like `bind_upload_config`. A missing leg the
+    config actually needs is rejected by `materialize_composition`'s coherence check (400), never run
+    against a half-built tree."""
     if not isinstance(artifacts, dict):
         return {"error": "artifacts must be an object"}, 400
     config_sha = artifacts.get("config")
@@ -429,9 +465,17 @@ def bind_composition(
     err = _collect_optional_shas(artifacts, shas)
     if err is not None:
         return err
+    raw_scenarios_name = artifacts.get("scenariosName")
+    scenarios_name = raw_scenarios_name if isinstance(raw_scenarios_name, str) else None
     org = state.org_of(actor)
     result, status = _compose_and_bind(
-        state, shas, filename=artifacts.get("filename"), size=0, org=org, actor=actor
+        state,
+        shas,
+        filename=artifacts.get("filename"),
+        size=0,
+        org=org,
+        actor=actor,
+        scenarios_filename=scenarios_name,
     )
     if status != 200:
         return result, status

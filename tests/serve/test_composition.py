@@ -73,6 +73,54 @@ def test_composes_config_and_scenarios_only(tmp_path: Path) -> None:
     assert (dest / "scenarios" / "smoke.yaml").is_file()
 
 
+def test_composes_a_single_yaml_scenarios_file_into_the_config_dir(tmp_path: Path) -> None:
+    # A scenarios artifact that is one YAML file (not a zip) is written into the directory the config
+    # names, with the extension normalized to `.yaml` so the runner's `*.yaml` listing finds it.
+    config = _write(tmp_path, "config.yaml", _SCENARIOS_CONFIG.encode())
+    scenarios = _write(tmp_path, "login.yml", b"- name: login\n  steps: []\n")
+    dest = materialize_composition(
+        config,
+        scenarios,
+        None,
+        compositions_dir=tmp_path / "compositions",
+        composition_id="tyaml",
+        scenarios_filename="login.yml",
+    )
+    assert (dest / "scenarios" / "login.yaml").read_bytes() == b"- name: login\n  steps: []\n"
+    assert not (dest / "scenarios" / "login.yml").exists()  # .yml normalized to .yaml
+
+
+def test_single_yaml_scenarios_falls_back_to_a_default_name(tmp_path: Path) -> None:
+    config = _write(tmp_path, "config.yaml", _SCENARIOS_CONFIG.encode())
+    scenarios = _write(tmp_path, "s.yaml", b"- name: a\n  steps: []\n")
+    dest = materialize_composition(
+        config,
+        scenarios,
+        None,
+        compositions_dir=tmp_path / "compositions",
+        composition_id="tyaml2",
+        scenarios_filename=None,
+    )
+    assert (dest / "scenarios" / "scenario.yaml").is_file()
+
+
+def test_single_yaml_scenarios_name_cannot_escape_the_scenarios_dir(tmp_path: Path) -> None:
+    # A hostile scenariosName is reduced to a safe leaf `*.yaml` — no separator/traversal survives,
+    # so the file always lands inside the config's scenarios dir, never outside the composed tree.
+    config = _write(tmp_path, "config.yaml", _SCENARIOS_CONFIG.encode())
+    scenarios = _write(tmp_path, "s.yaml", b"- name: a\n  steps: []\n")
+    dest = materialize_composition(
+        config,
+        scenarios,
+        None,
+        compositions_dir=tmp_path / "compositions",
+        composition_id="ttrav",
+        scenarios_filename="../../etc/evil.yml",
+    )
+    assert [p.name for p in (dest / "scenarios").glob("*.yaml")] == ["evil.yaml"]
+    assert not (tmp_path / "etc").exists()  # the `../../` never took effect
+
+
 def test_composes_full_triple_with_app_bundle_binary(tmp_path: Path) -> None:
     config = _write(tmp_path, "config.yaml", _FULL_CONFIG.encode())
     scenarios = _write(tmp_path, "scenarios.zip", _scenarios_zip())

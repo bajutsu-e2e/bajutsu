@@ -745,7 +745,10 @@ bajutsu serve [--port 8765] [--config bajutsu.config.yaml] [--root .] [--runs ru
   changes — so re-shipping the whole zip for a one-line scenario fix pays for the unchanged binary
   again. The "Open config" dialog's fourth source, **Compose from artifacts**, splits the bundle
   into three **independently uploadable, content-addressed** parts — **Config**, **Scenarios** (a
-  `.zip` of the scenario tree), and **Binary** (a `.app.zip` / `.ipa`) — each stored by the sha256 of
+  `.zip` of the scenario tree **or** a single `.yaml`, told apart by content and, for a single file,
+  written into the config's `scenarios` directory with its extension normalized to `.yaml`), and
+  **Binary** (a zipped `.app`, an `.ipa`, or an Android `.apk`, extracted or written raw by the
+  config's `appPath` suffix) — each stored by the sha256 of
   its bytes (`POST /api/artifacts/{config,scenarios,binary}`). Because a part is addressed by its
   content, an **unchanged** part is skipped entirely: the browser hashes the file and asks
   `GET /api/artifacts/exists` before uploading, so the same binary never travels the wire twice.

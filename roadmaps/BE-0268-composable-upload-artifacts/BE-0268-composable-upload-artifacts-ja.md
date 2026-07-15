@@ -9,7 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0268") |
-| 実装 PR | [#1076](https://github.com/bajutsu-e2e/bajutsu/pull/1076)、[#1097](https://github.com/bajutsu-e2e/bajutsu/pull/1097) |
+| 実装 PR | [#1076](https://github.com/bajutsu-e2e/bajutsu/pull/1076)、[#1097](https://github.com/bajutsu-e2e/bajutsu/pull/1097)、[#1105](https://github.com/bajutsu-e2e/bajutsu/pull/1105) |
 | トピック | config の取得元 |
 | 関連 | [BE-0073](../BE-0073-serve-zip-bundle-upload/BE-0073-serve-zip-bundle-upload-ja.md), [BE-0243](../BE-0243-upload-bundle-durable-storage/BE-0243-upload-bundle-durable-storage-ja.md), [BE-0225](../BE-0225-config-project-hub/BE-0225-config-project-hub-ja.md) |
 <!-- /BE-METADATA -->
@@ -145,6 +145,15 @@ BE-0073 と [BE-0063](../BE-0063-git-config-source/BE-0063-git-config-source-ja.
   `POST /api/upload` を 3 分解の糖衣として読み替える部分は別の follow-up のままです。サーバ側での
   再 zip 化は非決定的で、その糖衣が可能にするはずの重複排除を掘り崩すうえ、リリース済みの主要な
   アップロード経路に触れるためです。
+- 2026-07-15 — フィードバックを受けて、合成のドロップゾーンが受け付ける形式を広げました。`scenarios`
+  成果物は `.zip` に加えて単一の `.yaml` ファイルも受け付けます。`materialize_composition` が内容で
+  判別し（`zipfile.is_zipfile`）、単一ファイルは config の `scenarios` ディレクトリへ、拡張子を `.yaml`
+  に正規化して書き出します（runner の一覧は `*.yaml` をグロブするためです）。ドロップされた名前は
+  `bind_composition` から `_compose_and_bind` へ `scenariosName` として渡り、合成キャッシュキーのソルトに
+  もなります。これにより、同じバイト列でも名前が違えば別々の（それぞれの名前を持つ）ツリーに合成されます。
+  `binary` のドロップゾーンの accept には `.app` と Android の `.apk` を加えました（バイト単位の処理は
+  どちらもすでに扱えていました。zip 化した `.app` は展開し、raw の `.ipa`／`.apk` はそのまま書き出し、
+  config の `appPath` の拡張子で決めます。今回は UI の accept とヒントを追いつかせたものです）。
 
 ## 参考
 
