@@ -103,11 +103,16 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
                 self.close_connection = True
 
         def _serve_module(self, name: str) -> None:
-            """Serve one serve.*.mjs frontend module (BE-0247); `name` is a caller-validated
-            _JS_MODULES member (the `_MODULE_PATHS` entry with its leading `/` stripped). The
-            `text/javascript` type is required: a browser refuses to execute a module script served
-            under any other MIME type."""
-            self._text(_asset(name), 200, "text/javascript; charset=utf-8")
+            """Serve one serve.*.mjs frontend module (BE-0247). The caller already validated `name`
+            is a _MODULE_PATHS member (its leading `/` stripped); resolve it to the matching
+            _JS_MODULES *constant* so no user-derived value reaches the file read (path-injection),
+            then serve it. `text/javascript` is required: a browser refuses to execute a module
+            script served under any other MIME type."""
+            asset = next((m for m in _JS_MODULES if m == name), None)
+            if asset is None:  # unreachable via the gated route; defensive against a future caller
+                self._json({"error": "not found"}, 404)
+                return
+            self._text(_asset(asset), 200, "text/javascript; charset=utf-8")
 
         def _sse_job(self, job_id: str) -> None:
             """Stream a job's log over SSE via the shared event stream: a `log` event per line
