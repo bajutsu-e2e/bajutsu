@@ -38,8 +38,11 @@ def _resolve_org_or_forbid(
     return org, None
 
 
-def _default_driver_factory(target: str, backend: str, udid: str) -> driver_base.Driver:
+def _default_driver_factory(target: str, backends_list: list[str], udid: str) -> driver_base.Driver:
     from bajutsu import backends
 
-    actuator = backends.select_actuator([backend] if backend else ["fake"])
+    # Cost-ordered like the run ladder (BE-0240, BE-0267): a live capture/enrich session picks the
+    # cheapest bring-able actuator over the whole backend list — idb for `[ios]`, not the alias head
+    # XCUITest, whose runner serve never starts.
+    actuator = backends.select_actuator_cost_first(backends_list or ["fake"])
     return backends.make_driver(actuator, udid)

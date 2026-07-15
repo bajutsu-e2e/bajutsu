@@ -44,14 +44,14 @@ def start_capture(
     backend, udid, err = _device_args(body)
     if err:
         return err
-    if not backend:
-        backends_list = target_cfg.backend or config.defaults.backend
-        backend = backends_list[0] if backends_list else "fake"
+    # An explicit request is a hard pin; otherwise hand the full backend list to the cost-ordered
+    # selector so `[ios]` resolves to idb rather than the alias head (BE-0267).
+    backends_list = [backend] if backend else list(target_cfg.backend or config.defaults.backend)
     if not udid:
         udid = "booted"
 
     factory = driver_factory or _default_driver_factory
-    driver = factory(target, backend, udid)
+    driver = factory(target, backends_list, udid)
     elements = driver.query()
 
     from bajutsu.elements import screen_size_from_elements

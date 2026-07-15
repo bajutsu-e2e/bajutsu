@@ -7,8 +7,9 @@
 |---|---|
 | 提案 | [BE-0267](BE-0267-serve-author-actuator-selection-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **提案** |
+| 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0267") |
+| 実装 PR | _pending_ |
 | トピック | Authoring experience (record / GUI editor) |
 <!-- /BE-METADATA -->
 
@@ -82,10 +83,15 @@ XCUITest の runner を起動しないためです。Enrich は同一の backend
 > 作業の進行に合わせて最新に保ってください。チェックリストは *詳細設計* の MECE な作業分解を反映し
 > （作業単位ごとに 1 ボックス）、ログは変更内容と時期を（古い順に）記録し PR をリンクします。
 
-- [ ] Unit 1 — `_default_driver_factory` のコスト順選択。
-- [ ] Unit 2 — capture・enrich が backend 列全体を共通ファクトリに渡す。
-- [ ] Unit 3 — 明示的な単一アクチュエータ固定を保持（XCUITest のエラーを維持）。
-- [ ] Unit 4 — `[ios]` → idb と単一アクチュエータ不変の回帰テスト。
+- [x] Unit 1 — `_default_driver_factory` のコスト順選択（新設 `backends.select_actuator_cost_first`）。
+- [x] Unit 2 — capture・enrich が backend 列全体を共通ファクトリに渡す。
+- [x] Unit 3 — 明示的な単一アクチュエータ固定を保持（XCUITest のエラーを維持）。
+- [x] Unit 4 — `[ios]` → idb と単一アクチュエータ不変の回帰テスト。
+
+ログ:
+
+- _pending_ — serve の capture・enrich でコスト順選択を再利用。`select_actuator_cost_first` を追加し、
+  `_default_driver_factory` と capture・enrich を backend 列全体で共通ファクトリに通す。
 
 ## 参考
 

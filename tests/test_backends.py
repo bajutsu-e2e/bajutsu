@@ -13,6 +13,7 @@ from bajutsu.backends import (
     resolve_actuators,
     resolve_evidence_providers,
     select_actuator,
+    select_actuator_cost_first,
     select_actuator_for_scenario,
 )
 from bajutsu.drivers import base
@@ -467,3 +468,28 @@ def test_select_for_scenario_raises_when_nothing_available() -> None:
     # No candidate available at all reuses `select_actuator`'s precise error (raised, not swallowed).
     with pytest.raises(RuntimeError, match="no available actuator"):
         select_actuator_for_scenario(["ios"], _TAP, available=lambda a: False)
+
+
+# --- BE-0267: scenario-free, cost-ordered selection (serve capture/enrich) ---------------------
+
+
+def test_cost_first_prefers_the_cheapest_available_actuator() -> None:
+    # No scenario: `[ios]` picks the cheapest available actuator (idb), never the alias head XCUITest.
+    assert select_actuator_cost_first(["ios"], available=lambda a: True) == "idb"
+
+
+def test_cost_first_escalates_when_the_cheap_actuator_is_unavailable() -> None:
+    # idb absent: the next cost-ordered candidate (XCUITest) wins — cost order, not capability.
+    assert select_actuator_cost_first(["ios"], available=lambda a: a == "xcuitest") == "xcuitest"
+
+
+def test_cost_first_single_actuator_is_a_hard_pin() -> None:
+    # An explicit single actuator delegates to `select_actuator` — a hard pin, no reordering.
+    assert select_actuator_cost_first(["idb"], available=lambda a: True) == "idb"
+    assert select_actuator_cost_first(["xcuitest"], available=lambda a: True) == "xcuitest"
+
+
+def test_cost_first_raises_when_nothing_available() -> None:
+    # None available reuses `select_actuator`'s precise error (raised, not swallowed).
+    with pytest.raises(RuntimeError, match="no available actuator"):
+        select_actuator_cost_first(["ios"], available=lambda a: False)

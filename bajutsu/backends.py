@@ -209,6 +209,30 @@ def _cost_ordered(actuators: list[str]) -> list[str]:
     return [a for _, a in sorted(enumerate(actuators), key=key)]
 
 
+def select_actuator_cost_first(
+    backends: list[str],
+    available: Callable[[str], bool] = default_available,
+) -> str:
+    """The cheapest available actuator among the requested backends, without a scenario (BE-0267).
+
+    A live serve capture/enrich session drives one device and needs no capability escalation — only
+    the cheapest actuator it can actually bring up. This is `select_actuator_for_scenario` without
+    the scenario: cost order (cheapest first) over the resolved candidates, first available wins, so
+    `[ios]` selects idb (no runner) rather than the alias head XCUITest (which serve never starts).
+
+    A single resolved candidate is a hard pin: it delegates to `select_actuator`, keeping its
+    planned/absent diagnostics and any explicit-actuator error (e.g. XCUITest's runner requirement),
+    consistent with `select_actuator_for_scenario`'s single-actuator rule.
+    """
+    candidates = list(dict.fromkeys(resolve_actuators(backends)))
+    if len(candidates) <= 1:
+        return select_actuator(backends, available)
+    avail = [a for a in _cost_ordered(candidates) if a in KNOWN_ACTUATORS and available(a)]
+    if not avail:
+        return select_actuator(backends, available)  # reuse planned/absent diagnostics (raises)
+    return avail[0]
+
+
 def select_actuator_for_scenario(
     backends: list[str],
     scenario: Scenario,
