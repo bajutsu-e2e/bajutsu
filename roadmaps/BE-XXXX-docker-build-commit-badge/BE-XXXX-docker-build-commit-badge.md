@@ -1,6 +1,6 @@
 **English** · [日本語](BE-XXXX-docker-build-commit-badge-ja.md)
 
-# BE-XXXX — Bake the commit hash into self-hosted Docker images for the version badge
+# BE-XXXX — Embed the commit hash into self-hosted Docker images for the version badge
 
 <!-- BE-METADATA -->
 | Field | Value |
@@ -16,7 +16,7 @@
 
 Extend the version badge from [BE-0272](../BE-0272-serve-version-badge/BE-0272-serve-version-badge.md)
 to self-hosted Docker deployments, where its Git-plumbing detection has no
-`.git` checkout to read from. Bake the commit hash in at `docker build` time via
+`.git` checkout to read from. Embed the commit hash at `docker build` time via
 a build argument, and have `server_checkout()` fall back to it when Git
 detection comes up empty — so a self-hosted `serve` behind a container still
 shows which commit it's running, the same way a local dev checkout already
@@ -26,8 +26,8 @@ does.
 
 BE-0272 reads the commit/branch/dirty flag with `git` plumbing anchored at
 bajutsu's own package directory (`bajutsu/serve/operations/version.py`), and
-its own "Alternatives considered" section already flagged this: baking the
-commit in at build time was deferred because "bajutsu isn't published to PyPI
+its own "Alternatives considered" section already flagged this: embedding the
+commit at build time was deferred because "bajutsu isn't published to PyPI
 yet... there's no build pipeline to hook into today." A self-hosted Docker
 deployment *is* such a build pipeline, and it's available today —
 [`deploy/self-host/Dockerfile`](../../deploy/self-host/Dockerfile) already
@@ -56,7 +56,7 @@ happens to carry a usable `.git`.
 ## Detailed design
 
 - **Build argument.** Add `ARG GIT_COMMIT=""` to
-  [`deploy/self-host/Dockerfile`](../../deploy/self-host/Dockerfile) and bake
+  [`deploy/self-host/Dockerfile`](../../deploy/self-host/Dockerfile) and embed
   it into the image as `ENV BAJUTSU_BUILD_COMMIT=$GIT_COMMIT`, following the
   existing `BAJUTSU_*` environment-variable convention
   (`bajutsu/config_source.py`, `bajutsu/serve/state.py`, etc.). Left unset, it
@@ -65,14 +65,14 @@ happens to carry a usable `.git`.
   (`bajutsu/serve/operations/version.py`), when the `git rev-parse --short
   HEAD` read returns `None` (no `.git` checkout), read
   `BAJUTSU_BUILD_COMMIT` from the environment; if it's non-empty, return it as
-  `commit` with `branch: None` and `dirty: False` — a build-arg baked value
+  `commit` with `branch: None` and `dirty: False` — a build-arg embedded value
   has no working branch or dirty-tree concept, so those fields stay their
   "unknown" defaults rather than fabricating a value. Git detection stays the
   primary source and runs first, unchanged, so this only ever activates the
   cases BE-0272 already left as "nothing to report."
   Consider surfacing where the value came from (e.g. a `source: "git" |
   "build-arg"` field) so the frontend badge can render it distinctly (no
-  branch name / dirty marker implies "baked", not "clean checkout").
+  branch name / dirty marker implies "embedded", not "clean checkout").
 - **`.dockerignore`.** Add a repository-root `.dockerignore` excluding `.git`
   (and other build-irrelevant paths already gitignored, e.g. `.venv/`,
   `runs/`, `tmp/`) so the build context no longer incidentally carries `.git`
@@ -112,7 +112,7 @@ happens to carry a usable `.git`.
   a session left running while the checkout is edited); an unset build arg
   must never shadow that. Git detection stays first; the build arg only fills
   the gap Git detection already leaves as "nothing to report."
-- **A setuptools-scm-style version-bump baked into the package itself**, so a
+- **A setuptools-scm-style version-bump embedded into the package itself**, so a
   `pip install`-ed copy could also report a commit. This is the general case
   BE-0272 deferred, and it's still deferred here too: it needs a build/publish
   pipeline bajutsu doesn't have yet. This item stays scoped to the Docker path
@@ -132,7 +132,7 @@ happens to carry a usable `.git`.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] `deploy/self-host/Dockerfile`: add `ARG GIT_COMMIT=""` and bake it into
+- [ ] `deploy/self-host/Dockerfile`: add `ARG GIT_COMMIT=""` and embed it into
       `ENV BAJUTSU_BUILD_COMMIT`.
 - [ ] `bajutsu/serve/operations/version.py`: fall back to
       `BAJUTSU_BUILD_COMMIT` in `server_checkout()` when Git detection finds
@@ -147,7 +147,7 @@ happens to carry a usable `.git`.
 
 - [BE-0272](../BE-0272-serve-version-badge/BE-0272-serve-version-badge.md) —
   the version badge and its Git-plumbing detection this item extends; its own
-  "Alternatives considered" section deferred build-time baking pending a
+  "Alternatives considered" section deferred build-time embedding pending a
   build pipeline, which the self-hosted Docker path already is.
 - [BE-0016](../BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md) —
   the self-hosted Tier B control plane (`deploy/self-host/`) this item's
