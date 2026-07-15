@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0250") |
-| Implementing PR | [#1093](https://github.com/bajutsu-e2e/bajutsu/pull/1093) |
+| Implementing PR | [#1093](https://github.com/bajutsu-e2e/bajutsu/pull/1093), [#1100](https://github.com/bajutsu-e2e/bajutsu/pull/1100) |
 | Topic | Codebase quality & technical debt |
 | Related | [BE-0172](../BE-0172-run-loop-step-decomposition/BE-0172-run-loop-step-decomposition.md) |
 <!-- /BE-METADATA -->
@@ -144,7 +144,7 @@ before and after) rather than changing any assertion's observable behavior.
 > (oldest first), linking the PRs.
 
 - [x] Split `bajutsu/assertions.py` into an `assertions/` package (`network.py`, `visual.py`, `schema.py`, `evaluate.py`), re-exporting the existing public surface.
-- [ ] Bundle `visual_context`/`schema_context`/`golden_context`/`clipboard` into one `EvalContext`, threaded end-to-end through `evaluate` → `evaluate_one` → `run_scenario` → `_run_step_body` → `pipeline.py`.
+- [x] Bundle `visual_context`/`schema_context`/`golden_context`/`clipboard` into one `EvalContext`, threaded end-to-end through `evaluate` → `evaluate_one` → `run_scenario` → `_run_step_body` → `pipeline.py`.
 - [ ] Replace the 14-way `if` chain in `evaluate_one` with a `{field_name: eval_fn}` registry, mirroring `bajutsu/orchestrator/actions/_registry.py`'s `_HANDLERS`.
 - [ ] Derive `_ASSERTION_KINDS` from `Assertion.model_fields` instead of hand-maintaining the tuple.
 
@@ -154,6 +154,14 @@ before and after) rather than changing any assertion's observable behavior.
   `visual`, `schema`, `evaluate`), the public surface re-exported from `__init__`. Behavior-preserving;
   the existing assertion/network suites plus a re-export/acyclicity guard are the parity net.
   PR [#1093](https://github.com/bajutsu-e2e/bajutsu/pull/1093).
+- Unit 2 (EvalContext) — a frozen `EvalContext(visual, schema, golden, clipboard)` (in `assertions/evaluate.py`,
+  re-exported from `__init__`) replaces the four loose keyword-only parameters threaded in lockstep through
+  `evaluate` / `evaluate_one` / `_evaluate_expect` / `run_scenario` / `_run_step_body` / `pipeline.py`. `clipboard`
+  stays a resolved value (not a reader): `_clipboard_for` still gates and reads it once per block, so the poll loop
+  never re-reads it. Step-level asserts keep receiving only golden + clipboard (no per-step screenshot exists for
+  `visual` / `responseSchema`), preserved by dropping those two fields at that call site. Behavior-preserving; the
+  existing assertion/network/loop suites plus new frozen-context / field-routing / step-drop guards are the parity net.
+  PR [#1100](https://github.com/bajutsu-e2e/bajutsu/pull/1100).
 
 ## References
 

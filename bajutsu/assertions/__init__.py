@@ -15,13 +15,20 @@ image-preprocessing subsystem (`visual`), and JSON-Schema loading/validation (`s
 from __future__ import annotations
 
 from bajutsu.assertions._common import AssertionResult
-from bajutsu.assertions.evaluate import GoldenContext, evaluate, evaluate_one, passed
+from bajutsu.assertions.evaluate import (
+    EvalContext,
+    GoldenContext,
+    evaluate,
+    evaluate_one,
+    passed,
+)
 from bajutsu.assertions.network import count_matching, match_request, request_label
 from bajutsu.assertions.schema import SchemaContext
 from bajutsu.assertions.visual import VisualContext, VisualEvidence
 
 __all__ = [
     "AssertionResult",
+    "EvalContext",
     "GoldenContext",
     "SchemaContext",
     "VisualContext",
