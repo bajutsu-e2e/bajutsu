@@ -343,8 +343,8 @@ device (the shared device is reseeded via one channel, so parallel workers would
   clipboard on Android 10+, while `push` / `clearKeychain` / status-bar overrides / `background` /
   `foreground` stay unsupported (no emulator equivalent); the per-scenario `permissions` field
   (`pm grant`/`pm revoke`, BE-0276) backs the whole permission vocabulary, including `notifications`
-  (`POST_NOTIFICATIONS`, API 33+) — unlike iOS's `simctl privacy`, which has no TCC service for it;
-  `pinch`/`rotate` two-finger multi-touch
+  (`POST_NOTIFICATIONS`, API 33+) — unlike iOS's `simctl privacy`, which has no TCC (Transparency,
+  Consent, and Control) service for it; `pinch`/`rotate` two-finger multi-touch
   gated on a rooted device (protocol-B `sendevent`, no single-touch fallback; BE-0232); a UI
   Automator (Kotlin) codegen target (BE-0209); an Android e2e CI lane (emulator under KVM,
   `android-e2e.yml`; BE-0208), and adb cannot yet drive the native tab bar, so tab-scoped scenarios
