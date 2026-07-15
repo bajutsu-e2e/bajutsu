@@ -152,9 +152,20 @@ def test_content_type_only_on_the_four_text_routes() -> None:
             assert not r.off_loop and r.handle is not None
 
 
-def test_local_only_all_false_in_part_b() -> None:
-    # PR-C does the triage; PR-B declares every route as served by both backends.
-    assert all(not r.local_only for r in ROUTES)
+def test_local_only_is_exactly_the_triaged_set() -> None:
+    # PR-C's Part 4 triage: the FastAPI (hosted) generator deliberately skips these. `ant_login`
+    # writes a machine-global credential and already 403s when hosted; the capture routes hold an
+    # in-process Driver across start/mark/finish (and its screenshot), a single-process model. Every
+    # other route is served by both backends.
+    local = {(r.method, r.path) for r in ROUTES if r.local_only}
+    assert local == {
+        ("GET", "/api/ant/login"),
+        ("POST", "/api/ant/login"),
+        ("POST", "/api/capture/start"),
+        ("POST", "/api/capture/mark"),
+        ("POST", "/api/capture/finish"),
+        ("GET", "/api/capture/screenshot"),
+    }
 
 
 def test_paths_are_balanced_templates() -> None:

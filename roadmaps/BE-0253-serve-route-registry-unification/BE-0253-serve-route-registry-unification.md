@@ -7,9 +7,9 @@
 |---|---|
 | Proposal | [BE-0253](BE-0253-serve-route-registry-unification.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **In progress** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0253") |
-| Implementing PR | [#1098](https://github.com/bajutsu-e2e/bajutsu/pull/1098), [#1108](https://github.com/bajutsu-e2e/bajutsu/pull/1108) |
+| Implementing PR | [#1098](https://github.com/bajutsu-e2e/bajutsu/pull/1098), [#1108](https://github.com/bajutsu-e2e/bajutsu/pull/1108), [#_pending_](https://github.com/bajutsu-e2e/bajutsu/pull/_pending_) |
 | Topic | Codebase quality & technical debt |
 <!-- /BE-METADATA -->
 
@@ -117,8 +117,8 @@ declaration. Five MECE parts:
 - [x] Define the declarative route registry (method, path pattern, `ops.*` callable,
       `off_loop`/`local_only`/`content_type` flags)
 - [x] Rewrite the stdlib handler's `do_GET`/`do_POST`/`do_DELETE` to dispatch from the registry
-- [ ] Generate `app.py`'s FastAPI routes from the registry in `make_app`
-- [ ] Triage every endpoint missing from `app.py` today (`/flakiness`, `/api/ant/login`,
+- [x] Generate `app.py`'s FastAPI routes from the registry in `make_app`
+- [x] Triage every endpoint missing from `app.py` today (`/flakiness`, `/api/ant/login`,
       `/api/enrich`, `/api/codegen`, `/api/capture/*`, `/api/jobs/{id}/respond-human`,
       `/runs/{id}/archive.zip`): mark genuinely local-only ones `local_only=True`, backfill the rest
 - [x] Collapse the duplicated auth/CSRF/Host/header enforcement into one shared gate helper used by
@@ -141,6 +141,22 @@ declaration. Five MECE parts:
   text response. `off_loop` routes (SSE, file serve, raw uploads, OAuth, login, index) are *declared* here
   but kept bespoke per backend. Part 3 (generate `app.py` from the registry) and Part 4 (triage the
   FastAPI-missing endpoints via `local_only`) follow in the next slice.
+- 2026-07-15 — Parts 3–4 (generate `app.py` from the registry + triage) landed in
+  [#_pending_](https://github.com/bajutsu-e2e/bajutsu/pull/_pending_), completing the item. `make_app`
+  now iterates `ROUTES` and registers every entry that carries a `handle` and is not `local_only`,
+  replacing ~40 hand-written `@app.<method>` decorators; the off_loop routes (index, ES-module frontend,
+  run file/range/archive, SSE, OAuth, login, raw-body uploads) stay bespoke. A backend-neutral
+  `_FastapiCtx` mirrors the stdlib `_StdlibCtx`. Part 4 triage: `/api/ant/login` (machine-global
+  credential, already 403s when hosted) and `/api/capture/*` (an in-process `Driver` across
+  start/mark/finish) are marked `local_only=True` and skipped; every other endpoint previously missing
+  from `app.py` — `/flakiness`, `/api/enrich`, `/api/codegen`, `/api/jobs/{id}/respond-human`, the
+  never-mirrored `/api/scenario/apply-selector` and `/api/scenario/enrich-apply`, and `/runs/{id}/archive.zip`
+  (backfilled bespoke) — is now served, closing the silent drift. The path-param `unquote` moved from the
+  registry closures into each ctx (`path_param` now returns the decoded segment on both backends), so the
+  two can't drift on how a percent-encoded segment reaches its `ops` call. Behavior-preserving, except the
+  hosted backend now rejects a malformed request body with the stdlib's `400` rather than FastAPI's `422`
+  (an untested error path, aligned deliberately) and `?purge` follows the stdlib's `== "true"` contract
+  already shipped in Part 2 (the SPA never sends `?purge`).
 
 ## References
 
