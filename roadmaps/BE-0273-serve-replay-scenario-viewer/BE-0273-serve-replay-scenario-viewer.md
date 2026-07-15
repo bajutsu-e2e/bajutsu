@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0273") |
-| Implementing PR | _pending_ |
+| Implementing PR | [#1131](https://github.com/bajutsu-e2e/bajutsu/pull/1131) |
 | Topic | Authoring experience (record / GUI editor) |
 | Related | [BE-0187](../BE-0187-serve-config-view/BE-0187-serve-config-view.md) |
 <!-- /BE-METADATA -->
@@ -158,7 +158,7 @@ scenario the active config exposes, with no per-app branching.
 
 ### Log
 
-- Implemented in PR _pending_: read-only scenario viewer in the Replay Form — a "View scenario"
+- Implemented in PR #1131: read-only scenario viewer in the Replay Form — a "View scenario"
   control opens a modal mirroring the config viewer (BE-0187) with a raw-YAML ↔ structured-steps
   toggle. `read_scenario` gained an opt-in `structure` flag that returns the runner's per-scenario
   parse (`_scenario_structure`, reusing `_step_action_fields`) without a run, leaving every existing
