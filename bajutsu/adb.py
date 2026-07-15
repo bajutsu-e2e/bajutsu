@@ -492,6 +492,8 @@ SERVICE_TO_ANDROID_PERMISSIONS: dict[str, tuple[str, ...]] = {
     "camera": ("android.permission.CAMERA",),
     "microphone": ("android.permission.RECORD_AUDIO",),
     "contacts": ("android.permission.READ_CONTACTS", "android.permission.WRITE_CONTACTS"),
+    # `photos` requires API 33+ (`READ_MEDIA_IMAGES`/`READ_MEDIA_VIDEO`); a target below API 33 has
+    # no mapping here and would need the legacy `READ_EXTERNAL_STORAGE` permission instead.
     "photos": ("android.permission.READ_MEDIA_IMAGES", "android.permission.READ_MEDIA_VIDEO"),
     "calendar": ("android.permission.READ_CALENDAR", "android.permission.WRITE_CALENDAR"),
     "notifications": ("android.permission.POST_NOTIFICATIONS",),
